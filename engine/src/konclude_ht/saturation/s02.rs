@@ -449,14 +449,21 @@ impl SaturationTaskHandleAlgorithm {
                     let blocked = calc_alg_context
                         .process_context()
                         .sat_node(blocked_indi_node);
-                    (blocked.direct_status_flags, blocked.indirect_status_flags)
+                    (
+                        blocked.direct_status_flags,
+                        (
+                            blocked.indirect_status_flags,
+                            blocked.propagated_indirect_status_flags,
+                        ),
+                    )
                 };
                 {
                     let node = calc_alg_context
                         .process_context_mut()
                         .sat_node_mut(*indi_proc_sat_node);
                     node.direct_status_flags = blocked_direct;
-                    node.indirect_status_flags = blocked_indirect;
+                    node.indirect_status_flags = blocked_indirect.0;
+                    node.propagated_indirect_status_flags = blocked_indirect.1;
                     node.set_substitute_individual_node(special_indi_node); // 5539
                     node.set_reference_mode(1); // 5540
                     node.clear_concept_saturation_process_linker(); // 5541
@@ -470,7 +477,7 @@ impl SaturationTaskHandleAlgorithm {
                 ); // 5545
                 self.update_indirect_adding_individual_status_flags(
                     *indi_proc_sat_node,
-                    &blocked_indirect,
+                    &blocked_indirect.1,
                     calc_alg_context,
                 ); // 5546
                 let blocked_nominal_set = calc_alg_context

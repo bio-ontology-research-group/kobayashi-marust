@@ -192,6 +192,7 @@ impl IndividualSaturationProcessNode {
     ) -> &mut Self {
         self.direct_status_flags = indi_node.direct_status_flags;
         self.indirect_status_flags = indi_node.indirect_status_flags;
+        self.propagated_indirect_status_flags = indi_node.propagated_indirect_status_flags;
         self
     }
 

@@ -2552,10 +2552,12 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         adding_flags: &IndividualSaturationProcessNodeStatusFlags,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
+        // Tests the propagated part, not the whole indirect word: see
+        // `propagated_indirect_status_flags`.
         !calc_alg_context
             .process_context()
             .sat_node(indi_node)
-            .indirect_status_flags
+            .propagated_indirect_status_flags
             .has_flags(adding_flags, true)
     }
 
@@ -2781,6 +2783,11 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 .sat_node_mut(indi_node)
                 .indirect_status_flags
                 .add_flags(adding_flags);
+            calc_alg_context
+                .process_context_mut()
+                .sat_node_mut(indi_node)
+                .propagated_indirect_status_flags
+                .add_flags(adding_flags);
             self.indirect_updated_status_indi_node_count += 1;
 
             while !direct_update_linker.is_empty() {
@@ -2819,6 +2826,11 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                             .process_context_mut()
                             .sat_node_mut(depending_indi)
                             .indirect_status_flags
+                            .add_flags(adding_flags);
+                        calc_alg_context
+                            .process_context_mut()
+                            .sat_node_mut(depending_indi)
+                            .propagated_indirect_status_flags
                             .add_flags(adding_flags);
                         self.indirect_updated_status_indi_node_count += 1;
                         direct_update_linker.push(depending_indi);
@@ -2860,6 +2872,11 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                 .sat_node_mut(source_individual)
                                 .indirect_status_flags
                                 .add_flags(adding_flags);
+                            calc_alg_context
+                                .process_context_mut()
+                                .sat_node_mut(source_individual)
+                                .propagated_indirect_status_flags
+                                .add_flags(adding_flags);
                             self.indirect_updated_status_indi_node_count += 1;
                             direct_update_linker.push(source_individual);
                         }
@@ -2896,6 +2913,11 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                                 .process_context_mut()
                                 .sat_node_mut(source_individual)
                                 .indirect_status_flags
+                                .add_flags(adding_flags);
+                            calc_alg_context
+                                .process_context_mut()
+                                .sat_node_mut(source_individual)
+                                .propagated_indirect_status_flags
                                 .add_flags(adding_flags);
                             self.indirect_updated_status_indi_node_count += 1;
                             direct_update_linker.push(source_individual);
