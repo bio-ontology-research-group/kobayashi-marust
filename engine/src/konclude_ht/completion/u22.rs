@@ -1355,7 +1355,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .to_vec();
             if operands.len() == 1 {
                 let op_concept = operands[0].target;
-                let op_con_negation = operands[0].negated ^ concept_negation;
+                // KONCLUDE-PORT-NOTE[deviation]: C++ uses
+                // `isNegated()^conceptNegation` for every generating concept.
+                // A negated `≤n R.C` (applyATLEASTRule -> applySOMERule) creates
+                // `C`-successors, so its qualifier keeps its own polarity; the
+                // XOR expanded the new successor from the saturation node of
+                // `¬C` and produced spurious clashes (unsound subsumptions).
+                let op_con_negation = super::super::model::op::generated_successor_filler_negation(
+                    calc_alg_context
+                        .ontology_arenas()
+                        .concept(concept)
+                        .get_operator_code(),
+                    operands[0].negated,
+                    concept_negation,
+                );
                 let op_ref_linking = ref_linking_of(calc_alg_context, op_concept);
                 if op_ref_linking.is_some() {
                     let sat_calc_ref_link_data = calc_alg_context

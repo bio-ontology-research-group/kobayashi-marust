@@ -1515,11 +1515,21 @@ impl SaturationTaskHandleAlgorithm {
                 .concept(concept)
                 .get_operand_list()
                 .to_vec();
+            let con_code = calc_alg_context
+                .ontology_arenas()
+                .concept(concept)
+                .get_operator_code();
             for op_link in operands {
                 if exist_indi_node.is_some() {
                     break;
                 }
-                let op_con_negation = op_link.negated ^ con_negation;
+                // `¬(≤n R.C)` creates `C`-successors, not `¬C`-successors
+                // (see `generated_successor_filler_negation`).
+                let op_con_negation = super::super::model::op::generated_successor_filler_negation(
+                    con_code,
+                    op_link.negated,
+                    con_negation,
+                );
                 exist_indi_node = Self::s07_concept_reference_node(
                     op_link.target,
                     op_con_negation,
