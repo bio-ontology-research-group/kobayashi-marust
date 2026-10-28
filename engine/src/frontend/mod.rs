@@ -80,6 +80,10 @@ pub struct FrontendResult {
     /// re-runs the frontend with `KM_DATA_ASSERTION_AS_CLASS` when this is
     /// positive and publishes the remainder as dropped axioms.
     pub uncarried_data_assertions: u64,
+    /// Source axioms the clause set does not represent and whose omission is
+    /// not entailment-neutral, by functional-syntax head. The orchestrator
+    /// publishes their total as dropped axioms of a consistent answer.
+    pub dropped_source_axioms: std::collections::BTreeMap<String, u64>,
     /// KM_HT_CARD: first-class qualified number restrictions (`define`'s `≥n`/`≤n`
     /// markers). Empty unless the frontend `KM_HT_CARD` flag is set.
     pub cardinalities: Vec<crate::json_io::CardMeta>,
@@ -1483,6 +1487,17 @@ fn ofn_to_clauses_representation(
     // and role axioms for independent source-model verification.
     let ht_rules = !rules.is_empty() || profile.normalized_finite_data_rules > 0;
     let converted_data_assertions = ontology.data_assertions_as_class();
+    // Source axioms no consumer of this clause stream represents, by head
+    // (`Ontology::dropped_source_axioms`). DL-safe rules that the selected
+    // mechanism does not read (`KM_NO_HT_RULES`) and that no exact lowering
+    // replaced are counted too.
+    let mut dropped_source_axioms = ontology.dropped_source_axioms().clone();
+    if rules.is_empty() && !rule_independent_abox_inconsistent {
+        let unread = (ontology.rules().count() + ontology.datatype_rules().count()) as u64;
+        if unread > 0 && profile.normalized_finite_data_rules == 0 {
+            *dropped_source_axioms.entry("DLSafeRule".to_string()).or_default() += unread;
+        }
+    }
     drop(ontology); // the syntax AST is dead once clausified
     t.lap("normalise");
     // Under KM_NOMINALS the ground ABox + nominal defining clauses enter the
@@ -1512,6 +1527,50 @@ fn ofn_to_clauses_representation(
     // when no executable ground rule remains; ordinary rule-free inputs do not.
     if ht_rules {
         tbox.extend(abox.iter().cloned());
+    }
+    // Outside nominal clausification the ground ABox enters the clause set
+    // only through nominal proxies (`preprocess::nominal_clauses`): a concept
+    // assertion on an individual with a proxy and a role assertion between
+    // two such individuals. Every other assertion (on an individual without
+    // a proxy, and every equality, inequality or negative role assertion) is
+    // not represented, so it is counted. A certified ABox omission empties
+    // `abox` before this point and counts nothing.
+    // An ABox with the source-only certificate that it is consistent and
+    // changes no TBox subsumption is entailment-neutral for classification.
+    // The other ABox certificates need an orchestrator-side check that only
+    // the automatic route schedules, and the automatic router sends every
+    // uncertified ABox to a nominal or typed-ABox mechanism; so the count
+    // applies to explicitly selected routes.
+    let abox_certified = profile.positive_abox_tbox_separable;
+    let mut abox_unrepresented: BTreeMap<String, u64> = BTreeMap::new();
+    if !automatic && !nominals_mode && !ht_rules && !abox_certified && !abox.is_empty() {
+        let proxied: HashSet<&str> =
+            hooks.nominal_to_individual.values().map(String::as_str).collect();
+        fn individual(t: &Term) -> Option<&str> {
+            match t {
+                Term::Ind(name) => Some(name.as_str()),
+                _ => None,
+            }
+        }
+        for c in &abox {
+            let kind = match (c.body.as_slice(), c.head.as_slice()) {
+                // `a : owl:Thing` constrains nothing.
+                ([], [Atom::Concept(c, _)]) if matches!(c.as_str(), "owl:Thing" | "Thing") => None,
+                ([], [Atom::Concept(_, t)]) => {
+                    (!individual(t).is_some_and(|a| proxied.contains(a))).then_some("ClassAssertion")
+                }
+                ([], [Atom::Role(_, s, t)]) => (!(individual(s).is_some_and(|a| proxied.contains(a))
+                    && individual(t).is_some_and(|a| proxied.contains(a))))
+                    .then_some("ObjectPropertyAssertion"),
+                ([], [Atom::Eq(..)]) => Some("SameIndividual"),
+                ([Atom::Eq(..)], []) => Some("DifferentIndividuals"),
+                ([Atom::Role(..)], []) => Some("NegativeObjectPropertyAssertion"),
+                _ => Some("ABox assertion"),
+            };
+            if let Some(kind) = kind {
+                *abox_unrepresented.entry(kind.to_string()).or_default() += 1;
+            }
+        }
     }
     drop(abox);
     drop(hooks);
@@ -1594,6 +1653,14 @@ fn ofn_to_clauses_representation(
     // positive and publishes any remainder as dropped axioms, so a clause
     // worker never publishes a complete-looking taxonomy over a silently
     // dropped assertion.
+    // A complete typed nominal ABox is read directly by the native bridge
+    // routes (they set `KM_TRIGGER_ABSORB`), so its assertions are carried
+    // there; elsewhere the unrepresented ABox is counted.
+    if !(nominal_abox.complete && std::env::var_os("KM_TRIGGER_ABSORB").is_some()) {
+        for (kind, n) in abox_unrepresented {
+            *dropped_source_axioms.entry(kind).or_default() += n;
+        }
+    }
     let uncarried_data_assertions = if nominal_abox
         .unsupported
         .iter()
@@ -1958,6 +2025,7 @@ fn ofn_to_clauses_representation(
         profile,
         route: route.as_str().to_string(),
         uncarried_data_assertions,
+        dropped_source_axioms,
     })
 }
 

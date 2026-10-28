@@ -293,6 +293,11 @@ pub struct Ontology {
     /// class assertion was newly added, so the ABox coverage certificate can
     /// match it against the source data-assertion count.
     data_assertions_as_class: u64,
+    /// Source axioms the parser does not represent and whose omission is not
+    /// entailment-neutral (keys, unsupported data axioms, unparsed DL-safe
+    /// rules, unknown axiom kinds), by functional-syntax head. Published as
+    /// dropped axioms of a consistent answer.
+    dropped_source_axioms: std::collections::BTreeMap<String, u64>,
     /// Class assertions the conversion added. Equals `data_assertions_as_class`
     /// except when the literal-profile abstraction maps two source assertions
     /// to one class assertion.
@@ -534,6 +539,16 @@ impl Ontology {
                 rep,
             ))
         }).collect()
+    }
+
+    /// Record a source axiom the parser drops (see `dropped_source_axioms`).
+    pub fn drop_source_axiom(&mut self, head: &str) {
+        *self.dropped_source_axioms.entry(head.to_string()).or_default() += 1;
+    }
+
+    /// Dropped non-neutral source axioms by functional-syntax head.
+    pub fn dropped_source_axioms(&self) -> &std::collections::BTreeMap<String, u64> {
+        &self.dropped_source_axioms
     }
 
     pub fn data_assertions_as_class(&self) -> u64 {

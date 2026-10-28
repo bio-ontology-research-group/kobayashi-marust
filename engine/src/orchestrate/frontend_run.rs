@@ -30,6 +30,10 @@ pub struct Meta {
     /// `FrontendResult::uncarried_data_assertions`).
     #[serde(default)]
     pub uncarried_data_assertions: u64,
+    /// Non-neutral source axioms the clause set does not represent (see
+    /// `FrontendResult::dropped_source_axioms`).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub dropped_source_axioms: std::collections::BTreeMap<String, u64>,
 }
 
 fn manual_route() -> String {
@@ -246,6 +250,7 @@ fn run_ofn_in_process(
         profile: result.profile,
         route: result.route,
         uncarried_data_assertions: result.uncarried_data_assertions,
+        dropped_source_axioms: result.dropped_source_axioms,
     };
     let mut out = crate::json_io::JInput {
         clauses: result.clauses,
@@ -371,6 +376,14 @@ pub fn run_ofn_split_cached(
         }
     }
     super::UNCARRIED_DATA_ASSERTIONS.with(|u| u.set(result.1.uncarried_data_assertions));
+    let dropped_source: u64 = result.1.dropped_source_axioms.values().sum();
+    if std::env::var_os("KM_TIMING").is_some() && dropped_source > 0 {
+        eprintln!(
+            "KM_TIMING frontend: {} source axiom(s) not represented: {:?}",
+            dropped_source, result.1.dropped_source_axioms
+        );
+    }
+    super::DROPPED_SOURCE_AXIOMS.with(|u| u.set(dropped_source));
     Ok(result)
 }
 

@@ -1821,7 +1821,14 @@ fn map_incremental_result(
         } else {
             unsatisfiable.into_iter().collect()
         },
-        dropped: result.dropped,
+        // Source axioms the frontend could not represent are published like
+        // the worker's dropped clauses (an inconsistency stays exact).
+        dropped: result.dropped
+            + if !result.inconsistent && !source_abox_inconsistent {
+                frontend.dropped_source_axioms.values().sum::<u64>() as usize
+            } else {
+                0
+            },
     }
 }
 

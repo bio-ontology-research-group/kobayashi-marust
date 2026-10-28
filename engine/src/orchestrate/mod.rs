@@ -1366,6 +1366,10 @@ thread_local! {
     /// did not carry (`frontend_run::run_ofn_split_cached`). Published as
     /// dropped axioms by the outermost classification call on this thread.
     pub(crate) static UNCARRIED_DATA_ASSERTIONS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    /// Non-neutral source axioms the last frontend run of this classification
+    /// did not represent (keys, unsupported data axioms, unread rules, unknown
+    /// axiom kinds). Published like `UNCARRIED_DATA_ASSERTIONS`.
+    pub(crate) static DROPPED_SOURCE_AXIOMS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
     /// Nesting depth of `classify_with_evidence_mode` (fallback and probe
     /// routes recurse into it); only the outermost call publishes.
     static CLASSIFY_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
@@ -1379,6 +1383,7 @@ fn classify_with_evidence_mode(
     let depth = CLASSIFY_DEPTH.with(|d| { let v = d.get(); d.set(v + 1); v });
     if depth == 0 {
         UNCARRIED_DATA_ASSERTIONS.with(|u| u.set(0));
+        DROPPED_SOURCE_AXIOMS.with(|u| u.set(0));
     }
     let mut result = classify_with_evidence_inner(initial_cfg, ont, retain_grouped_output);
     CLASSIFY_DEPTH.with(|d| d.set(depth));
@@ -1389,9 +1394,10 @@ fn classify_with_evidence_mode(
         // An inconsistency proved without it stays exact (entailment is
         // monotone), so only a consistent answer carries the count.
         let uncarried = UNCARRIED_DATA_ASSERTIONS.with(|u| u.replace(0));
+        let unrepresented = DROPPED_SOURCE_AXIOMS.with(|u| u.replace(0));
         if let Ok(evidence) = &mut result {
             if evidence.classification.consistent {
-                evidence.classification.dropped += uncarried as usize;
+                evidence.classification.dropped += (uncarried + unrepresented) as usize;
             }
         }
     }

@@ -597,8 +597,13 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
                             o.add(Axiom::Rule(bvec, hvec));
                         }
                     }
+                    // A nonempty head of SQWRL observers only constrains
+                    // nothing; it is a query, not an axiom with content.
+                    return Ok(());
                 }
             }
+            // A rule whose atoms cannot be represented is not encoded.
+            o.drop_source_axiom("DLSafeRule");
         }
         "DataPropertyDomain" => {
             // domain(p) = C ≡ ∃p.⊤ ⊑ C
@@ -762,12 +767,23 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
             ));
         }
         other if other.starts_with("Data") || other == "HasKey" => {
-            // remaining datatype axioms (negative assertions, keys): sound to
-            // drop — they only constrain named individuals, so dropping can
-            // lose an inconsistency, never invent a consequence
+            // Remaining datatype axioms and keys are not encoded. Dropping one
+            // never invents a consequence but can lose an inconsistency, and an
+            // inconsistent ontology entails every subsumption, so the drop is
+            // counted and published with a consistent answer. Data-property
+            // assertions (positive ones not converted, and negative ones) are
+            // counted by their own carry path (`uncarried_data_assertions`).
+            if !matches!(other, "DataPropertyAssertion" | "NegativeDataPropertyAssertion") {
+                o.drop_source_axiom(other);
+            }
         }
-        _ => {
-            // anything else: silently skipped
+        // Annotation-property axioms constrain no logical entailment.
+        "SubAnnotationPropertyOf" | "AnnotationPropertyDomain" | "AnnotationPropertyRange" => {}
+        // Counted by the data-assertion carry path (`uncarried_data_assertions`).
+        "NegativeDataPropertyAssertion" => {}
+        other => {
+            // Any other axiom kind is not represented: count it.
+            o.drop_source_axiom(other);
         }
     }
     Ok(())
