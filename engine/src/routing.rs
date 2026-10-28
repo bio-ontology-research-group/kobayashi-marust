@@ -257,13 +257,30 @@ impl Route {
         if matches!(self, Route::Auto | Route::Manual) {
             return;
         }
+        let overrides = user_diagnostic_overrides();
         for key in ROUTE_KEYS {
             std::env::remove_var(key);
         }
         for (key, value) in COMMON_SETTINGS.iter().chain(self.settings()) {
             std::env::set_var(key, value);
         }
+        // Diagnostic overrides the user set survive the bundle, unless the
+        // bundle sets one of them itself (`seq_on`, `seq_off`).
+        for (key, value) in self.surviving_overrides(overrides) {
+            std::env::set_var(key, value);
+        }
         cap_worker_threads_to_available_cpus();
+    }
+
+    /// The user's diagnostic overrides that this route's bundle keeps: all of
+    /// them, unless the bundle sets one of the override keys itself.
+    fn surviving_overrides<'a>(
+        self,
+        overrides: &'a [(&'static str, std::ffi::OsString)],
+    ) -> &'a [(&'static str, std::ffi::OsString)] {
+        let bundle_sets_override = COMMON_SETTINGS.iter().chain(self.settings())
+            .any(|(key, _)| DIAGNOSTIC_OVERRIDE_KEYS.contains(key));
+        if bundle_sets_override { &[] } else { overrides }
     }
 
     /// A route that starts exactly one terminating classification mechanism.
@@ -3358,6 +3375,23 @@ const SEQ_OFF: &[(&str, &str)] = &[
     ("KM_NO_SEQ_ORDER", "1"),
 ];
 
+/// Routing keys that are also user-facing diagnostic overrides: a value the
+/// user set before the first route bundle was applied is kept by every bundle
+/// that does not set one of these keys itself.
+const DIAGNOSTIC_OVERRIDE_KEYS: &[&str] = &["KM_SEQ_ORDER", "KM_NO_SEQ_ORDER"];
+
+/// The user's diagnostic overrides, read once, before any route bundle can
+/// have set or removed them (the first `apply_environment` call reads them).
+fn user_diagnostic_overrides() -> &'static [(&'static str, std::ffi::OsString)] {
+    static OVERRIDES: std::sync::OnceLock<Vec<(&'static str, std::ffi::OsString)>> =
+        std::sync::OnceLock::new();
+    OVERRIDES.get_or_init(|| {
+        DIAGNOSTIC_OVERRIDE_KEYS.iter()
+            .filter_map(|key| std::env::var_os(key).map(|value| (*key, value)))
+            .collect()
+    })
+}
+
 const ROUTE_KEYS: &[&str] = &[
     "KM_MECHANISM",
     "KM_THREADS",
@@ -4723,6 +4757,15 @@ mod tests {
             Route::CertifiedCardProxyAbox
         );
         assert!(Route::SeqOn.settings().contains(&("KM_SEQ_ORDER", "1")));
+        // A user's KM_SEQ_ORDER / KM_NO_SEQ_ORDER survives every bundle that
+        // does not set one of them; seq_on and seq_off decide themselves.
+        let user = [("KM_NO_SEQ_ORDER", std::ffi::OsString::from("1"))];
+        for route in [Route::CertifiedNominals, Route::Nominals, Route::ProductionAll, Route::CbPlain1] {
+            assert_eq!(route.surviving_overrides(&user).len(), 1, "{route}");
+        }
+        for route in [Route::SeqOn, Route::SeqOff] {
+            assert!(route.surviving_overrides(&user).is_empty(), "{route}");
+        }
         assert!(Route::SeqOff.settings().contains(&("KM_NO_SEQ_ORDER", "1")));
     }
 
