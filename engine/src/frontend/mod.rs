@@ -1794,7 +1794,7 @@ fn ofn_to_clauses_representation(
             .iter()
             .filter_map(|raw| reg.assigned(raw).map(str::to_string))
             .collect();
-        let count = sorts::encode(&mut tbox, &data_roles);
+        let count = sorts::encode_with_classes(&mut tbox, &data_roles, &declared);
         if std::env::var_os("KM_OFN_TIMING").is_some() {
             eprintln!("ofn [sorts] {} clauses added or relativized", count);
         }

@@ -300,14 +300,42 @@ axiom written through the shared `⊤` definer. Second, before any sort clause
 is emitted, admissibility is closed under the clause set as a least
 fixpoint: whenever the body of a clause admits a sort at a term and no head
 atom on that term admits it, the head definers (or, when the head has none,
-its seeded concepts, or else its role positions) are made to admit it. A
-concept or role position that admits both sorts at the fixpoint gets no
-sort clause; the encoding never guesses. The `DataComplementOf` range
-concept is a definer for this purpose: its unrelativized excluded middle
-puts object nodes on the complement side, so it admits both sorts and gets
-no `⊑ D` clause. The closure guarantees that every sort clause is
+its internal role positions) are made to admit it. A definer or internal
+role position that admits both sorts at the fixpoint gets no sort clause;
+the encoding never guesses. Fixed sorts never widen (next paragraph). The
+closure guarantees that every sort clause is
 consistent with every clause of `S'` read in the two-sorted model of the
 first direction below.
+
+Fixed sorts. Some sorts are given by OWL 2 Direct Semantics and are never
+widened by the closure: every named individual is an object (the frontend
+adds `→ O(a)` for each individual `a`, proxy or not, with a fresh object
+marker `O` and `O ⊓ D ⊑ ⊥`; the ground form `D(a) → ⊥` is avoided because
+the nominal CB engine mishandles an empty-head clause whose only body atom
+is ground), every source class is
+`⊑ ¬D` (also when no clause mentions it), every source property has an
+object domain, a data property a data range and an object property an
+object range, and every data range is `⊑ D`, complement ranges included
+(`¬R` is `Δ_D \ R`). Only internal definers and internal roles widen.
+Where the body of a clause admits a sort at a term `t` and the head offers
+only fixed sorts on `t` that do not admit it, the clause is relativized:
+for the data sort, `D(t)` joins the head (the clause holds for objects at
+`t`); for the object sort, `D(t)` joins the body (it holds for data
+elements). Both directions survive. A two-sorted model of `O` satisfies the
+relativized clause: on the sort the clause was restricted to it holds as
+before, and on the other sort `D(t)` (respectively `¬D(t)`) makes it true.
+A model of the encoding restricted to `¬D`, with data values in `D`,
+satisfies the source clause, because the source clause only ever meant the
+restricted sort at `t`: a fixed-sort head on `t` is a class, a property
+position or a data range, which is empty in the other sort under Direct
+Semantics, so applying the clause there could only have required an
+element of the wrong sort. In particular the excluded middle of a data
+range becomes `D(x) → R(x) ∨ ¬R(x)`; on objects it is vacuous, and on data
+elements it is the complement relative to `Δ_D`. The first version of the
+closure (e054f6b7) instead widened fixed concepts and dropped their sort
+clauses; with `⊤ ⊑ ≤2 u` and three `u`-values on an individual without a
+proxy, nothing then kept the individual out of `D`, and the restriction
+never applied.
 
 Exactness. Let `O` be the source ontology, `S` its one-sorted clause set
 before this pass, and `S'` the result. `S` is read against the two-sorted
@@ -338,13 +366,12 @@ same entailments over the source signature as `O`.
   restriction of `J` to `Δ_I` therefore satisfies `O` under Direct
   Semantics, with the data values of `J` as its data interpretation.
 
-Leaving the data-range-level facts unrelativized is sound because, on an
-object node, `→ Q(x) ∨ R(x)` with `R ⊑ D` and the node's `¬D` only
-derives `Q(x)`, the complement side of the range, which the first
-direction interprets as true on `Δ_I`; relativizing them to `¬D` would
-instead be incomplete, since a data node reached by a data property is in
-`D` and would lose the excluded middle (`A ⊑ (u value 2)` and
-`C ≡ ¬∀u.{1}` entail `A ⊑ C`, which needs `¬{1}` at the value `2`).
+Data-range-level facts are restricted to the data sort, never to the
+object sort: relativizing them to `¬D` would be incomplete, since a data
+node reached by a data property is in `D` and would lose the excluded
+middle (`A ⊑ (u value 2)` and `C ≡ ¬∀u.{1}` entail `A ⊑ C`, which needs
+`¬{1}` at the value `2`). The body guard `D(x)` keeps them on every data
+node, where they belong.
 
 Why the sorts alone stop the divergence: every ground object term carries
 an object-sorted concept (a `__nom__` proxy, a source class, or an

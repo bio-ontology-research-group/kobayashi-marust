@@ -27,11 +27,16 @@
 //!   values (it is the `rdfs:Literal` filler), so without the `D(x)`
 //!   disjunct the object-sorted `Q` would be forced on a value.
 //!
-//! Data-range-level facts (the excluded middle `→ Q(x) ∨ R(x)` of a
-//! `DataComplementOf` definer `Q`) stay unrelativized: they must keep
-//! applying to data nodes, and on object nodes they only place the node on
-//! the complement side of the range, which every two-sorted model agrees
-//! with. The sort of every concept and role position is inferred from the
+//! Sorts fixed by OWL 2 Direct Semantics are never widened: source classes
+//! and named individuals (`__nom__` proxies, and `→ O(a)` with `O ⊓ D ⊑ ⊥`
+//! for every individual `a`) are objects; every data range, complement ranges
+//! included (`¬R` is `Δ_D \ R`), is data; every source property has an
+//! object domain, and a data (object) property a data (object) range. A
+//! clause whose body admits a sort at a term where its head offers only
+//! fixed sorts that do not admit it is relativized instead: `D(t)` joins the
+//! head when the clause must not apply to data elements, and the body when
+//! it must not apply to objects (the excluded middle `→ R(x) ∨ ¬R(x)` of a
+//! data range becomes `D(x) → R(x) ∨ ¬R(x)`). The sort of every concept and role position is inferred from the
 //! clause set itself (data ranges and data properties are data, source
 //! classes and named individuals are objects, and atoms on one term share a
 //! sort; a Skolem term `f(x)` and an individual denote the same element in
@@ -59,6 +64,10 @@ use super::clauses::{clause, Atom, DLClause, Term};
 /// Marker concept interpreted as the data domain `Δ_D`.
 pub const DATA_SORT: &str = "__data__";
 
+/// Marker concept carried by every named individual; disjoint from
+/// [`DATA_SORT`].
+pub const OBJECT_SORT: &str = "__object__";
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Sort {
     Unknown,
@@ -84,14 +93,6 @@ impl Sort {
 
 fn is_data_range(name: &str) -> bool {
     name.starts_with("__dt__")
-}
-
-/// The abstraction concept of a `DataComplementOf` range. Its excluded
-/// middle against the complemented range is not relativized, which places
-/// every object node on the complement side, so the concept admits both
-/// sorts and must not receive a `⊑ D` clause.
-fn is_complement_range(name: &str) -> bool {
-    super::datatypes::is_complement_range(name)
 }
 
 /// The sorts an element carrying a concept, or filling a role position, may
@@ -380,6 +381,17 @@ impl<'a, 'b> TermSorts<'a, 'b> {
 /// the number of facts relativized. `data_roles` holds the clause-set names
 /// of the source's data properties.
 pub fn encode(tbox: &mut Vec<DLClause>, data_roles: &BTreeSet<String>) -> usize {
+    encode_with_classes(tbox, data_roles, &[])
+}
+
+/// [`encode`], also placing every declared source class in the object sort,
+/// including classes no clause mentions: an unconstrained class is still a
+/// set of objects, and every relativized `⊤` fact must apply to it.
+pub fn encode_with_classes(
+    tbox: &mut Vec<DLClause>,
+    data_roles: &BTreeSet<String>,
+    declared: &[String],
+) -> usize {
     let sorts = Sorts::infer(tbox, data_roles);
     let x = Term::Var("x".to_string());
     let y = Term::Var("y".to_string());
@@ -431,29 +443,55 @@ pub fn encode(tbox: &mut Vec<DLClause>, data_roles: &BTreeSet<String>) -> usize 
         count += 1;
     }
     // Admissibility, closed under the clause set (see the module
-    // documentation). Seeds keep their one sort unless no definer can take
-    // the blame; a complement range is treated like a definer.
+    // documentation). Sorts fixed by OWL 2 Direct Semantics are never
+    // widened: source classes and `__nom__` proxies are objects, data ranges
+    // (complement ranges included: `¬R` is `Δ_D \ R`) are data, every source property has an
+    // object domain, a data property a data range and an object property an
+    // object range. Only internal definers and internal roles widen. Where a
+    // clause would force a fixed sort to admit the other one, the clause is
+    // relativized instead (`head_d`: `D(t)` joins the head, restricting the
+    // clause to object elements at `t`; `body_d`: `D(t)` joins the body,
+    // restricting it to data elements).
+    let fixed_concept = |name: &str| name == DATA_SORT || sorts.concepts[name].1;
     let mut concept_adm: BTreeMap<String, Admits> = sorts
         .concepts
         .iter()
         .map(|(name, (sort, _))| (name.clone(), Admits::from_sort(*sort)))
         .collect();
     concept_adm.insert(DATA_SORT.to_string(), Admits::from_sort(Sort::Data));
-    let flippable = |name: &str| {
-        name != DATA_SORT && (!sorts.concepts[name].1 || is_complement_range(name))
-    };
+    let fixed_role = |name: &str| is_source_role(name);
     let mut role_adm: BTreeMap<String, (Admits, Admits)> = sorts
         .roles
         .iter()
         .map(|(name, (domain, range))| {
-            (name.clone(), (Admits::from_sort(*domain), Admits::from_sort(*range)))
+            let (domain, range) = if fixed_role(name) {
+                let range = if data_roles.contains(name) { Sort::Data } else { Sort::Object };
+                (Sort::Object, range)
+            } else {
+                (*domain, *range)
+            };
+            (name.clone(), (Admits::from_sort(domain), Admits::from_sort(range)))
         })
         .collect();
+    let mut head_d: BTreeMap<usize, BTreeSet<Term>> = BTreeMap::new();
+    let mut body_d: BTreeMap<usize, BTreeSet<Term>> = BTreeMap::new();
     loop {
         let mut changed = false;
-        for c in tbox.iter() {
-            let mut terms: BTreeSet<&Term> = BTreeSet::new();
-            for atom in c.body.iter().chain(c.head.iter()) {
+        for (index, c) in tbox.iter().enumerate() {
+            let mut body_terms: BTreeSet<&Term> = BTreeSet::new();
+            for atom in &c.body {
+                match atom {
+                    Atom::Concept(_, t) => {
+                        body_terms.insert(t);
+                    }
+                    Atom::Role(_, s, t) | Atom::Eq(s, t) => {
+                        body_terms.insert(s);
+                        body_terms.insert(t);
+                    }
+                }
+            }
+            let mut terms: BTreeSet<&Term> = body_terms.clone();
+            for atom in &c.head {
                 match atom {
                     Atom::Concept(_, t) => {
                         terms.insert(t);
@@ -465,14 +503,29 @@ pub fn encode(tbox: &mut Vec<DLClause>, data_roles: &BTreeSet<String>) -> usize 
                 }
             }
             for t in terms {
+                let structural = if matches!(t, Term::Var(_)) {
+                    Sort::Unknown
+                } else {
+                    sorts.terms.get(t).copied().unwrap_or(Sort::Unknown)
+                };
+                // A Skolem term only the head mentions is created by the
+                // clause; its sort is whatever its structural evidence says.
+                if !body_terms.contains(t) && !matches!(t, Term::Var(_)) && !structural.definite() {
+                    continue;
+                }
                 for sort in [Sort::Object, Sort::Data] {
-                    // A Skolem term or individual has a structural sort.
-                    let structural = if matches!(t, Term::Var(_)) {
-                        Sort::Unknown
-                    } else {
-                        sorts.terms.get(t).copied().unwrap_or(Sort::Unknown)
-                    };
+                    // An individual is an object, a Skolem term has its
+                    // structural sort.
+                    if matches!(t, Term::Ind(_)) && sort == Sort::Data {
+                        continue;
+                    }
                     if structural.definite() && structural != sort {
+                        continue;
+                    }
+                    if sort == Sort::Object && body_d.get(&index).is_some_and(|ts| ts.contains(t)) {
+                        continue;
+                    }
+                    if sort == Sort::Data && head_d.get(&index).is_some_and(|ts| ts.contains(t)) {
                         continue;
                     }
                     let body_admits = c.body.iter().all(|atom| match atom {
@@ -489,15 +542,13 @@ pub fn encode(tbox: &mut Vec<DLClause>, data_roles: &BTreeSet<String>) -> usize 
                     let mut on_term = false;
                     let mut satisfied = false;
                     let mut definers: Vec<&str> = Vec::new();
-                    let mut concepts: Vec<&str> = Vec::new();
                     let mut positions: Vec<(&str, bool)> = Vec::new();
                     for atom in &c.head {
                         match atom {
                             Atom::Concept(name, u) if u == t => {
                                 on_term = true;
                                 satisfied |= concept_adm[name].admits(sort);
-                                concepts.push(name);
-                                if flippable(name) {
+                                if !fixed_concept(name) {
                                     definers.push(name);
                                 }
                             }
@@ -505,12 +556,16 @@ pub fn encode(tbox: &mut Vec<DLClause>, data_roles: &BTreeSet<String>) -> usize 
                                 if s == t {
                                     on_term = true;
                                     satisfied |= role_adm[name].0.admits(sort);
-                                    positions.push((name, false));
+                                    if !fixed_role(name) {
+                                        positions.push((name, false));
+                                    }
                                 }
                                 if u == t {
                                     on_term = true;
                                     satisfied |= role_adm[name].1.admits(sort);
-                                    positions.push((name, true));
+                                    if !fixed_role(name) {
+                                        positions.push((name, true));
+                                    }
                                 }
                             }
                             Atom::Eq(s, u) if s == t || u == t => {
@@ -527,15 +582,15 @@ pub fn encode(tbox: &mut Vec<DLClause>, data_roles: &BTreeSet<String>) -> usize 
                         for name in definers {
                             changed |= concept_adm.get_mut(name).expect("head concept").add(sort);
                         }
-                    } else if !concepts.is_empty() {
-                        for name in concepts {
-                            changed |= concept_adm.get_mut(name).expect("head concept").add(sort);
-                        }
-                    } else {
+                    } else if !positions.is_empty() {
                         for (name, range) in positions {
                             let entry = role_adm.get_mut(name).expect("head role");
                             changed |= if range { entry.1.add(sort) } else { entry.0.add(sort) };
                         }
+                    } else {
+                        // Only fixed sorts on `t`: relativize the clause.
+                        let set = if sort == Sort::Data { &mut head_d } else { &mut body_d };
+                        changed |= set.entry(index).or_default().insert(t.clone());
                     }
                 }
             }
@@ -543,6 +598,22 @@ pub fn encode(tbox: &mut Vec<DLClause>, data_roles: &BTreeSet<String>) -> usize 
         if !changed {
             break;
         }
+    }
+    for (index, ts) in &head_d {
+        let c = &mut tbox[*index];
+        let body = std::mem::take(&mut c.body);
+        let mut head = std::mem::take(&mut c.head);
+        head.extend(ts.iter().map(|t| d(t)));
+        *c = clause(body, head);
+        count += 1;
+    }
+    for (index, ts) in &body_d {
+        let c = &mut tbox[*index];
+        let mut body = std::mem::take(&mut c.body);
+        let head = std::mem::take(&mut c.head);
+        body.extend(ts.iter().map(|t| d(t)));
+        *c = clause(body, head);
+        count += 1;
     }
     let mut added: Vec<DLClause> = Vec::new();
     for (name, adm) in &concept_adm {
@@ -568,6 +639,67 @@ pub fn encode(tbox: &mut Vec<DLClause>, data_roles: &BTreeSet<String>) -> usize 
             Some(Sort::Data) => added.push(clause([atom.clone()], [d(&y)])),
             _ => {}
         }
+    }
+    for name in declared {
+        if is_source_concept(name) && !concept_adm.contains_key(name) {
+            added.push(clause([Atom::Concept(name.clone(), x.clone()), d(&x)], []));
+        }
+    }
+    // Every named individual is an object. Most are already pinned by a
+    // ground atom whose concept is object-only at the fixpoint or by a
+    // source-property assertion (whose domain and range are fixed); the
+    // rest get the ground fact `→ O(a)` over the fresh object marker `O`
+    // ([`OBJECT_SORT`]) with `O ⊓ D ⊑ ⊥`. Pinned individuals get no extra
+    // fact, so the typed native ABox views see no unrepresented ground
+    // clause where none is needed. The ground `D(a) → ⊥` is avoided: the
+    // nominal CB engine mishandles an empty-head clause whose only body
+    // atom is ground.
+    let mut individuals: BTreeSet<&str> = BTreeSet::new();
+    let mut pinned: BTreeSet<&str> = BTreeSet::new();
+    fn collect<'a>(t: &'a Term, out: &mut BTreeSet<&'a str>) {
+        match t {
+            Term::Ind(name) => {
+                out.insert(name);
+            }
+            Term::Fun(_, inner) => collect(inner, out),
+            Term::Var(_) | Term::Aux(..) => {}
+        }
+    }
+    for c in tbox.iter() {
+        for atom in c.body.iter().chain(c.head.iter()) {
+            match atom {
+                Atom::Concept(_, t) => collect(t, &mut individuals),
+                Atom::Role(_, s, t) | Atom::Eq(s, t) => {
+                    collect(s, &mut individuals);
+                    collect(t, &mut individuals);
+                }
+            }
+        }
+        if !c.body.is_empty() || c.head.len() != 1 {
+            continue;
+        }
+        match &c.head[0] {
+            Atom::Concept(name, Term::Ind(a)) => {
+                if concept_adm.get(name).and_then(|adm| adm.only()) == Some(Sort::Object) {
+                    pinned.insert(a);
+                }
+            }
+            Atom::Role(name, Term::Ind(a), Term::Ind(b)) if fixed_role(name) => {
+                pinned.insert(a);
+                if !data_roles.contains(name) {
+                    pinned.insert(b);
+                }
+            }
+            _ => {}
+        }
+    }
+    let object = |t: &Term| Atom::Concept(OBJECT_SORT.to_string(), t.clone());
+    let unpinned: Vec<&str> = individuals.difference(&pinned).copied().collect();
+    for name in &unpinned {
+        added.push(clause(Vec::new(), [object(&Term::Ind(name.to_string()))]));
+    }
+    if !unpinned.is_empty() {
+        added.push(clause([object(&x), d(&x)], []));
     }
     count += added.len();
     tbox.extend(added);
@@ -632,11 +764,13 @@ mod tests {
         assert_eq!(sorts.roles["r"], (Sort::Object, Sort::Object));
     }
 
-    /// The concept of a `DataComplementOf` range carries an unrelativized
-    /// excluded middle `→ ¬R(x) ∨ R(x)` (from `datatypes`). It must not be
-    /// placed in Δ_D: on an object node the fact then only derives `¬R`.
+    /// The concept of a `DataComplementOf` range is `Δ_D \ R`: it is placed
+    /// in Δ_D, and its excluded middle `→ ¬R(x) ∨ R(x)` (from `datatypes`)
+    /// is restricted to data elements (`D(x)` joins the body) instead of
+    /// being instantiated at every object term, where it offered every value
+    /// as a merge candidate (differential seeds 1, 78, 148).
     #[test]
-    fn complement_range_concepts_get_no_data_sort_clause() {
+    fn complement_range_concepts_are_data_and_their_excluded_middle_is_guarded() {
         const NOT_INT: &str = "__dt__c__DataComplementOf(xsd:integer)";
         const INT: &str = "__dt__integer";
         let mut tbox = vec![
@@ -650,9 +784,9 @@ mod tests {
         let _ = encode(&mut tbox, &BTreeSet::from(["u".to_string()]));
         let dx = c(DATA_SORT, x());
         assert!(tbox.contains(&clause([c(INT, x())], [dx.clone()])));
-        assert!(!tbox.contains(&clause([c(NOT_INT, x())], [dx.clone()])));
-        assert!(tbox.contains(&fact([c(NOT_INT, x()), c(INT, x())])));
-        assert!(!tbox.contains(&fact([c(NOT_INT, x()), c(INT, x()), dx.clone()])));
+        assert!(tbox.contains(&clause([c(NOT_INT, x())], [dx.clone()])));
+        assert!(tbox.contains(&clause([dx.clone()], [c(NOT_INT, x()), c(INT, x())])));
+        assert!(!tbox.contains(&fact([c(NOT_INT, x()), c(INT, x())])));
         assert!(tbox.contains(&clause([c("A", x()), dx.clone()], [])));
     }
 
@@ -759,8 +893,10 @@ mod tests {
 
     /// The closure repairs a head the inference cannot: a data-sorted
     /// definer implied by a polymorphic one through a role-guarded clause
-    /// must admit both sorts and then gets no `⊑ D` clause; a complement
-    /// range in an unrelativized excluded middle admits both sorts too.
+    /// must admit both sorts and then gets no `⊑ D` clause. A complement
+    /// range is a data range like any other: its excluded middle
+    /// `→ R(x) ∨ ¬R(x)` is restricted to data elements (`D(x)` joins the
+    /// body), which is its two-sorted reading (`¬R` is `Δ_D \ R`).
     #[test]
     fn admissibility_closure_removes_clauses_instead_of_guessing() {
         let comp = "__dt__c__DataComplementOf(xsd:string)";
@@ -784,7 +920,8 @@ mod tests {
         assert!(!tbox.contains(&clause([c("Q_d", x())], [dx.clone()])));
         assert!(!tbox.iter().any(|cl| cl.body.contains(&c("Q_d", x())) && cl.body.contains(&dx)));
         assert!(tbox.contains(&clause([c("__dt__string", x())], [dx.clone()])));
-        assert!(!tbox.contains(&clause([c(comp, x())], [dx.clone()])));
+        assert!(tbox.contains(&clause([c(comp, x())], [dx.clone()])));
+        assert!(tbox.contains(&clause([dx.clone()], [c("__dt__string", x()), c(comp, x())])));
         assert!(tbox.contains(&clause([c("A", x()), dx.clone()], [])));
     }
 

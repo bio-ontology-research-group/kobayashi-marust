@@ -532,3 +532,71 @@ fn data_value_singleton_next_to_nominal_successors() {
         }
     }
 }
+
+/// Differential regressions for the object/data sort encoding: the files in
+/// `fixtures/sorts_differential` are the datatype agent's reproducers
+/// (`max2_three*`: `⊤ ⊑ ≤2 u` and three `u`-values on one individual, which
+/// the sort closure used to satisfy by moving the individual into the data
+/// sort) and generated seeds that the sort encoding of e054f6b7 answered
+/// incompletely (an unconstrained source class was not placed in the object
+/// sort, so relativized `⊤` facts did not reach it). Each `.hermit` file is
+/// HermiT 1.4's answer (`C` consistency, `U` unsatisfiable, `S` subsumption,
+/// full IRIs); the nominal routes must reproduce it exactly.
+#[test]
+fn sort_encoding_matches_hermit_on_differential_fixtures() {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sorts_differential");
+    let mut checked = 0;
+    for entry in std::fs::read_dir(&dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().and_then(|e| e.to_str()) != Some("ofn") {
+            continue;
+        }
+        let text = std::fs::read_to_string(&path).unwrap();
+        let base = text
+            .lines()
+            .find_map(|l| l.strip_prefix("Prefix(:=<").and_then(|r| r.strip_suffix(">)")))
+            .expect("default prefix")
+            .to_string();
+        let expand = |name: &str| match name.strip_prefix(':') {
+            Some(local) => format!("{base}{local}"),
+            None => name.to_string(),
+        };
+        let reference = std::fs::read_to_string(path.with_extension("hermit")).unwrap();
+        let mut consistent = true;
+        let mut unsat = BTreeSet::new();
+        let mut subs = BTreeSet::new();
+        for line in reference.lines() {
+            let fields: Vec<&str> = line.split('\t').collect();
+            match fields.as_slice() {
+                ["C", value] => consistent = *value == "true",
+                ["U", class] => {
+                    unsat.insert(class.to_string());
+                }
+                ["S", sub, sup] => {
+                    subs.insert((sub.to_string(), sup.to_string()));
+                }
+                _ => {}
+            }
+        }
+        let name = path.file_name().unwrap().to_string_lossy().to_string();
+        for route in [Some("nominals"), Some("certified_nominals")] {
+            let (answer, elapsed) = classify_on(&text, route);
+            assert!(elapsed < BOUND, "{name} on {route:?}");
+            assert_eq!(answer.consistent, consistent, "{name} on {route:?}");
+            if !consistent {
+                continue;
+            }
+            let got_unsat: BTreeSet<String> = answer.unsat.iter().map(|c| expand(c)).collect();
+            let got_subs: BTreeSet<(String, String)> = answer
+                .subs
+                .iter()
+                .map(|(a, b)| (expand(a), expand(b)))
+                .filter(|(a, _)| !got_unsat.contains(a))
+                .collect();
+            assert_eq!(got_unsat, unsat, "{name} on {route:?}");
+            assert_eq!(got_subs, subs, "{name} on {route:?}");
+        }
+        checked += 1;
+    }
+    assert!(checked >= 10, "fixtures found: {checked}");
+}
