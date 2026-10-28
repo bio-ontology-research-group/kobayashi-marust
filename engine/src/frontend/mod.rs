@@ -23,6 +23,7 @@ mod finite_data_rules;
 mod rule_assertions;
 mod isolated_rules;
 pub mod iri;
+pub mod literal_profiles;
 pub mod normalise;
 pub mod parse;
 pub mod preprocess;
@@ -358,10 +359,15 @@ fn collect_nominal_abox(
 
     // Converted data assertions arrive as parsed class assertions; match each
     // side against its own source count.
+    // The literal-profile abstraction can map several source assertions to
+    // one class assertion: match parsed class assertions against the class
+    // assertions the conversion added, and source data assertions against
+    // the source assertions it carried.
     let converted_data = ontology.data_assertions_as_class();
-    if parsed_class != source.class_assertions + converted_data {
+    let converted_class = ontology.data_assertion_class_axioms();
+    if parsed_class != source.class_assertions + converted_class {
         unsupported.insert(format!(
-            "source/parsed ClassAssertion mismatch ({}+{converted_data}/{parsed_class})",
+            "source/parsed ClassAssertion mismatch ({}+{converted_class}/{parsed_class})",
             source.class_assertions
         ));
     }

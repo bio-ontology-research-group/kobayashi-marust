@@ -874,6 +874,13 @@ where
         }
         Ok(())
     })?;
+    // Keys distinguish values across subjects and rules can compare them,
+    // which the literal-profile abstraction does not preserve; the parser
+    // may drop both, so screen the source (only when the conversion is
+    // requested).
+    if data_assertion_as_class_enabled() && (text.contains("HasKey(") || text.contains("DLSafeRule(")) {
+        ontology.block_literal_abstraction();
+    }
     ontology.commit_data_assertions_as_class(data_assertion_literal_cap());
     add_bottom_property_axioms(reg, ontology);
     Ok(())
@@ -1118,6 +1125,43 @@ mod axiom_drop_regression_tests {
         ontology.commit_data_assertions_as_class(1);
         assert_eq!(ontology.data_assertions_as_class(), 2);
         assert_eq!(ontology.abox().count(), 2);
+    }
+
+    #[test]
+    fn data_assertions_above_the_cap_are_carried_by_profile() {
+        let value = |v: &str| Concept::Name(format!("__dt__val__\"{v}\"^^xsd:integer"));
+        let assertion = |individual: &str, v: &str| Axiom::ConceptAssertion(
+            Concept::Exists(Role::Name("p".into()), Box::new(value(v))), individual.into());
+        let literal = |v: &str| format!("\"{v}\"^^xsd:integer");
+        let build = |extra: Option<Axiom>| {
+            let mut ontology = Ontology::new();
+            // The TBox observes the token 1 and the range xsd:integer.
+            ontology.add(Axiom::SubClassOf(Concept::Exists(Role::Name("p".into()), Box::new(value("1"))),
+                Concept::Name("D".into())));
+            ontology.add(Axiom::SubClassOf(Concept::Top,
+                Concept::Forall(Role::Name("p".into()), Box::new(Concept::Name("__dt__integer".into())))));
+            if let Some(axiom) = extra { ontology.add(axiom); }
+            for (individual, v) in [("a", "1"), ("a", "2"), ("b", "3"), ("c", "2"), ("c", "4")] {
+                ontology.defer_data_assertion_as_class(assertion(individual, v), literal(v));
+            }
+            ontology.commit_data_assertions_as_class(2);
+            ontology
+        };
+        // Four literals over a cap of two: 1 keeps its identity (a token),
+        // 2, 3 and 4 share the representative 2. Every source assertion is
+        // carried; c's two values become one class assertion.
+        let ontology = build(None);
+        assert_eq!(ontology.data_assertions_as_class(), 5);
+        assert_eq!(ontology.data_assertion_class_axioms(), 4);
+        let abox: std::collections::BTreeSet<String> = ontology.abox().map(|a| format!("{a:?}")).collect();
+        let expected: std::collections::BTreeSet<String> = [("a", "1"), ("a", "2"), ("b", "2"), ("c", "2")]
+            .iter().map(|(i, v)| format!("{:?}", assertion(i, v))).collect();
+        assert_eq!(abox, expected);
+        // Counting on the property blocks the abstraction: the conversion
+        // declines as a whole above the cap.
+        let ontology = build(Some(Axiom::FunctionalRole("p".into())));
+        assert_eq!(ontology.data_assertions_as_class(), 0);
+        assert_eq!(ontology.abox().count(), 0);
     }
 
     #[test]

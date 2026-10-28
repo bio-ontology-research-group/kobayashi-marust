@@ -2643,6 +2643,21 @@ pub(crate) fn finite_literal_datatype_truth(literal: &str, names: &[String]) -> 
     }).collect()
 }
 
+/// Membership of one asserted literal in each data range, and equality with
+/// each value token, of `names` (`__dt__` concept names). `None` when the
+/// literal is opaque or ill-typed or any entry is undecided: such a literal
+/// has no profile and keeps its own identity (see `literal_profiles`).
+pub(crate) fn literal_value_profile(literal: &str, names: &[String]) -> Option<Vec<bool>> {
+    let (value, _) = parse_literal(literal)?;
+    if matches!(value, Val::Opaque(_)) {
+        return None;
+    }
+    names.iter().map(|name| match classify_name(name)? {
+        DtEntry::Value(_, other) => val_eq(&value, &other),
+        DtEntry::Range(_, range) => val_in_range(&value, &range),
+    }).collect()
+}
+
 #[cfg(test)]
 mod finite_literal_realization_tests {
     use super::*;

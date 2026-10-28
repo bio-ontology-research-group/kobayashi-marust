@@ -203,10 +203,13 @@ fn negative_data_assertion_is_published_as_dropped() {
     }
 }
 
-/// Above the literal-vocabulary cap the conversion declines as a whole: no
-/// assertion is carried, and every one of them is published as dropped.
+/// Above the literal-vocabulary cap (512) the assertions are carried through
+/// the profiles the TBox observes (`frontend::literal_profiles`): the TBox
+/// mentions only the token `1`, so `1` keeps its identity and the other 599
+/// values share one representative. No construct counts values, so the
+/// abstraction is exact: `E ⊑ D` with nothing dropped.
 #[test]
-fn assertions_above_the_literal_cap_are_published_as_dropped() {
+fn assertions_above_the_literal_cap_are_carried_by_profile() {
     let mut text = format!(
         "{HEADER}SubClassOf(DataHasValue(:u \"1\"^^xsd:integer) :D)\nEquivalentClasses(:E ObjectOneOf(:a))\n"
     );
@@ -216,8 +219,91 @@ fn assertions_above_the_literal_cap_are_published_as_dropped() {
     text.push_str(")\n");
     for route in ROUTES {
         let answer = classify(&text, route);
+        assert_eq!(
+            answer,
+            Answer { consistent: true, dropped: 0, unsat: BTreeSet::new(), subs: pairs(&[("E", "D")]) },
+            "route {route:?}"
+        );
+    }
+}
+
+/// A data cardinality counts distinct values, which the profile abstraction
+/// does not preserve: above the cap the conversion still declines and every
+/// assertion is published as dropped. (The bound sits on a superproperty
+/// and on a class with no instances, so the answer itself does not depend
+/// on it.)
+#[test]
+fn counted_assertions_above_the_literal_cap_are_published_as_dropped() {
+    let mut text = format!(
+        "{HEADER}SubClassOf(DataHasValue(:u \"1\"^^xsd:integer) :D)\nEquivalentClasses(:E ObjectOneOf(:a))\n\
+         Declaration(DataProperty(:w)) Declaration(Class(:Never)) SubDataPropertyOf(:u :w)\n\
+         SubClassOf(:Never DataMaxCardinality(1 :w))\n"
+    );
+    for value in 1..=600 {
+        text.push_str(&format!("DataPropertyAssertion(:u :a \"{value}\"^^xsd:integer)\n"));
+    }
+    text.push_str(")\n");
+    for route in ROUTES {
+        let answer = classify(&text, route);
         assert!(answer.consistent, "route {route:?}");
         assert_eq!(answer.dropped, 600, "route {route:?}");
+    }
+}
+
+/// Profiles see the ranges the TBox mentions: among 600 values on 600
+/// individuals, `b` (value 550) is in `D ≡ ∃u.integer[≥ 500]` and `c`
+/// (value 3) is not. A string value under an integer range is a clash.
+#[test]
+fn profiles_preserve_facet_membership_and_range_clashes() {
+    let mut text = format!(
+        "{HEADER}Declaration(Class(:F)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:c))\n\
+         EquivalentClasses(:D DataSomeValuesFrom(:u DatatypeRestriction(xsd:integer \
+         xsd:minInclusive \"500\"^^xsd:integer)))\n\
+         EquivalentClasses(:E ObjectOneOf(:b)) EquivalentClasses(:F ObjectOneOf(:c))\n\
+         DataPropertyAssertion(:u :b \"550\"^^xsd:integer) DataPropertyAssertion(:u :c \"3\"^^xsd:integer)\n"
+    );
+    for value in 1..=600 {
+        text.push_str(&format!("DataPropertyAssertion(:u <http://example.org/t#i{value}> \"{value}\"^^xsd:integer)\n"));
+    }
+    let consistent = format!("{text})\n");
+    for route in ROUTES {
+        let answer = classify(&consistent, route);
+        assert_eq!(
+            answer,
+            Answer { consistent: true, dropped: 0, unsat: BTreeSet::new(), subs: pairs(&[("E", "D")]) },
+            "route {route:?}"
+        );
+    }
+    let clash = format!("{text}DataPropertyRange(:u xsd:integer)\n\
+        DataPropertyAssertion(:u <http://example.org/t#s> \"x\"^^xsd:string)\n)\n");
+    for route in ROUTES {
+        assert!(!classify(&clash, route).consistent, "route {route:?}");
+    }
+}
+
+/// The counterexample to a per-subject abstraction under counting: `a` and
+/// `b` are identified through the functional object property `r`, and the
+/// functional data property `u` then has two distinct values. It must stay
+/// inconsistent; padded above the literal cap it must not be published as a
+/// complete consistent answer.
+#[test]
+fn merged_individuals_keep_distinct_values_under_counting() {
+    let body = "Declaration(ObjectProperty(:r)) Declaration(NamedIndividual(:x)) Declaration(NamedIndividual(:b))\n\
+        FunctionalDataProperty(:u) FunctionalObjectProperty(:r)\n\
+        ObjectPropertyAssertion(:r :x :a) ObjectPropertyAssertion(:r :x :b)\n\
+        DataPropertyAssertion(:u :a \"1\"^^xsd:integer) DataPropertyAssertion(:u :b \"2\"^^xsd:integer)\n";
+    let text = format!("{HEADER}{body})\n");
+    for route in ROUTES {
+        assert!(!classify(&text, route).consistent, "route {route:?}");
+    }
+    let mut padded = format!("{HEADER}{body}");
+    for value in 3..=600 {
+        padded.push_str(&format!("DataPropertyAssertion(:u <http://example.org/t#i{value}> \"{value}\"^^xsd:integer)\n"));
+    }
+    padded.push_str(")\n");
+    for route in ROUTES {
+        let answer = classify(&padded, route);
+        assert!(!answer.consistent || answer.dropped > 0, "route {route:?}: {answer:?}");
     }
 }
 

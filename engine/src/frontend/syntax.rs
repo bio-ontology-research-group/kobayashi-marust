@@ -293,6 +293,10 @@ pub struct Ontology {
     /// class assertion was newly added, so the ABox coverage certificate can
     /// match it against the source data-assertion count.
     data_assertions_as_class: u64,
+    /// Class assertions the conversion added. Equals `data_assertions_as_class`
+    /// except when the literal-profile abstraction maps two source assertions
+    /// to one class assertion.
+    data_assertion_class_axioms: u64,
     /// Converted data assertions of the current parse call, committed by
     /// [`Ontology::commit_data_assertions_as_class`] only when the conversion
     /// is enabled and the literal vocabulary stays within its cap.
@@ -301,6 +305,9 @@ pub struct Ontology {
     data_assertion_literals: crate::fxhash::FxHashSet<String>,
     /// A cap overflow declines the conversion for the whole ontology.
     data_assertions_declined: bool,
+    /// The source has a construct the literal-profile abstraction cannot see
+    /// in the parsed axioms (a key, which the parser drops).
+    literal_abstraction_blocked: bool,
 }
 
 impl Ontology {
@@ -438,15 +445,95 @@ impl Ontology {
             literals.insert(literal.clone());
         }
         if literals.len() > cap {
-            self.data_assertions_declined = true;
+            // Above the cap, carry each literal as the representative of the
+            // profile the TBox observes (`literal_profiles`), when no
+            // construct observes more than profiles.
+            match self.abstract_data_assertion_literals(&pending, cap) {
+                Some(abstracted) => {
+                    let mut originals: crate::fxhash::FxHashSet<Axiom> = Default::default();
+                    for ((original, _), (axiom, literal)) in pending.into_iter().zip(abstracted) {
+                        self.data_assertion_literals.insert(literal);
+                        if self.add_new(axiom) {
+                            self.data_assertion_class_axioms += 1;
+                        }
+                        // Each distinct source assertion is carried, even
+                        // when its abstraction coincides with another one.
+                        if originals.insert(original) {
+                            self.data_assertions_as_class += 1;
+                        }
+                    }
+                }
+                None => self.data_assertions_declined = true,
+            }
             return;
         }
         self.data_assertion_literals = literals;
         for (axiom, _) in pending {
             if self.add_new(axiom) {
                 self.data_assertions_as_class += 1;
+                self.data_assertion_class_axioms += 1;
             }
         }
+    }
+
+    /// Class assertions added by the data-assertion conversion.
+    pub fn data_assertion_class_axioms(&self) -> u64 {
+        self.data_assertion_class_axioms
+    }
+
+    /// Record that the source has a construct that blocks the literal-profile
+    /// abstraction although the parsed axioms do not show it (a key).
+    pub fn block_literal_abstraction(&mut self) {
+        self.literal_abstraction_blocked = true;
+    }
+
+    /// The pending conversions with every literal replaced by the
+    /// representative of its profile, or `None` when a construct observes
+    /// more than profiles or the representatives still exceed `cap`.
+    fn abstract_data_assertion_literals(
+        &self,
+        pending: &[(Axiom, String)],
+        cap: usize,
+    ) -> Option<Vec<(Axiom, String)>> {
+        use super::literal_profiles as lp;
+        if self.literal_abstraction_blocked || !self.data_assertion_literals.is_empty() {
+            return None;
+        }
+        let axioms: Vec<&Axiom> = self.axioms.iter().map(|a| a.as_ref())
+            .chain(pending.iter().map(|(axiom, _)| axiom))
+            .collect();
+        if lp::blocking_construct(&axioms).is_some() {
+            return None;
+        }
+        let observed = lp::observables(&self.axioms.iter().map(|a| a.as_ref()).collect::<Vec<_>>());
+        let mut order: Vec<String> = Vec::new();
+        let mut seen: crate::fxhash::FxHashSet<&str> = Default::default();
+        for (_, literal) in pending {
+            if seen.insert(literal.as_str()) {
+                order.push(literal.clone());
+            }
+        }
+        let representative: std::collections::HashMap<&str, String> = order.iter()
+            .map(String::as_str)
+            .zip(lp::representatives(&order, &observed))
+            .collect();
+        let distinct: crate::fxhash::FxHashSet<&String> = representative.values().collect();
+        if distinct.len() > cap {
+            return None;
+        }
+        pending.iter().map(|(axiom, literal)| {
+            let rep = representative[literal.as_str()].clone();
+            let Axiom::ConceptAssertion(Concept::Exists(role, _), individual) = axiom else {
+                return None;
+            };
+            Some((
+                Axiom::ConceptAssertion(
+                    Concept::Exists(role.clone(), Box::new(Concept::Name(format!("__dt__val__{rep}")))),
+                    individual.clone(),
+                ),
+                rep,
+            ))
+        }).collect()
     }
 
     pub fn data_assertions_as_class(&self) -> u64 {
