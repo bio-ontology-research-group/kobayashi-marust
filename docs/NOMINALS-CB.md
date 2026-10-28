@@ -309,10 +309,13 @@ first direction below.
 
 Fixed sorts. Some sorts are given by OWL 2 Direct Semantics and are never
 widened by the closure: every named individual is an object (the frontend
-adds `→ O(a)` for each individual `a`, proxy or not, with a fresh object
-marker `O` and `O ⊓ D ⊑ ⊥`; the ground form `D(a) → ⊥` is avoided because
-the nominal CB engine mishandles an empty-head clause whose only body atom
-is ground), every source class is
+pins each individual `a` that no object-only ground atom or source-property
+assertion already pins: through its nominal proxy `p` when it has one
+(`→ p(a)` and `p ⊓ D ⊑ ⊥`; the typed native ABox view represents `→ p(a)`
+as the proxy of `a`, so HT-based consumers read it exactly), and otherwise
+through a fresh object marker `O` (`→ O(a)`, `O ⊓ D ⊑ ⊥`). The ground form
+`D(a) → ⊥` is avoided because the nominal CB engine mishandles an
+empty-head clause whose only body atom is ground), every source class is
 `⊑ ¬D` (also when no clause mentions it), every source property has an
 object domain, a data property a data range and an object property an
 object range, and every data range is `⊑ D`, complement ranges included

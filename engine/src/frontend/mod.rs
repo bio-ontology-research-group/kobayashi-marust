@@ -1794,7 +1794,15 @@ fn ofn_to_clauses_representation(
             .iter()
             .filter_map(|raw| reg.assigned(raw).map(str::to_string))
             .collect();
-        let count = sorts::encode_with_classes(&mut tbox, &data_roles, &declared);
+        let proxies: BTreeMap<String, String> = nominal_abox
+            .individuals
+            .iter()
+            .filter_map(|entry| {
+                let [proxy] = entry.proxies.as_slice() else { return None };
+                Some((entry.individual.clone(), proxy.clone()))
+            })
+            .collect();
+        let count = sorts::encode_with_classes(&mut tbox, &data_roles, &declared, &proxies);
         if std::env::var_os("KM_OFN_TIMING").is_some() {
             eprintln!("ofn [sorts] {} clauses added or relativized", count);
         }

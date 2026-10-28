@@ -381,7 +381,7 @@ impl<'a, 'b> TermSorts<'a, 'b> {
 /// the number of facts relativized. `data_roles` holds the clause-set names
 /// of the source's data properties.
 pub fn encode(tbox: &mut Vec<DLClause>, data_roles: &BTreeSet<String>) -> usize {
-    encode_with_classes(tbox, data_roles, &[])
+    encode_with_classes(tbox, data_roles, &[], &BTreeMap::new())
 }
 
 /// [`encode`], also placing every declared source class in the object sort,
@@ -391,6 +391,7 @@ pub fn encode_with_classes(
     tbox: &mut Vec<DLClause>,
     data_roles: &BTreeSet<String>,
     declared: &[String],
+    proxies: &BTreeMap<String, String>,
 ) -> usize {
     let sorts = Sorts::infer(tbox, data_roles);
     let x = Term::Var("x".to_string());
@@ -694,11 +695,32 @@ pub fn encode_with_classes(
         }
     }
     let object = |t: &Term| Atom::Concept(OBJECT_SORT.to_string(), t.clone());
-    let unpinned: Vec<&str> = individuals.difference(&pinned).copied().collect();
-    for name in &unpinned {
-        added.push(clause(Vec::new(), [object(&Term::Ind(name.to_string()))]));
+    // An unpinned individual with a nominal proxy `p` (the typed nominal
+    // ABox's singleton concept of `a`) is pinned through it: `→ p(a)` is a
+    // fact every consumer already represents (the native ABox view reads it
+    // as the proxy of `a`), and `p ⊓ D ⊑ ⊥` is an ordinary TBox clause.
+    // Only an individual without a proxy needs the fresh marker `O`.
+    let mut marker_needed = false;
+    let mut proxy_clauses: BTreeSet<&str> = BTreeSet::new();
+    for name in individuals.difference(&pinned) {
+        let a = Term::Ind(name.to_string());
+        match proxies.get(*name) {
+            Some(proxy) => {
+                added.push(clause(Vec::new(), [Atom::Concept(proxy.clone(), a)]));
+                if !concept_adm.contains_key(proxy) {
+                    proxy_clauses.insert(proxy);
+                }
+            }
+            None => {
+                added.push(clause(Vec::new(), [object(&a)]));
+                marker_needed = true;
+            }
+        }
     }
-    if !unpinned.is_empty() {
+    for proxy in proxy_clauses {
+        added.push(clause([Atom::Concept(proxy.to_string(), x.clone()), d(&x)], []));
+    }
+    if marker_needed {
         added.push(clause([object(&x), d(&x)], []));
     }
     count += added.len();
@@ -923,6 +945,28 @@ mod tests {
         assert!(tbox.contains(&clause([c(comp, x())], [dx.clone()])));
         assert!(tbox.contains(&clause([dx.clone()], [c("__dt__string", x()), c(comp, x())])));
         assert!(tbox.contains(&clause([c("A", x()), dx.clone()], [])));
+    }
+
+    /// An individual with no object-pinning atom is pinned through its
+    /// nominal proxy when it has one (a fact the typed native ABox view
+    /// represents), and through the fresh marker `O` otherwise.
+    #[test]
+    fn unpinned_individuals_are_pinned_by_proxy_or_marker() {
+        let a = || Term::Ind("a".into());
+        let b = || Term::Ind("b".into());
+        let mut tbox = vec![
+            fact([c("Q_t", a())]),
+            fact([c("Q_t", b())]),
+            clause([c("V", x())], [c(VAL, fx("g"))]),
+        ];
+        let proxies = BTreeMap::from([("a".to_string(), "__nom__a".to_string())]);
+        encode_with_classes(&mut tbox, &BTreeSet::new(), &[], &proxies);
+        let dx = c(DATA_SORT, x());
+        assert!(tbox.contains(&fact([c("__nom__a", a())])));
+        assert!(tbox.contains(&clause([c("__nom__a", x()), dx.clone()], [])));
+        assert!(!tbox.contains(&fact([c(OBJECT_SORT, a())])));
+        assert!(tbox.contains(&fact([c(OBJECT_SORT, b())])));
+        assert!(tbox.contains(&clause([c(OBJECT_SORT, x()), dx.clone()], [])));
     }
 
     #[test]
