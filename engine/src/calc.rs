@@ -621,7 +621,9 @@ fn ordered_all() -> bool {
 ///     Sequoia's `ContextLiteralOrdering` (query concepts incomparable + below;
 ///     everything else ordered above), which is published-complete for SROIQ
 ///     classification.  Unlike `KM_ORDERED_ALL` it never orders named concepts
-///     against each other, so it does not regress 13383.
+///     against each other, so it does not regress 13383.  That argument does
+///     not cover KM's nominal ground context: under `KM_NOMINALS` this
+///     ordering is incomplete and is not auto-selected (`set_seq_order_auto`).
 /// Effective seq-order state. `2` = undecided (router has not run yet); `1`/`0`
 /// = on/off as decided by the auto-router or an env override. Stored as a
 /// process-global atomic so the parallel workers (set up after the router runs
@@ -635,16 +637,26 @@ static SEQ_ORDER: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new
 /// disjunction onts pay the `is_internal` overhead with no gain, so they route
 /// off). Validated across the full ORE corpus (results/seqorder-routing-*.txt):
 /// keeps all +6 recoveries and the meaningful speedups, avoids 27/28 slowdowns.
-/// Both orderings are complete (named concepts stay incomparable either way), so
-/// this only selects the faster validated regime per ontology. Env still wins:
-/// `KM_SEQ_ORDER` forces on, `KM_NO_SEQ_ORDER` forces off.
+///
+/// The Sequoia ordering is NOT complete under nominal clausification
+/// (`KM_NOMINALS`): together with the nominal ground context it can lose a
+/// consequence that the unordered regime derives (docs/NOMINALS-CB.md,
+/// "Sequoia ordering and nominals", with a twelve-clause counterexample). In
+/// nominal mode the router therefore never enables it; only the explicit
+/// `KM_SEQ_ORDER` diagnostic override does. Without nominals no counterexample
+/// is known (300 generated ALCHIQ inputs agree with HermiT under both
+/// orderings); the unordered regime is the complete reference there and the
+/// Sequoia regime is selected only as the faster one. Env still wins:
+/// `KM_SEQ_ORDER` forces on, `KM_NO_SEQ_ORDER` forces off. Enabling it under
+/// nominals again needs an ordering argument that covers the ground context,
+/// i.e. Lean re-certification.
 pub fn set_seq_order_auto(on: bool) {
     let eff = if std::env::var_os("KM_SEQ_ORDER").is_some() {
         true
     } else if std::env::var_os("KM_NO_SEQ_ORDER").is_some() {
         false
     } else {
-        on
+        on && std::env::var_os("KM_NOMINALS").is_none()
     };
     SEQ_ORDER.store(
         if eff { 1 } else { 0 },

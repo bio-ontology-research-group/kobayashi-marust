@@ -383,3 +383,112 @@ while `v ⊑ D`. The excluded middle `→ Q(x) ∨ v(x)` therefore collapses to
 the unit `Q(t)` at every object term, `v` is never derived there, and the
 at-most-one clause only ever matches data-sorted terms, the data successors
 of the same element; no merge between object terms is ever proposed.
+
+## 7. Sequoia ordering and nominals
+
+`calc::pred_lteq` has two same-term concept orderings for the CB engine. The
+unordered one (named and internal concepts mutually incomparable) is the
+complete reference. The Sequoia ordering (`KM_SEQ_ORDER`) totally orders
+internal concepts (definers, `__nom__*`, `__data__`, ...) above the named ones,
+which restricts Hyper to the maximal internal literal. `set_seq_order_auto`
+used to select it for every clause set with a disjunctive head that contains
+an internal concept, on the grounds that both orderings are complete. Under
+nominal clausification that claim does not hold.
+
+Counterexample (v1.5.4, seed 297 of the bug-1 differential generator,
+delta-debugged). Source, HermiT: `Q1` is unsatisfiable:
+
+    SubClassOf(owl:Thing DataMinCardinality(1 :v))
+    DataPropertyDomain(:v ObjectOneOf(:b))
+    ObjectPropertyAssertion(:s :a :b)
+    SubClassOf(DataHasValue(:u "x"^^xsd:string) DataHasValue(:v "2"^^xsd:integer))
+    EquivalentClasses(:Q1 ObjectComplementOf(ObjectHasValue(:s :b)))
+
+The data value switches on the sort encoding (section 6), which turns
+`⊤ ⊑ ≥1 v` into the disjunctive fact `Q_0(x) → Q_1(x) ∨ __data__(x)`; both
+disjuncts are internal, so the Sequoia ordering is selected. Twelve clauses
+of the resulting set already show the loss (engine run directly with
+`KM_NOMINALS=1`):
+
+    → Q_0(x)                          Q_0(x) → Q_1(x) ∨ __data__(x)
+    Q_1(x) → v(x,f(x))                Q_0(y) ∧ v(x,y) → Q_2(x)
+    Q_2(x) → __nom__b(x)              __nom__b(x) → x≈b
+    Q1(x) → Q_5(x)                    Q_5(x) ∧ s(x,y) → Q_6(y)
+    Q_6(x) ∧ __nom__b(x) → ⊥          → s(a,b)
+    Q_5(x) ∧ __data__(x) → ⊥          __data__(x) ∧ s(x,y) → ⊥
+
+`Q1` is unsatisfiable: the object `a` (forced so by `s(a,b)`) has a `v`-value,
+so `a ≈ b` and `s(b,b)`, and every `Q1` element is `b`, which then has the
+`s`-successor `b`. The unordered regime derives `Q1 ⊑ ⊥`; under the Sequoia
+ordering the engine stops at `Q1 ⊑ {Q_0, Q_1, Q_2, Q_5, __nom__b}`. The
+consequence needs the ground context to resolve `__data__(a)` away in
+`Q_1(a) ∨ __data__(a)` and to merge `a` into `b`, and then needs the query
+context for `Q1`, which is merged into `b`, to see `s(b,b)`. With the internal
+literals totally ordered, the inferences on the non-maximal disjunct that
+these steps need are not performed, and the Sequoia completeness argument
+(query concepts incomparable, everything else ordered above) does not cover
+the cross-context flow through the nominal ground context.
+
+Without nominals no counterexample is known: on 283 generated ALCHIQ
+ontologies (inverses, number restrictions, role inclusions, functionality)
+the two orderings never disagree, and both agree with HermiT.
+
+Mitigation (v1.5.4): `set_seq_order_auto` never enables the Sequoia ordering
+when `KM_NOMINALS` is set. This covers every path that runs the CB engine
+with nominals (in-process, worker subprocess, certified-nominal routes),
+since they all route the ordering through that function and run under the
+same environment. An explicit `KM_SEQ_ORDER=1` still forces it, as a
+diagnostic override. Nothing else in the calculus changes. Restoring the
+Sequoia ordering under nominals needs an ordering whose completeness covers
+the ground context, which is a calculus change and needs Lean
+re-certification.
+
+Cost (v1.5.4 measurement, automatic route, 300 s cap, sequential, the 201
+ORE inputs that take the sort encoding plus 9800, 6951 and 14321):
+`ore_ont_9800` (115 s) and `ore_ont_10874` (10 s) become timeouts,
+`ore_ont_15655` goes from 29.6 s to 144.8 s, and the total over the 201 files
+from 4811 s to 5437 s. The Protégé bug-1 reproducer
+(`tests/fixtures/protege_plugin/bug1-nominal-top-property-hang.ofn`) goes
+from 0.17 s to about 92 s on every nominal route, and the same input with two
+`DataHasValue` probe classes (`data_value_next_to_universal_role_hub_*`)
+from 0.2 s to no answer: more than 600 s on the automatic route and more than
+1800 s on `nominals` and on `certified_nominals` (worker time cap raised). The
+reproducer and the sort-differential fixtures (worst 66 s) now carry a 240 s
+bound; both hub tests are ignored and point here. No
+taxonomy changes where both regimes answer; the
+Sequoia answers on 9800, 10874 and 15655 matched gold, and on 15655 the
+engine's two orderings give identical answers, so the loss above is not
+triggered there. The unordered regime spends the time in the nominal ground
+context before query seeding: every disjunctive fact (notably the sort
+encoding's relativized `→ C(x) ∨ __data__(x)`) is instantiated at every
+individual (445 to 6038 here), and without an ordering Hyper fires on every
+disjunct at every individual (15655: 2.7 M Hyper resolvents in 200 k
+ground-context iterations; 9800: 9.1 M in 400 k before the limit; 10874 does
+not reach 200 k iterations in 1800 s).
+
+Two exact encodings were tried by hand on the engine input and do not
+recover the speed: adding the ground instances `→ C(a)` of every relativized
+class-level fact for every named individual (bug-1 reproducer 92.8 s → 93.3 s),
+and guarding the relativized facts as `__object__(x) → C(x)` with
+`→ __object__(a)` at every individual (101.7 s). Guarding the data-range
+excluded middle `→ ¬{v}(x) ∨ {v}(x)` by `__data__(x)` made it slower (over
+600 s). The cost is not in those facts alone.
+
+Proposed route back to speed (v1.5.5/v1.6.0, UNPROVED): keep the Sequoia
+ordering in ordinary contexts and use the unordered regime only in the
+nominal ground context. Evidence: on the minimal clause set the Sequoia
+ordering derives `Q1 ⊑ ⊥` once the ground facts `a ≈ b` or `s(b,b)` are given
+as input, and still loses it when only `__nom__b(a)` or `Q_1(a)` is given, so
+the consequence is lost in the ground context's derivation and propagation of
+`a ≈ b`, not in the ordinary query context. This is not a proof: the
+completeness argument for ordered resolution needs one admissible ordering
+across all inferences that exchange clauses, and ordinary contexts send
+non-unit clauses to the ground context. A per-context regime needs its own
+completeness argument and Lean re-certification before it can be enabled.
+
+Note on overrides: route bundles reset every routing key before applying
+their own settings (`routing::Route::apply_environment`). Before v1.5.4 this
+also cleared `KM_SEQ_ORDER` and `KM_NO_SEQ_ORDER`, so neither had any effect
+on `km classify` with an explicit or automatically selected route. A value
+the user sets is now kept by every bundle that does not set one of the two
+keys itself (`seq_on` and `seq_off` decide on their own).
