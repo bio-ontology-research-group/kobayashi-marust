@@ -114,6 +114,10 @@ impl ExpressivityProfile {
     }
 }
 
+fn is_zero(value: &u64) -> bool {
+    *value == 0
+}
+
 /// Counts over the parsed OWL functional-syntax source.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SourceStatistics {
@@ -177,6 +181,10 @@ pub struct SourceStatistics {
     pub unqualified_cardinalities: u64,
     pub nominals: u64,
     pub has_values: u64,
+    /// Class expressions naming an individual (`ObjectOneOf`,
+    /// `ObjectHasValue`) anywhere in the source, conditional ones included.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub object_nominal_concepts: u64,
     pub has_self: u64,
     pub datatype_constructors: u64,
     pub max_concept_depth: u64,
@@ -1474,6 +1482,7 @@ impl<'a> SourceProfileBuilder<'a> {
     }
 
     fn record_nominal_origin(&mut self) {
+        self.stats.object_nominal_concepts += 1;
         if let Some(role) = self.conditional_nominal_role {
             self.conditional_nominal_roles.insert(role);
         } else {

@@ -1370,6 +1370,10 @@ thread_local! {
     /// did not represent (keys, unsupported data axioms, unread rules, unknown
     /// axiom kinds). Published like `UNCARRIED_DATA_ASSERTIONS`.
     pub(crate) static DROPPED_SOURCE_AXIOMS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    /// DL-safe rules a rule-route taxonomy did not apply although a nominal
+    /// lets their conclusions reach class queries (see the `ht_rules`
+    /// fall-through). Published like `UNCARRIED_DATA_ASSERTIONS`.
+    static RULES_OUTSIDE_TAXONOMY: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
     /// Nesting depth of `classify_with_evidence_mode` (fallback and probe
     /// routes recurse into it); only the outermost call publishes.
     static CLASSIFY_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
@@ -1384,6 +1388,7 @@ fn classify_with_evidence_mode(
     if depth == 0 {
         UNCARRIED_DATA_ASSERTIONS.with(|u| u.set(0));
         DROPPED_SOURCE_AXIOMS.with(|u| u.set(0));
+        RULES_OUTSIDE_TAXONOMY.with(|u| u.set(0));
     }
     let mut result = classify_with_evidence_inner(initial_cfg, ont, retain_grouped_output);
     CLASSIFY_DEPTH.with(|d| d.set(depth));
@@ -1395,9 +1400,11 @@ fn classify_with_evidence_mode(
         // monotone), so only a consistent answer carries the count.
         let uncarried = UNCARRIED_DATA_ASSERTIONS.with(|u| u.replace(0));
         let unrepresented = DROPPED_SOURCE_AXIOMS.with(|u| u.replace(0));
+        let unapplied_rules = RULES_OUTSIDE_TAXONOMY.with(|u| u.replace(0));
         if let Ok(evidence) = &mut result {
             if evidence.classification.consistent {
-                evidence.classification.dropped += (uncarried + unrepresented) as usize;
+                evidence.classification.dropped +=
+                    (uncarried + unrepresented + unapplied_rules) as usize;
             }
         }
     }
@@ -2649,7 +2656,25 @@ fn classify_with_evidence_inner(
                     consistency_certified: true,
                 });
             }
-            Some(true) => consistency_certified = true,
+            Some(true) => {
+                consistency_certified = true;
+                // The taxonomy below does not apply the rules. Rules conclude
+                // only facts about named individuals, so for a consistent
+                // ontology without nominals the class taxonomy is that of the
+                // rule-free ontology (a model of the rules and ABox, disjoint
+                // union with a TBox countermodel, refutes every non-entailed
+                // subsumption). A nominal (`ObjectOneOf`, `ObjectHasValue`,
+                // a realization probe, the universal-role hub) lets rule
+                // conclusions reach class queries: count the rules then.
+                let source = &meta.profile.source;
+                if source.object_nominal_concepts > 0 {
+                    let rules = source.rule_axioms.max(1);
+                    RULES_OUTSIDE_TAXONOMY.with(|u| u.set(u.get() + rules));
+                    if timing {
+                        eprintln!("KM_TIMING rules-consistency: {rules} rule(s) not applied to a nominal taxonomy");
+                    }
+                }
+            }
             None => {}
         }
     }
