@@ -1,0 +1,17 @@
+/target/
+**/*.rs.bk
+Cargo.lock
+/notes.org
+/src/bin/horned_temp.rs
+/tmp/
+/big-owl
+/makefile-local
+
+# IDEs
+.vscode/
+
+# Mac OS X
+.DS_Store
+/flamegraph.svg
+/perf.data
+/perf.data.old

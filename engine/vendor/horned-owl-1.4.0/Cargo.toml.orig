@@ -1,0 +1,65 @@
+[package]
+name = "horned-owl"
+version = "1.4.0"
+authors = ["Phillip Lord <phillip.lord@russet.org.uk>"]
+description = "Library for OWL Ontologies"
+
+repository = "https://github.com/phillord/horned-owl"
+
+keywords = ["xml", "ontology", "OWL", "command"]
+categories = ["command-line-utilities", "parsing",
+              "rendering", "science", "data-structures"]
+
+license = "LGPL-3.0"
+edition = "2024"
+rust-version = "1.88"
+
+[dependencies]
+curie = "0.1.1"
+enum_meta = "0.6.0"
+thiserror = "1.0"
+lazy_static="1.4.0"
+log = {version="0.4.8"}
+quick-xml={version="0.37.5"}
+indexmap={workspace=true}
+oxiri={workspace=true}
+pest = "2.7.8"
+pest_derive = "2.7.8"
+pretty_rdf={workspace=true}
+oxrdf={workspace=true}
+oxrdfio={workspace=true}
+ureq={version="2.1.1", optional=true}
+
+[workspace]
+members=["horned-bin"]
+default-members=[".", "horned-bin"]
+
+[workspace.dependencies]
+indexmap="1.0.2"
+oxiri="0.2.11"
+##pretty_rdf={path="./pretty_rdf"}
+pretty_rdf="0.11.0"
+oxrdf="0.3.0"
+oxrdfio="0.2.0"
+
+[features]
+default = ["remote"]
+remote = ["ureq"]
+encoding = ["quick-xml/encoding"]
+
+[dev-dependencies]
+horned-owl = {path=".", features = ["remote"]}
+criterion = "0.7.0"
+mktemp = "0.5.1"
+pretty_assertions = "1.0.0"
+slurp = "1.0.1"
+test-generator =  { version = "^0.3" }
+horned-bin = {path="horned-bin"}
+
+[profile.release]
+debug = true
+
+[[bench]]
+name = "horned"
+harness = false
+

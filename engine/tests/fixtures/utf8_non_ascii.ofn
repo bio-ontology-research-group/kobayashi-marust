@@ -1,0 +1,11 @@
+Ontology(<http://example.org/vocab/ontology>
+  Annotation(<http://www.w3.org/2000/01/rdf-schema#comment> "Non-ASCII test: ° µ é 🧪 and a \"quoted\" word"@en)
+  Declaration(Class(<http://example.org/vocab/Angle>))
+  Declaration(Class(<http://example.org/vocab/Degree>))
+  Declaration(Class(<http://example.org/vocab/µ-class>))
+  Declaration(ObjectProperty(<http://example.org/vocab/hasValue>))
+  Declaration(NamedIndividual(<http://example.org/vocab/ind1>))
+  SubClassOf(Annotation(<http://www.w3.org/2000/01/rdf-schema#comment> "annoté with ° and \"quotes\" and backslash \\") <http://example.org/vocab/Degree> <http://example.org/vocab/Angle>)
+  SubClassOf(<http://example.org/vocab/µ-class> <http://example.org/vocab/Degree>)
+  ClassAssertion(<http://example.org/vocab/Degree> <http://example.org/vocab/ind1>)
+)
