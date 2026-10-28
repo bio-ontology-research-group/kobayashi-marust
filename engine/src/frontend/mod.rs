@@ -37,6 +37,7 @@ pub mod sorts;
 pub mod syntax;
 pub mod top_role;
 pub mod universal_role;
+pub(crate) mod has_key;
 
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 
@@ -1083,6 +1084,11 @@ fn ofn_to_clauses_representation(
         std::borrow::Cow::Borrowed(text)
     };
     let text = universal_source.as_ref();
+    // OWL 2 keys become the DL-safe rules they denote (see `has_key`), so the
+    // rule certificates, the router and the rule consumers handle, refuse or
+    // count a key exactly as that rule.
+    let key_source = has_key::encode(text).map_err(parse::OutOfFragment)?;
+    let text = key_source.as_ref();
     let mut t = StageTimer::new();
     let mut reg = IriRegistry::new();
     // Pass 1: stream the document into SROIQ axioms. No token vector and no

@@ -13,6 +13,11 @@ static NEXT: AtomicUsize = AtomicUsize::new(0);
 
 /// `(consistent, dropped)` of `km classify --lines` on `text` and `route`.
 fn classify(text: &str, route: Option<&str>) -> Option<(bool, usize)> {
+    classify_with(text, route, &[])
+}
+
+/// As [`classify`], with extra environment variables.
+fn classify_with(text: &str, route: Option<&str>, env: &[(&str, &str)]) -> Option<(bool, usize)> {
     let path = std::env::temp_dir().join(format!(
         "km-source-drops-{}-{}.ofn",
         std::process::id(),
@@ -28,6 +33,7 @@ fn classify(text: &str, route: Option<&str>) -> Option<(bool, usize)> {
     if let Some(route) = route {
         command.env("KM_ROUTE", route);
     }
+    command.envs(env.iter().copied());
     command.args(["classify", "--lines"]).arg(&path).stdout(Stdio::piped()).stderr(Stdio::null());
     let started = Instant::now();
     let mut child = command.spawn().unwrap();
@@ -63,8 +69,10 @@ fn classify(text: &str, route: Option<&str>) -> Option<(bool, usize)> {
 
 const ROUTES: [Option<&str>; 4] = [None, Some("nominals"), Some("certified_nominals"), Some("default")];
 
-/// Keys are not encoded. HermiT: inconsistent (both individuals carry the
-/// key value 1, so they are equal, but one is `A` and the other `¬A`).
+/// A key left unencoded (`KM_NO_HAS_KEY_RULES` keeps the key out of the rule
+/// rewrite) is counted. HermiT: inconsistent (both individuals carry the key
+/// value 1, so they are equal, but one is `A` and the other `¬A`). With the
+/// rewrite, every route answers exactly, refuses, or counts.
 #[test]
 fn has_key_is_counted_as_dropped() {
     let text = "Prefix(:=<http://e.org/k#>)\nPrefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)\n\
@@ -76,8 +84,12 @@ fn has_key_is_counted_as_dropped() {
         DataPropertyAssertion(:id :a \"1\"^^xsd:integer) DataPropertyAssertion(:id :b \"1\"^^xsd:integer)\n\
         ClassAssertion(:A :a) ClassAssertion(ObjectComplementOf(:A) :b)\n)\n";
     for route in ROUTES {
-        let (consistent, dropped) = classify(text, route).expect("answer");
+        let (consistent, dropped) =
+            classify_with(text, route, &[("KM_NO_HAS_KEY_RULES", "1")]).expect("answer");
         assert!(!consistent || dropped >= 1, "{route:?}: consistent with DROPPED {dropped}");
+        if let Some((consistent, dropped)) = classify(text, route) {
+            assert!(!consistent || dropped >= 1, "{route:?}: consistent with DROPPED {dropped}");
+        }
     }
 }
 

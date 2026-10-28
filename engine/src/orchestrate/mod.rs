@@ -1453,6 +1453,20 @@ fn classify_with_evidence_inner(
             timing_mark("builtin IRI aliases canonicalized");
             return classify_with_evidence_mode(initial_cfg, rewritten.path(), retain_grouped_output);
         }
+        // An OWL 2 key is the DL-safe rule it denotes (`frontend::has_key`).
+        // Rewrite it before any source gate, so the rule reductions, the
+        // router and the rule routes all see one rule, exactly as if the
+        // source had spelled it. The rewrite copies source expressions
+        // verbatim and adds only rule variables in a reserved namespace.
+        if let std::borrow::Cow::Owned(keyed) = crate::frontend::has_key::encode(&source)
+            .map_err(OrchestrateError::OutOfFragment)?
+        {
+            let rewritten = tmpfile::TempPath::new("-has-key-rules.ofn");
+            std::fs::write(rewritten.path(), keyed)?;
+            let _trusted = TrustedRewrite::register(rewritten.path());
+            timing_mark("keys rewritten as DL-safe rules");
+            return classify_with_evidence_mode(initial_cfg, rewritten.path(), retain_grouped_output);
+        }
     }
     timing_mark("second source check done");
     let automatic_requested = std::env::var("KM_ROUTE")
