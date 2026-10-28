@@ -1,0 +1,13 @@
+Prefix(:=<http://example.org/g#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://example.org/g>
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(Class(:D)) Declaration(Class(:Q1)) Declaration(Class(:Q2)) Declaration(Class(:Q3)) Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s)) Declaration(ObjectProperty(:t))
+SubClassOf(owl:Thing ObjectUnionOf(ObjectSomeValuesFrom(:s :A) ObjectMinCardinality(2 :t :A)))
+SubClassOf(:C ObjectComplementOf(ObjectAllValuesFrom(:s :B)))
+DisjointClasses(ObjectIntersectionOf(:C ObjectAllValuesFrom(ObjectInverseOf(:r) :A)) ObjectMaxCardinality(1 ObjectInverseOf(:t) ObjectComplementOf(:A)))
+DisjointClasses(ObjectUnionOf(ObjectMinCardinality(1 :s :D) ObjectComplementOf(ObjectMinCardinality(2 ObjectInverseOf(:s) :A))) :B)
+SubClassOf(:B ObjectUnionOf(ObjectMaxCardinality(1 ObjectInverseOf(:r) :C) ObjectComplementOf(:C)))
+EquivalentClasses(:Q1 ObjectAllValuesFrom(:s ObjectAllValuesFrom(ObjectInverseOf(:r) :A)))
+EquivalentClasses(:Q2 ObjectComplementOf(ObjectUnionOf(:D ObjectComplementOf(:B))))
+EquivalentClasses(:Q3 :B)
+)

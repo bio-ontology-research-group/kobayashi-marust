@@ -1,0 +1,77 @@
+## Summary
+
+**Root cause**  
+`horned-owl-1.4.0/src/io/ofn/writer/as_functional.rs:17` — the `quote` function used `s.chars().enumerate()` to find `"` or `\` and then sliced `&s[..i]`. The value `i` is a **Unicode scalar count**, but `&str` slicing requires a **byte index**. For a literal that contains a multi-byte character such as `°` (UTF-8 bytes `3..5`) followed later by a quote or backslash, the scalar count falls inside the multi-byte sequence and Rust panics.
+
+The KM call path is:
+
+```
+engine/src/orchestrate/input.rs:write_functional
+  -> horned_owl::io::ofn::writer::write
+  -> Display for Literal<A>
+  -> quote(literal, f)
+```
+
+**Fix**  
+I vendored `horned-owl-1.4.0` under `engine/vendor/horned-owl-1.4.0` and replaced the buggy loop with `s.char_indices()` (which yields byte positions) and advanced past the matched character with `c.len_utf8()`.
+
+```rust
+while let Some((i, c)) = s.char_indices().find(|(_, c)| *c == '\\' || *c == '"') {
+    f.write_str(&s[..i])?;
+    match c { ... }
+    s = &s[i + c.len_utf8()..];
+}
+```
+
+The output is byte-identical for ASCII strings. For non-ASCII strings it is now well-formed instead of panicking, and every non-special character is preserved exactly — no axiom or literal is dropped or altered.
+
+**Patch wiring**
+
+- `engine/Cargo.toml` now has a `[patch.crates-io]` entry pointing at `engine/vendor/horned-owl-1.4.0`.
+- Added regression test `engine/tests/input_utf8_non_ascii.rs` with a Turtle fixture containing non-ASCII IRIs (`µ-class`), literals (`° µ é 🧪`), and annotations with escaped quotes/backslashes, plus an equivalent hand-written OFN fixture. The test asserts equal classification results.
+
+## Reproducer result
+
+`km classify --lines` on `qudt-merged.ttl` was run under `timeout 600`:
+
+- Before the fix: panicked at `as_functional.rs:17` with `end byte index 4 is not a char boundary; it is inside '°'`.
+- After the fix: **no panic**, but the run hit the 600 s limit without printing output. It consumed ~50 min CPU over 10 min wall time, exit code `124`. So the UTF-8 serialization bug is gone, but the ontology is slow for KM in this branch. As instructed, I did not try to optimize.
+
+## Test results
+
+All of these were run with `CARGO_TARGET_DIR=$PWD/target nice cargo build --release` / `cargo test --release` in `engine/`.
+
+```
+cargo test --release --lib orchestrate::input
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 3016 filtered out
+```
+
+```
+cargo test --release --lib frontend::
+test result: ok. 392 passed; 0 failed; 0 ignored; 0 measured; 2627 filtered out
+```
+
+```
+cargo test --release --test input_utf8_non_ascii
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+(`input_utf8_non_ascii.rs` is the only integration test file whose name contains `rdf`, `owlxml`, `turtle`, or `input` under `engine/tests/`.)
+
+I also ran `cargo test --release --test builtin_iri_aliases` as an extra sanity check for RDF/XML and Turtle input handling:
+
+```
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+## Commit
+
+```
+fd2a07f0 fix(input): support non-ASCII UTF-8 literals in RDF/Turtle/OWL-XML input
+```
+
+Full hash: `fd2a07f0c2b6e03936ceb327986be1a010fe9587`
+
+## Unresolved
+
+- `km classify --lines qudt-merged.ttl` does not finish within the required 600 s wrapper. The panic is fixed and classification makes progress (heavy CPU use), but completing the full taxonomy would need a longer timeout or performance work, which is out of scope per the instructions.
