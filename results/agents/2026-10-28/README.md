@@ -114,3 +114,23 @@ v153 policy against the general policy on the same binary). The chunk
 summaries of runs 1–7 stay on Ibex under
 `/ibex/scratch/projects/c2014/hohndor/km/v154-routing-20261026/paired-design-<array>/chunks/`.
 `RUNS.md` lists the array ids.
+
+## Full subagent transcripts
+
+Every Claude subagent of this supervising session (16, from the paper survey
+work of 2026-10-24 to the v1.5.4 fixes of 2026-10-28) has its complete
+transcript archived, gzip-compressed and verified byte-identical, outside
+git at `/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-transcripts/session-0285edda/`
+(11 MB; `agent-<id>.jsonl.gz` plus `agent-<id>.meta.json`). Before archiving,
+the transcripts were scanned for API keys and tokens; none were found. The
+originals stay in the Claude Code project store under
+`~/.claude/projects/-home-leechuck--herdr-worktrees-kobayashi-marust-worktree-paper/0285edda-d83d-4be5-8ecb-bb0aeb5575cb/subagents/`,
+which Claude Code prunes after its retention period. The supervising
+session's own transcript is `0285edda-d83d-4be5-8ecb-bb0aeb5575cb.jsonl` in
+the same project directory and is not archived here.
+
+`subagent-transcripts.tsv` lists each agent: id, task, first and last
+timestamp (UTC), transcript lines, tool calls and size. The longest ran
+about 32 hours (the bug-1/sorts agent, 999 tool calls) and about 33 hours
+(the datatype agent, 793 tool calls), counting from launch to the last
+message, including idle waits between supervisor messages.
