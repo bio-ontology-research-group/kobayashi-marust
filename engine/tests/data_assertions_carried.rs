@@ -268,9 +268,13 @@ fn profiles_preserve_facet_membership_and_range_clashes() {
     let consistent = format!("{text})\n");
     for route in ROUTES {
         let answer = classify(&consistent, route);
+        // The selected `default` route lifts only the assertions of the two
+        // individuals a nominal names; the 600 others are not represented
+        // and are counted (see `unproxied_assertions_can_hide_a_clash`).
+        let dropped = if route == Some("default") { 600 } else { 0 };
         assert_eq!(
             answer,
-            Answer { consistent: true, dropped: 0, unsat: BTreeSet::new(), subs: pairs(&[("E", "D")]) },
+            Answer { consistent: true, dropped, unsat: BTreeSet::new(), subs: pairs(&[("E", "D")]) },
             "route {route:?}"
         );
     }
@@ -278,6 +282,27 @@ fn profiles_preserve_facet_membership_and_range_clashes() {
         DataPropertyAssertion(:u <http://example.org/t#s> \"x\"^^xsd:string)\n)\n");
     for route in ROUTES {
         assert!(!classify(&clash, route).consistent, "route {route:?}");
+    }
+}
+
+/// The assertions of individuals no nominal names are not neutral: here the
+/// value 5 of `i5` clashes with a GCI. HermiT: inconsistent. A route that
+/// leaves them out must not publish a complete consistent answer.
+#[test]
+fn unproxied_assertions_can_hide_a_clash() {
+    let mut text = format!(
+        "{HEADER}Declaration(NamedIndividual(:b))\n\
+         EquivalentClasses(:E ObjectOneOf(:b)) DataPropertyAssertion(:u :b \"550\"^^xsd:integer)\n\
+         SubClassOf(DataSomeValuesFrom(:u DatatypeRestriction(xsd:integer \
+         xsd:minInclusive \"5\"^^xsd:integer xsd:maxInclusive \"5\"^^xsd:integer)) owl:Nothing)\n"
+    );
+    for value in 1..=600 {
+        text.push_str(&format!("DataPropertyAssertion(:u <http://example.org/t#i{value}> \"{value}\"^^xsd:integer)\n"));
+    }
+    text.push_str(")\n");
+    for route in ROUTES {
+        let answer = classify(&text, route);
+        assert!(!answer.consistent || answer.dropped > 0, "route {route:?}: {answer:?}");
     }
 }
 
