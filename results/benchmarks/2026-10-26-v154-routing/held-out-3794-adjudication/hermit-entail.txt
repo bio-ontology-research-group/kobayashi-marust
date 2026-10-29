@@ -9,3 +9,8 @@ DoubleOutletHeartVentricle <= HollowPathologicalBodyPart : true (0.124667797 s)
 IndeterminateVentricle <= HollowPathologicalBodyPart : true (0.115090299 s)
 IneffectiveConceptionSymptom <= PathologicalBodyProcesswhichplaysConsultationRoleSymptomRole : true (0.050266764 s)
 rc=0
+axioms 44956
+consistent true
+DoubleOutletLeftVentricle <= HollowPathologicalBodyPart : true (0.232670787 s)
+DoubleOutletRightVentricle <= HollowPathologicalBodyPart : true (0.153137379 s)
+rc=0
