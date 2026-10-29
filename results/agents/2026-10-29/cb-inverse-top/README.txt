@@ -81,3 +81,21 @@ Corpus (auto, bridge-corpus_compare.tsv): all 10 sorted SUB/UNSAT outputs
   was loaded; repeated pairs (bridge-corpus_repeat_timings.txt) show
   15803 117-161 s vs 116-140 s and 6682 31-33 s vs 31-34 s (no change), and
   850 9 s vs 2.2 s on both repeats (faster after the fix).
+
+At-most predecessor probes (2026-10-29, third task)
+20 probes with HermiT gold (engine/tests/fixtures/bridge_atmost_predecessor/):
+<=1 and <=2, qualified and unqualified, forward and inverse, through a
+sub-role and through InverseObjectProperties, plus satisfiable controls. Run
+with km at d4d8dfd1 on six configurations (atmost-predecessor/probe_results.txt):
+  ht_bridge (source TBox), auto, cb_plain1: 20/20 agree with HermiT
+  ht_bridge + KM_HT_NO_SATURATION=1: 19/20 (inv_atmost1_q_pred misses
+      D <= F; K unsatisfiable is found)
+  ht_bridge + KM_NO_SOURCE_TBOX=1: 12/20; misses every <=2 case that needs
+      the predecessor counted (8 probes, listed in the test)
+  ht_bridge + KM_NO_SOURCE_TBOX=1 + KM_HT_NO_SATURATION=1: 19/20 (the same
+      D <= F miss)
+The clause-translation <=2 misses disappear without saturation and do not
+occur without a predecessor (succ_only_* probes), so they come from the
+saturation pre-pass under the clause encoding. Identifying the __inv__ role
+with the native inverse object did not change them (tried, reverted).
+Neither failing configuration is an automatic route. No code changed.

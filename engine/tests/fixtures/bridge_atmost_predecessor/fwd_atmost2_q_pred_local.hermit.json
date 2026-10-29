@@ -1,0 +1,8 @@
+{
+  "ontology": "fwd_atmost2_q_pred_local.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": [
+    "P"
+  ]
+}

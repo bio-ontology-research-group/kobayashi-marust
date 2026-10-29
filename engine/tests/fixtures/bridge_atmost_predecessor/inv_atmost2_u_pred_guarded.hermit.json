@@ -1,0 +1,8 @@
+{
+  "ontology": "inv_atmost2_u_pred_guarded.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": [
+    "K"
+  ]
+}

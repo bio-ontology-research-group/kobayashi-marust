@@ -1,0 +1,140 @@
+== atleast2_inv_functional_sat gold: C U= S=
+   ht_bridge : ok
+   ht_bridge KM_NO_SOURCE_TBOX=1: ok
+   ht_bridge KM_HT_NO_SATURATION=1: ok
+   ht_bridge KM_NO_SOURCE_TBOX=1 KM_HT_NO_SATURATION=1: ok
+   auto : ok
+   cb_plain1 : ok
+== fwd_atmost1_q_pred gold: C U=P S=
+   ht_bridge : ok
+   ht_bridge KM_NO_SOURCE_TBOX=1: ok
+   ht_bridge KM_HT_NO_SATURATION=1: ok
+   ht_bridge KM_NO_SOURCE_TBOX=1 KM_HT_NO_SATURATION=1: ok
+   auto : ok
+   cb_plain1 : ok
+== fwd_atmost1_two_inv_preds_sat gold: C U= S=
+   ht_bridge : ok
+   ht_bridge KM_NO_SOURCE_TBOX=1: ok
+   ht_bridge KM_HT_NO_SATURATION=1: ok
+   ht_bridge KM_NO_SOURCE_TBOX=1 KM_HT_NO_SATURATION=1: ok
+   auto : ok
+   cb_plain1 : ok
+== fwd_atmost1_u_pred gold: C U=P S=
+   ht_bridge : ok
+   ht_bridge KM_NO_SOURCE_TBOX=1: ok
+   ht_bridge KM_HT_NO_SATURATION=1: ok
+   ht_bridge KM_NO_SOURCE_TBOX=1 KM_HT_NO_SATURATION=1: ok
+   auto : ok
+   cb_plain1 : ok
+== fwd_atmost2_q_pred_local gold: C U=P S=
+   ht_bridge : ok
+   ht_bridge KM_NO_SOURCE_TBOX=1: DIFF: C U= S=P<D,P<F
+   ht_bridge KM_HT_NO_SATURATION=1: ok
+   ht_bridge KM_NO_SOURCE_TBOX=1 KM_HT_NO_SATURATION=1: ok
+   auto : ok
+   cb_plain1 : ok
+== fwd_atmost2_q_pred gold: C U=P S=
+   ht_bridge : ok
+   ht_bridge KM_NO_SOURCE_TBOX=1: DIFF: C U= S=P<D,P<F
+   ht_bridge KM_HT_NO_SATURATION=1: ok
+   ht_bridge KM_NO_SOURCE_TBOX=1 KM_HT_NO_SATURATION=1: ok
+   auto : ok
+   cb_plain1 : ok
+== fwd_atmost2_u_pred gold: C U=P S=
+   ht_bridge : ok
+   ht_bridge KM_NO_SOURCE_TBOX=1: DIFF: C U= S=P<F
+   ht_bridge KM_HT_NO_SATURATION=1: ok
+   ht_bridge KM_NO_SOURCE_TBOX=1 KM_HT_NO_SATURATION=1: ok
+   auto : ok
+   cb_plain1 : ok
+== hier_invsub_atmost1 gold: C U=K S=
+   ht_bridge : ok
+   ht_bridge KM_NO_SOURCE_TBOX=1: ok
+   ht_bridge KM_HT_NO_SATURATION=1: ok
+   ht_bridge KM_NO_SOURCE_TBOX=1 KM_HT_NO_SATURATION=1: ok
+   auto : ok
+   cb_plain1 : ok
+== hier_invsub_atmost2 gold: C U=K S=
+   ht_bridge : ok
+   ht_bridge KM_NO_SOURCE_TBOX=1: DIFF: C U= S=
+   ht_bridge KM_HT_NO_SATURATION=1: ok
+   ht_bridge KM_NO_SOURCE_TBOX=1 KM_HT_NO_SATURATION=1: ok
+   auto : ok
+   cb_plain1 : ok
+== hier_sub_atmost2 gold: C U=K S=
+   ht_bridge : ok
+   ht_bridge KM_NO_SOURCE_TBOX=1: DIFF: C U= S=
+   ht_bridge KM_HT_NO_SATURATION=1: ok
+   ht_bridge KM_NO_SOURCE_TBOX=1 KM_HT_NO_SATURATION=1: ok
+   auto : ok
+   cb_plain1 : ok
+== inv_atmost1_q_pred_class gold: C U=K S=
+   ht_bridge : ok
+   ht_bridge KM_NO_SOURCE_TBOX=1: ok
+   ht_bridge KM_HT_NO_SATURATION=1: ok
+   ht_bridge KM_NO_SOURCE_TBOX=1 KM_HT_NO_SATURATION=1: ok
+   auto : ok
+   cb_plain1 : ok
+== inv_atmost1_q_pred gold: C U=K S=D<F
+   ht_bridge : ok
+   ht_bridge KM_NO_SOURCE_TBOX=1: ok
+   ht_bridge KM_HT_NO_SATURATION=1: DIFF: C U=K S=
+   ht_bridge KM_NO_SOURCE_TBOX=1 KM_HT_NO_SATURATION=1: DIFF: C U=K S=
+   auto : ok
+   cb_plain1 : ok
+== inv_atmost1_u_pred gold: C U=K S=
+   ht_bridge : ok
+   ht_bridge KM_NO_SOURCE_TBOX=1: ok
+   ht_bridge KM_HT_NO_SATURATION=1: ok
+   ht_bridge KM_NO_SOURCE_TBOX=1 KM_HT_NO_SATURATION=1: ok
+   auto : ok
+   cb_plain1 : ok
+== inv_atmost2_q_pred gold: C U=K S=
+   ht_bridge : ok
+   ht_bridge KM_NO_SOURCE_TBOX=1: DIFF: C U= S=K<D
+   ht_bridge KM_HT_NO_SATURATION=1: ok
+   ht_bridge KM_NO_SOURCE_TBOX=1 KM_HT_NO_SATURATION=1: ok
+   auto : ok
+   cb_plain1 : ok
+== inv_atmost2_q_pred_sat gold: C U= S=K<D
+   ht_bridge : ok
+   ht_bridge KM_NO_SOURCE_TBOX=1: ok
+   ht_bridge KM_HT_NO_SATURATION=1: ok
+   ht_bridge KM_NO_SOURCE_TBOX=1 KM_HT_NO_SATURATION=1: ok
+   auto : ok
+   cb_plain1 : ok
+== inv_atmost2_u_pred_guarded gold: C U=K S=
+   ht_bridge : ok
+   ht_bridge KM_NO_SOURCE_TBOX=1: DIFF: C U= S=
+   ht_bridge KM_HT_NO_SATURATION=1: ok
+   ht_bridge KM_NO_SOURCE_TBOX=1 KM_HT_NO_SATURATION=1: ok
+   auto : ok
+   cb_plain1 : ok
+== inv_atmost2_u_pred gold: C U=K S=
+   ht_bridge : ok
+   ht_bridge KM_NO_SOURCE_TBOX=1: DIFF: C U= S=
+   ht_bridge KM_HT_NO_SATURATION=1: ok
+   ht_bridge KM_NO_SOURCE_TBOX=1 KM_HT_NO_SATURATION=1: ok
+   auto : ok
+   cb_plain1 : ok
+== inv_succ_atmost1_q gold: C U=B S=
+   ht_bridge : ok
+   ht_bridge KM_NO_SOURCE_TBOX=1: ok
+   ht_bridge KM_HT_NO_SATURATION=1: ok
+   ht_bridge KM_NO_SOURCE_TBOX=1 KM_HT_NO_SATURATION=1: ok
+   auto : ok
+   cb_plain1 : ok
+== succ_only_atmost2 gold: C U=E S=
+   ht_bridge : ok
+   ht_bridge KM_NO_SOURCE_TBOX=1: ok
+   ht_bridge KM_HT_NO_SATURATION=1: ok
+   ht_bridge KM_NO_SOURCE_TBOX=1 KM_HT_NO_SATURATION=1: ok
+   auto : ok
+   cb_plain1 : ok
+== succ_only_inv_atmost2 gold: C U=E S=
+   ht_bridge : ok
+   ht_bridge KM_NO_SOURCE_TBOX=1: ok
+   ht_bridge KM_HT_NO_SATURATION=1: ok
+   ht_bridge KM_NO_SOURCE_TBOX=1 KM_HT_NO_SATURATION=1: ok
+   auto : ok
+   cb_plain1 : ok

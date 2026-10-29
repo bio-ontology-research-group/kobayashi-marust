@@ -1,0 +1,6 @@
+{
+  "ontology": "atleast2_inv_functional_sat.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": []
+}
