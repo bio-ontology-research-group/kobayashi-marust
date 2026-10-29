@@ -2052,7 +2052,7 @@ fn classify_with_evidence_inner(
     // satisfiability of the class projection alone cannot authorize this.
     if std::env::var_os("KM_NO_FINITE_RULE_TAXONOMY").is_none() {
         if let Some(source) = meta.profile.finite_rule_class_projection.as_ref() {
-            match rules_consistency(initial_cfg, clauses_path.path(), &meta, true)? {
+            match rules_consistency(initial_cfg, clauses_path.path(), &meta, true)?.map(|v| v.consistent) {
                 Some(true) => {},
                 Some(false) => return Ok(ClassificationEvidence {
                     classification: Classification { consistent: false, subsumptions: vec![],
@@ -2801,8 +2801,13 @@ fn classify_with_evidence_inner(
     // regression records this remaining completeness obligation. Inert when
     // the ontology has no rule (`rules_consistency` returns None). Opt out with
     // KM_NO_HT_RULES.
+    // Ground clauses the rule worker certified that the atomic CB taxonomy
+    // below may drop without affecting its answer (see the `Some(true)` arm).
+    let mut certified_ground_clauses = 0usize;
     if cfg.ht_rules {
-        match rules_consistency(cfg, clauses_path.path(), &meta, false)? {
+        let verdict = rules_consistency(cfg, clauses_path.path(), &meta, false)?;
+        let represented_ground = verdict.as_ref().map_or(0, |v| v.represented_ground_clauses);
+        match verdict.map(|v| v.consistent) {
             Some(false) => {
                 if timing {
                     eprintln!(
@@ -2839,6 +2844,18 @@ fn classify_with_evidence_inner(
                     if timing {
                         eprintln!("KM_TIMING rules-consistency: {rules} rule(s) not applied to a nominal taxonomy");
                     }
+                } else if !meta.profile.expressivity.universal_role
+                    && std::env::var_os("KM_NOMINALS").is_none()
+                {
+                    // By the same disjoint-union argument the ground ABox
+                    // changes no class subsumption of this consistent,
+                    // nominal-free ontology without the universal role; the
+                    // rule worker represented it (`dropped == 0`) for the
+                    // consistency verdict. Outside nominal mode the CB worker
+                    // drops exactly the clauses with an individual term
+                    // (`reasoner::OntologyBuilder::term`), so they are not
+                    // an omission of the published answer.
+                    certified_ground_clauses = represented_ground;
                 }
             }
             None => {}
@@ -2908,6 +2925,9 @@ fn classify_with_evidence_inner(
             &mut cached_input,
         )
     };
+    // Only the atomic CB worker is known to read this clause file outside
+    // nominal mode; a portfolio arm may answer from another clause set.
+    let atomic_cb = matches!(cfg.mechanism, Mechanism::Cb);
     let atomic_out = match atomic_attempt {
         Ok(out) => out,
         Err(_error) if selected_route == crate::routing::Route::CertifiedElProduction => {
@@ -2941,7 +2961,12 @@ fn classify_with_evidence_inner(
         Err(error) => return Err(error),
     };
     let mut out: EngineOut = match atomic_out {
-        Some(out) => out,
+        Some(mut out) => {
+            if atomic_cb && certified_ground_clauses > 0 {
+                out.dropped = out.dropped.saturating_sub(certified_ground_clauses);
+            }
+            out
+        }
         None => {
             // The 3 ORE giants OOM under the concurrent elc-portfolio race (it runs CB
             // and elc side by side); keep them on the safe single-arm paths (bare elc
@@ -3452,12 +3477,39 @@ fn checked_finite_rule_taxonomy(mut evidence: ClassificationEvidence) -> Result<
     Ok(evidence)
 }
 
+/// Verdict of the DL-safe-rule consistency worker.
+struct RulesVerdict {
+    consistent: bool,
+    /// Clauses of the checked clause file that carry an individual term,
+    /// when the conversion represented every clause (`dropped == 0`) and so
+    /// the verdict covers them; zero otherwise.
+    represented_ground_clauses: usize,
+}
+
+fn term_has_individual(term: &crate::json_io::JTerm) -> bool {
+    use crate::json_io::JTerm;
+    match term {
+        JTerm::Ind { .. } => true,
+        JTerm::Fun { arg, .. } => term_has_individual(arg),
+        JTerm::Var { .. } | JTerm::Aux { .. } => false,
+    }
+}
+
+fn clause_has_individual(clause: &crate::json_io::JClause) -> bool {
+    use crate::json_io::JAtom;
+    clause.body.iter().chain(&clause.head).any(|atom| match atom {
+        JAtom::Concept { term, .. } => term_has_individual(term),
+        JAtom::Role { source, target, .. } => term_has_individual(source) || term_has_individual(target),
+        JAtom::Eq { left, right } => term_has_individual(left) || term_has_individual(right),
+    })
+}
+
 fn rules_consistency(
     cfg: &Config,
     clauses_path: &Path,
     meta: &frontend_run::Meta,
     require_source_model: bool,
-) -> Result<Option<bool>, OrchestrateError> {
+) -> Result<Option<RulesVerdict>, OrchestrateError> {
     use crate::json_io::JInput;
     use std::process::{Command, Stdio};
     let _rule_environment = crate::routing::EnvironmentGuard::capture();
@@ -3547,6 +3599,11 @@ fn rules_consistency(
                 .and_then(|individual| meta.iri_map.get(individual)).cloned()).collect(),
         });
     }
+    let represented_ground_clauses = if tin.dropped == 0 {
+        input.clauses.iter().filter(|clause| clause_has_individual(clause)).count()
+    } else {
+        0
+    };
     let tin_bytes = serde_json::to_vec(&tin)?;
     if timing {
         eprintln!(
@@ -3610,7 +3667,7 @@ fn rules_consistency(
         consistent: bool,
     }
     let t: TOut = serde_json::from_reader(BufReader::new(File::open(out_path.path())?))?;
-    Ok(Some(t.consistent))
+    Ok(Some(RulesVerdict { consistent: t.consistent, represented_ground_clauses }))
 }
 
 /// Complete a PARTIAL certified-elc answer (exit 4): classify the residue with
