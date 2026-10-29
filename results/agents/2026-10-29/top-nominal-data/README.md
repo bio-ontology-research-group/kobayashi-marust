@@ -14,3 +14,12 @@ gate makes the nominal CB route much slower on some newly gated inputs:
 m2090 0.08 s -> >170 s, m2182 0.8 s -> >170 s (both reruns at 170 s), and
 m2137, m2207, m2218, m2278 now exceed 60 s. ht_general refuses (ERR) or is
 wrong as before.
+
+## Second round (bridge data roles, one-sorted refusal rule)
+
+`diff-<set>-fix2.tsv`: binary at the bridge/orchestrator change on top of
+development/v1.5.4 (before the refusal rule was narrowed to TBox nominals;
+on these generated inputs, which all carry nominals, the verdicts match),
+same affected files, 60 s cap, routes nominals, certified_nominals,
+ht_general, auto. No WRONG row. `prof/`: `KM_PROF=1 km engine` stderr for
+m2090/m2182 on the sorted and unsorted clause sets (release-branch engine).

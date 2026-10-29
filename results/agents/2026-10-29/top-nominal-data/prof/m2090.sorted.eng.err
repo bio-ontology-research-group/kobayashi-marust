@@ -1,0 +1,13 @@
+KM_PROF query-equivalence representatives=6 aliases=1 groups=1
+KM_PROF seeded all 1 queries; contexts=4 msgs_pending=34 saturate_calls=4
+KM_PROF seeded all 1 queries; contexts=5 msgs_pending=37 saturate_calls=4
+KM_PROF seeded all 1 queries; contexts=4 msgs_pending=34 saturate_calls=4
+KM_PROF seeded all 1 queries; contexts=4 msgs_pending=34 saturate_calls=4
+KM_PROF seeded all 1 queries; contexts=4 msgs_pending=34 saturate_calls=4
+KM_PROF seeded all 1 queries; contexts=4 msgs_pending=34 saturate_calls=4
+KM_PROF msgloop guard=20000 contexts=18 msgs_pending=0 saturate_calls=172 succ=1763 pred=18236 ground_wo=824
+KM_PROF msgloop guard=20000 contexts=18 msgs_pending=0 saturate_calls=172 succ=1763 pred=18236 ground_wo=824
+KM_PROF msgloop guard=20000 contexts=19 msgs_pending=0 saturate_calls=181 succ=1789 pred=18210 ground_wo=824
+KM_PROF msgloop guard=20000 contexts=18 msgs_pending=0 saturate_calls=172 succ=1763 pred=18236 ground_wo=824
+KM_PROF msgloop guard=20000 contexts=18 msgs_pending=0 saturate_calls=172 succ=1763 pred=18236 ground_wo=824
+m2090 sorted 5.87s 360240KB
