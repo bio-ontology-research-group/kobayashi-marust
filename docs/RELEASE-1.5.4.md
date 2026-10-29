@@ -23,9 +23,9 @@ approximate exits 3 with the reason, and `KM_ALLOW_APPROXIMATE=1` publishes
 with an `APPROXIMATE` line (`docs/ROUTING.md`).
 
 Design-half evaluation (1,123 ORE inputs, paired on the same binary, Ibex,
-single core, 300 s): run 9 from the frozen head verified TBD inputs under
-the general policy against TBD under v1.5.3's policy, 0 wrong, TBD lost
-(amendments applied), mean time ratio TBD, median TBD
+single core, 300 s): run 9 from the frozen head verified 1,099 inputs under
+the general policy against 1,094 under v1.5.3's policy, 0 wrong, 0 lost,
+mean time ratio 1.081, median 1.088 on the 1,094 inputs both solve
 (`results/benchmarks/2026-10-26-v154-routing/RUNS.md`).
 
 Held-out half (585 inputs, run once on the frozen PGO binary): TBD verified

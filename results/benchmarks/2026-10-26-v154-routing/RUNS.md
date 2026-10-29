@@ -18,6 +18,7 @@ no wrong answers, no lost inputs, and mean and median ratios at most 1.10.
 | 6 | `8a307740` (sorts closed under the clause set; complement excluded middle; data-assertion carry; cause A reverted) | 1390e3e7… | 54693367 | 1094 | 1096 | none | none | 1.056 | 1.048 |
 | 7 | `7bfc82be` (profile abstraction for data assertions above the cap; sorts never widen fixed sorts) | 219694e6… | 54707431 | 1087 | 1092 | none | none | 1.053 | 1.060 |
 | 8 | `9cf7c2cd` (individuals pinned through their nominal proxies; HasKey as DL-safe rules; non-neutral drops published; Sequoia ordering never auto-selected in nominal mode) | c3fb8abb… | 54741000 | 1094 | 1099 | none | none | 1.009 | 1.098 |
+| 9 | `0a0d73c8` (forced routes fail closed; definer sharing; bridge clause path and `≤0`; EMELIM fold; context and base-context ordering regimes; CB r-Succ pool; sort encoding on data properties; bridge data-property gate; subset blocking; rule checker) | a42e3816… | 54786965 | 1094 | 1099 | none | none | 1.081 | 1.088 |
 
 Runs 3 and 4 meet the contract. Run 5 does not: the bug 1 encoding made the
 `nominals` route unsound on three inputs that the v1.5.3 policy sends there
@@ -62,6 +63,21 @@ the Konclude bridge and the general policy sends to `certified_nominals`
 (+164 s in total, from +200 s in run 7). Run 8 is the candidate for the
 freeze unless the open soundness fixes (forced routes fail closed, bridge
 clause path) change a published answer, in which case run 9 repeats it.
+
+Run 9 (submitted 2026-10-29 17:19, analysed 2026-10-29 20:00) repeats run 8
+from the merged head `0a0d73c8`, which carries every soundness and
+completeness fix of 2026-10-29. It meets the contract: 0 incomplete chunks,
+no wrong answer, no lost input, 1,094 verified under v1.5.3 routing and
+1,099 under the general policy, mean ratio 1.081 and median ratio 1.088 on
+the 1,094 inputs both policies solve. The general policy gains 1672, 16666,
+1555, 6934 and 2792. Against run 8 the mean ratio rises from 1.009 to 1.081:
+the eleven inputs that v1.5.3 sent to the Konclude bridge and the general
+policy sends to `certified_nominals` now cost +231 s in total (from +164 s),
+and the fourteen `nominals` to `certified_nominals` inputs +124 s; both
+groups are answered under both policies. Run 9 is the freeze: the tag is
+cut from this head plus documentation commits (the `engine/` tree is
+unchanged), the held-out half runs once on the PGO binary built from the
+tag, and the G8 comparison uses the v1.5.3 PGO run.
 
 The extra time under the general policy is concentrated in eleven inputs that
 v1.5.3 sent to the Konclude bridge and the general policy sends to
