@@ -133,13 +133,19 @@ in all four runs:
 | policy only: general vs v1.5.3 policy on the v1.5.4 binary (paired run) | 1.070 | 1.104 |
 | noise floor: the same binary and policy in two runs (paired general vs protocol) | 0.936 | 1.179 |
 
-The median satisfies G8 and the mean misses it by seven points. The excess
-is concentrated: 205 goes from 45 s to 197 s and 7499 (design half) from
-56 s to 191 s on `certified_card_proxy_abox`, and 7278 and 3726 from 7 s
-to 30 s in the rules-consistency worker; all four are the cost of the
-checked subset blocking (`docs/HYBRID-CB-HT.md` section 9), the fix for a
-published `CONSISTENT` on an inconsistent ontology. 205 alone is six of the
-seven points. The remaining large deltas (1673, 1938, 11005, 10754, 5289,
+The median satisfies G8 and the mean misses it by seven points (sum of
+wall times on the 556 inputs: 2,561.8 s against 2,186.5 s; the bound is
+2,405.1 s, so the excess is 156.7 s). The excess is concentrated: 205 goes
+from 45 s to 197 s and 7499 (design half) from 56 s to 191 s on
+`certified_card_proxy_abox`, the cost of the checked subset blocking
+(`docs/HYBRID-CB-HT.md` section 9), the fix for a published `CONSISTENT`
+on an inconsistent ontology. 205 alone is six of the seven points. 7278 and
+3726 go from 7 s to 30 s in the rules-consistency worker, which runs the
+clausal tableau and no subset blocking: since 5a9eaa77 the frontend carries
+their data-property assertions as `DataHasValue` class assertions (8,552
+instead of 8,074 clauses on 7278) and the worker takes as long with the
+v1.5.3 worker binary on the v1.5.4 input (profile in
+`results/agents/2026-10-30/subset-blocking-cost/` on the fix branch). The remaining large deltas (1673, 1938, 11005, 10754, 5289,
 15226) are the policy's `certified_nominals` choice, inside the policy
 contract. Local side-by-side timing of the two PGO binaries on the same
 core confirms this attribution and shows no slowdown on small inputs; an
@@ -151,3 +157,28 @@ binary. The same job reproduces the rules-consistency worker cost on 7278
 and 3726 (3.4 s to 21.1 s) and no difference on 8911. The Konclude clause of G8 cannot be judged without a
 same-day Konclude run; against the 2026-10-04 Konclude run v1.5.4 verifies
 more inputs (558 against 554) and is slower in the mean.
+
+### Blocking cost fix (branch `fix/v155-subset-blocking-cost`, not in the tag)
+
+An Opus agent made the checked subset scans incremental (commit 8565b673
+off the tag, test 5c7d0bf5, results c89e7c86 in
+`results/agents/2026-10-30/subset-blocking-cost/`): modes 1 and 5 re-run
+only the dirty suffix, with edge changes widening it, and the per-pair
+relevance test skips literals outside every relevant set. The decision of
+every pass equals the full scan's (`KM_HT_INCRBLOCK2_CHECK=1` compared about
+a million passes on each of 205 and 7499 and the 700-seed `ht_general`
+differential, with no difference); the 700 seeds agree with the tag seed by
+seed at 0 wrong. Single-core wall times (release builds): 205 200 s to 71 s,
+7499 174 s to 61 s, 7278 and 3726 unchanged at 33 s, small inputs
+unchanged. A profile-guided build of the fix is not measured (the tag's PGO
+build ran at 0.89 to 0.92 of its release build).
+
+Projected effect on the G8 mean, replacing only 205's wall time in the
+protocol run and keeping every other input: 1.114 with the release-build
+time (71 s) and 1.111 with the inferred PGO time (64 s), against the bound
+1.10; if 7278 and 3726 also returned to their v1.5.3 times the ratio would
+be 1.089. The mean of two runs of the same binary differs by 6 percent on
+this half, so a re-run with the fix would land near the bound on either
+side. The fix is not in the tag; adopting it means a new tag, the four
+gates, the Rust and Java suites and a second protocol run on the held-out
+half.
