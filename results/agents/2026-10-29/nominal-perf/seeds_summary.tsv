@@ -1,0 +1,13 @@
+# per-route verdict counts
+label	route	verdict	count
+before	auto	NOANSWER	1
+before	auto	ok	300
+before	-	hermit-error	2
+before	nominals	NOANSWER	37
+before	nominals	ok	264
+after	auto	NOANSWER	1
+after	auto	ok	300
+after	-	hermit-error	2
+after	nominals	NOANSWER	38
+after	nominals	ok	263
+# g169 nominals, sequential reruns (2 each, wall/user s): head 96.25/638.22 97.49/646.55; fix 13.82/94.12 13.93/94.76

@@ -1,0 +1,14 @@
+# engine run directly on a frontend's clause JSON: KM_NOMINALS=1 KM_SEQ_ORDER=1 KM_THREADS=1 km engine, min of 2 (wall/user s), sequential but concurrent with a 4-worker validation run (absolute times inflated about 1.5x vs earlier quiet runs; compare within the table)
+# unq_Exact1 = lit_Exact1 rewritten by hand to DataExactCardinality(1 :d), through the v1.5.3 frontend: its clause set is identical (sorted) to head's lit_Exact1 set
+input	clauses_from	engine	clauses	disjunctive	contexts	hyper_calls	wall	user
+lit_Exact1	v153	v153	47	4	17	17551	1.73	1.72
+lit_Exact1	v153	head	47	4	17	17551	1.78	1.76
+lit_Exact1	head	v153	36	3	9	8745	5.31	5.30
+lit_Exact1	head	head	36	3	9	8745	5.54	5.51
+lit_Exact1	fix	fix	29	3	8	834	.02	.02
+empty_All	v153	v153	39	4	20	59062	11.80	11.75
+empty_All	v153	head	39	4	20	59062	15.69	12.88
+empty_All	head	v153	40	4	15	44778	17.08	16.20
+empty_All	head	head	40	4	15	44778	16.31	16.23
+empty_All	fix	fix	33	4	13	8920	.91	.88
+unq_Exact1	v153	v153	36	3	9	8745	4.38	4.34
