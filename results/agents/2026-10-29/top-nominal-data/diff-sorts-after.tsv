@@ -1,0 +1,8 @@
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-top-nominal-data/engine/tests/fixtures/sorts_differential/max2_three_K.ofn	nominals	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-top-nominal-data/engine/tests/fixtures/sorts_differential/max2_three_K.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-top-nominal-data/engine/tests/fixtures/sorts_differential/max2_three_K.ofn	ht_general	ERR	0.01					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-top-nominal-data/engine/tests/fixtures/sorts_differential/max2_three_K.ofn	auto	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-top-nominal-data/engine/tests/fixtures/sorts_differential/min2.ofn	nominals	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-top-nominal-data/engine/tests/fixtures/sorts_differential/min2.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-top-nominal-data/engine/tests/fixtures/sorts_differential/min2.ofn	ht_general	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-top-nominal-data/engine/tests/fixtures/sorts_differential/min2.ofn	auto	ok	0.01	0	0	0	0	0

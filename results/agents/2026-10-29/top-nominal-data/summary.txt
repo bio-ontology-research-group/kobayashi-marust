@@ -1,0 +1,5 @@
+diff-fresh2-after.tsv: auto:ok=49 auto:TIMEOUT=8 certified_nominals:ok=49 certified_nominals:TIMEOUT=8 ht_general:ERR=56 ht_general:WRONG=1 nominals:ok=32 nominals:TIMEOUT=25 
+diff-fresh2-before.tsv: auto:ok=50 auto:TIMEOUT=6 auto:WRONG=1 certified_nominals:ok=50 certified_nominals:TIMEOUT=6 certified_nominals:WRONG=1 ht_general:ERR=56 ht_general:WRONG=1 nominals:ok=37 nominals:TIMEOUT=19 nominals:WRONG=1 
+diff-fresh3-before.tsv: auto:ok=16 auto:TIMEOUT=3 certified_nominals:ok=13 certified_nominals:TIMEOUT=5 certified_nominals:WRONG=1 ht_general:ERR=19 nominals:ok=9 nominals:TIMEOUT=9 nominals:WRONG=1 
+diff-sorts-after.tsv: auto:ok=2 certified_nominals:ok=2 ht_general:ERR=2 nominals:ok=2 
+diff-sorts-before.tsv: auto:ok=2 certified_nominals:ok=2 ht_general:ERR=2 nominals:ok=2 
