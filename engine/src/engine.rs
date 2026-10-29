@@ -3471,7 +3471,8 @@ pub struct Engine {
     /// is per edge), and a closure clause such as `→ D(x)` from `⊤ ⊑ D` is a
     /// worked-off clause of every context. Without it the base-layer path
     /// never offered `D(y)` to successors, while the flat path (certification,
-    /// KM_NO_SHARE) did. Invalidated with `shared_base`.
+    /// KM_NO_SHARE) did (docs/CB-COMPLETENESS-FIXES.md, section 1).
+    /// Invalidated with `shared_base`.
     shared_rsucc: [Option<Arc<Vec<u32>>>; 2],
     /// KM_NO_BASE_LAYER: materialise the closure into each context's `delta`
     /// (the pre-base-layer representation) instead of attaching the shared base.
