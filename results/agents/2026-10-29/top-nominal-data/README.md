@@ -23,3 +23,17 @@ on these generated inputs, which all carry nominals, the verdicts match),
 same affected files, 60 s cap, routes nominals, certified_nominals,
 ht_general, auto. No WRONG row. `prof/`: `KM_PROF=1 km engine` stderr for
 m2090/m2182 on the sorted and unsorted clause sets (release-branch engine).
+
+`diff-<set>-final.tsv`: the same files rerun with the round-2 binary after
+the refusal rule was narrowed to TBox nominals (commit 79c93f66, 3 threads).
+Every verdict matches the fix2 tables (0 changed rows, 0 WRONG).
+
+## Rule-consistency audit
+
+`rules/`: HasKey and DL-safe rule probes beside `⊤ ⊑ {a}` / `{a,b}` and
+`⊤ ⊑ ≥n u`, with HermiT answers (`*.json`). `diff-rules-fix3.tsv` (round 2)
+and `diff-rules-fix5.tsv` (rule-checker fix), routes auto, ht_rules,
+nominals, certified_nominals, default. Round 2 published "inconsistent" on
+`auto` for s7, s8, s9 (binary rule, consistent); the fix makes the rule
+checker fail closed there. Cost: s10 (a genuine clash on the same shape)
+now fails closed on `auto` instead of answering inconsistent.

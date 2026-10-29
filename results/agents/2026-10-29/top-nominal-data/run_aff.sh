@@ -3,7 +3,7 @@
 S=/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/top-nominal-data
 O=/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-assets/2026-10-28-scratch/oracle
 tag=$1; km=$2; shift 2
-export DIFF_KM_TIMEOUT=60 DIFF_THREADS=4
+export DIFF_KM_TIMEOUT=60 DIFF_THREADS=${DIFF_THREADS:-4}
 R=nominals,certified_nominals,ht_general,auto
 for set in "$@"; do
   case $set in

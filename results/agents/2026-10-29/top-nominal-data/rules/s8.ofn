@@ -1,0 +1,10 @@
+Prefix(:=<http://example.org/g#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://example.org/g>
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(DataProperty(:u)) Declaration(ObjectProperty(:r)) Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+SubClassOf(owl:Thing DataMinCardinality(3 :u))
+SubClassOf(owl:Thing ObjectOneOf(:a :b))
+ClassAssertion(:A :a) ObjectPropertyAssertion(:r :a :b)
+DLSafeRule(Body(ObjectPropertyAtom(:r Variable(:x) Variable(:y))) Head(ClassAtom(:B Variable(:x))))
+)
