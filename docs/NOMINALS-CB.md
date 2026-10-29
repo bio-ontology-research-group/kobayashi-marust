@@ -428,24 +428,63 @@ unaffected, as before. Regression tests:
 `top_nominal_with_unvalued_data_cardinality_is_relativized` in
 `frontend/sorts.rs`.
 
-Open: the HT consumers. Two consumers never see the sorted clause stream
-and still answer "inconsistent" on m2197 and its probes:
+The HT consumers. Two consumers never see the sorted clause stream:
 
 - the native completion bridge (`ht_bridge`, the HT arm of
   `certified_nominals`, and the route `auto` picks for these inputs)
   rebuilds class axioms from `source_axioms` in source mode, where
   `DataMinCardinality(2 u)` is `AtLeast(2, u, Top)`. Its datatype gate
   (`exact_atomic_datatype_bridge_fragment`, which checks every
-  non-datatype axiom on a blank data node and would defer on `⊤ ⊑ {a}`)
-  only runs when a `__dt__` concept occurs, so a data property used only
-  with `rdfs:Literal` fillers is invisible to it;
+  non-datatype axiom on a blank data node) only ran when a `__dt__`
+  concept occurred, so a data property used only with `rdfs:Literal`
+  fillers was invisible to it and the bridge answered "inconsistent";
 - `ht_general` runs without `KM_NOMINALS`, so the sort pass never runs and
   the clausal hypertableau reads the data successors as objects (also with
   a qualified filler, `⊤ ⊑ ≥2 u.xsd:string`).
 
 The clausal hypertableau itself is exact on the sorted clause set (the
 `km tableau` worker answers "consistent" on the sorted m2197 input), so
-both gaps are admission and routing questions, not calculus defects.
+both gaps are admission questions, not calculus defects. They are closed
+as follows.
+
+- Bridge. When the source has individuals or nominals, the frontend
+  reports the data properties its clause set uses
+  (`FrontendResult::data_roles`, carried in the clause file as
+  `data_roles`), and every converted HT input records them as
+  `TInput::data_roles` (`cb_to_ht::attach_data_roles`). The bridge's two
+  datatype admissions (`exact_atomic_datatype_bridge_fragment` and
+  `datatype_effects_covered_by_unit_bottom`) now run when either a
+  `__dt__` concept or a data role occurs, and both treat the data roles as
+  data roles. `⊤ ⊑ {a}` fails on a blank data node, so the bridge defers
+  on m2197 and every probe; `auto` then answers on `certified_nominals`
+  (the sorted CB arm). The change only adds defers, so it cannot make the
+  bridge publish a verdict it did not publish before. Cost: an input whose
+  `⊤` axioms a blank data node cannot satisfy (for example `⊤ ⊑ ≥2 u` with
+  `A(a)`) now leaves the bridge for the nominal CB route.
+- One-sorted routes. Outside nominal clausification the frontend sets
+  `one_sorted_data_successors` when the source has a TBox nominal and
+  `sorts::applies` holds for the clause set, except for the
+  bridge-exclusive worker (`KM_HT_ONLY=bridge`), which defers by itself.
+  On a forced route the orchestrator then publishes neither verdict: the
+  one-sorted stream is stronger than the ontology, so the rule "an
+  inconsistency found on a weakened input is still exact"
+  (docs/ROUTING.md, "Forced routes") does not apply. `km classify` exits
+  3; with `KM_ALLOW_APPROXIMATE=1` the answer carries `APPROXIMATE`. The
+  flag is never set under automatic routing, which keeps nominal inputs on
+  mechanisms that carry `KM_NOMINALS` or the typed bridge payload.
+  Individuals alone (an ABox without TBox nominals) do not set it: given a
+  two-sorted model, give every data element the labels of an unravelled
+  copy of some object (plus its data ranges) with fresh copies of that
+  object's successors and predecessors. The copies are anonymous, at-most
+  restrictions count the same number of copies as originals, and only a
+  nominal concept could force a copy onto a named element, so the
+  one-sorted stream has a model whenever the ontology has one.
+
+Tests: `hermit_answers_on_every_route` and
+`forced_one_sorted_route_refuses_both_verdicts` in
+`engine/tests/top_nominal_data_successors.rs`, and
+`data_roles_without_datatypes_enter_the_datatype_gate` in
+`konclude_ht/bridge.rs`.
 
 ## 7. Sequoia ordering and nominals
 

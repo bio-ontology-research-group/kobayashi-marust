@@ -11,10 +11,11 @@
 //! fixes the nominal CB route.
 //!
 //! The native completion bridge (`ht_bridge`, the HT arm of
-//! `certified_nominals`, and therefore `auto`) and the clausal `ht_general`
-//! worker do not consume the sorted clause stream and still answer
-//! "inconsistent" on these inputs; `hermit_answers_on_every_route` documents
-//! that gap and is ignored until it is closed.
+//! `certified_nominals`, and `auto`) now receives the source data properties
+//! (`TInput::data_roles`) and runs its blank-data-node admission gate, which
+//! defers on these inputs. A forced route that reads the one-sorted clause
+//! stream (`ht_general`) refuses both verdicts (exit 3). The automatic route
+//! must answer every input exactly; a forced route may refuse.
 //!
 //! Expected answers are HermiT 1.4.3.456's. The object probe (`⊤ ⊑ ≥2 r`
 //! with `⊤ ⊑ {a}`) stays inconsistent on every route.
@@ -26,8 +27,8 @@ use std::time::{Duration, Instant};
 const BOUND: Duration = Duration::from_secs(120);
 
 /// `None` is the automatic route.
-const ROUTES: [Option<&str>; 4] =
-    [None, Some("nominals"), Some("certified_nominals"), Some("ht_general")];
+const ROUTES: [Option<&str>; 5] =
+    [None, Some("nominals"), Some("certified_nominals"), Some("ht_general"), Some("ht_bridge")];
 
 type Taxonomy = (bool, BTreeSet<String>, BTreeSet<(String, String)>);
 
@@ -105,8 +106,8 @@ fn check(name: &str, consistent: bool, unsat: &[&str], subs: &[(&str, &str)]) {
     check_on(&[Some("nominals")], name, consistent, unsat, subs);
 }
 
-/// Every route in `routes` that answers gives HermiT's answer; only
-/// `ht_general` may refuse the input.
+/// Every route in `routes` that answers gives HermiT's answer; only the
+/// forced `ht_general` and `ht_bridge` may refuse the input.
 fn check_on(
     routes: &[Option<&str>],
     name: &str,
@@ -120,7 +121,10 @@ fn check_on(
         subs.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect();
     for &route in routes {
         let Some((got_consistent, got_unsat, got_subs)) = classify(&path, route) else {
-            assert_eq!(route, Some("ht_general"), "{name}: {route:?} refused the input");
+            assert!(
+                matches!(route, Some("ht_general" | "ht_bridge")),
+                "{name}: {route:?} refused the input"
+            );
             continue;
         };
         assert_eq!(got_consistent, consistent, "{name} {route:?}: consistency");
@@ -212,10 +216,9 @@ fn exact_data_cardinality_with_has_value_hub_keeps_counting() {
     check("probe_v11.ofn", true, &["A"], &[]);
 }
 
-/// The open gap: the bridge and `ht_general` read the data successors as
-/// objects. Enable once those consumers see the data sort.
+/// Every route gives HermiT's answer; `ht_general` refuses instead, and the
+/// automatic route (in `ROUTES`) answers each input.
 #[test]
-#[ignore = "native bridge and ht_general still read data successors as objects"]
 fn hermit_answers_on_every_route() {
     let consistent_empty = [
         "m2197-min.ofn", "probe_v1.ofn", "probe_v2.ofn", "probe_v3.ofn", "probe_v4.ofn",
@@ -226,4 +229,33 @@ fn hermit_answers_on_every_route() {
     }
     check_on(&ROUTES, "probe_v11.ofn", true, &["A"], &[]);
     check_on(&ROUTES, "m2197.ofn", true, &[], &[("A", "Q2"), ("Q2", "A"), ("Q1", "D")]);
+}
+
+/// The forced `ht_general` route reads the one-sorted clause stream: it
+/// exits 3 instead of publishing the wrong "inconsistent", and with
+/// `KM_ALLOW_APPROXIMATE=1` it marks whatever it publishes.
+#[test]
+fn forced_one_sorted_route_refuses_both_verdicts() {
+    let path = fixture("probe_v1.ofn");
+    let run = |allow: bool| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_km"));
+        for (key, _) in std::env::vars_os() {
+            if key.to_string_lossy().starts_with("KM_") {
+                command.env_remove(key);
+            }
+        }
+        command.env("KM_ROUTE", "ht_general");
+        if allow {
+            command.env("KM_ALLOW_APPROXIMATE", "1");
+        }
+        command.args(["classify", "--lines", &path]).output().unwrap()
+    };
+    let refused = run(false);
+    assert_eq!(refused.status.code(), Some(3));
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert!(stderr.contains("reads data successors as objects"), "{stderr}");
+    let marked = run(true);
+    assert!(marked.status.success());
+    let stdout = String::from_utf8_lossy(&marked.stdout);
+    assert!(stdout.lines().any(|line| line.starts_with("APPROXIMATE\t")), "{stdout}");
 }

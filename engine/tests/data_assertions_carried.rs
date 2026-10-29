@@ -332,7 +332,16 @@ fn profiles_preserve_facet_membership_and_range_clashes() {
     let clash = format!("{text}DataPropertyRange(:u xsd:integer)\n\
         DataPropertyAssertion(:u <http://example.org/t#s> \"x\"^^xsd:string)\n)\n");
     for route in ALL_ROUTES {
-        assert!(!classify(&clash, route).consistent, "route {route:?}");
+        // A forced route that reads the one-sorted clause stream beside these
+        // nominals may publish neither verdict (docs/ROUTING.md, "Forced
+        // routes"); every other route finds the clash.
+        match run(&clash, route, false) {
+            Ok((answer, false)) => assert!(!answer.consistent, "route {route:?}"),
+            Err((Some(3), stderr)) if route.is_some() => {
+                assert!(stderr.contains("reads data successors as objects"), "route {route:?}: {stderr}")
+            }
+            other => panic!("route {route:?}: {other:?}"),
+        }
     }
 }
 

@@ -332,7 +332,22 @@ The rule (`orchestrate::classify_with_evidence_mode`, outermost call):
   `APPROXIMATE<TAB>reason` line directly after `DROPPED` (JSON key
   `approximate`), and `DROPPED` counts every drop, including the
   route-specific approximations below that an automatic answer never carries.
-- An inconsistent answer is published unchanged on every route.
+- An inconsistent answer is published unchanged on every route, with one
+  exception. When a route reads a one-sorted clause stream (no
+  `KM_NOMINALS`, not the bridge-exclusive worker) on a source with a TBox
+  nominal and data properties, and the sort encoding of docs/NOMINALS-CB.md
+  section 6 would apply, the stream is stronger than the ontology: data
+  successors fall under `⊤ ⊑ C` and can be forced onto a named individual
+  (m2197: `⊤ ⊑ ≥2 u` and `⊤ ⊑ {a}` is consistent, the one-sorted stream is
+  not). Such a forced route publishes neither verdict
+  (`FrontendResult::one_sorted_data_successors`, checked in
+  `orchestrate::classify_with_evidence_mode` after the drop rule, whose
+  message wins for a consistent answer); with `KM_ALLOW_APPROXIMATE=1` the
+  answer carries `APPROXIMATE` and a positive `DROPPED`:
+
+  ```text
+  unsupported: route `ht_general` reads data successors as objects (data properties beside a nominal outside nominal clausification); neither verdict would be exact; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+  ```
 
 The same rule covers `km classify --realize` (forced routes require
 `KM_REALIZE_ANY_ROUTE=1` first) and the `km incremental-source` session, which
