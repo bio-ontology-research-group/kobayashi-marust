@@ -618,13 +618,19 @@ Sequoia ordering would be selected without nominals:
 
 - R1: the Sequoia order on every literal with a variable or a Skolem term, in
   every context (the ground context's `x`-clauses included);
-- R2: ground atoms (every argument an individual) mutually incomparable, in
-  every context; a weakening of the order;
+- R2: a ground atom (every argument an individual) lies below another ground
+  atom only if its individuals are among the other's, and never below a
+  ground equality, in every context; a
+  weakening of the order that keeps the Sequoia order among ground atoms
+  over the same individuals; it is switched on only when some clause with a
+  variable mentions an individual, since otherwise no context but the ground
+  context ever holds a ground atom;
 - R3: a unit ground equality `→ o ≈ o'` crosses the guard to a context that
   announced either individual (an instance of the paper's r-Pred with `n = 0`).
 
 Seed 297 needs R3 (the `Q1` context announced `b` only, and `b ≈ a` mentions
-`a`). R2 removes a second counterexample, which the unordered regime of
+`a`) and the equality part of R2 (otherwise the unit `b ≈ a` can stay trapped
+in `→ Q_0(a) ∨ b ≈ a`). R2 removes a second counterexample, which the unordered regime of
 v1.5.4 also misses on the `nominals` route
 (`tests/fixtures/nominal_seq_order/p1_cross_individual.ofn`, five axioms,
 HermiT `Q ⊑ B`; docs/PER-CONTEXT-ORDERING.md section 4).
@@ -633,6 +639,40 @@ Runs that must publish a CB Lean certificate (`KM_CB_LEAN_REQUIRED`) keep the
 unordered regime: the certification surface models KM's literal order and the
 r-Pred guard exactly and does not model R2 or R3.
 
-Measurements: see the end of this section (filled by the v1.5.5 validation
-run, `results/agents/2026-10-29/per-context-order/`).
+Measurements (2026-10-29, shared workstation, files in
+`results/agents/2026-10-29/per-context-order/`):
+
+- Engine level (`km engine`, one thread, the 2026-10-28 cost inputs):
+  ore_ont_10874 5.7 s (plain Sequoia 5.6 s, unordered over 1800 s),
+  ore_ont_9800 86 s (80 s, over 1800 s), ore_ont_15655 7.3 s (3.9 s, 92 s).
+  Named subsumptions equal those of the plain Sequoia run on 10874 and 9800
+  and those of the unordered run on 15655. 10874 and 9800 have no clause with
+  both a variable and an individual, so R2 is off there.
+- `km classify` on the 201 gated ORE inputs, automatic route, 300 s cap, one
+  process at a time, same binary, same day: context regime 4 943 s raw
+  (12 non-answers), unordered regime (`KM_NO_SEQ_ORDER=1`) 5 523 s
+  (14 non-answers). 10874: 6.1 s (unordered: timeout; 2026-10-28 plain
+  Sequoia 10.3 s). 9800: 120 s, answered by the CB worker at 110 s (unordered:
+  115 s, answered by the HT worker at 105 s; 2026-10-28: 115 s and timeout).
+  15655: 5.2 s (unordered 147 s; 2026-10-28: 29.5 s and 145 s). No file is
+  more than 1.5 times and 5 s slower than under the unordered regime. Where
+  both regimes answer (187 files) the SUB/UNSAT/CONSISTENT lines are
+  identical. The 2026-10-28 baseline is not directly comparable on totals:
+  21 of its plain-Sequoia runs and 20 of its unordered runs exited with rc 1
+  within 10 s; today those files answer under both regimes, except
+  ore_ont_699 (timeout under both) and ore_ont_3917 (280 s context, timeout
+  unordered).
+- Bug-1 reproducer: 0.22 to 0.26 s per nominal route (v1.5.4 unordered: about
+  92 s). Hub with two data-value probes: 0.5 to 0.9 s per route (no answer
+  within 1800 s before); both hub tests run again.
+- HermiT differential (60 s cap per run, routes `auto`, `nominals`,
+  `certified_nominals`; docs/PER-CONTEXT-ORDERING.md section 7): sorts
+  fixtures 33/33 ok; 400 generated seeds without inverse roles 795 ok, 3
+  wrong (`m2197`, equally wrong under the unordered regime), 395 timeouts, 7
+  RSS-limit stops; 100 seeds with inverse roles 215 ok, 85 timeouts; 300
+  ALCHIQ seeds 883 ok, 14 timeouts. 21 runs on 9 files answer only under the
+  unordered regime; no wrong answer is specific to the context regime.
+- Known incompleteness that remains: a disjunctive ground equality across an
+  unannounced individual is not delivered (section 6 of the note); the
+  first-order lifting is not mechanised.
 

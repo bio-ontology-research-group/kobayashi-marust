@@ -1,7 +1,8 @@
 # The Sequoia ordering under nominals: the context regime
 
 Status (v1.5.5 candidate): implemented as `KM_SEQ_ORDER=context`
-(`calc::SEQ_ORDER_CONTEXT`). This note states the regime, the completeness
+(`calc::SEQ_ORDER_CONTEXT`) and auto-selected in nominal mode wherever the
+plain Sequoia ordering is selected without nominals. This note states the regime, the completeness
 argument and its boundary, and the two counterexamples that fix its shape.
 docs/NOMINALS-CB.md section 7 describes the problem and the cost; section 9
 there points here. The ground theorem is
@@ -94,6 +95,10 @@ of `CompletenessOrderedSubsumption.lean`), orders given as injective ranks:
 - `closedR_of_closedMaximal`, `maximal_server_complete`: a server closed
   under resolution on the maximal literals of a strict relation serves `V`
   when some rank that extends the relation has `V` as a lower set.
+- `exists_rank_extending_lower`, `downward_server_complete`: on a finite atom
+  set, a strict partial order and a downward-closed `V` always admit such a
+  rank, so a server closed on maximal literals of a strict partial order
+  serves every downward-closed interface.
 - `ordered_server_interface_not_lower_counterexample`: the lower-set
   condition is necessary. Server `{→ B(b) ∨ Q_0(a), Q_0(a) → ⊥}` ranked with
   `B(b)` above `Q_0(a)`, consumer `{B(b) → ⊥}`, interface `{B(b)}`: the server
@@ -105,10 +110,14 @@ Axioms of every listed theorem: `propext`, `Classical.choice`, `Quot.sound`.
 Consequence for KM. The consumer may use any order, so the Sequoia order is
 admissible in every ordinary and query context. The ground context must,
 for every interface `V_u` that the guard can produce, admit a linear
-extension of its order with `V_u` at the bottom. Announced sets are arbitrary
-subsets of the individuals, so no two ground atoms may be strictly ordered.
-Literals with a variable or a Skolem term never pass the guard as interface
-atoms, so the ground context may order them freely, the Sequoia way included.
+extension of its order with `V_u` at the bottom. `V_u` is the set of ground
+atoms whose individuals were all announced by `u`, and announced sets are
+arbitrary sets of individuals. `V_u` is downward closed for every `u` exactly
+when a ground atom lies below another ground atom only if its individuals are
+among the other's: `B(o) < C(o)` and `B(o) < r(o,o')` may stay, `B(a) < C(b)`
+and `r(a,b) < C(b)` may not. Literals with a variable or a Skolem term never
+pass the guard as interface atoms, so the ground context may order them
+freely, the Sequoia way included.
 
 ## 4. The two counterexamples (HermiT-checked)
 
@@ -122,6 +131,17 @@ context's `x`-clauses (`→ __data__(x) ∨ x ≈ b`, …) and the pushed hypoth
 The guard makes the interface of `Q1` the atoms over `b` alone, while
 equality moves the facts about `b` onto `a`. This is outside the propositional
 theorem (equality), and the regime closes it with rule R3 below.
+
+**seed297_min, R2 without its equality part.** With R1, R3 and the
+ground-atom part of R2 only, the `nominals` route lost `Q1 ⊑ ⊥` on
+`seed297_min.ofn`, and the loss depended on the work order (`KM_NO_TODO_UNITS_FIRST`
+or `KM_NO_CENTRAL` recovered it). The ground context held
+`→ Q_0(a) ∨ b ≈ a` with `Q_0(a)` below the equality, so `Q_0(a)`, although
+refutable, was never resolved, and the unit `b ≈ a` that R3 should deliver
+existed only on the paths where it was derived before that clause. Ordered
+resolution does not promise entailed units, only `⊥`; the equality part of
+R2 puts the equality in the interface's downward-closed set and removes the
+trap. With it the result no longer depends on the work order.
 
 **`p1`, reference regime** (new, `engine/tests/fixtures/nominal_seq_order/p1_cross_individual.ofn`):
 
@@ -153,11 +173,31 @@ diagnostic overrides.
 - **R1.** In every context, same-term concept literals on a variable or a
   Skolem term (`x`, `f(x)`, `f(o)`) use the Sequoia order: internal concepts
   totally ordered above the named ones, named concepts incomparable.
-- **R2.** In every context, two ground atoms (every argument a named
-  individual or an additional nominal) are incomparable. Their comparisons
-  with every other literal are unchanged. R2 only removes strict comparisons,
-  so it weakens the order; every inference of the order without R2 is still
-  performed.
+- **R2.** In every context, a ground atom (every argument a named individual
+  or an additional nominal) lies below another ground atom only if its
+  individuals are among the other's, and never below a ground equality
+  `o ≈ o'`; every other such comparison is removed. (R3 makes a ground
+  equality an interface atom of a context that announced only one of its two
+  individuals, so nothing outside that interface may lie below it.) Ground
+  atoms over the same individuals keep the Sequoia order (so `→ C(o) ∨ __data__(o)` still resolves only on the
+  maximal disjunct), and comparisons with every other literal are unchanged.
+  R2 only removes strict comparisons, so every clause keeps at least the
+  maximal literals it has without R2. That does not make the outcome
+  monotone in the order: the guard's consumers depend on units that ordered
+  resolution need not derive, and section 4 (seed297_min) shows a weakening
+  that lost an answer. R2 is switched on
+  only when some ontology clause with a variable or a Skolem term mentions an
+  individual (`reasoner::has_ground_interface`, `calc::set_ground_interfaces`).
+  Without such a clause no context other than the ground context ever holds a
+  ground atom: its clauses come from individual-free ontology clauses, Succ
+  and Pred introduce only `x`, `y` and `f(x)`, the ground context delivers
+  only to contexts with an individual-labelled edge or a merge subscription,
+  and both need a clause that already mentions the individual (argued from
+  the engine code, not mechanised). The guard then delivers nothing, every
+  interface is empty, and the ground context matters only through its own
+  refutation, which ordered resolution finds under any order. The switch is
+  fixed per engine, because clause maxima are cached; the retained
+  incremental path refuses an insertion that would flip it.
 - **R3.** The ground context delivers a unit ground equality `→ o ≈ o'` to a
   context that announced `o` or `o'`, not only to one that announced both.
   The receiving context rewrites with it, its merge clause then names the
@@ -168,21 +208,36 @@ The literal order is the same in every context: it depends only on the
 literals compared. R2 acts where ground atoms occur, which is mainly the
 ground context; R1 keeps the Sequoia order on the ground context's
 `x`-clauses. The literal reading of "unordered in the ground context only" was
-measured and rejected (section 7): it keeps the cost, because the cost sits in
-the ground context's `x`-clauses, and it does not remove `p1`, because the
-reference order is not consequence-finding across individuals.
+measured and rejected (section 7): it keeps the cost, and it does not remove
+`p1`, because the reference order compares ground atoms across individuals
+(term-major) and is therefore not consequence-finding for every interface.
+A first version of R2 that made all ground atoms pairwise incomparable was
+also rejected: it removes `p1` but restores the per-individual disjunction
+blow-up of the ground context (ore_ont_10874 ran past 222 s, against 10 s
+under the plain Sequoia ordering, before the run was stopped).
 
 ## 6. Completeness: what is proved, argued, and open
 
 - **Proved (Lean, ground level).** The exchange between a ground context that
-  satisfies R2 and a consumer with any order, for any announced interface:
-  `unordered_server_complete_for_every_interface` (R2 makes all ground atoms
-  incomparable; every literal with a Skolem term is above them, so the
-  announced ground atoms form a lower set of a linear extension;
-  `maximal_server_complete` covers the Sequoia order on the remaining
-  literals), with the positive unit readout
-  (`exchange_unit_readout_complete`). This covers the two-regime exchange
-  itself, not only the single-order case.
+  satisfies R2 and a consumer with any order, for any announced interface.
+  Take as server the equality-free, `x`-free clauses of the ground context:
+  their atoms are ground atoms, which R2 orders only along inclusion of
+  their individual sets, and atoms on Skolem terms `f(o)`, which the
+  term-major order puts above every ground atom. On these atoms KM's
+  relation is a strict partial order (the Sequoia/term-major order is; R2
+  keeps a comparison `A < B` only when the individuals of `A` are among those
+  of `B`, which composes; this step is argued from `calc::pred_lteq`, not
+  mechanised), and every comparison that ends at an interface atom starts at
+  an interface atom. `downward_server_complete` then gives completeness of
+  the exchange; its lemma `exists_rank_extending_lower` builds the linear
+  extension with the interface at the bottom
+  (`unordered_server_complete_for_every_interface` is the special case of a
+  server without any order). The positive unit readout is
+  `exchange_unit_readout_complete`. This covers the two-regime exchange
+  itself, not only the single-order case. (Literals with `x` can sit between
+  two ground atoms in the term-major order, `B(o1) < r(x,o2) < C(o3)`, and
+  ground equalities likewise; they are not atoms of the server clause set, so
+  they impose no comparison there.)
 - **Argued, not proved.** (a) The correspondence between KM's guard and the
   theorem's `ExchangeCond`: KM delivers the clauses inside the interface whose
   body atoms the receiver pushed (r-Succ hypotheses); a receiver that never
@@ -204,7 +259,57 @@ The claim is therefore: the context regime meets the ground-level standard of
 different orders, and it removes both known counterexamples. It is not a
 first-order completeness proof, and the equality gap of the guard remains.
 
-## 7. Measurements
+## 7. Measurements and rejected variants
 
-See docs/NOMINALS-CB.md section 9 and
+Numbers: docs/NOMINALS-CB.md section 9 and
 `results/agents/2026-10-29/per-context-order/`.
+
+Rejected variants, measured:
+
+- *Unordered in the ground context, Sequoia elsewhere* (the original
+  proposal). The ground context's own work is the cost: on the bug-1
+  reproducer the ground context ends with 22 762 worked-off clauses when every
+  non-query context is unordered, exactly as many as under the fully
+  unordered regime, against 1 544 under the plain Sequoia ordering
+  (`km classify`: 100 s with only the query contexts ordered, 0.17 s plain
+  Sequoia; `km engine`: 158 s unordered). The
+  variant with only the query contexts ordered was measured; the ground
+  context alone was not isolated, the count shows where the time goes.
+- *Same-term ground literals unordered, nothing else* (`KM_EXP_GROUND_FREE`
+  of the 2026-10-28 attempt). Fast (0.18 s on bug 1) but still loses seed 297:
+  the loss is the guard, not the order on one individual.
+- *R2 with all ground atoms pairwise incomparable.* Removes `p1`, but
+  restores the per-individual disjunction blow-up in the ground context
+  (`ore_ont_10874` and `ore_ont_9800` past 300 s at engine level).
+- *R2 without its equality part.* Loses seed297_min on the `nominals` route
+  depending on the work order (section 4).
+- *R1 + R3 without R2.* Fast and answers seed 297, but misses `p1` on the
+  `nominals` and `certified_nominals` routes, like the unordered regime.
+
+HermiT differential under the context regime (60 s cap per run; routes
+`auto`, `nominals`, `certified_nominals`; every run that was not `ok` rerun
+with `KM_NO_SEQ_ORDER=1`):
+
+| set | runs | ok | wrong | timeout | no answer (RSS limit) |
+|---|---|---|---|---|---|
+| sorts_differential fixtures (11) | 33 | 33 | 0 | 0 | 0 |
+| generated, no inverse roles (400) | 1200 | 795 | 3 | 395 | 7 |
+| generated, with inverse roles (100) | 300 | 215 | 0 | 85 | 0 |
+| ALCHIQ seeds `sq/` (300) | 900 | 883 | 0 | 14 | 0 |
+
+The three wrong runs are `m2197` on every route: KM reports the ontology
+inconsistent, HermiT consistent; the unordered regime gives the same wrong
+answer in 0.02 s, so the context regime does not cause it (it is outside the
+CB ordering; the file has `SubClassOf(owl:Thing ObjectOneOf(:a))` next to data
+properties). Of the 494 timeouts and 7 RSS-limit stops, 480 also fail under
+the unordered regime; 21 runs on 9 files answer under the unordered regime
+within 60 s (`m2063`, `m2100`, `m2215`, `m2229`, `m2276`, `m2296`, `m2303`,
+`n1052`, and `g56` on `nominals`, where R2 is off because the file has no
+individuals). No run answered differently from HermiT under the context
+regime where the unordered regime answered correctly. Three `sq/` runs
+(`g282`) have no HermiT answer within 300 s.
+
+Cost of R2 where it is active: on `m2063` the automatic route takes 2.4 s
+unordered, 12 s plain Sequoia, 12.8 s with `KM_CONTEXT_NO_R2`, and more than
+40 s under the context regime. R2 widens Hyper joins over ground atoms of
+different individuals; the other eight slower files were not analysed.
