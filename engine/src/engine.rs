@@ -880,6 +880,14 @@ fn rsucc_blocked(ctx: &Context, arena: &[ContextClause], c: &ContextClause, a: &
 /// `true` if the clause mentions the central variable x anywhere (such
 /// ground-context clauses are instantiated per individual-labelled edge by the
 /// Pred back-substitution, so they keep the per-edge propagation path).
+/// `→ o ≈ o'` between two individuals: the clause the context regime delivers
+/// across the announced-individual guard (`calc::eq_announce`).
+fn ground_unit_equality(c: &ContextClause) -> bool {
+    c.body.is_empty()
+        && c.head.len() == 1
+        && matches!(c.head[0], Lit::Eq { s, t } if is_individual(s) && is_individual(t))
+}
+
 fn cc_mentions_x(c: &ContextClause) -> bool {
     fn px(p: &Pred) -> bool {
         match *p {
@@ -7386,7 +7394,9 @@ impl Engine {
                             }
                             ok = inds.iter().all(|o| {
                                 *o >= self.nom_base || ctx.predecessors.contains_key(&(u, *o))
-                            });
+                            }) || (eq_announce()
+                                && ground_unit_equality(c)
+                                && inds.iter().any(|o| ctx.predecessors.contains_key(&(u, *o))));
                         }
                         if ok {
                             let edge = (u, label);
@@ -7555,7 +7565,11 @@ impl Engine {
                     lit_inds(l, &mut inds);
                 }
                 let Some(&label) = inds.iter().find(|o| new.contains(o)) else { continue };
-                if !inds.iter().all(|o| *o >= self.nom_base || gctx.predecessors.contains_key(&(id, *o))) {
+                // Context regime: a ground equality follows either announced
+                // side (`calc::eq_announce`, docs/PER-CONTEXT-ORDERING.md).
+                if !inds.iter().all(|o| *o >= self.nom_base || gctx.predecessors.contains_key(&(id, *o)))
+                    && !(eq_announce() && ground_unit_equality(c))
+                {
                     continue;
                 }
                 let edge = (id, label);
