@@ -1,0 +1,9 @@
+Prefix(:=<http://x/>)
+Ontology(<http://x/p1>
+Declaration(Class(:B)) Declaration(Class(:C)) Declaration(Class(:Q)) Declaration(ObjectProperty(:r))
+Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+SubClassOf(ObjectSomeValuesFrom(:r ObjectComplementOf(:B)) :C)
+ObjectPropertyAssertion(:r :b :a)
+ClassAssertion(ObjectComplementOf(:C) :b)
+SubClassOf(:Q ObjectOneOf(:a))
+)

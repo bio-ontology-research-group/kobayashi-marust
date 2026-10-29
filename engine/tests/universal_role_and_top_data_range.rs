@@ -16,10 +16,11 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 const BOUND: Duration = Duration::from_secs(10);
-/// Inputs with nominals and data values run on the complete unordered
-/// regime, which is much slower than the incomplete Sequoia ordering it
-/// replaced (docs/NOMINALS-CB.md section 7): about 100 s per route for the
-/// bug-1 reproducer and up to 66 s for the sort-differential fixtures.
+/// Inputs with nominals and data values. Under the v1.5.4 unordered regime
+/// the bug-1 reproducer took about 100 s per route and the sort-differential
+/// fixtures up to 66 s (docs/NOMINALS-CB.md section 7); the context regime
+/// (docs/PER-CONTEXT-ORDERING.md) answers each in under 2 s. The bound stays
+/// generous so that a `KM_NO_SEQ_ORDER` run still fits.
 const NOMINAL_EXACT_BOUND: Duration = Duration::from_secs(240);
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 
@@ -284,8 +285,8 @@ fn universal_role_restrictions_are_complete() {
 #[test]
 fn nominal_top_role_reproducer() {
     for route in NOMINAL_ROUTES {
-        // About 100 s per nominal route under the exact regime
-        // (docs/NOMINALS-CB.md section 7; 0.17 s with the Sequoia ordering).
+        // About 100 s per nominal route under the v1.5.4 unordered regime,
+        // 0.3 s under the context regime (docs/NOMINALS-CB.md section 8).
         let (answer, elapsed) = classify_on_within(NOMINAL_TOP_ROLE, route, NOMINAL_EXACT_BOUND);
         assert!(elapsed < NOMINAL_EXACT_BOUND, "{route:?}");
         assert!(answer.consistent, "{route:?}");
@@ -300,9 +301,10 @@ fn nominal_top_role_reproducer() {
 /// instantiated at the value. `W2 ≡ F ⊓ (u value 1)` and
 /// `W3 ≡ S6 ⊓ (u value 1)` stay satisfiable (HermiT: `W2 ⊑ F ⊑ T1`,
 /// `W3 ⊑ S6`, nothing unsatisfiable).
+///
+/// No answer within 600 s under the v1.5.4 unordered regime; under 1 s per
+/// route under the context regime (docs/NOMINALS-CB.md section 8).
 #[test]
-#[ignore = "exact nominal regime: no answer within 600 s on the automatic route \
-            (docs/NOMINALS-CB.md section 7)"]
 fn data_value_next_to_universal_role_hub_stays_satisfiable() {
     let text = hub_with_data_values();
     let expected = hub_with_data_values_expected();
@@ -316,14 +318,13 @@ fn data_value_next_to_universal_role_hub_stays_satisfiable() {
     assert_forced_default_refuses(&text);
 }
 
-/// The hub + data-value case on the nominal CB route only. Under the exact
-/// regime it does not answer within 1800 s on `nominals` or
-/// `certified_nominals` (docs/NOMINALS-CB.md section 7); kept, ignored, so
-/// that it can be re-enabled when the ordering question is settled.
+/// The hub + data-value case on the nominal CB route only. Under the v1.5.4
+/// unordered regime it did not answer within 1800 s on `nominals` or
+/// `certified_nominals` (docs/NOMINALS-CB.md section 7); the context regime
+/// answers in under 1 s (section 8).
 #[test]
-#[ignore = "exact nominal regime: no answer within 1800 s on nominals (docs/NOMINALS-CB.md section 7)"]
 fn data_value_next_to_universal_role_hub_on_nominals() {
-    let bound = Duration::from_secs(1800);
+    let bound = NOMINAL_EXACT_BOUND;
     let (answer, elapsed) = classify_on_within(&hub_with_data_values(), Some("nominals"), bound);
     assert!(elapsed < bound);
     assert!(answer.consistent);

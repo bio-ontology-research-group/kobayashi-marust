@@ -683,8 +683,15 @@ pub fn set_seq_order_auto(on: bool) {
     } else if !on {
         0
     } else if std::env::var_os("KM_NOMINALS").is_some() {
-        // Flag-only until validated: nominal mode keeps the unordered regime.
-        0
+        // The CB certification surface models the literal order and the
+        // r-Pred announcement guard exactly (`CBSourceHyperClosure.predLe`,
+        // `CBRootPredSendEnumeration`), not R2/R3 of the context regime, so a
+        // run that must publish a Lean certificate keeps the unordered regime.
+        if std::env::var_os("KM_CB_LEAN_REQUIRED").is_some() {
+            0
+        } else {
+            SEQ_ORDER_CONTEXT
+        }
     } else {
         1
     };
