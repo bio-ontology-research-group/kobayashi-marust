@@ -3767,6 +3767,172 @@ fn partial_absorption_trigger(
     result
 }
 
+/// True when a clause literal names a definer marker that the clause bridge
+/// resolved to a native concept. Such a clause must be encoded over the
+/// resolved concepts only: the marker atom has no definition of its own, so
+/// mixing it with resolved occurrences disconnects the two representations.
+fn clause_uses_resolved_marker(
+    cl: &HtClause,
+    named: &[ConceptId],
+    resolved: &[(ConceptId, bool)],
+) -> bool {
+    cl.body.iter().chain(cl.head.iter()).any(|atom| match atom {
+        HAtom::Concept { c, .. } | HAtom::Exist { c, .. } => resolved[*c] != (named[*c], false),
+        _ => false,
+    })
+}
+
+/// Structural key of a signed concept in negation normal form. Builder
+/// concepts are not hash-consed, so syntactic tautology tests compare keys.
+fn nnf_concept_key(b: &Builder, concept: (ConceptId, bool), depth: usize) -> String {
+    let (id, negated) = concept;
+    let c = b.ctx.ontology_arenas().concept(id);
+    let op_code = c.get_operator_code();
+    let operands: Vec<(ConceptId, bool)> = c
+        .get_operand_list()
+        .iter()
+        .map(|operand| (operand.target, operand.negated))
+        .collect();
+    let role = c.get_role();
+    let parameter = c.get_parameter();
+    let atom = || format!("{}a{}", if negated { "-" } else { "" }, id.raw);
+    if depth > 32 {
+        return atom();
+    }
+    let sub = |operand: (ConceptId, bool), flip: bool| {
+        nnf_concept_key(b, (operand.0, operand.1 ^ flip), depth + 1)
+    };
+    match op_code {
+        op::CCTOP => (if negated { "F" } else { "T" }).to_string(),
+        op::CCBOTTOM => (if negated { "T" } else { "F" }).to_string(),
+        op::CCAND | op::CCOR => {
+            let conjunctive = (op_code == op::CCAND) != negated;
+            let mut keys: Vec<String> = operands.iter().map(|&o| sub(o, negated)).collect();
+            keys.sort();
+            keys.dedup();
+            format!("{}({})", if conjunctive { "and" } else { "or" }, keys.join(","))
+        }
+        op::CCSOME | op::CCALL if operands.len() == 1 => {
+            let existential = (op_code == op::CCSOME) != negated;
+            format!(
+                "{}{}.{}",
+                if existential { "some" } else { "all" },
+                role.raw,
+                sub(operands[0], negated)
+            )
+        }
+        op::CCATLEAST | op::CCATMOST if operands.len() <= 1 => {
+            let filler = operands.first().map(|&o| sub(o, false)).unwrap_or_default();
+            // ¬≥n R.C = ≤(n-1) R.C and ¬≤n R.C = ≥(n+1) R.C.
+            let (at_least, n) = match (op_code == op::CCATLEAST, negated) {
+                (true, false) => (true, parameter),
+                (true, true) => (false, parameter - 1),
+                (false, false) => (false, parameter),
+                (false, true) => (true, parameter + 1),
+            };
+            format!("{}{}{}.{}", if at_least { "ge" } else { "le" }, n, role.raw, filler)
+        }
+        _ => atom(),
+    }
+}
+
+/// Split a signed concept into its top-level disjuncts (`⊔`, or a negated
+/// `⊓`), or into its top-level conjuncts when `conjunctive` is set.
+fn flatten_signed(
+    b: &Builder,
+    literal: (ConceptId, bool),
+    conjunctive: bool,
+    out: &mut Vec<(ConceptId, bool)>,
+) {
+    let (id, negated) = literal;
+    let c = b.ctx.ontology_arenas().concept(id);
+    let splits = match c.get_operator_code() {
+        op::CCOR => !conjunctive != negated,
+        op::CCAND => conjunctive != negated,
+        _ => false,
+    };
+    if splits {
+        let operands: Vec<(ConceptId, bool)> = c
+            .get_operand_list()
+            .iter()
+            .map(|operand| (operand.target, operand.negated ^ negated))
+            .collect();
+        for operand in operands {
+            flatten_signed(b, operand, conjunctive, out);
+        }
+    } else {
+        out.push(literal);
+    }
+}
+
+/// Syntactic validity test for the GCI `⊓body ⊑ ⊔heads`, read as the
+/// disjunction `⊔¬body ⊔ ⊔heads`: it holds when a disjunct is TOP, when two
+/// disjuncts are complementary, or when every conjunct of a conjunctive
+/// disjunct has its complement among the disjuncts. Resolution turns the
+/// frontend's definer clauses (`Q → C ∨ D` for `Q = C ⊔ D`, `C(y) ∧ R(x,y)
+/// → Q(x)` for `Q = ∃R.C`) into such tautologies.
+fn resolved_gci_is_tautology(
+    b: &Builder,
+    body: &[(ConceptId, bool)],
+    heads: &[(ConceptId, bool)],
+) -> bool {
+    let mut disjuncts = Vec::new();
+    for &(c, n) in body {
+        flatten_signed(b, (c, !n), false, &mut disjuncts);
+    }
+    for &head in heads {
+        flatten_signed(b, head, false, &mut disjuncts);
+    }
+    let keys: BTreeSet<String> = disjuncts.iter().map(|&d| nnf_concept_key(b, d, 0)).collect();
+    if keys.contains("T") {
+        return true;
+    }
+    let complement_present = |literal: (ConceptId, bool)| {
+        let key = nnf_concept_key(b, (literal.0, !literal.1), 0);
+        key == "F" || keys.contains(&key)
+    };
+    disjuncts.iter().any(|&d| {
+        if complement_present(d) {
+            return true;
+        }
+        let mut conjuncts = Vec::new();
+        flatten_signed(b, d, true, &mut conjuncts);
+        conjuncts.len() > 1 && conjuncts.iter().all(|&c| complement_present(c))
+    })
+}
+
+/// Install `⊓body ⊑ ⊔heads` on TOP as the disjunction `⊔¬body ⊔ ⊔heads`,
+/// unless that disjunction is a syntactic tautology.
+fn install_resolved_top_gci(
+    b: &mut Builder,
+    body: &[(ConceptId, bool)],
+    heads: &[(ConceptId, bool)],
+    tbox: &mut Vec<ConceptId>,
+    top_gcis: &mut Vec<ConceptId>,
+) {
+    if resolved_gci_is_tautology(b, body, heads) {
+        return;
+    }
+    let mut ops: Vec<(ConceptId, bool)> = body.iter().map(|&(c, n)| (c, !n)).collect();
+    ops.extend_from_slice(heads);
+    let keys: Vec<String> = ops.iter().map(|&o| nnf_concept_key(b, o, 0)).collect();
+    let mut unique = Vec::new();
+    let mut seen = BTreeSet::new();
+    for (op, key) in ops.into_iter().zip(keys) {
+        if key != "F" && seen.insert(key) {
+            unique.push(op);
+        }
+    }
+    let disjunction = if unique.is_empty() {
+        (b.bottom(), false)
+    } else {
+        b.or_of(&unique)
+    };
+    let gci = b.implication(disjunction, &[]);
+    tbox.push(gci);
+    top_gcis.push(gci);
+}
+
 /// Port of the full/partial GCI split in
 /// `createGCIAbsorbedTriggeredImplication`. `body` contains conjunctive
 /// antecedents; `heads` contains the disjunctive consequent. Fully triggerable
@@ -5170,6 +5336,11 @@ fn bridge_tinput_with_trigger_absorption(
             if card_markers.contains(&marker) {
                 continue;
             }
+            // Classification reads queries off their atoms; a query must keep
+            // its atom as the only representation.
+            if !tin.queries.is_empty() && active_class[marker] {
+                continue;
+            }
             let operands: Option<Vec<(ConceptId, bool)>> = d
                 .operands
                 .iter()
@@ -6433,6 +6604,10 @@ fn bridge_tinput_with_trigger_absorption(
                         .iter()
                         .map(|&(c, negated)| (resolved[c].0, resolved[c].1 ^ negated))
                         .collect();
+                    let uses_resolved = clause_uses_resolved_marker(cl, &named, &resolved);
+                    if uses_resolved && resolved_gci_is_tautology(&b, &body_ops, &head_ops) {
+                        continue 'clause;
+                    }
                     if absorb_concept_disjunction(
                         &mut b,
                         &body_ops,
@@ -6440,6 +6615,16 @@ fn bridge_tinput_with_trigger_absorption(
                         &role_inverses,
                         &mut trigger_caches,
                     ) {
+                        continue 'clause;
+                    }
+                    if uses_resolved {
+                        install_resolved_top_gci(
+                            &mut b,
+                            &body_ops,
+                            &head_ops,
+                            &mut tbox,
+                            &mut top_gcis,
+                        );
                         continue 'clause;
                     }
                 }
@@ -6591,6 +6776,10 @@ fn bridge_tinput_with_trigger_absorption(
                     }
                 }
 
+                let uses_resolved = clause_uses_resolved_marker(cl, &named, &resolved);
+                if uses_resolved && resolved_gci_is_tautology(&b, &body_ops, &head_ops) {
+                    continue 'clause;
+                }
                 if absorb_concept_disjunction(
                     &mut b,
                     &body_ops,
@@ -6598,6 +6787,10 @@ fn bridge_tinput_with_trigger_absorption(
                     &role_inverses,
                     &mut trigger_caches,
                 ) {
+                    continue 'clause;
+                }
+                if uses_resolved {
+                    install_resolved_top_gci(&mut b, &body_ops, &head_ops, &mut tbox, &mut top_gcis);
                     continue 'clause;
                 }
             }
@@ -6676,6 +6869,98 @@ fn bridge_tinput_with_trigger_absorption(
                 continue;
             }
             let _ = r;
+            if trigger_absorb && clause_uses_resolved_marker(cl, &named, &resolved) {
+                // The clause mentions a resolved definer marker. Encode the
+                // equivalent GCI `⊓Bx ⊑ ⊔Hx ⊔ ∀R.(⊔¬By ⊔ ⊔Hy)` over the resolved
+                // concepts so the marker atom never appears in the encoding.
+                let lit = |b: &mut Builder, a: &HAtom| -> (ConceptId, bool) {
+                    match a {
+                        HAtom::Concept { neg, c, .. } => (resolved[*c].0, resolved[*c].1 ^ *neg),
+                        HAtom::Exist { r, neg, c, .. } => {
+                            let filler = (resolved[*c].0, resolved[*c].1 ^ *neg);
+                            (b.some(roles[*r], filler), false)
+                        }
+                        _ => unreachable!("filtered above"),
+                    }
+                };
+                let mut body_x = Vec::new();
+                let mut y_ops = Vec::new();
+                for a in &cl.body {
+                    if let HAtom::Concept { t: at, .. } = a {
+                        let (c, n) = lit(&mut b, a);
+                        if *at == 0 {
+                            body_x.push((c, n));
+                        } else {
+                            y_ops.push((c, !n));
+                        }
+                    }
+                }
+                let mut head_x = Vec::new();
+                let mut head_y = Vec::new();
+                for a in &cl.head {
+                    let at = match a {
+                        HAtom::Concept { t, .. } | HAtom::Exist { t, .. } => *t,
+                        _ => unreachable!("filtered above"),
+                    };
+                    if at == 0 {
+                        head_x.push(lit(&mut b, a));
+                    } else if matches!(a, HAtom::Exist { .. }) {
+                        unsupported += 1;
+                        dump(cl, "nested-exist-under-forall");
+                        continue 'clause;
+                    } else {
+                        head_y.push(lit(&mut b, a));
+                    }
+                }
+                if body_x.is_empty() && y_ops.is_empty() && head_y.is_empty() {
+                    // `R(x,y) → ⊔Hx`: a role domain.
+                    let target = if head_x.is_empty() {
+                        (b.bottom(), false)
+                    } else {
+                        b.or_of(&head_x)
+                    };
+                    let link = super::model::substrate::NegLink {
+                        target: target.0,
+                        negated: target.1,
+                    };
+                    b.ctx.ontology_arenas_mut().role_mut(roles[r]).domain_linker.push(link);
+                    b.ctx.ontology_arenas_mut().role_mut(inv_roles[r]).range_linker.push(link);
+                    continue 'clause;
+                }
+                if body_x.is_empty() && y_ops.is_empty() && head_x.is_empty() {
+                    // `R(x,y) → ⊔Hy`: a role range.
+                    let target = b.or_of(&head_y);
+                    let link = super::model::substrate::NegLink {
+                        target: target.0,
+                        negated: target.1,
+                    };
+                    b.ctx.ontology_arenas_mut().role_mut(roles[r]).range_linker.push(link);
+                    b.ctx.ontology_arenas_mut().role_mut(inv_roles[r]).domain_linker.push(link);
+                    continue 'clause;
+                }
+                y_ops.extend(head_y);
+                let y_disj = if y_ops.is_empty() {
+                    (b.bottom(), false)
+                } else {
+                    b.or_of(&y_ops)
+                };
+                let mut heads = head_x;
+                heads.push((b.all(roles[r], y_disj), false));
+                if resolved_gci_is_tautology(&b, &body_x, &heads) {
+                    continue 'clause;
+                }
+                if absorb_concept_disjunction(
+                    &mut b,
+                    &body_x,
+                    &heads,
+                    &role_inverses,
+                    &mut trigger_caches,
+                ) {
+                    continue 'clause;
+                }
+                install_resolved_top_gci(&mut b, &body_x, &heads, &mut tbox, &mut top_gcis);
+                continue 'clause;
+            }
             let mut triggers: Vec<(ConceptId, bool)> = Vec::new(); // at x
             let mut succ_body: Vec<(ConceptId, bool)> = Vec::new(); // at y
             for a in &cl.body {
