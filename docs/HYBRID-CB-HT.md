@@ -266,6 +266,27 @@ Fixtures: `engine/tests/fixtures/bridge_atmost_zero/`, run by
 `engine/tests/bridge_atmost_zero.rs` on auto, production_all, ht_bridge and
 ht_bridge with `KM_NO_SOURCE_TBOX=1`. Measurements:
 `results/agents/2026-10-29/cb-inverse-top/`.
+
+Open: clause-translation `≤2` with a counted predecessor. The forced clause
+translation (`KM_NO_SOURCE_TBOX=1`) misses the eight `≤2` probes in
+`engine/tests/bridge_atmost_predecessor.rs` (ignored test
+`ht_bridge_clause_translation_known_misses`). A temporary trace of
+`is_critical_atmost_concept_descriptor_insufficient` (saturation/s09.rs) and
+`mark_atmost_restricted_ancestors_as_insufficient` (saturation/s08.rs) on
+`inv_atmost2_u_pred` showed the same input on both paths: the same `≤2`
+concept with qualifier TOP, the same linked successors (count 2, found 2,
+nothing mergeable), the same verdict (not insufficient, ancestors possibly
+critical), and the same backward-propagation roles at the ancestor marking.
+The saturation node flags and the unknown-subject count also matched. The
+one difference is the role object: the clause translation gives the at-most
+the named role `__inv__s`, while the source TBox gives the wired inverse of
+`s`. Building `__inv__s` as that inverse object made the at-most input
+identical and did not fix the miss. `KM_HT_NO_SATCACHE=1` (saturation on,
+saturation-node coupling in the residue probes off) answers all eight, so the
+miss is in the completion's expand-from-saturation and caching-blocking
+coupling, not in the saturation's at-most rule or the translation. The fix
+belongs to that coupling (v1.5.5 work); no automatic route uses the clause
+translation for an input with a `≤2` restriction.
 ## 9. Subset blocking and backward clauses
 
 The worker's default blocking (mode 1, anywhere subset) blocks a node `w` by
