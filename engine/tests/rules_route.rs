@@ -23,6 +23,12 @@ fn fixture(name: &str) -> String {
 /// Run `km classify` with a scrubbed KM_* environment and a hard wall-clock
 /// bound (a precheck regression manifests as an unbounded engine run, which
 /// must fail this suite, not hang it).
+///
+/// After a consistent rule precheck the named route classifies the TBox with
+/// the CB worker, which drops the ground ABox clauses (published `DROPPED 2`
+/// on the consistent fixtures). A forced route refuses such an answer unless
+/// `KM_ALLOW_APPROXIMATE=1`, so the selected-route runs opt in; these tests
+/// check the precheck and the fall-through taxonomy, not completeness.
 fn classify(args: &[&str], ontology: &str) -> Output {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_km"));
     cmd.arg("classify");
@@ -34,6 +40,9 @@ fn classify(args: &[&str], ontology: &str) -> Output {
         }
     }
     cmd.env("KM_TIMING", "1");
+    if args.contains(&"--route") {
+        cmd.env("KM_ALLOW_APPROXIMATE", "1");
+    }
     cmd.stdin(Stdio::null());
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());

@@ -15,6 +15,10 @@ struct Answer {
 }
 
 /// `km classify --lines` on `text`; `None` when the route refuses the input.
+/// A selected route refuses a consistent answer with a drop unless
+/// `KM_ALLOW_APPROXIMATE=1` (tests/forced_route_fail_closed.rs); several
+/// tests below check that such an answer counts its drop, so selected routes
+/// opt in, and the `APPROXIMATE` marker must match the count.
 fn classify(text: &str, route: Option<&str>) -> Option<Answer> {
     let path = std::env::temp_dir().join(format!(
         "km-has-key-{}-{}.ofn",
@@ -30,6 +34,7 @@ fn classify(text: &str, route: Option<&str>) -> Option<Answer> {
     }
     if let Some(route) = route {
         command.env("KM_ROUTE", route);
+        command.env("KM_ALLOW_APPROXIMATE", "1");
     }
     command.args(["classify", "--lines"]).arg(&path).stdout(Stdio::piped()).stderr(Stdio::null());
     let started = Instant::now();
@@ -63,6 +68,9 @@ fn classify(text: &str, route: Option<&str>) -> Option<Answer> {
         }
     }
     assert_ne!(answer.dropped, usize::MAX, "DROPPED line missing:\n{stdout}");
+    let approximate = stdout.lines().any(|line| line.starts_with("APPROXIMATE\t"));
+    assert_eq!(approximate, route.is_some() && answer.consistent && answer.dropped > 0,
+        "{route:?}: APPROXIMATE marker vs DROPPED {}", answer.dropped);
     Some(answer)
 }
 

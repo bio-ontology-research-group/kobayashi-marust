@@ -292,6 +292,7 @@ fn nominal_top_role_reproducer() {
         assert!(answer.unsat.is_empty(), "{route:?}");
         assert_eq!(answer.subs, pairs(&[("urn:q#F", "urn:q#T1")]), "{route:?}");
     }
+    assert_forced_default_refuses(NOMINAL_TOP_ROLE);
 }
 
 /// The sort encoding must not make the data value itself unsatisfiable: a
@@ -312,6 +313,7 @@ fn data_value_next_to_universal_role_hub_stays_satisfiable() {
         assert!(answer.unsat.is_empty(), "{route:?}: {:?}", answer.unsat);
         assert_eq!(answer.subs, expected, "{route:?}");
     }
+    assert_forced_default_refuses(&text);
 }
 
 /// The hub + data-value case on the nominal CB route only. Under the exact
@@ -370,6 +372,7 @@ fn data_range_complement_excluded_middle_still_applies_to_values() {
         assert!(answer.unsat.is_empty(), "{route:?}");
         assert_eq!(answer.subs, pairs(&[("urn:q#A", "urn:q#C")]), "{route:?}");
     }
+    assert_forced_default_refuses(text);
 }
 
 /// The `⊤` definer is shared between `owl:Thing` and the `rdfs:Literal`
@@ -399,6 +402,10 @@ fn data_property_range_over_the_shared_top_definer_stays_satisfiable() {
         assert!(answer.unsat.is_empty(), "{route:?}: {:?}", answer.unsat);
         assert!(answer.subs.is_empty(), "{route:?}: {:?}", answer.subs);
     }
+    // No nominal, and `a : owl:Thing` constrains nothing: the selected
+    // `default` route represents this input and answers it exactly.
+    let (answer, _) = classify_on(text, Some("default"));
+    assert!(answer.consistent && answer.unsat.is_empty() && answer.subs.is_empty(), "default: {answer:?}");
 }
 
 /// The datatype agent's reproducer: `Has ≡ ≥1 d` reifies `⊤` with only
@@ -423,6 +430,7 @@ fn data_sorted_top_definer_keeps_data_values_satisfiable() {
         assert_eq!(answer.unsat, names(&[":V"]), "{route:?}");
         assert!(answer.subs.is_empty(), "{route:?}: {:?}", answer.subs);
     }
+    assert_forced_default_refuses(text);
 }
 
 /// Object and data assertions on the same individual, next to a `⊤ ⊑ ∃r.{b}`
@@ -467,18 +475,45 @@ fn mixed_object_and_data_assertions_on_one_individual() {
         assert!(answer.unsat.is_empty(), "{route:?}");
         assert_eq!(answer.subs, expected, "{route:?}");
     }
+    assert_forced_default_refuses(text);
 }
 
 /// Every route that a nominal input can take. `auto` and the three
 /// portfolios run the nominal CB calculus as their exact fallback.
-const NOMINAL_ROUTES: [Option<&str>; 6] = [
+const NOMINAL_ROUTES: [Option<&str>; 5] = [
     None,
     Some("nominals"),
     Some("certified_nominals"),
     Some("nominal_ni_abox"),
     Some("certified_card_proxy_abox"),
-    Some("default"),
 ];
+
+/// The selected `default` route has no nominal clausification: it keeps a
+/// nominal as a proxy class without its singleton and existence clauses, and
+/// it drops the ABox of individuals no nominal names. On these inputs it used
+/// to publish answers that agreed with the expected ones only through that
+/// approximation; a forced route now refuses them (exit 3) and names what it
+/// drops (tests/forced_route_fail_closed.rs).
+fn assert_forced_default_refuses(text: &str) {
+    let fixture = Fixture::new(text);
+    let mut command = Command::new(env!("CARGO_BIN_EXE_km"));
+    for (key, _) in std::env::vars_os() {
+        if key.to_string_lossy().starts_with("KM_") {
+            command.env_remove(key);
+        }
+    }
+    let output = command
+        .env("KM_ROUTE", "default")
+        .args(["classify", "--lines"])
+        .arg(&fixture.0)
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(3), "forced default: {stderr}");
+    assert!(output.stdout.is_empty(), "forced default published an answer");
+    assert!(stderr.contains("route `default` drops"), "{stderr}");
+    assert!(stderr.contains("the answer would be approximate"), "{stderr}");
+}
 
 fn data_value_case(body: &str) -> String {
     format!(
@@ -573,6 +608,7 @@ fn data_value_singleton_next_to_nominal_successors() {
             assert_eq!(answer.unsat, names(unsat), "{name} on {route:?}");
             assert!(answer.subs.is_empty(), "{name} on {route:?}: {:?}", answer.subs);
         }
+        assert_forced_default_refuses(text);
     }
 }
 
