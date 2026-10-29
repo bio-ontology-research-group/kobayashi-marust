@@ -116,8 +116,9 @@ pub struct FrontendResult {
     /// A forced route reads a one-sorted clause stream on an input with a
     /// TBox nominal where the sort encoding would apply: it may publish no
     /// verdict at all
-    /// (docs/ROUTING.md, "Forced routes"). Always false under automatic
-    /// routing.
+    /// (docs/ROUTING.md, "Forced routes"); under automatic routing the
+    /// rule-consistency checker does not publish an inconsistency found on
+    /// such a stream.
     pub one_sorted_data_successors: bool,
 }
 
@@ -1948,8 +1949,9 @@ fn ofn_to_clauses_representation(
     // anonymous, so nothing forces them onto a named element
     // (docs/NOMINALS-CB.md section 6). The bridge-exclusive worker
     // (`KM_HT_ONLY=bridge`) is exempt: it reads the typed source and its
-    // datatype gate defers on these inputs itself. Recorded for explicitly
-    // selected routes only, like `route_approximations`.
+    // datatype gate defers on these inputs itself. A forced route then
+    // publishes no verdict; under automatic routing the rule-consistency
+    // checker does not publish an inconsistency from such a stream.
     let bridge_only = std::env::var("KM_HT_ONLY").ok().as_deref() == Some("bridge");
     let one_sorted_stream = !nominals_mode
         && nominal_proxies > 0
@@ -1958,7 +1960,7 @@ fn ofn_to_clauses_representation(
     if one_sorted_stream && automatic && std::env::var_os("KM_TIMING").is_some() {
         eprintln!("KM_TIMING frontend: one-sorted data successors under automatic route {}", route.as_str());
     }
-    let one_sorted_data_successors = !automatic && one_sorted_stream;
+    let one_sorted_data_successors = one_sorted_stream;
     if nominals_mode && has_individuals && sorts::applies(&tbox, &data_roles) {
         let proxies: BTreeMap<String, String> = nominal_abox
             .individuals

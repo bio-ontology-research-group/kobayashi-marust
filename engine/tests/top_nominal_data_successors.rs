@@ -259,3 +259,38 @@ fn forced_one_sorted_route_refuses_both_verdicts() {
     let stdout = String::from_utf8_lossy(&marked.stdout);
     assert!(stdout.lines().any(|line| line.starts_with("APPROXIMATE\t")), "{stdout}");
 }
+
+/// A binary DL-safe rule is not lowered, so the automatic route runs the rule
+/// consistency checker over the one-sorted clause stream, which reads the
+/// `u`-successors under `⊤ ⊑ {a}` (or `{a, b}` with `≥3 u`) as objects. It
+/// used to publish "inconsistent" on all three consistent inputs (HermiT:
+/// consistent). The checker's inconsistency is no longer published there;
+/// the route answers consistent (with the unapplied rules counted) or fails
+/// closed, and never publishes the wrong verdict. The genuine clash
+/// (`¬B(a)` with the rule's `B(a)`) must not turn into a consistent answer.
+#[test]
+fn rule_checker_does_not_publish_a_one_sorted_inconsistency() {
+    let run = |name: &str, route: Option<&str>| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_km"));
+        for (key, _) in std::env::vars_os() {
+            if key.to_string_lossy().starts_with("KM_") {
+                command.env_remove(key);
+            }
+        }
+        if let Some(route) = route {
+            command.env("KM_ROUTE", route);
+        }
+        let output = command.args(["classify", "--lines", &fixture(name)]).output().unwrap();
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        let verdict = stdout.lines().find_map(|line| line.strip_prefix("CONSISTENT ")).map(|v| v == "1");
+        (output.status.code(), verdict)
+    };
+    for route in [None, Some("ht_rules")] {
+        for name in ["rule_binary_top_nominal.ofn", "rule_binary_two_nominals.ofn", "rule_binary_nominal_class.ofn"] {
+            let (code, verdict) = run(name, route);
+            assert!(verdict == Some(true) || (verdict.is_none() && code == Some(3)), "{name} {route:?}: {code:?} {verdict:?}");
+        }
+        let (code, verdict) = run("rule_binary_clash.ofn", route);
+        assert!(verdict == Some(false) || (verdict.is_none() && code == Some(3)), "clash {route:?}: {code:?} {verdict:?}");
+    }
+}

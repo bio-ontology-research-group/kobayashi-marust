@@ -38,8 +38,7 @@ pub struct Meta {
     /// `FrontendResult::route_approximations`); read only on a forced route.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub route_approximations: std::collections::BTreeMap<String, u64>,
-    /// See `FrontendResult::one_sorted_data_successors`; read only on a forced
-    /// route.
+    /// See `FrontendResult::one_sorted_data_successors`.
     #[serde(default)]
     pub one_sorted_data_successors: bool,
 }

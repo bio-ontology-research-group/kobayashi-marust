@@ -469,9 +469,10 @@ as follows.
   one-sorted stream is stronger than the ontology, so the rule "an
   inconsistency found on a weakened input is still exact"
   (docs/ROUTING.md, "Forced routes") does not apply. `km classify` exits
-  3; with `KM_ALLOW_APPROXIMATE=1` the answer carries `APPROXIMATE`. The
-  flag is never set under automatic routing, which keeps nominal inputs on
-  mechanisms that carry `KM_NOMINALS` or the typed bridge payload.
+  3; with `KM_ALLOW_APPROXIMATE=1` the answer carries `APPROXIMATE`.
+  Automatic routing keeps nominal inputs on mechanisms that carry
+  `KM_NOMINALS` or the typed bridge payload, except for the rule checker
+  below, which is why the flag is also computed there.
   Individuals alone (an ABox without TBox nominals) do not set it: given a
   two-sorted model, give every data element the labels of an unravelled
   copy of some object (plus its data ranges) with fresh copies of that
@@ -479,6 +480,24 @@ as follows.
   restrictions count the same number of copies as originals, and only a
   nominal concept could force a copy onto a named element, so the
   one-sorted stream has a model whenever the ontology has one.
+
+- DL-safe rules. A unary or constant-data rule is lowered and its run sets
+  `KM_NOMINALS`, so it sees the sorted stream. A binary rule is not
+  lowered: the automatic route sends it to `ht_rules`, whose rule
+  consistency checker (`orchestrate::rules_consistency`, a clausal
+  hypertableau that reads `__nom__` proxies as nominals) ran on the
+  one-sorted stream and published "inconsistent" for `⊤ ⊑ ≥2 u`,
+  `⊤ ⊑ {a}`, `r(a,a)` and `r(x,y) → B(x)` (HermiT: consistent; also with
+  `{a, b}` and `≥3 u`). The frontend now sets `one_sorted_data_successors`
+  under automatic routing too, and the orchestrator does not publish an
+  inconsistency of either rule checker on such a stream. The taxonomy run
+  after the checker does not apply the rules, so it cannot settle the
+  question: the input fails closed (exit 3) on every route that reaches the
+  checker. A consistent checker verdict stays sound, since the one-sorted
+  stream is stronger than the ontology. HasKey over a data property and
+  rules with data atoms already fail closed before the checker. Probes:
+  `rule_*.ofn` in `engine/tests/fixtures/top_nominal_data/`, test
+  `rule_checker_does_not_publish_a_one_sorted_inconsistency`.
 
 Tests: `hermit_answers_on_every_route` and
 `forced_one_sorted_route_refuses_both_verdicts` in

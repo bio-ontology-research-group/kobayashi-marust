@@ -2084,6 +2084,10 @@ fn classify_with_evidence_inner(
         if let Some(source) = meta.profile.finite_rule_class_projection.as_ref() {
             match rules_consistency(initial_cfg, clauses_path.path(), &meta, true)?.map(|v| v.consistent) {
                 Some(true) => {},
+                // Not exact on a one-sorted stream beside a nominal (see the
+                // rule-consistency step below).
+                Some(false) if meta.one_sorted_data_successors => return Err(OrchestrateError::OutOfFragment(
+                    "finite-rule consistency read data successors as objects beside a nominal".into())),
                 Some(false) => return Ok(ClassificationEvidence {
                     classification: Classification { consistent: false, subsumptions: vec![],
                         unsatisfiable: vec![], dropped: 0, approximate: None },
@@ -2837,6 +2841,21 @@ fn classify_with_evidence_inner(
     if cfg.ht_rules {
         let verdict = rules_consistency(cfg, clauses_path.path(), &meta, false)?;
         let represented_ground = verdict.as_ref().map_or(0, |v| v.represented_ground_clauses);
+        // The rule worker reads `__nom__` proxies as nominals over this clause
+        // stream. When the stream is one-sorted beside a TBox nominal and data
+        // properties (`one_sorted_data_successors`), its data successors fall
+        // under `⊤ ⊑ {a}`-style facts and the stream is stronger than the
+        // ontology: an inconsistency found there is not exact (m2197 with a
+        // binary DL-safe rule). The taxonomy below does not apply the rules,
+        // so it cannot decide the question either: fail closed. A consistent
+        // verdict of the stronger stream stays sound.
+        if meta.one_sorted_data_successors && verdict.as_ref().is_some_and(|v| !v.consistent) {
+            return Err(OrchestrateError::OutOfFragment(
+                "DL-safe rule consistency read data successors as objects beside a nominal; \
+                 its inconsistency would not be exact"
+                    .into(),
+            ));
+        }
         match verdict.map(|v| v.consistent) {
             Some(false) => {
                 if timing {
