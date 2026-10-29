@@ -1,4 +1,4 @@
-# KM 1.5.4 release notes (draft; numbers marked TBD are filled at the freeze)
+# KM 1.5.4 release notes
 
 Version 1.5.4 replaces the v1.5.3 route selector, whose numeric bands were
 fitted to known ORE ontologies, with a general routing policy, and fixes
@@ -28,10 +28,12 @@ the general policy against 1,094 under v1.5.3's policy, 0 wrong, 0 lost,
 mean time ratio 1.081, median 1.088 on the 1,094 inputs both solve
 (`results/benchmarks/2026-10-26-v154-routing/RUNS.md`).
 
-Held-out half (585 inputs, run once on the frozen PGO binary): TBD verified
-under the general policy against TBD under v1.5.3's policy, 0 wrong; G8
-against the v1.5.3 PGO release binary on the same node type: mean ratio
-TBD, median TBD (contract: at most 1.10).
+Held-out half (585 inputs, run once on the PGO binary built from this tag)
+and the G8 comparison against the v1.5.3 PGO release binary on the same
+node type (contract: mean and median ratio at most 1.10) are measured after
+the tag is cut; their tables are in `BENCHMARKS.md` among the release
+assets and in `results/benchmarks/2026-10-26-v154-routing/RUNS.md` on the
+release branch.
 
 ## Wrong answers fixed
 
@@ -92,8 +94,9 @@ The CB certificate checker models the unordered regime, so runs with
 
 All four production Lean certification gates (`elc`, `routing`, `ht`, `cb`)
 are executed from the exact tagged commit with zero `sorryAx`, alongside the
-serial Rust CI suite (TBD passed, 0 failed, 22 checker-bound tests run by the
-gates instead) and the 76-test Maven Java suite. Gate receipts: TBD.
+serial Rust CI suite (the 22 checker-bound tests run inside the gates) and
+the 76-test Maven Java suite. The gate receipts, test logs and tool
+bindings are in `build-completion.json` among the release assets.
 
 ## Reproducing and inspecting the release
 
