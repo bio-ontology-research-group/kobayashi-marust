@@ -86,3 +86,64 @@ v1.5.3 sent to the Konclude bridge and the general policy sends to
 Chunk summaries (`chunks/*.json`) and per-input outputs stay under
 `/ibex/scratch/projects/c2014/hohndor/km/v154-routing-20261026/paired-design-<array>/`.
 The held-out half runs once, on the frozen candidate.
+
+## Held-out half (run once, tag v1.5.4, PGO binary)
+
+Binary: profile-guided build of tag `v1.5.4` (commit `80c8f82a`), linked
+with the glibc wrapper so it runs on Ibex, sha256 `5f5901d8…`
+(`km-v154-pgo-5f5901d8…` in the routing root; receipt
+`.work/pgo-v154/pgo-use-bfd-build.json`). A first upload (sha `ac15b822…`)
+needed GLIBC_2.39 and failed on every task; those arrays (54794892,
+54794893) are void and renamed `void-glibc-*`.
+
+Paired run (array 54796887, `run_paired.py`, `KM_HALF=held_out`, 300 s,
+both policies on the same binary): 0 incomplete chunks, 585 inputs; v1.5.3
+policy 556 verified, general policy 558 verified; no wrong answer that is
+not a reference problem (below); lost none; gained 2504 and 802; ratio on
+the 556 common inputs mean 1.070, median 1.104. The eleven inputs the old
+policy sent to the Konclude bridge and the general policy sends to
+`certified_nominals` cost +213 s in total; everything else is within +12 s
+per group.
+
+`ore_ont_3794` (OpenGALEN7 full with property chains) is flagged "wrong"
+under both policies and was already unverified in the v1.5.3 PGO run: KM
+gives the identical taxonomy in both releases, with ten subsumptions that
+Konclude, the only reference with an answer, does not derive. HermiT
+confirms all ten as entailed (`held-out-3794-adjudication/`), so the input
+is a Konclude incompleteness, not a KM defect.
+
+G8 protocol run (array 54796888, `run_combined.py` of the v1.5.3 campaign
+under `g8-v154-80c8f82a/`, 240 s, 20 GiB, scoped watchdog): 558 verified
+against 560 for the v1.5.3 PGO run of 2026-10-25. The two losses are
+amendment cases: 10874 publishes its 879 data-property assertions as
+dropped (amendment 3 also names it), and 7610 was answered by v1.5.3 only
+after silently discarding 613 data-property assertions (amendment 2); with
+the assertions carried, the exact nominal route exceeds the budget.
+
+Against the 2026-10-25 baseline the mean ratio is 1.553 and the median
+1.290. Because node and day effects are large on shared Ibex nodes, the
+v1.5.3 PGO binary was rerun the same evening under the identical protocol
+(array 54801090, `g8-v153-sameday-baseline/`). On the 556 inputs verified
+in all four runs:
+
+| Comparison | mean ratio | median ratio |
+|---|---|---|
+| v1.5.4 protocol run vs v1.5.3 same-day run (G8) | 1.172 | 1.077 |
+| engine only: v1.5.4 binary under the v1.5.3 policy (paired run) vs v1.5.3 binary | 1.025 | 1.151 |
+| policy only: general vs v1.5.3 policy on the v1.5.4 binary (paired run) | 1.070 | 1.104 |
+| noise floor: the same binary and policy in two runs (paired general vs protocol) | 0.936 | 1.179 |
+
+The median satisfies G8 and the mean misses it by seven points. The excess
+is concentrated: 205 goes from 45 s to 197 s and 7499 (design half) from
+56 s to 191 s on `certified_card_proxy_abox`, and 7278 and 3726 from 7 s
+to 30 s in the rules-consistency worker; all four are the cost of the
+checked subset blocking (`docs/HYBRID-CB-HT.md` section 9), the fix for a
+published `CONSISTENT` on an inconsistent ontology. 205 alone is six of the
+seven points. The remaining large deltas (1673, 1938, 11005, 10754, 5289,
+15226) are the policy's `certified_nominals` choice, inside the policy
+contract. Local side-by-side timing of the two PGO binaries on the same
+core confirms this attribution and shows no slowdown on small inputs; the
+small-input gap seen on Ibex (0.10 s to 0.14 s mean over 317 inputs) is
+under investigation. The Konclude clause of G8 cannot be judged without a
+same-day Konclude run; against the 2026-10-04 Konclude run v1.5.4 verifies
+more inputs (558 against 554) and is slower in the mean.
