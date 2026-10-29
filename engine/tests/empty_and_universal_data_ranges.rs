@@ -528,3 +528,40 @@ fn excluded_middle_of_complement_ranges() {
         }
     }
 }
+
+/// Contraposition through complemented cardinality definers: `Two ⊑ Has`
+/// entails `¬Has ⊑ ¬Two`. The HT translation folded each complement pair
+/// `No ≡ ¬Has` into a negative body literal `¬Has`, which the worker matches
+/// only against an explicit `¬Has` label, so `ht_general` and `tableau` missed
+/// `No ⊑ AtMostOne` (docs/HYBRID-CB-HT.md section 7). The object-property and
+/// cardinality-free spellings (the last with `T2` making `Two` Horn-derivable)
+/// had the same miss.
+#[test]
+fn complemented_cardinality_definers_contrapose_on_every_route() {
+    let classes = "Declaration(Class(:Has)) Declaration(Class(:Two)) Declaration(Class(:No)) \
+                   Declaration(Class(:AtMostOne))\n\
+                   EquivalentClasses(:No ObjectComplementOf(:Has))\n\
+                   EquivalentClasses(:AtMostOne ObjectComplementOf(:Two))\n";
+    let cases = [
+        format!("{HEADER}{classes}EquivalentClasses(:Has DataMinCardinality(1 :d))\n\
+                 EquivalentClasses(:Two DataMinCardinality(2 :d))\n)\n"),
+        format!("{HEADER}Declaration(ObjectProperty(:r))\n{classes}\
+                 EquivalentClasses(:Has ObjectMinCardinality(1 :r))\n\
+                 EquivalentClasses(:Two ObjectMinCardinality(2 :r))\n)\n"),
+        format!("{HEADER}Declaration(Class(:T2))\n{classes}SubClassOf(:Two :Has) SubClassOf(:T2 :Two)\n)\n"),
+    ];
+    let base = [("No", "AtMostOne"), ("Two", "Has")];
+    for (i, text) in cases.iter().enumerate() {
+        let mut subs = base.to_vec();
+        if i == 2 {
+            subs.extend([("T2", "Two"), ("T2", "Has")]);
+        }
+        let want = Answer {
+            unsat: BTreeSet::new(),
+            subs: subs.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect(),
+        };
+        for route in ROUTES {
+            assert_eq!(classify(text, *route), want, "case {i}, route {route:?}");
+        }
+    }
+}

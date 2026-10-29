@@ -4935,6 +4935,21 @@ fn sub_atom(a: &HAtom, sub: &HashMap<usize, usize>) -> HAtom {
     a.clone()
 }
 
+/// Fold a complementary definer pair `B ≡ ¬A` (`⊤ → A ∨ B` and `A ∧ B → ⊥`)
+/// into one concept: drop both clauses and replace `B` by `¬A` everywhere else.
+///
+/// The worker matches a body literal against node labels by sign, so a body
+/// literal `¬A(t)` fires only on an explicit `¬A` label, and nothing derives
+/// `¬A` from the failure of `A` once `⊤ → A ∨ B` is gone. A substituted body
+/// occurrence `B(t)` therefore becomes the positive head literal `A(t)`
+/// instead: `B ∧ Body → H` and `Body → A ∨ H` are the same clause under
+/// `B ≡ ¬A`, and the second has the positive-body shape the hypertableau
+/// decides completely. Head occurrences become `¬A(t)`, an ordinary clash
+/// constraint against `A(t)`. Every clause of the output is then equivalent to
+/// its source clause (with `B := ¬A`), and the dropped pair is valid under that
+/// definition, so the fold preserves every model and every subsumption
+/// (docs/HYBRID-CB-HT.md, "Complementary-definer elimination"). Only an
+/// internal definer is eliminated: a queried class must keep its own id.
 pub fn elim_complements(ht: Vec<HtClause>, con_names: &[String]) -> (Vec<HtClause>, usize) {
     use std::collections::HashSet;
     // `em` keeps INSERTION order (Python dict) — order decides which substitution
@@ -5029,7 +5044,7 @@ pub fn elim_complements(ht: Vec<HtClause>, con_names: &[String]) -> (Vec<HtClaus
         } else {
             (b, a) // both internal/named: drop the larger id (b, since a<=b)
         };
-        if protected.contains(&elim) {
+        if protected.contains(&elim) || !internal(elim) {
             continue;
         }
         if used.contains(&elim) || used.contains(&keep) {
@@ -5062,10 +5077,45 @@ pub fn elim_complements(ht: Vec<HtClause>, con_names: &[String]) -> (Vec<HtClaus
                 }
             }
         }
-        out.push(HtClause {
-            body: c.body.iter().map(|a| sub_atom(a, &sub)).collect(),
-            head: c.head.iter().map(|a| sub_atom(a, &sub)).collect(),
-        });
+        let mut body: Vec<HAtom> = Vec::with_capacity(c.body.len());
+        let mut head: Vec<HAtom> = c.head.iter().map(|a| sub_atom(a, &sub)).collect();
+        for a in &c.body {
+            match sub_atom(a, &sub) {
+                // `B(t)` in the body, `B ≡ ¬A`: move it to the head as `A(t)`.
+                HAtom::Concept { neg: true, c: k, t } if matches!(a,
+                    HAtom::Concept { neg: false, c, .. } if sub.contains_key(c)) =>
+                {
+                    let moved = HAtom::Concept { neg: false, c: k, t };
+                    if !head.contains(&moved) {
+                        head.push(moved);
+                    }
+                }
+                other => {
+                    if !body.contains(&other) {
+                        body.push(other);
+                    }
+                }
+            }
+        }
+        // `A(t)` on both sides is a tautology (the source clause had `A ∧ B`
+        // in its body, which the dropped disjointness clause already refutes).
+        if body.iter().any(|a| head.contains(a)) {
+            continue;
+        }
+        // A moved literal must stay range-restricted: its variable is the
+        // clause centre or occurs in the remaining body. Otherwise keep the
+        // source clause set unchanged.
+        let bound = |v: usize| {
+            v == 0 || body.iter().any(|a| match a {
+                HAtom::Concept { t, .. } => *t == v,
+                HAtom::Role { s, t, .. } | HAtom::Eq { s, t } => *s == v || *t == v,
+                HAtom::Exist { t, .. } => *t == v,
+            })
+        };
+        if head.iter().any(|a| matches!(a, HAtom::Concept { t, .. } if !bound(*t))) {
+            return (ht, 0);
+        }
+        out.push(HtClause { body, head });
     }
     let n = sub.len();
     (out, n)
@@ -5074,6 +5124,57 @@ pub fn elim_complements(ht: Vec<HtClause>, con_names: &[String]) -> (Vec<HtClaus
 #[cfg(test)]
 mod trigger_absorb_tests {
     use super::*;
+
+    /// `Two ⊑ Has`, `No ≡ ¬Has`, `AtMostOne ≡ ¬Two` through the internal
+    /// complements `Q3`, `Q4`. Folding `Q4 := ¬Two` must not leave the body
+    /// literal `¬Two` (which fires only on an explicit `¬Two` label, so the
+    /// worker would miss `No ⊑ AtMostOne`); it becomes the head literal `Two`.
+    #[test]
+    fn complementary_definer_fold_moves_body_occurrences_to_the_head() {
+        let names: Vec<String> = ["Has", "Two", "No", "AtMostOne", "Q_3", "Q_4", "T2"]
+            .iter().map(|s| s.to_string()).collect();
+        let (has, two, no, amo, q3, q4, t2) = (0, 1, 2, 3, 4, 5, 6);
+        let c = |c: usize| HAtom::Concept { neg: false, c, t: 0 };
+        let n = |c: usize| HAtom::Concept { neg: true, c, t: 0 };
+        let cl = |body: Vec<HAtom>, head: Vec<HAtom>| HtClause { body, head };
+        let ht = vec![
+            cl(vec![c(two)], vec![c(has)]),
+            cl(vec![c(t2)], vec![c(two)]),
+            cl(vec![c(has), c(q3)], vec![]),
+            cl(vec![], vec![c(has), c(q3)]),
+            cl(vec![c(no)], vec![c(q3)]),
+            cl(vec![c(q3)], vec![c(no)]),
+            cl(vec![c(q4), c(two)], vec![]),
+            cl(vec![], vec![c(q4), c(two)]),
+            cl(vec![c(amo)], vec![c(q4)]),
+            cl(vec![c(q4)], vec![c(amo)]),
+        ];
+        let (out, folded) = elim_complements(ht, &names);
+        assert_eq!(folded, 2);
+        assert!(out.iter().all(|clause| clause.body.iter()
+            .all(|a| !matches!(a, HAtom::Concept { neg: true, .. }))));
+        assert!(out.iter().all(|clause| clause.body.iter().chain(&clause.head)
+            .all(|a| !matches!(a, HAtom::Concept { c, .. } if *c == q3 || *c == q4))));
+        assert!(out.contains(&cl(vec![], vec![c(no), c(has)])));
+        assert!(out.contains(&cl(vec![], vec![c(amo), c(two)])));
+        assert!(out.contains(&cl(vec![c(no)], vec![n(has)])));
+        assert!(out.contains(&cl(vec![c(amo)], vec![n(two)])));
+    }
+
+    /// A queried (named) class keeps its id: the classifier tests `{X, ¬B}`
+    /// against it, so eliminating it would drop every subsumption into `B`.
+    #[test]
+    fn complementary_definer_fold_never_eliminates_a_named_class() {
+        let names: Vec<String> = ["A", "B"].iter().map(|s| s.to_string()).collect();
+        let c = |c: usize| HAtom::Concept { neg: false, c, t: 0 };
+        let ht = vec![
+            HtClause { body: vec![c(0), c(1)], head: vec![] },
+            HtClause { body: vec![], head: vec![c(0), c(1)] },
+        ];
+        let (out, folded) = elim_complements(ht.clone(), &names);
+        assert_eq!(folded, 0);
+        assert_eq!(out, ht);
+    }
 
     #[test]
     fn is_internal_excludes_markers_and_builtins_but_keeps_colon_localname_classes() {

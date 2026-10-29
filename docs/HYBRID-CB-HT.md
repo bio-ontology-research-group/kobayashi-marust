@@ -166,3 +166,67 @@ without `KM_HT_RACE`.
   `KM_HT`, `cb_to_ht.py`, `ht_ofn_runone.py` (sweep runner), `sweep_ofn/`
   (job 47566667), `htcheck/` (job 47570686), `h2h_joined.jsonl` (the join).
 - Head-to-head join: `h2h_analyze.py` over `cmp2_res` (CB) + `sweep_ofn` (HT).
+
+## 7. Complementary-definer elimination (EMELIM)
+
+`cb_to_ht::elim_complements` (default on; off under `KM_HT_CARD` card
+definitions, DL-safe rules, or `KM_NO_HT_EMELIM`) folds a complementary pair
+`B ≡ ¬A`, given as `⊤ → A ∨ B` and `A ∧ B → ⊥`, into the single concept `A`:
+both clauses are dropped and `B` is replaced by `¬A` in every other clause.
+
+The worker matches a body literal against node labels by sign. A body literal
+`¬A(t)` therefore fires only when the node carries an explicit `¬A` label, and
+once `⊤ → A ∨ B` is gone nothing derives `¬A` from the failure of `A`. Up to
+v1.5.4 the fold wrote each body occurrence of `B` as such a literal, and its
+completeness guard (keep the pair if a side drives a consequence and is not
+Horn-derivable) let a Horn-derivable side through. That loses every
+consequence the excluded middle supplied when the other side was refuted. The
+reproducer (2026-10-29):
+
+    EquivalentClasses(:Has DataMinCardinality(1 :d))
+    EquivalentClasses(:Two DataMinCardinality(2 :d))
+    EquivalentClasses(:No ObjectComplementOf(:Has))
+    EquivalentClasses(:AtMostOne ObjectComplementOf(:Two))
+
+The frontend clause set is exact. Its complements `Q_3 ≡ ¬Has` and
+`Q_4 ≡ ¬Two` are both Horn-derivable (`No → Q_3`, `AtMostOne → Q_4`), so both
+folded into `No → ¬Has`, `¬Has → No`, `AtMostOne → ¬Two`, `¬Two → AtMostOne`.
+The test `{No, ¬AtMostOne}` then has the clash-free model `{No, ¬Has,
+¬AtMostOne}`: `¬AtMostOne` should force `Two` (through `Q_4`'s excluded
+middle), whose two witnesses give `Has` and the clash. `ht_general` and
+`tableau` reported only `Two ⊑ Has`. Cardinality plays no part: the object
+spelling and the cardinality-free `SubClassOf(:Two :Has)`,
+`SubClassOf(:T2 :Two)` miss the same subsumption.
+
+The fold now writes a body occurrence `B(t)` as the head literal `A(t)`:
+`B ∧ Body → H` and `Body → A ∨ H` are the same clause under `B ≡ ¬A`, and the
+second has the positive-body shape for which the hypertableau is complete
+(Motik, Shearer and Horrocks 2009). A head occurrence becomes `¬A(t)`, a
+constraint that clashes with `A(t)` as `A ∧ Body → H'` would. A clause with
+`A(t)` on both sides is a tautology and is dropped. Each output clause is then
+equivalent to its source clause once `B` is defined as `¬A`, and the two
+dropped clauses are valid under that definition, so the folded set and the
+source set have the same models up to the value of `B` and the same
+subsumptions over the remaining names. If a moved literal's variable would be
+unbound (neither the centre nor in the remaining body), the fold returns the
+source clause set unchanged. The pair guard stays as a scheduling heuristic
+(a folded pair whose side drives a consequence re-creates the excluded middle
+as a head disjunction); completeness no longer rests on it.
+
+A second, latent gap: when both sides were non-internal the fold eliminated
+the larger id, a named class. The classifier still queries that id (`{X, ¬B}`),
+which no clause mentions after the fold, so every subsumption into `B` would be
+lost. The fold now eliminates only internal definers.
+
+Routes. The fold runs on every HT conversion with no card definitions and no
+rules. Under `KM_TRIGGER_ABSORB` (`production_all*`, `certified_*`,
+`ht_bridge`, `ht_full`) `normalize_signed_trigger_clauses` already moved the
+negative body literals into the head, which is why those routes answered the
+reproducer correctly; `certified_card_proxy_abox` runs an HT arm only for a
+card candidate, which requires card definitions and so disables the fold.
+Forced `ht_general`, `tableau` and `ht_features` answered the reproducers
+incompletely; `ht_qo`, `ht_shoq` and `nominal_ni_*` ran the same fold without
+the literal movement (their structural gates or the CB arm decided these
+small inputs). None of these is an automatic route under either routing
+policy. Measurements are in
+`results/agents/2026-10-29/ht-card-complement/`.
