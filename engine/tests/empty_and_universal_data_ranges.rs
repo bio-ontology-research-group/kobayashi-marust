@@ -510,7 +510,7 @@ fn excluded_middle_of_complement_ranges() {
         // The tableau route declines the union range. (`ht_general` missed
         // the excluded middle of two data ranges until its subset blocking
         // learned that a gained data-range label at a successor can enable a
-        // recognition clause; docs/HYBRID-CB-HT.md section 8.) The forced
+        // recognition clause; docs/HYBRID-CB-HT.md section 9.) The forced
         // `nominals` arm is left out for the
         // value cases: on an individual-free input it instantiates the
         // unrelativized excluded middle at the data-value individual and runs

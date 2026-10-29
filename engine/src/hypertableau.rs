@@ -2320,7 +2320,7 @@ fn fire_global(clauses: &[ClauseRec], ext: &mut Ext, cid: usize, n: Node) {
 // ============================== Blocking ===================================
 
 /// The literals whose presence at a node can change a clause instance that
-/// spans the node and a neighbour (docs/HYBRID-CB-HT.md section 8).
+/// spans the node and a neighbour (docs/HYBRID-CB-HT.md section 9).
 ///
 /// Subset blocking maps a blocked node `w` with `L(w) ⊆ L(w')` onto its
 /// blocker `w'` when the model is unravelled: `w`'s position keeps its incoming
@@ -18836,7 +18836,7 @@ impl Ht {
         // is complete but folds too little to terminate in time.
         let mode = self.block_mode;
         // Subset blocking (modes 1 and 5) admits a pair only when no gained
-        // literal is relevant (`SubsetGain`, docs/HYBRID-CB-HT.md section 8).
+        // literal is relevant (`SubsetGain`, docs/HYBRID-CB-HT.md section 9).
         let gain = if matches!(mode, 1 | 5) {
             self.subset_gain.clone().unwrap_or_else(|| {
                 Arc::new(SubsetGain::build(&self.index.clauses, &self.card_defs, &self.nom_set))

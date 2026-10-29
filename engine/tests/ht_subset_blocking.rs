@@ -1,5 +1,5 @@
 //! Regression tests for subset blocking in the native hypertableau
-//! (docs/HYBRID-CB-HT.md section 8). A node blocked by a strict superset takes
+//! (docs/HYBRID-CB-HT.md section 9). A node blocked by a strict superset takes
 //! its blocker's label in the unravelled model; a gained literal that a clause
 //! reads across the edge to the node (`∃r.C ⊑ D` as `C(y) ∧ r(x, y) → D(x)`,
 //! a cardinality filler) made `ht_general` and the card arm answer wrongly.
