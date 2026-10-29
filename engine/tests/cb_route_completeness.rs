@@ -14,6 +14,14 @@
 //!   facts+TBox closure never entered the closure clauses (here `-> D(x)`)
 //!   into their r-Succ pool, so `D(y)` was never offered. See
 //!   docs/CB-COMPLETENESS-FIXES.md.
+//! - `inverse_forall_top_label`: `TOP <= B`, `exists r.B <= BOTTOM`,
+//!   `Q1 == forall inverse(r).A`; every class is below `Q1` because nothing
+//!   has an r-successor. The successor needs the parent label `B(y)` from the
+//!   shared closure for the same reason (minimised from seed 528).
+//! - `seed528`, `seed599` (700-seed ALCHIQ set) and `seed1045`, `seed1189`,
+//!   `seed1212` (fresh `gen_alc.py` seeds 1000-1299): the generator seeds that
+//!   `cb_plain1` answered wrongly before the fix, all from the same cause
+//!   (each one is right with `KM_NO_SHARE=1` on the old binary).
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;

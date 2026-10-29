@@ -638,7 +638,7 @@ fn retained_cb_insertion_that_enables_r_succ_rebuilds() {
     let mut session = IncrementalClassifier::new(snapshot.clone()).expect("CB snapshot");
     assert_eq!(session.backend(), IncrementalBackend::Cb);
     assert_fresh_cb(&session, &snapshot, false);
-    assert_eq!(session.is_subsumed_by("B", "Q3"), None);
+    assert_eq!(session.is_subsumed_by("B", "Q3"), Some(false));
 
     let additions = vec![
         clause(vec![role("t", var("x"), var("y"))], vec![role("inv_t", var("y"), var("x"))]),
