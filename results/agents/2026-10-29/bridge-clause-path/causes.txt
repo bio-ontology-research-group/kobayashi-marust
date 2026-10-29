@@ -1,0 +1,67 @@
+Causes of the clause-translation incompleteness (KM_NO_SOURCE_TBOX=1)
+=====================================================================
+
+Root cause (one mechanism, three encoder sites). The trigger-absorbed clause
+translation resolves every frontend definer marker Q to the native concept X
+it abbreviates (the `resolved` vector in bridge_tinput_with_trigger_absorption).
+Only the absorbed pure-concept encoder used `resolved`. Three other encoders
+still emitted the marker ATOM `named[Q]`:
+
+  site A  the trigger-less fallback for pure concept clauses whose resolved
+          form absorb_concept_disjunction cannot absorb;
+  site B  the fallback of the recognised >=k clause (guards on marker atoms);
+  site C  the guarded R(x,y) encoder (x- and y-literals always atoms).
+
+A clause rewritten through `resolved` neither derives nor consumes the atom,
+so the atom occurrences at sites A-C were disconnected from their definition:
+consequences that pass through them were lost. All failures were
+incompleteness (missed subsumptions, unsatisfiable classes, inconsistencies);
+none was unsound.
+
+Minimal examples (engine/tests/fixtures/bridge_generator/, HermiT answers):
+
+  clause_or_definer_fallback (site A, missed subsumption; seed 89 family)
+      EquivalentClasses(B ObjectUnionOf(ObjectComplementOf(D) C))
+    clause Q0 -> B with Q0 := C or not D is not absorbable, so the fallback
+    hung B on the atom Q0, while C -> Q0 became the tautology C <= C or not D.
+    Lost: C <= B.
+
+  clause_top_conjunction (site A, TOP fact; seed 299 family)
+      SubClassOf(owl:Thing ObjectIntersectionOf(ObjectIntersectionOf(C B)
+                 ObjectIntersectionOf(B C)))
+    the TOP fact -> Q with Q := C and B was asserted as the atom Q.
+    Lost: every class <= B, C.
+
+  clause_top_conjunction_inconsistent (site A, missed inconsistency)
+      SubClassOf(owl:Thing ObjectIntersectionOf(C B))
+      EquivalentClasses(C ObjectComplementOf(ObjectUnionOf(A not A)))
+    reported consistent with C unsatisfiable; HermiT: inconsistent.
+
+  clause_inverse_exists_negated_filler (site C, missed unsatisfiability;
+  delta-debugged from seed 136, a missed inconsistency)
+      SubClassOf(some t B, some s (not C)), SubClassOf(C, some t (some s B)),
+      SubClassOf(owl:Thing, (A and not A) or (not A and not B and
+                 some inverse(r) (not D))), Q1 == not B and not C
+    guarded clauses Q11(y) and inv_r(x,y) -> Q10(x) used atoms. Lost: C
+    unsatisfiable (the bridge still reported C <= A with A unsatisfiable).
+
+Site attribution over the 329 seeds the bridge-only clause route answered
+wrongly before the fix: see site_attribution.txt (each site's fix reverted
+alone with a diagnostic build).
+
+Fix: every clause that mentions a resolved marker is encoded over resolved
+concepts only. Site A/B: TOP GCI `or(not body, heads)` when absorption fails.
+Site C: the equivalent GCI `and(Bx) <= or(Hx) or all R.(or(not By) or Hy)`,
+role domain/range links for the concept-free shapes, absorption when
+possible, TOP otherwise. Clauses that resolve to syntactic tautologies (the
+frontend's own definer clauses, e.g. Q -> C or D for Q = C or D) are dropped;
+installing them on TOP made seeds such as 30 time out. Query classes are never
+resolved. Clauses without resolved markers are encoded exactly as before, and
+the source-TBox path is untouched (all changes are under !source_mode).
+
+Separate finding (not the bridge): the CB engine is incomplete on
+cb_incomplete_inverse_top.ofn (three axioms: owl:Thing <= D, B <= some t C,
+Q3 == some t (some inverse(t) D)). HermiT: B <= Q3. KM 9cf7c2cd misses it on the automatic route and on
+production_all, default1, cb_plain1, cb_absorb1, cb_trigger1 and
+cb_portfolio16; --route ht_bridge answers correctly. Generator seed 599 is wrong whenever its
+bridge worker fails to start (EAGAIN under load) and CB answers instead.
