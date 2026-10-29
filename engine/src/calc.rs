@@ -666,9 +666,10 @@ fn seq_order_env() -> Option<u8> {
 /// `exchange_refutation_complete`; the lower-set condition is necessary,
 /// `ordered_server_interface_not_lower_counterexample`). The context regime
 /// therefore (1) keeps the Sequoia order on every literal with a variable or a
-/// Skolem term, (2) makes ground atoms (every argument an individual) mutually
-/// incomparable, so every announced-individual interface is a lower set of a
-/// linear extension, and (3) delivers a derived ground equality `o ≈ o'` to a
+/// Skolem term, (2) removes every comparison that puts a ground atom (every
+/// argument an individual) below a ground atom whose individuals do not
+/// include its own, so every announced-individual interface is downward closed
+/// and hence a lower set of a linear extension, and (3) delivers a derived ground equality `o ≈ o'` to a
 /// context that announced either individual, so the interface follows the
 /// equality (`eq_announce`). Seed 297 (docs/NOMINALS-CB.md section 7) is lost
 /// without (3), the probe `p1` without (2). Env still wins: `KM_SEQ_ORDER=1`
@@ -711,8 +712,9 @@ fn seq_order() -> bool {
     matches!(seq_order_state(), 1 | SEQ_ORDER_CONTEXT)
 }
 
-/// The context regime is active: ground atoms are mutually incomparable and
-/// derived ground equalities follow the announced-individual interface.
+/// The context regime is active: a ground atom lies below another ground atom
+/// only when its individuals are among the other's, and derived ground
+/// equalities follow the announced-individual interface.
 #[inline]
 pub fn seq_order_context() -> bool {
     seq_order_state() == SEQ_ORDER_CONTEXT
@@ -724,7 +726,39 @@ pub fn seq_order_context() -> bool {
 /// unguarded r-Pred of arXiv:1805.01396 (Table 3, `n = 0`), so it is sound.
 #[inline]
 pub fn eq_announce() -> bool {
+    seq_order_context() && !context_flag_off(&CONTEXT_NO_R3, "KM_CONTEXT_NO_R3")
+}
+
+/// Whether some ontology clause with a variable or a Skolem term mentions an
+/// individual (set by the reasoner with `set_seq_order_auto`). Without such a
+/// clause no context other than the ground context ever holds a ground atom or
+/// an individual-labelled edge to it, so the r-Pred guard never delivers a
+/// ground clause and R2 has nothing to protect (docs/PER-CONTEXT-ORDERING.md
+/// section 5). Conservative default: `true`.
+static GROUND_INTERFACES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// Record whether the ontology can give a non-ground context a ground
+/// interface (see `GROUND_INTERFACES`).
+pub fn set_ground_interfaces(possible: bool) {
+    GROUND_INTERFACES.store(possible, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// R2 of the context regime is in force.
+#[inline]
+fn ground_interface_order() -> bool {
     seq_order_context()
+        && GROUND_INTERFACES.load(std::sync::atomic::Ordering::Relaxed)
+        && !context_flag_off(&CONTEXT_NO_R2, "KM_CONTEXT_NO_R2")
+}
+
+static CONTEXT_NO_R2: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+static CONTEXT_NO_R3: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+/// Diagnostic switches that disable one rule of the context regime
+/// (`KM_CONTEXT_NO_R2`, `KM_CONTEXT_NO_R3`); read once per process.
+#[inline]
+fn context_flag_off(cell: &std::sync::OnceLock<bool>, name: &str) -> bool {
+    *cell.get_or_init(|| std::env::var_os(name).is_some())
 }
 
 /// A ground atom: every argument is a named individual (or additional nominal).
@@ -841,6 +875,41 @@ fn eqn_s(l: &Lit) -> Term {
 }
 
 fn pred_lteq(p1: &Pred, p2: &Pred, root: bool, sig: &Sig) -> bool {
+    let le = pred_lteq_base(p1, p2, root, sig);
+    // Context regime (docs/PER-CONTEXT-ORDERING.md, R2): a ground atom may lie
+    // below another ground atom only if its individuals are among the other's.
+    // A context's announced-individual interface (the ground atoms over
+    // individuals it announced) is then downward closed, hence a lower set of
+    // some linear extension of the ground context's order. The filter only
+    // removes comparisons, so it weakens the order; ground atoms over the same
+    // individuals keep the Sequoia order, and every literal with a variable or
+    // a Skolem term keeps its comparisons.
+    if le
+        && p1 != p2
+        && ground_interface_order()
+        && is_ground_atom(p1)
+        && is_ground_atom(p2)
+        && !ground_individuals_within(p1, p2)
+    {
+        return false;
+    }
+    le
+}
+
+/// The individuals of ground atom `a` are among those of ground atom `b`.
+#[inline]
+fn ground_individuals_within(a: &Pred, b: &Pred) -> bool {
+    let within = |o: Term| match *b {
+        Pred::Concept { t, .. } => o == t,
+        Pred::Role { s, t, .. } => o == s || o == t,
+    };
+    match *a {
+        Pred::Concept { t, .. } => within(t),
+        Pred::Role { s, t, .. } => within(s) && within(t),
+    }
+}
+
+fn pred_lteq_base(p1: &Pred, p2: &Pred, root: bool, sig: &Sig) -> bool {
     // Pred-trigger cases (bottom of the order).
     let p1pt = p1.is_pred_trigger(sig);
     let p2pt = p2.is_pred_trigger(sig);
@@ -849,14 +918,6 @@ fn pred_lteq(p1: &Pred, p2: &Pred, root: bool, sig: &Sig) -> bool {
     }
     if p1pt && !p2pt {
         return true;
-    }
-    // Context regime (docs/PER-CONTEXT-ORDERING.md): ground atoms are mutually
-    // incomparable, so a context's announced-individual interface is a lower
-    // set of some linear extension of the ground context's order. This only
-    // removes strict comparisons, so the result is a weakening of the order
-    // below; every literal with a variable or a Skolem term keeps it.
-    if seq_order_context() && is_ground_atom(p1) && is_ground_atom(p2) {
-        return p1 == p2;
     }
     // Concept literals on the SAME term are mutually incomparable: each is a
     // maximal head literal, so Hyper fires on EVERY disjunct of a head

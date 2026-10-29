@@ -387,6 +387,42 @@ fn ground_concept_body(c: &JClause) -> GroundBody {
     GroundBody::Guard(JClause { body, head })
 }
 
+/// Does some clause with a variable or a Skolem term mention an individual?
+/// Only then can a non-ground context acquire a ground interface with the
+/// nominal ground context (`calc::set_ground_interfaces`).
+fn has_ground_interface(clauses: &[OntologyClause]) -> bool {
+    clauses.iter().any(|clause| {
+        let mut individual = false;
+        let mut other = false;
+        let mut see = |t: Term| {
+            if is_individual(t) {
+                individual = true;
+            } else {
+                other = true;
+            }
+        };
+        for p in &clause.body {
+            match *p {
+                Pred::Concept { t, .. } => see(t),
+                Pred::Role { s, t, .. } => {
+                    see(s);
+                    see(t)
+                }
+            }
+        }
+        for l in &clause.head {
+            match *l {
+                Lit::P(Pred::Concept { t, .. }) => see(t),
+                Lit::P(Pred::Role { s, t, .. }) | Lit::Eq { s, t } | Lit::Ineq { s, t } => {
+                    see(s);
+                    see(t)
+                }
+            }
+        }
+        individual && other
+    })
+}
+
 fn has_internal_definer_disjunction(sig: &Sig, clauses: &[OntologyClause]) -> bool {
     clauses.iter().any(|clause| {
         let mut concepts = 0usize;
@@ -439,6 +475,9 @@ pub(crate) struct RetainedCbReasoner {
     builder: Builder,
     engine: Engine,
     internal_definer_disjunction: bool,
+    /// `has_ground_interface` of the retained clause set: R2 of the context
+    /// regime is fixed per engine, because clause maxima are cached.
+    ground_interface: bool,
 }
 
 impl RetainedCbReasoner {
@@ -452,7 +491,9 @@ impl RetainedCbReasoner {
         let mut builder = Builder::new();
         let clauses = builder.clauses(input);
         let internal_definer_disjunction = has_internal_definer_disjunction(&builder.sig, &clauses);
+        let ground_interface = has_ground_interface(&clauses);
         set_seq_order_auto(internal_definer_disjunction);
+        set_ground_interfaces(ground_interface);
         let mut engine = Engine::new(builder.sig.clone(), clauses, builder.dropped);
         let queries = engine.named_queries();
         engine.run_for(&queries);
@@ -460,6 +501,7 @@ impl RetainedCbReasoner {
             builder,
             engine,
             internal_definer_disjunction,
+            ground_interface,
         }
     }
 
@@ -497,6 +539,10 @@ impl RetainedCbReasoner {
         let ordering_forced = std::env::var_os("KM_SEQ_ORDER").is_some()
             || std::env::var_os("KM_NO_SEQ_ORDER").is_some();
         if !ordering_forced && next_internal != self.internal_definer_disjunction {
+            return Err(RetainedCbBoundary::OrderingRouterChanged);
+        }
+        let next_interface = self.ground_interface || has_ground_interface(&clauses);
+        if next_interface != self.ground_interface {
             return Err(RetainedCbBoundary::OrderingRouterChanged);
         }
         if let Some(boundary) = self.engine.retained_insert_boundary(&clauses) {
@@ -975,6 +1021,7 @@ impl Reasoner {
         // parallel workers below all read the resulting global). Env overrides
         // win inside `set_seq_order_auto`.
         set_seq_order_auto(self.has_internal_definer_disjunction());
+        set_ground_interfaces(has_ground_interface(&self.clauses0));
         // Finalize the ontology once. Every engine below (the sequential run,
         // each static chunk, each work-stealing worker) is built from this one
         // immutable copy, so the clause arena, signature and nominal
