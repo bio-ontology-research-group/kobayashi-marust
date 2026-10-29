@@ -1741,7 +1741,7 @@ fn positive_role_proxy_abox_certificate(tin: &cb_to_ht::TInput) -> Option<ProxyA
             let mut assertions = individual.assertions.clone();
             assertions.sort_unstable();
             assertions.dedup();
-            (assertions.len() == 1).then_some(assertions[0])
+            (assertions.len() == 1).then(|| assertions[0])
         })
         .collect::<Option<_>>()?;
     if assertion_ids
