@@ -564,10 +564,24 @@ pub fn lteq(o1: &Lit, o2: &Lit, root: bool, sig: &Sig) -> bool {
         }
         (P(p), eqn @ (Eq { .. } | Ineq { .. })) => {
             let es = eqn_s(eqn);
-            match p {
+            let le = match p {
                 Pred::Concept { t, .. } => !(es <= *t),
                 Pred::Role { s, t, .. } => !(es <= *s || es <= *t),
+            };
+            // Context regime, R2 for equalities (docs/PER-CONTEXT-ORDERING.md):
+            // R3 delivers a ground unit `o ≈ o'` to a context that announced
+            // either individual, so no ground atom may lie below a ground
+            // equality, or the unit stays trapped behind it (seed297_min:
+            // `→ Q_0(a) ∨ b ≈ a` with `Q_0(a)` refutable). Only removes
+            // comparisons.
+            if le
+                && matches!(eqn, Eq { s, t } if is_individual(*s) && is_individual(*t))
+                && ground_interface_order()
+                && is_ground_atom(p)
+            {
+                return false;
             }
+            le
         }
 
         (P(p1), P(p2)) => pred_lteq(p1, p2, root, sig),
@@ -655,27 +669,28 @@ fn seq_order_env() -> Option<u8> {
 /// off). Validated across the full ORE corpus (results/seqorder-routing-*.txt):
 /// keeps all +6 recoveries and the meaningful speedups, avoids 27/28 slowdowns.
 ///
-/// Nominal mode (`KM_NOMINALS`) selects the CONTEXT regime instead of the plain
-/// Sequoia ordering (docs/PER-CONTEXT-ORDERING.md). The plain ordering is
-/// incomplete there: the nominal ground context delivers a ground clause only
-/// to contexts that announced every individual it mentions, so its saturation
-/// must contain, for every such interface, the clauses that a refutation in the
-/// receiving context needs. Ordered resolution provides that only when the
-/// interface atoms lie at the bottom of the ground context's order
+/// Nominal mode (`KM_NOMINALS`) selects the context regime
+/// (`SEQ_ORDER_CONTEXT`, docs/PER-CONTEXT-ORDERING.md) wherever the plain
+/// Sequoia ordering would be selected without nominals. The plain ordering is
+/// incomplete there (seed 297): the nominal ground context delivers a ground
+/// clause only to contexts that announced every individual it mentions, so its
+/// saturation must contain, for every such interface, the clauses that a
+/// refutation in the receiving context needs. Ordered resolution provides that
+/// when the interface atoms are downward closed in the ground context's order
 /// (`lean/ContextCalculus/CompletenessExchange.lean`,
-/// `exchange_refutation_complete`; the lower-set condition is necessary,
+/// `downward_server_complete`; the condition is necessary,
 /// `ordered_server_interface_not_lower_counterexample`). The context regime
 /// therefore (1) keeps the Sequoia order on every literal with a variable or a
-/// Skolem term, (2) removes every comparison that puts a ground atom (every
-/// argument an individual) below a ground atom whose individuals do not
-/// include its own, so every announced-individual interface is downward closed
-/// and hence a lower set of a linear extension, and (3) delivers a derived ground equality `o ≈ o'` to a
-/// context that announced either individual, so the interface follows the
-/// equality (`eq_announce`). Seed 297 (docs/NOMINALS-CB.md section 7) is lost
-/// without (3), the probe `p1` without (2). Env still wins: `KM_SEQ_ORDER=1`
-/// forces the plain Sequoia ordering (a diagnostic override, incomplete under
-/// nominals), `KM_SEQ_ORDER=context` forces the context regime, and
-/// `KM_NO_SEQ_ORDER` forces the unordered regime.
+/// Skolem term, (2) when the ontology can give a context a ground interface
+/// (`set_ground_interfaces`), removes every comparison that puts a ground atom
+/// below a ground atom whose individuals do not include its own, or below a
+/// ground equality, and (3) delivers a derived ground equality `o ≈ o'` to a
+/// context that announced either individual (`eq_announce`). Seed 297 needs
+/// (3) and the equality part of (2); the probe `p1`, which the unordered
+/// regime also misses, needs (2). Env wins: `KM_SEQ_ORDER=1` forces the plain
+/// Sequoia ordering (a diagnostic override, incomplete under nominals),
+/// `KM_SEQ_ORDER=context` the context regime, `KM_NO_SEQ_ORDER` the
+/// unordered regime.
 pub fn set_seq_order_auto(on: bool) {
     let eff = if let Some(forced) = seq_order_env() {
         forced
@@ -684,10 +699,10 @@ pub fn set_seq_order_auto(on: bool) {
     } else if !on {
         0
     } else if std::env::var_os("KM_NOMINALS").is_some() {
-        // The CB certification surface models the literal order and the
-        // r-Pred announcement guard exactly (`CBSourceHyperClosure.predLe`,
-        // `CBRootPredSendEnumeration`), not R2/R3 of the context regime, so a
-        // run that must publish a Lean certificate keeps the unordered regime.
+        // The CB certification surface models the unordered literal order and
+        // the exact r-Pred guard (`CBSourceHyperClosure.predLe`,
+        // `CBRootPredSendEnumeration`), not R2/R3, so a run that must publish
+        // a Lean certificate keeps the unordered regime.
         if std::env::var_os("KM_CB_LEAN_REQUIRED").is_some() {
             0
         } else {
