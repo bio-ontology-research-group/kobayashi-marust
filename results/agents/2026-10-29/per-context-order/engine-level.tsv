@@ -1,0 +1,14 @@
+# engine-level runs, `km engine` on the 2026-10-28 cost inputs (*.cn.json), KM_NOMINALS=1 KM_THREADS=1, 300 s cap
+# columns: file	regime	seconds	rc	named_subsumptions_vs
+ore_ont_10874	plain_sequoia(KM_SEQ_ORDER=1)	5.57	0	-
+ore_ont_10874	context	5.71	0	same_as_plain_sequoia
+ore_ont_10874	unordered(2026-10-28)	1800.00	124	-
+ore_ont_9800	plain_sequoia(KM_SEQ_ORDER=1)	79.93	0	-
+ore_ont_9800	context	86.05	0	same_as_plain_sequoia
+ore_ont_9800	unordered(2026-10-28)	1800.01	124	-
+ore_ont_15655	plain_sequoia(KM_SEQ_ORDER=1)	3.91	0	-
+ore_ont_15655	context	7.31	0	same_as_unordered
+ore_ont_15655	unordered(2026-10-28)	92.12	0	-
+# rejected variant: all ground atoms pairwise incomparable (first R2)
+ore_ont_10874	context_all_ground_incomparable	300.00	124	-
+ore_ont_9800	context_all_ground_incomparable	300.01	124	-

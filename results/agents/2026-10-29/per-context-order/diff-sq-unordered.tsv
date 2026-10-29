@@ -1,0 +1,36 @@
+g102.ofn	auto	ok	11.24	0	0	0	0	0
+g102.ofn	nominals	TIMEOUT	60.06					
+g102.ofn	certified_nominals	ok	19.35	0	0	0	0	0
+g141.ofn	auto	ok	0.05	0	0	0	0	0
+g141.ofn	nominals	TIMEOUT	60.07					
+g141.ofn	certified_nominals	ok	0.03	0	0	0	0	0
+g147.ofn	auto	TIMEOUT	60.09					
+g147.ofn	nominals	TIMEOUT	60.06					
+g147.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+g158.ofn	auto	ok	0.02	0	0	0	0	0
+g158.ofn	nominals	TIMEOUT	60.06					
+g158.ofn	certified_nominals	ok	0.03	0	0	0	0	0
+g15.ofn	auto	ok	0.02	0	0	0	0	0
+g15.ofn	nominals	TIMEOUT	60.06					
+g15.ofn	certified_nominals	ok	0.03	0	0	0	0	0
+g16.ofn	auto	ok	0.01	0	0	0	0	0
+g16.ofn	nominals	TIMEOUT	60.06					
+g16.ofn	certified_nominals	ok	0.03	0	0	0	0	0
+g220.ofn	auto	ok	0.03	0	0	0	0	0
+g220.ofn	nominals	TIMEOUT	60.06					
+g220.ofn	certified_nominals	ok	0.04	0	0	0	0	0
+g225.ofn	auto	ok	0.03	0	0	0	0	0
+g225.ofn	nominals	TIMEOUT	60.06					
+g225.ofn	certified_nominals	ok	0.03	0	0	0	0	0
+g285.ofn	auto	TIMEOUT	60.06					
+g285.ofn	nominals	TIMEOUT	60.06					
+g285.ofn	certified_nominals	TIMEOUT	60.06					
+g30.ofn	auto	TIMEOUT	60.06					
+g30.ofn	nominals	TIMEOUT	60.06					
+g30.ofn	certified_nominals	ok	0.03	0	0	0	0	0
+g56.ofn	auto	ok	0.05	0	0	0	0	0
+g56.ofn	nominals	ok	51.14	0	0	0	0	0
+g56.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+g90.ofn	auto	ok	0.02	0	0	0	0	0
+g90.ofn	nominals	TIMEOUT	60.06					
+g90.ofn	certified_nominals	ok	0.01	0	0	0	0	0

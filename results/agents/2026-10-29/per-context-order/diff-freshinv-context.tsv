@@ -1,0 +1,300 @@
+n1000.ofn	auto	ok	0.06	0	0	0	0	0
+n1000.ofn	nominals	ok	0.05	0	0	0	0	0
+n1000.ofn	certified_nominals	ok	0.04	0	0	0	0	0
+n1001.ofn	auto	ok	0.02	0	0	0	0	0
+n1001.ofn	nominals	TIMEOUT	60.06					
+n1001.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+n1002.ofn	auto	ok	0.01	0	0	0	0	0
+n1002.ofn	nominals	ok	0.02	0	0	0	0	0
+n1002.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+n1003.ofn	auto	ok	0.05	0	0	0	0	0
+n1003.ofn	nominals	ok	0.06	0	0	0	0	0
+n1003.ofn	certified_nominals	ok	0.04	0	0	0	0	0
+n1004.ofn	auto	TIMEOUT	60.06					
+n1004.ofn	nominals	TIMEOUT	60.06					
+n1004.ofn	certified_nominals	TIMEOUT	60.00					
+n1005.ofn	auto	ok	42.73	0	0	0	0	0
+n1005.ofn	nominals	ok	44.63	0	0	0	0	0
+n1005.ofn	certified_nominals	ok	42.71	0	0	0	0	0
+n1006.ofn	auto	ok	0.21	0	0	0	0	0
+n1006.ofn	nominals	ok	0.16	0	0	0	0	0
+n1006.ofn	certified_nominals	ok	0.14	0	0	0	0	0
+n1007.ofn	auto	ok	0.02	0	0	0	0	0
+n1007.ofn	nominals	ok	0.01	0	0	0	0	0
+n1007.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+n1008.ofn	auto	ok	7.34	0	0	0	0	0
+n1008.ofn	nominals	ok	6.62	0	0	0	0	0
+n1008.ofn	certified_nominals	ok	6.82	0	0	0	0	0
+n1009.ofn	auto	TIMEOUT	60.06					
+n1009.ofn	nominals	TIMEOUT	60.06					
+n1009.ofn	certified_nominals	TIMEOUT	60.06					
+n1010.ofn	auto	TIMEOUT	60.06					
+n1010.ofn	nominals	TIMEOUT	60.06					
+n1010.ofn	certified_nominals	TIMEOUT	60.03					
+n1011.ofn	auto	ok	0.06	0	0	0	0	0
+n1011.ofn	nominals	ok	0.06	0	0	0	0	0
+n1011.ofn	certified_nominals	ok	0.07	0	0	0	0	0
+n1012.ofn	auto	ok	0.02	0	0	0	0	0
+n1012.ofn	nominals	ok	0.02	0	0	0	0	0
+n1012.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+n1013.ofn	auto	ok	0.02	0	0	0	0	0
+n1013.ofn	nominals	ok	0.01	0	0	0	0	0
+n1013.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+n1014.ofn	auto	ok	0.01	0	0	0	0	0
+n1014.ofn	nominals	ok	0.02	0	0	0	0	0
+n1014.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+n1015.ofn	auto	ok	0.01	0	0	0	0	0
+n1015.ofn	nominals	TIMEOUT	60.06					
+n1015.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+n1016.ofn	auto	ok	0.08	0	0	0	0	0
+n1016.ofn	nominals	ok	0.08	0	0	0	0	0
+n1016.ofn	certified_nominals	ok	0.06	0	0	0	0	0
+n1017.ofn	auto	TIMEOUT	60.06					
+n1017.ofn	nominals	TIMEOUT	60.06					
+n1017.ofn	certified_nominals	TIMEOUT	60.06					
+n1018.ofn	auto	ok	0.01	0	0	0	0	0
+n1018.ofn	nominals	ok	11.58	0	0	0	0	0
+n1018.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+n1019.ofn	auto	ok	0.03	0	0	0	0	0
+n1019.ofn	nominals	ok	0.02	0	0	0	0	0
+n1019.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+n1020.ofn	auto	ok	0.14	0	0	0	0	0
+n1020.ofn	nominals	ok	0.16	0	0	0	0	0
+n1020.ofn	certified_nominals	ok	0.14	0	0	0	0	0
+n1021.ofn	auto	ok	18.47	0	0	0	0	0
+n1021.ofn	nominals	ok	9.56	0	0	0	0	0
+n1021.ofn	certified_nominals	ok	18.54	0	0	0	0	0
+n1022.ofn	auto	TIMEOUT	60.03					
+n1022.ofn	nominals	TIMEOUT	60.06					
+n1022.ofn	certified_nominals	TIMEOUT	60.06					
+n1023.ofn	auto	ok	0.01	0	0	0	0	0
+n1023.ofn	nominals	ok	0.01	0	0	0	0	0
+n1023.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+n1024.ofn	auto	ok	0.02	0	0	0	0	0
+n1024.ofn	nominals	ok	0.01	0	0	0	0	0
+n1024.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+n1025.ofn	auto	ok	0.58	0	0	0	0	0
+n1025.ofn	nominals	ok	0.84	0	0	0	0	0
+n1025.ofn	certified_nominals	ok	0.58	0	0	0	0	0
+n1026.ofn	auto	TIMEOUT	60.06					
+n1026.ofn	nominals	TIMEOUT	60.06					
+n1026.ofn	certified_nominals	TIMEOUT	60.03					
+n1027.ofn	auto	ok	0.02	0	0	0	0	0
+n1027.ofn	nominals	ok	0.01	0	0	0	0	0
+n1027.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+n1028.ofn	auto	ok	0.02	0	0	0	0	0
+n1028.ofn	nominals	TIMEOUT	60.06					
+n1028.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+n1029.ofn	auto	ok	0.01	0	0	0	0	0
+n1029.ofn	nominals	ok	0.07	0	0	0	0	0
+n1029.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+n1030.ofn	auto	ok	14.05	0	0	0	0	0
+n1030.ofn	nominals	ok	24.94	0	0	0	0	0
+n1030.ofn	certified_nominals	ok	14.01	0	0	0	0	0
+n1031.ofn	auto	TIMEOUT	60.06					
+n1031.ofn	nominals	TIMEOUT	60.06					
+n1031.ofn	certified_nominals	TIMEOUT	60.06					
+n1032.ofn	auto	ok	0.01	0	0	0	0	0
+n1032.ofn	nominals	TIMEOUT	60.06					
+n1032.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+n1033.ofn	auto	TIMEOUT	60.06					
+n1033.ofn	nominals	TIMEOUT	60.06					
+n1033.ofn	certified_nominals	TIMEOUT	60.00					
+n1034.ofn	auto	ok	0.01	0	0	0	0	0
+n1034.ofn	nominals	ok	0.01	0	0	0	0	0
+n1034.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+n1035.ofn	auto	ok	0.04	0	0	0	0	0
+n1035.ofn	nominals	ok	0.04	0	0	0	0	0
+n1035.ofn	certified_nominals	ok	0.03	0	0	0	0	0
+n1036.ofn	auto	TIMEOUT	60.05					
+n1036.ofn	nominals	TIMEOUT	60.04					
+n1036.ofn	certified_nominals	TIMEOUT	60.06					
+n1037.ofn	auto	ok	0.01	0	0	0	0	0
+n1037.ofn	nominals	ok	0.09	0	0	0	0	0
+n1037.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+n1038.ofn	auto	TIMEOUT	60.06					
+n1038.ofn	nominals	TIMEOUT	60.06					
+n1038.ofn	certified_nominals	TIMEOUT	60.06					
+n1039.ofn	auto	ok	0.03	0	0	0	0	0
+n1039.ofn	nominals	ok	0.02	0	0	0	0	0
+n1039.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+n1040.ofn	auto	TIMEOUT	60.05					
+n1040.ofn	nominals	TIMEOUT	60.06					
+n1040.ofn	certified_nominals	TIMEOUT	60.06					
+n1041.ofn	auto	TIMEOUT	60.06					
+n1041.ofn	nominals	TIMEOUT	60.06					
+n1041.ofn	certified_nominals	TIMEOUT	60.06					
+n1042.ofn	auto	ok	0.03	0	0	0	0	0
+n1042.ofn	nominals	ok	0.02	0	0	0	0	0
+n1042.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+n1043.ofn	auto	ok	0.05	0	0	0	0	0
+n1043.ofn	nominals	ok	0.03	0	0	0	0	0
+n1043.ofn	certified_nominals	ok	0.03	0	0	0	0	0
+n1044.ofn	auto	ok	0.01	0	0	0	0	0
+n1044.ofn	nominals	ok	0.01	0	0	0	0	0
+n1044.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+n1045.ofn	auto	TIMEOUT	60.05					
+n1045.ofn	nominals	TIMEOUT	60.06					
+n1045.ofn	certified_nominals	TIMEOUT	60.04					
+n1046.ofn	auto	ok	0.52	0	0	0	0	0
+n1046.ofn	nominals	ok	0.53	0	0	0	0	0
+n1046.ofn	certified_nominals	ok	0.53	0	0	0	0	0
+n1047.ofn	auto	ok	1.03	0	0	0	0	0
+n1047.ofn	nominals	ok	1.07	0	0	0	0	0
+n1047.ofn	certified_nominals	ok	1.02	0	0	0	0	0
+n1048.ofn	auto	TIMEOUT	60.06					
+n1048.ofn	nominals	TIMEOUT	60.06					
+n1048.ofn	certified_nominals	TIMEOUT	60.06					
+n1049.ofn	auto	ok	0.65	0	0	0	0	0
+n1049.ofn	nominals	TIMEOUT	60.05					
+n1049.ofn	certified_nominals	ok	0.43	0	0	0	0	0
+n1050.ofn	auto	ok	0.04	0	0	0	0	0
+n1050.ofn	nominals	ok	0.47	0	0	0	0	0
+n1050.ofn	certified_nominals	ok	0.03	0	0	0	0	0
+n1051.ofn	auto	TIMEOUT	60.06					
+n1051.ofn	nominals	TIMEOUT	60.06					
+n1051.ofn	certified_nominals	TIMEOUT	60.03					
+n1052.ofn	auto	TIMEOUT	60.02					
+n1052.ofn	nominals	TIMEOUT	60.06					
+n1052.ofn	certified_nominals	TIMEOUT	60.06					
+n1053.ofn	auto	TIMEOUT	60.05					
+n1053.ofn	nominals	TIMEOUT	60.06					
+n1053.ofn	certified_nominals	TIMEOUT	60.06					
+n1054.ofn	auto	ok	0.04	0	0	0	0	0
+n1054.ofn	nominals	ok	0.04	0	0	0	0	0
+n1054.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+n1055.ofn	auto	ok	0.02	0	0	0	0	0
+n1055.ofn	nominals	ok	0.01	0	0	0	0	0
+n1055.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+n1056.ofn	auto	TIMEOUT	60.02					
+n1056.ofn	nominals	TIMEOUT	60.06					
+n1056.ofn	certified_nominals	TIMEOUT	60.06					
+n1057.ofn	auto	ok	0.02	0	0	0	0	0
+n1057.ofn	nominals	ok	0.02	0	0	0	0	0
+n1057.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+n1058.ofn	auto	ok	0.01	0	0	0	0	0
+n1058.ofn	nominals	TIMEOUT	60.04					
+n1058.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+n1059.ofn	auto	ok	0.04	0	0	0	0	0
+n1059.ofn	nominals	ok	0.04	0	0	0	0	0
+n1059.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+n1060.ofn	auto	TIMEOUT	60.06					
+n1060.ofn	nominals	TIMEOUT	60.06					
+n1060.ofn	certified_nominals	TIMEOUT	60.06					
+n1061.ofn	auto	ok	0.05	0	0	0	0	0
+n1061.ofn	nominals	ok	0.02	0	0	0	0	0
+n1061.ofn	certified_nominals	ok	0.03	0	0	0	0	0
+n1062.ofn	auto	ok	0.01	0	0	0	0	0
+n1062.ofn	nominals	ok	0.04	0	0	0	0	0
+n1062.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+n1063.ofn	auto	TIMEOUT	60.05					
+n1063.ofn	nominals	TIMEOUT	60.06					
+n1063.ofn	certified_nominals	TIMEOUT	60.06					
+n1064.ofn	auto	ok	0.14	0	0	0	0	0
+n1064.ofn	nominals	ok	0.19	0	0	0	0	0
+n1064.ofn	certified_nominals	ok	0.11	0	0	0	0	0
+n1065.ofn	auto	TIMEOUT	60.06					
+n1065.ofn	nominals	TIMEOUT	60.06					
+n1065.ofn	certified_nominals	TIMEOUT	60.04					
+n1066.ofn	auto	ok	1.68	0	0	0	0	0
+n1066.ofn	nominals	ok	1.60	0	0	0	0	0
+n1066.ofn	certified_nominals	ok	1.65	0	0	0	0	0
+n1067.ofn	auto	ok	0.12	0	0	0	0	0
+n1067.ofn	nominals	ok	0.05	0	0	0	0	0
+n1067.ofn	certified_nominals	ok	0.12	0	0	0	0	0
+n1068.ofn	auto	ok	0.02	0	0	0	0	0
+n1068.ofn	nominals	ok	0.03	0	0	0	0	0
+n1068.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+n1069.ofn	auto	ok	0.02	0	0	0	0	0
+n1069.ofn	nominals	ok	0.01	0	0	0	0	0
+n1069.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+n1070.ofn	auto	ok	0.01	0	0	0	0	0
+n1070.ofn	nominals	ok	0.16	0	0	0	0	0
+n1070.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+n1071.ofn	auto	ok	0.02	0	0	0	0	0
+n1071.ofn	nominals	TIMEOUT	60.07					
+n1071.ofn	certified_nominals	ok	0.06	0	0	0	0	0
+n1072.ofn	auto	TIMEOUT	60.07					
+n1072.ofn	nominals	TIMEOUT	60.06					
+n1072.ofn	certified_nominals	TIMEOUT	60.06					
+n1073.ofn	auto	ok	0.01	0	0	0	0	0
+n1073.ofn	nominals	ok	0.02	0	0	0	0	0
+n1073.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+n1074.ofn	auto	ok	0.03	0	0	0	0	0
+n1074.ofn	nominals	ok	0.01	0	0	0	0	0
+n1074.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+n1075.ofn	auto	TIMEOUT	60.06					
+n1075.ofn	nominals	TIMEOUT	60.06					
+n1075.ofn	certified_nominals	TIMEOUT	60.06					
+n1076.ofn	auto	ok	9.42	0	0	0	0	0
+n1076.ofn	nominals	ok	11.65	0	0	0	0	0
+n1076.ofn	certified_nominals	ok	13.70	0	0	0	0	0
+n1077.ofn	auto	ok	0.18	0	0	0	0	0
+n1077.ofn	nominals	ok	0.26	0	0	0	0	0
+n1077.ofn	certified_nominals	ok	0.11	0	0	0	0	0
+n1078.ofn	auto	ok	0.02	0	0	0	0	0
+n1078.ofn	nominals	ok	0.13	0	0	0	0	0
+n1078.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+n1079.ofn	auto	ok	0.07	0	0	0	0	0
+n1079.ofn	nominals	ok	0.10	0	0	0	0	0
+n1079.ofn	certified_nominals	ok	0.06	0	0	0	0	0
+n1080.ofn	auto	ok	0.01	0	0	0	0	0
+n1080.ofn	nominals	ok	0.04	0	0	0	0	0
+n1080.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+n1081.ofn	auto	ok	0.02	0	0	0	0	0
+n1081.ofn	nominals	ok	0.02	0	0	0	0	0
+n1081.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+n1082.ofn	auto	ok	0.01	0	0	0	0	0
+n1082.ofn	nominals	TIMEOUT	60.06					
+n1082.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+n1083.ofn	auto	ok	0.15	0	0	0	0	0
+n1083.ofn	nominals	ok	0.12	0	0	0	0	0
+n1083.ofn	certified_nominals	ok	0.14	0	0	0	0	0
+n1084.ofn	auto	ok	0.03	0	0	0	0	0
+n1084.ofn	nominals	ok	0.02	0	0	0	0	0
+n1084.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+n1085.ofn	auto	ok	0.04	0	0	0	0	0
+n1085.ofn	nominals	ok	0.02	0	0	0	0	0
+n1085.ofn	certified_nominals	ok	0.03	0	0	0	0	0
+n1086.ofn	auto	ok	0.06	0	0	0	0	0
+n1086.ofn	nominals	ok	0.04	0	0	0	0	0
+n1086.ofn	certified_nominals	ok	0.04	0	0	0	0	0
+n1087.ofn	auto	ok	0.02	0	0	0	0	0
+n1087.ofn	nominals	ok	0.01	0	0	0	0	0
+n1087.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+n1088.ofn	auto	ok	0.10	0	0	0	0	0
+n1088.ofn	nominals	ok	0.16	0	0	0	0	0
+n1088.ofn	certified_nominals	ok	0.08	0	0	0	0	0
+n1089.ofn	auto	ok	0.01	0	0	0	0	0
+n1089.ofn	nominals	ok	0.01	0	0	0	0	0
+n1089.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+n1090.ofn	auto	ok	0.03	0	0	0	0	0
+n1090.ofn	nominals	ok	0.02	0	0	0	0	0
+n1090.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+n1091.ofn	auto	ok	0.01	0	0	0	0	0
+n1091.ofn	nominals	ok	0.02	0	0	0	0	0
+n1091.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+n1092.ofn	auto	TIMEOUT	60.06					
+n1092.ofn	nominals	TIMEOUT	60.06					
+n1092.ofn	certified_nominals	TIMEOUT	60.04					
+n1093.ofn	auto	ok	0.05	0	0	0	0	0
+n1093.ofn	nominals	ok	0.04	0	0	0	0	0
+n1093.ofn	certified_nominals	ok	0.04	0	0	0	0	0
+n1094.ofn	auto	ok	0.02	0	0	0	0	0
+n1094.ofn	nominals	ok	0.01	0	0	0	0	0
+n1094.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+n1095.ofn	auto	ok	0.21	0	0	0	0	0
+n1095.ofn	nominals	ok	0.27	0	0	0	0	0
+n1095.ofn	certified_nominals	ok	0.21	0	0	0	0	0
+n1096.ofn	auto	TIMEOUT	60.06					
+n1096.ofn	nominals	ok	0.30	0	0	0	0	0
+n1096.ofn	certified_nominals	TIMEOUT	60.06					
+n1097.ofn	auto	TIMEOUT	60.06					
+n1097.ofn	nominals	TIMEOUT	60.06					
+n1097.ofn	certified_nominals	TIMEOUT	60.06					
+n1098.ofn	auto	ok	0.04	0	0	0	0	0
+n1098.ofn	nominals	ok	0.07	0	0	0	0	0
+n1098.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+n1099.ofn	auto	ok	0.04	0	0	0	0	0
+n1099.ofn	nominals	ok	0.04	0	0	0	0	0
+n1099.ofn	certified_nominals	ok	0.03	0	0	0	0	0

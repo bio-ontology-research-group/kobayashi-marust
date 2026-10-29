@@ -1,0 +1,6 @@
+files 300 runs 900
+auto ok=298 TIMEOUT=1 NOGOLD=1
+certified_nominals ok=298 TIMEOUT=1 NOGOLD=1
+nominals ok=287 TIMEOUT=12 NOGOLD=1
+   g56.ofn nominals ctx TIMEOUT ref ok
+non-ok under ctx, by reference verdict: {('TIMEOUT', 'TIMEOUT'): 13, ('NOGOLD', 'not-run'): 3, ('TIMEOUT', 'ok'): 1}
