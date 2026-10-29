@@ -418,5 +418,12 @@ the clausal `Tableau` of `tableau.rs`, not the native hypertableau, so no
 blocking code in this section is involved. Since 5a9eaa77 the frontend
 carries the 81 data-property assertions of 7278 as `DataHasValue` class
 assertions (478 more clauses: 8,552 instead of 8,074) and runs a second
-frontend pass. The v1.5.3 worker binary takes 26.9 s on the v1.5.4 input
-(`KM_TAB_BIN`), the same as the v1.5.4 worker.
+frontend pass (3726 publishes the same output and has the same 81
+assertions). The v1.5.3 worker binary takes 26.9 s (7278) and 25.4 s
+(3726) on the v1.5.4 input (`KM_TAB_BIN`), the same as the v1.5.4 worker.
+
+With these changes the card arm takes 70 s on 205 and 61 s on 7499 (v1.5.3:
+47 s and 44 s; v1.5.4: 178 s and 160 s, all one core). The rest of the
+gap to v1.5.3 is the larger search the checked pairs require (1.04M
+instead of 0.65M steps on 7499, propagation 28.6 s instead of 19.5 s),
+which no exact change to the blocking computation can remove.

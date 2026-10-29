@@ -1,0 +1,3 @@
+test tableau::hypertableau::tests::anywhere_blocking_also_terminates ... ok
+test tableau::hypertableau::tests::checked_subset_blocking_incremental_matches_full_scan ... ok
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 3025 filtered out; finished in 0.00s

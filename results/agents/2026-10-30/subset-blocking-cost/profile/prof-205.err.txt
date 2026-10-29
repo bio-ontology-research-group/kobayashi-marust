@@ -1,0 +1,31 @@
+KM_TIMING mark: validate_user_input done
+KM_TIMING mark: second source check done
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING ABox quotient not built: site 1
+KM_TIMING mirror-route: declined by lexical prefilter: bytes=2415724 complements_below=1
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.13s cached=false sidecar=false
+KM_TIMING frontend done @ 0.13s route=certified_card_proxy_abox
+KM_TIMING spawn_ht: read+convert 23582 clauses (ht_view=23359) in 0.09s
+KM_TIMING race: HT worker spawned @ 0.17s after the CB stack started
+KM_HT_STATS ht-only (tcc+unfold) clauses=294
+KM_HT [dfs] t_ms=10633 tick=1400000 steps=94664 backtracks=2 backjumps=0 conflicts=2 restarts=0 nodes=13 distinct_lbl=0 dup_max=0 depth=0 pending=19 oblig=12 lng=0 lng_fires=0 mtot=1633309 mmax=2
+KM_HT [dfs] t_ms=44866 tick=3400000 steps=199094 backtracks=2 backjumps=0 conflicts=2 restarts=0 nodes=152 distinct_lbl=0 dup_max=0 depth=70 pending=111 oblig=375 lng=0 lng_fires=0 mtot=4248189 mmax=2
+KM_HT [dfs] t_ms=108684 tick=7200000 steps=398928 backtracks=2 backjumps=0 conflicts=2 restarts=0 nodes=59 distinct_lbl=0 dup_max=0 depth=13 pending=44 oblig=112 lng=0 lng_fires=0 mtot=9237997 mmax=2
+KM_HT [dfs] t_ms=139864 tick=9600000 steps=527826 backtracks=2 backjumps=0 conflicts=2 restarts=0 nodes=71 distinct_lbl=0 dup_max=0 depth=21 pending=51 oblig=139 lng=0 lng_fires=0 mtot=12328347 mmax=9
+KM_HT [dfs] t_ms=154891 tick=10600000 steps=581728 backtracks=2 backjumps=0 conflicts=2 restarts=0 nodes=197 distinct_lbl=0 dup_max=0 depth=85 pending=141 oblig=480 lng=0 lng_fires=0 mtot=13614987 mmax=10
+KM_HT [dfs] t_ms=181380 tick=12200000 steps=667525 backtracks=2 backjumps=0 conflicts=2 restarts=0 nodes=238 distinct_lbl=0 dup_max=0 depth=113 pending=169 oblig=613 lng=0 lng_fires=0 mtot=15675863 mmax=10
+KM_HT [witreuse] queries=5579 reused=961 built=4618
+KM_HT [exp] t_ms=214197 tick=15200000 steps=840636 backtracks=671 backjumps=376 conflicts=3019 restarts=0 nodes=3 distinct_lbl=0 dup_max=0 depth=0 pending=2 oblig=10 lng=0 lng_fires=0 mtot=19470803 mmax=10
+KM_HT [dfs] t_ms=236422 tick=19400000 steps=1037482 backtracks=21597 backjumps=12714 conflicts=14355 restarts=0 nodes=56 distinct_lbl=0 dup_max=0 depth=14 pending=76 oblig=97 lng=0 lng_fires=0 mtot=25874626 mmax=10
+KM_HT [dfs] t_ms=238905 tick=20000000 steps=1081297 backtracks=21597 backjumps=12714 conflicts=14851 restarts=0 nodes=69 distinct_lbl=0 dup_max=0 depth=40 pending=79 oblig=118 lng=0 lng_fires=0 mtot=26557335 mmax=10
+KM_HT [classify-prof] steps=1101827 block_ms=198876(84%) prop_ms=32849(13%) expand_ms=3841(1%) eager_ms=1056 obligloop_ms=1509 obl_iters=1042257
+KM_HT [bstat] passes=1086227 nodes_with_cands=124633975 cands=124032657 superset=118156898 admits=118156898 admits_false=19183662 admits_ms=110053 compute_blocked_ms=191794
+KM_HT [classify-i2] calls=0 full_rebuilds=0 avg_suffix=0 (vs ~node count)
+KM_HT [close-subs] in=43066 out=43066
+KM_TIMING race: HT worker exited @ 240.21s (success=true)
+KM_TIMING race: read_tout done @ 241.13s
+KM_TIMING engine block done @ 241.37s (subs_keys=5228)
+KM_TIMING mark: output mapping done
+KM_TIMING mark: classify_json returned
+KM_TIMING mark: output written

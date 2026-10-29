@@ -1,0 +1,68 @@
+== ht_subset_blocking
+test gained_literal_under_an_at_least_recognition ... ok
+test gained_recognition_literal_blocks_no_successor ... ok
+test gained_literal_at_an_existential_successor ... ok
+test card_arm_subset_blocking_on_the_automatic_route ... ok
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+== empty_and_universal_data_ranges
+test bottom_data_property_has_no_values ... ok
+test assertions_against_empty_ranges_are_inconsistent ... ok
+test complemented_cardinality_definers_contrapose_on_every_route ... ok
+test datatype_definitions_of_empty_and_universal_ranges ... ok
+test complements_of_ordinary_ranges ... ok
+test literal_existential_with_universal_complement_of_literal_is_unsatisfiable ... ok
+test universal_data_ranges_in_every_position ... ok
+test empty_data_ranges_in_every_position ... ok
+test complement_of_literal_and_literal_on_every_route ... ok
+test excluded_middle_of_complement_ranges has been running for over 60 seconds
+test excluded_middle_of_complement_ranges ... ok
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 178.36s
+== bridge_generator_soundness
+test minimal_cases_match_hermit_on_both_bridge_terminologies ... ok
+test production_all_route_matches_hermit ... ok
+test automatic_route_matches_hermit ... ok
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.62s
+== data_assertions_carried
+test inconsistency_without_uncarried_assertions_reports_nothing_dropped ... ok
+test assertions_above_the_literal_cap_are_carried_by_profile ... ok
+test counted_assertions_above_the_literal_cap_are_published_as_dropped ... ok
+test negative_data_assertion_is_published_as_dropped ... ok
+test single_data_assertion_is_carried_on_every_abox_route ... ok
+test mixed_object_and_data_assertions_are_carried ... ok
+test merged_individuals_keep_distinct_values_under_counting ... ok
+test profiles_preserve_facet_membership_and_range_clashes ... ok
+test unproxied_assertions_can_hide_a_clash ... ok
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 58.57s
+== forced_route_fail_closed
+352 |                 let mut fail = |why: String| failures.lock().unwrap().push(format!("{label}: {why}"));
+test allowed_approximation_is_marked_and_counted ... ok
+test incremental_source_session_refuses_a_forced_approximate_route ... ok
+test automatic_route_matches_hermit_on_the_max2_reproducers ... ok
+test forced_default_route_refuses_the_max2_reproducers ... ok
+test no_route_publishes_an_unmarked_approximate_answer ... ok
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.12s
+== cb_route_completeness
+test automatic_route_matches_hermit ... ok
+test cb_absorb1_route_matches_hermit ... ok
+test cb_plain1_route_matches_hermit ... ok
+test cb_portfolio16_route_matches_hermit ... ok
+test production_all_route_matches_hermit ... ok
+test cb_trigger1_route_matches_hermit ... ok
+test default1_route_matches_hermit ... ok
+test cb_plain1_closure_representations_agree ... ok
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.19s
+== universal_role_and_top_data_range
+test data_range_complement_excluded_middle_still_applies_to_values ... ok
+test data_sorted_top_definer_keeps_data_values_satisfiable ... ok
+test data_property_range_over_the_shared_top_definer_stays_satisfiable ... ok
+test exists_top_role_thing_is_owl_thing_and_fast ... ok
+test literal_existential_matches_unqualified_min_cardinality ... ok
+test literal_existential_over_free_data_property_is_fast ... ok
+test data_value_next_to_universal_role_hub_on_nominals ... ok
+test mixed_object_and_data_assertions_on_one_individual ... ok
+test nominal_top_role_reproducer ... ok
+test universal_role_restrictions_are_complete ... ok
+test data_value_singleton_next_to_nominal_successors ... ok
+test data_value_next_to_universal_role_hub_stays_satisfiable ... ok
+test sort_encoding_matches_hermit_on_differential_fixtures ... ok
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.72s
