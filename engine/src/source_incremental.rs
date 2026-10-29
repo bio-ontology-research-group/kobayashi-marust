@@ -198,6 +198,10 @@ impl SourceIncrementalClassifier {
         let frontend = normalize_automatic(source)?;
         let route = frontend.route.clone();
         let source_covered = source_locality_requested() && positive_source_coverage(source, &frontend);
+        if !retained_backend_allowed(&frontend) {
+            let classification = classify_source_exact(source)?;
+            return Ok(Self { revision: 0, route, frontend, classification, backend: SourceBackend::ExactBatch });
+        }
         if let Some((classifier, classification)) = IncrementalMirrorClassifier::new(source)? {
             return Ok(Self {
                 revision: 0,
@@ -483,6 +487,9 @@ impl SourceIncrementalClassifier {
                 candidate = specialist_candidate;
                 route_after.clone_from(&route_before);
             }
+        }
+        if !retained_backend_allowed(&candidate) {
+            return self.exact_rebuild(source, candidate, route_before, route_after);
         }
 
         if let SourceBackend::Mirror(classifier) = &self.backend {
@@ -1264,6 +1271,18 @@ impl SourceIncrementalClassifier {
             }
         }
 
+        self.exact_rebuild(source, candidate, route_before, route_after)
+    }
+
+    /// Classify the new revision through the exact automatic pipeline and
+    /// retain only a backend that is exact for it.
+    fn exact_rebuild(
+        &mut self,
+        source: &str,
+        candidate: FrontendResult,
+        route_before: String,
+        route_after: String,
+    ) -> Result<SourceIncrementalReceipt, String> {
         let classification = classify_source_exact(source)?;
         let removed = self.frontend.clauses.len();
         let added = candidate.clauses.len();
@@ -1289,7 +1308,9 @@ impl SourceIncrementalClassifier {
         self.route = route_after.clone();
         self.frontend = candidate;
         self.classification = classification;
-        self.backend = if let Some(classifier) = seeded_bridge {
+        self.backend = if !retained_backend_allowed(&self.frontend) {
+            SourceBackend::ExactBatch
+        } else if let Some(classifier) = seeded_bridge {
             SourceBackend::Bridge {
                 publication_exact: map_incremental_result(&self.frontend, classifier.result()) == self.classification,
                 classifier,
@@ -1392,6 +1413,19 @@ fn receipt_from_change(
 /// The lower-level retained state is complete only for routes whose semantics
 /// are entirely represented by the normalized clauses.  Typed HT adapters will
 /// relax these exclusions one route at a time while preserving this gate.
+/// Whether a retained backend may answer from this normalized revision. The
+/// session normalizes without the `DataHasValue` conversion of data-property
+/// assertions that the batch pipeline applies on demand
+/// (`orchestrate::frontend_run::run_ofn_split_cached`), so a revision whose
+/// frontend reports uncarried assertions has a clause view and typed payload
+/// that lack them: every retained backend would classify a weaker ontology
+/// (`⊤ ⊑ ≤2 u` with three `u` values on one individual was answered
+/// consistent). Such a revision is classified by the exact automatic pipeline
+/// alone.
+fn retained_backend_allowed(frontend: &FrontendResult) -> bool {
+    frontend.uncarried_data_assertions == 0
+}
+
 fn clause_state_is_complete(frontend: &FrontendResult) -> bool {
     let route = frontend.route.as_str();
     let clause_route = route == "elc"
