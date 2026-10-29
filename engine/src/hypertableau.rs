@@ -2319,6 +2319,179 @@ fn fire_global(clauses: &[ClauseRec], ext: &mut Ext, cid: usize, n: Node) {
 
 // ============================== Blocking ===================================
 
+/// The literals whose presence at a node can change a clause instance that
+/// spans the node and a neighbour (docs/HYBRID-CB-HT.md section 8).
+///
+/// Subset blocking maps a blocked node `w` with `L(w) ⊆ L(w')` onto its
+/// blocker `w'` when the model is unravelled: `w`'s position keeps its incoming
+/// edges and its edges to nodes other than its own successors, and takes `w'`'s
+/// label and successors, so it carries the gained literals `L(w') \ L(w)`.
+/// Every instance the tableau evaluated over one of `w`'s kept edges stays
+/// satisfied, since its head holds at the neighbour or in `L(w) ⊆ L(w')`;
+/// only a gained literal can enable a new one. A literal is relevant for an
+/// edge `u -r-> w` (or `w -r-> u`, not a successor edge) when it occurs in a
+/// clause body at the variable that edge binds to `w`:
+/// - `nb_in` / `nb_out`: at a neighbour `y` of a body atom `r(x, y)` /
+///   `r(y, x)` (for example `C(y) ∧ r(x, y) → D(x)` from `∃r.C ⊑ D`);
+/// - `ctr_out` / `ctr_in`: at the centre of a clause with a body atom
+///   `r(x, y)` / `r(y, x)`, an instance centred at `w` itself;
+/// - cardinality fillers (at the target of a number-role edge) and markers
+///   (at its source), both signs, which the number and recognition rules read
+///   like such clauses, and nominal concepts on any edge.
+/// An instance centred at `w` of a clause with two or more neighbours or an
+/// equality head may count a kept edge together with `w'`'s successors, so a
+/// kept edge on such a role (`multi_out` / `multi_in`) forbids the pair, and a
+/// clause with a role atom between two neighbours (`two_hop`) spans `w`'s
+/// successors, so it forbids subset blocking altogether.
+struct SubsetGain {
+    nb_in: HashMap<R, HashSet<CLit>>,
+    nb_out: HashMap<R, HashSet<CLit>>,
+    ctr_out: HashMap<R, HashSet<CLit>>,
+    ctr_in: HashMap<R, HashSet<CLit>>,
+    multi_out: HashSet<R>,
+    multi_in: HashSet<R>,
+    any: HashSet<CLit>,
+    two_hop: bool,
+}
+
+impl SubsetGain {
+    fn empty() -> SubsetGain {
+        SubsetGain {
+            nb_in: HashMap::default(),
+            nb_out: HashMap::default(),
+            ctr_out: HashMap::default(),
+            ctr_in: HashMap::default(),
+            multi_out: HashSet::default(),
+            multi_in: HashSet::default(),
+            any: HashSet::default(),
+            two_hop: false,
+        }
+    }
+
+    fn build(clauses: &[ClauseRec], card_defs: &HashMap<C, CardDef>, nominals: &[C]) -> SubsetGain {
+        let mut g = SubsetGain::empty();
+        let both = |set: &mut HashSet<CLit>, c: C| {
+            set.insert(CLit::pos(c));
+            set.insert(CLit::neg(c));
+        };
+        for (clause, _, _) in clauses {
+            let mut neighbours: Vec<Var> = Vec::new();
+            let mut out_roles: Vec<(R, Var)> = Vec::new();
+            let mut in_roles: Vec<(R, Var)> = Vec::new();
+            for atom in &clause.body {
+                if let Atom::Role { r, s, t } = atom {
+                    if *s == X && *t != X {
+                        out_roles.push((*r, *t));
+                    } else if *t == X && *s != X {
+                        in_roles.push((*r, *s));
+                    } else if *s != X && *t != X {
+                        g.two_hop = true;
+                    }
+                    for v in [*s, *t] {
+                        if v != X && !neighbours.contains(&v) {
+                            neighbours.push(v);
+                        }
+                    }
+                }
+            }
+            for atom in &clause.body {
+                if let Atom::Concept { lit, t } = atom {
+                    if *t == X {
+                        for (r, _) in &out_roles {
+                            g.ctr_out.entry(*r).or_default().insert(*lit);
+                        }
+                        for (r, _) in &in_roles {
+                            g.ctr_in.entry(*r).or_default().insert(*lit);
+                        }
+                    } else {
+                        let mut bound = false;
+                        for (r, y) in &out_roles {
+                            if y == t {
+                                g.nb_in.entry(*r).or_default().insert(*lit);
+                                bound = true;
+                            }
+                        }
+                        for (r, y) in &in_roles {
+                            if y == t {
+                                g.nb_out.entry(*r).or_default().insert(*lit);
+                                bound = true;
+                            }
+                        }
+                        if !bound {
+                            g.any.insert(*lit);
+                        }
+                    }
+                }
+            }
+            if neighbours.len() >= 2 || clause.head.iter().any(|a| matches!(a, Atom::Eq { .. })) {
+                g.multi_out.extend(out_roles.iter().map(|(r, _)| *r));
+                g.multi_in.extend(in_roles.iter().map(|(r, _)| *r));
+            }
+        }
+        // The number and recognition rules at a node `u` with marker `m` count
+        // `u`'s `r`-out-edges whose target carries the filler: an instance
+        // centred at `u` with the shape of `m(x) ∧ r(x, y1) ∧ … ∧ F(y1) ∧ …`.
+        for (marker, definition) in card_defs {
+            let r = definition.role;
+            both(g.nb_in.entry(r).or_default(), definition.filler.c);
+            both(g.ctr_out.entry(r).or_default(), *marker);
+            g.multi_out.insert(r);
+        }
+        for &nominal in nominals {
+            both(&mut g.any, nominal);
+        }
+        g
+    }
+
+    /// Every subset pair is admitted when no literal is relevant for any edge
+    /// and no edge points back to a predecessor.
+    fn trivial(&self, inverse: bool) -> bool {
+        !inverse
+            && !self.two_hop
+            && self.any.is_empty()
+            && self.multi_in.is_empty()
+            && [&self.nb_in, &self.nb_out, &self.ctr_in]
+                .iter()
+                .all(|sets| sets.values().all(HashSet::is_empty))
+            && (self.multi_out.is_empty() && self.ctr_out.values().all(HashSet::is_empty))
+    }
+
+    /// May `w` be blocked by `wp`, given `L(w) ⊆ L(wp)`?
+    fn admits(&self, ext: &Ext, w: Node, wp: Node) -> bool {
+        if self.two_hop {
+            return false;
+        }
+        let mut relevant: Vec<&HashSet<CLit>> = Vec::new();
+        if !self.any.is_empty() {
+            relevant.push(&self.any);
+        }
+        for (r, _, _) in &ext.in_edges[w] {
+            if self.multi_in.contains(r) {
+                return false;
+            }
+            relevant.extend(self.nb_in.get(r));
+            relevant.extend(self.ctr_in.get(r));
+        }
+        for (r, t, _) in &ext.out_edges[w] {
+            if ext.pred[*t] == Some(w) {
+                continue;
+            }
+            if self.multi_out.contains(r) {
+                return false;
+            }
+            relevant.extend(self.nb_out.get(r));
+            relevant.extend(self.ctr_out.get(r));
+        }
+        if relevant.is_empty() {
+            return true;
+        }
+        let lw = &ext.concepts[w];
+        ext.concepts[wp]
+            .keys()
+            .all(|k| lw.contains_key(k) || !relevant.iter().any(|set| set.contains(k)))
+    }
+}
+
 fn label_subset(ext: &Ext, n: Node, m: Node) -> bool {
     ext.concepts[n]
         .keys()
@@ -4641,6 +4814,12 @@ pub struct Ht {
     /// blocking signature: 0=core (positive-concept equality, default), 1=subset
     /// (full-label superset), 2=eq (full-label equality). KM_HT_BLOCK overrides.
     block_mode: u8,
+    /// What subset blocking (modes 1 and 5) must check, from the compiled
+    /// clause set; see [`SubsetGain`]. Built on the first satisfiability test.
+    subset_gain: Option<Arc<SubsetGain>>,
+    /// Every subset pair is admitted ([`SubsetGain::trivial`]); set by
+    /// `resolve_subset_blocking`.
+    subset_exact: bool,
     cache: HashMap<u64, Vec<Node>>,
     steps: u64,
     backtracks: u64,
@@ -17893,6 +18072,7 @@ impl Ht {
     /// edited copy-on-write: unshared (no live worker) it is rewritten in
     /// place; a clone some worker still holds is left untouched.
     fn rebuild_triggers(&mut self) {
+        self.subset_gain = None;
         let (concept_triggers, role_triggers, global_clauses, global_disj) =
             trigger_tables(&self.index.clauses);
         let index = Arc::make_mut(&mut self.index);
@@ -18146,6 +18326,8 @@ impl Ht {
             sat_labels: Vec::new(),
             satfold_watch: HashMap::default(),
             satfold_hits: 0,
+            subset_gain: None,
+            subset_exact: false,
             nom_set: Vec::new(),
             native_abox: Arc::new(NativeAboxState::default()),
             qo_edge_chains: Vec::new(),
@@ -18279,6 +18461,7 @@ impl Ht {
     /// the unit tests) to feed `≥n`/`≤n` as first-class concepts rather than the
     /// clausified `⋁ Eq` pigeonhole.
     pub fn set_card_defs(&mut self, defs: HashMap<C, CardDef>) {
+        self.subset_gain = None;
         self.cert_number_roles
             .extend(defs.values().map(|definition| definition.role));
         self.card_defs = defs;
@@ -18296,6 +18479,7 @@ impl Ht {
     /// (R1∘R2⊑R ⟹ ∀R.C ⊑ ∀R1.∀R2.C).  Rebuilds the trigger indexes after
     /// appending the clauses.
     pub fn set_chains(&mut self, chains: Vec<(R, R, R)>, transitive: Vec<R>) {
+        self.subset_gain = None;
         // Store the CROSS-ROLE chains for QoSat edge-composition (KM_QO_EDGE_COMPOSE).
         // Transitive self-chains R∘R⊑R are EXCLUDED: they create the full transitive
         // edge closure, which cascades on shared-filler QoSat (no blocking) — the
@@ -18362,6 +18546,7 @@ impl Ht {
     /// Each tuple is `(marker, is_min, n, role, filler, exact)`; fillers are
     /// positive and `exact` records a removed source recognition split.
     pub fn set_card_defs_raw(&mut self, defs: &[(C, bool, u32, R, C, bool)]) {
+        self.subset_gain = None;
         let mut map: HashMap<C, CardDef> = HashMap::default();
         self.cert_exact_cardinality_markers.clear();
         for &(marker, is_min, n, role, filler, exact) in defs {
@@ -18430,6 +18615,7 @@ impl Ht {
     /// Provide the nominal concept ids (the o-rule singletons `{o}`). Re-applied to
     /// the per-query `Ext` in `consistent`; empty ⇒ inert.
     pub fn set_nominals(&mut self, noms: Vec<C>) {
+        self.subset_gain = None;
         self.nom_set = noms;
     }
 
@@ -18649,6 +18835,25 @@ impl Ht {
         // transitive roles (dropped 1 subsumption on 5303). Full EQ (mode 2)
         // is complete but folds too little to terminate in time.
         let mode = self.block_mode;
+        // Subset blocking (modes 1 and 5) admits a pair only when no gained
+        // literal is relevant (`SubsetGain`, docs/HYBRID-CB-HT.md section 8).
+        let gain = if matches!(mode, 1 | 5) {
+            self.subset_gain.clone().unwrap_or_else(|| {
+                Arc::new(SubsetGain::build(&self.index.clauses, &self.card_defs, &self.nom_set))
+            })
+        } else {
+            Arc::new(SubsetGain::empty())
+        };
+        let exact = mode == 1 && self.subset_exact;
+        let admits = |w: Node, wp: Node| exact || gain.admits(&self.ext, w, wp);
+        // With checked pairs a node may grow successors before its label is
+        // complete enough to be blocked; once it is blocked, its descendants
+        // are outside the unravelled model, so block them too (indirect
+        // blocking; `pred[n] < n`, so one ascending pass is final). Plain
+        // subset blocking keeps its historical behaviour.
+        let indirect = |blocked: &[bool], n: Node| {
+            !exact && self.ext.pred[n].is_some_and(|p| blocked[p])
+        };
         if mode == 0 || mode == 2 {
             // O(n) hashed equality blocking — HermiT's BlockingSignatureCache idea.
             // The equality modes block n by the FIRST earlier unblocked node with
@@ -18820,6 +19025,7 @@ impl Ht {
                                 if lwp.len() >= lwlen
                                     && lw.keys().all(|k| lwp.contains_key(k))
                                     && self.b2a_holds(w, wp, v)
+                                    && admits(w, wp)
                                 {
                                     blocked[w] = true;
                                     break;
@@ -18853,7 +19059,7 @@ impl Ht {
                     }
                 }
             }
-        } else if self.ext.incr_block {
+        } else if self.ext.incr_block && exact {
             // mode 1 (subset), INCREMENTAL: query the persistent inverted index
             // (maintained in add_concept / backtrack_to) — no per-call rebuild.
             // A blockable node n is blocked iff some earlier node m<n is a
@@ -18886,7 +19092,7 @@ impl Ht {
                         continue;
                     }
                     let lm = &self.ext.concepts[m];
-                    if lm.len() >= lnlen && ln.keys().all(|k| lm.contains_key(k)) {
+                    if lm.len() >= lnlen && ln.keys().all(|k| lm.contains_key(k)) && admits(n, m) {
                         blocked[n] = true;
                         break;
                     }
@@ -18899,6 +19105,10 @@ impl Ht {
                 if !self.ext.blockable[n] {
                     continue;
                 }
+                if indirect(&blocked, n) {
+                    blocked[n] = true;
+                    continue;
+                }
                 let ln = &self.ext.concepts[n];
                 let lnlen = ln.len();
                 for m in 0..n {
@@ -18906,7 +19116,7 @@ impl Ht {
                         continue;
                     }
                     let lm = &self.ext.concepts[m];
-                    if lm.len() >= lnlen && ln.keys().all(|k| lm.contains_key(k)) {
+                    if lm.len() >= lnlen && ln.keys().all(|k| lm.contains_key(k)) && admits(n, m) {
                         blocked[n] = true;
                         break;
                     }
@@ -18935,7 +19145,9 @@ impl Ht {
             touched.clear();
             for n in 0..nn {
                 let ln = &self.ext.concepts[n];
-                if self.ext.blockable[n] && !ln.is_empty() {
+                if self.ext.blockable[n] && indirect(&blocked, n) {
+                    blocked[n] = true;
+                } else if self.ext.blockable[n] && !ln.is_empty() {
                     let lnlen = ln.len();
                     // rarest concept of n ⇒ shortest candidate posting list.
                     let mut best: usize = usize::MAX;
@@ -18951,7 +19163,7 @@ impl Ht {
                     if let Some(cands) = lists.get(best) {
                         for &m in cands {
                             let lm = &self.ext.concepts[m];
-                            if lm.len() >= lnlen && ln.keys().all(|k| lm.contains_key(k)) {
+                            if lm.len() >= lnlen && ln.keys().all(|k| lm.contains_key(k)) && admits(n, m) {
                                 blocked[n] = true;
                                 break;
                             }
@@ -19276,7 +19488,8 @@ impl Ht {
             // mode-3 path when the cache is live so pooled blocks fire.
             Some(
                 if self.ext.incr2
-                    && (self.block_mode == 1 || (self.block_mode == 3 && !self.satcache3))
+                    && ((self.block_mode == 1 && self.subset_exact)
+                        || (self.block_mode == 3 && !self.satcache3))
                 {
                     // mode 1 = subset (i2_*), mode 3 = pairwise (i3_*); both re-evaluate
                     // only the changed suffix, identical to the full scan.
@@ -20516,6 +20729,7 @@ impl Ht {
         &mut self,
         snapshot: &HtModelSnapshot,
     ) -> Option<HtModelSnapshot> {
+        self.resolve_subset_blocking();
         self.ext = snapshot.ext.clone();
         self.ext.prepare_addition_replay();
         self.ext.watch = self.watch;
@@ -20563,7 +20777,27 @@ impl Ht {
         }
     }
 
+    /// Make subset blocking exact before a satisfiability test: modes 1 and
+    /// 5 check [`SubsetGain::admits`] for each candidate pair. Ancestor
+    /// blocking (`KM_HT_ANCESTOR_ONLY`) and the incremental subset snapshot
+    /// (`KM_HT_INCRBLOCK2`) do not, so unless every pair is admitted
+    /// ([`SubsetGain::trivial`]) the worker uses the checked anywhere scan.
+    fn resolve_subset_blocking(&mut self) {
+        if self.subset_gain.is_none() {
+            self.subset_gain = Some(Arc::new(SubsetGain::build(
+                &self.index.clauses,
+                &self.card_defs,
+                &self.nom_set,
+            )));
+        }
+        self.subset_exact = self.subset_gain.as_ref().unwrap().trivial(self.index.inverse_bridge);
+        if !self.subset_exact && !self.anywhere {
+            self.anywhere = true;
+        }
+    }
+
     pub fn consistent(&mut self, seed: &[CLit]) -> Option<bool> {
+        self.resolve_subset_blocking();
         // (Re)set the restart budget for this query; activity carries over from
         // prior queries (warm heuristic) and across restarts within this one.
         self.luby_idx = 1;

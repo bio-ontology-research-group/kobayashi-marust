@@ -507,17 +507,16 @@ fn excluded_middle_of_complement_ranges() {
             "{HEADER}Declaration(Class(:A)) Declaration(Class(:C)) Declaration(Class(:H)) \
              Declaration(Class(:N))\n{body}\n)\n"
         );
-        // The tableau route declines the union range. The forced `ht_general`
-        // arm is left out: it does not use a data excluded middle whose two
-        // heads are both data ranges (it does use the definer-headed one of
-        // `ObjectComplementOf(DataHasValue(..))`); it is not an automatic route
-        // for these inputs. The forced `nominals` arm is left out for the
+        // The tableau route declines the union range. (`ht_general` missed
+        // the excluded middle of two data ranges until its subset blocking
+        // learned that a gained data-range label at a successor can enable a
+        // recognition clause; docs/HYBRID-CB-HT.md section 8.) The forced
+        // `nominals` arm is left out for the
         // value cases: on an individual-free input it instantiates the
         // unrelativized excluded middle at the data-value individual and runs
         // for minutes (as it already did for `ObjectComplementOf(DataHasValue)`).
         for route in ROUTES.iter().filter(|route| {
-            **route != Some("ht_general")
-                && !(**route == Some("tableau") && body.contains("DataUnionOf"))
+            !(**route == Some("tableau") && body.contains("DataUnionOf"))
                 && !(**route == Some("nominals") && body.contains("DataOneOf"))
         }) {
             // The value cases split on the value singleton in every context

@@ -266,3 +266,77 @@ Fixtures: `engine/tests/fixtures/bridge_atmost_zero/`, run by
 `engine/tests/bridge_atmost_zero.rs` on auto, production_all, ht_bridge and
 ht_bridge with `KM_NO_SOURCE_TBOX=1`. Measurements:
 `results/agents/2026-10-29/cb-inverse-top/`.
+## 9. Subset blocking and backward clauses
+
+The worker's default blocking (mode 1, anywhere subset) blocks a node `w` by
+an earlier node `w'` with `L(w) ⊆ L(w')`; the card arm's mode 5 (Konclude's
+optimized blocking) adds a check for `∀` over an edge back to the predecessor.
+When the model is unravelled, `w`'s position takes `w'`'s label and
+successors, so it carries the gained literals `L(w') \ L(w)`. The code
+described subset blocking as complete for ALC(H). It is not, as soon as a
+clause body mentions a literal at a neighbour variable: `∃r.C ⊑ D` gives
+`C(y) ∧ r(x, y) → D(x)`, and a gained `C` at `w` makes the predecessor need
+`D`, which the tableau never derived because `w` was not expanded. Minimal
+cases (2026-10-29, delta-debugged from the ALCHIQ seeds 103, 507 and 639):
+
+    EquivalentClasses(:D ObjectSomeValuesFrom(:t ObjectUnionOf(:A ObjectComplementOf(:A))))
+    DisjointClasses(owl:Thing ObjectAllValuesFrom(:t :D))
+
+is inconsistent (every element needs a `t`-successor outside `D`, that is
+without a `t`-successor), but `ht_general` answered consistent. With any
+blocking that compares whole labels (modes 0, 2, 3, 4, 6) it answers
+inconsistent; modes 1 and 5 do not. The `A ⊔ ¬A` filler is what makes the
+gain possible: one node's label carries the chosen disjunct and the
+recognition literal of `∃t.(A ⊔ ¬A)` depends on it. The data-range excluded
+middle of `excluded_middle_of_complement_ranges` is the same mechanism: there
+the gained literal is a data-range label such as `xsd:integer` at a
+`d`-successor, which the recognition clause of `∃d.xsd:integer` reads, so
+`H ≡ ≥1 d` was never classified under `∃d.xsd:integer ⊔ ∃d.¬xsd:integer`
+(again correct under modes 0, 2 and 3, wrong under mode 1).
+
+The rule (`SubsetGain` in `hypertableau.rs`). When the model is unravelled,
+`w`'s position keeps its incoming edges and its edges to nodes other than its
+own successors, and takes `w'`'s label and successors. Every clause instance
+the tableau evaluated over a kept edge stays satisfied, because its head holds
+at the neighbour or in `L(w) ⊆ L(w')`. Only a gained literal can create a new
+instance, so a pair is admitted when no gained literal is relevant for a kept
+edge `u -r-> w` (or `w -r-> u`):
+
+- a literal at the neighbour variable of a body atom `r(x, y)` (or
+  `r(y, x)`), for example `C(y)` in `C(y) ∧ r(x, y) → D(x)`;
+- a literal at the centre of a clause with such a body atom (an instance
+  centred at `w` itself);
+- a cardinality filler on the number role `r` (both signs; the number and
+  recognition rules count it at `u`), a cardinality marker (counted at `w`),
+  and any nominal concept.
+
+A kept edge on a role of a clause with two or more neighbours or an equality
+head (number restrictions, functional roles) forbids the pair, since an
+instance centred at `w` could count that edge together with `w'`'s
+successors, and a clause with a role atom between two neighbours forbids
+subset blocking altogether. Modes 1 and 5 apply the rule to each candidate
+pair. Because a node that is not yet blockable may grow successors, a node
+whose predecessor is blocked is blocked too (indirect blocking; descendants
+of a blocked node are not part of the unravelled model). The incremental
+subset snapshot (`KM_HT_INCRBLOCK2`, set by `ht_general`), the persistent
+index path (`KM_HT_INCRBLOCK`) and ancestor blocking do not check pairs, so
+they run only when no literal is relevant and there is no inverse bridge;
+otherwise the worker uses the checked anywhere scan. Equal labels gain
+nothing, so the rule never rejects a pair that equality blocking would
+accept.
+
+Falling back to a whole-label mode was measured and rejected: mode 4
+(pairwise with indirect blocking) answers the minimal cases correctly but did
+not finish seed 1 in 30 s, and mode 3 (pairwise on the positive core, no
+indirect blocking) did not finish the seed-507 case; the search expands a
+node's existentials before its disjunctions are decided, and an incomplete
+label never equals a complete one. Certified runs (mode 6) are unchanged.
+
+Scope. Before this change the automatic route published a wrong answer: the
+ontology of `tests/ht_subset_blocking.rs::card_arm_subset_blocking_on_the_automatic_route`
+(the seed-103 core, a qualified number restriction, an inverse pair and a
+role chain over an asserted edge) is selected for `certified_card_proxy_abox`,
+whose card arm (mode 5) answered `CONSISTENT 1` (5cc0bccf); HermiT and the
+CB routes answer inconsistent. Without the class assertion on `b` the same
+route aborted instead, on an eagerly evaluated `then_some(assertions[0])` in
+the proxy-ABox certificate (`race.rs`), which this change also fixes.
