@@ -592,6 +592,102 @@ theorem maximal_server_complete
   exchange_refutation_complete rkG rkQ hinjG hinjQ hV
     (closedR_of_closedMaximal hext hclG) hclQ hx hunsat
 
+/-- On a finite atom type, a strict partial order `lt` and a set `V` that is
+downward closed for `lt` admit an injective rank that extends `lt` and has `V`
+as a lower set: put `V` first and order inside each block by the size of the
+strict down-set, breaking ties by an enumeration of the atoms. -/
+theorem exists_rank_extending_lower [Fintype Atom]
+    (lt : Atom → Atom → Prop) [DecidableRel lt]
+    (hirrefl : ∀ a, ¬ lt a a) (htrans : ∀ a b c, lt a b → lt b c → lt a c)
+    (V : Atom → Prop) [DecidablePred V] (hdown : ∀ a b, lt a b → V b → V a) :
+    ∃ rk : Atom → ℕ, Function.Injective rk ∧ Extends lt rk ∧ LowerSet rk V := by
+  classical
+  let e := Fintype.equivFin Atom
+  let n := Fintype.card Atom
+  let h : Atom → ℕ := fun a => (Finset.univ.filter (fun c => lt c a)).card
+  have hle : ∀ a, h a ≤ n := fun a => by
+    simpa [h, n] using Finset.card_filter_le (Finset.univ : Finset Atom) (fun c => lt c a)
+  have hlt : ∀ a b, lt a b → h a < h b := by
+    intro a b hab
+    apply Finset.card_lt_card
+    refine ⟨?_, ?_⟩
+    · intro c hc
+      simp only [Finset.mem_filter, Finset.mem_univ, true_and] at hc ⊢
+      exact htrans c a b hc hab
+    · intro hsub
+      have : a ∈ Finset.univ.filter (fun c => lt c a) :=
+        hsub (by simp [hab])
+      simp only [Finset.mem_filter, Finset.mem_univ, true_and] at this
+      exact hirrefl a this
+  have he : ∀ a, (e a : ℕ) < n := fun a => (e a).isLt
+  let M := (n + 1) * (n + 1)
+  let inner : Atom → ℕ := fun a => h a * n + (e a : ℕ)
+  have hinner : ∀ a, inner a < M := by
+    intro a
+    have h1 := hle a
+    have h2 := he a
+    have : h a * n ≤ n * n := Nat.mul_le_mul_right n h1
+    simp only [inner, M]
+    nlinarith
+  let rk : Atom → ℕ := fun a => (if V a then 0 else M) + inner a
+  refine ⟨rk, ?_, ?_, ?_⟩
+  · intro a b hab
+    have hinj_inner : inner a = inner b → a = b := by
+      intro hi
+      simp only [inner] at hi
+      have hmod : (e a : ℕ) = (e b : ℕ) := by
+        have := congrArg (· % n) hi
+        simp only at this
+        rwa [Nat.mul_add_mod_of_lt (he a), Nat.mul_add_mod_of_lt (he b)] at this
+      exact e.injective (Fin.ext hmod)
+    have ha := hinner a
+    have hb := hinner b
+    by_cases hVa : V a <;> by_cases hVb : V b <;>
+      simp only [rk, hVa, hVb, if_true, if_false, zero_add] at hab
+    · exact hinj_inner hab
+    · omega
+    · omega
+    · exact hinj_inner (by omega)
+  · intro a b hab
+    have hh := hlt a b hab
+    have hea := he a
+    have heb := he b
+    have hinner_lt : inner a < inner b := by
+      simp only [inner]
+      have : (h a + 1) * n ≤ h b * n := Nat.mul_le_mul_right n hh
+      nlinarith
+    by_cases hVb : V b
+    · have hVa := hdown a b hab hVb
+      simp only [rk, hVa, hVb, if_true, zero_add]
+      exact hinner_lt
+    · by_cases hVa : V a
+      · simp only [rk, hVa, hVb, if_true, if_false, zero_add]
+        have := hinner a
+        omega
+      · simp only [rk, hVa, hVb, if_false]
+        omega
+  · intro a b hVa hrk
+    by_contra hVb
+    simp only [rk, hVa, hVb, if_true, if_false, zero_add] at hrk
+    have := hinner a
+    omega
+
+/-- **Exchange completeness for a server ordered by a strict partial order
+whose interface is downward closed** (the form R2 of the context regime
+establishes in KM's ground context): no linear extension has to be supplied. -/
+theorem downward_server_complete [Fintype Atom]
+    (lt : Atom → Atom → Prop) [DecidableRel lt]
+    (hirrefl : ∀ a, ¬ lt a a) (htrans : ∀ a b c, lt a b → lt b c → lt a c)
+    (rkQ : Atom → ℕ) (hinjQ : Function.Injective rkQ)
+    (V : Atom → Prop) [DecidablePred V] (hdown : ∀ a b, lt a b → V b → V a)
+    {SG SQ : Finset (PClause Atom)}
+    (hclG : ClosedMaximal lt SG) (hclQ : ClosedR rkQ SQ)
+    (hx : ExchangeCond V SG SQ) (hunsat : Unsat (SG ∪ SQ)) :
+    PClause.bot ∈ SQ := by
+  obtain ⟨rkG, hinjG, hext, hV⟩ :=
+    exists_rank_extending_lower lt hirrefl htrans V hdown
+  exact maximal_server_complete lt rkG rkQ hinjG hinjQ hext hV hclG hclQ hx hunsat
+
 /-! ## The lower-set condition cannot be dropped -/
 
 /-- Two atoms: `0` is the interface atom (KM: `B(b)`, about an individual the
@@ -678,6 +774,8 @@ theorem ordered_server_interface_not_lower_counterexample :
 #print axioms exchange_unit_readout_complete
 #print axioms unordered_server_complete_for_every_interface
 #print axioms maximal_server_complete
+#print axioms exists_rank_extending_lower
+#print axioms downward_server_complete
 #print axioms ordered_server_interface_not_lower_counterexample
 
 end ContextCalculus.Exchange
