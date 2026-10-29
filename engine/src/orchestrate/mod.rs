@@ -1399,6 +1399,12 @@ thread_local! {
     /// only when the caller forced the route.
     pub(crate) static ROUTE_APPROXIMATIONS: std::cell::RefCell<BTreeMap<String, u64>> =
         const { std::cell::RefCell::new(BTreeMap::new()) };
+    /// Some frontend run of this classification produced a one-sorted clause
+    /// stream on an input the sort encoding would cover
+    /// (`FrontendResult::one_sorted_data_successors`). Sticky across nested
+    /// runs; read only when the caller forced the route.
+    pub(crate) static ONE_SORTED_DATA_SUCCESSORS: std::cell::Cell<bool> =
+        const { std::cell::Cell::new(false) };
     /// Nesting depth of `classify_with_evidence_mode` (fallback and probe
     /// routes recurse into it); only the outermost call publishes.
     static CLASSIFY_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
@@ -1504,6 +1510,7 @@ fn classify_with_evidence_mode(
         DROPPED_SOURCE_AXIOMS.with(|u| u.set(0));
         DROPPED_SOURCE_DETAIL.with(|d| d.borrow_mut().clear());
         ROUTE_APPROXIMATIONS.with(|d| d.borrow_mut().clear());
+        ONE_SORTED_DATA_SUCCESSORS.with(|u| u.set(false));
         RULES_OUTSIDE_TAXONOMY.with(|u| u.set(0));
     }
     // The route the caller asked for, read before any internal rewrite of
@@ -1522,6 +1529,8 @@ fn classify_with_evidence_mode(
         let unapplied_rules = RULES_OUTSIDE_TAXONOMY.with(|u| u.replace(0));
         let mut detail = DROPPED_SOURCE_DETAIL.with(|d| std::mem::take(&mut *d.borrow_mut()));
         let route_only = ROUTE_APPROXIMATIONS.with(|d| std::mem::take(&mut *d.borrow_mut()));
+        let one_sorted = ONE_SORTED_DATA_SUCCESSORS.with(|u| u.replace(false));
+        let route_only_count: u64 = route_only.values().sum();
         if let Ok(evidence) = &mut result {
             if evidence.classification.consistent {
                 let worker = evidence.classification.dropped as u64;
@@ -1550,6 +1559,27 @@ fn classify_with_evidence_mode(
                         evidence.classification.approximate = Some(reason);
                     }
                 }
+            }
+        }
+        // A one-sorted clause stream on an input with a TBox nominal and data
+        // properties is stronger than the ontology (its data successors fall
+        // under `⊤ ⊑ C`, m2197), so not even an inconsistency found on it is
+        // exact: a forced route publishes neither verdict. A consistent answer
+        // already refused or marked above keeps that message.
+        if let (Some(route), Ok(evidence)) = (&forced_route, &mut result) {
+            if one_sorted && evidence.classification.approximate.is_none() {
+                let reason = format!(
+                    "route `{route}` reads data successors as objects (data properties \
+                     beside a nominal outside nominal clausification)"
+                );
+                if !approximate_answers_allowed() {
+                    return Err(OrchestrateError::OutOfFragment(format!(
+                        "{reason}; neither verdict would be exact; use the automatic \
+                         route (--route auto) or set KM_ALLOW_APPROXIMATE=1"
+                    )));
+                }
+                evidence.classification.dropped += route_only_count.max(1) as usize;
+                evidence.classification.approximate = Some(reason);
             }
         }
     }
@@ -3563,6 +3593,7 @@ fn rules_consistency(
             true, // ht_rules: seed the ABox + emit rule clauses
         )
     };
+    cb_to_ht::attach_data_roles(&mut tin, &input.data_roles);
     if timing {
         eprintln!(
             "KM_TIMING rules-consistency converted @ {:.2}s ht_clauses={} queries={}",

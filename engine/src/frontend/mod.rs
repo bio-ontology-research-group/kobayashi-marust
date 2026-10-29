@@ -109,6 +109,16 @@ pub struct FrontendResult {
     /// refined by the exact normalized-clause fragment gate (`manual` for a
     /// standalone frontend invocation).
     pub route: String,
+    /// Source data properties used by the clause set, when the source also
+    /// has individuals or nominals; empty otherwise. Converted HT inputs carry
+    /// them as `TInput::data_roles` (docs/NOMINALS-CB.md, m2197).
+    pub data_roles: Vec<String>,
+    /// A forced route reads a one-sorted clause stream on an input with a
+    /// TBox nominal where the sort encoding would apply: it may publish no
+    /// verdict at all
+    /// (docs/ROUTING.md, "Forced routes"). Always false under automatic
+    /// routing.
+    pub one_sorted_data_successors: bool,
 }
 
 /// Preserve every parsed object ABox assertion together with the exact nominal
@@ -1902,7 +1912,7 @@ fn ofn_to_clauses_representation(
     // is unchanged.
     // Only names the primary parse has already registered resolve; an
     // unused declared data property has no clauses to sort.
-    let data_roles: BTreeSet<String> = if nominals_mode && has_individuals {
+    let data_roles: BTreeSet<String> = if has_individuals {
         data_property_raw
             .iter()
             .filter_map(|raw| reg.assigned(raw).map(str::to_string))
@@ -1910,6 +1920,45 @@ fn ofn_to_clauses_representation(
     } else {
         BTreeSet::new()
     };
+    // The data properties a converted HT input must know about: those the
+    // clause set uses. The native bridge reads them to run its datatype
+    // admission gate even when no `__dt__` concept occurs (m2197).
+    let used_data_roles: Vec<String> = if data_roles.is_empty() {
+        Vec::new()
+    } else {
+        let mut used: BTreeSet<&str> = BTreeSet::new();
+        for c in &tbox {
+            for atom in c.body.iter().chain(c.head.iter()) {
+                if let Atom::Role(name, ..) = atom {
+                    if data_roles.contains(name) {
+                        used.insert(name.as_str());
+                    }
+                }
+            }
+        }
+        used.into_iter().map(str::to_string).collect()
+    };
+    // Outside nominal clausification the clause stream stays one-sorted.
+    // With a nominal in the TBox and the sort encoding applicable, that
+    // reading is stronger than the ontology (data successors fall under
+    // `⊤ ⊑ C` and can be forced onto a named individual, m2197), so a forced
+    // route on such a stream may publish neither verdict. Without a TBox
+    // nominal the one-sorted reading is not stronger: a data element can take
+    // the labels of an unravelled copy of any object, and the copies are
+    // anonymous, so nothing forces them onto a named element
+    // (docs/NOMINALS-CB.md section 6). The bridge-exclusive worker
+    // (`KM_HT_ONLY=bridge`) is exempt: it reads the typed source and its
+    // datatype gate defers on these inputs itself. Recorded for explicitly
+    // selected routes only, like `route_approximations`.
+    let bridge_only = std::env::var("KM_HT_ONLY").ok().as_deref() == Some("bridge");
+    let one_sorted_stream = !nominals_mode
+        && nominal_proxies > 0
+        && !bridge_only
+        && sorts::applies(&tbox, &data_roles);
+    if one_sorted_stream && automatic && std::env::var_os("KM_TIMING").is_some() {
+        eprintln!("KM_TIMING frontend: one-sorted data successors under automatic route {}", route.as_str());
+    }
+    let one_sorted_data_successors = !automatic && one_sorted_stream;
     if nominals_mode && has_individuals && sorts::applies(&tbox, &data_roles) {
         let proxies: BTreeMap<String, String> = nominal_abox
             .individuals
@@ -2077,6 +2126,8 @@ fn ofn_to_clauses_representation(
         uncarried_data_assertions,
         dropped_source_axioms,
         route_approximations,
+        data_roles: used_data_roles,
+        one_sorted_data_successors,
     })
 }
 

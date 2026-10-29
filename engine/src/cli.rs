@@ -100,6 +100,8 @@ struct OfnOutput {
     source_axioms: Vec<crate::json_io::SourceAxiomMeta>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     rules: Vec<crate::json_io::JRule>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    data_roles: Vec<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -117,6 +119,12 @@ struct OfnMeta {
     dropped_source_axioms: std::collections::BTreeMap<String, u64>,
     #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     route_approximations: std::collections::BTreeMap<String, u64>,
+    #[serde(skip_serializing_if = "is_false")]
+    one_sorted_data_successors: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 /// Serialized with [`crate::json_io::write_clause_led_json`]: `clauses` is
@@ -137,6 +145,8 @@ struct OfnClausesOnly {
     nominal_abox: crate::json_io::NominalAboxMeta,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     rules: Vec<crate::json_io::JRule>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    data_roles: Vec<String>,
 }
 
 /// `args` are the post-subcommand arguments: `args[0]` = ontology path, with
@@ -307,6 +317,7 @@ pub fn run_ofn(args: &[String]) {
             uncarried_data_assertions: result.uncarried_data_assertions,
             dropped_source_axioms: result.dropped_source_axioms,
             route_approximations: result.route_approximations,
+            one_sorted_data_successors: result.one_sorted_data_successors,
         };
         match std::fs::File::create(mp) {
             Ok(f) => {
@@ -339,6 +350,7 @@ pub fn run_ofn(args: &[String]) {
             source_axioms: result.source_axioms,
             nominal_abox: result.nominal_abox,
             rules: result.rules,
+            data_roles: result.data_roles,
         };
         if let Err(e) = crate::json_io::write_clause_led_json(&mut w, &out.clauses, &out) {
             eprintln!("serialise error: {}", e);
@@ -360,6 +372,7 @@ pub fn run_ofn(args: &[String]) {
             definers: result.definers,
             source_axioms: result.source_axioms,
             rules: result.rules,
+            data_roles: result.data_roles,
         };
         if let Err(e) = crate::json_io::write_clause_led_json(&mut w, &out.clauses, &out) {
             eprintln!("serialise error: {}", e);

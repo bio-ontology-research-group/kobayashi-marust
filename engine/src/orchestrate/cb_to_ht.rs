@@ -819,6 +819,28 @@ pub struct TInput {
     /// matching Konclude's preprocessing boundary.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub source_axioms: Vec<crate::json_io::SourceAxiomMeta>,
+    /// Source data properties (role ids), present only when the source also
+    /// has individuals or nominals (`FrontendResult::data_roles`). Data
+    /// successors share the completion graph with objects, so a role listed
+    /// here sends the native bridge through its datatype admission gate even
+    /// when no `__dt__` concept occurs (docs/NOMINALS-CB.md, m2197).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub data_roles: Vec<usize>,
+}
+
+/// Record the frontend's source data properties on a converted input. Names
+/// the conversion did not register (unused properties) are skipped.
+pub fn attach_data_roles(tin: &mut TInput, names: &[String]) {
+    if names.is_empty() {
+        return;
+    }
+    let wanted: std::collections::HashSet<&str> = names.iter().map(String::as_str).collect();
+    tin.data_roles = tin
+        .roles
+        .iter()
+        .enumerate()
+        .filter_map(|(id, name)| wanted.contains(name.as_str()).then_some(id))
+        .collect();
 }
 
 fn is_false(value: &bool) -> bool {
@@ -4478,6 +4500,7 @@ fn convert_with_rule_abox(
         role_ranges,
         definers: definers.to_vec(),
         source_axioms: source_axioms.to_vec(),
+        data_roles: Vec::new(),
     }
 }
 

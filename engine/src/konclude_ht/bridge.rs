@@ -360,10 +360,10 @@ fn datatype_effects_covered_by_unit_bottom(tin: &TInput, source_mode: bool) -> b
         .enumerate()
         .filter_map(|(index, name)| name.starts_with("__dt__").then_some(index))
         .collect();
-    if datatype_concepts.is_empty() {
+    if datatype_concepts.is_empty() && tin.data_roles.is_empty() {
         return true;
     }
-    if !source_mode {
+    if !source_mode || tin.data_roles.iter().any(|&role| role >= tin.roles.len()) {
         return false;
     }
 
@@ -519,9 +519,12 @@ fn datatype_effects_covered_by_unit_bottom(tin: &TInput, source_mode: bool) -> b
             },
         )
         .collect();
+    // Source data properties seed datatype components like `__dt__`
+    // concepts: their successors are data elements.
     let datatype_roots: crate::fxhash::FxHashSet<usize> = datatype_concepts
         .into_iter()
-        .map(|concept| components.find(concept))
+        .chain(tin.data_roles.iter().map(|&role| role_offset + role))
+        .map(|symbol| components.find(symbol))
         .collect();
     if datatype_roots.contains(&components.find(global)) {
         return false;
@@ -1215,8 +1218,16 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         .enumerate()
         .filter_map(|(index, name)| name.starts_with("__dt__").then_some(index))
         .collect();
-    if datatype_ids.is_empty() {
+    // A source data property makes data successors even when no `__dt__`
+    // concept occurs (an unqualified data cardinality reads its
+    // `rdfs:Literal` filler as `Top`). They share the completion graph with
+    // objects, so the blank-data-node admission below must run for them too
+    // (m2197: `⊤ ⊑ ≥2 u` with `⊤ ⊑ {a}`).
+    if datatype_ids.is_empty() && tin.data_roles.is_empty() {
         return true;
+    }
+    if tin.data_roles.iter().any(|&role| role >= tin.roles.len()) {
+        defer!("a source data-property role index is invalid");
     }
     if !source_mode
         || datatype_ids.iter().any(|&concept| {
@@ -1503,6 +1514,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         .keys()
         .copied()
         .chain(role_existentials.iter().map(|&(role, _)| role))
+        .chain(tin.data_roles.iter().copied())
         .collect();
     // All roles connected by a data inclusion use the same value embedding.
     // Include unconstrained parents/children in every subsequent source-use,
@@ -17427,6 +17439,33 @@ mod tests {
         let result = bridged_classify_opts_with_trigger_absorption(&input, false, false, true)
             .expect("admitted bridge-TBox datatype input must classify");
         Some((input, evidence, result))
+    }
+
+    /// m2197: `⊤ ⊑ ≥2 u` (u a data property, no `__dt__` concept anywhere)
+    /// with `⊤ ⊑ {a}`. Read one-sorted, both `u`-successors are `a` and the
+    /// input is "inconsistent"; HermiT says consistent. With the frontend's
+    /// data properties attached, the datatype gate runs and defers on the
+    /// blank data node; without them it admits the input.
+    #[test]
+    fn data_roles_without_datatypes_enter_the_datatype_gate() {
+        let source = r#"Prefix(:=<http://x#>)
+            Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+            Ontology(Declaration(DataProperty(:u)) Declaration(NamedIndividual(:a))
+            SubClassOf(owl:Thing DataMinCardinality(2 :u))
+            SubClassOf(owl:Thing ObjectOneOf(:a)))"#;
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+        let fr = crate::frontend::ofn_to_clauses(source);
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+        let fr = fr.expect("in fragment");
+        assert_eq!(fr.data_roles.len(), 1, "the used data property is reported");
+        let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+        let mut input = crate::orchestrate::cb_to_ht::convert(&fr.clauses, Some(&fr.rbox), &named,
+            &fr.cardinalities, &fr.definers, &fr.source_axioms, false, &fr.rules, false);
+        assert!(!input.concepts.iter().any(|name| name.starts_with("__dt__")));
+        assert!(datatype_bridge_route_exact(&input, true), "one-sorted view admits it");
+        crate::orchestrate::cb_to_ht::attach_data_roles(&mut input, &fr.data_roles);
+        assert_eq!(input.data_roles.len(), 1);
+        assert!(!datatype_bridge_route_exact(&input, true), "the data role must defer");
     }
 
     fn tbox_extension_class(input: &TInput, evidence: &TboxIriMap, suffix: &str) -> usize {

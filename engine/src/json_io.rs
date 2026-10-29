@@ -266,6 +266,10 @@ pub struct JInput {
     pub nominal_abox: NominalAboxMeta,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rules: Vec<JRule>,
+    /// Source data properties, when the source also has individuals or
+    /// nominals (`FrontendResult::data_roles`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub data_roles: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -611,6 +615,8 @@ struct JInputRest<'a> {
     nominal_abox: &'a NominalAboxMeta,
     #[serde(skip_serializing_if = "ref_vec_is_empty")]
     rules: &'a Vec<JRule>,
+    #[serde(skip_serializing_if = "ref_vec_is_empty")]
+    data_roles: &'a Vec<String>,
 }
 
 /// Byte-identical to `serde_json::to_writer(writer, input)`.
@@ -623,6 +629,7 @@ pub fn write_jinput_json<W: Write>(writer: &mut W, input: &JInput) -> io::Result
         source_axioms: &input.source_axioms,
         nominal_abox: &input.nominal_abox,
         rules: &input.rules,
+        data_roles: &input.data_roles,
     };
     write_clause_led_json(writer, &input.clauses, &rest)
 }
@@ -999,7 +1006,7 @@ mod fast_clause_json_tests {
                 cb_typed_source: &input.cb_typed_source, rbox: &input.rbox,
                 cardinalities: &input.cardinalities, definers: &input.definers,
                 source_axioms: &input.source_axioms, nominal_abox: &input.nominal_abox,
-                rules: &input.rules }).unwrap();
+                rules: &input.rules, data_roles: &input.data_roles }).unwrap();
             let tail_s = started.elapsed().as_secs_f64();
             eprintln!("bytes={} tail_bytes={} serde={serde_s:.3}s fast={fast_s:.3}s (of which tail {tail_s:.3}s) identical={}",
                 expected.len(), tail.len(), actual == expected);
@@ -1017,6 +1024,7 @@ mod fast_clause_json_tests {
             source_axioms: vec![],
             nominal_abox: NominalAboxMeta::default(),
             rules: vec![],
+            data_roles: vec![],
         };
         for round in 0..3 {
             let expected = serde_json::to_vec(&input).unwrap();

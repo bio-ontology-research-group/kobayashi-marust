@@ -574,7 +574,7 @@ fn bridge_side_fingerprint(input: &TInput) -> Result<Vec<u8>, IncrementalReasoni
         concepts, roles, dropped, fenced, inverse, number,
         inverse_cardinality_role_separable, nominals, nominal_abox, native_abox,
         card_defs, cardinality_exact_pairs, cardinality_projection_complete,
-        chains, transitive, role_domains, role_ranges,
+        chains, transitive, role_domains, role_ranges, data_roles,
         clauses: _, queries: _, source_axioms: _, definers: _,
         direct_projection_source: _, mixed_projection_source: _, bundle_projection_source: _,
     } = input;
@@ -603,6 +603,7 @@ fn bridge_side_fingerprint(input: &TInput) -> Result<Vec<u8>, IncrementalReasoni
     field!(cardinality_projection_complete, *cardinality_projection_complete);
     field!(chains, !chains.is_empty()); field!(transitive, !transitive.is_empty());
     field!(role_domains, !role_domains.is_empty()); field!(role_ranges, !role_ranges.is_empty());
+    field!(data_roles, !data_roles.is_empty());
     serde_json::to_vec(&side).map_err(|error| IncrementalReasoningError::HtDeferred {
         detail: format!("cannot encode typed bridge fingerprint: {error}"),
     })
@@ -643,7 +644,7 @@ fn positive_source_side_fingerprint(input: &TInput) -> Option<Vec<u8>> {
         concepts, roles, queries, dropped, fenced, inverse, number,
         inverse_cardinality_role_separable, nominals, nominal_abox, native_abox,
         card_defs, cardinality_exact_pairs, cardinality_projection_complete,
-        chains, transitive, role_domains, role_ranges,
+        chains, transitive, role_domains, role_ranges, data_roles,
         // These encode the changing theory, its generated implementation, or
         // its proof provenance. They are NOT certified by this side key.
         clauses: _, direct_projection_source: _, mixed_projection_source: _,
@@ -653,6 +654,7 @@ fn positive_source_side_fingerprint(input: &TInput) -> Option<Vec<u8>> {
         || *dropped != 0 || !fenced.is_empty() || *number || !nominals.is_empty()
         || !nominal_abox.is_empty() || !native_abox.is_empty()
         || !card_defs.is_empty() || !cardinality_exact_pairs.is_empty()
+        || !data_roles.is_empty()
     { return None; }
     if concepts.iter().collect::<BTreeSet<_>>().len() != concepts.len()
         || roles.iter().collect::<BTreeSet<_>>().len() != roles.len()

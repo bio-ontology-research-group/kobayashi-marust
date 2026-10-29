@@ -38,6 +38,10 @@ pub struct Meta {
     /// `FrontendResult::route_approximations`); read only on a forced route.
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub route_approximations: std::collections::BTreeMap<String, u64>,
+    /// See `FrontendResult::one_sorted_data_successors`; read only on a forced
+    /// route.
+    #[serde(default)]
+    pub one_sorted_data_successors: bool,
 }
 
 fn manual_route() -> String {
@@ -256,6 +260,7 @@ fn run_ofn_in_process(
         uncarried_data_assertions: result.uncarried_data_assertions,
         dropped_source_axioms: result.dropped_source_axioms,
         route_approximations: result.route_approximations,
+        one_sorted_data_successors: result.one_sorted_data_successors,
     };
     let mut out = crate::json_io::JInput {
         clauses: result.clauses,
@@ -266,6 +271,7 @@ fn run_ofn_in_process(
         source_axioms: result.source_axioms,
         nominal_abox: result.nominal_abox,
         rules: result.rules,
+        data_roles: result.data_roles,
     };
     // Retain this representation only when the selected leaf consumes it
     // directly. Dropping every other input preserves the old frontend lifetime
@@ -391,6 +397,7 @@ pub fn run_ofn_split_cached(
     super::DROPPED_SOURCE_AXIOMS.with(|u| u.set(dropped_source));
     super::DROPPED_SOURCE_DETAIL.with(|d| d.borrow_mut().clone_from(&result.1.dropped_source_axioms));
     super::ROUTE_APPROXIMATIONS.with(|d| d.borrow_mut().clone_from(&result.1.route_approximations));
+    super::ONE_SORTED_DATA_SUCCESSORS.with(|u| u.set(result.1.one_sorted_data_successors));
     Ok(result)
 }
 
