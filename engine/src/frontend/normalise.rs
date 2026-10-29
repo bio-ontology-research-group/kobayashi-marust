@@ -297,9 +297,8 @@ pub struct Clausifier {
     trigger_absorb: bool,
     /// Give equal restrictions one definer: the `≤n r.F` complement and a
     /// source `≥(n+1) r.F`, and `∃r.F` with `≥1 r.F` (docs/NOMINALS-CB.md
-    /// section 8). Exact for every consumer, but enabled only for
-    /// `KM_MECHANISM=cb`, whose sole consumer is the CB engine: the HT
-    /// translation misses consequences of the shared shape (section 8).
+    /// section 8). Exact for every consumer and on for every mechanism; the
+    /// field exists so unit tests can compare against the unshared clause set.
     share_equal_restrictions: bool,
 }
 
@@ -334,7 +333,7 @@ impl Clausifier {
             color_cardinality: std::env::var_os("KM_CARDINALITY_COLORS").is_some(),
             trigger_absorb: std::env::var_os("KM_TRIGGER_ABSORB").is_some()
                 || test_trigger_absorb(),
-            share_equal_restrictions: std::env::var("KM_MECHANISM").as_deref() == Ok("cb"),
+            share_equal_restrictions: true,
         }
     }
 
@@ -1611,9 +1610,9 @@ mod tests {
         }
     }
 
-    /// Without `KM_MECHANISM=cb` the clause set is unchanged.
+    /// With sharing off the clause set is the unshared one.
     #[test]
-    fn equal_restrictions_keep_separate_definers_by_default() {
+    fn equal_restrictions_keep_separate_definers_when_sharing_is_off() {
         let r = || Role::Name("r".to_string());
         let f = || Box::new(Concept::Name("F".to_string()));
         let mut cf = Clausifier::new();

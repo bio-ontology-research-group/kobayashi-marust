@@ -551,22 +551,25 @@ Only clauses over fresh symbols change; no calculus rule changes, so no Lean
 re-certification. With `KM_HT_CARD` the shared `P` keeps its own `CardMeta`;
 the skipped `NQ` pushes none.
 
-Scope. The sharing is enabled only when `KM_MECHANISM=cb` (the `nominals`,
-`seq_on`, `cb_*` and other CB-only route bundles), whose only consumer of the
-clause set is the CB engine. Other mechanisms get the clause set unchanged.
-Reason: the HT translation (`ht_general`) misses a consequence of the shared
-shape, and it misses the same consequence on head without this change when the
-source spells the shape out:
+Scope. The sharing is on for every mechanism. At first (596987b2) it was
+enabled only for `KM_MECHANISM=cb`, because the HT translation (`ht_general`)
+missed a consequence of the shared shape, and missed the same consequence
+without the change when the source spells the shape out:
 
     EquivalentClasses(:Has DataMinCardinality(1 :d))
     EquivalentClasses(:Two DataMinCardinality(2 :d))
     EquivalentClasses(:No ObjectComplementOf(:Has))
     EquivalentClasses(:AtMostOne ObjectComplementOf(:Two))
 
-`No ⊑ AtMostOne` follows from `Two ⊑ Has`, but `KM_ROUTE=ht_general` reports
-only `Two ⊑ Has` (head 9cf7c2cd and this change alike). That is an open HT
-completeness defect, not a property of the encoding; once it is fixed the gate
-can go.
+`No ⊑ AtMostOne` follows from `Two ⊑ Has`, but `KM_ROUTE=ht_general` reported
+only `Two ⊑ Has`. The cause was the HT conversion's complementary-definer
+fold (EMELIM), which wrote a folded complement in a clause body as a negative
+literal that the worker matches only against an explicit label; it did not
+depend on cardinality or on the encoding (docs/HYBRID-CB-HT.md section 7).
+With the fold fixed, every test of `empty_and_universal_data_ranges`,
+`universal_role_and_top_data_range`, `forced_route_fail_closed` and
+`data_assertions_carried` passes with the sharing on, and the gate is gone
+(results/agents/2026-10-29/ht-card-complement/).
 
 Effect. The forced `nominals` route on the 26 data-range probes of
 `tests/empty_and_universal_data_ranges.rs` hit both patterns after v1.5.4
@@ -584,7 +587,8 @@ v1.5.3 frontend on the unqualified spelling `DataExactCardinality(1 d)`), the
 v1.5.3 engine needed the same time as head, so the engine did not regress.
 With the shared definers every probe classifies in at most 0.6 s with
 `KM_SEQ_ORDER=1` and 1.0 s in the default regime (head: 8.8 s and 29.3 s), with
-unchanged answers. Under `KM_MECHANISM=cb`, of 126 test fixtures one
-(`isolated_list_rules.ofn`) changes its clause set (two duplicate `∃`/`≥1`
-definers fewer), with the same classification; without it no clause set
-changes. Measurements are in `results/agents/2026-10-29/nominal-perf/`.
+unchanged answers. Of 127 test fixtures one (`isolated_list_rules.ofn`)
+changes its clause set (two duplicate `∃`/`≥1` definers fewer), with the same
+classification on `auto`, `production_all`, `ht_general` and `tableau`.
+Measurements are in `results/agents/2026-10-29/nominal-perf/` and
+`results/agents/2026-10-29/ht-card-complement/`.
