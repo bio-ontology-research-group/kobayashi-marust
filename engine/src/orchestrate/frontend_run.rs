@@ -34,6 +34,10 @@ pub struct Meta {
     /// `FrontendResult::dropped_source_axioms`).
     #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     pub dropped_source_axioms: std::collections::BTreeMap<String, u64>,
+    /// Constructs the selected mechanism represents only approximately (see
+    /// `FrontendResult::route_approximations`); read only on a forced route.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub route_approximations: std::collections::BTreeMap<String, u64>,
 }
 
 fn manual_route() -> String {
@@ -251,6 +255,7 @@ fn run_ofn_in_process(
         route: result.route,
         uncarried_data_assertions: result.uncarried_data_assertions,
         dropped_source_axioms: result.dropped_source_axioms,
+        route_approximations: result.route_approximations,
     };
     let mut out = crate::json_io::JInput {
         clauses: result.clauses,
@@ -384,6 +389,8 @@ pub fn run_ofn_split_cached(
         );
     }
     super::DROPPED_SOURCE_AXIOMS.with(|u| u.set(dropped_source));
+    super::DROPPED_SOURCE_DETAIL.with(|d| d.borrow_mut().clone_from(&result.1.dropped_source_axioms));
+    super::ROUTE_APPROXIMATIONS.with(|d| d.borrow_mut().clone_from(&result.1.route_approximations));
     Ok(result)
 }
 

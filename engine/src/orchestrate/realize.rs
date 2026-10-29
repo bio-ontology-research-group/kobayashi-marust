@@ -420,6 +420,8 @@ impl Realization {
             subsumptions: &'a [[String; 2]],
             unsatisfiable: &'a [String],
             dropped: usize,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            approximate: Option<&'a str>,
             types: &'a [[String; 2]],
             same: &'a [[String; 2]],
         }
@@ -428,6 +430,7 @@ impl Realization {
             subsumptions: &self.classification.subsumptions,
             unsatisfiable: &self.classification.unsatisfiable,
             dropped: self.classification.dropped,
+            approximate: self.classification.approximate.as_deref(),
             types: &self.types,
             same: &self.same,
         };
@@ -506,6 +509,7 @@ mod tests {
     fn split_separates_types_same_and_source_rows() {
         let probes = vec![("P0".to_string(), "a".to_string()), ("P1".to_string(), "b".to_string())];
         let extended = Classification {
+            approximate: None,
             consistent: true,
             subsumptions: vec![
                 row("A", "B"), row("P0", "A"), row("P0", "B"), row("P0", OWL_THING),
@@ -528,6 +532,7 @@ mod tests {
     fn direct_types_keep_every_member_of_a_minimal_equivalence_class() {
         let probes = vec![("P0".to_string(), "a".to_string())];
         let extended = Classification {
+            approximate: None,
             consistent: true,
             subsumptions: vec![
                 row("A", "A2"), row("A2", "A"), row("A", "B"), row("A2", "B"),
@@ -544,6 +549,7 @@ mod tests {
     fn inconsistent_classification_has_no_realization_rows() {
         let probes = vec![("P0".to_string(), "a".to_string())];
         let extended = Classification {
+            approximate: None,
             consistent: false,
             subsumptions: vec![],
             unsatisfiable: vec!["P0".to_string()],

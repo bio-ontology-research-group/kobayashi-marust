@@ -292,6 +292,12 @@ pub struct Classification {
     pub subsumptions: Vec<[String; 2]>,
     pub unsatisfiable: Vec<String>,
     pub dropped: usize,
+    /// Set when a forced route published this answer although it did not
+    /// represent the whole input (`KM_ALLOW_APPROXIMATE=1`). The reason names
+    /// the route and the dropped constructs. Absent on every exact answer, in
+    /// which case the serialised shape is unchanged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub approximate: Option<String>,
 }
 
 /// Internal oracle provenance kept out of the stable classification shape.
@@ -1019,6 +1025,12 @@ pub struct JsonClassification {
 }
 
 impl JsonClassification {
+    /// The reason a forced route published this answer as approximate
+    /// (`KM_ALLOW_APPROXIMATE=1`); `None` on every exact answer.
+    pub fn approximate(&self) -> Option<&str> {
+        self.classification.approximate.as_deref()
+    }
+
     pub fn write_json<W: Write>(&self, writer: W) -> serde_json::Result<()> {
         let mut ser = serde_json::Serializer::with_formatter(writer, PyFmt);
         serde::Serialize::serialize(self, &mut ser)
@@ -1207,7 +1219,8 @@ impl serde::Serialize for JsonClassificationEncoding<'_> {
             }
         }
 
-        let mut state = serializer.serialize_struct("Classification", if self.graph_edges { 5 } else { 4 })?;
+        let extra = usize::from(self.graph_edges) + usize::from(self.result.classification.approximate.is_some());
+        let mut state = serializer.serialize_struct("Classification", 4 + extra)?;
         state.serialize_field("consistent", &self.result.classification.consistent)?;
         if let Some(grouped) = &self.result.grouped_subsumptions {
             state.serialize_field("subsumptions", &GroupedPairs(grouped, self.graph_edges))?;
@@ -1216,6 +1229,9 @@ impl serde::Serialize for JsonClassificationEncoding<'_> {
         }
         state.serialize_field("unsatisfiable", &self.result.classification.unsatisfiable)?;
         state.serialize_field("dropped", &self.result.classification.dropped)?;
+        if let Some(reason) = &self.result.classification.approximate {
+            state.serialize_field("approximate", reason)?;
+        }
         if self.graph_edges {
             state.serialize_field("subsumptions_are_graph_edges", &true)?;
         }
@@ -1374,9 +1390,107 @@ thread_local! {
     /// lets their conclusions reach class queries (see the `ht_rules`
     /// fall-through). Published like `UNCARRIED_DATA_ASSERTIONS`.
     static RULES_OUTSIDE_TAXONOMY: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    /// The per-kind breakdown behind `DROPPED_SOURCE_AXIOMS`, for the
+    /// fail-closed message of a forced route.
+    pub(crate) static DROPPED_SOURCE_DETAIL: std::cell::RefCell<BTreeMap<String, u64>> =
+        const { std::cell::RefCell::new(BTreeMap::new()) };
+    /// Constructs the last frontend run represented only approximately for
+    /// the selected mechanism (`FrontendResult::route_approximations`). Read
+    /// only when the caller forced the route.
+    pub(crate) static ROUTE_APPROXIMATIONS: std::cell::RefCell<BTreeMap<String, u64>> =
+        const { std::cell::RefCell::new(BTreeMap::new()) };
     /// Nesting depth of `classify_with_evidence_mode` (fallback and probe
     /// routes recurse into it); only the outermost call publishes.
     static CLASSIFY_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    /// Open [`InternalRoute`] scopes: an outermost classification inside one
+    /// runs a route the reasoner selected itself, not one the caller forced.
+    static INTERNAL_ROUTE: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Marks a classification whose `KM_ROUTE` the reasoner set itself (a
+/// route-specific backend of the source-incremental session, for example), so
+/// the forced-route rule below does not treat it as a caller's request.
+pub(crate) struct InternalRoute(());
+
+impl InternalRoute {
+    pub(crate) fn enter() -> Self {
+        INTERNAL_ROUTE.with(|n| n.set(n.get() + 1));
+        InternalRoute(())
+    }
+}
+
+impl Drop for InternalRoute {
+    fn drop(&mut self) {
+        INTERNAL_ROUTE.with(|n| n.set(n.get() - 1));
+    }
+}
+
+/// The route the caller forced through `KM_ROUTE` (or `--route`), if any:
+/// every named route and `manual`, which keeps individually supplied `KM_*`
+/// options. `auto` is the production gate, which selects a mechanism that
+/// represents the input, and an unset variable keeps the library default.
+/// Read once, by the outermost classification, before any route selection or
+/// fallback rewrites `KM_ROUTE`; nested classifications are never forced.
+fn forced_route_request() -> Option<String> {
+    if INTERNAL_ROUTE.with(|n| n.get()) > 0 {
+        return None;
+    }
+    let name = std::env::var("KM_ROUTE").ok()?;
+    match name.parse::<crate::routing::Route>() {
+        Ok(crate::routing::Route::Auto) | Err(_) => None,
+        Ok(route) => Some(route.as_str().to_string()),
+    }
+}
+
+/// Whether `KM_ALLOW_APPROXIMATE` lets a forced route publish an
+/// approximate answer.
+pub fn approximate_answers_allowed() -> bool {
+    std::env::var_os("KM_ALLOW_APPROXIMATE").is_some_and(|v| !v.is_empty() && v != "0")
+}
+
+fn plural(n: u64, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
+}
+
+/// "route `default` drops 3 ABox assertions (ClassAssertion) and 1 nominal".
+fn approximation_reason(
+    route: &str,
+    source: &BTreeMap<String, u64>,
+    uncarried_data: u64,
+    unapplied_rules: u64,
+    worker: u64,
+) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for (kind, &n) in source {
+        parts.push(match kind.as_str() {
+            "ClassAssertion" | "ObjectPropertyAssertion" | "SameIndividual"
+            | "DifferentIndividuals" | "NegativeObjectPropertyAssertion" => {
+                format!("{} ({kind})", plural(n, "ABox assertion", "ABox assertions"))
+            }
+            "ABox assertion" => plural(n, "ABox assertion", "ABox assertions"),
+            "Nominal" => plural(n, "nominal", "nominals"),
+            "DLSafeRule" => plural(n, "DL-safe rule", "DL-safe rules"),
+            other => plural(n, &format!("{other} axiom"), &format!("{other} axioms")),
+        });
+    }
+    if uncarried_data > 0 {
+        parts.push(plural(uncarried_data, "data-property assertion", "data-property assertions"));
+    }
+    if unapplied_rules > 0 {
+        parts.push(format!(
+            "{} outside the taxonomy",
+            plural(unapplied_rules, "DL-safe rule", "DL-safe rules")
+        ));
+    }
+    if worker > 0 {
+        parts.push(format!("{} outside the worker's fragment", plural(worker, "clause", "clauses")));
+    }
+    let list = match parts.split_last() {
+        Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
+        Some((last, _)) => last.clone(),
+        None => "input it does not represent".to_string(),
+    };
+    format!("route `{route}` drops {list}")
 }
 
 fn classify_with_evidence_mode(
@@ -1388,8 +1502,13 @@ fn classify_with_evidence_mode(
     if depth == 0 {
         UNCARRIED_DATA_ASSERTIONS.with(|u| u.set(0));
         DROPPED_SOURCE_AXIOMS.with(|u| u.set(0));
+        DROPPED_SOURCE_DETAIL.with(|d| d.borrow_mut().clear());
+        ROUTE_APPROXIMATIONS.with(|d| d.borrow_mut().clear());
         RULES_OUTSIDE_TAXONOMY.with(|u| u.set(0));
     }
+    // The route the caller asked for, read before any internal rewrite of
+    // KM_ROUTE. Only the outermost call can be forced.
+    let forced_route = if depth == 0 { forced_route_request() } else { None };
     let mut result = classify_with_evidence_inner(initial_cfg, ont, retain_grouped_output);
     CLASSIFY_DEPTH.with(|d| d.set(depth));
     if depth == 0 {
@@ -1401,10 +1520,36 @@ fn classify_with_evidence_mode(
         let uncarried = UNCARRIED_DATA_ASSERTIONS.with(|u| u.replace(0));
         let unrepresented = DROPPED_SOURCE_AXIOMS.with(|u| u.replace(0));
         let unapplied_rules = RULES_OUTSIDE_TAXONOMY.with(|u| u.replace(0));
+        let mut detail = DROPPED_SOURCE_DETAIL.with(|d| std::mem::take(&mut *d.borrow_mut()));
+        let route_only = ROUTE_APPROXIMATIONS.with(|d| std::mem::take(&mut *d.borrow_mut()));
         if let Ok(evidence) = &mut result {
             if evidence.classification.consistent {
+                let worker = evidence.classification.dropped as u64;
                 evidence.classification.dropped +=
                     (uncarried + unrepresented + unapplied_rules) as usize;
+                // A forced route bypasses the gate that keeps every input on
+                // a mechanism that represents it. Every drop only weakens the
+                // ontology, so an inconsistency stays exact, but a consistent
+                // answer over a weakened input is not the answer for the
+                // input: fail closed, or publish it marked approximate.
+                if let Some(route) = &forced_route {
+                    let route_only_total: u64 = route_only.values().sum();
+                    if evidence.classification.dropped > 0 || route_only_total > 0 {
+                        for (kind, n) in route_only {
+                            *detail.entry(kind).or_default() += n;
+                        }
+                        let reason =
+                            approximation_reason(route, &detail, uncarried, unapplied_rules, worker);
+                        if !approximate_answers_allowed() {
+                            return Err(OrchestrateError::OutOfFragment(format!(
+                                "{reason}; the answer would be approximate; use the automatic \
+                                 route (--route auto) or set KM_ALLOW_APPROXIMATE=1"
+                            )));
+                        }
+                        evidence.classification.dropped += route_only_total as usize;
+                        evidence.classification.approximate = Some(reason);
+                    }
+                }
             }
         }
     }
@@ -1717,6 +1862,7 @@ fn classify_with_evidence_inner(
                         if inconsistent {
                             return Ok(ClassificationEvidence {
                                 classification: Classification {
+                                    approximate: None,
                                     consistent: false,
                                     subsumptions: vec![],
                                     unsatisfiable: vec![],
@@ -1760,6 +1906,7 @@ fn classify_with_evidence_inner(
                     }
                     return Ok(ClassificationEvidence {
                         classification: Classification {
+                            approximate: None,
                             consistent: false,
                             subsumptions: vec![],
                             unsatisfiable: vec![],
@@ -1836,6 +1983,7 @@ fn classify_with_evidence_inner(
             }
             return Ok(ClassificationEvidence {
                 classification: Classification {
+                    approximate: None,
                     consistent: true,
                     subsumptions: Vec::new(),
                     unsatisfiable: Vec::new(),
@@ -1908,7 +2056,7 @@ fn classify_with_evidence_inner(
                 Some(true) => {},
                 Some(false) => return Ok(ClassificationEvidence {
                     classification: Classification { consistent: false, subsumptions: vec![],
-                        unsatisfiable: vec![], dropped: 0 },
+                        unsatisfiable: vec![], dropped: 0, approximate: None },
                     grouped_subsumptions: None,
                     consistency_certified: true,
                 }),
@@ -2246,6 +2394,7 @@ fn classify_with_evidence_inner(
                 }
                 return Ok(ClassificationEvidence {
                     classification: Classification {
+                        approximate: None,
                         consistent: false,
                         subsumptions: Vec::new(),
                         unsatisfiable: Vec::new(),
@@ -2542,6 +2691,7 @@ fn classify_with_evidence_inner(
     if meta.abox_inconsistent {
         return Ok(ClassificationEvidence {
             classification: Classification {
+                approximate: None,
                 consistent: false,
                 subsumptions: vec![],
                 unsatisfiable: vec![],
@@ -2604,6 +2754,7 @@ fn classify_with_evidence_inner(
             Some(result) if !result.consistent => {
                 return Ok(ClassificationEvidence {
                     classification: Classification {
+                        approximate: None,
                         consistent: false,
                         subsumptions: vec![],
                         unsatisfiable: vec![],
@@ -2661,6 +2812,7 @@ fn classify_with_evidence_inner(
                 }
                 return Ok(ClassificationEvidence {
                     classification: Classification {
+                        approximate: None,
                         consistent: false,
                         subsumptions: vec![],
                         unsatisfiable: vec![],
@@ -3194,6 +3346,7 @@ fn classify_with_evidence_inner(
     if projected_abox_inconsistent || unsat_asserted {
         return Ok(ClassificationEvidence {
             classification: Classification {
+                approximate: None,
                 consistent: false,
                 subsumptions: vec![],
                 unsatisfiable: vec![],
@@ -3219,6 +3372,7 @@ fn classify_with_evidence_inner(
     timing_mark("output mapping done");
     Ok(ClassificationEvidence {
         classification: Classification {
+            approximate: None,
             consistent: !out.inconsistent,
             subsumptions: subs,
             unsatisfiable: unsat,
@@ -3550,6 +3704,9 @@ impl Classification {
             format!("CONSISTENT {}", if self.consistent { 1 } else { 0 }),
             format!("DROPPED {}", self.dropped),
         ];
+        if let Some(reason) = &self.approximate {
+            out.push(format!("APPROXIMATE\t{}", reason.replace(['\t', '\n'], " ")));
+        }
         for p in &self.subsumptions {
             out.push(format!("SUB\t{}\t{}", p[0], p[1]));
         }
@@ -3694,7 +3851,7 @@ mod tests {
     fn finite_rule_taxonomy_requires_complete_consistent_projection() {
         for (consistent, dropped, accepted) in [(true, 0, true), (true, 1, false), (false, 0, false)] {
             let evidence = super::ClassificationEvidence {
-                classification: super::Classification { consistent, dropped,
+                classification: super::Classification { approximate: None, consistent, dropped,
                     subsumptions: vec![["urn:A".into(), "urn:B".into()]],
                     unsatisfiable: vec!["urn:Empty".into()] },
                 grouped_subsumptions: None, consistency_certified: false,
@@ -3811,6 +3968,7 @@ mod tests {
     #[test]
     fn streamed_classification_json_matches_allocating_api() {
         let classification = super::Classification {
+            approximate: None,
             consistent: true,
             subsumptions: vec![["http://example.org/A".into(), "owl:Thing".into()]],
             unsatisfiable: vec!["http://example.org/B".into()],
@@ -3847,6 +4005,7 @@ mod tests {
             reachability_graph: None,
         };
         let classification = super::Classification {
+            approximate: None,
             consistent: true,
             subsumptions: flat,
             unsatisfiable: vec!["http://example.org/B".into()],
@@ -3855,6 +4014,7 @@ mod tests {
         let expected = classification.to_json();
         let grouped = super::JsonClassification {
             classification: super::Classification {
+                approximate: None,
                 consistent: true,
                 subsumptions: Vec::new(),
                 unsatisfiable: vec!["http://example.org/B".into()],
@@ -3891,6 +4051,7 @@ mod tests {
                     .filter(|b| bits & (1 << (a * 3 + b)) != 0).collect()).collect();
                 let result = super::JsonClassification {
                     classification: super::Classification {
+                        approximate: None,
                         consistent: true, subsumptions: vec![], unsatisfiable: vec!["urn:Bottom".into()], dropped: 0,
                     },
                     grouped_subsumptions: Some(super::GroupedJsonTaxonomy {
@@ -3917,6 +4078,7 @@ mod tests {
         for grouped in [false, true] {
             let result = super::JsonClassification {
                 classification: super::Classification {
+                    approximate: None,
                     consistent: true, subsumptions: vec![["urn:A".into(), "urn:B".into()]],
                     unsatisfiable: vec![], dropped: 0,
                 },
@@ -3940,7 +4102,7 @@ mod tests {
     fn graph_json_keeps_long_chain_output_linear() {
         let n = 128;
         let result = super::JsonClassification {
-            classification: super::Classification { consistent: true, subsumptions: vec![], unsatisfiable: vec![], dropped: 0 },
+            classification: super::Classification { approximate: None, consistent: true, subsumptions: vec![], unsatisfiable: vec![], dropped: 0 },
             grouped_subsumptions: Some(super::GroupedJsonTaxonomy {
                 iris: (0..n).map(|i| std::sync::Arc::from(format!("urn:long-chain:{i:04}"))).collect(),
                 rows: std::collections::BTreeMap::new(),
@@ -3972,6 +4134,7 @@ mod tests {
         };
         let streamed = super::JsonClassification {
             classification: super::Classification {
+                approximate: None,
                 consistent: true,
                 subsumptions: Vec::new(),
                 unsatisfiable: Vec::new(),
@@ -3980,6 +4143,7 @@ mod tests {
             grouped_subsumptions: Some(graph),
         };
         let materialized = super::Classification {
+            approximate: None,
             consistent: true,
             subsumptions: vec![
                 ["A".into(), "B".into()],
@@ -4007,6 +4171,7 @@ mod tests {
         };
         let streamed = super::JsonClassification {
             classification: super::Classification {
+                approximate: None,
                 consistent: true,
                 subsumptions: Vec::new(),
                 unsatisfiable: Vec::new(),
@@ -4015,6 +4180,7 @@ mod tests {
             grouped_subsumptions: Some(graph),
         };
         let materialized = super::Classification {
+            approximate: None,
             consistent: true,
             subsumptions: vec![
                 ["A".into(), "B".into()],

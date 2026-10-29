@@ -1318,6 +1318,14 @@ fn classify_rows_at(path: &crate::orchestrate::tmpfile::TempPath, settings: &[(&
     let result = crate::orchestrate::classify_json(&cfg, path.path());
     stage("pipeline returned", started);
     match result {
+        // A forced route may publish an approximate answer only with its
+        // explicit marker, which the session's rows, deltas and reuse checks
+        // do not carry: refuse it, exactly as the session refuses dropped
+        // axioms.
+        Ok(result) if result.approximate().is_some() => Err(format!(
+            "out of fragment: {}; the incremental session publishes exact answers only",
+            result.approximate().unwrap_or_default()
+        )),
         Ok(result) => {
             let rows = result.into_rows();
             stage("pipeline rows", started);

@@ -1692,6 +1692,7 @@ mod tests {
     #[test]
     fn taxonomy_comparison_ignores_representation_only() {
         let c = |rows: &[(&str, &str)], unsat: &[&str]| super::super::Classification {
+            approximate: None,
             consistent: true,
             subsumptions: rows.iter().map(|(a, b)| [a.to_string(), b.to_string()]).collect(),
             unsatisfiable: unsat.iter().map(|u| u.to_string()).collect(),

@@ -1699,6 +1699,9 @@ fn classify_source_selected(source: &str, route: &str) -> Result<Classification,
         .map_err(|error| format!("invalid selected incremental route {route:?}: {error}"))?;
     selected.apply_environment();
     std::env::set_var("KM_ROUTE", route);
+    // The session selected this route itself (the source is always routed
+    // automatically); it is not a caller's forced route.
+    let _internal = crate::orchestrate::InternalRoute::enter();
     let cfg = Config::from_env();
     crate::orchestrate::classify(&cfg, path.path()).map_err(|error| error.to_string())
 }
@@ -1810,6 +1813,7 @@ fn map_incremental_result(
     // the ordinary classification supervisor does before invoking its worker.
     let source_abox_inconsistent = frontend.abox_inconsistent || asserted_unsat;
     Classification {
+        approximate: None,
         consistent: !result.inconsistent && !source_abox_inconsistent,
         subsumptions: if source_abox_inconsistent {
             Vec::new()
@@ -2416,6 +2420,7 @@ Ontology(
             ..TInput::default()
         };
         let exact = Classification {
+            approximate: None,
             consistent: true,
             subsumptions: vec![[public_a, public_b]],
             unsatisfiable: Vec::new(),

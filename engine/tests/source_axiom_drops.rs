@@ -4,6 +4,12 @@
 //! consequence, but it can lose an inconsistency, and an inconsistent
 //! ontology entails every subsumption: a consistent answer without the count
 //! would be published as complete when it is not.
+//!
+//! A selected (forced) route refuses such an answer unless
+//! `KM_ALLOW_APPROXIMATE=1` (tests/forced_route_fail_closed.rs). These tests
+//! read the counts of those approximate answers, so they opt in on every
+//! selected route and check that the answer is marked `APPROXIMATE` exactly
+//! when it is consistent with a positive count.
 use std::io::Read;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -16,7 +22,9 @@ fn classify(text: &str, route: Option<&str>) -> Option<(bool, usize)> {
     classify_with(text, route, &[])
 }
 
-/// As [`classify`], with extra environment variables.
+/// As [`classify`], with extra environment variables. A selected route runs
+/// with `KM_ALLOW_APPROXIMATE=1`, and its `APPROXIMATE` marker must match
+/// the published count; the automatic route never carries the marker.
 fn classify_with(text: &str, route: Option<&str>, env: &[(&str, &str)]) -> Option<(bool, usize)> {
     let path = std::env::temp_dir().join(format!(
         "km-source-drops-{}-{}.ofn",
@@ -32,6 +40,7 @@ fn classify_with(text: &str, route: Option<&str>, env: &[(&str, &str)]) -> Optio
     }
     if let Some(route) = route {
         command.env("KM_ROUTE", route);
+        command.env("KM_ALLOW_APPROXIMATE", "1");
     }
     command.envs(env.iter().copied());
     command.args(["classify", "--lines"]).arg(&path).stdout(Stdio::piped()).stderr(Stdio::null());
@@ -56,6 +65,7 @@ fn classify_with(text: &str, route: Option<&str>, env: &[(&str, &str)]) -> Optio
     }
     let mut consistent = None;
     let mut dropped = None;
+    let approximate = stdout.lines().any(|line| line.starts_with("APPROXIMATE\t"));
     for line in stdout.lines() {
         if let Some(v) = line.strip_prefix("CONSISTENT ") {
             consistent = Some(v.trim() == "1");
@@ -64,7 +74,13 @@ fn classify_with(text: &str, route: Option<&str>, env: &[(&str, &str)]) -> Optio
             dropped = v.trim().parse().ok();
         }
     }
-    Some((consistent.expect("CONSISTENT line"), dropped.expect("DROPPED line")))
+    let (consistent, dropped) = (consistent.expect("CONSISTENT line"), dropped.expect("DROPPED line"));
+    assert_eq!(
+        approximate,
+        route.is_some() && consistent && dropped > 0,
+        "{route:?}: APPROXIMATE marker vs CONSISTENT {consistent} DROPPED {dropped}"
+    );
+    Some((consistent, dropped))
 }
 
 const ROUTES: [Option<&str>; 4] = [None, Some("nominals"), Some("certified_nominals"), Some("default")];

@@ -115,6 +115,8 @@ struct OfnMeta {
     uncarried_data_assertions: u64,
     #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
     dropped_source_axioms: std::collections::BTreeMap<String, u64>,
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    route_approximations: std::collections::BTreeMap<String, u64>,
 }
 
 /// Serialized with [`crate::json_io::write_clause_led_json`]: `clauses` is
@@ -304,6 +306,7 @@ pub fn run_ofn(args: &[String]) {
             route: result.route,
             uncarried_data_assertions: result.uncarried_data_assertions,
             dropped_source_axioms: result.dropped_source_axioms,
+            route_approximations: result.route_approximations,
         };
         match std::fs::File::create(mp) {
             Ok(f) => {

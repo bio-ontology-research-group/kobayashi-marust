@@ -85,6 +85,13 @@ pub struct FrontendResult {
     /// not entailment-neutral, by functional-syntax head. The orchestrator
     /// publishes their total as dropped axioms of a consistent answer.
     pub dropped_source_axioms: std::collections::BTreeMap<String, u64>,
+    /// Constructs this clause stream represents only approximately for the
+    /// mechanism of an explicitly selected route, by kind (`Nominal`, or an
+    /// ABox assertion kind that only a native HT bridge reads). Empty under
+    /// automatic routing. The orchestrator ignores it unless the caller forced
+    /// the route, so automatic answers and their `DROPPED` count never depend
+    /// on it; on a forced route any entry makes the answer approximate.
+    pub route_approximations: std::collections::BTreeMap<String, u64>,
     /// KM_HT_CARD: first-class qualified number restrictions (`define`'s `≥n`/`≤n`
     /// markers). Empty unless the frontend `KM_HT_CARD` flag is set.
     pub cardinalities: Vec<crate::json_io::CardMeta>,
@@ -1549,6 +1556,7 @@ fn ofn_to_clauses_representation(
     // applies to explicitly selected routes.
     let abox_certified = profile.positive_abox_tbox_separable;
     let mut abox_unrepresented: BTreeMap<String, u64> = BTreeMap::new();
+    let nominal_proxies = hooks.nominal_to_individual.len() as u64;
     if !automatic && !nominals_mode && !ht_rules && !abox_certified && !abox.is_empty() {
         let proxied: HashSet<&str> =
             hooks.nominal_to_individual.values().map(String::as_str).collect();
@@ -1662,10 +1670,40 @@ fn ofn_to_clauses_representation(
     // A complete typed nominal ABox is read directly by the native bridge
     // routes (they set `KM_TRIGGER_ABSORB`), so its assertions are carried
     // there; elsewhere the unrepresented ABox is counted.
-    if !(nominal_abox.complete && std::env::var_os("KM_TRIGGER_ABSORB").is_some()) {
+    let mechanism = std::env::var("KM_MECHANISM").unwrap_or_default();
+    let native_payload_present =
+        nominal_abox.complete && std::env::var_os("KM_TRIGGER_ABSORB").is_some();
+    // Only an HT mechanism reads that payload (the Konclude bridge of
+    // `ht_bridge` and `ht_full`). A CB bundle that merely sets
+    // `KM_TRIGGER_ABSORB` (`cb_trigger*`) never reads it, and the `portfolio`
+    // bundles (`production_all*`) race a CB arm over this clause stream,
+    // which lacks the ABox outside `KM_NOMINALS`, so a forced run can publish
+    // the CB answer.
+    let reads_native_payload = native_payload_present && mechanism == "ht";
+    let mut route_approximations: BTreeMap<String, u64> = BTreeMap::new();
+    if !native_payload_present {
         for (kind, n) in abox_unrepresented {
             *dropped_source_axioms.entry(kind).or_default() += n;
         }
+    } else if !reads_native_payload {
+        for (kind, n) in abox_unrepresented {
+            *route_approximations.entry(kind).or_default() += n;
+        }
+    }
+    // Outside nominal clausification a nominal is an ordinary proxy class
+    // (`preprocess::nominal_clauses`): the clauses hold for `{a}` but omit the
+    // singleton and existence clauses (`preprocess::nominal_defining_clauses`),
+    // so the clause stream over-approximates the nominal, and every assertion
+    // on a proxied individual with it. A CB or EL worker reasons over that
+    // approximation directly. The clause-reading HT workers do not recover
+    // it either: forced `ht_general` answered a contradictory ABox whose
+    // DL-safe rule the frontend lowers over nominal proxies as consistent,
+    // with nothing counted. Only the native bridge payload and `KM_NOMINALS`
+    // carry the nominal exactly. The
+    // automatic router never sends a nominal input to a mechanism that loses
+    // it, so this is recorded for explicitly selected routes only.
+    if !automatic && !nominals_mode && !reads_native_payload && nominal_proxies > 0 {
+        *route_approximations.entry("Nominal".to_string()).or_default() += nominal_proxies;
     }
     let uncarried_data_assertions = if nominal_abox
         .unsupported
@@ -2032,6 +2070,7 @@ fn ofn_to_clauses_representation(
         route: route.as_str().to_string(),
         uncarried_data_assertions,
         dropped_source_axioms,
+        route_approximations,
     })
 }
 
