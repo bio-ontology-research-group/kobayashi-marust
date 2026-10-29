@@ -1895,16 +1895,22 @@ fn ofn_to_clauses_representation(
     }
     // Two-sorted domain encoding (docs/NOMINALS-CB.md, "Object and data
     // sorts"): under nominal clausification, when the clause set carries data
-    // values next to nominals or individuals, make `Δ_I ∩ Δ_D = ∅` explicit so
-    // that no `⊤ ⊑ C` fact forces object structure on a data value. Outside
-    // that gate the clause output is unchanged.
-    if nominals_mode && has_individuals && sorts::has_data_values(&tbox) {
-        // Only names the primary parse has already registered resolve; an
-        // unused declared data property has no clauses to sort.
-        let data_roles: BTreeSet<String> = data_property_raw
+    // values, data ranges or data-property atoms next to nominals or
+    // individuals, make `Δ_I ∩ Δ_D = ∅` explicit so that no `⊤ ⊑ C` fact
+    // forces object structure on a data element. Outside that gate (in
+    // particular on every input without data properties) the clause output
+    // is unchanged.
+    // Only names the primary parse has already registered resolve; an
+    // unused declared data property has no clauses to sort.
+    let data_roles: BTreeSet<String> = if nominals_mode && has_individuals {
+        data_property_raw
             .iter()
             .filter_map(|raw| reg.assigned(raw).map(str::to_string))
-            .collect();
+            .collect()
+    } else {
+        BTreeSet::new()
+    };
+    if nominals_mode && has_individuals && sorts::applies(&tbox, &data_roles) {
         let proxies: BTreeMap<String, String> = nominal_abox
             .individuals
             .iter()

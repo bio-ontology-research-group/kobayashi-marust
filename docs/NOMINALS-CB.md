@@ -258,8 +258,9 @@ once the sort encoding below proved sufficient on its own.)
 
 The frontend therefore makes the two sorts explicit, with one fresh marker
 concept `D` (`__data__`, interpreted as `Δ_D`), only under nominal
-clausification and only when the clause set carries a data value next to
-nominals or individuals. Everything else keeps its clause output unchanged.
+clausification and only when the clause set carries a data value, a data
+range or a data-property atom next to nominals or individuals (until
+m2197, below, only a data value opened the gate). Everything else keeps its clause output unchanged.
 The encoding is linear in the signature:
 
 - every data range `R` (a `__dt__` concept): `R ⊑ D`;
@@ -383,6 +384,68 @@ while `v ⊑ D`. The excluded middle `→ Q(x) ∨ v(x)` therefore collapses to
 the unit `Q(t)` at every object term, `v` is never derived there, and the
 at-most-one clause only ever matches data-sorted terms, the data successors
 of the same element; no merge between object terms is ever proposed.
+
+### Data successors without data values (m2197)
+
+Bug. With `⊤ ⊑ ≥2 u` (`u` a data property) and `⊤ ⊑ {a}`, every nominal
+route (`nominals`, `certified_nominals`, `ht_general`, `auto`) answered
+"inconsistent"; HermiT answers "consistent", and one object `a` with two
+distinct `u`-values is a model. The parser reads the unqualified data
+filler `rdfs:Literal` as `⊤`, and the normaliser reifies it as the same
+definer `Q_0` as `owl:Thing`, so the clause set is `→ Q_0(x)`,
+`Q_0(x) → Q_1(x)`, `Q_1(x) → u(x, f_i(x)) ∧ Q_0(f_i(x))` for `i = 0, 1`,
+`Q_1(x) ∧ f_0(x) ≈ f_1(x) → ⊥`, `Q_0(x) → __nom__a(x)` and
+`__nom__a(x) → x ≈ a`. Read one-sorted, `⊤ ⊑ {a}` holds on both
+`u`-successors, merges each with `a` and so with each other, and clashes
+with their inequality. One-sorted reading is not a weakening of the
+ontology here: it is strictly stronger, so even an "inconsistent" answer
+from a route that otherwise drops nominals is wrong. The two-sorted
+encoding above handles exactly this shape (`Q_0` is polymorphic, its
+object-sorted implications are relativized), but it was gated on a data
+value (`__dt__val__`) being present, and the input has no literal.
+
+Fix (nominal CB route). `sorts::applies` replaces `has_data_values` as the
+gate in `frontend/mod.rs`: under nominal clausification with nominals or
+individuals, the encoding runs when the clause set carries a data value,
+a data range (`__dt__` concept), or an atom of a source data property. On
+m2197 it rewrites `Q_0(x) → __nom__a(x)` to `Q_0(x) → __nom__a(x) ∨ D(x)`
+and `Q_0(x) → Q_1(x)` to `Q_0(x) → Q_1(x) ∨ D(x)`, and adds
+`u(x, y) → D(y)` and `__nom__a ⊓ D ⊑ ⊥`; both successors are in `D`, the
+nominal fact does not apply to them, and the inequality is satisfied.
+
+Soundness and exactness. The exactness argument above never uses a data
+value: it only needs that data ranges lie in `Δ_D`, source classes, nominal
+proxies and property domains in `Δ_I`, and data-property ranges in `Δ_D`.
+Those clauses are added whenever the gate opens, so the widened gate keeps
+both directions of the argument. A clause set with no data property, no
+data range and no data value has no element that the source semantics puts
+in `Δ_D`, so the gate stays closed there and the clause output is
+unchanged; in particular `⊤ ⊑ ≥2 r` with `⊤ ⊑ {a}` for an object property
+`r` stays inconsistent. Inputs outside nominal clausification are
+unaffected, as before. Regression tests:
+`engine/tests/top_nominal_data_successors.rs` (fixtures in
+`engine/tests/fixtures/top_nominal_data/`) and the unit test
+`top_nominal_with_unvalued_data_cardinality_is_relativized` in
+`frontend/sorts.rs`.
+
+Open: the HT consumers. Two consumers never see the sorted clause stream
+and still answer "inconsistent" on m2197 and its probes:
+
+- the native completion bridge (`ht_bridge`, the HT arm of
+  `certified_nominals`, and the route `auto` picks for these inputs)
+  rebuilds class axioms from `source_axioms` in source mode, where
+  `DataMinCardinality(2 u)` is `AtLeast(2, u, Top)`. Its datatype gate
+  (`exact_atomic_datatype_bridge_fragment`, which checks every
+  non-datatype axiom on a blank data node and would defer on `⊤ ⊑ {a}`)
+  only runs when a `__dt__` concept occurs, so a data property used only
+  with `rdfs:Literal` fillers is invisible to it;
+- `ht_general` runs without `KM_NOMINALS`, so the sort pass never runs and
+  the clausal hypertableau reads the data successors as objects (also with
+  a qualified filler, `⊤ ⊑ ≥2 u.xsd:string`).
+
+The clausal hypertableau itself is exact on the sorted clause set (the
+`km tableau` worker answers "consistent" on the sorted m2197 input), so
+both gaps are admission and routing questions, not calculus defects.
 
 ## 7. Sequoia ordering and nominals
 

@@ -164,9 +164,28 @@ fn term_var(term: &Term) -> Option<&Term> {
     }
 }
 
-/// Whether the encoding applies to this clause set: it carries a data value
-/// (every `__dt__val__` concept comes with its at-most-one clause) and the
-/// caller has established that the source has nominals or individuals.
+/// Whether the encoding applies to this clause set, once the caller has
+/// established nominal clausification and that the source has nominals or
+/// individuals: the clause set carries a data value, a data range, or an
+/// atom of a source data property. A data successor is an element of the
+/// one-sorted domain whether or not a literal names it, and the `⊤` definer
+/// of an unqualified data cardinality (`≥2 u` reifies `rdfs:Literal` as the
+/// same definer as `owl:Thing`) carries every `⊤ ⊑ C` fact onto it; with
+/// `⊤ ⊑ {a}` both `u`-successors would be merged with `a` and with each
+/// other (docs/NOMINALS-CB.md, "Data successors without data values").
+pub fn applies(tbox: &[DLClause], data_roles: &BTreeSet<String>) -> bool {
+    has_data_values(tbox)
+        || tbox.iter().any(|c| {
+            c.body.iter().chain(c.head.iter()).any(|atom| match atom {
+                Atom::Concept(name, _) => is_data_range(name),
+                Atom::Role(name, ..) => data_roles.contains(name),
+                Atom::Eq(..) => false,
+            })
+        })
+}
+
+/// Whether the clause set carries a data value (every `__dt__val__` concept
+/// comes with its at-most-one clause).
 pub fn has_data_values(tbox: &[DLClause]) -> bool {
     tbox.iter().any(|c| {
         c.body.iter().chain(c.head.iter()).any(|atom| {
@@ -970,8 +989,55 @@ mod tests {
     }
 
     #[test]
-    fn gate_needs_a_data_value() {
+    fn gate_needs_a_data_value_range_or_data_property() {
+        let none = BTreeSet::new();
         assert!(has_data_values(&fixture()));
+        assert!(applies(&fixture(), &none));
         assert!(!has_data_values(&[clause([c("A", x())], [c("__dt__integer", fx("f"))])]));
+        assert!(applies(&[clause([c("A", x())], [c("__dt__integer", fx("f"))])], &none));
+        // `⊤ ⊑ ≥1 u` with no literal anywhere: the `u` atom opens the gate.
+        let unvalued = [clause([c("Q_1", x())], [r("u", x(), fx("f"))])];
+        assert!(!applies(&unvalued, &none));
+        assert!(applies(&unvalued, &BTreeSet::from(["u".to_string()])));
+        // Object roles and classes alone keep the clause set unchanged.
+        assert!(!applies(&[clause([c("A", x())], [r("r", x(), fx("f"))])], &BTreeSet::from(["u".to_string()])));
+    }
+
+    /// m2197: `⊤ ⊑ ≥2 u` and `⊤ ⊑ {a}` with no data value. The `⊤` definer
+    /// `Q_0` is also the `rdfs:Literal` filler of the cardinality, so
+    /// `Q_0(x) → __nom__a(x)` held on both `u`-successors, merged them with
+    /// `a` and with each other, and clashed with their inequality. The
+    /// encoding relativizes the nominal fact (and the cardinality fact) to
+    /// objects, and the `u` range puts both successors in `D`.
+    #[test]
+    fn top_nominal_with_unvalued_data_cardinality_is_relativized() {
+        let a = || Term::Ind("a".into());
+        let f0 = || fx("f_Q_1_0");
+        let f1 = || fx("f_Q_1_1");
+        let mut tbox = vec![
+            fact([c("Q_0", x())]),
+            clause([c("Q_1", x())], [r("u", x(), f0())]),
+            clause([c("Q_1", x())], [c("Q_0", f0())]),
+            clause([c("Q_1", x())], [r("u", x(), f1())]),
+            clause([c("Q_1", x())], [c("Q_0", f1())]),
+            clause([c("Q_1", x()), Atom::Eq(f0(), f1())], []),
+            clause([c("Q_0", x())], [c("Q_1", x())]),
+            clause([c("Q_0", x())], [c("__nom__a", x())]),
+            fact([c("__nom__a", a())]),
+            clause([c("__nom__a", x())], [Atom::Eq(x(), a())]),
+        ];
+        let roles = BTreeSet::from(["u".to_string()]);
+        assert!(!has_data_values(&tbox));
+        assert!(applies(&tbox, &roles));
+        let sorts = Sorts::infer(&tbox, &roles);
+        assert_eq!(sorts.concept("Q_0"), Sort::Both);
+        encode(&mut tbox, &roles);
+        let dx = c(DATA_SORT, x());
+        let dy = c(DATA_SORT, y());
+        assert!(tbox.contains(&clause([c("Q_0", x())], [c("__nom__a", x()), dx.clone()])));
+        assert!(tbox.contains(&clause([c("Q_0", x())], [c("Q_1", x()), dx.clone()])));
+        assert!(tbox.contains(&clause([r("u", x(), y())], [dy])));
+        assert!(tbox.contains(&clause([c("__nom__a", x()), dx.clone()], [])));
+        assert!(tbox.contains(&fact([c("Q_0", x())])));
     }
 }
