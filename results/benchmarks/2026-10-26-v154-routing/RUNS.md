@@ -17,6 +17,7 @@ no wrong answers, no lost inputs, and mean and median ratios at most 1.10.
 | 5 | `b574d11e` (bug 1: at-most-one clauses as fresh nominals, object/data sorts) | d59a672d… | 54669336 | 1099 | 1101 | v153: 14321, 13132, 6951 | general: 9800 | 1.042 | 1.102 |
 | 6 | `8a307740` (sorts closed under the clause set; complement excluded middle; data-assertion carry; cause A reverted) | 1390e3e7… | 54693367 | 1094 | 1096 | none | none | 1.056 | 1.048 |
 | 7 | `7bfc82be` (profile abstraction for data assertions above the cap; sorts never widen fixed sorts) | 219694e6… | 54707431 | 1087 | 1092 | none | none | 1.053 | 1.060 |
+| 8 | `9cf7c2cd` (individuals pinned through their nominal proxies; HasKey as DL-safe rules; non-neutral drops published; Sequoia ordering never auto-selected in nominal mode) | c3fb8abb… | 54741000 | 1094 | 1099 | none | none | 1.009 | 1.098 |
 
 Runs 3 and 4 meet the contract. Run 5 does not: the bug 1 encoding made the
 `nominals` route unsound on three inputs that the v1.5.3 policy sends there
@@ -48,6 +49,19 @@ role-chain encoding, which every clause route shared and v1.5.3 masked by
 routing those inputs to the Konclude bridge. Run 2's lost input (7499) needed
 the proved source certificates, which the maintainer exempted from the
 admission floor.
+
+Run 8 (submitted 2026-10-28 21:08, analysed 2026-10-29 07:20) meets the
+contract: no wrong answer, no lost input, mean ratio 1.009 and median ratio
+1.098 on the 1,094 inputs both policies solve. The seven inputs run 7 lost
+through the declining ground-rule source (10702, 14334, 14551, 2826, 5834,
+850, 9429) are verified again under both policies. The general policy gains
+2792, 9800, 1555, 16666 and 1672 over v1.5.3 routing on the same binary;
+9800 is answered again by the exact nominal regime within the budget. The
+largest remaining time difference is the eleven inputs that v1.5.3 sent to
+the Konclude bridge and the general policy sends to `certified_nominals`
+(+164 s in total, from +200 s in run 7). Run 8 is the candidate for the
+freeze unless the open soundness fixes (forced routes fail closed, bridge
+clause path) change a published answer, in which case run 9 repeats it.
 
 The extra time under the general policy is concentrated in eleven inputs that
 v1.5.3 sent to the Konclude bridge and the general policy sends to
