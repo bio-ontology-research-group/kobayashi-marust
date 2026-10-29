@@ -230,3 +230,39 @@ the literal movement (their structural gates or the CB arm decided these
 small inputs). None of these is an automatic route under either routing
 policy. Measurements are in
 `results/agents/2026-10-29/ht-card-complement/`.
+
+## 8. Bridge `≤0` restrictions and inverse predecessors
+
+Defect. The Konclude bridge (`engine/src/konclude_ht/bridge.rs`, `Builder`)
+built `≤0 R.C` as a `CCATMOST` concept with parameter 0, and `¬≥1 R.C` as a
+negated `CCATLEAST` with parameter 1, which the saturation reads as the same
+`≤0` count. The ported saturation's critical at-most test
+(`is_critical_atmost_concept_descriptor_insufficient`, saturation/s09.rs)
+counts only the `R`-successors a saturated node links to. A neighbour that is
+the node's predecessor, reached over the inverse of `R`, is never counted, so
+the node stayed sufficient and its satisfiability was published from the
+saturation. On `D ⊑ ∃s.⊤`, `⊤ ⊑ ≤0 s⁻.D` (HermiT: `D` unsatisfiable) the
+source-TBox bridge answered `D` satisfiable. The automatic route took the
+bridge for fresh generator seed 1241 (`D ≡ ∃s.∃t.B`, `⊤ ⊑ ≤0 s⁻.D`,
+`Q3 ≡ ¬C`) and published `D ⊑ Q3` instead of `D` unsatisfiable;
+`production_all` and `ht_bridge` did the same. `KM_HT_NO_SATURATION=1`
+answered correctly, which places the miss in the saturation, not in the
+completion tableau. The clause translation (`KM_NO_SOURCE_TBOX=1`) was
+already right, because the frontend clausifies `≤0 R.C` as `R(x,y) ∧ C(y) →
+⊥`.
+
+Fix. Konclude's ontology builder never produces a `CCATMOST` with parameter
+0: it builds `≤0 R.C` as `∀R.¬C` (see the note on
+`generated_successor_filler_negation`, model/op.rs). The bridge builder now
+does the same in `atmost_q` and `atmost` (`≤0 R ≡ ∀R.⊥`), and `atleast_q`
+builds `≥1 R.C` as `∃R.C`, so `¬≥1 R.C` becomes `∀R.¬C` as well. These are
+equivalences, so the translated terminology has the same models. The
+universal rule propagates to predecessors in both the saturation and the
+completion, which covers the inverse case. No tableau rule changes, and the
+bridge has no Lean model (docs/CERTIFICATION-ROADMAP.md), so no Lean surface
+changes.
+
+Fixtures: `engine/tests/fixtures/bridge_atmost_zero/`, run by
+`engine/tests/bridge_atmost_zero.rs` on auto, production_all, ht_bridge and
+ht_bridge with `KM_NO_SOURCE_TBOX=1`. Measurements:
+`results/agents/2026-10-29/cb-inverse-top/`.

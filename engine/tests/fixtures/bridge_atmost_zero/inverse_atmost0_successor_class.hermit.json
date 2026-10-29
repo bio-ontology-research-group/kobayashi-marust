@@ -1,0 +1,8 @@
+{
+  "ontology": "inverse_atmost0_successor_class.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": [
+    "D"
+  ]
+}

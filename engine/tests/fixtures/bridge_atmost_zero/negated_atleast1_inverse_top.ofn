@@ -1,0 +1,6 @@
+Prefix(:=<http://example.org/g#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://example.org/g>
+Declaration(Class(:B)) Declaration(Class(:C)) Declaration(Class(:D)) Declaration(ObjectProperty(:s)) Declaration(ObjectProperty(:t))
+SubClassOf(:D ObjectSomeValuesFrom(:s owl:Thing)) SubClassOf(owl:Thing ObjectComplementOf(ObjectMinCardinality(1 ObjectInverseOf(:s) :D)))
+)

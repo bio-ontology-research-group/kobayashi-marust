@@ -1,0 +1,8 @@
+{
+  "ontology": "inverse_atmost0_top_existential_filler.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": [
+    "D"
+  ]
+}
