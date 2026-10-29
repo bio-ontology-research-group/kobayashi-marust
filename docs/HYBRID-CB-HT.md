@@ -361,3 +361,62 @@ whose card arm (mode 5) answered `CONSISTENT 1` (5cc0bccf); HermiT and the
 CB routes answer inconsistent. Without the class assertion on `b` the same
 route aborted instead, on an eagerly evaluated `then_some(assertions[0])` in
 the proxy-ABox certificate (`race.rs`), which this change also fixes.
+
+Cost (2026-10-30). The checked pairs made the card arm about four times
+slower on `ore_ont_205` and `ore_ont_7499` (`certified_card_proxy_abox`). On
+7499 the search runs 1.04M steps instead of 0.65M, but blocking took 145 s of
+the worker's 176 s (25 s of 48 s before): mode 5 recomputed every node on
+every one of the 1.03M passes, and 112M candidate pairs reached `admits`
+(0.85 µs each). Three changes cut it without changing any decision:
+
+1. `admits` is split into `kept_edge_sets` (the per-node part: `two_hop`,
+   counted kept edges, the literal sets of the kept edges) and
+   `gain_irrelevant` (the per-pair part). The per-pair test skips literals
+   outside `relevant_bits`, the union of every relevant set (they satisfy
+   `k ∉ ⋃ relevant` already), and answers yes when `|L(wp)| = |L(w)|`,
+   since every caller has already established `L(w) ⊆ L(wp)`, so the labels
+   are equal and nothing is gained. Both are rewritings of the same formula
+   `∀k ∈ L(wp). k ∈ L(w) ∨ k ∉ ⋃ relevant(w)`.
+2. Modes 1 (when `SubsetGain` is not trivial) and 5 run incrementally under
+   `KM_HT_INCRBLOCK2` (`Ht::checked_subset_recompute`), like the unchecked
+   mode-1 snapshot. The status of node `n` in both scans reads only: `L(n)`
+   and `n`'s in- and out-edges (`admits`, B2a), `pred` of `n`'s out-edge
+   targets (`admits` skips successor edges), the labels and statuses of the
+   candidate blockers `m < n`, and the label and status of `pred(n) < n`
+   (B2a, indirect blocking). `Ext` already lowers `i2_lo` to every node
+   whose label changes and to every new or removed node; with `edge_note`
+   it also lowers it to the smaller endpoint of every added or removed edge,
+   except that an edge to a node's own successor only lowers it to the
+   successor, because the predecessor reads that edge nowhere (`admits`
+   skips it, B2a reads only the edge to the node's own predecessor, which has
+   a smaller id). `pred[t]` changes only when `t` is removed and its id is
+   reused, and the edge to `t` is removed first. So every node below `i2_lo`
+   has the inputs it had at the last pass, keeps its status and its
+   postings, and an ascending pass over `i2_lo..nn` with the same predicates
+   reproduces the full scan. The order in which candidates are tried, and
+   the choice of the rarest posting list, change nothing: the result is the
+   existence of an admitted superset, and every superset of `L(n)` is in the
+   list of each literal of `n`. The post-pass that marks merged nodes blocked
+   runs on the returned copy, as in the full scan, where merged nodes still
+   serve as candidates.
+3. Inside that pass `kept_edge_sets(n)` is evaluated once per node, and a
+   node for which it rejects every pair is not searched. Each candidate
+   blocker's relevant literals (`L(m) ∩ relevant_bits`, `Ext::cs_rel`) and,
+   in mode 5, its `forall_idx` body concepts (`Ext::cs_fa`, the only
+   literals B2a looks up) are cached when it is posted. The cache is invalid
+   only when `L(m)` changes, which moves `i2_lo` to `m` or below and reposts
+   `m`, or when another `SubsetGain` is in use, which a per-build id detects
+   and answers with a full pass (`forall_idx` is fixed at construction).
+
+`KM_HT_INCRBLOCK2_CHECK=1` compares every incremental pass with the full
+`compute_blocked` and aborts on a difference. Measurements:
+`results/agents/2026-10-30/subset-blocking-cost/`.
+
+The slowdown of `ore_ont_7278` and `ore_ont_3726` (7.9 s to 33.7 s) has a
+different cause. Their time is in the rules-consistency worker, which runs
+the clausal `Tableau` of `tableau.rs`, not the native hypertableau, so no
+blocking code in this section is involved. Since 5a9eaa77 the frontend
+carries the 81 data-property assertions of 7278 as `DataHasValue` class
+assertions (478 more clauses: 8,552 instead of 8,074) and runs a second
+frontend pass. The v1.5.3 worker binary takes 26.9 s on the v1.5.4 input
+(`KM_TAB_BIN`), the same as the v1.5.4 worker.

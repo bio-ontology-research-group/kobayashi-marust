@@ -624,6 +624,29 @@ pub struct Ext {
     i3_sig: HashMap<Vec<u64>, Node>,
     i3_node_sig: Vec<Option<Vec<u64>>>,
     block3: bool,
+    /// Checked subset blocking (modes 1 and 5 with a non-trivial
+    /// `SubsetGain`) reads a node's edges as well as its label, so
+    /// `add_edge` and its undo widen the dirty suffix to the endpoints that
+    /// read the edge (`edge_note_node`). Set by `Ht` for those modes.
+    edge_note: bool,
+    /// `Ht::checked_subset_recompute` state, kept for the stable prefix
+    /// `0..i2_lo`: per encoded literal, the candidate blockers carrying it in
+    /// id order (`cs_lists`); every posting in order of insertion
+    /// (`cs_log`, node and slot), so a recompute pops exactly the postings of
+    /// the suffix; each node's final and direct (mode 5: before the indirect
+    /// pass) status; and, for each candidate blocker, the literals of its
+    /// label that `SubsetGain` finds relevant for some edge (`cs_rel`).
+    cs_lists: Vec<Vec<Node>>,
+    cs_log: Vec<(Node, usize)>,
+    cs_blocked: Vec<bool>,
+    cs_direct: Vec<bool>,
+    cs_rel: Vec<smallvec::SmallVec<[CLit; 4]>>,
+    /// Mode 5: for each candidate blocker, the literals of its label that
+    /// are `forall_idx` body concepts (B2a reads only those).
+    cs_fa: Vec<smallvec::SmallVec<[CLit; 4]>>,
+    /// `SubsetGain::id` of the gain `cs_rel` was computed with; another one
+    /// forces a full recompute.
+    cs_gain: u64,
 
     /// KM_HT_INCROBLIG: incremental ∃-obligation processing. The flat obligation
     /// loop in `process_obligations` re-scanned EVERY accumulated obligation on
@@ -702,6 +725,14 @@ impl Ext {
             i3_sig: HashMap::default(),
             i3_node_sig: Vec::new(),
             block3: false,
+            edge_note: false,
+            cs_lists: Vec::new(),
+            cs_log: Vec::new(),
+            cs_blocked: Vec::new(),
+            cs_direct: Vec::new(),
+            cs_rel: Vec::new(),
+            cs_fa: Vec::new(),
+            cs_gain: 0,
             incroblig: std::env::var_os("KM_HT_INCROBLIG").is_some(),
             node_obligs: Vec::new(),
             oblig_sat: Vec::new(),
@@ -1186,6 +1217,22 @@ impl Ext {
         if self.block3 {
             self.i2_note(t);
         }
+        if self.edge_note {
+            self.i2_note(self.edge_note_node(s, t));
+        }
+    }
+
+    /// The smallest node whose checked subset-blocking status can read the
+    /// edge `s -> t`: both endpoints, except that a node ignores the edge to
+    /// its own successor (`SubsetGain::admits` skips it, and mode 5's B2a only
+    /// reads the edge to the predecessor), so a successor edge concerns `t`.
+    #[inline]
+    fn edge_note_node(&self, s: Node, t: Node) -> Node {
+        if self.pred[t] == Some(s) {
+            t
+        } else {
+            s.min(t)
+        }
     }
 
     /// Follow the ≤n merge chain to the surviving node (KM_HT_NUMBER). Identity
@@ -1425,6 +1472,9 @@ impl Ext {
                     self.mark_disj_dirty(node, lit);
                 }
                 Trail::Edge(r, s, t) => {
+                    if self.edge_note {
+                        min_aff = min_aff.min(self.edge_note_node(s, t));
+                    }
                     if let Some(pos) = self.out_edges[s]
                         .iter()
                         .position(|&(rr, tt, _)| rr == r && tt == t)
@@ -1619,6 +1669,12 @@ impl Ext {
         self.i2_last_lo = 0;
         self.i3_sig.clear();
         self.i3_node_sig.clear();
+        self.cs_lists.clear();
+        self.cs_log.clear();
+        self.cs_blocked.clear();
+        self.cs_direct.clear();
+        self.cs_rel.clear();
+        self.cs_fa.clear();
         self.node_obligs.clear();
         self.node_obligs.resize_with(self.concepts.len(), Vec::new);
         self.oblig_sat.clear();
@@ -2352,7 +2408,16 @@ struct SubsetGain {
     multi_in: HashSet<R>,
     any: HashSet<CLit>,
     two_hop: bool,
+    /// Dense bitset (by `Ext::enc_lit`) of the union of every set above: a
+    /// literal outside it is relevant for no edge, so `admits` skips it
+    /// without probing the per-edge sets.
+    relevant_bits: Vec<u64>,
+    /// Distinct for every built value (never 0), so cached per-node results
+    /// (`Ext::cs_rel`) are not reused across another clause set.
+    id: u64,
 }
+
+static SUBSET_GAIN_IDS: AtomicU64 = AtomicU64::new(1);
 
 impl SubsetGain {
     fn empty() -> SubsetGain {
@@ -2365,7 +2430,17 @@ impl SubsetGain {
             multi_in: HashSet::default(),
             any: HashSet::default(),
             two_hop: false,
+            relevant_bits: Vec::new(),
+            id: SUBSET_GAIN_IDS.fetch_add(1, Ordering::Relaxed),
         }
+    }
+
+    #[inline]
+    fn relevant_anywhere(&self, k: CLit) -> bool {
+        let e = Ext::enc_lit(k);
+        self.relevant_bits
+            .get(e >> 6)
+            .is_some_and(|word| word & (1u64 << (e & 63)) != 0)
     }
 
     fn build(clauses: &[ClauseRec], card_defs: &HashMap<C, CardDef>, nominals: &[C]) -> SubsetGain {
@@ -2440,6 +2515,22 @@ impl SubsetGain {
         for &nominal in nominals {
             both(&mut g.any, nominal);
         }
+        let mut bits: Vec<u64> = Vec::new();
+        for set in std::iter::once(&g.any)
+            .chain(g.nb_in.values())
+            .chain(g.nb_out.values())
+            .chain(g.ctr_in.values())
+            .chain(g.ctr_out.values())
+        {
+            for &k in set {
+                let e = Ext::enc_lit(k);
+                if e >> 6 >= bits.len() {
+                    bits.resize((e >> 6) + 1, 0);
+                }
+                bits[e >> 6] |= 1u64 << (e & 63);
+            }
+        }
+        g.relevant_bits = bits;
         g
     }
 
@@ -2456,18 +2547,33 @@ impl SubsetGain {
             && (self.multi_out.is_empty() && self.ctr_out.values().all(HashSet::is_empty))
     }
 
-    /// May `w` be blocked by `wp`, given `L(w) ⊆ L(wp)`?
+    /// May `w` be blocked by `wp`, given `L(w) ⊆ L(wp)`? Every caller
+    /// establishes that inclusion first; equal sizes then mean equal labels.
     fn admits(&self, ext: &Ext, w: Node, wp: Node) -> bool {
-        if self.two_hop {
-            return false;
+        match self.kept_edge_sets(ext, w) {
+            None => false,
+            Some(relevant) => self.gain_irrelevant(ext, w, wp, &relevant, ext.concepts[wp].keys()),
         }
-        let mut relevant: Vec<&HashSet<CLit>> = Vec::new();
+    }
+
+    /// The literal sets relevant for `w`'s kept edges, or `None` when no
+    /// pair with `w` as the blocked node is admitted (a role atom between
+    /// two neighbours, or a kept edge on a counted role).
+    fn kept_edge_sets<'a>(
+        &'a self,
+        ext: &Ext,
+        w: Node,
+    ) -> Option<smallvec::SmallVec<[&'a HashSet<CLit>; 8]>> {
+        if self.two_hop {
+            return None;
+        }
+        let mut relevant: smallvec::SmallVec<[&HashSet<CLit>; 8]> = smallvec::SmallVec::new();
         if !self.any.is_empty() {
             relevant.push(&self.any);
         }
         for (r, _, _) in &ext.in_edges[w] {
             if self.multi_in.contains(r) {
-                return false;
+                return None;
             }
             relevant.extend(self.nb_in.get(r));
             relevant.extend(self.ctr_in.get(r));
@@ -2477,18 +2583,40 @@ impl SubsetGain {
                 continue;
             }
             if self.multi_out.contains(r) {
-                return false;
+                return None;
             }
             relevant.extend(self.nb_out.get(r));
             relevant.extend(self.ctr_out.get(r));
         }
+        Some(relevant)
+    }
+
+    /// Given `L(w) ⊆ L(wp)` and `w`'s kept-edge sets, is no gained literal
+    /// relevant? `literals` must contain every literal of `L(wp)` that is
+    /// relevant anywhere (all of `L(wp)`, or the subset cached in
+    /// `Ext::cs_rel`); the others pass the test trivially.
+    fn gain_irrelevant<'k>(
+        &self,
+        ext: &Ext,
+        w: Node,
+        wp: Node,
+        relevant: &[&HashSet<CLit>],
+        mut literals: impl Iterator<Item = &'k CLit>,
+    ) -> bool {
         if relevant.is_empty() {
             return true;
         }
         let lw = &ext.concepts[w];
-        ext.concepts[wp]
-            .keys()
-            .all(|k| lw.contains_key(k) || !relevant.iter().any(|set| set.contains(k)))
+        let lwp = &ext.concepts[wp];
+        debug_assert!(lw.keys().all(|k| lwp.contains_key(k)));
+        if lwp.len() == lw.len() {
+            return true;
+        }
+        literals.all(|k| {
+            !self.relevant_anywhere(*k)
+                || lw.contains_key(k)
+                || !relevant.iter().any(|set| set.contains(k))
+        })
     }
 }
 
@@ -2497,6 +2625,33 @@ fn label_subset(ext: &Ext, n: Node, m: Node) -> bool {
         .keys()
         .all(|k| ext.concepts[m].contains_key(k))
 }
+/// Is some node in `n`'s rarest-literal posting list (`lists`, encoded
+/// literal to candidate blockers in id order) a label superset of `n` that
+/// `accept` admits? The answer does not depend on which list is scanned:
+/// every superset of `L(n)` is in the list of each literal of `n`.
+fn subset_blocker_exists(
+    ext: &Ext,
+    lists: &[Vec<Node>],
+    n: Node,
+    mut accept: impl FnMut(Node) -> bool,
+) -> bool {
+    let ln = &ext.concepts[n];
+    let lnlen = ln.len();
+    let mut best: &[Node] = &[];
+    let mut best_len = usize::MAX;
+    for k in ln.keys() {
+        let candidates = lists.get(Ext::enc_lit(*k)).map_or(&[][..], |v| v.as_slice());
+        if candidates.len() < best_len {
+            best_len = candidates.len();
+            best = candidates;
+        }
+    }
+    best.iter().any(|&m| {
+        let lm = &ext.concepts[m];
+        lm.len() >= lnlen && ln.keys().all(|k| lm.contains_key(k)) && accept(m)
+    })
+}
+
 fn ancestor_blocked(ext: &Ext, n: Node) -> bool {
     if !ext.blockable[n] {
         return false;
@@ -4642,6 +4797,9 @@ struct ClauseIndex {
     /// label". B2a consults it: for each ∀r.D the blocker w' carries, the predecessor
     /// v must already carry D. Built once at construction.
     forall_idx: HashMap<(CLit, R), Vec<CLit>>,
+    /// Dense bitset (by `Ext::enc_lit`) of the body concepts `C0` of
+    /// `forall_idx`: a label literal outside it never makes B2a fail.
+    forall_ops: Vec<u64>,
     /// Roles occurring in an equality-head (at-most/functionality) clause of
     /// the clause set. Each `Ht` starts its `cert_number_roles` from this set;
     /// `set_card_defs` extends that per-`Ht` copy.
@@ -4719,8 +4877,18 @@ impl ClauseIndex {
                 })
             })
             .collect();
+        let forall_idx = index_forall(clauses);
+        let mut forall_ops: Vec<u64> = Vec::new();
+        for (c0, _) in forall_idx.keys() {
+            let e = Ext::enc_lit(*c0);
+            if e >> 6 >= forall_ops.len() {
+                forall_ops.resize((e >> 6) + 1, 0);
+            }
+            forall_ops[e >> 6] |= 1u64 << (e & 63);
+        }
         ClauseIndex {
-            forall_idx: index_forall(clauses),
+            forall_idx,
+            forall_ops,
             inverse_bridge: has_inverse_bridge(clauses),
             number_roles,
             global_disj_set: global_disj.iter().copied().collect(),
@@ -18755,11 +18923,34 @@ impl Ht {
     /// back to `v` (no inverse) ⇒ B1 subset alone suffices. See
     /// docs/KONCLUDE-BLOCKING-SPEC.md.
     fn b2a_holds(&self, w: Node, wp: Node, v: Node) -> bool {
+        self.b2a_holds_over(w, v, self.ext.concepts[wp].keys())
+    }
+
+    /// Is `c0` the body concept of some `forall_idx` entry?
+    #[inline]
+    fn forall_operand(&self, c0: CLit) -> bool {
+        let e = Ext::enc_lit(c0);
+        self.index
+            .forall_ops
+            .get(e >> 6)
+            .is_some_and(|word| word & (1u64 << (e & 63)) != 0)
+    }
+
+    /// B2a over the blocker literals `operands`, which must include every
+    /// literal of `L(wp)` that is a `forall_idx` body concept (all of
+    /// `L(wp)`, or the subset cached in `Ext::cs_fa`); no other literal has
+    /// a `forall_idx` entry.
+    fn b2a_holds_over<'k>(
+        &self,
+        w: Node,
+        v: Node,
+        operands: impl Iterator<Item = &'k CLit> + Clone,
+    ) -> bool {
         for (r, t, _) in &self.ext.out_edges[w] {
             if *t != v {
                 continue;
             }
-            for c0 in self.ext.concepts[wp].keys() {
+            for c0 in operands.clone() {
                 if let Some(heads) = self.index.forall_idx.get(&(*c0, *r)) {
                     for d in heads {
                         if !self.ext.concepts[v].contains_key(d) {
@@ -18820,6 +19011,139 @@ impl Ht {
             }
         }
         false
+    }
+
+    /// Checked subset blocking runs on the incremental suffix path
+    /// ([`Ht::checked_subset_recompute`]): mode 5, or mode 1 when some pair
+    /// needs [`SubsetGain::admits`].
+    fn checked_subset_incremental(&self) -> bool {
+        self.ext.incr2
+            && self.ext.edge_note
+            && self.subset_gain.is_some()
+            && self.anywhere
+            && (self.block_mode == 5 || (self.block_mode == 1 && !self.subset_exact))
+    }
+
+    /// The checked subset scans of [`Ht::compute_blocked`] (mode 1 with a
+    /// non-trivial [`SubsetGain`], and mode 5), re-evaluated only on the
+    /// suffix `i2_lo..nn` (docs/HYBRID-CB-HT.md section 9, "Cost").
+    ///
+    /// A node's status in those scans depends only on nodes with smaller or
+    /// equal ids: its label and edges, the labels and statuses of the
+    /// earlier candidate blockers, its predecessor's label (mode 5's B2a) and
+    /// status (indirect blocking), and `pred` of its edge targets, which only
+    /// changes when an edge of the node is removed. `Ext` lowers `i2_lo` to
+    /// the smaller endpoint of every label change, new or removed node, and
+    /// (with `edge_note`) added or removed edge, so the prefix below `i2_lo`
+    /// keeps its statuses and posting lists, and one ascending pass over the
+    /// suffix with the same predicates gives the full scan's result.
+    fn checked_subset_recompute(&mut self) -> Vec<bool> {
+        let gain = self.subset_gain.clone().expect("checked_subset_incremental");
+        let mode5 = self.block_mode == 5;
+        let nn = self.ext.num_nodes();
+        let lo = if self.ext.cs_gain == gain.id { self.ext.i2_lo.min(nn) } else { 0 };
+        self.ext.cs_gain = gain.id;
+        self.ext.i2_last_lo = lo;
+        let mut lists = std::mem::take(&mut self.ext.cs_lists);
+        let mut log = std::mem::take(&mut self.ext.cs_log);
+        let mut blocked = std::mem::take(&mut self.ext.cs_blocked);
+        let mut direct = std::mem::take(&mut self.ext.cs_direct);
+        let mut rel = std::mem::take(&mut self.ext.cs_rel);
+        let mut fa = std::mem::take(&mut self.ext.cs_fa);
+        // Postings were made in ascending node order, so the suffix's are the
+        // tail of the log and the tail of each list.
+        while let Some(&(node, slot)) = log.last() {
+            if node < lo {
+                break;
+            }
+            let popped = lists[slot].pop();
+            debug_assert_eq!(popped, Some(node));
+            log.pop();
+        }
+        blocked.truncate(lo);
+        blocked.resize(nn, false);
+        direct.truncate(lo);
+        direct.resize(nn, false);
+        rel.truncate(lo);
+        rel.resize_with(nn, smallvec::SmallVec::new);
+        fa.truncate(lo);
+        fa.resize_with(nn, smallvec::SmallVec::new);
+        {
+            let ext = &self.ext;
+            for n in lo..nn {
+                let blockable = ext.blockable[n];
+                let parent_blocked = ext.pred[n].is_some_and(|p| blocked[p]);
+                // `None`: SubsetGain::admits rejects every pair with `n`
+                // blocked, so no candidate can block it directly.
+                let sets = |n: Node| gain.kept_edge_sets(ext, n);
+                let admitted = |n: Node, m: Node, sets: &[&HashSet<CLit>]| {
+                    gain.gain_irrelevant(ext, n, m, sets, rel[m].iter())
+                };
+                let (is_direct, is_blocked) = if mode5 {
+                    // compute_blocked mode 5: direct B1 + B2a + admits, then
+                    // the ascending indirect pass.
+                    let d = blockable
+                        && !ext.concepts[n].is_empty()
+                        && ext.pred[n].is_some_and(|v| {
+                            sets(n).is_some_and(|sets| {
+                                subset_blocker_exists(ext, &lists, n, |m| {
+                                    self.b2a_holds_over(n, v, fa[m].iter())
+                                        && admitted(n, m, &sets)
+                                })
+                            })
+                        });
+                    (d, d || (blockable && parent_blocked))
+                } else {
+                    // compute_blocked mode 1, checked: indirect first, then
+                    // an admitted earlier unblocked superset.
+                    let b = blockable
+                        && (parent_blocked
+                            || (!ext.concepts[n].is_empty()
+                                && sets(n).is_some_and(|sets| {
+                                    subset_blocker_exists(ext, &lists, n, |m| {
+                                        admitted(n, m, &sets)
+                                    })
+                                })));
+                    (b, b)
+                };
+                direct[n] = is_direct;
+                blocked[n] = is_blocked;
+                if !is_direct {
+                    for &k in ext.concepts[n].keys() {
+                        let e = Ext::enc_lit(k);
+                        if e >= lists.len() {
+                            lists.resize_with(e + 1, Vec::new);
+                        }
+                        lists[e].push(n);
+                        log.push((n, e));
+                        if gain.relevant_anywhere(k) {
+                            rel[n].push(k);
+                        }
+                        if mode5 && self.forall_operand(k) {
+                            fa[n].push(k);
+                        }
+                    }
+                }
+            }
+        }
+        let mut out = blocked.clone();
+        self.ext.cs_lists = lists;
+        self.ext.cs_log = log;
+        self.ext.cs_blocked = blocked;
+        self.ext.cs_direct = direct;
+        self.ext.cs_rel = rel;
+        self.ext.cs_fa = fa;
+        self.ext.i2_lo = usize::MAX;
+        // As in compute_blocked: a merged victim is dead, but only after the
+        // scan (it stays a candidate blocker inside it).
+        if self.ext.number {
+            for (n, b) in out.iter_mut().enumerate() {
+                if self.ext.merged[n].is_some() {
+                    *b = true;
+                }
+            }
+        }
+        out
     }
 
     fn compute_blocked(&self) -> Vec<bool> {
@@ -19517,6 +19841,30 @@ impl Ht {
                             b.iter().filter(|x| **x).count(),
                             fd
                         );
+                        }
+                    }
+                    b
+                } else if self.checked_subset_incremental() {
+                    let b = self.checked_subset_recompute();
+                    if self.stats {
+                        self.i2_suf_sum += (b.len() - self.ext.i2_last_lo) as u128;
+                        self.i2_calls += 1;
+                        if self.ext.i2_last_lo == 0 {
+                            self.i2_full += 1;
+                        }
+                    }
+                    if self.i2_check {
+                        let full = self.compute_blocked();
+                        if full != b {
+                            let fd = (0..b.len()).find(|&k| full[k] != b[k]);
+                            panic!(
+                                "checked subset blocking mismatch (mode {}): nn={} full_blk={} inc_blk={} first_diff={:?}",
+                                self.block_mode,
+                                b.len(),
+                                full.iter().filter(|x| **x).count(),
+                                b.iter().filter(|x| **x).count(),
+                                fd
+                            );
                         }
                     }
                     b
@@ -20744,6 +21092,7 @@ impl Ht {
             self.ext.number = true;
         }
         self.ext.block3 = self.block_mode == 3;
+        self.ext.edge_note = self.checked_subset_mode();
         if !self.nom_set.is_empty() {
             self.ext.nominals = self.nom_set.iter().copied().collect();
         }
@@ -20796,6 +21145,11 @@ impl Ht {
         }
     }
 
+    /// Modes 1 and 5 check each subset pair unless every pair is admitted.
+    fn checked_subset_mode(&self) -> bool {
+        self.block_mode == 5 || (self.block_mode == 1 && !self.subset_exact)
+    }
+
     pub fn consistent(&mut self, seed: &[CLit]) -> Option<bool> {
         self.resolve_subset_blocking();
         // (Re)set the restart budget for this query; activity carries over from
@@ -20841,6 +21195,8 @@ impl Ht {
             // widens the incremental suffix on edge changes (the signature uses
             // the parent edge). Subset blocking (mode 1) is label-only.
             self.ext.block3 = self.block_mode == 3;
+            // Checked subset blocking also reads edges; see `Ext::edge_note`.
+            self.ext.edge_note = self.checked_subset_mode();
             // Nominals (o-rule): Ext::new resets the set, so re-apply each rebuild.
             if !self.nom_set.is_empty() {
                 self.ext.nominals = self.nom_set.iter().copied().collect();
