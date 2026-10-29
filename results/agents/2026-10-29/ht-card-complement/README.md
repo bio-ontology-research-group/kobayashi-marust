@@ -115,3 +115,47 @@ forced_route_fail_closed 5 passed, ht_subset_blocking 4 passed (all four fail
 against the head binary), universal_role_and_top_data_range 11 passed and 2
 ignored; `--lib cb_to_ht:: tableau::` 288 passed, 20 failed, the same 20
 `KM_HT_LEAN_*` checker tests as before.
+
+## Cost on the automatic route over ORE (`ore-cost/`)
+
+Binaries: `c604f80d` (before the subset-blocking fix; same code as
+32de40b7) and `e8b63ea9` (after). `KM_ROUTE=auto`, 300 s cap, one file at a
+time, `taskset -c 0-3` (4 cores; the worker caps its threads to them).
+
+Selection. The run-8 per-input route records are on IBEX only (array
+54741000), so the selected route of every design-half input (1,123,
+`split.json`) was recomputed with `km profile` at e8b63ea9
+(`design-selected-routes.txt`): 409 elc, 409 production_all, 295
+certified_nominals, 7 ht_rules, 2 certified_card_nominals, 1
+certified_card_proxy_abox; none selects `tab_race`, `card_*` or
+`ht_general`. The native hypertableau runs on the automatic route through
+the card arm, which `production_all` and the `certified_card_*` bundles
+carry next to the native bridge. The set is the three `certified_card_*`
+inputs plus every `production_all` input with number restrictions or
+functional roles and no datatypes (`design-profiles.txt`: route,
+card-family, datatype, inverse, nominal), 57 files, with 5303 added (58;
+10019 and 12107 are in it). The run-8 timing order could not be used.
+
+`ore-checked-blocking.tsv`: route, wall time before and after, exit codes,
+SUB/UNSAT line count, whether the sorted SUB/UNSAT/CONSISTENT lines are
+identical, and which arm answered (`ht-first`: the HT race worker, card arm
+or native bridge, answered before CB; `ht+cb-race`: both ran; `-`: no HT
+worker). Results: all 58 outputs identical; 9 time out on both binaries
+(1066, 1194, 9540, 9791, 11553, 11695, 13229, 14817 and 9540 on
+certified_card_nominals). One regression beyond 1.5x and 5 s: 7499
+(`certified_card_proxy_abox`), 25.0 s to 97.5 s. Its card arm (mode 5)
+ran 26,438 blocking passes before and 179,453 after (`KM_HT_STATS=1`); the
+last pass blocked 238 of 276 blockable nodes before and 180 of 202 after,
+so the checked pairs cost search (more passes over smaller models), not
+model size. 10019 (0.16 to 0.12 s) and 12107 (0.06 to 0.05 s) are
+unchanged.
+
+5303 and the transitive-role note. On the automatic route 5303 answers
+in 0.21 s on both binaries (HT worker first) with 238 subsumptions.
+Forced `ht_general` at 5cc0bccf (plain subset blocking, before the fold
+fix) and at c604f80d gives the same 238 SUB lines as the automatic answer,
+so the "subset blocking drops 1 subsumption on 5303 with transitive roles"
+note does not reproduce on this history; it is not shown to be the
+subset-gain mechanism (inferred: it was the EMELIM fold loss that 554fc87
+fixed for this ontology). At e8b63ea9 forced `ht_general` on 5303 times
+out at 300 s (no answer).
