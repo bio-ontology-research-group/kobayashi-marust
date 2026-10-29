@@ -143,6 +143,16 @@ resolution does not promise entailed units, only `⊥`; the equality part of
 R2 puts the equality in the interface's downward-closed set and removes the
 trap. With it the result no longer depends on the work order.
 
+**`p2`, reference regime without any internal disjunction**
+(`engine/tests/fixtures/nominal_seq_order/p2_cross_individual_named.ofn` and
+its swapped variant): `⊤ ⊑ B ⊔ NB`, `∃r.NB ⊑ C`, `C ⊓ D ⊑ ⊥`, `D(a)`,
+`r(a,b)`, `Q ⊑ {b}`; HermiT: `Q ⊑ B`. `p1` itself selects the Sequoia order,
+because its clausification of `∃r.¬B ⊑ C` puts the internal `Q_1` into a
+disjunction (`→ B(x) ∨ Q_1(x)`), so it never exercised the unordered default.
+`p2` has only the named disjunction `B ∨ NB`, the router leaves the Sequoia
+order off, and before the base context regime it was missed on `nominals` and
+`certified_nominals` (the automatic route answered it on another arm).
+
 **`p1`, reference regime** (new, `engine/tests/fixtures/nominal_seq_order/p1_cross_individual.ofn`):
 
     SubClassOf(ObjectSomeValuesFrom(:r ObjectComplementOf(:B)) :C)
@@ -160,15 +170,19 @@ complete baseline it was taken to be. Rule R2 below removes it.
 
 ## 5. The regime
 
-`KM_SEQ_ORDER=context`; `set_seq_order_auto` selects it in nominal mode
-wherever the plain Sequoia ordering would be selected without nominals,
-except in runs that must publish a CB Lean certificate
-(`KM_CB_LEAN_REQUIRED`): the certification surface models the literal order
-(`CBSourceHyperClosure.predLe`) and the r-Pred guard
-(`CBRootPredSendEnumeration`, exact send sets) of the unordered regime, so a
-context-regime certificate would be rejected. Those runs keep the unordered
-regime. `KM_SEQ_ORDER=1` (plain Sequoia) and `KM_NO_SEQ_ORDER` remain
-diagnostic overrides.
+Nominal mode always carries R2 and R3. `set_seq_order_auto` selects the
+context regime (`KM_SEQ_ORDER=context`, `SEQ_ORDER_CONTEXT`: R1 + R2 + R3)
+wherever the plain Sequoia ordering would be selected without nominals, and
+the base context regime (`SEQ_ORDER_BASE_CONTEXT`: the unordered same-term
+order + R2 + R3) everywhere else in nominal mode; `KM_NO_SEQ_ORDER` in nominal
+mode also means the base context regime. The one exception is a run that must
+publish a CB Lean certificate (`KM_CB_LEAN_REQUIRED`): the certification
+surface models the literal order (`CBSourceHyperClosure.predLe`) and the r-Pred
+guard (`CBRootPredSendEnumeration`, exact send sets) of the plain unordered
+regime, so a certificate with R2 or R3 would be rejected. Those runs keep the
+plain unordered regime, the configuration the checker models, and that
+configuration is known to miss `p1` and `p2` (section 4). `KM_SEQ_ORDER=1`
+(plain Sequoia, incomplete under nominals) remains a diagnostic override.
 
 - **R1.** In every context, same-term concept literals on a variable or a
   Skolem term (`x`, `f(x)`, `f(o)`) use the Sequoia order: internal concepts
@@ -220,6 +234,10 @@ under the plain Sequoia ordering, before the run was stopped).
 
 - **Proved (Lean, ground level).** The exchange between a ground context that
   satisfies R2 and a consumer with any order, for any announced interface.
+  This covers the context and the base context regime alike: R2 is stated on
+  top of whichever same-term order is in force, and both the Sequoia and the
+  unordered same-term order compare ground atoms only when they are on the
+  same individual or along the term-major order that R2 filters.
   Take as server the equality-free, `x`-free clauses of the ground context:
   their atoms are ground atoms, which R2 orders only along inclusion of
   their individual sets, and atoms on Skolem terms `f(o)`, which the
@@ -308,6 +326,30 @@ within 60 s (`m2063`, `m2100`, `m2215`, `m2229`, `m2276`, `m2296`, `m2303`,
 individuals). No run answered differently from HermiT under the context
 regime where the unordered regime answered correctly. Three `sq/` runs
 (`g282`) have no HermiT answer within 300 s.
+
+Revalidation after the base context regime (same harness, binary at commit
+a689c42b): the new rule changes the selected regime only where nominal mode
+runs with `has_internal_definer_disjunction` false and the ontology has
+individuals. By the `km ofn` clause sets that is no file of the 201 gated ORE
+inputs (the sort encoding always adds an internal disjunction), no
+no-inverse seed, one inverse-role seed (`n1089`, answered as before) and none
+of the ALCHIQ seeds with individuals (they have none).
+
+| set | runs | ok | wrong | timeout | no answer |
+|---|---|---|---|---|---|
+| sorts_differential fixtures (11) | 33 | 33 | 0 | 0 | 0 |
+| ALCHIQ seeds `sq/` (300) | 900 | 881 | 0 | 15 | 1 |
+| generated, with inverse roles (100) | 300 | 214 | 0 | 85 | 1 |
+| generated, no inverse roles, first 128 of 400 | 384 | 255 | 0 | 125 | 4 |
+
+The no-inverse rerun was stopped after 128 files because none of the 400
+changes regime; the earlier run stands for the rest. Against the earlier
+context-regime run, 9 runs went from `ok` to timeout and 6 from timeout to
+a stop; every quick case among them (`g56`, `m2078`, `m2093`, `n1001` on
+`certified_nominals` or `auto`, 0.02 s before) answers again in 0.02 s on a
+rerun with both binaries, and the others were within 20 s of the cap before
+(`g1` 59 s, `m2040` 42 s, `m2079` 57 to 58 s), so these are load effects of
+the shared machine. No run answered differently from HermiT.
 
 Cost of R2 where it is active: on `m2063` the automatic route takes 2.4 s
 unordered, 12 s plain Sequoia, 12.8 s with `KM_CONTEXT_NO_R2`, and more than

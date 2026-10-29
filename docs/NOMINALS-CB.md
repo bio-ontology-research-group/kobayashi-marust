@@ -677,7 +677,9 @@ may use any order, so the Sequoia ordering stays admissible outside the
 ground atoms.
 
 The regime, selected by `set_seq_order_auto` in nominal mode wherever the
-Sequoia ordering would be selected without nominals:
+Sequoia ordering would be selected without nominals (elsewhere in nominal
+mode, and under `KM_NO_SEQ_ORDER`, the base context regime: the unordered
+same-term order with R2 and R3):
 
 - R1: the Sequoia order on every literal with a variable or a Skolem term, in
   every context (the ground context's `x`-clauses included);
@@ -699,8 +701,11 @@ v1.5.4 also misses on the `nominals` route
 HermiT `Q ⊑ B`; docs/PER-CONTEXT-ORDERING.md section 4).
 
 Runs that must publish a CB Lean certificate (`KM_CB_LEAN_REQUIRED`) keep the
-unordered regime: the certification surface models KM's literal order and the
-r-Pred guard exactly and does not model R2 or R3.
+plain unordered regime: the certification surface models KM's literal order and
+the r-Pred guard exactly and does not model R2 or R3. That configuration is
+known to miss `p1` and `p2` (`tests/fixtures/nominal_seq_order/p2_cross_individual_named.ofn`,
+the same trap with only named disjunctions, which the v1.5.4 router therefore
+sent to the plain unordered regime).
 
 Measurements (2026-10-29, shared workstation, files in
 `results/agents/2026-10-29/per-context-order/`):
@@ -735,6 +740,17 @@ Measurements (2026-10-29, shared workstation, files in
   RSS-limit stops; 100 seeds with inverse roles 215 ok, 85 timeouts; 300
   ALCHIQ seeds 883 ok, 14 timeouts. 21 runs on 9 files answer only under the
   unordered regime; no wrong answer is specific to the context regime.
+- Base context regime (unordered same-term order + R2 + R3, nominal mode
+  where the Sequoia order is not selected): ORE files with individuals and
+  without an internal disjunction (425 by the `km ofn` clause sets of the
+  950 corpus files under 20 MB that mention individuals; 185 more gave no
+  clause set within 60 s), 300 s cap, one process per regime: 423 answered
+  by both regimes with identical SUB/UNSAT/CONSISTENT lines (one empty
+  output under the new regime, ore_ont_4233, was identical on rerun), the
+  same two non-answers (ore_ont_13700, ore_ont_7914), 1 196 s before against
+  1 188 s after, none more than 1.5 times and 5 s slower, five faster
+  (ore_ont_8640 9.6 to 0.7 s, ore_ont_2453 19.6 to 6.9 s). 9800, 10874 and
+  15655 keep the context regime (127, 10.7, 7.7 s under heavier load).
 - Known incompleteness that remains: a disjunctive ground equality across an
   unannounced individual is not delivered (section 6 of the note); the
   first-order lifting is not mechanised.

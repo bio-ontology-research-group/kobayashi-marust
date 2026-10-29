@@ -37,3 +37,15 @@ Sets: `sorts` = engine/tests/fixtures/sorts_differential (11 files);
 `sq` = the 300 ALCHIQ seeds of `.work/agent-assets/2026-10-28-scratch/sq/`
 (no nominals and no data values, despite the description they were handed
 over with; the `nominals` route forces nominal mode on them).
+
+## Base context regime revalidation (commit a689c42b, binary `km.base`)
+
+- `ore-individual-files-on-flag.tsv`: individuals/`on` flags of the 950 corpus
+  files under 20 MB that mention individuals (`onflag.sh`, `classify_on.py`,
+  `km ofn` with `KM_NOMINALS=1`, 60 s).
+- `ore-regime-change-before.tsv` / `-after.tsv` / `-compare.tsv`: the 425 files
+  with individuals and `on` false, `km.final` (regime 0) against `km.base`
+  (base context regime), 300 s cap, the two streams run side by side.
+- `ore-base-rule-9800-10874-15655.tsv`: the three cost files under `km.base`.
+- `diff-*-base-rule.tsv`: HermiT differential under `km.base` (fresh2: first
+  128 files only). `diff-sets-on-flag.tsv`: the flags of every seed.
