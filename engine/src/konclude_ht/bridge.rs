@@ -17358,12 +17358,24 @@ mod tests {
         assert!(result.consistent);
         assert!(!result.unsatisfiable.contains(&tbox_extension_class(&input, &evidence, "#A")));
         assert!(!result.unsatisfiable.contains(&tbox_extension_class(&input, &evidence, "#B")));
-        // A body occurrence would also hold on unlabeled data nodes.
-        assert!(tbox_extension_classify(r#"
+        // A body occurrence of an `rdfs:Literal` label would also have to hold
+        // on unlabeled data nodes, which the extension does not model. The
+        // frontend no longer produces that label: `DataSomeValuesFrom(p
+        // rdfs:Literal)` is the unqualified `DataMinCardinality(1 p)` and
+        // `DataAllValuesFrom(p rdfs:Literal)` is `owl:Thing`
+        // (`frontend::datatypes::extent`). The body occurrence is therefore
+        // exact and admitted, with `A ⊑ ∃p.integer ⊑ ∃p.Literal ≡ C`.
+        let (input, evidence, result) = tbox_extension_classify(r#"
             Declaration(Class(<http://x#A>)) Declaration(Class(<http://x#C>))
             SubClassOf(<http://x#A> DataSomeValuesFrom(<http://x#p> xsd:integer))
             EquivalentClasses(<http://x#C> DataSomeValuesFrom(<http://x#p> rdfs:Literal))"#)
-            .is_none());
+            .expect("the folded min-1 restriction is admitted");
+        assert!(!input.concepts.iter().any(|name| name == "__dt__Literal"));
+        let a = tbox_extension_class(&input, &evidence, "#A");
+        let c = tbox_extension_class(&input, &evidence, "#C");
+        assert!(result.consistent);
+        assert!(result.subsumptions.contains(&(a, c)), "{:?}", result.subsumptions);
+        assert!(!result.subsumptions.contains(&(c, a)), "{:?}", result.subsumptions);
     }
 
     #[test]
