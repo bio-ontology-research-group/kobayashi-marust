@@ -54,6 +54,72 @@
 - Fresh nominals are bounded by the composite term field, which removes a
   `calc.rs` panic on inputs whose nominal budget did not fit.
 
+### Wrong answers fixed (2026-10-28 and 2026-10-29)
+
+Every item below was found by differential testing against HermiT 1.4.3 on
+generated ALCHIQ, nominal and data-property inputs or on Protégé bug
+reports, fixed exactly (no approximation), and covered by fixtures that run
+on the affected routes.
+
+- Object and data sorts in nominal mode (`frontend/sorts.rs`): data values
+  are a separate sort, closed under the clause set, with fixed sorts never
+  widened and individuals pinned through proxies (Protégé bug 1). The sort
+  encoding now also runs when a data property or data range is present
+  without any literal: `⊤ ⊑ {a}` with `⊤ ⊑ ≥2 u` on a data property was
+  answered "inconsistent" because the unqualified `rdfs:Literal` filler
+  shared the `owl:Thing` definer and both `u`-successors were merged with
+  `a`. The native bridge defers on such inputs (its datatype gate now sees
+  data properties), forced routes that read data successors as objects
+  beside a TBox nominal refuse both verdicts, and the DL-safe rule checker no
+  longer publishes an inconsistency found on a one-sorted clause stream
+  (`docs/NOMINALS-CB.md` section 6).
+- Konclude bridge: negated `≤n` polarity, the `≥0` trigger and insufficiency
+  propagation (three unsound or incomplete defects, 70 wrong answers on 700
+  generated seeds before); resolved definer markers on the clause path (302
+  wrong of 700 before, 0 after); `≤0 R.C` built as `∀R.¬C` as Konclude does,
+  because the ported saturation counted only linked successors and missed a
+  predecessor reached over the inverse role (seed 1241, unsatisfiable `D`
+  published satisfiable on the automatic route).
+- CB engine: clauses of the shared facts-and-TBox closure never entered a
+  context's r-Succ pool, so a successor never saw its parent's labels for a
+  backward role (`⊤ ⊑ D`, `B ⊑ ∃t.C`, `Q3 ≡ ∃t.∃t⁻.D` missed `B ⊑ Q3` on
+  every CB route); a retained incremental insertion that first enables
+  r-Succ now rebuilds. 0 wrong of 1,000 seeds on the pure CB route after.
+- CB to HT conversion: the complementary-definer fold dropped a body atom's
+  contrapositive, so `ht_general` missed `No ⊑ AtMostOne` on complemented
+  data cardinalities (`docs/HYBRID-CB-HT.md` section 7).
+- Native hypertableau: subset blocking (the `ht_general` default and the
+  card arm) admitted a pair whose gained literals a backward clause reads,
+  which published `CONSISTENT` for an inconsistent ontology through
+  `certified_card_proxy_abox` on the automatic route. A pair is admitted
+  only without relevant gain (`SubsetGain`, `docs/HYBRID-CB-HT.md` section 9);
+  38 wrong of 700 seeds on forced `ht_general` before, 0 after.
+- Sequoia ordering under nominals: the plain ordering is incomplete with the
+  nominal ground context (seed 297), and the unordered regime is incomplete
+  too (`p1_cross_individual`, five axioms). Nominal mode now uses the context
+  regime: Sequoia order on non-ground literals, ground atoms ordered only
+  along inclusion of their individuals, unit ground equalities crossing the
+  announcement guard; the two ground rules apply whether or not the Sequoia
+  order is selected. `lean/ContextCalculus/CompletenessExchange.lean` proves
+  the ground-level exchange between differently ordered contexts without
+  `sorry`; the mapping from KM's guard to the theorem is argued in
+  `docs/PER-CONTEXT-ORDERING.md`. 10874 and 15655 are answered again.
+- Clausifier: one definer for `≤n r.F`'s complement and `≥(n+1) r.F`, and
+  for `∃r.F` and `≥1 r.F`, on every mechanism; the five-class data-range
+  inputs drop from up to 49 s to under 1 s on the nominal routes.
+- Source-incremental sessions (legacy mode): a revision with uncarried data
+  assertions was answered by the retained backend; it is classified exactly.
+- HasKey axioms are reasoned over as DL-safe rules with values compared by
+  value; the rule route counts uncarried rules.
+- Forced routes fail closed: a forced route that would drop or approximate
+  exits 3 with the reason; `KM_ALLOW_APPROXIMATE=1` publishes with an
+  `APPROXIMATE` line and the Protégé adapter declines such answers
+  (`docs/ROUTING.md`, "Forced routes").
+- Panics: the vendored horned-owl 1.4.0 OFN writer sliced inside a
+  multi-byte character (QUDT, issue #4); the proxy-ABox certificate indexed
+  an individual's empty assertion list; fresh nominals outside the composite
+  term field.
+
 ### Realization
 
 - `km classify --realize` (or `--realize=direct`) appends `TYPE a C` and
