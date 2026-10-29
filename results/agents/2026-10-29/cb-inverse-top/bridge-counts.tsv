@@ -1,0 +1,8 @@
+f300_br1_auto.txt	ok=297 TIMEOUT=3 
+f300_br1_htb.txt	DECLINE=18 ok=279 TIMEOUT=3 
+f300_pick_auto.txt	ok=296 TIMEOUT=3 WRONG=1 
+f300_pick_htb.txt	DECLINE=18 ok=278 TIMEOUT=3 WRONG=1 
+s700_br1_auto.txt	hermit-error=2 ok=695 TIMEOUT=3 
+s700_br1_htb.txt	DECLINE=43 hermit-error=2 ok=654 TIMEOUT=1 
+s700_pick_auto.txt	hermit-error=2 ok=695 TIMEOUT=3 
+s700_pick_htb.txt	DECLINE=43 hermit-error=2 ok=654 TIMEOUT=1 

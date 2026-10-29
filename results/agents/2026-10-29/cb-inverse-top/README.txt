@@ -14,9 +14,14 @@ Causes
    the first backward-role clause kept rsucc=false. Fixed in ea161e57
    (RSuccActivation boundary -> exact rebuild). Reproducer:
    minimal/retained_rsucc_activation.* (km incremental session).
-Open (not CB, not in this worktree's scope): the ht_bridge route misses
-   D unsatisfiable on minimal/bridge_inverse_atmost0_unsat.ofn (fresh seed
-   1241); cb_plain1 and default1 answer it. auto routes it to the bridge.
+3. konclude_ht/bridge.rs Builder::atmost_q / atmost / atleast_q (fixed in
+   d4d8dfd1, follow-up task): the source-TBox bridge built <=0 R.C as a
+   CCATMOST with parameter 0. The ported saturation's critical at-most test
+   counts only linked successors, so a predecessor over the inverse role was
+   never counted and D stayed satisfiable on fresh seed 1241
+   (minimal/bridge_inverse_atmost0_unsat.ofn). Konclude's builder emits
+   forall R.not C instead; the bridge now does the same (and builds >=1 R.C
+   as exists R.C). See docs/HYBRID-CB-HT.md section 8.
 
 Files
   counts.tsv            outcome counts per run (seeds/*.txt)
@@ -48,3 +53,31 @@ Pure-CB cost: seeds 169, 241, 483 answer correctly before the fix in
   is that of the specified r-Succ product. Seeds 147 and 241 sit near the
   60 s cap and flip between ok and ERR across runs.
 Corpus: all 10 ontologies byte-identical sorted SUB/UNSAT on auto.
+
+Bridge follow-up (2026-10-29, second task)
+Binaries: km.pick = 75cf7844 (this branch plus cherry-picks 6735a788 and
+c1f5a235, before the bridge fix), km.br1 = d4d8dfd1 (bridge fix).
+Diagnosis on km.pick, minimal/bridge_inverse_atmost0_unsat.ofn:
+  auto, ht_bridge, production_all (source TBox): D <= Q3, no UNSAT D
+  same routes with KM_NO_SOURCE_TBOX=1 (clause translation): UNSAT D
+  ht_bridge with KM_HT_NO_SATURATION=1: UNSAT D (the miss is in saturation)
+Harness: eval.py now separates DECLINE (ht_bridge exit 3, "bridge defer"),
+TIMEOUT (60 s), and ENV (thread-spawn EAGAIN or allocation failure on the
+shared host, which ran near its commit limit). ENV seeds are retried up to
+three times, and recheck.sh reruns any that remain one at a time; after the
+recheck no ENV or ERR remains. Files: bridge-seeds/, bridge-counts.tsv.
+
+  set / route          km.pick                          km.br1
+  700  auto            695 ok, 0 wrong, 3 timeout       695 ok, 0 wrong, 3 timeout
+  700  ht_bridge       654 ok, 0 wrong, 43 declined,    654 ok, 0 wrong, 43 declined,
+                       1 timeout                        1 timeout
+  300  auto            296 ok, 1 wrong (1241), 3 t/o    297 ok, 0 wrong, 3 timeout
+  300  ht_bridge       278 ok, 1 wrong (1241), 18 decl, 279 ok, 0 wrong, 18 declined,
+                       3 timeout                        3 timeout
+  (700 set: 2 seeds without HermiT gold.) Per seed, km.pick and km.br1
+  differ only on 1241.
+Corpus (auto, bridge-corpus_compare.tsv): all 10 sorted SUB/UNSAT outputs
+  identical between km.pick and km.br1 and identical to km.before. The host
+  was loaded; repeated pairs (bridge-corpus_repeat_timings.txt) show
+  15803 117-161 s vs 116-140 s and 6682 31-33 s vs 31-34 s (no change), and
+  850 9 s vs 2.2 s on both repeats (faster after the fix).

@@ -33,18 +33,28 @@ def km(p):
         if t[0].startswith("CONSISTENT"): cons=t[0].endswith("1")
         elif t[0]=="SUB": subs.add((t[1].lstrip(":"),t[2].lstrip(":")))
         elif t[0]=="UNSAT": uns.add(t[1].lstrip(":"))
-    if cons is None: return None,r.stderr
+    if cons is None: return None,f"rc={r.returncode} "+" | ".join(r.stderr.strip().splitlines()[-2:])[:200]
     return (cons,frozenset(s for s in subs if s[0] not in uns and s[1] not in uns and s[0]!=s[1]),frozenset(uns)),r.stderr
+ENV_FAIL=("os error 11","memory allocation of","Cannot allocate memory")
 def one(seed):
     p=path(seed); d=gold(seed,p)
     if d is None: return f"{seed} hermit-error"
-    h=norm_h(d); k,err=km(p)
-    if k is None: return f"{seed} ERR"
+    h=norm_h(d)
+    # A thread-spawn or allocation failure from the shared host's commit
+    # limit is not an answer; retry it (up to 3 attempts) and mark it ENV.
+    for attempt in range(3):
+        k,err=km(p)
+        if k is not None or not any(e in err for e in ENV_FAIL): break
+    if k is None and any(e in err for e in ENV_FAIL): return f"{seed} ENV {err}"
+    if k is None:
+        kind="DECLINE" if "bridge defer)" in err else ("TIMEOUT" if err.startswith("rc=124") else "ERR")
+        return f"{seed} {kind} {err}"
     if not h[0]: return f"{seed} "+("ok" if not k[0] else "WRONG(missed-inconsistency)")
     if not k[0]: return f"{seed} WRONG(spurious-inconsistency)"
     if k==h: return f"{seed} ok"
     ms=sorted(h[1]-k[1]); es=sorted(k[1]-h[1])
     return f"{seed} WRONG(miss_sub={len(ms)},extra_sub={len(es)},miss_unsat={len(h[2]-k[2])},extra_unsat={len(k[2]-h[2])}) miss={ms} extra={es} mu={sorted(h[2]-k[2])} eu={sorted(k[2]-h[2])}"
 with open(out,"w") as f, cf.ThreadPoolExecutor(int(os.environ.get("J","8"))) as ex:
-    for line in ex.map(one, range(lo,hi)):
+    seeds=[int(x) for x in open(os.environ["SEEDLIST"]).read().split()] if os.environ.get("SEEDLIST") else range(lo,hi)
+    for line in ex.map(one, seeds):
         f.write(line+"\n"); f.flush()
