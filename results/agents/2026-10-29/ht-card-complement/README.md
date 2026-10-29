@@ -140,9 +140,9 @@ card-family, datatype, inverse, nominal), 57 files, with 5303 added (58;
 SUB/UNSAT line count, whether the sorted SUB/UNSAT/CONSISTENT lines are
 identical, and which arm answered (`ht-first`: the HT race worker, card arm
 or native bridge, answered before CB; `ht+cb-race`: both ran; `-`: no HT
-worker). Results: all 58 outputs identical; 9 time out on both binaries
-(1066, 1194, 9540, 9791, 11553, 11695, 13229, 14817 and 9540 on
-certified_card_nominals). One regression beyond 1.5x and 5 s: 7499
+worker). Results: all 58 outputs identical; 8 time out on both binaries
+(1066, 1194, 9791, 11553, 11695, 13229, 14817 on production_all and 9540
+on certified_card_nominals). One regression beyond 1.5x and 5 s: 7499
 (`certified_card_proxy_abox`), 25.0 s to 97.5 s. Its card arm (mode 5)
 ran 26,438 blocking passes before and 179,453 after (`KM_HT_STATS=1`); the
 last pass blocked 238 of 276 blockable nodes before and 180 of 202 after,
