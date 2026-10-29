@@ -72,7 +72,7 @@ data-range excluded middle that kept `ht_general` out of
 `excluded_middle_of_complement_ranges` have one cause: subset blocking in
 the native hypertableau (modes 1 and 5) admitted a blocker whose extra
 literals a clause reads across the blocked node's edge
-(docs/HYBRID-CB-HT.md section 8).
+(docs/HYBRID-CB-HT.md section 9).
 
 `subset-blocking/`: `ddmin.py` (line-level delta debugging against
 `cb_plain1`), `htg.sh` (the `ht_general` bundle under `KM_ROUTE=manual`, so
