@@ -177,6 +177,44 @@ Named bundles normalize their conflicting routing keys to the same settings as
 the IBEX matrix. Diagnostic settings remain available. `manual` is the route to
 use when a caller wants complete control over individual algorithm settings.
 
+### Bridge terminology: source TBox or clause translation
+
+The Konclude bridge builds its terminology in one of two ways
+(`bridge_tinput_with_trigger_absorption`, engine/src/konclude_ht/bridge.rs).
+With trigger absorption on (`KM_TRIGGER_ABSORB=1`, set by every bridge route)
+and a nonempty `source_axioms` channel it builds the source TBox from the
+normalized class axioms. Otherwise, or when `KM_NO_SOURCE_TBOX=1` forces it,
+it translates the reverse-Skolemised clauses (the clause translation).
+
+The frontend fills `source_axioms` from `SubClassOf`, `EquivalentClasses` and
+`DisjointClasses`, including the axioms the parser desugars into them:
+`DisjointUnion`, complex or inverse object property domains and ranges, and
+`DataPropertyDomain`. No named route sets `KM_NO_SOURCE_TBOX`, so the automatic
+route uses the clause translation only for an input without any such axiom.
+Such an input has no class expressions and therefore no definer markers unless
+it has an ABox, and a bridge input with individuals but without the typed
+source ABox channel is declined (`has_any_nominal_input`). The defects below
+all need resolved definer markers, so automatic routing was not affected; on
+inputs without markers the translation is unchanged.
+
+The clause translation resolves each frontend definer marker to the native
+concept it abbreviates. Up to v1.5.4 only the trigger-absorbed concept-clause
+encoder used the resolved concept. The trigger-less fallback, the guarded
+`R(x,y)` encoder and the recognised `>=k` fallback still emitted the marker
+atom, which had no definition there. Forcing `KM_NO_SOURCE_TBOX=1` then missed
+consequences: 302 of the 700 generator seeds wrong against HermiT, all
+incompleteness (25 missed inconsistencies), measured 2026-10-29. Now every
+clause that mentions a resolved marker is encoded over the resolved concepts
+only. It is absorbed when possible, dropped when it is a syntactic tautology,
+and otherwise installed on TOP. A query class is never resolved, because
+classification reads queries off their atoms. With the fix the forced clause
+translation is wrong on 0 of the 700 seeds (results/agents/2026-10-29/
+bridge-clause-path/). A clause shape the translation cannot encode still counts
+as unsupported, and the bridge declines the input. On `--route ht_bridge`
+that decline exits with status 3 and prints `unsupported: selected native HT
+bridge deferred (konclude_ht bridge defer)`; on the automatic and
+`production_all` routes the CB engine answers instead.
+
 ### Typed-ABox SHOIQ refinement
 
 The source tree initially labels eligible nominal/inverse/functionality inputs
