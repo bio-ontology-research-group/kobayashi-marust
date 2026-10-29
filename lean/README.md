@@ -14,6 +14,12 @@ its fallback are complete; those premises are not proved. The OWL frontend
 and the checkers run only when their environment variables request them. See
 `../docs/CERTIFICATION-ROADMAP.md`.
 
+Conditional checker tests (for example `source_exact_lean_checker_accepts_real_cb_publication`
+in `engine/tests/cb_live_state.rs`) read the checker path from a `KM_*_TEST_*_CHECKER`
+variable and skip with a message when it is unset. The `run-*-certification-gate.sh`
+scripts export these variables from `lean/.lake/build/bin`; the CB gate also sets
+`KM_REQUIRE_LEAN_CHECKERS=1`, which turns a missing checker variable into a failure.
+
 The capstones are:
 
 - `ELCompletionPublication.lean` and `ELCompletionExecutablePublication.lean`

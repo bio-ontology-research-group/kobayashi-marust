@@ -107,6 +107,7 @@ done
 (
     cd "$engine_root"
     export CARGO_TARGET_DIR="$target_root"
+    export KM_REQUIRE_LEAN_CHECKERS=1
     export KM_CB_TEST_SOURCE_EXACT_TAXONOMY_CHECKER="$bin_root/cb-source-taxonomy-cert-check"
     export KM_CB_TEST_STANDALONE_CONTEXT_PROOF_CHECKER="$bin_root/cb-standalone-context-proof-check"
     export KM_CB_TEST_SOURCE_PRODUCTION_TAXONOMY_CHECKER="$bin_root/cb-source-production-taxonomy-check"
