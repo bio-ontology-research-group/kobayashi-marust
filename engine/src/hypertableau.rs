@@ -26000,6 +26000,34 @@ mod tests {
         t.set_anywhere(true);
         assert_eq!(t.consistent(&[CLit::pos(A)]), Some(true));
     }
+    /// Modes 1 and 5 check subset pairs on the incremental suffix path when
+    /// the fast tableau is on; `i2_check` compares every pass with the full
+    /// `compute_blocked` scan and panics on a difference. Every element needs
+    /// a `t`-successor outside `D`, and a `t`-successor carrying `A` or `NA`
+    /// puts its source in `D`, so the clause set is inconsistent (the
+    /// seed-103 core of docs/HYBRID-CB-HT.md section 9).
+    #[test]
+    fn checked_subset_blocking_incremental_matches_full_scan() {
+        const NA: C = 4;
+        const T: R = 1;
+        let y: Var = 1;
+        let cls = vec![
+            Clause::new(vec![], vec![exists(T, true, D, X)]),
+            Clause::new(vec![], vec![con(false, A, X), con(false, NA, X)]),
+            Clause::new(vec![con(false, A, y), role(T, X, y)], vec![con(false, D, X)]),
+            Clause::new(vec![con(false, NA, y), role(T, X, y)], vec![con(false, D, X)]),
+        ];
+        for mode in [1u8, 5] {
+            let mut t = ht(cls.clone());
+            t.block_mode = mode;
+            t.set_fast_tableau();
+            t.i2_check = true;
+            t.stats = true;
+            assert_eq!(t.consistent(&[]), Some(false), "mode {mode}");
+            assert!(t.checked_subset_mode(), "mode {mode}");
+            assert!(t.i2_calls > 0, "mode {mode}: the incremental path ran");
+        }
+    }
     #[test]
     fn backjump_skips_irrelevant_branch() {
         const P: C = 6;
