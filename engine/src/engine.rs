@@ -3263,6 +3263,25 @@ pub(crate) enum RetainedInsertBoundary {
     /// Nom introduced fresh individual ids in the range a later input
     /// individual would occupy.
     AdditionalNominalCollision,
+    /// The insertion adds the first clause with a backward role, which turns
+    /// on r-Succ in a fresh engine (`clause_enables_rsucc`). r-Succ also
+    /// changes which concept atoms are Succ triggers (`is_succ_trigger`), so
+    /// the retained arenas' maximal-head masks and the contexts' r-Succ pools
+    /// would both be stale. Without r-Succ a successor never sees its parent's
+    /// labels, e.g. `D(y)` for `inv(x,y) & D(y) -> Q(x)`.
+    RSuccActivation,
+}
+
+/// A clause with a role atom pointing into the central variable from another
+/// term (`R(y,x)`, `R(f(x),x)`, ...) can consume a parent label in a successor
+/// context, so `Engine::prepare` turns r-Succ on for its ontology.
+fn clause_enables_rsucc(clause: &OntologyClause) -> bool {
+    let backward_role = |p: &Pred| matches!(p, Pred::Role { s, t, .. } if *t == X && *s != X);
+    clause.body.iter().any(backward_role)
+        || clause.head.iter().any(|literal| match literal {
+            Lit::P(p) => backward_role(p),
+            _ => false,
+        })
 }
 
 /// Work retained across one exact insertion, used for truthful incremental
@@ -3952,15 +3971,8 @@ impl Engine {
         // A role pointing into the central variable can consume a parent
         // label in a successor context. Enable edge-conditioned label offers
         // for these ontologies without requiring an external tuning flag.
-        let backward_role = |p: &Pred| matches!(p, Pred::Role { s, t, .. } if *t == X && *s != X);
         sig.rsucc = std::env::var_os("KM_RSUCC").is_some()
-            || ont_clauses.iter().any(|clause| {
-                clause.body.iter().any(backward_role)
-                    || clause.head.iter().any(|literal| match literal {
-                        Lit::P(p) => backward_role(p),
-                        _ => false,
-                    })
-            });
+            || ont_clauses.iter().any(clause_enables_rsucc);
         let (ont_clauses, max_input_ind, ground_merge) =
             merge_asserted_ground_equalities(ont_clauses);
         if std::env::var_os("KM_PROF").is_some() && ground_merge.asserted_pairs != 0 {
@@ -4133,6 +4145,9 @@ impl Engine {
         &self,
         additions: &[OntologyClause],
     ) -> Option<RetainedInsertBoundary> {
+        if !self.sig.rsucc && additions.iter().any(clause_enables_rsucc) {
+            return Some(RetainedInsertBoundary::RSuccActivation);
+        }
         for clause in additions {
             // Fresh engines quotient precisely these asserted equalities before
             // building any context.  Replaying an equality conclusion cannot

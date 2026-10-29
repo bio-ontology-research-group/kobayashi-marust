@@ -606,3 +606,55 @@ fn retained_cb_disjunction_and_role_updates_match_each_fresh_worker_revision() {
     assert_eq!(session.is_subsumed_by("Source", "Global"), Some(true));
     assert_fresh_cb(&session, &snapshot, false);
 }
+
+/// A retained insertion that adds the first backward-role clause would turn on
+/// r-Succ in a fresh engine. The retained graph was saturated without r-Succ,
+/// so the session must rebuild: otherwise the successor of a `B` context never
+/// sees its parent's `D(y)` and `B <= Q3` is lost (Q3 == exists t.(exists
+/// inverse(t).D), TOP <= D, B <= exists t.C).
+#[test]
+fn retained_cb_insertion_that_enables_r_succ_rebuilds() {
+    let _env = ENV_LOCK.lock().unwrap();
+    std::env::set_var("KM_THREADS", "1");
+    std::env::remove_var("KM_ELC_CERT");
+    std::env::remove_var("KM_MSG_CAP");
+    std::env::remove_var("KM_NOM_BUDGET");
+    std::env::remove_var("KM_NOMINALS");
+    std::env::remove_var("KM_RSUCC");
+
+    let mut snapshot = vec![
+        clause(Vec::new(), vec![concept("D", var("x"))]),
+        clause(vec![concept("B", var("x"))], vec![role("t", var("x"), fun("f_b"))]),
+        clause(vec![concept("B", var("x"))], vec![concept("C", fun("f_b"))]),
+        clause(
+            vec![role("t", var("x"), var("y")), concept("C", var("y"))],
+            vec![concept("E", var("x"))],
+        ),
+        clause(
+            vec![concept("A", var("x"))],
+            vec![concept("B", var("x")), concept("C", var("x"))],
+        ),
+    ];
+    let mut session = IncrementalClassifier::new(snapshot.clone()).expect("CB snapshot");
+    assert_eq!(session.backend(), IncrementalBackend::Cb);
+    assert_fresh_cb(&session, &snapshot, false);
+    assert_eq!(session.is_subsumed_by("B", "Q3"), None);
+
+    let additions = vec![
+        clause(vec![role("t", var("x"), var("y"))], vec![role("inv_t", var("y"), var("x"))]),
+        clause(vec![role("inv_t", var("x"), var("y"))], vec![role("t", var("y"), var("x"))]),
+        clause(
+            vec![role("inv_t", var("x"), var("y")), concept("D", var("y"))],
+            vec![concept("P", var("x"))],
+        ),
+        clause(
+            vec![role("t", var("x"), var("y")), concept("P", var("y"))],
+            vec![concept("Q3", var("x"))],
+        ),
+    ];
+    let update = session.add_clauses(additions.clone()).expect("CB addition");
+    snapshot.extend(additions);
+    assert_eq!(update.strategy, ChangeStrategy::ExactRebuild);
+    assert_eq!(session.is_subsumed_by("B", "Q3"), Some(true));
+    assert_fresh_cb(&session, &snapshot, false);
+}
