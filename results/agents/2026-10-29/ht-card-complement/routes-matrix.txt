@@ -1,0 +1,246 @@
+km-head repro.ofn auto ok
+km-head repro.ofn default ok
+km-head repro.ofn default8 ok
+km-head repro.ofn default1 ok
+km-head repro.ofn production_all ok
+km-head repro.ofn production_all8 ok
+km-head repro.ofn production_all1 ok
+km-head repro.ofn certified_card_nominals ok
+km-head repro.ofn certified_card_proxy_abox ok
+km-head repro.ofn cb_plain16 ok
+km-head repro.ofn cb_plain8 ok
+km-head repro.ofn cb_plain1 ok
+km-head repro.ofn cb_absorb16 ok
+km-head repro.ofn cb_absorb8 ok
+km-head repro.ofn cb_absorb1 ok
+km-head repro.ofn cb_trigger16 ok
+km-head repro.ofn cb_trigger8 ok
+km-head repro.ofn cb_trigger1 ok
+km-head repro.ofn cb_absorb_portfolio16 ok
+km-head repro.ofn cb_portfolio16 ok
+km-head repro.ofn elc declined:unsupported: ontology is outside the selected EL completion fragment
+km-head repro.ofn elc_cert declined:unsupported: EL completeness certificate left an unresolved residue
+km-head repro.ofn certified_el_production ok
+km-head repro.ofn lean ok
+km-head repro.ofn ht_general MISS
+km-head repro.ofn ht_qo declined:unsupported: ontology is outside the selected HT mechanism's structura
+km-head repro.ofn ht_shoq declined:unsupported: ontology is outside the selected SHOQ mechanism's structu
+km-head repro.ofn ht_card ok
+km-head repro.ofn ht_bridge ok
+km-head repro.ofn certified_nominals ok
+km-head repro.ofn ht_features ok
+km-head repro.ofn ht_full ok
+km-head repro.ofn ht_rules ok
+km-head repro.ofn tableau MISS
+km-head repro.ofn tab_race ok
+km-head repro.ofn card_fn ok
+km-head repro.ofn nominal_ni_tbox declined:unsupported: ontology is outside the selected HT mechanism's structura
+km-head repro.ofn nominal_ni_abox ok
+km-head repro.ofn nominals ok
+km-head repro.ofn seq_on ok
+km-head repro.ofn seq_off ok
+km-head repro_obj.ofn auto ok
+km-head repro_obj.ofn default ok
+km-head repro_obj.ofn default8 ok
+km-head repro_obj.ofn default1 ok
+km-head repro_obj.ofn production_all ok
+km-head repro_obj.ofn production_all8 ok
+km-head repro_obj.ofn production_all1 ok
+km-head repro_obj.ofn certified_card_nominals ok
+km-head repro_obj.ofn certified_card_proxy_abox ok
+km-head repro_obj.ofn cb_plain16 ok
+km-head repro_obj.ofn cb_plain8 ok
+km-head repro_obj.ofn cb_plain1 ok
+km-head repro_obj.ofn cb_absorb16 ok
+km-head repro_obj.ofn cb_absorb8 ok
+km-head repro_obj.ofn cb_absorb1 ok
+km-head repro_obj.ofn cb_trigger16 ok
+km-head repro_obj.ofn cb_trigger8 ok
+km-head repro_obj.ofn cb_trigger1 ok
+km-head repro_obj.ofn cb_absorb_portfolio16 ok
+km-head repro_obj.ofn cb_portfolio16 ok
+km-head repro_obj.ofn elc declined:unsupported: ontology is outside the selected EL completion fragment
+km-head repro_obj.ofn elc_cert declined:unsupported: EL completeness certificate left an unresolved residue
+km-head repro_obj.ofn certified_el_production ok
+km-head repro_obj.ofn lean ok
+km-head repro_obj.ofn ht_general MISS
+km-head repro_obj.ofn ht_qo declined:unsupported: ontology is outside the selected HT mechanism's structura
+km-head repro_obj.ofn ht_shoq declined:unsupported: ontology is outside the selected SHOQ mechanism's structu
+km-head repro_obj.ofn ht_card ok
+km-head repro_obj.ofn ht_bridge ok
+km-head repro_obj.ofn certified_nominals ok
+km-head repro_obj.ofn ht_features ok
+km-head repro_obj.ofn ht_full ok
+km-head repro_obj.ofn ht_rules ok
+km-head repro_obj.ofn tableau MISS
+km-head repro_obj.ofn tab_race ok
+km-head repro_obj.ofn card_fn ok
+km-head repro_obj.ofn nominal_ni_tbox declined:unsupported: ontology is outside the selected HT mechanism's structura
+km-head repro_obj.ofn nominal_ni_abox ok
+km-head repro_obj.ofn nominals ok
+km-head repro_obj.ofn seq_on ok
+km-head repro_obj.ofn seq_off ok
+km-head prop2.ofn auto ok
+km-head prop2.ofn default ok
+km-head prop2.ofn default8 ok
+km-head prop2.ofn default1 ok
+km-head prop2.ofn production_all ok
+km-head prop2.ofn production_all8 ok
+km-head prop2.ofn production_all1 ok
+km-head prop2.ofn certified_card_nominals ok
+km-head prop2.ofn certified_card_proxy_abox ok
+km-head prop2.ofn cb_plain16 ok
+km-head prop2.ofn cb_plain8 ok
+km-head prop2.ofn cb_plain1 ok
+km-head prop2.ofn cb_absorb16 ok
+km-head prop2.ofn cb_absorb8 ok
+km-head prop2.ofn cb_absorb1 ok
+km-head prop2.ofn cb_trigger16 ok
+km-head prop2.ofn cb_trigger8 ok
+km-head prop2.ofn cb_trigger1 ok
+km-head prop2.ofn cb_absorb_portfolio16 ok
+km-head prop2.ofn cb_portfolio16 ok
+km-head prop2.ofn elc declined:unsupported: ontology is outside the selected EL completion fragment
+km-head prop2.ofn elc_cert declined:unsupported: EL completeness certificate left an unresolved residue
+km-head prop2.ofn certified_el_production ok
+km-head prop2.ofn lean ok
+km-head prop2.ofn ht_general MISS
+km-head prop2.ofn ht_qo declined:unsupported: ontology is outside the selected HT mechanism's structura
+km-head prop2.ofn ht_shoq declined:unsupported: ontology is outside the selected SHOQ mechanism's structu
+km-head prop2.ofn ht_card declined:unsupported: ontology is outside the selected HT mechanism's structura
+km-head prop2.ofn ht_bridge ok
+km-head prop2.ofn certified_nominals ok
+km-head prop2.ofn ht_features MISS
+km-head prop2.ofn ht_full ok
+km-head prop2.ofn ht_rules ok
+km-head prop2.ofn tableau MISS
+km-head prop2.ofn tab_race ok
+km-head prop2.ofn card_fn declined:unsupported: ontology is outside the selected HT mechanism's structura
+km-head prop2.ofn nominal_ni_tbox declined:unsupported: ontology is outside the selected HT mechanism's structura
+km-head prop2.ofn nominal_ni_abox ok
+km-head prop2.ofn nominals ok
+km-head prop2.ofn seq_on ok
+km-head prop2.ofn seq_off ok
+km-fix-share repro.ofn auto ok
+km-fix-share repro.ofn default ok
+km-fix-share repro.ofn default8 ok
+km-fix-share repro.ofn default1 ok
+km-fix-share repro.ofn production_all ok
+km-fix-share repro.ofn production_all8 ok
+km-fix-share repro.ofn production_all1 ok
+km-fix-share repro.ofn certified_card_nominals ok
+km-fix-share repro.ofn certified_card_proxy_abox ok
+km-fix-share repro.ofn cb_plain16 ok
+km-fix-share repro.ofn cb_plain8 ok
+km-fix-share repro.ofn cb_plain1 ok
+km-fix-share repro.ofn cb_absorb16 ok
+km-fix-share repro.ofn cb_absorb8 ok
+km-fix-share repro.ofn cb_absorb1 ok
+km-fix-share repro.ofn cb_trigger16 ok
+km-fix-share repro.ofn cb_trigger8 ok
+km-fix-share repro.ofn cb_trigger1 ok
+km-fix-share repro.ofn cb_absorb_portfolio16 ok
+km-fix-share repro.ofn cb_portfolio16 ok
+km-fix-share repro.ofn elc declined:unsupported: ontology is outside the selected EL completion fragment
+km-fix-share repro.ofn elc_cert declined:unsupported: EL completeness certificate left an unresolved residue
+km-fix-share repro.ofn certified_el_production ok
+km-fix-share repro.ofn lean ok
+km-fix-share repro.ofn ht_general ok
+km-fix-share repro.ofn ht_qo declined:unsupported: ontology is outside the selected HT mechanism's structura
+km-fix-share repro.ofn ht_shoq declined:unsupported: ontology is outside the selected SHOQ mechanism's structu
+km-fix-share repro.ofn ht_card ok
+km-fix-share repro.ofn ht_bridge ok
+km-fix-share repro.ofn certified_nominals ok
+km-fix-share repro.ofn ht_features ok
+km-fix-share repro.ofn ht_full ok
+km-fix-share repro.ofn ht_rules ok
+km-fix-share repro.ofn tableau ok
+km-fix-share repro.ofn tab_race ok
+km-fix-share repro.ofn card_fn ok
+km-fix-share repro.ofn nominal_ni_tbox declined:unsupported: ontology is outside the selected HT mechanism's structura
+km-fix-share repro.ofn nominal_ni_abox ok
+km-fix-share repro.ofn nominals ok
+km-fix-share repro.ofn seq_on ok
+km-fix-share repro.ofn seq_off ok
+km-fix-share repro_obj.ofn auto ok
+km-fix-share repro_obj.ofn default ok
+km-fix-share repro_obj.ofn default8 ok
+km-fix-share repro_obj.ofn default1 ok
+km-fix-share repro_obj.ofn production_all ok
+km-fix-share repro_obj.ofn production_all8 ok
+km-fix-share repro_obj.ofn production_all1 ok
+km-fix-share repro_obj.ofn certified_card_nominals ok
+km-fix-share repro_obj.ofn certified_card_proxy_abox ok
+km-fix-share repro_obj.ofn cb_plain16 ok
+km-fix-share repro_obj.ofn cb_plain8 ok
+km-fix-share repro_obj.ofn cb_plain1 ok
+km-fix-share repro_obj.ofn cb_absorb16 ok
+km-fix-share repro_obj.ofn cb_absorb8 ok
+km-fix-share repro_obj.ofn cb_absorb1 ok
+km-fix-share repro_obj.ofn cb_trigger16 ok
+km-fix-share repro_obj.ofn cb_trigger8 ok
+km-fix-share repro_obj.ofn cb_trigger1 ok
+km-fix-share repro_obj.ofn cb_absorb_portfolio16 ok
+km-fix-share repro_obj.ofn cb_portfolio16 ok
+km-fix-share repro_obj.ofn elc declined:unsupported: ontology is outside the selected EL completion fragment
+km-fix-share repro_obj.ofn elc_cert declined:unsupported: EL completeness certificate left an unresolved residue
+km-fix-share repro_obj.ofn certified_el_production ok
+km-fix-share repro_obj.ofn lean ok
+km-fix-share repro_obj.ofn ht_general ok
+km-fix-share repro_obj.ofn ht_qo declined:unsupported: ontology is outside the selected HT mechanism's structura
+km-fix-share repro_obj.ofn ht_shoq declined:unsupported: ontology is outside the selected SHOQ mechanism's structu
+km-fix-share repro_obj.ofn ht_card ok
+km-fix-share repro_obj.ofn ht_bridge ok
+km-fix-share repro_obj.ofn certified_nominals ok
+km-fix-share repro_obj.ofn ht_features ok
+km-fix-share repro_obj.ofn ht_full ok
+km-fix-share repro_obj.ofn ht_rules ok
+km-fix-share repro_obj.ofn tableau ok
+km-fix-share repro_obj.ofn tab_race ok
+km-fix-share repro_obj.ofn card_fn ok
+km-fix-share repro_obj.ofn nominal_ni_tbox declined:unsupported: ontology is outside the selected HT mechanism's structura
+km-fix-share repro_obj.ofn nominal_ni_abox ok
+km-fix-share repro_obj.ofn nominals ok
+km-fix-share repro_obj.ofn seq_on ok
+km-fix-share repro_obj.ofn seq_off ok
+km-fix-share prop2.ofn auto ok
+km-fix-share prop2.ofn default ok
+km-fix-share prop2.ofn default8 ok
+km-fix-share prop2.ofn default1 ok
+km-fix-share prop2.ofn production_all ok
+km-fix-share prop2.ofn production_all8 ok
+km-fix-share prop2.ofn production_all1 ok
+km-fix-share prop2.ofn certified_card_nominals ok
+km-fix-share prop2.ofn certified_card_proxy_abox ok
+km-fix-share prop2.ofn cb_plain16 ok
+km-fix-share prop2.ofn cb_plain8 ok
+km-fix-share prop2.ofn cb_plain1 ok
+km-fix-share prop2.ofn cb_absorb16 ok
+km-fix-share prop2.ofn cb_absorb8 ok
+km-fix-share prop2.ofn cb_absorb1 ok
+km-fix-share prop2.ofn cb_trigger16 ok
+km-fix-share prop2.ofn cb_trigger8 ok
+km-fix-share prop2.ofn cb_trigger1 ok
+km-fix-share prop2.ofn cb_absorb_portfolio16 ok
+km-fix-share prop2.ofn cb_portfolio16 ok
+km-fix-share prop2.ofn elc declined:unsupported: ontology is outside the selected EL completion fragment
+km-fix-share prop2.ofn elc_cert declined:unsupported: EL completeness certificate left an unresolved residue
+km-fix-share prop2.ofn certified_el_production ok
+km-fix-share prop2.ofn lean ok
+km-fix-share prop2.ofn ht_general ok
+km-fix-share prop2.ofn ht_qo declined:unsupported: ontology is outside the selected HT mechanism's structura
+km-fix-share prop2.ofn ht_shoq declined:unsupported: ontology is outside the selected SHOQ mechanism's structu
+km-fix-share prop2.ofn ht_card declined:unsupported: ontology is outside the selected HT mechanism's structura
+km-fix-share prop2.ofn ht_bridge ok
+km-fix-share prop2.ofn certified_nominals ok
+km-fix-share prop2.ofn ht_features ok
+km-fix-share prop2.ofn ht_full ok
+km-fix-share prop2.ofn ht_rules ok
+km-fix-share prop2.ofn tableau ok
+km-fix-share prop2.ofn tab_race ok
+km-fix-share prop2.ofn card_fn declined:unsupported: ontology is outside the selected HT mechanism's structura
+km-fix-share prop2.ofn nominal_ni_tbox declined:unsupported: ontology is outside the selected HT mechanism's structura
+km-fix-share prop2.ofn nominal_ni_abox ok
+km-fix-share prop2.ofn nominals ok
+km-fix-share prop2.ofn seq_on ok
+km-fix-share prop2.ofn seq_off ok

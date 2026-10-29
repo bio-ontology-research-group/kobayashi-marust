@@ -1,0 +1,7 @@
+Prefix(:=<http://example.org/t#>)
+Ontology(<http://example.org/t>
+Declaration(Class(:Has)) Declaration(Class(:Two)) Declaration(Class(:No)) Declaration(Class(:AtMostOne))
+SubClassOf(:Two :Has) Declaration(Class(:T2)) SubClassOf(:T2 :Two)
+EquivalentClasses(:No ObjectComplementOf(:Has))
+EquivalentClasses(:AtMostOne ObjectComplementOf(:Two))
+)
