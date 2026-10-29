@@ -2325,6 +2325,19 @@ impl Context {
 /// Seeding and ordinary saturation must use this one definition: otherwise a
 /// context-independent nominal equality can disappear only when it enters via
 /// the shared base, making propagation depend on a representation choice.
+/// r-Succ pool membership: with r-Succ on, a worked-off clause whose maximal
+/// head holds a CENTRAL concept predicate is offered to every successor as an
+/// edge-conditioned neighbour hypothesis (see `Context::rsucc_pool`). Shared by
+/// `saturate` and the closure-seeding paths, so a clause enters the pool by the
+/// same test however it reaches the worked-off set.
+fn rsucc_pool_eligible(sig: &Sig, clause: &ContextClause) -> bool {
+    sig.rsucc
+        && clause.max_head_predicates().any(|(p, _)| match p {
+            Pred::Concept { t, .. } => is_central(t),
+            _ => false,
+        })
+}
+
 fn pred_pool_eligible(clause: &ContextClause) -> bool {
     clause.head.iter().all(|literal| {
         literal.is_function_free()
@@ -3433,6 +3446,14 @@ pub struct Engine {
     /// that to one copy while every read still sees the identical id sequence.
     /// Invalidated alongside `shared_closure` on incremental ontology insert.
     shared_base: [Option<Arc<ClauseLayer>>; 2],
+    /// The r-Succ-eligible ids of `shared_base[d]`'s closure, in closure order
+    /// (see `rsucc_pool_eligible`). Attaching a base must also enter these into
+    /// the context's own `rsucc_pool`: the pool is per context (the reach offer
+    /// is per edge), and a closure clause such as `→ D(x)` from `⊤ ⊑ D` is a
+    /// worked-off clause of every context. Without it the base-layer path
+    /// never offered `D(y)` to successors, while the flat path (certification,
+    /// KM_NO_SHARE) did. Invalidated with `shared_base`.
+    shared_rsucc: [Option<Arc<Vec<u32>>>; 2],
     /// KM_NO_BASE_LAYER: materialise the closure into each context's `delta`
     /// (the pre-base-layer representation) instead of attaching the shared base.
     /// Pure representation A/B switch — the derived fixpoint, posting order and
@@ -4071,6 +4092,7 @@ impl Engine {
             shared_closure: None,
             shared_root_closure: None,
             shared_base: [None, None],
+            shared_rsucc: [None, None],
             base_layer: std::env::var_os("KM_NO_BASE_LAYER").is_none(),
             equality: true,
             pred_interned: Vec::new(),
@@ -4298,6 +4320,7 @@ impl Engine {
         // clauses are still ontology consequences (the insert is monotone), and
         // the Hyper replay below re-derives everything the new clauses add.
         self.shared_base = [None, None];
+        self.shared_rsucc = [None, None];
         self.nominal_enumerations =
             Arc::new(detect_nominal_enumerations(&self.sig, &self.ont.clauses));
         self.nominal_shortcuts.clear();
@@ -5122,11 +5145,7 @@ impl Engine {
                 .any(|(p, _)| is_function(p.max_term()) || root_succ_form(&p).is_some());
             // r-Succ: a maximal head CENTRAL concept is offered to successors
             // as an edge-conditioned neighbour hypothesis (see `rsucc_pool`).
-            let rsucc_eligible = self.sig.rsucc
-                && clause.max_head_predicates().any(|(p, _)| match p {
-                    Pred::Concept { t, .. } => is_central(t),
-                    _ => false,
-                });
+            let rsucc_eligible = rsucc_pool_eligible(&self.sig, &clause);
             {
                 let arena = &self.cc_arena[d];
                 let ctx = &mut self.contexts[id];
@@ -6770,6 +6789,7 @@ impl Engine {
             return;
         }
         let base = self.ensure_shared_base(root);
+        let rsucc = self.ensure_shared_rsucc(root);
         let ctx = &mut self.contexts[id];
         debug_assert!(
             ctx.base.is_none()
@@ -6779,7 +6799,32 @@ impl Engine {
             "the shared base must be attached to a pristine context"
         );
         ctx.base = Some(base);
+        // The base's clauses are worked off here exactly as if seeded flat, so
+        // they join this context's r-Succ pool as `seed_worked_off` does.
+        ctx.rsucc_pool.extend_from_slice(&rsucc);
         ctx.dirty = true;
+    }
+
+    /// The r-Succ-eligible closure ids of one ordering domain (empty unless
+    /// r-Succ is on), computed once per base (see `shared_rsucc`).
+    fn ensure_shared_rsucc(&mut self, root: bool) -> Arc<Vec<u32>> {
+        let d = root as usize;
+        if let Some(ids) = &self.shared_rsucc[d] {
+            return Arc::clone(ids);
+        }
+        let ids: Vec<u32> = if self.sig.rsucc {
+            let closure = self.ensure_shared_closure_ids(root);
+            let arena = &self.cc_arena[d];
+            closure
+                .into_iter()
+                .filter(|&cid| rsucc_pool_eligible(&self.sig, &arena[cid as usize]))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let ids = Arc::new(ids);
+        self.shared_rsucc[d] = Some(Arc::clone(&ids));
+        ids
     }
 
     /// Force the shared closure (and, when the base layer is on, its indexed
@@ -6868,8 +6913,14 @@ impl Engine {
             return;
         }
         let arena = &self.cc_arena[d];
+        let rsucc = rsucc_pool_eligible(&self.sig, &arena[cid as usize]);
         let ctx = &mut self.contexts[id];
-        ctx.delta.seed(arena, cid);
+        if ctx.delta.seed(arena, cid) && rsucc {
+            // Same r-Succ pool feed as `saturate`: a seeded clause is a
+            // worked-off clause of this context and must be offered to its
+            // successors like one derived here.
+            ctx.rsucc_pool.push(cid);
+        }
         ctx.dirty = true;
     }
 
