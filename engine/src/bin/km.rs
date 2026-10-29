@@ -50,7 +50,7 @@ fn main() {
         // The same profile is carried by the normal classify frontend meta, so
         // offline training and production routing cannot drift.
         Some("profile") => profile_cmd(&args[2..]),
-        Some("routes") => routes_cmd(),
+        Some("routes") => routes_cmd(&args[2..]),
         // routing features: the structural + DL-construct vector the decision-tree
         // router consumes. `km features <ont>...` prints one JSON object per
         // ontology (NDJSON for >1) — same code path used at classify time.
@@ -65,7 +65,7 @@ fn main() {
             eprintln!("       km explain [OPTIONS] <ontology.ofn> inconsistent");
             eprintln!("       km features [--format FORMAT] <ontology> ...");
             eprintln!("       km profile [--format FORMAT] <ontology> ...");
-            eprintln!("       km routes");
+            eprintln!("       km routes [--help]");
             eprintln!("       km incremental   (JSONL exact EL++/CB/direct-HT session)");
             eprintln!("       km incremental-source   (JSONL complete OWL source session)");
             eprintln!("       km ofn|elc|engine|tableau   (worker subcommands)");
@@ -236,9 +236,42 @@ fn explain_cmd(rest: &[String]) {
     }
 }
 
-fn routes_cmd() {
+fn routes_help() {
+    println!("usage: km routes [--help]");
+    println!();
+    println!("Prints one route per line: `auto`, `manual`, then every named procedure.");
+    println!("`km classify --route ROUTE` (or KM_ROUTE=ROUTE) forces one.");
+    println!();
+    println!("auto applies the source gate that selects, for each input, a mechanism");
+    println!("that represents it; where none represents part of it, auto reports the");
+    println!("omission as DROPPED N > 0. A forced route (manual or any named route)");
+    println!("bypasses that gate. When the forced mechanism drops or approximates part of");
+    println!("the input (ABox assertions outside nominal clausification, nominals,");
+    println!("data-property assertions, unread DL-safe rules, keys, unknown axioms,");
+    println!("clauses outside the worker's fragment), classify exits 3 and names the");
+    println!("route and the dropped constructs instead of publishing a consistent answer.");
+    println!("With KM_ALLOW_APPROXIMATE=1 it publishes that answer, marked by an");
+    println!("`APPROXIMATE<TAB>reason` line (JSON key `approximate`) and a DROPPED count");
+    println!("that includes every drop. Drops never make an inconsistent answer");
+    println!("approximate: each one only weakens the ontology. Measurement-only routes");
+    println!("can still be incomplete on input they represent (docs/ROUTING.md, \"Named");
+    println!("procedures\" and \"Forced routes\").");
+}
+
+fn routes_cmd(rest: &[String]) {
+    match rest.first().map(String::as_str) {
+        None => {}
+        Some("-h" | "--help") => {
+            routes_help();
+            exit(0);
+        }
+        Some(other) => {
+            eprintln!("unknown routes option: {other}");
+            exit(2);
+        }
+    }
     println!("auto\tgeneral source-profile policy: fragment gate, certificate and construct rules, portfolio default (classify default)");
-    println!("manual\tpreserve individually supplied KM_* options");
+    println!("manual\tpreserve individually supplied KM_* options (forced: fails closed on input it does not represent)");
     for route in kobayashi_marust::routing::Route::NAMED {
         println!("{}", route.as_str());
     }
@@ -460,12 +493,15 @@ fn classify_help() {
     println!("  --json-edges        JSON whose subsumptions are graph edges (take their transitive closure)");
     println!("  --realize[=all]     also report every entailed named type of each named individual");
     println!("  --realize=direct    also report only the most specific entailed named types");
-    println!("  --route ROUTE       force a reasoning route (see `km routes`)");
+    println!("  --route ROUTE       force a reasoning route (see `km routes --help`); a forced");
+    println!("                      route that cannot represent the input exits 3 unless");
+    println!("                      KM_ALLOW_APPROXIMATE=1, which publishes an APPROXIMATE answer");
     println!("  --format FORMAT     auto, functional, owlxml, rdfxml or turtle");
     println!();
     println!("line output (--lines):");
     println!("  CONSISTENT 0|1      ontology consistency");
     println!("  DROPPED N           clauses outside the handled fragment (N > 0: incomplete answer)");
+    println!("  APPROXIMATE<TAB>R   (forced route, KM_ALLOW_APPROXIMATE=1) the answer is approximate: R");
     println!("  SUB<TAB>C<TAB>D     C is subsumed by D");
     println!("  UNSAT<TAB>C         C is unsatisfiable");
     println!("  TYPE<TAB>a<TAB>C    (--realize) O entails C(a); owl:Thing is never listed");

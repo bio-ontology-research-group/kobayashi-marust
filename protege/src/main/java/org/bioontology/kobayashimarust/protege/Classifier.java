@@ -630,6 +630,7 @@ public final class Classifier {
             }
             Result r = new Result();
             boolean protocolSeen = false;
+            String approximate = null;
             for (String line : lines) {
                 String[] f = line.split("\t");
                 if (line.startsWith("CONSISTENT ")) {
@@ -638,6 +639,8 @@ public final class Classifier {
                 } else if (line.startsWith("DROPPED ")) {
                     try { r.dropped = Integer.parseInt(line.trim().substring(8)); }
                     catch (NumberFormatException ignore) {}
+                } else if (f.length == 2 && f[0].equals("APPROXIMATE")) {
+                    approximate = f[1];
                 } else if (f.length == 3 && f[0].equals("SUB")) {
                     r.subsumptions.add(new String[]{f[1], f[2]});
                 } else if (f.length == 2 && f[0].equals("UNSAT")) {
@@ -648,6 +651,13 @@ public final class Classifier {
                 throw new RuntimeException(
                         "Kobayashi-MaRust returned no classification result:\n"
                         + String.join("\n", lines));
+            }
+            // A forced route (ambient KM_ROUTE) publishes an approximate
+            // answer only under KM_ALLOW_APPROXIMATE=1, marked by this line.
+            if (approximate != null) {
+                throw new RuntimeException(
+                        "Kobayashi-MaRust declined a complete classification: "
+                        + "the answer is approximate (" + approximate + ")");
             }
             if (r.dropped != 0) {
                 throw new RuntimeException(
