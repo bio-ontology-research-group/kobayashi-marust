@@ -3779,6 +3779,9 @@ mod tests {
         // A profile outside the measured family keeps the serial engine.
         let mut small = context_parallel_panel_profile();
         small.source.logical_axioms = 1_000;
+        // The general routing policy gates on the class count alone, so the
+        // profile must be small in both measures to stay outside the family.
+        small.source.distinct_classes = 1_000;
         assert_eq!(
             elc_context_parallel_setting(crate::routing::Route::Elc, &small, None, 16),
             None
