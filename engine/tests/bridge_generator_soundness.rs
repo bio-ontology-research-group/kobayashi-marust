@@ -17,6 +17,16 @@
 //!   which was already insufficient for its own reason, so the copy was
 //!   certified with a label that lacked `Q1 == exists s.A` (missed
 //!   subsumptions).
+//! - `clause_*`: incompleteness of the trigger-absorbed clause translation
+//!   (`KM_NO_SOURCE_TBOX`). The bridge resolves frontend definer markers to
+//!   native concepts, but the trigger-less, guarded, and number-restriction
+//!   encoders still emitted the marker atoms, which then had no definition.
+//!   `clause_or_definer_fallback` loses `C <= B` from `B == not D or C`
+//!   (a non-absorbable definer in a clause body); `clause_top_conjunction`
+//!   and `clause_top_conjunction_inconsistent` lose a TOP fact whose head is
+//!   a definer (missed subsumptions, a missed inconsistency);
+//!   `clause_inverse_exists_negated_filler` loses `C` unsatisfiable through
+//!   guarded clauses over `exists inverse(r).not D` definers.
 //! - `seedN`: the generator seeds that were wrong before these fixes.
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -124,15 +134,16 @@ fn production_all_route_matches_hermit() {
 /// the trigger-absorbed clause translation.
 #[test]
 fn minimal_cases_match_hermit_on_both_bridge_terminologies() {
-    // `min_copy_successor_insufficient` is left out: the trigger-absorbed
-    // clause translation (KM_NO_SOURCE_TBOX) is incomplete on it for an
-    // unrelated reason, and the automatic route never uses that translation
-    // when the ontology has class axioms.
     let names = [
         "min67_atmost0_definition.ofn",
         "min_atmost1_definition.ofn",
         "min_atleast0_gci.ofn",
         "min_atleast0_nested.ofn",
+        "min_copy_successor_insufficient.ofn",
+        "clause_or_definer_fallback.ofn",
+        "clause_top_conjunction.ofn",
+        "clause_top_conjunction_inconsistent.ofn",
+        "clause_inverse_exists_negated_filler.ofn",
     ];
     let minimal: Vec<PathBuf> = fixtures()
         .into_iter()
