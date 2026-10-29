@@ -1,0 +1,34 @@
+# cargo test --release --test nominal_seq_order --test universal_role_and_top_data_range --test empty_and_universal_data_ranges --test forced_route_fail_closed --test cb_route_completeness --test incremental_cb_reasoning --test bridge_generator_soundness --test inverse_predecessor_propagation -- --test-threads 4 (first run, HEAD ea161e57 + uncommitted fixtures)
+     Running tests/bridge_generator_soundness.rs (target/release/deps/bridge_generator_soundness-f883052560ce3feb)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.79s
+     Running tests/cb_route_completeness.rs (target/release/deps/cb_route_completeness-87390b96b0974f46)
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.68s
+     Running tests/empty_and_universal_data_ranges.rs (target/release/deps/empty_and_universal_data_ranges-a3e105924b4bcc3a)
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 251.14s
+     Running tests/forced_route_fail_closed.rs (target/release/deps/forced_route_fail_closed-b02585d5269e1eff)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.15s
+     Running tests/incremental_cb_reasoning.rs (target/release/deps/incremental_cb_reasoning-21a4832edc696192)
+test retained_cb_insertion_that_enables_r_succ_rebuilds ... FAILED
+test roles_chains_and_cardinality_equalities_match_fresh_batches ... FAILED
+thread 'retained_cb_insertion_that_enables_r_succ_rebuilds' (3972213) panicked at tests/incremental_cb_reasoning.rs:641:5:
+thread 'roles_chains_and_cardinality_equalities_match_fresh_batches' (3972216) panicked at tests/incremental_cb_reasoning.rs:273:32:
+test result: FAILED. 4 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+# rerun after fixing the new test's pre-insertion assertion (HEAD 97304dc0 + edits, committed as c8458dd5)
+cb_route_completeness: test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.34s
+incremental_cb_reasoning: test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+
+# cargo test --release --lib -- frontend:: engine:: reasoner:: --test-threads 4 (HEAD fdc94ac2)
+test result: ok. 491 passed; 0 failed; 1 ignored; 0 measured; 2530 filtered out; finished in 6.18s
+
+# cargo test --release --no-fail-fast --test inverse_predecessor_propagation --test nominal_seq_order --test universal_role_and_top_data_range --test incremental_cb_reasoning --test cb_route_completeness -- --test-threads 4 (HEAD fdc94ac2; the first run stopped at the incremental failure before these binaries ran)
+     Running tests/cb_route_completeness.rs (target/release/deps/cb_route_completeness-87390b96b0974f46)
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.47s
+     Running tests/incremental_cb_reasoning.rs (target/release/deps/incremental_cb_reasoning-21a4832edc696192)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+     Running tests/inverse_predecessor_propagation.rs (target/release/deps/inverse_predecessor_propagation-c5cff2f88ed8655c)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+     Running tests/nominal_seq_order.rs (target/release/deps/nominal_seq_order-3579d09fd5cd11b3)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.71s
+     Running tests/universal_role_and_top_data_range.rs (target/release/deps/universal_role_and_top_data_range-3dd7a26c45ad1b0d)
+test result: ok. 11 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 515.96s
