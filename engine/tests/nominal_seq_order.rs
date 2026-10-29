@@ -12,6 +12,11 @@
 //! (unordered) regime on the `nominals` route: the ground context held
 //! `→ B(b) ∨ Q_0(a)` with `B(b)` maximal and never resolved `Q_0(a)`, while the
 //! query context announced only `b`.
+//!
+//! The `p2` fixtures carry the same trap without any disjunction over an
+//! internal concept (`⊤ ⊑ B ⊔ NB`, `∃r.NB ⊑ C`, `C ⊓ D ⊑ ⊥`, `D(a)`, `r(a,b)`,
+//! `Q ⊑ {b}`; HermiT: `Q ⊑ B`), so the Sequoia order is not selected and only
+//! the base context regime (unordered + R2 + R3) answers them.
 use std::collections::BTreeSet;
 use std::io::Read;
 use std::process::{Command, Stdio};
@@ -178,5 +183,38 @@ fn forced_context_regime_answers_both_counterexamples() {
         assert!(consistent, "{name}");
         assert!(unsat.is_empty(), "{name}: {unsat:?}");
         assert_eq!(subs, BTreeSet::from([("Q".to_string(), "B".to_string())]), "{name}");
+    }
+}
+
+#[test]
+fn p2_cross_individual_without_internal_disjunction_on_every_nominal_route() {
+    for name in ["p2_cross_individual_named.ofn", "p2_cross_individual_named_swapped.ofn"] {
+        let path = fixture(name);
+        for route in ROUTES {
+            let (consistent, unsat, subs) = classify(&path, route);
+            assert!(consistent, "{name} {route:?}");
+            assert!(unsat.is_empty(), "{name} {route:?}: {unsat:?}");
+            assert_eq!(subs, BTreeSet::from([("Q".to_string(), "B".to_string())]), "{name} {route:?}");
+        }
+    }
+}
+
+/// `KM_NO_SEQ_ORDER` in nominal mode drops the Sequoia order but keeps R2 and
+/// R3, so it still answers both cross-individual probes.
+#[test]
+fn no_seq_order_keeps_r2_and_r3_in_nominal_mode() {
+    for name in [
+        "p1_cross_individual.ofn",
+        "p1_cross_individual_swapped.ofn",
+        "p2_cross_individual_named.ofn",
+        "p2_cross_individual_named_swapped.ofn",
+    ] {
+        for route in [Some("nominals"), Some("certified_nominals")] {
+            let (consistent, unsat, subs) =
+                classify_env(&fixture(name), route, &[("KM_NO_SEQ_ORDER", "1")]);
+            assert!(consistent, "{name} {route:?}");
+            assert!(unsat.is_empty(), "{name} {route:?}: {unsat:?}");
+            assert_eq!(subs, BTreeSet::from([("Q".to_string(), "B".to_string())]), "{name} {route:?}");
+        }
     }
 }
