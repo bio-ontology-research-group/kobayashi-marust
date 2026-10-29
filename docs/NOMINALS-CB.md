@@ -433,8 +433,8 @@ Without nominals no counterexample is known: on 283 generated ALCHIQ
 ontologies (inverses, number restrictions, role inclusions, functionality)
 the two orderings never disagree, and both agree with HermiT.
 
-Mitigation (v1.5.4): `set_seq_order_auto` never enables the Sequoia ordering
-when `KM_NOMINALS` is set. This covers every path that runs the CB engine
+Mitigation (v1.5.4, superseded by section 9): `set_seq_order_auto` never
+enables the Sequoia ordering when `KM_NOMINALS` is set. This covers every path that runs the CB engine
 with nominals (in-process, worker subprocess, certified-nominal routes),
 since they all route the ordering through that function and run under the
 same environment. An explicit `KM_SEQ_ORDER=1` still forces it, as a
@@ -474,7 +474,8 @@ and guarding the relativized facts as `__object__(x) → C(x)` with
 excluded middle `→ ¬{v}(x) ∨ {v}(x)` by `__data__(x)` made it slower (over
 600 s). The cost is not in those facts alone.
 
-Proposed route back to speed (v1.5.5/v1.6.0, UNPROVED): keep the Sequoia
+Proposed route back to speed (v1.5.5/v1.6.0; settled in section 9, which
+replaces it by a different regime): keep the Sequoia
 ordering in ordinary contexts and use the unordered regime only in the
 nominal ground context. Evidence: on the minimal clause set the Sequoia
 ordering derives `Q1 ⊑ ⊥` once the ground facts `a ≈ b` or `s(b,b)` are given
@@ -485,6 +486,10 @@ completeness argument for ordered resolution needs one admissible ordering
 across all inferences that exchange clauses, and ordinary contexts send
 non-unit clauses to the ground context. A per-context regime needs its own
 completeness argument and Lean re-certification before it can be enabled.
+Section 9 gives that argument. The obstacle turns out not to be the order
+mismatch (arXiv:1805.01396 allows one order per context, and its completeness
+proof judges every exchanged clause by the order of the context that uses it)
+but KM's announcement guard on r-Pred, which the paper does not have.
 
 Note on overrides: route bundles reset every routing key before applying
 their own settings (`routing::Route::apply_environment`). Before v1.5.4 this
@@ -592,3 +597,42 @@ changes its clause set (two duplicate `∃`/`≥1` definers fewer), with the sam
 classification on `auto`, `production_all`, `ht_general` and `tableau`.
 Measurements are in `results/agents/2026-10-29/nominal-perf/` and
 `results/agents/2026-10-29/ht-card-complement/`.
+## 9. The context regime (`KM_SEQ_ORDER=context`)
+
+Full argument: docs/PER-CONTEXT-ORDERING.md. Ground theorem:
+`lean/ContextCalculus/CompletenessExchange.lean`.
+
+The nominal ground context sends a ground clause only to a context that
+announced every individual in it (the announcement guard of the r-Pred scan).
+A context therefore sees the ground clauses over its announced individuals
+only, and its completeness depends on the ground context's saturation
+containing the projection of the ground clause set onto that interface.
+Ordered resolution computes such a projection exactly when the interface atoms
+lie at the bottom of the order (`exchange_refutation_complete`; necessary by
+`ordered_server_interface_not_lower_counterexample`). The receiving context
+may use any order, so the Sequoia ordering stays admissible outside the
+ground atoms.
+
+The regime, selected by `set_seq_order_auto` in nominal mode wherever the
+Sequoia ordering would be selected without nominals:
+
+- R1: the Sequoia order on every literal with a variable or a Skolem term, in
+  every context (the ground context's `x`-clauses included);
+- R2: ground atoms (every argument an individual) mutually incomparable, in
+  every context; a weakening of the order;
+- R3: a unit ground equality `→ o ≈ o'` crosses the guard to a context that
+  announced either individual (an instance of the paper's r-Pred with `n = 0`).
+
+Seed 297 needs R3 (the `Q1` context announced `b` only, and `b ≈ a` mentions
+`a`). R2 removes a second counterexample, which the unordered regime of
+v1.5.4 also misses on the `nominals` route
+(`tests/fixtures/nominal_seq_order/p1_cross_individual.ofn`, five axioms,
+HermiT `Q ⊑ B`; docs/PER-CONTEXT-ORDERING.md section 4).
+
+Runs that must publish a CB Lean certificate (`KM_CB_LEAN_REQUIRED`) keep the
+unordered regime: the certification surface models KM's literal order and the
+r-Pred guard exactly and does not model R2 or R3.
+
+Measurements: see the end of this section (filled by the v1.5.5 validation
+run, `results/agents/2026-10-29/per-context-order/`).
+
