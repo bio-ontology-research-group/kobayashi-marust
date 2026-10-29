@@ -1,0 +1,1000 @@
+warning: unnecessary parentheses around `if` condition
+     --> src/konclude_ht/bridge.rs:14468:24
+      |
+14468 |                     if (!bridged.precomputation_replay_disabled.get()
+      |                        ^
+...
+14471 |                             || drained_konclude)
+      |                                                ^
+      |
+      = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+      |
+14468 ~                     if !bridged.precomputation_replay_disabled.get()
+14469 |                             || resume_fork
+14470 |                             || retain_deterministic_leaf
+14471 ~                             || drained_konclude
+      |
+
+warning: unused imports: `IndividualAssociationData`, `IndividualRoleSetNeighbourArray`, `IndividualRoleSetNeighbourData`, `LabelCacheItemExtensionData`, `LabelCacheItemExtensionType`, `LabelCacheItem`, `LabelValueLinker`, and `OntologyData`
+  --> src/konclude_ht/cache/backend_facade3.rs:40:31
+   |
+40 |     BackendTempWriteRecordId, IndividualAssociationData, IndividualAssociationDataId,
+   |                               ^^^^^^^^^^^^^^^^^^^^^^^^^
+41 |     IndividualRoleSetNeighbourArray, IndividualRoleSetNeighbourArrayId,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+42 |     IndividualRoleSetNeighbourData, IndividualRoleSetNeighbourIndividualIdLinker,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+43 |     IndividualRoleSetNeighbourIndividualIdLinkerId, LabelCacheItem, LabelCacheItemExtensionData,
+   |                                                     ^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+44 |     LabelCacheItemExtensionType, LabelCacheItemId, LabelCacheItemType, LabelValueLinker,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^                                        ^^^^^^^^^^^^^^^^
+45 |     OntologyData, OntologyDataId, LABEL_CACHE_ITEM_ASSOCIATABLE_TYPE_COUNT,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `CacheValueIdentifier`
+  --> src/konclude_ht/cache/backend_facade3.rs:48:32
+   |
+48 | use super::value::{CacheValue, CacheValueIdentifier};
+   |                                ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `IndividualDependenceTrackingMarker`
+  --> src/konclude_ht/classifier/mod.rs:22:46
+   |
+22 |     IndividualDependenceTrackingCollectorId, IndividualDependenceTrackingMarker,
+   |                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `ClassificationMessageDataType` and `ClassificationMessageData`
+  --> src/konclude_ht/completion/stubs.rs:39:66
+   |
+39 |     ClassificationInitializePossibleClassSubsumptionMessageData, ClassificationMessageData,
+   |                                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+42 |     ClassificationMessageDataType, ClassificationPseudoModelIdentifierMessageData,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `LabelSetId`
+  --> src/konclude_ht/completion/u04.rs:62:39
+   |
+62 |     ConDescId, ConProcDescId, EdgeId, LabelSetId, NodeId, RestrictionSpecId, TrackPointId,
+   |                                       ^^^^^^^^^^
+
+warning: unused import: `DependencyNode`
+  --> src/konclude_ht/completion/u12.rs:62:50
+   |
+62 | use super::super::process::dependency::{DepKind, DependencyNode};
+   |                                                  ^^^^^^^^^^^^^^
+
+warning: unused import: `DepLinkId`
+  --> src/konclude_ht/completion/u12.rs:64:31
+   |
+64 |     ConDescId, ConProcDescId, DepLinkId, DependencyId, NodeId, RestrictionSpecId, TrackPointId,
+   |                               ^^^^^^^^^
+
+warning: unused import: `DependencyId`
+  --> src/konclude_ht/completion/u18.rs:78:27
+   |
+78 |     ConDescId, DepLinkId, DependencyId, EdgeId, LabelSetId, NodeId, TrackPointId,
+   |                           ^^^^^^^^^^^^
+
+warning: unused import: `INVALID`
+  --> src/konclude_ht/completion/u21.rs:82:50
+   |
+82 | use super::super::model::substrate::{Cint64, Id, INVALID};
+   |                                                  ^^^^^^^
+
+warning: unused import: `EdgeId`
+  --> src/konclude_ht/completion/u26.rs:81:29
+   |
+81 | use super::super::process::{EdgeId, LabelSetId, NodeId};
+   |                             ^^^^^^
+
+warning: unused import: `INVALID`
+  --> src/konclude_ht/completion/u35.rs:91:51
+   |
+91 | use super::super::model::substrate::{Id, NegLink, INVALID};
+   |                                                   ^^^^^^^
+
+warning: unused import: `super::super::process::descriptor::ClashDescriptor`
+  --> src/konclude_ht/completion/u36.rs:96:5
+   |
+96 | use super::super::process::descriptor::ClashDescriptor;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `super::super::model::role_chain::RoleChain`
+  --> src/konclude_ht/preprocess/role_chain_automata.rs:26:5
+   |
+26 | use super::super::model::role_chain::RoleChain;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `MarkerIndividualNodeHashData`
+  --> src/konclude_ht/process/context.rs:89:5
+   |
+89 |     MarkerIndividualNodeHashData, MarkerIndividualNodeHashId,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `RepresentativeJoiningHashData` and `RepresentativeVariableBindingPathJoiningKeyHashData`
+   --> src/konclude_ht/process/context.rs:224:5
+    |
+224 |     RepresentativeJoiningHashData, RepresentativeJoiningHashId,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+231 |     RepresentativeVariableBindingPathJoiningKeyHashData,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `BlockingCandidateHashData`
+   --> src/konclude_ht/process/context.rs:243:5
+    |
+243 |     BlockingCandidateHashData, BlockingIndividualNodeCandidateData,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `IndividualSaturationProcessNodeLinker`
+  --> src/konclude_ht/process/db5.rs:55:5
+   |
+55 |     IndividualSaturationProcessNodeLinker, IndividualSaturationProcessNodeLinkerId,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `Id`
+  --> src/konclude_ht/process/pn6.rs:27:35
+   |
+27 | use super::super::model::{Cint64, Id};
+   |                                   ^^
+
+warning: unused import: `ConceptId`
+  --> src/konclude_ht/process/sat1.rs:19:27
+   |
+19 | use super::super::model::{ConceptId, IndividualId, RoleId};
+   |                           ^^^^^^^^^
+
+warning: unused import: `SaturationIndividualNodeAllConceptsExtensionDataId`
+  --> src/konclude_ht/process/sat1.rs:24:5
+   |
+24 |     SaturationIndividualNodeAllConceptsExtensionDataId, SaturationIndividualNodeDatatypeDataId,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `CCATLEAST`, `CCATMOST`, and `CCATOM`
+  --> src/konclude_ht/saturation/s04.rs:73:31
+   |
+73 | use super::super::model::op::{CCATLEAST, CCATMOST, CCATOM};
+   |                               ^^^^^^^^^  ^^^^^^^^  ^^^^^^
+
+warning: unused import: `super::satellites::ConceptSaturationDescriptorId`
+  --> src/konclude_ht/saturation/s04.rs:80:5
+   |
+80 | use super::satellites::ConceptSaturationDescriptorId;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: variable does not need to be mutable
+   --> src/frontend/data_abox.rs:855:13
+    |
+855 |         let mut intern = |s: &'a str, ids: &mut HashMap<&'a str, u32>| -> u32 {
+    |             ----^^^^^^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> src/frontend/data_abox.rs:893:13
+    |
+893 |         let mut ancestors =
+    |             ----^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/frontend/data_abox.rs:930:21
+    |
+930 |                 let mut push =
+    |                     ----^^^^
+    |                     |
+    |                     help: remove this `mut`
+
+warning: unreachable pattern
+   --> src/frontend/datatypes.rs:170:21
+    |
+169 |                     Val::$variant(bits) => <$ty>::from_bits(*bits),
+    |                     ------------------- matches all the relevant values
+170 |                     Val::Float32(bits) if wide => f32::from_bits(*bits) as $ty,
+    |                     ^^^^^^^^^^^^^^^^^^ no value can reach this
+...
+194 |     if wide { evaluate!(f64, Float64) } else { evaluate!(f32, Float32) }
+    |                                                ----------------------- in this macro invocation
+    |
+    = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+    = note: this warning originates in the macro `evaluate` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: variable does not need to be mutable
+    --> src/frontend/datatypes.rs:2865:9
+     |
+2865 |     let mut push_range = |from: Option<i128>, to: Option<i128>, missing: &mut Vec<i128>| -> Option<()> {
+     |         ----^^^^^^^^^^
+     |         |
+     |         help: remove this `mut`
+
+warning: value assigned to `with_cells` is never read
+    --> src/frontend/datatypes.rs:3132:44
+     |
+3132 |     let mut with_cells: BTreeSet<String> = BTreeSet::new();
+     |                                            ^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `bridge_phase_started` is never read
+    --> src/konclude_ht/bridge.rs:4914:17
+     |
+4914 |                 bridge_phase_started = now;
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+7082 |     bridge_phase!("terminology-stamp");
+     |     ---------------------------------- in this macro invocation
+     |
+     = help: maybe it is overwritten before being read?
+     = note: this warning originates in the macro `bridge_phase` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10153:13
+      |
+10153 |             coordination.running_tasks -= 1;
+      |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10154:13
+      |
+10154 |             coordination.failed_tasks += 1;
+      |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10161:13
+      |
+10161 |             coordination.running_tasks -= 1;
+      |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10162:13
+      |
+10162 |             coordination.failed_tasks += 1;
+      |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10167:17
+      |
+10167 |                 coordination.running_tasks -= 1;
+      |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10168:17
+      |
+10168 |                 coordination.clashed = true;
+      |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10172:17
+      |
+10172 |                 coordination.running_tasks -= 1;
+      |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10173:17
+      |
+10173 |                 coordination.failed_tasks += 1;
+      |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10204:13
+      |
+10204 |             coordination.writeback_failed = true;
+      |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10186:13
+      |
+10186 |             coordination.running_tasks -= 1;
+      |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10187:13
+      |
+10187 |             coordination.writeback_failed = true;
+      |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: variable does not need to be mutable
+     --> src/konclude_ht/bridge.rs:14964:13
+      |
+14964 |         let mut renew = |algo: &mut CompletionTaskHandleAlgorithm,
+      |             ----^^^^^
+      |             |
+      |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/cache/backend_facade1.rs:644:13
+    |
+644 |         let mut associations_updated = false;
+    |             ----^^^^^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: value assigned to `update_slot` is never read
+   --> src/konclude_ht/cache/unsat.rs:777:39
+    |
+777 |         let mut update_slot: Cint64 = 0;
+    |                                       ^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: value assigned to `update_slot` is never read
+    --> src/konclude_ht/cache/unsat.rs:1013:39
+     |
+1013 |         let mut update_slot: Cint64 = 0;
+     |                                       ^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `next_priority` is never read
+   --> src/konclude_ht/completion/strategy.rs:282:9
+    |
+282 |         next_priority = 2;
+    |         ^^^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: value assigned to `priority` is never read
+   --> src/konclude_ht/completion/strategy.rs:349:33
+    |
+349 |         let mut priority: f64 = 0.0;
+    |                                 ^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: value assigned to `subsum_message_data_linker` is never read
+    --> src/konclude_ht/completion/stubs.rs:1979:46
+     |
+1979 |         let mut subsum_message_data_linker = None;
+     |                                              ^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `subsum_message_data_linker` is never read
+    --> src/konclude_ht/completion/stubs.rs:2098:46
+     |
+2098 |         let mut subsum_message_data_linker = None;
+     |                                              ^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: unused variable: `ontology`
+    --> src/konclude_ht/completion/stubs.rs:2472:9
+     |
+2472 |         ontology: &OntologyArenas,
+     |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_ontology`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+    --> src/konclude_ht/completion/stubs.rs:5305:13
+     |
+5305 |         let mut remaining_merging_depth = 5;
+     |             ----^^^^^^^^^^^^^^^^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/completion/u03.rs:952:9
+    |
+952 |         mut operands: Vec<NegLink<ConceptId>>,
+    |         ----^^^^^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/completion/u08.rs:122:17
+    |
+122 |             let mut triggered_concepts: ConDescId = Id::NONE;
+    |                 ----^^^^^^^^^^^^^^^^^^
+    |                 |
+    |                 help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/completion/u08.rs:166:13
+    |
+166 |         let mut triggered_concepts: ConDescId = Id::NONE;
+    |             ----^^^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/completion/u08.rs:437:13
+    |
+437 |         let mut saturation_node: SatNodeId = if self.conf_expand_created_successors_from_saturation
+    |             ----^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/completion/u14.rs:796:13
+    |
+796 |         let mut merged_individual;
+    |             ----^^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/completion/u14.rs:797:13
+    |
+797 |         let mut adding_individual;
+    |             ----^^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/completion/u14.rs:871:13
+    |
+871 |         let mut new_empty_indi_node_ref = new_empty_indi_node;
+    |             ----^^^^^^^^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> src/konclude_ht/completion/u16.rs:1142:13
+     |
+1142 |         let mut nominal_individual = indi;
+     |             ----^^^^^^^^^^^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/completion/u17.rs:105:13
+    |
+105 |         let mut state = calc_alg_context.take_used_saturation_node_expansion_cache_handler()?;
+    |             ----^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: value assigned to `block_alt_data` is never read
+    --> src/konclude_ht/completion/u19.rs:1102:65
+     |
+1102 |         let mut block_alt_data: BlockingAlternativeDataHandle = Id::NONE;
+     |                                                                 ^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `blocking_indi_node` is never read
+    --> src/konclude_ht/completion/u19.rs:1369:46
+     |
+1369 |         let mut blocking_indi_node: NodeId = Id::NONE;
+     |                                              ^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `min_test_anc_indi_depth` is never read
+    --> src/konclude_ht/completion/u19.rs:1770:45
+     |
+1770 |                     (min_test_indi_node_id, min_test_anc_indi_depth) = calc_alg_context
+     |                                             ^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `synchronized` is never read
+   --> src/konclude_ht/completion/u21.rs:270:32
+    |
+270 |         let mut synchronized = false;
+    |                                ^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: value assigned to `backend_sync_data` is never read
+    --> src/konclude_ht/completion/u25.rs:1902:25
+     |
+1902 |                         backend_sync_data = loc_backend_sync_data;
+     |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: variable does not need to be mutable
+    --> src/konclude_ht/completion/u36.rs:1403:17
+     |
+1403 |             let mut expansion_blocked = native_expansion_blocked;
+     |                 ----^^^^^^^^^^^^^^^^^
+     |                 |
+     |                 help: remove this `mut`
+
+warning: unused variable: `concept`
+   --> src/konclude_ht/process/ls1.rs:982:9
+    |
+982 |         concept: ConceptId,
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_concept`
+
+warning: value assigned to `list` is never read
+   --> src/konclude_ht/process/varbind.rs:319:25
+    |
+319 |                         list = ctx.var_binding_des(first_linker).get_next();
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: variable does not need to be mutable
+    --> src/konclude_ht/saturation/s06.rs:1137:13
+     |
+1137 |         let mut updated = false;
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: value assigned to `resolved_node` is never read
+   --> src/konclude_ht/saturation/s10.rs:149:33
+    |
+149 |         let mut resolved_node = SatNodeId::NONE;
+    |                                 ^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: value assigned to `resolved_node` is never read
+   --> src/konclude_ht/saturation/s10.rs:369:33
+    |
+369 |         let mut resolved_node = SatNodeId::NONE;
+    |                                 ^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: value assigned to `resolved_node` is never read
+   --> src/konclude_ht/saturation/s10.rs:540:33
+    |
+540 |         let mut resolved_node = SatNodeId::NONE;
+    |                                 ^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: unused variable: `i`
+    --> src/orchestrate/cb_to_ht.rs:1471:10
+     |
+1471 |     for (i, n) in ids.con_names.iter().enumerate() {
+     |          ^ help: if this is intentional, prefix it with an underscore: `_i`
+
+warning: variable does not need to be mutable
+    --> src/orchestrate/cb_to_ht.rs:3973:13
+     |
+3973 |         let mut note = |ind: &str, individuals: &mut BTreeSet<String>| {
+     |             ----^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: value assigned to `cb_t0` is never read
+    --> src/orchestrate/race.rs:3676:21
+     |
+3676 |                     cb_t0 = Some(Instant::now());
+     |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+3749 |             start_cb!();
+     |             ----------- in this macro invocation
+     |
+     = help: maybe it is overwritten before being read?
+     = note: this warning originates in the macro `start_cb` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `header`
+    --> src/source_locality.rs:2759:27
+     |
+2759 |         if let Some((old, header, lookup)) = donor.filter(|(old, header, _)|
+     |                           ^^^^^^ help: if this is intentional, prefix it with an underscore: `_header`
+
+warning: variable does not need to be mutable
+    --> src/hypertableau.rs:7218:13
+     |
+7218 |         let mut chain_fwd: HashMap<R, Vec<(R, R)>> = HashMap::default();
+     |             ----^^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> src/hypertableau.rs:7219:13
+     |
+7219 |         let mut chain_bwd: HashMap<R, Vec<(R, R)>> = HashMap::default();
+     |             ----^^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: unused variable: `variable_count`
+     --> src/hypertableau.rs:13194:14
+      |
+13194 |         let (variable_count, concept_count, role_count, equality_ontology) =
+      |              ^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_variable_count`
+
+warning: unused variable: `role_count`
+     --> src/hypertableau.rs:13194:45
+      |
+13194 |         let (variable_count, concept_count, role_count, equality_ontology) =
+      |                                             ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_role_count`
+
+warning: variable does not need to be mutable
+    --> src/tableau.rs:7385:9
+     |
+7385 |     let mut replace_cell_abox = |cell: &mut serde_json::Value| -> Result<(), String> {
+     |         ----^^^^^^^^^^^^^^^^^
+     |         |
+     |         help: remove this `mut`
+
+warning: type `CardDef` is more private than the item `Ht::set_card_defs`
+     --> src/hypertableau.rs:18463:5
+      |
+18463 |     pub fn set_card_defs(&mut self, defs: HashMap<C, CardDef>) {
+      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ method `Ht::set_card_defs` is reachable at visibility `pub`
+      |
+note: but type `CardDef` is only usable at visibility `pub(self)`
+     --> src/hypertableau.rs:451:1
+      |
+  451 | struct CardDef {
+      | ^^^^^^^^^^^^^^
+      = note: `#[warn(private_interfaces)]` on by default
+
+warning: function `positive_abox_classify_compact_merged` is never used
+     --> src/elcomplete.rs:11329:15
+      |
+11329 | pub(crate) fn positive_abox_classify_compact_merged(
+      |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `insert`, `contains_subset`, and `remove_supersets` are never used
+   --> src/engine.rs:295:8
+    |
+287 | impl RedundancyTrie {
+    | ------------------- methods in this implementation
+...
+295 |     fn insert(&mut self, clause: &ContextClause, cid: u32) {
+    |        ^^^^^^
+...
+312 |     fn contains_subset(&self, clause: &ContextClause, exclude: Option<u32>) -> bool {
+    |        ^^^^^^^^^^^^^^^
+...
+382 |     fn remove_supersets(&mut self, clause: &ContextClause) -> Vec<u32> {
+    |        ^^^^^^^^^^^^^^^^
+
+warning: method `central_successor_for_core` is never used
+    --> src/engine.rs:6650:8
+     |
+3908 | impl Engine {
+     | ----------- method in this implementation
+...
+6650 |     fn central_successor_for_core(&mut self, core: Vec<Pred>, seed_from: Option<usize>) -> usize {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: variants `Top` and `Bottom` are never constructed
+   --> src/frontend/bottom_prepass.rs:178:5
+    |
+176 | enum RawClassConstraint {
+    |      ------------------ variants in this enum
+177 |     Name(String),
+178 |     Top,
+    |     ^^^
+179 |     Bottom,
+    |     ^^^^^^
+    |
+    = note: `RawClassConstraint` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: method `role_supers` is never used
+   --> src/frontend/data_abox.rs:822:8
+    |
+448 | impl<'a> DataAbox<'a> {
+    | --------------------- method in this implementation
+...
+822 |     fn role_supers(&self, p: &'a str) -> Vec<&'a str> {
+    |        ^^^^^^^^^^^
+
+warning: function `is_top_data_range` is never used
+   --> src/frontend/datatypes.rs:466:15
+    |
+466 | pub(crate) fn is_top_data_range(name: &str) -> bool {
+    |               ^^^^^^^^^^^^^^^^^
+
+warning: function `bridge_exact_finite_cover` is never used
+    --> src/frontend/datatypes.rs:1880:15
+     |
+1880 | pub(crate) fn bridge_exact_finite_cover(range: &str, head: &[&str]) -> bool {
+     |               ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `is_complement_range` is never used
+    --> src/frontend/datatypes.rs:2714:15
+     |
+2714 | pub(crate) fn is_complement_range(name: &str) -> bool {
+     |               ^^^^^^^^^^^^^^^^^^^
+
+warning: function `fresh_bridge_env` is never used
+    --> src/konclude_ht/bridge.rs:8443:4
+     |
+8443 | fn fresh_bridge_env(
+     |    ^^^^^^^^^^^^^^^^
+
+warning: constant `NATIVE_REPRESENTATIVE_BATCH_SIZE` is never used
+    --> src/konclude_ht/bridge.rs:9135:7
+     |
+9135 | const NATIVE_REPRESENTATIVE_BATCH_SIZE: usize = 7;
+     |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `native_incomplete_abox_seed_batch` is never used
+    --> src/konclude_ht/bridge.rs:9137:4
+     |
+9137 | fn native_incomplete_abox_seed_batch(
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `NativeRepresentativeCoordinationState` is never constructed
+    --> src/konclude_ht/bridge.rs:9171:8
+     |
+9171 | struct NativeRepresentativeCoordinationState {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `native_representative_coordination_complete` is never used
+    --> src/konclude_ht/bridge.rs:9178:4
+     |
+9178 | fn native_representative_coordination_complete(
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `precompute_native_representative_batches` is never used
+     --> src/konclude_ht/bridge.rs:10098:4
+      |
+10098 | fn precompute_native_representative_batches(
+      |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `snapshot_native_consistency_nominal_nondeterministic_prefix` is never used
+     --> src/konclude_ht/bridge.rs:10421:4
+      |
+10421 | fn snapshot_native_consistency_nominal_nondeterministic_prefix(
+      |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `build_saturation_seeds` is never used
+     --> src/konclude_ht/bridge.rs:10825:4
+      |
+10825 | fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &Bridged) {
+      |    ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `positive_class_assertion_iris` is never used
+   --> src/orchestrate/flat_nf1.rs:403:4
+    |
+403 | fn positive_class_assertion_iris(line: &str) -> Option<(&str, &str)> {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `native_nominal_ht_view` is never used
+    --> src/orchestrate/race.rs:1636:4
+     |
+1636 | fn native_nominal_ht_view<'a>(
+     |    ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `nominal_ni_tbox_candidate` is never used
+    --> src/routing.rs:1360:4
+     |
+1360 | fn nominal_ni_tbox_candidate(profile: &OntologyProfile) -> bool {
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `component_abox_bridge_candidate` is never used
+    --> src/routing.rs:1542:15
+     |
+1542 | pub(crate) fn component_abox_bridge_candidate(profile: &OntologyProfile) -> bool {
+     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: field `base_revision` is never read
+    --> src/source_incremental.rs:1999:60
+     |
+1999 |     Replace { functional_syntax: String, #[serde(default)] base_revision: Option<u64> },
+     |     ------- field in this variant                          ^^^^^^^^^^^^^
+
+warning: field `0` is never read
+    --> src/source_locality.rs:1901:12
+     |
+1901 |     Symbol(u32),
+     |     ------ ^^^
+     |     |
+     |     field in this variant
+     |
+help: consider changing the field to be of unit type to suppress this warning while preserving the field numbering, or remove the field
+     |
+1901 -     Symbol(u32),
+1901 +     Symbol(()),
+     |
+
+warning: methods `log_start` and `undo` are never used
+    --> src/source_locality.rs:1928:8
+     |
+1915 | impl State {
+     | ---------- methods in this implementation
+...
+1928 |     fn log_start(&mut self) {
+     |        ^^^^^^^^^
+...
+1951 |     fn undo(&mut self, base: &State) {
+     |        ^^^^
+
+warning: associated items `from_success_cache`, `derive`, `source_hash`, `origin_hash`, and `named_disjoint_removable` are never used
+   --> src/named_subclass_validation.rs:76:19
+    |
+ 73 | impl NamedSubclassCertificate {
+    | ----------------------------- associated items in this implementation
+...
+ 76 |     pub(crate) fn from_success_cache(source:Arc<String>)->Option<Self> {
+    |                   ^^^^^^^^^^^^^^^^^^
+...
+122 |     pub(crate) fn derive(&self,source:Arc<String>)->Option<Self> {
+    |                   ^^^^^^
+...
+162 |     pub fn source_hash(&self)->u128 {fingerprint(self.source.as_bytes())}
+    |            ^^^^^^^^^^^
+163 |     pub fn origin_hash(&self)->u128 {fingerprint(self.origin.as_bytes())}
+    |            ^^^^^^^^^^^
+164 |     pub fn named_disjoint_removable(&self)->usize {self.origin_entries.values().filter(|e|e.form==Form::DisjointRemoval).map(|e|e.c...
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: field `origin_source_key` is never read
+   --> src/incr_session.rs:573:5
+    |
+571 | struct InconsistencyCertificate {
+    |        ------------------------ field in this struct
+572 |     /// Identity of the exact source whose inconsistency/support was verified.
+573 |     origin_source_key: u128,
+    |     ^^^^^^^^^^^^^^^^^
+
+warning: field `preparation` is never read
+   --> src/incr_session.rs:795:5
+    |
+792 | struct RetainedTold {
+    |        ------------ field in this struct
+...
+795 |     preparation: crate::source_locality::ToldReuse,
+    |     ^^^^^^^^^^^
+
+warning: field `object_only` is never read
+ --> src/incr_envelope.rs:8:69
+  |
+8 | pub(crate) struct Eligibility { pub data_tbox: FxHashSet<u128>, pub object_only: bool }
+  |                   ----------- field in this struct                  ^^^^^^^^^^^
+
+warning: direct cast of function item into an integer
+  --> src/cli.rs:68:55
+   |
+68 |             libc::signal(libc::SIGUSR1, km_sigusr1_bt as usize as libc::sighandler_t);
+   |                                                       ^^^^^^^^
+   |
+   = note: `#[warn(function_casts_as_integer)]` on by default
+help: first cast to a pointer `as *const ()`
+   |
+68 |             libc::signal(libc::SIGUSR1, km_sigusr1_bt as *const () as usize as libc::sighandler_t);
+   |                                                       ++++++++++++
+
+warning: for loop over a `&Option`. This is more readably written as an `if let` statement
+   --> src/frontend/ground_rule_source.rs:146:19
+    |
+146 |     for domain in &paths.domain { axioms.push(format!("Declaration(Class({}))", name(domain)?)); }
+    |                   ^^^^^^^^^^^^^
+    |
+    = note: `#[warn(for_loops_over_fallibles)]` on by default
+help: to check pattern in a loop use `while let`
+    |
+146 -     for domain in &paths.domain { axioms.push(format!("Declaration(Class({}))", name(domain)?)); }
+146 +     while let Some(domain) = &paths.domain { axioms.push(format!("Declaration(Class({}))", name(domain)?)); }
+    |
+help: consider using `if let` to clear intent
+    |
+146 -     for domain in &paths.domain { axioms.push(format!("Declaration(Class({}))", name(domain)?)); }
+146 +     if let Some(domain) = &paths.domain { axioms.push(format!("Declaration(Class({}))", name(domain)?)); }
+    |
+
+warning: `kobayashi-marust` (lib) generated 111 warnings (run `cargo fix --lib -p kobayashi-marust` to apply 52 suggestions)
+   Compiling kobayashi-marust v1.5.3 (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-ht-card-complement/engine)
+warning: `kobayashi-marust` (lib) generated 111 warnings (111 duplicates)
+warning: variable does not need to be mutable
+   --> tests/forced_route_fail_closed.rs:352:21
+    |
+352 |                 let mut fail = |why: String| failures.lock().unwrap().push(format!("{label}: {why}"));
+    |                     ----^^^^
+    |                     |
+    |                     help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `kobayashi-marust` (test "forced_route_fail_closed") generated 1 warning (run `cargo fix --test "forced_route_fail_closed" -p kobayashi-marust` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 5m 46s
+     Running tests/bridge_generator_soundness.rs (target/release/deps/bridge_generator_soundness-f883052560ce3feb)
+
+running 3 tests
+test minimal_cases_match_hermit_on_both_bridge_terminologies ... ok
+test production_all_route_matches_hermit ... ok
+test automatic_route_matches_hermit ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.73s
+
+     Running tests/data_assertions_carried.rs (target/release/deps/data_assertions_carried-0a5ebd600f733770)
+
+running 9 tests
+test inconsistency_without_uncarried_assertions_reports_nothing_dropped ... ok
+test assertions_above_the_literal_cap_are_carried_by_profile ... ok
+test counted_assertions_above_the_literal_cap_are_published_as_dropped ... ok
+test negative_data_assertion_is_published_as_dropped ... ok
+test single_data_assertion_is_carried_on_every_abox_route ... ok
+test mixed_object_and_data_assertions_are_carried ... ok
+test merged_individuals_keep_distinct_values_under_counting ... ok
+test profiles_preserve_facet_membership_and_range_clashes ... ok
+test unproxied_assertions_can_hide_a_clash has been running for over 60 seconds
+test unproxied_assertions_can_hide_a_clash ... ok
+
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 63.39s
+
+     Running tests/empty_and_universal_data_ranges.rs (target/release/deps/empty_and_universal_data_ranges-a3e105924b4bcc3a)
+
+running 10 tests
+test bottom_data_property_has_no_values ... ok
+test assertions_against_empty_ranges_are_inconsistent ... ok
+test complemented_cardinality_definers_contrapose_on_every_route ... ok
+test complements_of_ordinary_ranges ... ok
+test datatype_definitions_of_empty_and_universal_ranges ... ok
+test literal_existential_with_universal_complement_of_literal_is_unsatisfiable ... ok
+test universal_data_ranges_in_every_position ... ok
+test empty_data_ranges_in_every_position ... ok
+test complement_of_literal_and_literal_on_every_route ... ok
+test excluded_middle_of_complement_ranges has been running for over 60 seconds
+test excluded_middle_of_complement_ranges ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 186.13s
+
+     Running tests/forced_route_fail_closed.rs (target/release/deps/forced_route_fail_closed-b02585d5269e1eff)
+
+running 5 tests
+test allowed_approximation_is_marked_and_counted ... ok
+test incremental_source_session_refuses_a_forced_approximate_route ... ok
+test automatic_route_matches_hermit_on_the_max2_reproducers ... ok
+test forced_default_route_refuses_the_max2_reproducers ... ok
+test no_route_publishes_an_unmarked_approximate_answer ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.13s
+
+     Running tests/ht_subset_blocking.rs (target/release/deps/ht_subset_blocking-938925f4ecf2a9e2)
+
+running 4 tests
+test gained_recognition_literal_blocks_no_successor ... ok
+test gained_literal_at_an_existential_successor ... ok
+test gained_literal_under_an_at_least_recognition ... ok
+test card_arm_subset_blocking_on_the_automatic_route ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+
+     Running tests/universal_role_and_top_data_range.rs (target/release/deps/universal_role_and_top_data_range-3dd7a26c45ad1b0d)
+
+running 13 tests
+test data_value_next_to_universal_role_hub_on_nominals ... ignored, exact nominal regime: no answer within 1800 s on nominals (docs/NOMINALS-CB.md section 7)
+test data_value_next_to_universal_role_hub_stays_satisfiable ... ignored, exact nominal regime: no answer within 600 s on the automatic route (docs/NOMINALS-CB.md section 7)
+test data_range_complement_excluded_middle_still_applies_to_values ... ok
+test data_sorted_top_definer_keeps_data_values_satisfiable ... ok
+test data_property_range_over_the_shared_top_definer_stays_satisfiable ... ok
+test literal_existential_over_free_data_property_is_fast ... ok
+test literal_existential_matches_unqualified_min_cardinality ... ok
+test exists_top_role_thing_is_owl_thing_and_fast ... ok
+test mixed_object_and_data_assertions_on_one_individual ... ok
+test universal_role_restrictions_are_complete ... ok
+test data_value_singleton_next_to_nominal_successors ... ok
+test nominal_top_role_reproducer has been running for over 60 seconds
+test sort_encoding_matches_hermit_on_differential_fixtures has been running for over 60 seconds
+test sort_encoding_matches_hermit_on_differential_fixtures ... ok
+test nominal_top_role_reproducer ... ok
+
+test result: ok. 11 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 534.26s
+

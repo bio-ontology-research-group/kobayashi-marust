@@ -1,0 +1,48 @@
+em/case2.ofn auto: 2e150d CONSISTENT 1
+em/case2.ofn production_all: 2e150d CONSISTENT 1
+em/case2.ofn certified_nominals: 2e150d CONSISTENT 1
+em/case2.ofn certified_card_nominals: 9ca6f6 unsupported: selected HT mechanism defer
+em/case2.ofn certified_card_proxy_abox: 2e150d CONSISTENT 1
+em/case2.ofn tab_race: 2e150d CONSISTENT 1
+em/case2.ofn ht_rules: 2e150d CONSISTENT 1
+em/case2.ofn gold-cb: 2e150d
+em/case1.ofn auto: 7cebfd CONSISTENT 1
+em/case1.ofn production_all: 7cebfd CONSISTENT 1
+em/case1.ofn certified_nominals: 7cebfd CONSISTENT 1
+em/case1.ofn certified_card_nominals: 9ca6f6 unsupported: selected HT mechanism defer
+em/case1.ofn certified_card_proxy_abox: 7cebfd CONSISTENT 1
+em/case1.ofn tab_race: 7cebfd CONSISTENT 1
+em/case1.ofn ht_rules: 7cebfd CONSISTENT 1
+em/case1.ofn gold-cb: 7cebfd
+dd/t6.ofn auto: d2560c CONSISTENT 0
+dd/t6.ofn production_all: d2560c CONSISTENT 0
+dd/t6.ofn certified_nominals: d2560c CONSISTENT 0
+dd/t6.ofn certified_card_nominals: d2560c CONSISTENT 0
+dd/t6.ofn certified_card_proxy_abox: f7f82e CONSISTENT 0
+dd/t6.ofn tab_race: f7f82e CONSISTENT 0
+dd/t6.ofn ht_rules: f7f82e CONSISTENT 0
+dd/t6.ofn gold-cb: f7f82e
+dd/min507.ofn auto: 0cc432 CONSISTENT 1
+dd/min507.ofn production_all: 0cc432 CONSISTENT 1
+dd/min507.ofn certified_nominals: 0cc432 CONSISTENT 1
+dd/min507.ofn certified_card_nominals: 0cc432 CONSISTENT 1
+dd/min507.ofn certified_card_proxy_abox: 0cc432 CONSISTENT 1
+dd/min507.ofn tab_race: 0cc432 CONSISTENT 1
+dd/min507.ofn ht_rules: 0cc432 CONSISTENT 1
+dd/min507.ofn gold-cb: 0cc432
+dd/min639.ofn auto: b62be9 CONSISTENT 1
+dd/min639.ofn production_all: b62be9 CONSISTENT 1
+dd/min639.ofn certified_nominals: b62be9 CONSISTENT 1
+dd/min639.ofn certified_card_nominals: b62be9 CONSISTENT 1
+dd/min639.ofn certified_card_proxy_abox: b62be9 CONSISTENT 1
+dd/min639.ofn tab_race: b62be9 CONSISTENT 1
+dd/min639.ofn ht_rules: b62be9 CONSISTENT 1
+dd/min639.ofn gold-cb: b62be9
+dd/c1e.ofn auto: f16e55 CONSISTENT 1
+dd/c1e.ofn production_all: d2560c CONSISTENT 0
+dd/c1e.ofn certified_nominals: d2560c CONSISTENT 0
+dd/c1e.ofn certified_card_nominals: d2560c CONSISTENT 0
+dd/c1e.ofn certified_card_proxy_abox: f16e55 CONSISTENT 1
+dd/c1e.ofn tab_race: d2560c CONSISTENT 0
+dd/c1e.ofn ht_rules: d2560c CONSISTENT 0
+dd/c1e.ofn gold-cb: d2560c
