@@ -295,6 +295,12 @@ pub struct Clausifier {
     /// Compile structurally triggerable subclass antecedents directly into
     /// guarded DL-clause bodies and retain fresh-concept provenance.
     trigger_absorb: bool,
+    /// Give equal restrictions one definer: the `≤n r.F` complement and a
+    /// source `≥(n+1) r.F`, and `∃r.F` with `≥1 r.F` (docs/NOMINALS-CB.md
+    /// section 8). Exact for every consumer, but enabled only for
+    /// `KM_MECHANISM=cb`, whose sole consumer is the CB engine: the HT
+    /// translation misses consequences of the shared shape (section 8).
+    share_equal_restrictions: bool,
 }
 
 impl Clausifier {
@@ -328,6 +334,7 @@ impl Clausifier {
             color_cardinality: std::env::var_os("KM_CARDINALITY_COLORS").is_some(),
             trigger_absorb: std::env::var_os("KM_TRIGGER_ABSORB").is_some()
                 || test_trigger_absorb(),
+            share_equal_restrictions: std::env::var("KM_MECHANISM").as_deref() == Ok("cb"),
         }
     }
 
@@ -759,14 +766,36 @@ impl Clausifier {
         }
     }
 
+    /// The definer already introduced for `c`, under its own spelling or
+    /// under the equal spelling of an existential: `∃r.F` and `≥1 r.F` are
+    /// the same concept, and both definitions emit the witness clause pair
+    /// and the recognition clause unconditionally (`≥1` through `CardMeta`
+    /// under native cardinality), so one definer serves both
+    /// (docs/NOMINALS-CB.md section 8).
+    fn cached_definer(&self, c: &Concept) -> Option<String> {
+        if let Some(existing) = self.reified.get(c) {
+            return Some(existing.clone());
+        }
+        if !self.share_equal_restrictions {
+            return None;
+        }
+        let alias = match c {
+            Concept::Exists(role, filler) => Concept::AtLeast(1, role.clone(), filler.clone()),
+            Concept::AtLeast(1, role, filler) => Concept::Exists(role.clone(), filler.clone()),
+            _ => return None,
+        };
+        self.reified.get(&alias).cloned()
+    }
+
     /// Port of `q`: return a concept name for `c`, introducing a fresh `Q_i`
     /// (and its defining clauses) for non-atomic `c`.
     pub fn q(&mut self, c: &Concept) -> String {
         if let Concept::Name(n) = c {
             return n.clone();
         }
-        if let Some(existing) = self.reified.get(c) {
-            return existing.clone();
+        if let Some(existing) = self.cached_definer(c) {
+            self.reified.entry(c.clone()).or_insert_with(|| existing.clone());
+            return existing;
         }
         if let Concept::Nominal(ind) = c {
             let q = Self::nominal_name(ind);
@@ -1131,7 +1160,29 @@ impl Clausifier {
                 // body position); the ⊤ → Q ∨ NQ split fires in every context,
                 // so a pre-pass-proven positive-only occurrence skips it.
                 if !self.atmost_pos.contains(c) || self.atmost_neg.contains(c) {
+                    // NQ is exactly `≥(n+1) role.filler` in every model (see
+                    // below), so it is the same concept as a source occurrence
+                    // of that restriction: share one definer with it, in both
+                    // definition orders (docs/NOMINALS-CB.md section 8). Two
+                    // names for one restriction give two Skolem successor
+                    // families that the at-most clauses must then identify
+                    // pairwise.
+                    let complement = Concept::AtLeast(*n + 1, role.clone(), filler.clone());
+                    let shared = if self.share_equal_restrictions {
+                        self.cached_definer(&complement)
+                    } else {
+                        None
+                    };
+                    if let Some(existing) = shared {
+                        let px = Atom::Concept(existing, x.clone());
+                        self.clauses.push(clause([], [qx.clone(), px.clone()]));
+                        self.clauses.push(clause([qx, px], []));
+                        return;
+                    }
                     let nq = self.fresh();
+                    if self.share_equal_restrictions {
+                        self.reified.insert(complement, nq.clone());
+                    }
                     self.record_definer(&nq, DefinerKind::Not, vec![q.to_string()], None, None);
                     if self.card {
                         // Recognition proxy `NQ ≡ ¬q ≡ ≥(n+1) role.filler`: the
@@ -1552,6 +1603,71 @@ mod tests {
         let mut cf = Clausifier::new();
         cf.q(&mk());
         assert!(has_recognition(&cf), "unseen ≤1 must emit recognition");
+    }
+
+    impl Clausifier {
+        fn sharing() -> Self {
+            Clausifier { share_equal_restrictions: true, ..Clausifier::new() }
+        }
+    }
+
+    /// Without `KM_MECHANISM=cb` the clause set is unchanged.
+    #[test]
+    fn equal_restrictions_keep_separate_definers_by_default() {
+        let r = || Role::Name("r".to_string());
+        let f = || Box::new(Concept::Name("F".to_string()));
+        let mut cf = Clausifier::new();
+        cf.share_equal_restrictions = false;
+        let p = cf.q(&Concept::AtLeast(1, r(), f()));
+        assert_ne!(cf.q(&Concept::Exists(r(), f())), p);
+        let before = cf.counter;
+        cf.q(&Concept::AtMost(0, r(), f()));
+        assert_eq!(cf.counter, before + 2, "fresh at-most and fresh complement");
+    }
+
+    /// The complement of `≤n r.F` and a source `≥(n+1) r.F` share one definer
+    /// in either order, and `∃r.F` shares one with `≥1 r.F`
+    /// (docs/NOMINALS-CB.md section 8).
+    #[test]
+    fn equal_restrictions_share_one_definer() {
+        let r = || Role::Name("r".to_string());
+        let f = || Box::new(Concept::Name("F".to_string()));
+        let at_most = |n| Concept::AtMost(n, r(), f());
+        let at_least = |n| Concept::AtLeast(n, r(), f());
+        let excluded_middle = |cf: &Clausifier, q: &str| -> Vec<String> {
+            cf.clauses
+                .iter()
+                .filter(|cl| cl.body.is_empty() && cl.head.len() == 2)
+                .flat_map(|cl| cl.head.iter())
+                .filter_map(|a| match a {
+                    Atom::Concept(name, _) if name != q => Some(name.clone()),
+                    _ => None,
+                })
+                .collect()
+        };
+        for n in [0, 1, 2] {
+            // at-least first
+            let mut cf = Clausifier::sharing();
+            let p = cf.q(&at_least(n + 1));
+            let q = cf.q(&at_most(n));
+            assert_eq!(excluded_middle(&cf, &q), vec![p.clone()], "n={n}");
+            assert_eq!(cf.counter, 2, "no fresh complement for n={n}");
+            // at-most first: a later at-least reuses the complement
+            let mut cf = Clausifier::sharing();
+            let q = cf.q(&at_most(n));
+            let nq = excluded_middle(&cf, &q);
+            assert_eq!(nq.len(), 1);
+            assert_eq!(cf.q(&at_least(n + 1)), nq[0], "n={n}");
+        }
+        let mut cf = Clausifier::sharing();
+        let p = cf.q(&at_least(1));
+        assert_eq!(cf.q(&Concept::Exists(r(), f())), p);
+        let mut cf = Clausifier::sharing();
+        let p = cf.q(&Concept::Exists(r(), f()));
+        assert_eq!(cf.q(&at_least(1)), p);
+        // ≤0 r.F's complement is ∃r.F's definer through the ≥1 alias.
+        let q = cf.q(&at_most(0));
+        assert_eq!(excluded_middle(&cf, &q), vec![p]);
     }
 
     /// Absorption: a negation that occurs only positively (e.g. `X ⊑ ¬A`) keeps

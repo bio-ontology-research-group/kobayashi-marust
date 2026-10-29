@@ -492,3 +492,99 @@ also cleared `KM_SEQ_ORDER` and `KM_NO_SEQ_ORDER`, so neither had any effect
 on `km classify` with an explicit or automatically selected route. A value
 the user sets is now kept by every bundle that does not set one of the two
 keys itself (`seq_on` and `seq_off` decide on their own).
+
+## 8. One definer for equal cardinality and existential restrictions
+
+The recognition direction of `≤n r.F` (emitted when the restriction may occur
+negatively) introduces `NQ` for its complement:
+
+    → Q(x) ∨ NQ(x)        Q(x) ∧ NQ(x) → ⊥
+    NQ(x) → r(x, g_i(x))  NQ(x) → F(g_i(x))   (i = 0..n)
+    NQ(x) ∧ g_i(x) ≈ g_j(x) → ⊥               (i < j)
+
+and `Q`'s own clause gives `Q ⊑ ≤n r.F`. Before v1.5.5 `NQ` was always fresh,
+even when the clause set already had a definer `P` for the source restriction
+`≥(n+1) r.F` (same role, same filler name `F`, which `q` shares). The CB
+engine then saw two names and two Skolem successor families for one concept,
+and its at-most clauses had to identify them pairwise in every context.
+
+The clausifier now keys `NQ` in the structural cache under
+`≥(n+1) r.F`: if `P` exists, it emits only `→ Q(x) ∨ P(x)` and
+`Q(x) ∧ P(x) → ⊥`; otherwise it creates `NQ` as before and a later occurrence
+of `≥(n+1) r.F` reuses it.
+
+Exactness. Write `C` for `≥(n+1) r.F`, read with the clause set's own
+interpretation of the filler name `F`.
+
+1. In every model `I` of the old clause set `NQ^I = C^I`: `NQ ⊑ C` by the
+   witness clauses, and `¬NQ ⊑ Q ⊑ ≤n r.F = ¬C` by the excluded middle and
+   `Q`'s at-most clause.
+2. New to old: a model of the new set is a model of the old set with
+   `NQ := P` and `g_i := f_P_i`, since the old `NQ` clauses are the new `P`
+   clauses renamed.
+3. Old to new: given a model `I` of the old set, set `P := NQ^I = C^I` and,
+   on elements of `NQ^I \ P^I`, `f_P_i := g_i`. `P`'s witness and
+   distinctness clauses hold there by the `NQ` clauses, its recognition clause
+   (if any) holds because `P` is now all of `C`, the excluded-middle pair holds
+   by (1), and every clause with `P` in its head still holds, since `P` only
+   grew. A clause with `P` in its body is either that pair or comes from a
+   negative occurrence of `C`, and a negative occurrence always gets the
+   recognition clause (`n + 1 = 1`, or the polarity pre-pass saw it negative),
+   so `P^I` was already `C^I` and nothing changes for it.
+4. The reverse order (the at-most first, `≥(n+1) r.F` later) is the same
+   argument with the roles of `NQ` and the fresh `P` swapped; by (1) `NQ` is
+   already exactly `C`, so it serves both a positive and a negative later
+   occurrence.
+
+The same cache serves `∃r.F` and `≥1 r.F`, which are one concept. Both
+definitions emit the same clauses: `Q → r(x, f(x))`, `Q → F(f(x))` and the
+recognition `r(x, y) ∧ F(y) → Q`, which both arms emit unconditionally (under
+native cardinality the `≥1` witnesses go through `CardMeta` instead, the same
+restriction). Whichever spelling comes first defines `Q`; the other reuses it.
+Then the models are literally the same up to the name of the definer and its
+Skolem function, and the `≤0 r.F` complement above finds the existential's
+definer through this alias.
+
+So the clause sets before and after have the same models up to the fresh
+names, hence the same consistency, subsumptions and unsatisfiable classes.
+Only clauses over fresh symbols change; no calculus rule changes, so no Lean
+re-certification. With `KM_HT_CARD` the shared `P` keeps its own `CardMeta`;
+the skipped `NQ` pushes none.
+
+Scope. The sharing is enabled only when `KM_MECHANISM=cb` (the `nominals`,
+`seq_on`, `cb_*` and other CB-only route bundles), whose only consumer of the
+clause set is the CB engine. Other mechanisms get the clause set unchanged.
+Reason: the HT translation (`ht_general`) misses a consequence of the shared
+shape, and it misses the same consequence on head without this change when the
+source spells the shape out:
+
+    EquivalentClasses(:Has DataMinCardinality(1 :d))
+    EquivalentClasses(:Two DataMinCardinality(2 :d))
+    EquivalentClasses(:No ObjectComplementOf(:Has))
+    EquivalentClasses(:AtMostOne ObjectComplementOf(:Two))
+
+`No ⊑ AtMostOne` follows from `Two ⊑ Has`, but `KM_ROUTE=ht_general` reports
+only `Two ⊑ Has` (head 9cf7c2cd and this change alike). That is an open HT
+completeness defect, not a property of the encoding; once it is fixed the gate
+can go.
+
+Effect. The forced `nominals` route on the 26 data-range probes of
+`tests/empty_and_universal_data_ranges.rs` hit both patterns after v1.5.4
+began parsing `rdfs:Literal` qualifiers as the unqualified restriction
+(2179c50c, 4f0cdc54). For example `Exact1 ≡ DataExactCardinality(1 d
+rdfs:Literal)` now becomes `Q_0 ⊓ Q_5`, sharing `Has`'s `≥1 d` and
+`AtMostOne`'s `≤1 d`, while the complements of `No ≡ ≤0 d` and
+`AtMostOne ≡ ≤1 d` were fresh copies of `≥1 d` and `≥2 d`; and
+`NotAll ≡ ¬∀d.¬rdfs:Literal` normalises to `∃d.⊤`, a second name for `Has`.
+v1.5.3 was faster on several of these inputs only because it kept
+`rdfs:Literal` as an opaque label, and it answered 23 of the 26 incompletely
+(for example it missed `Exact1 ⊑ AtMostOne`, `All ⊑ No` and the
+unsatisfiability of `Min1`). Given the same clause set (`lit_Exact1`, or the
+v1.5.3 frontend on the unqualified spelling `DataExactCardinality(1 d)`), the
+v1.5.3 engine needed the same time as head, so the engine did not regress.
+With the shared definers every probe classifies in at most 0.6 s with
+`KM_SEQ_ORDER=1` and 1.0 s in the default regime (head: 8.8 s and 29.3 s), with
+unchanged answers. Under `KM_MECHANISM=cb`, of 126 test fixtures one
+(`isolated_list_rules.ofn`) changes its clause set (two duplicate `∃`/`≥1`
+definers fewer), with the same classification; without it no clause set
+changes. Measurements are in `results/agents/2026-10-29/nominal-perf/`.
