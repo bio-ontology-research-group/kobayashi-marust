@@ -142,8 +142,12 @@ published `CONSISTENT` on an inconsistent ontology. 205 alone is six of the
 seven points. The remaining large deltas (1673, 1938, 11005, 10754, 5289,
 15226) are the policy's `certified_nominals` choice, inside the policy
 contract. Local side-by-side timing of the two PGO binaries on the same
-core confirms this attribution and shows no slowdown on small inputs; the
-small-input gap seen on Ibex (0.10 s to 0.14 s mean over 317 inputs) is
-under investigation. The Konclude clause of G8 cannot be judged without a
+core confirms this attribution and shows no slowdown on small inputs; an
+Ibex micro-benchmark (job 54802114, six repetitions of three small inputs
+per binary on one node) gives identical means for both binaries (0.0437 s
+against 0.0440 s on 10053), so the small-input gap of the protocol runs
+(0.10 s to 0.14 s mean over 317 inputs) is scheduling noise, not the
+binary. The same job reproduces the rules-consistency worker cost on 7278
+and 3726 (3.4 s to 21.1 s) and no difference on 8911. The Konclude clause of G8 cannot be judged without a
 same-day Konclude run; against the 2026-10-04 Konclude run v1.5.4 verifies
 more inputs (558 against 554) and is slower in the mean.
