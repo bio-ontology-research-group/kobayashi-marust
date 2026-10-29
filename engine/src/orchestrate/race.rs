@@ -750,6 +750,20 @@ pub fn elc_portfolio_threads(cfg: &Config) -> Option<usize> {
 /// HT is SOUND on this fragment; route iff the cb_to_ht encoding is faithful
 /// (nothing fenced/dropped) and there are no inverse roles and no nominals.
 /// Number restrictions (ALCQ) ARE allowed. Port of `_ht_routable`.
+/// Clauses and fenced constructs the HT conversion could not represent
+/// exactly, when `KM_HT_FORCE` (the `ht_general` measurement bundle) ran the
+/// worker on an input outside every HT publication gate. The worker's answer
+/// then omits them, so they are published as dropped, which a forced route
+/// turns into a refusal (`orchestrate::classify_with_evidence_mode`). Zero
+/// whenever a gate admitted the input, so no other HT path changes.
+fn forced_ht_bypass_drops(tin: &cb_to_ht::TInput) -> usize {
+    if std::env::var_os("KM_HT_FORCE").is_some() && !ht_routable(tin) {
+        tin.dropped + tin.fenced.len()
+    } else {
+        0
+    }
+}
+
 fn ht_routable(tin: &cb_to_ht::TInput) -> bool {
     if !tin.fenced.is_empty() || tin.dropped != 0 {
         return false;
@@ -2928,8 +2942,13 @@ pub fn run_ht_only(
     clauses_path: &Path,
     named: &std::collections::HashSet<String>,
 ) -> Result<EngineOut, OrchestrateError> {
-    let Some((mut child, mut out_path, _, _, _, _, mut proxy_abox_certificate, _)) =
-        spawn_ht(cfg, clauses_path, named)
+    let Some(prepared) = prepare_ht(cfg, clauses_path, named) else {
+        return Err(OrchestrateError::OutOfFragment(
+            "ontology is outside the selected HT mechanism's structural gate".into(),
+        ));
+    };
+    let bypass_drops = forced_ht_bypass_drops(&prepared.tin);
+    let Some((mut child, mut out_path, _, _, _, _, mut proxy_abox_certificate, _)) = prepared.launch()
     else {
         return Err(OrchestrateError::OutOfFragment(
             "ontology is outside the selected HT mechanism's structural gate".into(),
@@ -2972,7 +2991,9 @@ pub fn run_ht_only(
             return Err(OrchestrateError::OutOfFragment(
                 "compact native output cannot bypass proxy ABox verification".into()));
         }
-        return super::parse_out_path(out_path.path());
+        let mut out = super::parse_out_path(out_path.path())?;
+        out.dropped += bypass_drops;
+        return Ok(out);
     }
     let output = File::open(out_path.path())?;
     let mut parsed: TOutput = serde_json::from_reader(BufReader::new(output)).map_err(|error| {
@@ -2993,7 +3014,9 @@ pub fn run_ht_only(
     if let Some(certificate) = &proxy_abox_certificate {
         proxy_abox_filter_output(certificate, &mut parsed);
     }
-    Ok(tableau_to_out(parsed))
+    let mut out = tableau_to_out(parsed);
+    out.dropped += bypass_drops;
+    Ok(out)
 }
 
 /// Run the narrowly routed SHOQ worker in this process.
@@ -3166,14 +3189,17 @@ pub fn run_ht_general_in_process(
             ordinary_ht_workers(tin.clauses.len(), avail_cpus()).to_string(),
         );
     }
+    let bypass_drops = forced_ht_bypass_drops(&tin);
     let result = crate::tableau::run_producer_input_typed(tin).map_err(|error| {
         OrchestrateError::OutOfFragment(format!("selected general HT mechanism deferred ({error})"))
     })?;
-    Ok(tableau_to_out(TOutput {
+    let mut out = tableau_to_out(TOutput {
         consistent: result.consistent,
         subsumptions: result.subsumptions,
         unsatisfiable: result.unsatisfiable,
-    }))
+    });
+    out.dropped += bypass_drops;
+    Ok(out)
 }
 
 /// Run the exact native completion bridge over the typed frontend payload in
