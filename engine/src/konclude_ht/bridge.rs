@@ -3158,6 +3158,12 @@ impl<'a> Builder<'a> {
     /// role; the completion routes it through `apply_atmost_rule` →
     /// `ht_apply_atmost_merge` (merge excess successors, else clash).
     fn atmost(&mut self, role: RoleId, n: Cint64) -> ConceptId {
+        if n == 0 {
+            // `≤0 R.⊤ ≡ ∀R.⊥`, built as Konclude's builder does (see
+            // `atmost_q`).
+            let bottom = self.bottom();
+            return self.all(role, (bottom, false));
+        }
         let tag = self.fresh_tag();
         let mut c = Concept::new();
         c.set_concept_tag(tag);
@@ -3169,7 +3175,16 @@ impl<'a> Builder<'a> {
     }
     /// Qualified `≤n R.C` — `CCATMOST` with parameter `n` and qualifier
     /// operand `C` (the at-most merge counts only `C`-successors).
+    ///
+    /// `≤0 R.C` is built as `∀R.¬C`, as Konclude's ontology builder does. The
+    /// ported saturation and completion only count the `R`-successors a node
+    /// links to, so a `CCATMOST` with parameter 0 never saw a predecessor
+    /// reached over the inverse of `R`: `D ⊑ ∃s.⊤` with `⊤ ⊑ ≤0 s⁻.D` left
+    /// `D` satisfiable. The universal propagates to predecessors.
     fn atmost_q(&mut self, role: RoleId, n: Cint64, filler: (ConceptId, bool)) -> ConceptId {
+        if n == 0 {
+            return self.all(role, (filler.0, !filler.1));
+        }
         let tag = self.fresh_tag();
         let mut c = Concept::new();
         c.set_concept_tag(tag);
@@ -3182,7 +3197,13 @@ impl<'a> Builder<'a> {
     }
     /// Qualified `≥n R.C` — `CCATLEAST` with parameter `n` and qualifier
     /// operand `C` (creates `n` pairwise-distinct `C`-successors).
+    ///
+    /// `≥1 R.C` is built as `∃R.C`, so its negation is `∀R.¬C` rather than a
+    /// `≤0` count with the predecessor gap described at `atmost_q`.
     fn atleast_q(&mut self, role: RoleId, n: Cint64, filler: (ConceptId, bool)) -> ConceptId {
+        if n == 1 {
+            return self.some(role, filler);
+        }
         let tag = self.fresh_tag();
         let mut c = Concept::new();
         c.set_concept_tag(tag);
