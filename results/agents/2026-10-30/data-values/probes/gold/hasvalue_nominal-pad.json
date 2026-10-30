@@ -1,0 +1,8 @@
+{
+  "ontology": "hasvalue_nominal-pad.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["E", "C"]
+  ],
+  "unsatisfiable": []
+}

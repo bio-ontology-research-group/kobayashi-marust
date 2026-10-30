@@ -1,0 +1,8 @@
+{
+  "ontology": "functional_merge_equal-pad.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["E", "D"]
+  ],
+  "unsatisfiable": []
+}

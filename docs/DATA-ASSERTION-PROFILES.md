@@ -117,8 +117,13 @@ functional or inverse-functional object properties, object `≤n`, nominals):
 is inconsistent (`a = b`), but per subject both values are the first of
 their profile and would share a representative. Disjoint data properties
 see the identity of a value across two properties, and keys see it across
-individuals. These inputs keep the plain conversion when it fits the cap,
-and otherwise publish the uncarried assertions as dropped.
+individuals. These inputs keep the plain conversion when it fits the cap.
+Above the cap they published the uncarried assertions as dropped axioms
+until v1.5.4; since v1.5.5 they keep every literal's identity under the
+linear relation form (DATATYPES.md, "Exact data values without a literal
+cap"), so the cap only chooses between two exact encodings.
 
-Negative data-property assertions are never converted; they stay uncarried
-and are published as dropped axioms, independently of the abstraction.
+Negative data-property assertions `¬u(a, v)` are carried as `a : ¬∃u.{v}`
+since v1.5.5 (until v1.5.4 they stayed uncarried and were published as
+dropped axioms). They observe the identity of `v`, so they block the
+profile abstraction.

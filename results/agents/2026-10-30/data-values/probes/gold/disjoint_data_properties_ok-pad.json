@@ -1,0 +1,8 @@
+{
+  "ontology": "disjoint_data_properties_ok-pad.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["E", "D"]
+  ],
+  "unsatisfiable": []
+}

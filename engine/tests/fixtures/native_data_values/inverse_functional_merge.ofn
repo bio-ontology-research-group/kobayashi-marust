@@ -1,0 +1,12 @@
+Prefix(:=<http://example.org/t#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://example.org/t>
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(Class(:D)) Declaration(Class(:E)) Declaration(Class(:F))
+Declaration(DataProperty(:u)) Declaration(DataProperty(:w)) Declaration(DataProperty(:v)) Declaration(DataProperty(:pad))
+Declaration(ObjectProperty(:r))
+Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:x))
+Declaration(ObjectProperty(:s)) InverseFunctionalObjectProperty(:s) SubClassOf(owl:Thing DataMaxCardinality(1 :u))
+ObjectPropertyAssertion(:s :a :x) ObjectPropertyAssertion(:s :b :x)
+DataPropertyAssertion(:u :a "k1") DataPropertyAssertion(:u :b "k2")
+)
