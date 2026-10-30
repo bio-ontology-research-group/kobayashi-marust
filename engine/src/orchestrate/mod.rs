@@ -17,6 +17,7 @@ pub mod explain;
 pub mod features;
 mod flat_nf1;
 pub mod frontend_run;
+mod inert_sorts;
 pub mod input;
 pub mod mirror;
 mod abox_quotient;
@@ -3567,7 +3568,7 @@ fn rules_consistency(
     }
     let timing = std::env::var_os("KM_TIMING").is_some();
     let started = std::time::Instant::now();
-    let input: JInput = serde_json::from_reader(BufReader::new(File::open(clauses_path)?))?;
+    let mut input: JInput = serde_json::from_reader(BufReader::new(File::open(clauses_path)?))?;
     // Finite grounding can erase every executable rule when no source data
     // value matches its body. The original-rule/model check is still needed
     // before publishing the class projection in that case.
@@ -3587,6 +3588,23 @@ fn rules_consistency(
         );
     }
     let named: HashSet<String> = meta.named.iter().cloned().collect();
+    // The sort encoding branches on `Q_⊤(x) → Q(x) ∨ D(x)` at every node for
+    // a definer `Q` no clause reads on a data element; release those sorts
+    // (same models up to the internal definers on data elements, so the same
+    // verdict; `inert_sorts`). `KM_RULES_KEEP_INERT_SORTS=1` keeps them.
+    if std::env::var_os("KM_RULES_KEEP_INERT_SORTS").is_none() {
+        let released = inert_sorts::release_inert_object_sorts(&mut input, |name| {
+            named.contains(name) || meta.iri_map.contains_key(name)
+        });
+        if timing && !released.concepts.is_empty() {
+            eprintln!(
+                "KM_TIMING rules-consistency released {} inert object sort(s): {} fact(s) unrelativized, {} sort clause(s) removed",
+                released.concepts.len(),
+                released.facts,
+                released.sort_clauses,
+            );
+        }
+    }
     // rbox is deliberately NOT threaded here (`None`): this is the validated
     // 2669/15516 precheck configuration. The rbox side channel only feeds the
     // fast-Ht first-class role machinery and, crucially, its inverse records
