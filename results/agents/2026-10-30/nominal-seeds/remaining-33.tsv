@@ -1,0 +1,33 @@
+m2009.ofn	BRIDGE-DATATYPE-DEFER: a datatype value lacks its singleton equality clause
+m2023.ofn	BRIDGE-DATATYPE-DEFER: a datatype value lacks its singleton equality clause
+m2025.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2030.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2047.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2065.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2073.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2091.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2100.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2118.ofn	BRIDGE-DATATYPE-DEFER: a data role occurs outside an exact datatype or object-domain axiom; source_axiom=3 val
+m2123.ofn	BRIDGE-DATATYPE-DEFER: a datatype value lacks its singleton equality clause
+m2138.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2157.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2169.ofn	BRIDGE-DATATYPE-DEFER: a datatype value lacks its exact range membership
+m2191.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2195.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2205.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2227.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2230.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2242.ofn	BRIDGE-DATATYPE-DEFER: a data role occurs outside an exact datatype or object-domain axiom; source_axiom=1 val
+m2244.ofn	BRIDGE-DATATYPE-DEFER: a datatype value pair is neither proved equal nor disjoint
+m2252.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2255.ofn	BRIDGE-DATATYPE-DEFER: a datatype value lacks its singleton equality clause
+m2263.ofn	BRIDGE-DATATYPE-DEFER: a datatype value lacks membership in its present family range
+m2276.ofn	BRIDGE-DATATYPE-DEFER: a data role occurs outside an exact datatype or object-domain axiom; source_axiom=1 val
+m2287.ofn	BRIDGE-DATATYPE-DEFER: a datatype value lacks its singleton equality clause
+m2311.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2331.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2345.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2349.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2371.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2386.ofn	BRIDGE-DATATYPE-DEFER: a datatype value pair is neither proved equal nor disjoint
+m2394.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map

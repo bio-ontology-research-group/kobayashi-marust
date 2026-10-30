@@ -1,0 +1,29 @@
+KM_TIMING mark: validate_user_input done
+KM_TIMING mark: second source check done
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING ABox quotient not built: site 1
+KM_TIMING mirror-route: declined by lexical prefilter: bytes=2462363 complements_below=0
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.14s cached=false sidecar=false
+KM_TIMING frontend: 6124 data-property assertion(s) not carried; re-running with the DataHasValue conversion
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.51s cached=false sidecar=false
+KM_TIMING mark: second source check done
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.26s cached=false sidecar=false
+KM_TIMING frontend done @ 0.83s route=ht_bridge
+KM_TIMING spawn_ht: read+convert 1683 clauses (ht_view=1683) in 0.02s
+KM_TIMING bounded bridge-first declined @ 10.48s: out of fragment: speculative native bridge attempt deferred or exceeded its budget
+KM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false
+KM_TIMING frontend done @ 10.48s route=certified_nominals
+KM_TIMING nominal CB input: released 20 inert object sort(s): 20 fact(s) unrelativized, 20 sort clause(s) removed; eliminated 0 universal definer(s): 0 clause(s) and 0 body atom(s) dropped
+KM_TIMING spawn_ht: read+convert 32744 clauses (ht_view=2496) in 0.08s
+KM_TIMING race: synchronous bridge classes=227 typed_nominal=true cb_threads=1
+KM_TIMING race: HT worker spawned @ 0.20s after the CB stack started
+KM_TIMING nominal CB input: released 20 inert object sort(s): 20 fact(s) unrelativized, 20 sort clause(s) removed; eliminated 0 universal definer(s): 0 clause(s) and 0 body atom(s) dropped
+KM_TIMING race: HT worker exited @ 142.62s (success=true)
+KM_TIMING race: read_tout done @ 142.62s
+KM_TIMING engine block done @ 154.48s (subs_keys=206)
+KM_TIMING mark: output mapping done
+KM_TIMING mark: classify_json returned
+KM_TIMING mark: output written

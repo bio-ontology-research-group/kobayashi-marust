@@ -1,0 +1,11 @@
+Prefix(:=<http://e.org/p#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://e.org/p/opaque_single>
+Declaration(DataProperty(:u))
+Declaration(DataProperty(:pad))
+Declaration(DataProperty(:p))
+Declaration(NamedIndividual(:z))
+DataPropertyAssertion(:p :z "abc")
+NegativeDataPropertyAssertion(:p :z "abc"^^xsd:token)
+)

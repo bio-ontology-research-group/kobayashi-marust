@@ -1,0 +1,135 @@
+ore_ont_10285	dev17	rc=0	wall=0.08	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_10320	dev17	rc=0	wall=0.32	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_10009	dev17	rc=0	wall=0.46	dropped=0	route=certified_nominals		k=T,h=T,o=T,j=T
+ore_ont_10425	dev17	rc=0	wall=1.78	dropped=0	route=ht_bridge	bounded_bridge-first_accepted	k=T,h=T,o=T,j=T
+ore_ont_10781	dev17	rc=0	wall=0.66	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T
+ore_ont_10702	dev17	rc=0	wall=2.73	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_10952	dev17	rc=0	wall=0.69	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=T
+ore_ont_11016	dev17	rc=0	wall=0.38	dropped=0	route=manual		k=T,h=T,o=T,j=F
+ore_ont_10230	dev17	rc=0	wall=6.46	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_11305	dev17	rc=0	wall=0.69	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=T
+ore_ont_11592	dev17	rc=0	wall=0.11	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_12112	dev17	rc=0	wall=0.11	dropped=0	route=certified_nominals		k=T,h=T,o=T,j=T
+ore_ont_11126	dev17	rc=0	wall=2.92	dropped=0	route=ht_bridge	bounded_bridge-first_accepted	k=T,h=T,o=T,j=T
+ore_ont_10929	dev17	rc=0	wall=5.47	dropped=0	route=ht_bridge	ABox_quotient_accepted	k=T,h=T
+ore_ont_12182	dev17	rc=0	wall=0.33	dropped=0	route=manual	ABox_quotient_accepted	k=T,h=T,o=T
+ore_ont_12323	dev17	rc=0	wall=0.22	dropped=0	route=certified_nominals		k=T,h=T,o=T,j=T
+ore_ont_12174	dev17	rc=0	wall=1.51	dropped=0	route=ht_bridge	bounded_bridge-first_accepted	k=T,h=T,o=T,j=T
+ore_ont_12369	dev17	rc=0	wall=0.48	dropped=0	route=certified_nominals		k=T,h=T,o=T,j=T
+ore_ont_12948	dev17	rc=0	wall=0.24	dropped=0	route=certified_nominals		k=T,h=T,o=T,j=F
+ore_ont_12925	dev17	rc=0	wall=0.51	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_13132	dev17	rc=0	wall=0.11	dropped=0	route=certified_nominals		k=T,h=T,o=T,j=T
+ore_ont_12916	dev17	rc=0	wall=1.43	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=T
+ore_ont_13153	dev17	rc=0	wall=0.65	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=T
+ore_ont_13383	dev17	rc=0	wall=0.33	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_1342	dev17	rc=0	wall=0.08	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=T
+ore_ont_13526	dev17	rc=0	wall=0.71	dropped=0	route=ht_bridge	ABox_quotient_accepted	k=T,o=T,j=T
+ore_ont_13799	dev17	rc=0	wall=0.42	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_13230	dev17	rc=0	wall=2.79	dropped=0	route=ht_bridge	bounded_bridge-first_accepted	k=T,h=T,o=T,j=F
+ore_ont_13805	dev17	rc=0	wall=0.17	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_13898	dev17	rc=0	wall=0.4	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_13912	dev17	rc=0	wall=0.24	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=T
+ore_ont_1430	dev17	rc=0	wall=0.48	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_14321	dev17	rc=0	wall=0.21	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=T
+ore_ont_14334	dev17	rc=0	wall=2.22	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_1422	dev17	rc=0	wall=4.79	dropped=0	route=certified_nominals		k=T,h=T,o=T
+ore_ont_14860	dev17	rc=0	wall=1.14	dropped=0	route=ht_bridge	bounded_bridge-first_accepted	k=T,h=T,o=T,j=F
+ore_ont_15103	dev17	rc=0	wall=0.32	dropped=0	route=certified_nominals		k=T,h=T,o=T,j=T
+ore_ont_15288	dev17	rc=0	wall=2.67	dropped=0	route=ht_bridge	bounded_bridge-first_accepted	k=T,h=T,o=T,j=T
+ore_ont_1555	dev17	rc=0	wall=1.27	dropped=0	route=ht_bridge	bounded_bridge-first_accepted	k=T,h=T,o=T
+ore_ont_15575	dev17	rc=0	wall=0.33	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_15596	dev17	rc=0	wall=0.1	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_15655	dev17	rc=0	wall=5.53	dropped=0	route=ht_bridge	bounded_bridge-first_accepted	k=T,h=T,o=T,j=F
+ore_ont_15871	dev17	rc=0	wall=0.53	dropped=0	route=ht_bridge	bounded_bridge-first_accepted	k=T,h=T,o=T,j=F
+ore_ont_16191	dev17	rc=0	wall=0.23	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_16197	dev17	rc=0	wall=0.04	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_14551	dev17	rc=0	wall=36.27	dropped=0	route=manual		k=T,j=F
+ore_ont_16371	dev17	rc=0	wall=24.92	dropped=0	route=manual		k=T,h=T,o=T,j=F
+ore_ont_16481	dev17	rc=0	wall=1.49	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_10517	dev17	rc=0	wall=106.92	dropped=0	route=certified_nominals		k=T,h=T,o=T,j=T
+ore_ont_16670	dev17	rc=0	wall=0.19	dropped=0	route=certified_nominals		k=T,h=T,o=T,j=T
+ore_ont_1672	dev17	rc=0	wall=0.59	dropped=0	route=ht_bridge	bounded_bridge-first_accepted	k=T,h=T,o=T,j=T
+ore_ont_1685	dev17	rc=0	wall=0.42	dropped=0	route=ht_bridge	ABox_quotient_accepted	k=T,o=T,j=T
+ore_ont_16853	dev17	rc=0	wall=0.35	dropped=0	route=production_all	ABox_quotient_accepted	k=T,h=T,o=T,j=T
+ore_ont_178	dev17	rc=0	wall=0.05	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=T
+ore_ont_16666	dev17	rc=0	wall=61.05	dropped=0	route=certified_nominals		k=T,o=T,j=F
+ore_ont_1866	dev17	rc=0	wall=0.12	dropped=0	route=certified_nominals		k=T,h=T,o=T,j=T
+ore_ont_1931	dev17	rc=0	wall=0.25	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_2318	dev17	rc=0	wall=1.18	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=T
+ore_ont_13700	dev17	rc=124	wall=240.01	dropped=	route=certified_nominals		none
+ore_ont_2678	dev17	rc=0	wall=0.49	dropped=0	route=certified_nominals		k=T,h=T,o=T,j=T
+ore_ont_2744	dev17	rc=0	wall=0.32	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_2749	dev17	rc=0	wall=0.75	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=T
+ore_ont_16420	dev17	rc=124	wall=240.04	dropped=	route=certified_nominals		none
+ore_ont_2826	dev17	rc=0	wall=1.81	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_2837	dev17	rc=0	wall=0.04	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_2860	dev17	rc=0	wall=0.33	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_3010	dev17	rc=0	wall=1.96	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_3022	dev17	rc=0	wall=0.29	dropped=0	route=certified_nominals		k=T,h=T,o=T,j=T
+ore_ont_2792	dev17	rc=0	wall=47.24	dropped=0	route=certified_nominals		k=T,o=T,j=F
+ore_ont_3205	dev17	rc=0	wall=0.07	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_3281	dev17	rc=0	wall=0.26	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_3301	dev17	rc=0	wall=0.36	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_3503	dev17	rc=0	wall=0.39	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=T
+ore_ont_3561	dev17	rc=0	wall=4.98	dropped=0	route=ht_bridge	bounded_bridge-first_accepted	k=T,h=T,o=T,j=F
+ore_ont_3566	dev17	rc=0	wall=0.13	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_3843	dev17	rc=0	wall=0.09	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_399	dev17	rc=0	wall=1.01	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=T
+ore_ont_4032	dev17	rc=0	wall=0.25	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_4198	dev17	rc=0	wall=0.34	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=T
+ore_ont_4410	dev17	rc=0	wall=19.77	dropped=0	route=certified_nominals	ABox_quotient_accepted	k=T,h=T,o=T,j=T
+ore_ont_443	dev17	rc=0	wall=1.93	dropped=0	route=ht_bridge	bounded_bridge-first_accepted	k=T,h=T,o=T,j=T
+ore_ont_4469	dev17	rc=0	wall=0.13	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_4572	dev17	rc=0	wall=3.4	dropped=0	route=certified_nominals	ABox_quotient_accepted	k=T,h=T,o=T
+ore_ont_4719	dev17	rc=0	wall=0.08	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_4737	dev17	rc=0	wall=0.82	dropped=0	route=ht_bridge	bounded_bridge-first_accepted	k=T,h=T,o=T,j=F
+ore_ont_4775	dev17	rc=0	wall=0.26	dropped=0	route=production_all	ABox_quotient_accepted	k=T,h=T
+ore_ont_5368	dev17	rc=0	wall=1.21	dropped=0	route=ht_bridge	ABox_quotient_accepted	k=T,h=T,o=T,j=T
+ore_ont_1833	dev17	rc=124	wall=240.09	dropped=	route=certified_nominals		none
+ore_ont_5564	dev17	rc=0	wall=0.22	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_572	dev17	rc=0	wall=0.43	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=F
+ore_ont_2548	dev17	rc=124	wall=240.01	dropped=	route=certified_nominals		none
+ore_ont_5834	dev17	rc=0	wall=1.85	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_5964	dev17	rc=0	wall=1.12	dropped=0	route=manual		k=T,h=T,o=T,j=F
+ore_ont_5764	dev17	rc=0	wall=27.05	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_668	dev17	rc=0	wall=4.78	dropped=0	route=ht_bridge	bounded_bridge-first_accepted	k=T,h=T,o=T,j=F
+ore_ont_6727	dev17	rc=0	wall=0.72	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=T
+ore_ont_6855	dev17	rc=0	wall=0.05	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=T
+ore_ont_6859	dev17	rc=0	wall=0.08	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_6822	dev17	rc=0	wall=0.81	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=F
+ore_ont_6923	dev17	rc=0	wall=1.13	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=T
+ore_ont_6934	dev17	rc=0	wall=1.39	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=F
+ore_ont_6951	dev17	rc=0	wall=3.71	dropped=0	route=certified_nominals		k=T,h=T,o=T,j=T
+ore_ont_7052	dev17	rc=0	wall=0.52	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=T
+ore_ont_714	dev17	rc=0	wall=0.49	dropped=0	route=ht_rules		k=T,o=T,j=T
+ore_ont_7179	dev17	rc=0	wall=0.08	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=T
+ore_ont_7327	dev17	rc=0	wall=0.67	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_7339	dev17	rc=0	wall=0.08	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_7417	dev17	rc=0	wall=0.04	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=T
+ore_ont_7789	dev17	rc=0	wall=0.05	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_7817	dev17	rc=0	wall=0.67	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=T
+ore_ont_7828	dev17	rc=0	wall=0.77	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_7988	dev17	rc=0	wall=0.5	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_8006	dev17	rc=0	wall=0.65	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_8019	dev17	rc=0	wall=0.53	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_8030	dev17	rc=0	wall=0.47	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_8142	dev17	rc=0	wall=0.11	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_8445	dev17	rc=0	wall=16.44	dropped=0	route=certified_nominals		k=T,o=T,j=T
+ore_ont_85	dev17	rc=0	wall=0.48	dropped=0	route=certified_nominals		k=T,h=T,o=T,j=T
+ore_ont_850	dev17	rc=0	wall=3.39	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_8578	dev17	rc=0	wall=0.12	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_3077	dev17	rc=0	wall=114.95	dropped=0	route=certified_nominals		k=T,j=F
+ore_ont_8781	dev17	rc=0	wall=0.12	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_8595	dev17	rc=0	wall=0.9	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=T
+ore_ont_8941	dev17	rc=0	wall=0.14	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=F
+ore_ont_8902	dev17	rc=0	wall=1.67	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=T
+ore_ont_9096	dev17	rc=0	wall=0.89	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_9248	dev17	rc=0	wall=0.86	dropped=0	route=ht_bridge	bounded_bridge-first_(data_assertions_as_class)_accepted	k=T,h=T,o=T,j=T
+ore_ont_8989	dev17	rc=0	wall=4.56	dropped=0	route=ht_bridge	bounded_bridge-first_accepted	k=T,h=T,o=T,j=T
+ore_ont_9557	dev17	rc=0	wall=0.1	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_9666	dev17	rc=0	wall=0.03	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_9800	dev17	rc=0	wall=10.79	dropped=0	route=certified_nominals		k=T,h=T,o=T,j=F
+ore_ont_9904	dev17	rc=0	wall=0.05	dropped=0	route=manual		k=T,h=T,o=T,j=T
+ore_ont_9429	dev17	rc=0	wall=46.74	dropped=0	route=manual		k=T,j=F
+ore_ont_699	dev17	rc=0	wall=123.41	dropped=0	route=certified_nominals		k=T,j=F
+ore_ont_5548	dev17	rc=124	wall=240.01	dropped=	route=certified_nominals		none

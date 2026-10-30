@@ -556,7 +556,7 @@ pub fn lteq(o1: &Lit, o2: &Lit, root: bool, sig: &Sig) -> bool {
     // shares an individual with that atom. Only removes comparisons.
     if ground_eqn_interface_order() {
         if let (Some(e1), Some(e2)) = (ground_eqn_pair(o1), ground_eqn_pair(o2)) {
-            // Ranked R2 (docs/PER-CONTEXT-ORDERING.md section 10): an
+            // Ranked R2 (docs/PER-CONTEXT-ORDERING.md section 11): an
             // (in)equality lies below one over another pair only when its
             // larger individual is at most the other's smaller one (term id
             // as the rank; `KM_R2_MIN_RANK`: its smaller individual at most
@@ -580,7 +580,7 @@ pub fn lteq(o1: &Lit, o2: &Lit, root: bool, sig: &Sig) -> bool {
                 Pred::Concept { t, .. } => es <= *t,
                 Pred::Role { s, t, .. } => es <= *s || es <= *t,
             };
-            // Ranked R2 (section 10): an (in)equality may lie below a ground
+            // Ranked R2 (section 11): an (in)equality may lie below a ground
             // atom when its individuals are at most an individual of the
             // atom. The term-major `le` above already implies it, so
             // only the diagnostic `KM_CONTEXT_PAIR_R2` (the rule of
@@ -846,7 +846,7 @@ pub fn ground_guard_off() -> bool {
 /// committed in 7c238e52 (an equality lies below another only over the same
 /// pair, below a ground atom only when it shares an individual with it, and
 /// the guard admits it when one side is announced). Default off: the ranked
-/// R2 and the ranked guard of docs/PER-CONTEXT-ORDERING.md section 10 apply.
+/// R2 and the ranked guard of docs/PER-CONTEXT-ORDERING.md section 11 apply.
 #[inline]
 pub fn pair_r2() -> bool {
     context_flag_off(&CONTEXT_PAIR_R2, "KM_CONTEXT_PAIR_R2")

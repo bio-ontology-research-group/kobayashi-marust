@@ -1,0 +1,125 @@
+og/m2000.ofn	auto	ok	0.06	0	0	0	0	0
+og/m2002.ofn	auto	ok	0.05	0	0	0	0	0
+og/m2009.ofn	auto	ok	0.05	0	0	0	0	0
+og/m2015.ofn	auto	ok	0.07	0	0	0	0	0
+og/m2023.ofn	auto	TIMEOUT	60.06					
+og/m2025.ofn	auto	TIMEOUT	60.06					
+og/m2029.ofn	auto	ok	0.04	0	0	0	0	0
+og/m2030.ofn	auto	TIMEOUT	60.06					
+og/m2031.ofn	auto	ok	0.04	0	0	0	0	0
+og/m2035.ofn	auto	ok	0.04	0	0	0	0	0
+og/m2039.ofn	auto	ok	0.04	0	0	0	0	0
+og/m2040.ofn	auto	ok	0.04	0	0	0	0	0
+og/m2044.ofn	auto	ok	0.06	0	0	0	0	0
+og/m2046.ofn	auto	ok	0.07	0	0	0	0	0
+og/m2047.ofn	auto	TIMEOUT	60.07					
+og/m2050.ofn	auto	ok	0.04	0	0	0	0	0
+og/m2060.ofn	auto	ok	0.73	0	0	0	0	0
+og/m2063.ofn	auto	ok	0.04	0	0	0	0	0
+og/m2065.ofn	auto	TIMEOUT	60.07					
+og/m2066.ofn	auto	ok	0.07	0	0	0	0	0
+og/m2068.ofn	auto	ok	0.06	0	0	0	0	0
+og/m2069.ofn	auto	TIMEOUT	60.07					
+og/m2070.ofn	auto	ok	0.15	0	0	0	0	0
+og/m2073.ofn	auto	TIMEOUT	60.06					
+og/m2079.ofn	auto	ok	0.05	0	0	0	0	0
+og/m2082.ofn	auto	ok	0.06	0	0	0	0	0
+og/m2085.ofn	auto	ok	0.07	0	0	0	0	0
+og/m2086.ofn	auto	ok	0.04	0	0	0	0	0
+og/m2091.ofn	auto	TIMEOUT	60.07					
+og/m2095.ofn	auto	ok	0.03	0	0	0	0	0
+og/m2099.ofn	auto	ok	0.06	0	0	0	0	0
+og/m2100.ofn	auto	TIMEOUT	60.06					
+og/m2101.ofn	auto	TIMEOUT	60.06					
+og/m2102.ofn	auto	TIMEOUT	60.06					
+og/m2104.ofn	auto	ok	0.06	0	0	0	0	0
+og/m2117.ofn	auto	ok	0.06	0	0	0	0	0
+og/m2118.ofn	auto	TIMEOUT	60.06					
+og/m2123.ofn	auto	ok	0.03	0	0	0	0	0
+og/m2124.ofn	auto	ok	0.04	0	0	0	0	0
+og/m2128.ofn	auto	ok	0.02	0	0	0	0	0
+og/m2132.ofn	auto	ok	0.05	0	0	0	0	0
+og/m2138.ofn	auto	TIMEOUT	60.06					
+og/m2139.ofn	auto	ok	0.03	0	0	0	0	0
+og/m2142.ofn	auto	TIMEOUT	60.06					
+og/m2145.ofn	auto	ok	0.05	0	0	0	0	0
+og/m2146.ofn	auto	TIMEOUT	60.06					
+og/m2149.ofn	auto	TIMEOUT	60.07					
+og/m2150.ofn	auto	TIMEOUT	60.07					
+og/m2157.ofn	auto	TIMEOUT	60.07					
+og/m2158.ofn	auto	ok	0.11	0	0	0	0	0
+og/m2163.ofn	auto	TIMEOUT	60.06					
+og/m2165.ofn	auto	ok	0.05	0	0	0	0	0
+og/m2167.ofn	auto	ok	0.05	0	0	0	0	0
+og/m2169.ofn	auto	TIMEOUT	60.06					
+og/m2172.ofn	auto	ok	0.22	0	0	0	0	0
+og/m2175.ofn	auto	TIMEOUT	60.06					
+og/m2183.ofn	auto	ok	0.04	0	0	0	0	0
+og/m2190.ofn	auto	ok	0.03	0	0	0	0	0
+og/m2191.ofn	auto	TIMEOUT	60.06					
+og/m2193.ofn	auto	ok	0.11	0	0	0	0	0
+og/m2195.ofn	auto	TIMEOUT	60.06					
+og/m2198.ofn	auto	ok	0.03	0	0	0	0	0
+og/m2199.ofn	auto	ok	0.03	0	0	0	0	0
+og/m2201.ofn	auto	ok	0.06	0	0	0	0	0
+og/m2205.ofn	auto	TIMEOUT	60.07					
+og/m2215.ofn	auto	ok	0.02	0	0	0	0	0
+og/m2216.ofn	auto	TIMEOUT	60.06					
+og/m2221.ofn	auto	ok	0.04	0	0	0	0	0
+og/m2227.ofn	auto	TIMEOUT	60.06					
+og/m2228.ofn	auto	ok	0.05	0	0	0	0	0
+og/m2230.ofn	auto	TIMEOUT	60.06					
+og/m2232.ofn	auto	ok	0.05	0	0	0	0	0
+og/m2234.ofn	auto	ok	0.04	0	0	0	0	0
+og/m2237.ofn	auto	ok	0.02	0	0	0	0	0
+og/m2239.ofn	auto	TIMEOUT	60.06					
+og/m2240.ofn	auto	ok	0.03	0	0	0	0	0
+og/m2242.ofn	auto	TIMEOUT	60.06					
+og/m2243.ofn	auto	ok	0.08	0	0	0	0	0
+og/m2244.ofn	auto	TIMEOUT	60.00					
+og/m2250.ofn	auto	ok	0.02	0	0	0	0	0
+og/m2252.ofn	auto	TIMEOUT	60.05					
+og/m2255.ofn	auto	ok	0.03	0	0	0	0	0
+og/m2263.ofn	auto	TIMEOUT	60.06					
+og/m2270.ofn	auto	TIMEOUT	60.06					
+og/m2271.ofn	auto	ok	0.02	0	0	0	0	0
+og/m2276.ofn	auto	ok	1.52	0	0	0	0	0
+og/m2282.ofn	auto	ok	0.04	0	0	0	0	0
+og/m2285.ofn	auto	ok	0.09	0	0	0	0	0
+og/m2287.ofn	auto	TIMEOUT	60.05					
+og/m2288.ofn	auto	TIMEOUT	60.06					
+og/m2293.ofn	auto	ok	0.07	0	0	0	0	0
+og/m2295.ofn	auto	ok	0.04	0	0	0	0	0
+og/m2296.ofn	auto	TIMEOUT	60.02					
+og/m2298.ofn	auto	ok	0.02	0	0	0	0	0
+og/m2300.ofn	auto	ok	0.02	0	0	0	0	0
+og/m2303.ofn	auto	ok	0.06	0	0	0	0	0
+og/m2305.ofn	auto	ok	0.04	0	0	0	0	0
+og/m2311.ofn	auto	TIMEOUT	60.06					
+og/m2315.ofn	auto	ok	0.03	0	0	0	0	0
+og/m2316.ofn	auto	ok	0.04	0	0	0	0	0
+og/m2319.ofn	auto	ok	0.04	0	0	0	0	0
+og/m2320.ofn	auto	ok	0.04	0	0	0	0	0
+og/m2321.ofn	auto	ok	0.05	0	0	0	0	0
+og/m2331.ofn	auto	TIMEOUT	60.06					
+og/m2339.ofn	auto	ok	0.04	0	0	0	0	0
+og/m2341.ofn	auto	ok	0.02	0	0	0	0	0
+og/m2342.ofn	auto	TIMEOUT	60.06					
+og/m2345.ofn	auto	TIMEOUT	60.06					
+og/m2349.ofn	auto	TIMEOUT	60.06					
+og/m2354.ofn	auto	ok	0.03	0	0	0	0	0
+og/m2355.ofn	auto	ok	0.05	0	0	0	0	0
+og/m2360.ofn	auto	ok	0.03	0	0	0	0	0
+og/m2361.ofn	auto	TIMEOUT	60.01					
+og/m2363.ofn	auto	ok	0.04	0	0	0	0	0
+og/m2367.ofn	auto	ok	13.85	0	0	0	0	0
+og/m2369.ofn	auto	TIMEOUT	60.06					
+og/m2370.ofn	auto	ok	0.03	0	0	0	0	0
+og/m2371.ofn	auto	TIMEOUT	60.06					
+og/m2376.ofn	auto	TIMEOUT	60.06					
+og/m2386.ofn	auto	ok	0.04	0	0	0	0	0
+og/m2392.ofn	auto	TIMEOUT	60.06					
+og/m2393.ofn	auto	ok	0.03	0	0	0	0	0
+og/m2394.ofn	auto	TIMEOUT	60.06					
+og/m2398.ofn	auto	ok	0.04	0	0	0	0	0
+og/m2399.ofn	auto	TIMEOUT	60.06					

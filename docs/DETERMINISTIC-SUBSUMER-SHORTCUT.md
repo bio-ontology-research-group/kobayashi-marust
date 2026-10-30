@@ -110,3 +110,34 @@ fallback and each non-deterministic subject has many deterministic supers:
 `10702`, `9540`, `5303`, `1603`, `12141` and neighbours. The win is a reduced
 pairwise probe count, not a new verdict — it shrinks the search volume that
 pushes those subjects past the probe budget into a defer.
+
+## Batched refutation of the possible subsumers (2026-10-30, agent `data-values-2`)
+
+Status: implemented, default ON, disable with `KM_BRIDGE_NO_BATCH_REFUTATION=1`.
+
+Before the pairwise probes of a non-deterministic subject `s`, the bridge
+collects the candidates `c1 … ck` that would each need a probe (not a told
+or saturation-known pair, not a deterministic subsumer, not already decided
+by the KPSet state or a hierarchy countermodel) and, for `k ≥ 2`, runs one
+probe of `s ⊓ ¬c1 ⊓ … ⊓ ¬ck` (`bridged_unsat_rooted` with the negated seeds).
+A satisfiable verdict is a completion model whose root is in `s` and in no
+`ci`, so it is a countermodel of every `s ⊑ ci`; each `ci` is then recorded
+as refuted exactly as a pairwise `false` verdict would be (KPSet
+interpretation, hierarchy propagation, `refuted_here`). An unsatisfiable
+verdict or no verdict within the probe budget changes nothing: the pairwise
+probes run as before. The verdict carries the same trust as a pairwise
+non-subsumption verdict (a clash-free completion), so neither soundness nor
+completeness changes; only the number of probes does. The cost is one extra
+probe for a subject whose batch is unsatisfiable (one of its candidates is a
+subsumer).
+
+Measured on qudt-merged (GitHub issue #4): every one of its 227 subjects
+has 8 to 13 candidates defined by universal restrictions
+(`FinancialUnit ≡ ∀quantityKind.FinancialQuantityKind`), its consistency
+completion leaves 12,090 disjunctions open (so the precomputation replay is
+off) and every probe re-derives the nominal-connected ABox (about 28,900
+label insertions). Pairwise verification took 3,308 s for about 3,000
+probes; with the batch, all 187 batched probes are satisfiable, one
+pairwise probe remains, and
+verification takes 65 s. Forced `ht_bridge`: 3,379 s → 146 s; automatic
+route 156 s; 759 subsumptions, as HermiT 1.4.6 (2,340 s).

@@ -1,0 +1,1 @@
+{"ontology": "opaque_merge_tbox.ofn", "consistent": true, "subsumptions": [["A", "B"], ["B", "A"]], "unsatisfiable": []}

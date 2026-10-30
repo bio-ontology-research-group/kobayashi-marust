@@ -602,8 +602,80 @@ R2/R3 fix of 7c238e52 answered 2 of 4 (205 s). The remedy is in the CB input,
 not in the ordering: with it 9800 answers in 14 s on 4 of 4 runs
 (docs/NOMINALS-CB.md, same subsection).
 
+## 10. The data-sort marker in the order, and the stop at a global refutation (2026-10-30, agent `data-values-2`)
 
-## 10. A ranked R2 for ground equalities (2026-10-30)
+ore_ont_7610 (548 class and 1,058 property assertions, 613 data
+assertions, inconsistent: every element needs a `has_factor` successor,
+which is a `Disorder` and an `Organism ⊔ Material` at once) ran past 600 s
+on the nominal CB routes; v1.5.3 answered it in 57 s because its frontend
+did not yet emit the sort encoding (NOMINALS-CB.md section 6) for an input
+with data properties but no data value. Two changes:
+
+**Marker order.** Internal concepts are totally ordered by concept id in
+the Sequoia regimes, and ids follow first occurrence in the clause stream.
+`__data__` occurred early, so in `→ C(t) ∨ D(t)` the definer `C` was
+maximal and `D(t)` rode along in every consequence of `C(t)`: the ground
+context held 46,944 clauses after seeding, all with a `D(o)` literal that
+no rule could remove, and every r-Pred arrival paid backward subsumption
+against them. `reasoner::Builder::intern_data_sort_last` now gives the
+marker the largest id (the relative order of every other concept is
+unchanged) when the clause set mentions at least 64 individuals. On an
+individual `o`, pinned to the object sort, Hyper then resolves the maximal
+`D(o)` against `A(o)` and `A ⊓ D ⊑ ⊥` at once, and `→ C(o)` subsumes the
+relativized fact. Exactness: R1 asks for *a* total order on internal
+concepts above the named ones; the ground ordered-completeness theorem
+(`CompletenessOrdered.lean`, `ordered_completeness`) and the exchange
+theorem (`CompletenessExchange.lean`) are stated for an arbitrary
+`LinearOrder`, R2 filters ground atoms by their individuals and not by
+concept, and the id order it replaces is itself an artefact of clause
+order. The Lean terminal-state model (`CBSourceHyperClosure.lean`,
+`sameTermConceptLe`) reads the order from the same ids, so certificates
+stay consistent with it. The threshold is a speed choice between exact
+orders: the generated seed `m2313` (three individuals) takes 0.2 s with the
+first-occurrence order and 47 s with the marker last, and ore_ont_7610
+does not finish in 400 s without the change.
+
+**Stop at a global refutation.** Once the ground context, or the root
+context of `⊤`, has worked off the empty clause, the ontology is
+inconsistent and the published answer is the fixed inconsistent one
+(empty taxonomy). Saturation is monotone and the empty clause subsumes
+every clause, so `inconsistent()` cannot become false again; the remaining
+messages only add clauses elsewhere. `Engine::set_stop_on_global_refutation`
+ends `run_for` there; `Reasoner::saturate` enables it on its one-shot
+paths and keeps it off for an engine retained for a CB certificate
+(`KM_CB_LIVE_STATE`, `KM_CB_LEAN_REQUIRED`), which must stay saturated. On
+ore_ont_7610 the ground context refutes after about an eighth of the
+message work. No Lean obligation: the answer is the one the full fixpoint
+gives.
+
+ore_ont_7610: timeout at 600 s (v1.5.4, v1.5.5 before) → 38 to 63 s on the
+loaded workstation, inconsistent, as Konclude, HermiT, Openllet and JFact.
+
+**Empty-head subsumption indexes (later the same day).** After the merge of
+the nominal CB input remedy (`50bf7ba9`, released inert sorts), ore_ont_7610
+ran past 300 s again: its relativized facts become plain facts, the ground
+context still holds about 49,000 clauses, and the r-Pred arrivals there are
+mostly empty-head clauses. Backward subsumption of an empty-head clause read
+every active clause of the context (3.5·10⁹ candidates in 32,000 calls in
+the first 60 s), and forward subsumption read every active empty-head
+clause. Both scans now read, once a context's delta layer holds 4,096
+active clauses (respectively 4,096 empty-head clauses), an index built on
+demand and maintained with the active index: every active clause under each
+of its body predicates (`active_body_index`; a clause the incoming
+empty-head clause strengthens contains all of its body predicates, so it is
+in the rarest of their postings), and every empty-head clause under its
+least body predicate (`empty_head_body_index`; an empty-head clause whose
+body is a subset of the incoming body has its least body predicate in that
+body, so each candidate is visited once). The base layer is read as before.
+The candidate sets contain every clause the full scans would accept and the
+exact `strengthens` test decides, so the removed and the rejected clauses
+are the same; no calculus change, no Lean obligation.
+`KM_NO_ACTIVE_BODY_INDEX` restores the scans and `KM_ACTIVE_BODY_INDEX_MIN`
+sets the threshold (`1` exercises the indexes in every context; the
+2026-10-30 A/B runs used it). ore_ont_7610 on the engine input: more than
+200 s → 52 s; `km classify`: 64 s on the loaded workstation.
+
+## 11. A ranked R2 for ground equalities (2026-10-30)
 
 Section 8's R2 lets a ground (in)equality lie below another one only over
 the same pair, and below a ground atom only when they share an individual.
@@ -613,7 +685,7 @@ may announce only one side of the upper equality. It costs time on random
 inputs (section 8.5). Results and commands:
 `results/agents/2026-10-30/nominal-r1600/`.
 
-### 10.1 Where the cost is
+### 11.1 Where the cost is
 
 Engine-level timings on the seeds of section 8.5 (diagnostic switches that
 reopen one group of comparisons each, `KM_DIAG_EQEQ_OPEN`,
@@ -632,7 +704,7 @@ reopen one group of comparisons each, `KM_DIAG_EQEQ_OPEN`,
   6.8 s. Here the deliveries of the extended R3 cost as much as the
   comparisons.
 
-### 10.2 The ranked filter and its interface
+### 11.2 The ranked filter and its interface
 
 Enlarging the interface on the equality side lets the filter keep more.
 Fix a rank on individuals (KM: the term id) and give a receiver that
@@ -680,7 +752,7 @@ the merge subscription announces the other side.
 *Lean obligation.* The new filter and interface are mechanised as above.
 The certified CB surface still models neither R2 nor R3 (unchanged).
 
-### 10.3 Measurements
+### 11.3 Measurements
 
 `results/agents/2026-10-30/nominal-r1600/data/`, binary `km.v4` (max-rank
 default; `KM_CONTEXT_PAIR_R2=1` gives section 8's rules in the same binary).
@@ -702,7 +774,7 @@ Verdict: the ranked R2 is exact (mechanised skeleton) and orders more, but
 it is not the cheaper R2 the brief asked for. It recovers 10 of the 36 seeds
 and `r274`, is faster on the seeds both rule sets answer, and helps under
 the merge hypotheses, but it does not recover `r129`, `r673`, `r3351` or
-`fr248`. 10.1 shows why: the equality comparisons that matter for `r129` and
+`fr248`. 11.1 shows why: the equality comparisons that matter for `r129` and
 `fr248` need deliveries that cost as much as the comparisons save, since a
 receiver that gets the extra equalities derives ground atoms that ordinary
 r-Succ pushes back to the ground context as hypotheses. A cheaper exact
