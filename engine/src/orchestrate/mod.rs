@@ -3554,6 +3554,43 @@ fn clause_has_individual(clause: &crate::json_io::JClause) -> bool {
     })
 }
 
+/// Write the inert-sort release certificate (`KM_RULES_INERT_CERT`) and, when
+/// `KM_RULES_INERT_LEAN_CHECKER` names the Lean checker, require it to accept.
+/// A path ending in `.json` is the file; any other path is a directory that
+/// receives `rules-inert-<pid>-<n>.json`.
+fn write_rules_inert_certificate(
+    path: &Path,
+    original: &[crate::json_io::JClause],
+    result: &[crate::json_io::JClause],
+    released: &[String],
+    reserved: &std::collections::BTreeSet<String>,
+) -> Result<(), OrchestrateError> {
+    static NONCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let file = if path.extension().is_some_and(|ext| ext == "json") {
+        path.to_path_buf()
+    } else {
+        std::fs::create_dir_all(path)?;
+        let n = NONCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        path.join(format!("rules-inert-{}-{n}.json", std::process::id()))
+    };
+    let document = inert_sorts::release_certificate(original, result, released, reserved);
+    std::fs::write(&file, serde_json::to_vec(&document)?)?;
+    if let Some(checker) = std::env::var_os("KM_RULES_INERT_LEAN_CHECKER") {
+        let status = std::process::Command::new(&checker)
+            .arg(&file)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .map_err(|e| OrchestrateError::Spawn { bin: "rules-inert-sort-release-check".into(), source: e })?;
+        if !status.success() {
+            return Err(OrchestrateError::OutOfFragment(format!(
+                "the Lean checker rejected the inert-sort release certificate {}",
+                file.display()
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn rules_consistency(
     cfg: &Config,
     clauses_path: &Path,
@@ -3593,9 +3630,17 @@ fn rules_consistency(
     // (same models up to the internal definers on data elements, so the same
     // verdict; `inert_sorts`). `KM_RULES_KEEP_INERT_SORTS=1` keeps them.
     if std::env::var_os("KM_RULES_KEEP_INERT_SORTS").is_none() {
-        let released = inert_sorts::release_inert_object_sorts(&mut input, |name| {
-            named.contains(name) || meta.iri_map.contains_key(name)
-        });
+        let is_source = |name: &str| named.contains(name) || meta.iri_map.contains_key(name);
+        // KM_RULES_INERT_CERT=<file.json | dir>: record the release for the
+        // Lean checker (`rules-inert-sort-release-check`, theorem
+        // `WireInertSortRelease.check_sound`); KM_RULES_INERT_LEAN_CHECKER
+        // runs it and fails closed on a rejection.
+        let certificate = std::env::var_os("KM_RULES_INERT_CERT")
+            .map(|path| (path, input.clauses.clone(), inert_sorts::reserved_concepts(&input, is_source)));
+        let released = inert_sorts::release_inert_object_sorts(&mut input, is_source);
+        if let Some((path, original, reserved)) = certificate {
+            write_rules_inert_certificate(Path::new(&path), &original, &input.clauses, &released.concepts, &reserved)?;
+        }
         if timing && !released.concepts.is_empty() {
             eprintln!(
                 "KM_TIMING rules-consistency released {} inert object sort(s): {} fact(s) unrelativized, {} sort clause(s) removed",

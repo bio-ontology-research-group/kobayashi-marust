@@ -560,6 +560,66 @@ guard conditions changes it on some of them, and
 differential over finite-rule seeds and the timing table:
 `results/agents/2026-10-30/rules-worker-cost/`.
 
+Lean coverage (2026-10-30). `lean/ContextCalculus/RulesInertSortRelease.lean`
+formalises the worker's clause language (concept, role and equality atoms
+over variables, individual and auxiliary constants and unary Skolem
+functions, read as first-order clauses over a nonempty domain), the release
+exactly as `release_inert_object_sorts` computes it (`conceptSortOf`,
+`roleSortOf`, `removedSortClause`, `dropData`, `release`), and the guard
+conditions as an executable check (`guards`, `guarded`, `bodyOk` for (B),
+`headOk` for (H), `conditions`, which also requires `D ∉ P` and that no
+released concept is reserved). Proved, with no `sorry` and only `propext`,
+`Classical.choice` and `Quot.sound`:
+
+- `extend_models`: a model of the sorted set, with every released definer
+  added on every `D` element, is a model of the released set;
+- `restrict_models`: a model of the released set, with every released
+  definer removed from every `D` element, is a model of the sorted set;
+- `release_equisatisfiable`: if `conditions` accepts, the two sets are
+  satisfiable together with any side theory that reads only the reserved
+  concepts (`ReadsOnly`: it cannot tell apart two interpretations that agree
+  on the domain, roles, constants, functions and reserved concepts), in both
+  directions, so the consistent and the inconsistent verdict are both
+  preserved;
+- `WireInertSortRelease.check_sound`: an accepted certificate's worker input
+  (`result`) is equisatisfiable with its sorted clause set (`original`) in
+  that sense.
+
+The released set and the guards are not trusted: the checker recomputes the
+guard tables from `original` and requires `result` to equal
+`release original` exactly. `KM_RULES_INERT_CERT=<file.json | dir>` makes the
+orchestrator write the certificate (original clauses, released definers,
+reserved concepts, worker clauses, name tables); with
+`KM_RULES_INERT_LEAN_CHECKER` naming `rules-inert-sort-release-check` the run
+fails closed when Lean rejects it. The reserved set is every concept that
+something other than the clauses reads: cardinality and definer records, rule
+atoms, source axioms, and every name that is not a clausifier definer
+(`Q_`, `aux_`, `def_`), which covers source names, queries, built-in
+vocabulary, `__nom__` proxies, `__dt__` ranges and `D`.
+
+This is the first machine check on the rules-consistency route: the
+tableau refuses HT Lean certification under `KM_RULES_CONSISTENCY`, and the
+orchestrator's `consistency_certified` flag is not a Lean check. Both maps in
+the theorem leave every symbol outside `P` unchanged, so the reduct of a model
+to the source symbols is preserved as well, which is what the source checks
+of the `require_source_model` path read (IRI-mapped names, `__nom__`
+proxies, `__dt__` labels; released definers have no IRI). The theorem does not
+need the sort clause of a released definer to be present, and the clause
+language has no negated concept atoms or existential fillers, so a released
+definer occurs only as a positive concept atom by construction.
+
+Argued, not proved: (1) that the worker's side channels (rules, cardinality
+and definer records, datatype and nominal semantics, and the source-model
+check of the `require_source_model` path) read only the reserved concepts,
+which is the `ReadsOnly` premise; (2) that `cb_to_ht::convert` and the
+clausal `Tableau` decide satisfiability of the clauses they are given (the
+theorem is about the clause sets, and the same worker reads both); (3) the
+translation of `JTerm::Aux` terms to constants. Gate:
+`lean/run-rules-certification-gate.sh` (fixture
+`engine/tests/fixtures/rules_inert_sorts/fr373.ofn`, ore_ont_7278, the
+randomized release test with the Lean checker on every certificate, and a
+forged fixture). Results: `results/agents/2026-10-30/lean-v155-coverage/`.
+
 The duplicated frontend pass. On these inputs the frontend also runs twice
 (about 2.8 s each, nearly all of it in the finite-rule grounding): the first
 pass reports the 81 data assertions as not carried, because only the
