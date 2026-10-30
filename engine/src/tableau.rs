@@ -88,6 +88,10 @@ pub const X: Var = 0;
 #[path = "hypertableau.rs"]
 pub mod hypertableau;
 
+/// Lean certificates of rule-route answers (`KM_RULES_LEAN_CERT`).
+#[path = "tableau_rules_cert.rs"]
+pub(crate) mod rules_cert;
+
 /// A concept literal `A` or `¬A` (post-NNF, so concepts are atomic).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
 pub struct CLit {
@@ -624,6 +628,9 @@ struct ClauseInfo {
 }
 
 pub struct Tableau {
+    /// Evidence recorder for rule-route Lean certificates; `None` unless
+    /// `enable_certificates` was called.
+    cert: Option<std::sync::Mutex<rules_cert::CertSink>>,
     /// Entailed subsumptions and unsatisfiable classes `classify` takes as
     /// given (`set_known`); empty unless a caller supplies them.
     known_subsumptions: HashSet<(C, C)>,
@@ -844,6 +851,7 @@ impl Tableau {
             }
         }
         Tableau {
+            cert: None,
             clauses: infos,
             disjunctive_indices,
             lit_index,
@@ -861,6 +869,18 @@ impl Tableau {
             known_subsumptions: HashSet::default(),
             known_unsatisfiable: HashSet::default(),
         }
+    }
+
+    /// Record certificate evidence for every test (`rules_cert`). Selects the
+    /// careful expansion, whose steps the recorder follows. Fails when the
+    /// clause list was extended with contrapositives (`KM_HT_CONTRA`): the
+    /// certificate must state the input clauses.
+    pub fn enable_certificates(&mut self) -> Result<(), String> {
+        if std::env::var_os("KM_HT_CONTRA").is_some() {
+            return Err("rule-route certificates require the input clauses (unset KM_HT_CONTRA)".into());
+        }
+        self.cert = Some(std::sync::Mutex::new(rules_cert::CertSink::default()));
+        Ok(())
     }
 
     /// Entailments of the input established elsewhere (the rule-free CB
@@ -893,7 +913,7 @@ impl Tableau {
     /// `horn_saturate` (deterministic merges) rather than the fast batched
     /// `saturate`.
     fn careful(&self) -> bool {
-        self.number || self.pairwise || !self.nominals.is_empty()
+        self.number || self.pairwise || !self.nominals.is_empty() || self.cert.is_some()
     }
 
     /// Is node `s` blocked? Subset (ancestor) blocking for the inverse-free case;
@@ -1078,8 +1098,11 @@ impl Tableau {
 
     fn expand_careful(&self, g: &mut Graph, start: CarefulStart) -> bool {
         stat_expand();
-        let incremental = std::env::var_os("KM_TAB_CAREFUL_INC").is_some();
-        let ordered = std::env::var_os("KM_TAB_CAREFUL_ORDER").is_some();
+        // The certificate recorder follows the full (non-delta) saturation and
+        // the clause order of disjunction heads.
+        let incremental = !self.rec_on() && std::env::var_os("KM_TAB_CAREFUL_INC").is_some();
+        let ordered = !self.rec_on() && std::env::var_os("KM_TAB_CAREFUL_ORDER").is_some();
+        let mark = self.rec_mark();
         // Careful path (number restrictions and/or inverse roles): saturate Horn
         // *including deterministic ≈-merges* (a single-eq head is a forced
         // merge), then take ONE branching decision. The Hyp-rule branch covers
@@ -1090,9 +1113,17 @@ impl Tableau {
             CarefulStart::Full | CarefulStart::Delta(_) => self.horn_saturate(g),
         };
         if !saturated {
+            self.rec_close(mark);
             return false;
         }
         if let Some((mut head, subst, _)) = self.find_disjunctive(g) {
+            let disjunction = if self.rec_on() {
+                let ci = self.cert.as_ref().and_then(|c| c.lock().unwrap().last_disjunction.take());
+                ci.map(|ci| (ci, self.rec_asg(g, &self.clauses[ci].cl, &subst)))
+            } else {
+                None
+            };
+            let mut children = Vec::new();
             if ordered {
                 head.sort_by_key(|atom| self.immediate_existential_cost(atom));
             }
@@ -1107,7 +1138,15 @@ impl Tableau {
                 if self.expand_careful(g, next) {
                     return true;
                 }
+                if self.rec_on() {
+                    children.push(self.rec_take_last());
+                }
                 g.rollback_to(cp);
+            }
+            if let Some((ci, asg)) = disjunction {
+                self.rec_split(mark, ci, asg, children);
+            } else if self.rec_on() {
+                self.rec_close(mark); // no clause index: an invalid proof
             }
             return false;
         }
@@ -1128,6 +1167,7 @@ impl Tableau {
                         .iter()
                         .any(|&(rr, t)| rr == r && g.alive(t) && g.concepts[t].contains(&fil));
                     if !sat {
+                        self.rec_step(rules_cert::RStep::Witness { node: s, role: r, fil });
                         let t = g.new_node(Some(s), true);
                         g.add_edge(r, s, t);
                         g.add_concept(t, fil);
@@ -1136,7 +1176,11 @@ impl Tableau {
                 }
             }
             if changed {
-                return self.expand_careful(g, CarefulStart::Full);
+                let found = self.expand_careful(g, CarefulStart::Full);
+                if !found {
+                    self.rec_prepend(mark);
+                }
+                return found;
             }
             return true;
         }
@@ -1155,16 +1199,20 @@ impl Tableau {
                 if self.expand_careful(g, CarefulStart::Full) {
                     return true;
                 }
+                // A refutation needs only the fresh-successor alternative.
+                let _ = self.rec_take_last();
                 g.rollback_to(cp);
             }
             // 2. fallback branch: a fresh successor (the last alternative).
             let cp = g.checkpoint();
+            self.rec_step(rules_cert::RStep::Witness { node: s, role: r, fil });
             let t = g.new_node(Some(s), true);
             g.add_edge(r, s, t);
             g.add_concept(t, fil);
             if self.expand_careful(g, CarefulStart::Full) {
                 return true;
             }
+            self.rec_prepend(mark);
             g.rollback_to(cp);
             return false;
         }
@@ -1347,10 +1395,12 @@ impl Tableau {
                 }
                 for subst in matches {
                     if info.cl.head.is_empty() {
+                        self.rec_bottom(g, ci, &info.cl, &subst);
                         return false; // body matched, empty head ⇒ ⊥
                     }
                     let v = &info.cl.head[0];
                     if !self.head_atom_present(g, v, &subst) {
+                        self.rec_horn(g, ci, &info.cl, &subst);
                         self.add_head_atom(g, v, &subst);
                         changed = true;
                     }
@@ -1364,6 +1414,7 @@ impl Tableau {
                 changed = true;
             }
             if g.clash() {
+                self.rec_clash(g);
                 return false;
             }
             if !changed {
@@ -1389,6 +1440,11 @@ impl Tableau {
             let keep = carriers[0];
             for &other in &carriers[1..] {
                 if g.find(keep) != g.find(other) {
+                    self.rec_step(rules_cert::RStep::Nominal {
+                        concept: nc,
+                        left: g.find(keep),
+                        right: g.find(other),
+                    });
                     g.merge(keep, other);
                     merged = true;
                 }
@@ -1562,6 +1618,9 @@ impl Tableau {
                     );
                 }
                 let bdep = self.body_dep(g, &info.cl, &subst);
+                if let Some(c) = &self.cert {
+                    c.lock().unwrap().last_disjunction = Some(ci);
+                }
                 return Some((info.cl.head.clone(), subst, bdep));
             }
         }
@@ -2646,7 +2705,11 @@ impl Tableau {
                 named.len()
             );
         }
-        let consistent = self.consistent(&[]);
+        let consistent = if self.rec_on() {
+            self.cert_test(rules_cert::Claim::Inconsistent, None).is_some()
+        } else {
+            self.consistent(&[])
+        };
         if std::env::var_os("KM_TAB_STATS").is_some() {
             eprintln!("KM_TAB_STATS classify: consistent([])={}", consistent);
         }
@@ -2772,7 +2835,12 @@ impl Tableau {
                 unsat.push(a);
                 continue;
             }
-            match self.find_model(&[CLit::pos(a)]) {
+            let model = if self.rec_on() {
+                self.cert_test(rules_cert::Claim::Unsat(a), Some(a))
+            } else {
+                self.find_model(&[CLit::pos(a)])
+            };
+            match model {
                 None => {
                     cache.insert(key, false);
                     unsat.push(a)
@@ -2912,7 +2980,11 @@ impl Tableau {
                 let sat = match cache.query(&key) {
                     Some(v) => v,
                     None => {
-                        let v = self.consistent(&[CLit::pos(*a), CLit::neg(b)]);
+                        let v = if self.rec_on() {
+                            self.cert_test(rules_cert::Claim::Sub(*a, b), Some(*a)).is_some()
+                        } else {
+                            self.consistent(&[CLit::pos(*a), CLit::neg(b)])
+                        };
                         cache.insert(key, v);
                         v
                     }
@@ -6207,12 +6279,47 @@ fn rules_consistency_with_sorts(inp: &TInput, mut ht_clauses: Vec<Clause>,
     }
     let datatype_names = verify_data.then(|| inp.concepts.clone());
     let verify_finite = verify_data || std::env::var_os("KM_RULES_FINITE_MODEL_VERIFY").is_some();
+    let certify = std::env::var_os("KM_RULES_LEAN_CERT").is_some();
+    let oguard = rules_oguard(inp);
     crate::bigstack::run("rules-consistency", crate::bigstack::DEEP_STACK, move || {
             let evidence = verify_finite.then(|| ht_clauses.clone());
             let mut t = Tableau::new(ht_clauses);
             t.set_pairwise(inverse);
             t.set_number(number);
             t.set_nominals(noms.clone());
+            if certify {
+                // KM_RULES_LEAN_CERT: decide by the recorded careful search and
+                // publish only a verdict the Lean checker accepts.
+                t.enable_certificates()?;
+                let graph = t.cert_test(rules_cert::Claim::Inconsistent, None);
+                let consistent = graph.is_some();
+                rules_cert::write_and_check(&t, &rules_cert::Answer {
+                    oguard,
+                    queries: &[],
+                    consistent,
+                    unsatisfiable: &[],
+                    subsumptions: &[],
+                    premise_subsumptions: &[],
+                    premise_unsatisfiable: &[],
+                })?;
+                if let (Some(clauses), Some(graph)) = (evidence, graph) {
+                    verify_finite_rule_model(&graph, &clauses, &noms, 10_000_000)?;
+                    if let Some(names) = datatype_names {
+                        let values = finite_datatype_values(&graph, &names)?;
+                        let data_nodes = values.keys().copied().collect();
+                        if let Some(source) = source_classes {
+                            verify_finite_source_classes(&graph, &data_nodes, &source)?;
+                        }
+                        if let Some(source) = source_abox {
+                            verify_finite_source_abox(&graph, &data_nodes, &source, Some(&values))?;
+                        }
+                        if let Some(sorts) = role_sorts {
+                            verify_finite_role_sorts(&graph, &data_nodes, &noms, &sorts)?;
+                        }
+                    }
+                }
+                return Ok(consistent);
+            }
             if let Some(clauses) = evidence {
                 match t.find_model(&[]) {
                     Some(graph) => {
@@ -6239,6 +6346,16 @@ fn rules_consistency_with_sorts(inp: &TInput, mut ht_clauses: Vec<Clause>,
                 }
             } else { Ok(t.consistent(&[])) }
         })?
+}
+
+/// The concept id of the rule guard `__O__`, or an unused id when the input
+/// has no rule clause (then no clause mentions the guard).
+pub(crate) fn rules_oguard(inp: &TInput) -> C {
+    inp.concepts
+        .iter()
+        .position(|name| name == "__O__")
+        .unwrap_or(inp.concepts.len()) as C
+
 }
 
 /// Classification of a rule-aware input (`KM_RULES_CLASSIFY`): the
@@ -6296,15 +6413,28 @@ pub fn rules_classification(inp: &TInput, mut ht_clauses: Vec<Clause>, queries: 
             (subs, unsat)
         }
     };
+    // KM_RULES_LEAN_CERT: record the evidence of every test and publish
+    // the taxonomy only when the Lean checker accepts its certificate
+    // (`rules_cert::certify_classification`).
+    let certify = std::env::var_os("KM_RULES_LEAN_CERT").is_some();
+    let oguard = rules_oguard(inp);
     crate::bigstack::run("rule-aware classification", crate::bigstack::DEEP_STACK, move || {
         let mut t = Tableau::new(ht_clauses);
         t.set_pairwise(inverse);
         t.set_number(number);
         t.set_nominals(noms);
-        t.set_known(known_subs, known_unsat);
+        t.set_known(known_subs.clone(), known_unsat.clone());
+        if certify {
+            t.enable_certificates()?;
+        }
         let (consistent, unsat, subs) = t.classify(&queries);
-        (consistent, unsat, hypertableau::transitive_close_subs(subs))
-    })
+        let subs = hypertableau::transitive_close_subs(subs);
+        if certify {
+            rules_cert::certify_classification(&t, oguard, &queries, consistent, &unsat, &subs,
+                &known_subs, &known_unsat)?;
+        }
+        Ok((consistent, unsat, subs))
+    })?
 }
 
 /// Build the tableau clause vector from a parsed `TInput` (the deserialised
@@ -8056,6 +8186,12 @@ pub(crate) const HT_LEAN_CERTIFICATION_ENV: &[&str] = &[
     "KM_HT_LEAN_SOURCE_BOUND_ORDINARY_TAXONOMY_CHECKER",
 ];
 
+/// Rule-route Lean certification: certificates written and checked.
+pub(crate) fn rules_lean_certification_active() -> bool {
+    std::env::var_os("KM_RULES_LEAN_CERT").is_some()
+        && std::env::var_os("KM_RULES_LEAN_CHECKER").is_some()
+}
+
 pub(crate) fn ht_lean_certification_requested() -> bool {
     HT_LEAN_CERTIFICATION_ENV
         .iter()
@@ -8079,7 +8215,9 @@ fn run_tinput_inner(
     let native_abox_active = native_abox.active;
     let ht_enabled = forced_ht.unwrap_or_else(|| std::env::var_os("KM_HT").is_some());
     let lean_cert_requested = ht_lean_certification_requested();
-    if lean_cert_requested && !ht_enabled {
+    if lean_cert_requested && !ht_enabled
+        && !(std::env::var_os("KM_RULES_CONSISTENCY").is_some() && rules_lean_certification_active())
+    {
         return Err("HT Lean certification requires the hypertableau mechanism".to_string());
     }
     if native_abox_active && (!ht_enabled || std::env::var_os("KM_RULES_CONSISTENCY").is_some()) {
@@ -8103,9 +8241,14 @@ fn run_tinput_inner(
     // default Tableau (whose `find_model` seeds one root per nominal and applies the
     // o-rule). Run on a large stack since the careful DFS can recurse deeply.
     if std::env::var_os("KM_RULES_CONSISTENCY").is_some() {
-        if lean_cert_requested {
+        // The HT checkers have no O-guarded rule clause. The rule route has
+        // its own Lean certificate (`rules_cert`, KM_RULES_LEAN_CERT with
+        // KM_RULES_LEAN_CHECKER); an HT certification request is served by it
+        // and refused without it.
+        if lean_cert_requested && !rules_lean_certification_active() {
             return Err(
-                "HT Lean certification cannot publish the unchecked rules-consistency route"
+                "HT Lean certification cannot publish the rules-consistency route without \
+                 KM_RULES_LEAN_CERT and KM_RULES_LEAN_CHECKER"
                     .to_string(),
             );
         }

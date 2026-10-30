@@ -1,0 +1,3 @@
+run 1: plain 15.11 plain; cert 21.62 certified; worker plain 8.16 s, certified 15.34 s; search_s=2.894 model_s=0.181 write_s=0.041 check_s=5.730 refutations=0 models=1 proof_nodes=0 bytes=6209468
+run 2: plain 14.66 plain; cert 19.34 certified; worker plain 8.48 s, certified 13.39 s; search_s=2.879 model_s=0.286 write_s=0.061 check_s=4.672 refutations=0 models=1 proof_nodes=0 bytes=6209468
+run 3: plain 17.30 plain; cert 21.62 certified; worker plain 10.22 s, certified 14.28 s; search_s=3.903 model_s=0.171 write_s=0.040 check_s=4.152 refutations=0 models=1 proof_nodes=0 bytes=6209468
