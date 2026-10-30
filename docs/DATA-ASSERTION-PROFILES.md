@@ -127,3 +127,21 @@ Negative data-property assertions `¬u(a, v)` are carried as `a : ¬∃u.{v}`
 since v1.5.5 (until v1.5.4 they stayed uncarried and were published as
 dropped axioms). They observe the identity of `v`, so they block the
 profile abstraction.
+
+## Repeated assertions (2026-10-30, v1.5.5)
+
+The uncarried count is the number of source `DataPropertyAssertion`
+occurrences (the profile counts every occurrence) minus the converted ones.
+The conversion branches of `Ontology::commit_data_assertions_as_class`
+(and, after the native-data-values merge, the value projection) counted a
+conversion only once per distinct axiom, so an assertion stated
+twice, or one whose `ClassAssertion(DataHasValue(...))` the source also
+states, read as one uncarried assertion and the answer was published with
+`DROPPED 1` (generated seeds fr216, fr217, fr290 of
+`results/agents/2026-10-30/fr282-dropped-rules`). An OWL ontology is a set
+of axioms, so the repeated occurrence is the same axiom, and the class
+assertion already present carries it. Every converted occurrence now counts
+(`frontend::parse` test `repeated_data_assertion_counts_every_source_occurrence`).
+The clause set is unchanged; only the count, and through it the
+`nominal_abox` coverage diagnostic that compares the same two numbers,
+changes. No Lean obligation: the frontend is outside the Lean model.

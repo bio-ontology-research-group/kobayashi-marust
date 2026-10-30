@@ -13,10 +13,12 @@ fn finite_data_rule_entailments_reach_nominal_class_queries() {
     assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
     let output: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
     assert_eq!(output["consistent"], true);
-    // The rule-route taxonomy applies the rule only through the sound
-    // assertion closure, so with the nominal `{b}` its completeness is not
-    // certified and the rule is counted (`RULES_OUTSIDE_TAXONOMY`).
-    assert_eq!(output["dropped"], 1);
+    // The rule reaches the class query through the nominal `{b}`; the
+    // rule worker classifies the rule-aware input, so the taxonomy is
+    // complete (v1.5.4 counted the rule as dropped, `DROPPED 1`;
+    // docs/DL-SAFE-RULES.md, 2026-10-30).
+    assert_eq!(output["dropped"], 0);
+    assert_eq!(output["subsumptions"], serde_json::json!([["http://km.test/C", "http://km.test/Bad"]]));
     assert!(output["subsumptions"].as_array().unwrap().iter().any(|pair|
         pair == &serde_json::json!(["http://km.test/C", "http://km.test/Bad"])),
         "rule consequences must participate in class queries: {output}");
@@ -42,13 +44,24 @@ fn finite_rule_nominal_query_uses_inverse_chain_and_transitive_premises() {
         .env("KM_RULE_ASSERTION_CLOSURE", "1")
         .args(["classify", "--route", "auto"]).arg(&input).output().unwrap();
     std::fs::remove_file(input).unwrap();
-    assert!(result.status.success(), "{}", String::from_utf8_lossy(&result.stderr));
-    let output: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
-    assert_eq!(output["consistent"], true);
-    assert!(output["subsumptions"].as_array().unwrap().iter().any(|pair|
-        pair == &serde_json::json!(["http://km.test/C", "http://km.test/Bad"])), "{output}");
-    // Noncentral chain clauses remain a separate CB completeness obligation.
-    // Do not erase their dropped counter just because this consequence passes.
+    // The rules reach class queries through the nominal, so the taxonomy
+    // must apply them; the inverse chain and the number restriction make
+    // the rule worker input SHIQ beside nominals, which the rule tableau
+    // does not classify (no NN-rule). v1.5.4 published `C ⊑ Bad` with
+    // `DROPPED 1`; the input is now refused with that reason instead of
+    // answered incompletely (docs/DL-SAFE-RULES.md, 2026-10-30).
+    if result.status.success() {
+        let output: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+        assert_eq!(output["consistent"], true);
+        assert_eq!(output["dropped"], 0, "{output}");
+        assert!(output["subsumptions"].as_array().unwrap().iter().any(|pair|
+            pair == &serde_json::json!(["http://km.test/C", "http://km.test/Bad"])), "{output}");
+    } else {
+        assert_eq!(result.status.code(), Some(3));
+        assert!(result.stdout.is_empty());
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        assert!(stderr.contains("rule-aware taxonomy") && stderr.contains("SHIQ"), "{stderr}");
+    }
 }
 
 #[test]

@@ -1,0 +1,11 @@
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://example.org/m>
+Declaration(Class(<http://example.org/m#A>)) Declaration(Class(<http://example.org/m#D>)) Declaration(ObjectProperty(<http://example.org/m#s>)) Declaration(ObjectProperty(<http://example.org/m#t>)) Declaration(DataProperty(<http://example.org/m#v>)) Declaration(NamedIndividual(<http://example.org/m#b>)) Declaration(NamedIndividual(<http://example.org/m#c>))
+SubClassOf(<http://example.org/m#A> ObjectOneOf(<http://example.org/m#c> <http://example.org/m#b>))
+DataPropertyRange(<http://example.org/m#v> xsd:integer)
+ClassAssertion(<http://example.org/m#D> <http://example.org/m#c>)
+ObjectPropertyDomain(<http://example.org/m#t> ObjectHasValue(<http://example.org/m#s> <http://example.org/m#c>))
+ObjectPropertyAssertion(<http://example.org/m#t> <http://example.org/m#b> <http://example.org/m#b>)
+DLSafeRule(Body(ObjectPropertyAtom(<http://example.org/m#s> Variable(<http://example.org/m#x>) Variable(<http://example.org/m#y>))) Head(ClassAtom(<http://example.org/m#D> Variable(<http://example.org/m#x>))))
+)

@@ -1,0 +1,2 @@
+finite_data_rule_normalization: test finite_data_rule_entailments_reach_nominal_class_queries ... FAILED thread 'finite_data_rule_entailments_reach_nominal_class_queries' (1506830) panicked at tests/finite_data_rule_normalization.rs:19:5: test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s 
+rule_taxonomy_nominal: test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s 

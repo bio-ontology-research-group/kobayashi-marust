@@ -1,0 +1,15 @@
+probes/opaque_merge.ofn	auto	DROPPED	0.01					
+probes/opaque_merge.ofn	certified_nominals	REFUSED	0.01					
+probes/opaque_merge.ofn	nominals	REFUSED	0.01					
+probes/opaque_merge_tbox.ofn	auto	WRONG	0.02	2	0	0	0	0
+probes/opaque_merge_tbox.ofn	certified_nominals	WRONG	0.01	2	0	0	0	0
+probes/opaque_merge_tbox.ofn	nominals	WRONG	0.01	2	0	0	0	0
+probes/opaque_single.ofn	auto	DROPPED	0.01					
+probes/opaque_single.ofn	certified_nominals	REFUSED	0.01					
+probes/opaque_single.ofn	nominals	REFUSED	0.01					
+probes/range_exhaust.ofn	auto	DROPPED	0.01					
+probes/range_exhaust.ofn	certified_nominals	REFUSED	0.01					
+probes/range_exhaust.ofn	nominals	REFUSED	0.01					
+probes/range_exhaust_tbox.ofn	auto	WRONG	0.05	0	0	1	0	0
+probes/range_exhaust_tbox.ofn	certified_nominals	WRONG	0.05	0	0	1	0	0
+probes/range_exhaust_tbox.ofn	nominals	WRONG	0.06	0	0	1	0	0

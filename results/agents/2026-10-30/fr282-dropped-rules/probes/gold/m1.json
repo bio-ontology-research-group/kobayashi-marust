@@ -1,0 +1,8 @@
+{
+  "ontology": "m1.hermit.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["A", "D"]
+  ],
+  "unsatisfiable": []
+}

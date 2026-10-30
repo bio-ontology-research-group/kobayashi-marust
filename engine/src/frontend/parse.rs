@@ -1152,6 +1152,25 @@ mod axiom_drop_regression_tests {
     }
 
     #[test]
+    fn repeated_data_assertion_counts_every_source_occurrence() {
+        // The uncarried count subtracts this from the source occurrence
+        // count, so a repeated assertion must not read as dropped (fr217).
+        let text = "Ontology(DataPropertyAssertion(<p> <a> \"1\"^^xsd:integer) \
+                    DataPropertyAssertion(<p> <a> \"1\"^^xsd:integer))";
+        // Value projection (no TBox use of `p`).
+        let ontology = parse_with_data_assertion_conversion(true, text);
+        assert_eq!(ontology.data_assertions_as_class(), 2);
+        // Class-assertion conversion (an existential use of `p`).
+        let text = "Ontology(SubClassOf(DataHasValue(<p> \"1\"^^xsd:integer) <D>) \
+                    DataPropertyAssertion(<p> <a> \"1\"^^xsd:integer) \
+                    DataPropertyAssertion(<p> <a> \"1\"^^xsd:integer))";
+        let ontology = parse_with_data_assertion_conversion(true, text);
+        assert_eq!(ontology.data_assertions_as_class(), 2);
+        assert_eq!(ontology.data_assertion_class_axioms(), 1);
+        assert_eq!(ontology.abox().count(), 1);
+    }
+
+    #[test]
     fn data_assertion_literal_cap_never_declines() {
         let mut ontology = Ontology::new();
         // An existential use of `p` keeps it out of the object-level
