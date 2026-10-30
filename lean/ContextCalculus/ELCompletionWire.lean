@@ -457,11 +457,14 @@ def DecodedCertificate.checkActiveConcepts {n : Nat} (doc : DecodedCertificate n
   doc.active_concepts.all (fun id => decide (id ∈ doc.expectedActiveConcepts)) &&
     doc.expectedActiveConcepts.all (fun id => decide (id ∈ doc.active_concepts))
 
+/-- `bottom` is exempt: a normal form may mention it (`A ⊓ B ⊑ ⊥`), while
+`checkActiveConcepts` keeps it out of the active contexts. -/
 def DecodedCertificate.checkSignatureClosed {n : Nat}
     (doc : DecodedCertificate n) : Bool :=
   decide (doc.top ∈ doc.active_concepts) &&
     doc.ontology.all fun clause =>
-      clause.concepts.all fun concept => decide (concept ∈ doc.active_concepts)
+      clause.concepts.all fun concept =>
+        concept == doc.bottom || decide (concept ∈ doc.active_concepts)
 
 theorem Clause.mentionsConcept_iff_mem_concepts
     (clause : Clause Concept Role) (concept : Concept) :
@@ -472,20 +475,22 @@ theorem DecodedCertificate.checkSignatureClosed_iff {n : Nat}
     (doc : DecodedCertificate n) :
     doc.checkSignatureClosed = true ↔
       SignatureClosed (fun concept => concept ∈ doc.active_concepts)
-        doc.top doc.ontology := by
+        doc.top doc.bottom doc.ontology := by
   simp only [DecodedCertificate.checkSignatureClosed, Bool.and_eq_true,
-    decide_eq_true_eq, List.all_eq_true]
+    decide_eq_true_eq, List.all_eq_true, Bool.or_eq_true, beq_iff_eq]
   constructor
   · rintro ⟨htop, hclauses⟩
     refine ⟨htop, ?_⟩
-    intro clause hclause concept hmentions
-    exact hclauses clause hclause concept
-      ((Clause.mentionsConcept_iff_mem_concepts clause concept).mp hmentions)
+    intro clause hclause concept hmentions hne
+    exact (hclauses clause hclause concept
+      ((Clause.mentionsConcept_iff_mem_concepts clause concept).mp hmentions)).resolve_left hne
   · intro hclosed
     refine ⟨hclosed.top_active, ?_⟩
     intro clause hclause concept hconcept
-    exact hclosed.clause_active clause hclause concept
-      ((Clause.mentionsConcept_iff_mem_concepts clause concept).mpr hconcept)
+    by_cases hbottom : concept = doc.bottom
+    · exact Or.inl hbottom
+    · exact Or.inr (hclosed.clause_active clause hclause concept
+        ((Clause.mentionsConcept_iff_mem_concepts clause concept).mpr hconcept) hbottom)
 
 def DecodedCertificate.checkStateAgreement {n : Nat} (doc : DecodedCertificate n) : Bool :=
   doc.checkFactAgreement && doc.checkActiveConcepts
@@ -1427,7 +1432,7 @@ theorem DecodedCertificate.checkPartitionedNormalization_direct_models_materiali
     {n : Nat} (doc : DecodedCertificate n)
     (closed : ClosedState doc.materialization doc.top doc.bottom doc.ontology)
     (hsig : SignatureClosed (fun concept => concept ∈ doc.active_concepts)
-      doc.top doc.ontology)
+      doc.top doc.bottom doc.ontology)
     (T : RawTermInterp doc.ResidualDomain)
     (hnormal : doc.checkPartitionedNormalization = true)
     (horigin : doc.checkOriginOntology = true)
