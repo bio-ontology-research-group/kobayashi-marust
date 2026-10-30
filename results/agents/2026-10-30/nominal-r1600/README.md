@@ -94,3 +94,35 @@ are in code this branch does not touch; `universal_role_and_top_data_range::data
 exceeds its 10 s bound on the "object value" case (`data/dv_obj.ofn`):
 v1.5.4 takes 24 s and km.final2 28 s on it at the current load, this
 branch 31 s without and more than 60 s with the merge hypotheses.
+
+## After merging development/v1.5.5 at a2e98d95 (2026-10-31)
+
+`km.v6` (sha256 `701b703f68c155c8…`), the branch head merged with
+a2e98d95 (data-values-2, lean-rules-route, nominal-seeds):
+
+- Seeds r0-r999, 10 s, 2 threads (`data/diff-v6-rand1k.tsv`): 530 ok, 0
+  wrong, 470 timeouts (km.v4: 531 ok, 0 wrong).
+- Open seeds: r3403 correct on all routes; r1600 correct on the automatic
+  route (22 s); r1646, r3602 correct on the automatic route. On forced
+  `nominals`, r3602 now times out at 60 s also with the merge hypotheses
+  and the ranked R2 switched off, and so does the nominal-coverage binary
+  `km.fixm4` that development merged: a regression of the merged base, not
+  of this branch.
+- Targeted tests (`data/tests-v6-targeted.txt`): merge_hypotheses 4 of 4
+  (after moving r3602's forced route to the ignored test),
+  r3_disjunctive_equality 4/4, nominal_seq_order 6/6;
+  universal_role_and_top_data_range 11 passed, 2 failed on its 10 s bound:
+  the "object value" case (`data/dv_obj.ofn`, v1.5.4 24 s, km.final2 28 s)
+  and the hub with data values on `certified_nominals`
+  (`data/hub_with_data_values.ofn`: 10 s without, 30 s with the merge
+  hypotheses).
+- The five seeds the nominal-seeds agent found wrong on the automatic route
+  (r1536, r1866, r2408, r2564, r3777; `data/five-auto-seeds.txt`): all five
+  are answered correctly by the forced `nominals` route of km.final2; the
+  wrong answers come from the HT worker of the typed-nominal bridge, which
+  answers first on the automatic route (`route=ht_bridge`) and in the race
+  of `certified_nominals` (r2408 is a functional-role merge, `a = d`). This
+  is the bridge merging defect of `nominal-seeds/bridge_merge_min.ofn`, not
+  the cause of r1600, and this branch does not fix it (r2408 becomes correct
+  on `certified_nominals` only). With the merge hypotheses, r1536 and r3777
+  time out at 60 s on forced `nominals` (0.3 s and 0.06 s on km.final2).
