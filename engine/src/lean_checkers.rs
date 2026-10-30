@@ -772,7 +772,7 @@ mod tests {
     }
 
     #[test]
-    fn run_records_acceptance_rejection_and_the_size_cap() {
+    fn run_records_acceptance_rejection_and_no_verdict() {
         let dir =
             std::env::temp_dir().join(format!("km-lean-checkers-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
