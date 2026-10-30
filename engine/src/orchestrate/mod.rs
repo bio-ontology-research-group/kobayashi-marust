@@ -3975,11 +3975,9 @@ fn write_rules_inert_certificate(
     let document = inert_sorts::release_certificate(original, result, released, reserved);
     std::fs::write(&file, serde_json::to_vec(&document)?)?;
     if let Some(checker) = std::env::var_os("KM_RULES_INERT_LEAN_CHECKER") {
-        let status = std::process::Command::new(&checker)
-            .arg(&file)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|e| OrchestrateError::Spawn { bin: "rules-inert-sort-release-check".into(), source: e })?;
+        let status = crate::lean_checker::run(Path::new(&checker), &file)
+            .map_err(|e| OrchestrateError::Spawn { bin: "rules-inert-sort-release-check".into(), source: e })?
+            .status;
         if !status.success() {
             return Err(OrchestrateError::OutOfFragment(format!(
                 "the Lean checker rejected the inert-sort release certificate {}",
