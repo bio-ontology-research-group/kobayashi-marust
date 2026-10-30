@@ -1,0 +1,13 @@
+{
+  "ontology": "u2.hermit.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["A", "C"],
+    ["A", "E"],
+    ["B", "C"],
+    ["E", "C"],
+    ["F", "C"],
+    ["F", "E"]
+  ],
+  "unsatisfiable": []
+}

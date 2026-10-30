@@ -1,0 +1,20 @@
+cb_route_completeness: test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.24s 
+constant_data_rule_normalization: test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s 
+data_assertions_carried: test unproxied_assertions_can_hide_a_clash ... FAILED thread 'unproxied_assertions_can_hide_a_clash' (1019498) panicked at tests/data_assertions_carried.rs:97:13: test result: FAILED. 8 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 60.33s 
+empty_and_universal_data_ranges: test excluded_middle_of_complement_ranges ... FAILED thread 'excluded_middle_of_complement_ranges' (1026122) panicked at tests/empty_and_universal_data_ranges.rs:104:13: test result: FAILED. 9 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 387.23s 
+finite_data_rule_normalization: test finite_rule_nominal_query_uses_inverse_chain_and_transitive_premises ... FAILED test finite_data_rule_entailments_reach_nominal_class_queries ... FAILED thread 'finite_rule_nominal_query_uses_inverse_chain_and_transitive_premises' (1092392) panicked at tests/finite_data_rule_normalization.rs:45:5: thread 'finite_data_rule_entailments_reach_nominal_class_queries' (1092390) panicked at tests/finite_data_rule_normalization.rs:19:5: test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.64s 
+finite_rule_taxonomy: test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s 
+forced_route_fail_closed: test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 24.52s 
+ground_rule_source: test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.67s 
+has_key_rules: test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.86s 
+integer_data_rule_normalization: test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.59s 
+isolated_named_rule_normalization: test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s 
+rule_independent_abox_clash: test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s 
+rules_route: test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s 
+source_incremental_rules: test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.28s 
+top_nominal_data_successors: test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 36.33s 
+transitive_rule_reduction: test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s 
+unary_rule_normalization: test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s 
+universal_role_and_top_data_range: test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 21.46s 
+rule_taxonomy_nominal: test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s 
+nominal_ground_body: test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s 

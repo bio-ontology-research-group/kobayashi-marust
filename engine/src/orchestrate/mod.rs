@@ -2083,7 +2083,7 @@ fn classify_with_evidence_inner(
     // satisfiability of the class projection alone cannot authorize this.
     if std::env::var_os("KM_NO_FINITE_RULE_TAXONOMY").is_none() {
         if let Some(source) = meta.profile.finite_rule_class_projection.as_ref() {
-            match rules_consistency(initial_cfg, clauses_path.path(), &meta, true)?.map(|v| v.consistent) {
+            match rules_consistency(initial_cfg, clauses_path.path(), &meta, true, RuleTaxonomyRequest::default())?.map(|v| v.consistent) {
                 Some(true) => {},
                 // Not exact on a one-sorted stream beside a nominal (see the
                 // rule-consistency step below).
@@ -2839,8 +2839,50 @@ fn classify_with_evidence_inner(
     // Ground clauses the rule worker certified that the atomic CB taxonomy
     // below may drop without affecting its answer (see the `Some(true)` arm).
     let mut certified_ground_clauses = 0usize;
+    // The rule-aware classification ran past its budget: classify the
+    // rule-free ontology first, then let the rule worker confirm the rest.
+    let mut deferred_rule_taxonomy = false;
     if cfg.ht_rules {
-        let verdict = rules_consistency(cfg, clauses_path.path(), &meta, false)?;
+        // Rule conclusions about named individuals reach class queries only
+        // through a nominal or the universal role. Then the worker classifies
+        // the rule-aware input instead of only checking it, and its taxonomy
+        // is the answer (docs/DL-SAFE-RULES.md, "Rule-aware taxonomy beside a
+        // nominal"); `KM_RULES_NO_TAXONOMY=1` restores the earlier
+        // consistency-only check, whose taxonomy then counts the rules as
+        // dropped.
+        let rule_taxonomy = rules_reach_class_queries(&meta.profile)
+            && std::env::var_os("KM_RULES_NO_TAXONOMY").is_none();
+        // Schedule: the rule-aware classification alone first, within a
+        // budget (`KM_RULES_TAXONOMY_BUDGET_S`, default 10 s); it answers
+        // most inputs in milliseconds where the CB route takes much longer.
+        // The rule tableau has no backjumping, so a subsumption test can
+        // explode where the CB route is fast; past the budget the CB
+        // taxonomy runs first and the rule worker then confirms only the
+        // candidates CB did not establish (`deferred_rule_taxonomy` below).
+        // Both schedules publish the same exact answer.
+        let classify_now = rule_taxonomy && !meta.one_sorted_data_successors;
+        let budget = std::env::var("KM_RULES_TAXONOMY_BUDGET_S")
+            .ok()
+            .and_then(|v| v.parse::<f64>().ok())
+            .filter(|v| v.is_finite() && *v >= 0.0)
+            .unwrap_or(10.0);
+        let mut verdict = rules_consistency(
+            cfg,
+            clauses_path.path(),
+            &meta,
+            false,
+            RuleTaxonomyRequest {
+                classify: classify_now,
+                budget: Some(std::time::Duration::from_secs_f64(budget)),
+                known: None,
+            },
+        )?;
+        if verdict.as_ref().is_some_and(|v| v.timed_out) {
+            deferred_rule_taxonomy = true;
+            verdict = rules_consistency(cfg, clauses_path.path(), &meta, false, RuleTaxonomyRequest::default())?;
+        }
+        let taxonomy = verdict.as_mut().and_then(|v| v.taxonomy.take());
+        let executable_rules = verdict.as_ref().is_some_and(|v| v.executable_rules);
         let represented_ground = verdict.as_ref().map_or(0, |v| v.represented_ground_clauses);
         // The rule worker reads `__nom__` proxies as nominals over this clause
         // stream. When the stream is one-sorted beside a TBox nominal and data
@@ -2854,6 +2896,17 @@ fn classify_with_evidence_inner(
             return Err(OrchestrateError::OutOfFragment(
                 "DL-safe rule consistency read data successors as objects beside a nominal; \
                  its inconsistency would not be exact"
+                    .into(),
+            ));
+        }
+        // A taxonomy read from the one-sorted stream would be as inexact as
+        // its inconsistency, and the rule-free taxonomy below misses rule
+        // conclusions that reach class queries: refuse.
+        if rule_taxonomy && meta.one_sorted_data_successors && executable_rules {
+            return Err(OrchestrateError::OutOfFragment(
+                "DL-safe rules reach class queries through a nominal, and the rule worker \
+                 input reads data successors as objects; neither its verdict nor its \
+                 taxonomy would be exact"
                     .into(),
             ));
         }
@@ -2877,6 +2930,25 @@ fn classify_with_evidence_inner(
                     consistency_certified: true,
                 });
             }
+            Some(true) if taxonomy.is_some() => {
+                let classification = rule_taxonomy_classification(
+                    taxonomy.expect("checked by the guard"),
+                    &meta,
+                );
+                if timing {
+                    eprintln!(
+                        "KM_TIMING rules-consistency rule-aware taxonomy done @ {:.2}s subsumptions={} unsatisfiable={}",
+                        t_start.elapsed().as_secs_f64(),
+                        classification.subsumptions.len(),
+                        classification.unsatisfiable.len(),
+                    );
+                }
+                return Ok(ClassificationEvidence {
+                    classification,
+                    grouped_subsumptions: None,
+                    consistency_certified: true,
+                });
+            }
             Some(true) => {
                 consistency_certified = true;
                 // The taxonomy below does not apply the rules. Rules conclude
@@ -2888,7 +2960,11 @@ fn classify_with_evidence_inner(
                 // a realization probe, the universal-role hub) lets rule
                 // conclusions reach class queries: count the rules then.
                 let source = &meta.profile.source;
-                if source.object_nominal_concepts > 0 {
+                // Only executable rules are outside the clause stream; the
+                // normalized ones are ordinary clauses of the taxonomy below.
+                if deferred_rule_taxonomy {
+                    // Completed after the CB taxonomy, before output mapping.
+                } else if rules_reach_class_queries(&meta.profile) && executable_rules {
                     let rules = source.rule_axioms.max(1);
                     RULES_OUTSIDE_TAXONOMY.with(|u| u.set(u.get() + rules));
                     if timing {
@@ -3239,6 +3315,15 @@ fn classify_with_evidence_inner(
             subs_keys
         );
     }
+    if deferred_rule_taxonomy && !out.inconsistent {
+        out = complete_rule_taxonomy(cfg, clauses_path.path(), &meta, out)?;
+        if timing {
+            eprintln!(
+                "KM_TIMING rules-consistency rule-aware taxonomy completed after CB @ {:.2}s",
+                t_start.elapsed().as_secs_f64()
+            );
+        }
+    }
     if (meta.profile.existential_witness_abox_candidate
         || meta.profile.atomic_class_abox_candidate
         || meta.profile.inert_role_abox_probe_candidate)
@@ -3530,6 +3615,14 @@ fn checked_finite_rule_taxonomy(mut evidence: ClassificationEvidence) -> Result<
 /// Verdict of the DL-safe-rule consistency worker.
 struct RulesVerdict {
     consistent: bool,
+    /// The rule-aware taxonomy (`KM_RULES_CLASSIFY`), in worker concept
+    /// names, when the caller asked for it and the input is consistent.
+    taxonomy: Option<RuleTaxonomy>,
+    /// The worker input had a rule clause the clause stream does not carry.
+    executable_rules: bool,
+    /// The rule-aware classification exceeded its budget; `consistent` and
+    /// `taxonomy` carry no verdict.
+    timed_out: bool,
     /// Clauses of the checked clause file that carry an individual term,
     /// when the conversion represented every clause (`dropped == 0`) and so
     /// the verdict covers them; zero otherwise.
@@ -3552,6 +3645,158 @@ fn clause_has_individual(clause: &crate::json_io::JClause) -> bool {
         JAtom::Role { source, target, .. } => term_has_individual(source) || term_has_individual(target),
         JAtom::Eq { left, right } => term_has_individual(left) || term_has_individual(right),
     })
+}
+
+/// Classification of the rule-aware worker input, in worker concept names.
+#[derive(serde::Deserialize)]
+struct RuleTaxonomy {
+    unsatisfiable: Vec<String>,
+    subsumptions: Vec<[String; 2]>,
+}
+
+/// Whether a rule conclusion about a named individual can reach a class
+/// query: through a nominal (`ObjectOneOf`, `ObjectHasValue`) or the
+/// universal role. Without either, a consistent rule ontology has the
+/// taxonomy of its rule-free part (see the `ht_rules` step).
+fn rules_reach_class_queries(profile: &crate::frontend::profile::OntologyProfile) -> bool {
+    profile.source.object_nominal_concepts > 0 || profile.expressivity.universal_role
+}
+
+/// Complete a rule-free CB taxonomy with the rules (the CB-first schedule of
+/// the `ht_rules` step). Every CB subsumption and unsatisfiable class is
+/// entailed by the ontology with its rules (the rules only add
+/// constraints), so the rule worker takes them as given and tests only the
+/// remaining model-label candidates; its taxonomy is the exact answer.
+fn complete_rule_taxonomy(
+    cfg: &Config,
+    clauses_path: &Path,
+    meta: &frontend_run::Meta,
+    mut out: EngineOut,
+) -> Result<EngineOut, OrchestrateError> {
+    if let Some(compact) = out.compact_subsumptions.take() {
+        for (subject, supers) in &compact.rows {
+            let row = out.subsumptions.entry(compact.names[*subject as usize].to_string()).or_default();
+            row.extend(supers.iter().map(|&s| compact.names[s as usize].to_string()));
+        }
+    }
+    let mut known_subs: Vec<[String; 2]> = Vec::new();
+    let mut known_unsat: Vec<String> = Vec::new();
+    for (subject, supers) in &out.subsumptions {
+        for superclass in supers {
+            if is_bottom(superclass) {
+                known_unsat.push(subject.clone());
+            } else if superclass != subject {
+                known_subs.push([subject.clone(), superclass.clone()]);
+            }
+        }
+    }
+    let known = tmpfile::TempPath::new(".rule-known.json");
+    std::fs::write(
+        known.path(),
+        serde_json::to_vec(&serde_json::json!({
+            "subsumptions": known_subs,
+            "unsatisfiable": known_unsat,
+        }))?,
+    )?;
+    let verdict = rules_consistency(
+        cfg,
+        clauses_path,
+        meta,
+        false,
+        RuleTaxonomyRequest { classify: true, budget: None, known: Some(known.path()) },
+    )?
+    .ok_or_else(|| OrchestrateError::OutOfFragment("rule-aware taxonomy lost its rules".into()))?;
+    if !verdict.consistent {
+        out.subsumptions.clear();
+        out.inconsistent = true;
+        return Ok(out);
+    }
+    let taxonomy = verdict
+        .taxonomy
+        .ok_or_else(|| OrchestrateError::OutOfFragment("rule-aware taxonomy produced no answer".into()))?;
+    for [a, b] in taxonomy.subsumptions {
+        out.subsumptions.entry(a).or_default().push(b);
+    }
+    for a in taxonomy.unsatisfiable {
+        out.subsumptions.entry(a).or_default().push("owl:Nothing".to_string());
+    }
+    for supers in out.subsumptions.values_mut() {
+        supers.sort_unstable();
+        supers.dedup();
+    }
+    // The rule worker decided every query over its complete input; the CB
+    // answer only supplied entailments, which stay sound whatever CB
+    // omitted. Its clause omissions are therefore not omissions of this
+    // answer (front-end omissions are counted separately at depth 0).
+    out.dropped = 0;
+    Ok(out)
+}
+
+/// Map a rule-aware taxonomy to public IRIs, dropping internal names, the
+/// same way the output mapping treats a worker answer.
+fn rule_taxonomy_classification(taxonomy: RuleTaxonomy, meta: &frontend_run::Meta) -> Classification {
+    let named: HashSet<&str> = meta.named.iter().map(String::as_str).collect();
+    let public = |n: &str| named.contains(n) && !is_bottom(n);
+    let unsat: std::collections::BTreeSet<String> = taxonomy
+        .unsatisfiable
+        .iter()
+        .filter(|a| public(a))
+        .map(|a| mapped_iri(&meta.iri_map, a).to_string())
+        .collect();
+    let mut grouped: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for [a, b] in &taxonomy.subsumptions {
+        if a == b || !public(a) || !public(b) {
+            continue;
+        }
+        let fa = mapped_iri(&meta.iri_map, a);
+        let fb = mapped_iri(&meta.iri_map, b);
+        if fa != fb {
+            grouped.entry(fa.to_string()).or_default().push(fb.to_string());
+        }
+    }
+    for supers in grouped.values_mut() {
+        supers.sort_unstable();
+        supers.dedup();
+    }
+    Classification {
+        approximate: None,
+        consistent: true,
+        subsumptions: flatten_grouped_subsumptions(grouped),
+        unsatisfiable: unsat.into_iter().collect(),
+        dropped: 0,
+    }
+}
+
+/// `__nom__a(x) → x ≈ a` (either orientation) for a proxy the worker
+/// declares a nominal: the definition of an individual proxy under nominal
+/// clausification.
+fn proxy_definition(clause: &crate::json_io::JClause, nominals: &HashSet<&str>) -> bool {
+    use crate::json_io::{JAtom, JTerm};
+    let ([JAtom::Concept { concept, term: JTerm::Var { name: x } }], [JAtom::Eq { left, right }]) =
+        (clause.body.as_slice(), clause.head.as_slice())
+    else {
+        return false;
+    };
+    let individual = match (left, right) {
+        (JTerm::Var { name }, JTerm::Ind { name: a }) | (JTerm::Ind { name: a }, JTerm::Var { name })
+            if name == x => a,
+        _ => return false,
+    };
+    nominals.contains(concept.as_str())
+        && concept.strip_prefix("__nom__") == Some(individual.as_str())
+}
+
+/// What the rule worker should do beyond the consistency check.
+#[derive(Clone, Copy, Default)]
+struct RuleTaxonomyRequest<'a> {
+    /// Classify the rule-aware input (`KM_RULES_CLASSIFY`).
+    classify: bool,
+    /// Stop the worker after this long and report `timed_out`; a scheduling
+    /// bound only (the caller then takes the CB-first schedule).
+    budget: Option<std::time::Duration>,
+    /// The rule-free CB taxonomy of the same ontology, written for
+    /// `KM_RULES_CLASSIFY_KNOWN`.
+    known: Option<&'a Path>,
 }
 
 /// Write the inert-sort release certificate (`KM_RULES_INERT_CERT`) and, when
@@ -3596,8 +3841,10 @@ fn rules_consistency(
     clauses_path: &Path,
     meta: &frontend_run::Meta,
     require_source_model: bool,
+    request: RuleTaxonomyRequest,
 ) -> Result<Option<RulesVerdict>, OrchestrateError> {
     use crate::json_io::JInput;
+    let classify = request.classify;
     use std::process::{Command, Stdio};
     let _rule_environment = crate::routing::EnvironmentGuard::capture();
     if require_source_model {
@@ -3624,6 +3871,12 @@ fn rules_consistency(
             input.rules.len(),
         );
     }
+    // Rules the frontend normalized into ordinary clauses (unary and
+    // constant-data rules) are part of the clause stream every taxonomy
+    // worker reads; only executable rules (`input.rules`) are outside it.
+    // Without one there is nothing for a rule-aware taxonomy to add.
+    let executable_rules = !input.rules.is_empty();
+    let classify = classify && executable_rules;
     let named: HashSet<String> = meta.named.iter().cloned().collect();
     // The sort encoding branches on `Q_⊤(x) → Q(x) ∨ D(x)` at every node for
     // a definer `Q` no clause reads on a data element; release those sorts
@@ -3634,7 +3887,14 @@ fn rules_consistency(
         // KM_RULES_INERT_CERT=<file.json | dir>: record the release for the
         // Lean checker (`rules-inert-sort-release-check`, theorem
         // `WireInertSortRelease.check_sound`); KM_RULES_INERT_LEAN_CHECKER
-        // runs it and fails closed on a rejection.
+        // runs it and fails closed on a rejection. Every schedule of the
+        // rule-aware taxonomy (`KM_RULES_CLASSIFY`, with or without
+        // `KM_RULES_CLASSIFY_KNOWN`) calls this function and the worker reads
+        // the released clause set certified here. Its tests add one root
+        // labelled with named classes (`{A}`, `{A, ¬B}`), which are reserved
+        // concepts, so they are a side theory over reserved concepts
+        // (`release_equisatisfiable`) and each test keeps its verdict; the
+        // known CB pairs are entailments, not clauses.
         let certificate = std::env::var_os("KM_RULES_INERT_CERT")
             .map(|path| (path, input.clauses.clone(), inert_sorts::reserved_concepts(&input, is_source)));
         let released = inert_sorts::release_inert_object_sorts(&mut input, is_source);
@@ -3713,6 +3973,58 @@ fn rules_consistency(
                 .and_then(|individual| meta.iri_map.get(individual)).cloned()).collect(),
         });
     }
+    // The rule-aware taxonomy is exact only over a complete conversion; the
+    // worker checks the same conditions, this gives the refusal its reason.
+    let mut proxy_definitions_checked = 0usize;
+    if classify {
+        // Nominal clausification defines each individual proxy by
+        // `__nom__a(x) → x ≈ a`. The converter cannot encode an individual
+        // constant and drops these clauses, but it declares every `__nom__a`
+        // a nominal of the worker, which seeds one root for it and merges
+        // every carrier into that root: `__nom__a` denotes exactly one
+        // element, which is `a` (the constant occurs in the worker input only
+        // through its proxy). So these drops omit nothing; any other drop does.
+        let nominal_names: HashSet<&str> = tin
+            .nominals
+            .iter()
+            .filter_map(|&id| tin.concepts.get(id).map(String::as_str))
+            .collect();
+        let proxy_definitions = input
+            .clauses
+            .iter()
+            .filter(|clause| proxy_definition(clause, &nominal_names))
+            .count();
+        let omitted = tin.dropped.saturating_sub(proxy_definitions);
+        proxy_definitions_checked = proxy_definitions;
+        if omitted != 0 || !tin.fenced.is_empty() {
+            return Err(OrchestrateError::OutOfFragment(format!(
+                "DL-safe rules reach class queries through a nominal, and the rule-aware \
+                 taxonomy would omit {} clause(s) and {} fenced construct(s) of the rule \
+                 worker input{}; a taxonomy without them would be incomplete",
+                omitted,
+                tin.fenced.len(),
+                if tin.fenced.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        " ({})",
+                        tin.fenced.iter().map(|f| f.reason.as_str()).collect::<Vec<_>>().join(", ")
+                    )
+                }
+            )));
+        }
+        if tin.inverse
+            && (tin.number || !tin.card_defs.is_empty())
+            && !tin.nominals.is_empty()
+        {
+            return Err(OrchestrateError::OutOfFragment(
+                "DL-safe rules reach class queries through a nominal, and the rule-aware \
+                 taxonomy does not support nominals with inverse roles and number \
+                 restrictions (SHOIQ)"
+                    .into(),
+            ));
+        }
+    }
     let represented_ground_clauses = if tin.dropped == 0 {
         input.clauses.iter().filter(|clause| clause_has_individual(clause)).count()
     } else {
@@ -3736,6 +4048,19 @@ fn rules_consistency(
         .stdout(File::create(out_path.path())?)
         .stderr(File::create(err_path.path())?)
         .env("KM_RULES_CONSISTENCY", "1");
+    if classify {
+        // The rule-aware classification runs the plain search-based
+        // `Tableau::classify`; no label cache or pseudo-model shortcut.
+        cmd.env("KM_RULES_CLASSIFY", "1");
+        cmd.env("KM_RULES_CLASSIFY_PROXY_DEFINITIONS", proxy_definitions_checked.to_string());
+        for name in ["KM_TAB_CACHE", "KM_HT_CACHE", "KM_HT_PMMERGE", "KM_HT_ALLCAND"] {
+            cmd.env_remove(name);
+        }
+        match request.known {
+            Some(path) => { cmd.env("KM_RULES_CLASSIFY_KNOWN", path); }
+            None => { cmd.env_remove("KM_RULES_CLASSIFY_KNOWN"); }
+        }
+    }
     // do NOT set KM_HT here: the default Tableau is what seeds the nominal roots
     // and applies the o-rule in `consistent(&[])`.
     cmd.env_remove("KM_HT");
@@ -3763,7 +4088,35 @@ fn rules_consistency(
     drop(named);
     drop(input);
     crate::mem::release_transient_heap();
-    let status = child.wait()?;
+    let status = match request.budget.filter(|_| classify) {
+        None => child.wait()?,
+        Some(budget) => {
+            let deadline = std::time::Instant::now() + budget;
+            loop {
+                if let Some(status) = child.try_wait()? {
+                    break status;
+                }
+                if std::time::Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    if timing {
+                        eprintln!(
+                            "KM_TIMING rules-consistency rule-aware taxonomy stopped after its {:.1}s budget",
+                            budget.as_secs_f64()
+                        );
+                    }
+                    return Ok(Some(RulesVerdict {
+                        consistent: true,
+                        taxonomy: None,
+                        executable_rules,
+                        timed_out: true,
+                        represented_ground_clauses: 0,
+                    }));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        }
+    };
     if timing {
         eprintln!(
             "KM_TIMING rules-consistency worker exited @ {:.2}s success={}",
@@ -3786,9 +4139,17 @@ fn rules_consistency(
     #[derive(serde::Deserialize)]
     struct TOut {
         consistent: bool,
+        #[serde(default)]
+        unsatisfiable: Vec<String>,
+        #[serde(default)]
+        subsumptions: Vec<[String; 2]>,
     }
     let t: TOut = serde_json::from_reader(BufReader::new(File::open(out_path.path())?))?;
-    Ok(Some(RulesVerdict { consistent: t.consistent, represented_ground_clauses }))
+    let taxonomy = (classify && t.consistent).then(|| RuleTaxonomy {
+        unsatisfiable: t.unsatisfiable,
+        subsumptions: t.subsumptions,
+    });
+    Ok(Some(RulesVerdict { consistent: t.consistent, taxonomy, executable_rules, timed_out: false, represented_ground_clauses }))
 }
 
 /// Complete a PARTIAL certified-elc answer (exit 4): classify the residue with
