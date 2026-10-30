@@ -358,6 +358,23 @@ pub fn run_ofn_split_cached(
     ),
     OrchestrateError,
 > {
+    // Both passes below close the same positive ABox on finite-rule inputs;
+    // the second reads the first's closure (`frontend::pass_cache`).
+    crate::frontend::with_pass_cache(|| run_ofn_split_cached_passes(cfg, ont))
+}
+
+fn run_ofn_split_cached_passes(
+    cfg: &Config,
+    ont: &Path,
+) -> Result<
+    (
+        TempPath,
+        Meta,
+        Option<crate::json_io::JInput>,
+        Option<TempPath>,
+    ),
+    OrchestrateError,
+> {
     let mut result = run_ofn_split_cached_once(cfg, ont)?;
     // OWL 2 Direct Semantics: `DataPropertyAssertion(p a v)` holds iff `a` is
     // an instance of `DataHasValue(p v)`. The frontend carries positive data

@@ -21,6 +21,8 @@ pub mod ground_rule_source;
 pub mod data_abox_projection;
 mod finite_data_rules;
 mod rule_assertions;
+mod pass_cache;
+pub(crate) use pass_cache::with_scope as with_pass_cache;
 mod isolated_rules;
 pub mod iri;
 pub mod literal_profiles;
@@ -1229,10 +1231,14 @@ fn ofn_to_clauses_representation(
     }
     if profile.source.imports == 0 {
         if let Some(scan) = &finite_rule_scan {
+            let started = std::time::Instant::now();
             profile.normalized_constant_data_rules = integer_rule_scan.lower_finite_rules(
                 &mut ontology, &mut reg, scan, profile.source.rule_axioms,
                 rule_certificate_scan.query_only_rules(),
             );
+            if std::env::var_os("KM_TIMING").is_some() && profile.normalized_constant_data_rules > 0 {
+                eprintln!("KM_TIMING frontend finite-rule grounding {:.2}s", started.elapsed().as_secs_f64());
+            }
             profile.normalized_finite_data_rules = profile.normalized_constant_data_rules;
             if profile.normalized_finite_data_rules > 0 {
                 profile.finite_rule_class_projection = scan.class_projection();
@@ -1259,7 +1265,12 @@ fn ofn_to_clauses_representation(
         }
     }
     if profile.normalized_constant_data_rules > 0 || std::env::var_os("KM_RULE_ASSERTION_CLOSURE").is_some() {
+        let started = std::time::Instant::now();
         rule_assertions::materialize(&mut ontology);
+        if std::env::var_os("KM_TIMING").is_some() {
+            eprintln!("KM_TIMING frontend rule-assertion closure {:.2}s (memo hits {})",
+                started.elapsed().as_secs_f64(), pass_cache::stats().closure_hits);
+        }
     }
     let inert_role_probes =
         inert_role_abox_probes(&ontology, &profile, elide_top_role).unwrap_or_default();

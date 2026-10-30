@@ -28,7 +28,49 @@ fn value(term: &RuleTerm, binding: &HashMap<String, String>) -> Option<String> {
     }
 }
 
+/// What [`close`] reads: the asserted concept and role facts, the class
+/// inclusions and the positive rules (RBox axioms as rules).
+///
+/// Equality compares the four collections as sets. [`close`] depends on
+/// nothing else: each round reads only the facts present at its start
+/// (`snapshot` and the two indexes), adds conclusions to sets, and evaluates
+/// every inclusion and every rule against that start state, so neither the
+/// order nor the repetition of inclusions and rules changes a round. The
+/// join order of a rule depends on its own body order and on index sizes, and
+/// both resource bounds count bindings or facts, which the order of index
+/// entries does not change. Equal inputs therefore have equal closures
+/// (`pass_cache::closure` relies on this).
+#[derive(Clone)]
+pub(super) struct ClosureInput {
+    concepts: HashSet<(Concept, String)>,
+    roles: HashSet<(String, String, String)>,
+    inclusions: Vec<(Concept, Concept)>,
+    rules: Vec<(Vec<RuleAtom>, Vec<RuleAtom>)>,
+}
+
+impl PartialEq for ClosureInput {
+    fn eq(&self, other: &Self) -> bool {
+        fn set<T: std::hash::Hash + Eq>(items: &[T]) -> HashSet<&T> { items.iter().collect() }
+        self.concepts == other.concepts
+            && self.roles == other.roles
+            && set(&self.inclusions) == set(&other.inclusions)
+            && set(&self.rules) == set(&other.rules)
+    }
+}
+
+/// New concept facts and new role edges, each sorted.
+pub(super) type ClosureOutput = (Vec<(Concept, String)>, Vec<(String, String, String)>);
+
 pub(super) fn materialize(ontology: &mut Ontology) -> usize {
+    let input = collect(ontology);
+    let (conclusions, edges) = super::pass_cache::closure(input, close);
+    let count = conclusions.len() + edges.len();
+    for (c, a) in conclusions { ontology.add(Axiom::ConceptAssertion(c, a)); }
+    for (r, a, b) in edges { ontology.add(Axiom::RoleAssertion(r, a, b)); }
+    count
+}
+
+fn collect(ontology: &Ontology) -> ClosureInput {
     let mut concepts = HashSet::default();
     let mut roles = HashSet::default();
     let mut inclusions = Vec::new();
@@ -69,8 +111,13 @@ pub(super) fn materialize(ontology: &mut Ontology) -> usize {
             _ => {}
         }
     }
-    let initial_concepts = concepts.clone();
-    let initial_roles = roles.clone();
+    ClosureInput { concepts, roles, inclusions, rules }
+}
+
+fn close(input: &ClosureInput) -> ClosureOutput {
+    let ClosureInput { concepts: initial_concepts, roles: initial_roles, inclusions, rules } = input;
+    let mut concepts = initial_concepts.clone();
+    let mut roles = initial_roles.clone();
     loop {
         let previous = concepts.len() + roles.len();
         // Exact asserted expressions imply their inclusions. No negation by
@@ -80,7 +127,7 @@ pub(super) fn materialize(ontology: &mut Ontology) -> usize {
             if let Concept::And(parts) = &concept {
                 for part in parts { concepts.insert((part.clone(), individual.clone())); }
             }
-            for (left, right) in &inclusions {
+            for (left, right) in inclusions {
                 if &concept == left { concepts.insert((right.clone(), individual.clone())); }
             }
         }
@@ -96,7 +143,7 @@ pub(super) fn materialize(ontology: &mut Ontology) -> usize {
         for (role, left, right) in &roles {
             role_index.entry(role.clone()).or_default().push((left.clone(), right.clone()));
         }
-        for (body, head) in &rules {
+        for (body, head) in rules {
             let mut remaining: Vec<_> = body.iter().collect();
             let mut ordered = Vec::with_capacity(body.len());
             let mut bound = HashSet::default();
@@ -179,19 +226,61 @@ pub(super) fn materialize(ontology: &mut Ontology) -> usize {
         }
         if concepts.len() + roles.len() == previous || concepts.len() + roles.len() > 100_000 { break; }
     }
-    let mut conclusions: Vec<_> = concepts.difference(&initial_concepts).cloned().collect();
+    let mut conclusions: Vec<_> = concepts.difference(initial_concepts).cloned().collect();
     conclusions.sort();
-    let mut edges: Vec<_> = roles.difference(&initial_roles).cloned().collect();
+    let mut edges: Vec<_> = roles.difference(initial_roles).cloned().collect();
     edges.sort();
-    let count = conclusions.len() + edges.len();
-    for (c, a) in conclusions { ontology.add(Axiom::ConceptAssertion(c, a)); }
-    for (r, a, b) in edges { ontology.add(Axiom::RoleAssertion(r, a, b)); }
-    count
+    (conclusions, edges)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn closure_memo_answers_an_equal_input_in_any_order() {
+        let source = |order: &str| -> String {
+            let axioms = [
+                "ClassAssertion(<P> <a>)", "ObjectPropertyAssertion(<r> <a> <b>)",
+                "EquivalentClasses(<P> <Q>)", "SubClassOf(<Good> <Fine>)",
+                "DLSafeRule(Body(ClassAtom(<Q> Variable(<x>)) ObjectPropertyAtom(<r> Variable(<x>) Variable(<y>))) Head(ClassAtom(<Good> Variable(<y>))))",
+            ];
+            let picked: Vec<&str> = order.bytes().map(|i| axioms[(i - b'0') as usize]).collect();
+            format!("Ontology({})", picked.join(" "))
+        };
+        let parse = |text: &str| {
+            let mut registry = super::super::iri::IriRegistry::new();
+            super::super::parse::parse_axioms(&mut registry, text).unwrap()
+        };
+        let plain = {
+            let mut ontology = parse(&source("01234"));
+            materialize(&mut ontology);
+            ontology.abox().cloned().collect::<HashSet<_>>()
+        };
+        let (first, second, stats) = super::super::pass_cache::with_scope(|| {
+            let mut first = parse(&source("01234"));
+            materialize(&mut first);
+            // The same facts, inclusions and rules in another order and with
+            // a repeated inclusion: an equal input, answered from the memo.
+            let mut second = parse(&source("432210"));
+            materialize(&mut second);
+            (first.abox().cloned().collect::<HashSet<_>>(), second.abox().cloned().collect::<HashSet<_>>(),
+                super::super::pass_cache::stats())
+        });
+        assert_eq!(stats.closure_hits, 1);
+        assert_eq!(first, plain);
+        assert_eq!(second, plain);
+        assert!(plain.iter().any(|a| matches!(a, Axiom::ConceptAssertion(Concept::Name(c), i) if c == "Fine" && i == "b")));
+        // A different input is closed afresh.
+        let changed = super::super::pass_cache::with_scope(|| {
+            let mut ontology = parse(&source("0123"));
+            materialize(&mut ontology);
+            let mut other = parse(&source("01234"));
+            materialize(&mut other);
+            (other.abox().cloned().collect::<HashSet<_>>(), super::super::pass_cache::stats())
+        });
+        assert_eq!(changed.1.closure_hits, 0);
+        assert_eq!(changed.0, plain);
+    }
     #[test]
     fn repeated_role_variables_require_one_shared_binding() {
         let mut registry = super::super::iri::IriRegistry::new();
