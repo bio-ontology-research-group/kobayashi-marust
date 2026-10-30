@@ -34,7 +34,7 @@ enum AboxFact {
     Role(String, String, String), // r(a,b)
     NegativeRole(String, String, String), // ¬r(a,b)
     Same(String, String),         // a ≈ b
-    Diff(String, String),         // a ≠ b  (recorded, not encoded — see below)
+    Diff(String, String),         // a ≠ b  (encoded over the proxies, see below)
 }
 
 fn ind_name(t: &JTerm) -> Option<&str> {
@@ -3988,8 +3988,7 @@ fn convert_with_rule_abox(
     //   q(a)      ⇒ {a} ⊑ q              : __nom__a(x) → q(x)
     //   r(a,b)    ⇒ {a} ⊑ ∃r.{b}         : __nom__a(x) → ∃r.__nom__b(x)
     //   a ≈ b     ⇒ {a} ⊑ {b}, {b} ⊑ {a} : the two nodes merge via the o-rule
-    //   a ≠ b     ⇒ dropped (sound: losing a distinctness can never INVENT a clash;
-    //              encoding it as a tableau distinct-edge is left to a later increment)
+    //   a ≠ b     ⇒ {a} ⊓ {b} ⊑ ⊥        : __nom__a(x) ∧ __nom__b(x) → ⊥
     // Every named node also carries the O-guard `__O__`, and every rule variable is
     // guarded by `__O__` so it only binds to a named individual (DL-safety): firing
     // over an anonymous ∃-successor would be unsound.
@@ -4093,10 +4092,22 @@ fn convert_with_rule_abox(
                     });
                 }
                 AboxFact::Diff(a, b) => {
+                    // `a ≉ b` over the nominal roots: each proxy denotes
+                    // exactly one element (the worker seeds one root per
+                    // proxy and merges every carrier into it), so the two
+                    // individuals differ iff no element carries both
+                    // proxies. The clause is entailed by the ontology, so it
+                    // can only remove models the ontology does not have
+                    // (2026-10-30; it was omitted without being counted).
                     note(a, &mut individuals);
                     note(b, &mut individuals);
-                    let _ = ids.cid(&nom_of(a));
-                    let _ = ids.cid(&nom_of(b));
+                    let na = ids.cid(&nom_of(a));
+                    let nb = ids.cid(&nom_of(b));
+                    ht.push(HtClause {
+                        body: vec![HAtom::Concept { neg: false, c: na, t: 0 },
+                            HAtom::Concept { neg: false, c: nb, t: 0 }],
+                        head: vec![],
+                    });
                 }
             }
         }

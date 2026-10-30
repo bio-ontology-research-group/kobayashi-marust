@@ -3733,7 +3733,11 @@ fn rules_consistency(
     // rule-detected inconsistency is lost). Inverse/subrole/domain/range
     // semantics still reach the tableau through the frontend's bridge clauses
     // inside `input.clauses`, so a detected clash remains a real clash.
-    let mut tin = if require_source_model {
+    // The classification keeps the named-individual graph even when the
+    // finite grounding left no executable rule (normalized rules are
+    // ordinary clauses then): the ground ABox clauses are seeded on the
+    // nominal roots instead of dropped, exactly as with rules present.
+    let mut tin = if require_source_model || classify {
         cb_to_ht::convert_rule_model(&input.clauses, &named, &input.cardinalities,
             &input.definers, &input.source_axioms, &input.rules)
     } else {

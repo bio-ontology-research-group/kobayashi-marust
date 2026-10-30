@@ -122,3 +122,19 @@ fn unrepresented_rule_beside_nominal_is_refused() {
         String::from_utf8_lossy(&output.stderr)
     );
 }
+
+/// The fr282 minimum plus `K ≡ {b} ⊓ {c}` and `DifferentIndividuals(b c)`:
+/// `K` is unsatisfiable only through the distinctness, which the rule
+/// worker used to record without encoding (HermiT: `A ⊑ D`, `K` unsat).
+#[test]
+fn ground_distinctness_reaches_the_rule_taxonomy() {
+    let source = include_str!("fixtures/rule_taxonomy_nominal_different.ofn");
+    let output = answer(&classify(source, |_| {}));
+    assert_eq!(output["consistent"], true);
+    assert_eq!(output["dropped"], 0);
+    assert_eq!(
+        output["subsumptions"],
+        serde_json::json!([["http://example.org/m#A", "http://example.org/m#D"]])
+    );
+    assert_eq!(output["unsatisfiable"], serde_json::json!(["http://example.org/m#K"]));
+}

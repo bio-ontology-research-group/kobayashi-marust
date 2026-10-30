@@ -67,6 +67,17 @@ rule worker reads the one-sorted clause stream (data successors fall under
   counts these clauses (`orchestrate::proxy_definition`) and passes the
   count to the worker (`KM_RULES_CLASSIFY_PROXY_DEFINITIONS`); every other
   converter drop refuses the taxonomy.
+- The classification converts with `cb_to_ht::convert_rule_model`, which
+  keeps the named-individual graph when the finite grounding left no
+  executable rule (normalized rules are then ordinary clauses): the ground
+  ABox clauses are seeded on the nominal roots instead of dropped.
+- A ground `DifferentIndividuals(a b)` is encoded on the nominal roots as
+  `__nom__a(x) ∧ __nom__b(x) → ⊥`. The converter used to record it
+  without encoding it and without counting it, in the consistency check as
+  well (a consistent verdict could ignore a distinctness). Each proxy
+  denotes exactly one element, so the clause says `a ≉ b` and is entailed
+  by the ontology: it removes no model of the ontology. Probe `diff4`
+  (`K ≡ {b} ⊓ {c}`, `b ≉ c`, `K` unsatisfiable) failed without it.
 - The input is refused (exit 3, `unsupported: ...`) instead of answered
   with `DROPPED` when the rule worker's conversion omitted a clause or fenced
   a construct (a `DifferentIndividualsAtom` rule, for example), when the
