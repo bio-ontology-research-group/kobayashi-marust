@@ -880,12 +880,53 @@ fn rsucc_blocked(ctx: &Context, arena: &[ContextClause], c: &ContextClause, a: &
 /// `true` if the clause mentions the central variable x anywhere (such
 /// ground-context clauses are instantiated per individual-labelled edge by the
 /// Pred back-substitution, so they keep the per-edge propagation path).
-/// `→ o ≈ o'` between two individuals: the clause the context regime delivers
-/// across the announced-individual guard (`calc::eq_announce`).
+/// `→ o ≈ o'` between two individuals: the only clause the v1.5.4 form of R3
+/// delivered across the guard (diagnostic `KM_CONTEXT_UNIT_R3`).
 fn ground_unit_equality(c: &ContextClause) -> bool {
     c.body.is_empty()
         && c.head.len() == 1
         && matches!(c.head[0], Lit::Eq { s, t } if is_individual(s) && is_individual(t))
+}
+
+/// R3 of the context regime (`calc::eq_announce`, docs/PER-CONTEXT-ORDERING.md
+/// section 8): whether a ground-context clause lies inside the announced
+/// interface of a context whose announced individuals satisfy `announced`
+/// (additional nominals count as announced). A ground equality `o ≈ o'` or
+/// inequality `o ≉ o'` between individuals lies inside when `o` or `o'` is
+/// announced; every other literal when all its individuals are. The unit
+/// `→ o ≈ o'` is the special case that R3 covered before; the disjunctive
+/// form `→ Δ ∨ o ≈ o'` (`E(a) ∨ a ≈ d` from `≤1 r.B` on a third individual,
+/// `tests/r3_disjunctive_equality.rs`) is the case it missed. The receiving
+/// context rewrites `o` to `x`, so the clause becomes a merge clause
+/// `→ Δ ∨ x ≈ o'` and its merge subscription announces `o'`. This is the
+/// delivery condition of `lean/ContextCalculus/ExchangeEquality.lean`
+/// (`InIface`, `exchangeCond_of_guard`).
+fn in_announced_interface(c: &ContextClause, announced: impl Fn(Term) -> bool) -> bool {
+    let mut inds: Vec<Term> = Vec::new();
+    for p in &c.body {
+        inds.clear();
+        pred_inds(p, &mut inds);
+        if !inds.iter().all(|&o| announced(o)) {
+            return false;
+        }
+    }
+    for l in &c.head {
+        match *l {
+            Lit::Eq { s, t } | Lit::Ineq { s, t } if is_individual(s) && is_individual(t) => {
+                if !(announced(s) || announced(t)) {
+                    return false;
+                }
+            }
+            _ => {
+                inds.clear();
+                lit_inds(l, &mut inds);
+                if !inds.iter().all(|&o| announced(o)) {
+                    return false;
+                }
+            }
+        }
+    }
+    true
 }
 
 fn cc_mentions_x(c: &ContextClause) -> bool {
@@ -7551,11 +7592,17 @@ impl Engine {
                             for l in &c.head {
                                 lit_inds(l, &mut inds);
                             }
-                            ok = inds.iter().all(|o| {
-                                *o >= self.nom_base || ctx.predecessors.contains_key(&(u, *o))
-                            }) || (eq_announce()
-                                && ground_unit_equality(c)
-                                && inds.iter().any(|o| ctx.predecessors.contains_key(&(u, *o))));
+                            let announced = |o: Term| {
+                                o >= self.nom_base || ground_guard_off() || ctx.predecessors.contains_key(&(u, o))
+                            };
+                            ok = inds.iter().all(|&o| announced(o))
+                                || (eq_announce()
+                                    && inds.iter().any(|o| ctx.predecessors.contains_key(&(u, *o)))
+                                    && if eq_closure_announce() {
+                                        in_announced_interface(c, announced)
+                                    } else {
+                                        ground_unit_equality(c)
+                                    });
                         }
                         if ok {
                             let edge = (u, label);
@@ -7724,10 +7771,18 @@ impl Engine {
                     lit_inds(l, &mut inds);
                 }
                 let Some(&label) = inds.iter().find(|o| new.contains(o)) else { continue };
-                // Context regime: a ground equality follows either announced
-                // side (`calc::eq_announce`, docs/PER-CONTEXT-ORDERING.md).
-                if !inds.iter().all(|o| *o >= self.nom_base || gctx.predecessors.contains_key(&(id, *o)))
-                    && !(eq_announce() && ground_unit_equality(c))
+                // Context regime: a ground (in)equality of the clause needs
+                // only one announced side (R3, `in_announced_interface`,
+                // docs/PER-CONTEXT-ORDERING.md section 8).
+                let announced =
+                    |o: Term| o >= self.nom_base || ground_guard_off() || gctx.predecessors.contains_key(&(id, o));
+                if !inds.iter().all(|&o| announced(o))
+                    && !(eq_announce()
+                        && if eq_closure_announce() {
+                            in_announced_interface(c, announced)
+                        } else {
+                            ground_unit_equality(c)
+                        })
                 {
                     continue;
                 }
