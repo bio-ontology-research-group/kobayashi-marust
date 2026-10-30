@@ -1,0 +1,24 @@
+KM_TIMING mark: validate_user_input done
+KM_TIMING mark: second source check done
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING ABox quotient not built: site 1
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=5.05s cached=false sidecar=false
+KM_TIMING frontend: 81 data-property assertion(s) not carried; re-running with the DataHasValue conversion
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=5.08s cached=false sidecar=false
+KM_TIMING rules-consistency input parsed @ 0.17s clauses=8552 rules=2602
+KM_TIMING rules-consistency released 11 inert object sort(s): 11 fact(s) unrelativized, 11 sort clause(s) removed
+KM_TIMING rules-consistency converted @ 0.22s ht_clauses=11273 queries=178
+KM_TIMING rules-consistency serialized @ 0.24s bytes=4056638
+KM_TIMING rules-consistency worker input sent @ 0.25s
+KM_TIMING rules-consistency worker exited @ 7.52s success=true
+KM_TIMING mark: second source check done
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING ABox quotient not built: site 1
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.00s cached=true sidecar=false
+KM_TIMING frontend done @ 0.00s route=certified_el_production
+KM_TIMING engine block done @ 0.00s (subs_keys=191)
+KM_TIMING mark: output mapping done
+KM_TIMING mark: classify_json returned
+KM_TIMING mark: output written

@@ -1,0 +1,10 @@
+{
+  "ontology": "diff4.hermit.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["A", "D"]
+  ],
+  "unsatisfiable": [
+    "K"
+  ]
+}
