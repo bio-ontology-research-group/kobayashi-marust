@@ -31871,7 +31871,11 @@ mod tests {
             serde_json::from_str(&document).expect("normalized taxonomy is JSON");
         assert_eq!(wire["version"], 3);
         assert!(wire["normalization"][0]["source"]["body"][0]["eq"].is_object());
-        assert!(wire["payload"]["plain"]["certificate"].is_object());
+        // Every certified taxonomy uses the mixed (version-2) matrix, which
+        // `WireOrdinaryTaxonomyRunMatrix.terminalMatrix?` derives for every
+        // fragment; the legacy plain payload is no longer produced.
+        assert_eq!(wire["payload"]["mixed"]["certificate"]["version"], 2);
+        assert!(wire["payload"].get("plain").is_none());
         let path = std::env::temp_dir().join(format!(
             "km-ht-taxonomy-equality-body-gap-{}.json",
             std::process::id()
