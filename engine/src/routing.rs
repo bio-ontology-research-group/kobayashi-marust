@@ -2875,6 +2875,7 @@ impl EnvironmentGuard {
             .chain(std::iter::once("KM_DISJOINT_UNION_ABOX_CONSISTENT"))
             .chain(std::iter::once("KM_DISJOINT_UNION_ABOX_DECLINED"))
             .chain(std::iter::once("KM_DATA_ASSERTION_AS_CLASS"))
+            .chain(std::iter::once("KM_BRIDGE_OBJECT_GUARD"))
             .chain(std::iter::once("KM_CB_FIRST_TYPED_NOMINAL_S"))
             .chain(ROUTE_KEYS.iter().copied())
             .map(|key| (key, std::env::var_os(key)))

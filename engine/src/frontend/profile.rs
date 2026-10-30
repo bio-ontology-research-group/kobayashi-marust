@@ -340,6 +340,12 @@ pub struct OntologyProfile {
     /// iff every probe remains satisfiable.
     #[serde(default)]
     pub inert_role_abox_probe_candidate: bool,
+    /// The object guard for the native bridge applies (`object_guard`): the
+    /// source has a data role, an individual, and an axiom the guard
+    /// rewrites. A routing hint only; the guarded ontology is built on
+    /// request by a separate frontend pass.
+    #[serde(default)]
+    pub object_guard_candidate: bool,
     /// Source-only admission gate for the disjoint-union ABox projection. This
     /// is not itself a consistency certificate: the orchestrator must first
     /// obtain an exact full-ontology consistency verdict. The gate excludes
@@ -1039,6 +1045,13 @@ impl<'a> SourceProfileBuilder<'a> {
     /// Raw source names of every data property mentioned by the source
     /// (declared or used), sorted; the frontend's sort encoding resolves them
     /// against the registry without assigning new names.
+    /// Every class name the source mentions (declarations aside).
+    pub(super) fn class_names(&self) -> Vec<&'a str> {
+        let mut names: Vec<_> = self.classes.iter().copied().collect();
+        names.sort_unstable();
+        names
+    }
+
     pub(super) fn data_property_names(&self) -> Vec<&'a str> {
         let mut names: Vec<_> = self.data_properties.iter().copied().collect();
         names.sort_unstable();
@@ -1207,6 +1220,7 @@ impl<'a> SourceProfileBuilder<'a> {
                 positive_el_abox_materializable,
                 atomic_class_abox_candidate: false,
                 inert_role_abox_probe_candidate: false,
+                object_guard_candidate: false,
                 disjoint_union_abox_candidate,
                 existential_witness_abox_candidate: false,
                 inverse_cardinality_role_separable,
