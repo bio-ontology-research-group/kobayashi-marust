@@ -79,19 +79,19 @@ pub const CB_CHECKERS: &[(&str, &str, Option<&str>, CheckerSet)] = &[
         "KM_CB_LEAN_CERT_CHECKER",
         "cb-live-taxonomy-publication-check",
         None,
-        CheckerSet::All,
+        CheckerSet::GlobalModel,
     ),
     (
         "KM_CB_EXACT_LEAN_CERT_CHECKER",
         "cb-live-exact-taxonomy-publication-check",
         Some("KM_CB_EXACT_TAXONOMY_CANDIDATE"),
-        CheckerSet::All,
+        CheckerSet::GlobalModel,
     ),
     (
         "KM_CB_TERMINAL_STATE_CHECKER",
         "cb-terminal-state-check",
         Some("KM_CB_TERMINAL_STATE_CANDIDATE"),
-        CheckerSet::All,
+        CheckerSet::GlobalModel,
     ),
     (
         "KM_CB_STANDALONE_CONTEXT_PROOF_CHECKER",
@@ -342,6 +342,16 @@ pub enum CheckerSet {
     Publication,
     /// Publication checkers plus component wires.
     All,
+    /// Legacy wires that decode `production_bound.global_model` as a complete
+    /// global-model certificate (`WireCBGlobalModelDocument`: global closure
+    /// and blocked ground saturation): the live publication bundle, the live
+    /// exact taxonomy that embeds it, and the terminal state (its Pred send
+    /// coverage comes from that certificate). No production code builds that
+    /// completeness object; production puts the typed source in that slot,
+    /// which the source-bound wires check (`CBSourceLiveInsertionDerivation`).
+    /// The switch never turns these on; under `all` it records `cannot_check`
+    /// for each one present in the directory.
+    GlobalModel,
 }
 
 /// The outcome of one checker invocation.
@@ -540,6 +550,11 @@ pub fn configure_elc() {
     }
 }
 
+/// Why the switch does not run the `CheckerSet::GlobalModel` wires.
+pub const GLOBAL_MODEL_DECLINE: &str = "the legacy live CB wire needs a global-model certificate \
+     (global closure and blocked saturation), which production does not build; the \
+     source-bound CB checkers cover this run";
+
 /// Turn on the CB checkers for this worker process. Returns false (and
 /// records `cannot_check`) when the CB evidence form does not apply; the
 /// worker then runs exactly as without the checkers.
@@ -576,6 +591,15 @@ pub fn configure_cb(typed_source_ok: Result<(), String>) -> bool {
     let set = selected_set();
     let mut any = false;
     for (variable, name, candidate, member) in CB_CHECKERS {
+        if *member == CheckerSet::GlobalModel {
+            if set == CheckerSet::All
+                && std::env::var_os(variable).is_none()
+                && executable(&dir, name).is_some()
+            {
+                record_cannot_check("cb", name, GLOBAL_MODEL_DECLINE);
+            }
+            continue;
+        }
         if *member == CheckerSet::All && set != CheckerSet::All {
             continue;
         }
@@ -777,6 +801,23 @@ mod tests {
         names.sort_unstable();
         names.dedup();
         assert_eq!(names.len(), count);
+    }
+
+    #[test]
+    fn only_the_legacy_live_wires_need_a_global_model_certificate() {
+        let legacy: Vec<&str> = CB_CHECKERS
+            .iter()
+            .filter(|(.., member)| *member == CheckerSet::GlobalModel)
+            .map(|(_, name, ..)| *name)
+            .collect();
+        assert_eq!(
+            legacy,
+            [
+                "cb-live-taxonomy-publication-check",
+                "cb-live-exact-taxonomy-publication-check",
+                "cb-terminal-state-check",
+            ]
+        );
     }
 
     #[test]
