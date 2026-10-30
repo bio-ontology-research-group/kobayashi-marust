@@ -197,6 +197,13 @@ theorem cands_complete (hpc : M.predComplete = true) (hec : M.extComplete = true
 
 /-! ## Clause evaluation -/
 
+/-- The atom mentions the variable bound last (only such atoms can have become
+ready). A pruning filter only: soundness does not depend on it. -/
+def _root_.ContextCalculus.RulesRoute.fresh (done : List Nat) (a : RAtom) : Bool :=
+  match done with
+  | [] => true
+  | w :: _ => (atomVars a).contains w
+
 def _root_.ContextCalculus.RulesRoute.ready (done : List Nat) (a : RAtom) : Bool := (atomVars a).all (fun w => decide (w ∈ done))
 
 def upd (σ : Nat → Fin M.n) (v : Nat) (d : Fin M.n) : Nat → Fin M.n :=
@@ -207,8 +214,8 @@ def checkFrom (cl : RClause) : List Nat → List Nat → (Nat → Fin M.n) → B
   | v :: rest, done, σ =>
       if v ∈ done then checkFrom cl rest done σ
       else
-        cl.body.any (fun a => ready done a && !M.holdsB σ a) ||
-        cl.head.any (fun a => ready done a && M.holdsB σ a) ||
+        cl.body.any (fun a => fresh done a && ready done a && !M.holdsB σ a) ||
+        cl.head.any (fun a => fresh done a && ready done a && M.holdsB σ a) ||
         (M.cands cl done σ v).all (fun d => checkFrom cl rest (v :: done) (M.upd σ v d))
 
 omit M in
@@ -259,7 +266,7 @@ theorem checkFrom_sound (hpc : M.predComplete = true) (hec : M.extComplete = tru
         · exact Or.inr h
       · simp only [Bool.or_eq_true, List.any_eq_true, Bool.and_eq_true, Bool.not_eq_true',
           List.all_eq_true] at hcheck
-        rcases hcheck with (⟨a, ha, hready, hfalse⟩ | ⟨a, ha, hready, htrue⟩) | hcands
+        rcases hcheck with (⟨a, ha, ⟨_, hready⟩, hfalse⟩ | ⟨a, ha, ⟨_, hready⟩, htrue⟩) | hcands
         · have := hbody a ha
           rw [M.holdsB_congr a (ready_agree hready hagree)] at this
           simp_all
@@ -283,18 +290,41 @@ theorem checkFrom_sound (hpc : M.predComplete = true) (hec : M.extComplete = tru
             have := hbody a ha
             simp_all
 
+/-- A variable joined by a body role atom to a variable in `done`. -/
+def joinedVar? (cl : RClause) (done : List Nat) : Option Nat :=
+  cl.body.findSome? fun
+    | .role _ s t =>
+        if s ∈ done ∧ t ∉ done then some t else if t ∈ done ∧ s ∉ done then some s else none
+    | _ => none
+
+/-- Enumeration order: follow body role atoms from bound variables, else take
+the next unbound clause variable. Any order is sound (`checkFrom_sound`); this
+one keeps joins along role edges. -/
+def varOrder (cl : RClause) : Nat → List Nat → List Nat
+  | 0, done => done.reverse
+  | fuel + 1, done =>
+      match joinedVar? cl done with
+      | some v => varOrder cl fuel (v :: done)
+      | none =>
+          match (clauseVars cl).find? (fun v => v ∉ done) with
+          | some v => varOrder cl fuel (v :: done)
+          | none => done.reverse
+
 def checkClause (cl : RClause) : Bool :=
-  if h : 0 < M.n then M.checkFrom cl (clauseVars cl) [] (fun _ => ⟨0, h⟩) else false
+  if h : 0 < M.n then
+    M.checkFrom cl (varOrder cl (clauseVars cl).length [] ++ clauseVars cl) [] (fun _ => ⟨0, h⟩)
+  else false
 
 theorem checkClause_sound (hpc : M.predComplete = true) (hec : M.extComplete = true) (cl : RClause)
     (h : M.checkClause cl = true) : M.interp.modelsClause cl := by
   unfold checkClause at h
   split at h
   · intro τ hbody
-    obtain ⟨a, ha, hsat⟩ := M.checkFrom_sound hpc hec cl (clauseVars cl) [] _ h
+    obtain ⟨a, ha, hsat⟩ := M.checkFrom_sound hpc hec cl _ [] _ h
       (by
         intro a ha w hw
         left
+        apply List.mem_append_right
         rcases List.mem_append.mp ha with ha | ha
         · exact mem_clauseVars_of_body ha hw
         · exact mem_clauseVars_of_head ha hw)
