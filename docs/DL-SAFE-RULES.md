@@ -86,6 +86,24 @@ rule worker reads the one-sorted clause stream (data successors fall under
   denotes exactly one element, so the clause says `a ≉ b` and is entailed
   by the ontology: it removes no model of the ontology. Probe `diff4`
   (`K ≡ {b} ⊓ {c}`, `b ≉ c`, `K` unsatisfiable) failed without it.
+- Schedule. The rule-aware classification runs alone first, within a
+  budget (`KM_RULES_TAXONOMY_BUDGET_S`, default 10 s). The rule tableau has
+  no dependency-directed backjumping on its careful path, and a subsumption
+  test that holds must exhaust its search: on seeds fr6 and fr29 it runs
+  past 240 s where the CB route answers in under a minute. Past the budget
+  the worker is stopped, the consistency-only check runs, the CB taxonomy of
+  the rule-free stream is computed as before, and the rule worker then
+  classifies with that taxonomy as given (`KM_RULES_CLASSIFY_KNOWN`,
+  `Tableau::set_known`): a CB subsumption or unsatisfiable class is
+  recorded without a test, every other model-label candidate is tested.
+  Every CB entailment is an entailment of the ontology with its rules (the
+  rules only add constraints, and the inert-sort release keeps every
+  root-label test's verdict), so the given pairs are sound, and the
+  remaining candidates are decided as in the first schedule: both schedules
+  publish the same taxonomy. The worker decides every query over its
+  complete input, so clauses the CB worker omitted are not omissions of
+  the answer (`DROPPED` is reset; front-end omissions are counted
+  separately). The budget is a scheduling bound, not a semantic one.
 - The input is refused (exit 3, `unsupported: ...`) instead of answered
   with `DROPPED` when the rule worker's conversion omitted a clause or fenced
   a construct (a `DifferentIndividualsAtom` rule, for example), when the

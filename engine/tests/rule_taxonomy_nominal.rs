@@ -138,3 +138,25 @@ fn ground_distinctness_reaches_the_rule_taxonomy() {
     );
     assert_eq!(output["unsatisfiable"], serde_json::json!(["http://example.org/m#K"]));
 }
+
+/// The CB-first schedule (the rule-aware classification past its budget)
+/// publishes the same answers.
+#[test]
+fn cb_first_schedule_gives_the_same_answers() {
+    let budget = |command: &mut Command| {
+        command.env("KM_RULES_TAXONOMY_BUDGET_S", "0");
+    };
+    let output = answer(&classify(FR282_MIN, budget));
+    assert_eq!(output["consistent"], true);
+    assert_eq!(output["dropped"], 0);
+    assert_eq!(
+        output["subsumptions"],
+        serde_json::json!([["http://example.org/m#A", "http://example.org/m#D"]])
+    );
+    let output = answer(&classify(TOP_ONE_OF, budget));
+    assert_eq!(output["dropped"], 0);
+    assert_eq!(output["subsumptions"], serde_json::json!([[":A", ":B"], [":B", ":A"]]));
+    let output = answer(&classify(include_str!("fixtures/rule_taxonomy_nominal_different.ofn"), budget));
+    assert_eq!(output["dropped"], 0);
+    assert_eq!(output["unsatisfiable"], serde_json::json!(["http://example.org/m#K"]));
+}
