@@ -122,3 +122,20 @@ and otherwise publish the uncarried assertions as dropped.
 
 Negative data-property assertions are never converted; they stay uncarried
 and are published as dropped axioms, independently of the abstraction.
+
+## Repeated assertions (2026-10-30, v1.5.5)
+
+The uncarried count is the number of source `DataPropertyAssertion`
+occurrences (the profile counts every occurrence) minus the converted ones.
+Both branches of `Ontology::commit_data_assertions_as_class` counted a
+conversion only when its class assertion was new, so an assertion stated
+twice, or one whose `ClassAssertion(DataHasValue(...))` the source also
+states, read as one uncarried assertion and the answer was published with
+`DROPPED 1` (generated seeds fr216, fr217, fr290 of
+`results/agents/2026-10-30/fr282-dropped-rules`). An OWL ontology is a set
+of axioms, so the repeated occurrence is the same axiom, and the class
+assertion already present carries it. Every converted occurrence now counts
+(`frontend::parse` test `repeated_data_assertion_counts_every_source_occurrence`).
+The clause set is unchanged; only the count, and through it the
+`nominal_abox` coverage diagnostic that compares the same two numbers,
+changes. No Lean obligation: the frontend is outside the Lean model.

@@ -3445,6 +3445,7 @@ fn convert_with_rule_abox(
         }
         if !head_funs.is_empty() {
             if c.body.iter().any(atom_has_fun) || head_funs.len() != 1 {
+                if std::env::var_os("KM_HT_TRACE_DROPPED").is_some() { eprintln!("KM_HT_TRACE_DROPPED clause={}", serde_json::to_string(c).unwrap_or_default()); }
                 dropped += 1;
                 continue;
             }
@@ -3516,6 +3517,7 @@ fn convert_with_rule_abox(
         if !body_eq_pairs.is_empty() && c.head.is_empty() {
             distinct_pairs.extend(body_eq_pairs);
         } else if c.body.iter().any(atom_has_fun) {
+            if std::env::var_os("KM_HT_TRACE_DROPPED").is_some() { eprintln!("KM_HT_TRACE_DROPPED clause={}", serde_json::to_string(c).unwrap_or_default()); }
             dropped += 1;
         } else if c
             .head
@@ -3646,6 +3648,7 @@ fn convert_with_rule_abox(
     for f in &exj_order {
         let rec = &exj[f];
         if !rec.ok || rec.role.is_none() || rec.fillers.is_empty() {
+            if std::env::var_os("KM_HT_TRACE_DROPPED").is_some() { eprintln!("KM_HT_TRACE_DROPPED existential={} ok={} role={:?} fillers={}", f, rec.ok, rec.role, rec.fillers.len()); }
             dropped += 1;
             continue;
         }
@@ -3965,6 +3968,7 @@ fn convert_with_rule_abox(
             }
         }
         if bad {
+            if std::env::var_os("KM_HT_TRACE_DROPPED").is_some() { eprintln!("KM_HT_TRACE_DROPPED clause={}", serde_json::to_string(c).unwrap_or_default()); }
             dropped += 1;
             continue;
         }

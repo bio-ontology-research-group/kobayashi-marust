@@ -6230,6 +6230,57 @@ fn rules_consistency_with_sorts(inp: &TInput, mut ht_clauses: Vec<Clause>,
         .map_err(|_| "rules-consistency thread panicked".to_string())?
 }
 
+/// Classification of a rule-aware input (`KM_RULES_CLASSIFY`): the
+/// `KM_RULES_CONSISTENCY` tableau (ABox seeded as nominal roots, O-guarded
+/// rule clauses, certified role-chain clauses) running `Tableau::classify`
+/// over `queries`. Every subsumption test `{A, ¬B}` and unsatisfiability
+/// test `{A}` is a satisfiability check of the input plus one fresh unnamed
+/// root, the same procedure as the consistency verdict. Refuses inputs whose
+/// conversion omitted a clause or fenced a construct, and inputs with
+/// nominals, inverse roles and number restrictions together (the tableau has
+/// no NN-rule, so its satisfiable verdicts are not exact there).
+pub fn rules_classification(inp: &TInput, mut ht_clauses: Vec<Clause>, queries: Vec<C>)
+    -> Result<(bool, Vec<C>, Vec<(C, C)>), String> {
+    // The orchestrator checked that this many omitted clauses are individual
+    // proxy definitions `__nom__a(x) → x ≈ a`, which the nominal declaration
+    // of `__nom__a` represents (orchestrate `proxy_definition`).
+    let proxy_definitions: usize = std::env::var("KM_RULES_CLASSIFY_PROXY_DEFINITIONS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    if inp.dropped > proxy_definitions || !inp.fenced.is_empty() {
+        return Err(format!(
+            "rule-aware classification requires a complete conversion ({} clause(s) omitted, {} fence(s))",
+            inp.dropped,
+            inp.fenced.len()
+        ));
+    }
+    let number = inp.number || !inp.card_defs.is_empty();
+    if inp.inverse && number && !inp.nominals.is_empty() {
+        return Err("rule-aware classification of nominals with inverse roles and number restrictions \
+                    (SHOIQ) is not supported by the rule tableau".into());
+    }
+    if inp.rule_source_classes.is_some() || inp.rule_source_abox.is_some() {
+        return Err("rule-aware classification does not read source-model verification input".into());
+    }
+    ht_clauses.extend(certified_role_chain_clauses(&inp.chains, &inp.transitive));
+    let inverse = inp.inverse;
+    let noms = inp.nominals.clone();
+    std::thread::Builder::new()
+        .stack_size(4usize << 30)
+        .spawn(move || {
+            let mut t = Tableau::new(ht_clauses);
+            t.set_pairwise(inverse);
+            t.set_number(number);
+            t.set_nominals(noms);
+            let (consistent, unsat, subs) = t.classify(&queries);
+            (consistent, unsat, hypertableau::transitive_close_subs(subs))
+        })
+        .map_err(|e| e.to_string())?
+        .join()
+        .map_err(|_| "rule-aware classification thread panicked".to_string())
+}
+
 /// Build the tableau clause vector from a parsed `TInput` (the deserialised
 /// wire form the worker consumes).
 pub fn clauses_of_tinput(inp: &TInput) -> Vec<Clause> {
@@ -8045,6 +8096,22 @@ fn run_tinput_inner(
                 "HT Lean certification cannot publish the unchecked rules-consistency route"
                     .to_string(),
             );
+        }
+        // KM_RULES_CLASSIFY: the same rule-aware input, classified instead
+        // of only checked (docs/DL-SAFE-RULES.md, "Rule-aware taxonomy beside
+        // a nominal"). Each test adds one fresh unnamed root to the seeded
+        // named-individual graph, so a rule fires on the tested element only
+        // when the tableau identifies it with a named individual.
+        if std::env::var_os("KM_RULES_CLASSIFY").is_some() {
+            let (consistent, unsat, subs) = rules_classification(&inp, clauses, queries)?;
+            let name = |c: C| {
+                inp.concepts.get(c as usize).cloned().unwrap_or_else(|| format!("C{c}"))
+            };
+            return Ok(TOutput {
+                consistent,
+                unsatisfiable: unsat.iter().map(|&c| name(c)).collect(),
+                subsumptions: subs.iter().map(|&(a, b)| [name(a), name(b)]).collect(),
+            });
         }
         let consistent = rules_consistency_verdict(&inp, clauses.clone())?;
         let out = TOutput {
