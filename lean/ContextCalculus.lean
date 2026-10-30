@@ -226,3 +226,5 @@ import ContextCalculus.HypertableauWire
 import ContextCalculus.HypertableauWireCompleteness
 import ContextCalculus.HypertableauTaxonomyCertificate
 import ContextCalculus.HypertableauTaxonomyWire
+import ContextCalculus.RulesInertSortRelease
+import ContextCalculus.HypertableauSubsetUnravelling
