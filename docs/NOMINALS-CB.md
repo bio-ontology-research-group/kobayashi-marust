@@ -857,7 +857,22 @@ Measurements (`results/agents/2026-10-30/nominal-coverage/`):
   workstation; 400 seeds, automatic route, 60 s, 3 workers each): 270
   answered before and 276 after, no wrong answer in either run; six gained
   (`m2032` 1.1 s, `m2058` 5.2 s, `m2131` 1.0 s, `m2173` 32 s, `m2319` 48 s,
-  `m2342` 52 s), none lost; 124 timeouts remain. Earlier, before the merge
+  `m2342` 52 s), none lost; 124 timeouts remain. Rerun once on this branch
+  merged with the head that carries the native data values and the revert
+  of 0188fcc7 (3ae4185d; merge a814967e), same protocol: 275 answered, 125
+  timeouts, no wrong answer; against the merged-base run five more answers
+  (`m2032`, `m2058`, `m2131`, `m2173`, `m2177`), and `m2319` and `m2342`
+  (48 s and 52 s before) at the cap. None of the 125 takes the native bridge:
+  124 still defer at its datatype gate with the same ten reasons
+  (`seeds-reverted-head-timeouts-bridge-defer.tsv`), and `m2296` defers at
+  the ABox conversion (object property assertion count mismatch). The CB
+  release now emits the rule checker's Lean certificate
+  (`WireInertSortRelease`, KM_RULES_INERT_CERT) with the CB reservations
+  (`reserved_concepts_for_cb`) for the clause set after the release and
+  before the universal-definer elimination, which has no Lean check; the
+  checker `rules-inert-sort-release-check` accepts it on the test fixtures
+  (`cb_release_certificate_is_accepted_by_the_lean_checker`). A rejected
+  certificate keeps the frontend's clause file for the CB arm. Earlier, before the merge
   (87fda54f against `km.fix`): 270 answered before, 271 after, no wrong
   answer either time. Five files gained an answer (`m2032`, `m2058`, `m2131`, `m2173`,
   `m2336`) and four lost one in that run (`m2059`, `m2185`: a worker
