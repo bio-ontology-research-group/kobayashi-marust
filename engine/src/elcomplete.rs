@@ -12908,9 +12908,9 @@ fn classify_inner_mode(
     // The Lean checker evaluates every compiled residual clause on the same
     // finite canonical model as `check_certificate`. When the residual does
     // not hold there, no v5 certificate can be accepted; emitting one would
-    // turn an ELC decline into a fail-closed rejection. The worker then
-    // proceeds exactly as an unchecked worker (decline in Check mode, repair
-    // in Repair mode) and records `cannot_check`.
+    // turn an ELC decline into a fail-closed rejection. The worker records
+    // `cannot_check` and declines: a checker-backed worker never publishes
+    // the output of the uncertified repair search.
     if lean_cert_requested
         && !skip_certificate
         && !rcs.is_empty()
@@ -12922,7 +12922,7 @@ fn classify_inner_mode(
             "elc-publication",
             "residual clauses do not hold in the EL canonical model; no ELC certificate applies",
         );
-        skip_certificate = true;
+        return None;
     }
     if lean_cert_requested && !skip_certificate {
         let source_clauses = certificate_clauses

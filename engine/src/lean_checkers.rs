@@ -517,8 +517,16 @@ fn invoke(checker: &Path, document: &Path) -> Outcome {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let first = stderr.lines().next().unwrap_or("").trim();
             let first: String = first.chars().take(400).collect();
+            // The Lean runtime reports an allocation failure as
+            // "INTERNAL PANIC: out of memory" with exit status 1, the code of
+            // a rejection. It is no verdict on the document.
+            let runtime_panic = stderr.contains("INTERNAL PANIC");
             match output.status.code() {
                 Some(0) => Outcome::Accepted,
+                Some(1) if runtime_panic => Outcome::CannotCheck(format!(
+                    "checker gave no verdict: {} ({})",
+                    first, output.status
+                )),
                 Some(1) => Outcome::Rejected(format!("{} ({})", first, output.status)),
                 _ => Outcome::CannotCheck(format!(
                     "checker gave no verdict: {} ({})",
