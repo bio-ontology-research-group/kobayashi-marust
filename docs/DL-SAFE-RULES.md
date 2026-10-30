@@ -175,7 +175,14 @@ ontology with rules entails, it adds nothing to an exact rule-aware answer.
 
 ### Lean obligation
 
-None of this path is checked in Lean. The rule worker refuses every
+The inert-sort release on this path is checked in Lean when
+`KM_RULES_INERT_LEAN_CHECKER` is set (2d5c28b1,
+`WireInertSortRelease.check_sound`): the certificate is written inside
+`rules_consistency`, so it covers every worker call of both schedules, and
+the classification tests add only roots labelled with named classes, which
+are reserved concepts, so `release_equisatisfiable` (any side theory over
+reserved concepts) covers them. Nothing else on this path is checked in
+Lean. The rule worker refuses every
 `KM_HT_LEAN_*` checker ("HT Lean certification cannot publish the
 unchecked rules-consistency route"), and the Lean clause language has no
 O-guarded rule clause. To cover the path, Lean would need (1) a semantics of
