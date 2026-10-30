@@ -679,9 +679,7 @@ pub(crate) fn write_and_check(t: &Tableau, answer: &Answer) -> Result<(), String
     std::fs::write(&file, &bytes).map_err(|e| e.to_string())?;
     let written = started.elapsed();
     if let Some(checker) = std::env::var_os("KM_RULES_LEAN_CHECKER") {
-        let output = std::process::Command::new(&checker)
-            .arg(&file)
-            .output()
+        let output = crate::lean_checker::run(std::path::Path::new(&checker), &file)
             .map_err(|e| format!("cannot run the rules Lean checker: {e}"))?;
         if !output.status.success() {
             return Err(format!(

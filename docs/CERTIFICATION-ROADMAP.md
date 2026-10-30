@@ -18,6 +18,23 @@ boundary. The audit report is reproduced in
 - No checker runs on the default `km classify` route.
 - The Konclude bridge and the incremental-source path have no Lean model.
 
+## Rule route (2026-10-30, v1.5.5)
+
+The rule worker (`KM_RULES_CONSISTENCY`, `KM_RULES_CLASSIFY`) has a Lean
+checker for its answers: `rules-cert-check`, theorem
+`WireRulesCertificate.check_sound` (docs/DL-SAFE-RULES.md, "Lean
+coverage"). An accepted certificate makes the published consistency flag,
+unsatisfiable queries and subsumptions between queries exact under the
+DL-safe semantics of the decoded clause list, relative to the premises it
+lists (the CB entailments the completion schedule takes as given). Outside
+the boundary: the frontend (parsing, normalisation, the guarded encoding,
+finite-rule grounding of built-ins over asserted literals, the inert-sort
+release, which has its own certificate), composition with the CB
+certificates of the premises, and completeness of the rule tableau (an
+answer without a certificate is refused, not proved wrong). The checker is
+off by default (`KM_RULES_LEAN_CERT`, `KM_RULES_LEAN_CHECKER`); the gate is
+`lean/run-rules-certification-gate.sh`.
+
 ## Plan
 
 | Release | Goal |
