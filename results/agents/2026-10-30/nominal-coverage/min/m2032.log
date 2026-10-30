@@ -1,0 +1,3 @@
+DataPropertyDomain(:u DataSomeValuesFrom(:u xsd:string))
+EquivalentClasses(:Q1 ObjectComplementOf(ObjectSomeValuesFrom(:r ObjectHasValue(:r :c))))
+EquivalentClasses(:Q2 ObjectComplementOf(ObjectSomeValuesFrom(:r :C)))

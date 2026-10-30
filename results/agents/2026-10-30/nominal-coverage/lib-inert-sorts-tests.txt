@@ -1,0 +1,17 @@
+test orchestrate::inert_sorts::tests::candidates_do_not_guard_each_other ... ok
+test orchestrate::inert_sorts::tests::cb_release_frees_a_maximum_marker_kept_by_its_record_in_the_rule_checker ... ok
+test orchestrate::inert_sorts::tests::cb_release_reserves_the_nominal_abox_markers ... ok
+test orchestrate::inert_sorts::tests::ground_fact_on_a_pinned_individual_needs_no_guard ... ok
+test orchestrate::inert_sorts::tests::cb_release_keeps_exactly_one_of_two_mutual_guards ... ok
+test orchestrate::inert_sorts::tests::input_without_relativized_facts_is_unchanged ... ok
+test orchestrate::inert_sorts::tests::range_definer_read_only_through_its_data_property_is_released ... ok
+test orchestrate::inert_sorts::tests::source_and_reserved_names_keep_their_sort ... ok
+test orchestrate::inert_sorts::tests::source_and_abox_names_are_never_eliminated ... ok
+test orchestrate::inert_sorts::tests::unguarded_body_occurrence_keeps_the_sort ... ok
+test orchestrate::inert_sorts::tests::unchecked_release_turns_a_consistent_input_inconsistent ... ok
+test orchestrate::inert_sorts::tests::unguarded_head_occurrence_keeps_the_sort ... ok
+test orchestrate::inert_sorts::tests::universal_definer_guarding_an_existential_is_kept ... ok
+test orchestrate::inert_sorts::tests::universal_definer_is_eliminated_from_bodies_and_heads ... ok
+test orchestrate::inert_sorts::tests::release_preserves_satisfiability_and_its_conditions_are_needed ... ok
+test orchestrate::inert_sorts::tests::cb_release_preserves_source_answers_on_random_inputs ... ok
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 3027 filtered out; finished in 3.66s

@@ -355,3 +355,29 @@ Cost of R2 where it is active: on `m2063` the automatic route takes 2.4 s
 unordered, 12 s plain Sequoia, 12.8 s with `KM_CONTEXT_NO_R2`, and more than
 40 s under the context regime. R2 widens Hyper joins over ground atoms of
 different individuals; the other eight slower files were not analysed.
+
+## 8. Remeasured at the base of v1.5.5 (2026-10-30)
+
+At 87fda54f (the context regime merged), the automatic route on the 400
+generated seeds without inverse roles (seeds 2000-2399, 60 s cap, 3
+workers, shared workstation at load 50 to 100) answered 270 and timed out
+on 130, with no wrong answer. Rerun with `KM_NO_SEQ_ORDER=1` (the base
+context regime, unordered same-term order with R2 and R3) the 130 timeouts
+gave 4 answers within 60 s, all equal to HermiT's: `m2063` (5.5 s), `m2100`
+(15.0 s), `m2276` (1.1 s) and `m2303` (14.7 s). So the cost of the Sequoia
+same-term order plus R2 accounts for 4 of the 130; the other 126 time out
+in both regimes (docs/NOMINALS-CB.md, "Inert object sorts in the nominal
+CB input (2026-10-30)", for their cause). Both regimes are complete to the
+same standard (section 6), so a portfolio that runs the base context regime
+beside the context regime would be exact; it was not built, because on one
+core the two arms would share the CPU and the gain is four generated files.
+Measurements: `results/agents/2026-10-30/nominal-coverage/`.
+
+ORE 9800 and 10874, which the 2026-10-28 amendment set aside, are answered
+under the context regime: 10874 in 3 to 5 s on the benchmark nodes (IBEX,
+one core, 240 s) with the v1.5.4 binary of design run 9 and with 87fda54f.
+9800 was not: with the protocol flags it answered in 2 of 4 runs (184 s)
+with run 9's binary and in 1 of 4 (191 s) with 87fda54f, the others
+reaching 240 s. Its CB engine needs about 95 s alone and shares the core
+with the typed-nominal bridge, which needs as long. The remedy is in the CB
+input, not in the ordering (docs/NOMINALS-CB.md, same subsection).

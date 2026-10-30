@@ -573,6 +573,171 @@ that reads the ontology between parsing and the grounding
 (`abox_consistency`, `data_abox`, the ABox probes); that proof is not done,
 so both passes stay.
 
+### Inert object sorts in the nominal CB input (2026-10-30)
+
+Cost. On the generated nominal-plus-data seeds (`gen_nomdata.py
+--no-inverse`, seeds 2000-2399) 130 of 400 runs of the automatic route gave
+no answer within 60 s at the base of v1.5.5 (87fda54f). Every one of them
+ran the nominal CB route alone: the native bridge defers on its datatype
+gate (ten distinct reasons, `results/agents/2026-10-30/nominal-coverage/`).
+Reducing seed 2032 axiom by axiom while the automatic route stays above 15 s
+leaves three axioms (`tests/fixtures/nominal_inert_sorts/m2032_min.ofn`):
+
+    DataPropertyDomain(:u DataSomeValuesFrom(:u xsd:string))
+    EquivalentClasses(:Q1 ObjectComplementOf(ObjectSomeValuesFrom(:r ObjectHasValue(:r :c))))
+    EquivalentClasses(:Q2 ObjectComplementOf(ObjectSomeValuesFrom(:r :C)))
+
+The sort encoding turns each complement into a relativized fact such as
+`→ Q_4(x) ∨ Q_6(x) ∨ D(x)` (`D` = `__data__`). The ground context
+instantiates those facts at the nominal `c` and at every Skolem successor
+of it, so each case split carries the `D` disjunct, and the engine does not
+finish within 30 s in any ordering regime (context, base context, plain
+Sequoia; `km engine`, one thread). Three of its definers are never read on
+a data element.
+
+Remedy (`inert_sorts::release_inert_object_sorts_for_cb`,
+`orchestrate::nominal_cb_clause_input`). In nominal mode the orchestrator
+gives the CB engine a copy of the clause file in which the object sort of
+every inert definer is released, the pass of the rule checker (section
+above) with two differences:
+
+- Records do not reserve names. The CB engine builds its `Reasoner` from
+  `input.clauses` alone, so a cardinality or definer record has no
+  meaning there. The names it reads with a meaning of their own are the
+  source names (`iri_map`, `named`), the asserted markers, the queries of
+  `KM_QUERIES`, the nominal proxies and the nominal-ABox assertion markers;
+  all of them stay reserved. Rule atoms stay reserved.
+- The fixpoint keeps one of two mutual guards. The complementary markers
+  of `≤1 p` and `≥2 p` share `Q_3 ∧ Q_4 → ⊥`; each is the other's only
+  guard there, so the rule checker's pass keeps both. A failure is *soft*
+  when the failing clause's body holds another candidate on the same term
+  that has a sort clause, and *hard* otherwise. Hard failures are kept at
+  once; when only soft failures remain, the greatest of them is kept and
+  the rest are re-checked. The loop ends only when no candidate violates
+  (B) or (H).
+
+Exactness. The final set `P` satisfies (B) and (H), so the model
+correspondence of the module documentation holds: a model of the sorted
+clause set `S` becomes a model of the released set `S'` by adding every
+`Q ∈ P` to every data element, and a model of `S'` becomes a model of `S`
+by removing them. Neither map changes the interpretation of any name
+outside `P`, of any role, of equality, or of the individuals. Every answer
+the orchestrator reads from the CB engine (consistency, and the
+superclasses and unsatisfiability of source names, asserted markers and
+queries) mentions only names outside `P`, so it is the same for `S` and
+`S'`: `S ⊨ A ⊑ B` iff `S' ⊨ A ⊑ B` for `A, B ∉ P`, because a countermodel
+of one maps to a countermodel of the other with the same extensions of `A`
+and `B`. The CB engine is complete for `S'` to the same standard as for
+`S` (the copy only drops literals and clauses; the regime, R2's switch and
+R3 are computed from it as from any other clause set), so its answers on
+`S'` are the exact answers for the source. HT workers, which read the
+cardinality and definer records, keep the frontend's file; the EL
+certificate racer gets the copy only when it does not run. Runs that must
+publish a CB Lean certificate (`KM_CB_LEAN_REQUIRED`, or a clause file with
+`cb_typed_source`) keep the frontend's file, since the certificate's typed
+source must equal the clauses. `KM_CB_KEEP_INERT_SORTS=1` opts out.
+
+Lean obligation. Not discharged. What has to be proved is the ground
+form of the correspondence: for a finite set of function-free clauses
+over a signature with the sort predicate `D`, and a set `P` of predicates
+satisfying (B) and (H), `S` and `S'` have the same Herbrand models up to
+`P` on the atoms `D(t)` is true for, hence the same entailed ground
+clauses over the predicates outside `P`. The CB obligation then reduces to
+the existing ones (first-order lifting of the context calculus, open as
+before; docs/CERTIFICATION-ROADMAP.md). The unit tests check the ground
+form on random clause sets by DPLL (2,000 sets, consistency and
+satisfiability and subsumption of the source classes with a fresh
+individual), the rule checker's pass already on 3,000; that is evidence,
+not a proof. A parallel review of the rule checker's pass in
+`inert_sorts.rs` was still open on 2026-10-30. This variant reuses that
+pass's sort-clause recognition, guards and (B)/(H) checks unchanged; the
+reservations, the maximal fixpoint and the elimination below are new and
+outside that review.
+
+Second pass: universal definers (`inert_sorts::eliminate_universal_definers`).
+After the release, a released definer `Q` whose relativized fact was
+`→ Q(x) ∨ D(x)` has the unit fact `→ Q(x)`; so has the `⊤` definer of an
+unqualified cardinality. Every model interprets such a `Q` as the whole
+domain, so each body atom `Q(t)` is true and each clause with `Q(t)` in its
+head is true. The pass drops both (the unit fact included) for every
+internal definer with a unit fact, except the reserved names above, and
+except a definer whose elimination would leave a clause with an empty body
+and a role atom, an equality or a function term in its head (a shape the
+frontend never emits; the definer is then kept unchanged). Exactness: a
+model of the input satisfies the result, because every dropped body atom
+was true; a model of the result becomes a model of the input by
+interpreting each eliminated definer as the whole domain. No other name
+changes its interpretation, so the CB engine's answers on every name that
+is not eliminated, the reserved ones included, are the same. The Lean obligation is the ground form of that statement
+(not discharged; the unit tests check it on 2,000 random clause sets by
+DPLL, after the release).
+
+On ore_ont_9800 the ground context held 250,295 clauses at work-off
+iteration 250,000, 228,266 of them the 38 relativized facts
+`→ D(a) ∨ Q_k(a)` instantiated at its individuals and 6,039 more the `⊤`
+definer `Q_116`. The release turns the 38 facts into unit facts and the
+elimination removes all 39 definers.
+
+Where the copy is made. The orchestrator makes the copy inside each CB arm
+when it starts (`with_nominal_cb_input`), so a schedule that answers without
+the CB engine (the sequential bridge of a large typed ABox, ORE 10621 and
+11270) never pays for it, and in a race the HT worker starts at once. A byte
+scan for the sort marker or a body-free fact on a `Q_` definer skips the
+parse on every other clause file. If the copy cannot be made the arm runs on
+the frontend's file.
+
+Measurements (`results/agents/2026-10-30/nominal-coverage/`):
+
+- ORE 9800 on the benchmark nodes (IBEX, one core, 240 s, the protocol's
+  flags, 4 runs each): v1.5.4 design-run-9 binary 2 of 4 answered (184 s),
+  87fda54f 1 of 4 (191 s), this branch 4 of 4 in 13.8 to 17.3 s; the CB
+  engine answers 6 s after the race starts instead of about 180 s. 10874:
+  3 to 5 s before, 0.5 to 0.8 s after. Both outputs are identical to those
+  of the design-run-9 binary, whose 9800 answer the paired run verified
+  against Konclude, HermiT and Openllet (10874 publishes its 879
+  data-property assertions as dropped, so the protocol does not compare
+  it). `km engine` on 9800's CB input, one thread, same load: 190.7 s user
+  as emitted, 170.9 s with the release only, 39.5 s with the elimination of
+  the `⊤` definer only, 3.4 s with both; the named subsumptions (10,413)
+  are identical in all four.
+- Generated seeds (400, automatic route, 60 s, 3 workers, shared
+  workstation): 270 answered before, 271 after, no wrong answer either
+  time. Five files gained an answer (`m2032`, `m2058`, `m2131`, `m2173`,
+  `m2336`) and four lost one in that run (`m2059`, `m2185`: a worker
+  aborted on an allocation failure under the host's strict overcommit and
+  both answer in 0.05 s on rerun; `m2079`, `m2359`: 58 s and 45 s before,
+  within load noise of the cap). Rerun twice with each binary, the nine
+  files give: `km.base` answers `m2059`, `m2185` (both runs) and `m2359`
+  (one run, 41 s); the final build answers `m2032`, `m2058`, `m2131`,
+  `m2173`, `m2336`, `m2059`, `m2185` and `m2359` in both runs (`m2173` in
+  47 and 59 s); `m2079` times out with both. So five seeds gain an answer
+  and none loses one; 125 of the 130 timeouts remain.
+- ORE inputs with individuals in the design half (353, the 201 gated and
+  425 individual-bearing lists of `results/agents/2026-10-29/per-context-order/`
+  intersected with `split.json`), 240 s, the v1.5.4 release binary
+  (`.work/pgo-v154/km-pgo-use`) against this branch, two streams side by
+  side on the shared workstation: 345 answered by both with identical
+  SUB/UNSAT/CONSISTENT lines, 8 answered by neither, none lost or gained
+  except 9800 (236 s before, 19 s after); the copy was made on 38 inputs.
+  IBEX-TBD
+
+What remains. Of the 130 seed timeouts, 125 still time out. The copy is made
+on most of them, but what remains is the case analysis of the nominal ground
+context, not the sort disjunct: seed 2000 reduced while the CB engine stays
+above 10 s even with every `D` disjunct dropped (an unsound diagnostic, used
+only to locate the cost) leaves two axioms,
+
+    SubClassOf(DataMaxCardinality(1 :u) ObjectHasValue(:s :a))
+    SubClassOf(ObjectUnionOf(DataMinCardinality(1 :u) ObjectMaxCardinality(1 :t :A)) ObjectIntersectionOf(ObjectOneOf(:c :a) ObjectOneOf(:a)))
+
+where every element is `≤1 u` or `≥2 u`, both branches lead to `a`, and the
+ground context splits on `x ≈ a` for every individual and Skolem successor
+under the at-most clauses. The native bridge, which decides these inputs at
+once when it admits them, defers on all 130 at its datatype gate (ten
+distinct reasons; `seeds-base-timeouts-bridge-defer.tsv`). Closing them
+needs either a datatype-complete bridge admission or ground splitting in the
+CB engine; both are calculus or encoding changes outside this pass.
+
 ## 7. Sequoia ordering and nominals
 
 `calc::pred_lteq` has two same-term concept orderings for the CB engine. The
