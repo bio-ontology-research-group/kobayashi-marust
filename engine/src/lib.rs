@@ -22,6 +22,7 @@ mod incremental_ht;
 mod incremental_positive_abox;
 mod incremental_rules;
 pub mod json_io;
+pub mod lean_checkers;
 pub mod konclude_ht;
 pub mod mem;
 pub mod orchestrate;

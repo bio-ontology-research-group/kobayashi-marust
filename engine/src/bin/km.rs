@@ -594,13 +594,26 @@ fn classify_cmd(rest: &[String]) {
         eprintln!("{error}");
         exit(2);
     }
+    // KM_LEAN_CHECKERS=<dir>: certificates are checked by the Lean checkers
+    // in <dir>; a rejection publishes nothing (see `lean_checkers`).
+    let lean_run = kobayashi_marust::lean_checkers::start_classify();
+    let lean_gate = move |lean_run: Option<kobayashi_marust::lean_checkers::Run>| {
+        if let Some(run) = lean_run {
+            if let Err(message) = run.finish() {
+                eprintln!("{message}");
+                exit(kobayashi_marust::lean_checkers::REJECTED_EXIT);
+            }
+        }
+    };
     let cfg = Config::from_env();
     if let Some(mode) = realize {
         if graph_edges {
             eprintln!("--realize cannot be combined with --json-edges or KM_JSON_GRAPH_EDGES=1");
             exit(2);
         }
-        match orchestrate::realize::realize(&cfg, Path::new(ontology), mode) {
+        let realized = orchestrate::realize::realize(&cfg, Path::new(ontology), mode);
+        lean_gate(lean_run);
+        match realized {
             Ok(res) => {
                 use std::io::{BufWriter, Write};
                 let stdout = std::io::stdout();
@@ -628,7 +641,9 @@ fn classify_cmd(rest: &[String]) {
         }
     }
     if !lines {
-        match orchestrate::classify_json(&cfg, Path::new(ontology)) {
+        let classified = orchestrate::classify_json(&cfg, Path::new(ontology));
+        lean_gate(lean_run);
+        match classified {
             Ok(res) => {
                 if std::env::var_os("KM_TIMING").is_some() {
                     eprintln!("KM_TIMING mark: classify_json returned");
@@ -662,7 +677,9 @@ fn classify_cmd(rest: &[String]) {
             }
         }
     }
-    match orchestrate::classify(&cfg, Path::new(ontology)) {
+    let classified = orchestrate::classify(&cfg, Path::new(ontology));
+    lean_gate(lean_run);
+    match classified {
         Ok(res) => {
             use std::io::{BufWriter, Write};
             let stdout = std::io::stdout();

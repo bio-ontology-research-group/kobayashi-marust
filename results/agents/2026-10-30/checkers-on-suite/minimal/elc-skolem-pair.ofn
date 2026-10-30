@@ -1,0 +1,5 @@
+Prefix(:=<http://e.org/#>)
+Ontology(
+Declaration(Class(:A)) Declaration(Class(:D)) Declaration(ObjectProperty(:r))
+SubClassOf(:D ObjectSomeValuesFrom(:r :A))
+)

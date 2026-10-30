@@ -25,3 +25,12 @@ boundary. The audit report is reproduced in
 | v1.5.5 | Run a test suite with the existing Lean checkers on by default, and record which published answers they accept, reject, or cannot check. |
 | v1.5.6 | Prove the frontend in Lean. A theorem must connect the clause set to the source ontology under the OWL 2 direct semantics, covering IRI identity, normalisation, and the regular role-inclusion encoding. |
 | v1.6.0 | Prove completeness. Replace the assumed completeness fields with proofs for each procedure on its fragment, instantiate the supervisor, and cover the routing to those procedures. |
+
+## v1.5.5 checkers-on suite (2026-10-30)
+
+`KM_LEAN_CHECKERS=<dir>` turns on the applicable Lean checkers in
+`km classify` and fails closed on a rejection; `tools/checkers-on-suite.sh`
+records, per input, which published answers the checkers accept, reject,
+or cannot check. The inventory of checkers, the exactness argument and the
+results are in `docs/CHECKERS-ON.md`; the raw results are in
+`results/agents/2026-10-30/checkers-on-suite/`.
