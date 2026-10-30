@@ -40,7 +40,7 @@ day). Audit with the v1.5.3 canonicaliser against the pinned references
 | ore_ont_4410 | 18.14 s | 18.43 s | exact, agrees with all four (RSS 2.5 GB, was 1.6 GB) |
 | ore_ont_4572 | 400.12 s | 3.21 s | exact (ABox quotient, S3), agrees with Konclude, HermiT, Openllet |
 | ore_ont_7610 | timeout 600 s | 54.67 s | exact, inconsistent, agrees with all four |
-| qudt-merged | timeout 1,800 s (previous agent's run, `data-values/timing/rc.tsv`) | 108.0 s (RSS 6.3 GB) | exact: consistent, 759 subsumptions = HermiT, DROPPED 0 |
+| qudt-merged | timeout 1,800 s (km-v155-rc, previous agent's `data-values/timing/rc.tsv`) | 108.0 s (RSS 6.3 GB) | exact: consistent, 759 subsumptions = HermiT, DROPPED 0 |
 
 v1.5.4 on QUDT (`.work/pgo-v154/km-pgo-use`, 1,800 s, `qudt/qudt-v154*`):
 no answer. It routes the input to `certified_nominals`, cannot convert the
