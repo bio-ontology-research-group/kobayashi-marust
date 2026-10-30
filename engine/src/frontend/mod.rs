@@ -24,6 +24,7 @@ mod rule_assertions;
 mod isolated_rules;
 pub mod iri;
 pub mod literal_profiles;
+pub mod value_projection;
 pub mod normalise;
 pub mod parse;
 pub mod preprocess;
@@ -43,6 +44,9 @@ use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 
 use clauses::{clause, clause_into_json, Atom, DLClause, Term};
 use iri::IriRegistry;
+
+/// Largest finite range the relation clauses enumerate for data counting.
+const MAX_COUNTED_COVER: usize = 4096;
 
 /// Coverage diagnostic for data-property assertions the clause set does not
 /// carry (`"<n> data-property assertion axiom(s) are unsupported"`).
@@ -1522,6 +1526,16 @@ fn ofn_to_clauses_representation(
             *dropped_source_axioms.entry("DLSafeRule".to_string()).or_default() += unread;
         }
     }
+    // Value singleton clauses are needed only when some construct can force
+    // two data successors of one element apart (or a key or rule compares
+    // values across elements); see `datatypes::datatype_relation_clauses_with`.
+    let elide_value_singletons = converted_data_assertions > 0
+        && !profile.source.axiom_types.contains_key("HasKey")
+        && profile.source.rule_axioms == 0
+        && !literal_profiles::distinct_data_successors_forced(
+            &ontology.axioms_iter().collect::<Vec<_>>(),
+        );
+    let data_count_bound = literal_profiles::data_count_bound(&ontology.axioms_iter().collect::<Vec<_>>());
     drop(ontology); // the syntax AST is dead once clausified
     t.lap("normalise");
     // Under KM_NOMINALS the ground ABox + nominal defining clauses enter the
@@ -1901,7 +1915,21 @@ fn ofn_to_clauses_representation(
                 }
             }
             let groups = datatypes::datatype_role_groups_linked(&tbox, &linked_roles);
-            tbox.extend(datatypes::datatype_relation_clauses_grouped(&dt_names, 8, Some(&groups)));
+            // A finite range of at most as many values as one element can be
+            // forced to have needs its exact cover, so counting over it
+            // clashes (`≥ 10 u.integer[1,9]`). Covers are enumerated up to
+            // that bound; a range the bound can exhaust but no cover
+            // reaches is published as not represented.
+            let cover_cap = (data_count_bound.min(MAX_COUNTED_COVER as u64) as usize).max(8);
+            let beyond = datatypes::ranges_beyond_cover(&dt_names, cover_cap, data_count_bound);
+            if !beyond.is_empty() {
+                *dropped_source_axioms
+                    .entry("data cardinality over a range without an exact cover".to_string())
+                    .or_default() += beyond.len() as u64;
+            }
+            tbox.extend(datatypes::datatype_relation_clauses_with(
+                &dt_names, cover_cap, Some(&groups), elide_value_singletons,
+            ));
         }
     }
     // Two-sorted domain encoding (docs/NOMINALS-CB.md, "Object and data

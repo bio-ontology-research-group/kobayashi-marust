@@ -151,4 +151,68 @@ theorem binaryIndex_separating (n : Nat) :
         | zero => rw [hx, hy] at heq; simp at heq; omega
         | succ k => omega
 
+/-! ## Digit indices
+
+The generator uses two positions with base `B = ⌈√m⌉` digits instead of
+`⌈log₂ m⌉` bits: class `i` implies `digit 0 (i % B)` and `digit 1 (i / B)`,
+and two different digits of one position are disjoint. The lemmas above are
+the base-2 case of the following ones. -/
+
+/-- The digit clauses for an index `idx : K → Nat → Nat` over the positions
+`p < n`: every value implies the digit of its key at each position, and two
+different digits of one position are disjoint. -/
+def DigitClauses (n : Nat) (key : V → K) (idx : K → Nat → Nat)
+    (ext : V → Δ → Prop) (digit : Nat → Nat → Δ → Prop) : Prop :=
+  (∀ a x p, p < n → ext a x → digit p (idx (key a) p) x) ∧
+  (∀ p c d x, p < n → c ≠ d → digit p c x → digit p d x → False)
+
+/-- The digit index separates keys on the first `n` positions. -/
+def DigitSeparating (n : Nat) (idx : K → Nat → Nat) : Prop :=
+  ∀ k l, k ≠ l → ∃ p, p < n ∧ idx k p ≠ idx l p
+
+theorem digits_entail_pairwise (n : Nat) (key : V → K) (idx : K → Nat → Nat)
+    (ext : V → Δ → Prop) (digit : Nat → Nat → Δ → Prop)
+    (sep : DigitSeparating n idx) (h : DigitClauses n key idx ext digit) :
+    PairwiseDistinct key ext := by
+  intro a b x hne ha hb
+  obtain ⟨p, hp, hdiff⟩ := sep (key a) (key b) hne
+  exact h.2 p _ _ x hp hdiff (h.1 a x p hp ha) (h.1 b x p hp hb)
+
+/-- The canonical interpretation of a digit helper: the union of the values
+whose index has that digit. -/
+def canonicalDigit (key : V → K) (idx : K → Nat → Nat) (ext : V → Δ → Prop) :
+    Nat → Nat → Δ → Prop :=
+  fun p c x => ∃ a, ext a x ∧ idx (key a) p = c
+
+theorem pairwise_admits_digits (n : Nat) (key : V → K) (idx : K → Nat → Nat)
+    (ext : V → Δ → Prop) (h : PairwiseDistinct key ext) :
+    DigitClauses n key idx ext (canonicalDigit key idx ext) := by
+  constructor
+  · intro a x p _ ha
+    exact ⟨a, ha, rfl⟩
+  · intro p c d x _ hcd ⟨a, ha, hpa⟩ ⟨b, hb, hpb⟩
+    by_cases hk : key a = key b
+    · rw [hk] at hpa
+      exact hcd (hpa.symm.trans hpb)
+    · exact h a b x hk ha hb
+
+/-- The two-digit index of class `i` in base `B`. -/
+def twoDigitIndex (B : Nat) (i : Nat) (p : Nat) : Nat := if p = 0 then i % B else i / B
+
+/-- It separates all natural numbers, for every base `B` (division with
+remainder is injective; for `B = 0`, `i % 0 = i`). -/
+theorem twoDigitIndex_separating (B : Nat) :
+    ∀ i j, i ≠ j → ∃ p, p < 2 ∧ twoDigitIndex B i p ≠ twoDigitIndex B j p := by
+  intro i j hne
+  by_cases hmod : i % B = j % B
+  · refine ⟨1, by omega, ?_⟩
+    unfold twoDigitIndex
+    simp only [Nat.one_ne_zero, ↓reduceIte]
+    intro hdiv
+    apply hne
+    have := Nat.div_add_mod i B
+    have := Nat.div_add_mod j B
+    rw [← Nat.div_add_mod i B, ← Nat.div_add_mod j B, hdiv, hmod]
+  · exact ⟨0, by omega, by unfold twoDigitIndex; simpa using hmod⟩
+
 end ContextCalculus.LinearValueEncoding
