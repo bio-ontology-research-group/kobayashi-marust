@@ -1495,3 +1495,13 @@ Exact `nominals` route, HermiT oracle.
   second pass under `certified_nominals` takes 12 s with every change of this
   branch switched off, so it comes from the merged `development/v1.5.5`, not
   from these rules).
+- After merging `development/v1.5.5` at a2e98d95: seeds r0 to r999 530 ok,
+  0 wrong (531 before the merge). On forced `nominals`, r3602 times out on
+  the merged base with the merge hypotheses switched off as well. The five
+  seeds r1536, r1866, r2408, r2564 and r3777 that the automatic route
+  answers wrongly are answered by the typed-nominal bridge's HT worker (the
+  bridge merging defect of `results/agents/2026-10-30/nominal-seeds/`); the
+  forced CB route of km.final2 answers them correctly, so they do not share
+  r1600's cause. Under the merge hypotheses r1536 and r3777 time out at 60 s
+  on forced `nominals`, and the hub with data values takes 30 s instead of
+  10 s on `certified_nominals`.
