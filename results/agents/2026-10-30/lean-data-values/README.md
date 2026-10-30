@@ -48,9 +48,10 @@ cover of a 9-value range (finding 2; not caused by the elision, see
 
 `lean/.lake/packages` is a hard-link copy (`cp -al`) of
 `.work/worktrees/checkers-on/lean/.lake/packages` (built Mathlib). The
-modules were built with `lake build ContextCalculus.<Module>`; the library
-build is in the hand-back report (the host's memory commit limit,
-`vm.overcommit_memory = 2`, made a parallel `lake build ContextCalculus`
-fail with ENOMEM, so it was run one module at a time in import order with
-`.work/agent-scratch/lean-data-values/seqbuild.py`). Axioms of the main
+host's memory commit limit (`vm.overcommit_memory = 2`) made a fully
+parallel `lake build ContextCalculus` fail with ENOMEM, so the library was
+first built by import level, four modules per `lake build` call
+(`.work/agent-scratch/lean-data-values/levelbuild.py`, 330 modules), and
+then confirmed with a plain `lake build ContextCalculus`: "Build completed
+successfully (8643 jobs)", no `declaration uses 'sorry'`. Axioms of the main
 theorems (`#print axioms`): `propext`, `Classical.choice`, `Quot.sound`.
