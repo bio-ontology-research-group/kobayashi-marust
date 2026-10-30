@@ -721,9 +721,10 @@ fn run_atomic_mechanism(
     elc_input_path: &Path,
     named: &HashSet<String>,
     selected_route: crate::routing::Route,
-    profile: &crate::frontend::profile::OntologyProfile,
+    meta: &frontend_run::Meta,
     cached_input: &mut Option<crate::json_io::JInput>,
 ) -> Result<Option<EngineOut>, OrchestrateError> {
+    let profile = &meta.profile;
     match &cfg.mechanism {
         Mechanism::Portfolio => Ok(None),
         Mechanism::Elc => {
@@ -744,7 +745,9 @@ fn run_atomic_mechanism(
         }
         Mechanism::Cb => {
             drop(cached_input.take());
-            run_atomic_cb(cfg, clauses_path).map(Some)
+            // The nominal CB input copy (`nominal_cb_clause_input`): the
+            // atomic CB worker reads only the clauses.
+            with_nominal_cb_input(clauses_path, meta, &|path| run_atomic_cb(cfg, path)).map(Some)
         }
         // Bridge-only worker inside a bounded speculative attempt. Identify it
         // by its bridge-only specialist selection rather than by the route
@@ -3078,7 +3081,7 @@ fn classify_with_evidence_inner(
                     elc_input_path,
                     &named_set,
                     selected_route,
-                    &meta.profile,
+                    &meta,
                     &mut cached_input,
                 )
             })
@@ -3089,7 +3092,7 @@ fn classify_with_evidence_inner(
             elc_input_path,
             &named_set,
             selected_route,
-            &meta.profile,
+            &meta,
             &mut cached_input,
         )
     };

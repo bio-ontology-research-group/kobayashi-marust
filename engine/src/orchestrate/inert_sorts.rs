@@ -246,7 +246,8 @@ pub struct Eliminated {
 /// the nominal-ABox proxies and markers and rule atoms are never
 /// eliminated. A definer is kept when dropping its body atoms would leave a
 /// clause with an empty body and a role atom or a function term in its head,
-/// a shape the frontend never emits.
+/// a shape the frontend never emits. Clause sets with inverse roles are left
+/// unchanged (a cost guard, see the body).
 ///
 /// After [`release_inert_object_sorts_for_cb`], a released definer whose
 /// relativized fact was `→ Q(x) ∨ D(x)` has the unit fact `→ Q(x)` and is
@@ -257,6 +258,21 @@ pub fn eliminate_universal_definers(
     input: &mut JInput,
     is_source: impl Fn(&str) -> bool,
 ) -> Eliminated {
+    // Inverse roles: the elimination is exact there too, but it can cost.
+    // On `⊤ ⊑ ≥2 u`, `⊤ ⊑ ∃r.{a}`, `{a} ⊑ ≤1 r⁻`
+    // (tests/fixtures/top_nominal_data/probe_v7.ofn) dropping the `⊤` filler
+    // from the inverse at-most clause took the CB engine from 0.06 s past
+    // 150 s (nominals, inverse roles and number restrictions together are
+    // where the Nom rule fires). Leave such clause sets unchanged.
+    let inverse = input.rbox.iter().any(|row| row.first().map(String::as_str) == Some("inverse"))
+        || input.clauses.iter().any(|clause| {
+            clause.body.iter().chain(&clause.head).any(|atom| {
+                matches!(atom, JAtom::Role { role, .. } if role.starts_with("__inv__"))
+            })
+        });
+    if inverse {
+        return Eliminated::default();
+    }
     let mut reserved: HashSet<String> = HashSet::new();
     for individual in &input.nominal_abox.individuals {
         reserved.extend(individual.proxies.iter().cloned());
@@ -1104,5 +1120,22 @@ mod tests {
         .unwrap();
         assert_eq!(eliminate_universal_definers(&mut i, |_| false), Eliminated::default());
         assert!(i.clauses == clauses);
+    }
+
+    #[test]
+    fn universal_definers_stay_beside_inverse_roles() {
+        let clauses = vec![
+            cl(vec![], vec![c("Q_1", var("x"))]),
+            cl(
+                vec![c("Q_1", var("y")), c("Q_1", var("z")), c("Q_3", var("x")),
+                     r("__inv__r", var("x"), var("y")), r("__inv__r", var("x"), var("z"))],
+                vec![JAtom::Eq { left: var("y"), right: var("z") }],
+            ),
+        ];
+        let mut i = input(clauses.clone());
+        assert_eq!(eliminate_universal_definers(&mut i, |_| false), Eliminated::default());
+        assert!(i.clauses == clauses);
+        let mut i = input(clauses[..1].to_vec());
+        assert_eq!(eliminate_universal_definers(&mut i, |_| false).concepts, vec!["Q_1".to_string()]);
     }
 }
