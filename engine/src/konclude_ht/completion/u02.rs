@@ -1540,7 +1540,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // later wave) cannot HANG the build host. Set far above any real test workload; in
         // normal operation it is never reached. On overrun we raise a stop (the drive ends
         // "not consistent" rather than silently claiming consistency).
-        const MAX_DRIVE_ITERATIONS: u64 = 5_000_000;
+        // `KM_HT_MAX_DRIVE_ITERATIONS` raises the cap for measurement; an
+        // overrun still stops the drive, so the value never changes an answer.
+        let max_drive_iterations: u64 = std::env::var("KM_HT_MAX_DRIVE_ITERATIONS")
+            .ok().and_then(|value| value.parse().ok()).unwrap_or(5_000_000);
         let progress = super::bridge_progress_enabled();
         let mut drive_iters: u64 = 0;
         // CCalculationTableauCompletionTaskHandleAlgorithm.cpp 1117-1118.
@@ -1593,7 +1596,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     }
                 }
             }
-            if drive_iters > MAX_DRIVE_ITERATIONS {
+            if drive_iters > max_drive_iterations {
                 calc_alg_context.raise_stop(false);
                 return false;
             }
@@ -1619,7 +1622,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 while continue_processing_individual {
                     drive_iters += 1;
                     drive_progress!();
-                    if drive_iters > MAX_DRIVE_ITERATIONS {
+                    if drive_iters > max_drive_iterations {
                         calc_alg_context.raise_stop(false);
                         return false;
                     }

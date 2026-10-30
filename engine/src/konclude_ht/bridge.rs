@@ -685,6 +685,18 @@ struct DatatypeRelationIndex {
     singletons: crate::fxhash::FxHashSet<usize>,
     inclusions: crate::fxhash::FxHashSet<(usize, usize)>,
     disjoint: crate::fxhash::FxHashSet<(usize, usize)>,
+    /// Linear-form helpers (`frontend::datatypes::linear_value_relation_clauses`):
+    /// the helper concepts each value implies directly.
+    value_aux: crate::fxhash::FxHashMap<usize, Vec<usize>>,
+    /// Index-digit helpers: concept -> (position, digit).
+    aux_digit: crate::fxhash::FxHashMap<usize, (u32, u32)>,
+    /// `(position, d, e)` with `d < e` whose two helpers carry their
+    /// disjointness clause.
+    clashing_digits: crate::fxhash::FxHashSet<(u32, u32, u32)>,
+    /// Equality classes of values under mutual inclusion clauses (root per
+    /// value) and the index digits each class implies.
+    value_class: crate::fxhash::FxHashMap<usize, usize>,
+    class_digits: crate::fxhash::FxHashMap<usize, Vec<(u32, u32)>>,
 }
 
 impl DatatypeRelationIndex {
@@ -711,6 +723,214 @@ impl DatatypeRelationIndex {
         }
         index
     }
+
+    /// As [`DatatypeRelationIndex::new`], also reading the helper concepts of
+    /// the linear value encoding, so that a relation the present clauses
+    /// entail through a helper counts as present. Whether the helper clauses
+    /// themselves are exact is checked by [`linear_value_encoding_exact`].
+    fn for_input(tin: &TInput) -> Self {
+        let mut index = Self::new(&tin.clauses);
+        let aux = |concept: usize| tin.concepts.get(concept)
+            .is_some_and(|name| crate::frontend::datatypes::is_value_aux_name(name));
+        for (concept, name) in tin.concepts.iter().enumerate() {
+            if let Some(digit) = crate::frontend::datatypes::value_aux_digit(name) {
+                index.aux_digit.insert(concept, digit);
+            }
+        }
+        for &(left, right) in &index.inclusions {
+            if aux(right) && !aux(left) {
+                index.value_aux.entry(left).or_default().push(right);
+            }
+        }
+        for &(left, right) in &index.disjoint {
+            if let (Some(&(p, a)), Some(&(q, b))) = (index.aux_digit.get(&left), index.aux_digit.get(&right)) {
+                if p == q && a != b {
+                    index.clashing_digits.insert((p, a.min(b), a.max(b)));
+                }
+            }
+        }
+        // Equality classes of values (mutual value inclusions).
+        let is_value = |concept: usize| tin.concepts.get(concept)
+            .is_some_and(|name| name.starts_with("__dt__val__"));
+        let mut parent: crate::fxhash::FxHashMap<usize, usize> = Default::default();
+        fn find(parent: &mut crate::fxhash::FxHashMap<usize, usize>, item: usize) -> usize {
+            let mut root = item;
+            while let Some(&next) = parent.get(&root) {
+                if next == root { break; }
+                root = next;
+            }
+            let mut current = item;
+            while let Some(&next) = parent.get(&current) {
+                if next == root || next == current { break; }
+                parent.insert(current, root);
+                current = next;
+            }
+            root
+        }
+        for &(left, right) in &index.inclusions {
+            if is_value(left) && is_value(right) && index.inclusions.contains(&(right, left)) {
+                let (a, b) = (find(&mut parent, left), find(&mut parent, right));
+                if a != b {
+                    parent.insert(a.max(b), a.min(b));
+                }
+            }
+        }
+        let values: Vec<usize> = index.value_aux.keys().copied()
+            .chain(parent.keys().copied()).collect();
+        for value in values {
+            let root = find(&mut parent, value);
+            index.value_class.insert(value, root);
+        }
+        let mut class_digits: crate::fxhash::FxHashMap<usize, Vec<(u32, u32)>> = Default::default();
+        for (&value, heads) in &index.value_aux {
+            let root = index.value_class.get(&value).copied().unwrap_or(value);
+            for head in heads {
+                if let Some(&digit) = index.aux_digit.get(head) {
+                    class_digits.entry(root).or_default().push(digit);
+                }
+            }
+        }
+        for digits in class_digits.values_mut() {
+            digits.sort_unstable();
+            digits.dedup();
+        }
+        index.class_digits = class_digits;
+        index
+    }
+
+    fn class(&self, concept: usize) -> usize {
+        self.value_class.get(&concept).copied().unwrap_or(concept)
+    }
+
+    /// `left ⊑ right` follows from a direct inclusion clause or through a
+    /// helper of `left` (a membership profile).
+    fn includes(&self, left: usize, right: usize) -> bool {
+        self.inclusions.contains(&(left, right))
+            || self.value_aux.get(&left).is_some_and(|heads| heads.iter()
+                .any(|&head| self.inclusions.contains(&(head, right))))
+    }
+
+    /// `left ⊓ right ⊑ ⊥` follows from a direct disjointness clause, through a
+    /// helper of either side, or from two different index digits at a
+    /// position whose helpers are disjoint.
+    fn separated(&self, left: usize, right: usize) -> bool {
+        let direct = |a: usize, b: usize| self.disjoint.contains(&(a.min(b), a.max(b)));
+        if direct(left, right) {
+            return true;
+        }
+        let through = |a: usize, b: usize| self.value_aux.get(&a)
+            .is_some_and(|heads| heads.iter().any(|&head| direct(head, b)));
+        if through(left, right) || through(right, left) {
+            return true;
+        }
+        let (Some(a), Some(b)) = (self.class_digits.get(&self.class(left)), self.class_digits.get(&self.class(right)))
+        else { return false };
+        a.iter().any(|&(position, d)| b.iter().any(|&(other, e)| other == position && d != e
+            && self.clashing_digits.contains(&(position, d.min(e), d.max(e)))))
+    }
+
+    /// Two values are equal through mutual inclusion clauses, possibly via
+    /// the first value of their identity class.
+    fn equal(&self, left: usize, right: usize) -> bool {
+        (self.inclusions.contains(&(left, right)) && self.inclusions.contains(&(right, left)))
+            || (self.value_class.contains_key(&left) && self.class(left) == self.class(right))
+    }
+}
+
+/// The helper clauses of the linear value encoding are exact: a helper is
+/// implied only by values; two equal values never imply two different
+/// digits of one position (so two values separated by digits are distinct
+/// data values); and a membership profile is included in (disjoint from) a range
+/// only when every value implying it is. Interpreting each helper as the
+/// union of the values that imply it then satisfies every helper clause in
+/// every model of the datatype map, so the helpers add no consequence over
+/// the source vocabulary.
+fn linear_value_encoding_exact(tin: &TInput) -> bool {
+    use crate::frontend::datatypes as dt;
+    macro_rules! defer {
+        ($reason:literal) => {{
+            if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+                eprintln!("BRIDGE-DATATYPE-DEFER: {}", $reason);
+            }
+            return false;
+        }};
+    }
+    let name = |concept: usize| tin.concepts.get(concept).map(String::as_str).unwrap_or("");
+    let aux = |concept: usize| dt::is_value_aux_name(name(concept));
+    let mut members: crate::fxhash::FxHashMap<usize, Vec<usize>> = Default::default();
+    let mut profile_includes: Vec<(usize, usize)> = Vec::new();
+    let mut profile_excludes: Vec<(usize, usize)> = Vec::new();
+    let mut digits_of: crate::fxhash::FxHashMap<usize, Vec<(u32, u32)>> = Default::default();
+    for clause in &tin.clauses {
+        if !clause_mentions_value_aux(tin, clause) {
+            continue;
+        }
+        match (clause.body.as_slice(), clause.head.as_slice()) {
+            ([HAtom::Concept { neg: false, c: value, t }], [HAtom::Concept { neg: false, c: helper, t: ht }])
+                if t == ht && aux(*helper) && name(*value).starts_with("__dt__val__") =>
+            {
+                members.entry(*helper).or_default().push(*value);
+                if let Some(digit) = dt::value_aux_digit(name(*helper)) {
+                    digits_of.entry(*value).or_default().push(digit);
+                }
+            }
+            ([HAtom::Concept { neg: false, c: helper, t }], [HAtom::Concept { neg: false, c: range, t: ht }])
+                if t == ht && aux(*helper) && dt::value_aux_digit(name(*helper)).is_none()
+                    && !aux(*range) && dt::bridge_tbox_atomic_name(name(*range)) =>
+                profile_includes.push((*helper, *range)),
+            ([HAtom::Concept { neg: false, c: left, t: lt }, HAtom::Concept { neg: false, c: right, t: rt }], [])
+                if lt == rt =>
+            {
+                match (dt::value_aux_digit(name(*left)), dt::value_aux_digit(name(*right))) {
+                    (Some((p, a)), Some((q, b))) if p == q && a != b => {}
+                    (None, None) if aux(*left) && !aux(*right) && dt::bridge_tbox_atomic_name(name(*right)) =>
+                        profile_excludes.push((*left, *right)),
+                    (None, None) if aux(*right) && !aux(*left) && dt::bridge_tbox_atomic_name(name(*left)) =>
+                        profile_excludes.push((*right, *left)),
+                    _ => defer!("a linear value-encoding disjointness has an unsupported shape"),
+                }
+            }
+            _ => defer!("a linear value-encoding clause has an unsupported shape"),
+        }
+    }
+    for (helper, range) in profile_includes {
+        for &value in members.get(&helper).map(Vec::as_slice).unwrap_or(&[]) {
+            if dt::bridge_exact_atomic_subsumed(name(value), name(range)) != Some(true) {
+                defer!("a membership profile includes a range one of its values is not in");
+            }
+        }
+    }
+    for (helper, range) in profile_excludes {
+        for &value in members.get(&helper).map(Vec::as_slice).unwrap_or(&[]) {
+            if dt::bridge_exact_atomic_disjoint(name(value), name(range)) != Some(true) {
+                defer!("a membership profile excludes a range one of its values is in");
+            }
+        }
+    }
+    // Equal values (one identity key) never carry two digits of one position.
+    let mut by_key: std::collections::HashMap<String, Vec<(u32, u32)>> = Default::default();
+    for (value, digits) in digits_of {
+        let Some(key) = dt::bridge_value_identity_key(name(value)) else {
+            defer!("an indexed value has no exact identity");
+        };
+        by_key.entry(key).or_default().extend(digits);
+    }
+    for digits in by_key.values_mut() {
+        digits.sort_unstable();
+        digits.dedup();
+        if digits.windows(2).any(|pair| pair[0].0 == pair[1].0) {
+            defer!("two equal values carry different index digits");
+        }
+    }
+    true
+}
+
+/// A clause of the linear value encoding (checked as a whole by
+/// [`linear_value_encoding_exact`]).
+fn clause_mentions_value_aux(tin: &TInput, clause: &HtClause) -> bool {
+    clause.body.iter().chain(&clause.head).any(|atom| matches!(atom,
+        HAtom::Concept { c, .. } if tin.concepts.get(*c)
+            .is_some_and(|name| crate::frontend::datatypes::is_value_aux_name(name))))
 }
 
 fn supported_datatype_clause_shape(tin: &TInput, clause: &HtClause) -> bool {
@@ -819,9 +1039,9 @@ fn pure_datatype_relation_is_exact(tin: &TInput, clause: &HtClause) -> bool {
     }
     if clause.body.len() == 2 && clause.head.len() == 1 {
         // The only exact equality-head shape is a value singleton.
-        return tin.concepts.iter().enumerate().any(|(concept, name)| {
-            name.starts_with("__dt__val__") && datatype_singleton_clause(clause, concept)
-        });
+        let HAtom::Concept { c: concept, .. } = &clause.body[0] else { return false };
+        return tin.concepts.get(*concept).is_some_and(|name| name.starts_with("__dt__val__"))
+            && datatype_singleton_clause(clause, *concept);
     }
     if let ([HAtom::Concept { neg: false, c, t }], head) =
         (clause.body.as_slice(), clause.head.as_slice())
@@ -836,7 +1056,8 @@ fn pure_datatype_relation_is_exact(tin: &TInput, clause: &HtClause) -> bool {
         }).collect();
         if concept_heads.as_ref().is_some_and(|heads|
             crate::frontend::datatypes::bridge_exact_integral_cover(range_name, heads)
-                || crate::frontend::datatypes::bridge_exact_union_cover(range_name, heads)) {
+                || crate::frontend::datatypes::bridge_exact_union_cover(range_name, heads)
+                || crate::frontend::datatypes::exact_enumerated_cover(range_name, heads)) {
             return true;
         }
         if crate::frontend::datatypes::bridge_tbox_finite_values(range_name).is_some() {
@@ -1216,7 +1437,8 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         .concepts
         .iter()
         .enumerate()
-        .filter_map(|(index, name)| name.starts_with("__dt__").then_some(index))
+        .filter_map(|(index, name)| (name.starts_with("__dt__")
+            && !crate::frontend::datatypes::is_value_aux_name(name)).then_some(index))
         .collect();
     // A source data property makes data successors even when no `__dt__`
     // concept occurs (an unqualified data cardinality reads its
@@ -1790,6 +2012,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
     }
     for (clause_index, clause) in tin.clauses.iter().enumerate() {
         if is_pure_internal_datatype_relation_clause(tin, clause)
+            && !clause_mentions_value_aux(tin, clause)
             && !pure_datatype_relation_is_exact(tin, clause)
         {
             if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
@@ -1822,7 +2045,10 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         ranges.entry(family).or_default().push(concept);
     }
 
-    let relations = DatatypeRelationIndex::new(&tin.clauses);
+    if !linear_value_encoding_exact(tin) {
+        return false;
+    }
+    let relations = DatatypeRelationIndex::for_input(tin);
     // A local `forall(r, D)` without a matching global range intersects D
     // with whatever else labels an r-successor. Admit it only when D's
     // relation to every other datatype symbol (except rdfs:Literal) is decided
@@ -1841,19 +2067,19 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             let mut decided = false;
             if dt::bridge_exact_atomic_subsumed(left, right) == Some(true) {
                 decided = true;
-                if !relations.inclusions.contains(&(member, other)) {
+                if !relations.includes(member, other) {
                     defer!("a local datatype restriction lacks an inclusion clause");
                 }
             }
             if dt::bridge_exact_atomic_subsumed(right, left) == Some(true) {
                 decided = true;
-                if !relations.inclusions.contains(&(other, member)) {
+                if !relations.includes(other, member) {
                     defer!("a local datatype restriction lacks a reverse inclusion clause");
                 }
             }
             if dt::bridge_exact_atomic_disjoint(left, right) == Some(true) {
                 decided = true;
-                if !relations.disjoint.contains(&(member.min(other), member.max(other))) {
+                if !relations.separated(member, other) {
                     defer!("a local datatype restriction lacks a disjointness clause");
                 }
             }
@@ -1870,8 +2096,19 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             }
         }
     }
+    // Without a construct that forces two data successors of one element
+    // apart, the frontend leaves out the singleton clause of every value with
+    // a decided identity (`datatypes::datatype_relation_clauses_with`); no
+    // clause then distinguishes two nodes carrying one value.
+    let singletons_elidable = {
+        let (distinct, disjoint_data) = forced_distinct_data_successors(tin);
+        !distinct && !disjoint_data
+    };
     for &value in &values {
-        if !relations.singletons.contains(&value) {
+        if !relations.singletons.contains(&value)
+            && !(singletons_elidable
+                && crate::frontend::datatypes::bridge_value_identity_key(&tin.concepts[value]).is_some())
+        {
             defer!("a datatype value lacks its singleton equality clause");
         }
         let Some(family) =
@@ -1896,13 +2133,13 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                     && crate::frontend::datatypes::bridge_exact_atomic_subsumed(
                         &tin.concepts[value], &tin.concepts[range]) == Some(false)
                 {
-                    if !relations.disjoint.contains(&(value.min(range), value.max(range))) {
+                    if !relations.separated(value, range) {
                         defer!("a datatype value lacks its exclusion from a present family range");
                     }
                     continue;
                 }
                 if crate::frontend::datatypes::bridge_tbox_finite_values(&tin.concepts[range]).is_none()
-                    && !relations.inclusions.contains(&(value, range)) {
+                    && !relations.includes(value, range) {
                     defer!("a datatype value lacks membership in its present family range");
                 }
             }
@@ -1911,12 +2148,12 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             crate::frontend::datatypes::bridge_tbox_atomic_family(&tin.concepts[range]) == Some("finite")) {
             if crate::frontend::datatypes::bridge_exact_atomic_subsumed(
                 &tin.concepts[value], &tin.concepts[range]) == Some(true) {
-                if !relations.inclusions.contains(&(value, range)) {
+                if !relations.includes(value, range) {
                     defer!("a datatype value lacks its exact range membership");
                 }
             } else if crate::frontend::datatypes::bridge_exact_atomic_disjoint(
                 &tin.concepts[value], &tin.concepts[range]) == Some(true) {
-                if !relations.disjoint.contains(&(value.min(range), value.max(range))) {
+                if !relations.separated(value, range) {
                     defer!("a datatype value lacks its exact range exclusion");
                 }
             } else {
@@ -1924,13 +2161,59 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             }
         }
     }
-    for (position, &left) in values.iter().enumerate() {
-        for &right in values.iter().skip(position + 1) {
-            let equal = relations.inclusions.contains(&(left, right))
-                && relations.inclusions.contains(&(right, left));
-            let disjoint = relations.disjoint.contains(&(left.min(right), left.max(right)));
-            if !equal && !disjoint {
-                defer!("a datatype value pair is neither proved equal nor disjoint");
+    // Every pair of values is proved equal or disjoint. Values whose
+    // equality class carries a complete index (one digit at every position
+    // whose used digits are pairwise disjoint) are pairwise disjoint across
+    // classes exactly when their indices differ; the remaining values are
+    // checked pair by pair.
+    {
+        let mut used: std::collections::BTreeMap<u32, std::collections::BTreeSet<u32>> = Default::default();
+        for digits in relations.class_digits.values() {
+            for &(position, digit) in digits {
+                used.entry(position).or_default().insert(digit);
+            }
+        }
+        let clashing_positions: std::collections::BTreeSet<u32> = used.iter()
+            .filter(|(position, digits)| {
+                let digits: Vec<u32> = digits.iter().copied().collect();
+                digits.iter().enumerate().all(|(at, &d)| digits[at + 1..].iter()
+                    .all(|&e| relations.clashing_digits.contains(&(**position, d, e))))
+            })
+            .map(|(position, _)| *position)
+            .collect();
+        let positions = clashing_positions.len();
+        let complete = |value: usize| relations.class_digits.get(&relations.class(value))
+            .filter(|digits| positions > 0 && digits.len() == positions
+                && digits.iter().all(|(position, _)| clashing_positions.contains(position)));
+        let mut index_of_class: crate::fxhash::FxHashMap<Vec<(u32, u32)>, usize> = Default::default();
+        let mut indexed_classes: crate::fxhash::FxHashSet<usize> = Default::default();
+        let mut rest: Vec<usize> = Vec::new();
+        for &value in &values {
+            match complete(value) {
+                Some(bits) => {
+                    let class = relations.class(value);
+                    if !relations.equal(value, class) && value != class {
+                        defer!("a datatype value pair is neither proved equal nor disjoint");
+                    }
+                    if indexed_classes.insert(class) {
+                        if index_of_class.insert(bits.clone(), class).is_some() {
+                            defer!("a datatype value pair is neither proved equal nor disjoint");
+                        }
+                    }
+                }
+                None => rest.push(value),
+            }
+        }
+        let rest_position: crate::fxhash::FxHashMap<usize, usize> =
+            rest.iter().enumerate().map(|(position, &value)| (value, position)).collect();
+        for (position, &left) in rest.iter().enumerate() {
+            for &right in values.iter() {
+                if right == left || rest_position.get(&right).is_some_and(|&other| other <= position) {
+                    continue;
+                }
+                if !relations.equal(left, right) && !relations.separated(left, right) {
+                    defer!("a datatype value pair is neither proved equal nor disjoint");
+                }
             }
         }
     }
@@ -2116,17 +2399,19 @@ fn collect_datatype_roles<'a>(concept: &'a SourceConcept, out: &mut std::collect
     }
 }
 
-/// Literals a realizing value must avoid and the number of realizing values
-/// a cell needs. With possible forced-distinct data siblings, two values that
-/// avoid every present literal; otherwise one value that avoids every
-/// body-sensitive literal (a non-sensitive value concept only occurs in heads
-/// and singleton clauses, which an unforced shared value cannot violate).
-fn cell_literals_and_requirement<'a>(
-    tin: &'a TInput,
-    datatype_ids: &[usize],
-    sensitive: &std::collections::HashSet<&str>,
-) -> (Vec<&'a str>, u128) {
+/// Whether the input can force two data successors of one element to be
+/// distinct values (`distinct`: a number restriction of at least two, see
+/// `source_forces_distinct_data_successors`) and whether two data roles are
+/// disjoint (`disjoint_data`).
+fn forced_distinct_data_successors(tin: &TInput) -> (bool, bool) {
     let mut data_roles: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    // The frontend's source data properties (`TInput::data_roles`) are data
+    // roles even when no datatype filler or range names them.
+    for &role in &tin.data_roles {
+        if let Some(name) = tin.roles.get(role) {
+            data_roles.insert(name.as_str());
+        }
+    }
     for axiom in &tin.source_axioms {
         collect_datatype_roles(&axiom.left, &mut data_roles);
         collect_datatype_roles(&axiom.right, &mut data_roles);
@@ -2182,10 +2467,59 @@ fn cell_literals_and_requirement<'a>(
                 .is_some_and(|name| data_roles.contains(name.as_str())))
         })
     });
+    (distinct, disjoint_data)
+}
+
+/// Literals a realizing value must avoid and the number of realizing values
+/// a cell needs. With possible forced-distinct data siblings, two values that
+/// avoid every present literal; otherwise one value that avoids every
+/// body-sensitive literal (a non-sensitive value concept only occurs in heads
+/// and singleton clauses, which an unforced shared value cannot violate).
+fn cell_literals_and_requirement<'a>(
+    tin: &'a TInput,
+    datatype_ids: &[usize],
+    sensitive: &std::collections::HashSet<&str>,
+) -> (Vec<&'a str>, u128) {
+    let (distinct, disjoint_data) = forced_distinct_data_successors(tin);
     let distinct = distinct || disjoint_data;
+    // Values that occur only as heads of an exact enumerated cover (the
+    // counted covers of finite IEEE intervals and bounded integer types)
+    // label a node only through that cover, which picks one of them; a
+    // realizing value outside the literals is never needed for them.
+    let mentioned: std::collections::HashSet<&str> = {
+        fn walk<'a>(concept: &'a SourceConcept, out: &mut std::collections::HashSet<&'a str>) {
+            match concept {
+                SourceConcept::Name(name) => { out.insert(name.as_str()); }
+                SourceConcept::Not(inner) => walk(inner, out),
+                SourceConcept::And(items) | SourceConcept::Or(items) => items.iter().for_each(|c| walk(c, out)),
+                SourceConcept::Exists(_, filler) | SourceConcept::Forall(_, filler)
+                | SourceConcept::AtLeast(_, _, filler) | SourceConcept::AtMost(_, _, filler) => walk(filler, out),
+                _ => {}
+            }
+        }
+        let mut out = std::collections::HashSet::new();
+        for axiom in &tin.source_axioms {
+            walk(&axiom.left, &mut out);
+            walk(&axiom.right, &mut out);
+        }
+        for individual in &tin.nominal_abox.individuals {
+            for assertion in &individual.assertions { walk(assertion, &mut out); }
+        }
+        out
+    };
+    let cover_only: std::collections::HashSet<&str> = tin.clauses.iter().filter_map(|clause| {
+        let ([HAtom::Concept { neg: false, c, t }], head) = (clause.body.as_slice(), clause.head.as_slice()) else { return None };
+        let heads: Option<Vec<&str>> = head.iter().map(|atom| match atom {
+            HAtom::Concept { neg: false, c, t: ht } if ht == t => tin.concepts.get(*c).map(String::as_str),
+            _ => None,
+        }).collect();
+        let heads = heads?;
+        crate::frontend::datatypes::exact_enumerated_cover(tin.concepts.get(*c)?, &heads).then_some(heads)
+    }).flatten().filter(|name| !mentioned.contains(name) && !sensitive.contains(name)).collect();
     let literals: Vec<&str> = datatype_ids.iter()
         .map(|&concept| tin.concepts[concept].as_str())
         .filter(|name| name.starts_with("__dt__val__") && (distinct || sensitive.contains(name)))
+        .filter(|name| !cover_only.contains(name))
         .collect();
     if disjoint_data {
         fn successors(concept: &SourceConcept) -> u128 {
@@ -2232,10 +2566,10 @@ fn decimal_cells_exact(
     let names: Vec<&str> = members.iter().map(|&concept| tin.concepts[concept].as_str()).collect();
     let flags: Vec<bool> = names.iter().map(|name| sensitive.contains(name)).collect();
     let (literals, required) = cell_literals_and_requirement(tin, datatype_ids, &sensitive);
-    let inclusion = |i: usize, j: usize| relations.inclusions.contains(&(members[i], members[j]));
+    let inclusion = |i: usize, j: usize| relations.includes(members[i], members[j]);
     let disjoint = |i: usize, j: usize| {
         let (a, b) = (members[i], members[j]);
-        relations.disjoint.contains(&(a.min(b), a.max(b)))
+        relations.separated(a, b)
     };
     // Present finite-difference covers restrict the admissible labels.
     let member_index: HashMap<usize, usize> =
@@ -2457,8 +2791,8 @@ fn tbox_extension_evidence_exact(
     if datatype_ids.iter().any(|&concept| literal(concept) && sensitive.contains(tin.concepts[concept].as_str())) {
         defer!("rdfs:Literal occurs in a body-sensitive position");
     }
-    let included = |left: usize, right: usize| relations.inclusions.contains(&(left, right));
-    let separated = |left: usize, right: usize| relations.disjoint.contains(&(left.min(right), left.max(right)));
+    let included = |left: usize, right: usize| relations.includes(left, right);
+    let separated = |left: usize, right: usize| relations.separated(left, right);
     for &member in datatype_ids.iter().filter(|&&concept| is_extension(concept) && !literal(concept)) {
         for &other in datatype_ids.iter().filter(|&&other| other != member && !literal(other)) {
             let (left, right) = (&tin.concepts[member], &tin.concepts[other]);
@@ -2533,8 +2867,13 @@ fn tbox_extension_evidence_exact(
 /// Datatype-stage admission only. A positive result does not establish source
 /// coverage, supported inverse/nominal completion, or certified publication.
 pub fn datatype_bridge_route_exact(tin: &TInput, source_mode: bool) -> bool {
-    exact_atomic_datatype_bridge_fragment(tin, source_mode)
-        || datatype_effects_covered_by_unit_bottom(tin, source_mode)
+    let started = std::time::Instant::now();
+    let admitted = exact_atomic_datatype_bridge_fragment(tin, source_mode)
+        || datatype_effects_covered_by_unit_bottom(tin, source_mode);
+    if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+        eprintln!("BRIDGE-DATATYPE-GATE: admitted={admitted} in {:.2}s", started.elapsed().as_secs_f64());
+    }
+    admitted
 }
 
 /// The bridged terminology: arena ids for the TInput's named concepts/roles
@@ -17104,7 +17443,12 @@ mod tests {
         let value = missing_singleton.concepts.iter().position(|name|
             name.starts_with("__dt__val__")).unwrap();
         missing_singleton.clauses.retain(|clause| !datatype_singleton_clause(clause, value));
-        assert!(!exact_atomic_datatype_bridge_fragment(&missing_singleton, true));
+        // Without a construct that forces two data successors apart the
+        // frontend leaves the singleton clause out (DATATYPES.md, "Value
+        // singletons"), and the bridge admits the value without it; with
+        // such a construct the clause is required.
+        let elidable = forced_distinct_data_successors(&missing_singleton) == (false, false);
+        assert_eq!(exact_atomic_datatype_bridge_fragment(&missing_singleton, true), elidable);
     }
 
     #[test]
@@ -17685,11 +18029,14 @@ mod tests {
             SubClassOf(<http://x#A> DataMinCardinality(2 <http://x#p> DatatypeRestriction(xsd:double xsd:minInclusive "0.0"^^xsd:double xsd:maxInclusive "0.0"^^xsd:double)))"#)
             .expect("a two-value zero interval is admitted");
         assert!(!result.unsatisfiable.contains(&tbox_extension_class(&input, &evidence, "#A")));
-        // [1,1] holds one value: no two-value realization, so the bridge defers.
-        assert!(tbox_extension_classify(r#"
+        // [1,1] holds one value: `≥ 2 p.[1,1]` is empty, which the frontend
+        // states directly (`syntax::data_at_least`), so `A` is unsatisfiable
+        // (until v1.5.4 the bridge deferred here).
+        let (input, evidence, result) = tbox_extension_classify(r#"
             Declaration(Class(<http://x#A>))
             SubClassOf(<http://x#A> DataMinCardinality(2 <http://x#p> DatatypeRestriction(xsd:double xsd:minInclusive "1.0"^^xsd:double xsd:maxInclusive "1.0"^^xsd:double)))"#)
-            .is_none());
+            .expect("an empty count is answered");
+        assert!(result.unsatisfiable.contains(&tbox_extension_class(&input, &evidence, "#A")));
     }
 
     #[test]
@@ -17849,11 +18196,16 @@ mod tests {
         let mut tin = exact_atomic_datatype_input();
         tin.clauses
             .retain(|clause| !datatype_singleton_clause(clause, 3));
-        assert!(!exact_atomic_datatype_bridge_fragment(&tin, true));
-        assert!(
-            bridged_classify_opts_with_trigger_absorption(&tin, false, false, true).is_none(),
-            "missing value-singleton evidence must defer the route"
-        );
+        // A missing singleton clause is admitted only where the frontend
+        // may elide it: no construct forces two data successors apart.
+        let elidable = forced_distinct_data_successors(&tin) == (false, false);
+        assert_eq!(exact_atomic_datatype_bridge_fragment(&tin, true), elidable);
+        if !elidable {
+            assert!(
+                bridged_classify_opts_with_trigger_absorption(&tin, false, false, true).is_none(),
+                "missing value-singleton evidence must defer the route"
+            );
+        }
 
         let mut no_cover = exact_atomic_datatype_input();
         no_cover.clauses.retain(|clause| {
