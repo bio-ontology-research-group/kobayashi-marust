@@ -19013,6 +19013,274 @@ impl Ht {
         false
     }
 
+    /// `KM_HT_SUBSET_MODEL_CERT=<dir>`: write the subset-blocked SAT terminal
+    /// as a `WireSubsetUnravelling`
+    /// (lean/ContextCalculus/HypertableauSubsetUnravelling.lean) and, when
+    /// `KM_HT_SUBSET_MODEL_CHECKER` names `ht-subset-unravelling-check`, run it.
+    /// Returns false (the caller then reports no verdict) when the checker is
+    /// set and the terminal has no certificate or the checker rejects it.
+    fn emit_subset_model_certificate(&mut self, dir: &std::path::Path, seed: &[CLit]) -> bool {
+        static NONCE: AtomicU64 = AtomicU64::new(0);
+        let n = NONCE.fetch_add(1, Ordering::Relaxed);
+        let checker = std::env::var_os("KM_HT_SUBSET_MODEL_CHECKER");
+        let _ = std::fs::create_dir_all(dir);
+        let stem = dir.join(format!("ht-subset-{}-{n}", std::process::id()));
+        let (document, nodes, folds) = match self.subset_model_certificate_json(seed) {
+            Ok(certificate) => certificate,
+            Err(reason) => {
+                let _ = std::fs::write(stem.with_extension("err"), &reason);
+                eprintln!("KM_HT_SUBSET_MODEL_CERT terminal={n} not emitted: {reason}");
+                return checker.is_none();
+            }
+        };
+        let path = stem.with_extension("json");
+        if let Err(error) = std::fs::write(&path, &document) {
+            eprintln!("KM_HT_SUBSET_MODEL_CERT terminal={n} cannot write {}: {error}", path.display());
+            return checker.is_none();
+        }
+        let Some(checker) = checker else {
+            eprintln!("KM_HT_SUBSET_MODEL_CERT terminal={n} nodes={nodes} folds={folds} written");
+            return true;
+        };
+        let passes = |path: &std::path::Path| {
+            std::process::Command::new(&checker)
+                .arg(path)
+                .stdout(std::process::Stdio::null())
+                .status()
+                .is_ok_and(|status| status.success())
+        };
+        // The section-9 construction relabels a blocked position with its
+        // blocker's label; when Lean rejects that model, try the fold that
+        // keeps the blocked node's own label (either is a model if accepted).
+        let mut accepted = passes(&path);
+        let mut variant = "relabel";
+        if !accepted && folds > 0 {
+            let own = stem.with_extension("own.json");
+            let keep_label = document.replacen("\"relabel\":true", "\"relabel\":false", 1);
+            if std::fs::write(&own, keep_label).is_ok() && passes(&own) {
+                accepted = true;
+                variant = "own-label";
+            }
+        }
+        eprintln!(
+            "KM_HT_SUBSET_MODEL_CERT terminal={n} nodes={nodes} folds={folds} variant={variant} {}",
+            if accepted { "accepted" } else { "rejected" }
+        );
+        accepted
+    }
+
+    /// The unravelled model of docs/HYBRID-CB-HT.md section 9 for the
+    /// current SAT terminal, as untrusted data for the Lean checker: the
+    /// kept nodes (every node except merged ones and the descendants of
+    /// blocked nodes), their labels, edges and existential obligations, the
+    /// predecessor pairs, one admitted unblocked blocker for every blocked
+    /// kept node, the root and the query seed. Returns the document, the
+    /// number of kept nodes and the number of blocking pairs.
+    fn subset_model_certificate_json(&mut self, seed: &[CLit]) -> Result<(String, usize, usize), String> {
+        if !matches!(self.block_mode, 1 | 5) {
+            return Err(format!("blocking mode {} is not subset blocking", self.block_mode));
+        }
+        if !self.card_defs.is_empty() {
+            return Err("first-class cardinality rules are outside the certificate's clauses".into());
+        }
+        if !self.nom_set.is_empty() || !self.ext.nominals.is_empty() {
+            return Err("nominal merging is outside the certificate's clauses".into());
+        }
+        if !self.ht_chain_fwd.is_empty() || !self.ht_chain_bwd.is_empty() || !self.ht_tcc_clauses.is_empty() {
+            return Err("role-chain composition is outside the certificate's clauses".into());
+        }
+        if !self.native_abox.individuals.is_empty() {
+            return Err("native ABox individuals are outside the certificate's clauses".into());
+        }
+        if self.ext.unsupported || self.ext.has_clash() {
+            return Err("the terminal is unsupported or clashes".into());
+        }
+        let nn = self.ext.num_nodes();
+        // The relation the search used: the incremental pass when it is on
+        // (compared with the full scan here as well), the full scan otherwise.
+        let full = self.compute_blocked();
+        let blocked = if self.checked_subset_incremental() {
+            let incremental = self.checked_subset_recompute();
+            if incremental != full {
+                return Err("incremental and full checked subset blocking differ".into());
+            }
+            incremental
+        } else {
+            full
+        };
+        let merged = |n: Node| self.ext.number && self.ext.merged[n].is_some();
+        let mut dropped = vec![false; nn];
+        for n in 0..nn {
+            dropped[n] = merged(n) || self.ext.pred[n].is_some_and(|p| dropped[p] || blocked[p]);
+        }
+        let gain = self.subset_gain.clone();
+        let exact = self.block_mode == 1 && self.subset_exact;
+        let admitted = |n: Node, m: Node| {
+            label_subset(&self.ext, n, m)
+                && (exact || gain.as_ref().is_some_and(|gain| gain.admits(&self.ext, n, m)))
+                && (self.block_mode != 5 || self.ext.pred[n].is_some_and(|v| self.b2a_holds(n, m, v)))
+        };
+        let mut folds: Vec<(Node, Node)> = Vec::new();
+        for n in 0..nn {
+            if dropped[n] || !blocked[n] {
+                continue;
+            }
+            let Some(m) = (0..n).find(|&m| !dropped[m] && !blocked[m] && admitted(n, m)) else {
+                let indirect = (0..n).any(|m| blocked[m] && !dropped[m] && admitted(n, m))
+                    || (0..n).any(|m| dropped[m] && !merged(m) && admitted(n, m));
+                return Err(format!(
+                    "blocked node {n} has no admitted unblocked blocker in the unravelled model{}",
+                    if indirect { " (only a blocked or dropped node admits it)" } else { "" }
+                ));
+            };
+            folds.push((n, m));
+        }
+        let mut id = vec![usize::MAX; nn];
+        let mut kept = 0usize;
+        for n in 0..nn {
+            if !dropped[n] {
+                id[n] = kept;
+                kept += 1;
+            }
+        }
+        let live = |n: Node| {
+            let n = self.ext.resolve(n);
+            (n < nn && !dropped[n]).then_some(n)
+        };
+        let mut variable_count = 1usize;
+        let mut concept_count = 1usize;
+        let mut role_count = 1usize;
+        let mut existentials: HashMap<R, Vec<CLit>> = HashMap::default();
+        for record in &self.index.clauses {
+            for atom in record.0.body.iter().chain(record.0.head.iter()) {
+                match *atom {
+                    Atom::Concept { lit, t } => {
+                        variable_count = variable_count.max(t as usize + 1);
+                        concept_count = concept_count.max(lit.c as usize + 1);
+                    }
+                    Atom::Role { r, s, t } => {
+                        variable_count = variable_count.max(s as usize + 1).max(t as usize + 1);
+                        role_count = role_count.max(r as usize + 1);
+                    }
+                    Atom::Exists { r, fil, t } => {
+                        variable_count = variable_count.max(t as usize + 1);
+                        concept_count = concept_count.max(fil.c as usize + 1);
+                        role_count = role_count.max(r as usize + 1);
+                    }
+                    Atom::Eq { s, t } => {
+                        variable_count = variable_count.max(s as usize + 1).max(t as usize + 1);
+                    }
+                }
+            }
+            for atom in &record.0.head {
+                if let Atom::Exists { r, fil, .. } = *atom {
+                    let fillers = existentials.entry(r).or_default();
+                    if !fillers.contains(&fil) {
+                        fillers.push(fil);
+                    }
+                }
+            }
+        }
+        let mut labels = Vec::new();
+        for n in (0..nn).filter(|&n| !dropped[n]) {
+            let mut lits: Vec<CLit> = self.ext.concepts[n].keys().copied().collect();
+            lits.sort_unstable_by_key(|k| Ext::enc_lit(*k));
+            for lit in lits {
+                concept_count = concept_count.max(lit.c as usize + 1);
+                labels.push(LeanHtLabel { node: id[n], literal: Self::lean_wire_lit(lit) });
+            }
+        }
+        let mut edges: Vec<(R, Node, Node)> = Vec::new();
+        for s in (0..nn).filter(|&s| !dropped[s]) {
+            for &(r, t, _) in &self.ext.out_edges[s] {
+                if let Some(t) = live(t) {
+                    edges.push((r, s, t));
+                }
+            }
+        }
+        edges.sort_unstable();
+        edges.dedup();
+        let mut obligations: Vec<(R, CLit, Node)> = Vec::new();
+        for oblig in &self.ext.obligations {
+            if let Some(n) = live(oblig.n) {
+                obligations.push((oblig.r, oblig.fil, n));
+            }
+        }
+        // An existential head that already held needs no recorded obligation
+        // in the search, but the Lean model reads every existential head atom
+        // through the obligation list; list every satisfied one.
+        for &(r, s, t) in &edges {
+            for &fil in existentials.get(&r).map_or(&[][..], |v| v.as_slice()) {
+                if self.ext.concepts[t].contains_key(&fil) {
+                    obligations.push((r, fil, s));
+                }
+            }
+        }
+        obligations.sort_unstable_by_key(|&(r, fil, n)| (r, Ext::enc_lit(fil), n));
+        obligations.dedup();
+        for lit in seed {
+            concept_count = concept_count.max(lit.c as usize + 1);
+        }
+        for &(r, _, _) in &edges {
+            role_count = role_count.max(r as usize + 1);
+        }
+        for &(r, fil, _) in &obligations {
+            role_count = role_count.max(r as usize + 1);
+            concept_count = concept_count.max(fil.c as usize + 1);
+        }
+        let base = LeanHtCertificate {
+            version: 1,
+            node_count: kept,
+            concept_count,
+            role_count,
+            variable_count,
+            ontology: self
+                .index
+                .clauses
+                .iter()
+                .map(|record| LeanHtClause {
+                    body: record.0.body.iter().map(Self::lean_wire_atom).collect(),
+                    head: record.0.head.iter().map(Self::lean_wire_atom).collect(),
+                })
+                .collect(),
+            labels,
+            edges: edges
+                .iter()
+                .map(|&(role, source, target)| LeanHtEdge { role: role as usize, source: id[source], target: id[target] })
+                .collect(),
+            obligations: obligations
+                .iter()
+                .map(|&(role, filler, node)| LeanHtObligation {
+                    role: role as usize,
+                    filler: Self::lean_wire_lit(filler),
+                    node: id[node],
+                })
+                .collect(),
+            evidence: LeanHtEvidence::Sat,
+        };
+        let parents: Vec<serde_json::Value> = (0..nn)
+            .filter(|&n| !dropped[n])
+            .filter_map(|n| {
+                let p = self.ext.pred[n]?;
+                (!dropped[p]).then(|| serde_json::json!({ "source": id[n], "target": id[p] }))
+            })
+            .collect();
+        let fold_pairs: Vec<serde_json::Value> = folds
+            .iter()
+            .map(|&(w, m)| serde_json::json!({ "source": id[w], "target": id[m] }))
+            .collect();
+        let document = serde_json::json!({
+            "version": 1,
+            "base": serde_json::to_value(&base).map_err(|error| error.to_string())?,
+            "parents": parents,
+            "folds": fold_pairs,
+            "root": id[0],
+            "seed": seed.iter().map(|&lit| serde_json::to_value(Self::lean_wire_lit(lit)).unwrap()).collect::<Vec<_>>(),
+            "relabel": true,
+        });
+        Ok((document.to_string(), kept, folds.len()))
+    }
+
     /// Checked subset blocking runs on the incremental suffix path
     /// ([`Ht::checked_subset_recompute`]): mode 5, or mode 1 when some pair
     /// needs [`SubsetGain::admits`].
@@ -21265,6 +21533,16 @@ impl Ht {
                         }
                     }
                     let sat = matches!(other, Out::Sat);
+                    // KM_HT_SUBSET_MODEL_CERT: check the unravelled model of a
+                    // subset-blocked terminal in Lean (fails closed when
+                    // KM_HT_SUBSET_MODEL_CHECKER is set).
+                    if sat && matches!(self.block_mode, 1 | 5) {
+                        if let Some(dir) = std::env::var_os("KM_HT_SUBSET_MODEL_CERT") {
+                            if !self.emit_subset_model_certificate(std::path::Path::new(&dir), seed) {
+                                return None;
+                            }
+                        }
+                    }
                     // KM_HT_SATCACHE3: pool the FULL-label pairwise signatures of
                     // this completed clash-free model's UNBLOCKED blockable nodes —
                     // genuine witnesses whose subtree was fully expanded. A pooled
@@ -21808,9 +22086,7 @@ impl Ht {
                     let tmpl = template.clone();
                     let ec_fwd = ec_fwd.clone();
                     let ec_bwd = ec_bwd.clone();
-                    std::thread::Builder::new()
-                        .stack_size(RWORKER_STACK)
-                        .spawn_scoped(
+                    crate::bigstack::spawn_scoped_retrying(RWORKER_STACK,
                             s,
                             move || -> Option<(Vec<C>, Vec<(C, C)>, u64, f64, f64)> {
                                 let mut w = Ht::new(tmpl);
@@ -22376,9 +22652,7 @@ impl Ht {
             let handles: Vec<_> = (0..nthreads)
                 .map(|_| {
                     let worker = worker.clone();
-                    std::thread::Builder::new()
-                        .stack_size(HT_WORKER_STACK)
-                        .spawn_scoped(s, move || -> Option<Vec<(C, bool, Vec<C>)>> {
+                    crate::bigstack::spawn_scoped_retrying(HT_WORKER_STACK, s, move || -> Option<Vec<(C, bool, Vec<C>)>> {
                             let mut w = worker.into_worker();
                             let mut out = Vec::new();
                             loop {
@@ -22440,9 +22714,7 @@ impl Ht {
             let handles: Vec<_> = (0..nthreads.min(nl.max(1)))
                 .map(|_| {
                     let worker = worker.clone();
-                    std::thread::Builder::new()
-                        .stack_size(HT_WORKER_STACK)
-                        .spawn_scoped(s, move || -> Option<Vec<(C, C)>> {
+                    crate::bigstack::spawn_scoped_retrying(HT_WORKER_STACK, s, move || -> Option<Vec<(C, C)>> {
                             let mut w = worker.into_worker();
                             let mut subs = Vec::new();
                             loop {
@@ -23054,9 +23326,7 @@ impl Ht {
                 let next = &next;
                 let handles: Vec<_> = (0..nthreads)
                     .map(|_| {
-                        std::thread::Builder::new()
-                            .stack_size(QO_WORKER_STACK)
-                            .spawn_scoped(s, move || -> Option<(Vec<(C, C)>, Vec<C>)> {
+                        crate::bigstack::spawn_scoped_retrying(QO_WORKER_STACK, s, move || -> Option<(Vec<(C, C)>, Vec<C>)> {
                                 let mut qpc = QoSat::new_opts(
                                     clauses_ref,
                                     false,
@@ -23419,9 +23689,7 @@ impl Ht {
                 let handles: Vec<_> = (0..nthreads)
                     .map(|_| {
                         let tmpl: Vec<ClauseRec> = clauses_ref.to_vec();
-                        std::thread::Builder::new()
-                            .stack_size(64 * 1024 * 1024)
-                            .spawn_scoped(s, move || -> Option<PcPart> {
+                        crate::bigstack::spawn_scoped_retrying(64 * 1024 * 1024, s, move || -> Option<PcPart> {
                                 let mut qf = QoSat::new_opts(&tmpl, true, fprop);
                                 qf.install_edge_compose(chains_ref);
                                 qf.complete_roles = true;
@@ -24323,9 +24591,7 @@ impl Ht {
                             let handles: Vec<_> = (0..nthreads)
                                 .map(|_| {
                                     let tmpl = template.clone();
-                                    std::thread::Builder::new()
-                                        .stack_size(PMWORKER_STACK)
-                                        .spawn_scoped(s, move || -> Vec<(C, Option<HashSet<C>>)> {
+                                    crate::bigstack::spawn_scoped_retrying(PMWORKER_STACK, s, move || -> Vec<(C, Option<HashSet<C>>)> {
                                             let mut w = Ht::new(tmpl);
                                             w.set_anywhere(anywhere);
                                             w.set_fast_tableau(); // result-identical speedups
@@ -24417,9 +24683,7 @@ impl Ht {
                         let handles: Vec<_> = (0..nthreads)
                             .map(|_| {
                                 let tmpl = template.clone();
-                                std::thread::Builder::new()
-                                    .stack_size(VWORKER_STACK)
-                                    .spawn_scoped(s, move || -> (Vec<(C, C)>, u64, u64, u64) {
+                                crate::bigstack::spawn_scoped_retrying(VWORKER_STACK, s, move || -> (Vec<(C, C)>, u64, u64, u64) {
                                         let mut w = Ht::new(tmpl);
                                         w.set_anywhere(anywhere);
                                         w.set_fast_tableau(); // result-identical speedups

@@ -17,7 +17,7 @@ pub mod explain;
 pub mod features;
 mod flat_nf1;
 pub mod frontend_run;
-mod inert_sorts;
+pub(crate) mod inert_sorts;
 pub mod input;
 pub mod mirror;
 mod abox_quotient;
@@ -433,7 +433,19 @@ fn nominal_cb_clause_input(
             || asserted.contains(name)
             || queries.iter().any(|query| query == name)
     };
+    // KM_RULES_INERT_CERT / KM_RULES_INERT_LEAN_CHECKER: the same Lean
+    // certificate as the rule checker's release (`WireInertSortRelease`,
+    // parametric in the reserved names), with this pass's reservations. It
+    // covers the release only: it records the clause set after the release
+    // and before `eliminate_universal_definers`, which has no Lean check.
+    let certificate = std::env::var_os("KM_RULES_INERT_CERT")
+        .map(|path| (path, input.clauses.clone(), inert_sorts::reserved_concepts_for_cb(&input, is_source)));
     let released = inert_sorts::release_inert_object_sorts_for_cb(&mut input, is_source);
+    if let Some((path, original, reserved)) = certificate {
+        if !released.concepts.is_empty() {
+            write_rules_inert_certificate(Path::new(&path), &original, &input.clauses, &released.concepts, &reserved)?;
+        }
+    }
     let eliminated = inert_sorts::eliminate_universal_definers(&mut input, is_source);
     if released.concepts.is_empty() && eliminated.concepts.is_empty() {
         return Ok(None);
@@ -3696,6 +3708,43 @@ fn clause_has_individual(clause: &crate::json_io::JClause) -> bool {
     })
 }
 
+/// Write the inert-sort release certificate (`KM_RULES_INERT_CERT`) and, when
+/// `KM_RULES_INERT_LEAN_CHECKER` names the Lean checker, require it to accept.
+/// A path ending in `.json` is the file; any other path is a directory that
+/// receives `rules-inert-<pid>-<n>.json`.
+fn write_rules_inert_certificate(
+    path: &Path,
+    original: &[crate::json_io::JClause],
+    result: &[crate::json_io::JClause],
+    released: &[String],
+    reserved: &std::collections::BTreeSet<String>,
+) -> Result<(), OrchestrateError> {
+    static NONCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let file = if path.extension().is_some_and(|ext| ext == "json") {
+        path.to_path_buf()
+    } else {
+        std::fs::create_dir_all(path)?;
+        let n = NONCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        path.join(format!("rules-inert-{}-{n}.json", std::process::id()))
+    };
+    let document = inert_sorts::release_certificate(original, result, released, reserved);
+    std::fs::write(&file, serde_json::to_vec(&document)?)?;
+    if let Some(checker) = std::env::var_os("KM_RULES_INERT_LEAN_CHECKER") {
+        let status = std::process::Command::new(&checker)
+            .arg(&file)
+            .stdout(std::process::Stdio::null())
+            .status()
+            .map_err(|e| OrchestrateError::Spawn { bin: "rules-inert-sort-release-check".into(), source: e })?;
+        if !status.success() {
+            return Err(OrchestrateError::OutOfFragment(format!(
+                "the Lean checker rejected the inert-sort release certificate {}",
+                file.display()
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn rules_consistency(
     cfg: &Config,
     clauses_path: &Path,
@@ -3735,15 +3784,24 @@ fn rules_consistency(
     // (same models up to the internal definers on data elements, so the same
     // verdict; `inert_sorts`). `KM_RULES_KEEP_INERT_SORTS=1` keeps them.
     if std::env::var_os("KM_RULES_KEEP_INERT_SORTS").is_none() {
-        let released = inert_sorts::release_inert_object_sorts(&mut input, |name| {
-            named.contains(name) || meta.iri_map.contains_key(name)
-        });
+        let is_source = |name: &str| named.contains(name) || meta.iri_map.contains_key(name);
+        // KM_RULES_INERT_CERT=<file.json | dir>: record the release for the
+        // Lean checker (`rules-inert-sort-release-check`, theorem
+        // `WireInertSortRelease.check_sound`); KM_RULES_INERT_LEAN_CHECKER
+        // runs it and fails closed on a rejection.
+        let certificate = std::env::var_os("KM_RULES_INERT_CERT")
+            .map(|path| (path, input.clauses.clone(), inert_sorts::reserved_concepts(&input, is_source)));
+        let released = inert_sorts::release_inert_object_sorts(&mut input, is_source);
+        if let Some((path, original, reserved)) = certificate {
+            write_rules_inert_certificate(Path::new(&path), &original, &input.clauses, &released.concepts, &reserved)?;
+        }
         if timing && !released.concepts.is_empty() {
             eprintln!(
-                "KM_TIMING rules-consistency released {} inert object sort(s): {} fact(s) unrelativized, {} sort clause(s) removed",
+                "KM_TIMING rules-consistency released {} inert object sort(s): {} fact(s) unrelativized, {} sort clause(s) removed; released: {}",
                 released.concepts.len(),
                 released.facts,
                 released.sort_clauses,
+                released.concepts.join(","),
             );
         }
     }
@@ -3824,11 +3882,13 @@ fn rules_consistency(
     }
     let (tab_prog, tab_pre) = cfg.tab_cmd();
     let out_path = tmpfile::TempPath::new(".rulescons.json");
+    // The worker's stderr is kept so that a failure reports its reason.
+    let err_path = tmpfile::TempPath::new(".rulescons.err");
     let mut cmd = Command::new(&tab_prog);
     cmd.args(&tab_pre)
         .stdin(Stdio::piped())
         .stdout(File::create(out_path.path())?)
-        .stderr(Stdio::null())
+        .stderr(File::create(err_path.path())?)
         .env("KM_RULES_CONSISTENCY", "1");
     // do NOT set KM_HT here: the default Tableau is what seeds the nominal roots
     // and applies the o-rule in `consistent(&[])`.
@@ -3866,10 +3926,15 @@ fn rules_consistency(
         );
     }
     if !status.success() {
+        // The reason is the last line(s); keep the tail of a long diagnostic log.
+        let stderr = std::fs::read_to_string(err_path.path()).unwrap_or_default();
+        let stderr = stderr.trim_end();
+        let mut tail = stderr.len().saturating_sub(4096);
+        while !stderr.is_char_boundary(tail) { tail += 1; }
         return Err(OrchestrateError::Worker {
             bin: "tableau".into(),
             code: crate::orchestrate::engine_run::exit_status_code(&status),
-            stderr: String::new(),
+            stderr: stderr[tail..].to_string(),
         });
     }
     #[derive(serde::Deserialize)]

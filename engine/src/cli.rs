@@ -7647,6 +7647,21 @@ mod cb_derivation_candidate_tests {
 // tableau — the ALC(HOQ) hypertableau (TInput on stdin -> TOutput on stdout)
 // ---------------------------------------------------------------------------
 pub fn run_tableau() {
+    // Run the model build on a deep stack. The QO/tableau saturation and
+    // consistency check recurse proportional to role-chain depth and overflow
+    // the default 8 MB main stack on deep ontologies (e.g. transitive-chain
+    // composition on ore_ont_14817 — 178 MB RSS yet main-thread stack
+    // overflow). KM_TAB_STACK_MB sets the size (default 2 GB); the nested
+    // searches ask for `bigstack::DEEP_STACK`. The main thread's stack is
+    // committed page by page as it grows, so it serves both without charging
+    // gigabytes of unused stack against a strict commit limit at startup
+    // (`bigstack`). This must run before any thread exists or stdin is read:
+    // it may re-execute the worker once with a larger RLIMIT_STACK.
+    let stack_mb = std::env::var("KM_TAB_STACK_MB")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(2048);
+    crate::bigstack::ensure_main_stack((stack_mb << 20).max(crate::bigstack::DEEP_STACK));
     die_with_supervisor();
     maybe_enable_debug();
     let mut buf = String::new();
@@ -7654,34 +7669,22 @@ pub fn run_tableau() {
         eprintln!("failed to read stdin: {e}");
         exit(1);
     }
-    // Run the model build on a large-stack worker thread. The QO/tableau
-    // saturation and consistency check recurse proportional to role-chain
-    // depth and overflow the default 8 MB main stack on deep ontologies (e.g.
-    // transitive-chain composition on ore_ont_14817 — 178 MB RSS yet
-    // main-thread stack overflow). KM_TAB_STACK_MB overrides (default 2 GB).
-    let stack_mb = std::env::var("KM_TAB_STACK_MB")
-        .ok()
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(2048);
     enum WorkerOutput {
         Json(String),
         Compact(crate::json_io::CompactElcOutput),
     }
     let compact_bridge = std::env::var_os("KM_HT_BRIDGE_OUTPUT_BINARY").is_some();
-    let worker = std::thread::Builder::new()
-        .stack_size(stack_mb * 1024 * 1024)
-        // The wire text is released inside `run_json_owned` as soon as its
-        // clause graph is parsed (unless the bridge route re-reads it), so the
-        // complete stdin document does not sit under the classification peak.
-        .spawn(move || {
-            if compact_bridge {
-                crate::tableau::run_bridge_json_owned_compact(buf).map(WorkerOutput::Compact)
-            } else {
-                crate::tableau::run_json_owned(buf).map(WorkerOutput::Json)
-            }
-        })
-        .expect("spawn tableau worker thread");
-    match worker.join() {
+    // The wire text is released inside `run_json_owned` as soon as its
+    // clause graph is parsed (unless the bridge route re-reads it), so the
+    // complete stdin document does not sit under the classification peak.
+    let worker = crate::bigstack::run("tableau worker", stack_mb << 20, move || {
+        if compact_bridge {
+            crate::tableau::run_bridge_json_owned_compact(buf).map(WorkerOutput::Compact)
+        } else {
+            crate::tableau::run_json_owned(buf).map(WorkerOutput::Json)
+        }
+    });
+    match worker {
         Ok(Ok(WorkerOutput::Json(s))) => {
             let stdout = std::io::stdout();
             let mut h = stdout.lock();
@@ -7699,9 +7702,10 @@ pub fn run_tableau() {
             eprintln!("tableau error: {e}");
             exit(1);
         }
-        Err(_) => {
-            eprintln!("tableau worker thread panicked");
-            exit(101);
+        Err(e) => {
+            // A failed spawn (after retries) or a panic: report the reason.
+            eprintln!("tableau error: {e}");
+            exit(if e.ends_with("panicked") { 101 } else { 1 });
         }
     }
 }

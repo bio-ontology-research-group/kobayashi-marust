@@ -427,3 +427,69 @@ With these changes the card arm takes 70 s on 205 and 61 s on 7499 (v1.5.3:
 gap to v1.5.3 is the larger search the checked pairs require (1.04M
 instead of 0.65M steps on 7499, propagation 28.6 s instead of 19.5 s),
 which no exact change to the blocking computation can remove.
+
+Lean coverage (2026-10-30). Before this change no Lean certificate covered
+a subset-blocked answer. The HT gate's checkers certify the separate
+certified search (`Ht::new_certified`, mode 6: full-label pairwise blocking
+without indirect blocking, and its own Rust refutation search
+`lean_refutation`); modes 1 and 5, and so `checked_subset_incremental`,
+`Ext::edge_note_node`, `SubsetGain::kept_edge_sets` and `gain_irrelevant`,
+never run on a certified path. The certified SAT side already treats a fold
+as untrusted (`FiniteFoldCertificate.check_satisfiable` in
+`HypertableauBlockingCertificate.lean` has no premise on the folds), so the
+coverage reuses that design for the production terminal:
+
+- `lean/ContextCalculus/HypertableauSubsetUnravelling.lean`:
+  `SubsetUnravelling` holds a production SAT terminal (descendants of blocked
+  nodes and merged nodes removed), its predecessor pairs, the blocking pairs
+  the engine used, the root and the query seed. `materialize` builds the
+  unravelling of this section (a blocked position takes the blocker's label
+  and obligations and copies of the edges between the blocker and its
+  successors; with `relabel = false` it keeps its own label instead).
+  `check` requires every pair to be a subset pair with an unblocked blocker,
+  the seed at the root, and `FiniteSatCertificate.checkSat` of the
+  unravelling (every clause under every assignment, every obligation
+  witnessed, no clash). Proved: `SubsetUnravelling.check_sound` (an accepted
+  unravelling is a finite model of the certificate's clauses with the seed
+  at the root), `check_not_unsatisfiable`, `check_not_entailsSub`,
+  `WireSubsetUnravelling.check_sound`. No sorry; axioms propext,
+  Classical.choice, Quot.sound. The pairs and the predecessor relation are
+  untrusted, so the relevance condition (`SubsetGain`) and B2a are not part
+  of the trusted base: the checker verifies directly what they are meant to
+  guarantee.
+- `KM_HT_SUBSET_MODEL_CERT=<dir>` writes every SAT terminal of modes 1 and 5
+  of `Ht::consistent` as a `WireSubsetUnravelling`; the blocking relation is
+  the one the search used (the incremental pass when it is on, compared with
+  the full `compute_blocked` there as well). With
+  `KM_HT_SUBSET_MODEL_CHECKER` naming `ht-subset-unravelling-check`, the
+  worker returns no verdict when the terminal has no certificate or Lean
+  rejects both the relabelled and the own-label unravelling. Not emitted
+  (fail closed under the checker): first-class cardinality rules, nominals,
+  role-chain composition, native ABox individuals, and a blocked node whose
+  only admitted blocker is itself blocked or dropped.
+
+What this covers: a SAT answer of a mode-1 or mode-5 run whose certificate
+Lean accepts is a model of the worker's compiled clauses (`index.clauses`)
+with the query seed. UNSAT answers of these modes do not depend on blocking
+for soundness (blocking only withholds expansion), but they carry no
+certificate. Not covered: the `consistent_with_snapshot` and
+`resume_satisfiable_model` entries, and the card arm (its cardinality rules
+are not clauses of the version-1 wire).
+
+Findings (`results/agents/2026-10-30/lean-v155-coverage/`). On the
+fixtures of `tests/ht_subset_blocking.rs` (seeds 507 and 639, route
+`ht_general`, mode 1 and forced mode 5) every terminal is accepted, with up
+to three blocking pairs, and `KM_HT_INCRBLOCK2_CHECK=1` aborted on none. On
+the ALC seed corpus Lean rejected the relabelled unravelling on a share of
+the folded terminals. In the inspected case (seed 2) the blocker satisfies
+an existential `A ⊑ ∃u.C` through the inverse edge to its own predecessor,
+not through a successor; the blocked position gains `A` but its
+predecessor lacks `C`, so the section's construction is not a model. The
+relevance rule only looks at literals in clause bodies, not at the
+witnesses of the existentials a gained literal triggers through
+non-successor edges. This does not show a wrong answer (another model may
+exist, and the own-label fold is accepted on part of these terminals), but
+the written argument of this section does not cover these pairs. A second
+limitation is cost: `checkSat` enumerates every assignment, so terminals
+with more than about 50 nodes and four-variable clauses did not finish in
+an hour.

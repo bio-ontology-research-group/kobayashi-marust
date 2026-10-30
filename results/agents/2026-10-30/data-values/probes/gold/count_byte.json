@@ -1,0 +1,8 @@
+{
+  "ontology": "count_byte.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": [
+    "A"
+  ]
+}

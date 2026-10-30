@@ -6,6 +6,7 @@
 //! and the standalone frontend can reuse the exact same serde types for the
 //! `{"clauses":[...]}` contract.
 
+pub mod bigstack;
 pub mod calc;
 pub mod cb_source;
 pub mod clause;

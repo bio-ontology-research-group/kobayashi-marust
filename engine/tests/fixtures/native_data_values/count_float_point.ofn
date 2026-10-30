@@ -1,0 +1,11 @@
+Prefix(:=<http://example.org/t#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://example.org/t>
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(Class(:D)) Declaration(Class(:E)) Declaration(Class(:F))
+Declaration(DataProperty(:u)) Declaration(DataProperty(:w)) Declaration(DataProperty(:v)) Declaration(DataProperty(:pad))
+Declaration(ObjectProperty(:r))
+Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:x))
+SubClassOf(:A DataMinCardinality(2 :u DatatypeRestriction(xsd:float xsd:minInclusive "1.0"^^xsd:float xsd:maxInclusive "1.0"^^xsd:float)))
+SubClassOf(:B DataMinCardinality(2 :u DatatypeRestriction(xsd:float xsd:minInclusive "0.0"^^xsd:float xsd:maxInclusive "0.0"^^xsd:float)))
+)

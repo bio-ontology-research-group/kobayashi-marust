@@ -1,0 +1,9 @@
+Prefix(:=<http://example.org/t#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://example.org/t>
+Declaration(Class(:K1)) Declaration(Class(:K2)) Declaration(ObjectProperty(:s)) Declaration(ObjectProperty(:u))
+Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:x))
+InverseFunctionalObjectProperty(:s) SubClassOf(owl:Thing ObjectMaxCardinality(1 :u)) DisjointClasses(:K1 :K2)
+ObjectPropertyAssertion(:s :a :x) ObjectPropertyAssertion(:s :b :x)
+ClassAssertion(ObjectSomeValuesFrom(:u :K1) :a) ClassAssertion(ObjectSomeValuesFrom(:u :K2) :b)
+)

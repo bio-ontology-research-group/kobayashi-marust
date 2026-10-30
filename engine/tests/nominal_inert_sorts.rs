@@ -164,3 +164,43 @@ fn certified_and_opted_out_cb_runs_keep_the_sorted_clauses() {
         assert!(!stderr.contains(released), "{keep:?}: {stderr}");
     }
 }
+
+#[test]
+fn cb_release_certificate_is_accepted_by_the_lean_checker() {
+    // The same `WireInertSortRelease` document as the rule checker's release,
+    // with the CB variant's reservations, for the clause set after the
+    // release and before the universal-definer elimination. The checker path
+    // comes from `KM_RULES_TEST_INERT_LEAN_CHECKER` (as in
+    // `rules_inert_sort_certificate`); without it the test skips unless
+    // `KM_REQUIRE_LEAN_CHECKERS` is set.
+    let Some(checker) = std::env::var_os("KM_RULES_TEST_INERT_LEAN_CHECKER") else {
+        assert!(
+            std::env::var_os("KM_REQUIRE_LEAN_CHECKERS").is_none(),
+            "KM_RULES_TEST_INERT_LEAN_CHECKER is required"
+        );
+        eprintln!("skipping: KM_RULES_TEST_INERT_LEAN_CHECKER is unset");
+        return;
+    };
+    for name in FIXTURES {
+        let dir = std::env::temp_dir().join(format!("km-cb-inert-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = fixture(&format!("{name}.ofn"));
+        let checked = classify(
+            &path,
+            None,
+            &[
+                ("KM_RULES_INERT_CERT", dir.to_str().unwrap()),
+                ("KM_RULES_INERT_LEAN_CHECKER", checker.to_str().unwrap()),
+                ("KM_TIMING", "1"),
+            ],
+        );
+        assert_eq!(checked, classify(&path, None, &[]), "{name}: the certified run answered differently");
+        let stderr = stderr_of(&path, &[("KM_RULES_INERT_CERT", dir.to_str().unwrap()),
+            ("KM_RULES_INERT_LEAN_CHECKER", checker.to_str().unwrap()), ("KM_ROUTE", "certified_nominals")], BOUND);
+        assert!(!stderr.contains("kept the frontend's clauses"), "{name}: {stderr}");
+        let files = std::fs::read_dir(&dir).unwrap().count();
+        assert!(files > 0, "{name}: no certificate was written");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

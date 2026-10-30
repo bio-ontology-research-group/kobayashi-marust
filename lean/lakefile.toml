@@ -431,3 +431,11 @@ root = "HTAnchoredCardinalityCertCheck"
 [[lean_exe]]
 name = "ht-taxonomy-cert-check"
 root = "HTTaxonomyCertCheck"
+
+[[lean_exe]]
+name = "rules-inert-sort-release-check"
+root = "RulesInertSortReleaseCheck"
+
+[[lean_exe]]
+name = "ht-subset-unravelling-check"
+root = "HTSubsetUnravellingCheck"

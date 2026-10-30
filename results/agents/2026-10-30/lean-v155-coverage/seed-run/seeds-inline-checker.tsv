@@ -1,0 +1,700 @@
+1	ok	24	22	0	0	
+2	km-error	1	0	7	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+3	ok	0	0	1	0	
+4	ok	1	0	7	0	
+5	ok	1	0	7	0	
+6	no-gold	0	0	0	0	
+7	ok	1	0	6	0	
+8	km-error	4	0	3	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+9	km-error	3	2	4	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+10	km-error	0	0	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+11	km-error	4	0	4	0	KM_HT_SUBSET_MODEL_CERT terminal=4 nodes=1 folds=0 accepted
+12	km-error	1	0	0	0	note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+13	ok	2	0	5	0	
+14	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+15	km-error	6	0	2	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+16	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+17	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+18	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+19	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+20	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+21	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+22	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+23	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+24	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+25	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+26	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+27	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+28	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+29	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+30	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+31	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+32	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+33	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+34	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+35	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+36	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+37	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+38	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+39	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+40	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+41	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+42	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+43	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+44	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+45	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+46	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+47	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+48	km-error	7	0	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+49	km-error	0	0	0	0	
+50	km-error	1	1	0	0	note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+51	ok	2	0	6	0	
+52	km-error	1	0	0	0	note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+53	km-error	0	0	0	0	
+54	ok	3	3	5	0	
+55	ok	2	1	6	0	
+56	km-error	2	2	4	2	blocked node 11 has no admitted unblocked blocker in the unravelled model
+57	ok	5	0	3	0	
+58	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+59	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+60	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+61	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+62	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+63	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+64	ok	0	0	1	0	
+65	km-error	1	1	0	0	note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+66	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+67	ok	7	0	1	0	
+68	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+69	km-error	0	0	0	0	
+70	ok	0	0	1	0	
+71	km-error	3	0	0	0	note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+72	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+73	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+74	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+75	km-error	5	0	3	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+76	km-error	1	0	0	0	note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+77	km-error	0	0	0	0	
+78	ok	0	0	1	0	
+79	ok	5	0	3	0	
+80	km-error	5	5	3	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+81	km-error	7	7	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+82	km-error	1	1	5	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+83	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+84	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+85	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+86	ok	6	0	2	0	
+87	ok	7	2	1	0	
+88	ok	0	0	1	0	
+89	ok	10	0	4	0	
+90	km-error	0	0	0	0	
+91	ok	3	0	5	0	
+92	km-error	29	5	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+93	ok	0	0	0	0	
+94	km-error	0	0	0	0	
+95	ok	14	8	0	0	
+96	ok	0	0	0	0	
+97	km-error	0	0	1	0	KM_HT_SUBSET_MODEL_CERT terminal=0 nodes=2 folds=1 rejected
+98	km-error	7	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+99	km-error	6	0	2	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+100	ok	18	3	3	0	
+101	ok	7	7	0	0	
+102	km-error	0	0	1	0	KM_HT_SUBSET_MODEL_CERT terminal=0 nodes=19 folds=13 rejected
+103	ok	0	0	0	0	
+104	km-error	14	12	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+105	ok	11	11	0	0	
+106	km-error	0	0	0	0	
+107	ok	15	15	0	0	
+108	ok	15	15	0	0	
+109	km-error	20	1	0	0	KM_HT_SUBSET_MODEL_CERT terminal=19 nodes=3 folds=1 accepted
+110	km-error	0	0	0	0	
+111	ok	1	1	7	0	
+112	km-error	4	4	4	0	KM_HT_SUBSET_MODEL_CERT terminal=3 nodes=6 folds=3 accepted
+113	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+114	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+115	km-error	0	0	0	0	timeout: fork system call failed: Cannot allocate memory
+116	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+117	km-error	1	0	0	0	note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+118	km-error	0	0	0	0	
+119	km-error	0	0	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+120	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+121	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+122	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+123	km-error	6	0	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+124	km-error	1	1	5	1	blocked node 3 has no admitted unblocked blocker in the unravelled model
+125	km-error	4	4	1	0	KM_HT_SUBSET_MODEL_CERT terminal=3 nodes=3 folds=1 accepted
+126	km-error	15	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+127	ok	2	0	6	0	
+128	km-error	3	1	5	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+129	km-error	0	0	0	0	note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+130	km-error	0	0	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+131	km-error	6	0	2	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+132	ok	0	0	1	0	
+133	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+134	ok	4	0	3	0	
+135	ok	6	0	2	0	
+136	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+137	ok	2	1	6	0	
+138	ok	0	0	1	0	
+139	ok	5	0	3	0	
+140	ok	15	9	0	0	
+141	km-error	0	0	0	0	
+142	km-error	16	16	2	0	KM_HT_SUBSET_MODEL_CERT terminal=17 nodes=35 folds=28 accepted
+143	ok	19	6	5	0	
+144	km-error	3	3	4	0	KM_HT_SUBSET_MODEL_CERT terminal=4 nodes=9 folds=5 accepted
+145	ok	0	0	1	0	
+146	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+147	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+148	km-error	0	0	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+149	ok	3	3	5	0	
+150	ok	16	0	4	0	
+151	km-error	6	6	2	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+152	ok	6	0	0	0	
+153	ok	6	1	2	0	
+154	ok	4	0	3	0	
+155	km-error	0	0	0	0	
+156	km-error	11	5	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+157	ok	29	19	0	0	
+158	km-error	0	0	0	0	
+159	km-error	0	0	0	0	
+160	ok	18	0	0	0	
+161	ok	0	0	0	0	
+162	ok	25	23	0	0	
+163	ok	0	0	0	0	
+164	ok	7	0	1	0	
+165	ok	30	9	0	0	
+166	ok	6	0	2	0	
+167	km-error	34	9	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+168	km-error	4	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=1 nodes=1 folds=0 accepted
+169	km-error	7	0	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+170	km-error	23	4	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+171	km-error	5	4	1	0	KM_HT_SUBSET_MODEL_CERT terminal=3 nodes=7 folds=4 accepted
+172	km-error	3	0	5	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+173	km-error	6	6	2	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+174	ok	3	0	3	0	
+175	km-error	5	5	3	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+176	km-error	0	0	0	0	
+177	ok	41	0	0	0	
+178	ok	6	6	2	0	
+179	ok	6	6	2	0	
+180	km-error	7	7	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+181	ok	28	4	4	0	
+182	km-error	7	7	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+183	ok	0	0	1	0	
+184	km-error	1	1	7	0	KM_HT_SUBSET_MODEL_CERT terminal=3 nodes=4 folds=2 rejected
+185	km-error	9	0	7	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+186	km-error	1	0	0	0	note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+187	km-error	1	1	3	0	KM_HT_SUBSET_MODEL_CERT terminal=7 nodes=93 folds=78 rejected
+188	km-error	0	0	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+189	km-error	1	1	0	0	note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+190	km-error	0	0	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+191	km-error	4	0	1	0	note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+192	km-error	0	0	0	0	
+193	ok	18	1	0	0	
+194	ok	0	0	0	0	
+195	km-error	31	31	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+196	km-error	6	1	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+197	ok	14	10	4	0	
+198	ok	23	19	0	0	
+199	km-error	0	0	0	0	
+200	km-error	18	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=21 nodes=1 folds=0 accepted
+201	km-error	1	1	5	0	KM_HT_SUBSET_MODEL_CERT terminal=5 nodes=13 folds=9 rejected
+202	ok	0	0	1	0	
+203	ok	0	0	1	0	
+204	ok	0	0	1	0	
+205	km-error	0	0	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+206	ok	0	0	1	0	
+207	km-error	0	0	0	0	
+208	km-error	1	1	0	0	note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+209	km-error	1	0	0	0	note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+210	km-error	1	0	0	0	note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+211	km-error	0	0	0	0	
+212	km-error	1	1	0	0	note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+213	km-error	1	1	0	0	note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+214	ok	0	0	0	0	
+215	km-error	1	0	0	0	note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+216	km-error	1	0	0	0	note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+217	km-error	1	1	0	0	note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+218	km-error	1	0	0	0	note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+219	km-error	1	0	0	0	note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+220	km-error	0	0	0	0	
+221	ok	0	0	1	0	
+222	km-error	5	5	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+223	km-error	0	0	0	0	
+224	km-error	14	8	1	0	KM_HT_SUBSET_MODEL_CERT terminal=13 nodes=12 folds=8 accepted
+225	km-error	5	5	3	0	KM_HT_SUBSET_MODEL_CERT terminal=6 nodes=6 folds=3 accepted
+226	km-error	9	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=8 nodes=1 folds=0 accepted
+227	km-error	14	6	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+228	ok	30	6	0	0	
+229	km-error	15	4	0	0	KM_HT_SUBSET_MODEL_CERT terminal=11 nodes=7 folds=3 accepted
+230	km-error	17	1	0	0	KM_HT_SUBSET_MODEL_CERT terminal=15 nodes=1 folds=0 accepted
+231	ok	12	1	0	0	
+232	ok	5	2	0	0	
+233	km-error	2	2	4	0	KM_HT_SUBSET_MODEL_CERT terminal=4 nodes=10 folds=7 accepted
+234	km-error	42	42	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+235	ok	14	6	0	0	
+236	km-error	10	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+237	km-error	12	2	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+238	km-error	26	14	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+239	ok	18	0	0	0	
+240	km-error	27	9	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+241	km-error	21	0	1	0	KM_HT_SUBSET_MODEL_CERT terminal=20 nodes=2 folds=0 accepted
+242	km-error	25	15	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+243	ok	10	5	0	0	
+244	km-error	0	0	0	0	
+245	ok	13	0	0	0	
+246	ok	19	11	0	0	
+247	km-error	14	2	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+248	ok	15	15	3	0	
+249	km-error	6	6	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+250	km-error	7	2	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+251	ok	0	0	0	0	
+252	km-error	12	6	0	0	KM_HT_SUBSET_MODEL_CERT terminal=11 nodes=3 folds=1 accepted
+253	ok	28	21	0	0	
+254	km-error	0	0	0	0	
+255	ok	22	15	0	0	
+256	km-error	7	6	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+257	km-error	6	3	2	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+258	km-error	5	5	3	0	KM_HT_SUBSET_MODEL_CERT terminal=4 nodes=5 folds=3 accepted
+259	ok	7	0	0	0	
+260	km-error	7	7	0	0	KM_HT_SUBSET_MODEL_CERT terminal=4 nodes=17 folds=13 accepted
+261	km-error	7	7	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+262	km-error	1	1	0	0	libc++abi: terminating due to uncaught exception of type lean::exception: failed to create thread
+263	km-error	0	0	0	0	
+264	km-error	7	7	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+265	km-error	9	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+266	km-error	5	2	3	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+267	ok	20	20	0	0	
+268	km-error	2	2	5	0	fatal runtime error: stack overflow, aborting
+269	km-error	1	1	0	0	note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+270	ok	8	8	0	0	
+271	ok	14	0	0	0	
+272	ok	0	0	0	0	
+273	km-error	15	2	1	0	note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+274	ok	27	16	0	0	
+275	km-error	0	0	0	0	
+276	ok	26	12	0	0	
+277	km-error	8	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+278	ok	24	6	0	0	
+279	km-error	5	5	3	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+280	ok	29	11	0	0	
+281	ok	16	6	2	0	
+282	no-gold	0	0	0	0	
+283	ok	27	27	0	0	
+284	km-error	18	3	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+285	km-error	0	0	0	0	
+286	ok	36	7	0	0	
+287	km-error	14	14	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+288	ok	8	0	0	0	
+289	ok	5	0	0	0	
+290	km-error	12	10	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+291	km-error	16	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+292	ok	24	8	2	0	
+293	km-error	9	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+294	km-error	22	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+295	ok	15	7	0	0	
+296	ok	24	17	0	0	
+297	ok	20	7	0	0	
+298	km-error	11	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+299	ok	0	0	0	0	
+300	ok	4	4	3	0	
+301	ok	26	13	0	0	
+302	ok	0	0	0	0	
+303	km-error	20	17	0	0	KM_HT_SUBSET_MODEL_CERT terminal=22 nodes=5 folds=2 accepted
+304	ok	3	0	5	0	
+305	km-error	6	6	2	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+306	km-error	5	0	3	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+307	km-error	0	0	0	0	
+308	km-error	2	2	5	0	KM_HT_SUBSET_MODEL_CERT terminal=3 nodes=29 folds=22 accepted
+309	km-error	3	1	5	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+310	ok	4	0	4	0	
+311	km-error	7	3	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+312	ok	6	6	2	0	
+313	km-error	0	0	1	0	KM_HT_SUBSET_MODEL_CERT terminal=0 nodes=55 folds=46 rejected
+314	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+315	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+316	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+317	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+318	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+319	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+320	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+321	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+322	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+323	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+324	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+325	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+326	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+327	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+328	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+329	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+330	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+331	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+332	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+333	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+334	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+335	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+336	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+337	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+338	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+339	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+340	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+341	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+342	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+343	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+344	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+345	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+346	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+347	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+348	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+349	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+350	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+351	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+352	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+353	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+354	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+355	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+356	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+357	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+358	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+359	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+360	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+361	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+362	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+363	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+364	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+365	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+366	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+367	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+368	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+369	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+370	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+371	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+372	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+373	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+374	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+375	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+376	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+377	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+378	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+379	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+380	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+381	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+382	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+383	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+384	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+385	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+386	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+387	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+388	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+389	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+390	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+391	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+392	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+393	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+394	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+395	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+396	ok	0	0	1	0	
+397	km-error	0	0	0	0	
+398	km-error	2	1	6	0	KM_HT_SUBSET_MODEL_CERT terminal=7 nodes=7 folds=2 accepted
+399	ok	2	0	6	0	
+400	km-error	3	3	5	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+401	ok	4	0	2	0	
+402	km-error	0	0	0	0	
+403	ok	2	0	6	0	
+404	ok	2	2	6	0	
+405	km-error	0	0	0	0	
+406	ok	7	2	1	0	
+407	ok	14	0	0	0	
+408	km-error	34	34	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+409	km-error	16	16	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+410	ok	14	6	0	0	
+411	km-error	9	9	0	0	KM_HT_SUBSET_MODEL_CERT terminal=8 nodes=7 folds=3 accepted
+412	ok	43	37	0	0	
+413	ok	10	0	0	0	
+414	km-error	8	8	0	0	KM_HT_SUBSET_MODEL_CERT terminal=2 nodes=3 folds=1 accepted
+415	km-error	20	20	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+416	km-error	2	2	3	0	KM_HT_SUBSET_MODEL_CERT terminal=4 nodes=13 folds=9 accepted
+417	km-error	8	2	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+418	km-error	12	12	0	0	KM_HT_SUBSET_MODEL_CERT terminal=9 nodes=9 folds=6 accepted
+419	km-error	18	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+420	km-error	24	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=22 nodes=1 folds=0 accepted
+421	km-error	0	0	0	0	
+422	km-error	4	4	3	0	KM_HT_SUBSET_MODEL_CERT terminal=6 nodes=19 folds=12 rejected
+423	km-error	30	7	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+424	ok	0	0	1	0	
+425	km-error	0	0	0	0	
+426	ok	16	11	1	0	
+427	ok	5	0	2	0	
+428	km-error	3	3	5	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+429	km-error	3	0	4	0	KM_HT_SUBSET_MODEL_CERT terminal=5 nodes=1 folds=0 accepted
+430	km-error	22	6	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+431	km-error	25	25	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+432	km-error	6	6	1	0	KM_HT_SUBSET_MODEL_CERT terminal=6 nodes=5 folds=2 accepted
+433	km-error	1	0	0	0	libc++abi: terminating due to uncaught exception of type lean::exception: failed to create thread
+434	km-error	0	0	0	0	
+435	ok	27	0	0	0	
+436	ok	7	0	1	0	
+437	ok	36	28	0	0	
+438	km-error	0	0	0	0	
+439	ok	16	7	0	0	
+440	km-error	16	3	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+441	ok	17	15	0	0	
+442	ok	29	15	0	0	
+443	km-error	0	0	0	0	
+444	km-error	0	0	0	0	
+445	km-error	9	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=8 nodes=1 folds=0 accepted
+446	km-error	5	5	3	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+447	km-error	13	0	7	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+448	ok	0	0	0	0	
+449	ok	25	0	0	0	
+450	ok	10	4	0	0	
+451	ok	22	1	1	0	
+452	km-error	7	0	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+453	km-error	9	9	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+454	ok	3	3	4	0	
+455	km-error	4	4	4	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+456	km-error	13	0	2	0	KM_HT_SUBSET_MODEL_CERT terminal=14 nodes=1 folds=0 accepted
+457	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+458	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+459	ok	0	0	1	0	
+460	km-error	1	1	0	0	libc++abi: terminating due to uncaught exception of type lean::exception: failed to create thread
+461	ok	0	0	0	0	
+462	ok	2	2	6	0	
+463	km-error	1	1	0	0	note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+464	km-error	2	0	5	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+465	ok	2	0	5	0	
+466	km-error	5	5	3	0	KM_HT_SUBSET_MODEL_CERT terminal=2 nodes=7 folds=4 accepted
+467	ok	21	6	5	0	
+468	km-error	23	15	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+469	km-error	6	1	0	0	KM_HT_SUBSET_MODEL_CERT terminal=5 nodes=4 folds=2 accepted
+470	ok	7	0	0	0	
+471	km-error	6	6	0	0	KM_HT_SUBSET_MODEL_CERT terminal=5 nodes=7 folds=3 accepted
+472	km-error	25	16	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+473	ok	18	1	0	0	
+474	km-error	2	2	6	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+475	km-error	4	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+476	ok	0	0	1	0	
+477	ok	8	8	0	0	
+478	ok	24	0	0	0	
+479	km-error	16	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+480	km-error	5	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=1 nodes=1 folds=0 accepted
+481	km-error	0	0	0	0	
+482	ok	0	0	0	0	
+483	km-error	0	0	0	0	
+484	ok	3	3	4	0	
+485	ok	2	0	6	0	
+486	ok	3	3	5	0	
+487	ok	3	0	4	0	
+488	km-error	3	0	5	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+489	km-error	3	3	5	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+490	km-error	2	2	6	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+491	km-error	2	2	6	0	KM_HT_SUBSET_MODEL_CERT terminal=2 nodes=6 folds=3 accepted
+492	km-error	4	4	4	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+493	km-error	3	0	5	0	KM_HT_SUBSET_MODEL_CERT terminal=7 nodes=2 folds=0 accepted
+494	km-error	0	0	0	0	
+495	km-error	7	7	1	0	KM_HT_SUBSET_MODEL_CERT terminal=7 nodes=8 folds=5 accepted
+496	km-error	0	0	0	0	
+497	km-error	21	15	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+498	km-error	7	0	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+499	ok	28	14	4	0	
+500	ok	37	6	0	0	
+501	ok	0	0	0	0	
+502	km-error	12	12	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+503	ok	7	1	0	1	blocked node 3 has no admitted unblocked blocker in the unravelled model
+504	km-error	0	0	1	0	KM_HT_SUBSET_MODEL_CERT terminal=0 nodes=155 folds=133 rejected
+505	km-error	27	8	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+506	km-error	10	10	4	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+507	ok	0	0	0	0	
+508	ok	22	9	0	0	
+509	km-error	30	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+510	km-error	9	2	0	0	KM_HT_SUBSET_MODEL_CERT terminal=8 nodes=9 folds=3 accepted
+511	ok	23	10	0	0	
+512	ok	8	0	0	0	
+513	ok	19	16	0	0	
+514	ok	25	0	6	0	
+515	ok	31	0	0	0	
+516	km-error	0	0	0	0	
+517	ok	0	0	0	0	
+518	km-error	23	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+519	km-error	10	0	6	0	KM_HT_SUBSET_MODEL_CERT terminal=15 nodes=1 folds=0 accepted
+520	ok	22	12	0	0	
+521	ok	26	15	0	0	
+522	km-error	21	2	0	0	KM_HT_SUBSET_MODEL_CERT terminal=20 nodes=13 folds=9 accepted
+523	km-error	0	0	0	0	
+524	km-error	0	0	1	0	KM_HT_SUBSET_MODEL_CERT terminal=0 nodes=14 folds=10 rejected
+525	ok	12	12	2	0	
+526	ok	28	6	0	0	
+527	km-error	16	12	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+528	km-error	21	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+529	km-error	8	8	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+530	km-error	0	0	0	0	
+531	km-error	4	4	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+532	ok	12	0	0	0	
+533	ok	7	7	1	0	
+534	km-error	0	0	0	0	
+535	km-error	24	4	0	0	KM_HT_SUBSET_MODEL_CERT terminal=22 nodes=1 folds=0 accepted
+536	km-error	0	0	0	0	
+537	km-error	0	0	0	0	
+538	km-error	30	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+539	ok	44	20	0	0	
+540	ok	4	1	0	0	
+541	ok	28	28	0	0	
+542	km-error	0	0	0	0	
+543	km-error	4	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+544	ok	0	0	0	0	
+545	ok	22	9	0	0	
+546	ok	41	41	0	0	
+547	km-error	10	10	0	0	KM_HT_SUBSET_MODEL_CERT terminal=15 nodes=10 folds=6 accepted
+548	ok	0	0	1	0	
+549	km-error	0	0	0	0	
+550	ok	31	9	1	0	
+551	ok	0	0	1	0	
+552	km-error	7	0	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+553	km-error	6	0	2	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+554	km-error	21	4	3	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+555	km-error	2	2	6	0	KM_HT_SUBSET_MODEL_CERT terminal=4 nodes=9 folds=6 accepted
+556	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+557	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+558	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+559	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+560	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+561	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+562	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+563	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+564	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+565	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+566	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+567	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+568	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+569	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+570	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+571	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+572	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+573	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+574	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+575	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+576	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+577	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+578	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+579	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+580	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+581	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+582	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+583	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+584	km-error	0	0	0	0	
+585	ok	25	9	1	0	
+586	km-error	1	1	7	0	KM_HT_SUBSET_MODEL_CERT terminal=7 nodes=5 folds=2 rejected
+587	ok	10	10	0	0	
+588	km-error	9	3	2	0	KM_HT_SUBSET_MODEL_CERT terminal=13 nodes=6 folds=3 accepted
+589	ok	8	8	0	0	
+590	km-error	12	9	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+591	ok	0	0	0	0	
+592	ok	8	0	0	0	
+593	ok	4	4	0	0	
+594	km-error	7	6	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+595	km-error	6	0	2	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+596	km-error	3	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+597	ok	26	6	3	0	
+598	ok	5	0	3	0	
+599	km-error	5	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=3 nodes=1 folds=0 accepted
+600	ok	9	0	0	0	
+601	km-error	24	0	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+602	km-error	18	8	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+603	ok	5	4	3	0	
+604	ok	0	0	1	0	
+605	km-error	5	5	3	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+606	km-error	14	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=13 nodes=2 folds=0 accepted
+607	km-error	0	0	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+608	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+609	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+610	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+611	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+612	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+613	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+614	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+615	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+616	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+617	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+618	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+619	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+620	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+621	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+622	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+623	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+624	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+625	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+626	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+627	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+628	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+629	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+630	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+631	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+632	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+633	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+634	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+635	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+636	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+637	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+638	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+639	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+640	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+641	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+642	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+643	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+644	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+645	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+646	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+647	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+648	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+649	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+650	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+651	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+652	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+653	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+654	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+655	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+656	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+657	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+658	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+659	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+660	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+661	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+662	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+663	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+664	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+665	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+666	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+667	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+668	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+669	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+670	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+671	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+672	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+673	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+674	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+675	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+676	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+677	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+678	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+679	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+680	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+681	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+682	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+683	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+684	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+685	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+686	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+687	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+688	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+689	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+690	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+691	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+692	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+693	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+694	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+695	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+696	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+697	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+698	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+699	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))
+700	km-error	0	0	0	0	unsupported: selected general HT mechanism deferred (Resource temporarily unavailable (os error 11))

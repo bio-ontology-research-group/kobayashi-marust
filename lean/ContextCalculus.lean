@@ -111,6 +111,7 @@ import ContextCalculus.CompletenessFO
 import ContextCalculus.CompletenessInverse
 import ContextCalculus.Nominals
 import ContextCalculus.Certification
+import ContextCalculus.LinearValueEncoding
 import ContextCalculus.Hypertableau
 import ContextCalculus.HypertableauCertifiedInput
 import ContextCalculus.HypertableauDirectProjectionWire
@@ -227,3 +228,5 @@ import ContextCalculus.HypertableauWire
 import ContextCalculus.HypertableauWireCompleteness
 import ContextCalculus.HypertableauTaxonomyCertificate
 import ContextCalculus.HypertableauTaxonomyWire
+import ContextCalculus.RulesInertSortRelease
+import ContextCalculus.HypertableauSubsetUnravelling

@@ -55,8 +55,12 @@ fn object_roles(axioms: &[&Axiom]) -> BTreeSet<String> {
                         object.insert(name.clone());
                     }
                     Role::Name(name) => {
+                        // A data range, its complement (`∀u.¬{v}`, the
+                        // form of a negative data assertion) or `⊤`/`⊥`.
                         let data_filler = matches!(filler.as_ref(),
                             Concept::Name(n) if n.starts_with("__dt__"))
+                            || matches!(filler.as_ref(), Concept::Not(inner)
+                                if matches!(inner.as_ref(), Concept::Name(n) if n.starts_with("__dt__")))
                             || matches!(filler.as_ref(), Concept::Top | Concept::Bottom);
                         if !data_filler {
                             object.insert(name.clone());
@@ -142,6 +146,94 @@ pub fn blocking_construct(axioms: &[&Axiom]) -> Option<Blocked> {
     None
 }
 
+/// Whether some construct can require two data successors of one element
+/// to be distinct values: a positive `≥n` with `n ≥ 2` or a negative `≤n`
+/// with `n ≥ 1` (which is `≥n+1` in negation normal form) over a role that
+/// is not certainly an object property, a data-property disjointness, or a
+/// rule. Keys are screened on the source text by the caller. Without such a
+/// construct no clause asserts `y₁ ≉ y₂` between data successors, so the
+/// value singleton clauses `v(y₁) ∧ v(y₂) → y₁ ≈ y₂` constrain nothing a
+/// source axiom observes (docs/DATATYPES.md, "Exact data values without a
+/// literal cap").
+pub fn distinct_data_successors_forced(axioms: &[&Axiom]) -> bool {
+    let object = object_roles(axioms);
+    let data = |role: &Role| match role {
+        Role::Name(name) => !object.contains(name),
+        _ => false,
+    };
+    fn forces(concept: &Concept, positive: bool, data: &dyn Fn(&Role) -> bool) -> bool {
+        match concept {
+            Concept::Not(inner) => forces(inner, !positive, data),
+            Concept::And(items) | Concept::Or(items) => items.iter().any(|c| forces(c, positive, data)),
+            Concept::Exists(_, filler) | Concept::Forall(_, filler) => forces(filler, positive, data),
+            Concept::AtLeast(n, role, filler) =>
+                (positive && *n >= 2 && data(role)) || forces(filler, positive, data),
+            Concept::AtMost(n, role, filler) =>
+                (!positive && *n >= 1 && data(role)) || forces(filler, !positive, data),
+            _ => false,
+        }
+    }
+    let both = |c: &Concept| forces(c, true, &data) || forces(c, false, &data);
+    axioms.iter().any(|axiom| match axiom {
+        Axiom::SubClassOf(a, b) => forces(a, false, &data) || forces(b, true, &data),
+        Axiom::EquivalentClasses(a, b) => both(a) || both(b),
+        Axiom::DisjointClasses(a, b) => forces(a, false, &data) || forces(b, false, &data),
+        Axiom::ConceptAssertion(c, _) => forces(c, true, &data),
+        Axiom::DisjointRoles(a, b) => !object.contains(a) || !object.contains(b),
+        Axiom::Rule(..) | Axiom::DataRule(..) => true,
+        _ => false,
+    })
+}
+
+/// The largest number of pairwise distinct values one element can be forced
+/// to have on the data roles: the maximum over positive `≥ n` and negative
+/// `≤ n - 1` restrictions on roles that are not certainly object properties,
+/// or their sum when two such roles are disjoint (their successors must then
+/// differ across the roles too). `0` when no restriction forces two values.
+pub fn data_count_bound(axioms: &[&Axiom]) -> u64 {
+    let object = object_roles(axioms);
+    let data = |role: &Role| match role {
+        Role::Name(name) => !object.contains(name),
+        _ => false,
+    };
+    fn walk(concept: &Concept, positive: bool, data: &dyn Fn(&Role) -> bool, out: &mut Vec<u64>) {
+        match concept {
+            Concept::Not(inner) => walk(inner, !positive, data, out),
+            Concept::And(items) | Concept::Or(items) => items.iter().for_each(|c| walk(c, positive, data, out)),
+            Concept::Exists(_, filler) | Concept::Forall(_, filler) => walk(filler, positive, data, out),
+            Concept::AtLeast(n, role, filler) => {
+                if positive && *n >= 2 && data(role) { out.push(*n as u64); }
+                walk(filler, positive, data, out)
+            }
+            Concept::AtMost(n, role, filler) => {
+                if !positive && *n >= 1 && data(role) { out.push(*n as u64 + 1); }
+                walk(filler, !positive, data, out)
+            }
+            _ => {}
+        }
+    }
+    let mut counts = Vec::new();
+    let mut disjoint = false;
+    for axiom in axioms {
+        match axiom {
+            Axiom::SubClassOf(a, b) => { walk(a, false, &data, &mut counts); walk(b, true, &data, &mut counts); }
+            Axiom::EquivalentClasses(a, b) => for side in [a, b] {
+                walk(side, true, &data, &mut counts);
+                walk(side, false, &data, &mut counts);
+            },
+            Axiom::DisjointClasses(a, b) => { walk(a, false, &data, &mut counts); walk(b, false, &data, &mut counts); }
+            Axiom::ConceptAssertion(c, _) => walk(c, true, &data, &mut counts),
+            Axiom::DisjointRoles(a, b) if !object.contains(a) || !object.contains(b) => disjoint = true,
+            _ => {}
+        }
+    }
+    if disjoint {
+        counts.iter().fold(0u64, |sum, n| sum.saturating_add(*n))
+    } else {
+        counts.into_iter().max().unwrap_or(0)
+    }
+}
+
 /// Every `__dt__` concept the axioms mention (data ranges and value tokens).
 pub fn observables(axioms: &[&Axiom]) -> Observables {
     fn walk(concept: &Concept, out: &mut BTreeSet<String>) {
@@ -199,6 +291,52 @@ pub fn representatives(literals: &[String], observed: &Observables) -> Vec<Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn forced_distinctness_is_polarity_aware() {
+        let at_most = Concept::AtMost(1, role("u"), Box::new(Concept::Top));
+        let at_least = Concept::AtLeast(2, role("u"), Box::new(Concept::Top));
+        let sub = |a: Concept, b: Concept| Axiom::SubClassOf(a, b);
+        // `≤ 1` on the right, `≥ 1`, functionality: nothing forced apart.
+        let safe = [sub(name("A"), at_most.clone()), Axiom::FunctionalRole("u".into()),
+            sub(name("A"), Concept::AtLeast(1, role("u"), Box::new(Concept::Top)))];
+        assert!(!distinct_data_successors_forced(&safe.iter().collect::<Vec<_>>()));
+        for forcing in [
+            sub(name("A"), at_least.clone()),
+            sub(at_most.clone(), name("A")),
+            sub(name("A"), Concept::Not(Box::new(at_most.clone()))),
+            Axiom::EquivalentClasses(name("A"), at_most.clone()),
+            Axiom::DisjointRoles("u".into(), "w".into()),
+        ] {
+            assert!(distinct_data_successors_forced(&[&forcing]), "{forcing:?}");
+        }
+        // An object role (it has an object filler elsewhere) does not count.
+        let object = [sub(name("A"), Concept::AtLeast(2, role("r"), Box::new(name("B"))))];
+        assert!(!distinct_data_successors_forced(&object.iter().collect::<Vec<_>>()));
+    }
+
+    #[test]
+    fn count_bound_is_the_largest_forced_count() {
+        let sub = |a: Concept, b: Concept| Axiom::SubClassOf(a, b);
+        let at_least = |n| Concept::AtLeast(n, role("u"), Box::new(Concept::Top));
+        let axioms = [sub(name("A"), at_least(10)), sub(name("B"), at_least(3)),
+            sub(Concept::AtMost(4, role("u"), Box::new(Concept::Top)), name("C"))];
+        assert_eq!(data_count_bound(&axioms.iter().collect::<Vec<_>>()), 10);
+        let disjoint = [sub(name("A"), at_least(10)), sub(name("B"), at_least(3)),
+            Axiom::DisjointRoles("u".into(), "w".into())];
+        assert_eq!(data_count_bound(&disjoint.iter().collect::<Vec<_>>()), 13);
+        assert_eq!(data_count_bound(&[&Axiom::FunctionalRole("u".into())]), 0);
+    }
+
+    #[test]
+    fn negative_value_fillers_mark_data_roles() {
+        // `a : ∀u.¬{1}` (a negative data assertion) does not make `u` an
+        // object property, so a later `≥ 2 u` still counts.
+        let negative = Axiom::ConceptAssertion(Concept::Forall(role("u"),
+            Box::new(Concept::Not(Box::new(name("__dt__val__\"1\"^^xsd:integer"))))), "a".into());
+        let count = Axiom::SubClassOf(name("A"), Concept::AtLeast(2, role("u"), Box::new(Concept::Top)));
+        assert!(distinct_data_successors_forced(&[&negative, &count]));
+    }
 
     fn observed(names: &[&str]) -> Observables {
         Observables { names: names.iter().map(|n| n.to_string()).collect() }

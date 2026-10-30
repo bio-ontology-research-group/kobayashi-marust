@@ -60,7 +60,7 @@
 use std::collections::{BTreeSet, HashSet};
 
 use crate::frontend::sorts::DATA_SORT;
-use crate::json_io::{JAtom, JClause, JInput, JRuleAtom, JTerm};
+use crate::json_io::{CardMeta, DefinerMeta, JAtom, JClause, JInput, JRule, JRuleAtom, JTerm};
 
 /// What [`release_inert_object_sorts`] removed.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -178,7 +178,13 @@ impl<'a> Guards<'a> {
 /// documentation). `is_source` names the concepts with a source reading
 /// (IRI-mapped names and query targets); they are never released.
 pub fn release_inert_object_sorts(input: &mut JInput, is_source: impl Fn(&str) -> bool) -> Released {
-    release_with(input, is_source, Options { reserve_records: true, maximal: false })
+    release_inert_object_sorts_in(
+        &mut input.clauses,
+        &input.cardinalities,
+        &input.definers,
+        &input.rules,
+        is_source,
+    )
 }
 
 /// The same release for the clause input of the nominal CB engine
@@ -212,10 +218,45 @@ pub fn release_inert_object_sorts_for_cb(
         abox_names.extend(individual.assertion_markers.iter().cloned());
     }
     release_with(
-        input,
+        &mut input.clauses,
+        &[],
+        &[],
+        &input.rules,
         |name| is_source(name) || abox_names.contains(name),
-        Options { reserve_records: false, maximal: true },
+        Options { maximal: true },
     )
+}
+
+/// The names [`release_inert_object_sorts_for_cb`] never releases, for its
+/// certificate (`release_certificate`): every concept that is not an
+/// internal definer, every name in `is_source`, the nominal-ABox proxies and
+/// assertion markers, and rule atoms. Unlike [`reserved_concepts`] it does
+/// not reserve record or source-axiom names, which the CB engine does not
+/// read.
+pub fn reserved_concepts_for_cb(input: &JInput, is_source: impl Fn(&str) -> bool) -> BTreeSet<String> {
+    let mut reserved = BTreeSet::new();
+    for individual in &input.nominal_abox.individuals {
+        reserved.extend(individual.proxies.iter().cloned());
+        reserved.extend(individual.assertion_markers.iter().cloned());
+    }
+    for rule in &input.rules {
+        for atom in rule.body.iter().chain(&rule.head) {
+            if let JRuleAtom::Class { concept, .. } = atom {
+                reserved.insert(concept.clone());
+            }
+        }
+    }
+    for clause in &input.clauses {
+        for atom in clause.body.iter().chain(&clause.head) {
+            if let JAtom::Concept { concept, .. } = atom {
+                let definer = ["Q_", "aux_", "def_"].iter().any(|prefix| concept.starts_with(prefix));
+                if !definer || is_source(concept) {
+                    reserved.insert(concept.clone());
+                }
+            }
+        }
+    }
+    reserved
 }
 
 /// What [`eliminate_universal_definers`] removed.
@@ -352,15 +393,32 @@ pub fn eliminate_universal_definers(
 }
 
 struct Options {
-    /// Cardinality markers and fillers and definer markers and operands keep
-    /// their sorts (their records are read by the worker).
-    reserve_records: bool,
     /// Keep one of a set of mutually guarding candidates instead of all.
     maximal: bool,
 }
+/// [`release_inert_object_sorts`] over the parts of a frontend result that
+/// the pass reads, for callers that hold a `FrontendResult` instead of the
+/// clause file (`incremental_rules`). The clause set changes in place; the
+/// records only decide which names are reserved.
+pub(crate) fn release_inert_object_sorts_in(
+    clause_set: &mut Vec<JClause>,
+    cardinalities: &[CardMeta],
+    definers: &[DefinerMeta],
+    rules: &[JRule],
+    is_source: impl Fn(&str) -> bool,
+) -> Released {
+    release_with(clause_set, cardinalities, definers, rules, is_source, Options { maximal: false })
+}
 
-fn release_with(input: &mut JInput, is_source: impl Fn(&str) -> bool, options: Options) -> Released {
-    let clauses = &input.clauses;
+fn release_with(
+    clause_set: &mut Vec<JClause>,
+    cardinalities: &[CardMeta],
+    definers: &[DefinerMeta],
+    rules: &[JRule],
+    is_source: impl Fn(&str) -> bool,
+    options: Options,
+) -> Released {
+    let clauses: &Vec<JClause> = clause_set;
     if !clauses
         .iter()
         .any(|c| c.head.iter().any(|a| matches!(a, JAtom::Concept { concept, .. } if concept == DATA_SORT)))
@@ -398,17 +456,15 @@ fn release_with(input: &mut JInput, is_source: impl Fn(&str) -> bool, options: O
     }
     // Names with a meaning outside the clauses.
     let mut reserved: HashSet<&str> = HashSet::new();
-    if options.reserve_records {
-        for card in &input.cardinalities {
-            reserved.insert(&card.marker);
-            reserved.insert(&card.filler);
-        }
-        for definer in &input.definers {
-            reserved.insert(&definer.marker);
-            reserved.extend(definer.operands.iter().map(String::as_str));
-        }
+    for card in cardinalities {
+        reserved.insert(&card.marker);
+        reserved.insert(&card.filler);
     }
-    for rule in &input.rules {
+    for definer in definers {
+        reserved.insert(&definer.marker);
+        reserved.extend(definer.operands.iter().map(String::as_str));
+    }
+    for rule in rules {
         for atom in rule.body.iter().chain(&rule.head) {
             if let JRuleAtom::Class { concept, .. } = atom {
                 reserved.insert(concept);
@@ -522,12 +578,12 @@ fn release_with(input: &mut JInput, is_source: impl Fn(&str) -> bool, options: O
     }
     let released: BTreeSet<String> = released.into_iter().map(str::to_string).collect();
     let mut report = Released { concepts: released.iter().cloned().collect(), ..Released::default() };
-    input.clauses.retain(|clause| {
+    clause_set.retain(|clause| {
         let drop = concept_sort_clause(clause).is_some_and(|concept| released.contains(concept));
         report.sort_clauses += usize::from(drop);
         !drop
     });
-    for clause in &mut input.clauses {
+    for clause in clause_set.iter_mut() {
         let released_terms: Vec<JTerm> = clause
             .head
             .iter()
@@ -544,6 +600,172 @@ fn release_with(input: &mut JInput, is_source: impl Fn(&str) -> bool, options: O
         report.facts += usize::from(clause.head.len() != before);
     }
     report
+}
+
+/// Concept names that something other than the clauses reads with a meaning
+/// of its own: cardinality and definer records, rule atoms, source axioms,
+/// and every name that is not a clausifier definer (`Q_`, `aux_`, `def_`),
+/// which covers source names, query targets, built-in vocabulary, nominal
+/// proxies, datatype ranges and the data sort itself. The Lean checker of the
+/// release certificate rejects a release that touches one of them.
+pub fn reserved_concepts(input: &JInput, is_source: impl Fn(&str) -> bool) -> BTreeSet<String> {
+    fn concept_names(concept: &crate::frontend::syntax::Concept, out: &mut BTreeSet<String>) {
+        use crate::frontend::syntax::Concept;
+        match concept {
+            Concept::Name(name) => {
+                out.insert(name.clone());
+            }
+            Concept::Not(inner)
+            | Concept::Exists(_, inner)
+            | Concept::Forall(_, inner)
+            | Concept::AtLeast(_, _, inner)
+            | Concept::AtMost(_, _, inner) => concept_names(inner, out),
+            Concept::And(set) | Concept::Or(set) => set.iter().for_each(|c| concept_names(c, out)),
+            Concept::Top | Concept::Bottom | Concept::Nominal(_) | Concept::HasSelf(_) => {}
+        }
+    }
+    let mut reserved = BTreeSet::new();
+    for card in &input.cardinalities {
+        reserved.insert(card.marker.clone());
+        reserved.insert(card.filler.clone());
+    }
+    for definer in &input.definers {
+        reserved.insert(definer.marker.clone());
+        reserved.extend(definer.operands.iter().cloned());
+    }
+    for rule in &input.rules {
+        for atom in rule.body.iter().chain(&rule.head) {
+            if let JRuleAtom::Class { concept, .. } = atom {
+                reserved.insert(concept.clone());
+            }
+        }
+    }
+    for axiom in &input.source_axioms {
+        concept_names(&axiom.left, &mut reserved);
+        concept_names(&axiom.right, &mut reserved);
+    }
+    for clause in &input.clauses {
+        for atom in clause.body.iter().chain(&clause.head) {
+            if let JAtom::Concept { concept, .. } = atom {
+                let definer = ["Q_", "aux_", "def_"].iter().any(|prefix| concept.starts_with(prefix));
+                if !definer || is_source(concept) {
+                    reserved.insert(concept.clone());
+                }
+            }
+        }
+    }
+    reserved
+}
+
+/// Numbering of the names of a release certificate.
+#[derive(Default)]
+struct CertIds {
+    concepts: Vec<String>,
+    concept_id: std::collections::HashMap<String, usize>,
+    roles: Vec<String>,
+    role_id: std::collections::HashMap<String, usize>,
+    vars: std::collections::HashMap<String, usize>,
+    inds: std::collections::HashMap<String, usize>,
+    functions: std::collections::HashMap<String, usize>,
+}
+
+impl CertIds {
+    fn concept(&mut self, name: &str) -> usize {
+        if let Some(&id) = self.concept_id.get(name) {
+            return id;
+        }
+        let id = self.concepts.len();
+        self.concepts.push(name.to_string());
+        self.concept_id.insert(name.to_string(), id);
+        id
+    }
+    fn role(&mut self, name: &str) -> usize {
+        if let Some(&id) = self.role_id.get(name) {
+            return id;
+        }
+        let id = self.roles.len();
+        self.roles.push(name.to_string());
+        self.role_id.insert(name.to_string(), id);
+        id
+    }
+    fn term(&mut self, term: &JTerm) -> serde_json::Value {
+        fn next(map: &mut std::collections::HashMap<String, usize>, key: String) -> usize {
+            let n = map.len();
+            *map.entry(key).or_insert(n)
+        }
+        match term {
+            JTerm::Var { name } => serde_json::json!({ "var": { "index": next(&mut self.vars, name.clone()) } }),
+            JTerm::Ind { name } => {
+                serde_json::json!({ "ind": { "index": next(&mut self.inds, format!("ind:{name}")) } })
+            }
+            JTerm::Aux { root, label } => serde_json::json!({
+                "ind": { "index": next(&mut self.inds, format!("aux:{root}:{label:?}")) }
+            }),
+            JTerm::Fun { function, arg } => {
+                let function = next(&mut self.functions, function.clone());
+                let arg = self.term(arg);
+                serde_json::json!({ "app": { "function": function, "arg": arg } })
+            }
+        }
+    }
+    fn atom(&mut self, atom: &JAtom) -> serde_json::Value {
+        match atom {
+            JAtom::Concept { concept, term } => {
+                let concept = self.concept(concept);
+                serde_json::json!({ "concept": { "concept": concept, "term": self.term(term) } })
+            }
+            JAtom::Role { role, source, target } => {
+                let role = self.role(role);
+                let source = self.term(source);
+                let target = self.term(target);
+                serde_json::json!({ "role": { "role": role, "source": source, "target": target } })
+            }
+            JAtom::Eq { left, right } => {
+                let left = self.term(left);
+                let right = self.term(right);
+                serde_json::json!({ "eq": { "left": left, "right": right } })
+            }
+        }
+    }
+    fn clauses(&mut self, clauses: &[JClause]) -> Vec<serde_json::Value> {
+        clauses
+            .iter()
+            .map(|clause| {
+                let body: Vec<_> = clause.body.iter().map(|atom| self.atom(atom)).collect();
+                let head: Vec<_> = clause.head.iter().map(|atom| self.atom(atom)).collect();
+                serde_json::json!({ "body": body, "head": head })
+            })
+            .collect()
+    }
+}
+
+/// The release certificate checked by `lean/RulesInertSortReleaseCheck.lean`
+/// (`WireInertSortRelease`): the sorted clause set before the pass, the
+/// released definers, the reserved concepts and the clause set the worker
+/// reads. Lean recomputes the guard tables and the released clause set from
+/// `original` and `released`, so nothing else in the document is trusted.
+pub fn release_certificate(
+    original: &[JClause],
+    result: &[JClause],
+    released: &[String],
+    reserved: &BTreeSet<String>,
+) -> serde_json::Value {
+    let mut ids = CertIds::default();
+    let data_sort = ids.concept(DATA_SORT);
+    let original = ids.clauses(original);
+    let result = ids.clauses(result);
+    let released: Vec<usize> = released.iter().map(|name| ids.concept(name)).collect();
+    let reserved: Vec<usize> = reserved.iter().map(|name| ids.concept(name)).collect();
+    serde_json::json!({
+        "version": 1,
+        "data_sort": data_sort,
+        "released": released,
+        "reserved": reserved,
+        "original": original,
+        "result": result,
+        "concept_names": ids.concepts,
+        "role_names": ids.roles,
+    })
 }
 
 #[cfg(test)]
@@ -920,6 +1142,88 @@ mod tests {
         assert!(!satisfiable(&unchecked));
         let mut i = input(clauses.clone());
         assert_eq!(release_inert_object_sorts(&mut i, |_| false), Released::default());
+    }
+
+    /// The Lean checker of the release certificate, from
+    /// `KM_RULES_TEST_INERT_LEAN_CHECKER` (the rules certification gate sets
+    /// it); `None` skips, unless `KM_REQUIRE_LEAN_CHECKERS` is set.
+    fn lean_checker() -> Option<std::path::PathBuf> {
+        match std::env::var_os("KM_RULES_TEST_INERT_LEAN_CHECKER") {
+            Some(path) => Some(path.into()),
+            None => {
+                assert!(
+                    std::env::var_os("KM_REQUIRE_LEAN_CHECKERS").is_none(),
+                    "KM_RULES_TEST_INERT_LEAN_CHECKER is required"
+                );
+                eprintln!("skipping: KM_RULES_TEST_INERT_LEAN_CHECKER is unset");
+                None
+            }
+        }
+    }
+
+    fn lean_accepts(checker: &std::path::Path, document: &serde_json::Value, tag: &str) -> bool {
+        let path = std::env::temp_dir().join(format!("km-rules-inert-test-{}-{tag}.json", std::process::id()));
+        std::fs::write(&path, serde_json::to_vec(document).unwrap()).unwrap();
+        let status = std::process::Command::new(checker)
+            .arg(&path)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert!(status.code().is_some_and(|code| code <= 1), "checker failed to run: {status}");
+        status.success()
+    }
+
+    #[test]
+    fn lean_checker_accepts_the_release_and_rejects_unchecked_ones() {
+        let Some(checker) = lean_checker() else { return };
+        let mut rng = Lcg(20261030);
+        let (mut accepted, mut rejected) = (0, 0);
+        for round in 0..3000 {
+            let clauses = random_sorted(&mut rng);
+            let mut i = input(clauses.clone());
+            let reserved = reserved_concepts(&i, |_| false);
+            let report = release_inert_object_sorts(&mut i, |_| false);
+            if !report.concepts.is_empty() {
+                let document = release_certificate(&clauses, &i.clauses, &report.concepts, &reserved);
+                assert!(lean_accepts(&checker, &document, &format!("{round}-ok")), "round {round}: rejected");
+                accepted += 1;
+            }
+            // Releasing both candidates without (B) and (H): whenever that
+            // changes satisfiability, `WireInertSortRelease.check_sound`
+            // forbids acceptance.
+            let unchecked = release_unchecked(&clauses);
+            if satisfiable(&clauses) != satisfiable(&unchecked) {
+                let released = vec!["Q_1".to_string(), "Q_2".to_string()];
+                let document = release_certificate(&clauses, &unchecked, &released, &reserved);
+                assert!(!lean_accepts(&checker, &document, &format!("{round}-bad")), "round {round}: accepted");
+                rejected += 1;
+            }
+        }
+        eprintln!("Lean accepted {accepted} releases and rejected {rejected} verdict-changing unchecked releases");
+        assert!(accepted > 300 && rejected > 30);
+    }
+
+    #[test]
+    fn lean_checker_rejects_a_tampered_or_reserved_release() {
+        let Some(checker) = lean_checker() else { return };
+        let clauses = range_clauses();
+        let mut i = input(clauses.clone());
+        let reserved = reserved_concepts(&i, |_| false);
+        let report = release_inert_object_sorts(&mut i, |_| false);
+        let document = release_certificate(&clauses, &i.clauses, &report.concepts, &reserved);
+        assert!(lean_accepts(&checker, &document, "range"));
+        // The worker input must be exactly the release of the original.
+        let mut dropped = i.clauses.clone();
+        dropped.pop();
+        let document = release_certificate(&clauses, &dropped, &report.concepts, &reserved);
+        assert!(!lean_accepts(&checker, &document, "dropped"));
+        // A reserved name is never released.
+        let mut with_q1: BTreeSet<String> = reserved.clone();
+        with_q1.insert("Q_1".into());
+        let document = release_certificate(&clauses, &i.clauses, &report.concepts, &with_q1);
+        assert!(!lean_accepts(&checker, &document, "reserved"));
     }
 
     #[test]
