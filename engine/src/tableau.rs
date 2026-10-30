@@ -3770,14 +3770,8 @@ impl Tableau {
 /// search can nest as deep as the model (thousands of frames on the
 /// live-disjunction ontologies), which would overflow the default 8 MB stack.
 fn with_big_stack<T: Send>(f: impl FnOnce() -> T + Send) -> T {
-    std::thread::scope(|s| {
-        std::thread::Builder::new()
-            .stack_size(4 << 30)
-            .spawn_scoped(s, f)
-            .expect("spawn tableau worker")
-            .join()
-            .expect("tableau worker panicked")
-    })
+    crate::bigstack::run("tableau search", crate::bigstack::DEEP_STACK, f)
+        .unwrap_or_else(|error| panic!("{error}"))
 }
 
 /// The two-level global-caching checker. Level 1 (per node): a transient
@@ -6191,9 +6185,7 @@ fn rules_consistency_with_sorts(inp: &TInput, mut ht_clauses: Vec<Clause>,
     }
     let datatype_names = verify_data.then(|| inp.concepts.clone());
     let verify_finite = verify_data || std::env::var_os("KM_RULES_FINITE_MODEL_VERIFY").is_some();
-    std::thread::Builder::new()
-        .stack_size(4usize << 30)
-        .spawn(move || {
+    crate::bigstack::run("rules-consistency", crate::bigstack::DEEP_STACK, move || {
             let evidence = verify_finite.then(|| ht_clauses.clone());
             let mut t = Tableau::new(ht_clauses);
             t.set_pairwise(inverse);
@@ -6224,10 +6216,7 @@ fn rules_consistency_with_sorts(inp: &TInput, mut ht_clauses: Vec<Clause>,
                     None => Ok(false),
                 }
             } else { Ok(t.consistent(&[])) }
-        })
-        .map_err(|e| e.to_string())?
-        .join()
-        .map_err(|_| "rules-consistency thread panicked".to_string())?
+        })?
 }
 
 /// Build the tableau clause vector from a parsed `TInput` (the deserialised
@@ -6435,15 +6424,10 @@ pub(crate) fn run_bridge_json_owned_compact(
     // keeps the transport optimization visible in peak RSS, not only live bytes.
     crate::mem::release_transient_heap();
 
-    let (result, concepts) = std::thread::Builder::new()
-        .stack_size(4usize << 30)
-        .spawn(move || {
+    let (result, concepts) = crate::bigstack::run("konclude_ht bridge", crate::bigstack::DEEP_STACK, move || {
             let result = crate::konclude_ht::bridge::bridged_classify(&producer_input);
             (result, producer_input.concepts)
-        })
-        .map_err(|error| error.to_string())?
-        .join()
-        .map_err(|_| "konclude_ht bridge thread panicked".to_string())?;
+        })?;
     let result = result.ok_or_else(|| "konclude_ht bridge defer".to_string())?;
     crate::mem::release_transient_heap();
     compact_bridge_classification(concepts, result)
@@ -6652,12 +6636,8 @@ pub(crate) fn run_bridge_producer_input_typed(
 ) -> Result<TOutput, String> {
     let concepts = input.concepts.clone();
     crate::mem::release_transient_heap();
-    let result = std::thread::Builder::new()
-        .stack_size(4usize << 30)
-        .spawn(move || crate::konclude_ht::bridge::bridged_classify(&input))
-        .map_err(|error| error.to_string())?
-        .join()
-        .map_err(|_| "konclude_ht bridge thread panicked".to_string())?
+    let result = crate::bigstack::run("konclude_ht bridge", crate::bigstack::DEEP_STACK,
+            move || crate::konclude_ht::bridge::bridged_classify(&input))?
         .ok_or_else(|| "konclude_ht bridge defer".to_string())?;
     crate::mem::release_transient_heap();
     let name = |concept: usize| {
@@ -8078,12 +8058,8 @@ fn run_tinput_inner(
                 .ok_or_else(|| "typed tableau input cannot enter the bridge route".to_string())?,
         )
         .map_err(|e| e.to_string())?;
-        let res = std::thread::Builder::new()
-            .stack_size(4usize << 30)
-            .spawn(move || crate::konclude_ht::bridge::bridged_classify(&tin_bridge))
-            .map_err(|e| e.to_string())?
-            .join()
-            .map_err(|_| "konclude_ht bridge thread panicked".to_string())?;
+        let res = crate::bigstack::run("konclude_ht bridge", crate::bigstack::DEEP_STACK,
+            move || crate::konclude_ht::bridge::bridged_classify(&tin_bridge))?;
         if let Some(r) = res {
             let subs: Vec<(C, C)> = r
                 .subsumptions
@@ -8496,13 +8472,12 @@ fn run_tinput_inner(
         // side data are dead by now. Return their pages before the parallel
         // classify workers allocate their own state (see `crate::mem`).
         crate::mem::release_transient_heap();
-        let res = std::thread::Builder::new()
-            // 4 GiB virtual stack (lazily paged): the DFS recurses once per active
-            // branch level; SHOQ number+nominal search can nest tens of thousands
-            // deep, overflowing the prior 1 GiB reservation. Virtual, so the unused
-            // tail costs nothing.
-            .stack_size(4usize << 30)
-            .spawn(move || {
+        // 4 GiB stack: the DFS recurses once per active branch level; SHOQ
+        // number+nominal search can nest tens of thousands deep, overflowing
+        // the prior 1 GiB reservation. A spawned stack is charged in full under
+        // strict overcommit, so `bigstack` runs this inline on the worker's
+        // main thread, whose stack is committed only as it grows.
+        let res = crate::bigstack::run("hypertableau", crate::bigstack::DEEP_STACK, move || {
                 let mut ht = if lean_cert_requested {
                     hypertableau::Ht::new_certified(ht_clauses)
                 } else {
@@ -8581,10 +8556,7 @@ fn run_tinput_inner(
                     ht.classify(&q)
                 };
                 Ok::<_, String>(classification.map(|classification| (classification, None)))
-            })
-            .map_err(|e| e.to_string())?
-            .join()
-            .map_err(|_| "hypertableau thread panicked".to_string())??;
+            })??;
         // Every classify worker's arena retains the largest model it built.
         // Release those pages before the taxonomy is named and serialised.
         crate::mem::release_transient_heap();

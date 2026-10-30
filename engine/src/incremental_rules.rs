@@ -195,13 +195,10 @@ fn rules_consistent(frontend: &FrontendResult) -> Result<bool, String> {
     let _environment = crate::routing::EnvironmentGuard::capture();
     std::env::set_var("KM_RULES_CONSISTENCY", "1");
     std::env::remove_var("KM_HT");
-    let output = std::thread::Builder::new()
-        .name("km-incremental-rules".into())
-        .stack_size(4usize << 30)
-        .spawn(move || crate::tableau::run_json(&input))
-        .map_err(|error| error.to_string())?
-        .join()
-        .map_err(|_| "incremental rules probe panicked".to_string())??;
+    // `run` spawns one deep thread here (the caller's stack is unknown); the
+    // checker's own deep-stack request then runs inline on it.
+    let output = crate::bigstack::run("km-incremental-rules", crate::bigstack::DEEP_STACK,
+        move || crate::tableau::run_json(&input))??;
     let value: serde_json::Value =
         serde_json::from_str(&output).map_err(|error| error.to_string())?;
     value["consistent"]
