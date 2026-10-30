@@ -705,3 +705,87 @@ pub(crate) fn write_and_check(t: &Tableau, answer: &Answer) -> Result<(), String
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn con(c: C, t: Var) -> Atom {
+        Atom::Concept { lit: CLit::pos(c), t }
+    }
+
+    /// 0 = O, 1 = {a}, 2 = A, 3 = B. ABox A(a), rule A(x) ∧ O(x) → B(x).
+    fn rule_clauses(bottom: bool) -> Vec<Clause> {
+        let mut clauses = vec![
+            Clause::new(vec![con(1, 0)], vec![con(2, 0)]),
+            Clause::new(vec![con(1, 0)], vec![con(0, 0)]),
+            Clause::new(vec![con(2, 0), con(0, 0)], vec![con(3, 0)]),
+        ];
+        if bottom {
+            clauses.push(Clause::new(vec![con(3, 0)], vec![]));
+        }
+        clauses
+    }
+
+    fn tableau(clauses: Vec<Clause>) -> Tableau {
+        let mut t = Tableau::new(clauses);
+        t.set_nominals(vec![1]);
+        t.enable_certificates().unwrap();
+        t
+    }
+
+    #[test]
+    fn inconsistent_rule_input_records_a_closed_proof() {
+        let t = tableau(rule_clauses(true));
+        assert!(t.cert_test(Claim::Inconsistent, None).is_none());
+        let sink = t.cert.as_ref().unwrap().lock().unwrap();
+        assert!(sink.uncertified.is_empty());
+        assert_eq!(sink.refutations.len(), 1);
+        let (claim, proof) = &sink.refutations[0];
+        assert_eq!(*claim, Claim::Inconsistent);
+        assert!(proof.valid());
+        assert!(matches!(proof.end, REnd::Bottom { clause: 3, .. }));
+    }
+
+    #[test]
+    fn consistent_rule_input_records_a_model_that_satisfies_the_clauses() {
+        let t = tableau(rule_clauses(false));
+        assert!(t.cert_test(Claim::Unsat(2), Some(2)).is_some());
+        let sink = t.cert.as_ref().unwrap().lock().unwrap();
+        assert_eq!(sink.models.len(), 1);
+        let (model, witnesses) = &sink.models[0];
+        let clauses = rule_clauses(false);
+        let refs: Vec<&Clause> = clauses.iter().collect();
+        assert!(model_satisfies(model, &refs, &[1]));
+        assert_eq!(witnesses, &vec![(2, model.root)]);
+        // Removing B from the named element violates the rule.
+        let mut broken = model.clone();
+        for labels in &mut broken.labels {
+            labels.retain(|&c| c != 3);
+        }
+        assert!(!model_satisfies(&broken, &refs, &[1]));
+    }
+
+    #[test]
+    fn disjunction_records_one_child_per_head_atom() {
+        // {a} ⊑ C, C ⊑ A ∨ B, A ⊑ ⊥, B ⊑ ⊥ (4 = C).
+        let clauses = vec![
+            Clause::new(vec![con(1, 0)], vec![con(4, 0)]),
+            Clause::new(vec![con(4, 0)], vec![con(2, 0), con(3, 0)]),
+            Clause::new(vec![con(2, 0)], vec![]),
+            Clause::new(vec![con(3, 0)], vec![]),
+        ];
+        let t = tableau(clauses);
+        assert!(t.cert_test(Claim::Inconsistent, None).is_none());
+        let sink = t.cert.as_ref().unwrap().lock().unwrap();
+        let (_, proof) = &sink.refutations[0];
+        match &proof.end {
+            REnd::Split { clause, children, .. } => {
+                assert_eq!(*clause, 1);
+                assert_eq!(children.len(), 2);
+                assert!(children.iter().all(RProof::valid));
+            }
+            other => panic!("expected a split, got {other:?}"),
+        }
+    }
+}
