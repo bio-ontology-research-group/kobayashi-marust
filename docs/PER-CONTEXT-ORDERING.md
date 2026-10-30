@@ -597,5 +597,7 @@ one core, 240 s) with the v1.5.4 binary of design run 9 and with 87fda54f.
 9800 was not: with the protocol flags it answered in 2 of 4 runs (184 s)
 with run 9's binary and in 1 of 4 (191 s) with 87fda54f, the others
 reaching 240 s. Its CB engine needs about 95 s alone and shares the core
-with the typed-nominal bridge, which needs as long. The remedy is in the CB
-input, not in the ordering (docs/NOMINALS-CB.md, same subsection).
+with the typed-nominal bridge, which needs as long; the merged base with the
+R2/R3 fix of 7c238e52 answered 2 of 4 (205 s). The remedy is in the CB input,
+not in the ordering: with it 9800 answers in 14 s on 4 of 4 runs
+(docs/NOMINALS-CB.md, same subsection).

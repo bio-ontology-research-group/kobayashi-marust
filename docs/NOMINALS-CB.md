@@ -668,7 +668,13 @@ model of the input satisfies the result, because every dropped body atom
 was true; a model of the result becomes a model of the input by
 interpreting each eliminated definer as the whole domain. No other name
 changes its interpretation, so the CB engine's answers on every name that
-is not eliminated, the reserved ones included, are the same. The Lean obligation is the ground form of that statement
+is not eliminated, the reserved ones included, are the same. Clause sets with an inverse role (an `__inv__` role atom or an `inverse`
+RBox row) are left unchanged by this pass: on
+`tests/fixtures/top_nominal_data/probe_v7.ofn` (`⊤ ⊑ ≥2 u`, `⊤ ⊑ ∃r.{a}`,
+`{a} ⊑ ≤1 r⁻`) dropping the `⊤` filler from the inverse at-most clause took
+the CB engine from 0.06 s past 150 s, an exact answer reached far later
+(nominals, inverse roles and number restrictions together are where the
+Nom rule fires). The guard is about cost only. The Lean obligation is the ground form of that statement
 (not discharged; the unit tests check it on 2,000 random clause sets by
 DPLL, after the release).
 
@@ -679,7 +685,8 @@ definer `Q_116`. The release turns the 38 facts into unit facts and the
 elimination removes all 39 definers.
 
 Where the copy is made. The orchestrator makes the copy inside each CB arm
-when it starts (`with_nominal_cb_input`), so a schedule that answers without
+when it starts (`with_nominal_cb_input`: the portfolio's CB arms and the
+atomic CB worker of the `nominals` route), so a schedule that answers without
 the CB engine (the sequential bridge of a large typed ABox, ORE 10621 and
 11270) never pays for it, and in a race the HT worker starts at once. A byte
 scan for the sort marker or a body-free fact on a `Q_` definer skips the
@@ -690,9 +697,11 @@ Measurements (`results/agents/2026-10-30/nominal-coverage/`):
 
 - ORE 9800 on the benchmark nodes (IBEX, one core, 240 s, the protocol's
   flags, 4 runs each): v1.5.4 design-run-9 binary 2 of 4 answered (184 s),
-  87fda54f 1 of 4 (191 s), this branch 4 of 4 in 13.8 to 17.3 s; the CB
-  engine answers 6 s after the race starts instead of about 180 s. 10874:
-  3 to 5 s before, 0.5 to 0.8 s after. Both outputs are identical to those
+  87fda54f 1 of 4 (191 s), the merged base e1881695 (R2/R3 fix of
+  7c238e52 included) 2 of 4 (205 s); this branch on that base 4 of 4 in
+  14.1 to 14.2 s (13.8 to 17.3 s before the merge); the CB engine answers
+  6 s after the race starts instead of about 180 s. 10874: 3.3 to 4.8 s on
+  the merged base, 0.56 to 0.59 s with this branch. Both outputs are identical to those
   of the design-run-9 binary, whose 9800 answer the paired run verified
   against Konclude, HermiT and Openllet (10874 publishes its 879
   data-property assertions as dropped, so the protocol does not compare
@@ -700,9 +709,14 @@ Measurements (`results/agents/2026-10-30/nominal-coverage/`):
   as emitted, 170.9 s with the release only, 39.5 s with the elimination of
   the `⊤` definer only, 3.4 s with both; the named subsumptions (10,413)
   are identical in all four.
-- Generated seeds (400, automatic route, 60 s, 3 workers, shared
-  workstation): 270 answered before, 271 after, no wrong answer either
-  time. Five files gained an answer (`m2032`, `m2058`, `m2131`, `m2173`,
+- Generated seeds against the merged base (e1881695 against this branch
+  merged onto it, both built on IBEX, run side by side on the shared
+  workstation; 400 seeds, automatic route, 60 s, 3 workers each): 270
+  answered before and 276 after, no wrong answer in either run; six gained
+  (`m2032` 1.1 s, `m2058` 5.2 s, `m2131` 1.0 s, `m2173` 32 s, `m2319` 48 s,
+  `m2342` 52 s), none lost; 124 timeouts remain. Earlier, before the merge
+  (87fda54f against `km.fix`): 270 answered before, 271 after, no wrong
+  answer either time. Five files gained an answer (`m2032`, `m2058`, `m2131`, `m2173`,
   `m2336`) and four lost one in that run (`m2059`, `m2185`: a worker
   aborted on an allocation failure under the host's strict overcommit and
   both answer in 0.05 s on rerun; `m2079`, `m2359`: 58 s and 45 s before,
@@ -718,10 +732,19 @@ Measurements (`results/agents/2026-10-30/nominal-coverage/`):
   (`.work/pgo-v154/km-pgo-use`) against this branch, two streams side by
   side on the shared workstation: 345 answered by both with identical
   SUB/UNSAT/CONSISTENT lines, 8 answered by neither, none lost or gained
-  except 9800 (236 s before, 19 s after); the copy was made on 38 inputs.
-  IBEX-TBD
+  except 9800 (236 s before, 19 s after); the copy was made on 38 inputs
+  (pre-merge build `km.fix`, which made the copy before the race).
+- The same 353 inputs on IBEX against the merged base, paired (each input
+  runs both binaries in one one-core task, order alternating; 240 s,
+  protocol flags): 343 answered by both with identical lines, 9 by neither,
+  9800 gained (240 s to 17.3 s), none lost or changed. Sums over the inputs
+  both answer: 902.3 s base, 900.6 s with this branch; over the 20 of them
+  where the copy was made: 52.2 s and 41.6 s; no input is more than 1.5
+  times and 5 s slower. (The 9 timeouts of both, among them 16666 and 2792
+  that the bridge answered in about 100 s in the v1.5.4 design run, are the
+  same in both columns.)
 
-What remains. Of the 130 seed timeouts, 125 still time out. The copy is made
+What remains. Of the 130 seed timeouts, 124 still time out on the merged base. The copy is made
 on most of them, but what remains is the case analysis of the nominal ground
 context, not the sort disjunct: seed 2000 reduced while the CB engine stays
 above 10 s even with every `D` disjunct dropped (an unsound diagnostic, used

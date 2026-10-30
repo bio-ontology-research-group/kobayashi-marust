@@ -16,7 +16,13 @@ section 8.
 | `km-pgo-use` | v1.5.4 release binary, `.work/pgo-v154/km-pgo-use` | ac15b822… |
 | IBEX `km.run9` | v1.5.4 design run 9 (0a0d73c8), `/ibex/.../v154-routing-20261026/km.run9` | a42e3816… |
 | IBEX `km-87fda54f` | 87fda54f built on an IBEX node (`ibex/build.sbatch`) | see `ibex/` |
-| IBEX `km-fix2` | final source built on an IBEX node | f076cb2b… |
+| IBEX `km-fix2` | pre-merge source (copy inside the CB arms) built on IBEX | f076cb2b… |
+| IBEX `km-basem` | merged base e1881695 (development/v1.5.5 with the R2/R3 fix 7c238e52), IBEX build (`ibex/build1.sbatch`) | a487ee28… |
+| IBEX `km-fixm2` | this branch at 22ca8ea1 (merged onto e1881695), IBEX build | d4f7e024… |
+
+The final before/after tables are `km-basem` against `km-fixm2`; the
+earlier ones (against 87fda54f and the v1.5.4 binaries) are kept for the
+record.
 
 The seed runs and the local ORE regression ran on the shared workstation
 (56 cores, load 50 to 110 from other agents' jobs; the host also runs with
@@ -40,6 +46,8 @@ output instead of the JSON graph).
   rerun with `KM_NO_SEQ_ORDER=1`.
 - `seeds-base-timeouts-bridge-defer.tsv`: the native bridge's datatype
   defer reason on each of them (`KM_ROUTE=ht_bridge KM_BRIDGE_PROGRESS=1`).
+- `seeds-mergedbase-auto.tsv`, `seeds-mergedfix-auto.tsv`: the same
+  differential with `km-basem` and `km-fixm2`, run side by side.
 - `seeds-recheck.tsv`: every file whose verdict changed, rerun twice with
   `km.base` and `km.fix2`.
 - `min/`: reductions (`tools/ddmin.py`, classify above 15 s;
@@ -49,8 +57,13 @@ output instead of the JSON graph).
   inputs with individuals, v1.5.4 release binary against `km.fix`, 240 s,
   two streams side by side; columns name, rc and seconds for each binary,
   route, whether the copy was made, verdict (`tools/ore_cmp.py`).
-- `ibex/`: sbatch scripts, `times-*.tsv` of the 9800/10874 runs, and the
-  design-half regression on IBEX (`ibex/reg-*.tsv`).
+- `ibex/`: sbatch scripts; `times-9800-10874.tsv` (4 runs per binary,
+  protocol flags; tags `v154run9-flags`, `h87fda54f-flags`, `basem-flags`,
+  `fix2-flags`, `fixm2-flags`) and `times-9800-10874-noflags.tsv`;
+  `reg-paired-basem-vs-fixm2.tsv` (353 design-half inputs, both binaries
+  in one task), `reg-run9-vs-fix2.tsv` (unpaired arrays, noisy) and
+  `reg-paired-run9-vs-fix2-fired.tsv`.
+- `integration-tests.txt`, `lib-inert-sorts-tests.txt`: test counts.
 - `tools/`: everything above, plus `inert_mirror.py` and `top_elim.py`
   (Python mirrors of the two passes used for the engine-level experiments),
   `dump_engine.sh` (a `KM_ENGINE` stand-in that keeps the CB engine's input),

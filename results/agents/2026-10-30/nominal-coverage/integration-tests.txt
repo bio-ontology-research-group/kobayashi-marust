@@ -1,0 +1,14 @@
+     Running tests/cb_route_completeness.rs (target/release/deps/cb_route_completeness-6cc0884fa4f2f7c5)
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.58s
+     Running tests/forced_route_fail_closed.rs (target/release/deps/forced_route_fail_closed-83d85babc2bba3d5)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.33s
+     Running tests/nominal_ground_body.rs (target/release/deps/nominal_ground_body-2b87cdc34d470bba)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/nominal_inert_sorts.rs (target/release/deps/nominal_inert_sorts-252b500a453464f6)
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 133.63s
+     Running tests/nominal_seq_order.rs (target/release/deps/nominal_seq_order-a6b8af428c610682)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 13.82s
+     Running tests/top_nominal_data_successors.rs (target/release/deps/top_nominal_data_successors-cede98c5f4e615c8)
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.09s
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 3027 filtered out; finished in 2.65s
+nominal_inert_sorts after the m2058 route change: test result: ok. 2 passed; 0 failed
