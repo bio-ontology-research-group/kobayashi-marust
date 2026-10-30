@@ -1,0 +1,114 @@
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/atleast_two_shared.ofn	auto	ok	0.03	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/atleast_two_shared.ofn	certified_nominals	ok	0.14	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/atleast_two_shared.ofn	nominals	ok	0.12	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/atleast_two_shared-pad.ofn	auto	DROPPED	0.19					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/atleast_two_shared-pad.ofn	certified_nominals	REFUSED	0.15					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/atleast_two_shared-pad.ofn	nominals	REFUSED	0.14					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_byte.ofn	auto	WRONG	3.75	0	0	1	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_byte.ofn	certified_nominals	WRONG	1.70	0	0	1	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_byte.ofn	nominals	WRONG	0.81	0	0	1	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_byte-pad.ofn	auto	WRONG	3.51	0	0	1	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_byte-pad.ofn	certified_nominals	WRONG	2.46	0	0	1	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_byte-pad.ofn	nominals	WRONG	1.14	0	0	1	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_finite_range.ofn	auto	WRONG	0.05	0	0	1	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_finite_range.ofn	certified_nominals	WRONG	0.10	0	0	1	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_finite_range.ofn	nominals	WRONG	0.08	0	0	1	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_finite_range-pad.ofn	auto	DROPPED	0.17					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_finite_range-pad.ofn	certified_nominals	REFUSED	0.17					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_finite_range-pad.ofn	nominals	REFUSED	0.14					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_float_point.ofn	auto	WRONG	0.05	0	0	1	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_float_point.ofn	certified_nominals	WRONG	0.12	0	0	1	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_float_point.ofn	nominals	WRONG	0.08	0	0	1	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_float_point-pad.ofn	auto	DROPPED	0.25					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_float_point-pad.ofn	certified_nominals	REFUSED	0.16					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_float_point-pad.ofn	nominals	REFUSED	0.17					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_with_assertions.ofn	auto	ok	0.03	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_with_assertions.ofn	certified_nominals	ok	0.03	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_with_assertions.ofn	nominals	ok	0.11	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_with_assertions_ok.ofn	auto	WRONG	0.04	1	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_with_assertions_ok.ofn	certified_nominals	WRONG	0.05	1	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_with_assertions_ok.ofn	nominals	ok	0.11	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_with_assertions_ok-pad.ofn	auto	DROPPED	0.28					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_with_assertions_ok-pad.ofn	certified_nominals	REFUSED	0.22					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_with_assertions_ok-pad.ofn	nominals	REFUSED	0.25					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_with_assertions-pad.ofn	auto	ok	0.26	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_with_assertions-pad.ofn	certified_nominals	ok	0.14	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/count_with_assertions-pad.ofn	nominals	ok	0.15	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/disjoint_data_properties.ofn	auto	ok	0.03	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/disjoint_data_properties.ofn	certified_nominals	ok	0.08	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/disjoint_data_properties.ofn	nominals	ok	0.07	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/disjoint_data_properties_ok.ofn	auto	ok	0.04	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/disjoint_data_properties_ok.ofn	certified_nominals	ok	0.07	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/disjoint_data_properties_ok.ofn	nominals	ok	0.08	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/disjoint_data_properties_ok-pad.ofn	auto	DROPPED	0.18					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/disjoint_data_properties_ok-pad.ofn	certified_nominals	REFUSED	0.23					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/disjoint_data_properties_ok-pad.ofn	nominals	REFUSED	0.12					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/disjoint_data_properties-pad.ofn	auto	DROPPED	0.29					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/disjoint_data_properties-pad.ofn	certified_nominals	REFUSED	0.20					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/disjoint_data_properties-pad.ofn	nominals	REFUSED	0.16					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/facet_exists.ofn	auto	ok	0.04	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/facet_exists.ofn	certified_nominals	ok	0.11	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/facet_exists.ofn	nominals	ok	0.09	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/facet_exists-pad.ofn	auto	ok	0.55	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/facet_exists-pad.ofn	certified_nominals	ok	4.47	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/facet_exists-pad.ofn	nominals	TIMEOUT	120.10					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/functional_merge_clash.ofn	auto	ok	0.04	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/functional_merge_clash.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/functional_merge_clash.ofn	nominals	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/functional_merge_clash-pad.ofn	auto	ok	52.93	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/functional_merge_clash-pad.ofn	certified_nominals	ok	0.09	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/functional_merge_clash-pad.ofn	nominals	ok	0.05	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/functional_merge_equal.ofn	auto	ok	0.04	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/functional_merge_equal.ofn	certified_nominals	ok	0.09	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/functional_merge_equal.ofn	nominals	ok	0.07	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/functional_merge_equal-pad.ofn	auto	ok	63.16	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/functional_merge_equal-pad.ofn	certified_nominals	REFUSED	0.16					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/functional_merge_equal-pad.ofn	nominals	REFUSED	0.14					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/functional_two_values.ofn	auto	ok	0.06	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/functional_two_values.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/functional_two_values.ofn	nominals	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/functional_two_values-pad.ofn	auto	ok	0.11	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/functional_two_values-pad.ofn	certified_nominals	ok	0.10	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/functional_two_values-pad.ofn	nominals	ok	0.05	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/hasvalue_nominal.ofn	auto	ok	0.05	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/hasvalue_nominal.ofn	certified_nominals	ok	0.11	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/hasvalue_nominal.ofn	nominals	ok	0.10	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/hasvalue_nominal-pad.ofn	auto	ok	0.42	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/hasvalue_nominal-pad.ofn	certified_nominals	ok	4.47	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/hasvalue_nominal-pad.ofn	nominals	TIMEOUT	120.11					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/inverse_functional_merge.ofn	auto	ok	0.04	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/inverse_functional_merge.ofn	certified_nominals	WRONG	0.04	0	0	0	0	1
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/inverse_functional_merge.ofn	nominals	WRONG	0.13	0	0	0	0	1
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/inverse_functional_merge-pad.ofn	auto	WRONG	0.13	0	0	0	0	1
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/inverse_functional_merge-pad.ofn	certified_nominals	WRONG	0.05	0	0	0	0	1
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/inverse_functional_merge-pad.ofn	nominals	WRONG	0.12	0	0	0	0	1
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/negative_assertion.ofn	auto	DROPPED	0.07					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/negative_assertion.ofn	certified_nominals	REFUSED	0.09					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/negative_assertion.ofn	nominals	REFUSED	0.07					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/negative_assertion-pad.ofn	auto	TIMEOUT	120.10					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/negative_assertion-pad.ofn	certified_nominals	TIMEOUT	120.10					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/negative_assertion-pad.ofn	nominals	TIMEOUT	120.10					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/qualified_atmost.ofn	auto	ok	0.04	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/qualified_atmost.ofn	certified_nominals	ok	0.09	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/qualified_atmost.ofn	nominals	ok	0.06	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/qualified_atmost_ok.ofn	auto	ok	0.04	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/qualified_atmost_ok.ofn	certified_nominals	ok	0.10	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/qualified_atmost_ok.ofn	nominals	ok	0.11	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/qualified_atmost_ok-pad.ofn	auto	DROPPED	0.23					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/qualified_atmost_ok-pad.ofn	certified_nominals	REFUSED	0.14					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/qualified_atmost_ok-pad.ofn	nominals	REFUSED	0.13					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/qualified_atmost-pad.ofn	auto	DROPPED	0.23					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/qualified_atmost-pad.ofn	certified_nominals	REFUSED	0.16					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/qualified_atmost-pad.ofn	nominals	REFUSED	0.16					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/range_clash.ofn	auto	ok	0.03	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/range_clash.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/range_clash.ofn	nominals	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/range_clash-pad.ofn	auto	ok	0.18	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/range_clash-pad.ofn	certified_nominals	ok	0.07	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/range_clash-pad.ofn	nominals	ok	0.12	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/subproperty_functional.ofn	auto	ok	0.04	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/subproperty_functional.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/subproperty_functional.ofn	nominals	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/subproperty_functional-pad.ofn	auto	ok	41.23	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/subproperty_functional-pad.ofn	certified_nominals	ok	0.11	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/data-values/probes/gen/subproperty_functional-pad.ofn	nominals	ok	0.08	0	0	0	0	0

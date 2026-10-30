@@ -1,0 +1,25 @@
+     Running tests/constant_data_rule_normalization.rs (target-fast/release/deps/constant_data_rule_normalization-54df4184ebb135b4)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+     Running tests/data_abox_projection.rs (target-fast/release/deps/data_abox_projection-b0378957bd260321)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+     Running tests/data_assertions_carried.rs (target-fast/release/deps/data_assertions_carried-774a0284fc64632e)
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 23.47s
+     Running tests/empty_and_universal_data_ranges.rs (target-fast/release/deps/empty_and_universal_data_ranges-624dfee4551b7ca1)
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 277.94s
+     Running tests/finite_data_rule_normalization.rs (target-fast/release/deps/finite_data_rule_normalization-57376a88f766ef53)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+     Running tests/forced_route_fail_closed.rs (target-fast/release/deps/forced_route_fail_closed-7daba3966632fc6d)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.73s
+     Running tests/has_key_rules.rs (target-fast/release/deps/has_key_rules-fa119cabd5faf7eb)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+     Running tests/integral_datatype_difference.rs (target-fast/release/deps/integral_datatype_difference-2c5a8f2d44c2394b)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+     Running tests/native_data_values.rs (target-fast/release/deps/native_data_values-cd914381789e0a40)
+test count_with_assertions_ok ... ignored, pre-existing nominal CB incompleteness, see results/agents/2026-10-30/data-values/README.md
+test result: ok. 18 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 21.06s
+     Running tests/source_axiom_drops.rs (target-fast/release/deps/source_axiom_drops-23ca64f51a7e57c3)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+     Running tests/top_nominal_data_successors.rs (target-fast/release/deps/top_nominal_data_successors-1a177515898ed0c8)
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.48s
+     Running tests/universal_role_and_top_data_range.rs (target-fast/release/deps/universal_role_and_top_data_range-19e30562fd317257)
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 17.61s

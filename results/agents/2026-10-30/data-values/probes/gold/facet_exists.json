@@ -1,0 +1,8 @@
+{
+  "ontology": "facet_exists.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["E", "D"]
+  ],
+  "unsatisfiable": []
+}

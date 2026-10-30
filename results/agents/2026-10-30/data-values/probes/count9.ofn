@@ -1,0 +1,8 @@
+Prefix(:=<http://example.org/t#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://example.org/t>
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(DataProperty(:p))
+SubClassOf(:A DataMinCardinality(10 :p DatatypeRestriction(xsd:integer xsd:minInclusive "1"^^xsd:integer xsd:maxInclusive "9"^^xsd:integer)))
+SubClassOf(:B DataMinCardinality(9 :p DatatypeRestriction(xsd:integer xsd:minInclusive "1"^^xsd:integer xsd:maxInclusive "9"^^xsd:integer)))
+)

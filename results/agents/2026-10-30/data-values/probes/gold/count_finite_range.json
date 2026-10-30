@@ -1,0 +1,8 @@
+{
+  "ontology": "count_finite_range.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": [
+    "A"
+  ]
+}
