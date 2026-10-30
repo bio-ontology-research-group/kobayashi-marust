@@ -123,5 +123,7 @@ until v1.5.4; since v1.5.5 they keep every literal's identity under the
 linear relation form (DATATYPES.md, "Exact data values without a literal
 cap"), so the cap only chooses between two exact encodings.
 
-Negative data-property assertions are never converted; they stay uncarried
-and are published as dropped axioms, independently of the abstraction.
+Negative data-property assertions `¬u(a, v)` are carried as `a : ¬∃u.{v}`
+since v1.5.5 (until v1.5.4 they stayed uncarried and were published as
+dropped axioms). They observe the identity of `v`, so they block the
+profile abstraction.

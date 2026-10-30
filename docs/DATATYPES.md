@@ -109,12 +109,14 @@ value-range pairs:
 
 1. *Identity classes.* The values with one key are made equivalent through
    the first of them (`v ↔ v₀`, a star, instead of every pair).
-2. *Index bits.* The identity classes are numbered `0 … m-1`; with
-   `k = ⌈log₂ m⌉`, class `i` implies `__dt__aux__bit__p__b` for every
-   position `p < k`, where `b` is bit `p` of `i`, and each position carries
-   `bit__p__0 ⊓ bit__p__1 ⊑ ⊥`. Two distinct classes differ at some
-   position, so their values clash on one node: `O(m log m)` clauses for
-   the `O(m²)` pairwise clashes.
+2. *Index digits.* The identity classes are numbered `0 … m-1`; with
+   `k = ⌈log₂ m⌉`, class `i` implies `__dt__aux__digit__p__b` for every
+   position `p < k`, where `b` is bit `p` of `i`, and the two digits of a
+   position are disjoint. Two distinct classes differ at some position, so
+   their values clash on one node: `O(m log m)` clauses for the `m²/2`
+   pairwise clashes. (A base of `⌈√m⌉` needs only two labels per value node
+   but one clash rule per pair of digits; on ore_ont_4572 it made the native
+   bridge's consistency drive slower, so the generator uses base 2.)
 3. *Membership profiles.* The values with one membership vector over `R`
    (`val_in_range` for every range, `None` entries included) imply one
    helper `__dt__aux__profile__i`, which carries `profile ⊑ R` for the
@@ -137,20 +139,100 @@ two exact encodings and cannot change an answer.
 pairwise form and `S'` the one with the linear form; the helpers are fresh.
 (a) `S'` entails every pairwise clause of `S`: `v → v₀ → v` gives the
 equalities; for keys `k ≠ l` the indices differ at some position `p`
-(`binaryIndex_separating` below), so `v → bit__p__b`, `w → bit__p__(1-b)`
-and the position's clash give `v ⊓ w ⊑ ⊥`; and `v → profile → R` (resp.
+(`binaryIndex_separating` below), so `v → digit__p__d`, `w → digit__p__e`
+with `d ≠ e` and the position's clash give `v ⊓ w ⊑ ⊥`; and `v → profile → R` (resp.
 `profile ⊓ R ⊑ ⊥`) gives each membership clause. (b) Every model `I` of
 `S` expands to a model of `S'` by interpreting each helper as the union of
-the values that imply it: `bit__p__b := ⋃ {v^I : bit p of index(key v) = b}`
+the values that imply it: `digit__p__d := ⋃ {v^I : digit p of index(key v) = d}`
 and `profile_π := ⋃ {v^I : vector(v) = π}`. Every `v → helper` clause holds
-by construction; `bit__p__0 ⊓ bit__p__1` is empty because its two sides are
-unions of values with different keys, which `S` makes disjoint; and
+by construction; `digit__p__d ⊓ digit__p__e` (`d ≠ e`) is empty because its
+two sides are unions of values with different keys, which `S` makes
+disjoint; and
 `profile_π ⊑ R` holds because every member satisfies `v ⊑ R` in `S`. So `S'`
 is a conservative extension of `S` over the source vocabulary: the two have
 the same consistency, subsumptions and unsatisfiable classes. Both
 directions are proved in Lean (`lean/ContextCalculus/LinearValueEncoding.lean`:
-`bits_entail_pairwise`, `pairwise_admits_bits`, `profiles_entail_membership`,
-`membership_admits_profiles`, `binaryIndex_separating`).
+`bits_entail_pairwise`, `pairwise_admits_bits`, `binaryIndex_separating`,
+`profiles_entail_membership`, `membership_admits_profiles`; the same lemmas
+for an arbitrary digit base are `digits_entail_pairwise`,
+`pairwise_admits_digits`, `twoDigitIndex_separating`). The file uses core
+Lean only and was checked with `lean ContextCalculus/LinearValueEncoding.lean`
+(Lean 4.30.0-rc2, no Mathlib); it is imported by `ContextCalculus.lean` but
+was not compiled with `lake build` here, because this worktree has no
+Mathlib build cache.
+
+### Object-level projection of data assertions
+
+The linear form still gives the engines one data successor per asserted
+value. On ore_ont_4572 (98,867 assertions on 32,990 individuals) the native
+bridge's consistency drive then exceeded its budget, although the same
+ontology without its data assertions classifies in about a second. Most of
+the amendment-2 inputs use their data properties only through
+functionality, class-conditional `≤ 1`, domains and atomic ranges, and for
+such properties no data successor is needed at all
+(`frontend/value_projection.rs`).
+
+*Gate*, per group `G` of data properties connected by `SubDataPropertyOf`:
+every TBox axiom that mentions a property of `G` is `FunctionalDataProperty(p)`,
+`C ⊑ ≤ 1 p` or `C ⊑ ≤ 1 p.R` (`C` without properties of `G`, `R` a data
+range), `DataPropertyDomain(p C)`, `DataPropertyRange(p R)` or
+`SubDataPropertyOf(p q)`; no ABox axiom other than a positive data assertion
+mentions `G`; the source has no key, rule or negative data assertion
+(`literal_abstraction_blocked`); and for every assertion `u(a, v)` with
+`u ∈ G`, every range of a super-property of `u` decidedly contains `v`, and
+for every counted `(q, C, R)` with `u ⊑* q`, `v ∈ R` is decided and `v` has
+an identity key.
+
+*Projection* `O ↦ O'`: remove every assertion `u(a, v)` of an admitted
+group and add `a : D` for every domain `D` of a super-property of `u`, and,
+for every counted `(q, C, R)` with `u ⊑* q` and `v ∈ R`, the binary index
+digits of the identity class of `v` among the values of `(q, C, R)` as
+fresh object classes on `a`, with `C ⊓ digit_{q,C,R,k,0} ⊓ digit_{q,C,R,k,1} ⊑ ⊥`
+for every position `k` (`DisjointClasses` when `C = ⊤`). The TBox axioms of
+`G` stay.
+
+**Theorem.** Under the gate, `O` and `O'` have the same models up to the
+data edges of the admitted groups and the interpretation of the digit
+classes; in particular they agree on consistency, subsumptions and
+unsatisfiable classes.
+
+*Proof.* (`O ⇒ O'`) Let `I ⊨ O`. Interpret `digit_{q,C,R,k,b}` as the
+elements that have a `q`-value in `R` which is an asserted value of `G`
+whose index has bit `b` at `k`. Every added class assertion holds: `a` has
+the value `v` of its assertion along every super-property, and `I`
+satisfies the domains. If `x ∈ C ⊓ digit_{…,k,0} ⊓ digit_{…,k,1}`, `x` has
+two `q`-values in `R` with different indices, hence two distinct values,
+contradicting `C ⊑ ≤ 1 q.R` in `I`. So `I` with these classes is a model of
+`O'`.
+
+(`O' ⇒ O`) Let `J ⊨ O'`. For every element `x` that is the interpretation
+of an individual with assertions in `G`, delete the `G`-edges of `x` and add
+`(x, v)` to `q` for every assertion `u(a, v)` with `a^J = x` and `u ⊑* q`;
+call the result `I`. The TBox axioms of `G` are the only constraints on
+`G`-edges. Every one of them is preserved: sub-properties hold because
+edges were added along `⊑*` and `G`-edges of `x` were removed on all
+properties of `G` alike; ranges hold because every asserted value is in
+every range of its super-properties (gate); domains hold because the
+domain classes are asserted in `O'` and an element without assertions keeps
+its edges; `C ⊑ ≤ 1 q.R` (and functionality, `C = ⊤`, `R = ⊤`) holds at
+`x ∈ C` because two distinct asserted values in `R` would differ in the
+index of `(q, C, R)` at some position (division with remainder by 2 is
+injective, `binaryIndex_separating`), so `x` would carry both digits of
+that position, which `O'` forbids for `x ∈ C`; at an element without
+assertions the edges are those of `J`. The edges deleted at `x` carried no
+obligation: every TBox use of `G` is a domain, a range, an at-most or an
+inclusion, none of which requires a successor. No other axiom mentions
+`G`, and the object part, classes and individuals are those of `J`. The
+data assertions hold by construction. So `I ⊨ O`. ∎
+
+Lean: the counting step is `bits_entail_pairwise`/`pairwise_admits_bits`
+read with elements as the domain of the value concepts (one digit class per
+asserted value); the edge surgery of the second direction is not stated in
+Lean (it needs the data-property semantics, which the Lean development
+models only for the native ABox projection in `DataABoxProjection.lean`).
+
+Groups outside the gate keep the data value encoding of the previous
+sections.
 
 ### Value singletons
 
@@ -174,42 +256,125 @@ The bridge admission checks the same condition on its own input
 (`forced_distinct_data_successors`) before accepting a value without its
 singleton clause.
 
-**Exactness of the elision.** Dropping clauses can only add models, so
-every entailment found without the singleton clauses is an entailment
-with them. Conversely, let `J` be a model of the clause set without the
-singleton clauses of the decided values `V_d`. Read `J` as a two-sorted
-interpretation as in [NOMINALS-CB.md](NOMINALS-CB.md) §6 and map every
-data node `n` that carries a value concept of `V_d` to that value, `val(n)`.
-It carries exactly one identity class (the identity clashes of the
-previous section hold in `J`), and its range labels are exactly the ranges
-containing `val(n)` (every membership of a decided value is a clause).
-Replace every data edge `(x, n)` by `(x, val(n))`; nodes without a decided
-value are realized as before. Under this map:
+**Theorem (singleton elision).** Let `O` be the source ontology and `S`
+its clause set with every value singleton clause, `V_d` the values of the
+vocabulary whose identity key and whose membership in every range of the
+vocabulary the oracle decides, and `S⁻ = S \ {v(y₁) ∧ v(y₂) → y₁ ≈ y₂ : v ∈ V_d}`.
+Assume the gate:
 
-- `∃p.D`, `≥ 1 p.D`, `p value t`, `∀p.D`, domains and ranges hold at `x`
-  iff they hold in `J`, because they look only at the range and value
-  labels of the successors, which `val` preserves;
-- `≤ n p.D` holds at `x` because `val` maps the `D`-successors of `x` onto
-  at most as many values as there are nodes;
-- the gate excludes every other data construct: `≥ n` with `n ≥ 2` is the
-  only source of `y₁ ≉ y₂` between data successors (two successors with one
-  value would collapse), disjoint data properties and keys compare the
-  identity of a value under two properties or across two elements, and
-  rules can compare values.
+- (G1) no clause of `S` has an inequality between two successors over a
+  data role, i.e. `O` has no positive `≥ n` with `n ≥ 2` and no negative
+  `≤ n` with `n ≥ 1` over a role that is not certainly an object property;
+- (G2) `O` has no `DisjointDataProperties`;
+- (G3) `O` has no `HasKey` and no DL-safe rule.
 
-So the image is a model of the source ontology with the same object part,
-and every classification answer of the encoding without the singleton
-clauses is exact. Where the gate fails, every value keeps its singleton
-clause and the encoding is the one above.
+Then for every model `J` of `S⁻`, the interpretation `I = ρ⁻(J)` defined
+below is a model of `O` with the same interpretation of every class,
+object property and individual as `J`. Hence `S⁻` and `S` agree on
+consistency, on every subsumption and on every unsatisfiable class, for
+every consumer that is exact on its clause set.
+
+`ρ⁻` is the reading of a clause-set model as an ontology model that the
+frontend's correctness arguments already use (data successors read as the
+values their labels determine, objects as themselves; NOMINALS-CB.md §6 for
+the two sorts and for one-sorted streams), changed in one point: a data
+successor `n` that carries a value concept of `V_d` is read as that value,
+`val(n)`, and two such successors with one value are read as one data
+value, although `J` may keep them apart. `val(n)` is well defined because
+the identity clashes of the linear form (or the pairwise clashes) are in
+`S⁻`: `n` carries exactly one identity class.
+
+*Proof.* Dropping clauses can only add models, so `S ⊨ φ` whenever
+`S⁻ ⊨ φ`. For the converse, check every source construct at an object `x`
+of `I`; constructs that mention no data role are evaluated on the object
+part, which `ρ⁻` does not change.
+
+- *Range labels are values' memberships.* For every range `R` of the
+  vocabulary and every successor `n` with a decided value, `n` carries `R`
+  in `J` iff `val(n) ∈ R`: each membership of a decided value is a clause
+  of `S⁻` (`v ⊑ R` or `v ⊓ R ⊑ ⊥`, directly or through a profile).
+- `∃p.R`, `≥ 1 p.R`, `p value t`, `∀p.R`, `DataPropertyDomain` and
+  `DataPropertyRange` hold at `x` in `I` iff they hold in `J`: they ask for
+  some, every, or no `p`-successor carrying `R` (or `{t}`), and `ρ⁻`
+  preserves these labels.
+- `≤ k p.R` (including functionality): `ρ⁻` maps the `R`-successors of `x`
+  onto at most as many values, so the bound holds in `I` if it holds in `J`.
+- `≥ n p.R` with `n ≥ 2` is the only construct whose clauses contain an
+  inequality between data successors; it is excluded by (G1), as is the
+  negative `≤`, which is a positive `≥` in negation normal form. Without
+  it, no source construct needs two successors with one value to stay
+  apart.
+- `DisjointDataProperties(p q)` compares the identity of a value under two
+  properties (G2); keys and rules compare values across elements (G3).
+- Successors without a decided value are read exactly as before the change,
+  and every decided value lies outside the fresh values that reading
+  chooses, so the two kinds of successor never meet.
+
+So `I ⊨ O`. ∎
+
+The frontend evaluates the gate on the parsed source axioms after
+DatatypeDefinition inlining (`distinct_data_successors_forced`, with
+`HasKey` and rules read from the source profile, which is what the rule
+grounding and the key lowering see), and only when data assertions are
+carried. The bridge evaluates it again on its own input
+(`forced_distinct_data_successors`, over the source axioms and data roles
+of the TInput). The two do not need to agree: the frontend elides only
+under its gate, which makes `S⁻` exact for every clause consumer, and the
+bridge accepts a value without its singleton clause only under its own
+gate, so a disagreement can only make the bridge defer.
+
+Consumers checked for a dependence on the singleton clauses beyond the
+datatype reasoning: the `data_abox` precheck reads the source text, not
+the clause set; the sort encoding adds unary sort clauses and its
+divergence argument only needed the singleton clauses not to fire across
+object terms (removing them removes that risk); the nominal ABox merging
+of §6 merges object terms only; `certified_card_proxy_abox` and every HT
+worker read the clause set with ordinary clause semantics, so the theorem
+covers them; rule grounding is excluded by (G3).
+
+**Lean obligation.** The theorem above is stated over the clause
+semantics, but the Lean development has no model of the frontend's
+data-role clauses or of the at-most clause shapes over data roles, so it
+is not stated in Lean. The statement to certify is the theorem above for
+the DL-clause fragment of `lean/ContextCalculus/CBClauseShape.lean`
+extended with a data sort; until then the elision is covered by the
+HermiT differentials in `results/agents/2026-10-30/data-values/`.
 
 ### Counting over data values
 
 Every asserted literal keeps its own identity (only the profile
 abstraction, under its own gate, merges literals), so a count over asserted
 values sees exactly the distinct values. Counting over anonymous values
-uses the existing finite covers and integral cells; `≥ n` over a finite
-range larger than the cover cap (8 enumerated values) stays an open corner
-below.
+uses finite covers and integral cells. Until v1.5.4 a range was covered only
+when it had at most 8 values, and KM answered `≥ 10 u.integer[1,9]`,
+`≥ 257 u.unsignedByte` and `≥ 2 u.float[1.0,1.0]` satisfiable (HermiT:
+unsatisfiable; probes in `results/agents/2026-10-30/data-values/probes/`).
+Now:
+
+- `≥ n p.R` with a finite `R` of fewer than `n` values is `⊥`, and
+  `≤ n p.R` with at most `n` values in `R` is `⊤` (`syntax::data_at_least`,
+  `data_at_most`; exact: a data successor is a value);
+- every range and integral cell with at most `N` values is covered, where
+  `N` is the largest number of pairwise distinct values one element can be
+  forced to have (`literal_profiles::data_count_bound`: the maximum of the
+  positive `≥ n` and negative `≤ n-1` bounds over data roles, their sum
+  when two data roles are disjoint), capped at 4,096; finite IEEE intervals
+  and bounded named integer types are enumerated too, and the native bridge
+  admits such a cover when its heads are exactly the enumerated values
+  (`exact_enumerated_cover`). A set of pairwise
+  distinct successors comes from one `≥ n` restriction (the only source of
+  `≉`), so no cell needs more than `N` distinct values unless two disjoint
+  data roles add their successors, which the sum covers;
+- a range the bound can exhaust but no cover reaches (a finite range larger
+  than 4,096 values, or one whose size the oracle cannot tell, such as a
+  string facet, next to a counting restriction) is published as not
+  represented (`DROPPED`, reason "data cardinality over a range without an
+  exact cover"): KM does not answer such an input as complete.
+
+Covers of more than a few values make the engines search through the
+assignments (pigeonhole), so `≥ 256 u.unsignedByte` (satisfiable) times
+out instead of answering; the probes record this as a timeout, not as an
+answer.
 
 ### Bridge admission
 
@@ -218,39 +383,58 @@ It now reads the linear form (`DatatypeRelationIndex::for_input`): a
 relation counts as present when the clauses entail it through a helper
 (`includes`, `separated`, `equal`), and `linear_value_encoding_exact`
 checks the helper clauses themselves: a helper is implied only by values;
-two values with one bridge identity key never imply two bits of one
-position (so bits separate only distinct values); and a profile includes
+two values with one bridge identity key never imply two digits of one
+position (so digits separate only distinct values); and a profile includes
 (excludes) a range only when every value implying it is in (outside) that
 range. The pairwise check "every value pair is proved equal or disjoint"
 runs in linear time over values whose identity class carries a complete
 index, and pair by pair over the others. The singleton-clause check
 scanned every concept per clause; it now reads the clause's own atom.
 
-### Lean obligation
+### Lean obligations
 
-Proved: the conservative-extension lemma above for one arbitrary
-interpretation (`LinearValueEncoding.lean`, core Lean, checked with
-`lean ContextCalculus/LinearValueEncoding.lean`). Not proved, and outside
-the current Lean boundary: that the Rust generator emits exactly these
-clauses with a separating index, the oracle decisions `val_eq` and
-`val_in_range`, the singleton elision (it needs the two-sorted reading of
-the clause set, which the Lean development does not model), and the bridge
-admission. The statement that would certify the elision is: for a clause
-set `S` whose only clauses with an inequality between two successors of
-one data role come from `≥ n` restrictions, and that contains no
-role-disjointness clause between data roles and no rule, every model of
-`S \ {singleton(v) : v ∈ V_d}` maps under `val` to a model of the source
-ontology. Stating it needs a Lean model of the frontend's data-role
-clauses, which does not exist yet.
+1. *Linear form* (proved): the helper clauses are a conservative extension
+   of the pairwise clauses for one arbitrary interpretation
+   (`LinearValueEncoding.lean`, core Lean, checked with `lean`; not built
+   with `lake build` here). Not proved: that the Rust generator emits
+   exactly these clauses with a separating index, and the oracle decisions
+   `val_eq` and `val_in_range`.
+2. *Object-level projection* (not proved): the two-direction model
+   construction of "Object-level projection of data assertions". The
+   counting step is the binary-index lemma; the edge surgery needs the
+   data-property semantics with sub-properties, which the Lean development
+   models only for the native ABox projection (`DataABoxProjection.lean`).
+3. *Singleton elision* (not proved): the theorem of "Value singletons", for
+   the DL-clause fragment of `CBClauseShape.lean` extended with a data sort.
+   No Lean model of the frontend's data-role clauses exists yet.
+4. *Bridge admission* (not proved, as before): the gate is an executable
+   check over the clause set; its correctness is tested.
 
-## Open corners (sound, possibly incomplete)
+None of these changes the CB or HT calculus; the engines consume the new
+helper names as ordinary concepts.
 
-- pattern / length facets (ranges containing them stay fully opaque),
-- dateTime/duration ordering and arithmetic,
-- float/double vs decimal cross-tower subsumption (values are compared
-  exactly, but the named types are not ordered against each other),
-- `DataComplementOf` / `DataIntersectionOf` / `DataUnionOf` structure,
-- n-ary `DataSomeValuesFrom` (multi-property comparisons),
-- `DataPropertyAssertion` under `KM_NOMINALS` (ABox datatype clashes are
-  covered by the separate `data_abox` precheck),
-- `HasKey`.
+## Open corners (status 2026-10-30)
+
+Handled exactly since v1.5.5 (sections above): data-property assertions of
+any number of literals, with or without counting; negative data-property
+assertions; `≥ n` / `≤ n` over finite ranges of known size (including IEEE
+intervals and bounded integer types); data-property assertions on the
+nominal routes (`KM_NOMINALS`), which receive the same clauses.
+
+Still sound but possibly incomplete, with the behaviour KM shows:
+
+- pattern / length facets: the range stays opaque; next to a data counting
+  restriction it is reported as not represented (`DROPPED`), otherwise it
+  is answered over the opaque abstraction (incomplete, not flagged);
+- dateTime/duration ordering and arithmetic: not flagged;
+- float/double vs decimal cross-tower subsumption: not flagged (values are
+  compared exactly, but the named types are not ordered against each other);
+- `DataComplementOf` / `DataIntersectionOf` / `DataUnionOf` structure beyond
+  the excluded middle and union covers: not flagged;
+- n-ary `DataSomeValuesFrom` (multi-property comparisons): unchanged from
+  v1.5.4;
+- `HasKey`: lowered to DL-safe rules (`has_key.rs`), whose data atoms fail
+  closed on the rule routes.
+
+The unflagged corners are the ones listed in v1.5.4; making each of them
+either exact or flagged is not part of this change.
