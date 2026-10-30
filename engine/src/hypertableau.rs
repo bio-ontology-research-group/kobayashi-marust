@@ -30427,7 +30427,7 @@ mod tests {
                     std::process::id()
                 ));
                 std::fs::write(&path, serde_json::to_string(document).unwrap()).unwrap();
-                let output = std::process::Command::new(&checker)
+                let output = crate::lean_checkers::CheckerCommand::new(&checker)
                     .arg(&path)
                     .output()
                     .expect("run the main Lean checker");
@@ -30907,7 +30907,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, &document).unwrap();
-            let accepted = std::process::Command::new(checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(checker)
                 .arg(&path)
                 .output()
                 .expect("run the main Lean checker on a finite SAT decision");
