@@ -605,9 +605,24 @@ theorem DecodedCertificate.residualValueAliveFast_eq (doc : DecodedCertificate n
   · simp [h]
   · simp [h]
 
+def DecodedCertificate.functionBindingsFast (doc : DecodedCertificate n)
+    (active : HashSet (Fin n)) (facts : HashSet (Fact (Fin n) (Fin n))) :
+    List (Nat × Fin n) :=
+  ((doc.witness_records.filter fun record =>
+      doc.residualValueAliveFast active facts record.witness).map
+      fun record => (record.function, record.witness)) ++
+    doc.residual_compilations.flatMap fun residual =>
+      residual.decoded.functionBindings
+
+theorem DecodedCertificate.functionBindingsFast_eq (doc : DecodedCertificate n) :
+    doc.functionBindingsFast (HashSet.ofList doc.active_concepts)
+        (HashSet.ofList doc.facts) = doc.functionBindings := by
+  simp only [DecodedCertificate.functionBindingsFast, DecodedCertificate.functionBindings,
+    DecodedCertificate.residualValueAliveFast_eq]
+
 def DecodedCertificate.checkFunctionBindingsFast (doc : DecodedCertificate n)
     (active : HashSet (Fin n)) (facts : HashSet (Fact (Fin n) (Fin n))) : Bool :=
-  let bindings := doc.functionBindings
+  let bindings := doc.functionBindingsFast active facts
   let table := indexBy (fun binding : Nat × Fin n => some binding.1) bindings
   bindings.all fun binding =>
     doc.residualValueAliveFast active facts binding.2 &&
@@ -618,7 +633,8 @@ theorem DecodedCertificate.checkFunctionBindingsFast_sound (doc : DecodedCertifi
       (HashSet.ofList doc.facts) = true) :
     doc.checkFunctionBindings = true := by
   rw [DecodedCertificate.checkFunctionBindings_iff]
-  simp only [DecodedCertificate.checkFunctionBindingsFast, List.all_eq_true,
+  simp only [DecodedCertificate.checkFunctionBindingsFast,
+    DecodedCertificate.functionBindingsFast_eq, List.all_eq_true,
     Bool.and_eq_true, decide_eq_true_eq] at h
   intro binding hbinding
   obtain ⟨halive, hconsistent⟩ := h binding hbinding
@@ -636,7 +652,7 @@ def DecodedCertificate.checkWitnessRecordsFast (doc : DecodedCertificate n)
     (active : HashSet (Fin n)) (facts : HashSet (Fact (Fin n) (Fin n)))
     (ontology : HashSet (Clause (Fin n) (Fin n))) : Bool :=
   doc.witness_records.all fun record =>
-    doc.residualValueAliveFast active facts record.witness &&
+    active.contains record.witness &&
       ontology.contains (.nf3 record.sub record.role record.witness) &&
       ontology.contains (.nf1 record.witness record.filler)
 

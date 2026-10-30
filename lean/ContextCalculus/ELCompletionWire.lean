@@ -897,9 +897,12 @@ def DecodedResidualCompilation.functionBindings {n variableCount : Nat}
     | .source _ => none
     | .function function witness => some (function, witness)
 
+/-- Records with a dead witness pin nothing: their Skolem clauses hold
+vacuously on the alive domain, whatever the function denotes. -/
 def DecodedCertificate.functionBindings {n : Nat}
     (doc : DecodedCertificate n) : List (Nat × Fin n) :=
-  (doc.witness_records.map fun record => (record.function, record.witness)) ++
+  ((doc.witness_records.filter fun record => doc.residualValueAlive record.witness).map
+      fun record => (record.function, record.witness)) ++
     doc.residual_compilations.flatMap fun residual =>
       residual.decoded.functionBindings
 
@@ -913,7 +916,7 @@ def DecodedCertificate.checkFunctionBindings {n : Nat}
 def DecodedCertificate.checkWitnessRecords {n : Nat}
     (doc : DecodedCertificate n) : Bool :=
   doc.witness_records.all fun record =>
-    doc.residualValueAlive record.witness &&
+    decide (record.witness ∈ doc.active_concepts) &&
       decide (Clause.nf3 record.sub record.role record.witness ∈ doc.ontology) &&
       decide (Clause.nf1 record.witness record.filler ∈ doc.ontology)
 
@@ -996,11 +999,14 @@ theorem DecodedCertificate.sharedPin_eq_of_binding {n : Nat}
 theorem DecodedCertificate.witnessBinding_mem {n : Nat}
     (doc : DecodedCertificate n)
     (record : CanonicalWitnessRecord (Fin n) (Fin n))
-    (hrecord : record ∈ doc.witness_records) :
+    (hrecord : record ∈ doc.witness_records)
+    (hactive : record.witness ∈ doc.active_concepts)
+    (halive : ¬doc.materialization.sub record.witness doc.bottom) :
     (record.function, record.witness) ∈ doc.functionBindings := by
   unfold DecodedCertificate.functionBindings
   apply List.mem_append_left
-  exact List.mem_map.mpr ⟨record, hrecord, rfl⟩
+  refine List.mem_map.mpr ⟨record, List.mem_filter.mpr ⟨hrecord, ?_⟩, rfl⟩
+  simp [DecodedCertificate.residualValueAlive, hactive, halive]
 
 theorem DecodedCertificate.residualBinding_mem {n : Nat}
     (doc : DecodedCertificate n)
@@ -1029,9 +1035,7 @@ theorem DecodedCertificate.checkWitnessRecords_valid {n : Nat}
     Bool.and_eq_true, decide_eq_true_eq] at hcheck
   have hvalid := hcheck record hrecord
   simp only [CanonicalWitnessRecord.MaterializedValid]
-  simp only [DecodedCertificate.residualValueAlive, Bool.and_eq_true,
-    decide_eq_true_eq] at hvalid
-  exact ⟨hvalid.1.1.1, hvalid.1.1.2, hvalid.1.2, hvalid.2⟩
+  exact ⟨hvalid.1.1, hvalid.1.2, hvalid.2⟩
 
 theorem DecodedCertificate.checkWitnessRecords_pinCompatible {n : Nat}
     (doc : DecodedCertificate n)
@@ -1044,7 +1048,7 @@ theorem DecodedCertificate.checkWitnessRecords_pinCompatible {n : Nat}
       (fun concept => concept ∈ doc.active_concepts) doc.materialization
       (doc.sharedPin htopActive htopAlive) := by
   intro hactive halive
-  have hbinding := doc.witnessBinding_mem record hrecord
+  have hbinding := doc.witnessBinding_mem record hrecord hactive halive
   simpa using doc.sharedPin_eq_of_binding htopActive htopAlive hbindings
     record.function record.witness hbinding
 
