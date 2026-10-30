@@ -493,3 +493,80 @@ the written argument of this section does not cover these pairs. A second
 limitation is cost: `checkSat` enumerates every assignment, so terminals
 with more than about 50 nodes and four-variable clauses did not finish in
 an hour.
+
+## 10. Global-decision and taxonomy wire fixes (2026-10-30)
+
+The checkers-on suite (`docs/CHECKERS-ON.md` section 3.2,
+`results/agents/2026-10-30/checkers-on-suite/README.md`) found that
+`ht-cert-check` rejected the HT global decision document (H1) and that one
+taxonomy test asserted a wire shape the producer no longer writes (T1). No
+answer was wrong: both paths sat behind test variables that no gate set, so
+the tests ran against `/bin/true` or skipped their Lean step.
+
+H1 has two causes on one path. With no body equality and no preprocessing
+(the common case) the HT source has no normalization records, so the
+published global document is the raw regular-decision envelope
+(`WireRegularDecisionCertificate`, version 1).
+
+* `lean/HTCertCheck.lean` routed a version-1 document to the
+  regular-decision decoder only when its evidence was `regular_sat` or
+  `finite_unsat`. A `finite_sat` envelope, which the producer prefers when a
+  finite model checks, fell through to `WireCertificate` and failed on
+  `node_count`. The dispatcher now also routes `finite_sat`. This is
+  executable dispatch only: `WireRegularDecisionCertificate` already decodes
+  `finite_sat` and `DecodedRegularDecision.check_sound` already covers it,
+  and `WireEvidence` has no constructor with any of the three names, so no
+  plain certificate can be misrouted. No theorem changed.
+* After the rejected finite candidate the producer tried the regular SAT
+  certificate. The source-bound ordinary global document wraps a raw
+  envelope in an explicit identity normalization, and the Rust wrapper looked
+  for an `ontology` field, which a regular certificate does not have
+  (`identity-normalized global decision has no ontology`). The wrapper
+  (`lean_identity_normalized_global_source` in `engine/src/hypertableau.rs`)
+  now lists the ontology Lean decodes from the certificate,
+  `FiniteRegularCertificate.ontology`: the role clauses through
+  `NormalizedRoleClause.toClause`, then the residual clauses, in that order.
+  The checker verifies every identity record against its target clause
+  (`decodeOntologyNormalization`), so a wrong list is rejected, not trusted;
+  the test `identity_normalized_regular_source_lists_the_lean_target_ontology`
+  checks that the source clause order (residual first) is rejected.
+
+Exactness. Neither change alters a search, a verdict or a published
+answer. The Lean change accepts documents whose proof object the existing
+sound decoder already handles; the Rust change emits the identity
+normalization the proved checker expects. Lean obligation: none new; the
+soundness of the accepted branch is `DecodedRegularDecision.check_sound`
+(and `WireSourceBoundOrdinaryGlobal.check_sound` for the source-bound
+document), both unchanged.
+
+T1. `lean_taxonomy_checker_accepts_a_materialized_equality_body` asserted
+`payload.plain.certificate`. Certified taxonomy publication now always
+writes the mixed version-2 matrix that
+`WireOrdinaryTaxonomyRunMatrix.terminalMatrix?` derives for every fragment,
+so the test asserts `payload.mixed.certificate` (version 2) and the absence
+of `plain`; `ht-taxonomy-cert-check` accepts the document.
+
+Gate. `lean/run-ht-certification-gate.sh` now exports
+`KM_HT_TEST_LEAN_CHECKER`, `KM_HT_TEST_LEAN_GLOBAL_CHECKER`,
+`KM_HT_TEST_LEAN_TAXONOMY_CHECKER`, `KM_HT_TEST_LEAN_CARDINALITY_CHECKER`,
+`KM_HT_TEST_NATIVE_ABOX_DECISION_CHECKER`, `KM_HT_TEST_PROJECTION_CHECKER`
+and `KM_HT_TEST_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER`, runs the lib
+tests that read them one at a time, and runs `tests/ht_taxonomy_certificate.rs`
+with one test thread (real checkers fail to start threads near the host's
+commit limit when many run at once). With the fixed checkers all 35 lib
+tests that read these variables pass; with the v1.5.4 `ht-cert-check`,
+`regular_decision_prefers_a_checked_finite_sat_model` fails with the
+`node_count` error. The gate passed end to end on this branch (97 test
+binaries or filters, 249 tests passed, 0 failed, 0 ignored; 12 min 53 s
+wall with the checker executables already built).
+
+Not covered here. When the source does have normalization records,
+`wrap_normalized_lean_certificate` wraps a regular SAT envelope with the
+records in source clause order, while Lean decodes the regular target with
+the role clauses first; a source that mixes role clauses with body-equality
+clauses would then, by reading the code, be rejected (fail closed). No test
+exercises that case.
+`KM_HT_GLOBAL=1` is a worker variable (consistency only); set on
+`km classify --route ht_general` it publishes an empty subsumption list (on
+a five-axiom ALC input the entailed `B ⊑ D` was missing), so it is not a way
+to reproduce H1 through the CLI and the orchestrator should refuse it.

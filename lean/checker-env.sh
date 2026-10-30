@@ -97,7 +97,8 @@ export KM_HT_LEAN_NATIVE_ABOX_TAXONOMY_CHECKER="$bin_root/ht-native-abox-taxonom
 export KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_CHECKER="$bin_root/ht-native-abox-taxonomy-cert-check"
 export KM_HT_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_CHECKER="$bin_root/ht-native-abox-cardinality-taxonomy-decision-check"
 export KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_CHECKER="$bin_root/ht-native-abox-cardinality-taxonomy-decision-check"
-# HT test variables no gate exports; without them the optional checks skip.
+# HT test variables that only run-ht-certification-gate.sh exports (since
+# 2026-10-30); without them the optional checks skip.
 export KM_HT_TEST_LEAN_CHECKER="$bin_root/ht-cert-check"
 export KM_HT_TEST_LEAN_TAXONOMY_CHECKER="$bin_root/ht-taxonomy-cert-check"
 export KM_HT_TEST_LEAN_GLOBAL_CHECKER="$bin_root/ht-cert-check"
