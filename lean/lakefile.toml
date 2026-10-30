@@ -437,5 +437,9 @@ name = "rules-inert-sort-release-check"
 root = "RulesInertSortReleaseCheck"
 
 [[lean_exe]]
+name = "rules-cert-check"
+root = "RulesCertCheck"
+
+[[lean_exe]]
 name = "ht-subset-unravelling-check"
 root = "HTSubsetUnravellingCheck"

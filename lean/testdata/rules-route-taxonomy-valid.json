@@ -1,0 +1,192 @@
+{
+ "version": 1,
+ "oguard": 0,
+ "nominals": [
+  1
+ ],
+ "ontology": [
+  {
+   "body": [
+    {
+     "concept": {
+      "literal": {
+       "concept": 1,
+       "neg": false
+      },
+      "node": 0
+     }
+    }
+   ],
+   "head": [
+    {
+     "concept": {
+      "literal": {
+       "concept": 2,
+       "neg": false
+      },
+      "node": 0
+     }
+    }
+   ]
+  },
+  {
+   "body": [
+    {
+     "concept": {
+      "literal": {
+       "concept": 1,
+       "neg": false
+      },
+      "node": 0
+     }
+    }
+   ],
+   "head": [
+    {
+     "concept": {
+      "literal": {
+       "concept": 0,
+       "neg": false
+      },
+      "node": 0
+     }
+    }
+   ]
+  },
+  {
+   "body": [
+    {
+     "concept": {
+      "literal": {
+       "concept": 2,
+       "neg": false
+      },
+      "node": 0
+     }
+    },
+    {
+     "concept": {
+      "literal": {
+       "concept": 0,
+       "neg": false
+      },
+      "node": 0
+     }
+    }
+   ],
+   "head": [
+    {
+     "concept": {
+      "literal": {
+       "concept": 3,
+       "neg": false
+      },
+      "node": 0
+     }
+    }
+   ]
+  },
+  {
+   "body": [
+    {
+     "concept": {
+      "literal": {
+       "concept": 4,
+       "neg": false
+      },
+      "node": 0
+     }
+    }
+   ],
+   "head": [
+    {
+     "concept": {
+      "literal": {
+       "concept": 3,
+       "neg": false
+      },
+      "node": 0
+     }
+    },
+    {
+     "concept": {
+      "literal": {
+       "concept": 2,
+       "neg": false
+      },
+      "node": 0
+     }
+    }
+   ]
+  }
+ ],
+ "queries": [
+  2,
+  3,
+  4
+ ],
+ "consistent": true,
+ "unsatisfiable": [],
+ "subsumptions": [],
+ "premise_subsumptions": [],
+ "premise_unsatisfiable": [],
+ "refutations": [],
+ "models": [
+  {
+   "node_count": 4,
+   "labels": [
+    [
+     1,
+     2,
+     0,
+     3
+    ],
+    [
+     2
+    ],
+    [
+     4,
+     3
+    ],
+    [
+     4,
+     2
+    ]
+   ],
+   "succ": [
+    [],
+    [],
+    [],
+    []
+   ],
+   "pred": [
+    [],
+    [],
+    [],
+    []
+   ],
+   "witnesses": [
+    [
+     2,
+     1
+    ],
+    [
+     3,
+     0
+    ],
+    [
+     3,
+     2
+    ],
+    [
+     4,
+     2
+    ],
+    [
+     4,
+     3
+    ]
+   ]
+  }
+ ]
+}
