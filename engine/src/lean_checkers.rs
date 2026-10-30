@@ -507,11 +507,10 @@ pub fn run(family: &str, checker: &Path, certificate: &str, document: &Path) -> 
 }
 
 fn invoke(checker: &Path, document: &Path) -> Outcome {
-    match std::process::Command::new(checker)
+    match CheckerCommand::new(checker)
         .arg(document)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped())
         .output()
     {
         Ok(output) => {
@@ -529,6 +528,141 @@ fn invoke(checker: &Path, document: &Path) -> Outcome {
         }
         Err(error) => Outcome::CannotCheck(format!("cannot execute checker: {error}")),
     }
+}
+
+// ---------------------------------------------------------------------------
+// Process start-up of a Lean checker
+// ---------------------------------------------------------------------------
+//
+// A Lean executable starts its runtime threads before any Lean code runs: the
+// thread that runs `main` (stack `LEAN_STACK_SIZE_KB`, default 1 GiB in
+// v4.30) and a second runtime thread with a fixed 1 GiB stack. Under strict
+// commit accounting (`vm.overcommit_memory = 2`, the workstation `ws`) a
+// thread stack is charged in full when the thread starts, so when other
+// processes hold most of the commit limit the runtime throws
+// `lean::exception: failed to create thread` and the checker aborts (SIGABRT,
+// exit 134) without reading its input. The verdict never depends on that
+// abort; only the start does.
+//
+// Every checker process KM starts goes through [`CheckerCommand`]: the `main`
+// thread gets a 256 MiB stack unless the caller set `LEAN_STACK_SIZE_KB`
+// (halving the commit charge), and the start-up failure, recognised by its
+// signal and message, is retried with growing pauses (about 5 s in total).
+// Every other exit, including any other abort, is returned unchanged, so a
+// caller that requires success still fails closed.
+
+/// Stack of the thread that runs a checker's `main`, in KiB.
+const MAIN_STACK_KB: &str = "262144";
+
+/// Pauses between retries of a checker whose runtime could not start a
+/// thread (milliseconds).
+const RETRY_PAUSES_MS: [u64; 9] = [10, 20, 40, 80, 160, 320, 640, 1280, 2560];
+
+fn startup_thread_failure(output: &std::process::Output) -> bool {
+    use std::os::unix::process::ExitStatusExt;
+    output.status.signal() == Some(6)
+        && String::from_utf8_lossy(&output.stderr).contains("failed to create thread")
+}
+
+/// A `std::process::Command` for a Lean checker with the start-up handling
+/// described above. It mirrors the `Command` methods the call sites use, so
+/// a call site differs from a plain `Command` only in its constructor.
+/// `stderr` is always captured (the start-up failure is recognised from it);
+/// [`CheckerCommand::status`] forwards it to this process's stderr unless the
+/// caller redirected it.
+pub struct CheckerCommand {
+    command: std::process::Command,
+    stdout_set: bool,
+    stderr_set: bool,
+}
+
+impl CheckerCommand {
+    pub fn new<S: AsRef<std::ffi::OsStr>>(checker: S) -> Self {
+        let mut command = std::process::Command::new(checker);
+        if std::env::var_os("LEAN_STACK_SIZE_KB").is_none() {
+            command.env("LEAN_STACK_SIZE_KB", MAIN_STACK_KB);
+        }
+        Self {
+            command,
+            stdout_set: false,
+            stderr_set: false,
+        }
+    }
+
+    pub fn arg<S: AsRef<std::ffi::OsStr>>(&mut self, arg: S) -> &mut Self {
+        self.command.arg(arg);
+        self
+    }
+
+    pub fn args<I, S>(&mut self, args: I) -> &mut Self
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<std::ffi::OsStr>,
+    {
+        self.command.args(args);
+        self
+    }
+
+    pub fn env<K: AsRef<std::ffi::OsStr>, V: AsRef<std::ffi::OsStr>>(
+        &mut self,
+        key: K,
+        value: V,
+    ) -> &mut Self {
+        self.command.env(key, value);
+        self
+    }
+
+    pub fn stdin<T: Into<std::process::Stdio>>(&mut self, config: T) -> &mut Self {
+        self.command.stdin(config);
+        self
+    }
+
+    pub fn stdout<T: Into<std::process::Stdio>>(&mut self, config: T) -> &mut Self {
+        self.command.stdout(config);
+        self.stdout_set = true;
+        self
+    }
+
+    /// Recorded only: stderr is always captured. A caller that redirects it
+    /// does not get it forwarded by [`CheckerCommand::status`].
+    pub fn stderr<T: Into<std::process::Stdio>>(&mut self, _config: T) -> &mut Self {
+        self.stderr_set = true;
+        self
+    }
+
+    /// Run to completion and collect the output (stdout is captured unless
+    /// the caller configured it), retrying a start-up thread failure.
+    pub fn output(&mut self) -> std::io::Result<std::process::Output> {
+        self.command.stderr(std::process::Stdio::piped());
+        let mut attempt = 0;
+        loop {
+            let output = self.command.output()?;
+            if !startup_thread_failure(&output) || attempt == RETRY_PAUSES_MS.len() {
+                return Ok(output);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(RETRY_PAUSES_MS[attempt]));
+            attempt += 1;
+        }
+    }
+
+    /// Run to completion and return the exit status (stdout inherited unless
+    /// the caller configured it), retrying a start-up thread failure.
+    pub fn status(&mut self) -> std::io::Result<std::process::ExitStatus> {
+        if !self.stdout_set {
+            self.command.stdout(std::process::Stdio::inherit());
+        }
+        let output = self.output()?;
+        if !self.stderr_set && !output.stderr.is_empty() {
+            use std::io::Write;
+            let _ = std::io::stderr().write_all(&output.stderr);
+        }
+        Ok(output.status)
+    }
+}
+
+/// Run `checker DOCUMENT` and collect its output.
+pub fn run_document(checker: &Path, document: &Path) -> std::io::Result<std::process::Output> {
+    CheckerCommand::new(checker).arg(document).output()
 }
 
 /// Executable path for `name` when it exists in the checker directory.
@@ -859,5 +993,53 @@ mod tests {
             Outcome::CannotCheck(_)
         ));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod checker_start_tests {
+    use super::*;
+
+    #[test]
+    fn a_start_up_thread_failure_is_recognised_and_other_aborts_are_not() {
+        use std::os::unix::process::ExitStatusExt;
+        use std::process::Output;
+        let abort = |stderr: &str| Output {
+            status: std::process::ExitStatus::from_raw(6),
+            stdout: Vec::new(),
+            stderr: stderr.as_bytes().to_vec(),
+        };
+        assert!(startup_thread_failure(&abort(
+            "libc++abi: terminating due to uncaught exception of type lean::exception: failed to create thread"
+        )));
+        assert!(!startup_thread_failure(&abort("Stack overflow detected. Aborting.")));
+        let rejected = Output {
+            status: std::process::ExitStatus::from_raw(1 << 8),
+            stdout: Vec::new(),
+            stderr: b"failed to create thread".to_vec(),
+        };
+        assert!(!startup_thread_failure(&rejected));
+    }
+
+    #[test]
+    fn a_checker_command_keeps_exit_codes_and_sets_the_main_stack() {
+        let mut command = CheckerCommand::new("/bin/sh");
+        let output = command
+            .arg("-c")
+            .arg("echo $LEAN_STACK_SIZE_KB; echo rejected >&2; exit 1")
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1));
+        if std::env::var_os("LEAN_STACK_SIZE_KB").is_none() {
+            assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), MAIN_STACK_KB);
+        }
+        assert_eq!(String::from_utf8_lossy(&output.stderr).trim(), "rejected");
+        let status = CheckerCommand::new("/bin/sh")
+            .args(["-c", "exit 0"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .unwrap();
+        assert!(status.success());
     }
 }

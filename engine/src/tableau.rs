@@ -11955,7 +11955,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, &document).unwrap();
-            let output = std::process::Command::new(checker)
+            let output = crate::lean_checkers::CheckerCommand::new(checker)
                 .arg(&path)
                 .output()
                 .expect("run native Lean checker on raw role-chain refutation");

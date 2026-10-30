@@ -12883,7 +12883,7 @@ fn classify_inner_mode(
     // checker's time grow with the closure. Above the budget the answer is
     // published unchecked and recorded as `cannot_check`; acceptance of the
     // certificates that are produced proves exactly what it did before.
-    let mut over_budget = false;
+    let mut skip_certificate = false;
     if lean_cert_requested && !lean_cert_required && lean_cert_path.is_none() {
         if let Some(budget) = crate::lean_checkers::max_elc_facts() {
             let facts: u64 = st
@@ -12901,11 +12901,30 @@ fn classify_inner_mode(
                         crate::lean_checkers::MAX_ELC_FACTS_ENV
                     ),
                 );
-                over_budget = true;
+                skip_certificate = true;
             }
         }
     }
-    if lean_cert_requested && !over_budget {
+    // The Lean checker evaluates every compiled residual clause on the same
+    // finite canonical model as `check_certificate`. When the residual does
+    // not hold there, no v5 certificate can be accepted; emitting one would
+    // turn an ELC decline into a fail-closed rejection. The worker then
+    // proceeds exactly as an unchecked worker (decline in Check mode, repair
+    // in Repair mode) and records `cannot_check`.
+    if lean_cert_requested
+        && !skip_certificate
+        && !rcs.is_empty()
+        && !st.sub_super[TOP as usize].contains(&BOTTOM)
+        && !check_certificate(&rcs, &nfs, &st, debug)
+    {
+        crate::lean_checkers::record_cannot_check(
+            "elc",
+            "elc-publication",
+            "residual clauses do not hold in the EL canonical model; no ELC certificate applies",
+        );
+        skip_certificate = true;
+    }
+    if lean_cert_requested && !skip_certificate {
         let source_clauses = certificate_clauses
             .as_deref()
             .expect("requested certificate retains source clauses");
@@ -13738,7 +13757,7 @@ mod tests {
         ));
         let run_checker = |payload: &LeanElCertificate| {
             std::fs::write(&path, serde_json::to_vec(payload).unwrap()).unwrap();
-            std::process::Command::new(&checker)
+            crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -14632,7 +14651,7 @@ mod tests {
             std::thread::current().name().unwrap_or("test").replace("::", "-")
         ));
         std::fs::write(&path, serde_json::to_vec(certificate).unwrap()).unwrap();
-        let ok = std::process::Command::new(checker)
+        let ok = crate::lean_checkers::CheckerCommand::new(checker)
             .arg(&path)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -14815,7 +14834,7 @@ mod tests {
         ));
         let run = |payload: &LeanResidualCompilation| {
             std::fs::write(&path, serde_json::to_vec(payload).unwrap()).unwrap();
-            std::process::Command::new(&checker)
+            crate::lean_checkers::CheckerCommand::new(&checker)
                 .args(["--residual", &interner.len().to_string()])
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
@@ -14828,7 +14847,7 @@ mod tests {
 
         std::fs::write(&path, serde_json::to_vec(&certificate).unwrap()).unwrap();
         assert!(
-            std::process::Command::new(&checker)
+            crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())

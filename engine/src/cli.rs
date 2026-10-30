@@ -5815,7 +5815,7 @@ mod cb_derivation_candidate_tests {
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join(format!("native-pred-send-{}.json", std::process::id()));
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
-        let status = std::process::Command::new(checker)
+        let status = crate::lean_checkers::CheckerCommand::new(checker)
             .arg(&path)
             .status()
             .unwrap();
@@ -5967,7 +5967,7 @@ mod cb_derivation_candidate_tests {
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join(format!("native-root-pred-send-{}.json", std::process::id()));
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
-        let status = std::process::Command::new(checker)
+        let status = crate::lean_checkers::CheckerCommand::new(checker)
             .arg(&path)
             .status()
             .unwrap();
@@ -5988,7 +5988,7 @@ mod cb_derivation_candidate_tests {
             let root_candidate = cb_source_root_pred_closure_candidate(&source, &live, &evidence)
                 .expect("construct source-bound root Pred candidate");
             std::fs::write(&path, serde_json::to_vec(&root_candidate).unwrap()).unwrap();
-            let root_status = std::process::Command::new(root_checker)
+            let root_status = crate::lean_checkers::CheckerCommand::new(root_checker)
                 .arg(&path)
                 .status()
                 .unwrap();
@@ -6005,7 +6005,7 @@ mod cb_derivation_candidate_tests {
                     "production_closure": root_candidate,
                 });
                 std::fs::write(&path, serde_json::to_vec(&canonical_candidate).unwrap()).unwrap();
-                let canonical_status = std::process::Command::new(canonical_checker)
+                let canonical_status = crate::lean_checkers::CheckerCommand::new(canonical_checker)
                     .arg(&path)
                     .status()
                     .unwrap();
@@ -6367,7 +6367,7 @@ mod cb_derivation_candidate_tests {
         );
         std::fs::write(&proof_path, serde_json::to_vec(&context_document).unwrap()).unwrap();
         assert!(
-            std::process::Command::new(&context_checker)
+            crate::lean_checkers::CheckerCommand::new(&context_checker)
                 .arg(&proof_path)
                 .status()
                 .unwrap()
@@ -6383,7 +6383,7 @@ mod cb_derivation_candidate_tests {
         )
         .unwrap();
         assert!(
-            std::process::Command::new(&production_checker)
+            crate::lean_checkers::CheckerCommand::new(&production_checker)
                 .arg(&production_path)
                 .status()
                 .unwrap()
@@ -6398,7 +6398,7 @@ mod cb_derivation_candidate_tests {
         )
         .unwrap();
         assert!(
-            !std::process::Command::new(&production_checker)
+            !crate::lean_checkers::CheckerCommand::new(&production_checker)
                 .arg(&production_path)
                 .status()
                 .unwrap()
@@ -6406,7 +6406,7 @@ mod cb_derivation_candidate_tests {
             "Lean must reject a matrix cell redirected to the wrong shared node"
         );
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
-        let accepted = std::process::Command::new(&checker)
+        let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .status()
             .unwrap()
@@ -6428,7 +6428,7 @@ mod cb_derivation_candidate_tests {
             serde_json::json!({"regularArbitraryChain": {"model": regular}});
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
         assert!(
-            std::process::Command::new(&checker)
+            crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .status()
                 .unwrap()
@@ -6438,7 +6438,7 @@ mod cb_derivation_candidate_tests {
         let mut forged = candidate;
         forged["taxonomy"]["published"][2] = serde_json::json!(true);
         std::fs::write(&path, serde_json::to_vec(&forged).unwrap()).unwrap();
-        let rejected = !std::process::Command::new(checker)
+        let rejected = !crate::lean_checkers::CheckerCommand::new(checker)
             .arg(&path)
             .status()
             .unwrap()
@@ -6517,7 +6517,7 @@ mod cb_derivation_candidate_tests {
         ));
         let check = |value: &serde_json::Value| {
             std::fs::write(&path, serde_json::to_vec(value).unwrap()).unwrap();
-            std::process::Command::new(&checker)
+            crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -6817,7 +6817,7 @@ mod cb_derivation_candidate_tests {
             std::process::id()
         ));
         std::fs::write(&path, serde_json::to_vec(&document).unwrap()).unwrap();
-        let output = std::process::Command::new(&checker)
+        let output = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .output()
             .expect("run the typed regular Lean checker");
@@ -6832,7 +6832,7 @@ mod cb_derivation_candidate_tests {
         document["source"]["function_allocation"]["sparse_allocation"][0]["target"] =
             serde_json::json!(production_count);
         std::fs::write(&path, serde_json::to_vec(&document).unwrap()).unwrap();
-        let forged = std::process::Command::new(&checker)
+        let forged = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .output()
             .expect("run the typed regular Lean checker on forged allocation");
@@ -7381,7 +7381,7 @@ mod cb_derivation_candidate_tests {
             .join(format!("cb-source-live-pred-{}.json", std::process::id()));
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
-        let status = std::process::Command::new(&checker)
+        let status = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .status()
             .unwrap();
@@ -7393,7 +7393,7 @@ mod cb_derivation_candidate_tests {
         let mut pending = candidate.clone();
         pending["pending_messages"] = serde_json::json!(1);
         std::fs::write(&path, serde_json::to_vec(&pending).unwrap()).unwrap();
-        let pending_status = std::process::Command::new(&checker)
+        let pending_status = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .status()
             .unwrap();
@@ -7405,7 +7405,7 @@ mod cb_derivation_candidate_tests {
         let mut dirty = candidate.clone();
         dirty["contexts"][0]["dirty"] = serde_json::json!(true);
         std::fs::write(&path, serde_json::to_vec(&dirty).unwrap()).unwrap();
-        let dirty_status = std::process::Command::new(&checker)
+        let dirty_status = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .status()
             .unwrap();
@@ -7418,7 +7418,7 @@ mod cb_derivation_candidate_tests {
         missing_pool_entry["contexts"][0]["pred_pool_ids"] = serde_json::json!([]);
         missing_pool_entry["contexts"][0]["pred_hwm"] = serde_json::json!(0);
         std::fs::write(&path, serde_json::to_vec(&missing_pool_entry).unwrap()).unwrap();
-        let missing_pool_status = std::process::Command::new(&checker)
+        let missing_pool_status = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .status()
             .unwrap();
@@ -7430,7 +7430,7 @@ mod cb_derivation_candidate_tests {
         if let Some(local_checker) = std::env::var_os("KM_CB_TEST_SOURCE_LOCAL_CLOSURE_CHECKER") {
             let local = serde_json::json!({"version": 1, "live": candidate});
             std::fs::write(&path, serde_json::to_vec(&local).unwrap()).unwrap();
-            let local_status = std::process::Command::new(local_checker)
+            let local_status = crate::lean_checkers::CheckerCommand::new(local_checker)
                 .arg(&path)
                 .status()
                 .unwrap();
@@ -7444,7 +7444,7 @@ mod cb_derivation_candidate_tests {
             let hyper = cb_source_hyper_closure_candidate(&source, &live, &evidence)
                 .expect("construct source-bound Hyper candidate");
             std::fs::write(&path, serde_json::to_vec(&hyper).unwrap()).unwrap();
-            let hyper_status = std::process::Command::new(hyper_checker)
+            let hyper_status = crate::lean_checkers::CheckerCommand::new(hyper_checker)
                 .arg(&path)
                 .status()
                 .unwrap();
@@ -7460,7 +7460,7 @@ mod cb_derivation_candidate_tests {
                 .unwrap()
                 .push(first_term);
             std::fs::write(&path, serde_json::to_vec(&forged).unwrap()).unwrap();
-            let forged_status = std::process::Command::new(
+            let forged_status = crate::lean_checkers::CheckerCommand::new(
                 std::env::var_os("KM_CB_TEST_SOURCE_HYPER_CLOSURE_CHECKER").unwrap(),
             )
             .arg(&path)
@@ -7477,7 +7477,7 @@ mod cb_derivation_candidate_tests {
                 .expect("construct source-bound Join-3 parent candidate");
             let join3 = serde_json::json!({"version": 1, "hyper_closure": hyper});
             std::fs::write(&path, serde_json::to_vec(&join3).unwrap()).unwrap();
-            let join3_status = std::process::Command::new(join3_checker)
+            let join3_status = crate::lean_checkers::CheckerCommand::new(join3_checker)
                 .arg(&path)
                 .status()
                 .unwrap();
@@ -7491,7 +7491,7 @@ mod cb_derivation_candidate_tests {
             let succ = cb_source_succ_closure_candidate(&source, &live, &evidence)
                 .expect("construct source-bound Succ candidate");
             std::fs::write(&path, serde_json::to_vec(&succ).unwrap()).unwrap();
-            let succ_status = std::process::Command::new(succ_checker)
+            let succ_status = crate::lean_checkers::CheckerCommand::new(succ_checker)
                 .arg(&path)
                 .status()
                 .unwrap();
@@ -7506,7 +7506,7 @@ mod cb_derivation_candidate_tests {
                 .expect("construct source-bound Eq parent candidate");
             let eq = serde_json::json!({"version": 1, "succ_closure": succ});
             std::fs::write(&path, serde_json::to_vec(&eq).unwrap()).unwrap();
-            let eq_status = std::process::Command::new(eq_checker)
+            let eq_status = crate::lean_checkers::CheckerCommand::new(eq_checker)
                 .arg(&path)
                 .status()
                 .unwrap();
@@ -7520,7 +7520,7 @@ mod cb_derivation_candidate_tests {
                 .expect("construct source-bound ordinary Pred parent candidate");
             let pred = serde_json::json!({"version": 1, "eq_closure": eq});
             std::fs::write(&path, serde_json::to_vec(&pred).unwrap()).unwrap();
-            let pred_status = std::process::Command::new(pred_checker)
+            let pred_status = crate::lean_checkers::CheckerCommand::new(pred_checker)
                 .arg(&path)
                 .status()
                 .unwrap();
@@ -7533,7 +7533,7 @@ mod cb_derivation_candidate_tests {
         let mut forged = candidate;
         forged["insertion_evidence"][1]["sender_event"]["event_index"] = serde_json::json!(1);
         std::fs::write(&path, serde_json::to_vec(&forged).unwrap()).unwrap();
-        let rejected = !std::process::Command::new(&checker)
+        let rejected = !crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .status()
             .unwrap()
@@ -7654,7 +7654,7 @@ mod cb_derivation_candidate_tests {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, serde_json::to_vec(&document).unwrap()).unwrap();
         assert!(
-            std::process::Command::new(checker)
+            crate::lean_checkers::CheckerCommand::new(checker)
                 .arg(&path)
                 .status()
                 .unwrap()
