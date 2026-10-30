@@ -601,3 +601,52 @@ with the typed-nominal bridge, which needs as long; the merged base with the
 R2/R3 fix of 7c238e52 answered 2 of 4 (205 s). The remedy is in the CB input,
 not in the ordering: with it 9800 answers in 14 s on 4 of 4 runs
 (docs/NOMINALS-CB.md, same subsection).
+
+## 10. The data-sort marker in the order, and the stop at a global refutation (2026-10-30, agent `data-values-2`)
+
+ore_ont_7610 (548 class and 1,058 property assertions, 613 data
+assertions, inconsistent: every element needs a `has_factor` successor,
+which is a `Disorder` and an `Organism ⊔ Material` at once) ran past 600 s
+on the nominal CB routes; v1.5.3 answered it in 57 s because its frontend
+did not yet emit the sort encoding (NOMINALS-CB.md section 6) for an input
+with data properties but no data value. Two changes:
+
+**Marker order.** Internal concepts are totally ordered by concept id in
+the Sequoia regimes, and ids follow first occurrence in the clause stream.
+`__data__` occurred early, so in `→ C(t) ∨ D(t)` the definer `C` was
+maximal and `D(t)` rode along in every consequence of `C(t)`: the ground
+context held 46,944 clauses after seeding, all with a `D(o)` literal that
+no rule could remove, and every r-Pred arrival paid backward subsumption
+against them. `reasoner::Builder::intern_data_sort_last` now gives the
+marker the largest id (the relative order of every other concept is
+unchanged) when the clause set mentions at least 64 individuals. On an
+individual `o`, pinned to the object sort, Hyper then resolves the maximal
+`D(o)` against `A(o)` and `A ⊓ D ⊑ ⊥` at once, and `→ C(o)` subsumes the
+relativized fact. Exactness: R1 asks for *a* total order on internal
+concepts above the named ones; the ground ordered-completeness theorem
+(`CompletenessOrdered.lean`, `ordered_completeness`) and the exchange
+theorem (`CompletenessExchange.lean`) are stated for an arbitrary
+`LinearOrder`, R2 filters ground atoms by their individuals and not by
+concept, and the id order it replaces is itself an artefact of clause
+order. The Lean terminal-state model (`CBSourceHyperClosure.lean`,
+`sameTermConceptLe`) reads the order from the same ids, so certificates
+stay consistent with it. The threshold is a speed choice between exact
+orders: the generated seed `m2313` (three individuals) takes 0.2 s with the
+first-occurrence order and 47 s with the marker last, and ore_ont_7610
+does not finish in 400 s without the change.
+
+**Stop at a global refutation.** Once the ground context, or the root
+context of `⊤`, has worked off the empty clause, the ontology is
+inconsistent and the published answer is the fixed inconsistent one
+(empty taxonomy). Saturation is monotone and the empty clause subsumes
+every clause, so `inconsistent()` cannot become false again; the remaining
+messages only add clauses elsewhere. `Engine::set_stop_on_global_refutation`
+ends `run_for` there; `Reasoner::saturate` enables it on its one-shot
+paths and keeps it off for an engine retained for a CB certificate
+(`KM_CB_LIVE_STATE`, `KM_CB_LEAN_REQUIRED`), which must stay saturated. On
+ore_ont_7610 the ground context refutes after about an eighth of the
+message work. No Lean obligation: the answer is the one the full fixpoint
+gives.
+
+ore_ont_7610: timeout at 600 s (v1.5.4, v1.5.5 before) → 38 to 63 s on the
+loaded workstation, inconsistent, as Konclude, HermiT, Openllet and JFact.
