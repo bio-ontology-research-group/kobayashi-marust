@@ -1,0 +1,130 @@
+m2000	a non-datatype axiom rejects a blank data node
+m2002	a complex datatype subclass axiom can fire on a data node
+m2009	a datatype source axiom is outside the role-local fragment
+m2015	a non-datatype axiom rejects a blank data node
+m2023	a nominal assertion uses a datatype outside a positive existential
+m2025	source mode is disabled or a datatype symbol is not in the exact atomic map
+m2029	a non-datatype axiom rejects a blank data node
+m2030	source mode is disabled or a datatype symbol is not in the exact atomic map
+m2031	a complex datatype subclass axiom can fire on a data node
+m2032	a datatype-bearing axiom uses a data role with an object filler or unsupported bound
+m2035	a non-datatype axiom rejects a blank data node
+m2039	a non-datatype axiom rejects a blank data node
+m2040	a non-datatype axiom rejects a blank data node
+m2044	a complex datatype subclass axiom can fire on a data node
+m2046	a datatype source axiom is outside the role-local fragment
+m2047	source mode is disabled or a datatype symbol is not in the exact atomic map
+m2050	a datatype source axiom is outside the role-local fragment
+m2058	a non-datatype axiom rejects a blank data node
+m2060	a complex datatype subclass axiom can fire on a data node
+m2063	a datatype source axiom is outside the role-local fragment
+m2065	source mode is disabled or a datatype symbol is not in the exact atomic map
+m2066	a complex datatype subclass axiom can fire on a data node
+m2068	a non-datatype axiom rejects a blank data node
+m2069	a complex datatype subclass axiom can fire on a data node
+m2070	a non-datatype axiom rejects a blank data node
+m2073	source mode is disabled or a datatype symbol is not in the exact atomic map
+m2082	a complex datatype subclass axiom can fire on a data node
+m2085	a complex datatype subclass axiom can fire on a data node
+m2086	a complex datatype subclass axiom can fire on a data node
+m2091	source mode is disabled or a datatype symbol is not in the exact atomic map
+m2095	a datatype source axiom is outside the role-local fragment
+m2099	a non-datatype axiom rejects a blank data node
+m2100	source mode is disabled or a datatype symbol is not in the exact atomic map
+m2101	a datatype source axiom is outside the role-local fragment
+m2102	a complex datatype subclass axiom can fire on a data node
+m2104	a datatype source axiom is outside the role-local fragment
+m2117	a complex datatype subclass axiom can fire on a data node
+m2118	a non-datatype axiom rejects a blank data node
+m2123	a complex datatype subclass axiom can fire on a data node
+m2124	a complex datatype subclass axiom can fire on a data node
+m2128	a non-datatype axiom rejects a blank data node
+m2131	a complex datatype subclass axiom can fire on a data node
+m2132	a complex datatype subclass axiom can fire on a data node
+m2138	source mode is disabled or a datatype symbol is not in the exact atomic map
+m2139	a non-datatype axiom rejects a blank data node
+m2142	a datatype source axiom is outside the role-local fragment
+m2145	a datatype source axiom is outside the role-local fragment
+m2146	a datatype source axiom is outside the role-local fragment
+m2149	a complex datatype subclass axiom can fire on a data node
+m2150	a complex datatype subclass axiom can fire on a data node
+m2157	source mode is disabled or a datatype symbol is not in the exact atomic map
+m2158	a datatype source axiom is outside the role-local fragment
+m2163	a datatype-bearing axiom uses a data role with an object filler or unsupported bound
+m2165	a datatype source axiom is outside the role-local fragment
+m2167	a datatype source axiom is outside the role-local fragment
+m2169	a nominal assertion contains a datatype expression
+m2172	a non-datatype axiom rejects a blank data node
+m2173	a datatype source axiom is outside the role-local fragment
+m2175	a non-datatype axiom rejects a blank data node
+m2177	a complex datatype subclass axiom can fire on a data node
+m2183	a datatype source axiom is outside the role-local fragment
+m2190	a complex datatype subclass axiom can fire on a data node
+m2191	source mode is disabled or a datatype symbol is not in the exact atomic map
+m2193	a complex datatype subclass axiom can fire on a data node
+m2195	source mode is disabled or a datatype symbol is not in the exact atomic map
+m2198	a datatype source axiom is outside the role-local fragment
+m2199	a datatype source axiom is outside the role-local fragment
+m2201	a datatype source axiom is outside the role-local fragment
+m2205	source mode is disabled or a datatype symbol is not in the exact atomic map
+m2215	a datatype source axiom is outside the role-local fragment
+m2216	a datatype source axiom is outside the role-local fragment
+m2221	a complex datatype subclass axiom can fire on a data node
+m2227	source mode is disabled or a datatype symbol is not in the exact atomic map
+m2228	a complex datatype subclass axiom can fire on a data node
+m2230	source mode is disabled or a datatype symbol is not in the exact atomic map
+m2232	a non-datatype axiom rejects a blank data node
+m2234	a complex datatype subclass axiom can fire on a data node
+m2237	a non-datatype axiom rejects a blank data node
+m2239	a complex datatype subclass axiom can fire on a data node
+m2240	a datatype source axiom is outside the role-local fragment
+m2242	a complex datatype subclass axiom can fire on a data node
+m2243	a non-datatype axiom rejects a blank data node
+m2244	a datatype source axiom is outside the role-local fragment
+m2250	a complex datatype subclass axiom can fire on a data node
+m2252	source mode is disabled or a datatype symbol is not in the exact atomic map
+m2255	a non-datatype axiom rejects a blank data node
+m2263	a range contains an unsupported datatype restriction
+m2270	a datatype-bearing axiom uses a data role with an object filler or unsupported bound
+m2271	a datatype source axiom is outside the role-local fragment
+m2276	a data role occurs outside an exact datatype or object-domain axiom; source_axiom=1 value=
+m2282	a datatype source axiom is outside the role-local fragment
+m2285	a complex datatype subclass axiom can fire on a data node
+m2287	a datatype source axiom is outside the role-local fragment
+m2288	a nominal assertion contains a datatype expression
+m2293	a datatype source axiom is outside the role-local fragment
+m2295	a datatype source axiom is outside the role-local fragment
+m2296	
+m2298	a complex datatype subclass axiom can fire on a data node
+m2300	a datatype source axiom is outside the role-local fragment
+m2303	a non-datatype axiom rejects a blank data node
+m2305	a datatype source axiom is outside the role-local fragment
+m2311	source mode is disabled or a datatype symbol is not in the exact atomic map
+m2315	a non-datatype axiom rejects a blank data node
+m2316	a non-datatype axiom rejects a blank data node
+m2319	a complex datatype subclass axiom can fire on a data node
+m2320	a datatype source axiom is outside the role-local fragment
+m2321	a datatype source axiom is outside the role-local fragment
+m2331	source mode is disabled or a datatype symbol is not in the exact atomic map
+m2336	source mode is disabled or a datatype symbol is not in the exact atomic map
+m2339	a datatype source axiom is outside the role-local fragment
+m2341	a datatype source axiom is outside the role-local fragment
+m2342	a nominal assertion uses a datatype outside a positive existential
+m2345	source mode is disabled or a datatype symbol is not in the exact atomic map
+m2349	source mode is disabled or a datatype symbol is not in the exact atomic map
+m2354	a complex datatype subclass axiom can fire on a data node
+m2355	a non-datatype axiom rejects a blank data node
+m2360	a non-datatype axiom rejects a blank data node
+m2361	a complex datatype subclass axiom can fire on a data node
+m2363	a complex datatype subclass axiom can fire on a data node
+m2367	a datatype source axiom is outside the role-local fragment
+m2369	a datatype-bearing axiom uses a data role with an object filler or unsupported bound
+m2370	a datatype source axiom is outside the role-local fragment
+m2371	source mode is disabled or a datatype symbol is not in the exact atomic map
+m2376	a nominal assertion uses a datatype outside a positive existential
+m2386	a datatype source axiom is outside the role-local fragment
+m2392	a datatype-bearing axiom uses a data role with an object filler or unsupported bound
+m2393	a complex datatype subclass axiom can fire on a data node
+m2394	source mode is disabled or a datatype symbol is not in the exact atomic map
+m2398	a non-datatype axiom rejects a blank data node
+m2399	a datatype source axiom is outside the role-local fragment

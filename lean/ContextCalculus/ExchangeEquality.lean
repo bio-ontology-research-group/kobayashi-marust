@@ -192,7 +192,7 @@ theorem announced_unit_readout_complete [Fintype Atom]
     (closedR_of_closedMaximal hext hclG) hclQ
     (exchangeCond_of_guard σ I hdeliver hlocal) b hleast hbV hent
 
-/-! ## R2 with a rank on individuals (docs/PER-CONTEXT-ORDERING.md section 9)
+/-! ## R2 with a rank on individuals (docs/PER-CONTEXT-ORDERING.md section 10)
 
 The filter above is the largest one that keeps the interface downward closed
 for EVERY announced set `I`: a ground equality may not lie below an equality

@@ -1,0 +1,3 @@
+SubClassOf(ObjectMaxCardinality(2 :t ObjectIntersectionOf(:B :A)) ObjectMinCardinality(1 :t DataMaxCardinality(1 :u)))
+SubClassOf(DataMaxCardinality(0 :v) ObjectOneOf(:c))
+EquivalentClasses(:Q1 ObjectUnionOf(ObjectUnionOf(ObjectOneOf(:b) :C) :B))

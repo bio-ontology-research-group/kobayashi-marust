@@ -343,10 +343,16 @@ pub(crate) fn parse_out_path(path: &Path) -> Result<EngineOut, OrchestrateError>
 /// stack — `cfg.threads` normally, or a reduced count when the HT racer reserved
 /// a core (Python achieves this by mutating the global `os.environ`; the Rust
 /// port threads it explicitly).
+///
+/// `engine_clauses` is the plain CB engine's input: `clauses_path` itself, or
+/// its copy with the inert object sorts released in nominal mode
+/// (`nominal_cb_clause_input`). The tableau and the absorption portfolio keep
+/// `clauses_path`.
 fn cb_stack(
     cfg: &Config,
     ont: &std::path::Path,
     clauses_path: &std::path::Path,
+    engine_clauses: &std::path::Path,
     named: &HashSet<String>,
     engine_threads: race::ThreadBudget,
 ) -> Result<EngineOut, OrchestrateError> {
@@ -360,10 +366,134 @@ fn cb_stack(
     }
     if cfg.tab_race {
         return race::race_cb_vs_tableau(cfg, clauses_path, named, || {
-            run_adaptive(cfg, clauses_path, engine_threads.get())
+            run_adaptive(cfg, engine_clauses, engine_threads.get())
         });
     }
-    run_adaptive(cfg, clauses_path, engine_threads.get())
+    run_adaptive(cfg, engine_clauses, engine_threads.get())
+}
+
+/// Whether `needle` occurs in `haystack`.
+fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
+    let Some((&first, rest)) = needle.split_first() else { return true };
+    let mut from = 0;
+    while let Some(offset) = haystack[from..].iter().position(|&byte| byte == first) {
+        let start = from + offset;
+        if haystack[start + 1..].starts_with(rest) {
+            return true;
+        }
+        from = start + 1;
+    }
+    false
+}
+
+/// Clause input of the nominal CB engine with the inert object sorts released
+/// (`inert_sorts::release_inert_object_sorts_for_cb`, docs/NOMINALS-CB.md
+/// "Inert object sorts in the nominal CB input (2026-10-30)").
+///
+/// Only in nominal mode, never for a run that must publish a CB Lean
+/// certificate (its typed source must equal the clauses), and never under
+/// `KM_CB_KEEP_INERT_SORTS`. `None` when nothing is released; the caller then
+/// keeps the frontend's file. The copy goes only to workers that read the
+/// clauses alone; HT workers keep the frontend's file and its records.
+fn nominal_cb_clause_input(
+    clauses_path: &Path,
+    meta: &frontend_run::Meta,
+) -> Result<Option<tmpfile::TempPath>, OrchestrateError> {
+    if std::env::var_os("KM_NOMINALS").is_none()
+        || std::env::var_os("KM_CB_LEAN_REQUIRED").is_some()
+        || std::env::var_os("KM_CB_KEEP_INERT_SORTS").is_some()
+    {
+        return Ok(None);
+    }
+    // Both passes need a fact: the sort marker occurs only where the sort
+    // encoding ran, and an eliminable definer needs a body-free fact on an
+    // internal definer. A byte scan for either spares the parse of every
+    // other nominal clause file (the frontend writes compact JSON).
+    let bytes = std::fs::read(clauses_path)?;
+    let marker = format!("\"{}\"", crate::frontend::sorts::DATA_SORT);
+    if !contains_bytes(&bytes, marker.as_bytes())
+        && !contains_bytes(&bytes, br#""body":[],"head":[{"kind":"concept","concept":"Q_"#)
+    {
+        return Ok(None);
+    }
+    let mut input: crate::json_io::JInput = serde_json::from_slice(&bytes)?;
+    drop(bytes);
+    if input.cb_typed_source.is_some() {
+        return Ok(None);
+    }
+    let named: HashSet<&str> = meta.named.iter().map(String::as_str).collect();
+    let asserted: HashSet<&str> = meta.asserted_classes.iter().map(String::as_str).collect();
+    let queries: Vec<String> = std::env::var("KM_QUERIES")
+        .map(|q| q.split(',').map(|name| name.trim().to_string()).collect())
+        .unwrap_or_default();
+    let is_source = |name: &str| {
+        !cb_to_ht::is_internal(name)
+            || named.contains(name)
+            || meta.iri_map.contains_key(name)
+            || asserted.contains(name)
+            || queries.iter().any(|query| query == name)
+    };
+    // KM_RULES_INERT_CERT / KM_RULES_INERT_LEAN_CHECKER: the same Lean
+    // certificate as the rule checker's release (`WireInertSortRelease`,
+    // parametric in the reserved names), with this pass's reservations. It
+    // covers the release only: it records the clause set after the release
+    // and before `eliminate_universal_definers`, which has no Lean check.
+    let certificate = std::env::var_os("KM_RULES_INERT_CERT")
+        .map(|path| (path, input.clauses.clone(), inert_sorts::reserved_concepts_for_cb(&input, is_source)));
+    let released = inert_sorts::release_inert_object_sorts_for_cb(&mut input, is_source);
+    if let Some((path, original, reserved)) = certificate {
+        if !released.concepts.is_empty() {
+            write_rules_inert_certificate(Path::new(&path), &original, &input.clauses, &released.concepts, &reserved)?;
+        }
+    }
+    let eliminated = inert_sorts::eliminate_universal_definers(&mut input, is_source);
+    if released.concepts.is_empty() && eliminated.concepts.is_empty() {
+        return Ok(None);
+    }
+    if std::env::var_os("KM_TIMING").is_some() {
+        eprintln!(
+            "KM_TIMING nominal CB input: released {} inert object sort(s): {} fact(s) unrelativized, {} sort clause(s) removed; eliminated {} universal definer(s): {} clause(s) and {} body atom(s) dropped",
+            released.concepts.len(),
+            released.facts,
+            released.sort_clauses,
+            eliminated.concepts.len(),
+            eliminated.clauses,
+            eliminated.body_atoms,
+        );
+    }
+    let out = tmpfile::TempPath::new(".cb.clauses.json");
+    let mut writer = std::io::BufWriter::new(File::create(out.path())?);
+    serde_json::to_writer(&mut writer, &input)?;
+    writer.flush()?;
+    Ok(Some(out))
+}
+
+/// `nominal_cb_clause_input`, keeping the frontend's file when the copy
+/// cannot be made (the copy only saves time; the frontend's file is exact).
+fn nominal_cb_clause_input_or_keep(
+    clauses_path: &Path,
+    meta: &frontend_run::Meta,
+) -> Option<tmpfile::TempPath> {
+    match nominal_cb_clause_input(clauses_path, meta) {
+        Ok(copy) => copy,
+        Err(error) => {
+            if std::env::var_os("KM_TIMING").is_some() {
+                eprintln!("KM_TIMING nominal CB input: kept the frontend's clauses ({error})");
+            }
+            None
+        }
+    }
+}
+
+/// Run a CB arm on its nominal clause input (`nominal_cb_clause_input`), made
+/// when the arm starts and removed when it returns.
+fn with_nominal_cb_input<T>(
+    clauses_path: &Path,
+    meta: &frontend_run::Meta,
+    run: &dyn Fn(&Path) -> Result<T, OrchestrateError>,
+) -> Result<T, OrchestrateError> {
+    let copy = nominal_cb_clause_input_or_keep(clauses_path, meta);
+    run(copy.as_ref().map_or(clauses_path, |copy| copy.path()))
 }
 
 fn run_adaptive(
@@ -603,9 +733,10 @@ fn run_atomic_mechanism(
     elc_input_path: &Path,
     named: &HashSet<String>,
     selected_route: crate::routing::Route,
-    profile: &crate::frontend::profile::OntologyProfile,
+    meta: &frontend_run::Meta,
     cached_input: &mut Option<crate::json_io::JInput>,
 ) -> Result<Option<EngineOut>, OrchestrateError> {
+    let profile = &meta.profile;
     match &cfg.mechanism {
         Mechanism::Portfolio => Ok(None),
         Mechanism::Elc => {
@@ -626,7 +757,9 @@ fn run_atomic_mechanism(
         }
         Mechanism::Cb => {
             drop(cached_input.take());
-            run_atomic_cb(cfg, clauses_path).map(Some)
+            // The nominal CB input copy (`nominal_cb_clause_input`): the
+            // atomic CB worker reads only the clauses.
+            with_nominal_cb_input(clauses_path, meta, &|path| run_atomic_cb(cfg, path)).map(Some)
         }
         // Bridge-only worker inside a bounded speculative attempt. Identify it
         // by its bridge-only specialist selection rather than by the route
@@ -3036,7 +3169,7 @@ fn classify_with_evidence_inner(
                     elc_input_path,
                     &named_set,
                     selected_route,
-                    &meta.profile,
+                    &meta,
                     &mut cached_input,
                 )
             })
@@ -3047,7 +3180,7 @@ fn classify_with_evidence_inner(
             elc_input_path,
             &named_set,
             selected_route,
-            &meta.profile,
+            &meta,
             &mut cached_input,
         )
     };
@@ -3213,6 +3346,17 @@ fn classify_with_evidence_inner(
                     out = handle_elc_result(cfg, res, clauses_path.path())?;
                 }
             }
+            // Nominal mode: the CB engine reads a copy of the clause set with
+            // the inert object sorts released and the universal definers
+            // eliminated (same named answers; see `nominal_cb_clause_input`).
+            // The copy is made by each CB arm when it starts, so a schedule
+            // that answers without the CB engine (the sequential bridge of a
+            // large typed ABox) never pays for it. HT workers keep
+            // `clauses_path`; the EL certificate racer gets the copy only when
+            // it does not run.
+            let cb_input = |run: &dyn Fn(&Path) -> Result<EngineOut, OrchestrateError>| {
+                with_nominal_cb_input(clauses_path.path(), &meta, run)
+            };
             // In-process CB engine fast path for SMALL NON-EL HORN ontologies: run
             // the trusted CB engine as a library call and, when it finishes, skip
             // the fork/race entirely. Eligible when the ont is small (same file
@@ -3238,12 +3382,14 @@ fn classify_with_evidence_inner(
                 let spawn_probe = || {
                     race::HtFirstProbe::spawn(cfg, clauses_path.path(), &named_set, ht_mode)
                 };
+                let released = nominal_cb_clause_input_or_keep(clauses_path.path(), &meta);
                 out = try_inproc_engine(
-                    clauses_path.path(),
+                    released.as_ref().map_or(clauses_path.path(), |copy| copy.path()),
                     std::time::Duration::from_secs_f64(budget_s),
                     cfg.ht_race
                         .then_some(&spawn_probe as &dyn Fn() -> Option<race::HtFirstProbe>),
                 )?;
+                drop(released);
                 if timing && out.is_some() {
                     eprintln!(
                         "KM_TIMING in-process engine done @ {:.2}s (no race)",
@@ -3267,7 +3413,10 @@ fn classify_with_evidence_inner(
                             &named_set,
                             ht_mode,
                             |budget| {
-                                race::race_adaptive_vs_elc(cfg, ont, clauses_path.path(), budget)
+                                cb_input(&|path| {
+                                    let path = if cfg.elc { clauses_path.path() } else { path };
+                                    race::race_adaptive_vs_elc(cfg, ont, path, budget.clone())
+                                })
                             },
                         )?
                     } else if portfolio_on {
@@ -3275,12 +3424,10 @@ fn classify_with_evidence_inner(
                         // are sound+complete so the first finisher wins. Reserve a core
                         // (only when KM_THREADS is unset) for the certificate racer.
                         let th = race::elc_portfolio_threads(cfg);
-                        race::race_adaptive_vs_elc(
-                            cfg,
-                            ont,
-                            clauses_path.path(),
-                            race::ThreadBudget::ready(th),
-                        )?
+                        cb_input(&|path| {
+                            let path = if cfg.elc { clauses_path.path() } else { path };
+                            race::race_adaptive_vs_elc(cfg, ont, path, race::ThreadBudget::ready(th))
+                        })?
                     } else if cfg.ht_race {
                         // race the whole CB stack against the KM_HT hypertableau.
                         race::race_cb_vs_ht(
@@ -3288,16 +3435,23 @@ fn classify_with_evidence_inner(
                             clauses_path.path(),
                             &named_set,
                             ht_mode,
-                            |budget| cb_stack(cfg, ont, clauses_path.path(), &named_set, budget),
+                            |budget| {
+                                cb_input(&|path| {
+                                    cb_stack(cfg, ont, clauses_path.path(), path, &named_set, budget.clone())
+                                })
+                            },
                         )?
                     } else {
-                        cb_stack(
-                            cfg,
-                            ont,
-                            clauses_path.path(),
-                            &named_set,
-                            race::ThreadBudget::ready(cfg.threads),
-                        )?
+                        cb_input(&|path| {
+                            cb_stack(
+                                cfg,
+                                ont,
+                                clauses_path.path(),
+                                path,
+                                &named_set,
+                                race::ThreadBudget::ready(cfg.threads),
+                            )
+                        })?
                     }
                 }
             }
@@ -3821,11 +3975,9 @@ fn write_rules_inert_certificate(
     let document = inert_sorts::release_certificate(original, result, released, reserved);
     std::fs::write(&file, serde_json::to_vec(&document)?)?;
     if let Some(checker) = std::env::var_os("KM_RULES_INERT_LEAN_CHECKER") {
-        let status = std::process::Command::new(&checker)
-            .arg(&file)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|e| OrchestrateError::Spawn { bin: "rules-inert-sort-release-check".into(), source: e })?;
+        let status = crate::lean_checker::run(Path::new(&checker), &file)
+            .map_err(|e| OrchestrateError::Spawn { bin: "rules-inert-sort-release-check".into(), source: e })?
+            .status;
         if !status.success() {
             return Err(OrchestrateError::OutOfFragment(format!(
                 "the Lean checker rejected the inert-sort release certificate {}",

@@ -1,0 +1,2 @@
+DataPropertyDomain(:v ObjectOneOf(:b :a))
+SubClassOf(ObjectMaxCardinality(0 :t DataSomeValuesFrom(:v xsd:string)) ObjectSomeValuesFrom(:s ObjectIntersectionOf(DataHasValue(:v "y"^^xsd:string) :D)))

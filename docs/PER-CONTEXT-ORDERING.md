@@ -574,8 +574,36 @@ ratio 0.978, median 0.974); the same 35 time out under both and one exits 3
 changes its answer, and the cost seen on the random generator does not show
 there.
 
+## 9. Seed and ORE coverage at the base of v1.5.5 (2026-10-30)
 
-## 9. A ranked R2 for ground equalities (2026-10-30)
+At 87fda54f (the context regime merged), the automatic route on the 400
+generated seeds without inverse roles (seeds 2000-2399, 60 s cap, 3
+workers, shared workstation at load 50 to 100) answered 270 and timed out
+on 130, with no wrong answer. Rerun with `KM_NO_SEQ_ORDER=1` (the base
+context regime, unordered same-term order with R2 and R3) the 130 timeouts
+gave 4 answers within 60 s, all equal to HermiT's: `m2063` (5.5 s), `m2100`
+(15.0 s), `m2276` (1.1 s) and `m2303` (14.7 s). So the cost of the Sequoia
+same-term order plus R2 accounts for 4 of the 130; the other 126 time out
+in both regimes (docs/NOMINALS-CB.md, "Inert object sorts in the nominal
+CB input (2026-10-30)", for their cause). Both regimes are complete to the
+same standard (section 6), so a portfolio that runs the base context regime
+beside the context regime would be exact; it was not built, because on one
+core the two arms would share the CPU and the gain is four generated files.
+Measurements: `results/agents/2026-10-30/nominal-coverage/`.
+
+ORE 9800 and 10874, which the 2026-10-28 amendment set aside, are answered
+under the context regime: 10874 in 3 to 5 s on the benchmark nodes (IBEX,
+one core, 240 s) with the v1.5.4 binary of design run 9 and with 87fda54f.
+9800 was not: with the protocol flags it answered in 2 of 4 runs (184 s)
+with run 9's binary and in 1 of 4 (191 s) with 87fda54f, the others
+reaching 240 s. Its CB engine needs about 95 s alone and shares the core
+with the typed-nominal bridge, which needs as long; the merged base with the
+R2/R3 fix of 7c238e52 answered 2 of 4 (205 s). The remedy is in the CB input,
+not in the ordering: with it 9800 answers in 14 s on 4 of 4 runs
+(docs/NOMINALS-CB.md, same subsection).
+
+
+## 10. A ranked R2 for ground equalities (2026-10-30)
 
 Section 8's R2 lets a ground (in)equality lie below another one only over
 the same pair, and below a ground atom only when they share an individual.
@@ -585,7 +613,7 @@ may announce only one side of the upper equality. It costs time on random
 inputs (section 8.5). Results and commands:
 `results/agents/2026-10-30/nominal-r1600/`.
 
-### 9.1 Where the cost is
+### 10.1 Where the cost is
 
 Engine-level timings on the seeds of section 8.5 (diagnostic switches that
 reopen one group of comparisons each, `KM_DIAG_EQEQ_OPEN`,
@@ -604,7 +632,7 @@ reopen one group of comparisons each, `KM_DIAG_EQEQ_OPEN`,
   6.8 s. Here the deliveries of the extended R3 cost as much as the
   comparisons.
 
-### 9.2 The ranked filter and its interface
+### 10.2 The ranked filter and its interface
 
 Enlarging the interface on the equality side lets the filter keep more.
 Fix a rank on individuals (KM: the term id) and give a receiver that
@@ -652,7 +680,7 @@ the merge subscription announces the other side.
 *Lean obligation.* The new filter and interface are mechanised as above.
 The certified CB surface still models neither R2 nor R3 (unchanged).
 
-### 9.3 Measurements
+### 10.3 Measurements
 
 `results/agents/2026-10-30/nominal-r1600/data/`, binary `km.v4` (max-rank
 default; `KM_CONTEXT_PAIR_R2=1` gives section 8's rules in the same binary).
@@ -674,7 +702,7 @@ Verdict: the ranked R2 is exact (mechanised skeleton) and orders more, but
 it is not the cheaper R2 the brief asked for. It recovers 10 of the 36 seeds
 and `r274`, is faster on the seeds both rule sets answer, and helps under
 the merge hypotheses, but it does not recover `r129`, `r673`, `r3351` or
-`fr248`. 9.1 shows why: the equality comparisons that matter for `r129` and
+`fr248`. 10.1 shows why: the equality comparisons that matter for `r129` and
 `fr248` need deliveries that cost as much as the comparisons save, since a
 receiver that gets the extra equalities derives ground atoms that ordinary
 r-Succ pushes back to the ground context as hypotheses. A cheaper exact

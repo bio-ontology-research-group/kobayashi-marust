@@ -1,0 +1,82 @@
+2353f00f results: rule-route Lean certificates on the 400 seeds and ore_ont_7278
+info: ContextCalculus/RulesInertSortRelease.lean:893:0: 'ContextCalculus.RulesInertSort.release_equisatisfiable' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesInertSortRelease.lean:894:0: 'ContextCalculus.RulesInertSort.release_equisatisfiable_clauses' depends on axioms: [propext,
+info: ContextCalculus/RulesInertSortRelease.lean:895:0: 'ContextCalculus.RulesInertSort.WireInertSortRelease.check_sound' depends on axioms: [propext,
+info: ContextCalculus/RulesInertSortRelease.lean:896:0: 'ContextCalculus.RulesInertSort.extend_models' depends on axioms: [propext, Quot.sound]
+info: ContextCalculus/RulesInertSortRelease.lean:897:0: 'ContextCalculus.RulesInertSort.restrict_models' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:332:0: 'ContextCalculus.RulesRoute.clauseModel_of_dlSafeModel' depends on axioms: [propext, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:333:0: 'ContextCalculus.RulesRoute.dlSafeModel_of_clauseModel' depends on axioms: [propext, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:334:0: 'ContextCalculus.RulesRoute.FModel.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:335:0: 'ContextCalculus.RulesRoute.checkProof_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:336:0: 'ContextCalculus.RulesRoute.refutation_inconsistent' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:337:0: 'ContextCalculus.RulesRoute.refutation_unsat' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:338:0: 'ContextCalculus.RulesRoute.refutation_sub' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:339:0: 'ContextCalculus.RulesRoute.Certificate.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:340:0: 'ContextCalculus.RulesRoute.WireRulesCertificate.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesInertSortRelease.lean:893:0: 'ContextCalculus.RulesInertSort.release_equisatisfiable' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesInertSortRelease.lean:894:0: 'ContextCalculus.RulesInertSort.release_equisatisfiable_clauses' depends on axioms: [propext,
+info: ContextCalculus/RulesInertSortRelease.lean:895:0: 'ContextCalculus.RulesInertSort.WireInertSortRelease.check_sound' depends on axioms: [propext,
+info: ContextCalculus/RulesInertSortRelease.lean:896:0: 'ContextCalculus.RulesInertSort.extend_models' depends on axioms: [propext, Quot.sound]
+info: ContextCalculus/RulesInertSortRelease.lean:897:0: 'ContextCalculus.RulesInertSort.restrict_models' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:332:0: 'ContextCalculus.RulesRoute.clauseModel_of_dlSafeModel' depends on axioms: [propext, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:333:0: 'ContextCalculus.RulesRoute.dlSafeModel_of_clauseModel' depends on axioms: [propext, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:334:0: 'ContextCalculus.RulesRoute.FModel.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:335:0: 'ContextCalculus.RulesRoute.checkProof_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:336:0: 'ContextCalculus.RulesRoute.refutation_inconsistent' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:337:0: 'ContextCalculus.RulesRoute.refutation_unsat' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:338:0: 'ContextCalculus.RulesRoute.refutation_sub' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:339:0: 'ContextCalculus.RulesRoute.Certificate.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:340:0: 'ContextCalculus.RulesRoute.WireRulesCertificate.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesInertSortRelease.lean:893:0: 'ContextCalculus.RulesInertSort.release_equisatisfiable' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesInertSortRelease.lean:894:0: 'ContextCalculus.RulesInertSort.release_equisatisfiable_clauses' depends on axioms: [propext,
+info: ContextCalculus/RulesInertSortRelease.lean:895:0: 'ContextCalculus.RulesInertSort.WireInertSortRelease.check_sound' depends on axioms: [propext,
+info: ContextCalculus/RulesInertSortRelease.lean:896:0: 'ContextCalculus.RulesInertSort.extend_models' depends on axioms: [propext, Quot.sound]
+info: ContextCalculus/RulesInertSortRelease.lean:897:0: 'ContextCalculus.RulesInertSort.restrict_models' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:332:0: 'ContextCalculus.RulesRoute.clauseModel_of_dlSafeModel' depends on axioms: [propext, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:333:0: 'ContextCalculus.RulesRoute.dlSafeModel_of_clauseModel' depends on axioms: [propext, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:334:0: 'ContextCalculus.RulesRoute.FModel.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:335:0: 'ContextCalculus.RulesRoute.checkProof_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:336:0: 'ContextCalculus.RulesRoute.refutation_inconsistent' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:337:0: 'ContextCalculus.RulesRoute.refutation_unsat' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:338:0: 'ContextCalculus.RulesRoute.refutation_sub' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:339:0: 'ContextCalculus.RulesRoute.Certificate.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/RulesRouteCertificate.lean:340:0: 'ContextCalculus.RulesRoute.WireRulesCertificate.check_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+rules certificate accepted: 1 refutation(s), 0 model(s), 0 premise(s)
+rules certificate accepted: 1 refutation(s), 1 model(s), 0 premise(s)
+rules certificate accepted: 0 refutation(s), 1 model(s), 0 premise(s)
+rules certificate rejected: 1 of 1 refutation(s) and 0 of 0 model(s) fail, or an answer lacks evidence
+rules certificate rejected: 0 of 0 refutation(s) and 1 of 1 model(s) fail, or an answer lacks evidence
+rules certificate rejected: 0 of 0 refutation(s) and 0 of 1 model(s) fail, or an answer lacks evidence
+rules certificate rejected: 1 of 1 refutation(s) and 0 of 0 model(s) fail, or an answer lacks evidence
+test consistent_rule_fixture_has_a_checked_model ... rule_consistent: rules certificate accepted: 0 refutation(s), 1 model(s), 0 premise(s)
+test finite_rule_inert_sort_fixture_is_checked ... fr373: rules certificate accepted: 0 refutation(s), 6 model(s), 0 premise(s)
+test forged_rule_certificate_is_rejected ... forged: rules certificate accepted: 0 refutation(s), 1 model(s), 0 premise(s)
+test inconsistent_rule_fixture_has_a_checked_refutation ... rule_same_unsat: rules certificate accepted: 1 refutation(s), 0 model(s), 0 premise(s)
+test inverse_rule_refutation_is_checked ... rule_unsat_inverse: rules certificate accepted: 1 refutation(s), 0 model(s), 0 premise(s)
+test ore_ont_7278_rule_verdict_is_checked ... ore7278: rules certificate accepted: 0 refutation(s), 1 model(s), 0 premise(s)
+test rule_taxonomy_beside_a_nominal_is_checked_in_both_schedules ... different-rules: rules certificate accepted: 2 refutation(s), 3 model(s), 0 premise(s)
+different-cb-first: rules certificate accepted: 0 refutation(s), 1 model(s), 0 premise(s)
+different-cb-first: rules certificate accepted: 1 refutation(s), 3 model(s), 1 premise(s)
+fr282_min-rules: rules certificate accepted: 1 refutation(s), 3 model(s), 0 premise(s)
+fr282_min-cb-first: rules certificate accepted: 0 refutation(s), 1 model(s), 0 premise(s)
+fr282_min-cb-first: rules certificate accepted: 1 refutation(s), 3 model(s), 0 premise(s)
+top_one_of-rules: rules certificate accepted: 2 refutation(s), 3 model(s), 0 premise(s)
+top_one_of-cb-first: rules certificate accepted: 0 refutation(s), 1 model(s), 0 premise(s)
+top_one_of-cb-first: rules certificate accepted: 1 refutation(s), 3 model(s), 1 premise(s)
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 31.11s
+test orchestrate::inert_sorts::tests::candidates_do_not_guard_each_other ... ok
+test orchestrate::inert_sorts::tests::ground_fact_on_a_pinned_individual_needs_no_guard ... ok
+test orchestrate::inert_sorts::tests::input_without_relativized_facts_is_unchanged ... ok
+test orchestrate::inert_sorts::tests::lean_checker_accepts_the_release_and_rejects_unchecked_ones ... Lean accepted 2358 releases and rejected 521 verdict-changing unchecked releases
+test orchestrate::inert_sorts::tests::lean_checker_rejects_a_tampered_or_reserved_release ... ok
+test orchestrate::inert_sorts::tests::range_definer_read_only_through_its_data_property_is_released ... ok
+test orchestrate::inert_sorts::tests::release_preserves_satisfiability_and_its_conditions_are_needed ... 3000 random clause sets: released on 2358 (924 satisfiable), unchecked release changes the verdict on 521
+test orchestrate::inert_sorts::tests::source_and_reserved_names_keep_their_sort ... ok
+test orchestrate::inert_sorts::tests::unchecked_release_turns_a_consistent_input_inconsistent ... ok
+test orchestrate::inert_sorts::tests::unguarded_body_occurrence_keeps_the_sort ... ok
+test orchestrate::inert_sorts::tests::unguarded_head_occurrence_keeps_the_sort ... ok
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 3048 filtered out; finished in 377.86s
+test ore_ont_7278_release_is_lean_checked ... ore7278: 11 released, 1 certificate(s) accepted
+test small_finite_rule_fixture_release_is_lean_checked ... fr373: 2 released, 1 certificate(s) accepted
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 26.46s
+rules certification gate passed

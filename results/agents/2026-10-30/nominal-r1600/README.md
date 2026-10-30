@@ -55,7 +55,7 @@ committed). The workstation ran at load 40 to 70 with other agents.
   design (`../r3-unannounced/ore-design-nominal.txt`), automatic route,
   300 s, `ore_time.sh`, two streams side by side.
 - `timings-*.txt`, `attribution-*.txt`: per-seed timings and the
-  diagnostic splits of PER-CONTEXT-ORDERING.md section 9.1.
+  diagnostic splits of PER-CONTEXT-ORDERING.md section 10.1.
 - `open-seeds-v4.txt`: the four open seeds and the minimised one on three
   routes, 300 s.
 

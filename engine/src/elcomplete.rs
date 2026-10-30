@@ -12683,6 +12683,7 @@ fn classify_inner_mode(
             Ok(compilations) => compilations,
             Err(error) => {
                 eprintln!("KM_ELC_LEAN_CERT fail closed: {error}");
+                crate::lean_checkers::record_cannot_check("elc", "elc-publication", &error.to_string());
                 return None;
             }
         };
@@ -12696,6 +12697,7 @@ fn classify_inner_mode(
             Ok(partition) => partition,
             Err(error) => {
                 eprintln!("KM_ELC_LEAN_CERT fail closed: {error}");
+                crate::lean_checkers::record_cannot_check("elc", "elc-publication", &error.to_string());
                 return None;
             }
         };
@@ -12710,6 +12712,7 @@ fn classify_inner_mode(
             Ok(certificate) => certificate,
             Err(error) => {
                 eprintln!("KM_ELC_LEAN_CERT fail closed: {error}");
+                crate::lean_checkers::record_cannot_check("elc", "elc-publication", &error.to_string());
                 return None;
             }
         };
@@ -12717,8 +12720,7 @@ fn classify_inner_mode(
         let path = if let Some(path) = lean_cert_path.as_deref() {
             path
         } else {
-            temporary_path =
-                std::env::temp_dir().join(format!("km-elc-cert-{}.json", std::process::id()));
+            temporary_path = crate::lean_checkers::fresh_path("km-elc-cert");
             temporary_path.as_path()
         };
         let file = match std::fs::File::create(path) {
@@ -12733,31 +12735,27 @@ fn classify_inner_mode(
             return None;
         }
         if let Some(checker) = lean_cert_checker.as_deref() {
-            let status = match std::process::Command::new(checker)
-                .arg(path)
-                // The worker stdout is a JSON protocol. Checker diagnostics
-                // must never be allowed to corrupt that stream.
-                .stdout(std::process::Stdio::null())
-                .status()
-            {
-                Ok(status) => status,
-                Err(error) => {
+            let outcome =
+                crate::lean_checkers::run("elc", checker, "elc-publication", path);
+            if lean_cert_path.is_none() {
+                let _ = std::fs::remove_file(path);
+            }
+            match outcome {
+                crate::lean_checkers::Outcome::Accepted => {}
+                crate::lean_checkers::Outcome::Rejected(detail) => {
                     eprintln!(
-                        "KM_ELC_LEAN_CERT cannot execute {}: {error}",
+                        "KM_ELC_LEAN_CERT checker {} rejected the certificate: {detail}",
                         checker.display()
                     );
                     return None;
                 }
-            };
-            if lean_cert_path.is_none() {
-                let _ = std::fs::remove_file(path);
-            }
-            if !status.success() {
-                eprintln!(
-                    "KM_ELC_LEAN_CERT checker {} rejected the certificate ({status})",
-                    checker.display()
-                );
-                return None;
+                crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                    eprintln!(
+                        "KM_ELC_LEAN_CERT checker {} did not run: {detail}",
+                        checker.display()
+                    );
+                    return None;
+                }
             }
             return Some(certificate.verified_result());
         }

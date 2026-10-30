@@ -110,7 +110,7 @@ fn disjunctive_ground_equalities_under_the_base_context_regime() {
 /// The v1.5.4 rules, restored by the diagnostics, miss the query subsumption:
 /// unit-only R3 on `m1` and `m4`, R2 without its equality comparisons on `m6`
 /// and `m7`. This pins down which part of the fix each fixture needs. Since
-/// the ranked guard (docs/PER-CONTEXT-ORDERING.md section 9) delivers the
+/// the ranked guard (docs/PER-CONTEXT-ORDERING.md section 10) delivers the
 /// private equalities of `m6` and `m7`, the old comparisons alone answer
 /// them; `KM_CONTEXT_PAIR_R2` restores the guard of section 8 as well.
 #[test]

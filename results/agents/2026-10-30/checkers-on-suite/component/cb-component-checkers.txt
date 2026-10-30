@@ -1,0 +1,25 @@
+# CB component checkers on the CB worker (km engine, KM_CB_LEAN_REQUIRED=1), 2026-10-30
+## a-sub-b
+cb-live-taxonomy-publication-check: live CB taxonomy publication rejected: ContextCalculus.CBLiveTaxonomyPublication.WireLiveTaxonomyPublication.derivation: ContextCalculus.CBLiveInsertionDerivation.WireLiveInsertionDerivationDocument.p
+cb-source-live-insertion-derivation-check: source-bound CB live insertion-derivation certificate accepted
+cb-source-local-closure-check: source-bound CB local-closure certificate accepted
+cb-source-hyper-closure-check: source-bound CB Hyper-closure certificate accepted
+cb-source-join3-closure-check: source-bound CB Join-3-closure certificate accepted
+cb-source-succ-closure-check: source-bound CB Succ-closure certificate accepted
+cb-source-eq-closure-check: source-bound CB Eq-closure certificate accepted
+cb-source-ordinary-pred-closure-check: source-bound ordinary CB Pred-closure certificate accepted
+cb-source-root-pred-closure-check: source-bound root CB Pred-closure certificate accepted
+cb-source-taxonomy-cert-check: source-bound exact CB taxonomy accepted
+cb-source-production-taxonomy-check: source-bound shared-production CB taxonomy accepted
+## d-some-r-a
+cb-live-taxonomy-publication-check: live CB taxonomy publication rejected: ContextCalculus.CBLiveTaxonomyPublication.WireLiveTaxonomyPublication.derivation: ContextCalculus.CBLiveInsertionDerivation.WireLiveInsertionDerivationDocument.p
+cb-source-live-insertion-derivation-check: source-bound CB live insertion-derivation certificate rejected: source-bound CB context still has dirty r-Succ edges
+cb-source-local-closure-check: source-bound CB local-closure certificate rejected: source-bound CB context still has dirty r-Succ edges
+cb-source-hyper-closure-check: source-bound CB Hyper-closure certificate rejected: source-bound CB context still has dirty r-Succ edges
+cb-source-join3-closure-check: source-bound CB Join-3-closure certificate rejected: source-bound CB context still has dirty r-Succ edges
+cb-source-succ-closure-check: source-bound CB Succ-closure certificate rejected: source-bound CB context still has dirty r-Succ edges
+cb-source-eq-closure-check: source-bound CB Eq-closure certificate rejected: source-bound CB context still has dirty r-Succ edges
+cb-source-ordinary-pred-closure-check: source-bound ordinary CB Pred-closure certificate rejected: source-bound CB context still has dirty r-Succ edges
+cb-source-root-pred-closure-check: source-bound root CB Pred-closure certificate rejected: source-bound CB context still has dirty r-Succ edges
+cb-source-taxonomy-cert-check: source-bound exact CB taxonomy accepted
+cb-source-production-taxonomy-check: source-bound shared-production CB taxonomy accepted
