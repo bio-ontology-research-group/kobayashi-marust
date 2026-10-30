@@ -2467,8 +2467,8 @@ struct SubsetGain {
     ex_trig: HashMap<(R, CLit), Vec<Vec<CLit>>>,
     /// Some edge can point from a node to a non-successor: a role head
     /// whose source is not the clause centre (inverse roles) or an equality
-    /// head (merges redirect edges), and there are no nominals. Without it
-    /// `back_need` is empty.
+    /// head (merges redirect edges), and there are no nominals and no
+    /// first-class cardinality rules. Without it `back_need` is empty.
     back: bool,
     /// Dense bitset (by `Ext::enc_lit`) of the union of every set above: a
     /// literal outside it is relevant for no edge, so `admits` skips it
@@ -2579,7 +2579,14 @@ impl SubsetGain {
         // nominal nodes, which no unravelling copies; the finite certificate
         // is not emitted then, and `back_need` stays empty (see section 9,
         // "Inverse witnesses").
-        if !nominals.is_empty() {
+        //
+        // The card arm (first-class cardinality rules) has no finite
+        // certificate either: its number rules count `r`-neighbours, the
+        // predecessor included, and the fold changes those counts at the
+        // blocker's successors, so `back_need` would not make its fold a
+        // model. It keeps the body-literal rule, whose argument is the
+        // infinite unravelling, and its cost (ore_ont_205, ore_ont_7499).
+        if !nominals.is_empty() || !card_defs.is_empty() {
             g.back = false;
         }
         (g.ex_fill, g.ex_trig) = existential_triggers(clauses);
