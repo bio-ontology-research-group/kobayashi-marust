@@ -487,7 +487,9 @@ is the link, argued from the parser invariant that every data filler is a
 - `decidedReading_respects`: reading a node that carries a value `v` with
   `fullyDecided voc isValue dec v` as `lit v` respects its labels, from the
   decision clauses (`DecisionClauses`, the pairwise form; the linear form
-  entails it by `bits_entail_pairwise` and `profiles_entail_membership`)
+  entails it through the identity star, `bits_entail_pairwise` and
+  `profiles_entail_membership`, a composition argued here, not stated in
+  Lean)
   and the oracle's soundness (`DecisionSound`) alone.
 - `singleton_elision_sound` (`S⁻ ⇒ O`): `J ⊨ O`, `J ⊨` decision clauses,
   and `UndecidedRealizable` (every successor without a fully decided value
