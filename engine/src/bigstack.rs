@@ -118,6 +118,48 @@ pub fn run<T: Send>(what: &str, bytes: usize, f: impl FnOnce() -> T + Send) -> R
     })
 }
 
+/// `std::thread::Builder::new().stack_size(size).spawn_scoped(scope, f)`
+/// for a worker pool, retrying a spawn that fails for lack of memory or
+/// threads on the same schedule as [`run`]. Pool workers run in parallel, so
+/// they cannot share the caller's stack; this only removes the transient
+/// failure. The error after the last attempt names the stack size and the
+/// operating system's reason.
+pub fn spawn_scoped_retrying<'scope, 'env, T, F>(
+    size: usize,
+    scope: &'scope std::thread::Scope<'scope, 'env>,
+    f: F,
+) -> std::io::Result<std::thread::ScopedJoinHandle<'scope, T>>
+where
+    F: FnOnce() -> T + Send + 'scope,
+    T: Send + 'scope,
+{
+    // As in `run`: a failed spawn drops its closure, so the work stays in a
+    // shared slot that each attempt's closure only references.
+    let slot = std::sync::Arc::new(std::sync::Mutex::new(Some(f)));
+    let mut attempts = 0usize;
+    loop {
+        attempts += 1;
+        let work = slot.clone();
+        let spawned = std::thread::Builder::new().stack_size(size).spawn_scoped(scope, move || {
+            let f = work.lock().unwrap_or_else(|e| e.into_inner()).take()
+                .expect("pool work taken twice");
+            f()
+        });
+        match spawned {
+            Ok(handle) => return Ok(handle),
+            Err(error) if is_resource_error(&error) && attempts <= RETRY_PAUSES_MS.len() => {
+                std::thread::sleep(std::time::Duration::from_millis(RETRY_PAUSES_MS[attempts - 1]));
+            }
+            Err(error) => {
+                return Err(std::io::Error::new(error.kind(), format!(
+                    "could not start a worker thread with a {} MiB stack after {attempts} attempt(s): {error}",
+                    size >> 20,
+                )));
+            }
+        }
+    }
+}
+
 /// The main thread's usable stack: the smaller of the soft `RLIMIT_STACK`
 /// and the unmapped gap between the `[stack]` mapping's top and the next
 /// mapping below it, minus the kernel guard gap and a margin. Reads
@@ -234,6 +276,20 @@ mod tests {
         }
         // About 20 MiB of frames: overflows the default 2 MiB thread stack.
         assert_eq!(run("bigstack-depth", 64 << 20, || depth(20_000)).unwrap(), 20_000);
+    }
+
+    #[test]
+    fn pool_spawn_runs_the_work_and_reports_a_failure() {
+        let results: Vec<usize> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..4)
+                .map(|i| spawn_scoped_retrying(8 << 20, scope, move || i * 2).unwrap())
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        assert_eq!(results, vec![0, 2, 4, 6]);
+        let error = std::thread::scope(|scope| spawn_scoped_retrying(usize::MAX >> 2, scope, || ()).map(|_| ()))
+            .unwrap_err();
+        assert!(error.to_string().contains("MiB stack"), "{error}");
     }
 
     #[test]
