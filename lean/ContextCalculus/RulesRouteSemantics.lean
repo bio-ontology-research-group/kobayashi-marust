@@ -90,7 +90,8 @@ def clauseOK (o : Nat) (nominals : List Nat) (cl : RClause) : Bool :=
 def encodingOK (o : Nat) (nominals : List Nat) (ontology : List RClause) : Bool :=
   !nominals.contains o &&
   ontology.all (clauseOK o nominals) &&
-  nominals.all (fun n => ontology.any (fun cl => introNominal? o cl == some n))
+  (!ontology.any (isRule o) ||
+    nominals.all (fun n => ontology.any (fun cl => introNominal? o cl == some n)))
 
 def strip (o : Nat) (cl : RClause) : RClause :=
   { body := cl.body.filter (fun a => !isGuard o a), head := cl.head }
@@ -250,14 +251,20 @@ variable {D : Type}
 theorem encodingOK_parts {o : Nat} {nominals : List Nat} {ontology : List RClause}
     (h : encodingOK o nominals ontology = true) :
     o ∉ nominals ∧ (∀ cl ∈ ontology, clauseOK o nominals cl = true) ∧
-      (∀ n ∈ nominals, ∃ cl ∈ ontology, introNominal? o cl = some n) := by
+      ((∃ cl ∈ ontology, isRule o cl = true) →
+        ∀ n ∈ nominals, ∃ cl ∈ ontology, introNominal? o cl = some n) := by
   simp only [encodingOK, Bool.and_eq_true, Bool.not_eq_true', List.all_eq_true,
-    List.any_eq_true, beq_iff_eq] at h
+    Bool.or_eq_true, List.any_eq_true, beq_iff_eq] at h
   rcases h with ⟨⟨hno, hcl⟩, hintro⟩
-  refine ⟨?_, hcl, hintro⟩
-  intro hmem
-  have : nominals.contains o = true := List.contains_iff_mem.mpr hmem
-  simp_all
+  refine ⟨?_, hcl, ?_⟩
+  · intro hmem
+    have : nominals.contains o = true := List.contains_iff_mem.mpr hmem
+    simp_all
+  · intro hrule
+    rcases hintro with hnone | hall
+    · obtain ⟨cl, hcl, hr⟩ := hrule
+      simp_all
+    · exact hall
 
 /-- A DL-safe model, with `O` interpreted as the named elements, is a model of
 the guarded clause list. -/
@@ -359,7 +366,8 @@ theorem dlSafeModel_of_clauseModel {o : Nat} {nominals : List Nat}
     exact hmodels cl hcl_mem.1
   · intro rule hrule σ hnamed hbody
     simp only [decode, List.mem_map, List.mem_filter] at hrule
-    obtain ⟨cl, ⟨hcl_mem, _⟩, rfl⟩ := hrule
+    obtain ⟨cl, ⟨hcl_mem, hisrule⟩, rfl⟩ := hrule
+    have hintro := hintro ⟨cl, hcl_mem, hisrule⟩
     apply hmodels cl hcl_mem σ
     intro a ha
     by_cases hg : isGuard o a = true

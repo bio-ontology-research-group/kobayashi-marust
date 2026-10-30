@@ -54,5 +54,13 @@ out["rules-route-subsumption-valid.json"] = doc(sub, queries=[1, 3], subsumption
     models=[{"node_count": 2, "labels": [[1, 2, 0, 3, 4], [3]], "succ": [[], []], "pred": [[], []],
              "witnesses": [[1, 0], [3, 1]]}])
 # Root label is [{a}, ¬B]; node 0 merges into nominal root 1? keep = min = 0.
+def with_ext(m):
+    ext = {}
+    for d, labs in enumerate(m["labels"]):
+        for c in labs: ext.setdefault(c, []).append(d)
+    m["ext"] = [ext.get(c, []) for c in range(1 + max(ext, default=0))]
+    return m
+for d in out.values():
+    d["models"] = [with_ext(dict(m)) for m in d["models"]]
 for name, d in out.items():
     json.dump(d, open(name, "w"), indent=1)

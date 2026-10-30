@@ -254,6 +254,7 @@ structure WireModel where
   labels : Array (List Nat)
   succ : Array (List (Nat × Nat))
   pred : Array (List (Nat × Nat))
+  ext : Array (List Nat)
   witnesses : List (Nat × Nat)
 deriving FromJson, ToJson, Repr
 
@@ -300,7 +301,7 @@ def WireClaim.toClaim : WireClaim → Claim
   | .sub a b => .sub a b
 
 def WireModel.toModelCert (m : WireModel) : ModelCert :=
-  { model := { n := m.node_count, labels := m.labels, succ := m.succ, pred := m.pred },
+  { model := { n := m.node_count, labels := m.labels, succ := m.succ, pred := m.pred, ext := m.ext },
     witnesses := m.witnesses }
 
 def WireRulesCertificate.toCertificate (w : WireRulesCertificate) : Certificate where

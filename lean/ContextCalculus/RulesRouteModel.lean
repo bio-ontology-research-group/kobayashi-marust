@@ -26,6 +26,8 @@ structure FModel where
   labels : Array (List Nat)
   succ : Array (List (Nat × Nat))
   pred : Array (List (Nat × Nat))
+  /-- Elements carrying each concept (untrusted; `extComplete` checks it). -/
+  ext : Array (List Nat)
 
 namespace FModel
 
@@ -96,11 +98,27 @@ def predComplete : Bool :=
   (List.range M.n).all fun a =>
     (M.succ.getD a []).all fun p => !decide (p.2 < M.n) || (M.pred.getD p.2 []).contains (p.1, a)
 
+def extElems (c : Nat) : List (Fin M.n) :=
+  (M.ext.getD c []).filterMap fun d => if h : d < M.n then some ⟨d, h⟩ else none
+
+/-- Every element is recorded in the extension of each of its labels. -/
+def extComplete : Bool :=
+  (List.range M.n).all fun d => (M.labels.getD d []).all fun c => (M.ext.getD c []).contains d
+
+theorem mem_extElems (hec : M.extComplete = true) {c : Nat} {d : Fin M.n}
+    (h : M.lab d.val c = true) : d ∈ M.extElems c := by
+  simp only [extComplete, List.all_eq_true, List.mem_range] at hec
+  have hmem : c ∈ M.labels.getD d.val [] := List.contains_iff_mem.mp h
+  have hd := List.contains_iff_mem.mp (hec d.val d.isLt c hmem)
+  simp only [extElems, List.mem_filterMap]
+  exact ⟨d.val, hd, by simp [d.isLt]⟩
+
 def atomCands (done : List Nat) (σ : Nat → Fin M.n) (v : Nat) : RAtom → Option (List (Fin M.n))
   | .role r s t =>
       if t = v ∧ s ≠ v ∧ s ∈ done then some (M.succTargets r (σ s).val)
       else if s = v ∧ t ≠ v ∧ t ∈ done then some (M.predSources r (σ t).val)
       else none
+  | .concept lit w => if w = v ∧ lit.neg = false then some (M.extElems lit.concept) else none
   | _ => none
 
 def cands (cl : RClause) (done : List Nat) (σ : Nat → Fin M.n) (v : Nat) : List (Fin M.n) :=
@@ -126,7 +144,7 @@ theorem mem_predSources (hpc : M.predComplete = true) {r a : Nat} {b : Fin M.n}
   simp only [predSources, List.mem_filterMap]
   exact ⟨(r, a), hpred, by simp [ha]⟩
 
-theorem cands_complete (hpc : M.predComplete = true) (cl : RClause) (done : List Nat)
+theorem cands_complete (hpc : M.predComplete = true) (hec : M.extComplete = true) (cl : RClause) (done : List Nat)
     (σ τ : Nat → Fin M.n) (v : Nat) (hagree : ∀ w ∈ done, τ w = σ w)
     (hnot : τ v ∉ M.cands cl done σ v) : ∃ a ∈ cl.body, M.holdsB τ a = false := by
   unfold cands at hnot
@@ -158,7 +176,21 @@ theorem cands_complete (hpc : M.predComplete = true) (cl : RClause) (done : List
             rw [hagree t ht] at hrel
             exact hnot (M.mem_predSources hpc (τ s).isLt hrel)
           · exact absurd hc (by simp)
-    | concept => simp [atomCands] at hc
+    | concept lit w =>
+        simp only [atomCands] at hc
+        split at hc
+        · rename_i hcond
+          obtain ⟨rfl, hneg⟩ := hcond
+          simp only [Option.some.injEq] at hc
+          subst hc
+          rw [Bool.eq_false_iff]
+          intro hlab
+          rcases lit with ⟨c, neg⟩
+          simp only at hneg
+          subst hneg
+          simp only [holdsB, litB, Bool.false_eq_true, if_false] at hlab
+          exact hnot (M.mem_extElems hec hlab)
+        · exact absurd hc (by simp)
     | exists_ => simp [atomCands] at hc
     | eq => simp [atomCands] at hc
   · exact absurd (List.mem_finRange _) hnot
@@ -187,7 +219,7 @@ theorem ready_agree {n : Nat} {done : List Nat} {a : RAtom} (h : ready done a = 
   simp only [ready, List.all_eq_true, decide_eq_true_eq] at h
   exact hagree w (h w hw)
 
-theorem checkFrom_sound (hpc : M.predComplete = true) (cl : RClause) :
+theorem checkFrom_sound (hpc : M.predComplete = true) (hec : M.extComplete = true) (cl : RClause) :
     ∀ (todo done : List Nat) (σ : Nat → Fin M.n),
       M.checkFrom cl todo done σ = true →
       (∀ a ∈ cl.body ++ cl.head, ∀ w ∈ atomVars a, w ∈ todo ∨ w ∈ done) →
@@ -247,19 +279,19 @@ theorem checkFrom_sound (hpc : M.predComplete = true) (cl : RClause) :
               · rcases List.mem_cons.mp hw with h | h
                 · contradiction
                 · exact hagree w h
-          · obtain ⟨a, ha, hfalse⟩ := M.cands_complete hpc cl done σ τ v hagree hmem
+          · obtain ⟨a, ha, hfalse⟩ := M.cands_complete hpc hec cl done σ τ v hagree hmem
             have := hbody a ha
             simp_all
 
 def checkClause (cl : RClause) : Bool :=
   if h : 0 < M.n then M.checkFrom cl (clauseVars cl) [] (fun _ => ⟨0, h⟩) else false
 
-theorem checkClause_sound (hpc : M.predComplete = true) (cl : RClause)
+theorem checkClause_sound (hpc : M.predComplete = true) (hec : M.extComplete = true) (cl : RClause)
     (h : M.checkClause cl = true) : M.interp.modelsClause cl := by
   unfold checkClause at h
   split at h
   · intro τ hbody
-    obtain ⟨a, ha, hsat⟩ := M.checkFrom_sound hpc cl (clauseVars cl) [] _ h
+    obtain ⟨a, ha, hsat⟩ := M.checkFrom_sound hpc hec cl (clauseVars cl) [] _ h
       (by
         intro a ha w hw
         left
@@ -276,7 +308,7 @@ def singletonB (c : Nat) : Bool :=
   ((List.finRange M.n).filter (fun d => M.lab d.val c)).length == 1
 
 def check (nominals : List Nat) (ontology : List RClause) : Bool :=
-  decide (0 < M.n) && M.predComplete && nominals.all M.singletonB &&
+  decide (0 < M.n) && M.predComplete && M.extComplete && nominals.all M.singletonB &&
     ontology.all M.checkClause
 
 theorem singletonB_sound {c : Nat} (h : M.singletonB c = true) :
@@ -293,9 +325,9 @@ theorem check_sound {nominals : List Nat} {ontology : List RClause}
     (h : M.check nominals ontology = true) :
     0 < M.n ∧ ClauseModel M.interp nominals ontology := by
   simp only [check, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true] at h
-  obtain ⟨⟨⟨hn, hpc⟩, hsing⟩, hcl⟩ := h
+  obtain ⟨⟨⟨⟨hn, hpc⟩, hec⟩, hsing⟩, hcl⟩ := h
   exact ⟨hn, fun c hc => M.singletonB_sound (hsing c hc),
-    fun cl hcl' => M.checkClause_sound hpc cl (hcl cl hcl')⟩
+    fun cl hcl' => M.checkClause_sound hpc hec cl (hcl cl hcl')⟩
 
 end FModel
 
