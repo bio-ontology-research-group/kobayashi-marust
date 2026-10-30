@@ -233,3 +233,4 @@ import ContextCalculus.HypertableauTaxonomyCertificate
 import ContextCalculus.HypertableauTaxonomyWire
 import ContextCalculus.RulesInertSortRelease
 import ContextCalculus.HypertableauSubsetUnravelling
+import ContextCalculus.ObjectGuardRestriction
