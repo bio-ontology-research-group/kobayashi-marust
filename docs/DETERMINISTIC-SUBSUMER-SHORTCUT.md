@@ -137,6 +137,7 @@ has 8 to 13 candidates defined by universal restrictions
 completion leaves 12,090 disjunctions open (so the precomputation replay is
 off) and every probe re-derives the nominal-connected ABox (about 28,900
 label insertions). Pairwise verification took 3,308 s for about 3,000
-probes; with the batch, 187 of 188 batched probes are satisfiable and
+probes; with the batch, all 187 batched probes are satisfiable, one
+pairwise probe remains, and
 verification takes 65 s. Forced `ht_bridge`: 3,379 s → 146 s; automatic
 route 156 s; 759 subsumptions, as HermiT 1.4.6 (2,340 s).
