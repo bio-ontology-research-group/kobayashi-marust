@@ -1,0 +1,71 @@
+KM_TIMING mark: validate_user_input done
+KM_TIMING mark: second source check done
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING ABox quotient not built: site 1
+TMPDBG conformance 0.000
+TMPDBG encoded 0.001
+TMPDBG parsed+profile 0.004
+TMPDBG abox_consistency 0.005
+TMPDBG unary_lower 0.005
+TMPDBG finite+materialize 2.792
+TMPDBG witness 2.793
+TMPDBG lap 2.793
+[ofn-timing] parse+axioms              2.792s  rss=40MB hwm=41MB
+[ofn-timing] normalise                 0.014s  rss=52MB hwm=52MB
+[ofn-timing] augment                   0.001s  rss=52MB hwm=52MB
+[ofn-timing] relevance+prune           0.001s  rss=52MB hwm=52MB
+ofn [sorts] 489 clauses added or relativized
+[ofn-timing] rbox+domain+declared      0.024s  rss=55MB hwm=55MB
+[ofn-timing] clause_to_json            0.000s  rss=55MB hwm=55MB
+[ofn-timing] declared_seed+iri_map     0.001s  rss=55MB hwm=55MB
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=2.86s cached=false sidecar=false
+KM_TIMING frontend: 81 data-property assertion(s) not carried; re-running with the DataHasValue conversion
+TMPDBG conformance 0.000
+TMPDBG encoded 0.001
+TMPDBG parsed+profile 0.004
+TMPDBG abox_consistency 0.004
+TMPDBG unary_lower 0.004
+TMPDBG finite+materialize 2.757
+TMPDBG witness 2.757
+TMPDBG lap 2.757
+[ofn-timing] parse+axioms              2.756s  rss=47MB hwm=75MB
+[ofn-timing] normalise                 0.011s  rss=50MB hwm=75MB
+[ofn-timing] augment                   0.001s  rss=50MB hwm=75MB
+[ofn-timing] relevance+prune           0.001s  rss=51MB hwm=75MB
+ofn [sorts] 489 clauses added or relativized
+[ofn-timing] rbox+domain+declared      0.025s  rss=51MB hwm=75MB
+[ofn-timing] clause_to_json            0.000s  rss=51MB hwm=75MB
+[ofn-timing] declared_seed+iri_map     0.000s  rss=51MB hwm=75MB
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=2.82s cached=false sidecar=false
+KM_TIMING rules-consistency input parsed @ 0.09s clauses=8552 rules=2602
+KM_TIMING rules-consistency released 11 inert object sort(s): 11 fact(s) unrelativized, 11 sort clause(s) removed
+KM_TIMING rules-consistency converted @ 0.11s ht_clauses=10721 queries=178
+KM_TIMING rules-consistency serialized @ 0.12s bytes=4005302
+KM_TIMING rules-consistency worker input sent @ 0.13s
+KM_TIMING rules-consistency worker exited @ 4.29s success=true
+KM_TIMING mark: second source check done
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING ABox quotient not built: site 1
+TMPDBG conformance 0.000
+TMPDBG encoded 0.000
+TMPDBG parsed+profile 0.001
+TMPDBG abox_consistency 0.001
+TMPDBG unary_lower 0.001
+TMPDBG finite+materialize 0.001
+TMPDBG witness 0.001
+TMPDBG lap 0.001
+[ofn-timing] parse+axioms              0.001s  rss=31MB hwm=75MB
+[ofn-timing] normalise                 0.000s  rss=31MB hwm=75MB
+[ofn-timing] augment                   0.000s  rss=31MB hwm=75MB
+[ofn-timing] relevance+prune           0.000s  rss=31MB hwm=75MB
+[ofn-timing] rbox+domain+declared      0.000s  rss=31MB hwm=75MB
+[ofn-timing] clause_to_json            0.000s  rss=31MB hwm=75MB
+[ofn-timing] declared_seed+iri_map     0.000s  rss=31MB hwm=75MB
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.00s cached=true sidecar=false
+KM_TIMING frontend done @ 0.00s route=certified_el_production
+KM_TIMING engine block done @ 0.00s (subs_keys=191)
+KM_TIMING mark: output mapping done
+KM_TIMING mark: classify_json returned
+KM_TIMING mark: output written

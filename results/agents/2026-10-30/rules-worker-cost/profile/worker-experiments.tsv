@@ -1,0 +1,11 @@
+# km-v154-pgo `tableau` worker alone (profile/tab.sh, one core) on captured worker inputs (profile/captab.sh tees the worker stdin).
+# input	edit (profile/edit.py, edit2.py)	clauses	wall_s	verdict
+v153-7278	none (v1.5.3 frontend)	10254	4.32	consistent
+v154-7278	none (v1.5.4 frontend)	10732	26.39	consistent
+v154-7278	nodisj: drop D from the 11 relativized facts, keep sort clauses	10732	2.06	INCONSISTENT (data values get Q, Q and D clash)
+v154-7278	nosort: drop every clause with D, D disjuncts removed	10254	4.41	consistent
+v154-7278	nodisjoint: drop the 340 concept sort clauses only	10392	27.40	consistent
+v154-7278	norole: drop the 56 role sort clauses only	10676	26.56	consistent
+v154-7278	poly: drop D from the 11 facts and the 11 sort clauses Q and D -> bottom (what inert_sorts does)	10721	4.26	consistent
+v154-3726	none	10732	24.56	consistent
+v154-3726	poly	10721	4.04	consistent

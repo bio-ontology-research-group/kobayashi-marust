@@ -1,0 +1,31 @@
+== lib inert_sorts
+   Compiling kobayashi-marust v1.5.4 (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-rules-worker-cost/engine)
+14786 ~                     if !bridged.precomputation_replay_disabled.get()
+14789 ~                             || drained_konclude
+  451 | struct CardDef {
+ 73 | impl NamedSubclassCertificate {
+    Finished `release` profile [optimized] target(s) in 13m 13s
+     Running unittests src/lib.rs (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/rules-worker-cost/target/release/deps/kobayashi_marust-451e2d668f6b88a8)
+running 9 tests
+test orchestrate::inert_sorts::tests::ground_fact_on_a_pinned_individual_needs_no_guard ... ok
+test orchestrate::inert_sorts::tests::input_without_relativized_facts_is_unchanged ... ok
+test orchestrate::inert_sorts::tests::candidates_do_not_guard_each_other ... ok
+test orchestrate::inert_sorts::tests::range_definer_read_only_through_its_data_property_is_released ... ok
+test orchestrate::inert_sorts::tests::source_and_reserved_names_keep_their_sort ... ok
+test orchestrate::inert_sorts::tests::unchecked_release_turns_a_consistent_input_inconsistent ... ok
+test orchestrate::inert_sorts::tests::unguarded_body_occurrence_keeps_the_sort ... ok
+test orchestrate::inert_sorts::tests::unguarded_head_occurrence_keeps_the_sort ... ok
+3000 random clause sets: released on 2358 (924 satisfiable), unchecked release changes the verdict on 521
+test orchestrate::inert_sorts::tests::release_preserves_satisfiability_and_its_conditions_are_needed ... ok
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 3027 filtered out; finished in 0.58s
+exit 0
+== build
+   Compiling kobayashi-marust v1.5.4 (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-rules-worker-cost/engine)
+14786 ~                     if !bridged.precomputation_replay_disabled.get()
+14789 ~                             || drained_konclude
+  451 | struct CardDef {
+ 73 | impl NamedSubclassCertificate {
+ 76 |     pub(crate) fn from_success_cache(source:Arc<String>)->Option<Self> {
+    Finished `release` profile [optimized] target(s) in 7m 58s
+exit 0
+ALLDONE

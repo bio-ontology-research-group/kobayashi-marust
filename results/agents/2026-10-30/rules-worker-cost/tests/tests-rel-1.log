@@ -1,0 +1,1292 @@
+== integration
+   Compiling libc v0.2.186
+   Compiling cfg-if v1.0.4
+   Compiling zerocopy v0.8.54
+   Compiling memchr v2.8.1
+   Compiling thiserror v2.0.18
+   Compiling oxiri v0.2.11
+   Compiling oxilangtag v0.1.6
+   Compiling kobayashi-marust v1.5.4 (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-rules-worker-cost/engine)
+   Compiling crossbeam-utils v0.8.21
+   Compiling json-event-parser v0.2.3
+   Compiling ryu-js v1.0.3
+   Compiling crossbeam-epoch v0.9.18
+   Compiling ucd-trie v0.1.7
+   Compiling quick-xml v0.37.5
+   Compiling equivalent v1.0.2
+   Compiling hashbrown v0.12.3
+   Compiling getrandom v0.3.4
+   Compiling hashbrown v0.17.1
+   Compiling crossbeam-deque v0.8.6
+   Compiling rand_core v0.9.5
+   Compiling pest v2.8.7
+   Compiling quick-xml v0.31.0
+   Compiling serde_core v1.0.228
+   Compiling indexmap v1.9.3
+   Compiling indexmap v2.14.0
+   Compiling lazy_static v1.5.0
+   Compiling enum_meta v0.6.0
+   Compiling rayon-core v1.13.0
+   Compiling zmij v1.0.21
+   Compiling thiserror v1.0.69
+   Compiling libmimalloc-sys v0.1.49
+   Compiling either v1.16.0
+   Compiling itoa v1.0.18
+   Compiling oxixml-unicode v0.1.2
+   Compiling curie v0.1.4
+   Compiling log v0.4.33
+14786 ~                     if !bridged.precomputation_replay_disabled.get()
+14789 ~                             || drained_konclude
+   Compiling km-owl-functional-syntax v0.1.0 (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-rules-worker-cost/engine/vendor/owl-functional-syntax)
+   Compiling rayon v1.12.0
+   Compiling mimalloc v0.1.52
+   Compiling smallvec v1.15.1
+   Compiling thin-vec v0.2.19
+   Compiling oxixml-regex v0.1.2
+   Compiling serde v1.0.228
+   Compiling serde_json v1.0.150
+   Compiling ppv-lite86 v0.2.21
+   Compiling rand_chacha v0.9.0
+   Compiling rand v0.9.5
+   Compiling oxrdf v0.3.3
+   Compiling oxrdfxml v0.2.3
+   Compiling oxttl v0.2.3
+   Compiling oxjsonld v0.2.5
+   Compiling oxrdfio v0.2.5
+   Compiling pretty_rdf v0.11.0
+   Compiling horned-owl v1.4.0 (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-rules-worker-cost/engine/vendor/horned-owl-1.4.0)
+  451 | struct CardDef {
+ 73 | impl NamedSubclassCertificate {
+ 76 |     pub(crate) fn from_success_cache(source:Arc<String>)->Option<Self> {
+    Finished `release` profile [optimized] target(s) in 8m 25s
+     Running tests/cb_route_completeness.rs (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/rules-worker-cost/target/release/deps/cb_route_completeness-c3d3b5b229ed5633)
+running 8 tests
+test automatic_route_matches_hermit ... ok
+test cb_absorb1_route_matches_hermit ... ok
+test cb_plain1_route_matches_hermit ... ok
+test cb_portfolio16_route_matches_hermit ... ok
+test production_all_route_matches_hermit ... ok
+test cb_trigger1_route_matches_hermit ... ok
+test cb_plain1_closure_representations_agree ... ok
+test default1_route_matches_hermit ... ok
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.26s
+     Running tests/constant_data_rule_normalization.rs (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/rules-worker-cost/target/release/deps/constant_data_rule_normalization-5e978c48a0f4ddde)
+running 2 tests
+test constant_data_rule_conclusions_reach_nominal_class_queries ... ok
+test constant_data_rule_keeps_object_joins_and_named_bindings ... ok
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+     Running tests/data_assertions_carried.rs (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/rules-worker-cost/target/release/deps/data_assertions_carried-783e132c3f1f0541)
+running 9 tests
+test inconsistency_without_uncarried_assertions_reports_nothing_dropped ... ok
+test assertions_above_the_literal_cap_are_carried_by_profile ... ok
+test counted_assertions_above_the_literal_cap_are_published_as_dropped ... ok
+test negative_data_assertion_is_published_as_dropped ... ok
+test mixed_object_and_data_assertions_are_carried ... ok
+test single_data_assertion_is_carried_on_every_abox_route ... ok
+test merged_individuals_keep_distinct_values_under_counting ... ok
+test profiles_preserve_facet_membership_and_range_clashes ... ok
+test unproxied_assertions_can_hide_a_clash ... ok
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 58.58s
+     Running tests/empty_and_universal_data_ranges.rs (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/rules-worker-cost/target/release/deps/empty_and_universal_data_ranges-05d430ccb61a824d)
+running 10 tests
+test bottom_data_property_has_no_values ... ok
+test assertions_against_empty_ranges_are_inconsistent ... ok
+test complemented_cardinality_definers_contrapose_on_every_route ... ok
+test datatype_definitions_of_empty_and_universal_ranges ... ok
+test complements_of_ordinary_ranges ... ok
+test literal_existential_with_universal_complement_of_literal_is_unsatisfiable ... ok
+test universal_data_ranges_in_every_position ... ok
+test empty_data_ranges_in_every_position ... ok
+test complement_of_literal_and_literal_on_every_route ... ok
+test excluded_middle_of_complement_ranges has been running for over 60 seconds
+test excluded_middle_of_complement_ranges ... ok
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 167.85s
+     Running tests/finite_data_rule_normalization.rs (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/rules-worker-cost/target/release/deps/finite_data_rule_normalization-eaf398edac81b8cd)
+running 3 tests
+test finite_data_rule_entailments_reach_nominal_class_queries ... ok
+test finite_rule_nominal_query_uses_inverse_chain_and_transitive_premises ... ok
+test finite_numeric_rules_keep_named_object_joins_and_nonfunctional_values ... ok
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+     Running tests/finite_rule_taxonomy.rs (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/rules-worker-cost/target/release/deps/finite_rule_taxonomy-4165dd5f9d180bba)
+running 4 tests
+test contradictory_rule_abox_cannot_publish_projection ... ok
+test missing_worker_verdict_cannot_default_to_consistent ... ok
+test requested_ht_certificate_cannot_be_bypassed_by_finite_rule_projection ... ok
+test named_rule_conclusion_does_not_become_universal_subsumption ... ok
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests/forced_route_fail_closed.rs (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/rules-worker-cost/target/release/deps/forced_route_fail_closed-57c800a8d9ea2337)
+running 5 tests
+test allowed_approximation_is_marked_and_counted ... ok
+test automatic_route_matches_hermit_on_the_max2_reproducers ... ok
+test forced_default_route_refuses_the_max2_reproducers ... ok
+test incremental_source_session_refuses_a_forced_approximate_route ... ok
+test no_route_publishes_an_unmarked_approximate_answer ... ok
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.16s
+     Running tests/ground_rule_source.rs (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/rules-worker-cost/target/release/deps/ground_rule_source-1b77da1a1d6c4b9c)
+running 4 tests
+test grounded_object_rule_query_reads_native_compact_taxonomy ... ok
+test grounded_constant_rule_uses_query_premise_and_preserves_original_file ... ok
+test nominal_query_reactivates_cached_abox_constraints ... ok
+test grounded_rules_preserve_equality_role_heads_and_empty_heads ... ok
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+     Running tests/has_key_rules.rs (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/rules-worker-cost/target/release/deps/has_key_rules-d7fe25ba0153c1dd)
+running 6 tests
+test data_key_behind_a_nominal_query_is_found_or_counted ... ok
+test object_key_merges_named_individuals ... ok
+test key_ignores_anonymous_individuals ... ok
+test rule_route_counts_a_key_its_nominal_taxonomy_ignores ... ok
+test data_key_compares_values_not_spellings ... ok
+test no_route_publishes_a_lost_key_as_complete ... ok
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+     Running tests/integer_data_rule_normalization.rs (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/rules-worker-cost/target/release/deps/integer_data_rule_normalization-43b37b8b812e8ef6)
+running 2 tests
+test self_role_rule_preserves_constant_data_heads_and_named_guard ... ok
+test integer_rule_threshold_is_enforced_only_on_the_dl_safe_domain ... ok
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+     Running tests/isolated_named_rule_normalization.rs (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/rules-worker-cost/target/release/deps/isolated_named_rule_normalization-433c176302d5e61e)
+running 1 test
+test isolated_rule_frontend_preserves_source_counts_and_refuses_connected_names ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests/rule_independent_abox_clash.rs (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/rules-worker-cost/target/release/deps/rule_independent_abox_clash-d6ce8d98187eb285)
+running 2 tests
+test invalid_literal_is_refused_even_when_source_has_an_independent_clash ... ok
+test source_clash_precedes_rule_admission_but_consistent_source_still_declines ... ok
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/rules_route.rs (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/rules-worker-cost/target/release/deps/rules_route-948077154bc4838a)
+running 5 tests
+test automatic_route_selects_the_rules_bundle_for_rule_ontologies ... ok
+test named_rules_route_falls_through_to_taxonomy_when_consistent ... ok
+test same_individual_guard_does_not_fire_without_the_merge ... ok
+test named_rules_route_short_circuits_on_inconsistency ... ok
+test same_individual_guard_fires_and_drives_a_clash ... ok
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+     Running tests/source_incremental_rules.rs (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/rules-worker-cost/target/release/deps/source_incremental_rules-18d6d84ca58a6b6f)
+running 3 tests
+test isolated_rule_projection_is_rechecked_when_a_named_body_becomes_active ... ok
+test rules_route_retains_taxonomy_across_abox_clash_and_retraction ... ok
+test source_session_migrates_el_rules_el_and_rolls_back_a_declined_revision ... ok
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests/top_nominal_data_successors.rs (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/rules-worker-cost/target/release/deps/top_nominal_data_successors-6754eb9f9da0d636)
+running 16 tests
+test forced_one_sorted_route_refuses_both_verdicts ... ok
+test asserted_min_data_cardinality_with_top_nominal_is_consistent ... ok
+test m2197_minimal_is_consistent ... ok
+test rule_checker_does_not_publish_a_one_sorted_inconsistency ... ok
+test top_data_existential_with_top_nominal_is_consistent ... ok
+test exact_data_cardinality_with_has_value_hub_keeps_counting ... ok
+test top_min_data_cardinality_with_thing_equivalent_nominal_is_consistent ... ok
+test top_min_data_cardinality_with_top_nominal_is_consistent ... ok
+test top_min_data_cardinality_with_inverse_functional_hub_is_consistent ... ok
+test top_min_data_cardinality_with_two_nominals_is_consistent ... ok
+test top_min_data_cardinality_without_nominal_is_consistent ... ok
+test top_min_data_cardinality_with_universal_role_nominal_is_consistent ... ok
+test top_qualified_min_data_cardinality_with_top_nominal_is_consistent ... ok
+test top_min_object_cardinality_with_top_nominal_stays_inconsistent ... ok
+test m2197_original_is_consistent_with_hermit_taxonomy ... ok
+test hermit_answers_on_every_route ... ok
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.87s
+     Running tests/transitive_rule_reduction.rs (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/rules-worker-cost/target/release/deps/transitive_rule_reduction-82845ffb13247eea)
+running 1 test
+test redundant_rule_reduction_retains_transitivity_for_negative_abox_checks ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+     Running tests/unary_rule_normalization.rs (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/rules-worker-cost/target/release/deps/unary_rule_normalization-0015853f64e12251)
+running 9 tests
+test a_nonunary_rule_prevents_partial_rule_elision ... ok
+test alias_individual_names_need_no_unique_name_assumption ... ok
+test anonymous_source_individual_is_not_a_dl_safe_name ... ok
+test conjunctions_and_every_head_consequence_are_preserved ... ok
+test anonymous_query_witness_is_not_added_to_the_named_guard ... ok
+test named_rule_clash_is_preserved ... ok
+test mixed_observer_head_preserves_nominal_taxonomy_consequence ... ok
+test observer_only_query_does_not_block_logical_rule_normalization ... ok
+test nominal_rule_consequence_enters_taxonomy ... ok
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+     Running tests/universal_role_and_top_data_range.rs (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/rules-worker-cost/target/release/deps/universal_role_and_top_data_range-e8a1696663c58d11)
+running 13 tests
+test data_range_complement_excluded_middle_still_applies_to_values ... ok
+test data_property_range_over_the_shared_top_definer_stays_satisfiable ... ok
+test data_sorted_top_definer_keeps_data_values_satisfiable ... ok
+test exists_top_role_thing_is_owl_thing_and_fast ... ok
+test literal_existential_matches_unqualified_min_cardinality ... ok
+test literal_existential_over_free_data_property_is_fast ... ok
+test data_value_next_to_universal_role_hub_on_nominals ... ok
+test mixed_object_and_data_assertions_on_one_individual ... ok
+test nominal_top_role_reproducer ... ok
+test universal_role_restrictions_are_complete ... ok
+test data_value_singleton_next_to_nominal_successors ... ok
+test data_value_next_to_universal_role_hub_stays_satisfiable ... ok
+test sort_encoding_matches_hermit_on_differential_fixtures ... ok
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.73s
+exit 0
+== lib inert_sorts
+   Compiling kobayashi-marust v1.5.4 (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-rules-worker-cost/engine)
+14786 ~                     if !bridged.precomputation_replay_disabled.get()
+14789 ~                             || drained_konclude
+  451 | struct CardDef {
+ 73 | impl NamedSubclassCertificate {
+    Finished `release` profile [optimized] target(s) in 13m 14s
+     Running unittests src/lib.rs (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/rules-worker-cost/target/release/deps/kobayashi_marust-451e2d668f6b88a8)
+running 9 tests
+test orchestrate::inert_sorts::tests::candidates_do_not_guard_each_other ... ok
+test orchestrate::inert_sorts::tests::ground_fact_on_a_pinned_individual_needs_no_guard ... ok
+test orchestrate::inert_sorts::tests::input_without_relativized_facts_is_unchanged ... ok
+test orchestrate::inert_sorts::tests::range_definer_read_only_through_its_data_property_is_released ... ok
+test orchestrate::inert_sorts::tests::source_and_reserved_names_keep_their_sort ... ok
+test orchestrate::inert_sorts::tests::unguarded_body_occurrence_keeps_the_sort ... ok
+test orchestrate::inert_sorts::tests::unguarded_head_occurrence_keeps_the_sort ... ok
+test orchestrate::inert_sorts::tests::unchecked_release_turns_a_consistent_input_inconsistent ... ok
+3000 random clause sets: released on 2358, unchecked release changes the verdict on 521
+test orchestrate::inert_sorts::tests::release_preserves_satisfiability_and_its_conditions_are_needed ... ok
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 3027 filtered out; finished in 0.55s
+exit 0
+== lib tableau:: frontend::
+14786 ~                     if !bridged.precomputation_replay_disabled.get()
+14789 ~                             || drained_konclude
+  451 | struct CardDef {
+ 73 | impl NamedSubclassCertificate {
+    Finished `release` profile [optimized] target(s) in 0.06s
+     Running unittests src/lib.rs (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/rules-worker-cost/target/release/deps/kobayashi_marust-451e2d668f6b88a8)
+running 654 tests
+test frontend::abox_consistency::tests::asserted_bottom_subclass_is_detected ... ok
+test frontend::abox_consistency::gated_projection_tests::gated_projection_matches_the_reference_on_every_gate_shape ... ok
+test frontend::abox_consistency::tests::complement_subclass_without_joint_membership_remains_consistent ... ok
+test frontend::abox_consistency::tests::asserted_singleton_member_clashes_with_different ... ok
+test frontend::abox_consistency::tests::collect_still_skips_without_disjointness_or_negatives ... ok
+test frontend::abox_consistency::tests::complement_subclass_clash_is_detected ... ok
+test frontend::abox_consistency::tests::derived_abox_contradictions_are_not_detected ... ok
+test frontend::abox_consistency::tests::distinct_members_of_one_enumeration_do_not_clash ... ok
+test frontend::abox_consistency::tests::named_projection_respects_boolean_polarity ... ok
+test frontend::abox_consistency::tests::negative_assertion_clash_closes_under_subroles_and_same_individual ... ok
+test frontend::abox_consistency::tests::negative_assertion_clash_is_detected ... ok
+test frontend::abox_consistency::tests::negative_assertion_on_other_pair_is_consistent ... ok
+test frontend::abox_consistency::tests::singleton_and_larger_nominal_enumeration_clash_with_different ... ok
+test frontend::abox_consistency::tests::union_equivalence_reveals_asserted_disjointness_without_rules ... ok
+test frontend::bottom_prepass::tests::equal_boolean_lexical_forms_and_nonfunctional_values_do_not_clash ... ok
+test frontend::bottom_prepass::tests::exact_integer_and_string_values_still_seed_bottom ... ok
+test frontend::bottom_prepass::tests::functional_boolean_clash_propagates_through_subclass_and_exists ... ok
+test frontend::bottom_prepass::tests::functional_values_are_materialized_as_disjoint_horn_markers ... ok
+test frontend::bottom_prepass::tests::inherited_universal_participates_in_successor_clash ... ok
+test frontend::bottom_prepass::tests::inverse_domain_can_make_a_required_successor_impossible ... ok
+test frontend::bottom_prepass::tests::inverse_range_alternatives_force_the_only_viable_owner_type ... ok
+test frontend::bottom_prepass::tests::lossy_datatype_lexicals_do_not_create_bottom_certificates ... ok
+test frontend::bottom_prepass::tests::union_range_requires_every_alternative_to_clash ... ok
+test frontend::bottom_prepass_route_tests::absent_declarations_are_seeded_once_in_source_order ... ok
+test frontend::bottom_prepass_route_tests::el_completion_does_not_build_the_general_bottom_certificate ... ok
+test frontend::bottom_prepass_route_tests::retained_side_observers_match_v025_second_pass_bytes ... ok
+test frontend::builtin_aliases::tests::all_six_resolved_aliases_and_idempotence ... ok
+test frontend::builtin_aliases::tests::annotation_only_alias_borrows_and_invalid_binding_refuses ... ok
+test frontend::builtin_aliases::tests::anonymous_ids_are_never_prefix_expanded ... ok
+test frontend::builtin_aliases::tests::canonical_and_unrelated_inputs_borrow_original ... ok
+test frontend::builtin_aliases::tests::literal_unicode_prefix_is_resolved_without_decoding_escape_like_names ... ok
+test frontend::builtin_aliases::tests::mixed_entity_spellings_are_unified ... ok
+test frontend::builtin_aliases::tests::partial_namespace_default_prefix_and_exact_token_matching ... ok
+test frontend::builtin_aliases::tests::preserves_comments_literal_escapes_annotation_bytes_and_headers ... ok
+test frontend::clauses::tests::hoist_extracts_common_super_of_every_disjunct ... ok
+test frontend::clauses::tests::hoist_is_sound_self_cover ... ok
+test frontend::clauses::tests::hoist_skips_when_no_common_super ... ok
+test frontend::clauses::tests::owned_json_conversion_matches_borrowed_conversion_for_every_term_shape ... ok
+test frontend::conformance::anonymous::tests::anonymous_object_graphs_reject_cycles_parallel_edges_and_self_loops ... ok
+test frontend::conformance::anonymous::tests::anonymous_individuals_are_rejected_in_forbidden_logical_positions ... ok
+test frontend::conformance::anonymous::tests::each_anonymous_tree_needs_one_node_with_at_most_one_named_assertion ... ok
+test frontend::conformance::anonymous::tests::forests_duplicates_and_isolated_anonymous_individuals_remain_valid ... ok
+test frontend::conformance::datatypes::tests::datatype_definitions_must_be_acyclic_and_unique ... ok
+test frontend::conformance::datatypes::tests::reordered_datatype_unions_are_the_same_definition ... ok
+test frontend::conformance::datatypes::tests::top_data_property_is_restricted_to_superproperty_position ... ok
+test frontend::conformance::datatypes::tests::defined_datatypes_cannot_be_restricted_even_when_their_base_supports_facets ... ok
+test frontend::conformance::entities::tests::incompatible_property_kinds_are_rejected_with_or_without_declarations ... ok
+test frontend::conformance::datatypes::tests::unary_data_ranges_cannot_constrain_multiple_properties ... ok
+test frontend::conformance::entities::tests::keys_require_properties_and_preserve_entity_types ... ok
+test frontend::conformance::entities::tests::reserved_names_are_allowed_only_for_their_builtin_entity_kinds ... ok
+test frontend::conformance::entities::tests::required_entity_declarations_do_not_require_named_individual_declarations ... ok
+test frontend::conformance::datatypes::tests::used_datatypes_need_definitions_but_declarations_alone_do_not ... ok
+test frontend::conformance::entities::tests::class_datatype_punning_is_rejected_but_class_individual_punning_is_legal ... ok
+test frontend::conformance::entities::tests::first_failing_entity_in_name_order_is_reported ... ok
+test frontend::conformance::facets::tests::bounds_reject_unordered_and_disjoint_value_spaces ... ok
+test frontend::conformance::facets::tests::bounds_preserve_arbitrary_precision_and_prefix_aliases ... ok
+test frontend::conformance::facets::tests::language_ranges_use_basic_range_syntax_and_string_values ... ok
+test frontend::conformance::facets::tests::pattern_values_must_be_strings_including_plain_literal_string_values ... ok
+test frontend::conformance::facets::tests::rule_ranges_receive_bound_validation_without_rejecting_other_facets ... ok
+test frontend::conformance::facets::tests::bound_values_belong_to_the_derived_base_by_value ... ok
+test frontend::conformance::lexical::tests::binary_padding_and_datetime_lexical_bounds ... ok
+test frontend::conformance::facets::tests::unvalidated_facet_extensions_are_explicit_refusals_not_invalid_verdicts ... ok
+test frontend::conformance::lexical::tests::boolean_decimal_float_and_hex_lexical_spaces_are_checked ... ok
+test frontend::conformance::facets::tests::unknown_facets_and_patterns_on_facetless_datatypes_are_rejected ... ok
+test frontend::conformance::lexical::tests::integer_validation_preserves_arbitrary_precision_and_derived_bounds ... ok
+test frontend::conformance::lexical::tests::derived_strings_and_arbitrary_rationals ... ok
+test frontend::conformance::pattern::tests::xml_regex_syntax_preserves_large_quantities_and_xml_specific_constructs ... ok
+test frontend::conformance::facets::tests::length_facets_require_nonnegative_integer_values_without_numeric_limits ... ok
+test frontend::conformance::pattern::tests::decimal_bound_comparison_matches_machine_oracle_in_its_range ... ok
+test frontend::conformance::roles::tests::irregular_chains_reject_middle_recursion_and_dependency_cycles ... ok
+test frontend::conformance::pattern::tests::xml_regex_syntax_rejects_invalid_counts_classes_and_xpath_extensions ... ok
+test frontend::conformance::roles::tests::regular_chains_allow_transitivity_and_end_recursion ... ok
+test frontend::conformance::roles::tests::chain_targets_are_non_simple_but_operands_can_be_simple ... ok
+test frontend::conformance::tests::custom_and_real_datatypes_cannot_supply_literal_lexical_forms ... ok
+test frontend::conformance::facets::tests::arbitrary_precision_divisibility_matches_small_integer_oracle ... ok
+test frontend::conformance::tests::exact_validation_cache_does_not_retain_oversized_sources ... ok
+test frontend::conformance::roles::tests::equivalent_roles_and_builtin_top_are_checked ... ok
+test frontend::conformance::tests::exact_validation_cache_preserves_rejections_after_valid_input ... ok
+test frontend::conformance::facets::tests::arbitrary_precision_quotients_match_small_integer_oracle ... ok
+test frontend::conformance::tests::rejects_13129_literal_pattern_without_rewriting ... ok
+test frontend::conformance::tests::rejects_top_typed_literals_in_assertions_and_rules ... ok
+test frontend::conformance::tests::source_validation_preserves_dl_safe_rules_and_top_data_ranges ... ok
+test frontend::conformance::tests::untyped_language_tagged_and_plain_literals_are_validated ... ok
+test frontend::conformance::tests::user_prefix_checks_cover_entity_and_rule_iris_without_scanning_literal_contents ... ok
+test frontend::conformance::xml_literal::tests::accepts_xml_content_and_rejects_unbound_or_malformed_markup ... ok
+test frontend::data_abox::tests::empty_complex_range_rejects_every_assertion ... ok
+test frontend::conformance::tests::allows_ranges_strings_rules_and_nonstandard_prefix_binding ... ok
+test frontend::data_abox::tests::every_well_formed_literal_is_in_rdfs_literal ... ok
+test frontend::conformance::roles::tests::non_simple_roles_propagate_through_inverses_and_superproperties ... ok
+test frontend::conformance::tests::public_prefix_declarations_are_unique_and_cannot_rebind_standard_names ... ok
+test frontend::data_abox::tests::finite_range_checks_inherited_and_multiple_ranges ... ok
+test frontend::conformance::tests::document_boundaries_cannot_silently_drop_input ... ok
+test frontend::data_abox::tests::finite_range_detects_empty_string_outside_enumeration ... ok
+test frontend::conformance::tests::grammar_rejects_wrong_arity_without_numeric_model_limits ... ok
+test frontend::data_abox::tests::functional_distinct_integers_clash ... ok
+test frontend::data_abox::tests::functional_distinct_strings_clash ... ok
+test frontend::data_abox::tests::functional_lang_pairs ... ok
+test frontend::data_abox::tests::functional_same_value_no_clash ... ok
+test frontend::data_abox::tests::functional_role_merge_clashes_with_different_individuals ... ok
+test frontend::data_abox::tests::functional_string_projection_declines_unrepresented_interactions ... ok
+test frontend::data_abox::tests::functional_strings_preserve_owner_inequalities_and_equal_values ... ok
+test frontend::data_abox::tests::inverse_object_assertions_preserve_functional_merge_data_clash ... ok
+test frontend::data_abox::tests::langtag_literal_violates_string_range ... ok
+test frontend::data_abox::tests::matching_string_assertion_is_fine ... ok
+test frontend::data_abox::tests::merge_via_symmetric_domain_exact1_then_data_max1_clash ... ok
+test frontend::data_abox::tests::no_merge_with_distinct_owners ... ok
+test frontend::data_abox::tests::omission_certificate_rejects_data_constraints_in_abox_and_subclass_lhs ... ok
+test frontend::data_abox::tests::omission_certificate_rejects_missing_domain_and_data_interactions ... ok
+test frontend::data_abox::tests::finite_range_uses_value_equality_and_defers_unknown_values ... ok
+test frontend::data_abox::tests::positive_integer_with_redundant_named_domain_is_omittable ... ok
+test frontend::data_abox::tests::omission_certificate_rejects_two_values_under_inherited_at_most_one ... ok
+test frontend::data_abox::tests::range_inherited_through_subproperty ... ok
+test frontend::data_abox::tests::same_individual_violates_different_individuals ... ok
+test frontend::data_abox::tests::functional_strings_accept_inherited_domains_without_assuming_membership ... ok
+test frontend::data_abox::tests::string_literal_violates_int_range ... ok
+test frontend::data_abox::tests::top_data_property_constraint_applies_without_explicit_subproperty_axiom ... ok
+test frontend::data_abox::tests::unknown_datatype_never_clashes ... ok
+test frontend::data_abox_projection::tests::coupled_or_unknown_data_semantics_defer ... ok
+test frontend::data_abox::tests::unrelated_data_restriction_does_not_poison_safe_assertions ... ok
+test frontend::data_abox_projection::tests::inherited_assertions_do_not_duplicate_retained_source_facts ... ok
+test frontend::data_abox_projection::tests::inherited_domains_and_functional_owner_inequalities ... ok
+test frontend::data_abox_projection::tests::range_violation_is_retained_as_contradiction ... ok
+test frontend::data_range::tests::equal_values_with_alternative_lexical_forms_block_emptiness ... ok
+test frontend::data_range::tests::overlapping_dataoneof_ranges_are_nonempty ... ok
+test frontend::data_abox::tests::functional_token_vs_string_lexical_not_compared ... ok
+test frontend::data_abox::tests::omission_certificate_accepts_safe_subproperty_and_at_most_one ... ok
+test frontend::data_range::tests::disjoint_dataoneof_ranges_are_empty ... ok
+test frontend::data_range::tests::single_dataoneof_range_is_nonempty ... ok
+test frontend::data_rules::builtin_join_tests::graph_arithmetic_resolves_dependencies_in_either_body_order ... ok
+test frontend::data_rules::tests::constant_data_plan_preserves_multiple_object_bindings_and_literal_identity ... ok
+test frontend::data_rules::builtin_join_tests::finite_tuple_plan_preserves_object_joins_and_defers_atomically ... ok
+test frontend::data_rules::tests::actual_10906_rules_have_complete_constant_data_translation_plans ... ok
+test frontend::data_rules::tests::cardinality_constraints_do_not_enumerate_large_integer_ranges ... ok
+test frontend::data_rules::tests::empty_domain_certificate_defers_constants_and_data_only_bodies ... ok
+test frontend::data_rules::builtin_join_tests::bound_output_is_checked_and_unknown_obligations_remain ... ok
+test frontend::data_rules::tests::cross_property_join_is_not_split_into_independent_witnesses ... ok
+test frontend::data_rules::tests::integer_domain_keeps_unasserted_values_and_finite_exclusions ... ok
+test frontend::data_rules::tests::fractional_thresholds_are_exact_over_integer_witnesses ... ok
+test frontend::data_rules::tests::integer_witness_lowering_has_the_expected_datatype_membership ... ok
+test frontend::data_rules::tests::empty_named_domain_elides_object_guarded_concrete_rules ... ok
+test frontend::data_rules::tests::empty_named_domain_and_query_observers_cover_disjoint_source_rules ... ok
+test frontend::data_rules::tests::shared_witness_keeps_every_comparison_and_operand_direction ... ok
+test frontend::datatypes::extent::tests::internal_concept_names_are_decided ... ok
+test frontend::datatypes::extent::tests::empty_ranges_are_decided ... ok
+test frontend::data_rules::tests::source_integer_lowering_is_atomic_when_any_rule_is_unrepresented ... ok
+test frontend::datatypes::extent::tests::universal_ranges_are_decided ... ok
+test frontend::datatypes::finite_literal_realization_tests::concrete_profiles_preserve_rounding_signed_zero_and_range_membership ... ok
+test frontend::datatypes::extent::tests::ordinary_and_undecided_ranges_are_left_alone ... ok
+test frontend::datatypes::finite_literal_realization_tests::opaque_values_and_unknown_ranges_do_not_produce_evidence ... ok
+test frontend::data_rules::tests::named_assertions_or_imports_prevent_vacuous_rule_admission ... ok
+test frontend::datatypes::numeric_cells::tests::float_cells_cover_adjacent_values_nan_and_signed_zero_identity ... ok
+test frontend::datatypes::numeric_cells::tests::full_domain_partition_retains_outside_numeric_complements ... ok
+test frontend::data_rules::tests::small_domain_capacities_agree_with_explicit_value_sets ... ok
+test frontend::datatypes::numeric_cells::tests::integer_cells_cover_all_small_models_and_preserve_literal_exclusions ... ok
+test frontend::datatypes::swrl_numeric_tests::decimal_arithmetic_and_result_position_are_exact ... ok
+test frontend::datatypes::tests::boolean_cover_enables_counting ... ok
+test frontend::datatypes::numeric_cells::tests::unknown_facets_types_trailing_tokens_and_overflow_decline ... ok
+test frontend::datatypes::tests::bridge_atomic_gate_matches_the_exact_10621_fragment ... ok
+test frontend::datatypes::swrl_numeric_tests::integer_derived_literals_validate_their_value_bounds ... ok
+test frontend::datatypes::tests::bridge_datetime_literals_preserve_owl_value_identity ... ok
+test frontend::datatypes::swrl_numeric_tests::ieee_graph_subtraction_preserves_width_and_numeric_comparison ... ok
+test frontend::datatypes::swrl_numeric_tests::arithmetic_output_binds_exact_values_and_defers_invalid_operands ... ok
+test frontend::datatypes::tests::bridge_finite_cover_checks_exact_values_and_aliases ... ok
+test frontend::datatypes::swrl_numeric_tests::unsupported_or_invalid_values_are_obligations_not_false ... ok
+test frontend::abox_consistency::tests::endpoint_indexed_disjoint_scan_matches_every_pair_scan ... ok
+test frontend::datatypes::tests::bridge_integer_literals_preserve_value_identity_and_declared_bounds ... ok
+test frontend::datatypes::tests::bridge_tbox_datatype_extension_double_enumerations ... ok
+test frontend::datatypes::tests::bridge_tbox_datatype_extension_decimal_cell_counts ... ok
+test frontend::datatypes::tests::bridge_tbox_datatype_extension_facet_intersections ... ok
+test frontend::datatypes::tests::bridge_plain_string_literal_is_the_xsd_string_abbreviation ... ok
+test frontend::datatypes::tests::bridge_tbox_datatype_extension_integral_difference_covers ... ok
+test frontend::datatypes::tests::bridge_tbox_datatype_extension_union_relations ... ok
+test frontend::datatypes::tests::bridge_tbox_datatype_extension_uri_xml_and_decimal_values ... ok
+test frontend::datatypes::tests::complement_membership_negates_only_decided_value_relations ... ok
+test frontend::datatypes::tests::bridge_tbox_datatype_extension_map_and_cells ... ok
+test frontend::datatypes::tests::builtin_datatypes_require_the_exact_standard_namespace ... ok
+test frontend::datatypes::tests::complement_ranges_get_their_excluded_middle ... ok
+test frontend::datatypes::tests::custom_builtin_suffixes_never_enter_the_exact_value_or_bridge_oracle ... ok
+test frontend::datatypes::tests::ieee_facet_ranges_preserve_discrete_bounds_and_partitions ... ok
+test frontend::datatypes::tests::ieee_literal_identity_preserves_width_rounding_and_signed_zero ... ok
+test frontend::datatypes::tests::integer_and_ieee_float_do_not_get_false_inclusions ... ok
+test frontend::datatypes::tests::exact_bridge_value_oracle_keeps_only_proven_equalities ... ok
+test frontend::datatypes::tests::distinct_values_clash_equal_values_merge ... ok
+test frontend::datatypes::tests::lossy_lexical_families_do_not_emit_false_value_disjointness ... ok
+test frontend::datatypes::tests::explicit_finite_cover_is_not_truncated_by_interval_enumeration_cap ... ok
+test frontend::datatypes::tests::lossy_named_datatype_shapes_do_not_imply_identity ... ok
+test frontend::datatypes::tests::interval_subsumption_and_disjointness ... ok
+test frontend::datatypes::tests::plain_literal_is_not_data_top ... ok
+test frontend::datatypes::tests::relation_decidability_rejects_unknowns_and_accepts_concrete_values ... ok
+test frontend::datatypes::tests::bridge_integral_decimal_literals_preserve_integer_value_identity ... ok
+test frontend::datatypes::tests::opaque_values_are_not_declared_outside_numeric_restrictions ... ok
+test frontend::datatypes::tests::unknown_emits_nothing_wrong ... ok
+test frontend::datatypes::tests::rational_interval_is_not_mistaken_for_decimal_interval ... ok
+test frontend::datetime_value::tests::lexical_limits_and_leap_days_are_checked ... ok
+test frontend::finite_data_rules::tests::class_projection_declines_non_boolean_sources ... ok
+test frontend::datatypes::tests::value_membership_and_tower ... ok
+test frontend::finite_data_rules::tests::projection_rejects_unexpanded_named_entity_aliases ... ok
+test frontend::datetime_value::tests::identity_normalizes_clock_but_retains_timezone ... ok
+test frontend::finite_data_rules::tests::class_projection_retains_boolean_theory_and_all_query_classes ... ok
+test frontend::ground_rule_source::tests::assertion_aliases_keep_lowest_free_names_and_reuse_duplicates ... ok
+test frontend::finite_data_rules::tests::rejects_value_generators_unknown_axioms_and_redefined_prefixes ... ok
+test frontend::ground_rule_source::tests::negative_data_assertion_keeps_polarity_and_annotation ... ok
+test frontend::ground_rule_source::tests::source_translation_rejects_missing_coverage_and_nonexact_literals ... ok
+test frontend::ground_rule_source::tests::fresh_anchor_does_not_capture_source_names ... ok
+test frontend::ground_rule_source::tests::source_translation_retains_non_rule_axioms_and_concrete_values ... ok
+test frontend::finite_data_rules::tests::graph_source_allows_an_edge_free_class_witness ... ok
+test frontend::ground_rules::tests::empty_named_domain_and_ground_rules_are_distinguished ... ok
+test frontend::ground_rules::tests::source_coverage_and_budget_failures_leave_original_ontology_intact ... ok
+test frontend::ground_rules::tests::grounding_preserves_all_bindings_and_fresh_symbols ... ok
+test frontend::has_key::tests::object_inverse_and_data_keys_become_one_rule_each ... ok
+test frontend::has_key::tests::sources_without_a_standard_key_stay_borrowed ... ok
+test frontend::iri::borrowed_lookup_tests::borrowed_probe_matches_the_owned_reference_on_unchanged_spellings ... ok
+test frontend::iri::tests::escaped_source_name_remains_collision_safe ... ok
+test frontend::iri::tests::non_owl_thing_and_nothing_local_names_remain_named ... ok
+test frontend::iri::tests::only_actual_owl_thing_and_nothing_are_builtins ... ok
+test frontend::isolated_rules::tests::source_constraints_prevent_unsafe_isolated_extensions ... ok
+test frontend::literal_profiles::tests::counting_on_data_properties_blocks_the_abstraction ... ok
+test frontend::literal_profiles::tests::facet_and_complement_ranges_split_profiles ... ok
+test frontend::finite_data_rules::tests::property_sorts_retain_full_source_names_and_rule_uses ... ok
+test frontend::literal_profiles::tests::profiles_follow_observed_ranges_and_tokens ... ok
+test frontend::literal_profiles::tests::representatives_are_the_first_literal_of_each_profile ... ok
+test frontend::iri::tests::source_names_that_look_generated_are_typed_as_named ... ok
+test frontend::nominal_abox_contract_tests::assertion_only_proxy_uses_normalizer_mapping_without_default_clause_injection ... ok
+test frontend::iri::tests::terminal_separator_iris_keep_nonempty_collision_safe_owned_names ... ok
+test frontend::isolated_rules::tests::checks_actual_714_isolated_name_extension_obligations ... ok
+test frontend::literal_profiles::tests::unknown_ranges_keep_identity ... ok
+test frontend::nominal_abox_contract_tests::functional_data_projection_keeps_entailed_different_individuals ... ok
+test frontend::nominal_abox_contract_tests::identity_and_redundant_positive_data_are_complete_while_unsupported_abox_fails_closed ... ok
+test frontend::nominal_abox_contract_tests::typed_abox_preserves_class_roles_negatives_and_different ... ok
+test frontend::normalise::chain_compilation_tests::long_role_chain_is_compiled_right_associatively ... ok
+test frontend::normalise::nnf_cow_tests::a_negation_normal_form_is_always_its_own_fixpoint ... ok
+test frontend::normalise::nnf_cow_tests::nnf_cow_is_nnf_on_every_family_member ... ok
+test frontend::normalise::nnf_cow_tests::parser_built_el_axioms_take_the_borrowed_path ... ok
+test frontend::nominal_abox_contract_tests::object_abox_and_assertion_only_individuals_are_certified ... ok
+test frontend::nominal_abox_contract_tests::nary_different_individuals_is_certified_as_exact_pairs ... ok
+test frontend::nominal_abox_contract_tests::identity_is_retained_while_data_fails_and_negative_object_roles_are_retained ... ok
+test frontend::normalise::nnf_cow_tests::transformed_shapes_are_owned ... ok
+test frontend::normalise::nnf_cow_tests::normalisation_output_is_unchanged_by_the_shared_path ... ok
+test frontend::normalise::tests::absorb_drops_positive_only_excluded_middle ... ok
+test frontend::normalise::tests::atleast_recognition_polarity_gated ... ok
+test frontend::normalise::tests::checked_symbolic_normalization_preserves_large_source_bounds ... ok
+test frontend::normalise::tests::atleast_two_recognition_clause ... ok
+test frontend::normalise::tests::equal_restrictions_keep_separate_definers_when_sharing_is_off ... ok
+test frontend::normalise::tests::atmost_recognition_polarity_gated ... ok
+test frontend::normalise::tests::equal_restrictions_share_one_definer ... ok
+test frontend::normalise::tests::native_cardinality_keeps_source_tbox_provenance ... ok
+test frontend::normalise::tests::native_cardinality_provenance_rejects_corrupted_bounds ... ok
+test frontend::normalise::tests::native_negative_minimum_uses_constant_size_complement ... ok
+test frontend::normalise::tests::native_handoff_without_metadata_preserves_ordinary_obligations ... ok
+test frontend::normalise::tests::native_qualified_million_bounds_keep_fillers_and_recognition ... ok
+test frontend::normalise::tests::trigger_absorb_distributes_union_antecedent ... ok
+test frontend::normalise::tests::trigger_absorb_compiles_and_exists_antecedent ... ok
+test frontend::normalise::tests::trigger_absorb_localises_multiple_existential_antecedents ... ok
+test frontend::normalise::tests::trigger_absorb_moves_negative_rhs_disjunct_into_body ... ok
+test frontend::normalise::tests::trigger_absorb_retains_definer_provenance ... ok
+test frontend::numeric_source::tests::declared_ranges_are_intersected_and_empty_intersections_forbid_edges ... ok
+test frontend::numeric_source::tests::decline_coupling_unknown_positions_and_rebound_datatypes ... ok
+test frontend::numeric_source::tests::empty_ranges_and_unqualified_cardinality_remain_well_formed ... ok
+test frontend::numeric_source::tests::finite_cover_includes_outside_and_preserves_negative_constants ... ok
+test frontend::parse::axiom_drop_regression_tests::appending_omitted_abox_matches_complete_recovery_parse ... ok
+test frontend::parse::axiom_drop_regression_tests::bottom_data_property_has_no_values ... ok
+test frontend::parse::axiom_drop_regression_tests::bottom_object_property_has_no_fillers ... ok
+test frontend::parse::axiom_drop_regression_tests::data_assertions_above_the_cap_are_carried_by_profile ... ok
+test frontend::parse::axiom_drop_regression_tests::data_assertion_literal_cap_declines_the_whole_conversion ... ok
+test frontend::parse::axiom_drop_regression_tests::data_assertions_stay_unconverted_unless_requested ... ok
+test frontend::parse::axiom_drop_regression_tests::disjoint_union_desugars_to_equivalence_and_disjointness ... ok
+test frontend::parse::axiom_drop_regression_tests::empty_and_universal_data_ranges_simplify_their_restrictions ... ok
+test frontend::parse::axiom_drop_regression_tests::filtered_parser_observes_but_does_not_materialize_abox_nodes ... ok
+test frontend::parse::axiom_drop_regression_tests::full_owl_top_and_bottom_iris_remain_builtins ... ok
+test frontend::parse::axiom_drop_regression_tests::inverse_domain_and_range_desugar_to_direct_role_axioms ... ok
+test frontend::parse::axiom_drop_regression_tests::literal_existential_is_the_unqualified_min_cardinality ... ok
+test frontend::parse::axiom_drop_regression_tests::negative_object_property_assertion_is_recorded ... ok
+test frontend::parse::axiom_drop_regression_tests::positive_inverse_assertion_matches_swapped_named_assertion ... ok
+test frontend::parse::axiom_drop_regression_tests::named_datatypes_keep_namespace_identity ... ok
+test frontend::parse::axiom_drop_regression_tests::requested_data_assertion_becomes_its_has_value_class_assertion ... ok
+test frontend::parse::axiom_drop_regression_tests::user_classes_named_thing_and_nothing_are_not_builtins ... ok
+test frontend::parse::rule_tests::data_rule_literal_is_never_an_object_individual ... ok
+test frontend::parse::rule_tests::dlsafe_rule_with_builtin_atom_retains_concrete_obligation ... ok
+test frontend::parse::rule_tests::dlsafe_rule_with_data_atoms_retains_concrete_obligation ... ok
+test frontend::parse::rule_tests::dlsafe_rule_with_same_individual_atom_parses ... ok
+test frontend::parse::rule_tests::datatype_rule_retains_typed_values_and_arithmetic_operands ... ok
+test frontend::parse::rule_tests::dlsafe_star_rule_parses ... ok
+test frontend::parse::rule_tests::empty_rule_head_is_a_constraint_but_observer_head_is_not ... ok
+test frontend::preprocess::chain_detection_tests::allocation_free_detection_matches_the_reference ... ok
+test frontend::preprocess::endpoint_transitivity_tests::endpoint_transitivity_accepts_only_model_extendible_consumers ... ok
+test frontend::preprocess::endpoint_transitivity_tests::endpoint_transitivity_closes_inclusion_cycles_and_propagates_obstructions ... ok
+test frontend::preprocess::inverse_transitivity_probe_tests::converse_transitivity_requires_equivalence_and_closes_aliases ... ok
+test frontend::preprocess::chain_detection_tests::shared_detection_reproduces_the_independent_derivations ... ok
+test frontend::preprocess::inverse_transitivity_probe_tests::guarded_and_ground_bridges_do_not_establish_converse_equivalence ... ok
+test frontend::preprocess::tests::domain_consumer_chain_recognition ... ok
+test frontend::preprocess::tests::domain_consumer_transitive_chain_recognition ... ok
+test frontend::preprocess::tests::keeps_bridge_with_onward_partner ... ok
+test frontend::preprocess::tests::keeps_only_consumed_direction ... ok
+test frontend::preprocess::tests::keeps_relevant_symmetric_self_bridge ... ok
+test frontend::preprocess::tests::noop_without_pairs ... ok
+test frontend::preprocess::tests::prunes_both_directions_when_pair_unconsumed ... ok
+test frontend::preprocess::tests::prunes_inert_inverse_pair_both_directions ... ok
+test frontend::preprocess::tests::prunes_inert_symmetric_self_bridge ... ok
+test frontend::preprocess::tests::relevance_excludes_role_feeding_only_a_synthetic_definer ... ok
+test frontend::preprocess::tests::relevance_includes_role_when_definer_reaches_a_named_concept ... ok
+test frontend::preprocess::tests::relevance_marks_domain_and_propagates_through_subrole ... ok
+test frontend::preprocess::tests::nominal_defining_clauses_dl7_dl8 ... ok
+test frontend::preprocess::tests::relevance_marks_role_feeding_a_constraint ... ok
+test frontend::preprocess::tests::relevance_propagates_back_through_inverse_bridge ... ok
+test frontend::preprocess::tests::relevance_skips_existential_only_role ... ok
+test frontend::preprocess::tests::trans_chain_compose_feeds_reachability ... ok
+test frontend::preprocess::tests::same_orientation_subrole_clause_is_not_a_bridge ... ok
+test frontend::profile::rule_property_kind_tests::worker_sorts_use_full_iris_and_reject_incomplete_or_ambiguous_tables ... ok
+test frontend::ground_rules::tests::ground_implications_match_two_element_models_without_unique_names ... ok
+test frontend::profile::tests::clause_retained_role_constraints_stay_out_of_the_number_component ... ok
+test frontend::profile::tests::complex_chain_replaces_base_with_sr ... ok
+test frontend::profile::tests::disjoint_union_abox_gate_excludes_component_connectors ... ok
+test frontend::profile::tests::inverse_cardinality_role_separation_is_source_certified ... ok
+test frontend::profile::tests::konclude_code_precedence_is_exact ... ok
+test frontend::profile::tests::parsed_constructs_drive_expressivity_not_text_tokens ... ok
+test frontend::profile::tests::positive_abox_tbox_separation_certificate_fails_closed ... ok
+test frontend::profile::tests::cardinality_matches_konclude_q_n_f_precedence ... ok
+test frontend::profile::tests::post_preprocessing_reachability_matches_official_witnesses ... ok
+test frontend::profile::tests::post_preprocessing_axiom_flags_match_official_konclude ... ok
+test frontend::profile::tests::rule_representability_is_profiled_before_routing ... ok
+test frontend::profile::tests::top_identity_abox_separation_certificate_fails_closed ... ok
+test frontend::profile::tests::vacuous_universal_role_elision_describes_the_retained_ontology ... ok
+test frontend::rbox::tests::arbitrary_named_chain_is_retained_without_changing_binary_rows ... ok
+test frontend::rule_assertions::tests::closure_preserves_rules_and_requires_every_positive_premise ... ok
+test frontend::rbox::tests::retained_rbox_replay_matches_full_second_parse_bytes ... ok
+test frontend::rule_assertions::tests::repeated_role_variables_require_one_shared_binding ... ok
+test frontend::rule_assertions::tests::rule_premises_include_inferred_inverse_chain_and_transitive_edges ... ok
+test frontend::rule_certificate::query_projection_tests::mixed_query_head_preserves_logical_conclusions_and_body ... ok
+test frontend::rule_certificate::tests::empty_data_relation_certifies_rule_but_assertion_revokes_it ... ok
+test frontend::rule_certificate::query_projection_tests::sqwrl_projection_requires_an_entire_observer_head ... ok
+test frontend::rule_certificate::tests::exact_one_rule_witness_certifies_inconsistency ... ok
+test frontend::rule_certificate::tests::legacy_type_join_requires_a_subsuming_same_individual_rule ... ok
+test frontend::rule_contract_tests::builtin_bearing_corpus_declines_even_with_representable_rules ... ok
+test frontend::rule_certificate::tests::exact_one_rule_witness_fails_closed_when_any_essential_part_is_absent ... ok
+test frontend::rule_contract_tests::different_individuals_rule_does_not_decline_the_route ... ok
+test frontend::rule_contract_tests::named_dl_safe_rule_is_fully_representable ... ok
+test frontend::rule_contract_tests::rule_contract_rejects_dropped_and_complex_atoms ... ok
+test frontend::rule_contract_tests::same_individual_rule_is_representable ... ok
+test frontend::rule_paths::tests::cyclic_parallel_and_disconnected_rules_keep_general_grounding ... ok
+test frontend::normalise::tests::native_cardinality_omits_only_the_positive_expansion ... ok
+test frontend::preprocess::tests::indexed_relevance_matches_the_large_clause_shape ... ok
+test frontend::rule_paths::tests::paths_match_all_two_element_models_including_aliases_and_unnamed_objects ... ok
+test frontend::normalise::tests::role_colors_avoid_quadratic_lower_and_upper_expansions ... ok
+test frontend::separable_abox_elision_tests::atomic_parse_screen_rejects_every_other_abox_constructor ... ok
+test frontend::ground_rules::tests::cyclic_template_rule_needs_only_head_assignments ... ok
+test frontend::finite_data_rules::tests::graph_source_is_restriction_closed_and_every_concrete_rule_has_a_plan ... ok
+test frontend::profile::rule_property_kind_tests::graph_source_sorts_survive_frontend_converter_and_worker_wire ... ok
+test frontend::separable_abox_elision_tests::a_read_universal_role_keeps_the_exact_nominal_fence ... ok
+test frontend::separable_abox_elision_tests::atomic_abox_projection_preserves_joint_membership ... ok
+test frontend::separable_abox_elision_tests::atomic_abox_supersedes_disjoint_union_precheck ... ok
+test frontend::separable_abox_elision_tests::atomic_class_abox_is_projected_but_retains_consistency_queries ... ok
+test frontend::separable_abox_elision_tests::automatic_route_omits_a_separable_abox_before_worker_selection ... ok
+test frontend::separable_abox_elision_tests::bottom_constrained_atomic_abox_is_projected_for_taxonomy_check ... ok
+test frontend::separable_abox_elision_tests::certified_positive_abox_is_removed_before_clausification ... ok
+test frontend::separable_abox_elision_tests::complex_class_assertion_stays_on_full_abox_path ... ok
+test frontend::separable_abox_elision_tests::direct_bottom_assertion_stays_on_full_abox_path ... ok
+test frontend::separable_abox_elision_tests::extended_atomic_abox_source_whitelist_fails_closed_and_retains_el_arm ... ok
+test frontend::separable_abox_elision_tests::disjoint_union_public_signature_excludes_native_abox_private_concepts ... ok
+test frontend::separable_abox_elision_tests::exact_disjoint_union_consistency_verdict_authorizes_elision ... ok
+test frontend::separable_abox_elision_tests::existential_witness_projection_preserves_tbox_bottom_prepass ... ok
+test frontend::separable_abox_elision_tests::optimistic_parse_screen_admits_only_likely_positive_abox_sources ... ok
+test frontend::separable_abox_elision_tests::existential_witness_projection_rejects_every_role_coupling ... ok
+test frontend::separable_abox_elision_tests::extended_atomic_abox_admits_non_el_object_tboxes ... ok
+test frontend::separable_abox_elision_tests::extended_atomic_abox_observer_preserves_joint_membership_and_alias_rejection ... ok
+test frontend::sexpr::tests::byte_classes_match_the_per_byte_char_tests ... ok
+test frontend::sexpr::tests::find_byte_matches_the_plain_scan ... ok
+test frontend::sexpr::tests::parser_errors_and_nesting_are_unchanged ... ok
+test frontend::sorts::tests::a_concept_used_in_both_sorts_keeps_its_fact_and_gets_no_sort_clause ... ok
+test frontend::sorts::tests::a_data_sorted_top_definer_implication_is_relativized_and_the_range_definer_keeps_its_sort ... ok
+test frontend::sorts::tests::a_top_definer_implication_with_an_object_head_is_relativized ... ok
+test frontend::sorts::tests::admissibility_closure_removes_clauses_instead_of_guessing ... ok
+test frontend::sorts::tests::complement_range_concepts_are_data_and_their_excluded_middle_is_guarded ... ok
+test frontend::sorts::tests::gate_needs_a_data_value_range_or_data_property ... ok
+test frontend::sorts::tests::infers_sorts_from_the_clause_set ... ok
+test frontend::sorts::tests::relativizes_class_level_facts_only_and_adds_sort_clauses ... ok
+test frontend::sorts::tests::top_nominal_with_unvalued_data_cardinality_is_relativized ... ok
+test frontend::sorts::tests::unpinned_individuals_are_pinned_by_proxy_or_marker ... ok
+test frontend::symbolic_frontend_tests::full_symbolic_frontend_retains_data_and_large_bound_evidence ... ok
+test frontend::separable_abox_elision_tests::extended_atomic_abox_rejects_non_el_source_constraints ... ok
+test frontend::top_role::tests::a_real_universal_role_use_keeps_the_inclusion ... ok
+test frontend::top_role::tests::nothing_to_eliminate_without_the_builtin ... ok
+test frontend::separable_abox_elision_tests::inert_role_abox_is_replaced_by_internal_type_probes ... ok
+test frontend::top_role::tests::any_other_occurrence_blocks_elimination ... ok
+test frontend::top_role::tests::only_super_role_occurrences_are_eliminable ... ok
+test frontend::universal_role::tests::admitted_side_occurrences_and_annotations_do_not_block ... ok
+test frontend::universal_role::tests::constant_restrictions_fold_without_a_hub ... ok
+test frontend::separable_abox_elision_tests::isolated_existential_witness_abox_is_projected_to_production ... ok
+test frontend::top_role::tests::vacuous_inclusion_leaves_no_builtin_role_behind ... ok
+test frontend::universal_role::tests::generated_namespace_in_source_disables_the_rewrite ... ok
+test frontend::universal_role::tests::inverse_universal_role_and_domain_range_axioms_are_encoded ... ok
+test tableau::finite_rule_model_tests::checks_all_bindings_and_actual_existential_edges ... ok
+test frontend::universal_role::tests::general_restrictions_use_the_hub_and_nest ... ok
+test tableau::finite_rule_model_tests::datatype_realization_checks_absence_and_preserves_distinct_nodes ... ok
+test frontend::universal_role::tests::other_occurrences_leave_the_source_unchanged ... ok
+test frontend::top_role::tests::vacuous_inclusion_clears_the_source_profile_flag ... ok
+test tableau::finite_rule_model_tests::equality_respects_shared_denotations ... ok
+test frontend::separable_abox_elision_tests::omitted_abox_only_class_keeps_a_context_for_global_tbox_axioms ... ok
+test tableau::finite_rule_model_tests::negative_atoms_use_complements_without_negative_labels ... ok
+test tableau::finite_rule_model_tests::indexed_role_domains_match_scan_for_every_three_node_relation ... ok
+test tableau::finite_rule_model_tests::original_data_axioms_use_concrete_values_and_object_domains ... ok
+test frontend::separable_abox_elision_tests::role_readers_and_equality_generators_reject_inert_projection ... ok
+test tableau::finite_rule_model_tests::original_abox_checks_aliases_inverse_edges_and_negative_assertions ... ok
+test tableau::finite_rule_model_tests::original_property_axioms_check_chain_orientation_and_constraints ... ok
+test tableau::finite_rule_model_tests::rejects_nonsingleton_nominals_and_exhausted_budget ... ok
+test tableau::finite_rule_model_tests::source_role_sorts_check_edges_and_named_individuals ... ok
+test tableau::finite_rule_model_tests::source_model_check_rejects_converter_omissions_before_search ... ok
+test tableau::finite_rule_model_tests::source_boolean_model_uses_constants_complements_and_full_iris ... ok
+test tableau::finite_rule_model_tests::original_rules_check_concrete_guards_and_named_head_obligations ... ok
+test tableau::hypertableau::tests::anywhere_blocking_also_terminates ... ok
+test tableau::hypertableau::tests::atleast2_recognition_concept_branch_sat ... ok
+test tableau::hypertableau::tests::atleast2_recognition_branch_asserts_concept_unsat ... ok
+test tableau::hypertableau::tests::anchored_equality_producer_derives_a_unique_nominal_representative ... ok
+test tableau::hypertableau::tests::atleast2_recognition_dead_merge_unsat ... ok
+test tableau::hypertableau::tests::atmost2_qualified_merge_branch_sat ... ok
+test frontend::separable_abox_elision_tests::subthreshold_atomic_abox_uses_exact_el_projection ... ok
+test tableau::hypertableau::tests::backjump_skips_irrelevant_branch ... ok
+test tableau::hypertableau::tests::atmost2_qualified_merge_branch_unsat ... ok
+test frontend::separable_abox_elision_tests::vacuous_top_role_object_abox_selects_the_certified_typed_bridge ... ok
+test tableau::finite_rule_model_tests::pruned_source_rule_join_matches_exhaustive_two_object_models ... ok
+test tableau::hypertableau::tests::body_equality_substitutes_every_occurrence_before_saturation ... ok
+test tableau::hypertableau::tests::card_atleast_sat_builds_successors ... ok
+test tableau::hypertableau::tests::card_atleast_recursive_terminates_via_blocking ... ok
+test tableau::hypertableau::tests::card_atleast_unsat_via_filler_clash ... ok
+test tableau::hypertableau::tests::card_atmost_choose_picks_negative ... ok
+test tableau::hypertableau::tests::card_atmost_distinct_clash ... ok
+test tableau::hypertableau::tests::card_atmost_merge_clash ... ok
+test tableau::hypertableau::tests::card_self_equality_not_insufficient ... ok
+test tableau::hypertableau::tests::cardinality_decision_blocks_and_checks_a_cyclic_minimum ... FAILED
+test tableau::hypertableau::tests::cardinality_doubling_histories_reject_stale_single_and_multi_root_rounds ... ok
+test tableau::hypertableau::tests::cardinality_decision_emits_sat_or_unsat_checker_ready_evidence ... FAILED
+test tableau::hypertableau::tests::cardinality_frontier_distinguishes_minimum_siblings_and_lean_checks_it ... ok
+test tableau::hypertableau::tests::cardinality_taxonomy_retains_shared_exact_recognition_indices ... ok
+test tableau::hypertableau::tests::cardinality_refutation_reports_closed_open_and_frontier_separately ... ok
+test tableau::hypertableau::tests::cardinality_taxonomy_run_matrix_binds_every_query_coordinate ... ok
+test tableau::hypertableau::tests::cardmerge_compatible_certifies ... ok
+test tableau::hypertableau::tests::cardmerge_clash_defers ... ok
+test tableau::hypertableau::tests::cardmerge_does_not_pollute_unconstrained_predecessor ... ok
+test tableau::hypertableau::tests::cb_bridge_returns_only_the_open_anchored_cardinality_payload ... ok
+test tableau::hypertableau::tests::certification_frontiers_reject_a_mismatched_search_budget ... ok
+test tableau::hypertableau::tests::certified_mode6_accepts_a_blocked_leaf_address_frontier ... ok
+test tableau::hypertableau::tests::certified_mode6_rejects_repeated_signature_on_unblocked_path ... ok
+test tableau::hypertableau::tests::certified_mode6_addresses_distinguish_roots_and_validate_witness_slots ... ok
+test tableau::hypertableau::tests::certified_mode6_rejects_expansion_beyond_a_blocked_address ... ok
+test tableau::hypertableau::tests::certified_mode6_rejects_unaddressed_or_malformed_witness_nodes ... ok
+test tableau::hypertableau::tests::card_atmost_merge_sat ... ok
+test tableau::hypertableau::tests::certified_mode6_uses_direct_full_pairwise_blocking ... ok
+test tableau::hypertableau::tests::clash_a_and_not_a ... ok
+test tableau::hypertableau::tests::clash_union_dep_is_backjump_target ... ok
+test tableau::hypertableau::tests::certified_unsat_refutation_deepens_past_the_historical_node_cap ... FAILED
+test tableau::hypertableau::tests::card_distinct_merge_still_defers ... ok
+test tableau::hypertableau::tests::checked_subset_blocking_incremental_matches_full_scan ... ok
+test tableau::hypertableau::tests::classify_basic_subsumption ... ok
+test tableau::hypertableau::tests::classify_model_based_eq_naive_chain ... ok
+test tableau::hypertableau::tests::depset_max_and_contains ... ok
+test tableau::hypertableau::tests::default_ht_does_not_allocate_certificate_address_metadata ... ok
+test tableau::hypertableau::tests::depset_union_and_remove ... ok
+test tableau::hypertableau::tests::disjunction_unsat_both_branches_clash ... ok
+test tableau::hypertableau::tests::distinct_backtrack_undoes_then_mergeable ... ok
+test tableau::hypertableau::tests::disjunction_one_branch_open ... ok
+test tableau::hypertableau::tests::distinct_pair_merge_clashes ... ok
+test tableau::hypertableau::tests::distinct_propagates_through_merge ... ok
+test tableau::hypertableau::tests::distinct_self_is_clash ... ok
+test tableau::hypertableau::tests::doubling_history_accepts_the_first_frontier_and_rejects_a_stale_rerun ... ok
+test tableau::hypertableau::tests::equality_and_cardinality_folds_copy_incoming_blocker_edges ... FAILED
+test tableau::hypertableau::tests::equality_aware_refutation_reports_closed_open_and_frontier_separately ... ok
+test tableau::hypertableau::tests::equality_certificate_fails_closed_until_native_apart_is_in_its_wire ... ok
+test tableau::hypertableau::tests::equality_certificate_search_reads_all_facts_modulo_the_quotient ... ok
+test tableau::hypertableau::tests::equality_decision_emits_sat_or_unsat_checker_ready_evidence ... FAILED
+test tableau::hypertableau::tests::equality_free_frontier_uses_the_exact_capped_signature_cardinality ... ok
+test tableau::hypertableau::tests::equality_free_refutation_blocking_signature_is_full_and_bidirectional ... ok
+test tableau::hypertableau::tests::equality_decision_pairwise_blocks_and_checks_a_satisfiable_cycle ... FAILED
+test tableau::hypertableau::tests::equality_free_refutation_pairwise_blocks_a_satisfiable_cycle ... ok
+test tableau::hypertableau::tests::equality_premise_contradiction_becomes_a_global_clash ... ok
+test tableau::hypertableau::tests::existential_then_universal_clash ... ok
+test tableau::hypertableau::tests::equality_production_blocking_checks_rejection_provenance ... ok
+test tableau::hypertableau::tests::equality_free_decision_emits_sat_or_unsat_checker_ready_evidence ... FAILED
+test tableau::hypertableau::tests::existential_universal_consistent ... ok
+test tableau::hypertableau::tests::forall_propagation_delta_both_triggers ... ok
+test tableau::hypertableau::tests::functional_merge_consistent_when_compatible ... ok
+test tableau::hypertableau::tests::functional_merge_forces_clash ... ok
+test tableau::hypertableau::tests::global_axiom_empty_body ... ok
+test tableau::hypertableau::tests::global_decision_wraps_regular_evidence_for_the_main_lean_checker ... FAILED
+test tableau::hypertableau::tests::has_inverse_bridge_detects_swapped_role_head ... ok
+test tableau::hypertableau::tests::horn_chain_delta ... ok
+test tableau::hypertableau::tests::index_forall_picks_up_universal_clauses ... ok
+test tableau::hypertableau::tests::infinite_chain_blocks_and_terminates ... ok
+test tableau::hypertableau::tests::inverse_role_consistent_without_clash ... ok
+test tableau::hypertableau::tests::kpset_loadbearing_inverse_defers_not_oversderive ... ok
+test tableau::hypertableau::tests::kpset_inert_inverse_certifies ... ok
+test tableau::hypertableau::tests::inverse_role_propagates_universal_back ... ok
+test tableau::hypertableau::tests::kpwrite_backward_forall_certifies_self_node ... ok
+test tableau::hypertableau::tests::lean_body_equality_normalization_wire_certifies_the_source_clause ... ok
+test tableau::hypertableau::tests::lean_cardinality_sat_wire_passes_native_checker_when_configured ... ok
+test tableau::hypertableau::tests::lean_certificate_search_starts_from_exact_native_abox_seed ... ok
+test tableau::hypertableau::tests::lean_certificate_search_rejects_invalid_native_abox_indices ... ok
+test tableau::hypertableau::tests::lean_concept_unsat_wire_exhausts_every_disjunct ... ok
+test tableau::hypertableau::tests::lean_concept_unsat_wire_refuses_an_open_branch ... ok
+test tableau::hypertableau::tests::lean_equality_query_wires_pass_native_checker_when_configured ... ok
+test tableau::hypertableau::tests::lean_distinct_cardinality_wire_passes_native_checker_when_configured ... ok
+test tableau::hypertableau::tests::lean_equality_query_wires_serialize_quotient_countermodels ... ok
+test tableau::hypertableau::tests::lean_equality_refutation_query_wires_serialize ... ok
+test tableau::hypertableau::tests::lean_equality_sat_wire_passes_native_checker_when_configured ... ok
+test tableau::hypertableau::tests::lean_equality_unsat_wire_passes_native_checker_when_configured ... ok
+test tableau::hypertableau::tests::lean_non_subsumption_wire_serializes_the_exact_countermodel_query ... ok
+test tableau::hypertableau::tests::lean_preprocessing_wire_certifies_trigger_and_contrapositives ... FAILED
+test tableau::hypertableau::tests::lean_query_wires_pass_native_checker_when_configured ... ok
+test tableau::hypertableau::tests::lean_refutation_reports_closed_open_and_frontier_separately ... ok
+test tableau::hypertableau::tests::lean_sat_wire_serializes_the_exact_equality_quotient ... ok
+test tableau::hypertableau::tests::lean_sat_wire_serializes_the_exact_terminal_model ... ok
+test tableau::hypertableau::tests::lean_satisfiable_concept_wire_serializes_the_exact_model_query ... ok
+test tableau::hypertableau::tests::lean_subsumption_wire_refutes_the_exact_query_root ... ok
+test tableau::hypertableau::tests::lean_taxonomy_checker_accepts_a_materialized_equality_body ... ok
+test tableau::hypertableau::tests::lean_taxonomy_wire_covers_every_concept_and_ordered_pair ... FAILED
+test tableau::hypertableau::tests::lean_taxonomy_wire_passes_native_checker_when_configured ... ok
+test tableau::hypertableau::tests::lean_taxonomy_wire_uses_anchored_negative_cells_for_a_genuine_equality_head ... FAILED
+test tableau::hypertableau::tests::lean_unsat_assignment_enumeration_is_lazy_and_exhaustive ... ok
+test tableau::hypertableau::tests::lean_unsat_wire_closes_role_and_existential_branches ... ok
+test tableau::hypertableau::tests::lean_unsat_wire_materializes_a_fresh_existential_witness ... ok
+test tableau::hypertableau::tests::lean_unsat_wire_passes_native_checker_when_configured ... ok
+test tableau::hypertableau::tests::lean_unsat_wire_serializes_equality_merges ... ok
+test tableau::hypertableau::tests::lean_unsatisfiable_concept_wire_refutes_the_exact_query_root ... ok
+test tableau::hypertableau::tests::luby_sequence_prefix ... ok
+test tableau::hypertableau::tests::merge_inverse_existential_terminates ... ok
+test tableau::hypertableau::tests::mode4_agrees_with_default_on_noinverse_clash ... ok
+test tableau::hypertableau::tests::mode4_backward_inverse_propagation_clash ... ok
+test tableau::hypertableau::tests::mode4_inverse_model_is_satisfiable ... ok
+test tableau::hypertableau::tests::mode4_merge_clash_inverse_unsat ... ok
+test tableau::hypertableau::tests::mode4_merge_cycle_inverse_terminates_sat ... ok
+test tableau::hypertableau::tests::mode4_terminates_on_inverse_cycle ... ok
+test tableau::hypertableau::tests::mode5_agrees_with_default_on_noinverse_clash ... ok
+test tableau::hypertableau::tests::mode5_backward_inverse_propagation_clash ... ok
+test tableau::hypertableau::tests::mode5_inverse_model_is_satisfiable ... ok
+test tableau::hypertableau::tests::mode5_terminates_on_inverse_cycle ... ok
+test tableau::hypertableau::tests::native_abox_cardinality_global_decision_uses_joint_wire ... FAILED
+test tableau::hypertableau::tests::native_abox_cardinality_frontier_preserves_distinct_root_addresses ... ok
+test tableau::hypertableau::tests::native_abox_cardinality_refutation_uses_joint_lean_boundary ... ok
+test tableau::hypertableau::tests::native_abox_cardinality_taxonomy_matrix_is_joint_and_tamper_evident ... FAILED
+test tableau::hypertableau::tests::native_abox_class_assertion_changes_global_consistency ... ok
+test tableau::hypertableau::tests::native_abox_different_blocks_required_atmost_merge ... ok
+test tableau::hypertableau::tests::native_abox_global_decision_uses_joint_sat_wire ... FAILED
+test tableau::hypertableau::tests::native_abox_positive_and_negative_role_assertion_clash ... ok
+test tableau::hypertableau::tests::native_abox_production_blocking_checks_joint_rejection_provenance ... ok
+test tableau::hypertableau::tests::native_abox_taxonomy_matrix_is_complete_and_tamper_evident ... FAILED
+test tableau::hypertableau::tests::native_abox_unsat_refutation_uses_joint_lean_boundary ... ok
+test tableau::hypertableau::tests::native_abox_taxonomy_cells_use_one_joint_checked_state ... FAILED
+test tableau::hypertableau::tests::negative_role_assertion_sees_subrole_inverse_and_chain_edges ... ok
+test tableau::hypertableau::tests::lean_distinct_cardinality_pigeonhole_wire_is_complete ... ok
+test tableau::hypertableau::tests::ni_certificate_accepts_direct_number_role_successor ... ok
+test tableau::hypertableau::tests::ni_certificate_rejects_non_successor_number_role_neighbour ... ok
+test tableau::hypertableau::tests::nominal_choice_on_merged_node_keeps_merge_and_choice_dependencies ... ok
+test tableau::hypertableau::tests::nominal_orule_merge_clash_unsat ... ok
+test tableau::hypertableau::tests::nominal_orule_merge_sat ... ok
+test tableau::hypertableau::tests::nominal_pending_choices_preserve_consistent_wine_fragment ... ok
+test tableau::hypertableau::tests::ordinary_taxonomy_run_matrix_binds_every_query_coordinate ... ok
+test tableau::hypertableau::tests::ordinary_unsat_production_run_rejects_a_sat_terminal ... ok
+test tableau::hypertableau::tests::parallel_workers_attach_to_the_parent_clause_index ... ok
+test tableau::hypertableau::tests::pm_prune_cardinality ... ok
+test tableau::hypertableau::tests::pm_prune_concept_deterministic ... ok
+test tableau::hypertableau::tests::pmmerge_model_root_refutes_nonsubsumer ... ok
+test tableau::hypertableau::tests::propagate_each_obligation_reuses_a_stronger_witness ... ok
+test tableau::hypertableau::tests::qo_shared_filler_conflict_ground_truth ... ok
+test tableau::hypertableau::tests::qopc_functional_eq_bails ... ok
+test tableau::hypertableau::tests::qopc_range_no_cross_role_pollution ... ok
+test tableau::hypertableau::tests::qopc_role_guard_after_edge_complete ... ok
+test tableau::hypertableau::tests::qopc_subsumption_chain ... ok
+test tableau::hypertableau::tests::qopc_transitive_chain ... ok
+test tableau::hypertableau::tests::qopc_unsat_concept ... ok
+test tableau::hypertableau::tests::qosat_edge_index_role_chain ... ok
+test tableau::hypertableau::tests::qosat_fprop_forward_broadcast ... ok
+test tableau::hypertableau::tests::qosat_global_inverse_complete ... ok
+test tableau::hypertableau::tests::qosat_prop_batch_preserves_fixpoint ... ok
+test tableau::hypertableau::tests::qosat_prop_broadcast_shared ... ok
+test tableau::hypertableau::tests::rebuilding_triggers_copies_an_index_that_a_worker_still_holds ... ok
+test tableau::hypertableau::tests::regular_certificate_partitions_role_rules_and_lean_checks_cover ... ok
+test tableau::hypertableau::tests::regular_certificate_serializes_general_guarded_residual_bodies ... ok
+test tableau::hypertableau::tests::regular_decision_envelope_carries_finite_unsat_and_lean_checks_it ... FAILED
+test tableau::hypertableau::tests::regular_decision_prefers_a_checked_finite_sat_model ... FAILED
+test tableau::hypertableau::tests::rejected_decision_candidate_deepens_or_fails_at_explicit_cap ... ok
+test tableau::hypertableau::tests::release_model_state_drops_the_model_and_keeps_certified_addresses ... ok
+test tableau::hypertableau::tests::resumed_model_rechecks_ni_certificate_before_accepting_witness ... ok
+test tableau::hypertableau::tests::role_hierarchy_head_consistent ... ok
+test tableau::hypertableau::tests::role_hierarchy_head_propagates_edge ... ok
+test tableau::hypertableau::tests::rooted_ordinary_run_rejects_a_terminal_from_another_abox ... ok
+test tableau::hypertableau::tests::search_modes_answer_invariant ... ok
+test tableau::hypertableau::tests::shared_index_records_number_roles_and_inverse_bridges ... ok
+test tableau::hypertableau::tests::simple_sat ... ok
+test tableau::hypertableau::tests::source_bound_ordinary_taxonomy_rejects_an_unrelated_valid_target ... ok
+test tableau::hypertableau::tests::split_certifies_shared_filler_conflict ... ok
+test tableau::hypertableau::tests::split_forall_operand_still_propagates ... ok
+test tableau::hypertableau::tests::parallel_workers_retain_native_abox ... ok
+test tableau::hypertableau::tests::parallel_classify_after_model_release_matches_sequential ... ok
+test tableau::hypertableau::tests::subset_blocking_bit_labels_track_add_and_backtrack ... ok
+test tableau::hypertableau::tests::watch_eq_scan_all_small_kbs ... ok
+test tableau::hypertableau::tests::parallel_classify_releases_the_shared_index_after_both_phases ... ok
+test tableau::tests::at_most_one_merge_consistent ... ok
+test tableau::hypertableau::tests::transitive_body_equalities_share_one_representative ... ok
+test tableau::tests::at_most_one_merge_clash_unsat ... ok
+test tableau::hypertableau::tests::unit_propagation_via_dead_disjunct ... ok
+test tableau::tests::bundle_native_abox_taxonomy_source_matrix_passes_real_lean_checker ... ok
+test tableau::tests::bundle_native_abox_cardinality_taxonomy_source_matrix_passes_real_lean_checker ... ok
+test tableau::tests::bundle_native_abox_refutation_passes_real_lean_checker ... ok
+test tableau::tests::bundle_native_abox_cardinality_refutation_passes_real_lean_checker ... ok
+test tableau::tests::cardinality_projection_passes_the_real_lean_checker_and_rejects_false_exactness ... ok
+test tableau::tests::careful_delta_closure_detects_a_new_clash ... ok
+test tableau::tests::careful_branch_cost_prefers_the_non_generative_alternative ... ok
+test tableau::tests::careful_lazy_choice_requires_every_use_to_be_role_blocked ... ok
+test tableau::tests::careful_delta_closure_propagates_and_falls_back_on_merge ... ok
+test tableau::tests::certified_global_verdict_is_derived_from_the_checked_evidence_shape ... ok
+test tableau::tests::certified_input_coverage_matches_the_lean_truth_table ... ok
+test tableau::tests::certified_raw_role_chain_participates_in_ht_refutation ... ok
+test tableau::tests::certified_role_chain_side_data_reconstructs_exact_source_clauses ... ok
+test tableau::tests::clash_a_and_not_a ... ok
+test tableau::tests::certified_input_coverage_rejects_converter_omissions_and_unsafe_combinations ... ok
+test tableau::tests::compact_bridge_transport_adds_bottom_once_and_rejects_bad_ids ... ok
+test tableau::tests::compact_bridge_transport_preserves_pairs_unsat_and_consistency ... ok
+test tableau::tests::direct_native_abox_cardinality_refutation_passes_real_lean_checker ... ok
+test tableau::tests::direct_native_abox_cardinality_sat_source_decision_passes_real_lean_checker ... ok
+test tableau::tests::direct_native_abox_cardinality_taxonomy_source_matrix_passes_real_lean_checker ... ok
+test tableau::tests::direct_native_abox_refutation_passes_real_lean_checker ... ok
+test tableau::tests::direct_native_abox_sat_source_decision_passes_real_lean_checker ... ok
+test tableau::tests::direct_native_abox_taxonomy_source_matrix_passes_real_lean_checker ... ok
+test tableau::tests::disjunction_branch ... ok
+test tableau::tests::disjunction_one_branch_open ... ok
+test tableau::tests::every_cardinality_taxonomy_projection_passes_the_common_lean_checker ... ok
+test tableau::tests::every_ht_lean_interface_enters_the_fail_closed_certification_boundary ... ok
+test tableau::tests::existential_then_universal_clash ... ok
+test tableau::tests::existential_universal_consistent ... ok
+test tableau::tests::ge2_alone_consistent_and_terminates ... ok
+test tableau::tests::ge2_with_le1_unsat_via_slots ... ok
+test tableau::tests::infinite_chain_blocks_and_terminates ... ok
+test tableau::tests::mixed_native_abox_cardinality_taxonomy_source_matrix_passes_real_lean_checker ... ok
+test tableau::tests::joint_native_abox_source_matrix_passes_real_lean_checker_on_all_six_routes ... FAILED
+test tableau::tests::mixed_native_abox_taxonomy_source_matrix_passes_real_lean_checker ... ok
+test tableau::tests::mixed_native_abox_refutation_passes_real_lean_checker ... ok
+test tableau::tests::compact_bridge_entry_matches_the_legacy_json_worker ... ok
+test tableau::tests::joint_native_abox_classification_carries_one_source_and_abox ... FAILED
+test tableau::tests::compact_bridge_entry_requires_the_exclusive_contract ... ok
+test tableau::tests::le2_three_successors_merges_consistent ... ok
+test tableau::tests::native_abox_never_falls_through_to_legacy_tableau_without_ht ... ok
+test tableau::tests::mixed_native_abox_cardinality_refutation_passes_real_lean_checker ... ok
+test tableau::tests::native_abox_projection_passes_real_lean_checker_and_rejects_forgery ... ok
+test tableau::tests::mixed_skolem_projection_passes_the_real_lean_checker_and_rejects_omission ... ok
+test tableau::tests::native_abox_wire_contract_rejects_empty_duplicate_or_unowned_nominal_proxies ... ok
+test tableau::tests::multi_filler_bundle_projection_passes_the_real_lean_checker_and_rejects_omission ... ok
+test tableau::tests::native_negative_role_wire_fact_reconstructs_a_missing_exact_clash_clause ... ok
+test tableau::tests::nominal_abox_global_inconsistency ... ok
+test tableau::tests::nominal_abox_subsumption ... ok
+test tableau::tests::nominal_singleton_merge_unsat ... ok
+test tableau::tests::simple_sat ... ok
+test tableau::tests::nominal_singleton_merge_consistent ... ok
+test tableau::tests::selective_join_matches_complete_substitution_sets_and_seeds ... ok
+test tableau::tests::owned_wire_entry_matches_the_borrowed_worker_contract ... ok
+test tableau::tests::typed_producer_handoff_matches_the_json_worker_contract ... ok
+test tableau::finite_rule_model_tests::pruned_verification_matches_exhaustive_two_object_interpretations ... ok
+failures:
+---- tableau::hypertableau::tests::cardinality_decision_blocks_and_checks_a_cyclic_minimum stdout ----
+thread 'tableau::hypertableau::tests::cardinality_decision_blocks_and_checks_a_cyclic_minimum' (2079688) panicked at src/hypertableau.rs:29331:14:
+cyclic minimum has a checked finite quotient model: "cardinality HT publication requires KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER"
+---- tableau::hypertableau::tests::cardinality_decision_emits_sat_or_unsat_checker_ready_evidence stdout ----
+thread 'tableau::hypertableau::tests::cardinality_decision_emits_sat_or_unsat_checker_ready_evidence' (2079689) panicked at src/hypertableau.rs:30790:14:
+an unasserted cardinality marker has a checked quotient model: "cardinality HT publication requires KM_HT_LEAN_CARDINALITY_PRODUCTION_RUN_CHECKER"
+---- tableau::hypertableau::tests::certified_unsat_refutation_deepens_past_the_historical_node_cap stdout ----
+thread 'tableau::hypertableau::tests::certified_unsat_refutation_deepens_past_the_historical_node_cap' (2079706) panicked at src/hypertableau.rs:30847:18:
+iterative deepening must reach the finite refutation: "ordinary HT iterative deepening requires KM_HT_LEAN_DOUBLING_TRACE_CHECKER"
+---- tableau::hypertableau::tests::equality_and_cardinality_folds_copy_incoming_blocker_edges stdout ----
+thread 'tableau::hypertableau::tests::equality_and_cardinality_folds_copy_incoming_blocker_edges' (2079722) panicked at src/hypertableau.rs:30695:14:
+the equality-aware cyclic branch has a finite fold: "equality SAT publication requires KM_HT_LEAN_EQUALITY_PRODUCTION_TERMINAL_CHECKER"
+---- tableau::hypertableau::tests::equality_decision_emits_sat_or_unsat_checker_ready_evidence stdout ----
+thread 'tableau::hypertableau::tests::equality_decision_emits_sat_or_unsat_checker_ready_evidence' (2079726) panicked at src/hypertableau.rs:30593:14:
+the reflexive equality branch has a checked quotient model: "equality SAT publication requires KM_HT_LEAN_EQUALITY_PRODUCTION_TERMINAL_CHECKER"
+---- tableau::hypertableau::tests::equality_decision_pairwise_blocks_and_checks_a_satisfiable_cycle stdout ----
+thread 'tableau::hypertableau::tests::equality_decision_pairwise_blocks_and_checks_a_satisfiable_cycle' (2079727) panicked at src/hypertableau.rs:29010:14:
+the equality-aware cycle has checker-accepted finite evidence: "equality SAT publication requires KM_HT_LEAN_EQUALITY_PRODUCTION_TERMINAL_CHECKER"
+---- tableau::hypertableau::tests::equality_free_decision_emits_sat_or_unsat_checker_ready_evidence stdout ----
+thread 'tableau::hypertableau::tests::equality_free_decision_emits_sat_or_unsat_checker_ready_evidence' (2079728) panicked at src/hypertableau.rs:30514:14:
+the blocked cyclic branch has a finite checked model candidate: "finite SAT publication requires KM_HT_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER"
+---- tableau::hypertableau::tests::global_decision_wraps_regular_evidence_for_the_main_lean_checker stdout ----
+thread 'tableau::hypertableau::tests::global_decision_wraps_regular_evidence_for_the_main_lean_checker' (2079740) panicked at src/hypertableau.rs:30440:14:
+global equality-free decision uses source-aware regular evidence: "ordinary HT UNSAT publication requires KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER"
+---- tableau::hypertableau::tests::lean_preprocessing_wire_certifies_trigger_and_contrapositives stdout ----
+thread 'tableau::hypertableau::tests::lean_preprocessing_wire_certifies_trigger_and_contrapositives' (2079764) panicked at src/hypertableau.rs:28633:14:
+preprocessed taxonomy has source-aware evidence: "finite SAT publication requires KM_HT_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER"
+---- tableau::hypertableau::tests::lean_taxonomy_wire_covers_every_concept_and_ordered_pair stdout ----
+thread 'tableau::hypertableau::tests::lean_taxonomy_wire_covers_every_concept_and_ordered_pair' (2079772) panicked at src/hypertableau.rs:28449:18:
+the empty ontology has finite evidence for every cell: "finite SAT publication requires KM_HT_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER"
+---- tableau::hypertableau::tests::lean_taxonomy_wire_uses_anchored_negative_cells_for_a_genuine_equality_head stdout ----
+thread 'tableau::hypertableau::tests::lean_taxonomy_wire_uses_anchored_negative_cells_for_a_genuine_equality_head' (2079774) panicked at src/hypertableau.rs:28479:18:
+the equality-bearing ontology has evidence for every cell: "ordinary taxonomy publication requires KM_HT_LEAN_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER"
+---- tableau::hypertableau::tests::native_abox_cardinality_global_decision_uses_joint_wire stdout ----
+thread 'tableau::hypertableau::tests::native_abox_cardinality_global_decision_uses_joint_wire' (2079794) panicked at src/hypertableau.rs:27739:14:
+native ABox minimum has a joint finite model: "native ABox cardinality publication requires KM_HT_LEAN_ROOTED_CARDINALITY_PRODUCTION_RUN_CHECKER"
+---- tableau::hypertableau::tests::native_abox_cardinality_taxonomy_matrix_is_joint_and_tamper_evident stdout ----
+thread 'tableau::hypertableau::tests::native_abox_cardinality_taxonomy_matrix_is_joint_and_tamper_evident' (2079796) panicked at src/hypertableau.rs:27581:14:
+native ABox cardinality taxonomy must be checker ready: "native ABox cardinality taxonomy publication requires KM_HT_LEAN_ROOTED_CARDINALITY_TAXONOMY_PRODUCTION_RUN_CHECKER"
+---- tableau::hypertableau::tests::native_abox_global_decision_uses_joint_sat_wire stdout ----
+thread 'tableau::hypertableau::tests::native_abox_global_decision_uses_joint_sat_wire' (2079799) panicked at src/hypertableau.rs:27380:14:
+native ABox has a joint checked finite quotient: "native ABox publication requires KM_HT_TOTAL_GLOBAL_ROOTED_ORDINARY_RUN_CHECKER or KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER"
+---- tableau::hypertableau::tests::native_abox_taxonomy_matrix_is_complete_and_tamper_evident stdout ----
+thread 'tableau::hypertableau::tests::native_abox_taxonomy_matrix_is_complete_and_tamper_evident' (2079803) panicked at src/hypertableau.rs:27527:14:
+complete native ABox taxonomy must be checker ready: "native ABox taxonomy publication requires KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER"
+---- tableau::hypertableau::tests::native_abox_taxonomy_cells_use_one_joint_checked_state stdout ----
+thread 'tableau::hypertableau::tests::native_abox_taxonomy_cells_use_one_joint_checked_state' (2079802) panicked at src/hypertableau.rs:27470:18:
+joint native ABox taxonomy cell must be certified: "native ABox taxonomy publication requires KM_HT_LEAN_ROOTED_ORDINARY_TAXONOMY_PRODUCTION_RUN_CHECKER"
+---- tableau::hypertableau::tests::regular_decision_envelope_carries_finite_unsat_and_lean_checks_it stdout ----
+thread 'tableau::hypertableau::tests::regular_decision_envelope_carries_finite_unsat_and_lean_checks_it' (2079847) panicked at src/hypertableau.rs:30371:14:
+empty-head axiom has a finite refutation envelope: "ordinary HT UNSAT publication requires KM_HT_LEAN_ORDINARY_UNSAT_PRODUCTION_RUN_CHECKER"
+---- tableau::hypertableau::tests::regular_decision_prefers_a_checked_finite_sat_model stdout ----
+thread 'tableau::hypertableau::tests::regular_decision_prefers_a_checked_finite_sat_model' (2079851) panicked at src/hypertableau.rs:30403:14:
+empty ontology has a finite SAT decision envelope: "finite SAT publication requires KM_HT_LEAN_FINITE_PRODUCTION_TERMINAL_CHECKER"
+---- tableau::tests::joint_native_abox_source_matrix_passes_real_lean_checker_on_all_six_routes stdout ----
+thread 'tableau::tests::joint_native_abox_source_matrix_passes_real_lean_checker_on_all_six_routes' (2079911) panicked at src/tableau.rs:10432:14:
+the HT certification gate must provide the real joint Lean checker
+---- tableau::tests::joint_native_abox_classification_carries_one_source_and_abox stdout ----
+thread 'tableau::tests::joint_native_abox_classification_carries_one_source_and_abox' (2079910) panicked at src/tableau.rs:10398:14:
+normalized native ABox decision: "native ABox publication requires KM_HT_TOTAL_GLOBAL_ROOTED_ORDINARY_RUN_CHECKER or KM_HT_LEAN_ROOTED_ORDINARY_PRODUCTION_RUN_CHECKER"
+failures:
+    tableau::hypertableau::tests::cardinality_decision_blocks_and_checks_a_cyclic_minimum
+    tableau::hypertableau::tests::cardinality_decision_emits_sat_or_unsat_checker_ready_evidence
+    tableau::hypertableau::tests::certified_unsat_refutation_deepens_past_the_historical_node_cap
+    tableau::hypertableau::tests::equality_and_cardinality_folds_copy_incoming_blocker_edges
+    tableau::hypertableau::tests::equality_decision_emits_sat_or_unsat_checker_ready_evidence
+    tableau::hypertableau::tests::equality_decision_pairwise_blocks_and_checks_a_satisfiable_cycle
+    tableau::hypertableau::tests::equality_free_decision_emits_sat_or_unsat_checker_ready_evidence
+    tableau::hypertableau::tests::global_decision_wraps_regular_evidence_for_the_main_lean_checker
+    tableau::hypertableau::tests::lean_preprocessing_wire_certifies_trigger_and_contrapositives
+    tableau::hypertableau::tests::lean_taxonomy_wire_covers_every_concept_and_ordered_pair
+    tableau::hypertableau::tests::lean_taxonomy_wire_uses_anchored_negative_cells_for_a_genuine_equality_head
+    tableau::hypertableau::tests::native_abox_cardinality_global_decision_uses_joint_wire
+    tableau::hypertableau::tests::native_abox_cardinality_taxonomy_matrix_is_joint_and_tamper_evident
+    tableau::hypertableau::tests::native_abox_global_decision_uses_joint_sat_wire
+    tableau::hypertableau::tests::native_abox_taxonomy_cells_use_one_joint_checked_state
+    tableau::hypertableau::tests::native_abox_taxonomy_matrix_is_complete_and_tamper_evident
+    tableau::hypertableau::tests::regular_decision_envelope_carries_finite_unsat_and_lean_checks_it
+    tableau::hypertableau::tests::regular_decision_prefers_a_checked_finite_sat_model
+    tableau::tests::joint_native_abox_classification_carries_one_source_and_abox
+    tableau::tests::joint_native_abox_source_matrix_passes_real_lean_checker_on_all_six_routes
+test result: FAILED. 634 passed; 20 failed; 0 ignored; 0 measured; 2382 filtered out; finished in 3.97s
+error: test failed, to rerun pass `--lib`
+exit 101
+== lib orchestrate::
+14786 ~                     if !bridged.precomputation_replay_disabled.get()
+14789 ~                             || drained_konclude
+  451 | struct CardDef {
+ 73 | impl NamedSubclassCertificate {
+    Finished `release` profile [optimized] target(s) in 0.06s
+     Running unittests src/lib.rs (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/rules-worker-cost/target/release/deps/kobayashi_marust-451e2d668f6b88a8)
+running 293 tests
+test orchestrate::abox_quotient::tests::abox_quotient_survey ... ignored
+test orchestrate::abox_quotient::data_free_subset_tests::data_axioms_are_removed_and_object_axioms_kept ... ok
+test orchestrate::abox_quotient::data_free_subset_tests::data_free_input_has_no_subset ... ok
+test orchestrate::abox_quotient::tests::declines_nominals_keys_rules_universal_role_and_comments ... ok
+test orchestrate::abox_quotient::tests::facet_restrictions_disable_string_renaming ... ok
+test orchestrate::abox_quotient::tests::functional_data_values_keep_individuals_apart ... ok
+test orchestrate::abox_quotient::tests::identity_participants_are_never_merged ... ok
+test orchestrate::abox_quotient::tests::isomorphic_components_with_renamed_strings_collapse ... ok
+test orchestrate::abox_quotient::tests::merges_individuals_with_equal_keys_and_expands_prefixes ... ok
+test orchestrate::abox_quotient::tests::multiline_literals_and_annotations_are_read ... ok
+test orchestrate::cb_to_ht::direct_projection_tests::converter_carries_the_complete_direct_source_list ... ok
+test orchestrate::abox_quotient::tests::quotients_of_valid_sources_pass_conformance ... ok
+test orchestrate::abox_quotient::tests::single_class_abox_becomes_a_tbox_with_asserted_class_checks ... ok
+test orchestrate::abox_quotient::tests::source_subset_flag_is_exact ... ok
+test orchestrate::abox_quotient::tests::taxonomy_comparison_ignores_representation_only ... ok
+test orchestrate::abox_quotient::tests::tbox_nominals_pin_their_individuals_and_request_the_sandwich ... ok
+test orchestrate::abox_quotient::tests::unrestricted_string_values_are_thinned ... ok
+test orchestrate::cb_to_ht::direct_projection_tests::converter_carries_exact_multi_filler_bundle_evidence ... ok
+test orchestrate::cb_to_ht::direct_projection_tests::direct_projection_defers_on_unproved_transformations ... ok
+test orchestrate::cb_to_ht::direct_projection_tests::skolem_projection_requires_the_exact_proved_common_body ... ok
+test orchestrate::cb_to_ht::direct_projection_tests::skolem_projection_requires_the_source_variable_as_function_argument ... ok
+test orchestrate::cb_to_ht::direct_projection_tests::direct_projection_preserves_complete_function_free_source_order ... ok
+test orchestrate::cb_to_ht::direct_projection_tests::skolem_projection_never_turns_a_disjunctive_head_into_conjunctive_fillers ... ok
+test orchestrate::cb_to_ht::masked_disjoint_union_shape_tests::body_equality_connects_components ... ok
+test orchestrate::cb_to_ht::masked_disjoint_union_shape_tests::accepts_connected_role_chain_clause ... ok
+test orchestrate::cb_to_ht::masked_disjoint_union_shape_tests::rejects_a_private_proxy_in_the_tbox ... ok
+test orchestrate::cb_to_ht::masked_disjoint_union_shape_tests::rejects_a_disconnected_head_variable ... ok
+test orchestrate::cb_to_ht::masked_disjoint_union_shape_tests::rejects_a_variable_free_clause ... ok
+test orchestrate::cb_to_ht::native_abox_install_tests::absent_typed_abox_is_an_identity_without_a_coverage_flag ... ok
+test orchestrate::cb_to_ht::native_abox_install_tests::complete_typed_abox_installs_numeric_roots_edges_and_negative_guard ... ok
+test orchestrate::cb_to_ht::native_abox_install_tests::checked_symbolic_converter_preserves_bounds_and_rejects_datatype_decline ... ok
+test orchestrate::cb_to_ht::native_abox_install_tests::datatype_relations_keep_singleton_equality_and_value_clashes ... ok
+test orchestrate::cb_to_ht::native_abox_install_tests::duplicate_proxy_ownership_fails_closed_without_partial_install ... ok
+test orchestrate::cb_to_ht::native_abox_install_tests::failed_install_rolls_back_every_semantic_vector_and_adds_only_a_fence ... ok
+test orchestrate::cb_to_ht::native_abox_install_tests::empty_internal_individual_name_is_valid_when_proxy_is_resolved ... ok
+test orchestrate::cb_to_ht::native_abox_install_tests::same_individual_component_uses_one_root_and_remaps_edges ... ok
+test orchestrate::cb_to_ht::empty_grounding_model_tests::source_model_preserves_named_graph_without_changing_ordinary_rule_free_conversion ... ok
+test orchestrate::cb_to_ht::native_abox_install_tests::same_individual_is_rejected_by_default_without_partial_install ... ok
+test orchestrate::cb_to_ht::native_abox_install_tests::symbolic_source_handoff_preserves_large_bounds_and_rejects_tampering ... ok
+test orchestrate::cb_to_ht::native_abox_install_tests::symbolic_inverse_source_names_keep_existing_ids_and_public_queries ... ok
+test orchestrate::cb_to_ht::rule_clause_tests::body_same_guard_unifies_its_two_terms ... ok
+test orchestrate::cb_to_ht::rule_clause_tests::different_individuals_atom_defers_the_rule ... ok
+test orchestrate::cb_to_ht::native_abox_install_tests::symbolic_handoff_rejects_lost_or_changed_bounds_and_abox ... ok
+test orchestrate::cb_to_ht::rule_clause_tests::head_same_derives_an_equality ... ok
+test orchestrate::cb_to_ht::rule_clause_tests::pure_class_role_rule_is_unchanged_by_the_union_find ... ok
+test orchestrate::cb_to_ht::rule_clause_tests::sparse_role_joins_precede_class_and_nominal_guards ... ok
+test orchestrate::cb_to_ht::rule_clause_tests::same_as_individual_pins_the_shared_variable_to_the_nominal ... ok
+test orchestrate::cb_to_ht::rule_clause_tests::transitive_rule_reduction_requires_every_head_and_exact_join ... ok
+test orchestrate::cb_to_ht::rule_clause_tests::transitivity_recognition_rejects_ground_or_repeated_variable_instances ... ok
+test orchestrate::cb_to_ht::trigger_absorb_tests::cardinality_drop_rejects_a_similar_but_wrong_clause ... ok
+test orchestrate::cb_to_ht::trigger_absorb_tests::classification_nominals_stay_fenced_with_inverse ... ok
+test orchestrate::cb_to_ht::trigger_absorb_tests::cardinality_projection_requires_the_complete_exact_frontend_family ... ok
+test orchestrate::cb_to_ht::trigger_absorb_tests::clause_retained_fences_and_write_only_universal_super_are_certified ... ok
+test orchestrate::cb_to_ht::trigger_absorb_tests::complementary_definer_fold_moves_body_occurrences_to_the_head ... ok
+test orchestrate::cb_to_ht::trigger_absorb_tests::complementary_definer_fold_never_eliminates_a_named_class ... ok
+test orchestrate::cb_to_ht::trigger_absorb_tests::concept_position_inverse_disables_card_transform ... ok
+test orchestrate::cb_to_ht::trigger_absorb_tests::concept_position_inverse_with_number_arms_the_shiq_fence ... ok
+test orchestrate::cb_to_ht::trigger_absorb_tests::consistent_rule_ontology_reports_consistent ... ok
+test orchestrate::cb_to_ht::trigger_absorb_tests::convert_preserves_rbox_domain_range_provenance ... ok
+test orchestrate::cb_to_ht::trigger_absorb_tests::exact_cardinality_provenance_comes_only_from_removed_splits ... ok
+test orchestrate::cb_to_ht::trigger_absorb_tests::is_internal_excludes_markers_and_builtins_but_keeps_colon_localname_classes ... ok
+test orchestrate::cb_to_ht::trigger_absorb_tests::normalized_inverse_cardinality_certificate_fails_closed ... ok
+test orchestrate::cb_to_ht::trigger_absorb_tests::plain_role_cardinality_still_uses_card_transform ... ok
+test orchestrate::cb_to_ht::trigger_absorb_tests::plain_number_restriction_is_not_shiq_fenced ... ok
+test orchestrate::cb_to_ht::trigger_absorb_tests::separated_inverse_cardinality_keeps_exact_rbox_and_card_defs ... ok
+test orchestrate::data_source::facts_tests::cached_source_statistics_equal_the_scheduling_scan ... ok
+test orchestrate::cb_to_ht::trigger_absorb_tests::signed_literals_move_to_trigger_orientation ... ok
+test orchestrate::data_source::tests::automatic_rules_require_exact_complete_source_compilation ... ok
+test orchestrate::data_source::tests::numeric_profiles_schedule_without_inverse_functional_object_roles ... ok
+test orchestrate::cb_to_ht::trigger_absorb_tests::rule_abox_seeds_survive_the_inverse_fence ... ok
+test orchestrate::cb_to_ht::trigger_absorb_tests::signed_normalization_drops_tautology ... ok
+test orchestrate::engine_run::tests::arm_event_does_not_sleep_through_an_earlier_notification ... ok
+test orchestrate::data_source::tests::scheduling_requires_complete_reduction_and_preserves_rule_fences ... ok
+test orchestrate::engine_run::tests::exit_notification_preserves_rss_kill ... ok
+test orchestrate::engine_run::tests::exit_notification_preserves_normal_completion ... ok
+test orchestrate::explain::tests::api_rejects_a_forced_measurement_route_before_reading_source ... ok
+test orchestrate::explain::tests::deletion_returns_one_verified_subset_minimal_support ... ok
+test orchestrate::explain::tests::hitting_set_tree_finds_two_distinct_minimal_supports ... ok
+test orchestrate::engine_run::tests::signal_death_is_not_reported_as_a_timeout ... ok
+test orchestrate::data_source::tests::nonfunctional_string_abox_schedules_only_after_complete_compilation ... ok
+test orchestrate::explain::tests::inconsistent_ontology_entails_every_supported_query ... ok
+test orchestrate::explain::tests::query_recognises_taxonomy_unsat_and_owl_tautologies ... ok
+test orchestrate::explain::tests::query_resolves_source_prefixes_without_local_name_matching ... ok
+test orchestrate::explain::tests::source_document_round_trip_keeps_axioms_and_literal_suffixes ... ok
+test orchestrate::explain::tests::tautology_has_one_verified_empty_justification ... ok
+test orchestrate::explain::tests::unfinished_minimization_is_not_returned_when_check_budget_ends ... ok
+test orchestrate::explain::tests::sparse_large_support_is_minimised_without_a_linear_oracle_budget ... ok
+test orchestrate::flat_nf1::certain_decline_tests::prescan_reports_invalid_utf8_like_the_screens ... ok
+test orchestrate::flat_nf1::certain_decline_tests::prescan_never_declines_a_source_some_screen_accepts ... ok
+test orchestrate::flat_nf1::tests::canonicalizes_declarations_and_rejects_compound_axioms ... ok
+test orchestrate::flat_nf1::tests::allocation_free_screen_is_necessary_but_not_sufficient ... ok
+test orchestrate::flat_nf1::tests::cyclic_named_edges_emit_equivalent_peers_without_reflexive_pairs ... ok
+test orchestrate::flat_nf1::tests::declarations_are_order_independent_and_optional ... ok
+test orchestrate::flat_nf1::tests::declines_every_semantically_unsafe_shape ... ok
+test orchestrate::flat_nf1::tests::exact_line_parser_and_closure ... ok
+test orchestrate::flat_nf1::tests::existential_leaf_fragment_declines_reverse_restrictions_and_domains ... ok
+test orchestrate::flat_nf1::tests::existential_leaves_and_positive_rbox_do_not_change_named_closure ... ok
+test orchestrate::flat_nf1::tests::inert_disjointness_preserves_closure_and_common_descendant_declines ... ok
+test orchestrate::flat_nf1::tests::parses_sparse_horn_left_sides ... ok
+test orchestrate::flat_nf1::tests::positive_empty_taxonomy_screen_rejects_named_heads_and_negative_shapes ... ok
+test orchestrate::flat_nf1::tests::positive_nested_leaf_abox_source_has_an_empty_taxonomy_shape ... ok
+test orchestrate::flat_nf1::tests::pure_leaf_screen_proves_empty_taxonomy_without_a_graph ... ok
+test orchestrate::flat_nf1::tests::reflexive_roles_are_inert_in_the_existential_leaf_fragment ... ok
+test orchestrate::flat_nf1::tests::semantically_active_builtin_edges_still_decline ... ok
+test orchestrate::flat_nf1::tests::sparse_horn_accepts_inert_simple_existential_abox_only_without_nf4_feedback ... ok
+test orchestrate::flat_nf1::tests::sparse_horn_accepts_only_redundantly_witnessed_nominals ... ok
+test orchestrate::flat_nf1::tests::sparse_horn_declines_a_joint_abox_disjointness_clash ... ok
+test orchestrate::flat_nf1::tests::sparse_horn_does_not_confuse_symmetry_with_transitivity ... ok
+test orchestrate::flat_nf1::tests::sparse_horn_elides_complex_rbox_only_without_nf4_feedback ... ok
+test orchestrate::flat_nf1::tests::sparse_horn_profitability_screen_detects_only_class_assertions ... ok
+test orchestrate::flat_nf1::tests::sparse_horn_saturates_conjunction_and_existential_left_rules ... ok
+test orchestrate::flat_nf1::tests::sparse_horn_saturates_named_union_and_mixed_equivalence ... ok
+test orchestrate::flat_nf1::tests::universal_builtin_edges_are_ignored_without_changing_named_closure ... ok
+test orchestrate::flat_nf1::tests::unsorted_source_is_canonicalized_before_closure ... ok
+test orchestrate::frontend_run::tests::exact_el_screen_admits_inverse_rich_el_and_rejects_non_el_constructors ... ok
+test orchestrate::frontend_run::tests::general_ht_typed_handoff_is_bounded_but_shoq_is_not ... ok
+test orchestrate::frontend_run::tests::giant_rbox_scan_accepts_plain_el_source ... ok
+test orchestrate::data_source::tests::dense_functional_data_abox_requires_bounded_complete_compilation ... ok
+test orchestrate::frontend_run::tests::giant_rbox_scan_detects_tokens_across_chunk_boundaries ... ok
+test orchestrate::frontend_run::tests::in_process_el_band_sits_between_the_small_and_giant_bounds ... ok
+test orchestrate::frontend_run::tests::in_process_frontend_retains_flat_el_with_unused_punned_properties ... ok
+test orchestrate::frontend_run::tests::in_process_frontend_retains_the_selected_bridge_input ... ok
+test orchestrate::frontend_run::tests::giant_rbox_scan_checks_tail_then_full_source ... ok
+test orchestrate::engine_run::tests::arm_event_wakes_waiter_before_its_timeout ... ok
+test orchestrate::flat_nf1::certain_decline_tests::prescan_verdicts_are_confirmed_by_every_screen ... ok
+test orchestrate::inert_sorts::tests::candidates_do_not_guard_each_other ... ok
+test orchestrate::inert_sorts::tests::ground_fact_on_a_pinned_individual_needs_no_guard ... ok
+test orchestrate::inert_sorts::tests::input_without_relativized_facts_is_unchanged ... ok
+test orchestrate::inert_sorts::tests::range_definer_read_only_through_its_data_property_is_released ... ok
+test orchestrate::frontend_run::tests::positive_el_input_round_trips ... ok
+test orchestrate::inert_sorts::tests::source_and_reserved_names_keep_their_sort ... ok
+test orchestrate::inert_sorts::tests::unchecked_release_turns_a_consistent_input_inconsistent ... ok
+test orchestrate::inert_sorts::tests::unguarded_body_occurrence_keeps_the_sort ... ok
+test orchestrate::inert_sorts::tests::unguarded_head_occurrence_keeps_the_sort ... ok
+test orchestrate::input::tests::format_aliases_are_explicit ... ok
+test orchestrate::input::tests::owlxml_rdfxml_and_turtle_share_the_functional_frontend ... ok
+test orchestrate::engine_run::tests::arm_event_times_out_without_a_notification ... ok
+test orchestrate::mirror::tests::a_lost_base_subject_is_a_disagreement ... ok
+test orchestrate::mirror::tests::an_invented_base_subject_is_a_disagreement ... ok
+test orchestrate::mirror::tests::an_ontology_without_complements_is_not_the_fragment ... ok
+test orchestrate::mirror::tests::an_unrelated_role_may_carry_a_domain_and_range ... ok
+test orchestrate::mirror::tests::an_unsatisfiable_proxy_is_not_a_base_disagreement ... ok
+test orchestrate::mirror::tests::detects_the_family_through_prefixed_names ... ok
+test orchestrate::mirror::tests::detects_the_private_mirror_family ... ok
+test orchestrate::mirror::tests::differing_unsatisfiable_sets_are_a_disagreement ... ok
+test orchestrate::mirror::tests::entity_identity_matches_the_frontend ... ok
+test orchestrate::mirror::tests::equal_pair_counts_with_different_pairs_are_a_disagreement ... ok
+test orchestrate::mirror::tests::identical_base_taxonomies_agree ... ok
+test orchestrate::mirror::tests::incremental_projection_reuses_the_certified_slice_shape ... ok
+test orchestrate::mirror::tests::large_source_prefilter_requires_a_mirror_scale_complement_family ... ok
+test orchestrate::mirror::tests::reconstruction_refuses_a_base_disagreement ... ok
+test orchestrate::mirror::tests::refuses_a_bottom_constructor ... ok
+test orchestrate::mirror::tests::refuses_a_cardinality_restriction_in_the_residual ... ok
+test orchestrate::engine_run::tests::exit_notification_preserves_timeout_kill ... ok
+test orchestrate::mirror::tests::refuses_a_chain_composed_mirror_role ... ok
+test orchestrate::mirror::tests::refuses_a_complement_outside_a_mirror_definition ... ok
+test orchestrate::mirror::tests::refuses_a_data_property ... ok
+test orchestrate::mirror::tests::refuses_a_declared_individual ... ok
+test orchestrate::mirror::tests::refuses_a_disjoint_mirror_role ... ok
+test orchestrate::mirror::tests::refuses_a_disjunction_in_the_residual ... ok
+test orchestrate::mirror::tests::refuses_a_domain_axiom_on_the_mirror_role ... ok
+test orchestrate::mirror::tests::refuses_a_domain_on_the_inverse_of_the_mirror_role ... ok
+test orchestrate::mirror::tests::refuses_a_functional_inverse_of_the_mirror_role ... ok
+test orchestrate::mirror::tests::refuses_a_functional_mirror_role ... ok
+test orchestrate::mirror::tests::refuses_a_left_existential_over_a_mirror_super_role ... ok
+test orchestrate::mirror::tests::refuses_a_left_existential_over_the_mirror_role ... ok
+test orchestrate::mirror::tests::refuses_a_nominal_in_the_residual ... ok
+test orchestrate::mirror::tests::refuses_a_negative_used_outside_its_definition ... ok
+test orchestrate::mirror::tests::refuses_a_range_on_a_mirror_super_role ... ok
+test orchestrate::mirror::tests::refuses_a_range_on_the_inverse_of_the_mirror_role ... ok
+test orchestrate::mirror::tests::refuses_a_range_on_the_mirror_role ... ok
+test orchestrate::mirror::tests::refuses_a_reflexive_role ... ok
+test orchestrate::mirror::tests::refuses_a_rule ... ok
+test orchestrate::mirror::tests::refuses_a_symmetric_mirror_role ... ok
+test orchestrate::mirror::tests::refuses_a_top_equivalence ... ok
+test orchestrate::mirror::tests::refuses_a_top_gci ... ok
+test orchestrate::mirror::tests::refuses_a_universal_restriction_in_the_residual ... ok
+test orchestrate::mirror::tests::refuses_an_abox ... ok
+test orchestrate::mirror::tests::refuses_an_asymmetric_mirror_role ... ok
+test orchestrate::mirror::tests::refuses_an_import ... ok
+test orchestrate::mirror::tests::refuses_an_irreflexive_mirror_role ... ok
+test orchestrate::mirror::tests::refuses_an_undeclared_negative ... ok
+test orchestrate::mirror::tests::refuses_comparable_mirror_roles ... ok
+test orchestrate::mirror::tests::refuses_the_reserved_proxy_namespace ... ok
+test orchestrate::mirror::tests::refuses_the_universal_role ... ok
+test orchestrate::mirror::tests::tracks_transitivity_per_mirror_role ... ok
+test orchestrate::mirror::tests::the_projection_declaration_universe_is_base_plus_proxies ... ok
+test orchestrate::positive_abox_quotient::tests::complete_source_is_deduplicated_and_quotiented ... ok
+test orchestrate::positive_abox_quotient::tests::contradictory_identity_source_declines ... ok
+test orchestrate::positive_abox_quotient::tests::dense_abox_sample_gate_separates_tbox_text ... ok
+test orchestrate::positive_abox_quotient::tests::identity_union_detects_nary_difference_clash ... ok
+test orchestrate::positive_abox_quotient::tests::malformed_or_inverse_role_assertions_decline ... ok
+test orchestrate::positive_abox_quotient::tests::rewrites_nested_class_and_named_role_assertions ... ok
+test orchestrate::positive_abox_quotient::tests::quotients_of_valid_sources_pass_conformance ... ok
+test orchestrate::positive_abox_quotient::tests::source_precheck_rejects_expressive_and_data_axioms ... ok
+test orchestrate::public_subjects::tests::exact_iris_preserve_colliding_public_names ... ok
+test orchestrate::public_subjects::tests::iri_selection_ignores_absent_subjects ... ok
+test orchestrate::public_subjects::tests::query_selection_is_exact_and_keeps_input_unchanged ... ok
+test orchestrate::public_subjects::tests::retained_request_composes_with_empty_and_nonempty_private_classes ... ok
+test orchestrate::public_subjects::tests::retained_request_preserves_missing_private_rejection ... ok
+test orchestrate::race::tests::bridge_answers_are_harvested_immediately_under_trigger_absorption ... ok
+test orchestrate::race::tests::bridge_only_worker_keeps_card_fallback_under_certified ... ok
+test orchestrate::race::tests::card_arm_is_a_candidate_and_certified_admits_it ... ok
+test orchestrate::race::tests::card_arm_respects_its_fences ... ok
+test orchestrate::race::tests::cb_first_deadline_launch_failure_returns_without_waiting_for_cb ... ok
+test orchestrate::race::tests::cb_first_duration_defaults_off_and_rejects_invalid_values ... ok
+test orchestrate::race::tests::cb_first_eligibility_requires_fallback_explicit_serial_and_typed ... ok
+test orchestrate::input::tests::registered_functional_input_keeps_format_when_validation_bypass_is_disabled ... ok
+test orchestrate::race::tests::cb_first_error_launches_once_without_consuming_cb_error ... ok
+test orchestrate::race::tests::cb_first_prepare_failure_resolves_budget_and_retains_cb_only_fallback ... ok
+test orchestrate::race::tests::cb_first_source_checks_every_concept_constructor_and_both_axiom_sides ... ok
+test orchestrate::race::tests::cb_first_source_requires_enabled_present_nonempty_metadata ... ok
+test orchestrate::race::tests::cb_first_source_uses_exact_raw_datatype_marker_in_body_and_head ... ok
+test orchestrate::race::tests::cb_first_success_never_consumes_worker_launch_closure ... ok
+test orchestrate::race::tests::certified_nominal_object_one_of_and_has_value_convert_losslessly ... ok
+test orchestrate::race::tests::clause_retained_fences_keep_the_card_arm ... ok
+test orchestrate::race::tests::convert_emits_card_defs_for_a_faithful_ge_n_restriction ... ok
+test orchestrate::race::tests::explicit_general_route_does_not_activate_specialist_state ... ok
+test orchestrate::race::tests::first_thread_budget_resolution_wins ... ok
+test orchestrate::race::tests::inverse_functional_fence_requires_exact_equality_clause ... ok
+test orchestrate::race::tests::konclude_bridge_accepts_only_legacy_fast_tableau_fences ... ok
+test orchestrate::race::tests::large_synchronous_bridge_limits_speculative_cb_to_one_thread ... ok
+test orchestrate::race::tests::named_ht_specialists_never_fall_through_to_general_ht ... ok
+test orchestrate::race::tests::native_nominal_bridge_view_preserves_the_exact_cb_clause_file ... ok
+test orchestrate::race::tests::native_nominal_projection_preserves_assertion_only_query_classes ... ok
+test orchestrate::race::tests::native_nominal_view_filters_only_exact_typed_shapes_and_preserves_cb_input ... ok
+test orchestrate::race::tests::cb_first_observes_notified_success_during_grace_without_launch ... ok
+test orchestrate::race::tests::atomic_component_abox_certificate_projects_only_exact_large_shape ... ok
+test orchestrate::race::tests::negative_native_roles_must_be_separate_from_chain_and_transitive_components ... ok
+test orchestrate::race::tests::non_bridge_exclusive_workers_keep_their_budgets_under_trigger_absorption ... ok
+test orchestrate::race::tests::number_feature_does_not_bypass_bridge_lossless_input_gate ... ok
+test orchestrate::engine_run::tests::exit_notifier_wakes_on_child_exit ... ok
+test orchestrate::race::tests::prepared_ht_drop_cleans_output_and_marker_without_launch ... ok
+test orchestrate::race::tests::prepared_ht_immediate_worker_error_keeps_existing_launch_contract ... ok
+test orchestrate::race::tests::prepared_ht_launch_failure_cleans_owned_paths ... ok
+test orchestrate::race::tests::prepared_ht_launch_preserves_serialized_input_and_metadata ... ok
+test orchestrate::race::tests::production_top_assertions_require_typed_definer_provenance ... ok
+test orchestrate::race::tests::proxy_abox_certificate_is_fail_closed_and_taxonomy_checked ... ok
+test orchestrate::race::tests::ready_thread_budget_answers_without_blocking ... ok
+test orchestrate::frontend_run::tests::in_process_frontend_retains_the_selected_shoq_input ... ok
+test orchestrate::race::tests::tableau_output_requires_exact_pairs_and_moves_them_into_rows ... ok
+test orchestrate::frontend_run::tests::in_process_frontend_retains_the_selected_general_ht_input ... ok
+test orchestrate::race::tests::thread_budget_guard_resolves_the_fallback_only_when_still_pending ... ok
+test orchestrate::race::tests::typed_nominal_bridge_limits_speculative_cb_below_large_threshold ... ok
+test orchestrate::race::tests::typed_nominal_competitor_gate_requires_complete_exclusive_payload ... ok
+test orchestrate::race::tests::very_large_ht_inputs_cap_replication_at_eight_workers ... ok
+test orchestrate::realize::tests::collects_individuals_in_every_individual_position ... ok
+test orchestrate::realize::tests::direct_types_keep_every_member_of_a_minimal_equivalence_class ... ok
+test orchestrate::realize::tests::inconsistent_classification_has_no_realization_rows ... ok
+test orchestrate::realize::tests::mixed_spellings_of_one_individual_yield_one_canonical_individual ... ok
+test orchestrate::realize::tests::probe_namespace_avoids_source_iris ... ok
+test orchestrate::realize::tests::probes_are_inserted_inside_the_ontology_node ... ok
+test orchestrate::realize::tests::split_separates_types_same_and_source_rows ... ok
+test orchestrate::frontend_run::tests::in_process_frontend_writes_the_el_binary_sidecar_for_an_uncached_el_route ... ok
+test orchestrate::realize::tests::two_prefixed_spellings_of_one_individual_are_one_individual ... ok
+test orchestrate::symbolic_source::tests::automatic_hint_uses_constructor_tokens_and_excludes_rule_sources ... ok
+test orchestrate::symbolic_source::tests::symbolic_publication_retains_public_iris_and_global_clashes ... ok
+test orchestrate::symbolic_source::facts_tests::cached_cardinality_fact_equals_the_token_scan ... ok
+test orchestrate::tests::an_explicit_context_parallel_request_survives_route_selection ... ok
+test orchestrate::tests::atomic_inproc_elc_admits_structured_and_small_flat_exact_el ... ok
+test orchestrate::tests::bottom_recognition_is_namespace_exact ... ok
+test orchestrate::tests::conformance_pattern_capacity_refusal_is_not_an_invalid_ontology_verdict ... ok
+test orchestrate::tests::builtin_alias_trusted_input_is_normalized_before_classification_probes ... ok
+test orchestrate::tests::conformance_rejection_precedes_workers_and_has_distinct_exit_code ... ok
+test orchestrate::tests::composite_layout_uses_source_individuals_before_nominal_clause_augmentation ... ok
+test orchestrate::tests::context_parallel_schedule_follows_the_available_parallelism ... ok
+test orchestrate::race::tests::native_same_individual_source_projection_preserves_alias_clash ... ok
+test orchestrate::tests::conformance_rejects_anonymous_tree_without_a_permitted_root ... ok
+test orchestrate::tests::conformance_unresolved_imports_are_a_loading_limitation ... ok
+test orchestrate::tests::context_parallel_schedule_is_armed_only_on_the_bare_el_route ... ok
+test orchestrate::tests::explicit_tableau_race_is_not_shadowed_by_elc_portfolio ... ok
+test orchestrate::tests::finite_rule_taxonomy_requires_complete_consistent_projection ... ok
+test orchestrate::tests::grouped_json_classification_matches_flat_bytes ... ok
+test orchestrate::tests::grouped_subsumption_order_matches_global_pair_sort ... ok
+test orchestrate::race::tests::source_auto_route_serializes_and_consumes_the_complete_native_card_abox ... ok
+test orchestrate::tests::graph_json_preserves_materialized_fallbacks ... ok
+test orchestrate::tests::inproc_engine_declines_an_incomplete_reasoner ... ok
+test orchestrate::tests::inproc_engine_reports_the_real_dropped_count ... ok
+test orchestrate::tests::invalid_user_input_is_still_rejected ... ok
+test orchestrate::tests::only_registered_rewrites_skip_revalidation_and_only_while_registered ... ok
+test orchestrate::tests::json_iri_ids_share_repeated_values_and_reorder_fallbacks ... ok
+test orchestrate::tests::reachability_graph_json_handles_cycles_without_reflexive_pairs ... ok
+test orchestrate::tests::production_saturation_rss_override_only_tightens_the_default ... ok
+test orchestrate::tests::reachability_graph_json_matches_materialized_closure ... ok
+test orchestrate::tests::streamed_classification_json_matches_allocating_api ... ok
+test orchestrate::tmpfile::tests::paths_are_unique_and_reuse_the_process_directory ... ok
+test orchestrate::tests::unvalidated_facet_extension_is_refused_before_classification ... ok
+test orchestrate::tests::graph_json_keeps_long_chain_output_linear ... ok
+test orchestrate::tests::public_classification_requires_entity_declarations_before_workers ... ok
+test orchestrate::race::tests::original_data_assertions_preserve_value_identity_and_functional_clashes ... ok
+test orchestrate::race::tests::pending_thread_budget_blocks_a_racer_until_the_ht_input_resolves_it ... ok
+test orchestrate::tests::graph_json_preserves_closure_for_all_three_node_graphs_and_name_aliases ... ok
+test orchestrate::inert_sorts::tests::release_preserves_satisfiability_and_its_conditions_are_needed ... ok
+test result: ok. 292 passed; 0 failed; 1 ignored; 0 measured; 2743 filtered out; finished in 0.67s
+exit 0
+ALLDONE

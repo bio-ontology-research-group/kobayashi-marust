@@ -1,0 +1,89 @@
+diff --git a/engine/src/hypertableau.rs b/engine/src/hypertableau.rs
+index c275065b..3c15abe3 100644
+--- a/engine/src/hypertableau.rs
++++ b/engine/src/hypertableau.rs
+@@ -2319,6 +2319,17 @@ fn fire_global(clauses: &[ClauseRec], ext: &mut Ext, cid: usize, n: Node) {
+ 
+ // ============================== Blocking ===================================
+ 
++// PROFILE-TEMP: blocking counters (passes, blockable, cands, superset, admits, admits_false, admits_ns, block_ns)
++thread_local! {
++    static BSTAT: std::cell::RefCell<[u64; 8]> = const { std::cell::RefCell::new([0; 8]) };
++}
++fn bstat(i: usize, v: u64) {
++    BSTAT.with(|b| b.borrow_mut()[i] += v);
++}
++pub fn bstat_dump() -> [u64; 8] {
++    BSTAT.with(|b| *b.borrow())
++}
++
+ /// The literals whose presence at a node can change a clause instance that
+ /// spans the node and a neighbour (docs/HYBRID-CB-HT.md section 9).
+ ///
+@@ -18845,7 +18856,17 @@ impl Ht {
+             Arc::new(SubsetGain::empty())
+         };
+         let exact = mode == 1 && self.subset_exact;
+-        let admits = |w: Node, wp: Node| exact || gain.admits(&self.ext, w, wp);
++        let admits = |w: Node, wp: Node| {
++            if exact { return true; }
++            let t0 = Instant::now();
++            let r = gain.admits(&self.ext, w, wp);
++            bstat(4, 1);
++            if !r { bstat(5, 1); }
++            bstat(6, t0.elapsed().as_nanos() as u64);
++            r
++        };
++        let _cb0 = Instant::now();
++        bstat(0, 1);
+         // With checked pairs a node may grow successors before its label is
+         // complete enough to be blocked; once it is blocked, its descendants
+         // are outside the unravelled model, so block them too (indirect
+@@ -19020,11 +19041,14 @@ impl Ht {
+                             }
+                         }
+                         if let Some(cands) = lists.get(best) {
++                            bstat(1, 1);
+                             for &wp in cands {
++                                bstat(2, 1);
+                                 let lwp = &self.ext.concepts[wp];
+                                 if lwp.len() >= lwlen
+                                     && lw.keys().all(|k| lwp.contains_key(k))
+                                     && self.b2a_holds(w, wp, v)
++                                    && { bstat(3, 1); true }
+                                     && admits(w, wp)
+                                 {
+                                     blocked[w] = true;
+@@ -19161,9 +19185,11 @@ impl Ht {
+                         }
+                     }
+                     if let Some(cands) = lists.get(best) {
++                        bstat(1, 1);
+                         for &m in cands {
++                            bstat(2, 1);
+                             let lm = &self.ext.concepts[m];
+-                            if lm.len() >= lnlen && ln.keys().all(|k| lm.contains_key(k)) && admits(n, m) {
++                            if lm.len() >= lnlen && ln.keys().all(|k| lm.contains_key(k)) && { bstat(3, 1); true } && admits(n, m) {
+                                 blocked[n] = true;
+                                 break;
+                             }
+@@ -19193,6 +19219,7 @@ impl Ht {
+                 }
+             }
+         }
++        bstat(7, _cb0.elapsed().as_nanos() as u64);
+         if self.stats && nn > 200 {
+             let nb = blocked.iter().filter(|b| **b).count();
+             let blk = self.ext.blockable.iter().filter(|b| **b).count();
+@@ -21954,6 +21981,11 @@ impl Ht {
+                 expand_ms, 100 * expand_ms / tot,
+                 self.eager_us / 1000, self.obligloop_us / 1000, self.obl_iters,
+             );
++            let b = bstat_dump();
++            eprintln!(
++                "KM_HT [bstat] passes={} nodes_with_cands={} cands={} superset={} admits={} admits_false={} admits_ms={} compute_blocked_ms={}",
++                b[0], b[1], b[2], b[3], b[4], b[5], b[6] / 1_000_000, b[7] / 1_000_000
++            );
+             eprintln!(
+                 "KM_HT [classify-i2] calls={} full_rebuilds={} avg_suffix={} (vs ~node count)",
+                 self.i2_calls,

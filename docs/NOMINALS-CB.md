@@ -505,6 +505,74 @@ Tests: `hermit_answers_on_every_route` and
 `data_roles_without_datatypes_enter_the_datatype_gate` in
 `konclude_ht/bridge.rs`.
 
+### Inert object sorts in the rule checker (2026-10-30)
+
+Cost. ore_ont_7278 and ore_ont_3726 took about 7 s in v1.5.3 and 32 s in
+v1.5.4 on the automatic route. Their DL-safe rules compare data values, so
+the frontend grounds them over the asserted literals (`lower_finite_rules`,
+which also carries every data assertion as `a : ∃p.{v}`), the run sets
+`KM_NOMINALS`, and this section's sort encoding applies; v1.5.3 had no sort
+encoding. The rule-consistency worker (`orchestrate::rules_consistency`,
+the clausal `Tableau`) then reads 478 more clauses (8,552 instead of
+8,074), and 11 of the clauses it reads are relativized range facts
+`Q_⊤(x) → Q(x) ∨ D(x)` of `DataPropertyRange` definers `Q`. The worker
+branches on each of them at each of the 221 ABox nodes, and every branch
+restarts the Horn saturation over the whole graph (`KM_TAB_STATS=1`: 2,431
+branch points and 2,433 saturations instead of 2 saturations, no
+backtracking). The worker took 25 s instead of 4 s on the same machine.
+Removing the 11 `D` disjuncts and the 11 sort clauses `Q ∧ D → ⊥` from the
+captured worker input, and nothing else, restores 4.3 s; removing the 340
+concept sort clauses or the 56 role sort clauses instead leaves it at 26 to
+27 s.
+
+Remedy (`orchestrate/inert_sorts.rs`). Before conversion, the rule
+checker releases the object sort of every definer `Q` that no clause reads
+on a data element. A guard of a term `t` in a clause body is an atom false
+at every data element in every model: an object-sorted concept with its
+sort clause (not itself released), or a role atom whose domain or range
+position at `t` has its sort clause; an individual is pinned when a unit
+fact with such an atom puts it outside `D`. `Q` is released when it is an
+internal definer (no IRI, not a query, not used by a rule, a cardinality
+or a definer record), every clause with `Q(t)` in its body has a guard of
+`t` or a pinned `t`, and every clause with `Q(t)` in its head has `D(t)` in
+its head too or a guard or a pinned `t`. For released definers the pass
+drops the `D` disjunct of their facts and their sort clauses; the guard
+sort clauses stay. A model of the sorted clause set becomes a model of the
+result by adding `Q` to every data element (every reading of `Q` is
+guarded, so no clause fires there), and a model of the result becomes a
+model of the sorted set by removing `Q` from every data element (every
+unrelativized derivation of `Q` is guarded, and the relativized ones hold
+through `D`). The two sets have the same models up to internal definers on
+data elements, so the worker's consistency verdict, the only thing it
+reports, is the same; the worker is sound on both inputs, so a difference
+could only be a timeout or an error, never the opposite verdict. On 7278
+and 3726 all 11 range definers are released and the worker runs in 4.2 s;
+the classification is byte-identical to v1.5.4. `KM_RULES_KEEP_INERT_SORTS=1`
+keeps the sorts. Frontend output, routing and every other consumer of the
+sorted stream are unchanged.
+
+Tests: the unit tests of `orchestrate/inert_sorts.rs`, among them a
+randomized check over 3,000 sorted clause sets that the release keeps
+satisfiability (decided by ground DPLL) and that releasing without the
+guard conditions changes it on some of them, and
+`unchecked_release_turns_a_consistent_input_inconsistent`, where
+`Q_1(x) → A(x)` reads the definer on a data value. Measurements, the
+differential over finite-rule seeds and the timing table:
+`results/agents/2026-10-30/rules-worker-cost/`.
+
+The duplicated frontend pass. On these inputs the frontend also runs twice
+(about 2.8 s each, nearly all of it in the finite-rule grounding): the first
+pass reports the 81 data assertions as not carried, because only the
+parse-time conversion counts as carrying them, and
+`run_ofn_split_cached` reruns it with `KM_DATA_ASSERTION_AS_CLASS`. The
+grounding already carries them, and the two clause streams are identical
+(8,552 clauses in the same order; only the `nominal_abox` diagnostics
+differ). Skipping the second pass would need a proof that the first pass
+then equals the converted one on every input, including every consumer
+that reads the ontology between parsing and the grounding
+(`abox_consistency`, `data_abox`, the ABox probes); that proof is not done,
+so both passes stay.
+
 ## 7. Sequoia ordering and nominals
 
 `calc::pred_lteq` has two same-term concept orderings for the CB engine. The
