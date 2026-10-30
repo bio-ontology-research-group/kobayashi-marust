@@ -1,0 +1,22 @@
+KM_TIMING mark: second source check done
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING ABox quotient not built: site 1
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=5.71s cached=false sidecar=false
+KM_TIMING rules-consistency input parsed @ 0.45s clauses=8552 rules=2602
+KM_TIMING rules-consistency released 11 inert object sort(s): 11 fact(s) unrelativized, 11 sort clause(s) removed
+KM_TIMING rules-consistency converted @ 0.58s ht_clauses=10721 queries=178
+KM_TIMING rules-consistency serialized @ 0.64s bytes=4005302
+KM_TIMING rules-consistency worker input sent @ 0.66s
+KM_TIMING rules-consistency worker exited @ 14.08s success=true
+KM_TIMING mark: second source check done
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING ABox quotient not built: site 1
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.01s cached=false sidecar=false
+KM_TIMING frontend done @ 0.01s route=production_all
+KM_TIMING in-process elc done @ 0.02s (no race)
+KM_TIMING engine block done @ 0.02s (subs_keys=154)
+KM_TIMING mark: output mapping done
+source incremental phase=validate elapsed_s=0.005320813
+source incremental phase=normalize elapsed_s=8.024896923

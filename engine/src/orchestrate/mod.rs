@@ -17,7 +17,7 @@ pub mod explain;
 pub mod features;
 mod flat_nf1;
 pub mod frontend_run;
-mod inert_sorts;
+pub(crate) mod inert_sorts;
 pub mod input;
 pub mod mirror;
 mod abox_quotient;
@@ -3643,10 +3643,11 @@ fn rules_consistency(
         }
         if timing && !released.concepts.is_empty() {
             eprintln!(
-                "KM_TIMING rules-consistency released {} inert object sort(s): {} fact(s) unrelativized, {} sort clause(s) removed",
+                "KM_TIMING rules-consistency released {} inert object sort(s): {} fact(s) unrelativized, {} sort clause(s) removed; released: {}",
                 released.concepts.len(),
                 released.facts,
                 released.sort_clauses,
+                released.concepts.join(","),
             );
         }
     }
@@ -3727,11 +3728,13 @@ fn rules_consistency(
     }
     let (tab_prog, tab_pre) = cfg.tab_cmd();
     let out_path = tmpfile::TempPath::new(".rulescons.json");
+    // The worker's stderr is kept so that a failure reports its reason.
+    let err_path = tmpfile::TempPath::new(".rulescons.err");
     let mut cmd = Command::new(&tab_prog);
     cmd.args(&tab_pre)
         .stdin(Stdio::piped())
         .stdout(File::create(out_path.path())?)
-        .stderr(Stdio::null())
+        .stderr(File::create(err_path.path())?)
         .env("KM_RULES_CONSISTENCY", "1");
     // do NOT set KM_HT here: the default Tableau is what seeds the nominal roots
     // and applies the o-rule in `consistent(&[])`.
@@ -3769,10 +3772,15 @@ fn rules_consistency(
         );
     }
     if !status.success() {
+        // The reason is the last line(s); keep the tail of a long diagnostic log.
+        let stderr = std::fs::read_to_string(err_path.path()).unwrap_or_default();
+        let stderr = stderr.trim_end();
+        let mut tail = stderr.len().saturating_sub(4096);
+        while !stderr.is_char_boundary(tail) { tail += 1; }
         return Err(OrchestrateError::Worker {
             bin: "tableau".into(),
             code: crate::orchestrate::engine_run::exit_status_code(&status),
-            stderr: String::new(),
+            stderr: stderr[tail..].to_string(),
         });
     }
     #[derive(serde::Deserialize)]

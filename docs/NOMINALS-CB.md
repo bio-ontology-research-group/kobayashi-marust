@@ -631,7 +631,90 @@ differ). Skipping the second pass would need a proof that the first pass
 then equals the converted one on every input, including every consumer
 that reads the ontology between parsing and the grounding
 (`abox_consistency`, `data_abox`, the ABox probes); that proof is not done,
-so both passes stay.
+so both passes stay. (Superseded for the cost by the closure memo below,
+2026-10-30: the second pass stays and reuses the first pass's closure.)
+
+### Rule checker follow-ups (2026-10-30)
+
+Three findings of the exactness review of the inert-sort release
+(`results/agents/2026-10-30/rules-route-followups/`).
+
+**Worker failures that depended on machine load.** Under parallel load the
+rule checker worker sometimes exited 1 about 0.01 s after it started, and
+`rules_consistency` turned that into a classification error. Cause: the
+worker ran its search on a 2 GiB thread and the rule checker on a nested
+4 GiB thread (`stack_size(4 << 30)`, on the assumption that an untouched
+stack costs nothing). On `ws` the kernel uses strict overcommit
+(`vm.overcommit_memory = 2`, commit limit 264 GiB), so a thread stack is
+charged in full when the thread starts; with other processes holding most
+of the limit, `pthread_create` failed with `EAGAIN` and the worker printed
+`tableau error: Resource temporarily unavailable (os error 11)` to a stderr
+the orchestrator discarded. The same message appears deterministically
+under `ulimit -v 5000000`. Remedy (`engine/src/bigstack.rs`): the main
+thread's stack is the one mapping Linux commits page by page as it grows.
+`km tableau` raises its soft `RLIMIT_STACK` to the deep-stack size plus
+headroom and re-executes itself once, so `execve` reserves the larger gap
+below the stack (address space only, no commit charge); the searches then
+run inline on the main thread (`bigstack::run` checks the stack left below
+the caller). A thread is spawned only when the current thread lacks the
+requested stack (a library caller, the incremental probe), and a failed
+spawn is retried for about 5 s before the error, with the stack size and
+the operating system's reason, is returned. The HT worker pools, which run
+in parallel and cannot share a stack, retry their spawns the same way
+(`bigstack::spawn_scoped_retrying`). The orchestrator now keeps the
+worker's stderr and includes its tail in the error. Exactness: the search
+code is unchanged; only the stack it runs on and the time its pages are
+charged change, so every verdict is the one the old worker computed when
+its threads started. The worker now commits stack only for the depth a
+search reaches; a failure that remains is one the input causes (an actual
+stack or heap demand above the limit), and it reports its reason.
+
+**The incremental rule adapter.** `incremental_rules::rules_consistent`
+now applies the same release (`inert_sorts::release_inert_object_sorts_in`,
+same source-name test, same `KM_RULES_KEEP_INERT_SORTS` switch), with the
+batch exactness argument. The adapter is reached only when the session's
+frontend carries every data assertion (`retained_backend_allowed`); on
+ore_ont_7278 under default settings the frontend reports the 81 assertions
+as uncarried, so every revision is an exact batch rebuild that already ran
+the release. With `KM_DATA_ASSERTION_AS_CLASS=1` the adapter is used, and
+the probe then releases the same 11 definers as the batch checker. The
+probe still did not finish on 7278 with or without the release (stopped
+after 28 and 21 minutes): the batch checker runs 7278 with
+`KM_RULE_JOIN_ORDER=1` (its source-model mode), the incremental probe
+without it, and on the batch checker's captured worker input the worker
+takes 8 s with that setting and more than 100 s without it. Making the
+probe use the selective join order is a separate change (a scheduling
+change of the clause matcher, not made here).
+
+**The second frontend pass.** The 2.8 s per pass is the positive-ABox
+closure `rule_assertions::materialize`, which runs when the finite-rule
+grounding fires; the grounding itself takes 0.2 s (`KM_TIMING frontend
+finite-rule grounding` and `rule-assertion closure` lines). The second pass
+cannot be skipped by a condition on the first pass's output without the
+audit above: the parse-time conversion makes the converted assertions
+visible to every consumer between parsing and the grounding, and on 7278
+the passes already differ in `nominal_abox` (the unsupported-axiom reasons
+and the `ClassAssertion` coverage counts), which the bridge routes and the
+uncarried count read. Instead, `frontend::pass_cache` keeps the first
+pass's closure for the duration of `run_ofn_split_cached`, and the second
+pass reuses it when its closure input is equal. Exactness: `close` reads
+only the asserted concept facts, role facts, class inclusions and positive
+rules, compared as sets. Each round evaluates every inclusion and every
+rule against the facts present at the start of the round and adds its
+conclusions to sets, so the order and repetition of inclusions and rules
+do not change a round; a rule's join order depends on its body order and
+index sizes, and both resource bounds count bindings or facts, which the
+order of index entries does not change. Equal inputs therefore have equal
+closures, and the second pass receives exactly the closure it would
+compute. On 7278 the second pass drops from about 2.8 s to 0.2 s (memo
+hit). `KM_NO_FRONTEND_PASS_CACHE=1` disables the memo.
+
+Lean obligations. None of the three changes alters a calculus, an encoding
+or a worker input: the stack change is below the search, the incremental
+release reuses the batch release (whose obligation, the equisatisfiability
+argument of the previous subsection, is unchanged and not mechanised), and
+the closure memo returns a value equal to the one the frontend computes.
+Nothing was proved in Lean.
 
 ## 7. Sequoia ordering and nominals
 
