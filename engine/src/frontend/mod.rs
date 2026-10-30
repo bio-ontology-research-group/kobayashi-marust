@@ -1378,6 +1378,18 @@ fn ofn_to_clauses_representation(
     if profile.normalized_unary_rules > 0 || profile.normalized_constant_data_rules > 0 {
         std::env::set_var("KM_NOMINALS", "1");
     }
+    // DL-safe rules beside a nominal or the universal role: the rule worker
+    // classifies its input (orchestrate `rules_reach_class_queries`), which
+    // is exact only on the sorted stream of nominal clausification (a
+    // one-sorted stream lets `⊤ ⊑ {a}` capture data successors, m2197).
+    // Automatic routing only; a forced route keeps its own clausification.
+    if automatic
+        && route == crate::routing::Route::HtRules
+        && profile.source.rule_axioms > 0
+        && (profile.source.object_nominal_concepts > 0 || profile.expressivity.universal_role)
+    {
+        std::env::set_var("KM_NOMINALS", "1");
+    }
     // The source-profile gate proves that this is the narrow, datatype-free,
     // inverse-free native SHOQ fragment whose first-class cardinality payload
     // is complete. Avoid materialising the quadratic clausal pigeonhole only

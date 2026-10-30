@@ -499,17 +499,17 @@ impl Ontology {
             if let Some(abstracted) = self.abstract_data_assertion_literals(&pending) {
                 {
                     let abstracted: Vec<(Axiom, String)> = abstracted;
-                    let mut originals: crate::fxhash::FxHashSet<Axiom> = Default::default();
-                    for ((original, _), (axiom, literal)) in pending.into_iter().zip(abstracted) {
+                    for (axiom, literal) in abstracted {
                         self.data_assertion_literals.insert(literal);
                         if self.add_new(axiom) {
                             self.data_assertion_class_axioms += 1;
                         }
-                        // Each distinct source assertion is carried, even
-                        // when its abstraction coincides with another one.
-                        if originals.insert(original) {
-                            self.data_assertions_as_class += 1;
-                        }
+                        // Each source occurrence is carried, even when its
+                        // abstraction coincides with another one or repeats
+                        // an earlier occurrence of the same assertion (the
+                        // source count it is compared with counts
+                        // occurrences).
+                        self.data_assertions_as_class += 1;
                     }
                 }
                 return;
@@ -518,9 +518,13 @@ impl Ontology {
         self.data_assertion_literals = literals;
         for (axiom, _) in pending {
             if self.add_new(axiom) {
-                self.data_assertions_as_class += 1;
                 self.data_assertion_class_axioms += 1;
             }
+            // A repeated source assertion, or one whose class assertion the
+            // source also states, is carried by the axiom already present.
+            // Count every occurrence: the uncarried count subtracts this from
+            // the source occurrence count (2026-10-30, fr217).
+            self.data_assertions_as_class += 1;
         }
     }
 
@@ -555,13 +559,12 @@ impl Ontology {
                 self.data_assertion_class_axioms += 1;
             }
         }
-        let mut originals: crate::fxhash::FxHashSet<Axiom> = Default::default();
         let mut rest = Vec::new();
         for ((axiom, literal), projected) in pending.into_iter().zip(projection.projected) {
             if projected {
-                if originals.insert(axiom) {
-                    self.data_assertions_as_class += 1;
-                }
+                // Every source occurrence counts, repeated ones included (the
+                // uncarried count compares with the occurrence count, fr217).
+                self.data_assertions_as_class += 1;
             } else {
                 rest.push((axiom, literal));
             }

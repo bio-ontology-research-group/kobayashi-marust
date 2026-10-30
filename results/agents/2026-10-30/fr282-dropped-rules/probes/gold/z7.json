@@ -1,0 +1,11 @@
+{
+  "ontology": "z7.hermit.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["A", "B"],
+    ["B", "A"],
+    ["Z", "A"],
+    ["Z", "B"]
+  ],
+  "unsatisfiable": []
+}

@@ -95,17 +95,6 @@ fn is_data_range(name: &str) -> bool {
     name.starts_with("__dt__")
 }
 
-/// A role-free clause whose every atom is a data range (`__dt__`, fixed
-/// data sort) on a variable: the datatype relation clauses. It joins only
-/// fixed sorts on clause-local variables, so no fixpoint round of the
-/// inference or of the admissibility closure can change anything through
-/// it; skipping it there only saves time (a large literal vocabulary emits
-/// tens of thousands of them).
-fn sort_inert(clause: &DLClause) -> bool {
-    clause.body.iter().chain(clause.head.iter()).all(|atom| matches!(atom,
-        Atom::Concept(name, Term::Var(_)) if is_data_range(name)))
-}
-
 /// The sorts an element carrying a concept, or filling a role position, may
 /// have. `Sort::Both` and `Sort::Unknown` admit both.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -264,7 +253,7 @@ impl Sorts {
         loop {
             let mut changed = false;
             let mut local: BTreeMap<&Term, Sort> = BTreeMap::new();
-            for c in tbox.iter().filter(|c| !sort_inert(c)) {
+            for c in tbox {
                 local.clear();
                 let mut terms = TermSorts { local: &mut local, global: &mut global };
                 for atom in c.body.iter().chain(c.head.iter()) {
@@ -340,7 +329,7 @@ impl Sorts {
         loop {
             let mut changed = false;
             let mut local: BTreeMap<&Term, Sort> = BTreeMap::new();
-            for c in tbox.iter().filter(|c| !sort_inert(c)) {
+            for c in tbox {
                 local.clear();
                 let mut terms = TermSorts { local: &mut local, global: &mut global };
                 for atom in c.body.iter().chain(c.head.iter()) {
@@ -508,7 +497,7 @@ pub fn encode_with_classes(
     let mut body_d: BTreeMap<usize, BTreeSet<Term>> = BTreeMap::new();
     loop {
         let mut changed = false;
-        for (index, c) in tbox.iter().enumerate().filter(|(_, c)| !sort_inert(c)) {
+        for (index, c) in tbox.iter().enumerate() {
             let mut body_terms: BTreeSet<&Term> = BTreeSet::new();
             for atom in &c.body {
                 match atom {
