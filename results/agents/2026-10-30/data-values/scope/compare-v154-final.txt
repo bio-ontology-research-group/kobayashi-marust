@@ -1,0 +1,28 @@
+state transitions (v154 -> rc):
+     dropped -> verified   3
+     timeout -> timeout    7
+     timeout -> verified   4
+    verified -> verified   121
+inputs verified by both: 121; sum wall v154 735.1s rc 369.4s; median ratio 0.511, mean ratio 0.698
+route or accepting mechanism changed on 3 of them:
+  ore_ont_14321: certified_nominals/ 0.35s -> ht_bridge/bounded_bridge-first_(data_assertions_as_class)_accepted 0.13s
+  ore_ont_6934: certified_nominals/ 4.47s -> ht_bridge/bounded_bridge-first_(data_assertions_as_class)_accepted 1.17s
+  ore_ont_7417: certified_nominals/ 0.07s -> ht_bridge/bounded_bridge-first_(data_assertions_as_class)_accepted 0.03s
+largest slowdowns (rc - v154, s):
+  ore_ont_8445: 7.48 -> 9.82 (+2.3)
+  ore_ont_443: 0.54 -> 2.38 (+1.8)
+  ore_ont_8989: 0.57 -> 2.15 (+1.6)
+  ore_ont_668: 2.36 -> 3.47 (+1.1)
+  ore_ont_15288: 0.63 -> 1.66 (+1.0)
+  ore_ont_11126: 0.65 -> 1.66 (+1.0)
+  ore_ont_13230: 1.05 -> 1.45 (+0.4)
+  ore_ont_14860: 0.23 -> 0.58 (+0.3)
+  ore_ont_4198: 0.12 -> 0.45 (+0.3)
+  ore_ont_2749: 0.23 -> 0.53 (+0.3)
+  state change ore_ont_10425: dropped 1.21s (certified_nominals) -> verified 1.73s (ht_bridge)
+  state change ore_ont_10517: timeout 240.04s (certified_nominals) -> verified 114.78s (certified_nominals)
+  state change ore_ont_15655: dropped 12.67s (certified_nominals) -> verified 5.72s (ht_bridge)
+  state change ore_ont_3077: timeout 240.03s (certified_nominals) -> verified 116.87s (certified_nominals)
+  state change ore_ont_4410: timeout 240.01s (certified_nominals) -> verified 19.99s (certified_nominals)
+  state change ore_ont_5368: dropped 208.7s (certified_nominals) -> verified 8.64s (ht_bridge)
+  state change ore_ont_699: timeout 240.09s (certified_nominals) -> verified 95.6s (certified_nominals)

@@ -117,18 +117,24 @@ functional or inverse-functional object properties, object `≤n`, nominals):
 is inconsistent (`a = b`), but per subject both values are the first of
 their profile and would share a representative. Disjoint data properties
 see the identity of a value across two properties, and keys see it across
-individuals. These inputs keep the plain conversion when it fits the cap,
-and otherwise publish the uncarried assertions as dropped.
+individuals. These inputs keep the plain conversion when it fits the cap.
+Above the cap they published the uncarried assertions as dropped axioms
+until v1.5.4; since v1.5.5 they keep every literal's identity under the
+linear relation form (DATATYPES.md, "Exact data values without a literal
+cap"), so the cap only chooses between two exact encodings.
 
-Negative data-property assertions are never converted; they stay uncarried
-and are published as dropped axioms, independently of the abstraction.
+Negative data-property assertions `¬u(a, v)` are carried as `a : ¬∃u.{v}`
+since v1.5.5 (until v1.5.4 they stayed uncarried and were published as
+dropped axioms). They observe the identity of `v`, so they block the
+profile abstraction.
 
 ## Repeated assertions (2026-10-30, v1.5.5)
 
 The uncarried count is the number of source `DataPropertyAssertion`
 occurrences (the profile counts every occurrence) minus the converted ones.
-Both branches of `Ontology::commit_data_assertions_as_class` counted a
-conversion only when its class assertion was new, so an assertion stated
+The conversion branches of `Ontology::commit_data_assertions_as_class`
+(and, after the native-data-values merge, the value projection) counted a
+conversion only once per distinct axiom, so an assertion stated
 twice, or one whose `ClassAssertion(DataHasValue(...))` the source also
 states, read as one uncarried assertion and the answer was published with
 `DROPPED 1` (generated seeds fr216, fr217, fr290 of

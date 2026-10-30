@@ -779,6 +779,30 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
         }
         // Annotation-property axioms constrain no logical entailment.
         "SubAnnotationPropertyOf" | "AnnotationPropertyDomain" | "AnnotationPropertyRange" => {}
+        // OWL 2 Direct Semantics: `NegativeDataPropertyAssertion(p a v)` holds
+        // iff `a` is an instance of `¬DataHasValue(p v)`. Carried as that
+        // class assertion under the same conditions as the positive form, with
+        // its own literal: it observes the identity of `v`, so it blocks the
+        // literal-profile abstraction.
+        "NegativeDataPropertyAssertion"
+            if data_assertion_as_class_enabled()
+                && args.len() >= 3
+                && matches!(args[0], Node::Atom(_))
+                && matches!(args[1], Node::Atom(_)) =>
+        {
+            let refs: Vec<&Node> = std::iter::once(args[0]).chain(args[2..].iter().copied()).collect();
+            if let Some((_, used)) = glue_literal(&refs, 1) {
+                if refs.len() == 1 + used {
+                    let role = Role::Name(reg.short(args[0].as_atom().unwrap_or("")));
+                    let value = dt_value_concept(&refs, 1);
+                    let individual = reg.short(args[1].as_atom().unwrap_or(""));
+                    o.add_negative_data_assertion(Axiom::ConceptAssertion(
+                        Concept::Not(Box::new(Concept::Exists(role, Box::new(value)))),
+                        individual,
+                    ));
+                }
+            }
+        }
         // Counted by the data-assertion carry path (`uncarried_data_assertions`).
         "NegativeDataPropertyAssertion" => {}
         other => {
@@ -1111,13 +1135,18 @@ mod axiom_drop_regression_tests {
 
     #[test]
     fn requested_data_assertion_becomes_its_has_value_class_assertion() {
-        let text = "Ontology(DataPropertyAssertion(<p> <a> \"1\"^^xsd:integer) \
+        // The existential use of `p` keeps it out of the object-level
+        // projection (`value_projection`), which would carry these
+        // assertions without class assertions.
+        let text = "Ontology(SubClassOf(DataSomeValuesFrom(<p> xsd:integer) <D>) \
+                    DataPropertyAssertion(<p> <a> \"1\"^^xsd:integer) \
                     DataPropertyAssertion(<p> <b> \"2\"^^xsd:integer))";
         let ontology = parse_with_data_assertion_conversion(true, text);
         assert_eq!(ontology.data_assertions_as_class(), 2);
         let mut registry = IriRegistry::new();
         let explicit = parse_axioms(&mut registry,
-            "Ontology(ClassAssertion(DataHasValue(<p> \"1\"^^xsd:integer) <a>) \
+            "Ontology(SubClassOf(DataSomeValuesFrom(<p> xsd:integer) <D>) \
+             ClassAssertion(DataHasValue(<p> \"1\"^^xsd:integer) <a>) \
              ClassAssertion(DataHasValue(<p> \"2\"^^xsd:integer) <b>))").unwrap();
         assert_eq!(ontology.abox().collect::<Vec<_>>(), explicit.abox().collect::<Vec<_>>());
     }
@@ -1128,6 +1157,13 @@ mod axiom_drop_regression_tests {
         // count, so a repeated assertion must not read as dropped (fr217).
         let text = "Ontology(DataPropertyAssertion(<p> <a> \"1\"^^xsd:integer) \
                     DataPropertyAssertion(<p> <a> \"1\"^^xsd:integer))";
+        // Value projection (no TBox use of `p`).
+        let ontology = parse_with_data_assertion_conversion(true, text);
+        assert_eq!(ontology.data_assertions_as_class(), 2);
+        // Class-assertion conversion (an existential use of `p`).
+        let text = "Ontology(SubClassOf(DataHasValue(<p> \"1\"^^xsd:integer) <D>) \
+                    DataPropertyAssertion(<p> <a> \"1\"^^xsd:integer) \
+                    DataPropertyAssertion(<p> <a> \"1\"^^xsd:integer))";
         let ontology = parse_with_data_assertion_conversion(true, text);
         assert_eq!(ontology.data_assertions_as_class(), 2);
         assert_eq!(ontology.data_assertion_class_axioms(), 1);
@@ -1135,8 +1171,14 @@ mod axiom_drop_regression_tests {
     }
 
     #[test]
-    fn data_assertion_literal_cap_declines_the_whole_conversion() {
+    fn data_assertion_literal_cap_never_declines() {
         let mut ontology = Ontology::new();
+        // An existential use of `p` keeps it out of the object-level
+        // projection, so the assertions are carried as class assertions.
+        ontology.add(Axiom::SubClassOf(
+            Concept::Exists(Role::Name("p".into()), Box::new(Concept::Name("__dt__val__1".into()))),
+            Concept::Name("D".into()),
+        ));
         let assertion = |individual: &str, value: &str| Axiom::ConceptAssertion(
             Concept::Exists(Role::Name("p".into()), Box::new(Concept::Name(format!("__dt__val__{value}")))),
             individual.into(),
@@ -1145,14 +1187,33 @@ mod axiom_drop_regression_tests {
         ontology.defer_data_assertion_as_class(assertion("b", "1"), "1".into());
         ontology.commit_data_assertions_as_class(1);
         assert_eq!(ontology.data_assertions_as_class(), 2);
-        // A later call that would exceed the cap adds nothing and declines
-        // every further conversion.
+        // Above the cap every literal keeps its identity (until v1.5.4 the
+        // conversion declined here and for every later call).
         ontology.defer_data_assertion_as_class(assertion("c", "2"), "2".into());
         ontology.commit_data_assertions_as_class(1);
         ontology.defer_data_assertion_as_class(assertion("d", "1"), "1".into());
         ontology.commit_data_assertions_as_class(1);
-        assert_eq!(ontology.data_assertions_as_class(), 2);
-        assert_eq!(ontology.abox().count(), 2);
+        assert_eq!(ontology.data_assertions_as_class(), 4);
+        assert_eq!(ontology.abox().count(), 4);
+    }
+
+    #[test]
+    fn unconstrained_data_properties_are_projected_away() {
+        let mut ontology = Ontology::new();
+        ontology.add(Axiom::SubClassOf(
+            Concept::Exists(Role::Name("p".into()), Box::new(Concept::Top)),
+            Concept::Name("D".into()),
+        ));
+        let assertion = |individual: &str, value: &str| Axiom::ConceptAssertion(
+            Concept::Exists(Role::Name("p".into()), Box::new(Concept::Name(format!("__dt__val__{value}")))),
+            individual.into(),
+        );
+        ontology.defer_data_assertion_as_class(assertion("a", "\"1\"^^xsd:integer"), "\"1\"^^xsd:integer".into());
+        ontology.commit_data_assertions_as_class(512);
+        // Only the domain remains: `a : D`; nothing is uncarried.
+        assert_eq!(ontology.data_assertions_as_class(), 1);
+        let abox: Vec<String> = ontology.abox().map(|a| format!("{a:?}")).collect();
+        assert_eq!(abox, vec![format!("{:?}", Axiom::ConceptAssertion(Concept::Name("D".into()), "a".into()))]);
     }
 
     #[test]
@@ -1185,11 +1246,11 @@ mod axiom_drop_regression_tests {
         let expected: std::collections::BTreeSet<String> = [("a", "1"), ("a", "2"), ("b", "2"), ("c", "2")]
             .iter().map(|(i, v)| format!("{:?}", assertion(i, v))).collect();
         assert_eq!(abox, expected);
-        // Counting on the property blocks the abstraction: the conversion
-        // declines as a whole above the cap.
+        // Counting on the property blocks the abstraction: every literal
+        // keeps its identity (until v1.5.4 the conversion declined).
         let ontology = build(Some(Axiom::FunctionalRole("p".into())));
-        assert_eq!(ontology.data_assertions_as_class(), 0);
-        assert_eq!(ontology.abox().count(), 0);
+        assert_eq!(ontology.data_assertions_as_class(), 5);
+        assert_eq!(ontology.abox().count(), 5);
     }
 
     #[test]

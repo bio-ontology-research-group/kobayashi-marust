@@ -129,7 +129,19 @@ pub fn data_at_least(n: i64, role: Role, filler: Concept) -> Concept {
     match data_filler(filler) {
         Concept::Bottom if n >= 1 => Concept::Bottom,
         Concept::Bottom => Concept::Top,
+        // A finite range with fewer than `n` values has no `n` distinct
+        // members: `≥ n p.R` is empty (`≥ 10 u.integer[1,9]`).
+        filler if n >= 1 && finite_range_size(&filler).is_some_and(|size| size < n as u128) => Concept::Bottom,
         filler => Concept::AtLeast(n, role, Box::new(filler)),
+    }
+}
+
+/// Size of a data-range filler that the datatype oracle decides as finite.
+fn finite_range_size(filler: &Concept) -> Option<u128> {
+    match filler {
+        Concept::Name(name) if name.starts_with("__dt__") =>
+            super::datatypes::data_range_size(name).filter(|&size| size != u128::MAX),
+        _ => None,
     }
 }
 
@@ -138,6 +150,8 @@ pub fn data_at_least(n: i64, role: Role, filler: Concept) -> Concept {
 pub fn data_at_most(n: i64, role: Role, filler: Concept) -> Concept {
     match data_filler(filler) {
         Concept::Bottom => Concept::Top,
+        // At most `|R|` distinct values lie in a finite `R`.
+        filler if n >= 0 && finite_range_size(&filler).is_some_and(|size| size <= n as u128) => Concept::Top,
         filler => Concept::AtMost(n, role, Box::new(filler)),
     }
 }
@@ -409,6 +423,11 @@ impl Ontology {
         }
     }
 
+    /// Every axiom, in insertion order.
+    pub fn axioms_iter(&self) -> impl Iterator<Item = &Axiom> {
+        self.axioms.iter().map(|axiom| axiom.as_ref())
+    }
+
     /// Mirror `Ontology.add` over a `set`: ignore duplicate axioms.
     pub fn add(&mut self, ax: Axiom) {
         self.add_new(ax);
@@ -424,6 +443,18 @@ impl Ontology {
         } else {
             false
         }
+    }
+
+    /// Add a `NegativeDataPropertyAssertion` converted to its class
+    /// assertion `a : ¬∃p.{v}`. It is counted with the converted data
+    /// assertions and blocks the literal-profile abstraction, which does not
+    /// preserve the identity of `v`.
+    pub fn add_negative_data_assertion(&mut self, axiom: Axiom) {
+        self.literal_abstraction_blocked = true;
+        if self.add_new(axiom) {
+            self.data_assertion_class_axioms += 1;
+        }
+        self.data_assertions_as_class += 1;
     }
 
     /// Record a `DataPropertyAssertion` converted to its `DataHasValue`
@@ -445,6 +476,14 @@ impl Ontology {
         if pending.is_empty() || self.data_assertions_declined {
             return;
         }
+        // Groups of data properties that the TBox uses only through
+        // functionality, `≤ 1`, domains, atomic ranges and sub-properties are
+        // carried at the object level (`value_projection`): no data
+        // successor is created for their asserted values.
+        let pending = self.project_data_assertions(pending);
+        if pending.is_empty() {
+            return;
+        }
         let mut literals = self.data_assertion_literals.clone();
         for (_, literal) in &pending {
             literals.insert(literal.clone());
@@ -452,9 +491,14 @@ impl Ontology {
         if literals.len() > cap {
             // Above the cap, carry each literal as the representative of the
             // profile the TBox observes (`literal_profiles`), when no
-            // construct observes more than profiles.
-            match self.abstract_data_assertion_literals(&pending, cap) {
-                Some(abstracted) => {
+            // construct observes more than profiles. Otherwise every literal
+            // is carried with its own identity below: the datatype relations
+            // of a large vocabulary are linear (`datatypes::
+            // linear_value_relation_clauses`), so the cap only selects the
+            // smaller of two exact encodings and never declines.
+            if let Some(abstracted) = self.abstract_data_assertion_literals(&pending) {
+                {
+                    let abstracted: Vec<(Axiom, String)> = abstracted;
                     for (axiom, literal) in abstracted {
                         self.data_assertion_literals.insert(literal);
                         if self.add_new(axiom) {
@@ -468,9 +512,8 @@ impl Ontology {
                         self.data_assertions_as_class += 1;
                     }
                 }
-                None => self.data_assertions_declined = true,
+                return;
             }
-            return;
         }
         self.data_assertion_literals = literals;
         for (axiom, _) in pending {
@@ -483,6 +526,50 @@ impl Ontology {
             // the source occurrence count (2026-10-30, fr217).
             self.data_assertions_as_class += 1;
         }
+    }
+
+    /// Carry the assertions of every admissible group through
+    /// `value_projection` and return the others.
+    fn project_data_assertions(&mut self, pending: Vec<(Axiom, String)>) -> Vec<(Axiom, String)> {
+        use super::value_projection as vp;
+        if std::env::var_os("KM_NO_VALUE_PROJECTION").is_some() {
+            return pending;
+        }
+        let views: Vec<Option<(String, String)>> = pending.iter().map(|(axiom, _)| match axiom {
+            Axiom::ConceptAssertion(Concept::Exists(Role::Name(role), _), individual) =>
+                Some((role.clone(), individual.clone())),
+            _ => None,
+        }).collect();
+        if views.iter().any(Option::is_none) {
+            return pending;
+        }
+        let assertions: Vec<vp::DataAssertion> = pending.iter().zip(&views).map(|((_, literal), view)| {
+            let (role, individual) = view.as_ref().unwrap();
+            vp::DataAssertion { role, individual, literal }
+        }).collect();
+        let axioms: Vec<&Axiom> = self.axioms.iter().map(|axiom| axiom.as_ref()).collect();
+        let projection = vp::project(&axioms, &assertions, self.literal_abstraction_blocked);
+        drop(assertions);
+        if !projection.projected.iter().any(|&p| p) {
+            return pending;
+        }
+        for axiom in projection.axioms {
+            let is_assertion = matches!(axiom, Axiom::ConceptAssertion(..));
+            if self.add_new(axiom) && is_assertion {
+                self.data_assertion_class_axioms += 1;
+            }
+        }
+        let mut rest = Vec::new();
+        for ((axiom, literal), projected) in pending.into_iter().zip(projection.projected) {
+            if projected {
+                // Every source occurrence counts, repeated ones included (the
+                // uncarried count compares with the occurrence count, fr217).
+                self.data_assertions_as_class += 1;
+            } else {
+                rest.push((axiom, literal));
+            }
+        }
+        rest
     }
 
     /// Class assertions added by the data-assertion conversion.
@@ -502,7 +589,6 @@ impl Ontology {
     fn abstract_data_assertion_literals(
         &self,
         pending: &[(Axiom, String)],
-        cap: usize,
     ) -> Option<Vec<(Axiom, String)>> {
         use super::literal_profiles as lp;
         if self.literal_abstraction_blocked || !self.data_assertion_literals.is_empty() {
@@ -526,10 +612,6 @@ impl Ontology {
             .map(String::as_str)
             .zip(lp::representatives(&order, &observed))
             .collect();
-        let distinct: crate::fxhash::FxHashSet<&String> = representative.values().collect();
-        if distinct.len() > cap {
-            return None;
-        }
         pending.iter().map(|(axiom, literal)| {
             let rep = representative[literal.as_str()].clone();
             let Axiom::ConceptAssertion(Concept::Exists(role, _), individual) = axiom else {
