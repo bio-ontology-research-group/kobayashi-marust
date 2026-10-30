@@ -1,0 +1,8 @@
+{
+  "ontology": "bridge_merge_min.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["Q1", "A"]
+  ],
+  "unsatisfiable": []
+}

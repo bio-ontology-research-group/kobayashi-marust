@@ -1,0 +1,15 @@
+../top-nominal-data/rules/k1.ofn	auto	ERR	0.01					
+../top-nominal-data/rules/k2.ofn	auto	ERR	0.01					
+../top-nominal-data/rules/k3.ofn	auto	ERR	0.00					
+../top-nominal-data/rules/k4.ofn	auto	ERR	0.00					
+../top-nominal-data/rules/k5.ofn	auto	ERR	0.00					
+../top-nominal-data/rules/s10.ofn	auto	ok	0.02	0	0	0	0	0
+../top-nominal-data/rules/s1.ofn	auto	ok	0.02	0	0	0	0	0
+../top-nominal-data/rules/s2.ofn	auto	ok	0.02	0	0	0	0	0
+../top-nominal-data/rules/s3.ofn	auto	ERR	0.00					
+../top-nominal-data/rules/s4.ofn	auto	ERR	0.00					
+../top-nominal-data/rules/s5.ofn	auto	ERR	0.00					
+../top-nominal-data/rules/s6.ofn	auto	ok	0.02	0	0	0	0	0
+../top-nominal-data/rules/s7.ofn	auto	ok	0.02	0	0	0	0	0
+../top-nominal-data/rules/s8.ofn	auto	ok	0.02	0	0	0	0	0
+../top-nominal-data/rules/s9.ofn	auto	ok	0.02	0	0	0	0	0
