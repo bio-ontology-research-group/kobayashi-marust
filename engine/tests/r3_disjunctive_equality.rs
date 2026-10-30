@@ -109,16 +109,30 @@ fn disjunctive_ground_equalities_under_the_base_context_regime() {
 
 /// The v1.5.4 rules, restored by the diagnostics, miss the query subsumption:
 /// unit-only R3 on `m1` and `m4`, R2 without its equality comparisons on `m6`
-/// and `m7`. This pins down which part of the fix each fixture needs.
+/// and `m7`. This pins down which part of the fix each fixture needs. Since
+/// the ranked guard (docs/PER-CONTEXT-ORDERING.md section 11) delivers the
+/// private equalities of `m6` and `m7`, the old comparisons alone answer
+/// them; `KM_CONTEXT_PAIR_R2` restores the guard of section 8 as well.
 #[test]
 fn v154_rules_miss_the_motifs() {
-    for (name, flag) in [
-        ("r3_m1_atmost_qualified.ofn", "KM_CONTEXT_UNIT_R3"),
-        ("r3_m4_atmost_union.ofn", "KM_CONTEXT_UNIT_R3"),
-        ("r3_m6_private_equality.ofn", "KM_CONTEXT_NO_EQ_R2"),
-        ("r3_m7_two_equalities.ofn", "KM_CONTEXT_NO_EQ_R2"),
+    for (name, flags) in [
+        ("r3_m1_atmost_qualified.ofn", &[("KM_CONTEXT_UNIT_R3", "1")][..]),
+        ("r3_m4_atmost_union.ofn", &[("KM_CONTEXT_UNIT_R3", "1")][..]),
+        ("r3_m6_private_equality.ofn", &[("KM_CONTEXT_NO_EQ_R2", "1"), ("KM_CONTEXT_PAIR_R2", "1")][..]),
+        ("r3_m7_two_equalities.ofn", &[("KM_CONTEXT_NO_EQ_R2", "1"), ("KM_CONTEXT_PAIR_R2", "1")][..]),
     ] {
-        let (_, _, got) = classify(&fixture(name), Some("nominals"), &[(flag, "1")]);
-        assert!(!got.contains(&("Q".to_string(), "E".to_string())), "{name} {flag}: {got:?}");
+        let (_, _, got) = classify(&fixture(name), Some("nominals"), flags);
+        assert!(!got.contains(&("Q".to_string(), "E".to_string())), "{name} {flags:?}: {got:?}");
+    }
+}
+
+/// The section-8 rules (`KM_CONTEXT_PAIR_R2`) still answer every motif.
+#[test]
+fn pair_r2_answers_the_motifs() {
+    for (name, subs) in expected() {
+        let (consistent, unsat, got) = classify(&fixture(name), Some("nominals"), &[("KM_CONTEXT_PAIR_R2", "1")]);
+        assert!(consistent, "{name}");
+        assert!(unsat.is_empty(), "{name}: {unsat:?}");
+        assert_eq!(got, subs, "{name}");
     }
 }

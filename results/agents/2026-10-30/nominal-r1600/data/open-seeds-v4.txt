@@ -1,0 +1,15 @@
+m4	nominals	rc=0	0.02	ok
+m4	auto	rc=0	0.02	ok
+m4	certified_nominals	rc=0	0.01	ok
+r3403	nominals	rc=0	7.01	ok
+r3403	auto	rc=0	0.02	ok
+r3403	certified_nominals	rc=0	0.02	ok
+r3602	nominals	rc=0	6.48	ok
+r3602	auto	rc=0	0.02	ok
+r3602	certified_nominals	rc=0	0.02	ok
+r1646	nominals	rc=124	235.11	ERR
+r1646	auto	rc=0	0.02	ok
+r1646	certified_nominals	rc=0	0.02	ok
+r1600	nominals	rc=124	235.06	ERR
+r1600	auto	rc=0	16.47	ok
+r1600	certified_nominals	rc=0	18.50	ok

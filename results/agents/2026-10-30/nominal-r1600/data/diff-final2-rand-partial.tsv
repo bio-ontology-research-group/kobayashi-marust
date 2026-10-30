@@ -1,0 +1,724 @@
+seeds/r0.ofn	nominals	TIMEOUT	10.01					
+seeds/r1.ofn	nominals	TIMEOUT	10.01					
+seeds/r2.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r3.ofn	nominals	TIMEOUT	10.01					
+seeds/r4.ofn	nominals	TIMEOUT	10.01					
+seeds/r5.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r6.ofn	nominals	TIMEOUT	10.01					
+seeds/r7.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r8.ofn	nominals	TIMEOUT	10.01					
+seeds/r9.ofn	nominals	TIMEOUT	10.01					
+seeds/r10.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r11.ofn	nominals	ok	4.13	0	0	0	0	0
+seeds/r12.ofn	nominals	TIMEOUT	10.01					
+seeds/r13.ofn	nominals	ok	0.04	0	0	0	0	0
+seeds/r14.ofn	nominals	TIMEOUT	10.01					
+seeds/r15.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r16.ofn	nominals	TIMEOUT	10.01					
+seeds/r17.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r18.ofn	nominals	TIMEOUT	10.01					
+seeds/r19.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r20.ofn	nominals	TIMEOUT	10.01					
+seeds/r21.ofn	nominals	TIMEOUT	10.01					
+seeds/r22.ofn	nominals	ok	0.07	0	0	0	0	0
+seeds/r23.ofn	nominals	TIMEOUT	10.01					
+seeds/r24.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r25.ofn	nominals	TIMEOUT	10.01					
+seeds/r26.ofn	nominals	TIMEOUT	10.01					
+seeds/r27.ofn	nominals	TIMEOUT	10.01					
+seeds/r28.ofn	nominals	TIMEOUT	10.01					
+seeds/r29.ofn	nominals	ok	0.11	0	0	0	0	0
+seeds/r30.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r31.ofn	nominals	ok	0.04	0	0	0	0	0
+seeds/r32.ofn	nominals	ok	0.06	0	0	0	0	0
+seeds/r33.ofn	nominals	TIMEOUT	10.01					
+seeds/r34.ofn	nominals	TIMEOUT	10.01					
+seeds/r35.ofn	nominals	ok	0.53	0	0	0	0	0
+seeds/r36.ofn	nominals	ok	6.03	0	0	0	0	0
+seeds/r37.ofn	nominals	TIMEOUT	10.01					
+seeds/r38.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r39.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r40.ofn	nominals	ok	1.62	0	0	0	0	0
+seeds/r41.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r42.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r43.ofn	nominals	ok	0.07	0	0	0	0	0
+seeds/r44.ofn	nominals	TIMEOUT	10.01					
+seeds/r45.ofn	nominals	TIMEOUT	10.01					
+seeds/r46.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r47.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r48.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r49.ofn	nominals	TIMEOUT	10.01					
+seeds/r50.ofn	nominals	TIMEOUT	10.01					
+seeds/r51.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r52.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r53.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r54.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r55.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r56.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r57.ofn	nominals	TIMEOUT	10.01					
+seeds/r58.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r59.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r60.ofn	nominals	ERR	6.57					
+seeds/r61.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r62.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r63.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r64.ofn	nominals	TIMEOUT	10.01					
+seeds/r65.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r66.ofn	nominals	ok	5.40	0	0	0	0	0
+seeds/r67.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r68.ofn	nominals	ok	1.15	0	0	0	0	0
+seeds/r69.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r70.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r71.ofn	nominals	TIMEOUT	10.01					
+seeds/r72.ofn	nominals	TIMEOUT	10.01					
+seeds/r73.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r74.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r75.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r76.ofn	nominals	TIMEOUT	10.01					
+seeds/r77.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r78.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r79.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r80.ofn	nominals	TIMEOUT	10.01					
+seeds/r81.ofn	nominals	ok	0.34	0	0	0	0	0
+seeds/r82.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r83.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r84.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r85.ofn	nominals	ok	0.63	0	0	0	0	0
+seeds/r86.ofn	nominals	TIMEOUT	10.01					
+seeds/r87.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r88.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r89.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r90.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r91.ofn	nominals	TIMEOUT	10.01					
+seeds/r92.ofn	nominals	TIMEOUT	10.01					
+seeds/r93.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r94.ofn	nominals	TIMEOUT	10.01					
+seeds/r95.ofn	nominals	TIMEOUT	10.01					
+seeds/r96.ofn	nominals	ok	0.04	0	0	0	0	0
+seeds/r97.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r98.ofn	nominals	TIMEOUT	10.01					
+seeds/r99.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r100.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r101.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r102.ofn	nominals	ok	1.82	0	0	0	0	0
+seeds/r103.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r104.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r105.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r106.ofn	nominals	ok	0.14	0	0	0	0	0
+seeds/r107.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r108.ofn	nominals	ok	0.04	0	0	0	0	0
+seeds/r109.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r110.ofn	nominals	TIMEOUT	10.01					
+seeds/r111.ofn	nominals	TIMEOUT	10.01					
+seeds/r112.ofn	nominals	TIMEOUT	10.01					
+seeds/r113.ofn	nominals	TIMEOUT	10.01					
+seeds/r114.ofn	nominals	TIMEOUT	10.01					
+seeds/r115.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r116.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r117.ofn	nominals	TIMEOUT	10.01					
+seeds/r118.ofn	nominals	TIMEOUT	10.01					
+seeds/r119.ofn	nominals	TIMEOUT	10.01					
+seeds/r120.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r121.ofn	nominals	TIMEOUT	10.01					
+seeds/r122.ofn	nominals	TIMEOUT	10.01					
+seeds/r123.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r124.ofn	nominals	TIMEOUT	10.01					
+seeds/r125.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r126.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r127.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r128.ofn	nominals	TIMEOUT	10.01					
+seeds/r129.ofn	nominals	TIMEOUT	10.01					
+seeds/r130.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r131.ofn	nominals	ok	0.04	0	0	0	0	0
+seeds/r132.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r133.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r134.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r135.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r136.ofn	nominals	TIMEOUT	10.01					
+seeds/r137.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r138.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r139.ofn	nominals	ok	0.11	0	0	0	0	0
+seeds/r140.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r141.ofn	nominals	ok	0.15	0	0	0	0	0
+seeds/r142.ofn	nominals	TIMEOUT	10.01					
+seeds/r143.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r144.ofn	nominals	TIMEOUT	10.00					
+seeds/r145.ofn	nominals	TIMEOUT	10.01					
+seeds/r146.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r147.ofn	nominals	TIMEOUT	10.01					
+seeds/r148.ofn	nominals	TIMEOUT	10.01					
+seeds/r149.ofn	nominals	TIMEOUT	10.01					
+seeds/r150.ofn	nominals	TIMEOUT	10.01					
+seeds/r151.ofn	nominals	ok	0.04	0	0	0	0	0
+seeds/r152.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r153.ofn	nominals	TIMEOUT	10.01					
+seeds/r154.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r155.ofn	nominals	TIMEOUT	10.01					
+seeds/r156.ofn	nominals	ok	0.05	0	0	0	0	0
+seeds/r157.ofn	nominals	ok	0.14	0	0	0	0	0
+seeds/r158.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r159.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r160.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r161.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r162.ofn	nominals	TIMEOUT	10.01					
+seeds/r163.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r164.ofn	nominals	TIMEOUT	10.01					
+seeds/r165.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r166.ofn	nominals	ok	1.52	0	0	0	0	0
+seeds/r167.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r168.ofn	nominals	TIMEOUT	10.01					
+seeds/r169.ofn	nominals	TIMEOUT	10.01					
+seeds/r170.ofn	nominals	TIMEOUT	10.01					
+seeds/r171.ofn	nominals	TIMEOUT	10.01					
+seeds/r172.ofn	nominals	TIMEOUT	10.01					
+seeds/r173.ofn	nominals	TIMEOUT	10.01					
+seeds/r174.ofn	nominals	TIMEOUT	10.01					
+seeds/r175.ofn	nominals	TIMEOUT	10.01					
+seeds/r176.ofn	nominals	ok	0.04	0	0	0	0	0
+seeds/r177.ofn	nominals	ok	0.05	0	0	0	0	0
+seeds/r178.ofn	nominals	TIMEOUT	10.01					
+seeds/r179.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r180.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r181.ofn	nominals	TIMEOUT	10.01					
+seeds/r182.ofn	nominals	ok	2.32	0	0	0	0	0
+seeds/r183.ofn	nominals	ok	0.25	0	0	0	0	0
+seeds/r184.ofn	nominals	TIMEOUT	10.01					
+seeds/r185.ofn	nominals	ok	0.19	0	0	0	0	0
+seeds/r186.ofn	nominals	TIMEOUT	10.02					
+seeds/r187.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r188.ofn	nominals	ok	0.06	0	0	0	0	0
+seeds/r189.ofn	nominals	TIMEOUT	10.01					
+seeds/r190.ofn	nominals	ok	0.39	0	0	0	0	0
+seeds/r191.ofn	nominals	TIMEOUT	10.01					
+seeds/r192.ofn	nominals	ok	0.04	0	0	0	0	0
+seeds/r193.ofn	nominals	ok	3.27	0	0	0	0	0
+seeds/r194.ofn	nominals	TIMEOUT	10.01					
+seeds/r195.ofn	nominals	TIMEOUT	10.01					
+seeds/r196.ofn	nominals	TIMEOUT	10.01					
+seeds/r197.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r198.ofn	nominals	TIMEOUT	10.01					
+seeds/r199.ofn	nominals	ok	0.31	0	0	0	0	0
+seeds/r200.ofn	nominals	ok	3.77	0	0	0	0	0
+seeds/r201.ofn	nominals	TIMEOUT	10.01					
+seeds/r202.ofn	nominals	TIMEOUT	10.01					
+seeds/r203.ofn	nominals	TIMEOUT	10.01					
+seeds/r204.ofn	nominals	TIMEOUT	10.01					
+seeds/r205.ofn	nominals	TIMEOUT	10.01					
+seeds/r206.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r207.ofn	nominals	TIMEOUT	10.01					
+seeds/r208.ofn	nominals	ok	6.49	0	0	0	0	0
+seeds/r209.ofn	nominals	TIMEOUT	10.01					
+seeds/r210.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r211.ofn	nominals	TIMEOUT	10.01					
+seeds/r212.ofn	nominals	TIMEOUT	10.02					
+seeds/r213.ofn	nominals	ok	1.35	0	0	0	0	0
+seeds/r214.ofn	nominals	TIMEOUT	10.01					
+seeds/r215.ofn	nominals	TIMEOUT	10.01					
+seeds/r216.ofn	nominals	TIMEOUT	10.02					
+seeds/r217.ofn	nominals	TIMEOUT	10.02					
+seeds/r218.ofn	nominals	ok	0.06	0	0	0	0	0
+seeds/r219.ofn	nominals	ok	0.21	0	0	0	0	0
+seeds/r220.ofn	nominals	TIMEOUT	10.01					
+seeds/r221.ofn	nominals	ok	0.43	0	0	0	0	0
+seeds/r222.ofn	nominals	ok	1.09	0	0	0	0	0
+seeds/r223.ofn	nominals	TIMEOUT	10.01					
+seeds/r224.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r225.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r226.ofn	nominals	TIMEOUT	10.01					
+seeds/r227.ofn	nominals	ok	0.22	0	0	0	0	0
+seeds/r228.ofn	nominals	ok	0.13	0	0	0	0	0
+seeds/r229.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r230.ofn	nominals	TIMEOUT	10.01					
+seeds/r231.ofn	nominals	TIMEOUT	10.01					
+seeds/r232.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r233.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r234.ofn	nominals	ok	0.10	0	0	0	0	0
+seeds/r235.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r236.ofn	nominals	TIMEOUT	10.01					
+seeds/r237.ofn	nominals	ok	0.34	0	0	0	0	0
+seeds/r238.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r239.ofn	nominals	ok	0.05	0	0	0	0	0
+seeds/r240.ofn	nominals	ok	0.04	0	0	0	0	0
+seeds/r241.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r242.ofn	nominals	TIMEOUT	10.01					
+seeds/r243.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r244.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r245.ofn	nominals	TIMEOUT	10.01					
+seeds/r246.ofn	nominals	TIMEOUT	10.01					
+seeds/r247.ofn	nominals	TIMEOUT	10.02					
+seeds/r248.ofn	nominals	TIMEOUT	10.01					
+seeds/r249.ofn	nominals	TIMEOUT	10.01					
+seeds/r250.ofn	nominals	TIMEOUT	10.01					
+seeds/r251.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r252.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r253.ofn	nominals	TIMEOUT	10.01					
+seeds/r254.ofn	nominals	TIMEOUT	10.01					
+seeds/r255.ofn	nominals	TIMEOUT	10.01					
+seeds/r256.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r257.ofn	nominals	TIMEOUT	10.01					
+seeds/r258.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r259.ofn	nominals	TIMEOUT	10.01					
+seeds/r260.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r261.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r262.ofn	nominals	TIMEOUT	10.01					
+seeds/r263.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r264.ofn	nominals	TIMEOUT	10.01					
+seeds/r265.ofn	nominals	TIMEOUT	10.01					
+seeds/r266.ofn	nominals	TIMEOUT	10.01					
+seeds/r267.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r268.ofn	nominals	TIMEOUT	10.01					
+seeds/r269.ofn	nominals	TIMEOUT	10.01					
+seeds/r270.ofn	nominals	ok	0.49	0	0	0	0	0
+seeds/r271.ofn	nominals	TIMEOUT	10.01					
+seeds/r272.ofn	nominals	ok	0.30	0	0	0	0	0
+seeds/r273.ofn	nominals	TIMEOUT	10.01					
+seeds/r274.ofn	nominals	TIMEOUT	10.01					
+seeds/r275.ofn	nominals	ok	0.06	0	0	0	0	0
+seeds/r276.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r277.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r278.ofn	nominals	TIMEOUT	10.01					
+seeds/r279.ofn	nominals	TIMEOUT	10.01					
+seeds/r280.ofn	nominals	ok	0.10	0	0	0	0	0
+seeds/r281.ofn	nominals	TIMEOUT	10.01					
+seeds/r282.ofn	nominals	ok	9.82	0	0	0	0	0
+seeds/r283.ofn	nominals	TIMEOUT	10.01					
+seeds/r284.ofn	nominals	TIMEOUT	10.01					
+seeds/r285.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r286.ofn	nominals	TIMEOUT	10.01					
+seeds/r287.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r288.ofn	nominals	ok	7.21	0	0	0	0	0
+seeds/r289.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r290.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r291.ofn	nominals	TIMEOUT	10.01					
+seeds/r292.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r293.ofn	nominals	TIMEOUT	10.01					
+seeds/r294.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r295.ofn	nominals	ok	0.07	0	0	0	0	0
+seeds/r296.ofn	nominals	ok	0.05	0	0	0	0	0
+seeds/r297.ofn	nominals	TIMEOUT	10.01					
+seeds/r298.ofn	nominals	TIMEOUT	10.01					
+seeds/r299.ofn	nominals	TIMEOUT	10.01					
+seeds/r300.ofn	nominals	TIMEOUT	10.01					
+seeds/r301.ofn	nominals	TIMEOUT	10.01					
+seeds/r302.ofn	nominals	TIMEOUT	10.01					
+seeds/r303.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r304.ofn	nominals	TIMEOUT	10.01					
+seeds/r305.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r306.ofn	nominals	TIMEOUT	10.01					
+seeds/r307.ofn	nominals	TIMEOUT	10.01					
+seeds/r308.ofn	nominals	TIMEOUT	10.01					
+seeds/r309.ofn	nominals	TIMEOUT	10.01					
+seeds/r310.ofn	nominals	ok	0.04	0	0	0	0	0
+seeds/r311.ofn	nominals	TIMEOUT	10.01					
+seeds/r312.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r313.ofn	nominals	TIMEOUT	10.01					
+seeds/r314.ofn	nominals	TIMEOUT	10.01					
+seeds/r315.ofn	nominals	TIMEOUT	10.01					
+seeds/r316.ofn	nominals	ok	0.07	0	0	0	0	0
+seeds/r317.ofn	nominals	ok	0.04	0	0	0	0	0
+seeds/r318.ofn	nominals	TIMEOUT	10.01					
+seeds/r319.ofn	nominals	ok	0.04	0	0	0	0	0
+seeds/r320.ofn	nominals	TIMEOUT	10.01					
+seeds/r321.ofn	nominals	ok	0.31	0	0	0	0	0
+seeds/r322.ofn	nominals	ok	0.07	0	0	0	0	0
+seeds/r323.ofn	nominals	TIMEOUT	10.02					
+seeds/r324.ofn	nominals	ok	0.05	0	0	0	0	0
+seeds/r325.ofn	nominals	ok	0.08	0	0	0	0	0
+seeds/r326.ofn	nominals	TIMEOUT	10.01					
+seeds/r327.ofn	nominals	TIMEOUT	10.01					
+seeds/r328.ofn	nominals	ok	0.05	0	0	0	0	0
+seeds/r329.ofn	nominals	ok	0.15	0	0	0	0	0
+seeds/r330.ofn	nominals	TIMEOUT	10.01					
+seeds/r331.ofn	nominals	ok	0.76	0	0	0	0	0
+seeds/r332.ofn	nominals	TIMEOUT	10.02					
+seeds/r333.ofn	nominals	TIMEOUT	10.01					
+seeds/r334.ofn	nominals	TIMEOUT	10.01					
+seeds/r335.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r336.ofn	nominals	TIMEOUT	10.01					
+seeds/r337.ofn	nominals	ok	0.61	0	0	0	0	0
+seeds/r338.ofn	nominals	ok	0.05	0	0	0	0	0
+seeds/r339.ofn	nominals	TIMEOUT	10.01					
+seeds/r340.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r341.ofn	nominals	TIMEOUT	10.01					
+seeds/r342.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r343.ofn	nominals	ok	0.08	0	0	0	0	0
+seeds/r344.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r345.ofn	nominals	ok	0.15	0	0	0	0	0
+seeds/r346.ofn	nominals	TIMEOUT	10.01					
+seeds/r347.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r348.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r349.ofn	nominals	TIMEOUT	10.01					
+seeds/r350.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r351.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r352.ofn	nominals	ok	0.05	0	0	0	0	0
+seeds/r353.ofn	nominals	TIMEOUT	10.01					
+seeds/r354.ofn	nominals	ok	0.06	0	0	0	0	0
+seeds/r355.ofn	nominals	ok	0.06	0	0	0	0	0
+seeds/r356.ofn	nominals	TIMEOUT	10.01					
+seeds/r357.ofn	nominals	TIMEOUT	10.02					
+seeds/r358.ofn	nominals	TIMEOUT	10.02					
+seeds/r359.ofn	nominals	TIMEOUT	10.01					
+seeds/r360.ofn	nominals	TIMEOUT	10.01					
+seeds/r361.ofn	nominals	TIMEOUT	10.01					
+seeds/r362.ofn	nominals	TIMEOUT	10.01					
+seeds/r363.ofn	nominals	ok	0.10	0	0	0	0	0
+seeds/r364.ofn	nominals	ok	0.06	0	0	0	0	0
+seeds/r365.ofn	nominals	ok	0.07	0	0	0	0	0
+seeds/r366.ofn	nominals	ok	0.52	0	0	0	0	0
+seeds/r367.ofn	nominals	TIMEOUT	10.01					
+seeds/r368.ofn	nominals	TIMEOUT	10.01					
+seeds/r369.ofn	nominals	ok	0.13	0	0	0	0	0
+seeds/r370.ofn	nominals	ok	0.18	0	0	0	0	0
+seeds/r371.ofn	nominals	ok	7.98	0	0	0	0	0
+seeds/r372.ofn	nominals	ok	0.13	0	0	0	0	0
+seeds/r373.ofn	nominals	ok	0.11	0	0	0	0	0
+seeds/r374.ofn	nominals	ok	7.17	0	0	0	0	0
+seeds/r375.ofn	nominals	ok	0.78	0	0	0	0	0
+seeds/r376.ofn	nominals	ok	0.05	0	0	0	0	0
+seeds/r377.ofn	nominals	ok	3.36	0	0	0	0	0
+seeds/r378.ofn	nominals	ok	0.20	0	0	0	0	0
+seeds/r379.ofn	nominals	ok	0.22	0	0	0	0	0
+seeds/r380.ofn	nominals	ok	0.05	0	0	0	0	0
+seeds/r381.ofn	nominals	TIMEOUT	10.01					
+seeds/r382.ofn	nominals	ok	0.05	0	0	0	0	0
+seeds/r383.ofn	nominals	TIMEOUT	10.01					
+seeds/r384.ofn	nominals	ok	0.08	0	0	0	0	0
+seeds/r385.ofn	nominals	ok	0.19	0	0	0	0	0
+seeds/r386.ofn	nominals	TIMEOUT	10.01					
+seeds/r387.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r388.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r389.ofn	nominals	TIMEOUT	10.01					
+seeds/r390.ofn	nominals	TIMEOUT	10.01					
+seeds/r391.ofn	nominals	TIMEOUT	10.01					
+seeds/r392.ofn	nominals	TIMEOUT	10.01					
+seeds/r393.ofn	nominals	TIMEOUT	10.01					
+seeds/r394.ofn	nominals	ok	0.07	0	0	0	0	0
+seeds/r395.ofn	nominals	ok	0.06	0	0	0	0	0
+seeds/r396.ofn	nominals	TIMEOUT	10.01					
+seeds/r397.ofn	nominals	ok	0.06	0	0	0	0	0
+seeds/r398.ofn	nominals	ok	0.87	0	0	0	0	0
+seeds/r399.ofn	nominals	TIMEOUT	10.01					
+seeds/r400.ofn	nominals	ok	0.09	0	0	0	0	0
+seeds/r401.ofn	nominals	ok	0.07	0	0	0	0	0
+seeds/r402.ofn	nominals	ok	0.12	0	0	0	0	0
+seeds/r403.ofn	nominals	TIMEOUT	10.02					
+seeds/r404.ofn	nominals	ok	0.04	0	0	0	0	0
+seeds/r405.ofn	nominals	TIMEOUT	10.01					
+seeds/r406.ofn	nominals	TIMEOUT	10.01					
+seeds/r407.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r408.ofn	nominals	ok	0.05	0	0	0	0	0
+seeds/r409.ofn	nominals	ok	0.07	0	0	0	0	0
+seeds/r410.ofn	nominals	TIMEOUT	10.01					
+seeds/r411.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r412.ofn	nominals	ok	0.04	0	0	0	0	0
+seeds/r413.ofn	nominals	TIMEOUT	10.01					
+seeds/r414.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r415.ofn	nominals	ok	0.06	0	0	0	0	0
+seeds/r416.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r417.ofn	nominals	ok	1.06	0	0	0	0	0
+seeds/r418.ofn	nominals	TIMEOUT	10.02					
+seeds/r419.ofn	nominals	TIMEOUT	10.01					
+seeds/r420.ofn	nominals	TIMEOUT	10.01					
+seeds/r421.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r422.ofn	nominals	TIMEOUT	10.01					
+seeds/r423.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r424.ofn	nominals	TIMEOUT	10.01					
+seeds/r425.ofn	nominals	TIMEOUT	10.01					
+seeds/r426.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r427.ofn	nominals	TIMEOUT	10.01					
+seeds/r428.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r429.ofn	nominals	TIMEOUT	10.01					
+seeds/r430.ofn	nominals	ok	0.26	0	0	0	0	0
+seeds/r431.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r432.ofn	nominals	TIMEOUT	10.01					
+seeds/r433.ofn	nominals	ok	4.36	0	0	0	0	0
+seeds/r434.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r435.ofn	nominals	TIMEOUT	10.01					
+seeds/r436.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r437.ofn	nominals	TIMEOUT	10.01					
+seeds/r438.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r439.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r440.ofn	nominals	ok	0.76	0	0	0	0	0
+seeds/r441.ofn	nominals	TIMEOUT	10.01					
+seeds/r442.ofn	nominals	ok	0.04	0	0	0	0	0
+seeds/r443.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r444.ofn	nominals	TIMEOUT	10.02					
+seeds/r445.ofn	nominals	TIMEOUT	10.01					
+seeds/r446.ofn	nominals	TIMEOUT	10.01					
+seeds/r447.ofn	nominals	TIMEOUT	10.01					
+seeds/r448.ofn	nominals	ok	0.40	0	0	0	0	0
+seeds/r449.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r450.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r451.ofn	nominals	TIMEOUT	10.01					
+seeds/r452.ofn	nominals	TIMEOUT	10.02					
+seeds/r453.ofn	nominals	ok	0.04	0	0	0	0	0
+seeds/r454.ofn	nominals	TIMEOUT	10.01					
+seeds/r455.ofn	nominals	ok	0.06	0	0	0	0	0
+seeds/r456.ofn	nominals	ok	0.17	0	0	0	0	0
+seeds/r457.ofn	nominals	ok	0.05	0	0	0	0	0
+seeds/r458.ofn	nominals	TIMEOUT	10.01					
+seeds/r459.ofn	nominals	TIMEOUT	10.01					
+seeds/r460.ofn	nominals	TIMEOUT	10.02					
+seeds/r461.ofn	nominals	ok	0.04	0	0	0	0	0
+seeds/r462.ofn	nominals	TIMEOUT	10.01					
+seeds/r463.ofn	nominals	ok	0.09	0	0	0	0	0
+seeds/r464.ofn	nominals	ok	0.04	0	0	0	0	0
+seeds/r465.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r466.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r467.ofn	nominals	ok	8.30	0	0	0	0	0
+seeds/r468.ofn	nominals	ok	0.25	0	0	0	0	0
+seeds/r469.ofn	nominals	ok	0.08	0	0	0	0	0
+seeds/r470.ofn	nominals	TIMEOUT	10.01					
+seeds/r471.ofn	nominals	TIMEOUT	10.01					
+seeds/r472.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r473.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r474.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r475.ofn	nominals	ok	0.33	0	0	0	0	0
+seeds/r476.ofn	nominals	ok	9.02	0	0	0	0	0
+seeds/r477.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r478.ofn	nominals	TIMEOUT	10.01					
+seeds/r479.ofn	nominals	ok	0.11	0	0	0	0	0
+seeds/r480.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r481.ofn	nominals	ok	0.37	0	0	0	0	0
+seeds/r482.ofn	nominals	ok	0.23	0	0	0	0	0
+seeds/r483.ofn	nominals	TIMEOUT	10.01					
+seeds/r484.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r485.ofn	nominals	TIMEOUT	10.01					
+seeds/r486.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r487.ofn	nominals	TIMEOUT	10.01					
+seeds/r488.ofn	nominals	ok	0.05	0	0	0	0	0
+seeds/r489.ofn	nominals	TIMEOUT	10.01					
+seeds/r490.ofn	nominals	TIMEOUT	10.01					
+seeds/r491.ofn	nominals	TIMEOUT	10.01					
+seeds/r492.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r493.ofn	nominals	ok	0.44	0	0	0	0	0
+seeds/r494.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r495.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r496.ofn	nominals	TIMEOUT	10.01					
+seeds/r497.ofn	nominals	TIMEOUT	10.01					
+seeds/r498.ofn	nominals	TIMEOUT	10.01					
+seeds/r499.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r500.ofn	nominals	TIMEOUT	10.01					
+seeds/r501.ofn	nominals	TIMEOUT	10.01					
+seeds/r502.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r503.ofn	nominals	ok	1.33	0	0	0	0	0
+seeds/r504.ofn	nominals	TIMEOUT	10.01					
+seeds/r505.ofn	nominals	ok	0.05	0	0	0	0	0
+seeds/r506.ofn	nominals	TIMEOUT	10.01					
+seeds/r507.ofn	nominals	TIMEOUT	10.02					
+seeds/r508.ofn	nominals	ok	0.04	0	0	0	0	0
+seeds/r509.ofn	nominals	TIMEOUT	10.01					
+seeds/r510.ofn	nominals	ok	0.06	0	0	0	0	0
+seeds/r511.ofn	nominals	ok	4.57	0	0	0	0	0
+seeds/r512.ofn	nominals	ok	0.14	0	0	0	0	0
+seeds/r513.ofn	nominals	ok	0.05	0	0	0	0	0
+seeds/r514.ofn	nominals	TIMEOUT	10.01					
+seeds/r515.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r516.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r517.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r518.ofn	nominals	TIMEOUT	10.01					
+seeds/r519.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r520.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r521.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r522.ofn	nominals	TIMEOUT	10.01					
+seeds/r523.ofn	nominals	TIMEOUT	10.01					
+seeds/r524.ofn	nominals	TIMEOUT	10.01					
+seeds/r525.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r526.ofn	nominals	ok	0.10	0	0	0	0	0
+seeds/r527.ofn	nominals	TIMEOUT	10.01					
+seeds/r528.ofn	nominals	ok	6.09	0	0	0	0	0
+seeds/r529.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r530.ofn	nominals	ok	0.20	0	0	0	0	0
+seeds/r531.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r532.ofn	nominals	ok	6.31	0	0	0	0	0
+seeds/r533.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r534.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r535.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r536.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r537.ofn	nominals	ok	0.19	0	0	0	0	0
+seeds/r538.ofn	nominals	TIMEOUT	10.01					
+seeds/r539.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r540.ofn	nominals	TIMEOUT	10.01					
+seeds/r541.ofn	nominals	ok	0.26	0	0	0	0	0
+seeds/r542.ofn	nominals	TIMEOUT	10.01					
+seeds/r543.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r544.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r545.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r546.ofn	nominals	TIMEOUT	10.01					
+seeds/r547.ofn	nominals	ok	0.73	0	0	0	0	0
+seeds/r548.ofn	nominals	ok	1.57	0	0	0	0	0
+seeds/r549.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r550.ofn	nominals	ok	0.11	0	0	0	0	0
+seeds/r551.ofn	nominals	TIMEOUT	10.01					
+seeds/r552.ofn	nominals	ok	1.58	0	0	0	0	0
+seeds/r553.ofn	nominals	ok	0.39	0	0	0	0	0
+seeds/r554.ofn	nominals	TIMEOUT	10.01					
+seeds/r555.ofn	nominals	ok	0.09	0	0	0	0	0
+seeds/r556.ofn	nominals	ok	7.37	0	0	0	0	0
+seeds/r557.ofn	nominals	ok	1.29	0	0	0	0	0
+seeds/r558.ofn	nominals	ok	0.92	0	0	0	0	0
+seeds/r559.ofn	nominals	TIMEOUT	10.01					
+seeds/r560.ofn	nominals	TIMEOUT	10.01					
+seeds/r561.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r562.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r563.ofn	nominals	TIMEOUT	10.01					
+seeds/r564.ofn	nominals	TIMEOUT	10.01					
+seeds/r565.ofn	nominals	TIMEOUT	10.01					
+seeds/r566.ofn	nominals	TIMEOUT	10.01					
+seeds/r567.ofn	nominals	TIMEOUT	10.01					
+seeds/r568.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r569.ofn	nominals	TIMEOUT	10.01					
+seeds/r570.ofn	nominals	TIMEOUT	10.01					
+seeds/r571.ofn	nominals	TIMEOUT	10.01					
+seeds/r572.ofn	nominals	TIMEOUT	10.01					
+seeds/r573.ofn	nominals	TIMEOUT	10.01					
+seeds/r574.ofn	nominals	TIMEOUT	10.01					
+seeds/r575.ofn	nominals	ok	1.68	0	0	0	0	0
+seeds/r576.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r577.ofn	nominals	TIMEOUT	10.01					
+seeds/r578.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r579.ofn	nominals	ok	2.19	0	0	0	0	0
+seeds/r580.ofn	nominals	TIMEOUT	10.01					
+seeds/r581.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r582.ofn	nominals	TIMEOUT	10.01					
+seeds/r583.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r584.ofn	nominals	TIMEOUT	10.01					
+seeds/r585.ofn	nominals	TIMEOUT	10.01					
+seeds/r586.ofn	nominals	TIMEOUT	10.01					
+seeds/r587.ofn	nominals	TIMEOUT	10.01					
+seeds/r588.ofn	nominals	TIMEOUT	10.01					
+seeds/r589.ofn	nominals	ok	1.23	0	0	0	0	0
+seeds/r590.ofn	nominals	TIMEOUT	10.01					
+seeds/r591.ofn	nominals	TIMEOUT	10.01					
+seeds/r592.ofn	nominals	ok	0.20	0	0	0	0	0
+seeds/r593.ofn	nominals	TIMEOUT	10.01					
+seeds/r594.ofn	nominals	ok	1.41	0	0	0	0	0
+seeds/r595.ofn	nominals	TIMEOUT	10.01					
+seeds/r596.ofn	nominals	TIMEOUT	10.01					
+seeds/r597.ofn	nominals	ok	0.31	0	0	0	0	0
+seeds/r598.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r599.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r600.ofn	nominals	TIMEOUT	10.01					
+seeds/r601.ofn	nominals	ok	0.31	0	0	0	0	0
+seeds/r602.ofn	nominals	ok	0.15	0	0	0	0	0
+seeds/r603.ofn	nominals	TIMEOUT	10.01					
+seeds/r604.ofn	nominals	ok	0.54	0	0	0	0	0
+seeds/r605.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r606.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r607.ofn	nominals	ok	4.43	0	0	0	0	0
+seeds/r608.ofn	nominals	TIMEOUT	10.01					
+seeds/r609.ofn	nominals	TIMEOUT	10.01					
+seeds/r610.ofn	nominals	TIMEOUT	10.01					
+seeds/r611.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r612.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r613.ofn	nominals	ok	0.04	0	0	0	0	0
+seeds/r614.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r615.ofn	nominals	TIMEOUT	10.01					
+seeds/r616.ofn	nominals	ok	3.44	0	0	0	0	0
+seeds/r617.ofn	nominals	ok	9.84	0	0	0	0	0
+seeds/r618.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r619.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r620.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r621.ofn	nominals	TIMEOUT	10.01					
+seeds/r622.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r623.ofn	nominals	ok	3.95	0	0	0	0	0
+seeds/r624.ofn	nominals	ok	0.16	0	0	0	0	0
+seeds/r625.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r626.ofn	nominals	TIMEOUT	10.01					
+seeds/r627.ofn	nominals	TIMEOUT	10.01					
+seeds/r628.ofn	nominals	TIMEOUT	10.01					
+seeds/r629.ofn	nominals	TIMEOUT	10.01					
+seeds/r630.ofn	nominals	TIMEOUT	10.01					
+seeds/r631.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r632.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r633.ofn	nominals	TIMEOUT	10.01					
+seeds/r634.ofn	nominals	TIMEOUT	10.01					
+seeds/r635.ofn	nominals	TIMEOUT	10.01					
+seeds/r636.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r637.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r638.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r639.ofn	nominals	TIMEOUT	10.01					
+seeds/r640.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r641.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r642.ofn	nominals	TIMEOUT	10.01					
+seeds/r643.ofn	nominals	TIMEOUT	10.01					
+seeds/r644.ofn	nominals	ok	0.07	0	0	0	0	0
+seeds/r645.ofn	nominals	TIMEOUT	10.02					
+seeds/r646.ofn	nominals	TIMEOUT	10.02					
+seeds/r647.ofn	nominals	TIMEOUT	10.02					
+seeds/r648.ofn	nominals	ok	0.07	0	0	0	0	0
+seeds/r649.ofn	nominals	TIMEOUT	10.01					
+seeds/r650.ofn	nominals	ok	0.07	0	0	0	0	0
+seeds/r651.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r652.ofn	nominals	ok	1.57	0	0	0	0	0
+seeds/r653.ofn	nominals	TIMEOUT	10.01					
+seeds/r654.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r655.ofn	nominals	ok	0.06	0	0	0	0	0
+seeds/r656.ofn	nominals	ok	0.11	0	0	0	0	0
+seeds/r657.ofn	nominals	TIMEOUT	10.01					
+seeds/r658.ofn	nominals	TIMEOUT	10.01					
+seeds/r659.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r660.ofn	nominals	TIMEOUT	10.01					
+seeds/r661.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r662.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r663.ofn	nominals	TIMEOUT	10.01					
+seeds/r664.ofn	nominals	TIMEOUT	10.02					
+seeds/r665.ofn	nominals	TIMEOUT	10.01					
+seeds/r666.ofn	nominals	ok	0.05	0	0	0	0	0
+seeds/r667.ofn	nominals	TIMEOUT	10.01					
+seeds/r668.ofn	nominals	ok	0.06	0	0	0	0	0
+seeds/r669.ofn	nominals	TIMEOUT	10.01					
+seeds/r670.ofn	nominals	TIMEOUT	10.01					
+seeds/r671.ofn	nominals	TIMEOUT	10.01					
+seeds/r672.ofn	nominals	TIMEOUT	10.01					
+seeds/r673.ofn	nominals	TIMEOUT	10.01					
+seeds/r674.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r675.ofn	nominals	TIMEOUT	10.01					
+seeds/r676.ofn	nominals	TIMEOUT	10.01					
+seeds/r677.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r678.ofn	nominals	ok	0.29	0	0	0	0	0
+seeds/r679.ofn	nominals	TIMEOUT	10.01					
+seeds/r680.ofn	nominals	TIMEOUT	10.01					
+seeds/r681.ofn	nominals	TIMEOUT	10.01					
+seeds/r682.ofn	nominals	TIMEOUT	10.01					
+seeds/r683.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r684.ofn	nominals	TIMEOUT	10.01					
+seeds/r685.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r686.ofn	nominals	TIMEOUT	10.01					
+seeds/r687.ofn	nominals	ok	0.07	0	0	0	0	0
+seeds/r688.ofn	nominals	ok	0.27	0	0	0	0	0
+seeds/r689.ofn	nominals	ok	9.03	0	0	0	0	0
+seeds/r690.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r691.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r692.ofn	nominals	TIMEOUT	10.01					
+seeds/r693.ofn	nominals	TIMEOUT	10.01					
+seeds/r694.ofn	nominals	ok	0.28	0	0	0	0	0
+seeds/r695.ofn	nominals	TIMEOUT	10.01					
+seeds/r696.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r697.ofn	nominals	TIMEOUT	10.01					
+seeds/r698.ofn	nominals	TIMEOUT	10.01					
+seeds/r699.ofn	nominals	ok	0.03	0	0	0	0	0
+seeds/r700.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r701.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r702.ofn	nominals	TIMEOUT	10.01					
+seeds/r703.ofn	nominals	ok	0.36	0	0	0	0	0
+seeds/r704.ofn	nominals	TIMEOUT	10.01					
+seeds/r705.ofn	nominals	TIMEOUT	10.01					
+seeds/r706.ofn	nominals	TIMEOUT	10.01					
+seeds/r707.ofn	nominals	ok	0.10	0	0	0	0	0
+seeds/r708.ofn	nominals	TIMEOUT	10.01					
+seeds/r709.ofn	nominals	TIMEOUT	10.01					
+seeds/r710.ofn	nominals	TIMEOUT	10.00					
+seeds/r711.ofn	nominals	ok	1.14	0	0	0	0	0
+seeds/r712.ofn	nominals	TIMEOUT	10.01					
+seeds/r713.ofn	nominals	TIMEOUT	10.01					
+seeds/r714.ofn	nominals	ok	2.10	0	0	0	0	0
+seeds/r715.ofn	nominals	ok	0.01	0	0	0	0	0
+seeds/r716.ofn	nominals	ok	0.02	0	0	0	0	0
+seeds/r717.ofn	nominals	TIMEOUT	10.01					
+seeds/r718.ofn	nominals	TIMEOUT	10.01					
+seeds/r719.ofn	nominals	TIMEOUT	10.02					
+seeds/r720.ofn	nominals	ok	0.11	0	0	0	0	0
+seeds/r721.ofn	nominals	TIMEOUT	10.02					
+seeds/r722.ofn	nominals	ok	0.20	0	0	0	0	0
+seeds/r723.ofn	nominals	ok	0.12	0	0	0	0	0

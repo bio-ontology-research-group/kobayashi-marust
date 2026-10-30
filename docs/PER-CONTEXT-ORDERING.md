@@ -674,3 +674,110 @@ are the same; no calculus change, no Lean obligation.
 sets the threshold (`1` exercises the indexes in every context; the
 2026-10-30 A/B runs used it). ore_ont_7610 on the engine input: more than
 200 s → 52 s; `km classify`: 64 s on the loaded workstation.
+
+## 11. A ranked R2 for ground equalities (2026-10-30)
+
+Section 8's R2 lets a ground (in)equality lie below another one only over
+the same pair, and below a ground atom only when they share an individual.
+`ExchangeEquality.lean` shows why this is the largest safe filter when the
+interface must be downward closed for every announced set `I`: some context
+may announce only one side of the upper equality. It costs time on random
+inputs (section 8.5). Results and commands:
+`results/agents/2026-10-30/nominal-r1600/`.
+
+### 11.1 Where the cost is
+
+Engine-level timings on the seeds of section 8.5 (diagnostic switches that
+reopen one group of comparisons each, `KM_DIAG_EQEQ_OPEN`,
+`KM_DIAG_EQATOM_OPEN`; incomplete, attribution only):
+
+- `r129`: section-8 rules 39 s; equality-below-atom comparisons reopened
+  31 s; equality-below-equality reopened more than 60 s; both reopened, or
+  the v1.5.4 rules, 0.02 s. The two groups interact: a private equality
+  that is maximal superposes into every clause over its larger individual,
+  and the ground context replicates the conditional clauses of `Q_2(a)`,
+  `Q_4(c)` (`a ≈ b ∨ a ≈ d`, `B(c) ∨ c ≈ e`) under each.
+- `r274`: section-8 rules 27 s; equality-below-equality reopened 0.08 s.
+- `fr248` (rule seed set, CB route): section-8 rules more than 60 s; both
+  groups reopened under the section-8 guard still more than 60 s; the
+  ranked R2 below with the unit-only guard of v1.5.4 5.7 s; v1.5.4 rules
+  6.8 s. Here the deliveries of the extended R3 cost as much as the
+  comparisons.
+
+### 11.2 The ranked filter and its interface
+
+Enlarging the interface on the equality side lets the filter keep more.
+Fix a rank on individuals (KM: the term id) and give a receiver that
+announced `I` the bound `m`, its largest announced individual. Two variants
+are proved in `lean/ContextCalculus/ExchangeEquality.lean` (sorry-free,
+axioms `propext`, `Classical.choice`, `Quot.sound`):
+
+- *max rank* (`IfaceM`, `CompatibleM`, default in KM): an equality is an
+  interface atom when a side is announced or both sides are at most `m`; it
+  lies below another equality over the same pair or when its larger side is
+  at most the other's smaller side; below a ground atom when it shares an
+  individual or its larger side is at most an individual of the atom (KM's
+  term-major order implies this, so KM keeps every equality-below-atom
+  comparison of v1.5.4); no ground atom lies below an equality; ground
+  atoms as in section 8.
+- *min rank* (`IfaceR`, `CompatibleR`, `KM_R2_MIN_RANK`): an equality is an
+  interface atom when its smaller side is at most `m`; it lies below another
+  equality when its smaller side is at most the other's smaller side.
+
+For both: the filter of a strict partial order is a strict partial order
+(`filtM_trans`, `filtR_trans`), every interface with `m` covering the
+announced individuals is downward closed (`ifaceM_downward`,
+`ifaceR_downward`), the filter keeps every comparison of section 8's
+(`compatibleM_of_compatible`, `compatibleR_of_compatible`), the guard
+passes every clause section 8's guard passes (`inIfaceM_of_inIface`,
+`inIfaceR_of_inIface`), and the exchange and unit-readout theorems hold
+(`maxranked_exchange_complete`, `maxranked_unit_readout_complete`,
+`ranked_exchange_complete`, `ranked_unit_readout_complete`). Code:
+`calc::lteq` (equality pairs), `engine::in_announced_interface` (the bound,
+computed per receiver in `propagate` and `Engine::rank_bound`). With
+additional nominals present the bound is unbounded (they count as announced
+for every receiver). `KM_CONTEXT_PAIR_R2` restores section 8's rules.
+
+*Exactness.* Soundness is unchanged (the guard delivers a subset of what
+the paper's r-Pred with `n = 0` delivers; the filter changes only which
+literals are maximal). Completeness: the propositional skeleton is the
+mechanised theorem above; the remaining steps are those of section 8.4
+(congruence, locality, KM's order being a strict partial order on the
+ground context's `x`-free atoms). The locality argument now also covers
+equalities delivered because both sides are at most the bound: such a
+clause reaches the receiver as a ground clause, its equality literals stay
+ground there unless a side is the receiver's own individual, in which case
+the merge subscription announces the other side.
+
+*Lean obligation.* The new filter and interface are mechanised as above.
+The certified CB surface still models neither R2 nor R3 (unchanged).
+
+### 11.3 Measurements
+
+`results/agents/2026-10-30/nominal-r1600/data/`, binary `km.v4` (max-rank
+default; `KM_CONTEXT_PAIR_R2=1` gives section 8's rules in the same binary).
+The merge hypotheses of docs/NOMINALS-CB.md section 10 are on in both.
+
+- Seeds r0 to r999, 10 s, run side by side: ranked R2 531 ok, section-8 R2
+  534 ok, both 0 wrong; on the 524 seeds both answer, 190 s against 232 s
+  (median ratio 1.08 in favour of the ranked R2).
+- The 36 seeds of section 8.5 that only the v1.5.4 rules answered, at 60 s:
+  this build answers 10, km.final2 5 in the same window. `r673`, `r3351` and
+  `fr248` time out at 60 s in both; `r129` takes 26 s in km.final2 and more
+  than 60 s here.
+- `r1600`'s `B` query with the merge hypotheses: 238 s under the ranked R2,
+  more than 600 s under section 8's.
+- 4,000 seeds, motif sets, ORE: docs/NOMINALS-CB.md section 10.4 (0 wrong;
+  ORE output identical).
+
+Verdict: the ranked R2 is exact (mechanised skeleton) and orders more, but
+it is not the cheaper R2 the brief asked for. It recovers 10 of the 36 seeds
+and `r274`, is faster on the seeds both rule sets answer, and helps under
+the merge hypotheses, but it does not recover `r129`, `r673`, `r3351` or
+`fr248`. 11.1 shows why: the equality comparisons that matter for `r129` and
+`fr248` need deliveries that cost as much as the comparisons save, since a
+receiver that gets the extra equalities derives ground atoms that ordinary
+r-Succ pushes back to the ground context as hypotheses. A cheaper exact
+regime has to change that exchange (for instance, let a receiver fire
+grounded ontology instances itself instead of pushing the atoms back); it
+needs its own completeness argument.
