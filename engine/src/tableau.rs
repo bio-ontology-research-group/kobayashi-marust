@@ -6959,25 +6959,20 @@ fn run_ht_projection_checker(
     ));
     std::fs::write(&path, encoded)
         .map_err(|error| format!("cannot write HT {document_kind} projection: {error}"))?;
-    let status = std::process::Command::new(checker)
-        .arg(&path)
-        .stdout(std::process::Stdio::null())
-        .status()
-        .map_err(|error| {
-            format!(
-                "cannot execute HT projection checker {}: {error}",
-                checker.display()
-            )
-        });
+    let outcome =
+        crate::lean_checkers::run("ht", checker, &format!("ht-{document_kind}"), &path);
     let _ = std::fs::remove_file(&path);
-    let status = status?;
-    if !status.success() {
-        return Err(format!(
-            "HT {document_kind} projection checker {} rejected the conversion ({status})",
+    match outcome {
+        crate::lean_checkers::Outcome::Accepted => Ok(()),
+        crate::lean_checkers::Outcome::Rejected(detail) => Err(format!(
+            "HT {document_kind} projection checker {} rejected the conversion: {detail}",
             checker.display()
-        ));
+        )),
+        crate::lean_checkers::Outcome::CannotCheck(detail) => Err(format!(
+            "cannot execute HT projection checker {}: {detail}",
+            checker.display()
+        )),
     }
-    Ok(())
 }
 
 fn check_native_abox_projection(inp: &TInput, checker: &std::path::Path) -> Result<(), String> {
@@ -7940,7 +7935,7 @@ fn check_certified_ht_input_coverage(inp: &TInput, native_abox_active: bool) -> 
 /// test outside the individual worker branches: rules consistency, the
 /// Konclude bridge, and the legacy tableau all precede or follow the fast-Ht
 /// arm and must not bypass its Lean checker boundary.
-const HT_LEAN_CERTIFICATION_ENV: &[&str] = &[
+pub(crate) const HT_LEAN_CERTIFICATION_ENV: &[&str] = &[
     "KM_HT_LEAN_CERT_OUT",
     "KM_HT_LEAN_CERT_CHECKER",
     "KM_HT_LEAN_PROJECTION_CHECKER",
@@ -8626,24 +8621,25 @@ fn run_tinput_inner(
                     lean_cert_checker.as_deref()
                 };
                 if let Some(checker) = verdict_checker {
-                    let status = std::process::Command::new(checker)
-                        .arg(path)
-                        .stdout(std::process::Stdio::null())
-                        .status()
-                        .map_err(|error| {
-                            format!(
-                                "KM_HT_LEAN_CERT cannot execute {}: {error}",
-                                checker.display()
-                            )
-                        })?;
+                    let outcome =
+                        crate::lean_checkers::run("ht", checker, "ht-global-verdict", path);
                     if lean_cert_path.is_none() {
                         let _ = std::fs::remove_file(path);
                     }
-                    if !status.success() {
-                        return Err(format!(
-                            "KM_HT_LEAN_CERT checker {} rejected the certificate ({status})",
-                            checker.display()
-                        ));
+                    match outcome {
+                        crate::lean_checkers::Outcome::Accepted => {}
+                        crate::lean_checkers::Outcome::Rejected(detail) => {
+                            return Err(format!(
+                                "KM_HT_LEAN_CERT checker {} rejected the certificate: {detail}",
+                                checker.display()
+                            ));
+                        }
+                        crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                            return Err(format!(
+                                "KM_HT_LEAN_CERT cannot execute {}: {detail}",
+                                checker.display()
+                            ));
+                        }
                     }
                 }
                 if native_abox_active {
@@ -8722,24 +8718,29 @@ fn run_tinput_inner(
                         lean_taxonomy_checker.as_deref()
                     }
                     .ok_or_else(|| "missing HT taxonomy Lean checker".to_string())?;
-                    let status = std::process::Command::new(checker)
-                        .arg(taxonomy_path)
-                        .stdout(std::process::Stdio::null())
-                        .status()
-                        .map_err(|error| {
-                            format!(
-                                "KM_HT_LEAN_TAXONOMY_CERT cannot execute {}: {error}",
-                                checker.display()
-                            )
-                        })?;
+                    let outcome = crate::lean_checkers::run(
+                        "ht",
+                        checker,
+                        "ht-taxonomy",
+                        taxonomy_path,
+                    );
                     if lean_taxonomy_path.is_none() {
                         let _ = std::fs::remove_file(taxonomy_path);
                     }
-                    if !status.success() {
-                        return Err(format!(
-                            "KM_HT_LEAN_TAXONOMY_CERT checker {} rejected the certificate ({status})",
-                            checker.display()
-                        ));
+                    match outcome {
+                        crate::lean_checkers::Outcome::Accepted => {}
+                        crate::lean_checkers::Outcome::Rejected(detail) => {
+                            return Err(format!(
+                                "KM_HT_LEAN_TAXONOMY_CERT checker {} rejected the certificate: {detail}",
+                                checker.display()
+                            ));
+                        }
+                        crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                            return Err(format!(
+                                "KM_HT_LEAN_TAXONOMY_CERT cannot execute {}: {detail}",
+                                checker.display()
+                            ));
+                        }
                     }
                     if !native_abox_active && !inp.card_defs.is_empty() {
                         let checker = lean_cardinality_common_taxonomy_checker

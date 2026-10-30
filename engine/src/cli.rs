@@ -615,7 +615,24 @@ pub fn run_engine() {
     }
 
     let t1 = std::time::Instant::now();
-    let cb_typed_source = if let Some(source) = input.cb_typed_source.clone() {
+    // KM_LEAN_CHECKERS: certify this CB run when its typed source compiles;
+    // otherwise run exactly as without the checkers and report cannot_check.
+    let mut lean_checkers_source = None;
+    if crate::lean_checkers::active() && std::env::var_os("KM_CB_LEAN_REQUIRED").is_none() {
+        let compiled = match input.cb_typed_source.clone() {
+            Some(source) => Ok(source),
+            None => crate::cb_source::typed_source_candidate(&input.clauses)
+                .map_err(|error| error.to_string()),
+        };
+        let status = compiled.as_ref().map(|_| ()).map_err(Clone::clone);
+        if crate::lean_checkers::configure_cb(status) {
+            lean_checkers_source = compiled.ok();
+        }
+    }
+    let lean_checkers_mode = lean_checkers_source.is_some();
+    let cb_typed_source = if let Some(source) = lean_checkers_source {
+        Some(source)
+    } else if let Some(source) = input.cb_typed_source.clone() {
         Some(source)
     } else if std::env::var_os("KM_CB_LEAN_REQUIRED").is_some()
         || std::env::var_os("KM_CB_DUMP_TYPED_SOURCE").is_some()
@@ -672,7 +689,18 @@ pub fn run_engine() {
     }
     let certified_subsumptions = if std::env::var_os("KM_CB_LEAN_REQUIRED").is_some() {
         match verify_cb_lean_publication(&r, cb_typed_source.as_ref()) {
+            Ok(_) if crate::lean_checkers::rejected_in_process() => {
+                eprintln!("CB Lean certification failed: a checker rejected its certificate");
+                exit(5);
+            }
             Ok(subsumptions) => Some(subsumptions),
+            // Under KM_LEAN_CHECKERS a certificate that could not be produced
+            // is `cannot_check`: the run publishes the answer it computed,
+            // which is the uncertified answer. A rejection always fails closed.
+            Err(error) if lean_checkers_mode && !crate::lean_checkers::rejected_in_process() => {
+                crate::lean_checkers::record_cannot_check("cb", "cb-publication", &error);
+                None
+            }
             Err(error) => {
                 eprintln!("CB Lean certification failed: {error}");
                 exit(5);
@@ -2111,235 +2139,249 @@ fn verify_cb_lean_publication(
         let path = source_live_path
             .as_ref()
             .ok_or_else(|| "source-bound CB live checker has no candidate path".to_string())?;
-        let status = std::process::Command::new(&source_checker)
-            .arg(path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run source-bound CB live checker {}: {error}",
-                    std::path::Path::new(&source_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "source-bound CB live checker rejected the candidate with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&source_checker),
+            "cb-source-bound-live",
+            std::path::Path::new(path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("source-bound CB live checker rejected the candidate: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("source-bound CB live checker did not run: {detail}"));
+            }
         }
     }
     if let Some(local_checker) = source_local_checker {
         let path = source_local_path.as_ref().ok_or_else(|| {
             "source-bound CB local-closure checker has no candidate path".to_string()
         })?;
-        let status = std::process::Command::new(&local_checker)
-            .arg(path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run source-bound CB local-closure checker {}: {error}",
-                    std::path::Path::new(&local_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "source-bound CB local-closure checker rejected the candidate with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&local_checker),
+            "cb-source-bound-local-closure",
+            std::path::Path::new(path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("source-bound CB local-closure checker rejected the candidate: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("source-bound CB local-closure checker did not run: {detail}"));
+            }
         }
     }
     if let Some(hyper_checker) = source_hyper_checker {
         let path = source_hyper_path
             .as_ref()
             .ok_or_else(|| "source-bound CB Hyper checker has no candidate path".to_string())?;
-        let status = std::process::Command::new(&hyper_checker)
-            .arg(path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run source-bound CB Hyper checker {}: {error}",
-                    std::path::Path::new(&hyper_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "source-bound CB Hyper checker rejected the candidate with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&hyper_checker),
+            "cb-source-bound-hyper",
+            std::path::Path::new(path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("source-bound CB Hyper checker rejected the candidate: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("source-bound CB Hyper checker did not run: {detail}"));
+            }
         }
     }
     if let Some(join3_checker) = source_join3_checker {
         let path = source_join3_path
             .as_ref()
             .ok_or_else(|| "source-bound CB Join-3 checker has no candidate path".to_string())?;
-        let status = std::process::Command::new(&join3_checker)
-            .arg(path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run source-bound CB Join-3 checker {}: {error}",
-                    std::path::Path::new(&join3_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "source-bound CB Join-3 checker rejected the candidate with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&join3_checker),
+            "cb-source-bound-join-3",
+            std::path::Path::new(path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("source-bound CB Join-3 checker rejected the candidate: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("source-bound CB Join-3 checker did not run: {detail}"));
+            }
         }
     }
     if let Some(succ_checker) = source_succ_checker {
         let path = source_succ_path
             .as_ref()
             .ok_or_else(|| "source-bound CB Succ checker has no candidate path".to_string())?;
-        let status = std::process::Command::new(&succ_checker)
-            .arg(path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run source-bound CB Succ checker {}: {error}",
-                    std::path::Path::new(&succ_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "source-bound CB Succ checker rejected the candidate with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&succ_checker),
+            "cb-source-bound-succ",
+            std::path::Path::new(path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("source-bound CB Succ checker rejected the candidate: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("source-bound CB Succ checker did not run: {detail}"));
+            }
         }
     }
     if let Some(eq_checker) = source_eq_checker {
         let path = source_eq_path
             .as_ref()
             .ok_or_else(|| "source-bound CB Eq checker has no candidate path".to_string())?;
-        let status = std::process::Command::new(&eq_checker)
-            .arg(path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run source-bound CB Eq checker {}: {error}",
-                    std::path::Path::new(&eq_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "source-bound CB Eq checker rejected the candidate with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&eq_checker),
+            "cb-source-bound-eq",
+            std::path::Path::new(path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("source-bound CB Eq checker rejected the candidate: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("source-bound CB Eq checker did not run: {detail}"));
+            }
         }
     }
     if let Some(pred_checker) = source_ordinary_pred_checker {
         let path = source_ordinary_pred_path.as_ref().ok_or_else(|| {
             "source-bound CB ordinary Pred checker has no candidate path".to_string()
         })?;
-        let status = std::process::Command::new(&pred_checker)
-            .arg(path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run source-bound CB ordinary Pred checker {}: {error}",
-                    std::path::Path::new(&pred_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "source-bound CB ordinary Pred checker rejected the candidate with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&pred_checker),
+            "cb-source-bound-ordinary-pred",
+            std::path::Path::new(path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("source-bound CB ordinary Pred checker rejected the candidate: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("source-bound CB ordinary Pred checker did not run: {detail}"));
+            }
         }
     }
     if let Some(pred_checker) = source_root_pred_checker {
         let path = source_root_pred_path
             .as_ref()
             .ok_or_else(|| "source-bound CB root Pred checker has no candidate path".to_string())?;
-        let status = std::process::Command::new(&pred_checker)
-            .arg(path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run source-bound CB root Pred checker {}: {error}",
-                    std::path::Path::new(&pred_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "source-bound CB root Pred checker rejected the candidate with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&pred_checker),
+            "cb-source-bound-root-pred",
+            std::path::Path::new(path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("source-bound CB root Pred checker rejected the candidate: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("source-bound CB root Pred checker did not run: {detail}"));
+            }
         }
     }
     if let Some(checker) = checker {
-        let status = std::process::Command::new(&checker)
-            .arg(&bundle_path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run CB Lean checker {}: {error}",
-                    std::path::Path::new(&checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!("CB Lean checker rejected the bundle with {status}"));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&checker),
+            "cb-live-bundle",
+            std::path::Path::new(&bundle_path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("CB Lean checker rejected the bundle: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("CB Lean checker did not run: {detail}"));
+            }
         }
     }
     if let Some(terminal_checker) = terminal_state_checker {
         let path = terminal_state_path
             .as_ref()
             .ok_or_else(|| "CB terminal-state checker has no candidate path".to_string())?;
-        let status = std::process::Command::new(&terminal_checker)
-            .arg(path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run CB terminal-state checker {}: {error}",
-                    std::path::Path::new(&terminal_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "CB terminal-state checker rejected the candidate with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&terminal_checker),
+            "cb-terminal-state",
+            std::path::Path::new(path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("CB terminal-state checker rejected the candidate: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("CB terminal-state checker did not run: {detail}"));
+            }
         }
     }
     if let Some(context_checker) = standalone_context_checker {
         let path = standalone_context_path
             .as_ref()
             .ok_or_else(|| "standalone CB context checker has no candidate path".to_string())?;
-        let status = std::process::Command::new(&context_checker)
-            .arg(path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run standalone CB context checker {}: {error}",
-                    std::path::Path::new(&context_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "standalone CB context checker rejected the proof with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&context_checker),
+            "cb-standalone-context",
+            std::path::Path::new(path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("standalone CB context checker rejected the proof: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("standalone CB context checker did not run: {detail}"));
+            }
         }
     }
     if let Some(production_checker) = source_production_checker {
         let path = source_production_path.as_ref().ok_or_else(|| {
             "source-production CB taxonomy checker has no candidate path".to_string()
         })?;
-        let status = std::process::Command::new(&production_checker)
-            .arg(path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run source-production CB taxonomy checker {}: {error}",
-                    std::path::Path::new(&production_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "source-production CB taxonomy checker rejected the matrix with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&production_checker),
+            "cb-source-production-taxonomy",
+            std::path::Path::new(path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("source-production CB taxonomy checker rejected the matrix: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("source-production CB taxonomy checker did not run: {detail}"));
+            }
         }
     }
     if let Some(exact_checker) = exact_checker {
@@ -2353,20 +2395,21 @@ fn verify_cb_lean_publication(
         let exact_path = exact_candidate_path
             .as_ref()
             .ok_or_else(|| "exact CB checker has no candidate path".to_string())?;
-        let status = std::process::Command::new(&exact_checker)
-            .arg(exact_path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run exact CB Lean checker {}: {error}",
-                    std::path::Path::new(&exact_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "exact CB Lean checker rejected the matrix with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&exact_checker),
+            "cb-live-exact-taxonomy",
+            std::path::Path::new(exact_path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("exact CB Lean checker rejected the matrix: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("exact CB Lean checker did not run: {detail}"));
+            }
         }
     }
     if let Some(source_checker) = source_exact_checker {
@@ -2394,20 +2437,21 @@ fn verify_cb_lean_publication(
         writer
             .flush()
             .map_err(|error| format!("cannot flush source-exact CB taxonomy: {error}"))?;
-        let status = std::process::Command::new(&source_checker)
-            .arg(source_path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run source-exact CB Lean checker {}: {error}",
-                    std::path::Path::new(&source_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "source-exact CB Lean checker rejected the matrix with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&source_checker),
+            "cb-source-exact-taxonomy",
+            std::path::Path::new(source_path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("source-exact CB Lean checker rejected the matrix: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("source-exact CB Lean checker did not run: {detail}"));
+            }
         }
     }
     Ok(public_answer)
@@ -7654,6 +7698,8 @@ pub fn run_tableau() {
         eprintln!("failed to read stdin: {e}");
         exit(1);
     }
+    // KM_LEAN_CHECKERS with KM_LEAN_CHECKERS_HT: certified HT for this worker.
+    let lean_ht = crate::lean_checkers::configure_ht();
     // Run the model build on a large-stack worker thread. The QO/tableau
     // saturation and consistency check recurse proportional to role-chain
     // depth and overflow the default 8 MB main stack on deep ontologies (e.g.
@@ -7696,6 +7742,9 @@ pub fn run_tableau() {
             h.flush().expect("flush compact bridge output");
         }
         Ok(Err(e)) => {
+            if lean_ht && !crate::lean_checkers::rejected_in_process() {
+                crate::lean_checkers::record_cannot_check("ht", "ht-publication", &e);
+            }
             eprintln!("tableau error: {e}");
             exit(1);
         }
