@@ -672,12 +672,23 @@ fn parse_literal(tok: &str) -> Option<(Val, Option<String>)> {
         Some("dateTime" | "dateTimeStamp") => super::datetime_value::parse(
             lex, builtin == Some("dateTimeStamp"),
         ).map(Val::DateTime).unwrap_or_else(|| Val::Opaque(tok.to_string())),
-        // XML Schema's derived string types apply whitespace replacement or
-        // collapse before entering the value space.  Until that canonical
-        // mapping is represented exactly, preserve the token opaquely: raw
-        // lexical inequality is not a proof of value inequality.
-        Some("normalizedString" | "token" | "language" | "Name" | "NCName" | "NMTOKEN") => {
-            Val::Opaque(tok.to_string())
+        // XML Schema's derived string types apply whitespace replacement
+        // (`normalizedString`) or collapse (the others) before entering the
+        // value space, which is a subset of the `xsd:string` value space
+        // (OWL 2 datatype map, section 4.3): `"abc"^^xsd:token` is the
+        // string `"abc"`. The value is the normalized form when that form
+        // is in the type's value space (`derived_string_member`); an
+        // ill-typed or undecided form (non-ASCII names) stays opaque.
+        Some(kind @ ("normalizedString" | "token" | "language" | "Name" | "NCName" | "NMTOKEN")) => {
+            let normal = if kind == "normalizedString" {
+                xsd_whitespace_replace(lex)
+            } else {
+                xsd_whitespace_collapse(lex)
+            };
+            match derived_string_member(kind, &normal) {
+                Some(true) => Val::Str(normal, None),
+                _ => Val::Opaque(tok.to_string()),
+            }
         }
         // OWL uses IEEE binary32/binary64 value spaces.  Parsing a decimal
         // lexical form as an exact rational (or directly as f64 for xsd:float)
@@ -714,6 +725,52 @@ fn parse_literal(tok: &str) -> Option<(Val, Option<String>)> {
         _ => Val::Opaque(tok.to_string()),
     };
     Some((val, Some(dt)))
+}
+
+/// XSD `whiteSpace=replace`: every tab, line feed and carriage return
+/// becomes a space.
+fn xsd_whitespace_replace(lex: &str) -> String {
+    lex.chars().map(|c| if matches!(c, '\t' | '\n' | '\r') { ' ' } else { c }).collect()
+}
+
+/// XSD `whiteSpace=collapse`: replace, then drop leading and trailing spaces
+/// and fold every run of spaces into one.
+fn xsd_whitespace_collapse(lex: &str) -> String {
+    xsd_whitespace_replace(lex).split(' ').filter(|part| !part.is_empty()).collect::<Vec<_>>().join(" ")
+}
+
+/// Is the string `value` in the value space of the derived string type
+/// `kind` (XSD 1.1 part 2, sections 3.4.1 to 3.4.7)? `None` where the
+/// decision needs the full Unicode name-character classes (a non-ASCII
+/// character in a name type); every other case is decided exactly.
+fn derived_string_member(kind: &str, value: &str) -> Option<bool> {
+    let normalized = !value.contains(['\t', '\n', '\r']);
+    let collapsed = normalized && !value.starts_with(' ') && !value.ends_with(' ') && !value.contains("  ");
+    let name_start = |c: char| c.is_ascii_alphabetic() || c == '_' || c == ':';
+    let name_char = |c: char| name_start(c) || c.is_ascii_digit() || c == '-' || c == '.';
+    match kind {
+        "string" => Some(true),
+        "normalizedString" => Some(normalized),
+        "token" => Some(collapsed),
+        _ if !collapsed => Some(false),
+        _ if !value.is_ascii() => None,
+        "language" => {
+            let mut parts = value.split('-');
+            let first = parts.next().unwrap_or("");
+            let ok = (1..=8).contains(&first.len())
+                && first.chars().all(|c| c.is_ascii_alphabetic())
+                && parts.all(|part| (1..=8).contains(&part.len()) && part.chars().all(|c| c.is_ascii_alphanumeric()));
+            Some(ok)
+        }
+        "NMTOKEN" => Some(!value.is_empty() && value.chars().all(name_char)),
+        "Name" => Some(value.chars().next().is_some_and(name_start) && value.chars().all(name_char)),
+        "NCName" => Some(
+            value.chars().next().is_some_and(name_start)
+                && value.chars().all(name_char)
+                && !value.contains(':'),
+        ),
+        _ => None,
+    }
 }
 
 /// Exact decimal/integer lexical → rational (handles sign, fraction, and
@@ -1277,7 +1334,7 @@ fn val_in_range(v: &Val, d: &DRange) -> Option<bool> {
             }
             Val::Bool(_) => Some(nd.part == Partition::Boolean),
             Val::Uri(_) => Some(nd.part == Partition::Uri),
-            Val::Str(_, lang) => {
+            Val::Str(s, lang) => {
                 if nd.part != Partition::Strings {
                     return Some(false);
                 }
@@ -1286,13 +1343,9 @@ fn val_in_range(v: &Val, d: &DRange) -> Option<bool> {
                 if lang.is_some() {
                     return Some(false);
                 }
-                // membership below xsd:string needs lexical checks we do not
-                // model: only xsd:string itself is decided
-                if nd.str_level == Some(3) {
-                    Some(true)
-                } else {
-                    None
-                }
+                // membership below xsd:string is the value-space test of
+                // the derived type
+                derived_string_member(nd.kind, s)
             }
             Val::Opaque(_) => None,
         },
@@ -1720,6 +1773,8 @@ fn enumerate_range(d: &DRange, cap: usize) -> Option<Vec<String>> {
                     .collect(),
             )
         }
+        // An empty dense interval: the empty cover (`R ⊑ ⊥`).
+        DRange::Num(_) if range_size(d) == Some(0) => Some(vec![]),
         _ => None,
     }
 }
@@ -1852,6 +1907,43 @@ pub fn ranges_beyond_cover(names: &BTreeSet<String>, cover_cap: usize, bound: u6
         },
         DtEntry::Value(..) => None,
     }).collect()
+}
+
+/// The finite ranges of `names` (with their sizes) that the values of the
+/// vocabulary together with the count bound can exhaust:
+/// `|R| ≤ |V ∩ R| + max(bound, 1)`, where `V ∩ R` counts every value whose
+/// membership in `R` is not decided false. Such a range needs its exact
+/// cover: without it a node labelled `R` and excluded from each of its
+/// values satisfies the clauses but has no value (`range_exhaust.ofn`,
+/// finding 2 of docs/DATATYPES.md "Lean coverage"). Ranges of unknown size
+/// are left to `ranges_beyond_cover`.
+pub fn exhaustible_ranges(names: &BTreeSet<String>, bound: u64) -> Vec<(String, u128)> {
+    let entries: Vec<DtEntry> = names.iter().filter_map(|n| classify_name(n)).collect();
+    let values: Vec<&Val> = entries.iter().filter_map(|e| match e {
+        DtEntry::Value(_, v) => Some(v),
+        _ => None,
+    }).collect();
+    let reach = u128::from(bound.max(1));
+    entries.iter().filter_map(|e| match e {
+        DtEntry::Range(name, range) => {
+            let size = range_size(range)?;
+            if size == u128::MAX {
+                return None;
+            }
+            let inside = values.iter().filter(|v| val_in_range(v, range) != Some(false)).count() as u128;
+            (size <= inside.saturating_add(reach)).then(|| (name.clone(), size))
+        }
+        DtEntry::Value(..) => None,
+    }).collect()
+}
+
+/// Does the relation encoding emit an exact cover of the range `name` with
+/// the enumeration cap `cap` (`range_cover`)?
+pub fn range_has_cover(name: &str, cap: usize) -> bool {
+    match classify_name(name) {
+        Some(DtEntry::Range(n, r)) => range_cover(&n, &r, cap).is_some(),
+        _ => false,
+    }
 }
 
 fn div_ceil_rat(r: &Rat) -> Option<i128> {
@@ -3121,10 +3213,21 @@ fn value_key(value: &Val) -> Option<String> {
     }
 }
 
-/// A value whose identity (`value_key`) and whose membership in each of
-/// `ranges` are decided.
-fn value_fully_decided<'a>(value: &Val, mut ranges: impl Iterator<Item = &'a DRange>) -> bool {
-    value_key(value).is_some() && ranges.all(|range| val_in_range(value, range).is_some())
+/// A value whose identity (`value_key`), whose membership in each of
+/// `ranges`, and whose relation to every other value of the vocabulary are
+/// decided: the hypothesis `fullyDecided` of
+/// `DataValueSingletonElision.lean`. Between two keyed values `val_eq` is
+/// always decided, so only the values without a key (`undecided`, the
+/// opaque ones) need a comparison; one that `val_eq` cannot separate from
+/// `value` keeps its singleton clause (`opaque_merge.ofn`).
+fn value_fully_decided<'a>(
+    value: &Val,
+    mut ranges: impl Iterator<Item = &'a DRange>,
+    undecided: &[&Val],
+) -> bool {
+    value_key(value).is_some()
+        && ranges.all(|range| val_in_range(value, range).is_some())
+        && undecided.iter().all(|other| val_eq(value, other).is_some())
 }
 
 /// Helper concept names of the linear form. They are data-sorted (every
@@ -3155,7 +3258,7 @@ pub(crate) fn bridge_value_identity_key(name: &str) -> Option<String> {
     let decided = match (&value, builtin) {
         (Val::Float32(_) | Val::Float64(_) | Val::Num(_) | Val::DateTime(_) | Val::Uri(_), _) => true,
         (Val::Bool(_), Some("boolean")) => true,
-        (Val::Str(_, None), Some("string")) => true,
+        (Val::Str(_, None), Some("string" | "normalizedString" | "token" | "language" | "Name" | "NCName" | "NMTOKEN")) => true,
         (Val::Str(_, None), None) => datatype.is_none(),
         _ => false,
     };
@@ -3227,8 +3330,9 @@ fn linear_value_relation_clauses(entries: &[DtEntry], cap: usize, elide_singleto
             values.push((n, v));
         }
     }
+    let undecided: Vec<&Val> = values.iter().map(|(_, v)| v).filter(|v| value_key(v).is_none()).collect();
     for (n, v) in &values {
-        if !(elide_singletons && value_fully_decided(v, ranges.iter().map(|(_, r)| *r))) {
+        if !(elide_singletons && value_fully_decided(v, ranges.iter().map(|(_, r)| *r), &undecided)) {
             out.push(singleton_clause(n));
         }
     }
@@ -3576,7 +3680,13 @@ pub fn datatype_relation_clauses_with(
         DtEntry::Range(_, r) => Some(r),
         _ => None,
     }).collect();
-    let needs_singleton = |v: &Val| !(elide_singletons && value_fully_decided(v, range_list.iter().copied()));
+    // Cover values are enumerated from decided ranges and always carry a
+    // key, so the source entries hold every value without one.
+    let undecided: Vec<&Val> = entries.iter().filter_map(|e| match e {
+        DtEntry::Value(_, v) if value_key(v).is_none() => Some(v),
+        _ => None,
+    }).collect();
+    let needs_singleton = |v: &Val| !(elide_singletons && value_fully_decided(v, range_list.iter().copied(), &undecided));
     for e in &entries {
         if let DtEntry::Value(an, av) = e {
             if needs_singleton(av) {
@@ -3967,8 +4077,50 @@ mod tests {
         let elided = datatype_relation_clauses_with(&ns, 8, None, true);
         let singleton = |clauses: &[DLClause], name: &str| clauses.contains(&singleton_clause(name));
         assert!(singleton(&kept, "__dt__val__\"1\"^^xsd:integer"));
-        assert!(!singleton(&elided, "__dt__val__\"1\"^^xsd:integer"));
+        // `val_eq(1, x^^ex:opaque)` is undecided, so `1` is not fully
+        // decided (`fullyDecided` of DataValueSingletonElision.lean) and
+        // keeps its singleton clause next to the opaque value.
+        assert!(singleton(&elided, "__dt__val__\"1\"^^xsd:integer"));
         assert!(singleton(&elided, "__dt__val__\"x\"^^ex:opaque"));
+        // Without an undecided value it is elided.
+        let decided = names(&["__dt__val__\"1\"^^xsd:integer", "__dt__val__\"2\"^^xsd:integer", "__dt__xsd:integer"]);
+        let elided = datatype_relation_clauses_with(&decided, 8, None, true);
+        assert!(!singleton(&elided, "__dt__val__\"1\"^^xsd:integer"));
+    }
+
+    #[test]
+    fn derived_string_literals_are_string_values() {
+        let value = |text: &str| match classify_name(text) { Some(DtEntry::Value(_, v)) => v, _ => panic!("{text}") };
+        let plain = value("__dt__val__\"abc\"");
+        assert_eq!(val_eq(&plain, &value("__dt__val__\"abc\"^^xsd:token")), Some(true));
+        assert_eq!(val_eq(&plain, &value("__dt__val__\" abc \"^^xsd:token")), Some(true));
+        assert_eq!(val_eq(&plain, &value("__dt__val__\"abc\"^^xsd:NCName")), Some(true));
+        assert_eq!(val_eq(&plain, &value("__dt__val__\"abd\"^^xsd:token")), Some(false));
+        // `normalizedString` replaces but does not collapse whitespace.
+        assert_eq!(val_eq(&value("__dt__val__\"a  b\""), &value("__dt__val__\"a\tb\"^^xsd:normalizedString")), Some(false));
+        assert_eq!(val_eq(&value("__dt__val__\"a b\""), &value("__dt__val__\"a\tb\"^^xsd:normalizedString")), Some(true));
+        // An ill-typed name and a non-ASCII name stay opaque.
+        assert!(matches!(value("__dt__val__\"1abc\"^^xsd:NCName"), Val::Opaque(_)));
+        assert!(matches!(value("__dt__val__\"\u{e9}t\u{e9}\"^^xsd:Name"), Val::Opaque(_)));
+        // Membership of a string in the derived types.
+        let token = match classify_name("__dt__xsd:token") { Some(DtEntry::Range(_, r)) => r, _ => panic!() };
+        assert_eq!(val_in_range(&plain, &token), Some(true));
+        assert_eq!(val_in_range(&value("__dt__val__\" abc\""), &token), Some(false));
+    }
+
+    #[test]
+    fn exhaustible_ranges_need_covers() {
+        let range = "__dt__c__DatatypeRestriction(xsd:integer xsd:minInclusive \"1\"^^xsd:integer xsd:maxInclusive \"9\"^^xsd:integer)";
+        let mut ns: Vec<String> = (1..=9).map(|i| format!("__dt__val__\"{i}\"^^xsd:integer")).collect();
+        ns.push(range.to_string());
+        let all: BTreeSet<String> = ns.iter().cloned().collect();
+        assert_eq!(exhaustible_ranges(&all, 0), vec![(range.to_string(), 9)]);
+        // Seven named values leave two unnamed ones for one successor.
+        let seven: BTreeSet<String> = ns.iter().skip(2).cloned().collect();
+        assert!(exhaustible_ranges(&seven, 0).is_empty());
+        // Two forced-distinct successors exhaust it again.
+        assert_eq!(exhaustible_ranges(&seven, 2).len(), 1);
+        assert!(range_has_cover(range, 9) && !range_has_cover(range, 8));
     }
 
     #[test]

@@ -124,13 +124,21 @@ fn classify(text: &str, route: Option<&str>) -> Result<Answer, String> {
 }
 
 fn check(name: &str, routes: &[Option<&str>]) {
+    check_variants(name, routes, true);
+}
+
+fn check_variants(name: &str, routes: &[Option<&str>], with_padding: bool) {
     let text = std::fs::read_to_string(fixtures().join(format!("{name}.ofn"))).unwrap();
     let mut want = expected(name);
     if !want.consistent {
         want.unsat.clear();
         want.subs.clear();
     }
-    for (variant, input) in [("plain", text.clone()), ("padded", padded(name, &text))] {
+    let mut variants = vec![("plain", text.clone())];
+    if with_padding {
+        variants.push(("padded", padded(name, &text)));
+    }
+    for (variant, input) in variants {
         for route in routes {
             assert_eq!(classify(&input, *route), Ok(want_clone(&want)),
                 "{name} ({variant}) on route {route:?}");
@@ -148,6 +156,10 @@ macro_rules! fixture_test {
     ($test:ident, $name:literal) => {
         #[test]
         fn $test() { check($name, &NOMINAL_ROUTES); }
+    };
+    ($test:ident, $name:literal, plain_only) => {
+        #[test]
+        fn $test() { check_variants($name, &NOMINAL_ROUTES, false); }
     };
     ($test:ident, $name:literal, auto_only) => {
         #[test]
@@ -184,3 +196,24 @@ fixture_test!(inverse_functional_merge, "inverse_functional_merge", auto_only);
 #[test]
 #[ignore = "pre-existing nominal CB incompleteness, see results/agents/2026-10-30/data-values/README.md"]
 fn count_with_assertions_ok() { check("count_with_assertions_ok", &NOMINAL_ROUTES); }
+
+// Findings of docs/DATATYPES.md "Lean coverage (2026-10-30)".
+// Singleton elision needs every value relation decided (finding 1), and the
+// derived string types share the xsd:string value space.
+fixture_test!(opaque_merge, "opaque_merge");
+// `opaque_merge_keep` and `range_exhaust_keep` close the elision gate (`≥ 2 q`), so padded with
+// 1,100 values they keep 1,100 singleton clauses; that form exceeds the
+// 120 s bound on every route already at km-v155-final (300 s timeouts),
+// a cost of the kept singletons, not of these findings. Plain form only.
+fixture_test!(opaque_merge_keep, "opaque_merge_keep", plain_only);
+fixture_test!(opaque_merge_tbox, "opaque_merge_tbox");
+fixture_test!(opaque_merge_tbox_keep, "opaque_merge_tbox_keep");
+// HermiT answers this one consistent, against the OWL 2 datatype map and
+// against its own answer on `opaque_merge_tbox`; the fixture records the
+// datatype-map answer (inconsistent).
+fixture_test!(opaque_single, "opaque_single");
+// A finite range exhausted by excluded values needs its cover (finding 2).
+fixture_test!(range_exhaust, "range_exhaust");
+fixture_test!(range_exhaust8, "range_exhaust8");
+fixture_test!(range_exhaust_keep, "range_exhaust_keep", plain_only);
+fixture_test!(range_exhaust_tbox, "range_exhaust_tbox");

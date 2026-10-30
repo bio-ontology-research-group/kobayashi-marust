@@ -2100,9 +2100,18 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
     // apart, the frontend leaves out the singleton clause of every value with
     // a decided identity (`datatypes::datatype_relation_clauses_with`); no
     // clause then distinguishes two nodes carrying one value.
+    // The elision also needs the relation of an elided value to every other
+    // value decided (`fullyDecided` of `DataValueSingletonElision.lean`).
+    // Two values with identity keys are always related (equal keys or
+    // separated), so a missing singleton is admitted only when every value
+    // of the vocabulary has a key (`opaque_merge.ofn`).
     let singletons_elidable = {
         let (distinct, disjoint_data) = forced_distinct_data_successors(tin);
-        !distinct && !disjoint_data
+        !distinct
+            && !disjoint_data
+            && values.iter().all(|&value| {
+                crate::frontend::datatypes::bridge_value_identity_key(&tin.concepts[value]).is_some()
+            })
     };
     for &value in &values {
         if !relations.singletons.contains(&value)
@@ -8076,10 +8085,12 @@ fn bridged_unsat_rooted(
         let consistent = algo.run_completion_on(ctx);
         if trace {
             eprintln!(
-                "TRACE pass={pass} consistent={consistent} inserts={} backtracks={} nodes={}",
+                "TRACE pass={pass} consistent={consistent} inserts={} backtracks={} nodes={} source_tbox={} cow={}",
                 algo.stat_con_des_insertion_count,
                 algo.or_backtrack_count,
                 ctx.process_context().node_count(),
+                bridged.source_tbox,
+                algo.conf_inprocess_cow,
             );
         }
         if !consistent {
@@ -14876,6 +14887,12 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                                 || !algo.or_branch_stack.is_empty()
                                 || std::env::var_os("KM_BRIDGE_REPLAY_ALWAYS_OFF").is_some()
                             {
+                                if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+                                    eprintln!(
+                                        "BRIDGE-REPLAY disabled: open_or_branches={} (before {}) stack={}",
+                                        algo.or_branch_open_count, branch_points_before, algo.or_branch_stack.len()
+                                    );
+                                }
                                 bridged.precomputation_replay_disabled.set(true);
                             }
                             if !incomplete_associations.is_empty() {

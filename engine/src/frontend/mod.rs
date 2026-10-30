@@ -1943,8 +1943,22 @@ fn ofn_to_clauses_representation(
             // clashes (`≥ 10 u.integer[1,9]`). Covers are enumerated up to
             // that bound; a range the bound can exhaust but no cover
             // reaches is published as not represented.
-            let cover_cap = (data_count_bound.min(MAX_COUNTED_COVER as u64) as usize).max(8);
-            let beyond = datatypes::ranges_beyond_cover(&dt_names, cover_cap, data_count_bound);
+            let mut cover_cap = (data_count_bound.min(MAX_COUNTED_COVER as u64) as usize).max(8);
+            let mut beyond = datatypes::ranges_beyond_cover(&dt_names, cover_cap, data_count_bound);
+            // A finite range the vocabulary's values plus the count bound
+            // can exhaust also needs its cover (`exhaustible_ranges`); one
+            // too large to enumerate is published as not represented.
+            let exhaustible = datatypes::exhaustible_ranges(&dt_names, data_count_bound);
+            for (_, size) in &exhaustible {
+                if *size <= MAX_COUNTED_COVER as u128 {
+                    cover_cap = cover_cap.max(*size as usize);
+                }
+            }
+            for (name, _) in exhaustible {
+                if !datatypes::range_has_cover(&name, cover_cap) && !beyond.contains(&name) {
+                    beyond.push(name);
+                }
+            }
             if !beyond.is_empty() {
                 *dropped_source_axioms
                     .entry("data cardinality over a range without an exact cover".to_string())
