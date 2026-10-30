@@ -181,6 +181,7 @@ fn cb_release_certificate_is_accepted_by_the_lean_checker() {
         eprintln!("skipping: KM_RULES_TEST_INERT_LEAN_CHECKER is unset");
         return;
     };
+    let mut certified = 0;
     for name in FIXTURES {
         let dir = std::env::temp_dir().join(format!("km-cb-inert-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -199,8 +200,13 @@ fn cb_release_certificate_is_accepted_by_the_lean_checker() {
         let stderr = stderr_of(&path, &[("KM_RULES_INERT_CERT", dir.to_str().unwrap()),
             ("KM_RULES_INERT_LEAN_CHECKER", checker.to_str().unwrap()), ("KM_ROUTE", "certified_nominals")], BOUND);
         assert!(!stderr.contains("kept the frontend's clauses"), "{name}: {stderr}");
+        // A certificate is written only when the release frees a definer
+        // (m2058 gets the universal-definer elimination only).
+        let released = stderr.contains("nominal CB input: released") && !stderr.contains("nominal CB input: released 0 ");
         let files = std::fs::read_dir(&dir).unwrap().count();
-        assert!(files > 0, "{name}: no certificate was written");
+        assert_eq!(files > 0, released, "{name}: certificates {files}, release {released}");
+        certified += usize::from(released);
         let _ = std::fs::remove_dir_all(&dir);
     }
+    assert!(certified >= 2, "only {certified} fixtures produced a checked certificate");
 }
