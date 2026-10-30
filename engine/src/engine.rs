@@ -1000,6 +1000,31 @@ fn hyper_term_determined(term: Term, sigma: &CentralSubst) -> bool {
 /// Optional diagnostic threshold for logging Hyper's pre-join Cartesian upper
 /// bound. Cached because Hyper is the hottest rule and reading the environment
 /// per invocation would perturb the profile being measured.
+/// `KM_PROF` progress interval of `saturate_inner` (diagnostic; default 200 000
+/// work-off iterations, `KM_PROF_EVERY` overrides).
+fn prof_every() -> u64 {
+    static V: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    *V.get_or_init(|| {
+        std::env::var("KM_PROF_EVERY")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .filter(|&v| v > 0)
+            .unwrap_or(200_000)
+    })
+}
+
+/// `KM_PROF_DUMP_AT=N` (diagnostic, with `KM_PROF`): dump the clauses of the
+/// context being saturated when its work-off loop reaches iteration `N`.
+fn prof_dump_at() -> u64 {
+    static V: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    *V.get_or_init(|| {
+        std::env::var("KM_PROF_DUMP_AT")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(u64::MAX)
+    })
+}
+
 fn hyper_product_trace_threshold() -> Option<u128> {
     static THRESHOLD: std::sync::OnceLock<Option<u128>> = std::sync::OnceLock::new();
     *THRESHOLD.get_or_init(|| {
@@ -4907,6 +4932,70 @@ impl Engine {
         );
     }
 
+    /// Diagnostic dump (`KM_PROF_DUMP_AT`): core, worked-off and todo clauses
+    /// of context `id`, in the `KM_DUMP_WO` notation.
+    fn dump_context_clauses(&self, id: usize) {
+        let fmt_t = |t: Term| -> String {
+            if t == X {
+                "x".to_string()
+            } else if t == Y {
+                "y".to_string()
+            } else if is_neighbour(t) {
+                format!("z{}", Y - t)
+            } else {
+                format!("f{}(x)", t)
+            }
+        };
+        let fmt_p = |p: &Pred| -> String {
+            match *p {
+                Pred::Concept { iri, t } => {
+                    format!("{}({})", self.sig.concept_names[iri as usize], fmt_t(t))
+                }
+                Pred::Role { iri, s, t } => format!(
+                    "{}({},{})",
+                    self.sig.role_names[iri as usize],
+                    fmt_t(s),
+                    fmt_t(t)
+                ),
+            }
+        };
+        let fmt_l = |l: &Lit| -> String {
+            match *l {
+                Lit::P(p) => fmt_p(&p),
+                Lit::Eq { s, t } => format!("{}={}", fmt_t(s), fmt_t(t)),
+                Lit::Ineq { s, t } => format!("{}!={}", fmt_t(s), fmt_t(t)),
+            }
+        };
+        let ctx = &self.contexts[id];
+        let core: Vec<String> = ctx.core.iter().map(&fmt_p).collect();
+        eprintln!(
+            "== KM_PROF_DUMP ctx {} root={} core=[{}] wo={} todo={}",
+            ctx.id,
+            ctx.root,
+            core.join(", "),
+            ctx.worked_off_len(),
+            ctx.todo.len()
+        );
+        let arena = &self.cc_arena[ctx.root as usize];
+        let show = |tag: &str, ci: u32| {
+            let c = &arena[ci as usize];
+            let b: Vec<String> = c.body.iter().map(&fmt_p).collect();
+            let h: Vec<String> = c.head.iter().map(&fmt_l).collect();
+            eprintln!(
+                "   {} {} -> {}",
+                tag,
+                if b.is_empty() { "T".to_string() } else { b.join(" & ") },
+                if h.is_empty() { "F".to_string() } else { h.join(" | ") }
+            );
+        };
+        for ci in ctx.worked_off().iter() {
+            show("wo", ci);
+        }
+        for &ci in ctx.todo.iter() {
+            show("todo", ci);
+        }
+    }
+
     fn saturate_inner(&mut self, id: usize) {
         self.stat_saturate += 1;
         let trace_sat = self.trace_sat;
@@ -4938,7 +5027,10 @@ impl Engine {
             let clause = self.cc_arena[d][cid as usize].clone();
             if prof {
                 iters += 1;
-                if iters % 200_000 == 0 {
+                if iters == prof_dump_at() {
+                    self.dump_context_clauses(id);
+                }
+                if iters % prof_every() == 0 {
                     let ctx = &self.contexts[id];
                     eprintln!(
                         "KM_PROF ctx={} iters={} subsumed_at_workoff={} added={} todo={} wo={} | hyper_out={} pred_out={} eq_pred_out={} eq_eqn_out={} factor_out={} | backsub_unindex_events={} reindex_avoided={}",
