@@ -1,0 +1,46 @@
+     Running tests/bridge_atmost_predecessor.rs (target/release/deps/bridge_atmost_predecessor-67a0ca8d2a7fd0cb)
+test result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.82s
+     Running tests/bridge_atmost_role_hierarchy.rs (target/release/deps/bridge_atmost_role_hierarchy-204c9d6ac09f5df1)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+     Running tests/bridge_atmost_zero.rs (target/release/deps/bridge_atmost_zero-c112c6e464df65b1)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+     Running tests/bridge_blank_witness_and_same_reuse.rs (target/release/deps/bridge_blank_witness_and_same_reuse-01b544e6ea84e818)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests/bridge_conditional_full_replay.rs (target/release/deps/bridge_conditional_full_replay-a3c396390bf92251)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.01s
+     Running tests/bridge_cyclic_equivalence_definition.rs (target/release/deps/bridge_cyclic_equivalence_definition-1da0e04dfa3d6cdd)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+     Running tests/bridge_generator_soundness.rs (target/release/deps/bridge_generator_soundness-715e89aee891fc24)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.75s
+     Running tests/bridge_nominal_merge_relocation.rs (target/release/deps/bridge_nominal_merge_relocation-b946292ebe1d7c0f)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s
+     Running tests/bridge_restricted_subject_nominal_merge.rs (target/release/deps/bridge_restricted_subject_nominal_merge-35ef902a03212d8f)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+     Running tests/bridge_self_card_nominal.rs (target/release/deps/bridge_self_card_nominal-62871909762da057)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+     Running tests/cached_classification_model.rs (target/release/deps/cached_classification_model-498dc05f66b961ab)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.56s
+     Running tests/cb_route_completeness.rs (target/release/deps/cb_route_completeness-ecd879d443ed8681)
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.71s
+     Running tests/certified_abox_production.rs (target/release/deps/certified_abox_production-575cb131ae432713)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests/ht_subset_blocking.rs (target/release/deps/ht_subset_blocking-0313086ec74cd3cb)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+     Running tests/ht_subset_model_certificate.rs (target/release/deps/ht_subset_model_certificate-b1f200d56751ce40)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/ht_taxonomy_certificate.rs (target/release/deps/ht_taxonomy_certificate-8e77403b5a982bd2)
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+     Running tests/issue_3_soundness.rs (target/release/deps/issue_3_soundness-b686dd10a7881b17)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/mirror_route.rs (target/release/deps/mirror_route-a31b2164650ba3dc)
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+     Running tests/nominal_ground_body.rs (target/release/deps/nominal_ground_body-a7e2b4dfc0a871e5)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/nominal_inert_sorts.rs (target/release/deps/nominal_inert_sorts-b2d4bbaaf9eac01f)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 27.36s
+     Running tests/nominal_seq_order.rs (target/release/deps/nominal_seq_order-e74de4282b5dd77c)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 24.90s
+     Running tests/nominal_wine_absorption.rs (target/release/deps/nominal_wine_absorption-49aee33406afbbc1)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/routing_metamorphic.rs (target/release/deps/routing_metamorphic-60b508f83351f224)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 13.76s
