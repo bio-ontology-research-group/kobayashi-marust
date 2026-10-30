@@ -4,6 +4,7 @@ import ContextCalculus.ELRawNormalization
 import ContextCalculus.ELResidualCertificate
 import ContextCalculus.ELResidualWitness
 import Lean
+import Std.Data.HashSet.Lemmas
 
 /-!
 # JSON wire format for executable ELC certificates
@@ -358,6 +359,47 @@ def WireEdgeFact.decode (n : Nat) (fact : WireEdgeFact) :
   return .edge (← checkedFin n fact.source) (← checkedFin n fact.role)
     (← checkedFin n fact.target)
 
+/-! ## Linear-time duplicate check used by the decoder -/
+
+instance instHashableSum {α β : Type} [Hashable α] [Hashable β] : Hashable (Sum α β) where
+  hash
+    | .inl a => mixHash 11 (hash a)
+    | .inr b => mixHash 13 (hash b)
+
+/-- Scan `l` once, keeping the elements seen so far in a hash set. -/
+def nodupFastAux {α : Type} [BEq α] [Hashable α] : List α → Std.HashSet α → Bool
+  | [], _ => true
+  | x :: xs, seen => !seen.contains x && nodupFastAux xs (seen.insert x)
+
+def nodupFast {α : Type} [BEq α] [Hashable α] (l : List α) : Bool :=
+  nodupFastAux l ∅
+
+theorem nodupFastAux_sound {α : Type} [BEq α] [LawfulBEq α] [Hashable α] :
+    ∀ (l : List α) (seen : Std.HashSet α), nodupFastAux l seen = true →
+      (∀ x ∈ l, seen.contains x = false) ∧ l.Nodup
+  | [], _, _ => by simp
+  | x :: xs, seen, h => by
+      simp only [nodupFastAux, Bool.and_eq_true, Bool.not_eq_true'] at h
+      obtain ⟨hx, hrest⟩ := h
+      obtain ⟨hfresh, hnodup⟩ := nodupFastAux_sound xs (seen.insert x) hrest
+      refine ⟨?_, ?_⟩
+      · intro y hy
+        rcases List.mem_cons.mp hy with rfl | hy
+        · exact hx
+        · have := hfresh y hy
+          rw [Std.HashSet.contains_insert] at this
+          simp only [Bool.or_eq_false_iff] at this
+          exact this.2
+      · refine List.nodup_cons.mpr ⟨?_, hnodup⟩
+        intro hmem
+        have := hfresh x hmem
+        rw [Std.HashSet.contains_insert] at this
+        simp at this
+
+theorem nodupFast_nodup {α : Type} [BEq α] [LawfulBEq α] [Hashable α] {l : List α}
+    (h : nodupFast l = true) : l.Nodup :=
+  (nodupFastAux_sound l ∅ h).2
+
 def WireCertificate.decode (doc : WireCertificate) :
     Except String (DecodedCertificate doc.symbol_count) := do
   if doc.version != 5 then
@@ -366,10 +408,12 @@ def WireCertificate.decode (doc : WireCertificate) :
   let bottom ← checkedFin doc.symbol_count doc.bottom
   if hne : top ≠ bottom then
     if hsymbols : doc.symbols.length = doc.symbol_count then
-      if hsymbolsNodup : doc.symbols.Nodup then
+      if hsymbolsFast : nodupFast doc.symbols = true then
+       have hsymbolsNodup : doc.symbols.Nodup := nodupFast_nodup hsymbolsFast
        if horiginCount : doc.concept_origins.length = doc.symbol_count then
+        let wireOrigins := doc.concept_origins.toArray
         let origins ← (List.finRange doc.symbol_count).mapM fun id =>
-          (doc.concept_origins.get ⟨id.val, by rw [horiginCount]; exact id.isLt⟩).decode
+          (wireOrigins[id.val]'(by simp [wireOrigins, horiginCount])).decode
             doc.symbol_count id
         -- Array lookups keep decoding linear in the certificate size.
         let originArray := origins.toArray
@@ -377,7 +421,9 @@ def WireCertificate.decode (doc : WireCertificate) :
         let origin : Fin doc.symbol_count → ExtendedConcept (Fin doc.symbol_count) :=
           fun id => originArray.getD id.val (.inl top)
         if horiginsLength : origins.length = doc.symbol_count then
-          if horiginsNodup : origins.Nodup then
+          if horiginsFast : @nodupFast _ instBEqOfDecidableEq _ origins = true then
+            have horiginsNodup : origins.Nodup :=
+              @nodupFast_nodup _ instBEqOfDecidableEq _ _ _ horiginsFast
             return {
             top := top
             bottom := bottom

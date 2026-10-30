@@ -29,11 +29,6 @@ deriving instance Hashable for RawResidualClause
 
 section Membership
 
-instance instHashableSum {α β : Type} [Hashable α] [Hashable β] : Hashable (Sum α β) where
-  hash
-    | .inl a => mixHash 11 (hash a)
-    | .inr b => mixHash 13 (hash b)
-
 theorem hashSet_contains_ofList {α : Type} [BEq α] [LawfulBEq α] [Hashable α]
     (l : List α) (x : α) [inst : Decidable (x ∈ l)] :
     (HashSet.ofList l).contains x = @decide (x ∈ l) inst := by
