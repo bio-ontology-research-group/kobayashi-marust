@@ -2788,6 +2788,154 @@ enum LeanHtNormalizedRoleClause {
     },
 }
 
+/// Wrap a raw (version 1 or 2) global decision document, whose source and
+/// target coincide, in the version-3 normalized wire with an explicit
+/// identity normalization, as the source-bound ordinary global checker
+/// expects. Already normalized documents are returned unchanged.
+fn lean_identity_normalized_global_source(
+    source: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let identity_normalization =
+        |target: &serde_json::Value| -> Result<Vec<serde_json::Value>, String> {
+            let variable_count = target["variable_count"]
+                .as_u64()
+                .or_else(|| {
+                    target["evidence"]["regular_sat"]["certificate"]["variable_count"].as_u64()
+                })
+                .or_else(|| {
+                    target["evidence"]["finite_sat"]["certificate"]["variable_count"].as_u64()
+                })
+                .or_else(|| {
+                    target["evidence"]["finite_unsat"]["certificate"]["variable_count"].as_u64()
+                })
+                .ok_or_else(|| {
+                    "identity-normalized global decision has no variable_count".to_string()
+                })? as usize;
+            // A regular certificate carries no `ontology` field. Lean
+            // decodes its target ontology as the role clauses followed by
+            // the residual clauses (`FiniteRegularCertificate.ontology`),
+            // so the identity normalization must list exactly those
+            // clauses in that order.
+            let regular_ontology = target["evidence"]["regular_sat"]["certificate"]
+                .as_object()
+                .map(|_| {
+                    lean_regular_wire_ontology(
+                        &target["evidence"]["regular_sat"]["certificate"],
+                    )
+                })
+                .transpose()?;
+            let ontology = target["ontology"]
+                .as_array()
+                .or(regular_ontology.as_ref())
+                .or_else(|| {
+                    target["evidence"]["finite_sat"]["certificate"]["ontology"].as_array()
+                })
+                .or_else(|| {
+                    target["evidence"]["finite_unsat"]["certificate"]["ontology"].as_array()
+                })
+                .ok_or_else(|| {
+                    "identity-normalized global decision has no ontology".to_string()
+                })?;
+            let representatives: Vec<_> = (0..variable_count).collect();
+            let representative_paths: Vec<Vec<_>> =
+                (0..variable_count).map(|variable| vec![variable]).collect();
+            Ok(ontology
+                .iter()
+                .map(|clause| {
+                    serde_json::json!({
+                        "source": clause,
+                        "representatives": representatives,
+                        "representative_paths": representative_paths,
+                    })
+                })
+                .collect())
+        };
+    Ok(match source.get("version").and_then(serde_json::Value::as_u64) {
+        Some(1) => {
+            let regular = source
+                .get("evidence")
+                .and_then(serde_json::Value::as_object)
+                .is_some_and(|evidence| {
+                    evidence.contains_key("regular_sat")
+                        || evidence.contains_key("finite_sat")
+                        || evidence.contains_key("finite_unsat")
+                });
+            let payload = if regular {
+                serde_json::json!({ "regular": { "certificate": source.clone() } })
+            } else {
+                serde_json::json!({ "plain": { "certificate": source.clone() } })
+            };
+            serde_json::json!({
+                "version": 3,
+                "normalization": identity_normalization(&source)?,
+                "payload": payload,
+            })
+        }
+        Some(2) => serde_json::json!({
+            "version": 3,
+            "normalization": identity_normalization(&source)?,
+            "payload": { "equality": { "certificate": source } },
+        }),
+        _ => source,
+    })
+}
+
+/// The target ontology Lean decodes from a serialized regular certificate:
+/// `FiniteRegularCertificate.ontology` is the role clauses, each read through
+/// `NormalizedRoleClause.toClause`, followed by the residual clauses. The
+/// result uses the `WireClause` JSON shape.
+fn lean_regular_wire_ontology(
+    certificate: &serde_json::Value,
+) -> Result<Vec<serde_json::Value>, String> {
+    let field = |value: &serde_json::Value, name: &str| -> Result<u64, String> {
+        value[name]
+            .as_u64()
+            .ok_or_else(|| format!("regular role clause has no numeric {name}"))
+    };
+    let role = |role: u64, source: u64, target: u64| {
+        serde_json::json!({ "role": { "role": role, "source": source, "target": target } })
+    };
+    let role_clauses = certificate["role_clauses"]
+        .as_array()
+        .ok_or_else(|| "regular certificate has no role_clauses".to_string())?;
+    let residual = certificate["residual"]
+        .as_array()
+        .ok_or_else(|| "regular certificate has no residual".to_string())?;
+    let mut ontology = Vec::with_capacity(role_clauses.len() + residual.len());
+    for clause in role_clauses {
+        let object = clause
+            .as_object()
+            .filter(|object| object.len() == 1)
+            .ok_or_else(|| "regular role clause is not a tagged object".to_string())?;
+        let (tag, value) = object.iter().next().expect("one entry");
+        let (body, head) = match tag.as_str() {
+            "subRole" => (
+                vec![role(field(value, "premise")?, field(value, "source")?, field(value, "target")?)],
+                vec![role(field(value, "conclusion")?, field(value, "source")?, field(value, "target")?)],
+            ),
+            "inverseRole" => (
+                vec![role(field(value, "premise")?, field(value, "source")?, field(value, "target")?)],
+                vec![role(field(value, "conclusion")?, field(value, "target")?, field(value, "source")?)],
+            ),
+            "chain" => (
+                vec![
+                    role(field(value, "first")?, field(value, "source")?, field(value, "middle")?),
+                    role(field(value, "second")?, field(value, "middle")?, field(value, "target")?),
+                ],
+                vec![role(field(value, "conclusion")?, field(value, "source")?, field(value, "target")?)],
+            ),
+            "reflexive" => (
+                Vec::new(),
+                vec![role(field(value, "role")?, field(value, "source")?, field(value, "source")?)],
+            ),
+            other => return Err(format!("unknown regular role clause {other}")),
+        };
+        ontology.push(serde_json::json!({ "body": body, "head": head }));
+    }
+    ontology.extend(residual.iter().cloned());
+    Ok(ontology)
+}
+
 #[derive(Clone, serde::Serialize)]
 struct LeanHtRegularCertificate {
     version: usize,
@@ -11763,78 +11911,7 @@ impl Ht {
             })?;
         let source: serde_json::Value =
             serde_json::from_str(source).map_err(|error| error.to_string())?;
-        let identity_normalization =
-            |target: &serde_json::Value| -> Result<Vec<serde_json::Value>, String> {
-                let variable_count = target["variable_count"]
-                    .as_u64()
-                    .or_else(|| {
-                        target["evidence"]["regular_sat"]["certificate"]["variable_count"].as_u64()
-                    })
-                    .or_else(|| {
-                        target["evidence"]["finite_sat"]["certificate"]["variable_count"].as_u64()
-                    })
-                    .or_else(|| {
-                        target["evidence"]["finite_unsat"]["certificate"]["variable_count"].as_u64()
-                    })
-                    .ok_or_else(|| {
-                        "identity-normalized global decision has no variable_count".to_string()
-                    })? as usize;
-                let ontology = target["ontology"]
-                    .as_array()
-                    .or_else(|| {
-                        target["evidence"]["regular_sat"]["certificate"]["ontology"].as_array()
-                    })
-                    .or_else(|| {
-                        target["evidence"]["finite_sat"]["certificate"]["ontology"].as_array()
-                    })
-                    .or_else(|| {
-                        target["evidence"]["finite_unsat"]["certificate"]["ontology"].as_array()
-                    })
-                    .ok_or_else(|| {
-                        "identity-normalized global decision has no ontology".to_string()
-                    })?;
-                let representatives: Vec<_> = (0..variable_count).collect();
-                let representative_paths: Vec<Vec<_>> =
-                    (0..variable_count).map(|variable| vec![variable]).collect();
-                Ok(ontology
-                    .iter()
-                    .map(|clause| {
-                        serde_json::json!({
-                            "source": clause,
-                            "representatives": representatives,
-                            "representative_paths": representative_paths,
-                        })
-                    })
-                    .collect())
-            };
-        let source = match source.get("version").and_then(serde_json::Value::as_u64) {
-            Some(1) => {
-                let regular = source
-                    .get("evidence")
-                    .and_then(serde_json::Value::as_object)
-                    .is_some_and(|evidence| {
-                        evidence.contains_key("regular_sat")
-                            || evidence.contains_key("finite_sat")
-                            || evidence.contains_key("finite_unsat")
-                    });
-                let payload = if regular {
-                    serde_json::json!({ "regular": { "certificate": source.clone() } })
-                } else {
-                    serde_json::json!({ "plain": { "certificate": source.clone() } })
-                };
-                serde_json::json!({
-                    "version": 3,
-                    "normalization": identity_normalization(&source)?,
-                    "payload": payload,
-                })
-            }
-            Some(2) => serde_json::json!({
-                "version": 3,
-                "normalization": identity_normalization(&source)?,
-                "payload": { "equality": { "certificate": source } },
-            }),
-            _ => source,
-        };
+        let source = lean_identity_normalized_global_source(source)?;
         let production = match production_kind {
             "sat" => serde_json::json!({ "sat": { "run": run } }),
             "unsat" => serde_json::json!({ "unsat": { "run": run } }),
@@ -30251,6 +30328,137 @@ mod tests {
     }
 
     #[test]
+    fn identity_normalized_regular_source_lists_the_lean_target_ontology() {
+        // A residual clause precedes the role clauses in source order. Lean
+        // decodes the regular target ontology as role clauses first, then the
+        // residual, so the identity normalization must follow that order.
+        let reasoner = Ht::new_certified(vec![
+            Clause::new(vec![con(false, A, 0)], vec![con(false, B, 0)]),
+            Clause::new(
+                vec![Atom::Role { r: R0, s: 0, t: 1 }],
+                vec![Atom::Role { r: 1, s: 0, t: 1 }],
+            ),
+            Clause::new(
+                vec![Atom::Role { r: 1, s: 0, t: 1 }],
+                vec![Atom::Role { r: 2, s: 1, t: 0 }],
+            ),
+            Clause::new(
+                vec![
+                    Atom::Role { r: R0, s: 0, t: 1 },
+                    Atom::Role { r: R0, s: 1, t: 2 },
+                ],
+                vec![Atom::Role { r: 3, s: 0, t: 2 }],
+            ),
+            Clause::new(Vec::new(), vec![Atom::Role { r: 4, s: 0, t: 0 }]),
+        ]);
+        assert!(
+            reasoner.cert_body_normalization.is_none(),
+            "an equality-free source without preprocessing has no normalization records"
+        );
+        let leaf = LeanHtBlockedOpenLeaf {
+            node_count: 3,
+            labels: Vec::new(),
+            edges: vec![
+                (R0, 0, 1),
+                (R0, 1, 2),
+                (1, 0, 1),
+                (1, 1, 2),
+                (2, 1, 0),
+                (2, 2, 1),
+                (3, 0, 2),
+                (4, 0, 0),
+                (4, 1, 1),
+                (4, 2, 2),
+            ],
+            obligations: Vec::new(),
+            folds: Vec::new(),
+            fold_options: Vec::new(),
+            witness_parent: vec![None; 3],
+            forbidden_folds: Vec::new(),
+        };
+        let regular = reasoner
+            .lean_regular_blocked_open_certificate_json(&leaf)
+            .expect("serialize the regular certificate");
+        let envelope = Ht::lean_regular_decision_envelope(regular, true).unwrap();
+        // Without normalization records the published global document is the
+        // raw envelope; the source-bound checker receives the identity wrap.
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(
+                &reasoner.finalize_lean_certificate(envelope.clone()).unwrap()
+            )
+            .unwrap(),
+            serde_json::from_str::<serde_json::Value>(&envelope).unwrap()
+        );
+        let source = lean_identity_normalized_global_source(
+            serde_json::from_str(&envelope).unwrap(),
+        )
+        .expect("identity-normalize a regular SAT decision");
+        let normalization = source["normalization"].as_array().unwrap();
+        assert_eq!(normalization.len(), 5);
+        assert_eq!(
+            normalization[0]["source"],
+            serde_json::json!({
+                "body": [{"role": {"role": R0, "source": 0, "target": 1}}],
+                "head": [{"role": {"role": 1, "source": 0, "target": 1}}],
+            })
+        );
+        assert_eq!(
+            normalization[2]["source"],
+            serde_json::json!({
+                "body": [
+                    {"role": {"role": R0, "source": 0, "target": 1}},
+                    {"role": {"role": R0, "source": 1, "target": 2}},
+                ],
+                "head": [{"role": {"role": 3, "source": 0, "target": 2}}],
+            })
+        );
+        assert_eq!(
+            normalization[3]["source"],
+            serde_json::json!({
+                "body": [],
+                "head": [{"role": {"role": 4, "source": 0, "target": 0}}],
+            })
+        );
+        assert_eq!(normalization[4]["source"]["body"][0]["concept"]["literal"]["concept"], A);
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") {
+            let check = |document: &serde_json::Value, tag: &str| {
+                let path = std::env::temp_dir().join(format!(
+                    "km-ht-identity-regular-{tag}-{}.json",
+                    std::process::id()
+                ));
+                std::fs::write(&path, serde_json::to_string(document).unwrap()).unwrap();
+                let output = std::process::Command::new(&checker)
+                    .arg(&path)
+                    .output()
+                    .expect("run the main Lean checker");
+                let _ = std::fs::remove_file(path);
+                output
+            };
+            let accepted = check(&source, "accepted");
+            assert!(
+                accepted.status.success(),
+                "Lean must accept the identity-normalized regular source: {}",
+                String::from_utf8_lossy(&accepted.stderr)
+            );
+            let raw = check(&serde_json::from_str(&envelope).unwrap(), "raw");
+            assert!(
+                raw.status.success(),
+                "Lean must accept the raw regular SAT envelope: {}",
+                String::from_utf8_lossy(&raw.stderr)
+            );
+            // The source clause order is not the Lean target order.
+            let mut source_order = source.clone();
+            let entries = source_order["normalization"].as_array_mut().unwrap();
+            let residual = entries.pop().unwrap();
+            entries.insert(0, residual);
+            assert!(
+                !check(&source_order, "source-order").status.success(),
+                "Lean must reject a normalization listed in source clause order"
+            );
+        }
+    }
+
+    #[test]
     fn regular_certificate_partitions_role_rules_and_lean_checks_cover() {
         let reasoner = Ht::new_certified(vec![
             Clause::new(
@@ -30676,7 +30884,7 @@ mod tests {
                 std::process::id(),
                 std::thread::current().name().unwrap_or("test")
             ));
-            std::fs::write(&path, document).unwrap();
+            std::fs::write(&path, &document).unwrap();
             let accepted = crate::lean_checkers::CheckerCommand::new(checker)
                 .arg(&path)
                 .output()
@@ -30688,6 +30896,27 @@ mod tests {
                 String::from_utf8_lossy(&accepted.stderr),
             );
             let _ = std::fs::remove_file(path);
+        }
+        // The global verdict checker (`ht-cert-check`) receives the same raw
+        // envelope when the source has no normalization records. Its version-1
+        // dispatch must route `finite_sat` to the regular-decision decoder.
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") {
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-global-finite-sat-{}-{}.json",
+                std::process::id(),
+                std::thread::current().name().unwrap_or("test")
+            ));
+            std::fs::write(&path, &document).unwrap();
+            let accepted = std::process::Command::new(checker)
+                .arg(&path)
+                .output()
+                .expect("run the main Lean checker on a finite SAT decision");
+            let _ = std::fs::remove_file(&path);
+            assert!(
+                accepted.status.success(),
+                "the main Lean checker must accept Rust's finite SAT decision: {}",
+                String::from_utf8_lossy(&accepted.stderr),
+            );
         }
     }
 
@@ -31642,7 +31871,11 @@ mod tests {
             serde_json::from_str(&document).expect("normalized taxonomy is JSON");
         assert_eq!(wire["version"], 3);
         assert!(wire["normalization"][0]["source"]["body"][0]["eq"].is_object());
-        assert!(wire["payload"]["plain"]["certificate"].is_object());
+        // Every certified taxonomy uses the mixed (version-2) matrix, which
+        // `WireOrdinaryTaxonomyRunMatrix.terminalMatrix?` derives for every
+        // fragment; the legacy plain payload is no longer produced.
+        assert_eq!(wire["payload"]["mixed"]["certificate"]["version"], 2);
+        assert!(wire["payload"].get("plain").is_none());
         let path = std::env::temp_dir().join(format!(
             "km-ht-taxonomy-equality-body-gap-{}.json",
             std::process::id()
