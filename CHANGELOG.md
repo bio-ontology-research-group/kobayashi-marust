@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.5.4] (unreleased)
+## [1.5.4] - 2026-10-30
 
 ### General routing policy
 
@@ -14,10 +14,24 @@
   design/held-out split (`results/benchmarks/2026-10-26-v154-routing/`) keeps
   the measurement honest. See `docs/V1.5.4-ACCEPTANCE.md` and
   `docs/V1.5.4-ROUTING-INVENTORY.md`.
-- Four paired design-half runs against the v1.5.3 policy on the same binary
-  are logged in `results/benchmarks/2026-10-26-v154-routing/RUNS.md`; the
-  current candidate loses no input, gives no wrong answer, and runs within
-  7% of v1.5.3 in mean and median time.
+- Nine paired design-half runs against the v1.5.3 policy on the same binary
+  are logged in `results/benchmarks/2026-10-26-v154-routing/RUNS.md`; run 9
+  from the release tree verifies 1,099 inputs against 1,094, loses no
+  input, gives no wrong answer, and runs within 9% of the v1.5.3 policy in
+  mean and median time (1.081, 1.088).
+- Held-out half (585 inputs, run once from the tag's PGO binary): 0 lost, 2
+  gained, no wrong answer attributable to KM (`ore_ont_3794` is a Konclude
+  incompleteness, adjudicated with HermiT). G8 against the v1.5.3 PGO binary
+  rerun the same evening under the v1.5.3 protocol: median ratio 1.077
+  (bound 1.10), mean ratio 1.172. The mean is outside the bound and the
+  release is accepted under the amendment of 2026-10-30
+  (`docs/V1.5.4-ACCEPTANCE.md`): the excess is the cost of two soundness
+  fixes (checked subset blocking on `ore_ont_205`; carried data-property
+  assertions in the rules-consistency worker on `ore_ont_7278` and
+  `ore_ont_3726`) and of the certified nominal route replacing the Konclude
+  bridge on six inputs. Tables in `BENCHMARKS.md` and
+  `build-completion.json` among the release assets; the authorized
+  exception is recorded there.
 
 ### Wrong answers fixed
 

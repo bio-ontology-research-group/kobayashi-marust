@@ -214,7 +214,7 @@ accept = {
     "G8_performance": {
         "no_loss": {"status": "met_under_amendments_2_and_3", "verified_v154": summary["g8_protocol_vs_v153_baseline_20261025"]["verified"], "verified_v153_20261025": summary["g8_protocol_vs_v153_baseline_20261025"]["baseline_verified"], "lost": summary["g8_protocol_vs_v153_baseline_20261025"]["lost"], "lost_classification": {"ore_ont_10874": "amendment 3 (nominal-mode answer only from the complete regime); also publishes 879 data-property assertions as dropped", "ore_ont_7610": "amendment 2 (v1.5.3 answered after silently discarding 613 data-property assertions)"}},
         "median": {"status": "met", "ratio_vs_sameday": decomp["total_g8_vs_sameday"]["median_ratio"], "bound": 1.10},
-        "mean": {"status": "NOT_MET", "ratio_vs_sameday": decomp["total_g8_vs_sameday"]["mean_ratio"], "bound": 1.10, "sum_v154_s": decomp["total_g8_vs_sameday"]["sum_candidate_s"], "sum_v153_sameday_s": decomp["total_g8_vs_sameday"]["sum_baseline_s"], "allowed_sum_s": round(bound, 3), "excess_s": round(excess, 3), "attribution": "ore_ont_205 (checked subset blocking, card arm, soundness fix), ore_ont_7278 and ore_ont_3726 (data-property assertions carried into the rules-consistency worker, soundness fix), six inputs the general policy sends to certified_nominals instead of the Konclude bridge; see results/benchmarks/2026-10-26-v154-routing/RUNS.md and docs/V1.5.4-STATUS.md", "decision": "pending the maintainer (amendment, re-tag with the blocking fix, or hold)"},
+        "mean": {"status": "NOT_MET", "ratio_vs_sameday": decomp["total_g8_vs_sameday"]["mean_ratio"], "bound": 1.10, "sum_v154_s": decomp["total_g8_vs_sameday"]["sum_candidate_s"], "sum_v153_sameday_s": decomp["total_g8_vs_sameday"]["sum_baseline_s"], "allowed_sum_s": round(bound, 3), "excess_s": round(excess, 3), "attribution": "ore_ont_205 (checked subset blocking, card arm, soundness fix), ore_ont_7278 and ore_ont_3726 (data-property assertions carried into the rules-consistency worker, soundness fix), six inputs the general policy sends to certified_nominals instead of the Konclude bridge; see results/benchmarks/2026-10-26-v154-routing/RUNS.md and docs/V1.5.4-STATUS.md", "decision": "released on 2026-10-30 under the authorized performance exception (amendment of 2026-10-30)"},
         "konclude": {"status": "more_verified_than_konclude; speed clause not judged (no same-day Konclude run)", **{k: v for k, v in konclude_clause.items()}},
         "vs_20261025_baseline_for_reference": {"mean_ratio": summary["g8_protocol_vs_v153_baseline_20261025"]["mean_ratio"], "median_ratio": summary["g8_protocol_vs_v153_baseline_20261025"]["median_ratio"], "note": "different day and nodes; the same-day run is the comparison of record"},
     },
@@ -229,8 +229,24 @@ completion = {
     "version": VERSION,
     "release_commit": COMMIT,
     "engine_tree_note": "engine/ tree identical to freeze candidate 0a0d73c8 plus the version bump (engine/Cargo.toml, Cargo.lock, protege/pom.xml, README jar name)",
-    "status": "complete_except_G8_mean; release decision pending the maintainer (docs/V1.5.4-STATUS.md, Release decision)",
-    "authorized_performance_exception": None,
+    "status": "complete; released with the authorized G8 mean exception of 2026-10-30",
+    "authorized_performance_exception": {
+        "schema": "km-v154-authorized-performance-exception-v1",
+        "user_instruction": "Release the tag as it stands! Document, commit, push, then release.",
+        "date": "2026-10-30",
+        "scope": "G8 mean time ratio on the held-out half only (docs/V1.5.4-ACCEPTANCE.md, amendment of 2026-10-30)",
+        "measured_mean_ratio_vs_sameday_v153": round(decomp["total_g8_vs_sameday"]["mean_ratio"], 4),
+        "bound": 1.10,
+        "sum_v154_s": decomp["total_g8_vs_sameday"]["sum_candidate_s"],
+        "sum_v153_sameday_s": decomp["total_g8_vs_sameday"]["sum_baseline_s"],
+        "allowed_sum_s": round(bound, 3),
+        "excess_s": round(excess, 3),
+        "attribution": {"ore_ont_205_checked_subset_blocking_s": round(g8n["ore_ont_205"]["wall_s"] - g8s["ore_ont_205"]["wall_s"], 1), "ore_ont_7278_3726_data_assertions_in_rules_worker_s": round(sum(g8n[o]["wall_s"] - g8s[o]["wall_s"] for o in ("ore_ont_7278", "ore_ont_3726")), 1), "policy_certified_nominals_six_inputs_s": round(sum(g8n[o]["wall_s"] - g8s[o]["wall_s"] for o in ("ore_ont_1673", "ore_ont_1938", "ore_ont_11005", "ore_ont_10754", "ore_ont_5289", "ore_ont_15226")), 1)},
+        "median_ratio_met": round(decomp["total_g8_vs_sameday"]["median_ratio"], 4),
+        "original_measurements_preserved": True,
+        "other_release_gates_unchanged": True,
+        "follow_up": "fix/v155-subset-blocking-cost (exact incremental checked blocking, 205 and 7499 to about a third) and the rules-worker cost, scheduled for v1.5.5",
+    },
     "source_manifests": {
         "certification_complete_source_manifest": {"path": CTL + "/complete-source-manifest.json", "sha256": pins["manifest_sha256"]},
         "pgo_pipeline_source_manifest": {"path": PGO + "/source-manifest.json", "sha256": native["source_manifest_sha256"]},
@@ -308,7 +324,7 @@ for k, lab in (("total_g8_vs_sameday", "v1.5.4 protocol run vs v1.5.3 same-day r
     r = decomp[k]
     L.append(f"| {lab} | {f2(r['mean_ratio'])} | {f2(r['median_ratio'])} |")
 t = decomp["total_g8_vs_sameday"]
-L.append(f"\nG8 verdict: no coverage loss (under amendments 2 and 3), median {f2(t['median_ratio'])} within the 1.10 bound, mean {f2(t['mean_ratio'])} outside it (wall-time sums {t['sum_candidate_s']:.1f} s against {t['sum_baseline_s']:.1f} s; the bound allows {bound:.1f} s, excess {excess:.1f} s). The excess is the cost of two soundness fixes (checked subset blocking on `ore_ont_205`; data-property assertions carried into the rules-consistency worker on `ore_ont_7278` and `ore_ont_3726`) and of the general policy's `certified_nominals` choice on six former Konclude-bridge inputs. The release decision on the mean is recorded in `docs/V1.5.4-STATUS.md`.\n")
+L.append(f"\nG8 verdict: no coverage loss (under amendments 2 and 3), median {f2(t['median_ratio'])} within the 1.10 bound, mean {f2(t['mean_ratio'])} outside it (wall-time sums {t['sum_candidate_s']:.1f} s against {t['sum_baseline_s']:.1f} s; the bound allows {bound:.1f} s, excess {excess:.1f} s). The excess is the cost of two soundness fixes (checked subset blocking on `ore_ont_205`; data-property assertions carried into the rules-consistency worker on `ore_ont_7278` and `ore_ont_3726`) and of the general policy's `certified_nominals` choice on six former Konclude-bridge inputs. The maintainer accepted the release with this mean on 2026-10-30 (amendment of 2026-10-30 in `docs/V1.5.4-ACCEPTANCE.md`; `authorized_performance_exception` in `build-completion.json`).\n")
 L.append("Largest wall-time increases, v1.5.4 protocol run against the same-day v1.5.3 run:\n")
 L.append("| Input | v1.5.3 same day (s) | v1.5.4 (s) | delta (s) |\n|---|---:|---:|---:|")
 for r in top:

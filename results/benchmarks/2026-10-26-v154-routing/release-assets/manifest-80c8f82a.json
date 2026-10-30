@@ -15,13 +15,13 @@
     },
     {
       "name": "build-completion.json",
-      "sha256": "88074ba394f2b60537bcaf402a77c8f99ee024012f448878b0aaea8c03e497b4",
-      "size": 1039841
+      "sha256": "a898e4ac204bd6c43410216722ce69f0f6de75870d08140d2047286a13df94f2",
+      "size": 1040754
     },
     {
       "name": "BENCHMARKS.md",
-      "sha256": "8b0a2a9452be4993906fa280d9ae0a68ccec63f959cb981689e2a890484438d3",
-      "size": 94671
+      "sha256": "07dcd03d87b5d3b571747aab18dbf995fb96194725adc0b6f80587390810bc0d",
+      "size": 94784
     },
     {
       "name": "kobayashi-marust-protege-1.5.4.jar",
@@ -30,7 +30,7 @@
     },
     {
       "name": "SHA256SUMS",
-      "sha256": "1cedf9285ce3cb079e514bc146022a30bc77d7c0e5e0afa5cbc42b8a94d2ccc6",
+      "sha256": "b23ac02d736e1c277fd11044fb111ade8ca99a4deaccf8be7235e327532c54af",
       "size": 458
     }
   ]

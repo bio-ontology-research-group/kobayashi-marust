@@ -9,7 +9,9 @@ inputs and on five Protégé bug reports. It adds exact realization
 universal ranges, and a nominal-safe regime of the Sequoia literal ordering
 with a Lean theorem for the ground-level exchange between differently
 ordered contexts. The acceptance contract is `docs/V1.5.4-ACCEPTANCE.md`;
-its three approved amendments are listed in `docs/V1.5.4-STATUS.md`.
+its four approved amendments are in that file (the last one, of
+2026-10-30, accepts this release with the G8 mean outside its bound; see
+"Held-out half" below).
 
 ## Routing
 
@@ -28,12 +30,62 @@ the general policy against 1,094 under v1.5.3's policy, 0 wrong, 0 lost,
 mean time ratio 1.081, median 1.088 on the 1,094 inputs both solve
 (`results/benchmarks/2026-10-26-v154-routing/RUNS.md`).
 
-Held-out half (585 inputs, run once on the PGO binary built from this tag)
-and the G8 comparison against the v1.5.3 PGO release binary on the same
-node type (contract: mean and median ratio at most 1.10) are measured after
-the tag is cut; their tables are in `BENCHMARKS.md` among the release
-assets and in `results/benchmarks/2026-10-26-v154-routing/RUNS.md` on the
-release branch.
+### Held-out half
+
+The held-out half (585 inputs) was run once from the profile-guided binary
+built from this tag (sha256 `5f5901d8…`, the released executable). Paired
+run (both policies, same binary): the general policy verifies 558 inputs
+against 556 under the v1.5.3 policy, loses none, gains `ore_ont_2504` and
+`ore_ont_802`, mean ratio 1.070 and median 1.104 between the policies.
+`ore_ont_3794` is flagged under both policies and was unverified in v1.5.3:
+KM's taxonomy is identical in both releases and HermiT entails all ten
+subsumptions that Konclude, the only reference with an answer, lacks
+(`results/benchmarks/2026-10-26-v154-routing/held-out-3794-adjudication/`).
+
+G8 (v1.5.3 protocol: one core, 240 s, 20 GiB, scoped watchdog, same node
+type) compares the protocol run of this binary with the v1.5.3 PGO release
+binary rerun the same evening. v1.5.4 verifies 558 inputs against 560; the
+two missing ones are amendment cases (below). On the 556 inputs verified in
+all four held-out runs the median ratio is 1.077 and the mean ratio 1.172,
+against a bound of 1.10 for both. The mean is outside the bound. The excess
+of 156.7 s over the allowed sum is measured and attributed: `ore_ont_205`
++153 s (the checked subset blocking that fixes a published `CONSISTENT` on
+an inconsistent ontology), `ore_ont_7278` and `ore_ont_3726` +48 s (the
+data-property assertions that v1.5.3 silently discarded are now carried into
+the rules-consistency worker), and six former Konclude-bridge inputs that
+the general policy sends to the certified nominal route +166 s; the other
+547 inputs net about 210 s in v1.5.4's favour. The maintainer accepted the
+release with this mean on 2026-10-30 (amendment of 2026-10-30 in
+`docs/V1.5.4-ACCEPTANCE.md`, `authorized_performance_exception` in
+`build-completion.json`). An exact incremental form of the checked blocking
+that cuts 205 and 7499 to about a third of their time without changing any
+decision is on branch `fix/v155-subset-blocking-cost` for v1.5.5. Against
+the Konclude run of 2026-10-04, v1.5.4 verifies more held-out inputs (558
+against 554); the Konclude speed clause needs a same-day Konclude run and
+was not judged. Full tables: `BENCHMARKS.md` among the release assets and
+`results/benchmarks/2026-10-26-v154-routing/RUNS.md`.
+
+### Inputs answered with dropped data-property assertions (amendment 2)
+
+v1.5.3 answered these inputs after silently discarding their positive
+data-property assertions and published `DROPPED 0`. v1.5.4 carries such
+assertions where it can and otherwise reports them; an answer with
+`dropped > 0` is not counted as verified in the tables above and is not a
+coverage loss under the amendment. The `dropped` count is the one in the
+run record (design half: run 9, general policy; held-out half: the G8
+protocol run):
+
+| Input | Half | v1.5.4 outcome |
+|---|---|---|
+| `ore_ont_10425` | design | taxonomy as gold, dropped 12,339 |
+| `ore_ont_15655` | design | taxonomy as gold, dropped 17,217 |
+| `ore_ont_4572` | design | taxonomy as gold, dropped 98,867 |
+| `ore_ont_5368` | design | taxonomy as gold, dropped 18,301 |
+| `ore_ont_4410` | design | no answer within 240 s in run 9 (6,021 assertions stay uncarried; the exact nominal route exceeds the budget) |
+| `ore_ont_10874` | held-out | taxonomy as gold, dropped 2,193 (879 data-property assertions); also an amendment 3 case |
+| `ore_ont_7610` | held-out | no answer within 240 s (613 assertions carried; the exact nominal route exceeds the budget) |
+
+Native data-value reasoning for these inputs is v1.5.5 work.
 
 ## Wrong answers fixed
 
