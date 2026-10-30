@@ -1,0 +1,8 @@
+{
+  "ontology": "bridge_inverse_atmost0_unsat.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": [
+    "D"
+  ]
+}

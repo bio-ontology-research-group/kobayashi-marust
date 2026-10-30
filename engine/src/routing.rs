@@ -1,7 +1,10 @@
 //! Classification procedure names and exact option bundles.
 //!
 //! `Route::Auto` is selected from the source-only ontology profile by the
-//! generated decision tree. `Route::Manual` preserves the historical behavior:
+//! routing policy (`RoutingPolicy`): since v1.5.4 the general policy admits
+//! only semantic, construct, and single-threshold resource evidence
+//! (docs/V1.5.4-ACCEPTANCE.md, G1); `KM_ROUTING_POLICY=v153` restores the
+//! v1.5.3 predicate cascade for paired evaluation. `Route::Manual` preserves the historical behavior:
 //! every `KM_*` option is read exactly as supplied. Named routes normalize the
 //! routing keys below to the same bundles used by the IBEX procedure matrix;
 //! diagnostic/experimental keys outside this list remain available.
@@ -11,6 +14,46 @@ use std::str::FromStr;
 use crate::frontend::profile::OntologyProfile;
 
 mod routing_tree_generated;
+
+/// Automatic routing policy.
+///
+/// `General` (the default since v1.5.4) selects procedures only from semantic
+/// fragment membership, source-level certificates, and construct presence,
+/// and sends every input that these cannot decide to the production
+/// portfolio. It contains no count threshold that chooses a procedure.
+/// `V153` reproduces the v1.5.3 cascade, including its measured count bands,
+/// for paired evaluation only.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RoutingPolicy {
+    General,
+    V153,
+}
+
+#[cfg(test)]
+thread_local! {
+    static TEST_POLICY: std::cell::Cell<Option<RoutingPolicy>> = const { std::cell::Cell::new(None) };
+}
+
+/// Pin the calling test thread to a routing policy (tests only).
+#[cfg(test)]
+pub(crate) fn pin_test_policy(policy: RoutingPolicy) {
+    TEST_POLICY.with(|p| p.set(Some(policy)));
+}
+
+pub fn routing_policy() -> RoutingPolicy {
+    #[cfg(test)]
+    if let Some(policy) = TEST_POLICY.with(|p| p.get()) {
+        return policy;
+    }
+    match std::env::var("KM_ROUTING_POLICY").ok().as_deref() {
+        Some("v153") | Some("v1.5.3") => RoutingPolicy::V153,
+        _ => RoutingPolicy::General,
+    }
+}
+
+fn general() -> bool {
+    routing_policy() == RoutingPolicy::General
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Route {
@@ -214,13 +257,30 @@ impl Route {
         if matches!(self, Route::Auto | Route::Manual) {
             return;
         }
+        let overrides = user_diagnostic_overrides();
         for key in ROUTE_KEYS {
             std::env::remove_var(key);
         }
         for (key, value) in COMMON_SETTINGS.iter().chain(self.settings()) {
             std::env::set_var(key, value);
         }
+        // Diagnostic overrides the user set survive the bundle, unless the
+        // bundle sets one of them itself (`seq_on`, `seq_off`).
+        for (key, value) in self.surviving_overrides(overrides) {
+            std::env::set_var(key, value);
+        }
         cap_worker_threads_to_available_cpus();
+    }
+
+    /// The user's diagnostic overrides that this route's bundle keeps: all of
+    /// them, unless the bundle sets one of the override keys itself.
+    fn surviving_overrides<'a>(
+        self,
+        overrides: &'a [(&'static str, std::ffi::OsString)],
+    ) -> &'a [(&'static str, std::ffi::OsString)] {
+        let bundle_sets_override = COMMON_SETTINGS.iter().chain(self.settings())
+            .any(|(key, _)| DIAGNOSTIC_OVERRIDE_KEYS.contains(key));
+        if bundle_sets_override { &[] } else { overrides }
     }
 
     /// A route that starts exactly one terminating classification mechanism.
@@ -382,7 +442,7 @@ fn native_bridge_abox_eligible(profile: &OntologyProfile) -> bool {
         && source.rule_axioms == 0
         && source.unsupported_rule_axioms == 0
         && source.role_assertions == 0
-        && different == 1
+        && (if general() { different > 0 } else { different == 1 })
         && source.class_assertions > 0
         && source.abox_axioms == source.class_assertions.saturating_add(different)
         && source.distinct_individuals == source.class_assertions
@@ -395,6 +455,9 @@ fn native_bridge_abox_eligible(profile: &OntologyProfile) -> bool {
 /// scheduling and memory overhead. This does not change the bridge certificate,
 /// merge order, or exact nominal fallback.
 pub(crate) fn certified_nominal_subject_workers(profile: &OntologyProfile) -> &'static str {
+    if general() {
+        return "4";
+    }
     if native_bridge_abox_eligible(profile)
         && profile.source.logical_axioms >= 100_000
         && profile.source.distinct_classes >= 40_000
@@ -417,12 +480,21 @@ pub(crate) fn certified_nominal_subject_workers(profile: &OntologyProfile) -> &'
 fn independent_large_abox_candidate(profile: &OntologyProfile) -> bool {
     const CONDITIONAL_FULL_INDIVIDUAL_LIMIT: u64 = 10_000;
 
+    atomic_class_abox_construct(profile)
+        && (general() || profile.source.distinct_individuals >= CONDITIONAL_FULL_INDIVIDUAL_LIMIT)
+}
+
+/// The construct part of [`independent_large_abox_candidate`]: every
+/// individual has exactly one class assertion and the ABox has no role,
+/// equality, data, or nominal constraint. The TBox taxonomy is then complete
+/// for subsumption, and consistency reduces to checking each asserted class
+/// against the unsatisfiable set.
+fn atomic_class_abox_construct(profile: &OntologyProfile) -> bool {
     let source = &profile.source;
     let count = |name: &str| source.axiom_types.get(name).copied().unwrap_or(0);
     source.imports == 0
         && source.rule_axioms == 0
         && source.unsupported_rule_axioms == 0
-        && source.distinct_individuals >= CONDITIONAL_FULL_INDIVIDUAL_LIMIT
         && source.class_assertions > 0
         && source.abox_axioms == source.class_assertions
         && source.distinct_individuals == source.class_assertions
@@ -516,6 +588,11 @@ fn typed_object_abox_bridge_candidate(profile: &OntologyProfile) -> bool {
 /// attempt order.  Bounds avoid imposing a second frontend pass on large ABox
 /// families where bridge construction cannot be a low-latency win.
 pub(crate) fn compact_typed_bridge_first_candidate(profile: &OntologyProfile) -> bool {
+    // Measured count bands are not admissible evidence under the general
+    // policy (docs/V1.5.4-ROUTING-INVENTORY.md).
+    if general() {
+        return false;
+    }
     let source = &profile.source;
     typed_object_abox_bridge_candidate(profile)
         && source.logical_axioms <= 1_000
@@ -534,6 +611,11 @@ pub(crate) fn compact_typed_bridge_first_candidate(profile: &OntologyProfile) ->
 /// retain all entailed owner inequalities; unsupported interactions leave the
 /// native payload incomplete and the bridge declines to the exact CB route.
 pub(crate) fn functional_data_abox_bridge_candidate(profile: &OntologyProfile) -> bool {
+    // Measured count bands are not admissible evidence under the general
+    // policy (docs/V1.5.4-ROUTING-INVENTORY.md).
+    if general() {
+        return false;
+    }
     let source = &profile.source;
     let count = |kind: &str| source.axiom_types.get(kind).copied().unwrap_or(0);
     count("FunctionalDataProperty") > 0
@@ -592,6 +674,20 @@ pub(crate) fn bounded_bridge_first_candidate(selected: Route, profile: &Ontology
             BOUNDED_BRIDGE_FIRST_MAX_LOGICAL_AXIOMS,
         )
     };
+    if general() {
+        // Resource rule: the attempt re-runs the frontend, so it is scheduled
+        // only below one source-size bound.
+        return matches!(selected, Route::Nominals | Route::CertifiedNominals)
+            && matches!(
+                semantic_fragment(profile),
+                SemanticFragment::Nominal | SemanticFragment::NativeBridgeAbox
+            )
+            && reflexive_roles == 0
+            && source.file_bytes <= BOUNDED_BRIDGE_FIRST_MAX_BYTES
+            && source.imports == 0
+            && source.rule_axioms == 0
+            && source.unsupported_rule_axioms == 0;
+    }
     matches!(
         selected,
         Route::Nominals | Route::NominalNiAbox | Route::CertifiedNominals
@@ -630,6 +726,15 @@ const BOUNDED_BRIDGE_FIRST_NOMINALS_MAX_LOGICAL_AXIOMS: u64 = 35_000;
 /// if their normalized projection looks EL: the positive-ABox checker rewrites
 /// asserted individuals, but it does not certify `A ≡ {a}` identity semantics.
 pub(crate) fn certified_nominal_production_probe_candidate(profile: &OntologyProfile) -> bool {
+    if general() {
+        return profile.source.nominals == 0
+            && profile.source.has_values == 0
+            && typed_object_abox_bridge_candidate(profile)
+            && !sequential_typed_bridge_candidate(profile)
+            && !profile.expressivity.cardinality
+            && !profile.expressivity.qualified_cardinality
+            && !profile.expressivity.datatype;
+    }
     profile.source.nominals == 0
         && profile.source.has_values == 0
         && (large_tbox_small_identity_abox_production_candidate(profile)
@@ -653,6 +758,11 @@ pub(crate) fn certified_nominal_production_probe_candidate(profile: &OntologyPro
 /// data assertions. Both make nominal CB expensive, while the complete general
 /// conversion retains their ground semantics directly.
 pub(crate) fn certified_nominal_general_ht_probe_candidate(profile: &OntologyProfile) -> bool {
+    // Measured count bands are not admissible evidence under the general
+    // policy (docs/V1.5.4-ROUTING-INVENTORY.md).
+    if general() {
+        return false;
+    }
     let count = |name: &str| profile.source.axiom_types.get(name).copied().unwrap_or(0);
     small_class_identity_abox_production_candidate(profile)
         || large_identity_nominal_abox_general_ht_candidate(profile)
@@ -672,6 +782,11 @@ pub(crate) fn certified_nominal_general_ht_probe_candidate(profile: &OntologyPro
 /// clause restores the exact nominal CB route. The measured ORE member has a
 /// shallow domain/range terminology around a modest object-property graph.
 pub(crate) fn compact_role_assertion_general_ht_candidate(profile: &OntologyProfile) -> bool {
+    // Measured count bands are not admissible evidence under the general
+    // policy (docs/V1.5.4-ROUTING-INVENTORY.md).
+    if general() {
+        return false;
+    }
     let source = &profile.source;
     source.logical_axioms <= 1_000
         && (100..=1_000).contains(&source.abox_axioms)
@@ -695,6 +810,11 @@ pub(crate) fn compact_role_assertion_general_ht_candidate(profile: &OntologyProf
 /// This changes worker scheduling only; the probe still validates lossless
 /// normalized TBox and ABox coverage before publishing an answer.
 pub(crate) fn four_worker_compact_expressive_ht_candidate(profile: &OntologyProfile) -> bool {
+    // Measured count bands are not admissible evidence under the general
+    // policy (docs/V1.5.4-ROUTING-INVENTORY.md).
+    if general() {
+        return false;
+    }
     let source = &profile.source;
     typed_object_abox_bridge_candidate(profile)
         && (300..=1_000).contains(&source.logical_axioms)
@@ -718,6 +838,11 @@ pub(crate) fn four_worker_compact_expressive_ht_candidate(profile: &OntologyProf
 /// The worker count changes only scheduling of independent classification
 /// jobs; converted-input coverage and result publication remain unchanged.
 pub(crate) fn three_worker_compact_datatype_ht_candidate(profile: &OntologyProfile) -> bool {
+    // Measured count bands are not admissible evidence under the general
+    // policy (docs/V1.5.4-ROUTING-INVENTORY.md).
+    if general() {
+        return false;
+    }
     let source = &profile.source;
     typed_object_abox_bridge_candidate(profile)
         && (100..=250).contains(&source.logical_axioms)
@@ -811,6 +936,12 @@ fn large_identity_nominal_abox_general_ht_candidate(profile: &OntologyProfile) -
 /// concurrently or after a bridge defer.  Keep the scale gate high so small
 /// certified-nominal jobs retain their low-latency race.
 pub(crate) fn sequential_typed_bridge_candidate(profile: &OntologyProfile) -> bool {
+    // Resource rule R-memory: one threshold on the source's concept
+    // expressions, which bounds the concurrent bridge and CB footprint.
+    if general() {
+        return typed_object_abox_bridge_candidate(profile)
+            && profile.source.concept_expressions >= 100_000;
+    }
     typed_object_abox_bridge_candidate(profile)
         && profile.source.logical_axioms >= 30_000
         && profile.source.concept_expressions >= 100_000
@@ -937,6 +1068,11 @@ fn compact_normalized_ht_bridge_candidate(profile: &OntologyProfile) -> bool {
 /// The bounds are source-profile scheduling gates only; the completion rules
 /// and certified production fallback remain unchanged.
 pub(crate) fn parallel_nf4_frontier_candidate(profile: &OntologyProfile) -> bool {
+    // Measured count bands are not admissible evidence under the general
+    // policy (docs/V1.5.4-ROUTING-INVENTORY.md).
+    if general() {
+        return false;
+    }
     let source = &profile.source;
     // Production classification intentionally does not rescan the normalized
     // clause vector for full clause statistics, so this gate must use source
@@ -959,6 +1095,11 @@ pub(crate) fn parallel_nf4_frontier_candidate(profile: &OntologyProfile) -> bool
 /// shapes keep the allocator default: the same trim points increased sampled
 /// tree RSS on a smaller SHOIF(D) control.
 pub(crate) fn small_nominal_heap_trim_candidate(profile: &OntologyProfile) -> bool {
+    // Measured count bands are not admissible evidence under the general
+    // policy (docs/V1.5.4-ROUTING-INVENTORY.md).
+    if general() {
+        return false;
+    }
     let source = &profile.source;
     profile.expressivity.code == "SHOI"
         && (1_500..3_000).contains(&source.logical_axioms)
@@ -981,6 +1122,11 @@ pub(crate) fn small_nominal_heap_trim_candidate(profile: &OntologyProfile) -> bo
 /// This is a scheduling hint: every task retains the entire ontology and the
 /// existing calculus. Rayon still enforces the caller's CPU budget.
 pub(crate) fn isolated_nominal_query_candidate(profile: &OntologyProfile) -> bool {
+    // Measured count bands are not admissible evidence under the general
+    // policy (docs/V1.5.4-ROUTING-INVENTORY.md).
+    if general() {
+        return false;
+    }
     let source = &profile.source;
     (1..=16).contains(&source.abox_axioms)
         && source.abox_axioms == source.class_assertions
@@ -1002,6 +1148,11 @@ pub(crate) fn isolated_nominal_query_candidate(profile: &OntologyProfile) -> boo
 /// Bounds are the envelope of the repeated Gold-6248 panel; projection over
 /// the retained ORE profiles admits four measured inputs and no controls.
 pub(crate) fn one_thread_compact_nominal_candidate(profile: &OntologyProfile) -> bool {
+    // Measured count bands are not admissible evidence under the general
+    // policy (docs/V1.5.4-ROUTING-INVENTORY.md).
+    if general() {
+        return false;
+    }
     let source = &profile.source;
     (50_000..=170_000).contains(&source.file_bytes)
         && (300..=900).contains(&source.logical_axioms)
@@ -1024,6 +1175,11 @@ pub(crate) fn one_thread_compact_nominal_candidate(profile: &OntologyProfile) ->
 /// route.  Projection over the retained ORE profiles admits four measured
 /// inputs and no controls.
 pub(crate) fn one_worker_source_nominal_free_ht_candidate(profile: &OntologyProfile) -> bool {
+    // Measured count bands are not admissible evidence under the general
+    // policy (docs/V1.5.4-ROUTING-INVENTORY.md).
+    if general() {
+        return false;
+    }
     let source = &profile.source;
     !one_thread_compact_nominal_candidate(profile)
         && (50_000..=170_000).contains(&source.file_bytes)
@@ -1042,6 +1198,11 @@ pub(crate) fn one_worker_source_nominal_free_ht_candidate(profile: &OntologyProf
 /// pipeline also runs their complete-answer-or-defer bridge before allocating
 /// the unchanged CB fallback. This predicate changes scheduling only.
 pub(crate) fn eight_thread_large_sriq_candidate(profile: &OntologyProfile) -> bool {
+    // Measured count bands are not admissible evidence under the general
+    // policy (docs/V1.5.4-ROUTING-INVENTORY.md).
+    if general() {
+        return false;
+    }
     let source = &profile.source;
     source.abox_axioms == 0
         && source.logical_axioms >= 150_000
@@ -1063,6 +1224,11 @@ pub(crate) fn eight_thread_large_sriq_candidate(profile: &OntologyProfile) -> bo
 /// reducing their summed process-tree peak by about 916 MiB; none became
 /// slower. This predicate changes scheduling only.
 pub(crate) fn eight_thread_large_plain_tbox_candidate(profile: &OntologyProfile) -> bool {
+    // Measured count bands are not admissible evidence under the general
+    // policy (docs/V1.5.4-ROUTING-INVENTORY.md).
+    if general() {
+        return false;
+    }
     let source = &profile.source;
     source.abox_axioms == 0
         && source.logical_axioms >= 20_000
@@ -1079,6 +1245,11 @@ pub(crate) fn eight_thread_large_plain_tbox_candidate(profile: &OntologyProfile)
 /// classifications on all five matching ORE ontologies, preserved wall time,
 /// and removed hundreds of MiB on the two parallel-allocation-heavy members.
 pub(crate) fn one_thread_medium_shi_candidate(profile: &OntologyProfile) -> bool {
+    // Measured count bands are not admissible evidence under the general
+    // policy (docs/V1.5.4-ROUTING-INVENTORY.md).
+    if general() {
+        return false;
+    }
     let source = &profile.source;
     source.abox_axioms == 0
         && (20_000..100_000).contains(&source.logical_axioms)
@@ -1110,6 +1281,11 @@ pub(crate) fn one_thread_medium_shi_candidate(profile: &OntologyProfile) -> bool
 /// routes.  Source constructs excluded below are precisely those that could
 /// make a certified specialist useful before CB completes.
 pub(crate) fn small_horn_abox_plain_cb_candidate(profile: &OntologyProfile) -> bool {
+    // Measured count bands are not admissible evidence under the general
+    // policy (docs/V1.5.4-ROUTING-INVENTORY.md).
+    if general() {
+        return false;
+    }
     let source = &profile.source;
     profile.disjoint_union_abox_candidate
         && (1_000..=5_000).contains(&source.logical_axioms)
@@ -1159,6 +1335,9 @@ pub(crate) fn one_thread_small_production_candidate(profile: &OntologyProfile) -
 /// allocating it concurrently with a bridge known to dominate this source
 /// shape. `Some` is also the bounded subject-worker count for that first arm.
 pub(crate) fn production_bridge_subject_workers(profile: &OntologyProfile) -> Option<&'static str> {
+    if general() {
+        return None;
+    }
     if eight_thread_large_sriq_candidate(profile) {
         Some("4")
     } else if sequential_large_shi_bridge_candidate(profile)
@@ -1189,6 +1368,11 @@ fn nominal_ni_tbox_candidate(profile: &OntologyProfile) -> bool {
 /// admitted corpus shapes, but it must not become the fallback for a modified
 /// TBox-only specialist merely because exact source counters changed.
 pub(crate) fn nominal_ni_tbox_near_family(profile: &OntologyProfile) -> bool {
+    // Measured count bands are not admissible evidence under the general
+    // policy (docs/V1.5.4-ROUTING-INVENTORY.md).
+    if general() {
+        return false;
+    }
     nominal_ni_tbox_layout(profile)
         && profile.source.logical_axioms >= 889
         && profile.source.tbox_axioms >= 355
@@ -1325,6 +1509,11 @@ fn data_assertion_native_bridge_candidate(profile: &OntologyProfile) -> bool {
 /// numbers, chains, self, data, rules, imports, and the universal role stay on
 /// their existing complete routes.
 pub(crate) fn high_unqualified_cardinality_shoq_candidate(profile: &OntologyProfile) -> bool {
+    // Measured count bands are not admissible evidence under the general
+    // policy (docs/V1.5.4-ROUTING-INVENTORY.md).
+    if general() {
+        return false;
+    }
     let source = &profile.source;
     source.max_cardinality >= 128
         && source.exact_cardinalities > 0
@@ -1855,6 +2044,18 @@ pub(crate) fn elc_context_parallel_workers(
     if !source_el_terminology_candidate(profile) {
         return None;
     }
+    // Resource rule R-elc-parallel: context-parallel completion pays for its
+    // partition once the terminology has enough classes; one threshold.
+    if general() {
+        if profile.source.abox_axioms > 0 || profile.source.distinct_classes < 20_000 {
+            return None;
+        }
+        return match available {
+            8.. => Some("8"),
+            4..=7 => Some("4"),
+            _ => None,
+        };
+    }
 
     let source = &profile.source;
     let el_class_fragment = source.unions == 0
@@ -2254,7 +2455,149 @@ fn sriq_policy_eligible(route: Route) -> bool {
     )
 }
 
+/// One rule of the general routing policy, as evaluated for an explanation.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RuleEvaluation {
+    pub rule: &'static str,
+    /// `semantic`, `certificate`, or `construct` (contract G1).
+    pub evidence: &'static str,
+    pub matched: bool,
+    pub route: &'static str,
+}
+
+/// The ordered rule list of the general policy. The first matching rule
+/// selects the route; the production portfolio is the default. No rule reads
+/// a count except to test for the presence or absence of a construct.
+pub fn general_rules(profile: &OntologyProfile) -> Vec<RuleEvaluation> {
+    let fragment = semantic_fragment(profile);
+    let nominal = fragment == SemanticFragment::Nominal;
+    let core = fragment == SemanticFragment::SriqCore;
+    let positive = fragment == SemanticFragment::PositiveAbox;
+    // Each construct rule admits at least 0.5 % of the admitted ORE 2015 pool
+    // inputs (contract G4); semantic gates and proved source certificates are
+    // exempt. Rules below the floor were merged into the broader rule with the
+    // same justification or removed, leaving the exact default.
+    let rules: Vec<(&'static str, &'static str, bool, Route)> = vec![
+        (
+            // Semantic necessity, exempt from the floor: the frontend has
+            // lowered every rule into a nominal-guarded inclusion, which only
+            // the nominal calculus decides exactly.
+            "rules_normalised_to_nominal_inclusions",
+            "semantic",
+            profile.normalized_unary_rules > 0
+                && profile.normalized_unary_rules == profile.source.rule_axioms
+                && profile.source.unsupported_rule_axioms == 0,
+            Route::Nominals,
+        ),
+        (
+            "dl_safe_rules",
+            "semantic",
+            matches!(
+                fragment,
+                SemanticFragment::Rules | SemanticFragment::UnsupportedRules
+            ),
+            Route::HtRules,
+        ),
+        (
+            // Parsed-AST certificates: the ABox reduces to TBox classification
+            // plus a consistency check of each asserted type (inert role edges
+            // or isolated existential witnesses). The frontend replaces the
+            // ABox by internal type probes on the portfolio route.
+            "abox_reduces_to_tbox",
+            "certificate",
+            nominal
+                && (profile.inert_role_abox_probe_candidate
+                    || profile.existential_witness_abox_candidate),
+            Route::ProductionAll,
+        ),
+        (
+            // Proved source certificates, exempt from the admission floor
+            // (contract G4 as amended on 2026-10-27): no number-restricted role
+            // interacts with an inverse, chained, or transitive role.
+            "inverse_cardinality_role_separation",
+            "certificate",
+            nominal && profile.inverse_cardinality_role_separable,
+            Route::CertifiedCardNominals,
+        ),
+        (
+            "number_role_separation",
+            "certificate",
+            nominal && profile.card_number_role_separable,
+            Route::CertifiedCardProxyAbox,
+        ),
+        (
+            // Typed object ABoxes, including the all-different datatype
+            // layout, which the native bridge carries into its nominal model.
+            "typed_abox_for_native_bridge",
+            "construct",
+            fragment == SemanticFragment::NativeBridgeAbox
+                || (nominal && typed_object_abox_bridge_candidate(profile)),
+            Route::CertifiedNominals,
+        ),
+        (
+            // The ABox's atomic class assertions reduce to TBox classification
+            // plus a satisfiability check of each asserted class.
+            "atomic_class_abox",
+            "certificate",
+            nominal
+                && independent_large_abox_candidate(profile)
+                && profile.atomic_class_abox_candidate,
+            Route::ProductionAll,
+        ),
+        (
+            // Contract G2: where the evidence cannot decide between the
+            // native bridge and the exact nominal CB calculus, race them. The
+            // certified nominal portfolio carries nominal CB as its exact arm.
+            "nominal_portfolio_default",
+            "semantic",
+            nominal,
+            Route::CertifiedNominals,
+        ),
+        (
+            "el_terminology",
+            "semantic",
+            core && (flat_taxonomy_el_candidate(profile)
+                || intersection_taxonomy_el_candidate(profile)
+                || source_el_terminology_candidate(profile)),
+            Route::Elc,
+        ),
+        (
+            "el_positive_abox",
+            "semantic",
+            positive && source_el_positive_abox_candidate(profile),
+            Route::Elc,
+        ),
+        ("portfolio_default", "semantic", true, Route::ProductionAll),
+    ];
+    rules
+        .into_iter()
+        .map(|(rule, evidence, matched, route)| RuleEvaluation {
+            rule,
+            evidence,
+            matched,
+            route: route.as_str(),
+        })
+        .collect()
+}
+
+fn select_general(profile: &OntologyProfile) -> Route {
+    general_rules(profile)
+        .into_iter()
+        .find(|r| r.matched)
+        .and_then(|r| r.route.parse().ok())
+        .unwrap_or(Route::ProductionAll)
+}
+
+/// Select the automatic route under the configured [`RoutingPolicy`].
 pub fn select(profile: &OntologyProfile) -> Route {
+    match routing_policy() {
+        RoutingPolicy::General => select_general(profile),
+        RoutingPolicy::V153 => select_v153(profile),
+    }
+}
+
+/// The v1.5.3 predicate cascade, retained for paired evaluation.
+fn select_v153(profile: &OntologyProfile) -> Route {
     if profile.normalized_unary_rules > 0
         && profile.normalized_unary_rules == profile.source.rule_axioms
         && profile.source.unsupported_rule_axioms == 0
@@ -3032,6 +3375,23 @@ const SEQ_OFF: &[(&str, &str)] = &[
     ("KM_NO_SEQ_ORDER", "1"),
 ];
 
+/// Routing keys that are also user-facing diagnostic overrides: a value the
+/// user set before the first route bundle was applied is kept by every bundle
+/// that does not set one of these keys itself.
+const DIAGNOSTIC_OVERRIDE_KEYS: &[&str] = &["KM_SEQ_ORDER", "KM_NO_SEQ_ORDER"];
+
+/// The user's diagnostic overrides, read once, before any route bundle can
+/// have set or removed them (the first `apply_environment` call reads them).
+fn user_diagnostic_overrides() -> &'static [(&'static str, std::ffi::OsString)] {
+    static OVERRIDES: std::sync::OnceLock<Vec<(&'static str, std::ffi::OsString)>> =
+        std::sync::OnceLock::new();
+    OVERRIDES.get_or_init(|| {
+        DIAGNOSTIC_OVERRIDE_KEYS.iter()
+            .filter_map(|key| std::env::var_os(key).map(|value| (*key, value)))
+            .collect()
+    })
+}
+
 const ROUTE_KEYS: &[&str] = &[
     "KM_MECHANISM",
     "KM_THREADS",
@@ -3113,10 +3473,85 @@ const ROUTE_KEYS: &[&str] = &[
 
 #[cfg(test)]
 mod tests {
+    /// Pin this test thread to the v1.5.3 cascade. The legacy tests below
+    /// document the measured bands that the general policy removes.
+    /// Contract G1: the general rule list and the predicates it calls contain
+    /// no numeric threshold. Only 0 and 1 may occur, as presence tests and as
+    /// the structural bound of a flat hierarchy.
+    #[test]
+    fn general_policy_contains_no_numeric_thresholds() {
+        let src = include_str!("routing.rs");
+        let body = |name: &str| -> String {
+            let start = src
+                .find(&format!("fn {name}("))
+                .unwrap_or_else(|| panic!("missing {name}"));
+            let end = start + src[start..].find("\n}\n").expect("function end");
+            src[start..end].to_string()
+        };
+        for name in [
+            "general_rules",
+            "semantic_fragment",
+            "native_bridge_abox_eligible",
+            "atomic_class_abox_construct",
+            "independent_large_abox_el_candidate",
+            "typed_object_abox_bridge_candidate",
+            "flat_taxonomy_el_candidate",
+            "intersection_taxonomy_el_candidate",
+            "source_el_terminology_candidate",
+            "source_el_shape",
+            "source_el_positive_abox_candidate",
+        ] {
+            let text = body(name);
+            // Ignore the legacy branch of a dual-policy predicate.
+            let general_text = text.split("} else {").next().unwrap_or(&text);
+            let code: String = general_text
+                .lines()
+                .map(|line| line.split("//").next().unwrap_or(""))
+                .collect::<Vec<_>>()
+                .join("\n");
+            for token in code
+                .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                .filter(|t| !t.is_empty() && t.chars().all(|c| c.is_ascii_digit() || c == '_'))
+            {
+                assert!(
+                    token == "0" || token == "1",
+                    "{name} contains the numeric literal {token}"
+                );
+            }
+        }
+    }
+
+    /// General policy: an ABox or nominal source that no certificate or
+    /// construct rule admits races the native bridge against the exact
+    /// nominal CB calculus (contract G2), and a nominal-free source that is
+    /// not EL takes the production portfolio.
+    #[test]
+    fn general_policy_defaults_are_portfolios() {
+        let mut profile = OntologyProfile::default();
+        profile.source.logical_axioms = 10;
+        profile.source.tbox_axioms = 10;
+        profile.source.unions = 1;
+        assert_eq!(select(&profile), Route::ProductionAll);
+        profile.source.abox_axioms = 3;
+        profile.source.role_assertions = 1;
+        profile.source.class_assertions = 1;
+        profile
+            .source
+            .axiom_types
+            .insert("DataPropertyAssertion".into(), 1);
+        assert_eq!(semantic_fragment(&profile), SemanticFragment::Nominal);
+        assert_eq!(select(&profile), Route::CertifiedNominals);
+    }
+
+    fn legacy_policy() {
+        super::TEST_POLICY.with(|p| p.set(Some(super::RoutingPolicy::V153)));
+    }
+
     use super::*;
 
     #[test]
     fn compact_functional_identity_abox_uses_exact_nominal_portfolio() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.expressivity.nominal = true;
         profile.expressivity.nominal_individual = true;
@@ -3180,6 +3615,7 @@ mod tests {
 
     #[test]
     fn wine_tbox_extensions_stay_out_of_the_typed_abox_specialist() {
+        legacy_policy();
         let base = wine_nominal_ni_profile();
         assert!(nominal_ni_tbox_candidate(&base));
         assert!(nominal_ni_tbox_near_family(&base));
@@ -3234,6 +3670,7 @@ mod tests {
 
     #[test]
     fn automatic_route_admits_the_large_near_el_shape_with_exact_fallback() {
+        legacy_policy();
         assert!(certified_el_production_candidate(&large_near_el_profile()));
         assert_eq!(
             select(&large_near_el_profile()),
@@ -3257,6 +3694,7 @@ mod tests {
 
     #[test]
     fn automatic_route_admits_large_extended_el_tbox_with_exact_fallback() {
+        legacy_policy();
         let profile = large_extended_el_tbox_profile();
         assert!(certified_el_production_candidate(&profile));
         assert_eq!(select(&profile), Route::CertifiedElProduction);
@@ -3279,6 +3717,7 @@ mod tests {
 
     #[test]
     fn automatic_route_certifies_large_el_tbox_with_tiny_identity_abox() {
+        legacy_policy();
         let profile = large_el_tbox_with_small_identity_abox_profile();
         assert!(certified_el_production_candidate(&profile));
         assert_eq!(select(&profile), Route::CertifiedElProduction);
@@ -3366,6 +3805,7 @@ mod tests {
 
     #[test]
     fn automatic_route_certifies_bounded_near_el_sources() {
+        legacy_policy();
         for profile in [
             bounded_near_el_terminology_profile(),
             equivalence_only_near_el_profile(),
@@ -3480,6 +3920,7 @@ mod tests {
 
     #[test]
     fn bounded_near_el_gate_never_preempts_an_exact_fragment_route() {
+        legacy_policy();
         // A non-separable ABox is a nominal source: the EL worker sees clauses,
         // not singleton identity, so it must keep the exact nominal calculus.
         let mut profile = domain_range_near_el_positive_abox_profile();
@@ -3731,6 +4172,7 @@ mod tests {
 
     #[test]
     fn automatic_route_runs_bare_cb_on_the_positive_abox_horn_family() {
+        legacy_policy();
         let profile = positive_abox_horn_profile();
         assert_eq!(semantic_fragment(&profile), SemanticFragment::PositiveAbox);
         assert!(positive_abox_horn_cb_candidate(&profile));
@@ -3823,6 +4265,7 @@ mod tests {
 
     #[test]
     fn positive_abox_horn_cb_gate_never_preempts_an_exact_fragment_route() {
+        legacy_policy();
         // Without the positive separation certificate this is an ordinary
         // nominal ABox. The source shape still passes the screen, but the
         // nominal branch is reached first and keeps a route that carries the
@@ -3849,6 +4292,7 @@ mod tests {
 
     #[test]
     fn automatic_route_runs_bare_cb_on_bounded_non_el_terminologies() {
+        legacy_policy();
         for (profile, expected) in [
             (disjointness_clique_schema_profile(), Route::CbPlain1),
             (complement_bearing_terminology_profile(), Route::CbAbsorb8),
@@ -3967,6 +4411,7 @@ mod tests {
 
     #[test]
     fn bounded_bridge_first_only_precedes_nominal_leaves_and_keeps_selection() {
+        legacy_policy();
         let mut profile = union_free_disjointness_terminology_profile();
         profile.source.abox_axioms = 1;
         profile.source.class_assertions = 1;
@@ -4019,6 +4464,7 @@ mod tests {
 
     #[test]
     fn bounded_non_el_cb_gate_never_preempts_an_exact_fragment_route() {
+        legacy_policy();
         // Any ABox leaves the nominal-free fragment this screen is scoped to.
         let mut profile = union_free_disjointness_terminology_profile();
         profile.source.abox_axioms = 1;
@@ -4311,11 +4757,21 @@ mod tests {
             Route::CertifiedCardProxyAbox
         );
         assert!(Route::SeqOn.settings().contains(&("KM_SEQ_ORDER", "1")));
+        // A user's KM_SEQ_ORDER / KM_NO_SEQ_ORDER survives every bundle that
+        // does not set one of them; seq_on and seq_off decide themselves.
+        let user = [("KM_NO_SEQ_ORDER", std::ffi::OsString::from("1"))];
+        for route in [Route::CertifiedNominals, Route::Nominals, Route::ProductionAll, Route::CbPlain1] {
+            assert_eq!(route.surviving_overrides(&user).len(), 1, "{route}");
+        }
+        for route in [Route::SeqOn, Route::SeqOff] {
+            assert!(route.surviving_overrides(&user).is_empty(), "{route}");
+        }
         assert!(Route::SeqOff.settings().contains(&("KM_NO_SEQ_ORDER", "1")));
     }
 
     #[test]
     fn isolated_nominal_queries_keep_the_complete_nominal_route() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.abox_axioms = 4;
         profile.source.class_assertions = 4;
@@ -4334,6 +4790,7 @@ mod tests {
 
     #[test]
     fn reflexive_horn_bridge_retains_complete_production_fallback() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.axiom_types.insert("ReflexiveObjectProperty".into(), 1);
         profile.source.functional_role_axioms = 1;
@@ -4360,6 +4817,7 @@ mod tests {
 
     #[test]
     fn nominal_chain_bridge_keeps_nominal_fallback_and_semantic_fences() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.abox_axioms = 2;
         profile.source.nominals = 2;
@@ -4381,6 +4839,7 @@ mod tests {
 
     #[test]
     fn data_assertion_bridge_attempt_is_bounded_and_has_nominal_fallback() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.tbox_axioms = 300;
         profile.source.abox_axioms = 2_000;
@@ -4426,6 +4885,7 @@ mod tests {
 
     #[test]
     fn high_unqualified_cardinality_profile_never_selects_uncertified_shoq() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.expressivity.nominal = true;
         profile.expressivity.nominal_individual = true;
@@ -4477,6 +4937,7 @@ mod tests {
 
     #[test]
     fn semantic_fragment_gate_precedes_the_learned_tree() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         // Keep this semantic-dispatch test outside the small-production
         // scheduling refinement; that refinement has its own boundary test.
@@ -4571,6 +5032,7 @@ mod tests {
 
     #[test]
     fn independent_large_abox_uses_complete_production_portfolio() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.abox_axioms = 10_000;
         profile.source.class_assertions = 10_000;
@@ -4640,6 +5102,7 @@ mod tests {
 
     #[test]
     fn large_nominal_abox_prefers_no_cardinality_production() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.abox_axioms = 256_427;
         profile.source.class_assertions = 111_561;
@@ -4677,6 +5140,7 @@ mod tests {
 
     #[test]
     fn typed_object_abox_candidate_uses_certified_bridge_portfolio() {
+        legacy_policy();
         let profile = source_profile(
             r#"Ontology(
                 Declaration(Class(<A>))
@@ -4775,6 +5239,7 @@ mod tests {
 
     #[test]
     fn compact_role_rich_tbox_uses_fail_closed_ht_bridge() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 1_675;
         profile.source.distinct_object_properties = 215;
@@ -4796,6 +5261,7 @@ mod tests {
 
     #[test]
     fn compact_normalized_families_use_fail_closed_ht_bridge() {
+        legacy_policy();
         let mut qualified = OntologyProfile::default();
         qualified.source.logical_axioms = 178;
         qualified.source.qualified_cardinalities = 37;
@@ -4853,6 +5319,7 @@ mod tests {
 
     #[test]
     fn dense_role_rich_el_closure_enables_parallel_nf4_frontiers() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 2_544_794;
         profile.source.existentials = 2_500_000;
@@ -4872,6 +5339,7 @@ mod tests {
 
     #[test]
     fn heap_trim_is_limited_to_the_measured_small_nominal_worker_shape() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.expressivity.code = "SHOI".into();
         profile.expressivity.nominal = true;
@@ -4896,6 +5364,7 @@ mod tests {
 
     #[test]
     fn compact_nominal_worker_schedule_is_bounded_by_source_shape() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.file_bytes = 96_360;
         profile.source.logical_axioms = 530;
@@ -4971,6 +5440,7 @@ mod tests {
 
     #[test]
     fn source_nominal_free_ht_schedule_is_bounded_by_source_shape() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.file_bytes = 147_634;
         profile.source.logical_axioms = 702;
@@ -5064,6 +5534,7 @@ mod tests {
 
     #[test]
     fn large_role_chain_cardinality_tbox_uses_eight_workers() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 155_724;
         profile.source.tbox_axioms = 155_577;
@@ -5081,6 +5552,7 @@ mod tests {
 
     #[test]
     fn large_plain_tbox_uses_eight_workers() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 24_749;
         profile.source.tbox_axioms = 24_587;
@@ -5101,6 +5573,7 @@ mod tests {
 
     #[test]
     fn medium_shi_tbox_uses_one_worker() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 80_435;
         profile.source.tbox_axioms = 80_419;
@@ -5120,6 +5593,7 @@ mod tests {
 
     #[test]
     fn small_horn_class_abox_uses_plain_cb_schedule() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 2_464;
         profile.source.tbox_axioms = 2_434;
@@ -5139,6 +5613,7 @@ mod tests {
 
     #[test]
     fn small_production_tboxes_use_one_worker_without_crossing_slow_shapes() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.file_bytes = 1_000_000;
         profile.source.logical_axioms = 5_000;
@@ -5166,6 +5641,7 @@ mod tests {
 
     #[test]
     fn typed_object_abox_without_cardinality_uses_production_portfolio() {
+        legacy_policy();
         let profile = source_profile(
             r#"Ontology(
                 Declaration(Class(<A>))
@@ -5189,6 +5665,7 @@ mod tests {
 
     #[test]
     fn compact_shoin_object_abox_tries_the_exact_bridge_first() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 284;
         profile.source.abox_axioms = 49;
@@ -5224,6 +5701,7 @@ mod tests {
 
     #[test]
     fn flat_role_rich_abox_keeps_certified_nominal_route() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 521;
         profile.source.abox_axioms = 382;
@@ -5247,6 +5725,7 @@ mod tests {
 
     #[test]
     fn compact_expressive_object_abox_uses_four_ht_workers() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 487;
         profile.source.abox_axioms = 93;
@@ -5276,6 +5755,7 @@ mod tests {
 
     #[test]
     fn compact_datatype_has_value_abox_uses_three_ht_workers() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 171;
         profile.source.abox_axioms = 6;
@@ -5465,6 +5945,7 @@ mod tests {
 
     #[test]
     fn inverse_chain_el_family_uses_complete_bridge_with_exact_fallback() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.expressivity.inverse = true;
         profile.expressivity.complex_subrole = true;
@@ -5509,6 +5990,7 @@ mod tests {
 
     #[test]
     fn inverse_chain_bridge_selection_does_not_depend_on_taxonomy_size() {
+        legacy_policy();
         for classes in [2, 7_802, 43_917, 89_930] {
             for disjoint in [0, 1, 65, 100] {
                 let mut profile = OntologyProfile::default();
@@ -5575,6 +6057,7 @@ mod tests {
 
     #[test]
     fn large_data_assertion_abox_without_cardinality_keeps_nominal_fallback() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.abox_axioms = 607_933;
         profile.source.class_assertions = 382_511;
@@ -5607,6 +6090,7 @@ mod tests {
 
     #[test]
     fn large_identity_nominal_abox_gets_complete_general_ht_probe() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.abox_axioms = 256_427;
         profile.source.class_assertions = 111_561;
@@ -5670,6 +6154,7 @@ mod tests {
 
     #[test]
     fn small_class_identity_abox_uses_exact_nominal_route() {
+        legacy_policy();
         let mut profile = source_profile(
             r#"Ontology(
                 ClassAssertion(<A> <a>)
@@ -5702,6 +6187,7 @@ mod tests {
 
     #[test]
     fn large_tbox_small_identity_abox_uses_certified_nominal_portfolio() {
+        legacy_policy();
         let mut profile = source_profile(
             r#"Ontology(
                 ClassAssertion(<A> <a>)
@@ -5732,6 +6218,7 @@ mod tests {
 
     #[test]
     fn vacuous_top_role_object_abox_uses_the_certified_typed_bridge() {
+        legacy_policy();
         // Inverse/complement SHOI terminology of roughly 8,600 axioms with a
         // compact positive object ABox whose roles are read by the TBox: the
         // ORE 16303 feature shape. No projection certificate applies.
@@ -5795,6 +6282,7 @@ mod tests {
 
     #[test]
     fn large_horn_functional_terminology_retains_exact_fallback() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.logical_axioms = 37_696;
         profile.source.tbox_axioms = 35_531;
@@ -5858,6 +6346,7 @@ mod tests {
 
     #[test]
     fn explicit_nominal_counterexample_keeps_the_exact_fallback() {
+        legacy_policy();
         // This profile deliberately satisfies the cheap 10621-shaped source
         // gate but can fail the bridge's stronger converted-input certificate:
         // A is the singleton {a}, yet A(b) and a != b.  The ontology is
@@ -6109,6 +6598,7 @@ mod tests {
     /// route must carry the exact nominal fallback for every defer.
     #[test]
     fn certified_proxy_card_route_is_automatic_with_exact_fallback() {
+        legacy_policy();
         let mut profile = OntologyProfile::default();
         profile.source.abox_axioms = 223;
         profile.card_number_role_separable = true;
@@ -6224,6 +6714,7 @@ mod tests {
 
     #[test]
     fn context_parallel_gate_arms_the_measured_wide_role_chain_free_family() {
+        legacy_policy();
         let mut profile = context_parallel_panel_profile();
         profile.source.logical_axioms = 175_170;
         profile.source.tbox_axioms = 175_147;
@@ -6272,6 +6763,7 @@ mod tests {
 
     #[test]
     fn context_parallel_gate_declines_outside_the_measured_family() {
+        legacy_policy();
         // Individuals: the two ABox members of the panel hold its two largest
         // peak increases and neither recovers a gate.
         let mut abox = context_parallel_panel_profile();

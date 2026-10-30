@@ -1,0 +1,8 @@
+C	true
+S	http://example.org/g#A	http://example.org/g#Q1
+S	http://example.org/g#A	http://example.org/g#Q3
+S	http://example.org/g#B	http://example.org/g#Q1
+S	http://example.org/g#C	http://example.org/g#Q1
+S	http://example.org/g#Q2	http://example.org/g#Q1
+S	http://example.org/g#Q3	http://example.org/g#A
+S	http://example.org/g#Q3	http://example.org/g#Q1

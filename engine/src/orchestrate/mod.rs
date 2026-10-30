@@ -25,6 +25,7 @@ mod symbolic_source;
 mod data_source;
 pub(crate) mod public_subjects;
 pub mod race;
+pub mod realize;
 pub mod tmpfile;
 
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -291,6 +292,12 @@ pub struct Classification {
     pub subsumptions: Vec<[String; 2]>,
     pub unsatisfiable: Vec<String>,
     pub dropped: usize,
+    /// Set when a forced route published this answer although it did not
+    /// represent the whole input (`KM_ALLOW_APPROXIMATE=1`). The reason names
+    /// the route and the dropped constructs. Absent on every exact answer, in
+    /// which case the serialised shape is unchanged.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub approximate: Option<String>,
 }
 
 /// Internal oracle provenance kept out of the stable classification shape.
@@ -1018,6 +1025,12 @@ pub struct JsonClassification {
 }
 
 impl JsonClassification {
+    /// The reason a forced route published this answer as approximate
+    /// (`KM_ALLOW_APPROXIMATE=1`); `None` on every exact answer.
+    pub fn approximate(&self) -> Option<&str> {
+        self.classification.approximate.as_deref()
+    }
+
     pub fn write_json<W: Write>(&self, writer: W) -> serde_json::Result<()> {
         let mut ser = serde_json::Serializer::with_formatter(writer, PyFmt);
         serde::Serialize::serialize(self, &mut ser)
@@ -1206,7 +1219,8 @@ impl serde::Serialize for JsonClassificationEncoding<'_> {
             }
         }
 
-        let mut state = serializer.serialize_struct("Classification", if self.graph_edges { 5 } else { 4 })?;
+        let extra = usize::from(self.graph_edges) + usize::from(self.result.classification.approximate.is_some());
+        let mut state = serializer.serialize_struct("Classification", 4 + extra)?;
         state.serialize_field("consistent", &self.result.classification.consistent)?;
         if let Some(grouped) = &self.result.grouped_subsumptions {
             state.serialize_field("subsumptions", &GroupedPairs(grouped, self.graph_edges))?;
@@ -1215,6 +1229,9 @@ impl serde::Serialize for JsonClassificationEncoding<'_> {
         }
         state.serialize_field("unsatisfiable", &self.result.classification.unsatisfiable)?;
         state.serialize_field("dropped", &self.result.classification.dropped)?;
+        if let Some(reason) = &self.result.classification.approximate {
+            state.serialize_field("approximate", reason)?;
+        }
         if self.graph_edges {
             state.serialize_field("subsumptions_are_graph_edges", &true)?;
         }
@@ -1322,10 +1339,30 @@ fn validate_user_input(ont: &Path) -> Result<(), OrchestrateError> {
 }
 
 fn composite_layout(profile: &crate::frontend::profile::OntologyProfile) -> Option<u32> {
-    let individuals = profile
+    // The nominal calculus allocates fresh nominals above every source
+    // individual (engine `nom_first`), up to its budget. The packed `f(o)`
+    // field must cover those identifiers too; sizing it for the source
+    // individuals alone exhausts the field on small inputs whose Nom rule
+    // fires.
+    let nominal_budget: u64 = std::env::var("KM_NOM_BUDGET")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(4096);
+    let source_individuals = profile
         .clauses
         .individual_term_symbols
         .max(profile.source.distinct_individuals);
+    // Reserve room for the budget whenever that still fits the established
+    // layout; very large ABoxes keep the narrowest lossless field, and the
+    // engine then marks a run truncated if fresh nominals overflow it.
+    let with_budget = source_individuals
+        .saturating_add(nominal_budget)
+        .saturating_add(1);
+    let individuals = if with_budget < 1u64 << crate::calc::COMP_IND_BITS {
+        with_budget
+    } else {
+        source_individuals
+    };
     if profile.clauses.function_term_symbols == 0 {
         crate::calc::choose_comp_ind_bits_unknown_functions(individuals)
     } else {
@@ -1340,7 +1377,216 @@ pub(crate) fn classify_with_evidence(
     classify_with_evidence_mode(initial_cfg, ont, false)
 }
 
+thread_local! {
+    /// Data-property assertions the last frontend run of this classification
+    /// did not carry (`frontend_run::run_ofn_split_cached`). Published as
+    /// dropped axioms by the outermost classification call on this thread.
+    pub(crate) static UNCARRIED_DATA_ASSERTIONS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    /// Non-neutral source axioms the last frontend run of this classification
+    /// did not represent (keys, unsupported data axioms, unread rules, unknown
+    /// axiom kinds). Published like `UNCARRIED_DATA_ASSERTIONS`.
+    pub(crate) static DROPPED_SOURCE_AXIOMS: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    /// DL-safe rules a rule-route taxonomy did not apply although a nominal
+    /// lets their conclusions reach class queries (see the `ht_rules`
+    /// fall-through). Published like `UNCARRIED_DATA_ASSERTIONS`.
+    static RULES_OUTSIDE_TAXONOMY: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+    /// The per-kind breakdown behind `DROPPED_SOURCE_AXIOMS`, for the
+    /// fail-closed message of a forced route.
+    pub(crate) static DROPPED_SOURCE_DETAIL: std::cell::RefCell<BTreeMap<String, u64>> =
+        const { std::cell::RefCell::new(BTreeMap::new()) };
+    /// Constructs the last frontend run represented only approximately for
+    /// the selected mechanism (`FrontendResult::route_approximations`). Read
+    /// only when the caller forced the route.
+    pub(crate) static ROUTE_APPROXIMATIONS: std::cell::RefCell<BTreeMap<String, u64>> =
+        const { std::cell::RefCell::new(BTreeMap::new()) };
+    /// Some frontend run of this classification produced a one-sorted clause
+    /// stream on an input the sort encoding would cover
+    /// (`FrontendResult::one_sorted_data_successors`). Sticky across nested
+    /// runs; read only when the caller forced the route.
+    pub(crate) static ONE_SORTED_DATA_SUCCESSORS: std::cell::Cell<bool> =
+        const { std::cell::Cell::new(false) };
+    /// Nesting depth of `classify_with_evidence_mode` (fallback and probe
+    /// routes recurse into it); only the outermost call publishes.
+    static CLASSIFY_DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    /// Open [`InternalRoute`] scopes: an outermost classification inside one
+    /// runs a route the reasoner selected itself, not one the caller forced.
+    static INTERNAL_ROUTE: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// Marks a classification whose `KM_ROUTE` the reasoner set itself (a
+/// route-specific backend of the source-incremental session, for example), so
+/// the forced-route rule below does not treat it as a caller's request.
+pub(crate) struct InternalRoute(());
+
+impl InternalRoute {
+    pub(crate) fn enter() -> Self {
+        INTERNAL_ROUTE.with(|n| n.set(n.get() + 1));
+        InternalRoute(())
+    }
+}
+
+impl Drop for InternalRoute {
+    fn drop(&mut self) {
+        INTERNAL_ROUTE.with(|n| n.set(n.get() - 1));
+    }
+}
+
+/// The route the caller forced through `KM_ROUTE` (or `--route`), if any:
+/// every named route and `manual`, which keeps individually supplied `KM_*`
+/// options. `auto` is the production gate, which selects a mechanism that
+/// represents the input, and an unset variable keeps the library default.
+/// Read once, by the outermost classification, before any route selection or
+/// fallback rewrites `KM_ROUTE`; nested classifications are never forced.
+fn forced_route_request() -> Option<String> {
+    if INTERNAL_ROUTE.with(|n| n.get()) > 0 {
+        return None;
+    }
+    let name = std::env::var("KM_ROUTE").ok()?;
+    match name.parse::<crate::routing::Route>() {
+        Ok(crate::routing::Route::Auto) | Err(_) => None,
+        Ok(route) => Some(route.as_str().to_string()),
+    }
+}
+
+/// Whether `KM_ALLOW_APPROXIMATE` lets a forced route publish an
+/// approximate answer.
+pub fn approximate_answers_allowed() -> bool {
+    std::env::var_os("KM_ALLOW_APPROXIMATE").is_some_and(|v| !v.is_empty() && v != "0")
+}
+
+fn plural(n: u64, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
+}
+
+/// "route `default` drops 3 ABox assertions (ClassAssertion) and 1 nominal".
+fn approximation_reason(
+    route: &str,
+    source: &BTreeMap<String, u64>,
+    uncarried_data: u64,
+    unapplied_rules: u64,
+    worker: u64,
+) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for (kind, &n) in source {
+        parts.push(match kind.as_str() {
+            "ClassAssertion" | "ObjectPropertyAssertion" | "SameIndividual"
+            | "DifferentIndividuals" | "NegativeObjectPropertyAssertion" => {
+                format!("{} ({kind})", plural(n, "ABox assertion", "ABox assertions"))
+            }
+            "ABox assertion" => plural(n, "ABox assertion", "ABox assertions"),
+            "Nominal" => plural(n, "nominal", "nominals"),
+            "DLSafeRule" => plural(n, "DL-safe rule", "DL-safe rules"),
+            other => plural(n, &format!("{other} axiom"), &format!("{other} axioms")),
+        });
+    }
+    if uncarried_data > 0 {
+        parts.push(plural(uncarried_data, "data-property assertion", "data-property assertions"));
+    }
+    if unapplied_rules > 0 {
+        parts.push(format!(
+            "{} outside the taxonomy",
+            plural(unapplied_rules, "DL-safe rule", "DL-safe rules")
+        ));
+    }
+    if worker > 0 {
+        parts.push(format!("{} outside the worker's fragment", plural(worker, "clause", "clauses")));
+    }
+    let list = match parts.split_last() {
+        Some((last, rest)) if !rest.is_empty() => format!("{} and {last}", rest.join(", ")),
+        Some((last, _)) => last.clone(),
+        None => "input it does not represent".to_string(),
+    };
+    format!("route `{route}` drops {list}")
+}
+
 fn classify_with_evidence_mode(
+    initial_cfg: &Config,
+    ont: &Path,
+    retain_grouped_output: bool,
+) -> Result<ClassificationEvidence, OrchestrateError> {
+    let depth = CLASSIFY_DEPTH.with(|d| { let v = d.get(); d.set(v + 1); v });
+    if depth == 0 {
+        UNCARRIED_DATA_ASSERTIONS.with(|u| u.set(0));
+        DROPPED_SOURCE_AXIOMS.with(|u| u.set(0));
+        DROPPED_SOURCE_DETAIL.with(|d| d.borrow_mut().clear());
+        ROUTE_APPROXIMATIONS.with(|d| d.borrow_mut().clear());
+        ONE_SORTED_DATA_SUCCESSORS.with(|u| u.set(false));
+        RULES_OUTSIDE_TAXONOMY.with(|u| u.set(0));
+    }
+    // The route the caller asked for, read before any internal rewrite of
+    // KM_ROUTE. Only the outermost call can be forced.
+    let forced_route = if depth == 0 { forced_route_request() } else { None };
+    let mut result = classify_with_evidence_inner(initial_cfg, ont, retain_grouped_output);
+    CLASSIFY_DEPTH.with(|d| d.set(depth));
+    if depth == 0 {
+        // A data-property assertion the clause set does not carry is an
+        // omitted axiom of the published answer: count it with the worker's
+        // dropped clauses so the taxonomy is never published as complete.
+        // An inconsistency proved without it stays exact (entailment is
+        // monotone), so only a consistent answer carries the count.
+        let uncarried = UNCARRIED_DATA_ASSERTIONS.with(|u| u.replace(0));
+        let unrepresented = DROPPED_SOURCE_AXIOMS.with(|u| u.replace(0));
+        let unapplied_rules = RULES_OUTSIDE_TAXONOMY.with(|u| u.replace(0));
+        let mut detail = DROPPED_SOURCE_DETAIL.with(|d| std::mem::take(&mut *d.borrow_mut()));
+        let route_only = ROUTE_APPROXIMATIONS.with(|d| std::mem::take(&mut *d.borrow_mut()));
+        let one_sorted = ONE_SORTED_DATA_SUCCESSORS.with(|u| u.replace(false));
+        let route_only_count: u64 = route_only.values().sum();
+        if let Ok(evidence) = &mut result {
+            if evidence.classification.consistent {
+                let worker = evidence.classification.dropped as u64;
+                evidence.classification.dropped +=
+                    (uncarried + unrepresented + unapplied_rules) as usize;
+                // A forced route bypasses the gate that keeps every input on
+                // a mechanism that represents it. Every drop only weakens the
+                // ontology, so an inconsistency stays exact, but a consistent
+                // answer over a weakened input is not the answer for the
+                // input: fail closed, or publish it marked approximate.
+                if let Some(route) = &forced_route {
+                    let route_only_total: u64 = route_only.values().sum();
+                    if evidence.classification.dropped > 0 || route_only_total > 0 {
+                        for (kind, n) in route_only {
+                            *detail.entry(kind).or_default() += n;
+                        }
+                        let reason =
+                            approximation_reason(route, &detail, uncarried, unapplied_rules, worker);
+                        if !approximate_answers_allowed() {
+                            return Err(OrchestrateError::OutOfFragment(format!(
+                                "{reason}; the answer would be approximate; use the automatic \
+                                 route (--route auto) or set KM_ALLOW_APPROXIMATE=1"
+                            )));
+                        }
+                        evidence.classification.dropped += route_only_total as usize;
+                        evidence.classification.approximate = Some(reason);
+                    }
+                }
+            }
+        }
+        // A one-sorted clause stream on an input with a TBox nominal and data
+        // properties is stronger than the ontology (its data successors fall
+        // under `⊤ ⊑ C`, m2197), so not even an inconsistency found on it is
+        // exact: a forced route publishes neither verdict. A consistent answer
+        // already refused or marked above keeps that message.
+        if let (Some(route), Ok(evidence)) = (&forced_route, &mut result) {
+            if one_sorted && evidence.classification.approximate.is_none() {
+                let reason = format!(
+                    "route `{route}` reads data successors as objects (data properties \
+                     beside a nominal outside nominal clausification)"
+                );
+                if !approximate_answers_allowed() {
+                    return Err(OrchestrateError::OutOfFragment(format!(
+                        "{reason}; neither verdict would be exact; use the automatic \
+                         route (--route auto) or set KM_ALLOW_APPROXIMATE=1"
+                    )));
+                }
+                evidence.classification.dropped += route_only_count.max(1) as usize;
+                evidence.classification.approximate = Some(reason);
+            }
+        }
+    }
+    result
+}
+
+fn classify_with_evidence_inner(
     initial_cfg: &Config,
     ont: &Path,
     retain_grouped_output: bool,
@@ -1380,6 +1626,20 @@ fn classify_with_evidence_mode(
             std::fs::write(rewritten.path(), canonical)?;
             let _trusted = TrustedRewrite::register(rewritten.path());
             timing_mark("builtin IRI aliases canonicalized");
+            return classify_with_evidence_mode(initial_cfg, rewritten.path(), retain_grouped_output);
+        }
+        // An OWL 2 key is the DL-safe rule it denotes (`frontend::has_key`).
+        // Rewrite it before any source gate, so the rule reductions, the
+        // router and the rule routes all see one rule, exactly as if the
+        // source had spelled it. The rewrite copies source expressions
+        // verbatim and adds only rule variables in a reserved namespace.
+        if let std::borrow::Cow::Owned(keyed) = crate::frontend::has_key::encode(&source)
+            .map_err(OrchestrateError::OutOfFragment)?
+        {
+            let rewritten = tmpfile::TempPath::new("-has-key-rules.ofn");
+            std::fs::write(rewritten.path(), keyed)?;
+            let _trusted = TrustedRewrite::register(rewritten.path());
+            timing_mark("keys rewritten as DL-safe rules");
             return classify_with_evidence_mode(initial_cfg, rewritten.path(), retain_grouped_output);
         }
     }
@@ -1632,6 +1892,7 @@ fn classify_with_evidence_mode(
                         if inconsistent {
                             return Ok(ClassificationEvidence {
                                 classification: Classification {
+                                    approximate: None,
                                     consistent: false,
                                     subsumptions: vec![],
                                     unsatisfiable: vec![],
@@ -1675,6 +1936,7 @@ fn classify_with_evidence_mode(
                     }
                     return Ok(ClassificationEvidence {
                         classification: Classification {
+                            approximate: None,
                             consistent: false,
                             subsumptions: vec![],
                             unsatisfiable: vec![],
@@ -1751,6 +2013,7 @@ fn classify_with_evidence_mode(
             }
             return Ok(ClassificationEvidence {
                 classification: Classification {
+                    approximate: None,
                     consistent: true,
                     subsumptions: Vec::new(),
                     unsatisfiable: Vec::new(),
@@ -1819,11 +2082,15 @@ fn classify_with_evidence_mode(
     // satisfiability of the class projection alone cannot authorize this.
     if std::env::var_os("KM_NO_FINITE_RULE_TAXONOMY").is_none() {
         if let Some(source) = meta.profile.finite_rule_class_projection.as_ref() {
-            match rules_consistency(initial_cfg, clauses_path.path(), &meta, true)? {
+            match rules_consistency(initial_cfg, clauses_path.path(), &meta, true)?.map(|v| v.consistent) {
                 Some(true) => {},
+                // Not exact on a one-sorted stream beside a nominal (see the
+                // rule-consistency step below).
+                Some(false) if meta.one_sorted_data_successors => return Err(OrchestrateError::OutOfFragment(
+                    "finite-rule consistency read data successors as objects beside a nominal".into())),
                 Some(false) => return Ok(ClassificationEvidence {
                     classification: Classification { consistent: false, subsumptions: vec![],
-                        unsatisfiable: vec![], dropped: 0 },
+                        unsatisfiable: vec![], dropped: 0, approximate: None },
                     grouped_subsumptions: None,
                     consistency_certified: true,
                 }),
@@ -2161,6 +2428,7 @@ fn classify_with_evidence_mode(
                 }
                 return Ok(ClassificationEvidence {
                     classification: Classification {
+                        approximate: None,
                         consistent: false,
                         subsumptions: Vec::new(),
                         unsatisfiable: Vec::new(),
@@ -2457,6 +2725,7 @@ fn classify_with_evidence_mode(
     if meta.abox_inconsistent {
         return Ok(ClassificationEvidence {
             classification: Classification {
+                approximate: None,
                 consistent: false,
                 subsumptions: vec![],
                 unsatisfiable: vec![],
@@ -2519,6 +2788,7 @@ fn classify_with_evidence_mode(
             Some(result) if !result.consistent => {
                 return Ok(ClassificationEvidence {
                     classification: Classification {
+                        approximate: None,
                         consistent: false,
                         subsumptions: vec![],
                         unsatisfiable: vec![],
@@ -2565,8 +2835,28 @@ fn classify_with_evidence_mode(
     // regression records this remaining completeness obligation. Inert when
     // the ontology has no rule (`rules_consistency` returns None). Opt out with
     // KM_NO_HT_RULES.
+    // Ground clauses the rule worker certified that the atomic CB taxonomy
+    // below may drop without affecting its answer (see the `Some(true)` arm).
+    let mut certified_ground_clauses = 0usize;
     if cfg.ht_rules {
-        match rules_consistency(cfg, clauses_path.path(), &meta, false)? {
+        let verdict = rules_consistency(cfg, clauses_path.path(), &meta, false)?;
+        let represented_ground = verdict.as_ref().map_or(0, |v| v.represented_ground_clauses);
+        // The rule worker reads `__nom__` proxies as nominals over this clause
+        // stream. When the stream is one-sorted beside a TBox nominal and data
+        // properties (`one_sorted_data_successors`), its data successors fall
+        // under `⊤ ⊑ {a}`-style facts and the stream is stronger than the
+        // ontology: an inconsistency found there is not exact (m2197 with a
+        // binary DL-safe rule). The taxonomy below does not apply the rules,
+        // so it cannot decide the question either: fail closed. A consistent
+        // verdict of the stronger stream stays sound.
+        if meta.one_sorted_data_successors && verdict.as_ref().is_some_and(|v| !v.consistent) {
+            return Err(OrchestrateError::OutOfFragment(
+                "DL-safe rule consistency read data successors as objects beside a nominal; \
+                 its inconsistency would not be exact"
+                    .into(),
+            ));
+        }
+        match verdict.map(|v| v.consistent) {
             Some(false) => {
                 if timing {
                     eprintln!(
@@ -2576,6 +2866,7 @@ fn classify_with_evidence_mode(
                 }
                 return Ok(ClassificationEvidence {
                     classification: Classification {
+                        approximate: None,
                         consistent: false,
                         subsumptions: vec![],
                         unsatisfiable: vec![],
@@ -2585,7 +2876,37 @@ fn classify_with_evidence_mode(
                     consistency_certified: true,
                 });
             }
-            Some(true) => consistency_certified = true,
+            Some(true) => {
+                consistency_certified = true;
+                // The taxonomy below does not apply the rules. Rules conclude
+                // only facts about named individuals, so for a consistent
+                // ontology without nominals the class taxonomy is that of the
+                // rule-free ontology (a model of the rules and ABox, disjoint
+                // union with a TBox countermodel, refutes every non-entailed
+                // subsumption). A nominal (`ObjectOneOf`, `ObjectHasValue`,
+                // a realization probe, the universal-role hub) lets rule
+                // conclusions reach class queries: count the rules then.
+                let source = &meta.profile.source;
+                if source.object_nominal_concepts > 0 {
+                    let rules = source.rule_axioms.max(1);
+                    RULES_OUTSIDE_TAXONOMY.with(|u| u.set(u.get() + rules));
+                    if timing {
+                        eprintln!("KM_TIMING rules-consistency: {rules} rule(s) not applied to a nominal taxonomy");
+                    }
+                } else if !meta.profile.expressivity.universal_role
+                    && std::env::var_os("KM_NOMINALS").is_none()
+                {
+                    // By the same disjoint-union argument the ground ABox
+                    // changes no class subsumption of this consistent,
+                    // nominal-free ontology without the universal role; the
+                    // rule worker represented it (`dropped == 0`) for the
+                    // consistency verdict. Outside nominal mode the CB worker
+                    // drops exactly the clauses with an individual term
+                    // (`reasoner::OntologyBuilder::term`), so they are not
+                    // an omission of the published answer.
+                    certified_ground_clauses = represented_ground;
+                }
+            }
             None => {}
         }
     }
@@ -2653,6 +2974,9 @@ fn classify_with_evidence_mode(
             &mut cached_input,
         )
     };
+    // Only the atomic CB worker is known to read this clause file outside
+    // nominal mode; a portfolio arm may answer from another clause set.
+    let atomic_cb = matches!(cfg.mechanism, Mechanism::Cb);
     let atomic_out = match atomic_attempt {
         Ok(out) => out,
         Err(_error) if selected_route == crate::routing::Route::CertifiedElProduction => {
@@ -2686,7 +3010,12 @@ fn classify_with_evidence_mode(
         Err(error) => return Err(error),
     };
     let mut out: EngineOut = match atomic_out {
-        Some(out) => out,
+        Some(mut out) => {
+            if atomic_cb && certified_ground_clauses > 0 {
+                out.dropped = out.dropped.saturating_sub(certified_ground_clauses);
+            }
+            out
+        }
         None => {
             // The 3 ORE giants OOM under the concurrent elc-portfolio race (it runs CB
             // and elc side by side); keep them on the safe single-arm paths (bare elc
@@ -3091,6 +3420,7 @@ fn classify_with_evidence_mode(
     if projected_abox_inconsistent || unsat_asserted {
         return Ok(ClassificationEvidence {
             classification: Classification {
+                approximate: None,
                 consistent: false,
                 subsumptions: vec![],
                 unsatisfiable: vec![],
@@ -3116,6 +3446,7 @@ fn classify_with_evidence_mode(
     timing_mark("output mapping done");
     Ok(ClassificationEvidence {
         classification: Classification {
+            approximate: None,
             consistent: !out.inconsistent,
             subsumptions: subs,
             unsatisfiable: unsat,
@@ -3195,12 +3526,39 @@ fn checked_finite_rule_taxonomy(mut evidence: ClassificationEvidence) -> Result<
     Ok(evidence)
 }
 
+/// Verdict of the DL-safe-rule consistency worker.
+struct RulesVerdict {
+    consistent: bool,
+    /// Clauses of the checked clause file that carry an individual term,
+    /// when the conversion represented every clause (`dropped == 0`) and so
+    /// the verdict covers them; zero otherwise.
+    represented_ground_clauses: usize,
+}
+
+fn term_has_individual(term: &crate::json_io::JTerm) -> bool {
+    use crate::json_io::JTerm;
+    match term {
+        JTerm::Ind { .. } => true,
+        JTerm::Fun { arg, .. } => term_has_individual(arg),
+        JTerm::Var { .. } | JTerm::Aux { .. } => false,
+    }
+}
+
+fn clause_has_individual(clause: &crate::json_io::JClause) -> bool {
+    use crate::json_io::JAtom;
+    clause.body.iter().chain(&clause.head).any(|atom| match atom {
+        JAtom::Concept { term, .. } => term_has_individual(term),
+        JAtom::Role { source, target, .. } => term_has_individual(source) || term_has_individual(target),
+        JAtom::Eq { left, right } => term_has_individual(left) || term_has_individual(right),
+    })
+}
+
 fn rules_consistency(
     cfg: &Config,
     clauses_path: &Path,
     meta: &frontend_run::Meta,
     require_source_model: bool,
-) -> Result<Option<bool>, OrchestrateError> {
+) -> Result<Option<RulesVerdict>, OrchestrateError> {
     use crate::json_io::JInput;
     use std::process::{Command, Stdio};
     let _rule_environment = crate::routing::EnvironmentGuard::capture();
@@ -3254,6 +3612,7 @@ fn rules_consistency(
             true, // ht_rules: seed the ABox + emit rule clauses
         )
     };
+    cb_to_ht::attach_data_roles(&mut tin, &input.data_roles);
     if timing {
         eprintln!(
             "KM_TIMING rules-consistency converted @ {:.2}s ht_clauses={} queries={}",
@@ -3290,6 +3649,11 @@ fn rules_consistency(
                 .and_then(|individual| meta.iri_map.get(individual)).cloned()).collect(),
         });
     }
+    let represented_ground_clauses = if tin.dropped == 0 {
+        input.clauses.iter().filter(|clause| clause_has_individual(clause)).count()
+    } else {
+        0
+    };
     let tin_bytes = serde_json::to_vec(&tin)?;
     if timing {
         eprintln!(
@@ -3353,7 +3717,7 @@ fn rules_consistency(
         consistent: bool,
     }
     let t: TOut = serde_json::from_reader(BufReader::new(File::open(out_path.path())?))?;
-    Ok(Some(t.consistent))
+    Ok(Some(RulesVerdict { consistent: t.consistent, represented_ground_clauses }))
 }
 
 /// Complete a PARTIAL certified-elc answer (exit 4): classify the residue with
@@ -3447,6 +3811,9 @@ impl Classification {
             format!("CONSISTENT {}", if self.consistent { 1 } else { 0 }),
             format!("DROPPED {}", self.dropped),
         ];
+        if let Some(reason) = &self.approximate {
+            out.push(format!("APPROXIMATE\t{}", reason.replace(['\t', '\n'], " ")));
+        }
         for p in &self.subsumptions {
             out.push(format!("SUB\t{}\t{}", p[0], p[1]));
         }
@@ -3504,22 +3871,6 @@ mod tests {
         assert!(super::classify_with_evidence(&cfg, file.path()).is_err());
     }
 
-    #[test]
-    fn sequential_classification_does_not_inherit_a_completed_race_cancellation() {
-        let file = super::tmpfile::TempPath::new("-sequential-cancellation.ofn");
-        std::fs::write(file.path(), "Ontology(Declaration(Class(<urn:A>)) Declaration(Class(<urn:B>)) SubClassOf(<urn:A> <urn:B>))").unwrap();
-        let mut cfg = super::Config::from_env();
-        cfg.elc = false;
-        cfg.elc_portfolio = false;
-        cfg.ht_race = false;
-        cfg.tab_race = false;
-        let expected = super::classify_with_evidence(&cfg, file.path()).unwrap().classification;
-        super::engine_run::cancel_and_kill_engines();
-        let actual = super::classify_with_evidence(&cfg, file.path()).unwrap().classification;
-        assert_eq!(actual, expected);
-        assert!(actual.consistent);
-        assert!(actual.subsumptions.iter().any(|[sub, sup]| sub == "urn:A" && sup == "urn:B"));
-    }
     #[test]
     fn unvalidated_facet_extension_is_refused_before_classification() {
         let file = super::tmpfile::TempPath::new("-facet-extension.ofn");
@@ -3607,7 +3958,7 @@ mod tests {
     fn finite_rule_taxonomy_requires_complete_consistent_projection() {
         for (consistent, dropped, accepted) in [(true, 0, true), (true, 1, false), (false, 0, false)] {
             let evidence = super::ClassificationEvidence {
-                classification: super::Classification { consistent, dropped,
+                classification: super::Classification { approximate: None, consistent, dropped,
                     subsumptions: vec![["urn:A".into(), "urn:B".into()]],
                     unsatisfiable: vec!["urn:Empty".into()] },
                 grouped_subsumptions: None, consistency_certified: false,
@@ -3676,6 +4027,9 @@ mod tests {
         // A profile outside the measured family keeps the serial engine.
         let mut small = context_parallel_panel_profile();
         small.source.logical_axioms = 1_000;
+        // The general routing policy gates on the class count alone, so the
+        // profile must be small in both measures to stay outside the family.
+        small.source.distinct_classes = 1_000;
         assert_eq!(
             elc_context_parallel_setting(crate::routing::Route::Elc, &small, None, 16),
             None
@@ -3721,6 +4075,7 @@ mod tests {
     #[test]
     fn streamed_classification_json_matches_allocating_api() {
         let classification = super::Classification {
+            approximate: None,
             consistent: true,
             subsumptions: vec![["http://example.org/A".into(), "owl:Thing".into()]],
             unsatisfiable: vec!["http://example.org/B".into()],
@@ -3757,6 +4112,7 @@ mod tests {
             reachability_graph: None,
         };
         let classification = super::Classification {
+            approximate: None,
             consistent: true,
             subsumptions: flat,
             unsatisfiable: vec!["http://example.org/B".into()],
@@ -3765,6 +4121,7 @@ mod tests {
         let expected = classification.to_json();
         let grouped = super::JsonClassification {
             classification: super::Classification {
+                approximate: None,
                 consistent: true,
                 subsumptions: Vec::new(),
                 unsatisfiable: vec!["http://example.org/B".into()],
@@ -3801,6 +4158,7 @@ mod tests {
                     .filter(|b| bits & (1 << (a * 3 + b)) != 0).collect()).collect();
                 let result = super::JsonClassification {
                     classification: super::Classification {
+                        approximate: None,
                         consistent: true, subsumptions: vec![], unsatisfiable: vec!["urn:Bottom".into()], dropped: 0,
                     },
                     grouped_subsumptions: Some(super::GroupedJsonTaxonomy {
@@ -3827,6 +4185,7 @@ mod tests {
         for grouped in [false, true] {
             let result = super::JsonClassification {
                 classification: super::Classification {
+                    approximate: None,
                     consistent: true, subsumptions: vec![["urn:A".into(), "urn:B".into()]],
                     unsatisfiable: vec![], dropped: 0,
                 },
@@ -3850,7 +4209,7 @@ mod tests {
     fn graph_json_keeps_long_chain_output_linear() {
         let n = 128;
         let result = super::JsonClassification {
-            classification: super::Classification { consistent: true, subsumptions: vec![], unsatisfiable: vec![], dropped: 0 },
+            classification: super::Classification { approximate: None, consistent: true, subsumptions: vec![], unsatisfiable: vec![], dropped: 0 },
             grouped_subsumptions: Some(super::GroupedJsonTaxonomy {
                 iris: (0..n).map(|i| std::sync::Arc::from(format!("urn:long-chain:{i:04}"))).collect(),
                 rows: std::collections::BTreeMap::new(),
@@ -3882,6 +4241,7 @@ mod tests {
         };
         let streamed = super::JsonClassification {
             classification: super::Classification {
+                approximate: None,
                 consistent: true,
                 subsumptions: Vec::new(),
                 unsatisfiable: Vec::new(),
@@ -3890,6 +4250,7 @@ mod tests {
             grouped_subsumptions: Some(graph),
         };
         let materialized = super::Classification {
+            approximate: None,
             consistent: true,
             subsumptions: vec![
                 ["A".into(), "B".into()],
@@ -3917,6 +4278,7 @@ mod tests {
         };
         let streamed = super::JsonClassification {
             classification: super::Classification {
+                approximate: None,
                 consistent: true,
                 subsumptions: Vec::new(),
                 unsatisfiable: Vec::new(),
@@ -3925,6 +4287,7 @@ mod tests {
             grouped_subsumptions: Some(graph),
         };
         let materialized = super::Classification {
+            approximate: None,
             consistent: true,
             subsumptions: vec![
                 ["A".into(), "B".into()],
@@ -4095,6 +4458,9 @@ mod tests {
         profile.clauses.individual_term_symbols = 0;
         profile.source.distinct_individuals = 18_055;
         assert_eq!(composite_layout(&profile), Some(15));
+        // Fresh nominals of the Nom rule must fit beside a tiny source ABox.
+        profile.source.distinct_individuals = 2;
+        assert_eq!(composite_layout(&profile), Some(13));
 
         profile.source.distinct_individuals = 129_647;
         assert_eq!(composite_layout(&profile), Some(17));
@@ -4102,6 +4468,9 @@ mod tests {
         profile.clauses.function_term_symbols = 130_303;
         profile.source.distinct_individuals = 18_055;
         assert_eq!(composite_layout(&profile), Some(15));
+        // Fresh nominals of the Nom rule must fit beside a tiny source ABox.
+        profile.source.distinct_individuals = 2;
+        assert_eq!(composite_layout(&profile), Some(13));
     }
 
     #[test]

@@ -26,6 +26,21 @@ pub struct Meta {
     pub profile: crate::frontend::profile::OntologyProfile,
     #[serde(default = "manual_route")]
     pub route: String,
+    /// Data-property assertions the clause set does not carry (see
+    /// `FrontendResult::uncarried_data_assertions`).
+    #[serde(default)]
+    pub uncarried_data_assertions: u64,
+    /// Non-neutral source axioms the clause set does not represent (see
+    /// `FrontendResult::dropped_source_axioms`).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub dropped_source_axioms: std::collections::BTreeMap<String, u64>,
+    /// Constructs the selected mechanism represents only approximately (see
+    /// `FrontendResult::route_approximations`); read only on a forced route.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub route_approximations: std::collections::BTreeMap<String, u64>,
+    /// See `FrontendResult::one_sorted_data_successors`.
+    #[serde(default)]
+    pub one_sorted_data_successors: bool,
 }
 
 fn manual_route() -> String {
@@ -241,6 +256,10 @@ fn run_ofn_in_process(
         asserted_classes: result.asserted_classes,
         profile: result.profile,
         route: result.route,
+        uncarried_data_assertions: result.uncarried_data_assertions,
+        dropped_source_axioms: result.dropped_source_axioms,
+        route_approximations: result.route_approximations,
+        one_sorted_data_successors: result.one_sorted_data_successors,
     };
     let mut out = crate::json_io::JInput {
         clauses: result.clauses,
@@ -251,6 +270,7 @@ fn run_ofn_in_process(
         source_axioms: result.source_axioms,
         nominal_abox: result.nominal_abox,
         rules: result.rules,
+        data_roles: result.data_roles,
     };
     // Retain this representation only when the selected leaf consumes it
     // directly. Dropping every other input preserves the old frontend lifetime
@@ -327,6 +347,64 @@ pub fn run_ofn_split(cfg: &Config, ont: &Path) -> Result<(TempPath, Meta), Orche
 /// subprocess fallback; callers consume the cache only when the selected
 /// classifier also runs in this process.
 pub fn run_ofn_split_cached(
+    cfg: &Config,
+    ont: &Path,
+) -> Result<
+    (
+        TempPath,
+        Meta,
+        Option<crate::json_io::JInput>,
+        Option<TempPath>,
+    ),
+    OrchestrateError,
+> {
+    let mut result = run_ofn_split_cached_once(cfg, ont)?;
+    // OWL 2 Direct Semantics: `DataPropertyAssertion(p a v)` holds iff `a` is
+    // an instance of `DataHasValue(p v)`. The frontend carries positive data
+    // assertions as those class assertions only on request, so that inputs
+    // whose assertions are certified irrelevant keep their clause output.
+    // When it reports assertions it did not carry, and the drop is not
+    // certified harmless, re-run it with the conversion for this whole
+    // classification (the key is restored by the caller's environment guard).
+    // Whatever stays uncarried after that (negative assertions, a literal
+    // vocabulary above the cap) is published as dropped axioms.
+    if result.1.uncarried_data_assertions > 0 && !data_assertions_as_class_requested() {
+        if std::env::var_os("KM_TIMING").is_some() {
+            eprintln!(
+                "KM_TIMING frontend: {} data-property assertion(s) not carried; \
+                 re-running with the DataHasValue conversion",
+                result.1.uncarried_data_assertions
+            );
+        }
+        std::env::set_var("KM_DATA_ASSERTION_AS_CLASS", "1");
+        result = run_ofn_split_cached_once(cfg, ont)?;
+        if std::env::var_os("KM_TIMING").is_some() && result.1.uncarried_data_assertions > 0 {
+            eprintln!(
+                "KM_TIMING frontend: {} data-property assertion(s) stay uncarried after the conversion",
+                result.1.uncarried_data_assertions
+            );
+        }
+    }
+    super::UNCARRIED_DATA_ASSERTIONS.with(|u| u.set(result.1.uncarried_data_assertions));
+    let dropped_source: u64 = result.1.dropped_source_axioms.values().sum();
+    if std::env::var_os("KM_TIMING").is_some() && dropped_source > 0 {
+        eprintln!(
+            "KM_TIMING frontend: {} source axiom(s) not represented: {:?}",
+            dropped_source, result.1.dropped_source_axioms
+        );
+    }
+    super::DROPPED_SOURCE_AXIOMS.with(|u| u.set(dropped_source));
+    super::DROPPED_SOURCE_DETAIL.with(|d| d.borrow_mut().clone_from(&result.1.dropped_source_axioms));
+    super::ROUTE_APPROXIMATIONS.with(|d| d.borrow_mut().clone_from(&result.1.route_approximations));
+    super::ONE_SORTED_DATA_SUCCESSORS.with(|u| u.set(result.1.one_sorted_data_successors));
+    Ok(result)
+}
+
+fn data_assertions_as_class_requested() -> bool {
+    std::env::var_os("KM_DATA_ASSERTION_AS_CLASS").is_some_and(|value| value != "0")
+}
+
+fn run_ofn_split_cached_once(
     cfg: &Config,
     ont: &Path,
 ) -> Result<

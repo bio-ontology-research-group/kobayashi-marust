@@ -1,0 +1,8 @@
+files 100 runs 300
+auto ok=74 TIMEOUT=26
+certified_nominals ok=74 TIMEOUT=26
+nominals ok=67 TIMEOUT=33
+   n1052.ofn auto ctx TIMEOUT ref ok
+   n1052.ofn certified_nominals ctx TIMEOUT ref ok
+   n1052.ofn nominals ctx TIMEOUT ref ok
+non-ok under ctx, by reference verdict: {('TIMEOUT', 'TIMEOUT'): 82, ('TIMEOUT', 'ok'): 3}

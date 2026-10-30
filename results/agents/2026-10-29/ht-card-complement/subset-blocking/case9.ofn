@@ -1,0 +1,9 @@
+Prefix(:=<http://example.org/t#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://example.org/t>
+Declaration(DataProperty(:d)) Declaration(DataProperty(:e))
+Declaration(Class(:A)) Declaration(Class(:C)) Declaration(Class(:H)) Declaration(Class(:N))
+EquivalentClasses(:N DataMaxCardinality(0 :d)) EquivalentClasses(:C ObjectIntersectionOf(DataAllValuesFrom(:d DataOneOf("1"^^xsd:integer)) ObjectComplementOf(DataHasValue(:d "1"^^xsd:integer))))
+)

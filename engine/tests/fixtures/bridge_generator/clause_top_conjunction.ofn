@@ -1,0 +1,6 @@
+Prefix(:=<http://example.org/g#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://example.org/g>
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))
+SubClassOf(owl:Thing ObjectIntersectionOf(ObjectIntersectionOf(:C :B) ObjectIntersectionOf(:B :C)))
+)

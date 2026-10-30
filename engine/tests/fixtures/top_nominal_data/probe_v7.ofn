@@ -1,0 +1,9 @@
+Prefix(:=<http://example.org/g#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://example.org/g>
+Declaration(Class(:A)) Declaration(DataProperty(:u)) Declaration(ObjectProperty(:r)) Declaration(NamedIndividual(:a))
+SubClassOf(owl:Thing DataMinCardinality(2 :u))
+SubClassOf(owl:Thing ObjectSomeValuesFrom(:r ObjectOneOf(:a)))
+SubClassOf(ObjectOneOf(:a) ObjectMaxCardinality(1 ObjectInverseOf(:r)))
+)

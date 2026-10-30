@@ -229,6 +229,21 @@ impl Builder {
                 ));
             }
         }
+        if self.nominals {
+            match ground_concept_body(c) {
+                GroundBody::None => {}
+                // `C₁(a) ∧ … ∧ Cₖ(a) → Δ` is `∀x. C₁(x) ∧ … ∧ Cₖ(x) → x ≉ a ∨ Δ[a/x]`:
+                // the same central-variable guard as the negative role
+                // assertion above. Hyper binds a non-central body term like a
+                // variable, so the ground form would fire on every term.
+                GroundBody::Guard(guarded) => return self.clause(&guarded),
+                // Any other ground body atom (several individuals, a
+                // variable next to an individual, a role with one individual
+                // endpoint) has no such normal form here: drop and count it,
+                // so the published answer reports it.
+                GroundBody::Unsupported => return None,
+            }
+        }
         let mut body: Vec<Pred> = Vec::new();
         // A body equality `a ≈ b` is a negative equality literal: the clause
         // `{a≈b} ∧ Γ → Δ` is logically `Γ → Δ ∨ a ≉ b`.  We move such body
@@ -283,6 +298,131 @@ impl Builder {
     }
 }
 
+/// Shape of a clause's ground (individual-bearing) body atoms, for the
+/// nominal loader. Body equalities between individuals
+/// (`DifferentIndividuals`) and the all-ground negative role assertion are
+/// handled elsewhere and are not reported here.
+enum GroundBody {
+    /// No body concept or role atom mentions an individual.
+    None,
+    /// Every body atom is a concept atom on one individual `a` and the head
+    /// mentions no variable: the guarded clause
+    /// `C₁(x) ∧ … ∧ Cₖ(x) ∧ x≈a → Δ[a/x]` (the body equality becomes the head
+    /// literal `x ≉ a`).
+    Guard(JClause),
+    /// A ground body atom outside that shape.
+    Unsupported,
+}
+
+fn ground_concept_body(c: &JClause) -> GroundBody {
+    fn ind(t: &JTerm) -> Option<&str> {
+        match t {
+            JTerm::Ind { name } => Some(name),
+            _ => None,
+        }
+    }
+    fn mentions_ind(t: &JTerm) -> bool {
+        match t {
+            JTerm::Ind { .. } => true,
+            JTerm::Fun { arg, .. } => mentions_ind(arg),
+            _ => false,
+        }
+    }
+    fn mentions_var(t: &JTerm) -> bool {
+        match t {
+            JTerm::Var { .. } => true,
+            JTerm::Fun { arg, .. } => mentions_var(arg),
+            _ => false,
+        }
+    }
+    let ground = c.body.iter().any(|a| match a {
+        JAtom::Concept { term, .. } => mentions_ind(term),
+        JAtom::Role { source, target, .. } => mentions_ind(source) || mentions_ind(target),
+        JAtom::Eq { .. } => false,
+    });
+    if !ground {
+        return GroundBody::None;
+    }
+    // The all-ground negative role assertion keeps its dedicated rewrite.
+    if c.head.is_empty()
+        && matches!(c.body.as_slice(), [JAtom::Role { source: JTerm::Ind { .. }, target: JTerm::Ind { .. }, .. }])
+    {
+        return GroundBody::None;
+    }
+    let mut individual: Option<&str> = None;
+    for atom in &c.body {
+        let JAtom::Concept { term, .. } = atom else { return GroundBody::Unsupported };
+        let Some(name) = ind(term) else { return GroundBody::Unsupported };
+        if individual.is_some_and(|seen| seen != name) {
+            return GroundBody::Unsupported;
+        }
+        individual = Some(name);
+    }
+    let head_has_var = c.head.iter().any(|a| match a {
+        JAtom::Concept { term, .. } => mentions_var(term),
+        JAtom::Role { source, target, .. } => mentions_var(source) || mentions_var(target),
+        JAtom::Eq { left, right } => mentions_var(left) || mentions_var(right),
+    });
+    if head_has_var {
+        return GroundBody::Unsupported;
+    }
+    let a = individual.expect("a ground body has an individual").to_string();
+    let x = || JTerm::Var { name: "x".to_string() };
+    let subst = |t: &JTerm| match t {
+        JTerm::Ind { name } if *name == a => x(),
+        other => other.clone(),
+    };
+    let mut body: Vec<JAtom> = c.body.iter().map(|atom| match atom {
+        JAtom::Concept { concept, .. } => JAtom::Concept { concept: concept.clone(), term: x() },
+        other => other.clone(),
+    }).collect();
+    body.push(JAtom::Eq { left: x(), right: JTerm::Ind { name: a.clone() } });
+    let head = c.head.iter().map(|atom| match atom {
+        JAtom::Concept { concept, term } => JAtom::Concept { concept: concept.clone(), term: subst(term) },
+        JAtom::Role { role, source, target } => JAtom::Role {
+            role: role.clone(), source: subst(source), target: subst(target),
+        },
+        JAtom::Eq { left, right } => JAtom::Eq { left: subst(left), right: subst(right) },
+    }).collect();
+    GroundBody::Guard(JClause { body, head })
+}
+
+/// Does some clause with a variable or a Skolem term mention an individual?
+/// Only then can a non-ground context acquire a ground interface with the
+/// nominal ground context (`calc::set_ground_interfaces`).
+fn has_ground_interface(clauses: &[OntologyClause]) -> bool {
+    clauses.iter().any(|clause| {
+        let mut individual = false;
+        let mut other = false;
+        let mut see = |t: Term| {
+            if is_individual(t) {
+                individual = true;
+            } else {
+                other = true;
+            }
+        };
+        for p in &clause.body {
+            match *p {
+                Pred::Concept { t, .. } => see(t),
+                Pred::Role { s, t, .. } => {
+                    see(s);
+                    see(t)
+                }
+            }
+        }
+        for l in &clause.head {
+            match *l {
+                Lit::P(Pred::Concept { t, .. }) => see(t),
+                Lit::P(Pred::Role { s, t, .. }) | Lit::Eq { s, t } | Lit::Ineq { s, t } => {
+                    see(s);
+                    see(t)
+                }
+            }
+        }
+        individual && other
+    })
+}
+
 fn has_internal_definer_disjunction(sig: &Sig, clauses: &[OntologyClause]) -> bool {
     clauses.iter().any(|clause| {
         let mut concepts = 0usize;
@@ -335,6 +475,9 @@ pub(crate) struct RetainedCbReasoner {
     builder: Builder,
     engine: Engine,
     internal_definer_disjunction: bool,
+    /// `has_ground_interface` of the retained clause set: R2 of the context
+    /// regime is fixed per engine, because clause maxima are cached.
+    ground_interface: bool,
 }
 
 impl RetainedCbReasoner {
@@ -348,7 +491,9 @@ impl RetainedCbReasoner {
         let mut builder = Builder::new();
         let clauses = builder.clauses(input);
         let internal_definer_disjunction = has_internal_definer_disjunction(&builder.sig, &clauses);
+        let ground_interface = has_ground_interface(&clauses);
         set_seq_order_auto(internal_definer_disjunction);
+        set_ground_interfaces(ground_interface);
         let mut engine = Engine::new(builder.sig.clone(), clauses, builder.dropped);
         let queries = engine.named_queries();
         engine.run_for(&queries);
@@ -356,6 +501,7 @@ impl RetainedCbReasoner {
             builder,
             engine,
             internal_definer_disjunction,
+            ground_interface,
         }
     }
 
@@ -393,6 +539,10 @@ impl RetainedCbReasoner {
         let ordering_forced = std::env::var_os("KM_SEQ_ORDER").is_some()
             || std::env::var_os("KM_NO_SEQ_ORDER").is_some();
         if !ordering_forced && next_internal != self.internal_definer_disjunction {
+            return Err(RetainedCbBoundary::OrderingRouterChanged);
+        }
+        let next_interface = self.ground_interface || has_ground_interface(&clauses);
+        if next_interface != self.ground_interface {
             return Err(RetainedCbBoundary::OrderingRouterChanged);
         }
         if let Some(boundary) = self.engine.retained_insert_boundary(&clauses) {
@@ -871,6 +1021,7 @@ impl Reasoner {
         // parallel workers below all read the resulting global). Env overrides
         // win inside `set_seq_order_auto`.
         set_seq_order_auto(self.has_internal_definer_disjunction());
+        set_ground_interfaces(has_ground_interface(&self.clauses0));
         // Finalize the ontology once. Every engine below (the sequential run,
         // each static chunk, each work-stealing worker) is built from this one
         // immutable copy, so the clause arena, signature and nominal
@@ -1278,6 +1429,44 @@ mod tests {
         let mut rr = Reasoner::new(&clauses);
         rr.saturate();
         rr
+    }
+
+    fn ind(n: &str) -> JTerm {
+        JTerm::Ind { name: n.into() }
+    }
+
+    #[test]
+    fn ground_concept_body_becomes_a_central_guard() {
+        // D(a) -> ⊥   ==>   D(x) ∧ x≈a -> ⊥   (x ≉ a in the head)
+        let GroundBody::Guard(guarded) = ground_concept_body(&cl(vec![c("D", ind("a"))], vec![]))
+            else { panic!("expected a guard") };
+        let show = |c: &JClause| serde_json::to_string(c).unwrap();
+        assert!(guarded == cl(vec![c("D", vx()), JAtom::Eq { left: vx(), right: ind("a") }], vec![]),
+            "{}", show(&guarded));
+        // C(a) ∧ E(a) -> F(a) ∨ r(a,b)   ==>   C(x) ∧ E(x) ∧ x≈a -> F(x) ∨ r(x,b)
+        let GroundBody::Guard(guarded) = ground_concept_body(&cl(
+            vec![c("C", ind("a")), c("E", ind("a"))],
+            vec![c("F", ind("a")), r("r", ind("a"), ind("b"))],
+        )) else { panic!("expected a guard") };
+        assert!(guarded == cl(
+            vec![c("C", vx()), c("E", vx()), JAtom::Eq { left: vx(), right: ind("a") }],
+            vec![c("F", vx()), r("r", vx(), ind("b"))],
+        ), "{}", show(&guarded));
+        // Ordinary and already-handled shapes are left alone.
+        assert!(matches!(ground_concept_body(&cl(vec![c("C", vx())], vec![c("D", ind("a"))])), GroundBody::None));
+        assert!(matches!(ground_concept_body(&cl(vec![r("r", ind("a"), ind("b"))], vec![])), GroundBody::None));
+        assert!(matches!(ground_concept_body(&cl(
+            vec![JAtom::Eq { left: ind("a"), right: ind("b") }], vec![])), GroundBody::None));
+        // Shapes without a single-individual guard are unsupported (dropped).
+        for clause in [
+            cl(vec![c("C", ind("a")), c("E", ind("b"))], vec![]),
+            cl(vec![c("C", ind("a")), c("E", vx())], vec![]),
+            cl(vec![c("C", ind("a"))], vec![c("D", vx())]),
+            cl(vec![r("r", vx(), ind("a"))], vec![c("D", vx())]),
+            cl(vec![r("r", ind("a"), ind("b"))], vec![c("D", ind("a"))]),
+        ] {
+            assert!(matches!(ground_concept_body(&clause), GroundBody::Unsupported));
+        }
     }
 
     #[test]

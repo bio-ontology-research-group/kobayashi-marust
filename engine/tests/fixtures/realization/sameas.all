@@ -1,0 +1,9 @@
+SAME	urn:t#a	urn:t#b
+SAME	urn:t#a	urn:t#c
+SAME	urn:t#b	urn:t#c
+TYPE	urn:t#a	urn:t#C
+TYPE	urn:t#a	urn:t#D
+TYPE	urn:t#b	urn:t#C
+TYPE	urn:t#b	urn:t#D
+TYPE	urn:t#c	urn:t#C
+TYPE	urn:t#c	urn:t#D

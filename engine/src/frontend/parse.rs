@@ -11,7 +11,7 @@ use smallvec::SmallVec;
 
 use super::iri::IriRegistry;
 use super::sexpr::{Node, Parser};
-use super::syntax::{mk_and, mk_or, Axiom, Concept, Ontology, Role, RuleAtom, RuleTerm, RuleDataTerm};
+use super::syntax::{data_all, data_at_least, data_at_most, data_some, mk_and, mk_or, Axiom, Concept, Ontology, Role, RuleAtom, RuleTerm, RuleDataTerm};
 
 /// Out-of-fragment marker (port of `OutOfFragment`).
 #[derive(Debug)]
@@ -215,13 +215,21 @@ pub(crate) fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFr
                 Box::new(Concept::Nominal(reg.short(args[1].as_atom().unwrap_or("")))),
             )),
             "ObjectHasSelf" => Ok(Concept::HasSelf(role_cls(reg, &args[0])?)),
-            "DataSomeValuesFrom" => Ok(Concept::Exists(
+            // A provably empty range makes the restriction `⊥`; a provably
+            // universal one (`rdfs:Literal`, every value a data property can
+            // take, OWL 2 Structural Specification 4.1, or an equivalent
+            // boolean combination) makes it "p has some value", i.e. the
+            // unqualified `DataMinCardinality(1 p)`, so the two spellings
+            // share one exact encoding. The `__dt__Literal` label it used to
+            // carry added nothing a model could falsify, and keeping it made
+            // the native completion bridge defer to much slower calculi.
+            "DataSomeValuesFrom" => Ok(data_some(
                 Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
-                Box::new(dt_concept(&args[1])),
+                dt_concept(&args[1]),
             )),
-            "DataAllValuesFrom" => Ok(Concept::Forall(
+            "DataAllValuesFrom" => Ok(data_all(
                 Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
-                Box::new(dt_concept(&args[1])),
+                dt_concept(&args[1]),
             )),
             "DataHasValue" => {
                 let refs: Vec<&Node> = args.iter().collect();
@@ -246,12 +254,14 @@ pub(crate) fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFr
                 } else {
                     Concept::Top
                 };
+                // An empty qualifying range makes min `⊥` (n >= 1) and max
+                // `⊤`; a universal one is the unqualified filler `⊤`.
                 match *head {
-                    "DataMinCardinality" => Ok(Concept::AtLeast(n, r, Box::new(filler))),
-                    "DataMaxCardinality" => Ok(Concept::AtMost(n, r, Box::new(filler))),
+                    "DataMinCardinality" => Ok(data_at_least(n, r, filler)),
+                    "DataMaxCardinality" => Ok(data_at_most(n, r, filler)),
                     _ => Ok(mk_and([
-                        Concept::AtLeast(n, r.clone(), Box::new(filler.clone())),
-                        Concept::AtMost(n, r, Box::new(filler)),
+                        data_at_least(n, r.clone(), filler.clone()),
+                        data_at_most(n, r, filler),
                     ])),
                 }
             }
@@ -587,8 +597,13 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
                             o.add(Axiom::Rule(bvec, hvec));
                         }
                     }
+                    // A nonempty head of SQWRL observers only constrains
+                    // nothing; it is a query, not an axiom with content.
+                    return Ok(());
                 }
             }
+            // A rule whose atoms cannot be represented is not encoded.
+            o.drop_source_axiom("DLSafeRule");
         }
         "DataPropertyDomain" => {
             // domain(p) = C ≡ ∃p.⊤ ⊑ C
@@ -735,13 +750,15 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
             // range(p) = D ≡ ⊤ ⊑ ∀p.D over the range's abstraction concept.
             // (data_range.rs separately derives the empty-range constraints;
             // DataPropertyDomain already has its own arm above.)
-            o.add(Axiom::SubClassOf(
-                Concept::Top,
-                Concept::Forall(
-                    Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
-                    Box::new(dt_concept(args[1])),
-                ),
-            ));
+            // A universal range constrains nothing; an empty one gives
+            // `⊤ ⊑ ∀p.⊥`, i.e. p has no value anywhere.
+            let range = data_all(
+                Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
+                dt_concept(args[1]),
+            );
+            if range != Concept::Top {
+                o.add(Axiom::SubClassOf(Concept::Top, range));
+            }
         }
         "DatatypeDefinition" => {
             o.add(Axiom::EquivalentClasses(
@@ -750,12 +767,23 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
             ));
         }
         other if other.starts_with("Data") || other == "HasKey" => {
-            // remaining datatype axioms (negative assertions, keys): sound to
-            // drop — they only constrain named individuals, so dropping can
-            // lose an inconsistency, never invent a consequence
+            // Remaining datatype axioms and keys are not encoded. Dropping one
+            // never invents a consequence but can lose an inconsistency, and an
+            // inconsistent ontology entails every subsumption, so the drop is
+            // counted and published with a consistent answer. Data-property
+            // assertions (positive ones not converted, and negative ones) are
+            // counted by their own carry path (`uncarried_data_assertions`).
+            if !matches!(other, "DataPropertyAssertion" | "NegativeDataPropertyAssertion") {
+                o.drop_source_axiom(other);
+            }
         }
-        _ => {
-            // anything else: silently skipped
+        // Annotation-property axioms constrain no logical entailment.
+        "SubAnnotationPropertyOf" | "AnnotationPropertyDomain" | "AnnotationPropertyRange" => {}
+        // Counted by the data-assertion carry path (`uncarried_data_assertions`).
+        "NegativeDataPropertyAssertion" => {}
+        other => {
+            // Any other axiom kind is not represented: count it.
+            o.drop_source_axiom(other);
         }
     }
     Ok(())
@@ -862,8 +890,42 @@ where
         }
         Ok(())
     })?;
+    // Keys distinguish values across subjects and rules can compare them,
+    // which the literal-profile abstraction does not preserve; the parser
+    // may drop both, so screen the source (only when the conversion is
+    // requested).
+    if data_assertion_as_class_enabled() && (text.contains("HasKey(") || text.contains("DLSafeRule(")) {
+        ontology.block_literal_abstraction();
+    }
     ontology.commit_data_assertions_as_class(data_assertion_literal_cap());
+    add_bottom_property_axioms(reg, ontology);
     Ok(())
+}
+
+/// `owl:bottomDataProperty` and `owl:bottomObjectProperty` relate nothing
+/// (OWL 2 Direct Semantics, Table 4), but the parser maps each to an ordinary
+/// role name. When the source uses one, add `∃bottom.⊤ ⊑ ⊥`, the exact
+/// meaning of the builtin: every restriction that forces a filler of it (or
+/// of a subproperty) is then `⊥`, and every `∀`/`≤` restriction on it is
+/// `⊤`. The object property also gets the inverse form, so a restriction on
+/// `bottomObjectProperty⁻` is handled without an inverse-role inference.
+/// Sources that mention neither are unchanged.
+fn add_bottom_property_axioms(reg: &IriRegistry, ontology: &mut Ontology) {
+    const DATA: [&str; 2] =
+        ["owl:bottomDataProperty", "http://www.w3.org/2002/07/owl#bottomDataProperty"];
+    const OBJECT: [&str; 2] =
+        ["owl:bottomObjectProperty", "http://www.w3.org/2002/07/owl#bottomObjectProperty"];
+    let empty = |role: Role| Axiom::SubClassOf(
+        Concept::Exists(role, Box::new(Concept::Top)),
+        Concept::Bottom,
+    );
+    if let Some(name) = DATA.iter().find_map(|spelling| reg.assigned(spelling)) {
+        ontology.add(empty(Role::Name(name.to_string())));
+    }
+    if let Some(name) = OBJECT.iter().find_map(|spelling| reg.assigned(spelling)) {
+        ontology.add(empty(Role::Name(name.to_string())));
+        ontology.add(empty(Role::Inverse(name.to_string())));
+    }
 }
 
 /// Positive data-property assertions are carried as `DataHasValue` class
@@ -958,6 +1020,96 @@ mod axiom_drop_regression_tests {
     }
 
     #[test]
+    fn literal_existential_is_the_unqualified_min_cardinality() {
+        for literal in ["rdfs:Literal", "<http://www.w3.org/2000/01/rdf-schema#Literal>"] {
+            let mut registry = IriRegistry::new();
+            let text = format!(
+                "Ontology(SubClassOf(<A> DataSomeValuesFrom(<p> {literal})) \
+                 SubClassOf(<B> DataMinCardinality(1 <p>)))"
+            );
+            let ontology = parse_axioms(&mut registry, &text).unwrap();
+            let sups: Vec<&Concept> = ontology.tbox().map(|axiom| match axiom {
+                Axiom::SubClassOf(_, sup) => sup,
+                other => panic!("unexpected axiom {other:?}"),
+            }).collect();
+            assert_eq!(sups.len(), 2);
+            assert_eq!(sups[0], sups[1], "{literal}");
+            assert_eq!(sups[0], &Concept::AtLeast(1, Role::Name("p".into()), Box::new(Concept::Top)));
+        }
+        // Other data ranges keep their datatype filler.
+        let mut registry = IriRegistry::new();
+        let ontology = parse_axioms(&mut registry,
+            "Ontology(SubClassOf(<A> DataSomeValuesFrom(<p> xsd:integer)))").unwrap();
+        assert!(matches!(ontology.tbox().next(),
+            Some(Axiom::SubClassOf(_, Concept::Exists(_, filler))) if **filler == Concept::Name("__dt__integer".into())));
+    }
+
+    #[test]
+    fn empty_and_universal_data_ranges_simplify_their_restrictions() {
+        let sup = |body: &str| {
+            let mut registry = IriRegistry::new();
+            let ontology = parse_axioms(&mut registry, &format!("Ontology(SubClassOf(<A> {body}))")).unwrap();
+            let sup = match ontology.tbox().next() {
+                Some(Axiom::SubClassOf(_, sup)) => sup.clone(),
+                other => panic!("unexpected axiom {other:?}"),
+            };
+            sup
+        };
+        let p = || Role::Name("p".into());
+        let has = Concept::AtLeast(1, p(), Box::new(Concept::Top));
+        for empty in ["DataComplementOf(rdfs:Literal)", "DataIntersectionOf(xsd:integer xsd:string)"] {
+            assert_eq!(sup(&format!("DataSomeValuesFrom(<p> {empty})")), Concept::Bottom, "{empty}");
+            assert_eq!(sup(&format!("DataAllValuesFrom(<p> {empty})")),
+                Concept::Forall(p(), Box::new(Concept::Bottom)), "{empty}");
+            assert_eq!(sup(&format!("DataMinCardinality(2 <p> {empty})")), Concept::Bottom, "{empty}");
+            assert_eq!(sup(&format!("DataMinCardinality(0 <p> {empty})")), Concept::Top, "{empty}");
+            assert_eq!(sup(&format!("DataMaxCardinality(0 <p> {empty})")), Concept::Top, "{empty}");
+            assert_eq!(sup(&format!("DataExactCardinality(1 <p> {empty})")), Concept::Bottom, "{empty}");
+        }
+        for universal in ["rdfs:Literal", "DataUnionOf(xsd:integer DataComplementOf(xsd:integer))"] {
+            assert_eq!(sup(&format!("DataSomeValuesFrom(<p> {universal})")), has, "{universal}");
+            assert_eq!(sup(&format!("DataAllValuesFrom(<p> {universal})")), Concept::Top, "{universal}");
+            assert_eq!(sup(&format!("DataMaxCardinality(1 <p> {universal})")), sup("DataMaxCardinality(1 <p>)"));
+            assert_eq!(sup(&format!("DataExactCardinality(1 <p> {universal})")), sup("DataExactCardinality(1 <p>)"));
+        }
+        // A universal range axiom constrains nothing; an empty one forbids values.
+        let mut registry = IriRegistry::new();
+        let ontology = parse_axioms(&mut registry,
+            "Ontology(DataPropertyRange(<p> rdfs:Literal) DataPropertyRange(<q> DataComplementOf(rdfs:Literal)))").unwrap();
+        let axioms: Vec<_> = ontology.tbox().cloned().collect();
+        assert_eq!(axioms, vec![Axiom::SubClassOf(Concept::Top,
+            Concept::Forall(Role::Name("q".into()), Box::new(Concept::Bottom)))]);
+    }
+
+    #[test]
+    fn bottom_data_property_has_no_values() {
+        let mut registry = IriRegistry::new();
+        let ontology = parse_axioms(&mut registry,
+            "Ontology(SubDataPropertyOf(<p> owl:bottomDataProperty))").unwrap();
+        let name = registry.assigned("owl:bottomDataProperty").unwrap().to_string();
+        assert!(ontology.tbox().any(|axiom| *axiom == Axiom::SubClassOf(
+            Concept::Exists(Role::Name(name.clone()), Box::new(Concept::Top)), Concept::Bottom)));
+        let mut registry = IriRegistry::new();
+        let ontology = parse_axioms(&mut registry, "Ontology(SubClassOf(<A> DataMinCardinality(1 <p>)))").unwrap();
+        assert_eq!(ontology.tbox().count(), 1);
+    }
+
+    #[test]
+    fn bottom_object_property_has_no_fillers() {
+        let mut registry = IriRegistry::new();
+        let ontology = parse_axioms(&mut registry,
+            "Ontology(SubObjectPropertyOf(<r> owl:bottomObjectProperty))").unwrap();
+        let name = registry.assigned("owl:bottomObjectProperty").unwrap().to_string();
+        for role in [Role::Name(name.clone()), Role::Inverse(name.clone())] {
+            assert!(ontology.tbox().any(|axiom| *axiom == Axiom::SubClassOf(
+                Concept::Exists(role.clone(), Box::new(Concept::Top)), Concept::Bottom)));
+        }
+        let mut registry = IriRegistry::new();
+        let ontology = parse_axioms(&mut registry, "Ontology(SubClassOf(<A> ObjectMinCardinality(1 <r>)))").unwrap();
+        assert_eq!(ontology.tbox().count(), 1);
+    }
+
+    #[test]
     fn requested_data_assertion_becomes_its_has_value_class_assertion() {
         let text = "Ontology(DataPropertyAssertion(<p> <a> \"1\"^^xsd:integer) \
                     DataPropertyAssertion(<p> <b> \"2\"^^xsd:integer))";
@@ -989,6 +1141,43 @@ mod axiom_drop_regression_tests {
         ontology.commit_data_assertions_as_class(1);
         assert_eq!(ontology.data_assertions_as_class(), 2);
         assert_eq!(ontology.abox().count(), 2);
+    }
+
+    #[test]
+    fn data_assertions_above_the_cap_are_carried_by_profile() {
+        let value = |v: &str| Concept::Name(format!("__dt__val__\"{v}\"^^xsd:integer"));
+        let assertion = |individual: &str, v: &str| Axiom::ConceptAssertion(
+            Concept::Exists(Role::Name("p".into()), Box::new(value(v))), individual.into());
+        let literal = |v: &str| format!("\"{v}\"^^xsd:integer");
+        let build = |extra: Option<Axiom>| {
+            let mut ontology = Ontology::new();
+            // The TBox observes the token 1 and the range xsd:integer.
+            ontology.add(Axiom::SubClassOf(Concept::Exists(Role::Name("p".into()), Box::new(value("1"))),
+                Concept::Name("D".into())));
+            ontology.add(Axiom::SubClassOf(Concept::Top,
+                Concept::Forall(Role::Name("p".into()), Box::new(Concept::Name("__dt__integer".into())))));
+            if let Some(axiom) = extra { ontology.add(axiom); }
+            for (individual, v) in [("a", "1"), ("a", "2"), ("b", "3"), ("c", "2"), ("c", "4")] {
+                ontology.defer_data_assertion_as_class(assertion(individual, v), literal(v));
+            }
+            ontology.commit_data_assertions_as_class(2);
+            ontology
+        };
+        // Four literals over a cap of two: 1 keeps its identity (a token),
+        // 2, 3 and 4 share the representative 2. Every source assertion is
+        // carried; c's two values become one class assertion.
+        let ontology = build(None);
+        assert_eq!(ontology.data_assertions_as_class(), 5);
+        assert_eq!(ontology.data_assertion_class_axioms(), 4);
+        let abox: std::collections::BTreeSet<String> = ontology.abox().map(|a| format!("{a:?}")).collect();
+        let expected: std::collections::BTreeSet<String> = [("a", "1"), ("a", "2"), ("b", "2"), ("c", "2")]
+            .iter().map(|(i, v)| format!("{:?}", assertion(i, v))).collect();
+        assert_eq!(abox, expected);
+        // Counting on the property blocks the abstraction: the conversion
+        // declines as a whole above the cap.
+        let ontology = build(Some(Axiom::FunctionalRole("p".into())));
+        assert_eq!(ontology.data_assertions_as_class(), 0);
+        assert_eq!(ontology.abox().count(), 0);
     }
 
     #[test]

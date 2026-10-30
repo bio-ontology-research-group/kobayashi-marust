@@ -1,0 +1,8 @@
+{
+  "ontology": "inv_succ_atmost1_q.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": [
+    "B"
+  ]
+}

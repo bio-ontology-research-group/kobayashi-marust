@@ -149,13 +149,14 @@ fn spawn_tableau(
         return None;
     }
     let (tab_prog, tab_pre) = cfg.tab_cmd();
-    let (cl, rbox, cards, definers, source_axioms, nominal_abox): (
+    let (cl, rbox, cards, definers, source_axioms, nominal_abox, data_roles): (
         Vec<JClause>,
         Vec<Vec<String>>,
         Vec<crate::json_io::CardMeta>,
         Vec<crate::json_io::DefinerMeta>,
         Vec<crate::json_io::SourceAxiomMeta>,
         crate::json_io::NominalAboxMeta,
+        Vec<String>,
     ) = {
         // from_slice on a read buffer, not from_reader — the clause file is
         // multi-MB on large onts and the reader path is markedly slower.
@@ -171,6 +172,7 @@ fn spawn_tableau(
             v.definers,
             v.source_axioms,
             v.nominal_abox,
+            v.data_roles,
         )
     };
     // giants: the engine path owns them
@@ -192,6 +194,7 @@ fn spawn_tableau(
         &[],
         false,
     );
+    cb_to_ht::attach_data_roles(&mut tin, &data_roles);
     cb_to_ht::install_nominal_abox(&mut tin, &nominal_abox);
     // Diagnostic parity with the HT racer: preserve the exact converted input
     // before any legacy-tableau fragment fence is applied.  This is inert unless
@@ -750,6 +753,20 @@ pub fn elc_portfolio_threads(cfg: &Config) -> Option<usize> {
 /// HT is SOUND on this fragment; route iff the cb_to_ht encoding is faithful
 /// (nothing fenced/dropped) and there are no inverse roles and no nominals.
 /// Number restrictions (ALCQ) ARE allowed. Port of `_ht_routable`.
+/// Clauses and fenced constructs the HT conversion could not represent
+/// exactly, when `KM_HT_FORCE` (the `ht_general` measurement bundle) ran the
+/// worker on an input outside every HT publication gate. The worker's answer
+/// then omits them, so they are published as dropped, which a forced route
+/// turns into a refusal (`orchestrate::classify_with_evidence_mode`). Zero
+/// whenever a gate admitted the input, so no other HT path changes.
+fn forced_ht_bypass_drops(tin: &cb_to_ht::TInput) -> usize {
+    if std::env::var_os("KM_HT_FORCE").is_some() && !ht_routable(tin) {
+        tin.dropped + tin.fenced.len()
+    } else {
+        0
+    }
+}
+
 fn ht_routable(tin: &cb_to_ht::TInput) -> bool {
     if !tin.fenced.is_empty() || tin.dropped != 0 {
         return false;
@@ -772,7 +789,7 @@ pub(crate) fn prepare_incremental_ht(
         return None;
     }
     let named = frontend.named.iter().cloned().collect();
-    let tin = cb_to_ht::convert(
+    let mut tin = cb_to_ht::convert(
         &frontend.clauses,
         Some(frontend.rbox.as_slice()),
         &named,
@@ -783,6 +800,7 @@ pub(crate) fn prepare_incremental_ht(
         &[],
         false,
     );
+    cb_to_ht::attach_data_roles(&mut tin, &frontend.data_roles);
     // `ht_general` deliberately consumes the legacy clause-only view. Its
     // compact-nominal automatic leaf keeps singleton and ground ABox meaning
     // in those clauses and does not install the typed ABox a second time. The
@@ -833,6 +851,7 @@ pub(crate) fn prepare_incremental_card(
         &[],
         false,
     );
+    cb_to_ht::attach_data_roles(&mut tin, &frontend.data_roles);
     let allow_same = std::env::var_os("KM_HT_CERT_NO_BLOCKING").is_some()
         || std::env::var_os("KM_HT_GLOBAL_NATIVE_ABOX").is_some();
     if !cb_to_ht::install_nominal_abox_with_same(&mut tin, &frontend.nominal_abox, allow_same) {
@@ -878,6 +897,7 @@ pub(crate) fn prepare_incremental_nominal_ni(
         &[],
         false,
     );
+    cb_to_ht::attach_data_roles(&mut tin, &frontend.data_roles);
     if !certified_tbox_only
         && !cb_to_ht::install_nominal_abox_with_same(&mut tin, &frontend.nominal_abox, true)
     {
@@ -903,7 +923,7 @@ pub(crate) fn prepare_incremental_qo(
         return None;
     }
     let named = frontend.named.iter().cloned().collect();
-    let tin = cb_to_ht::convert(
+    let mut tin = cb_to_ht::convert(
         &frontend.clauses,
         Some(frontend.rbox.as_slice()),
         &named,
@@ -914,6 +934,7 @@ pub(crate) fn prepare_incremental_qo(
         &[],
         false,
     );
+    cb_to_ht::attach_data_roles(&mut tin, &frontend.data_roles);
     (tin.dropped == 0
         && tin.fenced.is_empty()
         && tin.nominals.is_empty()
@@ -933,7 +954,7 @@ pub(crate) fn prepare_incremental_bridge(
         return None;
     }
     let named = frontend.named.iter().cloned().collect();
-    let tin = cb_to_ht::convert(
+    let mut tin = cb_to_ht::convert(
         &frontend.clauses,
         Some(frontend.rbox.as_slice()),
         &named,
@@ -944,6 +965,7 @@ pub(crate) fn prepare_incremental_bridge(
         &[],
         false,
     );
+    cb_to_ht::attach_data_roles(&mut tin, &frontend.data_roles);
     let trigger_bridge = std::env::var_os("KM_TRIGGER_ABSORB").is_some();
     let source_tbox = trigger_bridge
         && !tin.source_axioms.is_empty()
@@ -1727,7 +1749,7 @@ fn positive_role_proxy_abox_certificate(tin: &cb_to_ht::TInput) -> Option<ProxyA
             let mut assertions = individual.assertions.clone();
             assertions.sort_unstable();
             assertions.dedup();
-            (assertions.len() == 1).then_some(assertions[0])
+            (assertions.len() == 1).then(|| assertions[0])
         })
         .collect::<Option<_>>()?;
     if assertion_ids
@@ -2069,6 +2091,7 @@ pub(crate) fn prepare_incremental_card_proxy(
         &[],
         false,
     );
+    cb_to_ht::attach_data_roles(&mut tin, &frontend.data_roles);
     let card_recog = std::env::var_os("KM_NO_HT_CARD_RECOG").is_none();
     if !card_candidate_from(
         &tin,
@@ -2135,7 +2158,7 @@ fn prepare_ht(
     named: &std::collections::HashSet<String>,
 ) -> Option<PreparedHt> {
     let (tab_prog, tab_pre) = cfg.tab_cmd();
-    let (cl, rbox, cards, definers, source_axioms, nominal_abox, rules): (
+    let (cl, rbox, cards, definers, source_axioms, nominal_abox, rules, data_roles): (
         Vec<JClause>,
         Vec<Vec<String>>,
         Vec<crate::json_io::CardMeta>,
@@ -2143,6 +2166,7 @@ fn prepare_ht(
         Vec<crate::json_io::SourceAxiomMeta>,
         crate::json_io::NominalAboxMeta,
         Vec<crate::json_io::JRule>,
+        Vec<String>,
     ) = {
         // from_slice on a read buffer, not from_reader — the clause file is
         // multi-MB on large onts and the reader path is markedly slower.
@@ -2159,6 +2183,7 @@ fn prepare_ht(
             v.source_axioms,
             v.nominal_abox,
             v.rules,
+            v.data_roles,
         )
     };
     // Raw source metadata must be checked before conversion can project it.
@@ -2205,6 +2230,7 @@ fn prepare_ht(
         &[],
         false,
     );
+    cb_to_ht::attach_data_roles(&mut tin, &data_roles);
     let card_recog = std::env::var_os("KM_NO_HT_CARD_RECOG").is_none();
     // Native-ABox admission for the cardinality arm (`KM_HT_CARD_PROXY_ABOX`,
     // set by the `certified_card_proxy_abox` route). If the ordinary role-
@@ -2928,8 +2954,13 @@ pub fn run_ht_only(
     clauses_path: &Path,
     named: &std::collections::HashSet<String>,
 ) -> Result<EngineOut, OrchestrateError> {
-    let Some((mut child, mut out_path, _, _, _, _, mut proxy_abox_certificate, _)) =
-        spawn_ht(cfg, clauses_path, named)
+    let Some(prepared) = prepare_ht(cfg, clauses_path, named) else {
+        return Err(OrchestrateError::OutOfFragment(
+            "ontology is outside the selected HT mechanism's structural gate".into(),
+        ));
+    };
+    let bypass_drops = forced_ht_bypass_drops(&prepared.tin);
+    let Some((mut child, mut out_path, _, _, _, _, mut proxy_abox_certificate, _)) = prepared.launch()
     else {
         return Err(OrchestrateError::OutOfFragment(
             "ontology is outside the selected HT mechanism's structural gate".into(),
@@ -2972,7 +3003,9 @@ pub fn run_ht_only(
             return Err(OrchestrateError::OutOfFragment(
                 "compact native output cannot bypass proxy ABox verification".into()));
         }
-        return super::parse_out_path(out_path.path());
+        let mut out = super::parse_out_path(out_path.path())?;
+        out.dropped += bypass_drops;
+        return Ok(out);
     }
     let output = File::open(out_path.path())?;
     let mut parsed: TOutput = serde_json::from_reader(BufReader::new(output)).map_err(|error| {
@@ -2993,7 +3026,9 @@ pub fn run_ht_only(
     if let Some(certificate) = &proxy_abox_certificate {
         proxy_abox_filter_output(certificate, &mut parsed);
     }
-    Ok(tableau_to_out(parsed))
+    let mut out = tableau_to_out(parsed);
+    out.dropped += bypass_drops;
+    Ok(out)
 }
 
 /// Run the narrowly routed SHOQ worker in this process.
@@ -3020,6 +3055,7 @@ pub fn run_ht_shoq_in_process(
         source_axioms,
         nominal_abox,
         rules,
+        data_roles,
         ..
     } = frontend;
     let view =
@@ -3035,6 +3071,7 @@ pub fn run_ht_shoq_in_process(
         &[],
         false,
     );
+    cb_to_ht::attach_data_roles(&mut tin, &data_roles);
     if !cb_to_ht::install_nominal_abox_with_same(&mut tin, &nominal_abox, false) {
         return Err(OrchestrateError::OutOfFragment(
             "SHOQ typed ABox conversion was incomplete".into(),
@@ -3113,6 +3150,7 @@ pub fn run_ht_general_in_process(
         source_axioms,
         nominal_abox,
         rules,
+        data_roles,
         ..
     } = frontend;
     if !rules.is_empty() {
@@ -3121,7 +3159,7 @@ pub fn run_ht_general_in_process(
         ));
     }
     let view = native_nominal_bridge_clauses(&clauses, &nominal_abox, &definers, false, false);
-    let tin = cb_to_ht::convert(
+    let mut tin = cb_to_ht::convert(
         &view,
         Some(rbox.as_slice()),
         named,
@@ -3132,6 +3170,7 @@ pub fn run_ht_general_in_process(
         &[],
         false,
     );
+    cb_to_ht::attach_data_roles(&mut tin, &data_roles);
     drop(view);
     drop(clauses);
     // The converter consumed the typed side data by reference and `tin` now
@@ -3166,14 +3205,17 @@ pub fn run_ht_general_in_process(
             ordinary_ht_workers(tin.clauses.len(), avail_cpus()).to_string(),
         );
     }
+    let bypass_drops = forced_ht_bypass_drops(&tin);
     let result = crate::tableau::run_producer_input_typed(tin).map_err(|error| {
         OrchestrateError::OutOfFragment(format!("selected general HT mechanism deferred ({error})"))
     })?;
-    Ok(tableau_to_out(TOutput {
+    let mut out = tableau_to_out(TOutput {
         consistent: result.consistent,
         subsumptions: result.subsumptions,
         unsatisfiable: result.unsatisfiable,
-    }))
+    });
+    out.dropped += bypass_drops;
+    Ok(out)
 }
 
 /// Run the exact native completion bridge over the typed frontend payload in
@@ -3192,6 +3234,7 @@ pub fn run_ht_bridge_in_process(
         source_axioms,
         nominal_abox,
         rules,
+        data_roles,
         ..
     } = frontend;
     if !rules.is_empty() {
@@ -3211,6 +3254,7 @@ pub fn run_ht_bridge_in_process(
         &[],
         false,
     );
+    cb_to_ht::attach_data_roles(&mut tin, &data_roles);
     if !cb_to_ht::install_nominal_abox_with_same(&mut tin, &nominal_abox, true) {
         return Err(OrchestrateError::OutOfFragment(
             "native HT bridge ABox conversion was incomplete".into(),

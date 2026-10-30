@@ -1,0 +1,23 @@
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix ex: <http://example.org/vocab/> .
+
+ex:ontology a owl:Ontology ;
+    rdfs:comment "Non-ASCII test: ° µ é 🧪 and a \"quoted\" word"@en .
+
+ex:Angle a owl:Class .
+ex:Degree a owl:Class ; rdfs:subClassOf ex:Angle .
+
+<http://example.org/vocab/µ-class> a owl:Class ; rdfs:subClassOf ex:Degree .
+
+ex:hasValue a owl:ObjectProperty .
+ex:ind1 a ex:Degree .
+
+[
+  a owl:Axiom ;
+  owl:annotatedSource ex:Degree ;
+  owl:annotatedProperty rdfs:subClassOf ;
+  owl:annotatedTarget ex:Angle ;
+  rdfs:comment "annoté with ° and \"quotes\" and backslash \\"@en
+] .

@@ -1,0 +1,10 @@
+f300_before_auto.txt	ERR=3 ok=296 WRONG=1 
+f300_before_plain.txt	ERR=7 ok=290 WRONG=3 
+f300_fix2_auto.txt	ERR=3 ok=296 WRONG=1 
+f300_fix2_plain.txt	ERR=6 ok=294 
+s700_before_auto.txt	ERR=3 hermit-error=2 ok=695 
+s700_before_plain.txt	ERR=22 hermit-error=2 ok=674 WRONG=2 
+s700_final_auto.txt	ERR=3 hermit-error=2 ok=695 
+s700_final_plain.txt	ERR=22 hermit-error=2 ok=676 
+s700_fix1_auto.txt	ERR=3 hermit-error=2 ok=695 
+s700_fix1_plain.txt	ERR=24 hermit-error=2 ok=674 

@@ -564,10 +564,24 @@ pub fn lteq(o1: &Lit, o2: &Lit, root: bool, sig: &Sig) -> bool {
         }
         (P(p), eqn @ (Eq { .. } | Ineq { .. })) => {
             let es = eqn_s(eqn);
-            match p {
+            let le = match p {
                 Pred::Concept { t, .. } => !(es <= *t),
                 Pred::Role { s, t, .. } => !(es <= *s || es <= *t),
+            };
+            // Context regime, R2 for equalities (docs/PER-CONTEXT-ORDERING.md):
+            // R3 delivers a ground unit `o ≈ o'` to a context that announced
+            // either individual, so no ground atom may lie below a ground
+            // equality, or the unit stays trapped behind it (seed297_min:
+            // `→ Q_0(a) ∨ b ≈ a` with `Q_0(a)` refutable). Only removes
+            // comparisons.
+            if le
+                && matches!(eqn, Eq { s, t } if is_individual(*s) && is_individual(*t))
+                && ground_interface_order()
+                && is_ground_atom(p)
+            {
+                return false;
             }
+            le
         }
 
         (P(p1), P(p2)) => pred_lteq(p1, p2, root, sig),
@@ -621,13 +635,38 @@ fn ordered_all() -> bool {
 ///     Sequoia's `ContextLiteralOrdering` (query concepts incomparable + below;
 ///     everything else ordered above), which is published-complete for SROIQ
 ///     classification.  Unlike `KM_ORDERED_ALL` it never orders named concepts
-///     against each other, so it does not regress 13383.
-/// Effective seq-order state. `2` = undecided (router has not run yet); `1`/`0`
-/// = on/off as decided by the auto-router or an env override. Stored as a
+///     against each other, so it does not regress 13383.  That argument does
+///     not cover KM's nominal ground context: under `KM_NOMINALS` the plain
+///     ordering is incomplete, and the router selects the context regime
+///     (`SEQ_ORDER_CONTEXT`, `set_seq_order_auto`) instead.
+/// Effective seq-order state. `2` = undecided (router has not run yet); `0` =
+/// unordered, `1` = plain Sequoia, `3` = context regime (Sequoia + R2 + R3),
+/// `4` = base context regime (unordered + R2 + R3), as decided by the
+/// auto-router or an env override. Stored as a
 /// process-global atomic so the parallel workers (set up after the router runs
 /// in `Reasoner::saturate`) all observe the same value with a single relaxed
 /// load in the `pred_lteq` hot path.
 static SEQ_ORDER: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(2);
+
+/// `SEQ_ORDER` value of the nominal-safe Sequoia regime (`KM_SEQ_ORDER=context`).
+pub const SEQ_ORDER_CONTEXT: u8 = 3;
+
+/// `SEQ_ORDER` value of the base context regime: the unordered same-term
+/// concept order plus R2 and R3 (nominal mode where the Sequoia order is not
+/// selected, and `KM_NO_SEQ_ORDER` in nominal mode).
+pub const SEQ_ORDER_BASE_CONTEXT: u8 = 4;
+
+/// Parse an explicit `KM_SEQ_ORDER` value: `context` selects the nominal-safe
+/// regime, any other value the plain Sequoia ordering (diagnostic).
+fn seq_order_env() -> Option<u8> {
+    std::env::var_os("KM_SEQ_ORDER").map(|value| {
+        if value == "context" {
+            SEQ_ORDER_CONTEXT
+        } else {
+            1
+        }
+    })
+}
 
 /// Auto-route `KM_SEQ_ORDER`: enable the Sequoia definer ordering iff the
 /// ontology has a disjunctive head containing an internal definer (the
@@ -635,30 +674,128 @@ static SEQ_ORDER: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new
 /// disjunction onts pay the `is_internal` overhead with no gain, so they route
 /// off). Validated across the full ORE corpus (results/seqorder-routing-*.txt):
 /// keeps all +6 recoveries and the meaningful speedups, avoids 27/28 slowdowns.
-/// Both orderings are complete (named concepts stay incomparable either way), so
-/// this only selects the faster validated regime per ontology. Env still wins:
-/// `KM_SEQ_ORDER` forces on, `KM_NO_SEQ_ORDER` forces off.
+///
+/// Nominal mode (`KM_NOMINALS`) always carries R2 and R3 of the context
+/// regime (docs/PER-CONTEXT-ORDERING.md): `SEQ_ORDER_CONTEXT` (Sequoia + R2 +
+/// R3) wherever the plain Sequoia ordering would be selected without
+/// nominals, `SEQ_ORDER_BASE_CONTEXT` (unordered + R2 + R3) otherwise. The
+/// nominal ground context delivers a ground clause only to contexts that
+/// announced every individual it mentions, so its saturation must contain, for
+/// every such interface, the clauses that a refutation in the receiving
+/// context needs. Ordered resolution provides that when the interface atoms
+/// are downward closed in the ground context's order
+/// (`lean/ContextCalculus/CompletenessExchange.lean`,
+/// `downward_server_complete`; the condition is necessary,
+/// `ordered_server_interface_not_lower_counterexample`). Neither the plain
+/// Sequoia order (seed 297) nor the unordered one (`p1`, `p2`, which compare
+/// ground atoms of different individuals term-major) meets it. The rules: (1)
+/// the Sequoia order, in state 3 only, on every literal with a variable or a
+/// Skolem term; (2) when the ontology can give a context a ground interface
+/// (`set_ground_interfaces`), no ground atom below a ground atom whose
+/// individuals do not include its own, or below a ground equality; (3) a
+/// derived ground equality `o ≈ o'` is delivered to a context that announced
+/// either individual (`eq_announce`). The only nominal-mode exception is
+/// `KM_CB_LEAN_REQUIRED`, which keeps the plain unordered state 0 that the
+/// certification surface models, and which is known to miss `p1` and `p2`.
+/// Env wins: `KM_SEQ_ORDER=1` forces the plain Sequoia ordering (a diagnostic,
+/// incomplete under nominals), `KM_SEQ_ORDER=context` the context regime, and
+/// `KM_NO_SEQ_ORDER` drops the Sequoia order (state 0 without nominals,
+/// state 4 in nominal mode).
 pub fn set_seq_order_auto(on: bool) {
-    let eff = if std::env::var_os("KM_SEQ_ORDER").is_some() {
-        true
-    } else if std::env::var_os("KM_NO_SEQ_ORDER").is_some() {
-        false
+    let nominal = std::env::var_os("KM_NOMINALS").is_some();
+    // The CB certification surface models the unordered literal order and the
+    // exact r-Pred guard (`CBSourceHyperClosure.predLe`,
+    // `CBRootPredSendEnumeration`), not R2/R3, so a run that must publish a
+    // Lean certificate keeps the plain unordered regime (state 0). That
+    // configuration is known to miss the cross-individual probes `p1`/`p2`
+    // (docs/PER-CONTEXT-ORDERING.md section 4).
+    let certified = std::env::var_os("KM_CB_LEAN_REQUIRED").is_some();
+    let eff = if let Some(forced) = seq_order_env() {
+        forced
+    } else if nominal && !certified {
+        // Nominal mode always carries R2 and R3; the Sequoia same-term order
+        // is added where it would be selected without nominals.
+        if on && std::env::var_os("KM_NO_SEQ_ORDER").is_none() {
+            SEQ_ORDER_CONTEXT
+        } else {
+            SEQ_ORDER_BASE_CONTEXT
+        }
+    } else if on && std::env::var_os("KM_NO_SEQ_ORDER").is_none() && !nominal {
+        1
     } else {
-        on
+        0
     };
-    SEQ_ORDER.store(
-        if eff { 1 } else { 0 },
-        std::sync::atomic::Ordering::Relaxed,
-    );
+    SEQ_ORDER.store(eff, std::sync::atomic::Ordering::Relaxed);
 }
 
-fn seq_order() -> bool {
+#[inline]
+fn seq_order_state() -> u8 {
     match SEQ_ORDER.load(std::sync::atomic::Ordering::Relaxed) {
-        1 => true,
-        0 => false,
-        // Router has not run (e.g. a code path that orders before saturation):
-        // fall back to the explicit env flag, preserving the prior behaviour.
-        _ => std::env::var_os("KM_SEQ_ORDER").is_some(),
+        2 => seq_order_env().unwrap_or(0),
+        state => state,
+    }
+}
+
+/// Sequoia same-term concept ordering active (plain or context regime).
+fn seq_order() -> bool {
+    matches!(seq_order_state(), 1 | SEQ_ORDER_CONTEXT)
+}
+
+/// R2 and R3 are in force (context or base context regime): a ground atom lies
+/// below another ground atom only when its individuals are among the other's,
+/// and derived ground equalities follow the announced-individual interface.
+#[inline]
+pub fn seq_order_context() -> bool {
+    matches!(seq_order_state(), SEQ_ORDER_CONTEXT | SEQ_ORDER_BASE_CONTEXT)
+}
+
+/// Under the context regime, a ground equality `o ≈ o'` between individuals is
+/// delivered by the ground context to a context that announced either
+/// individual (docs/PER-CONTEXT-ORDERING.md). This is an instance of the
+/// unguarded r-Pred of arXiv:1805.01396 (Table 3, `n = 0`), so it is sound.
+#[inline]
+pub fn eq_announce() -> bool {
+    seq_order_context() && !context_flag_off(&CONTEXT_NO_R3, "KM_CONTEXT_NO_R3")
+}
+
+/// Whether some ontology clause with a variable or a Skolem term mentions an
+/// individual (set by the reasoner with `set_seq_order_auto`). Without such a
+/// clause no context other than the ground context ever holds a ground atom or
+/// an individual-labelled edge to it, so the r-Pred guard never delivers a
+/// ground clause and R2 has nothing to protect (docs/PER-CONTEXT-ORDERING.md
+/// section 5). Conservative default: `true`.
+static GROUND_INTERFACES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+/// Record whether the ontology can give a non-ground context a ground
+/// interface (see `GROUND_INTERFACES`).
+pub fn set_ground_interfaces(possible: bool) {
+    GROUND_INTERFACES.store(possible, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// R2 of the context regime is in force.
+#[inline]
+fn ground_interface_order() -> bool {
+    seq_order_context()
+        && GROUND_INTERFACES.load(std::sync::atomic::Ordering::Relaxed)
+        && !context_flag_off(&CONTEXT_NO_R2, "KM_CONTEXT_NO_R2")
+}
+
+static CONTEXT_NO_R2: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+static CONTEXT_NO_R3: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+
+/// Diagnostic switches that disable one rule of the context regime
+/// (`KM_CONTEXT_NO_R2`, `KM_CONTEXT_NO_R3`); read once per process.
+#[inline]
+fn context_flag_off(cell: &std::sync::OnceLock<bool>, name: &str) -> bool {
+    *cell.get_or_init(|| std::env::var_os(name).is_some())
+}
+
+/// A ground atom: every argument is a named individual (or additional nominal).
+#[inline]
+fn is_ground_atom(p: &Pred) -> bool {
+    match *p {
+        Pred::Concept { t, .. } => is_individual(t),
+        Pred::Role { s, t, .. } => is_individual(s) && is_individual(t),
     }
 }
 
@@ -767,6 +904,41 @@ fn eqn_s(l: &Lit) -> Term {
 }
 
 fn pred_lteq(p1: &Pred, p2: &Pred, root: bool, sig: &Sig) -> bool {
+    let le = pred_lteq_base(p1, p2, root, sig);
+    // Context regime (docs/PER-CONTEXT-ORDERING.md, R2): a ground atom may lie
+    // below another ground atom only if its individuals are among the other's.
+    // A context's announced-individual interface (the ground atoms over
+    // individuals it announced) is then downward closed, hence a lower set of
+    // some linear extension of the ground context's order. The filter only
+    // removes comparisons, so it weakens the order; ground atoms over the same
+    // individuals keep the Sequoia order, and every literal with a variable or
+    // a Skolem term keeps its comparisons.
+    if le
+        && p1 != p2
+        && ground_interface_order()
+        && is_ground_atom(p1)
+        && is_ground_atom(p2)
+        && !ground_individuals_within(p1, p2)
+    {
+        return false;
+    }
+    le
+}
+
+/// The individuals of ground atom `a` are among those of ground atom `b`.
+#[inline]
+fn ground_individuals_within(a: &Pred, b: &Pred) -> bool {
+    let within = |o: Term| match *b {
+        Pred::Concept { t, .. } => o == t,
+        Pred::Role { s, t, .. } => o == s || o == t,
+    };
+    match *a {
+        Pred::Concept { t, .. } => within(t),
+        Pred::Role { s, t, .. } => within(s) && within(t),
+    }
+}
+
+fn pred_lteq_base(p1: &Pred, p2: &Pred, root: bool, sig: &Sig) -> bool {
     // Pred-trigger cases (bottom of the order).
     let p1pt = p1.is_pred_trigger(sig);
     let p2pt = p2.is_pred_trigger(sig);

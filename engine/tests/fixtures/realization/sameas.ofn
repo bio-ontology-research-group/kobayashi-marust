@@ -1,0 +1,9 @@
+Ontology(<urn:t:same>
+Declaration(Class(<urn:t#C>)) Declaration(Class(<urn:t#D>))
+Declaration(NamedIndividual(<urn:t#a>)) Declaration(NamedIndividual(<urn:t#b>)) Declaration(NamedIndividual(<urn:t#c>)) Declaration(NamedIndividual(<urn:t#e>))
+SubClassOf(<urn:t#C> <urn:t#D>)
+SameIndividual(<urn:t#a> <urn:t#b>)
+SameIndividual(<urn:t#b> <urn:t#c>)
+ClassAssertion(<urn:t#C> <urn:t#a>)
+DifferentIndividuals(<urn:t#a> <urn:t#e>)
+)

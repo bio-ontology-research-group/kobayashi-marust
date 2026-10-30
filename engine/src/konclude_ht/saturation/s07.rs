@@ -1571,7 +1571,14 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
             for concept_op_linker_it in operands {
                 found_operand_indi_node = true;
                 let op_concept = concept_op_linker_it.target;
-                let op_con_negation = concept_op_linker_it.negated ^ con_negation;
+                // Number restrictions keep their qualifier polarity under
+                // negation (see `generated_successor_filler_negation`).
+                let op_con_negation =
+                    super::super::model::op::generated_successor_filler_negation(
+                        con_code,
+                        concept_op_linker_it.negated,
+                        con_negation,
+                    );
                 let exist_indi_node =
                     Self::s07_concept_reference_node(op_concept, op_con_negation, calc_alg_context);
                 if exist_indi_node.is_some() {

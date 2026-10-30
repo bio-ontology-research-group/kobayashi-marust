@@ -87,6 +87,61 @@ pub fn mk_or<I: IntoIterator<Item = Concept>>(concepts: I) -> Concept {
     Concept::Or(flat)
 }
 
+/// The filler of a data restriction, with a provably empty data range
+/// replaced by `⊥` and a provably universal one (`rdfs:Literal` and its
+/// equivalents) by `⊤`. Other fillers, including every value concept, are
+/// returned unchanged. See `datatypes::extent`.
+pub fn data_filler(filler: Concept) -> Concept {
+    use super::datatypes::extent::{data_concept_extent, DataExtent};
+    match &filler {
+        Concept::Name(name) => match data_concept_extent(name) {
+            Some(DataExtent::Empty) => Concept::Bottom,
+            Some(DataExtent::Universal) => Concept::Top,
+            None => filler,
+        },
+        _ => filler,
+    }
+}
+
+/// `DataSomeValuesFrom(p R)`: `⊥` when `R` is empty, and the unqualified
+/// `≥1 p` when `R` is universal (every data value lies in `R`, so the two
+/// coincide; this is also the encoding of `DataMinCardinality(1 p)`).
+pub fn data_some(role: Role, filler: Concept) -> Concept {
+    match data_filler(filler) {
+        Concept::Bottom => Concept::Bottom,
+        Concept::Top => Concept::AtLeast(1, role, Box::new(Concept::Top)),
+        filler => Concept::Exists(role, Box::new(filler)),
+    }
+}
+
+/// `DataAllValuesFrom(p R)`: `⊤` when `R` is universal; `∀p.⊥` (p has no
+/// value) when `R` is empty.
+pub fn data_all(role: Role, filler: Concept) -> Concept {
+    match data_filler(filler) {
+        Concept::Top => Concept::Top,
+        filler => Concept::Forall(role, Box::new(filler)),
+    }
+}
+
+/// `DataMinCardinality(n p R)`: an empty `R` admits no successor, so the
+/// restriction is `⊥` for `n ≥ 1` and `⊤` for `n = 0`.
+pub fn data_at_least(n: i64, role: Role, filler: Concept) -> Concept {
+    match data_filler(filler) {
+        Concept::Bottom if n >= 1 => Concept::Bottom,
+        Concept::Bottom => Concept::Top,
+        filler => Concept::AtLeast(n, role, Box::new(filler)),
+    }
+}
+
+/// `DataMaxCardinality(n p R)`: an empty `R` has no successor to count, so
+/// the restriction is `⊤`.
+pub fn data_at_most(n: i64, role: Role, filler: Concept) -> Concept {
+    match data_filler(filler) {
+        Concept::Bottom => Concept::Top,
+        filler => Concept::AtMost(n, role, Box::new(filler)),
+    }
+}
+
 /// SROIQ axiom (TBox / RBox / ABox). Port of the `syntax` axiom dataclasses.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Axiom {
@@ -238,6 +293,15 @@ pub struct Ontology {
     /// class assertion was newly added, so the ABox coverage certificate can
     /// match it against the source data-assertion count.
     data_assertions_as_class: u64,
+    /// Source axioms the parser does not represent and whose omission is not
+    /// entailment-neutral (keys, unsupported data axioms, unparsed DL-safe
+    /// rules, unknown axiom kinds), by functional-syntax head. Published as
+    /// dropped axioms of a consistent answer.
+    dropped_source_axioms: std::collections::BTreeMap<String, u64>,
+    /// Class assertions the conversion added. Equals `data_assertions_as_class`
+    /// except when the literal-profile abstraction maps two source assertions
+    /// to one class assertion.
+    data_assertion_class_axioms: u64,
     /// Converted data assertions of the current parse call, committed by
     /// [`Ontology::commit_data_assertions_as_class`] only when the conversion
     /// is enabled and the literal vocabulary stays within its cap.
@@ -246,6 +310,9 @@ pub struct Ontology {
     data_assertion_literals: crate::fxhash::FxHashSet<String>,
     /// A cap overflow declines the conversion for the whole ontology.
     data_assertions_declined: bool,
+    /// The source has a construct the literal-profile abstraction cannot see
+    /// in the parsed axioms (a key, which the parser drops).
+    literal_abstraction_blocked: bool,
 }
 
 impl Ontology {
@@ -287,12 +354,38 @@ impl Ontology {
             }
             defs.insert(name, current);
         }
+        // An inlined definition can be a provably empty or universal range
+        // (`DatatypeDefinition(:E DataComplementOf(rdfs:Literal))`). The
+        // restriction is then simplified exactly as a direct use of that
+        // range is in `parse::cls`; the `data_*` constructors return the
+        // ordinary restriction for every other filler. Only a `__dt__` name
+        // occurs as a data filler, so object restrictions are untouched.
+        fn is_data_name(concept: &Concept) -> bool {
+            matches!(concept, Concept::Name(name) if name.starts_with("__dt__"))
+        }
+        fn trivial(concept: &Concept) -> bool {
+            matches!(concept, Concept::Top | Concept::Bottom)
+        }
         fn rewrite(concept: &Concept, defs: &BTreeMap<String, Concept>) -> Concept {
             match concept {
                 Concept::Name(name) => defs.get(name).cloned().unwrap_or_else(|| concept.clone()),
                 Concept::Not(inner) => Concept::Not(Box::new(rewrite(inner, defs))),
-                Concept::And(items) => Concept::And(items.iter().map(|c| rewrite(c, defs)).collect()),
-                Concept::Or(items) => Concept::Or(items.iter().map(|c| rewrite(c, defs)).collect()),
+                Concept::And(items) => {
+                    let items: BTreeSet<Concept> = items.iter().map(|c| rewrite(c, defs)).collect();
+                    if items.iter().any(trivial) { mk_and(items) } else { Concept::And(items) }
+                }
+                Concept::Or(items) => {
+                    let items: BTreeSet<Concept> = items.iter().map(|c| rewrite(c, defs)).collect();
+                    if items.iter().any(trivial) { mk_or(items) } else { Concept::Or(items) }
+                }
+                Concept::Exists(role, filler) if is_data_name(filler) =>
+                    data_some(role.clone(), rewrite(filler, defs)),
+                Concept::Forall(role, filler) if is_data_name(filler) =>
+                    data_all(role.clone(), rewrite(filler, defs)),
+                Concept::AtLeast(n, role, filler) if is_data_name(filler) =>
+                    data_at_least(*n, role.clone(), rewrite(filler, defs)),
+                Concept::AtMost(n, role, filler) if is_data_name(filler) =>
+                    data_at_most(*n, role.clone(), rewrite(filler, defs)),
                 Concept::Exists(role, filler) => Concept::Exists(role.clone(), Box::new(rewrite(filler, defs))),
                 Concept::Forall(role, filler) => Concept::Forall(role.clone(), Box::new(rewrite(filler, defs))),
                 Concept::AtLeast(n, role, filler) => Concept::AtLeast(*n, role.clone(), Box::new(rewrite(filler, defs))),
@@ -357,15 +450,105 @@ impl Ontology {
             literals.insert(literal.clone());
         }
         if literals.len() > cap {
-            self.data_assertions_declined = true;
+            // Above the cap, carry each literal as the representative of the
+            // profile the TBox observes (`literal_profiles`), when no
+            // construct observes more than profiles.
+            match self.abstract_data_assertion_literals(&pending, cap) {
+                Some(abstracted) => {
+                    let mut originals: crate::fxhash::FxHashSet<Axiom> = Default::default();
+                    for ((original, _), (axiom, literal)) in pending.into_iter().zip(abstracted) {
+                        self.data_assertion_literals.insert(literal);
+                        if self.add_new(axiom) {
+                            self.data_assertion_class_axioms += 1;
+                        }
+                        // Each distinct source assertion is carried, even
+                        // when its abstraction coincides with another one.
+                        if originals.insert(original) {
+                            self.data_assertions_as_class += 1;
+                        }
+                    }
+                }
+                None => self.data_assertions_declined = true,
+            }
             return;
         }
         self.data_assertion_literals = literals;
         for (axiom, _) in pending {
             if self.add_new(axiom) {
                 self.data_assertions_as_class += 1;
+                self.data_assertion_class_axioms += 1;
             }
         }
+    }
+
+    /// Class assertions added by the data-assertion conversion.
+    pub fn data_assertion_class_axioms(&self) -> u64 {
+        self.data_assertion_class_axioms
+    }
+
+    /// Record that the source has a construct that blocks the literal-profile
+    /// abstraction although the parsed axioms do not show it (a key).
+    pub fn block_literal_abstraction(&mut self) {
+        self.literal_abstraction_blocked = true;
+    }
+
+    /// The pending conversions with every literal replaced by the
+    /// representative of its profile, or `None` when a construct observes
+    /// more than profiles or the representatives still exceed `cap`.
+    fn abstract_data_assertion_literals(
+        &self,
+        pending: &[(Axiom, String)],
+        cap: usize,
+    ) -> Option<Vec<(Axiom, String)>> {
+        use super::literal_profiles as lp;
+        if self.literal_abstraction_blocked || !self.data_assertion_literals.is_empty() {
+            return None;
+        }
+        let axioms: Vec<&Axiom> = self.axioms.iter().map(|a| a.as_ref())
+            .chain(pending.iter().map(|(axiom, _)| axiom))
+            .collect();
+        if lp::blocking_construct(&axioms).is_some() {
+            return None;
+        }
+        let observed = lp::observables(&self.axioms.iter().map(|a| a.as_ref()).collect::<Vec<_>>());
+        let mut order: Vec<String> = Vec::new();
+        let mut seen: crate::fxhash::FxHashSet<&str> = Default::default();
+        for (_, literal) in pending {
+            if seen.insert(literal.as_str()) {
+                order.push(literal.clone());
+            }
+        }
+        let representative: std::collections::HashMap<&str, String> = order.iter()
+            .map(String::as_str)
+            .zip(lp::representatives(&order, &observed))
+            .collect();
+        let distinct: crate::fxhash::FxHashSet<&String> = representative.values().collect();
+        if distinct.len() > cap {
+            return None;
+        }
+        pending.iter().map(|(axiom, literal)| {
+            let rep = representative[literal.as_str()].clone();
+            let Axiom::ConceptAssertion(Concept::Exists(role, _), individual) = axiom else {
+                return None;
+            };
+            Some((
+                Axiom::ConceptAssertion(
+                    Concept::Exists(role.clone(), Box::new(Concept::Name(format!("__dt__val__{rep}")))),
+                    individual.clone(),
+                ),
+                rep,
+            ))
+        }).collect()
+    }
+
+    /// Record a source axiom the parser drops (see `dropped_source_axioms`).
+    pub fn drop_source_axiom(&mut self, head: &str) {
+        *self.dropped_source_axioms.entry(head.to_string()).or_default() += 1;
+    }
+
+    /// Dropped non-neutral source axioms by functional-syntax head.
+    pub fn dropped_source_axioms(&self) -> &std::collections::BTreeMap<String, u64> {
+        &self.dropped_source_axioms
     }
 
     pub fn data_assertions_as_class(&self) -> u64 {

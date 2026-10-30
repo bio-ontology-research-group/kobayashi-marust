@@ -83,6 +83,18 @@ pub struct IndividualSaturationProcessNode {
     // --- status flags (inline, by value) ------------------------------------
     pub direct_status_flags: IndividualSaturationProcessNodeStatusFlags, // mDirectStatusFlags
     pub indirect_status_flags: IndividualSaturationProcessNodeStatusFlags, // mIndirectStatusFlags
+    /// KONCLUDE-PORT-NOTE[deviation]: the part of `indirect_status_flags`
+    /// that reached this node through `updateIndirectAddingIndividualStatus-
+    /// Flags`, i.e. from a successor, a backward-propagation source or a copy
+    /// origin. `updateDirectNotDependentAddingIndividualStatusFlags` puts a
+    /// node's OWN insufficiency into `indirect_status_flags` without passing
+    /// it to the nodes that copy this one. Konclude decides whether to
+    /// propagate by testing `indirect_status_flags`, so once a node carried
+    /// its own (not dependent) INSUFFICIENT, a later INSUFFICIENT from one of
+    /// its successors stopped at that node and never reached its copies: the
+    /// copy kept a "sufficient" label that lacked a successor-derived
+    /// subsumer (generator seed 628). The propagation test reads this field.
+    pub propagated_indirect_status_flags: IndividualSaturationProcessNodeStatusFlags,
 
     // --- scalar / bool state -------------------------------------------------
     pub required_back_prop: bool, // mRequiredBackProp
@@ -143,6 +155,7 @@ impl Default for IndividualSaturationProcessNode {
             copy_indi_node: Id::NONE,
             direct_status_flags: IndividualSaturationProcessNodeStatusFlags::default(),
             indirect_status_flags: IndividualSaturationProcessNodeStatusFlags::default(),
+            propagated_indirect_status_flags: IndividualSaturationProcessNodeStatusFlags::default(),
             required_back_prop: false,
             data_value_applied: false,
             clashed_con_sat_des_linker: Id::NONE,

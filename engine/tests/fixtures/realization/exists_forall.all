@@ -1,0 +1,5 @@
+TYPE	urn:t#a	urn:t#DogOwner
+TYPE	urn:t#c	urn:t#Happy
+TYPE	urn:t#c	urn:t#Person
+TYPE	urn:t#d	urn:t#Animal
+TYPE	urn:t#d	urn:t#Dog

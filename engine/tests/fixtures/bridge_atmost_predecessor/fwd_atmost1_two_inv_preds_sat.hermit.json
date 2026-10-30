@@ -1,0 +1,6 @@
+{
+  "ontology": "fwd_atmost1_two_inv_preds_sat.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": []
+}

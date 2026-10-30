@@ -1,0 +1,1 @@
+{"consistent": true, "subsumptions": [["A", "Q1"], ["B", "A"], ["B", "Q1"], ["C", "A"], ["C", "Q1"], ["D", "A"], ["D", "Q1"], ["Q1", "A"], ["Q2", "A"], ["Q2", "Q1"], ["Q3", "A"], ["Q3", "Q1"]], "unsatisfiable": []}

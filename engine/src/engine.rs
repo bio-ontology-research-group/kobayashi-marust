@@ -880,6 +880,14 @@ fn rsucc_blocked(ctx: &Context, arena: &[ContextClause], c: &ContextClause, a: &
 /// `true` if the clause mentions the central variable x anywhere (such
 /// ground-context clauses are instantiated per individual-labelled edge by the
 /// Pred back-substitution, so they keep the per-edge propagation path).
+/// `→ o ≈ o'` between two individuals: the clause the context regime delivers
+/// across the announced-individual guard (`calc::eq_announce`).
+fn ground_unit_equality(c: &ContextClause) -> bool {
+    c.body.is_empty()
+        && c.head.len() == 1
+        && matches!(c.head[0], Lit::Eq { s, t } if is_individual(s) && is_individual(t))
+}
+
 fn cc_mentions_x(c: &ContextClause) -> bool {
     fn px(p: &Pred) -> bool {
         match *p {
@@ -2317,6 +2325,19 @@ impl Context {
 /// Seeding and ordinary saturation must use this one definition: otherwise a
 /// context-independent nominal equality can disappear only when it enters via
 /// the shared base, making propagation depend on a representation choice.
+/// r-Succ pool membership: with r-Succ on, a worked-off clause whose maximal
+/// head holds a CENTRAL concept predicate is offered to every successor as an
+/// edge-conditioned neighbour hypothesis (see `Context::rsucc_pool`). Shared by
+/// `saturate` and the closure-seeding paths, so a clause enters the pool by the
+/// same test however it reaches the worked-off set.
+fn rsucc_pool_eligible(sig: &Sig, clause: &ContextClause) -> bool {
+    sig.rsucc
+        && clause.max_head_predicates().any(|(p, _)| match p {
+            Pred::Concept { t, .. } => is_central(t),
+            _ => false,
+        })
+}
+
 fn pred_pool_eligible(clause: &ContextClause) -> bool {
     clause.head.iter().all(|literal| {
         literal.is_function_free()
@@ -3242,6 +3263,25 @@ pub(crate) enum RetainedInsertBoundary {
     /// Nom introduced fresh individual ids in the range a later input
     /// individual would occupy.
     AdditionalNominalCollision,
+    /// The insertion adds the first clause with a backward role, which turns
+    /// on r-Succ in a fresh engine (`clause_enables_rsucc`). r-Succ also
+    /// changes which concept atoms are Succ triggers (`is_succ_trigger`), so
+    /// the retained arenas' maximal-head masks and the contexts' r-Succ pools
+    /// would both be stale. Without r-Succ a successor never sees its parent's
+    /// labels, e.g. `D(y)` for `inv(x,y) & D(y) -> Q(x)`.
+    RSuccActivation,
+}
+
+/// A clause with a role atom pointing into the central variable from another
+/// term (`R(y,x)`, `R(f(x),x)`, ...) can consume a parent label in a successor
+/// context, so `Engine::prepare` turns r-Succ on for its ontology.
+fn clause_enables_rsucc(clause: &OntologyClause) -> bool {
+    let backward_role = |p: &Pred| matches!(p, Pred::Role { s, t, .. } if *t == X && *s != X);
+    clause.body.iter().any(backward_role)
+        || clause.head.iter().any(|literal| match literal {
+            Lit::P(p) => backward_role(p),
+            _ => false,
+        })
 }
 
 /// Work retained across one exact insertion, used for truthful incremental
@@ -3425,6 +3465,15 @@ pub struct Engine {
     /// that to one copy while every read still sees the identical id sequence.
     /// Invalidated alongside `shared_closure` on incremental ontology insert.
     shared_base: [Option<Arc<ClauseLayer>>; 2],
+    /// The r-Succ-eligible ids of `shared_base[d]`'s closure, in closure order
+    /// (see `rsucc_pool_eligible`). Attaching a base must also enter these into
+    /// the context's own `rsucc_pool`: the pool is per context (the reach offer
+    /// is per edge), and a closure clause such as `→ D(x)` from `⊤ ⊑ D` is a
+    /// worked-off clause of every context. Without it the base-layer path
+    /// never offered `D(y)` to successors, while the flat path (certification,
+    /// KM_NO_SHARE) did (docs/CB-COMPLETENESS-FIXES.md, section 1).
+    /// Invalidated with `shared_base`.
+    shared_rsucc: [Option<Arc<Vec<u32>>>; 2],
     /// KM_NO_BASE_LAYER: materialise the closure into each context's `delta`
     /// (the pre-base-layer representation) instead of attaching the shared base.
     /// Pure representation A/B switch — the derived fixpoint, posting order and
@@ -3923,15 +3972,8 @@ impl Engine {
         // A role pointing into the central variable can consume a parent
         // label in a successor context. Enable edge-conditioned label offers
         // for these ontologies without requiring an external tuning flag.
-        let backward_role = |p: &Pred| matches!(p, Pred::Role { s, t, .. } if *t == X && *s != X);
         sig.rsucc = std::env::var_os("KM_RSUCC").is_some()
-            || ont_clauses.iter().any(|clause| {
-                clause.body.iter().any(backward_role)
-                    || clause.head.iter().any(|literal| match literal {
-                        Lit::P(p) => backward_role(p),
-                        _ => false,
-                    })
-            });
+            || ont_clauses.iter().any(clause_enables_rsucc);
         let (ont_clauses, max_input_ind, ground_merge) =
             merge_asserted_ground_equalities(ont_clauses);
         if std::env::var_os("KM_PROF").is_some() && ground_merge.asserted_pairs != 0 {
@@ -4063,6 +4105,7 @@ impl Engine {
             shared_closure: None,
             shared_root_closure: None,
             shared_base: [None, None],
+            shared_rsucc: [None, None],
             base_layer: std::env::var_os("KM_NO_BASE_LAYER").is_none(),
             equality: true,
             pred_interned: Vec::new(),
@@ -4103,6 +4146,9 @@ impl Engine {
         &self,
         additions: &[OntologyClause],
     ) -> Option<RetainedInsertBoundary> {
+        if !self.sig.rsucc && additions.iter().any(clause_enables_rsucc) {
+            return Some(RetainedInsertBoundary::RSuccActivation);
+        }
         for clause in additions {
             // Fresh engines quotient precisely these asserted equalities before
             // building any context.  Replaying an equality conclusion cannot
@@ -4290,6 +4336,7 @@ impl Engine {
         // clauses are still ontology consequences (the insert is monotone), and
         // the Hyper replay below re-derives everything the new clauses add.
         self.shared_base = [None, None];
+        self.shared_rsucc = [None, None];
         self.nominal_enumerations =
             Arc::new(detect_nominal_enumerations(&self.sig, &self.ont.clauses));
         self.nominal_shortcuts.clear();
@@ -5114,11 +5161,7 @@ impl Engine {
                 .any(|(p, _)| is_function(p.max_term()) || root_succ_form(&p).is_some());
             // r-Succ: a maximal head CENTRAL concept is offered to successors
             // as an edge-conditioned neighbour hypothesis (see `rsucc_pool`).
-            let rsucc_eligible = self.sig.rsucc
-                && clause.max_head_predicates().any(|(p, _)| match p {
-                    Pred::Concept { t, .. } => is_central(t),
-                    _ => false,
-                });
+            let rsucc_eligible = rsucc_pool_eligible(&self.sig, &clause);
             {
                 let arena = &self.cc_arena[d];
                 let ctx = &mut self.contexts[id];
@@ -5655,9 +5698,14 @@ impl Engine {
         let allocated = self.nom_allocated.get();
         let next = self.nom_next.get();
         let width_i32 = i32::try_from(width).ok();
+        // Fresh nominals also appear inside packed `f(o)` terms, so the block
+        // must fit the active composite individual field as well as the
+        // individual id range; otherwise the run is marked truncated instead
+        // of overflowing the packing.
+        let composite_limit = 1i64 << crate::calc::active_comp_ind_bits();
         let range_ok = width_i32
             .and_then(|count| next.checked_add(count))
-            .is_some_and(|end| end <= (FTERM_BASE - X) as i32);
+            .is_some_and(|end| end <= (FTERM_BASE - X) as i32 && i64::from(end) <= composite_limit);
         if allocated.saturating_add(width) > self.nom_budget || !range_ok {
             if !self.nom_truncated.replace(true) {
                 eprintln!(
@@ -6757,6 +6805,7 @@ impl Engine {
             return;
         }
         let base = self.ensure_shared_base(root);
+        let rsucc = self.ensure_shared_rsucc(root);
         let ctx = &mut self.contexts[id];
         debug_assert!(
             ctx.base.is_none()
@@ -6766,7 +6815,32 @@ impl Engine {
             "the shared base must be attached to a pristine context"
         );
         ctx.base = Some(base);
+        // The base's clauses are worked off here exactly as if seeded flat, so
+        // they join this context's r-Succ pool as `seed_worked_off` does.
+        ctx.rsucc_pool.extend_from_slice(&rsucc);
         ctx.dirty = true;
+    }
+
+    /// The r-Succ-eligible closure ids of one ordering domain (empty unless
+    /// r-Succ is on), computed once per base (see `shared_rsucc`).
+    fn ensure_shared_rsucc(&mut self, root: bool) -> Arc<Vec<u32>> {
+        let d = root as usize;
+        if let Some(ids) = &self.shared_rsucc[d] {
+            return Arc::clone(ids);
+        }
+        let ids: Vec<u32> = if self.sig.rsucc {
+            let closure = self.ensure_shared_closure_ids(root);
+            let arena = &self.cc_arena[d];
+            closure
+                .into_iter()
+                .filter(|&cid| rsucc_pool_eligible(&self.sig, &arena[cid as usize]))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let ids = Arc::new(ids);
+        self.shared_rsucc[d] = Some(Arc::clone(&ids));
+        ids
     }
 
     /// Force the shared closure (and, when the base layer is on, its indexed
@@ -6855,8 +6929,14 @@ impl Engine {
             return;
         }
         let arena = &self.cc_arena[d];
+        let rsucc = rsucc_pool_eligible(&self.sig, &arena[cid as usize]);
         let ctx = &mut self.contexts[id];
-        ctx.delta.seed(arena, cid);
+        if ctx.delta.seed(arena, cid) && rsucc {
+            // Same r-Succ pool feed as `saturate`: a seeded clause is a
+            // worked-off clause of this context and must be offered to its
+            // successors like one derived here.
+            ctx.rsucc_pool.push(cid);
+        }
         ctx.dirty = true;
     }
 
@@ -7381,7 +7461,9 @@ impl Engine {
                             }
                             ok = inds.iter().all(|o| {
                                 *o >= self.nom_base || ctx.predecessors.contains_key(&(u, *o))
-                            });
+                            }) || (eq_announce()
+                                && ground_unit_equality(c)
+                                && inds.iter().any(|o| ctx.predecessors.contains_key(&(u, *o))));
                         }
                         if ok {
                             let edge = (u, label);
@@ -7550,7 +7632,11 @@ impl Engine {
                     lit_inds(l, &mut inds);
                 }
                 let Some(&label) = inds.iter().find(|o| new.contains(o)) else { continue };
-                if !inds.iter().all(|o| *o >= self.nom_base || gctx.predecessors.contains_key(&(id, *o))) {
+                // Context regime: a ground equality follows either announced
+                // side (`calc::eq_announce`, docs/PER-CONTEXT-ORDERING.md).
+                if !inds.iter().all(|o| *o >= self.nom_base || gctx.predecessors.contains_key(&(id, *o)))
+                    && !(eq_announce() && ground_unit_equality(c))
+                {
                     continue;
                 }
                 let edge = (id, label);

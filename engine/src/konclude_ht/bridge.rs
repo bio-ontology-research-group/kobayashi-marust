@@ -360,10 +360,10 @@ fn datatype_effects_covered_by_unit_bottom(tin: &TInput, source_mode: bool) -> b
         .enumerate()
         .filter_map(|(index, name)| name.starts_with("__dt__").then_some(index))
         .collect();
-    if datatype_concepts.is_empty() {
+    if datatype_concepts.is_empty() && tin.data_roles.is_empty() {
         return true;
     }
-    if !source_mode {
+    if !source_mode || tin.data_roles.iter().any(|&role| role >= tin.roles.len()) {
         return false;
     }
 
@@ -519,9 +519,12 @@ fn datatype_effects_covered_by_unit_bottom(tin: &TInput, source_mode: bool) -> b
             },
         )
         .collect();
+    // Source data properties seed datatype components like `__dt__`
+    // concepts: their successors are data elements.
     let datatype_roots: crate::fxhash::FxHashSet<usize> = datatype_concepts
         .into_iter()
-        .map(|concept| components.find(concept))
+        .chain(tin.data_roles.iter().map(|&role| role_offset + role))
+        .map(|symbol| components.find(symbol))
         .collect();
     if datatype_roots.contains(&components.find(global)) {
         return false;
@@ -1215,8 +1218,16 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         .enumerate()
         .filter_map(|(index, name)| name.starts_with("__dt__").then_some(index))
         .collect();
-    if datatype_ids.is_empty() {
+    // A source data property makes data successors even when no `__dt__`
+    // concept occurs (an unqualified data cardinality reads its
+    // `rdfs:Literal` filler as `Top`). They share the completion graph with
+    // objects, so the blank-data-node admission below must run for them too
+    // (m2197: `⊤ ⊑ ≥2 u` with `⊤ ⊑ {a}`).
+    if datatype_ids.is_empty() && tin.data_roles.is_empty() {
         return true;
+    }
+    if tin.data_roles.iter().any(|&role| role >= tin.roles.len()) {
+        defer!("a source data-property role index is invalid");
     }
     if !source_mode
         || datatype_ids.iter().any(|&concept| {
@@ -1503,6 +1514,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         .keys()
         .copied()
         .chain(role_existentials.iter().map(|&(role, _)| role))
+        .chain(tin.data_roles.iter().copied())
         .collect();
     // All roles connected by a data inclusion use the same value embedding.
     // Include unconstrained parents/children in every subsequent source-use,
@@ -3158,6 +3170,12 @@ impl<'a> Builder<'a> {
     /// role; the completion routes it through `apply_atmost_rule` →
     /// `ht_apply_atmost_merge` (merge excess successors, else clash).
     fn atmost(&mut self, role: RoleId, n: Cint64) -> ConceptId {
+        if n == 0 {
+            // `≤0 R.⊤ ≡ ∀R.⊥`, built as Konclude's builder does (see
+            // `atmost_q`).
+            let bottom = self.bottom();
+            return self.all(role, (bottom, false));
+        }
         let tag = self.fresh_tag();
         let mut c = Concept::new();
         c.set_concept_tag(tag);
@@ -3169,7 +3187,16 @@ impl<'a> Builder<'a> {
     }
     /// Qualified `≤n R.C` — `CCATMOST` with parameter `n` and qualifier
     /// operand `C` (the at-most merge counts only `C`-successors).
+    ///
+    /// `≤0 R.C` is built as `∀R.¬C`, as Konclude's ontology builder does. The
+    /// ported saturation and completion only count the `R`-successors a node
+    /// links to, so a `CCATMOST` with parameter 0 never saw a predecessor
+    /// reached over the inverse of `R`: `D ⊑ ∃s.⊤` with `⊤ ⊑ ≤0 s⁻.D` left
+    /// `D` satisfiable. The universal propagates to predecessors.
     fn atmost_q(&mut self, role: RoleId, n: Cint64, filler: (ConceptId, bool)) -> ConceptId {
+        if n == 0 {
+            return self.all(role, (filler.0, !filler.1));
+        }
         let tag = self.fresh_tag();
         let mut c = Concept::new();
         c.set_concept_tag(tag);
@@ -3182,7 +3209,13 @@ impl<'a> Builder<'a> {
     }
     /// Qualified `≥n R.C` — `CCATLEAST` with parameter `n` and qualifier
     /// operand `C` (creates `n` pairwise-distinct `C`-successors).
+    ///
+    /// `≥1 R.C` is built as `∃R.C`, so its negation is `∀R.¬C` rather than a
+    /// `≤0` count with the predecessor gap described at `atmost_q`.
     fn atleast_q(&mut self, role: RoleId, n: Cint64, filler: (ConceptId, bool)) -> ConceptId {
+        if n == 1 {
+            return self.some(role, filler);
+        }
         let tag = self.fresh_tag();
         let mut c = Concept::new();
         c.set_concept_tag(tag);
@@ -3665,10 +3698,11 @@ fn partial_absorption_trigger(
         return *cached;
     }
     let (concept, negated) = literal;
-    let (op_code, role, operands) = {
+    let (op_code, parameter, role, operands) = {
         let c = b.ctx.ontology_arenas().concept(concept);
         (
             c.get_operator_code(),
+            c.get_parameter(),
             c.get_role(),
             c.get_operand_list().to_vec(),
         )
@@ -3716,9 +3750,19 @@ fn partial_absorption_trigger(
                 complexity,
             })
         }
-    } else if (!negated && matches!(op_code, op::CCSOME | op::CCSELF | op::CCATLEAST))
+    } else if (!negated && matches!(op_code, op::CCSOME | op::CCSELF))
+        || (!negated && op_code == op::CCATLEAST && parameter >= 1)
         || (negated && matches!(op_code, op::CCALL | op::CCATMOST))
     {
+        // A partial trigger must be a NECESSARY condition: an R-edge (with a
+        // triggered filler) exists on every instance of the literal. That
+        // holds for `>=n R.C` only when n >= 1; `>=0 R.C` is TOP and has
+        // no trigger. Konclude enforces this through
+        // `isConceptPartialImplicationTriggerable` (`CCATLEAST && parm >= 1`,
+        // cpp 3949), which gates every call of `getPartialTriggersForConcept`;
+        // the port has no separate gate, so the bound lives here. Without it
+        // `SubClassOf(>=0 s.C, C)` was gated on an s-edge and `TOP <= C` was
+        // lost (missed inconsistencies, generator seeds 44 and 161).
         let &inverse = role_inverses.get(&role)?;
         let mut filler_triggers = Vec::new();
         for operand in operands {
@@ -3754,6 +3798,172 @@ fn partial_absorption_trigger(
     };
     caches.partial.insert(literal, result);
     result
+}
+
+/// True when a clause literal names a definer marker that the clause bridge
+/// resolved to a native concept. Such a clause must be encoded over the
+/// resolved concepts only: the marker atom has no definition of its own, so
+/// mixing it with resolved occurrences disconnects the two representations.
+fn clause_uses_resolved_marker(
+    cl: &HtClause,
+    named: &[ConceptId],
+    resolved: &[(ConceptId, bool)],
+) -> bool {
+    cl.body.iter().chain(cl.head.iter()).any(|atom| match atom {
+        HAtom::Concept { c, .. } | HAtom::Exist { c, .. } => resolved[*c] != (named[*c], false),
+        _ => false,
+    })
+}
+
+/// Structural key of a signed concept in negation normal form. Builder
+/// concepts are not hash-consed, so syntactic tautology tests compare keys.
+fn nnf_concept_key(b: &Builder, concept: (ConceptId, bool), depth: usize) -> String {
+    let (id, negated) = concept;
+    let c = b.ctx.ontology_arenas().concept(id);
+    let op_code = c.get_operator_code();
+    let operands: Vec<(ConceptId, bool)> = c
+        .get_operand_list()
+        .iter()
+        .map(|operand| (operand.target, operand.negated))
+        .collect();
+    let role = c.get_role();
+    let parameter = c.get_parameter();
+    let atom = || format!("{}a{}", if negated { "-" } else { "" }, id.raw);
+    if depth > 32 {
+        return atom();
+    }
+    let sub = |operand: (ConceptId, bool), flip: bool| {
+        nnf_concept_key(b, (operand.0, operand.1 ^ flip), depth + 1)
+    };
+    match op_code {
+        op::CCTOP => (if negated { "F" } else { "T" }).to_string(),
+        op::CCBOTTOM => (if negated { "T" } else { "F" }).to_string(),
+        op::CCAND | op::CCOR => {
+            let conjunctive = (op_code == op::CCAND) != negated;
+            let mut keys: Vec<String> = operands.iter().map(|&o| sub(o, negated)).collect();
+            keys.sort();
+            keys.dedup();
+            format!("{}({})", if conjunctive { "and" } else { "or" }, keys.join(","))
+        }
+        op::CCSOME | op::CCALL if operands.len() == 1 => {
+            let existential = (op_code == op::CCSOME) != negated;
+            format!(
+                "{}{}.{}",
+                if existential { "some" } else { "all" },
+                role.raw,
+                sub(operands[0], negated)
+            )
+        }
+        op::CCATLEAST | op::CCATMOST if operands.len() <= 1 => {
+            let filler = operands.first().map(|&o| sub(o, false)).unwrap_or_default();
+            // ¬≥n R.C = ≤(n-1) R.C and ¬≤n R.C = ≥(n+1) R.C.
+            let (at_least, n) = match (op_code == op::CCATLEAST, negated) {
+                (true, false) => (true, parameter),
+                (true, true) => (false, parameter - 1),
+                (false, false) => (false, parameter),
+                (false, true) => (true, parameter + 1),
+            };
+            format!("{}{}{}.{}", if at_least { "ge" } else { "le" }, n, role.raw, filler)
+        }
+        _ => atom(),
+    }
+}
+
+/// Split a signed concept into its top-level disjuncts (`⊔`, or a negated
+/// `⊓`), or into its top-level conjuncts when `conjunctive` is set.
+fn flatten_signed(
+    b: &Builder,
+    literal: (ConceptId, bool),
+    conjunctive: bool,
+    out: &mut Vec<(ConceptId, bool)>,
+) {
+    let (id, negated) = literal;
+    let c = b.ctx.ontology_arenas().concept(id);
+    let splits = match c.get_operator_code() {
+        op::CCOR => !conjunctive != negated,
+        op::CCAND => conjunctive != negated,
+        _ => false,
+    };
+    if splits {
+        let operands: Vec<(ConceptId, bool)> = c
+            .get_operand_list()
+            .iter()
+            .map(|operand| (operand.target, operand.negated ^ negated))
+            .collect();
+        for operand in operands {
+            flatten_signed(b, operand, conjunctive, out);
+        }
+    } else {
+        out.push(literal);
+    }
+}
+
+/// Syntactic validity test for the GCI `⊓body ⊑ ⊔heads`, read as the
+/// disjunction `⊔¬body ⊔ ⊔heads`: it holds when a disjunct is TOP, when two
+/// disjuncts are complementary, or when every conjunct of a conjunctive
+/// disjunct has its complement among the disjuncts. Resolution turns the
+/// frontend's definer clauses (`Q → C ∨ D` for `Q = C ⊔ D`, `C(y) ∧ R(x,y)
+/// → Q(x)` for `Q = ∃R.C`) into such tautologies.
+fn resolved_gci_is_tautology(
+    b: &Builder,
+    body: &[(ConceptId, bool)],
+    heads: &[(ConceptId, bool)],
+) -> bool {
+    let mut disjuncts = Vec::new();
+    for &(c, n) in body {
+        flatten_signed(b, (c, !n), false, &mut disjuncts);
+    }
+    for &head in heads {
+        flatten_signed(b, head, false, &mut disjuncts);
+    }
+    let keys: BTreeSet<String> = disjuncts.iter().map(|&d| nnf_concept_key(b, d, 0)).collect();
+    if keys.contains("T") {
+        return true;
+    }
+    let complement_present = |literal: (ConceptId, bool)| {
+        let key = nnf_concept_key(b, (literal.0, !literal.1), 0);
+        key == "F" || keys.contains(&key)
+    };
+    disjuncts.iter().any(|&d| {
+        if complement_present(d) {
+            return true;
+        }
+        let mut conjuncts = Vec::new();
+        flatten_signed(b, d, true, &mut conjuncts);
+        conjuncts.len() > 1 && conjuncts.iter().all(|&c| complement_present(c))
+    })
+}
+
+/// Install `⊓body ⊑ ⊔heads` on TOP as the disjunction `⊔¬body ⊔ ⊔heads`,
+/// unless that disjunction is a syntactic tautology.
+fn install_resolved_top_gci(
+    b: &mut Builder,
+    body: &[(ConceptId, bool)],
+    heads: &[(ConceptId, bool)],
+    tbox: &mut Vec<ConceptId>,
+    top_gcis: &mut Vec<ConceptId>,
+) {
+    if resolved_gci_is_tautology(b, body, heads) {
+        return;
+    }
+    let mut ops: Vec<(ConceptId, bool)> = body.iter().map(|&(c, n)| (c, !n)).collect();
+    ops.extend_from_slice(heads);
+    let keys: Vec<String> = ops.iter().map(|&o| nnf_concept_key(b, o, 0)).collect();
+    let mut unique = Vec::new();
+    let mut seen = BTreeSet::new();
+    for (op, key) in ops.into_iter().zip(keys) {
+        if key != "F" && seen.insert(key) {
+            unique.push(op);
+        }
+    }
+    let disjunction = if unique.is_empty() {
+        (b.bottom(), false)
+    } else {
+        b.or_of(&unique)
+    };
+    let gci = b.implication(disjunction, &[]);
+    tbox.push(gci);
+    top_gcis.push(gci);
 }
 
 /// Port of the full/partial GCI split in
@@ -5159,6 +5369,11 @@ fn bridge_tinput_with_trigger_absorption(
             if card_markers.contains(&marker) {
                 continue;
             }
+            // Classification reads queries off their atoms; a query must keep
+            // its atom as the only representation.
+            if !tin.queries.is_empty() && active_class[marker] {
+                continue;
+            }
             let operands: Option<Vec<(ConceptId, bool)>> = d
                 .operands
                 .iter()
@@ -6422,6 +6637,10 @@ fn bridge_tinput_with_trigger_absorption(
                         .iter()
                         .map(|&(c, negated)| (resolved[c].0, resolved[c].1 ^ negated))
                         .collect();
+                    let uses_resolved = clause_uses_resolved_marker(cl, &named, &resolved);
+                    if uses_resolved && resolved_gci_is_tautology(&b, &body_ops, &head_ops) {
+                        continue 'clause;
+                    }
                     if absorb_concept_disjunction(
                         &mut b,
                         &body_ops,
@@ -6429,6 +6648,16 @@ fn bridge_tinput_with_trigger_absorption(
                         &role_inverses,
                         &mut trigger_caches,
                     ) {
+                        continue 'clause;
+                    }
+                    if uses_resolved {
+                        install_resolved_top_gci(
+                            &mut b,
+                            &body_ops,
+                            &head_ops,
+                            &mut tbox,
+                            &mut top_gcis,
+                        );
                         continue 'clause;
                     }
                 }
@@ -6580,6 +6809,10 @@ fn bridge_tinput_with_trigger_absorption(
                     }
                 }
 
+                let uses_resolved = clause_uses_resolved_marker(cl, &named, &resolved);
+                if uses_resolved && resolved_gci_is_tautology(&b, &body_ops, &head_ops) {
+                    continue 'clause;
+                }
                 if absorb_concept_disjunction(
                     &mut b,
                     &body_ops,
@@ -6587,6 +6820,10 @@ fn bridge_tinput_with_trigger_absorption(
                     &role_inverses,
                     &mut trigger_caches,
                 ) {
+                    continue 'clause;
+                }
+                if uses_resolved {
+                    install_resolved_top_gci(&mut b, &body_ops, &head_ops, &mut tbox, &mut top_gcis);
                     continue 'clause;
                 }
             }
@@ -6665,6 +6902,98 @@ fn bridge_tinput_with_trigger_absorption(
                 continue;
             }
             let _ = r;
+            if trigger_absorb && clause_uses_resolved_marker(cl, &named, &resolved) {
+                // The clause mentions a resolved definer marker. Encode the
+                // equivalent GCI `⊓Bx ⊑ ⊔Hx ⊔ ∀R.(⊔¬By ⊔ ⊔Hy)` over the resolved
+                // concepts so the marker atom never appears in the encoding.
+                let lit = |b: &mut Builder, a: &HAtom| -> (ConceptId, bool) {
+                    match a {
+                        HAtom::Concept { neg, c, .. } => (resolved[*c].0, resolved[*c].1 ^ *neg),
+                        HAtom::Exist { r, neg, c, .. } => {
+                            let filler = (resolved[*c].0, resolved[*c].1 ^ *neg);
+                            (b.some(roles[*r], filler), false)
+                        }
+                        _ => unreachable!("filtered above"),
+                    }
+                };
+                let mut body_x = Vec::new();
+                let mut y_ops = Vec::new();
+                for a in &cl.body {
+                    if let HAtom::Concept { t: at, .. } = a {
+                        let (c, n) = lit(&mut b, a);
+                        if *at == 0 {
+                            body_x.push((c, n));
+                        } else {
+                            y_ops.push((c, !n));
+                        }
+                    }
+                }
+                let mut head_x = Vec::new();
+                let mut head_y = Vec::new();
+                for a in &cl.head {
+                    let at = match a {
+                        HAtom::Concept { t, .. } | HAtom::Exist { t, .. } => *t,
+                        _ => unreachable!("filtered above"),
+                    };
+                    if at == 0 {
+                        head_x.push(lit(&mut b, a));
+                    } else if matches!(a, HAtom::Exist { .. }) {
+                        unsupported += 1;
+                        dump(cl, "nested-exist-under-forall");
+                        continue 'clause;
+                    } else {
+                        head_y.push(lit(&mut b, a));
+                    }
+                }
+                if body_x.is_empty() && y_ops.is_empty() && head_y.is_empty() {
+                    // `R(x,y) → ⊔Hx`: a role domain.
+                    let target = if head_x.is_empty() {
+                        (b.bottom(), false)
+                    } else {
+                        b.or_of(&head_x)
+                    };
+                    let link = super::model::substrate::NegLink {
+                        target: target.0,
+                        negated: target.1,
+                    };
+                    b.ctx.ontology_arenas_mut().role_mut(roles[r]).domain_linker.push(link);
+                    b.ctx.ontology_arenas_mut().role_mut(inv_roles[r]).range_linker.push(link);
+                    continue 'clause;
+                }
+                if body_x.is_empty() && y_ops.is_empty() && head_x.is_empty() {
+                    // `R(x,y) → ⊔Hy`: a role range.
+                    let target = b.or_of(&head_y);
+                    let link = super::model::substrate::NegLink {
+                        target: target.0,
+                        negated: target.1,
+                    };
+                    b.ctx.ontology_arenas_mut().role_mut(roles[r]).range_linker.push(link);
+                    b.ctx.ontology_arenas_mut().role_mut(inv_roles[r]).domain_linker.push(link);
+                    continue 'clause;
+                }
+                y_ops.extend(head_y);
+                let y_disj = if y_ops.is_empty() {
+                    (b.bottom(), false)
+                } else {
+                    b.or_of(&y_ops)
+                };
+                let mut heads = head_x;
+                heads.push((b.all(roles[r], y_disj), false));
+                if resolved_gci_is_tautology(&b, &body_x, &heads) {
+                    continue 'clause;
+                }
+                if absorb_concept_disjunction(
+                    &mut b,
+                    &body_x,
+                    &heads,
+                    &role_inverses,
+                    &mut trigger_caches,
+                ) {
+                    continue 'clause;
+                }
+                install_resolved_top_gci(&mut b, &body_x, &heads, &mut tbox, &mut top_gcis);
+                continue 'clause;
+            }
             let mut triggers: Vec<(ConceptId, bool)> = Vec::new(); // at x
             let mut succ_body: Vec<(ConceptId, bool)> = Vec::new(); // at y
             for a in &cl.body {
@@ -17112,6 +17441,33 @@ mod tests {
         Some((input, evidence, result))
     }
 
+    /// m2197: `⊤ ⊑ ≥2 u` (u a data property, no `__dt__` concept anywhere)
+    /// with `⊤ ⊑ {a}`. Read one-sorted, both `u`-successors are `a` and the
+    /// input is "inconsistent"; HermiT says consistent. With the frontend's
+    /// data properties attached, the datatype gate runs and defers on the
+    /// blank data node; without them it admits the input.
+    #[test]
+    fn data_roles_without_datatypes_enter_the_datatype_gate() {
+        let source = r#"Prefix(:=<http://x#>)
+            Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+            Ontology(Declaration(DataProperty(:u)) Declaration(NamedIndividual(:a))
+            SubClassOf(owl:Thing DataMinCardinality(2 :u))
+            SubClassOf(owl:Thing ObjectOneOf(:a)))"#;
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+        let fr = crate::frontend::ofn_to_clauses(source);
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+        let fr = fr.expect("in fragment");
+        assert_eq!(fr.data_roles.len(), 1, "the used data property is reported");
+        let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+        let mut input = crate::orchestrate::cb_to_ht::convert(&fr.clauses, Some(&fr.rbox), &named,
+            &fr.cardinalities, &fr.definers, &fr.source_axioms, false, &fr.rules, false);
+        assert!(!input.concepts.iter().any(|name| name.starts_with("__dt__")));
+        assert!(datatype_bridge_route_exact(&input, true), "one-sorted view admits it");
+        crate::orchestrate::cb_to_ht::attach_data_roles(&mut input, &fr.data_roles);
+        assert_eq!(input.data_roles.len(), 1);
+        assert!(!datatype_bridge_route_exact(&input, true), "the data role must defer");
+    }
+
     fn tbox_extension_class(input: &TInput, evidence: &TboxIriMap, suffix: &str) -> usize {
         input.concepts.iter().position(|name| evidence.get(name).is_some_and(|iri|
             iri.trim_end_matches('>').ends_with(suffix))).unwrap()
@@ -17347,12 +17703,24 @@ mod tests {
         assert!(result.consistent);
         assert!(!result.unsatisfiable.contains(&tbox_extension_class(&input, &evidence, "#A")));
         assert!(!result.unsatisfiable.contains(&tbox_extension_class(&input, &evidence, "#B")));
-        // A body occurrence would also hold on unlabeled data nodes.
-        assert!(tbox_extension_classify(r#"
+        // A body occurrence of an `rdfs:Literal` label would also have to hold
+        // on unlabeled data nodes, which the extension does not model. The
+        // frontend no longer produces that label: `DataSomeValuesFrom(p
+        // rdfs:Literal)` is the unqualified `DataMinCardinality(1 p)` and
+        // `DataAllValuesFrom(p rdfs:Literal)` is `owl:Thing`
+        // (`frontend::datatypes::extent`). The body occurrence is therefore
+        // exact and admitted, with `A ⊑ ∃p.integer ⊑ ∃p.Literal ≡ C`.
+        let (input, evidence, result) = tbox_extension_classify(r#"
             Declaration(Class(<http://x#A>)) Declaration(Class(<http://x#C>))
             SubClassOf(<http://x#A> DataSomeValuesFrom(<http://x#p> xsd:integer))
             EquivalentClasses(<http://x#C> DataSomeValuesFrom(<http://x#p> rdfs:Literal))"#)
-            .is_none());
+            .expect("the folded min-1 restriction is admitted");
+        assert!(!input.concepts.iter().any(|name| name == "__dt__Literal"));
+        let a = tbox_extension_class(&input, &evidence, "#A");
+        let c = tbox_extension_class(&input, &evidence, "#C");
+        assert!(result.consistent);
+        assert!(result.subsumptions.contains(&(a, c)), "{:?}", result.subsumptions);
+        assert!(!result.subsumptions.contains(&(c, a)), "{:?}", result.subsumptions);
     }
 
     #[test]

@@ -1515,6 +1515,7 @@ fn reconstruct(
         .collect();
     unsatisfiable.sort();
     Ok(Classification {
+        approximate: None,
         consistent: true,
         subsumptions: pairs,
         unsatisfiable,
@@ -1684,6 +1685,9 @@ pub fn try_classify(cfg: &Config, ont: &Path) -> Result<Option<Classification>, 
         a.set(true);
         ActiveGuard
     });
+    // The projections run on a route this module selects (`PROJECTION_ROUTE`),
+    // not one a caller forced, also when `try_classify` is the outermost call.
+    let _internal = super::InternalRoute::enter();
     // The slice projection is an ELI terminology with a transitive mirror role,
     // and the reconstruction needs it classified EXACTLY: an existential
     // consequence reached through the mirror role's inverse (`X ⊑ ∃R.F` where

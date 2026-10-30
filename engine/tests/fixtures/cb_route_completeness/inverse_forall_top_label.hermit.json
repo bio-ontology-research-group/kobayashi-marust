@@ -1,0 +1,13 @@
+{
+  "ontology": "inverse_forall_top_label.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["A", "B"],
+    ["A", "Q1"],
+    ["B", "Q1"],
+    ["C", "B"],
+    ["C", "Q1"],
+    ["Q1", "B"]
+  ],
+  "unsatisfiable": []
+}

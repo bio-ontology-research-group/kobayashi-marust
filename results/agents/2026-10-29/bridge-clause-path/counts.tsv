@@ -1,0 +1,7 @@
+file	ok	WRONG	missed_inconsistency	DEFER	ERR	hermit_error
+seeds_after_auto_clause.txt	693	0	0	0	5	2
+seeds_after_auto_source.txt	695	0	0	0	3	2
+seeds_after_bridge_clause.txt	642	0	0	48	8	2
+seeds_before_auto_clause.txt	391	302	25	0	5	2
+seeds_before_auto_source.txt	695	0	0	0	3	2
+seeds_before_bridge_clause.txt	316	329	29	47	6	2

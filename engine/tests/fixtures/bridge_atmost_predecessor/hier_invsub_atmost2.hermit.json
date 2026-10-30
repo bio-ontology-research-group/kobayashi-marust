@@ -1,0 +1,8 @@
+{
+  "ontology": "hier_invsub_atmost2.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": [
+    "K"
+  ]
+}

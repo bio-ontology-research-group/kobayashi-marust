@@ -840,6 +840,7 @@ Ontology(<http://example.org/o>
     fn query_recognises_taxonomy_unsat_and_owl_tautologies() {
         let iris = IriResolver::default();
         let classification = Classification {
+            approximate: None,
             consistent: true,
             subsumptions: vec![["http://e/A".into(), "http://e/B".into()]],
             unsatisfiable: vec!["http://e/U".into()],
@@ -874,6 +875,7 @@ Ontology(<http://example.org/o>
             "Prefix(other:=<http://other.example/>)".into(),
         ]);
         let classification = Classification {
+            approximate: None,
             consistent: true,
             subsumptions: vec![[":A".into(), ":B".into()]],
             unsatisfiable: Vec::new(),
@@ -895,6 +897,7 @@ Ontology(<http://example.org/o>
     fn inconsistent_ontology_entails_every_supported_query() {
         let iris = IriResolver::default();
         let classification = Classification {
+            approximate: None,
             consistent: false,
             subsumptions: Vec::new(),
             unsatisfiable: Vec::new(),

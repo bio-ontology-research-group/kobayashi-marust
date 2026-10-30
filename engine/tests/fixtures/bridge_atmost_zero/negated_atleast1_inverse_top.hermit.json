@@ -1,0 +1,8 @@
+{
+  "ontology": "negated_atleast1_inverse_top.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": [
+    "D"
+  ]
+}

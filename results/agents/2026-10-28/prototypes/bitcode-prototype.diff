@@ -1,0 +1,89 @@
+diff --git a/engine/src/frontend/datatypes.rs b/engine/src/frontend/datatypes.rs
+index fd46b063..e90f1b5f 100644
+--- a/engine/src/frontend/datatypes.rs
++++ b/engine/src/frontend/datatypes.rs
+@@ -3148,8 +3148,63 @@ pub fn datatype_relation_clauses_grouped(
+             out.push(singleton_clause(an));
+         }
+     }
++    // PROTOTYPE (KM_VALUE_BITCODE): value distinctness by a binary code over
++    // fresh concepts instead of one clause per pair of values.
++    let bitcode = std::env::var_os("KM_VALUE_BITCODE").is_some();
++    if bitcode {
++        let values: Vec<(&String, &Val)> = entries.iter()
++            .filter_map(|e| match e { DtEntry::Value(n, v) => Some((n, v)), _ => None }).collect();
++        // Equal values: compare only within a bucket of identical decoded values.
++        let mut buckets: std::collections::HashMap<String, Vec<usize>> = std::collections::HashMap::new();
++        for (i, (_, v)) in values.iter().enumerate() {
++            buckets.entry(format!("{v:?}")).or_default().push(i);
++        }
++        for members in buckets.values() {
++            for (k, &i) in members.iter().enumerate() {
++                for &j in &members[k + 1..] {
++                    if val_eq(values[i].1, values[j].1) == Some(true) {
++                        out.push(clause([cx(values[i].0)], [cx(values[j].0)]));
++                        out.push(clause([cx(values[j].0)], [cx(values[i].0)]));
++                    }
++                }
++            }
++        }
++        // One code per bucket (equal values share it); distinct buckets get
++        // distinct codes, so two value labels of distinct values on one node
++        // clash at a bit where their codes differ.
++        let mut keys: Vec<&String> = buckets.keys().collect();
++        keys.sort();
++        let width = (usize::BITS - keys.len().max(2).saturating_sub(1).leading_zeros()) as usize;
++        for (code, key) in keys.iter().enumerate() {
++            for &i in &buckets[*key] {
++                let name = values[i].0;
++                // Opaque/undecided values keep the old (no) relation.
++                if matches!(values[i].1, Val::Opaque(_)) { continue; }
++                for bit in 0..width {
++                    let b = Atom::Concept(format!("__vbit__{bit}"), Term::Var("x".to_string()));
++                    if code >> bit & 1 == 1 {
++                        out.push(clause([cx(name)], [b]));
++                    } else {
++                        out.push(clause([cx(name), b], []));
++                    }
++                }
++            }
++        }
++        for (an, av) in &values {
++            for e in &entries {
++                if let DtEntry::Range(bn, br) = e {
++                    match val_in_range(av, br) {
++                        Some(true) => out.push(clause([cx(an)], [cx(bn)])),
++                        Some(false) => out.push(clause([cx(an), cx(bn)], [])),
++                        None => {}
++                    }
++                }
++            }
++        }
++    }
+     for (i, a) in entries.iter().enumerate() {
+         match a {
++            DtEntry::Value(..) if bitcode => {}
+             DtEntry::Value(an, av) => {
+                 for b in entries.iter().skip(i + 1) {
+                     match b {
+@@ -3175,6 +3230,7 @@ pub fn datatype_relation_clauses_grouped(
+             DtEntry::Range(an, ar) => {
+                 for b in entries.iter().skip(i + 1) {
+                     match b {
++                        DtEntry::Value(..) if bitcode => {}
+                         DtEntry::Value(bn, bv) => match val_in_range(bv, ar) {
+                             Some(true) => out.push(clause([cx(bn)], [cx(an)])),
+                             Some(false) => out.push(clause([cx(an), cx(bn)], [])),
+diff --git a/engine/src/frontend/syntax.rs b/engine/src/frontend/syntax.rs
+index 2139665b..822d5430 100644
+--- a/engine/src/frontend/syntax.rs
++++ b/engine/src/frontend/syntax.rs
+@@ -444,7 +444,7 @@ impl Ontology {
+         for (_, literal) in &pending {
+             literals.insert(literal.clone());
+         }
+-        if literals.len() > cap {
++        if literals.len() > cap && std::env::var_os("KM_VALUE_BITCODE").is_none() {
+             // Above the cap, carry each literal as the representative of the
+             // profile the TBox observes (`literal_profiles`), when no
+             // construct observes more than profiles.

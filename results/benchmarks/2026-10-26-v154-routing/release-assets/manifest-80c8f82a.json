@@ -1,0 +1,37 @@
+{
+  "schema": "km-release-assets-v1",
+  "tag": "v1.5.4",
+  "commit": "80c8f82aea9c99db89b7fa3885cc2c63010aa7f6",
+  "assets": [
+    {
+      "name": "km-v1.5.4-linux-x86_64",
+      "sha256": "5f5901d8af05d0ee8ddead95452abe003016b7854e29e080a14614c76fb3d1b9",
+      "size": 18497056
+    },
+    {
+      "name": "km-v1.5.4-certified-source.tar.gz",
+      "sha256": "6236b564c43a4ed5a66d473675a5808e595d34a6a49152221fb9120977be27ca",
+      "size": 68308600
+    },
+    {
+      "name": "build-completion.json",
+      "sha256": "a898e4ac204bd6c43410216722ce69f0f6de75870d08140d2047286a13df94f2",
+      "size": 1040754
+    },
+    {
+      "name": "BENCHMARKS.md",
+      "sha256": "07dcd03d87b5d3b571747aab18dbf995fb96194725adc0b6f80587390810bc0d",
+      "size": 94784
+    },
+    {
+      "name": "kobayashi-marust-protege-1.5.4.jar",
+      "sha256": "f09855a580076c74e0cf11d0b32c9eb3c7eebb666fb26461f09c6c9e06afd66e",
+      "size": 627760
+    },
+    {
+      "name": "SHA256SUMS",
+      "sha256": "b23ac02d736e1c277fd11044fb111ade8ca99a4deaccf8be7235e327532c54af",
+      "size": 458
+    }
+  ]
+}

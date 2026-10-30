@@ -1,6 +1,6 @@
 [package]
 name = "kobayashi-marust"
-version = "1.5.3"
+version = "1.5.4"
 edition = "2021"
 license = "BSD-3-Clause"
 description = "An experimental hybrid SROIQ / OWL 2 DL reasoner written in Rust."
@@ -58,3 +58,6 @@ opt-level = 3
 lto = true
 codegen-units = 1
 panic = "abort"
+
+[patch.crates-io]
+horned-owl = { path = "vendor/horned-owl-1.4.0" }

@@ -23,6 +23,10 @@ fn fixture(name: &str) -> String {
 /// Run `km classify` with a scrubbed KM_* environment and a hard wall-clock
 /// bound (a precheck regression manifests as an unbounded engine run, which
 /// must fail this suite, not hang it).
+///
+/// A forced route refuses an answer with a drop unless
+/// `KM_ALLOW_APPROXIMATE=1`; the selected-route runs opt in so that a
+/// regression shows up as a wrong count or marker, not as a refusal.
 fn classify(args: &[&str], ontology: &str) -> Output {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_km"));
     cmd.arg("classify");
@@ -34,6 +38,9 @@ fn classify(args: &[&str], ontology: &str) -> Output {
         }
     }
     cmd.env("KM_TIMING", "1");
+    if args.contains(&"--route") {
+        cmd.env("KM_ALLOW_APPROXIMATE", "1");
+    }
     cmd.stdin(Stdio::null());
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
@@ -87,6 +94,12 @@ fn named_rules_route_falls_through_to_taxonomy_when_consistent() {
     let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
     let v = json_of(&out);
     assert_eq!(v["consistent"], true, "stderr: {stderr}");
+    // The CB taxonomy drops the two ground ABox clauses, which the rule
+    // worker represented in its consistency verdict; on this consistent,
+    // nominal-free ontology they cannot change a class subsumption, so the
+    // answer is exact and nothing is published as dropped.
+    assert_eq!(v["dropped"], 0, "stderr: {stderr}");
+    assert!(v.get("approximate").is_none(), "{v}");
     assert!(stderr.contains("route=ht_rules"), "stderr: {stderr}");
     // The consistent verdict must not print a short-circuit line...
     assert!(!stderr.contains("consistent=false"), "stderr: {stderr}");
@@ -162,5 +175,6 @@ fn same_individual_guard_does_not_fire_without_the_merge() {
         v["consistent"], true,
         "without the merge the SameAs guard is false, so no clash (stderr: {stderr})"
     );
+    assert_eq!(v["dropped"], 0, "stderr: {stderr}");
     assert!(!stderr.contains("consistent=false"), "stderr: {stderr}");
 }

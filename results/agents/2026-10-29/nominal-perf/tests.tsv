@@ -1,0 +1,7 @@
+# cargo test --release, --test-threads 4, on 980c9eca (gated build)
+target	result
+lib frontend::normalise	test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 2998 filtered out; finished in 0.04s
+empty_and_universal_data_ranges	test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 238.08s
+nominal_seq_order	test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.59s
+universal_role_and_top_data_range	test result: ok. 11 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 541.22s
+# first run on the ungated variant (sharing for every mechanism): empty_and_universal_data_ranges FAILED 2 (ht_general missed No [= AtMostOne and Bmax/Ball [= ... ), which led to the KM_MECHANISM=cb gate

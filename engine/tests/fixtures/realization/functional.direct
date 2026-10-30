@@ -1,0 +1,7 @@
+SAME	urn:t#m1	urn:t#m2
+SAME	urn:t#s1	urn:t#s2
+SAME	urn:t#u1	urn:t#u2
+TYPE	urn:t#m1	urn:t#Tall
+TYPE	urn:t#m2	urn:t#Tall
+TYPE	urn:t#s1	urn:t#Married
+TYPE	urn:t#s2	urn:t#Married

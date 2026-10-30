@@ -479,8 +479,17 @@ fn both_lean_checkers_must_accept_before_publication() {
 
 #[test]
 fn source_exact_lean_checker_accepts_real_cb_publication() {
-    let checker = std::env::var_os("KM_CB_TEST_SOURCE_EXACT_TAXONOMY_CHECKER")
-        .expect("the integration gate must provide the real source-exact Lean checker");
+    let Some(checker) = std::env::var_os("KM_CB_TEST_SOURCE_EXACT_TAXONOMY_CHECKER") else {
+        // Same convention as the other conditional Lean-checker tests: skip
+        // unless the certification gate (`lean/run-cb-certification-gate.sh`)
+        // supplies the checker, and fail if the gate requires it.
+        assert!(
+            std::env::var_os("KM_REQUIRE_LEAN_CHECKERS").is_none(),
+            "KM_REQUIRE_LEAN_CHECKERS is set but KM_CB_TEST_SOURCE_EXACT_TAXONOMY_CHECKER is not"
+        );
+        eprintln!("skipped: KM_CB_TEST_SOURCE_EXACT_TAXONOMY_CHECKER not set (no real Lean checker requested)");
+        return;
+    };
     let source = snapshot_path("source-exact-typed-source");
     let bundle = snapshot_path("source-exact-live-bundle");
     let exact = snapshot_path("source-exact-matrix");

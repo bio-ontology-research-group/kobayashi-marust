@@ -1,0 +1,4 @@
+TYPE	urn:t#p1	urn:t#InC
+TYPE	urn:t#p2	urn:t#InC
+TYPE	urn:t#x	urn:t#HasUncle
+TYPE	urn:t#z	urn:t#Uncle

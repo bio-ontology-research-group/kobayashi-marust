@@ -23,6 +23,7 @@ mod finite_data_rules;
 mod rule_assertions;
 mod isolated_rules;
 pub mod iri;
+pub mod literal_profiles;
 pub mod normalise;
 pub mod parse;
 pub mod preprocess;
@@ -32,13 +33,20 @@ pub mod rbox;
 mod rule_certificate;
 mod unary_rules;
 pub mod sexpr;
+pub mod sorts;
 pub mod syntax;
 pub mod top_role;
+pub mod universal_role;
+pub(crate) mod has_key;
 
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 
 use clauses::{clause, clause_into_json, Atom, DLClause, Term};
 use iri::IriRegistry;
+
+/// Coverage diagnostic for data-property assertions the clause set does not
+/// carry (`"<n> data-property assertion axiom(s) are unsupported"`).
+pub const DATA_ASSERTIONS_UNSUPPORTED_SUFFIX: &str = " data-property assertion axiom(s) are unsupported";
 
 /// Result of `ofn_to_clauses`: the JSON clause set plus the output-mapping
 /// side data.
@@ -68,6 +76,22 @@ pub struct FrontendResult {
     /// Exact nominal/ABox provenance for the native Konclude bridge. Empty on
     /// nominal-free inputs; `complete=false` makes the bridge fail closed.
     pub nominal_abox: crate::json_io::NominalAboxMeta,
+    /// Positive and negative `DataPropertyAssertion` axioms the clause set does
+    /// not carry and whose omission is not certified harmless. The orchestrator
+    /// re-runs the frontend with `KM_DATA_ASSERTION_AS_CLASS` when this is
+    /// positive and publishes the remainder as dropped axioms.
+    pub uncarried_data_assertions: u64,
+    /// Source axioms the clause set does not represent and whose omission is
+    /// not entailment-neutral, by functional-syntax head. The orchestrator
+    /// publishes their total as dropped axioms of a consistent answer.
+    pub dropped_source_axioms: std::collections::BTreeMap<String, u64>,
+    /// Constructs this clause stream represents only approximately for the
+    /// mechanism of an explicitly selected route, by kind (`Nominal`, or an
+    /// ABox assertion kind that only a native HT bridge reads). Empty under
+    /// automatic routing. The orchestrator ignores it unless the caller forced
+    /// the route, so automatic answers and their `DROPPED` count never depend
+    /// on it; on a forced route any entry makes the answer approximate.
+    pub route_approximations: std::collections::BTreeMap<String, u64>,
     /// KM_HT_CARD: first-class qualified number restrictions (`define`'s `≥n`/`≤n`
     /// markers). Empty unless the frontend `KM_HT_CARD` flag is set.
     pub cardinalities: Vec<crate::json_io::CardMeta>,
@@ -85,6 +109,17 @@ pub struct FrontendResult {
     /// refined by the exact normalized-clause fragment gate (`manual` for a
     /// standalone frontend invocation).
     pub route: String,
+    /// Source data properties used by the clause set, when the source also
+    /// has individuals or nominals; empty otherwise. Converted HT inputs carry
+    /// them as `TInput::data_roles` (docs/NOMINALS-CB.md, m2197).
+    pub data_roles: Vec<String>,
+    /// A forced route reads a one-sorted clause stream on an input with a
+    /// TBox nominal where the sort encoding would apply: it may publish no
+    /// verdict at all
+    /// (docs/ROUTING.md, "Forced routes"); under automatic routing the
+    /// rule-consistency checker does not publish an inconsistency found on
+    /// such a stream.
+    pub one_sorted_data_successors: bool,
 }
 
 /// Preserve every parsed object ABox assertion together with the exact nominal
@@ -347,10 +382,15 @@ fn collect_nominal_abox(
 
     // Converted data assertions arrive as parsed class assertions; match each
     // side against its own source count.
+    // The literal-profile abstraction can map several source assertions to
+    // one class assertion: match parsed class assertions against the class
+    // assertions the conversion added, and source data assertions against
+    // the source assertions it carried.
     let converted_data = ontology.data_assertions_as_class();
-    if parsed_class != source.class_assertions + converted_data {
+    let converted_class = ontology.data_assertion_class_axioms();
+    if parsed_class != source.class_assertions + converted_class {
         unsupported.insert(format!(
-            "source/parsed ClassAssertion mismatch ({}+{converted_data}/{parsed_class})",
+            "source/parsed ClassAssertion mismatch ({}+{converted_class}/{parsed_class})",
             source.class_assertions
         ));
     }
@@ -367,9 +407,7 @@ fn collect_nominal_abox(
     // Every positive data assertion converted to its class assertion is
     // covered; anything else (negative or unconverted ones) is not.
     if source_data_role != converted_data {
-        unsupported.insert(format!(
-            "{source_data_role} data-property assertion axiom(s) are unsupported"
-        ));
+        unsupported.insert(format!("{source_data_role}{DATA_ASSERTIONS_UNSUPPORTED_SUFFIX}"));
     }
     if (source_same == 0) != (parsed_same_pairs == 0) || parsed_same_pairs < source_same {
         unsupported.insert(format!(
@@ -1051,6 +1089,24 @@ fn ofn_to_clauses_representation(
     // constants are rewritten; ordinary source spelling/identity is retained.
     let builtin_source = builtin_aliases::canonicalize(text).map_err(parse::OutOfFragment)?;
     let text = builtin_source.as_ref();
+    // Universal-role restrictions become an exact nominal-hub encoding, a
+    // conservative extension with the same taxonomy (see `universal_role`).
+    // The calculi have no universal-role object, so `∃U.C` / `∀U.C` were
+    // ordinary role restrictions: incomplete, and expensive. Rewriting the
+    // source before the streaming parse lets the profile, the router, every
+    // clause consumer and the incremental sessions see one ontology.
+    // `KM_NO_UNIVERSAL_ROLE_HUB` keeps the source for differential tests.
+    let universal_source = if std::env::var_os("KM_NO_UNIVERSAL_ROLE_HUB").is_none() {
+        universal_role::encode(text).map_err(parse::OutOfFragment)?
+    } else {
+        std::borrow::Cow::Borrowed(text)
+    };
+    let text = universal_source.as_ref();
+    // OWL 2 keys become the DL-safe rules they denote (see `has_key`), so the
+    // rule certificates, the router and the rule consumers handle, refuse or
+    // count a key exactly as that rule.
+    let key_source = has_key::encode(text).map_err(parse::OutOfFragment)?;
+    let text = key_source.as_ref();
     let mut t = StageTimer::new();
     let mut reg = IriRegistry::new();
     // Pass 1: stream the document into SROIQ axioms. No token vector and no
@@ -1126,6 +1182,7 @@ fn ofn_to_clauses_representation(
     // can be freed before clausification. The learned router also makes its
     // pre-normalisation choice at this exact boundary.
     let rule_individual_names = profile_builder.rule_individual_names();
+    let data_property_raw = profile_builder.data_property_names();
     let (mut profile, source_class_raw) =
         profile_builder.finish_with_separable_class_names(text.len() as u64);
     // A contradiction entailed by ordinary source axioms remains a
@@ -1453,6 +1510,18 @@ fn ofn_to_clauses_representation(
     // Even an empty finite grounding still needs the original named ABox
     // and role axioms for independent source-model verification.
     let ht_rules = !rules.is_empty() || profile.normalized_finite_data_rules > 0;
+    let converted_data_assertions = ontology.data_assertions_as_class();
+    // Source axioms no consumer of this clause stream represents, by head
+    // (`Ontology::dropped_source_axioms`). DL-safe rules that the selected
+    // mechanism does not read (`KM_NO_HT_RULES`) and that no exact lowering
+    // replaced are counted too.
+    let mut dropped_source_axioms = ontology.dropped_source_axioms().clone();
+    if rules.is_empty() && !rule_independent_abox_inconsistent {
+        let unread = (ontology.rules().count() + ontology.datatype_rules().count()) as u64;
+        if unread > 0 && profile.normalized_finite_data_rules == 0 {
+            *dropped_source_axioms.entry("DLSafeRule".to_string()).or_default() += unread;
+        }
+    }
     drop(ontology); // the syntax AST is dead once clausified
     t.lap("normalise");
     // Under KM_NOMINALS the ground ABox + nominal defining clauses enter the
@@ -1482,6 +1551,51 @@ fn ofn_to_clauses_representation(
     // when no executable ground rule remains; ordinary rule-free inputs do not.
     if ht_rules {
         tbox.extend(abox.iter().cloned());
+    }
+    // Outside nominal clausification the ground ABox enters the clause set
+    // only through nominal proxies (`preprocess::nominal_clauses`): a concept
+    // assertion on an individual with a proxy and a role assertion between
+    // two such individuals. Every other assertion (on an individual without
+    // a proxy, and every equality, inequality or negative role assertion) is
+    // not represented, so it is counted. A certified ABox omission empties
+    // `abox` before this point and counts nothing.
+    // An ABox with the source-only certificate that it is consistent and
+    // changes no TBox subsumption is entailment-neutral for classification.
+    // The other ABox certificates need an orchestrator-side check that only
+    // the automatic route schedules, and the automatic router sends every
+    // uncertified ABox to a nominal or typed-ABox mechanism; so the count
+    // applies to explicitly selected routes.
+    let abox_certified = profile.positive_abox_tbox_separable;
+    let mut abox_unrepresented: BTreeMap<String, u64> = BTreeMap::new();
+    let nominal_proxies = hooks.nominal_to_individual.len() as u64;
+    if !automatic && !nominals_mode && !ht_rules && !abox_certified && !abox.is_empty() {
+        let proxied: HashSet<&str> =
+            hooks.nominal_to_individual.values().map(String::as_str).collect();
+        fn individual(t: &Term) -> Option<&str> {
+            match t {
+                Term::Ind(name) => Some(name.as_str()),
+                _ => None,
+            }
+        }
+        for c in &abox {
+            let kind = match (c.body.as_slice(), c.head.as_slice()) {
+                // `a : owl:Thing` constrains nothing.
+                ([], [Atom::Concept(c, _)]) if matches!(c.as_str(), "owl:Thing" | "Thing") => None,
+                ([], [Atom::Concept(_, t)]) => {
+                    (!individual(t).is_some_and(|a| proxied.contains(a))).then_some("ClassAssertion")
+                }
+                ([], [Atom::Role(_, s, t)]) => (!(individual(s).is_some_and(|a| proxied.contains(a))
+                    && individual(t).is_some_and(|a| proxied.contains(a))))
+                    .then_some("ObjectPropertyAssertion"),
+                ([], [Atom::Eq(..)]) => Some("SameIndividual"),
+                ([Atom::Eq(..)], []) => Some("DifferentIndividuals"),
+                ([Atom::Role(..)], []) => Some("NegativeObjectPropertyAssertion"),
+                _ => Some("ABox assertion"),
+            };
+            if let Some(kind) = kind {
+                *abox_unrepresented.entry(kind.to_string()).or_default() += 1;
+            }
+        }
     }
     drop(abox);
     drop(hooks);
@@ -1556,12 +1670,73 @@ fn ofn_to_clauses_representation(
             .retain(|reason| reason != &diagnostic);
         nominal_abox.complete = nominal_abox.unsupported.is_empty();
     }
+    // Data-property assertions the clause set does not carry: the source
+    // count of positive and negative assertions less the positive ones
+    // converted to `DataHasValue` class assertions, unless the drop was
+    // certified harmless just above (the diagnostic is then gone). The
+    // orchestrator re-runs the frontend with the conversion when this is
+    // positive and publishes any remainder as dropped axioms, so a clause
+    // worker never publishes a complete-looking taxonomy over a silently
+    // dropped assertion.
+    // A complete typed nominal ABox is read directly by the native bridge
+    // routes (they set `KM_TRIGGER_ABSORB`), so its assertions are carried
+    // there; elsewhere the unrepresented ABox is counted.
+    let mechanism = std::env::var("KM_MECHANISM").unwrap_or_default();
+    let native_payload_present =
+        nominal_abox.complete && std::env::var_os("KM_TRIGGER_ABSORB").is_some();
+    // Only an HT mechanism reads that payload (the Konclude bridge of
+    // `ht_bridge` and `ht_full`). A CB bundle that merely sets
+    // `KM_TRIGGER_ABSORB` (`cb_trigger*`) never reads it, and the `portfolio`
+    // bundles (`production_all*`) race a CB arm over this clause stream,
+    // which lacks the ABox outside `KM_NOMINALS`, so a forced run can publish
+    // the CB answer.
+    let reads_native_payload = native_payload_present && mechanism == "ht";
+    let mut route_approximations: BTreeMap<String, u64> = BTreeMap::new();
+    if !native_payload_present {
+        for (kind, n) in abox_unrepresented {
+            *dropped_source_axioms.entry(kind).or_default() += n;
+        }
+    } else if !reads_native_payload {
+        for (kind, n) in abox_unrepresented {
+            *route_approximations.entry(kind).or_default() += n;
+        }
+    }
+    // Outside nominal clausification a nominal is an ordinary proxy class
+    // (`preprocess::nominal_clauses`): the clauses hold for `{a}` but omit the
+    // singleton and existence clauses (`preprocess::nominal_defining_clauses`),
+    // so the clause stream over-approximates the nominal, and every assertion
+    // on a proxied individual with it. A CB or EL worker reasons over that
+    // approximation directly. The clause-reading HT workers do not recover
+    // it either: forced `ht_general` answered a contradictory ABox whose
+    // DL-safe rule the frontend lowers over nominal proxies as consistent,
+    // with nothing counted. Only the native bridge payload and `KM_NOMINALS`
+    // carry the nominal exactly. The
+    // automatic router never sends a nominal input to a mechanism that loses
+    // it, so this is recorded for explicitly selected routes only.
+    if !automatic && !nominals_mode && !reads_native_payload && nominal_proxies > 0 {
+        *route_approximations.entry("Nominal".to_string()).or_default() += nominal_proxies;
+    }
+    let uncarried_data_assertions = if nominal_abox
+        .unsupported
+        .iter()
+        .any(|reason| reason.ends_with(DATA_ASSERTIONS_UNSUPPORTED_SUFFIX))
+    {
+        let source_count = |kind: &str| profile.source.axiom_types.get(kind).copied().unwrap_or(0);
+        (source_count("DataPropertyAssertion") + source_count("NegativeDataPropertyAssertion"))
+            .saturating_sub(converted_data_assertions)
+    } else {
+        0
+    };
     // Source routing initially keeps these ontologies on the exact nominal CB
     // calculus because data assertions are not known to be representable until
     // the parsed-AST certificate above has run. Once the complete typed payload
     // is proved, add the complete-answer-or-defer SHOIQ competitor while
     // retaining that same CB fallback.
+    // Under the general policy this specialist is not scheduled: its only
+    // protection against the inconsistent Wine-family edit was an exact
+    // source-count fence, which is not admissible routing evidence.
     if automatic
+        && crate::routing::routing_policy() == crate::routing::RoutingPolicy::V153
         && route == crate::routing::Route::Nominals
         && nominal_abox.complete
         && crate::routing::nominal_ni_abox_candidate(&profile)
@@ -1729,6 +1904,77 @@ fn ofn_to_clauses_representation(
             tbox.extend(datatypes::datatype_relation_clauses_grouped(&dt_names, 8, Some(&groups)));
         }
     }
+    // Two-sorted domain encoding (docs/NOMINALS-CB.md, "Object and data
+    // sorts"): under nominal clausification, when the clause set carries data
+    // values, data ranges or data-property atoms next to nominals or
+    // individuals, make `Δ_I ∩ Δ_D = ∅` explicit so that no `⊤ ⊑ C` fact
+    // forces object structure on a data element. Outside that gate (in
+    // particular on every input without data properties) the clause output
+    // is unchanged.
+    // Only names the primary parse has already registered resolve; an
+    // unused declared data property has no clauses to sort.
+    let data_roles: BTreeSet<String> = if has_individuals {
+        data_property_raw
+            .iter()
+            .filter_map(|raw| reg.assigned(raw).map(str::to_string))
+            .collect()
+    } else {
+        BTreeSet::new()
+    };
+    // The data properties a converted HT input must know about: those the
+    // clause set uses. The native bridge reads them to run its datatype
+    // admission gate even when no `__dt__` concept occurs (m2197).
+    let used_data_roles: Vec<String> = if data_roles.is_empty() {
+        Vec::new()
+    } else {
+        let mut used: BTreeSet<&str> = BTreeSet::new();
+        for c in &tbox {
+            for atom in c.body.iter().chain(c.head.iter()) {
+                if let Atom::Role(name, ..) = atom {
+                    if data_roles.contains(name) {
+                        used.insert(name.as_str());
+                    }
+                }
+            }
+        }
+        used.into_iter().map(str::to_string).collect()
+    };
+    // Outside nominal clausification the clause stream stays one-sorted.
+    // With a nominal in the TBox and the sort encoding applicable, that
+    // reading is stronger than the ontology (data successors fall under
+    // `⊤ ⊑ C` and can be forced onto a named individual, m2197), so a forced
+    // route on such a stream may publish neither verdict. Without a TBox
+    // nominal the one-sorted reading is not stronger: a data element can take
+    // the labels of an unravelled copy of any object, and the copies are
+    // anonymous, so nothing forces them onto a named element
+    // (docs/NOMINALS-CB.md section 6). The bridge-exclusive worker
+    // (`KM_HT_ONLY=bridge`) is exempt: it reads the typed source and its
+    // datatype gate defers on these inputs itself. A forced route then
+    // publishes no verdict; under automatic routing the rule-consistency
+    // checker does not publish an inconsistency from such a stream.
+    let bridge_only = std::env::var("KM_HT_ONLY").ok().as_deref() == Some("bridge");
+    let one_sorted_stream = !nominals_mode
+        && nominal_proxies > 0
+        && !bridge_only
+        && sorts::applies(&tbox, &data_roles);
+    if one_sorted_stream && automatic && std::env::var_os("KM_TIMING").is_some() {
+        eprintln!("KM_TIMING frontend: one-sorted data successors under automatic route {}", route.as_str());
+    }
+    let one_sorted_data_successors = one_sorted_stream;
+    if nominals_mode && has_individuals && sorts::applies(&tbox, &data_roles) {
+        let proxies: BTreeMap<String, String> = nominal_abox
+            .individuals
+            .iter()
+            .filter_map(|entry| {
+                let [proxy] = entry.proxies.as_slice() else { return None };
+                Some((entry.individual.clone(), proxy.clone()))
+            })
+            .collect();
+        let count = sorts::encode_with_classes(&mut tbox, &data_roles, &declared, &proxies);
+        if std::env::var_os("KM_OFN_TIMING").is_some() {
+            eprintln!("ofn [sorts] {} clauses added or relativized", count);
+        }
+    }
     t.lap("rbox+domain+declared");
 
     // KM_EMELIM: complementary-definer excluded-middle elimination (B≡¬A) — the
@@ -1795,7 +2041,12 @@ fn ofn_to_clauses_representation(
         route.apply_environment();
     }
     if automatic && route == crate::routing::Route::Elc && (!el_rbox_safe || !pure_el_shape) {
-        route = crate::routing::Route::CbPlain16;
+        // The general policy withdraws to the portfolio, which carries an
+        // exact fallback; v1.5.3 withdrew to the isolated plain CB bundle.
+        route = match crate::routing::routing_policy() {
+            crate::routing::RoutingPolicy::General => crate::routing::Route::ProductionAll,
+            crate::routing::RoutingPolicy::V153 => crate::routing::Route::CbPlain16,
+        };
         route.apply_environment();
     }
 
@@ -1874,6 +2125,11 @@ fn ofn_to_clauses_representation(
         rules,
         profile,
         route: route.as_str().to_string(),
+        uncarried_data_assertions,
+        dropped_source_axioms,
+        route_approximations,
+        data_roles: used_data_roles,
+        one_sorted_data_successors,
     })
 }
 
@@ -2521,13 +2777,23 @@ mod separable_abox_elision_tests {
         // elided and the conservative occurrence flag stays authoritative.
         let text = VACUOUS_TOP_ROLE_OBJECT_ABOX.replace(
             "SubClassOf(ObjectSomeValuesFrom(<urn:r> owl:Thing) <urn:D>)",
-            "SubClassOf(ObjectSomeValuesFrom(owl:topObjectProperty <urn:A>) <urn:D>)",
+            // U as a sub-role is outside the universal-role hub rewrite, so the
+            // builtin stays in the retained ontology.
+            "SubObjectPropertyOf(owl:topObjectProperty <urn:s>)",
         );
         let result = with_ofn_to_clauses_requested_route(&text, Route::Auto, |result| result)
             .expect("read universal-role source");
         assert!(result.profile.expressivity.universal_role);
         assert!(!result.profile.disjoint_union_abox_candidate);
-        assert_eq!(result.route, Route::Nominals.as_str());
+        // Both automatic policies keep the input on a nominal-aware route: the
+        // general policy's default is the certified nominal portfolio, whose
+        // exact arm is the nominal CB calculus.
+        assert!(
+            result.route == Route::Nominals.as_str()
+                || result.route == Route::CertifiedNominals.as_str(),
+            "{}",
+            result.route
+        );
     }
 }
 

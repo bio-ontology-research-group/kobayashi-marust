@@ -68,6 +68,14 @@ Probes (all unsat through the pipeline, oracle/ontologies/):
 `KM_NO_DATATYPES` disables the oracle pass (the axiom translation is
 unconditional).
 
+## Asserted data values
+
+Positive data-property assertions are carried as `DataHasValue` class
+assertions. Above the 512-literal cap they are carried through the profiles
+the TBox observes, when no construct counts or compares values; see
+[DATA-ASSERTION-PROFILES.md](DATA-ASSERTION-PROFILES.md) for the encoding,
+its gate and the exactness argument.
+
 ## Open corners (sound, possibly incomplete)
 
 - pattern / length facets (ranges containing them stay fully opaque),

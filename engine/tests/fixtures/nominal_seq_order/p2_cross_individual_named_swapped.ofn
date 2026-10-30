@@ -1,0 +1,10 @@
+Prefix(:=<http://x/>)
+Ontology(<http://x/p2>
+Declaration(Class(:B)) Declaration(Class(:NB)) Declaration(Class(:C)) Declaration(Class(:Q)) Declaration(Class(:D)) Declaration(ObjectProperty(:r))
+Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+SubClassOf(owl:Thing ObjectUnionOf(:B :NB))
+SubClassOf(ObjectSomeValuesFrom(:r :NB) :C)
+ObjectPropertyAssertion(:r :b :a)
+DisjointClasses(:C :D) ClassAssertion(:D :b)
+SubClassOf(:Q ObjectOneOf(:a))
+)

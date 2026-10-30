@@ -166,3 +166,198 @@ without `KM_HT_RACE`.
   `KM_HT`, `cb_to_ht.py`, `ht_ofn_runone.py` (sweep runner), `sweep_ofn/`
   (job 47566667), `htcheck/` (job 47570686), `h2h_joined.jsonl` (the join).
 - Head-to-head join: `h2h_analyze.py` over `cmp2_res` (CB) + `sweep_ofn` (HT).
+
+## 7. Complementary-definer elimination (EMELIM)
+
+`cb_to_ht::elim_complements` (default on; off under `KM_HT_CARD` card
+definitions, DL-safe rules, or `KM_NO_HT_EMELIM`) folds a complementary pair
+`B ≡ ¬A`, given as `⊤ → A ∨ B` and `A ∧ B → ⊥`, into the single concept `A`:
+both clauses are dropped and `B` is replaced by `¬A` in every other clause.
+
+The worker matches a body literal against node labels by sign. A body literal
+`¬A(t)` therefore fires only when the node carries an explicit `¬A` label, and
+once `⊤ → A ∨ B` is gone nothing derives `¬A` from the failure of `A`. Up to
+v1.5.4 the fold wrote each body occurrence of `B` as such a literal, and its
+completeness guard (keep the pair if a side drives a consequence and is not
+Horn-derivable) let a Horn-derivable side through. That loses every
+consequence the excluded middle supplied when the other side was refuted. The
+reproducer (2026-10-29):
+
+    EquivalentClasses(:Has DataMinCardinality(1 :d))
+    EquivalentClasses(:Two DataMinCardinality(2 :d))
+    EquivalentClasses(:No ObjectComplementOf(:Has))
+    EquivalentClasses(:AtMostOne ObjectComplementOf(:Two))
+
+The frontend clause set is exact. Its complements `Q_3 ≡ ¬Has` and
+`Q_4 ≡ ¬Two` are both Horn-derivable (`No → Q_3`, `AtMostOne → Q_4`), so both
+folded into `No → ¬Has`, `¬Has → No`, `AtMostOne → ¬Two`, `¬Two → AtMostOne`.
+The test `{No, ¬AtMostOne}` then has the clash-free model `{No, ¬Has,
+¬AtMostOne}`: `¬AtMostOne` should force `Two` (through `Q_4`'s excluded
+middle), whose two witnesses give `Has` and the clash. `ht_general` and
+`tableau` reported only `Two ⊑ Has`. Cardinality plays no part: the object
+spelling and the cardinality-free `SubClassOf(:Two :Has)`,
+`SubClassOf(:T2 :Two)` miss the same subsumption.
+
+The fold now writes a body occurrence `B(t)` as the head literal `A(t)`:
+`B ∧ Body → H` and `Body → A ∨ H` are the same clause under `B ≡ ¬A`, and the
+second has the positive-body shape for which the hypertableau is complete
+(Motik, Shearer and Horrocks 2009). A head occurrence becomes `¬A(t)`, a
+constraint that clashes with `A(t)` as `A ∧ Body → H'` would. A clause with
+`A(t)` on both sides is a tautology and is dropped. Each output clause is then
+equivalent to its source clause once `B` is defined as `¬A`, and the two
+dropped clauses are valid under that definition, so the folded set and the
+source set have the same models up to the value of `B` and the same
+subsumptions over the remaining names. If a moved literal's variable would be
+unbound (neither the centre nor in the remaining body), the fold returns the
+source clause set unchanged. The pair guard stays as a scheduling heuristic
+(a folded pair whose side drives a consequence re-creates the excluded middle
+as a head disjunction); completeness no longer rests on it.
+
+A second, latent gap: when both sides were non-internal the fold eliminated
+the larger id, a named class. The classifier still queries that id (`{X, ¬B}`),
+which no clause mentions after the fold, so every subsumption into `B` would be
+lost. The fold now eliminates only internal definers.
+
+Routes. The fold runs on every HT conversion with no card definitions and no
+rules. Under `KM_TRIGGER_ABSORB` (`production_all*`, `certified_*`,
+`ht_bridge`, `ht_full`) `normalize_signed_trigger_clauses` already moved the
+negative body literals into the head, which is why those routes answered the
+reproducer correctly; `certified_card_proxy_abox` runs an HT arm only for a
+card candidate, which requires card definitions and so disables the fold.
+Forced `ht_general`, `tableau` and `ht_features` answered the reproducers
+incompletely; `ht_qo`, `ht_shoq` and `nominal_ni_*` ran the same fold without
+the literal movement (their structural gates or the CB arm decided these
+small inputs). None of these is an automatic route under either routing
+policy. Measurements are in
+`results/agents/2026-10-29/ht-card-complement/`.
+
+## 8. Bridge `≤0` restrictions and inverse predecessors
+
+Defect. The Konclude bridge (`engine/src/konclude_ht/bridge.rs`, `Builder`)
+built `≤0 R.C` as a `CCATMOST` concept with parameter 0, and `¬≥1 R.C` as a
+negated `CCATLEAST` with parameter 1, which the saturation reads as the same
+`≤0` count. The ported saturation's critical at-most test
+(`is_critical_atmost_concept_descriptor_insufficient`, saturation/s09.rs)
+counts only the `R`-successors a saturated node links to. A neighbour that is
+the node's predecessor, reached over the inverse of `R`, is never counted, so
+the node stayed sufficient and its satisfiability was published from the
+saturation. On `D ⊑ ∃s.⊤`, `⊤ ⊑ ≤0 s⁻.D` (HermiT: `D` unsatisfiable) the
+source-TBox bridge answered `D` satisfiable. The automatic route took the
+bridge for fresh generator seed 1241 (`D ≡ ∃s.∃t.B`, `⊤ ⊑ ≤0 s⁻.D`,
+`Q3 ≡ ¬C`) and published `D ⊑ Q3` instead of `D` unsatisfiable;
+`production_all` and `ht_bridge` did the same. `KM_HT_NO_SATURATION=1`
+answered correctly, which places the miss in the saturation, not in the
+completion tableau. The clause translation (`KM_NO_SOURCE_TBOX=1`) was
+already right, because the frontend clausifies `≤0 R.C` as `R(x,y) ∧ C(y) →
+⊥`.
+
+Fix. Konclude's ontology builder never produces a `CCATMOST` with parameter
+0: it builds `≤0 R.C` as `∀R.¬C` (see the note on
+`generated_successor_filler_negation`, model/op.rs). The bridge builder now
+does the same in `atmost_q` and `atmost` (`≤0 R ≡ ∀R.⊥`), and `atleast_q`
+builds `≥1 R.C` as `∃R.C`, so `¬≥1 R.C` becomes `∀R.¬C` as well. These are
+equivalences, so the translated terminology has the same models. The
+universal rule propagates to predecessors in both the saturation and the
+completion, which covers the inverse case. No tableau rule changes, and the
+bridge has no Lean model (docs/CERTIFICATION-ROADMAP.md), so no Lean surface
+changes.
+
+Fixtures: `engine/tests/fixtures/bridge_atmost_zero/`, run by
+`engine/tests/bridge_atmost_zero.rs` on auto, production_all, ht_bridge and
+ht_bridge with `KM_NO_SOURCE_TBOX=1`. Measurements:
+`results/agents/2026-10-29/cb-inverse-top/`.
+
+Open: clause-translation `≤2` with a counted predecessor. The forced clause
+translation (`KM_NO_SOURCE_TBOX=1`) misses the eight `≤2` probes in
+`engine/tests/bridge_atmost_predecessor.rs` (ignored test
+`ht_bridge_clause_translation_known_misses`). A temporary trace of
+`is_critical_atmost_concept_descriptor_insufficient` (saturation/s09.rs) and
+`mark_atmost_restricted_ancestors_as_insufficient` (saturation/s08.rs) on
+`inv_atmost2_u_pred` showed the same input on both paths: the same `≤2`
+concept with qualifier TOP, the same linked successors (count 2, found 2,
+nothing mergeable), the same verdict (not insufficient, ancestors possibly
+critical), and the same backward-propagation roles at the ancestor marking.
+The saturation node flags and the unknown-subject count also matched. The
+one difference is the role object: the clause translation gives the at-most
+the named role `__inv__s`, while the source TBox gives the wired inverse of
+`s`. Building `__inv__s` as that inverse object made the at-most input
+identical and did not fix the miss. `KM_HT_NO_SATCACHE=1` (saturation on,
+saturation-node coupling in the residue probes off) answers all eight, so the
+miss is in the completion's expand-from-saturation and caching-blocking
+coupling, not in the saturation's at-most rule or the translation. The fix
+belongs to that coupling (v1.5.5 work); no automatic route uses the clause
+translation for an input with a `≤2` restriction.
+## 9. Subset blocking and backward clauses
+
+The worker's default blocking (mode 1, anywhere subset) blocks a node `w` by
+an earlier node `w'` with `L(w) ⊆ L(w')`; the card arm's mode 5 (Konclude's
+optimized blocking) adds a check for `∀` over an edge back to the predecessor.
+When the model is unravelled, `w`'s position takes `w'`'s label and
+successors, so it carries the gained literals `L(w') \ L(w)`. The code
+described subset blocking as complete for ALC(H). It is not, as soon as a
+clause body mentions a literal at a neighbour variable: `∃r.C ⊑ D` gives
+`C(y) ∧ r(x, y) → D(x)`, and a gained `C` at `w` makes the predecessor need
+`D`, which the tableau never derived because `w` was not expanded. Minimal
+cases (2026-10-29, delta-debugged from the ALCHIQ seeds 103, 507 and 639):
+
+    EquivalentClasses(:D ObjectSomeValuesFrom(:t ObjectUnionOf(:A ObjectComplementOf(:A))))
+    DisjointClasses(owl:Thing ObjectAllValuesFrom(:t :D))
+
+is inconsistent (every element needs a `t`-successor outside `D`, that is
+without a `t`-successor), but `ht_general` answered consistent. With any
+blocking that compares whole labels (modes 0, 2, 3, 4, 6) it answers
+inconsistent; modes 1 and 5 do not. The `A ⊔ ¬A` filler is what makes the
+gain possible: one node's label carries the chosen disjunct and the
+recognition literal of `∃t.(A ⊔ ¬A)` depends on it. The data-range excluded
+middle of `excluded_middle_of_complement_ranges` is the same mechanism: there
+the gained literal is a data-range label such as `xsd:integer` at a
+`d`-successor, which the recognition clause of `∃d.xsd:integer` reads, so
+`H ≡ ≥1 d` was never classified under `∃d.xsd:integer ⊔ ∃d.¬xsd:integer`
+(again correct under modes 0, 2 and 3, wrong under mode 1).
+
+The rule (`SubsetGain` in `hypertableau.rs`). When the model is unravelled,
+`w`'s position keeps its incoming edges and its edges to nodes other than its
+own successors, and takes `w'`'s label and successors. Every clause instance
+the tableau evaluated over a kept edge stays satisfied, because its head holds
+at the neighbour or in `L(w) ⊆ L(w')`. Only a gained literal can create a new
+instance, so a pair is admitted when no gained literal is relevant for a kept
+edge `u -r-> w` (or `w -r-> u`):
+
+- a literal at the neighbour variable of a body atom `r(x, y)` (or
+  `r(y, x)`), for example `C(y)` in `C(y) ∧ r(x, y) → D(x)`;
+- a literal at the centre of a clause with such a body atom (an instance
+  centred at `w` itself);
+- a cardinality filler on the number role `r` (both signs; the number and
+  recognition rules count it at `u`), a cardinality marker (counted at `w`),
+  and any nominal concept.
+
+A kept edge on a role of a clause with two or more neighbours or an equality
+head (number restrictions, functional roles) forbids the pair, since an
+instance centred at `w` could count that edge together with `w'`'s
+successors, and a clause with a role atom between two neighbours forbids
+subset blocking altogether. Modes 1 and 5 apply the rule to each candidate
+pair. Because a node that is not yet blockable may grow successors, a node
+whose predecessor is blocked is blocked too (indirect blocking; descendants
+of a blocked node are not part of the unravelled model). The incremental
+subset snapshot (`KM_HT_INCRBLOCK2`, set by `ht_general`), the persistent
+index path (`KM_HT_INCRBLOCK`) and ancestor blocking do not check pairs, so
+they run only when no literal is relevant and there is no inverse bridge;
+otherwise the worker uses the checked anywhere scan. Equal labels gain
+nothing, so the rule never rejects a pair that equality blocking would
+accept.
+
+Falling back to a whole-label mode was measured and rejected: mode 4
+(pairwise with indirect blocking) answers the minimal cases correctly but did
+not finish seed 1 in 30 s, and mode 3 (pairwise on the positive core, no
+indirect blocking) did not finish the seed-507 case; the search expands a
+node's existentials before its disjunctions are decided, and an incomplete
+label never equals a complete one. Certified runs (mode 6) are unchanged.
+
+Scope. Before this change the automatic route published a wrong answer: the
+ontology of `tests/ht_subset_blocking.rs::card_arm_subset_blocking_on_the_automatic_route`
+(the seed-103 core, a qualified number restriction, an inverse pair and a
+role chain over an asserted edge) is selected for `certified_card_proxy_abox`,
+whose card arm (mode 5) answered `CONSISTENT 1` (5cc0bccf); HermiT and the
+CB routes answer inconsistent. Without the class assertion on `b` the same
+route aborted instead, on an eagerly evaluated `then_some(assertions[0])` in
+the proxy-ABox certificate (`race.rs`), which this change also fixes.

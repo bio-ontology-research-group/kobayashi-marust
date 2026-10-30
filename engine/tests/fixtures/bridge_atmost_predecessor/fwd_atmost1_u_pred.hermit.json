@@ -1,0 +1,8 @@
+{
+  "ontology": "fwd_atmost1_u_pred.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": [
+    "P"
+  ]
+}

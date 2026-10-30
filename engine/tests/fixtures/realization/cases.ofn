@@ -1,0 +1,13 @@
+Ontology(<urn:t:cases>
+Declaration(Class(<urn:t#A>)) Declaration(Class(<urn:t#B>)) Declaration(Class(<urn:t#C>)) Declaration(Class(<urn:t#D>)) Declaration(Class(<urn:t#Primary>)) Declaration(Class(<urn:t#Everything>)) Declaration(Class(<urn:t#RedThing>))
+Declaration(ObjectProperty(<urn:t#hasColour>))
+Declaration(NamedIndividual(<urn:t#x>)) Declaration(NamedIndividual(<urn:t#red>)) Declaration(NamedIndividual(<urn:t#green>)) Declaration(NamedIndividual(<urn:t#only>)) Declaration(NamedIndividual(<urn:t#apple>))
+SubClassOf(<urn:t#A> ObjectUnionOf(<urn:t#B> <urn:t#C>))
+SubClassOf(<urn:t#B> <urn:t#D>)
+SubClassOf(<urn:t#C> <urn:t#D>)
+ClassAssertion(<urn:t#A> <urn:t#x>)
+EquivalentClasses(<urn:t#Primary> ObjectOneOf(<urn:t#red> <urn:t#green>))
+SubClassOf(<http://www.w3.org/2002/07/owl#Thing> <urn:t#Everything>)
+EquivalentClasses(<urn:t#RedThing> ObjectHasValue(<urn:t#hasColour> <urn:t#red>))
+ObjectPropertyAssertion(<urn:t#hasColour> <urn:t#apple> <urn:t#red>)
+)

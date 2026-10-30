@@ -1155,12 +1155,18 @@ fn common_data_core_prefers_plain_module_before_full_common_path() {
         let rows=session(&[old,addition.clone(),mixed.clone()]);
         for (revision, source) in [(1, &addition), (2, &mixed)] {
             assert_eq!(rows[revision]["status"],"ok","count={count}: {:#?}",rows[revision]);
-            let expected = if negative && count == 1 { "common_module_reuse" }
+            // An isolated negative data assertion is local to the module,
+            // but no clause route carries it: the module's answer reports it
+            // as a dropped axiom, which disqualifies module reuse, so the
+            // revision is classified in full.
+            let expected = if negative && count == 1 { "full_classify" }
                 else { "common_object_module_reuse" };
             assert_eq!(rows[revision]["receipt"]["strategy"],expected,
                 "count={count}, negative={negative}, unicode={unicode}, revision={revision}: {:#?}",rows[revision]);
-            assert!(rows[revision]["receipt"]["module_axioms"].as_u64().unwrap()<200);
-            assert!(rows[revision]["receipt"]["reused_subjects"].as_u64().unwrap()>0);
+            if expected != "full_classify" {
+                assert!(rows[revision]["receipt"]["module_axioms"].as_u64().unwrap()<200);
+                assert!(rows[revision]["receipt"]["reused_subjects"].as_u64().unwrap()>0);
+            }
             assert_eq!(canonical(&rows[revision]["result"]),
                 canonical(&fresh(source,931 + count * 3 + revision)));
         }
@@ -1212,4 +1218,36 @@ fn global_deletion_reuses_proved_rows_and_forgets_removed_role_premises() {
     assert!(after.contains(&(":D".into(), ":C".into())));
     assert!(after.contains(&(":E".into(), ":G".into())));
     assert!(!repaired_pairs.contains(&(":E".into(), ":G".into())));
+}
+
+/// Regression: a requested subject that becomes unsatisfiable has no row in
+/// the restricted NEW answer, so the reuse merge must take it from the
+/// answer's unsatisfiable list by name (it was silently dropped).
+#[test]
+fn nominal_common_edit_making_a_class_unsatisfiable_is_exact() {
+    let shared = [
+        "SubClassOf(:B :A)",
+        "EquivalentClasses(:C ObjectHasValue(:r :a))",
+        "SubClassOf(:D :C)",
+        "ClassAssertion(:D :a)",
+        "SubClassOf(:E ObjectSomeValuesFrom(:r ObjectOneOf(:a)))",
+        "ClassAssertion(:A :a)",
+        "SubClassOf(:F :G)",
+        "Declaration(DataProperty(:p))",
+        "DataPropertyAssertion(:p :a \"x\")",
+        "SubClassOf(:A ObjectSomeValuesFrom(:r owl:Thing))",
+    ];
+    let mut before = shared.to_vec();
+    before.push("EquivalentClasses(:K ObjectIntersectionOf(:A ObjectSomeValuesFrom(:r owl:Thing)))");
+    let mut after = shared.to_vec();
+    after.push("EquivalentClasses(:K ObjectIntersectionOf(:A ObjectComplementOf(ObjectSomeValuesFrom(:r owl:Thing))))");
+    let (old, new) = (ontology(&before), ontology(&after));
+    let rows = session(&[old.clone(), new.clone(), old.clone(), new.clone()]);
+    for (index, source) in [&old, &new, &old, &new].into_iter().enumerate() {
+        assert_eq!(rows[index]["status"], "ok", "row {index}: {:#?}", rows[index]);
+        assert_eq!(canonical(&rows[index]["result"]), canonical(&fresh(source, 1300 + index)),
+            "revision {index}: {:#?}", rows[index]["receipt"]);
+    }
+    assert!(canonical(&rows[1]["result"]).1.contains(":K"), "{:#?}", rows[1]);
+    assert_eq!(rows[1]["receipt"]["strategy"], "common_nominal_subject_reuse", "{:#?}", rows[1]["receipt"]);
 }

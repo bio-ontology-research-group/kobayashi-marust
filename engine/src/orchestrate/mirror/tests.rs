@@ -587,6 +587,7 @@ fn refuses_the_reserved_proxy_namespace() {
 
 fn taxonomy_of(pairs: &[(&str, &str)], unsat: &[&str]) -> Taxonomy {
     let classification = Classification {
+        approximate: None,
         consistent: true,
         subsumptions: pairs
             .iter()

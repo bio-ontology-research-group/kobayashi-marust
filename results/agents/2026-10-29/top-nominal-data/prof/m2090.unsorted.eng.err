@@ -1,0 +1,10 @@
+KM_PROF query-equivalence representatives=6 aliases=1 groups=1
+KM_PROF seeded all 1 queries; contexts=4 msgs_pending=40 saturate_calls=4
+KM_PROF seeded all 1 queries; contexts=4 msgs_pending=40 saturate_calls=4
+KM_PROF seeded all 1 queries; contexts=4 msgs_pending=40 saturate_calls=4
+KM_PROF seeded all 1 queries; contexts=4 msgs_pending=40 saturate_calls=4
+KM_PROF seeded all 1 queries; contexts=4 msgs_pending=40 saturate_calls=4
+KM_PROF seeded all 1 queries; contexts=5 msgs_pending=42 saturate_calls=4
+KM_PROF msgloop guard=20000 contexts=22 msgs_pending=0 saturate_calls=212 succ=2040 pred=17959 ground_wo=571
+KM_PROF msgloop guard=20000 contexts=21 msgs_pending=0 saturate_calls=199 succ=1947 pred=18052 ground_wo=571
+m2090 unsorted 3.34s 993664KB

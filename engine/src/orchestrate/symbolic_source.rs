@@ -82,11 +82,11 @@ fn map_output(output: crate::tableau::TOutput, names: &HashSet<String>,
     let consistent = output.consistent && !frontend_inconsistent
         && !asserted.iter().any(|name| unsatisfiable.contains(&full(name)));
     if !consistent {
-        return Classification { consistent: false, subsumptions: vec![], unsatisfiable: vec![], dropped: 0 };
+        return Classification { consistent: false, subsumptions: vec![], unsatisfiable: vec![], dropped: 0, approximate: None };
     }
     let public: HashSet<String> = names.iter().map(|name| full(name)).collect();
     Classification { consistent, subsumptions: pairs.into_iter().collect(),
-        unsatisfiable: unsatisfiable.into_iter().filter(|name| public.contains(name)).collect(), dropped: 0 }
+        unsatisfiable: unsatisfiable.into_iter().filter(|name| public.contains(name)).collect(), dropped: 0, approximate: None }
 }
 
 #[cfg(test)]

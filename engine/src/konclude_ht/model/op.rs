@@ -800,3 +800,29 @@ mod tests {
         assert_eq!(CCF_SPECIAL, i64::MIN);
     }
 }
+
+/// Polarity of the successor filler that a generating restriction creates.
+///
+/// `¬∀R.C = ∃R.¬C`, so the filler of a negated `CCALL` (or of any other
+/// quantifier) flips with the restriction's negation. A number restriction
+/// does not: `¬(≤n R.C) = ≥(n+1) R.C` and `¬(≥n R.C) = ≤(n-1) R.C` keep the
+/// qualifier `C` unchanged. Konclude's successor-node lookups
+/// (`getCreationSuccessorSaturationNode`, `createSuccessorForConcept` and the
+/// saturation linked-successor pass) apply `isNegated() ^ conNegation` to
+/// every generating concept. That is only correct for quantifiers; Konclude's
+/// builder hides the difference by turning `≤0 R.C` into `∀R.¬C`, but a
+/// negated `≤n R.C` with `n >= 1`, and every bridge input that keeps a
+/// `≤0` cardinality, reached the lookup with an inverted qualifier and
+/// expanded the new successor from the saturation node of `¬C`.
+#[inline]
+pub fn generated_successor_filler_negation(
+    op_code: Cint64,
+    operand_negated: bool,
+    concept_negated: bool,
+) -> bool {
+    if matches!(op_code, CCATLEAST | CCATMOST) {
+        operand_negated
+    } else {
+        operand_negated ^ concept_negated
+    }
+}

@@ -1,0 +1,11 @@
+ontology	before_s	before_maxrss_kb	after_s	after_maxrss_kb	sub	unsat	sorted_SUB_UNSAT
+ore_ont_3914	16.86	577560	16.67	577460	20682	0	identical
+ore_ont_15803	155.91	6940620	112.28	7365832	2432194	0	identical
+ore_ont_4412	23.49	791912	18.08	793828	1032372	2	identical
+ore_ont_5475	10.83	396356	9.18	394948	690580	0	identical
+ore_ont_15635	3.36	291492	3.05	290024	849	0	identical
+ore_ont_6682	32.17	3190224	29.38	3426092	700684	0	identical
+ore_ont_850	7.83	52196	7.46	51988	653	0	identical
+ore_ont_1397	8.16	52288	6.99	53016	651	0	identical
+ore_ont_3156	8.15	53136	7.16	52396	653	0	identical
+ore_ont_13954	7.25	50332	6.48	48920	630	0	identical

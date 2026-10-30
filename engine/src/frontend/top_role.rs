@@ -279,21 +279,35 @@ mod tests {
             "the retained ontology has no universal role"
         );
 
+        // A use the universal-role rewrite does not encode (U as a sub-role) keeps the
+        // builtin, and with it the conservative occurrence flag.
         let real_use = "Ontology(\
              SubObjectPropertyOf(<http://e#r> owl:topObjectProperty)\
-             SubClassOf(<http://e#A> ObjectAllValuesFrom(owl:topObjectProperty <http://e#B>)))";
+             SubObjectPropertyOf(owl:topObjectProperty <http://e#s>))";
         let result = ofn_to_clauses(real_use).expect("frontend");
         assert!(
             result.profile.expressivity.universal_role,
             "a read universal role keeps the conservative occurrence flag"
         );
+
+        // `∀U.B` is rewritten to the nominal hub before the scan, so the
+        // remaining inclusion is vacuous again and the profile describes the
+        // hub ontology: no universal role, one nominal.
+        let encoded = "Ontology(\
+             SubObjectPropertyOf(<http://e#r> owl:topObjectProperty)\
+             SubClassOf(<http://e#A> ObjectAllValuesFrom(owl:topObjectProperty <http://e#B>)))";
+        let result = ofn_to_clauses(encoded).expect("frontend");
+        assert!(!result.profile.expressivity.universal_role);
+        assert!(result.profile.expressivity.nominal);
+        let json = serde_json::to_string(&result.clauses).expect("clause json");
+        assert!(!json.contains("topObjectProperty"), "{json}");
     }
 
     #[test]
     fn a_real_universal_role_use_keeps_the_inclusion() {
         let ontology = "Ontology(\
              SubObjectPropertyOf(<http://e#r> owl:topObjectProperty)\
-             SubClassOf(<http://e#A> ObjectAllValuesFrom(owl:topObjectProperty <http://e#B>)))";
+             SubObjectPropertyOf(owl:topObjectProperty <http://e#s>))";
         let result = ofn_to_clauses(ontology).expect("frontend");
         let json = serde_json::to_string(&result.clauses).expect("clause json");
         assert!(

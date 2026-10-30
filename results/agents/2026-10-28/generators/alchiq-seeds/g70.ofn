@@ -1,0 +1,11 @@
+Prefix(:=<http://example.org/g#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://example.org/g>
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(Class(:D)) Declaration(Class(:Q1)) Declaration(Class(:Q2)) Declaration(Class(:Q3)) Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s)) Declaration(ObjectProperty(:t))
+SubClassOf(ObjectUnionOf(ObjectUnionOf(:C :B) ObjectUnionOf(:D ObjectComplementOf(:B))) ObjectIntersectionOf(:C ObjectAllValuesFrom(:s :A)))
+SubClassOf(:D ObjectComplementOf(ObjectAllValuesFrom(ObjectInverseOf(:r) :A)))
+SubObjectPropertyOf(:t :r)
+EquivalentClasses(:Q1 :C)
+EquivalentClasses(:Q2 ObjectMinCardinality(0 :r :C))
+EquivalentClasses(:Q3 :C)
+)

@@ -1,0 +1,8 @@
+{
+  "ontology": "seed1241.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": [
+    "D"
+  ]
+}

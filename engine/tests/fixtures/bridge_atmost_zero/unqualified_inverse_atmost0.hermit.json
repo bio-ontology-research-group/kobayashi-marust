@@ -1,0 +1,8 @@
+{
+  "ontology": "unqualified_inverse_atmost0.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": [
+    "D"
+  ]
+}

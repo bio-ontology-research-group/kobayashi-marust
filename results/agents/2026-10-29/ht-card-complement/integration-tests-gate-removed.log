@@ -1,0 +1,1605 @@
+warning: unnecessary parentheses around `if` condition
+     --> src/konclude_ht/bridge.rs:14468:24
+      |
+14468 |                     if (!bridged.precomputation_replay_disabled.get()
+      |                        ^
+...
+14471 |                             || drained_konclude)
+      |                                                ^
+      |
+      = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+      |
+14468 ~                     if !bridged.precomputation_replay_disabled.get()
+14469 |                             || resume_fork
+14470 |                             || retain_deterministic_leaf
+14471 ~                             || drained_konclude
+      |
+
+warning: unused imports: `IndividualAssociationData`, `IndividualRoleSetNeighbourArray`, `IndividualRoleSetNeighbourData`, `LabelCacheItemExtensionData`, `LabelCacheItemExtensionType`, `LabelCacheItem`, `LabelValueLinker`, and `OntologyData`
+  --> src/konclude_ht/cache/backend_facade3.rs:40:31
+   |
+40 |     BackendTempWriteRecordId, IndividualAssociationData, IndividualAssociationDataId,
+   |                               ^^^^^^^^^^^^^^^^^^^^^^^^^
+41 |     IndividualRoleSetNeighbourArray, IndividualRoleSetNeighbourArrayId,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+42 |     IndividualRoleSetNeighbourData, IndividualRoleSetNeighbourIndividualIdLinker,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+43 |     IndividualRoleSetNeighbourIndividualIdLinkerId, LabelCacheItem, LabelCacheItemExtensionData,
+   |                                                     ^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+44 |     LabelCacheItemExtensionType, LabelCacheItemId, LabelCacheItemType, LabelValueLinker,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^                                        ^^^^^^^^^^^^^^^^
+45 |     OntologyData, OntologyDataId, LABEL_CACHE_ITEM_ASSOCIATABLE_TYPE_COUNT,
+   |     ^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `CacheValueIdentifier`
+  --> src/konclude_ht/cache/backend_facade3.rs:48:32
+   |
+48 | use super::value::{CacheValue, CacheValueIdentifier};
+   |                                ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `IndividualDependenceTrackingMarker`
+  --> src/konclude_ht/classifier/mod.rs:22:46
+   |
+22 |     IndividualDependenceTrackingCollectorId, IndividualDependenceTrackingMarker,
+   |                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `ClassificationMessageDataType` and `ClassificationMessageData`
+  --> src/konclude_ht/completion/stubs.rs:39:66
+   |
+39 |     ClassificationInitializePossibleClassSubsumptionMessageData, ClassificationMessageData,
+   |                                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+42 |     ClassificationMessageDataType, ClassificationPseudoModelIdentifierMessageData,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `LabelSetId`
+  --> src/konclude_ht/completion/u04.rs:62:39
+   |
+62 |     ConDescId, ConProcDescId, EdgeId, LabelSetId, NodeId, RestrictionSpecId, TrackPointId,
+   |                                       ^^^^^^^^^^
+
+warning: unused import: `DependencyNode`
+  --> src/konclude_ht/completion/u12.rs:62:50
+   |
+62 | use super::super::process::dependency::{DepKind, DependencyNode};
+   |                                                  ^^^^^^^^^^^^^^
+
+warning: unused import: `DepLinkId`
+  --> src/konclude_ht/completion/u12.rs:64:31
+   |
+64 |     ConDescId, ConProcDescId, DepLinkId, DependencyId, NodeId, RestrictionSpecId, TrackPointId,
+   |                               ^^^^^^^^^
+
+warning: unused import: `DependencyId`
+  --> src/konclude_ht/completion/u18.rs:78:27
+   |
+78 |     ConDescId, DepLinkId, DependencyId, EdgeId, LabelSetId, NodeId, TrackPointId,
+   |                           ^^^^^^^^^^^^
+
+warning: unused import: `INVALID`
+  --> src/konclude_ht/completion/u21.rs:82:50
+   |
+82 | use super::super::model::substrate::{Cint64, Id, INVALID};
+   |                                                  ^^^^^^^
+
+warning: unused import: `EdgeId`
+  --> src/konclude_ht/completion/u26.rs:81:29
+   |
+81 | use super::super::process::{EdgeId, LabelSetId, NodeId};
+   |                             ^^^^^^
+
+warning: unused import: `INVALID`
+  --> src/konclude_ht/completion/u35.rs:91:51
+   |
+91 | use super::super::model::substrate::{Id, NegLink, INVALID};
+   |                                                   ^^^^^^^
+
+warning: unused import: `super::super::process::descriptor::ClashDescriptor`
+  --> src/konclude_ht/completion/u36.rs:96:5
+   |
+96 | use super::super::process::descriptor::ClashDescriptor;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `super::super::model::role_chain::RoleChain`
+  --> src/konclude_ht/preprocess/role_chain_automata.rs:26:5
+   |
+26 | use super::super::model::role_chain::RoleChain;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `MarkerIndividualNodeHashData`
+  --> src/konclude_ht/process/context.rs:89:5
+   |
+89 |     MarkerIndividualNodeHashData, MarkerIndividualNodeHashId,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `RepresentativeJoiningHashData` and `RepresentativeVariableBindingPathJoiningKeyHashData`
+   --> src/konclude_ht/process/context.rs:224:5
+    |
+224 |     RepresentativeJoiningHashData, RepresentativeJoiningHashId,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+231 |     RepresentativeVariableBindingPathJoiningKeyHashData,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `BlockingCandidateHashData`
+   --> src/konclude_ht/process/context.rs:243:5
+    |
+243 |     BlockingCandidateHashData, BlockingIndividualNodeCandidateData,
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `IndividualSaturationProcessNodeLinker`
+  --> src/konclude_ht/process/db5.rs:55:5
+   |
+55 |     IndividualSaturationProcessNodeLinker, IndividualSaturationProcessNodeLinkerId,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `Id`
+  --> src/konclude_ht/process/pn6.rs:27:35
+   |
+27 | use super::super::model::{Cint64, Id};
+   |                                   ^^
+
+warning: unused import: `ConceptId`
+  --> src/konclude_ht/process/sat1.rs:19:27
+   |
+19 | use super::super::model::{ConceptId, IndividualId, RoleId};
+   |                           ^^^^^^^^^
+
+warning: unused import: `SaturationIndividualNodeAllConceptsExtensionDataId`
+  --> src/konclude_ht/process/sat1.rs:24:5
+   |
+24 |     SaturationIndividualNodeAllConceptsExtensionDataId, SaturationIndividualNodeDatatypeDataId,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `CCATLEAST`, `CCATMOST`, and `CCATOM`
+  --> src/konclude_ht/saturation/s04.rs:73:31
+   |
+73 | use super::super::model::op::{CCATLEAST, CCATMOST, CCATOM};
+   |                               ^^^^^^^^^  ^^^^^^^^  ^^^^^^
+
+warning: unused import: `super::satellites::ConceptSaturationDescriptorId`
+  --> src/konclude_ht/saturation/s04.rs:80:5
+   |
+80 | use super::satellites::ConceptSaturationDescriptorId;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: variable does not need to be mutable
+   --> src/frontend/data_abox.rs:855:13
+    |
+855 |         let mut intern = |s: &'a str, ids: &mut HashMap<&'a str, u32>| -> u32 {
+    |             ----^^^^^^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> src/frontend/data_abox.rs:893:13
+    |
+893 |         let mut ancestors =
+    |             ----^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/frontend/data_abox.rs:930:21
+    |
+930 |                 let mut push =
+    |                     ----^^^^
+    |                     |
+    |                     help: remove this `mut`
+
+warning: unreachable pattern
+   --> src/frontend/datatypes.rs:170:21
+    |
+169 |                     Val::$variant(bits) => <$ty>::from_bits(*bits),
+    |                     ------------------- matches all the relevant values
+170 |                     Val::Float32(bits) if wide => f32::from_bits(*bits) as $ty,
+    |                     ^^^^^^^^^^^^^^^^^^ no value can reach this
+...
+194 |     if wide { evaluate!(f64, Float64) } else { evaluate!(f32, Float32) }
+    |                                                ----------------------- in this macro invocation
+    |
+    = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+    = note: this warning originates in the macro `evaluate` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: variable does not need to be mutable
+    --> src/frontend/datatypes.rs:2865:9
+     |
+2865 |     let mut push_range = |from: Option<i128>, to: Option<i128>, missing: &mut Vec<i128>| -> Option<()> {
+     |         ----^^^^^^^^^^
+     |         |
+     |         help: remove this `mut`
+
+warning: value assigned to `with_cells` is never read
+    --> src/frontend/datatypes.rs:3132:44
+     |
+3132 |     let mut with_cells: BTreeSet<String> = BTreeSet::new();
+     |                                            ^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: value assigned to `bridge_phase_started` is never read
+    --> src/konclude_ht/bridge.rs:4914:17
+     |
+4914 |                 bridge_phase_started = now;
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+7082 |     bridge_phase!("terminology-stamp");
+     |     ---------------------------------- in this macro invocation
+     |
+     = help: maybe it is overwritten before being read?
+     = note: this warning originates in the macro `bridge_phase` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10153:13
+      |
+10153 |             coordination.running_tasks -= 1;
+      |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10154:13
+      |
+10154 |             coordination.failed_tasks += 1;
+      |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10161:13
+      |
+10161 |             coordination.running_tasks -= 1;
+      |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10162:13
+      |
+10162 |             coordination.failed_tasks += 1;
+      |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10167:17
+      |
+10167 |                 coordination.running_tasks -= 1;
+      |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10168:17
+      |
+10168 |                 coordination.clashed = true;
+      |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10172:17
+      |
+10172 |                 coordination.running_tasks -= 1;
+      |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10173:17
+      |
+10173 |                 coordination.failed_tasks += 1;
+      |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10204:13
+      |
+10204 |             coordination.writeback_failed = true;
+      |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10186:13
+      |
+10186 |             coordination.running_tasks -= 1;
+      |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10187:13
+      |
+10187 |             coordination.writeback_failed = true;
+      |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: variable does not need to be mutable
+     --> src/konclude_ht/bridge.rs:14964:13
+      |
+14964 |         let mut renew = |algo: &mut CompletionTaskHandleAlgorithm,
+      |             ----^^^^^
+      |             |
+      |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/cache/backend_facade1.rs:644:13
+    |
+644 |         let mut associations_updated = false;
+    |             ----^^^^^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: value assigned to `update_slot` is never read
+   --> src/konclude_ht/cache/unsat.rs:777:39
+    |
+777 |         let mut update_slot: Cint64 = 0;
+    |                                       ^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: value assigned to `update_slot` is never read
+    --> src/konclude_ht/cache/unsat.rs:1013:39
+     |
+1013 |         let mut update_slot: Cint64 = 0;
+     |                                       ^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `next_priority` is never read
+   --> src/konclude_ht/completion/strategy.rs:282:9
+    |
+282 |         next_priority = 2;
+    |         ^^^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: value assigned to `priority` is never read
+   --> src/konclude_ht/completion/strategy.rs:349:33
+    |
+349 |         let mut priority: f64 = 0.0;
+    |                                 ^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: value assigned to `subsum_message_data_linker` is never read
+    --> src/konclude_ht/completion/stubs.rs:1979:46
+     |
+1979 |         let mut subsum_message_data_linker = None;
+     |                                              ^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `subsum_message_data_linker` is never read
+    --> src/konclude_ht/completion/stubs.rs:2098:46
+     |
+2098 |         let mut subsum_message_data_linker = None;
+     |                                              ^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: unused variable: `ontology`
+    --> src/konclude_ht/completion/stubs.rs:2472:9
+     |
+2472 |         ontology: &OntologyArenas,
+     |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_ontology`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+    --> src/konclude_ht/completion/stubs.rs:5305:13
+     |
+5305 |         let mut remaining_merging_depth = 5;
+     |             ----^^^^^^^^^^^^^^^^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/completion/u03.rs:952:9
+    |
+952 |         mut operands: Vec<NegLink<ConceptId>>,
+    |         ----^^^^^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/completion/u08.rs:122:17
+    |
+122 |             let mut triggered_concepts: ConDescId = Id::NONE;
+    |                 ----^^^^^^^^^^^^^^^^^^
+    |                 |
+    |                 help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/completion/u08.rs:166:13
+    |
+166 |         let mut triggered_concepts: ConDescId = Id::NONE;
+    |             ----^^^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/completion/u08.rs:437:13
+    |
+437 |         let mut saturation_node: SatNodeId = if self.conf_expand_created_successors_from_saturation
+    |             ----^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/completion/u14.rs:796:13
+    |
+796 |         let mut merged_individual;
+    |             ----^^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/completion/u14.rs:797:13
+    |
+797 |         let mut adding_individual;
+    |             ----^^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/completion/u14.rs:871:13
+    |
+871 |         let mut new_empty_indi_node_ref = new_empty_indi_node;
+    |             ----^^^^^^^^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> src/konclude_ht/completion/u16.rs:1142:13
+     |
+1142 |         let mut nominal_individual = indi;
+     |             ----^^^^^^^^^^^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/completion/u17.rs:105:13
+    |
+105 |         let mut state = calc_alg_context.take_used_saturation_node_expansion_cache_handler()?;
+    |             ----^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: value assigned to `block_alt_data` is never read
+    --> src/konclude_ht/completion/u19.rs:1102:65
+     |
+1102 |         let mut block_alt_data: BlockingAlternativeDataHandle = Id::NONE;
+     |                                                                 ^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `blocking_indi_node` is never read
+    --> src/konclude_ht/completion/u19.rs:1369:46
+     |
+1369 |         let mut blocking_indi_node: NodeId = Id::NONE;
+     |                                              ^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `min_test_anc_indi_depth` is never read
+    --> src/konclude_ht/completion/u19.rs:1770:45
+     |
+1770 |                     (min_test_indi_node_id, min_test_anc_indi_depth) = calc_alg_context
+     |                                             ^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `synchronized` is never read
+   --> src/konclude_ht/completion/u21.rs:270:32
+    |
+270 |         let mut synchronized = false;
+    |                                ^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: value assigned to `backend_sync_data` is never read
+    --> src/konclude_ht/completion/u25.rs:1902:25
+     |
+1902 |                         backend_sync_data = loc_backend_sync_data;
+     |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: variable does not need to be mutable
+    --> src/konclude_ht/completion/u36.rs:1403:17
+     |
+1403 |             let mut expansion_blocked = native_expansion_blocked;
+     |                 ----^^^^^^^^^^^^^^^^^
+     |                 |
+     |                 help: remove this `mut`
+
+warning: unused variable: `concept`
+   --> src/konclude_ht/process/ls1.rs:982:9
+    |
+982 |         concept: ConceptId,
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_concept`
+
+warning: value assigned to `list` is never read
+   --> src/konclude_ht/process/varbind.rs:319:25
+    |
+319 |                         list = ctx.var_binding_des(first_linker).get_next();
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: variable does not need to be mutable
+    --> src/konclude_ht/saturation/s06.rs:1137:13
+     |
+1137 |         let mut updated = false;
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: value assigned to `resolved_node` is never read
+   --> src/konclude_ht/saturation/s10.rs:149:33
+    |
+149 |         let mut resolved_node = SatNodeId::NONE;
+    |                                 ^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: value assigned to `resolved_node` is never read
+   --> src/konclude_ht/saturation/s10.rs:369:33
+    |
+369 |         let mut resolved_node = SatNodeId::NONE;
+    |                                 ^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: value assigned to `resolved_node` is never read
+   --> src/konclude_ht/saturation/s10.rs:540:33
+    |
+540 |         let mut resolved_node = SatNodeId::NONE;
+    |                                 ^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: unused variable: `i`
+    --> src/orchestrate/cb_to_ht.rs:1471:10
+     |
+1471 |     for (i, n) in ids.con_names.iter().enumerate() {
+     |          ^ help: if this is intentional, prefix it with an underscore: `_i`
+
+warning: variable does not need to be mutable
+    --> src/orchestrate/cb_to_ht.rs:3973:13
+     |
+3973 |         let mut note = |ind: &str, individuals: &mut BTreeSet<String>| {
+     |             ----^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: value assigned to `cb_t0` is never read
+    --> src/orchestrate/race.rs:3676:21
+     |
+3676 |                     cb_t0 = Some(Instant::now());
+     |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+3749 |             start_cb!();
+     |             ----------- in this macro invocation
+     |
+     = help: maybe it is overwritten before being read?
+     = note: this warning originates in the macro `start_cb` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `header`
+    --> src/source_locality.rs:2759:27
+     |
+2759 |         if let Some((old, header, lookup)) = donor.filter(|(old, header, _)|
+     |                           ^^^^^^ help: if this is intentional, prefix it with an underscore: `_header`
+
+warning: variable does not need to be mutable
+    --> src/hypertableau.rs:7039:13
+     |
+7039 |         let mut chain_fwd: HashMap<R, Vec<(R, R)>> = HashMap::default();
+     |             ----^^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> src/hypertableau.rs:7040:13
+     |
+7040 |         let mut chain_bwd: HashMap<R, Vec<(R, R)>> = HashMap::default();
+     |             ----^^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: unused variable: `variable_count`
+     --> src/hypertableau.rs:13015:14
+      |
+13015 |         let (variable_count, concept_count, role_count, equality_ontology) =
+      |              ^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_variable_count`
+
+warning: unused variable: `role_count`
+     --> src/hypertableau.rs:13015:45
+      |
+13015 |         let (variable_count, concept_count, role_count, equality_ontology) =
+      |                                             ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_role_count`
+
+warning: variable does not need to be mutable
+    --> src/tableau.rs:7385:9
+     |
+7385 |     let mut replace_cell_abox = |cell: &mut serde_json::Value| -> Result<(), String> {
+     |         ----^^^^^^^^^^^^^^^^^
+     |         |
+     |         help: remove this `mut`
+
+warning: type `CardDef` is more private than the item `Ht::set_card_defs`
+     --> src/hypertableau.rs:18281:5
+      |
+18281 |     pub fn set_card_defs(&mut self, defs: HashMap<C, CardDef>) {
+      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ method `Ht::set_card_defs` is reachable at visibility `pub`
+      |
+note: but type `CardDef` is only usable at visibility `pub(self)`
+     --> src/hypertableau.rs:451:1
+      |
+  451 | struct CardDef {
+      | ^^^^^^^^^^^^^^
+      = note: `#[warn(private_interfaces)]` on by default
+
+warning: function `positive_abox_classify_compact_merged` is never used
+     --> src/elcomplete.rs:11329:15
+      |
+11329 | pub(crate) fn positive_abox_classify_compact_merged(
+      |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: methods `insert`, `contains_subset`, and `remove_supersets` are never used
+   --> src/engine.rs:295:8
+    |
+287 | impl RedundancyTrie {
+    | ------------------- methods in this implementation
+...
+295 |     fn insert(&mut self, clause: &ContextClause, cid: u32) {
+    |        ^^^^^^
+...
+312 |     fn contains_subset(&self, clause: &ContextClause, exclude: Option<u32>) -> bool {
+    |        ^^^^^^^^^^^^^^^
+...
+382 |     fn remove_supersets(&mut self, clause: &ContextClause) -> Vec<u32> {
+    |        ^^^^^^^^^^^^^^^^
+
+warning: method `central_successor_for_core` is never used
+    --> src/engine.rs:6650:8
+     |
+3908 | impl Engine {
+     | ----------- method in this implementation
+...
+6650 |     fn central_successor_for_core(&mut self, core: Vec<Pred>, seed_from: Option<usize>) -> usize {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: variants `Top` and `Bottom` are never constructed
+   --> src/frontend/bottom_prepass.rs:178:5
+    |
+176 | enum RawClassConstraint {
+    |      ------------------ variants in this enum
+177 |     Name(String),
+178 |     Top,
+    |     ^^^
+179 |     Bottom,
+    |     ^^^^^^
+    |
+    = note: `RawClassConstraint` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: method `role_supers` is never used
+   --> src/frontend/data_abox.rs:822:8
+    |
+448 | impl<'a> DataAbox<'a> {
+    | --------------------- method in this implementation
+...
+822 |     fn role_supers(&self, p: &'a str) -> Vec<&'a str> {
+    |        ^^^^^^^^^^^
+
+warning: function `is_top_data_range` is never used
+   --> src/frontend/datatypes.rs:466:15
+    |
+466 | pub(crate) fn is_top_data_range(name: &str) -> bool {
+    |               ^^^^^^^^^^^^^^^^^
+
+warning: function `bridge_exact_finite_cover` is never used
+    --> src/frontend/datatypes.rs:1880:15
+     |
+1880 | pub(crate) fn bridge_exact_finite_cover(range: &str, head: &[&str]) -> bool {
+     |               ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `is_complement_range` is never used
+    --> src/frontend/datatypes.rs:2714:15
+     |
+2714 | pub(crate) fn is_complement_range(name: &str) -> bool {
+     |               ^^^^^^^^^^^^^^^^^^^
+
+warning: function `fresh_bridge_env` is never used
+    --> src/konclude_ht/bridge.rs:8443:4
+     |
+8443 | fn fresh_bridge_env(
+     |    ^^^^^^^^^^^^^^^^
+
+warning: constant `NATIVE_REPRESENTATIVE_BATCH_SIZE` is never used
+    --> src/konclude_ht/bridge.rs:9135:7
+     |
+9135 | const NATIVE_REPRESENTATIVE_BATCH_SIZE: usize = 7;
+     |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `native_incomplete_abox_seed_batch` is never used
+    --> src/konclude_ht/bridge.rs:9137:4
+     |
+9137 | fn native_incomplete_abox_seed_batch(
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `NativeRepresentativeCoordinationState` is never constructed
+    --> src/konclude_ht/bridge.rs:9171:8
+     |
+9171 | struct NativeRepresentativeCoordinationState {
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `native_representative_coordination_complete` is never used
+    --> src/konclude_ht/bridge.rs:9178:4
+     |
+9178 | fn native_representative_coordination_complete(
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `precompute_native_representative_batches` is never used
+     --> src/konclude_ht/bridge.rs:10098:4
+      |
+10098 | fn precompute_native_representative_batches(
+      |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `snapshot_native_consistency_nominal_nondeterministic_prefix` is never used
+     --> src/konclude_ht/bridge.rs:10421:4
+      |
+10421 | fn snapshot_native_consistency_nominal_nondeterministic_prefix(
+      |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `build_saturation_seeds` is never used
+     --> src/konclude_ht/bridge.rs:10825:4
+      |
+10825 | fn build_saturation_seeds(ctx: &mut CalculationAlgorithmContextBase, bridged: &Bridged) {
+      |    ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `positive_class_assertion_iris` is never used
+   --> src/orchestrate/flat_nf1.rs:403:4
+    |
+403 | fn positive_class_assertion_iris(line: &str) -> Option<(&str, &str)> {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `native_nominal_ht_view` is never used
+    --> src/orchestrate/race.rs:1636:4
+     |
+1636 | fn native_nominal_ht_view<'a>(
+     |    ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `nominal_ni_tbox_candidate` is never used
+    --> src/routing.rs:1360:4
+     |
+1360 | fn nominal_ni_tbox_candidate(profile: &OntologyProfile) -> bool {
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `component_abox_bridge_candidate` is never used
+    --> src/routing.rs:1542:15
+     |
+1542 | pub(crate) fn component_abox_bridge_candidate(profile: &OntologyProfile) -> bool {
+     |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: field `base_revision` is never read
+    --> src/source_incremental.rs:1999:60
+     |
+1999 |     Replace { functional_syntax: String, #[serde(default)] base_revision: Option<u64> },
+     |     ------- field in this variant                          ^^^^^^^^^^^^^
+
+warning: field `0` is never read
+    --> src/source_locality.rs:1901:12
+     |
+1901 |     Symbol(u32),
+     |     ------ ^^^
+     |     |
+     |     field in this variant
+     |
+help: consider changing the field to be of unit type to suppress this warning while preserving the field numbering, or remove the field
+     |
+1901 -     Symbol(u32),
+1901 +     Symbol(()),
+     |
+
+warning: methods `log_start` and `undo` are never used
+    --> src/source_locality.rs:1928:8
+     |
+1915 | impl State {
+     | ---------- methods in this implementation
+...
+1928 |     fn log_start(&mut self) {
+     |        ^^^^^^^^^
+...
+1951 |     fn undo(&mut self, base: &State) {
+     |        ^^^^
+
+warning: associated items `from_success_cache`, `derive`, `source_hash`, `origin_hash`, and `named_disjoint_removable` are never used
+   --> src/named_subclass_validation.rs:76:19
+    |
+ 73 | impl NamedSubclassCertificate {
+    | ----------------------------- associated items in this implementation
+...
+ 76 |     pub(crate) fn from_success_cache(source:Arc<String>)->Option<Self> {
+    |                   ^^^^^^^^^^^^^^^^^^
+...
+122 |     pub(crate) fn derive(&self,source:Arc<String>)->Option<Self> {
+    |                   ^^^^^^
+...
+162 |     pub fn source_hash(&self)->u128 {fingerprint(self.source.as_bytes())}
+    |            ^^^^^^^^^^^
+163 |     pub fn origin_hash(&self)->u128 {fingerprint(self.origin.as_bytes())}
+    |            ^^^^^^^^^^^
+164 |     pub fn named_disjoint_removable(&self)->usize {self.origin_entries.values().filter(|e|e.form==Form::DisjointRemoval).map(|e|e.c...
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: field `origin_source_key` is never read
+   --> src/incr_session.rs:573:5
+    |
+571 | struct InconsistencyCertificate {
+    |        ------------------------ field in this struct
+572 |     /// Identity of the exact source whose inconsistency/support was verified.
+573 |     origin_source_key: u128,
+    |     ^^^^^^^^^^^^^^^^^
+
+warning: field `preparation` is never read
+   --> src/incr_session.rs:795:5
+    |
+792 | struct RetainedTold {
+    |        ------------ field in this struct
+...
+795 |     preparation: crate::source_locality::ToldReuse,
+    |     ^^^^^^^^^^^
+
+warning: field `object_only` is never read
+ --> src/incr_envelope.rs:8:69
+  |
+8 | pub(crate) struct Eligibility { pub data_tbox: FxHashSet<u128>, pub object_only: bool }
+  |                   ----------- field in this struct                  ^^^^^^^^^^^
+
+warning: direct cast of function item into an integer
+  --> src/cli.rs:68:55
+   |
+68 |             libc::signal(libc::SIGUSR1, km_sigusr1_bt as usize as libc::sighandler_t);
+   |                                                       ^^^^^^^^
+   |
+   = note: `#[warn(function_casts_as_integer)]` on by default
+help: first cast to a pointer `as *const ()`
+   |
+68 |             libc::signal(libc::SIGUSR1, km_sigusr1_bt as *const () as usize as libc::sighandler_t);
+   |                                                       ++++++++++++
+
+warning: for loop over a `&Option`. This is more readably written as an `if let` statement
+   --> src/frontend/ground_rule_source.rs:146:19
+    |
+146 |     for domain in &paths.domain { axioms.push(format!("Declaration(Class({}))", name(domain)?)); }
+    |                   ^^^^^^^^^^^^^
+    |
+    = note: `#[warn(for_loops_over_fallibles)]` on by default
+help: to check pattern in a loop use `while let`
+    |
+146 -     for domain in &paths.domain { axioms.push(format!("Declaration(Class({}))", name(domain)?)); }
+146 +     while let Some(domain) = &paths.domain { axioms.push(format!("Declaration(Class({}))", name(domain)?)); }
+    |
+help: consider using `if let` to clear intent
+    |
+146 -     for domain in &paths.domain { axioms.push(format!("Declaration(Class({}))", name(domain)?)); }
+146 +     if let Some(domain) = &paths.domain { axioms.push(format!("Declaration(Class({}))", name(domain)?)); }
+    |
+
+warning: `kobayashi-marust` (lib) generated 111 warnings (run `cargo fix --lib -p kobayashi-marust` to apply 52 suggestions)
+warning: `kobayashi-marust` (lib) generated 111 warnings (111 duplicates)
+warning: variable does not need to be mutable
+   --> tests/forced_route_fail_closed.rs:352:21
+    |
+352 |                 let mut fail = |why: String| failures.lock().unwrap().push(format!("{label}: {why}"));
+    |                     ----^^^^
+    |                     |
+    |                     help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `kobayashi-marust` (test "forced_route_fail_closed") generated 1 warning (run `cargo fix --test "forced_route_fail_closed" -p kobayashi-marust` to apply 1 suggestion)
+    Finished `release` profile [optimized] target(s) in 0.09s
+     Running tests/data_assertions_carried.rs (target/release/deps/data_assertions_carried-0a5ebd600f733770)
+
+running 9 tests
+test inconsistency_without_uncarried_assertions_reports_nothing_dropped ... ok
+test assertions_above_the_literal_cap_are_carried_by_profile ... ok
+test counted_assertions_above_the_literal_cap_are_published_as_dropped ... ok
+test negative_data_assertion_is_published_as_dropped ... ok
+test single_data_assertion_is_carried_on_every_abox_route ... ok
+test mixed_object_and_data_assertions_are_carried ... ok
+test merged_individuals_keep_distinct_values_under_counting ... ok
+test profiles_preserve_facet_membership_and_range_clashes ... ok
+test unproxied_assertions_can_hide_a_clash has been running for over 60 seconds
+test unproxied_assertions_can_hide_a_clash ... FAILED
+
+failures:
+
+---- unproxied_assertions_can_hide_a_clash stdout ----
+
+thread 'unproxied_assertions_can_hide_a_clash' (3589447) panicked at tests/data_assertions_carried.rs:97:13:
+km classify exceeded 60s on route Some("nominals"):
+Prefix(:=<http://example.org/t#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://example.org/t>
+Declaration(DataProperty(:u)) Declaration(Class(:D)) Declaration(Class(:E)) Declaration(NamedIndividual(:a))
+Declaration(NamedIndividual(:b))
+EquivalentClasses(:E ObjectOneOf(:b)) DataPropertyAssertion(:u :b "550"^^xsd:integer)
+SubClassOf(DataSomeValuesFrom(:u DatatypeRestriction(xsd:integer xsd:minInclusive "5"^^xsd:integer xsd:maxInclusive "5"^^xsd:integer)) owl:Nothing)
+DataPropertyAssertion(:u <http://example.org/t#i1> "1"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i2> "2"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i3> "3"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i4> "4"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i5> "5"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i6> "6"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i7> "7"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i8> "8"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i9> "9"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i10> "10"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i11> "11"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i12> "12"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i13> "13"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i14> "14"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i15> "15"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i16> "16"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i17> "17"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i18> "18"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i19> "19"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i20> "20"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i21> "21"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i22> "22"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i23> "23"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i24> "24"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i25> "25"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i26> "26"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i27> "27"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i28> "28"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i29> "29"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i30> "30"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i31> "31"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i32> "32"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i33> "33"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i34> "34"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i35> "35"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i36> "36"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i37> "37"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i38> "38"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i39> "39"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i40> "40"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i41> "41"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i42> "42"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i43> "43"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i44> "44"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i45> "45"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i46> "46"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i47> "47"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i48> "48"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i49> "49"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i50> "50"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i51> "51"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i52> "52"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i53> "53"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i54> "54"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i55> "55"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i56> "56"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i57> "57"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i58> "58"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i59> "59"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i60> "60"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i61> "61"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i62> "62"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i63> "63"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i64> "64"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i65> "65"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i66> "66"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i67> "67"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i68> "68"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i69> "69"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i70> "70"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i71> "71"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i72> "72"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i73> "73"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i74> "74"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i75> "75"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i76> "76"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i77> "77"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i78> "78"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i79> "79"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i80> "80"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i81> "81"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i82> "82"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i83> "83"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i84> "84"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i85> "85"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i86> "86"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i87> "87"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i88> "88"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i89> "89"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i90> "90"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i91> "91"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i92> "92"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i93> "93"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i94> "94"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i95> "95"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i96> "96"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i97> "97"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i98> "98"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i99> "99"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i100> "100"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i101> "101"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i102> "102"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i103> "103"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i104> "104"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i105> "105"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i106> "106"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i107> "107"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i108> "108"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i109> "109"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i110> "110"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i111> "111"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i112> "112"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i113> "113"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i114> "114"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i115> "115"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i116> "116"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i117> "117"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i118> "118"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i119> "119"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i120> "120"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i121> "121"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i122> "122"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i123> "123"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i124> "124"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i125> "125"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i126> "126"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i127> "127"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i128> "128"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i129> "129"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i130> "130"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i131> "131"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i132> "132"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i133> "133"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i134> "134"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i135> "135"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i136> "136"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i137> "137"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i138> "138"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i139> "139"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i140> "140"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i141> "141"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i142> "142"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i143> "143"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i144> "144"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i145> "145"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i146> "146"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i147> "147"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i148> "148"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i149> "149"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i150> "150"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i151> "151"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i152> "152"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i153> "153"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i154> "154"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i155> "155"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i156> "156"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i157> "157"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i158> "158"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i159> "159"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i160> "160"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i161> "161"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i162> "162"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i163> "163"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i164> "164"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i165> "165"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i166> "166"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i167> "167"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i168> "168"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i169> "169"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i170> "170"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i171> "171"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i172> "172"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i173> "173"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i174> "174"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i175> "175"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i176> "176"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i177> "177"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i178> "178"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i179> "179"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i180> "180"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i181> "181"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i182> "182"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i183> "183"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i184> "184"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i185> "185"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i186> "186"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i187> "187"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i188> "188"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i189> "189"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i190> "190"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i191> "191"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i192> "192"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i193> "193"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i194> "194"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i195> "195"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i196> "196"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i197> "197"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i198> "198"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i199> "199"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i200> "200"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i201> "201"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i202> "202"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i203> "203"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i204> "204"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i205> "205"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i206> "206"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i207> "207"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i208> "208"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i209> "209"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i210> "210"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i211> "211"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i212> "212"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i213> "213"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i214> "214"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i215> "215"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i216> "216"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i217> "217"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i218> "218"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i219> "219"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i220> "220"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i221> "221"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i222> "222"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i223> "223"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i224> "224"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i225> "225"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i226> "226"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i227> "227"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i228> "228"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i229> "229"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i230> "230"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i231> "231"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i232> "232"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i233> "233"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i234> "234"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i235> "235"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i236> "236"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i237> "237"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i238> "238"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i239> "239"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i240> "240"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i241> "241"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i242> "242"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i243> "243"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i244> "244"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i245> "245"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i246> "246"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i247> "247"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i248> "248"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i249> "249"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i250> "250"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i251> "251"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i252> "252"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i253> "253"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i254> "254"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i255> "255"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i256> "256"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i257> "257"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i258> "258"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i259> "259"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i260> "260"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i261> "261"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i262> "262"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i263> "263"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i264> "264"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i265> "265"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i266> "266"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i267> "267"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i268> "268"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i269> "269"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i270> "270"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i271> "271"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i272> "272"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i273> "273"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i274> "274"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i275> "275"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i276> "276"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i277> "277"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i278> "278"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i279> "279"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i280> "280"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i281> "281"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i282> "282"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i283> "283"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i284> "284"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i285> "285"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i286> "286"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i287> "287"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i288> "288"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i289> "289"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i290> "290"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i291> "291"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i292> "292"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i293> "293"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i294> "294"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i295> "295"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i296> "296"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i297> "297"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i298> "298"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i299> "299"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i300> "300"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i301> "301"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i302> "302"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i303> "303"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i304> "304"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i305> "305"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i306> "306"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i307> "307"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i308> "308"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i309> "309"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i310> "310"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i311> "311"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i312> "312"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i313> "313"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i314> "314"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i315> "315"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i316> "316"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i317> "317"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i318> "318"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i319> "319"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i320> "320"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i321> "321"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i322> "322"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i323> "323"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i324> "324"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i325> "325"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i326> "326"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i327> "327"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i328> "328"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i329> "329"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i330> "330"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i331> "331"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i332> "332"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i333> "333"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i334> "334"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i335> "335"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i336> "336"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i337> "337"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i338> "338"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i339> "339"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i340> "340"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i341> "341"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i342> "342"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i343> "343"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i344> "344"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i345> "345"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i346> "346"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i347> "347"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i348> "348"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i349> "349"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i350> "350"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i351> "351"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i352> "352"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i353> "353"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i354> "354"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i355> "355"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i356> "356"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i357> "357"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i358> "358"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i359> "359"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i360> "360"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i361> "361"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i362> "362"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i363> "363"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i364> "364"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i365> "365"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i366> "366"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i367> "367"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i368> "368"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i369> "369"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i370> "370"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i371> "371"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i372> "372"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i373> "373"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i374> "374"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i375> "375"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i376> "376"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i377> "377"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i378> "378"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i379> "379"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i380> "380"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i381> "381"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i382> "382"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i383> "383"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i384> "384"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i385> "385"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i386> "386"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i387> "387"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i388> "388"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i389> "389"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i390> "390"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i391> "391"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i392> "392"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i393> "393"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i394> "394"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i395> "395"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i396> "396"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i397> "397"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i398> "398"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i399> "399"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i400> "400"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i401> "401"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i402> "402"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i403> "403"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i404> "404"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i405> "405"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i406> "406"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i407> "407"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i408> "408"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i409> "409"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i410> "410"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i411> "411"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i412> "412"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i413> "413"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i414> "414"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i415> "415"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i416> "416"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i417> "417"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i418> "418"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i419> "419"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i420> "420"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i421> "421"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i422> "422"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i423> "423"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i424> "424"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i425> "425"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i426> "426"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i427> "427"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i428> "428"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i429> "429"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i430> "430"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i431> "431"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i432> "432"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i433> "433"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i434> "434"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i435> "435"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i436> "436"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i437> "437"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i438> "438"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i439> "439"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i440> "440"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i441> "441"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i442> "442"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i443> "443"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i444> "444"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i445> "445"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i446> "446"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i447> "447"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i448> "448"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i449> "449"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i450> "450"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i451> "451"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i452> "452"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i453> "453"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i454> "454"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i455> "455"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i456> "456"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i457> "457"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i458> "458"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i459> "459"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i460> "460"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i461> "461"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i462> "462"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i463> "463"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i464> "464"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i465> "465"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i466> "466"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i467> "467"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i468> "468"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i469> "469"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i470> "470"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i471> "471"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i472> "472"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i473> "473"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i474> "474"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i475> "475"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i476> "476"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i477> "477"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i478> "478"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i479> "479"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i480> "480"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i481> "481"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i482> "482"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i483> "483"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i484> "484"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i485> "485"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i486> "486"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i487> "487"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i488> "488"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i489> "489"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i490> "490"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i491> "491"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i492> "492"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i493> "493"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i494> "494"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i495> "495"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i496> "496"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i497> "497"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i498> "498"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i499> "499"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i500> "500"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i501> "501"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i502> "502"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i503> "503"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i504> "504"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i505> "505"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i506> "506"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i507> "507"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i508> "508"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i509> "509"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i510> "510"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i511> "511"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i512> "512"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i513> "513"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i514> "514"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i515> "515"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i516> "516"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i517> "517"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i518> "518"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i519> "519"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i520> "520"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i521> "521"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i522> "522"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i523> "523"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i524> "524"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i525> "525"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i526> "526"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i527> "527"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i528> "528"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i529> "529"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i530> "530"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i531> "531"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i532> "532"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i533> "533"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i534> "534"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i535> "535"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i536> "536"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i537> "537"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i538> "538"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i539> "539"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i540> "540"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i541> "541"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i542> "542"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i543> "543"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i544> "544"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i545> "545"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i546> "546"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i547> "547"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i548> "548"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i549> "549"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i550> "550"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i551> "551"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i552> "552"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i553> "553"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i554> "554"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i555> "555"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i556> "556"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i557> "557"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i558> "558"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i559> "559"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i560> "560"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i561> "561"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i562> "562"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i563> "563"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i564> "564"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i565> "565"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i566> "566"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i567> "567"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i568> "568"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i569> "569"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i570> "570"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i571> "571"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i572> "572"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i573> "573"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i574> "574"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i575> "575"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i576> "576"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i577> "577"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i578> "578"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i579> "579"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i580> "580"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i581> "581"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i582> "582"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i583> "583"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i584> "584"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i585> "585"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i586> "586"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i587> "587"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i588> "588"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i589> "589"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i590> "590"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i591> "591"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i592> "592"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i593> "593"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i594> "594"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i595> "595"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i596> "596"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i597> "597"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i598> "598"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i599> "599"^^xsd:integer)
+DataPropertyAssertion(:u <http://example.org/t#i600> "600"^^xsd:integer)
+)
+
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    unproxied_assertions_can_hide_a_clash
+
+test result: FAILED. 8 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 60.55s
+
+error: test failed, to rerun pass `--test data_assertions_carried`
+     Running tests/empty_and_universal_data_ranges.rs (target/release/deps/empty_and_universal_data_ranges-a3e105924b4bcc3a)
+
+running 10 tests
+test bottom_data_property_has_no_values ... ok
+test assertions_against_empty_ranges_are_inconsistent ... ok
+test complemented_cardinality_definers_contrapose_on_every_route ... ok
+test datatype_definitions_of_empty_and_universal_ranges ... ok
+test complements_of_ordinary_ranges ... ok
+test literal_existential_with_universal_complement_of_literal_is_unsatisfiable ... ok
+test universal_data_ranges_in_every_position ... ok
+test empty_data_ranges_in_every_position ... ok
+test complement_of_literal_and_literal_on_every_route ... ok
+test excluded_middle_of_complement_ranges has been running for over 60 seconds
+test excluded_middle_of_complement_ranges ... ok
+
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 199.61s
+
+     Running tests/forced_route_fail_closed.rs (target/release/deps/forced_route_fail_closed-b02585d5269e1eff)
+
+running 5 tests
+test allowed_approximation_is_marked_and_counted ... ok
+test automatic_route_matches_hermit_on_the_max2_reproducers ... ok
+test incremental_source_session_refuses_a_forced_approximate_route ... ok
+test forced_default_route_refuses_the_max2_reproducers ... ok
+test no_route_publishes_an_unmarked_approximate_answer ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.13s
+
+     Running tests/universal_role_and_top_data_range.rs (target/release/deps/universal_role_and_top_data_range-3dd7a26c45ad1b0d)
+
+running 13 tests
+test data_value_next_to_universal_role_hub_on_nominals ... ignored, exact nominal regime: no answer within 1800 s on nominals (docs/NOMINALS-CB.md section 7)
+test data_value_next_to_universal_role_hub_stays_satisfiable ... ignored, exact nominal regime: no answer within 600 s on the automatic route (docs/NOMINALS-CB.md section 7)
+test data_range_complement_excluded_middle_still_applies_to_values ... ok
+test data_sorted_top_definer_keeps_data_values_satisfiable ... ok
+test data_property_range_over_the_shared_top_definer_stays_satisfiable ... ok
+test literal_existential_over_free_data_property_is_fast ... ok
+test exists_top_role_thing_is_owl_thing_and_fast ... ok
+test literal_existential_matches_unqualified_min_cardinality ... ok
+test mixed_object_and_data_assertions_on_one_individual ... ok
+test universal_role_restrictions_are_complete ... ok
+test data_value_singleton_next_to_nominal_successors ... ok
+test nominal_top_role_reproducer has been running for over 60 seconds
+test sort_encoding_matches_hermit_on_differential_fixtures has been running for over 60 seconds
+test sort_encoding_matches_hermit_on_differential_fixtures ... ok
+test nominal_top_role_reproducer ... ok
+
+test result: ok. 11 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 648.79s
+
+error: 1 target failed:
+    `--test data_assertions_carried`

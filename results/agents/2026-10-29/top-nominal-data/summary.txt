@@ -1,0 +1,14 @@
+diff-fresh2-after.tsv: auto:ok=49 auto:TIMEOUT=8 certified_nominals:ok=49 certified_nominals:TIMEOUT=8 ht_general:ERR=56 ht_general:WRONG=1 nominals:ok=32 nominals:TIMEOUT=25 
+diff-fresh2-before.tsv: auto:ok=50 auto:TIMEOUT=6 auto:WRONG=1 certified_nominals:ok=50 certified_nominals:TIMEOUT=6 certified_nominals:WRONG=1 ht_general:ERR=56 ht_general:WRONG=1 nominals:ok=37 nominals:TIMEOUT=19 nominals:WRONG=1 
+diff-fresh2-final.tsv: auto:ok=50 auto:TIMEOUT=7 certified_nominals:ok=50 certified_nominals:TIMEOUT=7 ht_general:ERR=57 nominals:ok=44 nominals:TIMEOUT=13 
+diff-fresh2-fix2.tsv: auto:ok=50 auto:TIMEOUT=7 certified_nominals:ok=50 certified_nominals:TIMEOUT=7 ht_general:ERR=57 nominals:ok=44 nominals:TIMEOUT=13 
+diff-fresh3-after.tsv: auto:ok=23 auto:TIMEOUT=5 certified_nominals:ok=23 certified_nominals:TIMEOUT=5 ht_general:ERR=28 nominals:ok=14 nominals:TIMEOUT=14 
+diff-fresh3-before.tsv: auto:ok=23 auto:TIMEOUT=5 certified_nominals:ok=20 certified_nominals:TIMEOUT=7 certified_nominals:WRONG=1 ht_general:ERR=28 nominals:ERR=1 nominals:ok=14 nominals:TIMEOUT=12 nominals:WRONG=1 
+diff-fresh3-final.tsv: auto:ok=19 auto:TIMEOUT=9 certified_nominals:ok=19 certified_nominals:TIMEOUT=9 ht_general:ERR=28 nominals:ok=16 nominals:TIMEOUT=12 
+diff-fresh3-fix2.tsv: auto:ok=19 auto:TIMEOUT=9 certified_nominals:ok=19 certified_nominals:TIMEOUT=9 ht_general:ERR=28 nominals:ok=16 nominals:TIMEOUT=12 
+diff-rules-fix3.tsv: auto:ERR=8 auto:ok=4 auto:WRONG=3 certified_nominals:ERR=12 certified_nominals:ok=3 default:ERR=14 default:ok=1 ht_rules:ERR=14 ht_rules:ok=1 nominals:ERR=12 nominals:ok=3 
+diff-rules-fix5.tsv: auto:ERR=12 auto:ok=3 certified_nominals:ERR=12 certified_nominals:ok=3 default:ERR=14 default:ok=1 ht_rules:ERR=14 ht_rules:ok=1 nominals:ERR=12 nominals:ok=3 
+diff-sorts-after.tsv: auto:ok=2 certified_nominals:ok=2 ht_general:ERR=2 nominals:ok=2 
+diff-sorts-before.tsv: auto:ok=2 certified_nominals:ok=2 ht_general:ERR=2 nominals:ok=2 
+diff-sorts-final.tsv: auto:ok=2 certified_nominals:ok=2 ht_general:ERR=2 nominals:ok=2 
+diff-sorts-fix2.tsv: auto:ok=2 certified_nominals:ok=2 ht_general:ERR=2 nominals:ok=2 

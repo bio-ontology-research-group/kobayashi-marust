@@ -1,0 +1,8 @@
+Prefix(:=<http://example.org/t#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://example.org/t>
+Declaration(DataProperty(:u)) Declaration(Class(:C)) Declaration(Class(:E)) Declaration(NamedIndividual(:a))
+SubClassOf(owl:Thing DataMaxCardinality(2 :u))
+DataPropertyAssertion(:u :a "1"^^xsd:integer) DataPropertyAssertion(:u :a "2"^^xsd:integer) DataPropertyAssertion(:u :a "3"^^xsd:integer)
+)

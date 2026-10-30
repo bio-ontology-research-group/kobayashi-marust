@@ -75,6 +75,12 @@ classes, and dropped-axiom counts retain their usual meaning. Default JSON
 continues to list expanded pairs. The graph option is incompatible with
 `--lines`; `KM_JSON_GRAPH_EDGES=1` enables the same option for benchmark drivers.
 
+To also report the entailed types and equalities of named individuals, use
+`km classify --lines --realize ontology.owl`. It appends `TYPE<TAB>a<TAB>C`
+rows (`C(a)` is entailed, `owl:Thing` excluded) and `SAME<TAB>a<TAB>b` rows
+(`a = b` is entailed). `--realize=direct` lists only the most specific types.
+See [docs/REALIZATION.md](docs/REALIZATION.md).
+
 Inspect the accepted options and worker commands:
 
 ```sh

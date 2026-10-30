@@ -1,0 +1,1 @@
+{"ontology": "g1212.ofn", "consistent": true, "subsumptions": [["A", "D"], ["A", "Q2"], ["B", "Q2"], ["C", "D"]], "unsatisfiable": ["Q1"]}

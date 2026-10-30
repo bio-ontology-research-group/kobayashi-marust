@@ -24,6 +24,12 @@ named bundle:
 KM_THREADS=4 KM_NO_CENTRAL=1 km classify --route manual ontology.ofn
 ```
 
+A selected route (any named route, or `manual`) bypasses the gate that keeps
+each input on a mechanism that represents it. When the selected mechanism
+drops or approximates part of the input, `km classify` refuses to publish a
+consistent answer unless `KM_ALLOW_APPROXIMATE=1` is set; see
+[Forced routes](#forced-routes).
+
 ## Selection boundary
 
 The frontend's first streaming parse pass produces the source profile while it
@@ -171,6 +177,44 @@ Named bundles normalize their conflicting routing keys to the same settings as
 the IBEX matrix. Diagnostic settings remain available. `manual` is the route to
 use when a caller wants complete control over individual algorithm settings.
 
+### Bridge terminology: source TBox or clause translation
+
+The Konclude bridge builds its terminology in one of two ways
+(`bridge_tinput_with_trigger_absorption`, engine/src/konclude_ht/bridge.rs).
+With trigger absorption on (`KM_TRIGGER_ABSORB=1`, set by every bridge route)
+and a nonempty `source_axioms` channel it builds the source TBox from the
+normalized class axioms. Otherwise, or when `KM_NO_SOURCE_TBOX=1` forces it,
+it translates the reverse-Skolemised clauses (the clause translation).
+
+The frontend fills `source_axioms` from `SubClassOf`, `EquivalentClasses` and
+`DisjointClasses`, including the axioms the parser desugars into them:
+`DisjointUnion`, complex or inverse object property domains and ranges, and
+`DataPropertyDomain`. No named route sets `KM_NO_SOURCE_TBOX`, so the automatic
+route uses the clause translation only for an input without any such axiom.
+Such an input has no class expressions and therefore no definer markers unless
+it has an ABox, and a bridge input with individuals but without the typed
+source ABox channel is declined (`has_any_nominal_input`). The defects below
+all need resolved definer markers, so automatic routing was not affected; on
+inputs without markers the translation is unchanged.
+
+The clause translation resolves each frontend definer marker to the native
+concept it abbreviates. Up to v1.5.4 only the trigger-absorbed concept-clause
+encoder used the resolved concept. The trigger-less fallback, the guarded
+`R(x,y)` encoder and the recognised `>=k` fallback still emitted the marker
+atom, which had no definition there. Forcing `KM_NO_SOURCE_TBOX=1` then missed
+consequences: 302 of the 700 generator seeds wrong against HermiT, all
+incompleteness (25 missed inconsistencies), measured 2026-10-29. Now every
+clause that mentions a resolved marker is encoded over the resolved concepts
+only. It is absorbed when possible, dropped when it is a syntactic tautology,
+and otherwise installed on TOP. A query class is never resolved, because
+classification reads queries off their atoms. With the fix the forced clause
+translation is wrong on 0 of the 700 seeds (results/agents/2026-10-29/
+bridge-clause-path/). A clause shape the translation cannot encode still counts
+as unsupported, and the bridge declines the input. On `--route ht_bridge`
+that decline exits with status 3 and prints `unsupported: selected native HT
+bridge deferred (konclude_ht bridge defer)`; on the automatic and
+`production_all` routes the CB engine answers instead.
+
 ### Typed-ABox SHOIQ refinement
 
 The source tree initially labels eligible nominal/inverse/functionality inputs
@@ -264,6 +308,105 @@ only universal-role occurrence is one tautological inclusion. That occurrence
 alone used to force the eager nominal CB route. The typed object-ABox bridge
 portfolio (`certified_nominals`) is now selected, with the unchanged
 nominal-aware CB fallback. See [`SOLVE-16303.md`](SOLVE-16303.md).
+
+## Forced routes
+
+A route is forced when the caller names it: `--route NAME`, `KM_ROUTE=NAME`,
+or `manual`. `auto` is not forced, and neither is an unset `KM_ROUTE` in a
+library call. A forced route bypasses the source gate that keeps every input on
+a mechanism that represents it, so the selected mechanism may drop or
+approximate part of the input. Every such drop only weakens the ontology: an
+inconsistency found without the dropped part is still an inconsistency, but a
+consistent answer is the answer for the weakened ontology, not for the input.
+
+The rule (`orchestrate::classify_with_evidence_mode`, outermost call):
+
+- A forced route whose consistent answer has any drop does not publish it.
+  `km classify` exits 3 and names the route and the dropped constructs:
+
+  ```text
+  unsupported: route `default` drops 3 ABox assertions (ClassAssertion); the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+  ```
+
+- With `KM_ALLOW_APPROXIMATE=1` the answer is published, marked by an
+  `APPROXIMATE<TAB>reason` line directly after `DROPPED` (JSON key
+  `approximate`), and `DROPPED` counts every drop, including the
+  route-specific approximations below that an automatic answer never carries.
+- An inconsistent answer is published unchanged on every route, with one
+  exception. When a route reads a one-sorted clause stream (no
+  `KM_NOMINALS`, not the bridge-exclusive worker) on a source with a TBox
+  nominal and data properties, and the sort encoding of docs/NOMINALS-CB.md
+  section 6 would apply, the stream is stronger than the ontology: data
+  successors fall under `⊤ ⊑ C` and can be forced onto a named individual
+  (m2197: `⊤ ⊑ ≥2 u` and `⊤ ⊑ {a}` is consistent, the one-sorted stream is
+  not). Such a forced route publishes neither verdict
+  (`FrontendResult::one_sorted_data_successors`, checked in
+  `orchestrate::classify_with_evidence_mode` after the drop rule, whose
+  message wins for a consistent answer); with `KM_ALLOW_APPROXIMATE=1` the
+  answer carries `APPROXIMATE` and a positive `DROPPED`:
+
+  ```text
+  unsupported: route `ht_general` reads data successors as objects (data properties beside a nominal outside nominal clausification); neither verdict would be exact; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+  ```
+
+The same rule covers `km classify --realize` (forced routes require
+`KM_REALIZE_ANY_ROUTE=1` first) and the `km incremental-source` session, which
+keeps an ambient `KM_ROUTE`. The session refuses an approximate answer even
+under `KM_ALLOW_APPROXIMATE=1`, because its rows, deltas and reuse checks carry
+no marker. The legacy session (`KM_SOURCE_SESSION=legacy`) always routes the
+source automatically. `km explain` accepts only `auto`. The Protégé adapter
+declines any answer with `APPROXIMATE` or a positive `DROPPED`.
+
+The automatic route is unaffected. The caller's route is read once, by the
+outermost classification, before route selection or any fallback rewrites
+`KM_ROUTE`. Nested classifications (fallbacks, probes, source rewrites, the
+mirror projections) and the source-incremental session's own route-specific
+backends (`orchestrate::InternalRoute`) are never forced, and the
+route-specific approximations are never added to an automatic answer. The
+regression test `tests/forced_route_fail_closed.rs` runs every route of
+`km routes` on reproducers for each construct below, with and without
+`KM_ALLOW_APPROXIMATE=1`, and requires each to refuse, answer exactly, or
+(only when allowed) mark its answer; `auto` must answer each exactly.
+
+### What each route drops
+
+Drop sites (line numbers at the time of writing):
+
+| Construct | Drop site | Published as |
+|---|---|---|
+| DL-safe rule whose atoms cannot be represented | `frontend/parse.rs:606` | `DROPPED`, every route |
+| `HasKey` (only with `KM_NO_HAS_KEY_RULES`; otherwise `frontend/has_key.rs` rewrites it to a DL-safe rule before routing) and the remaining unencoded `Data*` axioms | `frontend/parse.rs:777` | `DROPPED`, every route |
+| Unknown axiom kinds | `frontend/parse.rs:786` | `DROPPED`, every route |
+| DL-safe rules the mechanism does not read (`KM_NO_HT_RULES`) and no exact lowering replaced | `frontend/mod.rs:1511` | `DROPPED` |
+| ABox assertions outside nominal clausification: on an individual without a nominal proxy, `SameIndividual`, `DifferentIndividuals`, `NegativeObjectPropertyAssertion` (not counted when the source certifies the ABox separable) | `frontend/mod.rs:1585` (collected), `:1686` (counted) | `DROPPED`, selected routes only |
+| The same assertions when a complete typed ABox payload exists (`KM_TRIGGER_ABSORB`) but the mechanism is not HT, so no worker reads the payload | `frontend/mod.rs:1690` | forced-route approximation |
+| Nominals outside nominal clausification: the proxy class (`preprocess::nominal_clauses`) lacks the singleton and existence clauses (`preprocess::nominal_defining_clauses`), so it and every assertion on its individual are over-approximated | `frontend/mod.rs:1706` | forced-route approximation |
+| Data-property assertions not carried after the `DataHasValue` conversion rerun (`orchestrate/frontend_run.rs:374`); converted ones are class assertions and drop with the ABox | `frontend/mod.rs:1708` | `DROPPED` |
+| DL-safe rules a rule route's taxonomy does not apply when a nominal lets their conclusions reach class queries | `orchestrate/mod.rs:2838` | `DROPPED` |
+| Clauses the CB signature builder cannot encode | `reasoner.rs:294` | `DROPPED` (worker) |
+| Clauses and fenced constructs `cb_to_ht` cannot encode, when `KM_HT_FORCE` (`ht_general`) runs the HT worker outside every HT gate | `orchestrate/race.rs:759` | `DROPPED` (worker) |
+
+Which routes reach which drop, from the bundles in `routing.rs` (and verified
+on the reproducers of `tests/forced_route_fail_closed.rs`):
+
+| Routes | ABox | Nominals | Data assertions | DL-safe rules | Keys |
+|---|---|---|---|---|---|
+| `nominals`, `certified_nominals`, `certified_card_nominals`, `certified_card_proxy_abox`, `nominal_ni_abox`, `nominal_ni_tbox` (`KM_NOMINALS`) | exact | exact | exact after conversion, else counted | unread: counted | rewritten to rules: counted as rules |
+| `ht_bridge`, `ht_full` (HT reading the typed payload) | exact when the payload is complete, else counted | exact when the payload is complete, else approximation | as above | unread: counted | as rules |
+| `production_all*` (portfolio with `KM_TRIGGER_ABSORB`) | counted, or approximation when the payload is complete (the CB arm lacks it) | approximation | as above | read | read as rules |
+| `default*`, `manual`, `cb_absorb_portfolio16`, `tab_race`, `ht_rules` | counted | approximation | as above | read | read as rules |
+| `cb_plain*`, `cb_absorb*`, `cb_trigger*`, `cb_portfolio16`, `lean`, `seq_on`, `seq_off`, `elc`, `elc_cert`, `certified_el_production` | counted (`cb_trigger*`: approximation when the payload is complete) | approximation | as above | unread: counted | as rules |
+| `ht_general`, `ht_qo`, `ht_shoq`, `ht_card`, `ht_features`, `card_fn`, `tableau` | counted | approximation | as above | unread: counted | as rules |
+
+"Read" rules still fail closed on unsupported rule shapes before any answer
+exists. A frontend that lowers unary or constant-data rules sets `KM_NOMINALS`
+for that run, so those inputs keep their nominals and ABox on every route.
+The nominal count is conservative for the historical `tableau`, which seeds
+its own nominal roots but has no full-fragment contract. The rule covers
+representation drops only. Measurement-only mechanisms
+(`ht_general`, `ht_qo`, `ht_shoq`, `ht_card`, `nominal_ni_tbox`, `card_fn`) can
+still be incomplete on input they represent; the table in
+[Named procedures](#named-procedures) lists the known counterexamples.
 
 ## Learning objective and safety gates
 

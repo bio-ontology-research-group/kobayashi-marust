@@ -1,0 +1,25 @@
+files 400 runs 1200
+auto ok=272 WRONG=1 TIMEOUT=127
+certified_nominals ok=274 WRONG=1 TIMEOUT=125
+nominals ok=249 WRONG=1 TIMEOUT=143 ERR=7
+   m2063.ofn auto ctx TIMEOUT ref ok
+   m2063.ofn certified_nominals ctx TIMEOUT ref ok
+   m2100.ofn auto ctx TIMEOUT ref ok
+   m2100.ofn certified_nominals ctx TIMEOUT ref ok
+   m2197.ofn auto ctx WRONG ref WRONG
+   m2197.ofn certified_nominals ctx WRONG ref WRONG
+   m2197.ofn nominals ctx WRONG ref WRONG
+   m2215.ofn auto ctx TIMEOUT ref ok
+   m2215.ofn certified_nominals ctx TIMEOUT ref ok
+   m2215.ofn nominals ctx TIMEOUT ref ok
+   m2229.ofn auto ctx TIMEOUT ref ok
+   m2276.ofn auto ctx TIMEOUT ref ok
+   m2276.ofn certified_nominals ctx TIMEOUT ref ok
+   m2276.ofn nominals ctx TIMEOUT ref ok
+   m2296.ofn auto ctx TIMEOUT ref ok
+   m2296.ofn certified_nominals ctx TIMEOUT ref ok
+   m2296.ofn nominals ctx TIMEOUT ref ok
+   m2303.ofn auto ctx TIMEOUT ref ok
+   m2303.ofn certified_nominals ctx TIMEOUT ref ok
+   m2303.ofn nominals ctx TIMEOUT ref ok
+non-ok under ctx, by reference verdict: {('TIMEOUT', 'TIMEOUT'): 375, ('TIMEOUT', 'ok'): 17, ('TIMEOUT', 'ERR'): 3, ('ERR', 'TIMEOUT'): 7, ('WRONG', 'WRONG'): 3}

@@ -1,0 +1,22 @@
+# cargo test --release --lib konclude_ht:: -- --test-threads 8 (branch head 337688ba source)
+test konclude_ht::bridge::tests::bridge_tbox_datatype_extension_literal_is_head_only ... FAILED
+test result: FAILED. 1510 passed; 1 failed; 7 ignored; 0 measured; 1503 filtered out; finished in 0.19s
+# known pre-existing failure, being fixed elsewhere: bridge_tbox_datatype_extension_literal_is_head_only
+
+# cargo test --release --test bridge_* -- --test-threads 8
+     Running tests/bridge_atmost_role_hierarchy.rs
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests/bridge_blank_witness_and_same_reuse.rs
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/bridge_conditional_full_replay.rs
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.75s
+     Running tests/bridge_cyclic_equivalence_definition.rs
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+     Running tests/bridge_generator_soundness.rs
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.78s
+     Running tests/bridge_nominal_merge_relocation.rs
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+     Running tests/bridge_restricted_subject_nominal_merge.rs
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+     Running tests/bridge_self_card_nominal.rs
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s

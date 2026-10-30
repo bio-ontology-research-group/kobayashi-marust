@@ -1,0 +1,13 @@
+Prefix(:=<http://example.org/g#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://example.org/g>
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(Class(:Q1)) Declaration(Class(:Q2)) Declaration(Class(:Q3)) Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s)) Declaration(DataProperty(:u)) Declaration(DataProperty(:v)) Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+DisjointClasses(DataAllValuesFrom(:v DataComplementOf(rdfs:Literal)) DataAllValuesFrom(:v rdfs:Literal))
+DataPropertyDomain(:v ObjectOneOf(:b))
+ObjectPropertyAssertion(:s :a :b)
+SubClassOf(DataHasValue(:u "x"^^xsd:string) DataHasValue(:v "2"^^xsd:integer))
+EquivalentClasses(:Q1 ObjectComplementOf(ObjectHasValue(:s :b)))
+)
+
