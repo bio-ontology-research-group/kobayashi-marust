@@ -27,7 +27,12 @@ def checkFile (path : System.FilePath) : IO UInt32 := do
       else
         match json.getObjVal? "evidence" >>= Json.getObj? with
         | .ok evidence =>
-            if evidence.any fun key _ => key = "regular_sat" || key = "finite_unsat" then
+            -- Every constructor of `WireRegularDecisionEvidence` selects the
+            -- regular-decision envelope; `WireEvidence` has no constructor
+            -- with these names, so the dispatch cannot misroute a plain
+            -- version-1 certificate.
+            if evidence.any fun key _ =>
+                key = "regular_sat" || key = "finite_sat" || key = "finite_unsat" then
               let document : WireRegularDecisionCertificate ← fromJson? json
               document.check
             else
