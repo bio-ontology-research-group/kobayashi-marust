@@ -178,6 +178,172 @@ impl<'a> Guards<'a> {
 /// documentation). `is_source` names the concepts with a source reading
 /// (IRI-mapped names and query targets); they are never released.
 pub fn release_inert_object_sorts(input: &mut JInput, is_source: impl Fn(&str) -> bool) -> Released {
+    release_with(input, is_source, Options { reserve_records: true, maximal: false })
+}
+
+/// The same release for the clause input of the nominal CB engine
+/// (docs/NOMINALS-CB.md, "Inert object sorts in the nominal CB input
+/// (2026-10-30)"). Two differences from the rule checker's pass:
+///
+/// * Cardinality and definer records do not reserve their names. The CB
+///   engine reads only `input.clauses` (`cli::run_engine` builds the
+///   `Reasoner` from the clauses alone), so a record carries no meaning there;
+///   the names it reads with a meaning of their own are the source names, the
+///   queries and the asserted markers, which the caller passes in `is_source`,
+///   and the `__nom__` proxies and assertion markers of the nominal ABox,
+///   which this function reserves. Rule atoms stay reserved.
+/// * The fixpoint is maximal along mutual guards: when every failing candidate
+///   fails only in clauses where another candidate on the same term would be a
+///   guard once it is kept (`Q_0(x) ∧ Q_2(x) → ⊥` for the complementary
+///   markers of `≤1 p` and `≥2 p`), one of them (the greatest name) is kept and
+///   the others are re-checked, instead of keeping all of them. The loop ends
+///   only when no candidate fails (B) or (H), so the module's model
+///   correspondence holds for the final set exactly as for the rule checker's.
+///
+/// The caller must give the result only to workers that read nothing but the
+/// clauses and report only names in `is_source`.
+pub fn release_inert_object_sorts_for_cb(
+    input: &mut JInput,
+    is_source: impl Fn(&str) -> bool,
+) -> Released {
+    let mut abox_names: HashSet<String> = HashSet::new();
+    for individual in &input.nominal_abox.individuals {
+        abox_names.extend(individual.proxies.iter().cloned());
+        abox_names.extend(individual.assertion_markers.iter().cloned());
+    }
+    release_with(
+        input,
+        |name| is_source(name) || abox_names.contains(name),
+        Options { reserve_records: false, maximal: true },
+    )
+}
+
+/// What [`eliminate_universal_definers`] removed.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct Eliminated {
+    /// The definers `Q` with a unit fact `→ Q(x)` that were eliminated, sorted.
+    pub concepts: Vec<String>,
+    /// Clauses dropped because their head holds an eliminated definer (the
+    /// unit facts included).
+    pub clauses: usize,
+    /// Body atoms dropped.
+    pub body_atoms: usize,
+}
+
+/// Eliminate every internal definer `Q` that holds everywhere: the clause
+/// set has the unit fact `→ Q(x)` (empty body, one atom on a variable), so
+/// every model interprets `Q` as the whole domain. Each body atom `Q(t)` is
+/// then true and is dropped, and each clause with `Q(t)` in its head is true
+/// and is dropped, the unit fact included (docs/NOMINALS-CB.md, "Inert
+/// object sorts in the nominal CB input (2026-10-30)").
+///
+/// The result `S'` has the same models as the input `S` on every other name:
+/// a model of `S` satisfies `S'` because each dropped body atom was true and
+/// `S'` has no clause that `S` lacks a stronger form of; a model of `S'`
+/// becomes a model of `S` by interpreting each eliminated `Q` as the whole
+/// domain (a clause with `Q` in its head then holds, and a clause that lost
+/// `Q` body atoms holds as its shortened form does). Names in `is_source`,
+/// the nominal-ABox proxies and markers and rule atoms are never
+/// eliminated. A definer is kept when dropping its body atoms would leave a
+/// clause with an empty body and a role atom or a function term in its head,
+/// a shape the frontend never emits.
+///
+/// After [`release_inert_object_sorts_for_cb`], a released definer whose
+/// relativized fact was `→ Q(x) ∨ D(x)` has the unit fact `→ Q(x)` and is
+/// eliminated here; so is the `⊤` definer of an unqualified cardinality.
+/// Like that pass, the result is only for workers that read nothing but the
+/// clauses and report only names in `is_source`.
+pub fn eliminate_universal_definers(
+    input: &mut JInput,
+    is_source: impl Fn(&str) -> bool,
+) -> Eliminated {
+    let mut reserved: HashSet<String> = HashSet::new();
+    for individual in &input.nominal_abox.individuals {
+        reserved.extend(individual.proxies.iter().cloned());
+        reserved.extend(individual.assertion_markers.iter().cloned());
+    }
+    for rule in &input.rules {
+        for atom in rule.body.iter().chain(&rule.head) {
+            if let JRuleAtom::Class { concept, .. } = atom {
+                reserved.insert(concept.clone());
+            }
+        }
+    }
+    let mut universal: BTreeSet<String> = BTreeSet::new();
+    for clause in &input.clauses {
+        if let ([], [JAtom::Concept { concept, term: JTerm::Var { .. } }]) =
+            (clause.body.as_slice(), clause.head.as_slice())
+        {
+            if super::cb_to_ht::is_internal(concept)
+                && !concept.starts_with("__")
+                && concept != DATA_SORT
+                && !reserved.contains(concept)
+                && !is_source(concept)
+            {
+                universal.insert(concept.clone());
+            }
+        }
+    }
+    let is_universal = |atom: &JAtom, universal: &BTreeSet<String>| {
+        matches!(atom, JAtom::Concept { concept, .. } if universal.contains(concept))
+    };
+    // Keep a definer whose elimination would leave an unconditional role or
+    // Skolem head; repeat, since keeping one can change another clause's body.
+    loop {
+        let mut kept: Option<String> = None;
+        for clause in &input.clauses {
+            if clause.head.iter().any(|atom| is_universal(atom, &universal))
+                || !clause.body.iter().any(|atom| is_universal(atom, &universal))
+                || clause.body.iter().any(|atom| !is_universal(atom, &universal))
+            {
+                continue;
+            }
+            let unconditional_structure = clause.head.iter().any(|atom| match atom {
+                JAtom::Concept { term, .. } => !matches!(term, JTerm::Var { .. } | JTerm::Ind { .. }),
+                JAtom::Role { .. } | JAtom::Eq { .. } => true,
+            });
+            if unconditional_structure {
+                if let Some(JAtom::Concept { concept, .. }) =
+                    clause.body.iter().find(|atom| is_universal(atom, &universal))
+                {
+                    kept = Some(concept.clone());
+                    break;
+                }
+            }
+        }
+        match kept {
+            Some(concept) => {
+                universal.remove(&concept);
+            }
+            None => break,
+        }
+    }
+    if universal.is_empty() {
+        return Eliminated::default();
+    }
+    let mut report = Eliminated { concepts: universal.iter().cloned().collect(), ..Eliminated::default() };
+    input.clauses.retain(|clause| {
+        let drop = clause.head.iter().any(|atom| is_universal(atom, &universal));
+        report.clauses += usize::from(drop);
+        !drop
+    });
+    for clause in &mut input.clauses {
+        let before = clause.body.len();
+        clause.body.retain(|atom| !is_universal(atom, &universal));
+        report.body_atoms += before - clause.body.len();
+    }
+    report
+}
+
+struct Options {
+    /// Cardinality markers and fillers and definer markers and operands keep
+    /// their sorts (their records are read by the worker).
+    reserve_records: bool,
+    /// Keep one of a set of mutually guarding candidates instead of all.
+    maximal: bool,
+}
+
+fn release_with(input: &mut JInput, is_source: impl Fn(&str) -> bool, options: Options) -> Released {
     let clauses = &input.clauses;
     if !clauses
         .iter()
@@ -216,13 +382,15 @@ pub fn release_inert_object_sorts(input: &mut JInput, is_source: impl Fn(&str) -
     }
     // Names with a meaning outside the clauses.
     let mut reserved: HashSet<&str> = HashSet::new();
-    for card in &input.cardinalities {
-        reserved.insert(&card.marker);
-        reserved.insert(&card.filler);
-    }
-    for definer in &input.definers {
-        reserved.insert(&definer.marker);
-        reserved.extend(definer.operands.iter().map(String::as_str));
+    if options.reserve_records {
+        for card in &input.cardinalities {
+            reserved.insert(&card.marker);
+            reserved.insert(&card.filler);
+        }
+        for definer in &input.definers {
+            reserved.insert(&definer.marker);
+            reserved.extend(definer.operands.iter().map(String::as_str));
+        }
     }
     for rule in &input.rules {
         for atom in rule.body.iter().chain(&rule.head) {
@@ -248,14 +416,22 @@ pub fn release_inert_object_sorts(input: &mut JInput, is_source: impl Fn(&str) -
             }
         }
     }
+    // Only the clauses that mention a candidate can fail; candidates only
+    // leave the set, so this list stays complete for every round.
+    let relevant: Vec<&JClause> = clauses
+        .iter()
+        .filter(|clause| concept_sort_clause(clause).is_none())
+        .filter(|clause| {
+            clause.body.iter().chain(&clause.head).any(|atom| {
+                matches!(atom, JAtom::Concept { concept, .. } if released.contains(concept.as_str()))
+            })
+        })
+        .collect();
     // Remove candidates that violate (B) or (H) until none does.
     loop {
         let mut failed: BTreeSet<&str> = BTreeSet::new();
         let pinned = guards.pinned(&released);
-        for clause in clauses {
-            if concept_sort_clause(clause).is_some() {
-                continue;
-            }
+        for &clause in &relevant {
             for atom in &clause.body {
                 if let JAtom::Concept { concept, term } = atom {
                     if released.contains(concept.as_str()) && !guards.guarded(clause, term, &released, &pinned) {
@@ -276,6 +452,52 @@ pub fn release_inert_object_sorts(input: &mut JInput, is_source: impl Fn(&str) -
         }
         if failed.is_empty() {
             break;
+        }
+        if options.maximal {
+            // A failure is soft when the failing clause's body holds another
+            // candidate on the same term that has a sort clause: keeping that
+            // candidate would make it a guard. A concept with a hard failure
+            // is kept at once; among soft failures only the greatest is kept.
+            let mut hard: BTreeSet<&str> = BTreeSet::new();
+            for &clause in &relevant {
+                let soft = |own: &str, term: &JTerm| {
+                    clause.body.iter().any(|atom| {
+                        matches!(atom, JAtom::Concept { concept, term: t }
+                            if t == term
+                                && concept.as_str() != own
+                                && released.contains(concept.as_str())
+                                && guards.object_concepts.contains(concept.as_str()))
+                    })
+                };
+                for atom in &clause.body {
+                    if let JAtom::Concept { concept, term } = atom {
+                        if failed.contains(concept.as_str())
+                            && !guards.guarded(clause, term, &released, &pinned)
+                            && !soft(concept, term)
+                        {
+                            hard.insert(concept.as_str());
+                        }
+                    }
+                }
+                for atom in &clause.head {
+                    if let JAtom::Concept { concept, term } = atom {
+                        if failed.contains(concept.as_str())
+                            && !clause.head.iter().any(|other| is_data(other, term))
+                            && !guards.guarded(clause, term, &released, &pinned)
+                            && !soft(concept, term)
+                        {
+                            hard.insert(concept.as_str());
+                        }
+                    }
+                }
+            }
+            if hard.is_empty() {
+                let greatest = *failed.iter().next_back().expect("failed is non-empty");
+                released.remove(greatest);
+            } else {
+                released.retain(|concept| !hard.contains(concept));
+            }
+            continue;
         }
         released.retain(|concept| !failed.contains(concept));
     }
@@ -692,6 +914,195 @@ mod tests {
         ];
         let mut i = input(clauses.clone());
         assert_eq!(release_inert_object_sorts(&mut i, |_| false), Released::default());
+        assert!(i.clauses == clauses);
+    }
+
+    // ---- the nominal CB variant (`release_inert_object_sorts_for_cb`) ----
+
+    /// The complementary markers of `≤1 p` (`Q_3`) and `≥2 p` (`Q_4`) of a
+    /// negated data cardinality: `⊤ ⊑ ≤1 p ⊔ ≥2 p` relativized, with the
+    /// disjointness clause between them. `Q_4` is read unguarded (as the
+    /// existential of `≥2 p` is), `Q_3` only through `p`.
+    fn complementary_marker_clauses() -> Vec<JClause> {
+        let mut clauses = range_clauses();
+        clauses.push(cl(vec![], vec![c("Q_3", var("x")), c("Q_4", var("x")), c(D, var("x"))]));
+        clauses.push(cl(vec![c("Q_3", var("x")), c("Q_4", var("x"))], vec![]));
+        clauses.push(cl(vec![c("Q_3", var("x")), c(D, var("x"))], vec![]));
+        clauses.push(cl(vec![c("Q_4", var("x")), c(D, var("x"))], vec![]));
+        clauses.push(cl(vec![c("Q_3", var("x")), r("p", var("x"), var("y")), r("p", var("x"), var("z"))], vec![c("B", var("y"))]));
+        clauses.push(cl(vec![c("Q_4", var("x"))], vec![c("A", var("x"))]));
+        clauses.push(cl(vec![c("A", var("x")), c(D, var("x"))], vec![]));
+        clauses.push(cl(vec![c("B", var("x")), c(D, var("x"))], vec![]));
+        clauses
+    }
+
+    fn with_cardinality_records(mut i: JInput) -> JInput {
+        i.cardinalities = serde_json::from_value(serde_json::json!([
+            {"marker": "Q_3", "min": false, "n": 1, "role": "p", "filler": "Q_0"},
+            {"marker": "Q_4", "min": true, "n": 2, "role": "p", "filler": "Q_0"}
+        ]))
+        .unwrap();
+        i
+    }
+
+    #[test]
+    fn cb_release_frees_a_maximum_marker_kept_by_its_record_in_the_rule_checker() {
+        let clauses = complementary_marker_clauses();
+        // The rule checker reads the records: `Q_3` stays reserved.
+        let mut i = with_cardinality_records(input(clauses.clone()));
+        let rules = release_inert_object_sorts(&mut i, |name| !crate::orchestrate::cb_to_ht::is_internal(name));
+        assert!(!rules.concepts.contains(&"Q_3".to_string()), "{rules:?}");
+        // The CB engine reads only the clauses. `Q_4` is read unguarded
+        // (`Q_4(x) → A(x)`), so it keeps its sort and guards `Q_3` in the
+        // disjointness clause; `Q_3` is released and the `D` disjunct of the
+        // complementary fact goes.
+        let mut i = with_cardinality_records(input(clauses.clone()));
+        let cb = release_inert_object_sorts_for_cb(&mut i, |name| !crate::orchestrate::cb_to_ht::is_internal(name));
+        assert_eq!(cb.concepts, vec!["Q_1".to_string(), "Q_3".to_string()]);
+        assert!(i.clauses.contains(&cl(vec![], vec![c("Q_3", var("x")), c("Q_4", var("x"))])));
+        assert!(i.clauses.contains(&cl(vec![c("Q_4", var("x")), c(D, var("x"))], vec![])));
+        assert!(!i.clauses.contains(&cl(vec![c("Q_3", var("x")), c(D, var("x"))], vec![])));
+        assert_eq!(satisfiable(&clauses), satisfiable(&i.clauses));
+    }
+
+    #[test]
+    fn cb_release_keeps_exactly_one_of_two_mutual_guards() {
+        // The clauses of `candidates_do_not_guard_each_other`: the rule
+        // checker's pass keeps both sorts; the CB variant keeps the greatest
+        // (`Q_2`), which then guards `Q_1`.
+        let mut clauses = range_clauses();
+        clauses.push(cl(vec![c("Q_0", var("x"))], vec![c("Q_2", var("x")), c(D, var("x"))]));
+        clauses.push(cl(vec![c("Q_2", var("x")), c(D, var("x"))], vec![]));
+        clauses.push(cl(vec![c("Q_2", var("x")), c("Q_1", var("x"))], vec![c("A", var("x"))]));
+        clauses.push(cl(vec![c("A", var("x")), c(D, var("x"))], vec![]));
+        let mut i = input(clauses.clone());
+        assert_eq!(release_inert_object_sorts(&mut i, |_| false), Released::default());
+        let mut i = input(clauses.clone());
+        let cb = release_inert_object_sorts_for_cb(&mut i, |_| false);
+        assert_eq!(cb, Released { concepts: vec!["Q_1".into()], facts: 1, sort_clauses: 1 });
+        assert!(i.clauses.contains(&cl(vec![c("Q_2", var("x")), c(D, var("x"))], vec![])));
+        assert_eq!(satisfiable(&clauses), satisfiable(&i.clauses));
+    }
+
+    #[test]
+    fn cb_release_reserves_the_nominal_abox_markers() {
+        let mut i = input(range_clauses());
+        i.nominal_abox = serde_json::from_value(serde_json::json!({
+            "complete": true,
+            "individuals": [{"individual": "a", "proxies": ["__nom__a"], "assertions": [], "assertion_markers": ["Q_1"]}]
+        }))
+        .unwrap();
+        assert_eq!(release_inert_object_sorts_for_cb(&mut i, |_| false), Released::default());
+        assert!(i.clauses == range_clauses());
+    }
+
+    /// Entailment of the source-level answers by DPLL: consistency, and for
+    /// the source classes `A`, `B` satisfiability and `A ⊑ B`, `B ⊑ A` (a
+    /// fresh individual `c` carries the query).
+    fn answers(clauses: &[JClause]) -> Vec<bool> {
+        let mut out = vec![satisfiable(clauses)];
+        for (sub, sup) in [("A", None), ("B", None), ("A", Some("B")), ("B", Some("A"))] {
+            let mut query = clauses.to_vec();
+            query.push(cl(vec![], vec![c(sub, ind("c"))]));
+            if let Some(sup) = sup {
+                query.push(cl(vec![c(sup, ind("c"))], vec![]));
+            }
+            out.push(satisfiable(&query));
+        }
+        out
+    }
+
+    #[test]
+    fn cb_release_preserves_source_answers_on_random_inputs() {
+        let mut rng = Lcg(20261031);
+        let (mut released, mut more_than_rules, mut eliminated) = (0, 0, 0);
+        for _ in 0..2000 {
+            let mut clauses = random_sorted(&mut rng);
+            // Mutual guards between the two range definers, as the
+            // complementary cardinality markers have them.
+            if rng.below(2) == 0 {
+                clauses.push(cl(vec![c("Q_1", var("x")), c("Q_2", var("x"))], vec![]));
+            }
+            let mut rules_input = input(clauses.clone());
+            let rules = release_inert_object_sorts(&mut rules_input, |name| name == "A" || name == "B");
+            let mut i = input(clauses.clone());
+            let report = release_inert_object_sorts_for_cb(&mut i, |name| name == "A" || name == "B");
+            if !report.concepts.is_empty() {
+                released += 1;
+            }
+            if report.concepts.len() > rules.concepts.len() {
+                more_than_rules += 1;
+            }
+            let expected = answers(&clauses);
+            assert_eq!(expected, answers(&i.clauses), "release changed an answer: {report:?}");
+            let gone = eliminate_universal_definers(&mut i, |name| name == "A" || name == "B");
+            if !gone.concepts.is_empty() {
+                eliminated += 1;
+            }
+            assert_eq!(expected, answers(&i.clauses), "elimination changed an answer: {gone:?}");
+        }
+        eprintln!(
+            "2000 random clause sets: CB release on {released}, more than the rule checker's on \
+             {more_than_rules}, universal definers eliminated on {eliminated}"
+        );
+        assert!(released > 200, "released on {released} inputs");
+        assert!(eliminated > 200, "eliminated on {eliminated} inputs");
+        assert!(more_than_rules > 20, "maximal fixpoint released more on {more_than_rules} inputs");
+    }
+
+    #[test]
+    fn universal_definer_is_eliminated_from_bodies_and_heads() {
+        // `→ Q_1(x)` (the `⊤` definer of an unqualified cardinality, or a
+        // released range definer): its body atoms are true, and clauses with
+        // it in the head are true.
+        let clauses = vec![
+            cl(vec![], vec![c("Q_1", var("x"))]),
+            cl(vec![c("Q_1", var("y")), r("p", var("x"), var("y"))], vec![c("Q_2", var("x"))]),
+            cl(vec![c("A", var("x"))], vec![c("Q_1", var("x")), c("B", var("x"))]),
+            cl(vec![c("Q_1", var("x")), c("Q_2", var("x"))], vec![c("B", var("x"))]),
+            cl(vec![], vec![r("p", ind("a"), ind("b"))]),
+            cl(vec![c("B", ind("a"))], vec![]),
+        ];
+        let mut i = input(clauses.clone());
+        let report = eliminate_universal_definers(&mut i, |name| name == "A" || name == "B");
+        assert_eq!(report, Eliminated { concepts: vec!["Q_1".into()], clauses: 2, body_atoms: 2 });
+        assert!(i.clauses.contains(&cl(vec![r("p", var("x"), var("y"))], vec![c("Q_2", var("x"))])));
+        assert!(i.clauses.contains(&cl(vec![c("Q_2", var("x"))], vec![c("B", var("x"))])));
+        // `p(a, b)` gives `Q_2(a)`, then `B(a)`, which clashes either way.
+        assert!(!satisfiable(&clauses));
+        assert!(!satisfiable(&i.clauses));
+    }
+
+    #[test]
+    fn universal_definer_guarding_an_existential_is_kept() {
+        // Dropping `Q_1(x)` from `Q_1(x) → p(x, f(x))` would leave an
+        // unconditional Skolem head, a shape the frontend never emits.
+        let f = JTerm::Fun { function: "f".into(), arg: Box::new(var("x")) };
+        let clauses = vec![
+            cl(vec![], vec![c("Q_1", var("x"))]),
+            cl(vec![c("Q_1", var("x"))], vec![r("p", var("x"), f)]),
+            cl(vec![c("Q_1", var("x")), c("A", var("x"))], vec![c("B", var("x"))]),
+        ];
+        let mut i = input(clauses.clone());
+        assert_eq!(eliminate_universal_definers(&mut i, |_| false), Eliminated::default());
+        assert!(i.clauses == clauses);
+    }
+
+    #[test]
+    fn source_and_abox_names_are_never_eliminated() {
+        let clauses = vec![
+            cl(vec![], vec![c("Q_1", var("x"))]),
+            cl(vec![c("Q_1", var("x"))], vec![c("B", var("x"))]),
+        ];
+        let mut i = input(clauses.clone());
+        assert_eq!(eliminate_universal_definers(&mut i, |name| name == "Q_1"), Eliminated::default());
+        let mut i = input(clauses.clone());
+        i.nominal_abox = serde_json::from_value(serde_json::json!({
+            "complete": true,
+            "individuals": [{"individual": "a", "proxies": ["__nom__a"], "assertions": [], "assertion_markers": ["Q_1"]}]
+        }))
+        .unwrap();
+        assert_eq!(eliminate_universal_definers(&mut i, |_| false), Eliminated::default());
         assert!(i.clauses == clauses);
     }
 }
