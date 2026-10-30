@@ -1,4 +1,5 @@
 import ContextCalculus.ELCompletionPublication
+import ContextCalculus.ELCompletionFastCheck
 
 /-!
 # Executable ELC publication boundary
@@ -25,5 +26,15 @@ theorem WireCertificate.check_publication_semantics
       simpa [hdecode] using hcheck
 
 #print axioms WireCertificate.check_publication_semantics
+
+/-- The hash-indexed check that `elc-cert-check` runs has the same contract:
+its acceptance implies acceptance by `WireCertificate.check`. -/
+theorem WireCertificate.checkFast_publication_semantics
+    (wire : WireCertificate) (hcheck : wire.checkFast = .ok true) :
+    ∃ decoded : DecodedCertificate wire.symbol_count,
+      wire.decode = .ok decoded ∧ PublicationSemantics decoded :=
+  wire.check_publication_semantics (wire.checkFast_sound hcheck)
+
+#print axioms WireCertificate.checkFast_publication_semantics
 
 end ContextCalculus.ELCompletion

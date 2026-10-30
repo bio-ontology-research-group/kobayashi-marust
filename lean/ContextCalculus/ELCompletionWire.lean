@@ -371,8 +371,11 @@ def WireCertificate.decode (doc : WireCertificate) :
         let origins ← (List.finRange doc.symbol_count).mapM fun id =>
           (doc.concept_origins.get ⟨id.val, by rw [horiginCount]; exact id.isLt⟩).decode
             doc.symbol_count id
+        -- Array lookups keep decoding linear in the certificate size.
+        let originArray := origins.toArray
+        let symbolArray := doc.symbols.toArray
         let origin : Fin doc.symbol_count → ExtendedConcept (Fin doc.symbol_count) :=
-          fun id => origins.getD id.val (.inl top)
+          fun id => originArray.getD id.val (.inl top)
         if horiginsLength : origins.length = doc.symbol_count then
           if horiginsNodup : origins.Nodup then
             return {
@@ -400,9 +403,10 @@ def WireCertificate.decode (doc : WireCertificate) :
               (← doc.rust_edges.mapM (WireEdgeFact.decode doc.symbol_count))
             public_subsumptions := ← doc.public_subsumptions.mapM fun fact =>
               return (← checkedFin doc.symbol_count fact.sub, ← checkedFin doc.symbol_count fact.sup)
-            symbols := fun id => doc.symbols.get ⟨id.val, by simpa [hsymbols] using id.isLt⟩
+            symbols := fun id => symbolArray[id.val]'(by simpa [symbolArray, hsymbols] using id.isLt)
             symbols_injective := by
               intro left right heq
+              simp only [symbolArray, List.getElem_toArray] at heq
               let leftIndex : Fin doc.symbols.length :=
                 ⟨left.val, by simpa [hsymbols] using left.isLt⟩
               let rightIndex : Fin doc.symbols.length :=
