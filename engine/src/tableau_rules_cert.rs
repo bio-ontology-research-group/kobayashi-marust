@@ -706,6 +706,89 @@ pub(crate) fn write_and_check(t: &Tableau, answer: &Answer) -> Result<(), String
     Ok(())
 }
 
+/// Complete and write the certificate of a published taxonomy
+/// (`KM_RULES_CLASSIFY`). Pairs and classes taken from the CB taxonomy
+/// (`set_known`) become premises. Every other published subsumption and
+/// unsatisfiable class needs a refutation, every satisfiable query a model
+/// element, and every unpublished pair between queries a model element that
+/// separates it; missing evidence is produced by one more recorded test. A
+/// test whose verdict contradicts the published answer is an error.
+pub(crate) fn certify_classification(
+    t: &Tableau,
+    oguard: C,
+    queries: &[C],
+    consistent: bool,
+    unsat: &[C],
+    subs: &[(C, C)],
+    known_subs: &HashSet<(C, C)>,
+    known_unsat: &HashSet<C>,
+) -> Result<(), String> {
+    let unsat_set: HashSet<C> = unsat.iter().copied().collect();
+    let sub_set: HashSet<(C, C)> = subs.iter().copied().collect();
+    let premise_subs: Vec<(C, C)> = subs.iter().copied().filter(|p| known_subs.contains(p)).collect();
+    let premise_unsat: Vec<C> = unsat.iter().copied().filter(|a| known_unsat.contains(a)).collect();
+    let proved = |claim: Claim| -> bool {
+        let sink = t.cert.as_ref().unwrap().lock().unwrap();
+        sink.refutations.iter().any(|(c, _)| *c == claim || *c == Claim::Inconsistent)
+    };
+    if consistent {
+        for &a in unsat {
+            if !known_unsat.contains(&a) && !proved(Claim::Unsat(a))
+                && t.cert_test(Claim::Unsat(a), Some(a)).is_some()
+            {
+                return Err(format!("published unsatisfiable class {a} has a model"));
+            }
+        }
+        for &(a, b) in subs {
+            if !known_subs.contains(&(a, b)) && !proved(Claim::Sub(a, b)) && !proved(Claim::Unsat(a))
+                && t.cert_test(Claim::Sub(a, b), Some(a)).is_some()
+            {
+                return Err(format!("published subsumption {a} ⊑ {b} has a countermodel"));
+            }
+        }
+        for &a in queries {
+            if unsat_set.contains(&a) {
+                continue;
+            }
+            let witness_labels = |t: &Tableau| -> Vec<HashSet<C>> {
+                let sink = t.cert.as_ref().unwrap().lock().unwrap();
+                sink.models
+                    .iter()
+                    .flat_map(|(m, ws)| {
+                        ws.iter()
+                            .filter(move |(c, _)| *c == a)
+                            .map(move |&(_, node)| m.labels[node].iter().copied().collect())
+                    })
+                    .collect()
+            };
+            let mut labels = witness_labels(t);
+            if labels.is_empty() {
+                if t.cert_test(Claim::Unsat(a), Some(a)).is_none() {
+                    return Err(format!("satisfiable query {a} has a refutation"));
+                }
+                labels = witness_labels(t);
+            }
+            for &b in queries {
+                if b == a || sub_set.contains(&(a, b)) || labels.iter().any(|l| !l.contains(&b)) {
+                    continue;
+                }
+                if t.cert_test(Claim::Sub(a, b), Some(a)).is_none() {
+                    return Err(format!("unpublished subsumption {a} ⊑ {b} is entailed"));
+                }
+            }
+        }
+    }
+    write_and_check(t, &Answer {
+        oguard,
+        queries,
+        consistent,
+        unsatisfiable: unsat,
+        subsumptions: subs,
+        premise_subsumptions: &premise_subs,
+        premise_unsatisfiable: &premise_unsat,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
