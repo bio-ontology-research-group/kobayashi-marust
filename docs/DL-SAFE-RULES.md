@@ -193,6 +193,7 @@ subsumption and unsatisfiable class, and a finite blocked completion graph
 per refuted candidate, checked as a pre-model with equality or pairwise
 blocking), and (3) the frontend translation, which is outside Lean for every
 route (docs/CERTIFICATION-ROADMAP.md). I did none of these.
+(1) and (2) are done in "Lean coverage" below; (3) remains open.
 
 ### Evidence
 
@@ -201,6 +202,160 @@ generated `gen_finite_rules.py` seeds against HermiT with grounded
 built-ins, the 2026-10-29 rule probes, the integration test
 `engine/tests/rule_taxonomy_nominal.rs`, and timings on 7278 and 3726
 (which do not take this step: their rules reach no class query).
+
+## Lean coverage (2026-10-30, v1.5.5)
+
+Until v1.5.4 the rule worker (`KM_RULES_CONSISTENCY`, `KM_RULES_CLASSIFY`,
+the clausal `Tableau` of `tableau.rs`) refused every Lean checker: the
+clause language of the HT certification has no O-guarded rule clause. The
+only Lean check on the route was the inert-sort release of its input
+(`RulesInertSortRelease.lean`, docs/NOMINALS-CB.md section 6). With
+`KM_RULES_LEAN_CERT=<dir | file.json>` and
+`KM_RULES_LEAN_CHECKER=<lean/.lake/build/bin/rules-cert-check>` the worker
+now writes one certificate per published answer and publishes the answer
+only when the Lean checker accepts it.
+
+### Semantics (`lean/ContextCalculus/RulesRouteSemantics.lean`)
+
+The worker input is one list of hypertableau clauses over the atoms of
+`ContextCalculus.Hypertableau` (concept literals, roles, existential
+obligations, equality), a list of nominal concepts `{a}` (one per named
+individual, `__nom__a`) and the guard concept `O` (`__O__`). The checker
+classifies each clause:
+
+- an *introduction clause* `{a}(x) → O(x)` with `{a}` a nominal;
+- a *rule clause*: its body contains a guard atom `O(v)`; then `O` occurs
+  nowhere else in it, never negated, and every variable of the clause has a
+  guard atom;
+- an *ordinary clause*: `O` does not occur.
+
+`encodingOK` checks these conditions, that `O` is not a nominal, and, when
+a rule clause exists, that every nominal has an introduction clause.
+`decode` turns the list into a knowledge base `KB` of ordinary clauses,
+rules (rule clauses without their guards) and nominals. Its DL-safe
+semantics (`DLSafeModel`): every nominal denotes exactly one element,
+every ordinary clause holds under every assignment, and every rule holds
+under every assignment of *named elements* (elements of some nominal) to
+its variables. `O` is not interpreted.
+
+Proved (no `sorry`, axioms `propext`, `Quot.sound`, and for the checkers
+also `Classical.choice`):
+
+- `clauseModel_of_dlSafeModel`: a DL-safe model, with `O` interpreted as
+  the named elements, is a model of the guarded clause list with singleton
+  nominals.
+- `dlSafeModel_of_clauseModel`: a model of the guarded clause list with
+  singleton nominals is a DL-safe model of the decoded knowledge base.
+
+So the guarded clauses are exact for DL-safe rules: consistency,
+subsumption and unsatisfiability under the DL-safe semantics coincide with
+the same notions for the clause list read in first-order logic with
+singleton nominals (`entailsSub_of_clausal`, `unsatConcept_of_clausal`,
+`not_consistent_of_clausal`, `not_entailsSub_of_clauseModel`,
+`not_unsatConcept_of_clauseModel`), for concepts other than `O`. Merged
+nominal nodes need no separate treatment: a merge is an equality between
+elements, and named is a property of elements.
+
+### Certificates
+
+Refutation (`RulesRouteRefutation.lean`). The closed tableau of the
+careful expansion, as the worker ran it. A test with root label `L` starts
+with node 0 carrying `L` and node `k + 1` carrying the `k`-th nominal
+(`Tableau::find_model`). A proof node is a list of steps followed by an
+end. Steps: `horn` (a clause with one head atom whose body holds under the
+given assignment adds its head; an equality head merges the two nodes),
+`witness` (an obligation `∃r.C` at `s` gets a fresh node), `nominal` (two
+nodes carrying the same nominal merge). Ends: a clash `C, ¬C`, a clause
+with an empty head whose body holds, or a split on a clause whose body
+holds, with one sub-proof per head atom. A merge copies the facts of the
+removed node to the kept one; the index that finds them is untrusted.
+Loop-back alternatives of the pairwise path are not recorded: the fresh
+successor alone is a sound step.
+
+Model (`RulesRouteModel.lean`). A finite interpretation: labels (positive
+concepts) and successor edges of each element; concepts are the positive
+labels, negative literals the complement. `FModel.check` evaluates every
+clause under every assignment (variables bound along body role atoms,
+values drawn from recorded successors, predecessors or concept
+extensions, all verified complete against the edges and labels) and
+checks that each nominal labels exactly one element. The worker builds the
+model from the completion graph, as it is or with every blocked node
+folded onto its blocker; a Rust pre-check (`model_satisfies`, the same
+evaluation) picks the first that is a model. A graph that is neither gives
+no certificate.
+
+Answer (`RulesRouteCertificate.lean`). Clause list, nominals, `O`, the
+queries, the published consistency flag, unsatisfiable classes and
+subsumptions, premises, refutations (claim `inconsistent`, `unsat A` or
+`sub A B`, root `[]`, `[A]` or `[A, ¬B]`) and models with witnesses
+(concept, element). Proved statement, `WireRulesCertificate.check_sound`:
+if `check` accepts the document `w`, every premise subsumption and premise
+unsatisfiable class is entailed under the DL-safe semantics of
+`kb = decode O nominals ontology`, then
+
+- `consistent = true` iff `kb` has a DL-safe model (non-empty domain);
+- for every query `A`: `A` is listed unsatisfiable iff `A` is
+  unsatisfiable in every DL-safe model of `kb`;
+- for all queries `A ≠ B` with `A` not listed unsatisfiable: `(A, B)` is a
+  published subsumption iff `A ⊑ B` holds in every DL-safe model of `kb`.
+
+Building blocks: `refutation_inconsistent`, `refutation_unsat`,
+`refutation_sub` (an accepted refutation from the corresponding root
+entails the claim) and `FModel.check_sound` (an accepted model is a model
+of the clause list, so of `kb`; an element carrying `A` and not `B`
+refutes `A ⊑ B`).
+
+### The two schedules of the rule taxonomy
+
+`KM_RULES_CLASSIFY` alone: every published entailment has a refutation
+recorded by its own test and every non-entailment a model; the certificate
+has no premises. Completion with `KM_RULES_CLASSIFY_KNOWN` (`set_known`):
+the pairs and classes taken from the CB taxonomy appear as
+`premise_subsumptions` and `premise_unsatisfiable`, and the theorem above
+is relative to them; the CB taxonomy has its own certificates
+(`run-cb-certification-gate.sh`) but no theorem composes the two yet. The
+models never depend on premises. Pairs that the transitive closure adds
+without a test receive one more recorded test before the certificate is
+written.
+
+### Wire-up
+
+- `KM_RULES_LEAN_CERT` selects the careful expansion (the recorder follows
+  it, without `KM_TAB_CAREFUL_INC` and `KM_TAB_CAREFUL_ORDER`) and refuses
+  `KM_HT_CONTRA`, which adds contrapositive clauses the certificate would
+  have to state.
+- The worker fails closed: with `KM_RULES_LEAN_CHECKER` set, a rejected
+  certificate, an answer without one (a refutation the recorder lost, a
+  completion graph that folds to no model) or a checker that cannot run
+  ends the run without an answer. `KM_RULES_LEAN_CERT` alone writes the
+  certificates without checking them.
+- An `KM_HT_LEAN_*` request on the rules route is served by these
+  certificates when both flags are set and refused otherwise.
+
+### What the frontend is assumed to do
+
+The certificate is about the clause list the worker receives. Outside the
+boundary, as for every other route: OWL parsing and normalisation, the
+conversion `cb_to_ht::convert` (ABox as nominal facts, rules as guarded
+clauses, `DifferentIndividuals(a b)` as `{a}(x) ∧ {b}(x) → ⊥`), the
+inert-sort release (checked by its own certificate), and rules the
+conversion omits (reported as `DROPPED`). Built-ins: the worker language
+has none. The finite-rule grounding (`data_rules::lower_finite_rules`)
+binds every data variable of a rule to each value of a finite set of
+asserted literals, evaluates the built-in conjunction on each tuple in
+Rust, drops refuted tuples, declines the rule when an evaluation is
+deferred, and turns satisfied tuples into rules over constant data atoms.
+The assumption is that this set contains every value a data variable can
+take where the body holds and that the evaluation is the XSD/SWRL
+semantics; neither is checked in Lean. The checker verifies only the
+ground clauses that result.
+
+### Evidence
+
+`results/agents/2026-10-30/lean-rules-route/README.md`: the gate run
+(`lean/run-rules-certification-gate.sh`), the 400 `gen_finite_rules.py`
+seeds with the checker on, and the cost of emission and checking on
+ore_ont_7278.
 
 ## Historical precheck design and corpus investigations
 

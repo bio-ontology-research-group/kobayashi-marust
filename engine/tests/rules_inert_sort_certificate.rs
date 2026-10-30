@@ -79,7 +79,7 @@ fn assert_certified(ontology: &Path, tag: &str) {
     assert!(released > 0, "no inert sort was released on {}", ontology.display());
     assert!(!files.is_empty(), "no certificate was written");
     for file in &files {
-        let status = Command::new(&checker).arg(file).status().unwrap();
+        let status = kobayashi_marust::lean_checker::run(&checker, file).unwrap().status;
         assert!(status.success(), "Lean rejected {}", file.display());
     }
     assert_eq!(checked, plain, "the certificate flags changed the answer");
