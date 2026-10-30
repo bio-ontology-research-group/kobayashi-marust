@@ -53,6 +53,12 @@ grep -q "ELCompletionExecutablePublication.*check_publication_semantics\|'Contex
     exit 1
 }
 
+grep -q "'ContextCalculus.ELCompletion.WireCertificate.checkFast_publication_semantics'" \
+    "$surface_log" || {
+    echo "missing axiom audit of the fast ELC wire check run by elc-cert-check" >&2
+    exit 1
+}
+
 for theorem in \
     models_encodeNormalOntology_modelOfNormalAndRaw \
     commonCombinedEntails_iff_elcSource \
@@ -83,6 +89,15 @@ done
         -- --nocapture
     cargo test --release --lib \
         elcomplete::tests::lean_residual_compilation_payload_accepts_and_tampering_fails \
+        -- --nocapture
+    cargo test --release --lib \
+        elcomplete::tests::pure_el_existential_gets_an_identity_witness_record \
+        -- --nocapture
+    cargo test --release --lib \
+        elcomplete::tests::lean_checker_accepts_a_bottom_head_normal_form \
+        -- --nocapture
+    cargo test --release --lib \
+        elcomplete::tests::lean_checker_accepts_an_existential_with_an_unsatisfiable_filler \
         -- --nocapture
     cargo test --release --test elc_certificate -- --nocapture
 )

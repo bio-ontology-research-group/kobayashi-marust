@@ -37,6 +37,14 @@ pub const RUN_DIR_ENV: &str = "KM_LEAN_CHECK_DIR";
 pub const LOG_ENV: &str = "KM_LEAN_CHECK_LOG";
 /// Optional size cap in bytes; a larger certificate is `cannot_check`.
 pub const MAX_BYTES_ENV: &str = "KM_LEAN_CHECK_MAX_BYTES";
+/// Producer-side budget of the ELC certificate in derived facts (subsumptions
+/// plus edges). Above it the ELC worker writes no certificate, records
+/// `cannot_check` and publishes its unchecked answer. `0` disables the budget.
+pub const MAX_ELC_FACTS_ENV: &str = "KM_LEAN_CHECK_MAX_ELC_FACTS";
+/// Default ELC budget: `elc-cert-check` needs about 25 s on the 530,000-fact
+/// certificate of ore_ont_10254, so this keeps a checked ELC run under a
+/// minute.
+pub const DEFAULT_MAX_ELC_FACTS: u64 = 1_000_000;
 /// `all` also turns on the component checkers (CB closure and terminal-state
 /// wires); the default `publication` set turns on only checkers whose theorem
 /// concludes that the published answer is exact.
@@ -438,6 +446,19 @@ pub fn fresh_path(stem: &str) -> PathBuf {
         .unwrap_or_else(std::env::temp_dir);
     let nonce = NONCE.fetch_add(1, Ordering::Relaxed);
     base.join(format!("{stem}-{}-{nonce}.json", std::process::id()))
+}
+
+/// The ELC certificate budget under `KM_LEAN_CHECKERS` (`None` outside it,
+/// or when the budget is disabled with `0`).
+pub fn max_elc_facts() -> Option<u64> {
+    if !active() {
+        return None;
+    }
+    let budget = std::env::var(MAX_ELC_FACTS_ENV)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(DEFAULT_MAX_ELC_FACTS);
+    (budget > 0).then_some(budget)
 }
 
 fn max_bytes() -> Option<u64> {
