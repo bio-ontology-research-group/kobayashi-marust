@@ -108,7 +108,13 @@ rule worker reads the one-sorted clause stream (data successors fall under
   with `DROPPED` when the rule worker's conversion omitted a clause or fenced
   a construct (a `DifferentIndividualsAtom` rule, for example), when the
   input has nominals, inverse roles and number restrictions together (the
-  tableau has no NN-rule), and when the stream is one-sorted.
+  tableau has no NN-rule; the converter fences it as
+  `inverse+number(SHIQ)`), and when the stream is one-sorted. The message
+  names the fence. One existing fixture changes outcome this way:
+  `finite_data_rule_normalization::finite_rule_nominal_query_uses_inverse_chain_and_transitive_premises`
+  (an inverse role chain and a number restriction beside a nominal) was
+  published by v1.5.4 with `DROPPED 1` and is now refused; the test
+  accepts either an exact answer or that refusal.
 - The frontend selects nominal clausification (`KM_NOMINALS`) for an
   automatically selected `ht_rules` route whose source has a rule and an
   object nominal or the universal role, so the sort encoding of

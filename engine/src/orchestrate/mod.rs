@@ -3947,9 +3947,17 @@ fn rules_consistency(
             return Err(OrchestrateError::OutOfFragment(format!(
                 "DL-safe rules reach class queries through a nominal, and the rule-aware \
                  taxonomy would omit {} clause(s) and {} fenced construct(s) of the rule \
-                 worker input; a taxonomy without them would be incomplete",
+                 worker input{}; a taxonomy without them would be incomplete",
                 omitted,
-                tin.fenced.len()
+                tin.fenced.len(),
+                if tin.fenced.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        " ({})",
+                        tin.fenced.iter().map(|f| f.reason.as_str()).collect::<Vec<_>>().join(", ")
+                    )
+                }
             )));
         }
         if tin.inverse
