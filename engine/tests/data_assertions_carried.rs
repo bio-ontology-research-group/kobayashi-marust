@@ -26,6 +26,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 const BOUND: Duration = Duration::from_secs(60);
+/// Hang guard for `unproxied_assertions_can_hide_a_clash` only. Above the
+/// 512-literal cap every unproxied individual carries the same abstracted
+/// value profile, and the exact `nominals` CB route merges their 520 equal
+/// data successors through the value-identity clause: 48 s on an idle
+/// workstation, 85 s under load (2026-10-30, results/agents/2026-10-30/
+/// checkers-on-suite). The bound guards against a hang; the claim the test
+/// checks (no route publishes a complete consistent answer) is unchanged.
+const HEAVY_BOUND: Duration = Duration::from_secs(240);
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 
 struct Fixture(PathBuf);
@@ -58,6 +66,15 @@ struct Answer {
 /// `KM_ALLOW_APPROXIMATE=1`. `Ok` carries the answer and whether it is marked
 /// `APPROXIMATE`; `Err` the exit code and stderr of a refusal.
 fn run(text: &str, route: Option<&str>, allow: bool) -> Result<(Answer, bool), (Option<i32>, String)> {
+    run_within(text, route, allow, BOUND)
+}
+
+fn run_within(
+    text: &str,
+    route: Option<&str>,
+    allow: bool,
+    bound: Duration,
+) -> Result<(Answer, bool), (Option<i32>, String)> {
     let fixture = Fixture::new(text);
     let mut command = Command::new(env!("CARGO_BIN_EXE_km"));
     for (key, _) in std::env::vars_os() {
@@ -91,10 +108,10 @@ fn run(text: &str, route: Option<&str>, allow: bool) -> Result<(Answer, bool), (
             let approximate = stdout.lines().any(|line| line.starts_with("APPROXIMATE\t"));
             return Ok((parse(&stdout), approximate));
         }
-        if started.elapsed() > BOUND {
+        if started.elapsed() > bound {
             let _ = child.kill();
             let _ = child.wait();
-            panic!("km classify exceeded {BOUND:?} on route {route:?}:\n{text}");
+            panic!("km classify exceeded {bound:?} on route {route:?}:\n{text}");
         }
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -362,7 +379,7 @@ fn unproxied_assertions_can_hide_a_clash() {
     text.push_str(")\n");
     for route in ALL_ROUTES {
         // A selected route that leaves them out refuses (exit 3).
-        match run(&text, route, false) {
+        match run_within(&text, route, false, HEAVY_BOUND) {
             Ok((answer, _)) => assert!(!answer.consistent || answer.dropped > 0, "route {route:?}: {answer:?}"),
             Err((code, stderr)) => assert!(route.is_some() && code == Some(3), "route {route:?}: {stderr}"),
         }
