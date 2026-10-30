@@ -556,7 +556,13 @@ pub fn lteq(o1: &Lit, o2: &Lit, root: bool, sig: &Sig) -> bool {
     // shares an individual with that atom. Only removes comparisons.
     if ground_eqn_interface_order() {
         if let (Some(e1), Some(e2)) = (ground_eqn_pair(o1), ground_eqn_pair(o2)) {
-            if e1 != e2 {
+            // Ranked R2 (docs/PER-CONTEXT-ORDERING.md section 9): an
+            // (in)equality lies below one over another pair only when its
+            // larger individual is at most the other's smaller one (term id
+            // as the rank; `KM_R2_MIN_RANK`: its smaller individual at most
+            // the other's smaller one). The diagnostic `KM_CONTEXT_PAIR_R2`
+            // keeps only same-pair comparisons (the rule of 7c238e52).
+            if e1 != e2 && !diag_flag(&DIAG_EQEQ, "KM_DIAG_EQEQ_OPEN") && (pair_r2() || if r2_min_rank() { e1.0 > e2.0 } else { e1.1 > e2.0 }) {
                 return false;
             }
         }
@@ -574,7 +580,12 @@ pub fn lteq(o1: &Lit, o2: &Lit, root: bool, sig: &Sig) -> bool {
                 Pred::Concept { t, .. } => es <= *t,
                 Pred::Role { s, t, .. } => es <= *s || es <= *t,
             };
-            if le && ground_eqn_interface_order() && is_ground_atom(p) {
+            // Ranked R2 (section 9): an (in)equality may lie below a ground
+            // atom when its individuals are at most an individual of the
+            // atom. The term-major `le` above already implies it, so
+            // only the diagnostic `KM_CONTEXT_PAIR_R2` (the rule of
+            // 7c238e52: the two must share an individual) filters here.
+            if le && pair_r2() && !diag_flag(&DIAG_EQATOM, "KM_DIAG_EQATOM_OPEN") && ground_eqn_interface_order() && is_ground_atom(p) {
                 if let Some((a, b)) = ground_eqn_pair(eqn) {
                     let shares = match *p {
                         Pred::Concept { t, .. } => t == a || t == b,
@@ -831,6 +842,34 @@ pub fn ground_guard_off() -> bool {
     context_flag_off(&CONTEXT_NO_GUARD, "KM_CONTEXT_NO_GUARD")
 }
 
+/// Diagnostic `KM_CONTEXT_PAIR_R2`: R2 for ground (in)equalities and R3 as
+/// committed in 7c238e52 (an equality lies below another only over the same
+/// pair, below a ground atom only when it shares an individual with it, and
+/// the guard admits it when one side is announced). Default off: the ranked
+/// R2 and the ranked guard of docs/PER-CONTEXT-ORDERING.md section 9 apply.
+#[inline]
+pub fn pair_r2() -> bool {
+    context_flag_off(&CONTEXT_PAIR_R2, "KM_CONTEXT_PAIR_R2")
+}
+
+static CONTEXT_PAIR_R2: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+static DIAG_EQEQ: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+static DIAG_EQATOM: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+/// Cost-attribution diagnostics (incomplete, never for answers).
+fn diag_flag(cell: &std::sync::OnceLock<bool>, name: &str) -> bool {
+    context_flag_off(cell, name)
+}
+
+/// Diagnostic `KM_R2_MIN_RANK`: the min-rank variant of the ranked R2 (an
+/// (in)equality lies below one over another pair when its smaller individual
+/// is at most the other's smaller one; the guard admits an (in)equality whose
+/// smaller individual is at most the receiver's bound).
+#[inline]
+pub fn r2_min_rank() -> bool {
+    context_flag_off(&CONTEXT_R2_MIN_RANK, "KM_R2_MIN_RANK")
+}
+
+static CONTEXT_R2_MIN_RANK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 static CONTEXT_NO_GUARD: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 static CONTEXT_UNIT_R3: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 static CONTEXT_NO_EQ_R2: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
