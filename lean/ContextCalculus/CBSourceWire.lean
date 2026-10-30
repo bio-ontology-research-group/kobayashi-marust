@@ -202,6 +202,105 @@ private theorem ClauseEquivalent.valid_iff (model : TModel D)
       ⟨literal, hliteral, htrue⟩
     exact ⟨literal, (hequivalent.mem_head_iff literal).mpr hliteral, htrue⟩
 
+/-! ### Variable variants
+
+The production frontend names the two equality variables of a functionality
+clause `y0`, `y1`, which the worker interns as `z₁ = -2`, `z₂ = -3`, while the
+verified encoding uses `y = -1`, `z = -2`. The two clauses are variants: each
+is an instance of the other. Validity in a model is preserved by instantiation
+(`inst_valid`), so mutual instantiation gives validity equivalence, and the
+source-binding theorems below need nothing more. The checker computes the
+candidate renaming by rank (the non-central variables of each clause, distinct
+and in descending order, matched position by position) and then checks both
+instances by literal-set equality. The renaming is untrusted: soundness uses
+only the two checked instance equations. -/
+
+def termVars : FTerm → List Int
+  | .var index => [index]
+  | .const _ => []
+  | .app _ argument => termVars argument
+
+def literalVars : FLit → List Int
+  | .P (.concept _ term) => termVars term
+  | .P (.role _ source target) => termVars source ++ termVars target
+  | .eq left right => termVars left ++ termVars right
+  | .ineq left right => termVars left ++ termVars right
+
+/-- Non-central variables of a clause, without duplicates, in descending
+order (`-1, -2, …` for the engine's `y, z₁, …`). -/
+def neighbourVars (clause : FCL) : List Int :=
+  (((clause.body ++ clause.head).flatMap literalVars).filter (· ≠ 0)).eraseDups.mergeSort
+    (fun left right => decide (right ≤ left))
+
+/-- Rank renaming from `source`'s neighbour variables to `target`'s. -/
+def variantRenaming (source target : FCL) : List (Int × FTerm) :=
+  (neighbourVars source).zip ((neighbourVars target).map FTerm.var)
+
+/-- Each clause is an instance of the other, up to literal sets. -/
+def ClauseVariant (left right : FCL) : Prop :=
+  ClauseEquivalent left right ∨
+    (ClauseEquivalent (substCl (variantRenaming left right) left) right ∧
+      ClauseEquivalent (substCl (variantRenaming right left) right) left)
+
+instance (left right : FCL) : Decidable (ClauseVariant left right) :=
+  by unfold ClauseVariant; infer_instance
+
+theorem ClauseVariant.of_equivalent {left right : FCL}
+    (hequivalent : ClauseEquivalent left right) : ClauseVariant left right :=
+  Or.inl hequivalent
+
+private theorem predicateBody_substCl (σ : List (Int × FTerm)) {clause : FCL}
+    (hbody : PredicateBody clause) : PredicateBody (substCl σ clause) := by
+  intro literal hliteral
+  simp only [substCl, List.mem_map] at hliteral
+  obtain ⟨source, hsource, rfl⟩ := hliteral
+  obtain ⟨predicate, rfl⟩ := hbody source hsource
+  cases predicate with
+  | concept iri term => exact ⟨.concept iri (substT σ term), rfl⟩
+  | role iri first second =>
+      exact ⟨.role iri (substT σ first) (substT σ second), rfl⟩
+
+theorem ClauseVariant.predicateBody_left {left right : FCL}
+    (hvariant : ClauseVariant left right)
+    (hright : PredicateBody right) : PredicateBody left := by
+  rcases hvariant with hequivalent | ⟨_, hback⟩
+  · exact hequivalent.predicateBody_left hright
+  · intro literal hliteral
+    apply predicateBody_substCl (variantRenaming right left) hright literal
+    exact (hback.mem_body_iff literal).mpr hliteral
+
+theorem ClauseVariant.valid_iff (model : TModel D)
+    {left right : FCL} (hvariant : ClauseVariant left right) :
+    valid model left ↔ valid model right := by
+  rcases hvariant with hequivalent | ⟨hforward, hback⟩
+  · exact hequivalent.valid_iff model
+  · constructor
+    · intro hleft
+      exact (hforward.valid_iff model).1
+        (inst_valid model hleft (variantRenaming left right))
+    · intro hright
+      exact (hback.valid_iff model).1
+        (inst_valid model hright (variantRenaming right left))
+
+/-- Every production clause is a variant of an encoded clause and conversely.
+This is the relation the checker decides; `OntologyEquivalent` (literal-set
+equality, no renaming) implies it. -/
+def OntologyVariant (left right : List FCL) : Prop :=
+  (∀ clause ∈ left, ∃ encoded ∈ right, ClauseVariant clause encoded) ∧
+    ∀ encoded ∈ right, ∃ clause ∈ left, ClauseVariant clause encoded
+
+instance (left right : List FCL) : Decidable (OntologyVariant left right) :=
+  by unfold OntologyVariant; infer_instance
+
+theorem OntologyEquivalent.variant {left right : List FCL}
+    (hequivalent : OntologyEquivalent left right) : OntologyVariant left right :=
+  ⟨fun clause hclause =>
+      let ⟨encoded, hencoded, hclause⟩ := hequivalent.1 clause hclause
+      ⟨encoded, hencoded, .of_equivalent hclause⟩,
+    fun encoded hencoded =>
+      let ⟨clause, hclauseMem, hclause⟩ := hequivalent.2 encoded hencoded
+      ⟨clause, hclauseMem, .of_equivalent hclause⟩⟩
+
 structure DecodedSourceBinding where
   bounds : Bounds
   source : SourceOntology (Fin bounds.concepts) (Fin bounds.roles)
@@ -209,7 +308,7 @@ structure DecodedSourceBinding where
   ontology : List FCL
   allocation : Nat → Nat
   allocation_injective : Function.Injective allocation
-  exact_encoding : OntologyEquivalent ontology (renameOntology allocation
+  exact_encoding : OntologyVariant ontology (renameOntology allocation
     (CBRoleChainEncoding.encode source))
 
 theorem predicateBody_renameClause (allocation : Nat → Nat) (clause : FCL)
@@ -249,7 +348,7 @@ def WireSourceBinding.decode (wire : WireSourceBinding) :
   if wire.version = 1 then
     if wire.function_allocation.isSome then
       throw "version-1 CB source binding must not carry a function allocation"
-    if hencoding : OntologyEquivalent ontology (CBRoleChainEncoding.encode source) then
+    if hencoding : OntologyVariant ontology (CBRoleChainEncoding.encode source) then
       return {
         bounds, source, ontology
         allocation := id
@@ -264,7 +363,7 @@ def WireSourceBinding.decode (wire : WireSourceBinding) :
     let allocation ← allocationWire.decode
     if hcanonical : allocation.canonicalCount = source.clauses.length then
       if hproduction : allocation.productionCount = bounds.functions then
-        if hencoding : OntologyEquivalent ontology (renameOntology allocation.rename
+        if hencoding : OntologyVariant ontology (renameOntology allocation.rename
             (CBRoleChainEncoding.encode source)) then
           return {
             bounds, source, ontology
@@ -287,7 +386,7 @@ def DecodedSourceBinding.Entails (decoded : DecodedSourceBinding)
       ∀ element, model.conc sub.val element → model.conc sup.val element
 
 private theorem entails_of_equivalent {ontology encoded : List FCL}
-    (hequivalent : OntologyEquivalent ontology encoded) (sub sup : Nat) :
+    (hequivalent : OntologyVariant ontology encoded) (sub sup : Nat) :
     (∀ (D : Type) (model : TModel D),
       (∀ clause ∈ ontology, valid model clause) →
         ∀ element, model.conc sub element → model.conc sup element) ↔
@@ -354,7 +453,7 @@ theorem WireSourceBinding.check_sound (wire : WireSourceBinding)
     (hcheck : wire.check = .ok true) :
     ∃ decoded : DecodedSourceBinding,
       wire.decode = .ok decoded ∧
-        OntologyEquivalent decoded.ontology (renameOntology decoded.allocation
+        OntologyVariant decoded.ontology (renameOntology decoded.allocation
           (CBRoleChainEncoding.encode decoded.source)) ∧
         ∀ sub sup : Fin decoded.bounds.concepts,
           decoded.Entails sub sup ↔
@@ -537,6 +636,38 @@ private def inverseFunctionalExample := roleAxiomExample (.inverseFunctional 0)
 private def disjointExample := roleAxiomExample (.disjoint 0 1)
   ⟨[role 0 (.var 0) (.var (-1)), role 1 (.var 0) (.var (-1))], []⟩
 
+/-- The production functionality clause (`y0`, `y1` interned as `-2`, `-3`)
+is a variant of the encoded `r(x,y) ∧ r(x,z) → y ≈ z` (checkers-on C1). -/
+private def functionalVariantExample : WireSourceBinding where
+  version := 1
+  concept_count := 1
+  role_count := 1
+  function_count := 0
+  individual_count := 0
+  source_clauses := [.functional 0]
+  role_chains := []
+  ontology := [⟨[role 0 (.var 0) (.var (-3)), role 0 (.var 0) (.var (-2))],
+    [.equality (.var (-2)) (.var (-3))]⟩]
+
+example : functionalVariantExample.check = .ok true := by native_decide
+
+/-- Identifying the two successors is not a variant: only one direction is an
+instance. -/
+private def functionalCollapsedExample : WireSourceBinding :=
+  { functionalVariantExample with
+    ontology := [⟨[role 0 (.var 0) (.var (-2))], [.equality (.var (-2)) (.var (-2))]⟩] }
+
+example : functionalCollapsedExample.check =
+    .error "decoded CB ontology differs from the verified source encoding" := by
+  native_decide
+
+/-- Inverse functionality, interned the same way, is accepted likewise. -/
+private def inverseFunctionalVariantExample := roleAxiomExample (.inverseFunctional 0)
+  ⟨[role 0 (.var (-2)) (.var 0), role 0 (.var (-3)) (.var 0)],
+    [.equality (.var (-2)) (.var (-3))]⟩
+
+example : inverseFunctionalVariantExample.check = .ok true := by native_decide
+
 example : symmetricExample.check = .ok true := by native_decide
 example : asymmetricExample.check = .ok true := by native_decide
 example : reflexiveExample.check = .ok true := by native_decide
@@ -585,7 +716,10 @@ example : (tamperRoleAxiomExample disjointExample).check =
     .error "decoded CB ontology differs from the verified source encoding" := by
   native_decide
 
+#print axioms ClauseVariant.valid_iff
+#print axioms ClauseVariant.predicateBody_left
 #print axioms DecodedSourceBinding.entails_iff_source
+#print axioms DecodedSourceBinding.models_production
 #print axioms WireSourceBinding.check_sound
 
 end ContextCalculus.CBSourceWire
