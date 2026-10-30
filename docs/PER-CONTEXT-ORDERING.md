@@ -423,6 +423,8 @@ order and equality orientation) and up to three noise axioms. Fixtures in
   lexicographically).
 
 Counts on v1.5.4 (`km-pgo-use`, exact `nominals` route): see 8.5.
+None of the motifs depends on inverse roles; m5 (inverse-functional roles)
+and m2, m3 are answered by v1.5.4.
 
 ### 8.3 The fix
 
@@ -505,3 +507,70 @@ literal in the term-major order and never enter an announced interface.
 surface does not model R2 or R3 (unchanged from section 5); extending
 `CBSourceHyperClosure.predLe` and `CBRootPredSendEnumeration` to the context
 regime remains open.
+
+### 8.5 Measurements
+
+`results/agents/2026-10-30/r3-unannounced/` (README there has the exact
+binaries and commands). Routes forced to `nominals` (exact, no
+`KM_ALLOW_APPROXIMATE`); HermiT 1.4.3.456 as oracle. "Same binary" means the
+fixed binary with `KM_CONTEXT_UNIT_R3=1 KM_CONTEXT_NO_EQ_R2=1`, which
+restores the v1.5.4 rules; v1.5.4 itself is the PGO release binary
+`.work/pgo-v154/km-pgo-use`, faster by about a quarter for build reasons
+alone. The workstation ran at load 75 to 100 throughout.
+
+| set (seeds) | cap | v1.5.4 | same binary, v1.5.4 rules | fix |
+|---|---|---|---|---|
+| motifs m1 to m5 (2,000) | 20 s | 1,520 ok, 480 wrong | | 1,999 ok, 0 wrong, 1 timeout |
+| motifs m6, m7 (1,000) | 20 s | 842 ok, 155 wrong, 2 timeouts, 1 no gold | | 997 ok, 0 wrong, 3 timeouts |
+| random `gen_r3.py` (4,000) | 10 s | 2,217 ok, 4 wrong, 1,631 timeouts, 148 other | 2,259 ok, 6 wrong, 1,732 timeouts, 3 errors | 2,205 ok, 4 wrong, 1,761 timeouts, 30 errors |
+| `gen_nomdata.py` 1000-1099, 2000-2199 (300) | 30 s | | 183 ok, 0 wrong, 117 timeouts | 186 ok, 0 wrong, 114 timeouts |
+| sorts_differential fixtures (11 x 3 routes) | 60 s | | | 33 ok |
+
+Errors are workers killed by the host's exhausted commit limit (rerun, they
+answer); "other" for v1.5.4 are seeds without a cached HermiT answer at the
+time.
+
+*Wrong answers that remain.* `r1600`, `r1646`, `r3403`, `r3602` miss one
+subsumption each on the `nominals` route under every rule set, with the
+announcement guard switched off as well (`KM_CONTEXT_NO_GUARD=1`), so they
+are not guard losses and are outside this section. `r1600` (`B ⊑ A`) is also
+missed on the automatic and `certified_nominals` routes; the other three are
+answered there. Copies: `open_r*.ofn` with their HermiT answers in the
+results directory. `r673` and `r3351`, wrong under the v1.5.4 rules, are
+instances of this section's case and time out under the fix (900 s at engine
+level for `r673`).
+
+*Cost.* On the 2,186 random seeds both rule sets answer within 10 s, the
+fix takes 1.21 times as long in total (median ratio 1.13). Of the 73 seeds
+the v1.5.4 rules answer and the fix does not, a paired rerun at 60 s has 33
+answered by both, 36 only by the v1.5.4 rules, 1 only by the fix and 3 by
+neither;
+`r129` goes from 0.03 s to past 60 s. The ablations
+(`KM_CONTEXT_UNIT_R3`, `KM_CONTEXT_NO_EQ_R2`) put the cost on R2 for
+equalities: with the new guard alone `r129` takes 0.03 s and `r274` 0.10 s,
+with the new R2 alone 42 s and 44 s. Equalities that R2 no longer keeps below
+unrelated ground atoms become maximal and superpose into every clause over
+their larger individual. The first version of the guard (an individual passes
+when it is reachable through the clause's equalities) cost more: `r3351`
+past 10 s with that guard alone. On `gen_nomdata.py` the fix is not slower
+(183 seeds answered by both, total 199 s against 219 s).
+
+*ORE, the paired design's nominal inputs.* The 112 inputs of the design half
+of `results/benchmarks/2026-10-26-v154-routing/split.json` among the 201
+gated nominal inputs of 2026-10-29, one process per stream, three streams
+side by side. Automatic route, 300 s: the fix and the same binary with the
+v1.5.4 rules answer 104 common inputs with identical SUB/UNSAT/CONSISTENT
+lines, total 920 s against 964 s (mean ratio 0.946, median 0.950); 9800
+(ht_bridge, 235 s under the old rules) and 11270 (certified_nominals, 130 s
+under the fix) each crossed the cap once and answer on a rerun at 600 s under
+both rule sets (9800: 241 s fix, 473 s old rules; 11270: 90 s fix, 32 s old
+rules). Against v1.5.4 the fix answers the same inputs with identical lines
+except 9800, at mean ratio 1.34 and median 1.24, the gap of the non-PGO
+build: the same binary with the v1.5.4 rules is at 1.47 and 1.28. Forced
+`nominals` route, 120 s: both rule sets answer the same 76 inputs with
+identical lines, total 236 s against 239 s under the v1.5.4 rules (mean
+ratio 0.978, median 0.974); the same 35 time out under both and one exits 3
+(forced route cannot represent it) under both. No input of the paired design
+changes its answer, and the cost seen on the random generator does not show
+there.
+
