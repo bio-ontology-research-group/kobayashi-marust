@@ -937,7 +937,11 @@ Measurements (2026-10-29, shared workstation, files in
   1 188 s after, none more than 1.5 times and 5 s slower, five faster
   (ore_ont_8640 9.6 to 0.7 s, ore_ont_2453 19.6 to 6.9 s). 9800, 10874 and
   15655 keep the context regime (127, 10.7, 7.7 s under heavier load).
-- Known incompleteness that remains: a disjunctive ground equality across an
-  unannounced individual is not delivered (section 6 of the note); the
-  first-order lifting is not mechanised.
+- Known incompleteness that remained at v1.5.4: a disjunctive ground
+  equality across an unannounced individual was not delivered (section 6 of
+  the note). 2026-10-30: four HermiT-checked counterexample motifs; R3 now
+  delivers the whole announced interface (an equality needs one announced
+  side) and R2 orders ground equalities by shared individuals (section 8 of
+  the note, `lean/ContextCalculus/ExchangeEquality.lean`). The first-order
+  lifting is not mechanised.
 
