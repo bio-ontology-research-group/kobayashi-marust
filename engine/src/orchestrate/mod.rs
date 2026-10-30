@@ -17,7 +17,7 @@ pub mod explain;
 pub mod features;
 mod flat_nf1;
 pub mod frontend_run;
-mod inert_sorts;
+pub(crate) mod inert_sorts;
 pub mod input;
 pub mod mirror;
 mod abox_quotient;
@@ -3598,10 +3598,11 @@ fn rules_consistency(
         });
         if timing && !released.concepts.is_empty() {
             eprintln!(
-                "KM_TIMING rules-consistency released {} inert object sort(s): {} fact(s) unrelativized, {} sort clause(s) removed",
+                "KM_TIMING rules-consistency released {} inert object sort(s): {} fact(s) unrelativized, {} sort clause(s) removed; released: {}",
                 released.concepts.len(),
                 released.facts,
                 released.sort_clauses,
+                released.concepts.join(","),
             );
         }
     }

@@ -60,7 +60,7 @@
 use std::collections::{BTreeSet, HashSet};
 
 use crate::frontend::sorts::DATA_SORT;
-use crate::json_io::{JAtom, JClause, JInput, JRuleAtom, JTerm};
+use crate::json_io::{CardMeta, DefinerMeta, JAtom, JClause, JInput, JRule, JRuleAtom, JTerm};
 
 /// What [`release_inert_object_sorts`] removed.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -178,7 +178,27 @@ impl<'a> Guards<'a> {
 /// documentation). `is_source` names the concepts with a source reading
 /// (IRI-mapped names and query targets); they are never released.
 pub fn release_inert_object_sorts(input: &mut JInput, is_source: impl Fn(&str) -> bool) -> Released {
-    let clauses = &input.clauses;
+    release_inert_object_sorts_in(
+        &mut input.clauses,
+        &input.cardinalities,
+        &input.definers,
+        &input.rules,
+        is_source,
+    )
+}
+
+/// [`release_inert_object_sorts`] over the parts of a frontend result that
+/// the pass reads, for callers that hold a `FrontendResult` instead of the
+/// clause file (`incremental_rules`). The clause set changes in place; the
+/// records only decide which names are reserved.
+pub(crate) fn release_inert_object_sorts_in(
+    clause_set: &mut Vec<JClause>,
+    cardinalities: &[CardMeta],
+    definers: &[DefinerMeta],
+    rules: &[JRule],
+    is_source: impl Fn(&str) -> bool,
+) -> Released {
+    let clauses: &Vec<JClause> = clause_set;
     if !clauses
         .iter()
         .any(|c| c.head.iter().any(|a| matches!(a, JAtom::Concept { concept, .. } if concept == DATA_SORT)))
@@ -216,15 +236,15 @@ pub fn release_inert_object_sorts(input: &mut JInput, is_source: impl Fn(&str) -
     }
     // Names with a meaning outside the clauses.
     let mut reserved: HashSet<&str> = HashSet::new();
-    for card in &input.cardinalities {
+    for card in cardinalities {
         reserved.insert(&card.marker);
         reserved.insert(&card.filler);
     }
-    for definer in &input.definers {
+    for definer in definers {
         reserved.insert(&definer.marker);
         reserved.extend(definer.operands.iter().map(String::as_str));
     }
-    for rule in &input.rules {
+    for rule in rules {
         for atom in rule.body.iter().chain(&rule.head) {
             if let JRuleAtom::Class { concept, .. } = atom {
                 reserved.insert(concept);
@@ -284,12 +304,12 @@ pub fn release_inert_object_sorts(input: &mut JInput, is_source: impl Fn(&str) -
     }
     let released: BTreeSet<String> = released.into_iter().map(str::to_string).collect();
     let mut report = Released { concepts: released.iter().cloned().collect(), ..Released::default() };
-    input.clauses.retain(|clause| {
+    clause_set.retain(|clause| {
         let drop = concept_sort_clause(clause).is_some_and(|concept| released.contains(concept));
         report.sort_clauses += usize::from(drop);
         !drop
     });
-    for clause in &mut input.clauses {
+    for clause in clause_set.iter_mut() {
         let released_terms: Vec<JTerm> = clause
             .head
             .iter()
