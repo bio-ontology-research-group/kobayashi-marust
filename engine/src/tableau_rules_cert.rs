@@ -93,6 +93,9 @@ pub(crate) struct CertSink {
     pub models: Vec<(FModelOut, Vec<(C, usize)>)>,
     /// Answers without a certificate: the reason for each.
     pub uncertified: Vec<String>,
+    /// Seconds spent in recorded searches and in building models.
+    pub search_s: f64,
+    pub model_s: f64,
 }
 
 impl Tableau {
@@ -202,7 +205,9 @@ impl Tableau {
             return self.find_model(&root);
         }
         self.rec_reset();
+        let started = std::time::Instant::now();
         let found = self.find_model(&root);
+        let searched = started.elapsed().as_secs_f64();
         let mut evidence = None;
         match &found {
             None => {
@@ -228,6 +233,8 @@ impl Tableau {
         }
         if let Some(c) = &self.cert {
             let mut c = c.lock().unwrap();
+            c.search_s += searched;
+            c.model_s += started.elapsed().as_secs_f64() - searched;
             c.steps.clear();
             c.last = None;
             match evidence {
@@ -379,46 +386,74 @@ pub(crate) fn model_satisfies(m: &FModelOut, clauses: &[&Clause], nominals: &[C]
             Atom::Eq { s, t } => asg[*s as usize]? == asg[*t as usize]?,
         })
     };
+    let mut ext: HashMap<C, Vec<usize>> = HashMap::default();
+    for (d, l) in m.labels.iter().enumerate() {
+        for &c in l {
+            ext.entry(c).or_default().push(d);
+        }
+    }
     let mut budget: u64 = 200_000_000;
+    struct Ctx<'a> {
+        n: usize,
+        m: &'a FModelOut,
+        pred: &'a [Vec<(R, usize)>],
+        ext: &'a HashMap<C, Vec<usize>>,
+    }
+    fn vars_of(a: &Atom) -> [Option<Var>; 2] {
+        match a {
+            Atom::Concept { t, .. } | Atom::Exists { t, .. } => [Some(*t), None],
+            Atom::Role { s, t, .. } | Atom::Eq { s, t } => [Some(*s), Some(*t)],
+        }
+    }
+    // Same enumeration as `FModel.checkFrom` with `varOrder` in Lean: bind
+    // variables along body role atoms, draw values from successors,
+    // predecessors or concept extensions, and test the atoms of the variable
+    // bound last.
     fn go(
-        cl: &Clause, vars: &[Var], asg: &mut Vec<Option<usize>>, n: usize,
-        m: &FModelOut, pred: &[Vec<(R, usize)>],
+        cl: &Clause, vars: &[Var], last: Option<Var>, asg: &mut Vec<Option<usize>>, cx: &Ctx,
         holds: &dyn Fn(&Atom, &[Option<usize>]) -> Option<bool>, budget: &mut u64,
     ) -> bool {
         if *budget == 0 {
             return false;
         }
         *budget -= 1;
-        if cl.body.iter().any(|a| holds(a, asg) == Some(false)) {
+        let touches = |a: &Atom| last.is_none_or(|v| vars_of(a).contains(&Some(v)));
+        if cl.body.iter().any(|a| touches(a) && holds(a, asg) == Some(false)) {
             return true;
         }
-        if cl.head.iter().any(|a| holds(a, asg) == Some(true)) {
+        if cl.head.iter().any(|a| touches(a) && holds(a, asg) == Some(true)) {
             return true;
         }
         let Some((&v, rest)) = vars.split_first() else {
-            return false;
+            return cl.body.iter().any(|a| holds(a, asg) == Some(false))
+                || cl.head.iter().any(|a| holds(a, asg) == Some(true));
         };
         let mut cands: Option<Vec<usize>> = None;
         for a in &cl.body {
-            if let Atom::Role { r, s, t } = a {
-                if *t == v && *s != v {
+            match a {
+                Atom::Role { r, s, t } if *t == v && *s != v => {
                     if let Some(sv) = asg[*s as usize] {
-                        cands = Some(m.succ[sv].iter().filter(|p| p.0 == *r).map(|p| p.1).collect());
+                        cands = Some(cx.m.succ[sv].iter().filter(|p| p.0 == *r).map(|p| p.1).collect());
                         break;
                     }
                 }
-                if *s == v && *t != v {
+                Atom::Role { r, s, t } if *s == v && *t != v => {
                     if let Some(tv) = asg[*t as usize] {
-                        cands = Some(pred[tv].iter().filter(|p| p.0 == *r).map(|p| p.1).collect());
+                        cands = Some(cx.pred[tv].iter().filter(|p| p.0 == *r).map(|p| p.1).collect());
                         break;
                     }
                 }
+                Atom::Concept { lit, t } if *t == v && !lit.neg => {
+                    cands = Some(cx.ext.get(&lit.c).cloned().unwrap_or_default());
+                    break;
+                }
+                _ => {}
             }
         }
-        let cands = cands.unwrap_or_else(|| (0..n).collect());
+        let cands = cands.unwrap_or_else(|| (0..cx.n).collect());
         for d in cands {
             asg[v as usize] = Some(d);
-            let ok = go(cl, rest, asg, n, m, pred, holds, budget);
+            let ok = go(cl, rest, Some(v), asg, cx, holds, budget);
             asg[v as usize] = None;
             if !ok {
                 return false;
@@ -426,11 +461,23 @@ pub(crate) fn model_satisfies(m: &FModelOut, clauses: &[&Clause], nominals: &[C]
         }
         true
     }
+    let cx = Ctx { n, m, pred: &pred, ext: &ext };
     for cl in clauses {
-        let vars = clause_vars(cl);
-        let width = vars.iter().max().map_or(0, |v| *v as usize + 1);
+        let all = clause_vars(cl);
+        // join order: follow body role atoms from bound variables
+        let mut order: Vec<Var> = Vec::with_capacity(all.len());
+        while order.len() < all.len() {
+            let joined = cl.body.iter().find_map(|a| match a {
+                Atom::Role { s, t, .. } if order.contains(s) && !order.contains(t) => Some(*t),
+                Atom::Role { s, t, .. } if order.contains(t) && !order.contains(s) => Some(*s),
+                _ => None,
+            });
+            let next = joined.or_else(|| all.iter().copied().find(|v| !order.contains(v)));
+            order.push(next.unwrap());
+        }
+        let width = all.iter().max().map_or(0, |v| *v as usize + 1);
         let mut asg = vec![None; width];
-        if !go(cl, &vars, &mut asg, n, m, &pred, &holds, &mut budget) {
+        if !go(cl, &order, None, &mut asg, &cx, &holds, &mut budget) {
             return false;
         }
     }
@@ -688,6 +735,18 @@ pub(crate) fn write_and_check(t: &Tableau, answer: &Answer) -> Result<(), String
                 String::from_utf8_lossy(&output.stderr).trim()
             ));
         }
+    }
+    let (search_s, model_s) = t.cert.as_ref().map_or((0.0, 0.0), |c| {
+        let c = c.lock().unwrap();
+        (c.search_s, c.model_s)
+    });
+    if std::env::var_os("KM_TIMING").is_some() {
+        // The orchestrator does not forward a successful worker's stderr, so
+        // the cost also goes to a sidecar file.
+        let _ = std::fs::write(file.with_extension("timing"), format!(
+            "search_s={search_s:.3} model_s={model_s:.3} write_s={:.3} check_s={:.3} refutations={} models={} proof_nodes={} bytes={}\n",
+            written.as_secs_f64(), (started.elapsed() - written).as_secs_f64(),
+            stats.refutations, stats.models, stats.proof_nodes, stats.bytes));
     }
     if std::env::var_os("KM_TIMING").is_some() || std::env::var_os("KM_TAB_STATS").is_some() {
         eprintln!(
