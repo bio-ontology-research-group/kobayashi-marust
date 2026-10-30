@@ -191,3 +191,41 @@ S=.work/agent-scratch/fr282-dropped-rules
 ./run_1029.sh $S/km-final final
 CPU=44 timing/timing.sh timing .work/pgo-v154/km-pgo-use .work/agent-scratch/rules-worker-cost/km-fix $S/km-final
 ```
+
+## After merging development/v1.5.5 (5a3777c6, head e62a4bce)
+
+Merges 78c76c53 (2d5c28b1, the inert-sort Lean certificate), ba854d8d
+(69d2c117, bigstack; the rule-aware classification now runs through
+`bigstack::run`) and 5a3777c6 (e62a4bce, native data values; the value
+projection now also counts every converted occurrence). The certificate
+is written inside `rules_consistency`, so it fires on every worker call of
+both schedules; `rule_taxonomy_nominal::inert_sort_certificate_covers_every_rule_taxonomy_schedule`
+counts 1 certificate (classification alone) and 3 (CB-first schedule),
+each accepted by the Lean checker.
+
+Release (`km` md5 1b7c461b...), `KM_RULES_INERT_LEAN_CHECKER` and
+`KM_RULES_TEST_INERT_LEAN_CHECKER` set to
+`.work/worktrees/checkers-on/lean/.lake/build/bin/rules-inert-sort-release-check`,
+`KM_REQUIRE_LEAN_CHECKERS=1`, `KM_RULES_TEST_ORE_7278` set
+(`tests-merge.log`): rule_taxonomy_nominal 9, finite_data_rule_normalization
+3, rules_route 5, finite_rule_taxonomy 4, rules_inert_sort_certificate 2
+(fr373 and ore_ont_7278 Lean-checked): all passed. `--lib orchestrate::`
+in a clean environment: 294 passed, 0 failed, 1 ignored (a second run:
+293 and `frontend_run::positive_el_input_round_trips` failed, which passes
+alone; it failed once before the merge too). With the Lean checker
+variable set, `inert_sorts::tests::lean_checker_*` (unchanged by this
+branch, `inert_sorts.rs` identical to e62a4bce) fail: the checker binary
+aborts (SIGABRT) on their generated documents. `frontend::sorts` has two
+failures (`complement_range_concepts_are_data_and_their_excluded_middle_is_guarded`,
+`admissibility_closure_removes_clauses_instead_of_guessing`) that run
+`sorts::encode` directly; `sorts.rs` is identical to e62a4bce.
+
+400 fr seeds (`diff-merge-5a3777c6.tsv`, 3 threads, 60 s): 367 ok, 0
+WRONG, 0 DROPPED, 0 REFUSED, 0 ERR, 33 TIMEOUT. Against v1.5.4: 117
+DROPPED → ok, 2 DROPPED → TIMEOUT, 220 ok → ok, 30 TIMEOUT → ok, 31 TIMEOUT
+→ TIMEOUT. Against the pre-merge e94e8e3f run: fr56, fr194, fr270 TIMEOUT
+→ ok, fr248 ok (12.4 s) → TIMEOUT. fr248 has no executable rule (CB
+route): e94e8e3f answers in 8.1 s, the merge in more than 150 s, and the
+development head e62a4bce itself (`.work/agent-scratch/lean-data-values/km-e62a4bce`)
+takes more than 100 s with `DROPPED 1`, so the slowdown comes from the
+merged CB changes, not from this branch.

@@ -1,0 +1,11 @@
+rule_taxonomy_nominal: test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.37s 
+finite_data_rule_normalization: test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s 
+rules_route: test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s 
+finite_rule_taxonomy: test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s 
+rules_inert_sort_certificate: test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 23.55s 
+lib orchestrate:: test orchestrate::frontend_run::tests::positive_el_input_round_trips ... FAILED
+test orchestrate::inert_sorts::tests::lean_checker_accepts_the_release_and_rejects_unchecked_ones ... FAILED
+test result: FAILED. 292 passed; 2 failed; 1 ignored; 0 measured; 2760 filtered out; finished in 57.50s
+lib orchestrate:: test orchestrate::inert_sorts::tests::lean_checker_rejects_a_tampered_or_reserved_release ... FAILED
+test orchestrate::inert_sorts::tests::lean_checker_accepts_the_release_and_rejects_unchecked_ones ... FAILED
+test result: FAILED. 292 passed; 2 failed; 1 ignored; 0 measured; 2760 filtered out; finished in 1.38s
