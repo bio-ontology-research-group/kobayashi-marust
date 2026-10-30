@@ -267,7 +267,9 @@ under the plain Sequoia ordering, before the run was stopped).
   equality and Join case 3.
 - **Not covered.** Equality: R3 handles unit ground equalities; a disjunctive
   equality `→ o ≈ o' ∨ C(o'')` across an unannounced individual is not
-  delivered, and no proof covers that case. The first-order lifting of the
+  delivered, and no proof covers that case. (Superseded 2026-10-30: the case
+  has counterexamples, and section 8 extends R3 and R2 and mechanises the
+  propositional skeleton with equality atoms.) The first-order lifting of the
   context calculus (Skolem terms, Pred/Succ, Join, Nom) is the same open
   obligation as for the single-order case (lean/README.md, "What is NOT
   claimed"; docs/CERTIFICATION-ROADMAP.md).
@@ -355,3 +357,151 @@ Cost of R2 where it is active: on `m2063` the automatic route takes 2.4 s
 unordered, 12 s plain Sequoia, 12.8 s with `KM_CONTEXT_NO_R2`, and more than
 40 s under the context regime. R2 widens Hyper joins over ground atoms of
 different individuals; the other eight slower files were not analysed.
+
+## 8. Disjunctive ground equalities across an unannounced individual (2026-10-30)
+
+v1.5.4 listed this case as open ("not covered by R3, no counterexample
+known"). It has counterexamples, and the fix extends R3 and R2.
+
+### 8.1 The question, from the code
+
+- *Announced.* Context `u` announced individual `o` when the ground context
+  holds an edge `(u, o)` in its predecessor map: an r-Succ push of a maximal
+  ground head atom `B(o)`, `S(x,o)` or `S(o,x)` of `u`
+  (`root_succ_form`), or a merge subscription for a merge clause
+  `Γ → Δ ∨ x ≈ o` of `u` (`subscribe_merge_individuals`). Additional
+  nominals count as announced.
+- *Guard.* The ground context delivers an `x`-free clause to `u` when every
+  body atom is discharged by a hypothesis `u` pushed and every individual the
+  clause mentions is announced by `u` (`propagate`, ground-sender branch;
+  `subscribe_merge_individuals` for body-free clauses).
+- *R3 in v1.5.4.* The unit `→ o ≈ o'` passes when `u` announced `o` or
+  `o'`. Nothing else with an unannounced individual passes.
+- *The open case.* A ground-context clause `Γ → Δ ∨ o ≈ o'` with `Δ ≠ ⊥`
+  and `u` announcing `o` but not `o'`: not delivered. Its shapes in KM's
+  clause sets: `→ E(o) ∨ o ≈ o'` (Hyper on an at-most clause `≤1 r.B` of a
+  third individual `p` with `r(p,o)`, `r(p,o')`, and the disjunction `B(o) ∨
+  C(o)`), `→ M(p) ∨ o ≈ o'` (`p: ≤1 r ⊔ M`), and `→ o ≈ o' ∨ o1 ≈ o2`
+  (`p: ≤1 r ⊔ ≤1 s`). In the propositional reading of section 3 the
+  equality `o ≈ o'` is an interface atom of `u` (R3 makes it one), so a
+  clause whose atoms are all interface atoms must be delivered
+  (`ExchangeCond.deliver`). The unit-only R3 violates that condition.
+
+### 8.2 Counterexamples (HermiT-checked, exact `nominals` route of v1.5.4)
+
+`results/agents/2026-10-30/r3-unannounced/`, generator `gen_tpl.py`; each
+motif with random individual names, shuffled axiom order (hence interning
+order and equality orientation) and up to three noise axioms. Fixtures in
+`engine/tests/fixtures/nominal_seq_order/r3_*.ofn`, test
+`engine/tests/r3_disjunctive_equality.rs`.
+
+- **m1** (`r3_m1_atmost_qualified.ofn`): `e: ≤1 r.B`, `r(e,a)`, `r(e,d)`,
+  `B(d)`, `D(d)`, `a: B ⊔ C`, `C ⊑ E`, `D ⊑ E`, `Q ⊑ {a}`; HermiT
+  `Q ⊑ E`. The ground context saturates with `→ E(a) ∨ a ≈ d` and
+  `→ E(a) ∨ B(a)`, `E(a)` maximal (when `a` is interned after `d`, the
+  equality orients `a → d` and lies below `E(a)`), so ordered superposition
+  never derives `→ E(a)`. The `Q` context announced `a` only and receives
+  neither clause. Missed on `nominals` and `certified_nominals` in every
+  literal-order regime (`KM_SEQ_ORDER=1`, `context`, `KM_NO_SEQ_ORDER`).
+- **m4** (`r3_m4_atmost_union.ofn`): `b: ≤1 r ⊔ M`, `M ⊑ ∀r.E`, `r(b,c)`,
+  `r(b,d)`, `D(c)`, `D ⊑ E`, `Q ⊑ {d}`; HermiT `Q ⊑ E`; the ground context
+  resolves `M(b)` and keeps `→ E(d) ∨ d ≈ c`.
+- **m6** (`r3_m6_private_equality.ofn`): `f: ≤1 r ⊔ M`, `M ⊑ ∀s.E`,
+  `s(f,d)`, `r(f,b)`, `r(f,c)`, `b ≠ c`, `Q ⊑ {d}`; HermiT `Q ⊑ E`. The
+  ground context keeps `→ E(d) ∨ b ≈ c` with `b ≈ c` below `E(d)`
+  (term-major, `b, c` interned before `d`), so the equality is never
+  superposed into `b ≉ c`. The equality is about two individuals `Q` never
+  announced: this is the propositional counterexample of section 3
+  (`ordered_server_interface_not_lower_counterexample`) with a private
+  equality below an interface atom. R2 as of v1.5.4 orders ground atoms
+  against each other and keeps ground atoms off ground equalities, but lets
+  an equality lie below an unrelated ground atom.
+- **m7** (`r3_m7_two_equalities.ofn`): `c: ≤1 r ⊔ ≤1 s`, `r(c,d)`, `r(c,b)`,
+  `s(c,a)`, `s(c,f)`, `f ≠ a`, `D(d)`, `D ⊑ E`, `Q ⊑ {b}`; HermiT `Q ⊑ D`,
+  `Q ⊑ E`. The ground context keeps `→ b ≈ d ∨ a ≈ f` with the private
+  `a ≈ f` below the interface equality `b ≈ d` (equalities compared
+  lexicographically).
+
+Counts on v1.5.4 (`km-pgo-use`, exact `nominals` route): see 8.5.
+
+### 8.3 The fix
+
+- **R3 (the guard delivers the announced interface).** A clause passes the
+  guard when each of its literals lies in the interface of the receiver: a
+  ground equality or inequality `o ≈ o'` / `o ≉ o'` between individuals
+  when `o` or `o'` is announced, every other literal when all its
+  individuals are (`engine::in_announced_interface`, both delivery paths).
+  The unit `→ o ≈ o'` is the special case R3 covered before. The receiver
+  rewrites `o` to `x`; `→ Δ ∨ x ≈ o'` is a merge clause, its merge
+  subscription announces `o'`, and Join case 3 brings the facts about `o'`
+  across. A first version admitted every individual reachable through the
+  clause's equalities (so also `→ C(o') ∨ o ≈ o'`); it delivered more than
+  the interface and was slower (section 8.5).
+- **R2 for equalities.** A ground equality or inequality between individuals
+  lies below another ground (in)equality only when both are over the same
+  two individuals, and below a ground atom only when it shares an
+  individual with that atom (`calc::lteq`, `ground_eqn_pair`). With the
+  existing parts of R2 (a ground atom lies below a ground atom only when its
+  individuals are among the other's, and never below a ground equality),
+  every announced interface, equality atoms included, is downward closed.
+  The rule only removes comparisons.
+- Both act only where R3 and R2 act (nominal mode, context and base context
+  regimes; R2 additionally needs `has_ground_interface`). The diagnostics
+  `KM_CONTEXT_UNIT_R3` and `KM_CONTEXT_NO_EQ_R2` restore the v1.5.4 rules.
+- The certified CB surface (`KM_CB_LEAN_REQUIRED`) keeps the plain unordered
+  regime and the exact v1.5.4 send sets that `CBRootPredSendEnumeration`
+  models; it is unchanged and remains outside this argument (section 5).
+
+### 8.4 Exactness argument
+
+*Soundness.* The extended R3 delivers a subset of what the paper's r-Pred
+with `n = 0` delivers (every ground clause to every context), so every
+delivered clause is a consequence. R2 for equalities changes which literals
+are maximal, never what an inference concludes. Neither part can make an
+answer unsound.
+
+*Completeness, propositional skeleton (mechanised).* Read ground equalities
+as atoms: an (in)equality between `o` and `o'` is one atom with individuals
+`{o, o'}`, an inequality in a head its negative literal. For a context that
+announced `I`, the interface is the ground atoms with all individuals in `I`
+and the equality atoms with at least one side in `I`.
+`lean/ContextCalculus/ExchangeEquality.lean` proves, sorry-free (axioms
+`propext`, `Classical.choice`, `Quot.sound`):
+
+- `filt_trans`: R2 (all three parts) applied to a strict partial order
+  yields a strict partial order;
+- `iface_downward`: for every `I`, the interface is downward closed in the
+  filtered order (this is where the two equality comparisons must go: m6 and
+  m7 are the two ways it fails without them);
+- `exchangeCond_of_guard`: a ground context that delivers every clause
+  passing the guard (`InIface`, the literal-wise interface test that
+  `in_announced_interface` implements) meets `ExchangeCond.deliver`; the
+  unit-only guard does not (m1, m4); `inIface_of_all_announced`: the guard
+  extends the v1.5.4 guard;
+- `announced_exchange_complete`, `announced_unit_readout_complete`: with the
+  ground context closed on maximal literals of the filtered order and the
+  consumer closed under any rank, the exchange is refutationally complete and
+  complete for the positive unit readout, for every announced set, via
+  `downward_server_complete` and `exchange_unit_readout_complete` of
+  section 3.
+
+*What remains argued.* (1) Congruence: the theorem treats equalities as
+opaque atoms. The receiving context does not need the ground context's
+congruence closure over `o'`, because the extended guard delivers the clause
+itself and the receiver's Eq rule and merge subscription reconstruct the
+consequences over `o'`; that step is the existing (unmechanised) Eq, Join
+case 3 and merge-subscription argument. (2) `ExchangeCond.local_`: an atom
+the consumer holds outside its interface does not occur in the ground
+context; a delivered clause can mention `o'` only through an equality
+literal, which turns into a merge clause and announces `o'`, so at the
+fixpoint the interface contains it (argued from the engine code, as item (b)
+of section 6). (3) That KM's literal relation on the ground context's
+`x`-free atoms is a strict partial order and that the ground context is
+closed on its maximal literals (as in section 6). (4) Equalities with a
+Skolem side `o ≈ f(o')` are outside the filter; they lie above every ground
+literal in the term-major order and never enter an announced interface.
+
+*Lean obligation created.* The new module is mechanised. The certified
+surface does not model R2 or R3 (unchanged from section 5); extending
+`CBSourceHyperClosure.predLe` and `CBRootPredSendEnumeration` to the context
+regime remains open.
