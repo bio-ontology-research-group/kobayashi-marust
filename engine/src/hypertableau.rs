@@ -2466,9 +2466,9 @@ struct SubsetGain {
     ex_fill: HashMap<R, Vec<CLit>>,
     ex_trig: HashMap<(R, CLit), Vec<Vec<CLit>>>,
     /// Some edge can point from a node to a non-successor: a role head
-    /// whose source is not the clause centre (inverse roles), an equality
-    /// head (merges redirect edges) or a nominal. Without it no existential
-    /// is witnessed through a non-successor and `back_need` is empty.
+    /// whose source is not the clause centre (inverse roles) or an equality
+    /// head (merges redirect edges), and there are no nominals. Without it
+    /// `back_need` is empty.
     back: bool,
     /// Dense bitset (by `Ext::enc_lit`) of the union of every set above: a
     /// literal outside it is relevant for no edge, so `admits` skips it
@@ -2575,8 +2575,12 @@ impl SubsetGain {
                 }
             }
         }
+        // With nominals the merges of the o-rule link nodes to shared
+        // nominal nodes, which no unravelling copies; the finite certificate
+        // is not emitted then, and `back_need` stays empty (see section 9,
+        // "Inverse witnesses").
         if !nominals.is_empty() {
-            g.back = true;
+            g.back = false;
         }
         (g.ex_fill, g.ex_trig) = existential_triggers(clauses);
         // The number and recognition rules at a node `u` with marker `m` count
@@ -2651,7 +2655,8 @@ impl SubsetGain {
     /// that also witnesses one is not consulted (conservative: the pair is
     /// then judged as if it did not), so the result reads only `L(m)`, `m`'s
     /// out-edges, and `pred`, merge status and label of their non-successor
-    /// targets.
+    /// targets. Witnesses at a non-blockable node other than `pred(m)`
+    /// (nominal and ABox nodes) are not counted; see the loop.
     fn back_need(&self, ext: &Ext, m: Node) -> smallvec::SmallVec<[(R, CLit); 2]> {
         let mut need: smallvec::SmallVec<[(R, CLit); 2]> = smallvec::SmallVec::new();
         if !self.back_possible() {
@@ -2659,7 +2664,17 @@ impl SubsetGain {
         }
         let lm = &ext.concepts[m];
         for &(r, u, _) in &ext.out_edges[m] {
-            if ext.pred[u] == Some(m) && ext.merged[u].is_none() {
+            // A merged victim is dead; its edges were redirected to the
+            // survivor, which has its own out-edge here.
+            if ext.merged[u].is_some() || ext.pred[u] == Some(m) {
+                continue;
+            }
+            // A shared individual (the query root reached otherwise than as
+            // the predecessor, a nominal or ABox node) is not unravelled: the
+            // infinite unravelling keeps one copy of it and links every copy
+            // of `m` to it, and the finite certificate is not emitted with
+            // nominals or ABox individuals (fail closed if Lean rejects).
+            if !ext.blockable[u] && ext.pred[m] != Some(u) {
                 continue;
             }
             let Some(fillers) = self.ex_fill.get(&r) else { continue };
@@ -21617,6 +21632,7 @@ impl Ht {
             )));
         }
         self.subset_exact = self.subset_gain.as_ref().unwrap().trivial(self.index.inverse_bridge);
+
         if !self.subset_exact && !self.anywhere {
             self.anywhere = true;
         }
@@ -26546,6 +26562,9 @@ mod tests {
         let gain = SubsetGain::build(&t.index.clauses, &HashMap::default(), &[]);
         assert!(gain.back_possible());
         assert!(!gain.trivial(false));
+        // With nominals the o-rule links nodes to shared nominal nodes, which
+        // no unravelling copies; `back_need` stays empty (section 9).
+        assert!(!SubsetGain::build(&t.index.clauses, &HashMap::default(), &[42]).back_possible());
         let mut e = Ext::new();
         let d = dep_empty();
         let root = e.new_root();
