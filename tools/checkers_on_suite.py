@@ -240,6 +240,10 @@ def cmd_summarize(argv):
                 row += [''] * 6
                 continue
             o = classify_record(r)
+            if o == 'no_answer' and off['status'] == 'ok':
+                # The unchecked run answered; the checked run ran out of its
+                # budget (certificate generation or checking) or failed.
+                o = 'over_budget' if r['status'] == 'timeout' else 'no_answer'
             totals[m][o] += 1
             per_family[m][fam][o] += 1
             per_route[m][route][o] += 1
@@ -268,8 +272,11 @@ def cmd_summarize(argv):
         lines.append(f'## Mode `{m}`\n')
         t = totals[m]
         lines.append('| outcome | runs |\n|---|---:|')
-        for k in ('accepted', 'rejected', 'cannot_check', 'no_answer'):
+        for k in ('accepted', 'rejected', 'cannot_check', 'over_budget', 'no_answer'):
             lines.append(f'| {k} | {t[k]} |')
+        lines.append('\n`over_budget`: the unchecked run answered, the checked run hit the time '
+                     'limit (certificate generation or checking); `no_answer`: no answer in either '
+                     'run, or the checked run failed for another reason.')
         w = wall[m]
         if w[2]:
             lines.append(f'\nWall time on the {w[2]} inputs both modes answer: off {w[0]:.1f} s, '
@@ -278,16 +285,30 @@ def cmd_summarize(argv):
                      + (': ' + ', '.join(changed[m][:20]) if changed[m] else '') + '\n')
         for title, table in (('family', per_family[m]), ('route (off run)', per_route[m])):
             lines.append(f'### Per {title}\n')
-            lines.append(f'| {title} | accepted | rejected | cannot_check | no_answer |\n|---|---:|---:|---:|---:|')
+            lines.append(f'| {title} | accepted | rejected | cannot_check | over_budget | no_answer |\n|---|---:|---:|---:|---:|---:|')
             for k in sorted(table):
                 c = table[k]
-                lines.append(f"| {k} | {c['accepted']} | {c['rejected']} | {c['cannot_check']} | {c['no_answer']} |")
+                lines.append(f"| {k} | {c['accepted']} | {c['rejected']} | {c['cannot_check']} | {c['over_budget']} | {c['no_answer']} |")
             lines.append('')
         lines.append('### Per checker (events)\n')
         lines.append('| checker | accepted | rejected | cannot_check |\n|---|---:|---:|---:|')
         for k in sorted(per_checker[m]):
             c = per_checker[m][k]
             lines.append(f"| {k} | {c['accepted']} | {c['rejected']} | {c['cannot_check']} |")
+        lines.append('')
+        reasons = Counter()
+        for (fam, path), rec in by.items():
+            r = rec.get(m)
+            if r is None:
+                continue
+            for e in r['events']:
+                if e['status'] == 'cannot_check':
+                    text = re.sub(r'[0-9]+', 'N', e['detail'])[:110]
+                    reasons[(e['family'], text)] += 1
+        lines.append('### Cannot-check reasons (events)\n')
+        lines.append('| family | reason | events |\n|---|---|---:|')
+        for (fam, text), n in reasons.most_common(25):
+            lines.append(f'| {fam} | {text} | {n} |')
         lines.append('')
         if rejections[m]:
             lines.append('### Rejections\n')
