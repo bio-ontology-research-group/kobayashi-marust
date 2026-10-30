@@ -88,7 +88,73 @@ pub(crate) fn cb_production_input(input: &[JClause]) -> CbProductionInput {
     }
 }
 
+/// Number of individuals from which the data-sort marker is ordered last
+/// (`Builder::intern_data_sort_last`).
+const DATA_SORT_LAST_MIN_INDIVIDUALS: usize = 64;
+
 impl Builder {
+    /// Give the data-sort marker `__data__` (`frontend::sorts::DATA_SORT`)
+    /// the largest concept id, keeping the relative order of every other
+    /// concept. Internal concepts are totally ordered by id in the Sequoia
+    /// regimes (`calc::pred_lteq_base`), so this makes `D(t)` the maximal
+    /// literal of a relativized fact `→ C(t) ∨ D(t)` on its term. On every
+    /// object term (any term with an object-sorted unit `A(t)`, where
+    /// `A ⊓ D ⊑ ⊥`), Hyper then resolves `D(t)` away at once and the unit
+    /// `→ C(t)` subsumes the relativized clause; with the marker below the
+    /// definers, `D(t)` rides along as a non-maximal literal in every
+    /// consequence of `C(t)` (ore_ont_7610: 46,944 ground-context clauses,
+    /// twice the count without the sort clauses). The ordered-resolution
+    /// arguments hold for every total order on internal concepts
+    /// (`CompletenessOrdered.lean` is stated for an arbitrary
+    /// `LinearOrder`; R2 of the context regime filters ground atoms by
+    /// individuals, not by concept), and ids are assigned by first
+    /// occurrence in the clause stream, which carries no meaning of its own.
+    /// Only nominal mode emits the marker; the method is a no-op otherwise.
+    ///
+    /// The order is a choice among exact orders, made for speed: it pays
+    /// where the ground context instantiates the relativized facts at many
+    /// individuals (each pinned to the object sort), and it costs where
+    /// objectness of a context's central term is known only late (the
+    /// generated seed m2313 takes 0.2 s with the first-occurrence order and
+    /// 47 s with the marker last). It is therefore applied from
+    /// `DATA_SORT_LAST_MIN_INDIVIDUALS` individuals on.
+    fn intern_data_sort_last(&mut self, input: &[JClause]) {
+        const MARKER: &str = crate::frontend::sorts::DATA_SORT;
+        if !self.nominals
+            || !self.sig.concept_names.is_empty()
+            || std::env::var_os("KM_DATA_SORT_FIRST_SEEN").is_some()
+        {
+            return;
+        }
+        let mentions = |atoms: &[JAtom]| {
+            atoms.iter().any(|a| matches!(a, JAtom::Concept { concept, .. } if concept == MARKER))
+        };
+        if !input.iter().any(|c| mentions(&c.body) || mentions(&c.head)) {
+            return;
+        }
+        // Intern exactly as the real pass does, on a scratch builder, to
+        // learn the first-occurrence order of every concept.
+        let mut probe = Builder {
+            sig: Sig::default(),
+            fn_id: HashMap::new(),
+            ind_id: HashMap::new(),
+            nominals: self.nominals,
+            dropped: 0,
+        };
+        for clause in input {
+            let _ = probe.clause(clause);
+        }
+        if probe.sig.concept_names.last().map(String::as_str) == Some(MARKER)
+            || probe.ind_id.len() < DATA_SORT_LAST_MIN_INDIVIDUALS
+        {
+            return;
+        }
+        for name in probe.sig.concept_names.iter().filter(|name| name.as_str() != MARKER) {
+            self.sig.concept(name);
+        }
+        self.sig.concept(MARKER);
+    }
+
     fn new() -> Builder {
         Builder {
             sig: Sig::default(),
@@ -287,6 +353,7 @@ impl Builder {
     }
 
     fn clauses(&mut self, input: &[JClause]) -> Vec<OntologyClause> {
+        self.intern_data_sort_last(input);
         let mut clauses = Vec::with_capacity(input.len());
         for clause in input {
             match self.clause(clause) {
@@ -1147,6 +1214,9 @@ impl Reasoner {
         // context sharing -- fastest when single-threaded).
         if (threads <= 1 && query_task_size.is_none()) || queries.len() <= 1 {
             let mut e = Engine::from_prepared(&prepared);
+            // A retained certificate engine must stay saturated; a one-shot
+            // run may stop at a global refutation (the answer is fixed).
+            e.set_stop_on_global_refutation(!retain_certificate_engine);
             e.run_for(&queries);
             let (subs, inc, incomplete, n) = (
                 e.subsumptions(),
@@ -1192,6 +1262,7 @@ impl Reasoner {
                 .par_iter()
                 .map(|chunk| {
                     let mut e = Engine::from_prepared(&prepared);
+                    e.set_stop_on_global_refutation(true);
                     if let Some(batch) = query_batch {
                         for query_batch in chunk.chunks(batch) {
                             e.run_for(query_batch);
@@ -1253,8 +1324,14 @@ impl Reasoner {
             for _ in 0..threads {
                 s.spawn(|_| {
                     let mut engine = Engine::from_prepared(prepared_ref);
+                    engine.set_stop_on_global_refutation(true);
                     let mut did_any = false;
                     loop {
+                        if did_any && engine.inconsistent() {
+                            // Every later grab of this engine stops at once;
+                            // the inconsistent answer is already fixed.
+                            break;
+                        }
                         let seen = cursor.load(Ordering::Relaxed);
                         if seen >= n {
                             break;

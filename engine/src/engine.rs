@@ -3594,6 +3594,16 @@ pub struct Engine {
     /// derived clauses remain sound, but classification is not complete and
     /// must never be published as a successful answer.
     message_truncated: bool,
+    /// A context whose empty clause is global inconsistency (the ground
+    /// context, or the ⊤ root context with an empty core) has worked off the
+    /// empty clause. Monotone: worked-off clauses are only ever replaced by
+    /// clauses that subsume them, and only the empty clause subsumes the
+    /// empty clause, so `inconsistent()` stays true from here on.
+    global_refutation: bool,
+    /// Stop the run once `global_refutation` holds (see
+    /// `set_stop_on_global_refutation`). Off by default; the one-shot
+    /// classification paths of `Reasoner::saturate` switch it on.
+    stop_on_global_refutation: bool,
     /// Nom rule (arXiv:1805.01396 Table 3): `K`, where `K + 1` is the largest
     /// neighbour-variable index `i` (of `z_i`) over the whole ontology — the
     /// width of the additional-nominal disjunction `⋁_{i=1}^K y ≈ o'_{ρ·S^i}`.
@@ -4185,6 +4195,8 @@ impl Engine {
                 .then(Vec::new),
             dropped_unsupported: prepared.dropped_unsupported,
             message_truncated: false,
+            global_refutation: false,
+            stop_on_global_refutation: false,
             nom_k: prepared.nom_k,
             nom_table: std::cell::RefCell::new(HashMap::default()),
             nom_allocated: std::cell::Cell::new(0),
@@ -5316,6 +5328,13 @@ impl Engine {
             // pred-eligible (empty head), so propagate still pushes the
             // contradiction back. Sound: dropping subsumed clauses preserves
             // completeness; the unsat verdict / pushback is retained.
+            if clause.body.is_empty()
+                && clause.head.is_empty()
+                && (self.ground_ctx == Some(id)
+                    || (self.contexts[id].root && self.contexts[id].core.is_empty()))
+            {
+                self.global_refutation = true;
+            }
             if self.early_unsat && clause.body.is_empty() && clause.head.is_empty() {
                 self.contexts[id].todo.clear();
                 break;
@@ -8292,6 +8311,24 @@ impl Engine {
         }
     }
 
+    /// Stop `run_for` as soon as a context whose empty clause means global
+    /// inconsistency (the ground context, or the ⊤ root context) has worked
+    /// off the empty clause. The published answer of an inconsistent
+    /// ontology is fixed, `inconsistent()` stays true under further
+    /// saturation (the empty clause is never removed), and the remaining
+    /// messages can only add clauses to other contexts. The engine is then
+    /// not saturated, so callers that read anything beyond `inconsistent()`
+    /// (retained or certified engines, incremental reuse) must leave this
+    /// off; `subsumptions()` of a stopped engine lists only what was derived.
+    pub fn set_stop_on_global_refutation(&mut self, on: bool) {
+        self.stop_on_global_refutation = on;
+    }
+
+    #[inline]
+    fn global_refutation_stops(&self) -> bool {
+        self.stop_on_global_refutation && self.global_refutation
+    }
+
     pub fn run_for(&mut self, queries: &[Iri]) {
         let prof = std::env::var("KM_PROF").is_ok();
         if std::env::var_os("KM_MSGPROF").is_some() && self.stat_pred_out_by_ctx.is_empty() {
@@ -8316,6 +8353,9 @@ impl Engine {
         self.complete_nominal_enumeration_queries(queries);
         // Root contexts: one per named (query) concept.
         for (qi, &iri) in queries.iter().enumerate() {
+            if self.global_refutation_stops() {
+                break;
+            }
             if self.nominal_shortcuts.contains_key(&iri) {
                 continue;
             }
@@ -8347,9 +8387,11 @@ impl Engine {
         // (owl:Thing unsatisfiable) is detected regardless of which concepts are
         // named in the input (audit M2). It carries query=None, so `subsumptions`
         // skips it and it never contributes to the classification output.
-        let top = self.get_or_create_context(vec![], true, None);
-        self.saturate(top);
-        self.propagate(top);
+        if !self.global_refutation_stops() {
+            let top = self.get_or_create_context(vec![], true, None);
+            self.saturate(top);
+            self.propagate(top);
+        }
         let t_seed = t_start.elapsed();
         // Process inter-context messages to fixpoint, *batched*: drain the whole
         // pending set, apply every message as a clause/edge delta, record the
@@ -8409,6 +8451,13 @@ impl Engine {
                 round_epoch = 1;
             }
             while let Some(msg) = batch.pop_front() {
+                if self.global_refutation_stops() {
+                    // The ontology is inconsistent (see
+                    // `set_stop_on_global_refutation`); the remaining work
+                    // cannot change the answer.
+                    batch.clear();
+                    break;
+                }
                 guard += 1;
                 if guard > msg_cap {
                     // Hard safety cap on the inter-context message fixpoint.
@@ -8522,6 +8571,10 @@ impl Engine {
                 }
             }
             if truncated {
+                break;
+            }
+            if self.global_refutation_stops() {
+                self.msgs.clear();
                 break;
             }
             debug_assert!(batch.is_empty());
