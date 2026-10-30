@@ -1509,7 +1509,7 @@ fn cb_filtered_seed_event_evidence(
             live,
             event,
             assumption,
-            serde_json::json!({"assumption": index}),
+            serde_json::json!({"assumption": {"index": index}}),
         ) {
             return Some(evidence);
         }
@@ -3966,6 +3966,62 @@ fn cb_wire_live_predicate_json(
 /// compact chronological proof DAG checked by `CBStandaloneContextProofWire`.
 /// Each live event is emitted at most once, and every edge points to an earlier
 /// node. This is the native positive-evidence boundary for nested Pred chains.
+/// Literal-set equality of two wire clauses: the relation `clEquivT` the
+/// Lean trace checker uses for every step (`CheckerTerm.lean`).
+fn cb_wire_clause_set_eq(left: &serde_json::Value, right: &serde_json::Value) -> bool {
+    let side = |clause: &serde_json::Value, name: &str| {
+        clause
+            .get(name)
+            .and_then(serde_json::Value::as_array)
+            .map(|literals| {
+                literals
+                    .iter()
+                    .map(serde_json::Value::to_string)
+                    .collect::<std::collections::BTreeSet<_>>()
+            })
+    };
+    let (Some(left_body), Some(left_head), Some(right_body), Some(right_head)) = (
+        side(left, "body"),
+        side(left, "head"),
+        side(right, "body"),
+        side(right, "head"),
+    ) else {
+        return false;
+    };
+    left_body == right_body && left_head == right_head
+}
+
+/// The standalone node checker (`CBStandaloneContextProofWire`
+/// `decodeLocal`) requires the node's claimed clause to occur verbatim in
+/// the prior-node clauses or the local trace, while each trace step is
+/// checked only up to literal-set equality (`clEquivT`). A derived step can
+/// therefore produce the claimed clause with its literals in another order
+/// (the Hyper/resolution evidence keeps premise order; the arena clause is
+/// sorted). When the claim is absent verbatim, replace the clause of the
+/// last trace entry that is set-equal to the claim by the claim itself: the
+/// entry's own step check is unchanged (`clEquivT` is invariant under
+/// set-equal replacement) and so is every later step that references it
+/// (they test literal membership only). If no entry is set-equal, the trace
+/// is left unchanged and the checker rejects it.
+fn cb_align_local_trace_with_claim(
+    trace: &mut [serde_json::Value],
+    claim: &serde_json::Value,
+    prior_clauses: &[&serde_json::Value],
+) {
+    if prior_clauses.iter().any(|clause| *clause == claim)
+        || trace.iter().any(|entry| entry.get("clause") == Some(claim))
+    {
+        return;
+    }
+    if let Some(entry) = trace.iter_mut().rev().find(|entry| {
+        entry
+            .get("clause")
+            .is_some_and(|clause| cb_wire_clause_set_eq(clause, claim))
+    }) {
+        entry["clause"] = claim.clone();
+    }
+}
+
 fn cb_standalone_context_proof_document(
     live_publication: &serde_json::Value,
     terminal_events: &[usize],
@@ -4112,11 +4168,17 @@ fn cb_standalone_context_proof_document(
                         }
                         prior_nodes.push(self.append(dependency)?);
                     }
-                    let trace = proof
+                    let mut trace = proof
                         .get("trace")
                         .and_then(serde_json::Value::as_array)
                         .cloned()
                         .ok_or_else(|| "local CB evidence has no trace".to_string())?;
+                    let prior_clauses = prior_nodes
+                        .iter()
+                        .filter_map(|&node| self.nodes.get(node))
+                        .filter_map(|node| node.get("clause"))
+                        .collect::<Vec<_>>();
+                    cb_align_local_trace_with_claim(&mut trace, &clause, &prior_clauses);
                     serde_json::json!({"local": {
                         "prior_nodes": prior_nodes,
                         "trace": trace,
@@ -7682,8 +7744,42 @@ mod cb_derivation_candidate_tests {
         let evidence = cb_filtered_seed_event_evidence(&live, &event).unwrap();
         let trace = evidence["trace"].as_array().unwrap();
         assert_eq!(trace.len(), 3);
-        assert_eq!(trace[0]["justification"]["assumption"], 0);
+        // `WireProductionJustification.assumption` decodes `{"index": n}`.
+        assert_eq!(trace[0]["justification"]["assumption"]["index"], 0);
         assert!(trace[2]["justification"]["resolve"].is_object());
+    }
+
+    #[test]
+    fn standalone_local_trace_ends_in_the_claimed_literal_order() {
+        // Checkers-on defect C2: a resolvent with head [C2, C1] proves the
+        // arena clause [C1, C2]; the standalone node needs it verbatim.
+        let concept = |id: u64| {
+            serde_json::json!({"predicate": {"predicate": {"concept": {
+                "concept": id, "term": {"var": {"index": 0}}
+            }}}})
+        };
+        let claim = serde_json::json!({"body": [], "head": [concept(1), concept(2)]});
+        let premise = serde_json::json!({"body": [concept(4)], "head": [concept(1)]});
+        let mut trace = vec![
+            serde_json::json!({"clause": premise, "justification": {"tautology": {}}}),
+            serde_json::json!({
+                "clause": {"body": [], "head": [concept(2), concept(1)]},
+                "justification": {"resolve": {"positive": 0, "negative": 1}}
+            }),
+        ];
+        let original = trace.clone();
+        cb_align_local_trace_with_claim(&mut trace, &claim, &[]);
+        assert_eq!(trace[1]["clause"], claim);
+        assert_eq!(trace[1]["justification"], original[1]["justification"]);
+        assert_eq!(trace[0], original[0]);
+
+        // A verbatim prior clause, or no set-equal entry: nothing changes.
+        let mut untouched = original.clone();
+        cb_align_local_trace_with_claim(&mut untouched, &claim, &[&claim]);
+        assert_eq!(untouched, original);
+        let other = serde_json::json!({"body": [], "head": [concept(1), concept(3)]});
+        cb_align_local_trace_with_claim(&mut untouched, &other, &[]);
+        assert_eq!(untouched, original);
     }
 }
 
