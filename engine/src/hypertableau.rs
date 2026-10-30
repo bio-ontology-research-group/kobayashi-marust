@@ -22086,9 +22086,7 @@ impl Ht {
                     let tmpl = template.clone();
                     let ec_fwd = ec_fwd.clone();
                     let ec_bwd = ec_bwd.clone();
-                    std::thread::Builder::new()
-                        .stack_size(RWORKER_STACK)
-                        .spawn_scoped(
+                    crate::bigstack::spawn_scoped_retrying(RWORKER_STACK,
                             s,
                             move || -> Option<(Vec<C>, Vec<(C, C)>, u64, f64, f64)> {
                                 let mut w = Ht::new(tmpl);
@@ -22654,9 +22652,7 @@ impl Ht {
             let handles: Vec<_> = (0..nthreads)
                 .map(|_| {
                     let worker = worker.clone();
-                    std::thread::Builder::new()
-                        .stack_size(HT_WORKER_STACK)
-                        .spawn_scoped(s, move || -> Option<Vec<(C, bool, Vec<C>)>> {
+                    crate::bigstack::spawn_scoped_retrying(HT_WORKER_STACK, s, move || -> Option<Vec<(C, bool, Vec<C>)>> {
                             let mut w = worker.into_worker();
                             let mut out = Vec::new();
                             loop {
@@ -22718,9 +22714,7 @@ impl Ht {
             let handles: Vec<_> = (0..nthreads.min(nl.max(1)))
                 .map(|_| {
                     let worker = worker.clone();
-                    std::thread::Builder::new()
-                        .stack_size(HT_WORKER_STACK)
-                        .spawn_scoped(s, move || -> Option<Vec<(C, C)>> {
+                    crate::bigstack::spawn_scoped_retrying(HT_WORKER_STACK, s, move || -> Option<Vec<(C, C)>> {
                             let mut w = worker.into_worker();
                             let mut subs = Vec::new();
                             loop {
@@ -23332,9 +23326,7 @@ impl Ht {
                 let next = &next;
                 let handles: Vec<_> = (0..nthreads)
                     .map(|_| {
-                        std::thread::Builder::new()
-                            .stack_size(QO_WORKER_STACK)
-                            .spawn_scoped(s, move || -> Option<(Vec<(C, C)>, Vec<C>)> {
+                        crate::bigstack::spawn_scoped_retrying(QO_WORKER_STACK, s, move || -> Option<(Vec<(C, C)>, Vec<C>)> {
                                 let mut qpc = QoSat::new_opts(
                                     clauses_ref,
                                     false,
@@ -23697,9 +23689,7 @@ impl Ht {
                 let handles: Vec<_> = (0..nthreads)
                     .map(|_| {
                         let tmpl: Vec<ClauseRec> = clauses_ref.to_vec();
-                        std::thread::Builder::new()
-                            .stack_size(64 * 1024 * 1024)
-                            .spawn_scoped(s, move || -> Option<PcPart> {
+                        crate::bigstack::spawn_scoped_retrying(64 * 1024 * 1024, s, move || -> Option<PcPart> {
                                 let mut qf = QoSat::new_opts(&tmpl, true, fprop);
                                 qf.install_edge_compose(chains_ref);
                                 qf.complete_roles = true;
@@ -24601,9 +24591,7 @@ impl Ht {
                             let handles: Vec<_> = (0..nthreads)
                                 .map(|_| {
                                     let tmpl = template.clone();
-                                    std::thread::Builder::new()
-                                        .stack_size(PMWORKER_STACK)
-                                        .spawn_scoped(s, move || -> Vec<(C, Option<HashSet<C>>)> {
+                                    crate::bigstack::spawn_scoped_retrying(PMWORKER_STACK, s, move || -> Vec<(C, Option<HashSet<C>>)> {
                                             let mut w = Ht::new(tmpl);
                                             w.set_anywhere(anywhere);
                                             w.set_fast_tableau(); // result-identical speedups
@@ -24695,9 +24683,7 @@ impl Ht {
                         let handles: Vec<_> = (0..nthreads)
                             .map(|_| {
                                 let tmpl = template.clone();
-                                std::thread::Builder::new()
-                                    .stack_size(VWORKER_STACK)
-                                    .spawn_scoped(s, move || -> (Vec<(C, C)>, u64, u64, u64) {
+                                crate::bigstack::spawn_scoped_retrying(VWORKER_STACK, s, move || -> (Vec<(C, C)>, u64, u64, u64) {
                                         let mut w = Ht::new(tmpl);
                                         w.set_anywhere(anywhere);
                                         w.set_fast_tableau(); // result-identical speedups
