@@ -3,6 +3,7 @@ import ContextCalculus.CompletenessProp
 import ContextCalculus.CompletenessOrdered
 import ContextCalculus.CompletenessOrderedSubsumption
 import ContextCalculus.CompletenessExchange
+import ContextCalculus.ExchangeEquality
 import ContextCalculus.CompletenessClause
 import ContextCalculus.CompletenessEL
 import ContextCalculus.ELCompletion
@@ -226,3 +227,5 @@ import ContextCalculus.HypertableauWire
 import ContextCalculus.HypertableauWireCompleteness
 import ContextCalculus.HypertableauTaxonomyCertificate
 import ContextCalculus.HypertableauTaxonomyWire
+import ContextCalculus.RulesInertSortRelease
+import ContextCalculus.HypertableauSubsetUnravelling

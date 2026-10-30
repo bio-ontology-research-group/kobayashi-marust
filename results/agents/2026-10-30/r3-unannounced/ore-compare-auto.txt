@@ -1,0 +1,8 @@
+files with all streams: 112
+final-oldrules vs final: both answer 104, signature differs 0 [], only final-oldrules ['ore_ont_9800'], only final ['ore_ont_11270'], sum 963.9 vs 920.5 s, mean ratio 0.946, median ratio 0.950
+  largest slowdowns (s): [('ore_ont_16666', 141.67, 170.97), ('ore_ont_9429', 88.78, 97.88), ('ore_ont_14551', 92.82, 97.72), ('ore_ont_8445', 14.57, 17.27), ('ore_ont_12916', 5.94, 7.49)]
+final-oldrules vs v154: both answer 105, signature differs 0 [], only final-oldrules [], only v154 ['ore_ont_11270'], sum 1199.1 vs 841.1 s, mean ratio 0.788, median ratio 0.779
+  largest slowdowns (s): [('ore_ont_12451', 101.18, 108.34), ('ore_ont_714', 1.24, 2.29), ('ore_ont_2318', 6.41, 6.88), ('ore_ont_1931', 0.67, 1.0), ('ore_ont_7817', 3.35, 3.58)]
+files with all streams: 112
+v154 vs final: both answer 105, signature differs 0 [], only v154 ['ore_ont_9800'], only final [], sum 775.0 vs 1050.7 s, mean ratio 1.339, median ratio 1.240
+  largest slowdowns (s): [('ore_ont_9429', 39.55, 97.88), ('ore_ont_16666', 114.45, 170.97), ('ore_ont_11270', 89.04, 130.2), ('ore_ont_2792', 83.93, 122.83), ('ore_ont_14551', 72.27, 97.72)]

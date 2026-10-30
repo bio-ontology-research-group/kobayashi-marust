@@ -160,3 +160,32 @@ fn cb_first_schedule_gives_the_same_answers() {
     assert_eq!(output["dropped"], 0);
     assert_eq!(output["unsatisfiable"], serde_json::json!(["http://example.org/m#K"]));
 }
+
+/// The inert-sort release certificate (`KM_RULES_INERT_CERT`) is written
+/// for every worker call of both schedules: once for the rule-aware
+/// classification alone, three times on the CB-first schedule (the stopped
+/// classification, the consistency check and the completion). With
+/// `KM_RULES_INERT_LEAN_CHECKER` set, the checker must accept each one.
+#[test]
+fn inert_sort_certificate_covers_every_rule_taxonomy_schedule() {
+    for (budget, calls) in [("10", 1usize), ("0", 3)] {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let dir = std::env::temp_dir().join(format!("km-rule-cert-{}-{unique}", std::process::id()));
+        let checker = std::env::var_os("KM_RULES_INERT_LEAN_CHECKER");
+        let output = answer(&classify(FR282_MIN, |command| {
+            command.env("KM_RULES_TAXONOMY_BUDGET_S", budget).env("KM_RULES_INERT_CERT", &dir);
+            if let Some(checker) = &checker {
+                command.env("KM_RULES_INERT_LEAN_CHECKER", checker);
+            }
+        }));
+        assert_eq!(output["dropped"], 0);
+        assert_eq!(
+            output["subsumptions"],
+            serde_json::json!([["http://example.org/m#A", "http://example.org/m#D"]])
+        );
+        let written = std::fs::read_dir(&dir).unwrap().count();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(written, calls, "budget {budget}");
+    }
+}

@@ -91,6 +91,7 @@ checkers=(
     ht-anchored-eq-cert-check
     ht-anchored-cardinality-cert-check
     ht-taxonomy-cert-check
+    ht-subset-unravelling-check
 )
 
 # These statically linked executables are disposable gate products and can
@@ -145,6 +146,20 @@ fi
     LEAN_NUM_THREADS=4 lake build ContextCalculus.HypertableauCertificationSurface \
         2>&1 | tee "$surface_log"
 )
+
+# Subset-blocked production terminals (docs/HYBRID-CB-HT.md section 9).
+(
+    cd "$lean_root"
+    LEAN_NUM_THREADS=4 lake build ContextCalculus.HypertableauSubsetUnravelling \
+        2>&1 | tee -a "$surface_log"
+)
+for theorem in SubsetUnravelling.check_sound SubsetUnravelling.check_not_unsatisfiable \
+    SubsetUnravelling.check_not_entailsSub WireSubsetUnravelling.check_sound; do
+    grep -q "'ContextCalculus.Hypertableau.$theorem' depends on axioms" "$surface_log" || {
+        echo "missing subset-unravelling axiom audit: $theorem" >&2
+        exit 1
+    }
+done
 
 if grep -q 'sorryAx' "$surface_log"; then
     echo "HT certification surface depends on an admitted theorem" >&2
@@ -413,4 +428,7 @@ done
     cargo test --release --lib s07_successor_deadline_interrupts_cyclic_qualified_notifications -- --nocapture
     cargo test --release --lib regular_certificate_serializes_general_guarded_residual_bodies -- --nocapture
     cargo test --release --test ht_taxonomy_certificate -- --nocapture
+    KM_REQUIRE_LEAN_CHECKERS=1 \
+      KM_HT_TEST_SUBSET_MODEL_CHECKER="$bin_root/ht-subset-unravelling-check" \
+      cargo test --release --test ht_subset_model_certificate -- --nocapture --test-threads=1
 )

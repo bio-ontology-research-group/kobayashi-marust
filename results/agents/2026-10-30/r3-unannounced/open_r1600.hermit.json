@@ -1,0 +1,1 @@
+{"ontology": "r1600.ofn", "consistent": true, "subsumptions": [["B", "A"], ["D", "A"], ["Q2", "Q1"]], "unsatisfiable": []}
