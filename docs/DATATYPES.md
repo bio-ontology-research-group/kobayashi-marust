@@ -156,10 +156,8 @@ directions are proved in Lean (`lean/ContextCalculus/LinearValueEncoding.lean`:
 `profiles_entail_membership`, `membership_admits_profiles`; the same lemmas
 for an arbitrary digit base are `digits_entail_pairwise`,
 `pairwise_admits_digits`, `twoDigitIndex_separating`). The file uses core
-Lean only and was checked with `lean ContextCalculus/LinearValueEncoding.lean`
-(Lean 4.30.0-rc2, no Mathlib); it is imported by `ContextCalculus.lean` but
-was not compiled with `lake build` here, because this worktree has no
-Mathlib build cache.
+Lean only; since 2026-10-30 it is built by `lake build` as part of
+`ContextCalculus` (see "Lean coverage" below).
 
 ### Object-level projection of data assertions
 
@@ -225,11 +223,8 @@ inclusion, none of which requires a successor. No other axiom mentions
 `G`, and the object part, classes and individuals are those of `J`. The
 data assertions hold by construction. So `I ⊨ O`. ∎
 
-Lean: the counting step is `bits_entail_pairwise`/`pairwise_admits_bits`
-read with elements as the domain of the value concepts (one digit class per
-asserted value); the edge surgery of the second direction is not stated in
-Lean (it needs the data-property semantics, which the Lean development
-models only for the native ABox projection in `DataABoxProjection.lean`).
+Lean: both directions are proved (`DataValueProjection.projection_sound`,
+`projection_complete`; see "Lean coverage" below).
 
 Groups outside the gate keep the data value encoding of the previous
 sections.
@@ -332,13 +327,11 @@ of §6 merges object terms only; `certified_card_proxy_abox` and every HT
 worker read the clause set with ordinary clause semantics, so the theorem
 covers them; rule grounding is excluded by (G3).
 
-**Lean obligation.** The theorem above is stated over the clause
-semantics, but the Lean development has no model of the frontend's
-data-role clauses or of the at-most clause shapes over data roles, so it
-is not stated in Lean. The statement to certify is the theorem above for
-the DL-clause fragment of `lean/ContextCalculus/CBClauseShape.lean`
-extended with a data sort; until then the elision is covered by the
-HermiT differentials in `results/agents/2026-10-30/data-values/`.
+**Lean obligation.** Proved for a corrected `V_d` in
+`DataValueSingletonElision.lean` (see "Lean coverage" below). The proof
+shows that the theorem as stated above does not hold: `V_d` must also ask
+that the relation of `v` to every other *value* of the vocabulary is
+decided, and the Rust condition does not (finding 1 of "Lean coverage").
 
 ### Counting over data values
 
@@ -395,23 +388,173 @@ scanned every concept per clause; it now reads the clause's own atom.
 
 1. *Linear form* (proved): the helper clauses are a conservative extension
    of the pairwise clauses for one arbitrary interpretation
-   (`LinearValueEncoding.lean`, core Lean, checked with `lean`; not built
-   with `lake build` here). Not proved: that the Rust generator emits
-   exactly these clauses with a separating index, and the oracle decisions
-   `val_eq` and `val_in_range`.
-2. *Object-level projection* (not proved): the two-direction model
-   construction of "Object-level projection of data assertions". The
-   counting step is the binary-index lemma; the edge surgery needs the
-   data-property semantics with sub-properties, which the Lean development
-   models only for the native ABox projection (`DataABoxProjection.lean`).
-3. *Singleton elision* (not proved): the theorem of "Value singletons", for
-   the DL-clause fragment of `CBClauseShape.lean` extended with a data sort.
-   No Lean model of the frontend's data-role clauses exists yet.
+   (`LinearValueEncoding.lean`, core Lean, built with `lake build` since
+   2026-10-30). Not proved: that the Rust generator emits exactly these
+   clauses with a separating index, and the oracle decisions `val_eq` and
+   `val_in_range`.
+2. *Object-level projection* (proved, 2026-10-30): both directions of the
+   model construction, over a two-sorted language
+   (`DataValueProjection.lean`; "Lean coverage" below).
+3. *Singleton elision* (proved for a corrected condition, 2026-10-30;
+   `DataValueSingletonElision.lean`). The Rust condition is weaker than
+   the one the proof needs, and a probe shows a wrong answer
+   ("Lean coverage", finding 1).
 4. *Bridge admission* (not proved, as before): the gate is an executable
    check over the clause set; its correctness is tested.
 
 None of these changes the CB or HT calculus; the engines consume the new
 helper names as ordinary concepts.
+
+### Lean coverage (2026-10-30)
+
+Three modules, all built by `lake build` as part of `ContextCalculus`
+(core Lean, no Mathlib import; axioms `propext`, `Classical.choice`,
+`Quot.sound` only; no `sorry`):
+
+- `lean/ContextCalculus/TwoSortedDL.lean`: the language. Class expressions
+  with object constructors (`∃`, `∀`, `≥ n`, `≤ n`, `Self`, nominals) and
+  data constructors (`∃u.R`, `∀u.R`, `≥ n u.R`, `≤ n u.R`) over atomic data
+  ranges (`⊤` or a `__dt__` name; complex ranges are named by the frontend
+  and `DatatypeDefinition` is inlined before the gates run); axioms `C ⊑ D`,
+  class, object and data assertions, object and data sub-properties,
+  `DisjointDataProperties`, `SameIndividual`, `DifferentIndividuals`.
+  An interpretation has an object type, a data type and a free
+  interpretation `dcon` of the data concept names. The OWL reading fixes
+  the data type to a value space and `dcon` to the datatype map
+  (`Interp.IsReal`); the clause reading leaves both free (data nodes are
+  terms carrying `__dt__` labels, NOMINALS-CB.md §6). `HasKey` and DL-safe
+  rules are not in the language.
+- `lean/ContextCalculus/DataValueProjection.lean`: the object-level
+  projection.
+- `lean/ContextCalculus/DataValueSingletonElision.lean`: the singleton
+  elision.
+
+**Projection.** `projGate inG O sup memb key : Bool` is the gate as a
+decidable function of the source axioms `O`, the admitted groups `inG`,
+super-property lists `sup` and the oracle's decisions `memb` (range
+membership, `Option Bool`) and `key` (identity key, `Option`): every axiom
+mentions no role of `G` or is a domain `∃q.⊤ ⊑ D` with `D` free of `G`, an
+atomic range `⊤ ⊑ ∀q.R`, a bound `C ⊑ ≤ 1 q.F` with `C` free of `G` (`F`
+`⊤` or a range name; functionality is `C = F = ⊤`), a sub-property inside
+or outside `G`, or an assertion of `G`; for every assertion `u(a, v)` of
+`G`, `sup u` contains `u`, is certified reachable (`supCert`: each entry
+is `u` or a direct super-property of an earlier entry) and closed under
+`SubDataPropertyOf`, and `literalDecided` holds for every `q ∈ sup u`
+(membership `some true` in every range of `q`; for every slot of `q`
+`some false`, or `some true` with a key). `projGate_spec` turns the gate
+into the facts the proofs use (`GateFacts`). `Proj` is `O'`: the kept
+axioms, the domain assertions, the digit assertions and the digit clashes,
+over class names `Cls ⊕ Digit` (fresh digits). With `ValuesSingleton`
+(every asserted value name denotes one value `lit v`), `MembSound` and
+`KeySound` (the oracle's decisions are true of `lit`):
+
+- `projection_sound`: if `I ⊨ O` then `extend I ⊨ O'` and
+  `(extend I).comapCls inl = I` (the digit classes are the elements with a
+  `q`-value in `F` that is an asserted value with that index bit);
+- `projection_complete`: with `IndexSeparates` (two different keys of one
+  slot differ at some position below `npos`), if `J ⊨ O'` then
+  `surgery J ⊨ O`, with the classes, object roles and individuals of `J`
+  and the data roles outside `G` unchanged;
+- `indexSeparates_of_injective`: an index injective on the slot's keys and
+  below `2^npos` separates (from `binaryIndex_separating`), which is what
+  the Rust numbering `0 … m-1` with `⌈log₂ m⌉` positions gives;
+- `projection_consistency_iff`: `O` and `O'` are consistent together.
+
+The data domain and `dcon` are arbitrary in these statements, so they hold
+in the OWL reading and in the clause reading alike. The doc's proof needed
+no change. Argued, not proved: that `value_projection::project` emits
+exactly `Proj` for groups its gate admits, and that its gate implies
+`projGate` (it is stricter: guards and domains mention no data role at
+all, and negative data assertions, keys and rules block it).
+
+**Singleton elision.** `gate O : Bool` is G1 and G2 as a decidable
+function: `forces p C` mirrors `distinct_data_successors_forced::forces`
+(polarity flips under `¬` and in the filler of `≤`; a positive `≥ n`,
+`n ≥ 2`, or a negative `≤ n`, `n ≥ 1`, over a data role), `axForces` reads
+`C ⊑ D` as `C` negative and `D` positive, class assertions as positive, and
+rejects `DisjointDataProperties`; G3 is the restriction to the language.
+Roles are sorted in the Lean language; the Rust gate's sort assignment
+(`object_roles`: a role is data unless it is certainly an object property)
+is the link, argued from the parser invariant that every data filler is a
+`__dt__` name, its negation, `⊤` or `⊥`.
+
+- `reading_models`: under `gate O`, if `J ⊨ O` (clause reading) and the
+  node reading `ρ` respects the labels of every data successor
+  (`Respects`), then `reading J ρ ⊨ O` (OWL reading) with the same object
+  part. No singleton clause is used. The core is `eval_transfer`: at
+  positive polarity truth moves from `J` to the reading, at negative
+  polarity back, except for exactly the constructs `forces` reports.
+- `decidedReading_respects`: reading a node that carries a value `v` with
+  `fullyDecided voc isValue dec v` as `lit v` respects its labels, from the
+  decision clauses (`DecisionClauses`, the pairwise form; the linear form
+  entails it by `bits_entail_pairwise` and `profiles_entail_membership`)
+  and the oracle's soundness (`DecisionSound`) alone.
+- `singleton_elision_sound` (`S⁻ ⇒ O`): `J ⊨ O`, `J ⊨` decision clauses,
+  and `UndecidedRealizable` (every successor without a fully decided value
+  has a value with exactly its labels: the obligation the abstraction
+  already had before the change) give an OWL model of `O` with the same
+  object part.
+- `real_model_satisfies_clauses` (`O ⇒ S`): an OWL model satisfies the
+  decision clauses and every singleton clause.
+- `consistency_iff`, `subsumption_iff` (class names): the two together.
+
+`fullyDecided voc isValue dec v` asks that `v` is a value and that `dec v d`
+is decided for *every* data concept name `d ≠ v` of the vocabulary: ranges
+and the other values.
+
+**Finding 1: the elision is not exact as implemented.** The Rust condition
+`value_fully_decided` asks for a decided identity key and decided
+memberships in the ranges, but not for decided relations to the other
+values. `val_eq` is `None` between a keyed value and an opaque one, and the
+derived string types (`xsd:token`, `xsd:normalizedString`, …) parse as
+opaque although they share the string value space. A node can then carry
+a decided value `v` and an opaque value `w`, and the decided reading does
+not respect the label `w`. Probe
+`results/agents/2026-10-30/lean-data-values/probes/opaque_merge.ofn`:
+`FunctionalDataProperty(p)`, `p(x, "abc")`, `p(x, "abc"^^xsd:token)`,
+`p(z, "abc")`, `¬p(z, "abc"^^xsd:token)`. HermiT: inconsistent. KM at
+e62a4bce answers consistent on `auto`, `certified_nominals` and `nominals`;
+the same ontology with an unrelated `Z ⊑ ≥ 2 q` (which closes the gate and
+keeps the singletons, `opaque_merge_keep.ofn`) is answered inconsistent on
+all three. With the singleton of `"abc"`, `x`'s merged successor and `z`'s
+successor are one node, which carries the token and clashes with the
+negative assertion; without it they stay apart. The fix the proof asks
+for: elide `v` only when `val_eq(v, w)` is decided for every value `w` of
+the vocabulary (equivalently here: no opaque value that `val_eq` cannot
+separate from `v`), in the frontend and in the bridge's
+`forced_distinct_data_successors` admission.
+
+**Finding 2: exhaustion of a finite range by excluded values (not caused
+by the elision).** `UndecidedRealizable` fails for a finite range with
+more than 8 values when the data count bound is below 2: no cover is
+emitted, so a node carrying `integer[1,9]` and none of its nine value
+concepts satisfies the clauses but has no value. `range_exhaust.ofn`
+(`x : ∃p.integer[1,9]`, `¬p(x, i)` for `i = 1 … 9`; HermiT inconsistent)
+is answered consistent on all three routes, while the 8-value version is
+answered correctly; v1.5.4 published the input with `DROPPED` (negative
+assertions were not carried), so the wrong answer is new in v1.5.5. The
+TBox form (`range_exhaust_tbox.ofn`, `A ⊑ ∃p.integer[1,9]` and
+`A ⊑ ¬∃p.{i}`) misses `A ⊑ ⊥` in v1.5.4 and v1.5.5 alike. A range needs its
+cover whenever the values of the vocabulary inside it, plus the count
+bound, can exhaust it (`|R| ≤ |V ∩ R| + N`), not only when the count bound
+can.
+
+(Also observed, pre-existing, not a finding about these encodings:
+`opaque_merge_tbox.ofn`, `A ≡ ∃p.{"abc"}`, `B ≡ ∃p.{"abc"^^xsd:token}`,
+misses `A ≡ B` in v1.5.4 and v1.5.5 with or without the singletons; the
+oracle does not relate the two spellings and publishes no `DROPPED`.)
+
+**A run-time check.** The elision could carry a certificate: the list of
+elided values, and for each the decision of its relation to every data
+concept name of the clause set (a membership or exclusion clause, an
+identity-star edge or a separating digit position). A checker would
+evaluate `fullyDecided` on that list against the emitted clauses and `gate`
+on the source axioms, in time linear in the clauses for the linear form
+(one key class and its digits per value, one profile per value) and
+quadratic for the pairwise form. It would have rejected `opaque_merge.ofn`
+(the opaque value has no decision against `"abc"`). It would not check the
+oracle's decisions themselves, the sort assignment of roles, or
+`UndecidedRealizable`. Not implemented here.
 
 ## Open corners (status 2026-10-30)
 
