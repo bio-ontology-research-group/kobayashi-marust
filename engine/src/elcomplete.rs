@@ -2606,11 +2606,29 @@ fn build_lean_el_certificate(
             }),
     );
     steps.reverse();
+    // The checker's active contexts are exactly ⊤ and the concepts the
+    // certificate ontology mentions (`expectedActiveConcepts`). A concept
+    // that occurs only in a residual clause has no EL axiom; it is left out
+    // of the certified contexts (and so of the certified output) instead of
+    // making the certificate unacceptable.
+    let mut mentioned: HashSet<u32> = HashSet::default();
+    for clause in &ontology {
+        match *clause {
+            LeanElClause::Nf1 { sub, sup } => mentioned.extend([sub, sup]),
+            LeanElClause::Nf2 { left, right, sup } => mentioned.extend([left, right, sup]),
+            LeanElClause::Nf3 { sub, filler, .. } => mentioned.extend([sub, filler]),
+            LeanElClause::Nf4 { filler, sup, .. } => mentioned.extend([filler, sup]),
+            LeanElClause::Nf5 { sub } => {
+                mentioned.insert(sub);
+            }
+            LeanElClause::Nf6 { .. } | LeanElClause::Nf7 { .. } | LeanElClause::Reflexive { .. } => {}
+        }
+    }
     let mut active_concepts: Vec<u32> = nfs
         .concept_names
         .iter()
         .copied()
-        .filter(|&a| a != BOTTOM)
+        .filter(|&a| a != BOTTOM && mentioned.contains(&a))
         .collect();
     // TOP is queried for the ontology inconsistency result even when it does
     // not occur in an input normal form, so it is always an active context at
