@@ -9163,6 +9163,9 @@ mod tests {
     fn typed_producer_handoff_matches_the_json_worker_contract() {
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause};
 
+        // Hold the module's environment lock: these keys are shared with the
+        // bridge tests, which read them while they run.
+        let _environment = lock_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();
         std::env::set_var("KM_HT", "1");
         let input = crate::orchestrate::cb_to_ht::TInput {
@@ -9193,6 +9196,9 @@ mod tests {
     fn owned_wire_entry_matches_the_borrowed_worker_contract() {
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause};
 
+        // Hold the module's environment lock: these keys are shared with the
+        // bridge tests, which read them while they run.
+        let _environment = lock_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();
         std::env::set_var("KM_HT", "1");
         std::env::remove_var("KM_HT_BRIDGE");

@@ -144,18 +144,27 @@ fn incremental_verdict_matches_batch_on_the_revision() {
     assert_eq!(rows[1]["result"]["consistent"], batch_consistent, "batch:\n{batch_out}\nrows: {rows:#?}");
 }
 
+/// Seed b11_1134 of the 2026-10-30 inert-sort review (`gen_wide2.py`): the
+/// rule checker releases one sort and finds the ABox inconsistent, so the
+/// classification ends with the checker and no other worker runs.
+const INCONSISTENT_FIXTURE: &str = include_str!("fixtures/rules_inert_sorts_b11_1134.ofn");
+
 /// Under an address-space limit of 3 GiB the old worker could not start its
 /// 2 GiB + 4 GiB stack threads (`tableau error: Resource temporarily
 /// unavailable`), the same failure strict overcommit produces under load.
-/// The worker now grows its main-thread stack on demand.
+/// The worker now grows its main-thread stack on demand. (The fixture ends
+/// at the rule checker: other workers reserve address space for their own
+/// allocator arenas, which an address-space limit counts but the commit
+/// limit does not.)
 #[cfg(target_os = "linux")]
 #[test]
 fn rule_checker_worker_runs_without_reserving_its_deep_stack() {
     use std::os::unix::process::CommandExt as _;
-    let (unlimited_out, _) = batch(FIXTURE, &[]);
+    let (unlimited_out, unlimited_err) = batch(INCONSISTENT_FIXTURE, &[]);
+    assert!(released(&unlimited_err, "KM_TIMING rules-consistency released").is_some(), "{unlimited_err}");
     let dir = scratch_dir();
     let path = dir.join("input.ofn");
-    std::fs::write(&path, FIXTURE).unwrap();
+    std::fs::write(&path, INCONSISTENT_FIXTURE).unwrap();
     let mut command = Command::new(env!("CARGO_BIN_EXE_km"));
     command.arg("classify").arg("--lines").arg(&path).env("KM_TIMING", "1");
     unsafe {
