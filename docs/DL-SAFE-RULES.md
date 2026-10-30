@@ -67,10 +67,18 @@ rule worker reads the one-sorted clause stream (data successors fall under
   counts these clauses (`orchestrate::proxy_definition`) and passes the
   count to the worker (`KM_RULES_CLASSIFY_PROXY_DEFINITIONS`); every other
   converter drop refuses the taxonomy.
-- The classification converts with `cb_to_ht::convert_rule_model`, which
-  keeps the named-individual graph when the finite grounding left no
-  executable rule (normalized rules are then ordinary clauses): the ground
-  ABox clauses are seeded on the nominal roots instead of dropped.
+- The rule-aware taxonomy runs only when the worker input has an
+  executable rule (`input.rules` non-empty). Rules the frontend normalized
+  (unary and constant-data rules, docs/RULES lowering in
+  `frontend::data_rules`) are ordinary clauses of the stream every
+  taxonomy worker reads, and finite grounding removes a rule only when no
+  asserted value satisfies its built-ins (the rule is then inert). Without
+  an executable rule nothing is outside the CB taxonomy, so it is published
+  as computed; v1.5.4 counted those rules as dropped as well (seed fr344:
+  `DROPPED 3` on a correct answer). The ABox-seeded tableau also has no
+  backjumping on its careful path and can explode where the CB route
+  answers at once (fr344: thousands of branches on `⊤ → X ∨ Y ∨ Z`), so it
+  is not used where it adds nothing.
 - A ground `DifferentIndividuals(a b)` is encoded on the nominal roots as
   `__nom__a(x) ∧ __nom__b(x) → ⊥`. The converter used to record it
   without encoding it and without counting it, in the consistency check as

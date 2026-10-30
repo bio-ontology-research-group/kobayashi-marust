@@ -2857,6 +2857,7 @@ fn classify_with_evidence_inner(
             rule_taxonomy && !meta.one_sorted_data_successors,
         )?;
         let taxonomy = verdict.as_mut().and_then(|v| v.taxonomy.take());
+        let executable_rules = verdict.as_ref().is_some_and(|v| v.executable_rules);
         let represented_ground = verdict.as_ref().map_or(0, |v| v.represented_ground_clauses);
         // The rule worker reads `__nom__` proxies as nominals over this clause
         // stream. When the stream is one-sorted beside a TBox nominal and data
@@ -2876,7 +2877,7 @@ fn classify_with_evidence_inner(
         // A taxonomy read from the one-sorted stream would be as inexact as
         // its inconsistency, and the rule-free taxonomy below misses rule
         // conclusions that reach class queries: refuse.
-        if rule_taxonomy && meta.one_sorted_data_successors && verdict.is_some() {
+        if rule_taxonomy && meta.one_sorted_data_successors && executable_rules {
             return Err(OrchestrateError::OutOfFragment(
                 "DL-safe rules reach class queries through a nominal, and the rule worker \
                  input reads data successors as objects; neither its verdict nor its \
@@ -2934,7 +2935,9 @@ fn classify_with_evidence_inner(
                 // a realization probe, the universal-role hub) lets rule
                 // conclusions reach class queries: count the rules then.
                 let source = &meta.profile.source;
-                if rules_reach_class_queries(&meta.profile) {
+                // Only executable rules are outside the clause stream; the
+                // normalized ones are ordinary clauses of the taxonomy below.
+                if rules_reach_class_queries(&meta.profile) && executable_rules {
                     let rules = source.rule_axioms.max(1);
                     RULES_OUTSIDE_TAXONOMY.with(|u| u.set(u.get() + rules));
                     if timing {
@@ -3579,6 +3582,8 @@ struct RulesVerdict {
     /// The rule-aware taxonomy (`KM_RULES_CLASSIFY`), in worker concept
     /// names, when the caller asked for it and the input is consistent.
     taxonomy: Option<RuleTaxonomy>,
+    /// The worker input had a rule clause the clause stream does not carry.
+    executable_rules: bool,
     /// Clauses of the checked clause file that carry an individual term,
     /// when the conversion represented every clause (`dropped == 0`) and so
     /// the verdict covers them; zero otherwise.
@@ -3706,6 +3711,12 @@ fn rules_consistency(
             input.rules.len(),
         );
     }
+    // Rules the frontend normalized into ordinary clauses (unary and
+    // constant-data rules) are part of the clause stream every taxonomy
+    // worker reads; only executable rules (`input.rules`) are outside it.
+    // Without one there is nothing for a rule-aware taxonomy to add.
+    let executable_rules = !input.rules.is_empty();
+    let classify = classify && executable_rules;
     let named: HashSet<String> = meta.named.iter().cloned().collect();
     // The sort encoding branches on `Q_⊤(x) → Q(x) ∨ D(x)` at every node for
     // a definer `Q` no clause reads on a data element; release those sorts
@@ -3733,11 +3744,7 @@ fn rules_consistency(
     // rule-detected inconsistency is lost). Inverse/subrole/domain/range
     // semantics still reach the tableau through the frontend's bridge clauses
     // inside `input.clauses`, so a detected clash remains a real clash.
-    // The classification keeps the named-individual graph even when the
-    // finite grounding left no executable rule (normalized rules are
-    // ordinary clauses then): the ground ABox clauses are seeded on the
-    // nominal roots instead of dropped, exactly as with rules present.
-    let mut tin = if require_source_model || classify {
+    let mut tin = if require_source_model {
         cb_to_ht::convert_rule_model(&input.clauses, &named, &input.cardinalities,
             &input.definers, &input.source_axioms, &input.rules)
     } else {
@@ -3919,7 +3926,7 @@ fn rules_consistency(
         unsatisfiable: t.unsatisfiable,
         subsumptions: t.subsumptions,
     });
-    Ok(Some(RulesVerdict { consistent: t.consistent, taxonomy, represented_ground_clauses }))
+    Ok(Some(RulesVerdict { consistent: t.consistent, taxonomy, executable_rules, represented_ground_clauses }))
 }
 
 /// Complete a PARTIAL certified-elc answer (exit 4): classify the residue with
