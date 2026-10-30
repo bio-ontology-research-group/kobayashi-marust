@@ -439,6 +439,22 @@ impl RedundancyTrie {
 static ANY_CANCEL_ARMED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 thread_local! {
+    /// `KM_NO_ACTIVE_BODY_INDEX`: the full scans, for A/B checks.
+    static ACTIVE_BODY_INDEX_OFF: bool = std::env::var_os("KM_NO_ACTIVE_BODY_INDEX").is_some();
+    /// Layer size from which the empty-head subsumption scans read the body
+    /// indexes (`active_body_index`, `empty_head_body_index`) instead of every
+    /// candidate; `KM_ACTIVE_BODY_INDEX_MIN` overrides it (an A/B check with
+    /// `1` runs the indexes everywhere).
+    static ACTIVE_BODY_INDEX_MIN_CELL: usize = std::env::var("KM_ACTIVE_BODY_INDEX_MIN")
+        .ok().and_then(|v| v.parse().ok()).unwrap_or(4096);
+}
+
+#[inline]
+fn active_body_index_min() -> usize {
+    ACTIVE_BODY_INDEX_MIN_CELL.with(|min| *min)
+}
+
+thread_local! {
     static THREAD_CANCEL: std::cell::RefCell<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>> =
         const { std::cell::RefCell::new(None) };
 }
@@ -2047,6 +2063,18 @@ struct ClauseLayer {
     /// non-empty-head clause without sharing a literal, so it has a dedicated
     /// posting list.
     active_empty_head: Vec<u32>,
+    /// Every active clause of this layer indexed by each of its body
+    /// predicates, built on demand (`ensure_active_body_index`) once a layer
+    /// is large enough for the empty-head backward subsumption scan to
+    /// matter, and maintained with the active index from then on.
+    active_body_index: Option<HashMap<Pred, Vec<u32>>>,
+    /// The empty-head clauses of `active_empty_head`, each indexed once by
+    /// its least body predicate (and those with an empty body in the list),
+    /// built once the layer holds `active_body_index_min()` of them. A clause
+    /// whose body is a subset of an incoming body has its least body
+    /// predicate in that body, so forward subsumption visits every possible
+    /// empty-head candidate exactly once.
+    empty_head_body_index: Option<(HashMap<Pred, Vec<u32>>, Vec<u32>)>,
     /// Join rule (arXiv:1805.01396 Table 3): worked-off clauses indexed by
     /// each *ground* body atom (the verbatim-copied `C_i` of Pred/r-Pred),
     /// so a later-derived provider for that atom can resolve it.  Empty
@@ -2660,8 +2688,35 @@ impl ClauseLayer {
     /// once.
     fn index_active_clause(&mut self, arena: &[ContextClause], cid: u32) {
         let clause = &arena[cid as usize];
+        if let Some(index) = self.active_body_index.as_mut() {
+            for (position, pred) in clause.body.iter().enumerate() {
+                if !clause.body[..position].contains(pred) {
+                    index.entry(*pred).or_default().push(cid);
+                }
+            }
+        }
         if clause.head.is_empty() {
             self.active_empty_head.push(cid);
+            match self.empty_head_body_index.as_mut() {
+                Some((index, empty)) => match clause.body.iter().min() {
+                    Some(least) => index.entry(*least).or_default().push(cid),
+                    None => empty.push(cid),
+                },
+                None if self.active_empty_head.len() >= active_body_index_min()
+                    && !ACTIVE_BODY_INDEX_OFF.with(|off| *off) =>
+                {
+                    let mut index: HashMap<Pred, Vec<u32>> = HashMap::default();
+                    let mut empty = Vec::new();
+                    for &candidate in &self.active_empty_head {
+                        match arena[candidate as usize].body.iter().min() {
+                            Some(least) => index.entry(*least).or_default().push(candidate),
+                            None => empty.push(candidate),
+                        }
+                    }
+                    self.empty_head_body_index = Some((index, empty));
+                }
+                None => {}
+            }
         } else {
             self.active_min_head_lit_index
                 .entry(clause.head[0])
@@ -2676,11 +2731,51 @@ impl ClauseLayer {
         }
     }
 
+    /// Build `active_body_index` over the active clauses of this layer, once.
+    fn ensure_active_body_index(&mut self, arena: &[ContextClause]) {
+        if self.active_body_index.is_some() {
+            return;
+        }
+        let mut index: HashMap<Pred, Vec<u32>> = HashMap::default();
+        for &cid in &self.clause_keys {
+            let clause = &arena[cid as usize];
+            for (position, pred) in clause.body.iter().enumerate() {
+                if !clause.body[..position].contains(pred) {
+                    index.entry(*pred).or_default().push(cid);
+                }
+            }
+        }
+        self.active_body_index = Some(index);
+    }
+
     /// Remove one clause from the active redundancy index.
     fn unindex_active_clause(&mut self, arena: &[ContextClause], cid: u32) {
         let clause = &arena[cid as usize];
+        if let Some(index) = self.active_body_index.as_mut() {
+            for pred in &clause.body {
+                if let Some(posting) = index.get_mut(pred) {
+                    posting.retain(|&candidate| candidate != cid);
+                    if posting.is_empty() {
+                        index.remove(pred);
+                    }
+                }
+            }
+        }
         if clause.head.is_empty() {
             self.active_empty_head.retain(|&candidate| candidate != cid);
+            if let Some((index, empty)) = self.empty_head_body_index.as_mut() {
+                match clause.body.iter().min() {
+                    Some(least) => {
+                        if let Some(posting) = index.get_mut(least) {
+                            posting.retain(|&candidate| candidate != cid);
+                            if posting.is_empty() {
+                                index.remove(least);
+                            }
+                        }
+                    }
+                    None => empty.retain(|&candidate| candidate != cid),
+                }
+            }
         } else {
             posting_remove(&mut self.active_min_head_lit_index, clause.head[0], cid);
             let mut empty = Vec::new();
@@ -2983,15 +3078,35 @@ impl Context {
     ) -> bool {
         debug_assert_eq!(sigs.len(), arena.len(), "ClauseSig mirror out of sync");
         let want = ClauseSig::of(clause);
-        for ci in self.active_empty_head().iter() {
-            if Some(ci) == exclude {
-                continue;
-            }
-            if !sigs[ci as usize].may_strengthen(&want) {
-                continue;
-            }
-            if arena[ci as usize].strengthens(clause) {
+        let check = |ci: u32| {
+            Some(ci) != exclude
+                && sigs[ci as usize].may_strengthen(&want)
+                && arena[ci as usize].strengthens(clause)
+        };
+        if let Some((index, empty)) = self.delta.empty_head_body_index.as_ref() {
+            // Base segment as before; delta candidates through the index.
+            let base = self.base.as_deref().map_or(&[][..], |b| b.active_empty_head.as_slice());
+            if base.iter().copied().filter(|ci| !self.base_removed.contains(ci)).any(check) {
                 return true;
+            }
+            if empty.iter().copied().any(check) {
+                return true;
+            }
+            for (position, pred) in clause.body.iter().enumerate() {
+                if clause.body[..position].contains(pred) {
+                    continue;
+                }
+                if let Some(posting) = index.get(pred) {
+                    if posting.iter().copied().any(check) {
+                        return true;
+                    }
+                }
+            }
+        } else {
+            for ci in self.active_empty_head().iter() {
+                if check(ci) {
+                    return true;
+                }
             }
         }
         for literal in &clause.head {
@@ -3027,7 +3142,29 @@ impl Context {
         let same = |candidate: &ContextClause| {
             candidate.body == clause.body && candidate.head == clause.head
         };
-        let candidates: Vec<u32> = if clause.head.is_empty() {
+        let candidates: Vec<u32> = if clause.head.is_empty() && !clause.body.is_empty()
+            && self.delta.clause_keys.len() >= active_body_index_min()
+            && !ACTIVE_BODY_INDEX_OFF.with(|off| *off)
+        {
+            // A candidate must contain every body predicate of `clause`, so
+            // the delta clauses that can be strengthened are among those of
+            // the rarest body-predicate posting; the base segment is read as
+            // before. The removed set is the same as with the full scan.
+            self.delta.ensure_active_body_index(arena);
+            let index = self.delta.active_body_index.as_ref().expect("built above");
+            let rarest = clause.body.iter()
+                .map(|pred| index.get(pred).map_or(&[][..], Vec::as_slice))
+                .min_by_key(|posting| posting.len())
+                .unwrap_or(&[]);
+            let removed = &self.base_removed;
+            self.base
+                .as_deref()
+                .into_iter()
+                .flat_map(|b| b.clause_keys.iter().copied())
+                .filter(move |cid| !removed.contains(cid))
+                .chain(rarest.iter().copied())
+                .collect()
+        } else if clause.head.is_empty() {
             self.clause_keys_iter().collect()
         } else {
             // Rarest-posting selection over the base-plus-delta views.  The flat

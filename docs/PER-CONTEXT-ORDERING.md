@@ -650,3 +650,27 @@ gives.
 
 ore_ont_7610: timeout at 600 s (v1.5.4, v1.5.5 before) → 38 to 63 s on the
 loaded workstation, inconsistent, as Konclude, HermiT, Openllet and JFact.
+
+**Empty-head subsumption indexes (later the same day).** After the merge of
+the nominal CB input remedy (`50bf7ba9`, released inert sorts), ore_ont_7610
+ran past 300 s again: its relativized facts become plain facts, the ground
+context still holds about 49,000 clauses, and the r-Pred arrivals there are
+mostly empty-head clauses. Backward subsumption of an empty-head clause read
+every active clause of the context (3.5·10⁹ candidates in 32,000 calls in
+the first 60 s), and forward subsumption read every active empty-head
+clause. Both scans now read, once a context's delta layer holds 4,096
+active clauses (respectively 4,096 empty-head clauses), an index built on
+demand and maintained with the active index: every active clause under each
+of its body predicates (`active_body_index`; a clause the incoming
+empty-head clause strengthens contains all of its body predicates, so it is
+in the rarest of their postings), and every empty-head clause under its
+least body predicate (`empty_head_body_index`; an empty-head clause whose
+body is a subset of the incoming body has its least body predicate in that
+body, so each candidate is visited once). The base layer is read as before.
+The candidate sets contain every clause the full scans would accept and the
+exact `strengthens` test decides, so the removed and the rejected clauses
+are the same; no calculus change, no Lean obligation.
+`KM_NO_ACTIVE_BODY_INDEX` restores the scans and `KM_ACTIVE_BODY_INDEX_MIN`
+sets the threshold (`1` exercises the indexes in every context; the
+2026-10-30 A/B runs used it). ore_ont_7610 on the engine input: more than
+200 s → 52 s; `km classify`: 64 s on the loaded workstation.
