@@ -1,0 +1,8 @@
+{
+ "consistent": true,
+ "unsatisfiable": [
+  "A"
+ ],
+ "subsumptions": [],
+ "reasoner": "HermiT 1.4.6.519-SNAPSHOT (OWL API 5)"
+}

@@ -1,0 +1,8 @@
+{
+  "ontology": "count_float_point-pad.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": [
+    "A"
+  ]
+}
