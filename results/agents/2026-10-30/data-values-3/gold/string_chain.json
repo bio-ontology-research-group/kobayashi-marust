@@ -1,0 +1,1 @@
+{"ontology": "string_chain.ofn", "consistent": true, "subsumptions": [["A", "B"], ["A", "C"], ["B", "C"], ["D", "B"], ["D", "C"]], "unsatisfiable": []}

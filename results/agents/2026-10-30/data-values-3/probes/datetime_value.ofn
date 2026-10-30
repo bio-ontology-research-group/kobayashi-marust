@@ -1,0 +1,9 @@
+Prefix(:=<http://e.org/p#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+Ontology(<http://e.org/p/datetime_value>
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(DataProperty(:p)) Declaration(DataProperty(:q)) Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+DataPropertyRange(:p DatatypeRestriction(xsd:dateTime xsd:maxExclusive "2019-01-01T00:00:00Z"^^xsd:dateTime))
+DataPropertyAssertion(:p :a "2020-01-01T00:00:00Z"^^xsd:dateTime)
+)

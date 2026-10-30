@@ -1,0 +1,570 @@
+SLF4J: Failed to load class "org.slf4j.impl.StaticLoggerBinder".
+SLF4J: Defaulting to no-operation (NOP) logger implementation
+SLF4J: See http://www.slf4j.org/codes.html#StaticLoggerBinder for further details.
+Exception in thread "main" org.semanticweb.owlapi.io.UnparsableOntologyException: Problem parsing file:/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-data-values-3/results/agents/2026-10-30/data-values-3/probes/nary_some.ofn
+Could not parse ontology.  Either a suitable parser could not be found, or parsing failed.  See parser logs below for explanation.
+The following parsers were tried:
+1) org.semanticweb.owlapi.rdf.rdfxml.parser.RDFXMLParser@1033576a
+2) org.semanticweb.owlapi.owlxml.parser.OWLXMLParser@4bff7da0
+3) org.semanticweb.owlapi.functional.parser.OWLFunctionalSyntaxOWLParser@3fce8fd9
+4) org.semanticweb.owlapi.rio.RioParserImpl : org.semanticweb.owlapi.formats.RioTurtleDocumentFormatFactory@95fd655c
+5) org.semanticweb.owlapi.manchestersyntax.parser.ManchesterOWLSyntaxOntologyParser@7331196b
+6) org.semanticweb.owlapi.rio.RioParserImpl : org.semanticweb.owlapi.formats.NQuadsDocumentFormatFactory@6f9c39ad
+7) org.semanticweb.owlapi.rio.RioParserImpl : org.semanticweb.owlapi.formats.TrigDocumentFormatFactory@27e81c
+8) org.semanticweb.owlapi.rio.RioParserImpl : org.semanticweb.owlapi.formats.NTriplesDocumentFormatFactory@937ecd36
+9) org.semanticweb.owlapi.rio.RioParserImpl : org.semanticweb.owlapi.formats.RDFJsonDocumentFormatFactory@cd748dc3
+10) org.semanticweb.owlapi.rio.RioParserImpl : org.semanticweb.owlapi.formats.RDFJsonLDDocumentFormatFactory@dcacc47d
+11) org.semanticweb.owlapi.rio.RioParserImpl : org.semanticweb.owlapi.formats.RioRDFXMLDocumentFormatFactory@69b9a3bc
+12) org.semanticweb.owlapi.rio.RioParserImpl : org.semanticweb.owlapi.formats.N3DocumentFormatFactory@9a5
+13) org.semanticweb.owlapi.rio.RioParserImpl : org.semanticweb.owlapi.formats.TrixDocumentFormatFactory@27e82d
+14) org.semanticweb.owlapi.rdf.turtle.parser.TurtleOntologyParser@a4b2d8f
+15) org.semanticweb.owlapi.oboformat.OBOFormatOWLAPIParser@2ece4966
+16) org.semanticweb.owlapi.dlsyntax.parser.DLSyntaxOWLParser@4e28bdd1
+17) org.semanticweb.owlapi.krss2.parser.KRSS2OWLParser@4f071df8
+18) org.semanticweb.owlapi.rio.RioParserImpl : org.semanticweb.owlapi.formats.BinaryRDFDocumentFormatFactory@3bf24493
+19) org.semanticweb.owlapi.rio.RioParserImpl : org.semanticweb.owlapi.formats.RDFaDocumentFormatFactory@264e8d
+
+
+Detailed logs:
+--------------------------------------------------------------------------------
+Parser: org.semanticweb.owlapi.rdf.rdfxml.parser.RDFXMLParser@1033576a
+    Stack trace:
+org.xml.sax.SAXParseException; systemId: file:/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-data-values-3/results/agents/2026-10-30/data-values-3/probes/nary_some.ofn; lineNumber: 1; columnNumber: 1; Content is not allowed in prolog.        org.semanticweb.owlapi.rdf.rdfxml.parser.RDFXMLParser.parse(RDFXMLParser.java:63)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+        Oracle.main(Oracle.java:42)
+Content is not allowed in prolog.        java.xml/com.sun.org.apache.xerces.internal.util.ErrorHandlerWrapper.createSAXParseException(ErrorHandlerWrapper.java:204)
+        java.xml/com.sun.org.apache.xerces.internal.util.ErrorHandlerWrapper.fatalError(ErrorHandlerWrapper.java:178)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLErrorReporter.reportError(XMLErrorReporter.java:400)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLErrorReporter.reportError(XMLErrorReporter.java:327)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLScanner.reportFatalError(XMLScanner.java:1465)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLDocumentScannerImpl$PrologDriver.next(XMLDocumentScannerImpl.java:978)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLDocumentScannerImpl.next(XMLDocumentScannerImpl.java:605)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLNSDocumentScannerImpl.next(XMLNSDocumentScannerImpl.java:114)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLDocumentFragmentScannerImpl.scanDocument(XMLDocumentFragmentScannerImpl.java:542)
+        java.xml/com.sun.org.apache.xerces.internal.parsers.XML11Configuration.parse(XML11Configuration.java:889)
+
+
+--------------------------------------------------------------------------------
+Parser: org.semanticweb.owlapi.owlxml.parser.OWLXMLParser@4bff7da0
+    Stack trace:
+org.xml.sax.SAXParseException; systemId: file:/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-data-values-3/results/agents/2026-10-30/data-values-3/probes/nary_some.ofn; lineNumber: 1; columnNumber: 1; Content is not allowed in prolog.        org.semanticweb.owlapi.owlxml.parser.OWLXMLParser.parse(OWLXMLParser.java:61)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+        Oracle.main(Oracle.java:42)
+Content is not allowed in prolog.        java.xml/com.sun.org.apache.xerces.internal.util.ErrorHandlerWrapper.createSAXParseException(ErrorHandlerWrapper.java:204)
+        java.xml/com.sun.org.apache.xerces.internal.util.ErrorHandlerWrapper.fatalError(ErrorHandlerWrapper.java:178)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLErrorReporter.reportError(XMLErrorReporter.java:400)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLErrorReporter.reportError(XMLErrorReporter.java:327)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLScanner.reportFatalError(XMLScanner.java:1465)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLDocumentScannerImpl$PrologDriver.next(XMLDocumentScannerImpl.java:978)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLDocumentScannerImpl.next(XMLDocumentScannerImpl.java:605)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLNSDocumentScannerImpl.next(XMLNSDocumentScannerImpl.java:114)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLDocumentFragmentScannerImpl.scanDocument(XMLDocumentFragmentScannerImpl.java:542)
+        java.xml/com.sun.org.apache.xerces.internal.parsers.XML11Configuration.parse(XML11Configuration.java:889)
+
+
+--------------------------------------------------------------------------------
+Parser: org.semanticweb.owlapi.functional.parser.OWLFunctionalSyntaxOWLParser@3fce8fd9
+    Stack trace:
+Encountered unexpected token: "xsd:integer" <PNAME_LN>
+    at line 7, column 41.
+
+Was expecting:
+
+    ")"
+ (Line 0)        org.semanticweb.owlapi.functional.parser.OWLFunctionalSyntaxOWLParser.parse(OWLFunctionalSyntaxOWLParser.java:49)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+        Oracle.main(Oracle.java:42)
+Encountered unexpected token: "xsd:integer" <PNAME_LN>
+    at line 7, column 41.
+
+Was expecting:
+
+    ")"
+        org.semanticweb.owlapi.functional.parser.OWLFunctionalSyntaxParser.generateParseException(OWLFunctionalSyntaxParser.java:2479)
+        org.semanticweb.owlapi.functional.parser.OWLFunctionalSyntaxParser.jj_consume_token(OWLFunctionalSyntaxParser.java:2405)
+        org.semanticweb.owlapi.functional.parser.OWLFunctionalSyntaxParser.DataSomeValuesFrom(OWLFunctionalSyntaxParser.java:636)
+        org.semanticweb.owlapi.functional.parser.OWLFunctionalSyntaxParser.ClassExpression(OWLFunctionalSyntaxParser.java:327)
+        org.semanticweb.owlapi.functional.parser.OWLFunctionalSyntaxParser.SubClassOf(OWLFunctionalSyntaxParser.java:1134)
+        org.semanticweb.owlapi.functional.parser.OWLFunctionalSyntaxParser.ClassAxiom(OWLFunctionalSyntaxParser.java:1104)
+        org.semanticweb.owlapi.functional.parser.OWLFunctionalSyntaxParser.Axiom(OWLFunctionalSyntaxParser.java:1026)
+        org.semanticweb.owlapi.functional.parser.OWLFunctionalSyntaxParser.Ontology(OWLFunctionalSyntaxParser.java:218)
+        org.semanticweb.owlapi.functional.parser.OWLFunctionalSyntaxParser.parse(OWLFunctionalSyntaxParser.java:101)
+        org.semanticweb.owlapi.functional.parser.OWLFunctionalSyntaxOWLParser.parse(OWLFunctionalSyntaxOWLParser.java:47)
+
+
+--------------------------------------------------------------------------------
+Parser: org.semanticweb.owlapi.rio.RioParserImpl : org.semanticweb.owlapi.formats.RioTurtleDocumentFormatFactory@95fd655c
+    Stack trace:
+org.eclipse.rdf4j.rio.RDFParseException: Expected ':', found '(' [line 1]        org.semanticweb.owlapi.rio.RioParserImpl.parse(RioParserImpl.java:138)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+        Oracle.main(Oracle.java:42)
+Expected ':', found '(' [line 1]        org.eclipse.rdf4j.rio.helpers.RDFParserHelper.reportFatalError(RDFParserHelper.java:403)
+        org.eclipse.rdf4j.rio.helpers.AbstractRDFParser.reportFatalError(AbstractRDFParser.java:765)
+        org.eclipse.rdf4j.rio.turtle.TurtleParser.reportFatalError(TurtleParser.java:1318)
+        org.eclipse.rdf4j.rio.turtle.TurtleParser.verifyCharacterOrFail(TurtleParser.java:1153)
+        org.eclipse.rdf4j.rio.turtle.TurtleParser.parseQNameOrBoolean(TurtleParser.java:1000)
+        org.eclipse.rdf4j.rio.turtle.TurtleParser.parseValue(TurtleParser.java:591)
+        org.eclipse.rdf4j.rio.turtle.TurtleParser.parseSubject(TurtleParser.java:429)
+        org.eclipse.rdf4j.rio.turtle.TurtleParser.parseTriples(TurtleParser.java:370)
+        org.eclipse.rdf4j.rio.turtle.TurtleParser.parseStatement(TurtleParser.java:239)
+        org.eclipse.rdf4j.rio.turtle.TurtleParser.parse(TurtleParser.java:201)
+
+
+--------------------------------------------------------------------------------
+Parser: org.semanticweb.owlapi.manchestersyntax.parser.ManchesterOWLSyntaxOntologyParser@7331196b
+    Stack trace:
+Encountered Prefix at line 1 column 1. Expected one of:
+	Individual:
+	AnnotationProperty:
+	Datatype:
+	DataProperty:
+	ObjectProperty:
+	DisjointProperties:
+	ValuePartition:
+	EquivalentClasses:
+	Import:
+	Prefix:
+	DisjointClasses:
+	Class:
+	SameIndividual:
+	DifferentIndividuals:
+ (Line 1)        org.semanticweb.owlapi.manchestersyntax.parser.ManchesterOWLSyntaxOntologyParser.parse(ManchesterOWLSyntaxOntologyParser.java:96)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+        Oracle.main(Oracle.java:42)
+Encountered Prefix at line 1 column 1. Expected one of:
+	Individual:
+	AnnotationProperty:
+	Datatype:
+	DataProperty:
+	ObjectProperty:
+	DisjointProperties:
+	ValuePartition:
+	EquivalentClasses:
+	Import:
+	Prefix:
+	DisjointClasses:
+	Class:
+	SameIndividual:
+	DifferentIndividuals:
+        org.semanticweb.owlapi.manchestersyntax.parser.ManchesterOWLSyntaxParserImpl$ExceptionBuilder.build(ManchesterOWLSyntaxParserImpl.java:2759)
+        org.semanticweb.owlapi.manchestersyntax.parser.ManchesterOWLSyntaxParserImpl.parseOntology(ManchesterOWLSyntaxParserImpl.java:2169)
+        org.semanticweb.owlapi.manchestersyntax.parser.ManchesterOWLSyntaxOntologyParser.parse(ManchesterOWLSyntaxOntologyParser.java:93)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+        Oracle.main(Oracle.java:42)
+
+
+--------------------------------------------------------------------------------
+Parser: org.semanticweb.owlapi.rio.RioParserImpl : org.semanticweb.owlapi.formats.NQuadsDocumentFormatFactory@6f9c39ad
+    Stack trace:
+org.eclipse.rdf4j.rio.RDFParseException: Expected '<' or '_', found: P [line 1]        org.semanticweb.owlapi.rio.RioParserImpl.parse(RioParserImpl.java:138)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+        Oracle.main(Oracle.java:42)
+Expected '<' or '_', found: P [line 1]        org.eclipse.rdf4j.rio.helpers.RDFParserHelper.reportFatalError(RDFParserHelper.java:403)
+        org.eclipse.rdf4j.rio.helpers.AbstractRDFParser.reportFatalError(AbstractRDFParser.java:765)
+        org.eclipse.rdf4j.rio.ntriples.NTriplesParser.reportFatalError(NTriplesParser.java:653)
+        org.eclipse.rdf4j.rio.ntriples.NTriplesParser.parseSubject(NTriplesParser.java:350)
+        org.eclipse.rdf4j.rio.nquads.NQuadsParser.parseQuad(NQuadsParser.java:118)
+        org.eclipse.rdf4j.rio.nquads.NQuadsParser.parse(NQuadsParser.java:97)
+        org.semanticweb.owlapi.rio.RioParserImpl.parseDocumentSource(RioParserImpl.java:172)
+        org.semanticweb.owlapi.rio.RioParserImpl.parse(RioParserImpl.java:125)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+
+
+--------------------------------------------------------------------------------
+Parser: org.semanticweb.owlapi.rio.RioParserImpl : org.semanticweb.owlapi.formats.TrigDocumentFormatFactory@27e81c
+    Stack trace:
+org.eclipse.rdf4j.rio.RDFParseException: Expected '<', found '=' [line 1]        org.semanticweb.owlapi.rio.RioParserImpl.parse(RioParserImpl.java:138)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+        Oracle.main(Oracle.java:42)
+Expected '<', found '=' [line 1]        org.eclipse.rdf4j.rio.helpers.RDFParserHelper.reportFatalError(RDFParserHelper.java:403)
+        org.eclipse.rdf4j.rio.helpers.AbstractRDFParser.reportFatalError(AbstractRDFParser.java:765)
+        org.eclipse.rdf4j.rio.turtle.TurtleParser.reportFatalError(TurtleParser.java:1318)
+        org.eclipse.rdf4j.rio.turtle.TurtleParser.verifyCharacterOrFail(TurtleParser.java:1153)
+        org.eclipse.rdf4j.rio.turtle.TurtleParser.parseURI(TurtleParser.java:886)
+        org.eclipse.rdf4j.rio.turtle.TurtleParser.parsePrefixID(TurtleParser.java:320)
+        org.eclipse.rdf4j.rio.turtle.TurtleParser.parseDirective(TurtleParser.java:263)
+        org.eclipse.rdf4j.rio.trig.TriGParser.parseStatement(TriGParser.java:98)
+        org.eclipse.rdf4j.rio.turtle.TurtleParser.parse(TurtleParser.java:201)
+        org.semanticweb.owlapi.rio.RioParserImpl.parseDocumentSource(RioParserImpl.java:172)
+
+
+--------------------------------------------------------------------------------
+Parser: org.semanticweb.owlapi.rio.RioParserImpl : org.semanticweb.owlapi.formats.NTriplesDocumentFormatFactory@937ecd36
+    Stack trace:
+org.eclipse.rdf4j.rio.RDFParseException: Expected '<' or '_', found: P [line 1]        org.semanticweb.owlapi.rio.RioParserImpl.parse(RioParserImpl.java:138)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+        Oracle.main(Oracle.java:42)
+Expected '<' or '_', found: P [line 1]        org.eclipse.rdf4j.rio.helpers.RDFParserHelper.reportFatalError(RDFParserHelper.java:403)
+        org.eclipse.rdf4j.rio.helpers.AbstractRDFParser.reportFatalError(AbstractRDFParser.java:765)
+        org.eclipse.rdf4j.rio.ntriples.NTriplesParser.reportFatalError(NTriplesParser.java:653)
+        org.eclipse.rdf4j.rio.ntriples.NTriplesParser.parseSubject(NTriplesParser.java:350)
+        org.eclipse.rdf4j.rio.ntriples.NTriplesParser.parseTriple(NTriplesParser.java:282)
+        org.eclipse.rdf4j.rio.ntriples.NTriplesParser.parse(NTriplesParser.java:177)
+        org.semanticweb.owlapi.rio.RioParserImpl.parseDocumentSource(RioParserImpl.java:172)
+        org.semanticweb.owlapi.rio.RioParserImpl.parse(RioParserImpl.java:125)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+
+
+--------------------------------------------------------------------------------
+Parser: org.semanticweb.owlapi.rio.RioParserImpl : org.semanticweb.owlapi.formats.RDFJsonDocumentFormatFactory@cd748dc3
+    Stack trace:
+org.eclipse.rdf4j.rio.RDFParseException: Found IOException during parsing [line 1, column 7]        org.semanticweb.owlapi.rio.RioParserImpl.parse(RioParserImpl.java:138)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+        Oracle.main(Oracle.java:42)
+Found IOException during parsing [line 1, column 7]        org.eclipse.rdf4j.rio.helpers.RDFParserHelper.reportFatalError(RDFParserHelper.java:403)
+        org.eclipse.rdf4j.rio.helpers.AbstractRDFParser.reportFatalError(AbstractRDFParser.java:765)
+        org.eclipse.rdf4j.rio.rdfjson.RDFJSONParser.reportFatalError(RDFJSONParser.java:146)
+        org.eclipse.rdf4j.rio.rdfjson.RDFJSONParser.parse(RDFJSONParser.java:173)
+        org.semanticweb.owlapi.rio.RioParserImpl.parseDocumentSource(RioParserImpl.java:172)
+        org.semanticweb.owlapi.rio.RioParserImpl.parse(RioParserImpl.java:125)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+
+
+--------------------------------------------------------------------------------
+Parser: org.semanticweb.owlapi.rio.RioParserImpl : org.semanticweb.owlapi.formats.RDFJsonLDDocumentFormatFactory@dcacc47d
+    Stack trace:
+org.eclipse.rdf4j.rio.RDFParseException: Could not parse JSONLD        org.semanticweb.owlapi.rio.RioParserImpl.parse(RioParserImpl.java:138)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+        Oracle.main(Oracle.java:42)
+Could not parse JSONLD        org.eclipse.rdf4j.rio.jsonld.JSONLDParser.parse(JSONLDParser.java:110)
+        org.semanticweb.owlapi.rio.RioParserImpl.parseDocumentSource(RioParserImpl.java:172)
+        org.semanticweb.owlapi.rio.RioParserImpl.parse(RioParserImpl.java:125)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+        Oracle.main(Oracle.java:42)
+Unrecognized token 'Prefix': was expecting ('true', 'false' or 'null')
+ at [Source: (BufferedReader); line: 1, column: 7]        com.fasterxml.jackson.core.JsonParser._constructError(JsonParser.java:1804)
+        com.fasterxml.jackson.core.base.ParserMinimalBase._reportError(ParserMinimalBase.java:679)
+        com.fasterxml.jackson.core.json.ReaderBasedJsonParser._reportInvalidToken(ReaderBasedJsonParser.java:2839)
+        com.fasterxml.jackson.core.json.ReaderBasedJsonParser._handleOddValue(ReaderBasedJsonParser.java:1891)
+        com.fasterxml.jackson.core.json.ReaderBasedJsonParser.nextToken(ReaderBasedJsonParser.java:749)
+        com.github.jsonldjava.utils.JsonUtils.fromJsonParser(JsonUtils.java:191)
+        com.github.jsonldjava.utils.JsonUtils.fromReader(JsonUtils.java:173)
+        org.eclipse.rdf4j.rio.jsonld.JSONLDParser.parse(JSONLDParser.java:104)
+        org.semanticweb.owlapi.rio.RioParserImpl.parseDocumentSource(RioParserImpl.java:172)
+        org.semanticweb.owlapi.rio.RioParserImpl.parse(RioParserImpl.java:125)
+
+
+--------------------------------------------------------------------------------
+Parser: org.semanticweb.owlapi.rio.RioParserImpl : org.semanticweb.owlapi.formats.RioRDFXMLDocumentFormatFactory@69b9a3bc
+    Stack trace:
+org.eclipse.rdf4j.rio.RDFParseException: Content is not allowed in prolog. [line 1, column 1]        org.semanticweb.owlapi.rio.RioParserImpl.parse(RioParserImpl.java:138)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+        Oracle.main(Oracle.java:42)
+Content is not allowed in prolog. [line 1, column 1]        org.eclipse.rdf4j.rio.helpers.RDFParserHelper.reportFatalError(RDFParserHelper.java:442)
+        org.eclipse.rdf4j.rio.helpers.AbstractRDFParser.reportFatalError(AbstractRDFParser.java:795)
+        org.eclipse.rdf4j.rio.rdfxml.RDFXMLParser.reportFatalError(RDFXMLParser.java:1288)
+        org.eclipse.rdf4j.rio.rdfxml.RDFXMLParser.fatalError(RDFXMLParser.java:1427)
+        java.xml/com.sun.org.apache.xerces.internal.util.ErrorHandlerWrapper.fatalError(ErrorHandlerWrapper.java:181)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLErrorReporter.reportError(XMLErrorReporter.java:400)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLErrorReporter.reportError(XMLErrorReporter.java:327)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLScanner.reportFatalError(XMLScanner.java:1465)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLDocumentScannerImpl$PrologDriver.next(XMLDocumentScannerImpl.java:978)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLDocumentScannerImpl.next(XMLDocumentScannerImpl.java:605)
+Content is not allowed in prolog.        java.xml/com.sun.org.apache.xerces.internal.util.ErrorHandlerWrapper.createSAXParseException(ErrorHandlerWrapper.java:204)
+        java.xml/com.sun.org.apache.xerces.internal.util.ErrorHandlerWrapper.fatalError(ErrorHandlerWrapper.java:178)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLErrorReporter.reportError(XMLErrorReporter.java:400)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLErrorReporter.reportError(XMLErrorReporter.java:327)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLScanner.reportFatalError(XMLScanner.java:1465)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLDocumentScannerImpl$PrologDriver.next(XMLDocumentScannerImpl.java:978)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLDocumentScannerImpl.next(XMLDocumentScannerImpl.java:605)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLNSDocumentScannerImpl.next(XMLNSDocumentScannerImpl.java:114)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLDocumentFragmentScannerImpl.scanDocument(XMLDocumentFragmentScannerImpl.java:542)
+        java.xml/com.sun.org.apache.xerces.internal.parsers.XML11Configuration.parse(XML11Configuration.java:889)
+
+
+--------------------------------------------------------------------------------
+Parser: org.semanticweb.owlapi.rio.RioParserImpl : org.semanticweb.owlapi.formats.N3DocumentFormatFactory@9a5
+    Stack trace:
+org.eclipse.rdf4j.rio.RDFParseException: Expected ':', found '(' [line 1]        org.semanticweb.owlapi.rio.RioParserImpl.parse(RioParserImpl.java:138)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+        Oracle.main(Oracle.java:42)
+Expected ':', found '(' [line 1]        org.eclipse.rdf4j.rio.helpers.RDFParserHelper.reportFatalError(RDFParserHelper.java:403)
+        org.eclipse.rdf4j.rio.helpers.AbstractRDFParser.reportFatalError(AbstractRDFParser.java:765)
+        org.eclipse.rdf4j.rio.turtle.TurtleParser.reportFatalError(TurtleParser.java:1318)
+        org.eclipse.rdf4j.rio.turtle.TurtleParser.verifyCharacterOrFail(TurtleParser.java:1153)
+        org.eclipse.rdf4j.rio.turtle.TurtleParser.parseQNameOrBoolean(TurtleParser.java:1000)
+        org.eclipse.rdf4j.rio.turtle.TurtleParser.parseValue(TurtleParser.java:591)
+        org.eclipse.rdf4j.rio.turtle.TurtleParser.parseSubject(TurtleParser.java:429)
+        org.eclipse.rdf4j.rio.turtle.TurtleParser.parseTriples(TurtleParser.java:370)
+        org.eclipse.rdf4j.rio.turtle.TurtleParser.parseStatement(TurtleParser.java:239)
+        org.eclipse.rdf4j.rio.turtle.TurtleParser.parse(TurtleParser.java:201)
+
+
+--------------------------------------------------------------------------------
+Parser: org.semanticweb.owlapi.rio.RioParserImpl : org.semanticweb.owlapi.formats.TrixDocumentFormatFactory@27e82d
+    Stack trace:
+org.eclipse.rdf4j.rio.RDFParseException: Content is not allowed in prolog. [line 1, column 1]        org.semanticweb.owlapi.rio.RioParserImpl.parse(RioParserImpl.java:138)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+        Oracle.main(Oracle.java:42)
+Content is not allowed in prolog. [line 1, column 1]        org.eclipse.rdf4j.rio.helpers.RDFParserHelper.reportFatalError(RDFParserHelper.java:403)
+        org.eclipse.rdf4j.rio.helpers.AbstractRDFParser.reportFatalError(AbstractRDFParser.java:765)
+        org.eclipse.rdf4j.rio.trix.TriXParser.reportFatalError(TriXParser.java:280)
+        org.eclipse.rdf4j.rio.trix.TriXParser.fatalError(TriXParser.java:481)
+        java.xml/com.sun.org.apache.xerces.internal.util.ErrorHandlerWrapper.fatalError(ErrorHandlerWrapper.java:181)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLErrorReporter.reportError(XMLErrorReporter.java:400)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLErrorReporter.reportError(XMLErrorReporter.java:327)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLScanner.reportFatalError(XMLScanner.java:1465)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLDocumentScannerImpl$PrologDriver.next(XMLDocumentScannerImpl.java:978)
+        java.xml/com.sun.org.apache.xerces.internal.impl.XMLDocumentScannerImpl.next(XMLDocumentScannerImpl.java:605)
+
+
+--------------------------------------------------------------------------------
+Parser: org.semanticweb.owlapi.rdf.turtle.parser.TurtleOntologyParser@a4b2d8f
+    Stack trace:
+org.semanticweb.owlapi.rdf.turtle.parser.ParseException: Encountered unexpected token: "Prefix" <PN_LOCAL>
+    at line 1, column 1.
+
+Was expecting one of:
+
+    "("
+    "@base"
+    "@prefix"
+    "["
+    <EMPTY_BLANK_NODE>
+    <FULLIRI>
+    <NODEID>
+    <PNAME_LN>
+    <PNAME_NS>
+        org.semanticweb.owlapi.rdf.turtle.parser.TurtleOntologyParser.parse(TurtleOntologyParser.java:58)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+        Oracle.main(Oracle.java:42)
+Encountered unexpected token: "Prefix" <PN_LOCAL>
+    at line 1, column 1.
+
+Was expecting one of:
+
+    "("
+    "@base"
+    "@prefix"
+    "["
+    <EMPTY_BLANK_NODE>
+    <FULLIRI>
+    <NODEID>
+    <PNAME_LN>
+    <PNAME_NS>
+        org.semanticweb.owlapi.rdf.turtle.parser.TurtleParser.generateParseException(TurtleParser.java:1034)
+        org.semanticweb.owlapi.rdf.turtle.parser.TurtleParser.jj_consume_token(TurtleParser.java:902)
+        org.semanticweb.owlapi.rdf.turtle.parser.TurtleParser.parseDocument(TurtleParser.java:165)
+        org.semanticweb.owlapi.rdf.turtle.parser.TurtleOntologyParser.parse(TurtleOntologyParser.java:54)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+        Oracle.main(Oracle.java:42)
+
+
+--------------------------------------------------------------------------------
+Parser: org.semanticweb.owlapi.oboformat.OBOFormatOWLAPIParser@2ece4966
+    Stack trace:
+LINENO: 8 - Could not find tag separator ':' in line.
+LINE: )        org.semanticweb.owlapi.oboformat.OBOFormatOWLAPIParser.parse(OBOFormatOWLAPIParser.java:50)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+        Oracle.main(Oracle.java:42)
+LINENO: 8 - Could not find tag separator ':' in line.
+LINE: )        org.obolibrary.oboformat.parser.OBOFormatParser.error(OBOFormatParser.java:1337)
+        org.obolibrary.oboformat.parser.OBOFormatParser.getParseTag(OBOFormatParser.java:760)
+        org.obolibrary.oboformat.parser.OBOFormatParser.parseHeaderClause(OBOFormatParser.java:409)
+        org.obolibrary.oboformat.parser.OBOFormatParser.parseHeaderClauseNl(OBOFormatParser.java:402)
+        org.obolibrary.oboformat.parser.OBOFormatParser.parseHeaderFrame(OBOFormatParser.java:385)
+        org.obolibrary.oboformat.parser.OBOFormatParser.parseOBODoc(OBOFormatParser.java:266)
+        org.obolibrary.oboformat.parser.OBOFormatParser.parse(OBOFormatParser.java:235)
+        org.semanticweb.owlapi.oboformat.OBOFormatOWLAPIParser.parse(OBOFormatOWLAPIParser.java:44)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+
+
+--------------------------------------------------------------------------------
+Parser: org.semanticweb.owlapi.dlsyntax.parser.DLSyntaxOWLParser@4e28bdd1
+    Stack trace:
+Encountered unexpected token: "Prefix" <ID>
+    at line 1, column 1.
+
+Was expecting one of:
+
+    ":"
+    "\n"
+        org.semanticweb.owlapi.dlsyntax.parser.DLSyntaxOWLParser.parse(DLSyntaxOWLParser.java:52)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+        Oracle.main(Oracle.java:42)
+Encountered unexpected token: "Prefix" <ID>
+    at line 1, column 1.
+
+Was expecting one of:
+
+    ":"
+    "\n"
+        org.semanticweb.owlapi.dlsyntax.parser.DLSyntaxParser.generateParseException(DLSyntaxParser.java:1572)
+        org.semanticweb.owlapi.dlsyntax.parser.DLSyntaxParser.jj_consume_token(DLSyntaxParser.java:1443)
+        org.semanticweb.owlapi.dlsyntax.parser.DLSyntaxParser.parseAxiom(DLSyntaxParser.java:141)
+        org.semanticweb.owlapi.dlsyntax.parser.DLSyntaxParser.parseAxioms(DLSyntaxParser.java:114)
+        org.semanticweb.owlapi.dlsyntax.parser.DLSyntaxOWLParser.parse(DLSyntaxOWLParser.java:48)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+
+
+--------------------------------------------------------------------------------
+Parser: org.semanticweb.owlapi.krss2.parser.KRSS2OWLParser@4f071df8
+    Stack trace:
+org.semanticweb.owlapi.krss2.parser.ParseException: Encountered unexpected token: "Prefix" <NAME>
+    at line 1, column 1.
+
+Was expecting:
+
+    <EOF>
+        org.semanticweb.owlapi.krss2.parser.KRSS2OWLParser.parse(KRSS2OWLParser.java:248)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+        Oracle.main(Oracle.java:42)
+Encountered unexpected token: "Prefix" <NAME>
+    at line 1, column 1.
+
+Was expecting:
+
+    <EOF>
+        org.semanticweb.owlapi.krss2.parser.KRSS2Parser.generateParseException(KRSS2Parser.java:2103)
+        org.semanticweb.owlapi.krss2.parser.KRSS2Parser.jj_consume_token(KRSS2Parser.java:1968)
+        org.semanticweb.owlapi.krss2.parser.KRSS2Parser.parse(KRSS2Parser.java:124)
+        org.semanticweb.owlapi.krss2.parser.KRSS2OWLParser.parse(KRSS2OWLParser.java:245)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+        Oracle.main(Oracle.java:42)
+
+
+--------------------------------------------------------------------------------
+Parser: org.semanticweb.owlapi.rio.RioParserImpl : org.semanticweb.owlapi.formats.BinaryRDFDocumentFormatFactory@3bf24493
+    Stack trace:
+org.eclipse.rdf4j.rio.RDFParseException: File does not contain a binary RDF document        org.semanticweb.owlapi.rio.RioParserImpl.parse(RioParserImpl.java:138)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+        Oracle.main(Oracle.java:42)
+File does not contain a binary RDF document        org.eclipse.rdf4j.rio.helpers.RDFParserHelper.reportFatalError(RDFParserHelper.java:403)
+        org.eclipse.rdf4j.rio.helpers.RDFParserHelper.reportFatalError(RDFParserHelper.java:388)
+        org.eclipse.rdf4j.rio.helpers.AbstractRDFParser.reportFatalError(AbstractRDFParser.java:755)
+        org.eclipse.rdf4j.rio.binary.BinaryRDFParser.parse(BinaryRDFParser.java:79)
+        org.semanticweb.owlapi.rio.RioParserImpl.parseDocumentSource(RioParserImpl.java:182)
+        org.semanticweb.owlapi.rio.RioParserImpl.parse(RioParserImpl.java:125)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+
+
+--------------------------------------------------------------------------------
+Parser: org.semanticweb.owlapi.rio.RioParserImpl : org.semanticweb.owlapi.formats.RDFaDocumentFormatFactory@264e8d
+    Stack trace:
+org.eclipse.rdf4j.rio.UnsupportedRDFormatException: Did not recognise RDF format object RDFa (mimeTypes=application/xhtml+xml, application/html, text/html; ext=xhtml, html)        org.semanticweb.owlapi.rio.RioParserImpl.parse(RioParserImpl.java:138)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+        Oracle.main(Oracle.java:42)
+Did not recognise RDF format object RDFa (mimeTypes=application/xhtml+xml, application/html, text/html; ext=xhtml, html)        org.eclipse.rdf4j.rio.Rio.lambda$unsupportedFormat$0(Rio.java:725)
+        java.base/java.util.Optional.orElseThrow(Optional.java:403)
+        org.eclipse.rdf4j.rio.Rio.createParser(Rio.java:102)
+        org.semanticweb.owlapi.rio.RioParserImpl.parseDocumentSource(RioParserImpl.java:164)
+        org.semanticweb.owlapi.rio.RioParserImpl.parse(RioParserImpl.java:125)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:194)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+        uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+
+
+
+	at uk.ac.manchester.cs.owl.owlapi.OWLOntologyFactoryImpl.loadOWLOntology(OWLOntologyFactoryImpl.java:235)
+	at uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.load(OWLOntologyManagerImpl.java:1079)
+	at uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntology(OWLOntologyManagerImpl.java:1040)
+	at uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:990)
+	at uk.ac.manchester.cs.owl.owlapi.OWLOntologyManagerImpl.loadOntologyFromOntologyDocument(OWLOntologyManagerImpl.java:1003)
+	at Oracle.main(Oracle.java:42)
