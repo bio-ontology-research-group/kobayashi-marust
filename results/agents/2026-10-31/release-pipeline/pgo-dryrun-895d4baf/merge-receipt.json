@@ -1,0 +1,13 @@
+{
+  "status": "complete",
+  "elapsed_s": 0.7084625149145722,
+  "tool": "/home/leechuck/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/bin/llvm-profdata",
+  "tool_sha256": "6e94c4f43d15daa136e0ddf9f0a1a960d296c3d1a79958b97859db0b713e6076",
+  "raw_profile_count": 35,
+  "merged_path": "/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/release-pipeline/pgo-895d4baf/merged.profdata",
+  "merged_sha256": "4f28f59ca1ff516656f008faf9594c4e3b59791ce29ac8ddfde58839d8166b0a",
+  "merged_bytes": 2045672,
+  "profile_summary_sha256": "5e3e16bbdf714856e5d6f7ae3b4908fd8009270cd4d8c75aabf606171ac7a73f",
+  "profile_functions_sha256": "afa961a1b6b3b176ea53ecbfcb79d4269a7a4c43d8c19e6c2a50da1bc166af20",
+  "source_manifest_sha256": "31f4e2f894f83a0cce6f3bf25198192803a162f07800e9dc118dd184ee30b091"
+}
