@@ -811,7 +811,8 @@ model of the input satisfies the result, because every dropped body atom
 was true; a model of the result becomes a model of the input by
 interpreting each eliminated definer as the whole domain. No other name
 changes its interpretation, so the CB engine's answers on every name that
-is not eliminated, the reserved ones included, are the same. Clause sets with an inverse role (an `__inv__` role atom or an `inverse`
+is not eliminated, the reserved ones included, are the same. (Proved in
+Lean on 2026-10-31; see "Lean coverage of the nominal CB input" below.) Clause sets with an inverse role (an `__inv__` role atom or an `inverse`
 RBox row) are left unchanged by this pass: on
 `tests/fixtures/top_nominal_data/probe_v7.ofn` (`⊤ ⊑ ≥2 u`, `⊤ ⊑ ∃r.{a}`,
 `{a} ⊑ ≤1 r⁻`) dropping the `⊤` filler from the inverse at-most clause took
@@ -1004,6 +1005,82 @@ tables are in `results/agents/2026-10-30/data-values-3/timings.md`):
 
 All answers are identical across the binaries, except r3602 where the
 merge-hypotheses fix of section 10 made the answer complete.
+
+### Lean coverage of the nominal CB input (2026-10-31)
+
+Agent `lean-universal-definer`, branch `fix/v155-lean-universal-definer`;
+`results/agents/2026-10-31/lean-universal-definer/`. This discharges the two
+Lean items left open above: the universal-definer elimination had no proof,
+and the release certificate of the CB arm was exact but not fail-closed.
+
+**Theorem.** `lean/ContextCalculus/UniversalDefinerElimination.lean` states
+`eliminate_universal_definers` over the clause language of
+`RulesInertSortRelease.lean` (first-order clauses over concepts, roles,
+equality, constants and unary Skolem functions, with arbitrary
+interpretations, not only Herbrand ones). `eliminate U S` drops every clause
+whose head holds `Q(t)` with `Q ∈ U`, then every body atom `Q(t)` with
+`Q ∈ U`, in the order of the Rust pass. `elimConditions U reserved S`
+requires each `Q ∈ U` to be outside `reserved` and to have a unit fact
+`→ Q(x)` in `S`. Under that check, `models_iff` proves that the models of
+`S` are exactly the models of `eliminate U S` that interpret every `Q ∈ U`
+as the whole domain; `eliminate_equisatisfiable` proves equisatisfiability
+with every side theory that reads only reserved concepts. The composed pass
+of the CB arm, `nominalCBInput D P U S = eliminate U (release D P S)`, is
+covered by `pipeline_equisatisfiable`, and the certificate
+`WireNominalCBInput` by `check_sound`, `check_consistent`, `check_unsat`
+and `check_entails`: an accepted certificate's CB input has the
+consistency verdict, the unsatisfiable reserved classes and the
+subsumptions between reserved classes of the frontend's clause set. All
+theorems use only `propext`, `Quot.sound` and, for the answer corollaries,
+`Classical.choice`; none uses `sorryAx`.
+
+The cost guards of the pass (clause sets with inverse roles, the filler of
+an at-most asserted on an individual, a definer whose elimination would
+leave an unconditional role or Skolem head) only shrink `U`, so the theorem
+covers them with no extra hypothesis. No corner of the transformation is
+outside the theorem: a unit fact `→ Q(x)` makes `Q` the whole domain in
+every model, whatever the other clauses say.
+
+**Gate change.** The pass selected candidates with `cb_to_ht::is_internal`,
+which also admits builtin vocabulary written as a CURIE (`owl:Thing`),
+while `reserved_concepts_for_cb`, the reserved set of the certificate,
+reserves every concept outside the frontend's definer prefixes (`Q_`,
+`aux_`, `def_`). A unit fact `→ owl:Thing(x)` would have been eliminated
+(exact, since no answer is read on `owl:Thing`) and the certificate then
+rejected. The pass now also requires `inert_sorts::is_cb_definer`, the
+predicate `reserved_concepts_for_cb` uses, so every eliminated definer is
+unreserved by construction. This only shrinks `U`.
+
+**CB reservation set.** `release_equisatisfiable` needs only its executable
+check (`conditions`) and a side theory that reads reserved concepts. The CB
+engine reads the clauses alone (no side theory), and the orchestrator reads
+its answers on source names, queries and asserted markers, all in
+`reserved_concepts_for_cb`; the subsumption and unsatisfiability queries
+are side theories over two reserved names (`subCounterexample`,
+`classWitness`). So the CB reservation set satisfies the theorem's
+hypotheses; no variant was needed.
+
+**Fail-closed certificate.** `nominal_cb_clause_input` now writes the
+`WireNominalCBInput` document of the whole copy (release, then
+elimination) when `KM_NOMINAL_CB_INPUT_CERT` names a file or directory,
+or under `KM_LEAN_CHECKERS` when the checker directory holds
+`nominal-cb-input-check`. The checker runs through
+`lean_checkers::run`, so under `KM_LEAN_CHECKERS` a rejection is logged
+and `km classify` publishes nothing (exit 6), and `cannot_check` lets the
+arm answer as without the checker. With `KM_NOMINAL_CB_INPUT_LEAN_CHECKER`
+set by hand, anything but acceptance fails the arm. A rejected certificate
+of either kind (this one or the release-only `KM_RULES_INERT_CERT`
+document) no longer falls back to the frontend's clauses: the CB arm
+returns an error and gives no answer. A copy that cannot be made for other
+reasons (I/O, JSON) still keeps the frontend's file, which is exact.
+
+**Lean obligation.** Discharged for the transformation: the CB engine's
+answers on the copy equal its answers on the frontend's clause set, for
+every model, as far as the clause language above describes the clause
+file (the same encoding assumption as `WireInertSortRelease`: variables,
+individuals and auxiliary constants, unary Skolem functions). That the CB
+engine's answers on its input are exact remains the existing CB
+obligation (docs/CERTIFICATION-ROADMAP.md).
 
 ### Conditional-full schedule for data values on the bridge (2026-10-31)
 

@@ -111,6 +111,17 @@ HT-first probe of the race. The Konclude-port bridge (`ht_bridge`,
 `ht_full`, `certified_nominals`' bridge attempt) has no Lean model and emits
 no certificate (`docs/history/LEAN-BOUNDARY-AUDIT-2026-10-27.md` §3).
 
+**Nominal CB input** (the orchestrator's copy of the clause file for the
+nominal CB arms, `orchestrate::nominal_cb_clause_input`; added 2026-10-31).
+
+| executable | variable | document | theorem: acceptance proves | set |
+|---|---|---|---|---|
+| `nominal-cb-input-check` | `KM_NOMINAL_CB_INPUT_LEAN_CHECKER` with `KM_NOMINAL_CB_INPUT_CERT`, or found in the `KM_LEAN_CHECKERS` directory | `WireNominalCBInput` | `WireNominalCBInput.check_consistent`, `check_unsat`, `check_entails` (`UniversalDefinerElimination.lean`): the CB input (inert-sort release, then universal-definer elimination) has the frontend clause set's consistency, unsatisfiable reserved classes and subsumptions between reserved classes | publication |
+
+A rejection under `KM_LEAN_CHECKERS` publishes nothing; set by hand, it
+fails the CB arm. Either way the arm does not fall back to the frontend's
+clauses (docs/NOMINALS-CB.md, "Lean coverage of the nominal CB input").
+
 ### 1.2 Checkers no production code runs
 
 These are built by the gates. Some are run by Rust tests; none is reached
