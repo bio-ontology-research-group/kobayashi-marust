@@ -21,3 +21,4 @@ pub mod process; // W1/W2: the runtime completion-graph data model
 pub mod realizer; // Optimized realizer caller seams
 pub mod saturation; // W4: approximate saturation
 pub mod task; // W6: Task/ scheduler + satisfiable-task subtree // W6: calculation controllers / task handles
+pub mod value_singletons; // static proof that no value singleton reaches a label

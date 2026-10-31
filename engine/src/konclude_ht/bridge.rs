@@ -15704,7 +15704,53 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // with a consumed singleton concept therefore run without the cache;
     // skipping it removes an optimisation only (the nodes are expanded by the
     // ordinary rules).
-    if std::env::var_os("KM_HT_NO_SAT_EXP_CACHE").is_none() && bridged.singleton_concepts.is_empty() {
+    // The gate needs a node that can carry a singleton. When the least
+    // fixpoint of `value_singletons::label_reach` proves that no probe can put
+    // any consumed singleton into a label positively, the merge rule never
+    // fires, every probe runs as it runs without the singleton, and the cache
+    // keeps its singleton-free locality argument (docs/DATATYPES.md, "Inert
+    // value singletons and the satisfiable expander cache").
+    let singletons_inert = !bridged.singleton_concepts.is_empty()
+        && std::env::var_os("KM_HT_NO_SINGLETON_INERT").is_none()
+        && {
+            let singleton_set: HashSet<ConceptId> =
+                bridged.singleton_concepts.iter().copied().collect();
+            let indices: Vec<usize> = bridged
+                .named
+                .iter()
+                .enumerate()
+                .filter_map(|(i, id)| singleton_set.contains(id).then_some(i))
+                .collect();
+            let started = std::time::Instant::now();
+            let reach = super::value_singletons::value_singletons_inert(tin, &indices);
+            if std::env::var_os("KM_HT_STATS").is_some() || std::env::var_os("KM_TIMING").is_some() {
+                eprintln!(
+                    "bridge [singleton-inert] singletons={} inert={} in {:.3}s",
+                    bridged.singleton_concepts.len(),
+                    reach.is_some(),
+                    started.elapsed().as_secs_f64()
+                );
+            }
+            match reach {
+                Some(reach) => {
+                    if super::value_singletons::audit_enabled() {
+                        let excluded = bridged
+                            .named
+                            .iter()
+                            .enumerate()
+                            .filter(|&(i, _)| !reach.pos[i])
+                            .map(|(_, &id)| ctx.ontology_arenas().concept(id).get_concept_tag())
+                            .collect();
+                        super::value_singletons::install_audit(excluded);
+                    }
+                    true
+                }
+                None => false,
+            }
+        };
+    if std::env::var_os("KM_HT_NO_SAT_EXP_CACHE").is_none()
+        && (bridged.singleton_concepts.is_empty() || singletons_inert)
+    {
         install_bridge_satisfiable_expander_cache(&mut ctx);
     }
     report_bridge_memory("probe-caches-installed");
