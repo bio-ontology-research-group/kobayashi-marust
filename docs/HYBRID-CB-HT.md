@@ -880,3 +880,20 @@ HermiT differentials are the only cross-check. Lean obligation created:
 none discharged; a bridge model would have to show that the folded
 dependency's branch set is the union of the hops' and that the live end of
 the chain is the unique node carrying the merged individual.
+
+Evidence (`results/agents/2026-10-30/bridge-merge-edges/`, baseline the
+bridge-nominal-merge `km.after`, `KM_THREADS=1`):
+
+- The five seeds: answered as HermiT on the forced bridge and the automatic
+  route, 0.01 s each (the automatic route took 75 s to over 120 s before).
+  The six seeds km.after declined after answering them wrongly (r1536,
+  r1866, g545, g789, g1344, g1551) are answered correctly on both routes.
+- 2,000 generated seeds: forced bridge 1,769 to 1,993 ok, declines 231 to 7;
+  automatic route 1,956 to 2,000 ok, timeouts 44 to 0. 4,000 R3 random
+  seeds: bridge 3,134 to 3,333 ok, automatic 3,558 to 3,738 ok. R3 motif
+  sets and the 2026-10-29 bridge sets unchanged per seed. 0 wrong answers
+  on every set; no answer of km.after lost.
+- None of the 777 remaining bridge declines of these sets reaches a stop in
+  `merge_individual_node_into` (traced); 773 are ABox-conversion declines.
+- 112 nominal ORE inputs, paired at 300 s: 108 answered by both with
+  identical output and route, mean time ratio 1.034, median 1.006.
