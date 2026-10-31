@@ -30,6 +30,11 @@ pub(crate) enum REnd {
     Clash { node: usize, concept: C },
     Bottom { clause: usize, asg: Vec<usize> },
     Split { clause: usize, asg: Vec<usize>, children: Vec<RProof> },
+    /// A backjump: the search refuted one alternative of the choice at
+    /// decision level `level` without using it, and skipped the others.
+    /// `child` is that alternative's proof; `RProof::resolve` replaces the
+    /// skip by `child` without the steps that depend on `level`.
+    Skip { level: u32, child: Box<RProof> },
     /// The search failed in a way the recorder did not capture.
     Invalid,
 }
@@ -37,22 +42,105 @@ pub(crate) enum REnd {
 #[derive(Clone, Debug)]
 pub(crate) struct RProof {
     pub steps: Vec<RStep>,
+    /// Dependency set of each step (the decision levels of the facts it used,
+    /// and of the nodes it touches); parallel to `steps`.
+    pub deps: Vec<DepSet>,
     pub end: REnd,
 }
 
 impl RProof {
     fn valid(&self) -> bool {
-        match &self.end {
-            REnd::Invalid => false,
-            REnd::Split { children, .. } => children.iter().all(RProof::valid),
-            _ => true,
-        }
+        self.deps.len() == self.steps.len()
+            && match &self.end {
+                REnd::Invalid => false,
+                REnd::Split { children, .. } => children.iter().all(RProof::valid),
+                REnd::Skip { child, .. } => child.valid(),
+                _ => true,
+            }
     }
     fn size(&self) -> usize {
         self.steps.len() + 1 + match &self.end {
             REnd::Split { children, .. } => children.iter().map(RProof::size).sum(),
+            REnd::Skip { child, .. } => child.size(),
             _ => 0,
         }
+    }
+
+    /// The proof without backjumps, as the Lean checker reads it. `roots` is
+    /// the number of initial nodes (the test root and one per nominal).
+    ///
+    /// A skip at level `L` is replaced by its child with every step whose
+    /// dependency set meets the removed levels dropped. A fact a kept step
+    /// uses has a dependency set contained in the step's, so it was produced
+    /// by a kept step, by the initial state or by the head of an enclosing
+    /// split that is kept; every fact that depends on `L` descends from the
+    /// skipped alternative, which the parent state lacks. Dropping a witness
+    /// step removes its node, so the remaining nodes are renumbered in
+    /// creation order (the checker numbers witnesses consecutively; merges
+    /// keep the lower number, and renumbering preserves the order). A kept
+    /// step that names a dropped node, or an end that does, contradicts the
+    /// dependency invariant and makes the proof invalid (`None`), so the
+    /// answer has no certificate and the worker fails closed.
+    pub(crate) fn resolve(self, roots: usize) -> Option<RProof> {
+        let mut map: Vec<Option<usize>> = (0..roots).map(Some).collect();
+        self.resolve_in(&DepSet::new(), &mut map, roots)
+    }
+
+    fn resolve_in(self, removed: &DepSet, map: &mut Vec<Option<usize>>, mut next: usize) -> Option<RProof> {
+        let meets = |d: &DepSet| d.v.iter().any(|l| removed.contains(*l));
+        let node = |map: &Vec<Option<usize>>, n: usize| map.get(n).copied().flatten();
+        let asg = |map: &Vec<Option<usize>>, a: &[usize]| -> Option<Vec<usize>> {
+            a.iter().map(|&n| node(map, n)).collect()
+        };
+        let mut steps = Vec::with_capacity(self.steps.len());
+        let mut deps = Vec::with_capacity(self.steps.len());
+        for (step, dep) in self.steps.into_iter().zip(self.deps) {
+            if meets(&dep) {
+                if matches!(step, RStep::Witness { .. }) {
+                    map.push(None);
+                }
+                continue;
+            }
+            let step = match step {
+                RStep::Horn { clause, asg: a } => RStep::Horn { clause, asg: asg(map, &a)? },
+                RStep::Witness { node: s, role, fil } => {
+                    let s = node(map, s)?;
+                    map.push(Some(next));
+                    next += 1;
+                    RStep::Witness { node: s, role, fil }
+                }
+                RStep::Nominal { concept, left, right } => RStep::Nominal {
+                    concept,
+                    left: node(map, left)?,
+                    right: node(map, right)?,
+                },
+            };
+            steps.push(step);
+            deps.push(dep);
+        }
+        let end = match self.end {
+            REnd::Clash { node: n, concept } => REnd::Clash { node: node(map, n)?, concept },
+            REnd::Bottom { clause, asg: a } => REnd::Bottom { clause, asg: asg(map, &a)? },
+            REnd::Split { clause, asg: a, children } => {
+                let a = asg(map, &a)?;
+                let mut out = Vec::with_capacity(children.len());
+                for child in children {
+                    let mut m = map.clone();
+                    out.push(child.resolve_in(removed, &mut m, next)?);
+                }
+                REnd::Split { clause, asg: a, children: out }
+            }
+            REnd::Skip { level, child } => {
+                let mut removed = removed.clone();
+                removed.insert(level);
+                let rest = child.resolve_in(&removed, map, next)?;
+                steps.extend(rest.steps);
+                deps.extend(rest.deps);
+                rest.end
+            }
+            REnd::Invalid => return None,
+        };
+        Some(RProof { steps, deps, end })
     }
 }
 
@@ -86,6 +174,7 @@ pub(crate) struct FModelOut {
 #[derive(Default)]
 pub(crate) struct CertSink {
     pub steps: Vec<RStep>,
+    pub step_deps: Vec<DepSet>,
     pub finish: Option<REnd>,
     pub last: Option<RProof>,
     pub last_disjunction: Option<usize>,
@@ -107,10 +196,21 @@ impl Tableau {
         self.cert.as_ref().map_or(0, |c| c.lock().unwrap().steps.len())
     }
 
-    pub(super) fn rec_step(&self, step: RStep) {
+    pub(super) fn rec_step_d(&self, step: RStep, dep: &DepSet) {
         if let Some(c) = &self.cert {
-            c.lock().unwrap().steps.push(step);
+            let mut c = c.lock().unwrap();
+            c.steps.push(step);
+            c.step_deps.push(dep.clone());
         }
+    }
+
+    /// Steps since `mark` with their dependency sets.
+    fn take_steps(c: &mut CertSink, mark: usize) -> (Vec<RStep>, Vec<DepSet>) {
+        let len = c.steps.len();
+        let steps = c.steps.split_off(mark.min(len));
+        let len = c.step_deps.len();
+        let deps = c.step_deps.split_off(mark.min(len));
+        (steps, deps)
     }
 
     pub(super) fn rec_asg(&self, g: &Graph, cl: &Clause, subst: &Subst) -> Vec<usize> {
@@ -118,10 +218,10 @@ impl Tableau {
         (0..max).map(|v| subst.get(v as Var).map_or(0, |n| g.find(n))).collect()
     }
 
-    pub(super) fn rec_horn(&self, g: &Graph, ci: usize, cl: &Clause, subst: &Subst) {
+    pub(super) fn rec_horn(&self, g: &Graph, ci: usize, cl: &Clause, subst: &Subst, dep: &DepSet) {
         if self.rec_on() {
             let asg = self.rec_asg(g, cl, subst);
-            self.rec_step(RStep::Horn { clause: ci, asg });
+            self.rec_step_d(RStep::Horn { clause: ci, asg }, dep);
         }
     }
 
@@ -132,18 +232,11 @@ impl Tableau {
         }
     }
 
-    pub(super) fn rec_clash(&self, g: &Graph) {
+    /// Close the branch on the clash `concept, ¬concept` at `node` (the one
+    /// whose dependency set the search returns, `Graph::clash_info`).
+    pub(super) fn rec_clash(&self, node: usize, concept: C) {
         if let Some(c) = &self.cert {
-            let found = (0..g.n()).filter(|&n| g.alive(n)).find_map(|n| {
-                g.concepts[n]
-                    .iter()
-                    .find(|l| !l.neg && g.concepts[n].contains(&l.complement()))
-                    .map(|l| (n, l.c))
-            });
-            c.lock().unwrap().finish = Some(match found {
-                Some((node, concept)) => REnd::Clash { node, concept },
-                None => REnd::Invalid,
-            });
+            c.lock().unwrap().finish = Some(REnd::Clash { node, concept });
         }
     }
 
@@ -151,10 +244,9 @@ impl Tableau {
     pub(super) fn rec_close(&self, mark: usize) {
         if let Some(c) = &self.cert {
             let mut c = c.lock().unwrap();
-            let len = c.steps.len();
-            let steps = c.steps.split_off(mark.min(len));
+            let (steps, deps) = Self::take_steps(&mut c, mark);
             let end = c.finish.take().unwrap_or(REnd::Invalid);
-            c.last = Some(RProof { steps, end });
+            c.last = Some(RProof { steps, deps, end });
         }
     }
 
@@ -162,15 +254,24 @@ impl Tableau {
         self.cert
             .as_ref()
             .and_then(|c| c.lock().unwrap().last.take())
-            .unwrap_or(RProof { steps: Vec::new(), end: REnd::Invalid })
+            .unwrap_or(RProof { steps: Vec::new(), deps: Vec::new(), end: REnd::Invalid })
     }
 
     pub(super) fn rec_split(&self, mark: usize, clause: usize, asg: Vec<usize>, children: Vec<RProof>) {
         if let Some(c) = &self.cert {
             let mut c = c.lock().unwrap();
-            let len = c.steps.len();
-            let steps = c.steps.split_off(mark.min(len));
-            c.last = Some(RProof { steps, end: REnd::Split { clause, asg, children } });
+            let (steps, deps) = Self::take_steps(&mut c, mark);
+            c.last = Some(RProof { steps, deps, end: REnd::Split { clause, asg, children } });
+        }
+    }
+
+    /// A backjump out of the choice at `level`: the steps since `mark`
+    /// followed by the refuted alternative's proof, which did not use it.
+    pub(super) fn rec_skip(&self, mark: usize, level: u32, child: RProof) {
+        if let Some(c) = &self.cert {
+            let mut c = c.lock().unwrap();
+            let (steps, deps) = Self::take_steps(&mut c, mark);
+            c.last = Some(RProof { steps, deps, end: REnd::Skip { level, child: Box::new(child) } });
         }
     }
 
@@ -179,11 +280,11 @@ impl Tableau {
     pub(super) fn rec_prepend(&self, mark: usize) {
         if let Some(c) = &self.cert {
             let mut c = c.lock().unwrap();
-            let len = c.steps.len();
-            let mut steps = c.steps.split_off(mark.min(len));
-            let last = c.last.take().unwrap_or(RProof { steps: Vec::new(), end: REnd::Invalid });
+            let (mut steps, mut deps) = Self::take_steps(&mut c, mark);
+            let last = c.last.take().unwrap_or(RProof { steps: Vec::new(), deps: Vec::new(), end: REnd::Invalid });
             steps.extend(last.steps);
-            c.last = Some(RProof { steps, end: last.end });
+            deps.extend(last.deps);
+            c.last = Some(RProof { steps, deps, end: last.end });
         }
     }
 
@@ -191,6 +292,7 @@ impl Tableau {
         if let Some(c) = &self.cert {
             let mut c = c.lock().unwrap();
             c.steps.clear();
+            c.step_deps.clear();
             c.finish = None;
             c.last = None;
         }
@@ -212,10 +314,10 @@ impl Tableau {
         match &found {
             None => {
                 let proof = self.rec_take_last();
-                if proof.valid() {
-                    evidence = Some(Err((claim, proof)));
-                } else {
-                    self.cert_uncertified(format!("{claim:?}: refutation not recorded"));
+                let resolved = if proof.valid() { proof.resolve(1 + self.nominals.len()) } else { None };
+                match resolved {
+                    Some(proof) => evidence = Some(Err((claim, proof))),
+                    None => self.cert_uncertified(format!("{claim:?}: refutation not recorded")),
                 }
             }
             Some(g) => match self.finite_model(g) {
@@ -236,6 +338,7 @@ impl Tableau {
             c.search_s += searched;
             c.model_s += started.elapsed().as_secs_f64() - searched;
             c.steps.clear();
+            c.step_deps.clear();
             c.last = None;
             match evidence {
                 Some(Err(r)) => c.refutations.push(r),
@@ -598,7 +701,7 @@ fn wproof(p: &RProof) -> WProof {
             assignment: asg.clone(),
             children: children.iter().map(wproof).collect(),
         },
-        REnd::Invalid => WProof::Clash { steps, node: usize::MAX, concept: C::MAX },
+        REnd::Skip { .. } | REnd::Invalid => WProof::Clash { steps, node: usize::MAX, concept: C::MAX },
     }
 }
 
