@@ -64,7 +64,7 @@ Result: 1,462 ok, **0 WRONG**, 32 km-error (no answer within 120 s), 6
 without gold; 39,096 certificates accepted by Lean, 0 rejected, 291 checker
 timeouts. Of the 32 km-error seeds, 19 also fail on subset-blocking-gap's
 base binary `km-head` (18 km-error, 1 no gold); of the 13 that `km-head`
-answers, 9 (195, 265, 392, 645, 1011, 1088, 1112, 1182 among them) also
+answers, 8 (195, 265, 392, 645, 1011, 1088, 1112, 1182) also
 fail on `km-fix5`, the slowdown recorded in
 `../subset-blocking-gap/alci-fix-slow-seeds.txt`; 448, 1249, 1256 and 1375
 were not run with `km-fix5` there (448 times out at 170 s with both `km-fix`
