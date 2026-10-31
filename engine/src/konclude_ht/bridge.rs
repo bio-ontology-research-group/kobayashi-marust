@@ -5279,8 +5279,24 @@ fn native_conditional_full_abox_profile(
     allow_non_number: bool,
 ) -> bool {
     native_nominals
-        && (tin.number || allow_non_number)
+        && (tin.number || allow_non_number || carries_data_values(tin))
         && tin.nominal_abox.individuals.len() < CONDITIONAL_FULL_INDIVIDUAL_LIMIT
+}
+
+/// Whether the input has a literal value marker `__dt__val__v`. Until the
+/// exact data values of v1.5.5 every carried value came with its singleton
+/// clause `V(y0) ∧ V(y1) → y0 = y1`, whose equality head sets `tin.number`;
+/// the frontend now leaves that clause out when nothing forces two data
+/// successors apart (`datatypes::datatype_relation_clauses_with`), which
+/// moved such inputs from the conditional-full schedule to the legacy
+/// nominal one. On ore_ont_10781 (590 individuals, 1,319 data assertions)
+/// that made the bridge's prepare phase 0.7 s to 34 s and pushed the
+/// automatic route past its 12 s data-assertion bridge budget. Counting a
+/// value marker as a number feature keeps the schedule these inputs had.
+/// The profile only selects the completion's scheduling configuration; the
+/// bridge publishes a complete answer or defers under either schedule.
+fn carries_data_values(tin: &TInput) -> bool {
+    tin.concepts.iter().any(|concept| concept.starts_with("__dt__val__"))
 }
 
 /// Nominal-free positive ABoxes that can be consistency-checked component by

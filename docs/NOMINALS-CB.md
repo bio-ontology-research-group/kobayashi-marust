@@ -919,6 +919,123 @@ distinct reasons; `seeds-base-timeouts-bridge-defer.tsv`). Closing them
 needs either a datatype-complete bridge admission or ground splitting in the
 CB engine; both are calculus or encoding changes outside this pass.
 
+### Two cost regressions of the nominal CB input (2026-10-31)
+
+Agent `data-values-3`, branch `fix/v155-data-values-3-perf`;
+`results/agents/2026-10-30/data-values-3/`. Both passes above are exact
+rewrites; two of their applications cost more than they save. Each remedy
+below only shrinks the set of definers a pass touches, so the clause set
+the CB engine reads is either the frontend's own or one the arguments
+above already cover: no calculus, encoding or route decision changes, and
+the Lean obligation stays the one stated for the two passes.
+
+**Released disjunctive facts on equated values (hub test).** The test
+`data_value_next_to_universal_role_hub_stays_satisfiable`
+(`tests/universal_role_and_top_data_range.rs`; the hub of bug 1 plus
+`W2 ≡ F ⊓ (u value 1)` and `W3 ≡ S6 ⊓ (u value 1)`) took 0.5 to 0.6 s per
+nominal route at e62a4bce and 6 to 15 s from the nominal-coverage merge
+(f41b1af4) on. Bisecting over the first-parent merges and timing with
+`KM_CB_KEEP_INERT_SORTS=1` locates it in the release (50bf7ba9): the CB
+engine takes 0.3 s on the frontend's clause set and 6 s on the released
+copy, which differs from it in two clauses only. The complement definer
+`Q_4` of `¬(u value 1)` sits in the excluded middle `→ Q_4(x) ∨ Q_6(x) ∨ D(x)`
+and is inert (it is read only through `Q_4(x) ∧ u(x, y) → Q_5(y)`, where `u`
+has an object domain), so the pass releases it to `→ Q_4(x) ∨ Q_6(x)`. That
+fact is true at every data element through `D` in the sorted set but a live
+disjunction at every data element in the released one, and the literal's
+identity clause `V(y0) ∧ V(y1) → y0 = y1` (`V` the value marker of
+`"1"^^xsd:integer`) equates the data successors of every `u`-existential.
+The engine's equality rules then copy the disjunction, and what follows from
+it, between the data terms: `KM_STATS` goes from 16,127 to 21,628 worked-off
+successor clauses, 110,690 to 174,586 Pred checks and, under `KM_PROF_TIME`,
+148 ms to 4,646 ms in `add_clause` (3,866 ms of it forward subsumption) and
+67 ms to 1,057 ms in the equality rules. Dropping the identity clause from
+the released set (a diagnostic, unsound) brings the engine back to 0.2 s.
+
+Remedy (`inert_sorts::equates_generated_values`,
+`Options::data_guards_sorted`). When the clause set has the identity clause
+of a value marker `V` and some clause puts `V` on a Skolem term
+(`… → V(f(x))`, a `DataHasValue` in a positive position), a candidate whose
+relativized fact is disjunctive and which guards a data role in a body
+(`Q(t) ∧ p(t, y) → …` with `p(x, y) → D(y)`) keeps its sort. Everything
+else is released as before: the unit facts of range definers (ORE 9800: 38
+released, 39 eliminated, unchanged) and the disjunctive facts of definers
+that read no data role, which the nominal seeds need (m2047 answers in
+0.5 s released and not within 60 s with every disjunctive release withheld;
+a first version of this remedy that withheld all of them lost m2047, m2179
+and m2358 on the forced `nominals` route).
+
+**Eliminated filler of an at-most asserted on an individual (r3602).**
+`results/agents/2026-10-30/r3-unannounced/open_r3602.ofn` on forced
+`nominals` answered in 4 s on the frontend's clause set and not within 60 s
+on the copy. The copy differs in one eliminated definer: the `⊤` filler
+`Q_4` of `ClassAssertion(≤1 s, c)`, dropped from
+`Q_3(x) ∧ Q_4(y0) ∧ Q_4(y1) ∧ s(x, y0) ∧ s(x, y1) → y0 = y1` (`Q_3` the
+assertion marker of `c`; `s(a, a)`, `s(c, a)` and `D ⊑ {a, b}` are in the
+input). Without the filler the equality fires on every pair of
+`s`-successors of `c` before their labels are known, the same cost the pass
+already avoids beside inverse roles (probe_v7). Remedy
+(`eliminate_universal_definers`): a definer on an equality-head term is kept
+when the clause body holds a nominal proxy or an assertion marker and the
+term is not a data successor. Fillers of TBox at-most clauses stay
+eliminable: ORE 9800's one `⊤` filler sits in 33 functional-role clauses,
+and keeping it (a first version of this remedy) took its CB arm from 2.3 s
+to 30 s; the filler of a data at-most asserted on an individual (m2047,
+`≤2 v` on `a`) stays eliminable too (0.5 s against 2.1 s kept).
+
+Measured on the workstation (`km classify --lines`, medians of three runs;
+`km-base-6c48c72e` is development/v1.5.5 before the subset-blocking gap
+merge, "this branch" the final build on 0e1bd99a; load 50 to 70 unless
+marked, the rows marked * at load 110 to 140 in one session; the full
+tables are in `results/agents/2026-10-30/data-values-3/timings.md`):
+
+| input, route | e62a4bce | development | this branch |
+|---|---|---|---|
+| hub test, automatic | 0.54 s | 0.03 s (object guard, bridge) | 0.02 s |
+| hub test, `nominals` | 0.63 s | 12.4 s (a2e98d95); 32.7 s* | 0.53 s; 1.75 s* |
+| hub test, `certified_nominals` | 0.54 s | 8.3 s (a2e98d95); >60 s* | 0.55 s; 1.86 s* |
+| hub test, `nominal_ni_abox` | 0.62 s | 15.6 s (a2e98d95); 26.9 s* | 0.55 s; 2.15 s* |
+| hub test, `certified_card_proxy_abox` | 0.61 s | 9.5 s (97515f0c); 33.2 s* | 0.63 s; 2.11 s* |
+| open_r3602, `nominals` | 0.16 s (6 subsumptions, incomplete) | no answer in 60 s (sorted input: 4.1 s; 10 to 14 s*) | 4.4 s; 14.0 s* (7, HermiT's) |
+| ORE 9800, automatic | | 11.9 s; 15.1 s* | 10.5 s; 12.8 s* |
+| m2131 (nominal_inert_sorts), automatic | | 1.6 s (a2e98d95) | 0.8 s |
+| seeds m2047, m2179, m2358, m2218, `nominals` | | 0.46, 2.5, 1.2, 3.4 s | 1.3, 2.5, 1.2, 3.4 s |
+| seeds m2109, m2233, m2278, `nominals` | | 9.9, 17.5, 20.8 s | 15.8, 18.3, 20.5 s (m2109 keeps one sort) |
+
+All answers are identical across the binaries, except r3602 where the
+merge-hypotheses fix of section 10 made the answer complete.
+
+### Conditional-full schedule for data values on the bridge (2026-10-31)
+
+ore_ont_10781 (590 individuals, 1,319 data assertions) went from 1.1 s to
+13 to 17 s on the automatic route from the native data values merge
+(c9602c7f) on; binaries of the two intermediate commits put it at 1b0f9239
+(`frontend: carry every data value exactly, without a literal cap`). The
+time is the native bridge running to its 12 s data-assertion budget and
+declining, after which `certified_nominals` answers. The bridge itself
+takes 2.3 s before and 34 to 53 s after on the same input
+(`KM_ROUTE=ht_bridge KM_DATA_ASSERTION_AS_CLASS=1`); `KM_BRIDGE_PROGRESS`
+puts the whole difference in the prepare phase (0.7 s to 33.7 s over 293
+subjects) and shows the schedule change: before, `BRIDGE-REFUTATION
+gated=true … number=true` with a saturation pass; after, `number=false` and
+no saturation. Every carried value used to come with its singleton clause
+`V(y0) ∧ V(y1) → y0 = y1`, whose equality head sets `tin.number`; the
+frontend now leaves that clause out when nothing forces two data successors
+apart (`datatypes::datatype_relation_clauses_with`, DATATYPES.md), so the
+input lost its only number feature and
+`native_conditional_full_abox_profile` moved it from the conditional-full
+schedule (saturation first, one all-root consistency completion) to the
+legacy nominal schedule. `KM_HT_NATIVE_FULL=1` restores 0.66 s.
+
+Remedy (`konclude_ht::bridge::carries_data_values`): a literal value marker
+`__dt__val__…` in the input counts as a number feature for the profile. The
+profile selects the completion's scheduling configuration only; the bridge
+publishes a complete answer or defers under either schedule, so no answer
+changes. ore_ont_10781: 13.2 s to 0.6 s (15.9 s to 2.1 s at load 120),
+identical 1,027 output lines. The 400 nominal seeds on the automatic route
+(60 s, 3 workers per binary, side by side at load 120): 364 and 363
+answered, 0 wrong, the one flip (m2336, 47.9 s before) at the time-out.
+
 ### Object guard for the native bridge (2026-10-30)
 
 Cost. After the inert-sort release, 125 of the 400 seeds of `gen_nomdata.py
@@ -1505,3 +1622,25 @@ Exact `nominals` route, HermiT oracle.
   r1600's cause. Under the merge hypotheses r1536 and r3777 time out at 60 s
   on forced `nominals`, and the hub with data values takes 30 s instead of
   10 s on `certified_nominals`.
+- m2197 (`tests/fixtures/top_nominal_data/m2197.ofn`, `⊤ ⊑ {a}` next to
+  data cardinalities and `≤2 t.D`; agent data-values-3, 2026-10-31): on
+  forced `certified_nominals` and `nominals` 0.6 s at a2e98d95 and no
+  answer in 150 s from the r1600 merge (2f5993c7) on, 20 s on
+  `nominal_ni_abox`. `KM_NO_MERGE_HYPOTHESES=1` answers in 0.2 s on every
+  nominal route with the same three subsumptions (HermiT's), and
+  `KM_CONTEXT_PAIR_R2=1` changes nothing, so the cost is the merge
+  hypotheses of 8bbbf1f2 alone, in the same way as r1536 and r3777 above.
+  It is the same input on the sorted and the released clause set, so it is
+  independent of the inert-sort passes. Not remedied: the hypotheses are
+  what makes r1600 complete, and a cheaper form needs the completeness
+  argument this section leaves open. `top_nominal_data_successors::
+  hermit_answers_on_every_route` fails its 120 s bound on these routes.
+- The "object value instead of data value" case of
+  `universal_role_and_top_data_range::data_value_singleton_next_to_nominal_successors`
+  (`¬(p value e) ⊑ B` with `S6 ≡ {c} ⊓ ∃r.{d} ⊓ ∃r⁻.{d}`; same agent, same
+  day) has the same profile: forced `nominals` 0.4 s at e62a4bce and
+  a2e98d95, no answer in 60 s at 6c48c72e on the sorted and the released
+  clause set alike, 0.35 s with `KM_NO_MERGE_HYPOTHESES=1`;
+  `certified_nominals` 0.05 s, `nominal_ni_abox` 20 s,
+  `certified_card_proxy_abox` over 60 s. The test fails its 10 s bound from
+  the r1600 merge on; the other six cases of the test answer in 0.02 s.
