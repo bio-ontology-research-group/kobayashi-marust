@@ -1,0 +1,36 @@
+'ContextCalculus.DataRangeBoolean.defClauses_iff' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ContextCalculus.DataRangeBoolean.labels_agree' depends on axioms: [propext, Quot.sound]
+'ContextCalculus.DataRangeBoolean.realizes_of_atomic' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ContextCalculus.DataRangeBoolean.extends_to_clause_model' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ContextCalculus.DataRangeBoolean.owl_satisfies_clauses' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ContextCalculus.DataRangeBoolean.clause_model_boolean' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ContextCalculus.DataRangeCells.fresh_of_encard' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ContextCalculus.DataRangeCells.fresh_values' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ContextCalculus.DataRangeCells.fresh_realizes' does not depend on any axioms
+'ContextCalculus.DataRangeCells.value_realizes' does not depend on any axioms
+'ContextCalculus.DataRangeCells.cell_node_realizable' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ContextCalculus.DataRangeCells.laminar_realizable' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ContextCalculus.DataRangeCells.undecidedRealizable_of_cells' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ContextCalculus.DataRangeCells.undecidedRealizable_of_realizers' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+'ContextCalculus.DataRangeCells.owl_satisfies_cell_clauses' does not depend on any axioms
+'ContextCalculus.DataRangeCells.string_residue_infinite' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ContextCalculus.DataRangeCells.string_chain_pairwise' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ContextCalculus.DataRangeStrings.oracleDec_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ContextCalculus.DataRangeStrings.chain_sub' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ContextCalculus.DataRangeStrings.chain_strict' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ContextCalculus.DataRangeStrings.language_sub_NCName' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ContextCalculus.DataRangeStrings.Name_sub_NMTOKEN' depends on axioms: [propext, Quot.sound]
+'ContextCalculus.DataRangeStrings.dateTimeStamp_sub_dateTime' depends on axioms: [propext]
+'ContextCalculus.DataRangeStrings.hex_b64_disjoint' depends on axioms: [propext]
+'ContextCalculus.DataRangeStrings.step_family' depends on axioms: [propext, Quot.sound]
+'ContextCalculus.DataRangeStrings.step_avoids_inner' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ContextCalculus.DataRangeStrings.stepVal_injective' depends on axioms: [propext, Quot.sound]
+'ContextCalculus.DataRangeStrings.rustMember_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ContextCalculus.DataRangeDecimalBands.int_band_encard' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ContextCalculus.DataRangeDecimalBands.decimal_band_infinite' depends on axioms: [propext, Classical.choice, Quot.sound]
+'ContextCalculus.DataRangeDecimalBands.rational_band_infinite' depends on axioms: [propext,
+ Classical.choice,
+ Quot.sound]
+'ContextCalculus.DataRangeDecimalBands.real_band_infinite' depends on axioms: [propext, Classical.choice, Quot.sound]

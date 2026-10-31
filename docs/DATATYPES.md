@@ -864,7 +864,8 @@ declaration, all of which the frontend also treats as data roles (a role is
 data unless certainly an object property), so whenever the frontend elides
 a singleton the bridge's gate admits the elision.
 
-**Lean obligation (not proved here).** Extend `TwoSortedDL` data ranges with
+**Lean obligation** (proved on 2026-10-31 under the hypotheses listed in
+"Lean coverage of Boolean ranges and cells" below). Extend `TwoSortedDL` data ranges with
 `DataIntersectionOf`, `DataUnionOf` and `DataComplementOf` and state: (a) the
 definitional clauses make every Boolean name equivalent to the combination
 of its operands in every clause model (a structural induction); (b) *cell
@@ -876,6 +877,179 @@ outside the vocabulary's values (this discharges `UndecidedRealizable` for
 those partitions); (c) the string chain inclusions as `DecisionSound`
 facts. The oracle decisions themselves (`val_in_range`, cell membership by
 kind) remain checked by tests, as before.
+
+### Lean coverage of Boolean ranges and cells (2026-10-31, agent `lean-data-ranges`)
+
+Four modules, built by `lake build` as part of `ContextCalculus`; no
+`sorry`, axioms `propext`, `Classical.choice`, `Quot.sound` only (several
+theorems use fewer; `#print axioms` output in
+`results/agents/2026-10-30/lean-data-ranges/axioms.txt`).
+`DataRangeBoolean` and `DataRangeStrings` are core Lean;
+`DataRangeCells` imports `Mathlib.Data.Set.Card` and
+`DataRangeDecimalBands` the Mathlib reals, irrationals and integer
+intervals (all already built in the shared Mathlib package).
+
+**(a) Boolean structure** (`lean/ContextCalculus/DataRangeBoolean.lean`).
+Rather than add constructors to `TwoSortedDL.DRange` (which would reopen
+the projection and elision proofs), the Boolean structure is a definition
+table over names, as in the frontend: `defs d = some b` when the name `d`
+has structure `b`, with `BDef.inter`, `BDef.union` (lists of `DRange`
+operands, so `rdfs:Literal` is `⊤`) and `BDef.compl`. `defClauses d b` is
+the clause list `expand` emits (`I → Mᵢ` for every non-`⊤` member and the
+body without `⊤` members for an intersection; `Mᵢ → U` and the cover for a
+union; `C ∧ A → ⊥` and `→ C ∨ A`, or `C → ⊥` for `¬⊤`, for a complement).
+Labels of one element are `L : DN → Prop`.
+
+- `defClauses_iff`: the clauses of `d` hold at an element iff `L d` holds
+  exactly when `b.eval L` (the Boolean combination of the operands) does;
+  `clausesAt_iff` lifts this to all names, `clause_model_boolean` to every
+  node of a clause model.
+- `labels_agree` (the structural induction): with `Ranked defs rank`
+  (every operand has a smaller rank; the frontend's names are syntax trees,
+  an operand is a proper subterm), two label sets that satisfy the
+  definitions and agree on the atomic names of a scope closed under
+  operands agree on the whole scope. `realizes_of_atomic`: a value whose
+  datatype-map labels satisfy the OWL definitions realizes a clause node
+  iff it realizes the node's atomic labels.
+- `extends_to_clause_model` (converse): every interpretation of the atomic
+  names, over any data domain, extends to an interpretation that satisfies
+  every definitional clause and agrees on the atomic names (by
+  `labels_agree`, it is the only one); `owl_satisfies_clauses`: the OWL map, which
+  interprets each Boolean range as the combination of its operands
+  (Direct Semantics, Table 4), satisfies the clauses at every value.
+
+Argued, not proved: that `expand` emits exactly `defClauses` (it leaves
+`Mᵢ → U` and `C ∧ A → ⊥` to the pairwise relation generator when the
+oracle decides them; the generator emits the same clause).
+
+**(b) Cell realizability** (`lean/ContextCalculus/DataRangeCells.lean`).
+The cell clauses (`c → R`, `c ∧ R → ⊥`, `c ∧ c' → ⊥`) have the shape of the
+decision clauses, so one decision function `dec` covers values and cells,
+and the oracle's soundness is `DecisionSound den dec` (as in the elision
+proof). `ValuesSingleton` says a value concept denotes only its literal.
+`CellSpec` packs what the frontend guarantees of a cell `c`: it is an
+atomic name of the vocabulary `voc`, `dec c d` is decided for every atomic
+non-value name `d ∈ voc` (`cell_member`), `(den c).encard = size c` for the
+oracle's size function, and its enumerated cover `enum c` lists vocabulary
+values. `CoverAt` is the enumerated cover clause `c → ⋁ enum c`, present
+when `size c ≤ |V ∩ c| + N` (`valuesIn`, the count bound `N`).
+
+- `fresh_of_encard`, `fresh_values` (pigeonhole): a cell with at least
+  `|V ∩ c| + k` values has `k` distinct values that are none of the
+  vocabulary values.
+- `fresh_realizes`, `value_realizes`: a fresh value of the cell realizes
+  the atomic labels of every label set that carries the cell and no value;
+  a value decided against every atomic name realizes every label set that
+  carries it.
+- `cell_node_realizable`: every label set closed under the definitional,
+  decision and cover clauses that carries a cell is realized on all of
+  `voc`, either by a value it carries or, when it carries none, by `N + 1`
+  distinct values that are none of the vocabulary values (the cover
+  excludes the small cells).
+- `undecidedRealizable_of_cells`: if `voc` is the whole vocabulary, every
+  value is `fullyDecided` (the decided fragment), and every data successor
+  of the clause model carries a cell, then `UndecidedRealizable` holds,
+  the hypothesis of `singleton_elision_sound`, `consistency_iff` and
+  `subsumption_iff`. `undecidedRealizable_of_realizers` is the general
+  form: it is enough that every undecided successor has some realizer, so
+  nodes with a cell, nodes of a laminar partition and nodes with a value
+  can be covered by different theorems in one vocabulary.
+- `laminar_realizable`: the partitions `partition_cells` leaves without
+  cells (ranges decided pairwise nested or disjoint, each decided against
+  the atomic names outside the partition, each residue (`residue`: values
+  of `R` outside every range strictly inside `R`) with at least `|V| + k`
+  values) have `k` distinct fresh realizers for every closed label set
+  with a range of the partition and no value; `exists_least` finds the
+  least range of the label set from the pairwise decisions.
+- `owl_satisfies_cell_clauses` (`O ⇒ S` for these clauses): with the
+  range covers and enumerated covers sound, the datatype map satisfies the
+  decision, cover and enumerated-cover clauses at every value.
+
+Sizes (`lean/ContextCalculus/DataRangeDecimalBands.lean`), for the value
+spaces themselves: `int_band_encard` (`[a, b] ∩ ℤ` has `b + 1 - a`
+elements), `decimal_band_infinite`, `rational_band_infinite`,
+`real_band_infinite` (the non-integer decimals, the non-decimal rationals
+and the irrationals of a nonempty open interval are infinite), so
+`size = ⊤` for the non-integer bands and the integer count for integer
+bands are the values `CellSpec.size_eq` asks for.
+
+Assumed, not proved: the oracle's arithmetic (`Cell::size` for IEEE
+segments is a rank difference of `FloatRange::unrank`; the gap endpoints
+`decimal_cells` computes), `cell_member` (that every atomic range of the
+group contains a whole cell or none of it, so that the representative's
+membership is the cell's), the soundness of the range covers, and, for
+`laminar_realizable`, that a residue cell of `≥ 2^62` values exceeds
+`|V| + k`.
+
+**Scope of `undecidedRealizable_of_cells`.** `Respects` and
+`UndecidedRealizable` quantify over every name of the vocabulary, while
+`cell_member` decides a cell only against the ranges of its own role
+group. `cell_node_realizable` is stated for the names `voc` that can label
+the node, so it holds per group. The discharge of `UndecidedRealizable`
+takes `voc` to be everything, which matches the frontend when there is one
+role group (`expand` without groups cuts all names together) or when the
+cell decides every atomic name. For several groups the composition needs
+two further steps that are argued, not proved: (1) `eval_transfer` reads
+the labels of a data node only at the fillers of the roles it is a
+successor of, so `Respects` can be weakened to those names; (2) in the
+models the workers build, a data node carries only names of its role's
+group. No probe found a wrong answer from this; it is a gap in the Lean
+statement, not a found defect.
+
+**(c) Strings, `dateTimeStamp`, binary types**
+(`lean/ContextCalculus/DataRangeStrings.lean`). `MapVal T` and `denB`/`den`
+transcribe the value spaces of the twelve datatypes from the OWL 2 map
+(Structural Specification 4.3, 4.5, 4.7; XSD 1.1 part 2 3.3.1, 3.3.7,
+3.4.1 to 3.4.7; XML 1.0 fifth edition productions [2], [4], [4a], with the
+full Unicode `NameStartChar` and `NameChar` ranges): a derived type is its
+base type intersected with its pattern or whitespace facet; the time line
+of `xsd:dateTime` is a parameter. `oracleDec` transcribes the relation
+clauses of `range_subsumed` (with `string_chain_rank`) and
+`range_disjoint` on these names.
+
+- `oracleDec_sound`: `DecisionSound den oracleDec`, which is the form the
+  elision proof consumes;
+- `chain_sub`: `rank a ≤ rank b` gives `a ⊑ b` along `language ⊂ NCName ⊂
+  Name ⊂ NMTOKEN ⊂ token ⊂ normalizedString ⊂ string ⊂ rdf:PlainLiteral`;
+  the two steps that are not derivations are `language_sub_NCName` (a
+  language tag starts with a letter and has only letters, digits and
+  `-`) and `Name_sub_NMTOKEN` (every `NameStartChar` is a `NameChar`);
+- `chain_strict`: every step is strict, with explicit witnesses (`_`,
+  `a:b`, `1`, `a b`, ` a`, a tab, `"a"@en`), so the oracle's
+  `range_subsumed = Some(false)` downwards is true as well;
+- `dateTimeStamp_sub_dateTime`, `hex_b64_disjoint`;
+- `rustMember_sound`: `rustMember` transcribes `derived_string_member`,
+  and every decision it returns is the map's for a string of XML
+  characters. The frontend rejects a literal with any other character
+  (`conformance/lexical.rs`; probes `string_ctrl*.ofn` of the results
+  directory: KM exits with "literal contains a character outside the XML
+  character set", HermiT throws `MalformedLiteralException`), so the side
+  condition holds for every value the oracle sees.
+
+The Lean result agrees with the datatype-map answer KM gives on
+`string_chain.ofn` (`A ⊑ ∃p.language ⊓ ∀p.¬NCName` unsatisfiable), where
+HermiT answers satisfiable.
+
+- `step_family`, `step_avoids_inner`: every type of the chain has an
+  injective family of values outside every type strictly inside it (`a-a-…`
+  for `language`, `_a…`, `:a…`, `1a…`, `a a…`, ` a…`, a tab followed by
+  `a…`, `"a…"@en`), so the differences are infinite;
+  `string_residue_infinite` and `string_chain_pairwise` (in
+  `DataRangeCells`) are the hypotheses `hres` and `hpair` of
+  `laminar_realizable` for the chain: an upward-closed string label set
+  with no value has as many distinct fresh realizers as a count can ask
+  for (given the oracle's decisions of the chain types against the names of
+  other families, `hout`).
+
+Not proved: the realizability of label sets without a cell or range of
+these families (`anyURI`, `boolean`, `XMLLiteral`, a node with only `⊤`),
+and that `vocabulary.rs` emits exactly the clause sets the theorems
+assume.
+
+**Findings.** None of the stated obligations failed: (a) and (c) hold as
+the data-values-3 argument says, and (b) holds under the hypotheses above.
+The one gap is the scope of `UndecidedRealizable` for several role groups
+(above).
 
 ## Open corners (status 2026-10-30, after `data-values-3`)
 

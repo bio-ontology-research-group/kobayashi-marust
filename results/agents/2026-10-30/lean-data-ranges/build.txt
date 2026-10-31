@@ -1,0 +1,7 @@
+levelbuild.py . 4 (by import level, four modules per call):
+modules 340 ok; real	17m0.616s
+plain lake build (default targets ContextCalculus, Validation), after the last edit:
+Build completed successfully (8665 jobs).
+real	0m21.117s
+lines matching 'sorry' in the lake log: 0
+grep for sorry/admit/native_decide/axiom in the four new modules: lean/ContextCalculus/DataRangeBoolean.lean:0 lean/ContextCalculus/DataRangeDecimalBands.lean:0 lean/ContextCalculus/DataRangeCells.lean:0 lean/ContextCalculus/DataRangeStrings.lean:0

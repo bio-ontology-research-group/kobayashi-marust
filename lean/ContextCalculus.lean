@@ -116,6 +116,10 @@ import ContextCalculus.LinearValueEncoding
 import ContextCalculus.TwoSortedDL
 import ContextCalculus.DataValueProjection
 import ContextCalculus.DataValueSingletonElision
+import ContextCalculus.DataRangeBoolean
+import ContextCalculus.DataRangeCells
+import ContextCalculus.DataRangeStrings
+import ContextCalculus.DataRangeDecimalBands
 import ContextCalculus.Hypertableau
 import ContextCalculus.HypertableauCertifiedInput
 import ContextCalculus.HypertableauDirectProjectionWire

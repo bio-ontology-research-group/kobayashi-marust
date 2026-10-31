@@ -1,0 +1,37 @@
+import ContextCalculus.DataRangeBoolean
+import ContextCalculus.DataRangeCells
+import ContextCalculus.DataRangeStrings
+import ContextCalculus.DataRangeDecimalBands
+open ContextCalculus
+#print axioms DataRangeBoolean.defClauses_iff
+#print axioms DataRangeBoolean.labels_agree
+#print axioms DataRangeBoolean.realizes_of_atomic
+#print axioms DataRangeBoolean.extends_to_clause_model
+#print axioms DataRangeBoolean.owl_satisfies_clauses
+#print axioms DataRangeBoolean.clause_model_boolean
+#print axioms DataRangeCells.fresh_of_encard
+#print axioms DataRangeCells.fresh_values
+#print axioms DataRangeCells.fresh_realizes
+#print axioms DataRangeCells.value_realizes
+#print axioms DataRangeCells.cell_node_realizable
+#print axioms DataRangeCells.laminar_realizable
+#print axioms DataRangeCells.undecidedRealizable_of_cells
+#print axioms DataRangeCells.undecidedRealizable_of_realizers
+#print axioms DataRangeCells.owl_satisfies_cell_clauses
+#print axioms DataRangeCells.string_residue_infinite
+#print axioms DataRangeCells.string_chain_pairwise
+#print axioms DataRangeStrings.oracleDec_sound
+#print axioms DataRangeStrings.chain_sub
+#print axioms DataRangeStrings.chain_strict
+#print axioms DataRangeStrings.language_sub_NCName
+#print axioms DataRangeStrings.Name_sub_NMTOKEN
+#print axioms DataRangeStrings.dateTimeStamp_sub_dateTime
+#print axioms DataRangeStrings.hex_b64_disjoint
+#print axioms DataRangeStrings.step_family
+#print axioms DataRangeStrings.step_avoids_inner
+#print axioms DataRangeStrings.stepVal_injective
+#print axioms DataRangeStrings.rustMember_sound
+#print axioms DataRangeDecimalBands.int_band_encard
+#print axioms DataRangeDecimalBands.decimal_band_infinite
+#print axioms DataRangeDecimalBands.rational_band_infinite
+#print axioms DataRangeDecimalBands.real_band_infinite
