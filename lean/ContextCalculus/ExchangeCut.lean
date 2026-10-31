@@ -58,6 +58,9 @@ Main results (all `sorry`-free):
   ground context: both are closed, the guard has nothing to deliver, the
   union entails `D(o)`, and the receiver derives neither `⊥` nor `→ D(o)`
   (the skeleton of seed r1600, docs/NOMINALS-CB.md section 10).
+* `horn_unit_readout`: if every body-free clause of the closed ground
+  context is a unit, every atom the ground theory entails is such a unit
+  (the readout condition of the nominal-label cache).
 * `exists_common_rank`: a strict partial order and an interface that is
   downward closed among the ground context's atoms admit one injective rank
   that extends the order and keeps every ground-context atom below an
@@ -566,5 +569,49 @@ theorem no_merge_hypothesis_counterexample :
     exact absurd hb hne
   · rintro ⟨e, he, _⟩
     simp at he
+
+/-! ## Horn readout of the nominal-label cache -/
+
+/-- **Horn readout.**  If the ground context is closed under labelled ordered
+hyperresolution with the ground theory `P` and every body-free clause it
+holds is a unit `→ a` (so it does not hold `⊥`), then every atom that `P` entails
+is the head of such a unit.  This is the condition under which the
+nominal-label cache (`complete_nominal_enumeration_queries`,
+docs/NOMINALS-CB.md section 10.2) reads the types of an individual off the
+unit clauses: the body-free units are then the least model of the ground
+theory. -/
+theorem horn_unit_readout (rk : Atom → ℕ) (hinj : Function.Injective rk)
+    {P SG : Finset (PClause Atom)} (hcl : ClosedHyper rk P SG)
+    (hunits : ∀ e ∈ SG, e.neg = ∅ → ∃ a, e.pos = {a})
+    (b : Atom) (hent : ∀ I : Atom → Prop, (∀ c ∈ P, c.sat I) → I b) :
+    unit b ∈ SG := by
+  classical
+  let J : Atom → Prop := fun _ => False
+  have hnobot : ∀ e ∈ SG, (∀ h ∈ e.neg, J h) → e.pos.Nonempty := by
+    intro e he hJ
+    have hneg : e.neg = ∅ := by
+      rw [Finset.eq_empty_iff_forall_notMem]
+      intro h hh
+      exact hJ h hh
+    obtain ⟨a, ha⟩ := hunits e he hneg
+    rw [ha]; exact Finset.singleton_nonempty a
+  have hM := labelledModel_sat_nuclei rk SG J hinj hcl (fun _ h => h.elim) hnobot
+  have hMb := hent _ hM
+  rcases (labelledModel_def rk SG J b).mp hMb with h | ⟨e, he, hm, hl, _⟩
+  · exact h.elim
+  · have hneg : e.neg = ∅ := by
+      rw [Finset.eq_empty_iff_forall_notMem]
+      intro h hh
+      exact hl h hh
+    obtain ⟨a, ha⟩ := hunits e he hneg
+    have hab : b = a := by
+      have := hm.1
+      rw [ha] at this
+      simpa using this
+    have : e = unit b := by
+      cases e
+      simp only [unit] at *
+      simp_all
+    exact this ▸ he
 
 end ContextCalculus.ExchangeCut
