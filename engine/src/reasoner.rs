@@ -1163,6 +1163,8 @@ impl Reasoner {
         // Alias restoration has no root context for the restored aliases.
         // Certified runs retain every query root until that post-processing
         // argument is represented in Lean.
+        // Every requested query, kept for `complete_inconsistent_rows`.
+        let requested_queries = queries.clone();
         let (queries, mutual_unit_groups) = if certified {
             (queries, Vec::new())
         } else {
@@ -1226,6 +1228,9 @@ impl Reasoner {
             );
             self.absorb(subs, inc, incomplete, n);
             self.expand_mutual_unit_aliases(&mutual_unit_groups);
+            if !retain_certificate_engine {
+                self.complete_inconsistent_rows(&requested_queries);
+            }
             if retain_certificate_engine {
                 self.certificate_engine = Some(Box::new(e));
             }
@@ -1282,6 +1287,7 @@ impl Reasoner {
                 self.absorb(subs, inc, incomplete, n);
             }
             self.expand_mutual_unit_aliases(&mutual_unit_groups);
+            self.complete_inconsistent_rows(&requested_queries);
             return;
         }
         // Dynamic work-stealing path (default): `threads` long-lived engines
@@ -1363,6 +1369,38 @@ impl Reasoner {
             self.absorb(subs, inc, incomplete, n);
         }
         self.expand_mutual_unit_aliases(&mutual_unit_groups);
+        self.complete_inconsistent_rows(&requested_queries);
+    }
+
+    /// Give every requested query the row `owl:Nothing` when the run proved
+    /// the ontology inconsistent.
+    ///
+    /// The one-shot paths above stop at a global refutation
+    /// (`Engine::set_stop_on_global_refutation`, b88c6253), so the engines
+    /// may never create, or never finish, the root contexts of later
+    /// queries, and a work-stealing worker stops claiming queries. Their
+    /// rows were then missing or lacked `owl:Nothing`, and the set of rows
+    /// depended on the schedule (the incremental CB oracle reported
+    /// `{A: [owl:Nothing]}` for an inconsistent ontology over A, B and C;
+    /// docs/PER-CONTEXT-ORDERING.md section 13). An inconsistent ontology has
+    /// no model, so every concept is unsatisfiable: each added
+    /// `owl:Nothing` is entailed, every other row entry was derived, and
+    /// the rows no longer depend on where the run stopped. A consumer that
+    /// reads the rows without the flag (the incremental `IncrementalResult`,
+    /// the HT backend's `result_from_inconsistent_queries` shape) sees every
+    /// query below `owl:Nothing`. No rule, order or redundancy test changes,
+    /// and the flag itself is unchanged.
+    fn complete_inconsistent_rows(&mut self, queries: &[Iri]) {
+        if !self.inconsistent || self.incomplete {
+            return;
+        }
+        for &query in queries {
+            let name = self.sig0.concept_names[query as usize].clone();
+            self.subs
+                .entry(name)
+                .or_default()
+                .insert("owl:Nothing".to_string());
+        }
     }
 
     pub fn subsumptions(&self) -> BTreeMap<String, BTreeSet<String>> {

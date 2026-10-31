@@ -1,0 +1,20 @@
+     Running tests/global_refutation_closure.rs (target/release/deps/global_refutation_closure-72710c949ed94265)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.83s
+     Running tests/ht_subset_blocking.rs (target/release/deps/ht_subset_blocking-1e7849c41fddfd1d)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.18s
+     Running tests/ht_subset_model_certificate.rs (target/release/deps/ht_subset_model_certificate-376e702fb94a4007)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/inconsistent_cb_rows.rs (target/release/deps/inconsistent_cb_rows-cb9cad8717090328)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+     Running tests/incremental_cb_reasoning.rs (target/release/deps/incremental_cb_reasoning-d3b8c2ed7eb80004)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+     Running tests/incremental_ht_reasoning.rs (target/release/deps/incremental_ht_reasoning-d9c5a5340e40dbf2)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests/source_incremental.rs (target/release/deps/source_incremental-cbfac4699ae21a2e)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.57s
+     Running tests/source_incremental_rules.rs (target/release/deps/source_incremental_rules-59b9f2937ba5907e)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+     Running tests/source_module_reuse.rs (target/release/deps/source_module_reuse-91a76d1fa9cd30fd)
+test result: ok. 38 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.23s
+     Running tests/worker_only_environment.rs (target/release/deps/worker_only_environment-606c5cf5397059b1)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.74s

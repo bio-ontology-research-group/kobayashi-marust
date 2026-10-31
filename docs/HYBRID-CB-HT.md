@@ -1130,3 +1130,36 @@ exercises that case.
 `km classify --route ht_general` it publishes an empty subsumption list (on
 a five-axiom ALC input the entailed `B ⊑ D` was missing), so it is not a way
 to reproduce H1 through the CLI and the orchestrator should refuse it.
+
+## 12. Worker-only variables at the user entry (2026-10-31, agent `incremental-ht-regression`)
+
+Section 11 found that `KM_HT_GLOBAL=1`, a worker protocol variable (the HT
+worker answers consistency only and returns an empty taxonomy), leaked
+from the user's environment into `km classify --route ht_general` and
+published an incomplete taxonomy. `Route::apply_environment` already
+removed `KM_HT_TOTAL_GLOBAL` and `KM_HT_GLOBAL_NATIVE_ABOX` (`ROUTE_KEYS`)
+for forced routes, but not `KM_HT_GLOBAL`, and the automatic route removes
+none of them.
+
+`routing::WORKER_ONLY_KEYS` lists the variables that change what a worker
+answers rather than how it searches: consistency-only verdicts
+(`KM_HT_GLOBAL`, `KM_HT_TOTAL_GLOBAL`, `KM_HT_GLOBAL_NATIVE_ABOX`,
+`KM_HT_REQUIRE_MASKED_DISJOINT_UNION_SHAPE`, `KM_RULES_CONSISTENCY`), the
+rule worker's taxonomy protocol (`KM_RULES_CLASSIFY`,
+`KM_RULES_CLASSIFY_KNOWN`) and subject subsets (`KM_QUERIES`,
+`KM_QUERIES_FILE`). The supervisor sets each of them itself, per worker
+(`Command::env`) or inside an `EnvironmentGuard`. `km classify` and
+`km explain` now call `routing::strip_worker_only_environment` first, which
+removes them from the process environment and names them on stderr. The
+supervisor's own later settings are unaffected, so no published answer can
+depend on a user value of these variables. Stripping (rather than refusing)
+also keeps the incremental session's `km classify` witness subprocess
+(`incr_session::classify_process_json`) correct if it inherits one.
+
+Exactness: the change removes inputs that no exact published answer may
+read; it alters no search, rule or verdict. Lean obligation: none.
+
+Test: `engine/tests/worker_only_environment.rs` classifies an ALC input
+with the entailed `B ⊑ D` on `--route ht_general` and the automatic route,
+once plain and once with each `WORKER_ONLY_KEYS` variable set to `1`; the
+published lines must be equal and stderr must name the variable.
