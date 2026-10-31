@@ -2267,6 +2267,8 @@ fn build_lean_el_certificate(
 
     let symbol_count = interner.len();
     let mut steps = Vec::new();
+    let timing = std::env::var_os("KM_ELC_TIMING").is_some();
+    let mut lap = std::time::Instant::now();
 
     // Semi-naive worklist closure. Every fact is recorded with the step that
     // derived it when it is first inserted, after all of its premises, so the
@@ -2327,15 +2329,28 @@ fn build_lean_el_certificate(
         Edge(u32, u32, u32),
     }
     let mut sub_set: HashSet<(u32, u32)> = HashSet::default();
+    // Known superconcepts of each concept, in insertion order.
+    let mut subs_of: HashMap<u32, Vec<u32>> = HashMap::default();
     let mut edge_set: HashSet<(u32, u32, u32)> = HashSet::default();
     let mut outgoing: HashMap<u32, Vec<(u32, u32)>> = HashMap::default();
     let mut incoming: HashMap<u32, Vec<(u32, u32)>> = HashMap::default();
+    let mut incoming_by_role: HashMap<(u32, u32), Vec<u32>> = HashMap::default();
+    // Distinct roles of the edges into each target.
+    let mut incoming_roles: HashMap<u32, Vec<u32>> = HashMap::default();
+    let mut nf4_by_role_filler: HashMap<(u32, u32), Vec<u32>> = HashMap::default();
+    for nf in &nfs.nf4 {
+        nf4_by_role_filler
+            .entry((nf.role, nf.filler))
+            .or_default()
+            .push(nf.sup);
+    }
     let mut queue: std::collections::VecDeque<Pending> = std::collections::VecDeque::new();
     macro_rules! derive_sub {
         ($fact:expr, $step:expr) => {{
             let fact: (u32, u32) = $fact;
             if sub_set.insert(fact) {
                 steps.push($step);
+                subs_of.entry(fact.0).or_default().push(fact.1);
                 queue.push_back(Pending::Sub(fact.0, fact.1));
             }
         }};
@@ -2347,6 +2362,11 @@ fn build_lean_el_certificate(
                 steps.push($step);
                 outgoing.entry(fact.0).or_default().push((fact.1, fact.2));
                 incoming.entry(fact.2).or_default().push((fact.0, fact.1));
+                let sources = incoming_by_role.entry((fact.2, fact.1)).or_default();
+                if sources.is_empty() {
+                    incoming_roles.entry(fact.2).or_default().push(fact.1);
+                }
+                sources.push(fact.0);
                 queue.push_back(Pending::Edge(fact.0, fact.1, fact.2));
             }
         }};
@@ -2398,22 +2418,47 @@ fn build_lean_el_certificate(
                         );
                     }
                 }
-                // `a` as the target of an edge: ⊥ propagation and NF4.
-                let sources = incoming.get(&a).cloned().unwrap_or_default();
-                for (source, role) in sources {
-                    if known == BOTTOM {
-                        derive_sub!(
-                            (source, BOTTOM),
-                            LeanElStep::BottomEdge {
-                                a: source,
-                                target: a,
-                                role,
+                // `a` as the target of an edge: ⊥ propagation and NF4. The
+                // lists are only read here (`derive_sub!` adds no edge), so
+                // they are borrowed, not copied.
+                if known == BOTTOM {
+                    if let Some(sources) = incoming.get(&a) {
+                        for &(source, role) in sources {
+                            derive_sub!(
+                                (source, BOTTOM),
+                                LeanElStep::BottomEdge {
+                                    a: source,
+                                    target: a,
+                                    role,
+                                }
+                            );
+                        }
+                    }
+                }
+                // Pair the NF4 clauses with filler `known` and the edges into
+                // `a` from whichever side is smaller (⊤ is the filler of many
+                // NF4 clauses, while most concepts have no incoming edge).
+                if let (Some(entries), Some(roles)) =
+                    (nf4_by_filler.get(&known), incoming_roles.get(&a))
+                {
+                    let mut pairs: Vec<(u32, u32)> = Vec::new();
+                    if roles.len() < entries.len() {
+                        for &role in roles {
+                            if let Some(sups) = nf4_by_role_filler.get(&(role, known)) {
+                                pairs.extend(sups.iter().map(|&sup| (role, sup)));
                             }
+                        }
+                    } else {
+                        pairs.extend(
+                            entries
+                                .iter()
+                                .copied()
+                                .filter(|(role, _)| incoming_by_role.contains_key(&(a, *role))),
                         );
                     }
-                    if let Some(entries) = nf4_by_filler.get(&known) {
-                        for &(required, sup) in entries {
-                            if required == role {
+                    for (role, sup) in pairs {
+                        if let Some(sources) = incoming_by_role.get(&(a, role)) {
+                            for &source in sources {
                                 derive_sub!(
                                     (source, sup),
                                     LeanElStep::Nf4 {
@@ -2434,19 +2479,35 @@ fn build_lean_el_certificate(
                     derive_sub!((a, BOTTOM), LeanElStep::BottomEdge { a, target, role });
                 }
                 if let Some(entries) = nf4_by_role.get(&role) {
-                    for &(filler, sup) in entries {
-                        if sub_set.contains(&(target, filler)) {
-                            derive_sub!(
-                                (a, sup),
-                                LeanElStep::Nf4 {
-                                    a,
-                                    target,
-                                    filler,
-                                    sup,
-                                    role,
+                    // From the smaller side: the NF4 clauses of `role`, or
+                    // the known superconcepts of `target`.
+                    let mut pairs: Vec<(u32, u32)> = Vec::new();
+                    match subs_of.get(&target) {
+                        Some(fillers) if fillers.len() < entries.len() => {
+                            for &filler in fillers {
+                                if let Some(sups) = nf4_by_role_filler.get(&(role, filler)) {
+                                    pairs.extend(sups.iter().map(|&sup| (filler, sup)));
                                 }
-                            );
+                            }
                         }
+                        _ => pairs.extend(
+                            entries
+                                .iter()
+                                .copied()
+                                .filter(|(filler, _)| sub_set.contains(&(target, *filler))),
+                        ),
+                    }
+                    for (filler, sup) in pairs {
+                        derive_sub!(
+                            (a, sup),
+                            LeanElStep::Nf4 {
+                                a,
+                                target,
+                                filler,
+                                sup,
+                                role,
+                            }
+                        );
                     }
                 }
                 if let Some(sups) = nf6_by_sub.get(&role) {
@@ -2464,44 +2525,52 @@ fn build_lean_el_certificate(
                 }
                 // This edge as the first link of a chain.
                 if let Some(entries) = nf7_by_first.get(&role) {
-                    let next = outgoing.get(&target).cloned().unwrap_or_default();
-                    for &(second, sup) in entries {
-                        for &(next_role, end) in &next {
-                            if next_role == second {
-                                derive_edge!(
-                                    (a, sup, end),
-                                    LeanElStep::Nf7 {
-                                        a,
-                                        middle: target,
-                                        target: end,
-                                        first: role,
-                                        second,
-                                        sup,
-                                    }
-                                );
+                    let mut derived = Vec::new();
+                    if let Some(next) = outgoing.get(&target) {
+                        for &(second, sup) in entries {
+                            for &(next_role, end) in next {
+                                if next_role == second {
+                                    derived.push((second, sup, end));
+                                }
                             }
                         }
+                    }
+                    for (second, sup, end) in derived {
+                        derive_edge!(
+                            (a, sup, end),
+                            LeanElStep::Nf7 {
+                                a,
+                                middle: target,
+                                target: end,
+                                first: role,
+                                second,
+                                sup,
+                            }
+                        );
                     }
                 }
                 // This edge as the second link of a chain.
                 if let Some(entries) = nf7_by_second.get(&role) {
-                    let previous = incoming.get(&a).cloned().unwrap_or_default();
+                    let mut derived = Vec::new();
                     for &(first, sup) in entries {
-                        for &(source, previous_role) in &previous {
-                            if previous_role == first {
-                                derive_edge!(
-                                    (source, sup, target),
-                                    LeanElStep::Nf7 {
-                                        a: source,
-                                        middle: a,
-                                        target,
-                                        first,
-                                        second: role,
-                                        sup,
-                                    }
-                                );
+                        if let Some(sources) = incoming_by_role.get(&(a, first)) {
+                            for &source in sources {
+                                derived.push((first, sup, source));
                             }
                         }
+                    }
+                    for (first, sup, source) in derived {
+                        derive_edge!(
+                            (source, sup, target),
+                            LeanElStep::Nf7 {
+                                a: source,
+                                middle: a,
+                                target,
+                                first,
+                                second: role,
+                                sup,
+                            }
+                        );
                     }
                 }
             }
@@ -2509,6 +2578,7 @@ fn build_lean_el_certificate(
     }
     let subs: BTreeSet<(u32, u32)> = sub_set.into_iter().collect();
     let edges: BTreeSet<(u32, u32, u32)> = edge_set.into_iter().collect();
+    elc_timing_lap(timing, &mut lap, "cert/build/closure");
 
     // Every production fact must have a formal derivation. For active concept
     // contexts other than bottom, production must also contain every formal
@@ -2550,6 +2620,7 @@ fn build_lean_el_certificate(
         }
     }
 
+    elc_timing_lap(timing, &mut lap, "cert/build/compare");
     let mut ontology = Vec::new();
     ontology.extend(nfs.nf1.iter().map(|x| LeanElClause::Nf1 {
         sub: x.sub,
@@ -2675,6 +2746,7 @@ fn build_lean_el_certificate(
             },
         })
         .collect();
+    elc_timing_lap(timing, &mut lap, "cert/build/output");
     let mut variables: HashMap<String, u32> = HashMap::default();
     fn raw_term(
         term: &JTerm,
