@@ -47,9 +47,9 @@ before stdout is written.
 |---|---|---|---|---|
 | `cb-source-taxonomy-cert-check` | `KM_CB_SOURCE_EXACT_LEAN_CERT_CHECKER` | `WireSourceTaxonomy` | `certifiedCBSourceExactTaxonomyPublication` (`CBCertificationSurface.lean:361`; `CBSourceTaxonomyWire.lean:96`): every named×named cell ↔ entailment by the typed source | publication |
 | `cb-source-production-taxonomy-check` | `KM_CB_SOURCE_PRODUCTION_TAXONOMY_CHECKER` | `WireDocument` (`CBSourceProductionTaxonomyWire`) | `certifiedCBSharedProductionTaxonomyPublication` (`CBCertificationSurface.lean:112`; wire `:329`): every cell ↔ typed-source entailment | publication |
-| `cb-live-taxonomy-publication-check` | `KM_CB_LEAN_CERT_CHECKER` (the bundle) | `WireLiveTaxonomyPublication` | `check_sound` (`CBLiveTaxonomyPublication.lean:393`): published cells entailed, unsat rows unsatisfiable (soundness only) | all |
-| `cb-live-exact-taxonomy-publication-check` | `KM_CB_EXACT_LEAN_CERT_CHECKER` | `WireLiveExactTaxonomyPublication` | `certifiedCBProductionExactTaxonomyPublication` (`CBCertificationSurface.lean:382`) | all |
-| `cb-terminal-state-check` | `KM_CB_TERMINAL_STATE_CHECKER` | `WireCBTerminalStateDocument` | `check_sound` (`CBTerminalStateWire.lean:207`): no pending message, no truncation | all |
+| `cb-live-taxonomy-publication-check` | `KM_CB_LEAN_CERT_CHECKER` (the bundle) | `WireLiveTaxonomyPublication` | `check_sound` (`CBLiveTaxonomyPublication.lean:393`): published cells entailed, unsat rows unsatisfiable (soundness only) | none (2026-10-30: declined under `all`, see 5.3) |
+| `cb-live-exact-taxonomy-publication-check` | `KM_CB_EXACT_LEAN_CERT_CHECKER` | `WireLiveExactTaxonomyPublication` | `certifiedCBProductionExactTaxonomyPublication` (`CBCertificationSurface.lean:382`) | none (2026-10-30: declined under `all`, see 5.3) |
+| `cb-terminal-state-check` | `KM_CB_TERMINAL_STATE_CHECKER` | `WireCBTerminalStateDocument` | `check_sound` (`CBTerminalStateWire.lean:207`): no pending message, no truncation | none (2026-10-30: declined under `all`, see 5.3) |
 | `cb-standalone-context-proof-check` | `KM_CB_STANDALONE_CONTEXT_PROOF_CHECKER` | `WireStandaloneDocument` | `certifiedCBStandaloneContextProof` (`CBCertificationSurface.lean:127`) | all |
 | `cb-source-live-insertion-derivation-check` | `KM_CB_SOURCE_LIVE_DERIVATION_CHECKER` | `WireSourceLiveInsertionDerivationDocument` | `CBSourceLiveInsertionDerivation.lean:414`: every retained clause valid in every model of the source | all |
 | `cb-source-local-closure-check` | `KM_CB_SOURCE_LOCAL_CLOSURE_CHECKER` | local-closure document | `CBSourceLocalClosure.lean:168` | all |
@@ -284,3 +284,149 @@ on a host near its memory commit limit, and the hypertableau search counts
 such a failure as a rejected candidate. The whole lib suite under the full
 checker environment is not a valid configuration: eight production-path
 tests assume no certified mode.
+
+## 5. Certificate defect fixes (2026-10-30, agent `certificate-defects`)
+
+Branch `fix/v155-certificate-defects`. Each fix keeps the statement of every
+publication theorem; where a Lean check changed, the old check is implied by
+the new one or the new hypothesis is weaker. Results:
+`results/agents/2026-10-30/certificate-defects/`.
+
+### 5.1 ELC (E1, E2, dead witnesses, cost)
+
+* **E1, existentials.** The v5 checker normalizes the direct partition with
+  `certifyRawDirectToNormal`, which accepts no Skolem half; a Skolem pair is
+  accepted only through a canonical-witness record. The producer wrote
+  records only for functions a compiled residual uses. Fix (producer):
+  `build_lean_source_partition` gives every other Skolem function an
+  *identity* record (`witness = filler`) and the certificate ontology gains
+  the tautology `filler ⊑ filler` the record requires. Exactness: the
+  saturation is unchanged (the NF3 clause keeps its filler; the added NF1 is
+  valid in every interpretation and its closure obligation holds by
+  reflexivity), so the published answer is the same; the record's proof
+  (`materialized_rewrittenExistential_satisfies_raw`) pins the function to the
+  filler's canonical node, which every element below `sub` reaches by the NF3
+  edge. Lean obligation: none new (the existing witness-record theorem
+  covers `witness = filler`). A function whose pair is not in the source (a
+  role half without a filler half, filler ⊤ or ⊥) gets no record and is still
+  rejected.
+* **Dead witnesses.** With a record for every existential, `D ⊑ ∃r.A` with
+  an unsatisfiable `A` was rejected: `checkWitnessRecords` required the
+  witness alive. The proof does not need it: if the witness is dead, every
+  element below `sub` reaches it by an NF3 edge and is dead by the ⊥-edge
+  closure, so both Skolem clauses hold vacuously on the alive domain.
+  `CanonicalWitnessRecord.MaterializedValid` drops the aliveness conjunct
+  (proof in `materialized_witnessRecords_satisfy_raw`), `checkWitnessRecords`
+  requires the witness active only, and `functionBindings` pins only records
+  with an alive witness (the pin of the others is unconstrained). Lean
+  obligation: done (no `sorry`; axioms `propext`, `Classical.choice`,
+  `Quot.sound`).
+* **E2, ⊥ in a normal form.** `checkSignatureClosed` required every concept
+  of every clause to be active, `checkActiveConcepts` requires ⊥ inactive, so
+  `nf2 A B ⊥` (DisjointClasses on the `production_all` EL arm) could never
+  pass. `SignatureClosed` now takes `bottom` and exempts it; its only use (the
+  NF3 filler case of the canonical-model proofs) derives `filler ≠ bottom`
+  from aliveness. This weakens a hypothesis of the exactness theorems; their
+  conclusions are unchanged.
+* **Residuals that do not hold.** The Lean checker evaluates every compiled
+  residual clause on the finite canonical model, as Rust's
+  `check_certificate` does. When Rust's check fails, the producer no longer
+  writes a certificate (which Lean would reject, failing the run closed); it
+  records `cannot_check` and declines (a checker-backed worker never
+  publishes the output of the uncertified repair search).
+* **Cost.** Producer: the formal closure that reconstructs the trace was a
+  round-based loop over all facts times all normal forms; it is now a
+  semi-naive worklist with premise indexes whose NF4 and NF7 joins iterate
+  the smaller side (the same least fixpoint; it is still compared with the
+  production state), and the certificate is written through a buffer. Checker: `checkV5` tests every membership against a
+  `List`, which is quadratic in the trace (NF4 and NF7 closure worse).
+  `ELCompletionFastCheck.lean` defines `checkV5Fast` with hash sets and
+  premise-indexed clause tables and proves `checkV5Fast = true → checkV5 = true`
+  (`WireCertificate.checkFast_publication_semantics`); `elc-cert-check` runs
+  it. On `ore_ont_10254` (0.9 MB ontology, 87 MB certificate, 532,564 steps):
+  producer 180 s → 3 s, checker from no verdict (the old check ran past
+  minutes; the 125 s figure of section 3 was an early rejection) to 16-25 s,
+  whole checked run 27 s. On `ore_ont_12221` (120 MB certificate) the
+  producer takes 0.7 s and the checker 18-50 s depending on load; decoding
+  uses a hash-set duplicate check proved to imply `List.Nodup`
+  (`nodupFast_nodup`). Measurements:
+  `results/agents/2026-10-30/certificate-defects/cost.txt`.
+* **Contexts mentioned only by residuals.** The checker's active contexts
+  are ⊤ and the concepts the certificate ontology mentions; a concept that
+  occurs only in a residual clause (no EL axiom, empty taxonomy row) is now
+  left out of the certified contexts and output instead of making the
+  certificate unacceptable.
+* **Budget.** Under `KM_LEAN_CHECKERS` (not in strict `KM_ELC_LEAN_REQUIRED`
+  mode, and not when `KM_ELC_LEAN_CERT_OUT` asks for the file) the ELC worker
+  writes no certificate when its closure holds more than
+  `KM_LEAN_CHECK_MAX_ELC_FACTS` facts (default 1,000,000; `0` disables), records
+  `cannot_check` and publishes its unchecked answer, as the CB worker does
+  when it cannot certify. Acceptance of the certificates that are produced
+  proves what it did before.
+
+### 5.2 Checker process start-up
+
+`lean_checkers::CheckerCommand` is the one way KM starts a Lean checker
+(it replaces `lean_checker::run`, merged from `fix/v155-lean-rules-route`):
+the `main` thread gets a 256 MiB `LEAN_STACK_SIZE_KB` unless the caller set
+one, and the runtime's start-up abort ("failed to create thread", SIGABRT) is
+retried with growing pauses for about 5 s. A checker dies with the thread
+that started it (`PR_SET_PDEATHSIG`) and is killed after
+`KM_LEAN_CHECK_TIMEOUT_SECS` (default 900 s); a killed checker is no
+verdict (`cannot_check`). Every other exit is returned unchanged, so a
+rejection still fails closed. The Lean runtime's "INTERNAL PANIC: out of
+memory" (exit status 1) is reported as no verdict, not as a rejection. Every checker spawn in `cli.rs`,
+`tableau.rs`, `hypertableau.rs`, `elcomplete.rs` and the rules modules goes
+through it.
+
+### 5.3 CB (C1, C2, C3, B1, B2)
+
+Details, exactness arguments and Lean obligations:
+`docs/CB-CERTIFICATION.md`, "Checkers-on certificate defects C1-C3, B1, B2
+(2026-10-30)". In short:
+
+* **C1** (functional and inverse-functional roles): the worker's clause uses
+  other variable names than the proved encoding. `CBSourceWire` now accepts
+  clauses that are mutual instances up to literal sets (`ClauseVariant`;
+  validity and predicate bodies are preserved, proved); the old equivalence
+  implies the new relation.
+* **C2**: a standalone local trace ended in a literal-order variant of its
+  claimed clause; the producer now writes the claimed clause into the last
+  set-equal trace entry (the step check is invariant under set equality).
+* **C3**: the filtered-seed evidence wrote `{"assumption": n}` instead of
+  `{"assumption": {"index": n}}`; fixed in the producer.
+* **B1**: `cb-live-taxonomy-publication-check`,
+  `cb-live-exact-taxonomy-publication-check` and `cb-terminal-state-check`
+  read a global-model document (global closure plus blocked saturation)
+  that no production code builds. `KM_LEAN_CHECKERS_SET=all` no longer turns
+  them on and records `cannot_check` for each; set by hand they still run and
+  fail closed.
+* **B2**: layer 1 fixed (the r-Succ sweep flag stayed set when no reach
+  predicate exists; the engine clears it, no message changes). Layer 2 is a
+  missing proof: the six Hyper-based closure checkers enumerate
+  substitutions that move the central variable, which the CB Hyper rule
+  never applies; restricting `hyperCandidates` needs a re-proof of the
+  canonical-model step from Pred/Succ closure. Not done.
+
+### 5.4 The suite after the fixes
+
+Same inputs, modes and limits as section 3, `km` of 8a417f98 and the
+checkers rebuilt from this branch
+(`results/agents/2026-10-30/certificate-defects/suite/`):
+
+| mode | accepted | rejected | cannot check | over budget | no answer | answers changed | wall ratio |
+|---|---:|---:|---:|---:|---:|---:|---|
+| `on` | 535 | 0 | 1,135 | 21 | 90 | 0 | 1.63 |
+| `ht` | 596 | 0 | 916 | 178 | 91 | 0 | 2.22 |
+
+No checker rejects a published answer any more, and every cached HermiT
+answer agrees with every published answer. Accepted runs are mostly ELC
+certificates (533 in `on`); the remaining `cannot_check` runs are unchecked
+HT answers (opt-in), CB nominal mode, the ELC fact budget and ELC residuals
+that fail the canonical model. Of the 21 `over_budget` runs in `on`, 19 are
+ELC certificates of 500,000 to 1,000,000 facts whose check does not fit in
+60 s with four such runs in parallel; rerun with the faster producer of
+0a9bb689, 9 are accepted and 10 still exceed 60 s (`suite-overbudget-rerun/`).
+The ELC checker's remaining cost is JSON parsing and the per-fact passes of
+`checkV5Fast`, roughly 25 to 50 s per million facts on this host; this is
+a known limit, bounded by `KM_LEAN_CHECK_MAX_ELC_FACTS`.

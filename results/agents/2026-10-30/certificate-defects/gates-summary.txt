@@ -1,0 +1,39 @@
+# Gate runs at 267ab7e6 (after merging development/v1.5.5 0e1bd99a), KM_CERT_KEEP_NATIVE_CHECKERS=1, LEAN_STACK_SIZE_KB=262144
+elc attempt 1 rc=0 1616s: ELC certification gate passed
+cb attempt 1 rc=0 338s: CB certification gate passed
+ht attempt 1 rc=0 185s: 
+rules attempt 1 rc=0 410s: rules certification gate passed
+routing attempt 1 rc=101 33s: error: test failed, to rerun pass `--test source_module_reuse`
+gates-done
+
+## per-gate cargo test totals (result lines, passed, failed, ignored)
+elc: 7 9 0 0 sorryAx=0
+cb: 21 44 0 1 sorryAx=0
+ht: 97 250 0 0 sorryAx=0
+rules: 3 28 0 0 sorryAx=0
+routing.final: 9 133 1 0 sorryAx=0
+routing-rest: 26 142 1 1 sorryAx=0
+
+routing: stops at source_module_reuse::common_data_core_prefers_plain_module_before_full_common_path (expects full_classify, gets common_module_reuse), which fails identically on development/v1.5.5 at 5c268416. routing-rest.sh runs the gate steps after it: one failure, incremental_ht_reasoning::ht_reuses_existential_graphs_and_rechecks_global_deletion (session answer inconsistent, fresh CB oracle: consistent with A unsatisfiable); it passed at 8a417f98, it fails identically on development/v1.5.5 at 0e1bd99a (built separately), so it comes from the merged development line, not from this branch.
+
+## earlier run at 8a417f98
+# Gate runs (fix/v155-certificate-defects at 8a417f98), KM_CERT_KEEP_NATIVE_CHECKERS=1, LEAN_STACK_SIZE_KB=262144
+elc attempt 1 rc=0 29s: ELC certification gate passed
+cb attempt 1 rc=0 293s: CB certification gate passed
+ht attempt 1 rc=0 92s: 
+routing attempt 1 rc=101 79s: error: test failed, to rerun pass `--test source_module_reuse`
+gates-done
+rules (first run aborted: engine/target deleted during the run for disk space)
+rules attempt 1 rc=0 2467s: rules certification gate passed
+routing attempt 1 rc=101 75s: error: test failed, to rerun pass `--test source_module_reuse`
+gates-done
+
+## per-gate cargo test totals (passed failed ignored)
+elc: 9 0 0 sorryAx=0
+cb: 44 0 1 sorryAx=0
+ht: 249 0 0 sorryAx=0
+rules: 28 0 0 sorryAx=0
+routing.first: 133 1 0 sorryAx=0
+routing-rest: 142 0 1 sorryAx=0
+
+routing: the one failure is source_module_reuse::common_data_core_prefers_plain_module_before_full_common_path (expects full_classify, gets common_module_reuse); it fails identically on development/v1.5.5 at 5c268416 (base-smr.log). The gate steps after it (routing-rest.sh) were run separately.

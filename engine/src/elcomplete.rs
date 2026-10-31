@@ -2252,8 +2252,8 @@ impl LeanElCertificate {
 }
 
 /// Reconstruct the unoptimised formal NF1–NF7 closure and record one proof for
-/// every fact. This path is intentionally separate from the indexed production
-/// worklist: Lean checks the resulting derivations, and equality against `State`
+/// every fact. This path is intentionally separate from the production
+/// saturation: Lean checks the resulting derivations, and equality against `State`
 /// detects either implementation disagreeing with the formal closure.
 fn build_lean_el_certificate(
     nfs: &Nfs,
@@ -2266,133 +2266,319 @@ fn build_lean_el_certificate(
     use std::collections::BTreeSet;
 
     let symbol_count = interner.len();
-
-    let mut subs: BTreeSet<(u32, u32)> = BTreeSet::new();
-    let mut edges: BTreeSet<(u32, u32, u32)> = BTreeSet::new();
     let mut steps = Vec::new();
-    let mut add_sub = |fact: (u32, u32), step: LeanElStep| {
-        if subs.insert(fact) {
-            steps.push(step);
-            true
-        } else {
-            false
-        }
-    };
+    let timing = std::env::var_os("KM_ELC_TIMING").is_some();
+    let mut lap = std::time::Instant::now();
+
+    // Semi-naive worklist closure. Every fact is recorded with the step that
+    // derived it when it is first inserted, after all of its premises, so the
+    // reversed step list is in the dependency order `checkTrace` requires. The
+    // derived fact set is the least fixpoint of the same NF1–NF7 rules as the
+    // former round-based loop (each rule fires once per new premise fact), at
+    // a cost linear in the number of rule applications instead of quadratic
+    // in the closure size.
+    let mut nf1_by_sub: HashMap<u32, Vec<u32>> = HashMap::default();
+    for nf in &nfs.nf1 {
+        nf1_by_sub.entry(nf.sub).or_default().push(nf.sup);
+    }
+    // (other conjunct, sup, this conjunct is left)
+    let mut nf2_by_conjunct: HashMap<u32, Vec<(u32, u32, bool)>> = HashMap::default();
+    for nf in &nfs.nf2 {
+        nf2_by_conjunct
+            .entry(nf.sub1)
+            .or_default()
+            .push((nf.sub2, nf.sup, true));
+        nf2_by_conjunct
+            .entry(nf.sub2)
+            .or_default()
+            .push((nf.sub1, nf.sup, false));
+    }
+    let nf5_set: HashSet<u32> = nfs.nf5.iter().copied().collect();
+    let mut nf3_by_sub: HashMap<u32, Vec<(u32, u32)>> = HashMap::default();
+    for nf in &nfs.nf3 {
+        nf3_by_sub
+            .entry(nf.sub)
+            .or_default()
+            .push((nf.role, nf.filler));
+    }
+    let mut nf4_by_role: HashMap<u32, Vec<(u32, u32)>> = HashMap::default();
+    let mut nf4_by_filler: HashMap<u32, Vec<(u32, u32)>> = HashMap::default();
+    for nf in &nfs.nf4 {
+        nf4_by_role
+            .entry(nf.role)
+            .or_default()
+            .push((nf.filler, nf.sup));
+        nf4_by_filler
+            .entry(nf.filler)
+            .or_default()
+            .push((nf.role, nf.sup));
+    }
+    let mut nf6_by_sub: HashMap<u32, Vec<u32>> = HashMap::default();
+    for nf in &nfs.nf6 {
+        nf6_by_sub.entry(nf.sub).or_default().push(nf.sup);
+    }
+    let mut nf7_by_first: HashMap<u32, Vec<(u32, u32)>> = HashMap::default();
+    let mut nf7_by_second: HashMap<u32, Vec<(u32, u32)>> = HashMap::default();
+    for nf in &nfs.nf7 {
+        nf7_by_first.entry(nf.r1).or_default().push((nf.r2, nf.sup));
+        nf7_by_second.entry(nf.r2).or_default().push((nf.r1, nf.sup));
+    }
+
+    enum Pending {
+        Sub(u32, u32),
+        Edge(u32, u32, u32),
+    }
+    let mut sub_set: HashSet<(u32, u32)> = HashSet::default();
+    // Known superconcepts of each concept, in insertion order.
+    let mut subs_of: HashMap<u32, Vec<u32>> = HashMap::default();
+    let mut edge_set: HashSet<(u32, u32, u32)> = HashSet::default();
+    let mut outgoing: HashMap<u32, Vec<(u32, u32)>> = HashMap::default();
+    let mut incoming: HashMap<u32, Vec<(u32, u32)>> = HashMap::default();
+    let mut incoming_by_role: HashMap<(u32, u32), Vec<u32>> = HashMap::default();
+    // Distinct roles of the edges into each target.
+    let mut incoming_roles: HashMap<u32, Vec<u32>> = HashMap::default();
+    let mut nf4_by_role_filler: HashMap<(u32, u32), Vec<u32>> = HashMap::default();
+    for nf in &nfs.nf4 {
+        nf4_by_role_filler
+            .entry((nf.role, nf.filler))
+            .or_default()
+            .push(nf.sup);
+    }
+    let mut queue: std::collections::VecDeque<Pending> = std::collections::VecDeque::new();
+    macro_rules! derive_sub {
+        ($fact:expr, $step:expr) => {{
+            let fact: (u32, u32) = $fact;
+            if sub_set.insert(fact) {
+                steps.push($step);
+                subs_of.entry(fact.0).or_default().push(fact.1);
+                queue.push_back(Pending::Sub(fact.0, fact.1));
+            }
+        }};
+    }
+    macro_rules! derive_edge {
+        ($fact:expr, $step:expr) => {{
+            let fact: (u32, u32, u32) = $fact;
+            if edge_set.insert(fact) {
+                steps.push($step);
+                outgoing.entry(fact.0).or_default().push((fact.1, fact.2));
+                incoming.entry(fact.2).or_default().push((fact.0, fact.1));
+                let sources = incoming_by_role.entry((fact.2, fact.1)).or_default();
+                if sources.is_empty() {
+                    incoming_roles.entry(fact.2).or_default().push(fact.1);
+                }
+                sources.push(fact.0);
+                queue.push_back(Pending::Edge(fact.0, fact.1, fact.2));
+            }
+        }};
+    }
     for a in 0..symbol_count as u32 {
-        add_sub((a, a), LeanElStep::Refl { a });
-        add_sub((a, TOP), LeanElStep::Top { a });
+        derive_sub!((a, a), LeanElStep::Refl { a });
+        derive_sub!((a, TOP), LeanElStep::Top { a });
     }
-    drop(add_sub);
-
-    let mut changed = true;
-    while changed {
-        changed = false;
-        let sub_snapshot: Vec<_> = subs.iter().copied().collect();
-        let edge_snapshot: Vec<_> = edges.iter().copied().collect();
-
-        for &(a, known) in &sub_snapshot {
-            for nf in &nfs.nf1 {
-                if known == nf.sub && subs.insert((a, nf.sup)) {
-                    steps.push(LeanElStep::Nf1 {
-                        a,
-                        sub: nf.sub,
-                        sup: nf.sup,
-                    });
-                    changed = true;
+    let mut reflexive: Vec<u32> = nfs.reflexive_roles.iter().copied().collect();
+    reflexive.sort_unstable();
+    for a in 0..symbol_count as u32 {
+        for &role in &reflexive {
+            derive_edge!((a, role, a), LeanElStep::Reflexive { a, role });
+        }
+    }
+    while let Some(pending) = queue.pop_front() {
+        match pending {
+            Pending::Sub(a, known) => {
+                if let Some(sups) = nf1_by_sub.get(&known) {
+                    for &sup in sups {
+                        derive_sub!((a, sup), LeanElStep::Nf1 { a, sub: known, sup });
+                    }
                 }
-            }
-            for nf in &nfs.nf2 {
-                if known == nf.sub1 && subs.contains(&(a, nf.sub2))
-                    || known == nf.sub2 && subs.contains(&(a, nf.sub1))
+                if let Some(entries) = nf2_by_conjunct.get(&known) {
+                    for &(other, sup, known_is_left) in entries {
+                        if sub_set.contains(&(a, other)) {
+                            let (left, right) = if known_is_left {
+                                (known, other)
+                            } else {
+                                (other, known)
+                            };
+                            derive_sub!((a, sup), LeanElStep::Nf2 { a, left, right, sup });
+                        }
+                    }
+                }
+                if nf5_set.contains(&known) {
+                    derive_sub!((a, BOTTOM), LeanElStep::Nf5 { a, sub: known });
+                }
+                if let Some(entries) = nf3_by_sub.get(&known) {
+                    for &(role, filler) in entries {
+                        derive_edge!(
+                            (a, role, filler),
+                            LeanElStep::Nf3 {
+                                a,
+                                sub: known,
+                                filler,
+                                role,
+                            }
+                        );
+                    }
+                }
+                // `a` as the target of an edge: ⊥ propagation and NF4. The
+                // lists are only read here (`derive_sub!` adds no edge), so
+                // they are borrowed, not copied.
+                if known == BOTTOM {
+                    if let Some(sources) = incoming.get(&a) {
+                        for &(source, role) in sources {
+                            derive_sub!(
+                                (source, BOTTOM),
+                                LeanElStep::BottomEdge {
+                                    a: source,
+                                    target: a,
+                                    role,
+                                }
+                            );
+                        }
+                    }
+                }
+                // Pair the NF4 clauses with filler `known` and the edges into
+                // `a` from whichever side is smaller (⊤ is the filler of many
+                // NF4 clauses, while most concepts have no incoming edge).
+                if let (Some(entries), Some(roles)) =
+                    (nf4_by_filler.get(&known), incoming_roles.get(&a))
                 {
-                    if subs.insert((a, nf.sup)) {
-                        steps.push(LeanElStep::Nf2 {
-                            a,
-                            left: nf.sub1,
-                            right: nf.sub2,
-                            sup: nf.sup,
-                        });
-                        changed = true;
+                    let mut pairs: Vec<(u32, u32)> = Vec::new();
+                    if roles.len() < entries.len() {
+                        for &role in roles {
+                            if let Some(sups) = nf4_by_role_filler.get(&(role, known)) {
+                                pairs.extend(sups.iter().map(|&sup| (role, sup)));
+                            }
+                        }
+                    } else {
+                        pairs.extend(
+                            entries
+                                .iter()
+                                .copied()
+                                .filter(|(role, _)| incoming_by_role.contains_key(&(a, *role))),
+                        );
+                    }
+                    for (role, sup) in pairs {
+                        if let Some(sources) = incoming_by_role.get(&(a, role)) {
+                            for &source in sources {
+                                derive_sub!(
+                                    (source, sup),
+                                    LeanElStep::Nf4 {
+                                        a: source,
+                                        target: a,
+                                        filler: known,
+                                        sup,
+                                        role,
+                                    }
+                                );
+                            }
+                        }
                     }
                 }
             }
-            if nfs.nf5.contains(&known) && subs.insert((a, BOTTOM)) {
-                steps.push(LeanElStep::Nf5 { a, sub: known });
-                changed = true;
-            }
-            for nf in &nfs.nf3 {
-                if known == nf.sub && edges.insert((a, nf.role, nf.filler)) {
-                    steps.push(LeanElStep::Nf3 {
-                        a,
-                        sub: nf.sub,
-                        filler: nf.filler,
-                        role: nf.role,
-                    });
-                    changed = true;
+            Pending::Edge(a, role, target) => {
+                if sub_set.contains(&(target, BOTTOM)) {
+                    derive_sub!((a, BOTTOM), LeanElStep::BottomEdge { a, target, role });
                 }
-            }
-        }
-
-        for &(a, role, target) in &edge_snapshot {
-            if subs.contains(&(target, BOTTOM)) && subs.insert((a, BOTTOM)) {
-                steps.push(LeanElStep::BottomEdge { a, target, role });
-                changed = true;
-            }
-            for nf in &nfs.nf4 {
-                if role == nf.role
-                    && subs.contains(&(target, nf.filler))
-                    && subs.insert((a, nf.sup))
-                {
-                    steps.push(LeanElStep::Nf4 {
-                        a,
-                        target,
-                        filler: nf.filler,
-                        sup: nf.sup,
-                        role,
-                    });
-                    changed = true;
+                if let Some(entries) = nf4_by_role.get(&role) {
+                    // From the smaller side: the NF4 clauses of `role`, or
+                    // the known superconcepts of `target`.
+                    let mut pairs: Vec<(u32, u32)> = Vec::new();
+                    match subs_of.get(&target) {
+                        Some(fillers) if fillers.len() < entries.len() => {
+                            for &filler in fillers {
+                                if let Some(sups) = nf4_by_role_filler.get(&(role, filler)) {
+                                    pairs.extend(sups.iter().map(|&sup| (filler, sup)));
+                                }
+                            }
+                        }
+                        _ => pairs.extend(
+                            entries
+                                .iter()
+                                .copied()
+                                .filter(|(filler, _)| sub_set.contains(&(target, *filler))),
+                        ),
+                    }
+                    for (filler, sup) in pairs {
+                        derive_sub!(
+                            (a, sup),
+                            LeanElStep::Nf4 {
+                                a,
+                                target,
+                                filler,
+                                sup,
+                                role,
+                            }
+                        );
+                    }
                 }
-            }
-            for nf in &nfs.nf6 {
-                if role == nf.sub && edges.insert((a, nf.sup, target)) {
-                    steps.push(LeanElStep::Nf6 {
-                        a,
-                        target,
-                        sub: nf.sub,
-                        sup: nf.sup,
-                    });
-                    changed = true;
+                if let Some(sups) = nf6_by_sub.get(&role) {
+                    for &sup in sups {
+                        derive_edge!(
+                            (a, sup, target),
+                            LeanElStep::Nf6 {
+                                a,
+                                target,
+                                sub: role,
+                                sup,
+                            }
+                        );
+                    }
                 }
-            }
-            for &(middle, second, end) in &edge_snapshot {
-                if middle != target {
-                    continue;
+                // This edge as the first link of a chain.
+                if let Some(entries) = nf7_by_first.get(&role) {
+                    let mut derived = Vec::new();
+                    if let Some(next) = outgoing.get(&target) {
+                        for &(second, sup) in entries {
+                            for &(next_role, end) in next {
+                                if next_role == second {
+                                    derived.push((second, sup, end));
+                                }
+                            }
+                        }
+                    }
+                    for (second, sup, end) in derived {
+                        derive_edge!(
+                            (a, sup, end),
+                            LeanElStep::Nf7 {
+                                a,
+                                middle: target,
+                                target: end,
+                                first: role,
+                                second,
+                                sup,
+                            }
+                        );
+                    }
                 }
-                for nf in &nfs.nf7 {
-                    if role == nf.r1 && second == nf.r2 && edges.insert((a, nf.sup, end)) {
-                        steps.push(LeanElStep::Nf7 {
-                            a,
-                            middle,
-                            target: end,
-                            first: nf.r1,
-                            second: nf.r2,
-                            sup: nf.sup,
-                        });
-                        changed = true;
+                // This edge as the second link of a chain.
+                if let Some(entries) = nf7_by_second.get(&role) {
+                    let mut derived = Vec::new();
+                    for &(first, sup) in entries {
+                        if let Some(sources) = incoming_by_role.get(&(a, first)) {
+                            for &source in sources {
+                                derived.push((first, sup, source));
+                            }
+                        }
+                    }
+                    for (first, sup, source) in derived {
+                        derive_edge!(
+                            (source, sup, target),
+                            LeanElStep::Nf7 {
+                                a: source,
+                                middle: a,
+                                target,
+                                first,
+                                second: role,
+                                sup,
+                            }
+                        );
                     }
                 }
             }
         }
-
-        for a in 0..symbol_count as u32 {
-            for &role in &nfs.reflexive_roles {
-                if edges.insert((a, role, a)) {
-                    steps.push(LeanElStep::Reflexive { a, role });
-                    changed = true;
-                }
-            }
-        }
     }
+    let subs: BTreeSet<(u32, u32)> = sub_set.into_iter().collect();
+    let edges: BTreeSet<(u32, u32, u32)> = edge_set.into_iter().collect();
+    elc_timing_lap(timing, &mut lap, "cert/build/closure");
 
     // Every production fact must have a formal derivation. For active concept
     // contexts other than bottom, production must also contain every formal
@@ -2434,6 +2620,7 @@ fn build_lean_el_certificate(
         }
     }
 
+    elc_timing_lap(timing, &mut lap, "cert/build/compare");
     let mut ontology = Vec::new();
     ontology.extend(nfs.nf1.iter().map(|x| LeanElClause::Nf1 {
         sub: x.sub,
@@ -2469,12 +2656,50 @@ fn build_lean_el_certificate(
             .iter()
             .map(|&role| LeanElClause::Reflexive { role }),
     );
+    // An identity witness record (`witness == filler`, see
+    // `build_lean_source_partition`) is checked against the rewritten pair
+    // `sub ⊑ ∃role.filler`, `filler ⊑ filler`. The second clause is a
+    // tautology: it adds no model constraint and its closure obligation holds
+    // by reflexivity, so the saturation never needs it.
+    let mut identity_fillers: Vec<u32> = witness_records
+        .iter()
+        .filter(|record| record.witness == record.filler)
+        .map(|record| record.filler)
+        .collect();
+    identity_fillers.sort_unstable();
+    identity_fillers.dedup();
+    ontology.extend(
+        identity_fillers
+            .into_iter()
+            .map(|filler| LeanElClause::Nf1 {
+                sub: filler,
+                sup: filler,
+            }),
+    );
     steps.reverse();
+    // The checker's active contexts are exactly ⊤ and the concepts the
+    // certificate ontology mentions (`expectedActiveConcepts`). A concept
+    // that occurs only in a residual clause has no EL axiom; it is left out
+    // of the certified contexts (and so of the certified output) instead of
+    // making the certificate unacceptable.
+    let mut mentioned: HashSet<u32> = HashSet::default();
+    for clause in &ontology {
+        match *clause {
+            LeanElClause::Nf1 { sub, sup } => mentioned.extend([sub, sup]),
+            LeanElClause::Nf2 { left, right, sup } => mentioned.extend([left, right, sup]),
+            LeanElClause::Nf3 { sub, filler, .. } => mentioned.extend([sub, filler]),
+            LeanElClause::Nf4 { filler, sup, .. } => mentioned.extend([filler, sup]),
+            LeanElClause::Nf5 { sub } => {
+                mentioned.insert(sub);
+            }
+            LeanElClause::Nf6 { .. } | LeanElClause::Nf7 { .. } | LeanElClause::Reflexive { .. } => {}
+        }
+    }
     let mut active_concepts: Vec<u32> = nfs
         .concept_names
         .iter()
         .copied()
-        .filter(|&a| a != BOTTOM)
+        .filter(|&a| a != BOTTOM && mentioned.contains(&a))
         .collect();
     // TOP is queried for the ontology inconsistency result even when it does
     // not occur in an input normal form, so it is always an active context at
@@ -2521,6 +2746,7 @@ fn build_lean_el_certificate(
             },
         })
         .collect();
+    elc_timing_lap(timing, &mut lap, "cert/build/output");
     let mut variables: HashMap<String, u32> = HashMap::default();
     fn raw_term(
         term: &JTerm,
@@ -5440,34 +5666,71 @@ fn build_lean_source_partition(
         concept == sub && candidate_filler == filler && matching_fun(target, function, variable)
     }
 
-    let mut witnesses: Vec<_> = skolem_witnesses.iter().collect();
-    witnesses.sort_unstable_by_key(|&(function, _)| *function);
-    let mut records = Vec::with_capacity(witnesses.len());
-    for (&function, &witness) in witnesses {
-        let &(sub, role, filler) = skolem_target
-            .get(&function)
-            .ok_or_else(|| format!("rewritten Skolem function {function} has no NF3 target"))?;
+    // Index the unclaimed source clauses by the Skolem function in their
+    // single head atom, so that pairing every function stays linear in the
+    // source size.
+    fn head_function(clause: &JClause) -> Option<&str> {
+        match clause.head.as_slice() {
+            [JAtom::Role {
+                target: JTerm::Fun { function, .. },
+                ..
+            }]
+            | [JAtom::Concept {
+                term: JTerm::Fun { function, .. },
+                ..
+            }] => Some(function),
+            _ => None,
+        }
+    }
+    let mut by_function: HashMap<&str, Vec<usize>> = HashMap::default();
+    for (index, clause) in source.iter().enumerate() {
+        if claimed[index] {
+            continue;
+        }
+        if let Some(function) = head_function(clause) {
+            by_function.entry(function).or_default().push(index);
+        }
+    }
+    // Claim every unclaimed role half and filler half of `function`; report
+    // whether at least one of each was found.
+    let claim_pair = |claimed: &mut Vec<bool>, sub: u32, role: u32, filler: u32, function: u32| {
         let function_name = interner.name(function);
         let sub_name = interner.name(sub);
         let role_name = interner.name(role);
         let filler_name = interner.name(filler);
-        let mut found_role = false;
-        let mut found_filler = false;
-        for (index, clause) in source.iter().enumerate() {
+        let mut role_halves = Vec::new();
+        let mut filler_halves = Vec::new();
+        for &index in by_function.get(function_name).map(Vec::as_slice).unwrap_or(&[]) {
             if claimed[index] {
                 continue;
             }
+            let clause = &source[index];
             if is_role_half(clause, sub_name, role_name, function_name) {
-                claimed[index] = true;
-                found_role = true;
+                role_halves.push(index);
             } else if is_filler_half(clause, sub_name, filler_name, function_name) {
-                claimed[index] = true;
-                found_filler = true;
+                filler_halves.push(index);
             }
         }
-        if !found_role || !found_filler {
+        if role_halves.is_empty() || filler_halves.is_empty() {
+            return false;
+        }
+        for index in role_halves.into_iter().chain(filler_halves) {
+            claimed[index] = true;
+        }
+        true
+    };
+
+    let mut witnesses: Vec<_> = skolem_witnesses.iter().collect();
+    witnesses.sort_unstable_by_key(|&(function, _)| *function);
+    let mut records = Vec::with_capacity(skolem_target.len());
+    for (&function, &witness) in witnesses {
+        let &(sub, role, filler) = skolem_target
+            .get(&function)
+            .ok_or_else(|| format!("rewritten Skolem function {function} has no NF3 target"))?;
+        if !claim_pair(&mut claimed, sub, role, filler, function) {
             return Err(format!(
-                "rewritten Skolem function {function_name} is missing its exact source pair"
+                "rewritten Skolem function {} is missing its exact source pair",
+                interner.name(function)
             ));
         }
         records.push(LeanCanonicalWitnessRecord {
@@ -5479,6 +5742,35 @@ fn build_lean_source_partition(
             // Variables are scoped by their clause. Canonical zero-based
             // renaming keeps the emitted source pair alpha-equivalent to the
             // retained JSON clauses and minimizes the wire domain.
+            role_variable: 0,
+            filler_variable: 0,
+        });
+    }
+    // Every other Skolem function keeps its NF3 `sub ⊑ ∃role.filler`
+    // unchanged; its canonical witness is the filler's own node. The Lean
+    // record then needs `filler ⊑ filler` in the certificate ontology, which
+    // `build_lean_el_certificate` adds for every identity record. A function
+    // whose pair is not in the source (a role half without a filler half, a
+    // filler of owl:Thing or owl:Nothing) gets no record; its clauses stay in
+    // the direct partition, where the checker rejects them (fail closed).
+    let mut identity: Vec<_> = skolem_target
+        .iter()
+        .filter(|(function, _)| !skolem_witnesses.contains_key(function))
+        .collect();
+    identity.sort_unstable_by_key(|&(function, _)| *function);
+    for (&function, &(sub, role, filler)) in identity {
+        if filler == TOP || filler == BOTTOM {
+            continue;
+        }
+        if !claim_pair(&mut claimed, sub, role, filler, function) {
+            continue;
+        }
+        records.push(LeanCanonicalWitnessRecord {
+            sub,
+            role,
+            filler,
+            witness: filler,
+            function,
             role_variable: 0,
             filler_variable: 0,
         });
@@ -12675,7 +12967,54 @@ fn classify_inner_mode(
             }
         }
     }
-    if lean_cert_requested {
+    // Producer-side budget (only under `KM_LEAN_CHECKERS`, never in strict
+    // `KM_ELC_LEAN_REQUIRED` mode or when the certificate file is requested):
+    // the certificate holds one step per derived fact, so its size and the
+    // checker's time grow with the closure. Above the budget the answer is
+    // published unchecked and recorded as `cannot_check`; acceptance of the
+    // certificates that are produced proves exactly what it did before.
+    let mut skip_certificate = false;
+    if lean_cert_requested && !lean_cert_required && lean_cert_path.is_none() {
+        if let Some(budget) = crate::lean_checkers::max_elc_facts() {
+            let facts: u64 = st
+                .sub_super
+                .iter()
+                .map(|subs| subs.len() as u64)
+                .chain(st.edges.iter().map(|edges| edges.len() as u64))
+                .sum();
+            if facts > budget {
+                crate::lean_checkers::record_cannot_check(
+                    "elc",
+                    "elc-publication",
+                    &format!(
+                        "ELC certificate would hold {facts} derived facts, above {}={budget}; the ELC answer is unchecked",
+                        crate::lean_checkers::MAX_ELC_FACTS_ENV
+                    ),
+                );
+                skip_certificate = true;
+            }
+        }
+    }
+    // The Lean checker evaluates every compiled residual clause on the same
+    // finite canonical model as `check_certificate`. When the residual does
+    // not hold there, no v5 certificate can be accepted; emitting one would
+    // turn an ELC decline into a fail-closed rejection. The worker records
+    // `cannot_check` and declines: a checker-backed worker never publishes
+    // the output of the uncertified repair search.
+    if lean_cert_requested
+        && !skip_certificate
+        && !rcs.is_empty()
+        && !st.sub_super[TOP as usize].contains(&BOTTOM)
+        && !check_certificate(&rcs, &nfs, &st, debug)
+    {
+        crate::lean_checkers::record_cannot_check(
+            "elc",
+            "elc-publication",
+            "residual clauses do not hold in the EL canonical model; no ELC certificate applies",
+        );
+        return None;
+    }
+    if lean_cert_requested && !skip_certificate {
         let source_clauses = certificate_clauses
             .as_deref()
             .expect("requested certificate retains source clauses");
@@ -12701,6 +13040,7 @@ fn classify_inner_mode(
                 return None;
             }
         };
+        elc_timing_lap(elc_timing, &mut elc_lap, "cert/partition");
         let certificate = match build_lean_el_certificate(
             &nfs,
             &st,
@@ -12716,6 +13056,7 @@ fn classify_inner_mode(
                 return None;
             }
         };
+        elc_timing_lap(elc_timing, &mut elc_lap, "cert/build");
         let temporary_path;
         let path = if let Some(path) = lean_cert_path.as_deref() {
             path
@@ -12730,13 +13071,21 @@ fn classify_inner_mode(
                 return None;
             }
         };
-        if let Err(error) = serde_json::to_writer(file, &certificate) {
+        // Buffered: the certificate is millions of small JSON tokens.
+        let mut writer = std::io::BufWriter::with_capacity(1 << 20, file);
+        let written = serde_json::to_writer(&mut writer, &certificate)
+            .map_err(|error| error.to_string())
+            .and_then(|()| std::io::Write::flush(&mut writer).map_err(|error| error.to_string()));
+        drop(writer);
+        if let Err(error) = written {
             eprintln!("KM_ELC_LEAN_CERT cannot write {}: {error}", path.display());
             return None;
         }
+        elc_timing_lap(elc_timing, &mut elc_lap, "cert/write");
         if let Some(checker) = lean_cert_checker.as_deref() {
             let outcome =
                 crate::lean_checkers::run("elc", checker, "elc-publication", path);
+            elc_timing_lap(elc_timing, &mut elc_lap, "cert/check");
             if lean_cert_path.is_none() {
                 let _ = std::fs::remove_file(path);
             }
@@ -13498,7 +13847,7 @@ mod tests {
         ));
         let run_checker = |payload: &LeanElCertificate| {
             std::fs::write(&path, serde_json::to_vec(payload).unwrap()).unwrap();
-            std::process::Command::new(&checker)
+            crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -14360,6 +14709,131 @@ mod tests {
         );
     }
 
+    /// Build the Lean certificate of a residual-free clause set the way the
+    /// production path does.
+    fn pure_el_certificate(cs: &[JClause]) -> (LeanElCertificate, Interner) {
+        let mut interner = Interner::new();
+        let (mut nfs, residual, skolem_target) =
+            to_nf(cs, &mut interner).expect("normalizable EL input");
+        assert!(residual.is_empty(), "test input must be pure EL");
+        let (direct, witnesses) = build_lean_source_partition(
+            cs,
+            &residual,
+            &skolem_target,
+            &HashMap::default(),
+            &interner,
+        )
+        .expect("exact direct/witness partition");
+        nfs.concept_names.insert(TOP);
+        let idx = build_idx(&nfs, interner.len());
+        let mut state = init_state(&nfs, interner.len());
+        run(&idx, &mut state, &mut Prof::default());
+        let certificate =
+            build_lean_el_certificate(&nfs, &state, &interner, &direct, witnesses, Vec::new())
+                .expect("pure EL certificate");
+        (certificate, interner)
+    }
+
+    fn lean_checker_accepts(checker: &std::ffi::OsStr, certificate: &LeanElCertificate, tag: &str) -> bool {
+        let path = std::env::temp_dir().join(format!(
+            "km-elc-{tag}-{}-{}.json",
+            std::process::id(),
+            std::thread::current().name().unwrap_or("test").replace("::", "-")
+        ));
+        std::fs::write(&path, serde_json::to_vec(certificate).unwrap()).unwrap();
+        let ok = crate::lean_checkers::CheckerCommand::new(checker)
+            .arg(&path)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .expect("run Lean ELC checker")
+            .success();
+        let _ = std::fs::remove_file(&path);
+        ok
+    }
+
+    #[test]
+    fn pure_el_existential_gets_an_identity_witness_record() {
+        // `D ⊑ ∃r.A` with no residual: before v1.5.5 the Skolem pair stayed in
+        // the direct partition, which the Lean v5 checker cannot normalize,
+        // so every certificate with an existential was rejected (E1).
+        let cs = clauses(&format!(
+            "[{},{},{}]",
+            cl(&[c("D", "x")], &[rf("r", "x", "f")]),
+            cl(&[c("D", "x")], &[cf("A", "f", "x")]),
+            cl(&[c("E", "x")], &[c("D", "x")]),
+        ));
+        let (certificate, interner) = pure_el_certificate(&cs);
+        assert_eq!(certificate.raw_ontology.len(), 1, "only E ⊑ D stays direct");
+        assert_eq!(certificate.witness_records.len(), 1);
+        let record = &certificate.witness_records[0];
+        let a = interner.id("A").unwrap();
+        assert_eq!((record.filler, record.witness), (a, a));
+        assert!(certificate
+            .ontology
+            .iter()
+            .any(|clause| matches!(clause, LeanElClause::Nf1 { sub, sup } if *sub == a && *sup == a)));
+
+        let Some(checker) = std::env::var_os("KM_ELC_TEST_LEAN_CHECKER") else {
+            return;
+        };
+        assert!(lean_checker_accepts(&checker, &certificate, "identity-witness"));
+        // Without the identity clause the record is not backed by the ontology.
+        let mut missing = certificate.clone();
+        missing
+            .ontology
+            .retain(|clause| !matches!(clause, LeanElClause::Nf1 { sub, sup } if sub == sup));
+        assert!(!lean_checker_accepts(&checker, &missing, "identity-witness-missing"));
+        // A record naming a different filler must not pass either.
+        let mut forged = certificate.clone();
+        forged.witness_records[0].filler = interner.id("D").unwrap();
+        assert!(!lean_checker_accepts(&checker, &forged, "identity-witness-forged"));
+    }
+
+    #[test]
+    fn lean_checker_accepts_an_existential_with_an_unsatisfiable_filler() {
+        // `D ⊑ ∃r.A`, `A ⊑ ⊥`: the identity witness A is dead, so no alive
+        // element is below D and the Skolem pair holds vacuously.
+        let cs = clauses(&format!(
+            "[{},{},{},{}]",
+            cl(&[c("D", "x")], &[rf("r", "x", "f")]),
+            cl(&[c("D", "x")], &[cf("A", "f", "x")]),
+            cl(&[c("A", "x")], &[]),
+            cl(&[c("E", "x")], &[c("D", "x")]),
+        ));
+        let (certificate, interner) = pure_el_certificate(&cs);
+        assert_eq!(certificate.witness_records.len(), 1);
+        let d = interner.id("D").unwrap();
+        assert!(certificate
+            .rust_subsumptions
+            .iter()
+            .any(|fact| fact.sub == d && fact.sup == BOTTOM));
+        let Some(checker) = std::env::var_os("KM_ELC_TEST_LEAN_CHECKER") else {
+            return;
+        };
+        assert!(lean_checker_accepts(&checker, &certificate, "dead-witness"));
+    }
+
+    #[test]
+    fn lean_checker_accepts_a_bottom_head_normal_form() {
+        // `C ⊑ A`, `A ⊓ B ⊑ ⊥` normalizes to `nf2 A B ⊥`; the checker used to
+        // demand that ⊥ be both active and inactive (E2).
+        let cs = clauses(&format!(
+            "[{},{}]",
+            cl(&[c("C", "x")], &[c("A", "x")]),
+            cl(&[c("A", "x"), c("B", "x")], &[]),
+        ));
+        let (certificate, _) = pure_el_certificate(&cs);
+        assert!(certificate
+            .ontology
+            .iter()
+            .any(|clause| matches!(clause, LeanElClause::Nf2 { sup, .. } if *sup == BOTTOM)));
+        let Some(checker) = std::env::var_os("KM_ELC_TEST_LEAN_CHECKER") else {
+            return;
+        };
+        assert!(lean_checker_accepts(&checker, &certificate, "bottom-head"));
+    }
+
     #[test]
     fn residual_source_variables_cannot_alias_function_pin_slots() {
         // The source variable is deliberately named exactly like the Skolem
@@ -14450,7 +14924,7 @@ mod tests {
         ));
         let run = |payload: &LeanResidualCompilation| {
             std::fs::write(&path, serde_json::to_vec(payload).unwrap()).unwrap();
-            std::process::Command::new(&checker)
+            crate::lean_checkers::CheckerCommand::new(&checker)
                 .args(["--residual", &interner.len().to_string()])
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
@@ -14463,7 +14937,7 @@ mod tests {
 
         std::fs::write(&path, serde_json::to_vec(&certificate).unwrap()).unwrap();
         assert!(
-            std::process::Command::new(&checker)
+            crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())

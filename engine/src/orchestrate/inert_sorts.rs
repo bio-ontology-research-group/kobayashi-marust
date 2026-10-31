@@ -1164,7 +1164,7 @@ mod tests {
     fn lean_accepts(checker: &std::path::Path, document: &serde_json::Value, tag: &str) -> bool {
         let path = std::env::temp_dir().join(format!("km-rules-inert-test-{}-{tag}.json", std::process::id()));
         std::fs::write(&path, serde_json::to_vec(document).unwrap()).unwrap();
-        let status = crate::lean_checker::run(checker, &path).unwrap().status;
+        let status = crate::lean_checkers::run_document(checker, &path).unwrap().status;
         let _ = std::fs::remove_file(&path);
         assert!(status.code().is_some_and(|code| code <= 1), "checker failed to run: {status}");
         status.success()

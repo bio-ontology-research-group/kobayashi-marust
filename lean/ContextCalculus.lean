@@ -22,6 +22,7 @@ import ContextCalculus.ELResidualWitness
 import ContextCalculus.ELCompletionCertificate
 import ContextCalculus.ELCompletionWire
 import ContextCalculus.ELCompletionPublication
+import ContextCalculus.ELCompletionFastCheck
 import ContextCalculus.CompletenessContext
 import ContextCalculus.CompletenessStrategy
 import ContextCalculus.CompletenessEq
