@@ -1,0 +1,9 @@
+probes done     103 ok      11 TIMEOUT 
+fixtures done      42 ok 
+tnd-sorts done       6 ERR 
+tnd-fresh2 done     152 ok      19 TIMEOUT 
+tnd-fresh3 done      66 ok      18 TIMEOUT 
+nomdata-forced done     535 ok     265 TIMEOUT 
+nomdata-auto done     380 ok      20 TIMEOUT 
+r3data-auto done     281 ok      19 TIMEOUT 
+r1600-auto done     380 ok      20 TIMEOUT 
