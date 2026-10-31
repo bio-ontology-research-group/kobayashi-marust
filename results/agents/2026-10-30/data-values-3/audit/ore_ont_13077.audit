@@ -1,0 +1,1 @@
+KM_DT_AUDIT undecided: a facet restriction outside the decided fragment (pattern, length, digits, or a non-numeric base): __dt__c__DatatypeRestriction(xsd:dateTime xsd:minExclusive "2004-12-27T06:00:00"^^xsd:dateTime)
