@@ -377,7 +377,18 @@ fn partition_cells(partition: Partition, ranges: &[(&String, &DRange)]) -> Resul
     }
     let cells = match partition {
         Partition::Numeric => {
-            if members.iter().all(|range| integral(range)) {
+            // Only integral ranges, or integral ranges next to the unbounded
+            // named types `xsd:decimal`, `owl:rational`, `owl:real`: the
+            // integral cells of `integral_cell_covers` (or a single integral
+            // range with its exhaustion cover) decide the integers; every
+            // unbounded named type contains every integer (its inclusion
+            // clauses are emitted), the three form a chain, and a node with
+            // no integral range is realized by a non-integer of the least
+            // named type it carries, which no integral range contains and of
+            // which there are infinitely many.
+            if members.iter().all(|range| integral(range)
+                || matches!(range, DRange::Named(datatype) if datatype.min.is_none() && datatype.max.is_none()))
+            {
                 return Ok(None);
             }
             decimal_cells(&members)?
