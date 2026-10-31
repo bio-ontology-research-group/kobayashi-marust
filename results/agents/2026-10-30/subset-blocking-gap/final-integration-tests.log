@@ -1,0 +1,15 @@
+     Running tests/empty_and_universal_data_ranges.rs (target/release/deps/empty_and_universal_data_ranges-299bd82a8ba60ed0)
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 466.54s
+     Running tests/explain_cli.rs (target/release/deps/explain_cli-a22362406c4eb2e1)
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.37s
+     Running tests/has_key_rules.rs (target/release/deps/has_key_rules-fcd72bd6b12a2604)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.38s
+     Running tests/ht_subset_blocking.rs (target/release/deps/ht_subset_blocking-1e7849c41fddfd1d)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+     Running tests/ht_subset_model_certificate.rs (target/release/deps/ht_subset_model_certificate-376e702fb94a4007)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.74s
+     Running tests/source_axiom_drops.rs (target/release/deps/source_axiom_drops-5e45aacd5be409be)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.40s
+     Running tests/top_nominal_data_successors.rs (target/release/deps/top_nominal_data_successors-cede98c5f4e615c8)
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.60s
+done

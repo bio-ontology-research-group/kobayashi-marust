@@ -629,6 +629,13 @@ pub struct Ext {
     /// `add_edge` and its undo widen the dirty suffix to the endpoints that
     /// read the edge (`edge_note_node`). Set by `Ht` for those modes.
     edge_note: bool,
+    /// With `edge_note`: `SubsetGain::back_need(m)` also reads the labels
+    /// of the targets of `m`'s non-successor out-edges and whether each
+    /// target is an unmerged successor, so a label change at `t` widens the
+    /// dirty suffix to the sources of `t`'s non-successor in-edges, and a
+    /// merge of `t` also to `pred(t)` (`Ext::label_note_node`,
+    /// `Ext::merge_note_node`).
+    back_note: bool,
     /// `Ht::checked_subset_recompute` state, kept for the stable prefix
     /// `0..i2_lo`: per encoded literal, the candidate blockers carrying it in
     /// id order (`cs_lists`); every posting in order of insertion
@@ -644,6 +651,9 @@ pub struct Ext {
     /// Mode 5: for each candidate blocker, the literals of its label that
     /// are `forall_idx` body concepts (B2a reads only those).
     cs_fa: Vec<smallvec::SmallVec<[CLit; 4]>>,
+    /// For each candidate blocker, `SubsetGain::back_need` (the obligations
+    /// it witnesses only through a non-successor).
+    cs_back: Vec<smallvec::SmallVec<[(R, CLit); 2]>>,
     /// `SubsetGain::id` of the gain `cs_rel` was computed with; another one
     /// forces a full recompute.
     cs_gain: u64,
@@ -726,12 +736,14 @@ impl Ext {
             i3_node_sig: Vec::new(),
             block3: false,
             edge_note: false,
+            back_note: false,
             cs_lists: Vec::new(),
             cs_log: Vec::new(),
             cs_blocked: Vec::new(),
             cs_direct: Vec::new(),
             cs_rel: Vec::new(),
             cs_fa: Vec::new(),
+            cs_back: Vec::new(),
             cs_gain: 0,
             incroblig: std::env::var_os("KM_HT_INCROBLIG").is_some(),
             node_obligs: Vec::new(),
@@ -754,6 +766,36 @@ impl Ext {
         if self.incr2 && n < self.i2_lo {
             self.i2_lo = n;
         }
+    }
+
+    /// The smallest node whose blocking status can read `n`'s label: `n`,
+    /// and with `back_note` also every source of an edge into `n` of which
+    /// `n` is not the successor (`SubsetGain::back_need` of a node reads the
+    /// labels of its non-successor out-edge targets). In a tree these
+    /// sources are `n`'s children, which have larger ids.
+    #[inline]
+    fn label_note_node(&self, n: Node) -> Node {
+        let mut lo = n;
+        if self.back_note {
+            if let Some(sources) = self.in_edges.get(n) {
+                let parent = self.pred.get(n).copied().flatten();
+                for &(_, s, _) in sources {
+                    if parent != Some(s) {
+                        lo = lo.min(s);
+                    }
+                }
+            }
+        }
+        lo
+    }
+
+    /// A merge of `v` changes whether `v` is a successor of `pred(v)` for
+    /// `SubsetGain::back_need`, and whether `v` can witness for its
+    /// children (`SubsetGain::back_witnessed`).
+    #[inline]
+    fn merge_note_node(&self, v: Node) -> Node {
+        let lo = self.label_note_node(v);
+        self.pred.get(v).copied().flatten().map_or(lo, |p| p.min(lo))
     }
 
     /// Is blockable node `n` blocked by an EARLIER unblocked node (subset blocking)?
@@ -1180,7 +1222,7 @@ impl Ext {
                     }
                     self.block_index[e].push(node);
                 }
-                self.i2_note(node);
+                self.i2_note(self.label_note_node(node));
                 self.queue.push(Event::Concept(node, lit));
                 self.mark_disj_dirty(node, lit);
                 // Nominals: a fresh positive nominal concept makes `node` a carrier
@@ -1315,6 +1357,9 @@ impl Ext {
         }
         self.trail.push(Trail::Merge(victim));
         self.merged[victim] = Some(survivor);
+        if self.back_note {
+            self.i2_note(self.merge_note_node(victim));
+        }
         self.merge_deps[victim] = mdep.clone();
         let cs: Vec<(CLit, DepSet)> = self.concepts[victim]
             .iter()
@@ -1450,9 +1495,7 @@ impl Ext {
         while self.trail.len() > mark {
             match self.trail.pop().unwrap() {
                 Trail::Concept(node, lit) => {
-                    if node < min_aff {
-                        min_aff = node;
-                    }
+                    min_aff = min_aff.min(self.label_note_node(node));
                     self.concepts[node].remove(&lit);
                     if let Some(block_bits) = &mut self.block_bits {
                         let e = Ext::enc_lit(lit);
@@ -1518,6 +1561,9 @@ impl Ext {
                     }
                 }
                 Trail::Merge(v) => {
+                    if self.back_note && v < self.pred.len() {
+                        min_aff = min_aff.min(self.merge_note_node(v));
+                    }
                     if v < self.merged.len() {
                         self.merged[v] = None;
                         self.merge_deps[v] = dep_empty();
@@ -1675,6 +1721,7 @@ impl Ext {
         self.cs_direct.clear();
         self.cs_rel.clear();
         self.cs_fa.clear();
+        self.cs_back.clear();
         self.node_obligs.clear();
         self.node_obligs.resize_with(self.concepts.len(), Vec::new);
         self.oblig_sat.clear();
@@ -2408,6 +2455,21 @@ struct SubsetGain {
     multi_in: HashSet<R>,
     any: HashSet<CLit>,
     two_hop: bool,
+    /// Existential heads `∃r.F` by role: the fillers (`ex_fill`) and, per
+    /// `(r, F)`, the body literals at the existential's own variable of every
+    /// clause with that head (`ex_trig`). A blocker `w'` whose label triggers
+    /// `∃r.F` and witnesses it only through an edge to a non-successor (the
+    /// inverse edge to its predecessor) passes on to the blocked position an
+    /// obligation that the copies of `w'`'s successors do not witness, so the
+    /// pair is admitted only when the blocked node's own predecessor witnesses
+    /// it (`back_need`, `back_witnessed`).
+    ex_fill: HashMap<R, Vec<CLit>>,
+    ex_trig: HashMap<(R, CLit), Vec<Vec<CLit>>>,
+    /// Some edge can point from a node to a non-successor: a role head
+    /// whose source is not the clause centre (inverse roles) or an equality
+    /// head (merges redirect edges), and there are no nominals and no
+    /// first-class cardinality rules. Without it `back_need` is empty.
+    back: bool,
     /// Dense bitset (by `Ext::enc_lit`) of the union of every set above: a
     /// literal outside it is relevant for no edge, so `admits` skips it
     /// without probing the per-edge sets.
@@ -2430,6 +2492,9 @@ impl SubsetGain {
             multi_in: HashSet::default(),
             any: HashSet::default(),
             two_hop: false,
+            ex_fill: HashMap::default(),
+            ex_trig: HashMap::default(),
+            back: false,
             relevant_bits: Vec::new(),
             id: SUBSET_GAIN_IDS.fetch_add(1, Ordering::Relaxed),
         }
@@ -2502,7 +2567,29 @@ impl SubsetGain {
                 g.multi_out.extend(out_roles.iter().map(|(r, _)| *r));
                 g.multi_in.extend(in_roles.iter().map(|(r, _)| *r));
             }
+            for atom in &clause.head {
+                match *atom {
+                    Atom::Role { s, .. } if s != X => g.back = true,
+                    Atom::Eq { .. } => g.back = true,
+                    _ => {}
+                }
+            }
         }
+        // With nominals the merges of the o-rule link nodes to shared
+        // nominal nodes, which no unravelling copies; the finite certificate
+        // is not emitted then, and `back_need` stays empty (see section 9,
+        // "Inverse witnesses").
+        //
+        // The card arm (first-class cardinality rules) has no finite
+        // certificate either: its number rules count `r`-neighbours, the
+        // predecessor included, and the fold changes those counts at the
+        // blocker's successors, so `back_need` would not make its fold a
+        // model. It keeps the body-literal rule, whose argument is the
+        // infinite unravelling, and its cost (ore_ont_205, ore_ont_7499).
+        if !nominals.is_empty() || !card_defs.is_empty() {
+            g.back = false;
+        }
+        (g.ex_fill, g.ex_trig) = existential_triggers(clauses);
         // The number and recognition rules at a node `u` with marker `m` count
         // `u`'s `r`-out-edges whose target carries the filler: an instance
         // centred at `u` with the shape of `m(x) ∧ r(x, y1) ∧ … ∧ F(y1) ∧ …`.
@@ -2538,6 +2625,7 @@ impl SubsetGain {
     /// and no edge points back to a predecessor.
     fn trivial(&self, inverse: bool) -> bool {
         !inverse
+            && !self.back_possible()
             && !self.two_hop
             && self.any.is_empty()
             && self.multi_in.is_empty()
@@ -2552,8 +2640,98 @@ impl SubsetGain {
     fn admits(&self, ext: &Ext, w: Node, wp: Node) -> bool {
         match self.kept_edge_sets(ext, w) {
             None => false,
-            Some(relevant) => self.gain_irrelevant(ext, w, wp, &relevant, ext.concepts[wp].keys()),
+            Some(relevant) => {
+                self.gain_irrelevant(ext, w, wp, &relevant, ext.concepts[wp].keys())
+                    && self.back_witnessed(ext, w, &self.back_need(ext, wp))
+            }
         }
+    }
+
+    /// Can some existential be witnessed through a non-successor edge?
+    #[inline]
+    fn back_possible(&self) -> bool {
+        self.back && !self.ex_fill.is_empty()
+    }
+
+    /// The existentials `∃r.F` that `L(m)` triggers (the body literals at the
+    /// existential's variable of some clause with that head are in `L(m)`)
+    /// and that `m` witnesses through an `r`-edge to a non-successor `u`
+    /// with `F ∈ L(u)`. The unravelled position of a node blocked by `m`
+    /// copies `m`'s obligations and its successor edges, not the edge to
+    /// `u`, so the copies may leave these unwitnessed. A successor of `m`
+    /// that also witnesses one is not consulted (conservative: the pair is
+    /// then judged as if it did not), so the result reads only `L(m)`, `m`'s
+    /// out-edges, and `pred`, merge status and label of their non-successor
+    /// targets. Witnesses at a non-blockable node other than `pred(m)`
+    /// (nominal and ABox nodes) are not counted; see the loop.
+    fn back_need(&self, ext: &Ext, m: Node) -> smallvec::SmallVec<[(R, CLit); 2]> {
+        let mut need: smallvec::SmallVec<[(R, CLit); 2]> = smallvec::SmallVec::new();
+        if !self.back_possible() {
+            return need;
+        }
+        let lm = &ext.concepts[m];
+        for &(r, u, _) in &ext.out_edges[m] {
+            // A merged victim is dead; its edges were redirected to the
+            // survivor, which has its own out-edge here.
+            if ext.merged[u].is_some() || ext.pred[u] == Some(m) {
+                continue;
+            }
+            // A shared individual (the query root reached otherwise than as
+            // the predecessor, a nominal or ABox node) is not unravelled: the
+            // infinite unravelling keeps one copy of it and links every copy
+            // of `m` to it, and the finite certificate is not emitted with
+            // nominals or ABox individuals (fail closed if Lean rejects).
+            if !ext.blockable[u] && ext.pred[m] != Some(u) {
+                continue;
+            }
+            let Some(fillers) = self.ex_fill.get(&r) else { continue };
+            let lu = &ext.concepts[u];
+            let consider = |fil: CLit, need: &mut smallvec::SmallVec<[(R, CLit); 2]>| {
+                if need.contains(&(r, fil)) {
+                    return;
+                }
+                let triggered = self
+                    .ex_trig
+                    .get(&(r, fil))
+                    .is_some_and(|ts| ts.iter().any(|t| t.iter().all(|k| lm.contains_key(k))));
+                if triggered {
+                    need.push((r, fil));
+                }
+            };
+            // The fillers `u` carries: scan the shorter of the filler list
+            // and `L(u)` (the same set either way).
+            if fillers.len() <= lu.len() {
+                for &fil in fillers {
+                    if lu.contains_key(&fil) {
+                        consider(fil, &mut need);
+                    }
+                }
+            } else {
+                for &k in lu.keys() {
+                    if self.ex_trig.contains_key(&(r, k)) {
+                        consider(k, &mut need);
+                    }
+                }
+            }
+        }
+        need.sort_unstable_by_key(|&(r, k)| (r, Ext::enc_lit(k)));
+        need
+    }
+
+    /// Does `w`'s own predecessor witness every obligation of `need` (over
+    /// an out-edge of `w`, which the unravelling keeps)? The predecessor of
+    /// a kept blocked node is kept, unblocked and keeps its own label.
+    fn back_witnessed(&self, ext: &Ext, w: Node, need: &[(R, CLit)]) -> bool {
+        if need.is_empty() {
+            return true;
+        }
+        let Some(p) = ext.pred[w] else { return false };
+        if ext.merged[p].is_some() {
+            return false;
+        }
+        need.iter().all(|&(r, fil)| {
+            ext.has_concept(p, fil) && ext.out_edges[w].iter().any(|&(rr, t, _)| rr == r && t == p)
+        })
     }
 
     /// The literal sets relevant for `w`'s kept edges, or `None` when no
@@ -2618,6 +2796,43 @@ impl SubsetGain {
                 || !relevant.iter().any(|set| set.contains(k))
         })
     }
+}
+
+/// Existential heads `∃r.F` of `clauses`: the fillers by role, and for each
+/// `(r, F)` the body literals at the existential's variable of every clause
+/// with that head (sorted, deduplicated). `L(n)` triggers `∃r.F` when it
+/// contains one of these literal sets; the other body atoms are ignored, so
+/// this over-approximates the clause instances whose body holds at `n`.
+fn existential_triggers(
+    clauses: &[ClauseRec],
+) -> (HashMap<R, Vec<CLit>>, HashMap<(R, CLit), Vec<Vec<CLit>>>) {
+    let mut ex_fill: HashMap<R, Vec<CLit>> = HashMap::default();
+    let mut ex_trig: HashMap<(R, CLit), Vec<Vec<CLit>>> = HashMap::default();
+    for (clause, _, _) in clauses {
+        for atom in &clause.head {
+            if let Atom::Exists { r, fil, t } = *atom {
+                let mut trigger: Vec<CLit> = clause
+                    .body
+                    .iter()
+                    .filter_map(|a| match *a {
+                        Atom::Concept { lit, t: v } if v == t => Some(lit),
+                        _ => None,
+                    })
+                    .collect();
+                trigger.sort_unstable_by_key(|k| Ext::enc_lit(*k));
+                trigger.dedup();
+                let fillers = ex_fill.entry(r).or_default();
+                if !fillers.contains(&fil) {
+                    fillers.push(fil);
+                }
+                let triggers = ex_trig.entry((r, fil)).or_default();
+                if !triggers.contains(&trigger) {
+                    triggers.push(trigger);
+                }
+            }
+        }
+    }
+    (ex_fill, ex_trig)
 }
 
 fn label_subset(ext: &Ext, n: Node, m: Node) -> bool {
@@ -19208,10 +19423,18 @@ impl Ht {
         }
         // An existential head that already held needs no recorded obligation
         // in the search, but the Lean model reads every existential head atom
-        // through the obligation list; list every satisfied one.
+        // through the obligation list; list every satisfied one that the
+        // node's label triggers (every clause instance with that head whose
+        // body holds is among these). An untriggered one is not needed, and
+        // listing it would ask a blocked position that copies the node's
+        // obligations to witness it too.
+        let (_, ex_trig) = existential_triggers(&self.index.clauses);
         for &(r, s, t) in &edges {
             for &fil in existentials.get(&r).map_or(&[][..], |v| v.as_slice()) {
-                if self.ext.concepts[t].contains_key(&fil) {
+                let triggered = ex_trig.get(&(r, fil)).is_some_and(|ts| {
+                    ts.iter().any(|ks| ks.iter().all(|k| self.ext.concepts[s].contains_key(k)))
+                });
+                if triggered && self.ext.concepts[t].contains_key(&fil) {
                     obligations.push((r, fil, s));
                 }
             }
@@ -19318,6 +19541,7 @@ impl Ht {
         let mut direct = std::mem::take(&mut self.ext.cs_direct);
         let mut rel = std::mem::take(&mut self.ext.cs_rel);
         let mut fa = std::mem::take(&mut self.ext.cs_fa);
+        let mut back = std::mem::take(&mut self.ext.cs_back);
         // Postings were made in ascending node order, so the suffix's are the
         // tail of the log and the tail of each list.
         while let Some(&(node, slot)) = log.last() {
@@ -19336,6 +19560,8 @@ impl Ht {
         rel.resize_with(nn, smallvec::SmallVec::new);
         fa.truncate(lo);
         fa.resize_with(nn, smallvec::SmallVec::new);
+        back.truncate(lo);
+        back.resize_with(nn, smallvec::SmallVec::new);
         {
             let ext = &self.ext;
             for n in lo..nn {
@@ -19346,6 +19572,7 @@ impl Ht {
                 let sets = |n: Node| gain.kept_edge_sets(ext, n);
                 let admitted = |n: Node, m: Node, sets: &[&HashSet<CLit>]| {
                     gain.gain_irrelevant(ext, n, m, sets, rel[m].iter())
+                        && gain.back_witnessed(ext, n, &back[m])
                 };
                 let (is_direct, is_blocked) = if mode5 {
                     // compute_blocked mode 5: direct B1 + B2a + admits, then
@@ -19377,6 +19604,7 @@ impl Ht {
                 direct[n] = is_direct;
                 blocked[n] = is_blocked;
                 if !is_direct {
+                    back[n] = gain.back_need(ext, n);
                     for &k in ext.concepts[n].keys() {
                         let e = Ext::enc_lit(k);
                         if e >= lists.len() {
@@ -19401,6 +19629,7 @@ impl Ht {
         self.ext.cs_direct = direct;
         self.ext.cs_rel = rel;
         self.ext.cs_fa = fa;
+        self.ext.cs_back = back;
         self.ext.i2_lo = usize::MAX;
         // As in compute_blocked: a merged victim is dead, but only after the
         // scan (it stays a candidate blocker inside it).
@@ -21361,6 +21590,8 @@ impl Ht {
         }
         self.ext.block3 = self.block_mode == 3;
         self.ext.edge_note = self.checked_subset_mode();
+        self.ext.back_note = self.ext.edge_note
+            && self.subset_gain.as_ref().is_some_and(|gain| gain.back_possible());
         if !self.nom_set.is_empty() {
             self.ext.nominals = self.nom_set.iter().copied().collect();
         }
@@ -21408,6 +21639,7 @@ impl Ht {
             )));
         }
         self.subset_exact = self.subset_gain.as_ref().unwrap().trivial(self.index.inverse_bridge);
+
         if !self.subset_exact && !self.anywhere {
             self.anywhere = true;
         }
@@ -21465,6 +21697,8 @@ impl Ht {
             self.ext.block3 = self.block_mode == 3;
             // Checked subset blocking also reads edges; see `Ext::edge_note`.
             self.ext.edge_note = self.checked_subset_mode();
+            self.ext.back_note = self.ext.edge_note
+                && self.subset_gain.as_ref().is_some_and(|gain| gain.back_possible());
             // Nominals (o-rule): Ext::new resets the set, so re-apply each rebuild.
             if !self.nom_set.is_empty() {
                 self.ext.nominals = self.nom_set.iter().copied().collect();
@@ -26289,6 +26523,78 @@ mod tests {
             t.stats = true;
             assert_eq!(t.consistent(&[]), Some(false), "mode {mode}");
             assert!(t.checked_subset_mode(), "mode {mode}");
+            assert!(t.i2_calls > 0, "mode {mode}: the incremental path ran");
+        }
+    }
+    /// The inverse-witness pattern of docs/HYBRID-CB-HT.md section 9: `m`
+    /// (`M`, so `A`, `P`) witnesses `A ⊑ ∃r0.C` through the inverse edge to
+    /// its predecessor, the root; its successor `w` (`P` only) has
+    /// `L(w) ⊆ L(m)` and gains `A`, but `w`'s own predecessor `m` lacks `C`.
+    /// The body-literal rule admits the pair; `back_need` rejects it, and
+    /// accepts it once `w`'s predecessor carries `C`.
+    fn inverse_witness_clauses() -> Vec<Clause> {
+        const RR: C = 10;
+        const M: C = 11;
+        const P: C = 12;
+        const CC: C = 13;
+        const R1: R = 1;
+        let y: Var = 1;
+        vec![
+            Clause::new(vec![con(false, RR, X)], vec![exists(R1, false, M, X)]),
+            Clause::new(vec![con(false, M, X)], vec![con(false, A, X)]),
+            Clause::new(vec![con(false, M, X)], vec![con(false, P, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, CC, X)]),
+            Clause::new(vec![con(false, P, X)], vec![exists(R1, false, P, X)]),
+            Clause::new(vec![role(R1, X, y)], vec![role(R0, y, X)]),
+            Clause::new(vec![role(R0, X, y)], vec![role(R1, y, X)]),
+        ]
+    }
+    #[test]
+    fn subset_gain_rejects_a_blocker_witnessed_through_its_predecessor() {
+        let t = ht(inverse_witness_clauses());
+        let gain = SubsetGain::build(&t.index.clauses, &HashMap::default(), &[]);
+        assert!(gain.back_possible());
+        assert!(!gain.trivial(false));
+        // With nominals the o-rule links nodes to shared nominal nodes, which
+        // no unravelling copies; `back_need` stays empty (section 9).
+        assert!(!SubsetGain::build(&t.index.clauses, &HashMap::default(), &[42]).back_possible());
+        let mut e = Ext::new();
+        let d = dep_empty();
+        let root = e.new_root();
+        let m = e.new_node(Some(root));
+        let w = e.new_node(Some(m));
+        for c in [10, 13] {
+            e.add_concept(root, lit(false, c), &d);
+        }
+        for c in [11, 0, 12] {
+            e.add_concept(m, lit(false, c), &d);
+        }
+        e.add_concept(w, lit(false, 12), &d);
+        e.add_edge(1, root, m, &d);
+        e.add_edge(R0, m, root, &d);
+        e.add_edge(1, m, w, &d);
+        e.add_edge(R0, w, m, &d);
+        let sets = gain.kept_edge_sets(&e, w).expect("no counted kept edge");
+        assert!(
+            gain.gain_irrelevant(&e, w, m, &sets, e.concepts[m].keys()),
+            "the body-literal rule alone admits the pair"
+        );
+        assert_eq!(gain.back_need(&e, m).as_slice(), &[(R0, lit(false, 13))]);
+        assert!(!gain.admits(&e, w, m));
+        e.add_concept(m, lit(false, 13), &d);
+        assert!(gain.admits(&e, w, m), "w's predecessor now witnesses the obligation");
+    }
+    #[test]
+    fn inverse_witness_incremental_matches_full_scan() {
+        for mode in [1u8, 5] {
+            let mut t = ht(inverse_witness_clauses());
+            t.block_mode = mode;
+            t.set_fast_tableau();
+            t.i2_check = true;
+            t.stats = true;
+            assert_eq!(t.consistent(&[lit(false, 10), lit(false, 13)]), Some(true), "mode {mode}");
+            assert!(t.checked_subset_mode(), "mode {mode}");
+            assert!(t.ext.back_note, "mode {mode}");
             assert!(t.i2_calls > 0, "mode {mode}: the incremental path ran");
         }
     }
