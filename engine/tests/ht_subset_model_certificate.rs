@@ -41,6 +41,7 @@ const HEADER: &str = "Prefix(:=<http://example.org/g#>)\n\
 struct Terminals {
     accepted: usize,
     accepted_with_folds: usize,
+    accepted_with_predecessor_folds: usize,
     rejected: usize,
     not_emitted: usize,
 }
@@ -77,6 +78,9 @@ fn run(axioms: &str, route: &str, checker: Option<&PathBuf>) -> (String, Termina
             terminals.accepted += 1;
             if !line.contains(" folds=0 ") {
                 terminals.accepted_with_folds += 1;
+            }
+            if line.contains(" variant=relabel+predecessor ") {
+                terminals.accepted_with_predecessor_folds += 1;
             }
         } else if line.ends_with(" rejected") {
             terminals.rejected += 1;
@@ -136,7 +140,10 @@ fn seed_639_subset_blocked_terminals_are_lean_checked() {
 /// `gen_alci.py`): `D ⊑ ∃r⁻.D` is witnessed through the inverse edge to the
 /// predecessor. Before the existential part of `SubsetGain` (`back_need`) a
 /// blocked position took such a blocker's obligation without its witness and
-/// Lean rejected 13 of 16 terminals; now every terminal is accepted.
+/// Lean rejected 13 of 16 terminals. Since 2026-10-31 the rule admits these
+/// pairs again and the certificate gives them the predecessor fold (the
+/// blocked position also copies the blocker's edges to its predecessor),
+/// which Lean accepts.
 #[test]
 fn inverse_witnessed_existential_terminals_are_lean_checked() {
     let terminals = assert_checked(
@@ -151,5 +158,52 @@ fn inverse_witnessed_existential_terminals_are_lean_checked() {
     );
     if checker().is_some() {
         assert!(terminals.accepted_with_folds > 0, "{terminals:?}");
+        assert!(terminals.accepted_with_predecessor_folds > 0, "{terminals:?}");
     }
+}
+
+/// Seed 548 of the 700-seed ALC corpus (results/agents/2026-10-30/
+/// subset-blocking-gap): `≤1 s.A` merges `s`-successors. The checked scans
+/// used a merged victim or a successor of one as the only admitted blocker;
+/// the certificate dropped both (a victim's successors with it), so 4
+/// terminals had no certificate and would fail closed under the checker.
+/// Since 2026-10-31 a merged victim is no candidate blocker, and a victim's
+/// successor counts as the survivor's successor (the merge redirected the
+/// edge) in the mode-1 indirect blocking and in the certificate, so every
+/// terminal is emitted. Lean is not run here (some of these terminals take
+/// more than 30 s in `checkSat`).
+#[test]
+fn merged_victims_do_not_block_and_every_terminal_is_emitted() {
+    let axioms = "SubClassOf(ObjectMinCardinality(0 :s ObjectUnionOf(:B ObjectComplementOf(:C))) :A)\n\
+         SubClassOf(ObjectIntersectionOf(:C :A) ObjectUnionOf(ObjectUnionOf(:D ObjectComplementOf(:B)) ObjectComplementOf(ObjectUnionOf(:A :A))))\n\
+         DisjointClasses(ObjectAllValuesFrom(:s ObjectAllValuesFrom(:s :D)) :B)\n\
+         EquivalentClasses(:Q1 ObjectUnionOf(:A ObjectUnionOf(:D ObjectComplementOf(:B))))\n\
+         EquivalentClasses(:Q2 ObjectUnionOf(ObjectUnionOf(:B :D) ObjectMaxCardinality(1 :s :A)))\n\
+         EquivalentClasses(:Q3 ObjectIntersectionOf(:C ObjectSomeValuesFrom(:s :B)))";
+    let id = NEXT.fetch_add(1, Ordering::Relaxed);
+    let base = std::env::temp_dir().join(format!("km-ht-subset-model-emit-{}-{id}", std::process::id()));
+    let ontology = base.with_extension("ofn");
+    std::fs::write(&ontology, format!("{HEADER}{axioms}\n)\n")).unwrap();
+    let dir = base.with_extension("certs");
+    let mut command = Command::new(env!("CARGO_BIN_EXE_km"));
+    for (key, _) in std::env::vars_os() {
+        if key.to_string_lossy().starts_with("KM_") {
+            command.env_remove(key);
+        }
+    }
+    command
+        .env("KM_ROUTE", "ht_general")
+        .env("KM_HT_SUBSET_MODEL_CERT", &dir)
+        .env("KM_HT_INCRBLOCK2_CHECK", "1")
+        .args(["classify", "--lines"])
+        .arg(&ontology);
+    let output = command.output().unwrap();
+    let _ = std::fs::remove_file(&ontology);
+    let _ = std::fs::remove_dir_all(&dir);
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    assert!(output.status.success(), "km failed: {stderr}");
+    let written = stderr.lines().filter(|l| l.starts_with("KM_HT_SUBSET_MODEL_CERT ") && l.ends_with(" written")).count();
+    let missing: Vec<&str> = stderr.lines().filter(|l| l.contains("not emitted")).collect();
+    assert!(written > 0, "{stderr}");
+    assert!(missing.is_empty(), "terminals without a certificate: {missing:?}");
 }

@@ -789,6 +789,25 @@ impl Ext {
         lo
     }
 
+    /// Is `n` a merged victim? A victim is dead (its label is a stale copy
+    /// and its edges were redirected to the survivor), so the checked subset
+    /// scans do not post it as a candidate blocker.
+    #[inline]
+    fn merged_victim(&self, n: Node) -> bool {
+        self.number && self.merged[n].is_some()
+    }
+
+    /// The predecessor of `n` in the merged graph: `resolve(pred(n))`. A
+    /// merge redirects the victim's edges to the survivor, so a victim's
+    /// successor becomes a successor of the survivor (which has the smaller
+    /// id). The checked mode-1 scan's indirect blocking and the certificate
+    /// read this predecessor (docs/HYBRID-CB-HT.md section 9, "Predecessor
+    /// fold"). A merge or its undo notes the victim, below every successor.
+    #[inline]
+    fn live_pred(&self, n: Node) -> Option<Node> {
+        self.pred[n].map(|p| self.resolve(p))
+    }
+
     /// A merge of `v` changes whether `v` is a successor of `pred(v)` for
     /// `SubsetGain::back_need`, and whether `v` can witness for its
     /// children (`SubsetGain::back_witnessed`).
@@ -1359,6 +1378,10 @@ impl Ext {
         self.merged[victim] = Some(survivor);
         if self.back_note {
             self.i2_note(self.merge_note_node(victim));
+        } else if self.edge_note {
+            // The checked scans post no merged victim as a candidate blocker,
+            // and their indirect blocking reads `Ext::live_pred`.
+            self.i2_note(victim);
         }
         self.merge_deps[victim] = mdep.clone();
         let cs: Vec<(CLit, DepSet)> = self.concepts[victim]
@@ -1563,6 +1586,8 @@ impl Ext {
                 Trail::Merge(v) => {
                     if self.back_note && v < self.pred.len() {
                         min_aff = min_aff.min(self.merge_note_node(v));
+                    } else if self.edge_note {
+                        min_aff = min_aff.min(v);
                     }
                     if v < self.merged.len() {
                         self.merged[v] = None;
@@ -2465,6 +2490,12 @@ struct SubsetGain {
     /// it (`back_need`, `back_witnessed`).
     ex_fill: HashMap<R, Vec<CLit>>,
     ex_trig: HashMap<(R, CLit), Vec<Vec<CLit>>>,
+    /// Some clause body has two role atoms between the same two variables
+    /// (for example disjoint roles, `r(x, y) ∧ s(x, y) → ⊥`). The
+    /// predecessor fold can join a kept edge and a copied edge between the
+    /// same two nodes, so with such a clause `back_need` keeps the
+    /// predecessor's witnesses (see `pred_fold_ok`).
+    parallel: bool,
     /// Some edge can point from a node to a non-successor: a role head
     /// whose source is not the clause centre (inverse roles) or an equality
     /// head (merges redirect edges), and there are no nominals and no
@@ -2495,6 +2526,7 @@ impl SubsetGain {
             ex_fill: HashMap::default(),
             ex_trig: HashMap::default(),
             back: false,
+            parallel: false,
             relevant_bits: Vec::new(),
             id: SUBSET_GAIN_IDS.fetch_add(1, Ordering::Relaxed),
         }
@@ -2518,8 +2550,15 @@ impl SubsetGain {
             let mut neighbours: Vec<Var> = Vec::new();
             let mut out_roles: Vec<(R, Var)> = Vec::new();
             let mut in_roles: Vec<(R, Var)> = Vec::new();
+            let mut pairs: Vec<(Var, Var)> = Vec::new();
             for atom in &clause.body {
                 if let Atom::Role { r, s, t } = atom {
+                    let pair = ((*s).min(*t), (*s).max(*t));
+                    if pairs.contains(&pair) {
+                        g.parallel = true;
+                    } else {
+                        pairs.push(pair);
+                    }
                     if *s == X && *t != X {
                         out_roles.push((*r, *t));
                     } else if *t == X && *s != X {
@@ -2647,6 +2686,24 @@ impl SubsetGain {
         }
     }
 
+    /// Can the predecessor fold copy the edges between `m` and its own
+    /// predecessor `p'` to a node blocked by `m`? The copies make the blocked
+    /// position a second neighbour of `p'` with `m`'s label, so no role on
+    /// those edges may be counted at `p'` (a clause with two or more
+    /// neighbours or an equality head over it: `multi_in` for `m -r-> p'`,
+    /// `multi_out` for `p' -r-> m`), and no clause may read two role atoms
+    /// between the same two nodes (`parallel`), since the blocked node's
+    /// own edges to `p'` are kept beside the copies. Reads `pred(m)` (fixed
+    /// for `m`'s lifetime) and `m`'s in- and out-edges.
+    fn pred_fold_ok(&self, ext: &Ext, m: Node) -> bool {
+        if self.parallel {
+            return false;
+        }
+        let Some(p) = ext.pred[m] else { return false };
+        ext.out_edges[m].iter().all(|&(r, t, _)| t != p || !self.multi_in.contains(&r))
+            && ext.in_edges[m].iter().all(|&(r, s, _)| s != p || !self.multi_out.contains(&r))
+    }
+
     /// Can some existential be witnessed through a non-successor edge?
     #[inline]
     fn back_possible(&self) -> bool {
@@ -2664,11 +2721,33 @@ impl SubsetGain {
     /// out-edges, and `pred`, merge status and label of their non-successor
     /// targets. Witnesses at a non-blockable node other than `pred(m)`
     /// (nominal and ABox nodes) are not counted; see the loop.
+    ///
+    /// Witnesses at `pred(m)` are dropped when `pred_fold_ok(m)`: the
+    /// certificate then uses the predecessor fold for the pair (see
+    /// `back_need_strict`), which copies `m`'s edges to `pred(m)` to the
+    /// blocked position, and the infinite unravelling of section 9 copies
+    /// them as well, so the pair needs only the body-literal and
+    /// counted-role rules.
     fn back_need(&self, ext: &Ext, m: Node) -> smallvec::SmallVec<[(R, CLit); 2]> {
+        self.back_need_with(ext, m, true)
+    }
+
+    /// `back_need` without dropping the predecessor's witnesses (the rule of
+    /// 2026-10-30): the obligations that the successor fold leaves
+    /// unwitnessed unless the blocked node's own predecessor witnesses them.
+    /// The certificate uses the predecessor fold for a pair exactly when
+    /// these are not witnessed.
+    fn back_need_strict(&self, ext: &Ext, m: Node) -> smallvec::SmallVec<[(R, CLit); 2]> {
+        self.back_need_with(ext, m, false)
+    }
+
+    fn back_need_with(&self, ext: &Ext, m: Node, relax: bool) -> smallvec::SmallVec<[(R, CLit); 2]> {
         let mut need: smallvec::SmallVec<[(R, CLit); 2]> = smallvec::SmallVec::new();
         if !self.back_possible() {
             return need;
         }
+        let pred_copy = relax && self.pred_fold_ok(ext, m);
+        let mut via_pred: smallvec::SmallVec<[(R, CLit); 2]> = smallvec::SmallVec::new();
         let lm = &ext.concepts[m];
         for &(r, u, _) in &ext.out_edges[m] {
             // A merged victim is dead; its edges were redirected to the
@@ -2686,7 +2765,13 @@ impl SubsetGain {
             }
             let Some(fillers) = self.ex_fill.get(&r) else { continue };
             let lu = &ext.concepts[u];
-            let consider = |fil: CLit, need: &mut smallvec::SmallVec<[(R, CLit); 2]>| {
+            let at_pred = pred_copy && ext.pred[m] == Some(u);
+            let mut consider = |fil: CLit, need: &mut smallvec::SmallVec<[(R, CLit); 2]>| {
+                if at_pred {
+                    if !via_pred.contains(&(r, fil)) {
+                        via_pred.push((r, fil));
+                    }
+                }
                 if need.contains(&(r, fil)) {
                     return;
                 }
@@ -2713,6 +2798,11 @@ impl SubsetGain {
                     }
                 }
             }
+        }
+        // A witness at `pred(m)` covers the obligation in the predecessor
+        // fold, whatever other non-successor witnesses exist.
+        if !via_pred.is_empty() {
+            need.retain(|entry| !via_pred.contains(entry));
         }
         need.sort_unstable_by_key(|&(r, k)| (r, Ext::enc_lit(k)));
         need
@@ -19240,7 +19330,7 @@ impl Ht {
         let checker = std::env::var_os("KM_HT_SUBSET_MODEL_CHECKER");
         let _ = std::fs::create_dir_all(dir);
         let stem = dir.join(format!("ht-subset-{}-{n}", std::process::id()));
-        let (document, nodes, folds) = match self.subset_model_certificate_json(seed) {
+        let (document, nodes, folds, pred_folds) = match self.subset_model_certificate_json(seed) {
             Ok(certificate) => certificate,
             Err(reason) => {
                 let _ = std::fs::write(stem.with_extension("err"), &reason);
@@ -19254,7 +19344,9 @@ impl Ht {
             return checker.is_none();
         }
         let Some(checker) = checker else {
-            eprintln!("KM_HT_SUBSET_MODEL_CERT terminal={n} nodes={nodes} folds={folds} written");
+            eprintln!(
+                "KM_HT_SUBSET_MODEL_CERT terminal={n} nodes={nodes} folds={folds} predecessor_folds={pred_folds} written"
+            );
             return true;
         };
         let passes = |path: &std::path::Path| {
@@ -19265,10 +19357,11 @@ impl Ht {
                 .is_ok_and(|status| status.success())
         };
         // The section-9 construction relabels a blocked position with its
-        // blocker's label; when Lean rejects that model, try the fold that
+        // blocker's label (with the predecessor fold for the pairs listed in
+        // `predecessor`); when Lean rejects that model, try the fold that
         // keeps the blocked node's own label (either is a model if accepted).
         let mut accepted = passes(&path);
-        let mut variant = "relabel";
+        let mut variant = if pred_folds > 0 { "relabel+predecessor" } else { "relabel" };
         if !accepted && folds > 0 {
             let own = stem.with_extension("own.json");
             let keep_label = document.replacen("\"relabel\":true", "\"relabel\":false", 1);
@@ -19278,7 +19371,7 @@ impl Ht {
             }
         }
         eprintln!(
-            "KM_HT_SUBSET_MODEL_CERT terminal={n} nodes={nodes} folds={folds} variant={variant} {}",
+            "KM_HT_SUBSET_MODEL_CERT terminal={n} nodes={nodes} folds={folds} predecessor_folds={pred_folds} variant={variant} {}",
             if accepted { "accepted" } else { "rejected" }
         );
         accepted
@@ -19289,9 +19382,10 @@ impl Ht {
     /// kept nodes (every node except merged ones and the descendants of
     /// blocked nodes), their labels, edges and existential obligations, the
     /// predecessor pairs, one admitted unblocked blocker for every blocked
-    /// kept node, the root and the query seed. Returns the document, the
-    /// number of kept nodes and the number of blocking pairs.
-    fn subset_model_certificate_json(&mut self, seed: &[CLit]) -> Result<(String, usize, usize), String> {
+    /// kept node, the pairs that use the predecessor fold, the root and the
+    /// query seed. Returns the document, the number of kept nodes, the
+    /// number of blocking pairs and the number of predecessor folds.
+    fn subset_model_certificate_json(&mut self, seed: &[CLit]) -> Result<(String, usize, usize, usize), String> {
         if !matches!(self.block_mode, 1 | 5) {
             return Err(format!("blocking mode {} is not subset blocking", self.block_mode));
         }
@@ -19326,7 +19420,9 @@ impl Ht {
         let merged = |n: Node| self.ext.number && self.ext.merged[n].is_some();
         let mut dropped = vec![false; nn];
         for n in 0..nn {
-            dropped[n] = merged(n) || self.ext.pred[n].is_some_and(|p| dropped[p] || blocked[p]);
+            // A victim's successor is the survivor's successor in the merged
+            // graph (`Ext::live_pred`), so it is kept unless the survivor is.
+            dropped[n] = merged(n) || self.ext.live_pred(n).is_some_and(|p| dropped[p] || blocked[p]);
         }
         let gain = self.subset_gain.clone();
         let exact = self.block_mode == 1 && self.subset_exact;
@@ -19341,15 +19437,38 @@ impl Ht {
                 continue;
             }
             let Some(m) = (0..n).find(|&m| !dropped[m] && !blocked[m] && admitted(n, m)) else {
-                let indirect = (0..n).any(|m| blocked[m] && !dropped[m] && admitted(n, m))
-                    || (0..n).any(|m| dropped[m] && !merged(m) && admitted(n, m));
-                return Err(format!(
-                    "blocked node {n} has no admitted unblocked blocker in the unravelled model{}",
-                    if indirect { " (only a blocked or dropped node admits it)" } else { "" }
-                ));
+                let other = (0..n).find(|&m| (blocked[m] || dropped[m]) && admitted(n, m));
+                let why = other.map_or(String::new(), |m| {
+                    let mut chain = Vec::new();
+                    let mut cur = Some(m);
+                    while let Some(c) = cur {
+                        chain.push(format!(
+                            "{c}{}{}",
+                            if merged(c) { "M" } else { "" },
+                            if blocked[c] { "B" } else { "" }
+                        ));
+                        cur = self.ext.pred[c];
+                    }
+                    format!(" (admitted by node {m}: blocked={} dropped={} chain {})", blocked[m], dropped[m], chain.join("<"))
+                });
+                return Err(format!("blocked node {n} has no admitted unblocked blocker in the unravelled model{why}"));
             };
             folds.push((n, m));
         }
+        // The predecessor fold (lean `predecessorFolds`) for a pair whose
+        // blocker witnesses an obligation through its own predecessor that
+        // the successor fold leaves unwitnessed (`back_need_strict` not
+        // witnessed by the blocked node's own predecessor); the successor
+        // fold, as before, for every other pair.
+        let pred_folds: Vec<Node> = folds
+            .iter()
+            .filter(|&&(w, m)| {
+                gain.as_ref().is_some_and(|gain| {
+                    !gain.back_witnessed(&self.ext, w, &gain.back_need_strict(&self.ext, m))
+                })
+            })
+            .map(|&(w, _)| w)
+            .collect();
         let mut id = vec![usize::MAX; nn];
         let mut kept = 0usize;
         for n in 0..nn {
@@ -19484,7 +19603,7 @@ impl Ht {
         let parents: Vec<serde_json::Value> = (0..nn)
             .filter(|&n| !dropped[n])
             .filter_map(|n| {
-                let p = self.ext.pred[n]?;
+                let p = self.ext.live_pred(n)?;
                 (!dropped[p]).then(|| serde_json::json!({ "source": id[n], "target": id[p] }))
             })
             .collect();
@@ -19500,8 +19619,9 @@ impl Ht {
             "root": id[0],
             "seed": seed.iter().map(|&lit| serde_json::to_value(Self::lean_wire_lit(lit)).unwrap()).collect::<Vec<_>>(),
             "relabel": true,
+            "predecessor": pred_folds.iter().map(|&w| id[w]).collect::<Vec<_>>(),
         });
-        Ok((document.to_string(), kept, folds.len()))
+        Ok((document.to_string(), kept, folds.len(), pred_folds.len()))
     }
 
     /// Checked subset blocking runs on the incremental suffix path
@@ -19566,7 +19686,13 @@ impl Ht {
             let ext = &self.ext;
             for n in lo..nn {
                 let blockable = ext.blockable[n];
-                let parent_blocked = ext.pred[n].is_some_and(|p| blocked[p]);
+                // Mode 1 reads the predecessor in the merged graph
+                // (`Ext::live_pred`), as compute_blocked does.
+                let parent_blocked = if mode5 {
+                    ext.pred[n].is_some_and(|p| blocked[p])
+                } else {
+                    ext.live_pred(n).is_some_and(|p| blocked[p])
+                };
                 // `None`: SubsetGain::admits rejects every pair with `n`
                 // blocked, so no candidate can block it directly.
                 let sets = |n: Node| gain.kept_edge_sets(ext, n);
@@ -19603,7 +19729,7 @@ impl Ht {
                 };
                 direct[n] = is_direct;
                 blocked[n] = is_blocked;
-                if !is_direct {
+                if !is_direct && !ext.merged_victim(n) {
                     back[n] = gain.back_need(ext, n);
                     for &k in ext.concepts[n].keys() {
                         let e = Ext::enc_lit(k);
@@ -19631,8 +19757,8 @@ impl Ht {
         self.ext.cs_fa = fa;
         self.ext.cs_back = back;
         self.ext.i2_lo = usize::MAX;
-        // As in compute_blocked: a merged victim is dead, but only after the
-        // scan (it stays a candidate blocker inside it).
+        // As in compute_blocked: a merged victim is dead; it is no candidate
+        // blocker inside the scan and is marked blocked after it.
         if self.ext.number {
             for (n, b) in out.iter_mut().enumerate() {
                 if self.ext.merged[n].is_some() {
@@ -19672,9 +19798,13 @@ impl Ht {
         // are outside the unravelled model, so block them too (indirect
         // blocking; `pred[n] < n`, so one ascending pass is final). Plain
         // subset blocking keeps its historical behaviour.
+        // The predecessor is the one in the merged graph (`Ext::live_pred`):
+        // a merge redirects a victim's successor edges to the survivor.
         let indirect = |blocked: &[bool], n: Node| {
-            !exact && self.ext.pred[n].is_some_and(|p| blocked[p])
+            !exact && self.ext.live_pred(n).is_some_and(|p| blocked[p])
         };
+        // The checked scans post no merged victim as a candidate blocker.
+        let dead = |n: Node| matches!(mode, 1 | 5) && !exact && self.ext.merged_victim(n);
         if mode == 0 || mode == 2 {
             // O(n) hashed equality blocking — HermiT's BlockingSignatureCache idea.
             // The equality modes block n by the FIRST earlier unblocked node with
@@ -19855,8 +19985,10 @@ impl Ht {
                         }
                     }
                 }
-                // only earlier UNBLOCKED nodes are candidate blockers.
-                if !blocked[w] {
+                // only earlier UNBLOCKED nodes are candidate blockers, and not
+                // a merged victim: it is dead (its label is a stale copy, its
+                // edges were redirected) and the certificate drops it.
+                if !blocked[w] && !dead(w) {
                     for k in self.ext.concepts[w].keys() {
                         let e = enc(k);
                         if e >= lists.len() {
@@ -19933,7 +20065,7 @@ impl Ht {
                 let ln = &self.ext.concepts[n];
                 let lnlen = ln.len();
                 for m in 0..n {
-                    if blocked[m] {
+                    if blocked[m] || dead(m) {
                         continue;
                     }
                     let lm = &self.ext.concepts[m];
@@ -19991,7 +20123,10 @@ impl Ht {
                         }
                     }
                 }
-                if !blocked[n] {
+                // Checked pairs (not `exact`, whose unchecked incremental
+                // twin posts every unblocked node): a merged victim is no
+                // candidate blocker, as in mode 5.
+                if !blocked[n] && !dead(n) {
                     for k in self.ext.concepts[n].keys() {
                         let e = enc(k);
                         if e >= lists.len() {
@@ -26530,8 +26665,9 @@ mod tests {
     /// (`M`, so `A`, `P`) witnesses `A ⊑ ∃r0.C` through the inverse edge to
     /// its predecessor, the root; its successor `w` (`P` only) has
     /// `L(w) ⊆ L(m)` and gains `A`, but `w`'s own predecessor `m` lacks `C`.
-    /// The body-literal rule admits the pair; `back_need` rejects it, and
-    /// accepts it once `w`'s predecessor carries `C`.
+    /// The body-literal rule admits the pair. The predecessor fold copies
+    /// `m`'s edges to the root to `w`, so `back_need` admits it (2026-10-31);
+    /// `back_need_strict` (the successor fold) needs `C` at `m`.
     fn inverse_witness_clauses() -> Vec<Clause> {
         const RR: C = 10;
         const M: C = 11;
@@ -26579,10 +26715,61 @@ mod tests {
             gain.gain_irrelevant(&e, w, m, &sets, e.concepts[m].keys()),
             "the body-literal rule alone admits the pair"
         );
-        assert_eq!(gain.back_need(&e, m).as_slice(), &[(R0, lit(false, 13))]);
-        assert!(!gain.admits(&e, w, m));
+        assert_eq!(gain.back_need_strict(&e, m).as_slice(), &[(R0, lit(false, 13))]);
+        assert!(gain.pred_fold_ok(&e, m));
+        assert!(gain.back_need(&e, m).is_empty(), "the predecessor fold witnesses it");
+        assert!(gain.admits(&e, w, m));
+        assert!(!gain.back_witnessed(&e, w, &gain.back_need_strict(&e, m)), "a predecessor fold");
         e.add_concept(m, lit(false, 13), &d);
-        assert!(gain.admits(&e, w, m), "w's predecessor now witnesses the obligation");
+        assert!(gain.admits(&e, w, m));
+        assert!(
+            gain.back_witnessed(&e, w, &gain.back_need_strict(&e, m)),
+            "w's predecessor now witnesses the obligation: the successor fold suffices"
+        );
+    }
+    /// The same terminal when `r0` is inverse functional: the predecessor
+    /// fold would give the root a second `r0`-predecessor, which the
+    /// counting clause at the root reads, so `back_need` keeps the root's
+    /// witness and the pair is rejected as on 2026-10-30. The same holds
+    /// with a clause that reads two role atoms between the same nodes.
+    #[test]
+    fn subset_gain_keeps_predecessor_witnesses_on_counted_roles() {
+        let y: Var = 1;
+        let z: Var = 2;
+        let build = |extra: Clause| {
+            let mut cls = inverse_witness_clauses();
+            cls.push(extra);
+            let t = ht(cls);
+            SubsetGain::build(&t.index.clauses, &HashMap::default(), &[])
+        };
+        let counted = build(Clause::new(
+            vec![role(R0, y, X), role(R0, z, X)],
+            vec![Atom::Eq { s: y, t: z }],
+        ));
+        let parallel = build(Clause::new(vec![role(R0, X, y), role(1, y, X)], vec![con(false, 14, X)]));
+        assert!(parallel.parallel);
+        for gain in [counted, parallel] {
+            assert!(gain.back_possible());
+            let mut e = Ext::new();
+            let d = dep_empty();
+            let root = e.new_root();
+            let m = e.new_node(Some(root));
+            let w = e.new_node(Some(m));
+            for c in [10, 13] {
+                e.add_concept(root, lit(false, c), &d);
+            }
+            for c in [11, 0, 12] {
+                e.add_concept(m, lit(false, c), &d);
+            }
+            e.add_concept(w, lit(false, 12), &d);
+            e.add_edge(1, root, m, &d);
+            e.add_edge(R0, m, root, &d);
+            e.add_edge(1, m, w, &d);
+            e.add_edge(R0, w, m, &d);
+            assert!(!gain.pred_fold_ok(&e, m));
+            assert_eq!(gain.back_need(&e, m).as_slice(), &[(R0, lit(false, 13))]);
+            assert!(!gain.admits(&e, w, m));
+        }
     }
     #[test]
     fn inverse_witness_incremental_matches_full_scan() {
