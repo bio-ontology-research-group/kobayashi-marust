@@ -905,3 +905,161 @@ failing test and a 43-class variant, `KM_THREADS` 1 and 4, dynamic and
 static schedule; a consistent control) and the whole
 `incremental_ht_reasoning` suite. Measurements:
 `results/agents/2026-10-30/incremental-ht-regression/`.
+## 14. Hypotheses, merge hypotheses and the exchange cut (2026-10-31, agent `nominal-exchange`)
+
+Section 11 and docs/NOMINALS-CB.md section 10.4 left two costs: the merge
+hypotheses (22 of 724 random seeds lost at 10 s, `r1536`, `r3777`, `r1600`,
+`r1646` past 60 s on forced `nominals`) and the R2 seeds `r129`, `r673`,
+`r3351`, `fr248`. Results: `results/agents/2026-10-31/nominal-exchange/`.
+
+### 14.1 Where the cost was
+
+On `r5` (`C ⊑ {b, e}`, `e ∈ {a, d}`) the ground context exploded inside a
+single saturation (400,000 superposition results after 10,000 work-offs).
+Its labels were the four merge hypotheses `C(o)` and twenty further
+hypotheses such as `Q_0(d)`, `__nom__b(d)`, `B(d)`. The query context
+received `C(d) → Q_0(d)`, Join case 3 turned it into `⊤ → Δ'' ∨ Q_0(d)`,
+`Q_0(d)` was maximal, and ordinary r-Succ pushed `Q_0(d) → Q_0(d)` back.
+The ground context then repeated, under `Q_0(d)`, all the reasoning it had
+already done under `C(d)`, sent the results back, and the next ground atom
+was pushed. Every ground head atom of a delivered clause started another
+round. On `r129` and `fr248` the same push-back follows the extra equality
+deliveries of R3.
+
+### 14.2 The cut
+
+`Engine::rsucc_covered`: the r-Succ push of the maximal ground atom `a` of a
+receiver clause `c = Γ → Δ ∨ a` is skipped when the ground context holds a
+worked-off clause `e` such that
+
+- every head literal of `e` is a head literal of `c`, and
+- every body atom of `e` is a hypothesis the receiver pushed (an edge
+  `(u, o)` of the ground context whose pushed set holds it) and is either
+  a body atom of `c` or a merge hypothesis `K(o)` of the receiver with a
+  body-free bridge `⊤ → Δ'' ∨ x ≈ o` whose other literals are head
+  literals of `c` other than `a`.
+
+A clause the receiver got verbatim is covered by itself; a Join case 3
+result is covered by the clause it came from. `Engine::merge_hypothesis_covered`
+applies the same test to the Join case 3 clause `⊤ → Δ'' ∨ K(o)` before
+pushing a merge hypothesis: a bridge `x ≈ a` that the receiver derived from
+the bridge `x ≈ d` and a ground `a ≈ d ∨ Φ` is covered by the ground
+context's `K(d) → K(a) ∨ Φ`. `KM_NO_EXCHANGE_CUT` disables both,
+`KM_NO_MERGE_CUT` only the second, `KM_DIAG_CUT` prints the uncovered
+pushes. The cut is off under the experimental root-dependent orders
+(`KM_ROOT_ORDERED`, `KM_ROOT_ONLY_INCOMP`).
+
+### 14.3 Exactness
+
+*Soundness.* The cut only omits hypotheses `A → A` (tautologies); fewer
+premises cannot add a conclusion.
+
+*Completeness, propositional skeleton (mechanised).*
+`lean/ContextCalculus/ExchangeCut.lean`, sorry-free, axioms `propext`,
+`Classical.choice`, `Quot.sound`. Unlike sections 3 and 8, the ground
+context is not a clause set closed under resolution on its own: it fires
+the ground instances of ontology clauses (the nuclei `P`) only on atoms it
+holds in a head, and reasons under a receiver atom only after the receiver
+pushed it. The module models this.
+
+- `ClosedHyper rk P SG`: `SG` is closed under labelled ordered
+  hyperresolution with the nuclei `P` (for each body atom of a nucleus an
+  electron of `SG` with that atom strictly on top of its head; body atoms of
+  `SG` are labels, never resolved in `SG`). `closedHyper_of_maximal`
+  transfers KM's closure on maximal head literals of a strict partial order
+  to every rank extending it.
+- `labelledModel_sat_nuclei`: for labels `J` whose hypothesis clauses
+  `h → h` lie in `SG`, the candidate model built from the clauses with
+  labels in `J` satisfies `P`. This is the paper's ground fragment built
+  under the hypotheses `Γ_o`.
+- `CutCond`: hypothesis clauses in `SG`; hypotheses are interface atoms;
+  ground-context atoms below an interface atom are interface atoms (one
+  rank `rk` for both contexts); the guard delivers every interface clause
+  whose labels are the receiver's hypotheses; locality; and *demand*: every
+  interface atom that is the strict maximum of a receiver clause `c` is a
+  hypothesis of the receiver or `c` is `Covered` (the cut condition of
+  13.2, with Join case 3 read as the receiver clause `⊤ → Δ'' ∨ K(o)`).
+- `cut_exchange_complete`: if `P ∪ SQ` is unsatisfiable, the receiver holds
+  `⊥`. `cut_unit_readout_complete`: if `P ∪ SQ` entails an atom that is
+  rank-least among the receiver's atoms and is an interface atom or outside
+  `P`, the receiver holds `⊥` or a strengthening of the unit.
+- `pushed_exchange_complete`: the case without covers, the paper's
+  exchange. For a query context whose element may be `o`, the demanded atom
+  of the Join case 3 clause `⊤ → Δ'' ∨ K(o)` is `K(o)`, and only the merge
+  hypothesis meets the demand. `no_merge_hypothesis_counterexample`: ground
+  theory `{K(o) → D(o)}`, receiver `{⊤ → K(o)}`, empty ground context, all
+  closed, nothing to deliver, the union entails `D(o)`, the receiver holds
+  neither `⊥` nor `→ D(o)`, and the demand fails exactly at `K(o)`. This
+  closes, at the propositional level, the gap of the paper's proof noted in
+  docs/NOMINALS-CB.md section 10.1: the proof needs `Γ_o` as hypotheses,
+  and the demand condition says which ones.
+- `covered_of_strengthened`: a receiver clause that a ground clause
+  strengthens (labels being receiver hypotheses) is covered for every atom.
+- `exists_common_rank`: a strict partial order in which the interface is
+  downward closed among the ground context's atoms (R2) admits one injective
+  rank extending it with that property, so `CutCond.lower` holds.
+
+Why one rank: in the proof a covered clause `c` produces `a` in the
+receiver's model, so the other head atoms of the covering `e` are false
+there and lie below `a` in the receiver's rank; the induction that makes the
+two models agree on the interface needs them below `a` in the ground
+context's rank as well. KM's literal order (`calc::lteq`) is the same
+function in every context outside the experimental root-dependent modes,
+which is why the cut is off there.
+
+*What remains argued.* (1) The correspondence of KM's Hyper in the ground
+context with `ClosedHyper`, of its guard with `CutCond.deliver` (sections 6,
+8), and locality. (2) Congruence: equalities are opaque atoms; the Eq rule,
+rewriting `o` to `x` and Join case 3 read as the clause `⊤ → Δ'' ∨ K(o)` are
+not mechanised. (3) Demand for the receiver clauses KM neither pushes nor
+covers: pushes blocked by side condition (*), Join case 3 clauses for
+non-core atoms `A(x)`, and ground role or equality atoms that a receiver
+derives itself. The argument for them is the simulation of
+docs/NOMINALS-CB.md section 10.1: under the hypothesis `K(o)` the ground
+context derives these atoms by the receiver's inferences grounded at `o`.
+That step is first-order and not mechanised.
+
+*Lean obligation.* Mechanised as above. The certified CB surface
+(`KM_CB_LEAN_REQUIRED`) keeps the plain unordered regime and its exact send
+sets and is unchanged; it does not model r-Succ edges, merge hypotheses or
+the cut.
+
+### 14.4 Horn readout of the nominal-label cache
+
+`horn_unit_readout` (same module, same axioms): if the ground context is
+closed under labelled ordered hyperresolution and every body-free clause it
+holds is a unit, every atom the ground theory entails is the head of a
+unit. This is the condition of docs/NOMINALS-CB.md section 10.2, proved at
+the propositional level (equalities opaque; the cache's following of unit
+equalities is the congruence step, argued).
+
+### 14.5 Measurements
+
+`results/agents/2026-10-31/nominal-exchange/` (binary km.x3 at b411722e,
+every run on one CPU, at most three at a time, forced `nominals`, HermiT
+oracle). Seeds r0-r999 at 60 s: 636 ok, 0 wrong; on the 364 it does not
+answer, km.v6 (merge hypotheses without the cut) answers 2 (r567, r696) and
+km.final2 (no merge hypotheses, incomplete on r1600) 18. All 4,000 seeds at
+10 s: 2,521 ok, 0 wrong. Motif sets m1-m7: 3,000 of 3,000 ok at 20 s. Of the
+22 seeds lost to the merge hypotheses, 16 answer at 60 s and 6 do not
+(r163, r219, r461, r481, r575, r696). Before and after on single seeds:
+r5 more than 30 s to 0.2 s, r129 to 0.3 s, r1646 to 0.8 s, fr248 to 14 s,
+m2197 more than 60 s to 2.1 s; r1600 on forced `nominals` 224 s, r3602
+0.5 s; r1536 and r3777 still time out at 300 s on forced `nominals` (they
+answer on the other routes). ORE paired design (112 nominal inputs,
+automatic route, 300 s): 108 answered by km.x3 and km.v6 with identical
+output, same timeouts, 772 s against 794 s.
+
+*What the cut does not remove.* The seeds that still time out spend their
+time inside the ground context under merge-hypothesis labels: superposition
+on disjunctive ground equalities under the labels `K(o)` (r163: 2.6 million
+Hyper results in 4,000 work-offs) and, on the object-value case of
+`data_value_singleton_next_to_nominal_successors`, the ground context's
+own Succ/Pred exchange with its successor contexts under those labels. With
+`KM_CONTEXT_NO_R2` r163 answers in 0.02 s, so the cross-individual
+comparisons that R2 removes make most of the labelled clauses' literals
+maximal. Ordering only the labelled clauses by the plain Sequoia order was
+measured (`KM_EXP_MERGE_ORDER`, not kept): it recovered r163, r208, r461
+and lost r29, r376, r557, r576, and it has no exactness argument (the
+receiver's interface must stay downward closed in the order of the clauses
+it may receive).

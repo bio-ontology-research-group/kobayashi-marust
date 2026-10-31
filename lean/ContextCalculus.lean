@@ -4,6 +4,7 @@ import ContextCalculus.CompletenessOrdered
 import ContextCalculus.CompletenessOrderedSubsumption
 import ContextCalculus.CompletenessExchange
 import ContextCalculus.ExchangeEquality
+import ContextCalculus.ExchangeCut
 import ContextCalculus.CompletenessClause
 import ContextCalculus.CompletenessEL
 import ContextCalculus.ELCompletion

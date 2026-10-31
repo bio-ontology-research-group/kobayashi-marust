@@ -115,6 +115,27 @@ fn r3403_on_the_forced_nominals_route() {
     check("merge_r3403.ofn", Some("nominals"), &r3403());
 }
 
+/// The exchange cut (docs/PER-CONTEXT-ORDERING.md section 14): seeds whose
+/// receivers pushed every ground atom of a delivered clause back as a
+/// hypothesis (`r5`: merge hypotheses on four bridges, `r129`: the R3
+/// equality deliveries, `r1646`) answer on the forced route, and the cut
+/// changes no answer of the minimised r1600.
+#[test]
+fn exchange_cut_seeds_on_the_forced_nominals_route() {
+    check("cut_r5_bridges.ofn", Some("nominals"), &BTreeSet::new());
+    check("cut_r129_pushback.ofn", Some("nominals"), &pairs(&[("Q1", "B"), ("Q2", "B")]));
+    check("merge_r1646.ofn", Some("nominals"), &r1646());
+}
+
+#[test]
+fn minimised_r1600_without_the_exchange_cut() {
+    for extra in [("KM_NO_EXCHANGE_CUT", "1"), ("KM_NO_MERGE_CUT", "1")] {
+        let (consistent, unsat, got) = classify(&fixture("merge_r1600_min.ofn"), Some("nominals"), &[extra]);
+        assert!(consistent && unsat.is_empty(), "{extra:?}");
+        assert_eq!(got, pairs(&[("B", "D")]), "{extra:?}");
+    }
+}
+
 /// The forced `nominals` route answers r1600 and r1646 exactly, but slowly:
 /// the ground context reasons under the merge hypotheses `B(a)`, `B(c)`
 /// (r1600) and `E(a)`, `E(b)` (r1646), and the ground atoms its answers carry
@@ -124,8 +145,7 @@ fn r3403_on_the_forced_nominals_route() {
 /// switched off, as does the nominal-coverage binary that development merged.
 #[test]
 #[ignore = "minutes on the forced nominals route (docs/NOMINALS-CB.md section 10)"]
-fn r1600_r1646_r3602_on_the_forced_nominals_route() {
+fn r1600_r3602_on_the_forced_nominals_route() {
     check("merge_r1600.ofn", Some("nominals"), &r1600());
-    check("merge_r1646.ofn", Some("nominals"), &r1646());
     check("merge_r3602.ofn", Some("nominals"), &r3602());
 }
