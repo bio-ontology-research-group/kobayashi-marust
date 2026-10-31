@@ -773,7 +773,15 @@ is reported). The frontend emits `c → R` or `c ∧ R → ⊥` for every cell `
 and atomic range `R` of the group, the cover `R → ⋁{c ⊆ R}` for every range
 of the partition, and `c ∧ c' → ⊥` for distinct cells (point cells are
 values, separated by the value relations). Groups whose numeric ranges are
-all integral keep the integral cells of `integral_cell_covers`, unchanged.
+all integral keep the integral cells of `integral_cell_covers`, unchanged. A partition whose ranges the oracle decides pairwise nested or
+disjoint, and in which every range has a cell of at least 2^62 values
+outside all ranges strictly inside it (a chain of named types such as
+`long ⊂ integer ⊂ decimal`), gets no cells either: a label set closed under
+the pairwise clauses then has a least range `R` and none of its sub-ranges,
+and the large residue of `R` holds a value with exactly those labels that
+avoids every vocabulary value and every counted sibling. Such inputs keep
+their clause stream, and with it the native bridge's admission
+(ore_ont_5964).
 Cells are ordinary range names: the value relations, the exhaustion test
 and the counted covers apply to them, so a finite cell (an integer band, an
 IEEE segment) that the values plus the count bound can exhaust receives its
