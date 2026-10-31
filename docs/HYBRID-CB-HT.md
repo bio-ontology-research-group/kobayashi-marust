@@ -774,10 +774,36 @@ and that the class-job queues hold every pending item of the retained graph.
 Not changed. r2730 and r3086 repeat a role assertion, and the bridge's ABox
 conversion declines repeated assertions ("ABox conversion was incomplete");
 the automatic route answers them through the CB fallback, exactly. The
-`-dedup` variants (same HermiT answer) exercise the bridge. Defects 1 to 3 turn
-four generated seeds and two R3 seeds from wrong answers into bridge
-deferrals (a fail-closed `raise_stop` in the role-assertion transfer of
-`merge_individual_node_into`); the automatic route then answers through CB.
+`-dedup` variants (same HermiT answer) exercise the bridge.
 
-Evidence (`results/agents/2026-10-30/bridge-nominal-merge/`): see the README
-there for the binaries, seed sets and counts.
+Cost. Some inputs the bridge answered before now reach one of the
+fail-closed `raise_stop` checks of `merge_individual_node_into` (the
+role-assertion transfer and disjoint-neighbour relocation of a nominal
+merge) and the bridge defers: four generated seeds that were answered
+wrongly (g545, g789, g1344, g1551), two R3 seeds that were answered wrongly
+(r1536, r1866) and five R3 seeds that were answered correctly before
+(r1164, r281, r947, r2627, r2970). With defect 2 fixed these class jobs run
+the pending ABox work the old code dropped, and that work is where the merge
+reaches the checks; the earlier correct answers on the five did not rest on
+a complete search. The automatic route then needs the CB fallback: r2627 and
+r2970 answer in 75 to 81 s, r1164, r281, r947 and r1536 do not finish in
+120 s (load 140 on 56 cores). Lifting those checks (exact relocation of
+asserted role edges onto the merge target) is the follow-up that recovers
+them.
+
+Evidence (`results/agents/2026-10-30/bridge-nominal-merge/`, before =
+development/v1.5.5 0e1bd99a, after = this branch merged with it):
+
+- 2,000 generated seeds (`gen_merge.py`, 30 s): forced bridge 1,751 ok /
+  22 wrong / 227 declined before, 1,769 / 0 / 231 after; automatic route
+  1,934 / 22 / 44 timeouts before, 1,956 / 0 / 44 after.
+- R3 motif sets: tpl and tpl2 unchanged (0 wrong); 4,000 random seeds
+  (10 s) forced bridge 3,133 ok / 7 wrong before, 3,134 / 0 after, automatic
+  route 3,554 / 7 wrong / 439 timeouts before, 3,558 / 0 / 442 after.
+- 700 ALCHIQ and fresh 300 bridge seeds (2026-10-29 sets): identical before
+  and after on both routes (the three automatic-route wrong answers 621,
+  1014, 1022 are on the development head before and after this change).
+- 112 nominal ORE inputs of the paired design half, automatic route, 300 s,
+  two streams side by side: 106 answered by both with identical output, mean
+  time ratio 1.011, median 0.979; ore_ont_699 (295 s before) crossed the cap
+  after and gives identical output at 900 s (350 s after, 450 s before).

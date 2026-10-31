@@ -1,0 +1,10 @@
+{info} 23:16:00:745 >> Starting Konclude ... 
+{info} 23:16:00:745 >> Konclude - Uni Ulm Parallel Reasoner
+{info} 23:16:00:745 >> Reasoner for the SROIQV(D) Description Logic, 64-bit, Version v0.7.0-1138 - 500e11d9 (Jun 27 2026)
+
+{info} 23:16:00:747 >> Starting classification for 'r3086.ofn'.
+{info} 23:16:00:747 >> Initializing reasoner. Creating calculation context.
+{info} 23:16:00:749 >> Reasoner initialized with 1 processing unit(s).
+{info} 23:16:00:751 >> Preprocessing ontology 'http://konclude.com/test/kb'.
+{info} 23:16:00:752 >> Finished preprocessing in 1 ms for ontology 'http://konclude.com/test/kb'.
+{info} 23:16:00:752 >> Precomputing ontology 'http://konclude.com/test/kb', expressiveness 'SOIF'.

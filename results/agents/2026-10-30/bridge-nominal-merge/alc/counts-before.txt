@@ -1,0 +1,4 @@
+f300_before_auto.txt:     295 ok       3 TIMEOUT       2 WRONG 
+f300_before_htb.txt:      18 DECLINE     279 ok       3 TIMEOUT 
+s700_before_auto.txt:       2 hermit-error     694 ok       3 TIMEOUT       1 WRONG 
+s700_before_htb.txt:      43 DECLINE       2 hermit-error     654 ok       1 TIMEOUT 
