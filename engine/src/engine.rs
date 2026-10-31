@@ -3380,16 +3380,25 @@ impl PredClause {
     /// ground label `C_i` that the Pred rule copies verbatim into the
     /// conclusion (as opposed to a premise `A_iσ` that has to wait for one).
     fn copies_verbatim(&self, bp: Pred) -> bool {
-        bp.is_ground() && (pred_copy_all() || self.resolve.binary_search(&bp).is_err())
+        bp.is_ground() && self.resolve.binary_search(&bp).is_err()
     }
 }
 
 /// `KM_PRED_COPY_ALL`: diagnostic switch restoring the pre-v1.5.5 Pred into
 /// the ground context, which copied every ground image `A_iσ` without a
 /// provider into the conclusion's body as a label (section 15).
+///
+/// The certified CB surface (`KM_CB_LEAN_REQUIRED`) keeps the previous rule:
+/// its Pred enumeration (`lean/ContextCalculus/CBPredEnumeration.lean`,
+/// `providerPlan`) decides groundness on the transported payload, and
+/// `providerPlanResolving_sub` there shows that the restored rule's plans are
+/// among its plans.
 fn pred_copy_all() -> bool {
     static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *FLAG.get_or_init(|| std::env::var_os("KM_PRED_COPY_ALL").is_some())
+    *FLAG.get_or_init(|| {
+        std::env::var_os("KM_PRED_COPY_ALL").is_some()
+            || std::env::var_os("KM_CB_LEAN_REQUIRED").is_some()
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -8457,7 +8466,7 @@ impl Engine {
         // are the premises `A_iσ`; the sender's own ground atoms are the
         // labels `C_i`. An image that coincides with a label stays copyable.
         let mut resolve: Vec<Pred> = Vec::new();
-        if is_comp(f) {
+        if is_comp(f) && !pred_copy_all() {
             let mentions_x = |p: &Pred| match *p {
                 Pred::Concept { t, .. } => t == X,
                 Pred::Role { s, t, .. } => s == X || t == X,
