@@ -115,7 +115,7 @@ fn r3403_on_the_forced_nominals_route() {
     check("merge_r3403.ofn", Some("nominals"), &r3403());
 }
 
-/// The exchange cut (docs/PER-CONTEXT-ORDERING.md section 12): seeds whose
+/// The exchange cut (docs/PER-CONTEXT-ORDERING.md section 13): seeds whose
 /// receivers pushed every ground atom of a delivered clause back as a
 /// hypothesis (`r5`: merge hypotheses on four bridges, `r129`: the R3
 /// equality deliveries, `r1646`) answer on the forced route, and the cut

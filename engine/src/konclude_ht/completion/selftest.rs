@@ -17391,6 +17391,78 @@ fn try_extend_functional_successor_individual_reuses_existing_successor() {
         ));
 }
 
+/// r3086: after `a` merged into `c`, `c` keeps its functional-role link to
+/// the merged-away `a`. Reusing that ghost as the functional successor wrote
+/// the existential's filler onto a node no rule reads again. The reuse must
+/// take the live successor, as Konclude's (whose ghost link is removed) does.
+#[test]
+fn try_extend_functional_successor_individual_skips_merged_away_successor() {
+    use super::super::model::role::Role;
+
+    let mut env = build_env();
+    let mut source = env.root;
+    let mut ghost = env
+        .algo
+        .create_new_individual(TrackPointId::NONE, false, &mut env.ctx);
+    let mut live = env
+        .algo
+        .create_new_individual(TrackPointId::NONE, false, &mut env.ctx);
+    let functional_role = {
+        let mut r = Role::new();
+        r.set_role_tag(93);
+        r.set_functional(true);
+        env.ctx.ontology_arenas_mut().alloc_role(r)
+    };
+    for target in [&mut ghost, &mut live] {
+        let mut creator = source;
+        env.algo.create_new_individuals_link(
+            &mut creator,
+            &mut source,
+            target,
+            functional_role,
+            TrackPointId::NONE,
+            &mut env.ctx,
+        );
+    }
+    let live_id = env.ctx.process_context().node(live).individual_node_id();
+    env.ctx
+        .process_context_mut()
+        .node_mut(ghost)
+        .set_merged_into_individual_node_id(live_id);
+    let role_linker = [NegLink {
+        target: functional_role,
+        negated: false,
+    }];
+    let concept_linker = [NegLink {
+        target: env.concept_a,
+        negated: false,
+    }];
+    let reused = env.algo.try_extend_functional_successor_individual(
+        &mut source,
+        ConDescId::NONE,
+        &role_linker,
+        functional_role,
+        &concept_linker,
+        false,
+        TrackPointId::NONE,
+        SatNodeId::NONE,
+        &mut env.ctx,
+    );
+    assert_eq!(reused, live);
+    let ghost_label = env.ctx.process_context().node(ghost).reapply_con_label_set;
+    let concept_a_tag = env.ctx.ontology_arenas().concept(env.concept_a).get_concept_tag();
+    assert!(
+        ghost_label.is_none()
+            || !env
+                .ctx
+                .process_context()
+                .label_set(ghost_label)
+                .concept_des_dep_map
+                .contains_key(&concept_a_tag),
+        "the filler must not be written onto the merged-away node"
+    );
+}
+
 #[test]
 fn prune_successors_recurses_and_removes_nominal_links() {
     use super::super::model::role::Role;

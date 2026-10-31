@@ -331,6 +331,15 @@ edge `u -r-> w` (or `w -r-> u`):
   recognition rules count it at `u`), a cardinality marker (counted at `w`),
   and any nominal concept.
 
+The position also takes `w'`'s existential obligations, but only copies of
+`w'`'s successor edges. So, in addition (2026-10-30, "Inverse witnesses"
+below), every existential `∃r.F` that `L(w')` triggers and that `w'`
+witnesses only through an edge to a non-successor (the inverse edge to its
+own predecessor) must be witnessed at `w`'s own predecessor over `w`'s
+`r`-edge (`SubsetGain::back_need`, `back_witnessed`). This applies to every
+pair, including equal labels, on the fragment with a fold certificate (no
+first-class cardinality rules, no nominals).
+
 A kept edge on a role of a clause with two or more neighbours or an equality
 head (number restrictions, functional roles) forbids the pair, since an
 instance centred at `w` could count that edge together with `w'`'s
@@ -343,8 +352,9 @@ subset snapshot (`KM_HT_INCRBLOCK2`, set by `ht_general`), the persistent
 index path (`KM_HT_INCRBLOCK`) and ancestor blocking do not check pairs, so
 they run only when no literal is relevant and there is no inverse bridge;
 otherwise the worker uses the checked anywhere scan. Equal labels gain
-nothing, so the rule never rejects a pair that equality blocking would
-accept.
+nothing, so the body-literal part of the rule never rejects a pair that
+equality blocking would accept; the existential part can (see "Inverse
+witnesses").
 
 Falling back to a whole-label mode was measured and rejected: mode 4
 (pairwise with indirect blocking) answers the minimal cases correctly but did
@@ -493,3 +503,307 @@ the written argument of this section does not cover these pairs. A second
 limitation is cost: `checkSat` enumerates every assignment, so terminals
 with more than about 50 nodes and four-variable clauses did not finish in
 an hour.
+
+### Inverse witnesses (2026-10-30, `fix/v155-subset-blocking-gap`)
+
+The gap. The section-9 construction gives a blocked position `w` the label
+and the existential obligations of its blocker `w'`, but only copies of the
+edges between `w'` and its successors. When `L(w')` triggers `∃r.F` and `w'`
+witnesses it through an edge to a node that is not its successor (with
+inverse roles, the edge `r(w', p')` to its own predecessor `p'`, which the
+search creates as the inverse of `p' -r⁻-> w'`), the obligation reaches `w`
+without a witness. The body-literal rule above does not see this: the
+trigger is a literal at the clause centre of a clause without role atoms.
+It also concerns equal labels and literals that `w` carries itself, since
+`w`'s position takes all of `w'`'s obligations. Every relabelled rejection
+inspected on the generated ALCI seeds below was of this kind (an unwitnessed
+obligation at a blocked position, `diag2.py`); none was a clash or a failed
+clause instance.
+
+Published answers (question 1). No wrong answer was found:
+on 1,500 generated nominal-free ALCI seeds (`gen_alci.py`: existentials
+and universals over inverse roles, excluded middles), route `ht_general`
+without the checker, the base binary agreed with HermiT on all 1,466 seeds
+that answered (25 timed out or failed to spawn workers, 9 had no HermiT
+gold), while Lean rejected 10,993 of its terminal certificates on 870 of
+those seeds. So under `KM_HT_SUBSET_MODEL_CHECKER` the route would have
+refused 870 seeds whose published answer was right; on the 700-seed corpus
+the earlier run had 552 rejections and 183 checked answers, none wrong. The reason is that the infinite unravelling used by the
+classical subset-blocking proofs is a model whenever the body-literal rule
+admits the pair: unravel the completion graph into a tree in which every
+copy of a node has one copy of each of its neighbours, except that a
+blocked node's copy has its own kept neighbours together with copies of
+*all* of `w'`'s neighbours, the predecessor `p'` included (a copy of `p'`
+brings copies of `p'`'s other neighbours, and so on). Every node copy then
+has the neighbourhood of a tableau node, so its clauses and obligations
+hold as they did in the terminal, except for instances that combine a
+blocked position's kept edges with `w'`'s label or neighbours. Those are
+exactly what the body-literal rule and the counted-role (`multi_*`) rule
+exclude. So the SAT answers of modes 1 and 5 were not shown wrong, and the
+argument above says they are not; but that model is infinite and is not
+the finite fold the Lean checker verifies, so the Lean backstop rejected
+these terminals and, with `KM_HT_SUBSET_MODEL_CHECKER` set, the route
+refused to answer.
+
+The fix (`SubsetGain::back_need`, `back_witnessed`). For a candidate
+blocker `m`, `back_need(m)` is the set of existentials `∃r.F` that `L(m)`
+triggers (`L(m)` contains the literals that some clause with that head
+has at the existential's variable; `existential_triggers`) and that `m`
+witnesses over an `r`-edge to a non-successor `u` with `F ∈ L(u)`. A pair
+`(w, m)` is admitted only if `w`'s own predecessor `p` carries `F` and `w`
+has the edge `r(w, p)`, for every `(r, F) ∈ back_need(m)`; `p` is kept,
+unblocked and keeps its own label in the fold, so `w`'s position witnesses
+the copied obligation. The condition is applied in every mode-1 and mode-5
+scan (`admits`, the incremental `checked_subset_recompute`) and in the fold
+selection of the certificate, on the fragment the certificate covers (no
+first-class cardinality rules, no nominals). It is the conservative form in one respect:
+a successor of `m` that also witnesses `∃r.F` is ignored (the pair is
+judged as if only the non-successor witness existed). The exact form
+(subtract successor witnesses) had no rejected certificate on the 30
+generated seeds it was run on, but made `back_need(m)` read the labels of
+`m`'s successors, whose ids lie above `m`; the incremental scan then had to
+rescan from `pred(t)` on every label change at `t`, which took
+`ore_ont_205` from 100 s to 165 s (measured while the card arm still
+applied the condition; see below). `back_need` is empty, and
+nothing changes, unless the clause set has an existential head and some
+edge can point to a non-successor (a role head whose source is not the
+clause centre, or an equality head; `SubsetGain::back`). `trivial` is
+false in that case, so the unchecked subset paths never run with such
+clauses. Three kinds of edge are not counted as witnesses: edges to a
+merged victim (dead; the merge redirected the edge to the survivor),
+edges to a non-blockable node other than `pred(m)` (a shared individual
+that no unravelling copies), and, when the worker has nominals, every
+edge (`back` is false). The o-rule merges link nodes to the shared
+nominal nodes; counting those witnesses made the forced `ht_general`
+search on `tests/fixtures/top_nominal_data/probe_v6.ofn` (`⊤ ⊑ ≥2 u`,
+`⊤ ⊑ {a, b}`) block nothing and run past the test's 120 s bound, where
+the base binary finishes the search at once and then refuses the input
+for its dropped nominals. The finite certificate is not emitted with
+nominals or ABox individuals, so these cases keep the earlier rule and
+the argument of the infinite unravelling (with one copy of each shared
+individual).
+
+Certificate emission. The certificate listed, for every edge `r(s, t)`, the
+obligation `(r, F, s)` for every existential filler `F ∈ L(t)`, even when
+`L(s)` triggers no clause with head `∃r.F`. A blocked position copies its
+blocker's list, so an untriggered entry witnessed over the predecessor
+would make Lean reject a fold that is a model. The emitter now lists a
+satisfied existential only when `L(s)` triggers it (every clause instance
+with that head whose body holds is triggered, so the Lean clause check
+still finds every needed atom); the obligations the search recorded are
+listed as before. The list is untrusted data either way.
+
+Incremental exactness. `back_need(m)` reads `L(m)`, `m`'s out-edges, and
+the label, `pred` and merge status of its non-successor targets;
+`back_witnessed(w)` reads `w`'s out-edges and the label and merge status of
+`pred(w) < w`. With `Ext::back_note` (set with `edge_note` when
+`back_possible`), a label change at `t` lowers `i2_lo` to the sources of
+`t`'s non-successor in-edges as well (in a tree, `t`'s children, which have
+larger ids, so the suffix does not grow), and a merge of `v` also to
+`pred(v)`. Edges were already noted at the smaller endpoint unless they are
+successor edges, which `back_need` skips. `KM_HT_INCRBLOCK2_CHECK=1` aborted
+on none of the runs below; the unit test
+`inverse_witness_incremental_matches_full_scan` runs both modes with it.
+
+Lean obligation. None new: the checker (`SubsetUnravelling.check_sound`) is
+unchanged and still verifies each terminal's fold directly; `back_need`,
+`back_witnessed` and the emitter are untrusted. What the fix adds is the
+claim that the fold of a terminal whose pairs pass the rule satisfies
+`checkSat`; the seed runs below test that claim, they do not prove it. Not
+covered by the fold argument: the card arm, and counting at a blocker's
+successors, which in the fold have the blocked position as a second
+neighbour (an equality head over that role would be violated in the fold;
+the seeds did not produce such a rejection). The card arm does not apply
+`back_need` (`back` is false with first-class cardinality rules): its number
+rules count `r`-neighbours, the predecessor included, and the fold changes
+those counts at the blocker's successors, so the condition would not make
+its fold a model, and it has no fold certificate. Applying it there cost
+10.6% more search steps and 43% more blocking time on `ore_ont_7499`
+(1,146,968 against 1,037,056 steps; 104 s against 83 s wall, both run at
+once). The card arm's answers rest, as before, on the infinite unravelling
+above.
+
+Measurements (`results/agents/2026-10-30/subset-blocking-gap/`):
+
+- ALCI seeds (`gen_alci.py`, 1..1,500, base binary): 1,466 ok, 0 wrong,
+  25 errors (timeouts, failed thread spawns), 9 without gold; 28,616
+  terminals accepted, 10,993 rejected (870 seeds). A random sample of 200
+  rejected certificates re-checked with retries: all 200 rejected again
+  (`head-sample-recheck.txt`), and `diag2.py` finds an unwitnessed
+  obligation at a blocked position in each and nothing else
+  (`head-sample-diag.txt`).
+- ALCI seeds, fixed binary: the first 773 of the 1,500 seeds (seeds 1-425,
+  501-663, 1001-1185; stopped for time): 747 ok, 0 wrong, 21 timeouts at
+  120 s, 5 without gold; 19,679 terminals accepted, 0 rejected, 291 checker
+  timeouts (30 s), none not emitted. The base binary had 5,539 rejected
+  terminals on 450 of these seeds.
+- Search cost of the condition: 9 of those 773 seeds answered on the base
+  binary and timed out with the fix. Rerun one core each without the
+  incremental check (`alci-fix-slow-seeds.txt`): base 0-16 s on all nine;
+  fixed binary 55, 78, 121 and 297 s on four (outputs identical), over
+  300 s on five (195, 392, 645, 1011, 1182). These ontologies combine
+  `∃r.D` and `∃r⁻.D` at the same concept (seed 195: `B ⊑ ∃r.D`,
+  `B ⊑ ∃r⁻.D`); a node whose blocker witnesses `∃r⁻.D` through its own
+  predecessor can now be blocked only by a blocker whose predecessor is
+  related to it as the node is to its own, which comes close to pairwise
+  blocking, and the doc above records that pairwise blocking did not finish
+  such seeds. This is the price of making the finite fold a model; it is
+  not an answer change. Two alternatives were not taken: applying the
+  condition only when `KM_HT_SUBSET_MODEL_CERT` is set (the default route
+  would keep the earlier rule and its infinite-unravelling argument), or
+  extending the Lean construction to copy the blocker's edge to its
+  predecessor as well (no blocking change; it adds the blocked position as
+  a second neighbour of that predecessor, which counting clauses there
+  would reject).
+- ALC corpus (700 seeds, `CORPUS`, fixed binary, checker timeout 20 s):
+  326 ok, 0 wrong, 2 without gold, 372 errors (225 outside the
+  `ht_general` fragment, 137 timeouts at 120 s with
+  `KM_HT_INCRBLOCK2_CHECK=1`, the rest failed thread spawns); 10,506
+  terminals accepted, 0 rejected, 880 checker timeouts, 31 certificates not
+  emitted ("blocked node has no admitted unblocked blocker"). Ten sampled
+  timeout seeds also time out on the base binary
+  (`corpus-timeout-sample.txt`). The not-emitted cases: seed 18 has three
+  on both binaries; on seeds 141 and 548 (`≤` restrictions, so equality
+  merges and `back` true) the fixed binary has 7 and 5 where the base had
+  none: the only blocker admitted for the node is a merged victim, which the
+  scan keeps as a candidate and the certificate drops. Under the checker
+  these terminals fail closed; making merged victims non-candidates is
+  left open.
+- `KM_HT_INCRBLOCK2_CHECK=1` aborted on no seed of either run, and on
+  `ore_ont_205` and `ore_ont_7499` (card arm) with the final binary.
+- Cost (one core, `run1.sh`, alternating base and fixed binary, host load
+  about 50): 205: 129.1, 130.4 s base, 119.8, 139.3 s fixed; 7499: 127.5,
+  114.6 s base, 126.9, 123.3 s fixed (`timing/table-final.tsv`); the search
+  is the same (205: 1,101,827 steps on both; v1.5.4: 179 s, v1.5.3: 48 s,
+  after the blocking-cost fix: 65 s on an idle host). Outputs identical to
+  the base binary (md5).
+
+## 10. Nominal merges and the reuse of the consistency model (2026-10-31)
+
+Defect. `results/agents/2026-10-30/nominal-seeds/bridge_merge_min.ofn`:
+
+    SubClassOf(ObjectOneOf(:b :c) ObjectOneOf(:b))
+    ClassAssertion(ObjectOneOf(:b :c) :a)
+    ClassAssertion(ObjectUnionOf(ObjectOneOf(:c) :C) :a)
+    ObjectPropertyAssertion(:s :b :c)
+    ClassAssertion(ObjectAllValuesFrom(:s :A) :a)
+    EquivalentClasses(:Q1 ObjectOneOf(:b))
+    SubClassOf(:A ObjectMaxCardinality(1 :r :C))
+
+`{b,c} ⊑ {b}` merges `c` into `b`, `a : {b,c}` then puts `a` at `b` in every
+model, `s(b,c)` becomes `s(b,b)`, and `a : ∀s.A` gives `A(b)`, so HermiT
+entails `Q1 ⊑ A`. The forced `ht_bridge` route and the automatic route of
+the development head (a2e98d95) answered without it. Konclude 0.7.0-1138
+(`~/konclude-build/Release/Konclude classification`) misses it as well, on
+this file and on r2730, and does not finish r3086 in 60 s; the defect is in
+the ported algorithm, not in KM's admission or translation. The translated
+input is faithful: with `KM_BRIDGE_FRESH_ENV=1` (a fresh completion per
+probe, no reuse) the same `TInput` gives HermiT's answer. Three separate
+defects of the reuse machinery lose the consequence; each is fixed where it
+occurs.
+
+1. Functional successor reuse through a merged-away node
+   (`completion/u35.rs`, `try_extend_functional_successor_individual`; r3086
+   and the functional-role seeds). Konclude's `mergeIndividualNodeInto`
+   removes every link to the merged-away node. The port keeps those links
+   and filters them in `ht_role_successor_links`, but the functional-reuse
+   step of the `∃` rule read the role-successor hash directly and took the
+   first link. In r3086 (`r` functional, `r(c,c)`, `r(c,a)`, `a : ∃r.A`)
+   `a` merges into `c`, `c` keeps its link to `a`, and the `∃r.A` on `c`
+   wrote `A` onto the ghost `a`, which no rule or read-off sees again. The
+   step now skips merged-away and purged successors, the filter every other
+   successor scan applies. Exactness: the live successors it chooses from
+   are the links Konclude still holds after its removal; Konclude takes the
+   first of them, and any live successor of a functional role is a correct
+   choice because the at-most rule merges all of them.
+
+2. Stale current node at the retained consistency base (`bridge.rs`, the
+   first-fork rollback of the conditional-full schedule, the drain, and
+   `restore_retained_classification_base`). The context's current-node
+   pointer is not journaled. After the rollback to the first fork it still
+   named the fork node, so `add_individual_to_processing_queue` treated that
+   node as being processed and reported it queued without inserting it. The
+   requeue of the fork node, and with it the disjunction the rollback put
+   back, never ran: on `bridge_merge_min` no class job reopened `a`'s
+   `{b} ⊔ {c}`. The pointer is now cleared at the rollback, after the drain,
+   when a drain fails, and at the start of every class job, exactly as the
+   in-process backtrack already does (u02, fuzz case 1002). Exactness: the
+   pointer only says that a node's queue is being drained by the running
+   loop; at these points no loop runs, so clearing it changes no rule, only
+   makes pending work of the retained graph run.
+
+3. Representative-cache replay without the merged individuals' nominals
+   (`bridge.rs`, `replay_native_representative_cache` and
+   `install_native_nominal_backend_replay`; `completion/u36.rs`, the lazy
+   loader). The replay adds an association's deterministic labels with AND
+   processing skipped: the cached label is taken as closed under the
+   conjunction, implication and trigger rules. The writeback, like
+   Konclude's representative cache, omits every positive nominal concept, so
+   the replayed set is closed only up to the nominals. On
+   `bridge_merge_min` `c`'s association is `b`'s merged label; it holds the
+   trigger of `{b,c} ⊑ {b}`, which went into `c`'s label without its
+   consequence `{b}`, and the later processing of `{c}` found the trigger
+   present and derived nothing, so `c` was never merged with `b`. The
+   positive nominal concepts in a node's deterministic label are exactly the
+   nominal concepts of the individuals in its deterministic same-individual
+   set (the nominal rule puts `{x}` on the node that represents `x`). The
+   replay now adds those concepts, for every member other than the
+   individual itself, with ordinary processing after the cached labels, so
+   the nominal rule performs the recorded merges and the replayed state is
+   the deterministic label again. When the association records no
+   deterministic same set, or the set names an individual without a nominal
+   seed, no cached label is replayed and both backend expansion blocks are
+   off, so the node is expanded from its raw assertions. Exactness: every
+   added concept is a deterministic consequence by the same criterion the
+   replay already trusts for its labels (the consistency graph's dependency
+   tracking marks the merge as independent of every branch); the change adds
+   the part of the closure the cache format drops and removes no derivation.
+
+What the fixes rest on. The bridge has no Lean model and emits no
+certificate on any route (`docs/CHECKERS-ON.md` §1.1), so these arguments are
+written, not mechanised, and no checker cross-checks a bridge answer on
+nominal inputs. The three arguments assume the completion rules of the port
+are correct and, for the third, that the consistency graph's deterministic
+flags are right; both assumptions are those of the bridge before this change.
+The answers are cross-checked only differentially against HermiT, below.
+Lean obligation created: none discharged; a bridge model would have to state
+that the replayed labels plus the deterministic same nominals are a
+deterministic consequence of the ABox and closed under the AND-like rules,
+and that the class-job queues hold every pending item of the retained graph.
+
+Not changed. r2730 and r3086 repeat a role assertion, and the bridge's ABox
+conversion declines repeated assertions ("ABox conversion was incomplete");
+the automatic route answers them through the CB fallback, exactly. The
+`-dedup` variants (same HermiT answer) exercise the bridge.
+
+Cost. Some inputs the bridge answered before now reach one of the
+fail-closed `raise_stop` checks of `merge_individual_node_into` (the
+role-assertion transfer and disjoint-neighbour relocation of a nominal
+merge) and the bridge defers: four generated seeds that were answered
+wrongly (g545, g789, g1344, g1551), two R3 seeds that were answered wrongly
+(r1536, r1866) and five R3 seeds that were answered correctly before
+(r1164, r281, r947, r2627, r2970). With defect 2 fixed these class jobs run
+the pending ABox work the old code dropped, and that work is where the merge
+reaches the checks; the earlier correct answers on the five did not rest on
+a complete search. The automatic route then needs the CB fallback: r2627 and
+r2970 answer in 75 to 81 s, r1164, r281, r947 and r1536 do not finish in
+120 s (load 140 on 56 cores). Lifting those checks (exact relocation of
+asserted role edges onto the merge target) is the follow-up that recovers
+them.
+
+Evidence (`results/agents/2026-10-30/bridge-nominal-merge/`, before =
+development/v1.5.5 0e1bd99a, after = this branch merged with it):
+
+- 2,000 generated seeds (`gen_merge.py`, 30 s): forced bridge 1,751 ok /
+  22 wrong / 227 declined before, 1,769 / 0 / 231 after; automatic route
+  1,934 / 22 / 44 timeouts before, 1,956 / 0 / 44 after.
+- R3 motif sets: tpl and tpl2 unchanged (0 wrong); 4,000 random seeds
+  (10 s) forced bridge 3,133 ok / 7 wrong before, 3,134 / 0 after, automatic
+  route 3,554 / 7 wrong / 439 timeouts before, 3,558 / 0 / 442 after.
+- 700 ALCHIQ and fresh 300 bridge seeds (2026-10-29 sets): identical before
+  and after on both routes (the three automatic-route wrong answers 621,
+  1014, 1022 are on the development head before and after this change).
+- 112 nominal ORE inputs of the paired design half, automatic route, 300 s,
+  two streams side by side: 106 answered by both with identical output, mean
+  time ratio 1.011, median 0.979; ore_ont_699 (295 s before) crossed the cap
+  after and gives identical output at 900 s (350 s after, 450 s before).

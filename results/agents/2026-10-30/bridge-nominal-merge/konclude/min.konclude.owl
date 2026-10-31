@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Ontology xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns="http://www.w3.org/2002/07/owl#" xmlns:xml="http://www.w3.org/XML/1998/namespace" xmlns:xsd="http://www.w3.org/2001/XMLSchema#">
+    <Prefix name="" IRI="http://www.w3.org/2002/07/owl#"/>
+    <Prefix name="owl" IRI="http://www.w3.org/2002/07/owl#"/>
+    <Prefix name="rdf" IRI="http://www.w3.org/1999/02/22-rdf-syntax-ns#"/>
+    <Prefix name="xml" IRI="http://www.w3.org/XML/1998/namespace"/>
+    <Prefix name="xsd" IRI="http://www.w3.org/2001/XMLSchema#"/>
+    <Prefix name="rdfs" IRI="http://www.w3.org/2000/01/rdf-schema#"/>
+    <Declaration>
+        <Class IRI="http://www.w3.org/2002/07/owl#Nothing"/>
+    </Declaration>
+    <Declaration>
+        <Class IRI="http://www.w3.org/2002/07/owl#Thing"/>
+    </Declaration>
+    <Declaration>
+        <Class IRI="http://example.org/r3#D"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://example.org/r3#D"/>
+        <Class IRI="http://www.w3.org/2002/07/owl#Thing"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://example.org/r3#E"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://example.org/r3#E"/>
+        <Class IRI="http://www.w3.org/2002/07/owl#Thing"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://example.org/r3#Q1"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://example.org/r3#Q1"/>
+        <Class IRI="http://www.w3.org/2002/07/owl#Thing"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://example.org/r3#A"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://example.org/r3#A"/>
+        <Class IRI="http://www.w3.org/2002/07/owl#Thing"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://example.org/r3#Q2"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://example.org/r3#Q2"/>
+        <Class IRI="http://www.w3.org/2002/07/owl#Thing"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://example.org/r3#C"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://example.org/r3#C"/>
+        <Class IRI="http://www.w3.org/2002/07/owl#Thing"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://example.org/r3#Q3"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://example.org/r3#Q3"/>
+        <Class IRI="http://www.w3.org/2002/07/owl#Thing"/>
+    </SubClassOf>
+    <Declaration>
+        <Class IRI="http://example.org/r3#B"/>
+    </Declaration>
+    <SubClassOf>
+        <Class IRI="http://example.org/r3#B"/>
+        <Class IRI="http://www.w3.org/2002/07/owl#Thing"/>
+    </SubClassOf>
+</Ontology>

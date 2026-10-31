@@ -782,14 +782,80 @@ regime has to change that exchange (for instance, let a receiver fire
 grounded ontology instances itself instead of pushing the atoms back); it
 needs its own completeness argument.
 
-## 12. Hypotheses, merge hypotheses and the exchange cut (2026-10-31, agent `nominal-exchange`)
+## 12. The stop at a global refutation and the throwaway ⊤ closure (2026-10-31, agent `alchiq-regression`)
+
+**Defect.** From b88c6253 (section 10) on, the automatic route answered
+`CONSISTENT 1` on seeds 621, 1014 and 1022 of the 2026-10-29 ALCHIQ seed
+set; HermiT finds all three inconsistent. The CB engine answers there (the
+HT-first phase gives no answer), and the engine worker alone reproduces it
+(`km engine` reports `"inconsistent":false` with `KM_THREADS=1` and 4). The
+merge hypotheses, the ranked R2, the Horn cache gate, the bridge object
+guard and the subset-blocking change are not involved: their switches leave
+the answer wrong, and 8bbbf1f2 (the r1600 engine change on the
+nominal-seeds base) answers all three correctly, while b88c6253 alone
+answers all three wrongly.
+
+In each seed the ontology facts alone refute `⊤` (621: `C ≡ ¬(C ⊓ B)` and
+`⊤ ⊑ B`; 1022: `⊤ ⊑ B` with `B` disjoint from `⊤`; 1014: `⊤ ⊑ ≥2 t.B`
+with `t` functional). The first query root context attaches the shared
+root base (`attach_shared_base`), which `ensure_shared_root_closure`
+computes by saturating a throwaway root context with an empty core and the
+ontology facts only, then pops from `contexts`. That throwaway derives the
+empty clause, and the test of section 10 (root context, empty core) sets
+`global_refutation`. The stop then ends `run_for` after the first query,
+before the `⊤` context is created. `Engine::inconsistent` scanned the
+remaining contexts for a root context with an empty core, or the ground
+context, holding the empty clause; neither exists, so the engine reported a
+consistent ontology with a partial taxonomy. Before b88c6253 the `⊤`
+context was always created, it inherits the same closure as its base, and
+the scan found the empty clause there.
+
+**Fix.** `Engine::inconsistent` returns true when `global_refutation` is
+set, before the scan. One line of logic (engine.rs, `inconsistent`), plus
+comments.
+
+**Exactness.** The flag is set only when a context worked off the empty
+clause and that context is the ground context or a root context with an
+empty core. The throwaway context is the closure the `⊤` context is
+seeded with: the same facts, no core clause, the same rules, and the `⊤`
+context's clause set contains it. Its empty clause is therefore the
+refutation of `⊤` that the `⊤` context derives on the full fixpoint, a
+sound derivation of the calculus, and the ontology has no model. The other
+contexts that set the flag are exactly those the scan already accepted, so
+the flag never says inconsistent where the full fixpoint says consistent.
+Incremental additions (`Engine::add_clauses`) are monotone, so a set flag
+stays valid; the engine has no retraction. Conversely, a run that stops
+does so only because the flag is set, so after this change every stopped
+run reports inconsistent, and a run that does not stop is unchanged except
+that a refutation in the throwaway closure is reported even if the `⊤`
+context would only derive it later (the answer of the full fixpoint).
+
+**Lean obligation.** No calculus rule, order or redundancy test changes,
+so no rule needs re-certification. The readout `Engine::inconsistent` is
+outside the mechanised boundary (docs/history/LEAN-BOUNDARY-AUDIT-2026-10-27.md),
+as it was before. The obligation the fix relies on, stated for a future
+boundary extension and not proved here: a clause worked off in a context
+whose clause set is contained in the `⊤` context's clause set (the throwaway
+closure) is in the saturated `⊤` context, so the empty clause there is the
+refutation of `⊤` that the per-rule soundness of the calculus
+turns into the absence of a model. Certified runs keep the stop off
+(section 10) and create the `⊤` context as before, so a CB certificate
+still carries the empty clause in a context the checker reads.
+
+**Tests.** `engine/tests/global_refutation_closure.rs`: the three seeds and
+their axiom-minimised forms (3, 4 and 3 axioms; reduced while 0e1bd99a
+still answered consistent and 38173913 inconsistent, then checked against
+HermiT), on the automatic route and on the engine worker, `KM_THREADS` 1
+and 4. Measurements: `results/agents/2026-10-30/alchiq-regression/`.
+
+## 13. Hypotheses, merge hypotheses and the exchange cut (2026-10-31, agent `nominal-exchange`)
 
 Section 11 and docs/NOMINALS-CB.md section 10.4 left two costs: the merge
 hypotheses (22 of 724 random seeds lost at 10 s, `r1536`, `r3777`, `r1600`,
 `r1646` past 60 s on forced `nominals`) and the R2 seeds `r129`, `r673`,
 `r3351`, `fr248`. Results: `results/agents/2026-10-31/nominal-exchange/`.
 
-### 12.1 Where the cost was
+### 13.1 Where the cost was
 
 On `r5` (`C ⊑ {b, e}`, `e ∈ {a, d}`) the ground context exploded inside a
 single saturation (400,000 superposition results after 10,000 work-offs).
@@ -803,7 +869,7 @@ was pushed. Every ground head atom of a delivered clause started another
 round. On `r129` and `fr248` the same push-back follows the extra equality
 deliveries of R3.
 
-### 12.2 The cut
+### 13.2 The cut
 
 `Engine::rsucc_covered`: the r-Succ push of the maximal ground atom `a` of a
 receiver clause `c = Γ → Δ ∨ a` is skipped when the ground context holds a
@@ -826,7 +892,7 @@ context's `K(d) → K(a) ∨ Φ`. `KM_NO_EXCHANGE_CUT` disables both,
 pushes. The cut is off under the experimental root-dependent orders
 (`KM_ROOT_ORDERED`, `KM_ROOT_ONLY_INCOMP`).
 
-### 12.3 Exactness
+### 13.3 Exactness
 
 *Soundness.* The cut only omits hypotheses `A → A` (tautologies); fewer
 premises cannot add a conclusion.
@@ -855,7 +921,7 @@ pushed it. The module models this.
   whose labels are the receiver's hypotheses; locality; and *demand*: every
   interface atom that is the strict maximum of a receiver clause `c` is a
   hypothesis of the receiver or `c` is `Covered` (the cut condition of
-  12.2, with Join case 3 read as the receiver clause `⊤ → Δ'' ∨ K(o)`).
+  13.2, with Join case 3 read as the receiver clause `⊤ → Δ'' ∨ K(o)`).
 - `cut_exchange_complete`: if `P ∪ SQ` is unsatisfiable, the receiver holds
   `⊥`. `cut_unit_readout_complete`: if `P ∪ SQ` entails an atom that is
   rank-least among the receiver's atoms and is an interface atom or outside
@@ -901,7 +967,7 @@ That step is first-order and not mechanised.
 sets and is unchanged; it does not model r-Succ edges, merge hypotheses or
 the cut.
 
-### 12.4 Horn readout of the nominal-label cache
+### 13.4 Horn readout of the nominal-label cache
 
 `horn_unit_readout` (same module, same axioms): if the ground context is
 closed under labelled ordered hyperresolution and every body-free clause it

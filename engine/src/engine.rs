@@ -3767,8 +3767,9 @@ pub struct Engine {
     /// must never be published as a successful answer.
     message_truncated: bool,
     /// A context whose empty clause is global inconsistency (the ground
-    /// context, or the ⊤ root context with an empty core) has worked off the
-    /// empty clause. Monotone: worked-off clauses are only ever replaced by
+    /// context, or a root context with an empty core: the ⊤ context or the
+    /// throwaway ⊤ closure of `ensure_shared_root_closure`) has worked off
+    /// the empty clause; `inconsistent()` reads this flag. Monotone: worked-off clauses are only ever replaced by
     /// clauses that subsume them, and only the empty clause subsumes the
     /// empty clause, so `inconsistent()` stays true from here on.
     global_refutation: bool,
@@ -7926,7 +7927,7 @@ impl Engine {
         }
     }
 
-    /// Exchange cut (docs/PER-CONTEXT-ORDERING.md section 12): the r-Succ
+    /// Exchange cut (docs/PER-CONTEXT-ORDERING.md section 13): the r-Succ
     /// push of the maximal ground atom `a` of clause `c = Γ → Δ ∨ a` of
     /// context `id` to the ground context is unnecessary when the ground
     /// context holds a worked-off clause `e` that strengthens `c` modulo the
@@ -8082,7 +8083,7 @@ impl Engine {
                 }
                 let a = p.apply(&|v| if v == X { o } else { v });
                 // Exchange cut for the Join case 3 clause `⊤ → Δ'' ∨ K(o)`
-                // (docs/PER-CONTEXT-ORDERING.md section 12): the hypothesis
+                // (docs/PER-CONTEXT-ORDERING.md section 13): the hypothesis
                 // is not needed when the ground context already covers that
                 // clause for some bridge of `o`, typically by
                 // `K(o') → K(o) ∨ Φ` for a bridge `o` that the receiver
@@ -9570,6 +9571,16 @@ impl Engine {
         // alone are contradictory (e.g. {o} ⊑ B, {o} ⊑ C, B ⊓ C ⊑ ⊥) — the
         // individuals exist in every model, so that too is global
         // inconsistency.
+        // `global_refutation` also records the throwaway ⊤ closure of
+        // `ensure_shared_root_closure` (root, empty core, facts only: the
+        // closure the ⊤ context is seeded with), which is popped from
+        // `contexts` before the scan below can see it. A run stopped by
+        // `set_stop_on_global_refutation` may never create the ⊤ context, so
+        // the flag itself must answer (seeds 621, 1014, 1022 of the
+        // 2026-10-29 ALCHIQ set; docs/PER-CONTEXT-ORDERING.md section 12).
+        if self.global_refutation {
+            return true;
+        }
         let arena = &self.cc_arena[1];
         let top_bot = self.contexts.iter().any(|ctx| {
             ctx.root

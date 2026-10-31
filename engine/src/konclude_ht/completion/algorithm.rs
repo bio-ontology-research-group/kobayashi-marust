@@ -375,6 +375,15 @@ pub struct NativeNominalBackendReplay {
     /// association carry any of the four non-deterministic slots? Only then is
     /// the individual queued for reuse expansion (cpp 22765–22771).
     pub has_reusable_elements: bool,
+    /// Nominal concepts of the OTHER individuals in the association's
+    /// `DETERMINISTIC_SAME_INDIVIDUAL_SET_LABEL`. The cached label values omit
+    /// every positive nominal concept, but `deterministic_cached_concepts` are
+    /// inserted with AND processing skipped, so a cached trigger or
+    /// definition whose operand is such a nominal can no longer derive it.
+    /// The loader adds these concepts with ordinary processing after the
+    /// cached labels, which restores the deterministic merges of the recorded
+    /// model (bridge_merge_min, r2730: `c = b` from `{b,c} <= {b}`).
+    pub deterministic_same_nominal_concepts: Vec<ConceptId>,
 }
 
 impl Default for NativeNominalBackendReplay {
@@ -402,6 +411,7 @@ impl Default for NativeNominalBackendReplay {
             cached_representative_same_individual_id: None,
             reuse_replay_representable: false,
             has_reusable_elements: false,
+            deterministic_same_nominal_concepts: Vec::new(),
         }
     }
 }

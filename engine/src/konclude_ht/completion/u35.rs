@@ -1469,11 +1469,34 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             calc_alg_context.process_context().edges(),
                             role,
                         );
-                    if role_succ_it.has_next() {
-                        let link = role_succ_it.next(false);
-                        succ_indi =
+                    // Konclude removes every link to a merged-away node
+                    // (`mergeIndividualNodeInto`, `removeIndividualLink`), so its
+                    // first link here always leads to a live node. The port keeps
+                    // those links as ghosts (see `merge_individual_node_into`,
+                    // phase 5, and the filter in `ht_role_successor_links`).
+                    // Taking a ghost would extend the merged-away node: the
+                    // qualifier would land on a label no rule or read-off sees
+                    // again (r3086: `A` written to `a` after `a` merged into
+                    // `c`). Skip ghosts, exactly as the successor scans do.
+                    while role_succ_it.has_next() {
+                        let link = role_succ_it.next(true);
+                        if link.is_none() {
+                            continue;
+                        }
+                        let candidate =
                             self.get_localized_successor_individual(indi, link, calc_alg_context);
+                        if candidate.is_none() {
+                            continue;
+                        }
+                        let node = calc_alg_context.process_context().node(candidate);
+                        if node.has_merged_into_individual_node_id()
+                            || node.has_purged_blocked_processing_restriction_flags()
+                        {
+                            continue;
+                        }
+                        succ_indi = candidate;
                         merge_link = link;
+                        break;
                     }
                 }
             }

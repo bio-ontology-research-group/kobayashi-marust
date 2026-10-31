@@ -1298,6 +1298,24 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     break;
                 }
             }
+            // The cached values carry no positive nominal concept; restore the
+            // recorded deterministic merges with ordinary processing (see
+            // `NativeNominalBackendReplay::deterministic_same_nominal_concepts`).
+            for &concept in &replay.deterministic_same_nominal_concepts {
+                if calc_alg_context.has_pending_signal() {
+                    break;
+                }
+                let mut target = localiced_indi;
+                self.add_concept_to_individual(
+                    concept,
+                    false,
+                    &mut target,
+                    dep_track_point,
+                    true,
+                    true,
+                    calc_alg_context,
+                );
+            }
             native_expansion_blocked = !calc_alg_context.has_pending_signal()
                 && replay.expansion_blocking_candidate
                 && self.conf_allow_backend_successor_expansion_blocking

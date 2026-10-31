@@ -13,7 +13,7 @@ derives carry the hypotheses in their bodies, as labels.  This file states
 that exchange at the propositional level and proves it complete, with the
 conditions under which a receiver may skip a push.
 
-Setting (docs/PER-CONTEXT-ORDERING.md section 12):
+Setting (docs/PER-CONTEXT-ORDERING.md section 13):
 
 * `P` is the ground theory: every ground instance of an ontology clause and
   every ground fact (the nuclei).
