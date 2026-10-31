@@ -57,4 +57,16 @@ build 3,618 jobs, no `sorryAx`; 35 cargo steps, 277 passed, 0 failed,
 `KM_ROUTE=ht_general`, `KM_HT_SUBSET_MODEL_CERT`, `KM_HT_INCRBLOCK2_CHECK=1`,
 Lean `ht-subset-unravelling-check` (copy in
 `.work/agent-scratch/subset-blocking-gap/bin/`) on every certificate,
-`CTO=60`. Rows: `alci.tsv` (columns as in drive.py). Summary: see below.
+`CTO=60`, 2 then 3 parallel seeds. Rows: `alci.tsv` (columns as in
+drive.py; seeds 1-97 in a first run, 98-1,500 in a second).
+
+Result: 1,462 ok, **0 WRONG**, 32 km-error (no answer within 120 s), 6
+without gold; 39,096 certificates accepted by Lean, 0 rejected, 291 checker
+timeouts. Of the 32 km-error seeds, 19 also fail on subset-blocking-gap's
+base binary `km-head` (18 km-error, 1 no gold); of the 13 that `km-head`
+answers, 9 (195, 265, 392, 645, 1011, 1088, 1112, 1182 among them) also
+fail on `km-fix5`, the slowdown recorded in
+`../subset-blocking-gap/alci-fix-slow-seeds.txt`; 448, 1249, 1256 and 1375
+were not run with `km-fix5` there (448 times out at 170 s with both `km-fix`
+and `km-fix5` on rerun); 114 answers in 0.1 s on rerun with both binaries,
+a transient failure on the loaded host. No answer differs from HermiT.
