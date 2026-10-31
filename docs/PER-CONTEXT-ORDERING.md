@@ -847,3 +847,61 @@ their axiom-minimised forms (3, 4 and 3 axioms; reduced while 0e1bd99a
 still answered consistent and 38173913 inconsistent, then checked against
 HermiT), on the automatic route and on the engine worker, `KM_THREADS` 1
 and 4. Measurements: `results/agents/2026-10-30/alchiq-regression/`.
+
+## 13. Taxonomy rows of a stopped inconsistent run (2026-10-31, agent `incremental-ht-regression`)
+
+**Defect.** The routing certification gate failed
+`incremental_ht_reasoning::ht_reuses_existential_graphs_and_rechecks_global_deletion`
+from 0e1bd99a on. The HT session was right; the fresh CB oracle it is
+compared with was not. After the step that adds the empty clause (`⊤ ⊑ ⊥`)
+to `A ⊑ ∃R.B`, `B ⊑ C`, the session answered every class below
+`owl:Nothing`, and `classify_cb_fresh` answered
+`{A: [owl:Nothing]}` with no rows for `B` and `C`. At 0e1bd99a the CB
+oracle also reported the ontology consistent (the throwaway ⊤ closure of
+section 12); after section 12 the flag is right and the rows are still
+missing. The subset-blocking, object-guard and r1600 merges are not
+involved: the HT answer is unchanged by them, and the CB rows come from
+b88c6253 (section 10), which is in 0e1bd99a and not in 8a417f98.
+
+Cause. The one-shot paths of `Reasoner::saturate` stop at a global
+refutation (section 10). The sequential engine ends `run_for` before it
+creates or finishes the root contexts of later queries, a static chunk
+engine does the same per chunk, and a work-stealing worker stops claiming
+queries. `Engine::subsumptions` reads only root contexts that exist, so the
+rows of the other queries were missing or lacked `owl:Nothing`, and which
+rows were present depended on the schedule. `km classify` publishes the
+consistency flag and is unaffected in its verdict; the rows matter to every
+reader of the CB taxonomy without the flag: `classify_cb_fresh`, which is
+both the incremental CB snapshot backend (`CbBackendState::Snapshot`) and
+the exact-rebuild oracle, the `km engine` worker's `subsumptions`, and the
+incremental `IncrementalResult` rows (the HT adapter's
+`result_from_inconsistent_queries` shape lists every query below
+`owl:Nothing`).
+
+**Fix.** `Reasoner::complete_inconsistent_rows` (reasoner.rs): after a
+one-shot path (sequential without a retained certificate engine, static
+chunks, work stealing) has absorbed every engine's answer, a run that
+reports inconsistent and complete gives every requested query (after
+`KM_QUERIES`/`KM_QUERIES_FILE`/prefix filtering, before the
+mutual-unit collapse) the row entry `owl:Nothing`.
+
+**Exactness.** An inconsistent ontology has no model, so every concept is
+unsatisfiable and each added `owl:Nothing` is entailed. Every other row
+entry was derived by the calculus as before. The rows no longer depend on
+where the run stopped. The flag is unchanged, a consistent run is
+unchanged (the completion reads the flag), an incomplete run is unchanged
+(it is never published), and an engine retained for a CB certificate does
+not stop and is not touched. No rule, order or redundancy test changes.
+
+**Lean obligation.** None on the calculus. The readout is outside the
+mechanised boundary, as `Engine::inconsistent` is (section 12). The fact
+the completion uses, "no model implies every concept is unsatisfiable", is
+the definition of entailment; a future boundary extension that covers the
+taxonomy readout of an inconsistent run must state it for the published
+rows. Certified runs keep the stop off and are not affected.
+
+**Tests.** `engine/tests/inconsistent_cb_rows.rs` (the ontology of the
+failing test and a 43-class variant, `KM_THREADS` 1 and 4, dynamic and
+static schedule; a consistent control) and the whole
+`incremental_ht_reasoning` suite. Measurements:
+`results/agents/2026-10-30/incremental-ht-regression/`.
