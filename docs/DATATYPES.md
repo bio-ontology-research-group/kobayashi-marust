@@ -1051,6 +1051,103 @@ the data-values-3 argument says, and (b) holds under the hypotheses above.
 The one gap is the scope of `UndecidedRealizable` for several role groups
 (above).
 
+### Forced nominal routes: the omission certificate and the bridge pigeonhole (2026-10-31, agent `forced-nominal-data-misses`)
+
+Two data probes of `data-values` were answered incompletely
+(`engine/tests/native_data_values.rs`; HermiT gold next to the fixtures).
+They have three separate causes; none is in the CB calculus.
+
+**1. `inverse_functional_merge` (forced `certified_nominals`, `nominals`).**
+`InverseFunctionalObjectProperty(s)`, `s(a, x)`, `s(b, x)`,
+`⊤ ⊑ ≤ 1 u`, `u(a, "k1")`, `u(b, "k2")`: `a = b`, so `a` has two values of
+`u`, and the input is inconsistent. The frontend never carried the two
+assertions: the data-ABox omission certificate
+(`DataAbox::positive_assertions_redundant`, `frontend/data_abox.rs`)
+declared them redundant, removed the "data-property assertions are
+unsupported" diagnostic, and the orchestrator therefore neither re-ran the
+frontend with the `DataHasValue` conversion nor counted them as dropped. The
+certificate accepted a `≤ 1` property when its ground merge closure
+(`merged_roots`) left at most one value per merged owner, but that closure
+follows only functional object properties and atomic `≤ 1` restrictions on
+told classes (not inverse functionality, nominals, keys or any TBox-derived
+equality), and its class memberships follow only the told hierarchy. Both
+under-approximate, so the test can succeed on an input where two owners
+with different values are equal, or an owner is in the guard class, in every
+model. (The automatic route answered correctly only because it took the
+ground-rule source reduction to the native bridge first.)
+
+*Fix.* The certificate now accepts a `≤ 1`-constrained property `q` only
+when the whole ABox asserts at most one literal for `q` (through any
+sub-property), whatever the equalities and memberships: two lexically
+different literals fail closed. Inputs it declines keep the diagnostic and
+are carried by the exact conversion (value projection or `DataHasValue`
+assertions). *Exactness.* With one literal `v` per constrained `q`, every
+element of every model has at most the one asserted `q`-value `v`, so the
+projection of "Object-level projection of data assertions" applies with a
+single identity class per slot: zero digit positions, no digit axiom, and
+the only added axioms are the domain assertions, which the certificate
+already requires to be told. The omission is the zero-digit instance of
+`DataValueProjection.projection_sound` and `projection_complete`. The new
+condition implies the old per-root test, so it accepts no input the old one
+declined, except where the old merge closure hit its size caps and declined
+for that reason alone; the argument above does not use the closure.
+
+**2. `count_with_assertions_ok`, and every `≥ n` pigeonhole over an
+`n`-value range (native bridge: `auto`, `certified_nominals`,
+`ht_bridge`).** `G ⊑ ≥ 2 u` with `DataPropertyRange(u xsd:boolean)` entails
+`G ⊑ ∃u.{true}`; the bridge answered `G ⋢ F` on every route that reaches it
+(forced `nominals` is CB only and was correct). The probe `G ⊓ ¬F` came out
+satisfiable: the satisfiable expander cache (`u21`) marked the data
+successors satisfiable-cached from an earlier probe, the OR rule then parked
+their finite cover `R → true ⊔ false` (`u09`, `conf_sat_exp_cached_disj_absorp`),
+no value was chosen, no value-singleton merge happened, and the clash of two
+distinct successors with one value was never reached. The cache's locality
+argument (a node's satisfiability follows from its own label and its
+ancestors) fails for value singletons as it does for nominals, which already
+bypass the cache: `v(y₁) ∧ v(y₂) → y₁ ≈ y₂` merges any two nodes that take
+the value `v`. *Fix.* The bridge does not install the satisfiable expander
+cache when it consumes a singleton concept
+(`bridged.singleton_concepts` non-empty; `KM-SOUNDNESS-GATE[singleton-satexp]`
+in `konclude_ht/bridge.rs`). *Exactness.* The cache is an optimisation: with
+it absent every node is expanded by the ordinary rules, so the change can
+only remove a parked disjunction and never adds a consequence.
+
+**3. Asserted data bounds above two (native bridge).** The bridge's datatype
+gate admits a data role in a source axiom only with a bound of at most two
+over `⊤` or an atomic range ("Objectification preserves bounds zero through
+two"), and `{a} ⊑ ≥ 3 u` defers. The same restriction asserted on an
+individual, `ClassAssertion(≥ 3 u, a)`, carries no datatype name, so the
+nominal-assertion check skipped it and the bridge admitted it. *Fix.* Every
+conjunct of every nominal assertion that mentions a data role passes the
+TBox rule (an asserted existential over a value or atomic range is the head
+use already admitted). *Exactness.* Fail closed: an input the gate now
+declines goes to the CB fallback, which answers it.
+
+**Lean obligation.** Fix 1 narrows an executable certificate to the
+zero-digit case of the projection theorems. That case is proved in
+`lean/ContextCalculus/DataAboxOmission.lean` (no `sorry`; axioms `propext`,
+`Classical.choice`, `Quot.sound`): `omission_sound` and `omission_complete`
+show that, under `projGate` with one identity key per slot and every domain
+assertion of an asserted subject already present, `O` and `O` without the
+assertions of `G` have the same models up to the `G` edges
+(`one_key_separates`: zero positions separate one key). Not proved, as for
+the projection gate itself (obligation 2 above): that the Rust condition
+("at most one asserted literal per bounded property, every range decided,
+every domain told, no data constructor on the group") implies those
+hypotheses. Fixes 2 and 3 change no encoding or derivation: the bridge has
+no Lean model (HYBRID-CB-HT.md section 10), the cache removal disables an
+optimisation, and the gate only defers.
+
+**Tests and runs.** `engine/tests/native_data_values.rs`:
+`inverse_functional_merge` and `count_with_assertions_ok` on `auto`,
+`certified_nominals` and `nominals`, plain and padded (the first was
+auto-only, the second ignored); new fixtures `count_boolean_pigeonhole`
+(the TBox pigeonhole) and `count_nominal_pigeonhole` (`≥ 2 u` over `{1, 2}`
+asserted on `a`, `E ≡ {a}`). Unit test
+`omission_certificate_rejects_two_values_whose_owners_may_merge`
+(`frontend::data_abox`). Differential runs:
+`results/agents/2026-10-31/forced-nominal-data-misses/`.
+
 ## Open corners (status 2026-10-30, after `data-values-3`)
 
 Every corner now has one of two behaviours: an exact answer, or an input

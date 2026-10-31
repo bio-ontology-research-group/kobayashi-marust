@@ -1,0 +1,2 @@
+test result: ok. 181 passed; 0 failed; 7 ignored; 0 measured; 2917 filtered out; finished in 0.22s
+EXIT 0

@@ -1825,6 +1825,45 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         }
     }
 
+    // The same bound applies to a data role in a nominal assertion: an
+    // asserted `ClassAssertion(≥ 3 u, a)` carries no datatype name, so the
+    // datatype-assertion loop above skips it, while the TBox axiom
+    // `{a} ⊑ ≥ 3 u` defers below. Check every conjunct of every assertion that
+    // mentions a data role with the TBox rule (an asserted positive
+    // existential over an atomic value or range is the head use admitted
+    // there).
+    fn asserted_data_role_uses_are_safe(
+        concept: &SourceConcept,
+        datatype_roles: &crate::fxhash::FxHashSet<&str>,
+    ) -> bool {
+        match concept {
+            SourceConcept::And(conjuncts) => conjuncts
+                .iter()
+                .all(|conjunct| asserted_data_role_uses_are_safe(conjunct, datatype_roles)),
+            SourceConcept::Exists(SourceRole::Name(role), filler)
+                if datatype_roles.contains(role.as_str())
+                    && matches!(filler.as_ref(), SourceConcept::Name(name) if name.starts_with("__dt__")) =>
+            {
+                true
+            }
+            other => data_role_uses_are_safe_cardinality_only(other, datatype_roles),
+        }
+    }
+    for individual in &tin.nominal_abox.individuals {
+        for assertion in &individual.assertions {
+            if !asserted_data_role_uses_are_safe(assertion, &datatype_role_names) {
+                if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+                    eprintln!(
+                        "BRIDGE-DATATYPE-DEFER: a nominal assertion uses a data role outside \
+                         an exact bound; individual={} value={assertion:?}",
+                        individual.individual
+                    );
+                }
+                return false;
+            }
+        }
+    }
+
     // Data successors share the completion graph implementation with object
     // successors. Prove that every non-datatype source axiom holds on a fresh
     // data element when all object concepts, nominals, and ordinary outgoing
@@ -15650,7 +15689,22 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     if satcache_active && std::env::var_os("KM_HT_NO_ASSOC_EXP_CACHE").is_none() {
         install_bridge_saturation_node_expansion_cache(&mut ctx);
     }
-    if std::env::var_os("KM_HT_NO_SAT_EXP_CACHE").is_none() {
+    // KM-SOUNDNESS-GATE[singleton-satexp]: the satisfiable expander cache
+    // keys a node's satisfiability on its own label and ancestors, which is
+    // the locality that nominal nodes break (u21, "nominal-satexp"). A value
+    // singleton `v(y1) ∧ v(y2) → y1 = y2` breaks it in the same way: it merges
+    // any two nodes that take the value `v`, so whether a data successor's
+    // finite cover `R → v1 ⊔ … ⊔ vn` can choose a value depends on its
+    // siblings. A cache hit marks the successor satisfiable-cached and parks
+    // that disjunction (u09), no value is chosen, no merge happens, and the
+    // pigeonhole clash of `≥ n u` over an `n`-value range under `¬F` is never
+    // seen: with `u` ranging over `xsd:boolean`, `G ⊑ ≥ 2 u` and
+    // `F ≡ ∃u.{true}` the probe `G ⊓ ¬F` came out satisfiable and `G ⊑ F` was
+    // lost (tests/native_data_values.rs, `count_with_assertions_ok`). Inputs
+    // with a consumed singleton concept therefore run without the cache;
+    // skipping it removes an optimisation only (the nodes are expanded by the
+    // ordinary rules).
+    if std::env::var_os("KM_HT_NO_SAT_EXP_CACHE").is_none() && bridged.singleton_concepts.is_empty() {
         install_bridge_satisfiable_expander_cache(&mut ctx);
     }
     report_bridge_memory("probe-caches-installed");

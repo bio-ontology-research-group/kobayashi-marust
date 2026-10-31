@@ -1064,31 +1064,37 @@ impl<'a> DataAbox<'a> {
             return false;
         }
 
-        // A functional property or applicable class-conditional ≤1 restriction
-        // is harmless only when the represented object-side equality closure
-        // leaves at most one asserted value for that individual and inherited
-        // property. This deliberately counts even equal lexical forms twice:
-        // uncertainty fails closed.
+        // An at-most-one restriction `C ⊑ ≤ 1 q` is harmless only when no
+        // element of any model can carry two different asserted values of
+        // `q`. Which named individuals are equal and which of them are in
+        // `C` is decided by the whole ontology (inverse-functional and
+        // functional roles, nominals, keys, at-most restrictions on complex
+        // classes), and `merged_roots` and its named-class memberships only
+        // under-approximate both: with `InverseFunctionalObjectProperty(s)`,
+        // `s(a, x)`, `s(b, x)`, `⊤ ⊑ ≤ 1 u`, `u(a, "k1")` and `u(b, "k2")`
+        // the closure kept `a` and `b` apart, the assertions were declared
+        // redundant, and every clause worker answered the inconsistent input
+        // consistent (`tests/native_data_values.rs`, `inverse_functional_merge`).
+        // Accept only when every constrained property has at most one asserted
+        // literal in the whole ABox, independent of equalities and
+        // memberships: any number of merged owners then share that one value.
+        // Equal lexical forms count once and every other pair counts as two
+        // values (uncertainty fails closed); declined inputs carry their
+        // assertions through the exact `DataHasValue` conversion instead.
         if self.dmax1.is_empty() {
             return true;
         }
-        let (ids, mut uf, mem) = match self.merged_roots() {
-            Some(parts) => parts,
-            None => return false,
-        };
-        let mut values: HashMap<(&str, u32), HashSet<(&str, Option<&str>)>> = HashMap::default();
-        for &(p, i, token, suffix) in &self.assertions {
-            let root = uf.find(ids[i]);
+        let mut values: HashMap<&str, (&str, Option<&str>)> = HashMap::default();
+        for &(p, _, token, suffix) in &self.assertions {
             for q in self.all_supers(p) {
-                let constrained = self
-                    .dmax1
-                    .iter()
-                    .any(|&(c, dp)| dp == q && mem.get(&root).is_some_and(|m| m.contains(c)));
-                if constrained {
-                    let asserted = values.entry((q, root)).or_default();
-                    asserted.insert((token, suffix));
-                    if asserted.len() > 1 {
-                        return false;
+                if !self.dmax1.iter().any(|&(_, dp)| dp == q) {
+                    continue;
+                }
+                match values.get(q) {
+                    Some(&seen) if seen != (token, suffix) => return false,
+                    Some(_) => {}
+                    None => {
+                        values.insert(q, (token, suffix));
                     }
                 }
             }
@@ -1560,6 +1566,42 @@ mod tests {
             "DataPropertyAssertion(<http://x#q> <http://x#a> \"2\"^^xsd:integer)",
         ]);
         assert!(!da.positive_assertions_redundant());
+    }
+
+    #[test]
+    fn omission_certificate_rejects_two_values_whose_owners_may_merge() {
+        // `a = b` follows from the inverse-functional `s`, which the merge
+        // closure does not model; two values of a `≤ 1` property on two
+        // individuals must therefore never be declared redundant.
+        let da = build(&[
+            "InverseFunctionalObjectProperty(<http://x#s>)",
+            "SubClassOf(owl:Thing DataMaxCardinality(1 <http://x#u>))",
+            "ObjectPropertyAssertion(<http://x#s> <http://x#a> <http://x#x>)",
+            "ObjectPropertyAssertion(<http://x#s> <http://x#b> <http://x#x>)",
+            "DataPropertyAssertion(<http://x#u> <http://x#a> \"k1\")",
+            "DataPropertyAssertion(<http://x#u> <http://x#b> \"k2\")",
+        ]);
+        assert!(!da.positive_assertions_redundant());
+        // A class-conditional bound with a membership the named hierarchy
+        // does not show (`C ≡ ∃r.⊤`) is rejected as well.
+        let da = build(&[
+            "EquivalentClasses(<http://x#C> ObjectSomeValuesFrom(<http://x#r> owl:Thing))",
+            "SubClassOf(<http://x#C> DataMaxCardinality(1 <http://x#u>))",
+            "ObjectPropertyAssertion(<http://x#r> <http://x#a> <http://x#x>)",
+            "DataPropertyAssertion(<http://x#u> <http://x#a> \"1\"^^xsd:integer)",
+            "DataPropertyAssertion(<http://x#u> <http://x#a> \"2\"^^xsd:integer)",
+        ]);
+        assert!(!da.positive_assertions_redundant());
+        // One literal shared by every owner stays redundant.
+        let da = build(&[
+            "InverseFunctionalObjectProperty(<http://x#s>)",
+            "SubClassOf(owl:Thing DataMaxCardinality(1 <http://x#u>))",
+            "ObjectPropertyAssertion(<http://x#s> <http://x#a> <http://x#x>)",
+            "ObjectPropertyAssertion(<http://x#s> <http://x#b> <http://x#x>)",
+            "DataPropertyAssertion(<http://x#u> <http://x#a> \"k1\")",
+            "DataPropertyAssertion(<http://x#u> <http://x#b> \"k1\")",
+        ]);
+        assert!(da.positive_assertions_redundant());
     }
 
     #[test]
