@@ -978,7 +978,7 @@ pushed it. The module models this.
   whose labels are the receiver's hypotheses; locality; and *demand*: every
   interface atom that is the strict maximum of a receiver clause `c` is a
   hypothesis of the receiver or `c` is `Covered` (the cut condition of
-  13.2, with Join case 3 read as the receiver clause `⊤ → Δ'' ∨ K(o)`).
+  14.2, with Join case 3 read as the receiver clause `⊤ → Δ'' ∨ K(o)`).
 - `cut_exchange_complete`: if `P ∪ SQ` is unsatisfiable, the receiver holds
   `⊥`. `cut_unit_readout_complete`: if `P ∪ SQ` entails an atom that is
   rank-least among the receiver's atoms and is an interface atom or outside
