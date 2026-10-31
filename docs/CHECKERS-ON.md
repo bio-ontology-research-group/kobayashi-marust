@@ -361,8 +361,12 @@ the new one or the new hypothesis is weaker. Results:
 (it replaces `lean_checker::run`, merged from `fix/v155-lean-rules-route`):
 the `main` thread gets a 256 MiB `LEAN_STACK_SIZE_KB` unless the caller set
 one, and the runtime's start-up abort ("failed to create thread", SIGABRT) is
-retried with growing pauses for about 5 s. Every other exit is returned
-unchanged, so a rejection still fails closed. Every checker spawn in `cli.rs`,
+retried with growing pauses for about 5 s. A checker dies with the thread
+that started it (`PR_SET_PDEATHSIG`) and is killed after
+`KM_LEAN_CHECK_TIMEOUT_SECS` (default 900 s); a killed checker is no
+verdict (`cannot_check`). Every other exit is returned unchanged, so a
+rejection still fails closed. The Lean runtime's "INTERNAL PANIC: out of
+memory" (exit status 1) is reported as no verdict, not as a rejection. Every checker spawn in `cli.rs`,
 `tableau.rs`, `hypertableau.rs`, `elcomplete.rs` and the rules modules goes
 through it.
 
