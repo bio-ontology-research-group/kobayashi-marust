@@ -210,3 +210,129 @@ fn cb_release_certificate_is_accepted_by_the_lean_checker() {
     }
     assert!(certified >= 2, "only {certified} fixtures produced a checked certificate");
 }
+
+/// The Lean checker of the nominal CB input certificate
+/// (`nominal-cb-input-check`, `WireNominalCBInput`), from
+/// `KM_RULES_TEST_NOMINAL_CB_INPUT_LEAN_CHECKER`; `None` skips unless
+/// `KM_REQUIRE_LEAN_CHECKERS` is set.
+fn nominal_cb_input_checker() -> Option<std::path::PathBuf> {
+    match std::env::var_os("KM_RULES_TEST_NOMINAL_CB_INPUT_LEAN_CHECKER") {
+        Some(path) => Some(std::fs::canonicalize(path).unwrap()),
+        None => {
+            assert!(
+                std::env::var_os("KM_REQUIRE_LEAN_CHECKERS").is_none(),
+                "KM_RULES_TEST_NOMINAL_CB_INPUT_LEAN_CHECKER is required"
+            );
+            eprintln!("skipping: KM_RULES_TEST_NOMINAL_CB_INPUT_LEAN_CHECKER is unset");
+            None
+        }
+    }
+}
+
+/// A checker directory for `KM_LEAN_CHECKERS` holding one executable named
+/// `nominal-cb-input-check`. With `corrupt`, it is a wrapper that drops the
+/// last clause of the certificate's `result` before the real checker reads
+/// it, so the certificate no longer matches the release and elimination of
+/// its `original`.
+fn checker_dir(real: &std::path::Path, corrupt: bool) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"))
+        .join(format!("nominal-cb-checkers-{}-{corrupt}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let exe = dir.join("nominal-cb-input-check");
+    if corrupt {
+        let script = format!(
+            "#!/bin/sh\npython3 -I -c 'import json, sys\np = sys.argv[1]\nd = json.load(open(p))\nd[\"result\"] = d[\"result\"][:-1]\njson.dump(d, open(p, \"w\"))' \"$1\" || exit 2\nexec '{}' \"$1\"\n",
+            real.display()
+        );
+        std::fs::write(&exe, script).unwrap();
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).unwrap();
+    } else {
+        std::os::unix::fs::symlink(real, &exe).unwrap();
+    }
+    dir
+}
+
+/// Run `km classify --lines` on the forced `nominals` route (the atomic CB
+/// worker reads the copy) and return its exit code, stdout and stderr.
+fn run_nominals(path: &str, env: &[(&str, &std::ffi::OsStr)]) -> (Option<i32>, String, String) {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_km"));
+    for (key, _) in std::env::vars_os() {
+        if key.to_string_lossy().starts_with("KM_") {
+            command.env_remove(key);
+        }
+    }
+    command
+        .env("KM_ROUTE", "nominals")
+        .env("KM_TIMING", "1")
+        .env("TMPDIR", env!("CARGO_TARGET_TMPDIR"));
+    for (key, value) in env {
+        command.env(key, value);
+    }
+    let output = command.args(["classify", "--lines", path]).output().unwrap();
+    (
+        output.status.code(),
+        String::from_utf8(output.stdout).unwrap(),
+        String::from_utf8(output.stderr).unwrap(),
+    )
+}
+
+#[test]
+fn nominal_cb_input_certificate_is_accepted_and_a_corrupted_one_fails_closed() {
+    let Some(real) = nominal_cb_input_checker() else { return };
+    let good = checker_dir(&real, false);
+    let bad = checker_dir(&real, true);
+    // m2032_min gets the release and the elimination, m2131 too; m2058 gets
+    // the elimination only (no release certificate is written there).
+    for name in ["m2032_min", "m2131"] {
+        let path = fixture(&format!("{name}.ofn"));
+        let (code, plain, _) = run_nominals(&path, &[]);
+        assert_eq!(code, Some(0), "{name}: plain run failed");
+        assert!(plain.contains("CONSISTENT "), "{name}: no answer");
+
+        // KM_LEAN_CHECKERS with the real checker: accepted, same answer.
+        let (code, checked, stderr) = run_nominals(&path, &[("KM_LEAN_CHECKERS", good.as_os_str())]);
+        assert_eq!(code, Some(0), "{name}: {stderr}");
+        assert_eq!(checked, plain, "{name}: the checked run answered differently");
+        assert!(
+            stderr.contains("KM_LEAN_CHECK accepted family=cb checker=nominal-cb-input-check"),
+            "{name}: no accepted nominal CB input certificate: {stderr}"
+        );
+        assert!(!stderr.contains("KM_LEAN_CHECK rejected"), "{name}: {stderr}");
+
+        // KM_LEAN_CHECKERS with a corrupted certificate: rejected, no answer.
+        let (code, stdout, stderr) = run_nominals(&path, &[("KM_LEAN_CHECKERS", bad.as_os_str())]);
+        assert_eq!(code, Some(6), "{name}: a rejected certificate must fail closed: {stderr}");
+        assert!(!stdout.contains("CONSISTENT "), "{name}: an answer was published: {stdout}");
+        assert!(
+            stderr.contains("KM_LEAN_CHECK rejected family=cb checker=nominal-cb-input-check"),
+            "{name}: {stderr}"
+        );
+
+        // The explicit variables: accepted with the real checker, and the
+        // corrupted certificate fails the run instead of falling back to the
+        // frontend's clauses.
+        let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"))
+            .join(format!("nominal-cb-certs-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (code, explicit, stderr) = run_nominals(
+            &path,
+            &[("KM_NOMINAL_CB_INPUT_CERT", dir.as_os_str()), ("KM_NOMINAL_CB_INPUT_LEAN_CHECKER", real.as_os_str())],
+        );
+        assert_eq!(code, Some(0), "{name}: {stderr}");
+        assert_eq!(explicit, plain, "{name}: the certified run answered differently");
+        assert!(std::fs::read_dir(&dir).unwrap().count() > 0, "{name}: no certificate written");
+        let wrapper = bad.join("nominal-cb-input-check");
+        let (code, stdout, stderr) = run_nominals(
+            &path,
+            &[("KM_NOMINAL_CB_INPUT_CERT", dir.as_os_str()), ("KM_NOMINAL_CB_INPUT_LEAN_CHECKER", wrapper.as_os_str())],
+        );
+        assert_ne!(code, Some(0), "{name}: a rejected certificate must fail the run: {stdout}");
+        assert!(!stdout.contains("CONSISTENT "), "{name}: an answer was published: {stdout}");
+        assert!(!stderr.contains("kept the frontend's clauses"), "{name}: {stderr}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+    let _ = std::fs::remove_dir_all(&good);
+    let _ = std::fs::remove_dir_all(&bad);
+}

@@ -386,19 +386,122 @@ fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
     false
 }
 
+/// Why [`nominal_cb_clause_input`] made no copy.
+enum CbInputError {
+    /// A Lean checker rejected a certificate of the copy (or could not give a
+    /// verdict outside `KM_LEAN_CHECKERS`). The arm must not answer: fail
+    /// closed.
+    Rejected(String),
+    /// The copy could not be made (I/O, JSON). The frontend's file is exact,
+    /// so the arm keeps it.
+    Other(OrchestrateError),
+}
+
+impl From<OrchestrateError> for CbInputError {
+    fn from(error: OrchestrateError) -> Self {
+        CbInputError::Other(error)
+    }
+}
+
+impl From<std::io::Error> for CbInputError {
+    fn from(error: std::io::Error) -> Self {
+        CbInputError::Other(error.into())
+    }
+}
+
+impl From<serde_json::Error> for CbInputError {
+    fn from(error: serde_json::Error) -> Self {
+        CbInputError::Other(error.into())
+    }
+}
+
+/// The executable of the nominal CB input checker in a `KM_LEAN_CHECKERS`
+/// directory.
+pub(crate) const NOMINAL_CB_INPUT_CHECKER: &str = "nominal-cb-input-check";
+
+/// Where the nominal CB input certificate goes and which checker reads it:
+/// `KM_NOMINAL_CB_INPUT_CERT` (a `.json` file or a directory) and
+/// `KM_NOMINAL_CB_INPUT_LEAN_CHECKER`, or, under `KM_LEAN_CHECKERS`, a fresh
+/// file in the run directory and `nominal-cb-input-check` from the checker
+/// directory. `None` when nothing asks for the certificate.
+fn nominal_cb_certificate_plan() -> Option<(std::path::PathBuf, Option<std::path::PathBuf>)> {
+    static NONCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let explicit_checker = std::env::var_os("KM_NOMINAL_CB_INPUT_LEAN_CHECKER").map(std::path::PathBuf::from);
+    let switch_checker = crate::lean_checkers::dir()
+        .map(|dir| dir.join(NOMINAL_CB_INPUT_CHECKER))
+        .filter(|path| path.is_file());
+    let checker = explicit_checker.or(switch_checker);
+    let file = match std::env::var_os("KM_NOMINAL_CB_INPUT_CERT") {
+        Some(target) => {
+            let target = std::path::PathBuf::from(target);
+            if target.extension().is_some_and(|ext| ext == "json") {
+                target
+            } else {
+                let n = NONCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                target.join(format!("nominal-cb-input-{}-{n}.json", std::process::id()))
+            }
+        }
+        None if checker.is_some() => crate::lean_checkers::fresh_path("nominal_cb_input"),
+        None => {
+            if crate::lean_checkers::active() {
+                crate::lean_checkers::record_cannot_check(
+                    "cb",
+                    "nominal-cb-input",
+                    "no nominal-cb-input-check in the checker directory; the nominal CB input is unchecked",
+                );
+            }
+            return None;
+        }
+    };
+    Some((file, checker))
+}
+
+/// Write the nominal CB input certificate and run its checker. Under
+/// `KM_LEAN_CHECKERS` a rejection is recorded in the run log, so `km
+/// classify` publishes nothing, and `cannot_check` lets the arm answer as it
+/// does without the checker. Outside it, anything but acceptance fails the
+/// arm.
+fn check_nominal_cb_input(
+    file: &Path,
+    checker: Option<&Path>,
+    document: &serde_json::Value,
+) -> Result<(), CbInputError> {
+    if let Some(parent) = file.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(file, serde_json::to_vec(document)?)?;
+    let Some(checker) = checker else { return Ok(()) };
+    match crate::lean_checkers::run("cb", checker, "nominal-cb-input", file) {
+        crate::lean_checkers::Outcome::Accepted => Ok(()),
+        crate::lean_checkers::Outcome::Rejected(detail) => Err(CbInputError::Rejected(format!(
+            "the Lean checker rejected the nominal CB input certificate {}: {detail}",
+            file.display()
+        ))),
+        crate::lean_checkers::Outcome::CannotCheck(detail) if !crate::lean_checkers::active() => {
+            Err(CbInputError::Rejected(format!(
+                "the Lean checker gave no verdict on the nominal CB input certificate {}: {detail}",
+                file.display()
+            )))
+        }
+        crate::lean_checkers::Outcome::CannotCheck(_) => Ok(()),
+    }
+}
+
 /// Clause input of the nominal CB engine with the inert object sorts released
 /// (`inert_sorts::release_inert_object_sorts_for_cb`, docs/NOMINALS-CB.md
-/// "Inert object sorts in the nominal CB input (2026-10-30)").
+/// "Inert object sorts in the nominal CB input (2026-10-30)") and the
+/// universal definers eliminated (`inert_sorts::eliminate_universal_definers`).
 ///
 /// Only in nominal mode, never for a run that must publish a CB Lean
 /// certificate (its typed source must equal the clauses), and never under
-/// `KM_CB_KEEP_INERT_SORTS`. `None` when nothing is released; the caller then
-/// keeps the frontend's file. The copy goes only to workers that read the
-/// clauses alone; HT workers keep the frontend's file and its records.
+/// `KM_CB_KEEP_INERT_SORTS`. `None` when nothing is released or eliminated;
+/// the caller then keeps the frontend's file. The copy goes only to workers
+/// that read the clauses alone; HT workers keep the frontend's file and its
+/// records.
 fn nominal_cb_clause_input(
     clauses_path: &Path,
     meta: &frontend_run::Meta,
-) -> Result<Option<tmpfile::TempPath>, OrchestrateError> {
+) -> Result<Option<tmpfile::TempPath>, CbInputError> {
     if std::env::var_os("KM_NOMINALS").is_none()
         || std::env::var_os("KM_CB_LEAN_REQUIRED").is_some()
         || std::env::var_os("KM_CB_KEEP_INERT_SORTS").is_some()
@@ -433,22 +536,40 @@ fn nominal_cb_clause_input(
             || asserted.contains(name)
             || queries.iter().any(|query| query == name)
     };
-    // KM_RULES_INERT_CERT / KM_RULES_INERT_LEAN_CHECKER: the same Lean
-    // certificate as the rule checker's release (`WireInertSortRelease`,
-    // parametric in the reserved names), with this pass's reservations. It
-    // covers the release only: it records the clause set after the release
-    // and before `eliminate_universal_definers`, which has no Lean check.
-    let certificate = std::env::var_os("KM_RULES_INERT_CERT")
-        .map(|path| (path, input.clauses.clone(), inert_sorts::reserved_concepts_for_cb(&input, is_source)));
+    // Two Lean certificates, both with the reservations of the CB variant
+    // (`inert_sorts::reserved_concepts_for_cb`), and both fail closed:
+    //
+    // * KM_RULES_INERT_CERT / KM_RULES_INERT_LEAN_CHECKER: the rule
+    //   checker's release certificate (`WireInertSortRelease`), for the clause
+    //   set after the release and before the elimination.
+    // * KM_NOMINAL_CB_INPUT_CERT / KM_NOMINAL_CB_INPUT_LEAN_CHECKER, and
+    //   `nominal-cb-input-check` under KM_LEAN_CHECKERS: the whole copy, the
+    //   release followed by the elimination (`WireNominalCBInput`, theorems
+    //   `check_consistent`, `check_unsat`, `check_entails`).
+    let release_certificate = std::env::var_os("KM_RULES_INERT_CERT");
+    let input_certificate = nominal_cb_certificate_plan();
+    let certified = (release_certificate.is_some() || input_certificate.is_some())
+        .then(|| (input.clauses.clone(), inert_sorts::reserved_concepts_for_cb(&input, is_source)));
     let released = inert_sorts::release_inert_object_sorts_for_cb(&mut input, is_source);
-    if let Some((path, original, reserved)) = certificate {
+    if let (Some(path), Some((original, reserved))) = (&release_certificate, &certified) {
         if !released.concepts.is_empty() {
-            write_rules_inert_certificate(Path::new(&path), &original, &input.clauses, &released.concepts, &reserved)?;
+            write_rules_inert_certificate(Path::new(path), original, &input.clauses, &released.concepts, reserved)
+                .map_err(|error| CbInputError::Rejected(error.to_string()))?;
         }
     }
     let eliminated = inert_sorts::eliminate_universal_definers(&mut input, is_source);
     if released.concepts.is_empty() && eliminated.concepts.is_empty() {
         return Ok(None);
+    }
+    if let (Some((file, checker)), Some((original, reserved))) = (&input_certificate, &certified) {
+        let document = inert_sorts::nominal_cb_input_certificate(
+            original,
+            &input.clauses,
+            &released.concepts,
+            &eliminated.concepts,
+            reserved,
+        );
+        check_nominal_cb_input(file, checker.as_deref(), &document)?;
     }
     if std::env::var_os("KM_TIMING").is_some() {
         eprintln!(
@@ -470,17 +591,26 @@ fn nominal_cb_clause_input(
 
 /// `nominal_cb_clause_input`, keeping the frontend's file when the copy
 /// cannot be made (the copy only saves time; the frontend's file is exact).
+/// A rejected certificate is an error: the arm gives no answer.
 fn nominal_cb_clause_input_or_keep(
     clauses_path: &Path,
     meta: &frontend_run::Meta,
-) -> Option<tmpfile::TempPath> {
+) -> Result<Option<tmpfile::TempPath>, OrchestrateError> {
     match nominal_cb_clause_input(clauses_path, meta) {
-        Ok(copy) => copy,
-        Err(error) => {
+        Ok(copy) => Ok(copy),
+        Err(CbInputError::Rejected(message)) => {
+            eprintln!("KM nominal CB input: {message}; the CB arm gives no answer");
+            Err(OrchestrateError::Worker {
+                bin: NOMINAL_CB_INPUT_CHECKER.into(),
+                code: crate::lean_checkers::REJECTED_EXIT,
+                stderr: message,
+            })
+        }
+        Err(CbInputError::Other(error)) => {
             if std::env::var_os("KM_TIMING").is_some() {
                 eprintln!("KM_TIMING nominal CB input: kept the frontend's clauses ({error})");
             }
-            None
+            Ok(None)
         }
     }
 }
@@ -492,7 +622,7 @@ fn with_nominal_cb_input<T>(
     meta: &frontend_run::Meta,
     run: &dyn Fn(&Path) -> Result<T, OrchestrateError>,
 ) -> Result<T, OrchestrateError> {
-    let copy = nominal_cb_clause_input_or_keep(clauses_path, meta);
+    let copy = nominal_cb_clause_input_or_keep(clauses_path, meta)?;
     run(copy.as_ref().map_or(clauses_path, |copy| copy.path()))
 }
 
@@ -3418,7 +3548,7 @@ fn classify_with_evidence_inner(
                 let spawn_probe = || {
                     race::HtFirstProbe::spawn(cfg, clauses_path.path(), &named_set, ht_mode)
                 };
-                let released = nominal_cb_clause_input_or_keep(clauses_path.path(), &meta);
+                let released = nominal_cb_clause_input_or_keep(clauses_path.path(), &meta)?;
                 out = try_inproc_engine(
                     released.as_ref().map_or(clauses_path.path(), |copy| copy.path()),
                     std::time::Duration::from_secs_f64(budget_s),

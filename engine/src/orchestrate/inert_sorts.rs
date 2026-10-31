@@ -256,14 +256,21 @@ pub fn reserved_concepts_for_cb(input: &JInput, is_source: impl Fn(&str) -> bool
     for clause in &input.clauses {
         for atom in clause.body.iter().chain(&clause.head) {
             if let JAtom::Concept { concept, .. } = atom {
-                let definer = ["Q_", "aux_", "def_"].iter().any(|prefix| concept.starts_with(prefix));
-                if !definer || is_source(concept) {
+                if !is_cb_definer(concept) || is_source(concept) {
                     reserved.insert(concept.clone());
                 }
             }
         }
     }
     reserved
+}
+
+/// An internal definer name of the frontend (`Q_`, `aux_`, `def_`): the only
+/// names the CB variants of the release and of the universal-definer
+/// elimination may change. Every other concept is in
+/// [`reserved_concepts_for_cb`].
+pub(crate) fn is_cb_definer(concept: &str) -> bool {
+    ["Q_", "aux_", "def_"].iter().any(|prefix| concept.starts_with(prefix))
 }
 
 /// What [`eliminate_universal_definers`] removed.
@@ -302,6 +309,13 @@ pub struct Eliminated {
 /// eliminated here; so is the `⊤` definer of an unqualified cardinality.
 /// Like that pass, the result is only for workers that read nothing but the
 /// clauses and report only names in `is_source`.
+///
+/// Lean: `ContextCalculus.UniversalDefiner.eliminate` is this
+/// transformation, and `models_iff` and `eliminate_equisatisfiable` prove the
+/// correspondence above for any eliminated set whose members are unreserved
+/// and have a unit fact; the guards below only shrink the set.
+/// [`nominal_cb_input_certificate`] records the release and this pass for
+/// the checker `nominal-cb-input-check`.
 pub fn eliminate_universal_definers(
     input: &mut JInput,
     is_source: impl Fn(&str) -> bool,
@@ -339,9 +353,14 @@ pub fn eliminate_universal_definers(
         if let ([], [JAtom::Concept { concept, term: JTerm::Var { .. } }]) =
             (clause.body.as_slice(), clause.head.as_slice())
         {
+            // `is_cb_definer` and `is_source` together are the complement of
+            // `reserved_concepts_for_cb` (with the ABox and rule names in
+            // `reserved`), the reserved set of the Lean certificate
+            // (`WireNominalCBInput`): its check requires every eliminated
+            // definer to be unreserved. `is_internal` alone also admits
+            // builtin vocabulary such as `owl:Thing`, which that set reserves.
             if super::cb_to_ht::is_internal(concept)
-                && !concept.starts_with("__")
-                && concept != DATA_SORT
+                && is_cb_definer(concept)
                 && !reserved.contains(concept)
                 && !is_source(concept)
             {
@@ -796,8 +815,7 @@ pub fn reserved_concepts(input: &JInput, is_source: impl Fn(&str) -> bool) -> BT
     for clause in &input.clauses {
         for atom in clause.body.iter().chain(&clause.head) {
             if let JAtom::Concept { concept, .. } = atom {
-                let definer = ["Q_", "aux_", "def_"].iter().any(|prefix| concept.starts_with(prefix));
-                if !definer || is_source(concept) {
+                if !is_cb_definer(concept) || is_source(concept) {
                     reserved.insert(concept.clone());
                 }
             }
@@ -909,6 +927,41 @@ pub fn release_certificate(
         "version": 1,
         "data_sort": data_sort,
         "released": released,
+        "reserved": reserved,
+        "original": original,
+        "result": result,
+        "concept_names": ids.concepts,
+        "role_names": ids.roles,
+    })
+}
+
+/// The nominal CB input certificate checked by `lean/NominalCBInputCheck.lean`
+/// (`WireNominalCBInput`, theorems `check_sound`, `check_consistent`,
+/// `check_unsat` and `check_entails` in
+/// `lean/ContextCalculus/UniversalDefinerElimination.lean`): the frontend's
+/// clause set, the released definers, the eliminated definers, the reserved
+/// concepts and the clause set the CB engine reads. Lean recomputes the
+/// release and the elimination from `original`, `released` and `eliminated`
+/// and compares the result, so nothing else in the document is trusted.
+pub fn nominal_cb_input_certificate(
+    original: &[JClause],
+    result: &[JClause],
+    released: &[String],
+    eliminated: &[String],
+    reserved: &BTreeSet<String>,
+) -> serde_json::Value {
+    let mut ids = CertIds::default();
+    let data_sort = ids.concept(DATA_SORT);
+    let original = ids.clauses(original);
+    let result = ids.clauses(result);
+    let released: Vec<usize> = released.iter().map(|name| ids.concept(name)).collect();
+    let eliminated: Vec<usize> = eliminated.iter().map(|name| ids.concept(name)).collect();
+    let reserved: Vec<usize> = reserved.iter().map(|name| ids.concept(name)).collect();
+    serde_json::json!({
+        "version": 1,
+        "data_sort": data_sort,
+        "released": released,
+        "eliminated": eliminated,
         "reserved": reserved,
         "original": original,
         "result": result,
@@ -1741,5 +1794,159 @@ mod tests {
         assert!(i.clauses == clauses);
         let mut i = input(clauses[..1].to_vec());
         assert_eq!(eliminate_universal_definers(&mut i, |_| false).concepts, vec!["Q_1".to_string()]);
+    }
+
+    #[test]
+    fn builtin_vocabulary_is_never_eliminated() {
+        // `owl:Thing` is internal (`cb_to_ht::is_internal`) but not a
+        // frontend definer, so `reserved_concepts_for_cb` reserves it and the
+        // Lean check of the nominal CB input would reject its elimination.
+        let clauses = vec![
+            cl(vec![], vec![c("owl:Thing", var("x"))]),
+            cl(vec![c("owl:Thing", var("x")), c("A", var("x"))], vec![c("B", var("x"))]),
+            cl(vec![], vec![c("Q_1", var("x"))]),
+            cl(vec![c("Q_1", var("x")), c("B", var("x"))], vec![c("A", var("x"))]),
+        ];
+        let mut i = input(clauses.clone());
+        let source = |name: &str| name == "A" || name == "B";
+        let reserved = reserved_concepts_for_cb(&i, source);
+        assert!(reserved.contains("owl:Thing") && !reserved.contains("Q_1"));
+        assert_eq!(eliminate_universal_definers(&mut i, source).concepts, vec!["Q_1".to_string()]);
+        assert!(i.clauses.contains(&clauses[0]) && i.clauses.contains(&clauses[1]));
+    }
+
+    /// The elimination without its gates: drop the named definers from every
+    /// head (with the clause) and body.
+    fn eliminate_unchecked(clauses: &[JClause], names: &[&str]) -> Vec<JClause> {
+        let named = |atom: &JAtom| matches!(atom, JAtom::Concept { concept, .. } if names.contains(&concept.as_str()));
+        clauses
+            .iter()
+            .filter(|clause| !clause.head.iter().any(named))
+            .map(|clause| cl(clause.body.iter().filter(|atom| !named(atom)).cloned().collect(), clause.head.clone()))
+            .collect()
+    }
+
+    /// The Lean checker of the nominal CB input certificate, from
+    /// `KM_RULES_TEST_NOMINAL_CB_INPUT_LEAN_CHECKER` (the rules certification
+    /// gate sets it); `None` skips, unless `KM_REQUIRE_LEAN_CHECKERS` is set.
+    fn nominal_cb_input_checker() -> Option<std::path::PathBuf> {
+        match std::env::var_os("KM_RULES_TEST_NOMINAL_CB_INPUT_LEAN_CHECKER") {
+            Some(path) => Some(path.into()),
+            None => {
+                assert!(
+                    std::env::var_os("KM_REQUIRE_LEAN_CHECKERS").is_none(),
+                    "KM_RULES_TEST_NOMINAL_CB_INPUT_LEAN_CHECKER is required"
+                );
+                eprintln!("skipping: KM_RULES_TEST_NOMINAL_CB_INPUT_LEAN_CHECKER is unset");
+                None
+            }
+        }
+    }
+
+    #[test]
+    fn eliminated_definers_are_unreserved_and_universal() {
+        // The two hypotheses of `elimConditions` (Lean): every eliminated
+        // definer is outside `reserved_concepts_for_cb` and has a unit fact
+        // `→ Q(x)` in the clause set the elimination reads.
+        let mut rng = Lcg(20261031);
+        let source = |name: &str| name == "A" || name == "B";
+        let mut eliminated = 0;
+        for _ in 0..2000 {
+            let mut clauses = random_sorted(&mut rng);
+            if rng.below(2) == 0 {
+                clauses.push(cl(vec![c("Q_1", var("x")), c("Q_2", var("x"))], vec![]));
+            }
+            let mut i = input(clauses);
+            let reserved = reserved_concepts_for_cb(&i, source);
+            release_inert_object_sorts_for_cb(&mut i, source);
+            let released = i.clauses.clone();
+            let gone = eliminate_universal_definers(&mut i, source);
+            for concept in &gone.concepts {
+                assert!(!reserved.contains(concept), "{concept} is reserved");
+                assert!(released.iter().any(|clause| clause.body.is_empty()
+                    && matches!(clause.head.as_slice(), [JAtom::Concept { concept: q, term: JTerm::Var { .. } }] if q == concept)));
+            }
+            let names: Vec<&str> = gone.concepts.iter().map(String::as_str).collect();
+            if !names.is_empty() {
+                assert!(i.clauses == eliminate_unchecked(&released, &names));
+                eliminated += 1;
+            }
+        }
+        assert!(eliminated > 200, "eliminated on {eliminated} inputs");
+    }
+
+    #[test]
+    fn lean_checker_accepts_the_nominal_cb_input_and_rejects_unchecked_ones() {
+        let Some(checker) = nominal_cb_input_checker() else { return };
+        let mut rng = Lcg(20261031);
+        let source = |name: &str| name == "A" || name == "B";
+        let (mut accepted, mut rejected) = (0, 0);
+        for round in 0..2000 {
+            let mut clauses = random_sorted(&mut rng);
+            if rng.below(2) == 0 {
+                clauses.push(cl(vec![c("Q_1", var("x")), c("Q_2", var("x"))], vec![]));
+            }
+            let mut i = input(clauses.clone());
+            let reserved = reserved_concepts_for_cb(&i, source);
+            let released = release_inert_object_sorts_for_cb(&mut i, source);
+            let after_release = i.clauses.clone();
+            let gone = eliminate_universal_definers(&mut i, source);
+            if !released.concepts.is_empty() || !gone.concepts.is_empty() {
+                let document =
+                    nominal_cb_input_certificate(&clauses, &i.clauses, &released.concepts, &gone.concepts, &reserved);
+                assert!(lean_accepts(&checker, &document, &format!("cb-{round}-ok")), "round {round}: rejected");
+                accepted += 1;
+            }
+            // Eliminating `Q_2` whether or not it holds everywhere: whenever
+            // that changes an answer, `check_entails` and its siblings forbid
+            // acceptance.
+            let unchecked = eliminate_unchecked(&after_release, &["Q_2"]);
+            if answers(&clauses) != answers(&unchecked) {
+                let document = nominal_cb_input_certificate(
+                    &clauses,
+                    &unchecked,
+                    &released.concepts,
+                    &["Q_2".to_string()],
+                    &reserved,
+                );
+                assert!(!lean_accepts(&checker, &document, &format!("cb-{round}-bad")), "round {round}: accepted");
+                rejected += 1;
+            }
+        }
+        eprintln!("Lean accepted {accepted} nominal CB inputs and rejected {rejected} answer-changing eliminations");
+        assert!(accepted > 300 && rejected > 30, "accepted {accepted}, rejected {rejected}");
+    }
+
+    #[test]
+    fn lean_checker_rejects_a_tampered_nominal_cb_input() {
+        let Some(checker) = nominal_cb_input_checker() else { return };
+        let clauses = vec![
+            cl(vec![], vec![c("Q_1", var("x"))]),
+            cl(vec![c("Q_1", var("y")), r("p", var("x"), var("y"))], vec![c("Q_2", var("x"))]),
+            cl(vec![c("A", var("x"))], vec![c("Q_1", var("x")), c("B", var("x"))]),
+            cl(vec![c("Q_1", var("x")), c("Q_2", var("x"))], vec![c("B", var("x"))]),
+        ];
+        let source = |name: &str| name == "A" || name == "B";
+        let mut i = input(clauses.clone());
+        let reserved = reserved_concepts_for_cb(&i, source);
+        let gone = eliminate_universal_definers(&mut i, source);
+        assert_eq!(gone.concepts, vec!["Q_1".to_string()]);
+        let document = nominal_cb_input_certificate(&clauses, &i.clauses, &[], &gone.concepts, &reserved);
+        assert!(lean_accepts(&checker, &document, "cb-ok"));
+        // The CB input must be exactly the elimination of the original.
+        let mut dropped = i.clauses.clone();
+        dropped.pop();
+        let document = nominal_cb_input_certificate(&clauses, &dropped, &[], &gone.concepts, &reserved);
+        assert!(!lean_accepts(&checker, &document, "cb-dropped"));
+        // A reserved name is never eliminated.
+        let mut with_q1 = reserved.clone();
+        with_q1.insert("Q_1".into());
+        let document = nominal_cb_input_certificate(&clauses, &i.clauses, &[], &gone.concepts, &with_q1);
+        assert!(!lean_accepts(&checker, &document, "cb-reserved"));
+        // A definer without a unit fact is never eliminated.
+        let both = vec!["Q_1".to_string(), "Q_2".to_string()];
+        let unchecked = eliminate_unchecked(&clauses, &["Q_1", "Q_2"]);
+        let document = nominal_cb_input_certificate(&clauses, &unchecked, &[], &both, &reserved);
+        assert!(!lean_accepts(&checker, &document, "cb-no-unit"));
     }
 }
