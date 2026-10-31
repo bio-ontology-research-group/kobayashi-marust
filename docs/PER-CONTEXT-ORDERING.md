@@ -1063,3 +1063,153 @@ measured (`KM_EXP_MERGE_ORDER`, not kept): it recovered r163, r208, r461
 and lost r29, r376, r557, r576, and it has no exactness argument (the
 receiver's interface must stay downward closed in the order of the clauses
 it may receive).
+
+## 15. Pred premises on composite edges, the unit-bridge restriction and least-key subsumption postings (2026-10-31, agent `objvalue-cost`)
+
+The object-value case of `data_value_singleton_next_to_nominal_successors`
+(`tests/universal_role_and_top_data_range.rs`: `¬(p value e) ⊑ B` with
+`S6 ≡ {c} ⊓ ∃r.{d} ⊓ ∃r⁻.{d}`) did not answer within the test's 10 s
+bound on the forced `nominals` route; at 60 s it still timed out, and the
+engine worker alone ran past 300 s. Results and commands:
+`results/agents/2026-10-31/objvalue-cost/`.
+
+### 15.1 Where the cost was
+
+The frontend encodes `¬(p value e)` with a complement `Q_1 ≡ ¬{e}`, so every
+context holds the body-free bridge `⊤ → Q_1(x) ∨ x ≈ e`: every element may be
+`e`. Every query context with core `K(x)` therefore pushes the merge
+hypothesis `K(e)` (section 14), and the ground context reasons under
+`S6(e)` as well as under `S6(c)`. Profiling the ground context (`KM_PROF`,
+`KM_PROF_DUMP_AT`, attribution switches) showed three separate costs.
+
+1. *Labels on the ground context's own successor terms.* After 1,000
+   work-offs the ground context held clauses labelled by atoms such as
+   `__nom__e(f(e))`, `p(f(e), f(e))` or `Q_2(f(d))`, over composite terms
+   `f(o)`. No receiver ever pushes such an atom, so these labels are never
+   discharged; they came from Pred. On an edge labelled by a composite
+   `f(o)`, `pred_payload` maps `x ↦ f(o)` and `y ↦ o`, so the image of every
+   sender atom is ground, and the receiving side copied every ground body
+   atom without a provider into the conclusion's body (the `C_i` copy). The
+   images `A_iσ` of the sender's atoms over `x` are not `C_i`: in
+   arXiv:1805.01396 Table 2 only atoms that are ground *in the sender*
+   (labels the sender holds) are copied, and the premises `A_iσ` must resolve
+   against a clause of the receiver with `A_iσ` maximal. Shared empty-core
+   successors (whose hypotheses come from many edges) sent back clauses over
+   hypotheses that the ground context had never pushed on that edge, and the
+   copy turned each of them into a new hypothesis of the ground context.
+2. *The merge hypothesis `S6(e)`.* The query context `S6` holds the unit
+   bridge `⊤ → x ≈ c` (from `S6 ⊑ {c}`) and the bridge
+   `⊤ → Q_1(x) ∨ x ≈ e`. It pushed both `S6(c)` and `S6(e)`. Under `S6(e)`
+   the ground context derives `e ≈ c` and rebuilds the whole `c` world, and
+   through the templates `Q_1(t) ∨ t ≈ e` it spreads `S6` to every term.
+   With the fix of item 1 alone, the engine worker still had 40,000 clauses
+   in the ground context after 300 s; without `S6(e)` it answers in 7 s.
+3. *Forward subsumption.* In the remaining 7 s, 3.7 s went to forward
+   subsumption: 879,000 calls scanned 327 million candidates, because the
+   least head literal (such as `Q_1(c)`) is shared by thousands of the
+   ground context's disjunctions.
+
+Neither the exchange cut of section 14 nor the switches `KM_CONTEXT_NO_R2`,
+`KM_CONTEXT_PAIR_R2`, `KM_CONTEXT_UNIT_R3` change the outcome of 1 or 2.
+
+### 15.2 Pred premises on composite edges
+
+`PredClause` carries `resolve`, the premises `A_iσ` of the payload: on an
+edge labelled by a composite `f(o)`, the images of the sender's body and core
+atoms that mention `x`, minus any image that equals an atom the sender
+already holds ground. `PredClause::copies_verbatim` admits a body atom
+without a provider as a copied label only when it is ground and not in
+`resolve`. All four Pred paths use it (`pred_from_neighbor_ordered`,
+`pred_local_inner`, its full-product reference, `pred_rule_evidence`). Atoms
+over `y` alone (images `B(o)`) stay copyable, as before, and so do all atoms
+on ordinary edges (`resolve` is empty there). `KM_PRED_COPY_ALL` restores
+the previous rule.
+
+*Soundness.* Unchanged: the rule derives a subset of what it derived before.
+
+*Completeness.* The rule is now the paper's Pred for these premises: a
+conclusion needs, for each `A_iσ`, a receiver clause `Γ_i → Δ_i ∨ A_iσ` with
+`A_iσ` maximal. When the provider is worked off after the payload arrived,
+`pred_local` (fired on every maximal head atom over a function or composite
+term) resolves the stored payload against it, exactly as for nonground
+premises on ordinary edges. What the old rule added on top is the clause
+`A_iσ ∧ Γ → Δ` with `A_iσ` as a label and everything derived from it. Such
+a label is an atom over `f(o)`. In KM no context pushes it (r-Succ pushes
+`root_succ_form` atoms over individuals, merge hypotheses `K(o)` are over
+individuals), so (a) the guard never delivers a clause carrying it (every
+body atom must be a hypothesis the receiver pushed), (b) it never takes part
+in a cover of `rsucc_covered` (same condition), (c) Join case 3 never removes
+it (its variants are atoms over individuals), (d) the global refutation and
+the Horn readout read only body-free clauses. Join cases 1 and 2 resolve it
+once a provider exists, which gives the Pred conclusion that the new rule
+derives directly. The extra clauses were therefore sound consequences that
+the paper's calculus does not derive; the completeness arguments of sections
+3, 6, 8, 11 and 14 are stated for the paper's Pred with the `C_i` copy of
+labels and do not use them.
+
+*Lean obligation.* No calculus rule is added and no redundancy test changes;
+the change removes inferences that are outside the paper's Pred, so the
+mechanised exchange theorems (`ExchangeCut.lean`, `ExchangeEquality.lean`),
+whose ground context is closed under labelled hyperresolution with labels
+that are receiver hypotheses, are unaffected. The certified CB surface does
+not model Pred into the ground context. What stays argued, as in section 14.3
+item (1): the correspondence of KM's Pred and Join with the paper's rules.
+
+### 15.3 The unit-bridge restriction of merge hypotheses
+
+`Engine::merge_hypotheses`: when a query context `u` with core `K(x)` holds a
+*unit* bridge `⊤ → x ≈ o'` (body-free, one literal), it pushes the merge
+hypotheses `K(o')` only; the bridges `⊤ → Δ'' ∨ x ≈ o` with `o ≠ o'` get no
+merge hypothesis. `KM_NO_UNIT_BRIDGE_CUT` restores the previous behaviour.
+(A unit bridge is permanent: only the empty clause strengthens it.)
+
+*Soundness.* Fewer hypotheses, fewer premises: unchanged.
+
+*Completeness (argued, first-order, not mechanised).* Merge hypotheses exist
+because the ground context must reason under the assumption that `u`'s
+element is the individual `o` (section 14, `no_merge_hypothesis_counterexample`).
+With the unit bridge, `u`'s element is `o'` in every model of `u`'s clauses,
+so the assumption "the element is `o`" is the assumption `o ≈ o'` together
+with `K(o')`. The ground context reasons under `K(o')` and holds the ground
+instances `Δ''{x↦o'} ∨ o' ≈ o` of the bridge's source clauses (the bridge
+`⊤ → Δ'' ∨ x ≈ o` is a consequence of `u`'s core and the ontology; with the
+element fixed to `o'` the ground context derives the instance from `K(o')`).
+Superposition in the ground context is complete for equality in the labelled
+clause set under `K(o')`, so every clause `K(o) ∧ Γ → Λ` that the hypothesis
+`K(o)` would have produced has a counterpart `K(o') ∧ Γ → Λ' ∨ Δ''{x↦o'}`
+with `Λ'` the image of `Λ` under `o ↦ o'` (the case split on `o ≈ o'` moved
+into `Δ''`). Join case 3 on `K(o')` with the unit bridge turns it into the
+clause `Γ → Λ'' ∨ Δ''` of `u` that Join case 3 on `K(o)` with the bridge
+`⊤ → Δ'' ∨ x ≈ o` would have given, up to the rewriting of `o'` to `x` that
+`u`'s Eq rule performs with the unit bridge. This is a congruence argument;
+the propositional skeleton of `ExchangeCut.lean` treats `K(o)` and `K(o')` as
+unrelated atoms, so the demand condition of `CutCond` does not hold for
+`K(o)` there and the mechanised theorem does not cover the restriction.
+
+*Lean obligation (open).* A model of the exchange in which equalities are
+interpreted (a congruence on the ground atoms) and the demand condition is
+relaxed to "`K(o)` is a hypothesis, covered, or `u` holds a unit bridge to
+`o'` with `K(o')` a hypothesis". Not done here: it needs equality in the
+model construction of `cut_extend`, which the current modules leave out on
+purpose (section 14.3, "What remains argued", item (2)). The differential
+runs of 15.5 check the restriction against HermiT.
+
+### 15.4 Least-key forward-subsumption postings
+
+`ClauseLayer` keeps, beside `active_min_head_lit_index`, three postings of
+its active non-empty-head clauses: one-literal heads under that literal,
+two-literal heads under the pair, longer heads under their three least
+literals (heads are sorted). A clause `d` strengthens an incoming clause
+`c` only if `d.head ⊆ c.head`, so its key consists of literals of `c.head`
+in sorted order; `fwd_subsumed` looks up the literals, pairs and triples of
+`c.head` (heads of at most ten literals; longer heads, and the shared base
+layer of root contexts, keep the least-literal scan) and runs the same
+signature screen and exact `strengthens` test. It visits every candidate the
+least-literal scan visits that can pass `strengthens`, so it returns the
+same answer, and the derived set is unchanged. Unit test
+`forward_subsumption_postings_match_a_full_scan` compares it with a scan of
+every active clause under 3,000 random insertions and removals. On the
+object-value case the scan count drops from 327 million to 73 million.
+
+*Lean obligation.* None: an index change that leaves the redundancy test's
+answer unchanged.
