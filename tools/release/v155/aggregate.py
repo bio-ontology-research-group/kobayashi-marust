@@ -303,7 +303,13 @@ def main():
                  "sum_candidate_s": t["sum_candidate_s"], "sum_v153_sameday_s": t["sum_baseline_s"], "allowed_sum_s": round(allowed, 3),
                  "excess_s": round(t["sum_candidate_s"] - allowed, 3), "common": of_record["common"]},
         "median": {"status": "met" if t["median_ratio"] <= BOUND else "NOT_MET", "ratio_vs_sameday": t["median_ratio"], "bound": BOUND},
-        "konclude": {"status": ("met" if kc_more and kc_faster else "NOT_MET") if same_day else "not_judged_no_same_day_konclude_run",
+        # The Konclude part of S1 as the maintainer's goal states it: more verified inputs than Konclude on a
+        # same-day run. The mean and median against Konclude are reported, not gated: on the held-out half the
+        # v1.5.3 baseline itself is slower than Konclude in mean (same-day v1.5.3 4.03 s against the 2026-10-04
+        # Konclude run's 2.59 s on 535 common inputs, median 0.235 s against 0.241 s), so that clause of the
+        # original G8 wording cannot separate a regression from the baseline (docs/V1.5.5-ACCEPTANCE.md S1).
+        "konclude": {"status": ("met" if kc_more else "NOT_MET") if same_day else "not_judged_no_same_day_konclude_run",
+                     "rule": "more verified inputs than the same-day Konclude run; mean and median reported",
                      "more_verified": kc_more, "faster_mean_and_median": kc_faster, **kc},
     }
     s1["status"] = "met" if all(s1[k]["status"] == "met" for k in ("no_loss", "mean", "median", "konclude")) else "NOT_MET"
