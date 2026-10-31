@@ -1,0 +1,9 @@
+nominal-seeds/km.final 621 CONSISTENT 0 .110891703
+nominal-seeds/km.final 1014 CONSISTENT 0 .135728440
+nominal-seeds/km.final 1022 CONSISTENT 0 .126667483
+bridge-nominal-merge/km.after 621 CONSISTENT 1 .101536382
+bridge-nominal-merge/km.after 1014 CONSISTENT 1 .084241035
+bridge-nominal-merge/km.after 1022 CONSISTENT 1 .085104164
+alchiq-regression/km.fix 621 CONSISTENT 0 .131866775
+alchiq-regression/km.fix 1014 CONSISTENT 0 .090471869
+alchiq-regression/km.fix 1022 CONSISTENT 0 .073205800
