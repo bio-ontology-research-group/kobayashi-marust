@@ -1,0 +1,4 @@
+lake build (default targets ContextCalculus, Validation) at 0cf3d84e (after merging development/v1.5.5 0e1bd99a), LEAN_NUM_THREADS=4 LEAN_STACK_SIZE_KB=262144, retried on thread-creation failures:
+Build completed successfully (8661 jobs).
+declaration uses 'sorry': 0
+sorryAx in axiom reports: 0

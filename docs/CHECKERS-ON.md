@@ -332,13 +332,13 @@ the new one or the new hypothesis is weaker. Results:
   residual clause on the finite canonical model, as Rust's
   `check_certificate` does. When Rust's check fails, the producer no longer
   writes a certificate (which Lean would reject, failing the run closed); it
-  records `cannot_check` and proceeds as an unchecked worker (decline in
-  Check mode).
+  records `cannot_check` and declines (a checker-backed worker never
+  publishes the output of the uncertified repair search).
 * **Cost.** Producer: the formal closure that reconstructs the trace was a
   round-based loop over all facts times all normal forms; it is now a
-  semi-naive worklist with premise indexes (the same least fixpoint; it is
-  still compared with the production state), and the certificate is written
-  through a buffer. Checker: `checkV5` tests every membership against a
+  semi-naive worklist with premise indexes whose NF4 and NF7 joins iterate
+  the smaller side (the same least fixpoint; it is still compared with the
+  production state), and the certificate is written through a buffer. Checker: `checkV5` tests every membership against a
   `List`, which is quadratic in the trace (NF4 and NF7 closure worse).
   `ELCompletionFastCheck.lean` defines `checkV5Fast` with hash sets and
   premise-indexed clause tables and proves `checkV5Fast = true → checkV5 = true`
@@ -346,7 +346,16 @@ the new one or the new hypothesis is weaker. Results:
   it. On `ore_ont_10254` (0.9 MB ontology, 87 MB certificate, 532,564 steps):
   producer 180 s → 3 s, checker from no verdict (the old check ran past
   minutes; the 125 s figure of section 3 was an early rejection) to 16-25 s,
-  whole checked run 27 s.
+  whole checked run 27 s. On `ore_ont_12221` (120 MB certificate) the
+  producer takes 0.7 s and the checker 18-50 s depending on load; decoding
+  uses a hash-set duplicate check proved to imply `List.Nodup`
+  (`nodupFast_nodup`). Measurements:
+  `results/agents/2026-10-30/certificate-defects/cost.txt`.
+* **Contexts mentioned only by residuals.** The checker's active contexts
+  are ⊤ and the concepts the certificate ontology mentions; a concept that
+  occurs only in a residual clause (no EL axiom, empty taxonomy row) is now
+  left out of the certified contexts and output instead of making the
+  certificate unacceptable.
 * **Budget.** Under `KM_LEAN_CHECKERS` (not in strict `KM_ELC_LEAN_REQUIRED`
   mode, and not when `KM_ELC_LEAN_CERT_OUT` asks for the file) the ELC worker
   writes no certificate when its closure holds more than
@@ -398,3 +407,26 @@ Details, exactness arguments and Lean obligations:
   substitutions that move the central variable, which the CB Hyper rule
   never applies; restricting `hyperCandidates` needs a re-proof of the
   canonical-model step from Pred/Succ closure. Not done.
+
+### 5.4 The suite after the fixes
+
+Same inputs, modes and limits as section 3, `km` of 8a417f98 and the
+checkers rebuilt from this branch
+(`results/agents/2026-10-30/certificate-defects/suite/`):
+
+| mode | accepted | rejected | cannot check | over budget | no answer | answers changed | wall ratio |
+|---|---:|---:|---:|---:|---:|---:|---|
+| `on` | 535 | 0 | 1,135 | 21 | 90 | 0 | 1.63 |
+| `ht` | 596 | 0 | 916 | 178 | 91 | 0 | 2.22 |
+
+No checker rejects a published answer any more, and every cached HermiT
+answer agrees with every published answer. Accepted runs are mostly ELC
+certificates (533 in `on`); the remaining `cannot_check` runs are unchecked
+HT answers (opt-in), CB nominal mode, the ELC fact budget and ELC residuals
+that fail the canonical model. Of the 21 `over_budget` runs in `on`, 19 are
+ELC certificates of 500,000 to 1,000,000 facts whose check does not fit in
+60 s with four such runs in parallel; rerun with the faster producer of
+0a9bb689, 9 are accepted and 10 still exceed 60 s (`suite-overbudget-rerun/`).
+The ELC checker's remaining cost is JSON parsing and the per-fact passes of
+`checkV5Fast`, roughly 25 to 50 s per million facts on this host; this is
+a known limit, bounded by `KM_LEAN_CHECK_MAX_ELC_FACTS`.

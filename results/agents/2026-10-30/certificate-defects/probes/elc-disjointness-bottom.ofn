@@ -1,0 +1,6 @@
+Prefix(:=<http://e.org/#>)
+Ontology(
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))
+SubClassOf(:C :A)
+DisjointClasses(:A :B)
+)
