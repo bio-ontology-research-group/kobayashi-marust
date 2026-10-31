@@ -1986,12 +1986,30 @@ fn ofn_to_clauses_representation(
             // clashes (`≥ 10 u.integer[1,9]`). Covers are enumerated up to
             // that bound; a range the bound can exhaust but no cover
             // reaches is published as not represented.
+            // The exact vocabulary: Boolean operands, ordered cells, and the
+            // names outside the decided fragment, which are published as not
+            // represented (docs/DATATYPES.md, "Boolean data ranges and
+            // ordered cells"). Exhaustion and counting are decided on the
+            // atomic names and cells; a Boolean name is equivalent to the
+            // combination of its operands.
+            let vocabulary = datatypes::vocabulary::expand(&dt_names, Some(&groups));
+            for (reason, name) in &vocabulary.undecided {
+                if std::env::var_os("KM_DT_AUDIT").is_some() {
+                    eprintln!("KM_DT_AUDIT undecided: {reason}: {name}");
+                }
+                *dropped_source_axioms.entry(format!("data range outside the decided datatype fragment: {reason}"))
+                    .or_default() += 1;
+            }
+            let atomic_names: BTreeSet<String> = vocabulary.names.iter()
+                .filter(|name| !vocabulary.boolean.contains(*name))
+                .cloned()
+                .collect();
             let mut cover_cap = (data_count_bound.min(MAX_COUNTED_COVER as u64) as usize).max(8);
-            let mut beyond = datatypes::ranges_beyond_cover(&dt_names, cover_cap, data_count_bound);
+            let mut beyond = datatypes::ranges_beyond_cover(&atomic_names, cover_cap, data_count_bound);
             // A finite range the vocabulary's values plus the count bound
             // can exhaust also needs its cover (`exhaustible_ranges`); one
             // too large to enumerate is published as not represented.
-            let exhaustible = datatypes::exhaustible_ranges(&dt_names, data_count_bound);
+            let exhaustible = datatypes::exhaustible_ranges(&atomic_names, data_count_bound);
             for (_, size) in &exhaustible {
                 if *size <= MAX_COUNTED_COVER as u128 {
                     cover_cap = cover_cap.max(*size as usize);

@@ -1,0 +1,10 @@
+Prefix(:=<http://e.org/p#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+Ontology(<http://e.org/p/length_exhaust>
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(DataProperty(:p)) Declaration(DataProperty(:q)) Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+SubClassOf(:A DataSomeValuesFrom(:p DatatypeRestriction(xsd:string xsd:length "0"^^xsd:nonNegativeInteger)))
+SubClassOf(:A ObjectComplementOf(DataHasValue(:p ""^^xsd:string)))
+SubClassOf(:B DataSomeValuesFrom(:p DatatypeRestriction(xsd:string xsd:length "0"^^xsd:nonNegativeInteger)))
+)

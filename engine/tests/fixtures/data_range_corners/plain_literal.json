@@ -1,0 +1,1 @@
+{"ontology": "plain_literal.ofn", "consistent": true, "subsumptions": [["B", "A"], ["C", "A"]], "unsatisfiable": ["D"]}

@@ -1,0 +1,11 @@
+Prefix(:=<http://e.org/p#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+Ontology(<http://e.org/p/float_decimal>
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(DataProperty(:p)) Declaration(DataProperty(:q)) Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+SubClassOf(:A DataSomeValuesFrom(:p DataIntersectionOf(xsd:float xsd:decimal)))
+SubClassOf(:B DataSomeValuesFrom(:p xsd:float))
+SubClassOf(:B DataAllValuesFrom(:p owl:real))
+EquivalentClasses(:C DataSomeValuesFrom(:p xsd:double))
+)

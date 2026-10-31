@@ -1,0 +1,11 @@
+Prefix(:=<http://e.org/p#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://e.org/p/dense_count>
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(DataProperty(:p))
+SubClassOf(:A DataMinCardinality(3 :p DatatypeRestriction(xsd:decimal xsd:minInclusive "1"^^xsd:decimal xsd:maxInclusive "2"^^xsd:decimal)))
+SubClassOf(:A DataAllValuesFrom(:p DataComplementOf(xsd:integer)))
+SubClassOf(:B DataMinCardinality(2 :p DatatypeRestriction(xsd:decimal xsd:minInclusive "1"^^xsd:decimal xsd:maxInclusive "1"^^xsd:decimal)))
+SubClassOf(:C DataMinCardinality(2 :p DataIntersectionOf(xsd:integer DatatypeRestriction(xsd:decimal xsd:minInclusive "1.5"^^xsd:decimal xsd:maxInclusive "2.5"^^xsd:decimal))))
+SubClassOf(:C DataSomeValuesFrom(:p owl:rational))
+)

@@ -562,6 +562,9 @@ fn named_dt_kind(local: &str) -> Option<NamedDt> {
         "unsignedInt" => n("unsignedInt", Some(0), Some(u32::MAX as i128)),
         "unsignedShort" => n("unsignedShort", Some(0), Some(u16::MAX as i128)),
         "unsignedByte" => n("unsignedByte", Some(0), Some(u8::MAX as i128)),
+        // `rdf:PlainLiteral`: every string, with or without a language tag
+        // (OWL 2 Structural Specification, section 4.3).
+        "PlainLiteral" | "rdf:PlainLiteral" => s("PlainLiteral", 4),
         "string" => s("string", 3),
         "normalizedString" => s("normalizedString", 2),
         "token" => s("token", 1),
@@ -636,6 +639,23 @@ fn named_dt_kind(local: &str) -> Option<NamedDt> {
     })
 }
 
+/// Position of a string-family datatype in the chain
+/// language ⊂ NCName ⊂ Name ⊂ NMTOKEN ⊂ token ⊂ normalizedString ⊂ string ⊂
+/// rdf:PlainLiteral.
+fn string_chain_rank(kind: &str) -> Option<u8> {
+    Some(match kind {
+        "language" => 0,
+        "NCName" => 1,
+        "Name" => 2,
+        "NMTOKEN" => 3,
+        "token" => 4,
+        "normalizedString" => 5,
+        "string" => 6,
+        "PlainLiteral" => 7,
+        _ => return None,
+    })
+}
+
 /// Parse a literal token: `"lex"`, `"lex"@lang`, `"lex"^^dt`.
 /// Returns the value and the datatype name (None = plain literal).
 fn parse_literal(tok: &str) -> Option<(Val, Option<String>)> {
@@ -667,6 +687,13 @@ fn parse_literal(tok: &str) -> Option<(Val, Option<String>)> {
             _ => return Some((Val::Opaque(tok.to_string()), Some(dt))),
         },
         Some("string") => Val::Str(lex.to_string(), None),
+        // `"s@t"^^rdf:PlainLiteral` is the string `s` with language tag `t`
+        // (`"s@"` has no tag); a form without `@` is ill-typed.
+        Some("rdf:PlainLiteral") => match lex.rfind('@') {
+            Some(at) if at + 1 == lex.len() => Val::Str(lex[..at].to_string(), None),
+            Some(at) => Val::Str(lex[..at].to_string(), Some(lex[at + 1..].to_ascii_lowercase())),
+            None => Val::Opaque(tok.to_string()),
+        },
         Some("anyURI") => Val::Uri(lex.split([' ', '\t', '\n', '\r'])
             .filter(|part| !part.is_empty()).collect::<Vec<_>>().join(" ")),
         Some("dateTime" | "dateTimeStamp") => super::datetime_value::parse(
@@ -964,6 +991,9 @@ enum DRange {
     Complement(Box<DRange>),
     /// `DataUnionOf`: a value is in the union iff it is in some member.
     Union(Vec<DRange>),
+    /// `DataIntersectionOf` whose members are not facet intervals of one
+    /// base: a value is in it iff it is in every member.
+    Intersection(Vec<DRange>),
     /// recognised structure but no decision support — emit nothing
     Unknown,
 }
@@ -986,7 +1016,7 @@ fn range_of_internal_name(name: &str) -> DRange {
     if matches!(name, "Literal" | "rdfs:Literal") {
         return DRange::Top;
     }
-    if matches!(name, "PlainLiteral" | "rdf:PlainLiteral") || name.starts_with("iri__") {
+    if name.starts_with("iri__") {
         return DRange::Unknown;
     }
     if let Some(datatype) = named_dt_kind(name).or_else(|| named_dt(name)) {
@@ -1037,8 +1067,8 @@ fn range_from_node(node: &Node) -> DRange {
                     DRange::Float(first) => {
                         let mut range = first.clone();
                         for member in &members[1..] {
-                            let DRange::Float(other) = member else { return DRange::Unknown };
-                            if other.part != range.part { return DRange::Unknown; }
+                            let DRange::Float(other) = member else { return DRange::Intersection(members) };
+                            if other.part != range.part { return DRange::Intersection(members); }
                             range.lo = range.lo.max(other.lo);
                             range.hi = range.hi.min(other.hi);
                             range.nan = range.nan && other.nan;
@@ -1048,8 +1078,8 @@ fn range_from_node(node: &Node) -> DRange {
                     DRange::Num(first) => {
                         let mut range = first.clone();
                         for member in &members[1..] {
-                            let DRange::Num(other) = member else { return DRange::Unknown };
-                            if other.base_kind != range.base_kind { return DRange::Unknown; }
+                            let DRange::Num(other) = member else { return DRange::Intersection(members) };
+                            if other.base_kind != range.base_kind { return DRange::Intersection(members); }
                             let tighter_lo = match (&range.min, &other.min) {
                                 (None, b) => b.clone(),
                                 (a, None) => a.clone(),
@@ -1075,7 +1105,7 @@ fn range_from_node(node: &Node) -> DRange {
                         }
                         DRange::Num(range)
                     }
-                    _ => DRange::Unknown,
+                    _ => DRange::Intersection(members),
                 }
             }
             "DataUnionOf" if args.len() >= 2 =>
@@ -1274,6 +1304,17 @@ fn val_in_range(v: &Val, d: &DRange) -> Option<bool> {
             }
             if unknown { None } else { Some(false) }
         }
+        DRange::Intersection(members) => {
+            let mut unknown = false;
+            for member in members {
+                match val_in_range(v, member) {
+                    Some(false) => return Some(false),
+                    Some(true) => {}
+                    None => unknown = true,
+                }
+            }
+            if unknown { None } else { Some(true) }
+        }
         DRange::Float(r) => r.contains(v),
         DRange::Top => Some(true),
         DRange::Unknown => None,
@@ -1309,9 +1350,12 @@ fn val_in_range(v: &Val, d: &DRange) -> Option<bool> {
                 }
                 // `Val::Num` records the exact mathematical value but not a
                 // proof that it is representable by IEEE binary32/binary64.
-                // Treat float/double membership as unknown.
+                // OWL 2 (Structural Specification, section 4.1) gives
+                // xsd:float and xsd:double value spaces disjoint from
+                // owl:real, and a `Val::Num` is always an owl:real value
+                // (IEEE literals parse to `Float32`/`Float64`).
                 if matches!(nd.kind, "float" | "double") {
-                    return None;
+                    return Some(false);
                 }
                 if nd.integral && !rv.is_integer() {
                     return Some(false);
@@ -1337,6 +1381,9 @@ fn val_in_range(v: &Val, d: &DRange) -> Option<bool> {
             Val::Str(s, lang) => {
                 if nd.part != Partition::Strings {
                     return Some(false);
+                }
+                if nd.kind == "PlainLiteral" {
+                    return Some(true);
                 }
                 // language-tagged literals are rdf:PlainLiteral values, not
                 // xsd:string-family values
@@ -1389,6 +1436,16 @@ fn range_subsumed(d1: &DRange, d2: &DRange) -> Option<bool> {
         (_, DRange::Union(members)) => members
             .iter()
             .any(|member| range_subsumed(d1, member) == Some(true))
+            .then_some(true),
+        // An intersection is below `d2` when one member is (sufficient);
+        // `d1` is below an intersection iff it is below every member.
+        (DRange::Intersection(members), _) => members
+            .iter()
+            .any(|member| range_subsumed(member, d2) == Some(true))
+            .then_some(true),
+        (_, DRange::Intersection(members)) => members
+            .iter()
+            .all(|member| range_subsumed(d1, member) == Some(true))
             .then_some(true),
         (DRange::Unknown, _) | (_, DRange::Unknown) => None,
         (DRange::OneOf(vals), _) => {
@@ -1458,14 +1515,21 @@ fn range_subsumed(d1: &DRange, d2: &DRange) -> Option<bool> {
                         _ => None,
                     }
                 }
-                Partition::Strings => match (a.kind, b.kind) {
-                    (x, y) if x == y => Some(true),
-                    ("normalizedString", "string")
-                    | ("token", "normalizedString" | "string")
-                    | ("language" | "Name" | "NMTOKEN", "token" | "normalizedString" | "string")
-                    | ("NCName", "Name" | "token" | "normalizedString" | "string") => Some(true),
+                // The string family is a chain (XSD 1.1 part 2, sections
+                // 3.3.1 and 3.4.1 to 3.4.7, with the XML name productions):
+                // language ⊂ NCName ⊂ Name ⊂ NMTOKEN ⊂ token ⊂
+                // normalizedString ⊂ string ⊂ rdf:PlainLiteral. A language
+                // tag starts with a letter and has only letters, digits and
+                // `-`, so it is an NCName; every NameStartChar is a
+                // NameChar, so a Name is an NMTOKEN. Each difference is
+                // infinite (`a:b`, `1a`, `a b`, ` a`, a tab, `"a"@en`).
+                Partition::Strings => match (string_chain_rank(a.kind), string_chain_rank(b.kind)) {
+                    (Some(x), Some(y)) => Some(x <= y),
                     _ => None,
                 },
+                // `xsd:dateTimeStamp` is `xsd:dateTime` with a required
+                // timezone (OWL 2 section 4.7).
+                Partition::Time if a.kind == "dateTimeStamp" && b.kind == "dateTime" => Some(true),
                 _ => (a.kind == b.kind).then_some(true),
             }
         }
@@ -1620,6 +1684,11 @@ fn range_disjoint(d1: &DRange, d2: &DRange) -> Option<bool> {
             }
             all.then_some(true)
         }
+        // An intersection is disjoint from `other` when one member is.
+        (DRange::Intersection(members), other) | (other, DRange::Intersection(members)) => members
+            .iter()
+            .any(|member| range_disjoint(member, other) == Some(true))
+            .then_some(true),
         (DRange::Unknown, _) | (_, DRange::Unknown) => None,
         (DRange::Top, _) | (_, DRange::Top) => Some(false), // named ranges are non-empty
         (DRange::OneOf(vals), other) | (other, DRange::OneOf(vals)) => {
@@ -1658,6 +1727,9 @@ fn range_disjoint(d1: &DRange, d2: &DRange) -> Option<bool> {
                     }
                     Some(false) // numeric named types always share values otherwise (0 or overlap)
                 }
+                // OWL 2 (section 4.5) gives xsd:hexBinary and
+                // xsd:base64Binary disjoint value spaces.
+                Partition::Binary => Some(a.kind != b.kind),
                 _ => Some(false),
             }
         }
@@ -1832,11 +1904,95 @@ fn range_size(d: &DRange) -> Option<u128> {
             let keys: Option<BTreeSet<String>> = values.iter().map(value_key).collect();
             keys.map(|keys| keys.len() as u128)
         }
-        DRange::Complement(_) => Some(u128::MAX),
-        DRange::Union(members) => members.iter().map(range_size)
-            .try_fold(0u128, |sum, size| size.map(|size| sum.saturating_add(size))),
+        // The complement of `rdfs:Literal` is empty; the complement of any
+        // other atomic range contains a whole other partition of the map
+        // (infinite). A complement of a Boolean combination is decided
+        // through its finite values only.
+        DRange::Complement(inner) => match inner.as_ref() {
+            DRange::Top => Some(0),
+            DRange::Named(_) | DRange::Num(_) | DRange::Float(_) | DRange::OneOf(_) => Some(u128::MAX),
+            _ => None,
+        },
+        // Exact: an infinite member makes the union infinite; finite members
+        // are enumerated and counted by identity (members may overlap).
+        DRange::Union(members) => {
+            let sizes: Option<Vec<u128>> = members.iter().map(range_size).collect();
+            let sizes = sizes?;
+            if sizes.iter().any(|&size| size == u128::MAX) {
+                return Some(u128::MAX);
+            }
+            finite_value_keys(d, MAX_ENUMERATED_SIZE).map(|keys| keys.len() as u128)
+        }
+        DRange::Intersection(members) => finite_value_keys(d, MAX_ENUMERATED_SIZE)
+            .map(|keys| keys.len() as u128)
+            .or_else(|| dense_band(members).then_some(u128::MAX)),
         DRange::Unknown => None,
     }
+}
+
+/// `A ⊓ ¬B` for an infinite decimal-tower range `A` that is not integral
+/// and an unbounded named type `B` of a lower value kind (integers below
+/// decimals below rationals below reals): the band cells of
+/// `vocabulary::decimal_cells`. Every nonempty open interval has infinitely
+/// many values of each kind that are not of a lower kind, so it is infinite.
+fn dense_band(members: &[DRange]) -> bool {
+    let level = |kind: &str, integral: bool| -> u8 {
+        if integral { 0 } else { match kind { "rational" => 2, "real" => 3, _ => 1 } }
+    };
+    let [outer, DRange::Complement(inner)] = members else { return false };
+    let outer_level = match outer {
+        DRange::Num(range) if !range.integral => level(range.base_kind, false),
+        DRange::Named(datatype) if datatype.part == Partition::Numeric && !datatype.integral => level(datatype.kind, false),
+        _ => return false,
+    };
+    let DRange::Named(lower) = inner.as_ref() else { return false };
+    lower.part == Partition::Numeric && lower.min.is_none() && lower.max.is_none()
+        && level(lower.kind, lower.integral) < outer_level
+        && range_size(outer) == Some(u128::MAX)
+}
+
+/// Upper bound on the values enumerated to decide the size of a Boolean
+/// combination of ranges.
+const MAX_ENUMERATED_SIZE: usize = 4096;
+
+/// The values of a finite range, enumerated exactly: the enumeration of an
+/// atomic range (`enumerate_range`, or the members of a `DataOneOf`), the
+/// union of its members' values, or the values of one finite member of an
+/// intersection that the whole intersection decidedly contains. `None` when
+/// the range is not decided finite within `cap` values.
+fn finite_values(d: &DRange, cap: usize) -> Option<Vec<Val>> {
+    match d {
+        DRange::OneOf(values) => (values.len() <= cap).then(|| values.clone()),
+        DRange::Union(members) => {
+            let mut out: Vec<Val> = Vec::new();
+            for member in members {
+                out.extend(finite_values(member, cap)?);
+                if out.len() > cap {
+                    return None;
+                }
+            }
+            Some(out)
+        }
+        DRange::Intersection(members) => {
+            let base = members.iter().find_map(|member| finite_values(member, cap))?;
+            let mut out = Vec::new();
+            for value in base {
+                if val_in_range(&value, d)? {
+                    out.push(value);
+                }
+            }
+            Some(out)
+        }
+        DRange::Complement(inner) if matches!(inner.as_ref(), DRange::Top) => Some(Vec::new()),
+        _ => enumerate_range(d, cap)?.iter()
+            .map(|literal| parse_literal(literal).map(|(value, _)| value))
+            .collect(),
+    }
+}
+
+/// The identity keys of the values of a finite range (`finite_values`).
+fn finite_value_keys(d: &DRange, cap: usize) -> Option<BTreeSet<String>> {
+    finite_values(d, cap)?.iter().map(value_key).collect()
 }
 
 /// Membership of a glued literal in the data range named `range` (a
@@ -2145,6 +2301,63 @@ pub(crate) fn bridge_exact_finite_cover(range: &str, head: &[&str]) -> bool {
             bridge_exact_value_equal(value, other) == Some(true)))
 }
 
+/// `true` when `range` is an IEEE range of the bridge map and the IEEE
+/// ranges and values named in `heads` cover exactly its values: every head
+/// lies inside `range` and every rank of `range` (and its `NaN`) lies in
+/// some head. This is the cell cover `R → c₁ ∨ … ∨ cₖ` of
+/// `vocabulary::ieee_cells`.
+pub(crate) fn bridge_exact_ieee_cell_cover(range: &str, heads: &[&str]) -> bool {
+    let Some(outer) = bridge_ieee_interval(range) else { return false };
+    let mut pieces: Vec<(u64, u64)> = Vec::new();
+    let mut nan = false;
+    for head in heads {
+        if let Some(inner) = bridge_ieee_interval(head) {
+            if inner.part != outer.part || !inner.subset(&outer) {
+                return false;
+            }
+            nan |= inner.nan;
+            if inner.lo <= inner.hi {
+                pieces.push((inner.lo, inner.hi));
+            }
+            continue;
+        }
+        let Some(DtEntry::Value(_, value)) = classify_name(head) else { return false };
+        let Some((bits, is_nan)) = outer.value_bits(&value) else { return false };
+        if outer.contains(&value) != Some(true) {
+            return false;
+        }
+        if is_nan {
+            nan = true;
+        } else {
+            let rank = FloatRange::rank(bits, outer.part);
+            pieces.push((rank, rank));
+        }
+    }
+    if outer.nan && !nan {
+        return false;
+    }
+    if outer.lo > outer.hi {
+        return true;
+    }
+    pieces.sort_unstable();
+    let mut next = outer.lo;
+    for (lo, hi) in pieces {
+        if lo > next {
+            return false;
+        }
+        if hi >= next {
+            if hi == u64::MAX {
+                return true;
+            }
+            next = hi + 1;
+        }
+        if next > outer.hi {
+            return true;
+        }
+    }
+    next > outer.hi
+}
+
 pub(crate) fn bridge_exact_atomic_name(name: &str) -> bool {
     bridge_exact_atomic_family(name).is_some()
 }
@@ -2223,6 +2436,13 @@ pub(crate) fn bridge_tbox_atomic_family(name: &str) -> Option<&'static str> {
                     !member.starts_with("__dt__c__") && bridge_tbox_atomic_name(member)
                 }))
                 .map(|_| "union"),
+            // The complement of a named range or facet interval of the map
+            // (not of `rdfs:Literal`, `xsd:anyURI`, an enumeration or a
+            // Boolean range). The bridge checks its excluded middle and
+            // disjointness clauses, treats the operand as body-sensitive in
+            // the cell certificates, and realizes a node without any range
+            // of a family by a fresh IRI (`bridge_exact_complement_operand`).
+            DRange::Complement(_) => bridge_exact_complement_operand(name).map(|_| "complement"),
             _ => None,
         };
     }
@@ -2240,6 +2460,24 @@ pub(crate) fn bridge_tbox_atomic_family(name: &str) -> Option<&'static str> {
         DRange::Named(datatype) if datatype.part == Partition::Numeric && datatype.integral => Some("decimal"),
         _ => None,
     }
+}
+
+/// The operand of an admitted complement range (see
+/// `bridge_tbox_atomic_family`): a named range or facet interval of the
+/// decimal, IEEE, string, boolean, dateTime or XMLLiteral family.
+pub(crate) fn bridge_exact_complement_operand(name: &str) -> Option<String> {
+    let operand = complement_operand_name(name)?;
+    if operand.starts_with("__dt__val__") {
+        return None;
+    }
+    if let Some(text) = operand.strip_prefix("__dt__c__") {
+        if !matches!(parse_complex(text), DRange::Num(_) | DRange::Float(_)) {
+            return None;
+        }
+    }
+    matches!(bridge_tbox_atomic_family(&operand),
+        Some("decimal" | "float" | "double" | "string" | "boolean" | "dateTime" | "XMLLiteral"))
+        .then_some(operand)
 }
 
 pub(crate) fn bridge_tbox_atomic_name(name: &str) -> bool {
@@ -3572,74 +3810,16 @@ pub fn datatype_relation_clauses_with(
     groups: Option<&[BTreeSet<String>]>,
     elide_singletons: bool,
 ) -> Vec<DLClause> {
-    // `DataUnionOf` of named datatypes: add the member datatypes to the
-    // vocabulary (and to the union's role groups) so that their relations and
-    // the union cover `U -> M1 ∨ … ∨ Mk` can be emitted. Inputs without a
-    // union keep the original vocabulary and order.
-    let unions: Vec<(String, Vec<String>)> = names.iter()
-        .filter_map(|name| union_member_names(name).map(|members| (name.clone(), members)))
-        .collect();
-    // `DataComplementOf(R)`: every data value lies in `R` or in its
-    // complement, so the complement concept `C` gets the excluded middle
-    // `→ C(x) ∨ R(x)` next to the disjointness `C ∧ R → ⊥` the pairwise
-    // relations derive. `R` joins the vocabulary (and `C`'s role groups) so
-    // that its own relations, covers and, for a nested complement, its own
-    // excluded middle are emitted; the operands are closed transitively.
-    let mut complements: Vec<(String, String)> = Vec::new();
-    {
-        let mut pending: Vec<String> = names.iter().cloned().collect();
-        let mut seen: BTreeSet<String> = names.clone();
-        while let Some(name) = pending.pop() {
-            if let Some(operand) = complement_operand_name(&name) {
-                if seen.insert(operand.clone()) {
-                    pending.push(operand.clone());
-                }
-                complements.push((name, operand));
-            }
-        }
-        complements.sort();
-    }
-    let mut expanded_names: BTreeSet<String> = BTreeSet::new();
-    let mut expanded_groups: Vec<BTreeSet<String>> = Vec::new();
-    if !unions.is_empty() || !complements.is_empty() {
-        expanded_names = names.clone();
-        for (_, members) in &unions {
-            expanded_names.extend(members.iter().cloned());
-        }
-        for (_, operand) in &complements {
-            expanded_names.insert(operand.clone());
-        }
-        if let Some(groups) = groups {
-            expanded_groups = groups.iter().map(|group| {
-                let mut group = group.clone();
-                for (union, members) in &unions {
-                    if group.contains(union) {
-                        group.extend(members.iter().cloned());
-                    }
-                }
-                // Operands of nested complements join through the chain
-                // `¬¬R`, `¬R`, `R`, so iterate to the closure.
-                loop {
-                    let before = group.len();
-                    for (complement, operand) in &complements {
-                        if group.contains(complement) {
-                            group.insert(operand.clone());
-                        }
-                    }
-                    if group.len() == before {
-                        break;
-                    }
-                }
-                group
-            }).collect();
-        }
-    }
+    // Boolean structure (`DataUnionOf`, `DataComplementOf`,
+    // `DataIntersectionOf`): the operands join the vocabulary and the role
+    // groups of the structured name, closed transitively; ordered cells
+    // join the groups that need them (`vocabulary::expand`). Inputs without
+    // structure or cells keep the original vocabulary and order.
+    let vocabulary = vocabulary::expand(names, groups);
+    let unions = vocabulary.unions.clone();
+    let complements = vocabulary.complements.clone();
     let (names, groups): (&BTreeSet<String>, Option<&[BTreeSet<String>]>) =
-        if unions.is_empty() && complements.is_empty() {
-            (names, groups)
-        } else {
-            (&expanded_names, groups.map(|_| expanded_groups.as_slice()))
-        };
+        (&vocabulary.names, match &vocabulary.groups { Some(groups) => Some(groups.as_slice()), None => None });
     // Integral cells. Within one role group, the integral ranges cut the
     // integer line into elementary segments ("cells") on which every range of
     // the group is constant. Each range `A` is covered exactly by its cells:
@@ -3671,6 +3851,7 @@ pub fn datatype_relation_clauses_with(
     if value_count > PAIRWISE_VALUE_LIMIT {
         let mut out = linear_value_relation_clauses(&entries, cap, elide_singletons);
         append_structure_clauses(&mut out, &unions, &complements, &cell_covers);
+        out.extend(vocabulary.extra.iter().cloned());
         return out;
     }
     let mut out: Vec<DLClause> = Vec::new();
@@ -3843,6 +4024,7 @@ pub fn datatype_relation_clauses_with(
             }
         }
     }
+    out.extend(vocabulary.extra.iter().cloned());
     out
 }
 
@@ -4323,11 +4505,11 @@ mod tests {
         assert!(matches!(range_of_named("rdfs:Literal"), DRange::Top));
         assert!(matches!(
             range_of_named("rdf:PlainLiteral"),
-            DRange::Unknown
+            DRange::Named(NamedDt { kind: "PlainLiteral", .. })
         ));
         assert!(matches!(
             range_of_internal_name("PlainLiteral"),
-            DRange::Unknown
+            DRange::Named(NamedDt { kind: "PlainLiteral", .. })
         ));
 
         let integer = "__dt__integer";
@@ -4506,7 +4688,6 @@ mod tests {
     fn lossy_named_datatype_shapes_do_not_imply_identity() {
         for pair in [
             ["__dt__date", "__dt__time"],
-            ["__dt__language", "__dt__Name"],
             ["__dt__hexBinary", "__dt__base64Binary"],
         ] {
             let cls = datatype_relation_clauses(&names(&pair), 8);
@@ -4516,6 +4697,17 @@ mod tests {
                 "distinct datatype identities were conflated for {pair:?}: {cls:#?}"
             );
         }
+    }
+
+    #[test]
+    fn string_chain_inclusions_are_one_way() {
+        // XSD 1.1: every language tag is an NCName, hence a Name; the
+        // converse fails (`a:b`).
+        let cls = datatype_relation_clauses(&names(&["__dt__language", "__dt__Name"]), 8);
+        let one_way = |from: &str, to: &str| cls.iter().any(|clause| clause.body.len() == 1 && clause.head.len() == 1
+            && format!("{:?}", clause.body[0]).contains(from) && format!("{:?}", clause.head[0]).contains(to));
+        assert!(one_way("__dt__language", "__dt__Name"));
+        assert!(!one_way("__dt__Name", "__dt__language"));
     }
 
     #[test]
@@ -4885,3 +5077,4 @@ mod tests {
 
 pub(crate) mod numeric_cells;
 pub(crate) mod extent;
+pub(crate) mod vocabulary;

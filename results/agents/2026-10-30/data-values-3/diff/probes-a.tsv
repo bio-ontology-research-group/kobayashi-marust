@@ -1,0 +1,96 @@
+probes/atomic_helly.ofn	auto	ok	0.04	0	0	0	0	0
+probes/atomic_helly.ofn	certified_nominals	ok	0.03	0	0	0	0	0
+probes/atomic_helly.ofn	nominals	ok	0.02	0	0	0	0	0
+probes/bool_cell_equiv.ofn	auto	ok	0.02	0	0	0	0	0
+probes/bool_cell_equiv.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+probes/bool_cell_equiv.ofn	nominals	ok	0.02	0	0	0	0	0
+probes/bool_complement_dense.ofn	auto	ok	0.04	0	0	0	0	0
+probes/bool_complement_dense.ofn	certified_nominals	ok	0.03	0	0	0	0	0
+probes/bool_complement_dense.ofn	nominals	ok	0.02	0	0	0	0	0
+probes/bool_complement_top.ofn	auto	ok	0.03	0	0	0	0	0
+probes/bool_complement_top.ofn	certified_nominals	ok	0.03	0	0	0	0	0
+probes/bool_complement_top.ofn	nominals	ok	0.02	0	0	0	0	0
+probes/bool_intersection_abox.ofn	auto	ok	0.03	0	0	0	0	0
+probes/bool_intersection_abox.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+probes/bool_intersection_abox.ofn	nominals	ok	0.02	0	0	0	0	0
+probes/bool_intersection_empty.ofn	auto	ok	0.02	0	0	0	0	0
+probes/bool_intersection_empty.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+probes/bool_intersection_empty.ofn	nominals	ok	0.02	0	0	0	0	0
+probes/bool_union_exhaust.ofn	auto	ok	0.03	0	0	0	0	0
+probes/bool_union_exhaust.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+probes/bool_union_exhaust.ofn	nominals	ok	0.02	0	0	0	0	0
+probes/cell_exhaust_tbox.ofn	auto	ok	0.03	0	0	0	0	0
+probes/cell_exhaust_tbox.ofn	certified_nominals	ok	0.03	0	0	0	0	0
+probes/cell_exhaust_tbox.ofn	nominals	ok	0.02	0	0	0	0	0
+probes/count_complex.ofn	auto	ok	0.02	0	0	0	0	0
+probes/count_complex.ofn	certified_nominals	ok	0.03	0	0	0	0	0
+probes/count_complex.ofn	nominals	ok	0.02	0	0	0	0	0
+probes/datetime_empty.ofn	auto	DROPPED	0.01					
+probes/datetime_empty.ofn	certified_nominals	REFUSED	0.02					
+probes/datetime_empty.ofn	nominals	REFUSED	0.02					
+probes/datetime_offset.ofn	auto	ok	0.01	0	0	0	0	0
+probes/datetime_offset.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+probes/datetime_offset.ofn	nominals	ok	0.02	0	0	0	0	0
+probes/datetime_stamp.ofn	auto	ok	0.03	0	0	0	0	0
+probes/datetime_stamp.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+probes/datetime_stamp.ofn	nominals	ok	0.03	0	0	0	0	0
+probes/datetime_subsumption.ofn	auto	DROPPED	0.01					
+probes/datetime_subsumption.ofn	certified_nominals	REFUSED	0.02					
+probes/datetime_subsumption.ofn	nominals	REFUSED	0.01					
+probes/datetime_value.ofn	auto	DROPPED	0.04					
+probes/datetime_value.ofn	certified_nominals	REFUSED	0.02					
+probes/datetime_value.ofn	nominals	REFUSED	0.02					
+probes/decimal_mixed_ok.ofn	auto	ok	0.03	0	0	0	0	0
+probes/decimal_mixed_ok.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+probes/decimal_mixed_ok.ofn	nominals	ok	0.02	0	0	0	0	0
+probes/dense_point.ofn	auto	ok	0.04	0	0	0	0	0
+probes/dense_point.ofn	certified_nominals	ok	0.03	0	0	0	0	0
+probes/dense_point.ofn	nominals	ok	0.02	0	0	0	0	0
+probes/float_cells.ofn	auto	ok	0.03	0	0	0	0	0
+probes/float_cells.ofn	certified_nominals	ok	0.03	0	0	0	0	0
+probes/float_cells.ofn	nominals	ok	0.02	0	0	0	0	0
+probes/float_complement.ofn	auto	ok	0.04	0	0	0	0	0
+probes/float_complement.ofn	certified_nominals	ok	0.03	0	0	0	0	0
+probes/float_complement.ofn	nominals	ok	0.02	0	0	0	0	0
+probes/float_decimal.ofn	auto	ok	0.02	0	0	0	0	0
+probes/float_decimal.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+probes/float_decimal.ofn	nominals	ok	0.02	0	0	0	0	0
+probes/float_value_decimal.ofn	auto	ok	0.02	0	0	0	0	0
+probes/float_value_decimal.ofn	certified_nominals	ok	0.00	0	0	0	0	0
+probes/float_value_decimal.ofn	nominals	ok	0.01	0	0	0	0	0
+probes/haskey_data.ofn	auto	REFUSED	0.00					
+probes/haskey_data.ofn	certified_nominals	REFUSED	0.02					
+probes/haskey_data.ofn	nominals	REFUSED	0.02					
+probes/haskey_data_ok.ofn	auto	REFUSED	0.00					
+probes/haskey_data_ok.ofn	certified_nominals	REFUSED	0.01					
+probes/haskey_data_ok.ofn	nominals	REFUSED	0.02					
+probes/int_cell_exhaust.ofn	auto	ok	0.04	0	0	0	0	0
+probes/int_cell_exhaust.ofn	certified_nominals	ok	0.03	0	0	0	0	0
+probes/int_cell_exhaust.ofn	nominals	ok	0.02	0	0	0	0	0
+probes/integer_double_sub.ofn	auto	DROPPED	0.01					
+probes/integer_double_sub.ofn	certified_nominals	REFUSED	0.02					
+probes/integer_double_sub.ofn	nominals	REFUSED	0.02					
+probes/length_empty.ofn	auto	DROPPED	0.01					
+probes/length_empty.ofn	certified_nominals	REFUSED	0.02					
+probes/length_empty.ofn	nominals	REFUSED	0.01					
+probes/length_exhaust.ofn	auto	DROPPED	0.02					
+probes/length_exhaust.ofn	certified_nominals	REFUSED	0.03					
+probes/length_exhaust.ofn	nominals	REFUSED	0.02					
+probes/length_value.ofn	auto	DROPPED	0.03					
+probes/length_value.ofn	certified_nominals	REFUSED	0.02					
+probes/length_value.ofn	nominals	REFUSED	0.02					
+probes/pattern_subsumption.ofn	auto	DROPPED	0.01					
+probes/pattern_subsumption.ofn	certified_nominals	REFUSED	0.02					
+probes/pattern_subsumption.ofn	nominals	REFUSED	0.02					
+probes/pattern_value.ofn	auto	DROPPED	0.03					
+probes/pattern_value.ofn	certified_nominals	REFUSED	0.02					
+probes/pattern_value.ofn	nominals	REFUSED	0.01					
+probes/plain_literal.ofn	auto	ok	0.03	0	0	0	0	0
+probes/plain_literal.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+probes/plain_literal.ofn	nominals	ok	0.01	0	0	0	0	0
+probes/string_chain.ofn	auto	WRONG	0.03	2	0	0	1	0
+probes/string_chain.ofn	certified_nominals	WRONG	0.02	2	0	0	1	0
+probes/string_chain.ofn	nominals	WRONG	0.01	2	0	0	1	0
+probes/union_complex.ofn	auto	ok	0.04	0	0	0	0	0
+probes/union_complex.ofn	certified_nominals	ok	0.03	0	0	0	0	0
+probes/union_complex.ofn	nominals	ok	0.02	0	0	0	0	0

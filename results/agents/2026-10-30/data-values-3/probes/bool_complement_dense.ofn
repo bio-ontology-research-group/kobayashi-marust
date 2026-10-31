@@ -1,0 +1,12 @@
+Prefix(:=<http://e.org/p#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+Ontology(<http://e.org/p/bool_complement_dense>
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(DataProperty(:p)) Declaration(DataProperty(:q)) Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+FunctionalDataProperty(:p)
+SubClassOf(:A DataSomeValuesFrom(:p DatatypeRestriction(xsd:decimal xsd:minInclusive "1"^^xsd:decimal xsd:maxInclusive "3"^^xsd:decimal)))
+SubClassOf(:A DataAllValuesFrom(:p DataComplementOf(DatatypeRestriction(xsd:decimal xsd:minInclusive "1"^^xsd:decimal xsd:maxInclusive "2"^^xsd:decimal))))
+SubClassOf(:A DataAllValuesFrom(:p DataComplementOf(DatatypeRestriction(xsd:decimal xsd:minInclusive "2"^^xsd:decimal xsd:maxInclusive "3"^^xsd:decimal))))
+SubClassOf(:B DataSomeValuesFrom(:p DatatypeRestriction(xsd:decimal xsd:minInclusive "1"^^xsd:decimal xsd:maxInclusive "3"^^xsd:decimal)))
+)

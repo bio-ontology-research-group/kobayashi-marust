@@ -1,0 +1,1384 @@
+   Compiling kobayashi-marust v1.5.5 (/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-data-values-3/engine)
+warning: unnecessary parentheses around `if` condition
+     --> src/konclude_ht/bridge.rs:15241:24
+      |
+15241 |                     if (!bridged.precomputation_replay_disabled.get()
+      |                        ^
+...
+15244 |                             || drained_konclude)
+      |                                                ^
+      |
+      = note: `#[warn(unused_parens)]` (part of `#[warn(unused)]`) on by default
+help: remove these parentheses
+      |
+15241 ~                     if !bridged.precomputation_replay_disabled.get()
+15242 |                             || resume_fork
+15243 |                             || retain_deterministic_leaf
+15244 ~                             || drained_konclude
+      |
+
+warning: unused imports: `HAtom` and `HtClause`
+     --> src/konclude_ht/bridge.rs:26172:57
+      |
+26172 |         use crate::orchestrate::cb_to_ht::{CardDefJson, HAtom, HtClause, TInput};
+      |                                                         ^^^^^  ^^^^^^^^
+      |
+      = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `crate::fxhash::FxHashMap as HashMap`
+    --> src/konclude_ht/completion/stubs.rs:8499:9
+     |
+8499 |     use crate::fxhash::FxHashMap as HashMap;
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `OccurrenceUnsatisfiableCacheReader` and `OccurrenceUnsatisfiableCacheWriter`
+   --> src/konclude_ht/completion/unsat_handler.rs:700:39
+    |
+700 |         OccurrenceUnsatisfiableCache, OccurrenceUnsatisfiableCacheReader,
+    |                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+701 |         OccurrenceUnsatisfiableCacheWriter,
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `LabelSetId`
+  --> src/konclude_ht/completion/u04.rs:62:39
+   |
+62 |     ConDescId, ConProcDescId, EdgeId, LabelSetId, NodeId, RestrictionSpecId, TrackPointId,
+   |                                       ^^^^^^^^^^
+
+warning: unused import: `DependencyNode`
+  --> src/konclude_ht/completion/u12.rs:62:50
+   |
+62 | use super::super::process::dependency::{DepKind, DependencyNode};
+   |                                                  ^^^^^^^^^^^^^^
+
+warning: unused import: `DepLinkId`
+  --> src/konclude_ht/completion/u12.rs:64:31
+   |
+64 |     ConDescId, ConProcDescId, DepLinkId, DependencyId, NodeId, RestrictionSpecId, TrackPointId,
+   |                               ^^^^^^^^^
+
+warning: unused import: `DependencyId`
+  --> src/konclude_ht/completion/u18.rs:78:27
+   |
+78 |     ConDescId, DepLinkId, DependencyId, EdgeId, LabelSetId, NodeId, TrackPointId,
+   |                           ^^^^^^^^^^^^
+
+warning: unused import: `INVALID`
+  --> src/konclude_ht/completion/u21.rs:82:50
+   |
+82 | use super::super::model::substrate::{Cint64, Id, INVALID};
+   |                                                  ^^^^^^^
+
+warning: unused import: `EdgeId`
+  --> src/konclude_ht/completion/u26.rs:81:29
+   |
+81 | use super::super::process::{EdgeId, LabelSetId, NodeId};
+   |                             ^^^^^^
+
+warning: unused import: `INVALID`
+  --> src/konclude_ht/completion/u35.rs:91:51
+   |
+91 | use super::super::model::substrate::{Id, NegLink, INVALID};
+   |                                                   ^^^^^^^
+
+warning: unused import: `super::super::process::descriptor::ClashDescriptor`
+  --> src/konclude_ht/completion/u36.rs:96:5
+   |
+96 | use super::super::process::descriptor::ClashDescriptor;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `super::super::model::role_chain::RoleChain`
+  --> src/konclude_ht/preprocess/role_chain_automata.rs:26:5
+   |
+26 | use super::super::model::role_chain::RoleChain;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `Id`
+  --> src/konclude_ht/process/pn6.rs:27:35
+   |
+27 | use super::super::model::{Cint64, Id};
+   |                                   ^^
+
+warning: variable does not need to be mutable
+   --> src/frontend/data_abox.rs:855:13
+    |
+855 |         let mut intern = |s: &'a str, ids: &mut HashMap<&'a str, u32>| -> u32 {
+    |             ----^^^^^^
+    |             |
+    |             help: remove this `mut`
+    |
+    = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> src/frontend/data_abox.rs:893:13
+    |
+893 |         let mut ancestors =
+    |             ----^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/frontend/data_abox.rs:930:21
+    |
+930 |                 let mut push =
+    |                     ----^^^^
+    |                     |
+    |                     help: remove this `mut`
+
+warning: unreachable pattern
+   --> src/frontend/datatypes.rs:170:21
+    |
+169 |                     Val::$variant(bits) => <$ty>::from_bits(*bits),
+    |                     ------------------- matches all the relevant values
+170 |                     Val::Float32(bits) if wide => f32::from_bits(*bits) as $ty,
+    |                     ^^^^^^^^^^^^^^^^^^ no value can reach this
+...
+194 |     if wide { evaluate!(f64, Float64) } else { evaluate!(f32, Float32) }
+    |                                                ----------------------- in this macro invocation
+    |
+    = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+    = note: this warning originates in the macro `evaluate` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: variable does not need to be mutable
+    --> src/frontend/datatypes.rs:3366:9
+     |
+3366 |     let mut push_range = |from: Option<i128>, to: Option<i128>, missing: &mut Vec<i128>| -> Option<()> {
+     |         ----^^^^^^^^^^
+     |         |
+     |         help: remove this `mut`
+
+warning: value assigned to `with_cells` is never read
+    --> src/frontend/datatypes.rs:3839:44
+     |
+3839 |     let mut with_cells: BTreeSet<String> = BTreeSet::new();
+     |                                            ^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+     = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+   --> src/frontend/value_projection.rs:121:9
+    |
+121 |     let mut block = |role: &str, parent: &mut HashMap<String, String>, blocked: &mut BTreeSet<String>| {
+    |         ----^^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/frontend/object_guard.rs:152:9
+    |
+152 |     let mut role = |role: &Role, roles: &mut BTreeSet<String>, refused: &mut bool| match role {
+    |         ----^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/frontend/object_guard.rs:229:9
+    |
+229 |     let mut inner = |c: &Concept, changed: &mut bool| Box::new(normalize_into(c, data_roles, changed));
+    |         ----^^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: value assigned to `bridge_phase_started` is never read
+    --> src/konclude_ht/bridge.rs:5560:17
+     |
+5560 |                 bridge_phase_started = now;
+     |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+7847 |     bridge_phase!("terminology-stamp");
+     |     ---------------------------------- in this macro invocation
+     |
+     = help: maybe it is overwritten before being read?
+     = note: this warning originates in the macro `bridge_phase` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10920:13
+      |
+10920 |             coordination.running_tasks -= 1;
+      |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10921:13
+      |
+10921 |             coordination.failed_tasks += 1;
+      |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10928:13
+      |
+10928 |             coordination.running_tasks -= 1;
+      |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10929:13
+      |
+10929 |             coordination.failed_tasks += 1;
+      |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10934:17
+      |
+10934 |                 coordination.running_tasks -= 1;
+      |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10935:17
+      |
+10935 |                 coordination.clashed = true;
+      |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10939:17
+      |
+10939 |                 coordination.running_tasks -= 1;
+      |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10940:17
+      |
+10940 |                 coordination.failed_tasks += 1;
+      |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10971:13
+      |
+10971 |             coordination.writeback_failed = true;
+      |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10953:13
+      |
+10953 |             coordination.running_tasks -= 1;
+      |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: value assigned to `coordination` is never read
+     --> src/konclude_ht/bridge.rs:10954:13
+      |
+10954 |             coordination.writeback_failed = true;
+      |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      |
+      = help: maybe it is overwritten before being read?
+
+warning: variable does not need to be mutable
+     --> src/konclude_ht/bridge.rs:15737:13
+      |
+15737 |         let mut renew = |algo: &mut CompletionTaskHandleAlgorithm,
+      |             ----^^^^^
+      |             |
+      |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+     --> src/konclude_ht/bridge.rs:24055:13
+      |
+24055 |         let mut env = bridge_ofn(include_str!(
+      |             ----^^^
+      |             |
+      |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/cache/backend_facade1.rs:644:13
+    |
+644 |         let mut associations_updated = false;
+    |             ----^^^^^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: value assigned to `update_slot` is never read
+   --> src/konclude_ht/cache/unsat.rs:777:39
+    |
+777 |         let mut update_slot: Cint64 = 0;
+    |                                       ^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: value assigned to `update_slot` is never read
+    --> src/konclude_ht/cache/unsat.rs:1013:39
+     |
+1013 |         let mut update_slot: Cint64 = 0;
+     |                                       ^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `next_priority` is never read
+   --> src/konclude_ht/completion/strategy.rs:282:9
+    |
+282 |         next_priority = 2;
+    |         ^^^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: value assigned to `priority` is never read
+   --> src/konclude_ht/completion/strategy.rs:349:33
+    |
+349 |         let mut priority: f64 = 0.0;
+    |                                 ^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: value assigned to `subsum_message_data_linker` is never read
+    --> src/konclude_ht/completion/stubs.rs:1979:46
+     |
+1979 |         let mut subsum_message_data_linker = None;
+     |                                              ^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `subsum_message_data_linker` is never read
+    --> src/konclude_ht/completion/stubs.rs:2098:46
+     |
+2098 |         let mut subsum_message_data_linker = None;
+     |                                              ^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: unused variable: `ontology`
+    --> src/konclude_ht/completion/stubs.rs:2472:9
+     |
+2472 |         ontology: &OntologyArenas,
+     |         ^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_ontology`
+     |
+     = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: variable does not need to be mutable
+    --> src/konclude_ht/completion/stubs.rs:5305:13
+     |
+5305 |         let mut remaining_merging_depth = 5;
+     |             ----^^^^^^^^^^^^^^^^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/completion/u03.rs:952:9
+    |
+952 |         mut operands: Vec<NegLink<ConceptId>>,
+    |         ----^^^^^^^^
+    |         |
+    |         help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/completion/u08.rs:122:17
+    |
+122 |             let mut triggered_concepts: ConDescId = Id::NONE;
+    |                 ----^^^^^^^^^^^^^^^^^^
+    |                 |
+    |                 help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/completion/u08.rs:166:13
+    |
+166 |         let mut triggered_concepts: ConDescId = Id::NONE;
+    |             ----^^^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/completion/u08.rs:437:13
+    |
+437 |         let mut saturation_node: SatNodeId = if self.conf_expand_created_successors_from_saturation
+    |             ----^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/completion/u14.rs:796:13
+    |
+796 |         let mut merged_individual;
+    |             ----^^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/completion/u14.rs:797:13
+    |
+797 |         let mut adding_individual;
+    |             ----^^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/completion/u14.rs:871:13
+    |
+871 |         let mut new_empty_indi_node_ref = new_empty_indi_node;
+    |             ----^^^^^^^^^^^^^^^^^^^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> src/konclude_ht/completion/u16.rs:1142:13
+     |
+1142 |         let mut nominal_individual = indi;
+     |             ----^^^^^^^^^^^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+   --> src/konclude_ht/completion/u17.rs:105:13
+    |
+105 |         let mut state = calc_alg_context.take_used_saturation_node_expansion_cache_handler()?;
+    |             ----^^^^^
+    |             |
+    |             help: remove this `mut`
+
+warning: value assigned to `block_alt_data` is never read
+    --> src/konclude_ht/completion/u19.rs:1102:65
+     |
+1102 |         let mut block_alt_data: BlockingAlternativeDataHandle = Id::NONE;
+     |                                                                 ^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `blocking_indi_node` is never read
+    --> src/konclude_ht/completion/u19.rs:1369:46
+     |
+1369 |         let mut blocking_indi_node: NodeId = Id::NONE;
+     |                                              ^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `min_test_anc_indi_depth` is never read
+    --> src/konclude_ht/completion/u19.rs:1770:45
+     |
+1770 |                     (min_test_indi_node_id, min_test_anc_indi_depth) = calc_alg_context
+     |                                             ^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: value assigned to `synchronized` is never read
+   --> src/konclude_ht/completion/u21.rs:270:32
+    |
+270 |         let mut synchronized = false;
+    |                                ^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: value assigned to `backend_sync_data` is never read
+    --> src/konclude_ht/completion/u25.rs:1902:25
+     |
+1902 |                         backend_sync_data = loc_backend_sync_data;
+     |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+
+warning: variable does not need to be mutable
+    --> src/konclude_ht/completion/u36.rs:1403:17
+     |
+1403 |             let mut expansion_blocked = native_expansion_blocked;
+     |                 ----^^^^^^^^^^^^^^^^^
+     |                 |
+     |                 help: remove this `mut`
+
+warning: variable does not need to be mutable
+     --> src/konclude_ht/completion/selftest.rs:10119:9
+      |
+10119 |     let mut algo = CompletionTaskHandleAlgorithm::new();
+      |         ----^^^^
+      |         |
+      |         help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> src/konclude_ht/process/dep1.rs:1298:13
+     |
+1298 |         let mut dep_arena = Arena::new();
+     |             ----^^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: unused variable: `concept`
+   --> src/konclude_ht/process/ls1.rs:982:9
+    |
+982 |         concept: ConceptId,
+    |         ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_concept`
+
+warning: value assigned to `list` is never read
+   --> src/konclude_ht/process/varbind.rs:319:25
+    |
+319 |                         list = ctx.var_binding_des(first_linker).get_next();
+    |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: variable does not need to be mutable
+    --> src/konclude_ht/saturation/s06.rs:1137:13
+     |
+1137 |         let mut updated = false;
+     |             ----^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: value assigned to `resolved_node` is never read
+   --> src/konclude_ht/saturation/s10.rs:149:33
+    |
+149 |         let mut resolved_node = SatNodeId::NONE;
+    |                                 ^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: value assigned to `resolved_node` is never read
+   --> src/konclude_ht/saturation/s10.rs:369:33
+    |
+369 |         let mut resolved_node = SatNodeId::NONE;
+    |                                 ^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: value assigned to `resolved_node` is never read
+   --> src/konclude_ht/saturation/s10.rs:540:33
+    |
+540 |         let mut resolved_node = SatNodeId::NONE;
+    |                                 ^^^^^^^^^^^^^^^
+    |
+    = help: maybe it is overwritten before being read?
+
+warning: unused variable: `i`
+    --> src/orchestrate/cb_to_ht.rs:1493:10
+     |
+1493 |     for (i, n) in ids.con_names.iter().enumerate() {
+     |          ^ help: if this is intentional, prefix it with an underscore: `_i`
+
+warning: variable does not need to be mutable
+    --> src/orchestrate/cb_to_ht.rs:3998:13
+     |
+3998 |         let mut note = |ind: &str, individuals: &mut BTreeSet<String>| {
+     |             ----^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: value assigned to `cb_t0` is never read
+    --> src/orchestrate/race.rs:3694:21
+     |
+3694 |                     cb_t0 = Some(Instant::now());
+     |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+...
+3767 |             start_cb!();
+     |             ----------- in this macro invocation
+     |
+     = help: maybe it is overwritten before being read?
+     = note: this warning originates in the macro `start_cb` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `header`
+    --> src/source_locality.rs:2759:27
+     |
+2759 |         if let Some((old, header, lookup)) = donor.filter(|(old, header, _)|
+     |                           ^^^^^^ help: if this is intentional, prefix it with an underscore: `_header`
+
+warning: variable does not need to be mutable
+    --> src/hypertableau.rs:7601:13
+     |
+7601 |         let mut chain_fwd: HashMap<R, Vec<(R, R)>> = HashMap::default();
+     |             ----^^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: variable does not need to be mutable
+    --> src/hypertableau.rs:7602:13
+     |
+7602 |         let mut chain_bwd: HashMap<R, Vec<(R, R)>> = HashMap::default();
+     |             ----^^^^^^^^^
+     |             |
+     |             help: remove this `mut`
+
+warning: unused variable: `variable_count`
+     --> src/hypertableau.rs:13577:14
+      |
+13577 |         let (variable_count, concept_count, role_count, equality_ontology) =
+      |              ^^^^^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_variable_count`
+
+warning: unused variable: `role_count`
+     --> src/hypertableau.rs:13577:45
+      |
+13577 |         let (variable_count, concept_count, role_count, equality_ontology) =
+      |                                             ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_role_count`
+
+warning: variable does not need to be mutable
+    --> src/tableau.rs:7578:9
+     |
+7578 |     let mut replace_cell_abox = |cell: &mut serde_json::Value| -> Result<(), String> {
+     |         ----^^^^^^^^^^^^^^^^^
+     |         |
+     |         help: remove this `mut`
+
+warning: type `tableau::hypertableau::CardDef` is more private than the item `tableau::hypertableau::Ht::set_card_defs`
+     --> src/hypertableau.rs:18846:5
+      |
+18846 |     pub fn set_card_defs(&mut self, defs: HashMap<C, CardDef>) {
+      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ method `tableau::hypertableau::Ht::set_card_defs` is reachable at visibility `pub`
+      |
+note: but type `tableau::hypertableau::CardDef` is only usable at visibility `pub(self)`
+     --> src/hypertableau.rs:451:1
+      |
+  451 | struct CardDef {
+      | ^^^^^^^^^^^^^^
+      = note: `#[warn(private_interfaces)]` on by default
+
+warning: type `tableau::Graph` is more private than the item `rules_cert::<impl tableau::Tableau>::cert_test`
+   --> src/tableau_rules_cert.rs:202:5
+    |
+202 |     pub(crate) fn cert_test(&self, claim: Claim, witness: Option<C>) -> Option<Graph> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ method `rules_cert::<impl tableau::Tableau>::cert_test` is reachable at visibility `pub(crate)`
+    |
+note: but type `tableau::Graph` is only usable at visibility `pub(self)`
+   --> src/tableau.rs:179:1
+    |
+179 | struct Graph {
+    | ^^^^^^^^^^^^
+
+warning: function `residual_clause_active` is never used
+    --> src/elcomplete.rs:6323:4
+     |
+6323 | fn residual_clause_active(rc: &RClause, alive: &[bool]) -> bool {
+     |    ^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: variants `Top` and `Bottom` are never constructed
+   --> src/frontend/bottom_prepass.rs:178:5
+    |
+176 | enum RawClassConstraint {
+    |      ------------------ variants in this enum
+177 |     Name(String),
+178 |     Top,
+    |     ^^^
+179 |     Bottom,
+    |     ^^^^^^
+    |
+    = note: `RawClassConstraint` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+warning: method `role_supers` is never used
+   --> src/frontend/data_abox.rs:822:8
+    |
+448 | impl<'a> DataAbox<'a> {
+    | --------------------- method in this implementation
+...
+822 |     fn role_supers(&self, p: &'a str) -> Vec<&'a str> {
+    |        ^^^^^^^^^^^
+
+warning: function `is_top_data_range` is never used
+   --> src/frontend/datatypes.rs:466:15
+    |
+466 | pub(crate) fn is_top_data_range(name: &str) -> bool {
+    |               ^^^^^^^^^^^^^^^^^
+
+warning: function `snapshot_native_consistency_nominal_nondeterministic_prefix` is never used
+     --> src/konclude_ht/bridge.rs:11188:4
+      |
+11188 | fn snapshot_native_consistency_nominal_nondeterministic_prefix(
+      |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `positive_class_assertion_iris` is never used
+   --> src/orchestrate/flat_nf1.rs:403:4
+    |
+403 | fn positive_class_assertion_iris(line: &str) -> Option<(&str, &str)> {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: field `base_revision` is never read
+    --> src/source_incremental.rs:1999:60
+     |
+1999 |     Replace { functional_syntax: String, #[serde(default)] base_revision: Option<u64> },
+     |     ------- field in this variant                          ^^^^^^^^^^^^^
+
+warning: field `0` is never read
+    --> src/source_locality.rs:1901:12
+     |
+1901 |     Symbol(u32),
+     |     ------ ^^^
+     |     |
+     |     field in this variant
+     |
+help: consider changing the field to be of unit type to suppress this warning while preserving the field numbering, or remove the field
+     |
+1901 -     Symbol(u32),
+1901 +     Symbol(()),
+     |
+
+warning: methods `log_start` and `undo` are never used
+    --> src/source_locality.rs:1928:8
+     |
+1915 | impl State {
+     | ---------- methods in this implementation
+...
+1928 |     fn log_start(&mut self) {
+     |        ^^^^^^^^^
+...
+1951 |     fn undo(&mut self, base: &State) {
+     |        ^^^^
+
+warning: method `source_hash` is never used
+   --> src/named_subclass_validation.rs:162:12
+    |
+ 73 | impl NamedSubclassCertificate {
+    | ----------------------------- method in this implementation
+...
+162 |     pub fn source_hash(&self)->u128 {fingerprint(self.source.as_bytes())}
+    |            ^^^^^^^^^^^
+
+warning: direct cast of function item into an integer
+  --> src/cli.rs:68:55
+   |
+68 |             libc::signal(libc::SIGUSR1, km_sigusr1_bt as usize as libc::sighandler_t);
+   |                                                       ^^^^^^^^
+   |
+   = note: `#[warn(function_casts_as_integer)]` on by default
+help: first cast to a pointer `as *const ()`
+   |
+68 |             libc::signal(libc::SIGUSR1, km_sigusr1_bt as *const () as usize as libc::sighandler_t);
+   |                                                       ++++++++++++
+
+warning: for loop over a `&Option`. This is more readably written as an `if let` statement
+   --> src/frontend/ground_rule_source.rs:146:19
+    |
+146 |     for domain in &paths.domain { axioms.push(format!("Declaration(Class({}))", name(domain)?)); }
+    |                   ^^^^^^^^^^^^^
+    |
+    = note: `#[warn(for_loops_over_fallibles)]` on by default
+help: to check pattern in a loop use `while let`
+    |
+146 -     for domain in &paths.domain { axioms.push(format!("Declaration(Class({}))", name(domain)?)); }
+146 +     while let Some(domain) = &paths.domain { axioms.push(format!("Declaration(Class({}))", name(domain)?)); }
+    |
+help: consider using `if let` to clear intent
+    |
+146 -     for domain in &paths.domain { axioms.push(format!("Declaration(Class({}))", name(domain)?)); }
+146 +     if let Some(domain) = &paths.domain { axioms.push(format!("Declaration(Class({}))", name(domain)?)); }
+    |
+
+warning: `kobayashi-marust` (lib test) generated 92 warnings (run `cargo fix --lib -p kobayashi-marust --tests` to apply 49 suggestions)
+    Finished `release` profile [optimized] target(s) in 16m 56s
+     Running unittests src/lib.rs (target/release/deps/kobayashi_marust-60cbe295eca4d725)
+
+running 611 tests
+test frontend::abox_consistency::tests::asserted_bottom_subclass_is_detected ... ok
+test frontend::abox_consistency::tests::collect_still_skips_without_disjointness_or_negatives ... ok
+test frontend::abox_consistency::tests::asserted_singleton_member_clashes_with_different ... ok
+test frontend::abox_consistency::tests::complement_subclass_clash_is_detected ... ok
+test frontend::abox_consistency::gated_projection_tests::gated_projection_matches_the_reference_on_every_gate_shape ... ok
+test frontend::abox_consistency::tests::complement_subclass_without_joint_membership_remains_consistent ... ok
+test frontend::abox_consistency::tests::derived_abox_contradictions_are_not_detected ... ok
+test frontend::abox_consistency::tests::distinct_members_of_one_enumeration_do_not_clash ... ok
+test frontend::abox_consistency::tests::named_projection_respects_boolean_polarity ... ok
+test frontend::abox_consistency::tests::negative_assertion_clash_closes_under_subroles_and_same_individual ... ok
+test frontend::abox_consistency::tests::negative_assertion_clash_is_detected ... ok
+test frontend::abox_consistency::tests::negative_assertion_on_other_pair_is_consistent ... ok
+test frontend::abox_consistency::tests::singleton_and_larger_nominal_enumeration_clash_with_different ... ok
+test frontend::abox_consistency::tests::union_equivalence_reveals_asserted_disjointness_without_rules ... ok
+test frontend::bottom_prepass::tests::exact_integer_and_string_values_still_seed_bottom ... ok
+test frontend::bottom_prepass::tests::equal_boolean_lexical_forms_and_nonfunctional_values_do_not_clash ... ok
+test frontend::bottom_prepass::tests::functional_boolean_clash_propagates_through_subclass_and_exists ... ok
+test frontend::bottom_prepass::tests::functional_values_are_materialized_as_disjoint_horn_markers ... ok
+test frontend::bottom_prepass::tests::inverse_domain_can_make_a_required_successor_impossible ... ok
+test frontend::bottom_prepass::tests::inherited_universal_participates_in_successor_clash ... ok
+test frontend::bottom_prepass::tests::inverse_range_alternatives_force_the_only_viable_owner_type ... ok
+test frontend::bottom_prepass::tests::lossy_datatype_lexicals_do_not_create_bottom_certificates ... ok
+test frontend::bottom_prepass::tests::union_range_requires_every_alternative_to_clash ... ok
+test frontend::bottom_prepass_route_tests::absent_declarations_are_seeded_once_in_source_order ... ok
+test frontend::bottom_prepass_route_tests::el_completion_does_not_build_the_general_bottom_certificate ... ok
+test frontend::builtin_aliases::tests::annotation_only_alias_borrows_and_invalid_binding_refuses ... ok
+test frontend::builtin_aliases::tests::all_six_resolved_aliases_and_idempotence ... ok
+test frontend::builtin_aliases::tests::anonymous_ids_are_never_prefix_expanded ... ok
+test frontend::bottom_prepass_route_tests::retained_side_observers_match_v025_second_pass_bytes ... ok
+test frontend::builtin_aliases::tests::canonical_and_unrelated_inputs_borrow_original ... ok
+test frontend::builtin_aliases::tests::literal_unicode_prefix_is_resolved_without_decoding_escape_like_names ... ok
+test frontend::builtin_aliases::tests::mixed_entity_spellings_are_unified ... ok
+test frontend::builtin_aliases::tests::partial_namespace_default_prefix_and_exact_token_matching ... ok
+test frontend::builtin_aliases::tests::preserves_comments_literal_escapes_annotation_bytes_and_headers ... ok
+test frontend::clauses::tests::hoist_extracts_common_super_of_every_disjunct ... ok
+test frontend::clauses::tests::hoist_is_sound_self_cover ... ok
+test frontend::clauses::tests::hoist_skips_when_no_common_super ... ok
+test frontend::clauses::tests::owned_json_conversion_matches_borrowed_conversion_for_every_term_shape ... ok
+test frontend::conformance::anonymous::tests::anonymous_object_graphs_reject_cycles_parallel_edges_and_self_loops ... ok
+test frontend::conformance::anonymous::tests::anonymous_individuals_are_rejected_in_forbidden_logical_positions ... ok
+test frontend::conformance::anonymous::tests::forests_duplicates_and_isolated_anonymous_individuals_remain_valid ... ok
+test frontend::conformance::datatypes::tests::datatype_definitions_must_be_acyclic_and_unique ... ok
+test frontend::conformance::anonymous::tests::each_anonymous_tree_needs_one_node_with_at_most_one_named_assertion ... ok
+test frontend::conformance::datatypes::tests::reordered_datatype_unions_are_the_same_definition ... ok
+test frontend::conformance::datatypes::tests::defined_datatypes_cannot_be_restricted_even_when_their_base_supports_facets ... ok
+test frontend::conformance::datatypes::tests::top_data_property_is_restricted_to_superproperty_position ... ok
+test frontend::conformance::datatypes::tests::used_datatypes_need_definitions_but_declarations_alone_do_not ... ok
+test frontend::conformance::entities::tests::class_datatype_punning_is_rejected_but_class_individual_punning_is_legal ... ok
+test frontend::conformance::entities::tests::first_failing_entity_in_name_order_is_reported ... ok
+test frontend::conformance::entities::tests::incompatible_property_kinds_are_rejected_with_or_without_declarations ... ok
+test frontend::conformance::datatypes::tests::unary_data_ranges_cannot_constrain_multiple_properties ... ok
+test frontend::conformance::entities::tests::required_entity_declarations_do_not_require_named_individual_declarations ... ok
+test frontend::conformance::entities::tests::keys_require_properties_and_preserve_entity_types ... ok
+test frontend::conformance::entities::tests::reserved_names_are_allowed_only_for_their_builtin_entity_kinds ... ok
+test frontend::conformance::facets::tests::bound_values_belong_to_the_derived_base_by_value ... ok
+test frontend::conformance::facets::tests::bounds_preserve_arbitrary_precision_and_prefix_aliases ... ok
+test frontend::conformance::facets::tests::bounds_reject_unordered_and_disjoint_value_spaces ... ok
+test frontend::conformance::facets::tests::language_ranges_use_basic_range_syntax_and_string_values ... ok
+test frontend::conformance::facets::tests::length_facets_require_nonnegative_integer_values_without_numeric_limits ... ok
+test frontend::conformance::facets::tests::arbitrary_precision_divisibility_matches_small_integer_oracle ... ok
+test frontend::conformance::facets::tests::pattern_values_must_be_strings_including_plain_literal_string_values ... ok
+test frontend::conformance::facets::tests::rule_ranges_receive_bound_validation_without_rejecting_other_facets ... ok
+test frontend::conformance::facets::tests::unknown_facets_and_patterns_on_facetless_datatypes_are_rejected ... ok
+test frontend::conformance::facets::tests::unvalidated_facet_extensions_are_explicit_refusals_not_invalid_verdicts ... ok
+test frontend::conformance::lexical::tests::binary_padding_and_datetime_lexical_bounds ... ok
+test frontend::conformance::lexical::tests::boolean_decimal_float_and_hex_lexical_spaces_are_checked ... ok
+test frontend::conformance::lexical::tests::derived_strings_and_arbitrary_rationals ... ok
+test frontend::conformance::lexical::tests::integer_validation_preserves_arbitrary_precision_and_derived_bounds ... ok
+test frontend::conformance::facets::tests::arbitrary_precision_quotients_match_small_integer_oracle ... ok
+test frontend::conformance::pattern::tests::xml_regex_syntax_preserves_large_quantities_and_xml_specific_constructs ... ok
+test frontend::conformance::roles::tests::chain_targets_are_non_simple_but_operands_can_be_simple ... ok
+test frontend::conformance::pattern::tests::xml_regex_syntax_rejects_invalid_counts_classes_and_xpath_extensions ... ok
+test frontend::conformance::roles::tests::equivalent_roles_and_builtin_top_are_checked ... ok
+test frontend::conformance::roles::tests::irregular_chains_reject_middle_recursion_and_dependency_cycles ... ok
+test frontend::conformance::roles::tests::non_simple_roles_propagate_through_inverses_and_superproperties ... ok
+test frontend::conformance::roles::tests::regular_chains_allow_transitivity_and_end_recursion ... ok
+test frontend::conformance::tests::allows_ranges_strings_rules_and_nonstandard_prefix_binding ... ok
+test frontend::conformance::tests::custom_and_real_datatypes_cannot_supply_literal_lexical_forms ... ok
+test frontend::conformance::tests::exact_validation_cache_does_not_retain_oversized_sources ... ok
+test frontend::conformance::tests::document_boundaries_cannot_silently_drop_input ... ok
+test frontend::conformance::tests::exact_validation_cache_preserves_rejections_after_valid_input ... ok
+test frontend::conformance::tests::public_prefix_declarations_are_unique_and_cannot_rebind_standard_names ... ok
+test frontend::conformance::tests::grammar_rejects_wrong_arity_without_numeric_model_limits ... ok
+test frontend::conformance::tests::rejects_13129_literal_pattern_without_rewriting ... ok
+test frontend::conformance::tests::rejects_top_typed_literals_in_assertions_and_rules ... ok
+test frontend::conformance::tests::source_validation_preserves_dl_safe_rules_and_top_data_ranges ... ok
+test frontend::conformance::tests::untyped_language_tagged_and_plain_literals_are_validated ... ok
+test frontend::conformance::tests::user_prefix_checks_cover_entity_and_rule_iris_without_scanning_literal_contents ... ok
+test frontend::conformance::xml_literal::tests::accepts_xml_content_and_rejects_unbound_or_malformed_markup ... ok
+test frontend::data_abox::tests::empty_complex_range_rejects_every_assertion ... ok
+test frontend::data_abox::tests::every_well_formed_literal_is_in_rdfs_literal ... ok
+test frontend::conformance::pattern::tests::decimal_bound_comparison_matches_machine_oracle_in_its_range ... ok
+test frontend::data_abox::tests::finite_range_checks_inherited_and_multiple_ranges ... ok
+test frontend::data_abox::tests::finite_range_detects_empty_string_outside_enumeration ... ok
+test frontend::data_abox::tests::finite_range_uses_value_equality_and_defers_unknown_values ... ok
+test frontend::data_abox::tests::functional_distinct_integers_clash ... ok
+test frontend::data_abox::tests::functional_distinct_strings_clash ... ok
+test frontend::data_abox::tests::functional_lang_pairs ... ok
+test frontend::data_abox::tests::functional_role_merge_clashes_with_different_individuals ... ok
+test frontend::data_abox::tests::functional_same_value_no_clash ... ok
+test frontend::data_abox::tests::functional_string_projection_declines_unrepresented_interactions ... ok
+test frontend::data_abox::tests::functional_strings_accept_inherited_domains_without_assuming_membership ... ok
+test frontend::data_abox::tests::functional_strings_preserve_owner_inequalities_and_equal_values ... ok
+test frontend::data_abox::tests::functional_token_vs_string_lexical_not_compared ... ok
+test frontend::data_abox::tests::inverse_object_assertions_preserve_functional_merge_data_clash ... ok
+test frontend::data_abox::tests::langtag_literal_violates_string_range ... ok
+test frontend::data_abox::tests::matching_string_assertion_is_fine ... ok
+test frontend::data_abox::tests::merge_via_symmetric_domain_exact1_then_data_max1_clash ... ok
+test frontend::data_abox::tests::no_merge_with_distinct_owners ... ok
+test frontend::data_abox::tests::omission_certificate_accepts_safe_subproperty_and_at_most_one ... ok
+test frontend::data_abox::tests::omission_certificate_rejects_data_constraints_in_abox_and_subclass_lhs ... ok
+test frontend::data_abox::tests::omission_certificate_rejects_missing_domain_and_data_interactions ... ok
+test frontend::data_abox::tests::omission_certificate_rejects_two_values_under_inherited_at_most_one ... ok
+test frontend::data_abox::tests::positive_integer_with_redundant_named_domain_is_omittable ... ok
+test frontend::data_abox::tests::range_inherited_through_subproperty ... ok
+test frontend::data_abox::tests::same_individual_violates_different_individuals ... ok
+test frontend::data_abox::tests::string_literal_violates_int_range ... ok
+test frontend::data_abox::tests::top_data_property_constraint_applies_without_explicit_subproperty_axiom ... ok
+test frontend::data_abox::tests::unknown_datatype_never_clashes ... ok
+test frontend::data_abox::tests::unrelated_data_restriction_does_not_poison_safe_assertions ... ok
+test frontend::data_abox_projection::tests::coupled_or_unknown_data_semantics_defer ... ok
+test frontend::data_abox_projection::tests::inherited_assertions_do_not_duplicate_retained_source_facts ... ok
+test frontend::data_abox_projection::tests::inherited_domains_and_functional_owner_inequalities ... ok
+test frontend::data_abox_projection::tests::range_violation_is_retained_as_contradiction ... ok
+test frontend::data_range::tests::disjoint_dataoneof_ranges_are_empty ... ok
+test frontend::data_range::tests::equal_values_with_alternative_lexical_forms_block_emptiness ... ok
+test frontend::data_range::tests::overlapping_dataoneof_ranges_are_nonempty ... ok
+test frontend::data_range::tests::single_dataoneof_range_is_nonempty ... ok
+test frontend::data_rules::builtin_join_tests::bound_output_is_checked_and_unknown_obligations_remain ... ok
+test frontend::data_rules::builtin_join_tests::graph_arithmetic_resolves_dependencies_in_either_body_order ... ok
+test frontend::data_rules::builtin_join_tests::finite_tuple_plan_preserves_object_joins_and_defers_atomically ... ok
+test frontend::data_rules::tests::cardinality_constraints_do_not_enumerate_large_integer_ranges ... ok
+test frontend::data_rules::tests::constant_data_plan_preserves_multiple_object_bindings_and_literal_identity ... ok
+test frontend::data_rules::tests::actual_10906_rules_have_complete_constant_data_translation_plans ... ok
+test frontend::data_rules::tests::cross_property_join_is_not_split_into_independent_witnesses ... ok
+test frontend::data_rules::tests::empty_domain_certificate_defers_constants_and_data_only_bodies ... ok
+test frontend::data_rules::tests::fractional_thresholds_are_exact_over_integer_witnesses ... ok
+test frontend::data_rules::tests::empty_named_domain_and_query_observers_cover_disjoint_source_rules ... ok
+test frontend::data_rules::tests::empty_named_domain_elides_object_guarded_concrete_rules ... ok
+test frontend::data_rules::tests::integer_domain_keeps_unasserted_values_and_finite_exclusions ... ok
+test frontend::data_rules::tests::integer_witness_lowering_has_the_expected_datatype_membership ... ok
+test frontend::data_rules::tests::shared_witness_keeps_every_comparison_and_operand_direction ... ok
+test frontend::data_rules::tests::source_integer_lowering_is_atomic_when_any_rule_is_unrepresented ... ok
+test frontend::data_rules::tests::named_assertions_or_imports_prevent_vacuous_rule_admission ... ok
+test frontend::datatypes::extent::tests::empty_ranges_are_decided ... ok
+test frontend::datatypes::extent::tests::internal_concept_names_are_decided ... ok
+test frontend::datatypes::extent::tests::universal_ranges_are_decided ... ok
+test frontend::datatypes::extent::tests::ordinary_and_undecided_ranges_are_left_alone ... ok
+test frontend::datatypes::finite_literal_realization_tests::concrete_profiles_preserve_rounding_signed_zero_and_range_membership ... ok
+test frontend::datatypes::finite_literal_realization_tests::opaque_values_and_unknown_ranges_do_not_produce_evidence ... ok
+test frontend::datatypes::numeric_cells::tests::float_cells_cover_adjacent_values_nan_and_signed_zero_identity ... ok
+test frontend::datatypes::numeric_cells::tests::full_domain_partition_retains_outside_numeric_complements ... ok
+test frontend::datatypes::numeric_cells::tests::unknown_facets_types_trailing_tokens_and_overflow_decline ... ok
+test frontend::datatypes::swrl_numeric_tests::arithmetic_output_binds_exact_values_and_defers_invalid_operands ... ok
+test frontend::datatypes::swrl_numeric_tests::decimal_arithmetic_and_result_position_are_exact ... ok
+test frontend::datatypes::swrl_numeric_tests::ieee_graph_subtraction_preserves_width_and_numeric_comparison ... ok
+test frontend::datatypes::swrl_numeric_tests::integer_derived_literals_validate_their_value_bounds ... ok
+test frontend::datatypes::swrl_numeric_tests::unsupported_or_invalid_values_are_obligations_not_false ... ok
+test frontend::datatypes::tests::boolean_cover_enables_counting ... ok
+test frontend::datatypes::tests::bridge_atomic_gate_matches_the_exact_10621_fragment ... ok
+test frontend::datatypes::tests::bridge_datetime_literals_preserve_owl_value_identity ... ok
+test frontend::data_rules::tests::small_domain_capacities_agree_with_explicit_value_sets ... ok
+test frontend::datatypes::tests::bridge_finite_cover_checks_exact_values_and_aliases ... ok
+test frontend::datatypes::tests::bridge_integer_literals_preserve_value_identity_and_declared_bounds ... ok
+test frontend::datatypes::tests::bridge_plain_string_literal_is_the_xsd_string_abbreviation ... ok
+test frontend::datatypes::tests::bridge_tbox_datatype_extension_decimal_cell_counts ... ok
+test frontend::datatypes::tests::bridge_tbox_datatype_extension_double_enumerations ... ok
+test frontend::datatypes::tests::bridge_tbox_datatype_extension_facet_intersections ... ok
+test frontend::datatypes::tests::bridge_tbox_datatype_extension_integral_difference_covers ... ok
+test frontend::datatypes::tests::bridge_integral_decimal_literals_preserve_integer_value_identity ... ok
+test frontend::datatypes::tests::bridge_tbox_datatype_extension_union_relations ... ok
+test frontend::datatypes::tests::bridge_tbox_datatype_extension_map_and_cells ... ok
+test frontend::datatypes::tests::bridge_tbox_datatype_extension_uri_xml_and_decimal_values ... ok
+test frontend::datatypes::tests::builtin_datatypes_require_the_exact_standard_namespace ... ok
+test frontend::datatypes::tests::complement_membership_negates_only_decided_value_relations ... ok
+test frontend::datatypes::tests::custom_builtin_suffixes_never_enter_the_exact_value_or_bridge_oracle ... ok
+test frontend::datatypes::tests::complement_ranges_get_their_excluded_middle ... ok
+test frontend::datatypes::tests::derived_string_literals_are_string_values ... ok
+test frontend::datatypes::tests::distinct_values_clash_equal_values_merge ... ok
+test frontend::datatypes::tests::exact_bridge_value_oracle_keeps_only_proven_equalities ... ok
+test frontend::datatypes::tests::exhaustible_ranges_need_covers ... ok
+test frontend::datatypes::tests::finite_range_sizes_and_covers ... ok
+test frontend::datatypes::tests::explicit_finite_cover_is_not_truncated_by_interval_enumeration_cap ... ok
+test frontend::datatypes::tests::ieee_facet_ranges_preserve_discrete_bounds_and_partitions ... ok
+test frontend::datatypes::tests::ieee_literal_identity_preserves_width_rounding_and_signed_zero ... ok
+test frontend::datatypes::tests::integer_and_ieee_float_do_not_get_false_inclusions ... ok
+test frontend::datatypes::numeric_cells::tests::integer_cells_cover_all_small_models_and_preserve_literal_exclusions ... ok
+test frontend::datatypes::tests::interval_subsumption_and_disjointness ... ok
+test frontend::datatypes::tests::lossy_lexical_families_do_not_emit_false_value_disjointness ... ok
+test frontend::datatypes::tests::lossy_named_datatype_shapes_do_not_imply_identity ... ok
+test frontend::datatypes::tests::opaque_values_are_not_declared_outside_numeric_restrictions ... ok
+test frontend::datatypes::tests::plain_literal_is_not_data_top ... ok
+test frontend::datatypes::tests::rational_interval_is_not_mistaken_for_decimal_interval ... ok
+test frontend::datatypes::tests::relation_decidability_rejects_unknowns_and_accepts_concrete_values ... ok
+test frontend::datatypes::tests::singleton_elision_keeps_undecided_values ... ok
+test frontend::datatypes::tests::string_chain_inclusions_are_one_way ... ok
+test frontend::datatypes::tests::unknown_emits_nothing_wrong ... ok
+test frontend::datatypes::tests::value_membership_and_tower ... ok
+test frontend::datatypes::vocabulary::tests::decimal_lexical_forms ... ok
+test frontend::datatypes::vocabulary::tests::helly_cells_split_integers_from_decimals ... ok
+test frontend::datatypes::vocabulary::tests::ieee_cells_isolate_shared_endpoints ... ok
+test frontend::datatypes::vocabulary::tests::intersection_with_complement_has_structure_and_cells ... ok
+test frontend::datatypes::vocabulary::tests::undecided_facets_and_literals_are_reported ... ok
+test frontend::datetime_value::tests::identity_normalizes_clock_but_retains_timezone ... ok
+test frontend::datetime_value::tests::lexical_limits_and_leap_days_are_checked ... ok
+test frontend::finite_data_rules::tests::class_projection_declines_non_boolean_sources ... ok
+test frontend::finite_data_rules::tests::class_projection_retains_boolean_theory_and_all_query_classes ... ok
+test frontend::finite_data_rules::tests::graph_source_allows_an_edge_free_class_witness ... ok
+test frontend::datatypes::tests::small_vocabularies_keep_the_pairwise_form ... ok
+test frontend::finite_data_rules::tests::projection_rejects_unexpanded_named_entity_aliases ... ok
+test frontend::finite_data_rules::tests::property_sorts_retain_full_source_names_and_rule_uses ... ok
+test frontend::finite_data_rules::tests::rejects_value_generators_unknown_axioms_and_redefined_prefixes ... ok
+test frontend::ground_rule_source::tests::assertion_aliases_keep_lowest_free_names_and_reuse_duplicates ... ok
+test frontend::abox_consistency::tests::endpoint_indexed_disjoint_scan_matches_every_pair_scan ... ok
+test frontend::ground_rule_source::tests::negative_data_assertion_keeps_polarity_and_annotation ... ok
+test frontend::ground_rule_source::tests::source_translation_rejects_missing_coverage_and_nonexact_literals ... ok
+test frontend::ground_rule_source::tests::fresh_anchor_does_not_capture_source_names ... ok
+test frontend::ground_rule_source::tests::source_translation_retains_non_rule_axioms_and_concrete_values ... ok
+test frontend::ground_rules::tests::empty_named_domain_and_ground_rules_are_distinguished ... ok
+test frontend::ground_rules::tests::ground_implications_match_two_element_models_without_unique_names ... ok
+test frontend::ground_rules::tests::grounding_preserves_all_bindings_and_fresh_symbols ... ok
+test frontend::ground_rules::tests::source_coverage_and_budget_failures_leave_original_ontology_intact ... ok
+test frontend::has_key::tests::object_inverse_and_data_keys_become_one_rule_each ... ok
+test frontend::has_key::tests::sources_without_a_standard_key_stay_borrowed ... ok
+test frontend::iri::borrowed_lookup_tests::borrowed_probe_matches_the_owned_reference_on_unchanged_spellings ... ok
+test frontend::iri::tests::escaped_source_name_remains_collision_safe ... ok
+test frontend::iri::tests::non_owl_thing_and_nothing_local_names_remain_named ... ok
+test frontend::iri::tests::only_actual_owl_thing_and_nothing_are_builtins ... ok
+test frontend::iri::tests::source_names_that_look_generated_are_typed_as_named ... ok
+test frontend::iri::tests::terminal_separator_iris_keep_nonempty_collision_safe_owned_names ... ok
+test frontend::isolated_rules::tests::checks_actual_714_isolated_name_extension_obligations ... ok
+test frontend::isolated_rules::tests::source_constraints_prevent_unsafe_isolated_extensions ... ok
+test frontend::literal_profiles::tests::count_bound_is_the_largest_forced_count ... ok
+test frontend::literal_profiles::tests::counting_on_data_properties_blocks_the_abstraction ... ok
+test frontend::literal_profiles::tests::facet_and_complement_ranges_split_profiles ... ok
+test frontend::literal_profiles::tests::forced_distinctness_is_polarity_aware ... ok
+test frontend::literal_profiles::tests::negative_value_fillers_mark_data_roles ... ok
+test frontend::literal_profiles::tests::profiles_follow_observed_ranges_and_tokens ... ok
+test frontend::literal_profiles::tests::representatives_are_the_first_literal_of_each_profile ... ok
+test frontend::literal_profiles::tests::unknown_ranges_keep_identity ... ok
+test frontend::nominal_abox_contract_tests::assertion_only_proxy_uses_normalizer_mapping_without_default_clause_injection ... ok
+test frontend::nominal_abox_contract_tests::functional_data_projection_keeps_entailed_different_individuals ... ok
+test frontend::nominal_abox_contract_tests::identity_and_redundant_positive_data_are_complete_while_unsupported_abox_fails_closed ... ok
+test frontend::nominal_abox_contract_tests::identity_is_retained_while_data_fails_and_negative_object_roles_are_retained ... ok
+test frontend::nominal_abox_contract_tests::nary_different_individuals_is_certified_as_exact_pairs ... ok
+test frontend::nominal_abox_contract_tests::object_abox_and_assertion_only_individuals_are_certified ... ok
+test frontend::nominal_abox_contract_tests::typed_abox_preserves_class_roles_negatives_and_different ... ok
+test frontend::normalise::chain_compilation_tests::long_role_chain_is_compiled_right_associatively ... ok
+test frontend::normalise::nnf_cow_tests::a_negation_normal_form_is_always_its_own_fixpoint ... ok
+test frontend::normalise::nnf_cow_tests::nnf_cow_is_nnf_on_every_family_member ... ok
+test frontend::normalise::nnf_cow_tests::normalisation_output_is_unchanged_by_the_shared_path ... ok
+test frontend::normalise::nnf_cow_tests::parser_built_el_axioms_take_the_borrowed_path ... ok
+test frontend::normalise::nnf_cow_tests::transformed_shapes_are_owned ... ok
+test frontend::normalise::tests::absorb_drops_positive_only_excluded_middle ... ok
+test frontend::normalise::tests::atleast_recognition_polarity_gated ... ok
+test frontend::normalise::tests::atleast_two_recognition_clause ... ok
+test frontend::normalise::tests::atmost_recognition_polarity_gated ... ok
+test frontend::normalise::tests::checked_symbolic_normalization_preserves_large_source_bounds ... ok
+test frontend::normalise::tests::equal_restrictions_keep_separate_definers_when_sharing_is_off ... ok
+test frontend::normalise::tests::equal_restrictions_share_one_definer ... ok
+test frontend::normalise::tests::native_cardinality_keeps_source_tbox_provenance ... ok
+test frontend::normalise::tests::native_cardinality_omits_only_the_positive_expansion ... ok
+test frontend::normalise::tests::native_cardinality_provenance_rejects_corrupted_bounds ... ok
+test frontend::normalise::tests::native_handoff_without_metadata_preserves_ordinary_obligations ... ok
+test frontend::normalise::tests::native_negative_minimum_uses_constant_size_complement ... ok
+test frontend::normalise::tests::native_qualified_million_bounds_keep_fillers_and_recognition ... ok
+test frontend::normalise::tests::role_colors_avoid_quadratic_lower_and_upper_expansions ... ok
+test frontend::normalise::tests::trigger_absorb_compiles_and_exists_antecedent ... ok
+test frontend::normalise::tests::trigger_absorb_distributes_union_antecedent ... ok
+test frontend::normalise::tests::trigger_absorb_localises_multiple_existential_antecedents ... ok
+test frontend::normalise::tests::trigger_absorb_moves_negative_rhs_disjunct_into_body ... ok
+test frontend::normalise::tests::trigger_absorb_retains_definer_provenance ... ok
+test frontend::numeric_source::tests::declared_ranges_are_intersected_and_empty_intersections_forbid_edges ... ok
+test frontend::numeric_source::tests::decline_coupling_unknown_positions_and_rebound_datatypes ... ok
+test frontend::numeric_source::tests::empty_ranges_and_unqualified_cardinality_remain_well_formed ... ok
+test frontend::numeric_source::tests::finite_cover_includes_outside_and_preserves_negative_constants ... ok
+test frontend::object_guard::tests::a_nested_self_restriction_or_universal_role_refuses ... ok
+test frontend::object_guard::tests::blank_values_follow_the_empty_element ... ok
+test frontend::object_guard::tests::datatype_assertion_moves_to_a_nominal_inclusion_and_data_exists_is_normalised ... ok
+test frontend::object_guard::tests::guards_only_axioms_that_fail_on_a_blank_element ... ok
+test frontend::object_guard::tests::leaves_the_ontology_alone_without_individuals_or_failing_axioms ... ok
+test frontend::parse::axiom_drop_regression_tests::appending_omitted_abox_matches_complete_recovery_parse ... ok
+test frontend::parse::axiom_drop_regression_tests::bottom_data_property_has_no_values ... ok
+test frontend::parse::axiom_drop_regression_tests::bottom_object_property_has_no_fillers ... ok
+test frontend::parse::axiom_drop_regression_tests::data_assertion_literal_cap_never_declines ... ok
+test frontend::parse::axiom_drop_regression_tests::data_assertions_above_the_cap_are_carried_by_profile ... ok
+test frontend::parse::axiom_drop_regression_tests::data_assertions_stay_unconverted_unless_requested ... ok
+test frontend::parse::axiom_drop_regression_tests::disjoint_union_desugars_to_equivalence_and_disjointness ... ok
+test frontend::parse::axiom_drop_regression_tests::empty_and_universal_data_ranges_simplify_their_restrictions ... ok
+test frontend::parse::axiom_drop_regression_tests::filtered_parser_observes_but_does_not_materialize_abox_nodes ... ok
+test frontend::parse::axiom_drop_regression_tests::full_owl_top_and_bottom_iris_remain_builtins ... ok
+test frontend::parse::axiom_drop_regression_tests::inverse_domain_and_range_desugar_to_direct_role_axioms ... ok
+test frontend::parse::axiom_drop_regression_tests::literal_existential_is_the_unqualified_min_cardinality ... ok
+test frontend::parse::axiom_drop_regression_tests::named_datatypes_keep_namespace_identity ... ok
+test frontend::parse::axiom_drop_regression_tests::negative_object_property_assertion_is_recorded ... ok
+test frontend::parse::axiom_drop_regression_tests::positive_inverse_assertion_matches_swapped_named_assertion ... ok
+test frontend::parse::axiom_drop_regression_tests::repeated_data_assertion_counts_every_source_occurrence ... ok
+test frontend::parse::axiom_drop_regression_tests::requested_data_assertion_becomes_its_has_value_class_assertion ... ok
+test frontend::parse::axiom_drop_regression_tests::unconstrained_data_properties_are_projected_away ... ok
+test frontend::parse::axiom_drop_regression_tests::user_classes_named_thing_and_nothing_are_not_builtins ... ok
+test frontend::parse::rule_tests::data_rule_literal_is_never_an_object_individual ... ok
+test frontend::parse::rule_tests::datatype_rule_retains_typed_values_and_arithmetic_operands ... ok
+test frontend::parse::rule_tests::dlsafe_rule_with_builtin_atom_retains_concrete_obligation ... ok
+test frontend::parse::rule_tests::dlsafe_rule_with_data_atoms_retains_concrete_obligation ... ok
+test frontend::parse::rule_tests::dlsafe_rule_with_same_individual_atom_parses ... ok
+test frontend::parse::rule_tests::dlsafe_star_rule_parses ... ok
+test frontend::parse::rule_tests::empty_rule_head_is_a_constraint_but_observer_head_is_not ... ok
+test frontend::preprocess::chain_detection_tests::allocation_free_detection_matches_the_reference ... ok
+test frontend::preprocess::chain_detection_tests::shared_detection_reproduces_the_independent_derivations ... ok
+test frontend::preprocess::endpoint_transitivity_tests::endpoint_transitivity_accepts_only_model_extendible_consumers ... ok
+test frontend::preprocess::endpoint_transitivity_tests::endpoint_transitivity_closes_inclusion_cycles_and_propagates_obstructions ... ok
+test frontend::preprocess::inverse_transitivity_probe_tests::converse_transitivity_requires_equivalence_and_closes_aliases ... ok
+test frontend::preprocess::inverse_transitivity_probe_tests::guarded_and_ground_bridges_do_not_establish_converse_equivalence ... ok
+test frontend::preprocess::tests::domain_consumer_chain_recognition ... ok
+test frontend::preprocess::tests::domain_consumer_transitive_chain_recognition ... ok
+test frontend::preprocess::tests::indexed_relevance_matches_the_large_clause_shape ... ok
+test frontend::preprocess::tests::keeps_bridge_with_onward_partner ... ok
+test frontend::preprocess::tests::keeps_only_consumed_direction ... ok
+test frontend::preprocess::tests::keeps_relevant_symmetric_self_bridge ... ok
+test frontend::preprocess::tests::nominal_defining_clauses_dl7_dl8 ... ok
+test frontend::preprocess::tests::noop_without_pairs ... ok
+test frontend::preprocess::tests::prunes_both_directions_when_pair_unconsumed ... ok
+test frontend::preprocess::tests::prunes_inert_inverse_pair_both_directions ... ok
+test frontend::preprocess::tests::prunes_inert_symmetric_self_bridge ... ok
+test frontend::preprocess::tests::relevance_excludes_role_feeding_only_a_synthetic_definer ... ok
+test frontend::preprocess::tests::relevance_includes_role_when_definer_reaches_a_named_concept ... ok
+test frontend::preprocess::tests::relevance_marks_domain_and_propagates_through_subrole ... ok
+test frontend::preprocess::tests::relevance_marks_role_feeding_a_constraint ... ok
+test frontend::preprocess::tests::relevance_propagates_back_through_inverse_bridge ... ok
+test frontend::preprocess::tests::relevance_skips_existential_only_role ... ok
+test frontend::preprocess::tests::same_orientation_subrole_clause_is_not_a_bridge ... ok
+test frontend::preprocess::tests::trans_chain_compose_feeds_reachability ... ok
+test frontend::ground_rules::tests::cyclic_template_rule_needs_only_head_assignments ... ok
+test frontend::profile::rule_property_kind_tests::worker_sorts_use_full_iris_and_reject_incomplete_or_ambiguous_tables ... ok
+test frontend::profile::tests::cardinality_matches_konclude_q_n_f_precedence ... ok
+test frontend::profile::tests::clause_retained_role_constraints_stay_out_of_the_number_component ... ok
+test frontend::profile::tests::complex_chain_replaces_base_with_sr ... ok
+test frontend::profile::tests::disjoint_union_abox_gate_excludes_component_connectors ... ok
+test frontend::profile::tests::inverse_cardinality_role_separation_is_source_certified ... ok
+test frontend::profile::tests::konclude_code_precedence_is_exact ... ok
+test frontend::profile::tests::parsed_constructs_drive_expressivity_not_text_tokens ... ok
+test frontend::profile::tests::positive_abox_tbox_separation_certificate_fails_closed ... ok
+test frontend::profile::tests::post_preprocessing_axiom_flags_match_official_konclude ... ok
+test frontend::profile::tests::post_preprocessing_reachability_matches_official_witnesses ... ok
+test frontend::profile::tests::rule_representability_is_profiled_before_routing ... ok
+test frontend::profile::tests::top_identity_abox_separation_certificate_fails_closed ... ok
+test frontend::profile::tests::vacuous_universal_role_elision_describes_the_retained_ontology ... ok
+test frontend::rbox::tests::arbitrary_named_chain_is_retained_without_changing_binary_rows ... ok
+test frontend::rbox::tests::retained_rbox_replay_matches_full_second_parse_bytes ... ok
+test frontend::rule_assertions::tests::closure_memo_answers_an_equal_input_in_any_order ... ok
+test frontend::rule_assertions::tests::closure_preserves_rules_and_requires_every_positive_premise ... ok
+test frontend::rule_assertions::tests::repeated_role_variables_require_one_shared_binding ... ok
+test frontend::rule_assertions::tests::rule_premises_include_inferred_inverse_chain_and_transitive_edges ... ok
+test frontend::rule_certificate::query_projection_tests::mixed_query_head_preserves_logical_conclusions_and_body ... ok
+test frontend::rule_certificate::query_projection_tests::sqwrl_projection_requires_an_entire_observer_head ... ok
+test frontend::rule_certificate::tests::empty_data_relation_certifies_rule_but_assertion_revokes_it ... ok
+test frontend::rule_certificate::tests::exact_one_rule_witness_certifies_inconsistency ... ok
+test frontend::rule_certificate::tests::exact_one_rule_witness_fails_closed_when_any_essential_part_is_absent ... ok
+test frontend::rule_certificate::tests::legacy_type_join_requires_a_subsuming_same_individual_rule ... ok
+test frontend::rule_contract_tests::builtin_bearing_corpus_declines_even_with_representable_rules ... ok
+test frontend::rule_contract_tests::different_individuals_rule_does_not_decline_the_route ... ok
+test frontend::rule_contract_tests::named_dl_safe_rule_is_fully_representable ... ok
+test frontend::rule_contract_tests::rule_contract_rejects_dropped_and_complex_atoms ... ok
+test frontend::rule_contract_tests::same_individual_rule_is_representable ... ok
+test frontend::rule_paths::tests::cyclic_parallel_and_disconnected_rules_keep_general_grounding ... ok
+test frontend::rule_paths::tests::paths_match_all_two_element_models_including_aliases_and_unnamed_objects ... ok
+test frontend::finite_data_rules::tests::graph_source_is_restriction_closed_and_every_concrete_rule_has_a_plan ... ok
+test frontend::datatypes::tests::linear_form_decides_every_pair_like_the_pairwise_form ... ok
+test frontend::profile::rule_property_kind_tests::graph_source_sorts_survive_frontend_converter_and_worker_wire ... ok
+test frontend::separable_abox_elision_tests::a_read_universal_role_keeps_the_exact_nominal_fence ... ok
+test frontend::separable_abox_elision_tests::atomic_abox_projection_preserves_joint_membership ... ok
+test frontend::separable_abox_elision_tests::atomic_abox_supersedes_disjoint_union_precheck ... ok
+test frontend::separable_abox_elision_tests::atomic_parse_screen_rejects_every_other_abox_constructor ... ok
+test frontend::separable_abox_elision_tests::atomic_class_abox_is_projected_but_retains_consistency_queries ... ok
+test frontend::separable_abox_elision_tests::automatic_route_omits_a_separable_abox_before_worker_selection ... ok
+test frontend::separable_abox_elision_tests::bottom_constrained_atomic_abox_is_projected_for_taxonomy_check ... ok
+test frontend::separable_abox_elision_tests::certified_positive_abox_is_removed_before_clausification ... ok
+test frontend::separable_abox_elision_tests::complex_class_assertion_stays_on_full_abox_path ... ok
+test frontend::separable_abox_elision_tests::direct_bottom_assertion_stays_on_full_abox_path ... ok
+test frontend::separable_abox_elision_tests::disjoint_union_public_signature_excludes_native_abox_private_concepts ... ok
+test frontend::separable_abox_elision_tests::exact_disjoint_union_consistency_verdict_authorizes_elision ... ok
+test frontend::separable_abox_elision_tests::existential_witness_projection_preserves_tbox_bottom_prepass ... ok
+test frontend::separable_abox_elision_tests::existential_witness_projection_rejects_every_role_coupling ... ok
+test frontend::separable_abox_elision_tests::extended_atomic_abox_source_whitelist_fails_closed_and_retains_el_arm ... ok
+test frontend::separable_abox_elision_tests::extended_atomic_abox_admits_non_el_object_tboxes ... ok
+test frontend::separable_abox_elision_tests::extended_atomic_abox_observer_preserves_joint_membership_and_alias_rejection ... ok
+test frontend::separable_abox_elision_tests::extended_atomic_abox_rejects_non_el_source_constraints ... ok
+test frontend::separable_abox_elision_tests::optimistic_parse_screen_admits_only_likely_positive_abox_sources ... ok
+test frontend::separable_abox_elision_tests::inert_role_abox_is_replaced_by_internal_type_probes ... ok
+test frontend::separable_abox_elision_tests::isolated_existential_witness_abox_is_projected_to_production ... ok
+test frontend::separable_abox_elision_tests::omitted_abox_only_class_keeps_a_context_for_global_tbox_axioms ... ok
+test frontend::sexpr::tests::byte_classes_match_the_per_byte_char_tests ... ok
+test frontend::sexpr::tests::find_byte_matches_the_plain_scan ... ok
+test frontend::sexpr::tests::parser_errors_and_nesting_are_unchanged ... ok
+test frontend::sorts::tests::a_concept_used_in_both_sorts_keeps_its_fact_and_gets_no_sort_clause ... ok
+test frontend::sorts::tests::a_data_sorted_top_definer_implication_is_relativized_and_the_range_definer_keeps_its_sort ... ok
+test frontend::sorts::tests::a_top_definer_implication_with_an_object_head_is_relativized ... ok
+test frontend::sorts::tests::admissibility_closure_removes_clauses_instead_of_guessing ... ok
+test frontend::sorts::tests::complement_range_concepts_are_data_and_their_excluded_middle_is_guarded ... ok
+test frontend::sorts::tests::gate_needs_a_data_value_range_or_data_property ... ok
+test frontend::sorts::tests::infers_sorts_from_the_clause_set ... ok
+test frontend::sorts::tests::relativizes_class_level_facts_only_and_adds_sort_clauses ... ok
+test frontend::sorts::tests::top_nominal_with_unvalued_data_cardinality_is_relativized ... ok
+test frontend::sorts::tests::unpinned_individuals_are_pinned_by_proxy_or_marker ... ok
+test frontend::symbolic_frontend_tests::full_symbolic_frontend_retains_data_and_large_bound_evidence ... ok
+test frontend::top_role::tests::a_real_universal_role_use_keeps_the_inclusion ... ok
+test frontend::top_role::tests::any_other_occurrence_blocks_elimination ... ok
+test frontend::top_role::tests::nothing_to_eliminate_without_the_builtin ... ok
+test frontend::top_role::tests::only_super_role_occurrences_are_eliminable ... ok
+test frontend::top_role::tests::vacuous_inclusion_clears_the_source_profile_flag ... ok
+test frontend::separable_abox_elision_tests::role_readers_and_equality_generators_reject_inert_projection ... ok
+test frontend::top_role::tests::vacuous_inclusion_leaves_no_builtin_role_behind ... ok
+test frontend::universal_role::tests::admitted_side_occurrences_and_annotations_do_not_block ... ok
+test frontend::universal_role::tests::constant_restrictions_fold_without_a_hub ... ok
+test frontend::universal_role::tests::general_restrictions_use_the_hub_and_nest ... ok
+test frontend::universal_role::tests::generated_namespace_in_source_disables_the_rewrite ... ok
+test frontend::universal_role::tests::inverse_universal_role_and_domain_range_axioms_are_encoded ... ok
+test frontend::universal_role::tests::other_occurrences_leave_the_source_unchanged ... ok
+test frontend::value_projection::tests::any_other_use_or_undecided_literal_keeps_the_group ... ok
+test frontend::value_projection::tests::class_conditional_bounds_guard_their_clash ... ok
+test frontend::separable_abox_elision_tests::subthreshold_atomic_abox_uses_exact_el_projection ... ok
+test frontend::value_projection::tests::functional_values_become_disjoint_digits ... ok
+test konclude_ht::bridge::bridge_role_disjointness_tests::bridge_role_disjointness_asymmetric_clause_shape ... ok
+test frontend::separable_abox_elision_tests::vacuous_top_role_object_abox_selects_the_certified_typed_bridge ... ok
+test konclude_ht::bridge::bridge_role_disjointness_tests::bridge_role_disjointness_asymmetry_excludes_self_loops ... ok
+test konclude_ht::bridge::bridge_role_disjointness_tests::bridge_role_disjointness_inverse_hierarchy_forces_empty_role ... ok
+test konclude_ht::bridge::bridge_role_disjointness_tests::bridge_role_disjointness_functional_merge_into_predecessor_clashes ... ok
+test konclude_ht::bridge::bridge_equivalent_non_candidate_tests::bridge_equivalent_non_candidate_definition_is_tested ... ok
+test konclude_ht::bridge::bridge_role_disjointness_tests::bridge_role_disjointness_symmetric_and_asymmetric_role_is_empty ... ok
+test konclude_ht::bridge::tests::asserted_edge_survives_nondeterministic_cache_marking ... ok
+test konclude_ht::bridge::tests::association_reusable_elements_read_the_four_nondeterministic_slots ... ok
+test konclude_ht::bridge::tests::atomic_data_restrictions_in_object_property_ranges_preserve_role_separation ... ok
+test konclude_ht::bridge::tests::binary_absorber_combines_triggers_like_konclude ... ok
+test konclude_ht::bridge::tests::branch_trigger_preprocess_installs_role_domain_marker ... ok
+test konclude_ht::bridge::tests::bridge_candidate_marker_is_built_for_a_partially_triggerable_definition ... ok
+test konclude_ht::bridge::bridge_role_disjointness_tests::bridge_role_disjointness_irreflexive_self_loop_from_merge_into_predecessor ... ok
+test konclude_ht::bridge::tests::bridge_classify_full ... ignored
+test konclude_ht::bridge::tests::bridge_classify_prod ... ignored
+test konclude_ht::bridge::tests::bridge_correctness_sample ... ignored
+test konclude_ht::bridge::tests::bridge_coverage_report ... ignored
+test konclude_ht::bridge::bridge_role_disjointness_tests::bridge_role_disjointness_reflexive_and_irreflexive_role_is_inconsistent ... ok
+test konclude_ht::bridge::tests::bridge_disjunction_by_cases ... ok
+test konclude_ht::bridge::tests::bridge_disjunction_open_branch ... ok
+test konclude_ht::bridge::bridge_role_disjointness_tests::bridge_role_disjointness_two_reflexive_roles_reach_universal_restriction ... ok
+test konclude_ht::bridge::tests::bridge_domain_survives_datatype_singletons ... ok
+test konclude_ht::bridge::tests::bridge_domain_via_forced_successor ... ok
+test konclude_ht::bridge::tests::bridge_exists_forall_clash ... ok
+test konclude_ht::bridge::tests::bridge_materializes_transitive_role_for_automata_preprocessing ... ok
+test konclude_ht::bridge::tests::bridge_probe_pair ... ignored
+test konclude_ht::bridge::tests::bridge_model_positive_tags_reads_cow_additional_alias_with_local_shadowing ... ok
+test konclude_ht::bridge::tests::bridge_scale_probe ... ignored
+test konclude_ht::bridge::tests::bridge_exists_recognition_inverse ... ok
+test konclude_ht::bridge::tests::bridge_subsumption_chain ... ok
+test konclude_ht::bridge::tests::bridge_role_hierarchy_forall ... ok
+test konclude_ht::bridge::tests::bridge_tbox_datatype_extension_any_uri_is_disjoint_from_string ... ok
+test konclude_ht::bridge::tests::bridge_candidate_marker_refutation_preserves_the_taxonomy ... ok
+test konclude_ht::bridge::tests::bridge_tbox_datatype_extension_datatype_definitions_are_inlined ... ok
+test konclude_ht::bridge::tests::bridge_tbox_datatype_extension_decimal_cells_decide_or_defer ... ok
+test konclude_ht::bridge::tests::bridge_tbox_datatype_extension_literal_is_head_only ... ok
+test konclude_ht::bridge::tests::bridge_tbox_datatype_extension_local_forall_without_global_range ... ok
+test konclude_ht::bridge::tests::bridge_tbox_datatype_extension_disjoint_data_roles ... ok
+test konclude_ht::bridge::tests::common_disjunct_preprocess_materializes_replacement_data ... ok
+test konclude_ht::bridge::tests::common_disjunct_preprocess_reuses_nested_disjunction_cache_exactly ... ok
+test konclude_ht::bridge::tests::conditional_full_class_probe_restores_all_root_consistency_base ... ok
+test konclude_ht::bridge::tests::bridge_tbox_datatype_extension_union_range_needs_its_member_cover ... ok
+test konclude_ht::bridge::tests::bridge_tbox_datatype_extension_double_values_use_owl_identity ... ok
+test konclude_ht::bridge::tests::covering_atmost_cross_merge_sat ... ignored
+test konclude_ht::bridge::tests::bridge_tbox_datatype_extension_double_facets_and_signed_zero ... ok
+test konclude_ht::bridge::tests::data_roles_without_datatypes_enter_the_datatype_gate ... ok
+test konclude_ht::bridge::tests::conditional_full_nominal_filler_preserves_asserted_type_subsumption ... ok
+test konclude_ht::bridge::tests::datatype_boolean_min_three_defers_outside_the_atomic_fragment ... ok
+test konclude_ht::bridge::tests::datatype_relation_index_matches_clause_scans ... ok
+test konclude_ht::bridge::tests::data_domain_zero_cardinality_forces_empty_property ... ok
+test konclude_ht::bridge::tests::derived_nondeterministic_cached_neighbour_is_skipped_without_losing_the_node_cache ... ok
+test konclude_ht::bridge::tests::empty_role_nominal_model_checks_assertions_and_inequalities ... ok
+test konclude_ht::bridge::tests::empty_role_nominal_model_checks_every_source_axiom_kind ... ok
+test konclude_ht::bridge::tests::empty_role_nominal_model_is_an_exact_positive_certificate ... ok
+test konclude_ht::bridge::tests::empty_role_nominal_model_rejects_edge_forcing_and_top_roles ... ok
+test konclude_ht::bridge::tests::definition_containment_subsumers_reach_the_classification_output ... ok
+test konclude_ht::bridge::tests::empty_role_nominal_model_rejects_fixed_datatype_roots ... ok
+test konclude_ht::bridge::tests::exact_atomic_boolean_cover_counts_values_not_literal_names ... ok
+test konclude_ht::bridge::tests::exact_atomic_datatype_disjunction_collects_every_branch_without_weakening_guards ... ok
+test konclude_ht::bridge::tests::exact_atomic_datatype_fragment_accepts_bare_datetime_range ... ok
+test konclude_ht::bridge::tests::equivalent_wine_definitions_preserve_nominal_universal_subsumption ... ok
+test konclude_ht::bridge::tests::exact_atomic_datatype_fragment_accepts_complex_object_domains ... ok
+test konclude_ht::bridge::tests::exact_atomic_datatype_fragment_accepts_only_safe_data_cardinalities ... ok
+test konclude_ht::bridge::tests::exact_atomic_datatype_fragment_recognises_boolean_two_value_range ... ok
+test konclude_ht::bridge::tests::exact_atomic_datatype_fragment_checks_blank_data_node_axioms ... ok
+test konclude_ht::bridge::tests::exact_atomic_datatype_fragment_requires_relation_evidence ... ok
+test konclude_ht::bridge::tests::exact_atomic_datatype_fragment_retains_relation_and_mixed_clauses ... ok
+test konclude_ht::bridge::tests::exact_atomic_datatype_subroles_close_types_and_preserve_guards ... ok
+test konclude_ht::bridge::tests::conditional_full_profile_rejects_konclude_threshold_sized_abox ... ok
+test konclude_ht::bridge::tests::exact_atomic_datatype_local_universal_requires_the_identical_global_range ... ok
+test konclude_ht::bridge::tests::existential_trigger_uses_inverse_implall_propagation ... ok
+test konclude_ht::bridge::tests::exact_numeric_tower_cardinality_fragment_is_certified ... ok
+test konclude_ht::bridge::tests::full_gci_keeps_named_condition_on_final_implication ... ok
+test konclude_ht::bridge::tests::full_or_trigger_uses_konclude_rounded_average_complexity ... ok
+test konclude_ht::bridge::tests::functional_float_value_has_exact_bridge_relation_evidence ... ok
+test konclude_ht::bridge::tests::finite_datatype_cover_controls_cardinality_and_missing_evidence_defers ... ok
+test konclude_ht::bridge::tests::full_symbolic_source_bounds_execute_with_float_data ... ok
+test konclude_ht::bridge::tests::hierarchy_countermodels_order_specific_classes_first_and_propagate_upward ... ok
+test konclude_ht::bridge::tests::higher_cardinality_uses_partial_not_full_trigger ... ok
+test konclude_ht::bridge::tests::incomplete_native_neighbour_stays_blocked_with_both_linkers_retained ... ok
+test konclude_ht::bridge::tests::independent_abox_representatives_canonicalize_assertion_sets ... ok
+test konclude_ht::bridge::tests::functional_float_values_execute_exactly ... ok
+test konclude_ht::bridge::tests::inverse_negative_existential_mirrors_defer_before_bridge_search ... ok
+test konclude_ht::bridge::tests::minimized_9540_nominal_class_pair_stays_satisfiable ... ok
+test konclude_ht::bridge::tests::native_abox_association_status_matches_konclude_writer_predicate ... ok
+test konclude_ht::bridge::tests::native_abox_atmost_respects_different_and_no_una ... ok
+test konclude_ht::bridge::tests::native_abox_consistency_is_global_and_incomplete_metadata_defers ... ok
+test konclude_ht::bridge::tests::native_abox_inferred_live_successor_is_serialized_separately_from_assertion_journal ... ok
+test konclude_ht::bridge::tests::native_abox_named_assertion_resolve_copy_discharges_satisfied_disjunction ... ok
+test konclude_ht::bridge::tests::native_abox_negative_role_assertion_is_exact_universal ... ok
+test konclude_ht::bridge::tests::native_abox_negative_role_fact_alone_has_empty_role_model ... ok
+test konclude_ht::bridge::tests::native_abox_nondeterministic_atmost_merge_completes_without_direct_blocking ... ok
+test konclude_ht::bridge::tests::native_abox_positive_role_assertion_is_exact_existential ... ok
+test konclude_ht::bridge::tests::native_abox_positive_self_edge_is_not_dropped ... ok
+test konclude_ht::bridge::tests::native_abox_replay_blocks_then_invalidates_on_new_concept ... ok
+test konclude_ht::bridge::tests::native_abox_representative_cache_carries_and_replays_full_labels ... ok
+test konclude_ht::bridge::tests::native_abox_representative_cache_records_cardinality_and_indirect_nominals ... ok
+test konclude_ht::bridge::tests::native_abox_representative_reuse_gate_has_every_backend_conjunct ... ok
+test konclude_ht::bridge::tests::native_abox_role_assertion_respects_domain_and_range ... ok
+test konclude_ht::bridge::tests::native_abox_role_assertion_respects_inverse_roles ... ok
+test konclude_ht::bridge::tests::native_abox_role_assertion_respects_role_chains ... ok
+test konclude_ht::bridge::tests::native_abox_role_assertion_respects_role_supers ... ok
+test konclude_ht::bridge::tests::native_abox_role_assertion_respects_transitivity ... ok
+test konclude_ht::bridge::tests::native_abox_role_handshake_does_not_propagate_late_peer_status ... ok
+test konclude_ht::bridge::tests::native_abox_role_metadata_is_fail_closed ... ok
+test konclude_ht::bridge::tests::native_abox_same_positive_and_negative_role_fact_clashes ... ok
+test konclude_ht::bridge::tests::native_cardinality_criticality_releases_neighbour_only_block ... ok
+test konclude_ht::bridge::tests::native_critical_concept_unblocks_only_the_influenced_neighbour ... ok
+test konclude_ht::bridge::tests::native_different_individuals_are_negative_nominal_assertions ... ok
+test konclude_ht::bridge::tests::native_direct_role_assertion_defers_on_multihop_target_merge ... ok
+test konclude_ht::bridge::tests::native_nominal_inverse_fence_is_complete_or_defer ... ok
+test konclude_ht::bridge::tests::native_nominals_merge_without_una_and_clash_with_explicit_different ... ok
+test konclude_ht::bridge::tests::native_precomputation_phase_order_is_strict ... ok
+test konclude_ht::bridge::tests::native_representative_batch_replays_incoming_assertion_vector ... ok
+test konclude_ht::bridge::tests::native_representative_coordination_requires_clean_quiescence ... ok
+test konclude_ht::bridge::tests::native_representative_scheduler_selects_seven_incomplete_entries ... ok
+test konclude_ht::bridge::tests::native_representative_writeback_rejects_stale_batch_atomically ... ok
+test konclude_ht::bridge::tests::native_same_individual_preserves_equality_clashes_and_role_assertions ... ok
+test konclude_ht::bridge::tests::native_saturation_coupling_gate_opens_on_the_concept_wave_only ... ok
+test konclude_ht::bridge::tests::native_saturation_coupling_gate_refuses_an_abox_representation_node ... ok
+test konclude_ht::bridge::tests::native_saturation_coupling_gate_refuses_without_a_saturation_wave ... ok
+test konclude_ht::bridge::tests::native_saturation_coupling_installs_an_empty_expansion_cache_handler ... ok
+test konclude_ht::bridge::tests::nested_object_fillers_retain_atomic_data_role_checks ... ok
+test konclude_ht::bridge::tests::nominal_absorption_trigger_is_asserted_on_named_individual ... ok
+test konclude_ht::bridge::tests::non_number_conditional_full_profile_is_opt_in_and_bounded ... ok
+test konclude_ht::bridge::tests::ddb_preserves_satisfiable_disjoint_cardinality_partition ... ok
+test konclude_ht::bridge::tests::opaque_or_complex_datatype_defers_the_route ... ok
+test konclude_ht::bridge::tests::ore_3215_common_condition_does_not_host_reverse_definitions ... ok
+test konclude_ht::bridge::tests::non_source_unit_bottom_keeps_the_legacy_encoder_path ... ok
+test konclude_ht::bridge::tests::positive_and_negative_singletons_drive_exact_taxonomy ... ok
+test konclude_ht::bridge::tests::probe_oracle_alone_detects_unsat_concept ... ok
+test konclude_ht::bridge::tests::probe_reset_reuses_process_capacity_and_matches_a_fresh_probe ... ok
+test konclude_ht::bridge::tests::incremental_blank_witness_search_matches_full_reevaluation ... ok
+test konclude_ht::bridge::tests::production_rbox_compiles_symmetric_role_as_self_inverse ... ok
+test konclude_ht::bridge::tests::production_rbox_marks_functional_role_for_successor_extension ... ok
+test konclude_ht::bridge::tests::production_read_off_keeps_open_or_disjuncts_nondeterministic ... ok
+test konclude_ht::bridge::tests::parallel_subject_partition_matches_single_worker ... ok
+test konclude_ht::bridge::tests::production_read_off_populates_other_node_possible_subsumptions ... ok
+test konclude_ht::bridge::tests::production_read_off_populates_persistent_kpset_messages ... ok
+test konclude_ht::bridge::tests::production_subject_subset_matches_full_taxonomy_projection ... ok
+test konclude_ht::bridge::tests::production_verifies_disjunctive_domain_subsumption_with_pair_probe ... ok
+test konclude_ht::bridge::tests::query_root_reservation_preserves_retained_witnesses ... ok
+test konclude_ht::bridge::tests::raw_assertion_replay_runs_only_when_selective_cache_expansion_declines ... ok
+test konclude_ht::bridge::tests::production_role_automata_solves_mini7914_unsat ... ok
+test konclude_ht::bridge::tests::production_inverse_chain_automata_solves_7914_recognition_core ... ok
+test konclude_ht::bridge::tests::replay_record_carries_nondeterministic_values_but_the_replay_list_drops_them ... ok
+test konclude_ht::bridge::tests::reflexivity_global_self_encoding_preserves_root_and_successor_consequences ... ok
+test konclude_ht::bridge::tests::retained_base_reset_rolls_back_every_leftover_alternative_epoch ... ok
+test konclude_ht::bridge::tests::satcache_clash_replay_probe_unsat ... ok
+test konclude_ht::bridge::tests::satcache_absorption_terminates_exists_cycle ... ok
+test konclude_ht::bridge::tests::satcache_expansion_and_blocking_fire_in_probe ... ok
+test konclude_ht::bridge::tests::satcache_successful_root_writes_and_preserves_associated_expansion ... ok
+test konclude_ht::bridge::tests::saturation_answers_atmost_within_bound ... ok
+test konclude_ht::bridge::tests::saturation_atleast_over_atmost_not_sat_certain ... ok
+test konclude_ht::bridge::tests::saturation_answers_simple_taxonomy ... ok
+test konclude_ht::bridge::tests::saturation_atmost_merging_discount_sat ... ok
+test konclude_ht::bridge::tests::saturation_atmost_disjoint_successors_not_sat_certain ... ok
+test konclude_ht::bridge::tests::saturation_atmost_qualified_counting_sat ... ok
+test konclude_ht::bridge::tests::saturation_construction_ports_special_reference_and_exist_flags ... ok
+test konclude_ht::bridge::tests::saturation_defers_disjunction_subjects ... ok
+test konclude_ht::bridge::tests::saturation_certainties_agree_with_probe_classification ... ok
+test konclude_ht::bridge::tests::saturation_detects_unsat_concept ... ok
+test konclude_ht::bridge::tests::saturation_existential_applies_role_domain_before_certifying ... ok
+test konclude_ht::bridge::tests::saturation_extractor_reports_only_valid_intermediate_substitute_concepts ... ok
+test konclude_ht::bridge::tests::saturation_label_certification_gates_unconditional_edges ... ok
+test konclude_ht::bridge::tests::saturation_outcome_fingerprint_is_stable_and_semantically_sensitive ... ok
+test konclude_ht::bridge::tests::selective_writeback_preserves_untouched_neighbour_labels_and_versions ... ok
+test konclude_ht::bridge::tests::saturation_never_sat_certain_on_forall_exists_clash ... ok
+test konclude_ht::bridge::tests::satcache_classification_matches_plain ... ok
+test konclude_ht::bridge::tests::semantic_number_flag_selects_native_abox_profile_without_card_defs ... ok
+test konclude_ht::bridge::tests::singleton_value_identity_rejects_distinct_successors ... ok
+test konclude_ht::bridge::tests::source_closure_derives_definition_containment_transitively_without_the_converse ... ok
+test konclude_ht::bridge::tests::singleton_concept_merge_value_identity_unsat ... ok
+test konclude_ht::bridge::tests::source_absorber_registers_unabsorbed_equivalent_non_candidate ... ok
+test konclude_ht::bridge::tests::source_mode_does_not_promote_conjunctive_bottom_to_unit_bottom ... ok
+test konclude_ht::bridge::tests::source_post_closure_uses_semantic_pairs_to_discharge_a_definition ... ok
+test konclude_ht::bridge::tests::source_tbox_retains_rbox_domain_for_existential_saturation ... ok
+test konclude_ht::bridge::tests::source_mode_retains_exact_unit_bottom_certificates ... ok
+test konclude_ht::bridge::tests::structural_markers_are_not_classification_or_saturation_items ... ok
+test konclude_ht::bridge::tests::sparse_writeback_ignores_unselected_tag_zero_alias_but_rejects_selected_mismatch ... ok
+test konclude_ht::bridge::tests::successful_completion_writeback_is_transactional_and_enables_next_replay ... ok
+test konclude_ht::bridge::tests::terminal_separator_individual_retains_native_abox_coverage ... ok
+test konclude_ht::bridge::tests::source_tbox_propagates_complex_role_domain_back_through_chain ... ok
+test konclude_ht::bridge::tests::unrestored_advance_leftover_no_root_cancel ... ok
+test konclude_ht::bridge::tests::unfinished_saturation_seeds_cannot_publish_a_taxonomy ... ok
+test konclude_ht::bridge::tests::unsupported_abox_metadata_without_proxy_entries_defers ... ok
+test konclude_ht::bridge::tests::unsat_cache_warm_probes_keep_verdicts ... ok
+test konclude_ht::bridge::tests::independent_component_abox_profile_rejects_every_coupling_fence ... ok
+
+test result: ok. 604 passed; 0 failed; 7 ignored; 0 measured; 2475 filtered out; finished in 6.36s
+
+rc=0
