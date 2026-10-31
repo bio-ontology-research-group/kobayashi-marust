@@ -245,3 +245,88 @@ fn source_session_migrates_el_rules_el_and_rolls_back_a_declined_revision() {
     })]);
     assert_eq!(rows[7]["result"], fresh[0]["result"]);
 }
+
+/// ore_ont_7278-shaped input (`graph_data_rules.ofn`: the graph rules with
+/// long bodies over a data ABox). With `KM_DATA_ASSERTION_AS_CLASS=1` a
+/// revision that adds one object assertion reaches the incremental rule
+/// probe (`ht_delta`). The probe and the batch rule checker use the same join
+/// order, so they give the same verdict in comparable time; before, the
+/// probe matched these bodies in source order and ran for many minutes.
+#[test]
+fn incremental_rule_probe_matches_the_batch_checker_on_graph_rules() {
+    let source = include_str!("fixtures/graph_data_rules.ofn");
+    let axiom = "ObjectPropertyAssertion(<http://ontology.dumontierlab.com/isPartOf> \
+        <http://ontology.dumontierlab.com/III_2004> <http://ontology.dumontierlab.com/_2005>)\n";
+    let close = source.trim_end().rfind(')').unwrap();
+    let revised = format!("{}{}{}", &source[..close], axiom, &source[close..]);
+
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let path = dir.join(format!("graph-rules-revised-{}.ofn", std::process::id()));
+    std::fs::write(&path, &revised).unwrap();
+    let started = std::time::Instant::now();
+    let mut batch = Command::new(env!("CARGO_BIN_EXE_km"));
+    for (key, _) in std::env::vars_os() {
+        if key.to_string_lossy().starts_with("KM_") {
+            batch.env_remove(key);
+        }
+    }
+    let batch = batch
+        .env("KM_DATA_ASSERTION_AS_CLASS", "1")
+        .args(["classify", "--lines"])
+        .arg(&path)
+        .output()
+        .unwrap();
+    let batch_s = started.elapsed().as_secs_f64();
+    let _ = std::fs::remove_file(&path);
+    assert!(batch.status.success(), "{}", String::from_utf8_lossy(&batch.stderr));
+    let batch_out = String::from_utf8(batch.stdout).unwrap();
+    let batch_consistent = batch_out
+        .lines()
+        .find_map(|line| line.strip_prefix("CONSISTENT "))
+        .map(|v| v.trim() == "1")
+        .expect("batch verdict");
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_km"));
+    for (key, _) in std::env::vars_os() {
+        if key.to_string_lossy().starts_with("KM_") {
+            child.env_remove(key);
+        }
+    }
+    let mut child = child
+        .arg("incremental-source")
+        .env("KM_SOURCE_SESSION", "legacy")
+        .env("KM_DATA_ASSERTION_AS_CLASS", "1")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let mut stdout = std::io::BufReader::new(child.stdout.take().unwrap());
+    let mut rows = Vec::new();
+    let mut walls = Vec::new();
+    for (op, doc) in [("init", source.to_string()), ("replace", revised)] {
+        use std::io::BufRead;
+        let started = std::time::Instant::now();
+        serde_json::to_writer(&mut stdin, &serde_json::json!({"op": op, "functional_syntax": doc})).unwrap();
+        stdin.write_all(b"\n").unwrap();
+        stdin.flush().unwrap();
+        let mut line = String::new();
+        stdout.read_line(&mut line).unwrap();
+        walls.push(started.elapsed().as_secs_f64());
+        rows.push(serde_json::from_str::<serde_json::Value>(&line).unwrap());
+    }
+    drop(stdin);
+    let output = child.wait_with_output().unwrap();
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert_eq!(rows[1]["receipt"]["strategy"], "ht_delta", "{:#?}", rows[1]["receipt"]);
+    assert_eq!(rows[1]["result"]["consistent"], batch_consistent, "{rows:#?}");
+    // Comparable time: the probe does no more work than the batch checker's
+    // rule step (generous for a loaded host).
+    assert!(
+        walls[1] <= 3.0 * batch_s + 30.0,
+        "incremental revision {:.1}s, batch {:.1}s",
+        walls[1],
+        batch_s
+    );
+}

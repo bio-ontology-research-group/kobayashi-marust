@@ -227,6 +227,10 @@ fn rules_consistent(frontend: &FrontendResult) -> Result<bool, String> {
     let input = serde_json::to_string(&tin).map_err(|error| error.to_string())?;
     let _environment = crate::routing::EnvironmentGuard::capture();
     std::env::set_var("KM_RULES_CONSISTENCY", "1");
+    // The batch checker's join order (`orchestrate::rules_consistency`): long
+    // rule bodies are matched most selective atom first. Same matches, same
+    // verdict; without it ore_ont_7278's probe ran for many minutes.
+    std::env::set_var("KM_RULE_JOIN_ORDER", "1");
     std::env::remove_var("KM_HT");
     // `run` spawns one deep thread here (the caller's stack is unknown); the
     // checker's own deep-stack request then runs inline on it.

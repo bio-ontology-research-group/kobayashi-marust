@@ -4252,7 +4252,12 @@ fn rules_consistency(
     // do NOT set KM_HT here: the default Tableau is what seeds the nominal roots
     // and applies the o-rule in `consistent(&[])`.
     cmd.env_remove("KM_HT");
-    if require_source_model { cmd.env("KM_RULE_JOIN_ORDER", "1"); }
+    // Selective join order for long rule bodies on every rule-worker call
+    // (also the incremental probe, `incremental_rules::rules_consistent`). It
+    // reorders body atoms for matching only, so it changes the enumeration
+    // order and never the set of matches (docs/DL-SAFE-RULES.md, "One join
+    // order for both rule probes").
+    cmd.env("KM_RULE_JOIN_ORDER", "1");
     let mut child = cmd.spawn().map_err(|e| OrchestrateError::Spawn {
         bin: "tableau".into(),
         source: e,
