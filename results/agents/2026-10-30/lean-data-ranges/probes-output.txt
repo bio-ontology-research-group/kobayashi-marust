@@ -1,0 +1,18 @@
+== probes/string_ctrl.ofn
+-- km-dv3g classify (exit code, last line)
+exit 2
+invalid OWL 2 DL input: literal contains a character outside the XML character set
+-- HermiT oracle (first exception line)
+Exception in thread "main" org.semanticweb.HermiT.datatypes.MalformedLiteralException: Literal "x"^^<http://www.w3.org/2001/XMLSchema#string> is malformed
+== probes/string_ctrl_tbox.ofn
+-- km-dv3g classify (exit code, last line)
+exit 2
+invalid OWL 2 DL input: literal contains a character outside the XML character set
+-- HermiT oracle (first exception line)
+Exception in thread "main" org.semanticweb.HermiT.datatypes.MalformedLiteralException: Literal "x"^^<http://www.w3.org/2001/XMLSchema#string> is malformed
+== probes/string_ctrl_typed.ofn
+-- km-dv3g classify (exit code, last line)
+exit 2
+invalid OWL 2 DL input: literal contains a character outside the XML character set
+-- HermiT oracle (first exception line)
+Exception in thread "main" org.semanticweb.HermiT.datatypes.MalformedLiteralException: Literal "x"^^<http://www.w3.org/2001/XMLSchema#string> is malformed

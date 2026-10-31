@@ -1,0 +1,9 @@
+Prefix(:=<http://e.org/p#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(rdf:=<http://www.w3.org/1999/02/22-rdf-syntax-ns#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+Ontology(<http://e.org/p/string_ctrl_typed>
+Declaration(Class(:A)) Declaration(DataProperty(:p)) Declaration(NamedIndividual(:a))
+DataPropertyAssertion(:p :a "x"^^xsd:string)
+)
