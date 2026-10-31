@@ -155,8 +155,9 @@ then `e` is that individual), so the search reaches a clash-free leaf. The
 same argument with the root label `{A}` covers unsatisfiable classes.
 Candidate pruning in `Tableau::classify` only skips a `B` that is absent
 from the root label of a model of `{A}`, which that model refutes; on the
-nominal path the tableau records no dependency sets, so every remaining
-candidate is tested. The worker runs with the label cache and pseudo-model
+nominal path every remaining candidate is tested (since 2026-10-31 the
+careful path records dependency sets for backjumping, but it does not use
+them to skip candidate tests; see "Backjumping on the careful path"). The worker runs with the label cache and pseudo-model
 shortcuts off (`KM_TAB_CACHE`, `KM_HT_CACHE`, `KM_HT_PMMERGE` removed).
 
 The inert-sort release (docs/NOMINALS-CB.md section 6, "Inert object sorts
@@ -356,6 +357,130 @@ ground clauses that result.
 (`lean/run-rules-certification-gate.sh`), the 400 `gen_finite_rules.py`
 seeds with the checker on, and the cost of emission and checking on
 ore_ont_7278.
+
+## Backjumping on the careful path (2026-10-31, v1.5.5)
+
+### Defect
+
+The rule worker's `Tableau` searches with its careful (merge-capable)
+expansion whenever the input has nominals, number restrictions or inverse
+roles, and always when `KM_RULES_LEAN_CERT` records certificates; that is
+every rule-aware taxonomy beside a nominal. The careful expansion recorded
+no dependencies and backtracked chronologically. On fr6 the model search
+for `{A}` sat at five nodes and re-tried three unguarded disjunctions
+(`⊤ → P ∨ Q ∨ R`) on every node tens of thousands of times after a clash
+that none of them caused (49,260 branchings on one clause before the run
+was stopped at 170 s); fr270 took 44 s.
+
+### Change
+
+`Tableau::expand_careful_at` (engine/src/tableau.rs) tracks dependency
+sets and backjumps:
+
+- A disjunction opens decision level `L`; its head atom depends on `L` and
+  on the dependency set of the matched body. Every derived fact depends on
+  the union of the dependency sets of the facts its match used and of the
+  existence dependencies of every node the match binds. A fresh successor
+  depends on its obligation (the same set becomes the node's existence
+  dependency, `Graph::ndep`). A merge (equality head, nominal o-rule)
+  depends on the facts that forced it, and every fact it moves onto the
+  survivor depends on the merge and on its own set (`Graph::merge`, undone
+  with the merge).
+- A clash returns the union of the two literals' sets; an empty-head clause
+  returns its body set. Among several clashes the one with the lowest
+  highest level is taken.
+- If the refutation of an alternative at level `L` does not depend on `L`,
+  the remaining alternatives are skipped and the conflict is returned to
+  the parent. Otherwise `L` is removed and the sets of all alternatives are
+  united with the split's body set. Loop-back choices of the pairwise path
+  are levels in the same way; the fresh-successor alternative is a
+  deterministic step, so its refutation is returned as it is.
+- `KM_TAB_CAREFUL_INC` (delta saturation, which records no dependencies)
+  and `KM_TAB_CAREFUL_NOBJ` give every conflict all open levels, which is
+  the previous chronological search.
+- `Tableau::classify` still tests every candidate subsumer on the careful
+  path: a root fact with an empty set is entailed, but a certificate needs
+  a recorded refutation for each published subsumption, so the told-subsumer
+  shortcut of the non-careful path stays off here.
+
+### Exactness argument
+
+Each dependency set over-approximates the decisions a fact was derived
+from: induction over the derivation, since every inference rule unites the
+sets of its premises (including the existence of the nodes it touches, so
+a node-triggered clause on a fresh node inherits the node's set). A
+refutation with set `D` is therefore a derivation of a contradiction from
+the input clauses, the root label and the alternatives chosen at the
+levels in `D`. If `L ∉ D`, the same derivation exists in every sibling
+branch at `L`, since siblings share all decisions below `L`, so each
+sibling is unsatisfiable and skipping it removes no model. Blocking only
+decides which successors are generated; it never adds a fact, so it does
+not enter this argument. A satisfiable branch is still found by the same
+search, so models and non-subsumptions are unchanged. Exactness rests on
+the dependency bookkeeping being complete; with certificates on, the Lean
+checker verifies every refutation the search publishes (below), so a
+bookkeeping error there makes the worker fail closed rather than answer.
+
+### Certificates
+
+A backjump is recorded as a `Skip { level, child }` end: the steps since
+the choice, then the refuted alternative's proof. Each recorded step
+carries its dependency set. Before a refutation is stored,
+`RProof::resolve` (engine/src/tableau_rules_cert.rs) rewrites the proof
+for the Lean checker, whose format is unchanged: a skip at `L` becomes its
+child with every step whose set contains a skipped level dropped. Every
+fact a kept step uses has a set contained in the step's set, so it comes
+from a kept step, from the initial state or from the head of an enclosing
+split that is kept; facts depending on `L` all descend from the skipped
+alternative, which the parent state lacks. Dropping a witness removes its
+node, so the remaining nodes are renumbered in creation order (the checker
+numbers witnesses consecutively; merges keep the lower number, and the
+renumbering preserves order). A kept step or end that names a dropped node
+contradicts the invariant: the proof is then invalid, the answer has no
+certificate, and with `KM_RULES_LEAN_CHECKER` the worker fails closed. I
+chose this over expanding the skipped branches when a certificate is
+requested: the certified search is the search that publishes, so it has to
+be fast too, and the pruned proof is no larger than the explored branch.
+
+### Lean obligation
+
+No new Lean statement: the resolved proofs are ordinary refutations of
+`RulesRouteRefutation.lean`, accepted by `checkProof` and covered by
+`checkProof_sound` and `WireRulesCertificate.check_sound` as before. With
+the checker on, every published unsatisfiable class, subsumption and
+inconsistency is checked. Open: without the checker, the correctness of
+backjumping (that the recorded dependency sets over-approximate the
+derivations) is argued here and tested, not proved; a Lean proof would
+state that a refutation whose steps avoid level `L` refutes the parent
+state, or the worker could resolve and check every refutation always.
+
+### Evidence
+
+`results/agents/2026-10-30/rules-tableau/README.md`: fr6 and fr270, the
+400 `gen_finite_rules.py` seeds with the Lean checker on, the unit tests
+`careful_backjumping_skips_choices_the_refutation_does_not_use` and
+`backjumped_refutation_resolves_to_a_checkable_proof`.
+
+## One join order for both rule probes (2026-10-31, v1.5.5)
+
+`KM_RULE_JOIN_ORDER=1` makes the rule worker's matcher order the atoms of a
+long rule body (six or more concept and role atoms) most selective first
+(`Tableau::selective_match_clause`). The batch checker set it only in
+source-model mode; the incremental probe
+(`incremental_rules::rules_consistent`) never set it, and on ore_ont_7278
+the worker input took 8 s with it and more than 100 s without. Both probes
+now set it on every rule-worker call (`orchestrate::rules_consistency`,
+`incremental_rules::rules_consistent`; the routing environment guard
+restores it).
+
+Exactness: the reordering is a permutation of the body conjunction for
+matching, so a body has the same set of satisfying substitutions in every
+order. Horn saturation enumerates all of them, so it reaches the same
+fixpoint; the branch selection takes the first open disjunction in a
+different enumeration order, which changes the order of the search, not
+its completeness. The verdict, and with certificates the checked evidence,
+is the same. Lean obligation: none (the certificate records the steps the
+search took, whatever their order).
 
 ## Historical precheck design and corpus investigations
 
