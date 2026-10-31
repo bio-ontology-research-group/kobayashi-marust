@@ -1,0 +1,5 @@
+0 reuse [('common_module_reuse', 1.2), ('common_module_reuse', 1.11)] fresh-init [('full_classify', 15.06), ('full_classify', 14.8)]
+1 reuse [('common_module_reuse', 1.02), ('common_module_reuse', 0.81)] fresh-init [('full_classify', 14.28), ('full_classify', 19.11)]
+2 reuse [('common_module_reuse', 1.19), ('common_module_reuse', 1.0)] fresh-init [('full_classify', 19.08), ('full_classify', 13.21)]
+3 reuse [('common_module_reuse', 1.5), ('common_module_reuse', 1.03)] fresh-init [('full_classify', 12.23), ('full_classify', 18.98)]
+4 reuse [('common_module_reuse', 1.35), ('common_module_reuse', 1.3)] fresh-init [('full_classify', 26.57), ('full_classify', 16.41)]
