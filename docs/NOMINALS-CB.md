@@ -1635,3 +1635,12 @@ Exact `nominals` route, HermiT oracle.
   what makes r1600 complete, and a cheaper form needs the completeness
   argument this section leaves open. `top_nominal_data_successors::
   hermit_answers_on_every_route` fails its 120 s bound on these routes.
+- The "object value instead of data value" case of
+  `universal_role_and_top_data_range::data_value_singleton_next_to_nominal_successors`
+  (`¬(p value e) ⊑ B` with `S6 ≡ {c} ⊓ ∃r.{d} ⊓ ∃r⁻.{d}`; same agent, same
+  day) has the same profile: forced `nominals` 0.4 s at e62a4bce and
+  a2e98d95, no answer in 60 s at 6c48c72e on the sorted and the released
+  clause set alike, 0.35 s with `KM_NO_MERGE_HYPOTHESES=1`;
+  `certified_nominals` 0.05 s, `nominal_ni_abox` 20 s,
+  `certified_card_proxy_abox` over 60 s. The test fails its 10 s bound from
+  the r1600 merge on; the other six cases of the test answer in 0.02 s.
