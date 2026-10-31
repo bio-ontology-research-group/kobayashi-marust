@@ -3288,10 +3288,36 @@ impl Context {
 /// of the ALCHOIQ calculus). Heads are full literals so those equalities
 /// survive the crossing; without individuals only `Lit::P` heads ever enter
 /// the pred pool, so this is representation-only for the SRIQ fragment.
+///
+/// `resolve` (sorted, a subset of `body`) lists the premises `A_iσ` that the
+/// Pred rule must resolve against a predecessor clause with `A_iσ` maximal:
+/// on an edge labelled by a composite `f(o)` (the ground context's own
+/// successor edges) the substitution `{y↦o, x↦f(o)}` makes every image of an
+/// atom over `x` ground, and only the atoms that were already ground in the
+/// sender are the verbatim-copied `C_i` of arXiv:1805.01396 Table 2
+/// (docs/PER-CONTEXT-ORDERING.md section 15). Empty on every other edge.
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct PredClause {
     body: Vec<Pred>,
     head: Vec<Lit>,
+    resolve: Vec<Pred>,
+}
+
+impl PredClause {
+    /// Whether the body atom `bp`, without a provider in the receiver, is a
+    /// ground label `C_i` that the Pred rule copies verbatim into the
+    /// conclusion (as opposed to a premise `A_iσ` that has to wait for one).
+    fn copies_verbatim(&self, bp: Pred) -> bool {
+        bp.is_ground() && (pred_copy_all() || self.resolve.binary_search(&bp).is_err())
+    }
+}
+
+/// `KM_PRED_COPY_ALL`: diagnostic switch restoring the pre-v1.5.5 Pred into
+/// the ground context, which copied every ground image `A_iσ` without a
+/// provider into the conclusion's body as a label (section 15).
+fn pred_copy_all() -> bool {
+    static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *FLAG.get_or_init(|| std::env::var_os("KM_PRED_COPY_ALL").is_some())
 }
 
 #[derive(Clone, Copy)]
@@ -6297,7 +6323,7 @@ impl Engine {
                 let mut v = Vec::new();
                 v.extend(ctx.max_head_pred(bp).iter().map(|ci| (ci as usize, bp)));
                 if v.is_empty() {
-                    if bp.is_ground() {
+                    if pc.copies_verbatim(bp) {
                         ground.push(bp);
                         continue;
                     }
@@ -6445,7 +6471,7 @@ impl Engine {
                 let mut v = Vec::new();
                 v.extend(ctx.max_head_pred(bp).iter().map(|ci| (ci as usize, bp)));
                 if v.is_empty() {
-                    if bp.is_ground() {
+                    if pc.copies_verbatim(bp) {
                         ground.push(bp);
                         continue;
                     }
@@ -8355,6 +8381,28 @@ impl Engine {
         for p in &from_ctx.core {
             body.push(p.apply(&subst));
         }
+        // On a composite edge `f(o)` the images of the sender's atoms over `x`
+        // are the premises `A_iσ`; the sender's own ground atoms are the
+        // labels `C_i`. An image that coincides with a label stays copyable.
+        let mut resolve: Vec<Pred> = Vec::new();
+        if is_comp(f) {
+            let mentions_x = |p: &Pred| match *p {
+                Pred::Concept { t, .. } => t == X,
+                Pred::Role { s, t, .. } => s == X || t == X,
+            };
+            let senders = clause.body.iter().chain(from_ctx.core.iter());
+            let labels: Vec<Pred> = senders.clone().filter(|p| p.is_ground()).copied().collect();
+            for p in senders {
+                if mentions_x(p) {
+                    let image = p.apply(&subst);
+                    if !labels.contains(&image) {
+                        resolve.push(image);
+                    }
+                }
+            }
+            resolve.sort();
+            resolve.dedup();
+        }
         // Full literals: pool-eligible heads are predicates plus (nominal
         // mode) the individual equality forms; `x ≈ o` crosses as
         // `f(x) ≈ o`, which the receiver's Eq rule then rewrites.
@@ -8369,7 +8417,7 @@ impl Engine {
         let mut head: Vec<Lit> = clause.head.iter().map(|l| l.apply(&subst)).collect();
         head.sort();
         head.dedup();
-        PredClause { body, head }
+        PredClause { body, head, resolve }
     }
 
     /// The receiver-side half of a Pred message: intern the back-substituted
@@ -8515,7 +8563,7 @@ impl Engine {
             let mut v = Vec::new();
             v.extend(ctx.max_head_pred(bp).iter().map(|ci| (ci as usize, bp)));
             if v.is_empty() {
-                if bp.is_ground() {
+                if pc.copies_verbatim(bp) {
                     ground.push(bp);
                     continue;
                 }
@@ -8639,7 +8687,7 @@ impl Engine {
                     .map(|clause_id| (clause_id, body_predicate))
                     .collect();
                 if providers.is_empty() {
-                    if body_predicate.is_ground() {
+                    if payload.copies_verbatim(body_predicate) {
                         ground.push(body_predicate);
                     } else {
                         possible = false;
@@ -12337,6 +12385,7 @@ mod tests {
         e.pred_interned.push(PredClause {
             body: vec![max, other],
             head: vec![],
+            resolve: Vec::new(),
         });
         e.certificate_history = Some(Vec::new());
         e.pred_origins.push(Some(PredOrigin {
@@ -12413,6 +12462,7 @@ mod tests {
         let pred = PredClause {
             body: vec![p1, p2, p3],
             head: vec![h],
+            resolve: Vec::new(),
         };
 
         let incremental = e.pred_from_neighbor_ordered(0, &pred, false, false);
@@ -12521,7 +12571,7 @@ mod tests {
             } else {
                 vec![extra[0], extra[1]]
             };
-            e.pred_interned.push(PredClause { body, head });
+            e.pred_interned.push(PredClause { body, head, resolve: Vec::new() });
             e.contexts[0]
                 .neighbor_pred_body_index
                 .entry(trigger)
@@ -12596,6 +12646,7 @@ mod tests {
         e.pred_interned.push(PredClause {
             body,
             head: vec![h],
+            resolve: Vec::new(),
         });
         e.contexts[0]
             .neighbor_pred_body_index
@@ -12644,6 +12695,57 @@ mod tests {
         let payload = e.pred_payload(0, edge, 0);
         assert_eq!(payload.body, vec![cx(a, edge)]);
         assert_eq!(payload.head, vec![Lit::P(cx(b, o))]);
+    }
+
+    /// docs/PER-CONTEXT-ORDERING.md section 15.2: on a composite edge `f(o)`
+    /// the image `A(f(o))` of a sender atom `A(x)` is a premise of Pred that
+    /// must resolve against a receiver clause with it maximal, while a sender
+    /// atom that is already ground (`L(o')`) is a label `C_i` and is copied.
+    #[test]
+    fn composite_edge_pred_resolves_premises_and_copies_labels() {
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let b = sig.concept("B");
+        let l = sig.concept("L");
+        let o = ind_term(1);
+        let o2 = ind_term(2);
+        let edge = comp_term(fterm(1), o);
+        let mut e = Engine::new(sig, vec![], 0);
+        // context 0: the receiver (no clause yet); context 1: the sender.
+        e.contexts.push(Context::new(0, vec![], false, None));
+        e.contexts.push(Context::new(1, vec![], false, None));
+        e.cc_arena[0].push(ContextClause::new(
+            vec![cx(a, X), cx(l, o2)],
+            vec![Lit::P(cx(b, Y))],
+            false,
+            &e.sig,
+        ));
+        e.contexts[1].delta.pred_pool.push(0);
+        let payload = e.pred_payload(1, edge, 0);
+        assert_eq!(payload.body, vec![cx(a, edge), cx(l, o2)]);
+        assert_eq!(payload.resolve, vec![cx(a, edge)]);
+        assert!(!payload.copies_verbatim(cx(a, edge)));
+        assert!(payload.copies_verbatim(cx(l, o2)));
+        // No provider for `A(f(o))`: no conclusion (the pre-v1.5.5 rule made
+        // `A(f(o))` a label of `A(f(o)) ∧ L(o') → B(o)`).
+        assert!(e.pred_from_neighbor(0, &payload, false).is_empty());
+        // A provider `→ A(f(o)) ∨ B(o2)` with `A(f(o))` maximal resolves it;
+        // the label `L(o')` is copied.
+        e.cc_arena[0].push(ContextClause::new(
+            vec![],
+            vec![Lit::P(cx(a, edge))],
+            false,
+            &e.sig,
+        ));
+        e.contexts[0].delta.worked_off.push(1);
+        e.contexts[0].delta.index_clause(&e.cc_arena[0], 1);
+        let out = e.pred_from_neighbor(0, &payload, false);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].body, vec![cx(l, o2)]);
+        assert_eq!(out[0].head, vec![Lit::P(cx(b, o))]);
+        // An ordinary edge marks nothing.
+        let plain = e.pred_payload(1, fterm(1), 0);
+        assert!(plain.resolve.is_empty());
     }
 
     #[test]
