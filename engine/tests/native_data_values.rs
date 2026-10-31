@@ -184,18 +184,22 @@ fixture_test!(disjoint_data_properties, "disjoint_data_properties");
 fixture_test!(disjoint_data_properties_ok, "disjoint_data_properties_ok");
 fixture_test!(atleast_two_shared, "atleast_two_shared");
 fixture_test!(negative_assertion, "negative_assertion");
-// The nominal CB routes miss this inconsistency (also in v1.5.4, and with
-// singleton clauses): `a = b` by an inverse-functional property, then `≤ 1 u`
-// over the two Skolem data successors. The object-property analogue is
-// answered correctly. Reported in results/agents/2026-10-30/data-values/.
-fixture_test!(inverse_functional_merge, "inverse_functional_merge", auto_only);
+// `a = b` by an inverse-functional property, then `≤ 1 u` over the two
+// asserted values. The data-ABox omission certificate used to declare the
+// assertions redundant (its merge closure ignores inverse functionality), so
+// the nominal CB routes answered consistent (2026-10-31,
+// results/agents/2026-10-31/forced-nominal-data-misses/).
+fixture_test!(inverse_functional_merge, "inverse_functional_merge");
 
-/// Pre-existing incompleteness of the nominal CB routes (v1.5.4 misses the
-/// same subsumption): `a` has the value 1 and `≥ 3 u` over `{1, 2, 3}`, so
-/// `a` has the value 3 and `E ⊑ F`.
-#[test]
-#[ignore = "pre-existing nominal CB incompleteness, see results/agents/2026-10-30/data-values/README.md"]
-fn count_with_assertions_ok() { check("count_with_assertions_ok", &NOMINAL_ROUTES); }
+/// `a` has the value 1 and `≥ 3 u` over `{1, 2, 3}`, so `a` has the value 3
+/// and `E ⊑ F`. The native bridge lost the pigeonhole through its
+/// satisfiable expander cache (value singletons are non-local) and admitted
+/// the asserted `≥ 3 u` that it defers as a TBox axiom.
+fixture_test!(count_with_assertions_ok, "count_with_assertions_ok");
+// The same pigeonhole without assertions: `G ⊑ ≥ 2 u` over `xsd:boolean`
+// entails `G ⊑ ∃u.{true}`; the bridge answered it on every route.
+fixture_test!(count_boolean_pigeonhole, "count_boolean_pigeonhole");
+fixture_test!(count_nominal_pigeonhole, "count_nominal_pigeonhole");
 
 // Findings of docs/DATATYPES.md "Lean coverage (2026-10-30)".
 // Singleton elision needs every value relation decided (finding 1), and the
