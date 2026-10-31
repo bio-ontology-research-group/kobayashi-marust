@@ -26,6 +26,19 @@ checker then verifies
   under every assignment, has a witness for every existential obligation, and
   has no complementary labels (`FiniteSatCertificate.checkSat`).
 
+For every blocked node listed in `predecessorFolds` (wire field
+`predecessor`, since 2026-10-31) the blocked position also receives copies of
+the edges between `w'` and its own predecessor `p'` (the classical
+unravelling, one level further up; the predecessor fold): a blocker
+that witnesses an existential through the inverse edge to `p'` passes that
+witness on to `w`'s position. The copied edges make the blocked position a
+second neighbour of `p'` with the label of `w'`, so a clause that counts
+neighbours of `p'` (two neighbour variables and an equality head, for example
+a functional role) can fail at `p'`; `checkSat` evaluates every clause under
+every assignment, so such a fold is rejected, never accepted. The old folds
+(an empty `predecessorFolds`, with or without relabelling) stay available,
+and the engine selects the predecessor fold per pair.
+
 The blocking pairs and the predecessor relation are untrusted: they only
 decide which graph is materialized, and `check_sound` has no premise about
 them. In particular the relevance condition on gained literals (`SubsetGain`)
@@ -52,6 +65,10 @@ structure SubsetUnravelling (nodeCount conceptCount roleCount variableCount : Na
   own label and obligations and only receives the blocker's successor edges
   (the fold of `HypertableauBlockingCertificate`). -/
   relabel : Bool
+  /-- Blocked nodes whose position also receives copies of the edges
+  between their blocker and the blocker's own predecessor (the predecessor
+  fold); the others receive only the blocker's successor edges. -/
+  predecessorFolds : List (Fin nodeCount) := []
 
 namespace SubsetUnravelling
 
@@ -60,13 +77,37 @@ variable (u : SubsetUnravelling nodeCount conceptCount roleCount variableCount)
 def isBlocked (node : Fin nodeCount) : Bool :=
   u.folds.any fun fold => decide (fold.1 = node)
 
-/-- The edges between a blocker and its own successors, redirected to the
-blocked position. -/
+/-- Is `other` a neighbour of the blocker `fold.2` whose edges the blocked
+position `fold.1` copies: a successor of the blocker, and for a predecessor
+fold also a predecessor of the blocker? -/
+def copiedNeighbour (fold : Fin nodeCount × Fin nodeCount) (other : Fin nodeCount) : Prop :=
+  (other, fold.2) ∈ u.parents ∨ (fold.1 ∈ u.predecessorFolds ∧ (fold.2, other) ∈ u.parents)
+
+instance (fold : Fin nodeCount × Fin nodeCount) (other : Fin nodeCount) :
+    Decidable (u.copiedNeighbour fold other) := by
+  unfold copiedNeighbour; infer_instance
+
+/-- Without predecessor folds the copied neighbours are exactly the
+blocker's successors: the successor fold of the earlier wire is unchanged. -/
+theorem copiedNeighbour_of_predecessorFolds_nil (hnil : u.predecessorFolds = [])
+    (fold : Fin nodeCount × Fin nodeCount) (other : Fin nodeCount) :
+    u.copiedNeighbour fold other ↔ (other, fold.2) ∈ u.parents := by
+  simp [copiedNeighbour, hnil]
+
+/-- A predecessor fold copies the edges to the blocker's predecessor. -/
+theorem copiedNeighbour_predecessor {fold : Fin nodeCount × Fin nodeCount} {other : Fin nodeCount}
+    (hfold : fold.1 ∈ u.predecessorFolds) (hparent : (fold.2, other) ∈ u.parents) :
+    u.copiedNeighbour fold other :=
+  Or.inr ⟨hfold, hparent⟩
+
+/-- The edges between a blocker and its own successors (and, for a
+predecessor fold, its own predecessor), redirected to the blocked
+position. -/
 def copiedEdges (fold : Fin nodeCount × Fin nodeCount) :
     List (Fin roleCount × Fin nodeCount × Fin nodeCount) :=
   u.base.edges.flatMap fun edge =>
-    (if edge.2.1 = fold.2 ∧ (edge.2.2, fold.2) ∈ u.parents then [(edge.1, fold.1, edge.2.2)] else []) ++
-    (if edge.2.2 = fold.2 ∧ (edge.2.1, fold.2) ∈ u.parents then [(edge.1, edge.2.1, fold.1)] else [])
+    (if edge.2.1 = fold.2 ∧ u.copiedNeighbour fold edge.2.2 then [(edge.1, fold.1, edge.2.2)] else []) ++
+    (if edge.2.2 = fold.2 ∧ u.copiedNeighbour fold edge.2.1 then [(edge.1, edge.2.1, fold.1)] else [])
 
 /-- The unravelled finite model. -/
 def materialize : FiniteSatCertificate nodeCount conceptCount roleCount variableCount where
@@ -103,7 +144,9 @@ def check : Bool :=
 
 /-- **Soundness.** An accepted unravelling is a finite model of the exact
 ontology of the certificate in which the root satisfies every seed literal. No
-property of `folds` or `parents` is assumed. -/
+property of `folds`, `parents` or `predecessorFolds` is assumed, so the
+statement covers the successor fold, the predecessor fold and the own-label
+fold alike. -/
 theorem check_sound (hcheck : u.check = true) :
     ∃ I : Interp (Fin nodeCount) (Fin conceptCount) (Fin roleCount),
       I.models u.base.ontology ∧ ∀ literal ∈ u.seed, I.satLit literal u.root := by
@@ -162,6 +205,9 @@ structure WireSubsetUnravelling where
   seed : List WireLit
   /-- Absent means `true`. -/
   relabel : Option Bool := none
+  /-- `predecessorFolds` (blocked nodes); absent means none (the fold
+  before 2026-10-31). -/
+  predecessor : Option (List Nat) := none
 deriving FromJson, ToJson, Repr
 
 structure DecodedSubsetUnravelling where
@@ -184,12 +230,16 @@ def WireSubsetUnravelling.decode (wire : WireSubsetUnravelling) :
   let folds ← wire.folds.mapM (WireSubsetPair.decode decoded.nodeCount)
   let root ← checkedFin "node" decoded.nodeCount wire.root
   let seed ← wire.seed.mapM (WireLit.decode decoded.conceptCount)
+  let predecessorFolds ← (wire.predecessor.getD []).mapM (checkedFin "node" decoded.nodeCount)
   return {
     nodeCount := decoded.nodeCount
     conceptCount := decoded.conceptCount
     roleCount := decoded.roleCount
     variableCount := decoded.variableCount
-    unravelling := { base := decoded.certificate, parents, folds, root, seed, relabel := wire.relabel.getD true }
+    unravelling := {
+      base := decoded.certificate, parents, folds, root, seed
+      relabel := wire.relabel.getD true
+      predecessorFolds }
   }
 
 def WireSubsetUnravelling.check (wire : WireSubsetUnravelling) : Except String Bool := do
@@ -256,9 +306,56 @@ example : ({ folded with
     SubsetUnravelling 3 2 1 2).check = false := by
   native_decide
 
+/-- The inverse-witness shape of docs/HYBRID-CB-HT.md section 9. Concepts
+`A = 0`, `B = 1`, `C = 2`; roles `s = 0` and its inverse `r = 1`. Node 0
+(`B`, `C`) has the `s`-successor 1 (`A`), which has the `s`-successor 2
+(`A`); node 2 is blocked by 1. Node 1 witnesses `A ⊑ ∃r.C` through the
+inverse edge to its predecessor 0. The successor fold gives node 2's
+position that obligation without a witness (node 1 lacks `C`); the
+predecessor fold also copies `r(1, 0)` and `s(0, 1)` to node 2. -/
+private def inverseOntology : List (Clause (Fin 3) (Fin 3) (Fin 2)) := [
+  { body := [.concept (.pos 1) 0], head := [.exists_ 0 (.pos 0) 0] },
+  { body := [.concept (.pos 0) 0], head := [.exists_ 0 (.pos 0) 0] },
+  { body := [.concept (.pos 0) 0], head := [.exists_ 1 (.pos 2) 0] },
+  { body := [.role 0 0 1], head := [.role 1 1 0] },
+  { body := [.role 1 0 1], head := [.role 0 1 0] }
+]
+
+private def inverseWitness : SubsetUnravelling 3 3 2 3 where
+  base := {
+    ontology := inverseOntology
+    labels := [(0, .pos 1), (0, .pos 2), (1, .pos 0), (2, .pos 0)]
+    edges := [(0, 0, 1), (1, 1, 0), (0, 1, 2), (1, 2, 1)]
+    obligations := [(0, .pos 0, 0), (0, .pos 0, 1), (1, .pos 2, 1)]
+  }
+  parents := [(1, 0), (2, 1)]
+  folds := [(2, 1)]
+  root := 0
+  seed := [.pos 1]
+  relabel := true
+
+/-- The successor fold is not a model here. -/
+example : inverseWitness.check = false := by native_decide
+
+/-- The predecessor fold is. -/
+example : ({ inverseWitness with predecessorFolds := [2] } : SubsetUnravelling 3 3 2 3).check = true := by
+  native_decide
+
+/-- A functional `s` (`s(x, y) ∧ s(x, z) → y = z`) is satisfied by the
+terminal, but the predecessor fold gives node 0 the two `s`-successors 1 and
+2: the counting clause fails at the copied predecessor and the fold is
+rejected. -/
+example : ({ inverseWitness with
+    predecessorFolds := [2]
+    base := { inverseWitness.base with
+      ontology := inverseOntology ++ [{ body := [.role 0 0 1, .role 0 0 2], head := [.eq 1 2] }] } } :
+    SubsetUnravelling 3 3 2 3).check = false := by
+  native_decide
+
 end SubsetUnravellingTests
 
 #print axioms SubsetUnravelling.check_sound
+#print axioms SubsetUnravelling.copiedNeighbour_of_predecessorFolds_nil
 #print axioms SubsetUnravelling.check_not_unsatisfiable
 #print axioms SubsetUnravelling.check_not_entailsSub
 #print axioms WireSubsetUnravelling.check_sound

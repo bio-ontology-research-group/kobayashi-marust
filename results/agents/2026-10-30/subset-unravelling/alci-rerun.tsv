@@ -1,0 +1,4 @@
+1478	km-error	26	0	11	0	KM_HT_SUBSET_MODEL_CERT terminal=36 nodes=55 folds=43 predecessor_folds=2 written
+SUMMARY Counter({'km-error': 1}) acc 26 rej 0 cert-timeout 11 noemit 0 seeds-with-rej 0 WRONG-with-rej 0
+645	ok	12	0	19	0	
+SUMMARY Counter({'ok': 1}) acc 12 rej 0 cert-timeout 19 noemit 0 seeds-with-rej 0 WRONG-with-rej 0

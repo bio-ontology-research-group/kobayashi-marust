@@ -678,6 +678,162 @@ Measurements (`results/agents/2026-10-30/subset-blocking-gap/`):
   after the blocking-cost fix: 65 s on an idle host). Outputs identical to
   the base binary (md5).
 
+### Predecessor fold (2026-10-31, `fix/v155-subset-unravelling`)
+
+The conservative rule above made the finite fold a model by rejecting
+pairs, which cost five generated ALCI seeds their answer within 300 s.
+This change moves the work to the certificate instead: the fold copies one
+more level of the classical unravelling, and the admission rule returns to
+the exact condition for the pairs that fold covers.
+
+Lean (`HypertableauSubsetUnravelling.lean`). `SubsetUnravelling` has a new
+field `predecessorFolds` (wire field `predecessor`, a list of blocked
+nodes; absent means none, the earlier wire). For a pair `(w, w')` whose
+`w` is listed, `copiedEdges` copies, besides the edges between `w'` and its
+successors, the edges between `w'` and its own predecessor `p'` (a node
+`p` with `(w', p) ∈ parents`), in both directions, to `w`'s position. `p'`
+keeps its own label; with relabelling `w`'s position has `L(w')` and
+`w'`'s obligations, so an obligation `w'` witnesses through `r(w', p')`
+is witnessed at `w` through the copy `r(w, p')`. The successor fold and the
+own-label fold stay available (`predecessorFolds = []`;
+`copiedNeighbour_of_predecessorFolds_nil` states that the copied
+neighbours are then exactly the blocker's successors).
+
+Proved statement (unchanged in form, now over every choice of
+`predecessorFolds`): `SubsetUnravelling.check_sound : u.check = true →
+∃ I : Interp (Fin nodeCount) (Fin conceptCount) (Fin roleCount),
+I.models u.base.ontology ∧ ∀ literal ∈ u.seed, I.satLit literal u.root`,
+and `WireSubsetUnravelling.check_sound` for the decoded wire document. No
+sorry; axioms propext, Classical.choice, Quot.sound. The proof does not
+depend on how `materialize` builds the graph: `check` runs
+`FiniteSatCertificate.checkSat` on it, which evaluates every clause under
+every assignment, checks every obligation's witness and every label for a
+clash, and acceptance gives the canonical model of the materialized graph.
+
+Counting clauses at the copied predecessor. The copies make `w`'s position
+a second neighbour of `p'` with the label of `w'`. A clause that counts
+`p'`'s neighbours (two neighbour variables and an equality head, for example
+a functional or inverse-functional role) may then fail at `p'`; `checkSat`
+finds the failing assignment and `check` returns false, so the fold is
+rejected, never accepted. `SubsetUnravellingTests` has this case (a
+functional `s` over the inverse-witness terminal), next to one where the
+successor fold fails and the predecessor fold is accepted.
+
+Engine. `SubsetGain::back_need(m)` no longer lists an obligation that `m`
+witnesses at `pred(m)` when `pred_fold_ok(m)` holds; `back_need_strict(m)`
+is the rule of 2026-10-30. `pred_fold_ok(m)`: `m` has a predecessor `p'`,
+no role of an edge `m -r-> p'` is in `multi_in` and no role of an edge
+`p' -r-> m` is in `multi_out` (no clause counts that edge at `p'`), and no
+clause body has two role atoms between the same two variables
+(`SubsetGain::parallel`; with such a clause, for example disjoint roles,
+the blocked node's own kept edges to `p'` and the copies would be read
+together). The certificate emitter lists `w` in `predecessor` exactly when
+`back_witnessed(w, back_need_strict(m))` fails, so every pair the earlier
+rule admitted keeps the successor fold; it records the number
+(`predecessor_folds=`) and the variant (`relabel+predecessor`) in the
+`KM_HT_SUBSET_MODEL_CERT` line. Under `KM_HT_SUBSET_MODEL_CHECKER` a
+rejected document is retried with the own label, as before, and a
+rejection of both still fails closed.
+
+Exactness. The admission rule is now the body-literal rule, the
+counted-role rule and the residual `back_need`. The answers rest on the
+infinite unravelling of "Inverse witnesses" above, which copies all of
+`w'`'s neighbours and needs only the first two rules; the residual
+`back_need` only withholds pairs, so it cannot change an answer, and it
+only affects which terminal the search reaches. The finite fold is checked
+by Lean, not argued. Why the predecessor fold should pass on the pairs the
+rule now admits (a claim the runs test, not a proof): at `w`'s position
+every instance over copied edges reads the same labels and edges as at
+`w'`; at `p'` an instance over a copied edge reads `w`'s position as it
+reads `w'`, unless it counts neighbours (`pred_fold_ok`) or reads two role
+atoms on one pair (`parallel`); instances over kept edges are those of the
+body-literal rule.
+
+Shapes still outside the predecessor fold, for which `back_need` stays:
+
+- an obligation that `m` witnesses only through a non-successor other
+  than `pred(m)` (an edge a merge redirected to another node);
+- an edge between `m` and `pred(m)` on a role counted at `pred(m)`
+  (`multi_in` / `multi_out`: number restrictions, functional roles);
+- a clause with two role atoms between the same two variables
+  (`parallel`);
+- the card arm and runs with nominals, where `back` is false and no
+  certificate is emitted (unchanged).
+
+Merged victims (seeds 141 and 548 of the 700-seed corpus). The certificate
+drops a merged victim and, through `pred`, every successor of it, while the
+checked scans posted the victim as a candidate blocker and treated its
+successors as ordinary unblocked nodes; a node whose only admitted blocker
+was one of these had no certificate ("blocked node has no admitted
+unblocked blocker"). Two changes: the checked scans (mode 1 with a
+non-trivial `SubsetGain`, and mode 5) no longer post a merged victim as a
+candidate (`Ext::merged_victim`; the victim is dead, its label a stale
+copy); and a victim's successor counts as a successor of the survivor
+(`Ext::live_pred = resolve(pred)`), which is what the merge made it (it
+redirected the victim's edges to the survivor), in the mode-1 indirect
+blocking and in the certificate's kept nodes and `parents`. Excluding the
+victims' successors as candidates instead was tried and dropped: a label
+that then occurs only below a victim never finds a blocker, and seed 548
+ran past 120 s. Exactness: excluding a dead candidate blocks less; the
+indirect rule blocks the successors of a blocked node in the merged graph,
+which the unravelling replaces by the blocker's (the same argument as for
+`pred`). Mode 5 keeps `pred` for its indirect pass (the card arm), so a
+mode-5 certificate whose survivor is blocked can still fail closed. The
+unchecked mode-1 paths (`exact`) are unchanged, as their unchecked
+incremental twin is.
+
+Incremental exactness. `back_need(m)` now also reads the roles of the
+edges between `m` and `pred(m)`: the out-edges of `m` (already read, and
+noted at `pred(m) < m`) and the edge `pred(m) -r-> m`, a successor edge
+noted at `m`. `parallel`, `multi_in` and `multi_out` are fixed per
+`SubsetGain`. A victim's posting depends on its merge status, and
+`live_pred(n)` on the merge status of `pred(n)` and the status of the
+survivor, which has a smaller id; `Ext::merge` and its undo lower `i2_lo`
+to the victim (with `edge_note`), below every successor of it.
+
+Lean obligation. None open for soundness: the checker verifies each fold
+directly, and `pred_fold_ok`, `back_need`, the fold selection and the
+victim exclusion are untrusted. What remains a tested claim is
+completeness of the certificate: that every terminal the rule admits has a
+fold Lean accepts.
+
+Measurements (`results/agents/2026-10-30/subset-unravelling/`; the
+binaries are `km-base` = 0e1bd99a and `km-fix3` = this branch):
+
+- The five seeds the conservative rule lost (`gen_alci.py` 195, 392, 645,
+  1011, 1182; one core, `ht_general`, no certificates): 19.0, 14.9, 15.0,
+  1.1 and 0.5 s with the fix (10.9, 7.9, 8.6, 0.6, 0.3 s in a quieter
+  period), past 120 s on the branch point; the answers agree with HermiT.
+  With the checker inline, Lean's `checkSat` dominates: 1182 answers in
+  17.5 s (51 terminals accepted, 39 with predecessor folds), the other four
+  run past 60 s while checking (no rejection).
+- ALCI seeds (`gen_alci.py` 1-1,500, `drive.py`, `JOBS=4`, checker budget
+  30 s): 1,477 ok, 0 wrong, 17 km errors (120 s timeouts with
+  `KM_HT_INCRBLOCK2_CHECK=1` on a host at load 30 to 130; each of them also
+  failed on the binary before the gap fix, and 1478 runs past 300 s on the
+  branch point too), 6 without HermiT gold; 39,202 terminals accepted, 0
+  rejected, 536 checker timeouts, 0 not emitted (main run and the two
+  reruns). Before the gap fix the same
+  seeds had 10,993 rejected terminals on 870 seeds; the conservative rule
+  had none but lost the five seeds above. Seed 645 timed out in the main
+  run at load 130 and answered on the rerun.
+- ALC corpus (700 seeds, `CORPUS`, checker budget 30 s): 326 ok, 0 wrong,
+  2 without gold, 372 errors (234 outside the `ht_general` fragment, 138
+  timeouts at 120 s); every seed has the status it had on the binary of
+  2026-10-30 (`corpus-fix4.tsv`). 10,778 terminals accepted, 0 rejected,
+  640 checker timeouts, 0 not emitted (31 on 14 seeds before, 141 and 548
+  among them).
+- `KM_HT_INCRBLOCK2_CHECK=1` aborted on no seed of either run.
+- `ore_ont_205` and `ore_ont_7499` (card arm, one core, alternating, host
+  load about 30): 205: 90.3 and 98.2 s on the branch point, 94.2 and
+  85.5 s with the fix; 7499: 82.6 and 74.9 s, 81.3 and 75.5 s; outputs
+  identical (md5). The card arm has `back` false, so only the merged-victim
+  change reaches it.
+- `top_nominal_data/m2197.ofn` on the `nominals` route: 64.2 and 50.5 s on
+  the branch point, 46.7 and 52.4 s with the fix, same output. Its test
+  bound is 120 s; under load 130 both binaries ran past it, and the suite
+  passed (16 of 16) when the load was about 25.
+
 ## 10. Nominal merges and the reuse of the consistency model (2026-10-31)
 
 Defect. `results/agents/2026-10-30/nominal-seeds/bridge_merge_min.ofn`:

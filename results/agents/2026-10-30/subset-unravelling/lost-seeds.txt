@@ -1,0 +1,16 @@
+195	km-fix1	rc=0	10.9s	md5=126fd731
+195	km-base	rc=124	120.0s	md5=d41d8cd9
+392	km-fix1	rc=0	7.9s	md5=3ffe73fa
+392	km-base	rc=124	120.1s	md5=d41d8cd9
+645	km-fix1	rc=0	8.6s	md5=52fa6608
+645	km-base	rc=124	120.1s	md5=d41d8cd9
+1011	km-fix1	rc=0	0.6s	md5=f5a04006
+1011	km-base	rc=124	120.1s	md5=d41d8cd9
+1182	km-fix1	rc=0	0.3s	md5=f483244d
+1182	km-base	rc=124	120.4s	md5=d41d8cd9
+
+1011	km-fix1	rc=124	60.0s	acc=26	rej=0	noemit=0	pred=23	md5=d41d8cd9
+1182	km-fix1	rc=0	17.5s	acc=51	rej=0	noemit=0	pred=39	md5=f483244d
+195	km-fix1	rc=124	60.1s	acc=45	rej=0	noemit=0	pred=39	md5=d41d8cd9
+392	km-fix1	rc=124	60.1s	acc=9	rej=0	noemit=0	pred=9	md5=d41d8cd9
+645	km-fix1	rc=124	60.0s	acc=0	rej=0	noemit=0	pred=0	md5=d41d8cd9
