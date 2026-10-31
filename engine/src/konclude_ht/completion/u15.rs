@@ -1205,15 +1205,37 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .individual(assertion.individual)
                     .get_individual_id();
                 let source = self.get_up_to_date_individual_by_id(-source_tag, calc_alg_context);
-                if source.is_none()
-                    || !self.install_native_role_assertion_edge(
-                        source,
-                        assertion.role,
-                        assertion_owner_tag,
+                // The asserting individual may itself have been merged away
+                // earlier; its edge then belongs on its live representative,
+                // under that chain's merge dependency as well as this merge's.
+                let Some((source, source_merge_dep, _)) =
+                    self.resolve_native_merge_chain(source, calc_alg_context)
+                else {
+                    calc_alg_context.raise_stop(false);
+                    return;
+                };
+                let mut edge_prev_dep = merge_dep_track_point;
+                if source_merge_dep.is_some() {
+                    let mut combined = TrackPointId::NONE;
+                    let mut source_mut = source;
+                    self.create_merged_individual_dependency(
+                        &mut combined,
+                        &mut source_mut,
                         merge_dep_track_point,
+                        source_merge_dep,
                         calc_alg_context,
-                    )
-                {
+                    );
+                    if combined.is_some() {
+                        edge_prev_dep = combined;
+                    }
+                }
+                if !self.install_native_role_assertion_edge(
+                    source,
+                    assertion.role,
+                    assertion_owner_tag,
+                    edge_prev_dep,
+                    calc_alg_context,
+                ) {
                     calc_alg_context.raise_stop(false);
                     return;
                 }
@@ -2023,6 +2045,86 @@ mod tests {
             .process_asserted_data_literal_linker(literal_head);
         assert_eq!(literal.data_literal(), 700);
         assert_eq!(literal.next(), ProcessAssertedDataLiteralLinkerId::NONE);
+    }
+
+    /// Asserted edges whose endpoint reaches its live node through two
+    /// merges (`docs/HYBRID-CB-HT.md` section 10). `chained` was merged into
+    /// `merged` earlier; `merged` holds the assertions `r(merged, chained)`
+    /// and `r(source_chained, merged)`, where `source_chained` was merged
+    /// into `source_live`. Merging `merged` into `merge_into` must put the
+    /// edges on the live nodes (`merge_into -r-> merge_into` and
+    /// `source_live -r-> merge_into`) instead of stopping.
+    #[test]
+    fn merge_individual_node_into_relocates_assertions_through_merge_chains() {
+        let mut algo = CompletionTaskHandleAlgorithm::new();
+        let mut calc_ctx = CalculationAlgorithmContextBase::new();
+        let role = calc_ctx.ontology_arenas_mut().alloc_role(Role::new());
+        let individuals: Vec<_> = [10, 20, 30, 40, 50]
+            .iter()
+            .map(|&id| calc_ctx.ontology_arenas_mut().alloc_individual(Individual::new(id)))
+            .collect();
+        let mut allocate_nominal =
+            |individual, tag: i64, calc_ctx: &mut CalculationAlgorithmContextBase| {
+                let node = calc_ctx
+                    .process_context_mut()
+                    .alloc_node(IndividualProcessNode::new(Id::NONE));
+                calc_ctx
+                    .process_context_mut()
+                    .node_mut(node)
+                    .set_individual_node_id(-tag)
+                    .set_individual_type(IndividualType::Nominal)
+                    .set_nominal_individual(individual);
+                calc_ctx
+                    .processing_data_box_mut()
+                    .individual_process_node_vector_mut()
+                    .set_data(-tag, node);
+                node
+            };
+        let merge_into = allocate_nominal(individuals[0], 10, &mut calc_ctx);
+        let merged = allocate_nominal(individuals[1], 20, &mut calc_ctx);
+        let chained = allocate_nominal(individuals[2], 30, &mut calc_ctx);
+        let source_live = allocate_nominal(individuals[3], 40, &mut calc_ctx);
+        let source_chained = allocate_nominal(individuals[4], 50, &mut calc_ctx);
+        let base = calc_ctx.get_or_create_base_dependency_track_point();
+        for (from, into_id) in [(chained, -20), (source_chained, -40)] {
+            calc_ctx
+                .process_context_mut()
+                .node_mut(from)
+                .set_merged_dependency_track_point(base);
+            calc_ctx
+                .process_context_mut()
+                .node_mut(from)
+                .set_merged_into_individual_node_id(into_id);
+        }
+        let forward = RoleAssertion {
+            role,
+            individual: individuals[2],
+        };
+        let reverse = ReverseRoleAssertion {
+            individual: individuals[4],
+            role,
+            role_assertion: role.raw,
+        };
+        calc_ctx
+            .process_context_mut()
+            .node_mut(merged)
+            .set_assertion_role_assertions(vec![forward])
+            .set_reverse_assertion_role_assertions(vec![reverse]);
+
+        algo.merge_individual_node_into(merge_into, merged, base, &mut calc_ctx);
+        assert!(!calc_ctx.has_pending_signal(), "merge stopped");
+        assert_eq!(
+            algo.resolve_native_merge_chain(chained, &mut calc_ctx).map(|(n, _, d)| (n, d)),
+            Some((merge_into, true))
+        );
+        assert!(algo
+            .ht_role_successor_links(merge_into, role, &calc_ctx)
+            .iter()
+            .any(|&(_, successor)| successor == merge_into));
+        assert!(algo
+            .ht_role_successor_links(source_live, role, &calc_ctx)
+            .iter()
+            .any(|&(_, successor)| successor == merge_into));
     }
 
     #[test]

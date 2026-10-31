@@ -21971,7 +21971,7 @@ mod tests {
     }
 
     #[test]
-    fn native_direct_role_assertion_defers_on_multihop_target_merge() {
+    fn native_direct_role_assertion_follows_multihop_target_merge() {
         use crate::frontend::syntax::Concept as C;
         use crate::orchestrate::cb_to_ht::CardDefJson;
 
@@ -22027,20 +22027,33 @@ mod tests {
             .set_merged_into_individual_node_id(representative_id)
             .set_merged_dependency_track_point(merge_track);
 
+        // Konclude finds the representative and the combined dependency in
+        // the final node's IndividualMergingHash; the port folds the hop
+        // dependencies into the same MERGEDINDIVIDUAL chain
+        // (`resolve_native_merge_chain`, docs/HYBRID-CB-HT.md section 10).
+        assert_eq!(
+            algo.resolve_native_merge_chain(target, &mut ctx)
+                .map(|(node, dep, deterministic)| (node, dep.is_some(), deterministic)),
+            Some((representative, true, true))
+        );
         assert!(
-            !algo.install_native_role_assertion_edge(
+            algo.install_native_role_assertion_edge(
                 source,
                 bridged.roles[0],
                 bridged.nominal_seeds[1].individual_tag,
                 merge_track,
                 &mut ctx,
             ),
-            "a multi-hop target merge was accepted without Konclude's combined merging hash"
+            "a multi-hop target merge must relocate the asserted edge"
+        );
+        let links = algo.ht_role_successor_links(source, bridged.roles[0], &ctx);
+        assert!(
+            links.iter().any(|&(_, successor)| successor == representative),
+            "the asserted edge must reach the live representative"
         );
         assert!(
-            algo.ht_role_successor_links(source, bridged.roles[0], &ctx)
-                .is_empty(),
-            "the failed-closed multi-hop assertion installed an under-justified edge"
+            !links.iter().any(|&(_, successor)| successor == target || successor == middle),
+            "no edge may point at a merged-away node"
         );
     }
 
