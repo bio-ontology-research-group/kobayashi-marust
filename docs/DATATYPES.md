@@ -694,28 +694,205 @@ HermiT, Openllet). Lean obligation: none of S1 to S3 has a Lean model;
 the quotient is checked by tests (`isolated_functional_values_are_abstracted_to_their_class`)
 and by the scope run. A refutation of `T ∪ Q` is never published (defer).
 
-## Open corners (status 2026-10-30)
+### Boolean data ranges and ordered cells (2026-10-30, agent `data-values-3`)
 
-Handled exactly since v1.5.5 (sections above): data-property assertions of
-any number of literals, with or without counting; negative data-property
-assertions; `≥ n` / `≤ n` over finite ranges of known size (including IEEE
-intervals and bounded integer types); data-property assertions on the
-nominal routes (`KM_NOMINALS`), which receive the same clauses.
+**Defect.** `cell_exhaust_tbox.ofn` (`A ⊑ ∃p.(integer[1,9] ⊓ ¬integer[1,8])`,
+`A ⊑ ¬∃p.{9}`) was answered with `A` satisfiable and `DROPPED 0` (HermiT:
+`A ⊑ ⊥`). A `DataIntersectionOf` that is not a facet interval of one base was
+one opaque range with no clause to its operands or to the values. The probes
+of `results/agents/2026-10-30/data-values-3/` show that the same kind of hole
+had more members, all answered wrongly without `DROPPED` by the branch point
+(e2d5dd1f):
 
-Still sound but possibly incomplete, with the behaviour KM shows:
+- three pairwise overlapping decimal-tower ranges with no common value
+  (`∃p.integer ⊓ ∃p.decimal[1.2,3] ⊓ ∃p.decimal[0,1.8]`, functional `p`;
+  `atomic_helly`): pairwise relations cannot see an empty triple
+  intersection of an integer type and two dense intervals;
+- two dense or IEEE intervals that meet in one point, next to an excluded
+  value (`dense_point`, `float_cells`), and dense or IEEE complements
+  (`bool_complement_dense`, `float_complement`);
+- an integer cell that is exhausted by excluded values although no range
+  of the vocabulary is (`int_cell_exhaust`);
+- named types of the map that the oracle did not relate: `rdf:PlainLiteral`
+  (treated as opaque), the string chain below `xsd:token`,
+  `xsd:dateTimeStamp ⊑ xsd:dateTime`, `xsd:hexBinary` against
+  `xsd:base64Binary`, and a decimal value against `xsd:float`/`xsd:double`
+  (membership `None`);
+- pattern and length facets and dateTime facets (`length_*`, `pattern_*`,
+  `datetime_empty`, `datetime_value`, `datetime_subsumption`): opaque, so an
+  empty facet range or a literal outside it was missed.
 
-- pattern / length facets: the range stays opaque; next to a data counting
-  restriction it is reported as not represented (`DROPPED`), otherwise it
-  is answered over the opaque abstraction (incomplete, not flagged);
-- dateTime/duration ordering and arithmetic: not flagged;
-- float/double vs decimal cross-tower subsumption: not flagged (values are
-  compared exactly, but the named types are not ordered against each other);
-- `DataComplementOf` / `DataIntersectionOf` / `DataUnionOf` structure beyond
-  the excluded middle and union covers: not flagged;
-- n-ary `DataSomeValuesFrom` (multi-property comparisons): unchanged from
-  v1.5.4;
-- `HasKey`: lowered to DL-safe rules (`has_key.rs`), whose data atoms fail
-  closed on the rule routes.
+**What a label set must satisfy.** The relation clauses abstract a data node
+by the set `L` of `__dt__` names it carries. A clause model `J` reads as an
+OWL model when every data node gets a value `v` with `v ∈ d ⟺ d ∈ L` for
+every name `d` of the vocabulary (the `Respects` hypothesis of
+`DataValueSingletonElision.lean`), avoiding the values of the other nodes
+where a count forces distinctness (`UndecidedRealizable`). The fix makes
+every label set that the clauses admit realizable in this sense, or
+publishes the input as not represented.
 
-The unflagged corners are the ones listed in v1.5.4; making each of them
-either exact or flagged is not part of this change.
+**Boolean structure** (`frontend/datatypes/vocabulary.rs`, `expand`). For
+every name with Boolean structure the operands join the vocabulary and the
+role groups of the name (closed transitively), and the frontend emits the
+definitional clauses: `I → Mᵢ` and `M₁ ∧ … ∧ Mₖ → I` for
+`I = DataIntersectionOf(M₁ … Mₖ)` (an `rdfs:Literal` member is left out of
+the body), `Mᵢ → U` and the historical cover `U → M₁ ∨ … ∨ Mₖ` for a union,
+and `C ∧ A → ⊥` with the historical excluded middle `→ C ∨ A` for
+`C = DataComplementOf(A)`; `DataComplementOf(rdfs:Literal)` gets `C → ⊥`. In
+every model of the clauses a Boolean name then holds at a node exactly when
+the Boolean combination of its operand names does, so a label set is
+realizable iff its atomic part is, and a value realizing the atomic part
+gives each Boolean name its correct truth value. The oracle also decides
+Boolean ranges directly (`DRange::Intersection`, value-by-value membership,
+exact sizes by enumeration, `dense_band`); those clauses are consequences of
+the definitional ones. Exhaustion and counting are decided on the atomic
+names and the cells, not on the Boolean name (`DataVocabulary::boolean`).
+
+**Ordered cells.** In a role group with at least two atomic ranges of the
+decimal tower, one of them not integral, or with at least two ranges of
+one IEEE width, `expand` cuts the partition at every range endpoint:
+
+- decimal tower: every endpoint is a point cell (a value concept); every
+  open gap between consecutive endpoints is split into bands by the value
+  kinds present in the group: the integers of the gap (an integer facet
+  interval, a value, or nothing), then each present kind minus the one
+  below it, e.g. `DataIntersectionOf(DatatypeRestriction(xsd:decimal
+  xsd:minExclusive a xsd:maxExclusive b) DataComplementOf(xsd:integer))`;
+- IEEE: the rank segments between endpoints, with `-0`, `+0` and `NaN` as
+  points of their own; a segment is named by its first and last value as
+  an inclusive facet interval, and the name is checked to denote exactly
+  that segment.
+
+Every atomic range of the group contains a whole cell or none of it (the
+cuts are its endpoints, and its kind is one of the bands), so a
+representative decides the membership of the cell (`cell_member`; bands of
+non-decimal rationals and of irrationals are decided by kind, which is exact
+because only the unbounded named types `owl:rational` and `owl:real` have
+those kinds; a facet interval over them next to another decimal-tower range
+is reported). The frontend emits `c → R` or `c ∧ R → ⊥` for every cell `c`
+and atomic range `R` of the group, the cover `R → ⋁{c ⊆ R}` for every range
+of the partition, and `c ∧ c' → ⊥` for distinct cells (point cells are
+values, separated by the value relations). Groups whose numeric ranges are
+all integral keep the integral cells of `integral_cell_covers`, unchanged. A partition whose ranges the oracle decides pairwise nested or
+disjoint, and in which every range has a cell of at least 2^62 values
+outside all ranges strictly inside it (a chain of named types such as
+`long ⊂ integer ⊂ decimal`), gets no cells either: a label set closed under
+the pairwise clauses then has a least range `R` and none of its sub-ranges,
+and the large residue of `R` holds a value with exactly those labels that
+avoids every vocabulary value and every counted sibling. Such inputs keep
+their clause stream, and with it the native bridge's admission
+(ore_ont_5964).
+Cells are ordinary range names: the value relations, the exhaustion test
+and the counted covers apply to them, so a finite cell (an integer band, an
+IEEE segment) that the values plus the count bound can exhaust receives its
+enumerated cover or is published as not represented.
+
+**Exactness.** Fix a model `J` of the clause set and a data node `n` with
+label set `L`. (i) If `L` contains a range of an ordered partition with
+cells, the cover gives `n` a cell `c ∈ L`, and the cell clauses fix the
+membership of `L` in every atomic range of the group to that of `c`. A point
+cell is a value whose relations to every name are decided. A band of a
+nonempty open interval with a non-integer kind is infinite, and an integer
+band or IEEE segment with more values than the vocabulary's values in it
+plus the count bound has a value that no constraint excludes; a smaller one
+has its enumerated cover, which puts a value concept into `L`. (ii) In the
+string partition the named types form the chain `language ⊂ NCName ⊂ Name ⊂
+NMTOKEN ⊂ token ⊂ normalizedString ⊂ string ⊂ rdf:PlainLiteral` (XSD 1.1
+part 2 sections 3.3.1, 3.4.1 to 3.4.7: a language tag starts with a letter
+and has only letters, digits and `-`, so it is an NCName; a NameStartChar
+is a NameChar), with infinite differences, and the oracle now emits every
+inclusion of the chain; an upward-closed label set is realized by a fresh
+string of its least type. Booleans have their two-value cover; `anyURI`,
+the binary types, `dateTime ⊃ dateTimeStamp` and `XMLLiteral` are single
+types or a two-type chain with infinite difference. (iii) A Boolean name
+holds exactly as its operands say (above). (iv) Finitely many values and
+counted successors cannot exhaust an infinite cell. So every admissible
+`L` is realized, with as many distinct values as a count can demand, and
+the clause set is exact for the vocabulary.
+
+**The decided fragment.** `expand` reports, and the frontend publishes as
+not represented (`DROPPED`, reason "data range outside the decided datatype
+fragment: …"), every name that the datatype map defines but the oracle does
+not decide: a facet other than the four bounds, or a bound on a
+non-numeric base (pattern, length, minLength, maxLength, totalDigits,
+fractionDigits, langRange; dateTime bounds); a literal of a map datatype
+that does not parse into an exact value (an ill-typed literal, a binary or
+`XMLLiteral` value, a name type with a non-ASCII character); a literal whose
+membership in a decided range is undecided; an `rdfs:Literal` member of a
+union; a cell group with more than 512 cells. Datatypes outside the OWL 2
+datatype map (custom IRIs, `xsd:date`, `xsd:time`, the `g*` types,
+`xsd:duration`) have no fixed value space and keep the free abstraction:
+their names and literals are related to nothing, as before. The native
+bridge and the HT workers read the clause set; they defer on the new names
+unless their own gates admit them (below).
+
+**Native bridge: data complements** (supervisor item, seeds 2000 to 2399).
+The bridge's exact atomic map now admits `DataComplementOf(A)` for a named
+range or facet interval `A` of the decimal, IEEE, string, boolean, dateTime
+or XMLLiteral family (`bridge_exact_complement_operand`). It requires the
+disjointness `¬A ∧ A → ⊥` and the excluded middle `→ ¬A ∨ A` in its input,
+treats `A` as body-sensitive in the cell certificates (a node with `¬A`
+must be realized outside `A`; a node without `¬A` carries `A`), accepts a
+partial overlap of `¬A` with a finite range, a union or another complement
+(decided by their covers) or with a range of `A`'s own family (decided by
+that family's certificate), runs the IEEE certificate when `A` is an IEEE
+range, and defers when an `xsd:anyURI` range is present: a node that
+carries only complements is realized by a fresh IRI, which lies in every
+admitted complement and outside every other admitted range.
+
+**Native bridge: cell covers.** The IEEE cell cover `R → c₁ ∨ … ∨ cₖ`
+is a pure relation clause the bridge must certify; it accepts it when the
+heads are IEEE facet intervals and values of `R`'s width that lie inside
+`R` and together contain every rank of `R` and its `NaN`
+(`bridge_exact_ieee_cell_cover`), so inputs with overlapping IEEE facets
+keep the bridge (`bridge_tbox_datatype_extension_double_facets_and_signed_zero`).
+Decimal band cells (`DataIntersectionOf(… DataComplementOf(xsd:integer))`)
+are outside the bridge's map, and the bridge defers on them.
+
+**Native bridge: singleton gate** (seeds m2009, m2023, m2123, m2255,
+m2287). The frontend leaves out value singletons when
+`literal_profiles::distinct_data_successors_forced` finds no number
+restriction over a role that is not certainly an object property; the
+bridge's `forced_distinct_data_successors` counted a number restriction as
+a data restriction whenever its filler mentioned a datatype, so
+`≤ 1 s.∃v.{"y"}` over the object property `s` made it demand singletons
+the frontend had (correctly) left out, and the bridge deferred. The bridge
+now decides by the role, as the frontend does, and reads `DisjointClasses`
+with both sides negative, as the frontend does. Its data roles are the
+roles with a datatype filler or range or a source data-property
+declaration, all of which the frontend also treats as data roles (a role is
+data unless certainly an object property), so whenever the frontend elides
+a singleton the bridge's gate admits the elision.
+
+**Lean obligation (not proved here).** Extend `TwoSortedDL` data ranges with
+`DataIntersectionOf`, `DataUnionOf` and `DataComplementOf` and state: (a) the
+definitional clauses make every Boolean name equivalent to the combination
+of its operands in every clause model (a structural induction); (b) *cell
+realizability*: for a vocabulary whose atomic ranges are intervals of the
+decimal tower or of one IEEE width, with the cell cover, cell membership and
+cell disjointness clauses, every label set closed under the clauses has a
+value, and `n` distinct values when its cell has more than `n` values
+outside the vocabulary's values (this discharges `UndecidedRealizable` for
+those partitions); (c) the string chain inclusions as `DecisionSound`
+facts. The oracle decisions themselves (`val_in_range`, cell membership by
+kind) remain checked by tests, as before.
+
+## Open corners (status 2026-10-30, after `data-values-3`)
+
+Every corner now has one of two behaviours: an exact answer, or an input
+published as not represented (`DROPPED`) or refused. Probes with HermiT
+gold: `results/agents/2026-10-30/data-values-3/`; integration test
+`engine/tests/data_range_corners.rs`.
+
+| corner | behaviour | probes |
+|---|---|---|
+| `DataIntersectionOf` / `DataUnionOf` / `DataComplementOf` | exact (definitional clauses, cells) | `cell_exhaust_tbox`, `bool_*`, `union_complex`, `count_complex`, `int_cell_exhaust` |
+| overlapping decimal / IEEE intervals | exact (ordered cells) | `atomic_helly`, `dense_point`, `dense_count`, `float_cells`, `float_complement`, `decimal_mixed_ok` |
+| float/double vs decimal cross-tower | exact (disjoint value spaces; decimal values outside IEEE types) | `float_decimal`, `float_value_decimal`, `integer_double_sub` |
+| string types, `rdf:PlainLiteral`, `dateTimeStamp`, binary types | exact (chain inclusions, PlainLiteral values, disjoint binary types) | `string_chain` (HermiT differs, see the fixture), `plain_literal`, `datetime_stamp`, `binary_disjoint` |
+| dateTime identity | exact (timezone kept, as HermiT) | `datetime_offset` |
+| pattern and length facets | DROPPED on the automatic route, refused on the forced nominal routes | `length_empty`, `length_exhaust`, `length_value`, `pattern_value`, `pattern_subsumption` |
+| dateTime facets (ordering) | DROPPED / refused | `datetime_empty`, `datetime_value`, `datetime_subsumption` |
+| `xsd:duration`, `xsd:date`, `g*`, custom datatypes | outside the OWL 2 map: free abstraction (HermiT rejects such inputs) | none |
+| n-ary `DataSomeValuesFrom` | no n-ary datatype exists in the OWL 2 map; KM rejects the input (exit 2, "invalid OWL 2 DL input"), the OWL API does not parse it | `nary_some` (no gold) |
+| `HasKey` with data properties | refused on every route | `haskey_data`, `haskey_data_ok` |

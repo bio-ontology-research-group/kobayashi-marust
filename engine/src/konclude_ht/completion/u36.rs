@@ -894,6 +894,77 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         )
     }
 
+    /// Follow the merged-into chain of `node` to its live representative.
+    ///
+    /// Returns `(representative, merge_dependency, deterministic)`.
+    /// `merge_dependency` is `NONE` when `node` is live; for one hop it is the
+    /// merge's own track point (`mergedDependencyTrackPoint`); for a chain
+    /// `node -> x1 -> ... -> xk` it is the fold
+    /// `MERGEDINDIVIDUAL(dep(xk-1 -> xk), ... MERGEDINDIVIDUAL(dep(x1 -> x2), dep(node -> x1)))`,
+    /// the dependency Konclude's `IndividualMergingHash` records for `node`'s
+    /// individual on the final node (`mergeIndividualNodeInto`, phase 6: each
+    /// merge rewrites every entry of the merged node's hash to
+    /// `MERGEDINDIVIDUAL(mergeDep, entryDep)`). `deterministic` is true when
+    /// no hop depends on a non-deterministic branch. `None` when a hop cannot
+    /// be resolved or the chain is longer than the number of nodes (a cycle,
+    /// which a correct merge sequence never builds).
+    pub fn resolve_native_merge_chain(
+        &mut self,
+        node: NodeId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> Option<(NodeId, TrackPointId, bool)> {
+        if node.is_none() {
+            return None;
+        }
+        let mut current = node;
+        let mut chain_dep = TrackPointId::NONE;
+        let mut deterministic = true;
+        let mut hops = 0usize;
+        let hop_limit = calc_alg_context.process_context().node_count() + 1;
+        while calc_alg_context
+            .process_context()
+            .node(current)
+            .has_merged_into_individual_node_id()
+        {
+            hops += 1;
+            if hops > hop_limit {
+                return None;
+            }
+            let (next_id, hop_dep) = {
+                let pc = calc_alg_context.process_context();
+                let n = pc.node(current);
+                (n.merged_into_individual_node_id(), n.merged_dependency_track_point())
+            };
+            let next = self.get_up_to_date_individual_by_id(next_id, calc_alg_context);
+            if next.is_none() || next == current {
+                return None;
+            }
+            if hop_dep.is_some() && self.has_nondeterministic_dependency(hop_dep, calc_alg_context) {
+                deterministic = false;
+            }
+            if hops == 1 {
+                chain_dep = hop_dep;
+            } else if hop_dep.is_some() || chain_dep.is_some() {
+                let mut folded = TrackPointId::NONE;
+                let mut next_mut = next;
+                self.create_merged_individual_dependency(
+                    &mut folded,
+                    &mut next_mut,
+                    hop_dep,
+                    chain_dep,
+                    calc_alg_context,
+                );
+                if folded.is_some() {
+                    chain_dep = folded;
+                } else if chain_dep.is_none() {
+                    chain_dep = hop_dep;
+                }
+            }
+            current = next;
+        }
+        Some((current, chain_dep, deterministic))
+    }
+
     /// Copy one positive native ABox role assertion exactly as Konclude's
     /// `addRoleAssertion`: materialize/correct the named target, create the
     /// deterministic role-assertion dependency, then install all indirect
@@ -913,40 +984,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if original_target.is_none() {
             return false;
         }
-        let (mut target, nominal_merge_track_point) = if calc_alg_context
-            .process_context()
-            .node(original_target)
-            .has_merged_into_individual_node_id()
-        {
-            let first_target_id = calc_alg_context
-                .process_context()
-                .node(original_target)
-                .merged_into_individual_node_id();
-            let first_target =
-                self.get_up_to_date_individual_by_id(first_target_id, calc_alg_context);
-            if first_target.is_none()
-                || calc_alg_context
-                    .process_context()
-                    .node(first_target)
-                    .has_merged_into_individual_node_id()
-            {
-                // Konclude retrieves the combined b→…→representative
-                // dependency from the final node's IndividualMergingHash.
-                // Rust phase-6 merging-hash propagation is not ported yet, so
-                // a chain longer than one hop cannot be justified exactly.
-                // Decline the bridge route instead of omitting a branch cause
-                // while dependency-directed backtracking is active.
-                return false;
-            }
-            (
-                first_target,
-                calc_alg_context
-                    .process_context()
-                    .node(original_target)
-                    .merged_dependency_track_point(),
-            )
-        } else {
-            (original_target, TrackPointId::NONE)
+        let Some((mut target, nominal_merge_track_point, merge_chain_deterministic)) =
+            self.resolve_native_merge_chain(original_target, calc_alg_context)
+        else {
+            return false;
         };
         target = self.get_localized_forced_backend_initialized_nominal_individual_node(
             target,
@@ -966,9 +1007,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let source_tag = self.native_nominal_tag_for_node(source, calc_alg_context);
         let edge_deterministic = !self
             .has_nondeterministic_dependency(prev_dep_track_point, calc_alg_context)
-            && (nominal_merge_track_point.is_none()
-                || !self
-                    .has_nondeterministic_dependency(nominal_merge_track_point, calc_alg_context));
+            && merge_chain_deterministic;
         let cached_target_edge = source_tag.is_some_and(|source_tag| {
             self.native_cached_neighbour_role_matches(
                 target,

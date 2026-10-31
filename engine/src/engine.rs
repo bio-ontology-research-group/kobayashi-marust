@@ -4129,6 +4129,40 @@ mod cb_live_snapshot_tests {
     }
 
     #[test]
+    fn successor_edge_without_reach_leaves_no_pending_rsucc_sweep() {
+        // D ⊑ ∃r.A: context D gains an r-successor edge but never an r-Succ
+        // pool entry, so the terminal snapshot must not report a pending
+        // `successors × reach` sweep (checkers-on defect B2).
+        let mut sig = Sig::default();
+        let d = sig.concept("D");
+        let a = sig.concept("A");
+        let r = sig.role("r");
+        let f = fterm(1);
+        let clauses = vec![
+            OntologyClause::new(
+                vec![Pred::Concept { iri: d, t: X }],
+                vec![Lit::P(Pred::Role { iri: r, s: X, t: f })],
+            ),
+            OntologyClause::new(
+                vec![Pred::Concept { iri: d, t: X }],
+                vec![Lit::P(Pred::Concept { iri: a, t: f })],
+            ),
+        ];
+        let mut engine = Engine::new(sig, clauses, 0);
+        Arc::make_mut(&mut engine.sig).rsucc = true;
+        engine.run_for(&[d]);
+        let snapshot = engine.live_terminal_snapshot();
+        assert!(snapshot
+            .contexts
+            .iter()
+            .any(|context| !context.successors.is_empty()));
+        for context in &snapshot.contexts {
+            assert!(!context.rsucc_edges_grew, "context {}", context.context_index);
+            assert_eq!(context.rsucc_offered, context.rsucc_reach.len());
+        }
+    }
+
+    #[test]
     fn terminal_snapshot_is_exact_stable_and_complete() {
         let mut sig = Sig::default();
         let query = sig.concept("A");
@@ -7669,6 +7703,20 @@ impl Engine {
                     });
                 }
             }
+        } else if self.contexts[id].rsucc_reach.is_empty() {
+            // No reach predicate exists (r-Succ is off or the pool is empty;
+            // `rsucc_reach` grows only in the branch above). The
+            // `successors × reach` sweep over an empty reach set fires
+            // nothing and leaves every edge's hwm at 0 = `rsucc_reach.len()`,
+            // so it has already run: record that, as the branch above does
+            // after a sweep. Without this, a context that gains a successor
+            // edge but never an r-Succ pool entry keeps `rsucc_edges_grew`
+            // set at the fixpoint, and its terminal snapshot claims a pending
+            // sweep that does not exist (the source-bound closure checkers
+            // reject it). No message changes: once reach grows,
+            // `reach_len > rsucc_offered` (= 0) triggers the sweep and every
+            // edge is offered `reach[0..]`, exactly as before.
+            self.contexts[id].rsucc_edges_grew = false;
         }
         // ---- Pred ---- (semi-naive).  The Pred-eligible clauses live in
         // `pred_pool` (function-free, predicate-only head — built when a clause is

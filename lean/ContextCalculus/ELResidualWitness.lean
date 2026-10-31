@@ -180,10 +180,15 @@ theorem materialized_rewrittenExistential_satisfies_raw
       rw [hpin]
       exact closed.closeNf1 (closed.initRefl witness) hnf1
 
-def CanonicalWitnessRecord.MaterializedValid (active : Concept → Prop)
+set_option linter.unusedVariables false in
+/-- A witness record is backed by its rewritten pair. The witness need not be
+alive: when it is not, every element below `sub` reaches it by an NF3 edge and
+is therefore not alive either, so the two Skolem clauses hold vacuously on the
+alive domain (`materialized_witnessRecords_satisfy_raw`). -/
+def CanonicalWitnessRecord.MaterializedValid {bottom : Concept} (active : Concept → Prop)
     (m : Materialization Concept Role) (O : Ontology Concept Role)
     (record : CanonicalWitnessRecord Concept Role) : Prop :=
-  active record.witness ∧ ¬m.sub record.witness bottom ∧
+  active record.witness ∧
     Clause.nf3 record.sub record.role record.witness ∈ O ∧
     Clause.nf1 record.witness record.filler ∈ O
 
@@ -209,7 +214,25 @@ theorem materialized_witnessRecords_satisfy_raw
   intro clause hclause
   simp only [canonicalWitnessRawOntology, List.mem_flatMap] at hclause
   obtain ⟨record, hrecord, hclause⟩ := hclause
-  obtain ⟨hactive, halive, hnf3, hnf1⟩ := hvalid record hrecord
+  obtain ⟨hactive, hnf3, hnf1⟩ := hvalid record hrecord
+  by_cases halive : m.sub record.witness bottom
+  · -- A dead witness: no alive element is below `sub`.
+    have hdead : ∀ x : MaterializedActiveAlive active m bottom,
+        ¬m.sub x.1 record.sub := by
+      intro x hsub
+      exact x.2.2 (closed.closeBottomEdge (closed.closeNf3 hsub hnf3) halive)
+    simp [CanonicalWitnessRecord.rawOntology] at hclause
+    rcases hclause with hrole | hfiller
+    · rw [hrole]
+      intro env hbody
+      exact False.elim (hdead (env record.roleVariable)
+        (hbody (.concept record.sub (.var record.roleVariable))
+          (by simp [rawExistentialRoleClause])))
+    · rw [hfiller]
+      intro env hbody
+      exact False.elim (hdead (env record.fillerVariable)
+        (hbody (.concept record.sub (.var record.fillerVariable))
+          (by simp [rawExistentialFillerClause])))
   have hpair := materialized_rewrittenExistential_satisfies_raw
     active O m closed record.sub record.filler record.witness record.role
     record.function record.roleVariable record.fillerVariable hactive halive

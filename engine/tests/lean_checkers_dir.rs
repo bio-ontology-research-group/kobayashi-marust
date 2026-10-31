@@ -56,6 +56,16 @@ fn classify(ontology: &Path, checkers: Option<&Path>, tmp: &Path) -> Output {
 /// `route` other than `auto` forces it; the CB tests force `cb_plain1` so
 /// that the CB worker, not the race's HT-first probe, answers.
 fn classify_route(ontology: &Path, checkers: Option<&Path>, tmp: &Path, route: &str) -> Output {
+    classify_route_env(ontology, checkers, tmp, route, &[])
+}
+
+fn classify_route_env(
+    ontology: &Path,
+    checkers: Option<&Path>,
+    tmp: &Path,
+    route: &str,
+    extra: &[(&str, &str)],
+) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_km"));
     command
         .args(["classify", "--route", route, "--lines"])
@@ -72,6 +82,9 @@ fn classify_route(ontology: &Path, checkers: Option<&Path>, tmp: &Path, route: &
     command.env("KM_THREADS", "1");
     if let Some(dir) = checkers {
         command.env("KM_LEAN_CHECKERS", dir);
+    }
+    for (key, value) in extra {
+        command.env(key, value);
     }
     command.output().expect("run km classify")
 }
@@ -167,6 +180,53 @@ fn stub_cb_acceptance_keeps_the_answer_and_rejection_fails_closed() {
     script(&reject, "cb-source-taxonomy-cert-check", "exit 1");
     let rejected = classify_route(&ontology, Some(&reject), &work, "cb_plain1");
     assert_fails_closed(&rejected, "cb");
+    std::fs::remove_dir_all(&work).unwrap();
+}
+
+/// Checkers-on defect B1: the legacy live wires decode a global-model
+/// certificate that production never builds, so `KM_LEAN_CHECKERS_SET=all`
+/// must not run them (they could only fail to decode) and records
+/// `cannot_check` for each instead. The stubs reject, so running any of them
+/// would fail the run closed.
+#[test]
+fn stub_set_all_declines_the_global_model_wires() {
+    let work = scratch("stub-global-model");
+    let ontology = work.join("disjunctive.ofn");
+    std::fs::write(&ontology, DISJUNCTIVE).unwrap();
+    let off = classify_route(&ontology, None, &work, "cb_plain1");
+    assert!(
+        off.status.success(),
+        "{}",
+        String::from_utf8_lossy(&off.stderr)
+    );
+    let dir = work.join("checkers");
+    std::fs::create_dir_all(&dir).unwrap();
+    script(&dir, "cb-source-taxonomy-cert-check", "exit 0");
+    let legacy = [
+        "cb-live-taxonomy-publication-check",
+        "cb-live-exact-taxonomy-publication-check",
+        "cb-terminal-state-check",
+    ];
+    for name in legacy {
+        script(&dir, name, "echo 'legacy wire ran' >&2; exit 1");
+    }
+    let on = classify_route_env(
+        &ontology,
+        Some(&dir),
+        &work,
+        "cb_plain1",
+        &[("KM_LEAN_CHECKERS_SET", "all")],
+    );
+    assert_accepted_unchanged(&off, &on, "cb");
+    let stderr = String::from_utf8_lossy(&on.stderr);
+    assert!(!stderr.contains("legacy wire ran"), "{stderr}");
+    assert!(!stderr.contains("KM_LEAN_CHECK rejected"), "{stderr}");
+    for name in legacy {
+        assert!(
+            stderr.contains(&format!("certificate={name}")),
+            "no cannot_check event for {name}: {stderr}"
+        );
+    }
     std::fs::remove_dir_all(&work).unwrap();
 }
 

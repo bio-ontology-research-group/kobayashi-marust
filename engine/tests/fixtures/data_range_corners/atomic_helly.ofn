@@ -1,0 +1,12 @@
+Prefix(:=<http://e.org/p#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+Ontology(<http://e.org/p/atomic_helly>
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(DataProperty(:p)) Declaration(DataProperty(:q)) Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+FunctionalDataProperty(:p)
+SubClassOf(:A DataSomeValuesFrom(:p xsd:integer))
+SubClassOf(:A DataSomeValuesFrom(:p DatatypeRestriction(xsd:decimal xsd:minInclusive "1.2"^^xsd:decimal xsd:maxInclusive "3"^^xsd:decimal)))
+SubClassOf(:A DataSomeValuesFrom(:p DatatypeRestriction(xsd:decimal xsd:minInclusive "0"^^xsd:decimal xsd:maxInclusive "1.8"^^xsd:decimal)))
+SubClassOf(:B DataSomeValuesFrom(:p xsd:integer))
+)

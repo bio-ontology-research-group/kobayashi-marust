@@ -1004,6 +1004,24 @@ fn pure_datatype_relation_is_exact(tin: &TInput, clause: &HtClause) -> bool {
                 || crate::frontend::datatypes::bridge_exact_integral_cover(sub_name, &[sup_name]),
         };
     }
+    // The excluded middle `→ ¬A(x) ∨ A(x)` of an admitted complement.
+    if clause.body.is_empty() && clause.head.len() == 2 {
+        let (HAtom::Concept { neg: false, c: left, t: left_term },
+            HAtom::Concept { neg: false, c: right, t: right_term }) = (&clause.head[0], &clause.head[1])
+        else {
+            return false;
+        };
+        if left_term != right_term {
+            return false;
+        }
+        let (Some(left_name), Some(right_name)) = (tin.concepts.get(*left), tin.concepts.get(*right)) else {
+            return false;
+        };
+        let complement_of = |complement: &str, operand: &str| {
+            crate::frontend::datatypes::bridge_exact_complement_operand(complement).as_deref() == Some(operand)
+        };
+        return complement_of(left_name, right_name) || complement_of(right_name, left_name);
+    }
     if clause.head.is_empty() && clause.body.len() == 2 {
         let (
             HAtom::Concept {
@@ -1057,7 +1075,8 @@ fn pure_datatype_relation_is_exact(tin: &TInput, clause: &HtClause) -> bool {
         if concept_heads.as_ref().is_some_and(|heads|
             crate::frontend::datatypes::bridge_exact_integral_cover(range_name, heads)
                 || crate::frontend::datatypes::bridge_exact_union_cover(range_name, heads)
-                || crate::frontend::datatypes::exact_enumerated_cover(range_name, heads)) {
+                || crate::frontend::datatypes::exact_enumerated_cover(range_name, heads)
+                || crate::frontend::datatypes::bridge_exact_ieee_cell_cover(range_name, heads)) {
             return true;
         }
         if crate::frontend::datatypes::bridge_tbox_finite_values(range_name).is_some() {
@@ -2049,6 +2068,42 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         return false;
     }
     let relations = DatatypeRelationIndex::for_input(tin);
+    // An admitted complement `¬A` needs its disjointness `¬A ∧ A → ⊥` and
+    // its excluded middle `→ ¬A ∨ A`. A node that carries only complements
+    // is realized by a fresh IRI, which lies in every admitted complement and
+    // outside every other range unless an `xsd:anyURI` range is present.
+    {
+        use crate::frontend::datatypes as dt;
+        // A complement the clause set no longer mentions (the HT conversion
+        // may replace it by a definer) carries no label and needs no clause.
+        let mentioned = |concept: usize| tin.clauses.iter().any(|clause| clause.body.iter().chain(&clause.head)
+            .any(|atom| matches!(atom, HAtom::Concept { c, .. } | HAtom::Exist { c, .. } if *c == concept)))
+            || tin.source_axioms.iter().any(|axiom| {
+                let name = tin.concepts[concept].as_str();
+                source_concept_mentions_name(&axiom.left, name) || source_concept_mentions_name(&axiom.right, name)
+            });
+        let complements: Vec<(usize, usize)> = datatype_ids.iter().filter(|&&concept| mentioned(concept)).filter_map(|&concept| {
+            let operand = dt::bridge_exact_complement_operand(&tin.concepts[concept])?;
+            Some((concept, tin.concepts.iter().position(|name| *name == operand).unwrap_or(usize::MAX)))
+        }).collect();
+        if !complements.is_empty() {
+            if datatype_ids.iter().any(|&concept| dt::bridge_tbox_atomic_family(&tin.concepts[concept]) == Some("anyURI")) {
+                defer!("a data complement next to an anyURI range");
+            }
+            for &(complement, operand) in &complements {
+                if operand == usize::MAX || !relations.separated(complement, operand) {
+                    defer!("a data complement lacks its disjointness from its operand");
+                }
+                let middle = tin.clauses.iter().any(|clause| clause.body.is_empty()
+                    && matches!(clause.head.as_slice(),
+                        [HAtom::Concept { neg: false, c: a, t: ta }, HAtom::Concept { neg: false, c: b, t: tb }]
+                            if ta == tb && ((*a == complement && *b == operand) || (*a == operand && *b == complement))));
+                if !middle {
+                    defer!("a data complement lacks its excluded middle");
+                }
+            }
+        }
+    }
     // A local `forall(r, D)` without a matching global range intersects D
     // with whatever else labels an r-successor. Admit it only when D's
     // relation to every other datatype symbol (except rdfs:Literal) is decided
@@ -2281,6 +2336,19 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
 /// HT terms these are the datatype atoms that can occur in a clause body
 /// other than a pure datatype relation clause: at-most fillers, left-hand
 /// sides, equivalence definitions, and complemented fillers.
+fn source_concept_mentions_name(concept: &SourceConcept, name: &str) -> bool {
+    match concept {
+        SourceConcept::Name(other) => other == name,
+        SourceConcept::Not(inner) => source_concept_mentions_name(inner, name),
+        SourceConcept::And(items) | SourceConcept::Or(items) =>
+            items.iter().any(|item| source_concept_mentions_name(item, name)),
+        SourceConcept::Exists(_, filler) | SourceConcept::Forall(_, filler)
+        | SourceConcept::AtLeast(_, _, filler) | SourceConcept::AtMost(_, _, filler) =>
+            source_concept_mentions_name(filler, name),
+        _ => false,
+    }
+}
+
 fn collect_negative_datatype_names<'a>(
     concept: &'a SourceConcept,
     positive: bool,
@@ -2326,6 +2394,16 @@ fn body_sensitive_datatype_names(tin: &TInput) -> std::collections::HashSet<&str
             }
         }
     }
+    // A node carrying an admitted complement `¬A` must be realized outside
+    // `A`, and a node without `¬A` carries `A` (excluded middle): `A` is read
+    // in both directions, exactly as a body-sensitive range.
+    for name in &tin.concepts {
+        if let Some(operand) = crate::frontend::datatypes::bridge_exact_complement_operand(name) {
+            if let Some(present) = tin.concepts.iter().find(|other| **other == operand) {
+                out.insert(present.as_str());
+            }
+        }
+    }
     // Source mode (required for any datatype symbol) encodes concept clauses
     // from the source axioms above; only unsuppressed clauses reach the graph.
     for clause in &tin.clauses {
@@ -2360,10 +2438,14 @@ fn source_forces_distinct_data_successors(
     positive: bool,
     data_roles: &std::collections::HashSet<&str>,
 ) -> bool {
-    let data_filler = |role: &SourceRole, filler: &SourceConcept| {
-        source_concept_contains_internal_datatype(filler)
-            || (matches!(filler, SourceConcept::Top)
-                && matches!(role, SourceRole::Name(name) if data_roles.contains(name.as_str())))
+    // The successors of a number restriction are data values exactly when
+    // its role is a data role. An object role whose filler mentions a
+    // datatype (`≤ 1 s.∃v.{"y"}`) counts objects, not data values; reading
+    // it as a data restriction made this gate stricter than the frontend's
+    // `literal_profiles::distinct_data_successors_forced`, which decides by
+    // the role alone (seeds m2009, m2023, m2123, m2255, m2287).
+    let data_filler = |role: &SourceRole, _filler: &SourceConcept| {
+        matches!(role, SourceRole::Name(name) if data_roles.contains(name.as_str()))
     };
     match concept {
         SourceConcept::Not(operand) => source_forces_distinct_data_successors(operand, !positive, data_roles),
@@ -2458,6 +2540,8 @@ fn forced_distinct_data_successors(tin: &TInput) -> (bool, bool) {
         let (left, right) = (&axiom.left, &axiom.right);
         match axiom.kind {
             crate::json_io::SourceAxiomKind::SubClass => forces(left, false) || forces(right, true),
+            // `DisjointClasses(a b)` is `a ⊓ b ⊑ ⊥`: both sides are negative.
+            crate::json_io::SourceAxiomKind::Disjoint => forces(left, false) || forces(right, false),
             _ => [left, right].into_iter().any(|side| forces(side, false) || forces(side, true)),
         }
     }) || tin.nominal_abox.individuals.iter().any(|individual| {
@@ -2829,7 +2913,20 @@ fn tbox_extension_evidence_exact(
             let overlapping_intervals = ((dt::bridge_ieee_range(left) && dt::bridge_ieee_range(right))
                 || (dt::bridge_decimal_range(left) && dt::bridge_decimal_range(right)))
                 && dt::bridge_tbox_atomic_family(left) == dt::bridge_tbox_atomic_family(right);
-            if !decided && !overlapping_intervals {
+            // A complement `¬A` overlaps another range `B` partially. The
+            // label `{¬A, B}` is decided by `B`'s own exact cover when `B` is
+            // finite or a union, by the cell certificate of `A`'s family when
+            // `B` is in that family (`A` is body-sensitive there), and by a
+            // fresh IRI when `B` is another complement.
+            let complement_overlap = |complement: &str, other: &str| {
+                let Some(operand) = dt::bridge_exact_complement_operand(complement) else { return false };
+                let family = dt::bridge_tbox_atomic_family(other);
+                matches!(family, Some("finite" | "union" | "complement"))
+                    || (family == dt::bridge_tbox_atomic_family(&operand)
+                        && matches!(family, Some("decimal" | "float" | "double")))
+            };
+            if !decided && !overlapping_intervals
+                && !complement_overlap(left, right) && !complement_overlap(right, left) {
                 defer!("an extension datatype pair has no exact decided relation");
             }
         }
@@ -2859,7 +2956,9 @@ fn tbox_extension_evidence_exact(
             .filter(|&concept| dt::bridge_ieee_range(&tin.concepts[concept])
                 && dt::bridge_tbox_atomic_family(&tin.concepts[concept]) == Some(family))
             .collect();
-        if !members.iter().any(|&concept| dt::bridge_ieee_facet_range(&tin.concepts[concept])) {
+        let complemented = datatype_ids.iter().any(|&concept| dt::bridge_exact_complement_operand(&tin.concepts[concept])
+            .is_some_and(|operand| dt::bridge_tbox_atomic_family(&operand) == Some(family)));
+        if !complemented && !members.iter().any(|&concept| dt::bridge_ieee_facet_range(&tin.concepts[concept])) {
             continue;
         }
         let names: Vec<&str> = members.iter().map(|&concept| tin.concepts[concept].as_str()).collect();
@@ -5180,8 +5279,24 @@ fn native_conditional_full_abox_profile(
     allow_non_number: bool,
 ) -> bool {
     native_nominals
-        && (tin.number || allow_non_number)
+        && (tin.number || allow_non_number || carries_data_values(tin))
         && tin.nominal_abox.individuals.len() < CONDITIONAL_FULL_INDIVIDUAL_LIMIT
+}
+
+/// Whether the input has a literal value marker `__dt__val__v`. Until the
+/// exact data values of v1.5.5 every carried value came with its singleton
+/// clause `V(y0) ∧ V(y1) → y0 = y1`, whose equality head sets `tin.number`;
+/// the frontend now leaves that clause out when nothing forces two data
+/// successors apart (`datatypes::datatype_relation_clauses_with`), which
+/// moved such inputs from the conditional-full schedule to the legacy
+/// nominal one. On ore_ont_10781 (590 individuals, 1,319 data assertions)
+/// that made the bridge's prepare phase 0.7 s to 34 s and pushed the
+/// automatic route past its 12 s data-assertion bridge budget. Counting a
+/// value marker as a number feature keeps the schedule these inputs had.
+/// The profile only selects the completion's scheduling configuration; the
+/// bridge publishes a complete answer or defers under either schedule.
+fn carries_data_values(tin: &TInput) -> bool {
+    tin.concepts.iter().any(|concept| concept.starts_with("__dt__val__"))
 }
 
 /// Nominal-free positive ABoxes that can be consistency-checked component by
@@ -21971,7 +22086,7 @@ mod tests {
     }
 
     #[test]
-    fn native_direct_role_assertion_defers_on_multihop_target_merge() {
+    fn native_direct_role_assertion_follows_multihop_target_merge() {
         use crate::frontend::syntax::Concept as C;
         use crate::orchestrate::cb_to_ht::CardDefJson;
 
@@ -22027,20 +22142,33 @@ mod tests {
             .set_merged_into_individual_node_id(representative_id)
             .set_merged_dependency_track_point(merge_track);
 
+        // Konclude finds the representative and the combined dependency in
+        // the final node's IndividualMergingHash; the port folds the hop
+        // dependencies into the same MERGEDINDIVIDUAL chain
+        // (`resolve_native_merge_chain`, docs/HYBRID-CB-HT.md section 10).
+        assert_eq!(
+            algo.resolve_native_merge_chain(target, &mut ctx)
+                .map(|(node, dep, deterministic)| (node, dep.is_some(), deterministic)),
+            Some((representative, true, true))
+        );
         assert!(
-            !algo.install_native_role_assertion_edge(
+            algo.install_native_role_assertion_edge(
                 source,
                 bridged.roles[0],
                 bridged.nominal_seeds[1].individual_tag,
                 merge_track,
                 &mut ctx,
             ),
-            "a multi-hop target merge was accepted without Konclude's combined merging hash"
+            "a multi-hop target merge must relocate the asserted edge"
+        );
+        let links = algo.ht_role_successor_links(source, bridged.roles[0], &ctx);
+        assert!(
+            links.iter().any(|&(_, successor)| successor == representative),
+            "the asserted edge must reach the live representative"
         );
         assert!(
-            algo.ht_role_successor_links(source, bridged.roles[0], &ctx)
-                .is_empty(),
-            "the failed-closed multi-hop assertion installed an under-justified edge"
+            !links.iter().any(|&(_, successor)| successor == target || successor == middle),
+            "no edge may point at a merged-away node"
         );
     }
 

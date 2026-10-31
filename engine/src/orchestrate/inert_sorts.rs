@@ -205,6 +205,12 @@ pub fn release_inert_object_sorts(input: &mut JInput, is_source: impl Fn(&str) -
 ///   the others are re-checked, instead of keeping all of them. The loop ends
 ///   only when no candidate fails (B) or (H), so the module's model
 ///   correspondence holds for the final set exactly as for the rule checker's.
+/// * When the clause set equates generated value successors
+///   ([`equates_generated_values`]), a definer that guards a data role in a
+///   body and whose relativized fact is disjunctive is not a candidate. The
+///   fixpoint then starts from fewer candidates and ends, as before, only
+///   when none fails (B) or (H); with no candidate left the input is
+///   unchanged.
 ///
 /// The caller must give the result only to workers that read nothing but the
 /// clauses and report only names in `is_source`.
@@ -217,13 +223,14 @@ pub fn release_inert_object_sorts_for_cb(
         abox_names.extend(individual.proxies.iter().cloned());
         abox_names.extend(individual.assertion_markers.iter().cloned());
     }
+    let data_guards_sorted = equates_generated_values(&input.clauses);
     release_with(
         &mut input.clauses,
         &[],
         &[],
         &input.rules,
         |name| is_source(name) || abox_names.contains(name),
-        Options { maximal: true },
+        Options { maximal: true, data_guards_sorted },
     )
 }
 
@@ -314,11 +321,12 @@ pub fn eliminate_universal_definers(
     if inverse {
         return Eliminated::default();
     }
-    let mut reserved: HashSet<String> = HashSet::new();
+    let mut abox_names: HashSet<String> = HashSet::new();
     for individual in &input.nominal_abox.individuals {
-        reserved.extend(individual.proxies.iter().cloned());
-        reserved.extend(individual.assertion_markers.iter().cloned());
+        abox_names.extend(individual.proxies.iter().cloned());
+        abox_names.extend(individual.assertion_markers.iter().cloned());
     }
+    let mut reserved: HashSet<String> = abox_names.clone();
     for rule in &input.rules {
         for atom in rule.body.iter().chain(&rule.head) {
             if let JRuleAtom::Class { concept, .. } = atom {
@@ -344,6 +352,36 @@ pub fn eliminate_universal_definers(
     let is_universal = |atom: &JAtom, universal: &BTreeSet<String>| {
         matches!(atom, JAtom::Concept { concept, .. } if universal.contains(concept))
     };
+    // Fillers of an at-most asserted on an individual: the same cost as the
+    // inverse case above. On open_r3602 (results/agents/2026-10-30/
+    // r3-unannounced: `ClassAssertion(≤1 s, c)` with `s(a, a)`, `s(c, a)` and
+    // `D ⊑ {a, b}`) dropping the `⊤` filler from `Q_3(x) ∧ Q_4(y0) ∧ Q_4(y1)
+    // ∧ s(x, y0) ∧ s(x, y1) → y0 = y1`, `Q_3` the assertion marker of `c`,
+    // took the forced nominals route from 4 s past 60 s: the equality then
+    // fires on every pair of `s`-successors of `c` before their labels are
+    // known. Keep a definer on an equality-head term whose clause body holds
+    // a nominal proxy or an assertion marker, unless the term is a data
+    // successor (`v(x, y0)` with `v(x, y) → D(y)`; seed m2047 asserts
+    // `≤2 v` on `a` and takes 0.5 s with the filler eliminated, 2.1 s with
+    // it kept). Fillers of TBox at-most clauses (`FunctionalObjectProperty`,
+    // `≤n r` on a class) stay eliminable: on ORE 9800 one `⊤` filler sits in
+    // 33 functional-role clauses and keeping it took the CB arm from 2.3 s
+    // to 30 s.
+    let data_roles = data_roles(&input.clauses);
+    let asserted_filler = |clause: &JClause, concept: &str| {
+        clause.head.iter().any(|head| matches!(head, JAtom::Eq { left, right }
+            if clause.body.iter().any(|atom| {
+                matches!(atom, JAtom::Concept { concept: c, term } if c == concept && (term == left || term == right))
+            }) && !clause.body.iter().any(|atom| {
+                matches!(atom, JAtom::Role { role, target, .. } if (target == left || target == right) && data_roles.contains(role.as_str()))
+            })))
+            && clause.body.iter().any(|atom| {
+                matches!(atom, JAtom::Concept { concept: c, .. } if abox_names.contains(c) || c.starts_with("__nom__"))
+            })
+    };
+    for clause in &input.clauses {
+        universal.retain(|concept| !asserted_filler(clause, concept));
+    }
     // Keep a definer whose elimination would leave an unconditional role or
     // Skolem head; repeat, since keeping one can change another clause's body.
     loop {
@@ -395,7 +433,86 @@ pub fn eliminate_universal_definers(
 struct Options {
     /// Keep one of a set of mutually guarding candidates instead of all.
     maximal: bool,
+    /// Keep the sort of a definer that guards a data role in a body
+    /// (`Q(t) ∧ p(t, y) → …`, `p` with `p(x, y) → D(y)`) when its relativized
+    /// fact is disjunctive (`→ Q(t) ∨ R(t) ∨ D(t)`). A cost restriction that
+    /// only shrinks the candidate set; the CB variant sets it when the clause
+    /// set equates generated value successors
+    /// ([`equates_generated_values`]).
+    data_guards_sorted: bool,
 }
+
+/// Whether the clause set equates data elements that the CB engine creates:
+/// it has the identity clause `V(y0) ∧ V(y1) → y0 = y1` of a value marker
+/// `V` (one with `V(x) → D(x)`), and some clause puts `V` on a Skolem term,
+/// `… → V(f(x))` (a `DataHasValue` in a positive position). Every such
+/// successor, in every context, is then equal to every other.
+///
+/// A released definer holds on data elements too, so the released form
+/// `→ Q(x) ∨ R(x)` of a relativized fact `→ Q(x) ∨ R(x) ∨ D(x)` is a live
+/// disjunction at every data element, where the sorted form was true through
+/// `D`. On the generated value successors the CB engine's equality rules copy
+/// those disjunctions, and their consequences, between all of them when `Q`
+/// also guards the data role (`Q(x) ∧ u(x, y) → …`): on the
+/// hub-plus-data-values input of `tests/universal_role_and_top_data_range.rs`
+/// the CB engine took 6 s on the released clause set and 0.3 s on the sorted
+/// one, and 0.2 s on the released set without the identity clause
+/// (docs/NOMINALS-CB.md, "Released disjunctive facts on generated values").
+/// Released disjunctions on definers that do not read a data role stay cheap
+/// there and are what the nominal seeds need (m2047: 0.4 s released, no
+/// answer in 60 s with every disjunctive release withheld). Equations that
+/// only an at-most restriction or a functional data property forces
+/// (successors of one element) do not count.
+/// Roles `p` with a range sort clause `p(x, y) → D(y)`: the data properties.
+fn data_roles(clauses: &[JClause]) -> HashSet<&str> {
+    clauses
+        .iter()
+        .filter_map(|clause| {
+            let ([JAtom::Role { role, source, target }], [JAtom::Concept { concept, term }]) =
+                (clause.body.as_slice(), clause.head.as_slice())
+            else {
+                return None;
+            };
+            (concept == DATA_SORT && term == target && source != target && matches!(target, JTerm::Var { .. }))
+                .then_some(role.as_str())
+        })
+        .collect()
+}
+
+fn equates_generated_values(clauses: &[JClause]) -> bool {
+    let mut data_concepts: HashSet<&str> = HashSet::new();
+    for clause in clauses {
+        let ([JAtom::Concept { concept: v, term: body_term }], [JAtom::Concept { concept, term }]) =
+            (clause.body.as_slice(), clause.head.as_slice())
+        else {
+            continue;
+        };
+        if concept == DATA_SORT && v != DATA_SORT && body_term == term && matches!(term, JTerm::Var { .. }) {
+            data_concepts.insert(v);
+        }
+    }
+    let identities: HashSet<&str> = clauses
+        .iter()
+        .filter_map(|clause| {
+            let (
+                [JAtom::Concept { concept: a, term: ta }, JAtom::Concept { concept: b, term: tb }],
+                [JAtom::Eq { left, right }],
+            ) = (clause.body.as_slice(), clause.head.as_slice())
+            else {
+                return None;
+            };
+            let same_pair = (left == ta && right == tb) || (left == tb && right == ta);
+            (a == b && ta != tb && same_pair && data_concepts.contains(a.as_str())).then_some(a.as_str())
+        })
+        .collect();
+    !identities.is_empty()
+        && clauses.iter().any(|clause| {
+            clause.head.iter().any(|atom| {
+                matches!(atom, JAtom::Concept { concept, term: JTerm::Fun { .. } } if identities.contains(concept.as_str()))
+            })
+        })
+}
+
 /// [`release_inert_object_sorts`] over the parts of a frontend result that
 /// the pass reads, for callers that hold a `FrontendResult` instead of the
 /// clause file (`incremental_rules`). The clause set changes in place; the
@@ -407,7 +524,14 @@ pub(crate) fn release_inert_object_sorts_in(
     rules: &[JRule],
     is_source: impl Fn(&str) -> bool,
 ) -> Released {
-    release_with(clause_set, cardinalities, definers, rules, is_source, Options { maximal: false })
+    release_with(
+        clause_set,
+        cardinalities,
+        definers,
+        rules,
+        is_source,
+        Options { maximal: false, data_guards_sorted: false },
+    )
 }
 
 fn release_with(
@@ -487,6 +611,31 @@ fn release_with(
                 released.insert(concept);
             }
         }
+    }
+    if options.data_guards_sorted {
+        let data_roles = data_roles(clauses);
+        let mut disjunctive: HashSet<&str> = HashSet::new();
+        let mut data_guards: HashSet<&str> = HashSet::new();
+        for clause in clauses {
+            if clause.head.len() > 2 {
+                for atom in &clause.head {
+                    if let JAtom::Concept { concept, term } = atom {
+                        if clause.head.iter().any(|other| is_data(other, term)) {
+                            disjunctive.insert(concept);
+                        }
+                    }
+                }
+            }
+            for atom in &clause.body {
+                let JAtom::Concept { concept, term } = atom else { continue };
+                if clause.body.iter().any(|other| {
+                    matches!(other, JAtom::Role { role, source, .. } if source == term && data_roles.contains(role.as_str()))
+                }) {
+                    data_guards.insert(concept);
+                }
+            }
+        }
+        released.retain(|concept| !(disjunctive.contains(concept) && data_guards.contains(concept)));
     }
     // Only the clauses that mention a candidate can fail; candidates only
     // leave the set, so this list stays complete for every round.
@@ -1164,7 +1313,7 @@ mod tests {
     fn lean_accepts(checker: &std::path::Path, document: &serde_json::Value, tag: &str) -> bool {
         let path = std::env::temp_dir().join(format!("km-rules-inert-test-{}-{tag}.json", std::process::id()));
         std::fs::write(&path, serde_json::to_vec(document).unwrap()).unwrap();
-        let status = crate::lean_checker::run(checker, &path).unwrap().status;
+        let status = crate::lean_checkers::run_document(checker, &path).unwrap().status;
         let _ = std::fs::remove_file(&path);
         assert!(status.code().is_some_and(|code| code <= 1), "checker failed to run: {status}");
         status.success()
@@ -1299,6 +1448,130 @@ mod tests {
         assert_eq!(satisfiable(&clauses), satisfiable(&i.clauses));
     }
 
+    /// The hub-plus-data-values shape: the complement definer `Q_4` of
+    /// `¬(u value 1)` sits in `→ Q_4(x) ∨ Q_6(x) ∨ D(x)` with `Q_6 ≡ ∃u.{1}`,
+    /// whose unguarded existential keeps `Q_6` sorted.
+    fn excluded_middle_with_a_value() -> Vec<JClause> {
+        let (x, y) = (var("x"), var("y"));
+        let v = "__dt__val__1";
+        let g = JTerm::Fun { function: "g".into(), arg: Box::new(x.clone()) };
+        vec![
+            cl(vec![], vec![c("Q_4", x.clone()), c("Q_6", x.clone()), c(D, x.clone())]),
+            cl(vec![c("Q_4", x.clone()), c("Q_6", x.clone())], vec![]),
+            cl(vec![c("Q_6", x.clone())], vec![r("u", x.clone(), g)]),
+            cl(vec![c("Q_4", x.clone()), r("u", x.clone(), y.clone())], vec![c("Q_5", y.clone())]),
+            cl(vec![c("Q_4", x.clone()), c(D, x.clone())], vec![]),
+            cl(vec![c("Q_6", x.clone()), c(D, x.clone())], vec![]),
+            cl(vec![r("u", x.clone(), y.clone())], vec![c(D, y.clone())]),
+            cl(vec![r("u", x.clone(), y.clone()), c(D, x.clone())], vec![]),
+            cl(vec![c(v, x.clone())], vec![c(D, x.clone())]),
+        ]
+    }
+
+    fn value_identity() -> JClause {
+        let v = "__dt__val__1";
+        cl(vec![c(v, var("y0")), c(v, var("y1"))], vec![JAtom::Eq { left: var("y0"), right: var("y1") }])
+    }
+
+    /// `Q_12 ⊑ ∃u.{1}`: the value on a Skolem successor.
+    fn generated_value() -> Vec<JClause> {
+        let f = JTerm::Fun { function: "f".into(), arg: Box::new(var("x")) };
+        vec![
+            cl(vec![c("Q_12", var("x"))], vec![r("u", var("x"), f.clone())]),
+            cl(vec![c("Q_12", var("x"))], vec![c("__dt__val__1", f)]),
+        ]
+    }
+
+    #[test]
+    fn cb_release_keeps_a_disjunctive_data_guard_sorted_on_equated_generated_values() {
+        // Without an equation between generated values `Q_4` is released.
+        let mut i = input(excluded_middle_with_a_value());
+        assert_eq!(release_inert_object_sorts_for_cb(&mut i, |_| false).concepts, vec!["Q_4".to_string()]);
+        // The literal's identity clause and a value on a Skolem term: the
+        // released fact `→ Q_4(x) ∨ Q_6(x)` would be a live disjunction on
+        // every generated value, and they are all equal; `Q_4` guards `u`.
+        let mut clauses = excluded_middle_with_a_value();
+        clauses.push(value_identity());
+        clauses.extend(generated_value());
+        assert!(equates_generated_values(&clauses));
+        let mut i = input(clauses.clone());
+        assert_eq!(release_inert_object_sorts_for_cb(&mut i, |_| false), Released::default());
+        assert!(i.clauses == clauses);
+        // The identity alone (values only on individuals or in bodies), the
+        // generated value alone, a functional data property and an equation
+        // between nominals keep the full release.
+        let functional = cl(
+            vec![r("u", var("x"), var("y0")), r("u", var("x"), var("y1"))],
+            vec![JAtom::Eq { left: var("y0"), right: var("y1") }],
+        );
+        let nominal = cl(vec![c("__nom__a", var("x"))], vec![JAtom::Eq { left: var("x"), right: ind("a") }]);
+        for extra in [vec![value_identity()], generated_value(), vec![functional], vec![nominal]] {
+            let mut clauses = excluded_middle_with_a_value();
+            clauses.extend(extra);
+            assert!(!equates_generated_values(&clauses));
+            let mut i = input(clauses);
+            assert_eq!(release_inert_object_sorts_for_cb(&mut i, |_| false).concepts, vec!["Q_4".to_string()]);
+        }
+    }
+
+    #[test]
+    fn cb_release_keeps_other_releases_on_equated_generated_values() {
+        // A range definer's unit fact `→ Q_1(x) ∨ D(x)` and a disjunctive
+        // fact on a definer that reads no data role (`→ A(x) ∨ Q_2(x) ∨ D(x)`,
+        // the complement of a source class, seed m2047) are released as
+        // without the equation.
+        let mut clauses = range_clauses();
+        clauses.push(cl(vec![], vec![c("A", var("x")), c("Q_2", var("x")), c(D, var("x"))]));
+        clauses.push(cl(vec![c("A", var("x")), c("Q_2", var("x"))], vec![]));
+        clauses.push(cl(vec![c("Q_2", var("x")), c(D, var("x"))], vec![]));
+        clauses.push(cl(vec![c("A", var("x")), c(D, var("x"))], vec![]));
+        clauses.push(cl(vec![c("__dt__val__1", var("x"))], vec![c(D, var("x"))]));
+        let mut plain = input(clauses.clone());
+        let plain = release_inert_object_sorts_for_cb(&mut plain, |name| name == "A");
+        assert_eq!(plain.concepts, vec!["Q_1".to_string(), "Q_2".to_string()]);
+        clauses.push(value_identity());
+        clauses.extend(generated_value());
+        assert!(equates_generated_values(&clauses));
+        let mut i = input(clauses);
+        assert_eq!(release_inert_object_sorts_for_cb(&mut i, |name| name == "A").concepts, plain.concepts);
+    }
+
+    #[test]
+    fn data_guards_sorted_release_preserves_source_answers_on_random_inputs() {
+        // The DPLL oracle has no equality, so this runs the restricted pass
+        // directly instead of through an identity clause.
+        let mut rng = Lcg(20261101);
+        let (mut released, mut fewer) = (0, 0);
+        for _ in 0..2000 {
+            let mut clauses = random_sorted(&mut rng);
+            if rng.below(2) == 0 {
+                clauses.push(cl(vec![], vec![c("Q_1", var("x")), c("Q_2", var("x")), c(D, var("x"))]));
+            }
+            let is_source = |name: &str| name == "A" || name == "B";
+            let mut full = clauses.clone();
+            let all = release_with(&mut full, &[], &[], &[], is_source, Options { maximal: true, data_guards_sorted: false });
+            let mut restricted = clauses.clone();
+            let report = release_with(
+                &mut restricted,
+                &[],
+                &[],
+                &[],
+                is_source,
+                Options { maximal: true, data_guards_sorted: true },
+            );
+            if !report.concepts.is_empty() {
+                released += 1;
+            }
+            if report.concepts.len() < all.concepts.len() {
+                fewer += 1;
+            }
+            assert_eq!(answers(&clauses), answers(&restricted), "restricted release changed an answer: {report:?}");
+        }
+        eprintln!("2000 random clause sets: restricted release on {released}, fewer than the full release on {fewer}");
+        assert!(released > 200, "released on {released} inputs");
+        assert!(fewer > 5, "restriction applied on {fewer} inputs");
+    }
+
     #[test]
     fn cb_release_reserves_the_nominal_abox_markers() {
         let mut i = input(range_clauses());
@@ -1419,6 +1692,38 @@ mod tests {
         .unwrap();
         assert_eq!(eliminate_universal_definers(&mut i, |_| false), Eliminated::default());
         assert!(i.clauses == clauses);
+    }
+
+    #[test]
+    fn universal_filler_of_an_asserted_at_most_is_kept() {
+        let at_most = |subject: &str| {
+            cl(
+                vec![c("Q_1", var("y0")), c("Q_1", var("y1")), c(subject, var("x")),
+                     r("s", var("x"), var("y0")), r("s", var("x"), var("y1"))],
+                vec![JAtom::Eq { left: var("y0"), right: var("y1") }],
+            )
+        };
+        let unit = cl(vec![], vec![c("Q_1", var("x"))]);
+        // `ClassAssertion(≤1 s, c)` (open_r3602): `Q_3` is the assertion
+        // marker of `c`, the filler stays.
+        let clauses = vec![unit.clone(), at_most("Q_3")];
+        let mut i = input(clauses.clone());
+        i.nominal_abox = serde_json::from_value(serde_json::json!({
+            "complete": true,
+            "individuals": [{"individual": "c", "proxies": ["__nom__c"], "assertions": [], "assertion_markers": ["Q_3"]}]
+        }))
+        .unwrap();
+        assert_eq!(eliminate_universal_definers(&mut i, |_| false), Eliminated::default());
+        assert!(i.clauses == clauses);
+        // The same clause under a nominal proxy keeps it too.
+        let mut i = input(vec![unit.clone(), at_most("__nom__c")]);
+        assert_eq!(eliminate_universal_definers(&mut i, |_| false), Eliminated::default());
+        // A TBox at-most (`A ⊑ ≤1 s`, ORE 9800's functional roles) does not.
+        let mut i = input(vec![unit.clone(), at_most("A")]);
+        assert_eq!(eliminate_universal_definers(&mut i, |_| false).concepts, vec!["Q_1".to_string()]);
+        // Nor an at-most on a data role (`s(x, y) → D(y)`; seed m2047).
+        let mut i = input(vec![unit, at_most("__nom__c"), cl(vec![r("s", var("x"), var("y"))], vec![c(D, var("y"))])]);
+        assert_eq!(eliminate_universal_definers(&mut i, |_| false).concepts, vec!["Q_1".to_string()]);
     }
 
     #[test]

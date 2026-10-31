@@ -787,9 +787,8 @@ the pending ABox work the old code dropped, and that work is where the merge
 reaches the checks; the earlier correct answers on the five did not rest on
 a complete search. The automatic route then needs the CB fallback: r2627 and
 r2970 answer in 75 to 81 s, r1164, r281, r947 and r1536 do not finish in
-120 s (load 140 on 56 cores). Lifting those checks (exact relocation of
-asserted role edges onto the merge target) is the follow-up that recovers
-them.
+120 s (load 140 on 56 cores). The subsection "Asserted edges through merge
+chains" below lifts the check that fires and recovers all seven.
 
 Evidence (`results/agents/2026-10-30/bridge-nominal-merge/`, before =
 development/v1.5.5 0e1bd99a, after = this branch merged with it):
@@ -807,3 +806,171 @@ development/v1.5.5 0e1bd99a, after = this branch merged with it):
   two streams side by side: 106 answered by both with identical output, mean
   time ratio 1.011, median 0.979; ore_ont_699 (295 s before) crossed the cap
   after and gives identical output at 900 s (350 s after, 450 s before).
+
+### Asserted edges through merge chains (2026-10-31, `fix/v155-bridge-merge-edges`)
+
+Which check fired. On all five R3 seeds (r1164, r281, r947, r2627, r2970)
+the stop is the same one: the forward role-assertion transfer of phase 11 of
+`merge_individual_node_into` (`completion/u15.rs`), where
+`install_native_role_assertion_edge` (`completion/u36.rs`) returned false.
+Inside it the refusal was the multi-hop check: the individual named as the
+assertion's target had been merged into a node that was itself merged
+since, so its live node lies two or more merges away. Because phase 9 marks
+the merged-away node before phase 11 runs, an assertion `r(x, y)` held by
+`x` reaches this state as soon as `y` was merged into `x` earlier (or into
+any node merged later), for example a self assertion `s(a, a)` on a node
+merged twice. No disjoint-neighbour stop and no other check fired on these
+seeds (env-gated site trace on a scratch build; the trace is not committed).
+
+Why the port stopped where Konclude continues. Konclude keeps on every node
+an `IndividualMergingHash`: when `x` merges into `y`, every entry of `x`'s
+hash moves to `y` with its dependency rewritten to
+`MERGEDINDIVIDUAL(mergeDep, entryDep)` (`mergeIndividualNodeInto`, phase 6),
+so the final node knows every individual it absorbed and the combined merge
+dependency of each. The port has not ported that hash, and the edge
+installer refused chains longer than one hop because it had no way to name
+the combined dependency (a bridge unit test asserted that refusal).
+
+Fix. `resolve_native_merge_chain` follows `mergedIntoIndividualNodeID` from
+a node to its live representative and folds the hop dependencies exactly as
+the hash would hold them: one hop gives that merge's
+`mergedDependencyTrackPoint`, and each further hop `h` wraps the result as
+`MERGEDINDIVIDUAL(dep(h), previous)`. It also reports whether any hop is
+non-deterministic. `install_native_role_assertion_edge` uses it for the
+target in place of the one-hop special case, and passes the folded
+dependency as the nominal-merge part of the `ROLEASSERTION` dependency,
+which it already did for one hop. The reverse-assertion transfer resolves
+the asserting individual the same way: before, it looked the source up by
+id and could install the edge on a merged-away node, where no rule sees it;
+now the edge starts at the live representative under
+`MERGEDINDIVIDUAL(this merge, the source's chain)`.
+
+Exactness argument.
+- Facts. A merge of `x` into `y` records `x = y` under the merge's
+  dependency, so in every model of the current branch the individual named
+  `y` in `r(z, y)` is the element the live end of `y`'s chain represents.
+  The edge to that node is the asserted fact stated about the node that
+  carries every label of the merged individuals; it adds nothing that is not
+  entailed under the current branch, and it is the edge Konclude's lookup
+  through the merging hash gives.
+- Dependencies. A `MERGEDINDIVIDUAL` node is a two-parent deterministic link
+  whose branching tag is the maximum of its parents
+  (`update_dependency_branching_tag`), so the folded track point names every
+  hop's merge, and a clash that involves the edge backtracks to the latest
+  branch any hop depends on: the same set Konclude's rewritten hash entry
+  carries. Backtracking past a hop restores the node state, and with it the
+  chain, through the existing journal; the chain is read at install time
+  and not cached.
+- Determinism flag. The edge counts as deterministic for the
+  cached-neighbour match only if the assertion's own dependency and every
+  hop are deterministic, the one-hop rule extended to the chain.
+- What still stops. A chain that does not resolve (a hop names no node) or
+  that is longer than the number of nodes (a cycle; the merge rules choose
+  live nodes as targets, and the bound turns a violation into a stop
+  instead of a loop) returns false and the bridge defers, as do the
+  remaining checks of phase 11 (an assertion naming an individual outside
+  the arena, a non-nominal owner of a reverse assertion) and the
+  unlocalised disjoint neighbour of phase 5. The remaining bridge declines
+  below were not traced to a site.
+
+What the argument rests on. As for the three fixes above: the bridge has no
+Lean model, no certificate covers a bridge answer, and the argument assumes
+that the port's merge, dependency and backtracking machinery is Konclude's.
+HermiT differentials are the only cross-check. Lean obligation created:
+none discharged; a bridge model would have to show that the folded
+dependency's branch set is the union of the hops' and that the live end of
+the chain is the unique node carrying the merged individual.
+
+Evidence (`results/agents/2026-10-30/bridge-merge-edges/`, baseline the
+bridge-nominal-merge `km.after`, `KM_THREADS=1`):
+
+- The five seeds: answered as HermiT on the forced bridge and the automatic
+  route, 0.01 s each (the automatic route took 75 s to over 120 s before).
+  The six seeds km.after declined after answering them wrongly (r1536,
+  r1866, g545, g789, g1344, g1551) are answered correctly on both routes.
+- 2,000 generated seeds: forced bridge 1,769 to 1,993 ok, declines 231 to 7;
+  automatic route 1,956 to 2,000 ok, timeouts 44 to 0. 4,000 R3 random
+  seeds: bridge 3,134 to 3,333 ok, automatic 3,558 to 3,738 ok. R3 motif
+  sets and the 2026-10-29 bridge sets unchanged per seed. 0 wrong answers
+  on every set; no answer of km.after lost.
+- None of the 777 remaining bridge declines of these sets reaches a stop in
+  `merge_individual_node_into` (traced); 773 are ABox-conversion declines.
+- 112 nominal ORE inputs, paired at 300 s: 108 answered by both with
+  identical output and route, mean time ratio 1.034, median 1.006.
+
+## 11. Global-decision and taxonomy wire fixes (2026-10-30)
+
+The checkers-on suite (`docs/CHECKERS-ON.md` section 3.2,
+`results/agents/2026-10-30/checkers-on-suite/README.md`) found that
+`ht-cert-check` rejected the HT global decision document (H1) and that one
+taxonomy test asserted a wire shape the producer no longer writes (T1). No
+answer was wrong: both paths sat behind test variables that no gate set, so
+the tests ran against `/bin/true` or skipped their Lean step.
+
+H1 has two causes on one path. With no body equality and no preprocessing
+(the common case) the HT source has no normalization records, so the
+published global document is the raw regular-decision envelope
+(`WireRegularDecisionCertificate`, version 1).
+
+* `lean/HTCertCheck.lean` routed a version-1 document to the
+  regular-decision decoder only when its evidence was `regular_sat` or
+  `finite_unsat`. A `finite_sat` envelope, which the producer prefers when a
+  finite model checks, fell through to `WireCertificate` and failed on
+  `node_count`. The dispatcher now also routes `finite_sat`. This is
+  executable dispatch only: `WireRegularDecisionCertificate` already decodes
+  `finite_sat` and `DecodedRegularDecision.check_sound` already covers it,
+  and `WireEvidence` has no constructor with any of the three names, so no
+  plain certificate can be misrouted. No theorem changed.
+* After the rejected finite candidate the producer tried the regular SAT
+  certificate. The source-bound ordinary global document wraps a raw
+  envelope in an explicit identity normalization, and the Rust wrapper looked
+  for an `ontology` field, which a regular certificate does not have
+  (`identity-normalized global decision has no ontology`). The wrapper
+  (`lean_identity_normalized_global_source` in `engine/src/hypertableau.rs`)
+  now lists the ontology Lean decodes from the certificate,
+  `FiniteRegularCertificate.ontology`: the role clauses through
+  `NormalizedRoleClause.toClause`, then the residual clauses, in that order.
+  The checker verifies every identity record against its target clause
+  (`decodeOntologyNormalization`), so a wrong list is rejected, not trusted;
+  the test `identity_normalized_regular_source_lists_the_lean_target_ontology`
+  checks that the source clause order (residual first) is rejected.
+
+Exactness. Neither change alters a search, a verdict or a published
+answer. The Lean change accepts documents whose proof object the existing
+sound decoder already handles; the Rust change emits the identity
+normalization the proved checker expects. Lean obligation: none new; the
+soundness of the accepted branch is `DecodedRegularDecision.check_sound`
+(and `WireSourceBoundOrdinaryGlobal.check_sound` for the source-bound
+document), both unchanged.
+
+T1. `lean_taxonomy_checker_accepts_a_materialized_equality_body` asserted
+`payload.plain.certificate`. Certified taxonomy publication now always
+writes the mixed version-2 matrix that
+`WireOrdinaryTaxonomyRunMatrix.terminalMatrix?` derives for every fragment,
+so the test asserts `payload.mixed.certificate` (version 2) and the absence
+of `plain`; `ht-taxonomy-cert-check` accepts the document.
+
+Gate. `lean/run-ht-certification-gate.sh` now exports
+`KM_HT_TEST_LEAN_CHECKER`, `KM_HT_TEST_LEAN_GLOBAL_CHECKER`,
+`KM_HT_TEST_LEAN_TAXONOMY_CHECKER`, `KM_HT_TEST_LEAN_CARDINALITY_CHECKER`,
+`KM_HT_TEST_NATIVE_ABOX_DECISION_CHECKER`, `KM_HT_TEST_PROJECTION_CHECKER`
+and `KM_HT_TEST_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER`, runs the lib
+tests that read them one at a time, and runs `tests/ht_taxonomy_certificate.rs`
+with one test thread (real checkers fail to start threads near the host's
+commit limit when many run at once). With the fixed checkers all 35 lib
+tests that read these variables pass; with the v1.5.4 `ht-cert-check`,
+`regular_decision_prefers_a_checked_finite_sat_model` fails with the
+`node_count` error. The gate passed end to end on this branch (97 test
+binaries or filters, 249 tests passed, 0 failed, 0 ignored; 12 min 53 s
+wall with the checker executables already built).
+
+Not covered here. When the source does have normalization records,
+`wrap_normalized_lean_certificate` wraps a regular SAT envelope with the
+records in source clause order, while Lean decodes the regular target with
+the role clauses first; a source that mixes role clauses with body-equality
+clauses would then, by reading the code, be rejected (fail closed). No test
+exercises that case.
+`KM_HT_GLOBAL=1` is a worker variable (consistency only); set on
+`km classify --route ht_general` it publishes an empty subsumption list (on
+a five-axiom ALC input the entailed `B ⊑ D` was missing), so it is not a way
+to reproduce H1 through the CLI and the orchestrator should refuse it.

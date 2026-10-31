@@ -3003,6 +3003,154 @@ enum LeanHtNormalizedRoleClause {
     },
 }
 
+/// Wrap a raw (version 1 or 2) global decision document, whose source and
+/// target coincide, in the version-3 normalized wire with an explicit
+/// identity normalization, as the source-bound ordinary global checker
+/// expects. Already normalized documents are returned unchanged.
+fn lean_identity_normalized_global_source(
+    source: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let identity_normalization =
+        |target: &serde_json::Value| -> Result<Vec<serde_json::Value>, String> {
+            let variable_count = target["variable_count"]
+                .as_u64()
+                .or_else(|| {
+                    target["evidence"]["regular_sat"]["certificate"]["variable_count"].as_u64()
+                })
+                .or_else(|| {
+                    target["evidence"]["finite_sat"]["certificate"]["variable_count"].as_u64()
+                })
+                .or_else(|| {
+                    target["evidence"]["finite_unsat"]["certificate"]["variable_count"].as_u64()
+                })
+                .ok_or_else(|| {
+                    "identity-normalized global decision has no variable_count".to_string()
+                })? as usize;
+            // A regular certificate carries no `ontology` field. Lean
+            // decodes its target ontology as the role clauses followed by
+            // the residual clauses (`FiniteRegularCertificate.ontology`),
+            // so the identity normalization must list exactly those
+            // clauses in that order.
+            let regular_ontology = target["evidence"]["regular_sat"]["certificate"]
+                .as_object()
+                .map(|_| {
+                    lean_regular_wire_ontology(
+                        &target["evidence"]["regular_sat"]["certificate"],
+                    )
+                })
+                .transpose()?;
+            let ontology = target["ontology"]
+                .as_array()
+                .or(regular_ontology.as_ref())
+                .or_else(|| {
+                    target["evidence"]["finite_sat"]["certificate"]["ontology"].as_array()
+                })
+                .or_else(|| {
+                    target["evidence"]["finite_unsat"]["certificate"]["ontology"].as_array()
+                })
+                .ok_or_else(|| {
+                    "identity-normalized global decision has no ontology".to_string()
+                })?;
+            let representatives: Vec<_> = (0..variable_count).collect();
+            let representative_paths: Vec<Vec<_>> =
+                (0..variable_count).map(|variable| vec![variable]).collect();
+            Ok(ontology
+                .iter()
+                .map(|clause| {
+                    serde_json::json!({
+                        "source": clause,
+                        "representatives": representatives,
+                        "representative_paths": representative_paths,
+                    })
+                })
+                .collect())
+        };
+    Ok(match source.get("version").and_then(serde_json::Value::as_u64) {
+        Some(1) => {
+            let regular = source
+                .get("evidence")
+                .and_then(serde_json::Value::as_object)
+                .is_some_and(|evidence| {
+                    evidence.contains_key("regular_sat")
+                        || evidence.contains_key("finite_sat")
+                        || evidence.contains_key("finite_unsat")
+                });
+            let payload = if regular {
+                serde_json::json!({ "regular": { "certificate": source.clone() } })
+            } else {
+                serde_json::json!({ "plain": { "certificate": source.clone() } })
+            };
+            serde_json::json!({
+                "version": 3,
+                "normalization": identity_normalization(&source)?,
+                "payload": payload,
+            })
+        }
+        Some(2) => serde_json::json!({
+            "version": 3,
+            "normalization": identity_normalization(&source)?,
+            "payload": { "equality": { "certificate": source } },
+        }),
+        _ => source,
+    })
+}
+
+/// The target ontology Lean decodes from a serialized regular certificate:
+/// `FiniteRegularCertificate.ontology` is the role clauses, each read through
+/// `NormalizedRoleClause.toClause`, followed by the residual clauses. The
+/// result uses the `WireClause` JSON shape.
+fn lean_regular_wire_ontology(
+    certificate: &serde_json::Value,
+) -> Result<Vec<serde_json::Value>, String> {
+    let field = |value: &serde_json::Value, name: &str| -> Result<u64, String> {
+        value[name]
+            .as_u64()
+            .ok_or_else(|| format!("regular role clause has no numeric {name}"))
+    };
+    let role = |role: u64, source: u64, target: u64| {
+        serde_json::json!({ "role": { "role": role, "source": source, "target": target } })
+    };
+    let role_clauses = certificate["role_clauses"]
+        .as_array()
+        .ok_or_else(|| "regular certificate has no role_clauses".to_string())?;
+    let residual = certificate["residual"]
+        .as_array()
+        .ok_or_else(|| "regular certificate has no residual".to_string())?;
+    let mut ontology = Vec::with_capacity(role_clauses.len() + residual.len());
+    for clause in role_clauses {
+        let object = clause
+            .as_object()
+            .filter(|object| object.len() == 1)
+            .ok_or_else(|| "regular role clause is not a tagged object".to_string())?;
+        let (tag, value) = object.iter().next().expect("one entry");
+        let (body, head) = match tag.as_str() {
+            "subRole" => (
+                vec![role(field(value, "premise")?, field(value, "source")?, field(value, "target")?)],
+                vec![role(field(value, "conclusion")?, field(value, "source")?, field(value, "target")?)],
+            ),
+            "inverseRole" => (
+                vec![role(field(value, "premise")?, field(value, "source")?, field(value, "target")?)],
+                vec![role(field(value, "conclusion")?, field(value, "target")?, field(value, "source")?)],
+            ),
+            "chain" => (
+                vec![
+                    role(field(value, "first")?, field(value, "source")?, field(value, "middle")?),
+                    role(field(value, "second")?, field(value, "middle")?, field(value, "target")?),
+                ],
+                vec![role(field(value, "conclusion")?, field(value, "source")?, field(value, "target")?)],
+            ),
+            "reflexive" => (
+                Vec::new(),
+                vec![role(field(value, "role")?, field(value, "source")?, field(value, "source")?)],
+            ),
+            other => return Err(format!("unknown regular role clause {other}")),
+        };
+        ontology.push(serde_json::json!({ "body": body, "head": head }));
+    }
+    ontology.extend(residual.iter().cloned());
+    Ok(ontology)
+}
+
 #[derive(Clone, serde::Serialize)]
 struct LeanHtRegularCertificate {
     version: usize,
@@ -10764,7 +10912,7 @@ impl Ht {
                 path.display()
             )
         })?;
-        let status = std::process::Command::new(checker)
+        let status = crate::lean_checkers::CheckerCommand::new(checker)
             .arg(&path)
             .stdout(std::process::Stdio::null())
             .status()
@@ -11978,78 +12126,7 @@ impl Ht {
             })?;
         let source: serde_json::Value =
             serde_json::from_str(source).map_err(|error| error.to_string())?;
-        let identity_normalization =
-            |target: &serde_json::Value| -> Result<Vec<serde_json::Value>, String> {
-                let variable_count = target["variable_count"]
-                    .as_u64()
-                    .or_else(|| {
-                        target["evidence"]["regular_sat"]["certificate"]["variable_count"].as_u64()
-                    })
-                    .or_else(|| {
-                        target["evidence"]["finite_sat"]["certificate"]["variable_count"].as_u64()
-                    })
-                    .or_else(|| {
-                        target["evidence"]["finite_unsat"]["certificate"]["variable_count"].as_u64()
-                    })
-                    .ok_or_else(|| {
-                        "identity-normalized global decision has no variable_count".to_string()
-                    })? as usize;
-                let ontology = target["ontology"]
-                    .as_array()
-                    .or_else(|| {
-                        target["evidence"]["regular_sat"]["certificate"]["ontology"].as_array()
-                    })
-                    .or_else(|| {
-                        target["evidence"]["finite_sat"]["certificate"]["ontology"].as_array()
-                    })
-                    .or_else(|| {
-                        target["evidence"]["finite_unsat"]["certificate"]["ontology"].as_array()
-                    })
-                    .ok_or_else(|| {
-                        "identity-normalized global decision has no ontology".to_string()
-                    })?;
-                let representatives: Vec<_> = (0..variable_count).collect();
-                let representative_paths: Vec<Vec<_>> =
-                    (0..variable_count).map(|variable| vec![variable]).collect();
-                Ok(ontology
-                    .iter()
-                    .map(|clause| {
-                        serde_json::json!({
-                            "source": clause,
-                            "representatives": representatives,
-                            "representative_paths": representative_paths,
-                        })
-                    })
-                    .collect())
-            };
-        let source = match source.get("version").and_then(serde_json::Value::as_u64) {
-            Some(1) => {
-                let regular = source
-                    .get("evidence")
-                    .and_then(serde_json::Value::as_object)
-                    .is_some_and(|evidence| {
-                        evidence.contains_key("regular_sat")
-                            || evidence.contains_key("finite_sat")
-                            || evidence.contains_key("finite_unsat")
-                    });
-                let payload = if regular {
-                    serde_json::json!({ "regular": { "certificate": source.clone() } })
-                } else {
-                    serde_json::json!({ "plain": { "certificate": source.clone() } })
-                };
-                serde_json::json!({
-                    "version": 3,
-                    "normalization": identity_normalization(&source)?,
-                    "payload": payload,
-                })
-            }
-            Some(2) => serde_json::json!({
-                "version": 3,
-                "normalization": identity_normalization(&source)?,
-                "payload": { "equality": { "certificate": source } },
-            }),
-            _ => source,
-        };
+        let source = lean_identity_normalized_global_source(source)?;
         let production = match production_kind {
             "sat" => serde_json::json!({ "sat": { "run": run } }),
             "unsat" => serde_json::json!({ "unsat": { "run": run } }),
@@ -19258,7 +19335,7 @@ impl Ht {
             return true;
         };
         let passes = |path: &std::path::Path| {
-            std::process::Command::new(&checker)
+            crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(path)
                 .stdout(std::process::Stdio::null())
                 .status()
@@ -27930,7 +28007,7 @@ mod tests {
                 std::process::id()
             ));
             std::fs::write(&path, &payload).unwrap();
-            let accepted = std::process::Command::new(checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(checker)
                 .arg(&path)
                 .status()
                 .expect("run native ABox Lean refutation checker")
@@ -27975,7 +28052,7 @@ mod tests {
                     std::thread::current().name().unwrap_or("test")
                 ));
                 std::fs::write(&path, document).unwrap();
-                let accepted = std::process::Command::new(&checker)
+                let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                     .arg(&path)
                     .output()
                     .expect("run native ABox decision checker");
@@ -28072,7 +28149,7 @@ mod tests {
             .expect("SAT seed labels");
         labels.retain(|label| !(label["node"] == 1 && label["literal"]["concept"] == ASSERTED));
         std::fs::write(&path, serde_json::to_vec(&tampered).unwrap()).unwrap();
-        let output = std::process::Command::new(checker)
+        let output = crate::lean_checkers::CheckerCommand::new(checker)
             .arg(&path)
             .output()
             .expect("run native ABox taxonomy checker on a tampered cell");
@@ -28117,7 +28194,7 @@ mod tests {
             std::process::id()
         ));
         std::fs::write(&path, serde_json::to_vec(&wire).unwrap()).unwrap();
-        let output = std::process::Command::new(checker)
+        let output = crate::lean_checkers::CheckerCommand::new(checker)
             .arg(&path)
             .output()
             .expect("run complete native ABox taxonomy checker on missing cell");
@@ -28198,7 +28275,7 @@ mod tests {
             std::process::id()
         ));
         std::fs::write(&path, serde_json::to_vec(&wire).unwrap()).unwrap();
-        let output = std::process::Command::new(checker)
+        let output = crate::lean_checkers::CheckerCommand::new(checker)
             .arg(&path)
             .output()
             .expect("run native ABox cardinality taxonomy checker on forged definitions");
@@ -28276,7 +28353,7 @@ mod tests {
                 std::process::id()
             ));
             std::fs::write(&path, &payload).unwrap();
-            let accepted = std::process::Command::new(checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(checker)
                 .arg(&path)
                 .status()
                 .expect("run native ABox cardinality Lean refutation checker")
@@ -28334,7 +28411,7 @@ mod tests {
                     std::thread::current().name().unwrap_or("test")
                 ));
                 std::fs::write(&path, document).unwrap();
-                let output = std::process::Command::new(&checker)
+                let output = crate::lean_checkers::CheckerCommand::new(&checker)
                     .arg(&path)
                     .output()
                     .expect("run native ABox cardinality decision checker");
@@ -28710,7 +28787,7 @@ mod tests {
             std::thread::current().name().unwrap_or("test")
         ));
         std::fs::write(&path, t.lean_sat_certificate_json().unwrap()).unwrap();
-        let accepted = std::process::Command::new(&checker)
+        let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -28773,7 +28850,7 @@ mod tests {
                 .unwrap(),
         )
         .unwrap();
-        let accepted = std::process::Command::new(&checker)
+        let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .stdout(std::process::Stdio::null())
             .status()
@@ -28799,7 +28876,7 @@ mod tests {
             std::thread::current().name().unwrap_or("test")
         ));
         std::fs::write(&path, reasoner.lean_sat_certificate_json().unwrap()).unwrap();
-        let accepted = std::process::Command::new(&checker)
+        let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .stdout(std::process::Stdio::null())
             .status()
@@ -28855,7 +28932,7 @@ mod tests {
                 std::process::id()
             ));
             std::fs::write(&path, &document).unwrap();
-            let accepted = std::process::Command::new(&checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -28899,7 +28976,7 @@ mod tests {
                 std::process::id()
             ));
             std::fs::write(&path, document).unwrap();
-            let accepted = std::process::Command::new(&checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -29139,7 +29216,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, document).unwrap();
-            let accepted = std::process::Command::new(&checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -29213,7 +29290,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, &document).unwrap();
-            let output = std::process::Command::new(&checker)
+            let output = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .output()
                 .expect("run native Lean preprocessing checker");
@@ -29228,7 +29305,7 @@ mod tests {
             let mut tampered = wire.clone();
             tampered["preprocessing"]["contrapositives"][0]["source_clause"] = serde_json::json!(1);
             std::fs::write(&path, serde_json::to_vec(&tampered).unwrap()).unwrap();
-            let rejected = std::process::Command::new(&checker)
+            let rejected = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -29247,7 +29324,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, taxonomy_document).unwrap();
-            let output = std::process::Command::new(checker)
+            let output = crate::lean_checkers::CheckerCommand::new(checker)
                 .arg(&path)
                 .output()
                 .expect("run native Lean preprocessing taxonomy checker");
@@ -29276,7 +29353,7 @@ mod tests {
             std::thread::current().name().unwrap_or("test")
         ));
         std::fs::write(&path, t.lean_unsat_certificate_json().unwrap()).unwrap();
-        let accepted = std::process::Command::new(&checker)
+        let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -29460,7 +29537,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, &document).unwrap();
-            let accepted = std::process::Command::new(&checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .output()
                 .expect("run quotient production blocker checker");
@@ -29473,7 +29550,7 @@ mod tests {
             let mut forged_rejections: serde_json::Value = serde_json::from_str(&document).unwrap();
             forged_rejections["validate_rejections"] = serde_json::json!(true);
             std::fs::write(&path, serde_json::to_vec(&forged_rejections).unwrap()).unwrap();
-            let rejected_document = std::process::Command::new(&checker)
+            let rejected_document = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .status()
                 .expect("run checker on a falsely rejected valid fold candidate");
@@ -29485,7 +29562,7 @@ mod tests {
             let mut missing_blocker: serde_json::Value = serde_json::from_str(&document).unwrap();
             missing_blocker["options"][0]["blockers"] = serde_json::json!([]);
             std::fs::write(&path, serde_json::to_vec(&missing_blocker).unwrap()).unwrap();
-            let rejected_document = std::process::Command::new(&checker)
+            let rejected_document = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .status()
                 .expect("run checker on missing quotient blocker");
@@ -29494,7 +29571,7 @@ mod tests {
             let mut unexhausted: serde_json::Value = serde_json::from_str(&document).unwrap();
             unexhausted["rejected"] = serde_json::json!([]);
             std::fs::write(&path, serde_json::to_vec(&unexhausted).unwrap()).unwrap();
-            let rejected_document = std::process::Command::new(&checker)
+            let rejected_document = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .status()
                 .expect("run checker on incomplete quotient assignment exhaustion");
@@ -29527,7 +29604,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, anchored).unwrap();
-            let output = std::process::Command::new(anchored_checker)
+            let output = crate::lean_checkers::CheckerCommand::new(anchored_checker)
                 .arg(&path)
                 .output()
                 .expect("run native equality-backed anchored checker");
@@ -29544,7 +29621,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, normalized_anchored).unwrap();
-            let output = std::process::Command::new(main_checker)
+            let output = crate::lean_checkers::CheckerCommand::new(main_checker)
                 .arg(&path)
                 .output()
                 .expect("run main native HT checker on anchored equality evidence");
@@ -29564,7 +29641,7 @@ mod tests {
             ));
             std::fs::write(&path, serde_json::to_vec(&forged).unwrap()).unwrap();
             let output =
-                std::process::Command::new(std::env::var_os("KM_HT_TEST_LEAN_CHECKER").unwrap())
+                crate::lean_checkers::CheckerCommand::new(std::env::var_os("KM_HT_TEST_LEAN_CHECKER").unwrap())
                     .arg(&path)
                     .output()
                     .expect("run main native HT checker on forged normalization");
@@ -29615,7 +29692,7 @@ mod tests {
             std::thread::current().name().unwrap_or("test")
         ));
         std::fs::write(&path, &document).unwrap();
-        let accepted = std::process::Command::new(checker)
+        let accepted = crate::lean_checkers::CheckerCommand::new(checker)
             .arg(&path)
             .output()
             .expect("run production checker on genuinely invalid fold candidates");
@@ -29656,7 +29733,7 @@ mod tests {
             let round: serde_json::Value = serde_json::from_str(&document).unwrap();
             let trace = serde_json::json!({"version": 1, "rounds": [round]});
             std::fs::write(&path, serde_json::to_vec(&trace).unwrap()).unwrap();
-            let traced = std::process::Command::new(&trace_checker)
+            let traced = crate::lean_checkers::CheckerCommand::new(&trace_checker)
                 .arg(&path)
                 .output()
                 .expect("run complete equality production trace checker");
@@ -29671,7 +29748,7 @@ mod tests {
                 "rounds": [trace["rounds"][0].clone(), trace["rounds"][0].clone()]
             });
             std::fs::write(&path, serde_json::to_vec(&forged).unwrap()).unwrap();
-            let stale = std::process::Command::new(trace_checker)
+            let stale = crate::lean_checkers::CheckerCommand::new(trace_checker)
                 .arg(&path)
                 .output()
                 .expect("run trace checker on a stale forbidden-set transition");
@@ -29723,7 +29800,7 @@ mod tests {
             std::thread::current().name().unwrap_or("test")
         ));
         std::fs::write(&path, serde_json::to_vec(&wire).unwrap()).unwrap();
-        let accepted = std::process::Command::new(&checker)
+        let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .output()
             .expect("run production checker on native ABox fold rejections");
@@ -29735,7 +29812,7 @@ mod tests {
 
         wire["native_seed"]["roots"] = serde_json::json!([]);
         std::fs::write(&path, serde_json::to_vec(&wire).unwrap()).unwrap();
-        let forged = std::process::Command::new(checker)
+        let forged = crate::lean_checkers::CheckerCommand::new(checker)
             .arg(&path)
             .output()
             .expect("run production checker on forged native ABox roots");
@@ -29782,7 +29859,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, document).unwrap();
-            let output = std::process::Command::new(checker)
+            let output = crate::lean_checkers::CheckerCommand::new(checker)
                 .arg(&path)
                 .output()
                 .expect("run native anchored nominal checker");
@@ -29874,7 +29951,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, document).unwrap();
-            let accepted = std::process::Command::new(checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(checker)
                 .arg(&path)
                 .status()
                 .expect("run the native Lean cardinality-frontier checker");
@@ -30102,7 +30179,7 @@ mod tests {
             std::thread::current().name().unwrap_or("test")
         ));
         std::fs::write(&path, &document).unwrap();
-        let accepted = std::process::Command::new(&checker)
+        let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .output()
             .expect("run rooted cardinality checker");
@@ -30115,7 +30192,7 @@ mod tests {
         let mut duplicate: serde_json::Value = serde_json::from_str(&document).unwrap();
         duplicate["frontier"]["addresses"][2]["root"] = serde_json::json!(1);
         std::fs::write(&path, serde_json::to_vec(&duplicate).unwrap()).unwrap();
-        let rejected = std::process::Command::new(checker)
+        let rejected = crate::lean_checkers::CheckerCommand::new(checker)
             .arg(&path)
             .status()
             .expect("run checker on duplicate rooted address");
@@ -30155,7 +30232,7 @@ mod tests {
                 .lean_address_refinement_json(&frontier)
                 .expect("serialize the cyclic state/address refinement");
             std::fs::write(&path, &document).unwrap();
-            let accepted = std::process::Command::new(&frontier_checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(&frontier_checker)
                 .arg(&path)
                 .output()
                 .expect("run the native Lean frontier checker");
@@ -30168,7 +30245,7 @@ mod tests {
             let mut duplicate: serde_json::Value = serde_json::from_str(&document).unwrap();
             duplicate["frontier"]["addresses"][1] = duplicate["frontier"]["addresses"][0].clone();
             std::fs::write(&path, serde_json::to_vec(&duplicate).unwrap()).unwrap();
-            let rejected = std::process::Command::new(&frontier_checker)
+            let rejected = crate::lean_checkers::CheckerCommand::new(&frontier_checker)
                 .arg(&path)
                 .status()
                 .expect("run the native Lean checker on a duplicate frontier");
@@ -30180,7 +30257,7 @@ mod tests {
             let mut missing_edge: serde_json::Value = serde_json::from_str(&document).unwrap();
             missing_edge["state"]["edges"] = serde_json::json!([]);
             std::fs::write(&path, serde_json::to_vec(&missing_edge).unwrap()).unwrap();
-            let rejected = std::process::Command::new(&frontier_checker)
+            let rejected = crate::lean_checkers::CheckerCommand::new(&frontier_checker)
                 .arg(&path)
                 .status()
                 .expect("run the native Lean checker on a mismatched frontier state");
@@ -30414,7 +30491,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, &document).unwrap();
-            let accepted = std::process::Command::new(&checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .output()
                 .expect("run the native production blocker checker");
@@ -30426,7 +30503,7 @@ mod tests {
             let mut forged: serde_json::Value = serde_json::from_str(&document).unwrap();
             forged["options"][0]["blockers"] = serde_json::json!([]);
             std::fs::write(&path, serde_json::to_string(&forged).unwrap()).unwrap();
-            let rejected = std::process::Command::new(&checker)
+            let rejected = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .output()
                 .expect("run the native production blocker checker on forged options");
@@ -30438,7 +30515,7 @@ mod tests {
             let mut unexhausted: serde_json::Value = serde_json::from_str(&document).unwrap();
             unexhausted["rejected"] = serde_json::json!([]);
             std::fs::write(&path, serde_json::to_string(&unexhausted).unwrap()).unwrap();
-            let rejected = std::process::Command::new(&checker)
+            let rejected = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .output()
                 .expect("run the native production blocker checker on missing rejections");
@@ -30474,7 +30551,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, regular_raw).unwrap();
-            let accepted = std::process::Command::new(&checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .output()
                 .expect("run the native Lean regular checker");
@@ -30498,7 +30575,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&decision_path, decision).unwrap();
-            let accepted = std::process::Command::new(&decision_checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(&decision_checker)
                 .arg(&decision_path)
                 .output()
                 .expect("run the native Lean regular decision checker");
@@ -30523,7 +30600,7 @@ mod tests {
                     .expect("wrap the blocked SAT candidate with normalization evidence"),
             )
             .unwrap();
-            let accepted = std::process::Command::new(&checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -30542,7 +30619,7 @@ mod tests {
                 .finalize_lean_certificate(serde_json::to_string(&forged).unwrap())
                 .expect("wrap the forged blocked candidate");
             std::fs::write(&path, forged).unwrap();
-            let rejected = std::process::Command::new(&checker)
+            let rejected = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -30552,6 +30629,137 @@ mod tests {
             assert!(
                 !rejected.success(),
                 "Lean must reject a blocked leaf missing its copied witness edge"
+            );
+        }
+    }
+
+    #[test]
+    fn identity_normalized_regular_source_lists_the_lean_target_ontology() {
+        // A residual clause precedes the role clauses in source order. Lean
+        // decodes the regular target ontology as role clauses first, then the
+        // residual, so the identity normalization must follow that order.
+        let reasoner = Ht::new_certified(vec![
+            Clause::new(vec![con(false, A, 0)], vec![con(false, B, 0)]),
+            Clause::new(
+                vec![Atom::Role { r: R0, s: 0, t: 1 }],
+                vec![Atom::Role { r: 1, s: 0, t: 1 }],
+            ),
+            Clause::new(
+                vec![Atom::Role { r: 1, s: 0, t: 1 }],
+                vec![Atom::Role { r: 2, s: 1, t: 0 }],
+            ),
+            Clause::new(
+                vec![
+                    Atom::Role { r: R0, s: 0, t: 1 },
+                    Atom::Role { r: R0, s: 1, t: 2 },
+                ],
+                vec![Atom::Role { r: 3, s: 0, t: 2 }],
+            ),
+            Clause::new(Vec::new(), vec![Atom::Role { r: 4, s: 0, t: 0 }]),
+        ]);
+        assert!(
+            reasoner.cert_body_normalization.is_none(),
+            "an equality-free source without preprocessing has no normalization records"
+        );
+        let leaf = LeanHtBlockedOpenLeaf {
+            node_count: 3,
+            labels: Vec::new(),
+            edges: vec![
+                (R0, 0, 1),
+                (R0, 1, 2),
+                (1, 0, 1),
+                (1, 1, 2),
+                (2, 1, 0),
+                (2, 2, 1),
+                (3, 0, 2),
+                (4, 0, 0),
+                (4, 1, 1),
+                (4, 2, 2),
+            ],
+            obligations: Vec::new(),
+            folds: Vec::new(),
+            fold_options: Vec::new(),
+            witness_parent: vec![None; 3],
+            forbidden_folds: Vec::new(),
+        };
+        let regular = reasoner
+            .lean_regular_blocked_open_certificate_json(&leaf)
+            .expect("serialize the regular certificate");
+        let envelope = Ht::lean_regular_decision_envelope(regular, true).unwrap();
+        // Without normalization records the published global document is the
+        // raw envelope; the source-bound checker receives the identity wrap.
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(
+                &reasoner.finalize_lean_certificate(envelope.clone()).unwrap()
+            )
+            .unwrap(),
+            serde_json::from_str::<serde_json::Value>(&envelope).unwrap()
+        );
+        let source = lean_identity_normalized_global_source(
+            serde_json::from_str(&envelope).unwrap(),
+        )
+        .expect("identity-normalize a regular SAT decision");
+        let normalization = source["normalization"].as_array().unwrap();
+        assert_eq!(normalization.len(), 5);
+        assert_eq!(
+            normalization[0]["source"],
+            serde_json::json!({
+                "body": [{"role": {"role": R0, "source": 0, "target": 1}}],
+                "head": [{"role": {"role": 1, "source": 0, "target": 1}}],
+            })
+        );
+        assert_eq!(
+            normalization[2]["source"],
+            serde_json::json!({
+                "body": [
+                    {"role": {"role": R0, "source": 0, "target": 1}},
+                    {"role": {"role": R0, "source": 1, "target": 2}},
+                ],
+                "head": [{"role": {"role": 3, "source": 0, "target": 2}}],
+            })
+        );
+        assert_eq!(
+            normalization[3]["source"],
+            serde_json::json!({
+                "body": [],
+                "head": [{"role": {"role": 4, "source": 0, "target": 0}}],
+            })
+        );
+        assert_eq!(normalization[4]["source"]["body"][0]["concept"]["literal"]["concept"], A);
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") {
+            let check = |document: &serde_json::Value, tag: &str| {
+                let path = std::env::temp_dir().join(format!(
+                    "km-ht-identity-regular-{tag}-{}.json",
+                    std::process::id()
+                ));
+                std::fs::write(&path, serde_json::to_string(document).unwrap()).unwrap();
+                let output = crate::lean_checkers::CheckerCommand::new(&checker)
+                    .arg(&path)
+                    .output()
+                    .expect("run the main Lean checker");
+                let _ = std::fs::remove_file(path);
+                output
+            };
+            let accepted = check(&source, "accepted");
+            assert!(
+                accepted.status.success(),
+                "Lean must accept the identity-normalized regular source: {}",
+                String::from_utf8_lossy(&accepted.stderr)
+            );
+            let raw = check(&serde_json::from_str(&envelope).unwrap(), "raw");
+            assert!(
+                raw.status.success(),
+                "Lean must accept the raw regular SAT envelope: {}",
+                String::from_utf8_lossy(&raw.stderr)
+            );
+            // The source clause order is not the Lean target order.
+            let mut source_order = source.clone();
+            let entries = source_order["normalization"].as_array_mut().unwrap();
+            let residual = entries.pop().unwrap();
+            entries.insert(0, residual);
+            assert!(
+                !check(&source_order, "source-order").status.success(),
+                "Lean must reject a normalization listed in source clause order"
             );
         }
     }
@@ -30636,7 +30844,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, document).unwrap();
-            let accepted = std::process::Command::new(&checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .output()
                 .expect("run the native Lean regular checker");
@@ -30647,7 +30855,7 @@ mod tests {
                 String::from_utf8_lossy(&accepted.stderr),
             );
             std::fs::write(&path, unsaturated_document).unwrap();
-            let accepted_cover = std::process::Command::new(&checker)
+            let accepted_cover = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .output()
                 .expect("run the regular checker on role closure supplied by the cover");
@@ -30753,7 +30961,7 @@ mod tests {
                 .expect("checker-backed tests keep temporary evidence in CARGO_TARGET_DIR");
             let joined_path = target.join("km-ht-general-guarded-accepted.json");
             std::fs::write(&joined_path, joined_document).unwrap();
-            let joined_result = std::process::Command::new(&checker)
+            let joined_result = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&joined_path)
                 .output()
                 .expect("run the regular checker on a dormant joined body");
@@ -30766,7 +30974,7 @@ mod tests {
 
             let obstructed_path = target.join("km-ht-general-guarded-rejected.json");
             std::fs::write(&obstructed_path, non_simple_document).unwrap();
-            let obstructed_result = std::process::Command::new(&checker)
+            let obstructed_result = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&obstructed_path)
                 .output()
                 .expect("run the regular checker on a cover-visible obstruction");
@@ -30786,7 +30994,7 @@ mod tests {
                 assignment: &obstruction.1,
             };
             std::fs::write(&witness_path, serde_json::to_vec(&witness).unwrap()).unwrap();
-            let witness_result = std::process::Command::new(&obstruction_checker)
+            let witness_result = crate::lean_checkers::CheckerCommand::new(&obstruction_checker)
                 .arg(&witness_path)
                 .output()
                 .expect("run the native Lean cover-obstruction checker");
@@ -30804,7 +31012,7 @@ mod tests {
                 assignment: &forged_assignment,
             };
             std::fs::write(&witness_path, serde_json::to_vec(&forged).unwrap()).unwrap();
-            let forged_result = std::process::Command::new(&obstruction_checker)
+            let forged_result = crate::lean_checkers::CheckerCommand::new(&obstruction_checker)
                 .arg(&witness_path)
                 .output()
                 .expect("run the cover-obstruction checker on a forged assignment");
@@ -30820,7 +31028,7 @@ mod tests {
                 assignment: &obstruction.1,
             };
             std::fs::write(&witness_path, serde_json::to_vec(&out_of_range).unwrap()).unwrap();
-            let bounds_result = std::process::Command::new(obstruction_checker)
+            let bounds_result = crate::lean_checkers::CheckerCommand::new(obstruction_checker)
                 .arg(&witness_path)
                 .output()
                 .expect("run the cover-obstruction checker on an invalid clause index");
@@ -30843,7 +31051,7 @@ mod tests {
                 serde_json::to_vec(&endpoint_document).unwrap(),
             )
             .unwrap();
-            let endpoint_result = std::process::Command::new(endpoint_checker)
+            let endpoint_result = crate::lean_checkers::CheckerCommand::new(endpoint_checker)
                 .arg(&endpoint_path)
                 .output()
                 .expect("run the endpoint-role evidence checker");
@@ -30869,7 +31077,7 @@ mod tests {
                 serde_json::to_vec(&refinement_document).unwrap(),
             )
             .unwrap();
-            let refinement_result = std::process::Command::new(refinement_checker)
+            let refinement_result = crate::lean_checkers::CheckerCommand::new(refinement_checker)
                 .arg(&refinement_path)
                 .output()
                 .expect("run the combined cover-refinement checker");
@@ -30894,7 +31102,7 @@ mod tests {
             .unwrap();
             let mut refinement_checker = std::path::PathBuf::from(&checker);
             refinement_checker.set_file_name("ht-cover-refinement-check");
-            let incomplete_rbox_result = std::process::Command::new(refinement_checker)
+            let incomplete_rbox_result = crate::lean_checkers::CheckerCommand::new(refinement_checker)
                 .arg(&refinement_path)
                 .output()
                 .expect("run the combined checker without RBox representation");
@@ -30921,7 +31129,7 @@ mod tests {
             .unwrap();
             let mut refinement_checker = std::path::PathBuf::from(&checker);
             refinement_checker.set_file_name("ht-cover-refinement-check");
-            let forged_refinement_result = std::process::Command::new(refinement_checker)
+            let forged_refinement_result = crate::lean_checkers::CheckerCommand::new(refinement_checker)
                 .arg(&refinement_path)
                 .output()
                 .expect("run the combined checker on forged direct provenance");
@@ -30951,7 +31159,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, document).unwrap();
-            let accepted = std::process::Command::new(checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(checker)
                 .arg(&path)
                 .output()
                 .expect("run the native Lean regular decision checker");
@@ -30982,8 +31190,8 @@ mod tests {
                 std::process::id(),
                 std::thread::current().name().unwrap_or("test")
             ));
-            std::fs::write(&path, document).unwrap();
-            let accepted = std::process::Command::new(checker)
+            std::fs::write(&path, &document).unwrap();
+            let accepted = crate::lean_checkers::CheckerCommand::new(checker)
                 .arg(&path)
                 .output()
                 .expect("run the native Lean regular decision checker");
@@ -30994,6 +31202,27 @@ mod tests {
                 String::from_utf8_lossy(&accepted.stderr),
             );
             let _ = std::fs::remove_file(path);
+        }
+        // The global verdict checker (`ht-cert-check`) receives the same raw
+        // envelope when the source has no normalization records. Its version-1
+        // dispatch must route `finite_sat` to the regular-decision decoder.
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") {
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-global-finite-sat-{}-{}.json",
+                std::process::id(),
+                std::thread::current().name().unwrap_or("test")
+            ));
+            std::fs::write(&path, &document).unwrap();
+            let accepted = crate::lean_checkers::CheckerCommand::new(checker)
+                .arg(&path)
+                .output()
+                .expect("run the main Lean checker on a finite SAT decision");
+            let _ = std::fs::remove_file(&path);
+            assert!(
+                accepted.status.success(),
+                "the main Lean checker must accept Rust's finite SAT decision: {}",
+                String::from_utf8_lossy(&accepted.stderr),
+            );
         }
     }
 
@@ -31022,7 +31251,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, document).unwrap();
-            let accepted = std::process::Command::new(&checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .output()
                 .expect("run the main Lean checker on normalized regular evidence");
@@ -31102,7 +31331,7 @@ mod tests {
                     std::thread::current().name().unwrap_or("test")
                 ));
                 std::fs::write(&path, certificate).unwrap();
-                let accepted = std::process::Command::new(&checker)
+                let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                     .arg(&path)
                     .stdout(std::process::Stdio::null())
                     .stderr(std::process::Stdio::null())
@@ -31185,7 +31414,7 @@ mod tests {
                     std::thread::current().name().unwrap_or("test")
                 ));
                 std::fs::write(&path, certificate).unwrap();
-                let accepted = std::process::Command::new(&checker)
+                let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                     .arg(&path)
                     .stdout(std::process::Stdio::null())
                     .stderr(std::process::Stdio::null())
@@ -31307,7 +31536,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, document).unwrap();
-            let accepted = std::process::Command::new(checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(checker)
                 .arg(&path)
                 .output()
                 .expect("run cardinality production blocker checker");
@@ -31383,7 +31612,7 @@ mod tests {
                     std::thread::current().name().unwrap_or("test")
                 ));
                 std::fs::write(&path, certificate).unwrap();
-                let accepted = std::process::Command::new(&checker)
+                let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                     .arg(&path)
                     .stdout(std::process::Stdio::null())
                     .stderr(std::process::Stdio::null())
@@ -31440,7 +31669,7 @@ mod tests {
                 .expect("the fresh existential witness closes"),
         )
         .expect("write temporary HT certificate");
-        let accepted = std::process::Command::new(&checker)
+        let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -31488,7 +31717,7 @@ mod tests {
                 std::process::id()
             ));
             std::fs::write(&path, document).expect("write temporary HT query certificate");
-            let accepted = std::process::Command::new(&checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -31569,7 +31798,7 @@ mod tests {
         );
         for (index, document) in documents.iter().enumerate() {
             std::fs::write(&path, document).expect("write temporary HT taxonomy certificate");
-            let output = std::process::Command::new(&checker)
+            let output = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .output()
                 .expect("run native Lean HT taxonomy checker");
@@ -31594,7 +31823,7 @@ mod tests {
         matrix[0].as_array_mut().expect("first taxonomy row").pop();
         std::fs::write(&path, serde_json::to_vec(&tampered).unwrap())
             .expect("write tampered HT taxonomy certificate");
-        let rejected = !std::process::Command::new(&checker)
+        let rejected = !crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -31638,7 +31867,7 @@ mod tests {
         let run_checker = |document: &serde_json::Value| {
             std::fs::write(&path, serde_json::to_vec(document).unwrap())
                 .expect("write cardinality taxonomy run matrix");
-            std::process::Command::new(&checker)
+            crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -31809,7 +32038,7 @@ mod tests {
         let run_checker = |document: &serde_json::Value| {
             std::fs::write(&path, serde_json::to_vec(document).unwrap())
                 .expect("write ordinary taxonomy run matrix");
-            std::process::Command::new(&checker)
+            crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -31903,7 +32132,7 @@ mod tests {
         ));
         let run_checker = |document: &serde_json::Value| {
             std::fs::write(&path, serde_json::to_vec(document).unwrap()).unwrap();
-            std::process::Command::new(&checker)
+            crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -31948,13 +32177,17 @@ mod tests {
             serde_json::from_str(&document).expect("normalized taxonomy is JSON");
         assert_eq!(wire["version"], 3);
         assert!(wire["normalization"][0]["source"]["body"][0]["eq"].is_object());
-        assert!(wire["payload"]["plain"]["certificate"].is_object());
+        // Every certified taxonomy uses the mixed (version-2) matrix, which
+        // `WireOrdinaryTaxonomyRunMatrix.terminalMatrix?` derives for every
+        // fragment; the legacy plain payload is no longer produced.
+        assert_eq!(wire["payload"]["mixed"]["certificate"]["version"], 2);
+        assert!(wire["payload"].get("plain").is_none());
         let path = std::env::temp_dir().join(format!(
             "km-ht-taxonomy-equality-body-gap-{}.json",
             std::process::id()
         ));
         std::fs::write(&path, document).unwrap();
-        let accepted = std::process::Command::new(&checker)
+        let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())

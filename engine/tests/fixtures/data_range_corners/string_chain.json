@@ -1,0 +1,1 @@
+{"ontology": "string_chain.ofn", "consistent": true, "unsatisfiable": ["A"], "subsumptions": [["B", "C"], ["D", "B"], ["D", "C"]], "note": "OWL 2 datatype map answer (XSD 1.1: every language tag is an NCName); HermiT 1.4 answers A satisfiable with A subsumed by B and C, see gold/string_chain.json"}

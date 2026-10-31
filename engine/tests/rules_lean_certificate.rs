@@ -80,7 +80,7 @@ fn assert_certified_env(ontology: &Path, tag: &str, route: Option<&str>,
     files.sort();
     assert!(!files.is_empty(), "no rule-route certificate was written for {tag}");
     for file in &files {
-        let out = kobayashi_marust::lean_checker::run(&checker, file).unwrap();
+        let out = kobayashi_marust::lean_checkers::run_document(&checker, file).unwrap();
         assert!(out.status.success(), "Lean rejected {}", file.display());
         eprintln!("{tag}: {}", String::from_utf8_lossy(&out.stdout).trim());
     }
@@ -132,7 +132,7 @@ fn forged_rule_certificate_is_rejected() {
     assert_ne!(forged, text, "the fixture certificate has no consistent verdict");
     let path = files[0].with_file_name("forged.json");
     std::fs::write(&path, forged).unwrap();
-    let out = kobayashi_marust::lean_checker::run(&checker, &path).unwrap();
+    let out = kobayashi_marust::lean_checkers::run_document(&checker, &path).unwrap();
     assert!(!out.status.success(), "a forged rule-route certificate was accepted");
     cleanup(&files);
 }

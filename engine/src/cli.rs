@@ -1509,7 +1509,7 @@ fn cb_filtered_seed_event_evidence(
             live,
             event,
             assumption,
-            serde_json::json!({"assumption": index}),
+            serde_json::json!({"assumption": {"index": index}}),
         ) {
             return Some(evidence);
         }
@@ -3966,6 +3966,62 @@ fn cb_wire_live_predicate_json(
 /// compact chronological proof DAG checked by `CBStandaloneContextProofWire`.
 /// Each live event is emitted at most once, and every edge points to an earlier
 /// node. This is the native positive-evidence boundary for nested Pred chains.
+/// Literal-set equality of two wire clauses: the relation `clEquivT` the
+/// Lean trace checker uses for every step (`CheckerTerm.lean`).
+fn cb_wire_clause_set_eq(left: &serde_json::Value, right: &serde_json::Value) -> bool {
+    let side = |clause: &serde_json::Value, name: &str| {
+        clause
+            .get(name)
+            .and_then(serde_json::Value::as_array)
+            .map(|literals| {
+                literals
+                    .iter()
+                    .map(serde_json::Value::to_string)
+                    .collect::<std::collections::BTreeSet<_>>()
+            })
+    };
+    let (Some(left_body), Some(left_head), Some(right_body), Some(right_head)) = (
+        side(left, "body"),
+        side(left, "head"),
+        side(right, "body"),
+        side(right, "head"),
+    ) else {
+        return false;
+    };
+    left_body == right_body && left_head == right_head
+}
+
+/// The standalone node checker (`CBStandaloneContextProofWire`
+/// `decodeLocal`) requires the node's claimed clause to occur verbatim in
+/// the prior-node clauses or the local trace, while each trace step is
+/// checked only up to literal-set equality (`clEquivT`). A derived step can
+/// therefore produce the claimed clause with its literals in another order
+/// (the Hyper/resolution evidence keeps premise order; the arena clause is
+/// sorted). When the claim is absent verbatim, replace the clause of the
+/// last trace entry that is set-equal to the claim by the claim itself: the
+/// entry's own step check is unchanged (`clEquivT` is invariant under
+/// set-equal replacement) and so is every later step that references it
+/// (they test literal membership only). If no entry is set-equal, the trace
+/// is left unchanged and the checker rejects it.
+fn cb_align_local_trace_with_claim(
+    trace: &mut [serde_json::Value],
+    claim: &serde_json::Value,
+    prior_clauses: &[&serde_json::Value],
+) {
+    if prior_clauses.iter().any(|clause| *clause == claim)
+        || trace.iter().any(|entry| entry.get("clause") == Some(claim))
+    {
+        return;
+    }
+    if let Some(entry) = trace.iter_mut().rev().find(|entry| {
+        entry
+            .get("clause")
+            .is_some_and(|clause| cb_wire_clause_set_eq(clause, claim))
+    }) {
+        entry["clause"] = claim.clone();
+    }
+}
+
 fn cb_standalone_context_proof_document(
     live_publication: &serde_json::Value,
     terminal_events: &[usize],
@@ -4112,11 +4168,17 @@ fn cb_standalone_context_proof_document(
                         }
                         prior_nodes.push(self.append(dependency)?);
                     }
-                    let trace = proof
+                    let mut trace = proof
                         .get("trace")
                         .and_then(serde_json::Value::as_array)
                         .cloned()
                         .ok_or_else(|| "local CB evidence has no trace".to_string())?;
+                    let prior_clauses = prior_nodes
+                        .iter()
+                        .filter_map(|&node| self.nodes.get(node))
+                        .filter_map(|node| node.get("clause"))
+                        .collect::<Vec<_>>();
+                    cb_align_local_trace_with_claim(&mut trace, &clause, &prior_clauses);
                     serde_json::json!({"local": {
                         "prior_nodes": prior_nodes,
                         "trace": trace,
@@ -5753,7 +5815,7 @@ mod cb_derivation_candidate_tests {
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join(format!("native-pred-send-{}.json", std::process::id()));
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
-        let status = std::process::Command::new(checker)
+        let status = crate::lean_checkers::CheckerCommand::new(checker)
             .arg(&path)
             .status()
             .unwrap();
@@ -5905,7 +5967,7 @@ mod cb_derivation_candidate_tests {
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join(format!("native-root-pred-send-{}.json", std::process::id()));
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
-        let status = std::process::Command::new(checker)
+        let status = crate::lean_checkers::CheckerCommand::new(checker)
             .arg(&path)
             .status()
             .unwrap();
@@ -5926,7 +5988,7 @@ mod cb_derivation_candidate_tests {
             let root_candidate = cb_source_root_pred_closure_candidate(&source, &live, &evidence)
                 .expect("construct source-bound root Pred candidate");
             std::fs::write(&path, serde_json::to_vec(&root_candidate).unwrap()).unwrap();
-            let root_status = std::process::Command::new(root_checker)
+            let root_status = crate::lean_checkers::CheckerCommand::new(root_checker)
                 .arg(&path)
                 .status()
                 .unwrap();
@@ -5943,7 +6005,7 @@ mod cb_derivation_candidate_tests {
                     "production_closure": root_candidate,
                 });
                 std::fs::write(&path, serde_json::to_vec(&canonical_candidate).unwrap()).unwrap();
-                let canonical_status = std::process::Command::new(canonical_checker)
+                let canonical_status = crate::lean_checkers::CheckerCommand::new(canonical_checker)
                     .arg(&path)
                     .status()
                     .unwrap();
@@ -6305,7 +6367,7 @@ mod cb_derivation_candidate_tests {
         );
         std::fs::write(&proof_path, serde_json::to_vec(&context_document).unwrap()).unwrap();
         assert!(
-            std::process::Command::new(&context_checker)
+            crate::lean_checkers::CheckerCommand::new(&context_checker)
                 .arg(&proof_path)
                 .status()
                 .unwrap()
@@ -6321,7 +6383,7 @@ mod cb_derivation_candidate_tests {
         )
         .unwrap();
         assert!(
-            std::process::Command::new(&production_checker)
+            crate::lean_checkers::CheckerCommand::new(&production_checker)
                 .arg(&production_path)
                 .status()
                 .unwrap()
@@ -6336,7 +6398,7 @@ mod cb_derivation_candidate_tests {
         )
         .unwrap();
         assert!(
-            !std::process::Command::new(&production_checker)
+            !crate::lean_checkers::CheckerCommand::new(&production_checker)
                 .arg(&production_path)
                 .status()
                 .unwrap()
@@ -6344,7 +6406,7 @@ mod cb_derivation_candidate_tests {
             "Lean must reject a matrix cell redirected to the wrong shared node"
         );
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
-        let accepted = std::process::Command::new(&checker)
+        let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .status()
             .unwrap()
@@ -6366,7 +6428,7 @@ mod cb_derivation_candidate_tests {
             serde_json::json!({"regularArbitraryChain": {"model": regular}});
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
         assert!(
-            std::process::Command::new(&checker)
+            crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .status()
                 .unwrap()
@@ -6376,7 +6438,7 @@ mod cb_derivation_candidate_tests {
         let mut forged = candidate;
         forged["taxonomy"]["published"][2] = serde_json::json!(true);
         std::fs::write(&path, serde_json::to_vec(&forged).unwrap()).unwrap();
-        let rejected = !std::process::Command::new(checker)
+        let rejected = !crate::lean_checkers::CheckerCommand::new(checker)
             .arg(&path)
             .status()
             .unwrap()
@@ -6455,7 +6517,7 @@ mod cb_derivation_candidate_tests {
         ));
         let check = |value: &serde_json::Value| {
             std::fs::write(&path, serde_json::to_vec(value).unwrap()).unwrap();
-            std::process::Command::new(&checker)
+            crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -6755,7 +6817,7 @@ mod cb_derivation_candidate_tests {
             std::process::id()
         ));
         std::fs::write(&path, serde_json::to_vec(&document).unwrap()).unwrap();
-        let output = std::process::Command::new(&checker)
+        let output = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .output()
             .expect("run the typed regular Lean checker");
@@ -6770,7 +6832,7 @@ mod cb_derivation_candidate_tests {
         document["source"]["function_allocation"]["sparse_allocation"][0]["target"] =
             serde_json::json!(production_count);
         std::fs::write(&path, serde_json::to_vec(&document).unwrap()).unwrap();
-        let forged = std::process::Command::new(&checker)
+        let forged = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .output()
             .expect("run the typed regular Lean checker on forged allocation");
@@ -7319,7 +7381,7 @@ mod cb_derivation_candidate_tests {
             .join(format!("cb-source-live-pred-{}.json", std::process::id()));
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
-        let status = std::process::Command::new(&checker)
+        let status = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .status()
             .unwrap();
@@ -7331,7 +7393,7 @@ mod cb_derivation_candidate_tests {
         let mut pending = candidate.clone();
         pending["pending_messages"] = serde_json::json!(1);
         std::fs::write(&path, serde_json::to_vec(&pending).unwrap()).unwrap();
-        let pending_status = std::process::Command::new(&checker)
+        let pending_status = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .status()
             .unwrap();
@@ -7343,7 +7405,7 @@ mod cb_derivation_candidate_tests {
         let mut dirty = candidate.clone();
         dirty["contexts"][0]["dirty"] = serde_json::json!(true);
         std::fs::write(&path, serde_json::to_vec(&dirty).unwrap()).unwrap();
-        let dirty_status = std::process::Command::new(&checker)
+        let dirty_status = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .status()
             .unwrap();
@@ -7356,7 +7418,7 @@ mod cb_derivation_candidate_tests {
         missing_pool_entry["contexts"][0]["pred_pool_ids"] = serde_json::json!([]);
         missing_pool_entry["contexts"][0]["pred_hwm"] = serde_json::json!(0);
         std::fs::write(&path, serde_json::to_vec(&missing_pool_entry).unwrap()).unwrap();
-        let missing_pool_status = std::process::Command::new(&checker)
+        let missing_pool_status = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .status()
             .unwrap();
@@ -7368,7 +7430,7 @@ mod cb_derivation_candidate_tests {
         if let Some(local_checker) = std::env::var_os("KM_CB_TEST_SOURCE_LOCAL_CLOSURE_CHECKER") {
             let local = serde_json::json!({"version": 1, "live": candidate});
             std::fs::write(&path, serde_json::to_vec(&local).unwrap()).unwrap();
-            let local_status = std::process::Command::new(local_checker)
+            let local_status = crate::lean_checkers::CheckerCommand::new(local_checker)
                 .arg(&path)
                 .status()
                 .unwrap();
@@ -7382,7 +7444,7 @@ mod cb_derivation_candidate_tests {
             let hyper = cb_source_hyper_closure_candidate(&source, &live, &evidence)
                 .expect("construct source-bound Hyper candidate");
             std::fs::write(&path, serde_json::to_vec(&hyper).unwrap()).unwrap();
-            let hyper_status = std::process::Command::new(hyper_checker)
+            let hyper_status = crate::lean_checkers::CheckerCommand::new(hyper_checker)
                 .arg(&path)
                 .status()
                 .unwrap();
@@ -7398,7 +7460,7 @@ mod cb_derivation_candidate_tests {
                 .unwrap()
                 .push(first_term);
             std::fs::write(&path, serde_json::to_vec(&forged).unwrap()).unwrap();
-            let forged_status = std::process::Command::new(
+            let forged_status = crate::lean_checkers::CheckerCommand::new(
                 std::env::var_os("KM_CB_TEST_SOURCE_HYPER_CLOSURE_CHECKER").unwrap(),
             )
             .arg(&path)
@@ -7415,7 +7477,7 @@ mod cb_derivation_candidate_tests {
                 .expect("construct source-bound Join-3 parent candidate");
             let join3 = serde_json::json!({"version": 1, "hyper_closure": hyper});
             std::fs::write(&path, serde_json::to_vec(&join3).unwrap()).unwrap();
-            let join3_status = std::process::Command::new(join3_checker)
+            let join3_status = crate::lean_checkers::CheckerCommand::new(join3_checker)
                 .arg(&path)
                 .status()
                 .unwrap();
@@ -7429,7 +7491,7 @@ mod cb_derivation_candidate_tests {
             let succ = cb_source_succ_closure_candidate(&source, &live, &evidence)
                 .expect("construct source-bound Succ candidate");
             std::fs::write(&path, serde_json::to_vec(&succ).unwrap()).unwrap();
-            let succ_status = std::process::Command::new(succ_checker)
+            let succ_status = crate::lean_checkers::CheckerCommand::new(succ_checker)
                 .arg(&path)
                 .status()
                 .unwrap();
@@ -7444,7 +7506,7 @@ mod cb_derivation_candidate_tests {
                 .expect("construct source-bound Eq parent candidate");
             let eq = serde_json::json!({"version": 1, "succ_closure": succ});
             std::fs::write(&path, serde_json::to_vec(&eq).unwrap()).unwrap();
-            let eq_status = std::process::Command::new(eq_checker)
+            let eq_status = crate::lean_checkers::CheckerCommand::new(eq_checker)
                 .arg(&path)
                 .status()
                 .unwrap();
@@ -7458,7 +7520,7 @@ mod cb_derivation_candidate_tests {
                 .expect("construct source-bound ordinary Pred parent candidate");
             let pred = serde_json::json!({"version": 1, "eq_closure": eq});
             std::fs::write(&path, serde_json::to_vec(&pred).unwrap()).unwrap();
-            let pred_status = std::process::Command::new(pred_checker)
+            let pred_status = crate::lean_checkers::CheckerCommand::new(pred_checker)
                 .arg(&path)
                 .status()
                 .unwrap();
@@ -7471,7 +7533,7 @@ mod cb_derivation_candidate_tests {
         let mut forged = candidate;
         forged["insertion_evidence"][1]["sender_event"]["event_index"] = serde_json::json!(1);
         std::fs::write(&path, serde_json::to_vec(&forged).unwrap()).unwrap();
-        let rejected = !std::process::Command::new(&checker)
+        let rejected = !crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .status()
             .unwrap()
@@ -7592,7 +7654,7 @@ mod cb_derivation_candidate_tests {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, serde_json::to_vec(&document).unwrap()).unwrap();
         assert!(
-            std::process::Command::new(checker)
+            crate::lean_checkers::CheckerCommand::new(checker)
                 .arg(&path)
                 .status()
                 .unwrap()
@@ -7682,8 +7744,42 @@ mod cb_derivation_candidate_tests {
         let evidence = cb_filtered_seed_event_evidence(&live, &event).unwrap();
         let trace = evidence["trace"].as_array().unwrap();
         assert_eq!(trace.len(), 3);
-        assert_eq!(trace[0]["justification"]["assumption"], 0);
+        // `WireProductionJustification.assumption` decodes `{"index": n}`.
+        assert_eq!(trace[0]["justification"]["assumption"]["index"], 0);
         assert!(trace[2]["justification"]["resolve"].is_object());
+    }
+
+    #[test]
+    fn standalone_local_trace_ends_in_the_claimed_literal_order() {
+        // Checkers-on defect C2: a resolvent with head [C2, C1] proves the
+        // arena clause [C1, C2]; the standalone node needs it verbatim.
+        let concept = |id: u64| {
+            serde_json::json!({"predicate": {"predicate": {"concept": {
+                "concept": id, "term": {"var": {"index": 0}}
+            }}}})
+        };
+        let claim = serde_json::json!({"body": [], "head": [concept(1), concept(2)]});
+        let premise = serde_json::json!({"body": [concept(4)], "head": [concept(1)]});
+        let mut trace = vec![
+            serde_json::json!({"clause": premise, "justification": {"tautology": {}}}),
+            serde_json::json!({
+                "clause": {"body": [], "head": [concept(2), concept(1)]},
+                "justification": {"resolve": {"positive": 0, "negative": 1}}
+            }),
+        ];
+        let original = trace.clone();
+        cb_align_local_trace_with_claim(&mut trace, &claim, &[]);
+        assert_eq!(trace[1]["clause"], claim);
+        assert_eq!(trace[1]["justification"], original[1]["justification"]);
+        assert_eq!(trace[0], original[0]);
+
+        // A verbatim prior clause, or no set-equal entry: nothing changes.
+        let mut untouched = original.clone();
+        cb_align_local_trace_with_claim(&mut untouched, &claim, &[&claim]);
+        assert_eq!(untouched, original);
+        let other = serde_json::json!({"body": [], "head": [concept(1), concept(3)]});
+        cb_align_local_trace_with_claim(&mut untouched, &other, &[]);
+        assert_eq!(untouched, original);
     }
 }
 

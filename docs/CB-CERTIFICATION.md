@@ -761,6 +761,126 @@ nonidentity allocation, and is accepted by the native Lean checker. The same
 checker rejects a forged allocation target. General source role axioms remain
 outside this regular evidence family and therefore fail closed.
 
+### Checkers-on certificate defects C1-C3, B1, B2 (2026-10-30)
+
+The v1.5.5 checkers-on suite (`docs/CHECKERS-ON.md`,
+`results/agents/2026-10-30/checkers-on-suite/`) found five CB certificates
+that the checkers reject for correct answers. None changed an answer. The
+fixes below change certificates, one checker relation, and one engine
+bookkeeping flag; no published answer changes.
+
+**C1, functional and inverse-functional roles
+(`minimal/cb-functional-source-encoding.ofn`).** The frontend clausifies
+`FunctionalObjectProperty(r)` as `r(x,y0) ∧ r(x,y1) → y0 ≈ y1`; the worker
+interns `y0, y1` as `z₁ = -2, z₂ = -3` (`reasoner.rs` `Builder::term`
+reserves `-1` for a variable literally named `y`). The verified encoding
+(`CBEqEncoding.encodeClause .func`, proved by `valid_func_iff`) uses
+`y = -1, z = -2`. The source binding compared clauses by literal-set
+equality, so it rejected two clauses that differ only in variable names.
+Inverse functionality has the same shape. Renaming the worker's variables
+instead would change the engine's input: `-1` is the distinguished
+predecessor variable, and the symmetric-variable groups and the Nom bound
+`K` read the `zᵢ` indices. The fix relaxes the checker:
+`CBSourceWire.ClauseVariant` accepts a clause pair when literal-set
+equality holds or when each clause is, up to literal sets, an instance of
+the other under a rank renaming of its non-central variables (distinct,
+descending, matched by position). The renaming is computed by the checker
+and untrusted; soundness uses only the two checked instance equations.
+*Exactness and Lean obligation (done):* instantiation preserves validity
+(`CheckerTerm.inst_valid`), so mutual instantiation gives validity
+equivalence (`ClauseVariant.valid_iff`) and keeps predicate bodies
+(`ClauseVariant.predicateBody_left`). These are the only properties of
+the clause relation the binding's theorems use: `entails_iff_source`,
+`models_production` and `ontology_predicateBody` keep their statements;
+`exact_encoding` and the second conjunct of `WireSourceBinding.check_sound`
+now state `OntologyVariant` (variant per clause) instead of
+`OntologyEquivalent` (literal-set equality), and
+`OntologyEquivalent.variant` shows the old relation implies the new one, so
+every document accepted before is still accepted. Axioms of the changed
+theorems: `propext, Classical.choice, Quot.sound`, no `sorryAx`. The
+`native_decide` examples in `CBSourceWire.lean` accept the production functional and
+inverse-functional clauses and reject a collapsed functional clause.
+
+**C2, standalone trace literal order
+(`minimal/cb-production-standalone-trace.ofn`, forced `cb_plain1`).** A
+standalone node must find its claimed clause verbatim among its prior-node
+clauses and trace (`CBStandaloneContextProofWire.decodeLocal`), while every
+trace step is checked up to literal sets (`clEquivT`). A resolution step
+produced the arena clause `⊤ → C1 ∨ C2` as `⊤ → C2 ∨ C1`. The producer now
+replaces the clause of the last set-equal trace entry by the claimed clause
+(`cli.rs` `cb_align_local_trace_with_claim`). *Exactness:* the replaced
+entry's step check is unchanged (`clEquivT` is invariant under a set-equal
+clause), and later steps that reference it test literal membership only.
+If no entry is set-equal, the document is left as it was and the checker
+rejects it. *Lean obligation:* none (producer change).
+
+**C3, assumption justification wire
+(`minimal/cb-production-justification-decode.ofn`, automatic route).** The
+filtered-seed evidence wrote `{"assumption": n}`; the Lean wire
+(`WireProductionJustification.assumption`) decodes
+`{"assumption": {"index": n}}`, as every other producer writes it. Fixed in
+`cb_filtered_seed_event_evidence`. *Lean obligation:* none.
+
+**B1, legacy live wires under `KM_LEAN_CHECKERS_SET=all`.** The live
+publication bundle (`cb-live-taxonomy-publication-check`), the live exact
+taxonomy that embeds it (`cb-live-exact-taxonomy-publication-check`) and
+the terminal state (`cb-terminal-state-check`, whose Pred send coverage it
+reads) decode `production_bound.global_model` as a complete
+`WireCBGlobalModelDocument` (global closure and blocked ground
+saturation). No production code builds that completeness object;
+production carries the typed source in that slot, and the source-bound
+wires (`CBSourceLiveInsertionDerivation` and the closure wires) check it.
+So these three checkers could only fail to decode. This is a missing
+producer of a completeness object, not a wire bug. `lean_checkers.rs` now
+puts them in `CheckerSet::GlobalModel`: the switch never turns them on and,
+under `all`, records `cannot_check` for each one present in the checker
+directory. A caller who sets their variables by hand still gets them run,
+and they still reject (fail closed). *Lean obligation:* none now; certifying
+through these wires would need a producer of the global closure and blocked
+saturation documents.
+
+**B2, stale r-Succ flag (`component/d-some-r-a.ofn`, `D ⊑ ∃r.A`).** A
+context that gains a successor edge sets `rsucc_edges_grew`; only the
+r-Succ sweep clears it, and the sweep runs only when the r-Succ pool is
+non-empty. With an empty pool the flag stayed set at the fixpoint, and the
+eight source-bound closure checkers and the live insertion checker rejected
+the terminal snapshot ("still has dirty r-Succ edges", required by
+`SourceProductionClosed.terminalContexts`). The engine now clears the flag
+when `rsucc_reach` is empty (`engine.rs` `propagate`). *Exactness:* the
+reach set grows only from the pool, so with an empty pool the
+`successors × reach` sweep fires nothing and leaves every edge's watermark
+at `0 = rsucc_reach.len()`; clearing the flag records a sweep that has, in
+effect, run. Once reach grows, `reach_len > rsucc_offered` (= 0) triggers
+the sweep and every edge is offered `reach[0..]`, as before, so the emitted
+`Msg::Succ` set and order, and the fixpoint, are unchanged. *Lean
+obligation:* none (the checker's requirement is unchanged; the snapshot now
+reports the true state).
+
+With the flag fixed, the live insertion and local-closure checkers accept
+`d-some-r-a.ofn`, and the six closure checkers built on the Hyper closure
+(Hyper, Join-3, Succ, Eq, ordinary and root Pred) reject it with "terminal
+state is not Hyper-closed". The missing candidate is `⊤ → C(y)` in the
+successor context with core `A(x), r(y,x)`: it instantiates the source clause
+`A(y) ∧ r(x,y) → C(x)` (the `∃r.A ⊑ C` half of the normalised existential)
+with `x ↦ y, y ↦ x`. `CBHyperClosure.substitutions` maps every clause
+variable, the central `x` included, to every ordered term, while the CB Hyper
+rule (and the engine) fixes `σ(x) = x`; a successor context never derives a
+conclusion about its predecessor term, the predecessor context derives
+`C(x)` itself. So the source-bound Hyper closure is stricter than the
+calculus. It is not a producer defect, and relaxing the check is not a local
+change: the canonical-model argument consumes closure under exactly these
+substitutions (`CBSourceEqualityFreeCompleteness`
+`SourceProductionClosed.context_source_instances_eqFree`: every context's
+local valuation satisfies every source instance over the ordered terms). The
+open Lean obligation is to restrict `hyperCandidates` to `σ(x) = x` (or to
+substitutions the production rule applies) and re-prove the canonical-model
+step for the remaining instances from Pred/Succ closure across the edge
+instead of from local Hyper closure. Until then these six checkers reject
+inputs with a successor context whose core holds `A(x), r(y,x)` and a source
+clause `A(y) ∧ r(x,y) → C(x)` whose conclusion the successor does not hold
+(none of the six is in the default publication set; both taxonomy
+publication checkers accept the same run).
+
 ## Requirements for the complete CB layer
 
 The CB layer is complete only when one release gate establishes all of the

@@ -1,0 +1,1 @@
+{"ontology": "float_cells.ofn", "consistent": true, "subsumptions": [["B", "C"]], "unsatisfiable": ["A"]}
