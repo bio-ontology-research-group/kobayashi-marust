@@ -628,6 +628,14 @@ fn root_only_incomp() -> bool {
     *FLAG.get_or_init(|| std::env::var_os("KM_ROOT_ONLY_INCOMP").is_some())
 }
 
+/// Whether the literal order depends on the root flag of the context
+/// (`KM_ROOT_ONLY_INCOMP`; `KM_ROOT_ORDERED` is read by `root_ordered_mode`).
+/// The exchange cut (`Engine::rsucc_covered`) needs the same order in the
+/// ground context and its receivers.
+pub(crate) fn root_dependent_order() -> bool {
+    root_only_incomp()
+}
+
 /// `KM_ORDERED_ALL=1`: ordered resolution in EVERY context, root included.
 /// Same-term concept literals are totally ordered by iri (Hyper fires only on
 /// the ordering-maximal disjunct). Sequoia-style ordered-resolution experiment

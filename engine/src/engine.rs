@@ -961,6 +961,20 @@ fn merge_hypotheses_on() -> bool {
     *FLAG.get_or_init(|| std::env::var_os("KM_NO_MERGE_HYPOTHESES").is_none())
 }
 
+/// The exchange cut (`Engine::rsucc_covered`) is on unless the diagnostic
+/// `KM_NO_EXCHANGE_CUT` is set.
+fn diag_cut() -> bool {
+    static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *FLAG.get_or_init(|| std::env::var_os("KM_DIAG_CUT").is_some())
+}
+
+fn exchange_cut_on() -> bool {
+    static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *FLAG.get_or_init(|| std::env::var_os("KM_NO_EXCHANGE_CUT").is_none())
+        && root_ordered_mode() == 0
+        && !root_dependent_order()
+}
+
 fn cc_mentions_x(c: &ContextClause) -> bool {
     fn px(p: &Pred) -> bool {
         match *p {
@@ -7365,6 +7379,7 @@ impl Engine {
                         if let Some((yform, o)) = root_succ_form(&p) {
                             if !ctx.pushed_succ.contains(&yform)
                                 && !rsucc_blocked(ctx, arena, c, &p)
+                                && !self.rsucc_covered(id, c, &p)
                             {
                                 ground_succ.push((yform, o));
                             }
@@ -7909,6 +7924,100 @@ impl Engine {
                 pool_idx,
             });
         }
+    }
+
+    /// Exchange cut (docs/PER-CONTEXT-ORDERING.md section 12): the r-Succ
+    /// push of the maximal ground atom `a` of clause `c = Γ → Δ ∨ a` of
+    /// context `id` to the ground context is unnecessary when the ground
+    /// context holds a worked-off clause `e` that strengthens `c` modulo the
+    /// hypotheses of `id`: every head literal of `e` is a head literal of `c`,
+    /// and every body atom of `e` is a hypothesis `id` pushed to the ground
+    /// context that is a body atom of `c` or a merge hypothesis `K(o)` of
+    /// `id` with a body-free bridge `⊤ → Δ'' ∨ x ≈ o` of `id` whose other
+    /// literals are head literals of `c` other than `a` (Join case 3 read as
+    /// the clause `⊤ → Δ'' ∨ K(o)`). Every clause the receiver delivers
+    /// verbatim is such an `e` for itself. Because the literal order is the
+    /// same in both contexts, a model of the receiver in which `c` produces
+    /// `a` makes the body of `e` true and every head literal of `e` other
+    /// than `a` false and smaller than `a`, so the ground model built under
+    /// the receiver's true hypotheses satisfies `e` only through `a`
+    /// (`lean/ContextCalculus/ExchangeCut.lean`, `cut_exchange_complete`).
+    /// The check is monotone: the ground context removes `e` only for a
+    /// strengthening, which again strengthens `c` modulo the hypotheses.
+    /// `KM_NO_EXCHANGE_CUT` disables it (diagnostic); the cut is off under
+    /// the experimental root-dependent orders (`KM_ROOT_ORDERED`,
+    /// `KM_ROOT_ONLY_INCOMP`), where the two contexts' orders differ.
+    fn rsucc_covered(&self, id: usize, c: &ContextClause, a: &Pred) -> bool {
+        if !exchange_cut_on() || !a.is_ground() {
+            return false;
+        }
+        let Some(g) = self.ground_ctx else { return false };
+        if g == id {
+            return false;
+        }
+        let gctx = &self.contexts[g];
+        let garena = &self.cc_arena[gctx.root as usize];
+        let u = &self.contexts[id];
+        let uarena = &self.cc_arena[u.root as usize];
+        let target = Lit::P(*a);
+        let rest_in_c = |l: &Lit| *l != target && c.head.contains(l);
+        // A hypothesis `id` pushed to the ground context: an edge `(id, o)`
+        // whose pushed set holds `h`.
+        let pushed = |h: &Pred| {
+            let mut inds: Vec<Term> = Vec::new();
+            pred_inds(h, &mut inds);
+            inds.iter().any(|&o| gctx.predecessors.get(&(id, o)).is_some_and(|set| set.contains(h)))
+        };
+        let body_ok = |h: &Pred| {
+            if !pushed(h) {
+                return false;
+            }
+            if c.body.contains(h) {
+                return true;
+            }
+            let Pred::Concept { iri, t: o } = *h else { return false };
+            if !is_individual(o)
+                || !u.merge_hyp_inds.contains(&o)
+                || !u.core.contains(&Pred::Concept { iri, t: X })
+            {
+                return false;
+            }
+            let bl = Lit::Eq { s: o, t: X };
+            u.bridge(o).iter().any(|bi| {
+                if !u.has_clause(bi) {
+                    return false;
+                }
+                let b = &uarena[bi as usize];
+                b.body.is_empty() && b.head.iter().all(|l| *l == bl || rest_in_c(l))
+            })
+        };
+        let mut seen: Vec<Pred> = Vec::new();
+        for l in &c.head {
+            let Lit::P(p) = *l else { continue };
+            if !p.is_ground() || seen.contains(&p) {
+                continue;
+            }
+            seen.push(p);
+            for ei in gctx.max_head_pred(p).iter() {
+                if !gctx.has_clause(ei) {
+                    continue;
+                }
+                let e = &garena[ei as usize];
+                if cc_mentions_x(e) || !e.head.iter().all(|l| c.head.contains(l)) {
+                    continue;
+                }
+                if e.body.iter().all(&body_ok) {
+                    return true;
+                }
+            }
+        }
+        if diag_cut() {
+            eprintln!(
+                "KM_DIAG_CUT miss ctx={} root={} a={:?} body={:?} head={:?}",
+                id, u.root, a, c.body, c.head
+            );
+        }
+        false
     }
 
     /// The rank bound `m` of the ranked R3 (docs/PER-CONTEXT-ORDERING.md
