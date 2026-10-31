@@ -75,6 +75,7 @@ fn main() {
 }
 
 fn explain_cmd(rest: &[String]) {
+    strip_worker_only_environment("explain");
     // Workers watch this pid and exit when the supervisor is gone
     // (`cli::die_with_supervisor`). Set before any thread is spawned.
     std::env::set_var(cli::SUPERVISOR_PID_ENV, std::process::id().to_string());
@@ -511,6 +512,7 @@ fn classify_help() {
 }
 
 fn classify_cmd(rest: &[String]) {
+    strip_worker_only_environment("classify");
     // Workers watch this pid and exit when the supervisor is gone
     // (`cli::die_with_supervisor`). Set before any thread is spawned.
     std::env::set_var(cli::SUPERVISOR_PID_ENV, std::process::id().to_string());
@@ -699,5 +701,17 @@ fn classify_cmd(rest: &[String]) {
             eprintln!("{e}");
             exit(e.exit_code());
         }
+    }
+}
+
+/// Strip worker-only protocol variables from the user's environment
+/// (`routing::WORKER_ONLY_KEYS`), so no published answer depends on them.
+fn strip_worker_only_environment(command: &str) {
+    let removed = kobayashi_marust::routing::strip_worker_only_environment();
+    if !removed.is_empty() {
+        eprintln!(
+            "km {command}: ignoring worker-only environment variable(s) {}",
+            removed.join(", ")
+        );
     }
 }
