@@ -493,3 +493,107 @@ the written argument of this section does not cover these pairs. A second
 limitation is cost: `checkSat` enumerates every assignment, so terminals
 with more than about 50 nodes and four-variable clauses did not finish in
 an hour.
+
+## 10. Nominal merges and the reuse of the consistency model (2026-10-31)
+
+Defect. `results/agents/2026-10-30/nominal-seeds/bridge_merge_min.ofn`:
+
+    SubClassOf(ObjectOneOf(:b :c) ObjectOneOf(:b))
+    ClassAssertion(ObjectOneOf(:b :c) :a)
+    ClassAssertion(ObjectUnionOf(ObjectOneOf(:c) :C) :a)
+    ObjectPropertyAssertion(:s :b :c)
+    ClassAssertion(ObjectAllValuesFrom(:s :A) :a)
+    EquivalentClasses(:Q1 ObjectOneOf(:b))
+    SubClassOf(:A ObjectMaxCardinality(1 :r :C))
+
+`{b,c} ⊑ {b}` merges `c` into `b`, `a : {b,c}` then puts `a` at `b` in every
+model, `s(b,c)` becomes `s(b,b)`, and `a : ∀s.A` gives `A(b)`, so HermiT
+entails `Q1 ⊑ A`. The forced `ht_bridge` route and the automatic route of
+the development head (a2e98d95) answered without it. Konclude 0.7.0-1138
+(`~/konclude-build/Release/Konclude classification`) misses it as well, on
+this file and on r2730, and does not finish r3086 in 60 s; the defect is in
+the ported algorithm, not in KM's admission or translation. The translated
+input is faithful: with `KM_BRIDGE_FRESH_ENV=1` (a fresh completion per
+probe, no reuse) the same `TInput` gives HermiT's answer. Three separate
+defects of the reuse machinery lose the consequence; each is fixed where it
+occurs.
+
+1. Functional successor reuse through a merged-away node
+   (`completion/u35.rs`, `try_extend_functional_successor_individual`; r3086
+   and the functional-role seeds). Konclude's `mergeIndividualNodeInto`
+   removes every link to the merged-away node. The port keeps those links
+   and filters them in `ht_role_successor_links`, but the functional-reuse
+   step of the `∃` rule read the role-successor hash directly and took the
+   first link. In r3086 (`r` functional, `r(c,c)`, `r(c,a)`, `a : ∃r.A`)
+   `a` merges into `c`, `c` keeps its link to `a`, and the `∃r.A` on `c`
+   wrote `A` onto the ghost `a`, which no rule or read-off sees again. The
+   step now skips merged-away and purged successors, the filter every other
+   successor scan applies. Exactness: the live successors it chooses from
+   are the links Konclude still holds after its removal; Konclude takes the
+   first of them, and any live successor of a functional role is a correct
+   choice because the at-most rule merges all of them.
+
+2. Stale current node at the retained consistency base (`bridge.rs`, the
+   first-fork rollback of the conditional-full schedule, the drain, and
+   `restore_retained_classification_base`). The context's current-node
+   pointer is not journaled. After the rollback to the first fork it still
+   named the fork node, so `add_individual_to_processing_queue` treated that
+   node as being processed and reported it queued without inserting it. The
+   requeue of the fork node, and with it the disjunction the rollback put
+   back, never ran: on `bridge_merge_min` no class job reopened `a`'s
+   `{b} ⊔ {c}`. The pointer is now cleared at the rollback, after the drain,
+   when a drain fails, and at the start of every class job, exactly as the
+   in-process backtrack already does (u02, fuzz case 1002). Exactness: the
+   pointer only says that a node's queue is being drained by the running
+   loop; at these points no loop runs, so clearing it changes no rule, only
+   makes pending work of the retained graph run.
+
+3. Representative-cache replay without the merged individuals' nominals
+   (`bridge.rs`, `replay_native_representative_cache` and
+   `install_native_nominal_backend_replay`; `completion/u36.rs`, the lazy
+   loader). The replay adds an association's deterministic labels with AND
+   processing skipped: the cached label is taken as closed under the
+   conjunction, implication and trigger rules. The writeback, like
+   Konclude's representative cache, omits every positive nominal concept, so
+   the replayed set is closed only up to the nominals. On
+   `bridge_merge_min` `c`'s association is `b`'s merged label; it holds the
+   trigger of `{b,c} ⊑ {b}`, which went into `c`'s label without its
+   consequence `{b}`, and the later processing of `{c}` found the trigger
+   present and derived nothing, so `c` was never merged with `b`. The
+   positive nominal concepts in a node's deterministic label are exactly the
+   nominal concepts of the individuals in its deterministic same-individual
+   set (the nominal rule puts `{x}` on the node that represents `x`). The
+   replay now adds those concepts, for every member other than the
+   individual itself, with ordinary processing after the cached labels, so
+   the nominal rule performs the recorded merges and the replayed state is
+   the deterministic label again. When the association records no
+   deterministic same set, or the set names an individual without a nominal
+   seed, no cached label is replayed and both backend expansion blocks are
+   off, so the node is expanded from its raw assertions. Exactness: every
+   added concept is a deterministic consequence by the same criterion the
+   replay already trusts for its labels (the consistency graph's dependency
+   tracking marks the merge as independent of every branch); the change adds
+   the part of the closure the cache format drops and removes no derivation.
+
+What the fixes rest on. The bridge has no Lean model and emits no
+certificate on any route (`docs/CHECKERS-ON.md` §1.1), so these arguments are
+written, not mechanised, and no checker cross-checks a bridge answer on
+nominal inputs. The three arguments assume the completion rules of the port
+are correct and, for the third, that the consistency graph's deterministic
+flags are right; both assumptions are those of the bridge before this change.
+The answers are cross-checked only differentially against HermiT, below.
+Lean obligation created: none discharged; a bridge model would have to state
+that the replayed labels plus the deterministic same nominals are a
+deterministic consequence of the ABox and closed under the AND-like rules,
+and that the class-job queues hold every pending item of the retained graph.
+
+Not changed. r2730 and r3086 repeat a role assertion, and the bridge's ABox
+conversion declines repeated assertions ("ABox conversion was incomplete");
+the automatic route answers them through the CB fallback, exactly. The
+`-dedup` variants (same HermiT answer) exercise the bridge. Defects 1 to 3 turn
+four generated seeds and two R3 seeds from wrong answers into bridge
+deferrals (a fail-closed `raise_stop` in the role-assertion transfer of
+`merge_individual_node_into`); the automatic route then answers through CB.
+
+Evidence (`results/agents/2026-10-30/bridge-nominal-merge/`): see the README
+there for the binaries, seed sets and counts.
