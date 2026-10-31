@@ -1,0 +1,14 @@
+{
+  "schema": "km-release-reference-adjudications-v1",
+  "note": "An outcome flagged wrong (some reference disagrees, none agrees) is excused only when KM's canonical relation fingerprint equals the adjudicated one. Any other answer on these inputs is judged normally.",
+  "adjudications": [
+    {
+      "ontology": "ore_ont_3794",
+      "km_relation_sha256": "a344fb77f7553d94b4f8f0362ce56042ba8cb2a99688c4ded3c5e94ef3b691a9",
+      "km_reported_consistency": true,
+      "verdict": "reference_incompleteness",
+      "reason": "Konclude, the only reference with an answer, lacks ten subsumptions that KM derives; HermiT entails all ten. KM's taxonomy is identical in v1.5.3 and v1.5.4.",
+      "evidence": "results/benchmarks/2026-10-26-v154-routing/held-out-3794-adjudication/"
+    }
+  ]
+}
