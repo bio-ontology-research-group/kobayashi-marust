@@ -8212,16 +8212,8 @@ impl Engine {
         }
         let bridges = self.contexts[id].bridge_keys();
         let mut out: Vec<(Pred, Term)> = Vec::new();
-        // A unit bridge `⊤ → x ≈ o'` fixes the element of `u` to `o'`: only
-        // `K(o')` is pushed, and every other bridge `⊤ → Δ'' ∨ x ≈ o` is
-        // left to the ground context's equality reasoning under `K(o')`
-        // (docs/PER-CONTEXT-ORDERING.md section 15.3).
-        let unit_bridge: Option<Term> = self.unit_bridge(id, &bridges);
         for o in bridges {
             if self.contexts[id].merge_hyp_inds.contains(&o) {
-                continue;
-            }
-            if unit_bridge.is_some_and(|ub| ub != o) {
                 continue;
             }
             let core = self.contexts[id].core.clone();
@@ -8257,23 +8249,6 @@ impl Engine {
             }
         }
         out
-    }
-
-    /// The individual `o'` of a unit bridge `⊤ → x ≈ o'` of context `id`
-    /// (the least one when there are several), unless the diagnostic
-    /// `KM_NO_UNIT_BRIDGE_CUT` is set.
-    fn unit_bridge(&self, id: usize, bridges: &[Term]) -> Option<Term> {
-        if std::env::var_os("KM_NO_UNIT_BRIDGE_CUT").is_some() {
-            return None;
-        }
-        let u = &self.contexts[id];
-        let arena = &self.cc_arena[u.root as usize];
-        bridges.iter().copied().filter(|&o| {
-            u.bridge(o).iter().any(|bi| {
-                let b = &arena[bi as usize];
-                u.has_clause(bi) && b.body.is_empty() && b.head == [Lit::Eq { s: o, t: X }]
-            })
-        }).min()
     }
 
     /// Whether the merge hypothesis `a = K(o)` of query context `id` is
