@@ -8064,14 +8064,14 @@ impl Engine {
             return Vec::new();
         }
         let bridges = self.contexts[id].bridge_keys();
-        let ctx = &mut self.contexts[id];
         let mut out: Vec<(Pred, Term)> = Vec::new();
         for o in bridges {
-            if ctx.merge_hyp_inds.contains(&o) {
+            if self.contexts[id].merge_hyp_inds.contains(&o) {
                 continue;
             }
-            ctx.merge_hyp_inds.push(o);
-            for p in &ctx.core {
+            let core = self.contexts[id].core.clone();
+            let mut atoms: Vec<Pred> = Vec::new();
+            for p in &core {
                 let plain = |t: Term| t == X || is_individual(t);
                 let ok = match *p {
                     Pred::Concept { t, .. } => t == X,
@@ -8081,6 +8081,19 @@ impl Engine {
                     continue;
                 }
                 let a = p.apply(&|v| if v == X { o } else { v });
+                // Exchange cut for the Join case 3 clause `⊤ → Δ'' ∨ K(o)`
+                // (docs/PER-CONTEXT-ORDERING.md section 12): the hypothesis
+                // is not needed when the ground context already covers that
+                // clause for some bridge of `o`, typically by
+                // `K(o') → K(o) ∨ Φ` for a bridge `o` that the receiver
+                // derived from the bridge of `o'` and `o ≈ o' ∨ Φ`.
+                if self.merge_hypothesis_covered(id, o, a) {
+                    continue;
+                }
+                atoms.push(a);
+            }
+            self.contexts[id].merge_hyp_inds.push(o);
+            for a in atoms {
                 let mut inds: Vec<Term> = Vec::new();
                 pred_inds(&a, &mut inds);
                 for i in inds {
@@ -8089,6 +8102,30 @@ impl Engine {
             }
         }
         out
+    }
+
+    /// Whether the merge hypothesis `a = K(o)` of query context `id` is
+    /// covered (`rsucc_covered`) for the clause `⊤ → Δ'' ∨ K(o)` of some
+    /// body-free bridge `⊤ → Δ'' ∨ x ≈ o` of `id`.
+    fn merge_hypothesis_covered(&self, id: usize, o: Term, a: Pred) -> bool {
+        if !exchange_cut_on() || std::env::var_os("KM_NO_MERGE_CUT").is_some() {
+            return false;
+        }
+        let u = &self.contexts[id];
+        let arena = &self.cc_arena[u.root as usize];
+        let bl = Lit::Eq { s: o, t: X };
+        u.bridge(o).iter().any(|bi| {
+            if !u.has_clause(bi) {
+                return false;
+            }
+            let b = &arena[bi as usize];
+            if !b.body.is_empty() || !b.head.contains(&bl) {
+                return false;
+            }
+            let head: Vec<Lit> = b.head.iter().map(|l| if *l == bl { Lit::P(a) } else { *l }).collect();
+            let v = ContextClause::new(Vec::new(), head, u.root, &self.sig);
+            self.rsucc_covered(id, &v, &a)
+        })
     }
 
     /// r-Pred with no `A_i` (arXiv:1805.01396 Table 3, n = 0) for contexts
