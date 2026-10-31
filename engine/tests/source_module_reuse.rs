@@ -1155,18 +1155,22 @@ fn common_data_core_prefers_plain_module_before_full_common_path() {
         let rows=session(&[old,addition.clone(),mixed.clone()]);
         for (revision, source) in [(1, &addition), (2, &mixed)] {
             assert_eq!(rows[revision]["status"],"ok","count={count}: {:#?}",rows[revision]);
-            // An isolated negative data assertion is local to the module,
-            // but no clause route carries it: the module's answer reports it
-            // as a dropped axiom, which disqualifies module reuse, so the
-            // revision is classified in full.
-            let expected = if negative && count == 1 { "full_classify" }
+            // An isolated negative data assertion is local: it is not in the
+            // empty core, so no data assertion is, and the common-object
+            // preference does not apply. Until v1.5.4 no clause route carried
+            // a negative data assertion, the module answer reported it as
+            // DROPPED, and the revision was classified in full. The native
+            // data values (1b0f9239) carry it as `a : not some p.{v}`, so the
+            // plain common module is exact and reused (docs/INCREMENTAL-REASONING.md,
+            // "Module reuse after native data values").
+            let expected = if negative && count == 1 { "common_module_reuse" }
                 else { "common_object_module_reuse" };
             assert_eq!(rows[revision]["receipt"]["strategy"],expected,
                 "count={count}, negative={negative}, unicode={unicode}, revision={revision}: {:#?}",rows[revision]);
-            if expected != "full_classify" {
-                assert!(rows[revision]["receipt"]["module_axioms"].as_u64().unwrap()<200);
-                assert!(rows[revision]["receipt"]["reused_subjects"].as_u64().unwrap()>0);
-            }
+            assert_eq!(rows[revision]["result"]["dropped"], 0, "{:#?}", rows[revision]);
+            assert!(rows[revision]["receipt"]["fallback_reason"].is_null(), "{:#?}", rows[revision]);
+            assert!(rows[revision]["receipt"]["module_axioms"].as_u64().unwrap()<200);
+            assert!(rows[revision]["receipt"]["reused_subjects"].as_u64().unwrap()>0);
             assert_eq!(canonical(&rows[revision]["result"]),
                 canonical(&fresh(source,931 + count * 3 + revision)));
         }

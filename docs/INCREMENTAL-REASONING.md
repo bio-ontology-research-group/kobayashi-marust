@@ -161,6 +161,33 @@ cross its boundary and use full classification. Nominal and data reuse require
 the corresponding source and consistency checks. A failed optional reuse
 attempt never authorizes publication of an incomplete taxonomy.
 
+### Module reuse after native data values (2026-10-31)
+
+`source_module_reuse::common_data_core_prefers_plain_module_before_full_common_path`
+pinned `full_classify` for a revision whose only data assertion is one
+isolated `NegativeDataPropertyAssertion`. That expectation recorded a
+v1.5.4 limit, not a routing rule: no clause route carried negative data
+assertions, the module answer reported the axiom as DROPPED, and a DROPPED
+module answer disqualifies reuse. The native data values (1b0f9239) carry
+it as `a : not some p.{v}`, so the module answer has `dropped = 0` and the
+session takes the plain common module path (`common_module_reuse`).
+
+Exactness. The isolated negative edge is not in the closed empty core, so
+the core has no data assertion and the common-object preference does not
+apply (it is reserved for cores that carry data assertions or a large
+assertion payload). The plain common module path is the existing locality
+argument: the empty module avoids every marked axiom, so the consistency
+verdict transfers; the affected subjects (here `A`) are reclassified on
+their module, and every other row is reused from the old revision. The
+test still compares every revision with a fresh classification and now
+also asserts `dropped = 0`, a null `fallback_reason`, fewer than 200 module
+axioms and at least one reused subject for every case, so the claim it
+makes is stronger than before. Speed (`results/agents/2026-10-30/incremental-ht-regression/module_timing.txt`,
+`KM_THREADS=1`, 5 repetitions): the module revisions take 0.8 to 1.5 ms,
+a fresh full classification of the same sources 12 to 27 ms. Lean
+obligation: none new; module reuse is the existing source-locality
+argument (`IncrementalModuleReuse`, `IncrementalDataModuleReuse`).
+
 ### Legacy per-route source adapters
 
 The following adapter details describe the opt-in
