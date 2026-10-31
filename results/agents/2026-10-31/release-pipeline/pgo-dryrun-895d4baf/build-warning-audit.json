@@ -1,0 +1,13 @@
+{
+  "build_exit_code": 0,
+  "full_build_log_sha256": "1d28d99f4e1776e2784207275073ccb455e22a71ef712b08e3636c3445398c71",
+  "missing_function_warning_count": 12176,
+  "missing_function_unique": 12159,
+  "zero_count_discarded_in_every_missing_warning": true,
+  "trained_function_count": 4362,
+  "exact_trained_function_names_also_missing": [],
+  "profile_mismatch_lines": [],
+  "nonzero_discarded_warning_lines": [],
+  "source_manifest_sha256": "31f4e2f894f83a0cce6f3bf25198192803a162f07800e9dc118dd184ee30b091",
+  "profile_functions_sha256": "afa961a1b6b3b176ea53ecbfcb79d4269a7a4c43d8c19e6c2a50da1bc166af20"
+}
