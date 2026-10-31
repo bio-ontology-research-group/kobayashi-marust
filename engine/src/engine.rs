@@ -202,6 +202,12 @@ fn posting_remove<K: std::hash::Hash + Eq>(map: &mut HashMap<K, Posting>, key: K
     }
 }
 
+/// Incoming heads up to this size use the unit, least-pair and least-triple
+/// forward-subsumption postings (`ClauseLayer::active_min2_head_index`,
+/// `active_min3_head_index`); larger heads scan the least-literal postings,
+/// which need fewer lookups there.
+const FWD_PAIR_HEAD_MAX: usize = 10;
+
 /// Insert into a compact ordered set represented by a `Vec`.
 ///
 /// Successor trigger sets are read in sorted order every time their central
@@ -2089,6 +2095,17 @@ struct ClauseLayer {
     /// these postings for all incoming literals and visit every possible
     /// candidate exactly once, without a generation-stamp side table.
     active_min_head_lit_index: HashMap<Lit, Posting>,
+    /// Forward-subsumption candidates of this layer, by head size: a clause
+    /// with a one-literal head under that literal, a two-literal head under
+    /// its pair, a longer head under its three least literals (heads are
+    /// sorted). A clause whose head is a subset of an incoming head has its
+    /// key among the incoming literals, pairs or triples (in sorted order), so
+    /// `fwd_subsumed` looks those up instead of scanning every clause that
+    /// shares the least literal (docs/PER-CONTEXT-ORDERING.md section 15.4).
+    /// Kept beside `active_min_head_lit_index`, which the other readers use.
+    active_unit_head_index: HashMap<Lit, Posting>,
+    active_min2_head_index: HashMap<(Lit, Lit), Posting>,
+    active_min3_head_index: HashMap<(Lit, Lit, Lit), Posting>,
     /// Active clauses with an empty head. Such a clause can subsume a
     /// non-empty-head clause without sharing a literal, so it has a dedicated
     /// posting list.
@@ -2757,6 +2774,19 @@ impl ClauseLayer {
                 .entry(clause.head[0])
                 .or_default()
                 .push(cid);
+            match clause.head.len() {
+                1 => self.active_unit_head_index.entry(clause.head[0]).or_default().push(cid),
+                2 => self
+                    .active_min2_head_index
+                    .entry((clause.head[0], clause.head[1]))
+                    .or_default()
+                    .push(cid),
+                _ => self
+                    .active_min3_head_index
+                    .entry((clause.head[0], clause.head[1], clause.head[2]))
+                    .or_default()
+                    .push(cid),
+            }
             for &literal in clause.head.iter().skip(1) {
                 self.active_head_lit_index
                     .entry(literal)
@@ -2813,6 +2843,15 @@ impl ClauseLayer {
             }
         } else {
             posting_remove(&mut self.active_min_head_lit_index, clause.head[0], cid);
+            match clause.head.len() {
+                1 => posting_remove(&mut self.active_unit_head_index, clause.head[0], cid),
+                2 => posting_remove(&mut self.active_min2_head_index, (clause.head[0], clause.head[1]), cid),
+                _ => posting_remove(
+                    &mut self.active_min3_head_index,
+                    (clause.head[0], clause.head[1], clause.head[2]),
+                    cid,
+                ),
+            }
             let mut empty = Vec::new();
             for &literal in clause.head.iter().skip(1) {
                 if let Some(posting) = self.active_head_lit_index.get_mut(&literal) {
@@ -3144,16 +3183,49 @@ impl Context {
                 }
             }
         }
-        for literal in &clause.head {
-            for ci in self.active_min_head_lit(*literal).iter() {
-                if Some(ci) == exclude {
-                    continue;
-                }
-                if !sigs[ci as usize].may_strengthen(&want) {
-                    continue;
-                }
-                if arena[ci as usize].strengthens(clause) {
+        let head = &clause.head;
+        if head.len() > FWD_PAIR_HEAD_MAX {
+            for literal in head {
+                if self.active_min_head_lit(*literal).iter().any(check) {
                     return true;
+                }
+            }
+            return false;
+        }
+        // Base segment through the least-literal postings, as before; delta
+        // candidates through the unit, least-pair and least-triple postings.
+        // Every delta clause whose head is a subset of `head` is visited (its
+        // key literals are among `head`, in the same sorted order), so the
+        // answer is the one the least-literal scan gives.
+        if let Some(b) = self.base.as_deref() {
+            for literal in head {
+                if let Some(posting) = b.active_min_head_lit_index.get(literal) {
+                    if posting.iter().copied().filter(|ci| !self.base_removed.contains(ci)).any(check) {
+                        return true;
+                    }
+                }
+            }
+        }
+        for (i, first) in head.iter().enumerate() {
+            if let Some(posting) = self.delta.active_unit_head_index.get(first) {
+                if posting.iter().copied().any(check) {
+                    return true;
+                }
+            }
+            for (j, second) in head.iter().enumerate().skip(i + 1) {
+                if let Some(posting) = self.delta.active_min2_head_index.get(&(*first, *second)) {
+                    if posting.iter().copied().any(check) {
+                        return true;
+                    }
+                }
+                for third in &head[j + 1..] {
+                    if let Some(posting) =
+                        self.delta.active_min3_head_index.get(&(*first, *second, *third))
+                    {
+                        if posting.iter().copied().any(check) {
+                            return true;
+                        }
+                    }
                 }
             }
         }
@@ -12746,6 +12818,50 @@ mod tests {
         // An ordinary edge marks nothing.
         let plain = e.pred_payload(1, fterm(1), 0);
         assert!(plain.resolve.is_empty());
+    }
+
+    /// docs/PER-CONTEXT-ORDERING.md section 15.4: forward subsumption through
+    /// the unit, least-pair and least-triple postings answers exactly as a
+    /// scan over every active clause, under insertions and removals.
+    #[test]
+    fn forward_subsumption_postings_match_a_full_scan() {
+        let sig = Sig::default();
+        let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
+        let mut next = |n: u64| {
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (state >> 33) % n
+        };
+        let lit = |k: u64| Lit::P(cx((k % 7) as Iri, ind_term(1 + (k / 7) as i32)));
+        let body_atom = |k: u64| cx(20 + k as Iri, ind_term(1));
+        let mut arena: Vec<ContextClause> = Vec::new();
+        let mut ctx = Context::new(0, vec![], false, None);
+        let mut live: Vec<u32> = Vec::new();
+        for round in 0..3000u32 {
+            let nh = next(13) as usize; // 0..12, past FWD_PAIR_HEAD_MAX
+            let nb = next(3) as usize;
+            let mut head: Vec<Lit> = (0..nh).map(|_| lit(next(21))).collect();
+            head.sort();
+            head.dedup();
+            let mut body: Vec<Pred> = (0..nb).map(|_| body_atom(next(3))).collect();
+            body.sort();
+            body.dedup();
+            let c = ContextClause::new(body, head, false, &sig);
+            let sigs: Vec<ClauseSig> = arena.iter().map(ClauseSig::of).collect();
+            let expected = live.iter().any(|&ci| arena[ci as usize].strengthens(&c));
+            assert_eq!(ctx.fwd_subsumed(&arena, &sigs, &c, None), expected, "round {round}");
+            if !expected && next(2) == 0 {
+                let cid = arena.len() as u32;
+                arena.push(c);
+                ctx.delta.clause_keys.insert(cid);
+                ctx.delta.index_active_clause(&arena, cid);
+                live.push(cid);
+            } else if !live.is_empty() && next(4) == 0 {
+                let k = next(live.len() as u64) as usize;
+                let cid = live.swap_remove(k);
+                ctx.delta.unindex_active_clause(&arena, cid);
+                ctx.delta.clause_keys.remove(&cid);
+            }
+        }
     }
 
     #[test]
