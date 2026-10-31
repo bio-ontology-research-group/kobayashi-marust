@@ -1449,7 +1449,9 @@ closure (every fired ground instance has a unit head, every unfired one a
 false premise), so every entailed type of `oi` is a unit up to the unit
 equalities the cache already follows. Otherwise the query takes an ordinary
 root context (and 10.1). Lean obligation: none mechanised (a Horn-readout
-lemma for the ground closure is the statement to prove).
+lemma for the ground closure is the statement to prove). Superseded
+2026-10-31: `ExchangeCut.horn_unit_readout` proves it at the propositional
+level (docs/PER-CONTEXT-ORDERING.md section 13.4).
 
 ### 10.3 Tests
 
@@ -1505,3 +1507,16 @@ Exact `nominals` route, HermiT oracle.
   r1600's cause. Under the merge hypotheses r1536 and r3777 time out at 60 s
   on forced `nominals`, and the hub with data values takes 30 s instead of
   10 s on `certified_nominals`.
+
+### 10.5 The exchange cut and the open obligation of 10.1 (2026-10-31)
+
+docs/PER-CONTEXT-ORDERING.md section 13 removes the push-back cascade of
+10.4 (`Engine::rsucc_covered`, `Engine::merge_hypothesis_covered`) and
+states the propositional skeleton of the exchange with hypotheses in
+`lean/ContextCalculus/ExchangeCut.lean`: the merge hypothesis is the push
+that the demand condition asks for at the Join case 3 clause
+`⊤ → Δ'' ∨ K(o)`, and `no_merge_hypothesis_counterexample` is the skeleton
+of `merge_r1600_min`. What stays first-order and argued is the simulation
+step of 10.1 (the ground context derives under `K(o)` the atoms the query
+context derives by its own inferences).
+
