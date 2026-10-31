@@ -919,6 +919,140 @@ distinct reasons; `seeds-base-timeouts-bridge-defer.tsv`). Closing them
 needs either a datatype-complete bridge admission or ground splitting in the
 CB engine; both are calculus or encoding changes outside this pass.
 
+### Object guard for the native bridge (2026-10-30)
+
+Cost. After the inert-sort release, 125 of the 400 seeds of `gen_nomdata.py
+--no-inverse` (2000-2399) still had no answer within 60 s on the automatic
+route (`results/agents/2026-10-30/nominal-coverage/seeds-reverted-head-auto.tsv`),
+none wrong. None of them reached the native bridge: it deferred at its
+datatype gate, and the nominal CB route ran alone. On the two-axiom
+reduction of seed 2000 above the CB engine spends its time in single Hyper
+inferences of the ground context: the at-most clause of `≤1 t.A`,
+`A(y0) ∧ A(y1) ∧ Q_6(x) ∧ t(x,y0) ∧ t(x,y1) → y0 ≈ y1`, joins against 46 to
+66 disjunctive context clauses per body atom, about 9 million combinations
+per inference (`KM_TRACE_HYPER_PRODUCT`), and no context reaches its next
+progress line within 15 s.
+
+The gate. The bridge keeps data successors in its completion graph as
+ordinary nodes. It therefore admits an input only if every class axiom
+without a datatype holds at a blank node (no concept name, no edge, no
+individual), or a witness label exists for such nodes; a datatype-bearing
+axiom must have a left side that is false there. 56 of the 125 deferred on
+exactly these two checks (`a non-datatype axiom rejects a blank data node`,
+`a complex datatype subclass axiom can fire on a data node`), and many of
+the 36 `outside the role-local fragment` deferrals are `⊤ ⊑ C` or
+disjointness axioms of the same kind. In OWL 2 such an axiom constrains
+objects only; data values are not objects.
+
+The rewrite (`frontend/object_guard.rs`). With a fresh internal class `G`
+(`__objguard__`), the parsed ontology `O` becomes `O'`:
+
+- each class axiom that fails at a blank element gets `G` on its left:
+  `C ⊑ D` becomes `G ⊓ C ⊑ D`, an equivalence that fails there is split into
+  its two inclusions with the failing one guarded, a disjointness of two
+  blank-true classes becomes `G ⊓ C ⊓ D ⊑ ⊥`;
+- each class axiom with a datatype becomes its inclusions (an equivalence
+  both directions, a disjointness `C ⊓ D ⊑ ⊥`), since the bridge's datatype
+  admission reads inclusions whose left side is false at a blank node, and
+  every one of them whose left side holds at a blank element (`⊤`
+  included) gets `G`; guarding an axiom that already holds there is as
+  exact as guarding one that fails;
+- `A ⊑ G` for every class name of the signature (declared, used, or only
+  named in an RBox domain or range), `∃r.⊤ ⊑ G` and `⊤ ⊑ ∀r.G` for every
+  object role, `{a} ⊑ G` for every individual (an inclusion, not the
+  assertion `G(a)`, so that the native ABox coverage check still counts
+  the source's class assertions; the assertions moved to the TBox below
+  are subtracted from the source count it compares against);
+- a class assertion `C(a)` whose `C` holds a datatype outside the shape the
+  bridge's ABox path admits becomes `{a} ⊑ C`;
+- `∃u.⊤` for a data role `u` becomes `≥1 u.⊤` (the bridge's data-role check
+  reads only the second spelling; `DataPropertyDomain(u C)` parses to the
+  first).
+
+It applies only when the ontology has a data role and an individual, no
+DL-safe rule, no reflexive role, no self restriction and no universal role,
+and when at least one axiom is guarded or moved, or a datatype-bearing axiom
+is split or normalised (`profile.object_guard_candidate`, computed on every frontend
+pass in one allocation-free scan).
+
+Exactness. Two-sorted OWL 2 semantics, object domain `Δ`.
+
+1. A model of `O` is a model of `O'` with `G := Δ`: the added axioms
+   conclude `G` or are trivially true, a guarded axiom is weaker than its
+   original, and the two normalisations are equivalences.
+2. Given a model `J` of `O'`, restrict its object domain to `G^J` (data
+   values and data edges unchanged). `G^J` contains every individual, every
+   member of a named class, and both ends of every object edge (domain and
+   range axioms; an inverse role's edges are the forward role's). By
+   induction every class expression of `O` has the same truth value at a
+   `G` element before and after the restriction (`∃`, `∀` and counting on
+   object roles see only `G` neighbours; data restrictions read the
+   unchanged data edges; nominals denote individuals, which stay). So every
+   axiom of `O`, guarded or not, holds in the restriction, and so do the
+   assertions and the role axioms (Horn conditions on the kept edges).
+   Without reflexive roles, self restrictions and the universal role no
+   other edge can leave `G^J`.
+3. Hence `O` and `O'` are equally consistent; since `A ⊑ G` for each named
+   class, a witness of `A ⊓ ¬B` in `O'` is a `G` element and survives the
+   restriction, so both have the same subsumptions and unsatisfiable named
+   classes. `G` has the `__` prefix and is never published.
+
+After the rewrite every class axiom holds at a blank node by construction,
+so the bridge's blank-node gate passes; whether its one-sorted reading of
+`O'` is exact remains the bridge's own admission argument (the
+blank-node/isolated-extension theorem `IsolatedObjectModelExtension`), which
+this change does not touch. The bridge itself has no Lean model.
+
+Lean. Step 2 is proved in `lean/ContextCalculus/ObjectGuardRestriction.lean`
+(no sorry; axioms: `Classical.choice` only): `restrict_holds` (truth
+preserved at `G` elements, with nominals, data atoms and qualified counting),
+`guarded_inclusion_restricted`, `inclusion_restricted`,
+`assertion_restricted`, `role_assertion_restricted`, the role-axiom lemmas,
+`witness_restricted`, and `original_model_is_guarded` for step 1. Not
+checked: that the Rust pass meets the theorem's hypotheses (the blank
+evaluation `holds_at_blank`, the collected vocabulary, the refused
+constructs); that is argued from the code above. The module was compiled
+with `lean` against the Mathlib build of the `checkers-on` worktree; a full
+`lake build` was not run.
+
+Routing. The guarded ontology is built only on a third bounded bridge-first
+attempt (`orchestrate/mod.rs`), after the historical attempt (or the
+data-assertion attempt) declined and only when the frontend reported the
+candidate flag; it has the budget of the attempt it follows (8 s, or 12 s
+with data assertions; `KM_OBJECT_GUARD_BRIDGE_BUDGET_S`). If the bridge
+declines or runs out of budget the schedule continues unchanged. The
+forced `ht_bridge` route does not use the guard. `KM_NO_BRIDGE_OBJECT_GUARD`
+switches the attempt off.
+
+Repeated assertions (not changed). Seed 2296 states
+`ObjectPropertyAssertion(:r :a :a)` twice; the native ABox coverage check
+compares the parsed count (2, the parser keeps a set) with the source count
+(3) and declines, so the bridge never sees it. Subtracting verbatim
+repetitions from the source count was tried and withdrawn: it let the bridge
+answer two random seeds of `results/agents/2026-10-30/r3-unannounced/`
+(r2730, r3086) that the CB route answers correctly, and the bridge answers
+them incompletely. The bridge answers the same inputs incompletely without
+the repetition as well, on the development head
+(`results/agents/2026-10-30/nominal-seeds/bridge_merge_min.ofn`, seven
+axioms: `{b, c} ⊑ {b}`, `a : {b, c}`, `s(b, c)`, `a : ∀s.A`, `Q1 ≡ {b}`;
+HermiT `Q1 ⊑ A`; `ht_bridge` and the automatic route miss it). That is a
+bridge defect in nominal merging, outside this change; it is listed in
+docs/V1.5.5-STATUS.md.
+
+Measurements (`results/agents/2026-10-30/nominal-seeds/`, workstation under
+load). Seeds 2000-2399, automatic route, 60 s: 275 ok / 125 timeout / 0 wrong
+before, 366 / 34 / 0 after; no ok answer lost. Seeds 7000-7199: 142 / 58 / 0
+before, 181 / 19 / 0 after. 112 nominal ORE inputs of the paired design half
+at 300 s: same 108 answered, identical output, mean time ratio 0.966. A first
+version put only the classes that axioms mention into `G` and missed 28
+subsumptions on declared-only classes (all caught by the HermiT differential);
+the signature-wide `A ⊑ G` fixes it. What remains: 21 seeds use
+`DataComplementOf(xsd:integer)`, outside the bridge's exact atomic datatype
+map; 5 defer on the singleton-elision mismatch between the frontend
+(`literal_profiles::distinct_data_successors_forced`) and the bridge
+(`forced_distinct_data_successors`); 3 use a data bound above 2; 4 other
+datatype-value gates; m2296 the repeated assertion.
+
 ## 7. Sequoia ordering and nominals
 
 `calc::pred_lteq` has two same-term concept orderings for the CB engine. The
@@ -1231,3 +1365,143 @@ Measurements (2026-10-29, shared workstation, files in
   the note, `lean/ContextCalculus/ExchangeEquality.lean`). The first-order
   lifting is not mechanised.
 
+
+## 10. Merge hypotheses and the nominal-label cache (2026-10-30)
+
+Four random seeds of `results/agents/2026-10-30/r3-unannounced/gen_r3.py`
+(`r1600`, `r1646`, `r3403`, `r3602`) were answered incompletely by the exact
+`nominals` route under every rule set and with the announcement guard off;
+`r1600` (`B ⊑ A`) also on the automatic and `certified_nominals` routes,
+a wrong published answer of v1.5.4. They have two causes.
+Results, binaries and commands: `results/agents/2026-10-30/nominal-r1600/`.
+
+### 10.1 A query context whose element is an individual
+
+Minimised from `r1600` (HermiT `B ⊑ D`;
+`engine/tests/fixtures/nominal_seq_order/merge_r1600_min.ofn`):
+
+    SubClassOf(:B ObjectOneOf(:c))
+    ObjectPropertyAssertion(:s :b :c)
+    SubClassOf(ObjectSomeValuesFrom(:s :B) ObjectOneOf(:c))
+    ClassAssertion(ObjectAllValuesFrom(:s :D) :c)
+
+A `B` element is `c`, so `B(c)`, hence `b ∈ ∃s.B`, `b ≈ c`, `s(c,c)` and
+`D(c)`. HermiT's derivation needs the ground facts under the assumption
+`B(c)`. The `B` context derives `⊤ → x ≈ c`. Side condition (*) of r-Succ
+(arXiv:1805.01396 Table 3) then blocks every push from that context (the
+merge clause has empty body and no other literal), so the ground context
+never holds `B(c) → B(c)`; nothing in it mentions `B(c)` and it derives
+nothing conditional on it. An ordinary context in that position is covered
+by its predecessor: Pred carries `f(x) ≈ c` back, the predecessor rewrites
+`B(f(x))` to `B(c)` and pushes it. A query context has no predecessor.
+The paper's completeness proof builds the ground fragment with
+`Γ_o = Ω ∩ R_c`, the ground atoms of the query context's model, and uses
+hypotheses `A → A` for them; for a query context blocked by (*) the
+calculus never adds them (proof-completeness.tex, unfolding strategy and
+`lemma:unfolding:consistency`).
+
+The fix (`Engine::merge_hypotheses`): a query (root) context with core
+`K(x)` and a body-free merge clause `⊤ → Δ'' ∨ x ≈ o` (the Join case 3
+bridge) pushes `K(o) → K(o)` to the ground context on the edge labelled
+`o`. The ground context's conclusions `K(o) ∧ Γ → Δ` return through r-Pred
+with `K(o)` copied verbatim into the body (no clause of the query context has
+`K(o)` maximal), and Join case 3 resolves `K(o)` against the core clause
+`⊤ → K(x)` and the bridge. `KM_NO_MERGE_HYPOTHESES` disables it
+(diagnostic). The same fix answers `r3602` (`D ⊑ Q1`) and `r1646`
+(`E ⊑ Q1`); on the forced route `r1646` and `r1600` need minutes (10.4).
+
+*Exactness.* Soundness: a hypothesis `A → A` is a tautology
+(`Nominals.rsucc_taut_sound`), and Join case 3 is sound
+(`Nominals.join3_sound`); the rule adds premises, never conclusions that do
+not follow. Completeness: only the core needs pushing. Every clause of the
+query context is a consequence of its core and the ontology, so every ground
+atom `A'{x↦o}` of its model under the bridge is derivable in the ground
+context from the hypothesis `K(o)` by the same inferences grounded at `o`
+(the ground context is the one context whose Hyper may map `x` to an
+individual). Ground atoms the query context derives from delivered
+ground-context clauses are heads of ground-context clauses already, and
+ground atoms it derives by local inferences follow from its core and those
+clauses, so the ground context derives them under `K(o)` as well. This is
+argued, not proved: it is the step the paper's proof leaves implicit. The first version pushed
+every maximal ground or `x`-atom of every body-free clause instantiated at
+every bridge individual; it did not terminate on `r1600` within 30 s and
+was replaced.
+
+*Lean obligation.* Open: the paper's completeness argument with the
+hypotheses of `Γ_o` made explicit, i.e. that the ground fragment built under
+`K(o)` contains every ground atom of the query context's model (first-order,
+not mechanised; the certified CB surface does not model r-Succ edges from
+query contexts with merge clauses either). Mechanised parts used: the two
+soundness lemmas above.
+
+### 10.2 The nominal-label cache under an ordered ground context
+
+`r3403` (`Q3 ≡ {c}`, HermiT `Q3 ⊑ A`) was missed by the nominal-label
+cache (`complete_nominal_enumeration_queries`), which answers an enumeration
+class `A ≡ {o1,…,on}` from the body-free unit clauses `→ B(oi)` of the
+saturated ground context. The ground context of `r3403` holds
+`→ A(c) ∨ c ≈ b` with `A(b)`; ordered superposition keeps `A(c)` maximal and
+never derives the unit `→ A(c)`, so the cache saw no `A(c)`. Ordered
+saturation is refutationally complete, not complete for unit readout. The
+cache now runs only when every body-free clause of the saturated ground
+context is a unit: the units then are the least model of the ground
+closure (every fired ground instance has a unit head, every unfired one a
+false premise), so every entailed type of `oi` is a unit up to the unit
+equalities the cache already follows. Otherwise the query takes an ordinary
+root context (and 10.1). Lean obligation: none mechanised (a Horn-readout
+lemma for the ground closure is the statement to prove).
+
+### 10.3 Tests
+
+`engine/tests/merge_hypotheses.rs`: the minimised `r1600` on the automatic,
+`certified_nominals` and `nominals` routes and without the merge hypotheses
+(missed); the four seeds on the automatic and `certified_nominals` routes;
+`r3403` and `r3602` on `nominals`; `r1600` and `r1646` on `nominals` as an
+ignored test (minutes).
+
+### 10.4 Measurements and cost
+
+`results/agents/2026-10-30/nominal-r1600/` (binaries, loads, commands).
+Exact `nominals` route, HermiT oracle.
+
+- Open seeds, 300 s: `r3403` and `r3602` correct on all three routes
+  (7.0 s and 6.5 s on `nominals`, before 0.2 s and 0.5 s wrong); `r1600`
+  correct on the automatic (16.5 s) and `certified_nominals` (18.5 s)
+  routes, the shipping wrong answer is gone; `r1600` and `r1646` time out at
+  300 s on the forced route (`r1600`'s `B` query alone answers correctly in
+  238 s at engine level). `r1646` is correct on the other two routes.
+- `gen_r3.py`, 4,000 seeds, 10 s: 2,191 ok, 0 wrong, 1,809 timeouts (5
+  worker errors, answered or timed out on rerun). The r3-unannounced
+  campaign at higher load: km.final 2,205 ok, 4 wrong (`r1600`, `r1646`,
+  `r3403`, `r3602`), 1,761 timeouts, 30 errors; v1.5.4 2,217 ok, 4 wrong.
+  On the 724 seeds rerun with km.final2 at the same load: km.final2 401 ok,
+  this build 382 ok; 22 seeds km.final2 answered (several in under 0.1 s)
+  time out here. The cost is the merge hypotheses: `r5`, `r10`, `r163` take
+  0.03 s with `KM_NO_MERGE_HYPOTHESES` and more than 10 s with them. On
+  `r5` (`C ⊑ {b, e}`, `e ∈ {a, d}`) the bridges multiply (`x ≈ b`, `x ≈ e`,
+  then `x ≈ a`, `x ≈ d`), each adds a hypothesis, and the ground context and
+  its successor contexts grow to 30,000 clauses with up to four hypotheses
+  per body (122 s for the `C` query). The ground atoms these conclusions
+  carry back are pushed again by ordinary r-Succ from other contexts; that
+  is the calculus's r-Succ, so cutting it needs its own completeness
+  argument (not attempted).
+- Motif sets (section 8 of PER-CONTEXT-ORDERING.md), 20 s: m1 to m5 1,999
+  ok, 1 timeout; m6, m7 997 ok, 3 timeouts; 0 wrong (as km.final).
+- ORE paired design, 112 nominal inputs, automatic route, 300 s, against
+  km.final2: 106 answered by both with identical SUB/UNSAT/CONSISTENT lines,
+  2 answered only here (ore_ont_3077, ore_ont_699; km.final2 timed out at
+  300 s), 3 time out in both (16420, 1833, 2548), and ore_ont_8250 exits 3 after 0.1 s here (the `ht_rules` worker declines; merged from `development/v1.5.5`) where km.final2 timed out; total 622 s against 657 s, median
+  ratio 1.01, mean 1.37 (ore_ont_10781 1.1 s to 14.3 s; the frontend's
+  second pass under `certified_nominals` takes 12 s with every change of this
+  branch switched off, so it comes from the merged `development/v1.5.5`, not
+  from these rules).
+- After merging `development/v1.5.5` at a2e98d95: seeds r0 to r999 530 ok,
+  0 wrong (531 before the merge). On forced `nominals`, r3602 times out on
+  the merged base with the merge hypotheses switched off as well. The five
+  seeds r1536, r1866, r2408, r2564 and r3777 that the automatic route
+  answers wrongly are answered by the typed-nominal bridge's HT worker (the
+  bridge merging defect of `results/agents/2026-10-30/nominal-seeds/`); the
+  forced CB route of km.final2 answers them correctly, so they do not share
+  r1600's cause. Under the merge hypotheses r1536 and r3777 time out at 60 s
+  on forced `nominals`, and the hub with data values takes 30 s instead of
+  10 s on `certified_nominals`.

@@ -1,0 +1,125 @@
+m2023.ofn	BRIDGE-DATATYPE-DEFER: a datatype value lacks its singleton equality clause
+m2009.ofn	BRIDGE-DATATYPE-DEFER: a datatype value lacks its singleton equality clause
+m2025.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2000.ofn	BRIDGE-ENV: 0.00s (named=43, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2002.ofn	BRIDGE-ENV: 0.00s (named=62, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2029.ofn	BRIDGE-ENV: 0.00s (named=43, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2030.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2039.ofn	BRIDGE-ENV: 0.00s (named=62, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2015.ofn	BRIDGE-ENV: 0.00s (named=57, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2035.ofn	BRIDGE-ENV: 0.00s (named=34, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2040.ofn	BRIDGE-ENV: 0.00s (named=51, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2031.ofn	BRIDGE-ENV: 0.00s (named=62, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2044.ofn	BRIDGE-ENV: 0.00s (named=47, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2047.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2050.ofn	BRIDGE-ENV: 0.00s (named=79, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2046.ofn	BRIDGE-ENV: 0.00s (named=76, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2065.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2063.ofn	BRIDGE-ENV: 0.00s (named=63, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2068.ofn	BRIDGE-ENV: 0.00s (named=67, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2073.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2066.ofn	BRIDGE-ENV: 0.00s (named=73, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2069.ofn	BRIDGE-ENV: 0.00s (named=51, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2079.ofn	BRIDGE-ENV: 0.00s (named=58, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2091.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2082.ofn	BRIDGE-ENV: 0.00s (named=52, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2086.ofn	BRIDGE-ENV: 0.00s (named=54, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2085.ofn	BRIDGE-ENV: 0.00s (named=47, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2070.ofn	BRIDGE-ENV: 0.00s (named=77, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2100.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2095.ofn	BRIDGE-ENV: 0.00s (named=35, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2101.ofn	BRIDGE-ENV: 0.00s (named=60, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2104.ofn	BRIDGE-ENV: 0.00s (named=60, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2102.ofn	BRIDGE-ENV: 0.00s (named=49, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2099.ofn	BRIDGE-ENV: 0.00s (named=58, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2118.ofn	BRIDGE-DATATYPE-DEFER: a data role occurs outside an exact datatype or object-domain axiom; source_axiom=3 val
+m2117.ofn	BRIDGE-ENV: 0.00s (named=50, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2123.ofn	BRIDGE-DATATYPE-DEFER: a datatype value lacks its singleton equality clause
+m2128.ofn	BRIDGE-ENV: 0.00s (named=32, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2138.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2124.ofn	BRIDGE-ENV: 0.00s (named=52, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2142.ofn	BRIDGE-ENV: 0.00s (named=50, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2139.ofn	BRIDGE-ENV: 0.00s (named=46, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2132.ofn	BRIDGE-ENV: 0.00s (named=56, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2146.ofn	BRIDGE-ENV: 0.00s (named=47, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2150.ofn	BRIDGE-ENV: 0.00s (named=45, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2149.ofn	BRIDGE-ENV: 0.00s (named=66, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2145.ofn	BRIDGE-ENV: 0.00s (named=60, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2157.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2169.ofn	BRIDGE-DATATYPE-DEFER: a datatype value lacks its exact range membership
+m2163.ofn	BRIDGE-ENV: 0.00s (named=55, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2167.ofn	BRIDGE-ENV: 0.00s (named=57, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2165.ofn	BRIDGE-ENV: 0.00s (named=59, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2158.ofn	BRIDGE-ENV: 0.00s (named=103, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2175.ofn	BRIDGE-ENV: 0.00s (named=60, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2183.ofn	BRIDGE-ENV: 0.00s (named=51, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2191.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2190.ofn	BRIDGE-ENV: 0.00s (named=57, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2195.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2198.ofn	BRIDGE-ENV: 0.00s (named=47, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2205.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2199.ofn	BRIDGE-ENV: 0.00s (named=61, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2201.ofn	BRIDGE-ENV: 0.00s (named=57, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2215.ofn	BRIDGE-ENV: 0.00s (named=55, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2216.ofn	BRIDGE-ENV: 0.00s (named=52, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2227.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2193.ofn	BRIDGE-ENV: 0.00s (named=64, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2172.ofn	BRIDGE-ENV: 0.00s (named=81, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2230.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2221.ofn	BRIDGE-ENV: 0.00s (named=62, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2237.ofn	BRIDGE-ENV: 0.00s (named=34, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2232.ofn	BRIDGE-ENV: 0.00s (named=69, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2234.ofn	BRIDGE-ENV: 0.00s (named=64, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2239.ofn	BRIDGE-ENV: 0.00s (named=58, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2242.ofn	BRIDGE-DATATYPE-DEFER: a data role occurs outside an exact datatype or object-domain axiom; source_axiom=1 val
+m2240.ofn	BRIDGE-ENV: 0.00s (named=49, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2228.ofn	BRIDGE-ENV: 0.00s (named=39, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2252.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2244.ofn	BRIDGE-DATATYPE-DEFER: a datatype value pair is neither proved equal nor disjoint
+m2250.ofn	BRIDGE-ENV: 0.00s (named=56, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2263.ofn	BRIDGE-DATATYPE-DEFER: a datatype value lacks membership in its present family range
+m2255.ofn	BRIDGE-DATATYPE-DEFER: a datatype value lacks its singleton equality clause
+m2243.ofn	BRIDGE-ENV: 0.00s (named=59, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2276.ofn	BRIDGE-DATATYPE-DEFER: a data role occurs outside an exact datatype or object-domain axiom; source_axiom=1 val
+m2270.ofn	BRIDGE-ENV: 0.00s (named=44, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2271.ofn	BRIDGE-ENV: 0.00s (named=36, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2282.ofn	BRIDGE-ENV: 0.00s (named=51, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2287.ofn	BRIDGE-DATATYPE-DEFER: a datatype value lacks its singleton equality clause
+m2295.ofn	BRIDGE-ENV: 0.00s (named=47, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2296.ofn	BRIDGE-ENV: 0.00s (named=45, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2288.ofn	BRIDGE-ENV: 0.00s (named=53, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2298.ofn	BRIDGE-ENV: 0.00s (named=49, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2300.ofn	BRIDGE-ENV: 0.00s (named=70, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2293.ofn	BRIDGE-ENV: 0.00s (named=57, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2060.ofn	BRIDGE-ENV: 0.00s (named=79, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2311.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2303.ofn	BRIDGE-ENV: 0.00s (named=50, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2305.ofn	BRIDGE-ENV: 0.00s (named=52, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2315.ofn	BRIDGE-ENV: 0.00s (named=64, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2319.ofn	BRIDGE-ENV: 0.00s (named=45, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2331.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2316.ofn	BRIDGE-ENV: 0.00s (named=56, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2285.ofn	BRIDGE-ENV: 0.00s (named=55, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2341.ofn	BRIDGE-ENV: 0.00s (named=33, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2320.ofn	BRIDGE-ENV: 0.00s (named=47, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2345.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2321.ofn	BRIDGE-ENV: 0.00s (named=59, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2349.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2354.ofn	BRIDGE-ENV: 0.00s (named=54, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2360.ofn	BRIDGE-ENV: 0.00s (named=48, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2342.ofn	BRIDGE-ENV: 0.00s (named=51, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2339.ofn	BRIDGE-ENV: 0.00s (named=65, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2355.ofn	BRIDGE-ENV: 0.00s (named=65, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2367.ofn	BRIDGE-ENV: 0.00s (named=50, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2363.ofn	BRIDGE-ENV: 0.00s (named=38, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2361.ofn	BRIDGE-ENV: 0.00s (named=49, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2369.ofn	BRIDGE-ENV: 0.00s (named=47, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2371.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2386.ofn	BRIDGE-DATATYPE-DEFER: a datatype value pair is neither proved equal nor disjoint
+m2370.ofn	BRIDGE-ENV: 0.00s (named=69, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2394.ofn	BRIDGE-DATATYPE-DEFER: source mode is disabled or a datatype symbol is not in the exact atomic map
+m2376.ofn	BRIDGE-ENV: 0.00s (named=70, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2392.ofn	BRIDGE-ENV: 0.00s (named=50, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2393.ofn	BRIDGE-ENV: 0.00s (named=60, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2398.ofn	BRIDGE-ENV: 0.00s (named=51, trigger_absorb=true, unsupported=0, independent_abox=false)
+m2399.ofn	BRIDGE-ENV: 0.00s (named=70, trigger_absorb=true, unsupported=0, independent_abox=false)

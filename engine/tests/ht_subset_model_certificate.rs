@@ -131,3 +131,25 @@ fn seed_639_subset_blocked_terminals_are_lean_checked() {
         assert!(terminals.accepted_with_folds > 0, "{terminals:?}");
     }
 }
+
+/// Generated ALCI seed 1 (results/agents/2026-10-30/subset-blocking-gap,
+/// `gen_alci.py`): `D ⊑ ∃r⁻.D` is witnessed through the inverse edge to the
+/// predecessor. Before the existential part of `SubsetGain` (`back_need`) a
+/// blocked position took such a blocker's obligation without its witness and
+/// Lean rejected 13 of 16 terminals; now every terminal is accepted.
+#[test]
+fn inverse_witnessed_existential_terminals_are_lean_checked() {
+    let terminals = assert_checked(
+        "SubClassOf(:D ObjectSomeValuesFrom(ObjectInverseOf(:r) :D))\n\
+         SubClassOf(ObjectComplementOf(:D) ObjectAllValuesFrom(:s ObjectUnionOf(:E :D)))\n\
+         EquivalentClasses(:A ObjectIntersectionOf(ObjectComplementOf(:A) ObjectUnionOf(:A ObjectComplementOf(:B))))\n\
+         SubClassOf(ObjectUnionOf(:B ObjectComplementOf(ObjectComplementOf(:C))) ObjectSomeValuesFrom(:s :D))\n\
+         DisjointClasses(:B ObjectAllValuesFrom(:r ObjectUnionOf(:D ObjectComplementOf(:C))))\n\
+         EquivalentClasses(:Q1 ObjectComplementOf(ObjectUnionOf(:D ObjectComplementOf(:D))))\n\
+         EquivalentClasses(:Q2 ObjectUnionOf(ObjectUnionOf(:C :A) ObjectUnionOf(:A ObjectComplementOf(:C))))\n\
+         EquivalentClasses(:Q3 ObjectComplementOf(:D))",
+    );
+    if checker().is_some() {
+        assert!(terminals.accepted_with_folds > 0, "{terminals:?}");
+    }
+}

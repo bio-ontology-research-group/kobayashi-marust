@@ -2287,8 +2287,15 @@ fn classify_with_evidence_inner(
             .get("DataPropertyAssertion")
             .is_some_and(|&count| count > 0)
             && meta.profile.source.abox_axioms <= 5_000;
+        // A last attempt reads the ontology through the object guard
+        // (`frontend::object_guard`, an exact rewrite) when the frontend
+        // reports that the guard applies: a class axiom that fails at a
+        // blank data node or another datatype shape the bridge's admission
+        // does not read, its most common deferral on nominal inputs with
+        // data roles.
         let attempts = [
             (
+                false,
                 false,
                 (!data_assertions)
                     .then(|| speculative_bridge_budget("KM_BRIDGE_FIRST_BUDGET_S", BRIDGE_FIRST_BUDGET_S))
@@ -2296,6 +2303,7 @@ fn classify_with_evidence_inner(
             ),
             (
                 true,
+                false,
                 data_assertions
                     .then(|| {
                         speculative_bridge_budget(
@@ -2305,8 +2313,21 @@ fn classify_with_evidence_inner(
                     })
                     .flatten(),
             ),
+            (
+                data_assertions,
+                true,
+                (meta.profile.object_guard_candidate
+                    && std::env::var_os("KM_NO_BRIDGE_OBJECT_GUARD").is_none())
+                .then(|| {
+                    speculative_bridge_budget(
+                        "KM_OBJECT_GUARD_BRIDGE_BUDGET_S",
+                        if data_assertions { DATA_ASSERTION_BRIDGE_BUDGET_S } else { BRIDGE_FIRST_BUDGET_S },
+                    )
+                })
+                .flatten(),
+            ),
         ];
-        for (convert_data_assertions, budget) in attempts {
+        for (convert_data_assertions, object_guard, budget) in attempts {
             let Some(budget) = budget else { continue };
             let attempt_t0 = std::time::Instant::now();
             let bridge_attempt = {
@@ -2317,10 +2338,17 @@ fn classify_with_evidence_inner(
                 if convert_data_assertions {
                     std::env::set_var("KM_DATA_ASSERTION_AS_CLASS", "1");
                 }
+                if object_guard {
+                    std::env::set_var(crate::frontend::object_guard::ENV, "1");
+                }
                 let bridge_cfg = Config::from_env();
                 classify_with_evidence_mode(&bridge_cfg, ont, retain_grouped_output)
             };
-            let label = if convert_data_assertions { " (data assertions as class)" } else { "" };
+            let label = match (convert_data_assertions, object_guard) {
+                (_, true) => " (object guard)",
+                (true, false) => " (data assertions as class)",
+                (false, false) => "",
+            };
             match bridge_attempt {
                 Ok(evidence) => {
                     if timing {
@@ -2342,12 +2370,20 @@ fn classify_with_evidence_inner(
                     // rather than declining early during ABox conversion, the
                     // native ABox was already accepted and the bridge timed out
                     // during saturation/probing; do not spend a second budget.
-                    if !convert_data_assertions
-                        && attempt_t0
-                            .elapsed()
-                            .saturating_add(std::time::Duration::from_millis(250))
-                            >= budget
-                    {
+                    let exhausted = attempt_t0
+                        .elapsed()
+                        .saturating_add(std::time::Duration::from_millis(250))
+                        >= budget;
+                    if !convert_data_assertions && !object_guard && exhausted {
+                        break;
+                    }
+                    // The same holds for the data-assertion attempt with
+                    // respect to the object-guard attempt: a run to the
+                    // budget means the bridge admitted the input and was
+                    // slow, so the guard (which only widens admission) would
+                    // spend a third budget for nothing (ore_ont_2792, 10781,
+                    // 16666: 12 s each).
+                    if convert_data_assertions && exhausted {
                         break;
                     }
                 }

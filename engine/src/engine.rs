@@ -439,6 +439,22 @@ impl RedundancyTrie {
 static ANY_CANCEL_ARMED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 thread_local! {
+    /// `KM_NO_ACTIVE_BODY_INDEX`: the full scans, for A/B checks.
+    static ACTIVE_BODY_INDEX_OFF: bool = std::env::var_os("KM_NO_ACTIVE_BODY_INDEX").is_some();
+    /// Layer size from which the empty-head subsumption scans read the body
+    /// indexes (`active_body_index`, `empty_head_body_index`) instead of every
+    /// candidate; `KM_ACTIVE_BODY_INDEX_MIN` overrides it (an A/B check with
+    /// `1` runs the indexes everywhere).
+    static ACTIVE_BODY_INDEX_MIN_CELL: usize = std::env::var("KM_ACTIVE_BODY_INDEX_MIN")
+        .ok().and_then(|v| v.parse().ok()).unwrap_or(4096);
+}
+
+#[inline]
+fn active_body_index_min() -> usize {
+    ACTIVE_BODY_INDEX_MIN_CELL.with(|min| *min)
+}
+
+thread_local! {
     static THREAD_CANCEL: std::cell::RefCell<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>> =
         const { std::cell::RefCell::new(None) };
 }
@@ -901,7 +917,11 @@ fn ground_unit_equality(c: &ContextClause) -> bool {
 /// `→ Δ ∨ x ≈ o'` and its merge subscription announces `o'`. This is the
 /// delivery condition of `lean/ContextCalculus/ExchangeEquality.lean`
 /// (`InIface`, `exchangeCond_of_guard`).
-fn in_announced_interface(c: &ContextClause, announced: impl Fn(Term) -> bool) -> bool {
+fn in_announced_interface(
+    c: &ContextClause,
+    announced: impl Fn(Term) -> bool,
+    rank_bound: Term,
+) -> bool {
     let mut inds: Vec<Term> = Vec::new();
     for p in &c.body {
         inds.clear();
@@ -913,7 +933,12 @@ fn in_announced_interface(c: &ContextClause, announced: impl Fn(Term) -> bool) -
     for l in &c.head {
         match *l {
             Lit::Eq { s, t } | Lit::Ineq { s, t } if is_individual(s) && is_individual(t) => {
-                if !(announced(s) || announced(t)) {
+                // Ranked R3 (docs/PER-CONTEXT-ORDERING.md section 11): an
+                // (in)equality lies in the interface when one side is
+                // announced or its smaller individual is at most the largest
+                // individual the receiver announced (`rank_bound`).
+                let key = if r2_min_rank() { s.min(t) } else { s.max(t) };
+                if !(announced(s) || announced(t) || key <= rank_bound) {
                     return false;
                 }
             }
@@ -927,6 +952,13 @@ fn in_announced_interface(c: &ContextClause, announced: impl Fn(Term) -> bool) -
         }
     }
     true
+}
+
+/// Merge hypotheses (`Engine::merge_hypotheses`) are on unless the
+/// diagnostic `KM_NO_MERGE_HYPOTHESES` is set (restores v1.5.4 behaviour).
+fn merge_hypotheses_on() -> bool {
+    static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *FLAG.get_or_init(|| std::env::var_os("KM_NO_MERGE_HYPOTHESES").is_none())
 }
 
 fn cc_mentions_x(c: &ContextClause) -> bool {
@@ -2047,6 +2079,18 @@ struct ClauseLayer {
     /// non-empty-head clause without sharing a literal, so it has a dedicated
     /// posting list.
     active_empty_head: Vec<u32>,
+    /// Every active clause of this layer indexed by each of its body
+    /// predicates, built on demand (`ensure_active_body_index`) once a layer
+    /// is large enough for the empty-head backward subsumption scan to
+    /// matter, and maintained with the active index from then on.
+    active_body_index: Option<HashMap<Pred, Vec<u32>>>,
+    /// The empty-head clauses of `active_empty_head`, each indexed once by
+    /// its least body predicate (and those with an empty body in the list),
+    /// built once the layer holds `active_body_index_min()` of them. A clause
+    /// whose body is a subset of an incoming body has its least body
+    /// predicate in that body, so forward subsumption visits every possible
+    /// empty-head candidate exactly once.
+    empty_head_body_index: Option<(HashMap<Pred, Vec<u32>>, Vec<u32>)>,
     /// Join rule (arXiv:1805.01396 Table 3): worked-off clauses indexed by
     /// each *ground* body atom (the verbatim-copied `C_i` of Pred/r-Pred),
     /// so a later-derived provider for that atom can resolve it.  Empty
@@ -2336,6 +2380,10 @@ struct Context {
     /// identical to the unconditional driver.
     rsucc_offered: usize,
     rsucc_edges_grew: bool,
+    /// Merge hypotheses (docs/NOMINALS-CB.md section 10): the bridge
+    /// individuals `o` of body-free merge clauses `⊤ → Δ'' ∨ x ≈ o` whose
+    /// core hypotheses this context already pushed to the ground context.
+    merge_hyp_inds: Vec<Term>,
     /// Individuals whose ground ontology facts have been seeded into this
     /// context (demand-driven; see `Ontology::ground_facts`).
     seeded_inds: HashSet<Term>,
@@ -2381,6 +2429,7 @@ impl Context {
             rsucc_pair_reach_hwm: HashMap::default(),
             rsucc_offered: 0,
             rsucc_edges_grew: false,
+            merge_hyp_inds: Vec::new(),
             seeded_inds: HashSet::default(),
             dirty: true,
         }
@@ -2660,8 +2709,35 @@ impl ClauseLayer {
     /// once.
     fn index_active_clause(&mut self, arena: &[ContextClause], cid: u32) {
         let clause = &arena[cid as usize];
+        if let Some(index) = self.active_body_index.as_mut() {
+            for (position, pred) in clause.body.iter().enumerate() {
+                if !clause.body[..position].contains(pred) {
+                    index.entry(*pred).or_default().push(cid);
+                }
+            }
+        }
         if clause.head.is_empty() {
             self.active_empty_head.push(cid);
+            match self.empty_head_body_index.as_mut() {
+                Some((index, empty)) => match clause.body.iter().min() {
+                    Some(least) => index.entry(*least).or_default().push(cid),
+                    None => empty.push(cid),
+                },
+                None if self.active_empty_head.len() >= active_body_index_min()
+                    && !ACTIVE_BODY_INDEX_OFF.with(|off| *off) =>
+                {
+                    let mut index: HashMap<Pred, Vec<u32>> = HashMap::default();
+                    let mut empty = Vec::new();
+                    for &candidate in &self.active_empty_head {
+                        match arena[candidate as usize].body.iter().min() {
+                            Some(least) => index.entry(*least).or_default().push(candidate),
+                            None => empty.push(candidate),
+                        }
+                    }
+                    self.empty_head_body_index = Some((index, empty));
+                }
+                None => {}
+            }
         } else {
             self.active_min_head_lit_index
                 .entry(clause.head[0])
@@ -2676,11 +2752,51 @@ impl ClauseLayer {
         }
     }
 
+    /// Build `active_body_index` over the active clauses of this layer, once.
+    fn ensure_active_body_index(&mut self, arena: &[ContextClause]) {
+        if self.active_body_index.is_some() {
+            return;
+        }
+        let mut index: HashMap<Pred, Vec<u32>> = HashMap::default();
+        for &cid in &self.clause_keys {
+            let clause = &arena[cid as usize];
+            for (position, pred) in clause.body.iter().enumerate() {
+                if !clause.body[..position].contains(pred) {
+                    index.entry(*pred).or_default().push(cid);
+                }
+            }
+        }
+        self.active_body_index = Some(index);
+    }
+
     /// Remove one clause from the active redundancy index.
     fn unindex_active_clause(&mut self, arena: &[ContextClause], cid: u32) {
         let clause = &arena[cid as usize];
+        if let Some(index) = self.active_body_index.as_mut() {
+            for pred in &clause.body {
+                if let Some(posting) = index.get_mut(pred) {
+                    posting.retain(|&candidate| candidate != cid);
+                    if posting.is_empty() {
+                        index.remove(pred);
+                    }
+                }
+            }
+        }
         if clause.head.is_empty() {
             self.active_empty_head.retain(|&candidate| candidate != cid);
+            if let Some((index, empty)) = self.empty_head_body_index.as_mut() {
+                match clause.body.iter().min() {
+                    Some(least) => {
+                        if let Some(posting) = index.get_mut(least) {
+                            posting.retain(|&candidate| candidate != cid);
+                            if posting.is_empty() {
+                                index.remove(least);
+                            }
+                        }
+                    }
+                    None => empty.retain(|&candidate| candidate != cid),
+                }
+            }
         } else {
             posting_remove(&mut self.active_min_head_lit_index, clause.head[0], cid);
             let mut empty = Vec::new();
@@ -2983,15 +3099,35 @@ impl Context {
     ) -> bool {
         debug_assert_eq!(sigs.len(), arena.len(), "ClauseSig mirror out of sync");
         let want = ClauseSig::of(clause);
-        for ci in self.active_empty_head().iter() {
-            if Some(ci) == exclude {
-                continue;
-            }
-            if !sigs[ci as usize].may_strengthen(&want) {
-                continue;
-            }
-            if arena[ci as usize].strengthens(clause) {
+        let check = |ci: u32| {
+            Some(ci) != exclude
+                && sigs[ci as usize].may_strengthen(&want)
+                && arena[ci as usize].strengthens(clause)
+        };
+        if let Some((index, empty)) = self.delta.empty_head_body_index.as_ref() {
+            // Base segment as before; delta candidates through the index.
+            let base = self.base.as_deref().map_or(&[][..], |b| b.active_empty_head.as_slice());
+            if base.iter().copied().filter(|ci| !self.base_removed.contains(ci)).any(check) {
                 return true;
+            }
+            if empty.iter().copied().any(check) {
+                return true;
+            }
+            for (position, pred) in clause.body.iter().enumerate() {
+                if clause.body[..position].contains(pred) {
+                    continue;
+                }
+                if let Some(posting) = index.get(pred) {
+                    if posting.iter().copied().any(check) {
+                        return true;
+                    }
+                }
+            }
+        } else {
+            for ci in self.active_empty_head().iter() {
+                if check(ci) {
+                    return true;
+                }
             }
         }
         for literal in &clause.head {
@@ -3027,7 +3163,29 @@ impl Context {
         let same = |candidate: &ContextClause| {
             candidate.body == clause.body && candidate.head == clause.head
         };
-        let candidates: Vec<u32> = if clause.head.is_empty() {
+        let candidates: Vec<u32> = if clause.head.is_empty() && !clause.body.is_empty()
+            && self.delta.clause_keys.len() >= active_body_index_min()
+            && !ACTIVE_BODY_INDEX_OFF.with(|off| *off)
+        {
+            // A candidate must contain every body predicate of `clause`, so
+            // the delta clauses that can be strengthened are among those of
+            // the rarest body-predicate posting; the base segment is read as
+            // before. The removed set is the same as with the full scan.
+            self.delta.ensure_active_body_index(arena);
+            let index = self.delta.active_body_index.as_ref().expect("built above");
+            let rarest = clause.body.iter()
+                .map(|pred| index.get(pred).map_or(&[][..], Vec::as_slice))
+                .min_by_key(|posting| posting.len())
+                .unwrap_or(&[]);
+            let removed = &self.base_removed;
+            self.base
+                .as_deref()
+                .into_iter()
+                .flat_map(|b| b.clause_keys.iter().copied())
+                .filter(move |cid| !removed.contains(cid))
+                .chain(rarest.iter().copied())
+                .collect()
+        } else if clause.head.is_empty() {
             self.clause_keys_iter().collect()
         } else {
             // Rarest-posting selection over the base-plus-delta views.  The flat
@@ -3594,6 +3752,16 @@ pub struct Engine {
     /// derived clauses remain sound, but classification is not complete and
     /// must never be published as a successful answer.
     message_truncated: bool,
+    /// A context whose empty clause is global inconsistency (the ground
+    /// context, or the ⊤ root context with an empty core) has worked off the
+    /// empty clause. Monotone: worked-off clauses are only ever replaced by
+    /// clauses that subsume them, and only the empty clause subsumes the
+    /// empty clause, so `inconsistent()` stays true from here on.
+    global_refutation: bool,
+    /// Stop the run once `global_refutation` holds (see
+    /// `set_stop_on_global_refutation`). Off by default; the one-shot
+    /// classification paths of `Reasoner::saturate` switch it on.
+    stop_on_global_refutation: bool,
     /// Nom rule (arXiv:1805.01396 Table 3): `K`, where `K + 1` is the largest
     /// neighbour-variable index `i` (of `z_i`) over the whole ontology — the
     /// width of the additional-nominal disjunction `⋁_{i=1}^K y ≈ o'_{ρ·S^i}`.
@@ -4219,6 +4387,8 @@ impl Engine {
                 .then(Vec::new),
             dropped_unsupported: prepared.dropped_unsupported,
             message_truncated: false,
+            global_refutation: false,
+            stop_on_global_refutation: false,
             nom_k: prepared.nom_k,
             nom_table: std::cell::RefCell::new(HashMap::default()),
             nom_allocated: std::cell::Cell::new(0),
@@ -4741,6 +4911,21 @@ impl Engine {
         }) {
             // The ontology is already inconsistent. `inconsistent()` reports
             // that globally, so no per-class shortcut is needed.
+            return;
+        }
+        // The readout below takes the body-free unit clauses `→ B(o)` and
+        // `→ o ≈ o'` as the complete set of ground facts. That holds when
+        // every body-free clause of the saturated ground context is a unit
+        // (a Horn ground closure: the units generate its least model). A
+        // body-free disjunction `→ B(o) ∨ Δ` can hide an entailed unit: the
+        // ground context resolves only on maximal literals, so with `Δ`
+        // refutable but not maximal the unit `→ B(o)` is never derived
+        // (seed r3403: `→ A(c) ∨ c ≈ b` with `A(b)`, docs/NOMINALS-CB.md
+        // section 10). Ordinary CB then answers the query.
+        if ground.worked_off().iter().any(|ci| {
+            let c = &arena[ci as usize];
+            c.body.is_empty() && c.head.len() > 1
+        }) {
             return;
         }
 
@@ -5350,6 +5535,13 @@ impl Engine {
             // pred-eligible (empty head), so propagate still pushes the
             // contradiction back. Sound: dropping subsumed clauses preserves
             // completeness; the unsat verdict / pushback is retained.
+            if clause.body.is_empty()
+                && clause.head.is_empty()
+                && (self.ground_ctx == Some(id)
+                    || (self.contexts[id].root && self.contexts[id].core.is_empty()))
+            {
+                self.global_refutation = true;
+            }
             if self.early_unsat && clause.body.is_empty() && clause.head.is_empty() {
                 self.contexts[id].todo.clear();
                 break;
@@ -7215,6 +7407,18 @@ impl Engine {
                 }
             }
         }
+        let merge_hyps = self.merge_hypotheses(id);
+        if !merge_hyps.is_empty() {
+            let target = self.ground_context();
+            for (p, o) in merge_hyps {
+                self.msgs.push_back(Msg::Succ {
+                    from: pack_msg_context(id),
+                    f: o,
+                    p,
+                    target: pack_msg_context(target),
+                });
+            }
+        }
         if !ground_succ.is_empty() {
             let target = self.ground_context();
             for (p, o) in ground_succ {
@@ -7532,6 +7736,14 @@ impl Engine {
             // ground-sender (r-Pred) path: a source is dirty when any of its
             // individual-labelled edges gained a pushed predicate.
             let mut sources: Vec<(usize, Term, bool)> = Vec::new();
+            let mut bound_of: HashMap<usize, Term> = HashMap::default();
+            if ground_sender && !pair_r2() {
+                let all = !self.nom_table.borrow().is_empty();
+                for (e, _, _) in &edges {
+                    let b = bound_of.entry(e.0).or_insert(Term::MIN);
+                    *b = if all { Term::MAX } else { (*b).max(e.1) };
+                }
+            }
             if ground_sender {
                 for (e, _, dirty) in &edges {
                     match sources.iter_mut().find(|(u, _, _)| *u == e.0) {
@@ -7647,7 +7859,7 @@ impl Engine {
                                 || (eq_announce()
                                     && inds.iter().any(|o| ctx.predecessors.contains_key(&(u, *o)))
                                     && if eq_closure_announce() {
-                                        in_announced_interface(c, announced)
+                                        in_announced_interface(c, announced, bound_of.get(&u).copied().unwrap_or(Term::MIN))
                                     } else {
                                         ground_unit_equality(c)
                                     });
@@ -7747,6 +7959,77 @@ impl Engine {
         }
     }
 
+    /// The rank bound `m` of the ranked R3 (docs/PER-CONTEXT-ORDERING.md
+    /// section 11) for receiver `u` of the ground context `g`: the largest
+    /// individual `u` announced (an individual-labelled edge), or every
+    /// individual once additional nominals exist (they count as announced
+    /// for every receiver, so the bound must cover them). `Term::MIN` under
+    /// the diagnostic `KM_CONTEXT_PAIR_R2` (the guard of 7c238e52).
+    fn rank_bound(&self, g: &Context, u: usize) -> Term {
+        if pair_r2() {
+            return Term::MIN;
+        }
+        if !self.nom_table.borrow().is_empty() {
+            return Term::MAX;
+        }
+        g.predecessors
+            .keys()
+            .filter(|(src, o)| *src == u && is_individual(*o))
+            .map(|&(_, o)| o)
+            .max()
+            .unwrap_or(Term::MIN)
+    }
+
+    /// Merge hypotheses (docs/NOMINALS-CB.md section 10): a query context
+    /// `u` with core `K(x)` whose element may be the individual `o` (a
+    /// body-free merge clause `⊤ → Δ'' ∨ x ≈ o`, the Join case 3 bridge)
+    /// pushes the hypotheses `K(o) → K(o)` to the ground context, on the
+    /// edge labelled `o`. Side condition (*) blocks every r-Succ push of
+    /// such a context, and a query context has no predecessor that could
+    /// carry its labels to `o` (an ordinary context's merge `f(x) ≈ o` reaches
+    /// its predecessor, which rewrites `f(x)` to `o` and pushes the ground
+    /// atoms itself), so without these hypotheses the ground context never
+    /// reasons under the assumption that `o` is an instance of the query
+    /// (seed r1600, `tests/merge_hypotheses.rs`). The ground context returns
+    /// its conclusions `K(o) ∧ Γ → Δ` with the body atom `K(o)` copied
+    /// verbatim (no clause of `u` has `K(o)` maximal), and Join case 3
+    /// resolves `K(o)` against the core clause `⊤ → K(x)` and the bridge.
+    fn merge_hypotheses(&mut self, id: usize) -> Vec<(Pred, Term)> {
+        if Some(id) == self.ground_ctx
+            || !self.contexts[id].root
+            || self.ont.individuals.is_empty()
+            || !merge_hypotheses_on()
+        {
+            return Vec::new();
+        }
+        let bridges = self.contexts[id].bridge_keys();
+        let ctx = &mut self.contexts[id];
+        let mut out: Vec<(Pred, Term)> = Vec::new();
+        for o in bridges {
+            if ctx.merge_hyp_inds.contains(&o) {
+                continue;
+            }
+            ctx.merge_hyp_inds.push(o);
+            for p in &ctx.core {
+                let plain = |t: Term| t == X || is_individual(t);
+                let ok = match *p {
+                    Pred::Concept { t, .. } => t == X,
+                    Pred::Role { s, t, .. } => (s == X || t == X) && plain(s) && plain(t),
+                };
+                if !ok {
+                    continue;
+                }
+                let a = p.apply(&|v| if v == X { o } else { v });
+                let mut inds: Vec<Term> = Vec::new();
+                pred_inds(&a, &mut inds);
+                for i in inds {
+                    out.push((a, i));
+                }
+            }
+        }
+        out
+    }
+
     /// r-Pred with no `A_i` (arXiv:1805.01396 Table 3, n = 0) for contexts
     /// that are tied to an individual by a merge clause `Γ → Δ ∨ x ≈ o`.
     /// Such a context never opens an r-Succ edge for `o` (side condition (*)
@@ -7827,7 +8110,7 @@ impl Engine {
                 if !inds.iter().all(|&o| announced(o))
                     && !(eq_announce()
                         && if eq_closure_announce() {
-                            in_announced_interface(c, announced)
+                            in_announced_interface(c, announced, self.rank_bound(gctx, id))
                         } else {
                             ground_unit_equality(c)
                         })
@@ -8340,6 +8623,24 @@ impl Engine {
         }
     }
 
+    /// Stop `run_for` as soon as a context whose empty clause means global
+    /// inconsistency (the ground context, or the ⊤ root context) has worked
+    /// off the empty clause. The published answer of an inconsistent
+    /// ontology is fixed, `inconsistent()` stays true under further
+    /// saturation (the empty clause is never removed), and the remaining
+    /// messages can only add clauses to other contexts. The engine is then
+    /// not saturated, so callers that read anything beyond `inconsistent()`
+    /// (retained or certified engines, incremental reuse) must leave this
+    /// off; `subsumptions()` of a stopped engine lists only what was derived.
+    pub fn set_stop_on_global_refutation(&mut self, on: bool) {
+        self.stop_on_global_refutation = on;
+    }
+
+    #[inline]
+    fn global_refutation_stops(&self) -> bool {
+        self.stop_on_global_refutation && self.global_refutation
+    }
+
     pub fn run_for(&mut self, queries: &[Iri]) {
         let prof = std::env::var("KM_PROF").is_ok();
         if std::env::var_os("KM_MSGPROF").is_some() && self.stat_pred_out_by_ctx.is_empty() {
@@ -8364,6 +8665,9 @@ impl Engine {
         self.complete_nominal_enumeration_queries(queries);
         // Root contexts: one per named (query) concept.
         for (qi, &iri) in queries.iter().enumerate() {
+            if self.global_refutation_stops() {
+                break;
+            }
             if self.nominal_shortcuts.contains_key(&iri) {
                 continue;
             }
@@ -8395,9 +8699,11 @@ impl Engine {
         // (owl:Thing unsatisfiable) is detected regardless of which concepts are
         // named in the input (audit M2). It carries query=None, so `subsumptions`
         // skips it and it never contributes to the classification output.
-        let top = self.get_or_create_context(vec![], true, None);
-        self.saturate(top);
-        self.propagate(top);
+        if !self.global_refutation_stops() {
+            let top = self.get_or_create_context(vec![], true, None);
+            self.saturate(top);
+            self.propagate(top);
+        }
         let t_seed = t_start.elapsed();
         // Process inter-context messages to fixpoint, *batched*: drain the whole
         // pending set, apply every message as a clause/edge delta, record the
@@ -8457,6 +8763,13 @@ impl Engine {
                 round_epoch = 1;
             }
             while let Some(msg) = batch.pop_front() {
+                if self.global_refutation_stops() {
+                    // The ontology is inconsistent (see
+                    // `set_stop_on_global_refutation`); the remaining work
+                    // cannot change the answer.
+                    batch.clear();
+                    break;
+                }
                 guard += 1;
                 if guard > msg_cap {
                     // Hard safety cap on the inter-context message fixpoint.
@@ -8570,6 +8883,10 @@ impl Engine {
                 }
             }
             if truncated {
+                break;
+            }
+            if self.global_refutation_stops() {
+                self.msgs.clear();
                 break;
             }
             debug_assert!(batch.is_empty());

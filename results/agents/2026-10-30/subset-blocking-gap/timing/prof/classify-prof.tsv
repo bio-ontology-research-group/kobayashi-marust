@@ -1,0 +1,6 @@
+stats-head-205	KM_HT [classify-prof] steps=1101827 block_ms=46756(50%) prop_ms=41103(44%) expand_ms=4135(4%) eager_ms=1169 obligloop_ms=1702 obl_iters=1042257
+stats-fix1-205	KM_HT [classify-prof] steps=1207333 block_ms=107654(69%) prop_ms=42835(27%) expand_ms=5254(3%) eager_ms=1577 obligloop_ms=2163 obl_iters=1109088
+stats-fix2-205	KM_HT [classify-prof] steps=1207333 block_ms=56682(56%) prop_ms=38458(38%) expand_ms=4647(4%) eager_ms=1268 obligloop_ms=1991 obl_iters=1109088
+stats-fix5-205	KM_HT [classify-prof] steps=1101827 block_ms=67176(50%) prop_ms=60521(45%) expand_ms=6267(4%) eager_ms=1821 obligloop_ms=2747 obl_iters=1042257
+stats-head-7499	KM_HT [classify-prof] steps=1037056 block_ms=38421(50%) prop_ms=33979(44%) expand_ms=3629(4%) eager_ms=994 obligloop_ms=1524 obl_iters=983158
+stats-fix4-7499	KM_HT [classify-prof] steps=1146968 block_ms=54826(56%) prop_ms=37566(38%) expand_ms=4504(4%) eager_ms=1281 obligloop_ms=1830 obl_iters=1058034

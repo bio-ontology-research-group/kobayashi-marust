@@ -2100,9 +2100,18 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
     // apart, the frontend leaves out the singleton clause of every value with
     // a decided identity (`datatypes::datatype_relation_clauses_with`); no
     // clause then distinguishes two nodes carrying one value.
+    // The elision also needs the relation of an elided value to every other
+    // value decided (`fullyDecided` of `DataValueSingletonElision.lean`).
+    // Two values with identity keys are always related (equal keys or
+    // separated), so a missing singleton is admitted only when every value
+    // of the vocabulary has a key (`opaque_merge.ofn`).
     let singletons_elidable = {
         let (distinct, disjoint_data) = forced_distinct_data_successors(tin);
-        !distinct && !disjoint_data
+        !distinct
+            && !disjoint_data
+            && values.iter().all(|&value| {
+                crate::frontend::datatypes::bridge_value_identity_key(&tin.concepts[value]).is_some()
+            })
     };
     for &value in &values {
         if !relations.singletons.contains(&value)
@@ -8076,10 +8085,12 @@ fn bridged_unsat_rooted(
         let consistent = algo.run_completion_on(ctx);
         if trace {
             eprintln!(
-                "TRACE pass={pass} consistent={consistent} inserts={} backtracks={} nodes={}",
+                "TRACE pass={pass} consistent={consistent} inserts={} backtracks={} nodes={} source_tbox={} cow={}",
                 algo.stat_con_des_insertion_count,
                 algo.or_backtrack_count,
                 ctx.process_context().node_count(),
+                bridged.source_tbox,
+                algo.conf_inprocess_cow,
             );
         }
         if !consistent {
@@ -14876,6 +14887,12 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                                 || !algo.or_branch_stack.is_empty()
                                 || std::env::var_os("KM_BRIDGE_REPLAY_ALWAYS_OFF").is_some()
                             {
+                                if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+                                    eprintln!(
+                                        "BRIDGE-REPLAY disabled: open_or_branches={} (before {}) stack={}",
+                                        algo.or_branch_open_count, branch_points_before, algo.or_branch_stack.len()
+                                    );
+                                }
                                 bridged.precomputation_replay_disabled.set(true);
                             }
                             if !incomplete_associations.is_empty() {
@@ -15935,11 +15952,74 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         // possible-subsumer update from every satisfiable test model).
         let mut probe_models: Vec<HashSet<Cint64>> = Vec::new();
         let readoff_markers = readoff_eq_markers.get(&s);
+        // Batched refutation: one probe of `s and not c1 and ... and not ck`
+        // over the candidates that would each need their own probe. A model
+        // of the conjunction is a countermodel of every `s <= ci`, so a
+        // satisfiable verdict refutes all of them at once; any other verdict
+        // (unsatisfiable, or no verdict within the budget) leaves the
+        // pairwise probes below unchanged. On qudt-merged the 13 candidates
+        // of every subject are universal definitions (`C = all qk.D`) that
+        // one model refutes together, and each probe re-derives the
+        // nominal-connected ABox, so the pairwise probes dominated.
+        let batch_refuted: HashSet<usize> = {
+            let batch: Vec<usize> = subs.iter().copied().filter(|&c| {
+                c != s
+                    && !saturation_known_pairs.contains(&(s, c))
+                    && !(deterministic_subsumer_shortcut && kpset_state.certain_subsumer(s, c))
+                    && kpset_state.candidate_state(s, c).is_none_or(|(confirmed, invalid)| !confirmed && !invalid)
+                    && !(hierarchy_countermodels && hierarchy_refuted_candidates.contains(&(s, c)))
+            }).collect();
+            if batch.len() >= 2 && std::env::var_os("KM_BRIDGE_NO_BATCH_REFUTATION").is_none() {
+                renew(algo, ctx, false)?;
+                let mut id_batch: i64 = probe_start_id;
+                let mut seeds: Vec<(ConceptId, bool)> = vec![(bridged.named[s], false)];
+                seeds.extend(batch.iter().map(|&c| (bridged.named[c], true)));
+                let mut batch_root = None;
+                let verdict = bridged_unsat_rooted(algo, ctx, &bridged, &mut id_batch, &seeds, &mut batch_root);
+                if progress {
+                    eprintln!(
+                        "BRIDGE-BATCH-REFUTATION {} candidates={} verdict={:?}",
+                        tin.concepts[s], batch.len(), verdict.map(|unsat| if unsat { "unsat" } else { "sat" })
+                    );
+                }
+                if verdict == Some(false) { batch.into_iter().collect() } else { HashSet::default() }
+            } else {
+                HashSet::default()
+            }
+        };
         for c in subs {
             if c == s {
                 continue;
             }
             if saturation_known_pairs.contains(&(s, c)) {
+                continue;
+            }
+            if batch_refuted.contains(&c) {
+                if progress {
+                    eprintln!(
+                        "BRIDGE-KPSET-SKIP {} v {}: batch-countermodel",
+                        tin.concepts[s], tin.concepts[c]
+                    );
+                }
+                kpset_state
+                    .ontology_item
+                    .inc_running_possible_subsumption_tests_count(1);
+                classifier.interprete_subsumption_result(
+                    &mut kpset_state.ontology_item,
+                    bridged.named[s],
+                    bridged.named[c],
+                    false,
+                    ctx.ontology_arenas().concepts(),
+                );
+                if hierarchy_countermodels {
+                    propagate_refuted_candidate_to_known_supers(
+                        s,
+                        c,
+                        &known_supers_by_sub,
+                        &mut hierarchy_refuted_candidates,
+                    );
+                }
+                refuted_here.push(c);
                 continue;
             }
             if !refuted_here.is_empty()

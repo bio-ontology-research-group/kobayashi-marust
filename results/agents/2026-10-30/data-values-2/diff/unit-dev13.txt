@@ -1,0 +1,2 @@
+     Running unittests src/lib.rs (target/release/deps/kobayashi_marust-041418631c8504fe)
+test result: ok. 531 passed; 0 failed; 2 ignored; 0 measured; 2536 filtered out; finished in 4.94s

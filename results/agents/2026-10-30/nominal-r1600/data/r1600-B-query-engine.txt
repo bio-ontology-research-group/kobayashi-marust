@@ -1,0 +1,5 @@
+KM_STATS propagate=291 pred_checks=58124 succ_scans=88382 hyper_calls=132595 saturate=387
+{"subsumptions":{"B":["A","Q_2"]},"derived_clauses":[],"inconsistent":false,"dropped":0}
+X=1 237.65 s 30024 KB
+Command exited with non-zero status 124
+KM_CONTEXT_PAIR_R2=1 600.01 s 57640 KB

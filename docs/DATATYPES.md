@@ -558,6 +558,142 @@ quadratic for the pairwise form. It would have rejected `opaque_merge.ofn`
 oracle's decisions themselves, the sort assignment of roles, or
 `UndecidedRealizable`. Not implemented here.
 
+### Fixes of findings 1 and 2 (2026-10-30, agent `data-values-2`)
+
+**Derived string types.** The OWL 2 datatype map (Structural Specification,
+section 4.3) gives `xsd:normalizedString`, `xsd:token`, `xsd:language`,
+`xsd:Name`, `xsd:NCName` and `xsd:NMTOKEN` value spaces that are subsets of
+the `xsd:string` value space, and the lexical-to-value mapping of each
+applies XSD whitespace processing first (`replace` for `normalizedString`,
+`collapse` for the others). The oracle (`datatypes::parse_literal`) now maps
+such a literal to the string value of its normalized lexical form when that
+form is in the type's value space (`derived_string_member`): `normalizedString`
+excludes tab, line feed and carriage return, `token` additionally leading,
+trailing and double spaces, `language` is the RFC 3066 pattern of XSD, and
+the name types use the XML name-character classes. Those classes are decided
+exactly on ASCII; a name with a non-ASCII character, or an ill-typed form,
+stays opaque, as before. Membership of a string value in these types is the
+same test. So `"abc"^^xsd:token` and `"abc"` are one value and receive one
+identity key; `opaque_merge_tbox.ofn` (`A ≡ ∃p.{"abc"}`,
+`B ≡ ∃p.{"abc"^^xsd:token}`) is answered `A ≡ B`.
+
+`opaque_single.ofn` (`p(z, "abc")`, `¬p(z, "abc"^^xsd:token)`) is answered
+inconsistent, which follows from the equality above; HermiT answers
+consistent. HermiT is not consistent with itself here: on
+`opaque_merge_tbox.ofn` it entails `A ≡ B`, which holds in a consistent
+ontology with a functional `p` only if the two literals denote one value,
+and that value would make `opaque_single.ofn` inconsistent. The integration
+fixture records the datatype-map answer.
+
+**Finding 1 (singleton elision).** `value_fully_decided` now takes the
+values without an identity key (the opaque ones) and asks `val_eq` to be
+decided against each of them, which is the hypothesis `fullyDecided` of
+`DataValueSingletonElision.lean` (between two keyed values `val_eq` is always
+decided). A value with an undecided relation keeps its singleton clause. The
+native bridge admits a missing singleton only when every value of the
+vocabulary has a bridge identity key (`bridge_value_identity_key`, extended
+to the derived string types now that they parse exactly); otherwise it
+defers. With the parse change `opaque_merge.ofn` has no opaque value left;
+the gate change is what keeps a vocabulary with a genuinely undecided pair
+(for example a non-ASCII `xsd:Name`) exact.
+
+**Finding 2 (range exhaustion).** `datatypes::exhaustible_ranges` lists the
+finite ranges `R` with `|R| ≤ |V ∩ R| + max(N, 1)`, where `V ∩ R` counts
+every value of the vocabulary whose membership in `R` is not decided false
+and `N` is the data count bound. The frontend raises the cover cap to the
+size of each such range (up to `MAX_COUNTED_COVER`, 4,096), so the range
+receives its exact cover `R ⊑ ⊔ {v}`; a range for which no cover is emitted
+(too large, or a shape `enumerate_range` does not enumerate, such as a dense
+point interval) is published as not represented (`DROPPED`), never answered.
+An empty dense interval now receives the empty cover `R ⊑ ⊥`. Why the
+condition suffices: a node labelled `R` without a cover is realizable unless
+every value of `R` is excluded from it; it can only be excluded from values
+the vocabulary names (a value concept is the only way a clause mentions a
+single value), and it must differ from at most `N` (at least one: itself)
+values chosen for sibling nodes, so with `|R| > |V ∩ R| + max(N, 1)` some value
+of `R` remains for every node of an element (`UndecidedRealizable`). A cover
+is a valid axiom (`R` is exactly the union of its values), so emitting more
+covers never changes an answer. `range_exhaust.ofn` and
+`range_exhaust_tbox.ofn` are answered as HermiT answers them.
+
+Lean obligation: the derived-string parse is an oracle decision
+(`DecisionSound` of `DataValueSingletonElision.lean`, not proved for the
+Rust oracle, as for every other datatype). The gate now implements the
+Lean hypothesis `fullyDecided` directly (argued from the code, not
+extracted). The cover condition is `UndecidedRealizable` for finite ranges;
+the counting argument above is not mechanised.
+
+### Functional data values in the ABox quotient (2026-10-30, agent `data-values-2`)
+
+The fail-closed ABox quotient (`orchestrate/abox_quotient.rs`) publishes the
+taxonomy of `T ∪ Q` for a much smaller ABox `Q` when `T ∪ Q` is certified
+consistent. Its only obligation is (1): `T ∪ Q` consistent implies `T ∪ A`
+consistent; the taxonomy then follows from closure of `T` under disjoint
+unions (`HypertableauDisjointUnionABoxProjection.lean`). Its merging key
+contained the values of every count-restricted data property, so on
+ore_ont_4572 (28 functional data properties, 33k individuals with distinct
+values) no two individuals merged and the quotient declined
+(29,113 blocks of 32,990).
+
+New transformation S3 (`abstract_counted_values`): for a functional data
+property `p` with no sub- or super-property and no data cardinality
+restriction, the key and `Q` use, instead of the value `v` of `p(a, v)`, the
+first value of `p` in the source with the same *datatype class* as `v`. A
+class is a literal datatype (`xsd:string` with plain literals,
+language-tagged strings, `xsd:decimal`, `xsd:boolean`, or one integer
+datatype) whose values no datatype of the ontology separates. S3 applies
+only when all of the following hold, and otherwise the quotient is built
+as before:
+
+- `T` has no nominal, no inverse role (`ObjectInverseOf`,
+  `InverseObjectProperties`), no symmetric, reflexive or inverse functional
+  property, no `ObjectHasSelf`, no `DisjointDataProperties`, no literal at
+  all outside data-property assertions, no facet restriction or datatype
+  definition and no derived string type; the ABox has no `SameIndividual`;
+- no TBox datatype splits a class: an integer datatype `E` splits an
+  integer datatype `D` when their value intervals meet and `E` does not
+  contain `D`, and any integer datatype splits `xsd:decimal`;
+- every value of an abstracted property is well formed (integer lexical
+  forms inside the bounds of their type);
+- no individual has two values of one abstracted property, and no
+  individual has two asserted successors of one role under a cardinality
+  restriction or a functionality axiom (through sub-roles).
+
+Proof of (1). Let `I ⊨ T ∪ Q` and let `h` map each individual of `A` to its
+block representative. Build `I'`: keep `I`, and add for every individual `a`
+a fresh element `ȧ` (interpreting `a`) with the concept memberships of
+`h(a)^I`; its outgoing edges are those of `h(a)^I`, except that for each
+asserted `R(a, b)` (closed under the role hierarchy, transitivity and
+chains) the edge to `h(b)^I` is replaced by an edge to `ḃ` where `R` is
+counted, and added next to it where it is not. Its data edges are those of
+`h(a)^I`, except that the single `p`-edge of an abstracted `p` (to the
+representative `w`, which `Q` asserts, and only one since `p` is
+functional) goes to `a`'s own value `v`. No edge of `I` enters a copy.
+Then, by induction on concepts, every element of `I'` satisfies the same
+concepts as its image in `I` (the image of `ȧ` is `h(a)^I`): `T` has no
+inverse role, nominal or `Self`, so a concept depends only on the outgoing
+structure; under a counted role the copy's successors map bijectively onto
+the original's (one asserted successor per individual), under every other
+role surjectively, which is all `∃`, `∀` and `≥` need there (a `≤` or a
+`≥` read negatively makes the role counted); `v` and `w` lie in the same
+datatypes of `T` and `T` names no value, so every data range and every
+data restriction over `p` (functional, no cardinality) evaluates alike;
+properties related to `p` do not exist. Transitivity and chains hold for
+the copies by the closure of the asserted edges and, towards elements of
+`I`, because `I` already has the composed edges. Disjoint, asymmetric and
+irreflexive roles hold because every copy edge has an image edge in `I`.
+`A` holds in `I'`: concept assertions by the memberships, role assertions
+by the copy edges, `p(a, v)` by construction, every other data assertion
+because `Q` repeats it for the block (exact values, or, for thinned
+properties, by the thinning argument applied to the copy). Hence
+`T ∪ A` is consistent.
+
+On ore_ont_4572 the quotient now has 4,484 blocks and 48,639 assertions,
+and the run takes 12 s instead of 381 s (taxonomy agrees with Konclude,
+HermiT, Openllet). Lean obligation: none of S1 to S3 has a Lean model;
+the quotient is checked by tests (`isolated_functional_values_are_abstracted_to_their_class`)
+and by the scope run. A refutation of `T ∪ Q` is never published (defer).
+
 ## Open corners (status 2026-10-30)
 
 Handled exactly since v1.5.5 (sections above): data-property assertions of

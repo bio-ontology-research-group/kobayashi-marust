@@ -495,6 +495,19 @@ const STRING_DERIVED: &[&str] = &[
     "ENTITY",
     "ENTITIES",
 ];
+/// Namespaces of the datatype names of the OWL 2 datatype map.
+const DATATYPE_NAMESPACES: &[&str] = &[
+    "<http://www.w3.org/2001/XMLSchema#",
+    "<http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "<http://www.w3.org/2000/01/rdf-schema#",
+    "<http://www.w3.org/2002/07/owl#real>",
+    "<http://www.w3.org/2002/07/owl#rational>",
+];
+/// The integer datatypes, as `'static` class names of the value abstraction.
+const INTEGER_CLASSES: &[&str] = &[
+    "integer", "nonNegativeInteger", "positiveInteger", "nonPositiveInteger", "negativeInteger",
+    "long", "int", "short", "byte", "unsignedLong", "unsignedInt", "unsignedShort", "unsignedByte",
+];
 const IGNORED_ITEMS: &[&str] = &[
     "Declaration",
     "Annotation",
@@ -520,6 +533,21 @@ struct Screen {
     string_sensitive: bool,
     /// Individuals occurring in TBox nominals (`ObjectOneOf`, `ObjectHasValue`).
     nominal_individuals: HashSet<String>,
+    /// A construct that a fresh copy of an individual need not satisfy as
+    /// its original does: inverse roles, symmetric, reflexive or inverse
+    /// functional properties, `Self`, or disjoint data properties (which
+    /// compare the values of two properties). Blocks the value abstraction
+    /// of count-restricted data properties (`abstract_counted_values`).
+    copy_unsafe: bool,
+    /// Datatype names occurring outside data-property assertions.
+    datatypes: HashSet<String>,
+    /// Object roles under a min cardinality (a `≤` under negation, or a
+    /// count read on the left of an inclusion).
+    min_card_roles: HashSet<String>,
+    /// Data properties declared functional.
+    functional_data: HashSet<String>,
+    /// Data properties under a data max or exact cardinality.
+    cardinality_data: HashSet<String>,
 }
 
 impl Screen {
@@ -544,9 +572,18 @@ impl Screen {
                 .map(|arg| if arg.len() == 1 { expander.entity(&arg[0]) } else { Err(()) })
                 .collect()
         };
+        if matches!(keyword, "SymmetricObjectProperty" | "ReflexiveObjectProperty" | "InverseObjectProperties"
+            | "InverseFunctionalObjectProperty" | "DisjointDataProperties")
+        {
+            self.copy_unsafe = true;
+        }
         match keyword {
             "FunctionalDataProperty" | "DisjointDataProperties" => {
-                self.counted_data.extend(entities(&args)?);
+                let names = entities(&args)?;
+                if keyword == "FunctionalDataProperty" {
+                    self.functional_data.extend(names.iter().cloned());
+                }
+                self.counted_data.extend(names);
             }
             "FunctionalObjectProperty" | "InverseFunctionalObjectProperty" => {
                 if let [arg] = args.as_slice() {
@@ -586,6 +623,9 @@ impl Screen {
         for (index, tok) in tokens.iter().enumerate() {
             match *tok {
                 Tok::Word(word) if tokens.get(index + 1) == Some(&Tok::Open) => {
+                    if matches!(word, "ObjectInverseOf" | "ObjectHasSelf") {
+                        self.copy_unsafe = true;
+                    }
                     if allow_nominals && matches!(word, "ObjectOneOf" | "ObjectHasValue") {
                         // TBox nominal: record its individuals; the caller
                         // pins them and requires the TBox sandwich check.
@@ -625,7 +665,18 @@ impl Screen {
                         "DatatypeRestriction" | "DatatypeDefinition" => self.string_sensitive = true,
                         "DataMaxCardinality" | "DataExactCardinality" => {
                             if let Some(tok) = tokens.get(index + 3) {
-                                self.counted_data.insert(expander.entity(tok)?);
+                                let name = expander.entity(tok)?;
+                                self.cardinality_data.insert(name.clone());
+                                self.counted_data.insert(name);
+                            }
+                        }
+                        "ObjectMinCardinality" => {
+                            let role = match tokens.get(index + 3) {
+                                Some(Tok::Word("ObjectInverseOf")) => tokens.get(index + 5),
+                                other => other,
+                            };
+                            if let Some(tok) = role {
+                                self.min_card_roles.insert(expander.entity(tok)?);
                             }
                         }
                         "ObjectMaxCardinality" | "ObjectExactCardinality" => {
@@ -652,6 +703,9 @@ impl Screen {
                     let name = expander.entity(tok)?;
                     if UNIVERSAL_ROLES.contains(&name.as_str()) {
                         return Err(());
+                    }
+                    if DATATYPE_NAMESPACES.iter().any(|ns| name.starts_with(ns)) {
+                        self.datatypes.insert(name.clone());
                     }
                     if let Some(local) = name
                         .strip_prefix('<')
@@ -1175,11 +1229,201 @@ pub(super) fn same_taxonomy(left: &super::Classification, right: &super::Classif
 // S1: homomorphic merging; thinning; output.
 // ---------------------------------------------------------------------------
 
+/// Value abstraction of count-restricted data properties (S3).
+///
+/// Under the conditions checked here, a model `I` of `T ∪ Q` yields a model
+/// of `T ∪ A` in which every individual is a fresh copy of its quotient
+/// element (with that element's concept memberships, its outgoing edges, the
+/// asserted edges between copies in place of their images, and its data
+/// values) and carries its own value of each count-restricted data property
+/// in place of the representative value of the same datatype class
+/// (docs/DATATYPES.md, "Functional data values in the ABox quotient").
+/// Returns the representative of every `(property, value)` of a restricted
+/// property, or `None` when a condition fails:
+///
+/// * the TBox has no nominal, no inverse role, no symmetric, reflexive or
+///   inverse functional property, no `Self`, no disjoint data properties,
+///   and the ABox no `SameIndividual`;
+/// * no literal occurs outside data-property assertions, no facet or
+///   derived string type occurs (`string_sensitive`), and no TBox datatype
+///   separates two values of one class (an integer subtype for integers;
+///   `xsd:integer` or a subtype for decimals);
+/// * every value of a restricted property is a well-formed `xsd:string`,
+///   language-tagged, `xsd:integer`, `xsd:decimal` or `xsd:boolean` literal;
+/// * the abstracted properties are functional, have no sub- or
+///   super-property and no data cardinality restriction; no individual has
+///   two values of one of them, and no individual has two asserted
+///   successors of one counted object role (through sub-roles).
+fn abstract_counted_values(
+    abox: &Abox,
+    screen: &Screen,
+    restricted_data: &HashSet<u32>,
+) -> Option<HashMap<(u32, Value), Value>> {
+    let trace = std::env::var_os("KM_QUOTIENT_TRACE").is_some();
+    if std::env::var_os("KM_QUOTIENT_NO_VALUE_ABSTRACTION").is_some()
+        || restricted_data.is_empty()
+        || screen.copy_unsafe
+        || !screen.nominal_individuals.is_empty()
+        || !screen.literals.is_empty()
+        || screen.string_sensitive
+        || abox.identities.iter().any(|(same, _)| *same)
+    {
+        if trace {
+            eprintln!(
+                "KM_QUOTIENT_TRACE abstraction off: copy_unsafe={} nominals={} literals={:?} string_sensitive={}",
+                screen.copy_unsafe, screen.nominal_individuals.len(),
+                screen.literals.iter().take(5).collect::<Vec<_>>(), screen.string_sensitive,
+            );
+        }
+        return None;
+    }
+    let local = |name: &str| -> Option<String> {
+        name.strip_prefix('<')?.strip_prefix(XSD)?.strip_suffix('>').map(str::to_string)
+    };
+    let tbox_xsd: HashSet<String> = screen.datatypes.iter().filter_map(|name| local(name)).collect();
+    // Integer datatypes as value intervals. A TBox datatype `E` separates two
+    // values of a literal datatype `D` exactly when `E` meets `D` without
+    // containing it; the decimal tower (`decimal`, `owl:real`,
+    // `owl:rational`) contains every integer type.
+    let bounds = |name: &str| -> Option<(i128, i128)> {
+        let (lo, hi) = match name {
+            "integer" => (i128::MIN, i128::MAX),
+            "nonNegativeInteger" => (0, i128::MAX),
+            "positiveInteger" => (1, i128::MAX),
+            "nonPositiveInteger" => (i128::MIN, 0),
+            "negativeInteger" => (i128::MIN, -1),
+            "long" => (i64::MIN as i128, i64::MAX as i128),
+            "int" => (i32::MIN as i128, i32::MAX as i128),
+            "short" => (i16::MIN as i128, i16::MAX as i128),
+            "byte" => (i8::MIN as i128, i8::MAX as i128),
+            "unsignedLong" => (0, u64::MAX as i128),
+            "unsignedInt" => (0, u32::MAX as i128),
+            "unsignedShort" => (0, u16::MAX as i128),
+            "unsignedByte" => (0, u8::MAX as i128),
+            _ => return None,
+        };
+        Some((lo, hi))
+    };
+    let integer_split = |datatype: &str| -> bool {
+        let Some((lo, hi)) = bounds(datatype) else { return true };
+        tbox_xsd.iter().filter_map(|e| bounds(e)).any(|(elo, ehi)| {
+            let meets = elo <= hi && lo <= ehi;
+            let contains = elo <= lo && hi <= ehi;
+            meets && !contains
+        })
+    };
+    let decimal_split = tbox_xsd.iter().any(|e| bounds(e).is_some());
+    let integer_lexical = |lex: &str| {
+        let digits = lex.strip_prefix(['+', '-']).unwrap_or(lex);
+        !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit())
+    };
+    let decimal_lexical = |lex: &str| {
+        let body = lex.strip_prefix(['+', '-']).unwrap_or(lex);
+        let (whole, fraction) = body.split_once('.').unwrap_or((body, ""));
+        !(whole.is_empty() && fraction.is_empty())
+            && whole.bytes().all(|b| b.is_ascii_digit())
+            && fraction.bytes().all(|b| b.is_ascii_digit())
+    };
+    let class = |value: Value| -> Option<&'static str> {
+        let Value::Exact(id) = value else { return Some("string") };
+        let text = &abox.literals.names[id as usize];
+        let (lexical, suffix) = split_literal(text)?;
+        if suffix.starts_with('@') {
+            return Some("lang");
+        }
+        let datatype = local(suffix.strip_prefix("^^")?)?;
+        match datatype.as_str() {
+            "string" => Some("string"),
+            other if bounds(other).is_some() => {
+                let text = lexical.trim();
+                if !integer_lexical(text) {
+                    return None;
+                }
+                let value: i128 = text.parse().ok()?;
+                let (lo, hi) = bounds(other)?;
+                // One class per datatype: all its values lie in the same
+                // TBox datatypes when none splits it.
+                (lo <= value && value <= hi && !integer_split(other)).then(|| {
+                    INTEGER_CLASSES.iter().find(|name| **name == other).copied()
+                }).flatten()
+            }
+            "decimal" if !decimal_split && decimal_lexical(lexical.trim()) => Some("decimal"),
+            "boolean" if matches!(lexical, "true" | "false" | "1" | "0") => Some("boolean"),
+            _ => None,
+        }
+    };
+    // Abstracted: functional data properties without a sub- or
+    // super-property and without a data cardinality restriction. A copy's
+    // element then has exactly one value of the property, which is replaced
+    // by the individual's own value; no other property sees the change.
+    let abstracted: HashSet<u32> = abox.properties.names.iter().enumerate()
+        .filter(|(_, name)| screen.functional_data.contains(*name)
+            && !screen.cardinality_data.contains(*name)
+            && !screen.data_edges.iter().any(|(sub, sup)| sub == *name || sup == *name))
+        .map(|(i, _)| i as u32)
+        .filter(|p| restricted_data.contains(p))
+        .collect();
+    if abstracted.is_empty() {
+        return None;
+    }
+    let mut seen_value: HashMap<(u32, u32), Value> = HashMap::new();
+    for &(p, x, v) in &abox.data_assertions {
+        if !abstracted.contains(&p) {
+            continue;
+        }
+        match seen_value.get(&(p, x)) {
+            Some(previous) if *previous != v => {
+                if trace { eprintln!("KM_QUOTIENT_TRACE abstraction off: two values of one functional property"); }
+                return None;
+            }
+            Some(_) => {}
+            None => { seen_value.insert((p, x), v); }
+        }
+    }
+    let closure = |edges: &[(String, String)], root: &str| -> HashSet<String> {
+        let mut one = HashSet::new();
+        one.insert(root.to_string());
+        downward_closure(&one, edges)
+    };
+    let mut seen_object: HashMap<(u32, u32), u32> = HashMap::new();
+    for (root_index, root) in screen.counted_roles.iter().chain(&screen.min_card_roles).enumerate() {
+        let family = closure(&screen.role_edges, root);
+        for &(r, a, b) in &abox.role_assertions {
+            if !family.contains(&abox.roles.names[r as usize]) {
+                continue;
+            }
+            match seen_object.get(&(root_index as u32, a)) {
+                Some(previous) if *previous != b => {
+                if trace { eprintln!("KM_QUOTIENT_TRACE abstraction off: two successors of counted role {root}"); }
+                return None;
+            }
+                Some(_) => {}
+                None => { seen_object.insert((root_index as u32, a), b); }
+            }
+        }
+    }
+    let mut representative: HashMap<(u32, &'static str), Value> = HashMap::new();
+    let mut map: HashMap<(u32, Value), Value> = HashMap::new();
+    for &(p, _, v) in &abox.data_assertions {
+        if !abstracted.contains(&p) {
+            continue;
+        }
+        let Some(class) = class(v) else {
+            if trace { eprintln!("KM_QUOTIENT_TRACE abstraction off: a value without a class: {v:?}"); }
+            return None;
+        };
+        let rep = *representative.entry((p, class)).or_insert(v);
+        map.insert((p, v), rep);
+    }
+    Some(map)
+}
+
 fn merge_blocks(
     abox: &Abox,
     restricted_data: &HashSet<u32>,
     restricted_roles: &HashSet<u32>,
     mut pinned: Vec<bool>,
+    abstraction: Option<&HashMap<(u32, Value), Value>>,
 ) -> Vec<u32> {
     let n = abox.individuals.names.len();
     for (_, members) in &abox.identities {
@@ -1197,6 +1441,7 @@ fn merge_blocks(
     for &(p, x, v) in &abox.data_assertions {
         present[x as usize] = true;
         if restricted_data.contains(&p) {
+            let v = abstraction.and_then(|map| map.get(&(p, v)).copied()).unwrap_or(v);
             counted[x as usize].push((p, v));
         }
     }
@@ -1416,7 +1661,11 @@ fn build_from_text(
         .filter(|(_, name)| restricted_roles_names.contains(*name))
         .map(|(i, _)| i as u32)
         .collect();
-    let block = merge_blocks(&abox, &restricted_data, &restricted_roles, pinned);
+    let abstraction = abstract_counted_values(&abox, &screen, &restricted_data);
+    if std::env::var_os("KM_TIMING").is_some() && abstraction.is_some() {
+        eprintln!("KM_TIMING ABox quotient: count-restricted data values abstracted to their datatype class");
+    }
+    let block = merge_blocks(&abox, &restricted_data, &restricted_roles, pinned, abstraction.as_ref());
     // Representative: first individual (in source order) of each block.
     let mut representative: HashMap<u32, u32> = HashMap::new();
     for (x, &b) in block.iter().enumerate() {
@@ -1457,6 +1706,7 @@ fn build_from_text(
             }
             continue;
         }
+        let v = abstraction.as_ref().and_then(|map| map.get(&(p, v)).copied()).unwrap_or(v);
         subset_of_source &= source_data.contains(&(p, rep_id(x), v));
         push(
             format!(
@@ -1750,6 +2000,30 @@ mod tests {
         // :g inherits the count restriction of :f; integer values are never
         // renamed, so all 20 individuals stay apart.
         assert_eq!(lines.iter().filter(|l| l.starts_with("ClassAssertion")).count(), 20);
+    }
+
+    #[test]
+    fn isolated_functional_values_are_abstracted_to_their_class() {
+        let base = |extra: &str| format!(
+            "{HEAD}FunctionalDataProperty(:f)\nDataPropertyRange(:f xsd:integer)\n{extra}{}\n{}\n)\n",
+            many("ClassAssertion(:A :a{i})", 20),
+            many("DataPropertyAssertion(:f :a{i} \"{i}\"^^xsd:integer)", 20)
+        );
+        let classes = |text: &str| quotient_lines(text).iter().filter(|l| l.starts_with("ClassAssertion")).count();
+        // No construct can make two individuals coincide or tell two integers
+        // apart: one block, one value.
+        assert_eq!(classes(&base("")), 1);
+        let lines = quotient_lines(&base(""));
+        assert_eq!(lines.iter().filter(|l| l.starts_with("DataPropertyAssertion")).count(), 1, "{lines:?}");
+        // An integer subtype separates integers.
+        assert_eq!(classes(&base("SubClassOf(:A DataSomeValuesFrom(:f xsd:nonNegativeInteger))\n")), 20);
+        // An inverse role breaks the copy construction.
+        assert_eq!(classes(&base("SubClassOf(:A ObjectSomeValuesFrom(ObjectInverseOf(:r) :B))\n")), 20);
+        // A TBox literal names one value.
+        assert_eq!(classes(&base("SubClassOf(:B DataHasValue(:f \"3\"^^xsd:integer))\n")), 20);
+        // Two asserted successors of a functional role may coincide.
+        let two = "FunctionalObjectProperty(:r)\nObjectPropertyAssertion(:r :s :a1)\nObjectPropertyAssertion(:r :s :a2)\n";
+        assert_eq!(classes(&base(two)), 20);
     }
 
     #[test]

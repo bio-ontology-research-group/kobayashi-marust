@@ -1,0 +1,40 @@
+== merge_hypotheses
+test minimised_r1600_needs_the_merge_hypotheses ... ok
+test minimised_r1600_on_every_nominal_route ... ok
+test r1600_and_r1646_on_the_forced_nominals_route ... ignored, minutes on the forced nominals route (docs/NOMINALS-CB.md section 10)
+test r3403_and_r3602_on_the_forced_nominals_route ... FAILED
+test seeds_on_the_automatic_and_certified_routes ... ok
+thread 'r3403_and_r3602_on_the_forced_nominals_route' (631495) panicked at tests/merge_hypotheses.rs:36:5:
+test result: FAILED. 3 passed; 1 failed; 1 ignored; 0 measured; 0 filtered out; finished in 278.21s
+== r3_disjunctive_equality
+test disjunctive_ground_equalities_match_hermit_on_every_nominal_route ... ok
+test disjunctive_ground_equalities_under_the_base_context_regime ... ok
+test pair_r2_answers_the_motifs ... ok
+test v154_rules_miss_the_motifs ... ok
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+== nominal_seq_order
+test forced_context_regime_answers_both_counterexamples ... ok
+test minimal_seed_297_q1_is_unsatisfiable_on_every_nominal_route ... ok
+test no_seq_order_keeps_r2_and_r3_in_nominal_mode ... ok
+test p1_cross_individual_subsumption_on_every_nominal_route ... ok
+test p2_cross_individual_without_internal_disjunction_on_every_nominal_route ... ok
+test seed_297_q1_is_unsatisfiable_on_every_nominal_route ... ok
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 20.78s
+== universal_role_and_top_data_range
+test data_property_range_over_the_shared_top_definer_stays_satisfiable ... ok
+test data_range_complement_excluded_middle_still_applies_to_values ... ok
+test data_sorted_top_definer_keeps_data_values_satisfiable ... ok
+test data_value_next_to_universal_role_hub_on_nominals ... ok
+test data_value_next_to_universal_role_hub_stays_satisfiable ... FAILED
+test data_value_singleton_next_to_nominal_successors ... FAILED
+test exists_top_role_thing_is_owl_thing_and_fast ... ok
+test literal_existential_matches_unqualified_min_cardinality ... ok
+test literal_existential_over_free_data_property_is_fast ... ok
+test mixed_object_and_data_assertions_on_one_individual ... ok
+test nominal_top_role_reproducer ... ok
+test sort_encoding_matches_hermit_on_differential_fixtures ... ok
+test universal_role_restrictions_are_complete ... ok
+thread 'data_value_next_to_universal_role_hub_stays_satisfiable' (666574) panicked at tests/universal_role_and_top_data_range.rs:100:13:
+thread 'data_value_singleton_next_to_nominal_successors' (667916) panicked at tests/universal_role_and_top_data_range.rs:100:13:
+test result: FAILED. 11 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 39.84s
+ALLDONE

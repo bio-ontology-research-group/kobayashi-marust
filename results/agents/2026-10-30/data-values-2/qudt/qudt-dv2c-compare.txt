@@ -1,0 +1,3 @@
+consistent km=True gold=True dropped=0
+unsat km=0 gold=0 equal=True
+subs km=759 gold=759 missing=0 extra=0
