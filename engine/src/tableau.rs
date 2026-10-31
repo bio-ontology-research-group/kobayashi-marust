@@ -211,6 +211,13 @@ struct Graph {
     cdep: Vec<HashMap<CLit, DepSet>>,
     edep: HashMap<(R, Node, Node), DepSet>,
     xdep: Vec<HashMap<(R, CLit), DepSet>>,
+    /// Existence dependencies of each node (careful path): the decisions the
+    /// obligation that created a fresh successor depends on. Empty for roots
+    /// and on the non-careful path. `body_dep` adds the existence dependencies
+    /// of every node a match binds, so a fact on a fresh node always depends
+    /// on the decisions that created it, even when a node-triggered clause
+    /// derives it from an empty body.
+    ndep: Vec<DepSet>,
 }
 
 impl Graph {
@@ -229,6 +236,7 @@ impl Graph {
             cdep: Vec::new(),
             edep: HashMap::default(),
             xdep: Vec::new(),
+            ndep: Vec::new(),
         }
     }
 
@@ -239,6 +247,7 @@ impl Graph {
         self.out_edges.push(Vec::new());
         self.cdep.push(HashMap::default());
         self.xdep.push(HashMap::default());
+        self.ndep.push(DepSet::new());
         self.pred.push(pred);
         self.blockable.push(blockable);
         self.repr.push(id);
@@ -304,6 +313,7 @@ impl Graph {
                     self.out_edges.pop();
                     self.cdep.pop();
                     self.xdep.pop();
+                    self.ndep.pop();
                     self.pred.pop();
                     self.blockable.pop();
                     self.repr.pop();
@@ -335,20 +345,25 @@ impl Graph {
                 let s2 = if s == gone { keep } else { s };
                 let t2 = if t == gone { keep } else { t };
                 self.raw_edge_remove(r, s2, t2);
+                self.edep.remove(&(r, s2, t2));
             }
         }
         for &((r, s, t), _) in &moved_edges {
             self.raw_edge_insert(r, s, t);
         }
+        // The dependency entries of `gone` were left in place by `merge`;
+        // only the survivor's fresh entries are removed.
         for &(o, fresh) in &moved_exobl {
             if fresh {
                 self.exobl[keep].remove(&o);
+                self.xdep[keep].remove(&o);
             }
             self.exobl[gone].insert(o);
         }
         for &(l, fresh) in &moved_concepts {
             if fresh {
                 self.concepts[keep].remove(&l);
+                self.cdep[keep].remove(&l);
             }
             self.concepts[gone].insert(l);
         }
@@ -374,7 +389,12 @@ impl Graph {
     /// Concept labels and ∃-obligations are unioned onto the survivor and every
     /// edge / tree-predecessor pointing at the merged node is rewritten, so the
     /// graph never again references the dead node.
-    fn merge(&mut self, x: Node, y: Node) {
+    ///
+    /// `dep` is the dependency set of the merge (the facts that forced it). A
+    /// fact moved freshly onto the survivor depends on its own dependencies and
+    /// on `dep`; the merged node keeps its dependency entries, so `undo_merge`
+    /// restores them unchanged.
+    fn merge(&mut self, x: Node, y: Node, dep: &DepSet) {
         let a = self.find(x);
         let b = self.find(y);
         if a == b {
@@ -389,6 +409,9 @@ impl Graph {
             let fresh = self.concepts[keep].insert(l);
             if fresh {
                 self.present_lits.insert(l);
+                let mut d = self.cdep[gone].get(&l).cloned().unwrap_or_default();
+                d.union_with(dep);
+                self.cdep[keep].insert(l, d);
             }
             moved_concepts.push((l, fresh));
         }
@@ -397,6 +420,11 @@ impl Graph {
         let mut moved_exobl = Vec::with_capacity(obls.len());
         for o in obls {
             let fresh = self.exobl[keep].insert(o);
+            if fresh {
+                let mut d = self.xdep[gone].get(&o).cloned().unwrap_or_default();
+                d.union_with(dep);
+                self.xdep[keep].insert(o, d);
+            }
             moved_exobl.push((o, fresh));
         }
         // rewrite every edge that touches `gone` (leave the rest untouched).
@@ -412,6 +440,11 @@ impl Graph {
             let s2 = if s == gone { keep } else { s };
             let t2 = if t == gone { keep } else { t };
             let fresh = self.raw_edge_insert(r, s2, t2);
+            if fresh {
+                let mut d = self.edep.get(&(r, s, t)).cloned().unwrap_or_default();
+                d.union_with(dep);
+                self.edep.insert((r, s2, t2), d);
+            }
             moved_edges.push(((r, s, t), fresh));
         }
         // children of `gone` become children of `keep`
@@ -461,6 +494,64 @@ impl Graph {
             self.trail.push(Undo::Exobl(node, r, fil));
         }
         fresh
+    }
+
+    /// `add_concept` that records `dep` for a fresh fact (careful path). An
+    /// existing fact keeps the dependencies of its first derivation.
+    fn add_concept_d(&mut self, node: Node, lit: CLit, dep: &DepSet) -> bool {
+        let fresh = self.add_concept(node, lit);
+        if fresh {
+            self.cdep[node].insert(lit, dep.clone());
+        }
+        fresh
+    }
+
+    fn add_edge_d(&mut self, r: R, s: Node, t: Node, dep: &DepSet) -> bool {
+        let fresh = self.add_edge(r, s, t);
+        if fresh {
+            self.edep.insert((r, s, t), dep.clone());
+        }
+        fresh
+    }
+
+    fn add_exobl_d(&mut self, node: Node, r: R, fil: CLit, dep: &DepSet) -> bool {
+        let fresh = self.add_exobl(node, r, fil);
+        if fresh {
+            self.xdep[node].insert((r, fil), dep.clone());
+        }
+        fresh
+    }
+
+    /// Dependencies of the concept literal `lit` on node `n` (with the node's
+    /// existence dependencies); empty for a root fact.
+    fn lit_dep(&self, n: Node, lit: CLit) -> DepSet {
+        let mut d = self.cdep[n].get(&lit).cloned().unwrap_or_default();
+        d.union_with(&self.ndep[n]);
+        d
+    }
+
+    /// The clash the careful path reports: among the nodes carrying `A` and
+    /// `¬A`, the one whose dependency set has the lowest highest level (the
+    /// deepest backjump), ties broken by size. `(node, concept, deps)`.
+    fn clash_info(&self) -> Option<(Node, C, DepSet)> {
+        let mut best: Option<(Node, C, DepSet)> = None;
+        for n in 0..self.n() {
+            if !self.alive(n) {
+                continue;
+            }
+            for l in self.concepts[n].iter() {
+                if l.neg || !self.concepts[n].contains(&l.complement()) {
+                    continue;
+                }
+                let mut d = self.lit_dep(n, *l);
+                d.union_with(&self.lit_dep(n, l.complement()));
+                let key = |d: &DepSet| (d.v.last().copied().unwrap_or(0), d.v.len());
+                if best.as_ref().is_none_or(|(_, _, b)| key(&d) < key(b)) {
+                    best = Some((n, l.c, d));
+                }
+            }
+        }
+        best
     }
 
     fn n(&self) -> usize {
@@ -573,8 +664,8 @@ fn clause_vars(cl: &Clause) -> Vec<Var> {
 /// so the search backjumps past it (and its untried siblings) instead of
 /// exploring them. Kept sorted and duplicate-free; usually tiny (most facts
 /// depend on a single choice), so an inline 4-element vector avoids allocation.
-#[derive(Clone, Default, PartialEq)]
-struct DepSet {
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct DepSet {
     v: SmallVec<[u32; 4]>,
 }
 
@@ -1097,11 +1188,40 @@ impl Tableau {
     }
 
     fn expand_careful(&self, g: &mut Graph, start: CarefulStart) -> bool {
+        matches!(self.expand_careful_at(g, start, 0), Outcome::Sat)
+    }
+
+    /// Careful expansion at decision level `dl`, with conflict-directed
+    /// backjumping (docs/DL-SAFE-RULES.md, "Backjumping on the careful path").
+    ///
+    /// Each disjunction (and each loop-back choice of the pairwise path) opens
+    /// level `dl + 1`; its head atom depends on that level and on the matched
+    /// body. A failed subtree returns the dependency set of its refutation. When
+    /// that set does not contain the level of the enclosing choice, the
+    /// refutation never used the chosen alternative, so it refutes the parent
+    /// state as well: the remaining alternatives are skipped and the conflict
+    /// is passed up. The certificate recorder keeps the refuted alternative's
+    /// proof as a `Skip`, which `rules_cert` turns into a proof of the parent
+    /// state by dropping every step that depends on the skipped level.
+    ///
+    /// Without dependency tracking (`KM_TAB_CAREFUL_INC`, whose delta
+    /// saturation records no dependencies, or `KM_TAB_CAREFUL_NOBJ`) every
+    /// conflict depends on all open levels, which is chronological
+    /// backtracking.
+    fn expand_careful_at(&self, g: &mut Graph, start: CarefulStart, dl: u32) -> Outcome {
         stat_expand();
         // The certificate recorder follows the full (non-delta) saturation and
         // the clause order of disjunction heads.
         let incremental = !self.rec_on() && std::env::var_os("KM_TAB_CAREFUL_INC").is_some();
         let ordered = !self.rec_on() && std::env::var_os("KM_TAB_CAREFUL_ORDER").is_some();
+        let track = !incremental && std::env::var_os("KM_TAB_CAREFUL_NOBJ").is_none();
+        let fail = |d: DepSet| -> Outcome {
+            if track {
+                Outcome::Conflict(d)
+            } else {
+                Outcome::Conflict(DepSet { v: (1..=dl).collect() })
+            }
+        };
         let mark = self.rec_mark();
         // Careful path (number restrictions and/or inverse roles): saturate Horn
         // *including deterministic ≈-merges* (a single-eq head is a forced
@@ -1109,20 +1229,27 @@ impl Tableau {
         // disjunctions, including a ≤n head with several ≈ disjuncts (each branch
         // merges a different pair).
         let saturated = match start {
-            CarefulStart::Delta(queue) if incremental => self.horn_saturate_careful_delta(g, queue),
-            CarefulStart::Full | CarefulStart::Delta(_) => self.horn_saturate(g),
+            CarefulStart::Delta(queue) if incremental => {
+                if self.horn_saturate_careful_delta(g, queue) { Ok(()) } else { Err(DepSet::new()) }
+            }
+            CarefulStart::Full | CarefulStart::Delta(_) => self.horn_saturate_d(g),
         };
-        if !saturated {
+        if let Err(d) = saturated {
             self.rec_close(mark);
-            return false;
+            return fail(d);
         }
-        if let Some((mut head, subst, _)) = self.find_disjunctive(g) {
+        if let Some((mut head, subst, bdep)) = self.find_disjunctive(g) {
             let disjunction = if self.rec_on() {
                 let ci = self.cert.as_ref().and_then(|c| c.lock().unwrap().last_disjunction.take());
                 ci.map(|ci| (ci, self.rec_asg(g, &self.clauses[ci].cl, &subst)))
             } else {
                 None
             };
+            let level = dl + 1;
+            let mut hdep = bdep.clone();
+            hdep.insert(level);
+            // The split itself depends on its body.
+            let mut conflict = bdep;
             let mut children = Vec::new();
             if ordered {
                 head.sort_by_key(|atom| self.immediate_existential_cost(atom));
@@ -1132,23 +1259,34 @@ impl Tableau {
                 let next = if incremental {
                     self.add_head_atom_careful(g, v, &subst)
                 } else {
-                    self.add_head_atom(g, v, &subst);
+                    self.add_head_atom_d(g, v, &subst, &hdep);
                     CarefulStart::Full
                 };
-                if self.expand_careful(g, next) {
-                    return true;
-                }
-                if self.rec_on() {
-                    children.push(self.rec_take_last());
-                }
+                let Outcome::Conflict(mut d) = self.expand_careful_at(g, next, level) else {
+                    return Outcome::Sat;
+                };
+                let child = if self.rec_on() { Some(self.rec_take_last()) } else { None };
                 g.rollback_to(cp);
+                if track && !d.contains(level) {
+                    // Backjump: the refutation did not use this alternative.
+                    if let Some(child) = child {
+                        self.rec_skip(mark, level, child);
+                    }
+                    stat_backtrack();
+                    return Outcome::Conflict(d);
+                }
+                d.remove(level);
+                conflict.union_with(&d);
+                if let Some(child) = child {
+                    children.push(child);
+                }
             }
             if let Some((ci, asg)) = disjunction {
                 self.rec_split(mark, ci, asg, children);
             } else if self.rec_on() {
                 self.rec_close(mark); // no clause index: an invalid proof
             }
-            return false;
+            return fail(conflict);
         }
         if !self.pairwise {
             // Number-only path (SHQ, no inverse): no loop-back needed, so batch
@@ -1167,22 +1305,22 @@ impl Tableau {
                         .iter()
                         .any(|&(rr, t)| rr == r && g.alive(t) && g.concepts[t].contains(&fil));
                     if !sat {
-                        self.rec_step(rules_cert::RStep::Witness { node: s, role: r, fil });
-                        let t = g.new_node(Some(s), true);
-                        g.add_edge(r, s, t);
-                        g.add_concept(t, fil);
+                        let odep = self.obligation_dep(g, s, r, fil);
+                        self.rec_step_d(rules_cert::RStep::Witness { node: s, role: r, fil }, &odep);
+                        self.add_witness(g, s, r, fil, odep);
                         changed = true;
                     }
                 }
             }
             if changed {
-                let found = self.expand_careful(g, CarefulStart::Full);
-                if !found {
+                let found = self.expand_careful_at(g, CarefulStart::Full, dl);
+                if let Outcome::Conflict(d) = found {
                     self.rec_prepend(mark);
+                    return fail(d);
                 }
-                return found;
+                return Outcome::Sat;
             }
-            return true;
+            return Outcome::Sat;
         }
         // Inverse path (pairwise blocking). The ∃-rule becomes a CHOICE: an
         // `∃r.fil` obligation may be satisfied by looping back to an existing
@@ -1192,31 +1330,60 @@ impl Tableau {
         // search complete (no model is pruned) and saturation keeps it sound (a
         // loop-back that violates a constraint just clashes and is abandoned).
         if let Some((s, r, fil)) = self.first_unsat_exists(g) {
+            let odep = self.obligation_dep(g, s, r, fil);
+            let level = dl + 1;
             // 1. loop-back branches: reuse a matching ancestor as the successor.
             for t in self.loopback_targets(g, s, r, fil) {
                 let cp = g.checkpoint();
-                g.add_edge(r, s, t);
-                if self.expand_careful(g, CarefulStart::Full) {
-                    return true;
-                }
-                // A refutation needs only the fresh-successor alternative.
-                let _ = self.rec_take_last();
+                let mut ldep = odep.clone();
+                ldep.insert(level);
+                g.add_edge_d(r, s, t, &ldep);
+                let Outcome::Conflict(d) = self.expand_careful_at(g, CarefulStart::Full, level) else {
+                    return Outcome::Sat;
+                };
+                // A refutation needs only the fresh-successor alternative,
+                // unless this one refutes the parent state by itself.
+                let child = self.rec_take_last();
                 g.rollback_to(cp);
+                if track && !d.contains(level) {
+                    if self.rec_on() {
+                        self.rec_skip(mark, level, child);
+                    }
+                    stat_backtrack();
+                    return Outcome::Conflict(d);
+                }
             }
-            // 2. fallback branch: a fresh successor (the last alternative).
+            // 2. fallback branch: a fresh successor (the last alternative). It is
+            // a sound deterministic step, so its refutation depends only on the
+            // obligation and on what the subtree used, not on the loop-backs.
             let cp = g.checkpoint();
-            self.rec_step(rules_cert::RStep::Witness { node: s, role: r, fil });
-            let t = g.new_node(Some(s), true);
-            g.add_edge(r, s, t);
-            g.add_concept(t, fil);
-            if self.expand_careful(g, CarefulStart::Full) {
-                return true;
-            }
+            self.rec_step_d(rules_cert::RStep::Witness { node: s, role: r, fil }, &odep);
+            self.add_witness(g, s, r, fil, odep);
+            let Outcome::Conflict(d) = self.expand_careful_at(g, CarefulStart::Full, dl) else {
+                return Outcome::Sat;
+            };
             self.rec_prepend(mark);
             g.rollback_to(cp);
-            return false;
+            return fail(d);
         }
-        true
+        Outcome::Sat
+    }
+
+    /// Dependencies of the obligation `∃r.fil` at `s` (with the node's own).
+    fn obligation_dep(&self, g: &Graph, s: Node, r: R, fil: CLit) -> DepSet {
+        let mut d = g.xdep[s].get(&(r, fil)).cloned().unwrap_or_default();
+        d.union_with(&g.ndep[s]);
+        d
+    }
+
+    /// The ∃-rule: a fresh successor `t` of `s` with `r(s, t)` and `fil(t)`,
+    /// all three depending on the obligation (`dep`).
+    fn add_witness(&self, g: &mut Graph, s: Node, r: R, fil: CLit, dep: DepSet) -> Node {
+        let t = g.new_node(Some(s), true);
+        g.add_edge_d(r, s, t, &dep);
+        g.add_concept_d(t, fil, &dep);
+        g.ndep[t] = dep;
+        t
     }
 
     /// Cheap branch-order estimate: how many directly indexed Horn rules turn a
@@ -1262,7 +1429,7 @@ impl Tableau {
                 g.add_exobl(n, *r, *fil);
             }
             Atom::Eq { s, t } => {
-                g.merge(subst.lookup(*s), subst.lookup(*t));
+                g.merge(subst.lookup(*s), subst.lookup(*t), &DepSet::new());
                 return CarefulStart::Full;
             }
         }
@@ -1338,7 +1505,7 @@ impl Tableau {
                             g.add_exobl(n, r, fil);
                         }
                         Atom::Eq { s, t } => {
-                            g.merge(subst.lookup(s), subst.lookup(t));
+                            g.merge(subst.lookup(s), subst.lookup(t), &DepSet::new());
                             return self.horn_saturate(g);
                         }
                     }
@@ -1358,6 +1525,14 @@ impl Tableau {
     /// nominal o-rule (singleton merges). Returns `false` on clash (empty-head
     /// clause, or `A` and `¬A` on a node).
     fn horn_saturate(&self, g: &mut Graph) -> bool {
+        self.horn_saturate_d(g).is_ok()
+    }
+
+    /// `horn_saturate` with dependency tracking: every derived fact (and every
+    /// merge) records the union of the dependencies of the facts its match
+    /// used. On a clash, `Err` carries the dependency set of the clash (the
+    /// decisions it depends on), for backjumping.
+    fn horn_saturate_d(&self, g: &mut Graph) -> Result<(), DepSet> {
         let prog = std::env::var_os("KM_TAB_STATS").is_some();
         let mut hs_iter = 0u64;
         loop {
@@ -1396,12 +1571,13 @@ impl Tableau {
                 for subst in matches {
                     if info.cl.head.is_empty() {
                         self.rec_bottom(g, ci, &info.cl, &subst);
-                        return false; // body matched, empty head ⇒ ⊥
+                        return Err(self.body_dep(g, &info.cl, &subst)); // body matched, empty head ⇒ ⊥
                     }
                     let v = &info.cl.head[0];
                     if !self.head_atom_present(g, v, &subst) {
-                        self.rec_horn(g, ci, &info.cl, &subst);
-                        self.add_head_atom(g, v, &subst);
+                        let dep = self.body_dep(g, &info.cl, &subst);
+                        self.rec_horn(g, ci, &info.cl, &subst, &dep);
+                        self.add_head_atom_d(g, v, &subst, &dep);
                         changed = true;
                     }
                 }
@@ -1413,12 +1589,12 @@ impl Tableau {
             if !self.nominals.is_empty() && self.apply_nominal_merges(g) {
                 changed = true;
             }
-            if g.clash() {
-                self.rec_clash(g);
-                return false;
+            if let Some((node, concept, dep)) = g.clash_info() {
+                self.rec_clash(node, concept);
+                return Err(dep);
             }
             if !changed {
-                return true;
+                return Ok(());
             }
         }
     }
@@ -1440,12 +1616,15 @@ impl Tableau {
             let keep = carriers[0];
             for &other in &carriers[1..] {
                 if g.find(keep) != g.find(other) {
-                    self.rec_step(rules_cert::RStep::Nominal {
+                    let (k, o) = (g.find(keep), g.find(other));
+                    let mut dep = g.lit_dep(k, lit);
+                    dep.union_with(&g.lit_dep(o, lit));
+                    self.rec_step_d(rules_cert::RStep::Nominal {
                         concept: nc,
-                        left: g.find(keep),
-                        right: g.find(other),
-                    });
-                    g.merge(keep, other);
+                        left: k,
+                        right: o,
+                    }, &dep);
+                    g.merge(keep, other, &dep);
                     merged = true;
                 }
             }
@@ -1736,22 +1915,28 @@ impl Tableau {
     }
 
     fn add_head_atom(&self, g: &mut Graph, v: &Atom, subst: &Subst) {
+        self.add_head_atom_d(g, v, subst, &DepSet::new());
+    }
+
+    /// `add_head_atom` recording `dep` as the dependency set of the new fact
+    /// (or of the merge, for an equality head).
+    fn add_head_atom_d(&self, g: &mut Graph, v: &Atom, subst: &Subst, dep: &DepSet) {
         match v {
             Atom::Concept { lit, t } => {
                 let n = g.find(subst.lookup(*t));
-                g.add_concept(n, *lit);
+                g.add_concept_d(n, *lit, dep);
             }
             Atom::Role { r, s, t } => {
                 let (a, b) = (g.find(subst.lookup(*s)), g.find(subst.lookup(*t)));
-                g.add_edge(*r, a, b);
+                g.add_edge_d(*r, a, b, dep);
             }
             Atom::Exists { r, fil, t } => {
                 let n = g.find(subst.lookup(*t));
-                g.add_exobl(n, *r, *fil);
+                g.add_exobl_d(n, *r, *fil, dep);
             }
             // Discharge ≈ by merging the two nodes (the ≤-rule / functional role).
             Atom::Eq { s, t } => {
-                g.merge(subst.lookup(*s), subst.lookup(*t));
+                g.merge(subst.lookup(*s), subst.lookup(*t), dep);
             }
         }
     }
@@ -1982,6 +2167,11 @@ impl Tableau {
                 }
                 _ => {}
             }
+        }
+        // Existence dependencies of every bound node (always empty on the
+        // non-careful path, which creates no node inside a decision).
+        for &(_, n) in &subst.v {
+            d.union_with(&g.ndep[g.find(n)]);
         }
         d
     }
@@ -2860,7 +3050,12 @@ impl Tableau {
                         if p2 {
                             labset.insert(l.c);
                         }
-                        let definite = matches!(g.cdep[0].get(l), Some(d) if d.v.is_empty());
+                        // The careful path now records dependencies for
+                        // backjumping, but every candidate there keeps its
+                        // confirmation test: a certificate needs a recorded
+                        // refutation for each published subsumption.
+                        let definite = !self.careful()
+                            && matches!(g.cdep[0].get(l), Some(d) if d.v.is_empty());
                         if definite {
                             subs.push((a, l.c));
                             def_set.insert(l.c);
@@ -12039,6 +12234,119 @@ mod tests {
         ];
         let t = Tableau::new(cls);
         assert!(t.consistent(&[CLit::pos(A)]));
+    }
+
+    /// `n` irrelevant choices `A → P_i ∨ Q_i` on the root, each `P_i`
+    /// creating a successor; then a two-step chain `A → ∃t.H`, `H → ∃t.G` to a
+    /// node where `G → X ∨ Y` closes both ways. The refutation depends on no
+    /// choice of the root, so backjumping skips every `Q_i`.
+    fn irrelevant_choice_clauses(n: u32) -> Vec<Clause> {
+        let (h, g, x, y, t) = (70, 71, 72, 73, 20);
+        let mut clauses = Vec::new();
+        for i in 1..=n {
+            clauses.push(Clause::new(vec![con(false, A, X)], vec![con(false, 10 + i, X), con(false, 30 + i, X)]));
+            clauses.push(Clause::new(vec![con(false, 10 + i, X)], vec![exists(i, false, 50 + i, X)]));
+        }
+        clauses.push(Clause::new(vec![con(false, A, X)], vec![exists(t, false, h, X)]));
+        clauses.push(Clause::new(vec![con(false, h, X)], vec![exists(t, false, g, X)]));
+        clauses.push(Clause::new(vec![con(false, g, X)], vec![con(false, x, X), con(false, y, X)]));
+        clauses.push(Clause::new(vec![con(false, x, X)], vec![]));
+        clauses.push(Clause::new(vec![con(false, y, X)], vec![]));
+        clauses
+    }
+
+    fn expands() -> u64 {
+        STATS.with(|s| s.get().0)
+    }
+
+    #[test]
+    fn careful_backjumping_skips_choices_the_refutation_does_not_use() {
+        let _environment = lock_environment();
+        let mut t = Tableau::new(irrelevant_choice_clauses(8));
+        t.set_number(true); // the careful path
+        std::env::remove_var("KM_TAB_CAREFUL_NOBJ");
+        let before = expands();
+        assert!(!t.consistent(&[CLit::pos(A)]));
+        let backjumping = expands() - before;
+        std::env::set_var("KM_TAB_CAREFUL_NOBJ", "1");
+        let before = expands();
+        assert!(!t.consistent(&[CLit::pos(A)]));
+        let chronological = expands() - before;
+        std::env::remove_var("KM_TAB_CAREFUL_NOBJ");
+        // 2^8 leaves of irrelevant choices without backjumping; one path with.
+        assert!(backjumping < 40, "backjumping expands={backjumping}");
+        assert!(chronological > 256, "chronological expands={chronological}");
+        // Satisfiable variant: drop the closing clause for Y; both searches agree.
+        let mut clauses = irrelevant_choice_clauses(8);
+        clauses.pop();
+        let mut t = Tableau::new(clauses);
+        t.set_number(true);
+        assert!(t.consistent(&[CLit::pos(A)]));
+    }
+
+    #[test]
+    fn backjumped_refutation_resolves_to_a_checkable_proof() {
+        let _environment = lock_environment();
+        std::env::remove_var("KM_TAB_CAREFUL_NOBJ");
+        let mut t = Tableau::new(irrelevant_choice_clauses(4));
+        t.enable_certificates().unwrap();
+        assert!(t.cert_test(rules_cert::Claim::Unsat(A), Some(A)).is_none());
+        let proof = {
+            let sink = t.cert.as_ref().unwrap().lock().unwrap();
+            assert!(sink.uncertified.is_empty(), "{:?}", sink.uncertified);
+            assert_eq!(sink.refutations.len(), 1);
+            sink.refutations[0].1.clone()
+        };
+        // No skip survives; the witnesses of the skipped `P_i` choices are
+        // gone, so `h` and `g` are renumbered 1 and 2 (root 0).
+        fn walk(p: &rules_cert::RProof, witnesses: &mut Vec<usize>, split_nodes: &mut Vec<usize>) {
+            for step in &p.steps {
+                if let rules_cert::RStep::Witness { node, .. } = step {
+                    witnesses.push(*node);
+                }
+            }
+            match &p.end {
+                rules_cert::REnd::Split { asg, children, .. } => {
+                    split_nodes.push(asg[0]);
+                    for c in children {
+                        walk(c, witnesses, split_nodes);
+                    }
+                }
+                rules_cert::REnd::Skip { .. } | rules_cert::REnd::Invalid => panic!("unresolved proof"),
+                _ => {}
+            }
+        }
+        let (mut witnesses, mut split_nodes) = (Vec::new(), Vec::new());
+        walk(&proof, &mut witnesses, &mut split_nodes);
+        assert_eq!(witnesses, vec![0, 1], "witness parents: {proof:?}");
+        assert_eq!(split_nodes, vec![2], "split on g: {proof:?}");
+        // With the Lean checker available, the whole classification document
+        // must be accepted.
+        let mut t = Tableau::new(irrelevant_choice_clauses(4));
+        t.enable_certificates().unwrap();
+        let (consistent, unsat, subs) = t.classify(&[A]);
+        assert!(consistent);
+        assert_eq!(unsat, vec![A]);
+        assert!(subs.is_empty());
+        let (bytes, stats) = t
+            .certificate_document(&rules_cert::Answer {
+                oguard: 99,
+                queries: &[A],
+                consistent,
+                unsatisfiable: &unsat,
+                subsumptions: &subs,
+                premise_subsumptions: &[],
+                premise_unsatisfiable: &[],
+            })
+            .unwrap();
+        assert_eq!(stats.refutations, 1);
+        if let Some(checker) = std::env::var_os("KM_RULES_TEST_LEAN_CHECKER") {
+            let path = std::env::temp_dir().join(format!("km-rules-backjump-{}.json", std::process::id()));
+            std::fs::write(&path, &bytes).unwrap();
+            let output = std::process::Command::new(checker).arg(&path).output().unwrap();
+            let _ = std::fs::remove_file(&path);
+            assert!(output.status.success(), "Lean rejected: {}", String::from_utf8_lossy(&output.stderr));
+        }
     }
 
     #[test]

@@ -1,0 +1,3 @@
+Command exited with non-zero status 124
+fr6 base 150.00 s 26.05 user
+rc 124

@@ -1,0 +1,34 @@
+[
+ {
+  "op": "init",
+  "wall": 13.509196519851685,
+  "route": "ht_rules",
+  "receipt": null,
+  "consistent": true,
+  "n_subs": 259
+ },
+ {
+  "op": "replace",
+  "wall": 5.945061206817627,
+  "route": "ht_rules",
+  "receipt": {
+   "added_normalized_clauses": 4,
+   "added_rules": 0,
+   "invalidated_states": 4,
+   "meaningful_incremental_update": true,
+   "removed_normalized_clauses": 0,
+   "removed_rules": 0,
+   "retained_states": 259,
+   "reused_edges": 0,
+   "reused_fixpoint": false,
+   "reused_subsumptions": 259,
+   "revision": 1,
+   "route_after": "ht_rules",
+   "route_before": "ht_rules",
+   "route_migrated": false,
+   "strategy": "ht_delta"
+  },
+  "consistent": true,
+  "n_subs": 259
+ }
+]
