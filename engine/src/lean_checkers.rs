@@ -498,7 +498,8 @@ pub fn run(family: &str, checker: &Path, certificate: &str, document: &Path) -> 
     // thread creation) is no verdict. Such a run is retried once and then
     // reported as `cannot_check`, never as acceptance.
     let mut outcome = invoke(checker, document);
-    if matches!(outcome, Outcome::CannotCheck(_)) {
+    // A checker killed at its time limit is not retried.
+    if matches!(&outcome, Outcome::CannotCheck(detail) if !detail.contains("SIGKILL")) {
         std::thread::sleep(std::time::Duration::from_millis(500));
         outcome = invoke(checker, document);
     }
@@ -642,9 +643,23 @@ impl CheckerCommand {
     /// the caller configured it), retrying a start-up thread failure.
     pub fn output(&mut self) -> std::io::Result<std::process::Output> {
         self.command.stderr(std::process::Stdio::piped());
+        if !self.stdout_set {
+            self.command.stdout(std::process::Stdio::piped());
+        }
+        // The checker dies with the thread that started it, so a worker that
+        // is killed (for example by a caller's time limit) leaves no orphan.
+        unsafe {
+            use std::os::unix::process::CommandExt;
+            self.command.pre_exec(|| {
+                if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
         let mut attempt = 0;
         loop {
-            let output = self.command.output()?;
+            let output = run_with_deadline(&mut self.command, checker_time_limit())?;
             if !startup_thread_failure(&output) || attempt == RETRY_PAUSES_MS.len() {
                 return Ok(output);
             }
@@ -666,6 +681,57 @@ impl CheckerCommand {
         }
         Ok(output.status)
     }
+}
+
+/// Wall-clock limit of one checker process (`KM_LEAN_CHECK_TIMEOUT_SECS`,
+/// default 900 s, `0` for none). A checker that exceeds it is killed; its
+/// status is then a signal, which every caller treats as no verdict.
+pub const TIMEOUT_ENV: &str = "KM_LEAN_CHECK_TIMEOUT_SECS";
+const DEFAULT_TIMEOUT_SECS: u64 = 900;
+
+fn checker_time_limit() -> Option<std::time::Duration> {
+    let secs = std::env::var(TIMEOUT_ENV)
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(DEFAULT_TIMEOUT_SECS);
+    (secs > 0).then(|| std::time::Duration::from_secs(secs))
+}
+
+/// `Command::output` with an optional deadline after which the child is
+/// killed.
+fn run_with_deadline(
+    command: &mut std::process::Command,
+    limit: Option<std::time::Duration>,
+) -> std::io::Result<std::process::Output> {
+    use std::io::Read;
+    let mut child = command.spawn()?;
+    let read_all = |pipe: Option<Box<dyn Read + Send>>| {
+        std::thread::spawn(move || {
+            let mut buffer = Vec::new();
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_end(&mut buffer);
+            }
+            buffer
+        })
+    };
+    let stdout = read_all(child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
+    let stderr = read_all(child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
+    let start = std::time::Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        if limit.is_some_and(|limit| start.elapsed() >= limit) {
+            let _ = child.kill();
+            break child.wait()?;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    };
+    Ok(std::process::Output {
+        status,
+        stdout: stdout.join().unwrap_or_default(),
+        stderr: stderr.join().unwrap_or_default(),
+    })
 }
 
 /// Run `checker DOCUMENT` and collect its output.
@@ -1027,6 +1093,18 @@ mod checker_start_tests {
             stderr: b"failed to create thread".to_vec(),
         };
         assert!(!startup_thread_failure(&rejected));
+    }
+
+    #[test]
+    fn a_checker_over_its_time_limit_is_killed_and_gives_no_success() {
+        let mut command = std::process::Command::new("/bin/sleep");
+        command.arg("30").stdout(std::process::Stdio::null());
+        let start = std::time::Instant::now();
+        let output =
+            run_with_deadline(&mut command, Some(std::time::Duration::from_millis(200))).unwrap();
+        assert!(start.elapsed() < std::time::Duration::from_secs(10));
+        assert!(!output.status.success());
+        assert_eq!(output.status.code(), None, "killed by a signal");
     }
 
     #[test]
