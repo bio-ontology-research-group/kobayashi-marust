@@ -9201,6 +9201,33 @@ fn initialize_native_nominal_state(
     initialize_native_nominal_state_for_tags(algo, ctx, bridged, None)
 }
 
+/// Nominal concepts of the other members of `entry`'s deterministic
+/// same-individual set, or `None` when that set is not recorded or names an
+/// individual without a nominal seed. See
+/// `NativeNominalBackendReplay::deterministic_same_nominal_concepts`.
+fn native_deterministic_same_nominal_concepts(
+    bridged: &Bridged,
+    entry: &NativeAboxRepresentativeEntry,
+    seed: &NominalSeed,
+) -> Option<Vec<ConceptId>> {
+    let same = entry.deterministic_same_individuals.as_ref()?;
+    let mut concepts = Vec::new();
+    for &tag in same {
+        if tag == seed.individual_tag {
+            continue;
+        }
+        let other = bridged
+            .nominal_seeds
+            .iter()
+            .find(|candidate| candidate.individual_tag == tag)?;
+        if other.nominal_concept.is_none() {
+            return None;
+        }
+        concepts.push(other.nominal_concept);
+    }
+    Some(concepts)
+}
+
 fn install_native_nominal_backend_replay(
     algo: &mut CompletionTaskHandleAlgorithm,
     bridged: &Bridged,
@@ -9229,13 +9256,23 @@ fn install_native_nominal_backend_replay(
         // against it exactly.
         let replay_entry = association_entry.filter(|entry|
             native_cache_entry_covers_seed(entry, seed));
+        // Positive nominal concepts are not cache values, so the deterministic
+        // labels below are a closure only together with the nominal concepts of
+        // the deterministic same individuals. When that set is unknown, or one
+        // of its members has no seed, replay no cached label at all: the raw
+        // assertions then re-derive the whole closure.
+        let deterministic_same_nominal_concepts =
+            replay_entry.and_then(|entry| native_deterministic_same_nominal_concepts(bridged, entry, seed));
         let deterministic_cached_concepts = replay_entry
+            .filter(|_| deterministic_same_nominal_concepts.is_some())
             .and_then(|entry| entry.concept_values.as_ref())
             .into_iter()
             .flatten()
             .filter(|value| value.deterministic)
             .map(|value| (value.concept, value.negated))
             .collect();
+        let replay_closed = deterministic_same_nominal_concepts.is_some();
+        let deterministic_same_nominal_concepts = deterministic_same_nominal_concepts.unwrap_or_default();
         let cached_concept_values = replay_entry
             .and_then(|entry| entry.concept_values.as_ref())
             .into_iter()
@@ -9286,7 +9323,11 @@ fn install_native_nominal_backend_replay(
                 expansion_blocking_candidate: replay_entry.is_some_and(|entry| {
                     // replay_entry was already filtered by exact seed coverage
                     // above; the borrowed entry and seed have not changed.
-                    saturation_labels_replayable && entry.reusable_for_full_completion()
+                    // Blocking stands the cached labels in for the raw
+                    // expansion, so it needs the replayed labels closed.
+                    replay_closed
+                        && saturation_labels_replayable
+                        && entry.reusable_for_full_completion()
                 }),
                 // Konclude's independent-neighbour block requires only a non-null
                 // backend association, because its representative cache is
@@ -9301,7 +9342,9 @@ fn install_native_nominal_backend_replay(
                 // Completeness, representative-same, deterministic-same identity
                 // and concept-sync remain mandatory only for the stronger
                 // successor/indirect block above.
-                neighbour_expansion_blocking_candidate: saturation_labels_replayable && replay_entry.is_some(),
+                neighbour_expansion_blocking_candidate: replay_closed
+                    && saturation_labels_replayable
+                    && replay_entry.is_some(),
                 association_present: association_entry.is_some(),
                 // The four reuse slots (`hasReuseableElements`, cpp 22711-22735)
                 // plus the merge target seed. These are read ONLY by
@@ -9324,6 +9367,7 @@ fn install_native_nominal_backend_replay(
                     .is_some_and(NativeAboxRepresentativeEntry::reuse_replay_representable),
                 has_reusable_elements: saturation_labels_replayable && replay_entry
                     .is_some_and(NativeAboxRepresentativeEntry::has_reusable_elements),
+                deterministic_same_nominal_concepts,
             },
         );
     }
@@ -9578,6 +9622,9 @@ fn restore_retained_classification_base(
     ctx.base.used_branch_tree_node = base_branch_node;
     ctx.branch_tree_node = base_branch_node;
     ctx.clear_pending_signal();
+    // A job that ended on a clash leaves the clashing node as the context's
+    // current node; the next job starts with no node in processing.
+    ctx.base.set_current_individual_node(NodeId::NONE);
     if let Some(watermark) = ctx.retained_spine_watermark {
         if std::env::var_os("KM_BRIDGE_SPINE_CHECK").is_some() {
             let dangling = ctx.process_context().retained_spine_dangling_clashes(watermark);
@@ -13214,6 +13261,13 @@ fn replay_native_representative_cache(
     let Some(concept_values) = entry.concept_values.as_ref() else {
         return false;
     };
+    // Without the deterministic same individuals' nominal concepts the cached
+    // labels are not closed (positive nominals are not cache values), so the
+    // replay is skipped and the raw assertions re-derive the closure.
+    let Some(same_nominals) = native_deterministic_same_nominal_concepts(bridged, &entry, seed)
+    else {
+        return true;
+    };
     for value in concept_values.iter().filter(|value| value.deterministic) {
         algo.add_concept_to_individual_skip_and_processing(
             value.concept,
@@ -13228,6 +13282,21 @@ fn replay_native_representative_cache(
         if ctx.has_pending_signal() {
             break;
         }
+    }
+    for concept in same_nominals {
+        if ctx.has_pending_signal() {
+            break;
+        }
+        let mut target = node;
+        algo.add_concept_to_individual(
+            concept,
+            false,
+            &mut target,
+            dependency_track_point,
+            true,
+            true,
+            ctx,
+        );
     }
     ctx.process_context_mut()
         .node_mut(node)
@@ -14991,6 +15060,19 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                     // cursor. Manual all-branch rollback must do the same.
                     ctx.base.used_branch_tree_node = deterministic_branch_node;
                     ctx.branch_tree_node = deterministic_branch_node;
+                    // The rollback leaves no node in processing. The context's
+                    // current-node pointer is not journaled and can still name
+                    // a node of the completion (on bridge_merge_min it names
+                    // the fork node itself). With it
+                    // set, `add_individual_to_processing_queue` treats that
+                    // node as being processed and reports it inserted without
+                    // queueing it, so the requeue below and the drain lost the
+                    // fork node's pending work (bridge_merge_min: `a`'s
+                    // disjunctions were never reopened in any class job).
+                    // Konclude derives each job from a task with no current
+                    // node; clear the pointer exactly as the in-process
+                    // backtrack does (u02 `advance`).
+                    ctx.base.set_current_individual_node(NodeId::NONE);
                     // Nondeterministic consistency completion: the rolled-back
                     // graph is the state at the first fork, but deterministic
                     // work queued at that moment (on other nodes, and the rest
@@ -15090,6 +15172,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                             && algo.or_branch_stack.is_empty()
                             && ctx.process_context().branch_epoch_depth() == 1;
                         if ok {
+                            // Same reason as at the rollback above: the drain's
+                            // last processed node must not shadow the requeue.
+                            ctx.base.set_current_individual_node(NodeId::NONE);
                             let konclude = drain_mode.as_deref() == Some("konclude");
                             for (node, descriptor, dependency) in deferred {
                                 let queue = ctx.process_context_mut().node_concept_processing_queue(node, true);
@@ -15118,6 +15203,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                             ctx.base.used_processing_data_box = databox;
                             ctx.base.used_branch_tree_node = used_branch;
                             ctx.branch_tree_node = branch;
+                            ctx.base.set_current_individual_node(NodeId::NONE);
                         }
                         if progress {
                             eprintln!("BRIDGE-RETAINED-BASE drain mode={:?} failed={drain_failed}", drain_mode);
