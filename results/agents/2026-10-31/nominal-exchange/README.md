@@ -56,7 +56,7 @@ stayed above 30 s then. After the merges r3602 answers in 0.5 s and r1600 in
 224 s (open seeds at 300 s). m2197 (`top_nominal_data_successors`): more than
 60 s without the cut, 2.1 s with it.
 
-Tests (`data/tests-targeted.txt`, `--release`): cb_route_completeness 8/8,
+Tests (`data/tests-targeted.txt`, `--release`): lib tests filtered to `engine::` and `calc::` 69 passed, 1 ignored; cb_route_completeness 8/8,
 merge_hypotheses 6 passed 1 ignored, nominal_seq_order 6/6,
 r3_disjunctive_equality 4/4, top_nominal_data_successors 16/16,
 universal_role_and_top_data_range 12 passed, 1 failed
