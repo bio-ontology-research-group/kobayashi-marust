@@ -1075,7 +1075,8 @@ fn pure_datatype_relation_is_exact(tin: &TInput, clause: &HtClause) -> bool {
         if concept_heads.as_ref().is_some_and(|heads|
             crate::frontend::datatypes::bridge_exact_integral_cover(range_name, heads)
                 || crate::frontend::datatypes::bridge_exact_union_cover(range_name, heads)
-                || crate::frontend::datatypes::exact_enumerated_cover(range_name, heads)) {
+                || crate::frontend::datatypes::exact_enumerated_cover(range_name, heads)
+                || crate::frontend::datatypes::bridge_exact_ieee_cell_cover(range_name, heads)) {
             return true;
         }
         if crate::frontend::datatypes::bridge_tbox_finite_values(range_name).is_some() {

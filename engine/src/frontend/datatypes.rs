@@ -2301,6 +2301,63 @@ pub(crate) fn bridge_exact_finite_cover(range: &str, head: &[&str]) -> bool {
             bridge_exact_value_equal(value, other) == Some(true)))
 }
 
+/// `true` when `range` is an IEEE range of the bridge map and the IEEE
+/// ranges and values named in `heads` cover exactly its values: every head
+/// lies inside `range` and every rank of `range` (and its `NaN`) lies in
+/// some head. This is the cell cover `R → c₁ ∨ … ∨ cₖ` of
+/// `vocabulary::ieee_cells`.
+pub(crate) fn bridge_exact_ieee_cell_cover(range: &str, heads: &[&str]) -> bool {
+    let Some(outer) = bridge_ieee_interval(range) else { return false };
+    let mut pieces: Vec<(u64, u64)> = Vec::new();
+    let mut nan = false;
+    for head in heads {
+        if let Some(inner) = bridge_ieee_interval(head) {
+            if inner.part != outer.part || !inner.subset(&outer) {
+                return false;
+            }
+            nan |= inner.nan;
+            if inner.lo <= inner.hi {
+                pieces.push((inner.lo, inner.hi));
+            }
+            continue;
+        }
+        let Some(DtEntry::Value(_, value)) = classify_name(head) else { return false };
+        let Some((bits, is_nan)) = outer.value_bits(&value) else { return false };
+        if outer.contains(&value) != Some(true) {
+            return false;
+        }
+        if is_nan {
+            nan = true;
+        } else {
+            let rank = FloatRange::rank(bits, outer.part);
+            pieces.push((rank, rank));
+        }
+    }
+    if outer.nan && !nan {
+        return false;
+    }
+    if outer.lo > outer.hi {
+        return true;
+    }
+    pieces.sort_unstable();
+    let mut next = outer.lo;
+    for (lo, hi) in pieces {
+        if lo > next {
+            return false;
+        }
+        if hi >= next {
+            if hi == u64::MAX {
+                return true;
+            }
+            next = hi + 1;
+        }
+        if next > outer.hi {
+            return true;
+        }
+    }
+    next > outer.hi
+}
+
 pub(crate) fn bridge_exact_atomic_name(name: &str) -> bool {
     bridge_exact_atomic_family(name).is_some()
 }
@@ -4631,7 +4688,6 @@ mod tests {
     fn lossy_named_datatype_shapes_do_not_imply_identity() {
         for pair in [
             ["__dt__date", "__dt__time"],
-            ["__dt__language", "__dt__Name"],
             ["__dt__hexBinary", "__dt__base64Binary"],
         ] {
             let cls = datatype_relation_clauses(&names(&pair), 8);
@@ -4641,6 +4697,17 @@ mod tests {
                 "distinct datatype identities were conflated for {pair:?}: {cls:#?}"
             );
         }
+    }
+
+    #[test]
+    fn string_chain_inclusions_are_one_way() {
+        // XSD 1.1: every language tag is an NCName, hence a Name; the
+        // converse fails (`a:b`).
+        let cls = datatype_relation_clauses(&names(&["__dt__language", "__dt__Name"]), 8);
+        let one_way = |from: &str, to: &str| cls.iter().any(|clause| clause.body.len() == 1 && clause.head.len() == 1
+            && format!("{:?}", clause.body[0]).contains(from) && format!("{:?}", clause.head[0]).contains(to));
+        assert!(one_way("__dt__language", "__dt__Name"));
+        assert!(!one_way("__dt__Name", "__dt__language"));
     }
 
     #[test]

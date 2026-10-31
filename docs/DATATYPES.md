@@ -840,6 +840,15 @@ range, and defers when an `xsd:anyURI` range is present: a node that
 carries only complements is realized by a fresh IRI, which lies in every
 admitted complement and outside every other admitted range.
 
+**Native bridge: cell covers.** The IEEE cell cover `R → c₁ ∨ … ∨ cₖ`
+is a pure relation clause the bridge must certify; it accepts it when the
+heads are IEEE facet intervals and values of `R`'s width that lie inside
+`R` and together contain every rank of `R` and its `NaN`
+(`bridge_exact_ieee_cell_cover`), so inputs with overlapping IEEE facets
+keep the bridge (`bridge_tbox_datatype_extension_double_facets_and_signed_zero`).
+Decimal band cells (`DataIntersectionOf(… DataComplementOf(xsd:integer))`)
+are outside the bridge's map, and the bridge defers on them.
+
 **Native bridge: singleton gate** (seeds m2009, m2023, m2123, m2255,
 m2287). The frontend leaves out value singletons when
 `literal_profiles::distinct_data_successors_forced` finds no number
