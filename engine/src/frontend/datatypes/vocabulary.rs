@@ -343,6 +343,8 @@ struct Cell {
     level: Option<u8>,
     /// The cell is a single value (its name is a value concept).
     point: bool,
+    /// Number of values (`u128::MAX` = infinite).
+    size: u128,
 }
 
 fn partition_of(range: &DRange) -> Option<Partition> {
@@ -389,7 +391,45 @@ fn partition_cells(partition: Partition, ranges: &[(&String, &DRange)]) -> Resul
     if cells.len() > MAX_CELLS {
         return Err("too many data cells in one role group");
     }
+    if laminar_with_large_residues(&members, &cells) {
+        return Ok(None);
+    }
     Ok(Some(cells))
+}
+
+/// A cell no finite set of excluded values and counted successors can
+/// exhaust: an infinite band, an unbounded integer interval, or an IEEE
+/// segment of at least 2^62 values.
+fn large(cell: &Cell) -> bool {
+    cell.size >= 1u128 << 62
+}
+
+/// Whether the pairwise relation clauses alone already make every label set
+/// of the partition realizable, so that the cells add nothing: every two
+/// ranges are decided nested or disjoint by the oracle (whose clauses the
+/// generator emits), and every range has a large cell outside all ranges
+/// strictly inside it. A label set closed under the clauses then holds a
+/// least range `R` and no range disjoint from it or strictly inside it, and
+/// the large residue of `R` has a value with exactly those labels that
+/// avoids every vocabulary value and every sibling's value. A chain of named
+/// types (`long ⊂ integer ⊂ decimal`) is the common case; it keeps its
+/// clause stream unchanged.
+fn laminar_with_large_residues(members: &[&DRange], cells: &[Cell]) -> bool {
+    let decided = |a: &DRange, b: &DRange| range_subsumed(a, b) == Some(true);
+    for (index, left) in members.iter().enumerate() {
+        for right in &members[index + 1..] {
+            if !(decided(left, right) || decided(right, left) || range_disjoint(left, right) == Some(true)) {
+                return false;
+            }
+        }
+    }
+    members.iter().all(|outer| {
+        let inner: Vec<&&DRange> = members.iter()
+            .filter(|inner| decided(inner, outer) && !decided(outer, inner))
+            .collect();
+        cells.iter().any(|cell| large(cell) && cell_member(cell, outer) == Some(true)
+            && inner.iter().all(|inner| cell_member(cell, inner) == Some(false)))
+    })
 }
 
 fn decimal_lexical(value: &Rat) -> Option<String> {
@@ -541,8 +581,12 @@ fn decimal_cells(members: &[&DRange]) -> Result<Vec<Cell>, &'static str> {
                 let last = match hi { Some(hi) => Some(super::div_ceil_rat(hi).and_then(|c| c.checked_sub(1)).ok_or(OVERFLOW)?), None => None };
                 if !matches!((first, last), (Some(f), Some(l)) if f > l) {
                     let rep = first.or(last).unwrap_or(0);
+                    let size = match (first, last) {
+                        (Some(f), Some(l)) => (l - f) as u128 + 1,
+                        _ => u128::MAX,
+                    };
                     cells.push(Cell { name: integral_cell_name(first, last), rep: Val::Num(Rat::from_int(rep)),
-                        level: None, point: first.is_some() && first == last });
+                        level: None, point: first.is_some() && first == last, size });
                 }
                 below = Some(0);
                 continue;
@@ -567,7 +611,7 @@ fn decimal_cells(members: &[&DRange]) -> Result<Vec<Cell>, &'static str> {
                 Some(0) => (noninteger_between(lo, hi).ok_or(OVERFLOW)?, None),
                 Some(_) => (any_between(lo, hi).ok_or(OVERFLOW)?, Some(level)),
             };
-            cells.push(Cell { name, rep: Val::Num(rep), level: rule, point: false });
+            cells.push(Cell { name, rep: Val::Num(rep), level: rule, point: false, size: u128::MAX });
             below = Some(level);
         }
         Ok(())
@@ -575,7 +619,7 @@ fn decimal_cells(members: &[&DRange]) -> Result<Vec<Cell>, &'static str> {
     let mut previous: Option<Rat> = None;
     for cut in &cuts {
         gap(previous.as_ref(), Some(cut), &mut cells)?;
-        cells.push(Cell { name: numeric_value_name(cut).ok_or(OVERFLOW)?, rep: Val::Num(*cut), level: None, point: true });
+        cells.push(Cell { name: numeric_value_name(cut).ok_or(OVERFLOW)?, rep: Val::Num(*cut), level: None, point: true, size: 1 });
         previous = Some(*cut);
     }
     gap(previous.as_ref(), None, &mut cells)?;
@@ -643,7 +687,7 @@ fn ieee_cells(part: Partition, members: &[&DRange]) -> Result<Vec<Cell>, &'stati
         let (from, to) = (window[0], window[1]);
         let first = FloatRange::unrank(from as u64, part);
         if to - from == 1 {
-            cells.push(Cell { name: format!("__dt__val__{}", ieee_lexical(part, first)), rep: ieee_value(part, first), level: None, point: true });
+            cells.push(Cell { name: format!("__dt__val__{}", ieee_lexical(part, first)), rep: ieee_value(part, first), level: None, point: true, size: 1 });
         } else {
             let last = FloatRange::unrank((to - 1) as u64, part);
             let datatype = if part == Partition::Float32 { "xsd:float" } else { "xsd:double" };
@@ -654,12 +698,12 @@ fn ieee_cells(part: Partition, members: &[&DRange]) -> Result<Vec<Cell>, &'stati
                 Some(DRange::Float(range)) if range.lo as u128 == from && range.hi as u128 == to - 1 && !range.nan => {}
                 _ => return Err("an IEEE cell that its facet name does not denote exactly"),
             }
-            cells.push(Cell { name, rep: ieee_value(part, first), level: None, point: false });
+            cells.push(Cell { name, rep: ieee_value(part, first), level: None, point: false, size: to - from });
         }
     }
     if intervals.iter().any(|range| range.nan) {
         let nan = if part == Partition::Float32 { f32::NAN.to_bits() as u64 } else { f64::NAN.to_bits() };
-        cells.push(Cell { name: format!("__dt__val__{}", ieee_lexical(part, nan)), rep: ieee_value(part, nan), level: None, point: true });
+        cells.push(Cell { name: format!("__dt__val__{}", ieee_lexical(part, nan)), rep: ieee_value(part, nan), level: None, point: true, size: 1 });
     }
     Ok(cells)
 }
