@@ -1,0 +1,14 @@
+     Running tests/cb_route_completeness.rs (target/release/deps/cb_route_completeness-6cc0884fa4f2f7c5)
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.94s
+     Running tests/merge_hypotheses.rs (target/release/deps/merge_hypotheses-8ba18b5336b67983)
+test result: ok. 6 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 26.99s
+     Running tests/nominal_seq_order.rs (target/release/deps/nominal_seq_order-a6b8af428c610682)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.63s
+     Running tests/r3_disjunctive_equality.rs (target/release/deps/r3_disjunctive_equality-c453a7f703dfba7a)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+     Running tests/top_nominal_data_successors.rs (target/release/deps/top_nominal_data_successors-cede98c5f4e615c8)
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.78s
+     Running tests/universal_role_and_top_data_range.rs (target/release/deps/universal_role_and_top_data_range-bb5a29301eb288ed)
+test data_value_singleton_next_to_nominal_successors ... FAILED
+thread 'data_value_singleton_next_to_nominal_successors' (515570) panicked at tests/universal_role_and_top_data_range.rs:100:13:
+test result: FAILED. 12 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.04s

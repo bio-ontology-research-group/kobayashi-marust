@@ -975,3 +975,34 @@ holds is a unit, every atom the ground theory entails is the head of a
 unit. This is the condition of docs/NOMINALS-CB.md section 10.2, proved at
 the propositional level (equalities opaque; the cache's following of unit
 equalities is the congruence step, argued).
+
+### 13.5 Measurements
+
+`results/agents/2026-10-31/nominal-exchange/` (binary km.x3 at b411722e,
+every run on one CPU, at most three at a time, forced `nominals`, HermiT
+oracle). Seeds r0-r999 at 60 s: 636 ok, 0 wrong; on the 364 it does not
+answer, km.v6 (merge hypotheses without the cut) answers 2 (r567, r696) and
+km.final2 (no merge hypotheses, incomplete on r1600) 18. All 4,000 seeds at
+10 s: 2,521 ok, 0 wrong. Motif sets m1-m7: 3,000 of 3,000 ok at 20 s. Of the
+22 seeds lost to the merge hypotheses, 16 answer at 60 s and 6 do not
+(r163, r219, r461, r481, r575, r696). Before and after on single seeds:
+r5 more than 30 s to 0.2 s, r129 to 0.3 s, r1646 to 0.8 s, fr248 to 14 s,
+m2197 more than 60 s to 2.1 s; r1600 on forced `nominals` 224 s, r3602
+0.5 s; r1536 and r3777 still time out at 300 s on forced `nominals` (they
+answer on the other routes). ORE paired design (112 nominal inputs,
+automatic route, 300 s): 108 answered by km.x3 and km.v6 with identical
+output, same timeouts, 772 s against 794 s.
+
+*What the cut does not remove.* The seeds that still time out spend their
+time inside the ground context under merge-hypothesis labels: superposition
+on disjunctive ground equalities under the labels `K(o)` (r163: 2.6 million
+Hyper results in 4,000 work-offs) and, on the object-value case of
+`data_value_singleton_next_to_nominal_successors`, the ground context's
+own Succ/Pred exchange with its successor contexts under those labels. With
+`KM_CONTEXT_NO_R2` r163 answers in 0.02 s, so the cross-individual
+comparisons that R2 removes make most of the labelled clauses' literals
+maximal. Ordering only the labelled clauses by the plain Sequoia order was
+measured (`KM_EXP_MERGE_ORDER`, not kept): it recovered r163, r208, r461
+and lost r29, r376, r557, r576, and it has no exactness argument (the
+receiver's interface must stay downward closed in the order of the clauses
+it may receive).
