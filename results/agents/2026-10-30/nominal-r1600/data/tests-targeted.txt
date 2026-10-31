@@ -1,0 +1,28 @@
+== merge_hypotheses
+test minimised_r1600_needs_the_merge_hypotheses ... ok
+test minimised_r1600_on_every_nominal_route ... ok
+test r1600_and_r1646_on_the_forced_nominals_route ... ignored, minutes on the forced nominals route (docs/NOMINALS-CB.md section 10)
+test r3403_and_r3602_on_the_forced_nominals_route ... ok
+test seeds_on_the_automatic_and_certified_routes ... ok
+test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 62.14s
+== r3_disjunctive_equality
+test disjunctive_ground_equalities_match_hermit_on_every_nominal_route ... ok
+test disjunctive_ground_equalities_under_the_base_context_regime ... ok
+test v154_rules_miss_the_motifs ... FAILED
+test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.51s
+== nominal_seq_order
+test forced_context_regime_answers_both_counterexamples ... ok
+test minimal_seed_297_q1_is_unsatisfiable_on_every_nominal_route ... ok
+test no_seq_order_keeps_r2_and_r3_in_nominal_mode ... ok
+test p1_cross_individual_subsumption_on_every_nominal_route ... ok
+test p2_cross_individual_without_internal_disjunction_on_every_nominal_route ... ok
+test seed_297_q1_is_unsatisfiable_on_every_nominal_route ... ok
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 52.17s
+== nominal_ground_body
+test entailed_ground_negative_fact_keeps_the_answer ... ok
+test guarded_ground_clause_fires_only_at_its_individual ... ok
+test unsupported_ground_body_is_counted_as_dropped ... ok
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+== cb_nominal_merge_import
+test cb_nominal_merge_abox_cases_match_hermit ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s

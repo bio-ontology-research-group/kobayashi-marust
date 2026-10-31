@@ -1,0 +1,17 @@
+r1536 km.final2 r1536 nominals rc=0 0.28 ok r1536 auto rc=0 0.02 WRONG miss=[('E', 'B'), ('E', 'Q1'), ('Q2', 'B'), ('Q2', 'E'), ('Q2', 'Q1')] extra=[] r1536 certified_nominals rc=0 0.02 WRONG miss=[('E', 'B'), ('E', 'Q1'), ('Q2', 'B'), ('Q2', 'E'), ('Q2', 'Q1')] extra=[] 
+r1536 km.v4 r1536 nominals rc=124 60.00 ERR r1536 auto rc=0 0.02 WRONG miss=[('E', 'B'), ('E', 'Q1'), ('Q2', 'B'), ('Q2', 'E'), ('Q2', 'Q1')] extra=[] r1536 certified_nominals rc=0 0.02 WRONG miss=[('E', 'B'), ('E', 'Q1'), ('Q2', 'B'), ('Q2', 'E'), ('Q2', 'Q1')] extra=[] 
+r1536 km.v5 r1536 nominals rc=124 60.01 ERR r1536 auto rc=0 0.02 WRONG miss=[('E', 'B'), ('E', 'Q1'), ('Q2', 'B'), ('Q2', 'E'), ('Q2', 'Q1')] extra=[] r1536 certified_nominals rc=0 0.02 WRONG miss=[('E', 'B'), ('E', 'Q1'), ('Q2', 'B'), ('Q2', 'E'), ('Q2', 'Q1')] extra=[] 
+r1866 km.final2 r1866 nominals rc=0 0.59 ok r1866 auto rc=0 0.02 WRONG miss=[('B', 'Q1'), ('B', 'Q2'), ('B', 'Q3'), ('C', 'Q1'), ('C', 'Q2'), ('C', 'Q3')] extra=[] r1866 certified_nominals rc=0 0.02 WRONG miss=[('B', 'Q1'), ('B', 'Q2'), ('B', 'Q3'), ('C', 'Q1'), ('C', 'Q2'), ('C', 'Q3')] extra=[] 
+r1866 km.v4 r1866 nominals rc=0 0.59 ok r1866 auto rc=0 0.02 WRONG miss=[('B', 'Q1'), ('B', 'Q2'), ('B', 'Q3'), ('C', 'Q1'), ('C', 'Q2'), ('C', 'Q3')] extra=[] r1866 certified_nominals rc=0 0.02 WRONG miss=[('B', 'Q1'), ('B', 'Q2'), ('B', 'Q3'), ('C', 'Q1'), ('C', 'Q2'), ('C', 'Q3')] extra=[] 
+r1866 km.v5 r1866 nominals rc=0 0.58 ok r1866 auto rc=0 0.02 WRONG miss=[('B', 'Q1'), ('B', 'Q2'), ('B', 'Q3'), ('C', 'Q1'), ('C', 'Q2'), ('C', 'Q3')] extra=[] r1866 certified_nominals rc=0 0.02 WRONG miss=[('B', 'Q1'), ('B', 'Q2'), ('B', 'Q3'), ('C', 'Q1'), ('C', 'Q2'), ('C', 'Q3')] extra=[] 
+r2408 km.final2 r2408 nominals rc=0 0.02 ok r2408 auto rc=0 0.02 WRONG miss=[('Q2', 'D')] extra=[] r2408 certified_nominals rc=0 0.02 WRONG miss=[('Q2', 'D')] extra=[] 
+r2408 km.v4 r2408 nominals rc=0 0.02 ok r2408 auto rc=0 0.02 WRONG miss=[('Q2', 'D')] extra=[] r2408 certified_nominals rc=0 0.02 ok 
+r2408 km.v5 r2408 nominals rc=0 0.02 ok r2408 auto rc=0 0.02 WRONG miss=[('Q2', 'D')] extra=[] r2408 certified_nominals rc=0 0.02 ok 
+r2564 km.final2 r2564 nominals rc=0 0.18 ok r2564 auto rc=0 0.02 WRONG miss=[('Q1', 'C'), ('Q2', 'C'), ('Q3', 'C')] extra=[] r2564 certified_nominals rc=0 0.02 WRONG miss=[('Q1', 'C'), ('Q2', 'C'), ('Q3', 'C')] extra=[] 
+r2564 km.v4 r2564 nominals rc=0 0.18 ok r2564 auto rc=0 0.02 WRONG miss=[('Q1', 'C'), ('Q2', 'C'), ('Q3', 'C')] extra=[] r2564 certified_nominals rc=0 0.02 WRONG miss=[('Q1', 'C'), ('Q2', 'C'), ('Q3', 'C')] extra=[] 
+r2564 km.v5 r2564 nominals rc=0 0.18 ok r2564 auto rc=0 0.02 WRONG miss=[('Q1', 'C'), ('Q2', 'C'), ('Q3', 'C')] extra=[] r2564 certified_nominals rc=0 0.02 WRONG miss=[('Q1', 'C'), ('Q2', 'C'), ('Q3', 'C')] extra=[] 
+r3777 km.final2 r3777 nominals rc=0 0.06 ok r3777 auto rc=0 0.02 WRONG miss=[('B', 'D'), ('Q1', 'D'), ('Q2', 'D')] extra=[] r3777 certified_nominals rc=0 0.02 WRONG miss=[('B', 'D'), ('Q1', 'D'), ('Q2', 'D')] extra=[] 
+r3777 km.v4 r3777 nominals rc=124 60.01 ERR r3777 auto rc=0 0.02 WRONG miss=[('B', 'D'), ('Q1', 'D'), ('Q2', 'D')] extra=[] r3777 certified_nominals rc=0 0.02 WRONG miss=[('B', 'D'), ('Q1', 'D'), ('Q2', 'D')] extra=[] 
+r3777 km.v5 r3777 nominals rc=124 60.01 ERR r3777 auto rc=0 0.02 WRONG miss=[('B', 'D'), ('Q1', 'D'), ('Q2', 'D')] extra=[] r3777 certified_nominals rc=0 0.02 WRONG miss=[('B', 'D'), ('Q1', 'D'), ('Q2', 'D')] extra=[] 
+
+[exited with code 0]

@@ -917,7 +917,11 @@ fn ground_unit_equality(c: &ContextClause) -> bool {
 /// `→ Δ ∨ x ≈ o'` and its merge subscription announces `o'`. This is the
 /// delivery condition of `lean/ContextCalculus/ExchangeEquality.lean`
 /// (`InIface`, `exchangeCond_of_guard`).
-fn in_announced_interface(c: &ContextClause, announced: impl Fn(Term) -> bool) -> bool {
+fn in_announced_interface(
+    c: &ContextClause,
+    announced: impl Fn(Term) -> bool,
+    rank_bound: Term,
+) -> bool {
     let mut inds: Vec<Term> = Vec::new();
     for p in &c.body {
         inds.clear();
@@ -929,7 +933,12 @@ fn in_announced_interface(c: &ContextClause, announced: impl Fn(Term) -> bool) -
     for l in &c.head {
         match *l {
             Lit::Eq { s, t } | Lit::Ineq { s, t } if is_individual(s) && is_individual(t) => {
-                if !(announced(s) || announced(t)) {
+                // Ranked R3 (docs/PER-CONTEXT-ORDERING.md section 11): an
+                // (in)equality lies in the interface when one side is
+                // announced or its smaller individual is at most the largest
+                // individual the receiver announced (`rank_bound`).
+                let key = if r2_min_rank() { s.min(t) } else { s.max(t) };
+                if !(announced(s) || announced(t) || key <= rank_bound) {
                     return false;
                 }
             }
@@ -943,6 +952,13 @@ fn in_announced_interface(c: &ContextClause, announced: impl Fn(Term) -> bool) -
         }
     }
     true
+}
+
+/// Merge hypotheses (`Engine::merge_hypotheses`) are on unless the
+/// diagnostic `KM_NO_MERGE_HYPOTHESES` is set (restores v1.5.4 behaviour).
+fn merge_hypotheses_on() -> bool {
+    static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *FLAG.get_or_init(|| std::env::var_os("KM_NO_MERGE_HYPOTHESES").is_none())
 }
 
 fn cc_mentions_x(c: &ContextClause) -> bool {
@@ -2364,6 +2380,10 @@ struct Context {
     /// identical to the unconditional driver.
     rsucc_offered: usize,
     rsucc_edges_grew: bool,
+    /// Merge hypotheses (docs/NOMINALS-CB.md section 10): the bridge
+    /// individuals `o` of body-free merge clauses `⊤ → Δ'' ∨ x ≈ o` whose
+    /// core hypotheses this context already pushed to the ground context.
+    merge_hyp_inds: Vec<Term>,
     /// Individuals whose ground ontology facts have been seeded into this
     /// context (demand-driven; see `Ontology::ground_facts`).
     seeded_inds: HashSet<Term>,
@@ -2409,6 +2429,7 @@ impl Context {
             rsucc_pair_reach_hwm: HashMap::default(),
             rsucc_offered: 0,
             rsucc_edges_grew: false,
+            merge_hyp_inds: Vec::new(),
             seeded_inds: HashSet::default(),
             dirty: true,
         }
@@ -4856,6 +4877,21 @@ impl Engine {
         }) {
             // The ontology is already inconsistent. `inconsistent()` reports
             // that globally, so no per-class shortcut is needed.
+            return;
+        }
+        // The readout below takes the body-free unit clauses `→ B(o)` and
+        // `→ o ≈ o'` as the complete set of ground facts. That holds when
+        // every body-free clause of the saturated ground context is a unit
+        // (a Horn ground closure: the units generate its least model). A
+        // body-free disjunction `→ B(o) ∨ Δ` can hide an entailed unit: the
+        // ground context resolves only on maximal literals, so with `Δ`
+        // refutable but not maximal the unit `→ B(o)` is never derived
+        // (seed r3403: `→ A(c) ∨ c ≈ b` with `A(b)`, docs/NOMINALS-CB.md
+        // section 10). Ordinary CB then answers the query.
+        if ground.worked_off().iter().any(|ci| {
+            let c = &arena[ci as usize];
+            c.body.is_empty() && c.head.len() > 1
+        }) {
             return;
         }
 
@@ -7337,6 +7373,18 @@ impl Engine {
                 }
             }
         }
+        let merge_hyps = self.merge_hypotheses(id);
+        if !merge_hyps.is_empty() {
+            let target = self.ground_context();
+            for (p, o) in merge_hyps {
+                self.msgs.push_back(Msg::Succ {
+                    from: pack_msg_context(id),
+                    f: o,
+                    p,
+                    target: pack_msg_context(target),
+                });
+            }
+        }
         if !ground_succ.is_empty() {
             let target = self.ground_context();
             for (p, o) in ground_succ {
@@ -7640,6 +7688,14 @@ impl Engine {
             // ground-sender (r-Pred) path: a source is dirty when any of its
             // individual-labelled edges gained a pushed predicate.
             let mut sources: Vec<(usize, Term, bool)> = Vec::new();
+            let mut bound_of: HashMap<usize, Term> = HashMap::default();
+            if ground_sender && !pair_r2() {
+                let all = !self.nom_table.borrow().is_empty();
+                for (e, _, _) in &edges {
+                    let b = bound_of.entry(e.0).or_insert(Term::MIN);
+                    *b = if all { Term::MAX } else { (*b).max(e.1) };
+                }
+            }
             if ground_sender {
                 for (e, _, dirty) in &edges {
                     match sources.iter_mut().find(|(u, _, _)| *u == e.0) {
@@ -7755,7 +7811,7 @@ impl Engine {
                                 || (eq_announce()
                                     && inds.iter().any(|o| ctx.predecessors.contains_key(&(u, *o)))
                                     && if eq_closure_announce() {
-                                        in_announced_interface(c, announced)
+                                        in_announced_interface(c, announced, bound_of.get(&u).copied().unwrap_or(Term::MIN))
                                     } else {
                                         ground_unit_equality(c)
                                     });
@@ -7855,6 +7911,77 @@ impl Engine {
         }
     }
 
+    /// The rank bound `m` of the ranked R3 (docs/PER-CONTEXT-ORDERING.md
+    /// section 11) for receiver `u` of the ground context `g`: the largest
+    /// individual `u` announced (an individual-labelled edge), or every
+    /// individual once additional nominals exist (they count as announced
+    /// for every receiver, so the bound must cover them). `Term::MIN` under
+    /// the diagnostic `KM_CONTEXT_PAIR_R2` (the guard of 7c238e52).
+    fn rank_bound(&self, g: &Context, u: usize) -> Term {
+        if pair_r2() {
+            return Term::MIN;
+        }
+        if !self.nom_table.borrow().is_empty() {
+            return Term::MAX;
+        }
+        g.predecessors
+            .keys()
+            .filter(|(src, o)| *src == u && is_individual(*o))
+            .map(|&(_, o)| o)
+            .max()
+            .unwrap_or(Term::MIN)
+    }
+
+    /// Merge hypotheses (docs/NOMINALS-CB.md section 10): a query context
+    /// `u` with core `K(x)` whose element may be the individual `o` (a
+    /// body-free merge clause `⊤ → Δ'' ∨ x ≈ o`, the Join case 3 bridge)
+    /// pushes the hypotheses `K(o) → K(o)` to the ground context, on the
+    /// edge labelled `o`. Side condition (*) blocks every r-Succ push of
+    /// such a context, and a query context has no predecessor that could
+    /// carry its labels to `o` (an ordinary context's merge `f(x) ≈ o` reaches
+    /// its predecessor, which rewrites `f(x)` to `o` and pushes the ground
+    /// atoms itself), so without these hypotheses the ground context never
+    /// reasons under the assumption that `o` is an instance of the query
+    /// (seed r1600, `tests/merge_hypotheses.rs`). The ground context returns
+    /// its conclusions `K(o) ∧ Γ → Δ` with the body atom `K(o)` copied
+    /// verbatim (no clause of `u` has `K(o)` maximal), and Join case 3
+    /// resolves `K(o)` against the core clause `⊤ → K(x)` and the bridge.
+    fn merge_hypotheses(&mut self, id: usize) -> Vec<(Pred, Term)> {
+        if Some(id) == self.ground_ctx
+            || !self.contexts[id].root
+            || self.ont.individuals.is_empty()
+            || !merge_hypotheses_on()
+        {
+            return Vec::new();
+        }
+        let bridges = self.contexts[id].bridge_keys();
+        let ctx = &mut self.contexts[id];
+        let mut out: Vec<(Pred, Term)> = Vec::new();
+        for o in bridges {
+            if ctx.merge_hyp_inds.contains(&o) {
+                continue;
+            }
+            ctx.merge_hyp_inds.push(o);
+            for p in &ctx.core {
+                let plain = |t: Term| t == X || is_individual(t);
+                let ok = match *p {
+                    Pred::Concept { t, .. } => t == X,
+                    Pred::Role { s, t, .. } => (s == X || t == X) && plain(s) && plain(t),
+                };
+                if !ok {
+                    continue;
+                }
+                let a = p.apply(&|v| if v == X { o } else { v });
+                let mut inds: Vec<Term> = Vec::new();
+                pred_inds(&a, &mut inds);
+                for i in inds {
+                    out.push((a, i));
+                }
+            }
+        }
+        out
+    }
+
     /// r-Pred with no `A_i` (arXiv:1805.01396 Table 3, n = 0) for contexts
     /// that are tied to an individual by a merge clause `Γ → Δ ∨ x ≈ o`.
     /// Such a context never opens an r-Succ edge for `o` (side condition (*)
@@ -7935,7 +8062,7 @@ impl Engine {
                 if !inds.iter().all(|&o| announced(o))
                     && !(eq_announce()
                         && if eq_closure_announce() {
-                            in_announced_interface(c, announced)
+                            in_announced_interface(c, announced, self.rank_bound(gctx, id))
                         } else {
                             ground_unit_equality(c)
                         })

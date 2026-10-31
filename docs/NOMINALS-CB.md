@@ -1365,3 +1365,143 @@ Measurements (2026-10-29, shared workstation, files in
   the note, `lean/ContextCalculus/ExchangeEquality.lean`). The first-order
   lifting is not mechanised.
 
+
+## 10. Merge hypotheses and the nominal-label cache (2026-10-30)
+
+Four random seeds of `results/agents/2026-10-30/r3-unannounced/gen_r3.py`
+(`r1600`, `r1646`, `r3403`, `r3602`) were answered incompletely by the exact
+`nominals` route under every rule set and with the announcement guard off;
+`r1600` (`B ⊑ A`) also on the automatic and `certified_nominals` routes,
+a wrong published answer of v1.5.4. They have two causes.
+Results, binaries and commands: `results/agents/2026-10-30/nominal-r1600/`.
+
+### 10.1 A query context whose element is an individual
+
+Minimised from `r1600` (HermiT `B ⊑ D`;
+`engine/tests/fixtures/nominal_seq_order/merge_r1600_min.ofn`):
+
+    SubClassOf(:B ObjectOneOf(:c))
+    ObjectPropertyAssertion(:s :b :c)
+    SubClassOf(ObjectSomeValuesFrom(:s :B) ObjectOneOf(:c))
+    ClassAssertion(ObjectAllValuesFrom(:s :D) :c)
+
+A `B` element is `c`, so `B(c)`, hence `b ∈ ∃s.B`, `b ≈ c`, `s(c,c)` and
+`D(c)`. HermiT's derivation needs the ground facts under the assumption
+`B(c)`. The `B` context derives `⊤ → x ≈ c`. Side condition (*) of r-Succ
+(arXiv:1805.01396 Table 3) then blocks every push from that context (the
+merge clause has empty body and no other literal), so the ground context
+never holds `B(c) → B(c)`; nothing in it mentions `B(c)` and it derives
+nothing conditional on it. An ordinary context in that position is covered
+by its predecessor: Pred carries `f(x) ≈ c` back, the predecessor rewrites
+`B(f(x))` to `B(c)` and pushes it. A query context has no predecessor.
+The paper's completeness proof builds the ground fragment with
+`Γ_o = Ω ∩ R_c`, the ground atoms of the query context's model, and uses
+hypotheses `A → A` for them; for a query context blocked by (*) the
+calculus never adds them (proof-completeness.tex, unfolding strategy and
+`lemma:unfolding:consistency`).
+
+The fix (`Engine::merge_hypotheses`): a query (root) context with core
+`K(x)` and a body-free merge clause `⊤ → Δ'' ∨ x ≈ o` (the Join case 3
+bridge) pushes `K(o) → K(o)` to the ground context on the edge labelled
+`o`. The ground context's conclusions `K(o) ∧ Γ → Δ` return through r-Pred
+with `K(o)` copied verbatim into the body (no clause of the query context has
+`K(o)` maximal), and Join case 3 resolves `K(o)` against the core clause
+`⊤ → K(x)` and the bridge. `KM_NO_MERGE_HYPOTHESES` disables it
+(diagnostic). The same fix answers `r3602` (`D ⊑ Q1`) and `r1646`
+(`E ⊑ Q1`); on the forced route `r1646` and `r1600` need minutes (10.4).
+
+*Exactness.* Soundness: a hypothesis `A → A` is a tautology
+(`Nominals.rsucc_taut_sound`), and Join case 3 is sound
+(`Nominals.join3_sound`); the rule adds premises, never conclusions that do
+not follow. Completeness: only the core needs pushing. Every clause of the
+query context is a consequence of its core and the ontology, so every ground
+atom `A'{x↦o}` of its model under the bridge is derivable in the ground
+context from the hypothesis `K(o)` by the same inferences grounded at `o`
+(the ground context is the one context whose Hyper may map `x` to an
+individual). Ground atoms the query context derives from delivered
+ground-context clauses are heads of ground-context clauses already, and
+ground atoms it derives by local inferences follow from its core and those
+clauses, so the ground context derives them under `K(o)` as well. This is
+argued, not proved: it is the step the paper's proof leaves implicit. The first version pushed
+every maximal ground or `x`-atom of every body-free clause instantiated at
+every bridge individual; it did not terminate on `r1600` within 30 s and
+was replaced.
+
+*Lean obligation.* Open: the paper's completeness argument with the
+hypotheses of `Γ_o` made explicit, i.e. that the ground fragment built under
+`K(o)` contains every ground atom of the query context's model (first-order,
+not mechanised; the certified CB surface does not model r-Succ edges from
+query contexts with merge clauses either). Mechanised parts used: the two
+soundness lemmas above.
+
+### 10.2 The nominal-label cache under an ordered ground context
+
+`r3403` (`Q3 ≡ {c}`, HermiT `Q3 ⊑ A`) was missed by the nominal-label
+cache (`complete_nominal_enumeration_queries`), which answers an enumeration
+class `A ≡ {o1,…,on}` from the body-free unit clauses `→ B(oi)` of the
+saturated ground context. The ground context of `r3403` holds
+`→ A(c) ∨ c ≈ b` with `A(b)`; ordered superposition keeps `A(c)` maximal and
+never derives the unit `→ A(c)`, so the cache saw no `A(c)`. Ordered
+saturation is refutationally complete, not complete for unit readout. The
+cache now runs only when every body-free clause of the saturated ground
+context is a unit: the units then are the least model of the ground
+closure (every fired ground instance has a unit head, every unfired one a
+false premise), so every entailed type of `oi` is a unit up to the unit
+equalities the cache already follows. Otherwise the query takes an ordinary
+root context (and 10.1). Lean obligation: none mechanised (a Horn-readout
+lemma for the ground closure is the statement to prove).
+
+### 10.3 Tests
+
+`engine/tests/merge_hypotheses.rs`: the minimised `r1600` on the automatic,
+`certified_nominals` and `nominals` routes and without the merge hypotheses
+(missed); the four seeds on the automatic and `certified_nominals` routes;
+`r3403` and `r3602` on `nominals`; `r1600` and `r1646` on `nominals` as an
+ignored test (minutes).
+
+### 10.4 Measurements and cost
+
+`results/agents/2026-10-30/nominal-r1600/` (binaries, loads, commands).
+Exact `nominals` route, HermiT oracle.
+
+- Open seeds, 300 s: `r3403` and `r3602` correct on all three routes
+  (7.0 s and 6.5 s on `nominals`, before 0.2 s and 0.5 s wrong); `r1600`
+  correct on the automatic (16.5 s) and `certified_nominals` (18.5 s)
+  routes, the shipping wrong answer is gone; `r1600` and `r1646` time out at
+  300 s on the forced route (`r1600`'s `B` query alone answers correctly in
+  238 s at engine level). `r1646` is correct on the other two routes.
+- `gen_r3.py`, 4,000 seeds, 10 s: 2,191 ok, 0 wrong, 1,809 timeouts (5
+  worker errors, answered or timed out on rerun). The r3-unannounced
+  campaign at higher load: km.final 2,205 ok, 4 wrong (`r1600`, `r1646`,
+  `r3403`, `r3602`), 1,761 timeouts, 30 errors; v1.5.4 2,217 ok, 4 wrong.
+  On the 724 seeds rerun with km.final2 at the same load: km.final2 401 ok,
+  this build 382 ok; 22 seeds km.final2 answered (several in under 0.1 s)
+  time out here. The cost is the merge hypotheses: `r5`, `r10`, `r163` take
+  0.03 s with `KM_NO_MERGE_HYPOTHESES` and more than 10 s with them. On
+  `r5` (`C ⊑ {b, e}`, `e ∈ {a, d}`) the bridges multiply (`x ≈ b`, `x ≈ e`,
+  then `x ≈ a`, `x ≈ d`), each adds a hypothesis, and the ground context and
+  its successor contexts grow to 30,000 clauses with up to four hypotheses
+  per body (122 s for the `C` query). The ground atoms these conclusions
+  carry back are pushed again by ordinary r-Succ from other contexts; that
+  is the calculus's r-Succ, so cutting it needs its own completeness
+  argument (not attempted).
+- Motif sets (section 8 of PER-CONTEXT-ORDERING.md), 20 s: m1 to m5 1,999
+  ok, 1 timeout; m6, m7 997 ok, 3 timeouts; 0 wrong (as km.final).
+- ORE paired design, 112 nominal inputs, automatic route, 300 s, against
+  km.final2: 106 answered by both with identical SUB/UNSAT/CONSISTENT lines,
+  2 answered only here (ore_ont_3077, ore_ont_699; km.final2 timed out at
+  300 s), 3 time out in both (16420, 1833, 2548), and ore_ont_8250 exits 3 after 0.1 s here (the `ht_rules` worker declines; merged from `development/v1.5.5`) where km.final2 timed out; total 622 s against 657 s, median
+  ratio 1.01, mean 1.37 (ore_ont_10781 1.1 s to 14.3 s; the frontend's
+  second pass under `certified_nominals` takes 12 s with every change of this
+  branch switched off, so it comes from the merged `development/v1.5.5`, not
+  from these rules).
+- After merging `development/v1.5.5` at a2e98d95: seeds r0 to r999 530 ok,
+  0 wrong (531 before the merge). On forced `nominals`, r3602 times out on
+  the merged base with the merge hypotheses switched off as well. The five
+  seeds r1536, r1866, r2408, r2564 and r3777 that the automatic route
+  answers wrongly are answered by the typed-nominal bridge's HT worker (the
+  bridge merging defect of `results/agents/2026-10-30/nominal-seeds/`); the
+  forced CB route of km.final2 answers them correctly, so they do not share
+  r1600's cause. Under the merge hypotheses r1536 and r3777 time out at 60 s
+  on forced `nominals`, and the hub with data values takes 30 s instead of
+  10 s on `certified_nominals`.
