@@ -1262,3 +1262,63 @@ Lean obligation: none discharged. The statement is propositional (a
 renaming of constants along an equivalence that the theory entails) and
 does not touch the CB calculus; the bridge has no Lean model
 (`docs/CHECKERS-ON.md` §1.1). Cross-checked differentially below.
+
+### Where the bridge's time goes on the large equality ABoxes
+
+The five held-out inputs of the task (ore_ont_16315, 10838, 3087, 7557,
+10926) and ore_ont_15846 share one Drosophila ABox family: 30,657 to 66,423
+`SameIndividual` axioms, 33 property chains, 22 transitive roles, hub
+individuals with up to 3,525 asserted neighbours. 10926 has no
+`SameIndividual` at all; its HT worker is spawned (3.5 million clauses) and
+the run ends on memory. With the pre-merge, 16315 goes from 58,273
+individuals to 29,495 classes, and the forced bridge still does not finish.
+Traced on ws (`KM_HT_STOP_TRACE=1` names the stop site; gdb stack samples of
+the worker):
+
+1. Consistency completion (`native_nominal_consistency`, all roots, the
+   legacy nominal schedule because the ABox has more than 10,000
+   individuals). Stopped by the 30 s probe budget of the route (u02.rs
+   drive deadline); with a 1,100 s budget it still had not finished after
+   19 minutes. Nearly every sample sits in the automaton rule
+   (`apply_automat_transactions` → `ht_all_rule_target_links`). Two causes:
+   - a linear duplicate scan of the output vector, quadratic in the node
+     degree. Replaced by a membership set past 16 entries (same output,
+     same order). Not enough on its own.
+   - the port has no restricted (`restLink`) arm: when a new link re-fires
+     the armed `∀`-automaton states of a node
+     (`apply_reapply_queue_concepts_restricted` attaches the link
+     restriction), the port propagates over every successor again, so a
+     hub with `d` links costs `d²` per state. Konclude propagates over the
+     restricting link only (cpp 9662-9700). `KM_HT_AUTOMAT_REST_LINK=1`
+     implements that arm (`ht_rule_target_of_link`); with it the
+     consistency completion of 16315 finishes in 15 s. It stays off by
+     default: `KM_HT_AUTOMAT_REST_LINK_AUDIT=1`, which runs the full arm and
+     counts the operands it adds outside the restricting link, reports such
+     operands on 122 of the 3,203 chain-seed runs that take the arm (61
+     seeds of `gen_chain.py`, on both routes; every one of them has a
+     nominal or an equality, so run-time merges, which relocate links, are
+     the first suspect), so the
+     port's links are not all registered for a restricted re-fire the way
+     Konclude's per-role links are, and the arm is not shown complete for
+     this port. All 4,000 answers still agree with HermiT with the arm on,
+     which shows only that the missing operands arrived by another path on
+     these seeds.
+2. Classification probes after consistency. On the legacy schedule each of
+   the 4,895 subject probes re-completes the ABox (15 s each). On the
+   conditional-full schedule (`KM_HT_CONDITIONAL_FULL_LIMIT=1000000`
+   lifts Konclude's 10,000-individual bound for measurement) the probes
+   reuse the retained consistency graph and run 64 subjects in about 4 s,
+   but the representative-cache writer
+   (`write_completed_native_representative_associations`) took 128 s: it
+   scanned every individual and every seed's assertion journal once per
+   association. Both scans are now read from indexes built once per writer
+   call (`native_completion_same_individual_index`,
+   `native_completion_assertion_journal`); the visited assertions, their
+   order, and the failure cases are unchanged.
+
+Not done. The bridge has no exact large-ABox schedule that finishes these
+inputs. The conditional-full schedule above 10,000 individuals is
+Konclude's choice only below that bound (Konclude uses its lazy, batched
+representative precomputation above it), and the restricted automaton arm
+is not shown complete for the port. The generic automatic racer therefore
+keeps declining `SameIndividual`.

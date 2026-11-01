@@ -12795,6 +12795,56 @@ fn native_individual_label_identity(values: &[Cint64]) -> u64 {
 /// Write the bridge-local typed equivalent of Konclude's representative
 /// backend association. Every label family used by the completion read path is
 /// materialised, even when the entry is explicitly marked insufficient.
+/// The typed ABox journal of every seed in both directions, with every
+/// indirect super-role orientation installed by `addRoleAssertion`: for each
+/// individual tag, the `(role, negated, neighbour)` orientations that
+/// `write_native_abox_representative_cache` records for it. `None` when an
+/// assertion names a role outside the arena, as the per-node scan did.
+fn native_saturation_assertion_journal(
+    ctx: &CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+) -> Option<HashMap<Cint64, Vec<(Cint64, bool, Cint64)>>> {
+    let mut journal: HashMap<Cint64, Vec<(Cint64, bool, Cint64)>> = HashMap::default();
+    for source_seed in &bridged.nominal_seeds {
+        for &(asserted_role, target_tag) in &source_seed.role_assertions {
+            if asserted_role.is_none()
+                || asserted_role.index() >= ctx.ontology_arenas().role_count() as usize
+            {
+                return None;
+            }
+            let mut super_roles = ctx
+                .ontology_arenas()
+                .role(asserted_role)
+                .get_indirect_super_role_list()
+                .to_vec();
+            if !super_roles
+                .iter()
+                .any(|link| link.target == asserted_role && !link.negated)
+            {
+                super_roles.push(NegLink {
+                    target: asserted_role,
+                    negated: false,
+                });
+            }
+            for role_link in super_roles {
+                let role = role_link.target;
+                if role.is_none() || role.index() >= ctx.ontology_arenas().role_count() as usize {
+                    return None;
+                }
+                journal
+                    .entry(source_seed.individual_tag)
+                    .or_default()
+                    .push((role.raw, role_link.negated, target_tag));
+                journal
+                    .entry(target_tag)
+                    .or_default()
+                    .push((role.raw, !role_link.negated, source_seed.individual_tag));
+            }
+        }
+    }
+    Some(journal)
+}
+
 fn write_native_abox_representative_cache(
     ctx: &mut CalculationAlgorithmContextBase,
     bridged: &Bridged,
@@ -12809,6 +12859,7 @@ fn write_native_abox_representative_cache(
         return None;
     }
     let mut cache = NativeAboxRepresentativeCache::default();
+    let mut saturation_journal = None;
     for &(individual_tag, node) in nodes {
         if node.is_none() || node.index() >= ctx.process_context().sat_node_count() {
             return None;
@@ -13019,51 +13070,19 @@ fn write_native_abox_representative_cache(
         // indirect super-role orientation installed by `addRoleAssertion`.
         // These are asserted links and therefore deterministic; model-choice
         // links remain exclusively on the completion writeback path below.
-        for source_seed in &bridged.nominal_seeds {
-            for &(asserted_role, target_tag) in &source_seed.role_assertions {
-                if asserted_role.is_none()
-                    || asserted_role.index() >= ctx.ontology_arenas().role_count() as usize
-                {
-                    return None;
-                }
-                let mut super_roles = ctx
-                    .ontology_arenas()
-                    .role(asserted_role)
-                    .get_indirect_super_role_list()
-                    .to_vec();
-                if !super_roles
-                    .iter()
-                    .any(|link| link.target == asserted_role && !link.negated)
-                {
-                    super_roles.push(NegLink {
-                        target: asserted_role,
-                        negated: false,
-                    });
-                }
-                for role_link in super_roles {
-                    let role = role_link.target;
-                    if role.is_none() || role.index() >= ctx.ontology_arenas().role_count() as usize
-                    {
-                        return None;
-                    }
-                    if individual_tag == source_seed.individual_tag {
-                        instantiated_role_orientations.insert((role.raw, role_link.negated));
-                        indirect_nominals.insert(target_tag);
-                        neighbour_roles
-                            .entry(target_tag)
-                            .or_default()
-                            .insert((role.raw, role_link.negated));
-                    }
-                    if individual_tag == target_tag {
-                        instantiated_role_orientations.insert((role.raw, !role_link.negated));
-                        indirect_nominals.insert(source_seed.individual_tag);
-                        neighbour_roles
-                            .entry(source_seed.individual_tag)
-                            .or_default()
-                            .insert((role.raw, !role_link.negated));
-                    }
-                }
-            }
+        // The journal does not depend on the node: it is resolved once, at
+        // the first node that reaches this point (the scan over every seed's
+        // assertions per node, with a role-list copy per assertion, was
+        // quadratic: 130 s of ore_ont_10838's saturation). Every orientation
+        // the scan inserted for `individual_tag` is in its list; the targets
+        // are sets, so the order of insertion does not matter.
+        let journal = saturation_journal
+            .get_or_insert_with(|| native_saturation_assertion_journal(ctx, bridged))
+            .as_ref()?;
+        for &(role, negated, other) in journal.get(&individual_tag).map(Vec::as_slice).unwrap_or(&[]) {
+            instantiated_role_orientations.insert((role, negated));
+            indirect_nominals.insert(other);
+            neighbour_roles.entry(other).or_default().insert((role, negated));
         }
 
         let (completely_handled, completely_propagated) =
