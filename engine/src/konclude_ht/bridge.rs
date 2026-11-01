@@ -849,6 +849,7 @@ fn linear_value_encoding_exact(tin: &TInput) -> bool {
     use crate::frontend::datatypes as dt;
     macro_rules! defer {
         ($reason:literal) => {{
+            note_bridge_defer(concat!("datatype gate: ", $reason));
             if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                 eprintln!("BRIDGE-DATATYPE-DEFER: {}", $reason);
             }
@@ -1076,7 +1077,8 @@ fn pure_datatype_relation_is_exact(tin: &TInput, clause: &HtClause) -> bool {
             crate::frontend::datatypes::bridge_exact_integral_cover(range_name, heads)
                 || crate::frontend::datatypes::bridge_exact_union_cover(range_name, heads)
                 || crate::frontend::datatypes::exact_enumerated_cover(range_name, heads)
-                || crate::frontend::datatypes::bridge_exact_ieee_cell_cover(range_name, heads)) {
+                || crate::frontend::datatypes::bridge_exact_ieee_cell_cover(range_name, heads)
+                || crate::frontend::datatypes::bridge_exact_decimal_cell_cover(range_name, heads)) {
             return true;
         }
         if crate::frontend::datatypes::bridge_tbox_finite_values(range_name).is_some() {
@@ -1445,6 +1447,7 @@ fn blank_witness_search(
 fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> bool {
     macro_rules! defer {
         ($reason:literal) => {{
+            note_bridge_defer(concat!("datatype gate: ", $reason));
             if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                 eprintln!("BRIDGE-DATATYPE-DEFER: {}", $reason);
             }
@@ -1852,6 +1855,11 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
     for individual in &tin.nominal_abox.individuals {
         for assertion in &individual.assertions {
             if !asserted_data_role_uses_are_safe(assertion, &datatype_role_names) {
+                note_bridge_defer(format!(
+                    "datatype gate: a nominal assertion uses a data role outside an exact bound \
+                     (individual {}: {assertion:?})",
+                    individual.individual
+                ));
                 if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                     eprintln!(
                         "BRIDGE-DATATYPE-DEFER: a nominal assertion uses a data role outside \
@@ -1935,6 +1943,10 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                 data_role_uses_are_safe_cardinality_only(&axiom.left, &datatype_role_names)
                     && data_role_uses_are_safe_cardinality_only(&axiom.right, &datatype_role_names);
             if !allowed_domain && !allowed_safe_cardinality {
+                note_bridge_defer(format!(
+                    "datatype gate: a data role occurs outside an exact datatype or \
+                     object-domain axiom (source axiom {axiom_index}: {axiom:?})"
+                ));
                 if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                     eprintln!(
                         "BRIDGE-DATATYPE-DEFER: a data role occurs outside an exact datatype \
@@ -2030,6 +2042,11 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         let disjoint_data = disjoint_role_pair_clause(clause).is_some_and(|(left, right)|
             datatype_roles.contains(&left) && datatype_roles.contains(&right));
         if !functional && !domain && !inclusion && !disjoint_data {
+            note_bridge_defer(format!(
+                "datatype gate: a data role occurs in an unsupported non-datatype clause \
+                 (clause {clause_index}: {})",
+                named_clause(tin, clause)
+            ));
             if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                 let encoded = serde_json::to_string(clause)
                     .unwrap_or_else(|_| "<serialization failed>".to_string());
@@ -2057,6 +2074,11 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             && !source_mode_suppresses_ordinary_concept_clause(tin, clause)
             && !supported_datatype_clause_shape(tin, clause)
         {
+            note_bridge_defer(format!(
+                "datatype gate: a datatype-bearing clause has an unsupported shape \
+                 (clause {clause_index}: {})",
+                named_clause(tin, clause)
+            ));
             if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                 let encoded = serde_json::to_string(clause)
                     .unwrap_or_else(|_| "<serialization failed>".to_string());
@@ -2073,6 +2095,11 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             && !clause_mentions_value_aux(tin, clause)
             && !pure_datatype_relation_is_exact(tin, clause)
         {
+            note_bridge_defer(format!(
+                "datatype gate: a pure datatype relation clause is not exact in the \
+                 supported map (clause {clause_index}: {})",
+                named_clause(tin, clause)
+            ));
             if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                 let encoded = serde_json::to_string(clause)
                     .unwrap_or_else(|_| "<serialization failed>".to_string());
@@ -2717,7 +2744,12 @@ fn decimal_cells_exact(
         }).collect();
         let Some(heads) = heads else { continue };
         let names_of: Vec<&str> = heads.iter().map(|&h| tin.concepts[h].as_str()).collect();
-        if !dt::bridge_exact_integral_cover(&tin.concepts[*c], &names_of) {
+        // Integral finite-difference covers and dense decimal cell covers
+        // (`bridge_exact_decimal_cell_cover`) are both valid clauses over
+        // the datatype map, so either restricts the admissible labels.
+        if !dt::bridge_exact_integral_cover(&tin.concepts[*c], &names_of)
+            && !dt::bridge_exact_decimal_cell_cover(&tin.concepts[*c], &names_of)
+        {
             continue;
         }
         covers.push((body, heads.iter().filter_map(|h| member_index.get(h).copied()).collect()));
@@ -2763,6 +2795,10 @@ fn decimal_cells_exact(
                     continue;
                 }
                 if dt::bridge_decimal_free_capacity(names[cell], &literals).is_none_or(|free| free < required) {
+                    note_bridge_defer(format!(
+                        "datatype gate: a decimal-tower cell lacks realizing values ({})",
+                        names[cell]
+                    ));
                     if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                         eprintln!("BRIDGE-DATATYPE-DEFER: a decimal-tower cell lacks realizing values; cell={}", names[cell]);
                     }
@@ -2791,6 +2827,10 @@ fn decimal_cells_exact(
         if dt::bridge_decimal_cells_realizable(&local_names, &local_flags, &local_inclusion,
             &local_disjoint, &literals, required, &local_covers) != Some(true)
         {
+            note_bridge_defer(format!(
+                "datatype gate: a decimal-tower vocabulary has a label set without two \
+                 realizing values (group {local_names:?})"
+            ));
             if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                 eprintln!("BRIDGE-DATATYPE-DEFER: a decimal-tower vocabulary has a label set without \
                     two realizing values; group={local_names:?}");
@@ -2905,6 +2945,7 @@ fn tbox_extension_evidence_exact(
     use crate::frontend::datatypes as dt;
     macro_rules! defer {
         ($reason:literal) => {{
+            note_bridge_defer(concat!("datatype gate: ", $reason));
             if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                 eprintln!("BRIDGE-DATATYPE-DEFER: {}", $reason);
             }
@@ -3004,6 +3045,32 @@ fn tbox_extension_evidence_exact(
         let flags: Vec<bool> = names.iter().map(|name| sensitive.contains(name)).collect();
         let inclusion = |i: usize, j: usize| included(members[i], members[j]);
         let disjoint = |i: usize, j: usize| separated(members[i], members[j]);
+        // Cell path over all members of the width (not per role group), see
+        // `bridge_ieee_cells_by_atoms`; only without complements of the
+        // width, whose labels can avoid every member.
+        if !complemented {
+            let position: HashMap<usize, usize> =
+                members.iter().enumerate().map(|(at, &concept)| (concept, at)).collect();
+            let covers: Vec<(usize, Vec<usize>)> = tin.clauses.iter().filter_map(|clause| {
+                let ([HAtom::Concept { neg: false, c, t }], head) =
+                    (clause.body.as_slice(), clause.head.as_slice()) else { return None };
+                let body = *position.get(c)?;
+                let heads: Option<Vec<usize>> = head.iter().map(|atom| match atom {
+                    HAtom::Concept { neg: false, c, t: ht } if ht == t => Some(*c),
+                    _ => None,
+                }).collect();
+                let heads = heads?;
+                let head_names: Vec<&str> = heads.iter().map(|&h| tin.concepts[h].as_str()).collect();
+                dt::bridge_exact_ieee_cell_cover(&tin.concepts[*c], &head_names).then(|| {
+                    (body, heads.iter().filter_map(|h| position.get(h).copied()).collect())
+                })
+            }).collect();
+            match dt::bridge_ieee_cells_by_atoms(&names, &inclusion, &disjoint, &literals, required, &covers) {
+                Some(true) => continue,
+                Some(false) => defer!("an IEEE cell lacks realizing values"),
+                None => {}
+            }
+        }
         if dt::bridge_ieee_cells_realizable(&names, &flags, &inclusion, &disjoint, &literals, required) != Some(true) {
             defer!("an IEEE facet vocabulary has a label set without two realizing values");
         }
@@ -3015,8 +3082,12 @@ fn tbox_extension_evidence_exact(
 /// coverage, supported inverse/nominal completion, or certified publication.
 pub fn datatype_bridge_route_exact(tin: &TInput, source_mode: bool) -> bool {
     let started = std::time::Instant::now();
-    let admitted = exact_atomic_datatype_bridge_fragment(tin, source_mode)
-        || datatype_effects_covered_by_unit_bottom(tin, source_mode);
+    let exact = exact_atomic_datatype_bridge_fragment(tin, source_mode);
+    let reason = (!exact).then(take_bridge_defer_reason).flatten();
+    let admitted = exact || datatype_effects_covered_by_unit_bottom(tin, source_mode);
+    if !admitted {
+        note_bridge_defer(reason.unwrap_or_else(|| "datatype gate: declined (no specific reason recorded)".to_string()));
+    }
     if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
         eprintln!("BRIDGE-DATATYPE-GATE: admitted={admitted} in {:.2}s", started.elapsed().as_secs_f64());
     }
@@ -14511,8 +14582,48 @@ fn has_unhandled_inverse_negative_existential_mirror(tin: &TInput) -> bool {
 /// Keep this check ahead of datatype, bottom-prepass, nominal, and saturation
 /// certificates: none of those certificates reconstructs the inverse feedback
 /// needed by a named `N = not exists R.F` mirror.
+thread_local! {
+    /// The most recent reason the bridge recorded for declining its input on
+    /// this thread. Diagnostic only: it names the gate in the worker's
+    /// `konclude_ht bridge defer` message and never influences a verdict.
+    static BRIDGE_DEFER_REASON: std::cell::RefCell<Option<String>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Record why the bridge declines (or, at a phase milestone, where it is),
+/// overwriting any earlier note of this thread.
+pub(crate) fn note_bridge_defer(reason: impl Into<String>) {
+    BRIDGE_DEFER_REASON.with(|slot| *slot.borrow_mut() = Some(reason.into()));
+}
+
+/// A clause with concept and role names, for defer messages.
+fn named_clause(tin: &TInput, clause: &HtClause) -> String {
+    let concept = |c: usize| tin.concepts.get(c).cloned().unwrap_or_else(|| format!("C{c}"));
+    let role = |r: usize| tin.roles.get(r).cloned().unwrap_or_else(|| format!("R{r}"));
+    let atom = |atom: &HAtom| match atom {
+        HAtom::Concept { neg, c, t } => format!("{}{}(x{t})", if *neg { "¬" } else { "" }, concept(*c)),
+        HAtom::Role { r, s, t } => format!("{}(x{s},x{t})", role(*r)),
+        HAtom::Eq { s, t } => format!("x{s}=x{t}"),
+        HAtom::Exist { r, neg, c, t } =>
+            format!("∃{}.{}{}(x{t})", role(*r), if *neg { "¬" } else { "" }, concept(*c)),
+    };
+    let side = |atoms: &[HAtom], join: &str| {
+        if atoms.is_empty() { "∅".to_string() } else { atoms.iter().map(atom).collect::<Vec<_>>().join(join) }
+    };
+    format!("{} → {}", side(&clause.body, " ∧ "), side(&clause.head, " ∨ "))
+}
+
+/// Take the reason recorded by the last bridge run on this thread.
+pub(crate) fn take_bridge_defer_reason() -> Option<String> {
+    BRIDGE_DEFER_REASON.with(|slot| slot.borrow_mut().take())
+}
+
 fn bridge_input_guard(tin: &TInput) -> bool {
-    !has_unhandled_inverse_negative_existential_mirror(tin)
+    let admitted = !has_unhandled_inverse_negative_existential_mirror(tin);
+    if !admitted {
+        note_bridge_defer("input guard: an inverse role meets a negative existential mirror");
+    }
+    admitted
 }
 
 /// Production classification of a `TInput` over the konclude_ht bridge.
@@ -14538,6 +14649,7 @@ fn bridge_input_guard(tin: &TInput) -> bool {
 /// pathological subject costs bounded time while the cheap bulk completes,
 /// instead of the first budget-STOP discarding all finished work.
 pub fn bridged_classify(tin: &TInput) -> Option<BridgedClassification> {
+    let _ = take_bridge_defer_reason();
     if !bridge_input_guard(tin) {
         return None;
     }
@@ -14788,6 +14900,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // The bridge has no typed data-domain object. Decline before constructing
     // an arena instead of treating a fixed datatype as an ordinary class.
     if has_fixed_datatype_object_position(tin) {
+        note_bridge_defer("input: a fixed datatype occurs in an object position");
         if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
             eprintln!("BRIDGE-INPUT-DEFER: a fixed datatype occurs in an object position");
         }
@@ -14810,12 +14923,14 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // target of the tautology R <= top is semantically inert for the certified
     // component-ABox path, so it need not make that path defer.
     if has_builtin_top_role(tin) && !independent_abox_elided {
+        note_bridge_defer("input: the universal role requires an exact supported source path");
         if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
             eprintln!("BRIDGE-INPUT-DEFER: universal role requires an exact supported source path");
         }
         return None;
     }
     if has_any_nominal_input(tin) && !native_nominals {
+        note_bridge_defer("input: nominal metadata is not covered by the native source path");
         if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
             eprintln!("BRIDGE-INPUT-DEFER: nominal metadata is not covered by the native source path");
         }
@@ -14903,8 +15018,15 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         );
     }
     if bridged.unsupported > 0 {
+        note_bridge_defer(format!(
+            "encoder: {} clause(s) the bridged terminology cannot express",
+            bridged.unsupported
+        ));
         return None;
     }
+    // Milestone: later exits that record no reason of their own report the
+    // phase they left from.
+    note_bridge_defer("consistency or classification phase (no specific reason recorded)");
     let base_budget = std::env::var("KM_BRIDGE_PROBE_BUDGET_S")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
@@ -16592,6 +16714,10 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                     refuted_here.push(c);
                 }
                 None => {
+                    note_bridge_defer(format!(
+                        "classify: pair {} vs {} undecided within its budget",
+                        tin.concepts[s], tin.concepts[c]
+                    ));
                     if progress {
                         eprintln!(
                             "BRIDGE-DEFER subject {s}: PAIR {}v{} stop after {:.1}s subj-total",
@@ -16663,6 +16789,11 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         }
     }
     if !pending.is_empty() || permanent_defer > 0 {
+        note_bridge_defer(format!(
+            "prepare: {} budget + {} permanent subject(s) without a model",
+            pending.len(),
+            permanent_defer
+        ));
         if progress {
             eprintln!(
                 "BRIDGE-PREPARE defer: {} budget + {} permanent subjects without a model",
@@ -16744,6 +16875,11 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         }
     }
     if !pending.is_empty() || permanent_defer > 0 {
+        note_bridge_defer(format!(
+            "classify: {} budget + {} permanent subject(s) without a verdict",
+            pending.len(),
+            permanent_defer
+        ));
         if progress {
             eprintln!(
                 "BRIDGE-CLASSIFY defer: {} budget + {} permanent subjects without verdict",
@@ -16804,6 +16940,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                     });
                 }
                 None => {
+                    note_bridge_defer("classify: owl:Thing satisfiability undecided");
                     if progress {
                         eprintln!("BRIDGE-CLASSIFY defer: owl:Thing satisfiability undecided");
                     }

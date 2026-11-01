@@ -850,7 +850,58 @@ heads are IEEE facet intervals and values of `R`'s width that lie inside
 (`bridge_exact_ieee_cell_cover`), so inputs with overlapping IEEE facets
 keep the bridge (`bridge_tbox_datatype_extension_double_facets_and_signed_zero`).
 Decimal band cells (`DataIntersectionOf(… DataComplementOf(xsd:integer))`)
-are outside the bridge's map, and the bridge defers on them.
+are outside the bridge's map, and the bridge defers on them. The decimal
+cell cover whose heads are open decimal intervals and point values (no
+band) is admitted since 2026-11-01, see "Native bridge: dense decimal cell
+covers" below.
+
+**Native bridge: dense decimal cell covers** (2026-11-01, agent
+`bridge-defers`). *Defect.* The native bridge deferred `ore_ont_4903` and
+`ore_ont_11647` at its datatype gate, before building any completion
+structure, with the reason "a pure datatype relation clause is not exact in
+the supported map". The clauses are the ordered-cell covers of a role group
+with a dense decimal range:
+
+- 4903: `decimal[-250, -150] → decimal(-250, -150) ∨ {-150} ∨ {-250}`
+  (the range is spelled `DataIntersectionOf` of two `xsd:decimal` facets);
+- 11647: `decimal(< 12) → {0} ∨ {3} ∨ decimal(< 0) ∨ decimal(0, 3) ∨
+  decimal(3, 12)`.
+
+Every name in them is in the bridge-TBox map (facet intervals of the
+decimal tower and integral decimal values), but `pure_datatype_relation_is_exact`
+knew only the integral, union, enumerated, finite and IEEE covers. *Fix.*
+`bridge_exact_decimal_cell_cover` (in `frontend/datatypes.rs`, a bridge-only
+oracle function; the frontend does not call it) decides the cover clause
+`R → H₁ ∨ … ∨ Hₖ` for a decimal-tower range `R` and heads that are
+decimal-tower ranges or finite decimal values. It refuses `owl:rational`,
+`owl:real` and every other family. *Exactness.* Each name denotes `I ∩ K`
+for an interval `I` with rational endpoints and `K` either the integers or
+the decimals (the refused kinds are the only ones with other values). Cut
+the line at every endpoint of `R` and of the heads and at every head value.
+The pieces are the cut points and, for each open gap between consecutive
+cuts (and the two unbounded ends), its integers and its non-integer
+decimals. A gap contains no endpoint, so it lies inside or outside each
+`I`; each of the two bands lies inside or outside each `K`. Every name then
+contains a whole piece or none of it, and `R ⊆ ⋃ Hᵢ` holds iff every
+nonempty piece whose representative lies in `R` has its representative in
+some `Hᵢ`. The function checks exactly this, with `val_in_range` deciding
+membership; an undecided membership or an arithmetic overflow returns
+`false` (defer). So an admitted cover is valid in every model of the
+datatype map: it adds no consequence over the source vocabulary, which is
+the condition the pure-relation check enforces. The admission changes no
+encoding: the clause was already in the bridge's input and already acted as
+a clause there; the gate only stops refusing it. The later realizability
+certificates (`bridge_decimal_cells_realizable`, cell free capacity) run
+unchanged on these inputs. Unit tests:
+`frontend::datatypes::decimal_cell_cover_tests` (each of the two shapes
+above, every head dropped in turn, integer and decimal bands, refused
+kinds).
+
+*Defer reasons.* The worker's defer error now names the gate:
+`konclude_ht bridge defer: <reason>` (thread-local note set by each gate in
+`konclude_ht/bridge.rs`, read by the three bridge entry points in
+`tableau.rs`; diagnostic only, it never changes a verdict). Exits deep in
+the classification that record nothing specific report the phase they left.
 
 **Native bridge: singleton gate** (seeds m2009, m2023, m2123, m2255,
 m2287). The frontend leaves out value singletons when
