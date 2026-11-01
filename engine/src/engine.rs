@@ -2101,7 +2101,7 @@ struct ClauseLayer {
     /// sorted). A clause whose head is a subset of an incoming head has its
     /// key among the incoming literals, pairs or triples (in sorted order), so
     /// `fwd_subsumed` looks those up instead of scanning every clause that
-    /// shares the least literal (docs/PER-CONTEXT-ORDERING.md section 15.4).
+    /// shares the least literal (docs/PER-CONTEXT-ORDERING.md section 15.3).
     /// Kept beside `active_min_head_lit_index`, which the other readers use.
     active_unit_head_index: HashMap<Lit, Posting>,
     active_min2_head_index: HashMap<(Lit, Lit), Posting>,
@@ -12829,7 +12829,7 @@ mod tests {
         assert!(plain.resolve.is_empty());
     }
 
-    /// docs/PER-CONTEXT-ORDERING.md section 15.4: forward subsumption through
+    /// docs/PER-CONTEXT-ORDERING.md section 15.3: forward subsumption through
     /// the unit, least-pair and least-triple postings answers exactly as a
     /// scan over every active clause, under insertions and removals.
     #[test]

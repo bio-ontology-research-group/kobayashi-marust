@@ -1104,6 +1104,15 @@ Removing the excluded middle by hand (the clause set with `⊤ → Q_1 ∨ nom_e
 deleted and `Q_3 ∧ Q_1 → ⊥` replaced by `Q_3 → nom_e`, see 15.4) answers in
 0.05 s with the same taxonomy.
 
+*Results of 15.2 and 15.3 together* (`km.f2`, one pinned CPU, forced
+`nominals` route, HermiT oracle; baseline the `km.x3` runs of section 14):
+1,000 `gen_r3.py` seeds at 60 s, 679 ok against 636, no wrong answer (44
+timeouts become ok, one 47 s answer becomes a timeout); 4,000 seeds at 10 s,
+2,615 ok against 2,521, no wrong answer; the same 4,000 on the `auto` route,
+3,810 ok, no wrong answer. Of the eight seeds section 14.5 left open, r219
+(2.2 s) and r3777 (0.05 s) now answer; r163, r461, r481, r575, r696 (60 s) and
+r1536 (235 s) still time out, as does the case itself (15.4).
+
 ### 15.2 Pred premises on composite edges
 
 *Defect.* On an edge labelled by a composite `f(o)` (the ground context's own
