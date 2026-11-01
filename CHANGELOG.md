@@ -1,5 +1,165 @@
 # Changelog
 
+## [1.5.5] - unreleased (release candidate `v1.5.5-rc1`, 2026-11-01)
+
+Version 1.5.5 fixes every soundness and completeness defect found since
+v1.5.4, including the fr282 dropped-rule miss and the nominal-mode items
+deferred from v1.5.4, adds exact native data-value reasoning, and recovers
+the speed of v1.5.3 without a performance amendment. Every calculus or
+encoding change is covered by a Lean theorem or by a Lean checker whose
+acceptance implies exactness. The acceptance contract is
+`docs/V1.5.5-ACCEPTANCE.md`; the campaign log is `docs/V1.5.5-STATUS.md`.
+
+### Correctness: wrong answers fixed
+
+- Rules route: any consistent ontology with an executable DL-safe rule and
+  an object nominal published the CB taxonomy without its rules and counted
+  them as `DROPPED` (119 of 400 generated `fr` seeds in v1.5.4). The rule
+  worker now classifies its own input, and binary object-atom rules beside a
+  TBox nominal and a data property get a verdict (`fix/v155-fr282-dropped-rules`).
+- Nominal CB route: side condition (*) blocked every r-Succ push of a query
+  context whose element may be an individual, so `r1600` missed `B ⊑ A` on
+  the automatic route; the nominal-label cache read units off an ordered
+  ground context. Both fixed (`fix/v155-nominal-r1600`; docs/NOMINALS-CB.md
+  10.1).
+- R3 and unannounced individuals: four counterexample motifs against HermiT
+  (v1.5.4 missed 480 of 2,000 and 155 of 1,000 motif seeds on the exact
+  `nominals` route). R3 now delivers every clause inside the announced
+  interface and R2 orders ground (in)equalities only against literals
+  sharing an individual (`lean/ContextCalculus/ExchangeEquality.lean`;
+  docs/PER-CONTEXT-ORDERING.md section 8).
+- Bridge (ported Konclude algorithm): three defects in the reuse of the
+  consistency model (functional successor reused through a merged-away
+  node, stale current-node pointer, representative-cache replay missing the
+  merged individuals' nominals) and the forward role-assertion transfer
+  with a target merged two or more hops away. 2,000 merge seeds: 22 wrong
+  to 0 on both routes; Konclude 0.7.0 misses the same answers
+  (`fix/v155-bridge-nominal-merge`, `fix/v155-bridge-merge-edges`).
+- Global refutation stop: with `⊤ ⊑ ⊥` added, the incremental CB oracle and
+  the `km engine` worker lost rows after the stop, and the automatic route
+  missed the inconsistency of three ALCHIQ seeds because `Engine::inconsistent`
+  did not read the stop flag (`fix/v155-alchiq-regression`,
+  `fix/v155-incremental-ht-regression`).
+- Data values: a value-singleton elision admitted a missing singleton
+  before every value had a key; a finite range of more than eight values got
+  no cover when the count bound was below two (`range_exhaust.ofn`: HermiT
+  inconsistent, KM consistent); the data-ABox omission accepted two values
+  whose owners merge by inverse functionality; the bridge's satisfiable
+  expander cache was reused beside consumed value singletons. All fixed
+  (`fix/v155-data-values-2`, `fix/v155-forced-nominal-data-misses`;
+  `DataAboxOmission.lean`).
+- Subset blocking: the finite fold used by the certificate copied only the
+  blocker's successor edges where the classical unravelling also copies the
+  predecessor edge. No wrong published answer was found (1,466 of 1,500
+  ALCI seeds agree with HermiT, 0 wrong); the fold now copies both
+  directions and `check_sound` is proved for every choice of folds
+  (`fix/v155-subset-blocking-gap`, `fix/v155-subset-unravelling`).
+- Worker exits under load: strict overcommit (`vm.overcommit_memory=2`)
+  charged nested thread stacks at spawn; the worker raises its soft stack
+  limit, re-executes once, runs deep searches on the main stack and retries
+  failed spawns (1,757 seeds at 12 jobs: 0 differences, 0 exits).
+
+### Nominal routes
+
+- Inert object sort release in the rule checker (7278 and 3726 from 31 s to
+  9.3 s) with `RulesInertSortRelease.lean` and the fifth gate
+  `run-rules-certification-gate.sh`; the nominal CB arms get the released
+  clause file with the CB reservation set and the universal-definer
+  elimination (`UniversalDefinerElimination.lean`, `nominal-cb-input-check`;
+  the CB arm fails closed on rejection). ORE 9800 and 10874 answer under the
+  complete regime.
+- Exchange cut: r-Succ pushes and merge hypotheses that a worked-off ground
+  clause already strengthens are skipped (`ExchangeCut.lean`:
+  `cut_exchange_complete`, `no_merge_hypothesis_counterexample`).
+- Pred premises on composite edges (`PredClause.resolve`,
+  `CBPredResolving.lean`) and least-key forward-subsumption postings; the
+  certified surface (`KM_CB_LEAN_REQUIRED`) keeps the previous rule.
+- Polarity encoding of complement definers: the frontend drops the excluded
+  middle `→ Q ∨ A` of a definer `Q ≡ ¬A` whose `Q` occurs only in heads
+  otherwise and rewrites each complement constraint `N ∧ Q → ⊥` to
+  `N → A` (`PolarityDefiners.lean`, `run_answers`; `KM_NO_POLARITY_DEFINERS=1`
+  turns it off). The object-value case of
+  `data_value_singleton_next_to_nominal_successors` answers in 0.04 s on
+  forced `nominals` (over 60 s before). Not covered: `KM_ABSORB=1`
+  negative-only negations and `¬A` fillers of ∃ and cardinalities
+  (docs/NOMINALS-CB.md 11.2).
+- Object guard for nominal data inputs (`frontend/object_guard.rs`,
+  `ObjectGuardRestriction.lean`) so the bridge's one-sorted reading admits
+  them. Generated nominal seeds 2000-2399: 366 ok / 34 timeout / 0 wrong
+  (v1.5.4: 275 / 125).
+- Conflict-directed backjumping on the rule tableau's careful path, with
+  certificates the unchanged Lean checker accepts (fr6 150 s to 0.64 s);
+  selective join order on every rule-worker call (incremental 7278 revision
+  6 s where it did not finish in 600 s).
+
+### Data values
+
+- Native data-value reasoning: no answer depends on the 512-literal cap
+  (linear relation form above 1,024 values, object-level projection of
+  functional data properties, exact counting over finite ranges); the five
+  merge-and-count inputs answer without `DROPPED`; QUDT exact in 108 s with
+  759 subsumptions equal to HermiT's 2,340 s answer; 7610 exact
+  (inconsistent) in 55 s. `DataValueProjection.lean`,
+  `DataValueSingletonElision.lean`, `TwoSortedDL.lean`.
+- Data range corners: Boolean ranges, ordered cells per role group, a
+  decided fragment (pattern, length, digits, facets, ill-typed literals),
+  dateTime bound facets under the XSD 1.1 order with two axes and the
+  fourteen-hour rule (`DataRangeDateTime.lean`), `rdf:XMLLiteral` canonical
+  forms. Inputs KM cannot represent are published as `DROPPED` with a reason
+  or refused; none is answered approximately. ORE 13077 and 13584 answer
+  with `DROPPED 0` as in v1.5.3.
+- The bridge keeps its satisfiable expander cache when consumed value
+  singletons can never reach a label (`konclude_ht/value_singletons.rs`,
+  least fixpoint over labels and edges; audit `KM_HT_SINGLETON_INERT_AUDIT=1`;
+  argued in docs/DATATYPES.md, not Lean-proved). ORE 9027 back from a
+  240 s timeout to the v1.5.3 time.
+
+### Hypertableau
+
+- Incremental checked subset blocking: exact incremental scan; ORE 205 and
+  7499 at 0.36 and 0.35 of the v1.5.4 time. `HypertableauSubsetUnravelling.lean`
+  and `ht-subset-unravelling-check` check every mode 1/5 SAT terminal's
+  unravelling as a finite model.
+
+### Lean
+
+- New modules, all without `sorry`, standard axioms only (propext,
+  Classical.choice, Quot.sound): `RulesRouteSemantics`, `RulesRouteRefutation`,
+  `RulesRouteModel`, `RulesRouteCertificate` (executable `rules-cert-check`),
+  `RulesInertSortRelease`, `HypertableauSubsetUnravelling`,
+  `UniversalDefinerElimination`, `ExchangeCut`, `ExchangeEquality`,
+  `CBPredResolving`, `PolarityDefiners`, `ObjectGuardRestriction`,
+  `DataValueProjection`, `DataValueSingletonElision`, `TwoSortedDL`,
+  `DataAboxOmission`, `DataRangeDateTime`.
+- Checkers-on suite (`docs/CHECKERS-ON.md`): `KM_LEAN_CHECKERS=<dir>` runs
+  every applicable checker on the classification route, logs each verdict
+  and exits 6 with no answer on any rejection; 105 checkers inventoried;
+  1,781 inputs run with checkers on (0 answer changes, 0 wrong against
+  HermiT); certificate defects found by the suite fixed
+  (`fix/v155-certificate-defects`, 26 commits). `lean/run-checker-tests.sh`
+  runs the 22 CI-skipped checker tests.
+- Five production gates (`elc`, `routing`, `ht`, `cb`, `rules`) run from
+  the exact tag (receipts in `build-completion.json`).
+
+### Performance
+
+- Held-out half (585 inputs, same day, v1.5.3 protocol, PGO binary `a2caa940…`): 562 verified against 560 for v1.5.3, no loss, gained `ore_ont_4567` and `ore_ont_8148`; mean ratio 0.944 and median 1.014 against v1.5.3 on the 560 common inputs (bound 1.10). Against the same-day Konclude run: 562 against 575 solved, and KM slower in mean (4.29 s against 2.32 s) and median (0.205 s against 0.176 s) on 559 common inputs; this clause of S1 is not met, which is why the candidate is not released (`docs/V1.5.5-ACCEPTANCE.md`).
+- Full regression pool: 1,671 of 1,708 admitted inputs verified (v1.5.3: 1,662), no loss, nine gained, no wrong answer.
+- ORE 205 and 7499 at about a third of the v1.5.4 time; 7278 and 3726 from 31 s to 9.3 s; 9027 back from a 240 s timeout to 40 s; 13077 and 13584 answer with `DROPPED 0` again.
+
+### Known limits
+
+- Cheaper exact R2 for ground equalities: 36 random seeds and fr248 time out
+  at 60 s on forced `nominals` (exact, no answer); the automatic route
+  answers 3,795 of 4,000 random seeds within 10 s.
+- B2 layer 2 of the CB closure component checkers (`set=all`) is not
+  mechanised; the default route runs no checker.
+- The bridge's clause translation (`KM_NO_SOURCE_TBOX=1`, diagnostic only)
+  misses `≤2` when a predecessor must be counted.
+- The value-singleton inertness gate and the frontend passes outside the
+  Lean clause language are argued, not proved (`docs/DATATYPES.md`,
+  `docs/NOMINALS-CB.md`).
+
 ## [1.5.4] - 2026-10-30
 
 ### General routing policy

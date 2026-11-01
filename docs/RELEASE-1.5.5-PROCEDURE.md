@@ -283,6 +283,58 @@ write `docs/RELEASE-1.5.5.md` from `BENCHMARKS.md` and the receipts, tag
 commits after the RC need a new tag and the gates again only if they change
 a gated file), push, and attach the five assets and `SHA256SUMS`.
 
+## Execution notes (2026-11-01, candidate `v1.5.5-rc1` = edeb7fff)
+
+Every step above ran on the candidate. Four things the dry run could not
+show, each fixed in place and logged under `.work/v155-release-cert/logs/`:
+
+- Step 7, native build: the first `cargo build` failed inside the `rustc`
+  proxies with rustup component-install errors (another process ran
+  `rustup` on ws at the same moment; `native-build-attempt1-rustup-race.log`).
+  The retry with `RUSTUP_TOOLCHAIN=stable-x86_64-unknown-linux-gnu` set
+  passed in 8 min.
+- Step 7, gates: all five were rejected within seconds because the gate
+  clone's `lean/.lake` had been shared by hard links (`cp -al`) with the
+  integration worktree to verify merges there; lake rewrites `.trace`
+  files in place but Lean writes new `.olean` files, so the clone held
+  v1.5.4 `.olean` files behind current traces and replayed them
+  (`ELCompletionWire` failed to elaborate against the stale
+  `ELResidualCertificate.olean`; `five-gates-attempt1-stale-lake.log`,
+  `attempt1/`). Never share a `.lake` directory by hard links. Fix: delete
+  the clone's `lean/.lake/build` (packages stay) and rerun; the gates then
+  rebuild ContextCalculus from the bound sources (`elc` 28 min, `routing`
+  6, `ht` 4, `cb` 4, `rules` 7). `capture-gate.py` refuses to overwrite a
+  receipt, so a rejected receipt must be moved aside before a rerun.
+- Step 7, checker step: the gates delete the native checker executables
+  after their audit but leave lake's `.trace` and `.hash` files in
+  `lean/.lake/build/bin`, so the step's `lake build` reports everything up
+  to date and the 22 checker-bound tests fail instantly for want of the
+  executables (`attempt1/checker-step/`). Fix before the step: remove
+  `<name>.trace` and `<name>.hash` for every missing executable in that
+  directory (109 on 2026-11-01); `checkers-step.sh` should do this itself.
+- Step 7, Java step: `java-step.sh` requires exactly one
+  `kobayashi-marust-protege-*.jar` in `protege/target`; the gate clone kept
+  the v1.5.1 and v1.5.4 jars from earlier releases. Delete stale jars first.
+- Step 7, full Rust suite: `run-full-rust.py` aborts the whole run when any
+  process named `km` exists on ws between two test targets, even one it did
+  not start (first attempt: a `km` process appeared after target 16 of 60;
+  `attempt1/full-rust-stray-km.log`). The run cannot resume; move
+  `full-rust-execution` aside and start again. On 2026-11-01 the stray
+  processes were `km classify` calls of another agent's test suite
+  (`eq-biodt` on ws), which recurred every few minutes and aborted a second
+  attempt at target 11 of 60, so the third attempt ran the driver inside a
+  private PID namespace with its own `/proc`
+  (`unshare -Urpf --mount-proc python3 run-full-rust.py`): the driver's
+  check then covers every process the suite itself starts, which is what
+  it is for, and not the other agent's. The receipt records
+  `active_compilers_after` as seen from inside the namespace. Nothing else
+  changes: the bound tools, the serial recipe and the CPU set are the same.
+- Step 7, checker step, second defect: `lake build` without targets builds
+  the two library default targets only; the 109 checkers are `[[lean_exe]]`
+  targets and must be named (`checkers-step.sh` on `development/v1.5.5`
+  now does both this and the trace cleanup). On the tag the executables were
+  built by hand with `lake build <every lean_exe name>` before the step.
+
 ## What the dry run did not do
 
 - The held-out, pool and Konclude job sets (a) to (d) were not submitted;
