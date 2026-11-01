@@ -118,7 +118,7 @@ impl CalculationAlgorithmContext {
     pub fn raise_stop(&mut self, task_completed: bool) {
         // Diagnostic only (`KM_HT_STOP_TRACE=1`): name the site that stops an
         // unfinished task, which the bridge otherwise reports as a bare defer.
-        if !task_completed && std::env::var_os("KM_HT_STOP_TRACE").is_some() {
+        if !task_completed && super::stop_trace_enabled() {
             eprintln!("HT-STOP incomplete at {}", std::panic::Location::caller());
         }
         self.pending_signal = CalcSignal::Stop { task_completed };

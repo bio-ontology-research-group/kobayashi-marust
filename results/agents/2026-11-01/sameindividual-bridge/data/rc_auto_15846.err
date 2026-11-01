@@ -1,0 +1,12 @@
+KM_TIMING mark: second source check done
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING ABox quotient item declined: SubObjectPropertyOf Iri("<http://purl.obolibrary.org/obo/RO_0001000>") Word("owl:topObjectProperty")
+KM_TIMING ABox quotient not built: site 5
+KM_TIMING ABox quotient not built: site 3
+KM_TIMING mirror-route: declined by lexical prefilter: bytes=40243912 complements_below=0
+KM_TIMING in-process frontend declined by the exact-EL screen: bytes=40243912 screen=0.00s
+KM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false
+KM_TIMING frontend done @ 5.56s route=certified_nominals
+native ABox conversion declined: SameIndividual requires equality merging not implemented by the native HT bridge
+KM_TIMING race: HT not routable @ 1.59s after the CB stack started

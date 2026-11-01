@@ -1315,6 +1315,27 @@ the worker):
    call (`native_completion_same_individual_index`,
    `native_completion_assertion_journal`); the visited assertions, their
    order, and the failure cases are unchanged.
+3. The saturation writer (`write_native_abox_representative_cache`)
+   replayed every seed's assertion journal, with a copy of the super-role
+   list per assertion, once per association: 130 s of 10838's run. The
+   journal is now resolved once per call
+   (`native_saturation_assertion_journal`); its targets are sets, so the
+   result is unchanged. 10838's saturation drops to 0.6 s.
+4. Left: on the conditional-full schedule the first 1,700 subject probes of
+   10838 cost 0.15 s each, mostly in
+   `get_anywhere_blocking_individual_node_canidate_hashed` and its backward
+   scan over the retained graph's positive node ids, which copies nodes
+   (`ProcessContext::node_mut`).
+
+With the three switches (`KM_HT_ADMIT_SAME=1 KM_HT_AUTOMAT_REST_LINK=1
+KM_HT_CONDITIONAL_FULL_LIMIT=1000000`) and the index fixes, the bridge
+answers 16315 in 131 s on ws (2.3 GiB peak) with Konclude's reference
+taxonomy; 10838, 3087, 7557 and 15846 finish consistency in 22 to 30 s and
+time out in the probes (cost 4); 10926 (no equality) needs about 470 s at
+the measured probe rate. Without the switches nothing changes for these
+inputs. The index fixes change no output on the 112 nominal ORE inputs of
+the design half and the 66 small equality inputs (identical signatures,
+time ratio 0.97 and 1.01 against a non-PGO base build).
 
 Not done. The bridge has no exact large-ABox schedule that finishes these
 inputs. The conditional-full schedule above 10,000 individuals is

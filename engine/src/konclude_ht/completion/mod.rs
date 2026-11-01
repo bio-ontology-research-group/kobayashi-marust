@@ -98,6 +98,7 @@ macro_rules! cached_completion_flag {
 
 cached_completion_flag!(bridge_progress_enabled, "KM_BRIDGE_PROGRESS");
 cached_completion_flag!(automat_rest_link_enabled, "KM_HT_AUTOMAT_REST_LINK");
+cached_completion_flag!(stop_trace_enabled, "KM_HT_STOP_TRACE");
 cached_completion_flag!(automat_rest_link_audit_enabled, "KM_HT_AUTOMAT_REST_LINK_AUDIT");
 
 /// One operand the all-successors arm adds outside a restricted link
