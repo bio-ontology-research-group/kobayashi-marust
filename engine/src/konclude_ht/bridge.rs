@@ -16325,7 +16325,16 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             // stayed isolated from the retained graph. Otherwise the subject
             // runs exactly as before, on the resuming base.
             let mut screened = None;
-            if cleared_queue_screen && bridged.retained_base_resumes_fork.get() {
+            // The screen costs a second job whenever it is rejected. Stop
+            // screening once it has proved useless on this input: at least
+            // 512 rejections and fewer than one acceptance per four
+            // rejections. Scheduling only; every answer still comes from an
+            // accepted screen or from the unchanged resuming job.
+            let screen_useful = {
+                let (accepted, rejected) = cleared_queue_screen_counts.get();
+                rejected < 512 || accepted * 4 >= rejected
+            };
+            if cleared_queue_screen && screen_useful && bridged.retained_base_resumes_fork.get() {
                 cleared_queue_job.set(true);
                 let restored = renew(algo, ctx, false);
                 cleared_queue_job.set(false);

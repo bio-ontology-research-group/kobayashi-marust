@@ -1262,7 +1262,11 @@ is isolated from the retained graph (`cleared_queue_job_isolated`):
 - no branch point was opened on a retained node, and
 - no node of the job is blocked by a retained node.
 
-Otherwise the subject runs exactly as before on the resuming base.
+Otherwise the subject runs exactly as before on the resuming base. A
+rejected screen costs a second job, so the driver stops screening an input
+once at least 512 screens were rejected and fewer than one in five was
+accepted (the subject order puts ABox-touching subjects first on 3917, so a
+short window would switch the screen off before the first acceptance).
 `KM_BRIDGE_NO_CLEARED_QUEUE_SCREEN=1` disables the screen.
 
 **Exactness.** The input is consistent (the base exists only after a
