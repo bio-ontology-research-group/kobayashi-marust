@@ -2079,6 +2079,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         cache: &mut SingletonLabelCache,
     ) -> bool {
         let mut merged_any = false;
+        if crate::konclude_ht::value_singletons::audit_enabled() {
+            crate::konclude_ht::value_singletons::audit_labels(calc_alg_context, &self.phantom_node_intervals);
+        }
         // Diagnostic scheduling alternative: after the first mutation, use
         // the existing exact per-concept scan instead of rebuilding every
         // singleton's index after each merge. Both paths select the first two

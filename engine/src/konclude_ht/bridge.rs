@@ -3044,6 +3044,13 @@ pub struct Bridged {
     /// Implications with no positive concept trigger, attached to the
     /// ontology TOP concept (scanned by EVERY node).
     pub top_attached: usize,
+    /// Of `top_attached`, the exact fallbacks `¬body ∨ head` whose head is
+    /// not gated by any trigger of the body: a structural-left source axiom
+    /// that neither unfolds nor absorbs, and a clause over resolved markers.
+    /// Every node may choose `head` on a branch, so a label analysis that
+    /// gates heads by their bodies (`value_singletons::label_reach`) is not
+    /// an over-approximation when this is non-zero.
+    pub unguarded_top_gcis: usize,
     /// Singleton concepts (`C(x) ∧ C(y) → x = y` clause shape — datatype
     /// value identity): consumed by the kernel's deterministic
     /// scan-at-fixpoint merge; must be installed on every probe algorithm.
@@ -4660,6 +4667,11 @@ enum SourceEncoding {
     RoleLink,
     AbsorbedGci,
     TopGci,
+    /// `¬left ∨ right` on TOP for a structural left side that neither
+    /// unfolds nor absorbs: every node may choose `right` without `left`.
+    /// Counted in `Bridged::unguarded_top_gcis` (the value-singleton
+    /// inertness analysis assumes `right` is gated by `left`).
+    TopFallback,
     Unsupported,
 }
 
@@ -4818,7 +4830,7 @@ fn encode_source_subclass(
     let disjunction = b.or_of(&[(left_built.0, !left_built.1), right_built]);
     tbox.push(disjunction.0);
     top_gcis.push(disjunction.0);
-    SourceEncoding::TopGci
+    SourceEncoding::TopFallback
 }
 
 fn role_tree_trigger(
@@ -5941,6 +5953,11 @@ fn bridge_tinput_with_trigger_absorption(
     // rest go to TOP.
     let mut absorbed_pairs: Vec<(ConceptId, ConceptId)> = Vec::new();
     let mut top_gcis: Vec<ConceptId> = Vec::new();
+    // TOP-attached disjunctions whose head is not gated by their body: the
+    // structural-left fallback of `encode_source_subclass` and the resolved
+    // clause fallback (`install_resolved_top_gci`). See
+    // `Bridged::unguarded_top_gcis`.
+    let mut unguarded_top = 0usize;
     let mut trigger_caches = TriggerCaches::default();
     let mut singleton_concepts: Vec<ConceptId> = Vec::new();
     let mut unsupported = 0usize;
@@ -6485,6 +6502,10 @@ fn bridge_tinput_with_trigger_absorption(
                         SourceEncoding::RoleLink => role_links += 1,
                         SourceEncoding::AbsorbedGci => absorbed += 1,
                         SourceEncoding::TopGci => residual += 1,
+                        SourceEncoding::TopFallback => {
+                            residual += 1;
+                            unguarded_top += 1;
+                        }
                         SourceEncoding::Unsupported => source_unsupported += 1,
                     }
                 }
@@ -7153,6 +7174,7 @@ fn bridge_tinput_with_trigger_absorption(
                         continue 'clause;
                     }
                     if uses_resolved {
+                        unguarded_top += 1;
                         install_resolved_top_gci(
                             &mut b,
                             &body_ops,
@@ -7325,6 +7347,7 @@ fn bridge_tinput_with_trigger_absorption(
                     continue 'clause;
                 }
                 if uses_resolved {
+                    unguarded_top += 1;
                     install_resolved_top_gci(&mut b, &body_ops, &head_ops, &mut tbox, &mut top_gcis);
                     continue 'clause;
                 }
@@ -7493,6 +7516,7 @@ fn bridge_tinput_with_trigger_absorption(
                 ) {
                     continue 'clause;
                 }
+                unguarded_top += 1;
                 install_resolved_top_gci(&mut b, &body_x, &heads, &mut tbox, &mut top_gcis);
                 continue 'clause;
             }
@@ -7935,6 +7959,7 @@ fn bridge_tinput_with_trigger_absorption(
         unsupported,
         absorbed: absorbed_pairs.len(),
         top_attached: top_gcis.len(),
+        unguarded_top_gcis: unguarded_top,
         singleton_concepts,
         source_tbox: source_mode,
         certified_unsatisfiable,
@@ -15704,7 +15729,58 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // with a consumed singleton concept therefore run without the cache;
     // skipping it removes an optimisation only (the nodes are expanded by the
     // ordinary rules).
-    if std::env::var_os("KM_HT_NO_SAT_EXP_CACHE").is_none() && bridged.singleton_concepts.is_empty() {
+    // The gate needs a node that can carry a singleton. When the least
+    // fixpoint of `value_singletons::label_reach` proves that no probe can put
+    // any consumed singleton into a label positively, the merge rule never
+    // fires, every probe runs as it runs without the singleton, and the cache
+    // keeps its singleton-free locality argument (docs/DATATYPES.md, "Inert
+    // value singletons and the satisfiable expander cache").
+    // `label_reach` gates every head by its body; a TOP fallback disjunction
+    // lets a node choose a head without its body, so such inputs keep the
+    // 0520da9d gate.
+    let singletons_inert = !bridged.singleton_concepts.is_empty()
+        && std::env::var_os("KM_HT_NO_SINGLETON_INERT").is_none()
+        && bridged.unguarded_top_gcis == 0
+        && {
+            let singleton_set: HashSet<ConceptId> =
+                bridged.singleton_concepts.iter().copied().collect();
+            let indices: Vec<usize> = bridged
+                .named
+                .iter()
+                .enumerate()
+                .filter_map(|(i, id)| singleton_set.contains(id).then_some(i))
+                .collect();
+            let started = std::time::Instant::now();
+            let reach = super::value_singletons::value_singletons_inert(tin, &indices);
+            if std::env::var_os("KM_HT_STATS").is_some() || std::env::var_os("KM_TIMING").is_some() {
+                eprintln!(
+                    "bridge [singleton-inert] singletons={} inert={} unguarded-top-gcis={} in {:.3}s",
+                    bridged.singleton_concepts.len(),
+                    reach.is_some(),
+                    bridged.unguarded_top_gcis,
+                    started.elapsed().as_secs_f64()
+                );
+            }
+            match reach {
+                Some(reach) => {
+                    if super::value_singletons::audit_enabled() {
+                        let excluded = bridged
+                            .named
+                            .iter()
+                            .enumerate()
+                            .filter(|&(i, _)| !reach.pos[i])
+                            .map(|(_, &id)| ctx.ontology_arenas().concept(id).get_concept_tag())
+                            .collect();
+                        super::value_singletons::install_audit(excluded);
+                    }
+                    true
+                }
+                None => false,
+            }
+        };
+    if std::env::var_os("KM_HT_NO_SAT_EXP_CACHE").is_none()
+        && (bridged.singleton_concepts.is_empty() || singletons_inert)
+    {
         install_bridge_satisfiable_expander_cache(&mut ctx);
     }
     report_bridge_memory("probe-caches-installed");

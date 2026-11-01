@@ -1148,6 +1148,81 @@ asserted on `a`, `E ≡ {a}`). Unit test
 (`frontend::data_abox`). Differential runs:
 `results/agents/2026-10-31/forced-nominal-data-misses/`.
 
+### Inert value singletons keep the satisfiable expander cache (2026-11-01, agent `perf-9027`)
+
+**Defect.** Fix 2 above turned the satisfiable expander cache off for every
+input whose bridge consumes a value singleton. ore_ont_9027 (NCI Thesaurus,
+33,505 individuals, 105,658 subjects on `certified_nominals`) has two, the
+`xsd:boolean` cover `true ⊔ false` of its data property ranges, but its 23
+data properties occur only in `DataPropertyDomain`, `DataPropertyRange` and
+`FunctionalDataProperty`. No construct creates a data successor, so no node
+of any probe ever carries a value, yet every subject ran without the cache:
+0.17 s per subject against 1.5 ms, 250 s (timeout) on ws against 32 s for
+v1.5.3. The preview lost the input on S1.
+
+**Fix.** `konclude_ht/value_singletons.rs` computes a least fixpoint over the
+bridge input: `pos[c]`/`neg[c]` (concept `c`, or `¬c`, may occur in some
+label) and `edge[r]` (some node may have an `r`-edge). Seeds: every query
+positively and negatively (probe subject and candidate subsumer), every
+nominal proxy, native and source ABox assertions and role assertions. Rules:
+a clause fires when every positive body concept may hold and every body role
+may have an edge, and adds its head (a role or existential head adds the
+edge, an equality head lets the choose rule add the filler of a counted
+successor in both polarities); a source axiom `L ⊑ R` is `⊤ ⊑ ¬L ⊔ R` in
+negation normal form, so `L` is visited negatively and `R` positively once
+`L` may hold, equivalences in both polarities and disjointness negatively; a
+visited `∃r.f` or `≥n r.f` (and `¬∀`, `¬≤n`) adds the edge, a visited
+`∀r.f` or `≤n r.f` (and `¬∃`, `¬≥n`) reaches `f` only once `r` may have an
+edge; a definer marker that may occur is replaced by its definition in that
+polarity (the bridge substitutes definitions for markers); cardinality
+markers, role domains and ranges and role chains likewise. Inputs with
+rules, fenced clauses or the universal role are not analysed. When no
+consumed singleton is in `pos`, the bridge installs the cache; otherwise
+fix 2 applies unchanged. On 9027 the fixpoint takes 0.2 s and leaves every
+data role edgeless.
+
+**Exactness.** The rules over-approximate every way the bridge puts a
+concept into a label or creates an edge, so a singleton outside `pos` is in
+no label of any probe. The singleton merge (u02) fires only on two positive
+carriers, so it never fires: each probe performs the same derivations as with
+an empty `singleton_concepts`, the configuration in which the cache was
+trusted before fix 2 and whose locality argument the singleton broke. The
+change neither adds nor drops a rule; it reinstalls an optimisation exactly
+where the reason for removing it cannot arise. `KM_HT_SINGLETON_INERT_AUDIT=1`
+checks the claim at run time: every singleton fixpoint scan also verifies
+that no label holds a positive concept outside `pos`, and exits with status
+97 otherwise. `KM_HT_NO_SINGLETON_INERT=1` restores the gate of fix 2.
+
+Two refinements from the supervisor's review (2026-11-01). The rules gate a
+head by its body, which is what the bridge's unfoldings and full or partial
+absorptions do; two native encodings do not. (a) The exact fallback for a
+source axiom whose structural left side neither unfolds nor absorbs, and the
+resolved-marker clause fallback, attach `¬body ∨ head` to TOP, where any
+node may choose `head` on a branch without `body`. The bridge now counts
+these (`Bridged::unguarded_top_gcis`, `SourceEncoding::TopFallback`) and the
+cache is installed only when the count is zero. (b) Partial absorption gates
+the preserved GCI by the triggers of the conjuncts that have one; a
+restriction without a partial trigger (no inverse role, or an untriggerable
+filler) drops out of the gate. `may_hold` therefore treats every conjunct
+other than a name, a conjunction or a disjunction as possibly holding, so
+`∃r.f ⊑ R` visits `R` whether or not `r` may have an edge. On 9027 neither
+refinement changes the verdict (no unguarded TOP disjunction, no data
+existential on a right side).
+
+**Lean obligation.** None new for the calculus: the bridge has no Lean model
+(HYBRID-CB-HT.md section 10) and the change only decides when an existing
+optimisation is used. What the Rust code relies on, and what is not proved,
+is that the fixpoint rules cover every label and edge source of the bridge
+(the audit checks it on the runs below, it does not prove it).
+
+**Runs.** results/agents/2026-11-01/perf-9027/. With the audit on, 9027 and
+the data differential pools (probes, fixtures, top-nominal-data, 400
+nominal-coverage seeds, 300 r3 and 400 r1600 seeds with data) give no wrong
+answer and no audit violation; 12 of the 296 survey inputs that reach the
+bridge with a singleton are proved inert, all agree with HermiT, and every
+`native_data_values` fixture with a singleton keeps the gate. 9027 takes
+32.6 s against 32.3 s for v1.5.3 on ws (mean of seven pairs).
+
 ## Open corners (status 2026-10-30, after `data-values-3`)
 
 Every corner now has one of two behaviours: an exact answer, or an input

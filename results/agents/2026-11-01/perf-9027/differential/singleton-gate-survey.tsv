@@ -1,0 +1,569 @@
+v1all.ofn	none
+v1neg.ofn	none
+v1.ofn	none
+v2.ofn	none
+v3.ofn	none
+v4.ofn	none
+v5b.ofn	singleton-inert] singletons=2 inert=false
+v5c.ofn	singleton-inert] singletons=2 inert=false
+v5d.ofn	singleton-inert] singletons=2 inert=false
+v5e.ofn	singleton-inert] singletons=2 inert=false
+v5g.ofn	singleton-inert] singletons=2 inert=false
+v5.ofn	singleton-inert] singletons=2 inert=false
+v6.ofn	none
+v7.ofn	none
+atleast_two_shared.ofn	singleton-inert] singletons=2 inert=false
+atleast_two_shared-pad.ofn	singleton-inert] singletons=2 inert=false
+count_byte.ofn	none
+count_byte-pad.ofn	none
+count_finite_range.ofn	none
+count_finite_range-pad.ofn	none
+count_float_point.ofn	singleton-inert] singletons=2 inert=false
+count_float_point-pad.ofn	none
+count_with_assertions.ofn	none
+count_with_assertions_ok.ofn	none
+count_with_assertions_ok-pad.ofn	none
+count_with_assertions-pad.ofn	none
+disjoint_data_properties.ofn	none
+disjoint_data_properties_ok.ofn	singleton-inert] singletons=2 inert=false
+disjoint_data_properties_ok-pad.ofn	singleton-inert] singletons=2 inert=false
+disjoint_data_properties-pad.ofn	none
+facet_exists.ofn	none
+facet_exists-pad.ofn	none
+functional_merge_clash.ofn	none
+functional_merge_clash-pad.ofn	none
+functional_merge_equal.ofn	singleton-inert] singletons=2 inert=false
+functional_merge_equal-pad.ofn	none
+functional_two_values.ofn	none
+functional_two_values-pad.ofn	none
+hasvalue_nominal.ofn	singleton-inert] singletons=2 inert=false
+hasvalue_nominal-pad.ofn	none
+inverse_functional_merge.ofn	none
+inverse_functional_merge-pad.ofn	none
+negative_assertion.ofn	none
+negative_assertion-pad.ofn	none
+qualified_atmost.ofn	none
+qualified_atmost_ok.ofn	none
+qualified_atmost_ok-pad.ofn	none
+qualified_atmost-pad.ofn	none
+range_clash.ofn	none
+range_clash-pad.ofn	none
+subproperty_functional.ofn	none
+subproperty_functional-pad.ofn	none
+max2_three_K.ofn	none
+min2.ofn	singleton-inert] singletons=2 inert=false
+m2000.ofn	none
+m2016.ofn	singleton-inert] singletons=1 inert=false
+m2024.ofn	singleton-inert] singletons=1 inert=false
+m2030.ofn	none
+m2043.ofn	none
+m2045.ofn	singleton-inert] singletons=1 inert=false
+m2048.ofn	none
+m2051.ofn	singleton-inert] singletons=1 inert=false
+m2058.ofn	singleton-inert] singletons=1 inert=false
+m2061.ofn	singleton-inert] singletons=2 inert=false
+m2067.ofn	none
+m2075.ofn	none
+m2083.ofn	none
+m2090.ofn	none
+m2097.ofn	none
+m2102.ofn	none
+m2103.ofn	none
+m2105.ofn	none
+m2107.ofn	none
+m2112.ofn	none
+m2127.ofn	none
+m2137.ofn	singleton-inert] singletons=1 inert=false
+m2162.ofn	singleton-inert] singletons=1 inert=false
+m2171.ofn	singleton-inert] singletons=1 inert=false
+m2180.ofn	none
+m2181.ofn	none
+m2182.ofn	none
+m2184.ofn	none
+m2185.ofn	none
+m2196.ofn	singleton-inert] singletons=1 inert=false
+m2197.ofn	none
+m2204.ofn	none
+m2207.ofn	none
+m2208.ofn	none
+m2218.ofn	none
+m2222.ofn	none
+m2237.ofn	none
+m2238.ofn	none
+m2247.ofn	none
+m2259.ofn	none
+m2266.ofn	none
+m2269.ofn	none
+m2278.ofn	none
+m2284.ofn	none
+m2290.ofn	none
+m2313.ofn	none
+m2328.ofn	none
+m2333.ofn	none
+m2345.ofn	none
+m2347.ofn	none
+m2353.ofn	singleton-inert] singletons=1 inert=false
+m2360.ofn	none
+m2362.ofn	none
+m2372.ofn	none
+m2374.ofn	singleton-inert] singletons=2 inert=false
+m2381.ofn	none
+m2391.ofn	none
+m7003.ofn	none
+m7022.ofn	none
+m7025.ofn	singleton-inert] singletons=1 inert=false
+m7045.ofn	none
+m7048.ofn	singleton-inert] singletons=1 inert=false
+m7067.ofn	singleton-inert] singletons=1 inert=false
+m7072.ofn	singleton-inert] singletons=1 inert=false
+m7073.ofn	none
+m7074.ofn	none
+m7078.ofn	none
+m7087.ofn	singleton-inert] singletons=1 inert=false
+m7100.ofn	none
+m7101.ofn	singleton-inert] singletons=2 inert=false
+m7106.ofn	none
+m7109.ofn	none
+m7122.ofn	none
+m7128.ofn	none
+m7130.ofn	none
+m7142.ofn	none
+m7154.ofn	singleton-inert] singletons=1 inert=false
+m7160.ofn	none
+m7166.ofn	none
+m7167.ofn	singleton-inert] singletons=1 inert=false
+m7170.ofn	none
+m7174.ofn	none
+m7178.ofn	none
+m7181.ofn	none
+m7192.ofn	none
+atleast_two_shared.ofn	singleton-inert] singletons=2 inert=false
+count_boolean_pigeonhole.ofn	singleton-inert] singletons=2 inert=false
+count_byte.ofn	none
+count_finite_range.ofn	none
+count_float_point.ofn	singleton-inert] singletons=2 inert=false
+count_nominal_pigeonhole.ofn	singleton-inert] singletons=2 inert=false
+count_with_assertions.ofn	none
+count_with_assertions_ok.ofn	none
+disjoint_data_properties.ofn	none
+disjoint_data_properties_ok.ofn	singleton-inert] singletons=2 inert=false
+facet_exists.ofn	none
+functional_merge_clash.ofn	none
+functional_merge_equal.ofn	singleton-inert] singletons=2 inert=false
+functional_two_values.ofn	none
+hasvalue_nominal.ofn	singleton-inert] singletons=2 inert=false
+inverse_functional_merge.ofn	none
+negative_assertion.ofn	none
+opaque_merge_keep.ofn	none
+opaque_merge.ofn	none
+opaque_merge_tbox_keep.ofn	none
+opaque_merge_tbox.ofn	none
+opaque_single.ofn	none
+qualified_atmost.ofn	none
+qualified_atmost_ok.ofn	none
+range_clash.ofn	none
+range_exhaust8.ofn	none
+range_exhaust_keep.ofn	none
+range_exhaust.ofn	none
+range_exhaust_tbox.ofn	singleton-inert] singletons=9 inert=false
+subproperty_functional.ofn	none
+m2000.ofn	none
+m2001.ofn	singleton-inert] singletons=4 inert=false
+m2002.ofn	singleton-inert] singletons=3 inert=false
+m2003.ofn	singleton-inert] singletons=2 inert=false
+m2004.ofn	none
+m2005.ofn	singleton-inert] singletons=4 inert=false
+m2006.ofn	none
+m2007.ofn	singleton-inert] singletons=2 inert=false
+m2008.ofn	none
+m2009.ofn	none
+m2010.ofn	singleton-inert] singletons=2 inert=true
+m2011.ofn	none
+m2012.ofn	singleton-inert] singletons=2 inert=false
+m2013.ofn	singleton-inert] singletons=2 inert=false
+m2014.ofn	singleton-inert] singletons=1 inert=false
+m2015.ofn	singleton-inert] singletons=3 inert=false
+m2016.ofn	singleton-inert] singletons=1 inert=false
+m2017.ofn	singleton-inert] singletons=2 inert=false
+m2018.ofn	singleton-inert] singletons=4 inert=false
+m2019.ofn	singleton-inert] singletons=4 inert=false
+m2020.ofn	singleton-inert] singletons=2 inert=false
+m2021.ofn	none
+m2022.ofn	singleton-inert] singletons=4 inert=false
+m2023.ofn	none
+m2024.ofn	singleton-inert] singletons=1 inert=false
+m2025.ofn	none
+m2026.ofn	singleton-inert] singletons=1 inert=false
+m2027.ofn	singleton-inert] singletons=2 inert=false
+m2028.ofn	singleton-inert] singletons=2 inert=false
+m2029.ofn	singleton-inert] singletons=2 inert=false
+m2030.ofn	none
+m2031.ofn	singleton-inert] singletons=1 inert=false
+m2032.ofn	none
+m2033.ofn	singleton-inert] singletons=1 inert=false
+m2034.ofn	singleton-inert] singletons=3 inert=false
+m2035.ofn	singleton-inert] singletons=1 inert=false
+m2036.ofn	singleton-inert] singletons=1 inert=true
+m2037.ofn	none
+m2038.ofn	singleton-inert] singletons=1 inert=false
+m2039.ofn	singleton-inert] singletons=2 inert=false
+m2040.ofn	singleton-inert] singletons=3 inert=false
+m2041.ofn	singleton-inert] singletons=1 inert=false
+m2042.ofn	singleton-inert] singletons=2 inert=false
+m2043.ofn	none
+m2044.ofn	singleton-inert] singletons=1 inert=false
+m2045.ofn	singleton-inert] singletons=1 inert=false
+m2046.ofn	singleton-inert] singletons=3 inert=false
+m2047.ofn	none
+m2048.ofn	none
+m2049.ofn	none
+m2050.ofn	singleton-inert] singletons=5 inert=false
+m2051.ofn	singleton-inert] singletons=1 inert=false
+m2052.ofn	none
+m2053.ofn	none
+m2054.ofn	none
+m2055.ofn	singleton-inert] singletons=2 inert=false
+m2056.ofn	singleton-inert] singletons=2 inert=false
+m2057.ofn	singleton-inert] singletons=2 inert=false
+m2058.ofn	singleton-inert] singletons=1 inert=false
+m2059.ofn	singleton-inert] singletons=3 inert=false
+m2060.ofn	none
+m2061.ofn	singleton-inert] singletons=2 inert=false
+m2062.ofn	singleton-inert] singletons=2 inert=false
+m2063.ofn	singleton-inert] singletons=1 inert=false
+m2064.ofn	singleton-inert] singletons=2 inert=false
+m2065.ofn	none
+m2066.ofn	singleton-inert] singletons=2 inert=false
+m2067.ofn	none
+m2068.ofn	singleton-inert] singletons=3 inert=false
+m2069.ofn	singleton-inert] singletons=2 inert=false
+m2070.ofn	singleton-inert] singletons=1 inert=false
+m2071.ofn	singleton-inert] singletons=1 inert=false
+m2072.ofn	none
+m2073.ofn	none
+m2074.ofn	none
+m2075.ofn	none
+m2076.ofn	none
+m2077.ofn	none
+m2078.ofn	singleton-inert] singletons=1 inert=false
+m2079.ofn	singleton-inert] singletons=2 inert=false
+m2080.ofn	singleton-inert] singletons=3 inert=false
+m2081.ofn	singleton-inert] singletons=1 inert=false
+m2082.ofn	none
+m2083.ofn	none
+m2084.ofn	none
+m2085.ofn	singleton-inert] singletons=2 inert=false
+m2086.ofn	none
+m2087.ofn	singleton-inert] singletons=4 inert=false
+m2088.ofn	singleton-inert] singletons=3 inert=false
+m2089.ofn	singleton-inert] singletons=2 inert=false
+m2090.ofn	none
+m2091.ofn	none
+m2092.ofn	singleton-inert] singletons=3 inert=false
+m2093.ofn	singleton-inert] singletons=1 inert=true
+m2094.ofn	none
+m2095.ofn	none
+m2096.ofn	singleton-inert] singletons=2 inert=false
+m2097.ofn	none
+m2098.ofn	singleton-inert] singletons=2 inert=false
+m2099.ofn	singleton-inert] singletons=2 inert=false
+m2100.ofn	singleton-inert] singletons=1 inert=true
+m2101.ofn	none
+m2102.ofn	none
+m2103.ofn	none
+m2104.ofn	singleton-inert] singletons=3 inert=false
+m2105.ofn	none
+m2106.ofn	singleton-inert] singletons=3 inert=false
+m2107.ofn	none
+m2108.ofn	singleton-inert] singletons=2 inert=false
+m2109.ofn	singleton-inert] singletons=1 inert=false
+m2110.ofn	singleton-inert] singletons=2 inert=false
+m2111.ofn	none
+m2112.ofn	none
+m2113.ofn	singleton-inert] singletons=2 inert=false
+m2114.ofn	singleton-inert] singletons=1 inert=false
+m2115.ofn	none
+m2116.ofn	singleton-inert] singletons=3 inert=false
+m2117.ofn	singleton-inert] singletons=2 inert=false
+m2118.ofn	none
+m2119.ofn	singleton-inert] singletons=5 inert=false
+m2120.ofn	singleton-inert] singletons=3 inert=false
+m2121.ofn	singleton-inert] singletons=1 inert=false
+m2122.ofn	singleton-inert] singletons=2 inert=false
+m2123.ofn	none
+m2124.ofn	singleton-inert] singletons=1 inert=false
+m2125.ofn	singleton-inert] singletons=4 inert=false
+m2126.ofn	singleton-inert] singletons=2 inert=false
+m2127.ofn	none
+m2128.ofn	singleton-inert] singletons=1 inert=true
+m2129.ofn	singleton-inert] singletons=2 inert=false
+m2130.ofn	none
+m2131.ofn	none
+m2132.ofn	none
+m2133.ofn	singleton-inert] singletons=2 inert=false
+m2134.ofn	none
+m2135.ofn	none
+m2136.ofn	singleton-inert] singletons=2 inert=false
+m2137.ofn	singleton-inert] singletons=1 inert=false
+m2138.ofn	none
+m2139.ofn	singleton-inert] singletons=1 inert=false
+m2140.ofn	none
+m2141.ofn	none
+m2142.ofn	singleton-inert] singletons=3 inert=false
+m2143.ofn	singleton-inert] singletons=1 inert=false
+m2144.ofn	singleton-inert] singletons=2 inert=false
+m2145.ofn	singleton-inert] singletons=1 inert=false
+m2146.ofn	singleton-inert] singletons=2 inert=false
+m2147.ofn	singleton-inert] singletons=1 inert=false
+m2148.ofn	singleton-inert] singletons=4 inert=false
+m2149.ofn	singleton-inert] singletons=3 inert=false
+m2150.ofn	singleton-inert] singletons=3 inert=false
+m2151.ofn	singleton-inert] singletons=3 inert=false
+m2152.ofn	singleton-inert] singletons=2 inert=false
+m2153.ofn	none
+m2154.ofn	none
+m2155.ofn	singleton-inert] singletons=2 inert=false
+m2156.ofn	none
+m2157.ofn	none
+m2158.ofn	singleton-inert] singletons=4 inert=false
+m2159.ofn	singleton-inert] singletons=2 inert=false
+m2160.ofn	singleton-inert] singletons=2 inert=false
+m2161.ofn	none
+m2162.ofn	singleton-inert] singletons=1 inert=false
+m2163.ofn	singleton-inert] singletons=4 inert=false
+m2164.ofn	singleton-inert] singletons=3 inert=false
+m2165.ofn	singleton-inert] singletons=3 inert=false
+m2166.ofn	none
+m2167.ofn	singleton-inert] singletons=1 inert=false
+m2168.ofn	singleton-inert] singletons=2 inert=false
+m2169.ofn	none
+m2170.ofn	singleton-inert] singletons=2 inert=false
+m2171.ofn	singleton-inert] singletons=1 inert=false
+m2172.ofn	singleton-inert] singletons=2 inert=false
+m2173.ofn	singleton-inert] singletons=2 inert=false
+m2174.ofn	none
+m2175.ofn	singleton-inert] singletons=1 inert=false
+m2176.ofn	singleton-inert] singletons=1 inert=false
+m2177.ofn	none
+m2178.ofn	singleton-inert] singletons=2 inert=false
+m2179.ofn	singleton-inert] singletons=1 inert=true
+m2180.ofn	none
+m2181.ofn	none
+m2182.ofn	none
+m2183.ofn	singleton-inert] singletons=2 inert=false
+m2184.ofn	none
+m2185.ofn	none
+m2186.ofn	singleton-inert] singletons=2 inert=false
+m2187.ofn	singleton-inert] singletons=2 inert=false
+m2188.ofn	singleton-inert] singletons=3 inert=false
+m2189.ofn	singleton-inert] singletons=3 inert=false
+m2190.ofn	singleton-inert] singletons=2 inert=false
+m2191.ofn	none
+m2192.ofn	singleton-inert] singletons=2 inert=false
+m2193.ofn	singleton-inert] singletons=2 inert=false
+m2194.ofn	singleton-inert] singletons=2 inert=false
+m2195.ofn	none
+m2196.ofn	singleton-inert] singletons=1 inert=false
+m2197.ofn	none
+m2198.ofn	singleton-inert] singletons=2 inert=false
+m2199.ofn	singleton-inert] singletons=2 inert=false
+m2200.ofn	singleton-inert] singletons=2 inert=false
+m2201.ofn	singleton-inert] singletons=1 inert=false
+m2202.ofn	singleton-inert] singletons=2 inert=false
+m2203.ofn	singleton-inert] singletons=1 inert=false
+m2204.ofn	none
+m2205.ofn	none
+m2206.ofn	singleton-inert] singletons=1 inert=false
+m2207.ofn	none
+m2208.ofn	none
+m2209.ofn	singleton-inert] singletons=3 inert=false
+m2210.ofn	singleton-inert] singletons=4 inert=false
+m2211.ofn	none
+m2212.ofn	singleton-inert] singletons=1 inert=false
+m2213.ofn	singleton-inert] singletons=4 inert=false
+m2214.ofn	singleton-inert] singletons=2 inert=false
+m2215.ofn	singleton-inert] singletons=2 inert=true
+m2216.ofn	singleton-inert] singletons=3 inert=false
+m2217.ofn	singleton-inert] singletons=1 inert=true
+m2218.ofn	none
+m2219.ofn	none
+m2220.ofn	none
+m2221.ofn	singleton-inert] singletons=5 inert=false
+m2222.ofn	none
+m2223.ofn	none
+m2224.ofn	singleton-inert] singletons=2 inert=false
+m2225.ofn	singleton-inert] singletons=3 inert=false
+m2226.ofn	singleton-inert] singletons=1 inert=false
+m2227.ofn	none
+m2228.ofn	none
+m2229.ofn	singleton-inert] singletons=3 inert=false
+m2230.ofn	none
+m2231.ofn	singleton-inert] singletons=2 inert=false
+m2232.ofn	singleton-inert] singletons=2 inert=false
+m2233.ofn	singleton-inert] singletons=2 inert=false
+m2234.ofn	singleton-inert] singletons=1 inert=false
+m2235.ofn	none
+m2236.ofn	none
+m2237.ofn	none
+m2238.ofn	none
+m2239.ofn	singleton-inert] singletons=2 inert=false
+m2240.ofn	singleton-inert] singletons=1 inert=false
+m2241.ofn	singleton-inert] singletons=1 inert=false
+m2242.ofn	none
+m2243.ofn	singleton-inert] singletons=1 inert=false
+m2244.ofn	none
+m2245.ofn	singleton-inert] singletons=1 inert=false
+m2246.ofn	singleton-inert] singletons=1 inert=false
+m2247.ofn	none
+m2248.ofn	singleton-inert] singletons=2 inert=false
+m2249.ofn	none
+m2250.ofn	singleton-inert] singletons=4 inert=false
+m2251.ofn	singleton-inert] singletons=2 inert=false
+m2252.ofn	none
+m2253.ofn	none
+m2254.ofn	singleton-inert] singletons=2 inert=false
+m2255.ofn	none
+m2256.ofn	singleton-inert] singletons=2 inert=false
+m2257.ofn	singleton-inert] singletons=2 inert=false
+m2258.ofn	none
+m2259.ofn	none
+m2260.ofn	singleton-inert] singletons=2 inert=false
+m2261.ofn	singleton-inert] singletons=2 inert=false
+m2262.ofn	singleton-inert] singletons=3 inert=false
+m2263.ofn	none
+m2264.ofn	none
+m2265.ofn	singleton-inert] singletons=3 inert=false
+m2266.ofn	none
+m2267.ofn	singleton-inert] singletons=1 inert=false
+m2268.ofn	singleton-inert] singletons=1 inert=false
+m2269.ofn	none
+m2270.ofn	singleton-inert] singletons=2 inert=false
+m2271.ofn	singleton-inert] singletons=1 inert=false
+m2272.ofn	singleton-inert] singletons=1 inert=false
+m2273.ofn	none
+m2274.ofn	none
+m2275.ofn	singleton-inert] singletons=1 inert=true
+m2276.ofn	none
+m2277.ofn	none
+m2278.ofn	none
+m2279.ofn	singleton-inert] singletons=1 inert=false
+m2280.ofn	singleton-inert] singletons=2 inert=false
+m2281.ofn	singleton-inert] singletons=3 inert=false
+m2282.ofn	singleton-inert] singletons=1 inert=false
+m2283.ofn	singleton-inert] singletons=4 inert=false
+m2284.ofn	none
+m2285.ofn	singleton-inert] singletons=3 inert=false
+m2286.ofn	singleton-inert] singletons=5 inert=false
+m2287.ofn	none
+m2288.ofn	singleton-inert] singletons=3 inert=false
+m2289.ofn	none
+m2290.ofn	none
+m2291.ofn	singleton-inert] singletons=2 inert=false
+m2292.ofn	singleton-inert] singletons=2 inert=false
+m2293.ofn	singleton-inert] singletons=4 inert=false
+m2294.ofn	none
+m2295.ofn	singleton-inert] singletons=2 inert=false
+m2296.ofn	none
+m2297.ofn	singleton-inert] singletons=1 inert=false
+m2298.ofn	singleton-inert] singletons=2 inert=false
+m2299.ofn	singleton-inert] singletons=1 inert=true
+m2300.ofn	singleton-inert] singletons=1 inert=false
+m2301.ofn	singleton-inert] singletons=2 inert=false
+m2302.ofn	singleton-inert] singletons=1 inert=false
+m2303.ofn	singleton-inert] singletons=2 inert=false
+m2304.ofn	none
+m2305.ofn	singleton-inert] singletons=1 inert=false
+m2306.ofn	singleton-inert] singletons=2 inert=false
+m2307.ofn	none
+m2308.ofn	singleton-inert] singletons=3 inert=false
+m2309.ofn	singleton-inert] singletons=4 inert=false
+m2310.ofn	singleton-inert] singletons=2 inert=false
+m2311.ofn	singleton-inert] singletons=1 inert=false
+m2312.ofn	singleton-inert] singletons=2 inert=false
+m2313.ofn	none
+m2314.ofn	singleton-inert] singletons=1 inert=true
+m2315.ofn	singleton-inert] singletons=4 inert=false
+m2316.ofn	singleton-inert] singletons=2 inert=false
+m2317.ofn	none
+m2318.ofn	none
+m2319.ofn	singleton-inert] singletons=1 inert=false
+m2320.ofn	none
+m2321.ofn	singleton-inert] singletons=2 inert=false
+m2322.ofn	singleton-inert] singletons=2 inert=false
+m2323.ofn	singleton-inert] singletons=2 inert=false
+m2324.ofn	none
+m2325.ofn	singleton-inert] singletons=1 inert=false
+m2326.ofn	none
+m2327.ofn	singleton-inert] singletons=1 inert=false
+m2328.ofn	none
+m2329.ofn	singleton-inert] singletons=2 inert=false
+m2330.ofn	singleton-inert] singletons=2 inert=false
+m2331.ofn	none
+m2332.ofn	singleton-inert] singletons=1 inert=false
+m2333.ofn	none
+m2334.ofn	singleton-inert] singletons=2 inert=false
+m2335.ofn	none
+m2336.ofn	singleton-inert] singletons=3 inert=false
+m2337.ofn	singleton-inert] singletons=1 inert=false
+m2338.ofn	none
+m2339.ofn	singleton-inert] singletons=3 inert=false
+m2340.ofn	singleton-inert] singletons=3 inert=false
+m2341.ofn	none
+m2342.ofn	singleton-inert] singletons=3 inert=false
+m2343.ofn	singleton-inert] singletons=1 inert=false
+m2344.ofn	none
+m2345.ofn	none
+m2346.ofn	singleton-inert] singletons=3 inert=false
+m2347.ofn	none
+m2348.ofn	singleton-inert] singletons=1 inert=false
+m2349.ofn	none
+m2350.ofn	singleton-inert] singletons=3 inert=false
+m2351.ofn	none
+m2352.ofn	singleton-inert] singletons=3 inert=false
+m2353.ofn	singleton-inert] singletons=1 inert=false
+m2354.ofn	singleton-inert] singletons=1 inert=false
+m2355.ofn	singleton-inert] singletons=1 inert=false
+m2356.ofn	singleton-inert] singletons=3 inert=false
+m2357.ofn	singleton-inert] singletons=3 inert=false
+m2358.ofn	singleton-inert] singletons=1 inert=false
+m2359.ofn	none
+m2360.ofn	none
+m2361.ofn	singleton-inert] singletons=2 inert=false
+m2362.ofn	none
+m2363.ofn	none
+m2364.ofn	singleton-inert] singletons=2 inert=false
+m2365.ofn	none
+m2366.ofn	singleton-inert] singletons=3 inert=false
+m2367.ofn	singleton-inert] singletons=1 inert=false
+m2368.ofn	singleton-inert] singletons=1 inert=false
+m2369.ofn	singleton-inert] singletons=1 inert=false
+m2370.ofn	singleton-inert] singletons=4 inert=false
+m2371.ofn	none
+m2372.ofn	none
+m2373.ofn	none
+m2374.ofn	singleton-inert] singletons=2 inert=false
+m2375.ofn	singleton-inert] singletons=2 inert=false
+m2376.ofn	singleton-inert] singletons=3 inert=false
+m2377.ofn	none
+m2378.ofn	singleton-inert] singletons=2 inert=false
+m2379.ofn	singleton-inert] singletons=1 inert=false
+m2380.ofn	none
+m2381.ofn	none
+m2382.ofn	singleton-inert] singletons=2 inert=false
+m2383.ofn	singleton-inert] singletons=1 inert=false
+m2384.ofn	singleton-inert] singletons=2 inert=false
+m2385.ofn	singleton-inert] singletons=3 inert=false
+m2386.ofn	none
+m2387.ofn	singleton-inert] singletons=1 inert=true
+m2388.ofn	singleton-inert] singletons=2 inert=false
+m2389.ofn	singleton-inert] singletons=1 inert=false
+m2390.ofn	singleton-inert] singletons=2 inert=false
+m2391.ofn	none
+m2392.ofn	singleton-inert] singletons=2 inert=false
+m2393.ofn	singleton-inert] singletons=3 inert=false
+m2394.ofn	singleton-inert] singletons=2 inert=false
+m2395.ofn	singleton-inert] singletons=2 inert=false
+m2396.ofn	singleton-inert] singletons=1 inert=false
+m2397.ofn	singleton-inert] singletons=1 inert=false
+m2398.ofn	singleton-inert] singletons=2 inert=false
+m2399.ofn	singleton-inert] singletons=3 inert=false
