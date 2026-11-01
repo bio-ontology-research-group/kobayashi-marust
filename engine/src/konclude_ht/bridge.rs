@@ -8249,6 +8249,7 @@ fn verify_empty_alternative_operand(
 fn cleared_queue_job_isolated(
     algo: &CompletionTaskHandleAlgorithm,
     ctx: &CalculationAlgorithmContextBase,
+    fresh_id_start: Cint64,
 ) -> bool {
     let base = algo.retained_base_node_count;
     if base == 0
@@ -8259,9 +8260,29 @@ fn cleared_queue_job_isolated(
     }
     let pc = ctx.process_context();
     for index in base..pc.node_count() {
-        let blocker = pc.node(NodeId::new(index as Cint64)).blocker_indi_node;
+        let node = pc.node(NodeId::new(index as Cint64));
+        let blocker = node.blocker_indi_node;
         if blocker.is_some() && blocker.index() < base {
             return false;
+        }
+        // A job-local copy of a retained individual (Konclude localizes an
+        // individual into the task before changing it, so the copy has a new
+        // arena slot but the individual's old id, and the retained slot is
+        // never written), or a fresh node merged into one: the job reached
+        // the retained graph.
+        if node.individual_node_id() < fresh_id_start
+            || node.has_merged_into_individual_node_id()
+                && node.merged_into_individual_node_id() < fresh_id_start
+        {
+            return false;
+        }
+        // An edge (either direction: the successor hash also records the
+        // inverse links) to a retained individual.
+        let mut successors = pc.node_successor_iterator(NodeId::new(index as Cint64));
+        while successors.has_next() {
+            if successors.next_individual_id(true) < fresh_id_start {
+                return false;
+            }
         }
     }
     true
@@ -16368,7 +16389,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                     &empty_alternative_witnesses,
                     progress.then_some(s),
                 );
-                let isolated = attempt.is_some() && cleared_queue_job_isolated(algo, ctx);
+                let isolated = attempt.is_some() && cleared_queue_job_isolated(algo, ctx, probe_start_id);
                 if progress && !isolated {
                     let base = algo.retained_base_node_count;
                     let blocked = (base..ctx.process_context().node_count()).any(|index| {

@@ -1256,11 +1256,23 @@ true)`, which sets `retained_base_node_count` to the base size) and with the
 satisfiability cache writers off. The screen is accepted only when the job
 is isolated from the retained graph (`cleared_queue_job_isolated`):
 
-- no retained node was modified (`retained_node_modified_count`, counted in
-  `propagate_individual_node_modified`, through which every concept, link
-  and merge modification passes),
+- no retained node was modified in place (`retained_node_modified_count`,
+  counted in `propagate_individual_node_modified`, through which every
+  concept, link and merge modification passes),
+- no node of the job carries the individual id of a retained individual (the
+  port, like Konclude, LOCALIZES an individual into the task before changing
+  it: the change goes to a new arena slot with the old id and the retained
+  slot is never written, so the first test alone does not see it), is merged
+  into one, or has an edge to one (the successor hash records both
+  directions),
 - no branch point was opened on a retained node, and
 - no node of the job is blocked by a retained node.
+
+The localization rule was added after the first version of the screen,
+which tested only in-place modifications, published 249 incomplete answers
+on each route of the `bridge-nominal-merge` seed pool (g1002: `Q1 ≡ {a}`
+missed `Q1 ⊑ E`, because the subject root merged with a localized copy of
+`a`) and failed `bridge_conditional_full_replay` (cw_min4051).
 
 Otherwise the subject runs exactly as before on the resuming base. A
 rejected screen costs a second job, so the driver stops screening an input
@@ -1271,7 +1283,8 @@ short window would switch the screen off before the first acceptance).
 
 **Exactness.** The input is consistent (the base exists only after a
 successful consistency completion). An isolated screen job never added a
-concept, link or merge to a retained node and never used one as a blocker,
+concept, link or merge to a retained individual (in place or through a
+localized copy), has no edge to one and never used one as a blocker,
 so its graph is the retained graph plus a component of fresh nodes that
 shares no edge, merge or blocking relation with it. UNSAT: the job's clash
 derivation used only retained facts (deterministic consequences of the
