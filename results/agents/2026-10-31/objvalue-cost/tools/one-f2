@@ -1,0 +1,7 @@
+#!/bin/bash
+# one-f2: run /mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/objvalue-cost/km.f2 pinned to one CPU (44-46, claimed by lock files), so available_parallelism is 1 and the route's KM_THREADS=16 is capped to 1
+for c in 44 45 46; do
+  exec 9>/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/objvalue-cost/locks/cpu$c
+  if flock -n 9; then exec taskset -c $c /mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/objvalue-cost/km.f2 "$@"; fi
+done
+exec taskset -c 46 /mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/objvalue-cost/km.f2 "$@"

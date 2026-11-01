@@ -1063,3 +1063,160 @@ measured (`KM_EXP_MERGE_ORDER`, not kept): it recovered r163, r208, r461
 and lost r29, r376, r557, r576, and it has no exactness argument (the
 receiver's interface must stay downward closed in the order of the clauses
 it may receive).
+
+## 15. Pred premises on composite edges and least-key subsumption postings (2026-10-31, agent `objvalue-cost`)
+
+The object-value case of `data_value_singleton_next_to_nominal_successors`
+(`tests/universal_role_and_top_data_range.rs`: `¬(p value e) ⊑ B` with
+`S6 ≡ {c} ⊓ ∃r.{d} ⊓ ∃r⁻.{d}`) does not answer within the test's 10 s bound
+on the forced `nominals` route; the engine worker alone runs past 300 s.
+This section records two exact changes that remove part of the cost, an
+attempted third change that was dropped because its cut is not proved, and
+the root cause that remains. Results and commands:
+`results/agents/2026-10-31/objvalue-cost/`.
+
+### 15.1 Where the cost is
+
+The frontend clausifies `¬(p value e) ⊑ B` through `Q_0 ≡ ∀p.Q_1`,
+`Q_1 ≡ ¬{e}`, and the `∀` introduction `⊤ → Q_0 ∨ Q_2`, `Q_2 → ∃p.Q_3`,
+`Q_3 ∧ Q_1 → ⊥`. Under `KM_ABSORB=0` (the nominal routes) the definer
+`Q_1` gets both directions, so the clause set holds the excluded middle
+`⊤ → Q_1(x) ∨ __nom__e(x)`, and every context derives the body-free bridge
+`⊤ → Q_1(x) ∨ x ≈ e`: every element may be `e`. Each query context with
+core `K(x)` therefore pushes the merge hypothesis `K(e)` (section 14), and the
+ground context reasons under `S6(e)`, the world in which `c = e`. Profiling
+(`KM_PROF`, `KM_PROF_DUMP_AT`, attribution switches) showed three costs.
+
+1. *Labels on the ground context's own successor terms* (fixed, 15.2).
+2. *The world `S6(e)`.* Without it (diagnostic `KM_NO_MERGE_HYPOTHESES`,
+   which is incomplete in general, or the dropped restriction of 15.4) the
+   engine answers in 0.1 to 7 s; with it, no combination of the exact changes
+   here and of the switches `KM_CONTEXT_NO_R2`, `KM_CONTEXT_PAIR_R2`,
+   `KM_CONTEXT_UNIT_R3`, `KM_NO_EXCHANGE_CUT` finishes within 120 s. Under
+   `S6(e)` the ground context derives `e ≈ c`, rebuilds the `c` world, and
+   through `Q_1(t) ∨ t ≈ e` spreads `S6` to every term, which creates further
+   composite successor terms whose body-free Pred conclusions multiply the
+   unlabelled disjunctions.
+3. *Forward subsumption* (fixed, 15.3): in one 7 s run 879,000 calls scanned
+   327 million candidates.
+
+Removing the excluded middle by hand (the clause set with `⊤ → Q_1 ∨ nom_e`
+deleted and `Q_3 ∧ Q_1 → ⊥` replaced by `Q_3 → nom_e`, see 15.4) answers in
+0.05 s with the same taxonomy.
+
+*Results of 15.2 and 15.3 together* (`km.f2`, one pinned CPU, forced
+`nominals` route, HermiT oracle; baseline the `km.x3` runs of section 14):
+1,000 `gen_r3.py` seeds at 60 s, 679 ok against 636, no wrong answer (44
+timeouts become ok, one 47 s answer becomes a timeout); 4,000 seeds at 10 s,
+2,615 ok against 2,521, no wrong answer; the same 4,000 on the `auto` route,
+3,810 ok, no wrong answer. Of the eight seeds section 14.5 left open, r219
+(2.2 s) and r3777 (0.05 s) now answer; r163, r461, r481, r575, r696 (60 s) and
+r1536 (235 s) still time out, as does the case itself (15.4).
+
+### 15.2 Pred premises on composite edges
+
+*Defect.* On an edge labelled by a composite `f(o)` (the ground context's own
+successor edges), `pred_payload` maps `x ↦ f(o)` and `y ↦ o`, so the image of
+every sender atom is ground, and the receiver copied every ground body atom
+without a provider into the conclusion's body as a label. In
+arXiv:1805.01396 Table 2 only the atoms that are ground *in the sender* (the
+labels `C_i` the sender holds) are copied; the images `A_iσ` of the sender's
+atoms over `x` are premises that must resolve against a receiver clause with
+`A_iσ` maximal. After 1,000 work-offs the ground context of the case held
+clauses labelled by `__nom__e(f(e))`, `p(f(e), f(e))`, `Q_2(f(d))`: shared
+empty-core successors sent back clauses over hypotheses the ground context
+had never pushed on that edge, and the copy turned each into a label.
+
+*Fix.* `PredClause.resolve` records, on a composite edge, the images of the
+sender's body and core atoms that mention `x`, minus any image equal to an
+atom the sender already holds ground. `PredClause::copies_verbatim` admits a
+body atom without a provider as a copied label only when it is ground and not
+recorded. All four Pred paths use it (`pred_from_neighbor_ordered`,
+`pred_local_inner`, its full-product reference, `pred_rule_evidence`).
+Images over `y` alone stay copyable, as before, and ordinary edges record
+nothing. The certified CB surface (`KM_CB_LEAN_REQUIRED`) and the diagnostic
+`KM_PRED_COPY_ALL` keep the previous rule.
+
+*Soundness.* The rule derives a subset of what it derived before.
+
+*Completeness.* A conclusion now needs, for each recorded `A_iσ`, a receiver
+clause with `A_iσ` maximal. A provider worked off after the payload arrived
+triggers `pred_local` (fired on every maximal head atom over a function or
+composite term), which resolves the stored payload, as for nonground premises
+on ordinary edges. What the old rule added is the clause `A_iσ ∧ Γ → Δ` with
+`A_iσ` as a label, and everything derived from it. That label is an atom over
+`f(o)`; no context pushes such an atom (r-Succ pushes `root_succ_form` atoms
+over individuals, merge hypotheses are over individuals). So (a) the guard
+never delivers a clause carrying it, (b) it is never part of a cover of
+`rsucc_covered`, (c) Join case 3 never removes it, (d) the global refutation
+and the Horn readout read only body-free clauses; Join cases 1 and 2 resolve
+it once a provider exists, which gives the Pred conclusion the new rule
+derives directly. The completeness arguments of sections 3, 6, 8, 11 and 14
+model the ground context's labels as receiver hypotheses and do not use these
+clauses.
+
+*Lean.* The certified surface's Pred dimension setup is
+`CBPredEnumeration.providerPlan` (`lean/ContextCalculus/CBPredEnumeration.lean`):
+it decides groundness on the transported literal, which is the previous rule,
+so the certified surface keeps that rule. `lean/ContextCalculus/CBPredResolving.lean`
+defines the restored rule, `providerPlanResolving` (a recorded premise without
+a provider rejects the arrival), and proves `providerPlanResolving_sub`: every
+plan of the restored rule is a plan of `providerPlan`, so every conclusion of
+the restored rule is a conclusion of the certified rule and is sound by
+`CBInterContext.predTransfer_sound`; `providerPlanResolving_none_of_premise`
+states the rejection. Axioms: `propext` (`_sub`), `propext, Quot.sound`
+(`_none_of_premise`); no `sorryAx`. The mechanised exchange theorems
+(`ExchangeCut.lean`, `ExchangeEquality.lean`) are unaffected: their ground
+context has labels that are receiver hypotheses only. What stays argued is
+section 14.3 item (1), the correspondence of KM's Pred and Join with the
+paper's rules.
+
+### 15.3 Least-key forward-subsumption postings
+
+`ClauseLayer` keeps, beside `active_min_head_lit_index`, three postings of
+its active non-empty-head clauses: one-literal heads under that literal,
+two-literal heads under the pair, longer heads under their three least
+literals (heads are sorted). A clause `d` strengthens an incoming clause `c`
+only if `d.head ⊆ c.head`, so its key consists of literals of `c.head` in
+sorted order; `fwd_subsumed` looks up the literals, pairs and triples of
+`c.head` (heads of at most ten literals; longer heads, and the shared base
+layer of root contexts, keep the least-literal scan) and runs the same
+signature screen and exact `strengthens` test. It visits every candidate that
+can pass `strengthens`, so it returns the same answer and the derived set is
+unchanged. Unit test `forward_subsumption_postings_match_a_full_scan`
+compares it with a scan of every active clause under 3,000 random insertions
+and removals. On the case, the scan count drops from 327 million to 73
+million. *Lean obligation:* none (an index change; the redundancy test's
+answer is unchanged).
+
+### 15.4 What is not fixed: the excluded middle of `¬{e}`
+
+*Dropped: the unit-bridge restriction.* A query context with a body-free unit
+bridge `⊤ → x ≈ o'` could push only `K(o')`; on the case this answers in 3.3 s
+(`km classify`). Its exactness argument is a congruence argument (the
+element is `o'`, so "the element is `o`" is `o ≈ o'` under `K(o')`), and the
+propositional skeleton of `ExchangeCut.lean` treats `K(o)` and `K(o')` as
+unrelated atoms: the demand condition of `CutCond` fails for `K(o)`. A proof
+needs a ground model that respects congruence, which for KM's ground context
+is the model construction of ordered superposition (paramodulation only into
+maximal literals, rewriting toward the smaller individual); that is beyond
+these modules. The restriction was reverted (5b15b3a3).
+
+*Root cause and an exact repair (not implemented).* The bridge
+`⊤ → Q_1(x) ∨ x ≈ e` in every context comes from the excluded middle
+`⊤ → Q_1 ∨ nom_e` of the definer `Q_1 ≡ ¬{e}`. `Q_1` occurs positively in
+`Q_0 ∧ p(x,y) → Q_1(y)` and negatively only through the `∀` introduction's
+`Q_3 ∧ Q_1 → ⊥`, where `Q_3` stands for `¬Q_1 = {e}`. Replacing
+`Q_3 ∧ Q_1 → ⊥` by `Q_3 → nom_e` and dropping `⊤ → Q_1 ∨ nom_e` preserves
+every entailment over the input signature: a model of the new set becomes a
+model of the old one by reinterpreting `Q_1` as `¬nom_e`, which only enlarges
+`Q_1` (so `Q_0 ∧ p → Q_1` still holds) and is disjoint from `Q_3 ⊆ nom_e`;
+the converse is immediate. This is the polarity-based (Plaisted–Greenbaum)
+structural transformation that `KM_ABSORB=1` applies to Boolean definers, here
+also needed for the complement definer of a `∀` filler that is itself a
+negation. The nominal routes run with `KM_ABSORB=0`, and even with
+`KM_ABSORB=1` the frontend marks the filler `¬{e}` negative and keeps the
+excluded middle. Implementing it changes the frontend output on every input
+with such a filler, so it needs the frontend validation protocol (ORE and
+seed answers) and a frontend exactness statement; it is left to the
+supervisor's decision.

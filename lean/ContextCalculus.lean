@@ -48,6 +48,7 @@ import ContextCalculus.CBProductionTraceWire
 import ContextCalculus.CBInterContext
 import ContextCalculus.CBInterContextWire
 import ContextCalculus.CBPredEnumeration
+import ContextCalculus.CBPredResolving
 import ContextCalculus.CBPredSendEnumeration
 import ContextCalculus.CBPredSendCoverageWire
 import ContextCalculus.CBTerminalStateWire
