@@ -20,13 +20,18 @@
 //! clause heads (a clause fires only when every positive body concept and every
 //! body role may hold), source axioms in negation normal form (a sub-concept is
 //! visited with its polarity; restrictions that need an edge are visited only
-//! once the role may have one), definer markers expanded to their definitions
-//! in the polarity they occur, cardinality markers, the choose rule of at-most
+//! once the role may have one; the right side of `L ⊑ R` is visited once the
+//! named conjuncts of `L` may hold, since only those are sure to gate the
+//! bridge's full or partial absorption), definer markers expanded to their
+//! definitions in the polarity they occur, cardinality markers, the choose rule of at-most
 //! restrictions (both polarities of the filler), role domains and ranges, and
 //! role chains. Inputs with rules, fenced clauses or the universal role are not
-//! analysed (the cache stays off). The rules only ever add facts, so the
-//! iteration terminates; if a singleton is still outside `pos`, no completion
-//! graph of any probe contains it positively.
+//! analysed (the cache stays off), and neither are inputs whose native build
+//! attached an unguarded fallback disjunction to TOP
+//! (`Bridged::unguarded_top_gcis`): there a node may choose a head without
+//! its body, which these rules do not model. The rules only ever add facts, so
+//! the iteration terminates; if a singleton is still outside `pos`, no
+//! completion graph of any probe contains it positively.
 //!
 //! `KM_HT_SINGLETON_INERT_AUDIT=1` checks the claim at run time: every
 //! singleton fixpoint scan also verifies that no label holds a positive concept
@@ -201,13 +206,14 @@ impl<'a> Analyzer<'a> {
                 }
                 any
             }
-            SourceConcept::Exists(role, _)
-            | SourceConcept::AtLeast(_, role, _)
-            | SourceConcept::HasSelf(role) => match self.role(role) {
-                Some(r) => self.edge[r],
-                None => true,
-            },
-            SourceConcept::Top
+            // Only named conjuncts gate the bridge's partial absorption: a
+            // restriction without a partial trigger (no inverse role, or an
+            // untriggerable filler) drops out of the gate, so its edge is not
+            // a necessary condition for the head.
+            SourceConcept::Exists(..)
+            | SourceConcept::AtLeast(..)
+            | SourceConcept::HasSelf(_)
+            | SourceConcept::Top
             | SourceConcept::Nominal(_)
             | SourceConcept::Not(_)
             | SourceConcept::Forall(..)

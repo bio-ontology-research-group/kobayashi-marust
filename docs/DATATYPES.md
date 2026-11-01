@@ -1193,6 +1193,22 @@ checks the claim at run time: every singleton fixpoint scan also verifies
 that no label holds a positive concept outside `pos`, and exits with status
 97 otherwise. `KM_HT_NO_SINGLETON_INERT=1` restores the gate of fix 2.
 
+Two refinements from the supervisor's review (2026-11-01). The rules gate a
+head by its body, which is what the bridge's unfoldings and full or partial
+absorptions do; two native encodings do not. (a) The exact fallback for a
+source axiom whose structural left side neither unfolds nor absorbs, and the
+resolved-marker clause fallback, attach `¬body ∨ head` to TOP, where any
+node may choose `head` on a branch without `body`. The bridge now counts
+these (`Bridged::unguarded_top_gcis`, `SourceEncoding::TopFallback`) and the
+cache is installed only when the count is zero. (b) Partial absorption gates
+the preserved GCI by the triggers of the conjuncts that have one; a
+restriction without a partial trigger (no inverse role, or an untriggerable
+filler) drops out of the gate. `may_hold` therefore treats every conjunct
+other than a name, a conjunction or a disjunction as possibly holding, so
+`∃r.f ⊑ R` visits `R` whether or not `r` may have an edge. On 9027 neither
+refinement changes the verdict (no unguarded TOP disjunction, no data
+existential on a right side).
+
 **Lean obligation.** None new for the calculus: the bridge has no Lean model
 (HYBRID-CB-HT.md section 10) and the change only decides when an existing
 optimisation is used. What the Rust code relies on, and what is not proved,
