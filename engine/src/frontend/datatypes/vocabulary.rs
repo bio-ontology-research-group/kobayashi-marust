@@ -13,7 +13,8 @@
 //!    name is then equivalent, in every model of the clauses, to the Boolean
 //!    combination of its operand names.
 //! 2. *Ordered cells.* In a role group with two or more atomic ranges of the
-//!    decimal tower (one of them not integral) or of one IEEE width, the
+//!    decimal tower (one of them not integral), of one IEEE width, or of the
+//!    dateTime family (one of them a facet interval), the
 //!    range endpoints cut the partition into cells (points, open decimal
 //!    gaps split into their integers and their non-integers, IEEE rank
 //!    segments). Every cell lies inside or outside each range of the group,
@@ -22,16 +23,18 @@
 //!    every range.
 //! 3. *The decided fragment.* A name whose structure or value the datatype
 //!    map defines but the oracle does not decide (a pattern or length facet,
-//!    a dateTime facet, an ill-typed literal, a literal whose membership in a
-//!    range is undecided) is reported, and the frontend publishes the input
+//!    an ill-typed literal, an `rdf:XMLLiteral` with markup outside the
+//!    canonical fragment, a literal whose membership in a range is
+//!    undecided) is reported, and the frontend publishes the input
 //!    as not represented (`DROPPED`). Datatypes outside the OWL 2 datatype
 //!    map (custom IRIs, `xsd:date`, `xsd:duration`, ...) have no fixed value
 //!    space and keep the free abstraction.
 use super::{
     builtin_datatype_key, cx, datatype_concept_key, glued_atoms, integral_cell_name, parse_literal,
     range_disjoint, range_from_node, range_of_internal_name, range_subsumed, rat_cmp, rat_midpoint,
-    val_in_range, FloatRange, Node, Parser, Partition, Rat, Val, DRange,
+    time_axes, val_in_range, FloatRange, Node, Parser, Partition, Rat, Val, DRange,
 };
+use super::time::{self, Axis, TimePoint, TimeRange};
 use crate::frontend::clauses::{clause, DLClause};
 use std::collections::BTreeSet;
 
@@ -176,7 +179,7 @@ fn name_status(name: &str) -> Result<(), &'static str> {
 
 /// An atomic range of the decided map (not an enumeration).
 fn ordered_or_named(range: &DRange) -> bool {
-    matches!(range, DRange::Named(_) | DRange::Num(_) | DRange::Float(_))
+    matches!(range, DRange::Named(_) | DRange::Num(_) | DRange::Float(_) | DRange::Time(_))
 }
 
 /// Expand `names` (and `groups`) as described in the module comment.
@@ -301,7 +304,7 @@ pub(crate) fn expand(names: &BTreeSet<String>, groups: Option<&[BTreeSet<String>
             .map(|(name, range)| (name, range))
             .collect();
         let mut group_cells: Vec<String> = Vec::new();
-        for partition in [Partition::Numeric, Partition::Float32, Partition::Float64] {
+        for partition in [Partition::Numeric, Partition::Float32, Partition::Float64, Partition::Time] {
             match partition_cells(partition, &ranges) {
                 Ok(None) => {}
                 Ok(Some(cells)) => {
@@ -352,8 +355,19 @@ fn partition_of(range: &DRange) -> Option<Partition> {
         DRange::Named(datatype) => Some(datatype.part),
         DRange::Num(_) => Some(Partition::Numeric),
         DRange::Float(range) => Some(range.part),
+        DRange::Time(_) => Some(Partition::Time),
         _ => None,
     }
+}
+
+/// `range` belongs to the cells of `partition`. In the temporal partition
+/// only the dateTime family has a value space of the map; `xsd:date`,
+/// `xsd:time` and the `g*` types are free.
+fn in_partition(range: &DRange, partition: Partition) -> bool {
+    if partition == Partition::Time {
+        return time_axes(range).is_some();
+    }
+    partition_of(range) == Some(partition)
 }
 
 fn integral(range: &DRange) -> bool {
@@ -370,12 +384,16 @@ fn integral(range: &DRange) -> bool {
 /// `integral_cell_covers` already decide.
 fn partition_cells(partition: Partition, ranges: &[(&String, &DRange)]) -> Result<Option<Vec<Cell>>, &'static str> {
     let members: Vec<&DRange> = ranges.iter().map(|(_, range)| *range)
-        .filter(|range| partition_of(range) == Some(partition))
+        .filter(|range| in_partition(range, partition))
         .collect();
     if members.len() < 2 {
         return Ok(None);
     }
     let cells = match partition {
+        // `xsd:dateTime` and `xsd:dateTimeStamp` alone form a chain with an
+        // infinite difference and need no cells.
+        Partition::Time if !members.iter().any(|range| matches!(range, DRange::Time(_))) => return Ok(None),
+        Partition::Time => time_cells(&members)?,
         Partition::Numeric => {
             // Only integral ranges, or integral ranges next to the unbounded
             // named types `xsd:decimal`, `owl:rational`, `owl:real`: the
@@ -719,6 +737,94 @@ fn ieee_cells(part: Partition, members: &[&DRange]) -> Result<Vec<Cell>, &'stati
     Ok(cells)
 }
 
+/// Cells of the dateTime family (docs/DATATYPES.md, "dateTime bounds as
+/// ordered cells"). Each axis is cut at every endpoint of the group's
+/// ranges on it: a timezoned endpoint is a cell of the 1681 values at that
+/// instant (`dateTimeStamp[t, t]`), an untimezoned endpoint is a value; the
+/// open gaps between endpoints are infinite cells (the axes are dense). Every
+/// range of the group is an interval on each axis whose endpoints are cuts,
+/// so it contains every value of a cell or none, and a representative
+/// decides the cell. Each name is checked to denote exactly its cell.
+fn time_cells(members: &[&DRange]) -> Result<Vec<Cell>, &'static str> {
+    const LEXICAL: &str = "a dateTime cell that its facet name does not denote exactly";
+    let ranges: Vec<TimeRange> = members.iter().filter_map(|range| time_axes(range)).collect();
+    let literal = |p: &TimePoint, zoned: bool| -> Result<String, &'static str> {
+        time::lexical(p, zoned).map(|text| format!("\"{text}\"^^xsd:dateTime")).ok_or(LEXICAL)
+    };
+    let mut cells = Vec::new();
+    for zoned in [true, false] {
+        let axis_of = |range: &TimeRange| -> Axis { if zoned { range.zoned.clone() } else { range.local.clone() } };
+        let mut cuts: Vec<TimePoint> = Vec::new();
+        for range in &ranges {
+            let axis = axis_of(range);
+            if axis.is_empty() {
+                continue;
+            }
+            cuts.extend(axis.min.iter().map(|(p, _)| p.clone()));
+            cuts.extend(axis.max.iter().map(|(p, _)| p.clone()));
+        }
+        cuts.sort();
+        cuts.dedup();
+        let mut previous: Option<TimePoint> = None;
+        let mut bounds: Vec<Option<TimePoint>> = cuts.iter().cloned().map(Some).collect();
+        bounds.push(None);
+        for cut in bounds {
+            // The open gap below `cut`.
+            let axis = Axis { present: true, min: previous.clone().map(|p| (p, false)), max: cut.clone().map(|p| (p, false)) };
+            if !axis.is_empty() {
+                let rep = time::point_between(previous.as_ref(), cut.as_ref()).ok_or(LEXICAL)?;
+                let mut facets = String::new();
+                if let Some(lo) = &previous {
+                    facets.push_str(&format!(" xsd:minExclusive {}", literal(lo, zoned)?));
+                }
+                if let Some(hi) = &cut {
+                    facets.push_str(&format!(" xsd:maxExclusive {}", literal(hi, zoned)?));
+                }
+                let (name, expected) = if zoned {
+                    let name = if facets.is_empty() {
+                        format!("__dt__{}", datatype_concept_key("xsd:dateTimeStamp"))
+                    } else {
+                        format!("__dt__c__DatatypeRestriction(xsd:dateTimeStamp{facets})")
+                    };
+                    (name, TimeRange { zoned: axis, local: Axis::none() })
+                } else {
+                    let base = if facets.is_empty() { "xsd:dateTime".to_string() } else { format!("DatatypeRestriction(xsd:dateTime{facets})") };
+                    (format!("__dt__c__DataIntersectionOf({base} DataComplementOf(xsd:dateTimeStamp))"),
+                        TimeRange { zoned: Axis::none(), local: axis })
+                };
+                denotes(&name, &expected).then_some(()).ok_or(LEXICAL)?;
+                cells.push(Cell { name, rep: Val::DateTime(time::value_at(&rep, zoned)), level: None, point: false, size: u128::MAX });
+            }
+            let Some(cut) = cut else { break };
+            let at = Axis { present: true, min: Some((cut.clone(), true)), max: Some((cut.clone(), true)) };
+            let lexical = literal(&cut, zoned)?;
+            if zoned {
+                let name = format!("__dt__c__DatatypeRestriction(xsd:dateTimeStamp xsd:minInclusive {lexical} xsd:maxInclusive {lexical})");
+                denotes(&name, &TimeRange { zoned: at, local: Axis::none() }).then_some(()).ok_or(LEXICAL)?;
+                cells.push(Cell { name, rep: Val::DateTime(time::value_at(&cut, true)), level: None, point: false,
+                    size: time::VALUES_PER_INSTANT });
+            } else {
+                let name = format!("__dt__val__{lexical}");
+                denotes(&name, &TimeRange { zoned: Axis::none(), local: at }).then_some(()).ok_or(LEXICAL)?;
+                cells.push(Cell { name, rep: Val::DateTime(time::value_at(&cut, false)), level: None, point: true, size: 1 });
+            }
+            previous = Some(cut);
+        }
+    }
+    Ok(cells)
+}
+
+/// The name denotes exactly the values of `expected`.
+fn denotes(name: &str, expected: &TimeRange) -> bool {
+    match super::classify_name(name) {
+        Some(super::DtEntry::Range(_, range)) => time_axes(&range)
+            .is_some_and(|range| range.subset(expected) && expected.subset(&range)),
+        Some(super::DtEntry::Value(_, Val::DateTime(value))) => expected.zoned.is_empty()
+            && expected.local.point().is_some_and(|p| time::timeline(&value) == Some((false, p.clone()))),
+        _ => false,
+    }
+}
+
 /// Clauses of the cells of one partition in one group: each cell inside or
 /// outside every atomic range of the group, each range of the partition
 /// covered by its cells, and distinct cells disjoint.
@@ -732,7 +838,7 @@ fn emit_cells(
     for cell in cells {
         let fresh = seen.insert(cell.name.clone());
         for (name, range) in ranges {
-            if **name == cell.name || !fresh && partition_of(range) != Some(partition) {
+            if **name == cell.name || !fresh && !in_partition(range, partition) {
                 continue;
             }
             match cell_member(cell, range) {
@@ -743,7 +849,7 @@ fn emit_cells(
         }
     }
     for (name, range) in ranges {
-        if partition_of(range) != Some(partition) {
+        if !in_partition(range, partition) {
             continue;
         }
         let heads: Vec<&str> = cells.iter()
@@ -815,12 +921,43 @@ mod tests {
     #[test]
     fn undecided_facets_and_literals_are_reported() {
         let names = set(&["__dt__c__DatatypeRestriction(xsd:string xsd:pattern \"x.*\")",
-            "__dt__c__DatatypeRestriction(xsd:dateTime xsd:minInclusive \"2020-01-01T00:00:00Z\"^^xsd:dateTime)",
+            "__dt__c__DatatypeRestriction(xsd:dateTime xsd:pattern \"2020.*\")",
             "__dt__val__\"maybe\"^^xsd:boolean",
             "__dt__c__DatatypeRestriction(ex:custom ex:facet \"1\")",
             "__dt__val__\"2020-01-01\"^^xsd:date"]);
         let vocabulary = expand(&names, None);
         let reported: BTreeSet<&str> = vocabulary.undecided.iter().map(|(_, name)| name.as_str()).collect();
         assert_eq!(reported.len(), 3, "{:?}", vocabulary.undecided);
+    }
+
+    #[test]
+    fn datetime_bounds_are_decided() {
+        // ore_ont_13077: one untimezoned bound next to xsd:dateTime and values.
+        let bound = "__dt__c__DatatypeRestriction(xsd:dateTime xsd:minExclusive \"2004-12-27T06:00:00\"^^xsd:dateTime)";
+        let names = set(&["__dt__dateTime", bound, "__dt__val__\"2004-12-27T07:45:00\"^^xsd:dateTime",
+            "__dt__val__\"2004-12-27T19:00:00Z\"^^xsd:dateTime"]);
+        let vocabulary = expand(&names, None);
+        assert!(vocabulary.undecided.is_empty(), "{:?}", vocabulary.undecided);
+        assert_eq!(super::super::literal_in_range("\"2004-12-27T07:45:00\"^^xsd:dateTime", bound), Some(true));
+        assert_eq!(super::super::literal_in_range("\"2004-12-27T19:00:00Z\"^^xsd:dateTime", bound), Some(false));
+        assert_eq!(super::super::literal_in_range("\"2004-12-27T20:00:01Z\"^^xsd:dateTime", bound), Some(true));
+    }
+
+    #[test]
+    fn overlapping_datetime_bounds_get_cells() {
+        let names = set(&[
+            "__dt__c__DatatypeRestriction(xsd:dateTime xsd:minInclusive \"2020-01-01T00:00:00Z\"^^xsd:dateTime xsd:maxInclusive \"2020-03-01T00:00:00Z\"^^xsd:dateTime)",
+            "__dt__c__DatatypeRestriction(xsd:dateTime xsd:minInclusive \"2020-02-01T00:00:00Z\"^^xsd:dateTime)"]);
+        let vocabulary = expand(&names, None);
+        assert!(vocabulary.undecided.is_empty(), "{:?}", vocabulary.undecided);
+        // A timezoned endpoint is the cell of its 1681 values.
+        let point = "__dt__c__DatatypeRestriction(xsd:dateTimeStamp xsd:minInclusive \"2020-02-01T00:00:00Z\"^^xsd:dateTime xsd:maxInclusive \"2020-02-01T00:00:00Z\"^^xsd:dateTime)";
+        assert!(vocabulary.names.contains(point), "{:?}", vocabulary.names);
+        assert_eq!(super::super::data_range_size(point), Some(time::VALUES_PER_INSTANT));
+        // An untimezoned gap: the local times strictly between two cuts.
+        assert!(vocabulary.names.iter().any(|name| name.contains("DataComplementOf(xsd:dateTimeStamp)")), "{:?}", vocabulary.names);
+        // Every cell name denotes its cell (checked in `time_cells`), and
+        // the cell relations were emitted.
+        assert!(!vocabulary.extra.is_empty());
     }
 }
