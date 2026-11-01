@@ -35,7 +35,8 @@ Theorems:
   `cell_member` decides a whole cell by one representative);
 * `gap_eq_cellOf`, `cellOf_cut`: the cells `time_cells` names (open gaps
   between consecutive cuts and the cuts) are the cells of the cuts;
-* `zoned_point_encard`, `untz_point_encard`, `gap_infinite`: the sizes
+* `zoned_point_encard`, `untz_point_encard`, `gap_infinite`,
+  `gap_infinite_any`: the sizes
   `Cell::size` uses (`1681`, `1`, infinite), which `CellSpec.size_eq` of
   `DataRangeCells` asks for;
 * `xml_value_eq_iff`: two well-typed `rdf:XMLLiteral` literals denote the
@@ -531,6 +532,37 @@ theorem gap_infinite {a b : ℚ} (h : a < b) :
       (fun x _ y _ hxy => by simpa using hxy))
     rintro _ ⟨q, ⟨hq1, hq2, hq3, _⟩, rfl⟩
     exact ⟨⟨hq3, by norm_num, by norm_num⟩, rfl, hq1, hq2⟩
+
+/-- Every nonempty gap, bounded or not, is infinite on either axis. -/
+theorem gap_infinite_any (lo hi : Option ℚ) {q : ℚ} (hq : (gapAxis lo hi).mem q) :
+    {x | Valid x ∧ (⟨Axis.absent, gapAxis lo hi⟩ : Rng).mem x}.Infinite ∧
+    {x | Valid x ∧ (⟨gapAxis lo hi, Axis.absent⟩ : Rng).mem x}.Infinite := by
+  obtain ⟨_, hql, hqh⟩ := hq
+  -- a bounded gap `(q, b₀)` inside the given one
+  obtain ⟨b₀, hqb, hsub⟩ : ∃ b₀, q < b₀ ∧ ∀ y, q < y → y < b₀ → (gapAxis lo hi).mem y := by
+    rcases hi with _ | b
+    · refine ⟨q + 1, by linarith, fun y hy _ => ⟨rfl, ?_, trivial⟩⟩
+      rcases lo with _ | a
+      · trivial
+      · simp only [gapAxis, Option.map, lowOk] at hql ⊢; linarith
+    · simp only [gapAxis, Option.map, highOk] at hqh
+      refine ⟨(q + b) / 2, by linarith, fun y hy hyb => ⟨rfl, ?_, ?_⟩⟩
+      · rcases lo with _ | a
+        · trivial
+        · simp only [gapAxis, Option.map, lowOk] at hql ⊢; linarith
+      · simp only [gapAxis, Option.map, highOk]; linarith
+  obtain ⟨h1, h2⟩ := gap_infinite hqb
+  constructor
+  · refine h1.mono ?_
+    rintro (_ | l) ⟨hv, hm⟩
+    · exact absurd hm.1 (by simp [Axis.absent])
+    · obtain ⟨_, hl, hh⟩ := hm
+      exact ⟨hv, hsub l hl hh⟩
+  · refine h2.mono ?_
+    rintro (_ | l) ⟨hv, hm⟩
+    · obtain ⟨_, hl, hh⟩ := hm
+      exact ⟨hv, hsub _ hl hh⟩
+    · exact absurd hm.1 (by simp [Axis.absent])
 
 /-! ## `rdf:XMLLiteral` -/
 

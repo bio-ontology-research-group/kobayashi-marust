@@ -1252,7 +1252,7 @@ inclusion and disjointness (`Axis.subsetB_sound`, `Axis.disjointB_sound`,
 `Rng.subsetB_sound`, `Rng.disjointB_sound`), `Rng.mem_stamp` and
 `Rng.mem_untimezoned`, cell exactness (`cell_uniform`, `cell_uniform_zoned`,
 `cell_uniform_untz`, `cellOf_cut`, `gap_eq_cellOf`), the cell sizes
-(`zoned_point_encard` = 1681, `untz_point_encard` = 1, `gap_infinite`) that
+(`zoned_point_encard` = 1681, `untz_point_encard` = 1, `gap_infinite`, `gap_infinite_any`) that
 `CellSpec.size_eq` of `DataRangeCells` asks for, and `xml_value_eq_iff`
 (XMLLiteral identity is lexical identity of canonical forms). Axioms:
 `propext`, `Classical.choice`, `Quot.sound` (none for `xml_value_eq_iff`).
