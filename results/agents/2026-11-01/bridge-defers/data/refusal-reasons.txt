@@ -1,0 +1,9 @@
+     88 dec bridge deferred (konclude_ht bridge defer: datatype gate: source mode is disabled or a datatype symbol is not in the exact atomic map
+     45 flt bridge deferred (konclude_ht bridge defer: datatype gate: an IEEE facet vocabulary has a label set without two realizing values
+     29 dec bridge deferred (konclude_ht bridge defer: datatype gate: a datatype existential conflicts with its role range
+     13 dec bridge deferred (konclude_ht bridge defer: datatype gate: an extension datatype pair has no exact decided relation
+     10 dec bridge deferred (konclude_ht bridge defer: datatype gate: a local datatype restriction has an undecided relation
+      6 dec bridge deferred (konclude_ht bridge defer: input: nominal metadata is not covered by the native source path
+      3 dec 
+      2 dec bridge deferred (konclude_ht bridge defer: datatype gate: one data role has multiple atomic ranges
+      2 dec bridge deferred (konclude_ht bridge defer: datatype gate: a local datatype restriction lacks an inclusion clause

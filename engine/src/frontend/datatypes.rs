@@ -3205,6 +3205,84 @@ pub(crate) fn bridge_ieee_cells_realizable(
     Some(true)
 }
 
+/// Cell path of [`bridge_ieee_cells_realizable`] for one IEEE width, used
+/// when the frontend emitted ordered cells (`vocabulary::ieee_cells`) and
+/// the vocabulary is too large for the label enumeration. `ranges` are all
+/// IEEE ranges of the width in the input (not one role group). A member is
+/// *atomic* when the present clauses relate it to every other member by
+/// inclusion or disjointness; because those clauses are valid in the
+/// datatype map, every other nonempty member then contains it or misses it.
+/// When every non-atomic member has a present cover whose range heads are
+/// all atomic, every admissible label that meets the width contains an
+/// atomic `C` (directly or through a cover; a value head makes the node a
+/// value node, decided by the singleton and value relation clauses), and the
+/// present clauses fix its members to exactly the ranges that include `C`.
+/// Every value of `C` lies in exactly those ranges, so it suffices that each
+/// atomic member holds `required` values outside `literals`. `None` = not
+/// applicable (the caller keeps the enumeration).
+pub(crate) fn bridge_ieee_cells_by_atoms(
+    ranges: &[&str],
+    inclusion: &dyn Fn(usize, usize) -> bool,
+    disjoint: &dyn Fn(usize, usize) -> bool,
+    literals: &[&str],
+    required: u128,
+    covers: &[(usize, Vec<usize>)],
+) -> Option<bool> {
+    let k = ranges.len();
+    if k == 0 {
+        return Some(true);
+    }
+    let intervals: Vec<FloatRange> = ranges.iter().map(|name| bridge_ieee_interval(name))
+        .collect::<Option<_>>()?;
+    let part = intervals[0].part;
+    if intervals.iter().any(|range| range.part != part) {
+        return None;
+    }
+    let atomic: Vec<bool> = (0..k)
+        .map(|i| (0..k).all(|j| i == j || inclusion(i, j) || disjoint(i, j)))
+        .collect();
+    let covered = (0..k).all(|i| atomic[i] || covers.iter().any(|(body, heads)|
+        *body == i && !heads.is_empty() && heads.iter().all(|&head| atomic[head])));
+    if !covered {
+        return None;
+    }
+    let full = FloatRange::full(part);
+    let mut literal_ranks: Vec<u64> = Vec::new();
+    let mut literal_nan = false;
+    for literal in literals {
+        let Some(token) = literal.strip_prefix("__dt__val__") else { continue };
+        let Some((value, _)) = parse_literal(token) else { continue };
+        match full.value_bits(&value) {
+            Some((_, true)) => literal_nan = true,
+            Some((bits, false)) => literal_ranks.push(FloatRange::rank(bits, part)),
+            None => {}
+        }
+    }
+    literal_ranks.sort_unstable();
+    literal_ranks.dedup();
+    for (index, range) in intervals.iter().enumerate() {
+        if !atomic[index] {
+            continue;
+        }
+        let mut free: u128 = 0;
+        if range.lo <= range.hi {
+            let size = (range.hi - range.lo) as u128 + 1;
+            let occupied = literal_ranks.iter().filter(|&&rank| range.lo <= rank && rank <= range.hi).count() as u128;
+            free += size - occupied;
+        }
+        if range.nan && !literal_nan {
+            free += 1;
+        }
+        if free < required {
+            if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+                eprintln!("BRIDGE-IEEE-CELL: atomic={} free={free} required={required}", ranges[index]);
+            }
+            return Some(false);
+        }
+    }
+    Some(true)
+}
+
 fn bridge_exact_atomic_range(name: &str) -> Option<DRange> {
     match classify_name(name)? {
         DtEntry::Range(_, range) => Some(range),
@@ -3435,6 +3513,112 @@ pub(crate) fn is_complement_range(name: &str) -> bool {
 pub(crate) fn bridge_exact_union_cover(range: &str, head: &[&str]) -> bool {
     union_member_names(range).is_some_and(|members|
         members.iter().all(|member| head.contains(&member.as_str())))
+}
+
+/// `true` when `range` is a decimal-tower range of the bridge map and the
+/// decimal-tower ranges and values named in `heads` together contain every
+/// value of `range`: the cover clause `range → ⋁ heads` is then valid in
+/// every model of the datatype map. This is the shape of the ordered-cell
+/// cover `R → c₁ ∨ … ∨ cₖ` of `vocabulary::decimal_cells` when the group
+/// has a dense (non-integral) decimal range (ore_ont_4903, ore_ont_11647).
+///
+/// Decision. Every name involved is an interval of the decimal tower whose
+/// values are integers or decimals (`owl:rational` and `owl:real` ranges
+/// and non-decimal values are refused), so its values are `I ∩ K` for an
+/// interval `I` and `K` the integers or the decimals. Cut the line at every
+/// endpoint of every name and at every head value. A cut point is a piece;
+/// every open gap between consecutive cuts (and the two unbounded ends)
+/// splits into the integers it contains and the non-integer decimals it
+/// contains. A gap lies inside or outside every interval (its ends are cuts
+/// and it contains none), and each band lies inside or outside each `K`, so
+/// every name contains a whole piece or none of it. One representative per
+/// nonempty piece then decides `range ⊆ ⋃ heads` exactly; an undecided
+/// membership or an arithmetic overflow returns `false` (defer).
+pub(crate) fn bridge_exact_decimal_cell_cover(range: &str, heads: &[&str]) -> bool {
+    fn tower(range: &DRange) -> bool {
+        match range {
+            DRange::Num(range) => !matches!(range.base_kind, "real" | "rational"),
+            DRange::Named(datatype) => datatype.part == Partition::Numeric
+                && (datatype.integral || datatype.kind == "decimal"),
+            _ => false,
+        }
+    }
+    fn endpoints(range: &DRange, out: &mut Vec<Rat>) {
+        match range {
+            DRange::Num(range) => {
+                out.extend(range.min.map(|(bound, _)| bound));
+                out.extend(range.max.map(|(bound, _)| bound));
+            }
+            DRange::Named(datatype) => {
+                out.extend(datatype.min.map(Rat::from_int));
+                out.extend(datatype.max.map(Rat::from_int));
+            }
+            _ => {}
+        }
+    }
+    if range.starts_with("__dt__val__") || bridge_tbox_atomic_family(range) != Some("decimal") {
+        return false;
+    }
+    let Some(DtEntry::Range(_, outer)) = classify_name(range) else { return false };
+    if !tower(&outer) {
+        return false;
+    }
+    let mut cuts: Vec<Rat> = Vec::new();
+    endpoints(&outer, &mut cuts);
+    let mut parts: Vec<DRange> = Vec::new();
+    for head in heads {
+        if !bridge_tbox_atomic_name(head) {
+            return false;
+        }
+        match classify_name(head) {
+            Some(DtEntry::Range(_, inner)) if tower(&inner) => {
+                endpoints(&inner, &mut cuts);
+                parts.push(inner);
+            }
+            Some(DtEntry::Value(_, Val::Num(value))) if vocabulary::decimal_value(&value) => {
+                cuts.push(value);
+                parts.push(DRange::OneOf(vec![Val::Num(value)]));
+            }
+            _ => return false,
+        }
+    }
+    let mut failed = false;
+    cuts.sort_by(|a, b| rat_cmp(a, b).unwrap_or_else(|| { failed = true; std::cmp::Ordering::Equal }));
+    if failed {
+        return false;
+    }
+    cuts.dedup_by(|a, b| rat_cmp(a, b) == Some(std::cmp::Ordering::Equal));
+    let mut representatives: Vec<Rat> = cuts.clone();
+    let mut gap = |lo: Option<&Rat>, hi: Option<&Rat>| -> Option<()> {
+        // The integers of the gap, when there are any.
+        let first = match lo { Some(lo) => Some(div_floor_rat(lo)?.checked_add(1)?), None => None };
+        let last = match hi { Some(hi) => Some(div_ceil_rat(hi)?.checked_sub(1)?), None => None };
+        if !matches!((first, last), (Some(f), Some(l)) if f > l) {
+            representatives.push(Rat::from_int(first.or(last).unwrap_or(0)));
+        }
+        // The non-integer decimals of the gap (never empty: the gap is open
+        // and nonempty).
+        representatives.push(vocabulary::noninteger_between(lo, hi)?);
+        Some(())
+    };
+    let mut previous: Option<Rat> = None;
+    for cut in &cuts {
+        if gap(previous.as_ref(), Some(cut)).is_none() {
+            return false;
+        }
+        previous = Some(*cut);
+    }
+    if gap(previous.as_ref(), None).is_none() {
+        return false;
+    }
+    representatives.iter().all(|value| {
+        let value = Val::Num(*value);
+        match val_in_range(&value, &outer) {
+            Some(false) => true,
+            Some(true) => parts.iter().any(|part| val_in_range(&value, part) == Some(true)),
+            None => false,
+        }
+    })
 }
 
 /// Upper bound on the cells of one role group; larger groups keep the
@@ -5321,6 +5505,108 @@ mod xml_literal_tests {
         }
         // Functional-syntax escapes are read before the check.
         assert_eq!(xml_canonical("say \\\"hi\\\""), Some(true));
+    }
+}
+
+#[cfg(test)]
+mod ieee_cells_by_atoms_tests {
+    use super::{bridge_exact_atomic_disjoint, bridge_exact_atomic_subsumed, bridge_ieee_cells_by_atoms};
+
+    fn relations(names: &[&str]) -> (impl Fn(usize, usize) -> bool, impl Fn(usize, usize) -> bool) {
+        let a: Vec<String> = names.iter().map(|n| n.to_string()).collect();
+        let b = a.clone();
+        (move |i: usize, j: usize| i != j && bridge_exact_atomic_subsumed(&a[i], &a[j]) == Some(true),
+         move |i: usize, j: usize| bridge_exact_atomic_disjoint(&b[i], &b[j]) == Some(true))
+    }
+
+    #[test]
+    fn cells_of_two_overlapping_float_ranges_decide_every_label() {
+        // (-INF, 2) and [1, +INF) cut into [-INF, 1), [1, 2), [2, +INF].
+        let left = "__dt__c__DatatypeRestriction(xsd:float xsd:maxExclusive \"2.0\"^^xsd:float)";
+        let right = "__dt__c__DatatypeRestriction(xsd:float xsd:minInclusive \"1.0\"^^xsd:float)";
+        let low = "__dt__c__DatatypeRestriction(xsd:float xsd:minInclusive \"-INF\"^^xsd:float xsd:maxInclusive \"9.9999994e-1\"^^xsd:float)";
+        let mid = "__dt__c__DatatypeRestriction(xsd:float xsd:minInclusive \"1.0\"^^xsd:float xsd:maxInclusive \"1.9999999e0\"^^xsd:float)";
+        let high = "__dt__c__DatatypeRestriction(xsd:float xsd:minInclusive \"2.0\"^^xsd:float xsd:maxInclusive \"INF\"^^xsd:float)";
+        let names = [left, right, low, mid, high];
+        let (inclusion, disjoint) = relations(&names);
+        let covers = vec![(0, vec![2, 3]), (1, vec![3, 4])];
+        assert_eq!(bridge_ieee_cells_by_atoms(&names, &inclusion, &disjoint, &[], 2, &covers), Some(true));
+        // Without the covers the two overlapping ranges are not atomic.
+        assert_eq!(bridge_ieee_cells_by_atoms(&names, &inclusion, &disjoint, &[], 2, &[]), None);
+        // A cover whose head is not atomic does not help.
+        assert_eq!(bridge_ieee_cells_by_atoms(&names, &inclusion, &disjoint, &[], 2, &[(0, vec![1]), (1, vec![0])]), None);
+    }
+
+    #[test]
+    fn a_small_cell_exhausted_by_literals_fails() {
+        // [1, 1] holds one value; with that value a literal it has none left.
+        let point = "__dt__c__DatatypeRestriction(xsd:float xsd:minInclusive \"1.0\"^^xsd:float xsd:maxInclusive \"1.0\"^^xsd:float)";
+        let names = [point];
+        let (inclusion, disjoint) = relations(&names);
+        assert_eq!(bridge_ieee_cells_by_atoms(&names, &inclusion, &disjoint, &[], 1, &[]), Some(true));
+        assert_eq!(bridge_ieee_cells_by_atoms(&names, &inclusion, &disjoint, &[], 2, &[]), Some(false));
+        let literal = "__dt__val__\"1.0\"^^xsd:float";
+        assert_eq!(bridge_ieee_cells_by_atoms(&names, &inclusion, &disjoint, &[literal], 1, &[]), Some(false));
+    }
+}
+
+#[cfg(test)]
+mod decimal_cell_cover_tests {
+    use super::bridge_exact_decimal_cell_cover as cover;
+
+    const R4903: &str = "__dt__c__DataIntersectionOf(DatatypeRestriction(xsd:decimal xsd:maxInclusive \"-150\"^^xsd:decimal) DatatypeRestriction(xsd:decimal xsd:minInclusive \"-250\"^^xsd:decimal))";
+    const OPEN4903: &str = "__dt__c__DatatypeRestriction(xsd:decimal xsd:minExclusive \"-250\"^^xsd:decimal xsd:maxExclusive \"-150\"^^xsd:decimal)";
+    const R11647: &str = "__dt__c__DatatypeRestriction(xsd:decimal xsd:maxExclusive \"12\"^^xsd:integer)";
+
+    #[test]
+    fn closed_interval_is_covered_by_its_open_gap_and_endpoints() {
+        let heads = [OPEN4903, "__dt__val__\"-150\"^^xsd:integer", "__dt__val__\"-250\"^^xsd:integer"];
+        assert!(cover(R4903, &heads));
+        // Each missing endpoint or the gap leaves a value uncovered.
+        assert!(!cover(R4903, &heads[..2]));
+        assert!(!cover(R4903, &[heads[0], heads[2]]));
+        assert!(!cover(R4903, &heads[1..]));
+    }
+
+    #[test]
+    fn unbounded_range_is_covered_by_its_cells() {
+        let heads = [
+            "__dt__val__\"0\"^^xsd:integer",
+            "__dt__val__\"3\"^^xsd:integer",
+            "__dt__c__DatatypeRestriction(xsd:decimal xsd:maxExclusive \"0\"^^xsd:decimal)",
+            "__dt__c__DatatypeRestriction(xsd:decimal xsd:minExclusive \"0\"^^xsd:decimal xsd:maxExclusive \"3\"^^xsd:decimal)",
+            "__dt__c__DatatypeRestriction(xsd:decimal xsd:minExclusive \"3\"^^xsd:decimal xsd:maxExclusive \"12\"^^xsd:decimal)",
+        ];
+        assert!(cover(R11647, &heads));
+        for skip in 0..heads.len() {
+            let fewer: Vec<&str> = heads.iter().enumerate().filter(|(i, _)| *i != skip).map(|(_, h)| *h).collect();
+            assert!(!cover(R11647, &fewer), "dropping head {skip} must leave a hole");
+        }
+    }
+
+    #[test]
+    fn integer_band_does_not_cover_the_decimals_of_a_gap() {
+        // (0, 3) as integers is {1, 2}; the non-integer decimals stay uncovered.
+        let range = "__dt__c__DatatypeRestriction(xsd:decimal xsd:minExclusive \"0\"^^xsd:decimal xsd:maxExclusive \"3\"^^xsd:decimal)";
+        let ints = "__dt__c__DatatypeRestriction(xsd:integer xsd:minInclusive \"1\"^^xsd:integer xsd:maxInclusive \"2\"^^xsd:integer)";
+        let band = "__dt__c__DataIntersectionOf(DatatypeRestriction(xsd:decimal xsd:minExclusive \"0\"^^xsd:decimal xsd:maxExclusive \"3\"^^xsd:decimal) DataComplementOf(xsd:integer))";
+        assert!(!cover(range, &[ints]));
+        // The band name is outside the bridge map, so the check stays closed.
+        assert!(!cover(range, &[ints, band]));
+        // An integer range is covered by an integral interval of its values.
+        let int_range = "__dt__c__DatatypeRestriction(xsd:integer xsd:minExclusive \"0\"^^xsd:integer xsd:maxExclusive \"3\"^^xsd:integer)";
+        assert!(cover(int_range, &[ints]));
+        assert!(cover(int_range, &["__dt__val__\"1\"^^xsd:integer", "__dt__val__\"2\"^^xsd:integer"]));
+        assert!(!cover(int_range, &["__dt__val__\"1\"^^xsd:integer"]));
+    }
+
+    #[test]
+    fn rational_and_real_ranges_are_refused() {
+        assert!(!cover("__dt__real", &["__dt__decimal"]));
+        assert!(cover("__dt__positiveInteger", &["__dt__decimal"]));
+        assert!(!cover("__dt__decimal", &["__dt__integer"]));
+        assert!(!cover("__dt__c__DatatypeRestriction(owl:rational xsd:minInclusive \"0\"^^xsd:integer)",
+            &["__dt__c__DatatypeRestriction(xsd:decimal xsd:minInclusive \"0\"^^xsd:decimal)"]));
     }
 }
 

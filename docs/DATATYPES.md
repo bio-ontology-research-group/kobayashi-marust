@@ -850,7 +850,91 @@ heads are IEEE facet intervals and values of `R`'s width that lie inside
 (`bridge_exact_ieee_cell_cover`), so inputs with overlapping IEEE facets
 keep the bridge (`bridge_tbox_datatype_extension_double_facets_and_signed_zero`).
 Decimal band cells (`DataIntersectionOf(… DataComplementOf(xsd:integer))`)
-are outside the bridge's map, and the bridge defers on them.
+are outside the bridge's map, and the bridge defers on them. The decimal
+cell cover whose heads are open decimal intervals and point values (no
+band) is admitted since 2026-11-01, see "Native bridge: dense decimal cell
+covers" below.
+
+**Native bridge: dense decimal cell covers** (2026-11-01, agent
+`bridge-defers`). *Defect.* The native bridge deferred `ore_ont_4903` and
+`ore_ont_11647` at its datatype gate, before building any completion
+structure, with the reason "a pure datatype relation clause is not exact in
+the supported map". The clauses are the ordered-cell covers of a role group
+with a dense decimal range:
+
+- 4903: `decimal[-250, -150] → decimal(-250, -150) ∨ {-150} ∨ {-250}`
+  (the range is spelled `DataIntersectionOf` of two `xsd:decimal` facets);
+- 11647: `decimal(< 12) → {0} ∨ {3} ∨ decimal(< 0) ∨ decimal(0, 3) ∨
+  decimal(3, 12)`.
+
+Every name in them is in the bridge-TBox map (facet intervals of the
+decimal tower and integral decimal values), but `pure_datatype_relation_is_exact`
+knew only the integral, union, enumerated, finite and IEEE covers. *Fix.*
+`bridge_exact_decimal_cell_cover` (in `frontend/datatypes.rs`, a bridge-only
+oracle function; the frontend does not call it) decides the cover clause
+`R → H₁ ∨ … ∨ Hₖ` for a decimal-tower range `R` and heads that are
+decimal-tower ranges or finite decimal values. It refuses `owl:rational`,
+`owl:real` and every other family. *Exactness.* Each name denotes `I ∩ K`
+for an interval `I` with rational endpoints and `K` either the integers or
+the decimals (the refused kinds are the only ones with other values). Cut
+the line at every endpoint of `R` and of the heads and at every head value.
+The pieces are the cut points and, for each open gap between consecutive
+cuts (and the two unbounded ends), its integers and its non-integer
+decimals. A gap contains no endpoint, so it lies inside or outside each
+`I`; each of the two bands lies inside or outside each `K`. Every name then
+contains a whole piece or none of it, and `R ⊆ ⋃ Hᵢ` holds iff every
+nonempty piece whose representative lies in `R` has its representative in
+some `Hᵢ`. The function checks exactly this, with `val_in_range` deciding
+membership; an undecided membership or an arithmetic overflow returns
+`false` (defer). So an admitted cover is valid in every model of the
+datatype map: it adds no consequence over the source vocabulary, which is
+the condition the pure-relation check enforces. The admission changes no
+encoding: the clause was already in the bridge's input and already acted as
+a clause there; the gate only stops refusing it. The later realizability
+certificates (`bridge_decimal_cells_realizable`, cell free capacity) run
+unchanged on these inputs. Unit tests:
+`frontend::datatypes::decimal_cell_cover_tests` (each of the two shapes
+above, every head dropped in turn, integer and decimal bands, refused
+kinds).
+
+*The next two gates.* With the covers admitted, each input stopped at a
+realizability certificate, and the defer message now named it.
+(i) 4903: "a decimal-tower vocabulary has a label set without two realizing
+values". The per-group cell path of `decimal_cells_exact` read only
+integral covers, so a dense range had no cover there and the group fell
+through to the label enumeration. The path now reads the dense covers as
+well. They are valid clauses, so they restrict the admissible labels just
+as the integral covers do; the cell path and its argument ("a label meeting
+the group holds an atomic cell, which fixes its members"; cells join every
+group because no role mentions them) are unchanged. (ii) 11647: "an IEEE
+facet vocabulary has a label set without two realizing values". The IEEE
+certificate enumerates every subset of the width's ranges and gives up above
+16; 11647 has 83 `xsd:float` ranges, all on one data property (`muo:numericalValue`).
+`bridge_ieee_cells_by_atoms` is now tried first, over *all* ranges of the
+width rather than one group: a range is atomic when the present clauses
+relate it to every other range of the width by inclusion or disjointness.
+Every non-atomic range needs a present cell cover
+(`bridge_exact_ieee_cell_cover`) whose range heads are all atomic. Each
+atomic range needs `required` values outside the vocabulary's literals,
+counting ranks and `NaN` exactly. *Exactness.* The relation clauses are
+valid, so an atomic `C` lies inside or outside each other nonempty range of
+the width. A label that meets the width holds a non-atomic range only
+together with a head of its cover: an atomic range, or a value, in which
+case the node is a value node, decided by the singleton and value-relation
+clauses. Such a label therefore holds an atomic `C`, and the present clauses
+put into it exactly the ranges that contain `C`. Every value of `C` lies in
+exactly those ranges, so both directions of `v ∈ d ⟺ d ∈ L` hold whether or
+not `d` is body-sensitive, and the capacity check supplies the distinct
+values a count needs. Labels that meet no range of the width are not
+constrained by it. The path is skipped when a complement of the width is
+present, and it returns "not applicable" (the enumeration runs) when the
+cover condition fails. Unit tests: `frontend::datatypes::ieee_cells_by_atoms_tests`.
+
+*Defer reasons.* The worker's defer error now names the gate:
+`konclude_ht bridge defer: <reason>` (thread-local note set by each gate in
+`konclude_ht/bridge.rs`, read by the three bridge entry points in
+`tableau.rs`; diagnostic only, it never changes a verdict). Exits deep in
+the classification that record nothing specific report the phase they left.
 
 **Native bridge: singleton gate** (seeds m2009, m2023, m2123, m2255,
 m2287). The frontend leaves out value singletons when

@@ -1,0 +1,30 @@
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.28s cached=false sidecar=false
+KM_TIMING frontend: 805 data-property assertion(s) not carried; re-running with the DataHasValue conversion
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.29s cached=false sidecar=false
+KM_TIMING frontend done @ 0.57s route=nominals
+KM_TIMING nominal CB input: released 40 inert object sort(s): 40 fact(s) unrelativized, 40 sort clause(s) removed; eliminated 0 universal definer(s): 0 clause(s) and 0 body atom(s) dropped
+worker engine exceeded its time limit: 
+Command exited with non-zero status 124
+	Command being timed: "timeout 240 .work/pgo-v155/km-v1.5.5-rc-pgo classify --lines --route nominals v150-corpus/files/ore_ont_11647.owl"
+	User time (seconds): 3046.62
+	System time (seconds): 6.98
+	Percent of CPU this job got: 1294%
+	Elapsed (wall clock) time (h:mm:ss or m:ss): 3:55.92
+	Average shared text size (kbytes): 0
+	Average unshared data size (kbytes): 0
+	Average stack size (kbytes): 0
+	Average total size (kbytes): 0
+	Maximum resident set size (kbytes): 1081664
+	Average resident set size (kbytes): 0
+	Major (requiring I/O) page faults: 3
+	Minor (reclaiming a frame) page faults: 1598611
+	Voluntary context switches: 5912
+	Involuntary context switches: 11055
+	Swaps: 0
+	File system inputs: 544
+	File system outputs: 16
+	Socket messages sent: 0
+	Socket messages received: 0
+	Signals delivered: 0
+	Page size (bytes): 4096
+	Exit status: 124

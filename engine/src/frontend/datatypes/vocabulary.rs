@@ -487,6 +487,12 @@ fn decimal_lexical(value: &Rat) -> Option<String> {
     Some(format!("{}{whole}.{fraction}", if negative { "-" } else { "" }))
 }
 
+/// `value` is a finite decimal (its denominator is `2^a 5^b`) within the
+/// exact arithmetic.
+pub(super) fn decimal_value(value: &Rat) -> bool {
+    decimal_lexical(value).is_some()
+}
+
 fn numeric_value_name(value: &Rat) -> Option<String> {
     let lexical = decimal_lexical(value)?;
     Some(if value.is_integer() {
@@ -510,7 +516,7 @@ fn rat_sub(left: &Rat, right: &Rat) -> Option<Rat> {
 
 /// A finite decimal strictly between `lo` and `hi` (`None` = unbounded)
 /// that is not an integer.
-fn noninteger_between(lo: Option<&Rat>, hi: Option<&Rat>) -> Option<Rat> {
+pub(super) fn noninteger_between(lo: Option<&Rat>, hi: Option<&Rat>) -> Option<Rat> {
     let half = Rat::new(1, 2)?;
     let (a, b) = match (lo, hi) {
         (Some(a), Some(b)) => (*a, *b),

@@ -6837,13 +6837,22 @@ pub(crate) fn run_bridge_json_owned_compact(
     // keeps the transport optimization visible in peak RSS, not only live bytes.
     crate::mem::release_transient_heap();
 
-    let (result, concepts) = crate::bigstack::run("konclude_ht bridge", crate::bigstack::DEEP_STACK, move || {
+    let (result, concepts, reason) = crate::bigstack::run("konclude_ht bridge", crate::bigstack::DEEP_STACK, move || {
             let result = crate::konclude_ht::bridge::bridged_classify(&producer_input);
-            (result, producer_input.concepts)
+            let reason = crate::konclude_ht::bridge::take_bridge_defer_reason();
+            (result, producer_input.concepts, reason)
         })?;
-    let result = result.ok_or_else(|| "konclude_ht bridge defer".to_string())?;
+    let result = result.ok_or_else(|| bridge_defer_message(reason))?;
     crate::mem::release_transient_heap();
     compact_bridge_classification(concepts, result)
+}
+
+/// The worker's defer error, naming the gate the bridge recorded.
+fn bridge_defer_message(reason: Option<String>) -> String {
+    match reason {
+        Some(reason) => format!("konclude_ht bridge defer: {reason}"),
+        None => "konclude_ht bridge defer".to_string(),
+    }
 }
 
 fn compact_bridge_classification(
@@ -7049,9 +7058,12 @@ pub(crate) fn run_bridge_producer_input_typed(
 ) -> Result<TOutput, String> {
     let concepts = input.concepts.clone();
     crate::mem::release_transient_heap();
-    let result = crate::bigstack::run("konclude_ht bridge", crate::bigstack::DEEP_STACK,
-            move || crate::konclude_ht::bridge::bridged_classify(&input))?
-        .ok_or_else(|| "konclude_ht bridge defer".to_string())?;
+    let (result, reason) = crate::bigstack::run("konclude_ht bridge", crate::bigstack::DEEP_STACK,
+            move || {
+                let result = crate::konclude_ht::bridge::bridged_classify(&input);
+                (result, crate::konclude_ht::bridge::take_bridge_defer_reason())
+            })?;
+    let result = result.ok_or_else(|| bridge_defer_message(reason))?;
     crate::mem::release_transient_heap();
     let name = |concept: usize| {
         concepts
@@ -8495,8 +8507,11 @@ fn run_tinput_inner(
                 .ok_or_else(|| "typed tableau input cannot enter the bridge route".to_string())?,
         )
         .map_err(|e| e.to_string())?;
-        let res = crate::bigstack::run("konclude_ht bridge", crate::bigstack::DEEP_STACK,
-            move || crate::konclude_ht::bridge::bridged_classify(&tin_bridge))?;
+        let (res, defer_reason) = crate::bigstack::run("konclude_ht bridge", crate::bigstack::DEEP_STACK,
+            move || {
+                let res = crate::konclude_ht::bridge::bridged_classify(&tin_bridge);
+                (res, crate::konclude_ht::bridge::take_bridge_defer_reason())
+            })?;
         if let Some(r) = res {
             let subs: Vec<(C, C)> = r
                 .subsumptions
@@ -8533,7 +8548,7 @@ fn run_tinput_inner(
         // orchestrator's CB arm must decide. Otherwise fall through to the
         // route the worker was actually spawned for (monotone-safe).
         if std::env::var_os("KM_HT_BRIDGE_ONLY").is_some() {
-            return Err("konclude_ht bridge defer".to_string());
+            return Err(bridge_defer_message(defer_reason));
         }
     }
 
