@@ -813,11 +813,14 @@ the clause set is exact for the vocabulary.
 **The decided fragment.** `expand` reports, and the frontend publishes as
 not represented (`DROPPED`, reason "data range outside the decided datatype
 fragment: …"), every name that the datatype map defines but the oracle does
-not decide: a facet other than the four bounds, or a bound on a
-non-numeric base (pattern, length, minLength, maxLength, totalDigits,
-fractionDigits, langRange; dateTime bounds); a literal of a map datatype
-that does not parse into an exact value (an ill-typed literal, a binary or
-`XMLLiteral` value, a name type with a non-ASCII character); a literal whose
+not decide: a facet other than the four bounds, or a bound on a base other
+than the numeric towers and the dateTime family (pattern, length,
+minLength, maxLength, totalDigits, fractionDigits, langRange); a literal of
+a map datatype that does not parse into an exact value (an ill-typed
+literal, a binary value, an `rdf:XMLLiteral` with markup outside the
+canonical fragment of "dateTime bounds and XMLLiteral values" below, a name
+type with a non-ASCII character); (dateTime bounds and canonical
+XMLLiterals are decided since 2026-11-01, see that section); a literal whose
 membership in a decided range is undecided; an `rdfs:Literal` member of a
 union; a cell group with more than 512 cells. Datatypes outside the OWL 2
 datatype map (custom IRIs, `xsd:date`, `xsd:time`, the `g*` types,
@@ -1223,7 +1226,118 @@ bridge with a singleton are proved inert, all agree with HermiT, and every
 `native_data_values` fixture with a singleton keeps the gate. 9027 takes
 32.6 s against 32.3 s for v1.5.3 on ws (mean of seven pairs).
 
-## Open corners (status 2026-10-30, after `data-values-3`)
+
+### dateTime bounds and XMLLiteral values (2026-11-01, agent `data-coverage-regression`)
+
+**Defect** (S1 blocker). Two held-out inputs that v1.5.3 answers and
+verifies were published by the v1.5.5 preview (775223bf) as `DROPPED`:
+`ore_ont_13077` (one `DatatypeRestriction(xsd:dateTime xsd:minExclusive
+"2004-12-27T06:00:00"^^xsd:dateTime)`, a dateTime bound) and `ore_ont_13584`
+(eighteen `rdf:XMLLiteral` literals). v1.5.3 answered both with `DROPPED 0`
+because it related neither the bound nor the literals to anything (the free
+abstraction); v1.5.5's decided fragment reported both as undecided. Both
+now answer with `DROPPED 0` and the v1.5.3 taxonomy.
+
+**dateTime value space and order** (`frontend/datatypes/time.rs`). A value
+is timezoned (an instant with an offset in -14:00 … +14:00; identity keeps
+the offset, as before, so one instant carries 1681 values) or untimezoned
+(a local time). XSD 1.1 part 2 (3.3.7, D.2.1) orders timezoned values by
+instant and untimezoned values by local time; a timezoned `P` and an
+untimezoned `Q` compare only beyond fourteen hours (`P < Q` iff `P < Q -
+14h`, `P > Q` iff `P > Q + 14h`, never equal). A bound facet denotes
+`{x | x ≥ b}` (and so on) under this partial order. Every facet interval and
+every intersection of them is a pair of intervals (`TimeRange`): one over
+the instants of the timezoned values, one over the local times of the
+untimezoned values. A timezoned bound restricts its own axis by itself and
+the other axis strictly by `b ± 14h`; an untimezoned bound the other way
+round. `xsd:dateTimeStamp` is the full timezoned axis,
+`DataIntersectionOf(… DataComplementOf(xsd:dateTimeStamp))` reads as the
+untimezoned axis (`time_component`). Seconds carry arbitrary decimal
+fractions (`TimePoint` keeps whole seconds and the digit string), so both
+axes are dense and interval inclusion and disjointness decide the value
+sets exactly. Membership of a literal is decided by its axis and position.
+Where the order is partial, nothing is left undecided: the incomparable
+pairs are exactly the pairs that the strict `± 14h` bounds exclude.
+
+**Cells** (`vocabulary::time_cells`). In a role group with two or more
+ranges of the dateTime family, at least one of them a facet interval, each
+axis is cut at every endpoint of the group's intervals on it. The cells are
+the timezoned endpoints (`DatatypeRestriction(xsd:dateTimeStamp
+xsd:minInclusive t xsd:maxInclusive t)`, 1681 values), the untimezoned
+endpoints (value concepts), and the open gaps between consecutive cuts on
+each axis (infinite, named by exclusive facets, untimezoned gaps
+intersected with `DataComplementOf(xsd:dateTimeStamp)`). Each name is parsed
+back and checked to denote exactly its cell; a cell outside the years the
+lexical forms reach is reported. The cell clauses, covers and disjointness
+are those of the numeric cells; the laminar shortcut and the exhaustion
+test apply unchanged (a timezoned point is finite, 1681 values, and has no
+enumerated cover: a count that could exhaust it publishes the input as not
+represented). Groups whose dateTime-family ranges are only the two named
+types keep their clause stream (a two-type chain with an infinite
+difference). `ore_ont_13077` is such a laminar group (the bound inside
+`xsd:dateTime`, an infinite residue) and gets no cells.
+
+**XMLLiteral values.** RDF Concepts 5.1 makes the lexical space of
+`rdf:XMLLiteral` exclusive canonical XML and the lexical-to-value map
+one-to-one, so two well-typed literals denote one value iff their lexical
+forms are equal. `xml_canonical_text` decides canonical form for character
+data and elements without attributes or namespace prefixes: `Some(false)`
+for a raw `>` or carriage return, an entity or character reference other
+than `&amp;`, `&lt;`, `&gt;`, `&#xD;`, a CDATA section, an empty-element
+tag or white space inside a tag; `None` for attributes, prefixed names,
+comments and processing instructions. Conformance rejects a literal that is
+decidedly not canonical (exit 2, "rdf:XMLLiteral lexical form is not
+exclusive canonical XML"); a canonical literal of the fragment is the value
+`Val::Xml(lexical form)`, related to the other values by lexical identity,
+inside `rdf:XMLLiteral` and outside every other named type; a literal with
+markup outside the fragment stays opaque and is reported (`DROPPED`). The
+eighteen literals of `ore_ont_13584` are text without `&`, `<`, `>` or
+carriage returns (Chinese, pinyin with diacritics, Finnish, English), hence
+canonical; the markup literals of `ore_ont_11647` (`<i>g<sub>n</sub></i>`
+with white space) are elements without attributes, hence canonical too.
+
+**Exactness.** (i) `restrict_mem`: a facet interval denotes exactly the
+values its two axes contain. (ii) The pairwise decisions (inclusion,
+disjointness, membership, identity) are sound. (iii) With cells, every range of
+the group is an interval on each axis whose endpoints are cuts, so it
+contains a whole cell or none of it (`cell_uniform`); every value of a range
+lies in one of its cells; the cell sizes are 1681, 1 and infinite. The cell
+realizability argument of "Boolean data ranges and ordered cells" then
+applies: every label set the clauses admit has a value (a fresh one in an
+infinite or large cell, an enumerated one in a small cell), with as many
+distinct values as a count demands. (iv) Without cells (one range of the
+family in the group, or a laminar group) the oracle decides the range
+against the named types, which is the laminar argument. (v) XMLLiteral is
+one infinite named type whose values are decided by identity.
+
+**HermiT** differs from XSD 1.1 in one place that matters here: it counts
+`T24:00:00` of a day as a value distinct from `T00:00:00` of the next day
+(`DateTimeInterval.subtractSizeFrom` adds one value per such instant), so
+`≥ 2 p.dateTime[t, t]` with an untimezoned midnight `t` is satisfiable for
+HermiT and unsatisfiable under XSD 1.1, whose lexical mapping sends both
+spellings to one value (KM's identity since `datetime_value`). The fixtures
+and seeds avoid midnight and zero seconds; with them HermiT and KM agree.
+HermiT also keeps only milliseconds; the probes use at most three
+fractional digits.
+
+**Lean** (`lean/ContextCalculus/DataRangeDateTime.lean`, imported by
+`ContextCalculus.lean`, no `sorry`): the value space `DTVal`, the XSD order
+`lt`/`eqv`, facet semantics `facetSem`, the axis encoding and
+`restrict_mem` (the encoding of every bound facet is exact), soundness of
+inclusion and disjointness (`Axis.subsetB_sound`, `Axis.disjointB_sound`,
+`Rng.subsetB_sound`, `Rng.disjointB_sound`), `Rng.mem_stamp` and
+`Rng.mem_untimezoned`, cell exactness (`cell_uniform`, `cell_uniform_zoned`,
+`cell_uniform_untz`, `cellOf_cut`, `gap_eq_cellOf`), the cell sizes
+(`zoned_point_encard` = 1681, `untz_point_encard` = 1, `gap_infinite`, `gap_infinite_any`) that
+`CellSpec.size_eq` of `DataRangeCells` asks for, and `xml_value_eq_iff`
+(XMLLiteral identity is lexical identity of canonical forms). Axioms:
+`propext`, `Classical.choice`, `Quot.sound` (none for `xml_value_eq_iff`).
+Not formalized: that `TimePoint`'s derived order is the numeric order of
+`secs + 0.frac` and the lexical parser and printer (checked by unit tests and
+the round-trip check in `time_cells`), and the canonical-form checker
+`xml_canonical_text` (unit tests).
+
+## Open corners (status 2026-10-30, after `data-values-3`; dateTime and XMLLiteral rows 2026-11-01)
 
 Every corner now has one of two behaviours: an exact answer, or an input
 published as not represented (`DROPPED`) or refused. Probes with HermiT
@@ -1238,7 +1352,8 @@ gold: `results/agents/2026-10-30/data-values-3/`; integration test
 | string types, `rdf:PlainLiteral`, `dateTimeStamp`, binary types | exact (chain inclusions, PlainLiteral values, disjoint binary types) | `string_chain` (HermiT differs, see the fixture), `plain_literal`, `datetime_stamp`, `binary_disjoint` |
 | dateTime identity | exact (timezone kept, as HermiT) | `datetime_offset` |
 | pattern and length facets | DROPPED on the automatic route, refused on the forced nominal routes | `length_empty`, `length_exhaust`, `length_value`, `pattern_value`, `pattern_subsumption` |
-| dateTime facets (ordering) | DROPPED / refused | `datetime_empty`, `datetime_value`, `datetime_subsumption` |
+| dateTime facets (ordering) | exact (two axes, XSD 1.1 order with the fourteen-hour rule, ordered cells) | `datetime_empty`, `datetime_value`, `datetime_subsumption`, `datetime_zone_*`, `datetime_point_cells`, `datetime_cells_helly`, `datetime_untimezoned` |
+| `rdf:XMLLiteral` literals | exact for text and elements without attributes (lexical identity of canonical forms); non-canonical forms rejected (exit 2); attributes, prefixes, comments, processing instructions DROPPED | `xml_literal_identity`, `xml_literal_distinct`, `xml_literal_string` |
 | `xsd:duration`, `xsd:date`, `g*`, custom datatypes | outside the OWL 2 map: free abstraction (HermiT rejects such inputs) | none |
 | n-ary `DataSomeValuesFrom` | no n-ary datatype exists in the OWL 2 map; KM rejects the input (exit 2, "invalid OWL 2 DL input"), the OWL API does not parse it | `nary_some` (no gold) |
 | `HasKey` with data properties | refused on every route | `haskey_data`, `haskey_data_ok` |

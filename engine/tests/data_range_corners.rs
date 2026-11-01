@@ -153,9 +153,17 @@ exact!(float_decimal, float_value_decimal, integer_double_sub, plain_literal, da
 // every language tag is an NCName. The fixture records the datatype-map
 // answer (`A` unsatisfiable).
 exact!(string_chain);
-// Pattern, length and dateTime facets: outside the decided fragment.
-declined!(length_empty, length_exhaust, length_value, pattern_value, pattern_subsumption,
-    datetime_empty, datetime_value, datetime_subsumption);
+// dateTime bounds as ordered cells (XSD 1.1 order with the fourteen-hour
+// rule, timezoned point cells of 1681 values) and rdf:XMLLiteral identity
+// (docs/DATATYPES.md, "dateTime bounds and XMLLiteral values"). The point
+// probes avoid midnight: HermiT counts `T24:00:00` as a value of its own,
+// XSD 1.1 maps it to the next day's `T00:00:00`.
+exact!(datetime_empty, datetime_value, datetime_subsumption, datetime_zone_mix_out,
+    datetime_zone_mix_in, datetime_zone_subsumption, datetime_zone_empty, datetime_point_cells,
+    datetime_cells_helly, datetime_untimezoned, xml_literal_identity, xml_literal_distinct,
+    xml_literal_string);
+// Pattern and length facets: outside the decided fragment.
+declined!(length_empty, length_exhaust, length_value, pattern_value, pattern_subsumption);
 // HasKey over data properties: refused (lowered to rules whose data atoms
 // fail closed).
 declined!(haskey_data, haskey_data_ok);

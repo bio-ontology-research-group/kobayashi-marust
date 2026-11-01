@@ -1,0 +1,10 @@
+Prefix(:=<http://e.org/p#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(rdf:=<http://www.w3.org/1999/02/22-rdf-syntax-ns#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+Ontology(<http://e.org/p/datetime_zone_mix_out>
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(Class(:D)) Declaration(DataProperty(:p)) Declaration(DataProperty(:q)) Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+DataPropertyRange(:p DatatypeRestriction(xsd:dateTime xsd:minExclusive "2004-12-27T06:00:00"^^xsd:dateTime))
+DataPropertyAssertion(:p :a "2004-12-27T20:00:00Z"^^xsd:dateTime)
+)

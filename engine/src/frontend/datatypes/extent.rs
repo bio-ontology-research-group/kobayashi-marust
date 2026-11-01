@@ -77,6 +77,7 @@ fn complement_of<'n, 'a>(node: &'n Node<'a>) -> Option<&'n Node<'a>> {
 fn leaf_empty(range: &DRange) -> bool {
     match range {
         DRange::Float(r) => r.empty(),
+        DRange::Time(r) => r.is_empty(),
         DRange::OneOf(values) => values.is_empty(),
         DRange::Num(_) => num_bounds_cross(range),
         _ => false,
@@ -115,7 +116,8 @@ fn empty(node: &Node, depth: usize) -> bool {
             || members.iter().enumerate().any(|(i, left)| {
                 members.iter().skip(i + 1).any(|right| disjoint(left, right, depth + 1))
             })
-            || finite_intersection_empty(members);
+            || finite_intersection_empty(members)
+            || leaf_empty(&range_from_node(node));
     }
     if let Some(literals) = args(node, "DataOneOf") {
         // `DataOneOf()` lists no value. Non-empty lists denote their values.

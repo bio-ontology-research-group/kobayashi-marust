@@ -1,0 +1,10 @@
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://x/o>
+Declaration(ObjectProperty(<http://x/r>)) Declaration(ObjectProperty(<http://x/p>))
+Declaration(DataProperty(<http://x/u>))
+Declaration(NamedIndividual(<http://x/a>)) Declaration(NamedIndividual(<urn:q#c>))
+Declaration(NamedIndividual(<urn:q#d>)) Declaration(NamedIndividual(<urn:q#e>))
+Declaration(Class(<urn:q#B>)) Declaration(Class(<urn:q#S3>)) Declaration(Class(<urn:q#S6>))
+Declaration(Class(<urn:q#X>))
+SubClassOf(ObjectComplementOf(ObjectHasValue(<http://x/p> <urn:q#e>)) <urn:q#B>) EquivalentClasses(<urn:q#S6> ObjectIntersectionOf(ObjectOneOf(<urn:q#c>) ObjectSomeValuesFrom(<http://x/r> ObjectOneOf(<urn:q#d>)) ObjectSomeValuesFrom(ObjectInverseOf(<http://x/r>) ObjectOneOf(<urn:q#d>))))
+)

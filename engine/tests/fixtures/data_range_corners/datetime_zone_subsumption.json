@@ -1,0 +1,1 @@
+{"ontology": "datetime_zone_subsumption.ofn", "consistent": true, "subsumptions": [["B", "A"], ["B", "C"], ["D", "A"]], "unsatisfiable": []}

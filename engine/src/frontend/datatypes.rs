@@ -342,6 +342,9 @@ enum Val {
     /// `xsd:anyURI` value: the IRI denoted by the whitespace-collapsed lexical
     /// form (XSD 1.1 `whiteSpace=collapse`; OWL 2 parses relative IRIs as-is).
     Uri(String),
+    /// `rdf:XMLLiteral` value: the lexical form, which RDF requires to be in
+    /// exclusive canonical XML, so lexical identity is value identity.
+    Xml(String),
     /// recognised datatype but value not represented exactly (e.g. enormous
     /// exponents) — comparable only for identity of the raw token
     Opaque(String),
@@ -696,6 +699,14 @@ fn parse_literal(tok: &str) -> Option<(Val, Option<String>)> {
         },
         Some("anyURI") => Val::Uri(lex.split([' ', '\t', '\n', '\r'])
             .filter(|part| !part.is_empty()).collect::<Vec<_>>().join(" ")),
+        // The lexical space of `rdf:XMLLiteral` is exclusive canonical XML
+        // (RDF Concepts 5.1), so two literals denote one value iff their
+        // lexical forms are equal. Conformance rejects a form it decides is
+        // not canonical; a form it cannot decide stays opaque.
+        Some("XMLLiteral") => match xml_canonical(lex) {
+            Some(true) => Val::Xml(lex.to_string()),
+            _ => Val::Opaque(tok.to_string()),
+        },
         Some("dateTime" | "dateTimeStamp") => super::datetime_value::parse(
             lex, builtin == Some("dateTimeStamp"),
         ).map(Val::DateTime).unwrap_or_else(|| Val::Opaque(tok.to_string())),
@@ -985,6 +996,9 @@ enum DRange {
     Num(NumRange),
     /// IEEE interval, separate from the real/decimal value space.
     Float(FloatRange),
+    /// `xsd:dateTime` facet interval: an interval of instants for the
+    /// timezoned values and one of local times for the untimezoned ones.
+    Time(time::TimeRange),
     /// explicit enumeration
     OneOf(Vec<Val>),
     /// Complement in the data-value universe, with unknown decisions retained.
@@ -1063,6 +1077,18 @@ fn range_from_node(node: &Node) -> DRange {
             // their facets (exact for IEEE ranks and for decimal intervals).
             "DataIntersectionOf" if args.len() >= 2 => {
                 let members: Vec<DRange> = args.iter().map(range_from_node).collect();
+                // dateTime facet intervals, the two named types and the
+                // complement of `xsd:dateTimeStamp` (the untimezoned values)
+                // intersect axis by axis.
+                if members.iter().any(|m| matches!(m, DRange::Time(_) | DRange::Complement(_))) {
+                    if let Some(parts) = members.iter().map(time_component).collect::<Option<Vec<_>>>() {
+                        let mut range = time::TimeRange::date_time();
+                        for part in &parts {
+                            range = range.intersect(part);
+                        }
+                        return DRange::Time(range);
+                    }
+                }
                 match &members[0] {
                     DRange::Float(first) => {
                         let mut range = first.clone();
@@ -1135,6 +1161,15 @@ fn range_from_node(node: &Node) -> DRange {
                     Some(b) => b.as_str(),
                     None => return DRange::Unknown,
                 };
+                if let Some(mut range) = named_dt(base).as_ref().and_then(named_time_range) {
+                    if (toks.len() - 1) % 2 != 0 { return DRange::Unknown; }
+                    for pair in toks[1..].chunks_exact(2) {
+                        let Some(facet) = builtin_facet_key(&pair[0]) else { return DRange::Unknown; };
+                        let Some((Val::DateTime(value), _)) = parse_literal(&pair[1]) else { return DRange::Unknown; };
+                        if range.restrict(facet, &value).is_none() { return DRange::Unknown; }
+                    }
+                    return DRange::Time(range);
+                }
                 if let Some(bd) = named_dt(base).filter(|d| matches!(d.part, Partition::Float32 | Partition::Float64)) {
                     let mut range = FloatRange::full(bd.part);
                     if (toks.len() - 1) % 2 != 0 { return DRange::Unknown; }
@@ -1215,6 +1250,150 @@ fn range_from_node(node: &Node) -> DRange {
     }
 }
 
+/// The two axes of a named type of the dateTime family.
+fn named_time_range(datatype: &NamedDt) -> Option<time::TimeRange> {
+    match datatype.kind {
+        "dateTime" => Some(time::TimeRange::date_time()),
+        "dateTimeStamp" => Some(time::TimeRange::stamp()),
+        _ => None,
+    }
+}
+
+/// The axes of a range of the dateTime family: a facet interval, a named
+/// type, or `DataComplementOf(xsd:dateTimeStamp)` read inside an
+/// intersection with another member of the family (the untimezoned values).
+fn time_component(range: &DRange) -> Option<time::TimeRange> {
+    match range {
+        DRange::Time(range) => Some(range.clone()),
+        DRange::Named(datatype) => named_time_range(datatype),
+        DRange::Complement(inner) => match inner.as_ref() {
+            DRange::Named(datatype) if datatype.kind == "dateTimeStamp" => Some(time::TimeRange::untimezoned()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// The axes of an atomic range of the dateTime family (no complement).
+fn time_axes(range: &DRange) -> Option<time::TimeRange> {
+    match range {
+        DRange::Time(range) => Some(range.clone()),
+        DRange::Named(datatype) => named_time_range(datatype),
+        _ => None,
+    }
+}
+
+/// Whether `lex` is in exclusive canonical XML form (RDF Concepts 5.1, the
+/// lexical space of `rdf:XMLLiteral`), for the fragment this module decides:
+/// character data and elements without attributes or namespace prefixes.
+/// `Some(false)` when the form is decidedly not canonical: a raw `>` or
+/// carriage return, a character or entity reference other than `&amp;`,
+/// `&lt;`, `&gt;` and `&#xD;` (canonical XML writes the character), a CDATA
+/// section, an empty-element tag, or white space inside a tag. `None` for
+/// attributes, prefixed names, comments, processing instructions and
+/// anything malformed. `lex` is the functional-syntax lexical form, whose
+/// only escapes are `\"` and `\\`.
+pub(crate) fn xml_canonical(lex: &str) -> Option<bool> {
+    let mut text = String::with_capacity(lex.len());
+    let mut chars = lex.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some(e @ ('\\' | '"')) => text.push(e),
+                _ => return None,
+            }
+        } else {
+            text.push(c);
+        }
+    }
+    xml_canonical_text(&text)
+}
+
+/// [`xml_canonical`] on the unescaped lexical form.
+pub(crate) fn xml_canonical_text(text: &str) -> Option<bool> {
+    let bytes = text.as_bytes();
+    let name_end = |from: usize| -> usize {
+        let mut end = from;
+        while end < bytes.len() && !matches!(bytes[end], b'>' | b'/' | b' ' | b'\t' | b'\n' | b'\r' | b'<' | b'&' | b'=') {
+            end += 1;
+        }
+        end
+    };
+    let mut open: Vec<&str> = Vec::new();
+    let mut verdict = true;
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'>' | b'\r' => { verdict = false; i += 1; }
+            b'&' => {
+                let rest = &text[i..];
+                let end = rest.find(';')?;
+                if !matches!(&rest[..=end], "&amp;" | "&lt;" | "&gt;" | "&#xD;") {
+                    verdict = false;
+                }
+                i += end + 1;
+            }
+            b'<' => {
+                let rest = &text[i..];
+                if rest.starts_with("<![CDATA[") {
+                    verdict = false;
+                    i += rest.find("]]>")? + 3;
+                } else if rest.starts_with("<!") || rest.starts_with("<?") {
+                    return None;
+                } else if let Some(after) = rest.strip_prefix("</") {
+                    let end = name_end(i + 2);
+                    let name = &text[i + 2..end];
+                    if open.pop()? != name {
+                        return None;
+                    }
+                    if !after[name.len()..].starts_with('>') {
+                        // `</a >` is well formed but not canonical.
+                        let close = after.find('>')?;
+                        if after[name.len()..close].trim_matches([' ', '\t', '\n', '\r']).is_empty() {
+                            verdict = false;
+                            i += 2 + close + 1;
+                            continue;
+                        }
+                        return None;
+                    }
+                    i = end + 1;
+                } else {
+                    let end = name_end(i + 1);
+                    let name = &text[i + 1..end];
+                    if name.is_empty() || name.contains(':') || name.starts_with("xml") {
+                        return None;
+                    }
+                    let tail = &text[end..];
+                    if tail.starts_with('>') {
+                        open.push(name);
+                        i = end + 1;
+                    } else if tail.starts_with("/>") {
+                        verdict = false;
+                        i = end + 2;
+                    } else {
+                        // White space inside the tag: attributes are
+                        // outside the fragment; bare white space is not
+                        // canonical.
+                        let trimmed = tail.trim_start_matches([' ', '\t', '\n', '\r']);
+                        if trimmed.starts_with('>') {
+                            verdict = false;
+                            open.push(name);
+                            i = text.len() - trimmed.len() + 1;
+                        } else if trimmed.starts_with("/>") {
+                            verdict = false;
+                            i = text.len() - trimmed.len() + 2;
+                        } else {
+                            return None;
+                        }
+                    }
+                }
+            }
+            _ => i += 1,
+        }
+    }
+    open.is_empty().then_some(verdict)
+}
+
 /// `v = w`? `None` when not comparable.
 fn val_eq(v: &Val, w: &Val) -> Option<bool> {
     match (v, w) {
@@ -1225,6 +1404,7 @@ fn val_eq(v: &Val, w: &Val) -> Option<bool> {
         (Val::Bool(a), Val::Bool(b)) => Some(a == b),
         (Val::Str(a, la), Val::Str(b, lb)) => Some(a == b && la == lb),
         (Val::Uri(a), Val::Uri(b)) => Some(a == b),
+        (Val::Xml(a), Val::Xml(b)) => Some(a == b),
         // cross-partition values are always distinct
         (Val::Num(_), Val::Bool(_) | Val::Str(..))
         | (Val::Bool(_), Val::Num(_) | Val::Str(..))
@@ -1246,6 +1426,7 @@ fn val_partition(v: &Val) -> Option<Partition> {
         Val::Bool(_) => Some(Partition::Boolean),
         Val::Str(..) => Some(Partition::Strings),
         Val::Uri(_) => Some(Partition::Uri),
+        Val::Xml(_) => Some(Partition::Other),
         Val::Opaque(_) => None,
     }
 }
@@ -1316,6 +1497,11 @@ fn val_in_range(v: &Val, d: &DRange) -> Option<bool> {
             if unknown { None } else { Some(true) }
         }
         DRange::Float(r) => r.contains(v),
+        DRange::Time(r) => match v {
+            Val::DateTime(value) => r.contains(value),
+            Val::Opaque(_) => None,
+            _ => Some(false),
+        },
         DRange::Top => Some(true),
         DRange::Unknown => None,
         DRange::Complement(inner) => val_in_range(v, inner).map(|member| !member),
@@ -1336,7 +1522,7 @@ fn val_in_range(v: &Val, d: &DRange) -> Option<bool> {
         }
         DRange::Num(r) => match v {
             Val::Num(rv) => in_num_range(rv, r),
-            Val::Bool(_) | Val::Str(..) | Val::Uri(_) | Val::Float32(_) | Val::Float64(_) | Val::DateTime(_) => Some(false),
+            Val::Bool(_) | Val::Str(..) | Val::Uri(_) | Val::Xml(_) | Val::Float32(_) | Val::Float64(_) | Val::DateTime(_) => Some(false),
             Val::Opaque(_) => None,
         },
         DRange::Named(nd) => match v {
@@ -1378,6 +1564,7 @@ fn val_in_range(v: &Val, d: &DRange) -> Option<bool> {
             }
             Val::Bool(_) => Some(nd.part == Partition::Boolean),
             Val::Uri(_) => Some(nd.part == Partition::Uri),
+            Val::Xml(_) => Some(nd.kind == "XMLLiteral"),
             Val::Str(s, lang) => {
                 if nd.part != Partition::Strings {
                     return Some(false);
@@ -1410,6 +1597,7 @@ fn range_subsumed(d1: &DRange, d2: &DRange) -> Option<bool> {
     }
     match (d1, d2) {
         (DRange::Float(a), _) if a.empty() => Some(true),
+        (DRange::Time(a), _) if a.is_empty() => Some(true),
         (DRange::Float(a), DRange::Float(b)) => Some(a.subset(b)),
         (DRange::Float(a), DRange::Named(b)) => Some(a.part == b.part),
         (DRange::Named(a), DRange::Float(b)) => Some(
@@ -1473,6 +1661,22 @@ fn range_subsumed(d1: &DRange, d2: &DRange) -> Option<bool> {
             (range_subsumed(b, a) == Some(true)).then_some(true),
         (_, DRange::Complement(b)) => (range_disjoint(d1, b) == Some(true)).then_some(true),
         (DRange::Complement(_), _) => None,
+        // The dateTime family: axis-wise inclusion (exact on dense axes).
+        // The free temporal types outside the map relate to nothing.
+        (DRange::Time(a), other) => match time_axes(other) {
+            Some(b) => Some(a.subset(&b)),
+            None if matches!(other, DRange::Named(datatype) if datatype.part == Partition::Time) => None,
+            None => Some(false),
+        },
+        (other, DRange::Time(b)) => match time_axes(other) {
+            Some(a) => Some(a.subset(b)),
+            None if matches!(other, DRange::Named(datatype) if datatype.part == Partition::Time) => None,
+            None => match range_size(other) {
+                Some(0) => Some(true),
+                Some(_) => Some(false),
+                None => None,
+            },
+        },
         (DRange::Named(a), DRange::Named(b)) => {
             if a.kind == b.kind { return Some(true); }
             if a.part != b.part {
@@ -1668,6 +1872,7 @@ fn range_disjoint(d1: &DRange, d2: &DRange) -> Option<bool> {
     }
     match (d1, d2) {
         (DRange::Float(a), _) | (_, DRange::Float(a)) if a.empty() => Some(true),
+        (DRange::Time(a), _) | (_, DRange::Time(a)) if a.is_empty() => Some(true),
         (DRange::Float(a), DRange::Float(b)) => Some(a.disjoint(b)),
         (DRange::Float(a), DRange::Named(b)) | (DRange::Named(b), DRange::Float(a)) =>
             Some(a.part != b.part),
@@ -1710,6 +1915,11 @@ fn range_disjoint(d1: &DRange, d2: &DRange) -> Option<bool> {
         (DRange::Complement(_), DRange::Complement(_)) => None,
         (DRange::Complement(a), other) | (other, DRange::Complement(a)) =>
             (range_subsumed(other, a) == Some(true)).then_some(true),
+        (DRange::Time(a), other) | (other, DRange::Time(a)) => match time_axes(other) {
+            Some(b) => Some(a.disjoint(&b)),
+            None if matches!(other, DRange::Named(datatype) if datatype.part == Partition::Time) => None,
+            None => Some(true),
+        },
         (DRange::Named(a), DRange::Named(b)) => {
             if a.part != b.part {
                 return Some(true);
@@ -1847,6 +2057,9 @@ fn enumerate_range(d: &DRange, cap: usize) -> Option<Vec<String>> {
         }
         // An empty dense interval: the empty cover (`R ⊑ ⊥`).
         DRange::Num(_) if range_size(d) == Some(0) => Some(vec![]),
+        // An empty dateTime interval, or one untimezoned value.
+        DRange::Time(r) if r.is_empty() => Some(vec![]),
+        DRange::Time(r) => r.single_value().map(|lexical| vec![format!("\"{lexical}\"^^xsd:dateTime")]),
         _ => None,
     }
 }
@@ -1895,6 +2108,7 @@ fn range_size(d: &DRange) -> Option<u128> {
             }
             _ => Some(u128::MAX),
         },
+        DRange::Time(r) => Some(r.size()),
         DRange::Float(r) => Some(if r.empty() { 0 } else {
             (r.hi.saturating_sub(r.lo) as u128 + 1) + u128::from(r.nan)
         }),
@@ -1910,7 +2124,7 @@ fn range_size(d: &DRange) -> Option<u128> {
         // through its finite values only.
         DRange::Complement(inner) => match inner.as_ref() {
             DRange::Top => Some(0),
-            DRange::Named(_) | DRange::Num(_) | DRange::Float(_) | DRange::OneOf(_) => Some(u128::MAX),
+            DRange::Named(_) | DRange::Num(_) | DRange::Float(_) | DRange::Time(_) | DRange::OneOf(_) => Some(u128::MAX),
             _ => None,
         },
         // Exact: an infinite member makes the union infinite; finite members
@@ -5075,6 +5289,42 @@ mod tests {
     }
 }
 
+#[cfg(test)]
+mod xml_literal_tests {
+    use super::*;
+
+    #[test]
+    fn canonical_xml_literals_are_values_by_lexical_identity() {
+        let value = |text: &str| parse_literal(text).unwrap().0;
+        assert_eq!(value("\"wèi le\"^^rdf:XMLLiteral"), Val::Xml("wèi le".into()));
+        assert_eq!(val_eq(&value("\"<b>x</b>\"^^rdf:XMLLiteral"), &value("\"<b>x</b>\"^^rdf:XMLLiteral")), Some(true));
+        assert_eq!(val_eq(&value("\"<b>x</b>\"^^rdf:XMLLiteral"), &value("\"<b>y</b>\"^^rdf:XMLLiteral")), Some(false));
+        // A string and an XML value are distinct values.
+        assert_eq!(val_eq(&value("\"be\"^^rdf:XMLLiteral"), &value("\"be\"")), Some(false));
+        assert_eq!(literal_in_range("\"be\"^^rdf:XMLLiteral", "__dt__XMLLiteral"), Some(true));
+        assert_eq!(literal_in_range("\"be\"^^rdf:XMLLiteral", "__dt__string"), Some(false));
+        // Markup outside the decided fragment stays opaque.
+        assert!(matches!(value("\"<a x='1'>t</a>\"^^rdf:XMLLiteral"), Val::Opaque(_)));
+        assert!(matches!(value("\"<a/>\"^^rdf:XMLLiteral"), Val::Opaque(_)));
+    }
+
+    #[test]
+    fn canonical_form_fragment() {
+        for text in ["", "be", "a &amp; b &lt; c &gt; d", "\n <i>g<sub>n</sub>\n </i>\n", "x&#xD;y"] {
+            assert_eq!(xml_canonical_text(text), Some(true), "{text}");
+        }
+        for text in ["a > b", "<a/>", "<a >x</a>", "<a>x</a >", "&quot;", "&#65;", "<![CDATA[x]]>", "a\rb"] {
+            assert_eq!(xml_canonical_text(text), Some(false), "{text}");
+        }
+        for text in ["<a x='1'>t</a>", "<p:a xmlns:p='urn:p'></p:a>", "<!--c-->", "<?t d?>"] {
+            assert_eq!(xml_canonical_text(text), None, "{text}");
+        }
+        // Functional-syntax escapes are read before the check.
+        assert_eq!(xml_canonical("say \\\"hi\\\""), Some(true));
+    }
+}
+
 pub(crate) mod numeric_cells;
+pub(crate) mod time;
 pub(crate) mod extent;
 pub(crate) mod vocabulary;
