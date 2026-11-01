@@ -1,0 +1,16 @@
+     Running tests/data_abox_projection.rs (target/release/deps/data_abox_projection-8e6e2112ebae48d5)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+     Running tests/data_assertions_carried.rs (target/release/deps/data_assertions_carried-cd1d5e4246dfb57b)
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 14.20s
+     Running tests/data_range_corners.rs (target/release/deps/data_range_corners-88f44bbd11b6e8ea)
+test result: ok. 44 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.20s
+     Running tests/empty_and_universal_data_ranges.rs (target/release/deps/empty_and_universal_data_ranges-299bd82a8ba60ed0)
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 197.83s
+     Running tests/integral_datatype_difference.rs (target/release/deps/integral_datatype_difference-d2dc6d397c49a424)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+     Running tests/native_data_values.rs (target/release/deps/native_data_values-ac0f602c23460063)
+test result: ok. 30 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 44.79s
+     Running tests/top_nominal_data_successors.rs (target/release/deps/top_nominal_data_successors-cede98c5f4e615c8)
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.34s
+     Running tests/universal_role_and_top_data_range.rs (target/release/deps/universal_role_and_top_data_range-bb5a29301eb288ed)
+test result: FAILED. 12 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.00s
