@@ -1337,6 +1337,21 @@ Not formalized: that `TimePoint`'s derived order is the numeric order of
 the round-trip check in `time_cells`), and the canonical-form checker
 `xml_canonical_text` (unit tests).
 
+### Negated value fillers: the polarity encoding (2026-11-01, agent `polarity-definers`)
+
+`ObjectComplementOf(DataHasValue(u v))` has the NNF `∀u.¬{v}`, whose filler
+is the complement definer `Q ≡ ¬__dt__val__v` of the value concept. The
+frontend pass `polarity_definers` (docs/NOMINALS-CB.md section 11) treats a
+value concept like a nominal: when `Q` occurs only in heads apart from its
+definition clause and the `∀` introduction's complement constraint
+`N(x) ∧ Q(x) → ⊥`, the constraint becomes `N(x) → __dt__val__v(x)` and the
+excluded middle `→ Q(x) ∨ __dt__val__v(x)` is dropped. The value singleton
+and the value disjointness clauses are untouched; the reinterpretation of
+the exactness argument changes `Q` only, so the data sort, the value
+concepts and every data-side clause keep their meaning. `DataComplementOf`
+inside a data range is not affected: the data vocabulary emits its own
+complement clauses, without a `Q_` definer.
+
 ## Open corners (status 2026-10-30, after `data-values-3`; dateTime and XMLLiteral rows 2026-11-01)
 
 Every corner now has one of two behaviours: an exact answer, or an input

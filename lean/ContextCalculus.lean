@@ -245,3 +245,4 @@ import ContextCalculus.UniversalDefinerElimination
 import ContextCalculus.RulesRouteCertificate
 import ContextCalculus.HypertableauSubsetUnravelling
 import ContextCalculus.ObjectGuardRestriction
+import ContextCalculus.PolarityDefiners
