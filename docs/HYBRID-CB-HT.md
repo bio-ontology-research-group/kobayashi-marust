@@ -1279,7 +1279,16 @@ rejected screen costs a second job, so the driver stops screening an input
 once at least 512 screens were rejected and fewer than one in five was
 accepted (the subject order puts ABox-touching subjects first on 3917, so a
 short window would switch the screen off before the first acceptance).
-`KM_BRIDGE_NO_CLEARED_QUEUE_SCREEN=1` disables the screen.
+
+**Default: off** (`KM_BRIDGE_CLEARED_QUEUE_SCREEN=1` enables it). Measured
+on 3917: the forced `ht_bridge` route accepts 2,514 of 5,383 screens and
+drops from 100 to 146 s to 52 s, but on the automatic route the bridge runs
+on the `certified_nominals` input, where every class job reaches a retained
+individual: 0 of 512 screens are accepted and the screen only adds jobs
+(3917 automatic: 77.5 s without, 90.5 s with, same binary and host). The
+remaining cost of this family needs Konclude's lazy reuse of the
+consistency model for touched individuals (the precomputation replay, which
+the port disables after a nondeterministic consistency completion).
 
 **Exactness.** The input is consistent (the base exists only after a
 successful consistency completion). An isolated screen job never added a

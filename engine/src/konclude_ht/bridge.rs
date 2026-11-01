@@ -16184,12 +16184,14 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     let mut readoff_eq_markers: HashMap<usize, HashSet<Cint64>> = HashMap::default();
     // Root-cancellation witnesses for EMPTY stored refutations, shared by
     // every subject job of this classification (docs/HYBRID-CB-HT.md §13).
-    // Cleared-queue screen of docs/HYBRID-CB-HT.md §14 (diagnostic switch
-    // `KM_BRIDGE_NO_CLEARED_QUEUE_SCREEN` restores the plain resuming jobs).
+    // Cleared-queue screen of docs/HYBRID-CB-HT.md §14. Opt-in
+    // (`KM_BRIDGE_CLEARED_QUEUE_SCREEN=1`): on the automatic route of the
+    // measured inputs every job reaches the retained graph, so the screen
+    // only adds rejected jobs there.
     let cleared_queue_screen = retained_consistency_base
         && !fresh_env
         && std::env::var_os("KM_BRIDGE_NO_RETAINED_BASE").is_none()
-        && std::env::var_os("KM_BRIDGE_NO_CLEARED_QUEUE_SCREEN").is_none();
+        && std::env::var_os("KM_BRIDGE_CLEARED_QUEUE_SCREEN").is_some();
     let cleared_queue_job = std::cell::Cell::new(false);
     let cleared_queue_screen_counts = std::cell::Cell::new((0usize, 0usize));
     let empty_alternative_witnesses: std::cell::RefCell<
