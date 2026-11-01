@@ -1,0 +1,258 @@
+=== bottom_properties
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+rc=0 bottom_properties
+=== bridge_atmost_predecessor
+test result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.93s
+rc=0 bridge_atmost_predecessor
+=== bridge_atmost_role_hierarchy
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+rc=0 bridge_atmost_role_hierarchy
+=== bridge_atmost_zero
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s
+rc=0 bridge_atmost_zero
+=== bridge_blank_witness_and_same_reuse
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+rc=0 bridge_blank_witness_and_same_reuse
+=== bridge_conditional_full_replay
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.62s
+rc=0 bridge_conditional_full_replay
+=== bridge_cyclic_equivalence_definition
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+rc=0 bridge_cyclic_equivalence_definition
+=== bridge_generator_soundness
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.69s
+rc=0 bridge_generator_soundness
+=== bridge_merge_chain_edges
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.29s
+rc=0 bridge_merge_chain_edges
+=== bridge_nominal_merge_relocation
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+rc=0 bridge_nominal_merge_relocation
+=== bridge_nominal_merge_reuse
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.24s
+rc=0 bridge_nominal_merge_reuse
+=== bridge_object_guard
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s
+rc=0 bridge_object_guard
+=== bridge_restricted_subject_nominal_merge
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+rc=0 bridge_restricted_subject_nominal_merge
+=== bridge_self_card_nominal
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+rc=0 bridge_self_card_nominal
+=== builtin_iri_aliases
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+rc=0 builtin_iri_aliases
+=== cached_classification_model
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.45s
+rc=0 cached_classification_model
+=== cardinality_role_colors
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.03s
+rc=0 cardinality_role_colors
+=== cb_live_state
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
+rc=0 cb_live_state
+=== cb_nominal_merge_import
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+rc=0 cb_nominal_merge_import
+=== cb_route_completeness
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.13s
+rc=0 cb_route_completeness
+=== certified_abox_production
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+rc=0 certified_abox_production
+=== chain_domain_route
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+rc=0 chain_domain_route
+=== compact_distinct_cardinality
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+rc=0 compact_distinct_cardinality
+=== completion_hot_path_env
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+rc=101 completion_hot_path_env
+=== constant_data_rule_normalization
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.11s
+rc=0 constant_data_rule_normalization
+=== data_abox_projection
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+rc=0 data_abox_projection
+=== data_assertions_carried
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 25.67s
+rc=0 data_assertions_carried
+=== data_range_corners
+test result: ok. 44 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.88s
+rc=0 data_range_corners
+=== elc_certificate
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+rc=0 elc_certificate
+=== empty_and_universal_data_ranges
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 144.84s
+rc=0 empty_and_universal_data_ranges
+=== endpoint_transitivity
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+rc=0 endpoint_transitivity
+=== entity_spellings
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+rc=0 entity_spellings
+=== explain_cli
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.50s
+rc=0 explain_cli
+=== finite_data_rule_normalization
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+rc=0 finite_data_rule_normalization
+=== finite_rule_taxonomy
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+rc=0 finite_rule_taxonomy
+=== forced_route_fail_closed
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.63s
+rc=0 forced_route_fail_closed
+=== global_refutation_closure
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.37s
+rc=0 global_refutation_closure
+=== graph_json_cli
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+rc=0 graph_json_cli
+=== ground_rule_source
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+rc=0 ground_rule_source
+=== has_key_rules
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.66s
+rc=0 has_key_rules
+=== ht_subset_blocking
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+rc=0 ht_subset_blocking
+=== ht_subset_model_certificate
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+rc=0 ht_subset_model_certificate
+=== ht_taxonomy_certificate
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.08s
+rc=0 ht_taxonomy_certificate
+=== inconsistent_cb_rows
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+rc=0 inconsistent_cb_rows
+=== incremental_cb_reasoning
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+rc=0 incremental_cb_reasoning
+=== incremental_ht_reasoning
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+rc=0 incremental_ht_reasoning
+=== incremental_reasoning
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+rc=0 incremental_reasoning
+=== input_utf8_non_ascii
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+rc=0 input_utf8_non_ascii
+=== integer_data_rule_normalization
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+rc=0 integer_data_rule_normalization
+=== integral_datatype_difference
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+rc=0 integral_datatype_difference
+=== inverse_predecessor_propagation
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+rc=0 inverse_predecessor_propagation
+=== inverse_role_chains
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+rc=0 inverse_role_chains
+=== isolated_named_rule_normalization
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+rc=0 isolated_named_rule_normalization
+=== issue_3_soundness
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+rc=0 issue_3_soundness
+=== lean_checkers_dir
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.22s
+rc=0 lean_checkers_dir
+=== merge_hypotheses
+test result: ok. 6 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 17.02s
+rc=0 merge_hypotheses
+=== mirror_route
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+rc=0 mirror_route
+=== native_data_values
+test result: ok. 30 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 50.36s
+rc=0 native_data_values
+=== nominal_ground_body
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+rc=0 nominal_ground_body
+=== nominal_inert_sorts
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.05s
+rc=0 nominal_inert_sorts
+=== nominal_seq_order
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 9.91s
+rc=0 nominal_seq_order
+=== nominal_wine_absorption
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+rc=0 nominal_wine_absorption
+=== r3_disjunctive_equality
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.35s
+rc=0 r3_disjunctive_equality
+=== realization_cli
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.01s
+rc=0 realization_cli
+=== role_automaton_completeness
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+rc=0 role_automaton_completeness
+=== routing_metamorphic
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 23.03s
+rc=0 routing_metamorphic
+=== rule_independent_abox_clash
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+rc=0 rule_independent_abox_clash
+=== rules_inert_sort_certificate
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+rc=0 rules_inert_sort_certificate
+=== rules_inert_sorts_routes
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+rc=0 rules_inert_sorts_routes
+=== rules_lean_certificate
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+rc=0 rules_lean_certificate
+=== rules_route
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+rc=0 rules_route
+=== rule_taxonomy_nominal
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+rc=0 rule_taxonomy_nominal
+=== sequential_classification
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+rc=0 sequential_classification
+=== source_axiom_drops
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.73s
+rc=0 source_axiom_drops
+=== source_incremental_nominals
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+rc=0 source_incremental_nominals
+=== source_incremental
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.43s
+rc=0 source_incremental
+=== source_incremental_rules
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 25.93s
+rc=0 source_incremental_rules
+=== source_module_reuse
+test result: ok. 38 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.19s
+rc=0 source_module_reuse
+=== special_source_iris
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+rc=0 special_source_iris
+=== symbolic_source_classification
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+rc=0 symbolic_source_classification
+=== top_nominal_data_successors
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.08s
+rc=0 top_nominal_data_successors
+=== transitive_rule_reduction
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.14s
+rc=0 transitive_rule_reduction
+=== trigger_filler_recognition
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+rc=0 trigger_filler_recognition
+=== unary_rule_normalization
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+rc=0 unary_rule_normalization
+=== universal_role_and_top_data_range
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.16s
+rc=0 universal_role_and_top_data_range
+=== worker_only_environment
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.20s
+rc=0 worker_only_environment

@@ -868,6 +868,46 @@ pub(crate) fn install_nominal_abox_with_same(
 ) -> bool {
     use std::collections::{HashMap, HashSet};
 
+    // Pre-merge (docs/HYBRID-CB-HT.md section 13): with equality admitted,
+    // install the quotient of the ABox by its `SameIndividual` classes and
+    // rename the source TBox's nominals to the representatives. Every
+    // consumer of the typed ABox then sees an equality-free ABox whose models
+    // are the original models up to the renaming. `KM_NO_SAME_PREMERGE=1`
+    // keeps the previous encoding (`{b}(a)` assertions merged at run time).
+    // Rule inputs carry a second, unrenamed source ABox and keep that path.
+    let source_meta = meta;
+    let quotient = if allow_same
+        && !meta.same.is_empty()
+        && tin.rule_source_abox.is_none()
+        && std::env::var_os("KM_NO_SAME_PREMERGE").is_none()
+    {
+        quotient_same_individuals(meta)
+    } else {
+        None
+    };
+    let (meta, renamed_axioms) = match &quotient {
+        Some((quotient, rename)) => {
+            if std::env::var_os("KM_TIMING").is_some() {
+                eprintln!(
+                    "native ABox pre-merge: {} SameIndividual pair(s), {} individual(s) to {} class(es)",
+                    meta.same.len(),
+                    meta.individuals.len(),
+                    quotient.individuals.len(),
+                );
+            }
+            let axioms: Vec<crate::json_io::SourceAxiomMeta> = tin
+                .source_axioms
+                .iter()
+                .map(|axiom| crate::json_io::SourceAxiomMeta {
+                    kind: axiom.kind,
+                    left: rename_concept_individuals(&axiom.left, rename),
+                    right: rename_concept_individuals(&axiom.right, rename),
+                })
+                .collect();
+            (quotient, Some(axioms))
+        }
+        None => (meta, None),
+    };
     tin.nominal_abox = meta.clone();
     let has_nominal_input = !meta.individuals.is_empty()
         || !meta.same.is_empty()
@@ -1147,6 +1187,9 @@ pub(crate) fn install_nominal_abox_with_same(
 
     match resolved {
         Ok((native, concepts, roles, negative_clauses, nominals)) => {
+            if let Some(axioms) = renamed_axioms {
+                tin.source_axioms = axioms;
+            }
             tin.concepts = concepts;
             tin.roles = roles;
             tin.clauses.extend(negative_clauses);
@@ -1155,6 +1198,10 @@ pub(crate) fn install_nominal_abox_with_same(
             true
         }
         Err(detail) => {
+            if quotient.is_some() {
+                // Fail closed with the source payload: no renamed state stays.
+                tin.nominal_abox = source_meta.clone();
+            }
             if std::env::var_os("KM_TIMING").is_some() {
                 eprintln!("native ABox conversion declined: {detail}");
             }
@@ -1171,6 +1218,161 @@ pub(crate) fn install_nominal_abox_with_same(
             }
             false
         }
+    }
+}
+
+/// Quotient of a typed ABox by its `SameIndividual` assertions
+/// (docs/HYBRID-CB-HT.md section 13).
+///
+/// The explicit equalities generate an equivalence relation `~` on the named
+/// individuals. Every class gets one representative, its first member in
+/// `meta.individuals` order, and `σ` maps each individual to it. The result
+/// is `σ` applied to the whole typed ABox: one entry per class whose proxies,
+/// class assertions and assertion markers are the union of its members'
+/// (assertions renamed under `σ`), `same` empty, and `σ` applied to both ends
+/// of every `DifferentIndividuals` pair and every positive and negative role
+/// assertion. Role assertions that become equal under `σ` are kept once (the
+/// native conversion declines repeated assertions, and a set of facts is
+/// unchanged by repetition). A different pair inside one class becomes
+/// `(r, r)`, which every consumer reads as an inconsistency.
+///
+/// Every proxy of a member stays on the merged entry, so a clause that names
+/// the proxy `{b}` of a merged-away `b` denotes the representative's
+/// singleton. `rename` is `σ` on individual names; callers apply it to every
+/// other structure that names an individual (the source TBox).
+///
+/// Returns `None` when an equality names an individual without an entry; the
+/// caller then declines as before.
+pub(crate) fn quotient_same_individuals(
+    meta: &crate::json_io::NominalAboxMeta,
+) -> Option<(
+    crate::json_io::NominalAboxMeta,
+    std::collections::HashMap<String, String>,
+)> {
+    use std::collections::{HashMap, HashSet};
+    let index: HashMap<&str, usize> = meta
+        .individuals
+        .iter()
+        .enumerate()
+        .map(|(i, entry)| (entry.individual.as_str(), i))
+        .collect();
+    if index.len() != meta.individuals.len() {
+        return None;
+    }
+    let mut parent: Vec<usize> = (0..meta.individuals.len()).collect();
+    fn find(parent: &mut [usize], mut item: usize) -> usize {
+        while parent[item] != item {
+            parent[item] = parent[parent[item]];
+            item = parent[item];
+        }
+        item
+    }
+    for (left, right) in &meta.same {
+        let left = *index.get(left.as_str())?;
+        let right = *index.get(right.as_str())?;
+        let (a, b) = (find(&mut parent, left), find(&mut parent, right));
+        // Keep the smaller index as root: the representative is the first
+        // member in entry order, independent of the order of `same`.
+        if a != b {
+            let (low, high) = if a < b { (a, b) } else { (b, a) };
+            parent[high] = low;
+        }
+    }
+    let mut rename: HashMap<String, String> = HashMap::new();
+    let mut slot: HashMap<usize, usize> = HashMap::new();
+    let mut out = crate::json_io::NominalAboxMeta {
+        complete: meta.complete,
+        unsupported: meta.unsupported.clone(),
+        ..Default::default()
+    };
+    let mut seen_assertions: Vec<HashSet<(crate::frontend::syntax::Concept, String)>> = Vec::new();
+    for i in 0..meta.individuals.len() {
+        let root = find(&mut parent, i);
+        if root != i {
+            rename.insert(
+                meta.individuals[i].individual.clone(),
+                meta.individuals[root].individual.clone(),
+            );
+        }
+    }
+    let sigma = |name: &str| -> String { rename.get(name).cloned().unwrap_or_else(|| name.to_string()) };
+    for (i, entry) in meta.individuals.iter().enumerate() {
+        let root = find(&mut parent, i);
+        let at = *slot.entry(root).or_insert_with(|| {
+            out.individuals.push(crate::json_io::NominalIndividualMeta {
+                individual: meta.individuals[root].individual.clone(),
+                ..Default::default()
+            });
+            seen_assertions.push(HashSet::new());
+            out.individuals.len() - 1
+        });
+        let target = &mut out.individuals[at];
+        for proxy in &entry.proxies {
+            if !target.proxies.contains(proxy) {
+                target.proxies.push(proxy.clone());
+            }
+        }
+        if entry.assertions.len() != entry.assertion_markers.len() {
+            // Keep the mismatch visible to the conversion's own check.
+            target.assertions.extend(entry.assertions.iter().map(|c| rename_concept_individuals(c, &rename)));
+            target.assertion_markers.extend(entry.assertion_markers.iter().cloned());
+            continue;
+        }
+        for (concept, marker) in entry.assertions.iter().zip(&entry.assertion_markers) {
+            let concept = rename_concept_individuals(concept, &rename);
+            if seen_assertions[at].insert((concept.clone(), marker.clone())) {
+                target.assertions.push(concept);
+                target.assertion_markers.push(marker.clone());
+            }
+        }
+    }
+    let mut seen_different = HashSet::new();
+    for (left, right) in &meta.different {
+        let pair = (sigma(left), sigma(right));
+        let key = if pair.0 <= pair.1 { pair.clone() } else { (pair.1.clone(), pair.0.clone()) };
+        if seen_different.insert(key) {
+            out.different.push(pair);
+        }
+    }
+    let rename_roles = |assertions: &[crate::json_io::NominalRoleAssertionMeta]| {
+        let mut seen = HashSet::new();
+        let mut kept = Vec::with_capacity(assertions.len());
+        for assertion in assertions {
+            let renamed = crate::json_io::NominalRoleAssertionMeta {
+                role: assertion.role.clone(),
+                source: sigma(&assertion.source),
+                target: sigma(&assertion.target),
+            };
+            if seen.insert((renamed.role.clone(), renamed.source.clone(), renamed.target.clone())) {
+                kept.push(renamed);
+            }
+        }
+        kept
+    };
+    out.role_assertions = rename_roles(&meta.role_assertions);
+    out.negative_role_assertions = rename_roles(&meta.negative_role_assertions);
+    Some((out, rename))
+}
+
+/// `σ` on the individual names of a source concept (`Concept::Nominal`).
+pub(crate) fn rename_concept_individuals(
+    concept: &crate::frontend::syntax::Concept,
+    rename: &std::collections::HashMap<String, String>,
+) -> crate::frontend::syntax::Concept {
+    use crate::frontend::syntax::Concept;
+    if rename.is_empty() {
+        return concept.clone();
+    }
+    match concept {
+        Concept::Nominal(name) => Concept::Nominal(rename.get(name).cloned().unwrap_or_else(|| name.clone())),
+        Concept::Name(_) | Concept::Top | Concept::Bottom | Concept::HasSelf(_) => concept.clone(),
+        Concept::Not(inner) => Concept::Not(Box::new(rename_concept_individuals(inner, rename))),
+        Concept::And(items) => Concept::And(items.iter().map(|c| rename_concept_individuals(c, rename)).collect()),
+        Concept::Or(items) => Concept::Or(items.iter().map(|c| rename_concept_individuals(c, rename)).collect()),
+        Concept::Exists(role, inner) => Concept::Exists(role.clone(), Box::new(rename_concept_individuals(inner, rename))),
+        Concept::Forall(role, inner) => Concept::Forall(role.clone(), Box::new(rename_concept_individuals(inner, rename))),
+        Concept::AtLeast(n, role, inner) => Concept::AtLeast(*n, role.clone(), Box::new(rename_concept_individuals(inner, rename))),
+        Concept::AtMost(n, role, inner) => Concept::AtMost(*n, role.clone(), Box::new(rename_concept_individuals(inner, rename))),
     }
 }
 
@@ -4825,6 +5027,101 @@ mod native_abox_install_tests {
         assert_eq!(tin.native_abox.individuals[0].assertions, vec![0, 1]);
         assert_eq!(tin.native_abox.different, vec![(0, 1)]);
         assert_eq!(tin.native_abox.role_assertions, vec![(0, 0, 1)]);
+    }
+
+    #[test]
+    fn same_individual_premerge_installs_the_quotient_and_renames_nominals() {
+        use crate::json_io::{SourceAxiomKind, SourceAxiomMeta};
+        let mut tin = TInput {
+            concepts: vec!["A".into(), "B".into(), "Q".into()],
+            source_axioms: vec![SourceAxiomMeta {
+                kind: SourceAxiomKind::Equivalent,
+                left: Concept::Name("Q".into()),
+                right: Concept::Exists(
+                    crate::frontend::syntax::Role::Name("r".into()),
+                    Box::new(Concept::Nominal("alias".into())),
+                ),
+            }],
+            ..TInput::default()
+        };
+        let mut alias = individual("alias", "__nom__alias", Some("B"));
+        alias.assertions.push(Concept::Nominal("c".into()));
+        alias.assertion_markers.push("__nom__c".into());
+        let meta = NominalAboxMeta {
+            complete: true,
+            individuals: vec![
+                individual("a", "__nom__a", Some("A")),
+                alias,
+                individual("c", "__nom__c", Some("A")),
+                individual("target", "__nom__target", None),
+            ],
+            // A chain a = alias = c in an order that roots it at `c` first.
+            same: vec![("c".into(), "alias".into()), ("alias".into(), "a".into())],
+            different: vec![("alias".into(), "target".into()), ("a".into(), "target".into())],
+            role_assertions: vec![
+                NominalRoleAssertionMeta { role: "r".into(), source: "alias".into(), target: "target".into() },
+                NominalRoleAssertionMeta { role: "r".into(), source: "c".into(), target: "target".into() },
+                NominalRoleAssertionMeta { role: "s".into(), source: "a".into(), target: "c".into() },
+            ],
+            ..NominalAboxMeta::default()
+        };
+
+        assert!(install_nominal_abox_with_same(&mut tin, &meta, true));
+        let q = &tin.nominal_abox;
+        assert!(q.same.is_empty());
+        assert_eq!(q.individuals.len(), 2);
+        assert_eq!(q.individuals[0].individual, "a");
+        assert_eq!(q.individuals[0].proxies, vec!["__nom__a", "__nom__alias", "__nom__c"]);
+        // A from a and c is kept once; the nested nominal {c} becomes {a}.
+        assert_eq!(q.individuals[0].assertions,
+            vec![Concept::Name("A".into()), Concept::Name("B".into()), Concept::Nominal("a".into())]);
+        assert_eq!(q.individuals[0].assertion_markers.len(), 3);
+        assert_eq!(q.different, vec![("a".to_string(), "target".to_string())]);
+        assert_eq!(q.role_assertions.len(), 2);
+        assert_eq!(q.role_assertions[1].source, "a");
+        assert_eq!(q.role_assertions[1].target, "a");
+        assert_eq!(tin.source_axioms[0].right, Concept::Exists(
+            crate::frontend::syntax::Role::Name("r".into()),
+            Box::new(Concept::Nominal("a".into()))));
+        assert_eq!(tin.native_abox.individuals.len(), 2);
+        assert_eq!(tin.native_abox.individuals[0].proxies.len(), 3);
+        assert_eq!(tin.native_abox.different, vec![(0, 1)]);
+        assert_eq!(tin.native_abox.role_assertions, vec![(0, 0, 1), (1, 0, 0)]);
+    }
+
+    #[test]
+    fn same_individual_premerge_turns_a_merged_difference_into_a_self_pair() {
+        let mut tin = TInput { concepts: vec!["A".into()], ..TInput::default() };
+        let meta = NominalAboxMeta {
+            complete: true,
+            individuals: vec![
+                individual("a", "__nom__a", Some("A")),
+                individual("b", "__nom__b", None),
+            ],
+            same: vec![("a".into(), "b".into())],
+            different: vec![("b".into(), "a".into())],
+            ..NominalAboxMeta::default()
+        };
+        assert!(install_nominal_abox_with_same(&mut tin, &meta, true));
+        assert_eq!(tin.nominal_abox.different, vec![("a".to_string(), "a".to_string())]);
+        assert_eq!(tin.native_abox.different, vec![(0, 0)]);
+    }
+
+    #[test]
+    fn same_individual_premerge_failure_restores_the_source_payload() {
+        let mut tin = TInput { concepts: vec!["A".into()], ..TInput::default() };
+        let meta = NominalAboxMeta {
+            complete: true,
+            individuals: vec![
+                individual("a", "__nom__a", Some("A")),
+                individual("b", "__nom__b", Some("__generated_marker")),
+            ],
+            same: vec![("a".into(), "b".into())],
+            ..NominalAboxMeta::default()
+        };
+        assert!(!install_nominal_abox_with_same(&mut tin, &meta, true));
+        assert_eq!(tin.nominal_abox, meta);
+        assert!(tin.native_abox.is_empty());
     }
 
     #[test]

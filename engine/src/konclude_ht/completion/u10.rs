@@ -182,6 +182,39 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &CalculationAlgorithmContextBase,
     ) -> smallvec::SmallVec<[(EdgeId, NodeId); 4]> {
         let mut out: smallvec::SmallVec<[(EdgeId, NodeId); 4]> = smallvec::SmallVec::new();
+        // Membership index over `out`'s nodes. A linear scan of `out` per
+        // candidate made this function quadratic in the degree of a node: an
+        // ABox hub with tens of thousands of asserted neighbours spent most of
+        // its consistency completion here (ore_ont_16315). The set holds the
+        // same nodes as `out` once it is past a few entries; the output, its
+        // order and its first-occurrence choice of link are unchanged.
+        let mut out_nodes: crate::fxhash::FxHashSet<NodeId> = Default::default();
+        const LINEAR_LIMIT: usize = 16;
+        fn out_contains(
+            out: &[(EdgeId, NodeId)],
+            out_nodes: &crate::fxhash::FxHashSet<NodeId>,
+            node: NodeId,
+        ) -> bool {
+            if out.len() <= LINEAR_LIMIT {
+                out.iter().any(|&(_, seen)| seen == node)
+            } else {
+                out_nodes.contains(&node)
+            }
+        }
+        fn out_push(
+            out: &mut smallvec::SmallVec<[(EdgeId, NodeId); 4]>,
+            out_nodes: &mut crate::fxhash::FxHashSet<NodeId>,
+            item: (EdgeId, NodeId),
+        ) {
+            out.push(item);
+            if out.len() > LINEAR_LIMIT {
+                if out_nodes.is_empty() {
+                    out_nodes.extend(out.iter().map(|&(_, node)| node));
+                } else {
+                    out_nodes.insert(item.1);
+                }
+            }
+        }
         let pc = calc_alg_context.process_context();
 
         // (1) forward successors, hierarchy-resolved.
@@ -222,8 +255,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .processing_data_box()
                     .individual_process_node_vector()
                     .get_data(succ_id);
-                if succ.is_some() && !out.iter().any(|&(_, node)| node == succ) {
-                    out.push((link, succ));
+                if succ.is_some() && !out_contains(&out, &out_nodes, succ) {
+                    out_push(&mut out, &mut out_nodes, (link, succ));
                 }
             }
         }
@@ -249,9 +282,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 };
                 if opposite.is_some()
                     && self.ht_signed_role_matches(edge_role, role, inverse, calc_alg_context)
-                    && !out.iter().any(|&(_, node)| node == opposite)
+                    && !out_contains(&out, &out_nodes, opposite)
                 {
-                    out.push((anc_link, opposite));
+                    out_push(&mut out, &mut out_nodes, (anc_link, opposite));
                 }
             }
         }
@@ -275,7 +308,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .processing_data_box()
                     .individual_process_node_vector()
                     .get_data(pred_id);
-                if pred.is_none() || out.iter().any(|&(_, node)| node == pred) {
+                if pred.is_none() || out_contains(&out, &out_nodes, pred) {
                     continue;
                 }
                 let pn = pc.node(pred);
@@ -297,10 +330,56 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     let inv_matches =
                         self.ht_signed_role_matches(edge_role, role, true, calc_alg_context);
                     if inv_matches {
-                        out.push((link, pred));
+                        out_push(&mut out, &mut out_nodes, (link, pred));
                         break;
                     }
                 }
+            }
+        }
+        out
+    }
+
+    /// The target of a `∀role` state over one link `link` at `source`: the
+    /// opposite endpoint when the link is a `role`-edge out of `source` (role
+    /// hierarchy resolved) or an inverse-`role` edge into it, as
+    /// [`Self::ht_all_rule_target_links`] reads each link; empty otherwise.
+    pub fn ht_rule_target_of_link(
+        &self,
+        source: NodeId,
+        link: EdgeId,
+        role: RoleId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> smallvec::SmallVec<[(EdgeId, NodeId); 4]> {
+        let mut out: smallvec::SmallVec<[(EdgeId, NodeId); 4]> = smallvec::SmallVec::new();
+        let pc = calc_alg_context.process_context();
+        let e = pc.edge(link);
+        let edge_role: RoleId = e.get_link_role();
+        let edge_source = e.get_source_individual();
+        let edge_destination = e.get_destination_individual();
+        if edge_role.is_none() || edge_source.is_none() || edge_destination.is_none() {
+            return out;
+        }
+        let source_id = pc.node(source).individual_node_id();
+        let (opposite_id, inverse) = if pc.node(edge_source).individual_node_id() == source_id {
+            (pc.node(edge_destination).individual_node_id(), false)
+        } else if pc.node(edge_destination).individual_node_id() == source_id {
+            (pc.node(edge_source).individual_node_id(), true)
+        } else {
+            return out;
+        };
+        if !self.ht_signed_role_matches(edge_role, role, inverse, calc_alg_context) {
+            return out;
+        }
+        let opposite = calc_alg_context
+            .processing_data_box()
+            .individual_process_node_vector()
+            .get_data(opposite_id);
+        if opposite.is_some() {
+            let on = pc.node(opposite);
+            if !on.has_merged_into_individual_node_id()
+                && !on.has_purged_blocked_processing_restriction_flags()
+            {
+                out.push((link, opposite));
             }
         }
         out

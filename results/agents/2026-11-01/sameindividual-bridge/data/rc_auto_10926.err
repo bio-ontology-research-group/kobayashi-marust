@@ -1,0 +1,10 @@
+KM_TIMING mark: second source check done
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING ABox quotient not built: site 1
+KM_TIMING mirror-route: declined by lexical prefilter: bytes=584214274 complements_below=0
+KM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false
+KM_TIMING frontend done @ 34.15s route=certified_nominals
+KM_TIMING spawn_ht: read+convert 3498203 clauses (ht_view=3498133) in 9.80s
+KM_TIMING race: synchronous bridge classes=176225 typed_nominal=true cb_threads=1
+KM_TIMING race: HT worker spawned @ 22.48s after the CB stack started
