@@ -160,13 +160,19 @@ const INCONSISTENT_FIXTURE: &str = include_str!("fixtures/rules_inert_sorts_b11_
 #[test]
 fn rule_checker_worker_runs_without_reserving_its_deep_stack() {
     use std::os::unix::process::CommandExt as _;
-    let (unlimited_out, unlimited_err) = batch(INCONSISTENT_FIXTURE, &[]);
+    // The polarity encoding (docs/NOMINALS-CB.md section 11) removes the
+    // excluded middle of this fixture's one complement definer upstream, so
+    // the release has nothing left to release and the worker input is the
+    // same (118 clauses) either way. Keep the release on the path under test.
+    let polarity_off = [("KM_NO_POLARITY_DEFINERS", "1")];
+    let (unlimited_out, unlimited_err) = batch(INCONSISTENT_FIXTURE, &polarity_off);
     assert!(released(&unlimited_err, "KM_TIMING rules-consistency released").is_some(), "{unlimited_err}");
     let dir = scratch_dir();
     let path = dir.join("input.ofn");
     std::fs::write(&path, INCONSISTENT_FIXTURE).unwrap();
     let mut command = Command::new(env!("CARGO_BIN_EXE_km"));
     command.arg("classify").arg("--lines").arg(&path).env("KM_TIMING", "1");
+    command.env("KM_NO_POLARITY_DEFINERS", "1");
     unsafe {
         command.pre_exec(|| {
             let limit = libc::rlimit { rlim_cur: 3 << 30, rlim_max: 3 << 30 };
