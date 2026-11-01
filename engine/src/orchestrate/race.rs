@@ -2245,8 +2245,14 @@ fn prepare_ht(
         && card_candidate_from(&tin, cfg.ht_card, card_recog, has_datatype(&cl));
     let mut proxy_abox_certificate = None;
     let global_native_abox = std::env::var_os("KM_HT_GLOBAL_NATIVE_ABOX").is_some();
+    // `SameIndividual` is admitted through the exact pre-merge of
+    // `install_nominal_abox_with_same` (docs/HYBRID-CB-HT.md section 13):
+    // the worker sees the quotient ABox, so no equality is merged at run
+    // time. `KM_NO_SAME_PREMERGE=1` restores the earlier decline here.
     let allow_same = std::env::var_os("KM_HT_CERT_NO_BLOCKING").is_some()
-        || global_native_abox || specialist_only.as_deref() == Some("bridge");
+        || global_native_abox
+        || specialist_only.as_deref() == Some("bridge")
+        || std::env::var_os("KM_NO_SAME_PREMERGE").is_none();
     if card_proxy_abox {
         let mut native = tin.clone();
         cb_to_ht::install_nominal_abox_with_same(&mut native, &nominal_abox, allow_same);
