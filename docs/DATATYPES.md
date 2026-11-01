@@ -897,6 +897,39 @@ unchanged on these inputs. Unit tests:
 above, every head dropped in turn, integer and decimal bands, refused
 kinds).
 
+*The next two gates.* With the covers admitted, each input stopped at a
+realizability certificate, and the defer message now named it.
+(i) 4903: "a decimal-tower vocabulary has a label set without two realizing
+values". The per-group cell path of `decimal_cells_exact` read only
+integral covers, so a dense range had no cover there and the group fell
+through to the label enumeration. The path now reads the dense covers as
+well. They are valid clauses, so they restrict the admissible labels just
+as the integral covers do; the cell path and its argument ("a label meeting
+the group holds an atomic cell, which fixes its members"; cells join every
+group because no role mentions them) are unchanged. (ii) 11647: "an IEEE
+facet vocabulary has a label set without two realizing values". The IEEE
+certificate enumerates every subset of the width's ranges and gives up above
+16; 11647 has 83 `xsd:float` ranges, all on one data property (`muo:numericalValue`).
+`bridge_ieee_cells_by_atoms` is now tried first, over *all* ranges of the
+width rather than one group: a range is atomic when the present clauses
+relate it to every other range of the width by inclusion or disjointness.
+Every non-atomic range needs a present cell cover
+(`bridge_exact_ieee_cell_cover`) whose range heads are all atomic. Each
+atomic range needs `required` values outside the vocabulary's literals,
+counting ranks and `NaN` exactly. *Exactness.* The relation clauses are
+valid, so an atomic `C` lies inside or outside each other nonempty range of
+the width. A label that meets the width holds a non-atomic range only
+together with a head of its cover: an atomic range, or a value, in which
+case the node is a value node, decided by the singleton and value-relation
+clauses. Such a label therefore holds an atomic `C`, and the present clauses
+put into it exactly the ranges that contain `C`. Every value of `C` lies in
+exactly those ranges, so both directions of `v ∈ d ⟺ d ∈ L` hold whether or
+not `d` is body-sensitive, and the capacity check supplies the distinct
+values a count needs. Labels that meet no range of the width are not
+constrained by it. The path is skipped when a complement of the width is
+present, and it returns "not applicable" (the enumeration runs) when the
+cover condition fails. Unit tests: `frontend::datatypes::ieee_cells_by_atoms_tests`.
+
 *Defer reasons.* The worker's defer error now names the gate:
 `konclude_ht bridge defer: <reason>` (thread-local note set by each gate in
 `konclude_ht/bridge.rs`, read by the three bridge entry points in

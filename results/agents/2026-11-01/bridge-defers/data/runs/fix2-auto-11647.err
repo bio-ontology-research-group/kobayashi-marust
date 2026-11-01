@@ -1,0 +1,10 @@
+KM_TIMING ABox quotient not built: site 1
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.37s cached=false sidecar=false
+KM_TIMING frontend: 805 data-property assertion(s) not carried; re-running with the DataHasValue conversion
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.30s cached=false sidecar=false
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.18s cached=true sidecar=false
+KM_TIMING frontend done @ 0.18s route=ht_bridge
+KM_TIMING spawn_ht: read+convert 17046 clauses (ht_view=17046) in 0.03s
+KM_TIMING engine block done @ 6.11s (subs_keys=137)
+KM_TIMING bounded bridge-first (data assertions as class) accepted @ 6.79s
+wall=6.82 rss=252324KB

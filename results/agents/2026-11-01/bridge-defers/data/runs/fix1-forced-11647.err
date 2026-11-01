@@ -1,0 +1,12 @@
+KM_TIMING mark: second source check done
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.23s cached=true sidecar=false
+KM_TIMING frontend: 805 data-property assertion(s) not carried; re-running with the DataHasValue conversion
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.31s cached=true sidecar=false
+KM_TIMING frontend done @ 0.56s route=ht_bridge
+BRIDGE-DATATYPE-DEFER: an IEEE facet vocabulary has a label set without two realizing values
+BRIDGE-DATATYPE-GATE: admitted=false in 1.00s
+unsupported: selected native HT bridge deferred (konclude_ht bridge defer: datatype gate: an IEEE facet vocabulary has a label set without two realizing values)
+Command exited with non-zero status 3
+wall=1.65 rss=83188KB

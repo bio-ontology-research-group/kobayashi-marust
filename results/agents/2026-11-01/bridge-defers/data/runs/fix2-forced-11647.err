@@ -1,0 +1,1601 @@
+KM_TIMING mark: second source check done
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.17s cached=true sidecar=false
+KM_TIMING frontend: 805 data-property assertion(s) not carried; re-running with the DataHasValue conversion
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.19s cached=true sidecar=false
+KM_TIMING frontend done @ 0.37s route=ht_bridge
+BRIDGE-DATATYPE-GATE: admitted=true in 0.57s
+BRIDGE-ENV: 0.11s (named=1315, trigger_absorb=true, unsupported=0, independent_abox=false)
+BRIDGE-SOURCE-CLOSURE pairs=166 definition-containment=true
+BRIDGE-SAT-PHASE propagation-direction: 0.00s
+BRIDGE-SATURATION-SEEDS: base=537 extended=606 invalid-special=69 substitute=24 copy=238
+BRIDGE-SAT-PHASE seeds: 0.00s
+BRIDGE-SAT-PHASE loop: 0.10s (nodes=1471)
+SAT-STATS: insufficient all=0 atmost=12 or=917 eqcand=0 value=0 nominal=0
+BRIDGE-NOMINAL-CONSISTENCY: consistent=true signal=Continue poisoned=false
+BRIDGE-REFUTATION gated=true restricted=false nominals=true inverse=true number=true
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=3 tp=#8374] [c=¬1 ind=false det=true tag=5 lvl=3 tp=#8912]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=3 tp=#8374] [c=¬1 ind=false det=true tag=5 lvl=3 tp=#9502]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=3 tp=#8374] [c=¬1 ind=false det=true tag=5 lvl=3 tp=#10449]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=3 tp=#8374] [c=¬1 ind=false det=true tag=5 lvl=3 tp=#11477]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=3 tp=#8374] [c=¬1 ind=false det=true tag=5 lvl=3 tp=#12586]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=3 tp=#8374] [c=¬1 ind=false det=true tag=5 lvl=3 tp=#12612]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=3 tp=#8374] [c=¬1 ind=false det=true tag=5 lvl=3 tp=#12839]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=3 tp=#8374] [c=¬1 ind=false det=true tag=5 lvl=3 tp=#13159]
+DDB-LINE branching_level=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 497: visits=6020 messages=19
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 495: visits=4804 messages=7
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8431] [c=¬1 ind=false det=true tag=5 lvl=3 tp=#8761]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8431] [c=¬1 ind=false det=true tag=7 lvl=3 tp=#8817]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8431] [c=¬1 ind=false det=true tag=7 lvl=3 tp=#8933]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8431] [c=¬1 ind=false det=true tag=7 lvl=3 tp=#9085]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8431] [c=¬1 ind=false det=true tag=7 lvl=3 tp=#9105]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8431] [c=¬1 ind=false det=true tag=7 lvl=3 tp=#9299]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8431] [c=¬1 ind=false det=true tag=6 lvl=3 tp=#9313]
+DDB-LINE branching_level=6
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8431] [c=¬1 ind=false det=true tag=6 lvl=3 tp=#9417]
+DDB-LINE branching_level=6
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 681: visits=3569 messages=16
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 623: visits=3569 messages=12
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8385] [c=¬437 ind=false det=true tag=5 lvl=3 tp=#8387]
+DDB-LINE branching_level=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 527: visits=5141 messages=16
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8386] [c=¬437 ind=false det=true tag=5 lvl=3 tp=#8388]
+DDB-LINE branching_level=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 530: visits=3536 messages=8
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 762: visits=0 messages=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8309] [c=¬1 ind=false det=true tag=9 lvl=2 tp=#9422]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8309] [c=¬1 ind=false det=true tag=9 lvl=2 tp=#9490]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=¬935 ind=false det=false tag=9 lvl=2 tp=#9357] [c=¬936 ind=false det=false tag=9 lvl=2 tp=#9357] [c=28114 ind=false det=true tag=3 lvl=2 tp=#8567]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8309] [c=¬1 ind=false det=true tag=9 lvl=2 tp=#9902]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8309] [c=¬1 ind=false det=true tag=9 lvl=2 tp=#9970]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=¬935 ind=false det=false tag=9 lvl=2 tp=#9837] [c=¬936 ind=false det=false tag=9 lvl=2 tp=#9837] [c=28114 ind=false det=true tag=3 lvl=2 tp=#8567]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8309] [c=¬1 ind=false det=true tag=9 lvl=2 tp=#10330]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8309] [c=¬1 ind=false det=true tag=9 lvl=2 tp=#10395]
+DDB-LINE branching_level=9
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 655: visits=2593 messages=7
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 535: visits=2583 messages=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8485]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8613]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8807]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9004]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9030]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9077]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9175]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9333]
+DDB-LINE branching_level=2
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 541: visits=2554 messages=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 636: visits=2583 messages=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8414]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8467]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8569]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8664]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8759]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8920]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9084]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#9118]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 657: visits=2593 messages=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=4 lvl=2 tp=#8874]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=4 lvl=2 tp=#9086]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=4 lvl=2 tp=#9301]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=4 lvl=2 tp=#9345]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=4 lvl=2 tp=#9497]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#9589]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#9789]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#9992]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 715: visits=2600 messages=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 677: visits=4364 messages=6
+BRIDGE-KPSET-MESSAGES subject 763: visits=0 messages=3
+BRIDGE-KPSET-MESSAGES subject 723: visits=0 messages=5
+BRIDGE-KPSET-MESSAGES subject 724: visits=0 messages=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 43: visits=956 messages=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9019]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9543]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9944]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#10531]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#11121]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#11462]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#11755]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#12000]
+DDB-LINE branching_level=2
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 46: visits=1095 messages=5
+BRIDGE-KPSET-MESSAGES subject 60: visits=1625 messages=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8448]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8515]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8564]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8597]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8618]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=¬66 ind=false det=false tag=2 lvl=2 tp=#8404] [c=¬931 ind=false det=false tag=2 lvl=2 tp=#8404] [c=28104 ind=false det=true tag=0 lvl=2 tp=#8306]
+DDB-LINE branching_level=2
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 62: visits=1911 messages=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8442]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8524]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8573]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8606]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8627]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8659]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8670]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8681]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 68: visits=1945 messages=5
+BRIDGE-KPSET-MESSAGES subject 70: visits=1853 messages=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 76: visits=958 messages=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 78: visits=840 messages=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8608]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8760]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8837]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9028]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9222]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9263]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9280]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#9349]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 100: visits=1009 messages=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8460]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8683]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#9363]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#10430]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#11584]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#12825]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#12857]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#13132]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 102: visits=964 messages=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8734]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9006]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9110]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9433]
+DDB-LINE branching_level=2
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 192: visits=1229 messages=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8902]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#9006]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#9623]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#9730]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#9750]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#10433]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#10474]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#10905]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 251: visits=1076 messages=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8896]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9207]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9410]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9565]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9936]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#10086]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#10160]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#10432]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 253: visits=1086 messages=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9019]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9576]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#10010]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#10630]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#11253]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#11627]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#11953]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#12231]
+DDB-LINE branching_level=2
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 271: visits=1098 messages=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 280: visits=2031 messages=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8427] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9076]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8427] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9705]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8427] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#10211]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8427] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#10903]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8427] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#11598]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8427] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#12044]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8427] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#12442]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8427] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#12792]
+DDB-LINE branching_level=2
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 310: visits=1155 messages=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9019]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9576]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#10010]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#10630]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#11253]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#11627]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#11953]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#12231]
+DDB-LINE branching_level=2
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 312: visits=1099 messages=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9020]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9628]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#10113]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#10784]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#11458]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#11883]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#12260]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#12589]
+DDB-LINE branching_level=2
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 314: visits=1155 messages=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 318: visits=2197 messages=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9158]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9805]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#10329]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#11039]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#11752]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#12216]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#12632]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#13000]
+DDB-LINE branching_level=2
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 320: visits=2122 messages=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 322: visits=1925 messages=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8939]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9355]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9672]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#10139]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#10609]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#10878]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#11111]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#11308]
+DDB-LINE branching_level=2
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 324: visits=2066 messages=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=4 lvl=2 tp=#8838]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=6 lvl=2 tp=#9047]
+DDB-LINE branching_level=6
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=6 lvl=2 tp=#9235]
+DDB-LINE branching_level=6
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=6 lvl=2 tp=#9480]
+DDB-LINE branching_level=6
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=6 lvl=2 tp=#9686]
+DDB-LINE branching_level=6
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=6 lvl=2 tp=#9874]
+DDB-LINE branching_level=6
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=6 lvl=2 tp=#10119]
+DDB-LINE branching_level=6
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=5 lvl=2 tp=#10279]
+DDB-LINE branching_level=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 326: visits=2197 messages=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8389] [c=¬1 ind=false det=true tag=4 lvl=2 tp=#8749]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8389] [c=¬1 ind=false det=true tag=5 lvl=2 tp=#8825]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8389] [c=¬1 ind=false det=true tag=5 lvl=2 tp=#8887]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8389] [c=¬1 ind=false det=true tag=5 lvl=2 tp=#9084]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8389] [c=¬1 ind=false det=true tag=5 lvl=2 tp=#9329]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8389] [c=¬1 ind=false det=true tag=5 lvl=2 tp=#9394]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8389] [c=¬1 ind=false det=true tag=5 lvl=2 tp=#9693]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8389] [c=¬1 ind=false det=true tag=4 lvl=2 tp=#9734]
+DDB-LINE branching_level=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 353: visits=1232 messages=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 355: visits=1232 messages=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 393: visits=2593 messages=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8320] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8545]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8320] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8568]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8320] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8594]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 499: visits=2435 messages=7
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 501: visits=839 messages=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8320] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8545]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8320] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8607]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8320] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8693]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8320] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8782]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 508: visits=2509 messages=7
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 514: visits=1625 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 533: visits=838 messages=4
+DDB-CLOSURE [c=¬909 ind=false det=false tag=1 lvl=2 tp=#8389] [c=¬910 ind=false det=false tag=1 lvl=2 tp=#8389] [c=¬911 ind=false det=false tag=1 lvl=2 tp=#8389] [c=31065 ind=false det=true tag=0 lvl=2 tp=#8303]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬909 ind=false det=false tag=1 lvl=2 tp=#8386] [c=¬910 ind=false det=false tag=1 lvl=2 tp=#8386] [c=¬911 ind=false det=false tag=1 lvl=2 tp=#8386] [c=31065 ind=false det=true tag=0 lvl=2 tp=#8303]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬909 ind=false det=false tag=1 lvl=2 tp=#8384] [c=¬910 ind=false det=false tag=1 lvl=2 tp=#8384] [c=¬911 ind=false det=false tag=1 lvl=2 tp=#8384] [c=31065 ind=false det=true tag=0 lvl=2 tp=#8303]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬909 ind=false det=false tag=1 lvl=2 tp=#8383] [c=¬910 ind=false det=false tag=1 lvl=2 tp=#8383] [c=¬911 ind=false det=false tag=1 lvl=2 tp=#8383] [c=31065 ind=false det=true tag=0 lvl=2 tp=#8303]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬909 ind=false det=false tag=1 lvl=2 tp=#8385] [c=¬910 ind=false det=false tag=1 lvl=2 tp=#8385] [c=¬911 ind=false det=false tag=1 lvl=2 tp=#8385] [c=31065 ind=false det=true tag=0 lvl=2 tp=#8303]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬909 ind=false det=false tag=1 lvl=2 tp=#8395] [c=¬910 ind=false det=false tag=1 lvl=2 tp=#8395] [c=¬911 ind=false det=false tag=1 lvl=2 tp=#8395] [c=31065 ind=false det=true tag=0 lvl=2 tp=#8303]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬909 ind=false det=false tag=1 lvl=2 tp=#8390] [c=¬910 ind=false det=false tag=1 lvl=2 tp=#8390] [c=¬911 ind=false det=false tag=1 lvl=2 tp=#8390] [c=31065 ind=false det=true tag=0 lvl=2 tp=#8303]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬909 ind=false det=false tag=1 lvl=2 tp=#8387] [c=¬910 ind=false det=false tag=1 lvl=2 tp=#8387] [c=¬911 ind=false det=false tag=1 lvl=2 tp=#8387] [c=31065 ind=false det=true tag=0 lvl=2 tp=#8303]
+DDB-LINE branching_level=1
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 570: visits=1343 messages=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8469]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8519]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8599]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8882]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8959]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#9084]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#9286]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#9351]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 572: visits=1275 messages=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 598: visits=965 messages=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=1 lvl=2 tp=#8592]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=1 lvl=2 tp=#9061]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=1 lvl=2 tp=#9117]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=1 lvl=2 tp=#9481]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#10634]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#11815]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#12831]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#14096]
+DDB-LINE branching_level=2
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 605: visits=1340 messages=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 607: visits=960 messages=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8472]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8540]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8638]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9611]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#10606]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#11448]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#12521]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#13597]
+DDB-LINE branching_level=2
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 609: visits=1231 messages=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 619: visits=2474 messages=7
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 621: visits=2397 messages=6
+BRIDGE-KPSET-MESSAGES subject 627: visits=1068 messages=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8543]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8680]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8754]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8924]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9097]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9141]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9188]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9253]
+DDB-LINE branching_level=2
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 631: visits=1058 messages=4
+DDB-CLOSURE [c=¬909 ind=false det=false tag=1 lvl=2 tp=#8389] [c=¬910 ind=false det=false tag=1 lvl=2 tp=#8389] [c=¬911 ind=false det=false tag=1 lvl=2 tp=#8389] [c=31065 ind=false det=true tag=0 lvl=2 tp=#8303]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬909 ind=false det=false tag=1 lvl=2 tp=#8386] [c=¬910 ind=false det=false tag=1 lvl=2 tp=#8386] [c=¬911 ind=false det=false tag=1 lvl=2 tp=#8386] [c=31065 ind=false det=true tag=0 lvl=2 tp=#8303]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬909 ind=false det=false tag=1 lvl=2 tp=#8383] [c=¬910 ind=false det=false tag=1 lvl=2 tp=#8383] [c=¬911 ind=false det=false tag=1 lvl=2 tp=#8383] [c=31065 ind=false det=true tag=0 lvl=2 tp=#8303]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬909 ind=false det=false tag=1 lvl=2 tp=#8397] [c=¬910 ind=false det=false tag=1 lvl=2 tp=#8397] [c=¬911 ind=false det=false tag=1 lvl=2 tp=#8397] [c=31065 ind=false det=true tag=0 lvl=2 tp=#8303]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬909 ind=false det=false tag=1 lvl=2 tp=#8384] [c=¬910 ind=false det=false tag=1 lvl=2 tp=#8384] [c=¬911 ind=false det=false tag=1 lvl=2 tp=#8384] [c=31065 ind=false det=true tag=0 lvl=2 tp=#8303]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬909 ind=false det=false tag=1 lvl=2 tp=#8391] [c=¬910 ind=false det=false tag=1 lvl=2 tp=#8391] [c=¬911 ind=false det=false tag=1 lvl=2 tp=#8391] [c=31065 ind=false det=true tag=0 lvl=2 tp=#8303]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬909 ind=false det=false tag=1 lvl=2 tp=#8385] [c=¬910 ind=false det=false tag=1 lvl=2 tp=#8385] [c=¬911 ind=false det=false tag=1 lvl=2 tp=#8385] [c=31065 ind=false det=true tag=0 lvl=2 tp=#8303]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#11309]
+DDB-LINE branching_level=2
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 633: visits=1321 messages=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8620]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8849]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#9529]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#10596]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#11750]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#12991]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#13023]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#13298]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 642: visits=2030 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 653: visits=960 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 663: visits=2474 messages=6
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8485]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8601]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8783]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8968]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8982]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9017]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9103]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9249]
+DDB-LINE branching_level=2
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 665: visits=2603 messages=7
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 669: visits=2593 messages=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8481]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8556]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8651]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8725]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8865]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#9008]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=4 lvl=2 tp=#9106]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8308] [c=¬1 ind=false det=true tag=4 lvl=2 tp=#9234]
+DDB-LINE branching_level=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 671: visits=2580 messages=7
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 673: visits=2610 messages=7
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 675: visits=2474 messages=6
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 679: visits=1063 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 684: visits=2435 messages=4
+BRIDGE-KPSET-MESSAGES subject 686: visits=1852 messages=5
+BRIDGE-KPSET-MESSAGES subject 689: visits=1362 messages=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8518]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8586]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8657]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8695]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=4 lvl=2 tp=#9078]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8303] [c=¬1 ind=false det=true tag=4 lvl=2 tp=#9170]
+DDB-LINE branching_level=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 691: visits=1321 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 693: visits=1061 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 717: visits=956 messages=4
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8442] [c=¬1 ind=false det=true tag=3 lvl=3 tp=#9536]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8442] [c=¬1 ind=false det=true tag=3 lvl=3 tp=#9703]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8442] [c=¬1 ind=false det=true tag=3 lvl=3 tp=#10620]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8442] [c=¬1 ind=false det=true tag=3 lvl=3 tp=#10694]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8442] [c=¬1 ind=false det=true tag=3 lvl=3 tp=#11452]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8442] [c=¬1 ind=false det=true tag=3 lvl=3 tp=#11484]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8442] [c=¬1 ind=false det=true tag=3 lvl=3 tp=#12482]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8442] [c=¬1 ind=false det=true tag=3 lvl=3 tp=#13483]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 496: visits=1216 messages=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 506: visits=1018 messages=5
+BRIDGE-KPSET-MESSAGES subject 512: visits=1686 messages=5
+DDB-CLOSURE [c=¬900 ind=false det=false tag=2 lvl=3 tp=#8385] [c=5274 ind=false det=true tag=3 lvl=3 tp=#8456]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8376] [c=¬1 ind=false det=true tag=4 lvl=3 tp=#8538]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8376] [c=¬1 ind=false det=true tag=5 lvl=3 tp=#8551]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8376] [c=¬1 ind=false det=true tag=5 lvl=3 tp=#8556]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8376] [c=¬1 ind=false det=true tag=5 lvl=3 tp=#8561]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8376] [c=¬1 ind=false det=true tag=5 lvl=3 tp=#8622]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8376] [c=¬1 ind=false det=true tag=5 lvl=3 tp=#8662]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8376] [c=¬1 ind=false det=true tag=5 lvl=3 tp=#8689]
+DDB-LINE branching_level=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 517: visits=2006 messages=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 521: visits=1019 messages=5
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8457] [c=¬1 ind=false det=true tag=3 lvl=3 tp=#8593]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8457] [c=¬1 ind=false det=true tag=3 lvl=3 tp=#8700]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8457] [c=¬1 ind=false det=true tag=3 lvl=3 tp=#8750]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8457] [c=¬1 ind=false det=true tag=3 lvl=3 tp=#8887]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8457] [c=¬1 ind=false det=true tag=3 lvl=3 tp=#9027]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8457] [c=¬1 ind=false det=true tag=3 lvl=3 tp=#9050]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8457] [c=¬1 ind=false det=true tag=3 lvl=3 tp=#9076]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8457] [c=¬1 ind=false det=true tag=3 lvl=3 tp=#9117]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 539: visits=1070 messages=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 544: visits=2100 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 574: visits=1290 messages=5
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8459] [c=¬1 ind=false det=true tag=4 lvl=3 tp=#8981]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8459] [c=¬1 ind=false det=true tag=4 lvl=3 tp=#9736]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8459] [c=¬1 ind=false det=true tag=4 lvl=3 tp=#10353]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8459] [c=¬1 ind=false det=true tag=4 lvl=3 tp=#10394]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8459] [c=¬1 ind=false det=true tag=4 lvl=3 tp=#10498]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8459] [c=¬1 ind=false det=true tag=4 lvl=3 tp=#10686]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8459] [c=¬1 ind=false det=true tag=4 lvl=3 tp=#10793]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=1 lvl=3 tp=#8459] [c=¬1 ind=false det=true tag=4 lvl=3 tp=#10813]
+DDB-LINE branching_level=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 616: visits=1137 messages=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 625: visits=3569 messages=9
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 645: visits=2268 messages=6
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 648: visits=1301 messages=6
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 649: visits=2268 messages=6
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 720: visits=1301 messages=5
+BRIDGE-KPSET-MESSAGES subject 435: visits=0 messages=4
+BRIDGE-KPSET-MESSAGES subject 707: visits=0 messages=3
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8402] [c=¬437 ind=false det=true tag=6 lvl=3 tp=#8404]
+DDB-LINE branching_level=6
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 523: visits=3793 messages=4
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8398] [c=¬437 ind=false det=true tag=6 lvl=3 tp=#8400]
+DDB-LINE branching_level=6
+DDB-CLOSURE [c=¬533 ind=false det=true tag=0 lvl=0 tp=#8296] [c=3246 ind=false det=true tag=13 lvl=0 tp=#8529]
+DDB-LINE branching_level=13
+DDB-CLOSURE [c=¬570 ind=false det=true tag=13 lvl=0 tp=#8573] [c=3288 ind=false det=true tag=16 lvl=0 tp=#8636]
+DDB-LINE branching_level=16
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 524: visits=8700 messages=8
+DDB-CLOSURE [c=437 ind=false det=true tag=8 lvl=3 tp=#8520] [c=¬437 ind=false det=true tag=12 lvl=3 tp=#8522]
+DDB-LINE branching_level=12
+DDB-CLOSURE [c=437 ind=false det=true tag=8 lvl=3 tp=#8532] [c=¬437 ind=false det=true tag=13 lvl=3 tp=#8534]
+DDB-LINE branching_level=13
+DDB-CLOSURE [c=437 ind=false det=true tag=8 lvl=3 tp=#8546] [c=¬437 ind=false det=true tag=14 lvl=3 tp=#8548]
+DDB-LINE branching_level=14
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 526: visits=5213 messages=5
+DDB-CLOSURE [c=437 ind=false det=true tag=8 lvl=3 tp=#8520] [c=¬437 ind=false det=true tag=12 lvl=3 tp=#8522]
+DDB-LINE branching_level=12
+DDB-CLOSURE [c=437 ind=false det=true tag=8 lvl=3 tp=#8532] [c=¬437 ind=false det=true tag=13 lvl=3 tp=#8534]
+DDB-LINE branching_level=13
+DDB-CLOSURE [c=437 ind=false det=true tag=8 lvl=3 tp=#8546] [c=¬437 ind=false det=true tag=14 lvl=3 tp=#8548]
+DDB-LINE branching_level=14
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 529: visits=5213 messages=8
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8415] [c=¬437 ind=false det=true tag=8 lvl=3 tp=#8417]
+DDB-LINE branching_level=8
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8458] [c=¬437 ind=false det=true tag=9 lvl=3 tp=#8460]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8511] [c=¬437 ind=false det=true tag=10 lvl=3 tp=#8513]
+DDB-LINE branching_level=10
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 546: visits=5212 messages=5
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8415] [c=¬437 ind=false det=true tag=8 lvl=3 tp=#8417]
+DDB-LINE branching_level=8
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8486] [c=¬437 ind=false det=true tag=9 lvl=3 tp=#8488]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8539] [c=¬437 ind=false det=true tag=10 lvl=3 tp=#8541]
+DDB-LINE branching_level=10
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 548: visits=5489 messages=5
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8418] [c=¬437 ind=false det=true tag=8 lvl=3 tp=#8420]
+DDB-LINE branching_level=8
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8492] [c=¬437 ind=false det=true tag=9 lvl=3 tp=#8494]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8548] [c=¬437 ind=false det=true tag=10 lvl=3 tp=#8550]
+DDB-LINE branching_level=10
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 550: visits=5235 messages=5
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8409] [c=¬437 ind=false det=true tag=7 lvl=3 tp=#8411]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8534] [c=¬437 ind=false det=true tag=8 lvl=3 tp=#8555]
+DDB-LINE branching_level=8
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 552: visits=5483 messages=7
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8415] [c=¬437 ind=false det=true tag=8 lvl=3 tp=#8417]
+DDB-LINE branching_level=8
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8486] [c=¬437 ind=false det=true tag=9 lvl=3 tp=#8488]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8539] [c=¬437 ind=false det=true tag=10 lvl=3 tp=#8541]
+DDB-LINE branching_level=10
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 554: visits=5237 messages=5
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8415] [c=¬437 ind=false det=true tag=8 lvl=3 tp=#8417]
+DDB-LINE branching_level=8
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8486] [c=¬437 ind=false det=true tag=9 lvl=3 tp=#8488]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8539] [c=¬437 ind=false det=true tag=10 lvl=3 tp=#8541]
+DDB-LINE branching_level=10
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 556: visits=5237 messages=5
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8409] [c=¬437 ind=false det=true tag=7 lvl=3 tp=#8411]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8534] [c=¬437 ind=false det=true tag=8 lvl=3 tp=#8555]
+DDB-LINE branching_level=8
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 558: visits=5488 messages=6
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8409] [c=¬437 ind=false det=true tag=7 lvl=3 tp=#8411]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8534] [c=¬437 ind=false det=true tag=8 lvl=3 tp=#8555]
+DDB-LINE branching_level=8
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 560: visits=5470 messages=6
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8417] [c=¬437 ind=false det=true tag=8 lvl=3 tp=#8419]
+DDB-LINE branching_level=8
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8489] [c=¬437 ind=false det=true tag=9 lvl=3 tp=#8491]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8580] [c=¬437 ind=false det=true tag=10 lvl=3 tp=#8603]
+DDB-LINE branching_level=10
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 562: visits=5497 messages=7
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8417] [c=¬437 ind=false det=true tag=8 lvl=3 tp=#8419]
+DDB-LINE branching_level=8
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8489] [c=¬437 ind=false det=true tag=9 lvl=3 tp=#8491]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8580] [c=¬437 ind=false det=true tag=10 lvl=3 tp=#8602]
+DDB-LINE branching_level=10
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 564: visits=5671 messages=6
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8408] [c=¬437 ind=false det=true tag=7 lvl=3 tp=#8410]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8479] [c=¬437 ind=false det=true tag=8 lvl=3 tp=#8481]
+DDB-LINE branching_level=8
+DDB-CLOSURE [c=¬132 ind=false det=false tag=15 lvl=3 tp=#8587] [c=¬900 ind=false det=false tag=21 lvl=3 tp=#8806] [c=29312 ind=false det=true tag=10 lvl=3 tp=#8530]
+DDB-LINE branching_level=21
+DDB-CLOSURE [c=1 ind=false det=true tag=10 lvl=3 tp=#8530] [c=¬1 ind=false det=true tag=21 lvl=3 tp=#8842]
+DDB-LINE branching_level=21
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 603: visits=5468 messages=5
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8406] [c=¬437 ind=false det=true tag=7 lvl=3 tp=#8408]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8474] [c=¬437 ind=false det=true tag=8 lvl=3 tp=#8476]
+DDB-LINE branching_level=8
+DDB-CLOSURE [c=¬533 ind=false det=true tag=0 lvl=0 tp=#8296] [c=3246 ind=false det=true tag=17 lvl=0 tp=#8678]
+DDB-LINE branching_level=17
+DDB-CLOSURE [c=¬570 ind=false det=true tag=16 lvl=0 tp=#8628] [c=3288 ind=false det=true tag=17 lvl=0 tp=#8752]
+DDB-LINE branching_level=17
+DDB-CLOSURE [c=1 ind=false det=true tag=10 lvl=3 tp=#8529] [c=¬1 ind=false det=true tag=17 lvl=3 tp=#8956]
+DDB-LINE branching_level=17
+DDB-CLOSURE [c=1 ind=false det=true tag=10 lvl=3 tp=#8529] [c=¬1 ind=false det=true tag=17 lvl=3 tp=#9050]
+DDB-LINE branching_level=17
+DDB-CLOSURE [c=1 ind=false det=true tag=10 lvl=3 tp=#8529] [c=¬1 ind=false det=true tag=17 lvl=3 tp=#9070]
+DDB-LINE branching_level=17
+DDB-CLOSURE [c=1 ind=false det=true tag=10 lvl=3 tp=#8529] [c=¬1 ind=false det=true tag=20 lvl=3 tp=#9197]
+DDB-LINE branching_level=20
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 612: visits=3837 messages=6
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8420] [c=¬437 ind=false det=true tag=7 lvl=3 tp=#8422]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8503] [c=¬437 ind=false det=true tag=8 lvl=3 tp=#8505]
+DDB-LINE branching_level=8
+DDB-CLOSURE [c=¬533 ind=false det=true tag=0 lvl=0 tp=#8296] [c=3246 ind=false det=true tag=17 lvl=0 tp=#8667]
+DDB-LINE branching_level=17
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 651: visits=7291 messages=6
+BRIDGE-KPSET-MESSAGES subject 779: visits=0 messages=4
+BRIDGE-KPSET-MESSAGES subject 447: visits=0 messages=3
+BRIDGE-KPSET-MESSAGES subject 449: visits=0 messages=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 575: visits=1583 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 788: visits=1583 messages=4
+BRIDGE-KPSET-MESSAGES subject 492: visits=0 messages=4
+BRIDGE-KPSET-MESSAGES subject 721: visits=0 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 725: visits=0 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 728: visits=0 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 729: visits=0 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 730: visits=0 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 731: visits=0 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 732: visits=0 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 733: visits=0 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 734: visits=0 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 735: visits=0 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 736: visits=0 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 737: visits=0 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 738: visits=0 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 739: visits=0 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 740: visits=0 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 741: visits=0 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 742: visits=0 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 743: visits=0 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 744: visits=0 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 745: visits=0 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 746: visits=0 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 747: visits=0 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 748: visits=0 messages=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 443: visits=0 messages=3
+BRIDGE-KPSET-MESSAGES subject 2: visits=0 messages=3
+BRIDGE-KPSET-MESSAGES subject 9: visits=0 messages=3
+BRIDGE-KPSET-MESSAGES subject 44: visits=0 messages=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 81: visits=0 messages=3
+DDB-CLOSURE [c=437 ind=false det=true tag=10 lvl=3 tp=#8543] [c=¬437 ind=false det=true tag=14 lvl=3 tp=#8545]
+DDB-LINE branching_level=14
+DDB-CLOSURE [c=437 ind=false det=true tag=10 lvl=3 tp=#8555] [c=¬437 ind=false det=true tag=15 lvl=3 tp=#8557]
+DDB-LINE branching_level=15
+DDB-CLOSURE [c=437 ind=false det=true tag=10 lvl=3 tp=#8569] [c=¬437 ind=false det=true tag=16 lvl=3 tp=#8571]
+DDB-LINE branching_level=16
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 83: visits=1994 messages=3
+BRIDGE-KPSET-MESSAGES subject 433: visits=0 messages=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-KPSET-MESSAGES subject 439: visits=0 messages=3
+BRIDGE-KPSET-MESSAGES subject 576: visits=0 messages=3
+BRIDGE-KPSET-MESSAGES subject 706: visits=0 messages=2
+BRIDGE-KPSET-MESSAGES subject 722: visits=0 messages=3
+BRIDGE-KPSET-MESSAGES subject 726: visits=0 messages=3
+BRIDGE-KPSET-MESSAGES subject 727: visits=0 messages=3
+BRIDGE-KPSET-MESSAGES subject 749: visits=0 messages=3
+BRIDGE-KPSET-MESSAGES subject 772: visits=0 messages=2
+BRIDGE-KPSET-MESSAGES subject 787: visits=0 messages=2
+BRIDGE-KPSET-MESSAGES subject 887: visits=0 messages=3
+BRIDGE-KPSET-MESSAGES subject 942: visits=0 messages=3
+BRIDGE-SAT-PHASE prepare-total: 2.63s (154 subjects)
+BRIDGE-SAT-PHASE kpset-barrier: 0.00s
+BRIDGE-KPSET-DERIVED subject 497: 6 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 495: 6 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP FairWeather v PleasantTemperatureWeather: propagated-false
+BRIDGE-KPSET-SKIP FairWeather v AiringWeather: propagated-false
+BRIDGE-KPSET-DERIVED subject 681: 7 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Thunderstorm v NoAwningWeather: deterministic-subsumer
+BRIDGE-KPSET-SKIP Thunderstorm v RainyWeather: deterministic-subsumer
+BRIDGE-KPSET-SKIP Thunderstorm v WindyWeather: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 623: 7 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP SevereWeather v NoAwningWeather: deterministic-subsumer
+BRIDGE-KPSET-SKIP SevereWeather v RainyWeather: deterministic-subsumer
+BRIDGE-KPSET-SKIP SevereWeather v WindyWeather: deterministic-subsumer
+BRIDGE-KPSET-SKIP SevereWeather v Thunderstorm: propagated-false
+BRIDGE-KPSET-DERIVED subject 527: 3 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 530: 3 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 762: 3 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 655: 4 candidates, no satisfiability job
+BRIDGE-KPSET-VERIFY SolarTwilight v SunFromNorth: pseudo-model-false is advisory
+BRIDGE-PAIR-START SolarTwilight v SunFromNorth
+DDB-CLOSURE [c=¬679 ind=true det=true tag=0 lvl=0 tp=#0] [c=679 ind=false det=true tag=1 lvl=0 tp=#8590]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬679 ind=true det=true tag=0 lvl=0 tp=#0] [c=679 ind=false det=true tag=1 lvl=0 tp=#8753]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬679 ind=true det=true tag=0 lvl=0 tp=#0] [c=679 ind=false det=true tag=1 lvl=0 tp=#8907]
+DDB-LINE branching_level=1
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END SolarTwilight v SunFromNorth: false
+BRIDGE-KPSET-SKIP SolarTwilight v SunPosition: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 535: 4 candidates, no satisfiability job
+BRIDGE-KPSET-VERIFY DirectionalWind v Calm: pseudo-model-false is advisory
+BRIDGE-PAIR-START DirectionalWind v Calm
+DDB-CLOSURE [c=¬53 ind=true det=true tag=0 lvl=0 tp=#0] [c=53 ind=false det=true tag=2 lvl=0 tp=#8572]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8353] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8828]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8353] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#9412]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8353] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#10353]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8353] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#11375]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8353] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#12478]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8353] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#12498]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8353] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#12719]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END DirectionalWind v Calm: false
+BRIDGE-KPSET-SKIP DirectionalWind v NorthWind: propagated-false
+BRIDGE-KPSET-DERIVED subject 541: 4 candidates, no satisfiability job
+BRIDGE-PAIR-START EastWind v Calm
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8349] [c=¬1 ind=false det=true tag=4 lvl=2 tp=#8722]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8349] [c=¬1 ind=false det=true tag=4 lvl=2 tp=#8961]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8349] [c=¬1 ind=false det=true tag=4 lvl=2 tp=#9314]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8349] [c=¬1 ind=false det=true tag=4 lvl=2 tp=#9355]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8349] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#9474]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8349] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#9662]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8349] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#9946]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8349] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#9972]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END EastWind v Calm: false
+BRIDGE-KPSET-SKIP EastWind v DirectionalWind: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 636: 4 candidates, no satisfiability job
+BRIDGE-PAIR-START NorthWind v Calm
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=4 lvl=2 tp=#8642]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=¬931 ind=false det=false tag=2 lvl=2 tp=#8381] [c=25093 ind=false det=true tag=4 lvl=2 tp=#8643]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=¬931 ind=false det=false tag=2 lvl=2 tp=#8381] [c=25075 ind=false det=true tag=4 lvl=2 tp=#8684]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=¬931 ind=false det=false tag=2 lvl=2 tp=#8381] [c=25084 ind=false det=true tag=4 lvl=2 tp=#8735]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=¬931 ind=false det=false tag=2 lvl=2 tp=#8381] [c=28388 ind=false det=true tag=4 lvl=2 tp=#8786]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=4 lvl=2 tp=#8845]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=4 lvl=2 tp=#8868]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8307] [c=¬1 ind=false det=true tag=4 lvl=2 tp=#9008]
+DDB-LINE branching_level=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END NorthWind v Calm: false
+BRIDGE-KPSET-SKIP NorthWind v DirectionalWind: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 657: 4 candidates, no satisfiability job
+BRIDGE-PAIR-START SouthWind v Calm
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8351] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8433]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8351] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8486]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8351] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8588]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8351] [c=¬1 ind=false det=true tag=4 lvl=2 tp=#8900]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8351] [c=¬1 ind=false det=true tag=4 lvl=2 tp=#9049]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8351] [c=¬1 ind=false det=true tag=4 lvl=2 tp=#9312]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8351] [c=¬1 ind=false det=true tag=4 lvl=2 tp=#9385]
+DDB-LINE branching_level=4
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8351] [c=¬1 ind=false det=true tag=4 lvl=2 tp=#9531]
+DDB-LINE branching_level=4
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END SouthWind v Calm: false
+BRIDGE-KPSET-SKIP SouthWind v DirectionalWind: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 715: 4 candidates, no satisfiability job
+BRIDGE-KPSET-VERIFY WestWind v Calm: pseudo-model-false is advisory
+BRIDGE-PAIR-START WestWind v Calm
+DDB-CLOSURE [c=¬53 ind=true det=true tag=0 lvl=0 tp=#0] [c=53 ind=false det=true tag=2 lvl=0 tp=#8595]
+DDB-LINE branching_level=2
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END WestWind v Calm: false
+BRIDGE-KPSET-SKIP WestWind v DirectionalWind: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 677: 2 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 763: 3 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP ProperInterval v DateTimeInterval: propagated-false
+BRIDGE-KPSET-DERIVED subject 723: 2 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 724: 2 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 43: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Calm v Wind: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 46: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP LightWind v Wind: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 60: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP ClearSky v CloudCover: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 62: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP PartlyCloudy v CloudCover: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 68: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP MostlyCloudy v CloudCover: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 70: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Overcast v CloudCover: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 76: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Cold v Temperature: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 78: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Frost v Temperature: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 100: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Dry v Humidity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 102: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP VeryDry v Humidity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 192: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Heat v Temperature: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 251: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Moist v Humidity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 253: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP VeryMoist v Humidity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 271: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP StrongWind v Wind: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 280: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP NoRain v Precipitation: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 310: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP AboveRoomTemperature v Temperature: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 312: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP BelowRoomTemperature v Temperature: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 314: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP RoomTemperature v Temperature: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 318: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP ExtremelyHeavyRain v Precipitation: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 320: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP HeavyRain v Precipitation: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 322: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP LightRain v Precipitation: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 324: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP MediumRain v Precipitation: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 326: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP TropicalStormRain v Precipitation: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 353: 3 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Hurricane v Storm: deterministic-subsumer
+BRIDGE-KPSET-SKIP Hurricane v Wind: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 355: 3 candidates, no satisfiability job
+BRIDGE-PAIR-START Storm v Hurricane
+DDB-CLOSURE [c=¬363 ind=true det=true tag=0 lvl=0 tp=#0] [c=363 ind=false det=true tag=1 lvl=0 tp=#8486]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬363 ind=true det=true tag=0 lvl=0 tp=#0] [c=363 ind=false det=true tag=1 lvl=0 tp=#8559]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬363 ind=true det=true tag=0 lvl=0 tp=#0] [c=363 ind=false det=true tag=1 lvl=0 tp=#8632]
+DDB-LINE branching_level=1
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Storm v Hurricane: false
+BRIDGE-KPSET-SKIP Storm v Wind: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 393: 4 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Day v SunFromNorth: inherited-countermodel
+BRIDGE-KPSET-SKIP Day v SunPosition: deterministic-subsumer
+BRIDGE-PAIR-START Day v SolarTwilight
+DDB-CLOSURE [c=¬665 ind=true det=true tag=0 lvl=0 tp=#0] [c=665 ind=false det=true tag=2 lvl=0 tp=#8598]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=¬665 ind=true det=true tag=0 lvl=0 tp=#0] [c=665 ind=false det=true tag=2 lvl=0 tp=#8699]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8388] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8925]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8388] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#9509]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8388] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#10450]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8388] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#11472]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8388] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#12575]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8388] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#12595]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Day v SolarTwilight: false
+BRIDGE-KPSET-DERIVED subject 499: 4 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP AstronomicalTwilight v SunBelowHorizon: deterministic-subsumer
+BRIDGE-KPSET-SKIP AstronomicalTwilight v SunPosition: deterministic-subsumer
+BRIDGE-KPSET-SKIP AstronomicalTwilight v Twilight: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 501: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP AtmosphericPressure v VeryLowPressure: propagated-false
+BRIDGE-KPSET-DERIVED subject 508: 4 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP CivilTwilight v SunBelowHorizon: deterministic-subsumer
+BRIDGE-KPSET-SKIP CivilTwilight v SunPosition: deterministic-subsumer
+BRIDGE-KPSET-SKIP CivilTwilight v Twilight: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 514: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP CloudCover v ClearSky: propagated-false
+BRIDGE-KPSET-DERIVED subject 533: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 570: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP HighPressure v AtmosphericPressure: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 572: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP HighRadiation v SolarRadiation: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 598: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Humidity v Dry: propagated-false
+BRIDGE-KPSET-DERIVED subject 605: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP LowPressure v AtmosphericPressure: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 607: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP LowRadiation v SolarRadiation: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 609: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP MediumRadiation v SolarRadiation: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 619: 4 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP NauticalTwilight v SunBelowHorizon: deterministic-subsumer
+BRIDGE-KPSET-SKIP NauticalTwilight v SunPosition: deterministic-subsumer
+BRIDGE-KPSET-SKIP NauticalTwilight v Twilight: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 621: 3 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Night v SunBelowHorizon: deterministic-subsumer
+BRIDGE-KPSET-SKIP Night v SunPosition: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 627: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP NoRadiation v SolarRadiation: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 631: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP NormalHumidity v Humidity: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 633: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP NormalPressure v AtmosphericPressure: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 642: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Precipitation v NoRain: propagated-false
+BRIDGE-KPSET-DERIVED subject 653: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP SolarRadiation v HighRadiation: propagated-false
+BRIDGE-KPSET-DERIVED subject 663: 4 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP SunBelowHorizon v AstronomicalTwilight: propagated-false
+BRIDGE-KPSET-SKIP SunBelowHorizon v SunPosition: deterministic-subsumer
+BRIDGE-KPSET-SKIP SunBelowHorizon v Twilight: propagated-false
+BRIDGE-KPSET-DERIVED subject 665: 4 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP SunFromEast v Day: deterministic-subsumer
+BRIDGE-KPSET-SKIP SunFromEast v SunPosition: deterministic-subsumer
+BRIDGE-KPSET-VERIFY SunFromEast v SolarTwilight: pseudo-model-false is advisory
+BRIDGE-PAIR-START SunFromEast v SolarTwilight
+DDB-CLOSURE [c=¬665 ind=true det=true tag=0 lvl=0 tp=#0] [c=665 ind=false det=true tag=2 lvl=0 tp=#8600]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=¬665 ind=true det=true tag=0 lvl=0 tp=#0] [c=665 ind=false det=true tag=2 lvl=0 tp=#8701]
+DDB-LINE branching_level=2
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END SunFromEast v SolarTwilight: false
+BRIDGE-KPSET-DERIVED subject 669: 4 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP SunFromNorth v Day: deterministic-subsumer
+BRIDGE-KPSET-SKIP SunFromNorth v SunPosition: deterministic-subsumer
+BRIDGE-KPSET-VERIFY SunFromNorth v SolarTwilight: pseudo-model-false is advisory
+BRIDGE-PAIR-START SunFromNorth v SolarTwilight
+DDB-CLOSURE [c=¬665 ind=true det=true tag=0 lvl=0 tp=#0] [c=665 ind=false det=true tag=3 lvl=0 tp=#8592]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=¬665 ind=true det=true tag=0 lvl=0 tp=#0] [c=665 ind=false det=true tag=3 lvl=0 tp=#8693]
+DDB-LINE branching_level=3
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END SunFromNorth v SolarTwilight: false
+BRIDGE-KPSET-DERIVED subject 671: 4 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP SunFromSouth v Day: deterministic-subsumer
+BRIDGE-KPSET-SKIP SunFromSouth v SunPosition: deterministic-subsumer
+BRIDGE-PAIR-START SunFromSouth v SolarTwilight
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8353] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8501]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8353] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8576]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8353] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8665]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8353] [c=¬1 ind=false det=true tag=3 lvl=2 tp=#8758]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8353] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8790]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8353] [c=¬1 ind=false det=true tag=2 lvl=2 tp=#8871]
+DDB-LINE branching_level=2
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8353] [c=¬1 ind=false det=true tag=5 lvl=2 tp=#9343]
+DDB-LINE branching_level=5
+DDB-CLOSURE [c=1 ind=false det=true tag=0 lvl=2 tp=#8353] [c=¬1 ind=false det=true tag=5 lvl=2 tp=#9567]
+DDB-LINE branching_level=5
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END SunFromSouth v SolarTwilight: false
+BRIDGE-KPSET-DERIVED subject 673: 4 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP SunFromWest v Day: deterministic-subsumer
+BRIDGE-KPSET-SKIP SunFromWest v SunPosition: deterministic-subsumer
+BRIDGE-KPSET-VERIFY SunFromWest v SolarTwilight: pseudo-model-false is advisory
+BRIDGE-PAIR-START SunFromWest v SolarTwilight
+DDB-CLOSURE [c=¬665 ind=true det=true tag=0 lvl=0 tp=#0] [c=665 ind=false det=true tag=2 lvl=0 tp=#8621]
+DDB-LINE branching_level=2
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END SunFromWest v SolarTwilight: false
+BRIDGE-KPSET-DERIVED subject 675: 4 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP SunPosition v Day: propagated-false
+BRIDGE-KPSET-SKIP SunPosition v SunFromNorth: propagated-false
+BRIDGE-KPSET-SKIP SunPosition v SolarTwilight: propagated-false
+BRIDGE-KPSET-DERIVED subject 679: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Temperature v AboveRoomTemperature: propagated-false
+BRIDGE-KPSET-DERIVED subject 684: 4 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Twilight v AstronomicalTwilight: propagated-false
+BRIDGE-KPSET-SKIP Twilight v SunBelowHorizon: deterministic-subsumer
+BRIDGE-KPSET-SKIP Twilight v SunPosition: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 686: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP UnknownCloudCover v CloudCover: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 689: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP VeryHighPressure v AtmosphericPressure: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 691: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP VeryHighRadiation v SolarRadiation: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 693: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP VeryLowPressure v AtmosphericPressure: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 717: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Wind v Calm: inherited-countermodel
+BRIDGE-KPSET-DERIVED subject 496: 6 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP PleasantTemperatureWeather v CalmWeather: propagated-false
+BRIDGE-KPSET-SKIP PleasantTemperatureWeather v ClearWeather: propagated-false
+BRIDGE-KPSET-SKIP PleasantTemperatureWeather v NoRainWeather: propagated-false
+BRIDGE-KPSET-SKIP PleasantTemperatureWeather v FairWeather: propagated-false
+BRIDGE-KPSET-SKIP PleasantTemperatureWeather v AiringWeather: propagated-false
+BRIDGE-KPSET-DERIVED subject 506: 6 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP CalmWeather v PleasantTemperatureWeather: propagated-false
+BRIDGE-KPSET-SKIP CalmWeather v ClearWeather: propagated-false
+BRIDGE-KPSET-SKIP CalmWeather v NoRainWeather: propagated-false
+BRIDGE-KPSET-SKIP CalmWeather v FairWeather: propagated-false
+BRIDGE-KPSET-SKIP CalmWeather v AiringWeather: propagated-false
+BRIDGE-KPSET-DERIVED subject 512: 6 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP ClearWeather v PleasantTemperatureWeather: propagated-false
+BRIDGE-KPSET-SKIP ClearWeather v CalmWeather: propagated-false
+BRIDGE-KPSET-SKIP ClearWeather v NoRainWeather: propagated-false
+BRIDGE-KPSET-SKIP ClearWeather v FairWeather: propagated-false
+BRIDGE-KPSET-SKIP ClearWeather v AiringWeather: propagated-false
+BRIDGE-KPSET-DERIVED subject 517: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 521: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 539: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 544: 6 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP NoRainWeather v PleasantTemperatureWeather: propagated-false
+BRIDGE-KPSET-SKIP NoRainWeather v CalmWeather: propagated-false
+BRIDGE-KPSET-SKIP NoRainWeather v ClearWeather: propagated-false
+BRIDGE-KPSET-SKIP NoRainWeather v FairWeather: propagated-false
+BRIDGE-KPSET-SKIP NoRainWeather v AiringWeather: propagated-false
+BRIDGE-KPSET-DERIVED subject 574: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 616: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 625: 7 candidates, no satisfiability job
+BRIDGE-BATCH-REFUTATION NoAwningWeather candidates=4 verdict=Some("sat")
+BRIDGE-KPSET-SKIP NoAwningWeather v RainyWeather: batch-countermodel
+BRIDGE-KPSET-SKIP NoAwningWeather v StormyWeather: batch-countermodel
+BRIDGE-KPSET-SKIP NoAwningWeather v VeryRainyWeather: batch-countermodel
+BRIDGE-KPSET-SKIP NoAwningWeather v WindyWeather: deterministic-subsumer
+BRIDGE-KPSET-SKIP NoAwningWeather v SevereWeather: batch-countermodel
+BRIDGE-KPSET-SKIP NoAwningWeather v Thunderstorm: propagated-false
+BRIDGE-KPSET-DERIVED subject 645: 7 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP RainyWeather v NoAwningWeather: propagated-false
+BRIDGE-KPSET-SKIP RainyWeather v StormyWeather: propagated-false
+BRIDGE-PAIR-START RainyWeather v VeryRainyWeather
+DDB-CLOSURE [c=¬659 ind=true det=true tag=0 lvl=0 tp=#0] [c=659 ind=false det=true tag=1 lvl=0 tp=#8316]
+DDB-LINE branching_level=1
+DDB-CLOSURE [c=¬659 ind=true det=true tag=0 lvl=0 tp=#0] [c=659 ind=false det=true tag=1 lvl=0 tp=#8328]
+DDB-LINE branching_level=1
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END RainyWeather v VeryRainyWeather: false
+BRIDGE-KPSET-SKIP RainyWeather v WindyWeather: propagated-false
+BRIDGE-KPSET-SKIP RainyWeather v SevereWeather: propagated-false
+BRIDGE-KPSET-SKIP RainyWeather v Thunderstorm: propagated-false
+BRIDGE-KPSET-DERIVED subject 648: 7 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP StormyWeather v NoAwningWeather: propagated-false
+BRIDGE-KPSET-SKIP StormyWeather v RainyWeather: propagated-false
+BRIDGE-KPSET-SKIP StormyWeather v VeryRainyWeather: propagated-false
+BRIDGE-KPSET-SKIP StormyWeather v WindyWeather: deterministic-subsumer
+BRIDGE-KPSET-SKIP StormyWeather v SevereWeather: propagated-false
+BRIDGE-KPSET-SKIP StormyWeather v Thunderstorm: propagated-false
+BRIDGE-KPSET-DERIVED subject 649: 7 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP VeryRainyWeather v NoAwningWeather: propagated-false
+BRIDGE-KPSET-SKIP VeryRainyWeather v RainyWeather: deterministic-subsumer
+BRIDGE-KPSET-SKIP VeryRainyWeather v StormyWeather: propagated-false
+BRIDGE-KPSET-SKIP VeryRainyWeather v WindyWeather: propagated-false
+BRIDGE-KPSET-SKIP VeryRainyWeather v SevereWeather: propagated-false
+BRIDGE-KPSET-SKIP VeryRainyWeather v Thunderstorm: propagated-false
+BRIDGE-KPSET-DERIVED subject 720: 7 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP WindyWeather v NoAwningWeather: propagated-false
+BRIDGE-KPSET-SKIP WindyWeather v RainyWeather: propagated-false
+BRIDGE-KPSET-SKIP WindyWeather v StormyWeather: propagated-false
+BRIDGE-KPSET-SKIP WindyWeather v VeryRainyWeather: propagated-false
+BRIDGE-KPSET-SKIP WindyWeather v SevereWeather: propagated-false
+BRIDGE-KPSET-SKIP WindyWeather v Thunderstorm: propagated-false
+BRIDGE-KPSET-DERIVED subject 435: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 707: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 523: 3 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP CurrentWeatherReport v WeatherReportFromSensor: propagated-false
+BRIDGE-KPSET-SKIP CurrentWeatherReport v CurrentWeatherReportFromSensor: propagated-false
+BRIDGE-KPSET-DERIVED subject 524: 4 candidates, no satisfiability job
+BRIDGE-PAIR-START ForecastWeatherReport v WeatherReportFromSensor
+DDB-CLOSURE [c=¬536 ind=true det=true tag=0 lvl=0 tp=#0] [c=536 ind=false det=true tag=3 lvl=0 tp=#8345]
+DDB-LINE branching_level=3
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8381] [c=¬437 ind=false det=true tag=6 lvl=3 tp=#8383]
+DDB-LINE branching_level=6
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END ForecastWeatherReport v WeatherReportFromSensor: false
+BRIDGE-KPSET-SKIP ForecastWeatherReport v Forecast12HoursWeatherReport: propagated-false
+BRIDGE-KPSET-SKIP ForecastWeatherReport v LongRangeForecastReport: propagated-false
+BRIDGE-KPSET-DERIVED subject 526: 3 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP WeatherReportFromSensor v CurrentWeatherReport: propagated-false
+BRIDGE-KPSET-SKIP WeatherReportFromSensor v CurrentWeatherReportFromSensor: propagated-false
+BRIDGE-KPSET-DERIVED subject 529: 3 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP WeatherReportFromService v CurrentWeatherReport: propagated-false
+BRIDGE-KPSET-SKIP WeatherReportFromService v CurrentWeatherReportFromService: propagated-false
+BRIDGE-KPSET-DERIVED subject 546: 4 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Forecast12HoursWeatherReport v ForecastWeatherReport: deterministic-subsumer
+BRIDGE-PAIR-START Forecast12HoursWeatherReport v WeatherReportFromSensor
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8395] [c=¬437 ind=false det=true tag=8 lvl=3 tp=#8397]
+DDB-LINE branching_level=8
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8418] [c=¬437 ind=false det=true tag=9 lvl=3 tp=#8420]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8449] [c=¬437 ind=false det=true tag=10 lvl=3 tp=#8451]
+DDB-LINE branching_level=10
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Forecast12HoursWeatherReport v WeatherReportFromSensor: false
+BRIDGE-KPSET-SKIP Forecast12HoursWeatherReport v LongRangeForecastReport: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 548: 4 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Forecast15HoursWeatherReport v ForecastWeatherReport: deterministic-subsumer
+BRIDGE-PAIR-START Forecast15HoursWeatherReport v WeatherReportFromSensor
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8395] [c=¬437 ind=false det=true tag=8 lvl=3 tp=#8397]
+DDB-LINE branching_level=8
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8446] [c=¬437 ind=false det=true tag=9 lvl=3 tp=#8448]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8479] [c=¬437 ind=false det=true tag=10 lvl=3 tp=#8481]
+DDB-LINE branching_level=10
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Forecast15HoursWeatherReport v WeatherReportFromSensor: false
+BRIDGE-KPSET-SKIP Forecast15HoursWeatherReport v LongRangeForecastReport: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 550: 4 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Forecast18HoursWeatherReport v ForecastWeatherReport: deterministic-subsumer
+BRIDGE-PAIR-START Forecast18HoursWeatherReport v WeatherReportFromSensor
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8395] [c=¬437 ind=false det=true tag=8 lvl=3 tp=#8397]
+DDB-LINE branching_level=8
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8446] [c=¬437 ind=false det=true tag=9 lvl=3 tp=#8448]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8479] [c=¬437 ind=false det=true tag=10 lvl=3 tp=#8481]
+DDB-LINE branching_level=10
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Forecast18HoursWeatherReport v WeatherReportFromSensor: false
+BRIDGE-KPSET-SKIP Forecast18HoursWeatherReport v LongRangeForecastReport: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 552: 4 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Forecast1HourWeatherReport v ForecastWeatherReport: deterministic-subsumer
+BRIDGE-PAIR-START Forecast1HourWeatherReport v WeatherReportFromSensor
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8389] [c=¬437 ind=false det=true tag=7 lvl=3 tp=#8391]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8494] [c=¬437 ind=false det=true tag=8 lvl=3 tp=#8515]
+DDB-LINE branching_level=8
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Forecast1HourWeatherReport v WeatherReportFromSensor: false
+BRIDGE-KPSET-SKIP Forecast1HourWeatherReport v ShortRangeForecastReport: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 554: 4 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Forecast21HoursWeatherReport v ForecastWeatherReport: deterministic-subsumer
+BRIDGE-PAIR-START Forecast21HoursWeatherReport v WeatherReportFromSensor
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8395] [c=¬437 ind=false det=true tag=8 lvl=3 tp=#8397]
+DDB-LINE branching_level=8
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8446] [c=¬437 ind=false det=true tag=9 lvl=3 tp=#8448]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8479] [c=¬437 ind=false det=true tag=10 lvl=3 tp=#8481]
+DDB-LINE branching_level=10
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Forecast21HoursWeatherReport v WeatherReportFromSensor: false
+BRIDGE-KPSET-SKIP Forecast21HoursWeatherReport v LongRangeForecastReport: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 556: 4 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Forecast24HoursWeatherReport v ForecastWeatherReport: deterministic-subsumer
+BRIDGE-PAIR-START Forecast24HoursWeatherReport v WeatherReportFromSensor
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8395] [c=¬437 ind=false det=true tag=8 lvl=3 tp=#8397]
+DDB-LINE branching_level=8
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8446] [c=¬437 ind=false det=true tag=9 lvl=3 tp=#8448]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8479] [c=¬437 ind=false det=true tag=10 lvl=3 tp=#8481]
+DDB-LINE branching_level=10
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Forecast24HoursWeatherReport v WeatherReportFromSensor: false
+BRIDGE-KPSET-SKIP Forecast24HoursWeatherReport v LongRangeForecastReport: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 558: 4 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Forecast2HoursWeatherReport v ForecastWeatherReport: deterministic-subsumer
+BRIDGE-PAIR-START Forecast2HoursWeatherReport v WeatherReportFromSensor
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8389] [c=¬437 ind=false det=true tag=7 lvl=3 tp=#8391]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8494] [c=¬437 ind=false det=true tag=8 lvl=3 tp=#8515]
+DDB-LINE branching_level=8
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Forecast2HoursWeatherReport v WeatherReportFromSensor: false
+BRIDGE-KPSET-SKIP Forecast2HoursWeatherReport v ShortRangeForecastReport: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 560: 4 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Forecast3HoursWeatherReport v ForecastWeatherReport: deterministic-subsumer
+BRIDGE-PAIR-START Forecast3HoursWeatherReport v WeatherReportFromSensor
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8389] [c=¬437 ind=false det=true tag=7 lvl=3 tp=#8391]
+DDB-LINE branching_level=7
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8413] [c=¬437 ind=false det=true tag=8 lvl=3 tp=#8434]
+DDB-LINE branching_level=8
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Forecast3HoursWeatherReport v WeatherReportFromSensor: false
+BRIDGE-KPSET-SKIP Forecast3HoursWeatherReport v ShortRangeForecastReport: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 562: 4 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Forecast6HoursWeatherReport v ForecastWeatherReport: deterministic-subsumer
+BRIDGE-PAIR-START Forecast6HoursWeatherReport v WeatherReportFromSensor
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8397] [c=¬437 ind=false det=true tag=8 lvl=3 tp=#8399]
+DDB-LINE branching_level=8
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8449] [c=¬437 ind=false det=true tag=9 lvl=3 tp=#8451]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8490] [c=¬437 ind=false det=true tag=10 lvl=3 tp=#8513]
+DDB-LINE branching_level=10
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Forecast6HoursWeatherReport v WeatherReportFromSensor: false
+BRIDGE-KPSET-SKIP Forecast6HoursWeatherReport v MediumRangeForecastReport: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 564: 4 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP Forecast9HoursWeatherReport v ForecastWeatherReport: deterministic-subsumer
+BRIDGE-PAIR-START Forecast9HoursWeatherReport v WeatherReportFromSensor
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8397] [c=¬437 ind=false det=true tag=8 lvl=3 tp=#8399]
+DDB-LINE branching_level=8
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8449] [c=¬437 ind=false det=true tag=9 lvl=3 tp=#8451]
+DDB-LINE branching_level=9
+DDB-CLOSURE [c=437 ind=false det=true tag=0 lvl=3 tp=#8490] [c=¬437 ind=false det=true tag=10 lvl=3 tp=#8512]
+DDB-LINE branching_level=10
+BRIDGE-SAT-EXPANSION-CACHE-WRITE
+BRIDGE-PAIR-END Forecast9HoursWeatherReport v WeatherReportFromSensor: false
+BRIDGE-KPSET-SKIP Forecast9HoursWeatherReport v MediumRangeForecastReport: deterministic-subsumer
+BRIDGE-KPSET-DERIVED subject 603: 4 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP LongRangeForecastReport v ForecastWeatherReport: deterministic-subsumer
+BRIDGE-KPSET-SKIP LongRangeForecastReport v WeatherReportFromSensor: propagated-false
+BRIDGE-KPSET-SKIP LongRangeForecastReport v Forecast12HoursWeatherReport: propagated-false
+BRIDGE-KPSET-DERIVED subject 612: 4 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP MediumRangeForecastReport v ForecastWeatherReport: deterministic-subsumer
+BRIDGE-KPSET-SKIP MediumRangeForecastReport v WeatherReportFromSensor: propagated-false
+BRIDGE-KPSET-SKIP MediumRangeForecastReport v Forecast6HoursWeatherReport: propagated-false
+BRIDGE-KPSET-DERIVED subject 651: 4 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP ShortRangeForecastReport v ForecastWeatherReport: deterministic-subsumer
+BRIDGE-KPSET-SKIP ShortRangeForecastReport v WeatherReportFromSensor: propagated-false
+BRIDGE-KPSET-SKIP ShortRangeForecastReport v Forecast1HourWeatherReport: propagated-false
+BRIDGE-KPSET-DERIVED subject 779: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 447: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 449: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 575: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 788: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 492: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP DerivedUnit v ComplexDerivedUnit: propagated-false
+BRIDGE-KPSET-DERIVED subject 721: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 725: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 728: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 729: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 730: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 731: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 732: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 733: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 734: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 735: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 736: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 737: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 738: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 739: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 740: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 741: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 742: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 743: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 744: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 745: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 746: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 747: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 748: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 443: 1 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 2: 0 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 9: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP WeatherPhenomenon v NoRain: propagated-false
+BRIDGE-KPSET-SKIP WeatherPhenomenon v Precipitation: propagated-false
+BRIDGE-KPSET-DERIVED subject 44: 6 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP WeatherState v PleasantTemperatureWeather: propagated-false
+BRIDGE-KPSET-SKIP WeatherState v CalmWeather: propagated-false
+BRIDGE-KPSET-SKIP WeatherState v ClearWeather: propagated-false
+BRIDGE-KPSET-SKIP WeatherState v NoRainWeather: propagated-false
+BRIDGE-KPSET-SKIP WeatherState v FairWeather: propagated-false
+BRIDGE-KPSET-SKIP WeatherState v AiringWeather: propagated-false
+BRIDGE-KPSET-DERIVED subject 81: 1 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP TemporalEntity v Interval: propagated-false
+BRIDGE-KPSET-DERIVED subject 83: 3 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP WeatherReport v CurrentWeatherReport: propagated-false
+BRIDGE-KPSET-SKIP WeatherReport v WeatherReportFromSensor: inherited-countermodel
+BRIDGE-KPSET-SKIP WeatherReport v CurrentWeatherReportFromSensor: propagated-false
+BRIDGE-KPSET-DERIVED subject 433: 1 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP DateTimeDescription v DurationDescription: propagated-false
+BRIDGE-KPSET-DERIVED subject 439: 1 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP WeatherReportSource v SensorSource: propagated-false
+BRIDGE-KPSET-DERIVED subject 576: 1 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP DurationDescription v DateTimeDescription: propagated-false
+BRIDGE-KPSET-DERIVED subject 706: 0 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 722: 2 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP UnitOfMeasurement v DerivedUnit: propagated-false
+BRIDGE-KPSET-SKIP UnitOfMeasurement v ComplexDerivedUnit: propagated-false
+BRIDGE-KPSET-DERIVED subject 726: 0 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 727: 0 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 749: 1 candidates, no satisfiability job
+BRIDGE-KPSET-SKIP SpatialThing v Point: propagated-false
+BRIDGE-KPSET-DERIVED subject 772: 0 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 787: 0 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 887: 0 candidates, no satisfiability job
+BRIDGE-KPSET-DERIVED subject 942: 0 candidates, no satisfiability job
+BRIDGE-SAT-PHASE verify-total: 0.42s
+BRIDGE-SOURCE-POST-CLOSURE seeded=269 combined=533
+KM_TIMING engine block done @ 4.45s (subs_keys=137)
+KM_TIMING mark: output mapping done
+wall=4.47 rss=303636KB

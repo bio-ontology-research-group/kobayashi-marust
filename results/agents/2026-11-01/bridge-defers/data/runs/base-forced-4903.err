@@ -1,0 +1,12 @@
+KM_TIMING mark: second source check done
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.08s cached=true sidecar=false
+KM_TIMING frontend: 12 data-property assertion(s) not carried; re-running with the DataHasValue conversion
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.09s cached=true sidecar=false
+KM_TIMING frontend done @ 0.18s route=ht_bridge
+cb_to_ht [emelim] eliminated 2 complementary pairs
+cb_to_ht [trigger-absorb] definers=1235 moved=23 tautologies=0
+BRIDGE-DATATYPE-DEFER: a pure datatype relation clause is not exact in the supported map; clause=15199 value={"body":[{"k":"c","neg":false,"c":378,"t":0}],"head":[{"k":"c","neg":false,"c":3231,"t":0},{"k":"c","neg":false,"c":3264,"t":0},{"k":"c","neg":false,"c":3265,"t":0}]}
+BRIDGE-DATATYPE-GATE: admitted=false in 0.10s
+unsupported: selected native HT bridge deferred (konclude_ht bridge defer)
