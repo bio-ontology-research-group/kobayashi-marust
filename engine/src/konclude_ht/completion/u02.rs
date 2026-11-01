@@ -402,11 +402,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         target: Option<usize>,
         calc_alg_context: &CalculationAlgorithmContextBase,
     ) {
-        static LIMIT: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
         static COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
-        let limit = *LIMIT.get_or_init(|| {
-            std::env::var("KM_BRIDGE_DDB_TRACE").ok().and_then(|v| v.parse().ok()).unwrap_or(0)
-        });
+        let limit = super::bridge_ddb_trace_limit().unwrap_or(0).max(0) as u64;
         if limit == 0 || COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed) >= limit {
             return;
         }
