@@ -1,0 +1,12 @@
+it-forced_route_fail_closed: test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.15s
+it-native_data_values: test result: ok. 30 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 42.98s
+it-nominal_ground_body: test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+it-nominal_inert_sorts: test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.94s
+it-top_nominal_data_successors: test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.90s
+it-universal_role_and_top_data_range: test result: FAILED. 12 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.96s
+lib-frontend__: test result: ok. 426 passed; 0 failed; 0 ignored; 0 measured; 2691 filtered out; finished in 4.06s
+lib-frontend__sorts: test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 3105 filtered out; finished in 0.23s
+lib-konclude_ht__bridge: test result: ok. 181 passed; 0 failed; 7 ignored; 0 measured; 2929 filtered out; finished in 0.13s
+lib-konclude_ht__completion: test result: ok. 679 passed; 0 failed; 0 ignored; 0 measured; 2438 filtered out; finished in 0.06s
+lib-konclude_ht__: test result: ok. 1520 passed; 0 failed; 7 ignored; 0 measured; 1590 filtered out; finished in 0.23s
+lib-value_singletons: test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 3111 filtered out; finished in 0.00s

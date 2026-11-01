@@ -1261,7 +1261,8 @@ sort clauses come out in name order, so the output is the same clause
 sequence: a differential test runs the former implementation
 (`sorts_reference.rs`, test only) against the new one on 3,000 random clause
 sets, and `km ofn` under `KM_NOMINALS=1` gives byte-identical clause and meta
-files on the 585 held-out inputs (results/agents/2026-11-01/perf-9027/).
+files on 584 of the 585 held-out inputs; 15687 exceeds the 120 s
+bound on both binaries (results/agents/2026-11-01/perf-9027/).
 No Lean obligation: the encoded clause set is unchanged.
 
 ## 7. Sequoia ordering and nominals

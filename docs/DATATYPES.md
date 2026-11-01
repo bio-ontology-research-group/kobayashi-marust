@@ -1199,6 +1199,14 @@ optimisation is used. What the Rust code relies on, and what is not proved,
 is that the fixpoint rules cover every label and edge source of the bridge
 (the audit checks it on the runs below, it does not prove it).
 
+**Runs.** results/agents/2026-11-01/perf-9027/. With the audit on, 9027 and
+the data differential pools (probes, fixtures, top-nominal-data, 400
+nominal-coverage seeds, 300 r3 and 400 r1600 seeds with data) give no wrong
+answer and no audit violation; 12 of the 296 survey inputs that reach the
+bridge with a singleton are proved inert, all agree with HermiT, and every
+`native_data_values` fixture with a singleton keeps the gate. 9027 takes
+32.6 s against 32.3 s for v1.5.3 on ws (mean of seven pairs).
+
 ## Open corners (status 2026-10-30, after `data-values-3`)
 
 Every corner now has one of two behaviours: an exact answer, or an input

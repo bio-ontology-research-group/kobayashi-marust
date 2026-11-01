@@ -1,0 +1,8 @@
+#!/bin/bash
+# Run km.pgo.fix2 on one free CPU of 13-15 (lock files), so available_parallelism is 1.
+B=/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/perf-9027
+for c in 13 14 15; do
+  exec 9>$B/locks/cpu$c
+  if flock -n 9; then exec taskset -c $c $B/km.pgo.fix2 "$@"; fi
+done
+exec taskset -c 15 $B/km.pgo.fix2 "$@"
