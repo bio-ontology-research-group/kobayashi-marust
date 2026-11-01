@@ -7,7 +7,15 @@ use std::process::{Command, Stdio};
 fn unconfigured_command() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_tableau_cli"));
     for (key, _) in std::env::vars() {
-        if key.starts_with("KM_HT_LEAN_") || key == "KM_HT_GLOBAL" {
+        // Production also reads the `KM_HT_TEST_*` checker variables as a
+        // fallback (`hypertableau.rs`, native ABox taxonomy checker) and the
+        // `KM_LEAN_CHECKERS*` directory mode; a checker environment such as
+        // `lean/checker-env.sh` must not reach these fixture runs.
+        if key.starts_with("KM_HT_LEAN_")
+            || key.starts_with("KM_HT_TEST_")
+            || key.starts_with("KM_LEAN_CHECK")
+            || key == "KM_HT_GLOBAL"
+        {
             command.env_remove(key);
         }
     }

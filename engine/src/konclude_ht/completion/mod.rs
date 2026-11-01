@@ -98,6 +98,19 @@ macro_rules! cached_completion_flag {
 
 cached_completion_flag!(bridge_progress_enabled, "KM_BRIDGE_PROGRESS");
 cached_completion_flag!(bridge_phase_timing_enabled, "KM_BRIDGE_PHASE_TIMING");
+
+/// Cap on the drive iterations of one completion run (`u02.rs`), looked up
+/// once. `KM_HT_MAX_DRIVE_ITERATIONS` raises it for measurement; an overrun
+/// still stops the drive, so the value never changes an answer.
+pub(crate) fn max_drive_iterations() -> u64 {
+    static CAP: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    *CAP.get_or_init(|| {
+        std::env::var("KM_HT_MAX_DRIVE_ITERATIONS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(5_000_000)
+    })
+}
 cached_completion_flag!(ht_singleton_scan_after_merge_enabled, "KM_HT_SINGLETON_SCAN_AFTER_MERGE");
 cached_completion_flag!(bridge_base_audit_enabled, "KM_BRIDGE_BASE_AUDIT");
 cached_completion_flag!(bridge_search_log_enabled, "KM_BRIDGE_SEARCH_LOG");

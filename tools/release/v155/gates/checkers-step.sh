@@ -15,7 +15,14 @@ commit=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["commit"
 mkdir -p "$out"
 export PATH=$HOME/.elan/bin:$HOME/.cargo/bin:$PATH CARGO_TARGET_DIR="$ctl/gate-work/target"
 start=$(date +%s)
-(cd "$snap/lean" && LEAN_NUM_THREADS=8 nice lake build) > "$out/lake-build.log" 2>&1
+# `lake build` alone builds only the two library default targets; the
+# checkers are `[[lean_exe]]` targets and must be named. The gates delete
+# the executables after their audit and leave lake's traces behind, so the
+# stale traces of missing executables are removed first.
+exes=$(grep -A1 '^\[\[lean_exe\]\]' "$snap/lean/lakefile.toml" | sed -n 's/^name = "\(.*\)"/\1/p')
+(cd "$snap/lean/.lake/build/bin" 2>/dev/null && for t in *.trace; do b=${t%.trace}; [ -e "$b" ] || rm -f "$b.trace" "$b.hash"; done) || true
+# shellcheck disable=SC2086
+(cd "$snap/lean" && LEAN_NUM_THREADS=8 nice lake build $exes) > "$out/lake-build.log" 2>&1
 echo "lake_build_s $(( $(date +%s) - start ))" > "$out/timings.txt"
 bin="$snap/lean/.lake/build/bin"
 (cd "$snap/lean/.lake/build/bin" && sha256sum $(ls | grep -v -E '\.(hash|rsp|trace|json)$')) > "$out/checkers.sha256"
