@@ -542,3 +542,153 @@ pub(crate) fn audit_labels(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::json_io::{DefinerMeta, SourceAxiomMeta};
+    use crate::orchestrate::cb_to_ht::HtClause;
+
+    const A: usize = 0;
+    const BOOL: usize = 1;
+    const TRUE: usize = 2;
+    const FALSE: usize = 3;
+    const Q: usize = 4;
+    const U: usize = 0;
+
+    fn c(c: usize, t: usize) -> HAtom {
+        HAtom::Concept { neg: false, c, t }
+    }
+    fn nc(c: usize, t: usize) -> HAtom {
+        HAtom::Concept { neg: true, c, t }
+    }
+    fn r(r: usize, s: usize, t: usize) -> HAtom {
+        HAtom::Role { r, s, t }
+    }
+    fn cl(body: Vec<HAtom>, head: Vec<HAtom>) -> HtClause {
+        HtClause { body, head }
+    }
+
+    /// A boolean data property `u` used only in its domain, range and
+    /// functionality, the shape of ore_ont_9027.
+    fn range_only() -> TInput {
+        TInput {
+            concepts: ["A", "__dt__boolean", "__dt__val__\"true\"^^xsd:boolean",
+                "__dt__val__\"false\"^^xsd:boolean", "Q_0"]
+                .iter().map(|s| s.to_string()).collect(),
+            roles: vec!["u".to_string()],
+            clauses: vec![
+                cl(vec![r(U, 0, 1)], vec![c(BOOL, 1)]),
+                cl(vec![r(U, 0, 1)], vec![c(A, 0)]),
+                cl(vec![r(U, 0, 1), r(U, 0, 2)], vec![HAtom::Eq { s: 1, t: 2 }]),
+                cl(vec![c(BOOL, 0)], vec![c(TRUE, 0), c(FALSE, 0)]),
+                cl(vec![c(TRUE, 0), c(TRUE, 1)], vec![HAtom::Eq { s: 0, t: 1 }]),
+                cl(vec![c(FALSE, 0), c(FALSE, 1)], vec![HAtom::Eq { s: 0, t: 1 }]),
+            ],
+            queries: vec![A],
+            ..TInput::default()
+        }
+    }
+
+    #[test]
+    fn range_domain_and_functionality_leave_values_inert() {
+        let tin = range_only();
+        let reach = value_singletons_inert(&tin, &[TRUE, FALSE]).expect("inert");
+        assert!(!reach.edge[U]);
+        assert!(!reach.pos[BOOL]);
+    }
+
+    #[test]
+    fn a_data_existential_makes_values_reachable() {
+        let mut tin = range_only();
+        tin.clauses.push(cl(vec![c(A, 0)], vec![HAtom::Exist { r: U, neg: false, c: BOOL, t: 0 }]));
+        assert!(value_singletons_inert(&tin, &[TRUE, FALSE]).is_none());
+    }
+
+    #[test]
+    fn a_negated_universal_definer_creates_an_edge() {
+        // Q resolves to ∀u.boolean; ¬Q in a head is ∃u.¬boolean.
+        let mut tin = range_only();
+        tin.definers.push(DefinerMeta {
+            marker: "Q_0".into(),
+            kind: DefinerKind::Forall,
+            operands: vec!["__dt__boolean".into()],
+            role: Some("u".into()),
+            n: None,
+        });
+        assert!(value_singletons_inert(&tin, &[TRUE, FALSE]).is_some());
+        tin.clauses.push(cl(vec![c(A, 0)], vec![nc(Q, 0)]));
+        assert!(value_singletons_inert(&tin, &[TRUE, FALSE]).is_none());
+    }
+
+    #[test]
+    fn an_underivable_existential_definer_stays_inert() {
+        // Q ≡ ∃u.⊤ is derivable only from a u-edge (the domain recognition).
+        let mut tin = range_only();
+        tin.definers.push(DefinerMeta {
+            marker: "Q_0".into(),
+            kind: DefinerKind::Exists,
+            operands: vec!["A".into()],
+            role: Some("u".into()),
+            n: None,
+        });
+        tin.clauses.push(cl(vec![c(Q, 0)], vec![HAtom::Exist { r: U, neg: false, c: A, t: 0 }]));
+        tin.clauses.push(cl(vec![r(U, 0, 1)], vec![c(Q, 0)]));
+        assert!(value_singletons_inert(&tin, &[TRUE, FALSE]).is_some());
+        tin.clauses.push(cl(vec![c(A, 0)], vec![c(Q, 0)]));
+        assert!(value_singletons_inert(&tin, &[TRUE, FALSE]).is_none());
+    }
+
+    #[test]
+    fn source_axioms_follow_polarity() {
+        use crate::frontend::syntax::{Concept, Role};
+        let name = |n: &str| Concept::Name(n.to_string());
+        let u = || Role::Name("u".to_string());
+        let mut tin = range_only();
+        tin.source_axioms = vec![
+            SourceAxiomMeta {
+                kind: SourceAxiomKind::SubClass,
+                left: Concept::Exists(u(), Box::new(Concept::Top)),
+                right: name("A"),
+            },
+            SourceAxiomMeta {
+                kind: SourceAxiomKind::SubClass,
+                left: Concept::Top,
+                right: Concept::Forall(u(), Box::new(name("__dt__boolean"))),
+            },
+        ];
+        assert!(value_singletons_inert(&tin, &[TRUE, FALSE]).is_some());
+        // `¬∀u.¬boolean ⊑ A` puts nothing on a node; `A ⊑ ¬∀u.¬boolean` does.
+        tin.source_axioms.push(SourceAxiomMeta {
+            kind: SourceAxiomKind::SubClass,
+            left: Concept::Not(Box::new(Concept::Forall(u(), Box::new(Concept::Not(Box::new(name("__dt__boolean"))))))),
+            right: name("A"),
+        });
+        assert!(value_singletons_inert(&tin, &[TRUE, FALSE]).is_some());
+        tin.source_axioms.push(SourceAxiomMeta {
+            kind: SourceAxiomKind::SubClass,
+            left: name("A"),
+            right: Concept::Not(Box::new(Concept::Forall(u(), Box::new(Concept::Not(Box::new(name("__dt__boolean"))))))),
+        });
+        assert!(value_singletons_inert(&tin, &[TRUE, FALSE]).is_none());
+    }
+
+    #[test]
+    fn abox_data_edges_and_unmodelled_channels_keep_the_gate() {
+        let mut tin = range_only();
+        tin.native_abox.role_assertions.push((U, 0, 1));
+        assert!(value_singletons_inert(&tin, &[TRUE, FALSE]).is_none());
+        let mut tin = range_only();
+        tin.rule_data_roles = Some(vec![true]);
+        assert!(value_singletons_inert(&tin, &[TRUE, FALSE]).is_none());
+        let mut tin = range_only();
+        tin.source_axioms.push(SourceAxiomMeta {
+            kind: SourceAxiomKind::SubClass,
+            left: Concept::Name("A".into()),
+            right: Concept::Forall(SourceRole::Universal, Box::new(Concept::Top)),
+        });
+        assert!(value_singletons_inert(&tin, &[TRUE, FALSE]).is_none());
+    }
+
+    use crate::frontend::syntax::Concept;
+}

@@ -60,6 +60,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::clauses::{clause, Atom, DLClause, Term};
+use crate::fxhash::{FxHashMap, FxHashSet};
 
 /// Marker concept interpreted as the data domain `Δ_D`.
 pub const DATA_SORT: &str = "__data__";
@@ -194,54 +195,187 @@ pub fn has_data_values(tbox: &[DLClause]) -> bool {
     })
 }
 
+/// Interned view of the clause set: concept, role and term ids, and every
+/// clause as id atoms. Terms are interned by value, so two equal terms of one
+/// clause share an id exactly as they shared a key of the former
+/// `BTreeMap<&Term, _>`; variables are still read per clause.
+struct Index<'a> {
+    concept_names: Vec<&'a str>,
+    concept_ids: FxHashMap<&'a str, usize>,
+    role_names: Vec<&'a str>,
+    role_ids: FxHashMap<&'a str, usize>,
+    terms: Vec<&'a Term>,
+    term_ids: FxHashMap<&'a Term, usize>,
+    is_var: Vec<bool>,
+    clauses: Vec<IClause>,
+}
+
+#[derive(Clone, Copy)]
+enum IAtom {
+    Concept(usize, usize),
+    Role(usize, usize, usize),
+    Eq(usize, usize),
+}
+
+#[derive(Default)]
+struct IClause {
+    body: Vec<IAtom>,
+    head: Vec<IAtom>,
+}
+
+impl IClause {
+    fn atoms(&self) -> impl Iterator<Item = &IAtom> {
+        self.body.iter().chain(self.head.iter())
+    }
+}
+
+impl<'a> Index<'a> {
+    fn new(tbox: &'a [DLClause]) -> Index<'a> {
+        let mut index = Index {
+            concept_names: Vec::new(),
+            concept_ids: FxHashMap::default(),
+            role_names: Vec::new(),
+            role_ids: FxHashMap::default(),
+            terms: Vec::new(),
+            term_ids: FxHashMap::default(),
+            is_var: Vec::new(),
+            clauses: Vec::with_capacity(tbox.len()),
+        };
+        for c in tbox {
+            let compiled = index.compile(c);
+            index.clauses.push(compiled);
+        }
+        index
+    }
+
+    fn concept(&mut self, name: &'a str) -> usize {
+        if let Some(&id) = self.concept_ids.get(name) {
+            return id;
+        }
+        let id = self.concept_names.len();
+        self.concept_names.push(name);
+        self.concept_ids.insert(name, id);
+        id
+    }
+
+    fn role(&mut self, name: &'a str) -> usize {
+        if let Some(&id) = self.role_ids.get(name) {
+            return id;
+        }
+        let id = self.role_names.len();
+        self.role_names.push(name);
+        self.role_ids.insert(name, id);
+        id
+    }
+
+    fn term(&mut self, term: &'a Term) -> usize {
+        if let Some(&id) = self.term_ids.get(term) {
+            return id;
+        }
+        let id = self.terms.len();
+        self.terms.push(term);
+        self.term_ids.insert(term, id);
+        self.is_var.push(matches!(term, Term::Var(_)));
+        id
+    }
+
+    fn atom(&mut self, atom: &'a Atom) -> IAtom {
+        match atom {
+            Atom::Concept(name, t) => IAtom::Concept(self.concept(name), self.term(t)),
+            Atom::Role(name, s, t) => IAtom::Role(self.role(name), self.term(s), self.term(t)),
+            Atom::Eq(s, t) => IAtom::Eq(self.term(s), self.term(t)),
+        }
+    }
+
+    fn compile(&mut self, c: &'a DLClause) -> IClause {
+        IClause {
+            body: c.body.iter().map(|a| self.atom(a)).collect(),
+            head: c.head.iter().map(|a| self.atom(a)).collect(),
+        }
+    }
+}
+
+/// Inferred sorts, indexed like [`Index`]. Phase 1 and 2 of the inference
+/// visit the clauses in their order and update in place, as before.
 struct Sorts {
     /// Concept sort and whether it is a fixed seed.
-    concepts: BTreeMap<String, (Sort, bool)>,
+    concepts: Vec<(Sort, bool)>,
     /// Role (domain, range) sorts.
-    roles: BTreeMap<String, (Sort, Sort)>,
-    /// Structural sort of every Skolem term and individual (phase 1).
-    terms: BTreeMap<Term, Sort>,
+    roles: Vec<(Sort, Sort)>,
+    /// Structural sort of every Skolem term and individual (phase 1);
+    /// `Unknown` for variables and for terms without evidence.
+    terms: Vec<Sort>,
+}
+
+/// Term sorts of the clause being scanned: variables per clause, Skolem
+/// terms and individuals across the clause set.
+struct TermSorts<'s> {
+    local: &'s mut Vec<Sort>,
+    touched: &'s mut Vec<usize>,
+    global: &'s mut Vec<Sort>,
+    is_var: &'s [bool],
+}
+
+impl<'s> TermSorts<'s> {
+    fn get(&self, term: usize) -> Sort {
+        if self.is_var[term] { self.local[term] } else { self.global[term] }
+    }
+
+    /// Record definite evidence for `term`; indefinite evidence is ignored.
+    fn join(&mut self, term: usize, sort: Sort) {
+        if sort.definite() {
+            if self.is_var[term] {
+                if self.local[term] == Sort::Unknown {
+                    self.touched.push(term);
+                }
+                self.local[term] = self.local[term].join(sort);
+            } else {
+                self.global[term] = self.global[term].join(sort);
+            }
+        }
+    }
+
+    fn clear(&mut self) {
+        for &term in self.touched.iter() {
+            self.local[term] = Sort::Unknown;
+        }
+        self.touched.clear();
+    }
 }
 
 impl Sorts {
-    fn infer(tbox: &[DLClause], data_roles: &BTreeSet<String>) -> Sorts {
-        let mut concepts: BTreeMap<String, (Sort, bool)> = BTreeMap::new();
-        let mut roles: BTreeMap<String, (Sort, Sort)> = BTreeMap::new();
-        for c in tbox {
-            for atom in c.body.iter().chain(c.head.iter()) {
-                match atom {
-                    Atom::Concept(name, _) => {
-                        concepts.entry(name.clone()).or_insert_with(|| {
-                            if is_data_range(name) {
-                                (Sort::Data, true)
-                            } else if is_source_concept(name) || name.starts_with("__nom__") {
-                                (Sort::Object, true)
-                            } else {
-                                (Sort::Unknown, false)
-                            }
-                        });
-                    }
-                    Atom::Role(name, _, _) => {
-                        roles.entry(name.clone()).or_insert_with(|| {
-                            // Every property has an object domain; a data
-                            // property has a data range and every other
-                            // source property an object range. Internal
-                            // roles learn their range from their fillers.
-                            let range = if data_roles.contains(name) {
-                                Sort::Data
-                            } else if is_source_role(name) {
-                                Sort::Object
-                            } else {
-                                Sort::Unknown
-                            };
-                            (Sort::Object, range)
-                        });
-                    }
-                    Atom::Eq(..) => {}
+    fn infer(index: &Index, data_roles: &BTreeSet<String>) -> Sorts {
+        let concepts: Vec<(Sort, bool)> = index
+            .concept_names
+            .iter()
+            .map(|name| {
+                if is_data_range(name) {
+                    (Sort::Data, true)
+                } else if is_source_concept(name) || name.starts_with("__nom__") {
+                    (Sort::Object, true)
+                } else {
+                    (Sort::Unknown, false)
                 }
-            }
-        }
-        let mut sorts = Sorts { concepts, roles, terms: BTreeMap::new() };
+            })
+            .collect();
+        let roles: Vec<(Sort, Sort)> = index
+            .role_names
+            .iter()
+            .map(|name| {
+                // Every property has an object domain; a data property has a
+                // data range and every other source property an object
+                // range. Internal roles learn their range from their fillers.
+                let range = if data_roles.contains(*name) {
+                    Sort::Data
+                } else if is_source_role(name) {
+                    Sort::Object
+                } else {
+                    Sort::Unknown
+                };
+                (Sort::Object, range)
+            })
+            .collect();
+        let mut sorts = Sorts { concepts, roles, terms: Vec::new() };
         // Phase 1, structural evidence: a term's sort comes from the seeded
         // concepts on it and from the role positions it fills. A variable is
         // local to its clause; a Skolem term `f(x)` (one function per
@@ -249,44 +383,51 @@ impl Sorts {
         // clause set, so their evidence is kept globally. Definers and role
         // positions learn from that evidence; a definer that meets both sorts
         // is polymorphic (`Both`), and only definite sorts ever propagate.
-        let mut global: BTreeMap<&Term, Sort> = BTreeMap::new();
+        let term_count = index.terms.len();
+        let mut global = vec![Sort::Unknown; term_count];
+        let mut local = vec![Sort::Unknown; term_count];
+        let mut touched: Vec<usize> = Vec::new();
         loop {
             let mut changed = false;
-            let mut local: BTreeMap<&Term, Sort> = BTreeMap::new();
-            for c in tbox {
-                local.clear();
-                let mut terms = TermSorts { local: &mut local, global: &mut global };
-                for atom in c.body.iter().chain(c.head.iter()) {
-                    match atom {
-                        Atom::Concept(name, t) => {
+            for c in &index.clauses {
+                let mut terms = TermSorts {
+                    local: &mut local,
+                    touched: &mut touched,
+                    global: &mut global,
+                    is_var: &index.is_var,
+                };
+                terms.clear();
+                for atom in c.atoms() {
+                    match *atom {
+                        IAtom::Concept(name, t) => {
                             let (sort, fixed) = sorts.concepts[name];
                             if fixed {
                                 terms.join(t, sort);
                             }
                         }
-                        Atom::Role(name, s, t) => {
+                        IAtom::Role(name, s, t) => {
                             let (domain, range) = sorts.roles[name];
                             terms.join(s, domain);
                             terms.join(t, range);
                         }
-                        Atom::Eq(..) => {}
+                        IAtom::Eq(..) => {}
                     }
                 }
-                for atom in c.body.iter().chain(c.head.iter()) {
-                    if let Atom::Eq(s, t) = atom {
+                for atom in c.atoms() {
+                    if let IAtom::Eq(s, t) = *atom {
                         let joined = terms.get(s).join(terms.get(t));
                         terms.join(s, joined);
                         terms.join(t, joined);
                     }
                 }
-                for atom in c.body.iter().chain(c.head.iter()) {
-                    match atom {
-                        Atom::Concept(name, t) => {
+                for atom in c.atoms() {
+                    match *atom {
+                        IAtom::Concept(name, t) => {
                             let term_sort = terms.get(t);
                             if !term_sort.definite() {
                                 continue;
                             }
-                            let entry = sorts.concepts.get_mut(name).expect("registered concept");
+                            let entry = &mut sorts.concepts[name];
                             if entry.1 {
                                 continue;
                             }
@@ -296,9 +437,9 @@ impl Sorts {
                                 changed = true;
                             }
                         }
-                        Atom::Role(name, s, t) => {
+                        IAtom::Role(name, s, t) => {
                             let (domain_sort, range_sort) = (terms.get(s), terms.get(t));
-                            let entry = sorts.roles.get_mut(name).expect("registered role");
+                            let entry = &mut sorts.roles[name];
                             if domain_sort.definite() {
                                 let joined = entry.0.join(domain_sort);
                                 if joined != entry.0 {
@@ -314,7 +455,7 @@ impl Sorts {
                                 }
                             }
                         }
-                        Atom::Eq(..) => {}
+                        IAtom::Eq(..) => {}
                     }
                 }
             }
@@ -328,20 +469,14 @@ impl Sorts {
         // polymorphic concept cannot spread a spurious sort.
         loop {
             let mut changed = false;
-            let mut local: BTreeMap<&Term, Sort> = BTreeMap::new();
-            for c in tbox {
-                local.clear();
-                let mut terms = TermSorts { local: &mut local, global: &mut global };
-                for atom in c.body.iter().chain(c.head.iter()) {
-                    if let Atom::Concept(name, t) = atom {
-                        let structural = if matches!(t, Term::Var(_)) {
-                            Sort::Unknown
-                        } else {
-                            terms.get(t)
-                        };
+            for c in &index.clauses {
+                for atom in c.atoms() {
+                    if let IAtom::Concept(name, t) = *atom {
+                        let structural =
+                            if index.is_var[t] { Sort::Unknown } else { global[t] };
                         let mut sort = structural;
-                        for other in c.body.iter().chain(c.head.iter()) {
-                            if let Atom::Concept(other_name, other_t) = other {
+                        for other in c.atoms() {
+                            if let IAtom::Concept(other_name, other_t) = *other {
                                 if other_t == t {
                                     sort = sort.join(sorts.concepts[other_name].0);
                                 }
@@ -350,7 +485,7 @@ impl Sorts {
                         if !sort.definite() {
                             continue;
                         }
-                        let entry = sorts.concepts.get_mut(name).expect("registered concept");
+                        let entry = &mut sorts.concepts[name];
                         if entry.0 == Sort::Unknown {
                             entry.0 = sort;
                             changed = true;
@@ -362,37 +497,13 @@ impl Sorts {
                 break;
             }
         }
-        sorts.terms = global.into_iter().map(|(t, s)| (t.clone(), s)).collect();
-        sorts
-    }
-
-    fn concept(&self, name: &str) -> Sort {
-        self.concepts.get(name).map_or(Sort::Unknown, |entry| entry.0)
-    }
-}
-
-/// Term sorts of the clause being scanned: variables per clause, Skolem
-/// terms and individuals across the clause set.
-struct TermSorts<'a, 'b> {
-    local: &'a mut BTreeMap<&'b Term, Sort>,
-    global: &'a mut BTreeMap<&'b Term, Sort>,
-}
-
-impl<'a, 'b> TermSorts<'a, 'b> {
-    fn map(&mut self, term: &Term) -> &mut BTreeMap<&'b Term, Sort> {
-        if matches!(term, Term::Var(_)) { self.local } else { self.global }
-    }
-
-    fn get(&mut self, term: &'b Term) -> Sort {
-        self.map(term).get(term).copied().unwrap_or(Sort::Unknown)
-    }
-
-    /// Record definite evidence for `term`; indefinite evidence is ignored.
-    fn join(&mut self, term: &'b Term, sort: Sort) {
-        if sort.definite() {
-            let entry = self.map(term).entry(term).or_insert(Sort::Unknown);
-            *entry = entry.join(sort);
+        for (t, &is_var) in index.is_var.iter().enumerate() {
+            if is_var {
+                global[t] = Sort::Unknown;
+            }
         }
+        sorts.terms = global;
+        sorts
     }
 }
 
@@ -406,265 +517,348 @@ pub fn encode(tbox: &mut Vec<DLClause>, data_roles: &BTreeSet<String>) -> usize 
 /// [`encode`], also placing every declared source class in the object sort,
 /// including classes no clause mentions: an unconstrained class is still a
 /// set of objects, and every relativized `⊤` fact must apply to it.
+///
+/// The passes and their visiting order are those of the map-keyed
+/// implementation they replace (kept as `sorts_reference.rs` for the
+/// differential tests); only lookups go through interned ids.
 pub fn encode_with_classes(
     tbox: &mut Vec<DLClause>,
     data_roles: &BTreeSet<String>,
     declared: &[String],
     proxies: &BTreeMap<String, String>,
 ) -> usize {
-    let sorts = Sorts::infer(tbox, data_roles);
-    let x = Term::Var("x".to_string());
-    let y = Term::Var("y".to_string());
+    // Analysis on the input clause set; edits are collected and applied at
+    // the end, so the clause set is borrowed for the whole analysis.
+    let (relativized, head_d, body_d, mut added, count, object_only, known_proxies) = {
+        let tbox_ref: &[DLClause] = tbox;
+        let mut index = Index::new(tbox_ref);
+        let sorts = Sorts::infer(&index, data_roles);
+        let data_sort = index.concept(DATA_SORT);
+        let concept_sort = |id: usize| -> Sort {
+            sorts.concepts.get(id).map_or(Sort::Unknown, |entry| entry.0)
+        };
+        // Class-level facts: `⊤ ⊑ C` becomes `¬D ⊑ C`. A clause is class-level
+        // when it mentions exactly one variable, its body is empty or consists
+        // of polymorphic or data-sorted concept atoms only (nothing that pins
+        // the element to the object domain), and every concept in its head is
+        // object-sorted. Data-range-level, polymorphic and unresolved heads are
+        // left as they are (see the module documentation), and so are ground
+        // facts, whose individuals carry their own sort.
+        let mut count = 0usize;
+        // (clause index, variable) of every relativized fact.
+        let mut relativized_vars: Vec<(usize, &Term)> = Vec::new();
+        for (ci, c) in index.clauses.iter().enumerate() {
+            let mut vars: Vec<&Term> = Vec::new();
+            fn note<'t>(t: &'t Term, vars: &mut Vec<&'t Term>) {
+                if let Some(v) = term_var(t) {
+                    if !vars.contains(&v) {
+                        vars.push(v);
+                    }
+                }
+            }
+            let mut object_level = !c.head.is_empty();
+            for atom in &c.body {
+                match *atom {
+                    IAtom::Concept(name, t) => {
+                        note(index.terms[t], &mut vars);
+                        object_level &= matches!(concept_sort(name), Sort::Both | Sort::Data);
+                    }
+                    IAtom::Role(..) | IAtom::Eq(..) => object_level = false,
+                }
+            }
+            for atom in &c.head {
+                match *atom {
+                    IAtom::Concept(name, t) => {
+                        note(index.terms[t], &mut vars);
+                        object_level &= concept_sort(name) == Sort::Object;
+                    }
+                    IAtom::Role(_, s, t) | IAtom::Eq(s, t) => {
+                        note(index.terms[s], &mut vars);
+                        note(index.terms[t], &mut vars);
+                    }
+                }
+            }
+            if !object_level || vars.len() != 1 {
+                continue;
+            }
+            relativized_vars.push((ci, vars[0]));
+            count += 1;
+        }
+        let relativized: Vec<(usize, usize)> =
+            relativized_vars.iter().map(|&(ci, v)| (ci, index.term(v))).collect();
+        // A relativized clause gains `D(v)` in its head; the admissibility
+        // closure reads the clause in that form.
+        for &(ci, v) in &relativized {
+            index.clauses[ci].head.push(IAtom::Concept(data_sort, v));
+        }
+        // Admissibility, closed under the clause set (see the module
+        // documentation). Sorts fixed by OWL 2 Direct Semantics are never
+        // widened: source classes and `__nom__` proxies are objects, data ranges
+        // (complement ranges included: `¬R` is `Δ_D \ R`) are data, every source property has an
+        // object domain, a data property a data range and an object property an
+        // object range. Only internal definers and internal roles widen. Where a
+        // clause would force a fixed sort to admit the other one, the clause is
+        // relativized instead (`head_d`: `D(t)` joins the head, restricting the
+        // clause to object elements at `t`; `body_d`: `D(t)` joins the body,
+        // restricting it to data elements).
+        let fixed_concept = |id: usize| id == data_sort || sorts.concepts[id].1;
+        let mut concept_adm: Vec<Admits> = (0..index.concept_names.len())
+            .map(|id| {
+                if id == data_sort {
+                    Admits::from_sort(Sort::Data)
+                } else {
+                    Admits::from_sort(sorts.concepts[id].0)
+                }
+            })
+            .collect();
+        let fixed_role = |name: &str| is_source_role(name);
+        let mut role_adm: Vec<(Admits, Admits)> = index
+            .role_names
+            .iter()
+            .zip(sorts.roles.iter())
+            .map(|(name, (domain, range))| {
+                let (domain, range) = if fixed_role(name) {
+                    let range = if data_roles.contains(*name) { Sort::Data } else { Sort::Object };
+                    (Sort::Object, range)
+                } else {
+                    (*domain, *range)
+                };
+                (Admits::from_sort(domain), Admits::from_sort(range))
+            })
+            .collect();
+        let fixed_role_id: Vec<bool> = index.role_names.iter().map(|name| fixed_role(name)).collect();
+        // Per clause: its distinct terms in `Term` order, and which of them
+        // the body mentions (the former `BTreeSet<&Term>` iteration).
+        let term_lists: Vec<(Vec<usize>, Vec<usize>)> = index
+            .clauses
+            .iter()
+            .map(|c| {
+                let mut body_terms: Vec<usize> = Vec::new();
+                for atom in &c.body {
+                    match *atom {
+                        IAtom::Concept(_, t) => body_terms.push(t),
+                        IAtom::Role(_, s, t) | IAtom::Eq(s, t) => {
+                            body_terms.push(s);
+                            body_terms.push(t);
+                        }
+                    }
+                }
+                let mut terms = body_terms.clone();
+                for atom in &c.head {
+                    match *atom {
+                        IAtom::Concept(_, t) => terms.push(t),
+                        IAtom::Role(_, s, t) | IAtom::Eq(s, t) => {
+                            terms.push(s);
+                            terms.push(t);
+                        }
+                    }
+                }
+                body_terms.sort_unstable();
+                body_terms.dedup();
+                terms.sort_unstable_by(|&a, &b| index.terms[a].cmp(index.terms[b]));
+                terms.dedup();
+                (terms, body_terms)
+            })
+            .collect();
+        let mut head_d: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+        let mut body_d: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+        let mut definers: Vec<usize> = Vec::new();
+        let mut positions: Vec<(usize, bool)> = Vec::new();
+        loop {
+            let mut changed = false;
+            for (ci, c) in index.clauses.iter().enumerate() {
+                let (terms, body_terms) = &term_lists[ci];
+                for &t in terms {
+                    let is_var = index.is_var[t];
+                    let structural = if is_var { Sort::Unknown } else { sorts.terms[t] };
+                    // A Skolem term only the head mentions is created by the
+                    // clause; its sort is whatever its structural evidence says.
+                    if body_terms.binary_search(&t).is_err() && !is_var && !structural.definite() {
+                        continue;
+                    }
+                    for sort in [Sort::Object, Sort::Data] {
+                        // An individual is an object, a Skolem term has its
+                        // structural sort.
+                        if matches!(index.terms[t], Term::Ind(_)) && sort == Sort::Data {
+                            continue;
+                        }
+                        if structural.definite() && structural != sort {
+                            continue;
+                        }
+                        if sort == Sort::Object && body_d.get(&ci).is_some_and(|ts| ts.contains(&t)) {
+                            continue;
+                        }
+                        if sort == Sort::Data && head_d.get(&ci).is_some_and(|ts| ts.contains(&t)) {
+                            continue;
+                        }
+                        let body_admits = c.body.iter().all(|atom| match *atom {
+                            IAtom::Concept(name, u) if u == t => concept_adm[name].admits(sort),
+                            IAtom::Role(name, s, u) => {
+                                (s != t || role_adm[name].0.admits(sort))
+                                    && (u != t || role_adm[name].1.admits(sort))
+                            }
+                            _ => true,
+                        });
+                        if !body_admits {
+                            continue;
+                        }
+                        let mut on_term = false;
+                        let mut satisfied = false;
+                        definers.clear();
+                        positions.clear();
+                        for atom in &c.head {
+                            match *atom {
+                                IAtom::Concept(name, u) if u == t => {
+                                    on_term = true;
+                                    satisfied |= concept_adm[name].admits(sort);
+                                    if !fixed_concept(name) {
+                                        definers.push(name);
+                                    }
+                                }
+                                IAtom::Role(name, s, u) => {
+                                    if s == t {
+                                        on_term = true;
+                                        satisfied |= role_adm[name].0.admits(sort);
+                                        if !fixed_role_id[name] {
+                                            positions.push((name, false));
+                                        }
+                                    }
+                                    if u == t {
+                                        on_term = true;
+                                        satisfied |= role_adm[name].1.admits(sort);
+                                        if !fixed_role_id[name] {
+                                            positions.push((name, true));
+                                        }
+                                    }
+                                }
+                                IAtom::Eq(s, u) if s == t || u == t => {
+                                    on_term = true;
+                                    satisfied = true;
+                                }
+                                _ => {}
+                            }
+                        }
+                        if !on_term || satisfied {
+                            continue;
+                        }
+                        if !definers.is_empty() {
+                            for &name in definers.iter() {
+                                changed |= concept_adm[name].add(sort);
+                            }
+                        } else if !positions.is_empty() {
+                            for &(name, range) in positions.iter() {
+                                let entry = &mut role_adm[name];
+                                changed |= if range { entry.1.add(sort) } else { entry.0.add(sort) };
+                            }
+                        } else {
+                            // Only fixed sorts on `t`: relativize the clause.
+                            let set = if sort == Sort::Data { &mut head_d } else { &mut body_d };
+                            let ts = set.entry(ci).or_default();
+                            if !ts.contains(&t) {
+                                ts.push(t);
+                                changed = true;
+                            }
+                        }
+                    }
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+        let x = Term::Var("x".to_string());
+        let y = Term::Var("y".to_string());
+        let d = |t: &Term| Atom::Concept(DATA_SORT.to_string(), t.clone());
+        let mut added: Vec<DLClause> = Vec::new();
+        // Sort clauses in name order (the former `BTreeMap<String, _>`).
+        let mut concept_order: Vec<usize> = (0..index.concept_names.len()).collect();
+        concept_order.sort_unstable_by(|&a, &b| index.concept_names[a].cmp(index.concept_names[b]));
+        for &id in &concept_order {
+            if id == data_sort {
+                continue;
+            }
+            let atom = Atom::Concept(index.concept_names[id].to_string(), x.clone());
+            match concept_adm[id].only() {
+                Some(Sort::Data) => added.push(clause([atom], [d(&x)])),
+                Some(Sort::Object) => added.push(clause([atom, d(&x)], [])),
+                _ => {}
+            }
+        }
+        let mut role_order: Vec<usize> = (0..index.role_names.len()).collect();
+        role_order.sort_unstable_by(|&a, &b| index.role_names[a].cmp(index.role_names[b]));
+        for &id in &role_order {
+            let (domain, range) = role_adm[id];
+            let atom = Atom::Role(index.role_names[id].to_string(), x.clone(), y.clone());
+            match domain.only() {
+                Some(Sort::Object) => added.push(clause([atom.clone(), d(&x)], [])),
+                Some(Sort::Data) => added.push(clause([atom.clone()], [d(&x)])),
+                _ => {}
+            }
+            match range.only() {
+                Some(Sort::Object) => added.push(clause([atom.clone(), d(&y)], [])),
+                Some(Sort::Data) => added.push(clause([atom.clone()], [d(&y)])),
+                _ => {}
+            }
+        }
+        for name in declared {
+            if is_source_concept(name) && !index.concept_ids.contains_key(name.as_str()) {
+                added.push(clause([Atom::Concept(name.clone(), x.clone()), d(&x)], []));
+            }
+        }
+        // The individual pass below reads the edited clause set; keep what it
+        // needs from the analysis: the object-only concepts among ground unit
+        // heads, and which proxies the clause set mentions.
+        let mut object_only: FxHashSet<String> = FxHashSet::default();
+        for c in tbox_ref {
+            if let [Atom::Concept(name, Term::Ind(_))] = c.head.as_slice() {
+                if let Some(&id) = index.concept_ids.get(name.as_str()) {
+                    if concept_adm[id].only() == Some(Sort::Object) {
+                        object_only.insert(name.clone());
+                    }
+                }
+            }
+        }
+        let known_proxies: FxHashSet<String> = proxies
+            .values()
+            .filter(|proxy| index.concept_ids.contains_key(proxy.as_str()))
+            .cloned()
+            .collect();
+        // Owned edits, so the borrow of the clause set ends here.
+        let to_terms = |set: BTreeMap<usize, Vec<usize>>| -> Vec<(usize, BTreeSet<Term>)> {
+            set.into_iter()
+                .map(|(ci, ts)| (ci, ts.into_iter().map(|t| index.terms[t].clone()).collect()))
+                .collect()
+        };
+        let relativized: Vec<(usize, Term)> =
+            relativized.into_iter().map(|(ci, v)| (ci, index.terms[v].clone())).collect();
+        (relativized, to_terms(head_d), to_terms(body_d), added, count, object_only, known_proxies)
+    };
+    let mut count = count;
     let d = |t: &Term| Atom::Concept(DATA_SORT.to_string(), t.clone());
-    let mut count = 0usize;
-    // Class-level facts: `⊤ ⊑ C` becomes `¬D ⊑ C`. A clause is class-level
-    // when it mentions exactly one variable, its body is empty or consists
-    // of polymorphic or data-sorted concept atoms only (nothing that pins
-    // the element to the object domain), and every concept in its head is
-    // object-sorted. Data-range-level, polymorphic and unresolved heads are
-    // left as they are (see the module documentation), and so are ground
-    // facts, whose individuals carry their own sort.
-    for c in tbox.iter_mut() {
-        let mut vars: BTreeSet<&Term> = BTreeSet::new();
-        let mut object_level = !c.head.is_empty();
-        for atom in &c.body {
-            match atom {
-                Atom::Concept(name, t) => {
-                    vars.extend(term_var(t));
-                    object_level &= matches!(sorts.concept(name), Sort::Both | Sort::Data);
-                }
-                Atom::Role(..) | Atom::Eq(..) => object_level = false,
-            }
-        }
-        for atom in &c.head {
-            match atom {
-                Atom::Concept(name, t) => {
-                    vars.extend(term_var(t));
-                    object_level &= sorts.concept(name) == Sort::Object;
-                }
-                Atom::Role(_, s, t) => {
-                    vars.extend(term_var(s));
-                    vars.extend(term_var(t));
-                }
-                Atom::Eq(s, t) => {
-                    vars.extend(term_var(s));
-                    vars.extend(term_var(t));
-                }
-            }
-        }
-        if !object_level || vars.len() != 1 {
-            continue;
-        }
-        let v = (*vars.iter().next().expect("one variable")).clone();
+    for (ci, v) in &relativized {
+        let c = &mut tbox[*ci];
         let body = std::mem::take(&mut c.body);
         let mut head = std::mem::take(&mut c.head);
-        head.push(d(&v));
+        head.push(d(v));
         *c = clause(body, head);
-        count += 1;
     }
-    // Admissibility, closed under the clause set (see the module
-    // documentation). Sorts fixed by OWL 2 Direct Semantics are never
-    // widened: source classes and `__nom__` proxies are objects, data ranges
-    // (complement ranges included: `¬R` is `Δ_D \ R`) are data, every source property has an
-    // object domain, a data property a data range and an object property an
-    // object range. Only internal definers and internal roles widen. Where a
-    // clause would force a fixed sort to admit the other one, the clause is
-    // relativized instead (`head_d`: `D(t)` joins the head, restricting the
-    // clause to object elements at `t`; `body_d`: `D(t)` joins the body,
-    // restricting it to data elements).
-    let fixed_concept = |name: &str| name == DATA_SORT || sorts.concepts[name].1;
-    let mut concept_adm: BTreeMap<String, Admits> = sorts
-        .concepts
-        .iter()
-        .map(|(name, (sort, _))| (name.clone(), Admits::from_sort(*sort)))
-        .collect();
-    concept_adm.insert(DATA_SORT.to_string(), Admits::from_sort(Sort::Data));
-    let fixed_role = |name: &str| is_source_role(name);
-    let mut role_adm: BTreeMap<String, (Admits, Admits)> = sorts
-        .roles
-        .iter()
-        .map(|(name, (domain, range))| {
-            let (domain, range) = if fixed_role(name) {
-                let range = if data_roles.contains(name) { Sort::Data } else { Sort::Object };
-                (Sort::Object, range)
-            } else {
-                (*domain, *range)
-            };
-            (name.clone(), (Admits::from_sort(domain), Admits::from_sort(range)))
-        })
-        .collect();
-    let mut head_d: BTreeMap<usize, BTreeSet<Term>> = BTreeMap::new();
-    let mut body_d: BTreeMap<usize, BTreeSet<Term>> = BTreeMap::new();
-    loop {
-        let mut changed = false;
-        for (index, c) in tbox.iter().enumerate() {
-            let mut body_terms: BTreeSet<&Term> = BTreeSet::new();
-            for atom in &c.body {
-                match atom {
-                    Atom::Concept(_, t) => {
-                        body_terms.insert(t);
-                    }
-                    Atom::Role(_, s, t) | Atom::Eq(s, t) => {
-                        body_terms.insert(s);
-                        body_terms.insert(t);
-                    }
-                }
-            }
-            let mut terms: BTreeSet<&Term> = body_terms.clone();
-            for atom in &c.head {
-                match atom {
-                    Atom::Concept(_, t) => {
-                        terms.insert(t);
-                    }
-                    Atom::Role(_, s, t) | Atom::Eq(s, t) => {
-                        terms.insert(s);
-                        terms.insert(t);
-                    }
-                }
-            }
-            for t in terms {
-                let structural = if matches!(t, Term::Var(_)) {
-                    Sort::Unknown
-                } else {
-                    sorts.terms.get(t).copied().unwrap_or(Sort::Unknown)
-                };
-                // A Skolem term only the head mentions is created by the
-                // clause; its sort is whatever its structural evidence says.
-                if !body_terms.contains(t) && !matches!(t, Term::Var(_)) && !structural.definite() {
-                    continue;
-                }
-                for sort in [Sort::Object, Sort::Data] {
-                    // An individual is an object, a Skolem term has its
-                    // structural sort.
-                    if matches!(t, Term::Ind(_)) && sort == Sort::Data {
-                        continue;
-                    }
-                    if structural.definite() && structural != sort {
-                        continue;
-                    }
-                    if sort == Sort::Object && body_d.get(&index).is_some_and(|ts| ts.contains(t)) {
-                        continue;
-                    }
-                    if sort == Sort::Data && head_d.get(&index).is_some_and(|ts| ts.contains(t)) {
-                        continue;
-                    }
-                    let body_admits = c.body.iter().all(|atom| match atom {
-                        Atom::Concept(name, u) if u == t => concept_adm[name].admits(sort),
-                        Atom::Role(name, s, u) => {
-                            (s != t || role_adm[name].0.admits(sort))
-                                && (u != t || role_adm[name].1.admits(sort))
-                        }
-                        _ => true,
-                    });
-                    if !body_admits {
-                        continue;
-                    }
-                    let mut on_term = false;
-                    let mut satisfied = false;
-                    let mut definers: Vec<&str> = Vec::new();
-                    let mut positions: Vec<(&str, bool)> = Vec::new();
-                    for atom in &c.head {
-                        match atom {
-                            Atom::Concept(name, u) if u == t => {
-                                on_term = true;
-                                satisfied |= concept_adm[name].admits(sort);
-                                if !fixed_concept(name) {
-                                    definers.push(name);
-                                }
-                            }
-                            Atom::Role(name, s, u) => {
-                                if s == t {
-                                    on_term = true;
-                                    satisfied |= role_adm[name].0.admits(sort);
-                                    if !fixed_role(name) {
-                                        positions.push((name, false));
-                                    }
-                                }
-                                if u == t {
-                                    on_term = true;
-                                    satisfied |= role_adm[name].1.admits(sort);
-                                    if !fixed_role(name) {
-                                        positions.push((name, true));
-                                    }
-                                }
-                            }
-                            Atom::Eq(s, u) if s == t || u == t => {
-                                on_term = true;
-                                satisfied = true;
-                            }
-                            _ => {}
-                        }
-                    }
-                    if !on_term || satisfied {
-                        continue;
-                    }
-                    if !definers.is_empty() {
-                        for name in definers {
-                            changed |= concept_adm.get_mut(name).expect("head concept").add(sort);
-                        }
-                    } else if !positions.is_empty() {
-                        for (name, range) in positions {
-                            let entry = role_adm.get_mut(name).expect("head role");
-                            changed |= if range { entry.1.add(sort) } else { entry.0.add(sort) };
-                        }
-                    } else {
-                        // Only fixed sorts on `t`: relativize the clause.
-                        let set = if sort == Sort::Data { &mut head_d } else { &mut body_d };
-                        changed |= set.entry(index).or_default().insert(t.clone());
-                    }
-                }
-            }
-        }
-        if !changed {
-            break;
-        }
-    }
-    for (index, ts) in &head_d {
-        let c = &mut tbox[*index];
+    for (ci, ts) in &head_d {
+        let c = &mut tbox[*ci];
         let body = std::mem::take(&mut c.body);
         let mut head = std::mem::take(&mut c.head);
         head.extend(ts.iter().map(|t| d(t)));
         *c = clause(body, head);
         count += 1;
     }
-    for (index, ts) in &body_d {
-        let c = &mut tbox[*index];
+    for (ci, ts) in &body_d {
+        let c = &mut tbox[*ci];
         let mut body = std::mem::take(&mut c.body);
         let head = std::mem::take(&mut c.head);
         body.extend(ts.iter().map(|t| d(t)));
         *c = clause(body, head);
         count += 1;
     }
-    let mut added: Vec<DLClause> = Vec::new();
-    for (name, adm) in &concept_adm {
-        if name == DATA_SORT {
-            continue;
-        }
-        let atom = Atom::Concept(name.clone(), x.clone());
-        match adm.only() {
-            Some(Sort::Data) => added.push(clause([atom], [d(&x)])),
-            Some(Sort::Object) => added.push(clause([atom, d(&x)], [])),
-            _ => {}
-        }
-    }
-    for (name, (domain, range)) in &role_adm {
-        let atom = Atom::Role(name.clone(), x.clone(), y.clone());
-        match domain.only() {
-            Some(Sort::Object) => added.push(clause([atom.clone(), d(&x)], [])),
-            Some(Sort::Data) => added.push(clause([atom.clone()], [d(&x)])),
-            _ => {}
-        }
-        match range.only() {
-            Some(Sort::Object) => added.push(clause([atom.clone(), d(&y)], [])),
-            Some(Sort::Data) => added.push(clause([atom.clone()], [d(&y)])),
-            _ => {}
-        }
-    }
-    for name in declared {
-        if is_source_concept(name) && !concept_adm.contains_key(name) {
-            added.push(clause([Atom::Concept(name.clone(), x.clone()), d(&x)], []));
-        }
-    }
+    let x = Term::Var("x".to_string());
     // Every named individual is an object. Most are already pinned by a
     // ground atom whose concept is object-only at the fixpoint or by a
     // source-property assertion (whose domain and range are fixed); the
@@ -676,7 +870,7 @@ pub fn encode_with_classes(
     // atom is ground.
     let mut individuals: BTreeSet<&str> = BTreeSet::new();
     let mut pinned: BTreeSet<&str> = BTreeSet::new();
-    fn collect<'a>(t: &'a Term, out: &mut BTreeSet<&'a str>) {
+    fn collect<'t>(t: &'t Term, out: &mut BTreeSet<&'t str>) {
         match t {
             Term::Ind(name) => {
                 out.insert(name);
@@ -685,6 +879,7 @@ pub fn encode_with_classes(
             Term::Var(_) | Term::Aux(..) => {}
         }
     }
+    let fixed_role = |name: &str| is_source_role(name);
     for c in tbox.iter() {
         for atom in c.body.iter().chain(c.head.iter()) {
             match atom {
@@ -700,7 +895,8 @@ pub fn encode_with_classes(
         }
         match &c.head[0] {
             Atom::Concept(name, Term::Ind(a)) => {
-                if concept_adm.get(name).and_then(|adm| adm.only()) == Some(Sort::Object) {
+                // `D` is data-only; every other unit head was recorded.
+                if name != DATA_SORT && object_only.contains(name) {
                     pinned.insert(a);
                 }
             }
@@ -726,7 +922,7 @@ pub fn encode_with_classes(
         match proxies.get(*name) {
             Some(proxy) => {
                 added.push(clause(Vec::new(), [Atom::Concept(proxy.clone(), a)]));
-                if !concept_adm.contains_key(proxy) {
+                if !known_proxies.contains(proxy) {
                     proxy_clauses.insert(proxy);
                 }
             }
@@ -746,6 +942,36 @@ pub fn encode_with_classes(
     tbox.extend(added);
     count
 }
+
+/// Sorts by name, for the tests.
+#[cfg(test)]
+struct Inferred {
+    concepts: BTreeMap<String, Sort>,
+    roles: BTreeMap<String, (Sort, Sort)>,
+}
+
+#[cfg(test)]
+impl Inferred {
+    fn concept(&self, name: &str) -> Sort {
+        self.concepts.get(name).copied().unwrap_or(Sort::Unknown)
+    }
+}
+
+#[cfg(test)]
+fn infer_by_name(tbox: &[DLClause], data_roles: &BTreeSet<String>) -> Inferred {
+    let index = Index::new(tbox);
+    let sorts = Sorts::infer(&index, data_roles);
+    Inferred {
+        concepts: index.concept_names.iter().zip(&sorts.concepts)
+            .map(|(name, entry)| (name.to_string(), entry.0)).collect(),
+        roles: index.role_names.iter().zip(&sorts.roles)
+            .map(|(name, entry)| (name.to_string(), *entry)).collect(),
+    }
+}
+
+#[cfg(test)]
+#[path = "sorts_reference.rs"]
+mod reference;
 
 #[cfg(test)]
 mod tests {
@@ -793,7 +1019,7 @@ mod tests {
     #[test]
     fn infers_sorts_from_the_clause_set() {
         let tbox = fixture();
-        let sorts = Sorts::infer(&tbox, &BTreeSet::from(["u".to_string()]));
+        let sorts = infer_by_name(&tbox, &BTreeSet::from(["u".to_string()]));
         assert_eq!(sorts.concept("B"), Sort::Object);
         assert_eq!(sorts.concept("__nom__o"), Sort::Object);
         assert_eq!(sorts.concept(VAL), Sort::Data);
@@ -869,7 +1095,7 @@ mod tests {
             clause([c("A", x())], [c("Q_t", fx("g"))]),
             clause([c("A", x())], [c(VAL, fx("f"))]),
         ];
-        let sorts = Sorts::infer(&tbox, &BTreeSet::from(["u".to_string()]));
+        let sorts = infer_by_name(&tbox, &BTreeSet::from(["u".to_string()]));
         assert_eq!(sorts.concept("Q_t"), Sort::Both);
         encode(&mut tbox, &BTreeSet::from(["u".to_string()]));
         assert!(tbox.contains(&fact([c("Q_t", x())])));
@@ -894,7 +1120,7 @@ mod tests {
             clause([c("V", x())], [c(VAL, fx("g"))]),
         ];
         let roles = BTreeSet::from(["linkURI".to_string(), "uri".to_string()]);
-        let sorts = Sorts::infer(&tbox, &roles);
+        let sorts = infer_by_name(&tbox, &roles);
         assert_eq!(sorts.concept("Q_t"), Sort::Both);
         assert_eq!(sorts.concept("Q_97"), Sort::Object);
         encode(&mut tbox, &roles);
@@ -921,7 +1147,7 @@ mod tests {
             clause([c("V", x())], [c(VAL, fx("g"))]),
         ];
         let roles = BTreeSet::from(["d".to_string(), "e".to_string()]);
-        let sorts = Sorts::infer(&tbox, &roles);
+        let sorts = infer_by_name(&tbox, &roles);
         assert_eq!(sorts.concept("Q_1"), Sort::Data);
         assert_eq!(sorts.concept("Q_7"), Sort::Object);
         encode(&mut tbox, &roles);
@@ -953,7 +1179,7 @@ mod tests {
             fact([c("__dt__string", x()), c(comp, x())]),
         ];
         let roles = BTreeSet::from(["u".to_string()]);
-        let sorts = Sorts::infer(&tbox, &roles);
+        let sorts = infer_by_name(&tbox, &roles);
         assert_eq!(sorts.concept("Q_t"), Sort::Both);
         assert_eq!(sorts.concept("Q_d"), Sort::Data);
         encode(&mut tbox, &roles);
@@ -1029,7 +1255,7 @@ mod tests {
         let roles = BTreeSet::from(["u".to_string()]);
         assert!(!has_data_values(&tbox));
         assert!(applies(&tbox, &roles));
-        let sorts = Sorts::infer(&tbox, &roles);
+        let sorts = infer_by_name(&tbox, &roles);
         assert_eq!(sorts.concept("Q_0"), Sort::Both);
         encode(&mut tbox, &roles);
         let dx = c(DATA_SORT, x());
@@ -1039,5 +1265,64 @@ mod tests {
         assert!(tbox.contains(&clause([r("u", x(), y())], [dy])));
         assert!(tbox.contains(&clause([c("__nom__a", x()), dx.clone()], [])));
         assert!(tbox.contains(&fact([c("Q_0", x())])));
+    }
+
+    /// The indexed pass against the map-keyed reference (775223bf) on
+    /// random clause sets over every kind of name and term: the same clause
+    /// set, in the same order, and the same count.
+    #[test]
+    fn indexed_encoding_matches_the_reference() {
+        let concepts = ["A", "B", "C", "Q_0", "Q_1", "Q_2", "Q_3", "__dt__integer", "__dt__boolean",
+            VAL, "__dt__val__\"true\"^^xsd:boolean", "__nom__o", "__nom__p", "Thing", "__top__"];
+        let roles = ["u", "w", "r", "s", "__inv__r", "__chain__0"];
+        let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
+        let mut next = move |n: usize| -> usize {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state % n as u64) as usize
+        };
+        let data_roles = BTreeSet::from(["u".to_string(), "w".to_string()]);
+        let declared: Vec<String> = ["A", "B", "D", "E"].iter().map(|s| s.to_string()).collect();
+        let proxies: BTreeMap<String, String> = [("o", "__nom__o"), ("p", "__nom__p"), ("q", "__nom__q")]
+            .iter().map(|(a, b)| (a.to_string(), b.to_string())).collect();
+        for round in 0..3000 {
+            let mut tbox: Vec<DLClause> = Vec::new();
+            let size = 1 + next(12);
+            for _ in 0..size {
+                let mut term = |next: &mut dyn FnMut(usize) -> usize| match next(7) {
+                    0 | 1 => x(),
+                    2 => y(),
+                    3 => fx("f"),
+                    4 => fx("g"),
+                    5 => Term::Ind(["o", "p", "q"][next(3)].into()),
+                    _ => Term::Fun("h".into(), Box::new(y())),
+                };
+                let mut atom = |next: &mut dyn FnMut(usize) -> usize| match next(5) {
+                    0 | 1 | 2 => c(concepts[next(concepts.len())], term(next)),
+                    3 => r(roles[next(roles.len())], term(next), term(next)),
+                    _ => Atom::Eq(term(next), term(next)),
+                };
+                let body: Vec<Atom> = (0..next(3)).map(|_| atom(&mut next)).collect();
+                let head: Vec<Atom> = (0..next(3)).map(|_| atom(&mut next)).collect();
+                tbox.push(clause(body, head));
+            }
+            let mut expected = tbox.clone();
+            let want = reference::encode_with_classes(&mut expected, &data_roles, &declared, &proxies);
+            let got = encode_with_classes(&mut tbox, &data_roles, &declared, &proxies);
+            assert_eq!((got, &tbox), (want, &expected), "round {round}");
+        }
+    }
+
+    #[test]
+    fn indexed_encoding_matches_the_reference_on_the_fixtures() {
+        let u = BTreeSet::from(["u".to_string()]);
+        for tbox in [fixture()] {
+            let mut expected = tbox.clone();
+            let mut got = tbox.clone();
+            let want = reference::encode(&mut expected, &u);
+            assert_eq!(encode(&mut got, &u), want);
+            assert_eq!(got, expected);
+        }
     }
 }
