@@ -7903,6 +7903,31 @@ fn bridge_tinput_with_trigger_absorption(
     if std::env::var_os("KM_HT_STATS").is_some() {
         eprintln!("bridge [branch-triggers] role-markers={branch_role_trigger_count}");
     }
+    // KM_BRIDGE_CONCEPT_DUMP: one line per arena concept (tag, operator,
+    // operand tags, role tag, name for named tags). Diagnostic only.
+    if std::env::var_os("KM_BRIDGE_CONCEPT_DUMP").is_some() {
+        let arenas = ctx.ontology_arenas();
+        for index in 0..arenas.concept_count() {
+            let c = arenas.concept(ConceptId::new(index));
+            let ops: Vec<String> = c
+                .get_operand_list()
+                .iter()
+                .map(|l| {
+                    let t = if l.target.is_some() { arenas.concept(l.target).get_concept_tag() } else { -1 };
+                    format!("{}{}", if l.negated { "-" } else { "" }, t)
+                })
+                .collect();
+            let role = c.get_role();
+            let rtag = if role.is_some() { arenas.role(role).get_role_tag() } else { -1 };
+            let tag = c.get_concept_tag();
+            let name = if tag >= TAG_BASE {
+                tin.concepts.get((tag - TAG_BASE) as usize).map(String::as_str).unwrap_or("")
+            } else {
+                ""
+            };
+            eprintln!("CONCEPT tag={tag} op={} role={rtag} ops=[{}] {name}", c.get_operator_code(), ops.join(","));
+        }
+    }
 
     // KONCLUDE-PORT-NOTE[terminology]: in Konclude every TBox concept carries
     // its owning CTerminology; several guards key on `getTerminology() !=
@@ -8152,6 +8177,150 @@ pub fn bridged_unsat(
     let mut model_root = None;
     bridged_unsat_rooted(algo, ctx, bridged, next_indi_id, seeds, &mut model_root)
 }
+
+/// Independent witness for an EMPTY stored refutation (docs/HYBRID-CB-HT.md
+/// §13): is the disjunction operand `(concept, negated)` of the running
+/// environment unsatisfiable with respect to `tin` on its own?
+///
+/// The probe runs in a FRESH bridge environment over the same input (nothing
+/// of the running search is shared), parks every disjunction instead of
+/// branching on it, and answers `true` only for an UNSAT verdict of a plain
+/// chronological search over the remaining branch points with complete
+/// (copy-on-write) state restoration between alternatives and without
+/// dependency-directed backjumping: every alternative of every branch point
+/// clashed although the disjunctive constraints were left out. Every other
+/// outcome (satisfiable, STOP, budget, an unrestored advance, an arena that
+/// does not line up with the running environment) answers `false`, which
+/// keeps the historical behaviour (the root cancellation stays withheld).
+fn verify_empty_alternative_operand(
+    tin: &TInput,
+    trigger_absorb: bool,
+    expected: (Cint64, Cint64, Vec<(Cint64, bool)>),
+    concept: ConceptId,
+    negated: bool,
+) -> bool {
+    let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(tin, trigger_absorb);
+    let arenas = ctx.ontology_arenas();
+    if concept.is_none() || concept.index() >= arenas.concept_count() as usize {
+        return false;
+    }
+    if concept_signature(&ctx, concept) != expected {
+        return false;
+    }
+    // Bounded like every bridge probe: an overrun is a STOP (no witness).
+    algo.probe_budget = Some(std::time::Duration::from_secs(EMPTY_ALTERNATIVE_WITNESS_BUDGET_S));
+    algo.drive_deadline = algo.probe_budget.map(|b| std::time::Instant::now() + b);
+    // Plain chronological search under in-process copy-on-write branch
+    // epochs: every alternative starts from the complete pre-branch state, so
+    // an UNSAT verdict means every alternative of every branch point clashed.
+    // Dependency-directed backjumping (and with it every root cancellation) is
+    // off, so the witness never rests on the stored-refutation reconstruction
+    // it is meant to back up.
+    algo.conf_dependency_backjumping = false;
+    algo.conf_inprocess_cow = true;
+    // Disjunctions are parked, never expanded (`defer_or_branching`, the
+    // retained-base drain mode): the probe decides a WEAKER problem (the
+    // operand under the input without its disjunctive constraints), and an
+    // UNSAT verdict for a weaker problem holds for the input itself. The
+    // remaining branch kinds (at-most merges, qualification choices, backend
+    // reuse) enumerate all their alternatives, chronologically.
+    algo.defer_or_branching = true;
+    algo.deferred_or_branchings.clear();
+    let mut next_indi_id: i64 = 0;
+    let verdict = bridged_unsat(&mut algo, &mut ctx, &bridged, &mut next_indi_id, &[(concept, negated)]);
+    if super::completion::bridge_progress_enabled() {
+        eprintln!(
+            "BRIDGE-EMPTY-WITNESS-PROBE verdict={verdict:?} unrestored={} opens={} backtracks={} poisoned={} root_cancel={}",
+            algo.unrestored_advance_count, algo.or_branch_open_count, algo.or_backtrack_count, algo.completeness_poisoned, algo.ddb_root_cancelled
+        );
+    }
+    verdict == Some(true)
+        && algo.unrestored_advance_count == 0
+        && !algo.completeness_poisoned
+        && !algo.ddb_root_cancelled
+}
+
+/// The isolation test of a cleared-queue screen job (docs/HYBRID-CB-HT.md
+/// §14): the job modified no retained node (no concept, link or merge reached
+/// one, counted by `propagate_individual_node_modified`), opened no branch
+/// point on one, and no node of the job is blocked by one. A job that passes
+/// never interacted with the retained graph, so its verdict and model are
+/// those of the subject next to any model of the (consistent) input.
+fn cleared_queue_job_isolated(
+    algo: &CompletionTaskHandleAlgorithm,
+    ctx: &CalculationAlgorithmContextBase,
+) -> bool {
+    let base = algo.retained_base_node_count;
+    if base == 0
+        || algo.retained_node_modified_count != 0
+        || algo.or_branch_open_retained_node_count != 0
+    {
+        return false;
+    }
+    let pc = ctx.process_context();
+    for index in base..pc.node_count() {
+        let blocker = pc.node(NodeId::new(index as Cint64)).blocker_indi_node;
+        if blocker.is_some() && blocker.index() < base {
+            return false;
+        }
+    }
+    true
+}
+
+/// Probe every requested operand that has no witness entry yet
+/// ([`verify_empty_alternative_operand`]) and record the verdicts.
+fn probe_empty_alternative_witnesses(
+    tin: &TInput,
+    trigger_absorb: bool,
+    ctx: &CalculationAlgorithmContextBase,
+    requests: Vec<(ConceptId, bool)>,
+    witnesses: &std::cell::RefCell<
+        std::sync::Arc<crate::fxhash::FxHashMap<(usize, bool), bool>>,
+    >,
+    progress_subject: Option<usize>,
+) {
+    for (concept, negated) in requests {
+        if witnesses.borrow().contains_key(&(concept.index(), negated)) {
+            continue;
+        }
+        let expected = concept_signature(ctx, concept);
+        let expected_tag = expected.0;
+        let t_witness = std::time::Instant::now();
+        let witnessed = verify_empty_alternative_operand(tin, trigger_absorb, expected, concept, negated);
+        if let Some(s) = progress_subject {
+            eprintln!(
+                "BRIDGE-EMPTY-WITNESS subject {s}: operand tag={expected_tag} negated={negated} witnessed={witnessed} ({:.3}s)",
+                t_witness.elapsed().as_secs_f64()
+            );
+        }
+        std::sync::Arc::make_mut(&mut witnesses.borrow_mut()).insert((concept.index(), negated), witnessed);
+    }
+}
+
+/// Tag, operator code and operand `(tag, negated)` list of `concept`: the
+/// identity check between the running and the witness environment.
+fn concept_signature(
+    ctx: &CalculationAlgorithmContextBase,
+    concept: ConceptId,
+) -> (Cint64, Cint64, Vec<(Cint64, bool)>) {
+    let arenas = ctx.ontology_arenas();
+    let c = arenas.concept(concept);
+    let operands = c
+        .get_operand_list()
+        .iter()
+        .map(|l| {
+            let tag = if l.target.is_some() { arenas.concept(l.target).get_concept_tag() } else { -1 };
+            (tag, l.negated)
+        })
+        .collect();
+    (c.get_concept_tag(), c.get_operator_code(), operands)
+}
+
+/// Wall-clock bound of one [`verify_empty_alternative_operand`] probe. The
+/// probes complete a single operand and finish in milliseconds on the
+/// measured inputs; the bound only caps a pathological operand, and an
+/// overrun yields no witness.
+const EMPTY_ALTERNATIVE_WITNESS_BUDGET_S: u64 = 5;
 
 /// `bridged_unsat` that also hands back the root of the clash-free model on
 /// a satisfiable (`Some(false)`) verdict, so the caller can read its label.
@@ -8728,6 +8897,14 @@ fn bridged_classify_subject_with_root(
         })
         .map(|b| std::time::Instant::now() + b);
 
+    let stats_start = phase_timer.as_ref().map(|_| {
+        (
+            ctx.process_context().node_count(),
+            algo.stat_con_des_insertion_count,
+            algo.or_backtrack_count,
+            algo.or_branch_open_count,
+        )
+    });
     let id = reserve_bridge_query_node_id(ctx, next_indi_id)?;
     let mut root = ctx
         .process_context_mut()
@@ -8839,6 +9016,18 @@ fn bridged_classify_subject_with_root(
     // countermodels. No usable verdict — defer the subject.
     if algo.completeness_poisoned {
         return None;
+    }
+    if let Some((nodes0, ins0, bt0, bo0)) = stats_start {
+        eprintln!(
+            "BRIDGE-SUBJECT-STATS subject={subject} nodes_before={nodes0} nodes_after={} inserts={} backtracks={} branch_opens={} (retained={} nominal={} fresh={})",
+            ctx.process_context().node_count(),
+            algo.stat_con_des_insertion_count - ins0,
+            algo.or_backtrack_count - bt0,
+            algo.or_branch_open_count - bo0,
+            algo.or_branch_open_retained_node_count,
+            algo.or_branch_open_nominal_node_count,
+            algo.or_branch_open_fresh_node_count,
+        );
     }
     BridgeReadOffTiming::advance(&mut phase_timer);
     if algo.conf_sat_exp_cache_writing
@@ -9775,6 +9964,37 @@ fn restore_retained_classification_base(
     base_next_id: Cint64,
     replay_snapshot: Option<&NativeReplaySnapshot>,
 ) -> Option<()> {
+    restore_retained_classification_base_with(
+        algo,
+        ctx,
+        bridged,
+        base_databox,
+        base_branch_node,
+        base_next_id,
+        replay_snapshot,
+        false,
+    )
+}
+
+/// [`restore_retained_classification_base`] with a choice of the job's
+/// processing queues on a base that resumes the first fork. `cleared_queues`
+/// starts the job from the same retained graph with every inherited
+/// individual processing queue cleared (Konclude's cleared-queue class task,
+/// `KM_BRIDGE_FORK_DRAIN=konclude`) instead of resuming the base's pending
+/// nondeterministic work. Such a job is a SCREEN only: the driver accepts its
+/// result solely under the isolation test of docs/HYBRID-CB-HT.md §14 and
+/// otherwise reruns the subject on the resuming base.
+#[allow(clippy::too_many_arguments)]
+fn restore_retained_classification_base_with(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    base_databox: &super::process::databox::ProcessingDataBox,
+    base_branch_node: super::process::BranchNodeId,
+    base_next_id: Cint64,
+    replay_snapshot: Option<&NativeReplaySnapshot>,
+    cleared_queues: bool,
+) -> Option<()> {
     let owned_epoch_count = algo
         .or_branch_stack
         .iter()
@@ -9812,7 +10032,7 @@ fn restore_retained_classification_base(
         ctx.process_context_mut().truncate_dependency_spine(watermark);
     }
     ctx.push_branch_epoch();
-    let resume_fork = bridged.retained_base_resumes_fork.get();
+    let resume_fork = bridged.retained_base_resumes_fork.get() && !cleared_queues;
     if resume_fork {
         // Resume the fork's pending queues exactly (see
         // `Bridged::retained_base_resumes_fork`): the base databox, unchanged.
@@ -15941,6 +16161,19 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // candidate markers its root carries. Recorded in the prepare phase, read
     // when the subject's possible subsumers are verified.
     let mut readoff_eq_markers: HashMap<usize, HashSet<Cint64>> = HashMap::default();
+    // Root-cancellation witnesses for EMPTY stored refutations, shared by
+    // every subject job of this classification (docs/HYBRID-CB-HT.md §13).
+    // Cleared-queue screen of docs/HYBRID-CB-HT.md §14 (diagnostic switch
+    // `KM_BRIDGE_NO_CLEARED_QUEUE_SCREEN` restores the plain resuming jobs).
+    let cleared_queue_screen = retained_consistency_base
+        && !fresh_env
+        && std::env::var_os("KM_BRIDGE_NO_RETAINED_BASE").is_none()
+        && std::env::var_os("KM_BRIDGE_NO_CLEARED_QUEUE_SCREEN").is_none();
+    let cleared_queue_job = std::cell::Cell::new(false);
+    let cleared_queue_screen_counts = std::cell::Cell::new((0usize, 0usize));
+    let empty_alternative_witnesses: std::cell::RefCell<
+        std::sync::Arc<crate::fxhash::FxHashMap<(usize, bool), bool>>,
+    > = Default::default();
     let mut classify_one = |s: usize,
                             algo: &mut CompletionTaskHandleAlgorithm,
                             ctx: &mut CalculationAlgorithmContextBase,
@@ -15977,7 +16210,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             if retained_consistency_base && !fresh_env
                 && std::env::var_os("KM_BRIDGE_NO_RETAINED_BASE").is_none()
             {
-                restore_retained_classification_base(
+                restore_retained_classification_base_with(
                     algo,
                     ctx,
                     &bridged,
@@ -15985,6 +16218,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                     retained_consistency_branch_node,
                     retained_consistency_next_id,
                     retained_replay_snapshot.as_ref(),
+                    cleared_queue_job.get(),
                 )?;
             } else if fresh_env {
                 let budget = algo.probe_budget;
@@ -16002,6 +16236,10 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 );
             }
             configure_production_search(algo);
+            // Every job of the classification sees the operand witnesses
+            // established so far (docs/HYBRID-CB-HT.md §13).
+            algo.empty_alternative_witnesses =
+                std::sync::Arc::clone(&empty_alternative_witnesses.borrow());
             if ctx.base.used_sat_exp_cache_handler.is_some() {
                 // CCalculationTableauCompletionTaskHandleAlgorithm defaults,
                 // cpp 194-199 and readCalculationConfig cpp 536-539.
@@ -16081,10 +16319,78 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             }
             (subs, false, None)
         } else {
+            // Cleared-queue screen (docs/HYBRID-CB-HT.md §14): on a base that
+            // resumes the first fork, first run the job without the base's
+            // pending nondeterministic work and accept it only when the job
+            // stayed isolated from the retained graph. Otherwise the subject
+            // runs exactly as before, on the resuming base.
+            let mut screened = None;
+            if cleared_queue_screen && bridged.retained_base_resumes_fork.get() {
+                cleared_queue_job.set(true);
+                let restored = renew(algo, ctx, false);
+                cleared_queue_job.set(false);
+                restored?;
+                // A screen job publishes nothing to the shared satisfiability
+                // caches: its graph is only trusted after the isolation test.
+                algo.conf_sat_exp_cache_writing = false;
+                algo.conf_saturation_satisfiabilitiy_expansion_cache_writing = false;
+                algo.empty_alternative_witnesses = std::sync::Arc::clone(&empty_alternative_witnesses.borrow());
+                algo.empty_alternative_witness_requests.clear();
+                algo.stop_on_unknown_empty_alternative_witness = true;
+                let mut id_screen: i64 = probe_start_id;
+                let phase_start = phase_timing.then(std::time::Instant::now);
+                let attempt = bridged_classify_subject_with_root(
+                    algo,
+                    ctx,
+                    &bridged,
+                    &mut id_screen,
+                    s,
+                    n_named,
+                );
+                record_phase(1, phase_start);
+                // Operands the screen asked for are probed now, so the rerun
+                // below starts with their witnesses.
+                let requests = std::mem::take(&mut algo.empty_alternative_witness_requests);
+                probe_empty_alternative_witnesses(
+                    tin,
+                    trigger_absorb,
+                    ctx,
+                    requests,
+                    &empty_alternative_witnesses,
+                    progress.then_some(s),
+                );
+                let isolated = attempt.is_some() && cleared_queue_job_isolated(algo, ctx);
+                if progress && !isolated {
+                    let base = algo.retained_base_node_count;
+                    let blocked = (base..ctx.process_context().node_count()).any(|index| {
+                        let b = ctx.process_context().node(NodeId::new(index as Cint64)).blocker_indi_node;
+                        b.is_some() && b.index() < base
+                    });
+                    eprintln!(
+                        "BRIDGE-CLEARED-QUEUE-RERUN subject {s}: answered={} modified={} retained_opens={} blocked_by_retained={blocked}",
+                        attempt.is_some(),
+                        algo.retained_node_modified_count,
+                        algo.or_branch_open_retained_node_count,
+                    );
+                }
+                cleared_queue_screen_counts.set({
+                    let (accepted, rejected) = cleared_queue_screen_counts.get();
+                    if isolated { (accepted + 1, rejected) } else { (accepted, rejected + 1) }
+                });
+                if isolated {
+                    screened = attempt;
+                }
+            }
+            let mut readoff = if screened.is_some() {
+                screened
+            } else {
             renew(algo, ctx, false)?;
+            algo.empty_alternative_witnesses = std::sync::Arc::clone(&empty_alternative_witnesses.borrow());
+            algo.empty_alternative_witness_requests.clear();
+            algo.stop_on_unknown_empty_alternative_witness = true;
             let mut next_indi_id: i64 = probe_start_id;
             let phase_start = phase_timing.then(std::time::Instant::now);
-            let mut readoff = bridged_classify_subject_with_root(
+            let readoff = bridged_classify_subject_with_root(
                 algo,
                 ctx,
                 &bridged,
@@ -16093,9 +16399,59 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 n_named,
             );
             record_phase(1, phase_start);
+            readoff
+            };
+            // A STOP raised for an unknown root-cancellation witness: probe the
+            // requested operands in fresh environments, then rerun the job
+            // from scratch with the extended witness map (docs/HYBRID-CB-HT.md
+            // §13). Every round adds at least one map entry, so the loop ends;
+            // the round cap only bounds a pathological input.
+            let mut witness_rounds = 0usize;
+            while readoff.is_none()
+                && !algo.empty_alternative_witness_requests.is_empty()
+                && witness_rounds < 64
+            {
+                witness_rounds += 1;
+                let requests = std::mem::take(&mut algo.empty_alternative_witness_requests);
+                probe_empty_alternative_witnesses(
+                    tin,
+                    trigger_absorb,
+                    ctx,
+                    requests,
+                    &empty_alternative_witnesses,
+                    progress.then_some(s),
+                );
+                if renew(algo, ctx, false).is_none() {
+                    if progress {
+                        eprintln!("BRIDGE-EMPTY-WITNESS subject {s}: rerun could not restore the base");
+                    }
+                    return None;
+                }
+                algo.empty_alternative_witnesses = std::sync::Arc::clone(&empty_alternative_witnesses.borrow());
+                algo.empty_alternative_witness_requests.clear();
+                algo.stop_on_unknown_empty_alternative_witness = true;
+                let mut id_witness: i64 = probe_start_id;
+                let phase_start = phase_timing.then(std::time::Instant::now);
+                readoff = bridged_classify_subject_with_root(
+                    algo,
+                    ctx,
+                    &bridged,
+                    &mut id_witness,
+                    s,
+                    n_named,
+                );
+                record_phase(1, phase_start);
+            }
+            // Later probes of this job keep the witnesses but never STOP for
+            // a missing one (historical behaviour).
+            algo.stop_on_unknown_empty_alternative_witness = false;
+            algo.empty_alternative_witness_requests.clear();
             if readoff.is_none() && algo.completeness_poisoned && cow_confirm {
                 // Plain search untrusted (an unrestored advance phantomized
                 // nodes) — the poison deferred the read-off. Escalate to COW.
+                if progress {
+                    eprintln!("BRIDGE-COW-ESCALATE subject {s}");
+                }
                 renew(algo, ctx, true)?;
                 let mut id_cow: i64 = probe_start_id;
                 let phase_start = phase_timing.then(std::time::Instant::now);
@@ -16111,7 +16467,8 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             }
             if readoff.is_none() && progress {
                 eprintln!(
-                    "BRIDGE-DEFER subject {s}: READ-OFF stop after {:.1}s (signal={:?}, nodes={}, sat-blocks={}, sat-expanded={})",
+                    "BRIDGE-DEFER subject {s} ({}): READ-OFF stop after {:.1}s (signal={:?}, nodes={}, sat-blocks={}, sat-expanded={})",
+                    tin.concepts.get(s).map(String::as_str).unwrap_or("?"),
                     t_subj.elapsed().as_secs_f64(),
                     ctx.pending_signal(),
                     ctx.process_context().node_count(),
@@ -16679,6 +17036,8 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             t_prepare.elapsed().as_secs_f64(),
             verification_subjects.len()
         );
+        let (accepted, rejected) = cleared_queue_screen_counts.get();
+        eprintln!("BRIDGE-CLEARED-QUEUE-SCREEN accepted={accepted} rerun={rejected}");
     }
 
     // Phase 2: the first call crosses the all-models barrier inside

@@ -613,6 +613,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // The helper clears the synchronization bits before materializing the
         // retained forward/reverse assertion vectors, so recursive neighbour
         // notifications cannot invalidate the same node twice.
+        if indi.is_some() && indi.index() < self.retained_base_node_count {
+            self.retained_node_modified_count += 1;
+        }
         self.invalidate_native_nominal_backend_blocking(*indi, calc_alg_context);
         let mut add_individual_to_processing_queue_due_to_modification = false;
         if !calc_alg_context

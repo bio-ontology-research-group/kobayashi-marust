@@ -1163,3 +1163,121 @@ Test: `engine/tests/worker_only_environment.rs` classifies an ALC input
 with the entailed `B ⊑ D` on `--route ht_general` and the automatic route,
 once plain and once with each `WORKER_ONLY_KEYS` variable set to `1`; the
 published lines must be equal and stderr must name the variable.
+
+## 13. Witnesses for empty stored refutations (2026-11-01, `fix/v155-bridge-speed`)
+
+**Defect.** On ore_ont_4796 (DOLCE, 199 classes, 296 KB) the native bridge
+spent 30 s on each of the two unsatisfiable classes `system-as-artifact` and
+`physical-plurality`, hit the per-subject budget and deferred the whole
+classification; Konclude answers in 0.3 s. Profile evidence
+(`results/agents/2026-11-01/bridge-speed/`): 400,000 drives and 600,000
+backtracks per subject over a 300-deep branch stack; 28 % of the clashes fell
+back to chronological backtracking (`KM_BRIDGE_DDB_TRACE`). Every fallback
+followed the same pattern: the topmost decision, a four-way disjunction
+`¬(social-object ⊓ ∀r141.particular ⊓ ∀r142.particular ⊓ …)` on one node, had
+all four alternatives marked refuted, u29 collected their closure at
+branching level 0 (the clash depends on no open choice, so the subject is
+unsatisfiable), and the root cancellation was **withheld** because two of
+the four alternatives had an EMPTY stored refutation. The search then
+backtracked chronologically into unrelated decisions and re-derived the same
+refutation under each of their combinations.
+
+The empty sets are genuine: the alternative `∃r142.¬particular` creates a
+successor that receives `particular` from a ⊤-GCI, so the clash
+`particular, ¬particular` on that successor depends on nothing older than
+the alternative itself. Konclude stores the same empty set and cancels. The
+witness test of §11 (`all_siblings_stored_refutation`) was introduced
+because an empty set can also come from a lossy closure reconstruction
+(ore_ont_12653), and it cannot tell the two apart.
+
+**Change.** An empty stored refutation now counts as a refutation record when
+an independent probe shows that the alternative's operand alone is
+unsatisfiable with respect to the input (`verify_empty_alternative_operand`):
+
+1. u29 looks up the sibling's `(operand, negation)` on the search stack
+   (`ht_disjunction_alternative_operand`) and in
+   `CompletionTaskHandleAlgorithm::empty_alternative_witnesses`. `true`:
+   the sibling is justified. `false`: withheld as before. Unknown: withheld,
+   the operand is requested, and, when the driver has enabled
+   `stop_on_unknown_empty_alternative_witness`, the drive STOPs at its next
+   drive boundary (`run_completion_on`).
+2. The classification driver (`bridged_classify_opts_…_inner`, subject
+   read-off) probes every requested operand in a FRESH bridge environment
+   over the same `TInput`, records the verdict, rebuilds the job and reruns
+   it. Every round adds at least one entry, so the loop ends. All later jobs
+   of the classification see the map (`renew`).
+3. The probe: the operand on a fresh root with ⊤, every disjunction parked
+   (`defer_or_branching`, never expanded), dependency-directed backjumping
+   off, in-process copy-on-write epochs on, chronological search over the
+   remaining branch points (at-most merges, qualification choices, backend
+   reuse), 5 s budget. Only `Some(true)` (UNSAT) with no unrestored advance,
+   no completeness poison and no root cancellation counts. The concept is
+   matched between the two environments by tag, operator and operand list.
+
+**Exactness.** The probe decides a weaker problem than the input (the
+parked disjunctions are left out; every other rule runs, and every other
+branch point is enumerated completely, with complete state restoration),
+so its UNSAT verdict is a sound proof that the operand is unsatisfiable with
+respect to the input, independent of any stored-set reconstruction and of
+the DDB analysis. An alternative whose operand is unsatisfiable fails in
+every context and contributes no cause, which is exactly what an empty
+stored set claims. The cancellation is then justified on the same terms the
+existing witness already accepts for non-empty stored sets: the change only
+widens `all_siblings_stored_refutation` by a proven case, so it cannot
+cancel where the old test was right to withhold for a lossy set (a lossy
+empty set on a satisfiable operand yields `false` and stays withheld). A
+STOP is an UNKNOWN verdict that the driver answers with a rerun of the same
+job; a missing or failed probe leaves the historical behaviour. No answer can
+change; the subjects that previously exhausted their budget now reach the
+cancellation Konclude takes.
+
+## 14. Cleared-queue screen on a resuming retained base (2026-11-01, `fix/v155-bridge-speed`)
+
+**Defect.** On the ObjectHasValue family (ore_ont_3917, 11378, 12191, 9151,
+9577: hundreds of `ObjectHasValue`, thousands of class assertions) the
+consistency completion is nondeterministic, so the retained base resumes the
+first fork (`KM_BRIDGE_FORK_DRAIN=resume`, the default): every class job
+re-decides the base's pending ABox disjunctions. Profile evidence on 3917
+(`BRIDGE-SUBJECT-STATS`): every one of the 5,383 subject jobs opened the same
+173 branch points (93 on nominal nodes) and made 3,000 to 4,400 insertions
+with zero backtracks, 16 ms per job, 87 s of a 117 s prepare phase. Konclude
+starts every class task from its deterministic consistency task with the
+individual processing queues cleared and touches an individual only when the
+class task reaches it. `KM_BRIDGE_FORK_DRAIN=konclude` (the same cleared-queue
+class task in the port) runs 3917 in 12 s with the reference answer, but it
+is not exact by itself: a job that modifies a base node next to a node whose
+disjunction is still pending can publish a model in which that disjunction
+has no consistent choice.
+
+**Change.** On a base that resumes the first fork, each subject read-off
+first runs as a SCREEN on the same retained graph with cleared processing
+queues (`restore_retained_classification_base_with(…, cleared_queues =
+true)`, which sets `retained_base_node_count` to the base size) and with the
+satisfiability cache writers off. The screen is accepted only when the job
+is isolated from the retained graph (`cleared_queue_job_isolated`):
+
+- no retained node was modified (`retained_node_modified_count`, counted in
+  `propagate_individual_node_modified`, through which every concept, link
+  and merge modification passes),
+- no branch point was opened on a retained node, and
+- no node of the job is blocked by a retained node.
+
+Otherwise the subject runs exactly as before on the resuming base.
+`KM_BRIDGE_NO_CLEARED_QUEUE_SCREEN=1` disables the screen.
+
+**Exactness.** The input is consistent (the base exists only after a
+successful consistency completion). An isolated screen job never added a
+concept, link or merge to a retained node and never used one as a blocker,
+so its graph is the retained graph plus a component of fresh nodes that
+shares no edge, merge or blocking relation with it. UNSAT: the job's clash
+derivation used only retained facts (deterministic consequences of the
+input, the drained base) and its own branch points, all of which it
+enumerated; leaving the base's pending disjunctions unexpanded only removes
+constraints, so the verdict holds for the input. SAT: the fresh component
+is complete and clash-free and does not refer to any individual, so its
+unravelling next to any model of the input (the disjoint union) is a model
+of the input in which the subject root is an instance of exactly the
+concepts in its label; the read-off and its authoritative flag are those of
+that model. Any job that touched the base reruns on the resuming base, so
+its answer is the old one. The screen writes no satisfiability cache entry,
+so no later job can read state that rested on an unaccepted screen.

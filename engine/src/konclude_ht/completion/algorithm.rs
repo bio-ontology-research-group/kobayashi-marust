@@ -977,6 +977,12 @@ pub struct CompletionTaskHandleAlgorithm {
     /// KM-BRIDGE (Stage 8): OR branch points opened on a node that already
     /// existed in the retained base (arena index `< retained_base_node_count`).
     pub or_branch_open_retained_node_count: u64,
+    /// Modifications (concept, link or merge, see
+    /// `propagate_individual_node_modified`) of nodes that belong to the
+    /// retained base (arena index `< retained_base_node_count`). The
+    /// cleared-queue screen of docs/HYBRID-CB-HT.md §14 accepts a job only
+    /// when this stays 0.
+    pub retained_node_modified_count: u64,
     /// KM-BRIDGE (Stage 8): OR branch points opened on a nominal (ABox) node,
     /// whether retained or materialized inside this job.
     pub or_branch_open_nominal_node_count: u64,
@@ -1283,6 +1289,28 @@ pub struct CompletionTaskHandleAlgorithm {
     /// `…_before_processing_tag`, cpp 7587–7644 / 7669–7764) is still lossy;
     /// withholding costs an early exit, never a verdict.
     pub ddb_root_cancel_withheld_count: u64,
+    /// Root-cancellation witnesses for disjunction alternatives whose stored
+    /// refutation is EMPTY (see u29's witness test and docs/HYBRID-CB-HT.md
+    /// section 13). Keyed by the alternative's `(concept index, negated)`;
+    /// `true` means an independent probe of that operand alone, in a fresh
+    /// bridge environment over the same input, ended in a clash without
+    /// opening a single branch point, so the operand is unsatisfiable with
+    /// respect to the input. `false` means the probe did not establish it.
+    /// Shared read-only between subject jobs; the classification driver owns
+    /// the map and extends it between jobs.
+    pub empty_alternative_witnesses:
+        std::sync::Arc<crate::fxhash::FxHashMap<(usize, bool), bool>>,
+    /// Operands that a withheld root cancellation needed but that have no
+    /// entry in `empty_alternative_witnesses` yet. Filled by u29; drained by
+    /// the classification driver.
+    pub empty_alternative_witness_requests: Vec<(ConceptId, bool)>,
+    /// When set (by a driver that can answer the requests), a root
+    /// cancellation withheld only for want of an unknown witness raises a
+    /// STOP so the driver can probe the operands and rerun the job. Unset:
+    /// the historical behaviour (withhold and continue the search).
+    pub stop_on_unknown_empty_alternative_witness: bool,
+    /// Set by u29 when it asks for that STOP; read by `run_completion_on`.
+    pub empty_alternative_witness_stop: bool,
     /// KM_BRIDGE_SEARCH_LOG budget counter.
     pub search_log_count: u64,
     /// DDB diagnostics: backjumps taken (target found by the scan).
@@ -1309,6 +1337,8 @@ pub struct CompletionTaskHandleAlgorithm {
     /// DDB diagnostics: clash-closure dumps emitted so far (first few
     /// analyses under KM_BRIDGE_PROGRESS).
     pub ddb_analysis_dumps: u64,
+    /// Diagnostic: the last clash closure formatted under KM_BRIDGE_DUMP_CLASH.
+    pub ddb_last_closure: String,
     /// KM_BRIDGE_DUMP_CLASH: line budget for the per-walk DDB-DISCARD-LIVE
     /// dump (task #12 — which live alternatives the mark-driven walk drops).
     pub ddb_discard_dump_lines: u64,
@@ -1670,6 +1700,7 @@ impl CompletionTaskHandleAlgorithm {
             deferred_or_branchings: Vec::new(),
             drain_aborted: false,
             or_branch_open_retained_node_count: 0,
+            retained_node_modified_count: 0,
             or_branch_open_nominal_node_count: 0,
             or_branch_open_fresh_node_count: 0,
             native_reuse_activated_individuals: HashSet::default(),
@@ -1772,12 +1803,17 @@ impl CompletionTaskHandleAlgorithm {
             ddb_refuted_discard_count: 0,
             ddb_closed_decision_discard_count: 0,
             ddb_root_cancel_withheld_count: 0,
+            empty_alternative_witnesses: Default::default(),
+            empty_alternative_witness_requests: Vec::new(),
+            stop_on_unknown_empty_alternative_witness: false,
+            empty_alternative_witness_stop: false,
             search_log_count: 0,
             ddb_jump_count: 0,
             ddb_jump_pop_total: 0,
             ddb_fallback_count: 0,
             ddb_mark_count: 0,
             ddb_analysis_dumps: 0,
+            ddb_last_closure: String::new(),
             ddb_discard_dump_lines: 0,
             ddb_walk_chain_dumps: 0,
             unrestored_advance_count: 0,

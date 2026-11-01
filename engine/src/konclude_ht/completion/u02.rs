@@ -158,6 +158,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let max_drives: u64 = super::bridge_max_drives();
         let mut drives: u64 = 0;
         self.ddb_root_cancelled = false;
+        self.empty_alternative_witness_stop = false;
         // cpp 783: `mOptBackendExpansionReuse =
         //     satCalcTask->getProcessingDataBox()->isBackendIndividualLateReuseExpansionActivated();`
         // The bridge has no CTask spine, so the per-task derivation happens at the
@@ -172,6 +173,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .is_backend_individual_late_reuse_expansion_activated();
         loop {
             if drives >= max_drives {
+                calc_alg_context.raise_stop(false);
+                return false;
+            }
+            // u29 withheld a root cancellation that a driver-run operand
+            // probe may justify (`stop_on_unknown_empty_alternative_witness`):
+            // STOP here, at the same drive boundary as the deadline below, so
+            // the driver can probe the operands and rerun the job. A STOP is
+            // an UNKNOWN verdict.
+            if self.empty_alternative_witness_stop {
+                self.empty_alternative_witness_stop = false;
                 calc_alg_context.raise_stop(false);
                 return false;
             }
@@ -383,6 +394,68 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
     }
 
+    /// KM_BRIDGE_DDB_TRACE=<N>: print the first N backtrack decisions of
+    /// the DDB walk with a compact branch-stack picture (diagnostic only).
+    fn ht_ddb_trace(
+        &self,
+        what: &str,
+        target: Option<usize>,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) {
+        static LIMIT: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+        static COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let limit = *LIMIT.get_or_init(|| {
+            std::env::var("KM_BRIDGE_DDB_TRACE").ok().and_then(|v| v.parse().ok()).unwrap_or(0)
+        });
+        if limit == 0 || COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed) >= limit {
+            return;
+        }
+        let pc = calc_alg_context.process_context();
+        let mut parts: Vec<String> = Vec::new();
+        for (i, bp) in self.or_branch_stack.iter().enumerate().rev().take(14) {
+            let kind = match &bp.kind {
+                BranchKind::Disjunction => "or",
+                BranchKind::AtMostMerge(_) => "mg",
+                BranchKind::AtMostQualify { .. } => "ch",
+                BranchKind::BackendExpansionReuse(_) => "re",
+            };
+            let marks: String = bp
+                .alt_track_points
+                .iter()
+                .map(|&tp| {
+                    if tp.is_none() {
+                        '?'
+                    } else if pc.track_point(tp).is_clashed_or_irelevant_branch() {
+                        'x'
+                    } else {
+                        '.'
+                    }
+                })
+                .collect();
+            let tag = if bp.branching_concept.is_some() {
+                calc_alg_context
+                    .ontology_arenas()
+                    .concept(bp.branching_concept)
+                    .get_concept_tag()
+            } else {
+                -1
+            };
+            parts.push(format!(
+                "{i}:{kind}n{}c{}[{}/{} cur{} {marks}]",
+                bp.node.index(),
+                tag,
+                bp.next_alt,
+                bp.alternatives_len(),
+                bp.current_track_alternative(),
+            ));
+        }
+        eprintln!(
+            "DDBT {what} target={target:?} depth={} {}",
+            self.or_branch_stack.len(),
+            parts.join(" ")
+        );
+    }
+
     fn discard_topmost_or_branch(
         &mut self,
         clashed_alternative: bool,
@@ -544,6 +617,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // No marked branch point — do NOT trust the analysis for an UNSAT
             // verdict; chronological fallback.
             self.ddb_fallback_count += 1;
+            self.ht_ddb_trace("fallback-nomark", None, calc_alg_context);
             return self.try_backtrack_or_branch(calc_alg_context);
         };
         if !has_remaining {
@@ -653,9 +727,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
             // DEFAULT: chronological fallback (sound; thrashy on stale marks).
             self.ddb_fallback_count += 1;
+            self.ht_ddb_trace("fallback-notclosed", Some(target), calc_alg_context);
             return self.try_backtrack_or_branch(calc_alg_context);
         };
         self.ddb_jump_count += 1;
+        self.ht_ddb_trace("jump", Some(target), calc_alg_context);
         self.ddb_jump_pop_total += (self.or_branch_stack.len() - 1 - target) as u64;
         // KM_BRIDGE_DUMP_CLASH: record every branch point this backjump is
         // about to discard while it STILL has unexplored alternatives (task
