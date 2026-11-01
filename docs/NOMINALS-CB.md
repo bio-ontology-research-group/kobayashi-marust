@@ -1247,6 +1247,23 @@ map; 5 defer on the singleton-elision mismatch between the frontend
 (`forced_distinct_data_successors`); 3 use a data bound above 2; 4 other
 datatype-value gates; m2296 the repeated assertion.
 
+
+Implementation note (2026-11-01, agent `perf-9027`). The inference and the
+admissibility closure first ran over `BTreeMap<String, _>` and
+`BTreeMap<&Term, _>` lookups; on ore_ont_9027 (306,558 clauses in, 138,121
+added or relativized) the pass took 4.0 s of a 6.5 s frontend, against
+2.7 s for the whole v1.5.3 frontend, and with the cache defect of
+docs/DATATYPES.md ("Inert value singletons ...") it cost the input its S1
+time. `sorts.rs` now interns concept, role and term names once and runs the
+same passes over id-indexed vectors (0.45 s on 9027). Every pass visits the
+clauses in their order and the terms of a clause in `Term` order, and the
+sort clauses come out in name order, so the output is the same clause
+sequence: a differential test runs the former implementation
+(`sorts_reference.rs`, test only) against the new one on 3,000 random clause
+sets, and `km ofn` under `KM_NOMINALS=1` gives byte-identical clause and meta
+files on the 585 held-out inputs (results/agents/2026-11-01/perf-9027/).
+No Lean obligation: the encoded clause set is unchanged.
+
 ## 7. Sequoia ordering and nominals
 
 `calc::pred_lteq` has two same-term concept orderings for the CB engine. The
