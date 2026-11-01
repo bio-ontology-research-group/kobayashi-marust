@@ -1,0 +1,9 @@
+#!/bin/bash
+# pin BIN ARGS... : run BIN on one CPU of 24-29 claimed by a lock file (falls back to CPU 29)
+L=$S/locks
+B=$1; shift
+for c in 24 25 26 27 28 29; do
+  exec 9>$L/cpu$c
+  if flock -n 9; then exec taskset -c $c "$B" "$@"; fi
+done
+exec taskset -c 29 "$B" "$@"

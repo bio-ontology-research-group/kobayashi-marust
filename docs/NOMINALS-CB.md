@@ -1736,3 +1736,154 @@ of `merge_r1600_min`. What stays first-order and argued is the simulation
 step of 10.1 (the ground context derives under `K(o)` the atoms the query
 context derives by its own inferences).
 
+
+## 11. Polarity encoding of complement definers (2026-11-01)
+
+Agent `polarity-definers`, branch `fix/v155-polarity-definers`. Results:
+`results/agents/2026-11-01/polarity-definers/`.
+
+### 11.1 The defect
+
+For `SubClassOf(ObjectComplementOf(ObjectHasValue(p e)) B)` the clausifier
+reifies the NNF `∀p.¬{e}` (negative polarity) as `Q_0`, the filler `¬{e}` as
+`Q_1 ≡ ¬nom_e`, and emits the `∀` introduction with the complement definer
+`Q_3` of the filler:
+
+    Q_1(x) ∧ nom_e(x) → ⊥        (definition, Q_1 ⊑ ¬{e})
+    → Q_1(x) ∨ nom_e(x)          (excluded middle, ¬{e} ⊑ Q_1)
+    Q_0(x) ∧ p(x,y) → Q_1(y)     (propagation)
+    → Q_0(x) ∨ Q_2(x),  Q_0(x) ∧ Q_2(x) → ⊥
+    Q_2(x) → p(x,f(x)),  Q_2(x) → Q_3(f(x))
+    Q_3(x) ∧ Q_1(x) → ⊥          (complement constraint, Q_3 ⊑ ¬Q_1)
+
+With nominal clausification (`KM_ABSORB=0`, every nominal route) the
+excluded middle puts the bridge `Q_1(x) ∨ x ≈ e` into every context, every
+query context pushes the merge hypothesis `K(e)`, and the `S6(e)` world of
+the test case is the whole cost (docs/PER-CONTEXT-ORDERING.md section 15.4 on
+`fix/v155-objvalue-cost`). `universal_role_and_top_data_range::
+data_value_singleton_next_to_nominal_successors`, case "object value instead
+of data value", exceeded its 10 s bound on forced `nominals` (no answer in
+60 s; `certified_card_proxy_abox` over 60 s, `nominal_ni_abox` 20 s).
+
+### 11.2 The repair (`frontend::normalise::polarity_definers`)
+
+After clausification the frontend runs a Plaisted-Greenbaum pass over the
+TBox and ABox clauses. Its candidates are the complement definers
+`Q ≡ ¬A` of an atomic operand (a class name, a nominal `{o}`, a value
+concept `__dt__val__v`), in definition order. For each candidate it
+evaluates the gate on the current clause set:
+
+* the definition clause `Q(v) ∧ A(v) → ⊥` and the excluded middle
+  `→ Q(v) ∨ A(v)` are present and `Q ≠ A`;
+* every clause whose body mentions `Q` is the definition clause or a
+  complement constraint `N(v) ∧ Q(v) → ⊥` with `N ∉ {Q, A}`.
+
+This is "`Q` occurs with one polarity only": apart from its definition and
+the complement constraints, which the pass rewrites, `Q` occurs in heads
+only. On acceptance the pass rewrites every complement constraint to
+`N(v) → A(v)` (for the `∀` introduction above, `Q_3 → nom_e`, the hand edit
+of section 15.4) and removes the excluded middle. A definer with any other
+body occurrence keeps the biconditional. `KM_NO_POLARITY_DEFINERS=1` turns
+the pass off (diagnostic).
+
+Scope. The pass reads only the clause set, so it covers `¬A` in heads
+(`X ⊑ ¬A`, disjointness) and the `∀` introduction of a filler `¬A` on every
+setting of `KM_ABSORB`. It does not act on:
+
+* `KM_ABSORB=1` with a negation of negative polarity only: absorption then
+  omits the definition clause, so the gate fails and the clause set is
+  unchanged (the excluded middle stays);
+* a filler `¬A` of an `∃`, `≥n` or `≤n` restriction: the recognition clause
+  `r(x,y) ∧ Q(y) → …` is a body occurrence, so the gate fails;
+* `DataComplementOf` inside a data range: the data vocabulary
+  (`frontend/datatypes`) emits its own complement clauses, which carry no
+  `Q_` definer;
+* the complement definers `nq`, `nd` of the `∀` introduction and of
+  number restrictions: they are not candidates.
+
+Consumers. The `definers` metadata (recorded under `KM_TRIGGER_ABSORB` and
+native cardinality) still says `Q ≡ ¬A`; the konclude bridge replaces `Q` by
+`¬A`, under which the removed excluded middle and the old and the new
+complement constraint are tautologies, so its input is unchanged up to
+tautologies. `KM_EMELIM` and the HT `elim_complements` look for excluded
+middles and find fewer. The orchestrator, the incremental session, the
+source-reuse module and the Lean checkers read `Q_` names only to classify
+them as internal (`inert_sorts::is_internal`, `source_incremental`,
+`calc::is_internal_concept`) and re-check every clause shape they use.
+
+### 11.3 Exactness
+
+Let `S` be the clause set before a step and `S'` after it. Every clause of
+`S'` follows from `S`: a rewritten clause `N(v) → A(v)` follows from
+`N(v) ∧ Q(v) → ⊥` and `→ Q(v) ∨ A(v)`. Conversely, let `J` be a model of
+`S'` and `J'` the interpretation that agrees with `J` except that `Q` is
+the complement of `A`. The definition clause is in `S'`, so `J(Q) ⊆ J'(Q)`.
+In `J'` the excluded middle and the definition clause hold by construction,
+a complement constraint holds because `J` satisfies its rewrite, and every
+other clause holds because `Q` occurs in it only in the head, where
+enlarging `Q` preserves truth. `J'` changes no symbol but the fresh `Q`, so
+consistency, the unsatisfiable named classes and the subsumptions between
+named classes are unchanged, and so is every symbol later passes read
+(nominals, value concepts, roles).
+
+### 11.4 Lean
+
+`lean/ContextCalculus/PolarityDefiners.lean` (imported by
+`ContextCalculus.lean`) states the gate (`gate`), the step (`transform`,
+`step`) and the pass (`run`, a fold over the candidate list) exactly as the
+Rust pass computes them, over the clause language of
+`RulesInertSortRelease`, and proves
+
+    theorem step_models_forward (hgate : gate reserved Q A clauses = true)
+        (hmodels : Models I clauses) : Models I (transform Q A clauses)
+    theorem step_models_backward (hgate : gate reserved Q A clauses = true)
+        (hmodels : Models J (transform Q A clauses)) :
+        Models (J.complementAt Q A) clauses
+    theorem step_equisatisfiable (pair : Nat × Nat) (hside : ReadsOnly reserved side) :
+        Satisfiable clauses side ↔ Satisfiable (step reserved clauses pair) side
+    theorem run_equisatisfiable (pairs : List (Nat × Nat)) (clauses : List Clause)
+        (hside : ReadsOnly reserved side) :
+        Satisfiable clauses side ↔ Satisfiable (run reserved pairs clauses) side
+    theorem run_answers (pairs : List (Nat × Nat)) (clauses : List Clause) :
+        (Consistent clauses ↔ Consistent (run reserved pairs clauses)) ∧
+        (∀ A ∈ reserved, ClassUnsat clauses A ↔ ClassUnsat (run reserved pairs clauses) A) ∧
+        (∀ A ∈ reserved, ∀ B ∈ reserved,
+          Entails clauses A B ↔ Entails (run reserved pairs clauses) A B)
+
+`#print axioms`: `step_models_forward` `[propext, Quot.sound]`; the others
+`[propext, Classical.choice, Quot.sound]`; no `sorryAx`. The gate is the
+hypothesis: `gate` is the Rust gate plus `Q ∉ reserved`, which holds because
+every candidate is a fresh `Q_n` and `IriRegistry` escapes source names with
+that prefix. `decide` checks the gate and the result of `run` on the clauses
+of 11.1. The module was compiled with `lake env lean` against hard-linked
+Mathlib packages (no full `lake build`).
+
+The Rust side: `polarity_definer_tests::production_pass_matches_the_lean_definition`
+compares the indexed production pass with a literal transcription of the
+Lean definitions (`gate`, `rewrite`, `transform`, `run`, with the clause
+shapes restated as atom sets) on 20,000 generated clause sets (definition
+clauses, excluded middles, complement constraints in either order, other
+body and head occurrences, other variables, Skolem and individual terms,
+ABox clauses): equal clause sets and equal accepted candidates on all of
+them, with both gate outcomes exercised. What stays argued, not mechanised:
+the translation of the Rust `DLClause` (string names, `Term::Var` names) to
+the Lean clause language, and the frontend before and after the pass.
+
+### 11.5 Validation
+
+Details and reproduction: `results/agents/2026-11-01/polarity-definers/README.md`.
+
+* The object-value case answers in 0.04 s on forced `nominals` (over 60 s
+  before), 0.03 s on `certified_card_proxy_abox` (over 60 s) and on
+  `nominal_ni_abox` (20 s); `universal_role_and_top_data_range` passes
+  13 of 13.
+* Frontend: on the 1,094 ORE design-half inputs, 79 clause files change by
+  default and under `KM_NOMINALS=1`, 23 under `KM_ABSORB=1`, and no meta file
+  changes. On the 79, the automatic route (`KM_THREADS=1`, 240 s) gives
+  identical answers with both binaries (889 s base, 766 s new).
+* HermiT seeds: `gen_r3` r0-r999 on forced `nominals` at 60 s 639 ok, 4,000
+  at 10 s 2,521 ok (forced `nominals`) and 3,795 ok (auto), the data-value
+  pools of `forced-nominal-data-misses` on auto, `certified_nominals` and
+  `nominals`: 0 WRONG everywhere. The pass changes none of the `gen_r3`
+  seeds' frontend output, so r163, r219, r461, r481, r575, r696, r1536 and
+  r3777 still time out (their cost is section 10.4).
