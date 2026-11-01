@@ -414,7 +414,46 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // `ht_all_rule_target_links` (u10), exactly as `apply_all_rule`
             // (u09) does.  The physical link is retained because Konclude's
             // CAUTOMATTRANSACTIONDependencyNode has it as its second parent.
-            let role_targets = self.ht_all_rule_target_links(*process_indi, role, calc_alg_context);
+            // Konclude's `restLink` arm (cpp 9662-9700): a descriptor re-fired by
+            // `applyReapplyQueueConceptsRestricted` for ONE freshly installed link
+            // propagates over that link only. `KM_HT_AUTOMAT_REST_LINK=1` (diagnostic,
+            // off by default) enables it; otherwise every re-fire scans all successors.
+            let rest_link = if super::automat_rest_link_enabled() {
+                self.get_link_processing_restriction(*con_pro_des, calc_alg_context)
+            } else {
+                EdgeId::NONE
+            };
+            let audit = rest_link.is_some() && super::automat_rest_link_audit_enabled();
+            let role_targets = if rest_link.is_some() && !audit {
+                self.ht_rule_target_of_link(*process_indi, rest_link, role, calc_alg_context)
+            } else {
+                self.ht_all_rule_target_links(*process_indi, role, calc_alg_context)
+            };
+            if rest_link.is_some() {
+                super::automat_rest_link_refire();
+            }
+            if audit {
+                // `KM_HT_AUTOMAT_REST_LINK_AUDIT=1`: run the all-successors arm and
+                // count every operand it would add OUTSIDE the restricted link,
+                // i.e. what the restricted arm would leave out at this point.
+                let restricted: smallvec::SmallVec<[(EdgeId, NodeId); 4]> =
+                    self.ht_rule_target_of_link(*process_indi, rest_link, role, calc_alg_context);
+                for &(_, succ) in &role_targets {
+                    if restricted.iter().any(|&(_, node)| node == succ) {
+                        continue;
+                    }
+                    let loc = self.get_localized_individual(succ, false, calc_alg_context);
+                    let ls: LabelSetId = calc_alg_context.process_context().node(loc).use_reapply_con_label_set;
+                    for op_link in &op_concepts {
+                        let present = ls != Id::NONE
+                            && self.label_set_contains_concept_resolved(
+                                ls, op_link.target, op_link.negated ^ negated, calc_alg_context);
+                        if !present {
+                            super::automat_rest_link_audit_miss();
+                        }
+                    }
+                }
+            }
             for (link, succ_indi) in role_targets {
                 self.applied_all_rule_count += 1;
                 // W3-DEFER[macro]: STATINC(AUTOMATETRANSACTIONCOUNT, calcAlgContext)

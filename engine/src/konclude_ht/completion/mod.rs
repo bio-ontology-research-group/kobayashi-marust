@@ -97,6 +97,34 @@ macro_rules! cached_completion_flag {
 }
 
 cached_completion_flag!(bridge_progress_enabled, "KM_BRIDGE_PROGRESS");
+cached_completion_flag!(automat_rest_link_enabled, "KM_HT_AUTOMAT_REST_LINK");
+cached_completion_flag!(automat_rest_link_audit_enabled, "KM_HT_AUTOMAT_REST_LINK_AUDIT");
+
+/// One operand the all-successors arm adds outside a restricted link
+/// (`KM_HT_AUTOMAT_REST_LINK_AUDIT`). Printed at the first miss and at exit
+/// of the worker through [`automat_rest_link_audit_report`].
+pub(crate) fn automat_rest_link_audit_miss() {
+    let n = AUTOMAT_REST_LINK_AUDIT_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    if n == 1 || n.is_power_of_two() {
+        eprintln!("AUTOMAT-REST-LINK-AUDIT misses={n}");
+    }
+}
+/// One automaton re-fire restricted to a link (counted under
+/// `KM_HT_AUTOMAT_REST_LINK_AUDIT` only, printed at powers of two).
+pub(crate) fn automat_rest_link_refire() {
+    if !automat_rest_link_audit_enabled() {
+        return;
+    }
+    let n = AUTOMAT_REST_LINK_REFIRES.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    if n.is_power_of_two() {
+        eprintln!("AUTOMAT-REST-LINK-AUDIT refires={n} misses={}",
+            AUTOMAT_REST_LINK_AUDIT_MISSES.load(std::sync::atomic::Ordering::Relaxed));
+    }
+}
+pub(crate) static AUTOMAT_REST_LINK_REFIRES: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+pub(crate) static AUTOMAT_REST_LINK_AUDIT_MISSES: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
 cached_completion_flag!(bridge_phase_timing_enabled, "KM_BRIDGE_PHASE_TIMING");
 
 /// Cap on the drive iterations of one completion run (`u02.rs`), looked up

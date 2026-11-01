@@ -5313,6 +5313,16 @@ fn has_any_nominal_input(tin: &TInput) -> bool {
 /// definition-containment shortcut).
 const CONDITIONAL_FULL_INDIVIDUAL_LIMIT: usize = 10_000;
 
+/// `KM_HT_CONDITIONAL_FULL_LIMIT=<n>` (diagnostic): the individual bound of
+/// the conditional-full schedule. Both schedules are complete-or-defer; the
+/// bound selects one of them and changes no rule.
+fn conditional_full_individual_limit() -> usize {
+    std::env::var("KM_HT_CONDITIONAL_FULL_LIMIT")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(CONDITIONAL_FULL_INDIVIDUAL_LIMIT)
+}
+
 fn native_cardinality_abox_profile(tin: &TInput, native_nominals: bool) -> bool {
     native_conditional_full_abox_profile(
         tin,
@@ -5331,7 +5341,7 @@ fn native_conditional_full_abox_profile(
 ) -> bool {
     native_nominals
         && (tin.number || allow_non_number || carries_data_values(tin))
-        && tin.nominal_abox.individuals.len() < CONDITIONAL_FULL_INDIVIDUAL_LIMIT
+        && tin.nominal_abox.individuals.len() < conditional_full_individual_limit()
 }
 
 /// Whether the input has a literal value marker `__dt__val__v`. Until the
@@ -10186,10 +10196,36 @@ fn native_exact_nominal_process_node(
 /// does not yet populate Konclude's phase-6 survivor merging hash. Therefore
 /// the current nominal vector is also scanned and the exact merge-chain
 /// equivalence class is unioned with any live hash values.
+/// Nodes to the nominal tags whose exact process node resolves to them
+/// under `native_completion_merge_target(.., deterministic_only)`, in
+/// individual-arena order: the scan that `native_completion_same_individuals`
+/// made once per association, made once per writer call. `None` when the scan
+/// fails for any individual (a negative tag or an unresolvable merge chain),
+/// where every call of the per-association scan failed as well.
+fn native_completion_same_individual_index(
+    ctx: &CalculationAlgorithmContextBase,
+    deterministic_only: bool,
+) -> Option<HashMap<NodeId, Vec<Cint64>>> {
+    let mut index: HashMap<NodeId, Vec<Cint64>> = HashMap::default();
+    for individual in ctx.ontology_arenas().individual_iter() {
+        let individual_tag = individual.get_individual_id();
+        if individual_tag < 0 {
+            return None;
+        }
+        let Some(original) = native_exact_nominal_process_node(ctx, individual_tag) else {
+            continue;
+        };
+        let representative = native_completion_merge_target(ctx, original, deterministic_only)?;
+        index.entry(representative).or_default().push(individual_tag);
+    }
+    Some(index)
+}
+
 fn native_completion_same_individuals(
     ctx: &CalculationAlgorithmContextBase,
     node: NodeId,
     deterministic_only: bool,
+    index: &mut Option<Option<HashMap<NodeId, Vec<Cint64>>>>,
 ) -> Option<Vec<Cint64>> {
     let own_tag = native_completion_nominal_tag(ctx, node)?;
     let merging_hash = ctx.process_context().node(node).use_individual_merging_hash;
@@ -10214,18 +10250,14 @@ fn native_completion_same_individuals(
             values.push(individual_tag);
         }
     }
-    for individual in ctx.ontology_arenas().individual_iter() {
-        let individual_tag = individual.get_individual_id();
-        if individual_tag < 0 {
-            return None;
-        }
-        let Some(original) = native_exact_nominal_process_node(ctx, individual_tag) else {
-            continue;
-        };
-        let representative = native_completion_merge_target(ctx, original, deterministic_only)?;
-        if representative == node {
-            values.push(individual_tag);
-        }
+    // The scan of every individual for those that resolve to `node`, read
+    // from an index built once (it was quadratic in the number of
+    // individuals: 128 s of ore_ont_16315's 29,495-individual writer).
+    let index = index
+        .get_or_insert_with(|| native_completion_same_individual_index(ctx, deterministic_only))
+        .as_ref()?;
+    if let Some(members) = index.get(&node) {
+        values.extend(members.iter().copied());
     }
     values.sort_unstable();
     values.dedup();
@@ -10409,12 +10441,82 @@ fn native_record_completion_neighbour_role(
     }
 }
 
+/// One source role assertion with both endpoints resolved in the completion
+/// graph (`native_completion_role_metadata`).
+struct NativeCompletionAssertionEdge {
+    role: RoleId,
+    source_tag: Cint64,
+    target_tag: Cint64,
+    source_final: NodeId,
+    target_final: NodeId,
+    source_merge_deterministic: bool,
+    target_merge_deterministic: bool,
+}
+
+/// The assertion journal of every seed, resolved once: `edges` in seed and
+/// assertion order, `by_node` the ascending indices of the edges with an
+/// endpoint at a node.
+struct NativeCompletionAssertionJournal {
+    edges: Vec<NativeCompletionAssertionEdge>,
+    by_node: HashMap<NodeId, Vec<usize>>,
+}
+
+fn native_completion_assertion_journal(
+    ctx: &CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+) -> Option<NativeCompletionAssertionJournal> {
+    let mut edges = Vec::new();
+    let mut by_node: HashMap<NodeId, Vec<usize>> = HashMap::default();
+    for source_seed in &bridged.nominal_seeds {
+        let Some(source_original) =
+            native_exact_nominal_process_node(ctx, source_seed.individual_tag)
+        else {
+            // Sparse representative jobs materialize only their selected
+            // roots and on-demand neighbours. An absent source cannot have
+            // contributed a link to this task graph.
+            continue;
+        };
+        let source_final = native_completion_merge_target(ctx, source_original, false)?;
+        let source_merge_deterministic =
+            native_completion_merge_chain_is_deterministic(ctx, source_original, source_final)?;
+        for &(role, target_tag) in &source_seed.role_assertions {
+            let Some(target_original) = native_exact_nominal_process_node(ctx, target_tag) else {
+                // A successful backend-neighbour expansion deliberately keeps
+                // uninfluenced neighbours unmaterialized. Their canonical
+                // neighbour-role label was copied from the consumed
+                // association, exactly as Konclude's writer reuses previous
+                // label items when all links were not collected.
+                continue;
+            };
+            let target_final = native_completion_merge_target(ctx, target_original, false)?;
+            let target_merge_deterministic =
+                native_completion_merge_chain_is_deterministic(ctx, target_original, target_final)?;
+            let index = edges.len();
+            edges.push(NativeCompletionAssertionEdge {
+                role,
+                source_tag: source_seed.individual_tag,
+                target_tag,
+                source_final,
+                target_final,
+                source_merge_deterministic,
+                target_merge_deterministic,
+            });
+            by_node.entry(source_final).or_default().push(index);
+            if target_final != source_final {
+                by_node.entry(target_final).or_default().push(index);
+            }
+        }
+    }
+    Some(NativeCompletionAssertionJournal { edges, by_node })
+}
+
 fn native_completion_role_metadata(
     ctx: &CalculationAlgorithmContextBase,
     node: NodeId,
     concept_values: &[NativeAboxConceptValue],
     bridged: &Bridged,
     seed: &NominalSeed,
+    journal: &mut Option<Option<NativeCompletionAssertionJournal>>,
 ) -> Option<NativeCompletionRoleMetadata> {
     use super::model::op::{
         CCALL, CCAQALL, CCAQSOME, CCATLEAST, CCATMOST, CCSELF, CCSOME, CCVALUE,
@@ -10616,30 +10718,22 @@ fn native_completion_role_metadata(
     // each endpoint, the final representative and every alias in its merging
     // hash are retained; a nondeterministic endpoint merge makes only that
     // moved link contribution nondeterministic.
-    for source_seed in &bridged.nominal_seeds {
-        let Some(source_original) =
-            native_exact_nominal_process_node(ctx, source_seed.individual_tag)
-        else {
-            // Sparse representative jobs materialize only their selected
-            // roots and on-demand neighbours. An absent source cannot have
-            // contributed a link to this task graph.
-            continue;
-        };
-        let source_final = native_completion_merge_target(ctx, source_original, false)?;
-        let source_merge_deterministic =
-            native_completion_merge_chain_is_deterministic(ctx, source_original, source_final)?;
-        for &(role, target_tag) in &source_seed.role_assertions {
-            let Some(target_original) = native_exact_nominal_process_node(ctx, target_tag) else {
-                // A successful backend-neighbour expansion deliberately keeps
-                // uninfluenced neighbours unmaterialized. Their canonical
-                // neighbour-role label was copied from the consumed
-                // association above, exactly as Konclude's writer reuses
-                // previous label items when all links were not collected.
-                continue;
-            };
-            let target_final = native_completion_merge_target(ctx, target_original, false)?;
-            let target_merge_deterministic =
-                native_completion_merge_chain_is_deterministic(ctx, target_original, target_final)?;
+    // The journal scan below was a loop over every seed's assertions for
+    // every association (quadratic in the ABox: about 150 s of the writer on
+    // ore_ont_16315). The resolved endpoints do not depend on `node`, so they
+    // are computed once per writer call; the per-node pass visits, in the
+    // original seed and assertion order, only the assertions with an endpoint
+    // at `node`. A failed resolution fails every call, as the scan did.
+    let journal = journal
+        .get_or_insert_with(|| native_completion_assertion_journal(ctx, bridged))
+        .as_ref()?;
+    for &index in journal.by_node.get(&node).map(Vec::as_slice).unwrap_or(&[]) {
+        let edge = &journal.edges[index];
+        let (role, target_tag) = (edge.role, edge.target_tag);
+        let (source_final, target_final) = (edge.source_final, edge.target_final);
+        let source_merge_deterministic = edge.source_merge_deterministic;
+        let target_merge_deterministic = edge.target_merge_deterministic;
+        {
             let edge_deterministic = source_merge_deterministic && target_merge_deterministic;
             if source_final == node {
                 let mut aliases = native_completion_connection_aliases(ctx, target_final)?;
@@ -10661,7 +10755,7 @@ fn native_completion_role_metadata(
             if target_final == node {
                 let mut aliases = native_completion_connection_aliases(ctx, source_final)?;
                 aliases
-                    .entry(source_seed.individual_tag)
+                    .entry(edge.source_tag)
                     .and_modify(|current| *current |= source_merge_deterministic)
                     .or_insert(source_merge_deterministic);
                 native_record_completion_neighbour_role(
@@ -10858,6 +10952,9 @@ fn write_completed_native_representative_associations(
     }
     let consumed_updates = completed_task.used_association_update_ids;
     let mut prepared = Vec::new();
+    let mut deterministic_same_index = None;
+    let mut nondeterministic_same_index = None;
+    let mut assertion_journal = None;
     for seed in &bridged.nominal_seeds {
         let Some(original) = native_exact_nominal_process_node(ctx, seed.individual_tag) else {
             if selected_individuals.contains(&seed.individual_tag) {
@@ -10884,7 +10981,14 @@ fn write_completed_native_representative_associations(
             .map(|value| (value.concept, value.negated))
             .collect();
         let role_metadata =
-            native_completion_role_metadata(ctx, extraction_node, &concept_values, bridged, seed)?;
+            native_completion_role_metadata(
+                ctx,
+                extraction_node,
+                &concept_values,
+                bridged,
+                seed,
+                &mut assertion_journal,
+            )?;
         let deterministic_different_individuals = native_completion_different_individuals(
             ctx,
             deterministic_node,
@@ -10897,10 +11001,18 @@ fn write_completed_native_representative_associations(
             false,
             extraction_representative_tag,
         )?;
-        let deterministic_same_individuals =
-            native_completion_same_individuals(ctx, deterministic_node, true)?;
-        let nondeterministic_same_individuals =
-            native_completion_same_individuals(ctx, extraction_node, false)?;
+        let deterministic_same_individuals = native_completion_same_individuals(
+            ctx,
+            deterministic_node,
+            true,
+            &mut deterministic_same_index,
+        )?;
+        let nondeterministic_same_individuals = native_completion_same_individuals(
+            ctx,
+            extraction_node,
+            false,
+            &mut nondeterministic_same_index,
+        )?;
         let deterministic_same_label_identity =
             native_individual_label_identity(&deterministic_same_individuals);
         // The immutable replay journal is the task's
@@ -22805,7 +22917,7 @@ mod tests {
             native_completion_label_values(&ctx, extraction_node, deterministic_node)
                 .expect("completion label");
         let metadata =
-            native_completion_role_metadata(&ctx, extraction_node, &concept_values, &bridged, seed)
+            native_completion_role_metadata(&ctx, extraction_node, &concept_values, &bridged, seed, &mut None)
                 .expect("live-successor role metadata");
         assert!(
             metadata

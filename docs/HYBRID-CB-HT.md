@@ -1163,3 +1163,102 @@ Test: `engine/tests/worker_only_environment.rs` classifies an ALC input
 with the entailed `B ⊑ D` on `--route ht_general` and the automatic route,
 once plain and once with each `WORKER_ONLY_KEYS` variable set to `1`; the
 published lines must be equal and stderr must name the variable.
+
+## 13. `SameIndividual` by pre-merge in the native ABox conversion (2026-11-01, `fix/v155-sameindividual-bridge`)
+
+Before. The generic native ABox conversion
+(`orchestrate/cb_to_ht.rs`, `install_nominal_abox_with_same` with
+`allow_same = false`) declined every input with a `SameIndividual`
+assertion ("SameIndividual requires equality merging not implemented by the
+native HT bridge"), so the automatic route had no HT racer and the nominal CB
+stack had to answer alone. Since 24067ca3 (2026-07-31) only the certified
+nominal-NI specialist, the forced `ht_bridge` route and the ground-rule data
+source admitted equality. On those routes the bridge read the untouched
+typed ABox (`TInput::nominal_abox`) and encoded `SameIndividual(a, b)` as
+the nominal assertion `{b}(a)` (`bridge.rs`, native-nominals phase), so
+the completion merged `a` into `b` at run time, one merge per equality,
+through `merge_individual_node_into` (section 10).
+
+Change. With equality admitted, the conversion now installs the quotient of
+the ABox by its equalities (`quotient_same_individuals`) and renames the
+source TBox to match (`KM_NO_SAME_PREMERGE=1` restores the run-time
+encoding). The routes that admitted equality before (forced `ht_bridge`,
+the ground-rule data source, the certified specialists) now take the
+quotient. The generic automatic HT racer still declines `SameIndividual`
+by default (`KM_HT_ADMIT_SAME=1` admits it): on the inputs that motivated
+the change the bridge does not finish (below), and with one thread its
+attempt runs before the CB stack, so admitting it would only move CB time
+into a failing bridge attempt.
+
+Construction. Let `I` be the named individuals of the typed ABox and `~`
+the least equivalence relation on `I` that contains every pair of a
+`SameIndividual` assertion (union-find over `NominalAboxMeta::same`). Each
+class `[a]` gets one representative `ρ(a)`, its first member in entry
+order, and `σ` replaces every individual name `a` by `ρ(a)`. The installed
+ABox is `σ(A)`:
+
+- one entry per class, named `ρ(a)`, whose proxy concepts are the union of
+  the members' proxies (`{a}`, `{b}`, ... all name the one root) and whose
+  class assertions are the union of the members' assertions with `σ`
+  applied inside each expression (`ObjectOneOf`, `ObjectHasValue` and
+  other nested nominals), paired with their unchanged markers;
+- `same` empty;
+- `σ` on both ends of every `DifferentIndividuals` pair, every object
+  property assertion and every negative object property assertion
+  (data property assertions are class assertions `∃p.{v}` of their
+  subject and are covered by the first item);
+- assertions that `σ` makes equal kept once;
+- `σ` on every `Concept::Nominal` of the source TBox
+  (`TInput::source_axioms`), which the bridge encodes from the source
+  expressions; the clause view keeps the members' proxy names, and those
+  now denote the representative's singleton.
+
+Exactness. Write `O = T ∪ A ∪ E` with `E` the equality assertions, and
+`O' = σ(T) ∪ σ(A)`. Taxonomy and consistency are unchanged:
+
+1. Every model `I` of `O` is a model of `O'`. In `I` all members of a class
+   denote one element (`E` holds and `~` is the closure of `E`), so
+   `a^I = ρ(a)^I` for every `a`. Then the extension of every concept and
+   the truth of every axiom are the same before and after `σ`: `σ` only
+   replaces a name by a name of the same element.
+2. Every model `J` of `O'` extends to a model of `O` with the same domain
+   and the same concept and role extensions: set `a^J := ρ(a)^J` for every
+   individual. Then `E` holds, and every axiom `α` of `T ∪ A` holds because
+   it has the truth value of `σ(α)` under `J`, as in 1.
+3. Both directions keep the interpretation of every class and property name.
+   So `O` is consistent iff `O'` is, a class name is unsatisfiable in `O`
+   iff it is in `O'`, and `O ⊨ C ⊑ D` iff `O' ⊨ C ⊑ D` for class names `C`,
+   `D`: a counter-model of one is a counter-model of the other. The
+   classification output names no individual, so the renaming is not
+   visible in it.
+
+Two consequences the argument covers and the code reads directly:
+
+- `DifferentIndividuals(a, b)` with `a ~ b` becomes `(ρ(a), ρ(a))`. In `O`
+  it says `a ≠ b` while `E` forces `a = b`, so `O` is inconsistent, and
+  `σ` of the axiom (`ρ(a) ≠ ρ(a)`) is unsatisfiable. The native
+  conversion keeps the pair as a self pair, `native_abox.different` holds
+  `(i, i)`, and `native_nominal_consistency` returns inconsistent before
+  any completion for any self pair (it already did; the pre-merge only
+  makes the pair visible without a run-time merge).
+- A nominal `{b}` of a merged-away `b` in the TBox: in the source axioms
+  it becomes `{ρ(b)}`; in the clauses the proxy `{b}` stays and is one of
+  the representative's proxies, so the bridge's nominal concept of `{b}`
+  points to the representative's individual. Both are `σ`.
+
+Equalities that the TBox forces (functional or inverse-functional roles,
+at-most restrictions, nominal subsumptions such as `{a, b} ⊑ {a}`) are not
+part of `E` and stay run-time merges of the completion, as before. They are
+consequences of `O'` exactly when they are consequences of `O`, by 1 and 2.
+
+Fail closed. The quotient is built only when `allow_same` holds, the input
+has equalities and no rule-source ABox (`TInput::rule_source_abox`, which
+names individuals in a second structure the renaming does not touch). An
+equality that names an individual without an entry gives no quotient and
+the conversion declines as before. If any later check of the conversion
+fails, the conversion restores the source ABox and adds no renamed state.
+
+Lean obligation: none discharged. The statement is propositional (a
+renaming of constants along an equivalence that the theory entails) and
+does not touch the CB calculus; the bridge has no Lean model
+(`docs/CHECKERS-ON.md` §1.1). Cross-checked differentially below.
