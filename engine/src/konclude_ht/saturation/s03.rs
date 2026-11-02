@@ -1140,6 +1140,18 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                     calc_alg_context,
                 );
             }
+            // KONCLUDE-PORT-NOTE[exactness]: the counterpart of the guard in
+            // `apply_atmost_rule` for an at-most restriction that is already
+            // in the label: the self edge fills one `super_role`-neighbour
+            // slot that no cardinality check counts.
+            if Self::sat_node_label_has_atmost_on_role(*process_indi, super_role, calc_alg_context) {
+                self.update_direct_adding_individual_status_flags(
+                    *process_indi,
+                    IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                    calc_alg_context,
+                );
+                self.set_insufficient_node_occured(calc_alg_context);
+            }
         }
     }
 
