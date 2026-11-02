@@ -100,6 +100,8 @@ cached_completion_flag!(bridge_progress_enabled, "KM_BRIDGE_PROGRESS");
 cached_completion_flag!(automat_rest_link_enabled, "KM_HT_AUTOMAT_REST_LINK");
 cached_completion_flag!(stop_trace_enabled, "KM_HT_STOP_TRACE");
 cached_completion_flag!(automat_rest_link_audit_enabled, "KM_HT_AUTOMAT_REST_LINK_AUDIT");
+cached_completion_flag!(automat_closure_audit_enabled, "KM_HT_AUTOMAT_CLOSURE_AUDIT");
+cached_completion_flag!(automat_rest_link_audit_detail, "KM_HT_AUTOMAT_REST_LINK_AUDIT_DETAIL");
 
 /// One operand the all-successors arm adds outside a restricted link
 /// (`KM_HT_AUTOMAT_REST_LINK_AUDIT`). Printed at the first miss and at exit

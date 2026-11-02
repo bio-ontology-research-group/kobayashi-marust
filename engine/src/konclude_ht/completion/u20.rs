@@ -733,10 +733,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                 calc_alg_context,
                             )
                         {
+                            // `getReapplyConceptLabelSet(false)` is a read. Through
+                            // `node_mut` it journaled a copy of every scanned node
+                            // under the probe's branch epoch (and the epoch pop
+                            // restored each one): the per-probe cost on large
+                            // retained graphs. A shared borrow returns the same id.
                             let label_set: LabelSetId = calc_alg_context
-                                .process_context_mut()
-                                .node_mut(indi)
-                                .get_reapply_concept_label_set(false);
+                                .process_context()
+                                .node(indi)
+                                .use_reapply_con_label_set;
                             if label_set.is_some()
                                 && calc_alg_context
                                     .process_context()

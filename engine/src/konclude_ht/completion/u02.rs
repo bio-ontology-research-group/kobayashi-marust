@@ -227,6 +227,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         statistics.satisfiable += 1;
                     }
                 }
+                if super::automat_closure_audit_enabled() {
+                    self.ht_automat_closure_audit(calc_alg_context);
+                }
                 return true;
             }
             match calc_alg_context.pending_signal() {

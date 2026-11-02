@@ -438,7 +438,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 // i.e. what the restricted arm would leave out at this point.
                 let restricted: smallvec::SmallVec<[(EdgeId, NodeId); 4]> =
                     self.ht_rule_target_of_link(*process_indi, rest_link, role, calc_alg_context);
-                for &(_, succ) in &role_targets {
+                for &(tlink, succ) in &role_targets {
                     if restricted.iter().any(|&(_, node)| node == succ) {
                         continue;
                     }
@@ -450,6 +450,27 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                 ls, op_link.target, op_link.negated ^ negated, calc_alg_context);
                         if !present {
                             super::automat_rest_link_audit_miss();
+                            if super::automat_rest_link_audit_detail() {
+                                let pc = calc_alg_context.process_context();
+                                let on = calc_alg_context.ontology_arenas();
+                                let fmt_edge = |e: EdgeId| -> String {
+                                    let ed = pc.edge(e);
+                                    let id = |n: NodeId| if n.is_some() { pc.node(n).individual_node_id() } else { i64::MIN };
+                                    format!("e{}[{}:{}->{} cr={} tp={}]", e.index(),
+                                        on.role(ed.get_link_role()).get_role_tag(),
+                                        id(ed.get_source_individual()), id(ed.get_destination_individual()),
+                                        id(ed.creator), ed.get_dependency_track_point().index())
+                                };
+                                let src = pc.node(*process_indi);
+                                let sn = pc.node(loc);
+                                eprintln!(
+                                    "AUTOMAT-REST-LINK-AUDIT-MISS src={} src_flags={:#x} src_nom={} succ={} succ_flags={:#x} succ_nom={} state={} role={} op={}{} target_link={} rest_link={} reapplied={}",
+                                    src.individual_node_id(), src.processing_restriction_flags, src.is_nominal_individual_node(),
+                                    sn.individual_node_id(), sn.processing_restriction_flags, sn.is_nominal_individual_node(),
+                                    on.concept(concept).get_concept_tag(), on.role(role).get_role_tag(),
+                                    if op_link.negated ^ negated { "-" } else { "" }, on.concept(op_link.target).get_concept_tag(),
+                                    fmt_edge(tlink), fmt_edge(rest_link), reapplied);
+                            }
                         }
                     }
                 }

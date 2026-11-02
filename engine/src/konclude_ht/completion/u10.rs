@@ -1779,3 +1779,141 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     // method definition on the shared impl.
     // =======================================================================
 }
+
+impl super::algorithm::CompletionTaskHandleAlgorithm {
+    /// `KM_HT_AUTOMAT_CLOSURE_AUDIT=1` (diagnostic): at a clash-free fixpoint,
+    /// check that the completion graph is closed under the all-successors
+    /// automaton rule. For every node whose own rules have run (not merged,
+    /// blocked, purged or represented by a cache), every automaton state in its
+    /// label (`CCAQAND` family, walked as `apply_automat_transactions`
+    /// recurses) and every plain `∀` / `CCAQALL` concept, each target the
+    /// all-successors arm reaches (`ht_all_rule_target_links`) must hold the
+    /// operand. A miss is a concept the full arm would still add, i.e. a
+    /// completion that stopped early. Returns the number of misses.
+    pub fn ht_automat_closure_audit(
+        &mut self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> u64 {
+        use super::super::model::op;
+        use super::super::process::node::IndividualProcessNode as N;
+        let skip_flags: Cint64 = N::PRF_DIRECTBLOCKED
+            | N::PRF_PROCESSINGBLOCKED
+            | N::PRF_INDIRECTBLOCKED
+            | N::PRF_PURGEDBLOCKED
+            | N::PRF_SATISFIABLECACHED
+            | N::PRF_ANCESTORSATISFIABLECACHED
+            | N::PRF_SIGNATUREBLOCKINGCACHED
+            | N::PRF_ANCESTORSIGNATUREBLOCKINGCACHED
+            | N::PRF_SATURATIONBLOCKINGCACHED
+            | N::PRF_ANCESTORSATURATIONBLOCKINGCACHED
+            | N::PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED
+            | N::PRF_COMPLETIONGRAPHCACHED;
+        let (lo, hi) = {
+            let v = calc_alg_context.processing_data_box().individual_process_node_vector();
+            (v.get_item_min_index(), v.get_item_max_index())
+        };
+        let mut checks: Vec<(NodeId, RoleId, ConceptId, bool, ConceptId)> = Vec::new();
+        for id in lo..=hi {
+            let node = calc_alg_context
+                .processing_data_box()
+                .individual_process_node_vector()
+                .get_data(id);
+            if node.is_none() {
+                continue;
+            }
+            let pc = calc_alg_context.process_context();
+            let n = pc.node(node);
+            if n.has_merged_into_individual_node_id()
+                || n.processing_restriction_flags & skip_flags != 0
+            {
+                continue;
+            }
+            let ls = n.use_reapply_con_label_set;
+            if ls.is_none() {
+                continue;
+            }
+            let onto = calc_alg_context.ontology_arenas();
+            let mut it = pc.label_set(ls).get_concept_label_set_iterator(true, false, false);
+            while it.has_next() {
+                let cd: ConDescId = it.next(true, pc);
+                if cd.is_none() {
+                    break;
+                }
+                let des = pc.con_desc(cd);
+                let con: ConceptId = des.get_concept();
+                let neg = des.is_negated();
+                let oc = onto.concept(con).get_operator_code();
+                let is_all = |oc: Cint64| {
+                    oc == op::CCAQALL || oc == op::CCIMPLAQALL || oc == op::CCBRANCHAQALL
+                };
+                let is_and = |oc: Cint64| {
+                    oc == op::CCAQAND || oc == op::CCIMPLAQAND || oc == op::CCBRANCHAQAND
+                };
+                if (oc == op::CCALL && !neg) || is_all(oc) {
+                    for nl in onto.concept(con).get_operand_list() {
+                        checks.push((node, onto.concept(con).get_role(), nl.target, nl.negated ^ neg, con));
+                    }
+                } else if is_and(oc) {
+                    let mut visited: crate::fxhash::FxHashSet<ConceptId> = Default::default();
+                    let mut stack: Vec<(ConceptId, bool)> = vec![(con, neg)];
+                    while let Some((state, sneg)) = stack.pop() {
+                        if !visited.insert(state) {
+                            continue;
+                        }
+                        let soc = onto.concept(state).get_operator_code();
+                        if is_all(soc) {
+                            for tl in onto.concept(state).get_operand_list() {
+                                checks.push((node, onto.concept(state).get_role(), tl.target, tl.negated ^ sneg, con));
+                            }
+                        } else if is_and(soc) {
+                            for nl in onto.concept(state).get_operand_list() {
+                                stack.push((nl.target, nl.negated));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let mut misses = 0u64;
+        let detail = super::automat_rest_link_audit_detail();
+        for (source, role, operand, operand_neg, origin) in checks {
+            let targets = self.ht_all_rule_target_links(source, role, calc_alg_context);
+            for (link, succ) in targets {
+                let loc = self.get_localized_individual(succ, false, calc_alg_context);
+                let ls = calc_alg_context.process_context().node(loc).use_reapply_con_label_set;
+                let present = ls.is_some()
+                    && self.label_set_contains_concept_resolved(ls, operand, operand_neg, calc_alg_context);
+                if present {
+                    continue;
+                }
+                misses += 1;
+                if detail && misses <= 64 {
+                    let pc = calc_alg_context.process_context();
+                    let on = calc_alg_context.ontology_arenas();
+                    let ed = pc.edge(link);
+                    let id = |n: NodeId| if n.is_some() { pc.node(n).individual_node_id() } else { i64::MIN };
+                    eprintln!(
+                        "AUTOMAT-CLOSURE-AUDIT-MISS src={} src_flags={:#x} succ={} succ_flags={:#x} origin={}:{} role={} op={}{} link=e{}[{}:{}->{} cr={}]",
+                        id(source), pc.node(source).processing_restriction_flags,
+                        id(loc), pc.node(loc).processing_restriction_flags,
+                        on.concept(origin).get_concept_tag(), on.concept(origin).get_operator_code(),
+                        on.role(role).get_role_tag(),
+                        if operand_neg { "-" } else { "" }, on.concept(operand).get_concept_tag(),
+                        link.index(), on.role(ed.get_link_role()).get_role_tag(),
+                        id(ed.get_source_individual()), id(ed.get_destination_individual()), id(ed.creator));
+                }
+            }
+        }
+        let runs = AUTOMAT_CLOSURE_AUDIT_RUNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        let total = AUTOMAT_CLOSURE_AUDIT_MISSES.fetch_add(misses, std::sync::atomic::Ordering::Relaxed) + misses;
+        if misses > 0 || runs.is_power_of_two() {
+            eprintln!("AUTOMAT-CLOSURE-AUDIT runs={runs} misses_here={misses} misses_total={total}");
+        }
+        misses
+    }
+}
+
+pub(crate) static AUTOMAT_CLOSURE_AUDIT_RUNS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+pub(crate) static AUTOMAT_CLOSURE_AUDIT_MISSES: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
