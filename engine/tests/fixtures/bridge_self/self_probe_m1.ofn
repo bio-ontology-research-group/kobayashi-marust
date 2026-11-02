@@ -1,0 +1,7 @@
+Prefix(:=<http://example.org/m#>)
+Ontology(<http://example.org/m>
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s))
+FunctionalObjectProperty(:r)
+SubClassOf(:A ObjectHasSelf(:r))
+SubClassOf(:A ObjectSomeValuesFrom(:r :B))
+)

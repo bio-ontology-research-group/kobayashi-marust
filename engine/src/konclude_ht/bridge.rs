@@ -14595,51 +14595,21 @@ fn saturation_refuses_self_terminology(
         || std::env::var_os("KM_BRIDGE_SAT_REFUSE_SELF").is_some()
 }
 
-/// Whether an at-most restriction of the terminology (`CCATMOST`, which also
-/// carries functional and inverse-functional roles, or a `CCATLEAST` that
-/// may occur negated) is on a role that the role of a SELF concept other
-/// than an irreflexivity concept reaches: a
-/// self edge on `R` is an edge of every entry `(S, ±)` of `R`'s indirect
-/// super-role list, so an at-most on such an `S` counts it.
-/// `KM-SOUNDNESS-GATE[self-cardinality-satexp]`, docs/HYBRID-CB-HT.md
-/// section 20. `KM_BRIDGE_SAT_REFUSE_SELF=1` (the pre-section-20
-/// behaviour) disables the gate together with the saturation SELF rule.
-fn self_edge_cardinality_terminology(ctx: &CalculationAlgorithmContextBase, bridged: &Bridged) -> bool {
+/// Whether the terminology has a SELF concept that can create a self edge,
+/// i.e. one that is not an irreflexivity concept (those occur only negated).
+/// `KM-SOUNDNESS-GATE[self-satexp]`, docs/HYBRID-CB-HT.md section 20.
+/// `KM_BRIDGE_SAT_REFUSE_SELF=1` (the pre-section-20 behaviour, which
+/// reproduces the incomplete ore_ont_12128 answer) disables the gate together
+/// with the saturation SELF rule.
+fn positive_self_terminology(ctx: &CalculationAlgorithmContextBase, bridged: &Bridged) -> bool {
     if std::env::var_os("KM_BRIDGE_SAT_REFUSE_SELF").is_some() {
         return false;
     }
     let arenas = ctx.ontology_arenas();
-    let mut self_roles: crate::fxhash::FxHashSet<RoleId> = crate::fxhash::FxHashSet::default();
-    let mut at_most_roles: crate::fxhash::FxHashSet<RoleId> = crate::fxhash::FxHashSet::default();
-    for index in 0..arenas.concept_count() {
-        let concept = arenas.concept(ConceptId::new(index as Cint64));
-        let role = concept.get_role();
-        if role.is_none() {
-            continue;
-        }
-        match concept.get_operator_code() {
-            op::CCSELF => {
-                let id = ConceptId::new(index as Cint64);
-                if !bridged.irreflexive_self_concepts.contains(&id) {
-                    self_roles.insert(role);
-                }
-            }
-            op::CCATMOST | op::CCATLEAST => {
-                at_most_roles.insert(role);
-            }
-            _ => {}
-        }
-    }
-    if self_roles.is_empty() || at_most_roles.is_empty() {
-        return false;
-    }
-    self_roles.iter().any(|&role| {
-        at_most_roles.contains(&role)
-            || arenas
-                .role(role)
-                .get_indirect_super_role_list()
-                .iter()
-                .any(|link| at_most_roles.contains(&link.target))
+    (0..arenas.concept_count()).any(|index| {
+        let id = ConceptId::new(index as Cint64);
+        arenas.concept(id).get_operator_code() == op::CCSELF
+            && !bridged.irreflexive_self_concepts.contains(&id)
     })
 }
 
@@ -16550,8 +16520,8 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // suppress only the associated-expansion cache shared across completion
     // probes.  This distinguishes a bad raw saturation label from a bad
     // completion-cache write without disabling the whole saturation coupling.
-    // KM-SOUNDNESS-GATE[self-cardinality-satexp]: see below.
-    let self_cardinality = self_edge_cardinality_terminology(&ctx, &bridged);
+    // KM-SOUNDNESS-GATE[self-satexp]: see below.
+    let self_cardinality = positive_self_terminology(&ctx, &bridged);
     if satcache_active && std::env::var_os("KM_HT_NO_ASSOC_EXP_CACHE").is_none() && !self_cardinality {
         install_bridge_saturation_node_expansion_cache(&mut ctx);
     }
@@ -16619,14 +16589,17 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 None => false,
             }
         };
-    // KM-SOUNDNESS-GATE[self-cardinality-satexp] (docs/HYBRID-CB-HT.md
-    // section 20): both expansion caches key a node's satisfiability on its
-    // own label (and ancestors). A SELF edge breaks that locality as soon as
-    // an at-most restriction can count it: `∃r.Self ⊓ ≤1 r⁻` is satisfiable
-    // on its own, but forces a merge with any r-predecessor, so an expansion
-    // recorded for a root does not carry over to a successor (HermiT
-    // differential seeds with InverseFunctional and Self). Install neither
-    // cache when the terminology has both SELF and an at-most restriction.
+    // KM-SOUNDNESS-GATE[self-satexp] (docs/HYBRID-CB-HT.md section 20):
+    // both expansion caches key a node's satisfiability on its own label
+    // (and ancestors). With a self edge that locality fails in the port: on
+    // ore_ont_12128 the completion-only schedule published 1,567 of Konclude's
+    // 4,716 unsatisfiable classes, and a 23-axiom module of it (reflexive
+    // `part-of`, one functional role, `Continuant ⊑ ∀has-part.Continuant`)
+    // classifies `world_of_BIOMD0000000053` as satisfiable with the cache and
+    // as unsatisfiable without it, as HermiT does. `∃p.Self ⊓ ≤1 p⁻` is the
+    // simplest instance: satisfiable on its own, but it merges with every
+    // p-predecessor. Install neither cache when a SELF concept can create a
+    // self edge; the completion then expands every node itself.
     if std::env::var_os("KM_HT_NO_SAT_EXP_CACHE").is_none()
         && (bridged.singleton_concepts.is_empty() || singletons_inert)
         && !self_cardinality

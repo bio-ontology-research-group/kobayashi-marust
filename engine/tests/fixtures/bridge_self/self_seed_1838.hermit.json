@@ -1,0 +1,10 @@
+{
+  "ontology": "v1s1838.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["B", "A"],
+    ["Q1", "D"],
+    ["Q3", "Q4"]
+  ],
+  "unsatisfiable": []
+}

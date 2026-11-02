@@ -1788,3 +1788,185 @@ unchanged against the base. One pre-existing incompleteness of the reuse
 of the consistency model, found by the new merge families and present on
 the base, is recorded with its minimized seed in the results README; it is
 not part of this change.
+
+## 20. The saturation SELF rule (2026-11-02, `fix/v155-bridge-self`)
+
+**Defect.** The bridge's approximation saturation refused every terminology
+with a `CCSELF` concept (`saturation_refuses_terminology`): its
+`applySELFRule` was a `todo!`. A SELF concept arises from `ObjectHasSelf`,
+from `ReflexiveObjectProperty` (Konclude and the bridge both encode it as the
+GCI `⊤ ⊑ ∃R.Self`, `CConcreteOntologyUpdateBuilder.cpp` 1751–1755) and from
+`IrreflexiveObjectProperty` (`⊤ ⊑ ¬∃R.Self`). On ore_ont_12128 (two
+reflexive roles, `has-part` and `part-of`) the refusal left the bridge
+without a saturated base, so each of its 187,518 classes needed its own
+completion job (about 1.6 ms each) and the input timed out at 240 s.
+Konclude decides most of these classes in its saturation.
+
+**Konclude's mechanism.** `CCalculationTableauApproximationSaturationTaskHandleAlgorithm`
+maps `CCSELF` (positive) to `applySELFRule` (cpp 77, 6843–6890); a negated
+SELF has no jump entry and falls to `applyELSERule`, which flags the node
+INSUFFICIENT. `applySELFRule` walks `role->getIndirectSuperRoleList()`
+(which starts with the role itself and carries every super role in both
+polarities) and, for each entry `(S, neg)`:
+
+1. adds `S`'s domain concepts (`getDomainRangeConceptList(neg)`) and range
+   concepts (`getDomainRangeConceptList(!neg)`) to the node, with the
+   label-set overload and `updateCopyDependedIndividual = false`;
+2. allocates a `CBackwardSaturationPropagationLink(processIndi, S)` and adds
+   it with `CRoleBackwardSaturationPropagationHash::addSelfConnectedBackwardPropagationLink`
+   (`CRoleBackwardSaturationPropagationHash.cpp` 82–93): set the hash's
+   `mSelfConnected`; if the role's head link already has this source,
+   return null; else prepend the link, set the role's `mSelfConnected` and
+   return the role's reapply descriptors;
+3. replays the returned descriptors with `applyBackwardPropagationConcepts`
+   on the node itself.
+
+A backward link `(S, source P)` on a node `Y` means that `P` is an
+`S`-neighbour of `Y` in the sense that `∀S.C ∈ L(Y)` must put `C` into
+`L(P)`: `applyALLRule` (cpp 6143–6175) registers its descriptor under its
+role and walks the role's links. Successor creation installs such links
+for the negated super-role entries (cpp 7040–7050). For a self edge
+`R(x,x)` every super role `S` of `R` and every inverse `S⁻` holds on
+`(x,x)`, so the link `(S, x)` on `x` is correct for both polarities; this
+is why the rule does not test `neg` before installing it. `∀S.C` added
+later finds the link through `applyALLRule`; `∀S.C` already present is
+replayed in step 3. Node copies keep the self edges:
+`copyRoleBackwardSaturationPropagationHash` re-creates a self link to the
+new node for every role whose `mSelfConnected` is set (ported in
+`ProcessContext::copy_role_backward_saturation_propagation_hash`).
+
+No other part of Konclude's concept saturation treats SELF specially:
+`CExtractPropagationIntoCreationDirectionPreProcess` does not count SELF as
+a creating operator (`CCFS_POSSIBLE_ROLE_CREATION_TYPE`), and the
+satisfiable-cache test (cpp 4773) already lists `CCF_SELF` (ported in
+`s08.rs`). The individual saturation's representative-cache writer
+additionally collects self-restriction roles
+(`CSaturationNodeBackendAssociationCacheHandler::collectSelfRestrictionRoles`,
+cpp 225–250); the port's writer (`write_native_abox_representative_cache`)
+has no counterpart.
+
+**Change.**
+
+1. `saturation/s03.rs` `apply_self_rule`: the transcription of cpp
+   6843–6890 above, over `saturation_indirect_super_roles` (the
+   reflexive-entry view that every other saturation super-role walk uses).
+2. `process/context.rs`
+   `sat_node_add_self_connected_backward_propagation_link`: the per-role
+   `self_connected` flag is now set only when the link is appended, as in
+   cpp 82–93 (it was set also on the duplicate-head early return). The
+   helper had no production caller before this change.
+3. `bridge.rs` `saturation_refuses_self_terminology`: the concept
+   saturation no longer refuses SELF. The native-nominal individual
+   saturation (`bridged.has_native_nominals()`, or a native consistency
+   prefix) keeps the refusal, because its representative-cache writer lacks
+   `collectSelfRestrictionRoles`; the conditional-full nominal schedule
+   (`card_nominal_profile`) keeps its completion-only branch for the same
+   reason. `KM_BRIDGE_SAT_REFUSE_SELF=1` restores the old behaviour
+   everywhere, including point 6 (used for the before columns below).
+
+Three guards are not in Konclude. Each one only defers work to the exact
+completion (an INSUFFICIENT node is never a saturation verdict and never a
+caching target; a missing expansion cache only means the completion expands
+every node itself), so none of them can change an answer. Guards 5 and 6
+are backed by HermiT disagreements of the unguarded port; guard 4 follows
+`createSuccessorForConcept`.
+
+4. *Disjoint roles* (`apply_self_rule`): if a super role has disjoint roles,
+   the node is flagged INSUFFICIENT and `setInsufficientNodeOccured` is
+   called, as `createSuccessorForConcept` does for such roles (cpp
+   7026–7029). A self edge on such a role can clash (two disjoint roles
+   self-related on one node; an asymmetric role, which the bridge encodes
+   as disjoint from its inverse), and no saturation rule inspects self
+   edges for role disjointness.
+5. *At-most on a self-edge role* (`apply_self_rule` for an at-most already
+   in the label, `apply_atmost_rule` for one that arrives later, with the
+   helpers `sat_node_has_self_edge_for_role` and
+   `sat_node_label_has_atmost_on_role` in `saturation/s04.rs`): a node whose
+   SELF edge lies on a role that one of its at-most restrictions
+   constrains is flagged INSUFFICIENT. The self edge fills one neighbour
+   slot of that role, and neither the critical at-most check (it counts
+   linked successors) nor the completion's saturation caching counts it:
+   with `InverseFunctional(s)` and `B ⊑ ∃s.(F ⊓ ∃s.Self)`, the
+   `s`-successor of a `B` node equals that node, so `B ⊑ F`; the unguarded
+   port cached the successor against its saturated node and missed the
+   merge (seed `v1s102`, `v1s1838`). The hash-level `self_connected` flag
+   is set only by the SELF rule (and copied with a node), so the guard is
+   inert on SELF-free terminologies.
+6. *Expansion caches* (`bridge.rs` `positive_self_terminology`,
+   `KM-SOUNDNESS-GATE[self-satexp]`): when the terminology has a SELF
+   concept that can create a self edge (every SELF concept except the
+   negated ones built for irreflexivity), the bridge installs neither the
+   satisfiable expander cache nor the saturation-node associated-expansion
+   cache. Both key a node's satisfiability on its own label (and
+   ancestors), and with self edges that locality fails in the port. Two
+   witnesses:
+   - the base's published answer on ore_ont_12128 (below): 1,567 of
+     Konclude's 4,716 unsatisfiable classes;
+   - `∃p.Self ⊓ ≤1 p⁻` is satisfiable on its own but merges with every
+     `p`-predecessor, so an expansion recorded for a root does not carry
+     over to a successor (seeds `v1s160`, `v1s1420`, `v1s1543`:
+     `Q1 ⊑ ≥1 p.(∃p.Self)` with `InverseFunctional(p)` and `Range(p, F)`
+     entails `Q1 ⊑ F`).
+   Without either cache the completion expands every node itself, which is
+   Konclude's algorithm with the two caches configured off, so the gate can
+   only cost time. Irreflexivity concepts are excluded because they never
+   create a self edge; with them included ore_ont_9899 (five irreflexive
+   roles) lost both caches and went from 11.5 s to a timeout.
+
+**The incomplete base answer on ore_ont_12128.** With a 400 s cap the base
+(68ad4132, and this branch with `KM_BRIDGE_SAT_REFUSE_SELF=1`) publishes the
+`production_all` race's bridge answer after about 230 s with 1,567
+unsatisfiable classes; Konclude and this branch report 4,716
+(`compare_ref.py`: `konclude=taxonomy_disagreement` before, `agreement`
+after). The 3,149 missed classes are all reported satisfiable; none is
+reported unsatisfiable wrongly. Cause: on the base the saturation refuses
+SELF, so every class is decided by a completion job, and those jobs install
+the satisfiable expander cache. A syntactic-reachability module of one
+missed class (1,165 axioms, `data/12128-incomplete/m53.ofn`) shows the same
+defect (28 of HermiT's 40 unsatisfiable classes on the base; 40 with
+`KM_HT_NO_SAT_EXP_CACHE=1`; 40 on this branch), and delta debugging reduces
+it to 23 axioms (`m53tiny.ofn`): `world_of_Model53 ⊑ Continuant ⊓
+∃has_part.∃has_part.GO_0005518` with `GO_0005518 ⊑ Function`,
+`Disjoint(Continuant, Function)` and `Continuant ⊑ ∀has_part.Continuant`
+is unsatisfiable without any self edge, but the base reports it
+satisfiable as soon as `ReflexiveObjectProperty(part_of)` and an unrelated
+`FunctionalObjectProperty(quality_of)` are present, and only with the
+expander cache. Removing either axiom, or the cache, restores HermiT's
+answer. I did not isolate the exact cache entry that goes wrong; the gate
+in point 6 removes the cache wherever a self edge can exist, which covers
+this case and every other one of its kind. The integration target
+`engine/tests/bridge_self.rs` pins the reduction and the SELF seeds for the
+automatic route and for `ht_bridge` with and without the saturation; with
+`KM_BRIDGE_SAT_REFUSE_SELF=1` the reduction fails on both routes. (The
+library entry `bridged_classify_opts` does not reproduce it; only the
+orchestrated route does.)
+On this branch the saturation decides 187,377 of the 187,518 classes of
+ore_ont_12128, but the residue, the pair probes and the batch refutations
+are completion jobs, so the gate is needed there too.
+
+Konclude 0.7.0 does not terminate within 60 s on the four smallest of these
+seeds (it stays in "Precomputing ontology"), so it gives no reference for
+them; HermiT does.
+
+**Why the verdicts stay exact.** The saturation's verdict contract is
+unchanged: a clashed node certifies unsatisfiability, an unflagged node
+certifies satisfiability with its positive named labels as the complete
+subsumer set, and an INSUFFICIENT, UNPROCESSED or problematic EQ-candidate
+node defers to completion (`extract_saturation_outcome`). The SELF rule
+adds only consequences that hold in every model of a node with a self edge
+(the domain and range of every super role, universal restrictions along the
+edge in both directions), so it never turns a satisfiable concept into a
+clashed node. Conversely, an unflagged node with a self edge is a model
+witness for that edge: every `∀S.C` on the node reaches the node itself
+(step 3 for restrictions already present, `applyALLRule` for later ones),
+its domain and range concepts are in the label (step 1), negated SELF
+(irreflexivity) flags the node INSUFFICIENT through `applyELSERule` as in
+Konclude, and the two interactions that no saturation rule sees, role
+disjointness and at-most counting, are deferred by guards 4 and 5. Guard 6
+removes the one completion-side reuse that fails with self edges.
+
+Probes (`results/agents/2026-11-02/bridge-self/data/micro/`): a self edge
+with a functional role, an unqualified and a qualified at-most, an
+inverse-functional role and an existential successor, an asymmetric role,
+`∀r⁻` and a transitive super role. In each the final answer equals
+HermiT's.
