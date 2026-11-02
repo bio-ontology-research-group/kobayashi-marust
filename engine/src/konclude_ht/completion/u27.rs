@@ -743,7 +743,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 return true;
             }
             // Konclude's expandIndividualNeighbourNodeFromBackendCache (cpp
-            // 23894-23940) installs EVERY cached value between the node and
+            // 23996-24040) installs EVERY cached value between the node and
             // this neighbour, both orientations, before the neighbour counts
             // as possibly influenced. The neighbour was marked above, so a
             // later concept of this node that reaches the same neighbour over
@@ -764,7 +764,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     }
 
     /// The link loop of `expandIndividualNeighbourNodeFromBackendCache` (cpp
-    /// 23894-23940) over the typed association `assoc_tag` of `indi_node`:
+    /// 23996-24040) over the typed association `assoc_tag` of `indi_node`:
     /// every cached role value toward `neighbour_tag` is installed, a
     /// non-inversed value as `indi_node -role-> neighbour`, an inversed one as
     /// `neighbour -role-> indi_node`. Konclude installs only deterministic

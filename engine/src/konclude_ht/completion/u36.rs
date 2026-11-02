@@ -984,14 +984,6 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if source.is_none() || role.is_none() || target_tag < 0 {
             return false;
         }
-        if super::graph_dump_enabled() {
-            eprintln!(
-                "INSTALL-EDGE source={} role={} target_tag={}",
-                calc_alg_context.process_context().node(source).individual_node_id(),
-                role.raw,
-                target_tag
-            );
-        }
         let original_target = self.get_up_to_date_individual_by_id(-target_tag, calc_alg_context);
         if original_target.is_none() {
             return false;

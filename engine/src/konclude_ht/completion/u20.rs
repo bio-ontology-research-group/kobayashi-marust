@@ -1853,7 +1853,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             {
                 expansion_blocking_critical = true;
             } else if self.native_association_completely_propagated(assoc_data) {
-                // cpp 26313-26316:
+                // cpp 26314:
                 // if (!mBackendCacheHandler
                 //     || !mBackendCacheHandler->hasConceptInAssociatedFullConceptSetLabel(
                 //          assocData, FULL_CONCEPT_SET_LABEL, concept, conNegation,
