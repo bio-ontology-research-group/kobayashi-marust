@@ -1029,6 +1029,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .dep_node(dep_node)
             .individual_node();
+        if indi.is_some() && indi.index() >= calc_alg_context.process_context().node_count() {
+            // A node of a popped epoch (docs/HYBRID-CB-HT.md section 18.2).
+            calc_alg_context
+                .process_context_mut()
+                .release_dependency_individual(dep_node);
+            return NodeId::NONE;
+        }
         if indi.is_some() {
             let upd_indi = self.get_up_to_date_individual(indi, calc_alg_context);
             if upd_indi.is_some() {

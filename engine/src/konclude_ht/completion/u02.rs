@@ -1319,6 +1319,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if calc_alg_context.has_pending_signal() || parent.is_none() || con_des.is_none() {
             return;
         }
+        if std::env::var_os("KM_HT_DIAG_NO_ATMOST_REARM").is_some() {
+            return;
+        }
+        // A registration that predates the branch's epoch survived the pop;
+        // a second copy would only repeat every bound re-check.
+        let restriction = if rest.is_some() { rest.raw } else { super::super::model::substrate::INVALID };
+        if calc_alg_context.process_context().node_role_static_reapply_contains(
+            parent,
+            role,
+            con_des,
+            restriction,
+        ) {
+            return;
+        }
         if rest.is_some() {
             self.add_concept_to_reapply_queue_role_restricted_static(
                 con_des,

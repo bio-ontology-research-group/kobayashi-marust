@@ -1842,12 +1842,6 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             )
         };
 
-        if calc_alg_context
-            .process_context()
-            .dependency_individual_released(dep_node)
-        {
-            tracking_line.set_released_individual_attribution();
-        }
         let mut new_indi_node = NodeId::NONE;
         if has_appropriate {
             let appropriate = calc_alg_context
@@ -1867,6 +1861,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     *min_indi_level = (*min_indi_level).min(new_level);
                 }
             }
+        }
+
+        if calc_alg_context
+            .process_context()
+            .dependency_individual_released(dep_node)
+        {
+            tracking_line.set_released_individual_attribution();
         }
 
         let (is_rep_select, is_rep_resolve) = {
@@ -2100,6 +2101,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     dep_node,
                     calc_alg_context,
                 );
+                if calc_alg_context
+                    .process_context()
+                    .dependency_individual_released(dep_node)
+                {
+                    tracking_line.set_released_individual_attribution();
+                    return tracked_clashed_des;
+                }
                 if indi_node.is_some()
                     && calc_alg_context
                         .process_context()

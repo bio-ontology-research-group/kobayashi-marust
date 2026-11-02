@@ -335,6 +335,19 @@ macro_rules! arena_accessors {
 /// Field order groups the arenas by subsystem (nodes, edges, descriptors,
 /// dependency spine, satellites) for readability; allocation order within a test
 /// is whatever the completion engine drives, not the field order.
+/// Release bookkeeping of one open branch epoch (see
+/// `ProcessContext::release_dependency_individuals_of_popped_nodes`).
+#[derive(Clone, Debug, Default)]
+struct EpochReleaseFrame {
+    /// Node-arena length at the push: nodes at or above it are this epoch's
+    /// (or an inner one's) and are truncated when it pops.
+    node_len: usize,
+    /// Dependency nodes below this index have been filed.
+    cursor: usize,
+    /// Dependency nodes whose individual this epoch allocated.
+    pending: Vec<usize>,
+}
+
 pub struct ProcessContext {
     singleton_descriptor_limit: Option<usize>,
     singleton_descriptor_epoch: u64,
@@ -342,9 +355,9 @@ pub struct ProcessContext {
     singleton_descriptor_changes: HashMap<usize, (ConceptId, bool, TrackPointId)>,
     /// Open branch-epoch count (in-process COW; see `push_branch_epoch`).
     branch_epoch_depth: usize,
-    /// Dependency-node arena length at each open branch epoch (see
+    /// One frame per open branch epoch (see
     /// `release_dependency_individuals_of_popped_nodes`).
-    branch_epoch_dep_node_marks: Vec<usize>,
+    branch_epoch_release_frames: Vec<EpochReleaseFrame>,
     /// Dependency nodes whose appropriate individual was a node allocated in
     /// a popped branch epoch (docs/HYBRID-CB-HT.md section 18.2). Their
     /// individual was cleared at the pop; the DDB analysis reads this set to
@@ -745,7 +758,7 @@ impl ProcessContext {
             singleton_descriptor_epoch: 0,
             singleton_changed_descriptors: Vec::new(),
             singleton_descriptor_changes: HashMap::default(),            branch_epoch_depth: 0,
-            branch_epoch_dep_node_marks: Vec::new(),
+            branch_epoch_release_frames: Vec::new(),
             released_dependency_individuals: Default::default(),
             nodes: Arena::new(),
             sat_nodes: Arena::new_tight(),
@@ -927,7 +940,7 @@ impl ProcessContext {
             self.release_large_partial_saturation_capacity();
         }
         self.branch_epoch_depth = 0;
-        self.branch_epoch_dep_node_marks.clear();
+        self.branch_epoch_release_frames.clear();
         self.released_dependency_individuals.clear();
         self.used_mem_man = INVALID;
         self.used_process_tagger = ProcessTagger::new();
@@ -3387,7 +3400,12 @@ impl ProcessContext {
         // alternative leaves dangling ids in persisted clash sets (measured:
         // ore_ont_541 Plan⊑Particular probe panicked reading a truncated
         // continue track point). Append-only per probe environment.
-        self.branch_epoch_dep_node_marks.push(self.dep_nodes.len());
+        self.assign_new_dependency_individuals_to_epochs();
+        self.branch_epoch_release_frames.push(EpochReleaseFrame {
+            node_len: self.nodes.len(),
+            cursor: self.dep_nodes.len(),
+            pending: Vec::new(),
+        });
         self.branch_epoch_depth += 1;
     }
 
@@ -3592,7 +3610,7 @@ impl ProcessContext {
     }
 
     /// The dependency spine is epoch-exempt, the node arena is not: a
-    /// dependency node created inside the popped epoch can name a node that
+    /// dependency node created inside a popped epoch can name a node that
     /// the pop just truncated (a deterministic consequence derived inside a
     /// refuted alternative, kept in that alternative's stored refutation).
     /// Konclude keeps the node object alive in the task's memory; the port
@@ -3601,17 +3619,80 @@ impl ProcessContext {
     /// since. Clear the individual of every such dependency node, so that the
     /// analysis takes Konclude's path for a dependency without an appropriate
     /// individual, and record it (docs/HYBRID-CB-HT.md section 18.2).
+    ///
+    /// Each dependency is examined once: `assign_new_dependency_individuals_to_epochs`
+    /// files it under the innermost open epoch whose push-time node length is
+    /// at most its node's index (the epoch that allocated the node), and this
+    /// pop releases the dependencies filed under the popped epoch. A rescan
+    /// of every dependency above the epoch's mark at every pop was quadratic
+    /// in the nesting depth (a 120-decision consistency leaf).
     fn release_dependency_individuals_of_popped_nodes(&mut self) {
-        let mark = self.branch_epoch_dep_node_marks.pop().unwrap_or(0);
+        self.assign_new_dependency_individuals_to_epochs();
+        let Some(frame) = self.branch_epoch_release_frames.pop() else {
+            return;
+        };
         let node_len = self.nodes.len();
-        for index in mark..self.dep_nodes.len() {
+        let dep_len = self.dep_nodes.len();
+        for index in frame.pending {
+            if index >= dep_len {
+                continue;
+            }
             let id = DependencyId::new(index as Cint64);
             let individual = self.dep_nodes.get(id).base().individual_node;
+            // Self-validating: a filed index may have been reused after a
+            // spine truncation; only a dependency that names a truncated
+            // node is released.
             if individual.is_some() && individual.index() >= node_len {
                 self.dep_nodes.get_mut_journaled(id).base_mut().individual_node = NodeId::NONE;
                 self.released_dependency_individuals.insert(index);
             }
         }
+        if let Some(top) = self.branch_epoch_release_frames.last_mut() {
+            top.cursor = dep_len;
+        }
+    }
+
+    /// File every dependency created since the innermost frame's cursor under
+    /// the epoch that allocated its node (see
+    /// `release_dependency_individuals_of_popped_nodes`). A dependency whose
+    /// node predates every open epoch is never released by a pop.
+    fn assign_new_dependency_individuals_to_epochs(&mut self) {
+        let dep_len = self.dep_nodes.len();
+        let Some(top) = self.branch_epoch_release_frames.last() else {
+            return;
+        };
+        let start = top.cursor.min(dep_len);
+        for index in start..dep_len {
+            let individual = self
+                .dep_nodes
+                .get(DependencyId::new(index as Cint64))
+                .base()
+                .individual_node;
+            if individual.is_none() {
+                continue;
+            }
+            let node_index = individual.index();
+            let owner = self
+                .branch_epoch_release_frames
+                .partition_point(|frame| frame.node_len <= node_index);
+            if owner > 0 {
+                self.branch_epoch_release_frames[owner - 1].pending.push(index);
+            }
+        }
+        if let Some(top) = self.branch_epoch_release_frames.last_mut() {
+            top.cursor = dep_len;
+        }
+    }
+
+    /// Release one dependency's individual at read time: the guard for a
+    /// dependency whose individual was set after it was filed, so that no
+    /// pop examined it (`release_dependency_individuals_of_popped_nodes`).
+    pub fn release_dependency_individual(&mut self, dep_node: DependencyId) {
+        if dep_node.is_none() {
+            return;
+        }
+        self.dep_nodes.get_mut_journaled(dep_node).base_mut().individual_node = NodeId::NONE;
+        self.released_dependency_individuals.insert(dep_node.index());
     }
 
     /// True when `dep_node`'s appropriate individual was released by
@@ -7896,6 +7977,35 @@ impl ProcessContext {
 
     /// Context-threaded port of `CIndividualProcessNode::getRoleReapplyQueue(role,true)`
     /// followed by `CReapplyQueue::addReapplyConceptDescriptor`.
+    /// True when `node`'s static reapply queue of `role` already holds a
+    /// descriptor for `concept_descriptor` with `processing_restriction`.
+    pub fn node_role_static_reapply_contains(
+        &self,
+        node: NodeId,
+        role: RoleId,
+        concept_descriptor: ConDescId,
+        processing_restriction: Cint64,
+    ) -> bool {
+        let hash = self.node(node).use_reapply_role_succ_hash;
+        if hash.is_none() {
+            return false;
+        }
+        let Some(data) = self.role_succ_hash(hash).role_successor_data_hash.get(&role) else {
+            return false;
+        };
+        let mut it = data.reapply_queue.static_reapply_des_linker;
+        let mut walked = 0usize;
+        while it.is_some() && walked <= self.reapply_con_descs.len() {
+            let des = self.reapply_con_desc(it);
+            if des.data == concept_descriptor && des.processing_restriction == processing_restriction {
+                return true;
+            }
+            it = des.next;
+            walked += 1;
+        }
+        false
+    }
+
     pub fn node_add_role_reapply_concept_descriptor(
         &mut self,
         node: NodeId,
