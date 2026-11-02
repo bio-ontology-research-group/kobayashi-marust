@@ -1789,6 +1789,306 @@ of the consistency model, found by the new merge families and present on
 the base, is recorded with its minimized seed in the results README; it is
 not part of this change.
 
+## 18. Probe-time merges on the reused consistency model, and dependencies of popped nodes (2026-11-02, `fix/v155-bridge-m413`)
+
+Four defects, found from the m413 seed of section 17, the four panic
+seeds of the same pool, and a new seed family built around m413's shape
+(`results/agents/2026-11-02/bridge-m413/tools/gen_m413.py`). All four are
+in the port, not in KM's admission or translation: with the reuse
+switched off where that matters (`KM_BRIDGE_FRESH_ENV=1`,
+`KM_BRIDGE_NO_PRECOMPUTATION_REPLAY=1`) the same `TInput` gives HermiT's
+answer for 18.1 and 18.4, and 18.2 and 18.3 fail on a fresh environment
+too. Measurements and seed counts are in
+`results/agents/2026-11-02/bridge-m413/README.md`.
+
+Background. With the precomputation replay on (a deterministic
+consistency completion), every ABox nominal of a class job starts from
+its representative-cache association with Konclude's backend blocks set:
+`PRFSYNCHRONIZEDBACKENDSUCCESSOREXPANSIONBLOCKED` (its cached
+successors stand in for the expansion) and
+`PRFSYNCHRONIZEDBACKENDNEIGHBOUREXPANSIONBLOCKED` (its asserted edges
+are not materialized; the association's neighbour-role sets stand in
+for them). A job that changes such a node must release the blocks
+before the cached view stops being a correct stand-in. Konclude does so
+in `detectIndividualNodeBackendCacheSynchronized` and its tests
+(`testIndividualNodeBackendCacheNeighbourExpansionBlockingCritical`,
+`testIndividualNodeBackendCacheExpansionBlockingCriticalCardinality`),
+and then expands the influenced neighbours from the cache
+(`expandDirectlyInfluencedIndividualNeighbourNodesFromBackendCache`).
+The port's typed counterparts are `process_native_nominal_backend_retest`
+(u36), the two tests (u20) and the selective expansion (u24, u27).
+
+### 18.1 m413: the block of a changed nominal was never released
+
+m413 (`data/m413-min.ofn`, 10 axioms): `f` functional below `r`,
+`r ∘ s ⊑ t`, `t` transitive, `s(i3,i2)`, `t(i2,i0)`, `f(i3,i0)`,
+`B ⊑ ∃f.{i3}`, `B ⊑ ∃f.B`, `i3 : ∀t⁻.D`. In the `B` probe the root's
+`f`-successor carrying `B` merges into `i3`, so `i3` gets `B` and an
+`f`-self-link; with `f(i3,i0)` the functional restriction merges `i0`
+into `i3`, which turns `t(i2,i0)` into `t(i2,i3)`; the automaton of
+`∀t⁻.D` at `i3` then runs `i3 -t⁻-> i2 -s⁻-> i3 -r⁻-> root` and gives
+`D(root)`. Two defects stopped it (found with the graph dump
+`KM_HT_GRAPH_DUMP=1`, which prints every node with its flags, label tags
+and links at each clash-free fixpoint, and every merge).
+
+1. *A role-successor count that was always 0* (u36
+   `native_cardinality_critical_roles`). The cardinality test counts,
+   per cached at-most role, the node's materialized links
+   (`roleSuccHash->getRoleSuccessorCount(role)`), the cached existential
+   successors while the successor block holds, and the cached neighbours,
+   and releases both blocks when the sum exceeds the cached minimum
+   restricting cardinality. The port read
+   `IndividualProcessNode::get_role_successor_count`, a stub without
+   arena access that returned 0. On m413 the count for `f` at `i3` was
+   0 + 1 (cached `i0`) and never exceeded 1, so `i0` was never
+   materialized and the merge never happened. The test now reads
+   `ProcessContext::node_role_successor_count`, the arena-backed
+   count; the stub is removed (its only other caller sat in a loop over
+   an empty list). An audit of the other node-level accessors of
+   `process/pn3.rs` found no further live production caller of a stub
+   (the one in `try_delay_nominal_processing` only disables an
+   optimization).
+
+   Exactness. The count is now Konclude's value, except that the port
+   keeps links to merged-away nodes in the hash (they are filtered at
+   every successor scan, section 10), so it can be larger. A larger
+   count only releases the blocks earlier. A released block makes the
+   node expand its cached neighbours (asserted or deterministic edges,
+   which hold in every model of the current branch) or replay its raw
+   assertions: the exact route the bridge takes without the cache.
+   Releasing a block never removes a derivation.
+
+2. *A non-deterministic concept never made the block critical* (u20
+   `test_individual_node_concept_backend_cache_neighbour_expansion_blocking_critical`).
+   For a `∀`, at-most or automaton concept on a node whose association
+   is completely propagated, Konclude's test is
+   `!hasConceptInAssociatedFullConceptSetLabel(assoc, concept, neg,
+   !nondeterministic)` (cpp 26314; line numbers in this section are those of the local Konclude source, `~/konclude-build`): the last argument selects the
+   deterministic or the non-deterministic partition of the cached label.
+   The port's comment quoted it with an extra `!nondeterministic &&`
+   conjunct and the code followed the comment, so a concept that depends
+   on a branch was never critical. On m413 the automaton state that
+   `∀t⁻.D` puts on `i2` depends on the merge decision, so `i2` kept its
+   block and its asserted edge `s(i3,i2)` never appeared; the state could
+   not continue to `i3` and the root. The conjunct is gone; the test is
+   now Konclude's.
+
+   Exactness. The changed test can only answer "critical" more often.
+   As for item 1, a critical block leads to the cache-backed or raw
+   expansion of the node's neighbours, both exact.
+
+The two other occurrences of the partition argument (u27
+`can_expand_directly_influenced_neighbour_with_propagation`, both
+membership tests) match Konclude. The port's
+`test_individual_node_backend_cache_concepts_synchronization` is still
+deferred, but the synchronisation flag it reads is never set in
+production, so it answers "not synchronized" and leaves the last-synched
+cursor unset: the criticality scan covers every new descriptor and
+skips none.
+
+*The previous suspect.* The deferred nominal-neighbour backend-expansion
+sub-block of merge phase 5 (cpp 21241-21256; the port's comments cite it as 21155-21178,
+`expandIndividualNeighbourNodeFromBackendCache` on a connected nominal
+before its links are relocated) is not the cause and stays deferred. It
+runs for a connected node of the merged-away node's connection set; in
+m413 `i2` had no materialized link to `i0` at all (its block held), so
+`i2` was not in `i0`'s connection set and the sub-block would not have
+run in Konclude either. After the two fixes `i2`'s block is released by
+its own changed label, which is the route Konclude takes.
+
+*The retained consistency leaf (section 16).* The leaf is affected only
+through the same tests, which every job runs. On the retained-base path
+the leaf exists only when the consistency completion is
+non-deterministic, and then the precomputation replay is off
+(`BRIDGE-REPLAY disabled`), so no nominal carries a backend block: in
+the leaf variants of m413 (`data/m413-leaf{1,2,3}.ofn`, a disjunction on
+an ABox individual; the leaf is built with 1 or 2 decisions) every
+nominal has flags 0 and its asserted edges materialized, and the
+variants answer as HermiT before and after the change, with leaf reuse
+on and off. On the per-job-reset path (no retained base) the leaf's ABox
+is initialized with the replay installed, so blocks can occur there;
+the fixes act in the code every job runs, so they apply to it in the
+same way.
+
+### 18.2 Dependencies of popped nodes (the forced-bridge panic)
+
+m37, m337, m593 and m977 panicked on the forced bridge (index out of
+bounds in `get_coressponding_individual_node_from_dependency_node`) and
+timed out on the automatic route. Cause (m37): a disjunction with three
+alternatives was refuted in all three, the sibling with an empty stored
+refutation had no witness, so the root cancellation was withheld
+(section 14) and the analysis went on with the collected closure. Its
+descriptors come from the stored refutation of another sibling and
+include deterministic dependencies (branching tag 0) that were derived
+inside that sibling, among them the merge dependency of a node that the
+sibling had created. The dependency spine is epoch-exempt (DDB marks must
+survive the alternative), the node arena is not: the epoch pop truncated
+the node, and the analysis read its slot. Konclude keeps the node object
+alive in the task's memory; the port cannot. When no slot is past the
+end, the same dependency reads a node allocated in the slot since, a
+silent misattribution.
+
+Fix (`process/context.rs`, `completion/u28.rs`, `u29.rs`, `u30.rs`,
+`u22.rs`):
+
+- Every branch epoch keeps a release frame (node-arena length at the
+  push, a cursor into the dependency-node arena, a pending list). At each
+  push and pop the dependencies created since the innermost cursor are
+  filed under the innermost open epoch whose push-time node length is at
+  most the index of their node, that is, the epoch that allocated the node
+  (a node that predates every open epoch is never truncated by a pop).
+  `pop_branch_epoch`, after the node arena is truncated, clears the
+  appropriate individual of every dependency filed under the popped epoch
+  that names a truncated node, and records it as released
+  (`release_dependency_individuals_of_popped_nodes`). Each dependency is
+  examined once. The first version rescanned every dependency above the
+  epoch's mark at every pop, which is quadratic in the nesting depth and
+  cost 0.6 s on ore_ont_4796 (a consistency leaf of 119 decisions, about
+  120 nested epochs per leaf drop). The release test is self-validating
+  (a dependency is released only if its node index is at or above the
+  node-arena length after the pop), so a filed index that a spine
+  truncation reused cannot be released wrongly.
+- A dependency whose individual is set after it was filed (one factory
+  sets it after allocation) is caught at read time:
+  `get_coressponding_individual_node_from_dependency_node` releases a
+  dependency whose node index lies past the node arena.
+- A released dependency takes Konclude's path for a dependency without
+  an appropriate individual: the backtracked descriptor keeps its
+  parent descriptor's attribution. The port's version of that path
+  re-read the parent's node; it now copies the parent's stored node id,
+  level, nominal flag and error flag, as Konclude's
+  `initTrackedClashedDescriptor(CTrackedClashedDescriptor*, ...)` does.
+- In `try_get_invalid_same_individual_node_level_backtracked_*` a
+  released individual has no level to compare; the descriptor is kept
+  (the result for a differing level) instead of being backtracked early.
+- A tracking line that met a released individual writes no
+  unsatisfiability-cache entry.
+
+Exactness. The walk of an analysis follows each descriptor's previous
+track point and additional dependencies, which do not read the
+individual, so the set of dependencies it visits, the non-deterministic
+dependencies it reaches, the branching level and the stored refutations
+are those of the walk with Konclude's stale node. The individual enters
+only (a) the individual level of a descriptor, which orders the
+processing of the tracking line and decides whether a no-concept
+descriptor is backtracked now or later, (b) the involved-individual set,
+which is never enabled in production (only self-tests set it), and (c)
+the unsatisfiability cache, whose entry is the line's concept set taken
+as one node's label. (a) changes the order of a fixpoint computation
+over the same dependencies, (b) is inert, and (c) is suppressed, and an
+omitted cache entry costs work, never a verdict. The release itself
+changes nothing a live state reads: a released dependency named a node
+that no longer exists.
+
+What it rests on: that the port's DDB walk is Konclude's apart from the
+attribution, the claim the bridge's DDB already rests on (sections 11,
+14, 16). A live epoch keeps its nodes, so a slot is reused only after a
+pop, and a pop releases every filed dependency that names a truncated
+slot. The one case left is a dependency whose individual is set after
+it was filed and whose slot is reused before it is read; it reads the
+newer node, as the base code did for every dependency, and only its
+attribution is affected.
+
+### 18.3 The at-most reapplication in later alternatives
+
+`k1414` (`data/k1414-min.ofn`, 7 axioms): `i1 : ≤1 s` with asserted
+`s`-successors `i0`, `i2` (with `A`), `i5`, and `P1 ⊑ ∃s⁻.{i1}`. HermiT
+entails `P1 ⊑ A`. The pair probe `P1 ⊓ ¬A` found a clash in the first
+alternative of the at-most merge branch over the three ABox successors,
+backtracked to its second alternative, merged the three successors
+again, and ended at a clash-free fixpoint in which `i1` still had two
+live `s`-successors (the merged ABox node and the probe root). Cause:
+`apply_atmost_rule` installs the rule's reapplication
+(`installReapplication`, cpp 15053-15057; the port cites 15001-15005) after the merge call, which
+pushed the branch, so the registration lies in the epoch of the first
+alternative; the pop before the advance removes it, and
+`advance_atmost_merge_alternative` / `advance_atmost_qualify_alternative`
+did not install it again. The link the probe installs at `i1` later
+found no `≤1 s` in the reapply queue. Konclude's branch children copy
+the parent's data box when they start, after the parent installed the
+reapplication, so every alternative has it.
+
+Fix (`completion/u02.rs`, `ht_rearm_atmost_reapplication`): both advance
+functions install the same reapplication (the static role descriptor,
+or the rest-carrying one when the branch has a branching-merging rest)
+after the alternative's merge and bound re-check, exactly where the first
+alternative has it, unless the parent's role queue already holds it (a
+registration that predates the branch's epoch).
+`KM_HT_DIAG_NO_ATMOST_REARM=1` turns the re-arm off (negative control).
+
+Exactness. Every alternative now holds the registration the first one
+holds. A reapplication re-runs the bound check of the at-most rule on
+the current graph, which derives nothing that the rule does not derive;
+missing it is what loses merges.
+
+### 18.4 The selective expansion installed one edge per neighbour
+
+`k163` (`data/k163-min.ofn`, 6 axioms): `g` inverse functional,
+`g(i4,i5)`, `C(i4)`, `P2 ⊑ ∃g.{i5}` (and a functional `f` with
+`f(i5,i4)`). HermiT entails `P2 ⊑ C`. When the probe element's
+`g`-successor merges into `i5`, the cardinality test of 18.1 releases
+`i5`'s blocks and the selective expansion walks `i5`'s concepts: `≤1 f`
+expands `i5 -f-> i4`, then `≤1 g⁻` should expand `i5 -g⁻-> i4`, but
+`i4` was already marked possibly influenced by the first install and
+was skipped, so the inverse-functional merge never happened. Konclude
+may mark the neighbour because its `expandIndividualNeighbourNodeFromBackendCache`
+(cpp 23996-24040) installs every cached value toward that neighbour at
+once, a non-inversed value as `node -role-> neighbour` and an inversed
+one as `neighbour -role-> node`. The typed route
+(`initialize_neighbour_expansion_with_propagation`, u27) installed only
+the role of the concept being expanded.
+
+Fix: after that install, `ht_expand_remaining_native_neighbour_values`
+installs the other cached values toward the neighbour in both
+orientations, with the per-value rule the typed route already applies
+(deterministic values, and non-deterministic ones only when they are
+asserted ABox edges). An inversed value whose source neighbour is merged
+away or purged declines the cache-backed route (the caller replays the
+raw assertions, the exact fallback), because this route has no merge
+dependency for a source.
+
+Exactness. Every installed edge is a cached value the same route already
+installs when the expanded role matches it; the change installs it
+without waiting for a concept of that role. `install_native_role_assertion_edge`
+skips links that exist. The marking of the neighbour is now justified
+in the way Konclude's is.
+
+### 18.5 What the four fixes rest on
+
+As for sections 10 to 17: the bridge has no Lean model and no
+certificate covers a bridge answer. The arguments assume the port's
+rules, merge and dependency machinery are Konclude's, and the typed
+association's deterministic and asserted values are correct. They are
+cross-checked differentially against HermiT only. Lean obligation
+created: none discharged; a bridge model would have to show that a
+released backend block, followed by the cache-backed or raw expansion,
+yields the graph the unblocked expansion yields, and that the DDB walk
+is independent of the descriptors' attribution.
+
+### 18.6 Evidence
+
+`results/agents/2026-11-02/bridge-m413/README.md` (before = development
+63d6e63e, after = this branch):
+
+- m413 and the four panic seeds answer as HermiT on the forced bridge and
+  the automatic route (before: m413 missed `B ⊑ D` on both, the panic
+  seeds panicked on the forced bridge and three of them timed out at 30 s
+  on the automatic route).
+- The m413 seed family (`gen_m413.py`, 2,000 seeds, HermiT gold): 113
+  incomplete seeds on each route before, 0 after; a second batch of
+  2,000 seeds: 0 differences after.
+- Every seed pool with HermiT gold left by earlier agents (bridge-abox-probes,
+  sameindividual-bridge, bridge-defers, bridge-nominal-merge,
+  bridge-replay, the data and nominal pools of bridge-defers, and the
+  gold-bearing fixtures of `results/agents/2026-10-3*/`; 13 pools,
+  10,618 seeds, both routes): no answer lost; m413, the panic seeds and
+  `nominal-r1600/m1` recovered.
+- The 16 held-out ORE inputs of docs/V1.5.5-STATUS.md: identical output
+  on all 16, times within noise (ratios 0.93 to 1.04).
+- Library tests at the baseline (21 checker-bound failures), every
+  integration target passing, regression test
+  `engine/tests/bridge_probe_merge.rs`.
+
 ## 19. Value helpers disjoint from a folded object sort (2026-11-02, `fix/v155-bridge-auto-data`)
 
 ### 19.1 The decline

@@ -629,6 +629,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             calc_alg_context,
         );
         self.invalidate_native_nominal_backend_blocking(individual, calc_alg_context);
+        if super::graph_dump_enabled() {
+            let pc = calc_alg_context.process_context();
+            eprintln!(
+                "MERGE {} into {} (flags {:#x} / {:#x}) dep={:?}",
+                pc.node(individual).individual_node_id(),
+                pc.node(merge_into_individual_node).individual_node_id(),
+                pc.node(individual).processing_restriction_flags,
+                pc.node(merge_into_individual_node).processing_restriction_flags,
+                merge_dep_track_point
+            );
+        }
 
         // ---- phase 0: statistics + debug captures -------------------------------
         // STATINC(INDINODEMERGECOUNT, calcAlgContext);

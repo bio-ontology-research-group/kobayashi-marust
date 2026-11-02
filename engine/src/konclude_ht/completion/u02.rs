@@ -241,6 +241,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 if super::automat_closure_audit_enabled() {
                     self.ht_automat_closure_audit(calc_alg_context);
                 }
+                if super::graph_dump_enabled() {
+                    self.ht_graph_dump("fixpoint", calc_alg_context);
+                }
                 return true;
             }
             match calc_alg_context.pending_signal() {
@@ -1291,6 +1294,63 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     calc_alg_context,
                 );
             }
+            self.ht_rearm_atmost_reapplication(parent_m, role, con_des, rest, dep_track_point, calc_alg_context);
+        }
+    }
+
+    /// Re-install the at-most rule's reapplication (cpp 15001-15005,
+    /// `installReapplication`) at the start of a later alternative of one of
+    /// its branch points. `apply_atmost_rule` installs it after the merge
+    /// call, i.e. inside the epoch of the first alternative; the epoch pop
+    /// before an advance removes it. Konclude's branch children copy the
+    /// parent's data box only when they start, after the parent has
+    /// installed it, so every alternative sees it. Without it a link that a
+    /// later alternative installs at the counted parent never re-fires the
+    /// bound (docs/HYBRID-CB-HT.md section 18.3).
+    fn ht_rearm_atmost_reapplication(
+        &mut self,
+        parent: NodeId,
+        role: super::super::model::RoleId,
+        con_des: super::super::process::ConDescId,
+        rest: super::super::process::RestrictionSpecId,
+        dep_track_point: TrackPointId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        if calc_alg_context.has_pending_signal() || parent.is_none() || con_des.is_none() {
+            return;
+        }
+        if super::atmost_rearm_disabled() {
+            return;
+        }
+        // A registration that predates the branch's epoch survived the pop;
+        // a second copy would only repeat every bound re-check.
+        let restriction = if rest.is_some() { rest.raw } else { super::super::model::substrate::INVALID };
+        if calc_alg_context.process_context().node_role_static_reapply_contains(
+            parent,
+            role,
+            con_des,
+            restriction,
+        ) {
+            return;
+        }
+        if rest.is_some() {
+            self.add_concept_to_reapply_queue_role_restricted_static(
+                con_des,
+                role,
+                parent,
+                rest.raw,
+                dep_track_point,
+                calc_alg_context,
+            );
+        } else {
+            self.add_concept_to_reapply_queue_role(
+                con_des,
+                role,
+                parent,
+                true,
+                dep_track_point,
+                calc_alg_context,
+            );
         }
     }
 
@@ -1472,6 +1532,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     calc_alg_context,
                 );
             }
+            self.ht_rearm_atmost_reapplication(parent_m, role, con_des, rest, dep_track_point, calc_alg_context);
         }
     }
 

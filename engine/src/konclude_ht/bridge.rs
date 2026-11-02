@@ -8242,8 +8242,10 @@ pub fn configure_default_blocking(algo: &mut CompletionTaskHandleAlgorithm) {
     // Konclude's production default. The generic u20 backend-association path
     // remains fail-closed; the native ABox bridge activates this only after
     // its explicit representative-cache predicate and concept-sync test.
-    algo.conf_allow_backend_successor_expansion_blocking = true;
-    algo.conf_allow_backend_neighbour_expansion_blocking = true;
+    algo.conf_allow_backend_successor_expansion_blocking =
+        std::env::var_os("KM_HT_DIAG_NO_SUCCESSOR_BLOCK").is_none();
+    algo.conf_allow_backend_neighbour_expansion_blocking =
+        std::env::var_os("KM_HT_DIAG_NO_NEIGHBOUR_BLOCK").is_none();
     // Decline the cache-backed selective neighbour expansion per NEIGHBOUR VALUE,
     // never per NODE: one unjustifiable neighbour value must not drop the whole
     // node's association block and raw-replay both assertion chains. See

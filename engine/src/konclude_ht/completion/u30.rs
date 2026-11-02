@@ -167,6 +167,11 @@ pub struct TrackedClashedDependencyLine {
     free_tracked_clashed_descriptors: ClashDescId,
     clashed_set: HashSet<TrackedClashedDescriptorHasher>,
     involved_individual_set: Option<HashSet<Cint64>>,
+    /// Set when the analysis met a dependency whose appropriate individual
+    /// was released at a branch-epoch pop (docs/HYBRID-CB-HT.md section
+    /// 18.2): some descriptor of this line carries a substitute attribution,
+    /// so the line writes no unsatisfiability-cache entry.
+    released_individual_attribution: bool,
 }
 
 impl Default for TrackedClashedDependencyLine {
@@ -184,6 +189,7 @@ impl Default for TrackedClashedDependencyLine {
             free_tracked_clashed_descriptors: ClashDescId::NONE,
             clashed_set: HashSet::default(),
             involved_individual_set: None,
+            released_individual_attribution: false,
         }
     }
 }
@@ -568,6 +574,14 @@ impl TrackedClashedDependencyLine {
     ) -> &mut Self {
         self.involved_individual_set = indi_tracking_set;
         self
+    }
+    /// See `released_individual_attribution`.
+    pub fn set_released_individual_attribution(&mut self) -> &mut Self {
+        self.released_individual_attribution = true;
+        self
+    }
+    pub fn has_released_individual_attribution(&self) -> bool {
+        self.released_individual_attribution
     }
     pub fn get_involved_individual_tracking_set(&self) -> Option<&HashSet<Cint64>> {
         self.involved_individual_set.as_ref()

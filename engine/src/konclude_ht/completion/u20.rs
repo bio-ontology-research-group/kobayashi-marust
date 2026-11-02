@@ -1484,8 +1484,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             }
                             let mut link_count: Cint64 = calc_alg_context
                                 .process_context()
-                                .node(indi_node)
-                                .get_role_successor_count(role);
+                                .node_role_successor_count(indi_node, role);
                             if calc_alg_context
                                 .process_context()
                                 .node(indi_node)
@@ -1854,19 +1853,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             {
                 expansion_blocking_critical = true;
             } else if self.native_association_completely_propagated(assoc_data) {
+                // cpp 26314:
                 // if (!mBackendCacheHandler
-                //     || !nondeterministic && !mBackendCacheHandler->hasConceptInAssociatedFullConceptSetLabel(
+                //     || !mBackendCacheHandler->hasConceptInAssociatedFullConceptSetLabel(
                 //          assocData, FULL_CONCEPT_SET_LABEL, concept, conNegation,
                 //          !nondeterministic, calcAlgContext))
                 //   expansionBlockingCritical = true;
-                if !nondeterministic
-                    && !self.native_has_concept_in_full_concept_set_label(
-                        assoc_data,
-                        concept,
-                        con_negation,
-                        !nondeterministic,
-                    )
-                {
+                //
+                // `!nondeterministic` selects the label partition the concept is
+                // looked up in. The port also required `!nondeterministic` as a
+                // conjunct, so a non-deterministically derived `∀` or automaton
+                // state never released the neighbour-expansion block and its
+                // operand never crossed a cached edge (m413; docs/HYBRID-CB-HT.md
+                // section 18.1).
+                if !self.native_has_concept_in_full_concept_set_label(
+                    assoc_data,
+                    concept,
+                    con_negation,
+                    !nondeterministic,
+                ) {
                     expansion_blocking_critical = true;
                 }
             } else {
