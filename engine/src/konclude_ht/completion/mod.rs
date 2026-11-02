@@ -179,6 +179,7 @@ macro_rules! cached_completion_i64 {
 cached_completion_i64!(bridge_watch_tag, "KM_BRIDGE_WATCH_TAG");
 cached_completion_i64!(bridge_watch_negtag, "KM_BRIDGE_WATCH_NEGTAG");
 cached_completion_i64!(bridge_watch_node, "KM_BRIDGE_WATCH_NODE");
+cached_completion_i64!(bridge_ddb_trace_limit, "KM_BRIDGE_DDB_TRACE");
 cached_completion_i64!(sat_label_debug_tag, "KM_SAT_LABEL_DEBUG_TAG");
 
 macro_rules! cached_completion_u64 {

@@ -1,0 +1,4 @@
+   2343 BRIDGE-CLEARED-QUEUE-RERUN answered=true modified=N retained_opens=0 blocked_by_retained=false
+    470 BRIDGE-CLEARED-QUEUE-RERUN answered=true modified=N retained_opens=0 blocked_by_retained=true
+     53 BRIDGE-CLEARED-QUEUE-RERUN answered=true modified=N retained_opens=1 blocked_by_retained=false
+      3 BRIDGE-CLEARED-QUEUE-RERUN answered=true modified=N retained_opens=1 blocked_by_retained=true

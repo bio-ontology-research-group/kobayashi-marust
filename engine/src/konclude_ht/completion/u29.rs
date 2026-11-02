@@ -67,6 +67,7 @@
 #![allow(unused_variables)]
 
 use super::super::model::substrate::{Cint64, Id, INVALID};
+use super::super::model::ConceptId;
 use super::super::process::dependency::{DepKind, DependencyNode};
 use super::super::process::varbind::VarBindingPathId;
 use super::super::process::{
@@ -888,6 +889,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             closure_parts =
                 vec![self.ht_fmt_tracked_closure(tracked_clash_descriptors, calc_alg_context)];
         }
+        if dump_on_root_cancel {
+            self.ddb_last_closure = closure_parts.join(" ");
+        }
         if dump_this_call {
             self.ddb_analysis_dumps += 1;
             eprintln!("DDB-CLOSURE {}", closure_parts.join(" "));
@@ -1176,6 +1180,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // closure — an EMPTY store here is the taint-death fingerprint of the
         // 12653 wrong-root-cancel (memory cont-14).
         if super::bridge_dump_clash_enabled() {
+            if branch_mem_con_clashed_des_list.is_none() {
+                eprintln!("DDB-MARK-EMPTY clash: {}", self.ddb_last_closure);
+            }
             eprintln!(
                 "DDB-MARK tp#{} tag={} stored: {}",
                 dep_track_point.index(),
@@ -1221,10 +1228,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .dep_node(non_det_dependency_node)
             .clash_track_point();
-        let (other_opened_track_points, all_siblings_stored_refutation) = {
+        let (other_opened_track_points, all_siblings_stored_refutation, unknown_witnesses) = {
             let proc_ctx = calc_alg_context.process_context();
             let mut other_opened = false;
             let mut all_stored = true;
+            let mut unknown: Vec<(ConceptId, bool)> = Vec::new();
             let mut track_point_it = proc_ctx
                 .dep_node(non_det_dependency_node)
                 .branch_track_points();
@@ -1236,11 +1244,31 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     other_opened = true;
                 }
                 if track_point_it != clash_track_point && track_point.get_clashes().is_none() {
-                    all_stored = false;
+                    // EMPTY stored refutation. It is a refutation record after
+                    // all when the alternative's operand ALONE is
+                    // unsatisfiable with respect to the input: then the
+                    // alternative fails in every context and contributes no
+                    // cause to the union. Only an independent deterministic
+                    // probe establishes that (docs/HYBRID-CB-HT.md §13); the
+                    // stored-set reconstruction itself is not trusted for it.
+                    match self.ht_disjunction_alternative_operand(track_point_it) {
+                        Some(key) => match self
+                            .empty_alternative_witnesses
+                            .get(&(key.0.index(), key.1))
+                        {
+                            Some(true) => {}
+                            Some(false) => all_stored = false,
+                            None => {
+                                all_stored = false;
+                                unknown.push(key);
+                            }
+                        },
+                        None => all_stored = false,
+                    }
                 }
                 track_point_it = track_point.next;
             }
-            (other_opened, all_stored)
+            (other_opened, all_stored, unknown)
         };
         if !other_opened_track_points {
             self.relevant_non_deterministic_decision_count += 1;
@@ -1359,6 +1387,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         self.cancellation_root_task(calc_alg_context);
                     } else {
                         self.ddb_root_cancel_withheld_count += 1;
+                        if !unknown_witnesses.is_empty()
+                            && self.stop_on_unknown_empty_alternative_witness
+                        {
+                            // The driver can probe these operands; ask it to
+                            // (a STOP, never a verdict) instead of searching on.
+                            for key in unknown_witnesses {
+                                if !self.empty_alternative_witness_requests.contains(&key) {
+                                    self.empty_alternative_witness_requests.push(key);
+                                }
+                            }
+                            self.empty_alternative_witness_stop = true;
+                        }
                     }
                 }
                 if tracking_line.has_only_current_individual_node_level_clashes_descriptors() {
@@ -1374,6 +1414,28 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // `trackedClashedDescriptorBeforeProcTagList;`
         }
         false
+    }
+
+    /// The `(operand concept, effective negation)` that the disjunction
+    /// alternative owning `track_point` adds, if that alternative belongs to
+    /// a disjunction branch point on the current search stack.
+    fn ht_disjunction_alternative_operand(
+        &self,
+        track_point: TrackPointId,
+    ) -> Option<(ConceptId, bool)> {
+        for bp in self.or_branch_stack.iter().rev() {
+            if let Some(index) = bp.alt_track_points.iter().position(|&tp| tp == track_point) {
+                if !matches!(bp.kind, super::algorithm::BranchKind::Disjunction) {
+                    return None;
+                }
+                let link = bp.disjuncts.get(index)?;
+                if link.target.is_none() {
+                    return None;
+                }
+                return Some((link.target, link.negated ^ bp.negate));
+            }
+        }
+        None
     }
 
     fn append_tracked_clash_chain(
