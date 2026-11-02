@@ -1459,8 +1459,18 @@ Two defects made each job pay for the size of that graph.
    candidate iterator merges the shared list with the job's own map in key
    order (`blocking_hash.rs`, `SharedCursor`), so the candidate order is
    the order of one map holding both.
+3. A satisfiable-cache sweep of every base id per job. After each subject
+   probe, `cache_satisfiable_individual_nodes` offers every node id from 1
+   to the largest to the satisfiable-expansion caches. Konclude skips the
+   nodes of a completion-graph-cached base in this sweep
+   (`satisfiable_cache_write_in_completion_graph_range`); the bridge's
+   retained base is not registered as such a cache, so every job offered
+   all 119,132 base ids of 7557 again (gdb samples after the blocking fix:
+   22 of 27 in this sweep). The first job still sweeps the base ids; later
+   jobs start above the base. A skipped write omits a cache entry, which
+   can cost an expansion in a later probe and cannot change a verdict.
 
-Neither change alters a rule. The first changes no value read. The second
+None of the three changes alters a rule. The first changes no value read. The second
 is meant to yield the candidate set of the scan; where it does not (a base
 node relabelled in a job without a node-switch record would be missed), it
 can change which blocker a job finds, or leave a node unblocked that the

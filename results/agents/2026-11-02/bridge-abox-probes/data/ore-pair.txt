@@ -1,0 +1,4 @@
+inputs 112 both-answered 108 identical 108 differ []
+answer-status changes []
+time ratio new/base over 27 inputs above 1 s: mean 1.088 median 1.006 max 2.03
+route changes []

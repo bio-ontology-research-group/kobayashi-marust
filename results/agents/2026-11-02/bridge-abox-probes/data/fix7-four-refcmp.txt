@@ -1,0 +1,4 @@
+16315 rc=0 wall=23.804835628 maxrss_kb=1393588 lines=10642 konclude=True
+10838 rc=0 wall=59.019885423 maxrss_kb=2476548 lines=10642 konclude=True
+3087 rc=0 wall=60.566084170 maxrss_kb=2611704 lines=10642 konclude=True
+7557 rc=0 wall=96.522136222 maxrss_kb=4216140 lines=46372 konclude=True
