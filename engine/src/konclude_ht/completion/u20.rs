@@ -2043,6 +2043,9 @@ pub struct BlockingBaseIndex {
     /// ascending key order (the order of the candidate map), shared by every
     /// class job.
     pub by_key: crate::fxhash::FxHashMap<(Cint64, bool), std::sync::Arc<Vec<(Cint64, NodeId)>>>,
+    /// Set once the first class job has swept the base ids for satisfiable
+    /// cache writes (`cache_satisfiable_individual_nodes`, u21).
+    pub base_cache_swept: std::sync::atomic::AtomicBool,
 }
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
@@ -2099,6 +2102,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             label_mod_tag: pc.used_process_tagger().get_current_concept_label_set_modification_tag(),
             node_switch_tag: pc.used_process_tagger().get_current_node_switch_tag(),
             by_key: lists.into_iter().map(|(k, v)| (k, std::sync::Arc::new(v))).collect(),
+            base_cache_swept: std::sync::atomic::AtomicBool::new(false),
         }
     }
 

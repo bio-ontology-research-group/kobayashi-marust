@@ -844,6 +844,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             );
         }
 
+        // A class job on a retained consistency base (the bridge's
+        // conditional-full schedule) starts above the base. Konclude skips the
+        // nodes of a completion-graph-cached base the same way
+        // (`satisfiable_cache_write_in_completion_graph_range`); the bridge's
+        // retained base is not registered as such a cache, so without this
+        // every job swept every base id (ore_ont_7557: 119,132 ids per job,
+        // most of the late probe time). The writes only add satisfiable-cache
+        // entries, so a skipped write can cost an expansion, never change a
+        // verdict. The first class job still sweeps the base ids, as before.
+        if let Some(index) = &self.blocking_base_index {
+            if index.base_cache_swept.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                indi_idx = indi_idx.max(index.base_hi + 1);
+            }
+        }
         while indi_idx < indi_max {
             let indi_node = self.get_up_to_date_individual_by_id(indi_idx, calc_alg_context);
             node_cached |= self.write_satisfiable_node_cache_if_allowed(
