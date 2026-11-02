@@ -1,0 +1,5 @@
+lib run 1: test result: FAILED. 3113 passed; 21 failed; 10 ignored; 0 measured; 0 filtered out; finished in 27.03s
+lib run 2: test result: FAILED. 3113 passed; 21 failed; 10 ignored; 0 measured; 0 filtered out; finished in 27.52s
+lib run 3: test result: FAILED. 3113 passed; 21 failed; 10 ignored; 0 measured; 0 filtered out; finished in 27.93s
+integration targets: 86, failing: 0
+DONE

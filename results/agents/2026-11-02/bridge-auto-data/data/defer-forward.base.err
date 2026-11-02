@@ -1,0 +1,14 @@
+KM_TIMING mark: validate_user_input done
+KM_TIMING mark: second source check done
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.26s cached=false sidecar=false
+KM_TIMING frontend: 2839 data-property assertion(s) not carried; re-running with the DataHasValue conversion
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.36s cached=false sidecar=false
+KM_TIMING frontend done @ 0.62s route=certified_nominals
+KM_TIMING nominal CB input: released 17 inert object sort(s): 17 fact(s) unrelativized, 17 sort clause(s) removed; eliminated 0 universal definer(s): 0 clause(s) and 0 body atom(s) dropped
+KM_TIMING spawn_ht: read+convert 50830 clauses (ht_view=37638) in 0.15s
+KM_TIMING race: synchronous bridge classes=849 typed_nominal=true cb_threads=1
+KM_TIMING race: HT worker spawned @ 0.32s after the CB stack started
+KM_TIMING race: HT worker exited @ 0.14s (success=false)
+KM_TIMING nominal CB input: released 17 inert object sort(s): 17 fact(s) unrelativized, 17 sort clause(s) removed; eliminated 0 universal definer(s): 0 clause(s) and 0 body atom(s) dropped

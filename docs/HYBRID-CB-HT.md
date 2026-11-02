@@ -1853,3 +1853,49 @@ lost. Under `KM_TIMING` the stderr is now piped and every error line is
 repeated as `KM_TIMING race: HT worker reported: ...`
 (`race::forward_ht_worker_errors`). The thread reads nothing else and never
 touches the worker's output or exit status.
+
+### 19.5 Two bridge tests that read the release flags
+
+`conditional_full_class_probe_restores_all_root_consistency_base` and
+`production_read_off_keeps_open_or_disjuncts_nondeterministic` failed
+together in some full library runs. The cause is the environment of the
+test process, not load or wall-clock budgets: measurement scripts that
+export the release flags (`KM_HT_DDB=1 KM_HT_NATIVE_FULL=1 ...`) before
+`cargo test`, such as `.work/v155-heldout-gap/combined/run.sh`, hand them to
+every test. With `KM_HT_NATIVE_FULL=1` alone the first test fails
+deterministically, even run by itself, at its premise that the number-free legacy fixture is
+not on the conditional-full schedule (`native_cardinality_abox_profile`
+reads the flag). With `KM_HT_DDB=1` alone the second fails at its premise
+that dependency-directed backjumping is off (`configure_default_blocking`
+reads the flag). No other library test changes its result under the flags.
+
+Each premise now states the configuration the environment selects, and the
+property each test checks (every fixed root retained on the restored base;
+an open `OR` alternative never reported as a deterministic subsumer) passes
+under both configurations. No production code reads time differently, and
+no verdict changed.
+
+### 19.6 Result
+
+Automatic route, release flags, one core, ws under its normal shared load
+(load average 16 to 27):
+
+- ore_ont_6132, five runs: 23.3, 21.7, 22.0, 20.7, 21.5 s; ore_ont_9899:
+  25.2, 21.6, 24.0, 24.2, 23.9 s. Every run answers through the ground-rule
+  data source with the Konclude and HermiT answer. The base on the same
+  host answered 6132 in 10.6 to 16.0 s (bridge-first inside its 8 s budget)
+  and 9899 once in 13.3 s and four times not at all (240 s timeout).
+  Scaled by the Ibex factor of 1.3 the branch stays near 33 s.
+  The ground-rule bridge spends about 16 s on its 401 public subjects (30 to
+  50 ms each), against 6.7 s for the whole `certified_nominals` racer;
+  that per-subject cost is a separate performance question.
+- The 16 held-out inputs keep their answers; times are within noise except
+  6132 and 9899 (above). ore_ont_12128 publishes the same wrong taxonomy on
+  base and branch whenever the `production_all` race finishes inside the
+  cap (230 s on the base); it has no data values, so this change cannot reach
+  it.
+- Seed pools with HermiT gold, both routes, 60 s cap: 0 WRONG before and
+  after, and 3 verdict transitions, all at the 60 s cap (timing).
+- The 112 nominal ORE inputs of the design half: 109 identical signatures,
+  no answer-status or route change, time ratio branch/base mean 1.041,
+  median 0.987.
