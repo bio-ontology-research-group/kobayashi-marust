@@ -1,0 +1,22 @@
+{
+  "ontology": "m53tiny.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["GO_0003674", "Function"],
+    ["GO_0005488", "Function"],
+    ["GO_0005488", "GO_0003674"],
+    ["GO_0005515", "Function"],
+    ["GO_0005515", "GO_0003674"],
+    ["GO_0005515", "GO_0005488"],
+    ["GO_0005518", "Function"],
+    ["GO_0005518", "GO_0003674"],
+    ["GO_0005518", "GO_0005488"],
+    ["GO_0005518", "GO_0005515"],
+    ["Species", "ModelComponent"]
+  ],
+  "unsatisfiable": [
+    "Amadori_species",
+    "Model53",
+    "world_of_Model53"
+  ]
+}

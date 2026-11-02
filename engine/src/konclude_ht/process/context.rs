@@ -5569,13 +5569,26 @@ impl ProcessContext {
         if hash.is_none() {
             return BackwardSaturationPropagationReapplyDescriptorId::NONE;
         }
+        // cpp CRoleBackwardSaturationPropagationHash.cpp 82–93: the hash flag
+        // is set unconditionally, the per-role flag only when the link is
+        // appended (the duplicate-head early return leaves it unchanged).
         self.role_backward_sat_prop_hash_mut(hash).self_connected = true;
+        let head = |ctx: &Self| {
+            ctx.role_backward_sat_prop_hash(hash)
+                .role_back_prop_data_hash
+                .get(&role)
+                .map(|data| data.link_linker)
+                .unwrap_or(BackwardSaturationPropagationLinkId::NONE)
+        };
+        let head_before = head(self);
         let reapply = self.sat_node_add_backward_propagation_link(node, role, source_individual);
-        self.role_backward_sat_prop_hash_mut(hash)
-            .role_back_prop_data_hash
-            .entry(role)
-            .or_insert_with(RoleBackwardSaturationPropagationHashData::new)
-            .self_connected = true;
+        if head(self) != head_before {
+            self.role_backward_sat_prop_hash_mut(hash)
+                .role_back_prop_data_hash
+                .entry(role)
+                .or_insert_with(RoleBackwardSaturationPropagationHashData::new)
+                .self_connected = true;
+        }
         reapply
     }
 

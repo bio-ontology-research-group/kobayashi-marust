@@ -1,0 +1,8 @@
+{
+  "ontology": "v1s1420.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["Q5", "E"]
+  ],
+  "unsatisfiable": []
+}
