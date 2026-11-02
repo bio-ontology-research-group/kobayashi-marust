@@ -1,0 +1,11 @@
+6132	run=1	rc=0	wall=12.324	rss_gib=0.51	via=bounded bridge-first accepted	konclude=agreement hermit=agreement 
+9899	run=1	rc=0	wall=13.323	rss_gib=0.51	via=bounded bridge-first accepted	konclude=agreement hermit=agreement 
+6132	run=2	rc=0	wall=10.644	rss_gib=0.51	via=bounded bridge-first accepted	konclude=agreement hermit=agreement 
+9899	run=2	rc=124	wall=240.05	rss_gib=1.22	via=	
+6132	run=3	rc=0	wall=15.969	rss_gib=0.51	via=bounded bridge-first accepted	konclude=agreement hermit=agreement 
+9899	run=3	rc=124	wall=240.04	rss_gib=1.22	via=	
+6132	run=4	rc=0	wall=12.796	rss_gib=0.51	via=bounded bridge-first accepted	konclude=agreement hermit=agreement 
+9899	run=4	rc=124	wall=240.04	rss_gib=1.22	via=	
+6132	run=5	rc=0	wall=14.648	rss_gib=0.51	via=bounded bridge-first accepted	konclude=agreement hermit=agreement 
+9899	run=5	rc=124	wall=240.01	rss_gib=1.22	via=	
+DONE

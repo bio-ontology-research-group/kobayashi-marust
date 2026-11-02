@@ -1,0 +1,47 @@
+KM_TIMING mark: validate_user_input done
+KM_TIMING mark: second source check done
+KM_TIMING automatic data source attempt: KM_GROUND_RULE_SOURCE
+KM_TIMING mark: second source check done
+KM_TIMING ground-rule source: rules=0 instances=0
+KM_TIMING mark: second source check done
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=4.44s cached=false sidecar=false
+KM_TIMING frontend done @ 4.44s route=manual
+cb_to_ht [emelim] eliminated 1 complementary pairs
+cb_to_ht [trigger-absorb] definers=2296 moved=1987 tautologies=0
+KM_TIMING spawn_ht: read+convert 73918 clauses (ht_view=59420) in 0.30s
+BRIDGE-PUBLIC-SUBJECTS selected=401 active=2794
+tableau error: konclude_ht bridge defer: datatype gate: a linear value-encoding disjointness has an unsupported shape
+KM_TIMING automatic data source declined (KM_GROUND_RULE_SOURCE): out of fragment: selected HT mechanism deferred (worker exit 1)
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING ABox quotient not built: site 1
+KM_TIMING mirror-route: declined by lexical prefilter: bytes=2916871 complements_below=0
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.30s cached=false sidecar=false
+KM_TIMING frontend: 2839 data-property assertion(s) not carried; re-running with the DataHasValue conversion
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.37s cached=false sidecar=false
+KM_TIMING mark: second source check done
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.30s cached=false sidecar=false
+KM_TIMING frontend done @ 0.30s route=ht_bridge
+cb_to_ht [emelim] eliminated 0 complementary pairs
+cb_to_ht [trigger-absorb] definers=1496 moved=0 tautologies=1
+KM_TIMING spawn_ht: read+convert 34213 clauses (ht_view=34213) in 0.07s
+bridge [source-tbox] axioms=15990 eq=1/1 ["Entity"] direct=31278 role-links=19 absorbed-gci=9 top-gci=0 unsupported=0
+bridge [or-replacements] implications=0 common=9
+role-automata begin concepts=10116 next-tag=10125
+bridge [branch-triggers] role-markers=29
+KM_TIMING bounded bridge-first declined @ 2.70s: out of fragment: speculative native bridge attempt deferred or exceeded its budget
+KM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false
+KM_TIMING frontend done @ 2.70s route=certified_nominals
+KM_TIMING nominal CB input: released 17 inert object sort(s): 17 fact(s) unrelativized, 17 sort clause(s) removed; eliminated 0 universal definer(s): 0 clause(s) and 0 body atom(s) dropped
+cb_to_ht [emelim] eliminated 1 complementary pairs
+cb_to_ht [trigger-absorb] definers=1496 moved=1190 tautologies=0
+KM_TIMING spawn_ht: read+convert 50830 clauses (ht_view=37638) in 0.15s
+KM_TIMING race: synchronous bridge classes=849 typed_nominal=true cb_threads=1
+KM_TIMING race: HT worker spawned @ 0.37s after the CB stack started
+tableau error: konclude_ht bridge defer: datatype gate: a linear value-encoding disjointness has an unsupported shape
+KM_TIMING race: HT worker exited @ 0.13s (success=false)
+KM_TIMING nominal CB input: released 17 inert object sort(s): 17 fact(s) unrelativized, 17 sort clause(s) removed; eliminated 0 universal definer(s): 0 clause(s) and 0 body atom(s) dropped

@@ -1,0 +1,4 @@
+base rc=0 60.517
+fix rc=0 64.929
+base rc=0 92.111
+fix rc=0 83.975

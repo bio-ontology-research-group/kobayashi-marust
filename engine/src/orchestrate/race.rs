@@ -2465,9 +2465,13 @@ fn prepare_ht(
     };
     cmd.stdin(Stdio::piped())
         .stdout(File::create(out_path.path()).ok()?);
-    // stderr: inherit when stats/trace requested (diagnostic), else null.
+    // stderr: inherit when stats/trace requested (diagnostic). Under
+    // KM_TIMING alone, pipe it so `PreparedHt::launch` can forward the
+    // worker's error line (for a bridge defer, the gate it names); else null.
     if std::env::var_os("KM_HT_STATS").is_some() || std::env::var_os("KM_HT_TRACE").is_some() {
         cmd.stderr(Stdio::inherit());
+    } else if std::env::var_os("KM_TIMING").is_some() {
+        cmd.stderr(Stdio::piped());
     } else {
         cmd.stderr(Stdio::null());
     }
@@ -2736,6 +2740,9 @@ impl PreparedHt {
             bridge_answer_marker,
         } = self;
         let mut child = cmd.spawn().ok()?;
+        if let Some(stderr) = child.stderr.take() {
+            forward_ht_worker_errors(stderr);
+        }
         let stdin = child.stdin.take()?;
         let bytes = serde_json::to_vec(&tin).ok()?;
         thread::spawn(move || {
@@ -2782,6 +2789,21 @@ impl PreparedHt {
             bridge_answer_marker,
         ))
     }
+}
+
+/// Drain a race HT worker's piped stderr (piped only under `KM_TIMING`) and
+/// repeat its error lines, so a decline names its reason in the timing trace
+/// (`tableau error: konclude_ht bridge defer: <gate>`). Every other line is
+/// dropped, exactly as the null stderr dropped it. Diagnostic only: the
+/// thread never touches the worker's answer or exit status.
+fn forward_ht_worker_errors(stderr: std::process::ChildStderr) {
+    thread::spawn(move || {
+        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+            if line.starts_with("tableau error:") || line.contains("bridge defer") {
+                eprintln!("KM_TIMING race: HT worker reported: {line}");
+            }
+        }
+    });
 }
 
 /// Read a finished HT worker's taxonomy, applying the proxy ABox certificate

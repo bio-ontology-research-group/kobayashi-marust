@@ -862,6 +862,7 @@ fn linear_value_encoding_exact(tin: &TInput) -> bool {
     let mut profile_includes: Vec<(usize, usize)> = Vec::new();
     let mut profile_excludes: Vec<(usize, usize)> = Vec::new();
     let mut digits_of: crate::fxhash::FxHashMap<usize, Vec<(u32, u32)>> = Default::default();
+    let mut helper_guards: Vec<(usize, usize)> = Vec::new();
     for clause in &tin.clauses {
         if !clause_mentions_value_aux(tin, clause) {
             continue;
@@ -888,6 +889,13 @@ fn linear_value_encoding_exact(tin: &TInput) -> bool {
                         profile_excludes.push((*left, *right)),
                     (None, None) if aux(*right) && !aux(*left) && dt::bridge_tbox_atomic_name(name(*left)) =>
                         profile_excludes.push((*right, *left)),
+                    // A helper (index digit or membership profile) disjoint
+                    // from a concept that is not a helper: the two-sorted
+                    // nominal encoding's `G ⊓ D ⊑ ⊥` with `D` folded away
+                    // (docs/HYBRID-CB-HT.md section 19). Checked below
+                    // against the values that imply the helper.
+                    _ if aux(*left) && !aux(*right) => helper_guards.push((*left, *right)),
+                    _ if aux(*right) && !aux(*left) => helper_guards.push((*right, *left)),
                     _ => defer!("a linear value-encoding disjointness has an unsupported shape"),
                 }
             }
@@ -905,6 +913,28 @@ fn linear_value_encoding_exact(tin: &TInput) -> bool {
         for &value in members.get(&helper).map(Vec::as_slice).unwrap_or(&[]) {
             if dt::bridge_exact_atomic_disjoint(name(value), name(range)) != Some(true) {
                 defer!("a membership profile excludes a range one of its values is in");
+            }
+        }
+    }
+    // `H ⊓ G ⊑ ⊥` holds for `H` read as the union of its values when every
+    // such value `v` has the clause `v ⊓ G ⊑ ⊥` itself: that clause mentions
+    // no helper, so every model of the remaining clauses satisfies it.
+    if !helper_guards.is_empty() {
+        let mut disjoint: crate::fxhash::FxHashSet<(usize, usize)> = Default::default();
+        for clause in &tin.clauses {
+            if let ([HAtom::Concept { neg: false, c: a, t: at }, HAtom::Concept { neg: false, c: b, t: bt }], [])
+                = (clause.body.as_slice(), clause.head.as_slice())
+            {
+                if at == bt {
+                    disjoint.insert(((*a).min(*b), (*a).max(*b)));
+                }
+            }
+        }
+        for (helper, guard) in helper_guards {
+            for &value in members.get(&helper).map(Vec::as_slice).unwrap_or(&[]) {
+                if !disjoint.contains(&(value.min(guard), value.max(guard))) {
+                    defer!("a helper is disjoint from a concept one of its values is not disjoint from");
+                }
             }
         }
     }
@@ -18259,6 +18289,59 @@ mod tests {
         }
     }
 
+    /// Section 19 of docs/HYBRID-CB-HT.md: the folded sort clause
+    /// `G ⊓ H ⊑ ⊥` of a value helper `H` is admitted exactly when every
+    /// value implying `H` is itself disjoint from `G` by an input clause.
+    #[test]
+    fn value_helper_disjoint_from_a_folded_sort_needs_every_value_disjoint() {
+        let concept = |c: usize| HAtom::Concept { neg: false, c, t: 0 };
+        let clause = |body: Vec<HAtom>, head: Vec<HAtom>| HtClause { body, head };
+        // 0, 1: values; 2, 3: digit helpers of one position; 4: profile; 5: G.
+        let input = |value_guards: &[usize]| {
+            let mut clauses = vec![
+                clause(vec![concept(0)], vec![concept(2)]),
+                clause(vec![concept(1)], vec![concept(3)]),
+                clause(vec![concept(0)], vec![concept(4)]),
+                clause(vec![concept(1)], vec![concept(4)]),
+                clause(vec![concept(2), concept(3)], vec![]),
+                clause(vec![concept(5), concept(2)], vec![]),
+                clause(vec![concept(3), concept(5)], vec![]),
+                clause(vec![concept(5), concept(4)], vec![]),
+            ];
+            clauses.extend(value_guards.iter().map(|&v| clause(vec![concept(v), concept(5)], vec![])));
+            TInput {
+                concepts: vec![
+                    "__dt__val__\"a\"^^xsd:string".into(),
+                    "__dt__val__\"b\"^^xsd:string".into(),
+                    "__dt__aux__digit__0__0".into(),
+                    "__dt__aux__digit__0__1".into(),
+                    "__dt__aux__profile__0".into(),
+                    "Q_1".into(),
+                ],
+                clauses,
+                ..Default::default()
+            }
+        };
+        let _ = take_bridge_defer_reason();
+        assert!(linear_value_encoding_exact(&input(&[0, 1])));
+        assert_eq!(take_bridge_defer_reason(), None);
+        // `b ⊓ G` is satisfiable, so `G` may meet the helpers `b` implies.
+        assert!(!linear_value_encoding_exact(&input(&[0])));
+        assert_eq!(
+            take_bridge_defer_reason().as_deref(),
+            Some("datatype gate: a helper is disjoint from a concept one of its values is not disjoint from")
+        );
+        // Two helpers remain an unsupported pair when they are not digits of
+        // one position.
+        let mut pair = input(&[0, 1]);
+        pair.clauses.push(clause(vec![concept(2), concept(4)], vec![]));
+        assert!(!linear_value_encoding_exact(&pair));
+        assert_eq!(
+            take_bridge_defer_reason().as_deref(),
+            Some("datatype gate: a linear value-encoding disjointness has an unsupported shape")
+        );
+    }
+
     fn empty_role_model_input() -> TInput {
         use crate::frontend::syntax::Concept as C;
 
@@ -21129,10 +21212,13 @@ mod tests {
         let legacy = basic_native_role_input(&["r"], legacy_meta);
         let (mut legacy_algo, mut legacy_ctx, legacy_bridged) =
             fresh_bridge_env_with_trigger_absorption(&legacy, true);
-        assert!(!native_cardinality_abox_profile(
-            &legacy,
-            legacy_bridged.has_native_nominals()
-        ));
+        // Number-free, so the conditional-full schedule applies to it only
+        // under `KM_HT_NATIVE_FULL=1` (a release flag that may reach the
+        // test process). Every root must be retained on either schedule.
+        assert_eq!(
+            native_cardinality_abox_profile(&legacy, legacy_bridged.has_native_nominals()),
+            std::env::var_os("KM_HT_NATIVE_FULL").is_some()
+        );
         reset_classification_probe_env(
             &mut legacy_algo,
             &mut legacy_ctx,
@@ -25594,8 +25680,11 @@ mod tests {
         let (mut algo, mut ctx, bridged) = fresh_bridge_env(&env.tin);
         configure_production_search(&mut algo);
         assert!(algo.conf_build_dependencies);
-        assert!(
-            !algo.conf_dependency_backjumping,
+        // The release flags (`KM_HT_DDB=1`) may reach the test process; the
+        // read-off property below must hold with and without DDB.
+        assert_eq!(
+            algo.conf_dependency_backjumping,
+            std::env::var_os("KM_HT_DDB").is_some(),
             "the production classifier builds dependencies independently of DDB"
         );
         let mut classifier = OptimizedKPSetClassSubsumptionClassifierThread::new();

@@ -1788,3 +1788,114 @@ unchanged against the base. One pre-existing incompleteness of the reuse
 of the consistency model, found by the new merge families and present on
 the base, is recorded with its minimized seed in the results README; it is
 not part of this change.
+
+## 19. Value helpers disjoint from a folded object sort (2026-11-02, `fix/v155-bridge-auto-data`)
+
+### 19.1 The decline
+
+ore_ont_6132 and ore_ont_9899 (2.8 MB, 2,839 data-property assertions,
+cardinalities) answered on the automatic route only when the bounded
+bridge-first attempt finished inside its 8 s budget. When it declined, the
+`certified_nominals` racer's bridge exited after 0.15 s. Its message, now
+visible under `KM_TIMING` (19.4), was
+
+    datatype gate: a linear value-encoding disjointness has an unsupported shape
+
+The forced `ht_bridge` input and the racer's input differ in one respect
+that matters here. The racer runs under `KM_NOMINALS=1`, so the frontend's
+two-sorted encoding (`frontend/sorts.rs`) adds, for the object-sorted
+definer `G` (`Q_201` on 6132), the facts `→ G(x) ∨ D(x)`, the sort clause
+`G(x) ∧ D(x) → ⊥`, and `X(x) → D(x)` for every data range `X`, with
+`D = __data__`. In the HT conversion the complementary-definer elimination
+(`cb_to_ht::elim_complements`) folds the pair `⊤ ⊑ G ⊔ D`, `G ⊓ D ⊑ ⊥` into
+`D := ¬G`. Every `X(x) → D(x)` becomes `G(x) ∧ X(x) → ⊥`, including one
+clause for each helper of the linear value encoding
+(`__dt__aux__digit__p__d`, `__dt__aux__profile__k`): 24 such clauses on
+6132. `linear_value_encoding_exact` admitted a helper disjointness only
+between two digits of one position or between a membership profile and a
+datatype range, so it deferred.
+
+### 19.2 The admission
+
+The gate's argument (the comment on `linear_value_encoding_exact`) reads
+each helper `H` as the union of the values `v` with a clause `v → H`, which
+are the only clauses that imply a helper; a model of the clauses without
+helpers then extends to a model of the helper clauses, so the helpers add
+no consequence over the source vocabulary. The new shape `H(x) ∧ G(x) → ⊥`
+with `G` not a helper is admitted when, for every value `v` with
+`v → H`, the input contains the clause `v(x) ∧ G(x) → ⊥` itself. That clause
+mentions no helper, so it holds in every model `M` of the remaining
+clauses; `H^M = ⋃ v^M` is then disjoint from `G^M`, and the extension
+satisfies the new clause. Any other helper pair, or a value of `H` without
+its own disjointness from `G`, still defers ("a helper is disjoint from a
+concept one of its values is not disjoint from"). On 6132 every value has
+the clause, since the elimination folds `v → D` into `v ∧ G → ⊥` as well.
+
+The change touches only `linear_value_encoding_exact`, and only clauses
+that mention a value helper; inputs without helpers take the identical
+path. No conversion, budget or routing rule changes.
+
+### 19.3 Effect
+
+Both inputs now pass the gate on every bridge input built from the nominal
+clause set. On the automatic route the first exact attempt that applies is
+the ground-rule data source (`data_source::automatic_candidate`), whose
+bridge input carries the same folded sort; it previously declined at the
+same gate after 0.2 s and now answers, before the bridge-first attempt and
+the race are reached. The `certified_nominals` racer answers 6132 in 6.7 s
+when forced. All answers equal Konclude's and HermiT's.
+
+### 19.4 Defer reasons in the race trace
+
+The race's HT worker had a null stderr unless `KM_HT_STATS` or `KM_HT_TRACE`
+was set, so its `tableau error: konclude_ht bridge defer: <gate>` line was
+lost. Under `KM_TIMING` the stderr is now piped and every error line is
+repeated as `KM_TIMING race: HT worker reported: ...`
+(`race::forward_ht_worker_errors`). The thread reads nothing else and never
+touches the worker's output or exit status.
+
+### 19.5 Two bridge tests that read the release flags
+
+`conditional_full_class_probe_restores_all_root_consistency_base` and
+`production_read_off_keeps_open_or_disjuncts_nondeterministic` failed
+together in some full library runs. The cause is the environment of the
+test process, not load or wall-clock budgets: measurement scripts that
+export the release flags (`KM_HT_DDB=1 KM_HT_NATIVE_FULL=1 ...`) before
+`cargo test`, such as `.work/v155-heldout-gap/combined/run.sh`, hand them to
+every test. With `KM_HT_NATIVE_FULL=1` alone the first test fails
+deterministically, even run by itself, at its premise that the number-free legacy fixture is
+not on the conditional-full schedule (`native_cardinality_abox_profile`
+reads the flag). With `KM_HT_DDB=1` alone the second fails at its premise
+that dependency-directed backjumping is off (`configure_default_blocking`
+reads the flag). No other library test changes its result under the flags.
+
+Each premise now states the configuration the environment selects, and the
+property each test checks (every fixed root retained on the restored base;
+an open `OR` alternative never reported as a deterministic subsumer) passes
+under both configurations. No production code reads time differently, and
+no verdict changed.
+
+### 19.6 Result
+
+Automatic route, release flags, one core, ws under its normal shared load
+(load average 16 to 27):
+
+- ore_ont_6132, five runs: 23.3, 21.7, 22.0, 20.7, 21.5 s; ore_ont_9899:
+  25.2, 21.6, 24.0, 24.2, 23.9 s. Every run answers through the ground-rule
+  data source with the Konclude and HermiT answer. The base on the same
+  host answered 6132 in 10.6 to 16.0 s (bridge-first inside its 8 s budget)
+  and 9899 once in 13.3 s and four times not at all (240 s timeout).
+  Scaled by the Ibex factor of 1.3 the branch stays near 33 s.
+  The ground-rule bridge spends about 16 s on its 401 public subjects (30 to
+  50 ms each), against 6.7 s for the whole `certified_nominals` racer;
+  that per-subject cost is a separate performance question.
+- The 16 held-out inputs keep their answers; times are within noise except
+  6132 and 9899 (above). ore_ont_12128 publishes the same wrong taxonomy on
+  base and branch whenever the `production_all` race finishes inside the
+  cap (230 s on the base); it has no data values, so this change cannot reach
+  it.
+- Seed pools with HermiT gold, both routes, 60 s cap: 0 WRONG before and
+  after, and 3 verdict transitions, all at the 60 s cap (timing).
+- The 112 nominal ORE inputs of the design half: 109 identical signatures,
+  no answer-status or route change, time ratio branch/base mean 1.041,
+  median 0.987.
