@@ -1,0 +1,6 @@
+bridge-defers.tsv: runs=600 before={'ok': 447, 'ERR': 153} after={'ok': 447, 'ERR': 153} transitions={}
+bridge-nominal-merge.tsv: runs=4000 before={'ok': 3993, 'ERR': 7} after={'ok': 3993, 'ERR': 7} transitions={}
+bridge-replay-pool.tsv: runs=2000 before={'ok': 1996, 'ERR': 3, 'TIMEOUT': 1} after={'ok': 1996, 'ERR': 3, 'TIMEOUT': 1} transitions={}
+nominal-coverage.tsv: runs=800 before={'ok': 501, 'ERR': 287, 'TIMEOUT': 12} after={'ok': 501, 'ERR': 287, 'TIMEOUT': 12} transitions={}
+r3-unannounced.tsv: runs=4000 before={'ok': 3596, 'TIMEOUT': 81, 'ERR': 323} after={'ok': 3596, 'TIMEOUT': 81, 'ERR': 323} transitions={}
+sameindividual-bridge.tsv: runs=3892 before={'ok': 3881, 'ERR': 11} after={'ok': 3881, 'ERR': 11} transitions={}

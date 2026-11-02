@@ -1836,6 +1836,36 @@ impl ProcessContext {
         ]
     }
 
+    // --- retained consistency leaf (docs/HYBRID-CB-HT.md §16) ---------------
+    /// Open a JOURNALED epoch on the six dependency-spine arenas, which
+    /// `push_branch_epoch` leaves epoch-exempt. Inside it the spine still
+    /// behaves as watermark memory for the branch epochs of a job (DDB marks
+    /// survive alternative pops), but the first change to a spine entry that
+    /// existed when the epoch opened saves a rollback copy, so
+    /// [`Self::pop_spine_journal_epoch`] restores the opening state exactly:
+    /// the marks a class job puts on the retained leaf's nondeterministic
+    /// track points do not survive into the next job.
+    pub fn push_spine_journal_epoch(&mut self) {
+        self.track_points.push_epoch();
+        self.dep_nodes.push_epoch();
+        self.dep_links.push_epoch();
+        self.clash_descs.push_epoch();
+        self.con_descs.push_epoch();
+        self.branch_nodes.push_epoch();
+    }
+
+    /// Close the innermost [`Self::push_spine_journal_epoch`]: restore every
+    /// spine entry changed since it opened and drop every entry allocated
+    /// since.
+    pub fn pop_spine_journal_epoch(&mut self) {
+        self.track_points.pop_epoch();
+        self.dep_nodes.pop_epoch();
+        self.dep_links.pop_epoch();
+        self.clash_descs.pop_epoch();
+        self.con_descs.pop_epoch();
+        self.branch_nodes.pop_epoch();
+    }
+
     pub fn node_count(&self) -> usize {
         self.nodes.len()
     }
@@ -8809,6 +8839,31 @@ mod tests {
         VariableBindingPath, VariableBindingPathMergingHash, VariableBindingPathMergingHashData,
     };
     use super::*;
+
+    /// docs/HYBRID-CB-HT.md §16: a spine journal epoch restores marks on
+    /// pre-existing track points and drops track points allocated inside it,
+    /// and nested journals unwind independently.
+    #[test]
+    fn spine_journal_epoch_restores_marks_and_drops_new_entries() {
+        let mut ctx = ProcessContext::new();
+        let base = ctx.alloc_track_point(DependencyTrackPoint::new(DependencyId::NONE));
+        ctx.push_spine_journal_epoch();
+        let leaf = ctx.alloc_track_point(DependencyTrackPoint::new(DependencyId::NONE));
+        ctx.track_point_mut(base).clashed_irrelevant = true;
+        ctx.push_spine_journal_epoch();
+        ctx.track_point_mut(base).relevant_flag = true;
+        ctx.track_point_mut(leaf).clashed_irrelevant = true;
+        let job = ctx.alloc_track_point(DependencyTrackPoint::new(DependencyId::NONE));
+        assert_eq!(job.index(), 2);
+        ctx.pop_spine_journal_epoch();
+        assert_eq!(ctx.spine_lens()[0], 2);
+        assert!(ctx.track_point(base).clashed_irrelevant);
+        assert!(!ctx.track_point(base).relevant_flag);
+        assert!(!ctx.track_point(leaf).clashed_irrelevant);
+        ctx.pop_spine_journal_epoch();
+        assert_eq!(ctx.spine_lens()[0], 1);
+        assert!(!ctx.track_point(base).clashed_irrelevant);
+    }
 
     fn backward_source_context(reverse: bool) -> (ProcessContext, SatNodeId) {
         let mut ctx = ProcessContext::new();

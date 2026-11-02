@@ -1,0 +1,2 @@
+BRIDGE-PREPARE-TIMING subjects=1 elapsed=1.317860 renew=1.286842 completion=0.030498 analysis=0.000487
+BRIDGE-PREPARE-TIMING subjects=849 elapsed=7.709026 renew=3.514209 completion=4.040014 analysis=0.149983

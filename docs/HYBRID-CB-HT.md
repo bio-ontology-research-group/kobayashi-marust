@@ -1487,6 +1487,118 @@ that model. Any job that touched the base reruns on the resuming base, so
 its answer is the old one. The screen writes no satisfiability cache entry,
 so no later job can read state that rested on an unaccepted screen.
 
+## 16. Retained consistency leaf with a reuse branch point (2026-11-02, `fix/v155-bridge-replay`)
+
+**Defect.** On the ObjectHasValue family (ore_ont_3917, 11378, 12191, 9151,
+9577) the consistency completion is nondeterministic, so the port disables
+the precomputation replay (`BRIDGE-REPLAY disabled`) and every class job
+resumes the first fork of the consistency completion: each of the 5,383 jobs
+on 3917 re-decides the same 173 ABox branch points (§15). Konclude does not:
+its class tasks start from the deterministic consistency task with cleared
+queues and consult the cached nondeterministic consistency model
+(`CCompletionGraphCacheHandler`, `PRFCOMPLETIONGRAPHCACHED`), reactivating an
+individual only when the class task contradicts the cached model. On the
+inputs whose saturation refuses `SELF` (6132, 9899) the port has no retained
+base at all and every job re-initializes and re-decides the whole ABox.
+
+**Change.** `bridge.rs`, the block "Retained consistency leaf"
+(`build_retained_consistency_leaf`, `restore_retained_consistency_leaf`,
+`drop_retained_consistency_leaf`, `retained_leaf_verdict_accepted`) and the
+`leaf_*` state of the classification driver; `process/context.rs`,
+`push_spine_journal_epoch` / `pop_spine_journal_epoch`.
+
+1. *The leaf.* The first class job that wants it builds the LEAF: it
+   restores the job base exactly as for a class job (the resuming base, or,
+   without a retained base, the per-job reset that initializes the whole
+   native ABox), configures the job algorithm exactly as for a class job,
+   and runs the completion with no class root to a clash-free fixpoint. The
+   leaf is accepted only when the drive ended consistent with no pending
+   signal, no completeness poison and no unrestored advance; otherwise leaf
+   reuse is off for the input. The leaf's open decisions are removed from the
+   job branch stack; their epochs stay open beneath every leaf job.
+2. *Leaf jobs (alternative 0 of the reuse branch point).* Each subject
+   read-off, pair probe and batch refutation first runs on the leaf: the
+   previous leaf job is rolled back (its owned branch epochs, its job epoch),
+   a new job epoch opens with the leaf's databox, branch cursor (so the job's
+   branch levels lie above every leaf level) and id allocator, and with a
+   fresh job algorithm. The spine arenas (track points, dependency nodes and
+   links, clash and concept descriptors, branch-tree nodes) are exempt from
+   branch epochs; leaf jobs run inside a journaled spine epoch that is
+   popped per job, so the DDB marks a job puts on the leaf's track points
+   (and every other spine change) do not survive into the next job. Leaf
+   jobs write no satisfiability-expansion cache entry.
+3. *Acceptance.* A leaf verdict is accepted only if the job search is not
+   poisoned and either (a) the verdict is satisfiable (a clash-free fixpoint,
+   no pending signal), or (b) the verdict is unsatisfiable and the drive
+   ended in a ROOT CANCELLATION (`ddb_root_cancelled`: u29 traced the clash to
+   branching level 0, with every sibling refutation witnessed as in §11 and
+   §14). Accepted satisfiable read-offs are never authoritative. A batch
+   refutation is used only on an accepted satisfiable verdict.
+4. *Fallback (alternative 1).* Any other outcome (an unsatisfiable verdict
+   without root cancellation, a STOP, a poisoned search) takes the second
+   alternative: the leaf is dropped (all epochs above the job base and both
+   spine journals popped; on the reset path the reset itself discards it)
+   and the job reruns exactly as before this change. The leaf is rebuilt
+   lazily by the next leaf job. A scheduling rule (no verdict depends on it)
+   stops leaf attempts once alternative 1 was taken at least 256 times and on
+   more than half of the attempts.
+
+`KM_BRIDGE_NO_LEAF_REUSE=1` restores the previous path; `KM_BRIDGE_LEAF_STATS=1`
+(with `KM_HT_STATS=1` on the orchestrated route) prints the counters.
+
+**Exactness.**
+- *The leaf is a model.* The job base is exact by the arguments of §10 and
+  §15 (it is the resuming base or a freshly initialized ABox). The leaf is
+  the consistency completion continued from it by the unchanged rules to a
+  clash-free fixpoint, so its graph is a complete clash-free completion graph
+  of the input ABox; leaving no unrestored advance, it carries no leftovers of
+  refuted alternatives and its dependency tags are those of its decisions.
+- *Satisfiable verdicts.* A leaf job adds the class root (and the probe
+  seeds) to that graph and runs every rule to a clash-free fixpoint. No queue
+  of the leaf is pending, so the final graph is a complete clash-free
+  completion graph of the ABox plus the probe: a model of the input in which
+  the root has the probe's concepts. The read-off of such a model is what
+  any satisfiable probe on the resuming base also yields (an arbitrary model
+  of the input); it is marked non-authoritative because its root label can
+  contain consequences of the leaf's choices. Its positive labels go into
+  KPSet's candidate set and its deterministic labels into the certain set
+  through the dependency branch tags, exactly as for a job that made the
+  same choices itself: the leaf's decisions carry branch tags 1 to the
+  leaf's depth and `maximum_deterministic_branch_tag` stays 0, so no fact
+  that rests on a leaf decision reads as deterministic.
+- *Unsatisfiable verdicts.* A leaf job is a continuation of the consistency
+  search: its branch tree extends the leaf's, and the leaf's decisions are
+  ordinary nondeterministic dependency nodes whose refuted alternatives keep
+  the refutation sets stored during the consistency search (those stay valid:
+  the probe only adds facts). A root cancellation means the clash closure,
+  propagated through decisions all of whose alternatives carry a witnessed
+  stored refutation, reached branching level 0, i.e. depends on no decision
+  of the job or of the leaf: the probe is unsatisfiable with respect to the
+  input. This is the verdict the full consistency search would reach after
+  enumerating the leaf's alternatives, and it rests on the same trust base
+  as every DDB root cancellation of the bridge. Every other unsatisfiable
+  outcome, in particular the exhaustion of the job's own branch stack, may
+  rest on a leaf decision whose other alternatives were never tried, and is
+  rejected.
+- *No leakage between jobs.* The graph, labels, queues and databox of a job
+  are rolled back by its branch epochs; the dependency spine by the spine
+  journal; the job algorithm is fresh. What survives a job is what survives
+  a job on the resuming base too (the unsatisfiable cache, whose entries are
+  label subsets refuted with respect to the TBox; the learned disjunct
+  priorities; the witness map of §14), plus nothing a leaf job writes to the
+  satisfiability-expansion cache, because leaf jobs write none.
+- *Fallback.* Alternative 1 is the unchanged job on the unchanged base, so
+  its verdict is the old one; dropping the leaf restores that base exactly
+  (branch epochs and both spine journals popped, then the ordinary restore).
+
+What it rests on. As for §10 to §15: the bridge has no Lean model and no
+certificate covers a bridge answer; the argument assumes the port's rules,
+dependency tracking and DDB root cancellation are Konclude's, and is checked
+differentially. Lean obligation created: none discharged; a bridge model
+would have to show that a root-cancelled closure over a search tree that
+extends a completed consistency search is a refutation of the probe, and
+that the spine journal restores every spine field a job reads.
+
 ## 17. The restricted automaton re-fire, read-only blocking scans, and Konclude's full-graph decision (2026-11-02, `fix/v155-bridge-abox-probes`)
 
 Section 13 left three switches between the large equality ABoxes and the
