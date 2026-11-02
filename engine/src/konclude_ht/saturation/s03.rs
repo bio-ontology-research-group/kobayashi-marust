@@ -1050,18 +1050,97 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         con_sat_pro_linker: ConceptSaturationProcessLinkerId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // PORT-PENDING: see structural transcription above. The role->getIndirectSuperRoleList
-        // / getDomainRangeConceptList iteration is pure role-arena logic, but the body
-        // is interleaved with the node's saturation satellites and a sibling:
-        // W4-DEFER[api]: conDes read (SAT-1); `getReapplyConceptSaturationLabelSet(true)`,
-        //   `getRoleBackwardPropagationHash(true)` lazy getters; the
-        //   `CBackwardSaturationPropagationLink` allocation +
-        //   `initBackwardPropagationLink`; `CRoleBackwardSaturationPropagationHash::
-        //   addSelfConnectedBackwardPropagationLink`; the `addConceptFilteredToIndividual`
-        //   (6-arg label-set overload) sibling (PU-SAT-11) and the
-        //   `applyBackwardPropagationConcepts` sibling (PU-SAT-6/7).
-        let _ = (process_indi, con_sat_pro_linker, calc_alg_context);
-        todo!("W4-DEFER: applySELFRule — gated by unported saturation backward-propagation satellites");
+        // Ported (docs/HYBRID-CB-HT.md section 20).
+        let con_des = calc_alg_context
+            .process_context()
+            .con_sat_proc_linker(con_sat_pro_linker)
+            .get_concept_saturation_descriptor();
+        let concept = calc_alg_context
+            .process_context()
+            .con_sat_desc(con_des)
+            .get_concept();
+        let role = calc_alg_context.ontology_arenas().concept(concept).get_role();
+        let mut con_set = super::satellites::ReapplyConceptSaturationLabelSetId::NONE;
+        // KONCLUDE-PORT-NOTE[identity]: reflexive-entry list, as at every
+        // other saturation super-role walk (s02 `saturation_indirect_super_roles`).
+        let super_roles: Vec<NegLink<RoleId>> =
+            Self::saturation_indirect_super_roles(role, calc_alg_context);
+        for super_role_link in super_roles {
+            let super_role = super_role_link.target;
+            // KONCLUDE-PORT-NOTE[exactness]: cpp 6853 has no disjoint-role
+            // test here, but a self link on a role with disjoint roles can
+            // clash (Disjoint(R,S) with Self on both, or an asymmetric R,
+            // i.e. R disjoint from its inverse) and saturation has no rule
+            // that would see it. Flag the node INSUFFICIENT exactly as
+            // createSuccessorForConcept does for such roles (cpp 7026–7029),
+            // which only sends the node to completion.
+            if !calc_alg_context
+                .ontology_arenas()
+                .role(super_role)
+                .disjoint_roles
+                .is_empty()
+            {
+                self.update_direct_adding_individual_status_flags(
+                    *process_indi,
+                    IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                    calc_alg_context,
+                );
+                self.set_insufficient_node_occured(calc_alg_context);
+            }
+            let domain_concepts: Vec<NegLink<ConceptId>> = calc_alg_context
+                .ontology_arenas()
+                .role(super_role)
+                .get_domain_range_concept_list(super_role_link.negated)
+                .to_vec();
+            for domain_link in domain_concepts {
+                if con_set.is_none() {
+                    con_set = calc_alg_context
+                        .process_context_mut()
+                        .sat_node_reapply_concept_saturation_label_set(*process_indi, true);
+                }
+                self.add_concept_filtered_to_individual_label_set(
+                    domain_link.target,
+                    domain_link.negated,
+                    process_indi,
+                    con_set,
+                    false,
+                    calc_alg_context,
+                );
+            }
+            let range_concepts: Vec<NegLink<ConceptId>> = calc_alg_context
+                .ontology_arenas()
+                .role(super_role)
+                .get_domain_range_concept_list(!super_role_link.negated)
+                .to_vec();
+            for range_link in range_concepts {
+                if con_set.is_none() {
+                    con_set = calc_alg_context
+                        .process_context_mut()
+                        .sat_node_reapply_concept_saturation_label_set(*process_indi, true);
+                }
+                self.add_concept_filtered_to_individual_label_set(
+                    range_link.target,
+                    range_link.negated,
+                    process_indi,
+                    con_set,
+                    false,
+                    calc_alg_context,
+                );
+            }
+            // backPropLink->initBackwardPropagationLink(processIndi, superRole);
+            // backPropHash->addSelfConnectedBackwardPropagationLink(superRole, backPropLink)
+            let node = *process_indi;
+            let back_prop_reapply_des = calc_alg_context
+                .process_context_mut()
+                .sat_node_add_self_connected_backward_propagation_link(node, super_role, node);
+            if back_prop_reapply_des.is_some() {
+                self.apply_backward_propagation_concepts(
+                    *process_indi,
+                    back_prop_reapply_des,
+                    calc_alg_context,
+                );
+            }
+        }
     }
 
     // =======================================================================

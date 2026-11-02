@@ -14566,6 +14566,28 @@ fn saturation_refuses_terminology(ctx: &CalculationAlgorithmContextBase) -> bool
     })
 }
 
+/// Whether the concept saturation pass refuses a SELF-bearing terminology.
+/// The saturation SELF rule is ported (`applySELFRule`, docs/HYBRID-CB-HT.md
+/// section 20), so a terminology without native nominals saturates. The
+/// native-nominal individual saturation additionally needs the
+/// representative-cache handler's self-restriction role collection
+/// (`CSaturationNodeBackendAssociationCacheHandler::collectSelfRestrictionRoles`,
+/// cpp 225–250), which the port's cache writer does not have, so that path
+/// keeps the refusal. `KM_BRIDGE_SAT_REFUSE_SELF=1` restores the old refusal
+/// everywhere (A/B measurements).
+fn saturation_refuses_self_terminology(
+    ctx: &CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    native_consistency_prefix: bool,
+) -> bool {
+    if !saturation_refuses_terminology(ctx) {
+        return false;
+    }
+    bridged.has_native_nominals()
+        || native_consistency_prefix
+        || std::env::var_os("KM_BRIDGE_SAT_REFUSE_SELF").is_some()
+}
+
 fn run_bridged_saturation(ctx: &mut CalculationAlgorithmContextBase, bridged: &Bridged) -> bool {
     run_bridged_saturation_with_native_consistency_prefix(
         ctx,
@@ -14595,7 +14617,7 @@ fn run_bridged_saturation_with_native_consistency_prefix(
     // implement its backward-propagation rule. Skip the optional pass before
     // it mutates any state; the caller then uses exact completion without
     // extracting saturation verdicts or installing saturation cache links.
-    if saturation_refuses_terminology(ctx) {
+    if saturation_refuses_self_terminology(ctx, bridged, native_consistency_prefix.is_some()) {
         return false;
     }
     let mut sat_algo = super::saturation::algorithm::SaturationTaskHandleAlgorithm::new();
@@ -24839,6 +24861,36 @@ mod tests {
         assert!(result.unsatisfiable.contains(&2), "reflexivity also applies to existential successors");
         assert!(!result.unsatisfiable.contains(&1));
       }
+    }
+
+    #[test]
+    fn saturation_self_rule_decides_reflexive_terminology() {
+        // docs/HYBRID-CB-HT.md section 20: the saturation SELF rule installs
+        // a self-connected backward link, so the pass no longer refuses a
+        // SELF terminology and decides its classes itself.
+        let mut tin = TInput {
+            concepts: vec!["A".into(), "B".into(), "C".into()],
+            roles: vec!["r".into()],
+            queries: vec![0, 1, 2],
+            clauses: vec![
+                HtClause { body: vec![], head: vec![HAtom::Role { r: 0, s: 0, t: 0 }] },
+                HtClause { body: vec![HAtom::Concept { neg: false, c: 0, t: 0 }, HAtom::Role { r: 0, s: 0, t: 1 }],
+                    head: vec![HAtom::Concept { neg: false, c: 1, t: 1 }] },
+                HtClause { body: vec![HAtom::Concept { neg: false, c: 2, t: 0 }],
+                    head: vec![HAtom::Exist { r: 0, neg: false, c: 0, t: 0 }] },
+            ],
+            ..Default::default()
+        };
+        let outcome = bridged_saturate(&tin).expect("SELF terminology saturates");
+        assert_eq!(outcome.sat_verdict[0], Some(false), "A is satisfiable");
+        assert!(outcome.certain_subsumers[0].as_ref().is_some_and(|s| s.contains(&1)),
+            "A's saturated label holds B through the self link");
+        assert!(outcome.certain_subsumers[1].as_ref().is_some_and(|s| !s.contains(&0)));
+        tin.clauses[1].head = vec![HAtom::Concept { neg: true, c: 0, t: 1 }];
+        let outcome = bridged_saturate(&tin).expect("SELF terminology saturates");
+        assert_eq!(outcome.sat_verdict[0], Some(true), "A clashes on its own self edge");
+        assert_ne!(outcome.sat_verdict[2], Some(false), "C's A-successor is unsatisfiable");
+        assert_ne!(outcome.sat_verdict[1], Some(true));
     }
 
     #[test]
