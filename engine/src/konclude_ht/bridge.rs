@@ -862,6 +862,7 @@ fn linear_value_encoding_exact(tin: &TInput) -> bool {
     let mut profile_includes: Vec<(usize, usize)> = Vec::new();
     let mut profile_excludes: Vec<(usize, usize)> = Vec::new();
     let mut digits_of: crate::fxhash::FxHashMap<usize, Vec<(u32, u32)>> = Default::default();
+    let mut helper_guards: Vec<(usize, usize)> = Vec::new();
     for clause in &tin.clauses {
         if !clause_mentions_value_aux(tin, clause) {
             continue;
@@ -888,6 +889,13 @@ fn linear_value_encoding_exact(tin: &TInput) -> bool {
                         profile_excludes.push((*left, *right)),
                     (None, None) if aux(*right) && !aux(*left) && dt::bridge_tbox_atomic_name(name(*left)) =>
                         profile_excludes.push((*right, *left)),
+                    // A helper (index digit or membership profile) disjoint
+                    // from a concept that is not a helper: the two-sorted
+                    // nominal encoding's `G ⊓ D ⊑ ⊥` with `D` folded away
+                    // (docs/HYBRID-CB-HT.md section 19). Checked below
+                    // against the values that imply the helper.
+                    _ if aux(*left) && !aux(*right) => helper_guards.push((*left, *right)),
+                    _ if aux(*right) && !aux(*left) => helper_guards.push((*right, *left)),
                     _ => defer!("a linear value-encoding disjointness has an unsupported shape"),
                 }
             }
@@ -905,6 +913,28 @@ fn linear_value_encoding_exact(tin: &TInput) -> bool {
         for &value in members.get(&helper).map(Vec::as_slice).unwrap_or(&[]) {
             if dt::bridge_exact_atomic_disjoint(name(value), name(range)) != Some(true) {
                 defer!("a membership profile excludes a range one of its values is in");
+            }
+        }
+    }
+    // `H ⊓ G ⊑ ⊥` holds for `H` read as the union of its values when every
+    // such value `v` has the clause `v ⊓ G ⊑ ⊥` itself: that clause mentions
+    // no helper, so every model of the remaining clauses satisfies it.
+    if !helper_guards.is_empty() {
+        let mut disjoint: crate::fxhash::FxHashSet<(usize, usize)> = Default::default();
+        for clause in &tin.clauses {
+            if let ([HAtom::Concept { neg: false, c: a, t: at }, HAtom::Concept { neg: false, c: b, t: bt }], [])
+                = (clause.body.as_slice(), clause.head.as_slice())
+            {
+                if at == bt {
+                    disjoint.insert(((*a).min(*b), (*a).max(*b)));
+                }
+            }
+        }
+        for (helper, guard) in helper_guards {
+            for &value in members.get(&helper).map(Vec::as_slice).unwrap_or(&[]) {
+                if !disjoint.contains(&(value.min(guard), value.max(guard))) {
+                    defer!("a helper is disjoint from a concept one of its values is not disjoint from");
+                }
             }
         }
     }
