@@ -241,6 +241,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 if super::automat_closure_audit_enabled() {
                     self.ht_automat_closure_audit(calc_alg_context);
                 }
+                if super::graph_dump_enabled() {
+                    self.ht_graph_dump("fixpoint", calc_alg_context);
+                }
                 return true;
             }
             match calc_alg_context.pending_signal() {

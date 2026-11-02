@@ -646,10 +646,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             );
         let mut roles = Vec::new();
         for &(role, minimum_restricting_cardinality) in &replay.cached_at_most_cardinalities {
+            // Konclude: `roleSuccHash->getRoleSuccessorCount(role)` on the
+            // node's reapply role-successor hash. The node-level accessor
+            // `IndividualProcessNode::get_role_successor_count` has no arena
+            // access and returned 0, which hid every materialized link from
+            // this test (docs/HYBRID-CB-HT.md section 18.1).
             let current = calc_alg_context
                 .process_context()
-                .node(node)
-                .get_role_successor_count(role);
+                .node_role_successor_count(node, role);
             let existential = if successor_blocked {
                 replay
                     .cached_existential_max_cardinalities
@@ -733,6 +737,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let Some(replay) = self.native_nominal_backend_replay.get(&tag).cloned() else {
             return true;
         };
+        if super::graph_dump_enabled() {
+            eprintln!(
+                "RETEST node={} tag={} flags={:#x}",
+                calc_alg_context.process_context().node(node).individual_node_id(),
+                tag,
+                calc_alg_context.process_context().node(node).processing_restriction_flags
+            );
+        }
 
         if calc_alg_context
             .process_context()

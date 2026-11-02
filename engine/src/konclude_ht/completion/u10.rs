@@ -1781,6 +1781,79 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 }
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
+    /// Diagnostic (`KM_HT_GRAPH_DUMP=1`): print every node of the graph with
+    /// its flags, merge target, label tags and links. No effect on rules.
+    pub fn ht_graph_dump(
+        &mut self,
+        what: &str,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        let (lo, hi) = {
+            let v = calc_alg_context.processing_data_box().individual_process_node_vector();
+            (v.get_item_min_index(), v.get_item_max_index())
+        };
+        eprintln!("GRAPH-DUMP {} ids {}..={}", what, lo, hi);
+        for id in lo..=hi {
+            let node = calc_alg_context
+                .processing_data_box()
+                .individual_process_node_vector()
+                .get_data(id);
+            if node.is_none() {
+                continue;
+            }
+            let pc = calc_alg_context.process_context();
+            let onto = calc_alg_context.ontology_arenas();
+            let n = pc.node(node);
+            let mut labels: Vec<String> = Vec::new();
+            let ls = n.use_reapply_con_label_set;
+            if ls.is_some() {
+                let mut it = pc.label_set(ls).get_concept_label_set_iterator(true, false, false);
+                while it.has_next() {
+                    let cd: ConDescId = it.next(true, pc);
+                    if cd.is_none() {
+                        break;
+                    }
+                    let des = pc.con_desc(cd);
+                    let con = des.get_concept();
+                    labels.push(format!("{}{}", if des.is_negated() { "-" } else { "" }, onto.concept(con).get_concept_tag()));
+                }
+            }
+            let mut links: Vec<String> = Vec::new();
+            let mut keys: Vec<Cint64> = Vec::new();
+            let mut it = pc.node_successor_iterator(node);
+            while it.has_next() {
+                let link = it.next_link(false);
+                let other = it.next_individual_id(true);
+                if link.is_some() {
+                    keys.push(other);
+                }
+            }
+            keys.sort_unstable();
+            keys.dedup();
+            let sid = |x: NodeId| if x.is_some() { pc.node(x).individual_node_id() } else { i64::MIN };
+            for other in keys {
+                let mut rit = pc.node_successor_role_iterator(node, other);
+                while rit.has_next() {
+                    let link = rit.next(true);
+                    if link.is_some() {
+                        let e = pc.edge(link);
+                        links.push(format!("[{}:{}->{}]", onto.role(e.get_link_role()).get_role_tag(), sid(e.get_source_individual()), sid(e.get_destination_individual())));
+                    }
+                }
+            }
+            let merged = if n.has_merged_into_individual_node_id() { format!(" merged->{}", n.merged_into_individual_node_id()) } else { String::new() };
+            eprintln!(
+                "  node {} nom={} flags={:#x}{} L=[{}] links={}",
+                n.individual_node_id(),
+                n.is_nominal_individual_node(),
+                n.processing_restriction_flags,
+                merged,
+                labels.join(","),
+                links.join("")
+            );
+        }
+    }
+
     /// `KM_HT_AUTOMAT_CLOSURE_AUDIT=1` (diagnostic): at a clash-free fixpoint,
     /// check that the completion graph is closed under the all-successors
     /// automaton rule. For every node whose own rules have run (not merged,

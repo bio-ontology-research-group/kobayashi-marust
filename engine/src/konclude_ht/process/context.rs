@@ -342,6 +342,16 @@ pub struct ProcessContext {
     singleton_descriptor_changes: HashMap<usize, (ConceptId, bool, TrackPointId)>,
     /// Open branch-epoch count (in-process COW; see `push_branch_epoch`).
     branch_epoch_depth: usize,
+    /// Dependency-node arena length at each open branch epoch (see
+    /// `release_dependency_individuals_of_popped_nodes`).
+    branch_epoch_dep_node_marks: Vec<usize>,
+    /// Dependency nodes whose appropriate individual was a node allocated in
+    /// a popped branch epoch (docs/HYBRID-CB-HT.md section 18.2). Their
+    /// individual was cleared at the pop; the DDB analysis reads this set to
+    /// keep an attribution it can no longer make out of the unsatisfiability
+    /// cache. Entries may outlive a spine truncation; a stale entry only
+    /// suppresses a cache write.
+    released_dependency_individuals: crate::fxhash::FxHashSet<usize>,
     // --- graph nodes ---
     /// `CIndividualProcessNode` pool. The databox's `individual_process_node_vector`
     /// holds `NodeId`s into THIS arena (it tracks; this owns).
@@ -735,6 +745,8 @@ impl ProcessContext {
             singleton_descriptor_epoch: 0,
             singleton_changed_descriptors: Vec::new(),
             singleton_descriptor_changes: HashMap::default(),            branch_epoch_depth: 0,
+            branch_epoch_dep_node_marks: Vec::new(),
+            released_dependency_individuals: Default::default(),
             nodes: Arena::new(),
             sat_nodes: Arena::new_tight(),
             edges: Arena::new(),
@@ -915,6 +927,8 @@ impl ProcessContext {
             self.release_large_partial_saturation_capacity();
         }
         self.branch_epoch_depth = 0;
+        self.branch_epoch_dep_node_marks.clear();
+        self.released_dependency_individuals.clear();
         self.used_mem_man = INVALID;
         self.used_process_tagger = ProcessTagger::new();
         self.used_process_stat_gath = INVALID;
@@ -3373,6 +3387,7 @@ impl ProcessContext {
         // alternative leaves dangling ids in persisted clash sets (measured:
         // ore_ont_541 Plan⊑Particular probe panicked reading a truncated
         // continue track point). Append-only per probe environment.
+        self.branch_epoch_dep_node_marks.push(self.dep_nodes.len());
         self.branch_epoch_depth += 1;
     }
 
@@ -3492,6 +3507,7 @@ impl ProcessContext {
         self.marker_indi_node_datas.pop_epoch();
         self.marker_indi_node_hashes.pop_epoch();
         self.nodes.pop_epoch();
+        self.release_dependency_individuals_of_popped_nodes();
         self.node_switch_histories.pop_epoch();
         self.nominal_caching_loss_reactivation_datas.pop_epoch();
         self.nominal_caching_loss_reactivation_hashes.pop_epoch();
@@ -3573,6 +3589,35 @@ impl ProcessContext {
         self.var_binding_trigger_linkers.pop_epoch();
         // dependency spine arenas: epoch-exempt (see push_branch_epoch).
         self.branch_epoch_depth -= 1;
+    }
+
+    /// The dependency spine is epoch-exempt, the node arena is not: a
+    /// dependency node created inside the popped epoch can name a node that
+    /// the pop just truncated (a deterministic consequence derived inside a
+    /// refuted alternative, kept in that alternative's stored refutation).
+    /// Konclude keeps the node object alive in the task's memory; the port
+    /// cannot, and a later DDB analysis that walks such a dependency read the
+    /// truncated slot (index out of bounds) or a node that took the slot
+    /// since. Clear the individual of every such dependency node, so that the
+    /// analysis takes Konclude's path for a dependency without an appropriate
+    /// individual, and record it (docs/HYBRID-CB-HT.md section 18.2).
+    fn release_dependency_individuals_of_popped_nodes(&mut self) {
+        let mark = self.branch_epoch_dep_node_marks.pop().unwrap_or(0);
+        let node_len = self.nodes.len();
+        for index in mark..self.dep_nodes.len() {
+            let id = DependencyId::new(index as Cint64);
+            let individual = self.dep_nodes.get(id).base().individual_node;
+            if individual.is_some() && individual.index() >= node_len {
+                self.dep_nodes.get_mut_journaled(id).base_mut().individual_node = NodeId::NONE;
+                self.released_dependency_individuals.insert(index);
+            }
+        }
+    }
+
+    /// True when `dep_node`'s appropriate individual was released by
+    /// [`Self::release_dependency_individuals_of_popped_nodes`].
+    pub fn dependency_individual_released(&self, dep_node: DependencyId) -> bool {
+        dep_node.is_some() && self.released_dependency_individuals.contains(&dep_node.index())
     }
 
     /// Open branch epochs (0 = none).

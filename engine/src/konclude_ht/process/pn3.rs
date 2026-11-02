@@ -261,16 +261,9 @@ impl IndividualProcessNode {
         }
     }
 
-    /// Port of `CIndividualProcessNode::getRoleSuccessorCount`.
-    pub fn get_role_successor_count(&self, _role: RoleId) -> Cint64 {
-        if self.use_reapply_role_succ_hash.is_some() {
-            // KONCLUDE-PORT-NOTE[ownership]: faithful arena-backed route is
-            // `ProcessContext::node_role_successor_count`.
-            0
-        } else {
-            0
-        }
-    }
+    // `CIndividualProcessNode::getRoleSuccessorCount` needs the arena: use
+    // `ProcessContext::node_role_successor_count`. The node-level stub that
+    // returned 0 was removed (docs/HYBRID-CB-HT.md section 18.1).
 
     /// Port of `CIndividualProcessNode::getRoleSuccessorHistoryLinkIterator`.
     pub fn get_role_successor_history_link_iterator(

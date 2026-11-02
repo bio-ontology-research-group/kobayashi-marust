@@ -1373,6 +1373,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             .process_context()
                             .node(indi_node)
                             .use_reapply_role_succ_hash;
+                        if super::graph_dump_enabled() {
+                            eprintln!(
+                                "CARD-CRIT node={} tag={} hash={} ext={} atmost={:?} exmax={:?} nbr={:?}",
+                                calc_alg_context.process_context().node(indi_node).individual_node_id(),
+                                assoc_tag,
+                                role_succ_hash != Id::NONE,
+                                has_cardinality_extension,
+                                replay.as_ref().map(|r| r.cached_at_most_cardinalities.iter().map(|(ro, c)| (ro.raw, *c)).collect::<Vec<_>>()),
+                                replay.as_ref().map(|r| r.cached_existential_max_cardinalities.iter().map(|(ro, c)| (ro.raw, *c)).collect::<Vec<_>>()),
+                                replay.as_ref().map(|r| r.cached_neighbour_roles.iter().map(|(n, ro, i, d)| (*n, ro.raw, *i, *d)).collect::<Vec<_>>()),
+                            );
+                        }
                         if role_succ_hash != Id::NONE && has_cardinality_extension {
                             let replay = replay.expect("cardinality extension implies a replay");
                             let last_added_link_edge: EdgeId = calc_alg_context
@@ -1409,6 +1421,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                         calc_alg_context,
                                     )
                                     .is_empty();
+                                if super::graph_dump_enabled() {
+                                    eprintln!("CARD-CRIT result node={} critical={}", calc_alg_context.process_context().node(indi_node).individual_node_id(), expansion_blocking_critical);
+                                }
                                 loc_backend_sync_data = self
                                     .get_localized_individual_backend_cache_snychronisation_data(
                                         indi_node,
@@ -1484,8 +1499,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             }
                             let mut link_count: Cint64 = calc_alg_context
                                 .process_context()
-                                .node(indi_node)
-                                .get_role_successor_count(role);
+                                .node_role_successor_count(indi_node, role);
                             if calc_alg_context
                                 .process_context()
                                 .node(indi_node)

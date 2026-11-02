@@ -1842,6 +1842,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             )
         };
 
+        if calc_alg_context
+            .process_context()
+            .dependency_individual_released(dep_node)
+        {
+            tracking_line.set_released_individual_attribution();
+        }
         let mut new_indi_node = NodeId::NONE;
         if has_appropriate {
             let appropriate = calc_alg_context
@@ -1909,22 +1915,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
         let mut new_tracked_clashed_des =
             self.get_free_tracked_clashed_descriptor(tracking_line, calc_alg_context);
-        let init_indi = if new_indi_node.is_some() {
-            new_indi_node
+        if new_indi_node.is_some() {
+            self.init_backtracked_tracked_clashed_descriptor(
+                new_tracked_clashed_des,
+                new_indi_node,
+                con_des,
+                var_bind_path,
+                prev_dep_track_point,
+                calc_alg_context,
+            );
         } else {
-            calc_alg_context
-                .process_context()
-                .clash_desc(tracked_clashed_des)
-                .get_appropriated_individual()
-        };
-        self.init_backtracked_tracked_clashed_descriptor(
-            new_tracked_clashed_des,
-            init_indi,
-            con_des,
-            var_bind_path,
-            prev_dep_track_point,
-            calc_alg_context,
-        );
+            self.init_backtracked_tracked_clashed_descriptor_from_parent(
+                new_tracked_clashed_des,
+                tracked_clashed_des,
+                con_des,
+                var_bind_path,
+                prev_dep_track_point,
+                calc_alg_context,
+            );
+        }
         new_tracked_clashed_des = self
             .try_get_invalid_same_individual_node_level_backtracked_deterministic_clashed_descriptors(
                 new_tracked_clashed_des,
@@ -1955,6 +1964,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             } else {
                 NodeId::NONE
             };
+            if self.ht_track_point_individual_released(add_dep_track_point, calc_alg_context) {
+                tracking_line.set_released_individual_attribution();
+            }
             tracking_line.add_involved_individual_node(add_dep_new_indi_node, calc_alg_context);
 
             let mut new_tracked_clashed_des =
@@ -1976,13 +1988,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     calc_alg_context,
                 );
             } else {
-                let init_indi = calc_alg_context
-                    .process_context()
-                    .clash_desc(tracked_clashed_des)
-                    .get_appropriated_individual();
-                self.init_backtracked_tracked_clashed_descriptor(
+                self.init_backtracked_tracked_clashed_descriptor_from_parent(
                     new_tracked_clashed_des,
-                    init_indi,
+                    tracked_clashed_des,
                     ConDescId::NONE,
                     var_bind_path,
                     add_dep_track_point,
@@ -2074,6 +2082,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             if let Some(min_indi_level) = min_indi_level.as_deref_mut() {
                 *min_indi_level = curr_level;
             }
+            // A released individual (docs/HYBRID-CB-HT.md section 18.2) has no
+            // level to compare: keep the descriptor, as for a differing level.
+            if calc_alg_context
+                .process_context()
+                .dependency_individual_released(dep_node)
+            {
+                tracking_line.set_released_individual_attribution();
+                return tracked_clashed_des;
+            }
             if calc_alg_context
                 .process_context()
                 .dep_node(dep_node)
@@ -2111,6 +2128,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 } else {
                     NodeId::NONE
                 };
+                if self.ht_track_point_individual_released(add_dep_track_point, calc_alg_context) {
+                    tracking_line.set_released_individual_attribution();
+                    return tracked_clashed_des;
+                }
                 tracking_line.add_involved_individual_node(add_dep_new_indi_node, calc_alg_context);
                 if add_dep_new_indi_node.is_some()
                     && calc_alg_context
@@ -2134,6 +2155,109 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             );
         }
         tracked_clashed_des
+    }
+
+    /// True when the dependency node behind `track_point` had its appropriate
+    /// individual released at a branch-epoch pop (docs/HYBRID-CB-HT.md
+    /// section 18.2).
+    fn ht_track_point_individual_released(
+        &self,
+        track_point: TrackPointId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> bool {
+        if track_point.is_none() {
+            return false;
+        }
+        let pc = calc_alg_context.process_context();
+        pc.dependency_individual_released(pc.track_point(track_point).dependency_node())
+    }
+
+    /// Port of `CTrackedClashedDescriptor::initTrackedClashedDescriptor(
+    /// CTrackedClashedDescriptor* trackedClashDesForIndiNode, conDes,
+    /// varBindPath, depTrackPoint)`: the individual part (node, id, level,
+    /// nominal flag, error flag) is COPIED from `parent`, the rest is taken
+    /// from `dep_track_point`. The previous port re-read the parent's node,
+    /// which reads a truncated slot when that node was allocated in a popped
+    /// branch epoch (docs/HYBRID-CB-HT.md section 18.2).
+    fn init_backtracked_tracked_clashed_descriptor_from_parent(
+        &mut self,
+        tracked_clashed_des: ClashDescId,
+        parent: ClashDescId,
+        concept_descriptor: ConDescId,
+        var_bind_path: VarBindingPathId,
+        dep_track_point: TrackPointId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        use super::super::process::descriptor::ClashDescriptorKind;
+        let parent_individual = match calc_alg_context.process_context().clash_desc(parent).kind {
+            ClashDescriptorKind::Tracked {
+                individual_node,
+                individual_node_id,
+                individual_node_level,
+                nominal_individual,
+                error,
+                ..
+            } => Some((individual_node, individual_node_id, individual_node_level, nominal_individual, error)),
+            _ => None,
+        };
+        let Some((individual_node, individual_node_id, individual_node_level, nominal_individual, mut error)) =
+            parent_individual
+        else {
+            let individual = calc_alg_context
+                .process_context()
+                .clash_desc(parent)
+                .get_appropriated_individual();
+            self.init_backtracked_tracked_clashed_descriptor(
+                tracked_clashed_des,
+                individual,
+                concept_descriptor,
+                var_bind_path,
+                dep_track_point,
+                calc_alg_context,
+            );
+            return;
+        };
+        let mut deterministic = false;
+        let mut independent = false;
+        let mut processing_tag = INVALID;
+        let mut branching_level_tag = INVALID;
+        if dep_track_point.is_some() {
+            let track_point = calc_alg_context
+                .process_context()
+                .track_point(dep_track_point);
+            branching_level_tag = track_point.get_branching_tag();
+            let dep_node = track_point.dependency_node();
+            if dep_node.is_some() {
+                let dep_node = calc_alg_context.process_context().dep_node(dep_node);
+                processing_tag = dep_node.base().process_tag;
+                deterministic = dep_node.is_deterministic();
+                independent = dep_node.is_independent_base_dependency_type();
+            } else {
+                error = true;
+            }
+            if branching_level_tag <= -1 {
+                error = true;
+            }
+        } else {
+            error = true;
+        }
+        calc_alg_context
+            .process_context_mut()
+            .clash_desc_mut(tracked_clashed_des)
+            .init_tracked_clashed_descriptor(
+                individual_node,
+                individual_node_id,
+                individual_node_level,
+                nominal_individual,
+                concept_descriptor,
+                var_bind_path,
+                dep_track_point,
+                deterministic,
+                independent,
+                processing_tag,
+                branching_level_tag,
+                error,
+            );
     }
 
     fn init_backtracked_tracked_clashed_descriptor(

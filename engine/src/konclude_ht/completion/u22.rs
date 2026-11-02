@@ -464,8 +464,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         tracking_line: &mut TrackedClashedDependencyLine,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        let _ = tracking_line;
-        if !self.conf_write_unsat_caching || tracked_clashed_des.is_none() {
+        // A line with a substitute attribution (docs/HYBRID-CB-HT.md section
+        // 18.2) cannot tell which node its descriptors belong to.
+        if !self.conf_write_unsat_caching
+            || tracked_clashed_des.is_none()
+            || tracking_line.has_released_individual_attribution()
+        {
             return false;
         }
 
