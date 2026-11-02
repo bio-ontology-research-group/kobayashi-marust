@@ -1827,8 +1827,9 @@ m413 (`data/m413-min.ofn`, 10 axioms): `f` functional below `r`,
 `f`-self-link; with `f(i3,i0)` the functional restriction merges `i0`
 into `i3`, which turns `t(i2,i0)` into `t(i2,i3)`; the automaton of
 `∀t⁻.D` at `i3` then runs `i3 -t⁻-> i2 -s⁻-> i3 -r⁻-> root` and gives
-`D(root)`. Two defects stopped it (graph dumps:
-`KM_HT_GRAPH_DUMP=1`, `data/trace-*`).
+`D(root)`. Two defects stopped it (found with the graph dump
+`KM_HT_GRAPH_DUMP=1`, which prints every node with its flags, label tags
+and links at each clash-free fixpoint, and every merge).
 
 1. *A role-successor count that was always 0* (u36
    `native_cardinality_critical_roles`). The cardinality test counts,
@@ -1930,12 +1931,27 @@ silent misattribution.
 Fix (`process/context.rs`, `completion/u28.rs`, `u29.rs`, `u30.rs`,
 `u22.rs`):
 
-- `push_branch_epoch` records the length of the dependency-node arena;
+- Every branch epoch keeps a release frame (node-arena length at the
+  push, a cursor into the dependency-node arena, a pending list). At each
+  push and pop the dependencies created since the innermost cursor are
+  filed under the innermost open epoch whose push-time node length is at
+  most the index of their node, that is, the epoch that allocated the node
+  (a node that predates every open epoch is never truncated by a pop).
   `pop_branch_epoch`, after the node arena is truncated, clears the
-  appropriate individual of every dependency node created in the popped
-  epoch that names a truncated node, and records it as released
-  (`release_dependency_individuals_of_popped_nodes`). A dependency
-  created before the epoch cannot name a node created inside it.
+  appropriate individual of every dependency filed under the popped epoch
+  that names a truncated node, and records it as released
+  (`release_dependency_individuals_of_popped_nodes`). Each dependency is
+  examined once. The first version rescanned every dependency above the
+  epoch's mark at every pop, which is quadratic in the nesting depth and
+  cost 0.6 s on ore_ont_4796 (a consistency leaf of 119 decisions, about
+  120 nested epochs per leaf drop). The release test is self-validating
+  (a dependency is released only if its node index is at or above the
+  node-arena length after the pop), so a filed index that a spine
+  truncation reused cannot be released wrongly.
+- A dependency whose individual is set after it was filed (one factory
+  sets it after allocation) is caught at read time:
+  `get_coressponding_individual_node_from_dependency_node` releases a
+  dependency whose node index lies past the node arena.
 - A released dependency takes Konclude's path for a dependency without
   an appropriate individual: the backtracked descriptor keeps its
   parent descriptor's attribution. The port's version of that path
@@ -1966,9 +1982,12 @@ that no longer exists.
 
 What it rests on: that the port's DDB walk is Konclude's apart from the
 attribution, the claim the bridge's DDB already rests on (sections 11,
-14, 16). Not covered: a dependency created in an epoch that is never
-popped but whose node slot is later reused cannot occur (a live epoch
-keeps its nodes).
+14, 16). A live epoch keeps its nodes, so a slot is reused only after a
+pop, and a pop releases every filed dependency that names a truncated
+slot. The one case left is a dependency whose individual is set after
+it was filed and whose slot is reused before it is read; it reads the
+newer node, as the base code did for every dependency, and only its
+attribution is affected.
 
 ### 18.3 The at-most reapplication in later alternatives
 
@@ -1993,13 +2012,14 @@ Fix (`completion/u02.rs`, `ht_rearm_atmost_reapplication`): both advance
 functions install the same reapplication (the static role descriptor,
 or the rest-carrying one when the branch has a branching-merging rest)
 after the alternative's merge and bound re-check, exactly where the first
-alternative has it.
+alternative has it, unless the parent's role queue already holds it (a
+registration that predates the branch's epoch).
+`KM_HT_DIAG_NO_ATMOST_REARM=1` turns the re-arm off (negative control).
 
 Exactness. Every alternative now holds the registration the first one
 holds. A reapplication re-runs the bound check of the at-most rule on
-the current graph; a duplicate registration (an alternative of a branch
-whose registration predates the epoch) re-runs it twice, which derives
-nothing new. Missing it is what loses merges.
+the current graph, which derives nothing that the rule does not derive;
+missing it is what loses merges.
 
 ### 18.4 The selective expansion installed one edge per neighbour
 
@@ -2044,3 +2064,27 @@ created: none discharged; a bridge model would have to show that a
 released backend block, followed by the cache-backed or raw expansion,
 yields the graph the unblocked expansion yields, and that the DDB walk
 is independent of the descriptors' attribution.
+
+### 18.6 Evidence
+
+`results/agents/2026-11-02/bridge-m413/README.md` (before = development
+63d6e63e, after = this branch):
+
+- m413 and the four panic seeds answer as HermiT on the forced bridge and
+  the automatic route (before: m413 missed `B ⊑ D` on both, the panic
+  seeds panicked on the forced bridge and three of them timed out at 30 s
+  on the automatic route).
+- The m413 seed family (`gen_m413.py`, 2,000 seeds, HermiT gold): 113
+  incomplete seeds on each route before, 0 after; a second batch of
+  2,000 seeds: 0 differences after.
+- Every seed pool with HermiT gold left by earlier agents (bridge-abox-probes,
+  sameindividual-bridge, bridge-defers, bridge-nominal-merge,
+  bridge-replay, the data and nominal pools of bridge-defers, and the
+  gold-bearing fixtures of `results/agents/2026-10-3*/`; 14 pools,
+  12,618 seeds, both routes): no answer lost; m413, the panic seeds and
+  `nominal-r1600/m1` recovered.
+- The 16 held-out ORE inputs of docs/V1.5.5-STATUS.md: identical output
+  on all 16, times within noise (ratios 0.93 to 1.04).
+- Library tests at the baseline (21 checker-bound failures), every
+  integration target passing, regression test
+  `engine/tests/bridge_probe_merge.rs`.

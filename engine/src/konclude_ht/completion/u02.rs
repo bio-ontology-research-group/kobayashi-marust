@@ -1319,7 +1319,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if calc_alg_context.has_pending_signal() || parent.is_none() || con_des.is_none() {
             return;
         }
-        if std::env::var_os("KM_HT_DIAG_NO_ATMOST_REARM").is_some() {
+        if super::atmost_rearm_disabled() {
             return;
         }
         // A registration that predates the branch's epoch survived the pop;
