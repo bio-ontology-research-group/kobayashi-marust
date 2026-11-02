@@ -1970,3 +1970,12 @@ with a functional role, an unqualified and a qualified at-most, an
 inverse-functional role and an existential successor, an asymmetric role,
 `∀r⁻` and a transitive super role. In each the final answer equals
 HermiT's.
+
+**Result.** ore_ont_12128 on ws, release flags, alone: the base
+configuration times out at 240 s (2.18 GiB) and, with a 400 s cap,
+publishes after 229.8 s (2.74 GiB) a taxonomy that disagrees with Konclude
+(1,567 of 4,716 unsatisfiable classes, 3,149 missed). This branch answers in
+37.5 s (2.19 GiB) with Konclude's taxonomy (`compare_ref.py`: agreement);
+the saturation answers 4,716 unsatisfiable and 182,661 satisfiable subjects
+of 187,518 in 4.8 s and leaves 141 to completion. Validation, seed pools
+and the held-out and nominal ORE pairings: `results/agents/2026-11-02/bridge-self/README.md`.
