@@ -1836,6 +1836,36 @@ impl ProcessContext {
         ]
     }
 
+    // --- retained consistency leaf (docs/HYBRID-CB-HT.md §16) ---------------
+    /// Open a JOURNALED epoch on the six dependency-spine arenas, which
+    /// `push_branch_epoch` leaves epoch-exempt. Inside it the spine still
+    /// behaves as watermark memory for the branch epochs of a job (DDB marks
+    /// survive alternative pops), but the first change to a spine entry that
+    /// existed when the epoch opened saves a rollback copy, so
+    /// [`Self::pop_spine_journal_epoch`] restores the opening state exactly:
+    /// the marks a class job puts on the retained leaf's nondeterministic
+    /// track points do not survive into the next job.
+    pub fn push_spine_journal_epoch(&mut self) {
+        self.track_points.push_epoch();
+        self.dep_nodes.push_epoch();
+        self.dep_links.push_epoch();
+        self.clash_descs.push_epoch();
+        self.con_descs.push_epoch();
+        self.branch_nodes.push_epoch();
+    }
+
+    /// Close the innermost [`Self::push_spine_journal_epoch`]: restore every
+    /// spine entry changed since it opened and drop every entry allocated
+    /// since.
+    pub fn pop_spine_journal_epoch(&mut self) {
+        self.track_points.pop_epoch();
+        self.dep_nodes.pop_epoch();
+        self.dep_links.pop_epoch();
+        self.clash_descs.pop_epoch();
+        self.con_descs.pop_epoch();
+        self.branch_nodes.pop_epoch();
+    }
+
     pub fn node_count(&self) -> usize {
         self.nodes.len()
     }

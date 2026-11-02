@@ -10162,6 +10162,210 @@ fn restore_retained_classification_base_with(
     Some(())
 }
 
+// ===========================================================================
+// Retained consistency leaf: reuse of the consistency model with a reuse
+// branch point (docs/HYBRID-CB-HT.md §16, `fix/v155-bridge-replay`).
+//
+// On a base that resumes the first fork of a nondeterministic consistency
+// completion, every class job re-decides the pending ABox disjunctions. The
+// LEAF is that decision made once: the consistency continuation from the
+// resuming base, run to a clash-free fixpoint with no class root, with its
+// open decisions kept below every class job. A class job on the leaf is
+// alternative 0 of a reuse branch point ("adopt the leaf's decisions"); the
+// driver accepts its verdict only when it cannot depend on those decisions
+// being open (a satisfiable fixpoint, or a root cancellation traced to
+// branching level 0). Every other outcome takes alternative 1: the leaf is
+// dropped and the job reruns on the resuming base, unchanged.
+// ===========================================================================
+
+/// The retained consistency leaf. Its own decisions are NOT on the class
+/// job's branch stack: their epochs sit between `base_depth` and `depth`, so
+/// no class-job backtrack can reach them.
+struct RetainedConsistencyLeaf {
+    /// Branch-epoch depth of the leaf (the resuming base, the build's job
+    /// epoch, and one epoch per owned leaf decision).
+    depth: usize,
+    /// `Bridged::retained_base_depth` when the leaf was built.
+    base_depth: usize,
+    databox: super::process::databox::ProcessingDataBox,
+    branch_node: super::process::BranchNodeId,
+    next_id: Cint64,
+    /// Open decisions of the leaf (diagnostic).
+    decisions: usize,
+}
+
+/// Counters of the reuse branch point (reported under `KM_BRIDGE_PROGRESS`
+/// and `KM_BRIDGE_LEAF_STATS`).
+#[derive(Clone, Copy, Default, Debug)]
+struct RetainedLeafCounts {
+    builds: usize,
+    build_failures: usize,
+    attempts: usize,
+    accepted_sat: usize,
+    accepted_root_cancel: usize,
+    /// Alternative 1 taken: a clash not traced to level 0 (the verdict may
+    /// rest on a leaf decision).
+    fallback_unsat: usize,
+    /// Alternative 1 taken: a STOP, a poisoned search or a withheld witness.
+    fallback_unknown: usize,
+    drops: usize,
+}
+
+impl RetainedLeafCounts {
+    fn fallbacks(&self) -> usize {
+        self.fallback_unsat + self.fallback_unknown
+    }
+}
+
+/// Build the leaf on the resuming base. Precondition: the caller has just
+/// restored the resuming base with `restore_retained_classification_base`
+/// and configured the job algorithm exactly as for a class job. Runs the
+/// consistency continuation with no class root. Returns `None` (and leaves
+/// the context as an ordinary finished job, with the spine journal closed)
+/// when the continuation does not end in a trusted clash-free fixpoint.
+fn build_retained_consistency_leaf(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+) -> Option<RetainedConsistencyLeaf> {
+    let base_depth = bridged.retained_base_depth.get();
+    if ctx.process_context().branch_epoch_depth() != base_depth + 1
+        || !algo.or_branch_stack.is_empty()
+    {
+        return None;
+    }
+    ctx.clear_pending_signal();
+    algo.singleton_base_prepared = false;
+    algo.completeness_poisoned = false;
+    algo.drive_deadline = algo.probe_budget.map(|b| std::time::Instant::now() + b);
+    // Spine journal 1: every spine change of the build is undone when the
+    // leaf is dropped, so the resuming base's spine is exactly as before.
+    ctx.process_context_mut().push_spine_journal_epoch();
+    // A materialized model: no satisfiability-cache parking of disjunctions.
+    let absorption = algo.conf_sat_exp_cached_disj_absorp;
+    algo.conf_sat_exp_cached_disj_absorp = false;
+    let consistent = algo.run_completion_on(ctx);
+    algo.conf_sat_exp_cached_disj_absorp = absorption;
+    algo.drive_deadline = None;
+    let owned = algo.or_branch_stack.iter().filter(|branch| branch.own_epoch).count();
+    let trusted = consistent
+        && !ctx.has_pending_signal()
+        && !algo.completeness_poisoned
+        && algo.unrestored_advance_count == 0
+        && ctx.process_context().branch_epoch_depth() == base_depth + 1 + owned;
+    if !trusted {
+        ctx.process_context_mut().pop_spine_journal_epoch();
+        return None;
+    }
+    let decisions = algo.or_branch_stack.len();
+    // The leaf's decisions leave the job branch stack; their epochs stay.
+    algo.or_branch_stack.clear();
+    ctx.clear_pending_signal();
+    ctx.base.set_current_individual_node(NodeId::NONE);
+    let depth = ctx.process_context().branch_epoch_depth();
+    let databox = ctx.processing_data_box().clone();
+    let next_id = ctx.processing_data_box_mut().next_individual_node_id(false);
+    let branch_node = ctx.base.used_branch_tree_node;
+    // Spine journal 2: one class job's spine changes, undone per job.
+    ctx.process_context_mut().push_spine_journal_epoch();
+    // The first leaf job's epoch (popped by `restore_retained_consistency_leaf`).
+    ctx.push_branch_epoch();
+    Some(RetainedConsistencyLeaf { depth, base_depth, databox, branch_node, next_id, decisions })
+}
+
+/// Start the next class job on the leaf: roll the previous job back (its
+/// owned branch epochs and its job epoch, and its spine changes through
+/// spine journal 2), then open the new job's epoch with the leaf's databox,
+/// branch cursor and id allocator, and a fresh job algorithm.
+fn restore_retained_consistency_leaf(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    leaf: &RetainedConsistencyLeaf,
+    replay_snapshot: Option<&NativeReplaySnapshot>,
+) -> Option<()> {
+    let owned = algo.or_branch_stack.iter().filter(|branch| branch.own_epoch).count();
+    if ctx.process_context().branch_epoch_depth() != leaf.depth + 1 + owned {
+        return None;
+    }
+    while let Some(branch) = algo.or_branch_stack.pop() {
+        if branch.own_epoch {
+            ctx.pop_branch_epoch();
+        }
+    }
+    ctx.pop_branch_epoch();
+    if ctx.process_context().branch_epoch_depth() != leaf.depth {
+        return None;
+    }
+    ctx.process_context_mut().pop_spine_journal_epoch();
+    ctx.process_context_mut().push_spine_journal_epoch();
+    ctx.base.used_branch_tree_node = leaf.branch_node;
+    ctx.branch_tree_node = leaf.branch_node;
+    ctx.clear_pending_signal();
+    ctx.base.set_current_individual_node(NodeId::NONE);
+    ctx.push_branch_epoch();
+    let mut databox = leaf.databox.clone();
+    databox.set_first_possible_individual_node_id(leaf.next_id);
+    ctx.base.used_processing_data_box = databox;
+    reset_classification_algorithm_on_retained_base(algo, bridged, replay_snapshot);
+    // A continuation of the consistency completion: no retained-node special
+    // casing, as on the resuming base.
+    algo.retained_base_node_count = 0;
+    Some(())
+}
+
+/// Take alternative 1 of the reuse branch point: discard the leaf (the
+/// current job, the leaf's decisions and the build's job epoch, and both
+/// spine journals) and leave the context as an ordinary finished job on the
+/// resuming base, ready for `restore_retained_classification_base`.
+fn drop_retained_consistency_leaf(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    leaf: &RetainedConsistencyLeaf,
+) -> Option<()> {
+    let owned = algo.or_branch_stack.iter().filter(|branch| branch.own_epoch).count();
+    if ctx.process_context().branch_epoch_depth() != leaf.depth + 1 + owned
+        || leaf.depth <= leaf.base_depth
+    {
+        return None;
+    }
+    while let Some(branch) = algo.or_branch_stack.pop() {
+        if branch.own_epoch {
+            ctx.pop_branch_epoch();
+        }
+    }
+    while ctx.process_context().branch_epoch_depth() > leaf.base_depth {
+        ctx.pop_branch_epoch();
+    }
+    ctx.process_context_mut().pop_spine_journal_epoch();
+    ctx.process_context_mut().pop_spine_journal_epoch();
+    ctx.clear_pending_signal();
+    ctx.base.set_current_individual_node(NodeId::NONE);
+    // The shape `restore_retained_classification_base` expects after a job.
+    ctx.push_branch_epoch();
+    Some(())
+}
+
+/// The reuse branch point's acceptance test for a verdict computed on the
+/// leaf. `unsat` is the verdict's polarity. A satisfiable fixpoint is a
+/// complete clash-free graph and always accepted; an unsatisfiable verdict
+/// only when the drive ended in a root cancellation (the clash traced to
+/// branching level 0, independent of every decision, the leaf's included).
+fn retained_leaf_verdict_accepted(
+    algo: &CompletionTaskHandleAlgorithm,
+    ctx: &CalculationAlgorithmContextBase,
+    unsat: bool,
+) -> bool {
+    if algo.completeness_poisoned {
+        return false;
+    }
+    if !unsat {
+        return !ctx.has_pending_signal();
+    }
+    algo.ddb_root_cancelled
+        && matches!(ctx.pending_signal(), super::completion::clash::CalcSignal::Clash(_))
+}
+
 /// Materialize the class-job databox from the retained consistency parent.
 /// DB-1 is the exact port of `initProcessingDataBox(parent)`: it COW-references
 /// the individual vector and graph state while clearing inherited processing
@@ -16447,6 +16651,33 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         && std::env::var_os("KM_BRIDGE_CLEARED_QUEUE_SCREEN").is_some();
     let cleared_queue_job = std::cell::Cell::new(false);
     let cleared_queue_screen_counts = std::cell::Cell::new((0usize, 0usize));
+    // Retained consistency leaf (docs/HYBRID-CB-HT.md §16): on a base that
+    // resumes the first fork, class jobs first run on the leaf (the reuse
+    // branch point's alternative 0) and fall back to the resuming base.
+    // Default on; `KM_BRIDGE_NO_LEAF_REUSE=1` restores the resume-only path.
+    let leaf_reuse = retained_consistency_base
+        && !fresh_env
+        && bridged.retained_base_resumes_fork.get()
+        && std::env::var_os("KM_BRIDGE_NO_RETAINED_BASE").is_none()
+        && std::env::var_os("KM_BRIDGE_NO_LEAF_REUSE").is_none();
+    let leaf_state: std::cell::RefCell<Option<RetainedConsistencyLeaf>> = Default::default();
+    let leaf_job = std::cell::Cell::new(false);
+    let leaf_job_ran = std::cell::Cell::new(false);
+    let leaf_disabled = std::cell::Cell::new(false);
+    let leaf_counts = std::cell::Cell::new(RetainedLeafCounts::default());
+    let leaf_update = |f: &dyn Fn(&mut RetainedLeafCounts)| {
+        let mut counts = leaf_counts.get();
+        f(&mut counts);
+        leaf_counts.set(counts);
+    };
+    // Scheduling only: stop trying the leaf once alternative 1 was taken at
+    // least 256 times and on more than half of the attempts (each fallback
+    // costs the attempt, the resuming job and a rebuild of the leaf).
+    let leaf_useful = || {
+        let counts = leaf_counts.get();
+        !leaf_disabled.get()
+            && (counts.fallbacks() < 256 || counts.fallbacks() * 2 <= counts.attempts)
+    };
     let empty_alternative_witnesses: std::cell::RefCell<
         std::sync::Arc<crate::fxhash::FxHashMap<(usize, bool), bool>>,
     > = Default::default();
@@ -16480,22 +16711,46 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                          cow: bool|
          -> Option<()> {
             let phase_start = phase_timing.then(std::time::Instant::now);
+            // Round 0 builds the retained consistency leaf when a leaf job
+            // finds none (docs/HYBRID-CB-HT.md §16); round 1 then restores it.
+            // (Body not re-indented to keep the merge with parallel work small.)
+            for leaf_round in 0..2 {
             // The fresh-environment diagnostic must also bypass a retained
             // consistency base; otherwise it silently repeats the reuse path
             // it is intended to distinguish from a fresh complete probe.
+            leaf_job_ran.set(false);
             if retained_consistency_base && !fresh_env
                 && std::env::var_os("KM_BRIDGE_NO_RETAINED_BASE").is_none()
             {
-                restore_retained_classification_base_with(
-                    algo,
-                    ctx,
-                    &bridged,
-                    retained_consistency_databox.as_ref()?,
-                    retained_consistency_branch_node,
-                    retained_consistency_next_id,
-                    retained_replay_snapshot.as_ref(),
-                    cleared_queue_job.get(),
-                )?;
+                // Leaf jobs (docs/HYBRID-CB-HT.md §16) restore the leaf;
+                // every other job first drops a leaf that is still built.
+                if !leaf_job.get() {
+                    if let Some(leaf) = leaf_state.borrow_mut().take() {
+                        drop_retained_consistency_leaf(algo, ctx, &leaf)?;
+                        leaf_update(&|c| c.drops += 1);
+                    }
+                }
+                if leaf_job.get() && leaf_state.borrow().is_some() {
+                    restore_retained_consistency_leaf(
+                        algo,
+                        ctx,
+                        &bridged,
+                        leaf_state.borrow().as_ref()?,
+                        retained_replay_snapshot.as_ref(),
+                    )?;
+                    leaf_job_ran.set(true);
+                } else {
+                    restore_retained_classification_base_with(
+                        algo,
+                        ctx,
+                        &bridged,
+                        retained_consistency_databox.as_ref()?,
+                        retained_consistency_branch_node,
+                        retained_consistency_next_id,
+                        retained_replay_snapshot.as_ref(),
+                        cleared_queue_job.get(),
+                    )?;
+                }
             } else if fresh_env {
                 let budget = algo.probe_budget;
                 let (a2, c2, _b2) = fresh_bridge_env_with_trigger_absorption(tin, trigger_absorb);
@@ -16555,6 +16810,37 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             // phantomized nodes. Oracle-validated (plain/COW matrix).
             if cow {
                 algo.conf_inprocess_cow = true;
+            }
+            if leaf_job.get() && !leaf_job_ran.get() && leaf_round == 0
+                && !leaf_disabled.get() && leaf_state.borrow().is_none()
+                && retained_consistency_base && !fresh_env
+            {
+                match build_retained_consistency_leaf(algo, ctx, &bridged) {
+                    Some(leaf) => {
+                        if progress {
+                            eprintln!("BRIDGE-LEAF built: decisions={} depth={} nodes={}",
+                                leaf.decisions, leaf.depth, ctx.process_context().node_count());
+                        }
+                        *leaf_state.borrow_mut() = Some(leaf);
+                        leaf_update(&|c| c.builds += 1);
+                    }
+                    None => {
+                        if progress {
+                            eprintln!("BRIDGE-LEAF build failed; leaf reuse off for this input");
+                        }
+                        leaf_disabled.set(true);
+                        leaf_update(&|c| c.build_failures += 1);
+                    }
+                }
+                continue;
+            }
+            break;
+            }
+            if leaf_job_ran.get() {
+                // A leaf job publishes nothing to the shared satisfiability
+                // caches (docs/HYBRID-CB-HT.md §16).
+                algo.conf_sat_exp_cache_writing = false;
+                algo.conf_saturation_satisfiabilitiy_expansion_cache_writing = false;
             }
             record_phase(0, phase_start);
             Some(())
@@ -16664,6 +16950,53 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 });
                 if isolated {
                     screened = attempt;
+                }
+            }
+            // Reuse branch point (docs/HYBRID-CB-HT.md §16): alternative 0
+            // runs the read-off on the retained consistency leaf; a verdict
+            // the acceptance test rejects takes alternative 1, the unchanged
+            // job on the resuming base below.
+            if leaf_reuse && screened.is_none() && leaf_useful() {
+                leaf_job.set(true);
+                let restored = renew(algo, ctx, false);
+                leaf_job.set(false);
+                restored?;
+                if leaf_job_ran.get() {
+                    algo.empty_alternative_witnesses = std::sync::Arc::clone(&empty_alternative_witnesses.borrow());
+                    algo.empty_alternative_witness_requests.clear();
+                    algo.stop_on_unknown_empty_alternative_witness = false;
+                    let mut id_leaf: i64 = probe_start_id;
+                    let phase_start = phase_timing.then(std::time::Instant::now);
+                    let attempt = bridged_classify_subject_with_root(
+                        algo,
+                        ctx,
+                        &bridged,
+                        &mut id_leaf,
+                        s,
+                        n_named,
+                    );
+                    record_phase(1, phase_start);
+                    algo.empty_alternative_witness_requests.clear();
+                    let unsat = matches!(ctx.pending_signal(), super::completion::clash::CalcSignal::Clash(_));
+                    let accepted = attempt.is_some() && retained_leaf_verdict_accepted(algo, ctx, unsat);
+                    leaf_update(&|c| {
+                        c.attempts += 1;
+                        match (accepted, unsat, attempt.is_some()) {
+                            (true, false, _) => c.accepted_sat += 1,
+                            (true, true, _) => c.accepted_root_cancel += 1,
+                            (false, true, true) => c.fallback_unsat += 1,
+                            _ => c.fallback_unknown += 1,
+                        }
+                    });
+                    if progress && !accepted {
+                        eprintln!("BRIDGE-LEAF-FALLBACK subject {s}: read-off answered={} unsat={unsat}", attempt.is_some());
+                    }
+                    if accepted {
+                        // A model that keeps the leaf's decisions is a model,
+                        // but its root label is not entailed: never
+                        // authoritative unless the subject is unsatisfiable.
+                        screened = attempt.map(|(subs, _, root)| (subs, unsat, root));
+                    }
                 }
             }
             let mut readoff = if screened.is_some() {
@@ -16943,7 +17276,14 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                     && !(hierarchy_countermodels && hierarchy_refuted_candidates.contains(&(s, c)))
             }).collect();
             if batch.len() >= 2 && std::env::var_os("KM_BRIDGE_NO_BATCH_REFUTATION").is_none() {
-                renew(algo, ctx, false)?;
+                // Only a satisfiable batch verdict is used, and that one is
+                // accepted on the leaf (docs/HYBRID-CB-HT.md §16); any other
+                // verdict just leaves the pairs to their own probes.
+                let on_leaf = leaf_reuse && leaf_useful();
+                leaf_job.set(on_leaf);
+                let restored = renew(algo, ctx, false);
+                leaf_job.set(false);
+                restored?;
                 let mut id_batch: i64 = probe_start_id;
                 let mut seeds: Vec<(ConceptId, bool)> = vec![(bridged.named[s], false)];
                 seeds.extend(batch.iter().map(|&c| (bridged.named[c], true)));
@@ -16955,7 +17295,8 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                         tin.concepts[s], batch.len(), verdict.map(|unsat| if unsat { "unsat" } else { "sat" })
                     );
                 }
-                if verdict == Some(false) { batch.into_iter().collect() } else { HashSet::default() }
+                let leaf_batch_ok = !leaf_job_ran.get() || retained_leaf_verdict_accepted(algo, ctx, false);
+                if verdict == Some(false) && leaf_batch_ok { batch.into_iter().collect() } else { HashSet::default() }
             } else {
                 HashSet::default()
             }
@@ -17146,6 +17487,47 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                     }
                 );
             }
+            // Reuse branch point (docs/HYBRID-CB-HT.md §16): the pair probe
+            // first runs on the retained consistency leaf.
+            let mut leaf_verdict = None;
+            if leaf_reuse && leaf_useful() {
+                leaf_job.set(true);
+                let restored = renew(algo, ctx, false);
+                leaf_job.set(false);
+                restored?;
+                if leaf_job_ran.get() {
+                    let mut id_leaf: i64 = probe_start_id;
+                    let parked = algo.saturation_cached_absorbed_disjunction_count;
+                    let mut leaf_root = None;
+                    let verdict = bridged_unsat_rooted(
+                        algo,
+                        ctx,
+                        &bridged,
+                        &mut id_leaf,
+                        &[(bridged.named[s], false), (bridged.named[c], true)],
+                        &mut leaf_root,
+                    );
+                    let accepted = verdict.is_some_and(|unsat| retained_leaf_verdict_accepted(algo, ctx, unsat));
+                    leaf_update(&|counts| {
+                        counts.attempts += 1;
+                        match (accepted, verdict) {
+                            (true, Some(false)) => counts.accepted_sat += 1,
+                            (true, _) => counts.accepted_root_cancel += 1,
+                            (false, Some(true)) => counts.fallback_unsat += 1,
+                            _ => counts.fallback_unknown += 1,
+                        }
+                    });
+                    if progress && !accepted {
+                        eprintln!("BRIDGE-LEAF-FALLBACK pair {s} v {c}: verdict={verdict:?}");
+                    }
+                    if accepted {
+                        leaf_verdict = Some((verdict, parked, leaf_root));
+                    }
+                }
+            }
+            let (mut v, mut parked_before, mut model_root) = if let Some(accepted) = leaf_verdict {
+                accepted
+            } else {
             renew(algo, ctx, false)?;
             let mut id2: i64 = probe_start_id;
             // Model harvesting needs a materialized model, as in the read-off:
@@ -17154,9 +17536,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             // turns the parking off; forcing that here made probes up to 4x
             // dearer (ore_ont_5260), so keep the configured parking and use
             // the model only when the probe parked no disjunction at all.
-            let mut parked_before = algo.saturation_cached_absorbed_disjunction_count;
+            let parked_before = algo.saturation_cached_absorbed_disjunction_count;
             let mut model_root = None;
-            let mut v = bridged_unsat_rooted(
+            let v = bridged_unsat_rooted(
                 algo,
                 ctx,
                 &bridged,
@@ -17164,6 +17546,8 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 &[(bridged.named[s], false), (bridged.named[c], true)],
                 &mut model_root,
             );
+            (v, parked_before, model_root)
+            };
             if v.is_none() && algo.completeness_poisoned && cow_confirm {
                 // plain verdict untrusted — confirm under COW epochs
                 renew(algo, ctx, true)?;
@@ -17333,6 +17717,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         let (accepted, rejected) = cleared_queue_screen_counts.get();
         eprintln!("BRIDGE-CLEARED-QUEUE-SCREEN accepted={accepted} rerun={rejected}");
     }
+    if progress || std::env::var_os("KM_BRIDGE_LEAF_STATS").is_some() {
+        eprintln!("BRIDGE-LEAF prepare reuse={leaf_reuse} {:?}", leaf_counts.get());
+    }
 
     // Phase 2: the first call crosses the all-models barrier inside
     // `classify_one`, ports Konclude's global KPSet graph/map pruning, and
@@ -17381,6 +17768,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             "BRIDGE-SAT-PHASE verify-total: {:.2}s",
             t_verify.elapsed().as_secs_f64()
         );
+    }
+    if progress || std::env::var_os("KM_BRIDGE_LEAF_STATS").is_some() {
+        eprintln!("BRIDGE-LEAF total reuse={leaf_reuse} {:?}", leaf_counts.get());
     }
     // KM_HT_UNSATCACHE diagnostics: writes vs hits across the WHOLE
     // classification (the handler is carried across probe resets, so these
