@@ -742,6 +742,123 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 self.native_selective_neighbour_expansion_declined = true;
                 return true;
             }
+            // Konclude's expandIndividualNeighbourNodeFromBackendCache (cpp
+            // 23894-23940) installs EVERY cached value between the node and
+            // this neighbour, both orientations, before the neighbour counts
+            // as possibly influenced. The neighbour was marked above, so a
+            // later concept of this node that reaches the same neighbour over
+            // another role skips it: install the remaining values now
+            // (k163; docs/HYBRID-CB-HT.md section 18.4).
+            if !self.ht_expand_remaining_native_neighbour_values(
+                indi_node,
+                assoc_tag,
+                neighbour_indi_id,
+                dependency_track_point,
+                calc_alg_context,
+            ) {
+                self.native_selective_neighbour_expansion_declined = true;
+                return true;
+            }
+        }
+        true
+    }
+
+    /// The link loop of `expandIndividualNeighbourNodeFromBackendCache` (cpp
+    /// 23894-23940) over the typed association `assoc_tag` of `indi_node`:
+    /// every cached role value toward `neighbour_tag` is installed, a
+    /// non-inversed value as `indi_node -role-> neighbour`, an inversed one as
+    /// `neighbour -role-> indi_node`. Konclude installs only deterministic
+    /// values; the typed route also installs a non-deterministic value when it
+    /// is an asserted ABox edge (`native_cached_role_value_installable`, the
+    /// rule the single-role install above already applies) and skips every
+    /// other non-deterministic value. `install_native_role_assertion_edge`
+    /// skips existing links. Returns false only when an install fails, which
+    /// declines the cache-backed route as the single-role install does.
+    fn ht_expand_remaining_native_neighbour_values(
+        &mut self,
+        indi_node: NodeId,
+        assoc_tag: Cint64,
+        neighbour_tag: Cint64,
+        dependency_track_point: TrackPointId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        let Some(indi_tag) = self.native_nominal_tag_for_node(indi_node, calc_alg_context) else {
+            return true;
+        };
+        let values: Vec<(RoleId, bool, bool)> = self
+            .native_nominal_backend_replay
+            .get(&assoc_tag)
+            .map(|replay| {
+                replay
+                    .cached_neighbour_roles
+                    .iter()
+                    .filter(|(neighbour, _, _, _)| *neighbour == neighbour_tag)
+                    .map(|(_, role, inversed, deterministic)| (*role, *inversed, *deterministic))
+                    .collect()
+            })
+            .unwrap_or_default();
+        for (role, inversed, deterministic) in values {
+            if calc_alg_context.has_pending_signal() {
+                break;
+            }
+            if !inversed {
+                if !deterministic
+                    && !self.native_cached_role_value_installable(
+                        indi_node,
+                        role,
+                        neighbour_tag,
+                        calc_alg_context,
+                    )
+                {
+                    continue;
+                }
+                if !self.install_native_role_assertion_edge(
+                    indi_node,
+                    role,
+                    neighbour_tag,
+                    dependency_track_point,
+                    calc_alg_context,
+                ) {
+                    return false;
+                }
+            } else {
+                let neighbour_node =
+                    self.get_up_to_date_individual_by_id(-neighbour_tag, calc_alg_context);
+                if neighbour_node.is_none() {
+                    return false;
+                }
+                // The edge starts at the neighbour. A merged-away or purged
+                // neighbour is not an element of the graph and this route has
+                // no merge dependency for its source: decline, so the caller
+                // replays the raw assertions (the exact fallback).
+                {
+                    let n = calc_alg_context.process_context().node(neighbour_node);
+                    if n.has_merged_into_individual_node_id()
+                        || n.has_purged_blocked_processing_restriction_flags()
+                    {
+                        return false;
+                    }
+                }
+                if !deterministic
+                    && !self.native_cached_role_value_installable(
+                        neighbour_node,
+                        role,
+                        indi_tag,
+                        calc_alg_context,
+                    )
+                {
+                    continue;
+                }
+                if !self.install_native_role_assertion_edge(
+                    neighbour_node,
+                    role,
+                    indi_tag,
+                    dependency_track_point,
+                    calc_alg_context,
+                ) {
+                    return false;
+                }
+            }
         }
         true
     }

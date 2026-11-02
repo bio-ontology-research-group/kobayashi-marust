@@ -1,0 +1,1 @@
+{"ontology": "m593.ofn", "consistent": true, "subsumptions": [["A", "C"], ["A", "Q1"], ["B", "Q1"], ["Q4", "Q5"], ["Q5", "Q4"]], "unsatisfiable": []}

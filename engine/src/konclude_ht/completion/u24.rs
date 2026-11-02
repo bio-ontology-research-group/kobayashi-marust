@@ -187,6 +187,14 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             return true;
         }
 
+        if super::graph_dump_enabled() {
+            eprintln!(
+                "SELECTIVE-EXPAND node={} card_crit={} cached={:?}",
+                calc_alg_context.process_context().node(indi_node).individual_node_id(),
+                card_block_crit,
+                self.native_nominal_backend_replay.get(&assoc_tag).map(|r| r.cached_neighbour_roles.iter().map(|(n, ro, i, d)| (*n, ro.raw, *i, *d)).collect::<Vec<_>>())
+            );
+        }
         let mut last_tested_con_des: ConDescId = calc_alg_context
             .process_context()
             .backend_sync_data(loc_backend_sync_data)
@@ -259,6 +267,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // `backSyncDepTrackPoint` is deterministic by construction.
             let nondeterministic =
                 self.has_nondeterministic_dependency(dep_track_point, calc_alg_context);
+            if super::graph_dump_enabled() && concept.is_some() {
+                eprintln!(
+                    "SELECTIVE-EXPAND   concept={}{} op={} role={:?}",
+                    if con_negation { "-" } else { "" },
+                    calc_alg_context.ontology_arenas().concept(concept).get_concept_tag(),
+                    calc_alg_context.ontology_arenas().concept(concept).get_operator_code(),
+                    calc_alg_context.ontology_arenas().concept(concept).get_role().raw
+                );
+            }
             if concept.is_some() {
                 self.expand_directly_influenced_neighbours_with_propagation(
                     concept,

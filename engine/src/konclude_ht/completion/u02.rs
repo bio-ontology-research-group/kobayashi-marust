@@ -1294,6 +1294,49 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     calc_alg_context,
                 );
             }
+            self.ht_rearm_atmost_reapplication(parent_m, role, con_des, rest, dep_track_point, calc_alg_context);
+        }
+    }
+
+    /// Re-install the at-most rule's reapplication (cpp 15001-15005,
+    /// `installReapplication`) at the start of a later alternative of one of
+    /// its branch points. `apply_atmost_rule` installs it after the merge
+    /// call, i.e. inside the epoch of the first alternative; the epoch pop
+    /// before an advance removes it. Konclude's branch children copy the
+    /// parent's data box only when they start, after the parent has
+    /// installed it, so every alternative sees it. Without it a link that a
+    /// later alternative installs at the counted parent never re-fires the
+    /// bound (docs/HYBRID-CB-HT.md section 18.3).
+    fn ht_rearm_atmost_reapplication(
+        &mut self,
+        parent: NodeId,
+        role: super::super::model::RoleId,
+        con_des: super::super::process::ConDescId,
+        rest: super::super::process::RestrictionSpecId,
+        dep_track_point: TrackPointId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        if calc_alg_context.has_pending_signal() || parent.is_none() || con_des.is_none() {
+            return;
+        }
+        if rest.is_some() {
+            self.add_concept_to_reapply_queue_role_restricted_static(
+                con_des,
+                role,
+                parent,
+                rest.raw,
+                dep_track_point,
+                calc_alg_context,
+            );
+        } else {
+            self.add_concept_to_reapply_queue_role(
+                con_des,
+                role,
+                parent,
+                true,
+                dep_track_point,
+                calc_alg_context,
+            );
         }
     }
 
@@ -1475,6 +1518,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     calc_alg_context,
                 );
             }
+            self.ht_rearm_atmost_reapplication(parent_m, role, con_des, rest, dep_track_point, calc_alg_context);
         }
     }
 
