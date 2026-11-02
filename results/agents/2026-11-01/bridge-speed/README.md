@@ -141,7 +141,28 @@ binary.
 
 ## Differential runs
 
-DIFF_TABLE
+HermiT-gold seed pools left by other agents (`.work/agent-scratch/<pool>/seeds`
+with `gold/`), both routes (`ht_bridge` and automatic), 60 s cap, release
+flags, one run at a time (`tools/seeds.sh`, `tools/seed_compare.py`,
+`data/seeds-base/`, `data/seeds-final/`, `data/seeds-base-vs-final.txt`).
+Before = `km-base` (1427ce55), after = `km-final3` (75d91db4, screen off).
+
+| pool | runs | WRONG before | WRONG after | verdict transitions |
+|---|---|---|---|---|
+| bridge-defers | 600 | 0 | 0 | none |
+| bridge-nominal-merge | 4,000 | 0 | 0 | none |
+| nominal-coverage | 800 | 0 | 0 | 2 TIMEOUT to ok |
+| sameindividual-bridge | 3,892 | 11 | 11 | none (the same 11 consistency mismatches on the automatic route in both, s1032 and others with `FunctionalDataProperty`; not bridge related) |
+| r3-unannounced | 8,000 | 0 | 0 | none |
+
+17,292 runs, 0 answer differences between before and after, and no new
+disagreement with HermiT. The r3 pool ran in three disjoint slices of its
+file list at the end (one process each, at most two at a time) and was
+merged in order (`data/seeds-final/r3-unannounced.tsv`).
+
+With the screen on (`km-final2`, 1edfbc5c, `data/seeds-screen-on/`) the
+first four pools also give 0 differences; the pre-fix screen (f987b90e)
+gave 249 incomplete answers per route on `bridge-nominal-merge`.
 
 ## Tests
 
