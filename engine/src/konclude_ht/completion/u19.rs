@@ -184,13 +184,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let w_pred_node = blocking_indi;
 
         let w_sub_con_set = calc_alg_context
-            .process_context_mut()
-            .node_mut(w_node)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(w_node)
+            .use_reapply_con_label_set;
         let w_pred_super_con_set = calc_alg_context
-            .process_context_mut()
-            .node_mut(w_pred_node)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(w_pred_node)
+            .use_reapply_con_label_set;
         let mut first_not_entailed_con_des: ConDescId = Id::NONE;
         // B1 test
         let mut equal_set = false;
@@ -214,9 +214,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             return false;
         }
         let v_con_set = calc_alg_context
-            .process_context_mut()
-            .node_mut(v_node)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(v_node)
+            .use_reapply_con_label_set;
         // B2 test
 
         let anc_role_hash = calc_alg_context
@@ -748,13 +748,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             return true;
         }
         let sub_con_set = calc_alg_context
-            .process_context_mut()
-            .node_mut(test_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(test_indi)
+            .use_reapply_con_label_set;
         let super_con_set = calc_alg_context
-            .process_context_mut()
-            .node_mut(blocking_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(blocking_indi)
+            .use_reapply_con_label_set;
         let mut first_not_entailed_con_des: ConDescId = Id::NONE;
         let sub_set = self.is_label_concept_sub_set(
             sub_con_set,
@@ -778,13 +778,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> bool {
         // W6-DEFER[api]: STATINC(EQUALSETBLOCKINGTESTCOUNT,calcAlgContext);
         let con_set1 = calc_alg_context
-            .process_context_mut()
-            .node_mut(test_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(test_indi)
+            .use_reapply_con_label_set;
         let con_set2 = calc_alg_context
-            .process_context_mut()
-            .node_mut(blocking_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(blocking_indi)
+            .use_reapply_con_label_set;
         self.is_label_concept_equal_set(con_set1, con_set2, calc_alg_context)
     }
 
@@ -830,21 +830,21 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             return false;
         }
         let con_set1 = calc_alg_context
-            .process_context_mut()
-            .node_mut(test_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(test_indi)
+            .use_reapply_con_label_set;
         let con_set1_pair = calc_alg_context
-            .process_context_mut()
-            .node_mut(blocking_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(blocking_indi)
+            .use_reapply_con_label_set;
         let con_set2 = calc_alg_context
-            .process_context_mut()
-            .node_mut(anc_test_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(anc_test_indi)
+            .use_reapply_con_label_set;
         let con_set2_pair = calc_alg_context
-            .process_context_mut()
-            .node_mut(anc_blocking_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(anc_blocking_indi)
+            .use_reapply_con_label_set;
         self.is_pairwise_label_concept_equal_set(
             con_set1,
             con_set1_pair,
@@ -871,13 +871,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
 
         let test_con_set = calc_alg_context
-            .process_context_mut()
-            .node_mut(test_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(test_indi)
+            .use_reapply_con_label_set;
         let blocking_con_set = calc_alg_context
-            .process_context_mut()
-            .node_mut(blocking_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(blocking_indi)
+            .use_reapply_con_label_set;
         let test_con_set_count = calc_alg_context
             .process_context()
             .label_set(test_con_set)
@@ -897,9 +897,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .individual_initialization_concept();
             if !init_con_des.is_none() {
                 let blocking_label_set = calc_alg_context
-                    .process_context_mut()
-                    .node_mut(blocking_indi)
-                    .get_reapply_concept_label_set(false);
+                    .process_context()
+                    .node(blocking_indi)
+                    .use_reapply_con_label_set;
                 let init_concept = calc_alg_context
                     .process_context()
                     .con_desc(init_con_des)
@@ -1266,9 +1266,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .set_blocker_individual_node(blocking_indi);
                 // locAncTestIndi->mDebugBlockerLastConceptDes = blockingIndi->getReapplyConceptLabelSet(false)->getAddingSortedConceptDescriptionLinker();
                 let blocker_label_set = calc_alg_context
-                    .process_context_mut()
-                    .node_mut(blocking_indi)
-                    .get_reapply_concept_label_set(false);
+                    .process_context()
+                    .node(blocking_indi)
+                    .use_reapply_con_label_set;
                 let adding_sorted = calc_alg_context
                     .process_context()
                     .label_set(blocker_label_set)

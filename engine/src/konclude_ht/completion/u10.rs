@@ -1880,6 +1880,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             let targets = self.ht_all_rule_target_links(source, role, calc_alg_context);
             for (link, succ) in targets {
                 let loc = self.get_localized_individual(succ, false, calc_alg_context);
+                {
+                    // A merged-away or purged node is no longer an element of
+                    // the graph (its links were relocated to the merge target,
+                    // which the all-successors arm reaches by the relocated
+                    // link); the full arm may still write into its stale
+                    // label, but the model does not read it.
+                    let tn = calc_alg_context.process_context().node(loc);
+                    if tn.has_merged_into_individual_node_id()
+                        || tn.has_purged_blocked_processing_restriction_flags()
+                    {
+                        continue;
+                    }
+                }
                 let ls = calc_alg_context.process_context().node(loc).use_reapply_con_label_set;
                 let present = ls.is_some()
                     && self.label_set_contains_concept_resolved(ls, operand, operand_neg, calc_alg_context);

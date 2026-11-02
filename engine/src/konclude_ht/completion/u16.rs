@@ -184,9 +184,9 @@ impl CompletionTaskHandleAlgorithm {
         let sig_nom_del_cand_hash = ctx.signature_nominal_delaying_candidate_hash(false);
 
         let con_set = ctx
-            .process_context_mut()
-            .node_mut(test_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(test_indi)
+            .use_reapply_con_label_set;
         if con_set.is_some() && sig_nom_del_cand_hash.is_some() {
             let _ass_con_sig = ctx
                 .process_context()

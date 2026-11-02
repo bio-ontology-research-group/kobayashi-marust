@@ -656,9 +656,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
         if self.conf_test_occur_unsat_cached {
             let label_set_id = calc_alg_context
-                .process_context_mut()
-                .node_mut(individual_node)
-                .get_reapply_concept_label_set(false);
+                .process_context()
+                .node(individual_node)
+                .use_reapply_con_label_set;
             let con_set_size = if label_set_id.is_some() {
                 calc_alg_context
                     .process_context()
@@ -1749,9 +1749,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .concept(concept)
                 .get_role();
             let anc_con_set: LabelSetId = calc_alg_context
-                .process_context_mut()
-                .node_mut(ancestor_indi_node)
-                .get_reapply_concept_label_set(false);
+                .process_context()
+                .node(ancestor_indi_node)
+                .use_reapply_con_label_set;
             let anc_id = calc_alg_context
                 .process_context()
                 .node(ancestor_indi_node)

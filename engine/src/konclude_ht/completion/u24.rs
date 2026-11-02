@@ -217,9 +217,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 
         // conSet = indiNode->getReapplyConceptLabelSet(false);
         let con_set: LabelSetId = calc_alg_context
-            .process_context_mut()
-            .node_mut(indi_node)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(indi_node)
+            .use_reapply_con_label_set;
         if con_set.is_none() {
             return !self.native_selective_neighbour_expansion_declined;
         }

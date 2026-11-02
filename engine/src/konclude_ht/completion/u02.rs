@@ -3084,9 +3084,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             if indi_node.is_some() {
                 // CReapplyConceptLabelSet* conSet = indiNode->getReapplyConceptLabelSet(false);
                 let con_set: LabelSetId = calc_alg_context
-                    .process_context_mut()
-                    .node_mut(indi_node)
-                    .get_reapply_concept_label_set(false);
+                    .process_context()
+                    .node(indi_node)
+                    .use_reapply_con_label_set;
                 // cint64 conSigValue = indiNode->getReapplyConceptLabelSet(false)->getConceptSignatureValue();
                 let con_sig_value: Cint64 = if con_set.is_some() {
                     calc_alg_context

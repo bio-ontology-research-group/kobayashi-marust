@@ -424,7 +424,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 EdgeId::NONE
             };
             let audit = rest_link.is_some() && super::automat_rest_link_audit_enabled();
-            let role_targets = if rest_link.is_some() && !audit {
+            let role_targets = if rest_link.is_some() && super::automat_rest_link_drop_enabled() {
+                // `KM_HT_AUTOMAT_REST_LINK_DROP=1`: negative control for the
+                // closure audit only (drops every restricted re-fire; unsound
+                // for consistency answers, never set in production).
+                smallvec::SmallVec::new()
+            } else if rest_link.is_some() && !audit {
                 self.ht_rule_target_of_link(*process_indi, rest_link, role, calc_alg_context)
             } else {
                 self.ht_all_rule_target_links(*process_indi, role, calc_alg_context)

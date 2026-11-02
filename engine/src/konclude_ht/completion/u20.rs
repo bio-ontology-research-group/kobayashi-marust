@@ -190,9 +190,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     calc_alg_context.blocking_individual_node_linked_candidate_hash(false);
                 // conSet = blockingTestIndi->getReapplyConceptLabelSet(false)
                 let con_set: LabelSetId = calc_alg_context
-                    .process_context_mut()
-                    .node_mut(blocking_test_indi)
-                    .get_reapply_concept_label_set(false);
+                    .process_context()
+                    .node(blocking_test_indi)
+                    .use_reapply_con_label_set;
                 let core_con_des_linker = if con_set.is_some() {
                     calc_alg_context
                         .process_context()
@@ -1352,9 +1352,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             .as_ref()
                             .is_some_and(|replay| !replay.cached_at_most_cardinalities.is_empty());
                         let role_succ_hash = calc_alg_context
-                            .process_context_mut()
-                            .node_mut(indi_node)
-                            .get_reapply_role_successor_hash(false);
+                            .process_context()
+                            .node(indi_node)
+                            .use_reapply_role_succ_hash;
                         if role_succ_hash != Id::NONE && has_cardinality_extension {
                             let replay = replay.expect("cardinality extension implies a replay");
                             let last_added_link_edge: EdgeId = calc_alg_context
@@ -1415,9 +1415,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     let card_extension_data: Cint64 = INVALID;
                     // roleSuccHash = indiNode->getReapplyRoleSuccessorHash(false);
                     let role_succ_hash = calc_alg_context
-                        .process_context_mut()
-                        .node_mut(indi_node)
-                        .get_reapply_role_successor_hash(false);
+                        .process_context()
+                        .node(indi_node)
+                        .use_reapply_role_succ_hash;
                     if role_succ_hash != Id::NONE && card_extension_data != INVALID {
                         let last_added_link_edge: EdgeId = calc_alg_context
                             .process_context()
@@ -1661,9 +1661,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         }
                         // conSet = indiNode->getReapplyConceptLabelSet(false);
                         let con_set: LabelSetId = calc_alg_context
-                            .process_context_mut()
-                            .node_mut(indi_node)
-                            .get_reapply_concept_label_set(false);
+                            .process_context()
+                            .node(indi_node)
+                            .use_reapply_con_label_set;
                         if con_set != Id::NONE {
                             let con_des_linker = calc_alg_context
                                 .process_context()

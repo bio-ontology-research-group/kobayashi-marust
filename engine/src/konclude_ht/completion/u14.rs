@@ -245,9 +245,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
 
         let con_set = calc_alg_context
-            .process_context_mut()
-            .node_mut(*process_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(*process_indi)
+            .use_reapply_con_label_set;
         if con_set.is_some() {
             for concept_link in concept_add_linker {
                 let mut contained_con_des = ConDescId::NONE;
