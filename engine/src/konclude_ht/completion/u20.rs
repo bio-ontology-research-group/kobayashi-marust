@@ -2054,7 +2054,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let vector = calc_alg_context.processing_data_box().individual_process_node_vector();
         let hi = vector.get_item_max_index();
         let mut nodes: Vec<(Cint64, NodeId)> = Vec::new();
-        let mut keys: std::collections::BTreeSet<(ConceptId, bool)> = Default::default();
+        let mut keys: crate::fxhash::FxHashSet<(ConceptId, bool)> = Default::default();
         let mut index = BlockingBaseIndex {
             base_hi: hi.max(0),
             label_mod_tag: pc.used_process_tagger().get_current_concept_label_set_modification_tag(),
@@ -2081,7 +2081,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             return index;
         }
         let onto = calc_alg_context.ontology_arenas();
-        let keys: Vec<(ConceptId, bool)> = keys.into_iter().collect();
+        let mut keys: Vec<(ConceptId, bool)> = keys.into_iter().collect();
+        keys.sort_unstable_by_key(|&(concept, negated)| (concept.index(), negated));
         let mut lists: Vec<Vec<(Cint64, NodeId)>> = vec![Vec::new(); keys.len()];
         // Descending ids: ascending keys `-id`, the order of the candidate map.
         for &(id, node) in nodes.iter().rev() {
