@@ -1907,9 +1907,15 @@ are backed by HermiT disagreements of the unguarded port; guard 4 follows
      over to a successor (seeds `v1s160`, `v1s1420`, `v1s1543`:
      `Q1 ⊑ ≥1 p.(∃p.Self)` with `InverseFunctional(p)` and `Range(p, F)`
      entails `Q1 ⊑ F`).
-   Without either cache the completion expands every node itself, which is
-   Konclude's algorithm with the two caches configured off, so the gate can
-   only cost time. Irreflexivity concepts are excluded because they never
+   On the same terminologies the completion also does not expand created
+   successors from saturated labels (`conf_expand_created_successors_from_saturation`
+   off): on the SELF seed `s9` that expansion made the completion
+   non-terminating (0.02 s without the saturation, no answer within 60 s
+   with it); caching blocking stays on and still requires a sufficient,
+   completed saturation node.
+   Without either cache and without the label expansion the completion
+   expands every node itself, which is Konclude's algorithm with these
+   options configured off, so the gate can only cost time. Irreflexivity concepts are excluded because they never
    create a self edge; with them included ore_ont_9899 (five irreflexive
    roles) lost both caches and went from 11.5 s to a timeout.
 
