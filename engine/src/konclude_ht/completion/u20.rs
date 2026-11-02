@@ -677,6 +677,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         );
 
         if self.conf_anywhere_blocking_lazy_exact_hashing {
+            self.seed_blocking_candidates_from_base_index(
+                blocking_cand_data,
+                initialization_concept_des,
+                testing_indi_id,
+                calc_alg_context,
+            );
             let mut max_valid_indi_id = calc_alg_context
                 .process_context()
                 .blocking_indi_node_cand_data(blocking_cand_data)
@@ -713,6 +719,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 }
                 let mut dest_indi_id = max_valid_indi_id.min(min_test_indi_node_id);
                 dest_indi_id = dest_indi_id.max(0);
+                if super::blocking_scan_trace_enabled() && testing_indi_id - dest_indi_id > 1000 {
+                    static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+                    let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    if n < 200 || n.is_power_of_two() {
+                        eprintln!(
+                            "BLOCKING-SCAN n={n} testing={testing_indi_id} max_valid={max_valid_indi_id} min_test={min_test_indi_node_id} dest={dest_indi_id} switch_tag={node_switch_tag} init_tag={}",
+                            calc_alg_context.ontology_arenas().concept(
+                                calc_alg_context.process_context().con_desc(initialization_concept_des).get_concept()
+                            ).get_concept_tag()
+                        );
+                    }
+                }
                 let mut indi_id = testing_indi_id - 1;
                 while indi_id >= dest_indi_id {
                     let mut indi = self.get_up_to_date_individual_by_id(indi_id, calc_alg_context);
@@ -1990,5 +2008,142 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::getAppliedTotalRuleCount`.
     pub fn get_applied_total_rule_count(&self) -> Cint64 {
         self.applied_total_rule_count
+    }
+}
+
+
+/// The blocking candidates of a retained consistency base, by initialization
+/// concept: for every `(concept, negation)` that initializes a blockable base
+/// node, the base's blockable, unpurged nodes whose label holds it, with the
+/// label-modification and node-switch tags current at the base.
+///
+/// A class job on the retained base asks the anywhere-blocking hash for the
+/// candidates of each initialization concept it meets. The base's hash has no
+/// entry for most of them, so the lazy update (`max_valid == 0`) walked every
+/// base node id and read its label, once per (job, concept): on ore_ont_7557
+/// (141,915 saturation nodes, 33,520 subjects) this was nearly all of the
+/// probe time. Seeding the job's fresh entry from this index puts it in the
+/// state the same lazy update would have left had it run at the base; the
+/// update then rechecks exactly the base nodes switched or relabelled since
+/// (`max_valid`, the label-modification tag and the node-switch history),
+/// as it does for an entry the base itself had built.
+///
+/// The candidate set only orders the blocker search: every candidate is
+/// tested by `is_individual_node_blocking` on the current graph, and a node
+/// without a blocker is expanded. A different candidate set can change which
+/// blocker is found, never a verdict.
+#[derive(Default)]
+pub struct BlockingBaseIndex {
+    /// Largest positive node id of the base.
+    pub base_hi: Cint64,
+    pub label_mod_tag: Cint64,
+    pub node_switch_tag: Cint64,
+    /// Per key, the candidate entries `(-id, node)` in ascending key order
+    /// (the order of the candidate map), shared by every class job.
+    pub by_key: crate::fxhash::FxHashMap<(ConceptId, bool), std::sync::Arc<Vec<(Cint64, NodeId)>>>,
+}
+
+impl super::algorithm::CompletionTaskHandleAlgorithm {
+    /// Build [`BlockingBaseIndex`] from the current graph (called at the
+    /// retained consistency base, before the first class job).
+    pub fn build_blocking_base_index(
+        &self,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> BlockingBaseIndex {
+        let pc = calc_alg_context.process_context();
+        let vector = calc_alg_context.processing_data_box().individual_process_node_vector();
+        let hi = vector.get_item_max_index();
+        let mut nodes: Vec<(Cint64, NodeId)> = Vec::new();
+        let mut keys: std::collections::BTreeSet<(ConceptId, bool)> = Default::default();
+        let mut index = BlockingBaseIndex {
+            base_hi: hi.max(0),
+            label_mod_tag: pc.used_process_tagger().get_current_concept_label_set_modification_tag(),
+            node_switch_tag: pc.used_process_tagger().get_current_node_switch_tag(),
+            by_key: Default::default(),
+        };
+        for id in 1..=hi {
+            let node = vector.get_data(id);
+            if node.is_none() || node.index() >= pc.node_count() {
+                continue;
+            }
+            let n = pc.node(node);
+            if !n.is_blockable_individual() || n.has_purged_blocked_processing_restriction_flags() {
+                continue;
+            }
+            nodes.push((id, node));
+            let init = n.individual_initialization_concept();
+            if init.is_some() {
+                let d = pc.con_desc(init);
+                keys.insert((d.get_concept(), d.is_negated()));
+            }
+        }
+        if keys.is_empty() {
+            return index;
+        }
+        let onto = calc_alg_context.ontology_arenas();
+        let keys: Vec<(ConceptId, bool)> = keys.into_iter().collect();
+        let mut lists: Vec<Vec<(Cint64, NodeId)>> = vec![Vec::new(); keys.len()];
+        // Descending ids: ascending keys `-id`, the order of the candidate map.
+        for &(id, node) in nodes.iter().rev() {
+            let ls = pc.node(node).use_reapply_con_label_set;
+            if ls.is_none() {
+                continue;
+            }
+            let label = pc.label_set(ls);
+            for (k, &(concept, negated)) in keys.iter().enumerate() {
+                if label.has_concept_in_context(pc, onto, concept, negated) {
+                    lists[k].push((-id, node));
+                }
+            }
+        }
+        for (key, list) in keys.into_iter().zip(lists) {
+            index.by_key.insert(key, std::sync::Arc::new(list));
+        }
+        index
+    }
+
+    /// Seed a fresh candidate entry of a class job from the base index (see
+    /// [`BlockingBaseIndex`]). No-op without an index, for a non-fresh entry,
+    /// for a key the index does not hold, or for a node of the base itself.
+    fn seed_blocking_candidates_from_base_index(
+        &mut self,
+        data: super::super::process::blocking_hash::BlockingIndividualNodeCandidateDataId,
+        initialization_concept_des: ConDescId,
+        testing_indi_id: Cint64,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        let Some(index) = self.blocking_base_index.clone() else {
+            return;
+        };
+        if testing_indi_id <= index.base_hi {
+            return;
+        }
+        {
+            let d = calc_alg_context.process_context().blocking_indi_node_cand_data(data);
+            if d.get_max_valid_individual_id() != 0
+                || d.get_node_switch_tag() != 0
+                || !d.candidate_indi_map.is_empty()
+                || d.shared_candidates.is_some()
+            {
+                return;
+            }
+        }
+        let key = {
+            let d = calc_alg_context.process_context().con_desc(initialization_concept_des);
+            (d.get_concept(), d.is_negated())
+        };
+        let Some(list) = index.by_key.get(&key) else {
+            return;
+        };
+        // The base's node ids name the same elements in every job (a job
+        // allocates above the base); the iteration resolves each candidate to
+        // its up-to-date node and drops purged or unblockable ones, as for
+        // any candidate the lazy update inserted earlier.
+        let d = calc_alg_context.process_context_mut().blocking_indi_node_cand_data_mut(data);
+        d.shared_candidates = Some(std::sync::Arc::clone(list));
+        d.shared_removed.clear();
+        d.set_max_valid_individual_id(index.base_hi);
+        d.update_concept_label_set_modification_tag(index.label_mod_tag);
+        d.update_node_switch_tag(index.node_switch_tag);
     }
 }

@@ -107,6 +107,7 @@ pub(crate) fn automat_rest_link_enabled() -> bool {
     !automat_rest_link_disabled()
 }
 cached_completion_flag!(stop_trace_enabled, "KM_HT_STOP_TRACE");
+cached_completion_flag!(blocking_scan_trace_enabled, "KM_HT_BLOCKING_SCAN_TRACE");
 cached_completion_flag!(automat_rest_link_audit_enabled, "KM_HT_AUTOMAT_REST_LINK_AUDIT");
 cached_completion_flag!(automat_rest_link_drop_enabled, "KM_HT_AUTOMAT_REST_LINK_DROP");
 cached_completion_flag!(automat_closure_audit_enabled, "KM_HT_AUTOMAT_CLOSURE_AUDIT");

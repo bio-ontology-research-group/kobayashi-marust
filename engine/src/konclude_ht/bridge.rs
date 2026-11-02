@@ -9835,6 +9835,8 @@ fn reset_classification_algorithm_on_retained_base(
     fresh.conf_atomic_semantic_branching = algo.conf_atomic_semantic_branching;
     fresh.current_rec_proc_depth_limit = algo.current_rec_proc_depth_limit;
     fresh.or_branch_learning_stats = branch_learning;
+    // Immutable index of the same retained base (u20 `BlockingBaseIndex`).
+    fresh.blocking_base_index = algo.blocking_base_index.clone();
     *algo = fresh;
     if let Some(snapshot) = replay_snapshot {
         // Only immutable input is shared; every mutable per-job field is fresh.
@@ -15707,6 +15709,20 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                         }
                         if retain_deterministic_leaf && progress {
                             eprintln!("BRIDGE-RETAINED-BASE retains the deterministic leaf (no open branch)");
+                        }
+                        if std::env::var_os("KM_HT_NO_BLOCKING_BASE_INDEX").is_none() {
+                            let started = std::time::Instant::now();
+                            let index = algo.build_blocking_base_index(&ctx);
+                            if progress {
+                                eprintln!(
+                                    "BRIDGE-RETAINED-BASE blocking index: base_hi={} keys={} entries={} in {:.2}s",
+                                    index.base_hi,
+                                    index.by_key.len(),
+                                    index.by_key.values().map(|list| list.len()).sum::<usize>(),
+                                    started.elapsed().as_secs_f64()
+                                );
+                            }
+                            algo.blocking_base_index = Some(std::sync::Arc::new(index));
                         }
                         ctx.push_branch_epoch();
                         retained_consistency_base = true;

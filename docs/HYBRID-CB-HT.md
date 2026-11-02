@@ -1343,3 +1343,83 @@ Konclude's choice only below that bound (Konclude uses its lazy, batched
 representative precomputation above it), and the restricted automaton arm
 is not shown complete for the port. The generic automatic racer therefore
 keeps declining `SameIndividual`.
+
+## 14. The restricted automaton re-fire, read-only blocking scans, and Konclude's full-graph decision (2026-11-02, `fix/v155-bridge-abox-probes`)
+
+Section 13 left three switches between the large equality ABoxes and the
+default route. This section removes them: the restricted automaton arm is
+on by default (with the argument below), the subject probes no longer copy
+the retained graph, the schedule choice follows Konclude's whole decision,
+and the automatic racer admits `SameIndividual`. Measurements and seed
+counts are in `results/agents/2026-11-02/bridge-abox-probes/README.md`.
+
+### 14.1 The restricted arm derives the closure of the all-successors arm
+
+`apply_automat_transactions` (u05) handles an automaton state `S` at a
+node `x`. On the first processing of `S` (`reapplied == false`) the
+descriptor has no link restriction; the arm walks the `CCAQAND` state graph,
+adds every `CCAQALL` transition `∀r.T` to every `r`-neighbour of `x`
+(`ht_all_rule_target_links`: forward links, the opposite end of the
+ancestor link, and the connection-set predecessors whose link reads as an
+`r`-link from `x`), and registers `S` in `x`'s reapply queue under `r`
+(`addConceptToReapplyQueue(baseConDes, role, …)`). A later re-fire comes
+from `apply_reapply_queue_concepts_restricted` for one freshly installed
+link `L`; the restricted arm (`ht_rule_target_of_link`) adds `T` to the
+opposite end of `L` when `L` reads as an `r`-link from `x`, with the same
+hierarchy and inverse test (`ht_signed_role_matches`) that the full arm
+applies to each link. Konclude's own arm (cpp 9662-9700) tests
+`restLink->getLinkRole() == role`; the port's test accepts every link the
+full arm accepts.
+
+Claim. At every clash-free fixpoint of a completion run, for every live
+node `x` (not merged, not purged, not blocked, not represented by a
+satisfiability, signature, saturation or completion-graph cache), every
+state `S` in `L(x)`, every transition `∀r.T` of `S` and every live
+`r`-neighbour `y` of `x` through a link `L`: `T ∈ L(y)`. This is the
+closure the all-successors arm reaches, so the two arms agree on every
+clash-free graph, and the restricted arm adds a subset of what the full arm
+adds, so every clash it finds is one the full arm finds.
+
+Argument. Fix `x, S, ∀r.T, y, L` and the first processing of `S` at `x`.
+(1) If `L` existed then, the full arm added `T` to `y`. (2) Otherwise `L`
+was installed later, and every production install fires the reapply queue
+of the endpoint that reads `L` as an `r`-link: `ht_install_role_successor_edge`
+(u08; the link role's queue on the source, the non-inverted super roles on
+the source, the inverted super roles and the mirror inverse link on the
+destination), `create_new_individuals_links_reapplyed` (u10, one link per
+indirect super-role entry in both orientations; the ABox assertion install
+`install_native_role_assertion_edge` uses it) and
+`create_new_individuals_link_reapplyed`. Merge relocation (u15
+`ht_relocate_incoming_links`, `ht_relocate_nominal_connections`,
+`ht_relocate_self_links`) installs through `ht_install_role_successor_edge`.
+The non-reapplying installs (`create_new_individuals_links`,
+`create_new_individuals_link`, `install_individual_node_role_link`, u35)
+have no production caller. So `S` re-fires restricted to `L` and adds `T`
+to `y`. (3) Merges move labels with the links: a merged-away `y` passes its
+label to the merge target, whose relocated link is an install of case 2;
+a merged-away `x` passes `S` to its target as a new concept, whose first
+processing is case 1 or 2 there. (4) Backtracking restores the graph, the
+labels and the reapply queues together (the queues live in the journaled
+role-successor hash), so the case analysis holds in every branch state.
+Nodes skipped as sources (blocked, cached) are skipped by both arms; their
+targets are still checked, since a live source reaches them.
+
+The argument rests on two facts of the port that are not visible in one
+place: the reapply-queue registration under every transition role, and the
+inverse entries of the indirect super-role lists (`role_chain_automata`
+adds them for every created inverse role). Both are exercised by the
+seeds below, and a closure check tests the claim directly.
+
+Check. `KM_HT_AUTOMAT_CLOSURE_AUDIT=1` evaluates the claim at every
+clash-free fixpoint of `run_completion_on` (u02) and counts each
+`(x, S, ∀r.T, y)` with `T ∉ L(y)` (`ht_automat_closure_audit`, u10). The
+transient audit of section 13 (`KM_HT_AUTOMAT_REST_LINK_AUDIT=1`) compared
+the two arms in the middle of a run; its 122 reports were operands still
+due from later re-fires or runs that end in a clash (the seeds c0 and c190
+it named are inconsistent for HermiT), not misses of the closure. The
+closure check has power: with the restricted re-fire dropped
+(`KM_HT_AUTOMAT_REST_LINK_DROP=1`, a negative control) it reports misses on
+113 of the first 300 chain seeds. Its first version also counted purged
+targets (nodes pruned by a merge); the full arm writes into their stale
+labels, but they are not elements of the graph, and the check now skips
+them, as `ht_rule_target_of_link` does.
