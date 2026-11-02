@@ -10192,6 +10192,9 @@ struct RetainedConsistencyLeaf {
     next_id: Cint64,
     /// Open decisions of the leaf (diagnostic).
     decisions: usize,
+    /// The job algorithm's backend replay map at the build: immutable input
+    /// data, shared by every leaf job instead of being rebuilt per job.
+    replay: NativeReplaySnapshot,
 }
 
 /// Counters of the reuse branch point (reported under `KM_BRIDGE_PROGRESS`
@@ -10217,18 +10220,23 @@ impl RetainedLeafCounts {
     }
 }
 
-/// Build the leaf on the resuming base. Precondition: the caller has just
-/// restored the resuming base with `restore_retained_classification_base`
-/// and configured the job algorithm exactly as for a class job. Runs the
+/// Build the leaf on the resuming base, or (`base_depth` 0, no retained
+/// base) on the ABox a per-job reset just initialized. Precondition: the
+/// caller has just restored that base and configured the job algorithm
+/// exactly as for a class job. Runs the
 /// consistency continuation with no class root. Returns `None` (and leaves
 /// the context as an ordinary finished job, with the spine journal closed)
 /// when the continuation does not end in a trusted clash-free fixpoint.
 fn build_retained_consistency_leaf(
     algo: &mut CompletionTaskHandleAlgorithm,
     ctx: &mut CalculationAlgorithmContextBase,
-    bridged: &Bridged,
+    base_depth: usize,
 ) -> Option<RetainedConsistencyLeaf> {
-    let base_depth = bridged.retained_base_depth.get();
+    // On the per-job reset path (no retained base) the freshly initialized
+    // ABox is the base and the build opens its own job epoch.
+    if ctx.process_context().branch_epoch_depth() == base_depth && algo.or_branch_stack.is_empty() {
+        ctx.push_branch_epoch();
+    }
     if ctx.process_context().branch_epoch_depth() != base_depth + 1
         || !algo.or_branch_stack.is_empty()
     {
@@ -10270,7 +10278,8 @@ fn build_retained_consistency_leaf(
     ctx.process_context_mut().push_spine_journal_epoch();
     // The first leaf job's epoch (popped by `restore_retained_consistency_leaf`).
     ctx.push_branch_epoch();
-    Some(RetainedConsistencyLeaf { depth, base_depth, databox, branch_node, next_id, decisions })
+    let replay = std::sync::Arc::clone(&algo.native_nominal_backend_replay);
+    Some(RetainedConsistencyLeaf { depth, base_depth, databox, branch_node, next_id, decisions, replay })
 }
 
 /// Start the next class job on the leaf: roll the previous job back (its
@@ -10307,7 +10316,11 @@ fn restore_retained_consistency_leaf(
     let mut databox = leaf.databox.clone();
     databox.set_first_possible_individual_node_id(leaf.next_id);
     ctx.base.used_processing_data_box = databox;
-    reset_classification_algorithm_on_retained_base(algo, bridged, replay_snapshot);
+    reset_classification_algorithm_on_retained_base(
+        algo,
+        bridged,
+        Some(replay_snapshot.unwrap_or(&leaf.replay)),
+    );
     // A continuation of the consistency completion: no retained-node special
     // casing, as on the resuming base.
     algo.retained_base_node_count = 0;
@@ -16655,11 +16668,24 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // resumes the first fork, class jobs first run on the leaf (the reuse
     // branch point's alternative 0) and fall back to the resuming base.
     // Default on; `KM_BRIDGE_NO_LEAF_REUSE=1` restores the resume-only path.
-    let leaf_reuse = retained_consistency_base
-        && !fresh_env
-        && bridged.retained_base_resumes_fork.get()
-        && std::env::var_os("KM_BRIDGE_NO_RETAINED_BASE").is_none()
-        && std::env::var_os("KM_BRIDGE_NO_LEAF_REUSE").is_none();
+    // Also on the per-job reset path that re-initializes the whole native
+    // ABox for every job (no retained base, e.g. when the saturation
+    // refuses `SELF`): the leaf is then the consistency completion of that
+    // ABox, and alternative 1 is the per-job reset itself.
+    let leaf_reuse = !fresh_env
+        && std::env::var_os("KM_BRIDGE_NO_LEAF_REUSE").is_none()
+        && if retained_consistency_base {
+            bridged.retained_base_resumes_fork.get()
+                && std::env::var_os("KM_BRIDGE_NO_RETAINED_BASE").is_none()
+        } else {
+            // Only on the representative-batch (card+nominal) profile, whose
+            // job algorithm `reset_classification_algorithm_on_retained_base`
+            // reproduces.
+            bridged.has_native_nominals()
+                && !independent_abox_elided
+                && algo.conf_direct_rule_preprocessing
+                && algo.conf_cache_oriented_or_ordering
+        };
     let leaf_state: std::cell::RefCell<Option<RetainedConsistencyLeaf>> = Default::default();
     let leaf_job = std::cell::Cell::new(false);
     let leaf_job_ran = std::cell::Cell::new(false);
@@ -16757,7 +16783,25 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 *algo = a2;
                 *ctx = c2;
                 algo.probe_budget = budget;
+            } else if leaf_job.get() && leaf_state.borrow().is_some() {
+                // Per-job reset path with a retained consistency leaf
+                // (docs/HYBRID-CB-HT.md §16).
+                restore_retained_consistency_leaf(
+                    algo,
+                    ctx,
+                    &bridged,
+                    leaf_state.borrow().as_ref()?,
+                    None,
+                )?;
+                // The per-job reset runs its jobs with COW epochs.
+                algo.conf_inprocess_cow = true;
+                leaf_job_ran.set(true);
             } else {
+                // The reset rebuilds the whole context: a leaf still built
+                // is discarded with it.
+                if leaf_state.borrow_mut().take().is_some() {
+                    leaf_update(&|c| c.drops += 1);
+                }
                 reset_classification_probe_env(
                     algo,
                     ctx,
@@ -16813,9 +16857,19 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             }
             if leaf_job.get() && !leaf_job_ran.get() && leaf_round == 0
                 && !leaf_disabled.get() && leaf_state.borrow().is_none()
-                && retained_consistency_base && !fresh_env
+                && leaf_reuse
             {
-                match build_retained_consistency_leaf(algo, ctx, &bridged) {
+                let base_depth = if retained_consistency_base {
+                    bridged.retained_base_depth.get()
+                } else {
+                    0
+                };
+                if !retained_consistency_base && ctx.has_pending_signal() {
+                    // The reset's ABox initialization stopped.
+                    leaf_disabled.set(true);
+                    break;
+                }
+                match build_retained_consistency_leaf(algo, ctx, base_depth) {
                     Some(leaf) => {
                         if progress {
                             eprintln!("BRIDGE-LEAF built: decisions={} depth={} nodes={}",
