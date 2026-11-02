@@ -1,0 +1,15 @@
+3917 BRIDGE-LEAF total reuse=true RetainedLeafCounts { builds: 1, build_failures: 0, attempts: 6325, accepted_sat: 6015, accepted_root_cancel: 310, fallback_unsat: 0, fallback_unknown: 0, drops: 0 }
+11378 BRIDGE-LEAF total reuse=true RetainedLeafCounts { builds: 1, build_failures: 0, attempts: 6872, accepted_sat: 6516, accepted_root_cancel: 356, fallback_unsat: 0, fallback_unknown: 0, drops: 0 }
+12191 BRIDGE-LEAF total reuse=true RetainedLeafCounts { builds: 1, build_failures: 0, attempts: 6900, accepted_sat: 6542, accepted_root_cancel: 358, fallback_unsat: 0, fallback_unknown: 0, drops: 0 }
+9151 BRIDGE-LEAF total reuse=true RetainedLeafCounts { builds: 3, build_failures: 0, attempts: 7705, accepted_sat: 7697, accepted_root_cancel: 6, fallback_unsat: 2, fallback_unknown: 0, drops: 2 }
+9151 BRIDGE-LEAF total reuse=false RetainedLeafCounts { builds: 0, build_failures: 0, attempts: 0, accepted_sat: 0, accepted_root_cancel: 0, fallback_unsat: 0, fallback_unknown: 0, drops: 0 }
+9151 BRIDGE-LEAF total reuse=true RetainedLeafCounts { builds: 3, build_failures: 0, attempts: 7658, accepted_sat: 7650, accepted_root_cancel: 6, fallback_unsat: 2, fallback_unknown: 0, drops: 2 }
+9151 BRIDGE-LEAF total reuse=true RetainedLeafCounts { builds: 3, build_failures: 0, attempts: 7705, accepted_sat: 7697, accepted_root_cancel: 6, fallback_unsat: 2, fallback_unknown: 0, drops: 2 }
+9151 BRIDGE-LEAF total reuse=true RetainedLeafCounts { builds: 3, build_failures: 0, attempts: 7705, accepted_sat: 7697, accepted_root_cancel: 6, fallback_unsat: 2, fallback_unknown: 0, drops: 2 }
+9151 BRIDGE-LEAF total reuse=true RetainedLeafCounts { builds: 3, build_failures: 0, attempts: 7633, accepted_sat: 7625, accepted_root_cancel: 8, fallback_unsat: 0, fallback_unknown: 0, drops: 2 }
+9151 BRIDGE-LEAF total reuse=true RetainedLeafCounts { builds: 3, build_failures: 0, attempts: 7658, accepted_sat: 7650, accepted_root_cancel: 6, fallback_unsat: 2, fallback_unknown: 0, drops: 2 }
+9577 BRIDGE-LEAF total reuse=true RetainedLeafCounts { builds: 47, build_failures: 0, attempts: 7919, accepted_sat: 7860, accepted_root_cancel: 13, fallback_unsat: 46, fallback_unknown: 0, drops: 46 }
+9577 BRIDGE-LEAF total reuse=false RetainedLeafCounts { builds: 0, build_failures: 0, attempts: 0, accepted_sat: 0, accepted_root_cancel: 0, fallback_unsat: 0, fallback_unknown: 0, drops: 0 }
+9577 BRIDGE-LEAF total reuse=true RetainedLeafCounts { builds: 47, build_failures: 0, attempts: 7863, accepted_sat: 7804, accepted_root_cancel: 13, fallback_unsat: 46, fallback_unknown: 0, drops: 46 }
+6132 BRIDGE-LEAF total reuse=true RetainedLeafCounts { builds: 1, build_failures: 0, attempts: 859, accepted_sat: 859, accepted_root_cancel: 0, fallback_unsat: 0, fallback_unknown: 0, drops: 0 }
+9899 BRIDGE-LEAF total reuse=true RetainedLeafCounts { builds: 1, build_failures: 0, attempts: 952, accepted_sat: 952, accepted_root_cancel: 0, fallback_unsat: 0, fallback_unknown: 0, drops: 0 }

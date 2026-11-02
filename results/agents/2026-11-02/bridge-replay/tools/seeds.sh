@@ -12,7 +12,9 @@ export DIFF_KEEP=KM_HT_DDB=1,KM_HT_NATIVE_FULL=1,KM_CACHE_CONFORMANCE=1,KM_BRIDG
 for pool in $POOLS; do
   name=$(echo $pool | tr / -)
   files=()
-  for f in $S/$pool/seeds/*.ofn; do
+  # R3_FIRST=N limits r3-unannounced to its first N seeds (sorted order).
+  list=$(ls $S/$pool/seeds/*.ofn); [ "$pool" = r3-unannounced ] && [ -n "$R3_FIRST" ] && list=$(echo "$list" | head -$R3_FIRST)
+  for f in $list; do
     st=$(basename $f .ofn); [ -s $S/$pool/gold/$st.json ] && files+=($f)
   done
   rm -f $D/$name.tsv

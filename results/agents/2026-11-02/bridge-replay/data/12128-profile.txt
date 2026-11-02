@@ -1,0 +1,5 @@
+KM_TIMING race: synchronous bridge classes=187518 typed_nominal=false cb_threads=1
+BRIDGE-SATURATION-DISCARDED: unfinished pass, no verdicts reused
+BRIDGE-REFUTATION gated=false restricted=false nominals=false inverse=true number=true
+BRIDGE-PREPARE round 0 subject 178817/187518 deferred=0 permanent=0
+12128 rc=124 wall=300.255791283 rss_kb=9979752 lines=0

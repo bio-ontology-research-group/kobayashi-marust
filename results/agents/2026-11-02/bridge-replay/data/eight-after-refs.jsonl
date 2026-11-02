@@ -1,0 +1,8 @@
+{"ontology": "11378", "status": "compared", "subsumption_lines": 120536, "unsat": 0, "konclude": "agreement", "openllet": "missing", "jfact": "consistency_disagreement"}
+{"ontology": "12128", "status": "no_answer", "dropped": null}
+{"ontology": "12191", "status": "compared", "subsumption_lines": 121220, "unsat": 0, "konclude": "agreement", "openllet": "missing", "jfact": "consistency_disagreement"}
+{"ontology": "3917", "status": "compared", "subsumption_lines": 112243, "unsat": 0, "konclude": "agreement", "openllet": "missing", "jfact": "consistency_disagreement"}
+{"ontology": "6132", "status": "compared", "subsumption_lines": 707, "unsat": 0, "konclude": "agreement", "openllet": "missing", "jfact": "missing"}
+{"ontology": "9151", "status": "compared", "subsumption_lines": 180070, "unsat": 1, "konclude": "agreement", "openllet": "missing", "jfact": "consistency_disagreement"}
+{"ontology": "9577", "status": "compared", "subsumption_lines": 184764, "unsat": 0, "konclude": "agreement", "openllet": "missing", "jfact": "consistency_disagreement"}
+{"ontology": "9899", "status": "no_answer", "dropped": null}
