@@ -241,6 +241,18 @@ exact CB procedure. Smaller inputs keep the concurrent race. This ordering
 reduces process-tree memory when the bridge succeeds; it does not change either
 procedure or the accepted answer contract.
 
+The native bridge admits `SameIndividual` on every route, including the
+automatic HT racer (2026-11-02): the ABox conversion quotients the typed ABox
+by its equality classes (docs/HYBRID-CB-HT.md section 13), and the bridge
+finishes the large equality ABoxes since the changes of section 17. The route
+selection itself is unchanged; an input that the bridge previously declined
+for its `SameIndividual` axioms now reaches the bridge's complete-or-defer
+contract, and a defer still runs the exact CB fallback.
+`KM_HT_NO_ADMIT_SAME=1` restores the decline for measurement. Inside the
+bridge, the choice between the retained full completion graph and the
+per-probe ABox completion follows Konclude's own decision (section 17.3);
+both are complete-or-defer, so the choice changes cost, not answers.
+
 The same sequential schedule applies to very large, source-certified
 disjunctive SHI terminologies with no ABox, at least 50,000 logical axioms,
 300,000 concept expressions, 10,000 unions, and 50,000 named classes. The

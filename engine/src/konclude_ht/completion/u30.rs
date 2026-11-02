@@ -655,9 +655,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // return clashDes;
         let mut clash_des = prev_clashes;
         let con_set: LabelSetId = calc_alg_context
-            .process_context_mut()
-            .node_mut(*process_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(*process_indi)
+            .use_reapply_con_label_set;
         let mut con_des_it = if con_set.is_some() {
             calc_alg_context
                 .process_context()
@@ -842,9 +842,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .get_appropriated_individual_id();
         let indi = self.get_corrected_nominal_individual_node(indi_id, calc_alg_context);
         let con_set = calc_alg_context
-            .process_context_mut()
-            .node_mut(indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(indi)
+            .use_reapply_con_label_set;
         let con_sig = calc_alg_context
             .process_context()
             .label_set(con_set)
@@ -1646,13 +1646,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let mut super_set_indi = super_set_indi;
 
         let mut sub_concept_set = calc_alg_context
-            .process_context_mut()
-            .node_mut(sub_set_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(sub_set_indi)
+            .use_reapply_con_label_set;
         let mut super_concept_set = calc_alg_context
-            .process_context_mut()
-            .node_mut(super_set_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(super_set_indi)
+            .use_reapply_con_label_set;
 
         // if (superConceptSet->getConceptCount() < subConceptSet->getConceptCount()) { swap sets + indis }
         let super_count = calc_alg_context

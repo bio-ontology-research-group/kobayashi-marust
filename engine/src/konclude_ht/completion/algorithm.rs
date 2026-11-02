@@ -980,7 +980,7 @@ pub struct CompletionTaskHandleAlgorithm {
     /// Modifications (concept, link or merge, see
     /// `propagate_individual_node_modified`) of nodes that belong to the
     /// retained base (arena index `< retained_base_node_count`). The
-    /// cleared-queue screen of docs/HYBRID-CB-HT.md §14 accepts a job only
+    /// cleared-queue screen of docs/HYBRID-CB-HT.md §15 accepts a job only
     /// when this stays 0.
     pub retained_node_modified_count: u64,
     /// KM-BRIDGE (Stage 8): OR branch points opened on a nominal (ABox) node,
@@ -1061,6 +1061,9 @@ pub struct CompletionTaskHandleAlgorithm {
     /// association was installed. Instrumentation only — the HIT path is a
     /// RESOLUTION, not a "reached/influenced", so it never activates.
     pub native_reuse_lazy_lookup_hit_count: u64,
+    /// Blocking candidates of the retained consistency base (u20
+    /// `BlockingBaseIndex`); set at the base snapshot, `None` otherwise.
+    pub blocking_base_index: Option<std::sync::Arc<super::u20::BlockingBaseIndex>>,
     /// Nodes taken off the backend-individual reuse-expansion queue
     /// (`u02` Probes 19/34 → `handle_backend_expansion_reuse_queue_node`).
     pub native_reuse_queue_drain_count: u64,
@@ -1713,6 +1716,7 @@ impl CompletionTaskHandleAlgorithm {
             native_reuse_activation_queued_count: 0,
             native_reuse_pending_defer_count: 0,
             native_reuse_lazy_lookup_hit_count: 0,
+            blocking_base_index: None,
             native_reuse_queue_drain_count: 0,
             native_reuse_check_pass_count: 0,
             native_reuse_check_decline_count: 0,

@@ -2245,16 +2245,16 @@ fn prepare_ht(
         && card_candidate_from(&tin, cfg.ht_card, card_recog, has_datatype(&cl));
     let mut proxy_abox_certificate = None;
     let global_native_abox = std::env::var_os("KM_HT_GLOBAL_NATIVE_ABOX").is_some();
-    // Where equality is admitted, `install_nominal_abox_with_same` installs
-    // the exact pre-merge (docs/HYBRID-CB-HT.md section 13). The generic
-    // automatic HT racer still declines `SameIndividual`: the bridge does not
-    // finish the large equality ABoxes that motivated the pre-merge
-    // (ore_ont_16315 and its family), and with one thread its attempt runs
-    // before the CB stack. `KM_HT_ADMIT_SAME=1` admits it for measurement.
+    // `install_nominal_abox_with_same` installs the exact `SameIndividual`
+    // pre-merge (docs/HYBRID-CB-HT.md section 13). Every route admits it
+    // since the restricted automaton re-fire, the read-only blocking scans and
+    // Konclude's full-completion-graph decision let the bridge finish the
+    // large equality ABoxes (section 17). `KM_HT_NO_ADMIT_SAME=1` restores
+    // the earlier decline on the generic automatic racer (measurement only).
     let allow_same = std::env::var_os("KM_HT_CERT_NO_BLOCKING").is_some()
         || global_native_abox
         || specialist_only.as_deref() == Some("bridge")
-        || std::env::var_os("KM_HT_ADMIT_SAME").is_some();
+        || std::env::var_os("KM_HT_NO_ADMIT_SAME").is_none();
     if card_proxy_abox {
         let mut native = tin.clone();
         cb_to_ht::install_nominal_abox_with_same(&mut native, &nominal_abox, allow_same);

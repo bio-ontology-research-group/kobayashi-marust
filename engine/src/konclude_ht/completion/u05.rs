@@ -416,15 +416,21 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // CAUTOMATTRANSACTIONDependencyNode has it as its second parent.
             // Konclude's `restLink` arm (cpp 9662-9700): a descriptor re-fired by
             // `applyReapplyQueueConceptsRestricted` for ONE freshly installed link
-            // propagates over that link only. `KM_HT_AUTOMAT_REST_LINK=1` (diagnostic,
-            // off by default) enables it; otherwise every re-fire scans all successors.
+            // propagates over that link only (default; `KM_HT_NO_AUTOMAT_REST_LINK=1`
+            // makes every re-fire scan all successors). docs/HYBRID-CB-HT.md
+            // section 17 argues the two arms reach the same closure.
             let rest_link = if super::automat_rest_link_enabled() {
                 self.get_link_processing_restriction(*con_pro_des, calc_alg_context)
             } else {
                 EdgeId::NONE
             };
             let audit = rest_link.is_some() && super::automat_rest_link_audit_enabled();
-            let role_targets = if rest_link.is_some() && !audit {
+            let role_targets = if rest_link.is_some() && super::automat_rest_link_drop_enabled() {
+                // `KM_HT_AUTOMAT_REST_LINK_DROP=1`: negative control for the
+                // closure audit only (drops every restricted re-fire; unsound
+                // for consistency answers, never set in production).
+                smallvec::SmallVec::new()
+            } else if rest_link.is_some() && !audit {
                 self.ht_rule_target_of_link(*process_indi, rest_link, role, calc_alg_context)
             } else {
                 self.ht_all_rule_target_links(*process_indi, role, calc_alg_context)
@@ -438,7 +444,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 // i.e. what the restricted arm would leave out at this point.
                 let restricted: smallvec::SmallVec<[(EdgeId, NodeId); 4]> =
                     self.ht_rule_target_of_link(*process_indi, rest_link, role, calc_alg_context);
-                for &(_, succ) in &role_targets {
+                for &(tlink, succ) in &role_targets {
                     if restricted.iter().any(|&(_, node)| node == succ) {
                         continue;
                     }
@@ -450,6 +456,27 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                 ls, op_link.target, op_link.negated ^ negated, calc_alg_context);
                         if !present {
                             super::automat_rest_link_audit_miss();
+                            if super::automat_rest_link_audit_detail() {
+                                let pc = calc_alg_context.process_context();
+                                let on = calc_alg_context.ontology_arenas();
+                                let fmt_edge = |e: EdgeId| -> String {
+                                    let ed = pc.edge(e);
+                                    let id = |n: NodeId| if n.is_some() { pc.node(n).individual_node_id() } else { i64::MIN };
+                                    format!("e{}[{}:{}->{} cr={} tp={}]", e.index(),
+                                        on.role(ed.get_link_role()).get_role_tag(),
+                                        id(ed.get_source_individual()), id(ed.get_destination_individual()),
+                                        id(ed.creator), ed.get_dependency_track_point().index())
+                                };
+                                let src = pc.node(*process_indi);
+                                let sn = pc.node(loc);
+                                eprintln!(
+                                    "AUTOMAT-REST-LINK-AUDIT-MISS src={} src_flags={:#x} src_nom={} succ={} succ_flags={:#x} succ_nom={} state={} role={} op={}{} target_link={} rest_link={} reapplied={}",
+                                    src.individual_node_id(), src.processing_restriction_flags, src.is_nominal_individual_node(),
+                                    sn.individual_node_id(), sn.processing_restriction_flags, sn.is_nominal_individual_node(),
+                                    on.concept(concept).get_concept_tag(), on.role(role).get_role_tag(),
+                                    if op_link.negated ^ negated { "-" } else { "" }, on.concept(op_link.target).get_concept_tag(),
+                                    fmt_edge(tlink), fmt_edge(rest_link), reapplied);
+                            }
                         }
                     }
                 }

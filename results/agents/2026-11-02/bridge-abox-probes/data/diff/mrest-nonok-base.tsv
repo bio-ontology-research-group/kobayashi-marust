@@ -1,0 +1,42 @@
+bridge-abox-probes/mseeds/m37.ofn	ht_bridge	ERR	0.01					
+bridge-abox-probes/mseeds/m37.ofn	auto	TIMEOUT	30.03					
+bridge-abox-probes/mseeds/m96.ofn	ht_bridge	ERR	0.02					
+bridge-abox-probes/mseeds/m96.ofn	auto	TIMEOUT	30.04					
+bridge-abox-probes/mseeds/m337.ofn	ht_bridge	ERR	0.01					
+bridge-abox-probes/mseeds/m337.ofn	auto	TIMEOUT	30.03					
+bridge-abox-probes/mseeds/m413.ofn	ht_bridge	WRONG	0.01	2	0	0	0	0
+bridge-abox-probes/mseeds/m413.ofn	auto	WRONG	0.03	2	0	0	0	0
+bridge-abox-probes/mseeds/m509.ofn	ht_bridge	TIMEOUT	30.05					
+bridge-abox-probes/mseeds/m509.ofn	auto	TIMEOUT	30.02					
+bridge-abox-probes/mseeds/m593.ofn	ht_bridge	ERR	0.02					
+bridge-abox-probes/mseeds/m593.ofn	auto	TIMEOUT	30.03					
+bridge-abox-probes/mseeds/m651.ofn	ht_bridge	TIMEOUT	30.06					
+bridge-abox-probes/mseeds/m651.ofn	auto	TIMEOUT	30.03					
+bridge-abox-probes/mseeds/m693.ofn	ht_bridge	TIMEOUT	30.06					
+bridge-abox-probes/mseeds/m693.ofn	auto	TIMEOUT	30.03					
+bridge-abox-probes/mseeds/m725.ofn	ht_bridge	ERR	0.01					
+bridge-abox-probes/mseeds/m725.ofn	auto	ok	1.54	0	0	0	0	0
+bridge-abox-probes/mseeds/m747.ofn	ht_bridge	TIMEOUT	30.07					
+bridge-abox-probes/mseeds/m747.ofn	auto	TIMEOUT	30.03					
+bridge-abox-probes/mseeds/m869.ofn	ht_bridge	TIMEOUT	30.05					
+bridge-abox-probes/mseeds/m869.ofn	auto	TIMEOUT	30.03					
+bridge-abox-probes/mseeds/m977.ofn	ht_bridge	ERR	0.01					
+bridge-abox-probes/mseeds/m977.ofn	auto	ok	12.74	0	0	0	0	0
+bridge-abox-probes/mseeds/m1077.ofn	ht_bridge	TIMEOUT	30.06					
+bridge-abox-probes/mseeds/m1077.ofn	auto	TIMEOUT	30.03					
+bridge-abox-probes/mseeds/m1200.ofn	ht_bridge	TIMEOUT	30.06					
+bridge-abox-probes/mseeds/m1200.ofn	auto	ok	8.61	0	0	0	0	0
+bridge-abox-probes/mseeds/m1295.ofn	ht_bridge	TIMEOUT	30.07					
+bridge-abox-probes/mseeds/m1295.ofn	auto	TIMEOUT	30.03					
+bridge-abox-probes/mseeds/m1328.ofn	ht_bridge	TIMEOUT	30.06					
+bridge-abox-probes/mseeds/m1328.ofn	auto	TIMEOUT	30.03					
+bridge-abox-probes/mseeds/m1436.ofn	ht_bridge	TIMEOUT	30.03					
+bridge-abox-probes/mseeds/m1436.ofn	auto	TIMEOUT	30.02					
+bridge-abox-probes/mseeds/m1463.ofn	ht_bridge	TIMEOUT	30.05					
+bridge-abox-probes/mseeds/m1463.ofn	auto	TIMEOUT	30.03					
+bridge-abox-probes/mseeds/m1493.ofn	ht_bridge	TIMEOUT	30.06					
+bridge-abox-probes/mseeds/m1493.ofn	auto	TIMEOUT	30.03					
+bridge-abox-probes/mseeds/m1610.ofn	ht_bridge	TIMEOUT	30.05					
+bridge-abox-probes/mseeds/m1610.ofn	auto	ok	8.16	0	0	0	0	0
+bridge-abox-probes/mseeds/m1904.ofn	ht_bridge	ERR	0.01					
+bridge-abox-probes/mseeds/m1904.ofn	auto	ok	0.03	0	0	0	0	0

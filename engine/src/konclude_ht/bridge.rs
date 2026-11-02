@@ -5378,20 +5378,47 @@ fn has_any_nominal_input(tin: &TInput) -> bool {
 /// `unsupported == 0` fence independently remain mandatory, so this scheduling
 /// choice cannot admit an unsupported ABox or number construct.
 ///
-/// Konclude enables full completion only below its 10,000-individual
-/// conditional threshold. Larger ABoxes use the lazy/batched precomputation
-/// route and must not enter the retained all-root schedule (or its
-/// definition-containment shortcut).
+/// Konclude's `ConditionalFullCompletionGraphConstruction` decision
+/// (CTotallyPrecomputationThread.cpp 159-172, defaults in
+/// CReasonerConfigurationGroup.cpp 1076-1103): build the full completion
+/// graph unless an exclusion condition holds (at least 300,000 individuals,
+/// or at least 50 individuals per concept) and when a suggestion condition
+/// holds (fewer than 10,000 individuals, or fewer than 5 individuals per
+/// concept). The ratio is individuals over the concepts of the terminology;
+/// the bridge counts the concept names of its input (`TInput::concepts`:
+/// classes, definers and nominal proxies), the closest available count to
+/// Konclude's `CTBox::getConceptCount`.
+///
+/// Both schedules are complete-or-defer; the decision changes no rule. The
+/// earlier port kept only the 10,000-individual suggestion arm, which sent
+/// every larger ABox to the per-probe ABox completion (the port has no
+/// counterpart of Konclude's lazy batched precomputation): about 15 s per
+/// subject probe on ore_ont_16315. See docs/HYBRID-CB-HT.md section 17.
 const CONDITIONAL_FULL_INDIVIDUAL_LIMIT: usize = 10_000;
+const CONDITIONAL_FULL_EXCLUSION_INDIVIDUAL_LIMIT: usize = 300_000;
+const CONDITIONAL_FULL_EXCLUSION_RATIO: f64 = 50.0;
+const CONDITIONAL_FULL_SUGGESTION_RATIO: f64 = 5.0;
 
-/// `KM_HT_CONDITIONAL_FULL_LIMIT=<n>` (diagnostic): the individual bound of
-/// the conditional-full schedule. Both schedules are complete-or-defer; the
-/// bound selects one of them and changes no rule.
-fn conditional_full_individual_limit() -> usize {
+/// `KM_HT_CONDITIONAL_FULL_LIMIT=<n>` (diagnostic): replaces the decision
+/// above by the plain bound `individuals < n` (the earlier diagnostic).
+fn conditional_full_individual_limit_override() -> Option<usize> {
     std::env::var("KM_HT_CONDITIONAL_FULL_LIMIT")
         .ok()
         .and_then(|value| value.parse().ok())
-        .unwrap_or(CONDITIONAL_FULL_INDIVIDUAL_LIMIT)
+}
+
+/// Konclude's full-completion-graph decision for `individuals` individuals
+/// and `concepts` concepts (see `CONDITIONAL_FULL_INDIVIDUAL_LIMIT`).
+fn konclude_full_completion_graph_suggested(individuals: usize, concepts: usize) -> bool {
+    if let Some(limit) = conditional_full_individual_limit_override() {
+        return individuals < limit;
+    }
+    let ratio = individuals as f64 / concepts.max(1) as f64;
+    let excluded = individuals >= CONDITIONAL_FULL_EXCLUSION_INDIVIDUAL_LIMIT
+        || ratio >= CONDITIONAL_FULL_EXCLUSION_RATIO;
+    let suggested =
+        individuals < CONDITIONAL_FULL_INDIVIDUAL_LIMIT || ratio < CONDITIONAL_FULL_SUGGESTION_RATIO;
+    !excluded && suggested
 }
 
 fn native_cardinality_abox_profile(tin: &TInput, native_nominals: bool) -> bool {
@@ -5412,7 +5439,15 @@ fn native_conditional_full_abox_profile(
 ) -> bool {
     native_nominals
         && (tin.number || allow_non_number || carries_data_values(tin))
-        && tin.nominal_abox.individuals.len() < conditional_full_individual_limit()
+        && konclude_full_completion_graph_suggested(
+            tin.nominal_abox.individuals.len(),
+            tin.concepts.len(),
+        )
+        // A role-free ABox of at least 10,000 individuals keeps its validated
+        // independent-component schedule (`independent_component_abox_profile`).
+        && (tin.nominal_abox.individuals.len() < CONDITIONAL_FULL_INDIVIDUAL_LIMIT
+            || !tin.nominal_abox.role_assertions.is_empty()
+            || conditional_full_individual_limit_override().is_some())
 }
 
 /// Whether the input has a literal value marker `__dt__val__v`. Until the
@@ -8322,7 +8357,7 @@ fn verify_empty_alternative_operand(
 }
 
 /// The isolation test of a cleared-queue screen job (docs/HYBRID-CB-HT.md
-/// §14): the job modified no retained node (no concept, link or merge reached
+/// §15): the job modified no retained node (no concept, link or merge reached
 /// one, counted by `propagate_individual_node_modified`), opened no branch
 /// point on one, and no node of the job is blocked by one. A job that passes
 /// never interacted with the retained graph, so its verdict and model are
@@ -10010,6 +10045,8 @@ fn reset_classification_algorithm_on_retained_base(
     fresh.conf_atomic_semantic_branching = algo.conf_atomic_semantic_branching;
     fresh.current_rec_proc_depth_limit = algo.current_rec_proc_depth_limit;
     fresh.or_branch_learning_stats = branch_learning;
+    // Immutable index of the same retained base (u20 `BlockingBaseIndex`).
+    fresh.blocking_base_index = algo.blocking_base_index.clone();
     *algo = fresh;
     if let Some(snapshot) = replay_snapshot {
         // Only immutable input is shared; every mutable per-job field is fresh.
@@ -10084,7 +10121,7 @@ fn restore_retained_classification_base(
 /// individual processing queue cleared (Konclude's cleared-queue class task,
 /// `KM_BRIDGE_FORK_DRAIN=konclude`) instead of resuming the base's pending
 /// nondeterministic work. Such a job is a SCREEN only: the driver accepts its
-/// result solely under the isolation test of docs/HYBRID-CB-HT.md §14 and
+/// result solely under the isolation test of docs/HYBRID-CB-HT.md §15 and
 /// otherwise reruns the subject on the resuming base.
 #[allow(clippy::too_many_arguments)]
 fn restore_retained_classification_base_with(
@@ -15914,6 +15951,20 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                         if retain_deterministic_leaf && progress {
                             eprintln!("BRIDGE-RETAINED-BASE retains the deterministic leaf (no open branch)");
                         }
+                        if std::env::var_os("KM_HT_NO_BLOCKING_BASE_INDEX").is_none() {
+                            let started = std::time::Instant::now();
+                            let index = algo.build_blocking_base_index(&ctx);
+                            if progress {
+                                eprintln!(
+                                    "BRIDGE-RETAINED-BASE blocking index: base_hi={} keys={} entries={} in {:.2}s",
+                                    index.base_hi,
+                                    index.by_key.len(),
+                                    index.by_key.values().map(|list| list.len()).sum::<usize>(),
+                                    started.elapsed().as_secs_f64()
+                                );
+                            }
+                            algo.blocking_base_index = Some(std::sync::Arc::new(index));
+                        }
                         ctx.push_branch_epoch();
                         retained_consistency_base = true;
                     } else if progress {
@@ -16437,7 +16488,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     let mut readoff_eq_markers: HashMap<usize, HashSet<Cint64>> = HashMap::default();
     // Root-cancellation witnesses for EMPTY stored refutations, shared by
     // every subject job of this classification (docs/HYBRID-CB-HT.md §13).
-    // Cleared-queue screen of docs/HYBRID-CB-HT.md §14. Opt-in
+    // Cleared-queue screen of docs/HYBRID-CB-HT.md §15. Opt-in
     // (`KM_BRIDGE_CLEARED_QUEUE_SCREEN=1`): on the automatic route of the
     // measured inputs every job reaches the retained graph, so the screen
     // only adds rejected jobs there.
@@ -16595,7 +16646,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             }
             (subs, false, None)
         } else {
-            // Cleared-queue screen (docs/HYBRID-CB-HT.md §14): on a base that
+            // Cleared-queue screen (docs/HYBRID-CB-HT.md §15): on a base that
             // resumes the first fork, first run the job without the base's
             // pending nondeterministic work and accept it only when the job
             // stayed isolated from the retained graph. Otherwise the subject
@@ -17925,14 +17976,32 @@ mod tests {
     #[test]
     fn conditional_full_profile_rejects_konclude_threshold_sized_abox() {
         let mut tin = cached_native_role_input();
+        // 1,000 concepts: 9,999 individuals satisfy the 10,000-individual
+        // suggestion; 10,000 individuals give a ratio of 10, which satisfies
+        // neither suggestion (ratio below 5) nor exclusion (ratio 50).
+        tin.concepts.extend((tin.concepts.len()..1_000).map(|k| format!("Pad{k}")));
         let template = tin.nominal_abox.individuals[0].clone();
         tin.nominal_abox.individuals.resize(9_999, template.clone());
         assert!(native_cardinality_abox_profile(&tin, true));
         tin.nominal_abox.individuals.push(template);
         assert!(
             !native_cardinality_abox_profile(&tin, true),
-            "Konclude's conditional-full profile is strict below 10,000 individuals"
+            "Konclude's conditional-full profile is strict below 10,000 individuals at ratio 10"
         );
+    }
+
+    #[test]
+    fn konclude_full_completion_graph_decision_matches_its_conditions() {
+        // suggestion by size, unless excluded by ratio
+        assert!(konclude_full_completion_graph_suggested(9_999, 1_000));
+        assert!(!konclude_full_completion_graph_suggested(9_999, 100));
+        // above the size suggestion only the ratio suggests (below 5)
+        assert!(!konclude_full_completion_graph_suggested(10_000, 1_000));
+        assert!(konclude_full_completion_graph_suggested(10_000, 2_001));
+        assert!(konclude_full_completion_graph_suggested(55_433, 103_295));
+        // the size exclusion wins over any ratio
+        assert!(!konclude_full_completion_graph_suggested(300_000, 10_000_000));
+        assert!(konclude_full_completion_graph_suggested(299_999, 10_000_000));
     }
 
     #[test]

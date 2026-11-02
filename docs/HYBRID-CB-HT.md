@@ -1486,3 +1486,193 @@ concepts in its label; the read-off and its authoritative flag are those of
 that model. Any job that touched the base reruns on the resuming base, so
 its answer is the old one. The screen writes no satisfiability cache entry,
 so no later job can read state that rested on an unaccepted screen.
+
+## 17. The restricted automaton re-fire, read-only blocking scans, and Konclude's full-graph decision (2026-11-02, `fix/v155-bridge-abox-probes`)
+
+Section 13 left three switches between the large equality ABoxes and the
+default route. This section removes them: the restricted automaton arm is
+on by default (with the argument below), the subject probes no longer copy
+the retained graph, the schedule choice follows Konclude's whole decision,
+and the automatic racer admits `SameIndividual`. Measurements and seed
+counts are in `results/agents/2026-11-02/bridge-abox-probes/README.md`.
+
+### 17.1 The restricted arm derives the closure of the all-successors arm
+
+`apply_automat_transactions` (u05) handles an automaton state `S` at a
+node `x`. On the first processing of `S` (`reapplied == false`) the
+descriptor has no link restriction; the arm walks the `CCAQAND` state graph,
+adds every `CCAQALL` transition `∀r.T` to every `r`-neighbour of `x`
+(`ht_all_rule_target_links`: forward links, the opposite end of the
+ancestor link, and the connection-set predecessors whose link reads as an
+`r`-link from `x`), and registers `S` in `x`'s reapply queue under `r`
+(`addConceptToReapplyQueue(baseConDes, role, …)`). A later re-fire comes
+from `apply_reapply_queue_concepts_restricted` for one freshly installed
+link `L`; the restricted arm (`ht_rule_target_of_link`) adds `T` to the
+opposite end of `L` when `L` reads as an `r`-link from `x`, with the same
+hierarchy and inverse test (`ht_signed_role_matches`) that the full arm
+applies to each link. Konclude's own arm (cpp 9662-9700) tests
+`restLink->getLinkRole() == role`; the port's test accepts every link the
+full arm accepts.
+
+Claim. At every clash-free fixpoint of a completion run, for every live
+node `x` (not merged, not purged, not blocked, not represented by a
+satisfiability, signature, saturation or completion-graph cache), every
+state `S` in `L(x)`, every transition `∀r.T` of `S` and every live
+`r`-neighbour `y` of `x` through a link `L`: `T ∈ L(y)`. This is the
+closure the all-successors arm reaches, so the two arms agree on every
+clash-free graph, and the restricted arm adds a subset of what the full arm
+adds, so every clash it finds is one the full arm finds.
+
+Argument. Fix `x, S, ∀r.T, y, L` and the first processing of `S` at `x`.
+(1) If `L` existed then, the full arm added `T` to `y`. (2) Otherwise `L`
+was installed later, and every production install fires the reapply queue
+of the endpoint that reads `L` as an `r`-link: `ht_install_role_successor_edge`
+(u08; the link role's queue on the source, the non-inverted super roles on
+the source, the inverted super roles and the mirror inverse link on the
+destination), `create_new_individuals_links_reapplyed` (u10, one link per
+indirect super-role entry in both orientations; the ABox assertion install
+`install_native_role_assertion_edge` uses it) and
+`create_new_individuals_link_reapplyed`. Merge relocation (u15
+`ht_relocate_incoming_links`, `ht_relocate_nominal_connections`,
+`ht_relocate_self_links`) installs through `ht_install_role_successor_edge`.
+The non-reapplying installs (`create_new_individuals_links`,
+`create_new_individuals_link`, `install_individual_node_role_link`, u35)
+have no production caller. So `S` re-fires restricted to `L` and adds `T`
+to `y`. (3) Merges move labels with the links: a merged-away `y` passes its
+label to the merge target, whose relocated link is an install of case 2;
+a merged-away `x` passes `S` to its target as a new concept, whose first
+processing is case 1 or 2 there. (4) Backtracking restores the graph, the
+labels and the reapply queues together (the queues live in the journaled
+role-successor hash), so the case analysis holds in every branch state.
+Nodes skipped as sources (blocked, cached) are skipped by both arms; their
+targets are still checked, since a live source reaches them.
+
+The argument rests on two facts of the port that are not visible in one
+place: the reapply-queue registration under every transition role, and the
+inverse entries of the indirect super-role lists (`role_chain_automata`
+adds them for every created inverse role). Both are exercised by the
+seeds below, and a closure check tests the claim directly.
+
+Check. `KM_HT_AUTOMAT_CLOSURE_AUDIT=1` evaluates the claim at every
+clash-free fixpoint of `run_completion_on` (u02) and counts each
+`(x, S, ∀r.T, y)` with `T ∉ L(y)` (`ht_automat_closure_audit`, u10). The
+transient audit of section 13 (`KM_HT_AUTOMAT_REST_LINK_AUDIT=1`) compared
+the two arms in the middle of a run; its 122 reports were operands still
+due from later re-fires or runs that end in a clash (the seeds c0 and c190
+it named are inconsistent for HermiT), not misses of the closure. The
+closure check has power: with the restricted re-fire dropped
+(`KM_HT_AUTOMAT_REST_LINK_DROP=1`, a negative control) it reports misses on
+113 of the first 300 chain seeds. Its first version also counted purged
+targets (nodes pruned by a merge); the full arm writes into their stale
+labels, but they are not elements of the graph, and the check now skips
+them, as `ht_rule_target_of_link` does.
+
+### 17.2 The subject probes on a retained graph
+
+With the conditional-full schedule every class job runs on top of the
+retained consistency graph (one branch epoch per job, popped at its end).
+Two defects made each job pay for the size of that graph.
+
+1. Journaled reads. Thirty-two reads of a node's label set
+   (`getReapplyConceptLabelSet(false)`) and role-successor hash went through
+   `ProcessContext::node_mut`. Under an open epoch `node_mut` saves a copy
+   of the node for rollback, and `pop_branch_epoch` restores every copy.
+   `get_blocking_individual_node_candidate_iterator` read every base node
+   this way, and `is_individual_node_blocking` every candidate, so a job
+   copied and restored thousands of base nodes (gdb samples on 10838: 15 of
+   25 in `node_mut`, 6 in `pop_branch_epoch`). The reads now take a shared
+   borrow; `get_reapply_concept_label_set(false)` and
+   `get_reapply_role_successor_hash(false)` return the field unchanged, so
+   the values read are identical and only the rollback journal shrinks.
+2. A full scan per job and initialization concept. The anywhere-blocking
+   candidate hash is per initialization concept and lazy: a fresh entry
+   (`max_valid == 0`) walks every node id below the tested node and reads
+   its label. A job's entries start from the base's, and the base had
+   built none, so each job walked all base ids once per initialization
+   concept (`KM_HT_BLOCKING_SCAN_TRACE=1`: every scan on 7557 starts at
+   `max_valid=1` with 119,132 ids to walk, 0.1 s each). The bridge now
+   builds a `BlockingBaseIndex` once at the retained base (per concept tag
+   and polarity, the blockable, unpurged base nodes whose label holds it;
+   0.02 s on 7557) and seeds a job's fresh entry with it, as a shared list
+   that the job never copies. The entry is then in the state the lazy
+   update would have reached had it run at the base: base nodes that a
+   job switches or relabels are rechecked by the update's own tests
+   (`max_valid`, the label-modification tag, the node-switch history), and
+   the iterator skips purged and unblockable candidates as before. The
+   candidate iterator merges the shared list with the job's own map in key
+   order (`blocking_hash.rs`, `SharedCursor`), so the candidate order is
+   the order of one map holding both.
+3. A satisfiable-cache sweep of every base id per job. After each subject
+   probe, `cache_satisfiable_individual_nodes` offers every node id from 1
+   to the largest to the satisfiable-expansion caches. Konclude skips the
+   nodes of a completion-graph-cached base in this sweep
+   (`satisfiable_cache_write_in_completion_graph_range`); the bridge's
+   retained base is not registered as such a cache, so every job offered
+   all 119,132 base ids of 7557 again (gdb samples after the blocking fix:
+   22 of 27 in this sweep). The first job still sweeps the base ids; later
+   jobs start above the base. A skipped write omits a cache entry, which
+   can cost an expansion in a later probe and cannot change a verdict.
+
+None of the three changes alters a rule. The first changes no value read. The second
+is meant to yield the candidate set of the scan; where it does not (a base
+node relabelled in a job without a node-switch record would be missed), it
+can change which blocker a job finds, or leave a node unblocked that the
+scan would block, never the correctness of a blocking decision: every
+candidate still goes through `is_individual_node_blocking` on the current
+graph, a node without a blocker is expanded, and the job's own nodes (all
+ids above the base) are scanned as before, which keeps the termination
+argument of anywhere blocking.
+
+### 17.3 Konclude's full-completion-graph decision
+
+`native_conditional_full_abox_profile` selects the retained full
+completion graph (the conditional-full schedule) or the per-probe ABox
+completion. The port took only one arm of Konclude's decision, fewer than
+10,000 individuals. Konclude's `ConditionalFullCompletionGraphConstruction`
+(on by default; CTotallyPrecomputationThread.cpp 159-172, defaults in
+CReasonerConfigurationGroup.cpp 1076-1103) builds the full graph unless an
+exclusion condition holds (at least 300,000 individuals, or at least 50
+individuals per concept) and when a suggestion condition holds (fewer than
+10,000 individuals, or fewer than 5 individuals per concept). The bridge now
+evaluates that whole decision (`konclude_full_completion_graph_suggested`),
+counting the concept names of its input (`TInput::concepts`: classes,
+definers, nominal proxies) as the terminology's concepts, the closest count
+the bridge has to `CTBox::getConceptCount`. The four inputs have ratios
+below 1 (10838: 55,433 individuals after the pre-merge against about
+103,000 concept names), so Konclude's suggestion holds for them.
+
+Konclude counts its own concept objects, which include every complex
+subexpression and exclude per-individual proxies; its count can differ
+from the bridge's, and on 10838 the local Konclude build (`Release/Konclude`,
+v0.7.0-1138) logs no "Enabling full completion graph construction" line,
+so it chose the lazy path there. The bridge has no counterpart of that lazy,
+batched representative precomputation: its alternative re-completes the
+ABox per subject probe (about 15 s per probe on 16315). The decision is
+therefore Konclude's rule over the bridge's count, applied to the two
+schedules the bridge has. Both are complete-or-defer, so the choice changes
+cost and memory, never an answer. Two guards stay: a role-free ABox of
+10,000 or more individuals keeps its validated independent-component
+schedule (`independent_component_abox_profile`), and
+`KM_HT_CONDITIONAL_FULL_LIMIT=<n>` still replaces the decision by the plain
+bound for measurement.
+
+### 17.4 Admission
+
+`orchestrate/race.rs` installs the exact `SameIndividual` pre-merge on the
+automatic HT racer (`KM_HT_NO_ADMIT_SAME=1` restores the decline). The
+racer's contract is unchanged: the bridge answers completely or defers, and
+a defer runs the exact CB fallback.
+
+### 17.5 Result
+
+On the default route, with no switches, on ws: ore_ont_16315 24 s
+(1.3 GiB), 10838 59 s (2.4 GiB), 3087 61 s (2.5 GiB), 7557 97 s (4.0 GiB),
+each with Konclude's reference taxonomy; before, all four timed out at the
+CB stack's 18 GiB plateau. The closure check reports no miss on 6,000
+seeds (the chain and `SameIndividual` pools of section 13 and 2,000 seeds
+of four new merge families), against 113 of 300 for the negative control. The HermiT
+differentials and the 112 nominal ORE inputs of the design half are
+unchanged against the base. One pre-existing incompleteness of the reuse
+of the consistency model, found by the new merge families and present on
+the base, is recorded with its minimized seed in the results README; it is
+not part of this change.
