@@ -1373,18 +1373,6 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             .process_context()
                             .node(indi_node)
                             .use_reapply_role_succ_hash;
-                        if super::graph_dump_enabled() {
-                            eprintln!(
-                                "CARD-CRIT node={} tag={} hash={} ext={} atmost={:?} exmax={:?} nbr={:?}",
-                                calc_alg_context.process_context().node(indi_node).individual_node_id(),
-                                assoc_tag,
-                                role_succ_hash != Id::NONE,
-                                has_cardinality_extension,
-                                replay.as_ref().map(|r| r.cached_at_most_cardinalities.iter().map(|(ro, c)| (ro.raw, *c)).collect::<Vec<_>>()),
-                                replay.as_ref().map(|r| r.cached_existential_max_cardinalities.iter().map(|(ro, c)| (ro.raw, *c)).collect::<Vec<_>>()),
-                                replay.as_ref().map(|r| r.cached_neighbour_roles.iter().map(|(n, ro, i, d)| (*n, ro.raw, *i, *d)).collect::<Vec<_>>()),
-                            );
-                        }
                         if role_succ_hash != Id::NONE && has_cardinality_extension {
                             let replay = replay.expect("cardinality extension implies a replay");
                             let last_added_link_edge: EdgeId = calc_alg_context
@@ -1421,9 +1409,6 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                         calc_alg_context,
                                     )
                                     .is_empty();
-                                if super::graph_dump_enabled() {
-                                    eprintln!("CARD-CRIT result node={} critical={}", calc_alg_context.process_context().node(indi_node).individual_node_id(), expansion_blocking_critical);
-                                }
                                 loc_backend_sync_data = self
                                     .get_localized_individual_backend_cache_snychronisation_data(
                                         indi_node,
@@ -1868,19 +1853,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             {
                 expansion_blocking_critical = true;
             } else if self.native_association_completely_propagated(assoc_data) {
+                // cpp 26313-26316:
                 // if (!mBackendCacheHandler
-                //     || !nondeterministic && !mBackendCacheHandler->hasConceptInAssociatedFullConceptSetLabel(
+                //     || !mBackendCacheHandler->hasConceptInAssociatedFullConceptSetLabel(
                 //          assocData, FULL_CONCEPT_SET_LABEL, concept, conNegation,
                 //          !nondeterministic, calcAlgContext))
                 //   expansionBlockingCritical = true;
-                if !nondeterministic
-                    && !self.native_has_concept_in_full_concept_set_label(
-                        assoc_data,
-                        concept,
-                        con_negation,
-                        !nondeterministic,
-                    )
-                {
+                //
+                // `!nondeterministic` selects the label partition the concept is
+                // looked up in. The port also required `!nondeterministic` as a
+                // conjunct, so a non-deterministically derived `∀` or automaton
+                // state never released the neighbour-expansion block and its
+                // operand never crossed a cached edge (m413; docs/HYBRID-CB-HT.md
+                // section 18.1).
+                if !self.native_has_concept_in_full_concept_set_label(
+                    assoc_data,
+                    concept,
+                    con_negation,
+                    !nondeterministic,
+                ) {
                     expansion_blocking_critical = true;
                 }
             } else {

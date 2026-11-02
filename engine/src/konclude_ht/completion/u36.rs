@@ -737,14 +737,6 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let Some(replay) = self.native_nominal_backend_replay.get(&tag).cloned() else {
             return true;
         };
-        if super::graph_dump_enabled() {
-            eprintln!(
-                "RETEST node={} tag={} flags={:#x}",
-                calc_alg_context.process_context().node(node).individual_node_id(),
-                tag,
-                calc_alg_context.process_context().node(node).processing_restriction_flags
-            );
-        }
 
         if calc_alg_context
             .process_context()
