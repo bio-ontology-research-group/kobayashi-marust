@@ -2080,8 +2080,8 @@ is independent of the descriptors' attribution.
 - Every seed pool with HermiT gold left by earlier agents (bridge-abox-probes,
   sameindividual-bridge, bridge-defers, bridge-nominal-merge,
   bridge-replay, the data and nominal pools of bridge-defers, and the
-  gold-bearing fixtures of `results/agents/2026-10-3*/`; 14 pools,
-  12,618 seeds, both routes): no answer lost; m413, the panic seeds and
+  gold-bearing fixtures of `results/agents/2026-10-3*/`; 13 pools,
+  10,618 seeds, both routes): no answer lost; m413, the panic seeds and
   `nominal-r1600/m1` recovered.
 - The 16 held-out ORE inputs of docs/V1.5.5-STATUS.md: identical output
   on all 16, times within noise (ratios 0.93 to 1.04).

@@ -17,6 +17,7 @@ export DIFF_KEEP="KM_HT_DDB=1,KM_HT_NATIVE_FULL=1,KM_CACHE_CONFORMANCE=1,KM_BRID
 pool_args() {
   case $1 in
     k) echo "$S/kgold $(ls $S/kseeds/*.ofn | sort -V)";;
+    k2) echo "$S/k2gold $(ls $S/k2seeds/*.ofn | sort -V)";;
     mrest) echo "$A/bridge-abox-probes/mgold $(ls $A/bridge-abox-probes/mseeds/*.ofn | sort -V)";;
     same) echo "$A/sameindividual-bridge/gold $(ls $A/sameindividual-bridge/seeds/*.ofn | sort -V)";;
     chain) echo "$A/sameindividual-bridge/cgold $(ls $A/sameindividual-bridge/cseeds/*.ofn | sort -V)";;
