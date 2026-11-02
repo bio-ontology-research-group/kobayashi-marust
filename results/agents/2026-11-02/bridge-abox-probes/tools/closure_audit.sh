@@ -18,4 +18,4 @@ one() {
   printf "%s\t%s\t%s\t%s\t%s\n" "$f" "$r" "${runs:-0}" "${miss:-0}" "$ex"
 }
 export -f one; export B S AUDIT_ENV
-for f in "$@"; do echo "$f ht_bridge"; echo "$f auto"; done | xargs -P 2 -L 1 bash -c 'one $0 $1' > $O
+for f in "$@"; do echo "$f ht_bridge"; echo "$f auto"; done | xargs -P ${AUDIT_PAR:-2} -L 1 bash -c 'one $0 $1' > $O

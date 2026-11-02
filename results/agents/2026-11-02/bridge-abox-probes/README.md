@@ -57,6 +57,7 @@ exit):
 |---|---|---|---|
 | chain seeds (`gen_chain.py`, previous agent) | 2,000 | 1,804 | **0** |
 | new merge families (`tools/gen_rest.py`) | 2,000 | 1,781 | **0** |
+| `SameIndividual` seeds (`gen_same.py`, previous agent; `data/closure-same-fix7.tsv`) | 2,000 | 1,374 | **0** |
 | negative control: chain seeds 0-299 with the restricted re-fire dropped (`KM_HT_AUTOMAT_REST_LINK_DROP=1`) | 300 | 274 | misses on **113** seeds |
 
 The automatic route on these seeds answers through saturation without a
@@ -125,6 +126,67 @@ alternative. `orchestrate/race.rs` admits `SameIndividual` (the exact
 pre-merge) on the automatic racer; `KM_HT_NO_ADMIT_SAME=1` restores the
 decline. No rule of the general routing policy changed.
 
+## Differentials against HermiT
+
+`tools/diff_pools.sh` (diff_run.py of the previous agents, HermiT 1.4.3
+answers cached as gold, 30 s per KM run, release flags), branch `km.fix7`,
+routes `ht_bridge` (forced) and `auto`. Columns: ok / WRONG / declined or
+error / timeout / no gold. Data: `data/diff/*.tsv`.
+
+| pool | seeds | ht_bridge | auto |
+|---|---|---|---|
+| `SameIndividual` (`gen_same.py`) | 2,000 | 1,935 / 0 / 11 / 0 / 54 | 1,946 / 0 / 0 / 0 / 54 |
+| chain (`gen_chain.py`) | 2,000 | 1,986 / 0 / 14 / 0 / 0 | 2,000 / 0 / 0 / 0 / 0 |
+| new merge families (`gen_rest.py`) | 2,000 | 1,979 / **1** / 7 / 13 / 0 | 1,984 / **1** / 0 / 15 / 0 |
+| bridge-defers `dec` | 300 | 147 / 0 / 153 / 0 / 0 | 300 / 0 / 0 / 0 / 0 |
+| bridge-defers `flt` | 200 | 155 / 0 / 45 / 0 / 0 | 163 / 0 / 0 / 37 / 0 |
+| bridge-nominal-merge | 2,000 | 1,993 / 0 / 7 / 0 / 0 | 2,000 / 0 / 0 / 0 / 0 |
+
+Every forced-bridge count equals the previous agents' published counts
+(sameindividual-bridge v7/v8: 1,935 + 11 declines, auto 1,946; chain:
+1,986 + 14; bridge-defers: dec 147 + 153, flt 155 + 45, nominal-merge
+1,993 + 7). Inconsistency is detected wherever HermiT detects it (no
+`consistency_mismatch` row). The one WRONG seed of the new families, m413
+on both routes, is the pre-existing incompleteness below; the base binary
+gives the same answer. The base also reproduces every other non-ok row of
+the new families on both routes (`data/diff/mrest-nonok-base.tsv`: 7
+declines or errors, 28 timeouts, 2 WRONG, all identical): the 4 forced-bridge
+errors are a pre-existing panic (`get_coressponding_individual_node_from_dependency_node`,
+index out of bounds in the DDB clash analysis of `native_nominal_consistency`,
+seeds m37, m337, m593, m977), the other 3 are declines.
+The 37 `flt` timeouts on `auto` (30 s) time out on the base as well
+(`data/diff/defersf-nonok-base.tsv`, 37 of 37).
+
+## 4. ORE regression check, 10926, tests
+
+- 112 nominal ORE inputs of the design half
+  (`results/agents/2026-10-30/r3-unannounced/ore-design-nominal.txt`,
+  `tools/ore_time.sh`, 300 s, release flags; `data/ore-times-{base,fix7}.tsv`,
+  `data/ore-pair.txt`): base `km.base0` against `km.fix7`, both non-PGO
+  builds of this worktree. 108 answered by both, **108 identical
+  signatures**, no answer-status change, no route change. Time ratio
+  branch/base over the 27 inputs above 1 s: mean 1.088, median 1.006,
+  max 2.03. The four largest ratios (668, 5964, 6951, 5764) were measured
+  while other runs shared the host; timed again back to back, one process
+  at a time, twice each (`data/ore-retime.txt`), they are equal within
+  5 %: 668 2.66/2.63 s, 5964 1.08/1.07 s, 6951 2.90/2.96 s, 5764
+  19.7/19.9 s (base/branch).
+- ore_ont_10926 (no `SameIndividual`, 176,225 subjects, out of scope):
+  default route, timeout at 18.0 GiB as before (the CB stack's plateau);
+  the bridge finishes consistency at 122 s and has 56,065 subjects done at
+  240 s, the rate the previous agent measured. Its retained base has no
+  blockable node (`base_hi=0`), so the blocking index is empty there.
+- Tests (`KM_THREADS=1`, `--test-threads=1`; `data/test-lib-summary.txt`,
+  `data/test-lib-failures.txt`, `data/test-integration-summary.txt`):
+  library 3,111 passed, **21 failed** (the baseline's checker-bound set:
+  20 `tableau::` tests and
+  `cli::cb_derivation_candidate_tests::source_exact_taxonomy_uses_real_production_traces_and_models`),
+  10 ignored; no other failure. The four new tests pass
+  (`konclude_full_completion_graph_decision_matches_its_conditions`,
+  `blocking_candidate_iterator_merges_shared_base_list_in_key_order`, the
+  two updated profile tests). All **86 integration targets pass**, including
+  `completion_hot_path_env` (the new completion flags are cached).
+
 ## A pre-existing incompleteness found by the new seeds (not fixed)
 
 `data/min/m413-min.ofn` (minimized from `m413`, 10 axioms; no
@@ -156,3 +218,41 @@ cache before relocating the links; that sub-block is a recorded deferral of
 the port (u15 merge phase 5, "the nominal neighbour backend-expansion
 sub-block remains deferred"). This is the first lead for the fix; it is not
 part of this branch.
+
+## Commits (branch `fix/v155-bridge-abox-probes`)
+
+1. `80956fe1` fixpoint closure audit; first read-only label lookup.
+2. `bcdebef4` read-only label and role-hash reads (32 sites); restricted
+   re-fire drop switch (negative control); audit skips merged/purged.
+3. `bc6c9525` restricted arm on by default; Konclude's full-graph decision;
+   `SameIndividual` admitted on the automatic racer.
+4. `f93460b2`, `e60f411f`, `62aa0875` the base blocking index and the
+   shared candidate list (one compile fix between); design 14.1-14.4;
+   ROUTING.md note.
+5. `2f58b764` the satisfiable-cache sweep skips the base after the first job.
+6. results and design-doc commits after that.
+
+## Seeds and tools
+
+`tools/gen_rest.py` (new merge families; seeds and HermiT answers in
+`data/mseeds-and-hermit-gold.tar.gz`), `tools/closure_audit.sh` (closure
+check per seed), `tools/diff_pools.sh` + `tools/diff_run.py` (HermiT
+differentials), `tools/prime_gold.py` (HermiT cache), `tools/minimize.py`
+(greedy seed minimization), `tools/run1.sh`, `tools/run1ts.sh` (one protocol
+run with peak RSS, the second with timestamped stderr), `tools/pmp.sh` (gdb
+stack samples of the HT worker), `tools/refcmp.sh` + `tools/lines2json.py`
+(reference comparison), `tools/ore_time.sh` + `tools/ore_pair.py` (ORE
+pairing), `tools/run_tests.sh`.
+
+## Not done
+
+- The pre-existing incompleteness above (reuse of the consistency model
+  across a probe-time nominal merge) and the pre-existing panic in the DDB
+  clash analysis on four forced-bridge seeds; both are on the base.
+- 10926 (out of scope) still needs about 370 s of probes after a 122 s
+  consistency on ws.
+- The anywhere-blocking candidate walk of the first class jobs is the
+  remaining probe cost (7557: the first 2,560 subjects take 50 s of its
+  97 s); the walk visits every base candidate of a key until a blocker is
+  found, as Konclude's does.
+- No Lean coverage (the bridge has no Lean model).

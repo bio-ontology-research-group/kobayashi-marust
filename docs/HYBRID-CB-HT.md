@@ -1519,3 +1519,17 @@ bound for measurement.
 automatic HT racer (`KM_HT_NO_ADMIT_SAME=1` restores the decline). The
 racer's contract is unchanged: the bridge answers completely or defers, and
 a defer runs the exact CB fallback.
+
+### 14.5 Result
+
+On the default route, with no switches, on ws: ore_ont_16315 24 s
+(1.3 GiB), 10838 59 s (2.4 GiB), 3087 61 s (2.5 GiB), 7557 97 s (4.0 GiB),
+each with Konclude's reference taxonomy; before, all four timed out at the
+CB stack's 18 GiB plateau. The closure check reports no miss on 6,000
+seeds (the chain and `SameIndividual` pools of section 13 and 2,000 seeds
+of four new merge families), against 113 of 300 for the negative control. The HermiT
+differentials and the 112 nominal ORE inputs of the design half are
+unchanged against the base. One pre-existing incompleteness of the reuse
+of the consistency model, found by the new merge families and present on
+the base, is recorded with its minimized seed in the results README; it is
+not part of this change.
