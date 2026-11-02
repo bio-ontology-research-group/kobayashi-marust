@@ -416,8 +416,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // CAUTOMATTRANSACTIONDependencyNode has it as its second parent.
             // Konclude's `restLink` arm (cpp 9662-9700): a descriptor re-fired by
             // `applyReapplyQueueConceptsRestricted` for ONE freshly installed link
-            // propagates over that link only. `KM_HT_AUTOMAT_REST_LINK=1` (diagnostic,
-            // off by default) enables it; otherwise every re-fire scans all successors.
+            // propagates over that link only (default; `KM_HT_NO_AUTOMAT_REST_LINK=1`
+            // makes every re-fire scan all successors). docs/HYBRID-CB-HT.md
+            // section 14 argues the two arms reach the same closure.
             let rest_link = if super::automat_rest_link_enabled() {
                 self.get_link_processing_restriction(*con_pro_des, calc_alg_context)
             } else {

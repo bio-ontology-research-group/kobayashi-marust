@@ -97,7 +97,15 @@ macro_rules! cached_completion_flag {
 }
 
 cached_completion_flag!(bridge_progress_enabled, "KM_BRIDGE_PROGRESS");
-cached_completion_flag!(automat_rest_link_enabled, "KM_HT_AUTOMAT_REST_LINK");
+cached_completion_flag!(automat_rest_link_disabled, "KM_HT_NO_AUTOMAT_REST_LINK");
+/// Konclude's restricted automaton re-fire (cpp 9662-9700): a state re-fired
+/// for one freshly installed link propagates over that link only. On by
+/// default since 2026-11-02 (docs/HYBRID-CB-HT.md section 14 argues it
+/// derives the same closure as the all-successors arm);
+/// `KM_HT_NO_AUTOMAT_REST_LINK=1` restores the all-successors re-fire.
+pub(crate) fn automat_rest_link_enabled() -> bool {
+    !automat_rest_link_disabled()
+}
 cached_completion_flag!(stop_trace_enabled, "KM_HT_STOP_TRACE");
 cached_completion_flag!(automat_rest_link_audit_enabled, "KM_HT_AUTOMAT_REST_LINK_AUDIT");
 cached_completion_flag!(automat_rest_link_drop_enabled, "KM_HT_AUTOMAT_REST_LINK_DROP");
