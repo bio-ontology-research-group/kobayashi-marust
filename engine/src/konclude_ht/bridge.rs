@@ -16947,6 +16947,17 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 configure_production_completion_saturation_coupling(algo);
                 algo.conf_saturation_satisfiabilitiy_expansion_cache_writing =
                     std::env::var_os("KM_HT_NO_SAT_CACHE_WRITING").is_none();
+                // KM-SOUNDNESS-GATE[self-satexp], successor half
+                // (docs/HYBRID-CB-HT.md section 20): with a self edge in the
+                // terminology, created successors are not expanded from
+                // saturated labels; on the SELF seed `s9` that expansion made
+                // the completion non-terminating (0.02 s without the
+                // saturation, no answer within 60 s with it). Caching
+                // blocking still applies and still requires a sufficient,
+                // completed saturation node.
+                if self_cardinality {
+                    algo.conf_expand_created_successors_from_saturation = false;
+                }
             } else if native_saturation_coupling && !fresh_env {
                 // Native-nominal route: the same Konclude coupling, but reading
                 // the precomputation saturation instead of a classification-time
