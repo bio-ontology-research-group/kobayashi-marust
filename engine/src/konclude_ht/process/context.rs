@@ -8840,6 +8840,31 @@ mod tests {
     };
     use super::*;
 
+    /// docs/HYBRID-CB-HT.md §16: a spine journal epoch restores marks on
+    /// pre-existing track points and drops track points allocated inside it,
+    /// and nested journals unwind independently.
+    #[test]
+    fn spine_journal_epoch_restores_marks_and_drops_new_entries() {
+        let mut ctx = ProcessContext::new();
+        let base = ctx.alloc_track_point(DependencyTrackPoint::new(DependencyId::NONE));
+        ctx.push_spine_journal_epoch();
+        let leaf = ctx.alloc_track_point(DependencyTrackPoint::new(DependencyId::NONE));
+        ctx.track_point_mut(base).clashed_irrelevant = true;
+        ctx.push_spine_journal_epoch();
+        ctx.track_point_mut(base).relevant_flag = true;
+        ctx.track_point_mut(leaf).clashed_irrelevant = true;
+        let job = ctx.alloc_track_point(DependencyTrackPoint::new(DependencyId::NONE));
+        assert_eq!(job.index(), 2);
+        ctx.pop_spine_journal_epoch();
+        assert_eq!(ctx.spine_lens()[0], 2);
+        assert!(ctx.track_point(base).clashed_irrelevant);
+        assert!(!ctx.track_point(base).relevant_flag);
+        assert!(!ctx.track_point(leaf).clashed_irrelevant);
+        ctx.pop_spine_journal_epoch();
+        assert_eq!(ctx.spine_lens()[0], 1);
+        assert!(!ctx.track_point(base).clashed_irrelevant);
+    }
+
     fn backward_source_context(reverse: bool) -> (ProcessContext, SatNodeId) {
         let mut ctx = ProcessContext::new();
         let target = ctx.alloc_sat_node(IndividualSaturationProcessNode::default());
