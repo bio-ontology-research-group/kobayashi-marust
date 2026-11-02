@@ -2012,8 +2012,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 }
 
 
-/// The blocking candidates of a retained consistency base, by initialization
-/// concept: for every `(concept, negation)` that initializes a blockable base
+/// The blocking candidates of a retained consistency base, by concept: for
+/// every `(concept tag, negation)` in the label of a blockable, unpurged base
 /// node, the base's blockable, unpurged nodes whose label holds it, with the
 /// label-modification and node-switch tags current at the base.
 ///
@@ -2021,12 +2021,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
 /// candidates of each initialization concept it meets. The base's hash has no
 /// entry for most of them, so the lazy update (`max_valid == 0`) walked every
 /// base node id and read its label, once per (job, concept): on ore_ont_7557
-/// (141,915 saturation nodes, 33,520 subjects) this was nearly all of the
-/// probe time. Seeding the job's fresh entry from this index puts it in the
-/// state the same lazy update would have left had it run at the base; the
-/// update then rechecks exactly the base nodes switched or relabelled since
-/// (`max_valid`, the label-modification tag and the node-switch history),
-/// as it does for an entry the base itself had built.
+/// (119,132 base node ids, 33,520 subjects) this was nearly all of the probe
+/// time. Seeding the job's fresh entry from this index (a shared list, no
+/// copy) puts it in the state the same lazy update would have left had it run
+/// at the base; the update then rechecks the base nodes switched or relabelled
+/// since (`max_valid`, the label-modification tag and the node-switch
+/// history), as it does for an entry the base itself had built. A key no base
+/// label holds has no base candidate.
 ///
 /// The candidate set only orders the blocker search: every candidate is
 /// tested by `is_individual_node_blocking` on the current graph, and a node
@@ -2038,9 +2039,10 @@ pub struct BlockingBaseIndex {
     pub base_hi: Cint64,
     pub label_mod_tag: Cint64,
     pub node_switch_tag: Cint64,
-    /// Per key, the candidate entries `(-id, node)` in ascending key order
-    /// (the order of the candidate map), shared by every class job.
-    pub by_key: crate::fxhash::FxHashMap<(ConceptId, bool), std::sync::Arc<Vec<(Cint64, NodeId)>>>,
+    /// Per `(concept tag, negation)`, the candidate entries `(-id, node)` in
+    /// ascending key order (the order of the candidate map), shared by every
+    /// class job.
+    pub by_key: crate::fxhash::FxHashMap<(Cint64, bool), std::sync::Arc<Vec<(Cint64, NodeId)>>>,
 }
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
@@ -2051,18 +2053,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &CalculationAlgorithmContextBase,
     ) -> BlockingBaseIndex {
         let pc = calc_alg_context.process_context();
+        let onto = calc_alg_context.ontology_arenas();
         let vector = calc_alg_context.processing_data_box().individual_process_node_vector();
         let hi = vector.get_item_max_index();
-        let mut nodes: Vec<(Cint64, NodeId)> = Vec::new();
-        let mut keys: crate::fxhash::FxHashSet<(ConceptId, bool)> = Default::default();
-        let mut index = BlockingBaseIndex {
-            base_hi: hi.max(0),
-            label_mod_tag: pc.used_process_tagger().get_current_concept_label_set_modification_tag(),
-            node_switch_tag: pc.used_process_tagger().get_current_node_switch_tag(),
-            by_key: Default::default(),
-        };
-        for id in 1..=hi {
+        let mut lists: crate::fxhash::FxHashMap<(Cint64, bool), Vec<(Cint64, NodeId)>> =
+            Default::default();
+        // Descending ids: ascending keys `-id`, the order of the candidate map.
+        let mut id = hi;
+        while id >= 1 {
             let node = vector.get_data(id);
+            id -= 1;
             if node.is_none() || node.index() >= pc.node_count() {
                 continue;
             }
@@ -2070,42 +2070,42 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             if !n.is_blockable_individual() || n.has_purged_blocked_processing_restriction_flags() {
                 continue;
             }
-            nodes.push((id, node));
-            let init = n.individual_initialization_concept();
-            if init.is_some() {
-                let d = pc.con_desc(init);
-                keys.insert((d.get_concept(), d.is_negated()));
-            }
-        }
-        if keys.is_empty() {
-            return index;
-        }
-        let onto = calc_alg_context.ontology_arenas();
-        let mut keys: Vec<(ConceptId, bool)> = keys.into_iter().collect();
-        keys.sort_unstable_by_key(|&(concept, negated)| (concept.index(), negated));
-        let mut lists: Vec<Vec<(Cint64, NodeId)>> = vec![Vec::new(); keys.len()];
-        // Descending ids: ascending keys `-id`, the order of the candidate map.
-        for &(id, node) in nodes.iter().rev() {
-            let ls = pc.node(node).use_reapply_con_label_set;
+            let ls = n.use_reapply_con_label_set;
             if ls.is_none() {
                 continue;
             }
+            let node_id = n.individual_node_id();
             let label = pc.label_set(ls);
-            for (k, &(concept, negated)) in keys.iter().enumerate() {
-                if label.has_concept_in_context(pc, onto, concept, negated) {
-                    lists[k].push((-id, node));
+            let mut it = label.get_concept_label_set_iterator_in_context(pc, true, false, false);
+            while it.has_next() {
+                let cd: ConDescId = it.next(true, pc);
+                if cd.is_none() {
+                    break;
+                }
+                let concept = pc.con_desc(cd).get_concept();
+                let negated = pc.con_desc(cd).is_negated();
+                // `has_concept_in_context` is the containment the scan uses.
+                if !label.has_concept_in_context(pc, onto, concept, negated) {
+                    continue;
+                }
+                let list = lists.entry((onto.concept(concept).get_concept_tag(), negated)).or_default();
+                if list.last().map(|&(key, _)| key) != Some(-node_id) {
+                    list.push((-node_id, node));
                 }
             }
         }
-        for (key, list) in keys.into_iter().zip(lists) {
-            index.by_key.insert(key, std::sync::Arc::new(list));
+        BlockingBaseIndex {
+            base_hi: hi.max(0),
+            label_mod_tag: pc.used_process_tagger().get_current_concept_label_set_modification_tag(),
+            node_switch_tag: pc.used_process_tagger().get_current_node_switch_tag(),
+            by_key: lists.into_iter().map(|(k, v)| (k, std::sync::Arc::new(v))).collect(),
         }
-        index
     }
 
     /// Seed a fresh candidate entry of a class job from the base index (see
     /// [`BlockingBaseIndex`]). No-op without an index, for a non-fresh entry,
-    /// for a key the index does not hold, or for a node of the base itself.
+    /// or for a node of the base itself; a key no base label holds seeds an
+    /// empty base list.
     fn seed_blocking_candidates_from_base_index(
         &mut self,
         data: super::super::process::blocking_hash::BlockingIndividualNodeCandidateDataId,
@@ -2131,11 +2131,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
         let key = {
             let d = calc_alg_context.process_context().con_desc(initialization_concept_des);
-            (d.get_concept(), d.is_negated())
+            (
+                calc_alg_context.ontology_arenas().concept(d.get_concept()).get_concept_tag(),
+                d.is_negated(),
+            )
         };
-        let Some(list) = index.by_key.get(&key) else {
-            return;
-        };
+        static EMPTY: std::sync::OnceLock<std::sync::Arc<Vec<(Cint64, NodeId)>>> =
+            std::sync::OnceLock::new();
+        let list = index
+            .by_key
+            .get(&key)
+            .unwrap_or_else(|| EMPTY.get_or_init(|| std::sync::Arc::new(Vec::new())));
         // The base's node ids name the same elements in every job (a job
         // allocates above the base); the iteration resolves each candidate to
         // its up-to-date node and drops purged or unblockable ones, as for

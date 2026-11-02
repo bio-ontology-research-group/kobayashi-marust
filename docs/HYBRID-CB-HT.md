@@ -1423,3 +1423,89 @@ closure check has power: with the restricted re-fire dropped
 targets (nodes pruned by a merge); the full arm writes into their stale
 labels, but they are not elements of the graph, and the check now skips
 them, as `ht_rule_target_of_link` does.
+
+### 14.2 The subject probes on a retained graph
+
+With the conditional-full schedule every class job runs on top of the
+retained consistency graph (one branch epoch per job, popped at its end).
+Two defects made each job pay for the size of that graph.
+
+1. Journaled reads. Thirty-two reads of a node's label set
+   (`getReapplyConceptLabelSet(false)`) and role-successor hash went through
+   `ProcessContext::node_mut`. Under an open epoch `node_mut` saves a copy
+   of the node for rollback, and `pop_branch_epoch` restores every copy.
+   `get_blocking_individual_node_candidate_iterator` read every base node
+   this way, and `is_individual_node_blocking` every candidate, so a job
+   copied and restored thousands of base nodes (gdb samples on 10838: 15 of
+   25 in `node_mut`, 6 in `pop_branch_epoch`). The reads now take a shared
+   borrow; `get_reapply_concept_label_set(false)` and
+   `get_reapply_role_successor_hash(false)` return the field unchanged, so
+   the values read are identical and only the rollback journal shrinks.
+2. A full scan per job and initialization concept. The anywhere-blocking
+   candidate hash is per initialization concept and lazy: a fresh entry
+   (`max_valid == 0`) walks every node id below the tested node and reads
+   its label. A job's entries start from the base's, and the base had
+   built none, so each job walked all base ids once per initialization
+   concept (`KM_HT_BLOCKING_SCAN_TRACE=1`: every scan on 7557 starts at
+   `max_valid=1` with 119,132 ids to walk, 0.1 s each). The bridge now
+   builds a `BlockingBaseIndex` once at the retained base (per concept tag
+   and polarity, the blockable, unpurged base nodes whose label holds it;
+   0.02 s on 7557) and seeds a job's fresh entry with it, as a shared list
+   that the job never copies. The entry is then in the state the lazy
+   update would have reached had it run at the base: base nodes that a
+   job switches or relabels are rechecked by the update's own tests
+   (`max_valid`, the label-modification tag, the node-switch history), and
+   the iterator skips purged and unblockable candidates as before. The
+   candidate iterator merges the shared list with the job's own map in key
+   order (`blocking_hash.rs`, `SharedCursor`), so the candidate order is
+   the order of one map holding both.
+
+Neither change alters a rule. The first changes no value read. The second
+is meant to yield the candidate set of the scan; where it does not (a base
+node relabelled in a job without a node-switch record would be missed), it
+can change which blocker a job finds, or leave a node unblocked that the
+scan would block, never the correctness of a blocking decision: every
+candidate still goes through `is_individual_node_blocking` on the current
+graph, a node without a blocker is expanded, and the job's own nodes (all
+ids above the base) are scanned as before, which keeps the termination
+argument of anywhere blocking.
+
+### 14.3 Konclude's full-completion-graph decision
+
+`native_conditional_full_abox_profile` selects the retained full
+completion graph (the conditional-full schedule) or the per-probe ABox
+completion. The port took only one arm of Konclude's decision, fewer than
+10,000 individuals. Konclude's `ConditionalFullCompletionGraphConstruction`
+(on by default; CTotallyPrecomputationThread.cpp 159-172, defaults in
+CReasonerConfigurationGroup.cpp 1076-1103) builds the full graph unless an
+exclusion condition holds (at least 300,000 individuals, or at least 50
+individuals per concept) and when a suggestion condition holds (fewer than
+10,000 individuals, or fewer than 5 individuals per concept). The bridge now
+evaluates that whole decision (`konclude_full_completion_graph_suggested`),
+counting the concept names of its input (`TInput::concepts`: classes,
+definers, nominal proxies) as the terminology's concepts, the closest count
+the bridge has to `CTBox::getConceptCount`. The four inputs have ratios
+below 1 (10838: 55,433 individuals after the pre-merge against about
+103,000 concept names), so Konclude's suggestion holds for them.
+
+Konclude counts its own concept objects, which include every complex
+subexpression and exclude per-individual proxies; its count can differ
+from the bridge's, and on 10838 the local Konclude build (`Release/Konclude`,
+v0.7.0-1138) logs no "Enabling full completion graph construction" line,
+so it chose the lazy path there. The bridge has no counterpart of that lazy,
+batched representative precomputation: its alternative re-completes the
+ABox per subject probe (about 15 s per probe on 16315). The decision is
+therefore Konclude's rule over the bridge's count, applied to the two
+schedules the bridge has. Both are complete-or-defer, so the choice changes
+cost and memory, never an answer. Two guards stay: a role-free ABox of
+10,000 or more individuals keeps its validated independent-component
+schedule (`independent_component_abox_profile`), and
+`KM_HT_CONDITIONAL_FULL_LIMIT=<n>` still replaces the decision by the plain
+bound for measurement.
+
+### 14.4 Admission
+
+`orchestrate/race.rs` installs the exact `SameIndividual` pre-merge on the
+automatic HT racer (`KM_HT_NO_ADMIT_SAME=1` restores the decline). The
+racer's contract is unchanged: the bridge answers completely or defers, and
+a defer runs the exact CB fallback.
