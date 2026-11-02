@@ -1,0 +1,4 @@
+BRIDGE-EMPTY-WITNESS-PROBE verdict=Some(true) unrestored=0 opens=1 backtracks=2 poisoned=false root_cancel=false
+BRIDGE-EMPTY-WITNESS subject 631: operand tag=964 negated=true witnessed=true (0.020s)
+BRIDGE-EMPTY-WITNESS-PROBE verdict=Some(true) unrestored=0 opens=1 backtracks=2 poisoned=false root_cancel=false
+BRIDGE-EMPTY-WITNESS subject 631: operand tag=962 negated=true witnessed=true (0.015s)

@@ -1,0 +1,15 @@
+BRIDGE-SUBJECT-STATS subject=2989 nodes_before=3393 nodes_after=11516 inserts=617056 backtracks=0 branch_opens=963 (retained=0 nominal=890 fresh=963)
+BRIDGE-SUBJECT-STATS subject=2954 nodes_before=3393 nodes_after=11518 inserts=617122 backtracks=0 branch_opens=961 (retained=0 nominal=890 fresh=961)
+BRIDGE-SUBJECT-STATS subject=3010 nodes_before=3393 nodes_after=11505 inserts=616681 backtracks=0 branch_opens=961 (retained=0 nominal=890 fresh=961)
+BRIDGE-SUBJECT-STATS subject=3023 nodes_before=3393 nodes_after=11512 inserts=616498 backtracks=0 branch_opens=891 (retained=0 nominal=890 fresh=891)
+BRIDGE-SUBJECT-STATS subject=2909 nodes_before=3393 nodes_after=11511 inserts=616896 backtracks=0 branch_opens=961 (retained=0 nominal=890 fresh=961)
+BRIDGE-SUBJECT-STATS subject=2984 nodes_before=3393 nodes_after=11530 inserts=617096 backtracks=0 branch_opens=891 (retained=0 nominal=890 fresh=891)
+BRIDGE-SUBJECT-STATS subject=2999 nodes_before=3393 nodes_after=11532 inserts=617197 backtracks=0 branch_opens=891 (retained=0 nominal=890 fresh=891)
+BRIDGE-SUBJECT-STATS subject=42 nodes_before=3393 nodes_after=11503 inserts=616592 backtracks=0 branch_opens=961 (retained=0 nominal=890 fresh=961)
+BRIDGE-SUBJECT-STATS subject=2983 nodes_before=3393 nodes_after=11530 inserts=617126 backtracks=0 branch_opens=893 (retained=0 nominal=890 fresh=893)
+BRIDGE-SUBJECT-STATS subject=3018 nodes_before=3393 nodes_after=11508 inserts=616347 backtracks=0 branch_opens=890 (retained=0 nominal=890 fresh=890)
+BRIDGE-NOMINAL-CONSISTENCY: saturation refuses SELF; completion-only schedule
+BRIDGE-NOMINAL-CONSISTENCY: consistent=true signal=Continue poisoned=false
+BRIDGE-PREPARE-TIMING subjects=1 elapsed=1.864652 renew=0.163728 completion=1.700133 analysis=0.000732
+BRIDGE-PREPARE-TIMING subjects=65 elapsed=66.957143 renew=15.173037 completion=51.742459 analysis=0.040381
+BRIDGE-PREPARE-TIMING subjects=129 elapsed=131.189457 renew=30.175105 completion=100.929837 analysis=0.082073

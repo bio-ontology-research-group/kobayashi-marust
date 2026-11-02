@@ -1,0 +1,441 @@
+#0  0x0000559d289e0cb8 in kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::set_individual_node_concept_label_set_modified ()
+#1  0x0000559d288f36d8 in kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concept_to_individual ()
+#2  0x0000559d28bd397f in kobayashi_marust::konclude_ht::completion::u09::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::apply_all_rule ()
+#3  0x0000559d288fa498 in kobayashi_marust::konclude_ht::completion::u02::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on ()
+#4  0x0000559d288f14ab in kobayashi_marust::konclude_ht::bridge::bridged_classify_subject_with_root ()
+#5  0x0000559d287fec97 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}} ()
+#6  0x0000559d28a210b5 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner ()
+#7  0x0000559d28b83c1c in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption ()
+#8  0x0000559d2930c1fc in std::sys::backtrace::__rust_begin_short_backtrace ()
+#9  0x0000559d2930c05c in core::ops::function::FnOnce::call_once{{vtable.shim}} ()
+#10 0x0000559d297a33b8 in <std::sys::thread::unix::Thread>::new::thread_start ()
+#11 0x00007fecde33bb7b in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#12 0x00007fecde3b97f8 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#0  0x00007fecde3439ee in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#1  0x00007fecde338668 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#2  0x00007fecde338c8c in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#3  0x00007fecde33d774 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#4  0x0000559d297a4fe7 in <std::sys::thread::unix::Thread>::join ()
+#5  0x0000559d2930b2d2 in kobayashi_marust::tableau::run_bridge_producer_input_typed ()
+#6  0x0000559d2930a3eb in kobayashi_marust::orchestrate::race::run_ht_bridge_in_process ()
+#7  0x0000559d28bf2ad1 in kobayashi_marust::orchestrate::run_atomic_mechanism ()
+#8  0x0000559d28c7c481 in kobayashi_marust::orchestrate::classify_with_evidence_inner ()
+#9  0x0000559d28c76821 in kobayashi_marust::orchestrate::classify_with_evidence_mode ()
+#10 0x0000559d294fae53 in kobayashi_marust::orchestrate::classify ()
+#11 0x0000559d289acf45 in km::main ()
+#12 0x0000559d289abae3 in std::sys::backtrace::__rust_begin_short_backtrace ()
+#13 0x0000559d28d6afdf in main ()
+----
+#0  0x0000559d289ec74e in kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::insert_concepts_to_individual_concept_set ()
+#1  0x0000559d289ea7b1 in kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concepts_to_individual ()
+#2  0x0000559d28917bba in kobayashi_marust::konclude_ht::completion::u10::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::create_new_individuals_links_reapplyed ()
+#3  0x0000559d2890aa55 in kobayashi_marust::konclude_ht::completion::u08::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::apply_some_rule ()
+#4  0x0000559d288f8981 in kobayashi_marust::konclude_ht::completion::u02::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on ()
+#5  0x0000559d288f14ab in kobayashi_marust::konclude_ht::bridge::bridged_classify_subject_with_root ()
+#6  0x0000559d287fec97 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}} ()
+#7  0x0000559d28a210b5 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner ()
+#8  0x0000559d28b83c1c in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption ()
+#9  0x0000559d2930c1fc in std::sys::backtrace::__rust_begin_short_backtrace ()
+#10 0x0000559d2930c05c in core::ops::function::FnOnce::call_once{{vtable.shim}} ()
+#11 0x0000559d297a33b8 in <std::sys::thread::unix::Thread>::new::thread_start ()
+#12 0x00007fecde33bb7b in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#13 0x00007fecde3b97f8 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#0  0x00007fecde3439ee in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#1  0x00007fecde338668 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#2  0x00007fecde338c8c in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#3  0x00007fecde33d774 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#4  0x0000559d297a4fe7 in <std::sys::thread::unix::Thread>::join ()
+#5  0x0000559d2930b2d2 in kobayashi_marust::tableau::run_bridge_producer_input_typed ()
+#6  0x0000559d2930a3eb in kobayashi_marust::orchestrate::race::run_ht_bridge_in_process ()
+#7  0x0000559d28bf2ad1 in kobayashi_marust::orchestrate::run_atomic_mechanism ()
+#8  0x0000559d28c7c481 in kobayashi_marust::orchestrate::classify_with_evidence_inner ()
+#9  0x0000559d28c76821 in kobayashi_marust::orchestrate::classify_with_evidence_mode ()
+#10 0x0000559d294fae53 in kobayashi_marust::orchestrate::classify ()
+#11 0x0000559d289acf45 in km::main ()
+#12 0x0000559d289abae3 in std::sys::backtrace::__rust_begin_short_backtrace ()
+#13 0x0000559d28d6afdf in main ()
+----
+#0  0x00007fecde4146b4 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#1  0x0000559d288f9285 in kobayashi_marust::konclude_ht::completion::u02::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on ()
+#2  0x0000559d288f14ab in kobayashi_marust::konclude_ht::bridge::bridged_classify_subject_with_root ()
+#3  0x0000559d287fec97 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}} ()
+#4  0x0000559d28a210b5 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner ()
+#5  0x0000559d28b83c1c in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption ()
+#6  0x0000559d2930c1fc in std::sys::backtrace::__rust_begin_short_backtrace ()
+#7  0x0000559d2930c05c in core::ops::function::FnOnce::call_once{{vtable.shim}} ()
+#8  0x0000559d297a33b8 in <std::sys::thread::unix::Thread>::new::thread_start ()
+#9  0x00007fecde33bb7b in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#10 0x00007fecde3b97f8 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#0  0x00007fecde3439ee in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#1  0x00007fecde338668 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#2  0x00007fecde338c8c in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#3  0x00007fecde33d774 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#4  0x0000559d297a4fe7 in <std::sys::thread::unix::Thread>::join ()
+#5  0x0000559d2930b2d2 in kobayashi_marust::tableau::run_bridge_producer_input_typed ()
+#6  0x0000559d2930a3eb in kobayashi_marust::orchestrate::race::run_ht_bridge_in_process ()
+#7  0x0000559d28bf2ad1 in kobayashi_marust::orchestrate::run_atomic_mechanism ()
+#8  0x0000559d28c7c481 in kobayashi_marust::orchestrate::classify_with_evidence_inner ()
+#9  0x0000559d28c76821 in kobayashi_marust::orchestrate::classify_with_evidence_mode ()
+#10 0x0000559d294fae53 in kobayashi_marust::orchestrate::classify ()
+#11 0x0000559d289acf45 in km::main ()
+#12 0x0000559d289abae3 in std::sys::backtrace::__rust_begin_short_backtrace ()
+#13 0x0000559d28d6afdf in main ()
+----
+#0  0x0000559d28804df0 in alloc::raw_vec::RawVec<T,A>::grow_one ()
+#1  0x0000559d289e4f76 in kobayashi_marust::konclude_ht::completion::u04::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concept_preprocessed_to_processing_queue_skip ()
+#2  0x0000559d289ea921 in kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concepts_to_individual ()
+#3  0x0000559d289e7d29 in kobayashi_marust::konclude_ht::completion::u08::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::apply_and_rule ()
+#4  0x0000559d289e5936 in kobayashi_marust::konclude_ht::completion::u04::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concept_preprocessed_to_processing_queue_skip ()
+#5  0x0000559d288f36fc in kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concept_to_individual ()
+#6  0x0000559d28bd397f in kobayashi_marust::konclude_ht::completion::u09::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::apply_all_rule ()
+#7  0x0000559d288fa498 in kobayashi_marust::konclude_ht::completion::u02::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on ()
+#8  0x0000559d288f14ab in kobayashi_marust::konclude_ht::bridge::bridged_classify_subject_with_root ()
+#9  0x0000559d287fec97 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}} ()
+#10 0x0000559d28a210b5 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner ()
+#11 0x0000559d28b83c1c in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption ()
+#12 0x0000559d2930c1fc in std::sys::backtrace::__rust_begin_short_backtrace ()
+#13 0x0000559d2930c05c in core::ops::function::FnOnce::call_once{{vtable.shim}} ()
+#14 0x0000559d297a33b8 in <std::sys::thread::unix::Thread>::new::thread_start ()
+#15 0x00007fecde33bb7b in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#16 0x00007fecde3b97f8 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#0  0x00007fecde3439ee in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#1  0x00007fecde338668 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#2  0x00007fecde338c8c in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#3  0x00007fecde33d774 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#4  0x0000559d297a4fe7 in <std::sys::thread::unix::Thread>::join ()
+#5  0x0000559d2930b2d2 in kobayashi_marust::tableau::run_bridge_producer_input_typed ()
+#6  0x0000559d2930a3eb in kobayashi_marust::orchestrate::race::run_ht_bridge_in_process ()
+#7  0x0000559d28bf2ad1 in kobayashi_marust::orchestrate::run_atomic_mechanism ()
+#8  0x0000559d28c7c481 in kobayashi_marust::orchestrate::classify_with_evidence_inner ()
+#9  0x0000559d28c76821 in kobayashi_marust::orchestrate::classify_with_evidence_mode ()
+#10 0x0000559d294fae53 in kobayashi_marust::orchestrate::classify ()
+#11 0x0000559d289acf45 in km::main ()
+#12 0x0000559d289abae3 in std::sys::backtrace::__rust_begin_short_backtrace ()
+#13 0x0000559d28d6afdf in main ()
+----
+#0  0x0000559d289d2704 in kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::get_up_to_date_individual_by_id ()
+#1  0x0000559d289d214c in kobayashi_marust::konclude_ht::completion::u20::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::get_anywhere_blocking_individual_node_canidate_hashed ()
+#2  0x0000559d288f4d57 in kobayashi_marust::konclude_ht::completion::u19::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::detect_individual_node_blocked_status ()
+#3  0x0000559d288f795a in kobayashi_marust::konclude_ht::completion::u02::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on ()
+#4  0x0000559d288f14ab in kobayashi_marust::konclude_ht::bridge::bridged_classify_subject_with_root ()
+#5  0x0000559d287fec97 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}} ()
+#6  0x0000559d28a210b5 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner ()
+#7  0x0000559d28b83c1c in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption ()
+#8  0x0000559d2930c1fc in std::sys::backtrace::__rust_begin_short_backtrace ()
+#9  0x0000559d2930c05c in core::ops::function::FnOnce::call_once{{vtable.shim}} ()
+#10 0x0000559d297a33b8 in <std::sys::thread::unix::Thread>::new::thread_start ()
+#11 0x00007fecde33bb7b in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#12 0x00007fecde3b97f8 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#0  0x00007fecde3439ee in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#1  0x00007fecde338668 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#2  0x00007fecde338c8c in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#3  0x00007fecde33d774 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#4  0x0000559d297a4fe7 in <std::sys::thread::unix::Thread>::join ()
+#5  0x0000559d2930b2d2 in kobayashi_marust::tableau::run_bridge_producer_input_typed ()
+#6  0x0000559d2930a3eb in kobayashi_marust::orchestrate::race::run_ht_bridge_in_process ()
+#7  0x0000559d28bf2ad1 in kobayashi_marust::orchestrate::run_atomic_mechanism ()
+#8  0x0000559d28c7c481 in kobayashi_marust::orchestrate::classify_with_evidence_inner ()
+#9  0x0000559d28c76821 in kobayashi_marust::orchestrate::classify_with_evidence_mode ()
+#10 0x0000559d294fae53 in kobayashi_marust::orchestrate::classify ()
+#11 0x0000559d289acf45 in km::main ()
+#12 0x0000559d289abae3 in std::sys::backtrace::__rust_begin_short_backtrace ()
+#13 0x0000559d28d6afdf in main ()
+----
+#0  0x00007fecde2ec0c6 in getenv () from /lib/x86_64-linux-gnu/libc.so.6
+#1  0x0000559d297a04c3 in std::sys::env::unix::getenv::{closure#0} ()
+#2  0x0000559d288f5b88 in std::env::_var ()
+#3  0x0000559d288f5e37 in kobayashi_marust::konclude_ht::completion::u02::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on ()
+#4  0x0000559d288f14ab in kobayashi_marust::konclude_ht::bridge::bridged_classify_subject_with_root ()
+#5  0x0000559d287fec97 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}} ()
+#6  0x0000559d28a210b5 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner ()
+#7  0x0000559d28b83c1c in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption ()
+#8  0x0000559d2930c1fc in std::sys::backtrace::__rust_begin_short_backtrace ()
+#9  0x0000559d2930c05c in core::ops::function::FnOnce::call_once{{vtable.shim}} ()
+#10 0x0000559d297a33b8 in <std::sys::thread::unix::Thread>::new::thread_start ()
+#11 0x00007fecde33bb7b in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#12 0x00007fecde3b97f8 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#0  0x00007fecde3439ee in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#1  0x00007fecde338668 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#2  0x00007fecde338c8c in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#3  0x00007fecde33d774 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#4  0x0000559d297a4fe7 in <std::sys::thread::unix::Thread>::join ()
+#5  0x0000559d2930b2d2 in kobayashi_marust::tableau::run_bridge_producer_input_typed ()
+#6  0x0000559d2930a3eb in kobayashi_marust::orchestrate::race::run_ht_bridge_in_process ()
+#7  0x0000559d28bf2ad1 in kobayashi_marust::orchestrate::run_atomic_mechanism ()
+#8  0x0000559d28c7c481 in kobayashi_marust::orchestrate::classify_with_evidence_inner ()
+#9  0x0000559d28c76821 in kobayashi_marust::orchestrate::classify_with_evidence_mode ()
+#10 0x0000559d294fae53 in kobayashi_marust::orchestrate::classify ()
+#11 0x0000559d289acf45 in km::main ()
+#12 0x0000559d289abae3 in std::sys::backtrace::__rust_begin_short_backtrace ()
+#13 0x0000559d28d6afdf in main ()
+----
+#0  0x00007fecde4146b4 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#1  0x0000559d28bb2c9b in kobayashi_marust::konclude_ht::completion::u21::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::commit_cache_messages ()
+#2  0x0000559d288f801c in kobayashi_marust::konclude_ht::completion::u02::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on ()
+#3  0x0000559d288f14ab in kobayashi_marust::konclude_ht::bridge::bridged_classify_subject_with_root ()
+#4  0x0000559d287fec97 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}} ()
+#5  0x0000559d28a210b5 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner ()
+#6  0x0000559d28b83c1c in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption ()
+#7  0x0000559d2930c1fc in std::sys::backtrace::__rust_begin_short_backtrace ()
+#8  0x0000559d2930c05c in core::ops::function::FnOnce::call_once{{vtable.shim}} ()
+#9  0x0000559d297a33b8 in <std::sys::thread::unix::Thread>::new::thread_start ()
+#10 0x00007fecde33bb7b in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#11 0x00007fecde3b97f8 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#0  0x00007fecde3439ee in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#1  0x00007fecde338668 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#2  0x00007fecde338c8c in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#3  0x00007fecde33d774 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#4  0x0000559d297a4fe7 in <std::sys::thread::unix::Thread>::join ()
+#5  0x0000559d2930b2d2 in kobayashi_marust::tableau::run_bridge_producer_input_typed ()
+#6  0x0000559d2930a3eb in kobayashi_marust::orchestrate::race::run_ht_bridge_in_process ()
+#7  0x0000559d28bf2ad1 in kobayashi_marust::orchestrate::run_atomic_mechanism ()
+#8  0x0000559d28c7c481 in kobayashi_marust::orchestrate::classify_with_evidence_inner ()
+#9  0x0000559d28c76821 in kobayashi_marust::orchestrate::classify_with_evidence_mode ()
+#10 0x0000559d294fae53 in kobayashi_marust::orchestrate::classify ()
+#11 0x0000559d289acf45 in km::main ()
+#12 0x0000559d289abae3 in std::sys::backtrace::__rust_begin_short_backtrace ()
+#13 0x0000559d28d6afdf in main ()
+----
+#0  0x0000559d28910add in kobayashi_marust::konclude_ht::process::context::ProcessContext::node_successor_iterator ()
+#1  0x0000559d289108d1 in kobayashi_marust::konclude_ht::completion::u03::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::propagate_adding_processing_restriction_to_successors ()
+#2  0x0000559d289109af in kobayashi_marust::konclude_ht::completion::u03::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::propagate_adding_processing_restriction_to_successors ()
+#3  0x0000559d289e0b1f in kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::set_individual_node_concept_label_set_modified ()
+#4  0x0000559d289ea8ff in kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concepts_to_individual ()
+#5  0x0000559d28917da8 in kobayashi_marust::konclude_ht::completion::u10::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::create_new_individuals_links_reapplyed ()
+#6  0x0000559d2890aa55 in kobayashi_marust::konclude_ht::completion::u08::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::apply_some_rule ()
+#7  0x0000559d288f8981 in kobayashi_marust::konclude_ht::completion::u02::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on ()
+#8  0x0000559d288f14ab in kobayashi_marust::konclude_ht::bridge::bridged_classify_subject_with_root ()
+#9  0x0000559d287fec97 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}} ()
+#10 0x0000559d28a210b5 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner ()
+#11 0x0000559d28b83c1c in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption ()
+#12 0x0000559d2930c1fc in std::sys::backtrace::__rust_begin_short_backtrace ()
+#13 0x0000559d2930c05c in core::ops::function::FnOnce::call_once{{vtable.shim}} ()
+#14 0x0000559d297a33b8 in <std::sys::thread::unix::Thread>::new::thread_start ()
+#15 0x00007fecde33bb7b in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#16 0x00007fecde3b97f8 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#0  0x00007fecde3439ee in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#1  0x00007fecde338668 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#2  0x00007fecde338c8c in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#3  0x00007fecde33d774 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#4  0x0000559d297a4fe7 in <std::sys::thread::unix::Thread>::join ()
+#5  0x0000559d2930b2d2 in kobayashi_marust::tableau::run_bridge_producer_input_typed ()
+#6  0x0000559d2930a3eb in kobayashi_marust::orchestrate::race::run_ht_bridge_in_process ()
+#7  0x0000559d28bf2ad1 in kobayashi_marust::orchestrate::run_atomic_mechanism ()
+#8  0x0000559d28c7c481 in kobayashi_marust::orchestrate::classify_with_evidence_inner ()
+#9  0x0000559d28c76821 in kobayashi_marust::orchestrate::classify_with_evidence_mode ()
+#10 0x0000559d294fae53 in kobayashi_marust::orchestrate::classify ()
+#11 0x0000559d289acf45 in km::main ()
+#12 0x0000559d289abae3 in std::sys::backtrace::__rust_begin_short_backtrace ()
+#13 0x0000559d28d6afdf in main ()
+----
+#0  0x00007fecde4146e3 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#1  0x0000559d2890d5f7 in kobayashi_marust::konclude_ht::model::substrate::Arena<T>::push ()
+#2  0x0000559d2890a8b3 in kobayashi_marust::konclude_ht::completion::u08::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::apply_some_rule ()
+#3  0x0000559d288f8981 in kobayashi_marust::konclude_ht::completion::u02::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on ()
+#4  0x0000559d288f14ab in kobayashi_marust::konclude_ht::bridge::bridged_classify_subject_with_root ()
+#5  0x0000559d287fec97 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}} ()
+#6  0x0000559d28a210b5 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner ()
+#7  0x0000559d28b83c1c in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption ()
+#8  0x0000559d2930c1fc in std::sys::backtrace::__rust_begin_short_backtrace ()
+#9  0x0000559d2930c05c in core::ops::function::FnOnce::call_once{{vtable.shim}} ()
+#10 0x0000559d297a33b8 in <std::sys::thread::unix::Thread>::new::thread_start ()
+#11 0x00007fecde33bb7b in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#12 0x00007fecde3b97f8 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#0  0x00007fecde3439ee in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#1  0x00007fecde338668 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#2  0x00007fecde338c8c in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#3  0x00007fecde33d774 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#4  0x0000559d297a4fe7 in <std::sys::thread::unix::Thread>::join ()
+#5  0x0000559d2930b2d2 in kobayashi_marust::tableau::run_bridge_producer_input_typed ()
+#6  0x0000559d2930a3eb in kobayashi_marust::orchestrate::race::run_ht_bridge_in_process ()
+#7  0x0000559d28bf2ad1 in kobayashi_marust::orchestrate::run_atomic_mechanism ()
+#8  0x0000559d28c7c481 in kobayashi_marust::orchestrate::classify_with_evidence_inner ()
+#9  0x0000559d28c76821 in kobayashi_marust::orchestrate::classify_with_evidence_mode ()
+#10 0x0000559d294fae53 in kobayashi_marust::orchestrate::classify ()
+#11 0x0000559d289acf45 in km::main ()
+#12 0x0000559d289abae3 in std::sys::backtrace::__rust_begin_short_backtrace ()
+#13 0x0000559d28d6afdf in main ()
+----
+#0  0x0000559d28819781 in <alloc::collections::btree::map::BTreeMap<K,V,A> as core::clone::Clone>::clone::clone_subtree ()
+#1  0x0000559d288198dd in <alloc::collections::btree::map::BTreeMap<K,V,A> as core::clone::Clone>::clone::clone_subtree ()
+#2  0x0000559d288198dd in <alloc::collections::btree::map::BTreeMap<K,V,A> as core::clone::Clone>::clone::clone_subtree ()
+#3  0x0000559d289070ba in kobayashi_marust::konclude_ht::model::substrate::Arena<T>::get_mut_journaled ()
+#4  0x0000559d289e184a in kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::set_individual_node_concept_label_set_modified ()
+#5  0x0000559d288f36d8 in kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concept_to_individual ()
+#6  0x0000559d288f2cb4 in kobayashi_marust::konclude_ht::completion::u35::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::create_new_individual ()
+#7  0x0000559d2890a9bc in kobayashi_marust::konclude_ht::completion::u08::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::apply_some_rule ()
+#8  0x0000559d288f8981 in kobayashi_marust::konclude_ht::completion::u02::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on ()
+#9  0x0000559d288f14ab in kobayashi_marust::konclude_ht::bridge::bridged_classify_subject_with_root ()
+#10 0x0000559d287fec97 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}} ()
+#11 0x0000559d28a210b5 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner ()
+#12 0x0000559d28b83c1c in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption ()
+#13 0x0000559d2930c1fc in std::sys::backtrace::__rust_begin_short_backtrace ()
+#14 0x0000559d2930c05c in core::ops::function::FnOnce::call_once{{vtable.shim}} ()
+#15 0x0000559d297a33b8 in <std::sys::thread::unix::Thread>::new::thread_start ()
+#16 0x00007fecde33bb7b in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#17 0x00007fecde3b97f8 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#0  0x00007fecde3439ee in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#1  0x00007fecde338668 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#2  0x00007fecde338c8c in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#3  0x00007fecde33d774 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#4  0x0000559d297a4fe7 in <std::sys::thread::unix::Thread>::join ()
+#5  0x0000559d2930b2d2 in kobayashi_marust::tableau::run_bridge_producer_input_typed ()
+#6  0x0000559d2930a3eb in kobayashi_marust::orchestrate::race::run_ht_bridge_in_process ()
+#7  0x0000559d28bf2ad1 in kobayashi_marust::orchestrate::run_atomic_mechanism ()
+#8  0x0000559d28c7c481 in kobayashi_marust::orchestrate::classify_with_evidence_inner ()
+#9  0x0000559d28c76821 in kobayashi_marust::orchestrate::classify_with_evidence_mode ()
+#10 0x0000559d294fae53 in kobayashi_marust::orchestrate::classify ()
+#11 0x0000559d289acf45 in km::main ()
+#12 0x0000559d289abae3 in std::sys::backtrace::__rust_begin_short_backtrace ()
+#13 0x0000559d28d6afdf in main ()
+----
+#0  0x0000559d28bd900d in kobayashi_marust::konclude_ht::model::substrate::Arena<T>::push ()
+#1  0x0000559d28bdaa67 in kobayashi_marust::konclude_ht::completion::u29::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::get_backtracked_deterministic_clashed_descriptors ()
+#2  0x0000559d28bdb950 in kobayashi_marust::konclude_ht::completion::u29::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::backtrack_deterministic_branching_clashed_descriptor_from_current_individual_node_level ()
+#3  0x0000559d289005de in kobayashi_marust::konclude_ht::completion::u02::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on ()
+#4  0x0000559d288f14ab in kobayashi_marust::konclude_ht::bridge::bridged_classify_subject_with_root ()
+#5  0x0000559d287fec97 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}} ()
+#6  0x0000559d28a210b5 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner ()
+#7  0x0000559d28b83c1c in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption ()
+#8  0x0000559d2930c1fc in std::sys::backtrace::__rust_begin_short_backtrace ()
+#9  0x0000559d2930c05c in core::ops::function::FnOnce::call_once{{vtable.shim}} ()
+#10 0x0000559d297a33b8 in <std::sys::thread::unix::Thread>::new::thread_start ()
+#11 0x00007fecde33bb7b in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#12 0x00007fecde3b97f8 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#0  0x00007fecde3439ee in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#1  0x00007fecde338668 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#2  0x00007fecde338c8c in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#3  0x00007fecde33d774 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#4  0x0000559d297a4fe7 in <std::sys::thread::unix::Thread>::join ()
+#5  0x0000559d2930b2d2 in kobayashi_marust::tableau::run_bridge_producer_input_typed ()
+#6  0x0000559d2930a3eb in kobayashi_marust::orchestrate::race::run_ht_bridge_in_process ()
+#7  0x0000559d28bf2ad1 in kobayashi_marust::orchestrate::run_atomic_mechanism ()
+#8  0x0000559d28c7c481 in kobayashi_marust::orchestrate::classify_with_evidence_inner ()
+#9  0x0000559d28c76821 in kobayashi_marust::orchestrate::classify_with_evidence_mode ()
+#10 0x0000559d294fae53 in kobayashi_marust::orchestrate::classify ()
+#11 0x0000559d289acf45 in km::main ()
+#12 0x0000559d289abae3 in std::sys::backtrace::__rust_begin_short_backtrace ()
+#13 0x0000559d28d6afdf in main ()
+----
+#0  0x0000559d28a04740 in kobayashi_marust::konclude_ht::completion::u17::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::try_expansion_from_saturated_data ()
+#1  0x0000559d2890aa27 in kobayashi_marust::konclude_ht::completion::u08::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::apply_some_rule ()
+#2  0x0000559d288f8981 in kobayashi_marust::konclude_ht::completion::u02::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on ()
+#3  0x0000559d288f14ab in kobayashi_marust::konclude_ht::bridge::bridged_classify_subject_with_root ()
+#4  0x0000559d287fec97 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}} ()
+#5  0x0000559d28a210b5 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner ()
+#6  0x0000559d28b83c1c in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption ()
+#7  0x0000559d2930c1fc in std::sys::backtrace::__rust_begin_short_backtrace ()
+#8  0x0000559d2930c05c in core::ops::function::FnOnce::call_once{{vtable.shim}} ()
+#9  0x0000559d297a33b8 in <std::sys::thread::unix::Thread>::new::thread_start ()
+#10 0x00007fecde33bb7b in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#11 0x00007fecde3b97f8 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#0  0x00007fecde3439ee in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#1  0x00007fecde338668 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#2  0x00007fecde338c8c in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#3  0x00007fecde33d774 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#4  0x0000559d297a4fe7 in <std::sys::thread::unix::Thread>::join ()
+#5  0x0000559d2930b2d2 in kobayashi_marust::tableau::run_bridge_producer_input_typed ()
+#6  0x0000559d2930a3eb in kobayashi_marust::orchestrate::race::run_ht_bridge_in_process ()
+#7  0x0000559d28bf2ad1 in kobayashi_marust::orchestrate::run_atomic_mechanism ()
+#8  0x0000559d28c7c481 in kobayashi_marust::orchestrate::classify_with_evidence_inner ()
+#9  0x0000559d28c76821 in kobayashi_marust::orchestrate::classify_with_evidence_mode ()
+#10 0x0000559d294fae53 in kobayashi_marust::orchestrate::classify ()
+#11 0x0000559d289acf45 in km::main ()
+#12 0x0000559d289abae3 in std::sys::backtrace::__rust_begin_short_backtrace ()
+#13 0x0000559d28d6afdf in main ()
+----
+#0  0x0000559d288197fd in <alloc::collections::btree::map::BTreeMap<K,V,A> as core::clone::Clone>::clone::clone_subtree ()
+#1  0x0000559d288198dd in <alloc::collections::btree::map::BTreeMap<K,V,A> as core::clone::Clone>::clone::clone_subtree ()
+#2  0x0000559d289070ba in kobayashi_marust::konclude_ht::model::substrate::Arena<T>::get_mut_journaled ()
+#3  0x0000559d289e184a in kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::set_individual_node_concept_label_set_modified ()
+#4  0x0000559d288f36d8 in kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concept_to_individual ()
+#5  0x0000559d28a12956 in kobayashi_marust::konclude_ht::completion::u09::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::execute_or_branching ()
+#6  0x0000559d289fc6eb in kobayashi_marust::konclude_ht::completion::u09::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::apply_or_rule ()
+#7  0x0000559d288f78b1 in kobayashi_marust::konclude_ht::completion::u02::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on ()
+#8  0x0000559d288f14ab in kobayashi_marust::konclude_ht::bridge::bridged_classify_subject_with_root ()
+#9  0x0000559d287fec97 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}} ()
+#10 0x0000559d28a210b5 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner ()
+#11 0x0000559d28b83c1c in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption ()
+#12 0x0000559d2930c1fc in std::sys::backtrace::__rust_begin_short_backtrace ()
+#13 0x0000559d2930c05c in core::ops::function::FnOnce::call_once{{vtable.shim}} ()
+#14 0x0000559d297a33b8 in <std::sys::thread::unix::Thread>::new::thread_start ()
+#15 0x00007fecde33bb7b in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#16 0x00007fecde3b97f8 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#0  0x00007fecde3439ee in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#1  0x00007fecde338668 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#2  0x00007fecde338c8c in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#3  0x00007fecde33d774 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#4  0x0000559d297a4fe7 in <std::sys::thread::unix::Thread>::join ()
+#5  0x0000559d2930b2d2 in kobayashi_marust::tableau::run_bridge_producer_input_typed ()
+#6  0x0000559d2930a3eb in kobayashi_marust::orchestrate::race::run_ht_bridge_in_process ()
+#7  0x0000559d28bf2ad1 in kobayashi_marust::orchestrate::run_atomic_mechanism ()
+#8  0x0000559d28c7c481 in kobayashi_marust::orchestrate::classify_with_evidence_inner ()
+#9  0x0000559d28c76821 in kobayashi_marust::orchestrate::classify_with_evidence_mode ()
+#10 0x0000559d294fae53 in kobayashi_marust::orchestrate::classify ()
+#11 0x0000559d289acf45 in km::main ()
+#12 0x0000559d289abae3 in std::sys::backtrace::__rust_begin_short_backtrace ()
+#13 0x0000559d28d6afdf in main ()
+----
+#0  0x0000559d28902885 in kobayashi_marust::konclude_ht::process::context::ProcessContext::node_mut ()
+#1  0x0000559d289ca110 in kobayashi_marust::konclude_ht::completion::u19::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::is_individual_node_blocking ()
+#2  0x0000559d289d10a8 in kobayashi_marust::konclude_ht::completion::u20::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::get_anywhere_blocking_individual_node_canidate_hashed ()
+#3  0x0000559d288f4d57 in kobayashi_marust::konclude_ht::completion::u19::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::detect_individual_node_blocked_status ()
+#4  0x0000559d288f795a in kobayashi_marust::konclude_ht::completion::u02::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on ()
+#5  0x0000559d288f14ab in kobayashi_marust::konclude_ht::bridge::bridged_classify_subject_with_root ()
+#6  0x0000559d287fec97 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}} ()
+#7  0x0000559d28a210b5 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner ()
+#8  0x0000559d28b83c1c in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption ()
+#9  0x0000559d2930c1fc in std::sys::backtrace::__rust_begin_short_backtrace ()
+#10 0x0000559d2930c05c in core::ops::function::FnOnce::call_once{{vtable.shim}} ()
+#11 0x0000559d297a33b8 in <std::sys::thread::unix::Thread>::new::thread_start ()
+#12 0x00007fecde33bb7b in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#13 0x00007fecde3b97f8 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#0  0x00007fecde3439ee in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#1  0x00007fecde338668 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#2  0x00007fecde338c8c in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#3  0x00007fecde33d774 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#4  0x0000559d297a4fe7 in <std::sys::thread::unix::Thread>::join ()
+#5  0x0000559d2930b2d2 in kobayashi_marust::tableau::run_bridge_producer_input_typed ()
+#6  0x0000559d2930a3eb in kobayashi_marust::orchestrate::race::run_ht_bridge_in_process ()
+#7  0x0000559d28bf2ad1 in kobayashi_marust::orchestrate::run_atomic_mechanism ()
+#8  0x0000559d28c7c481 in kobayashi_marust::orchestrate::classify_with_evidence_inner ()
+#9  0x0000559d28c76821 in kobayashi_marust::orchestrate::classify_with_evidence_mode ()
+#10 0x0000559d294fae53 in kobayashi_marust::orchestrate::classify ()
+#11 0x0000559d289acf45 in km::main ()
+#12 0x0000559d289abae3 in std::sys::backtrace::__rust_begin_short_backtrace ()
+#13 0x0000559d28d6afdf in main ()
+----
+#0  0x0000559d297c7631 in _mi_page_malloc_zero ()
+#1  0x0000559d2881975d in <alloc::collections::btree::map::BTreeMap<K,V,A> as core::clone::Clone>::clone::clone_subtree ()
+#2  0x0000559d2881980b in <alloc::collections::btree::map::BTreeMap<K,V,A> as core::clone::Clone>::clone::clone_subtree ()
+#3  0x0000559d288198dd in <alloc::collections::btree::map::BTreeMap<K,V,A> as core::clone::Clone>::clone::clone_subtree ()
+#4  0x0000559d289070ba in kobayashi_marust::konclude_ht::model::substrate::Arena<T>::get_mut_journaled ()
+#5  0x0000559d289e184a in kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::set_individual_node_concept_label_set_modified ()
+#6  0x0000559d288f36d8 in kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concept_to_individual ()
+#7  0x0000559d28a12956 in kobayashi_marust::konclude_ht::completion::u09::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::execute_or_branching ()
+#8  0x0000559d289fc6eb in kobayashi_marust::konclude_ht::completion::u09::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::apply_or_rule ()
+#9  0x0000559d288f78b1 in kobayashi_marust::konclude_ht::completion::u02::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on ()
+#10 0x0000559d288f14ab in kobayashi_marust::konclude_ht::bridge::bridged_classify_subject_with_root ()
+#11 0x0000559d287fec97 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}} ()
+#12 0x0000559d28a210b5 in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner ()
+#13 0x0000559d28b83c1c in kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption ()
+#14 0x0000559d2930c1fc in std::sys::backtrace::__rust_begin_short_backtrace ()
+#15 0x0000559d2930c05c in core::ops::function::FnOnce::call_once{{vtable.shim}} ()
+#16 0x0000559d297a33b8 in <std::sys::thread::unix::Thread>::new::thread_start ()
+#17 0x00007fecde33bb7b in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#18 0x00007fecde3b97f8 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#0  0x00007fecde3439ee in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#1  0x00007fecde338668 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#2  0x00007fecde338c8c in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#3  0x00007fecde33d774 in ?? () from /lib/x86_64-linux-gnu/libc.so.6
+#4  0x0000559d297a4fe7 in <std::sys::thread::unix::Thread>::join ()
+#5  0x0000559d2930b2d2 in kobayashi_marust::tableau::run_bridge_producer_input_typed ()
+#6  0x0000559d2930a3eb in kobayashi_marust::orchestrate::race::run_ht_bridge_in_process ()
+#7  0x0000559d28bf2ad1 in kobayashi_marust::orchestrate::run_atomic_mechanism ()
+#8  0x0000559d28c7c481 in kobayashi_marust::orchestrate::classify_with_evidence_inner ()
+#9  0x0000559d28c76821 in kobayashi_marust::orchestrate::classify_with_evidence_mode ()
+#10 0x0000559d294fae53 in kobayashi_marust::orchestrate::classify ()
+#11 0x0000559d289acf45 in km::main ()
+#12 0x0000559d289abae3 in std::sys::backtrace::__rust_begin_short_backtrace ()
+#13 0x0000559d28d6afdf in main ()
+----

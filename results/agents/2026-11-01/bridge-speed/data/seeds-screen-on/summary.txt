@@ -1,0 +1,4 @@
+bridge-defers     192 ERR     408 ok 
+bridge-nominal-merge       7 ERR    3993 ok 
+nominal-coverage     287 ERR     501 ok      12 TIMEOUT 
+sameindividual-bridge      11 ERR    3870 ok      11 WRONG 
