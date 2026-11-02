@@ -1,0 +1,8 @@
+{
+  "ontology": "m7.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": [
+    "A"
+  ]
+}

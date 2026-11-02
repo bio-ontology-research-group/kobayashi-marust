@@ -1,0 +1,2000 @@
+s0.ofn answered 0 unsat + 0 sat of 12 subjects
+s1000.ofn 
+s1001.ofn 
+s1002.ofn answered 0 unsat + 0 sat of 13 subjects
+s1003.ofn 
+s1004.ofn answered 0 unsat + 0 sat of 12 subjects
+s1005.ofn answered 0 unsat + 0 sat of 12 subjects
+s1006.ofn 
+s1007.ofn answered 0 unsat + 0 sat of 9 subjects
+s1008.ofn answered 0 unsat + 0 sat of 13 subjects
+s1009.ofn 
+s100.ofn answered 0 unsat + 0 sat of 10 subjects
+s1010.ofn 
+s1011.ofn answered 0 unsat + 0 sat of 11 subjects
+s1012.ofn 
+s1013.ofn answered 0 unsat + 0 sat of 12 subjects
+s1014.ofn 
+s1015.ofn answered 0 unsat + 0 sat of 9 subjects
+s1016.ofn answered 0 unsat + 0 sat of 11 subjects
+s1017.ofn answered 0 unsat + 0 sat of 12 subjects
+s1018.ofn answered 0 unsat + 0 sat of 12 subjects
+s1019.ofn 
+s101.ofn answered 0 unsat + 0 sat of 13 subjects
+s1020.ofn answered 0 unsat + 0 sat of 9 subjects
+s1021.ofn answered 0 unsat + 0 sat of 13 subjects
+s1022.ofn answered 0 unsat + 0 sat of 10 subjects
+s1023.ofn answered 0 unsat + 0 sat of 12 subjects
+s1024.ofn 
+s1025.ofn 
+s1026.ofn answered 0 unsat + 0 sat of 9 subjects
+s1027.ofn 
+s1028.ofn answered 0 unsat + 0 sat of 12 subjects
+s1029.ofn answered 0 unsat + 0 sat of 13 subjects
+s102.ofn answered 0 unsat + 0 sat of 10 subjects
+s1030.ofn answered 0 unsat + 0 sat of 9 subjects
+s1031.ofn answered 0 unsat + 0 sat of 13 subjects
+s1032.ofn answered 0 unsat + 0 sat of 12 subjects
+s1033.ofn answered 0 unsat + 0 sat of 10 subjects
+s1034.ofn 
+s1035.ofn 
+s1036.ofn answered 0 unsat + 0 sat of 12 subjects
+s1037.ofn 
+s1038.ofn 
+s1039.ofn 
+s103.ofn answered 0 unsat + 0 sat of 12 subjects
+s1040.ofn 
+s1041.ofn 
+s1042.ofn 
+s1043.ofn 
+s1044.ofn answered 1 unsat + 0 sat of 10 subjects
+s1045.ofn answered 0 unsat + 0 sat of 9 subjects
+s1046.ofn answered 0 unsat + 0 sat of 12 subjects
+s1047.ofn 
+s1048.ofn 
+s1049.ofn answered 0 unsat + 0 sat of 13 subjects
+s104.ofn answered 0 unsat + 0 sat of 9 subjects
+s1050.ofn 
+s1051.ofn answered 0 unsat + 0 sat of 9 subjects
+s1052.ofn 
+s1053.ofn 
+s1054.ofn answered 0 unsat + 4 sat of 9 subjects
+s1055.ofn 
+s1056.ofn answered 0 unsat + 0 sat of 9 subjects
+s1057.ofn 
+s1058.ofn 
+s1059.ofn 
+s105.ofn answered 0 unsat + 0 sat of 13 subjects
+s1060.ofn 
+s1061.ofn 
+s1062.ofn 
+s1063.ofn 
+s1064.ofn answered 0 unsat + 0 sat of 10 subjects
+s1065.ofn 
+s1066.ofn 
+s1067.ofn answered 0 unsat + 0 sat of 9 subjects
+s1068.ofn answered 0 unsat + 0 sat of 12 subjects
+s1069.ofn answered 0 unsat + 0 sat of 11 subjects
+s106.ofn 
+s1070.ofn answered 0 unsat + 0 sat of 11 subjects
+s1071.ofn answered 0 unsat + 0 sat of 9 subjects
+s1072.ofn 
+s1073.ofn answered 0 unsat + 0 sat of 11 subjects
+s1074.ofn answered 0 unsat + 0 sat of 12 subjects
+s1075.ofn 
+s1076.ofn answered 0 unsat + 0 sat of 11 subjects
+s1077.ofn 
+s1078.ofn answered 0 unsat + 0 sat of 9 subjects
+s1079.ofn 
+s107.ofn answered 0 unsat + 0 sat of 10 subjects
+s1080.ofn answered 0 unsat + 0 sat of 12 subjects
+s1081.ofn answered 0 unsat + 0 sat of 12 subjects
+s1082.ofn 
+s1083.ofn 
+s1084.ofn answered 0 unsat + 0 sat of 9 subjects
+s1085.ofn answered 0 unsat + 0 sat of 13 subjects
+s1086.ofn answered 0 unsat + 0 sat of 13 subjects
+s1087.ofn answered 0 unsat + 0 sat of 10 subjects
+s1088.ofn answered 0 unsat + 0 sat of 13 subjects
+s1089.ofn answered 0 unsat + 0 sat of 11 subjects
+s108.ofn 
+s1090.ofn answered 0 unsat + 0 sat of 12 subjects
+s1091.ofn answered 0 unsat + 0 sat of 11 subjects
+s1092.ofn answered 0 unsat + 0 sat of 13 subjects
+s1093.ofn answered 0 unsat + 0 sat of 11 subjects
+s1094.ofn answered 0 unsat + 0 sat of 13 subjects
+s1095.ofn answered 4 unsat + 0 sat of 10 subjects
+s1096.ofn 
+s1097.ofn answered 0 unsat + 0 sat of 13 subjects
+s1098.ofn answered 0 unsat + 0 sat of 10 subjects
+s1099.ofn answered 0 unsat + 0 sat of 12 subjects
+s109.ofn 
+s10.ofn 
+s1100.ofn 
+s1101.ofn answered 0 unsat + 0 sat of 11 subjects
+s1102.ofn 
+s1103.ofn answered 0 unsat + 0 sat of 12 subjects
+s1104.ofn answered 0 unsat + 0 sat of 11 subjects
+s1105.ofn 
+s1106.ofn 
+s1107.ofn 
+s1108.ofn answered 0 unsat + 0 sat of 10 subjects
+s1109.ofn 
+s110.ofn answered 1 unsat + 0 sat of 12 subjects
+s1110.ofn answered 0 unsat + 0 sat of 12 subjects
+s1111.ofn 
+s1112.ofn answered 0 unsat + 0 sat of 11 subjects
+s1113.ofn 
+s1114.ofn answered 0 unsat + 0 sat of 13 subjects
+s1115.ofn 
+s1116.ofn answered 0 unsat + 0 sat of 13 subjects
+s1117.ofn answered 0 unsat + 0 sat of 12 subjects
+s1118.ofn answered 0 unsat + 0 sat of 10 subjects
+s1119.ofn answered 0 unsat + 0 sat of 9 subjects
+s111.ofn answered 0 unsat + 0 sat of 10 subjects
+s1120.ofn answered 0 unsat + 0 sat of 13 subjects
+s1121.ofn 
+s1122.ofn 
+s1123.ofn 
+s1124.ofn answered 0 unsat + 0 sat of 9 subjects
+s1125.ofn answered 0 unsat + 0 sat of 10 subjects
+s1126.ofn 
+s1127.ofn answered 0 unsat + 0 sat of 12 subjects
+s1128.ofn answered 0 unsat + 0 sat of 9 subjects
+s1129.ofn 
+s112.ofn answered 0 unsat + 0 sat of 12 subjects
+s1130.ofn answered 0 unsat + 0 sat of 13 subjects
+s1131.ofn 
+s1132.ofn answered 0 unsat + 0 sat of 13 subjects
+s1133.ofn 
+s1134.ofn 
+s1135.ofn 
+s1136.ofn answered 0 unsat + 0 sat of 9 subjects
+s1137.ofn answered 0 unsat + 0 sat of 12 subjects
+s1138.ofn answered 0 unsat + 0 sat of 11 subjects
+s1139.ofn 
+s113.ofn answered 0 unsat + 1 sat of 9 subjects
+s1140.ofn answered 0 unsat + 0 sat of 11 subjects
+s1141.ofn answered 0 unsat + 0 sat of 12 subjects
+s1142.ofn answered 0 unsat + 0 sat of 9 subjects
+s1143.ofn answered 0 unsat + 0 sat of 10 subjects
+s1144.ofn answered 0 unsat + 0 sat of 13 subjects
+s1145.ofn answered 0 unsat + 0 sat of 10 subjects
+s1146.ofn answered 0 unsat + 0 sat of 12 subjects
+s1147.ofn answered 0 unsat + 0 sat of 10 subjects
+s1148.ofn answered 0 unsat + 0 sat of 12 subjects
+s1149.ofn 
+s114.ofn answered 0 unsat + 0 sat of 10 subjects
+s1150.ofn 
+s1151.ofn 
+s1152.ofn 
+s1153.ofn 
+s1154.ofn 
+s1155.ofn answered 0 unsat + 0 sat of 10 subjects
+s1156.ofn answered 0 unsat + 0 sat of 13 subjects
+s1157.ofn answered 2 unsat + 0 sat of 13 subjects
+s1158.ofn 
+s1159.ofn answered 0 unsat + 0 sat of 10 subjects
+s115.ofn 
+s1160.ofn answered 0 unsat + 0 sat of 12 subjects
+s1161.ofn 
+s1162.ofn answered 0 unsat + 0 sat of 12 subjects
+s1163.ofn answered 0 unsat + 0 sat of 9 subjects
+s1164.ofn 
+s1165.ofn 
+s1166.ofn answered 0 unsat + 0 sat of 9 subjects
+s1167.ofn 
+s1168.ofn answered 0 unsat + 0 sat of 13 subjects
+s1169.ofn 
+s116.ofn answered 0 unsat + 0 sat of 13 subjects
+s1170.ofn 
+s1171.ofn 
+s1172.ofn answered 0 unsat + 0 sat of 13 subjects
+s1173.ofn answered 1 unsat + 0 sat of 12 subjects
+s1174.ofn answered 0 unsat + 0 sat of 10 subjects
+s1175.ofn 
+s1176.ofn answered 0 unsat + 0 sat of 13 subjects
+s1177.ofn answered 0 unsat + 0 sat of 12 subjects
+s1178.ofn answered 0 unsat + 0 sat of 13 subjects
+s1179.ofn answered 0 unsat + 0 sat of 13 subjects
+s117.ofn 
+s1180.ofn answered 0 unsat + 0 sat of 12 subjects
+s1181.ofn 
+s1182.ofn answered 0 unsat + 0 sat of 10 subjects
+s1183.ofn answered 0 unsat + 0 sat of 11 subjects
+s1184.ofn 
+s1185.ofn 
+s1186.ofn 
+s1187.ofn 
+s1188.ofn 
+s1189.ofn 
+s118.ofn answered 0 unsat + 0 sat of 10 subjects
+s1190.ofn answered 1 unsat + 0 sat of 12 subjects
+s1191.ofn 
+s1192.ofn 
+s1193.ofn answered 0 unsat + 0 sat of 11 subjects
+s1194.ofn 
+s1195.ofn 
+s1196.ofn answered 0 unsat + 0 sat of 10 subjects
+s1197.ofn 
+s1198.ofn answered 0 unsat + 0 sat of 11 subjects
+s1199.ofn 
+s119.ofn answered 0 unsat + 0 sat of 11 subjects
+s11.ofn answered 0 unsat + 0 sat of 12 subjects
+s1200.ofn 
+s1201.ofn 
+s1202.ofn answered 0 unsat + 0 sat of 11 subjects
+s1203.ofn 
+s1204.ofn answered 0 unsat + 0 sat of 12 subjects
+s1205.ofn 
+s1206.ofn answered 0 unsat + 0 sat of 11 subjects
+s1207.ofn 
+s1208.ofn answered 0 unsat + 0 sat of 9 subjects
+s1209.ofn answered 0 unsat + 0 sat of 13 subjects
+s120.ofn answered 0 unsat + 0 sat of 13 subjects
+s1210.ofn answered 0 unsat + 0 sat of 9 subjects
+s1211.ofn answered 0 unsat + 0 sat of 11 subjects
+s1212.ofn answered 0 unsat + 1 sat of 11 subjects
+s1213.ofn 
+s1214.ofn 
+s1215.ofn answered 0 unsat + 0 sat of 12 subjects
+s1216.ofn 
+s1217.ofn answered 1 unsat + 0 sat of 9 subjects
+s1218.ofn 
+s1219.ofn 
+s121.ofn answered 0 unsat + 0 sat of 9 subjects
+s1220.ofn answered 0 unsat + 0 sat of 11 subjects
+s1221.ofn 
+s1222.ofn answered 0 unsat + 0 sat of 13 subjects
+s1223.ofn answered 4 unsat + 0 sat of 12 subjects
+s1224.ofn 
+s1225.ofn answered 0 unsat + 0 sat of 12 subjects
+s1226.ofn answered 0 unsat + 0 sat of 12 subjects
+s1227.ofn 
+s1228.ofn answered 0 unsat + 0 sat of 9 subjects
+s1229.ofn answered 0 unsat + 0 sat of 10 subjects
+s122.ofn 
+s1230.ofn answered 0 unsat + 0 sat of 13 subjects
+s1231.ofn 
+s1232.ofn 
+s1233.ofn answered 0 unsat + 0 sat of 11 subjects
+s1234.ofn 
+s1235.ofn 
+s1236.ofn answered 0 unsat + 0 sat of 13 subjects
+s1237.ofn answered 0 unsat + 0 sat of 10 subjects
+s1238.ofn answered 0 unsat + 0 sat of 9 subjects
+s1239.ofn 
+s123.ofn answered 1 unsat + 0 sat of 9 subjects
+s1240.ofn answered 0 unsat + 0 sat of 12 subjects
+s1241.ofn answered 0 unsat + 0 sat of 13 subjects
+s1242.ofn answered 0 unsat + 0 sat of 9 subjects
+s1243.ofn answered 0 unsat + 0 sat of 13 subjects
+s1244.ofn answered 0 unsat + 0 sat of 11 subjects
+s1245.ofn 
+s1246.ofn 
+s1247.ofn answered 1 unsat + 0 sat of 9 subjects
+s1248.ofn answered 0 unsat + 0 sat of 13 subjects
+s1249.ofn 
+s124.ofn 
+s1250.ofn 
+s1251.ofn 
+s1252.ofn 
+s1253.ofn answered 0 unsat + 0 sat of 10 subjects
+s1254.ofn answered 0 unsat + 0 sat of 12 subjects
+s1255.ofn answered 0 unsat + 0 sat of 12 subjects
+s1256.ofn 
+s1257.ofn answered 0 unsat + 0 sat of 13 subjects
+s1258.ofn answered 1 unsat + 0 sat of 10 subjects
+s1259.ofn 
+s125.ofn 
+s1260.ofn answered 0 unsat + 1 sat of 9 subjects
+s1261.ofn 
+s1262.ofn answered 0 unsat + 0 sat of 10 subjects
+s1263.ofn answered 0 unsat + 0 sat of 10 subjects
+s1264.ofn answered 0 unsat + 0 sat of 9 subjects
+s1265.ofn answered 1 unsat + 0 sat of 9 subjects
+s1266.ofn answered 0 unsat + 0 sat of 10 subjects
+s1267.ofn answered 0 unsat + 0 sat of 9 subjects
+s1268.ofn 
+s1269.ofn 
+s126.ofn 
+s1270.ofn answered 0 unsat + 0 sat of 13 subjects
+s1271.ofn 
+s1272.ofn 
+s1273.ofn 
+s1274.ofn answered 0 unsat + 0 sat of 9 subjects
+s1275.ofn answered 0 unsat + 0 sat of 13 subjects
+s1276.ofn 
+s1277.ofn answered 0 unsat + 0 sat of 10 subjects
+s1278.ofn 
+s1279.ofn answered 0 unsat + 0 sat of 12 subjects
+s127.ofn answered 0 unsat + 0 sat of 9 subjects
+s1280.ofn answered 0 unsat + 0 sat of 11 subjects
+s1281.ofn 
+s1282.ofn 
+s1283.ofn answered 0 unsat + 0 sat of 11 subjects
+s1284.ofn 
+s1285.ofn 
+s1286.ofn 
+s1287.ofn 
+s1288.ofn 
+s1289.ofn 
+s128.ofn answered 0 unsat + 0 sat of 10 subjects
+s1290.ofn 
+s1291.ofn 
+s1292.ofn 
+s1293.ofn answered 0 unsat + 0 sat of 11 subjects
+s1294.ofn 
+s1295.ofn answered 0 unsat + 0 sat of 9 subjects
+s1296.ofn answered 0 unsat + 0 sat of 12 subjects
+s1297.ofn answered 0 unsat + 0 sat of 12 subjects
+s1298.ofn answered 0 unsat + 0 sat of 10 subjects
+s1299.ofn 
+s129.ofn answered 0 unsat + 0 sat of 13 subjects
+s12.ofn answered 0 unsat + 0 sat of 12 subjects
+s1300.ofn 
+s1301.ofn answered 0 unsat + 0 sat of 12 subjects
+s1302.ofn answered 0 unsat + 0 sat of 12 subjects
+s1303.ofn answered 1 unsat + 0 sat of 11 subjects
+s1304.ofn answered 0 unsat + 0 sat of 12 subjects
+s1305.ofn answered 0 unsat + 0 sat of 10 subjects
+s1306.ofn answered 0 unsat + 0 sat of 12 subjects
+s1307.ofn 
+s1308.ofn answered 0 unsat + 0 sat of 12 subjects
+s1309.ofn answered 0 unsat + 0 sat of 12 subjects
+s130.ofn answered 0 unsat + 0 sat of 13 subjects
+s1310.ofn answered 0 unsat + 0 sat of 10 subjects
+s1311.ofn 
+s1312.ofn answered 0 unsat + 0 sat of 13 subjects
+s1313.ofn 
+s1314.ofn 
+s1315.ofn answered 0 unsat + 0 sat of 12 subjects
+s1316.ofn answered 0 unsat + 0 sat of 10 subjects
+s1317.ofn 
+s1318.ofn answered 0 unsat + 0 sat of 11 subjects
+s1319.ofn answered 0 unsat + 0 sat of 12 subjects
+s131.ofn answered 0 unsat + 0 sat of 11 subjects
+s1320.ofn 
+s1321.ofn 
+s1322.ofn answered 0 unsat + 0 sat of 12 subjects
+s1323.ofn 
+s1324.ofn answered 0 unsat + 0 sat of 12 subjects
+s1325.ofn 
+s1326.ofn 
+s1327.ofn answered 0 unsat + 0 sat of 10 subjects
+s1328.ofn answered 0 unsat + 0 sat of 10 subjects
+s1329.ofn 
+s132.ofn 
+s1330.ofn 
+s1331.ofn answered 0 unsat + 0 sat of 13 subjects
+s1332.ofn 
+s1333.ofn answered 0 unsat + 0 sat of 12 subjects
+s1334.ofn 
+s1335.ofn 
+s1336.ofn answered 0 unsat + 0 sat of 13 subjects
+s1337.ofn answered 0 unsat + 0 sat of 13 subjects
+s1338.ofn answered 0 unsat + 0 sat of 11 subjects
+s1339.ofn 
+s133.ofn answered 0 unsat + 0 sat of 12 subjects
+s1340.ofn answered 0 unsat + 0 sat of 11 subjects
+s1341.ofn answered 0 unsat + 0 sat of 12 subjects
+s1342.ofn answered 0 unsat + 0 sat of 9 subjects
+s1343.ofn 
+s1344.ofn answered 0 unsat + 0 sat of 12 subjects
+s1345.ofn answered 0 unsat + 0 sat of 9 subjects
+s1346.ofn 
+s1347.ofn 
+s1348.ofn 
+s1349.ofn answered 0 unsat + 0 sat of 9 subjects
+s134.ofn answered 0 unsat + 0 sat of 12 subjects
+s1350.ofn 
+s1351.ofn 
+s1352.ofn 
+s1353.ofn answered 0 unsat + 0 sat of 10 subjects
+s1354.ofn 
+s1355.ofn 
+s1356.ofn 
+s1357.ofn 
+s1358.ofn answered 0 unsat + 0 sat of 9 subjects
+s1359.ofn answered 0 unsat + 0 sat of 12 subjects
+s135.ofn 
+s1360.ofn 
+s1361.ofn answered 0 unsat + 0 sat of 9 subjects
+s1362.ofn answered 0 unsat + 0 sat of 9 subjects
+s1363.ofn answered 1 unsat + 0 sat of 10 subjects
+s1364.ofn 
+s1365.ofn answered 0 unsat + 0 sat of 12 subjects
+s1366.ofn answered 0 unsat + 0 sat of 13 subjects
+s1367.ofn 
+s1368.ofn 
+s1369.ofn answered 0 unsat + 0 sat of 13 subjects
+s136.ofn 
+s1370.ofn 
+s1371.ofn answered 0 unsat + 0 sat of 12 subjects
+s1372.ofn answered 0 unsat + 0 sat of 9 subjects
+s1373.ofn 
+s1374.ofn answered 0 unsat + 0 sat of 9 subjects
+s1375.ofn answered 0 unsat + 0 sat of 9 subjects
+s1376.ofn answered 0 unsat + 0 sat of 12 subjects
+s1377.ofn answered 0 unsat + 0 sat of 10 subjects
+s1378.ofn answered 0 unsat + 0 sat of 9 subjects
+s1379.ofn answered 0 unsat + 0 sat of 11 subjects
+s137.ofn 
+s1380.ofn answered 0 unsat + 0 sat of 13 subjects
+s1381.ofn answered 0 unsat + 0 sat of 13 subjects
+s1382.ofn answered 0 unsat + 0 sat of 12 subjects
+s1383.ofn 
+s1384.ofn 
+s1385.ofn 
+s1386.ofn answered 0 unsat + 0 sat of 13 subjects
+s1387.ofn 
+s1388.ofn answered 0 unsat + 0 sat of 13 subjects
+s1389.ofn answered 0 unsat + 0 sat of 9 subjects
+s138.ofn answered 0 unsat + 0 sat of 10 subjects
+s1390.ofn answered 0 unsat + 0 sat of 9 subjects
+s1391.ofn answered 0 unsat + 0 sat of 10 subjects
+s1392.ofn answered 0 unsat + 0 sat of 11 subjects
+s1393.ofn answered 0 unsat + 0 sat of 12 subjects
+s1394.ofn answered 0 unsat + 0 sat of 12 subjects
+s1395.ofn 
+s1396.ofn 
+s1397.ofn answered 0 unsat + 0 sat of 9 subjects
+s1398.ofn answered 0 unsat + 0 sat of 11 subjects
+s1399.ofn answered 0 unsat + 0 sat of 13 subjects
+s139.ofn answered 0 unsat + 0 sat of 9 subjects
+s13.ofn answered 0 unsat + 0 sat of 11 subjects
+s1400.ofn answered 0 unsat + 0 sat of 10 subjects
+s1401.ofn answered 0 unsat + 0 sat of 12 subjects
+s1402.ofn answered 0 unsat + 0 sat of 13 subjects
+s1403.ofn 
+s1404.ofn 
+s1405.ofn 
+s1406.ofn answered 0 unsat + 0 sat of 10 subjects
+s1407.ofn 
+s1408.ofn 
+s1409.ofn 
+s140.ofn 
+s1410.ofn answered 0 unsat + 0 sat of 11 subjects
+s1411.ofn answered 0 unsat + 0 sat of 9 subjects
+s1412.ofn answered 0 unsat + 0 sat of 12 subjects
+s1413.ofn answered 0 unsat + 0 sat of 12 subjects
+s1414.ofn 
+s1415.ofn 
+s1416.ofn answered 0 unsat + 0 sat of 9 subjects
+s1417.ofn answered 0 unsat + 0 sat of 11 subjects
+s1418.ofn answered 0 unsat + 0 sat of 9 subjects
+s1419.ofn answered 0 unsat + 0 sat of 13 subjects
+s141.ofn answered 0 unsat + 0 sat of 13 subjects
+s1420.ofn answered 0 unsat + 0 sat of 12 subjects
+s1421.ofn 
+s1422.ofn answered 0 unsat + 0 sat of 10 subjects
+s1423.ofn 
+s1424.ofn answered 0 unsat + 0 sat of 9 subjects
+s1425.ofn 
+s1426.ofn answered 0 unsat + 0 sat of 9 subjects
+s1427.ofn 
+s1428.ofn answered 0 unsat + 0 sat of 13 subjects
+s1429.ofn answered 0 unsat + 0 sat of 9 subjects
+s142.ofn answered 0 unsat + 0 sat of 13 subjects
+s1430.ofn answered 0 unsat + 0 sat of 11 subjects
+s1431.ofn 
+s1432.ofn 
+s1433.ofn 
+s1434.ofn answered 0 unsat + 0 sat of 9 subjects
+s1435.ofn 
+s1436.ofn answered 0 unsat + 0 sat of 11 subjects
+s1437.ofn answered 0 unsat + 0 sat of 10 subjects
+s1438.ofn answered 0 unsat + 0 sat of 12 subjects
+s1439.ofn answered 0 unsat + 0 sat of 13 subjects
+s143.ofn 
+s1440.ofn answered 0 unsat + 0 sat of 10 subjects
+s1441.ofn answered 0 unsat + 0 sat of 13 subjects
+s1442.ofn answered 0 unsat + 1 sat of 9 subjects
+s1443.ofn 
+s1444.ofn answered 0 unsat + 0 sat of 10 subjects
+s1445.ofn answered 0 unsat + 0 sat of 10 subjects
+s1446.ofn answered 0 unsat + 0 sat of 11 subjects
+s1447.ofn answered 0 unsat + 0 sat of 9 subjects
+s1448.ofn answered 0 unsat + 0 sat of 12 subjects
+s1449.ofn 
+s144.ofn 
+s1450.ofn 
+s1451.ofn answered 0 unsat + 0 sat of 11 subjects
+s1452.ofn answered 0 unsat + 0 sat of 11 subjects
+s1453.ofn 
+s1454.ofn answered 0 unsat + 0 sat of 11 subjects
+s1455.ofn answered 0 unsat + 0 sat of 13 subjects
+s1456.ofn answered 0 unsat + 0 sat of 12 subjects
+s1457.ofn 
+s1458.ofn 
+s1459.ofn answered 0 unsat + 0 sat of 12 subjects
+s145.ofn 
+s1460.ofn answered 0 unsat + 0 sat of 12 subjects
+s1461.ofn 
+s1462.ofn 
+s1463.ofn 
+s1464.ofn answered 0 unsat + 0 sat of 11 subjects
+s1465.ofn 
+s1466.ofn answered 0 unsat + 0 sat of 13 subjects
+s1467.ofn answered 0 unsat + 0 sat of 11 subjects
+s1468.ofn answered 0 unsat + 0 sat of 10 subjects
+s1469.ofn answered 0 unsat + 0 sat of 9 subjects
+s146.ofn 
+s1470.ofn answered 0 unsat + 0 sat of 12 subjects
+s1471.ofn 
+s1472.ofn 
+s1473.ofn answered 0 unsat + 0 sat of 9 subjects
+s1474.ofn answered 0 unsat + 0 sat of 9 subjects
+s1475.ofn 
+s1476.ofn answered 0 unsat + 0 sat of 13 subjects
+s1477.ofn answered 0 unsat + 0 sat of 12 subjects
+s1478.ofn 
+s1479.ofn 
+s147.ofn answered 2 unsat + 0 sat of 13 subjects
+s1480.ofn 
+s1481.ofn answered 0 unsat + 0 sat of 9 subjects
+s1482.ofn answered 0 unsat + 0 sat of 9 subjects
+s1483.ofn 
+s1484.ofn answered 0 unsat + 0 sat of 10 subjects
+s1485.ofn answered 0 unsat + 0 sat of 11 subjects
+s1486.ofn answered 0 unsat + 0 sat of 12 subjects
+s1487.ofn answered 0 unsat + 0 sat of 10 subjects
+s1488.ofn 
+s1489.ofn answered 0 unsat + 0 sat of 12 subjects
+s148.ofn answered 0 unsat + 0 sat of 12 subjects
+s1490.ofn 
+s1491.ofn 
+s1492.ofn 
+s1493.ofn 
+s1494.ofn 
+s1495.ofn answered 0 unsat + 0 sat of 12 subjects
+s1496.ofn 
+s1497.ofn 
+s1498.ofn 
+s1499.ofn answered 0 unsat + 0 sat of 11 subjects
+s149.ofn answered 0 unsat + 0 sat of 9 subjects
+s14.ofn answered 0 unsat + 0 sat of 9 subjects
+s1500.ofn 
+s1501.ofn 
+s1502.ofn answered 0 unsat + 0 sat of 10 subjects
+s1503.ofn 
+s1504.ofn answered 0 unsat + 0 sat of 12 subjects
+s1505.ofn answered 0 unsat + 0 sat of 9 subjects
+s1506.ofn answered 0 unsat + 1 sat of 10 subjects
+s1507.ofn answered 0 unsat + 0 sat of 9 subjects
+s1508.ofn 
+s1509.ofn 
+s150.ofn 
+s1510.ofn answered 0 unsat + 0 sat of 12 subjects
+s1511.ofn answered 0 unsat + 0 sat of 10 subjects
+s1512.ofn 
+s1513.ofn 
+s1514.ofn answered 0 unsat + 0 sat of 9 subjects
+s1515.ofn answered 0 unsat + 0 sat of 11 subjects
+s1516.ofn answered 0 unsat + 0 sat of 10 subjects
+s1517.ofn answered 0 unsat + 0 sat of 12 subjects
+s1518.ofn answered 0 unsat + 0 sat of 10 subjects
+s1519.ofn 
+s151.ofn 
+s1520.ofn 
+s1521.ofn 
+s1522.ofn 
+s1523.ofn 
+s1524.ofn answered 0 unsat + 0 sat of 9 subjects
+s1525.ofn answered 0 unsat + 0 sat of 11 subjects
+s1526.ofn answered 0 unsat + 0 sat of 13 subjects
+s1527.ofn answered 0 unsat + 0 sat of 13 subjects
+s1528.ofn answered 1 unsat + 0 sat of 11 subjects
+s1529.ofn 
+s152.ofn answered 0 unsat + 0 sat of 12 subjects
+s1530.ofn answered 0 unsat + 1 sat of 9 subjects
+s1531.ofn 
+s1532.ofn answered 0 unsat + 0 sat of 10 subjects
+s1533.ofn 
+s1534.ofn answered 0 unsat + 0 sat of 11 subjects
+s1535.ofn answered 0 unsat + 0 sat of 11 subjects
+s1536.ofn answered 0 unsat + 0 sat of 9 subjects
+s1537.ofn answered 0 unsat + 0 sat of 11 subjects
+s1538.ofn 
+s1539.ofn answered 0 unsat + 0 sat of 9 subjects
+s153.ofn 
+s1540.ofn answered 0 unsat + 0 sat of 9 subjects
+s1541.ofn answered 0 unsat + 0 sat of 11 subjects
+s1542.ofn 
+s1543.ofn answered 0 unsat + 0 sat of 9 subjects
+s1544.ofn answered 0 unsat + 0 sat of 10 subjects
+s1545.ofn 
+s1546.ofn answered 0 unsat + 0 sat of 10 subjects
+s1547.ofn 
+s1548.ofn answered 0 unsat + 0 sat of 10 subjects
+s1549.ofn 
+s154.ofn answered 0 unsat + 0 sat of 10 subjects
+s1550.ofn 
+s1551.ofn 
+s1552.ofn answered 0 unsat + 1 sat of 10 subjects
+s1553.ofn 
+s1554.ofn 
+s1555.ofn answered 0 unsat + 0 sat of 11 subjects
+s1556.ofn answered 0 unsat + 0 sat of 11 subjects
+s1557.ofn 
+s1558.ofn answered 0 unsat + 0 sat of 10 subjects
+s1559.ofn 
+s155.ofn answered 0 unsat + 0 sat of 13 subjects
+s1560.ofn answered 0 unsat + 0 sat of 12 subjects
+s1561.ofn answered 0 unsat + 0 sat of 10 subjects
+s1562.ofn 
+s1563.ofn answered 0 unsat + 0 sat of 13 subjects
+s1564.ofn answered 0 unsat + 0 sat of 9 subjects
+s1565.ofn answered 0 unsat + 0 sat of 13 subjects
+s1566.ofn 
+s1567.ofn 
+s1568.ofn answered 0 unsat + 0 sat of 12 subjects
+s1569.ofn answered 0 unsat + 0 sat of 12 subjects
+s156.ofn answered 0 unsat + 0 sat of 12 subjects
+s1570.ofn 
+s1571.ofn 
+s1572.ofn 
+s1573.ofn answered 0 unsat + 0 sat of 12 subjects
+s1574.ofn 
+s1575.ofn 
+s1576.ofn answered 0 unsat + 0 sat of 11 subjects
+s1577.ofn 
+s1578.ofn answered 0 unsat + 0 sat of 12 subjects
+s1579.ofn answered 0 unsat + 0 sat of 9 subjects
+s157.ofn 
+s1580.ofn 
+s1581.ofn answered 1 unsat + 0 sat of 11 subjects
+s1582.ofn answered 0 unsat + 0 sat of 10 subjects
+s1583.ofn 
+s1584.ofn answered 0 unsat + 0 sat of 11 subjects
+s1585.ofn answered 0 unsat + 0 sat of 13 subjects
+s1586.ofn 
+s1587.ofn 
+s1588.ofn answered 0 unsat + 0 sat of 13 subjects
+s1589.ofn answered 0 unsat + 0 sat of 9 subjects
+s158.ofn 
+s1590.ofn answered 0 unsat + 0 sat of 9 subjects
+s1591.ofn 
+s1592.ofn answered 0 unsat + 0 sat of 11 subjects
+s1593.ofn answered 0 unsat + 0 sat of 12 subjects
+s1594.ofn 
+s1595.ofn answered 0 unsat + 0 sat of 10 subjects
+s1596.ofn answered 0 unsat + 0 sat of 9 subjects
+s1597.ofn 
+s1598.ofn answered 0 unsat + 0 sat of 12 subjects
+s1599.ofn 
+s159.ofn 
+s15.ofn 
+s1600.ofn 
+s1601.ofn 
+s1602.ofn answered 0 unsat + 0 sat of 11 subjects
+s1603.ofn answered 0 unsat + 0 sat of 13 subjects
+s1604.ofn answered 0 unsat + 0 sat of 9 subjects
+s1605.ofn answered 1 unsat + 0 sat of 10 subjects
+s1606.ofn answered 0 unsat + 0 sat of 13 subjects
+s1607.ofn 
+s1608.ofn answered 0 unsat + 0 sat of 10 subjects
+s1609.ofn 
+s160.ofn answered 0 unsat + 0 sat of 9 subjects
+s1610.ofn answered 0 unsat + 0 sat of 11 subjects
+s1611.ofn answered 0 unsat + 0 sat of 11 subjects
+s1612.ofn answered 0 unsat + 0 sat of 10 subjects
+s1613.ofn 
+s1614.ofn answered 0 unsat + 0 sat of 10 subjects
+s1615.ofn answered 2 unsat + 0 sat of 11 subjects
+s1616.ofn answered 0 unsat + 0 sat of 13 subjects
+s1617.ofn 
+s1618.ofn answered 0 unsat + 0 sat of 9 subjects
+s1619.ofn 
+s161.ofn 
+s1620.ofn answered 0 unsat + 0 sat of 9 subjects
+s1621.ofn answered 0 unsat + 0 sat of 10 subjects
+s1622.ofn answered 0 unsat + 0 sat of 12 subjects
+s1623.ofn answered 0 unsat + 0 sat of 10 subjects
+s1624.ofn answered 0 unsat + 0 sat of 10 subjects
+s1625.ofn answered 1 unsat + 0 sat of 11 subjects
+s1626.ofn 
+s1627.ofn answered 0 unsat + 0 sat of 11 subjects
+s1628.ofn answered 0 unsat + 0 sat of 9 subjects
+s1629.ofn 
+s162.ofn answered 0 unsat + 0 sat of 9 subjects
+s1630.ofn answered 0 unsat + 0 sat of 9 subjects
+s1631.ofn 
+s1632.ofn 
+s1633.ofn 
+s1634.ofn answered 0 unsat + 1 sat of 9 subjects
+s1635.ofn 
+s1636.ofn answered 0 unsat + 0 sat of 10 subjects
+s1637.ofn 
+s1638.ofn answered 0 unsat + 0 sat of 12 subjects
+s1639.ofn answered 0 unsat + 0 sat of 9 subjects
+s163.ofn answered 0 unsat + 0 sat of 13 subjects
+s1640.ofn answered 0 unsat + 0 sat of 13 subjects
+s1641.ofn answered 0 unsat + 0 sat of 11 subjects
+s1642.ofn 
+s1643.ofn answered 0 unsat + 0 sat of 11 subjects
+s1644.ofn 
+s1645.ofn answered 0 unsat + 0 sat of 11 subjects
+s1646.ofn answered 1 unsat + 0 sat of 12 subjects
+s1647.ofn answered 0 unsat + 0 sat of 12 subjects
+s1648.ofn answered 0 unsat + 0 sat of 9 subjects
+s1649.ofn 
+s164.ofn answered 0 unsat + 0 sat of 9 subjects
+s1650.ofn 
+s1651.ofn answered 0 unsat + 0 sat of 9 subjects
+s1652.ofn answered 0 unsat + 0 sat of 11 subjects
+s1653.ofn answered 0 unsat + 0 sat of 9 subjects
+s1654.ofn 
+s1655.ofn answered 0 unsat + 0 sat of 13 subjects
+s1656.ofn answered 0 unsat + 0 sat of 12 subjects
+s1657.ofn 
+s1658.ofn answered 0 unsat + 0 sat of 12 subjects
+s1659.ofn answered 0 unsat + 0 sat of 12 subjects
+s165.ofn 
+s1660.ofn answered 0 unsat + 0 sat of 9 subjects
+s1661.ofn 
+s1662.ofn answered 0 unsat + 0 sat of 11 subjects
+s1663.ofn answered 0 unsat + 0 sat of 9 subjects
+s1664.ofn 
+s1665.ofn answered 0 unsat + 0 sat of 13 subjects
+s1666.ofn answered 0 unsat + 0 sat of 13 subjects
+s1667.ofn answered 0 unsat + 0 sat of 12 subjects
+s1668.ofn answered 0 unsat + 0 sat of 13 subjects
+s1669.ofn answered 0 unsat + 0 sat of 10 subjects
+s166.ofn answered 0 unsat + 0 sat of 10 subjects
+s1670.ofn answered 0 unsat + 0 sat of 12 subjects
+s1671.ofn answered 0 unsat + 0 sat of 11 subjects
+s1672.ofn answered 0 unsat + 0 sat of 13 subjects
+s1673.ofn 
+s1674.ofn 
+s1675.ofn 
+s1676.ofn 
+s1677.ofn 
+s1678.ofn answered 0 unsat + 0 sat of 11 subjects
+s1679.ofn 
+s167.ofn 
+s1680.ofn 
+s1681.ofn answered 0 unsat + 0 sat of 11 subjects
+s1682.ofn answered 1 unsat + 0 sat of 11 subjects
+s1683.ofn 
+s1684.ofn answered 0 unsat + 0 sat of 12 subjects
+s1685.ofn 
+s1686.ofn 
+s1687.ofn 
+s1688.ofn 
+s1689.ofn answered 0 unsat + 0 sat of 13 subjects
+s168.ofn answered 0 unsat + 0 sat of 9 subjects
+s1690.ofn answered 0 unsat + 6 sat of 9 subjects
+s1691.ofn answered 0 unsat + 0 sat of 11 subjects
+s1692.ofn answered 0 unsat + 0 sat of 10 subjects
+s1693.ofn 
+s1694.ofn answered 0 unsat + 0 sat of 9 subjects
+s1695.ofn answered 0 unsat + 0 sat of 9 subjects
+s1696.ofn answered 0 unsat + 0 sat of 9 subjects
+s1697.ofn answered 0 unsat + 0 sat of 11 subjects
+s1698.ofn 
+s1699.ofn answered 2 unsat + 0 sat of 11 subjects
+s169.ofn 
+s16.ofn answered 0 unsat + 0 sat of 11 subjects
+s1700.ofn answered 0 unsat + 0 sat of 12 subjects
+s1701.ofn answered 0 unsat + 0 sat of 12 subjects
+s1702.ofn 
+s1703.ofn 
+s1704.ofn answered 0 unsat + 0 sat of 13 subjects
+s1705.ofn answered 0 unsat + 0 sat of 13 subjects
+s1706.ofn answered 0 unsat + 0 sat of 12 subjects
+s1707.ofn answered 0 unsat + 0 sat of 10 subjects
+s1708.ofn 
+s1709.ofn answered 0 unsat + 0 sat of 13 subjects
+s170.ofn answered 0 unsat + 0 sat of 11 subjects
+s1710.ofn answered 0 unsat + 0 sat of 12 subjects
+s1711.ofn 
+s1712.ofn 
+s1713.ofn 
+s1714.ofn answered 0 unsat + 0 sat of 12 subjects
+s1715.ofn answered 0 unsat + 0 sat of 13 subjects
+s1716.ofn 
+s1717.ofn 
+s1718.ofn 
+s1719.ofn 
+s171.ofn answered 0 unsat + 0 sat of 13 subjects
+s1720.ofn answered 0 unsat + 0 sat of 11 subjects
+s1721.ofn answered 0 unsat + 0 sat of 10 subjects
+s1722.ofn answered 0 unsat + 0 sat of 12 subjects
+s1723.ofn 
+s1724.ofn answered 0 unsat + 0 sat of 9 subjects
+s1725.ofn answered 0 unsat + 0 sat of 11 subjects
+s1726.ofn answered 0 unsat + 0 sat of 10 subjects
+s1727.ofn 
+s1728.ofn answered 0 unsat + 0 sat of 12 subjects
+s1729.ofn answered 0 unsat + 0 sat of 9 subjects
+s172.ofn answered 0 unsat + 0 sat of 11 subjects
+s1730.ofn 
+s1731.ofn answered 0 unsat + 0 sat of 12 subjects
+s1732.ofn answered 0 unsat + 0 sat of 10 subjects
+s1733.ofn answered 0 unsat + 0 sat of 10 subjects
+s1734.ofn 
+s1735.ofn 
+s1736.ofn answered 0 unsat + 0 sat of 9 subjects
+s1737.ofn answered 0 unsat + 0 sat of 10 subjects
+s1738.ofn answered 0 unsat + 0 sat of 13 subjects
+s1739.ofn answered 0 unsat + 0 sat of 10 subjects
+s173.ofn answered 0 unsat + 0 sat of 11 subjects
+s1740.ofn answered 0 unsat + 0 sat of 10 subjects
+s1741.ofn answered 0 unsat + 0 sat of 10 subjects
+s1742.ofn answered 0 unsat + 0 sat of 9 subjects
+s1743.ofn 
+s1744.ofn 
+s1745.ofn answered 0 unsat + 0 sat of 11 subjects
+s1746.ofn 
+s1747.ofn 
+s1748.ofn answered 0 unsat + 0 sat of 13 subjects
+s1749.ofn answered 0 unsat + 0 sat of 10 subjects
+s174.ofn 
+s1750.ofn answered 0 unsat + 0 sat of 11 subjects
+s1751.ofn answered 0 unsat + 0 sat of 9 subjects
+s1752.ofn 
+s1753.ofn 
+s1754.ofn answered 0 unsat + 0 sat of 10 subjects
+s1755.ofn answered 0 unsat + 0 sat of 11 subjects
+s1756.ofn answered 0 unsat + 0 sat of 11 subjects
+s1757.ofn answered 0 unsat + 0 sat of 13 subjects
+s1758.ofn answered 0 unsat + 0 sat of 10 subjects
+s1759.ofn answered 0 unsat + 0 sat of 12 subjects
+s175.ofn answered 0 unsat + 0 sat of 12 subjects
+s1760.ofn answered 0 unsat + 0 sat of 13 subjects
+s1761.ofn answered 1 unsat + 0 sat of 9 subjects
+s1762.ofn 
+s1763.ofn 
+s1764.ofn 
+s1765.ofn 
+s1766.ofn answered 0 unsat + 0 sat of 10 subjects
+s1767.ofn answered 0 unsat + 0 sat of 13 subjects
+s1768.ofn answered 0 unsat + 0 sat of 9 subjects
+s1769.ofn 
+s176.ofn answered 0 unsat + 0 sat of 9 subjects
+s1770.ofn answered 0 unsat + 0 sat of 11 subjects
+s1771.ofn 
+s1772.ofn answered 0 unsat + 0 sat of 10 subjects
+s1773.ofn 
+s1774.ofn answered 0 unsat + 0 sat of 11 subjects
+s1775.ofn 
+s1776.ofn answered 0 unsat + 0 sat of 13 subjects
+s1777.ofn answered 0 unsat + 0 sat of 13 subjects
+s1778.ofn 
+s1779.ofn 
+s177.ofn answered 1 unsat + 0 sat of 10 subjects
+s1780.ofn answered 0 unsat + 0 sat of 13 subjects
+s1781.ofn answered 0 unsat + 0 sat of 9 subjects
+s1782.ofn answered 0 unsat + 0 sat of 12 subjects
+s1783.ofn answered 0 unsat + 0 sat of 12 subjects
+s1784.ofn answered 0 unsat + 0 sat of 9 subjects
+s1785.ofn 
+s1786.ofn answered 0 unsat + 0 sat of 13 subjects
+s1787.ofn 
+s1788.ofn 
+s1789.ofn 
+s178.ofn answered 0 unsat + 0 sat of 9 subjects
+s1790.ofn answered 0 unsat + 0 sat of 10 subjects
+s1791.ofn 
+s1792.ofn answered 0 unsat + 0 sat of 12 subjects
+s1793.ofn answered 0 unsat + 0 sat of 9 subjects
+s1794.ofn 
+s1795.ofn answered 0 unsat + 0 sat of 9 subjects
+s1796.ofn answered 0 unsat + 0 sat of 12 subjects
+s1797.ofn 
+s1798.ofn answered 0 unsat + 0 sat of 12 subjects
+s1799.ofn 
+s179.ofn 
+s17.ofn 
+s1800.ofn 
+s1801.ofn 
+s1802.ofn answered 0 unsat + 0 sat of 13 subjects
+s1803.ofn answered 0 unsat + 0 sat of 13 subjects
+s1804.ofn answered 0 unsat + 0 sat of 11 subjects
+s1805.ofn answered 0 unsat + 0 sat of 11 subjects
+s1806.ofn answered 0 unsat + 0 sat of 9 subjects
+s1807.ofn 
+s1808.ofn answered 0 unsat + 0 sat of 9 subjects
+s1809.ofn answered 0 unsat + 0 sat of 11 subjects
+s180.ofn 
+s1810.ofn 
+s1811.ofn answered 0 unsat + 0 sat of 13 subjects
+s1812.ofn answered 0 unsat + 0 sat of 13 subjects
+s1813.ofn 
+s1814.ofn answered 0 unsat + 0 sat of 10 subjects
+s1815.ofn 
+s1816.ofn 
+s1817.ofn 
+s1818.ofn 
+s1819.ofn 
+s181.ofn 
+s1820.ofn 
+s1821.ofn answered 1 unsat + 0 sat of 11 subjects
+s1822.ofn 
+s1823.ofn answered 0 unsat + 0 sat of 11 subjects
+s1824.ofn answered 0 unsat + 0 sat of 10 subjects
+s1825.ofn 
+s1826.ofn answered 0 unsat + 0 sat of 10 subjects
+s1827.ofn answered 0 unsat + 0 sat of 11 subjects
+s1828.ofn 
+s1829.ofn 
+s182.ofn 
+s1830.ofn answered 0 unsat + 0 sat of 13 subjects
+s1831.ofn answered 0 unsat + 0 sat of 13 subjects
+s1832.ofn answered 0 unsat + 0 sat of 12 subjects
+s1833.ofn answered 0 unsat + 0 sat of 13 subjects
+s1834.ofn answered 0 unsat + 0 sat of 12 subjects
+s1835.ofn answered 0 unsat + 0 sat of 9 subjects
+s1836.ofn answered 0 unsat + 0 sat of 10 subjects
+s1837.ofn 
+s1838.ofn answered 0 unsat + 0 sat of 10 subjects
+s1839.ofn 
+s183.ofn 
+s1840.ofn answered 0 unsat + 0 sat of 12 subjects
+s1841.ofn 
+s1842.ofn answered 0 unsat + 0 sat of 10 subjects
+s1843.ofn answered 0 unsat + 0 sat of 12 subjects
+s1844.ofn answered 0 unsat + 0 sat of 13 subjects
+s1845.ofn answered 0 unsat + 0 sat of 9 subjects
+s1846.ofn answered 0 unsat + 0 sat of 12 subjects
+s1847.ofn answered 0 unsat + 0 sat of 9 subjects
+s1848.ofn answered 0 unsat + 0 sat of 12 subjects
+s1849.ofn answered 0 unsat + 0 sat of 11 subjects
+s184.ofn 
+s1850.ofn 
+s1851.ofn 
+s1852.ofn 
+s1853.ofn answered 0 unsat + 0 sat of 10 subjects
+s1854.ofn 
+s1855.ofn 
+s1856.ofn answered 0 unsat + 0 sat of 12 subjects
+s1857.ofn 
+s1858.ofn answered 0 unsat + 0 sat of 13 subjects
+s1859.ofn answered 0 unsat + 0 sat of 11 subjects
+s185.ofn 
+s1860.ofn answered 0 unsat + 0 sat of 13 subjects
+s1861.ofn answered 0 unsat + 0 sat of 13 subjects
+s1862.ofn answered 0 unsat + 0 sat of 11 subjects
+s1863.ofn 
+s1864.ofn answered 0 unsat + 0 sat of 9 subjects
+s1865.ofn 
+s1866.ofn answered 0 unsat + 0 sat of 13 subjects
+s1867.ofn answered 0 unsat + 0 sat of 13 subjects
+s1868.ofn answered 0 unsat + 0 sat of 13 subjects
+s1869.ofn answered 0 unsat + 0 sat of 10 subjects
+s186.ofn answered 0 unsat + 0 sat of 11 subjects
+s1870.ofn answered 0 unsat + 0 sat of 11 subjects
+s1871.ofn 
+s1872.ofn answered 0 unsat + 0 sat of 11 subjects
+s1873.ofn 
+s1874.ofn answered 0 unsat + 0 sat of 13 subjects
+s1875.ofn answered 1 unsat + 0 sat of 10 subjects
+s1876.ofn answered 0 unsat + 0 sat of 12 subjects
+s1877.ofn 
+s1878.ofn answered 0 unsat + 0 sat of 13 subjects
+s1879.ofn 
+s187.ofn answered 0 unsat + 0 sat of 11 subjects
+s1880.ofn 
+s1881.ofn answered 0 unsat + 0 sat of 11 subjects
+s1882.ofn answered 0 unsat + 0 sat of 12 subjects
+s1883.ofn 
+s1884.ofn answered 0 unsat + 0 sat of 9 subjects
+s1885.ofn 
+s1886.ofn answered 0 unsat + 0 sat of 9 subjects
+s1887.ofn answered 0 unsat + 0 sat of 11 subjects
+s1888.ofn 
+s1889.ofn answered 0 unsat + 0 sat of 11 subjects
+s188.ofn 
+s1890.ofn answered 0 unsat + 0 sat of 12 subjects
+s1891.ofn 
+s1892.ofn 
+s1893.ofn answered 0 unsat + 0 sat of 12 subjects
+s1894.ofn 
+s1895.ofn 
+s1896.ofn 
+s1897.ofn answered 0 unsat + 0 sat of 12 subjects
+s1898.ofn answered 0 unsat + 0 sat of 11 subjects
+s1899.ofn answered 0 unsat + 0 sat of 10 subjects
+s189.ofn answered 0 unsat + 0 sat of 12 subjects
+s18.ofn 
+s1900.ofn answered 0 unsat + 0 sat of 9 subjects
+s1901.ofn answered 1 unsat + 0 sat of 13 subjects
+s1902.ofn 
+s1903.ofn 
+s1904.ofn answered 0 unsat + 0 sat of 12 subjects
+s1905.ofn answered 0 unsat + 0 sat of 9 subjects
+s1906.ofn 
+s1907.ofn answered 0 unsat + 0 sat of 10 subjects
+s1908.ofn answered 0 unsat + 0 sat of 10 subjects
+s1909.ofn 
+s190.ofn 
+s1910.ofn answered 0 unsat + 0 sat of 9 subjects
+s1911.ofn 
+s1912.ofn answered 0 unsat + 0 sat of 9 subjects
+s1913.ofn 
+s1914.ofn answered 0 unsat + 0 sat of 9 subjects
+s1915.ofn 
+s1916.ofn 
+s1917.ofn 
+s1918.ofn answered 0 unsat + 0 sat of 9 subjects
+s1919.ofn answered 0 unsat + 0 sat of 11 subjects
+s191.ofn answered 0 unsat + 0 sat of 13 subjects
+s1920.ofn answered 0 unsat + 0 sat of 12 subjects
+s1921.ofn 
+s1922.ofn 
+s1923.ofn answered 0 unsat + 0 sat of 12 subjects
+s1924.ofn answered 0 unsat + 0 sat of 11 subjects
+s1925.ofn 
+s1926.ofn answered 0 unsat + 0 sat of 11 subjects
+s1927.ofn 
+s1928.ofn answered 0 unsat + 0 sat of 10 subjects
+s1929.ofn 
+s192.ofn 
+s1930.ofn answered 0 unsat + 0 sat of 10 subjects
+s1931.ofn 
+s1932.ofn 
+s1933.ofn answered 0 unsat + 0 sat of 11 subjects
+s1934.ofn answered 0 unsat + 0 sat of 11 subjects
+s1935.ofn answered 0 unsat + 0 sat of 10 subjects
+s1936.ofn answered 0 unsat + 0 sat of 11 subjects
+s1937.ofn 
+s1938.ofn answered 0 unsat + 0 sat of 13 subjects
+s1939.ofn 
+s193.ofn answered 0 unsat + 0 sat of 13 subjects
+s1940.ofn 
+s1941.ofn 
+s1942.ofn answered 0 unsat + 0 sat of 11 subjects
+s1943.ofn 
+s1944.ofn answered 0 unsat + 0 sat of 9 subjects
+s1945.ofn answered 0 unsat + 0 sat of 12 subjects
+s1946.ofn 
+s1947.ofn answered 0 unsat + 0 sat of 13 subjects
+s1948.ofn 
+s1949.ofn answered 0 unsat + 0 sat of 13 subjects
+s194.ofn 
+s1950.ofn 
+s1951.ofn 
+s1952.ofn answered 0 unsat + 0 sat of 11 subjects
+s1953.ofn 
+s1954.ofn answered 0 unsat + 0 sat of 12 subjects
+s1955.ofn answered 0 unsat + 0 sat of 10 subjects
+s1956.ofn answered 0 unsat + 0 sat of 11 subjects
+s1957.ofn answered 0 unsat + 0 sat of 12 subjects
+s1958.ofn answered 0 unsat + 0 sat of 10 subjects
+s1959.ofn 
+s195.ofn answered 0 unsat + 0 sat of 13 subjects
+s1960.ofn answered 0 unsat + 0 sat of 11 subjects
+s1961.ofn 
+s1962.ofn 
+s1963.ofn answered 0 unsat + 0 sat of 13 subjects
+s1964.ofn 
+s1965.ofn answered 0 unsat + 0 sat of 11 subjects
+s1966.ofn 
+s1967.ofn 
+s1968.ofn 
+s1969.ofn answered 0 unsat + 0 sat of 12 subjects
+s196.ofn answered 0 unsat + 0 sat of 13 subjects
+s1970.ofn answered 0 unsat + 0 sat of 10 subjects
+s1971.ofn answered 0 unsat + 0 sat of 10 subjects
+s1972.ofn answered 0 unsat + 0 sat of 10 subjects
+s1973.ofn 
+s1974.ofn answered 0 unsat + 0 sat of 9 subjects
+s1975.ofn 
+s1976.ofn 
+s1977.ofn answered 0 unsat + 0 sat of 12 subjects
+s1978.ofn answered 0 unsat + 0 sat of 9 subjects
+s1979.ofn 
+s197.ofn 
+s1980.ofn answered 0 unsat + 1 sat of 9 subjects
+s1981.ofn 
+s1982.ofn 
+s1983.ofn answered 0 unsat + 0 sat of 9 subjects
+s1984.ofn answered 0 unsat + 0 sat of 11 subjects
+s1985.ofn answered 0 unsat + 0 sat of 12 subjects
+s1986.ofn 
+s1987.ofn 
+s1988.ofn 
+s1989.ofn 
+s198.ofn answered 0 unsat + 0 sat of 9 subjects
+s1990.ofn answered 0 unsat + 0 sat of 9 subjects
+s1991.ofn answered 0 unsat + 0 sat of 13 subjects
+s1992.ofn answered 0 unsat + 0 sat of 13 subjects
+s1993.ofn answered 1 unsat + 0 sat of 12 subjects
+s1994.ofn answered 0 unsat + 0 sat of 12 subjects
+s1995.ofn 
+s1996.ofn answered 0 unsat + 0 sat of 13 subjects
+s1997.ofn 
+s1998.ofn 
+s1999.ofn answered 0 unsat + 0 sat of 9 subjects
+s199.ofn 
+s19.ofn answered 0 unsat + 0 sat of 9 subjects
+s1.ofn answered 0 unsat + 0 sat of 10 subjects
+s200.ofn answered 0 unsat + 0 sat of 9 subjects
+s201.ofn answered 0 unsat + 0 sat of 9 subjects
+s202.ofn answered 0 unsat + 0 sat of 12 subjects
+s203.ofn 
+s204.ofn 
+s205.ofn 
+s206.ofn 
+s207.ofn answered 0 unsat + 0 sat of 13 subjects
+s208.ofn 
+s209.ofn 
+s20.ofn answered 0 unsat + 0 sat of 10 subjects
+s210.ofn 
+s211.ofn 
+s212.ofn 
+s213.ofn answered 0 unsat + 0 sat of 10 subjects
+s214.ofn 
+s215.ofn answered 0 unsat + 6 sat of 9 subjects
+s216.ofn answered 0 unsat + 0 sat of 10 subjects
+s217.ofn 
+s218.ofn 
+s219.ofn answered 0 unsat + 0 sat of 11 subjects
+s21.ofn answered 0 unsat + 0 sat of 10 subjects
+s220.ofn answered 0 unsat + 0 sat of 10 subjects
+s221.ofn answered 0 unsat + 0 sat of 10 subjects
+s222.ofn answered 0 unsat + 0 sat of 9 subjects
+s223.ofn 
+s224.ofn answered 0 unsat + 0 sat of 9 subjects
+s225.ofn answered 0 unsat + 0 sat of 10 subjects
+s226.ofn 
+s227.ofn answered 0 unsat + 0 sat of 12 subjects
+s228.ofn 
+s229.ofn 
+s22.ofn 
+s230.ofn answered 0 unsat + 0 sat of 10 subjects
+s231.ofn answered 0 unsat + 0 sat of 9 subjects
+s232.ofn answered 0 unsat + 0 sat of 11 subjects
+s233.ofn 
+s234.ofn 
+s235.ofn 
+s236.ofn answered 0 unsat + 0 sat of 11 subjects
+s237.ofn 
+s238.ofn 
+s239.ofn answered 0 unsat + 0 sat of 9 subjects
+s23.ofn 
+s240.ofn 
+s241.ofn answered 0 unsat + 0 sat of 13 subjects
+s242.ofn answered 0 unsat + 0 sat of 11 subjects
+s243.ofn 
+s244.ofn answered 0 unsat + 0 sat of 12 subjects
+s245.ofn 
+s246.ofn answered 0 unsat + 0 sat of 9 subjects
+s247.ofn answered 0 unsat + 0 sat of 12 subjects
+s248.ofn answered 0 unsat + 0 sat of 12 subjects
+s249.ofn answered 0 unsat + 0 sat of 11 subjects
+s24.ofn 
+s250.ofn 
+s251.ofn 
+s252.ofn answered 0 unsat + 0 sat of 13 subjects
+s253.ofn answered 0 unsat + 0 sat of 13 subjects
+s254.ofn answered 0 unsat + 0 sat of 11 subjects
+s255.ofn answered 0 unsat + 0 sat of 9 subjects
+s256.ofn answered 0 unsat + 0 sat of 12 subjects
+s257.ofn answered 0 unsat + 0 sat of 11 subjects
+s258.ofn 
+s259.ofn 
+s25.ofn answered 0 unsat + 0 sat of 12 subjects
+s260.ofn 
+s261.ofn 
+s262.ofn answered 0 unsat + 0 sat of 11 subjects
+s263.ofn answered 0 unsat + 0 sat of 12 subjects
+s264.ofn answered 0 unsat + 0 sat of 13 subjects
+s265.ofn answered 0 unsat + 0 sat of 12 subjects
+s266.ofn answered 0 unsat + 0 sat of 9 subjects
+s267.ofn 
+s268.ofn 
+s269.ofn 
+s26.ofn answered 0 unsat + 0 sat of 10 subjects
+s270.ofn 
+s271.ofn answered 0 unsat + 0 sat of 12 subjects
+s272.ofn answered 0 unsat + 0 sat of 12 subjects
+s273.ofn answered 0 unsat + 0 sat of 10 subjects
+s274.ofn answered 0 unsat + 0 sat of 10 subjects
+s275.ofn 
+s276.ofn answered 0 unsat + 0 sat of 11 subjects
+s277.ofn 
+s278.ofn 
+s279.ofn answered 0 unsat + 0 sat of 12 subjects
+s27.ofn answered 0 unsat + 0 sat of 12 subjects
+s280.ofn answered 0 unsat + 0 sat of 11 subjects
+s281.ofn 
+s282.ofn answered 0 unsat + 1 sat of 9 subjects
+s283.ofn answered 0 unsat + 0 sat of 9 subjects
+s284.ofn answered 0 unsat + 0 sat of 9 subjects
+s285.ofn 
+s286.ofn answered 0 unsat + 0 sat of 12 subjects
+s287.ofn 
+s288.ofn answered 0 unsat + 0 sat of 11 subjects
+s289.ofn 
+s28.ofn answered 0 unsat + 0 sat of 9 subjects
+s290.ofn answered 0 unsat + 0 sat of 13 subjects
+s291.ofn answered 0 unsat + 0 sat of 12 subjects
+s292.ofn 
+s293.ofn 
+s294.ofn 
+s295.ofn answered 0 unsat + 0 sat of 11 subjects
+s296.ofn answered 0 unsat + 0 sat of 9 subjects
+s297.ofn answered 0 unsat + 0 sat of 13 subjects
+s298.ofn answered 0 unsat + 0 sat of 10 subjects
+s299.ofn 
+s29.ofn 
+s2.ofn answered 0 unsat + 0 sat of 9 subjects
+s300.ofn answered 0 unsat + 0 sat of 13 subjects
+s301.ofn answered 0 unsat + 0 sat of 12 subjects
+s302.ofn answered 0 unsat + 0 sat of 13 subjects
+s303.ofn answered 0 unsat + 0 sat of 9 subjects
+s304.ofn 
+s305.ofn 
+s306.ofn answered 0 unsat + 0 sat of 12 subjects
+s307.ofn answered 0 unsat + 0 sat of 13 subjects
+s308.ofn 
+s309.ofn 
+s30.ofn answered 0 unsat + 0 sat of 13 subjects
+s310.ofn 
+s311.ofn 
+s312.ofn 
+s313.ofn 
+s314.ofn 
+s315.ofn answered 2 unsat + 0 sat of 12 subjects
+s316.ofn answered 0 unsat + 0 sat of 9 subjects
+s317.ofn answered 0 unsat + 0 sat of 12 subjects
+s318.ofn answered 0 unsat + 0 sat of 9 subjects
+s319.ofn 
+s31.ofn 
+s320.ofn 
+s321.ofn answered 0 unsat + 0 sat of 11 subjects
+s322.ofn 
+s323.ofn 
+s324.ofn 
+s325.ofn 
+s326.ofn 
+s327.ofn 
+s328.ofn answered 0 unsat + 0 sat of 13 subjects
+s329.ofn answered 0 unsat + 0 sat of 12 subjects
+s32.ofn 
+s330.ofn 
+s331.ofn 
+s332.ofn answered 0 unsat + 0 sat of 10 subjects
+s333.ofn 
+s334.ofn answered 0 unsat + 0 sat of 10 subjects
+s335.ofn 
+s336.ofn 
+s337.ofn answered 0 unsat + 0 sat of 10 subjects
+s338.ofn answered 0 unsat + 0 sat of 9 subjects
+s339.ofn answered 0 unsat + 0 sat of 10 subjects
+s33.ofn 
+s340.ofn answered 0 unsat + 0 sat of 12 subjects
+s341.ofn answered 1 unsat + 0 sat of 13 subjects
+s342.ofn 
+s343.ofn 
+s344.ofn answered 0 unsat + 0 sat of 12 subjects
+s345.ofn answered 0 unsat + 0 sat of 11 subjects
+s346.ofn 
+s347.ofn answered 0 unsat + 0 sat of 11 subjects
+s348.ofn 
+s349.ofn answered 0 unsat + 0 sat of 12 subjects
+s34.ofn 
+s350.ofn answered 0 unsat + 0 sat of 11 subjects
+s351.ofn answered 1 unsat + 0 sat of 13 subjects
+s352.ofn 
+s353.ofn answered 0 unsat + 0 sat of 9 subjects
+s354.ofn 
+s355.ofn answered 0 unsat + 0 sat of 10 subjects
+s356.ofn answered 0 unsat + 0 sat of 9 subjects
+s357.ofn answered 0 unsat + 0 sat of 10 subjects
+s358.ofn 
+s359.ofn answered 0 unsat + 0 sat of 9 subjects
+s35.ofn 
+s360.ofn answered 0 unsat + 0 sat of 10 subjects
+s361.ofn answered 0 unsat + 0 sat of 13 subjects
+s362.ofn answered 0 unsat + 0 sat of 13 subjects
+s363.ofn answered 1 unsat + 0 sat of 10 subjects
+s364.ofn answered 0 unsat + 0 sat of 9 subjects
+s365.ofn answered 1 unsat + 0 sat of 11 subjects
+s366.ofn answered 0 unsat + 0 sat of 9 subjects
+s367.ofn answered 0 unsat + 0 sat of 9 subjects
+s368.ofn 
+s369.ofn answered 0 unsat + 0 sat of 11 subjects
+s36.ofn 
+s370.ofn answered 0 unsat + 0 sat of 9 subjects
+s371.ofn 
+s372.ofn answered 0 unsat + 0 sat of 9 subjects
+s373.ofn 
+s374.ofn 
+s375.ofn answered 0 unsat + 0 sat of 10 subjects
+s376.ofn 
+s377.ofn answered 0 unsat + 0 sat of 10 subjects
+s378.ofn answered 0 unsat + 0 sat of 9 subjects
+s379.ofn 
+s37.ofn 
+s380.ofn answered 0 unsat + 0 sat of 10 subjects
+s381.ofn answered 0 unsat + 0 sat of 12 subjects
+s382.ofn answered 0 unsat + 1 sat of 9 subjects
+s383.ofn answered 0 unsat + 0 sat of 13 subjects
+s384.ofn answered 0 unsat + 0 sat of 12 subjects
+s385.ofn answered 0 unsat + 0 sat of 9 subjects
+s386.ofn answered 0 unsat + 0 sat of 13 subjects
+s387.ofn answered 0 unsat + 0 sat of 12 subjects
+s388.ofn answered 0 unsat + 0 sat of 11 subjects
+s389.ofn answered 0 unsat + 0 sat of 11 subjects
+s38.ofn answered 0 unsat + 0 sat of 12 subjects
+s390.ofn answered 0 unsat + 0 sat of 13 subjects
+s391.ofn 
+s392.ofn answered 0 unsat + 0 sat of 13 subjects
+s393.ofn 
+s394.ofn answered 0 unsat + 0 sat of 10 subjects
+s395.ofn 
+s396.ofn answered 0 unsat + 0 sat of 9 subjects
+s397.ofn answered 0 unsat + 0 sat of 9 subjects
+s398.ofn answered 0 unsat + 0 sat of 12 subjects
+s399.ofn 
+s39.ofn 
+s3.ofn 
+s400.ofn answered 0 unsat + 0 sat of 11 subjects
+s401.ofn 
+s402.ofn answered 0 unsat + 0 sat of 12 subjects
+s403.ofn 
+s404.ofn answered 0 unsat + 0 sat of 9 subjects
+s405.ofn answered 0 unsat + 0 sat of 9 subjects
+s406.ofn answered 0 unsat + 0 sat of 12 subjects
+s407.ofn answered 0 unsat + 0 sat of 9 subjects
+s408.ofn answered 0 unsat + 0 sat of 12 subjects
+s409.ofn 
+s40.ofn answered 0 unsat + 0 sat of 12 subjects
+s410.ofn answered 0 unsat + 0 sat of 10 subjects
+s411.ofn 
+s412.ofn answered 1 unsat + 0 sat of 11 subjects
+s413.ofn 
+s414.ofn answered 0 unsat + 0 sat of 12 subjects
+s415.ofn answered 0 unsat + 0 sat of 11 subjects
+s416.ofn answered 0 unsat + 0 sat of 11 subjects
+s417.ofn answered 0 unsat + 0 sat of 13 subjects
+s418.ofn answered 0 unsat + 0 sat of 11 subjects
+s419.ofn 
+s41.ofn answered 0 unsat + 0 sat of 12 subjects
+s420.ofn answered 0 unsat + 0 sat of 9 subjects
+s421.ofn answered 0 unsat + 0 sat of 13 subjects
+s422.ofn answered 0 unsat + 0 sat of 12 subjects
+s423.ofn answered 0 unsat + 0 sat of 11 subjects
+s424.ofn answered 0 unsat + 0 sat of 13 subjects
+s425.ofn 
+s426.ofn answered 0 unsat + 0 sat of 10 subjects
+s427.ofn answered 0 unsat + 0 sat of 10 subjects
+s428.ofn answered 0 unsat + 0 sat of 11 subjects
+s429.ofn answered 0 unsat + 0 sat of 13 subjects
+s42.ofn 
+s430.ofn 
+s431.ofn answered 0 unsat + 0 sat of 11 subjects
+s432.ofn 
+s433.ofn 
+s434.ofn 
+s435.ofn answered 0 unsat + 0 sat of 10 subjects
+s436.ofn answered 0 unsat + 0 sat of 12 subjects
+s437.ofn answered 0 unsat + 0 sat of 13 subjects
+s438.ofn answered 0 unsat + 0 sat of 10 subjects
+s439.ofn answered 1 unsat + 0 sat of 12 subjects
+s43.ofn answered 0 unsat + 0 sat of 9 subjects
+s440.ofn answered 0 unsat + 0 sat of 9 subjects
+s441.ofn 
+s442.ofn answered 0 unsat + 0 sat of 11 subjects
+s443.ofn answered 0 unsat + 0 sat of 10 subjects
+s444.ofn answered 0 unsat + 0 sat of 11 subjects
+s445.ofn 
+s446.ofn 
+s447.ofn 
+s448.ofn answered 0 unsat + 0 sat of 11 subjects
+s449.ofn 
+s44.ofn answered 0 unsat + 0 sat of 12 subjects
+s450.ofn answered 0 unsat + 0 sat of 9 subjects
+s451.ofn answered 0 unsat + 0 sat of 9 subjects
+s452.ofn answered 0 unsat + 0 sat of 11 subjects
+s453.ofn 
+s454.ofn answered 0 unsat + 0 sat of 11 subjects
+s455.ofn 
+s456.ofn answered 0 unsat + 0 sat of 12 subjects
+s457.ofn answered 0 unsat + 0 sat of 10 subjects
+s458.ofn answered 0 unsat + 0 sat of 9 subjects
+s459.ofn answered 0 unsat + 0 sat of 10 subjects
+s45.ofn answered 0 unsat + 0 sat of 11 subjects
+s460.ofn answered 0 unsat + 0 sat of 11 subjects
+s461.ofn 
+s462.ofn answered 0 unsat + 0 sat of 13 subjects
+s463.ofn 
+s464.ofn 
+s465.ofn 
+s466.ofn 
+s467.ofn 
+s468.ofn answered 0 unsat + 0 sat of 10 subjects
+s469.ofn answered 0 unsat + 0 sat of 11 subjects
+s46.ofn answered 0 unsat + 0 sat of 9 subjects
+s470.ofn 
+s471.ofn answered 0 unsat + 0 sat of 9 subjects
+s472.ofn answered 0 unsat + 0 sat of 10 subjects
+s473.ofn 
+s474.ofn answered 0 unsat + 0 sat of 9 subjects
+s475.ofn 
+s476.ofn answered 0 unsat + 0 sat of 12 subjects
+s477.ofn 
+s478.ofn 
+s479.ofn answered 0 unsat + 0 sat of 12 subjects
+s47.ofn answered 0 unsat + 0 sat of 11 subjects
+s480.ofn answered 0 unsat + 0 sat of 12 subjects
+s481.ofn 
+s482.ofn answered 0 unsat + 0 sat of 13 subjects
+s483.ofn answered 0 unsat + 0 sat of 13 subjects
+s484.ofn 
+s485.ofn 
+s486.ofn 
+s487.ofn answered 0 unsat + 0 sat of 13 subjects
+s488.ofn 
+s489.ofn answered 0 unsat + 0 sat of 10 subjects
+s48.ofn answered 0 unsat + 0 sat of 13 subjects
+s490.ofn answered 0 unsat + 0 sat of 12 subjects
+s491.ofn answered 0 unsat + 0 sat of 12 subjects
+s492.ofn answered 0 unsat + 0 sat of 13 subjects
+s493.ofn 
+s494.ofn answered 0 unsat + 0 sat of 13 subjects
+s495.ofn 
+s496.ofn answered 0 unsat + 0 sat of 12 subjects
+s497.ofn answered 0 unsat + 1 sat of 11 subjects
+s498.ofn answered 0 unsat + 0 sat of 12 subjects
+s499.ofn 
+s49.ofn answered 0 unsat + 0 sat of 9 subjects
+s4.ofn answered 0 unsat + 0 sat of 10 subjects
+s500.ofn answered 0 unsat + 0 sat of 12 subjects
+s501.ofn 
+s502.ofn answered 0 unsat + 0 sat of 13 subjects
+s503.ofn answered 0 unsat + 0 sat of 10 subjects
+s504.ofn answered 0 unsat + 0 sat of 12 subjects
+s505.ofn answered 2 unsat + 0 sat of 10 subjects
+s506.ofn answered 0 unsat + 0 sat of 12 subjects
+s507.ofn answered 0 unsat + 0 sat of 12 subjects
+s508.ofn answered 0 unsat + 0 sat of 13 subjects
+s509.ofn 
+s50.ofn answered 0 unsat + 0 sat of 12 subjects
+s510.ofn answered 0 unsat + 0 sat of 13 subjects
+s511.ofn 
+s512.ofn 
+s513.ofn 
+s514.ofn 
+s515.ofn answered 0 unsat + 0 sat of 10 subjects
+s516.ofn answered 0 unsat + 0 sat of 10 subjects
+s517.ofn answered 0 unsat + 0 sat of 12 subjects
+s518.ofn answered 0 unsat + 0 sat of 11 subjects
+s519.ofn 
+s51.ofn 
+s520.ofn 
+s521.ofn answered 0 unsat + 0 sat of 9 subjects
+s522.ofn 
+s523.ofn 
+s524.ofn answered 0 unsat + 0 sat of 10 subjects
+s525.ofn answered 0 unsat + 0 sat of 13 subjects
+s526.ofn 
+s527.ofn answered 1 unsat + 0 sat of 12 subjects
+s528.ofn answered 0 unsat + 0 sat of 9 subjects
+s529.ofn answered 0 unsat + 0 sat of 10 subjects
+s52.ofn 
+s530.ofn 
+s531.ofn answered 0 unsat + 0 sat of 10 subjects
+s532.ofn 
+s533.ofn answered 1 unsat + 0 sat of 12 subjects
+s534.ofn 
+s535.ofn 
+s536.ofn answered 0 unsat + 0 sat of 10 subjects
+s537.ofn 
+s538.ofn answered 0 unsat + 0 sat of 11 subjects
+s539.ofn answered 0 unsat + 0 sat of 11 subjects
+s53.ofn 
+s540.ofn answered 2 unsat + 0 sat of 13 subjects
+s541.ofn answered 0 unsat + 0 sat of 11 subjects
+s542.ofn answered 0 unsat + 0 sat of 12 subjects
+s543.ofn answered 0 unsat + 0 sat of 10 subjects
+s544.ofn 
+s545.ofn answered 0 unsat + 0 sat of 10 subjects
+s546.ofn answered 0 unsat + 0 sat of 9 subjects
+s547.ofn 
+s548.ofn 
+s549.ofn answered 0 unsat + 1 sat of 10 subjects
+s54.ofn answered 0 unsat + 0 sat of 10 subjects
+s550.ofn answered 0 unsat + 0 sat of 12 subjects
+s551.ofn answered 0 unsat + 0 sat of 13 subjects
+s552.ofn answered 0 unsat + 0 sat of 9 subjects
+s553.ofn 
+s554.ofn answered 0 unsat + 0 sat of 13 subjects
+s555.ofn 
+s556.ofn answered 0 unsat + 0 sat of 12 subjects
+s557.ofn answered 0 unsat + 0 sat of 9 subjects
+s558.ofn answered 0 unsat + 0 sat of 12 subjects
+s559.ofn 
+s55.ofn 
+s560.ofn answered 0 unsat + 0 sat of 9 subjects
+s561.ofn 
+s562.ofn answered 0 unsat + 0 sat of 11 subjects
+s563.ofn answered 0 unsat + 0 sat of 13 subjects
+s564.ofn 
+s565.ofn answered 0 unsat + 0 sat of 12 subjects
+s566.ofn answered 0 unsat + 0 sat of 12 subjects
+s567.ofn 
+s568.ofn 
+s569.ofn answered 0 unsat + 0 sat of 13 subjects
+s56.ofn 
+s570.ofn answered 0 unsat + 1 sat of 9 subjects
+s571.ofn 
+s572.ofn answered 0 unsat + 0 sat of 10 subjects
+s573.ofn 
+s574.ofn answered 0 unsat + 1 sat of 11 subjects
+s575.ofn answered 0 unsat + 0 sat of 11 subjects
+s576.ofn 
+s577.ofn 
+s578.ofn 
+s579.ofn answered 0 unsat + 0 sat of 11 subjects
+s57.ofn answered 0 unsat + 0 sat of 9 subjects
+s580.ofn answered 0 unsat + 0 sat of 13 subjects
+s581.ofn 
+s582.ofn 
+s583.ofn answered 1 unsat + 0 sat of 13 subjects
+s584.ofn 
+s585.ofn 
+s586.ofn 
+s587.ofn 
+s588.ofn 
+s589.ofn 
+s58.ofn answered 0 unsat + 0 sat of 13 subjects
+s590.ofn 
+s591.ofn 
+s592.ofn answered 0 unsat + 0 sat of 9 subjects
+s593.ofn answered 0 unsat + 0 sat of 11 subjects
+s594.ofn answered 0 unsat + 0 sat of 10 subjects
+s595.ofn answered 0 unsat + 0 sat of 11 subjects
+s596.ofn 
+s597.ofn answered 0 unsat + 0 sat of 9 subjects
+s598.ofn answered 0 unsat + 1 sat of 9 subjects
+s599.ofn answered 0 unsat + 0 sat of 9 subjects
+s59.ofn 
+s5.ofn 
+s600.ofn answered 0 unsat + 0 sat of 11 subjects
+s601.ofn answered 0 unsat + 0 sat of 10 subjects
+s602.ofn answered 0 unsat + 0 sat of 12 subjects
+s603.ofn answered 0 unsat + 0 sat of 10 subjects
+s604.ofn 
+s605.ofn 
+s606.ofn answered 0 unsat + 0 sat of 9 subjects
+s607.ofn 
+s608.ofn 
+s609.ofn 
+s60.ofn 
+s610.ofn answered 0 unsat + 0 sat of 12 subjects
+s611.ofn answered 0 unsat + 0 sat of 13 subjects
+s612.ofn 
+s613.ofn 
+s614.ofn answered 0 unsat + 0 sat of 11 subjects
+s615.ofn answered 0 unsat + 0 sat of 10 subjects
+s616.ofn answered 0 unsat + 0 sat of 9 subjects
+s617.ofn 
+s618.ofn 
+s619.ofn answered 0 unsat + 0 sat of 13 subjects
+s61.ofn 
+s620.ofn answered 0 unsat + 0 sat of 10 subjects
+s621.ofn answered 0 unsat + 0 sat of 11 subjects
+s622.ofn 
+s623.ofn answered 0 unsat + 0 sat of 9 subjects
+s624.ofn 
+s625.ofn 
+s626.ofn 
+s627.ofn 
+s628.ofn 
+s629.ofn answered 0 unsat + 0 sat of 9 subjects
+s62.ofn answered 0 unsat + 0 sat of 13 subjects
+s630.ofn 
+s631.ofn 
+s632.ofn answered 0 unsat + 0 sat of 11 subjects
+s633.ofn answered 0 unsat + 0 sat of 9 subjects
+s634.ofn answered 0 unsat + 0 sat of 10 subjects
+s635.ofn answered 0 unsat + 0 sat of 11 subjects
+s636.ofn answered 0 unsat + 0 sat of 10 subjects
+s637.ofn 
+s638.ofn answered 0 unsat + 0 sat of 10 subjects
+s639.ofn answered 0 unsat + 0 sat of 13 subjects
+s63.ofn answered 0 unsat + 0 sat of 12 subjects
+s640.ofn 
+s641.ofn answered 0 unsat + 0 sat of 12 subjects
+s642.ofn answered 0 unsat + 0 sat of 11 subjects
+s643.ofn answered 1 unsat + 0 sat of 13 subjects
+s644.ofn answered 0 unsat + 0 sat of 12 subjects
+s645.ofn 
+s646.ofn answered 0 unsat + 0 sat of 13 subjects
+s647.ofn 
+s648.ofn answered 0 unsat + 0 sat of 10 subjects
+s649.ofn answered 1 unsat + 0 sat of 11 subjects
+s64.ofn 
+s650.ofn 
+s651.ofn 
+s652.ofn answered 0 unsat + 0 sat of 10 subjects
+s653.ofn 
+s654.ofn answered 0 unsat + 0 sat of 13 subjects
+s655.ofn 
+s656.ofn 
+s657.ofn 
+s658.ofn answered 0 unsat + 0 sat of 10 subjects
+s659.ofn 
+s65.ofn answered 0 unsat + 0 sat of 12 subjects
+s660.ofn answered 0 unsat + 0 sat of 9 subjects
+s661.ofn answered 0 unsat + 0 sat of 10 subjects
+s662.ofn answered 0 unsat + 0 sat of 9 subjects
+s663.ofn 
+s664.ofn answered 0 unsat + 0 sat of 13 subjects
+s665.ofn answered 0 unsat + 0 sat of 13 subjects
+s666.ofn answered 0 unsat + 0 sat of 12 subjects
+s667.ofn answered 0 unsat + 0 sat of 9 subjects
+s668.ofn 
+s669.ofn answered 0 unsat + 0 sat of 11 subjects
+s66.ofn 
+s670.ofn 
+s671.ofn 
+s672.ofn answered 0 unsat + 0 sat of 9 subjects
+s673.ofn answered 0 unsat + 0 sat of 13 subjects
+s674.ofn answered 0 unsat + 0 sat of 12 subjects
+s675.ofn answered 0 unsat + 0 sat of 10 subjects
+s676.ofn answered 0 unsat + 0 sat of 9 subjects
+s677.ofn answered 0 unsat + 0 sat of 9 subjects
+s678.ofn 
+s679.ofn 
+s67.ofn 
+s680.ofn answered 0 unsat + 0 sat of 13 subjects
+s681.ofn 
+s682.ofn 
+s683.ofn answered 0 unsat + 0 sat of 12 subjects
+s684.ofn answered 0 unsat + 0 sat of 12 subjects
+s685.ofn 
+s686.ofn answered 0 unsat + 0 sat of 13 subjects
+s687.ofn answered 0 unsat + 0 sat of 12 subjects
+s688.ofn answered 0 unsat + 0 sat of 11 subjects
+s689.ofn 
+s68.ofn answered 0 unsat + 0 sat of 12 subjects
+s690.ofn answered 0 unsat + 0 sat of 11 subjects
+s691.ofn answered 1 unsat + 0 sat of 10 subjects
+s692.ofn answered 0 unsat + 0 sat of 9 subjects
+s693.ofn 
+s694.ofn answered 0 unsat + 0 sat of 12 subjects
+s695.ofn 
+s696.ofn answered 0 unsat + 0 sat of 10 subjects
+s697.ofn answered 0 unsat + 0 sat of 10 subjects
+s698.ofn answered 0 unsat + 0 sat of 11 subjects
+s699.ofn 
+s69.ofn 
+s6.ofn answered 0 unsat + 0 sat of 13 subjects
+s700.ofn answered 0 unsat + 0 sat of 10 subjects
+s701.ofn 
+s702.ofn 
+s703.ofn answered 0 unsat + 0 sat of 9 subjects
+s704.ofn answered 0 unsat + 0 sat of 13 subjects
+s705.ofn 
+s706.ofn answered 0 unsat + 0 sat of 13 subjects
+s707.ofn answered 0 unsat + 1 sat of 9 subjects
+s708.ofn answered 0 unsat + 0 sat of 9 subjects
+s709.ofn 
+s70.ofn answered 0 unsat + 0 sat of 9 subjects
+s710.ofn answered 0 unsat + 0 sat of 12 subjects
+s711.ofn answered 0 unsat + 0 sat of 13 subjects
+s712.ofn answered 0 unsat + 0 sat of 11 subjects
+s713.ofn answered 0 unsat + 0 sat of 12 subjects
+s714.ofn 
+s715.ofn 
+s716.ofn answered 0 unsat + 0 sat of 10 subjects
+s717.ofn answered 0 unsat + 0 sat of 10 subjects
+s718.ofn 
+s719.ofn 
+s71.ofn answered 0 unsat + 0 sat of 11 subjects
+s720.ofn 
+s721.ofn 
+s722.ofn 
+s723.ofn answered 0 unsat + 0 sat of 13 subjects
+s724.ofn answered 0 unsat + 0 sat of 11 subjects
+s725.ofn 
+s726.ofn answered 0 unsat + 0 sat of 11 subjects
+s727.ofn answered 0 unsat + 0 sat of 13 subjects
+s728.ofn answered 0 unsat + 0 sat of 9 subjects
+s729.ofn answered 0 unsat + 0 sat of 11 subjects
+s72.ofn answered 0 unsat + 6 sat of 9 subjects
+s730.ofn answered 0 unsat + 0 sat of 11 subjects
+s731.ofn answered 0 unsat + 0 sat of 9 subjects
+s732.ofn answered 0 unsat + 0 sat of 9 subjects
+s733.ofn answered 0 unsat + 0 sat of 12 subjects
+s734.ofn answered 0 unsat + 0 sat of 11 subjects
+s735.ofn 
+s736.ofn 
+s737.ofn 
+s738.ofn answered 0 unsat + 0 sat of 10 subjects
+s739.ofn answered 1 unsat + 0 sat of 10 subjects
+s73.ofn 
+s740.ofn answered 0 unsat + 0 sat of 13 subjects
+s741.ofn answered 0 unsat + 0 sat of 10 subjects
+s742.ofn 
+s743.ofn 
+s744.ofn answered 0 unsat + 0 sat of 11 subjects
+s745.ofn answered 0 unsat + 0 sat of 10 subjects
+s746.ofn answered 1 unsat + 0 sat of 12 subjects
+s747.ofn 
+s748.ofn 
+s749.ofn 
+s74.ofn 
+s750.ofn 
+s751.ofn answered 0 unsat + 0 sat of 13 subjects
+s752.ofn 
+s753.ofn 
+s754.ofn answered 0 unsat + 0 sat of 10 subjects
+s755.ofn answered 0 unsat + 0 sat of 13 subjects
+s756.ofn answered 0 unsat + 0 sat of 12 subjects
+s757.ofn answered 0 unsat + 0 sat of 12 subjects
+s758.ofn 
+s759.ofn 
+s75.ofn answered 0 unsat + 0 sat of 12 subjects
+s760.ofn 
+s761.ofn answered 0 unsat + 0 sat of 10 subjects
+s762.ofn answered 0 unsat + 0 sat of 11 subjects
+s763.ofn answered 0 unsat + 0 sat of 13 subjects
+s764.ofn answered 0 unsat + 0 sat of 10 subjects
+s765.ofn answered 0 unsat + 0 sat of 9 subjects
+s766.ofn 
+s767.ofn answered 0 unsat + 0 sat of 9 subjects
+s768.ofn answered 0 unsat + 0 sat of 9 subjects
+s769.ofn 
+s76.ofn answered 0 unsat + 0 sat of 11 subjects
+s770.ofn answered 0 unsat + 0 sat of 12 subjects
+s771.ofn answered 0 unsat + 0 sat of 12 subjects
+s772.ofn answered 0 unsat + 0 sat of 9 subjects
+s773.ofn 
+s774.ofn 
+s775.ofn answered 0 unsat + 0 sat of 12 subjects
+s776.ofn answered 0 unsat + 0 sat of 12 subjects
+s777.ofn 
+s778.ofn answered 0 unsat + 0 sat of 9 subjects
+s779.ofn answered 0 unsat + 0 sat of 13 subjects
+s77.ofn 
+s780.ofn answered 0 unsat + 0 sat of 10 subjects
+s781.ofn 
+s782.ofn answered 0 unsat + 0 sat of 9 subjects
+s783.ofn 
+s784.ofn answered 0 unsat + 0 sat of 12 subjects
+s785.ofn 
+s786.ofn answered 0 unsat + 0 sat of 11 subjects
+s787.ofn answered 0 unsat + 0 sat of 11 subjects
+s788.ofn answered 0 unsat + 0 sat of 13 subjects
+s789.ofn 
+s78.ofn 
+s790.ofn 
+s791.ofn 
+s792.ofn answered 0 unsat + 0 sat of 13 subjects
+s793.ofn 
+s794.ofn 
+s795.ofn answered 0 unsat + 0 sat of 12 subjects
+s796.ofn answered 0 unsat + 0 sat of 13 subjects
+s797.ofn 
+s798.ofn 
+s799.ofn answered 0 unsat + 0 sat of 10 subjects
+s79.ofn answered 0 unsat + 0 sat of 10 subjects
+s7.ofn answered 0 unsat + 0 sat of 11 subjects
+s800.ofn 
+s801.ofn 
+s802.ofn 
+s803.ofn 
+s804.ofn 
+s805.ofn answered 0 unsat + 0 sat of 12 subjects
+s806.ofn answered 0 unsat + 0 sat of 12 subjects
+s807.ofn 
+s808.ofn answered 0 unsat + 0 sat of 11 subjects
+s809.ofn 
+s80.ofn answered 0 unsat + 0 sat of 11 subjects
+s810.ofn 
+s811.ofn answered 0 unsat + 0 sat of 9 subjects
+s812.ofn answered 0 unsat + 0 sat of 9 subjects
+s813.ofn 
+s814.ofn 
+s815.ofn answered 0 unsat + 0 sat of 9 subjects
+s816.ofn answered 0 unsat + 0 sat of 10 subjects
+s817.ofn answered 0 unsat + 0 sat of 10 subjects
+s818.ofn answered 0 unsat + 0 sat of 12 subjects
+s819.ofn 
+s81.ofn answered 0 unsat + 0 sat of 13 subjects
+s820.ofn answered 0 unsat + 0 sat of 10 subjects
+s821.ofn answered 0 unsat + 0 sat of 13 subjects
+s822.ofn answered 0 unsat + 0 sat of 9 subjects
+s823.ofn 
+s824.ofn 
+s825.ofn answered 0 unsat + 0 sat of 11 subjects
+s826.ofn answered 0 unsat + 0 sat of 13 subjects
+s827.ofn answered 0 unsat + 0 sat of 11 subjects
+s828.ofn 
+s829.ofn answered 0 unsat + 0 sat of 10 subjects
+s82.ofn answered 0 unsat + 0 sat of 10 subjects
+s830.ofn 
+s831.ofn answered 0 unsat + 0 sat of 10 subjects
+s832.ofn answered 0 unsat + 0 sat of 13 subjects
+s833.ofn answered 0 unsat + 0 sat of 13 subjects
+s834.ofn 
+s835.ofn 
+s836.ofn answered 0 unsat + 0 sat of 12 subjects
+s837.ofn 
+s838.ofn answered 0 unsat + 0 sat of 13 subjects
+s839.ofn answered 0 unsat + 0 sat of 13 subjects
+s83.ofn answered 0 unsat + 0 sat of 12 subjects
+s840.ofn answered 0 unsat + 0 sat of 10 subjects
+s841.ofn 
+s842.ofn answered 0 unsat + 0 sat of 9 subjects
+s843.ofn answered 0 unsat + 0 sat of 13 subjects
+s844.ofn 
+s845.ofn 
+s846.ofn answered 0 unsat + 0 sat of 9 subjects
+s847.ofn 
+s848.ofn answered 0 unsat + 0 sat of 12 subjects
+s849.ofn answered 0 unsat + 0 sat of 9 subjects
+s84.ofn 
+s850.ofn 
+s851.ofn answered 0 unsat + 0 sat of 13 subjects
+s852.ofn answered 0 unsat + 0 sat of 13 subjects
+s853.ofn 
+s854.ofn answered 0 unsat + 0 sat of 11 subjects
+s855.ofn answered 0 unsat + 0 sat of 10 subjects
+s856.ofn 
+s857.ofn answered 0 unsat + 0 sat of 12 subjects
+s858.ofn answered 0 unsat + 0 sat of 13 subjects
+s859.ofn 
+s85.ofn 
+s860.ofn 
+s861.ofn answered 0 unsat + 0 sat of 12 subjects
+s862.ofn answered 0 unsat + 0 sat of 13 subjects
+s863.ofn 
+s864.ofn 
+s865.ofn 
+s866.ofn 
+s867.ofn answered 0 unsat + 0 sat of 10 subjects
+s868.ofn 
+s869.ofn 
+s86.ofn answered 0 unsat + 0 sat of 9 subjects
+s870.ofn 
+s871.ofn 
+s872.ofn 
+s873.ofn 
+s874.ofn answered 0 unsat + 0 sat of 13 subjects
+s875.ofn 
+s876.ofn answered 0 unsat + 0 sat of 9 subjects
+s877.ofn answered 0 unsat + 0 sat of 10 subjects
+s878.ofn answered 0 unsat + 0 sat of 13 subjects
+s879.ofn answered 0 unsat + 0 sat of 9 subjects
+s87.ofn 
+s880.ofn answered 0 unsat + 0 sat of 9 subjects
+s881.ofn 
+s882.ofn answered 0 unsat + 0 sat of 9 subjects
+s883.ofn 
+s884.ofn answered 0 unsat + 0 sat of 9 subjects
+s885.ofn answered 0 unsat + 0 sat of 11 subjects
+s886.ofn answered 0 unsat + 1 sat of 10 subjects
+s887.ofn answered 0 unsat + 0 sat of 12 subjects
+s888.ofn answered 0 unsat + 0 sat of 9 subjects
+s889.ofn 
+s88.ofn answered 0 unsat + 0 sat of 12 subjects
+s890.ofn answered 0 unsat + 0 sat of 9 subjects
+s891.ofn 
+s892.ofn answered 0 unsat + 0 sat of 10 subjects
+s893.ofn 
+s894.ofn 
+s895.ofn 
+s896.ofn 
+s897.ofn answered 1 unsat + 0 sat of 9 subjects
+s898.ofn answered 0 unsat + 0 sat of 12 subjects
+s899.ofn 
+s89.ofn answered 0 unsat + 0 sat of 9 subjects
+s8.ofn answered 0 unsat + 0 sat of 10 subjects
+s900.ofn 
+s901.ofn 
+s902.ofn answered 0 unsat + 0 sat of 11 subjects
+s903.ofn 
+s904.ofn answered 0 unsat + 0 sat of 13 subjects
+s905.ofn answered 0 unsat + 0 sat of 11 subjects
+s906.ofn answered 0 unsat + 0 sat of 9 subjects
+s907.ofn 
+s908.ofn 
+s909.ofn answered 0 unsat + 0 sat of 10 subjects
+s90.ofn 
+s910.ofn answered 0 unsat + 0 sat of 13 subjects
+s911.ofn answered 0 unsat + 0 sat of 12 subjects
+s912.ofn answered 0 unsat + 0 sat of 13 subjects
+s913.ofn answered 0 unsat + 0 sat of 9 subjects
+s914.ofn answered 0 unsat + 0 sat of 9 subjects
+s915.ofn 
+s916.ofn answered 0 unsat + 0 sat of 13 subjects
+s917.ofn 
+s918.ofn 
+s919.ofn answered 0 unsat + 0 sat of 13 subjects
+s91.ofn 
+s920.ofn answered 0 unsat + 0 sat of 13 subjects
+s921.ofn 
+s922.ofn answered 0 unsat + 0 sat of 9 subjects
+s923.ofn 
+s924.ofn answered 0 unsat + 0 sat of 13 subjects
+s925.ofn answered 0 unsat + 0 sat of 9 subjects
+s926.ofn answered 0 unsat + 0 sat of 12 subjects
+s927.ofn 
+s928.ofn 
+s929.ofn answered 0 unsat + 0 sat of 10 subjects
+s92.ofn answered 0 unsat + 0 sat of 12 subjects
+s930.ofn answered 0 unsat + 0 sat of 13 subjects
+s931.ofn answered 0 unsat + 0 sat of 12 subjects
+s932.ofn answered 0 unsat + 0 sat of 13 subjects
+s933.ofn answered 1 unsat + 0 sat of 13 subjects
+s934.ofn 
+s935.ofn answered 0 unsat + 0 sat of 12 subjects
+s936.ofn answered 0 unsat + 0 sat of 10 subjects
+s937.ofn 
+s938.ofn answered 0 unsat + 0 sat of 12 subjects
+s939.ofn 
+s93.ofn answered 0 unsat + 0 sat of 12 subjects
+s940.ofn 
+s941.ofn answered 0 unsat + 0 sat of 11 subjects
+s942.ofn answered 0 unsat + 0 sat of 12 subjects
+s943.ofn 
+s944.ofn answered 0 unsat + 0 sat of 9 subjects
+s945.ofn answered 0 unsat + 0 sat of 12 subjects
+s946.ofn answered 0 unsat + 0 sat of 9 subjects
+s947.ofn answered 0 unsat + 0 sat of 10 subjects
+s948.ofn answered 0 unsat + 0 sat of 13 subjects
+s949.ofn 
+s94.ofn answered 0 unsat + 0 sat of 13 subjects
+s950.ofn 
+s951.ofn 
+s952.ofn answered 0 unsat + 0 sat of 9 subjects
+s953.ofn 
+s954.ofn answered 0 unsat + 0 sat of 10 subjects
+s955.ofn answered 0 unsat + 0 sat of 12 subjects
+s956.ofn answered 0 unsat + 0 sat of 12 subjects
+s957.ofn 
+s958.ofn answered 0 unsat + 0 sat of 11 subjects
+s959.ofn answered 0 unsat + 0 sat of 12 subjects
+s95.ofn answered 0 unsat + 0 sat of 13 subjects
+s960.ofn answered 0 unsat + 0 sat of 12 subjects
+s961.ofn 
+s962.ofn answered 0 unsat + 0 sat of 11 subjects
+s963.ofn 
+s964.ofn answered 0 unsat + 0 sat of 13 subjects
+s965.ofn 
+s966.ofn answered 0 unsat + 0 sat of 9 subjects
+s967.ofn answered 0 unsat + 0 sat of 13 subjects
+s968.ofn answered 1 unsat + 0 sat of 9 subjects
+s969.ofn answered 0 unsat + 0 sat of 12 subjects
+s96.ofn 
+s970.ofn answered 0 unsat + 0 sat of 11 subjects
+s971.ofn 
+s972.ofn 
+s973.ofn answered 0 unsat + 0 sat of 10 subjects
+s974.ofn answered 0 unsat + 0 sat of 11 subjects
+s975.ofn 
+s976.ofn 
+s977.ofn answered 0 unsat + 0 sat of 9 subjects
+s978.ofn 
+s979.ofn 
+s97.ofn answered 0 unsat + 6 sat of 10 subjects
+s980.ofn answered 0 unsat + 0 sat of 12 subjects
+s981.ofn 
+s982.ofn 
+s983.ofn answered 0 unsat + 0 sat of 13 subjects
+s984.ofn 
+s985.ofn answered 0 unsat + 0 sat of 11 subjects
+s986.ofn 
+s987.ofn answered 0 unsat + 0 sat of 13 subjects
+s988.ofn answered 0 unsat + 0 sat of 11 subjects
+s989.ofn answered 0 unsat + 0 sat of 9 subjects
+s98.ofn 
+s990.ofn answered 0 unsat + 0 sat of 13 subjects
+s991.ofn 
+s992.ofn answered 0 unsat + 0 sat of 10 subjects
+s993.ofn 
+s994.ofn answered 0 unsat + 0 sat of 10 subjects
+s995.ofn answered 0 unsat + 0 sat of 10 subjects
+s996.ofn 
+s997.ofn answered 0 unsat + 0 sat of 12 subjects
+s998.ofn answered 0 unsat + 0 sat of 10 subjects
+s999.ofn answered 0 unsat + 0 sat of 9 subjects
+s99.ofn answered 0 unsat + 0 sat of 12 subjects
+s9.ofn answered 0 unsat + 0 sat of 12 subjects
