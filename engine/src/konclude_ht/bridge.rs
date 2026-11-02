@@ -3176,6 +3176,10 @@ pub struct Bridged {
     /// candidate marker (implied by the triggerable conjuncts of its
     /// definition). A complete model lacking the marker refutes the host.
     eq_candidate_markers: HashMap<usize, Cint64>,
+    /// The SELF concepts built for irreflexivity (`R(x,x) → ⊥`, the GCI
+    /// `⊤ ⊑ ¬∃R.Self`): they occur only negated and never create a self
+    /// edge (docs/HYBRID-CB-HT.md section 20).
+    irreflexive_self_concepts: Vec<ConceptId>,
 }
 
 #[derive(Clone)]
@@ -6069,6 +6073,7 @@ fn bridge_tinput_with_trigger_absorption(
     // rest go to TOP.
     let mut absorbed_pairs: Vec<(ConceptId, ConceptId)> = Vec::new();
     let mut top_gcis: Vec<ConceptId> = Vec::new();
+    let mut irreflexive_self_concepts: Vec<ConceptId> = Vec::new();
     // TOP-attached disjunctions whose head is not gated by their body: the
     // structural-left fallback of `encode_source_subclass` and the resolved
     // clause fallback (`install_resolved_top_gci`). See
@@ -7071,6 +7076,7 @@ fn bridge_tinput_with_trigger_absorption(
             if s == t && forced_nonempty_roles.contains(r) {
                 if let Some(&role) = roles.get(*r) {
                     let self_concept = b.self_restriction(role);
+                    irreflexive_self_concepts.push(self_concept);
                     let not_self = b.positive_attachment_concept((self_concept, true));
                     tbox.push(not_self);
                     top_gcis.push(not_self);
@@ -8113,6 +8119,7 @@ fn bridge_tinput_with_trigger_absorption(
         retained_base_depth: std::cell::Cell::new(0),
         native_consistency_nominal_nondeterministic_prefix: RefCell::new(None),
         eq_candidate_markers,
+        irreflexive_self_concepts,
     }
 }
 
@@ -14590,13 +14597,14 @@ fn saturation_refuses_self_terminology(
 
 /// Whether an at-most restriction of the terminology (`CCATMOST`, which also
 /// carries functional and inverse-functional roles, or a `CCATLEAST` that
-/// may occur negated) is on a role that a SELF concept's role reaches: a
+/// may occur negated) is on a role that the role of a SELF concept other
+/// than an irreflexivity concept reaches: a
 /// self edge on `R` is an edge of every entry `(S, ±)` of `R`'s indirect
 /// super-role list, so an at-most on such an `S` counts it.
 /// `KM-SOUNDNESS-GATE[self-cardinality-satexp]`, docs/HYBRID-CB-HT.md
 /// section 20. `KM_BRIDGE_SAT_REFUSE_SELF=1` (the pre-section-20
 /// behaviour) disables the gate together with the saturation SELF rule.
-fn self_edge_cardinality_terminology(ctx: &CalculationAlgorithmContextBase) -> bool {
+fn self_edge_cardinality_terminology(ctx: &CalculationAlgorithmContextBase, bridged: &Bridged) -> bool {
     if std::env::var_os("KM_BRIDGE_SAT_REFUSE_SELF").is_some() {
         return false;
     }
@@ -14611,7 +14619,10 @@ fn self_edge_cardinality_terminology(ctx: &CalculationAlgorithmContextBase) -> b
         }
         match concept.get_operator_code() {
             op::CCSELF => {
-                self_roles.insert(role);
+                let id = ConceptId::new(index as Cint64);
+                if !bridged.irreflexive_self_concepts.contains(&id) {
+                    self_roles.insert(role);
+                }
             }
             op::CCATMOST | op::CCATLEAST => {
                 at_most_roles.insert(role);
@@ -16540,7 +16551,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // probes.  This distinguishes a bad raw saturation label from a bad
     // completion-cache write without disabling the whole saturation coupling.
     // KM-SOUNDNESS-GATE[self-cardinality-satexp]: see below.
-    let self_cardinality = self_edge_cardinality_terminology(&ctx);
+    let self_cardinality = self_edge_cardinality_terminology(&ctx, &bridged);
     if satcache_active && std::env::var_os("KM_HT_NO_ASSOC_EXP_CACHE").is_none() && !self_cardinality {
         install_bridge_saturation_node_expansion_cache(&mut ctx);
     }
