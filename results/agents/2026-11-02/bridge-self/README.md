@@ -79,8 +79,8 @@ successor expansion on a terminology with a SELF concept that can create a
 self edge). I did not isolate the cache entry that goes wrong; the gate
 removes the cache on every such terminology, so it covers the whole class
 of cases, at a measured cost of nothing on 12128 (36.9 s with the gate,
-38.8 s without it in an earlier build) and up to 10 percent on the
-SELF-bearing nominal inputs below.
+38.8 s without it in an earlier build); on two small SELF-bearing nominal
+inputs it costs 1 to 2 s (below).
 
 ## Held-out inputs (docs/V1.5.5-STATUS.md, "Konclude coverage gap")
 
@@ -126,8 +126,14 @@ answer-status or route change; ratio after/before over the 27 inputs above
 1 s: mean 0.985, median 0.985, max 1.66 (16666, 3.2 to 5.3 s; a rerun of
 the three highest ratios gives 4.2/4.4, 1.7/1.6 and 15.6/16.3 s,
 `rerun-slow.txt`, i.e. noise; none of them has a SELF concept). The four
-inputs with SELF constructs (12451, 2548, 7532, 9662) on the final binary:
-see "Final pairing of the SELF nominal inputs" below.
+inputs with SELF constructs, rerun on the final binary (the full pairing ran
+on an earlier build; `data/ore-nominal/self4-final/`): identical signatures
+for the three answered by both, 2548 times out in both, no route change;
+12451 61.5 s after / 62.1 s before, 7532 4.3 / 3.4 s, 9662 4.7 / 2.9 s
+(measured beside the integration tests on a loaded host; on the build
+before the successor-expansion gate the same two were 3.1 / 2.9 s and
+2.8 / 2.5 s, `self4-v7/`). The gate's cost there is the completion
+expanding nodes the caches used to answer.
 
 ## SELF seed family (new)
 
@@ -181,3 +187,69 @@ generator version; they are kept as `data/regress/v1s*.ofn` with HermiT
 gold and pass on the final build, and five of them are fixtures of
 `engine/tests/bridge_self.rs`.
 
+
+## Seed pools of earlier agents (no SELF construct)
+
+`.work/agent-scratch/{bridge-defers (seeds, fseeds), sameindividual-bridge,
+bridge-abox-probes (mseeds, defers/fseeds), bridge-replay/pool}` and the
+gold-backed probes of `results/agents/2026-10-3*/` (data-values-3,
+lean-data-values, forced-nominal-data-misses, fr282-dropped-rules), both
+routes, after column on the final binary (`tools/pools_after.sh`,
+`data/seeds/pools-after/`), 11,418 runs:
+
+| pool | runs | ok | ERR | TIMEOUT | WRONG |
+|---|---|---|---|---|---|
+| abox-probes-m | 4,000 | 3,968 | 8 | 22 | 2 (m413) |
+| abox-probes-f | 400 | 318 | 45 | 37 | 0 |
+| bridge-defers | 600 | 447 | 153 | 0 | 0 |
+| bridge-defers-f | 400 | 318 | 45 | 37 | 0 |
+| bridge-replay | 2,000 | 1,996 | 3 | 1 | 0 |
+| sameindividual-bridge | 3,892 | 3,881 | 11 | 0 | 0 |
+| results probes (4 dirs) | 126 | 66 | 53 | 0 | 7 |
+
+None of these 5,709 inputs has `ObjectHasSelf`, a reflexive, irreflexive
+or asymmetric property, so none of them has a SELF concept: the SELF rule,
+the two INSUFFICIENT guards (they test the hash-level `self_connected`
+flag, which only the SELF rule sets) and the gate are not reached, and
+`KM_BRIDGE_SAT_REFUSE_SELF` is read only on SELF terminologies. Before and
+after therefore execute the same code on them, and I did not spend the
+11,418 runs of a before column on that. Instead: the after counts equal
+the before tables recorded by earlier agents where they ran the same pools
+(bridge-replay README: bridge-defers 447/153/0, bridge-replay 1,996/3/1,
+sameindividual-bridge 3,881/11/0), and every WRONG row was rerun in the
+before configuration with the same verdict (`data/seeds/pools-wrong-rows-before.tsv`):
+`m413` (the u15 case `fix/v155-bridge-m413` works on) and seven data-value
+probes on the automatic route (string length/pattern facets, `opaque_single`).
+
+## Tests (`tools/itests.sh`, `KM_THREADS=1`, `--test-threads=1`)
+
+- Library: 3,113 passed, 21 failed, 10 ignored; the 21 are exactly the
+  baseline set (20 `tableau::` tests and
+  `cli::cb_derivation_candidate_tests::source_exact_taxonomy_uses_real_production_traces_and_models`),
+  `data/tests/lib-failures.txt`. The two intermittent bridge tests passed.
+  The library gains `saturation_self_rule_decides_reflexive_terminology`.
+- Integration: all 87 targets pass (the 86 of the base and the new
+  `bridge_self`), `data/tests/summary.txt`. `bridge_self` fails on the
+  12128 reduction with `KM_BRIDGE_SAT_REFUSE_SELF=1` on both routes.
+
+## Not done / open
+
+- The exact cache entry behind the 12128 incompleteness is not isolated:
+  the gate disables the expander caches (and the saturated-label successor
+  expansion) on every terminology with a self edge instead. A reduction
+  without reflexivity or without the functional role is classified
+  correctly with the cache, so the defect is in the cache's handling of
+  self edges, not in the cache in general; the reduction is
+  `data/12128-incomplete/m53tiny.ofn` for whoever ports that part.
+- The non-termination on `s9` with saturated-label successor expansion is
+  likewise avoided, not explained.
+- The native-nominal individual saturation still refuses SELF (no port of
+  `collectSelfRestrictionRoles` in the representative-cache writer).
+- No before column for the SELF-free pools (see above).
+- Two CB-route defects found by the SELF family are outside this branch's
+  scope: `s974` (missed unsatisfiable class under reflexive and
+  inverse-functional roles) and `s1966` (intermittently missed
+  `C ⊑ ∃r.Self` with reflexive `r`).
+- The saturation verdicts are exercised at scale only by 12128; the seed
+  family exercises mostly the completion's coupling (72 seeds with
+  saturation verdicts).

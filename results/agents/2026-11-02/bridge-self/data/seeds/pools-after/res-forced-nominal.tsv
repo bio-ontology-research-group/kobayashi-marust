@@ -1,0 +1,28 @@
+pools/res-forced-nominal/seeds/v1all.ofn	ht_bridge	ERR	0.01					
+pools/res-forced-nominal/seeds/v1all.ofn	auto	ok	0.04	0	0	0	0	0
+pools/res-forced-nominal/seeds/v1neg.ofn	ht_bridge	ERR	0.01					
+pools/res-forced-nominal/seeds/v1neg.ofn	auto	ok	0.03	0	0	0	0	0
+pools/res-forced-nominal/seeds/v1.ofn	ht_bridge	ERR	0.01					
+pools/res-forced-nominal/seeds/v1.ofn	auto	ok	0.03	0	0	0	0	0
+pools/res-forced-nominal/seeds/v2.ofn	ht_bridge	ERR	0.00					
+pools/res-forced-nominal/seeds/v2.ofn	auto	ok	0.02	0	0	0	0	0
+pools/res-forced-nominal/seeds/v3.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+pools/res-forced-nominal/seeds/v3.ofn	auto	ok	0.01	0	0	0	0	0
+pools/res-forced-nominal/seeds/v4.ofn	ht_bridge	ERR	0.01					
+pools/res-forced-nominal/seeds/v4.ofn	auto	ok	0.04	0	0	0	0	0
+pools/res-forced-nominal/seeds/v5b.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+pools/res-forced-nominal/seeds/v5b.ofn	auto	ok	0.01	0	0	0	0	0
+pools/res-forced-nominal/seeds/v5c.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+pools/res-forced-nominal/seeds/v5c.ofn	auto	ok	0.01	0	0	0	0	0
+pools/res-forced-nominal/seeds/v5d.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+pools/res-forced-nominal/seeds/v5d.ofn	auto	ok	0.01	0	0	0	0	0
+pools/res-forced-nominal/seeds/v5e.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+pools/res-forced-nominal/seeds/v5e.ofn	auto	ok	0.01	0	0	0	0	0
+pools/res-forced-nominal/seeds/v5g.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+pools/res-forced-nominal/seeds/v5g.ofn	auto	ok	0.01	0	0	0	0	0
+pools/res-forced-nominal/seeds/v5.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+pools/res-forced-nominal/seeds/v5.ofn	auto	ok	0.01	0	0	0	0	0
+pools/res-forced-nominal/seeds/v6.ofn	ht_bridge	ERR	0.01					
+pools/res-forced-nominal/seeds/v6.ofn	auto	ok	0.03	0	0	0	0	0
+pools/res-forced-nominal/seeds/v7.ofn	ht_bridge	ERR	0.01					
+pools/res-forced-nominal/seeds/v7.ofn	auto	ok	0.03	0	0	0	0	0
