@@ -1,0 +1,18 @@
+bridge-self/pools/res-lean-data-values/seeds/opaque_merge_keep.ofn	ht_bridge	ERR	0.01					
+bridge-self/pools/res-lean-data-values/seeds/opaque_merge_keep.ofn	auto	ok	0.02	0	0	0	0	0
+bridge-self/pools/res-lean-data-values/seeds/opaque_merge.ofn	ht_bridge	ERR	0.01					
+bridge-self/pools/res-lean-data-values/seeds/opaque_merge.ofn	auto	ok	0.01	0	0	0	0	0
+bridge-self/pools/res-lean-data-values/seeds/opaque_merge_tbox_keep.ofn	ht_bridge	ERR	0.00					
+bridge-self/pools/res-lean-data-values/seeds/opaque_merge_tbox_keep.ofn	auto	ok	0.02	0	0	0	0	0
+bridge-self/pools/res-lean-data-values/seeds/opaque_merge_tbox.ofn	ht_bridge	ERR	0.01					
+bridge-self/pools/res-lean-data-values/seeds/opaque_merge_tbox.ofn	auto	ok	0.02	0	0	0	0	0
+bridge-self/pools/res-lean-data-values/seeds/opaque_single.ofn	ht_bridge	ERR	0.00					
+bridge-self/pools/res-lean-data-values/seeds/opaque_single.ofn	auto	WRONG	0.01	0	0	0	0	1
+bridge-self/pools/res-lean-data-values/seeds/range_exhaust8.ofn	ht_bridge	ERR	0.00					
+bridge-self/pools/res-lean-data-values/seeds/range_exhaust8.ofn	auto	ok	0.02	0	0	0	0	0
+bridge-self/pools/res-lean-data-values/seeds/range_exhaust_keep.ofn	ht_bridge	ERR	0.00					
+bridge-self/pools/res-lean-data-values/seeds/range_exhaust_keep.ofn	auto	ok	0.03	0	0	0	0	0
+bridge-self/pools/res-lean-data-values/seeds/range_exhaust.ofn	ht_bridge	ERR	0.00					
+bridge-self/pools/res-lean-data-values/seeds/range_exhaust.ofn	auto	ok	0.02	0	0	0	0	0
+bridge-self/pools/res-lean-data-values/seeds/range_exhaust_tbox.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+bridge-self/pools/res-lean-data-values/seeds/range_exhaust_tbox.ofn	auto	ok	0.02	0	0	0	0	0

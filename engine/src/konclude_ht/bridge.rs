@@ -16985,10 +16985,18 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 // saturated labels; on the SELF seed `s9` that expansion made
                 // the completion non-terminating (0.02 s without the
                 // saturation, no answer within 60 s with it). Caching
-                // blocking still applies and still requires a sufficient,
-                // completed saturation node.
+                // blocking from saturation goes off with it (section 21):
+                // Konclude caches a successor against its saturation node
+                // after `tryExpansionFromSaturatedData` has copied the
+                // saturated label, whose backward-propagating concepts reach
+                // the predecessor from there. Without that copy a cached
+                // successor propagates nothing back, so a defined class
+                // reached through an inverse trigger is lost (`merge1585`:
+                // `F ⊑ ∃r.∃s.C` and `Q2 ≡ ∃r.(≥1 s.C)` lost `F ⊑ Q2`). With
+                // both options off the completion expands every node itself.
                 if self_cardinality {
                     algo.conf_expand_created_successors_from_saturation = false;
+                    algo.conf_caching_blocking_from_saturation = false;
                 }
             } else if native_saturation_coupling && !fresh_env {
                 // Native-nominal route: the same Konclude coupling, but reading
