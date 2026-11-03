@@ -722,6 +722,48 @@ fn prune_vacuous_role_clauses(clauses: &mut Vec<JClause>) -> (usize, usize) {
     (removed_clauses, removed_roles.len())
 }
 
+/// Every concept name mentioned by `clauses`, in sorted order.
+fn clause_concept_names(clauses: &[JClause]) -> std::collections::BTreeSet<String> {
+    clauses
+        .iter()
+        .flat_map(|c| c.body.iter().chain(c.head.iter()))
+        .filter_map(|a| match a {
+            JAtom::Concept { concept, .. } => Some(concept.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Re-declare every concept name that the bridge rewrites removed from the
+/// clause set, as the frontend declares an otherwise unused class:
+/// `C(x) → C(x)`.
+///
+/// The rewrites preserve the concept-name entailments of the clause set, but
+/// a name they remove entirely has no node in the completion and no subject
+/// in the certificate, so the worker would publish it with no superclasses at
+/// all. Such a name is unconstrained by the remaining clauses, so its exact
+/// superclasses are those of `⊤`, which can be nonempty (`→ r(x,x)` with
+/// `r(x,x) → Q(x)` puts every element in `Q`). The tautology gives the name
+/// its node back: the completion seeds it with the `⊤` closure and the
+/// certificate checks it like every other named subject. A tautology adds no
+/// model constraint, so the rewritten set keeps its entailments.
+/// See results/agents/2026-11-03/cb-s974 (seed s1966: `t(x,y) → C(x)` with a
+/// head-free `t` was the only clause naming `C`, and the published answer
+/// lost `C ⊑ Q3`).
+fn retain_concept_signature(
+    clauses: &mut Vec<JClause>,
+    before: &std::collections::BTreeSet<String>,
+) {
+    let after = clause_concept_names(clauses);
+    for concept in before.difference(&after) {
+        let atom = JAtom::Concept {
+            concept: concept.clone(),
+            term: JTerm::Var { name: "x".to_string() },
+        };
+        clauses.push(JClause { body: vec![atom.clone()], head: vec![atom] });
+    }
+}
+
 /// The bridge shape `R(x,y) → S(y,x)` over two distinct roles and two distinct
 /// variables, returned as `(R, S)`.
 fn as_inverse_bridge(c: &JClause) -> Option<(&str, &str)> {
@@ -854,6 +896,7 @@ fn substitute_inverse(clauses: &mut [JClause], victim: &str, canonical: &str) {
 /// `(clauses_removed, roles_eliminated)` for diagnostics.
 fn prepare_inverse_bridges(clauses: &mut Vec<JClause>, debug: bool) -> (usize, usize) {
     let start = clauses.len();
+    let signature_before = clause_concept_names(clauses);
     let (mut pruned, mut vacuous_roles) = prune_vacuous_role_clauses(clauses);
     let mut eliminated: Vec<(String, String)> = Vec::new();
     for (r, s) in mutual_inverse_pairs(clauses) {
@@ -886,6 +929,7 @@ fn prepare_inverse_bridges(clauses: &mut Vec<JClause>, debug: bool) -> (usize, u
         pruned += again;
         vacuous_roles += roles;
     }
+    retain_concept_signature(clauses, &signature_before);
     if debug && (pruned > 0 || !eliminated.is_empty()) {
         eprintln!(
             "KM_ELC_CERT bridge prep: {} clause(s) removed ({} -> {}), {} head-free role(s), \
