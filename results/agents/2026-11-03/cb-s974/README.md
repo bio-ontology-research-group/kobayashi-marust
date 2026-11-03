@@ -137,3 +137,126 @@ workers would have to report the query classes they decided). Argued in
 `orchestrate::tests::coverage_guard_declines_an_answer_without_a_declared_class`
 removes a class from a worker answer and checks the decline (plus the empty
 row, unresolved and compact cases).
+
+## Commits (branch `fix/v155-cb-s974`, not pushed, not merged)
+
+- 4e5d6a46 fix(cb,elc): send x≈y over Pred; keep concept names lost by elc bridge prep
+- 531de407 docs: argue the x≈y Pred send and the elc signature retention
+- a62e9ced orchestrate: publication coverage guard for row-form worker answers
+- f60acd77 elc: empty rows only for concept nodes; adapt elc tests to the kept signature
+- 52ee3320 results(cb-s974): tools, family data, bridge-miss reductions, README draft
+- 16e638aa elc: keep empty rows for public subjects on every elc output path
+- dbb259c8 docs(routing): list the elc output paths the coverage guard relies on
+- (this README and the final data)
+
+Binaries in `.work/agent-scratch/cb-s974/bin/`: `km-v4` (both fixes and the
+guard; families), `km-v5` (= f60acd77; pools, held-out, nominal),
+`km-v6` (= 16e638aa, final code; seeds, C1 sample, tests). v4 → v5 → v6
+change only which empty subject rows the elc worker emits: no published pair
+changes, and the guard can only fire less often (the v5 → v6 change was
+forced by six guard declines in the C1 sample, see below). A 800-run spot
+check of v5 on the families matched v4.
+
+## Seeds, 20 runs each (final binary v6, release flags)
+
+| seed | automatic route | failed route |
+|---|---|---|
+| s974 | 20/20 ok | `cb_plain1` 20/20 ok |
+| s1966 | 20/20 ok | `KM_ELC_SEQUENTIAL=1` 20/20 ok |
+
+(base 117f143d: s974 wrong 10/10, s1966 wrong 5/10 automatic and 4/4
+sequential). The supervisor's independent check of the 09:18 build: 20/20 on
+both seeds and on its own minimal variants.
+
+## Sibling families (2,000 seeds each, HermiT gold, 3 runs per seed and route)
+
+Generators `tools/gen_merge.py` (s974 shape: successors forced to merge
+with their predecessor by reflexive, inverse-functional, functional,
+symmetric and inverse roles, `≤ 1 R⁻`, Self, cardinalities) and
+`tools/gen_vacuous.py` (s1966 shape: classes named only next to head-free
+roles, a nontrivial superclass of `⊤`, non-EL residue). Gold by
+`tools/gold_batch.sh` (HermiT 1.4 through `OracleBatch`); runner
+`tools/fam_run.py` (60 s automatic, 15 s forced). Data `data/families/`.
+
+| family, route | after (v4, 3 runs) | base (117f143d, 1 run) |
+|---|---|---|
+| merge, auto | 5,982 ok, 3 timeout, **15 wrong (5 seeds × 3)** | 1,957 ok, 42 wrong |
+| merge, `cb_plain1` | 4,305 ok, 891 timeout, 804 refused, **0 wrong** | 1,305 ok, 93 wrong (5 s cap) |
+| vacuous, auto | 5,985 ok, 15 timeout, **0 wrong** | 1,966 ok, 29 wrong |
+| vacuous, `KM_ELC_SEQUENTIAL` | 5,979 ok, 21 timeout, **0 wrong** | 1,930 ok, 63 wrong |
+
+No answer differed between the three runs of a seed (only ok/timeout on the
+forced CB route). The `cb_plain1` refusals are forced-route exactness
+refusals (ABox assertions or nominals the route would drop). The coverage
+guard fired 0 times.
+
+The 5 remaining misses (merge526, 1322, 1585, 1708, 1722) are wrong on the
+base binary too, are answered by the HT bridge in the HT-first phase of the
+race (`ht_bridge` gives the same wrong answer), and `cb_plain1` answers 4 of
+them correctly (1322 times out). They are a separate defect of the Konclude
+bridge, not of the CB engine: roles that reflexivity plus inverse
+functionality (through an inverse pair) force into the identity relation.
+Reductions with HermiT gold in `data/bridge-misses/` (`tools/ddmin_route.py`):
+
+- `min1722.ofn` (6 axioms): `InverseObjectProperties(r p)`,
+  `Reflexive(p)`, `InverseFunctional(p)`, `≤ 1 r⁻ ⊑ B`, `B ⊑ ≥ 3 r`,
+  `E ⊑ ∃r⁻.Self(s)`. HermiT: inconsistent. Bridge and automatic route:
+  consistent, `E` satisfiable. `cb_plain1`: inconsistent.
+- `min526.ofn` (7 axioms): bridge misses `A, B, C, D, E, F, Q1, Q2 ⊑ Q3`
+  for `Q3 ≡ ∀p.Self(p) ⊓ ≤ 1 p⁻` with `p = r⁻`, `r` reflexive and inverse
+  functional (so `Q3 ≡ ⊤`).
+
+Not fixed here (HT bridge, out of the brief's two causes); reported for a
+separate branch.
+
+## Differential pools (gold-backed seeds of earlier agents)
+
+`tools/pools.sh` on v5, routes `ht_bridge` and auto, 60 s: the ten pools
+under `.work/agent-scratch/bridge-self/pools/` (abox-probes-f/m,
+bridge-defers, bridge-defers-f, bridge-replay, res-data-values-3,
+res-forced-nominal, res-fr282, res-lean-data-values,
+sameindividual-bridge), the SELF pool (`bridge-self/pool`, 2,000) and the
+m413 residue pool: 7,775 seeds, 15,550 runs. After: 14,818 ok, 614 ERR
+(forced-route refusals, mostly `ht_bridge`), 104 timeouts, 14 wrong.
+`tools/pools_before.sh` reran the base on every seed that was not ok after
+on some route (all 14 wrong, ERR and timeout rows): every one has the same
+verdict on the base. **0 new differences.** The 14 wrong rows are
+pre-existing: m413 residue 7 (auto), res-data-values-3 6 (auto),
+res-lean-data-values 1 (auto), the same counts the bridge-self agent
+recorded. The guard fired 0 times. Data `data/pools/`.
+
+## The 16 held-out inputs (before = base, after = v5, 240 s)
+
+Every input keeps its answer and its reference verdicts; 10926 times out on
+both (18 GiB). Wall times (s) before / after: 4903 3.7/3.3, 11647 4.3/4.2,
+4796 3.0/2.9, 3917 4.5/4.3, 11378 5.6/5.5, 12191 5.9/5.8, 9151 55.4/54.4,
+9577 66.5/63.7, 6132 18.9/16.9, 9899 21.2/17.9, 16315 25.4/23.4,
+10838 56.1/58.7, 3087 59.9/61.4, 7557 95.3/93.1, 12128 36.1/35.7,
+10926 timeout/timeout; RSS unchanged. No regression beyond noise.
+Data `data/heldout/summary.tsv`.
+
+## The 112 nominal ORE design-half inputs (base then v5, one at a time, 300 s)
+
+109 answered by both, 109 identical signatures, 0 answer-status changes,
+0 route changes; time ratio new/base over the 26 inputs above 1 s: mean
+0.972, median 0.975, max 1.10. Guard fired 0 times. Data `data/nominal/`.
+
+## C1 regression-pool sample (CB engine touched)
+
+300 of the 1,708 admitted inputs of
+`.work/v152-correctness-1920/full-candidate-inputs-ws.json`, uniformly at
+random with seed 974, held-out inputs excluded (`tools/c1_sample.py`, list
+in `data/c1/sample.tsv`); base and new side by side, release flags, 120 s
+cap, every answer compared with the pinned references
+(`tools/c1_run.sh`).
+
+- v6 (final): 299 answered by both, 1 timeout on both; 0 reference-verdict
+  differences between base and new; Konclude verdicts of the new answers:
+  292 agreement, 6 inconsistent-agreement, 1 taxonomy disagreement
+  (ore_ont_9540, where HermiT agrees with KM, identical on the base). Time
+  ratio over 64 inputs above 1 s: mean 1.002, median 0.998, max 1.10.
+  Guard fired 0 times.
+- v5 (before the last elc row fix): the guard declined 6 inputs the base
+  answered correctly (11572, 13112, 14185, 16115, 3839, 5220; elc flat
+  hierarchy path without empty rows). Fixed in 16e638aa; all six answer and
+  agree with every reference on v6. Data `data/c1/`.

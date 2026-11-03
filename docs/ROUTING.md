@@ -583,6 +583,16 @@ exists to make visible, a missing row turned into a decline instead of a
 wrong answer.
 Residue names an answer still lists as `unresolved` do not count as covered.
 
+The guard also found a second instance of the s1966 defect. On the forced
+`ht_rules` route the CB taxonomy run drops the ground clauses, so a class
+named only by class assertions and a DL-safe rule had no CB query, and the
+base published it with no superclass although `⊤ ⊑ G` (fixture
+`engine/tests/fixtures/cb_s974/rules/rules_route_top.ofn`: `A ⊑ G` and
+`B ⊑ G` lost; the automatic route was exact). The guard declined that answer
+(integration test `rules_route`), and the CB builder now keeps a query
+(`C(x) → C(x)`) for every public class of a clause it drops
+(`reasoner::Builder::clauses`), which adds no constraint.
+
 What it does not cover. Inconsistent answers carry no taxonomy and are not
 checked. The HT, bridge and tableau workers answer with a pair list
 or with the compact dictionary transport (`race::tableau_to_out` and
