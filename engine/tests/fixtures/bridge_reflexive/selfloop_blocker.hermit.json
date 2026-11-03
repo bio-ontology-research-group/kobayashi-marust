@@ -1,0 +1,12 @@
+{
+  "ontology": "selfloop_blocker.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["A", "F"],
+    ["B", "F"]
+  ],
+  "unsatisfiable": [
+    "E",
+    "Q1"
+  ]
+}

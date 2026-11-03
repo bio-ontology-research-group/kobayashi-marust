@@ -460,10 +460,21 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                     succ_link,
                                     calc_alg_context,
                                 );
+                                // KM-SOUNDNESS-GATE[self-blocker]: a self link of
+                                // the blocker counts as a neighbour. The model
+                                // replaces `w` by a copy of `w'`, which keeps
+                                // `w'`'s self edges, so the copy's `role`
+                                // neighbours are `v`, the copy itself and the
+                                // copies of `w'`'s successors. Konclude counts
+                                // only the successors (cpp B3/B5), which lets a
+                                // reflexive `role` exceed `≤n role` at the copy
+                                // (docs/HYBRID-CB-HT.md section 21, `u6`,
+                                // `merge1322`).
                                 let succ_qualifies = {
                                     let pc = calc_alg_context.process_context();
                                     let succ_node = pc.node(succ_indi_node);
-                                    succ_node.is_nominal_individual_node()
+                                    succ_indi_node == w_pred_node
+                                        || succ_node.is_nominal_individual_node()
                                         || succ_node.nominal_individual().is_some()
                                         || succ_node.individual_ancestor_depth()
                                             > pc.node(w_pred_node).individual_ancestor_depth()
@@ -1011,6 +1022,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
         }
 
+        if super::blocking_scan_trace_enabled() && blocking_concepts && blocking_prop_bindings {
+            let pc = calc_alg_context.process_context();
+            eprintln!(
+                "BLOCK-TEST test={} blocker={} continue={} subset={} optimized={} equal={} pairwise={}",
+                pc.node(test_indi).individual_node_id(),
+                pc.node(blocking_indi).individual_node_id(),
+                test_continue_blocking,
+                test_processing_blocking || self.conf_sub_set_blocking,
+                self.conf_optimized_sub_set_blocking,
+                self.conf_equal_set_blocking,
+                self.conf_pairwise_equal_set_blocking
+            );
+        }
         blocking_concepts && blocking_prop_bindings
     }
 
