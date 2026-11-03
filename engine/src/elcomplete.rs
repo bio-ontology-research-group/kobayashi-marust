@@ -13407,6 +13407,9 @@ fn classify_inner_mode(
         // converted (the set and its string form never coexist in full); the
         // element sequence is the set's own iteration, exactly as before.
         let sups = std::mem::take(&mut sub_super[c]);
+        // Concept nodes always hold themselves and ⊤; role and function names
+        // share the interner but have no node.
+        let concept_node = !sups.is_empty();
         let mut out = Vec::new();
         for &d in sups.iter() {
             if d == cid || d == TOP {
@@ -13422,7 +13425,7 @@ fn classify_inner_mode(
         // orchestrator's coverage guard sees every declared class.
         if !out.is_empty()
             || rooted_output_names.is_some()
-            || !crate::calc::is_internal_concept(it.name(cid))
+            || (concept_node && !crate::calc::is_internal_concept(it.name(cid)))
         {
             subsumptions.insert(it.name(cid).to_string(), out);
         }
@@ -14375,7 +14378,12 @@ mod tests {
         let without = clauses(&format!("[{}]", base));
         let a = classify_inner(with_vacuous, CertMode::Repair, false).expect("certifies");
         let b = classify_inner(without, CertMode::Repair, false).expect("certifies");
-        assert_eq!(a.subsumptions, b.subsumptions);
+        // `G` keeps its node after the pruning (it is re-declared) and is
+        // published with the superclasses of ⊤, none here; every other row is
+        // the classification without the vacuous role.
+        let mut a_rows = a.subsumptions.clone();
+        assert_eq!(a_rows.remove("G"), Some(Vec::new()));
+        assert_eq!(a_rows, b.subsumptions);
         assert_eq!(a.inconsistent, b.inconsistent);
         assert!(subs_of(&a, "A").contains(&"D".to_string()));
     }
@@ -18460,7 +18468,8 @@ mod tests {
         let strong = classify_inner(defined, CertMode::Repair, false)
             .expect("the reciprocal pair is repairable");
         assert!(
-            strong.subsumptions.is_empty() && strong.unresolved.contains(&"A".to_string()),
+            strong.subsumptions.values().all(Vec::is_empty)
+                && strong.unresolved.contains(&"A".to_string()),
             "the converse must cost the published taxonomy, got {:?} / {:?}",
             strong.subsumptions,
             strong.unresolved
