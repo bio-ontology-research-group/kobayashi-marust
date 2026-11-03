@@ -722,6 +722,48 @@ fn prune_vacuous_role_clauses(clauses: &mut Vec<JClause>) -> (usize, usize) {
     (removed_clauses, removed_roles.len())
 }
 
+/// Every concept name mentioned by `clauses`, in sorted order.
+fn clause_concept_names(clauses: &[JClause]) -> std::collections::BTreeSet<String> {
+    clauses
+        .iter()
+        .flat_map(|c| c.body.iter().chain(c.head.iter()))
+        .filter_map(|a| match a {
+            JAtom::Concept { concept, .. } => Some(concept.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Re-declare every concept name that the bridge rewrites removed from the
+/// clause set, as the frontend declares an otherwise unused class:
+/// `C(x) → C(x)`.
+///
+/// The rewrites preserve the concept-name entailments of the clause set, but
+/// a name they remove entirely has no node in the completion and no subject
+/// in the certificate, so the worker would publish it with no superclasses at
+/// all. Such a name is unconstrained by the remaining clauses, so its exact
+/// superclasses are those of `⊤`, which can be nonempty (`→ r(x,x)` with
+/// `r(x,x) → Q(x)` puts every element in `Q`). The tautology gives the name
+/// its node back: the completion seeds it with the `⊤` closure and the
+/// certificate checks it like every other named subject. A tautology adds no
+/// model constraint, so the rewritten set keeps its entailments.
+/// See results/agents/2026-11-03/cb-s974 (seed s1966: `t(x,y) → C(x)` with a
+/// head-free `t` was the only clause naming `C`, and the published answer
+/// lost `C ⊑ Q3`).
+fn retain_concept_signature(
+    clauses: &mut Vec<JClause>,
+    before: &std::collections::BTreeSet<String>,
+) {
+    let after = clause_concept_names(clauses);
+    for concept in before.difference(&after) {
+        let atom = JAtom::Concept {
+            concept: concept.clone(),
+            term: JTerm::Var { name: "x".to_string() },
+        };
+        clauses.push(JClause { body: vec![atom.clone()], head: vec![atom] });
+    }
+}
+
 /// The bridge shape `R(x,y) → S(y,x)` over two distinct roles and two distinct
 /// variables, returned as `(R, S)`.
 fn as_inverse_bridge(c: &JClause) -> Option<(&str, &str)> {
@@ -854,6 +896,7 @@ fn substitute_inverse(clauses: &mut [JClause], victim: &str, canonical: &str) {
 /// `(clauses_removed, roles_eliminated)` for diagnostics.
 fn prepare_inverse_bridges(clauses: &mut Vec<JClause>, debug: bool) -> (usize, usize) {
     let start = clauses.len();
+    let signature_before = clause_concept_names(clauses);
     let (mut pruned, mut vacuous_roles) = prune_vacuous_role_clauses(clauses);
     let mut eliminated: Vec<(String, String)> = Vec::new();
     for (r, s) in mutual_inverse_pairs(clauses) {
@@ -886,6 +929,7 @@ fn prepare_inverse_bridges(clauses: &mut Vec<JClause>, debug: bool) -> (usize, u
         pruned += again;
         vacuous_roles += roles;
     }
+    retain_concept_signature(clauses, &signature_before);
     if debug && (pruned > 0 || !eliminated.is_empty()) {
         eprintln!(
             "KM_ELC_CERT bridge prep: {} clause(s) removed ({} -> {}), {} head-free role(s), \
@@ -2241,6 +2285,19 @@ impl LeanElCertificate {
                 .entry(fact.sub.clone())
                 .or_default()
                 .push(fact.sup.clone());
+        }
+        // Presentation only: every public active concept keeps a (possibly
+        // empty) row so the orchestrator's coverage guard sees it. No fact is
+        // added beyond the checked relation.
+        for &concept in &self.active_concepts {
+            if concept == self.top || concept == self.bottom {
+                continue;
+            }
+            if let Some(name) = self.symbols.get(concept as usize) {
+                if !crate::calc::is_internal_concept(name) {
+                    subsumptions.entry(name.clone()).or_default();
+                }
+            }
         }
         ElResult {
             unresolved: Vec::new(),
@@ -12230,7 +12287,8 @@ impl IncrementalElClassifier {
                 })
                 .collect();
             out.sort_unstable();
-            if !out.is_empty() {
+            // Public subjects keep an empty row (orchestrator coverage guard).
+            if !out.is_empty() || !crate::calc::is_internal_concept(self.interner.name(cid)) {
                 subsumptions.insert(self.interner.name(cid).to_string(), out);
             }
         }
@@ -12694,7 +12752,8 @@ fn acyclic_nf1_taxonomy(
                 continue;
             }
             let reached = std::mem::take(&mut closure[concept as usize]);
-            if !reached.is_empty() {
+            // Public subjects keep an empty row (orchestrator coverage guard).
+            if !reached.is_empty() || !crate::calc::is_internal_concept(it.name(concept)) {
                 rows.push((concept, reached));
             }
         }
@@ -12717,7 +12776,8 @@ fn acyclic_nf1_taxonomy(
             continue;
         }
         let reached = std::mem::take(&mut closure[concept as usize]);
-        if !reached.is_empty() {
+        // Public subjects keep an empty row (orchestrator coverage guard).
+        if !reached.is_empty() || !crate::calc::is_internal_concept(it.name(concept)) {
             subsumptions.insert(
                 it.name(concept).to_string(),
                 reached
@@ -13317,7 +13377,9 @@ fn classify_inner_mode(
                 .copied()
                 .filter(|&d| d != cid && d != TOP)
                 .collect();
-            if !out.is_empty() {
+            // A public subject keeps its row even with no superclass, so the
+            // orchestrator's coverage guard sees every declared class.
+            if !out.is_empty() || !crate::calc::is_internal_concept(&names[cid as usize]) {
                 rows.push((cid, out));
             }
         }
@@ -13361,6 +13423,9 @@ fn classify_inner_mode(
         // converted (the set and its string form never coexist in full); the
         // element sequence is the set's own iteration, exactly as before.
         let sups = std::mem::take(&mut sub_super[c]);
+        // Concept nodes always hold themselves and ⊤; role and function names
+        // share the interner but have no node.
+        let concept_node = !sups.is_empty();
         let mut out = Vec::new();
         for &d in sups.iter() {
             if d == cid || d == TOP {
@@ -13372,7 +13437,12 @@ fn classify_inner_mode(
                 it.name(d).to_string()
             });
         }
-        if !out.is_empty() || rooted_output_names.is_some() {
+        // A public subject keeps its row even with no superclass, so the
+        // orchestrator's coverage guard sees every declared class.
+        if !out.is_empty()
+            || rooted_output_names.is_some()
+            || (concept_node && !crate::calc::is_internal_concept(it.name(cid)))
+        {
             subsumptions.insert(it.name(cid).to_string(), out);
         }
     }
@@ -14324,7 +14394,12 @@ mod tests {
         let without = clauses(&format!("[{}]", base));
         let a = classify_inner(with_vacuous, CertMode::Repair, false).expect("certifies");
         let b = classify_inner(without, CertMode::Repair, false).expect("certifies");
-        assert_eq!(a.subsumptions, b.subsumptions);
+        // `G` keeps its node after the pruning (it is re-declared) and is
+        // published with the superclasses of ⊤, none here; every other row is
+        // the classification without the vacuous role.
+        let mut a_rows = a.subsumptions.clone();
+        assert_eq!(a_rows.remove("G"), Some(Vec::new()));
+        assert_eq!(a_rows, b.subsumptions);
         assert_eq!(a.inconsistent, b.inconsistent);
         assert!(subs_of(&a, "A").contains(&"D".to_string()));
     }
@@ -18409,7 +18484,8 @@ mod tests {
         let strong = classify_inner(defined, CertMode::Repair, false)
             .expect("the reciprocal pair is repairable");
         assert!(
-            strong.subsumptions.is_empty() && strong.unresolved.contains(&"A".to_string()),
+            strong.subsumptions.values().all(Vec::is_empty)
+                && strong.unresolved.contains(&"A".to_string()),
             "the converse must cost the published taxonomy, got {:?} / {:?}",
             strong.subsumptions,
             strong.unresolved

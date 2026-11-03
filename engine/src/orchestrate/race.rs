@@ -118,6 +118,14 @@ struct TOutput {
     unsatisfiable: Vec<String>,
 }
 
+/// An HT worker answer decoded from the compact dictionary transport. Like
+/// the pair list it lists only subjects that have a superclass, so the
+/// publication coverage guard treats it as pair-form (docs/ROUTING.md).
+fn ht_pair_form(mut out: EngineOut) -> EngineOut {
+    out.pair_form = true;
+    out
+}
+
 fn tableau_to_out(t: TOutput) -> EngineOut {
     let mut subs: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for [subject, superclass] in t.subsumptions {
@@ -134,6 +142,7 @@ fn tableau_to_out(t: TOutput) -> EngineOut {
         inconsistent: !t.consistent,
         dropped: 0,
         unresolved: Vec::new(),
+        pair_form: true,
     }
 }
 
@@ -2818,7 +2827,8 @@ fn read_ht_answer(p: &Path, proxy_abox_certificate: Option<&ProxyAboxCertificate
         if proxy_abox_certificate.is_some() {
             return None;
         }
-        return super::parse_out_path(p).ok();
+        // HT compact output lists only subjects with a superclass.
+        return super::parse_out_path(p).ok().map(ht_pair_form);
     }
     let f = File::open(p).ok()?;
     let mut output = serde_json::from_reader::<_, TOutput>(BufReader::new(f)).ok()?;
@@ -3033,7 +3043,7 @@ pub fn run_ht_only(
             return Err(OrchestrateError::OutOfFragment(
                 "compact native output cannot bypass proxy ABox verification".into()));
         }
-        let mut out = super::parse_out_path(out_path.path())?;
+        let mut out = ht_pair_form(super::parse_out_path(out_path.path())?);
         out.dropped += bypass_drops;
         return Ok(out);
     }
@@ -3411,7 +3421,7 @@ fn run_ht_only_bounded_from(
             return Err(OrchestrateError::OutOfFragment(
                 "compact native output cannot bypass proxy ABox verification".into()));
         }
-        return super::parse_out_path(out_path.path()).map(Some);
+        return super::parse_out_path(out_path.path()).map(|out| Some(ht_pair_form(out)));
     }
     let output = File::open(out_path.path())?;
     let mut parsed: TOutput = serde_json::from_reader(BufReader::new(output)).map_err(|error| {

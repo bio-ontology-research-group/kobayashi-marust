@@ -1,0 +1,37 @@
+== ctx 0 root=true query=Some("Q2") core=[Q2(x)] wo=11
+   T -> r(x,x)
+   T -> Q_1(x)
+   T -> Q2(x)
+   T -> Q_0(x)
+   T -> f1048578(x)!=f1048577(x)
+   T -> Q_1(f1048578(x))
+   T -> r(x,f1048578(x))
+   T -> Q_1(f1048577(x))
+   T -> r(x,f1048577(x))
+   T -> r(f1048578(x),f1048578(x))
+   T -> r(f1048577(x),f1048577(x))
+== ctx 1 root=false query=None core=[Q_1(x), r(y,x)] wo=8
+   T -> r(x,x)
+   T -> Q_1(x)
+   T -> r(y,x)
+   T -> x=y
+   T -> r(y,y)
+   T -> Q_1(y)
+   Q2(y) -> Q2(y)
+   Q_0(y) -> Q_0(y)
+== ctx 2 root=true query=Some("E") core=[E(x)] wo=3
+   T -> r(x,x)
+   T -> Q_1(x)
+   T -> E(x)
+== ctx 3 root=true query=Some("F") core=[F(x)] wo=3
+   T -> r(x,x)
+   T -> Q_1(x)
+   T -> F(x)
+== ctx 4 root=true query=Some("A") core=[A(x)] wo=3
+   T -> r(x,x)
+   T -> Q_1(x)
+   T -> A(x)
+== ctx 5 root=true query=None core=[] wo=2
+   T -> r(x,x)
+   T -> Q_1(x)
+{"subsumptions":{"A":["Q_1"],"E":["Q_1"],"F":["Q_1"],"Q2":["Q_0","Q_1"]},"derived_clauses":[],"inconsistent":false,"dropped":0}

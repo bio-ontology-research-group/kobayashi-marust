@@ -1,0 +1,9 @@
+Prefix(:=<http://example.org/t#>)
+Ontology(<http://example.org/t>
+Declaration(Class(:A))
+Declaration(Class(:B))
+Declaration(Class(:C))
+Declaration(ObjectProperty(:r))
+SubClassOf(:A :B)
+SubClassOf(:A ObjectSomeValuesFrom(:r :C))
+)

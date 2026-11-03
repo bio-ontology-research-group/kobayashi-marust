@@ -1,0 +1,8 @@
+{
+  "ontology": "s974_min.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": [
+    "Q2"
+  ]
+}

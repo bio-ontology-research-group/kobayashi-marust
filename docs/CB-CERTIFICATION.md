@@ -226,6 +226,17 @@ claim that the layer is already complete.
   payloads, complete receiver provider products, and retained strengthening of
   every arrival. The executable Rust-to-Lean path passes. The remaining sender
   case was the separate nominal-ground r-Pred eligibility and arrival closure.
+  Since 2026-11-03 the Pred-compatible heads include the predecessor merge
+  `x ≈ y` (arXiv:1805.01396, Definition 2, puts `x ≈ y` in `Pr`), which
+  crosses the edge as `f(x) ≈ x`. KM and `predHeadLiteralEligible` had both
+  omitted it, so the closure check accepted the incomplete send scan: seed
+  s974 (`Q2 ⊑ ≥ 2 r`, `r` reflexive and inverse-functional) kept `Q2`
+  satisfiable because the two successors merged into `x` never met in the
+  predecessor (`results/agents/2026-11-03/cb-s974/`). The Lean change widens
+  the specification to the paper's `Pr`; the closure checks still certify
+  that the production scan matches the specification, not that the
+  specification is complete (completeness remains open, see the
+  certification roadmap).
 - `CBSourceRootPredClosure` now closes that nominal-ground case. It reconstructs
   individual-labelled edges and independently checks the x-free per-source
   multi-edge and x-containing per-edge branches before reusing the exhaustive

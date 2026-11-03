@@ -355,10 +355,36 @@ impl Builder {
     fn clauses(&mut self, input: &[JClause]) -> Vec<OntologyClause> {
         self.intern_data_sort_last(input);
         let mut clauses = Vec::with_capacity(input.len());
+        // Concept names of dropped clauses keep a query: a class named only
+        // by a dropped clause (a ground ABox fact outside nominal mode) would
+        // otherwise have no context, and the answer would publish it with no
+        // superclass even when `⊤` has one. `C(x) → C(x)` adds no constraint.
+        // See results/agents/2026-11-03/cb-s974 (forced `ht_rules` route).
+        let mut orphans: Vec<String> = Vec::new();
         for clause in input {
             match self.clause(clause) {
                 Some(clause) => clauses.push(clause),
-                None => self.dropped += 1,
+                None => {
+                    self.dropped += 1;
+                    for atom in clause.body.iter().chain(clause.head.iter()) {
+                        if let JAtom::Concept { concept, .. } = atom {
+                            if !crate::calc::is_internal_concept(concept) {
+                                orphans.push(concept.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        orphans.sort_unstable();
+        orphans.dedup();
+        for concept in orphans {
+            let atom = JAtom::Concept {
+                concept,
+                term: JTerm::Var { name: "x".to_string() },
+            };
+            if let Some(tautology) = self.clause(&JClause { body: vec![atom.clone()], head: vec![atom] }) {
+                clauses.push(tautology);
             }
         }
         clauses

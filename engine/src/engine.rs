@@ -2489,7 +2489,15 @@ fn pred_pool_eligible(clause: &ContextClause) -> bool {
         literal.is_function_free()
             && match literal {
                 Lit::P(_) => true,
-                Lit::Eq { s, t } => is_individual(*s) && (*t == X || *t == Y || is_individual(*t)),
+                // `x ≈ y` is a predecessor trigger (arXiv:1805.01396,
+                // Definition 2: `{x ≈ y} ⊆ Pr`); it crosses as `f(x) ≈ x`.
+                // Without it two successors merged into their common
+                // predecessor never meet (Reflexive + InverseFunctional `r`
+                // with `≥ 2 r`), see results/agents/2026-11-03/cb-s974.
+                Lit::Eq { s, t } => {
+                    (*s == X && *t == Y)
+                        || (is_individual(*s) && (*t == X || *t == Y || is_individual(*t)))
+                }
                 Lit::Ineq { .. } => false,
             }
     })
@@ -5625,8 +5633,9 @@ impl Engine {
             // Feed the semi-naive propagation pools (append-only).  Pred-eligible:
             // function-free head of predicates plus (nominal mode) the Pr
             // equality forms `x ≈ o` / `y ≈ o` / `o ≈ o'` (canonical
-            // `Eq{o, ·}` — individuals sit above x and y in the term order);
-            // other equalities stay local, as before.  Succ-eligible: some
+            // `Eq{o, ·}` — individuals sit above x and y in the term order)
+            // and the predecessor merge `x ≈ y`; other equalities stay local.
+            // Succ-eligible: some
             // maximal head predicate is on a function term (succ-trigger
             // candidate) or is an Su^r ground form (r-Succ candidate).
             let pred_eligible = pred_pool_eligible(&clause);

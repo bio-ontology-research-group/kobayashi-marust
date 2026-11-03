@@ -545,6 +545,64 @@ query engine.
 JSON tree into `engine/src/routing/routing_tree_generated.rs`. The shipped
 classifier has no runtime machine-learning dependency.
 
+## Publication coverage guard
+
+Added 2026-11-03 (`results/agents/2026-11-03/cb-s974/`). Every row-form
+worker answer that reaches the shared output mapping (`EngineOut` from the CB
+engine, the elc workers and their partial-plus-residue merges, on every route
+that ends in `classify_with_evidence_mode`'s mapping) must carry a subject row
+for each declared class of the input, where a row with no superclass counts. If a
+consistent answer has no row for some declared class, the orchestrator
+declines (`coverage guard: the worker answer omits N declared class(es)`)
+instead of publishing.
+
+Why this is needed. The published taxonomy lists pairs, so a class without a
+row is indistinguishable from a class with no named superclass. A worker that
+loses a name internally therefore publishes a wrong answer that looks exact:
+on SELF seed s1966 the certified elc worker's bridge preprocessing deleted the
+only clause naming `C`, the partial answer had no row for `C`, the residue
+engine was asked only about the unresolved names, and the merged answer
+published `C` with no superclass although `C ⊑ Q3`. The race between that
+partial answer and the full CB engine made the error appear in about half of
+the runs.
+
+Why it is exact. The guard only removes answers; it never adds or changes a
+pair, so every published answer is one that a worker produced and covered.
+A declined run is reported as a decline, which is allowed. The frontend seeds
+a declaration clause `C(x) → C(x)` for every declared class that no other
+clause names (`seed_missing_declarations`), so every worker receives every
+declared class; a correct worker has a row for each of them. The CB engine
+already emitted empty rows. The elc worker omitted subjects with no
+superclass; it now emits a row for every public concept node on each of its
+output paths (the completion's string map and compact dictionary, the flat
+hierarchy fast path, the incremental session result and the Lean-verified
+result), which changes no pair. Before the flat path and the session result
+were covered, the guard declined 6 of the 300 inputs of the C1 sample and
+the incremental row-delta session test; that is the failure mode the guard
+exists to make visible, a missing row turned into a decline instead of a
+wrong answer.
+Residue names an answer still lists as `unresolved` do not count as covered.
+
+The guard also found a second instance of the s1966 defect. On the forced
+`ht_rules` route the CB taxonomy run drops the ground clauses, so a class
+named only by class assertions and a DL-safe rule had no CB query, and the
+base published it with no superclass although `⊤ ⊑ G` (fixture
+`engine/tests/fixtures/cb_s974/rules/rules_route_top.ofn`: `A ⊑ G` and
+`B ⊑ G` lost; the automatic route was exact). The guard declined that answer
+(integration test `rules_route`), and the CB builder now keeps a query
+(`C(x) → C(x)`) for every public class of a clause it drops
+(`reasoner::Builder::clauses`), which adds no constraint.
+
+What it does not cover. Inconsistent answers carry no taxonomy and are not
+checked. The HT, bridge and tableau workers answer with a pair list
+or with the compact dictionary transport (`race::tableau_to_out` and
+`race::ht_pair_form` mark these `pair_form`): a class with no named
+superclass is absent from a pair list by construction, so absence carries no
+information and the guard skips these answers. Covering them needs a protocol
+change (each worker reports the query classes it decided); that is open. Publication paths that build the final classification without an
+`EngineOut` (the `flat_nf1` and `mirror_private` fast paths, and the
+rule-aware taxonomy of the rules-consistency route) are outside the guard.
+
 ## Validation artifacts
 
 The experiment scripts, per-ontology statistics table, immutable hashes,

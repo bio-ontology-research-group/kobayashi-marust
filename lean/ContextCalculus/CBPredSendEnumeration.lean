@@ -43,6 +43,8 @@ def predHeadLiteralEligible : FLit → Bool
   | .P predicate => functionFreePred predicate
   | .eq (.const _) (.var index) => index = 0 || index = -1
   | .eq (.const _) (.const _) => true
+  -- The predecessor merge `x ≈ y` (arXiv:1805.01396, Definition 2).
+  | .eq (.var source) (.var target) => source = 0 && target = -1
   | .eq _ _ | .ineq _ _ => false
 
 def predClauseEligible (clause : FCL) : Bool :=
@@ -110,6 +112,15 @@ example : enumerate retainedExample edgesExample =
 
 example : eligible retainedExample edgesExample
     { retainedIndex := 0, edgeIndex := 1 } = false := by native_decide
+
+/-- The predecessor merge `x ≈ y` is a Pred-compatible head; `y ≈ x`
+(the non-canonical orientation) and `x ≈ f(x)` are not. -/
+example : predHeadLiteralEligible (.eq (.var 0) (.var (-1))) = true := by
+  native_decide
+example : predHeadLiteralEligible (.eq (.var (-1)) (.var 0)) = false := by
+  native_decide
+example : predHeadLiteralEligible (.eq (.app 0 (.var 0)) (.var 0)) = false := by
+  native_decide
 
 #print axioms mem_enumerate_iff
 

@@ -1,0 +1,8 @@
+{
+  "ontology": "vacuous_domain_top.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["C", "A"]
+  ],
+  "unsatisfiable": []
+}
