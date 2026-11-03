@@ -1,0 +1,280 @@
+SCRATCH/seeds20/merge1322.ofn	ht_bridge	1	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	ht_bridge	2	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	ht_bridge	3	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	ht_bridge	4	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	ht_bridge	5	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	ht_bridge	6	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	ht_bridge	7	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	ht_bridge	8	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	ht_bridge	9	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	ht_bridge	10	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	ht_bridge	11	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	ht_bridge	12	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	ht_bridge	13	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	ht_bridge	14	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	ht_bridge	15	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	ht_bridge	16	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	ht_bridge	17	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	ht_bridge	18	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	ht_bridge	19	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	ht_bridge	20	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	auto	1	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	auto	2	WRONG	0.03	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	auto	3	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	auto	4	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	auto	5	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	auto	6	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	auto	7	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	auto	8	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	auto	9	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	auto	10	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	auto	11	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	auto	12	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	auto	13	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	auto	14	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	auto	15	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	auto	16	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	auto	17	WRONG	0.03	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	auto	18	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	auto	19	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	auto	20	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	ht_bridge	1	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	ht_bridge	2	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	ht_bridge	3	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	ht_bridge	4	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	ht_bridge	5	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	ht_bridge	6	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	ht_bridge	7	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	ht_bridge	8	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	ht_bridge	9	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	ht_bridge	10	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	ht_bridge	11	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	ht_bridge	12	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	ht_bridge	13	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	ht_bridge	14	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	ht_bridge	15	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	ht_bridge	16	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	ht_bridge	17	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	ht_bridge	18	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	ht_bridge	19	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	ht_bridge	20	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	auto	1	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	auto	2	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	auto	3	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	auto	4	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	auto	5	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	auto	6	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	auto	7	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	auto	8	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	auto	9	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	auto	10	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	auto	11	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	auto	12	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	auto	13	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	auto	14	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	auto	15	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	auto	16	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	auto	17	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	auto	18	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	auto	19	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	auto	20	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	ht_bridge	1	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	ht_bridge	2	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	ht_bridge	3	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	ht_bridge	4	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	ht_bridge	5	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	ht_bridge	6	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	ht_bridge	7	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	ht_bridge	8	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	ht_bridge	9	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	ht_bridge	10	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	ht_bridge	11	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	ht_bridge	12	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	ht_bridge	13	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	ht_bridge	14	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	ht_bridge	15	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	ht_bridge	16	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	ht_bridge	17	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	ht_bridge	18	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	ht_bridge	19	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	ht_bridge	20	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	auto	1	WRONG	0.03	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	auto	2	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	auto	3	WRONG	0.03	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	auto	4	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	auto	5	WRONG	0.03	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	auto	6	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	auto	7	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	auto	8	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	auto	9	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	auto	10	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	auto	11	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	auto	12	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	auto	13	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	auto	14	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	auto	15	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	auto	16	WRONG	0.03	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	auto	17	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	auto	18	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	auto	19	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	auto	20	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1722.ofn	ht_bridge	1	ok	0.02	
+SCRATCH/seeds20/merge1722.ofn	ht_bridge	2	ok	0.02	
+SCRATCH/seeds20/merge1722.ofn	ht_bridge	3	ok	0.02	
+SCRATCH/seeds20/merge1722.ofn	ht_bridge	4	ok	0.03	
+SCRATCH/seeds20/merge1722.ofn	ht_bridge	5	ok	0.02	
+SCRATCH/seeds20/merge1722.ofn	ht_bridge	6	ok	0.02	
+SCRATCH/seeds20/merge1722.ofn	ht_bridge	7	ok	0.02	
+SCRATCH/seeds20/merge1722.ofn	ht_bridge	8	ok	0.02	
+SCRATCH/seeds20/merge1722.ofn	ht_bridge	9	ok	0.02	
+SCRATCH/seeds20/merge1722.ofn	ht_bridge	10	ok	0.02	
+SCRATCH/seeds20/merge1722.ofn	ht_bridge	11	ok	0.02	
+SCRATCH/seeds20/merge1722.ofn	ht_bridge	12	ok	0.03	
+SCRATCH/seeds20/merge1722.ofn	ht_bridge	13	ok	0.02	
+SCRATCH/seeds20/merge1722.ofn	ht_bridge	14	ok	0.02	
+SCRATCH/seeds20/merge1722.ofn	ht_bridge	15	ok	0.02	
+SCRATCH/seeds20/merge1722.ofn	ht_bridge	16	ok	0.03	
+SCRATCH/seeds20/merge1722.ofn	ht_bridge	17	ok	0.03	
+SCRATCH/seeds20/merge1722.ofn	ht_bridge	18	ok	0.03	
+SCRATCH/seeds20/merge1722.ofn	ht_bridge	19	ok	0.02	
+SCRATCH/seeds20/merge1722.ofn	ht_bridge	20	ok	0.02	
+SCRATCH/seeds20/merge1722.ofn	auto	1	ok	0.03	
+SCRATCH/seeds20/merge1722.ofn	auto	2	ok	0.03	
+SCRATCH/seeds20/merge1722.ofn	auto	3	ok	0.03	
+SCRATCH/seeds20/merge1722.ofn	auto	4	ok	0.03	
+SCRATCH/seeds20/merge1722.ofn	auto	5	ok	0.03	
+SCRATCH/seeds20/merge1722.ofn	auto	6	ok	0.03	
+SCRATCH/seeds20/merge1722.ofn	auto	7	ok	0.03	
+SCRATCH/seeds20/merge1722.ofn	auto	8	ok	0.03	
+SCRATCH/seeds20/merge1722.ofn	auto	9	ok	0.03	
+SCRATCH/seeds20/merge1722.ofn	auto	10	ok	0.03	
+SCRATCH/seeds20/merge1722.ofn	auto	11	ok	0.03	
+SCRATCH/seeds20/merge1722.ofn	auto	12	ok	0.03	
+SCRATCH/seeds20/merge1722.ofn	auto	13	ok	0.03	
+SCRATCH/seeds20/merge1722.ofn	auto	14	ok	0.03	
+SCRATCH/seeds20/merge1722.ofn	auto	15	ok	0.03	
+SCRATCH/seeds20/merge1722.ofn	auto	16	ok	0.03	
+SCRATCH/seeds20/merge1722.ofn	auto	17	ok	0.03	
+SCRATCH/seeds20/merge1722.ofn	auto	18	ok	0.03	
+SCRATCH/seeds20/merge1722.ofn	auto	19	ok	0.03	
+SCRATCH/seeds20/merge1722.ofn	auto	20	ok	0.03	
+SCRATCH/seeds20/merge526.ofn	ht_bridge	1	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	ht_bridge	2	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	ht_bridge	3	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	ht_bridge	4	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	ht_bridge	5	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	ht_bridge	6	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	ht_bridge	7	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	ht_bridge	8	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	ht_bridge	9	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	ht_bridge	10	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	ht_bridge	11	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	ht_bridge	12	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	ht_bridge	13	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	ht_bridge	14	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	ht_bridge	15	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	ht_bridge	16	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	ht_bridge	17	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	ht_bridge	18	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	ht_bridge	19	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	ht_bridge	20	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	auto	1	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	auto	2	ok	0.03	
+SCRATCH/seeds20/merge526.ofn	auto	3	ok	0.03	
+SCRATCH/seeds20/merge526.ofn	auto	4	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	auto	5	ok	0.03	
+SCRATCH/seeds20/merge526.ofn	auto	6	ok	0.03	
+SCRATCH/seeds20/merge526.ofn	auto	7	ok	0.03	
+SCRATCH/seeds20/merge526.ofn	auto	8	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	auto	9	ok	0.03	
+SCRATCH/seeds20/merge526.ofn	auto	10	ok	0.03	
+SCRATCH/seeds20/merge526.ofn	auto	11	ok	0.03	
+SCRATCH/seeds20/merge526.ofn	auto	12	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	auto	13	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	auto	14	ok	0.03	
+SCRATCH/seeds20/merge526.ofn	auto	15	ok	0.03	
+SCRATCH/seeds20/merge526.ofn	auto	16	ok	0.03	
+SCRATCH/seeds20/merge526.ofn	auto	17	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	auto	18	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	auto	19	ok	0.02	
+SCRATCH/seeds20/merge526.ofn	auto	20	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	ht_bridge	1	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	ht_bridge	2	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	ht_bridge	3	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	ht_bridge	4	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	ht_bridge	5	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	ht_bridge	6	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	ht_bridge	7	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	ht_bridge	8	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	ht_bridge	9	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	ht_bridge	10	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	ht_bridge	11	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	ht_bridge	12	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	ht_bridge	13	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	ht_bridge	14	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	ht_bridge	15	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	ht_bridge	16	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	ht_bridge	17	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	ht_bridge	18	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	ht_bridge	19	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	ht_bridge	20	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	auto	1	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	auto	2	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	auto	3	ok	0.03	
+SCRATCH/seeds20/min1722.ofn	auto	4	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	auto	5	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	auto	6	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	auto	7	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	auto	8	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	auto	9	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	auto	10	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	auto	11	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	auto	12	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	auto	13	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	auto	14	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	auto	15	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	auto	16	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	auto	17	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	auto	18	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	auto	19	ok	0.02	
+SCRATCH/seeds20/min1722.ofn	auto	20	ok	0.02	
+SCRATCH/seeds20/min526.ofn	ht_bridge	1	ok	0.02	
+SCRATCH/seeds20/min526.ofn	ht_bridge	2	ok	0.02	
+SCRATCH/seeds20/min526.ofn	ht_bridge	3	ok	0.02	
+SCRATCH/seeds20/min526.ofn	ht_bridge	4	ok	0.02	
+SCRATCH/seeds20/min526.ofn	ht_bridge	5	ok	0.02	
+SCRATCH/seeds20/min526.ofn	ht_bridge	6	ok	0.02	
+SCRATCH/seeds20/min526.ofn	ht_bridge	7	ok	0.02	
+SCRATCH/seeds20/min526.ofn	ht_bridge	8	ok	0.02	
+SCRATCH/seeds20/min526.ofn	ht_bridge	9	ok	0.02	
+SCRATCH/seeds20/min526.ofn	ht_bridge	10	ok	0.02	
+SCRATCH/seeds20/min526.ofn	ht_bridge	11	ok	0.02	
+SCRATCH/seeds20/min526.ofn	ht_bridge	12	ok	0.02	
+SCRATCH/seeds20/min526.ofn	ht_bridge	13	ok	0.02	
+SCRATCH/seeds20/min526.ofn	ht_bridge	14	ok	0.02	
+SCRATCH/seeds20/min526.ofn	ht_bridge	15	ok	0.02	
+SCRATCH/seeds20/min526.ofn	ht_bridge	16	ok	0.02	
+SCRATCH/seeds20/min526.ofn	ht_bridge	17	ok	0.02	
+SCRATCH/seeds20/min526.ofn	ht_bridge	18	ok	0.02	
+SCRATCH/seeds20/min526.ofn	ht_bridge	19	ok	0.02	
+SCRATCH/seeds20/min526.ofn	ht_bridge	20	ok	0.02	
+SCRATCH/seeds20/min526.ofn	auto	1	ok	0.02	
+SCRATCH/seeds20/min526.ofn	auto	2	ok	0.02	
+SCRATCH/seeds20/min526.ofn	auto	3	ok	0.02	
+SCRATCH/seeds20/min526.ofn	auto	4	ok	0.02	
+SCRATCH/seeds20/min526.ofn	auto	5	ok	0.02	
+SCRATCH/seeds20/min526.ofn	auto	6	ok	0.02	
+SCRATCH/seeds20/min526.ofn	auto	7	ok	0.02	
+SCRATCH/seeds20/min526.ofn	auto	8	ok	0.02	
+SCRATCH/seeds20/min526.ofn	auto	9	ok	0.02	
+SCRATCH/seeds20/min526.ofn	auto	10	ok	0.02	
+SCRATCH/seeds20/min526.ofn	auto	11	ok	0.02	
+SCRATCH/seeds20/min526.ofn	auto	12	ok	0.02	
+SCRATCH/seeds20/min526.ofn	auto	13	ok	0.02	
+SCRATCH/seeds20/min526.ofn	auto	14	ok	0.02	
+SCRATCH/seeds20/min526.ofn	auto	15	ok	0.02	
+SCRATCH/seeds20/min526.ofn	auto	16	ok	0.02	
+SCRATCH/seeds20/min526.ofn	auto	17	ok	0.02	
+SCRATCH/seeds20/min526.ofn	auto	18	ok	0.02	
+SCRATCH/seeds20/min526.ofn	auto	19	ok	0.02	
+SCRATCH/seeds20/min526.ofn	auto	20	ok	0.02	

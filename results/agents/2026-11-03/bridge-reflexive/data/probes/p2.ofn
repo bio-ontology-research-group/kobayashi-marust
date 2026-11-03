@@ -1,0 +1,13 @@
+Prefix(:=<http://example.org/merge#>)
+Ontology(<http://example.org/merge>
+Declaration(Class(:A))
+Declaration(Class(:B))
+Declaration(Class(:E))
+Declaration(ObjectProperty(:r))
+Declaration(ObjectProperty(:s))
+Declaration(ObjectProperty(:p))
+InverseObjectProperties(:r :p)
+ReflexiveObjectProperty(:p)
+InverseFunctionalObjectProperty(:p)
+SubClassOf(owl:Thing ObjectMinCardinality(2 ObjectInverseOf(:r)))
+)

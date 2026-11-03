@@ -2561,3 +2561,21 @@ node itself, which is Konclude's algorithm with these options configured
 off. The change removes a cache, so it can only cost time; ore_ont_12128
 (two reflexive roles, the input the section 20 gate was built for) answers
 in 36.1 s with the caching and 35.9 s without it on the same binary.
+
+### 21.4 Results
+
+All numbers in `results/agents/2026-11-03/bridge-reflexive/README.md`.
+The five seeds, `min1722`, `min526` and the three new reductions agree with
+HermiT on `ht_bridge` and on the automatic route in 20 of 20 runs (base: all
+wrong). A sibling family of 2,000 generated seeds around both reductions
+(`tools/gen_reflexive.py`, HermiT gold, three runs per seed and route) has
+50 wrong rows on the base (25 seeds on each route) and 12 after the change:
+two seeds, refl1008 and refl439, wrong identically on the base. Both reduce
+to an at-most restriction at a nominal over a blockable neighbour that the
+nominal did not create (`f1008`: `≤1 s.(∃p.{c}) ⊑ C` with
+`InverseFunctional(p)`; the second `s`-successor is blocked by its sibling,
+whose `p`-successor merged into `c`). That is Konclude's NN-rule
+(`applyFUNCTIONALRule`, `requiresNNRule`), which the port leaves W3-DEFER;
+it is not a reflexive-role defect and is not fixed here. The gold-backed
+seed pools of earlier agents, the 16 held-out inputs and the 112 nominal
+ORE design-half inputs keep their answers; times are unchanged within noise.

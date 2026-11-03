@@ -1,0 +1,16 @@
+bridge-self-pools-abox-probes-f       8 auto	ok      37 auto	TIMEOUT      45 ht_bridge	ERR 
+bridge-self-pools-abox-probes-m       3 auto	ok      10 auto	TIMEOUT       4 ht_bridge	ERR       9 ht_bridge	TIMEOUT 
+bridge-self-pools-bridge-defers     153 auto	ok     153 ht_bridge	ERR 
+bridge-self-pools-bridge-defers-f       8 auto	ok      37 auto	TIMEOUT      45 ht_bridge	ERR 
+bridge-self-pools-bridge-replay       2 auto	ok       1 auto	TIMEOUT       3 ht_bridge	ERR 
+bridge-self-pools-res-data-values-3       2 auto	ERR      22 auto	ok       6 auto	WRONG      30 ht_bridge	ERR 
+bridge-self-pools-res-forced-nominal       7 auto	ok       7 ht_bridge	ERR 
+bridge-self-pools-res-fr282       6 auto	ok       6 ht_bridge	ERR 
+bridge-self-pools-res-lean-data-values       7 auto	ok       1 auto	WRONG       8 ht_bridge	ERR 
+bridge-self-pools-sameindividual-bridge      11 auto	ok      11 ht_bridge	ERR 
+bridge-self-pool     239 auto	ok       9 auto	TIMEOUT     247 ht_bridge	ERR       1 ht_bridge	TIMEOUT 
+bridge-self-micro       1 auto	ok       1 ht_bridge	ERR 
+bridge-m413-respool       2 auto	ERR      42 auto	ok       7 auto	WRONG      51 ht_bridge	ERR 
+cb-s974-merge      11 auto	ok       1 auto	TIMEOUT      10 ht_bridge	ERR       2 ht_bridge	TIMEOUT 
+cb-s974-vacuous     847 auto	ok       5 auto	TIMEOUT     849 ht_bridge	ERR       3 ht_bridge	TIMEOUT 
+DONE
