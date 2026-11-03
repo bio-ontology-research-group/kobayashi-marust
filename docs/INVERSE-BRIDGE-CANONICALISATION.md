@@ -197,6 +197,32 @@ is not free: a reflexive `S` plus the one-way bridge publishes a taxonomy, and
 adding the converse forces a reflexive `R`, breaks the base model against the
 residual, and leaves the route with nothing to publish.
 
+### The rewrites must keep the concept signature (2026-11-03)
+
+"Named-class entailment is preserved" holds for every concept name, but the
+worker publishes a row only for a name that still occurs in the rewritten
+clause set. Vacuous-role pruning and the tautology sweep after an
+orientation can delete every clause that names a class `C`:
+`ObjectPropertyDomain(:t :C)` with a head-free `t` clausifies to
+`t(x,y) → C(x)`, and the frontend emits no declaration clause `C(x) → C(x)`
+for a class that some axiom already mentions. `C` then has no node in the
+completion and no subject in the certificate, and the partial certificate
+published it with no superclasses. In the rewritten set `C` is
+unconstrained, so its exact superclasses are those of `⊤`, which a residual
+clause can make nonempty (`→ r(x,x)` from `ReflexiveObjectProperty(:r)`
+with `r(x,x) → Q3(x)` from `Q3 ≡ ∃r.Self`). Seed s1966 of the SELF family
+lost `C ⊑ Q3` this way whenever the partial certificate and its residue
+engine beat the full CB engine in the portfolio race (about half the runs).
+
+`prepare_inverse_bridges` now records the concept names of its input and
+appends `C(x) → C(x)` for every name the rewrites removed. A tautology adds
+no constraint, so the model class and the entailments of the rewritten set
+are unchanged; the name gets its node back, the completion seeds it with the
+`⊤` closure, and the certificate checks it like every other named subject
+(here it lands in the residue, and the engine answers it). The rewrite runs
+only in the non-Lean certificate modes, so no Lean statement changes.
+Evidence: `results/agents/2026-11-03/cb-s974/`.
+
 ## Why the rewrite does not remove the work
 
 `σ` maps EL normal forms to reverse-oriented forms:
