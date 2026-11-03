@@ -1,0 +1,5 @@
+info: CBSuccClosureWireCheck.lean:7:0: 'ContextCalculus.CBSuccClosureWire.WireSuccClosureDocument.check_sound' depends on axioms: [propext,
+✔ [7012/7016] Built CBTerminalStateCheck (3.4s)
+✔ [7014/7016] Built «cb-standalone-context-proof-check»:exe (1.5s)
+✔ [7015/7016] Built «cb-succ-closure-wire-check»:exe (1.5s)
+✔ [7016/7016] Built «cb-terminal-state-check»:exe (1.5s)
