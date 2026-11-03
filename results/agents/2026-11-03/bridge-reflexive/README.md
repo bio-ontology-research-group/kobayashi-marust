@@ -130,20 +130,94 @@ Both are wrong on the base too and keep the same wrong answer
 
 ## Differential pools (gold-backed seeds of earlier agents), both routes
 
-TODO
+`tools/pools.sh` (routes `ht_bridge` and automatic, 60 s, two KM processes,
+`tools/diff_run.py`): the ten pools under `.work/agent-scratch/bridge-self/pools/`
+(abox-probes-f/m, bridge-defers, bridge-defers-f, bridge-replay and the
+`results/agents/2026-10-3*` probe pools res-data-values-3,
+res-forced-nominal, res-fr282, res-lean-data-values, plus
+sameindividual-bridge), the SELF pool, regress and micro sets of
+bridge-self, the m413 residue pool and both m413 families (k, k2), and the
+cb-s974 merge and vacuous families: 15,789 seeds, 31,578 runs.
 
-## The 16 held-out inputs
+- New (`km-v3`), `data/pools/after/summary.txt`: 29,975 ok, 1,474 ERR
+  (forced-route refusals, almost all `ht_bridge`), 115 timeouts, 14 wrong.
+  The 14 wrong rows are the pre-existing ones the cb-s974 and bridge-self
+  agents recorded (m413 residue 7, res-data-values-3 6, res-lean-data-values
+  1, all automatic route). The cb-s974 merge family, which had the five
+  wrong seeds on the base, is now 0 wrong.
+- Base (`km-base`) on every seed that was not ok after the fix on some route
+  (1,485 seeds, 2,970 runs, `tools/pools.sh BASE before nonok.list`): every
+  verdict identical to the new binary's (`data/pools/before/`). A seed that
+  is ok after the fix on both routes agrees with HermiT and cannot be a new
+  difference. **0 new differences.**
 
-TODO
+## The 16 held-out inputs (240 s, two at a time, 10926 and 12128 alone)
 
-## The 112 nominal ORE design-half inputs
+`tools/heldout.sh` with `tools/one.sh` and
+`fix-bridge-defers/.../compare_ref.py`; `data/heldout/summary.tsv`. Every
+input keeps its answer and its reference verdicts; 10926 times out on both
+binaries (18 GiB). Wall times (s), base / new: 4903 3.3/3.3, 11647 4.0/4.2,
+4796 2.9/3.0, 3917 4.3/4.4, 11378 5.5/5.7, 12191 5.8/5.8, 9151 54.4/56.2,
+9577 64.3/78.9, 6132 18.4/18.2, 9899 20.6/19.1, 16315 25.6/20.7,
+10838 60.9/58.2, 3087 65.5/61.2, 7557 98.3/93.5, 12128 35.3/36.8; RSS
+unchanged except 7557 (4.02 to 3.33 GiB). 9577 has no SELF construct, so
+only fix 1 can touch it; three further side-by-side pairs give base / new
+80.6/80.5, 66.1/66.1, 78.2/79.3 s: the first pair's gap was host noise.
+No regression beyond noise.
 
-TODO
+## The 112 nominal ORE design-half inputs (one at a time, 300 s)
 
-## Tests
+`tools/ore_nominal.sh` (`ore_time.sh`, `ore_pair.py`, list
+`tools/ore-design-nominal.txt`); `data/nominal/pair.txt`: 109 answered by
+both, 109 identical signatures, 0 answer-status changes, 0 route changes;
+time ratio new/base over the 26 inputs above 1 s: mean 0.983, median 0.986,
+max 1.08. Coverage guard fired 0 times.
 
-TODO
+### Borderline timeouts in the family
+
+refl1250 and refl1477 (automatic route) answer through the CB stack in 30
+to 40 s after the bridge times out on both binaries. Three more runs each
+(`data/family/border-*.tsv`): base refl1250 3 of 3 ok, refl1477 1 of 3 ok;
+new refl1250 3 of 3 ok, refl1477 1 of 3 ok. Same behaviour, cap noise.
+
+## Tests (code of f7e67fad, clean environment, `KM_THREADS=1`, `--test-threads=1`)
+
+`tools/tests.sh` (no release flags exported; `env -i PATH HOME KM_THREADS=1
+CARGO_TARGET_DIR=<worktree>/engine/target`). Library: 3,115 passed,
+21 failed, 10 ignored, exactly the 21 checker-bound baseline failures (20
+`tableau::` tests and
+`cli::cb_derivation_candidate_tests::source_exact_taxonomy_uses_real_production_traces_and_models`,
+`data/tests/lib-failures.txt`); no other failing test. Integration: all 90
+targets pass (the 89 of the baseline plus the new `bridge_reflexive`);
+`empty_and_universal_data_ranges` passed in 143 s
+(`data/tests/summary.txt`). **No newly failing test.**
+
+New regression target `engine/tests/bridge_reflexive.rs`: seven fixtures with
+HermiT answers in `engine/tests/fixtures/bridge_reflexive/` (`min1722`,
+`min526`, `merge1322_min`, `merge1585_min`, `merge1708_min`,
+`selfloop_atleast`, `selfloop_blocker`), automatic route and `ht_bridge`,
+three runs each. On `km-base` 12 of the 14 fixture-routes are wrong
+(`data/tests/fixtures-on-base.tsv`; `merge1322_min` and `selfloop_blocker`
+happen to be right on the base's automatic route).
 
 ## Not done
 
-TODO
+- refl1008 and refl439 stay wrong (pre-existing, also on the base and rc1):
+  the NN-rule for a nominal's at-most over a blockable neighbour is not
+  ported (`u08.rs`, W3-DEFER). Reductions with HermiT answers in
+  `data/reductions/f1008.*` and `f439.*`; f439 was not traced. A fail-closed
+  alternative (no blocking by a node whose subtree reaches a nominal, or a
+  defer when the NN-rule would fire) would change the 112 nominal inputs'
+  routes and was not attempted.
+- No machine reference besides HermiT: Konclude 0.7.0 does not finish on the
+  inputs, Openllet and JFact are not installed on ws. The golds of `min1722`,
+  `min526` and the three new reductions are argued by hand
+  (docs/HYBRID-CB-HT.md 21).
+- The bridge has no Lean model; the three changes are argued, not proved.
+- The diagnostic `BLOCK-TEST` line (`KM_HT_BLOCKING_SCAN_TRACE`) added to
+  `is_individual_node_blocking` was not exercised on a blocked node after
+  the fix (the u6 run blocks nothing).
+- Termination after fix 2 is argued only empirically: family timeouts and
+  pool timeouts match the base (the borderline family seeds behave the same
+  on both binaries).
+- `engine/target` deleted at the end; the worktree is kept.
