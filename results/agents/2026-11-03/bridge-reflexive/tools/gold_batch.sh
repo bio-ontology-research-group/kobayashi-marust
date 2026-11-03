@@ -4,7 +4,7 @@
 # (a batch timed out) are retried one per JVM with a 300 s cap.
 SEEDS=$1; GOLD=$2
 O=/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/r3-unannounced/oracle
-B=/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/cb-s974/oracle-build
+B=/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-reflexive/oracle-build
 CP=$O:$B:$(cat $O/cp.txt)
 export CP GOLD
 ls $SEEDS/*.ofn | xargs -n 50 -P 2 bash -c 'timeout 600 java -Xmx2g -XX:-CreateCoredumpOnCrash -cp $CP OracleBatch $GOLD "$@" 2>/dev/null' _

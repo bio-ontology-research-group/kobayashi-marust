@@ -2396,3 +2396,168 @@ publishes after 229.8 s (2.74 GiB) a taxonomy that disagrees with Konclude
 the saturation answers 4,716 unsatisfiable and 182,661 satisfiable subjects
 of 187,518 in 4.8 s and leaves 141 to completion. Validation, seed pools
 and the held-out and nominal ORE pairings: `results/agents/2026-11-02/bridge-self/README.md`.
+
+## 21. Reflexive roles next to functional roles: three bridge defects (2026-11-03, `fix/v155-bridge-reflexive`)
+
+**Defect.** The cb-s974 agent's merge family
+(`results/agents/2026-11-03/cb-s974/README.md`) left five seeds that KM
+answered wrongly through the bridge in the race's HT-first phase (merge526,
+merge1322, merge1585, merge1708, merge1722), on rc1 as well. Two
+reductions came with them: `min1722` (inconsistent; the bridge said
+consistent) and `min526` (eleven subsumptions under `Q3` missed). Each seed
+combines a reflexive role, directly or through an inverse pair, with
+functionality or inverse functionality, so that every neighbour along the
+role collapses into the node. Three separate port defects produce the
+five answers; none of them is in the CB calculus or the frontend.
+
+**Gold.** Konclude 0.7.0 does not finish on these inputs (it stays in
+precomputation, also on the four-axiom reductions below), and no Openllet
+or JFact installation exists on ws, so the HermiT answers are checked by
+hand.
+
+- `min1722`: `p` is the inverse of `r` and reflexive, so `r` is reflexive;
+  `p` inverse functional makes `r` functional. A reflexive functional role
+  is contained in the identity: from `r(x,x)` and `r(x,y)`, functionality
+  gives `y = x`. Every element then has exactly one `r`-predecessor (itself),
+  so `≤1 r⁻ ⊑ B` puts every element into `B`, and `B ⊑ ≥3 r` contradicts
+  functionality. Inconsistent.
+- `min526`: `r` is reflexive and inverse functional, `p = r⁻`. For
+  `r(x,y)`, reflexivity gives `r(y,y)`, and inverse functionality on
+  `r(x,y)`, `r(y,y)` gives `x = y`: `r`, and with it `p`, is contained in
+  the identity, and every element is `r`- and `p`-related to itself.
+  `∀p.Self(p)` holds everywhere (the only `p`-successor of `x` is `x`, and
+  `p(x,x)`), and `≤1 p⁻` holds everywhere (the only `p⁻`-successor of `x` is
+  `x`), so `Q3 ≡ ⊤` and every class is under `Q3`. `F ⊑ ∃r.(C ⊓ Self(p))`
+  with the only `r`-successor being `x` itself gives `F ⊑ C`, and
+  `E ⊑ ∀p.F` with `p(x,x)` gives `E ⊑ F ⊑ C`. The one-element model with
+  `r = p = {(a,a)}`, `s = ∅` and every class true is a model, so the
+  ontology is consistent. The derivation gives 11 subsumptions (eight
+  classes under `Q3`, `E ⊑ F`, `E ⊑ C`, `F ⊑ C`), exactly HermiT's list.
+- The reductions of the three remaining seeds (`merge1322_min`,
+  `merge1585_min`, `merge1708_min` in
+  `engine/tests/fixtures/bridge_reflexive/`) are checked in the paragraphs
+  of their defects below.
+
+### 21.1 The at-least rule counted neighbours that were not distinct
+
+`apply_atleast_rule` (`completion/u08.rs`) skipped the successor generation
+of `≥n R.C` whenever the node had `n` qualified `R`-neighbours. Konclude
+(cpp 16145) calls `hasDistinctRoleSuccessorConcepts` (cpp 20255–20290),
+which counts only neighbours that the distinct hash separates; the port
+has a faithful transcription of that function
+(`has_distinct_role_successor_concepts`, `u35.rs`) but the rule used the
+plain neighbour count `ht_role_successors_with_concepts(...).len()`.
+
+With a reflexive role every node is its own `R`- and `R⁻`-neighbour. In
+`min1722` (reduced to `selfloop_atleast`: `r` reflexive and functional,
+`⊤ ⊑ B ⊔ ≥2 r⁻`, `B ⊑ ≥3 r`, `E ⊑ ∃r⁻.A`) the trace
+(`KM_BRIDGE_SEARCH_LOG`) shows the root `x` taking `≥2 r⁻`, finding `x`
+itself and the `∃r⁻.A` successor `y` as two `r⁻`-neighbours, and creating
+nothing. `y`'s functional `r` (its neighbours `y` and `x`) then merged `y`
+into `x`, leaving `x` with one `r⁻`-neighbour, and the at-least restriction
+was never applied again: a clash-free graph for an inconsistent input.
+
+**Change.** The rule is skipped only when `cardinality` of the qualified
+neighbours are pairwise distinct (`ht_has_pairwise_distinct_subset`, a
+bounded clique search over the nodes' distinct hashes).
+
+**Exactness.** This is the applicability condition of the `≥`-rule of the
+SROIQ tableau (Horrocks, Kutz and Sattler 2006): the rule applies unless
+there are `n` safe `R`-neighbours `y1 … yn` with `C ∈ L(yi)` and
+`yi ≠̇ yj` for `i ≠ j`. Konclude's own test is a star around one neighbour
+(each of the counted neighbours is distinct from the first), which for
+`n ≥ 3` accepts sets that the clique test rejects; the clique test is the
+stricter of the two. A stricter skip condition only applies the rule in
+more situations, and every application of the `≥`-rule is sound for
+satisfiability (it adds `n` fresh, pairwise distinct `R.C`-successors, which
+any model of the node's label provides), so no unsatisfiable input becomes
+satisfiable and no clash becomes spurious. Conversely the old count could
+declare `≥n R.C` satisfied by fewer than `n` elements, which is the defect.
+When the search budget (100,000 steps) is exhausted the answer is "no
+clique", so the rule generates fresh successors: permitted, and only a cost.
+Termination: after one application the new successors form a clique, so the
+rule does not fire again on the same restriction until a merge or a prune
+removes one of them, as in the standard argument.
+
+### 21.2 Optimized blocking did not count the blocker's self link
+
+`is_label_concept_optimized_blocking` (`completion/u19.rs`) transcribes
+Konclude's B1–B6 test (cpp 18545–18790). For an at-most restriction
+`≤n R.C` in the blocker `w'` on the role `R` of the edge from the blocked
+node `w` to its predecessor `v`, B3/B5 count `w'`'s `R`-successors (nodes
+deeper than `w'` and nominals) and keep the block only if fewer than `n`
+of them carry `C` (cpp 18695): in the model the copy of `w'` that replaces
+`w` has `v` and the copies of those successors as `R`-neighbours. A self
+link of `w'` is neither deeper than `w'` nor a nominal, so it was not
+counted. But the copy of `w'` keeps `w'`'s self edges (its label carries
+the `∃R.Self` concepts, and the SELF rule recreates the edge), so the copy
+has one `R`-neighbour more than counted.
+
+`merge1322_min` (HermiT: `E`, `Q1` unsatisfiable) reduces further to
+`selfloop_blocker`: `r` and `s` reflexive, `⊤ ⊑ ≤1 s⁻`,
+`⊤ ⊑ ∃s⁻.F`, `Disjoint(E, F)`, `≥2 r⁻ ⊑ E`, `Q1 ⊑ ≥3 r`. Every element `x` is
+in `F`: its `∃s⁻.F` successor `y` gives `s(y,x)`, reflexivity gives
+`s(x,x)`, and `≤1 s⁻` at `x` gives `y = x`. Hence no element is in `E`,
+and every element has at most one `r`-predecessor; each of the three `r`-successors of a `Q1` element has
+two (the `Q1` element and itself, by reflexivity), so at least two of them
+equal the `Q1` element, against their distinctness: `Q1` is unsatisfiable.
+In the base graph (`KM_HT_GRAPH_DUMP`) the three successors of the `Q1` root
+are DIRECTBLOCKED by the root itself, before their labels are expanded:
+`≤1 r⁻` is in the root's label, the root's `r⁻`-successors deeper than the
+root are none, and the root's `r⁻` self link was not counted.
+`merge1708_min` is the same defect on `p`: `⊤ ⊑ ≤1 p⁻`, `B ⊑ Self(p)`,
+`B` for every element (by `InverseFunctional(s)` and `≤1 s⁻ ⊑ B`),
+so `p` is contained in the identity and `Q3 ≡ ≤2 p.C` is `⊤`; HermiT agrees,
+and the base missed `B ⊑ Q3` and `C ⊑ Q3`.
+
+**Change.** In the B3/B5 walk a self link of the blocker counts like a
+successor (`succ_indi_node == w_pred_node`, `KM-SOUNDNESS-GATE[self-blocker]`).
+
+**Exactness.** The soundness proof of the optimized blocking condition
+builds the model by replacing each blocked `w` with a copy of `w'`; B3/B5
+are there to keep every at-most restriction of `w'` satisfied at the copy,
+whose `R`-neighbours are `v` plus `w'`'s non-predecessor `R`-neighbours.
+With self edges those include `w'` itself, so the count has to include the
+self link; with the change the B3/B5 premise of that proof holds again.
+The change can only refuse blocks (it adds to a count that must stay below
+`n`), so it never makes a clash-free graph out of one that had a clash
+(soundness of unsatisfiability verdicts is untouched, and blocking less is
+never incomplete). B4a (at-least restrictions of `w'` met by its
+successors) still ignores the self link, which can only refuse more blocks.
+Terminologies without SELF concepts have no self links, so the test is
+unchanged for them.
+
+### 21.3 Saturation caching without the saturated expansion
+
+Section 20 (point 6) turned off `conf_expand_created_successors_from_saturation`
+for terminologies with a positive SELF concept and kept
+`conf_caching_blocking_from_saturation`. Konclude creates a successor
+(`createSuccessorIndividual`, cpp 21692–21728) by first copying the
+saturated label into it (`tryExpansionFromSaturatedData`) and only then
+caching it against its saturation node (`tryEstablishSaturationCaching`,
+cpp 21731). The copied label carries the concepts that the saturation
+derived for the successor, among them the universal restrictions and
+triggers that propagate back to the predecessor; the cached successor still
+applies those along its predecessor link. Without the copy the successor
+holds only its creation label, and the caching then declares its subtree
+done: whatever the saturation would have sent back to the predecessor is
+lost.
+
+`merge1585_min` (four axioms: `Q2 ≡ ∃r.(≥1 s.C)`, `F ⊑ ∃r.∃s.C`, plus a
+SELF axiom on an unrelated class and an at-least on `r⁻`): `F ⊑ Q2` holds
+trivially (`≥1 s.C` is `∃s.C`), HermiT agrees, and the base missed it. In
+the base graph the `r`-successor of the `F` root is SATURATIONBLOCKINGCACHED
+with the label `{⊤, ∃s.C}`; with the expansion on (SELF axiom replaced) it
+carries two more concepts from its saturation node and the root receives
+the trigger that derives `Q2`. `KM_HT_NO_SAT_CACHING_BLOCKING=1` and
+`KM_BRIDGE_SAT_REFUSE_SELF=1` both restore the answer.
+
+**Change.** Under the section 20 gate both options go off together
+(`bridge.rs`, the `self_cardinality` branch of the production coupling).
+
+**Exactness.** Saturation caching and the saturated expansion are
+optimisations of the completion; with both off the completion expands every
+node itself, which is Konclude's algorithm with these options configured
+off. The change removes a cache, so it can only cost time; ore_ont_12128
+(two reflexive roles, the input the section 20 gate was built for) answers
+in 36.1 s with the caching and 35.9 s without it on the same binary.

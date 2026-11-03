@@ -3956,7 +3956,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 negate,
                 calc_alg_context,
             );
-            // Konclude's test (cpp 16205, `hasDistinctRoleSuccessorConcepts`,
+            // Konclude's test (cpp 16145, `hasDistinctRoleSuccessorConcepts`,
             // cpp 20255–20290) counts only successors that the distinct hash
             // separates. Counting every qualified neighbour, as the port did,
             // let one ≥n R.C be satisfied by neighbours that a later merge

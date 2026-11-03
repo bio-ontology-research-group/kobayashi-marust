@@ -466,7 +466,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                 // `w'`'s self edges, so the copy's `role`
                                 // neighbours are `v`, the copy itself and the
                                 // copies of `w'`'s successors. Konclude counts
-                                // only the successors (cpp B3/B5), which lets a
+                                // only the successors (B3/B5, cpp 18635-18705), which lets a
                                 // reflexive `role` exceed `≤n role` at the copy
                                 // (docs/HYBRID-CB-HT.md section 21, `u6`,
                                 // `merge1322`).
