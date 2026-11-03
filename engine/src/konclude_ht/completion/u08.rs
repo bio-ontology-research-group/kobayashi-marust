@@ -1677,6 +1677,76 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// Are `indi1` and `indi2` mergeable? `false` iff `indi1`'s active distinct hash
     /// records `indi2` as `owl:differentFrom` (a distinct-edge). Port of the leading
     /// distinct-test of `isIndividualNodesMergeable` (cpp 20714–20726).
+    /// Whether `nodes` holds `count` members that the distinct hashes separate
+    /// pairwise (a clique of size `count` in the distinctness relation).
+    /// Successors created by one `createDistinctSuccessorIndividuals` call
+    /// form such a clique, so the first branch of the search finds it at
+    /// once. The search is bounded; when the bound is exhausted the answer is
+    /// `false`, which only lets the at-least rule create fresh distinct
+    /// successors (always permitted).
+    pub fn ht_has_pairwise_distinct_subset(
+        &self,
+        nodes: &[NodeId],
+        count: Cint64,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> bool {
+        if (nodes.len() as Cint64) < count {
+            return false;
+        }
+        if count <= 1 {
+            return true;
+        }
+        let pc = calc_alg_context.process_context();
+        let ids: Vec<Cint64> = nodes
+            .iter()
+            .map(|&n| pc.node(n).individual_node_id())
+            .collect();
+        let distinct = |i: usize, j: usize| -> bool {
+            let a = pc.node(nodes[i]).use_distinct_hash;
+            if a.is_some() && pc.distinct_hash(a).is_individual_distinct(ids[j]) {
+                return true;
+            }
+            let b = pc.node(nodes[j]).use_distinct_hash;
+            b.is_some() && pc.distinct_hash(b).is_individual_distinct(ids[i])
+        };
+        fn extend(
+            chosen: &mut Vec<usize>,
+            start: usize,
+            n: usize,
+            count: usize,
+            budget: &mut usize,
+            distinct: &dyn Fn(usize, usize) -> bool,
+        ) -> bool {
+            if chosen.len() == count {
+                return true;
+            }
+            for k in start..n {
+                if n - k < count - chosen.len() || *budget == 0 {
+                    return false;
+                }
+                *budget -= 1;
+                if chosen.iter().all(|&c| distinct(c, k)) {
+                    chosen.push(k);
+                    if extend(chosen, k + 1, n, count, budget, distinct) {
+                        return true;
+                    }
+                    chosen.pop();
+                }
+            }
+            false
+        }
+        let mut budget: usize = 100_000;
+        let mut chosen = Vec::with_capacity(count as usize);
+        extend(
+            &mut chosen,
+            0,
+            nodes.len(),
+            count as usize,
+            &mut budget,
+            &distinct,
+        )
+    }
+
     pub fn ht_individuals_mergeable(
         &self,
         indi1: NodeId,
@@ -3886,7 +3956,24 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 negate,
                 calc_alg_context,
             );
-            if (existing.len() as Cint64) >= cardinality {
+            // Konclude's test (cpp 16205, `hasDistinctRoleSuccessorConcepts`,
+            // cpp 20255–20290) counts only successors that the distinct hash
+            // separates. Counting every qualified neighbour, as the port did,
+            // let one ≥n R.C be satisfied by neighbours that a later merge
+            // identifies: a self edge `R(x,x)` of a reflexive role made `x`
+            // its own R-neighbour, so `≥2 R⁻` on `x` found `x` and a ∃R⁻
+            // successor `y`; `y`'s functional `R` then merged `y` into `x`
+            // and the at-least was never applied again (docs/HYBRID-CB-HT.md
+            // section 21, `min1722`, `min526`). The rule is now skipped only
+            // when `cardinality` of the qualified successors are pairwise
+            // distinct, the condition of the SROIQ ≥-rule.
+            if (existing.len() as Cint64) >= cardinality
+                && self.ht_has_pairwise_distinct_subset(
+                    &existing,
+                    cardinality,
+                    calc_alg_context,
+                )
+            {
                 return;
             }
             // PORT-PENDING: the at-least fast-clash label walk
