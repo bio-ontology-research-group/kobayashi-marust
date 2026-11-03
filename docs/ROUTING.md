@@ -573,8 +573,14 @@ a declaration clause `C(x) → C(x)` for every declared class that no other
 clause names (`seed_missing_declarations`), so every worker receives every
 declared class; a correct worker has a row for each of them. The CB engine
 already emitted empty rows. The elc worker omitted subjects with no
-superclass; it now emits a row for every public concept it interned (both
-the string map and the compact dictionary output), which changes no pair.
+superclass; it now emits a row for every public concept node on each of its
+output paths (the completion's string map and compact dictionary, the flat
+hierarchy fast path, the incremental session result and the Lean-verified
+result), which changes no pair. Before the flat path and the session result
+were covered, the guard declined 6 of the 300 inputs of the C1 sample and
+the incremental row-delta session test; that is the failure mode the guard
+exists to make visible, a missing row turned into a decline instead of a
+wrong answer.
 Residue names an answer still lists as `unresolved` do not count as covered.
 
 What it does not cover. Inconsistent answers carry no taxonomy and are not
