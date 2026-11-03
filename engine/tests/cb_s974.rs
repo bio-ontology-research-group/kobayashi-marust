@@ -152,3 +152,24 @@ fn sequential_elc_partial_keeps_a_class_named_only_by_a_vacuous_role() {
 fn elc_cert_route_keeps_a_class_named_only_by_a_vacuous_role() {
     check_one("vacuous_domain_top", "elc_cert", &with_release(&[("KM_ROUTE", "elc_cert")]));
 }
+
+#[test]
+fn rules_route_keeps_classes_named_only_by_dropped_ground_clauses() {
+    // `A` and `B` occur only in class assertions and a DL-safe rule; the CB
+    // taxonomy of the forced `ht_rules` route drops the ground clauses, and
+    // without a query for `A` and `B` it published them with no superclass
+    // although `⊤ ⊑ G` (the automatic route answers this input exactly).
+    // Expected answer by hand: every class is under `G`; the rule never
+    // fires (no element is both A and B).
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/cb_s974/rules");
+    let path = dir.join("rules_route_top.ofn");
+    let env = with_release(&[("KM_ROUTE", "ht_rules")]);
+    let got = normalise(&classify(&path, &env));
+    let want = normalise(
+        &serde_json::from_str(
+            &std::fs::read_to_string(dir.join("rules_route_top.expected.json")).unwrap(),
+        )
+        .unwrap(),
+    );
+    assert_eq!(got, want);
+}
