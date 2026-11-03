@@ -2286,6 +2286,19 @@ impl LeanElCertificate {
                 .or_default()
                 .push(fact.sup.clone());
         }
+        // Presentation only: every public active concept keeps a (possibly
+        // empty) row so the orchestrator's coverage guard sees it. No fact is
+        // added beyond the checked relation.
+        for &concept in &self.active_concepts {
+            if concept == self.top || concept == self.bottom {
+                continue;
+            }
+            if let Some(name) = self.symbols.get(concept as usize) {
+                if !crate::calc::is_internal_concept(name) {
+                    subsumptions.entry(name.clone()).or_default();
+                }
+            }
+        }
         ElResult {
             unresolved: Vec::new(),
             subsumptions,
@@ -12274,7 +12287,8 @@ impl IncrementalElClassifier {
                 })
                 .collect();
             out.sort_unstable();
-            if !out.is_empty() {
+            // Public subjects keep an empty row (orchestrator coverage guard).
+            if !out.is_empty() || !crate::calc::is_internal_concept(self.interner.name(cid)) {
                 subsumptions.insert(self.interner.name(cid).to_string(), out);
             }
         }
@@ -12738,7 +12752,8 @@ fn acyclic_nf1_taxonomy(
                 continue;
             }
             let reached = std::mem::take(&mut closure[concept as usize]);
-            if !reached.is_empty() {
+            // Public subjects keep an empty row (orchestrator coverage guard).
+            if !reached.is_empty() || !crate::calc::is_internal_concept(it.name(concept)) {
                 rows.push((concept, reached));
             }
         }
@@ -12761,7 +12776,8 @@ fn acyclic_nf1_taxonomy(
             continue;
         }
         let reached = std::mem::take(&mut closure[concept as usize]);
-        if !reached.is_empty() {
+        // Public subjects keep an empty row (orchestrator coverage guard).
+        if !reached.is_empty() || !crate::calc::is_internal_concept(it.name(concept)) {
             subsumptions.insert(
                 it.name(concept).to_string(),
                 reached
