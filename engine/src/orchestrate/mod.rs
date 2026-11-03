@@ -43,6 +43,34 @@ use config::Mechanism;
 /// A class in another namespace may legitimately have local name `Nothing`;
 /// the frontend keeps it as an ordinary named class, so bare `Nothing` must
 /// not be interpreted as OWL bottom here.
+/// The declared classes for which a consistent worker answer carries no
+/// subject row (rows with no superclass count), in declaration order, or
+/// `None` when every declared class is covered. Residue names an answer
+/// still lists as unresolved are not covered.
+pub(crate) fn undeclared_coverage(out: &EngineOut, declared: &[String]) -> Option<Vec<String>> {
+    if declared.is_empty() {
+        return None;
+    }
+    let mut covered: crate::fxhash::FxHashSet<&str> = crate::fxhash::FxHashSet::default();
+    if let Some(compact) = &out.compact_subsumptions {
+        for (subject, _) in &compact.rows {
+            covered.insert(compact.names[*subject as usize].as_ref());
+        }
+    }
+    for subject in out.subsumptions.keys() {
+        covered.insert(subject.as_str());
+    }
+    for name in &out.unresolved {
+        covered.remove(name.as_str());
+    }
+    let missing: Vec<String> = declared
+        .iter()
+        .filter(|name| !covered.contains(name.as_str()))
+        .cloned()
+        .collect();
+    (!missing.is_empty()).then_some(missing)
+}
+
 fn is_bottom(s: &str) -> bool {
     s == "owl:Nothing" || s == "http://www.w3.org/2002/07/owl#Nothing" || s == "\u{22A5}"
 }
@@ -284,6 +312,12 @@ pub struct EngineOut {
     /// elc exit-4 residue (named subjects the certificate could not determine)
     #[serde(default)]
     pub unresolved: Vec<String>,
+    /// The answer came as a pair list (HT, bridge and tableau workers,
+    /// `race::tableau_to_out`), which has no subject rows: a class without a
+    /// named superclass is absent by construction, so the publication
+    /// coverage guard cannot check it (docs/ROUTING.md).
+    #[serde(skip)]
+    pub pair_form: bool,
 }
 
 /// The final classification, serialised exactly like `owl_classify`'s output.
@@ -329,6 +363,7 @@ pub(crate) fn parse_out_path(path: &Path) -> Result<EngineOut, OrchestrateError>
             subsumptions: BTreeMap::new(),
             compact_subsumptions: Some(compact),
             unresolved: Vec::new(),
+            pair_form: false,
         });
     }
     Ok(serde_json::from_reader(reader)?)
@@ -694,6 +729,7 @@ fn run_atomic_elc(
                 inconsistent: res.inconsistent,
                 dropped: 0,
                 unresolved: Vec::new(),
+                pair_form: false,
             }),
         };
     }
@@ -1238,6 +1274,7 @@ fn inproc_engine_out(r: &mut crate::reasoner::Reasoner) -> Option<EngineOut> {
         inconsistent: r.inconsistent(),
         dropped: r.dropped_unsupported(),
         unresolved: Vec::new(),
+        pair_form: false,
     })
 }
 
@@ -1262,6 +1299,7 @@ fn try_inproc_elc(
                 inconsistent: res.inconsistent,
                 dropped: 0,
                 unresolved: res.unresolved,
+                pair_form: false,
             };
             if out.unresolved.is_empty() {
                 Ok(Some(out))
@@ -3109,6 +3147,7 @@ fn classify_with_evidence_inner(
                                 inconsistent: classification.inconsistent,
                                 dropped: 0,
                                 unresolved: Vec::new(),
+                                pair_form: false,
                             });
                         }
                     }
@@ -3653,6 +3692,26 @@ fn classify_with_evidence_inner(
             "projected ABox requires a complete TBox result; worker dropped {} clause(s)",
             out.dropped
         )));
+    }
+    // Publication coverage guard (docs/ROUTING.md, "Publication coverage
+    // guard"): a worker answer that has no row for some declared class has
+    // not answered that class, and publishing it would report the class with
+    // no superclasses. Decline instead. Pair-form answers have no rows and
+    // are outside the guard.
+    if !out.inconsistent && !out.pair_form {
+        if let Some(missing) = undeclared_coverage(&out, &meta.declared) {
+            if timing {
+                eprintln!(
+                    "KM_TIMING coverage guard fired: worker answer omits {} declared class(es)",
+                    missing.len()
+                );
+            }
+            return Err(OrchestrateError::OutOfFragment(format!(
+                "coverage guard: the worker answer omits {} declared class(es) (first: {})",
+                missing.len(),
+                missing[0]
+            )));
+        }
     }
     // These borrowed lookup tables are consumed only by public-output mapping.
     // Constructing them before classification made their bucket allocations
@@ -4581,6 +4640,38 @@ impl Classification {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn coverage_guard_declines_an_answer_without_a_declared_class() {
+        // s1966: the elc partial answer had no row for C. Removing a declared
+        // class from an otherwise complete worker answer must decline.
+        let declared: Vec<String> = ["A", "B", "C"].iter().map(|s| s.to_string()).collect();
+        let mut out = super::EngineOut::default();
+        out.subsumptions.insert("A".into(), vec!["B".into()]);
+        out.subsumptions.insert("B".into(), vec![]);
+        out.subsumptions.insert("C".into(), vec!["Q3".into()]);
+        out.subsumptions.insert("Q_0".into(), vec![]);
+        assert_eq!(super::undeclared_coverage(&out, &declared), None);
+        // An empty row counts: C without superclasses is covered.
+        out.subsumptions.insert("C".into(), vec![]);
+        assert_eq!(super::undeclared_coverage(&out, &declared), None);
+        out.subsumptions.remove("C");
+        assert_eq!(super::undeclared_coverage(&out, &declared), Some(vec!["C".to_string()]));
+        // A name still listed as unresolved residue is not covered.
+        out.subsumptions.insert("C".into(), vec![]);
+        out.unresolved.push("B".into());
+        assert_eq!(super::undeclared_coverage(&out, &declared), Some(vec!["B".to_string()]));
+        // The compact dictionary output counts its subject rows.
+        let compact = crate::json_io::CompactElcOutput {
+            names: vec!["A".into(), "B".into(), "C".into()],
+            rows: vec![(0, vec![1]), (1, vec![])],
+            inconsistent: false,
+            dropped: 0,
+        };
+        let out = super::EngineOut { compact_subsumptions: Some(compact), ..Default::default() };
+        assert_eq!(super::undeclared_coverage(&out, &declared), Some(vec!["C".to_string()]));
+        assert_eq!(super::undeclared_coverage(&out, &[]), None);
+    }
+
     #[test]
     fn only_registered_rewrites_skip_revalidation_and_only_while_registered() {
         let user = super::tmpfile::TempPath::new("-user.ofn");

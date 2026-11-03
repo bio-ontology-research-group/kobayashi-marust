@@ -1,0 +1,8 @@
+Prefix(:=<http://example.org/t#>)
+Ontology(<http://example.org/t>
+Declaration(Class(:A))
+Declaration(Class(:C))
+Declaration(ObjectProperty(:t))
+SubClassOf(owl:Thing :A)
+ObjectPropertyDomain(:t :C)
+)

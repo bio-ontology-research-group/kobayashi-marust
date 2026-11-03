@@ -13361,7 +13361,9 @@ fn classify_inner_mode(
                 .copied()
                 .filter(|&d| d != cid && d != TOP)
                 .collect();
-            if !out.is_empty() {
+            // A public subject keeps its row even with no superclass, so the
+            // orchestrator's coverage guard sees every declared class.
+            if !out.is_empty() || !crate::calc::is_internal_concept(&names[cid as usize]) {
                 rows.push((cid, out));
             }
         }
@@ -13416,7 +13418,12 @@ fn classify_inner_mode(
                 it.name(d).to_string()
             });
         }
-        if !out.is_empty() || rooted_output_names.is_some() {
+        // A public subject keeps its row even with no superclass, so the
+        // orchestrator's coverage guard sees every declared class.
+        if !out.is_empty()
+            || rooted_output_names.is_some()
+            || !crate::calc::is_internal_concept(it.name(cid))
+        {
             subsumptions.insert(it.name(cid).to_string(), out);
         }
     }
