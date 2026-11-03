@@ -1,0 +1,10 @@
+Prefix(:=<http://example.org/c#>)
+Ontology(<http://example.org/c>
+Declaration(Class(:Q))
+Declaration(Class(:B))
+Declaration(Class(:C))
+Declaration(ObjectProperty(:r))
+SubClassOf(:Q ObjectMinCardinality(2 :r :B))
+SubClassOf(:B ObjectHasSelf(:r))
+InverseFunctionalObjectProperty(:r)
+)

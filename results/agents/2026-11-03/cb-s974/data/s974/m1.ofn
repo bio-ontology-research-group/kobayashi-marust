@@ -1,0 +1,13 @@
+Prefix(:=<http://example.org/self#>)
+Ontology(<http://example.org/self>
+Declaration(Class(:Q2))
+Declaration(Class(:E))
+Declaration(Class(:F))
+Declaration(Class(:A))
+Declaration(ObjectProperty(:r))
+Declaration(ObjectProperty(:p))
+Declaration(ObjectProperty(:s))
+SubClassOf(:Q2 ObjectMinCardinality(2 :r))
+ReflexiveObjectProperty(:r)
+InverseFunctionalObjectProperty(:r)
+)

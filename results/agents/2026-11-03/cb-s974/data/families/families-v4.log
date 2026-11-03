@@ -1,0 +1,2 @@
+merge v4    5982 auto	ok       3 auto	TIMEOUT      15 auto	WRONG     804 cb_plain1	NOANSWER    4305 cb_plain1	ok     891 cb_plain1	TIMEOUT 
+vacuous v4    5985 auto	ok      15 auto	TIMEOUT    5979 seq	ok      21 seq	TIMEOUT 
