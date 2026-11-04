@@ -2431,6 +2431,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     reps: Vec::new(),
                     slots: cardinality,
                     base_tp: TrackPointId::NONE,
+                    relocation_tps: Vec::new(),
                 });
                 if trace {
                     eprintln!(
@@ -2454,15 +2455,47 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .map(|(_, n)| n)
             .collect();
         let mut reps: Vec<NodeId> = Vec::with_capacity(old_reps.len());
+        let mut lost_tps: Vec<TrackPointId> = Vec::new();
         for r in old_reps.iter().copied() {
-            let r = self.get_up_to_date_individual(r, calc_alg_context);
-            if live.contains(&r) && !reps.contains(&r) {
-                reps.push(r);
+            // Follow the merge chain (`getCorrectedNominalIndividualNode`,
+            // cpp 16280-16294), collecting each merge's dependency.
+            let mut n = self.get_up_to_date_individual(r, calc_alg_context);
+            let mut chain_tps: Vec<TrackPointId> = Vec::new();
+            for _ in 0..64 {
+                let (merged, into_id, tp) = {
+                    let node = calc_alg_context.process_context().node(n);
+                    (
+                        node.has_merged_into_individual_node_id(),
+                        node.merged_into_individual_node_id(),
+                        node.merged_dependency_track_point(),
+                    )
+                };
+                if !merged {
+                    break;
+                }
+                if tp.is_some() {
+                    chain_tps.push(tp);
+                }
+                let m = calc_alg_context.get_up_to_date_individual_by_id(into_id);
+                if m.is_none() || m == n {
+                    break;
+                }
+                n = m;
+            }
+            if live.contains(&n) && !reps.contains(&n) {
+                reps.push(n);
+            } else {
+                lost_tps.extend(chain_tps);
             }
         }
-        if reps != old_reps {
-            calc_alg_context.process_context_mut().node_mut(x).nn_atmost_states[state_idx].reps =
-                reps.clone();
+        if reps != old_reps || !lost_tps.is_empty() {
+            let st = &mut calc_alg_context.process_context_mut().node_mut(x).nn_atmost_states[state_idx];
+            st.reps = reps.clone();
+            for tp in lost_tps {
+                if !st.relocation_tps.contains(&tp) {
+                    st.relocation_tps.push(tp);
+                }
+            }
         }
         let slots = calc_alg_context.process_context().node(x).nn_atmost_states[state_idx].slots;
         // The next merging candidate: a qualified neighbour outside the
@@ -2639,6 +2672,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .find(|s| s.concept == concept && s.negate == negate)
             .map(|s| s.base_tp)
             .unwrap_or(TrackPointId::NONE)
+    }
+
+    /// The merge dependencies of the representatives the NN state of the
+    /// at-most `con_des` at `x` lost (section 24).
+    pub(super) fn ht_nn_relocation_track_points(
+        &self,
+        x: NodeId,
+        con_des: ConDescId,
+        negate: bool,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> Vec<TrackPointId> {
+        let pc = calc_alg_context.process_context();
+        let concept = pc.con_desc(con_des).get_concept();
+        pc.node(x)
+            .nn_atmost_states
+            .iter()
+            .find(|s| s.concept == concept && s.negate == negate)
+            .map(|s| s.relocation_tps.clone())
+            .unwrap_or_default()
     }
 
     /// Record the track point of the alternative that decides the current
@@ -3080,6 +3132,23 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             let pair_log = super::bridge_search_log_enabled();
             let mut pair_verdicts: Vec<String> = Vec::new();
             if let Some((cand, reps, alternatives)) = &nn_decision {
+                // Representatives the set lost by a merge (section 24).
+                let lost: Vec<TrackPointId> = self.ht_nn_relocation_track_points(
+                    *process_indi,
+                    con_des,
+                    negate,
+                    calc_alg_context,
+                );
+                for tp in lost {
+                    let mut pi = *process_indi;
+                    merge_causing = self.create_clashed_concept_descriptor(
+                        merge_causing,
+                        &mut pi,
+                        ConDescId::NONE,
+                        tp,
+                        calc_alg_context,
+                    );
+                }
                 // The candidate against each representative (cpp 15381-15418):
                 // the causes of every rejected merge join the branch clashes.
                 for &r in reps {

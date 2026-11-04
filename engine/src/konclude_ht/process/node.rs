@@ -449,6 +449,11 @@ pub struct NnAtmostState {
     /// its clash depend on it, so the dependency chain carries every earlier
     /// decision that filled the set or spent a slot.
     pub base_tp: TrackPointId,
+    /// Merge dependencies of representatives that were merged into another
+    /// representative or out of the neighbourhood (cpp 15293-15327): the
+    /// set lost a member without regaining its slot, so every later
+    /// decision and clash of the set rests on those merges too.
+    pub relocation_tps: Vec<TrackPointId>,
 }
 
 impl IndividualProcessNode {
