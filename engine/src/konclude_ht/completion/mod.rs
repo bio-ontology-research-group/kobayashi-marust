@@ -169,6 +169,8 @@ cached_completion_flag!(sat_no_successor_label_replay, "KM_HT_NO_SAT_SUCCESSOR_L
 cached_completion_flag!(ht_or_trace_enabled, "KM_HT_OR_TRACE");
 cached_completion_flag!(ht_ddb_no_skip_enabled, "KM_HT_DDB_NO_SKIP");
 cached_completion_flag!(ht_atmost_rest_enabled, "KM_HT_ATMOST_REST");
+cached_completion_flag!(ht_no_nn_rule, "KM_HT_NO_NN_RULE");
+cached_completion_flag!(ht_nn_trace_enabled, "KM_HT_NN_TRACE");
 cached_completion_flag!(compact_distinct_groups_enabled, "KM_COMPACT_DISTINCT_GROUPS");
 
 macro_rules! cached_completion_i64 {
