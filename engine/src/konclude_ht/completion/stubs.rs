@@ -1368,6 +1368,13 @@ impl SatisfiableExpanderCacheHandler {
                     .alloc_sig_expander_entry_write_data(sat_write);
                 self.append_write_data(sat_write);
                 self.stat_satisfiable_writes += 1;
+                if super::satexp_trace_enabled() {
+                    eprintln!(
+                        "SATEXP-WRITE-SAT-EXISTING sig={} {}",
+                        signature,
+                        super::satexp_trace::describe_node(process_context, ontology, individual_node)
+                    );
+                }
             }
             process_context
                 .sat_exp_storing_data_mut(storing_data)
@@ -1562,6 +1569,14 @@ impl SatisfiableExpanderCacheHandler {
             .alloc_sig_expander_entry_write_data(satisfiable_write);
         self.append_write_data(satisfiable_write);
         self.stat_satisfiable_writes += 1;
+        if super::satexp_trace_enabled() {
+            eprintln!(
+                "SATEXP-WRITE-SAT sig={} branched={} {}",
+                signature,
+                directly_branched,
+                super::satexp_trace::describe_node(process_context, ontology, individual_node)
+            );
+        }
 
         process_context
             .sat_exp_storing_data_mut(storing_data)

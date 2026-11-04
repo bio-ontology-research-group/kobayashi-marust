@@ -22,6 +22,8 @@ pub mod computed_cons_handler; // W129: CComputedConsequencesCacheHandler type-w
 pub mod context; // W3: CCalculationAlgorithmContext{,Base} — the per-thread context
 pub mod dependency_factory;
 pub mod grounding; // W44: CConceptNominalSchemaGroundingHandler helper methods
+pub mod satexp_absorb; // satisfiable-cached absorption gates (docs/HYBRID-CB-HT.md section 23)
+pub mod satexp_trace; // diagnostic: KM_HT_SATEXP_TRACE (docs/HYBRID-CB-HT.md section 23)
 pub mod sat_node_exp_handler; // W128: CSaturationNodeExpansionCacheHandler concept-unsat queueing
 pub mod strategy; // W3: Strategy/ rule-application priority + cache-retrieval policies
 pub mod stubs; // W3: Algorithm-layer not-yet-ported placeholder markers // W3c: the create*Dependency allocator (CDependencyFactory)
@@ -112,6 +114,7 @@ cached_completion_flag!(automat_rest_link_audit_enabled, "KM_HT_AUTOMAT_REST_LIN
 cached_completion_flag!(automat_rest_link_drop_enabled, "KM_HT_AUTOMAT_REST_LINK_DROP");
 cached_completion_flag!(automat_closure_audit_enabled, "KM_HT_AUTOMAT_CLOSURE_AUDIT");
 cached_completion_flag!(graph_dump_enabled, "KM_HT_GRAPH_DUMP");
+cached_completion_flag!(satexp_trace_enabled, "KM_HT_SATEXP_TRACE");
 cached_completion_flag!(atmost_rearm_disabled, "KM_HT_DIAG_NO_ATMOST_REARM");
 cached_completion_flag!(automat_rest_link_audit_detail, "KM_HT_AUTOMAT_REST_LINK_AUDIT_DETAIL");
 

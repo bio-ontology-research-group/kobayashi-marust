@@ -1576,6 +1576,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                         .get_next();
                                 }
                             }
+                            if super::satexp_trace_enabled() {
+                                let mut current_node = individual_node;
+                                let ancestor_node = self
+                                    .get_ancestor_individual(&mut current_node, calc_alg_context);
+                                let pc = calc_alg_context.process_context();
+                                let onto = calc_alg_context.ontology_arenas();
+                                eprintln!(
+                                    "SATEXP-HIT compatible={} without_branched={} {} | anc {}",
+                                    sat_compatible,
+                                    without_branched,
+                                    super::satexp_trace::describe_node(pc, onto, individual_node),
+                                    super::satexp_trace::describe_node(pc, onto, ancestor_node)
+                                );
+                            }
                             if sat_compatible {
                                 handler_state.handler.stat_compatible_satisfiable_hits += 1;
                             } else {
