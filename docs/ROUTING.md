@@ -603,6 +603,75 @@ change (each worker reports the query classes it decided); that is open. Publica
 `EngineOut` (the `flat_nf1` and `mirror_private` fast paths, and the
 rule-aware taxonomy of the rules-consistency route) are outside the guard.
 
+## Entailed functionality in the HT view
+
+Added 2026-11-04 (`results/agents/2026-11-04/cb-nn1811/`,
+`cb_to_ht::add_entailed_functional_clauses`).
+
+The defect. NN seed nn1811 was answered wrongly on the automatic route
+(`A ⊑ Q1`, `A ⊑ Q4` missing against HermiT). The wrong answer came from the
+native bridge HT worker of the `certified_nominals` race (it answers after
+34 s; when it hit the 18 GiB cap the nominal CB arm gave no answer within
+150 s and the run timed out), not from the nominal CB stack. Every CB route
+(`nominals`, `cb_plain1`, `nominal_ni_abox`, `certified_card_proxy_abox`)
+answers the reductions as HermiT. The four-axiom reduction `r19` has no
+individual at all:
+
+    InverseObjectProperties(:r :s)
+    DisjointClasses(:A :C)
+    SubClassOf(owl:Thing ObjectMaxCardinality(1 :s))
+    SubClassOf(ObjectComplementOf(:Q4) ObjectSomeValuesFrom(:r ObjectSomeValuesFrom(:s :C)))
+
+An `r`-successor `y` of a `¬Q4` element `x` has `x` as an `s`-neighbour, so
+`≤1 s` merges the `s`-successor in `C` of `y` into `x`; `x ∈ C`, and
+`A ⊑ Q4`. `ht_bridge`, `production_all` (the automatic route on this TBox),
+`certified_nominals` and the automatic route missed it in 20 of 20 runs.
+In the `A` probe the bridge takes `y` as satisfiable-cached from the earlier
+`C` probe and absorbs the generating concept `∃s.C`
+(`is_generating_concept_satisfiable_cached_absorpable`, Konclude cpp 14217),
+so the successor that would merge into `x` is never built. That test refuses
+the absorption when the role back to the ancestor is functional or an
+at-most of it is already in the node's reapply queue. The bridge flags a role
+functional only from the plain clause `R(x,y1) ∧ R(x,y2) → y1≈y2` that
+`FunctionalObjectProperty(R)` produces; with that axiom in place of
+`⊤ ⊑ ≤1 s` the bridge is right (r5). The frontend writes `⊤ ⊑ ≤1 R` as an
+at-most clause guarded by `⊤` definers
+(`Q_1(y1) ∧ Q_1(y2) ∧ Q_0(x) ∧ R(x,y1) ∧ R(x,y2) → y1≈y2`, `→ Q_1(x)`,
+`→ Q_0(x)`), `ObjectPropertyDomain(R ≤1 R)` as one guarded by a domain
+definer, and `InverseFunctionalObjectProperty(R)` in the shared-target
+orientation; the bridge builds a `⊤`-qualified at-most from these, which
+Konclude would give priority 5.5 only when unqualified, and never flags the
+role. Konclude 0.7.0 does not finish the TBox tasks of these inputs.
+
+The repair. The HT conversion adds the plain functionality clause for every
+role whose functionality the view entails through an at-most-1 clause with
+trivial guards. A concept is universal when the view derives it on every
+element from unit facts by one-variable Horn clauses; it is implied at the
+source (target) of `R` when the view derives it there from one `R`-atom and
+universal or implied concepts, closed under one-variable Horn clauses and
+the inverse and inclusion clauses `R(0,1) → S(1,0)`, `R(0,1) → S(0,1)`. An
+at-most-1 clause over `R` whose concept atoms are all universal or implied at
+their endpoint yields `R(0,1) ∧ R(0,2) → 1≈2`; in the shared-target
+orientation it yields the functionality of every `S` with `S(0,1) → R(1,0)`.
+
+Why it is exact. Each added clause is derived from clauses of the view by
+resolution: the universal and implied atoms of the at-most clause are
+discharged by their derivations, which leaves the plain clause (and, for the
+shared-target case, one more resolution step with `S(0,1) → R(1,0)` on each
+role atom). The pass only adds consequences and keeps every clause, so the
+view has the same models, and every exact HT worker gives the same answer on
+it. It does not touch the CB input, the frontend output or the bridge. It is
+off when proof-carrying HT publication is requested
+(`ht_lean_certification_requested`), whose projection check compares the
+view with its source clause by clause, and with
+`KM_HT_NO_ENTAILED_FUNCTIONAL=1` (negative control). The pass is not proved
+in Lean; the bridge has no Lean model.
+
+What it does not cover. An at-most-1 restriction with a real guard or filler
+(`D ⊑ ≤1 s`, `⊤ ⊑ ≤1 s.D`) is not a functionality and keeps its qualified
+encoding, so the absorption test can still meet it before the at-most enters
+the reapply queue. A complete repair of that test belongs in the bridge.
+
 ## Validation artifacts
 
 The experiment scripts, per-ontology statistics table, immutable hashes,

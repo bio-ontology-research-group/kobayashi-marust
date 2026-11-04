@@ -79,10 +79,13 @@ def gen(seed):
         elif k == 2:
             x = R.choice(S)
             ax.append(f'ObjectPropertyDomain(:{x} ObjectMaxCardinality(1 :{x}))')
-        elif k == 3:
-            ax.append(f'FunctionalObjectProperty({rl})')
-        elif k == 4:
-            ax.append(f'InverseFunctionalObjectProperty({rl})')
+        elif k in (3, 4):
+            # KM's parser takes named roles only in these axioms; write
+            # Functional(x⁻) as InverseFunctional(x) and vice versa.
+            inv = rl.startswith('ObjectInverseOf')
+            x = rl[len('ObjectInverseOf('):-1] if inv else rl
+            fn = (k == 3) != inv
+            ax.append(f'{"" if fn else "Inverse"}FunctionalObjectProperty({x})')
         elif k == 5:
             ax.append(f'SubClassOf({atom()} ObjectMaxCardinality({n} {rl}))')
         else:

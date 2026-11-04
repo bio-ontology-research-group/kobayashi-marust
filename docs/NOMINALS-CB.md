@@ -1905,3 +1905,59 @@ Details and reproduction: `results/agents/2026-11-01/polarity-definers/README.md
   `nominals`: 0 WRONG everywhere. The pass changes none of the `gen_r3`
   seeds' frontend output, so r163, r219, r461, r481, r575, r696, r1536 and
   r3777 still time out (their cost is section 10.4).
+
+## 12. An at-most with a filler at a nominal (open, 2026-11-04)
+
+Found by the nn1811 sibling family (`results/agents/2026-11-04/cb-nn1811/`,
+seed fx12). Not repaired; present on 48a1113b and every earlier build
+checked. The automatic route answers these inputs as HermiT through the
+native bridge; the `nominals` route (and a CB answer of any portfolio that
+carries this stack) misses them.
+
+Reduction m9 (`data/cb-gap/m9.ofn`, fixture
+`engine/tests/fixtures/cb_nn1811/nominal_cb_gap/`):
+
+    EquivalentClasses(:Q3 ObjectMaxCardinality(1 :r ObjectHasValue(:s :b)))
+    InverseObjectProperties(:s :p)
+    SubClassOf(ObjectOneOf(:b) ObjectMaxCardinality(1 :p))
+
+Every element of `∃s.{b}` is a `p`-successor of `b`, and `b` has at most one,
+so `⊤ ⊑ Q3`. HermiT and the bridge derive it; `--route nominals` gives no
+subsumption in every regime tried (`KM_SEQ_ORDER` on, off and `context`,
+`KM_NOMINAL_DYNAMIC`, `KM_NO_MERGE_HYPOTHESES`, `KM_NO_NOMINAL_LABEL_CACHE`,
+`KM_NO_EXCHANGE_CUT`, `KM_NO_MERGE_CUT`, `KM_NO_MERGE_SUBSCRIPTION`,
+`KM_CB_KEEP_INERT_SORTS`, `KM_NO_CENTRAL`, `KM_NO_SHARE`). The same holds for
+`⊤ ⊑ ≤1 p`, `ObjectPropertyDomain(p ≤1 p)`, `D(b)` with `D ⊑ ≤1 p`, and
+`∃p.⊤ ⊑ ≤1 p` (m1, m6 to m10), and for the qualified
+`{b} ⊑ ≤1 p.B` with `Q3 ≡ ≤1 r.(B ⊓ ∃s.{b})` (m11). With
+`FunctionalObjectProperty(p)`, whose clause is the bare
+`p(x,y1) ∧ p(x,y2) → y1≈y2`, the stack is right (m2, m12).
+
+What differs. The frontend writes the at-most as
+`Q_3(x) ∧ Q_4(y0) ∧ Q_4(y1) ∧ p(x,y0) ∧ p(x,y1) → y0≈y1` with the `⊤`
+definer `→ Q_4(x)` (or the filler `B`). `km engine` on the clause file with
+only the two filler atoms removed derives `Q3` for every class; with only the
+guard `Q_3(x)` removed it does not. So the miss needs a body atom on the
+successor variables of an at-most clause that fires at the nominal: in the
+ground context the `p`-neighbours of `b` are the predecessor variable `y` of
+the r-Succ edges (`S(o,y)` triggers), and nothing places `Q_4(y)` (or
+`B(y)`) in the ground context. `Su^r` holds `B(o)`, `S(y,o)` and `S(o,y)`
+only; `B(y)` is a predecessor trigger (`Pr^r`), a head that r-Pred sends
+back, not a premise the ground context can use. A unit fact `→ Q_4(x)` is
+instantiated at individuals in the ground context, not at `y`.
+
+Two remarks for the repair.
+
+- The universal-definer elimination of section 6 would drop the `⊤` filler
+  (it makes m9 right), but it skips every clause set with an inverse role.
+  Its note gives cost as the reason (probe_v7 from 0.06 s to more than
+  150 s). m9 shows the skip also loses entailments, so the slow run there may
+  be the Nom rule doing work the kept filler had blocked.
+- A real filler (m11) is not universal, so dropping atoms cannot repair it.
+  The ground context needs the filler of each predecessor variable, either
+  by letting r-Succ carry `B(y)` for the fillers of at-most clauses whose
+  role leads to the nominal (a `Su^r` extension; it changes what is derived
+  and needs the Lean model of r-Succ and Nom extended, `lean/ContextCalculus/
+  Nominals.lean`), or by an encoding that moves the filler to the
+  predecessor side, e.g. `≤1 p.B` at `b` as `B ⊓ ∃s.{b}` counted at the
+  predecessor, which is what `FunctionalObjectProperty` gives for `B = ⊤`.

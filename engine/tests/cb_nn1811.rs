@@ -85,7 +85,11 @@ fn classify(path: &Path, env: &[(&str, &str)]) -> serde_json::Value {
 }
 
 fn fixtures() -> Vec<PathBuf> {
-    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/cb_nn1811");
+    fixtures_in("tests/fixtures/cb_nn1811")
+}
+
+fn fixtures_in(relative: &str) -> Vec<PathBuf> {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);
     let mut paths: Vec<PathBuf> = std::fs::read_dir(&dir)
         .unwrap()
         .map(|entry| entry.unwrap().path())
@@ -102,10 +106,14 @@ fn expected(path: &Path) -> Answer {
 }
 
 fn check(label: &str, env: &[(&str, &str)]) {
+    check_paths(&fixtures(), label, env);
+}
+
+fn check_paths(paths: &[PathBuf], label: &str, env: &[(&str, &str)]) {
     let mut wrong = Vec::new();
-    for path in fixtures() {
-        let got = normalise(&classify(&path, env));
-        let want = expected(&path);
+    for path in paths {
+        let got = normalise(&classify(path, env));
+        let want = expected(path);
         if got != want {
             wrong.push(format!(
                 "{} [{label}]: got {got:?}, HermiT {want:?}",
@@ -174,4 +182,26 @@ fn negative_control_without_the_entailed_functionality_misses_both() {
             path.display()
         );
     }
+}
+
+/// Family seed fx12 reduced: `Q3 ≡ ≤1 r.(∃s.{b})`, `InverseObjectProperties(s p)`,
+/// and an at-most at `b` with a filler (`{b} ⊑ ≤1 p`, whose filler is the
+/// frontend's `⊤` definer, or `{b} ⊑ ≤1 p.B`). Every element of `∃s.{b}` is a
+/// `p`-successor of `b`, so `⊤ ⊑ Q3`. The automatic route (native bridge)
+/// answers as HermiT.
+#[test]
+fn automatic_route_matches_hermit_on_the_nominal_cb_gap() {
+    let paths = fixtures_in("tests/fixtures/cb_nn1811/nominal_cb_gap");
+    check_paths(&paths, "auto", &with_release(&[]));
+}
+
+/// The nominal CB stack misses `⊤ ⊑ Q3` on both (base too); with the bare
+/// clause `p(x,y1) ∧ p(x,y2) → y1≈y2` (`FunctionalObjectProperty(p)`) it
+/// is right. Open: results/agents/2026-11-04/cb-nn1811, docs/NOMINALS-CB.md
+/// section 12.
+#[test]
+#[ignore = "nominal CB stack: at-most with a filler at a nominal over inverse-linked predecessors (cb-nn1811, NOMINALS-CB.md section 12)"]
+fn nominal_cb_route_matches_hermit_on_the_nominal_cb_gap() {
+    let paths = fixtures_in("tests/fixtures/cb_nn1811/nominal_cb_gap");
+    check_paths(&paths, "nominals", &with_release(&[("KM_ROUTE", "nominals")]));
 }
