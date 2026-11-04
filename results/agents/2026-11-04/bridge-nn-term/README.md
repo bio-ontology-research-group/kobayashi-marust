@@ -1,5 +1,19 @@
 # bridge-nn-term: termination and search cost of the NN-rule port
 
+**Status (2026-11-04 23:55, continuation by a second agent).** The first
+agent committed the fix (7ae078c3, 68a1b917) and section 24 with the results
+so far (5b50db3a), then stopped. Done at that point: the seven seeds (three
+runs per route, 120 s cap), the NN family (2,000 seeds, three runs, both
+routes), the 16 held-out inputs and the 112 nominal design-half inputs, all
+with `km-new` (= `engine/target/release/km` of 68a1b917). Not done: the 20
+runs per route of the target seeds and reductions, the differential pools
+(only one pool of the "after" run had started), the test suites, and the
+sections below marked TBD. Open findings: `nn1153` (both routes) and `nn568`
+(automatic) lose answers that 48a has; `nn1333` stays about ten times slower
+than the base; section 24's termination argument defers the bound on nominal
+levels to the SROIQ proof. The continuation's results replace the TBD
+sections below.
+
 Branch `fix/v155-bridge-nn-term` from `development/v1.5.5` at 48a1113b,
 worktree `.work/worktrees/fix-bridge-nn-term`. Scratch:
 `.work/agent-scratch/bridge-nn-term/`. Release flags for every measurement:
