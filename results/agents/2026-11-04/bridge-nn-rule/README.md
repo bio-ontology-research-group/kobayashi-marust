@@ -191,13 +191,26 @@ ratio new/base over the 26 inputs above 1 s: mean 0.956, median 0.975, max
 1.03 (largest: ore_ont_9662 2.4/2.4 s, ore_ont_699 4.7/4.8 s, ore_ont_16666
 2.4/2.5 s). 1833 and 2548 time out on both, 8250 is refused on both.
 
-## Tests
+## Tests (code of ca64efb1, clean environment, `KM_THREADS=1`, `--test-threads=1`)
 
-See `data/tests/` (filled in at the end; clean environment, `KM_THREADS=1`,
-`--test-threads=1`, `tools/tests.sh`). New regression target
-`engine/tests/bridge_nn_rule.rs`: `f1008`, `f439`, `nn1018min` with HermiT
-answers, automatic route and `ht_bridge` three runs each, and a negative
-control that each fixture is wrong with `KM_HT_NO_NN_RULE=1` on `ht_bridge`.
+`tools/tests.sh`, `data/tests/`. Library: 3,115 passed, 21 failed, 10
+ignored, exactly the 21 checker-bound baseline failures (20 `tableau::` tests
+and `cli::cb_derivation_candidate_tests::source_exact_taxonomy_uses_real_production_traces_and_models`).
+Integration: 90 of the 91 targets passed in the suite run, including the new
+`bridge_nn_rule` and `empty_and_universal_data_ranges`. `source_incremental_rules`
+failed three tests in the suite run
+(`incremental_rule_probe_matches_the_batch_checker_on_graph_rules`,
+`rules_route_retains_taxonomy_across_abox_clash_and_retraction`,
+`source_session_migrates_el_rules_el_and_rolls_back_a_declined_revision`)
+with "could not start the rules-consistency thread with a 4160 MiB stack
+after 10 attempt(s): Resource temporarily unavailable (os error 11)" while
+the host load average was near 60 (strict overcommit); rerun alone on the
+same build, all four tests passed. No other failing test.
+
+New regression target `engine/tests/bridge_nn_rule.rs`: `f1008`, `f439`,
+`nn1018min` with HermiT answers, automatic route and `ht_bridge` three runs
+each, and a negative control that each fixture is wrong with
+`KM_HT_NO_NN_RULE=1` on `ht_bridge`.
 
 ## Not done
 
