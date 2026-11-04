@@ -1,0 +1,10 @@
+{
+  "ontology": "sat1096min.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["Q4", "Q2"],
+    ["Q5", "Q2"],
+    ["Q5", "Q4"]
+  ],
+  "unsatisfiable": []
+}

@@ -1,0 +1,19 @@
+{
+  "ontology": "nn1348.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["A", "Q3"],
+    ["B", "Q3"],
+    ["C", "Q3"],
+    ["D", "Q3"],
+    ["F", "Q3"],
+    ["Q2", "Q3"],
+    ["Q4", "Q3"],
+    ["Q5", "Q3"],
+    ["Q5", "Q4"]
+  ],
+  "unsatisfiable": [
+    "E",
+    "Q1"
+  ]
+}

@@ -26,10 +26,14 @@ fi
 # (about one seed in ten times out on both binaries in every run).
 mkdir -p $S/famrun
 export FAM_TIMEOUT=30 FAM_FORCED_TIMEOUT=20
-rm -f $S/famrun/new1.tsv $S/famrun/base.tsv $S/famrun/new23-*.tsv
+rm -f $S/famrun/new1.tsv $S/famrun/new23-*.tsv
 python3 -I $T/fam_run.py $NEW $S/famgold $S/famrun/new1.tsv ht_bridge,auto 1 $S/fam/*.ofn
 log family new run 1 done
-python3 -I $T/fam_run.py $BASE $S/famgold $S/famrun/base.tsv ht_bridge,auto 1 $S/fam/*.ofn
+# The base binary does not change; its family run is reused when complete.
+if [ "$(wc -l < $S/famrun/base.tsv 2>/dev/null)" != 4000 ]; then
+  rm -f $S/famrun/base.tsv
+  python3 -I $T/fam_run.py $BASE $S/famgold $S/famrun/base.tsv ht_bridge,auto 1 $S/fam/*.ofn
+fi
 log family base done
 for r in ht_bridge auto; do
   files=$(awk -F'	' -v r=$r '$2==r && $4!="TIMEOUT" && $4!="NOGOLD" {print $1}' $S/famrun/new1.tsv)
