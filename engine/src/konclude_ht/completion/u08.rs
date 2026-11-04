@@ -2367,12 +2367,35 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let mut nn_tp = TrackPointId::NONE;
         let mut fixed = false;
         let mut blockable: Vec<(EdgeId, NodeId)> = Vec::new();
+        // The constructed node (the probe root) is never merged away
+        // (`mOptMergeConstructedIndividualNode` off: `getMergedIndividualNodes`
+        // keeps it as the target, cpp 21003-21006), so Konclude never turns
+        // it into a new nominal; neither does the port.
+        let constructed = calc_alg_context
+            .processing_data_box()
+            .constructed_individual_node();
+        let constructed_id = if constructed.is_none() {
+            None
+        } else {
+            Some(calc_alg_context.process_context().node(constructed).individual_node_id())
+        };
         for &(link, succ) in &links {
             if !qualified.contains(&succ) {
                 continue;
             }
             let n = calc_alg_context.process_context().node(succ);
             if !n.is_blockable_individual() {
+                continue;
+            }
+            if !self.opt_merge_constructed_individual_node
+                && constructed_id == Some(n.individual_node_id())
+            {
+                continue;
+            }
+            // The bridge's probes do not register their root as the
+            // constructed node; a probe root is the blockable node without an
+            // ancestor, and it is kept for the same reason.
+            if n.ancestor_link.is_none() {
                 continue;
             }
             let succ_id = n.individual_node_id();
@@ -2387,7 +2410,34 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         if !fixed {
             return NnRuleOutcome::NotApplicable;
         }
+        // New-nominal slots (`setRemainingNominalCreationCount(cardinality)`,
+        // cpp 15231-15233, decremented per new representative, cpp
+        // 15446-15458): qualified nominal neighbours already take slots, and
+        // only `cardinality` minus their number of candidates become new
+        // nominals. The others stay blockable and are merged by the at-most
+        // branching below, a blockable node into a nominal (cpp 20993-21038),
+        // as Konclude merges a candidate into a representative once no slot
+        // is left. Without the bound a new nominal's re-derived successors
+        // reached the nominal again, became new nominals, and the completion
+        // did not terminate (family seed nn606).
+        let nominal_count = qualified
+            .iter()
+            .filter(|&&n| {
+                let node = calc_alg_context.process_context().node(n);
+                node.is_nominal_individual_node()
+                    && !node.has_merged_into_individual_node_id()
+                    && !node.has_purged_blocked_processing_restriction_flags()
+            })
+            .count() as Cint64;
+        let slots = (cardinality - nominal_count).max(0) as usize;
+        if slots == 0 {
+            return NnRuleOutcome::NotApplicable;
+        }
+        let mut converted = 0usize;
         for (link, succ) in blockable {
+            if converted >= slots {
+                break;
+            }
             let succ = self.get_up_to_date_individual(succ, calc_alg_context);
             {
                 let n = calc_alg_context.process_context().node(succ);
@@ -2470,6 +2520,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             if calc_alg_context.has_pending_signal() {
                 return NnRuleOutcome::Signalled;
             }
+            converted += 1;
         }
         NnRuleOutcome::Converted
     }
@@ -2495,6 +2546,32 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 pc.node(succ).is_blockable_individual()
                     && (creator.is_none() || pc.node(creator).individual_node_id() != x_id)
             })
+    }
+
+    /// The merge direction of one at-most pair `(into, from)` when a nominal
+    /// is involved, as `getMergedIndividualNodes` decides it (cpp
+    /// 20993-21038): a blockable node merges into a nominal, and of two
+    /// nominals of different nominal levels the deeper one merges into the
+    /// shallower. Every other pair keeps the order of the successor scan.
+    /// Pairs of a nominal and a blockable node keep the nominal, which is what
+    /// bounds the NN-rule's new nominals (section 22); nominal levels differ
+    /// only for nominals the NN-rule created.
+    pub(super) fn ht_orient_nominal_merge_pair(
+        &self,
+        a: NodeId,
+        b: NodeId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> (NodeId, NodeId) {
+        if super::ht_no_nn_rule() {
+            return (a, b);
+        }
+        let pc = calc_alg_context.process_context();
+        let (na, nb) = (pc.node(a), pc.node(b));
+        match (na.is_nominal_individual_node(), nb.is_nominal_individual_node()) {
+            (false, true) => (b, a),
+            (true, true) if nb.individual_nominal_level() < na.individual_nominal_level() => (b, a),
+            _ => (a, b),
+        }
     }
 
     /// `role->getIndirectSuperRoleList()` for a created successor, made
@@ -2858,7 +2935,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         ));
                     }
                     if ok {
-                        pairs.push((succs[i], succs[j]));
+                        pairs.push(self.ht_orient_nominal_merge_pair(
+                            succs[i],
+                            succs[j],
+                            calc_alg_context,
+                        ));
                     }
                 }
             }
