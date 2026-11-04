@@ -2579,3 +2579,233 @@ whose `p`-successor merged into `c`). That is Konclude's NN-rule
 it is not a reflexive-role defect and is not fixed here. The gold-backed
 seed pools of earlier agents, the 16 held-out inputs and the 112 nominal
 ORE design-half inputs keep their answers; times are unchanged within noise.
+
+## 22. The NN-rule: nominals under at-most restrictions (2026-11-04, `fix/v155-bridge-nn-rule`)
+
+**Defect.** Section 21 left two seeds of the reflexive family that KM answered
+wrongly on both routes, on the base and on rc1 (`refl1008`, `refl439`). Both
+reduce to an at-most restriction at a nominal over a blockable neighbour that
+the nominal did not create, and both need Konclude's NN-rule, which the port
+had marked W3-DEFER (`u08.rs`, the `applyFUNCTIONALRule` stub and the
+`mergeMergingIndividualNodes` comments).
+
+- `f1008` (two axioms): `≤1 s.(∃p.{c}) ⊑ C`, `InverseFunctional(p)`.
+- `f439` (five axioms): `Q2 ≡ {c} ⊓ ≤1 r`, `ReflexiveObjectProperty(r)`,
+  `InverseFunctional(p)`, `E ⊑ ∃r⁻.∀r⁻.{c}`, `Q5 ≡ ≤1 s⁻.(∃p.E)`.
+
+**Gold, by hand.**
+
+- `f1008`. Let `x` be any element and `y1, y2` two `s`-successors of `x` in
+  `∃p.{c}`: `p(y1,c)` and `p(y2,c)`. Inverse functionality of `p` gives
+  `y1 = y2`. So every element satisfies `≤1 s.(∃p.{c})`, and `⊤ ⊑ C`. The
+  one-element model with every class true and every role empty shows
+  consistency. Every class is under `C`: HermiT's eight subsumptions.
+- `f439`. Let `x ∈ Q2`; then `x = c` and `c` has at most one `r`-successor.
+  `r` is reflexive, so `r(c,c)` and `c` is that successor. Let `e ∈ E`. It
+  has an `r⁻`-successor `y` (`r(y,e)`) with `y ∈ ∀r⁻.{c}`: every
+  `r`-predecessor of `y` is `c`; `r(y,y)` makes `y` its own predecessor, so
+  `y = c` and `r(c,e)`; the bound at `c` gives `e = c`. Now let `z1, z2` be
+  `s`-predecessors of `c` with `p(z1,e1)`, `p(z2,e2)` and `e1, e2 ∈ E`. Both
+  `e1` and `e2` equal `c`, so `p(z1,c)` and `p(z2,c)`, and inverse
+  functionality gives `z1 = z2`: `c ∈ ≤1 s⁻.(∃p.E) = Q5`. Hence
+  `Q2 ⊑ Q5`. No other subsumption between the named classes holds. In
+  `M1` (domain `{c, d}`, `r` the identity, `s = p = ∅`, `E = ∅`) the axioms
+  force `Q2 = {c}` and `Q5 = Δ`; in `M2` (domain `{c, e1, e2, z1, z2}`,
+  `r` the identity plus `(c,e1)`, `(c,e2)`, `p = {(z1,e1), (z2,e2)}`,
+  `s = {(z1,e1), (z2,e1)}`, `E = {e1, e2}`) they force `Q2 = ∅` and
+  `Q5 = Δ ∖ {e1}`. The other classes are free in both. `M1` refutes every
+  `Q2 ⊑ X` with `X ≠ Q5`, every `X ⊑ E` and `X ⊑ Q2` (put `d` in `X`), and
+  every `Q5 ⊑ X`; `M2` refutes every `X ⊑ Q5` with `X ≠ Q2` (put `e1` in
+  `X`), including `E ⊑ Q5`, and every `E ⊑ X`. Two free classes are
+  separated in either model. So `Q2 ⊑ Q5` is the only subsumption, as
+  HermiT says.
+- For `f1008` the same holds for the classes other than `C`: with every role
+  empty and `C = Δ` every axiom holds and the other classes are free.
+
+The CB engine gets both right (below), so the gold is also confirmed by a
+second, independent calculus.
+
+**Trace on the base.** `f1008`, the probe of `¬C` (`≥2 s.(∃p.{c})`) on a
+root `x`: the completion creates two distinct `s`-successors `y1`, `y2`;
+`y1`'s `p`-successor carries `{c}` and merges into the nominal `c`, which
+leaves the link `y1 --p--> c` (creator `y1`). `≤1 p⁻` holds at `c` (one
+`p⁻`-neighbour), and `y2`, whose label is a subset of `y1`'s, is
+DIRECTBLOCKED by `y1` before it expands (`KM_HT_GRAPH_DUMP`, node 1002
+flag `0x…01`). The graph is clash-free, and the probe reports `¬C`
+satisfiable. The blocked `y2` would be unravelled into a copy of `y1`, a
+second `p`-predecessor of `c`, which `≤1 p⁻` at `c` forbids: blocking by a
+node that reaches a nominal from outside is unsound for the bound at that
+nominal. `f439` has the same shape twice (`≤1 r` at `c` over the element
+`e` that reached `c` through its reflexive `r⁻`-successor, then `≤1 p⁻` at
+`c` over the blocked `s⁻`-neighbour).
+
+**Konclude's rule.** Konclude (cpp line numbers of the local source,
+`~/konclude-build/Source/Reasoner/Kernel/Algorithm/CCalculationTableauCompletionTaskHandleAlgorithm.cpp`)
+treats a nominal's neighbour that it did not create in two places:
+
+1. `applyFUNCTIONALRule` (cpp 14741-14871), which handles every unqualified
+   `≤1 R` (cpp 14886 delegates to it). At a nominal node with an
+   `R`-successor, the pre-scan (cpp 14756-14777) sets `requiresNNRule` when
+   some `R`-link was created by another node
+   (`link->getCreatorIndividualID() != processIndi->getIndividualNodeID()`)
+   and stops at the first nominal successor (`hasAlreadyMergingNominal`).
+   Without a nominal successor and with `requiresNNRule`,
+   `createNominalsSuccessorIndividuals(processIndi, role->getIndirectSuperRoleList(), role, …, nnRequireDepTrackPoint, 1)`
+   (cpp 14780-14789, body cpp 22314-22331) creates one fresh node of type
+   NOMINAL at nominal level `level(x)+1`, linked by every indirect super role
+   under the link's dependency, and makes it the merge target. Every other
+   `R`-successor is then merged into the target, deterministically, under a
+   `FUNCTIONAL` dependency of the at-most concept and both links (cpp
+   14812-14857), with `getMergedIndividualNodes` choosing the direction
+   (a nominal absorbs a blockable node; between nominals the lower level
+   wins, cpp 20993-21038). A successor that cannot be merged is the
+   functional clash (cpp 14858-14863).
+2. `mergeMergingIndividualNodes` (cpp 15146-15526), every other at-most.
+   `fixedNominalMerging` holds when the node is a nominal and a merge
+   candidate is blockable and the creator of its link
+   (`isCandidateBlockableAndCreator`, `CBranchingMergingIndividualNodeCandidateLinker.cpp`
+   80-82; recorded in `CBranchingMergingProcessingRestrictionSpecification.cpp`
+   194-196, 230-232). The distinct set is then rebuilt from scratch with
+   `cardinality` new-nominal slots (cpp 15201-15257). With
+   `LazyNewMergingNominalCreation` (default on,
+   `CCalculationConfigurationExtension.cpp` 386-391) each candidate either
+   merges into a mergeable representative (a branch per choice, cpp
+   15465-15540) or, while slots remain, becomes a new representative: a
+   non-nominal candidate is moved into a fresh empty NOMINAL node by
+   `getIntoEmptyMergedIndividualNode(candidate, true, processIndi, …)`
+   (cpp 15443-15470, body cpp 21047-21063).
+
+Both are the NN-rule of the SROIQ tableau (Horrocks, Kutz and Sattler 2006):
+a blockable neighbour of a nominal under an at-most restriction is replaced by
+a nominal node, so that it can neither block nor be blocked, and the bound is
+then enforced over nominal neighbours only.
+
+**Change.** `completion/u08.rs`, `ht_apply_nn_rule`, called at the head of
+every iteration of the production at-most loop (`ht_apply_atmost_merge`),
+after the choose rule and before the count, so it runs on the first
+application, on every reapplication through a new link, and in every merge
+alternative (`advance_atmost_merge_alternative` re-enters the loop).
+`KM_HT_NO_NN_RULE=1` turns it off (negative control); `KM_HT_NN_TRACE=1`
+prints each application.
+
+1. *Functional arm* (`≤1 R` without qualifier, at a nominal `x`): the
+   pre-scan above over the live `R`-links (`ht_role_successor_links`, which
+   skips merged-away and purged nodes). The arm applies when
+   `requiresNNRule` holds and some successor is blockable. The target is the
+   first nominal successor, or a fresh nominal created by the port of
+   `createNominalsSuccessorIndividuals` (`u16.rs`, now returning the created
+   node and its link; it had no caller before). Every other successor is
+   merged into the target through `get_merged_individual_nodes` (the port of
+   cpp 20993-21038) under `create_functional_dependency` (cpp 10083-10089)
+   of the at-most concept, the target's link and the successor's link, and
+   the counted parent's links are relocated as at every at-most merge
+   (`ht_relocate_incoming_links`). An unmergeable successor raises the
+   functional clash with the clashed concept descriptor and both
+   merge-causing descriptors, as cpp 14858-14863. The arm is skipped when
+   every successor is a nominal: the NN-rule creates nothing there, and the
+   at-most merge below enforces the bound as before.
+2. *General arm* (every other `≤n R.C`, `n ≥ 1`, at a nominal `x`): when a
+   qualified candidate is blockable and the creator of its link, every
+   blockable qualified candidate is moved into a fresh nominal by
+   `get_into_empty_merged_individual_node(candidate, true, x, …)` (the port
+   of cpp 21047-21063, which also had no caller) under a `FUNCTIONAL`
+   dependency of the at-most concept, the link that requires the rule and
+   the candidate's link; the parent's links are relocated and the new node
+   is queued. The loop then counts and merges as before: if more than `n`
+   qualified neighbours remain, the at-most merge branches over every
+   mergeable pair.
+
+The functional arm is a transcription of cpp 14756-14864 with one
+restriction (a blockable successor must exist). The general arm departs
+from Konclude in one point: Konclude moves into new nominals only the
+candidates that take a new representative slot and merges the others into
+representatives in the same step, while the port moves every blockable
+candidate and leaves the identification to the pair branching that follows.
+The port's live at-most path is the pairwise merge of section 8 (the
+`mergeMergingIndividualNodesPairwise` shape), not Konclude's distinct-set
+state machine, which exists only in the opt-in `KM_HT_ATMOST_REST` path; that
+path keeps the NN halves W3-DEFER.
+
+**Exactness.**
+
+- *A conversion is a renaming.* `get_into_empty_merged_individual_node`
+  creates an empty node `N` and merges the candidate `y` into it: `N` gets
+  `y`'s label (phase 4, each concept under a MERGEDCONCEPT dependency on the
+  conversion), its links (phase 5, from `y`'s ancestor and its nominal
+  connections, and the explicit relocation from `x`), and its distinctness
+  edges (phase 8); `y` is marked merged and its successors are pruned and
+  re-derived from `N`'s label, as at every merge into a nominal. In model
+  terms `N` and `y` denote one element, so every model of the graph before
+  the conversion is a model after it and conversely; only the node type
+  changes. The functional arm's fresh target is an empty node linked to `x`
+  by `R` and its super roles: an element that exists in every model of the
+  graph in which `x` has an `R`-neighbour, which `requiresNNRule` guarantees,
+  and the merges then identify it with that neighbour.
+- *No verdict becomes unsound.* Neither arm adds a concept or a constraint
+  that does not hold in every model of the current branch: the functional
+  merges are the `≤1 R` rule itself (every `R`-neighbour of `x` is one
+  element), and the conversions are renamings. A clash found after them is a
+  clash of the input under the branch's choices. The dependencies of the new
+  edges and labels include the at-most concept and the links (FUNCTIONAL and
+  MERGEDCONCEPT/MERGEDLINK dependencies), a superset of the facts each
+  derivation rests on, so the DDB analysis never jumps over a decision that a
+  clash depends on.
+- *Satisfiable verdicts become sound for the bound.* A node of type NOMINAL
+  is never a blocking candidate and never blocked
+  (`get_blocking_individual_node_candidate_iterator`,
+  `detect_individual_node_blocked_status` and the anywhere-blocking scans
+  test `is_blockable_individual`). After the rule, every `R.C`-neighbour of a
+  nominal `x` under `≤n R.C` that reached `x` from outside its own subtree is
+  a nominal node, so no blocked node is unravelled into an extra neighbour of
+  `x`; the bound counts the nodes that stand for the neighbours in the model.
+  This is the premise of the soundness of blocking in the SROIQ tableau, and
+  the case the base violated on `f1008` and `f439`.
+- *Completeness of the merge search.* After the general arm the at-most loop
+  branches over every mergeable pair of qualified neighbours while more than
+  `n` remain, a superset of Konclude's alternatives (merge into a
+  representative, or a new representative while slots remain). When `n` or
+  fewer remain no merge is needed: separate nodes that are not distinct may
+  denote the same element, and the completeness argument of the tableau maps
+  nodes to model elements without requiring injectivity on nodes that carry no
+  distinctness edge.
+- *Termination.* Converted nodes are nominals and are never converted again;
+  a candidate is converted at most once per at-most application, and the
+  pair merges reduce the number of qualified nominal neighbours to at most
+  `n`. Every node the rule creates is at nominal level `level(x)+1`, as in
+  Konclude. The argument is Konclude's (and the SROIQ tableau's) for the
+  number of new nominals per nominal and at-most restriction, except that the
+  port's general arm can create a new nominal and immediately merge it into
+  an existing one; it is checked empirically below (timeouts against the
+  base on the family and the pools).
+
+**Interaction with the bridge's other machinery.**
+
+- *Blocking.* New nominals are never blocked and never block (above). A node
+  that was blocked by the converted candidate `y` loses its blocker: `y` is
+  merged away, and the valid-blocker test (`is_individual_node_valid_blocker`,
+  `u18.rs`) rejects nominal nodes and nodes with the invalidating flags; the
+  node is re-tested and expands. On `f1008` the second `s`-successor expands,
+  reaches `c`, and its merge into the new nominal clashes with the `≥2`
+  distinctness.
+- *Merging and backtracking.* The rule uses the merge functions every other
+  rule uses; every merge lies in the branch epoch of the at-most application
+  that triggered it, so backtracking removes the new nodes and restores the
+  candidates. The new nodes are allocated above the epoch's node-arena mark,
+  so section 18.2's release of dependencies of popped nodes covers them.
+- *Caches.* The NN-rule fires only at nominal nodes, which none of the
+  satisfiability, signature or saturation caches represent. The representative
+  cache writer (`write_completed_native_representative_associations`) treats a
+  new nominal like any other neighbour without an ABox individual
+  (`native_completion_nominal_tag` returns none): its links enter the
+  association as instantiated and existential roles of the individual, as the
+  links to blockable successors did before. The retained consistency base and
+  the consistency leaf (section 16) can contain new nominals created during the
+  consistency completion; class jobs see them as ordinary nominal nodes of the
+  base, and jobs that create new ones roll them back with their epochs.
+- *Saturation.* The approximation saturation has no NN-rule in Konclude
+  either. Its critical at-most test marks the ancestors of a node with an
+  integrated nominal insufficient
+  (`mark_nominal_atmost_restricted_ancestors_as_insufficient`, `s09.rs`), so
+  such nodes go to the completion, where the rule now runs. The automatic
+  route, on which the saturation runs first, is part of every measurement
+  below.

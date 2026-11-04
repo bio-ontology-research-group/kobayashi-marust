@@ -2173,11 +2173,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             return NnRuleOutcome::NotApplicable;
         }
         let x = *process_indi;
-        let (x_nominal, x_id) = {
+        let (x_nominal, x_id, x_gone) = {
             let n = calc_alg_context.process_context().node(x);
-            (n.is_nominal_individual_node(), n.individual_node_id())
+            (
+                n.is_nominal_individual_node(),
+                n.individual_node_id(),
+                n.has_merged_into_individual_node_id()
+                    || n.has_purged_blocked_processing_restriction_flags(),
+            )
         };
-        if !x_nominal {
+        if !x_nominal || x_gone {
             return NnRuleOutcome::NotApplicable;
         }
         let trace = super::ht_nn_trace_enabled();
@@ -2261,14 +2266,21 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 }
             };
             // --- the merge loop (cpp 14812-14864): every other R-successor
-            // into the target, re-gathered after each merge.
+            // into the target, re-gathered after each merge. Each merge
+            // removes one live successor; the bound only guards the loop.
+            let mut remaining_merges = links.len() + 1;
             loop {
-                if calc_alg_context
-                    .process_context()
-                    .node(*process_indi)
-                    .has_purged_blocked_processing_restriction_flags()
-                {
+                if remaining_merges == 0 {
                     break;
+                }
+                remaining_merges -= 1;
+                {
+                    let n = calc_alg_context.process_context().node(*process_indi);
+                    if n.has_purged_blocked_processing_restriction_flags()
+                        || n.has_merged_into_individual_node_id()
+                    {
+                        break;
+                    }
                 }
                 target = self.get_up_to_date_individual(target, calc_alg_context);
                 let next = self
@@ -2404,6 +2416,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             let merge_tp = if next_tp.is_some() { next_tp } else { dep_track_point };
             let mut pi = *process_indi;
             self.set_individual_node_concept_label_set_modified(&mut pi, calc_alg_context);
+            let succ_tp = calc_alg_context.process_context().node(succ).dependency_track_point();
             let mut cand = succ;
             let nominal = self.get_into_empty_merged_individual_node(
                 &mut cand,
@@ -2414,6 +2427,31 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             );
             if calc_alg_context.has_pending_signal() {
                 return NnRuleOutcome::Signalled;
+            }
+            // Merge phase 7 (cpp 21440-21442, deferred in the port's merge):
+            // an empty merge target inherits the merged node's creation
+            // dependency, here joined with the conversion's.
+            if succ_tp.is_some()
+                && calc_alg_context
+                    .process_context()
+                    .node(nominal)
+                    .dependency_track_point()
+                    .is_none()
+            {
+                let mut node_tp = TrackPointId::NONE;
+                let mut nm = nominal;
+                self.create_merged_individual_dependency(
+                    &mut node_tp,
+                    &mut nm,
+                    merge_tp,
+                    succ_tp,
+                    calc_alg_context,
+                );
+                let node_tp = if node_tp.is_some() { node_tp } else { succ_tp };
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(nominal)
+                    .set_dependency_track_point(node_tp);
             }
             if trace {
                 eprintln!(
@@ -2714,7 +2752,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 calc_alg_context,
             ) {
                 NnRuleOutcome::Signalled => return,
-                NnRuleOutcome::Functional => continue,
+                // Every successor is merged into one node: the bound holds.
+                NnRuleOutcome::Functional => return,
                 NnRuleOutcome::NotApplicable | NnRuleOutcome::Converted => {}
             }
             let succs = self.ht_role_successors_with_concepts(
@@ -3167,7 +3206,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// clique members join the plain candidate list (their mutual distinct
     /// edges already exclude the intra-clique pairs) and only the clique
     /// CLASH half is live. The nominal-merging and blockable-predecessor
-    /// halves stay W3-DEFER with the NN rule.
+    /// halves stay W3-DEFER on this opt-in path (`KM_HT_ATMOST_REST`); the
+    /// production at-most path runs the NN-rule (`ht_apply_nn_rule`,
+    /// docs/HYBRID-CB-HT.md section 22).
     #[allow(clippy::too_many_arguments)]
     fn ht_atmost_initialize_merging_nodes(
         &mut self,
