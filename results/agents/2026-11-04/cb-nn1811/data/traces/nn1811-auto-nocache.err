@@ -1,0 +1,18 @@
+KM_TIMING mark: validate_user_input done
+KM_TIMING mark: second source check done
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING ABox quotient not built: site 1
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.00s cached=false sidecar=false
+KM_TIMING mark: second source check done
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.00s cached=true sidecar=false
+KM_TIMING frontend done @ 0.00s route=ht_bridge
+KM_TIMING spawn_ht: read+convert 107 clauses (ht_view=107) in 0.00s
+KM_TIMING bounded bridge-first declined @ 8.56s: out of fragment: speculative native bridge attempt deferred or exceeded its budget
+KM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false
+KM_TIMING frontend done @ 8.56s route=certified_nominals
+KM_TIMING spawn_ht: read+convert 114 clauses (ht_view=107) in 0.00s
+KM_TIMING race: synchronous bridge classes=11 typed_nominal=true cb_threads=1
+KM_TIMING race: HT worker spawned @ 0.02s after the CB stack started
