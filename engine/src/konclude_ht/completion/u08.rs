@@ -701,6 +701,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     return;
                 }
             }
+            // Konclude links `∃R.{a}` straight to the nominal (VALUE shortcut,
+            // cpp 14316-14380), so no successor of a cached node stands
+            // between the node and `a`. The port's successor must therefore
+            // not inherit the cached-ancestor processing blocks, or its
+            // nominal concept never merges it into `a`
+            // (docs/HYBRID-CB-HT.md section 23).
+            if super::satexp_absorb::some_is_value_shortcut(
+                calc_alg_context.ontology_arenas(),
+                &concept_op_linker,
+                negate,
+            ) && succ_indi.is_some()
+            {
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(succ_indi)
+                    .clear_processing_restriction_flags(
+                        super::satexp_absorb::VALUE_SHORTCUT_CLEARED_ANCESTOR_FLAGS,
+                    );
+            }
             // addIndividualToProcessingQueue(succIndi). The faithful router runs for its
             // flag bookkeeping, then the successor is enqueued so
             // `take_next_process_individual` drains it — the terminal `insertIndiviudal...`

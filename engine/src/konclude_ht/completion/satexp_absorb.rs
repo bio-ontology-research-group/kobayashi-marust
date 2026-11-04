@@ -24,18 +24,24 @@
 //!    VALUE shortcut of `applySOMERule` (cpp 14316-14380), which links the
 //!    node to the nominal and returns before the absorption test.
 //!
+//! Two further port deviations meet the same cache: the existential test
+//! read only the role reapply queue (`label_restricts_role_cardinality`),
+//! and the replay of an entry skipped the AND rule
+//! (`expanded_concept_skip_function`).
+//!
 //! `KM_HT_SATEXP_ABSORB_LEGACY=1` restores the port's former behaviour for
-//! both, and the `⊤` operand of `filler_is_top` (negative control);
-//! production never sets it.
+//! all of them (negative control); production never sets it.
 
-use super::super::model::op::{CCNOMINAL, CCTOP, CCBOTTOM};
+use super::super::model::op::{CCATLEAST, CCATMOST, CCBOTTOM, CCNOMINAL, CCTOP};
 use super::super::model::ontology::OntologyArenas;
 use super::super::model::substrate::{Cint64, NegLink};
-use super::super::model::ConceptId;
+use super::super::model::{ConceptId, RoleId};
+use super::super::process::context::ProcessContext;
+use super::super::process::{ConDescId, NodeId};
 
 /// `KM_HT_SATEXP_ABSORB_LEGACY` (diagnostic): `1` or `all` restores every
-/// arm; a comma list of `functional`, `value`, `top`, `replay` restores those
-/// arms.
+/// arm; a comma list of `functional`, `top`, `value`, `label`, `replay`
+/// restores those arms (`top`: the `⊤` qualifier of `atmost_is_functional_rule`).
 fn satexp_absorb_legacy_arm(arm: &str) -> bool {
     static ARMS: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
     match ARMS.get_or_init(|| std::env::var("KM_HT_SATEXP_ABSORB_LEGACY").ok()) {
@@ -44,10 +50,15 @@ fn satexp_absorb_legacy_arm(arm: &str) -> bool {
     }
 }
 
-/// `true` when the at-most concept `concept` (negated: `¬≥n`) is dispatched to
-/// Konclude's `applyFUNCTIONALRule` and so is never absorbed on a
-/// satisfiable-cached node: cardinality 1 and no qualifier operand
-/// (cpp 14924, 14933).
+/// `true` when the at-most concept `concept` (negated: `¬≥n`) is Konclude's
+/// functional `≤1 R`, which `applyATMOSTRule` sends to `applyFUNCTIONALRule`
+/// (cpp 14924, 14933) and so never absorbs on a satisfiable-cached node:
+/// cardinality 1 and no qualifier operand. A `⊤` qualifier counts as none:
+/// Konclude's builder drops it (`CConcreteOntologyUpdateBuilder.cpp`
+/// 1197-1199), while the bridge keeps it for `≤1 R` written with `owl:Thing`
+/// (`SubClassOf(owl:Thing ObjectMaxCardinality(1 :r))`, seeds `nn1348min`,
+/// `nn1116`). The bridge's concept stays as it is; only its absorption
+/// follows Konclude's functional rule.
 pub(crate) fn atmost_is_functional_rule(
     onto: &OntologyArenas,
     concept: ConceptId,
@@ -58,8 +69,29 @@ pub(crate) fn atmost_is_functional_rule(
     }
     let c = onto.concept(concept);
     let cardinality: Cint64 = c.get_parameter() - Cint64::from(negate);
-    cardinality == 1 && c.get_operand_list().is_empty()
+    if cardinality != 1 {
+        return false;
+    }
+    match c.get_operand_list() {
+        [] => true,
+        [only] if !satexp_absorb_legacy_arm("top") => {
+            let code = onto.concept(only.target).get_operator_code();
+            (code == CCTOP && !only.negated) || (code == CCBOTTOM && only.negated)
+        }
+        _ => false,
+    }
 }
+
+/// The cached-ancestor blocks that a successor created for a VALUE-shortcut
+/// existential does not inherit: Konclude creates no successor there (it
+/// links the node to the nominal), so nothing between the node and the
+/// nominal is ever blocked by the node's cache status. Clearing a block only
+/// lets the successor be processed (its nominal concept merges it into the
+/// nominal), so it cannot change a correct verdict.
+pub(crate) const VALUE_SHORTCUT_CLEARED_ANCESTOR_FLAGS: Cint64 =
+    super::super::process::node::IndividualProcessNode::PRF_ANCESTORSATISFIABLECACHED
+        | super::super::process::node::IndividualProcessNode::PRF_ANCESTORSIGNATUREBLOCKINGCACHED
+        | super::super::process::node::IndividualProcessNode::PRF_ANCESTORSATURATIONBLOCKINGCACHED;
 
 /// `true` when an `∃` (or `≥1`) with these operands is answered by Konclude's
 /// VALUE shortcut in `applySOMERule` and so never reaches the
@@ -77,18 +109,6 @@ pub(crate) fn some_is_value_shortcut(
     }
     let operand = operands[0];
     !(operand.negated ^ negate) && onto.concept(operand.target).get_operator_code() == CCNOMINAL
-}
-
-/// `true` when `filler` is `⊤` (or `¬⊥`): Konclude's ontology builder gives a
-/// cardinality restriction with the top class no operand at all
-/// (`CConcreteOntologyUpdateBuilder.cpp` 1175-1177 and 1197-1199), which makes
-/// `≤1 R.⊤` the functional `≤1 R` of point 1 above.
-pub(crate) fn filler_is_top(onto: &OntologyArenas, filler: (ConceptId, bool)) -> bool {
-    if satexp_absorb_legacy_arm("top") || filler.0.is_none() {
-        return false;
-    }
-    let code = onto.concept(filler.0).get_operator_code();
-    (code == CCTOP && !filler.1) || (code == CCBOTTOM && filler.1)
 }
 
 /// The skip function for a concept replayed from a satisfiable expander cache
@@ -111,4 +131,53 @@ pub(crate) fn expanded_concept_skip_function() -> super::algorithm::TableauRuleF
     } else {
         super::super::model::substrate::INVALID
     }
+}
+
+/// `true` when the label of `node` holds a cardinality restriction on `role`
+/// (`≤n role.C`, or `¬≥n role.C`), processed or still queued.
+///
+/// `isGeneratingConceptSatisfiableCachedAbsorpable` (cpp 14217-14253) refuses
+/// to absorb `∃R.C` on a satisfiable-cached node whose link to its ancestor
+/// carries a super role `S` of `R` with an at-most or at-least restriction in
+/// the node's role reapply queue. A restriction enters that queue when its
+/// rule runs, so the test depends on the order in which the node's queue
+/// pops the existential and the restriction. Konclude gives an unqualified
+/// `≤1 S` priority 5.5, above `∃` (4), so that restriction is registered
+/// first; a qualified `≤n S.C` has priority 3 plus an offset, below `∃`, and
+/// is not. The port reaches the second case for every `≤1 S.⊤` the bridge
+/// builds with a `⊤` operand (`SubClassOf(owl:Thing ObjectMaxCardinality(1 :r))`,
+/// seed `nn1348min`), where Konclude's builder drops the operand. Reading
+/// the label as well makes the refusal independent of the queue order. It
+/// can only refuse more absorptions, which runs the ordinary rule
+/// (docs/HYBRID-CB-HT.md section 23); `KM_HT_SATEXP_ABSORB_LEGACY=label`
+/// restores the reapply-queue-only test.
+pub(crate) fn label_restricts_role_cardinality(
+    pc: &ProcessContext,
+    onto: &OntologyArenas,
+    node: NodeId,
+    role: RoleId,
+) -> bool {
+    if satexp_absorb_legacy_arm("label") || node.is_none() {
+        return false;
+    }
+    let ls = pc.node(node).use_reapply_con_label_set;
+    if ls.is_none() {
+        return false;
+    }
+    let mut it = pc.label_set(ls).get_concept_label_set_iterator(true, false, false);
+    while it.has_next() {
+        let cd: ConDescId = it.next(true, pc);
+        if cd.is_none() {
+            break;
+        }
+        let des = pc.con_desc(cd);
+        let concept = onto.concept(des.get_concept());
+        let code = concept.get_operator_code();
+        if ((code == CCATMOST && !des.is_negated()) || (code == CCATLEAST && des.is_negated()))
+            && concept.get_role() == role
+        {
+            return true;
+        }
+    }
+    false
 }

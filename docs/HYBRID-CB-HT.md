@@ -2879,3 +2879,281 @@ differentially against HermiT only. Lean obligation created: none
 discharged; a bridge model would have to show that turning a blockable
 neighbour of a nominal into a nominal preserves the models of the
 completion graph and restores the premise of the blocking soundness proof.
+
+## 23. The satisfiable expander cache: absorption on cached nodes and the replay of written entries (2026-11-04, `fix/v155-bridge-satcache`)
+
+**Defect.** The NN-rule family of section 22 left three seeds that KM answered
+wrongly on both routes in every run, on the base and on rc1 (`nn1064`,
+`nn1313`, `nn1348`, reduced to `nn1064min`, `nn1313min`, `nn1348min`), and one
+unreduced seed (`nn1116`). The three answer as HermiT with
+`KM_HT_NO_SAT_EXP_CACHE=1`, `KM_BRIDGE_FRESH_ENV=1` or `KM_HT_NO_SATURATION=1`.
+Section 20 met the same cache on ore_ont_12128 and installed it no more on
+terminologies with a positive SELF concept, without isolating the wrong
+entry. This section isolates the entries for both, and the sibling family
+built around the three reductions adds a fourth (`sat1096`). In every case
+the entry is correct and the port uses it differently from Konclude; none
+of the defects is tied to nominals or to self edges. `nn1116` turns out not
+to be a cache defect.
+
+**Gold, by hand.**
+
+- `nn1064min`: `Q1 ≡ {b} ⊓ ≥2 p.B`, `Q3 ≡ ≤1 r⁻.(∃r.{a})`,
+  `InverseObjectProperties(r, p)`, `InverseFunctional(p)`, `b ≠ a`. Let
+  `x ∈ Q1`, so `x = b`. A `p`-successor `y` of `b` (an `r⁻`-successor) in
+  `∃r.{a}` has `r(y,a)`, so `p(a,y)`: `y` has the `p`-predecessors `a` and
+  `b`, and inverse functionality gives `a = b`, against `b ≠ a`. So `b` has no
+  such successor and `b ∈ Q3`: `Q1 ⊑ Q3`. In the model with domain
+  `{a, b, y1, y2, z1, z2}`, `p = {(a,y1), (a,y2), (b,z1), (b,z2)}`, `B = {z1, z2}`,
+  `a` has two `p`-successors in `∃r.{a}` and so `a ∉ Q3`; putting `a` into
+  any other class refutes `X ⊑ Q3` for `X ≠ Q1`, and `Q1 = {b}` is refuted
+  under every other class by leaving `b` out. HermiT's single subsumption.
+- `nn1313min`: `≤1 p⁻.(∃s⁻.({a} ⊓ ¬A)) ⊑ E`, `InverseObjectProperties(p, s)`,
+  `InverseFunctional(s)`, and a definition of `Q2` that does not touch `E` or
+  `A`. `p⁻ = s` and `s⁻ = p`, so the left side is
+  `≤1 s.(∃p.({a} ⊓ ¬A))`. Let `x ∈ A` and `y` an `s`-successor of `x` with a
+  `p`-successor `a ∉ A`, that is `s(a,y)`: `y` has the `s`-predecessors `x`
+  and `a`, so `x = a` by inverse functionality, against `x ∈ A`, `a ∉ A`. `x`
+  has no such successor, so `x ∈ E`: `A ⊑ E`. With `a ∉ A` given two
+  `s`-successors `y1, y2` (each with the single `s`-predecessor `a`), `a`
+  violates the left side, so `a ∉ E` is allowed, and putting `a` into any
+  class other than `A` refutes `X ⊑ E`; the other classes are free. HermiT's
+  single subsumption.
+- `nn1348min`: `⊤ ⊑ ≤1 r`, `Q5 ≡ ≤0 r`, `Q4 ≡ ≤1 r⁻.(∃r.∃r.{b})`,
+  `F ⊑ ≤1 s⁻.(E ⊓ ∃r⁻.{c})`. Let `x ∈ Q5` and `y` an `r`-predecessor of `x`
+  in `∃r.∃r.{b}`. `r` is functional, so the `r`-successor of `y` that
+  satisfies `∃r.{b}` is `x`, and `x` has an `r`-successor, against `≤0 r`. So
+  `x` has none and `x ∈ Q4`: `Q5 ⊑ Q4`. In the model with domain
+  `{v1, v2, w, b, c}`, `r = {(v1,w), (v2,w), (w,b)}` and `s` empty, `r` is
+  functional, `Q5 = {b, c}`, and `w` has the two `r`-predecessors `v1, v2` in
+  `∃r.∃r.{b}`, so `w ∉ Q4` and `w ∉ Q5`: putting `w` into a class `X`
+  refutes `X ⊑ Q4` and `X ⊑ Q5`; leaving `b` out of `X` refutes `Q5 ⊑ X`,
+  and leaving `v1 ∈ Q4` out of `X` refutes `Q4 ⊑ X`. The remaining classes
+  are free. HermiT's single subsumption.
+- `nn1116`: `⊤ ⊑ ≤1 s⁻`, `Q3 ≡ ≤2 s.(∃s.{c})`. An `s`-successor of `x` in
+  `∃s.{c}` is an `s`-predecessor of `c`, and `c` has at most one: every
+  element has at most one such successor, so `⊤ ⊑ Q3`. HermiT lists the nine
+  `X ⊑ Q3` and nothing else. (Not a cache defect, see below.)
+- `sat1096min` (six axioms, reduced from the sibling family seed `sat1096`
+  with `tools/ddmin_cache.py`): `Q5 ≡ {a} ⊓ ∃p.(∃r.{b})`,
+  `Q5 ≡ ≤1 r.(∃s.{a})`, `Q4 ≡ {b} ⊓ ∃p⁻.{a}`, `r ≡ s⁻`,
+  `Q2 ≡ ≤2 p.(∃r⁻.∃p.{a})`, `Q2 ≡ ≤2 r⁻.(∃p⁻.{a})`. Let `P` be the
+  `s`-predecessors of `a`. `Q5 ⊆ {a}`, so every `x ≠ a` lies outside
+  `≤1 s⁻.(∃s.{a})`: it has two `s`-predecessors in `P`, so `|P| ≥ 2` and
+  `a ∉ Q5` as soon as a second element exists. A non-empty `Q5` forces the
+  one-element model, where `a = b` and `p(a,a)` (from `∃p`), so `a ∈ Q4`
+  and `a ∈ Q2`: `Q5 ⊑ Q4`, `Q5 ⊑ Q2`. For `Q4 ⊑ Q2`: if `b` has an
+  `s`-successor `z` with `p(a,z)`, then `a ∈ ∃p.∃r.{b}` (`r(z,b)`), so
+  `a ∈ Q5` and the model has one element; otherwise `b` has no such
+  successor; either way `b ∈ ≤2 r⁻.(∃p⁻.{a}) = Q2`. HermiT gives exactly
+  these three subsumptions.
+
+**The wrong entries.** `KM_HT_SATEXP_TRACE=1` (new, diagnostic) prints every
+satisfiable-cache write, every satisfiable hit with the node and its
+ancestor, every replayed concept, every expansion write, and every rule
+taken from a node's queue; `KM_SAT_ABSORB_DEBUG=1` prints the generating
+absorption test. On `nn1348min` (concept tags from `KM_BRIDGE_CONCEPT_DUMP`:
+41 is `≤1 r.⊤`, 44 is `∃r.∃r.{b}`, 43 is `∃r.{b}`, 42 is `≤0 r`):
+
+1. The probe of `E` creates the `r⁻`-successors `y1, y2` of the root, each
+   with the label `{⊤, 41, 44}`. `44` creates an `r`-successor that `41`
+   merges into the root, which receives `43`. The probe is satisfiable, and
+   the end-of-task writer records `{⊤, 41, 44}` as satisfiable, with no
+   branched concept (`SATEXP-WRITE-SAT sig=420296238655154 branched=false`).
+   The entry is correct: a node with that label is satisfiable.
+2. The probe of `Q5 ⊓ ¬Q4` creates `y1, y2` again, below a root that carries
+   `≤0 r`. Both hit the entry (`SATEXP-HIT compatible=true
+   without_branched=true`) and are marked `PRF_SATISFIABLECACHED`. The node
+   still runs its own rules, as in Konclude
+   (`isSatisfiableCachedProcessingBlocked` blocks only the successors of a
+   cached node). Its queue pops `44` first, and the port's generating-concept
+   absorption accepts it (`SAT-ABSORB-CHECK concept-tag=44 cached=true
+   absorbable=true`); `41` is then absorbed as a merging concept. No
+   successor is created, nothing reaches the root, and the probe is
+   satisfiable: `Q5 ⋢ Q4`.
+
+So the entry is right and its use is wrong. Konclude's
+`isGeneratingConceptSatisfiableCachedAbsorpable` (cpp 14217-14253) refuses
+to absorb `∃R.C` when the node is linked to its ancestor by a super role of
+`R` that is functional or carries an at-most restriction in the node's role
+reapply queue: the successor would have to be merged into the ancestor, and
+the cache entry, which knows nothing of the ancestor, cannot stand for that
+merge. The port's transcription of the test is faithful. It accepts here
+because of three differences around it:
+
+- *The functional rule is never absorbed.* `applyATMOSTRule` sends an
+  unqualified `≤1 R` to `applyFUNCTIONALRule` (cpp 14933-14935) before its
+  own absorption test (cpp 14938-14941); the functional rule merges the
+  node's `R`-neighbours and registers the concept in the role reapply queue
+  (cpp 14868-14871). The port's `apply_atmost_rule` handled `≤1 R` through
+  the general at-most path, after the absorption test, so on a cached node
+  the functional at-most was absorbed and never registered.
+- *`≤1 R.⊤` keeps its operand in the bridge.* `CConcreteOntologyUpdateBuilder.cpp`
+  1197-1199 drops a `⊤` filler from a cardinality restriction, so Konclude
+  has no `≤1 R.⊤`. The bridge builds `SubClassOf(owl:Thing
+  ObjectMaxCardinality(1 :r))` as `≤1 r.⊤` with a `⊤` operand (tag 41,
+  `ops=[1]`). That concept is not the functional rule, and its priority is
+  3.5, below `∃` (4), where Konclude's unqualified `≤1` has 5.5: the
+  existential is popped, and tested against an empty reapply queue, before
+  the at-most is registered. Konclude never meets that order.
+- *`∃R.{a}` never reaches the absorption.* `applySOMERule` answers an
+  existential with one positive nominal operand by the VALUE shortcut (cpp
+  14316-14380): it links the node to the nominal and returns before the
+  absorption test at cpp 14388. The port has no VALUE shortcut (W3-DEFER); it
+  creates a successor that merges into the nominal, after the absorption
+  test, so on a cached node `∃p⁻.{a}` was absorbed (`nn1064min`, tag 34 on
+  every cached successor of `b`).
+
+`nn1064min` (absorbed `∃r.{a}` and `≤1 p⁻` on the cached `p`-successors of
+`b`) and `nn1313min` (absorbed `≤1 s⁻` and `∃s⁻.({a} ⊓ ¬A)` on the cached
+`s`-successors) are the same use of a correct entry. Nominals matter only
+because the seeds' existentials reach them; the absorption needs no nominal.
+
+**`sat1096`: the successor of a non-absorbed `∃R.{a}`.** Once `∃s.{a}` is no
+longer absorbed on a cached node (the third point above), the port creates
+its successor, and that successor inherits `PRF_ANCESTORSATISFIABLECACHED`
+from the cached creator (`createSuccessorIndividual`, cpp 21692-21720, which
+the port follows), so it is never processed: its nominal concept `{a}`
+never merges it into `a`. On `sat1096min` the probe of `Q5 ⊓ ¬Q4` builds the
+`r`-successors `z1, z2` of the nominal `b` with `∃s.{a}`; they hit a
+satisfiable entry, their `s`-successors carry `{a}` with flags `0x200200`
+(ancestor-satisfiable-cached), `a` never sees `z1, z2` as `s`-predecessors,
+and its `≤1 r.(∃s.{a})` never merges them (they are distinct by `≥2`), so
+the clash is missed. Konclude creates no such successor: the VALUE shortcut
+links `z1` to `a` directly and propagates the nominal connection, after
+which `z1` is no longer satisfiable-cached (`detectIndividualNodeSatisfiableExpandedCached`
+requires no `PRFSUCCESSORNOMINALCONNECTION`). The family seed `sat1096` is
+wrong on the base on both routes and right with `KM_HT_NO_SAT_EXP_CACHE=1`.
+
+**The ore_ont_12128 reduction (section 20) is a separate defect, in the
+replay.** With the section 20 gate removed (`KM_BRIDGE_SELF_SATEXP=1`, new,
+diagnostic) or under the old completion-only schedule
+(`KM_BRIDGE_SAT_REFUSE_SELF=1`), the changes above do not repair `m53tiny`.
+Its trace (tags: 34 `GO_0005518`, 38 `Continuant`, 44 `GO_0003674`, 45
+`Function`; `44` is a `CCSUB` with the operand `45`; `Continuant ⊑ ¬Function`):
+
+1. In the probe of `Amadori_species`, node 1013 (the `has_part`-successor
+   `GO_0005518 ⊓ Continuant` of `world_of_Model53`) processes `47` and `46`
+   (the told chain `GO_0005515 ⊑ GO_0005488 ⊑ GO_0003674`); before `44` is
+   taken from the queue, the node is popped for its blocking test, and
+   `cacheIndividualNodeExpansion` writes the entry
+   `{⊤, 34, 38, SELF, ≤1 quality_of, 53, ¬45, ¬48, ¬49, 47, 46, 44}`
+   (`SATEXP-WRITE-EXP … values=[1,34,38,72,73,53,-45,-48,-49,47,46,44]`).
+   Every value is a correct deterministic consequence of the prefix, but `44`
+   is not yet applied. Then `44` adds `45`, the node clashes, and the probe
+   goes on.
+2. In the next probe the same node with the prefix `{⊤, 34, 38}` reads the
+   entry, and `expandCachedConcepts` replays the suffix with
+   `addConceptToIndividualSkipANDProcessing`, which queues every concept
+   except those whose rule is `applyANDRule` (AND, SUB, EQ, TOP, IMPLTRIG,
+   BRANCHTRIG; cpp 26814-26844, 27350-27364). `44` is a SUB, so it is added
+   and never processed: `45` never arrives, the clash with `¬Function` is
+   missed, and `world_of_Model53` is reported satisfiable.
+
+Konclude skips the AND rule on replay because its entries cannot contain an
+unapplied AND-family concept: with `DirectRulePreprocessing` (on in every
+Konclude completion task, `CCalculationConfigurationExtension`) a concept of
+priority 13 is applied as soon as it is added
+(`addConceptPreprocessedToProcessingQueue`, cpp 27388-27390), so its
+operands are in the label before any later write. The bridge runs most
+terminologies without direct rule preprocessing (`bridge.rs`,
+`conf_direct_rule_preprocessing = card_nominal_profile`, a scheduling choice
+earlier agents validated), so the writer can record an AND-family concept
+that is still queued, and the replay drops its operands. The reflexive
+`part_of` and the functional `quality_of` of the reduction add a SELF and an
+at-most concept to every label through `⊤`; they only change the queue order
+so that the blocking test falls between `46` and `44`. That is why section
+20 met the defect next to self edges.
+
+**`nn1116` is not a cache defect.** It is wrong on the base and on this
+branch with `KM_HT_NO_SAT_EXP_CACHE=1`, `KM_HT_NO_SATURATION=1` and
+`KM_HT_NO_NN_RULE=1` alike. Its bound `⊤ ⊑ ≤1 s⁻` is again a `≤1 s⁻.⊤`
+with a `⊤` operand, so at the nominal `c` the NN-rule's general (qualified)
+arm runs instead of its functional arm (section 22). Building `≤n R.⊤`
+without the operand, as Konclude does, answers `nn1116` as HermiT, but it
+also sends every such bound through the functional arm, and on five family
+seeds (`sat346`, `sat181`, `sat1094`, `sat1496`, `sat1836`, base 0.5 to 12 s)
+the completion then did not finish within 20 to 30 s (with
+`KM_HT_NO_NN_RULE=1` `sat1094` answers in 0.4 s). That is the NN-rule
+termination work of `fix/v155-bridge-nn-term`; this branch keeps the
+bridge's representation and hands `nn1116` on.
+
+**Change.** All decisions are in `completion/satexp_absorb.rs` (new), used
+at four call sites:
+
+1. `atmost_is_functional_rule` (in `u08.rs` `apply_atmost_rule`): a `≤1 R`
+   without a qualifier, or with the qualifier `⊤`, is never absorbed on a
+   satisfiable-cached or completion-graph-cached node; it runs the at-most
+   merge, which registers it in the role reapply queue as the functional rule
+   does.
+2. `label_restricts_role_cardinality` (in `u22.rs`
+   `is_generating_concept_satisfiable_cached_absorpable`): besides the
+   reapply queue, the test reads the node's label for an at-most (or negated
+   at-least) restriction on the super role that links the node to its
+   ancestor, so the refusal no longer depends on the queue order.
+3. `some_is_value_shortcut` (in `u08.rs` `apply_some_rule`): an `∃` (or
+   `≥1`) whose single operand is a positive `CCNOMINAL` is never absorbed,
+   and its successor does not inherit the cached-ancestor blocks
+   (`VALUE_SHORTCUT_CLEARED_ANCESTOR_FLAGS`: ancestor satisfiable-cached,
+   signature-blocking-cached, saturation-blocking-cached), so it is processed
+   and merged into the nominal. The saturation-integrated-nominal arm of
+   Konclude's shortcut is not reproduced; it keeps the absorption test.
+4. `expanded_concept_skip_function` (in `u21.rs` `expand_cached_concepts`,
+   through the new `u04.rs` `add_concept_to_individual_with_skip_function`):
+   replayed concepts are queued without the AND skip.
+5. `bridge.rs`: the satisfiable expander cache no longer takes the section
+   20 gate. The associated-expansion cache and the saturated-label expansion
+   keep it: this section does not analyse them.
+
+`KM_HT_SATEXP_ABSORB_LEGACY` restores the former behaviour, all arms (`1`)
+or a comma list of `functional`, `top`, `label`, `value`, `replay`;
+`KM_BRIDGE_SELF_SATEXP_GATE=1` restores the gate. Production sets neither.
+Each reduction fails again with all arms restored, and with single arms as
+follows (ht_bridge): `functional,top` loses `nn1313min` and `nn1348min`,
+`label` loses `nn1348min`, `value` loses `sat1096min`; `nn1064min` needs
+both `functional` and `value` restored to fail; `replay` loses `m53tiny`
+and the 12128 reduction under the completion-only schedule.
+
+**Exactness.** None of the changes adds a concept, a merge or a clash that
+the completion could not derive without the caches; each removes a deferral
+or adds a rule application.
+
+- *1, 2 and 3 only refuse deferrals.* An absorbed concept, and a successor
+  blocked under a cached ancestor, are promises that the cache entry stands
+  for what the concept or the successor would build. For `≤1 R` (with or
+  without the `⊤` qualifier, which has the same models) and for an
+  existential whose successor must merge into the ancestor, that promise
+  fails whenever the ancestor is an `R`-neighbour outside the cached
+  subtree; for `∃R.{a}` the successor is the nominal itself. Konclude never
+  makes these promises (points 1 and 3) or makes them only in a queue order
+  that the port's `⊤`-qualified bounds do not reproduce (point 2). Refusing
+  one runs the ordinary rule on that node, as the completion does on every
+  node that is not cached, so a verdict reached with the refusal is a
+  verdict of the plain tableau on the same branch. The cost is the rule
+  application.
+- *4 only adds rule applications.* The AND rule adds the operands of a
+  concept that is in the label; they are consequences of it, and when they
+  are present already the insertion is a no-op. The replayed concepts are
+  those of an expansion entry, whose correctness (each value a deterministic
+  consequence of the entry's prefix, by the dependency tracking of
+  `cacheIndividualNodeExpansion`) is unchanged.
+- *5 removes a gate whose two witnesses are explained.* The gate's
+  witnesses were `m53tiny` (defect 4) and the seeds `v1s160`, `v1s1420`,
+  `v1s1543` (`∃p.Self ⊓ ≤1 p⁻`, defect 1: the cached node absorbed its
+  `≤1 p⁻`). With the cache installed on SELF terminologies the 14 SELF
+  fixtures (`tests/fixtures/bridge_self` and `m53tiny`) agree with HermiT on
+  both routes; with the gate off and the absorption arms restored the three
+  seeds fail again, and with the replay arm restored `m53tiny` and the 12128
+  reduction fail again under the completion-only schedule. What the gate
+  guarded against was not a property of self edges, so no new precondition
+  replaces it; the SELF pools below are the evidence beyond the fixtures.
+
+What the cache still rests on, as in Konclude: an entry's values are
+deterministic consequences of its prefix (dependency tracking; nominal nodes
+neither read nor write it, section 10, `KM-SOUNDNESS-GATE[nominal-satexp]`),
+a satisfiable entry holds for any node with that label whose ancestor is
+compatible (`isSatisfiableCachedCompatible`), and only the deferrals that
+Konclude makes are made. None of these is machine-checked; the bridge has
+no Lean model, and the arguments above are checked differentially against
+HermiT only.
+
+RESULTS23-PLACEHOLDER

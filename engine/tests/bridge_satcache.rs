@@ -13,14 +13,17 @@
 //! - `nn1348min`: `⊤ ⊑ ≤1 r`, `Q5 ≡ ≤0 r`, `Q4 ≡ ≤1 r⁻.(∃r.∃r.{b})`. An
 //!   `r`-predecessor of a `Q5` element in `∃r.∃r.{b}` has that element as its
 //!   only `r`-successor, which would then need an `r`-successor: `Q5 ⊑ Q4`.
-//! - `nn1116`: `⊤ ⊑ ≤1 s⁻` and `Q3 ≡ ≤2 s.(∃s.{c})`; `c` has at most one
-//!   `s`-predecessor, so every class is under `Q3`.
+//! - `sat1096min` (from the sibling family): `Q5 ≡ {a} ⊓ ∃p.(∃s⁻.{b})`,
+//!   `Q5 ≡ ≤1 s⁻.(∃s.{a})`, `Q4 ≡ {b} ⊓ ∃p⁻.{a}`, two definitions of `Q2`.
+//!   An element other than `a` is not in `Q5`, so it has two
+//!   `s`-predecessors that are `s`-predecessors of `a`, and then `a ∉ Q5`:
+//!   `Q5` is non-empty only in the one-element model, where `Q5 ⊑ Q4`.
 //!
-//! In each, a successor whose label holds a functional `≤1 R` and an
-//! existential that its creator must satisfy was answered from a
-//! satisfiable-expander-cache entry, and the port absorbed the `≤1 R` (and
-//! the existential) on the cached node, where Konclude applies its
-//! functional rule (and the VALUE shortcut for `∃R.{a}`). With
+//! In each, a successor was answered from a correct satisfiable-expander-cache
+//! entry, and the port deferred on the cached node what Konclude does not
+//! defer: its functional `≤1 R`, an existential whose successor must be
+//! merged into the ancestor, or the merge of an `∃R.{a}` successor into `a`
+//! (Konclude's VALUE shortcut links the node to `a`). With
 //! `KM_HT_SATEXP_ABSORB_LEGACY=1` every fixture fails again (the negative
 //! control below). Each `.hermit.json` holds HermiT 1.4's answer, checked by
 //! hand in section 23.

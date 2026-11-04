@@ -3795,12 +3795,6 @@ impl<'a> Builder<'a> {
         if n == 0 {
             return self.all(role, (filler.0, !filler.1));
         }
-        // `≤n R.⊤` has no operand in Konclude's builder
-        // (`CConcreteOntologyUpdateBuilder.cpp` 1197-1199), so `≤1 R.⊤` is the
-        // functional `≤1 R` (docs/HYBRID-CB-HT.md section 23).
-        if super::completion::satexp_absorb::filler_is_top(self.ctx.ontology_arenas(), filler) {
-            return self.atmost(role, n);
-        }
         let tag = self.fresh_tag();
         let mut c = Concept::new();
         c.set_concept_tag(tag);
