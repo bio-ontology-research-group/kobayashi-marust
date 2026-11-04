@@ -643,6 +643,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
             self.ddb_fallback_count += 1;
             self.ht_ddb_trace("fallback-nomark", None, calc_alg_context);
+            self.ht_dump_final_clash(clash, "fallback-nomark", calc_alg_context);
             return self.try_backtrack_or_branch(calc_alg_context);
         };
         if !has_remaining {
@@ -1905,7 +1906,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         how: &str,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        if !super::bridge_dump_clash_enabled() || self.ddb_analysis_dumps >= 8 {
+        if !super::bridge_dump_clash_enabled()
+            || self.ddb_analysis_dumps
+                >= std::env::var("KM_BRIDGE_DUMP_CLASH_LIMIT")
+                    .ok()
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .unwrap_or(8)
+        {
             return;
         }
         self.ddb_analysis_dumps += 1;

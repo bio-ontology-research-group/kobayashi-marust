@@ -716,14 +716,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .get_concept_tag();
                 let mut con_des = ConDescId::NONE;
                 let mut con_dep = TrackPointId::NONE;
-                calc_alg_context
-                    .process_context()
-                    .label_set(label)
-                    .get_concept_descriptor_and_reapply_queue_by_tag(
-                        tag,
-                        &mut con_des,
-                        &mut con_dep,
-                    );
+                // The context-threaded lookup returns the descriptor's own
+                // track point (`conDes->getDependencyTrackPoint()`); the
+                // ctx-less lookup is a stub that returns NONE, which made the
+                // clash a tracking error (docs/HYBRID-CB-HT.md section 24).
+                {
+                    let pc = calc_alg_context.process_context();
+                    pc.label_set(label)
+                        .get_concept_descriptor_and_reapply_queue_by_tag_in_context(
+                            pc,
+                            tag,
+                            &mut con_des,
+                            &mut con_dep,
+                        );
+                }
                 let clash = self.create_clashed_concept_descriptor(
                     Id::NONE,
                     indi,
@@ -787,10 +793,21 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .get_concept_tag();
         let mut con_des = ConDescId::NONE;
         let mut con_dep = TrackPointId::NONE;
-        calc_alg_context
-            .process_context()
-            .label_set(label)
-            .get_concept_descriptor_and_reapply_queue_by_tag(tag, &mut con_des, &mut con_dep);
+        // `getConceptDescriptorAndReapplyQueue(concept, conDes, conDep)`: the
+        // AND dependency of the expansion rests on the descriptor's own track
+        // point. The ctx-less lookup is a stub that returns NONE; an AND node
+        // without a previous track point is a tracking error that aborts every
+        // clash analysis through it, so the DDB fell back to chronological
+        // backtracking (docs/HYBRID-CB-HT.md section 24, nn1153).
+        {
+            let pc = calc_alg_context.process_context();
+            pc.label_set(label).get_concept_descriptor_and_reapply_queue_by_tag_in_context(
+                pc,
+                tag,
+                &mut con_des,
+                &mut con_dep,
+            );
+        }
         let mut expand_dep = TrackPointId::NONE;
         self.create_and_dependency(&mut expand_dep, indi, con_des, con_dep, calc_alg_context);
         if expand_dep.is_none() {
