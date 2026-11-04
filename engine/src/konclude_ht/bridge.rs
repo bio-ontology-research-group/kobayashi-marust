@@ -16632,20 +16632,26 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 None => false,
             }
         };
-    // KM-SOUNDNESS-GATE[self-satexp] (docs/HYBRID-CB-HT.md section 20):
-    // both expansion caches key a node's satisfiability on its own label
-    // (and ancestors). With a self edge that locality fails in the port: on
-    // ore_ont_12128 the completion-only schedule published 1,567 of Konclude's
-    // 4,716 unsatisfiable classes, and a 23-axiom module of it (reflexive
-    // `part-of`, one functional role, `Continuant ⊑ ∀has-part.Continuant`)
-    // classifies `world_of_BIOMD0000000053` as satisfiable with the cache and
-    // as unsatisfiable without it, as HermiT does. `∃p.Self ⊓ ≤1 p⁻` is the
-    // simplest instance: satisfiable on its own, but it merges with every
-    // p-predecessor. Install neither cache when a SELF concept can create a
-    // self edge; the completion then expands every node itself.
+    // KM-SOUNDNESS-GATE[self-satexp] (docs/HYBRID-CB-HT.md section 20)
+    // removed both expansion caches from terminologies with a positive SELF
+    // concept, after two witnesses: the 23-axiom reduction of ore_ont_12128
+    // (`world_of_BIOMD0000000053` satisfiable with the satisfiable expander
+    // cache) and `∃p.Self ⊓ ≤1 p⁻` seeds (`v1s160`, `v1s1420`, `v1s1543`).
+    // Section 23 traced both to port defects that are not tied to self
+    // edges: the cache replay skipped the AND rule for entries written before
+    // the AND family was applied (`satexp_absorb::expanded_concept_skip_function`),
+    // and the satisfiable-cached node absorbed its functional `≤1 R`
+    // (`satexp_absorb::atmost_is_functional_rule`). With both fixed the
+    // satisfiable expander cache no longer takes the gate;
+    // `KM_BRIDGE_SELF_SATEXP_GATE=1` restores it (diagnostic). The
+    // associated-expansion cache and the saturated-label expansion keep the
+    // gate (`self_cardinality` above and below); section 23 does not cover
+    // them.
+    let self_satexp_gate =
+        self_cardinality && std::env::var_os("KM_BRIDGE_SELF_SATEXP_GATE").is_some();
     if std::env::var_os("KM_HT_NO_SAT_EXP_CACHE").is_none()
         && (bridged.singleton_concepts.is_empty() || singletons_inert)
-        && !self_cardinality
+        && !self_satexp_gate
     {
         install_bridge_satisfiable_expander_cache(&mut ctx);
     }

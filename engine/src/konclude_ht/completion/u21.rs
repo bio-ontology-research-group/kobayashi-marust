@@ -2105,6 +2105,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     concept,
                     None,
                 );
+            if super::satexp_trace_enabled() {
+                eprintln!(
+                    "SATEXP-EXPAND node={} concept={}{} present={}",
+                    calc_alg_context.process_context().node(individual_node).individual_node_id(),
+                    if concept_negated { "-" } else { "" },
+                    calc_alg_context.ontology_arenas().concept(concept).get_concept_tag(),
+                    already_present
+                );
+            }
             if !already_present {
                 let mut dependencies: DepLinkId = Id::NONE;
                 let mut first_dep_track_point: TrackPointId = Id::NONE;
@@ -2176,6 +2185,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     !dependencies_present || first_dep_track_point.is_some(),
                     "expandCachedConcepts: missing dependency"
                 );
+                if super::satexp_trace_enabled() && !(dependencies_present && first_dep_track_point.is_some()) {
+                    eprintln!("SATEXP-EXPAND   declined (missing dependency)");
+                }
                 if dependencies_present && first_dep_track_point.is_some() {
                     let mut expanded_dep_track_point = TrackPointId::NONE;
                     self.create_expanded_dependency(
@@ -2185,7 +2197,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         dependencies,
                         calc_alg_context,
                     );
-                    self.add_concept_to_individual_skip_and_processing(
+                    // Konclude skips the AND rule for replayed concepts
+                    // (`addConceptToIndividualSkipANDProcessing`): its entries
+                    // are written after direct rule preprocessing has closed
+                    // the label under the AND family. The port's schedule does
+                    // not guarantee that closure (docs/HYBRID-CB-HT.md section
+                    // 23), so the replay queues AND-family concepts too.
+                    self.add_concept_to_individual_with_skip_function(
                         concept,
                         concept_negated,
                         individual_node,
@@ -2193,6 +2211,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         true,
                         false,
                         true,
+                        super::satexp_absorb::expanded_concept_skip_function(),
                         calc_alg_context,
                     );
                 }

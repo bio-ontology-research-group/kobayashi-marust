@@ -34,7 +34,8 @@ use super::super::model::substrate::{Cint64, NegLink};
 use super::super::model::ConceptId;
 
 /// `KM_HT_SATEXP_ABSORB_LEGACY` (diagnostic): `1` or `all` restores every
-/// arm; a comma list of `functional`, `value`, `top` restores those arms.
+/// arm; a comma list of `functional`, `value`, `top`, `replay` restores those
+/// arms.
 fn satexp_absorb_legacy_arm(arm: &str) -> bool {
     static ARMS: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
     match ARMS.get_or_init(|| std::env::var("KM_HT_SATEXP_ABSORB_LEGACY").ok()) {
@@ -88,4 +89,26 @@ pub(crate) fn filler_is_top(onto: &OntologyArenas, filler: (ConceptId, bool)) ->
     }
     let code = onto.concept(filler.0).get_operator_code();
     (code == CCTOP && !filler.1) || (code == CCBOTTOM && filler.1)
+}
+
+/// The skip function for a concept replayed from a satisfiable expander cache
+/// entry (`expandCachedConcepts`, cpp 6482): Konclude passes `applyANDRule`,
+/// because an entry is written only after direct rule preprocessing has
+/// applied every AND-family concept (AND, SUB, EQ, TOP, IMPLTRIG,
+/// BRANCHTRIG, priority 13, above the immediate-processing limit 8) to the
+/// label, so their operands are in the entry and replayed with them. The
+/// port runs most terminologies without direct rule preprocessing, so an
+/// entry can be written while such a concept still waits in the queue (seen
+/// on `m53tiny`: `{GO_0005518, Continuant}` expanded to `GO_0003674` before
+/// `GO_0003674 ⊑ Function` was applied, and a later replay added
+/// `GO_0003674` without its operand, hiding the clash with `¬Function`).
+/// The replay therefore queues AND-family concepts as well; their rule only
+/// re-adds operands, so this can cost a rule application, never an answer.
+/// `KM_HT_SATEXP_ABSORB_LEGACY=replay` restores Konclude's skip.
+pub(crate) fn expanded_concept_skip_function() -> super::algorithm::TableauRuleFunction {
+    if satexp_absorb_legacy_arm("replay") {
+        super::u04::TABLEAU_RULE_APPLY_AND
+    } else {
+        super::super::model::substrate::INVALID
+    }
 }

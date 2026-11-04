@@ -1021,6 +1021,30 @@ impl SatisfiableExpanderCacheHandler {
         values: &[CacheValue],
         dependency_hash: SignatureSatisfiableExpanderDepHash,
     ) {
+        if super::satexp_trace_enabled() {
+            let tags: Vec<String> = values
+                .iter()
+                .map(|v| {
+                    format!(
+                        "{}{}",
+                        if v.get_cache_value_identifier()
+                            == CacheValueIdentifier::CacheValTagAndNegatedConcept as Cint64
+                        {
+                            "-"
+                        } else {
+                            ""
+                        },
+                        v.get_tag()
+                    )
+                })
+                .collect();
+            eprintln!(
+                "SATEXP-WRITE-EXP prev={} new={} values=[{}]",
+                previous_signature,
+                new_signature,
+                tags.join(",")
+            );
+        }
         let values = self.alloc_value_list(values);
         let dependency_hash = self
             .cache_context
