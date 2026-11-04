@@ -1,0 +1,1 @@
+Konclude 0.7.0 (~/konclude-build/Release/Konclude), "classification -w 2 -i FILE -o OUT"; the default worker count hangs at 0 % CPU on this host (also on a one-axiom ontology). JSON via tools/konclude_json.py.

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<RequestMessage xmlns="http://www.owllink.org/owllink-xml#" xmlns:owl="http://www.w3.org/2002/07/owl#">
+	<Set key='Konclude.Calculation.Optimization.ConceptSaturation'><Literal>false</Literal></Set>
+	<Set key='Konclude.Calculation.Optimization.PseudoModelSubsumptionMerging'><Literal>false</Literal></Set>
+	<Set key='Konclude.Calculation.Classification.PseudoModelSubsumptionMerging'><Literal>false</Literal></Set>
+	<Set key='Konclude.Calculation.Classification.SaturationSubsumerExtraction'><Literal>false</Literal></Set>
+	<Set key='Konclude.Calculation.Optimization.SatisfiableExpansionCacheWriting'><Literal>false</Literal></Set>
+</RequestMessage>

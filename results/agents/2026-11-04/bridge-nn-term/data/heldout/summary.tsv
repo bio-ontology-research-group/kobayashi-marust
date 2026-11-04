@@ -1,0 +1,32 @@
+4903	n48	rc=0	wall=4.8094	rss_gib=0.18	konclude=agreement 
+11647	n48	rc=0	wall=6.9560	rss_gib=0.24	konclude=agreement hermit=agreement openllet=agreement 
+4796	n48	rc=0	wall=4.2645	rss_gib=0.20	konclude=agreement openllet=agreement jfact=agreement 
+3917	n48	rc=0	wall=7.3171	rss_gib=0.27	konclude=agreement jfact=consistency_disagreement 
+11378	n48	rc=0	wall=8.7625	rss_gib=0.32	konclude=agreement jfact=consistency_disagreement 
+12191	n48	rc=0	wall=9.3545	rss_gib=0.32	konclude=agreement jfact=consistency_disagreement 
+9151	n48	rc=0	wall=65.056	rss_gib=0.63	konclude=agreement jfact=consistency_disagreement 
+9577	n48	rc=0	wall=88.363	rss_gib=0.67	konclude=agreement jfact=consistency_disagreement 
+6132	n48	rc=0	wall=23.107	rss_gib=0.51	konclude=agreement hermit=agreement 
+9899	n48	rc=0	wall=27.073	rss_gib=0.51	konclude=agreement hermit=agreement 
+16315	n48	rc=0	wall=36.228	rss_gib=1.32	konclude=agreement 
+10838	n48	rc=0	wall=66.553	rss_gib=2.36	konclude=agreement 
+3087	n48	rc=0	wall=76.378	rss_gib=2.49	konclude=agreement 
+7557	n48	rc=0	wall=108.87	rss_gib=3.17	konclude=agreement 
+10926	n48	rc=124	wall=241.23	rss_gib=18.01	
+12128	n48	rc=0	wall=43.904	rss_gib=2.20	konclude=agreement 
+4903	new	rc=0	wall=6.1027	rss_gib=0.19	konclude=agreement 
+11647	new	rc=0	wall=7.7473	rss_gib=0.24	konclude=agreement hermit=agreement openllet=agreement 
+4796	new	rc=0	wall=.83970	rss_gib=0.04	konclude=agreement openllet=agreement jfact=agreement 
+3917	new	rc=0	wall=4.9933	rss_gib=0.26	konclude=agreement jfact=consistency_disagreement 
+12191	new	rc=0	wall=6.2402	rss_gib=0.32	konclude=agreement jfact=consistency_disagreement 
+11378	new	rc=0	wall=6.4022	rss_gib=0.31	konclude=agreement jfact=consistency_disagreement 
+9151	new	rc=0	wall=58.485	rss_gib=0.64	konclude=agreement jfact=consistency_disagreement 
+9577	new	rc=0	wall=83.875	rss_gib=0.67	konclude=agreement jfact=consistency_disagreement 
+6132	new	rc=0	wall=20.351	rss_gib=0.51	konclude=agreement hermit=agreement 
+9899	new	rc=0	wall=22.795	rss_gib=0.51	konclude=agreement hermit=agreement 
+16315	new	rc=0	wall=26.807	rss_gib=1.33	konclude=agreement 
+10838	new	rc=0	wall=57.029	rss_gib=2.37	konclude=agreement 
+3087	new	rc=0	wall=63.235	rss_gib=2.48	konclude=agreement 
+7557	new	rc=0	wall=94.015	rss_gib=3.19	konclude=agreement 
+10926	new	rc=124	wall=240.98	rss_gib=18.04	
+12128	new	rc=0	wall=44.394	rss_gib=2.20	konclude=agreement 

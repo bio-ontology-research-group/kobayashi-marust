@@ -2879,3 +2879,250 @@ differentially against HermiT only. Lean obligation created: none
 discharged; a bridge model would have to show that turning a blockable
 neighbour of a nominal into a nominal preserves the models of the
 completion graph and restores the premise of the blocking soundness proof.
+
+## 24. Termination and search cost of the NN-rule (2026-11-04, `fix/v155-bridge-nn-term`)
+
+**Defect.** After section 22, seven seeds of the NN family that the base
+answers timed out on every run (`nn1333`, `nn346`, `nn952`, `nn745`,
+`nn1957`, `nn777`, `nn969`). Konclude 0.7.0 answers all seven in 15 to 75 ms
+of classification time, and agrees with HermiT on each. (Section 22 reported
+that Konclude does not finish on the reductions: with its default worker
+count it hangs on this host even on a one-axiom ontology, at 0 % CPU; with
+`-w 2` it answers. The tools of this section use `-w 2`.)
+
+**Infinite or exponential.** Exponential, not infinite, on every input
+measured, but without a bound in the port. With the section 22 code
+(48a1113b), no trace shows an unbounded node count: on `hang952` the node
+ids of new nominals stay below 1050 and the classification ends after 25 s
+(base 0.03 s); `nn346`, `nn1333`, `nn745` and `nn952` end after 31 to 109 s
+on the forced bridge. Two causes multiply.
+
+1. *No fixed distinct set.* The general arm recomputed its new-nominal
+   slots at every application as the cardinality minus the qualified nominal
+   neighbours. The pairwise merge branching that followed could merge two of
+   those nominals, which gave the slot back, and the next application turned
+   the next blockable neighbour into a new nominal again. On `hang952` two
+   at-most restrictions at the reflexive nominal `b` (`≤2 s⁻.∃s.{b}` and
+   `≤1 s⁻.∃r⁻.F`) convert the same candidate in alternation under
+   backtracking (section 22's observation). Nothing bounds the number of new
+   nominals per restriction; the bound by analogy with SROIQ in section 22
+   does not hold for this procedure. The pairwise branching also blamed the
+   at-most clash on every counted successor, so the clash sets carried the
+   choose-rule decisions of unrelated successors.
+2. *Chronological enumeration on the retained leaf.* Most of the time goes
+   into jobs that run on the retained consistency leaf (section 16). An
+   NN-rule clash at an ABox nominal depends on the nominal's own choices,
+   and those are decisions of the leaf, which the job cannot revise. The
+   clash analysis then marks no open job decision, and the safety net of
+   `try_backtrack_or_branch_ddb` falls back to chronological backtracking:
+   the job enumerates every combination of its own (irrelevant) choose and
+   disjunction decisions, ends with an unsatisfiable verdict without root
+   cancellation, which the leaf rejects, and only then reruns on the
+   unchanged base. On the reduction `n745min` (five axioms, the subject
+   `C ⊑ Q5`) the job runs 16,000 drives with 2,000 chronological fallbacks
+   per 4,000 drives until the 30 s verification budget ends it; on `xbmin`
+   (three axioms, `Q1 ≡ ≤2 p.∃p⁻.({a}⊓E) ≡ ≤1 p⁻.∃s.D`,
+   `Q4 ≡ ≤1 p.(C⊓∃s.{a})`, no ABox) the probe `Q4 ⊓ ¬Q1` takes 66,000 trace
+   lines before `BRIDGE-LEAF-FALLBACK`. With `KM_BRIDGE_NO_LEAF_REUSE=1` the
+   48a and branch binaries answer both in 0.03 s.
+
+**Konclude's procedure** (cpp line numbers of
+`CCalculationTableauCompletionTaskHandleAlgorithm.cpp`;
+`CBranchingMergingProcessingRestrictionSpecification.cpp`, "BMR").
+
+- The NN state lives in the at-most restriction's branching-merging
+  specification, which every reapplication copies
+  (`initBranchingMergingProcessingRestriction(prev)`, cpp 15014-15031).
+- `fixedNominalMerging` (cpp 15201) holds when the node is a nominal and some
+  candidate added to the specification was blockable and the creator of its
+  link (BMR 188-206, 226-240); the flag stays set in the copies.
+- `requiresNNInitialization` (cpp 15216-15233): the first time, the distinct
+  set is cleared and fixed, and with `LazyNewMergingNominalCreation` it gets
+  `cardinality` new-representative slots.
+- Every candidate is then decided on its own (cpp 15331-15560): with no
+  mergeable representative it becomes a new one while a slot remains
+  (a blockable candidate moves into a fresh nominal,
+  `getIntoEmptyMergedIndividualNode(cand, true, x, ...)`, cpp 21047-21063;
+  a nominal candidate joins as it is), else the at-most clash; with exactly
+  one mergeable representative and no slot it merges deterministically;
+  otherwise it branches into one merge task per mergeable representative
+  plus, while a slot remains, a distinct task (`createDistinctBranchingTask`,
+  cpp 15582-15660). Each new representative spends a slot
+  (`decRemainingNominalCreationCount`, cpp 15446-15458, 15595-15597).
+- A representative merged away is relocated to the node it merged into
+  (cpp 15293-15327); two representatives that became one count once, and
+  `tmpCardinality = distinctCount` keeps the spent slot spent.
+- The clash and every merge decision carry the candidate's and the
+  representatives' merge-causing descriptors, the reasons of the rejected
+  merges, and the dependency of the last decision on the set
+  (`baseDepTrackPoint`, cpp 15168, 15363-15418, 15453).
+- Task order: sibling tasks of equal priority run last-created first
+  (`CTask::sortedLinkerDataCompare` is `>=`, so `insertNextSorted` puts a new
+  task before its equal-priority siblings); merge tasks run in the order of
+  the representatives, the distinct task last. Choose tasks carry a 0.1
+  priority bonus on the negated side, which the port already follows.
+
+**Change.** `completion/u08.rs` (`ht_apply_nn_rule`, general arm;
+`ht_nn_make_representative`, `ht_nn_merge_direction`,
+`ht_nn_base_track_point`, `ht_nn_set_base_track_point`,
+`ht_nn_relocation_track_points`; the NN branch of `ht_apply_atmost_merge`),
+`completion/u02.rs` (the NN alternative in
+`advance_atmost_merge_alternative`; `ht_leaf_job_ends_on_unattributed_clash`),
+`process/node.rs` (`NnAtmostState`), `bridge.rs` (one flag per job).
+
+1. *The fixed distinct set.* A nominal node carries one `NnAtmostState` per
+   at-most restriction (concept and rule negation): the representatives, the
+   remaining slots (initially the cardinality, only decreasing), the base
+   track point and the merge dependencies of lost representatives. The node
+   field is journaled with the node, so the branch epoch of a decision rolls
+   it back with the decision. It is created when `fixedNominalMerging` first
+   holds, and from then on every application of the restriction runs the
+   NN arm, whatever the count.
+2. *One candidate per step.* Each iteration of the at-most loop takes one
+   qualified neighbour outside the set (link order; the probe root stays out,
+   as in section 22) and pushes an at-most branch point whose alternatives
+   are Konclude's: a merge into each mergeable representative (in
+   `getMergedIndividualNodes`' direction), then the new representative while
+   a slot remains, written as the pair `(NONE, candidate)`. No alternative is
+   the at-most clash. A single alternative is a branch point of one
+   alternative, as Konclude's deterministic arms are a nondeterministic
+   dependency with one branch. The branch point is marked `nn_decision`.
+3. *Causes.* For an NN decision the merge-causing descriptors are those of
+   the candidate and the representatives (not of every counted successor),
+   the reasons of the rejected merges, and one descriptor per lost
+   representative's merge dependency. The merge dependency node and the clash
+   rest on the set's base track point, which every NN alternative replaces
+   by its own track point (a superset of Konclude's updates).
+4. *Relocation.* Representatives are followed along the merge chain
+   (`merged_into_individual_node_id`, the port of
+   `getCorrectedNominalIndividualNode`) and deduplicated; a representative
+   that merged into another or left the neighbourhood keeps its slot spent.
+5. *Leaf jobs.* A job on the retained leaf ends, instead of backtracking
+   chronologically, when the clash analysis marks no open job decision
+   (`leaf_job_unattributed_clash_ends_job`, set only for leaf jobs;
+   `KM_BRIDGE_LEAF_CHRONOLOGICAL=1` restores the old path). The job reports an
+   unsatisfiable outcome without root cancellation, which section 16's
+   acceptance rule rejects, and the job's fallback alternative runs on the
+   unchanged base.
+
+`KM_HT_NN_TRACE=1` prints every decision (candidate, representatives,
+slots, alternatives, base track point); `KM_HT_NN_DISTINCT_FIRST=1`
+(diagnostic) puts the new-representative alternative first.
+
+**Termination argument.** Fix a branch line (a path of alternatives through
+the search tree) and a nominal node `x` with a restriction `≤n R.C`.
+
+- *Per restriction.* From the creation of the state on, each new
+  representative spends one slot and slots are never returned, so the NN arm
+  creates at most `n` new nominals for `(x, ≤n R.C)` on the line. Each step
+  removes the candidate from the candidate set (it is merged away or joins the
+  set), so between two new neighbours of `x` the arm takes at most as many
+  steps as `x` has qualified neighbours, and each step branches at most
+  `n + 1` ways.
+- *Per nominal.* The states are keyed by restriction, and a nominal carries
+  finitely many at-most restrictions (the concepts of the normalized
+  TBox). A state is lost only with its node, when `x` merges into another
+  nominal; the merge removes `x` from the line, so a nominal reached by a
+  merge chain of length `k` is one of at most `k + 1` nodes that each had a
+  state. Merges between nominals strictly decrease the number of nominal
+  nodes on the line between two nominal creations.
+- *New nominals.* New nominals are created only by the NN-rule (both arms)
+  at a nominal `x`, at nominal level `level(x) + 1`, and only for a candidate
+  that is blockable and the creator of its link, i.e. a tree node whose
+  successor reached `x`. This is the shape of the SROIQ tableau of Horrocks,
+  Kutz and Sattler (2006), whose termination proof bounds the number of
+  NN-rule applications per nominal and restriction (there by the guessed
+  `≤m R.C` and the `m` pairwise distinct new nominals, here by the slot
+  budget) and from that the number of nominal levels. The port now has the
+  per-restriction bound that proof needs. The remaining steps (the bound on
+  nominal levels, and blocking of the tree parts below the new nominals,
+  which this branch does not change) are those of the SROIQ proof under the
+  assumption that the port's merging and blocking are Konclude's; they are
+  not reproved for the port. Section 22's argument rested on the recomputed
+  slots and did not hold.
+- *Leaf jobs.* Ending a job adds no step; it shortens the search.
+
+This is an argument about the port's procedure, checked by tests and
+differentially (below), not a machine-checked proof.
+
+**Exactness.**
+
+- *Soundness of verdicts.* Every alternative is a merge of the candidate
+  into a representative (the at-most rule's identification) or a renaming of
+  the candidate into a nominal node (section 22), so no alternative adds a
+  fact that fails in some model of the branch. A clash raised with no
+  alternative is the at-most clash of the restriction under the decisions it
+  depends on.
+- *Completeness of the decision tree.* In any model the qualified
+  neighbours of `x` denote at most `n` elements. Assign the candidates in the
+  order the arm meets them: each is either identified with an element some
+  representative stands for (the merge alternative into that
+  representative, available unless the labels or a distinctness edge forbid
+  it, in which case the model does not identify them either) or denotes a new
+  element, which needs a free slot because at most `n` elements exist. A
+  representative lost to a merge stands for the element it merged with, so
+  the spent slot is still an element in use. Hence some branch of the tree is
+  consistent with the model.
+- *Dependencies.* The DDB may skip a decision only if the clash does not
+  depend on it. The clash of a full set depends on the decisions that filled
+  the set (the base track point chain), on the merges that removed members
+  (the relocation dependencies), on why the candidate exists and qualifies
+  and why each representative does (their merge-causing descriptors), and on
+  why each merge was rejected; all of these are in the clash. Recording the
+  base track point for every alternative is a superset of Konclude's
+  updates, which only makes the analysis jump less far.
+- *Leaf jobs.* Ending a leaf job yields no verdict: the leaf accepts an
+  unsatisfiable verdict only on a root cancellation (section 16), and the
+  fallback alternative is the unchanged job on the unchanged base. A job that
+  would have found a satisfiable fixpoint after chronological backtracking
+  now finds it in the fallback.
+
+**Results** (`results/agents/2026-11-04/bridge-nn-term/README.md`; release
+flags, 120 s cap for the seeds; base 1ffee4a6, 48a = 48a1113b).
+
+| seed | base auto / `ht_bridge` | 48a auto / `ht_bridge` | branch, 3 runs, auto / `ht_bridge` |
+|---|---|---|---|
+| `nn1333` | 0.48 / 0.52 s | 96 / 95 s | 4.9 to 8.3 / 4.9 to 6.5 s |
+| `nn346` | 0.02 / 0.02 s | 100 / 91 s | 0.02 to 0.03 / 0.03 s |
+| `nn952` | 0.02 / 0.02 s | 58 / 58 s | 0.05 / 0.03 s |
+| `nn745` | 0.10 / 0.06 s | 38 / 30 s | 0.06 to 0.11 / 0.09 to 0.10 s |
+| `nn1957` | 31 / 32 s | > 120 / > 120 s | 0.06 / 0.05 s |
+| `nn777` | 38 / 30 s | > 120 s / defer at 60 s | 0.03 / 0.03 to 0.04 s |
+| `nn969` | 8.1 / 38 s | 8.1 / 36 s | 8.1 / 36 to 42 s |
+
+All 42 branch runs agree with HermiT. `nn1333` stays ten times slower than
+the base: its time goes into the KM-specific batch refutation (one probe of
+`s ⊓ ¬c1 ⊓ … ⊓ ¬c5`, `bridge.rs`), whose NN search the base never runs
+(1.3 s with `KM_BRIDGE_NO_BATCH_REFUTATION=1`); `nn969` is as slow as on the
+base, and as slow with `KM_HT_NO_NN_RULE=1` (39 s), so its cost is not the
+NN-rule's. On the
+reductions `xbmin` and `hang952` the branch answers in 0.02 to 0.03 s
+(48a: 13.5 s and 25 s; base 0.01 and 0.03 s; Konclude 11 and 18 ms).
+
+The NN family (2,000 seeds, three runs, both routes, 60 s automatic, 30 s
+forced): of the 499 seed-routes the base answers wrongly, 474 agree with
+HermiT in all three branch runs (48a: 464, all still right); 22 seed-routes
+are right in all branch runs and not in every 48a run. The branch answers no
+seed-route wrongly that 48a or the base answers rightly; the wrong
+seed-routes are the six seeds of section 22, all wrong on the base. Three
+seed-routes lose an answer that 48a has: `nn1153` on both routes (base
+0.0 s, 48a 21 to 29 s, branch over the cap) and `nn568` automatic (48a 39 s,
+branch 50 to 55 s, one timeout in three). On `nn1153` the leaf jobs that now
+end hand their subjects to the fallback job on the base, whose search falls
+back to chronological backtracking 40,000 times in 15 s (disjunctions whose
+first alternative was left unmarked by an earlier chronological advance, next
+to pairwise at-most merges at the functional arm's new nominals); 48a found
+those subjects' models on the leaf after its own chronological search. A
+narrower rule (end only on NN-rule clashes) keeps `nn1153` at 26 s but
+leaves `nn1333` at 33 s or over 60 s and `nn1957` at 54 s, so the branch
+keeps the general rule.
+
+The 16 held-out inputs: identical output on all 16 (10926 times out on both
+at 18 GiB), wall times within noise of 48a (4796 4.3 to 0.8 s, 16315 36 to
+27 s, 7557 109 to 94 s; largest increase 4903 4.8 to 6.1 s). The 112
+nominal design-half inputs: 109 answered by both, 109 identical signatures,
+no status or route change, coverage guard 0. The sequential run of the
+branch came 25 min after the 48a run at a host load of 50 against 30, and
+its time ratio over the 26 inputs above 1 s was 1.38 (median 1.42); the ten
+inputs with the largest ratios, rerun alternately (48a, branch, 48a,
+branch), took 107.4 s on 48a and 108.0 s on the branch in total.
