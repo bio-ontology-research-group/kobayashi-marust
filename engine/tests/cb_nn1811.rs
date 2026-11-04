@@ -10,15 +10,17 @@
 //!
 //! No axiom mentions an individual. Every CB route answers as HermiT. The
 //! native bridge (`ht_bridge`, and through it the automatic route,
-//! `production_all` and `certified_nominals`) misses `A ⊑ Q4`: in the `A`
+//! `production_all` and `certified_nominals`) missed `A ⊑ Q4`: in the `A`
 //! probe the `r`-successor is satisfiable-cached from the earlier `C`
 //! probe and the generating concept `∃s.C` is absorbed
 //! (`is_generating_concept_satisfiable_cached_absorpable`, Konclude cpp
 //! 14217), so the successor that merges into the parent is never built.
-//! With `FunctionalObjectProperty(s)` in place of `⊤ ⊑ ≤1 s` the role flag
-//! stops the absorption and the bridge is right. The bridge tests are
-//! ignored until the bridge is fixed; the cache-off control shows where the
-//! defect sits.
+//! The bridge refuses that absorption for a functional role, but flags a
+//! role functional only from the plain clause `s(x,y1) ∧ s(x,y2) → y1≈y2`;
+//! the frontend writes `⊤ ⊑ ≤1 s` as an at-most clause guarded by `⊤`
+//! definers. The HT view now carries the entailed plain clause
+//! (`cb_to_ht::add_entailed_functional_clauses`, docs/ROUTING.md);
+//! `KM_HT_NO_ENTAILED_FUNCTIONAL=1` turns that off (negative control).
 //!
 //! Each `.hermit.json` holds HermiT 1.4's answer, checked by hand in the
 //! results README.
@@ -145,7 +147,6 @@ fn bridge_without_the_satisfiable_expander_cache_matches_hermit() {
 }
 
 #[test]
-#[ignore = "native bridge satisfiable-expander cache absorbs ∃s.C under ⊤ ⊑ ≤1 s (results/agents/2026-11-04/cb-nn1811)"]
 fn automatic_route_matches_hermit() {
     for _ in 0..3 {
         check("auto", &with_release(&[]));
@@ -153,9 +154,24 @@ fn automatic_route_matches_hermit() {
 }
 
 #[test]
-#[ignore = "native bridge satisfiable-expander cache absorbs ∃s.C under ⊤ ⊑ ≤1 s (results/agents/2026-11-04/cb-nn1811)"]
 fn bridge_routes_match_hermit() {
     for route in ["ht_bridge", "production_all", "certified_nominals"] {
-        check(route, &with_release(&[("KM_ROUTE", route)]));
+        for _ in 0..3 {
+            check(route, &with_release(&[("KM_ROUTE", route)]));
+        }
+    }
+}
+
+#[test]
+fn negative_control_without_the_entailed_functionality_misses_both() {
+    let env = with_release(&[("KM_ROUTE", "ht_bridge"), ("KM_HT_NO_ENTAILED_FUNCTIONAL", "1")]);
+    for path in fixtures() {
+        let got = normalise(&classify(&path, &env));
+        assert_ne!(
+            got,
+            expected(&path),
+            "{}: the fixture no longer needs the entailed functionality",
+            path.display()
+        );
     }
 }
