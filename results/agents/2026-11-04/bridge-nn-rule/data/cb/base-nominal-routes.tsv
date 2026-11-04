@@ -1,0 +1,14 @@
+red/f1008.ofn	nominals	1	ok	0.02	
+red/f1008.ofn	nominal_ni_tbox	1	NOANSWER	0.01	unsupported: ontology is outside the selected HT mechanism's structural gate
+red/f1008.ofn	nominal_ni_abox	1	ok	0.02	
+red/f1008.ofn	certified_card_nominals	1	WRONG	0.01	missing=[('A', 'C'), ('B', 'C'), ('D', 'C'), ('E', 'C')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+red/f1008.ofn	certified_card_proxy_abox	1	ok	0.02	
+red/f1008.ofn	certified_nominals	1	WRONG	0.01	missing=[('A', 'C'), ('B', 'C'), ('D', 'C'), ('E', 'C')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+red/f1008.ofn	card_fn	1	NOANSWER	0.00	unsupported: ontology is outside the selected HT mechanism's structural gate
+red/f439.ofn	nominals	1	ok	1.66	
+red/f439.ofn	nominal_ni_tbox	1	TIMEOUT	60.06	
+red/f439.ofn	nominal_ni_abox	1	ok	1.64	
+red/f439.ofn	certified_card_nominals	1	WRONG	0.01	missing=[('Q2', 'Q5')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+red/f439.ofn	certified_card_proxy_abox	1	ok	1.64	
+red/f439.ofn	certified_nominals	1	WRONG	0.02	missing=[('Q2', 'Q5')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+red/f439.ofn	card_fn	1	NOANSWER	0.00	unsupported: ontology is outside the selected HT mechanism's structural gate

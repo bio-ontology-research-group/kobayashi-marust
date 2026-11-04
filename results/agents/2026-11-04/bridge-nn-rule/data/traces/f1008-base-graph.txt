@@ -1,0 +1,60 @@
+GRAPH-DUMP fixpoint ids 0..=0
+  node 0 nom=true flags=0x400000000 L=[1,11,18,29] links=
+GRAPH-DUMP fixpoint ids 0..=0
+  node 0 nom=true flags=0x0 L=[1,11,29] links=
+GRAPH-DUMP fixpoint ids 0..=0
+  node 0 nom=true flags=0x400000000 L=[1,11,18,29] links=
+GRAPH-DUMP fixpoint ids 0..=1000
+  node 0 nom=true flags=0x400000000 L=[1,11,18,29] links=
+  node 1000 nom=false flags=0x10000200 L=[1,18,29] links=
+GRAPH-DUMP fixpoint ids 0..=1000
+  node 0 nom=true flags=0x400000000 L=[1,11,18,29] links=
+  node 1000 nom=false flags=0x200 L=[1,18,19,29] links=
+GRAPH-DUMP fixpoint ids 0..=1000
+  node 0 nom=true flags=0x400000000 L=[1,11,18,29] links=
+  node 1000 nom=false flags=0x200 L=[1,18,20,29] links=
+GRAPH-DUMP fixpoint ids 0..=1000
+  node 0 nom=true flags=0x400000000 L=[1,11,18,29] links=
+  node 1000 nom=false flags=0x200 L=[1,18,21,29] links=
+GRAPH-DUMP fixpoint ids 0..=1000
+  node 0 nom=true flags=0x400000000 L=[1,11,18,29] links=
+  node 1000 nom=false flags=0x200 L=[1,18,22,29] links=
+GRAPH-DUMP fixpoint ids 0..=1000
+  node 0 nom=true flags=0x400000000 L=[1,11,18,29] links=
+  node 1000 nom=false flags=0x200 L=[1,18,23,29] links=
+GRAPH-DUMP fixpoint ids 0..=1000
+  node 0 nom=true flags=0x400000000 L=[1,11,18,29] links=
+  node 1000 nom=false flags=0x200 L=[1,18,24,29] links=
+GRAPH-DUMP fixpoint ids 0..=1000
+  node 0 nom=true flags=0x400000000 L=[1,11,18,29] links=
+  node 1000 nom=false flags=0x200 L=[1,18,25,29] links=
+GRAPH-DUMP fixpoint ids 0..=1000
+  node 0 nom=true flags=0x400000000 L=[1,11,18,29] links=
+  node 1000 nom=false flags=0x200 L=[1,18,26,29] links=
+MERGE 1003 into 0 (flags 0x40000000300 / 0x400000000) dep=#21
+GRAPH-DUMP fixpoint ids 0..=1003
+  node 0 nom=true flags=0x0 L=[1,11,18,29,30,31] links=[102:0->1001]
+  node 1000 nom=false flags=0x40000000000 L=[1,-18,19,-28,29] links=[101:1000->1001][101:1000->1002]
+  node 1001 nom=false flags=0x40000000200 L=[1,18,27,29] links=[100:1001->0][103:1001->1000][100:1001->1003]
+  node 1002 nom=false flags=0x40000000001 L=[1,27,29] links=[103:1002->1000]
+  node 1003 nom=false flags=0x40000000308 merged->0 L=[1,11,29,30,31] links=[102:1003->1001]
+GRAPH-DUMP fixpoint ids 0..=1003
+  node 0 nom=true flags=0x0 L=[1,11,18,29,30,31] links=[102:0->1001]
+  node 1000 nom=false flags=0x40000000000 L=[1,-18,19,-28,29] links=[101:1000->1001][101:1000->1002]
+  node 1001 nom=false flags=0x40000000200 L=[1,18,27,29] links=[100:1001->0][103:1001->1000][100:1001->1003]
+  node 1002 nom=false flags=0x40000000001 L=[1,27,29] links=[103:1002->1000]
+  node 1003 nom=false flags=0x40000000308 merged->0 L=[1,11,29,30,31] links=[102:1003->1001]
+MERGE 1003 into 0 (flags 0x40000000300 / 0x400000000) dep=#21
+GRAPH-DUMP fixpoint ids 0..=1003
+  node 0 nom=true flags=0x0 L=[1,11,18,29,30,31] links=[102:0->1001]
+  node 1000 nom=false flags=0x40000000000 L=[1,-18,20,-28,29] links=[101:1000->1001][101:1000->1002]
+  node 1001 nom=false flags=0x40000000200 L=[1,18,27,29] links=[100:1001->0][103:1001->1000][100:1001->1003]
+  node 1002 nom=false flags=0x40000000001 L=[1,27,29] links=[103:1002->1000]
+  node 1003 nom=false flags=0x40000000308 merged->0 L=[1,11,29,30,31] links=[102:1003->1001]
+GRAPH-DUMP fixpoint ids 0..=1003
+  node 0 nom=true flags=0x0 L=[1,11,18,29,30,31] links=[102:0->1001]
+  node 1000 nom=false flags=0x40000000000 L=[1,-18,20,-28,29] links=[101:1000->1001][101:1000->1002]
+  node 1001 nom=false flags=0x40000000200 L=[1,18,27,29] links=[100:1001->0][103:1001->1000][100:1001->1003]
+  node 1002 nom=false flags=0x40000000001 L=[1,27,29] links=[103:1002->1000]
+  node 1003 nom=false flags=0x40000000308 merged->0 L=[1,11,29,30,31] links=[102:1003->1001]
+MERGE 1003 into 0 (flags 0x40000000300 / 0x400000000) dep=#21

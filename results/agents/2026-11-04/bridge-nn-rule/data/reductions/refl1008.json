@@ -1,0 +1,18 @@
+{
+  "ontology": "refl1008.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["A", "C"],
+    ["B", "C"],
+    ["D", "B"],
+    ["D", "C"],
+    ["E", "C"],
+    ["F", "C"],
+    ["Q1", "C"],
+    ["Q2", "C"],
+    ["Q3", "B"],
+    ["Q3", "C"],
+    ["Q3", "D"]
+  ],
+  "unsatisfiable": []
+}
