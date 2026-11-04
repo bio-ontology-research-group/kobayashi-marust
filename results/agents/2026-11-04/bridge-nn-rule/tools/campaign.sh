@@ -28,3 +28,7 @@ FAM_TIMEOUT=60 FAM_FORCED_TIMEOUT=30 python3 -I $T/fam_run.py $NEW $S/fam/gold $
 log family new done
 FAM_TIMEOUT=60 FAM_FORCED_TIMEOUT=30 python3 -I $T/fam_run.py $BASE $S/fam/gold $S/famrun/base.tsv ht_bridge,auto 1 $S/fam/seeds/*.ofn
 log family base done
+# 6. the base on every pool seed that was not ok after the fix on some route
+for f in $S/pools/after/*.tsv; do n=$(basename $f .tsv); awk -F'\t' -v n=$n '$3!="ok"{print n"\t"$1}' $f; done | sort -u > $S/pools/nonok.list
+$T/pools.sh $BASE before $S/pools/nonok.list
+log pools before done

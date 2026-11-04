@@ -2705,16 +2705,34 @@ prints each application.
    every successor is a nominal: the NN-rule creates nothing there, and the
    at-most merge below enforces the bound as before.
 2. *General arm* (every other `≤n R.C`, `n ≥ 1`, at a nominal `x`): when a
-   qualified candidate is blockable and the creator of its link, every
-   blockable qualified candidate is moved into a fresh nominal by
+   qualified candidate is blockable and the creator of its link, blockable
+   qualified candidates are moved into fresh nominals by
    `get_into_empty_merged_individual_node(candidate, true, x, …)` (the port
    of cpp 21047-21063, which also had no caller) under a `FUNCTIONAL`
    dependency of the at-most concept, the link that requires the rule and
-   the candidate's link; the parent's links are relocated and the new node
-   is queued. The loop then counts and merges as before: if more than `n`
-   qualified neighbours remain, the at-most merge branches over every
-   mergeable pair.
-
+   the candidate's link; the new node inherits the candidate's creation
+   dependency (merge phase 7, cpp 21440-21442, which the port's merge does
+   not perform), the parent's links are relocated and the new node is
+   queued. At most `n − k` candidates are moved, where `k` is the number of
+   qualified nominal neighbours: Konclude gives the rule `cardinality`
+   new-representative slots (`setRemainingNominalCreationCount`,
+   cpp 15231-15233) and spends one per new representative (cpp 15446-15458);
+   every further candidate is merged into a representative. The probe root
+   is never moved: Konclude never merges its constructed node away
+   (`mOptMergeConstructedIndividualNode` off, cpp 21003-21006), and the
+   bridge's probes do not register their root as the constructed node, so
+   the port skips the blockable node without an ancestor link. The loop then
+   counts and merges as before: if more than `n` qualified neighbours
+   remain, the at-most merge branches over every mergeable pair, and a pair
+   of a blockable node and a nominal (or of two nominals of different
+   nominal levels) now merges in `getMergedIndividualNodes`' direction, into
+   the nominal (the shallower one), instead of the order of the successor
+   scan (`ht_orient_nominal_merge_pair`). The first version of this arm
+   moved every blockable candidate and kept the scan order; on family seeds
+   (`nn606`, reduction `hang606`, five axioms) the new nominals' re-derived
+   successors reached the nominal again, became new nominals, and were
+   merged into older ones without end: the completion did not terminate,
+   where the base answers in 0.02 s.
 3. *The reused consistency model* (`u36.rs`,
    `native_cardinality_critical_roles`, section 18.1). With the
    precomputation replay on, an ABox nominal of a class job starts from its
@@ -2740,10 +2758,11 @@ prints each application.
 
 The functional arm is a transcription of cpp 14756-14864 with one
 restriction (a blockable successor must exist). The general arm departs
-from Konclude in one point: Konclude moves into new nominals only the
-candidates that take a new representative slot and merges the others into
-representatives in the same step, while the port moves every blockable
-candidate and leaves the identification to the pair branching that follows.
+from Konclude in one point: Konclude decides per candidate between merging
+into each mergeable representative and a new representative (a branch,
+cpp 15465-15540), while the port moves candidates into the free slots in
+the scan order and leaves every identification to the pair branching that
+follows, which includes Konclude's alternatives.
 The port's live at-most path is the pairwise merge of section 8 (the
 `mergeMergingIndividualNodesPairwise` shape), not Konclude's distinct-set
 state machine, which exists only in the opt-in `KM_HT_ATMOST_REST` path; that
@@ -2791,15 +2810,17 @@ path keeps the NN halves W3-DEFER.
   denote the same element, and the completeness argument of the tableau maps
   nodes to model elements without requiring injectivity on nodes that carry no
   distinctness edge.
-- *Termination.* Converted nodes are nominals and are never converted again;
-  a candidate is converted at most once per at-most application, and the
-  pair merges reduce the number of qualified nominal neighbours to at most
-  `n`. Every node the rule creates is at nominal level `level(x)+1`, as in
-  Konclude. The argument is Konclude's (and the SROIQ tableau's) for the
-  number of new nominals per nominal and at-most restriction, except that the
-  port's general arm can create a new nominal and immediately merge it into
-  an existing one; it is checked empirically below (timeouts against the
-  base on the family and the pools).
+- *Termination.* Converted nodes are nominals and are never converted again.
+  The general arm creates a new nominal only while fewer than `n` qualified
+  neighbours of `x` are nominals, and a pair of a blockable neighbour and a
+  nominal merges into the nominal, so once `n` nominal neighbours exist every
+  further blockable neighbour is merged into one of them, as in the SROIQ
+  tableau after the NN-rule has fixed its `m` nominals. Every node the rule
+  creates is at nominal level `level(x)+1`, as in Konclude. This is an
+  argument by analogy with the SROIQ termination proof, not a proof for the
+  port; it is checked empirically below (timeouts against the base on the
+  family and the pools), and the family still has seeds on which the branch
+  answers more slowly than the base (listed in the results README).
 
 **Interaction with the bridge's other machinery.**
 
@@ -2832,3 +2853,29 @@ path keeps the NN halves W3-DEFER.
   such nodes go to the completion, where the rule now runs. The automatic
   route, on which the saturation runs first, is part of every measurement
   below.
+
+**Results** (`results/agents/2026-11-04/bridge-nn-rule/README.md`).
+`f1008`, `f439`, the seeds `refl1008` and `refl439`, and the family
+reductions `nn1018`, `nn1018min` and `hang606` agree with HermiT on
+`ht_bridge` and the automatic route in 20 of 20 runs (base: the first four
+and `nn1018` wrong on both routes). A sibling family of 2,000 generated
+seeds (`tools/gen_nn.py`, HermiT gold for 1,993) has 499 wrong seed-routes
+on the base and 11 wrong seed-routes over 6 seeds on this branch, each wrong
+on the base too: three satisfiable-expander-cache misses next to nominals
+(`nn1064`, `nn1313`, `nn1348`; right with `KM_HT_NO_SAT_EXP_CACHE=1`), one
+unreduced seed (`nn1116`), one seed on which HermiT is wrong (`nn5`, model in
+the README), and one wrong answer of the nominal CB stack after the HT worker
+exceeded its memory cap (`nn1811`). Seven family seeds that the base answers
+time out on this branch (the general arm's merge search; README). The
+gold-backed pools of earlier agents (17,797 seeds, both routes), the 16
+held-out ORE inputs and the 112 nominal ORE design-half inputs keep their
+answers; times are unchanged within noise (nominal mean ratio 0.956, maximum
+1.03).
+
+What it rests on: as for sections 10 to 21, the bridge has no Lean model and
+no certificate covers a bridge answer; the arguments assume that the port's
+merge, blocking and dependency machinery are Konclude's, and are checked
+differentially against HermiT only. Lean obligation created: none
+discharged; a bridge model would have to show that turning a blockable
+neighbour of a nominal into a nominal preserves the models of the
+completion graph and restores the premise of the blocking soundness proof.

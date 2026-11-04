@@ -1,0 +1,8 @@
+{
+  "ontology": "nn1018min.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": [
+    "Q1"
+  ]
+}
