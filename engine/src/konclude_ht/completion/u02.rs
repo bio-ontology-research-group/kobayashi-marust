@@ -459,6 +459,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         );
     }
 
+    /// A leaf job's clash that the analysis attributes to no open job
+    /// decision (docs/HYBRID-CB-HT.md section 24). The leaf accepts an
+    /// unsatisfiable job verdict only as a root cancellation (section 16), so
+    /// the chronological fallback can end in nothing but a rejected verdict
+    /// or a model found after enumerating job decisions the clash does not
+    /// depend on; the job's fallback alternative (the unchanged job on the
+    /// unchanged base) answers instead. Ending the job here changes no
+    /// verdict: the caller reports an unsatisfiable outcome without root
+    /// cancellation, which the leaf rejects. Konclude's class tasks do not
+    /// enumerate their own decisions against a contradicted cached model
+    /// either; they reactivate the cached individuals (section 16).
+    fn ht_leaf_job_ends_on_unattributed_clash(&mut self) -> bool {
+        if !self.leaf_job_unattributed_clash_ends_job || self.ddb_root_cancelled {
+            return false;
+        }
+        self.leaf_job_unattributed_clash_count += 1;
+        true
+    }
+
     fn discard_topmost_or_branch(
         &mut self,
         clashed_alternative: bool,
@@ -619,6 +638,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let Some((target, has_remaining)) = target else {
             // No marked branch point — do NOT trust the analysis for an UNSAT
             // verdict; chronological fallback.
+            if self.ht_leaf_job_ends_on_unattributed_clash() {
+                return false;
+            }
             self.ddb_fallback_count += 1;
             self.ht_ddb_trace("fallback-nomark", None, calc_alg_context);
             return self.try_backtrack_or_branch(calc_alg_context);
@@ -1206,6 +1228,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             cardinality,
             con_des,
             rest,
+            nn_decision,
         ) = {
             let bp = self
                 .or_branch_stack
@@ -1233,6 +1256,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 m.cardinality,
                 m.con_des,
                 m.rest,
+                m.nn_decision,
             )
         };
         // DDB: the alternative's branch node becomes the used branch tree node
@@ -1254,9 +1278,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 into.index()
             );
         }
-        self.merge_individual_node_into(into, from, add_tp, calc_alg_context);
-        if !calc_alg_context.has_pending_signal() {
-            self.ht_relocate_incoming_links(parent, from, into, add_tp, calc_alg_context);
+        if nn_decision {
+            self.ht_nn_set_base_track_point(parent, con_des, negate, add_tp, calc_alg_context);
+        }
+        if into.is_none() {
+            // The NN-rule's new-representative alternative
+            // (docs/HYBRID-CB-HT.md section 24).
+            self.ht_nn_make_representative(parent, from, con_des, negate, add_tp, calc_alg_context);
+        } else {
+            self.merge_individual_node_into(into, from, add_tp, calc_alg_context);
+            if !calc_alg_context.has_pending_signal() {
+                self.ht_relocate_incoming_links(parent, from, into, add_tp, calc_alg_context);
+            }
         }
         // re-seed the counted parent so the drive picks it up again.
         let iq = calc_alg_context.get_individual_immediately_processing_queue(true);

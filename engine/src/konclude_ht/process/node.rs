@@ -422,6 +422,33 @@ pub struct IndividualProcessNode {
 
     pub merged_dep_track_point: TrackPointId, // mMergedDepTrackPoint (CDependencyTrackPoint*)
     pub last_merged_into_individual_node: NodeId, // mLastMergedIntoIndividualNode
+    /// The NN-rule state of each at-most restriction of this nominal node
+    /// (Konclude keeps it in the restriction's
+    /// `CBranchingMergingProcessingRestrictionSpecification`: the fixed
+    /// distinct set and the remaining new-nominal count). Journaled with the
+    /// node, so a branch epoch pop restores it. docs/HYBRID-CB-HT.md section 24.
+    pub nn_atmost_states: Vec<NnAtmostState>,
+}
+
+/// One at-most restriction's NN-rule state at a nominal node (section 24):
+/// `mDistinctSetFixed` with the representatives of the fixed distinct set
+/// (`getDistinctMergedNodesSet`) and `mRemainingNominalCreationCount`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NnAtmostState {
+    /// The at-most concept and the rule-level negation it fired with.
+    pub concept: ConceptId,
+    pub negate: bool,
+    /// The representatives (nominal nodes) chosen so far.
+    pub reps: Vec<NodeId>,
+    /// New representatives still allowed (starts at the cardinality and only
+    /// decreases, cpp 15231-15233, 15446-15458, 15595-15597).
+    pub slots: Cint64,
+    /// The track point of the last decision on this distinct set
+    /// (`branchingMergingProcRest->getDependencyTrackPoint()`, the
+    /// `baseDepTrackPoint` of cpp 15168 and 15453): the next decision and
+    /// its clash depend on it, so the dependency chain carries every earlier
+    /// decision that filled the set or spent a slot.
+    pub base_tp: TrackPointId,
 }
 
 impl IndividualProcessNode {
@@ -731,6 +758,7 @@ impl Default for IndividualProcessNode {
 
             merged_dep_track_point: Id::NONE,
             last_merged_into_individual_node: Id::NONE,
+            nn_atmost_states: Vec::new(),
         }
     }
 }

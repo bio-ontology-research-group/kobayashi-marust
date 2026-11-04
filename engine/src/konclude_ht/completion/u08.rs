@@ -79,15 +79,22 @@ use super::algorithm::{AtMostMergeBranch, BranchKind, OrBranchPoint};
 use super::context::CalculationAlgorithmContextBase;
 
 /// What the NN-rule did at one at-most application (`ht_apply_nn_rule`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum NnRuleOutcome {
     /// Not a nominal node, no blockable candidate, or no candidate that
     /// requires the rule.
     NotApplicable,
     /// The functional arm merged every successor into one nominal.
     Functional,
-    /// Blockable candidates were moved into new nominals.
-    Converted,
+    /// One merging candidate of a fixed distinct set is to be decided
+    /// (section 24): `alternatives` are the `(into, from)` merges into the
+    /// mergeable representatives and, with `into` = `NodeId::NONE`, the new
+    /// representative; empty means the at-most clash.
+    Decide {
+        cand: NodeId,
+        reps: Vec<NodeId>,
+        alternatives: Vec<(NodeId, NodeId)>,
+    },
     /// A clash or stop was raised.
     Signalled,
 }
@@ -2354,9 +2361,21 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             return NnRuleOutcome::Functional;
         }
 
-        // --- fixedNominalMerging (cpp 15201): a qualified candidate that is
-        // blockable and the creator of its link.
-        let links = self.ht_role_successor_links(x, role, calc_alg_context);
+        // --- mergeMergingIndividualNodes with fixedNominalMerging (cpp
+        // 15201-15257, 15331-15560), docs/HYBRID-CB-HT.md section 24.
+        // Konclude keeps the NN state in the at-most restriction's
+        // branching-merging specification: the distinct set is fixed once,
+        // gets `cardinality` new-representative slots, and every candidate is
+        // decided one at a time against it (merge into a representative, or
+        // become a new one while a slot remains). The port keeps the same
+        // state on the nominal node (`nn_atmost_states`, epoch-journaled).
+        let concept = calc_alg_context.process_context().con_desc(con_des).get_concept();
+        let state_idx = calc_alg_context
+            .process_context()
+            .node(x)
+            .nn_atmost_states
+            .iter()
+            .position(|s| s.concept == concept && s.negate == negate);
         let qualified = self.ht_role_successors_with_concepts(
             x,
             role,
@@ -2364,13 +2383,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             negate,
             calc_alg_context,
         );
-        let mut nn_tp = TrackPointId::NONE;
-        let mut fixed = false;
-        let mut blockable: Vec<(EdgeId, NodeId)> = Vec::new();
         // The constructed node (the probe root) is never merged away
         // (`mOptMergeConstructedIndividualNode` off: `getMergedIndividualNodes`
         // keeps it as the target, cpp 21003-21006), so Konclude never turns
-        // it into a new nominal; neither does the port.
+        // it into a new nominal; neither does the port. The bridge's probes
+        // do not register their root as the constructed node; a probe root is
+        // the blockable node without an ancestor, and it is kept for the same
+        // reason (it stays with the pairwise at-most merge below).
         let constructed = calc_alg_context
             .processing_data_box()
             .constructed_individual_node();
@@ -2379,104 +2398,173 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         } else {
             Some(calc_alg_context.process_context().node(constructed).individual_node_id())
         };
-        for &(link, succ) in &links {
-            if !qualified.contains(&succ) {
-                continue;
-            }
-            let n = calc_alg_context.process_context().node(succ);
-            if !n.is_blockable_individual() {
-                continue;
-            }
-            if !self.opt_merge_constructed_individual_node
-                && constructed_id == Some(n.individual_node_id())
-            {
-                continue;
-            }
-            // The bridge's probes do not register their root as the
-            // constructed node; a probe root is the blockable node without an
-            // ancestor, and it is kept for the same reason.
-            if n.ancestor_link.is_none() {
-                continue;
-            }
-            let succ_id = n.individual_node_id();
-            if !fixed && creator_id(calc_alg_context, link) == Some(succ_id) {
-                fixed = true;
-                nn_tp = calc_alg_context.process_context().edge(link).get_dependency_track_point();
-            }
-            if !blockable.iter().any(|&(_, s)| s == succ) {
-                blockable.push((link, succ));
-            }
-        }
-        if !fixed {
-            return NnRuleOutcome::NotApplicable;
-        }
-        // New-nominal slots (`setRemainingNominalCreationCount(cardinality)`,
-        // cpp 15231-15233, decremented per new representative, cpp
-        // 15446-15458): qualified nominal neighbours already take slots, and
-        // only `cardinality` minus their number of candidates become new
-        // nominals. The others stay blockable and are merged by the at-most
-        // branching below, a blockable node into a nominal (cpp 20993-21038),
-        // as Konclude merges a candidate into a representative once no slot
-        // is left. Without the bound a new nominal's re-derived successors
-        // reached the nominal again, became new nominals, and the completion
-        // did not terminate (family seed nn606).
-        let nominal_count = qualified
-            .iter()
-            .filter(|&&n| {
-                let node = calc_alg_context.process_context().node(n);
-                node.is_nominal_individual_node()
-                    && !node.has_merged_into_individual_node_id()
-                    && !node.has_purged_blocked_processing_restriction_flags()
-            })
-            .count() as Cint64;
-        let slots = (cardinality - nominal_count).max(0) as usize;
-        if slots == 0 {
-            return NnRuleOutcome::NotApplicable;
-        }
-        let mut converted = 0usize;
-        for (link, succ) in blockable {
-            if converted >= slots {
-                break;
-            }
-            let succ = self.get_up_to_date_individual(succ, calc_alg_context);
-            {
-                let n = calc_alg_context.process_context().node(succ);
-                if !n.is_blockable_individual()
-                    || n.has_merged_into_individual_node_id()
-                    || n.has_purged_blocked_processing_restriction_flags()
-                {
-                    continue;
+        let opt_merge_constructed = self.opt_merge_constructed_individual_node;
+        let is_kept_root = |ctx: &CalculationAlgorithmContextBase, n: NodeId| -> bool {
+            let node = ctx.process_context().node(n);
+            node.is_blockable_individual()
+                && ((!opt_merge_constructed && constructed_id == Some(node.individual_node_id()))
+                    || node.ancestor_link.is_none())
+        };
+        let state_idx = match state_idx {
+            Some(i) => i,
+            None => {
+                // fixedNominalMerging (cpp 15201): a qualified candidate that
+                // is blockable and the creator of its link
+                // (`isCandidateBlockableAndCreator`).
+                let links = self.ht_role_successor_links(x, role, calc_alg_context);
+                let fixed = links.iter().any(|&(link, succ)| {
+                    qualified.contains(&succ)
+                        && calc_alg_context.process_context().node(succ).is_blockable_individual()
+                        && !is_kept_root(calc_alg_context, succ)
+                        && creator_id(calc_alg_context, link)
+                            == Some(calc_alg_context.process_context().node(succ).individual_node_id())
+                });
+                if !fixed {
+                    return NnRuleOutcome::NotApplicable;
                 }
+                // requiresNNInitialization: the distinct set is cleared and
+                // fixed, with `cardinality` slots (cpp 15219-15233).
+                let states = &mut calc_alg_context.process_context_mut().node_mut(x).nn_atmost_states;
+                states.push(super::super::process::node::NnAtmostState {
+                    concept,
+                    negate,
+                    reps: Vec::new(),
+                    slots: cardinality,
+                    base_tp: TrackPointId::NONE,
+                });
+                if trace {
+                    eprintln!(
+                        "NN-RULE atmost: distinct set fixed at nominal {} (card {})",
+                        x_id, cardinality
+                    );
+                }
+                states.len() - 1
             }
-            // The conversion is a renaming; its dependency is the at-most
-            // concept, the link that requires the NN-rule and the link of
-            // the converted candidate (a superset of the facts it rests on).
-            let link_tp = calc_alg_context.process_context().edge(link).get_dependency_track_point();
-            let mut next_tp = TrackPointId::NONE;
-            let mut pi = *process_indi;
-            self.create_functional_dependency(
-                &mut next_tp,
-                &mut pi,
-                con_des,
-                dep_track_point,
-                nn_tp,
-                link_tp,
-                calc_alg_context,
+        };
+        // Relocate representatives that were merged away (cpp 15293-15327):
+        // a representative stands for its up-to-date node; two that became
+        // one count once. Konclude never returns the slot of a relocated
+        // representative (`tmpCardinality = distinctCount`, cpp 15313-15316).
+        let old_reps = calc_alg_context.process_context().node(x).nn_atmost_states[state_idx]
+            .reps
+            .clone();
+        let live: Vec<NodeId> = self
+            .ht_role_successor_links(x, role, calc_alg_context)
+            .into_iter()
+            .map(|(_, n)| n)
+            .collect();
+        let mut reps: Vec<NodeId> = Vec::with_capacity(old_reps.len());
+        for r in old_reps.iter().copied() {
+            let r = self.get_up_to_date_individual(r, calc_alg_context);
+            if live.contains(&r) && !reps.contains(&r) {
+                reps.push(r);
+            }
+        }
+        if reps != old_reps {
+            calc_alg_context.process_context_mut().node_mut(x).nn_atmost_states[state_idx].reps =
+                reps.clone();
+        }
+        let slots = calc_alg_context.process_context().node(x).nn_atmost_states[state_idx].slots;
+        // The next merging candidate: a qualified neighbour outside the
+        // distinct set (`takeNextMergingCandidateNodeLinker`, link order).
+        let cand = qualified.iter().copied().find(|&n| {
+            if reps.contains(&n) || is_kept_root(calc_alg_context, n) {
+                return false;
+            }
+            let node = calc_alg_context.process_context().node(n);
+            !node.has_merged_into_individual_node_id()
+                && !node.has_purged_blocked_processing_restriction_flags()
+        });
+        let Some(cand) = cand else {
+            return NnRuleOutcome::NotApplicable;
+        };
+        // The mergeable representatives (`isIndividualNodesMergeable`, cpp
+        // 15381-15418). The caller recomputes them with the clash causes.
+        let mut mergeable: Vec<NodeId> = Vec::new();
+        for &r in &reps {
+            let mut scratch: ClashDescId = Id::NONE;
+            if self.ht_individuals_mergeable_with_clashes(r, cand, &mut scratch, calc_alg_context) {
+                mergeable.push(r);
+            }
+            if calc_alg_context.has_pending_signal() {
+                return NnRuleOutcome::Signalled;
+            }
+        }
+        // The alternatives in the order of Konclude's task list (each new task
+        // is prepended, cpp 15527-15560): the distinct (new representative)
+        // branch first while a slot remains, then the merges into the
+        // mergeable representatives, last one first. Without a mergeable
+        // representative and without a slot the list is empty: the at-most
+        // clash (cpp 15485-15490).
+        let mut alternatives: Vec<(NodeId, NodeId)> = Vec::new();
+        let distinct_first = std::env::var_os("KM_HT_NN_DISTINCT_FIRST").is_some();
+        if distinct_first && slots > 0 {
+            alternatives.push((NodeId::NONE, cand));
+        }
+        for &r in &mergeable {
+            alternatives.push(self.ht_nn_merge_direction(r, cand, calc_alg_context));
+        }
+        if !distinct_first && slots > 0 {
+            alternatives.push((NodeId::NONE, cand));
+        }
+        if trace {
+            eprintln!(
+                "NN-RULE atmost: candidate {} at nominal {} (card {}, reps {}, slots {}, alternatives {}, base_tp {:?})",
+                calc_alg_context.process_context().node(cand).individual_node_id(),
+                x_id,
+                cardinality,
+                reps.len(),
+                slots,
+                alternatives.len(),
+                calc_alg_context.process_context().node(x).nn_atmost_states[state_idx].base_tp
             );
-            let merge_tp = if next_tp.is_some() { next_tp } else { dep_track_point };
-            let mut pi = *process_indi;
+        }
+        NnRuleOutcome::Decide { cand, reps, alternatives }
+    }
+
+    /// The new-representative alternative of one NN-rule decision (section
+    /// 24): Konclude's distinct branch (`createDistinctBranchingTask` with
+    /// `createAsNominal`, cpp 15582-15625, or the deterministic arm cpp
+    /// 15430-15470). A nominal candidate joins the distinct set as it is; a
+    /// blockable one is moved into a fresh nominal node by
+    /// `getIntoEmptyMergedIndividualNode(candidate, true, x, ...)` (cpp
+    /// 21047-21063), which is queued. Either way one slot is spent.
+    pub(super) fn ht_nn_make_representative(
+        &mut self,
+        x: NodeId,
+        cand: NodeId,
+        con_des: ConDescId,
+        negate: bool,
+        merge_tp: TrackPointId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        let concept = calc_alg_context.process_context().con_desc(con_des).get_concept();
+        let Some(state_idx) = calc_alg_context
+            .process_context()
+            .node(x)
+            .nn_atmost_states
+            .iter()
+            .position(|s| s.concept == concept && s.negate == negate)
+        else {
+            return;
+        };
+        let cand = self.get_up_to_date_individual(cand, calc_alg_context);
+        let rep = if calc_alg_context.process_context().node(cand).is_nominal_individual_node() {
+            cand
+        } else {
+            let mut pi = x;
             self.set_individual_node_concept_label_set_modified(&mut pi, calc_alg_context);
-            let succ_tp = calc_alg_context.process_context().node(succ).dependency_track_point();
-            let mut cand = succ;
+            let succ_tp = calc_alg_context.process_context().node(cand).dependency_track_point();
+            let mut c = cand;
             let nominal = self.get_into_empty_merged_individual_node(
-                &mut cand,
+                &mut c,
                 true,
-                *process_indi,
+                x,
                 merge_tp,
                 calc_alg_context,
             );
             if calc_alg_context.has_pending_signal() {
-                return NnRuleOutcome::Signalled;
+                return;
             }
             // Merge phase 7 (cpp 21440-21442, deferred in the port's merge):
             // an empty merge target inherits the merged node's creation
@@ -2503,26 +2591,102 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .node_mut(nominal)
                     .set_dependency_track_point(node_tp);
             }
-            if trace {
+            if super::ht_nn_trace_enabled() {
                 eprintln!(
-                    "NN-RULE atmost: blockable {} moved into new nominal {} at nominal {} (card {})",
-                    calc_alg_context.process_context().node(succ).individual_node_id(),
+                    "NN-RULE atmost: blockable {} moved into new nominal {} at nominal {}",
+                    calc_alg_context.process_context().node(cand).individual_node_id(),
                     calc_alg_context.process_context().node(nominal).individual_node_id(),
-                    x_id,
-                    cardinality
+                    calc_alg_context.process_context().node(x).individual_node_id(),
                 );
             }
-            self.ht_relocate_incoming_links(*process_indi, succ, nominal, merge_tp, calc_alg_context);
+            self.ht_relocate_incoming_links(x, cand, nominal, merge_tp, calc_alg_context);
             if calc_alg_context.has_pending_signal() {
-                return NnRuleOutcome::Signalled;
+                return;
             }
             self.add_individual_to_processing_queue(nominal, calc_alg_context);
             if calc_alg_context.has_pending_signal() {
-                return NnRuleOutcome::Signalled;
+                return;
             }
-            converted += 1;
+            nominal
+        };
+        let state = &mut calc_alg_context.process_context_mut().node_mut(x).nn_atmost_states[state_idx];
+        if !state.reps.contains(&rep) {
+            state.reps.push(rep);
         }
-        NnRuleOutcome::Converted
+        state.slots -= 1;
+    }
+
+    /// The direction of an NN-rule merge of candidate `cand` into
+    /// representative `rep`, as `getMergedIndividualNodes(rep, cand)` decides
+    /// it (cpp 20993-21038; the constructed node is never a candidate here):
+    /// a blockable candidate merges into the nominal representative; between
+    /// nominals the lower nominal level survives, and on equal levels the
+    /// higher node id. Returns `(into, from)`.
+    /// The NN state's `baseDepTrackPoint` for the at-most `con_des` at `x`
+    /// (section 24), `NONE` before the first decision.
+    pub(super) fn ht_nn_base_track_point(
+        &self,
+        x: NodeId,
+        con_des: ConDescId,
+        negate: bool,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> TrackPointId {
+        let pc = calc_alg_context.process_context();
+        let concept = pc.con_desc(con_des).get_concept();
+        pc.node(x)
+            .nn_atmost_states
+            .iter()
+            .find(|s| s.concept == concept && s.negate == negate)
+            .map(|s| s.base_tp)
+            .unwrap_or(TrackPointId::NONE)
+    }
+
+    /// Record the track point of the alternative that decides the current
+    /// candidate as the set's `baseDepTrackPoint` (cpp 15453-15455; the port
+    /// records it for every alternative, a superset of Konclude's chain).
+    pub(super) fn ht_nn_set_base_track_point(
+        &mut self,
+        x: NodeId,
+        con_des: ConDescId,
+        negate: bool,
+        tp: TrackPointId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        if tp.is_none() {
+            return;
+        }
+        let concept = calc_alg_context.process_context().con_desc(con_des).get_concept();
+        let pos = calc_alg_context
+            .process_context()
+            .node(x)
+            .nn_atmost_states
+            .iter()
+            .position(|s| s.concept == concept && s.negate == negate);
+        if let Some(i) = pos {
+            calc_alg_context.process_context_mut().node_mut(x).nn_atmost_states[i].base_tp = tp;
+        }
+    }
+
+    fn ht_nn_merge_direction(
+        &self,
+        rep: NodeId,
+        cand: NodeId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> (NodeId, NodeId) {
+        let pc = calc_alg_context.process_context();
+        let (nr, nc) = (pc.node(rep), pc.node(cand));
+        let switch = if nr.is_nominal_individual_node() && nc.is_nominal_individual_node() {
+            nc.individual_nominal_level() < nr.individual_nominal_level()
+                || (nc.individual_nominal_level() == nr.individual_nominal_level()
+                    && nc.individual_node_id() > nr.individual_node_id())
+        } else {
+            !nr.is_nominal_individual_node() && nc.is_nominal_individual_node()
+        };
+        if switch {
+            (cand, rep)
+        } else {
+            (rep, cand)
+        }
     }
 
     /// Whether `x` has a live `role`-link to a blockable node that `x` did
@@ -2791,6 +2955,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                 cardinality,
                                 con_des,
                                 rest: Id::NONE,
+                                nn_decision: false,
                             },
                         },
                         own_epoch: true,
@@ -2841,21 +3006,28 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // 15335-15470): a blockable neighbour of a nominal under an
             // at-most restriction becomes a nominal before any counting.
             // docs/HYBRID-CB-HT.md section 22.
-            match self.ht_apply_nn_rule(
-                process_indi,
-                role,
-                concept_linker,
-                negate,
-                cardinality,
-                dep_track_point,
-                con_des,
-                calc_alg_context,
-            ) {
-                NnRuleOutcome::Signalled => return,
-                // Every successor is merged into one node: the bound holds.
-                NnRuleOutcome::Functional => return,
-                NnRuleOutcome::NotApplicable | NnRuleOutcome::Converted => {}
-            }
+            // With a fixed distinct set (section 24) the rule decides one
+            // candidate at a time, whatever the count (`requiresNNOperating`,
+            // cpp 15201-15214); its alternatives replace the pairs below.
+            let nn_decision: Option<(NodeId, Vec<NodeId>, Vec<(NodeId, NodeId)>)> =
+                match self.ht_apply_nn_rule(
+                    process_indi,
+                    role,
+                    concept_linker,
+                    negate,
+                    cardinality,
+                    dep_track_point,
+                    con_des,
+                    calc_alg_context,
+                ) {
+                    NnRuleOutcome::Signalled => return,
+                    // Every successor is merged into one node: the bound holds.
+                    NnRuleOutcome::Functional => return,
+                    NnRuleOutcome::NotApplicable => None,
+                    NnRuleOutcome::Decide { cand, reps, alternatives } => {
+                        Some((cand, reps, alternatives))
+                    }
+                };
             let succs = self.ht_role_successors_with_concepts(
                 *process_indi,
                 role,
@@ -2863,7 +3035,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 negate,
                 calc_alg_context,
             );
-            if (succs.len() as Cint64) <= cardinality {
+            if nn_decision.is_none() && (succs.len() as Cint64) <= cardinality {
                 return;
             }
             // merge-causing descriptors for every counted successor (link +
@@ -2871,9 +3043,27 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // taint of WHY each successor counts — chained into the at-most
             // clash AND recorded on the MERGE decision (`addBranchClashes`)
             // so a fully refuted merge decision propagates them upward.
+            // For an NN-rule decision (section 24) the causes are Konclude's
+            // (cpp 15363-15418): the candidate, the representatives and the
+            // rejected merges, on the dependency of the set's last decision
+            // (`baseDepTrackPoint`), not every counted successor.
             let succ_links = self.ht_role_successor_links(*process_indi, role, calc_alg_context);
             let mut merge_causing: super::super::process::ClashDescId = Id::NONE;
-            for &s in &succs {
+            let (causing_nodes, base_tp): (Vec<NodeId>, TrackPointId) = match &nn_decision {
+                Some((cand, reps, _)) => {
+                    let mut v = vec![*cand];
+                    v.extend(reps.iter().copied());
+                    let tp = self.ht_nn_base_track_point(
+                        *process_indi,
+                        con_des,
+                        negate,
+                        calc_alg_context,
+                    );
+                    (v, if tp.is_some() { tp } else { dep_track_point })
+                }
+                None => (succs.clone(), dep_track_point),
+            };
+            for &s in &causing_nodes {
                 if let Some(&(link, _)) = succ_links.iter().find(|&&(_, n)| n == s) {
                     merge_causing = self.ht_create_individual_merge_causing_descriptors(
                         merge_causing,
@@ -2889,7 +3079,21 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             let mut pairs: Vec<(NodeId, NodeId)> = Vec::new();
             let pair_log = super::bridge_search_log_enabled();
             let mut pair_verdicts: Vec<String> = Vec::new();
-            for i in 0..succs.len() {
+            if let Some((cand, reps, alternatives)) = &nn_decision {
+                // The candidate against each representative (cpp 15381-15418):
+                // the causes of every rejected merge join the branch clashes.
+                for &r in reps {
+                    let _ = self.ht_individuals_mergeable_with_clashes(
+                        r, *cand, &mut merge_causing, calc_alg_context,
+                    );
+                    if calc_alg_context.has_pending_signal() {
+                        return;
+                    }
+                }
+                pairs = alternatives.clone();
+            }
+            let pair_scan = if nn_decision.is_some() { 0 } else { succs.len() };
+            for i in 0..pair_scan {
                 for j in (i + 1)..succs.len() {
                     // Rejected pairs are premises of the bound clash too.
                     // Retain their branch causes even when other pairs can
@@ -3003,7 +3207,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     merge_causing,
                     process_indi,
                     con_des,
-                    dep_track_point,
+                    base_tp,
                     calc_alg_context,
                 );
                 calc_alg_context.raise_clash(clash);
@@ -3028,7 +3232,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // decision node the DDB analysis walks through.
             let merge_dependency_node: DependencyId = {
                 let mut pi = *process_indi;
-                self.create_merge_dependency(&mut pi, con_des, dep_track_point, calc_alg_context)
+                self.create_merge_dependency(&mut pi, con_des, base_tp, calc_alg_context)
             };
             // `mergeDependencyNode->addBranchClashes(clashDescriptors)`
             // (cpp 15078–15080).
@@ -3082,6 +3286,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     cardinality,
                     con_des,
                     rest: Id::NONE,
+                    nn_decision: nn_decision.is_some(),
                 }),
                 own_epoch: true,
             });
@@ -3107,6 +3312,24 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         .map(|bp| bp.alternatives_len())
                         .unwrap_or(0),
                 );
+            }
+            if nn_decision.is_some() {
+                self.ht_nn_set_base_track_point(*process_indi, con_des, negate, add_tp, calc_alg_context);
+            }
+            if into.is_none() {
+                // The NN-rule's new-representative alternative (section 24).
+                self.ht_nn_make_representative(
+                    *process_indi,
+                    from,
+                    con_des,
+                    negate,
+                    add_tp,
+                    calc_alg_context,
+                );
+                if calc_alg_context.has_pending_signal() {
+                    return;
+                }
+                continue;
             }
             self.merge_individual_node_into(into, from, add_tp, calc_alg_context);
             if calc_alg_context.has_pending_signal() {
@@ -3687,6 +3910,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             cardinality,
                             con_des,
                             rest: rest_id,
+                            nn_decision: false,
                         },
                     },
                     own_epoch: true,
@@ -3824,6 +4048,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     cardinality,
                     con_des,
                     rest: rest_id,
+                    nn_decision: false,
                 }),
                 own_epoch: true,
             });
