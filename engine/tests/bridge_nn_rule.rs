@@ -11,9 +11,15 @@
 //!   `InverseFunctional(p)` and `Q5 ≡ ≤1 s⁻.(∃p.E)`. Every `E` element equals
 //!   `c` when `c` has one `r`-successor, so `Q2 ⊑ Q5`.
 //!
-//! Both need the NN-rule: a blockable neighbour of a nominal under an
-//! at-most restriction becomes a nominal. With `KM_HT_NO_NN_RULE=1` both
-//! fixtures fail again (the negative control below).
+//! - `nn1018min`: `Q1 ≡ ≥3 p⁻.(F ⊓ ∃r.{c})`, `⊤ ⊑ ≤1 r⁻`, `r(b,b)`. `c` has
+//!   at most one `r`-predecessor, so `Q1` is unsatisfiable. The ABox
+//!   assertion switches the precomputation replay on; the cached nominal `c`
+//!   kept its backend blocks below its cached bound, so its at-most (and the
+//!   NN-rule) never ran in the class job.
+//!
+//! All three need the NN-rule: a blockable neighbour of a nominal under an
+//! at-most restriction becomes a nominal. With `KM_HT_NO_NN_RULE=1` every
+//! fixture fails again (the negative control below).
 //!
 //! Each `.hermit.json` holds HermiT 1.4's answer, checked by hand in
 //! section 22.

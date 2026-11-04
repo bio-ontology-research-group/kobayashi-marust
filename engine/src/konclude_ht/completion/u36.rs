@@ -677,6 +677,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 > minimum_restricting_cardinality
             {
                 roles.push(role);
+                continue;
+            }
+            // The NN-rule (docs/HYBRID-CB-HT.md section 22): a materialized
+            // `role`-link of this nominal to a blockable neighbour that the
+            // nominal did not create needs the at-most rule at the nominal
+            // even below the bound (the neighbour must become a nominal), so
+            // the cached view is no longer a stand-in for its expansion.
+            // Releasing a block is always exact (section 18.1).
+            if minimum_restricting_cardinality >= 1
+                && calc_alg_context
+                    .process_context()
+                    .node(node)
+                    .is_nominal_individual_node()
+                && self.ht_nn_rule_candidate_link(node, role, calc_alg_context)
+            {
+                roles.push(role);
             }
         }
         roles.sort_unstable_by_key(|role| role.raw);

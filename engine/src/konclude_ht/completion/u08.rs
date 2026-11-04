@@ -2474,6 +2474,29 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         NnRuleOutcome::Converted
     }
 
+    /// Whether `x` has a live `role`-link to a blockable node that `x` did
+    /// not create: the situation in which the NN-rule of `ht_apply_nn_rule`
+    /// can apply at a nominal `x` (both arms test a subset of it).
+    pub(crate) fn ht_nn_rule_candidate_link(
+        &self,
+        x: NodeId,
+        role: RoleId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> bool {
+        if super::ht_no_nn_rule() {
+            return false;
+        }
+        let pc = calc_alg_context.process_context();
+        let x_id = pc.node(x).individual_node_id();
+        self.ht_role_successor_links(x, role, calc_alg_context)
+            .into_iter()
+            .any(|(link, succ)| {
+                let creator = pc.edge(link).get_creator_individual();
+                pc.node(succ).is_blockable_individual()
+                    && (creator.is_none() || pc.node(creator).individual_node_id() != x_id)
+            })
+    }
+
     /// `role->getIndirectSuperRoleList()` for a created successor, made
     /// reflexive as at the at-least creation.
     fn ht_nn_role_linker(

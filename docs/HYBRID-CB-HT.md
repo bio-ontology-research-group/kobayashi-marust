@@ -2715,6 +2715,29 @@ prints each application.
    qualified neighbours remain, the at-most merge branches over every
    mergeable pair.
 
+3. *The reused consistency model* (`u36.rs`,
+   `native_cardinality_critical_roles`, section 18.1). With the
+   precomputation replay on, an ABox nominal of a class job starts from its
+   representative-cache association with Konclude's backend blocks set, and
+   its cached at-most concepts are not re-run: the cached view stands in for
+   them until the cardinality test finds more `R`-neighbours than the cached
+   bound (Konclude's `testIndividualNodeBackendCacheExpansionBlockingCriticalCardinality`,
+   cpp 23318-23395). The NN-rule needs the at-most rule at the nominal below
+   the bound as soon as a blockable neighbour that the nominal did not create
+   appears, so the test now also reports a cached at-most role `R` (bound at
+   least 1) for which the nominal has a live `R`-link to such a neighbour
+   (`ht_nn_rule_candidate_link`). Found by the family seed `nn1018`
+   (reduction `nn1018min`, three axioms: `Q1 ≡ ≥3 p⁻.(F ⊓ ∃r.{c})`,
+   `⊤ ⊑ ≤1 r⁻`, `r(b,b)`; `Q1` is unsatisfiable because `c` has at most one
+   `r`-predecessor, and the ABox assertion only switches the replay on;
+   the base and the first version of this branch reported `Q1` satisfiable on
+   both routes, and `KM_BRIDGE_NO_PRECOMPUTATION_REPLAY=1` gave the right
+   answer). Konclude's own test has no such condition; Konclude 0.7.0 does not
+   finish on `nn1018min` within 30 s, so its behaviour there is unknown. The
+   added condition only releases blocks, which section 18.1 shows exact (the
+   released node expands its cached neighbours or replays its raw
+   assertions, the route without the cache).
+
 The functional arm is a transcription of cpp 14756-14864 with one
 restriction (a blockable successor must exist). The general arm departs
 from Konclude in one point: Konclude moves into new nominals only the

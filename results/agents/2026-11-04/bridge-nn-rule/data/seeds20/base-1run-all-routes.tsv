@@ -1,0 +1,28 @@
+red/f1008.ofn	auto	1	WRONG	0.01	missing=[('A', 'C'), ('B', 'C'), ('D', 'C'), ('E', 'C')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+red/f1008.ofn	ht_bridge	1	WRONG	0.01	missing=[('A', 'C'), ('B', 'C'), ('D', 'C'), ('E', 'C')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+red/f1008.ofn	cb_plain1	1	NOANSWER	0.01	unsupported: route `cb_plain1` drops 1 nominal; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+red/f1008.ofn	cb_absorb1	1	NOANSWER	0.01	unsupported: route `cb_absorb1` drops 1 nominal; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+red/f1008.ofn	cb_trigger1	1	NOANSWER	0.01	unsupported: route `cb_trigger1` drops 1 nominal; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+red/f1008.ofn	cb_plain16	1	NOANSWER	0.01	unsupported: route `cb_plain16` drops 1 nominal; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+red/f1008.ofn	production_all	1	NOANSWER	0.01	unsupported: route `production_all` drops 1 nominal; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+red/f439.ofn	auto	1	WRONG	0.01	missing=[('Q2', 'Q5')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+red/f439.ofn	ht_bridge	1	WRONG	0.01	missing=[('Q2', 'Q5')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+red/f439.ofn	cb_plain1	1	NOANSWER	0.01	unsupported: route `cb_plain1` drops 1 nominal; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+red/f439.ofn	cb_absorb1	1	NOANSWER	0.01	unsupported: route `cb_absorb1` drops 1 nominal; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+red/f439.ofn	cb_trigger1	1	NOANSWER	0.01	unsupported: route `cb_trigger1` drops 1 nominal; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+red/f439.ofn	cb_plain16	1	NOANSWER	0.02	unsupported: route `cb_plain16` drops 1 nominal; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+red/f439.ofn	production_all	1	NOANSWER	0.01	unsupported: route `production_all` drops 1 nominal; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+red/refl1008.ofn	auto	1	WRONG	1.45	missing=[('A', 'C'), ('B', 'C'), ('D', 'C'), ('E', 'C')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+red/refl1008.ofn	ht_bridge	1	WRONG	1.49	missing=[('A', 'C'), ('B', 'C'), ('D', 'C'), ('E', 'C')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+red/refl1008.ofn	cb_plain1	1	TIMEOUT	60.06	
+red/refl1008.ofn	cb_absorb1	1	TIMEOUT	60.06	
+red/refl1008.ofn	cb_trigger1	1	TIMEOUT	60.06	
+red/refl1008.ofn	cb_plain16	1	TIMEOUT	60.06	
+red/refl1008.ofn	production_all	1	NOANSWER	1.46	unsupported: route `production_all` drops 2 nominals; the answer would be approximate; use the automatic route (--route auto) or set KM_ALLOW_APPROXIMATE=1
+red/refl439.ofn	auto	1	WRONG	0.02	missing=[('Q2', 'Q5')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+red/refl439.ofn	ht_bridge	1	WRONG	0.01	missing=[('Q2', 'Q5')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+red/refl439.ofn	cb_plain1	1	NOANSWER	0.02	unsupported: route `cb_plain1` drops 2 nominals and 1 ABox assertion (ObjectPropertyAssertion); the answer would be approximate; use the automatic route (--rout
+red/refl439.ofn	cb_absorb1	1	NOANSWER	0.02	unsupported: route `cb_absorb1` drops 2 nominals and 1 ABox assertion (ObjectPropertyAssertion); the answer would be approximate; use the automatic route (--rou
+red/refl439.ofn	cb_trigger1	1	NOANSWER	0.02	unsupported: route `cb_trigger1` drops 2 nominals and 1 ABox assertion (ObjectPropertyAssertion); the answer would be approximate; use the automatic route (--ro
+red/refl439.ofn	cb_plain16	1	NOANSWER	0.02	unsupported: route `cb_plain16` drops 2 nominals and 1 ABox assertion (ObjectPropertyAssertion); the answer would be approximate; use the automatic route (--rou
+red/refl439.ofn	production_all	1	NOANSWER	0.01	unsupported: route `production_all` drops 2 nominals and 1 ABox assertion (ObjectPropertyAssertion); the answer would be approximate; use the automatic route (-

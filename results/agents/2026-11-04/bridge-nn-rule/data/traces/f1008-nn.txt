@@ -1,0 +1,2 @@
+NN-RULE functional: merged 1001 into 1004 at nominal 0
+NN-RULE functional: nominal 1004 created as 102 successor of nominal 0
