@@ -2,12 +2,14 @@
 //! the native bridge (docs/HYBRID-CB-HT.md section 24,
 //! results/agents/2026-11-04/bridge-nn-term).
 //!
-//! Five family seeds of `gen_nn.py` that the base answered and the first
+//! Six family seeds of `gen_nn.py`: five that the base answered and the first
 //! NN-rule port (48a1113b) did not answer within the family's 30 s and 60 s
-//! caps: `nn346`, `nn952`, `nn745` (the base answered in under 0.1 s),
-//! `nn1957` and `nn777` (the base needed about 30 s). The port of Konclude's
-//! per-candidate distinct-set decisions and the end of a leaf job on a clash
-//! that no job decision explains answer each in well under a second.
+//! caps (`nn346`, `nn952`, `nn745`, `nn1957`, `nn777`), and `nn1153`, which
+//! needed the descriptor track point in `try_initializing_concept_from_saturated_data`
+//! (`completion/u17.rs`) once leaf jobs stopped backtracking chronologically.
+//! The port of Konclude's per-candidate distinct-set decisions, the leaf-job
+//! unattributed-clash exit, and the saturated-initialisation track point
+//! answer each in well under a second.
 //!
 //! Each fixture must agree with HermiT 1.4 (`.hermit.json`) on the
 //! automatic route and on `ht_bridge`, and every classification must end

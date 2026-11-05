@@ -1907,11 +1907,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
         if !super::bridge_dump_clash_enabled()
-            || self.ddb_analysis_dumps
-                >= std::env::var("KM_BRIDGE_DUMP_CLASH_LIMIT")
-                    .ok()
-                    .and_then(|v| v.parse::<u64>().ok())
-                    .unwrap_or(8)
+            || self.ddb_analysis_dumps >= super::bridge_dump_clash_limit()
         {
             return;
         }

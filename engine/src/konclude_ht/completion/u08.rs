@@ -2530,7 +2530,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // representative and without a slot the list is empty: the at-most
         // clash (cpp 15485-15490).
         let mut alternatives: Vec<(NodeId, NodeId)> = Vec::new();
-        let distinct_first = std::env::var_os("KM_HT_NN_DISTINCT_FIRST").is_some();
+        let distinct_first = super::ht_nn_distinct_first();
         if distinct_first && slots > 0 {
             alternatives.push((NodeId::NONE, cand));
         }
