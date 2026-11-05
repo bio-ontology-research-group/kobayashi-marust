@@ -15,6 +15,20 @@ functional arm, handed on, see below). The second agent also found that
 redirected it to this task's scratch before any pool run. The results
 section at the end of this file lists what the second agent ran.
 
+## Status (2026-11-05 09:10, third agent)
+
+The second agent stopped after committing the paired family timing and the
+held-out pairs (41a2024f); its `campaign-late.sh` had finished the held-out
+step and was gone (no process left). The 112 nominal step had written five
+rows only (kept as `ore-partial-1` in the scratch directory). Code is
+unchanged since 2cba8fbd; `engine/target/release/km` is byte-identical to
+`bin/km-new`, and the test binaries were built (00:25) but never run.
+Still open at this point: the 112 nominal inputs, the differential pools
+(before and after), the library and integration suites, a check that
+ore_ont_12128 really exercises the cache now that the SELF gate is lifted,
+and the results sections here and in section 23. The third agent runs these
+in that order; its results are under "Results" below.
+
 Branch `fix/v155-bridge-satcache` from `development/v1.5.5` at 48a1113b,
 worktree `.work/worktrees/fix-bridge-satcache`. Scratch:
 `.work/agent-scratch/bridge-satcache/`. Release flags for every measurement:
