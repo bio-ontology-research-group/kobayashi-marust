@@ -1,0 +1,15 @@
+lake build ContextCalculus (LEAN_NUM_THREADS=4 nice taskset -c 17-24), rc=0
+sorryAx occurrences in the build log: 0
+errors: 0
+axioms of the new theorems:
+info: ContextCalculus/Nominals.lean:568:0: 'ContextCalculus.Nominals.root_label_hyp_sound' depends on axioms: [propext]
+info: ContextCalculus/Nominals.lean:569:0: 'ContextCalculus.Nominals.rpredY_valid' depends on axioms: [propext, Classical.choice, Quot.sound]
+info: ContextCalculus/Nominals.lean:570:0: 'ContextCalculus.Nominals.rpred_label_sound' depends on axioms: [propext, Classical.choice, Quot.sound]
+ℹ [8605/8659] Built ContextCalculus.CBNominalAllocationWire (6.6s)
+info: ContextCalculus/CBNominalAllocationWire.lean:649:0: 'ContextCalculus.CBNominalAllocationWire.WireNominalAllocation.check_sound' depends on axioms: [propext,
+info: ContextCalculus/CBRSuccClosure.lean:118:0: 'ContextCalculus.CBRSuccClosure.forwardPredicate_root_label' depends on axioms: [propext]
+ℹ [8627/8659] Built ContextCalculus.CBBlockedGroundSaturationWire (4.2s)
+info: ContextCalculus/CBBlockedGroundSaturationWire.lean:143:0: 'ContextCalculus.CBBlockedGroundSaturationWire.DecodedBlockedGroundSaturationDocument.source_model' depends on axioms: [propext,
+
+lake build of the 41 cb-* checker executables: Build completed successfully (6986 jobs). rc=0 
+sorryAx occurrences in the checker build log: 0

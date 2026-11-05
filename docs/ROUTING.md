@@ -667,6 +667,19 @@ view with its source clause by clause, and with
 `KM_HT_NO_ENTAILED_FUNCTIONAL=1` (negative control). The pass is not proved
 in Lean; the bridge has no Lean model.
 
+Cost. The first version of the pass rescanned the whole view for every
+role end and took more than 100 s on the held-out input ORE 3917 (2.7 MB, base
+4.4 s). The current pass first collects the at-most-1 clauses that could
+entail a functionality (two atoms of one role on one hub, an equality of the
+two other endpoints, positive concept atoms only) and returns at once when
+there is none. Otherwise it computes the universal concepts by forward chaining
+with one counter per clause, tracks implied concepts only for the candidate
+roles and the roles they link to (an implied concept of `R` depends on `R`'s
+own clauses and on the roles `R` links to, nothing else), and decides each
+candidate once. Every step is a monotone least fixpoint, so the result is the
+same as the first version's (`entailed_functional_tests::matches_the_reference_on_random_views`
+compares both on 6,000 random views).
+
 What it does not cover. An at-most-1 restriction with a real guard or filler
 (`D ⊑ ≤1 s`, `⊤ ⊑ ≤1 s.D`) is not a functionality and keeps its qualified
 encoding, so the absorption test can still meet it before the at-most enters
