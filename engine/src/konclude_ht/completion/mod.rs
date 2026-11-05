@@ -171,6 +171,7 @@ cached_completion_flag!(ht_ddb_no_skip_enabled, "KM_HT_DDB_NO_SKIP");
 cached_completion_flag!(ht_atmost_rest_enabled, "KM_HT_ATMOST_REST");
 cached_completion_flag!(ht_no_nn_rule, "KM_HT_NO_NN_RULE");
 cached_completion_flag!(ht_nn_trace_enabled, "KM_HT_NN_TRACE");
+cached_completion_flag!(ht_nn_distinct_first, "KM_HT_NN_DISTINCT_FIRST");
 cached_completion_flag!(compact_distinct_groups_enabled, "KM_COMPACT_DISTINCT_GROUPS");
 
 macro_rules! cached_completion_i64 {
@@ -215,6 +216,7 @@ macro_rules! cached_completion_u64 {
 
 cached_completion_u64!(bridge_max_drives, "KM_BRIDGE_MAX_DRIVES", u64::MAX);
 cached_completion_u64!(bridge_search_log_limit, "KM_BRIDGE_SEARCH_LOG", 0);
+cached_completion_u64!(bridge_dump_clash_limit, "KM_BRIDGE_DUMP_CLASH_LIMIT", 8);
 
 /// Cached `KM_SAT_CACHE_TRACE_TAG=<tag>[,<tag>...]` watch list (empty = off).
 pub(crate) fn sat_cache_trace_tags() -> &'static [crate::konclude_ht::model::Cint64] {

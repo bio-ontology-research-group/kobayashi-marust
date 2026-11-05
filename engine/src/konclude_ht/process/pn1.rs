@@ -271,6 +271,7 @@ impl IndividualProcessNode {
         self.blocker_indi_node = prev.blocker_indi_node;
         self.following_indi_node = prev.following_indi_node;
         self.last_merged_into_individual_node = prev.last_merged_into_individual_node;
+        self.nn_atmost_states = prev.nn_atmost_states.clone();
         self
     }
 
@@ -313,6 +314,7 @@ impl IndividualProcessNode {
         self.caching_loss_node_reactivation_installed =
             prev.caching_loss_node_reactivation_installed;
         self.last_merged_into_individual_node = prev.last_merged_into_individual_node;
+        self.nn_atmost_states = prev.nn_atmost_states.clone();
 
         if adobt_concept_labels {
             self.prev_reapply_con_label_set = prev.use_reapply_con_label_set;

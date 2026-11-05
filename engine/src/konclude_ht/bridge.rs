@@ -17059,6 +17059,11 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 algo.conf_sat_exp_cache_writing = false;
                 algo.conf_saturation_satisfiabilitiy_expansion_cache_writing = false;
             }
+            // A leaf job ends on a clash that no job decision explains
+            // (docs/HYBRID-CB-HT.md §24); every other job keeps the
+            // chronological fallback.
+            algo.leaf_job_unattributed_clash_ends_job = leaf_job_ran.get()
+                && std::env::var_os("KM_BRIDGE_LEAF_CHRONOLOGICAL").is_none();
             record_phase(0, phase_start);
             Some(())
         };

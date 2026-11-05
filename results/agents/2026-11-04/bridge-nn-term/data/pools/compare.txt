@@ -1,0 +1,25 @@
+bridge-m413-k after {'ok': 4000} before {'ok': 4000}
+bridge-m413-k2 after {'ok': 4000} before {'ok': 4000}
+bridge-m413-respool after {'ERR': 53, 'WRONG': 7, 'ok': 72} before {'ERR': 53, 'WRONG': 7, 'ok': 72}
+bridge-nn-rule-red after {'ok': 14} before {'ok': 14}
+bridge-reflexive-fam after {'ERR': 12, 'TIMEOUT': 39, 'ok': 3945} before {'ERR': 12, 'TIMEOUT': 37, 'ok': 3947}
+bridge-reflexive-seeds20 after {'ok': 20} before {'ok': 20}
+bridge-self-micro after {'ERR': 1, 'ok': 15} before {'ERR': 1, 'ok': 15}
+bridge-self-pool after {'ERR': 247, 'TIMEOUT': 10, 'ok': 3743} before {'ERR': 247, 'TIMEOUT': 10, 'ok': 3743}
+bridge-self-pools-abox-probes-f after {'ERR': 45, 'TIMEOUT': 37, 'ok': 318} before {'ERR': 45, 'TIMEOUT': 37, 'ok': 318}
+bridge-self-pools-abox-probes-m after {'ERR': 4, 'TIMEOUT': 19, 'ok': 3977} before {'ERR': 4, 'TIMEOUT': 19, 'ok': 3977}
+bridge-self-pools-bridge-defers-f after {'ERR': 45, 'TIMEOUT': 37, 'ok': 318} before {'ERR': 45, 'TIMEOUT': 37, 'ok': 318}
+bridge-self-pools-bridge-defers after {'ERR': 153, 'ok': 447} before {'ERR': 153, 'ok': 447}
+bridge-self-pools-bridge-replay after {'ERR': 3, 'TIMEOUT': 1, 'ok': 1996} before {'ERR': 3, 'TIMEOUT': 1, 'ok': 1996}
+bridge-self-pools-res-data-values-3 after {'ERR': 32, 'WRONG': 6, 'ok': 30} before {'ERR': 32, 'WRONG': 6, 'ok': 30}
+bridge-self-pools-res-forced-nominal after {'ERR': 7, 'ok': 21} before {'ERR': 7, 'ok': 21}
+bridge-self-pools-res-fr282 after {'ERR': 6, 'ok': 6} before {'ERR': 6, 'ok': 6}
+bridge-self-pools-res-lean-data-values after {'ERR': 8, 'WRONG': 1, 'ok': 9} before {'ERR': 8, 'WRONG': 1, 'ok': 9}
+bridge-self-pools-sameindividual-bridge after {'ERR': 11, 'ok': 3881} before {'ERR': 11, 'ok': 3881}
+bridge-self-regress after {'ok': 12} before {'ok': 12}
+cb-s974-merge after {'ERR': 10, 'TIMEOUT': 3, 'ok': 3987} before {'ERR': 10, 'TIMEOUT': 3, 'ok': 3987}
+cb-s974-vacuous after {'ERR': 849, 'TIMEOUT': 8, 'ok': 3143} before {'ERR': 849, 'TIMEOUT': 8, 'ok': 3143}
+total after {'ERR': 1486, 'TIMEOUT': 154, 'WRONG': 14, 'ok': 33954}
+differences 2
+DIFF bridge-reflexive-fam refl1575.ofn auto ok -> TIMEOUT
+DIFF bridge-reflexive-fam refl352.ofn auto ok -> TIMEOUT

@@ -155,6 +155,10 @@ pub struct AtMostMergeBranch {
     /// (`restriction_spec_mut` is journal-routed and merge/qualify branch
     /// points always own an epoch).
     pub rest: super::super::process::RestrictionSpecId,
+    /// The alternatives decide one candidate of an NN-rule distinct set
+    /// (docs/HYBRID-CB-HT.md section 24): `(NONE, c)` makes `c` a new
+    /// representative, every other pair merges `c` into a representative.
+    pub nn_decision: bool,
 }
 
 /// The backend-expansion-reuse branching payload
@@ -1325,6 +1329,14 @@ pub struct CompletionTaskHandleAlgorithm {
     /// DDB diagnostics: clashes where the analysis marked NO open branch
     /// point (chronological fallback taken).
     pub ddb_fallback_count: u64,
+    /// A leaf job (docs/HYBRID-CB-HT.md sections 16 and 24) whose clash
+    /// analysis marked no open job decision ends the job instead of
+    /// backtracking chronologically: on the leaf only a satisfiable fixpoint
+    /// or a root cancellation is accepted, and a clash independent of every
+    /// job decision rests on a leaf decision the job cannot revise.
+    pub leaf_job_unattributed_clash_ends_job: bool,
+    /// How often that happened (diagnostic).
+    pub leaf_job_unattributed_clash_count: u64,
     /// DDB diagnostics: `set_clashes` markings performed by the analysis.
     pub ddb_mark_count: u64,
     /// Advances where the snapshot restore was SKIPPED (successor nodes were
@@ -1815,6 +1827,8 @@ impl CompletionTaskHandleAlgorithm {
             ddb_jump_count: 0,
             ddb_jump_pop_total: 0,
             ddb_fallback_count: 0,
+            leaf_job_unattributed_clash_ends_job: false,
+            leaf_job_unattributed_clash_count: 0,
             ddb_mark_count: 0,
             ddb_analysis_dumps: 0,
             ddb_last_closure: String::new(),
