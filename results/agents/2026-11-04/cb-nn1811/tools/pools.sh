@@ -7,11 +7,11 @@
 # routes ht_bridge and auto, release flags, 60 s, two KM runs at a time,
 # through diff_run.py. LIST (default: every pool below) restricts the run
 # to "name<TAB>file" rows (used for the base rerun of the non-ok seeds).
-# Rows go to .work/agent-scratch/bridge-nn-rule/pools/LABEL/NAME.tsv.
+# Rows go to .work/agent-scratch/cb-nn1811/pools/LABEL/NAME.tsv.
 T=$(dirname $(readlink -f $0)); BIN=$1; LABEL=$2; LIST=$3
 A=/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch
 D=$A/cb-nn1811/pools/$LABEL; mkdir -p $D
-mkdir -p $A/cb-nn1811/tmp; export TMPDIR=$A/cb-nn1811/tmp DIFF_THREADS=2 DIFF_KM_TIMEOUT=60
+mkdir -p $A/cb-nn1811/tmp; export TMPDIR=$A/cb-nn1811/tmp DIFF_THREADS=${DIFF_THREADS:-2} DIFF_KM_TIMEOUT=60
 export DIFF_KEEP=KM_HT_DDB=1,KM_HT_NATIVE_FULL=1,KM_CACHE_CONFORMANCE=1,KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE=1,KM_FAST_IRI_GRAMMAR=1,KM_THREADS=1
 POOLS=()
 for P in $A/bridge-self/pools/*; do POOLS+=("bridge-self-pools-$(basename $P) $P/seeds $P/gold"); done

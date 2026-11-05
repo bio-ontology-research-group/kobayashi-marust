@@ -960,6 +960,14 @@ fn in_announced_interface(
     true
 }
 
+/// Predecessor labels over root edges (`Engine::offer_root_reach`) are on
+/// unless the diagnostic `KM_NO_ROOT_REACH` is set (negative control; it
+/// restores the incomplete behaviour of docs/NOMINALS-CB.md section 12).
+fn root_reach_off() -> bool {
+    static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *FLAG.get_or_init(|| std::env::var_os("KM_NO_ROOT_REACH").is_some())
+}
+
 /// Merge hypotheses (`Engine::merge_hypotheses`) are on unless the
 /// diagnostic `KM_NO_MERGE_HYPOTHESES` is set (restores v1.5.4 behaviour).
 fn merge_hypotheses_on() -> bool {
@@ -2411,6 +2419,17 @@ struct Context {
     /// identical to the unconditional driver.
     rsucc_offered: usize,
     rsucc_edges_grew: bool,
+    /// Root edges (docs/NOMINALS-CB.md section 12): the individuals `o` that
+    /// label an edge from this context to the ground context (an r-Succ push,
+    /// a merge hypothesis or a merge subscription), in first-occurrence order.
+    /// With r-Succ on, every central label `B(x)` in `rsucc_reach` is offered
+    /// over each of them as the predecessor hypothesis `B(y)`
+    /// (`Engine::offer_root_reach`), as over an ordinary successor edge.
+    root_labels: Vec<Term>,
+    root_label_set: HashSet<Term>,
+    /// Per root label, the number of `rsucc_reach` entries already offered
+    /// over it (`rsucc_reach` is append-only, so `reach[hwm..]` is the delta).
+    root_reach_hwm: HashMap<Term, usize>,
     /// Merge hypotheses (docs/NOMINALS-CB.md section 10): the bridge
     /// individuals `o` of body-free merge clauses `⊤ → Δ'' ∨ x ≈ o` whose
     /// core hypotheses this context already pushed to the ground context.
@@ -2460,6 +2479,9 @@ impl Context {
             rsucc_pair_reach_hwm: HashMap::default(),
             rsucc_offered: 0,
             rsucc_edges_grew: false,
+            root_labels: Vec::new(),
+            root_label_set: HashSet::default(),
+            root_reach_hwm: HashMap::default(),
             merge_hyp_inds: Vec::new(),
             seeded_inds: HashSet::default(),
             dirty: true,
@@ -7543,6 +7565,7 @@ impl Engine {
         if !merge_hyps.is_empty() {
             let target = self.ground_context();
             for (p, o) in merge_hyps {
+                self.note_root_label(id, o);
                 self.msgs.push_back(Msg::Succ {
                     from: pack_msg_context(id),
                     f: o,
@@ -7555,6 +7578,7 @@ impl Engine {
             let target = self.ground_context();
             for (p, o) in ground_succ {
                 if self.contexts[id].pushed_succ.insert(p) {
+                    self.note_root_label(id, o);
                     self.msgs.push_back(Msg::Succ {
                         from: pack_msg_context(id),
                         f: o,
@@ -7868,6 +7892,9 @@ impl Engine {
             // ground-sender (r-Pred) path: a source is dirty when any of its
             // individual-labelled edges gained a pushed predicate.
             let mut sources: Vec<(usize, Term, bool)> = Vec::new();
+            // Ground sender: per source context u, the positions in `edges`
+            // of its individual-labelled edges.
+            let mut source_edges: HashMap<usize, Vec<usize>> = HashMap::default();
             let mut bound_of: HashMap<usize, Term> = HashMap::default();
             if ground_sender && !pair_r2() {
                 let all = !self.nom_table.borrow().is_empty();
@@ -7877,7 +7904,8 @@ impl Engine {
                 }
             }
             if ground_sender {
-                for (e, _, dirty) in &edges {
+                for (k, (e, _, dirty)) in edges.iter().enumerate() {
+                    source_edges.entry(e.0).or_default().push(k);
                     match sources.iter_mut().find(|(u, _, _)| *u == e.0) {
                         Some(s) => {
                             s.2 |= *dirty;
@@ -7966,11 +7994,21 @@ impl Engine {
                         for b in &c.body {
                             let mut inds: Vec<Term> = Vec::new();
                             pred_inds(b, &mut inds);
-                            let discharged = inds.iter().any(|o| {
-                                ctx.predecessors
-                                    .get(&(u, *o))
-                                    .map_or(false, |s| s.contains(b))
-                            });
+                            // An individual-free body atom is a predecessor
+                            // label `B(y)` offered over the root edges of u
+                            // (`offer_root_reach`): it is discharged when one
+                            // of u's edges carries it.
+                            let discharged = if inds.is_empty() {
+                                source_edges
+                                    .get(&u)
+                                    .is_some_and(|ks| ks.iter().any(|&k| edges[k].1.contains(b)))
+                            } else {
+                                inds.iter().any(|o| {
+                                    ctx.predecessors
+                                        .get(&(u, *o))
+                                        .map_or(false, |s| s.contains(b))
+                                })
+                            };
                             if !discharged {
                                 ok = false;
                                 break;
@@ -8076,6 +8114,7 @@ impl Engine {
             self.stat_pred_out_by_ctx[id] += to_send.len() as u64;
         }
         self.subscribe_merge_individuals(id);
+        self.offer_root_reach(id);
         for (edge, pool_idx) in to_send {
             self.contexts[id]
                 .pushed_pred
@@ -8344,6 +8383,7 @@ impl Engine {
         for &o in &new {
             self.contexts[id].merge_subscriptions.insert(o);
             self.contexts[g].predecessors.entry((id, o)).or_default();
+            self.note_root_label(id, o);
         }
         // Deliver the ground context's current body-free x-free clauses whose
         // individuals this context has all announced (the guard of the
@@ -8394,6 +8434,62 @@ impl Engine {
                 from: pack_msg_context(g),
                 edge_label: edge.1,
                 pool_idx,
+            });
+        }
+    }
+
+    /// Record that context `id` has an edge labelled `o` to the ground
+    /// context (see `Context::root_labels`).
+    fn note_root_label(&mut self, id: usize, o: Term) {
+        let ctx = &mut self.contexts[id];
+        if ctx.root_label_set.insert(o) {
+            ctx.root_labels.push(o);
+        }
+    }
+
+    /// Predecessor labels over root edges (docs/NOMINALS-CB.md section 12).
+    /// The ground context reads every element linked to an individual as its
+    /// predecessor variable `y`. Its Hyper can only match a body atom `B(z)`
+    /// at such an element when `B(y)` is a hypothesis there, and r-Succ as
+    /// stated in arXiv:1805.01396 (`Su^r = {B(o), S(y,o), S(o,y)}`) never
+    /// provides one, so an at-most at an individual whose filler `B` must
+    /// hold at a linked element (`{b} ⊑ ≤1 p.B`, or the frontend's `⊤`
+    /// definer filler of `{b} ⊑ ≤1 p`) never fires Nom. With r-Succ on, this
+    /// offers every central label `B(x)` of `id` (`rsucc_reach`, the labels
+    /// an ordinary successor receives) over each root edge as the hypothesis
+    /// `B(y) → B(y)`, exactly as `rsucc_cross_step` does over a successor
+    /// edge. The hypothesis is a tautology; r-Pred resolves a ground-context
+    /// body atom `B(y)` against a clause of the receiver with `B(x)` maximal,
+    /// which exists because the receiver offered `B(y)`.
+    fn offer_root_reach(&mut self, id: usize) {
+        if !self.sig.rsucc || self.contexts[id].root_labels.is_empty() || root_reach_off() {
+            return;
+        }
+        let Some(g) = self.ground_ctx else { return };
+        if g == id {
+            return;
+        }
+        let mut fired: Vec<(Term, Pred)> = Vec::new();
+        {
+            let ctx = &mut self.contexts[id];
+            let n = ctx.rsucc_reach.len();
+            for &o in &ctx.root_labels {
+                let start = ctx.root_reach_hwm.get(&o).copied().unwrap_or(0);
+                if start >= n {
+                    continue;
+                }
+                for &p in &ctx.rsucc_reach[start..n] {
+                    fired.push((o, p.apply(&|v| forwards(o, v))));
+                }
+                ctx.root_reach_hwm.insert(o, n);
+            }
+        }
+        for (o, p) in fired {
+            self.msgs.push_back(Msg::Succ {
+                from: pack_msg_context(id),
+                f: o,
+                p,
+                target: pack_msg_context(g),
             });
         }
     }

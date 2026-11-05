@@ -14,10 +14,13 @@
     * r-Succ          (adds the tautology `A → A` to the root context and an
       edge; soundness is the tautology, certified by `rsucc_taut_sound`; the
       side condition (*) only *restricts* rule firing, so it cannot affect
-      soundness);
+      soundness).  KM also offers the central labels of a context with a
+      root edge as predecessor hypotheses `B(y) → B(y)`
+      (`root_label_hyp_sound`, section 5b);
     * r-Pred          (back-propagation from the root context: the
-      substitution `σ = {y ↦ x}` is universal instantiation `instG_valid`,
-      and the body discharge is resolution — both already certified; the
+      substitution `σ = {y ↦ x}` is universal instantiation (`rpredY_valid`),
+      and the body discharge is resolution (`rpred_label_sound` for a
+      predecessor label `B(y)`); the
       verbatim-copied ground atoms `C_i` are the un-resolved body remainder,
       which resolution leaves in place);
     * Nom             (fresh additional nominals) — `nom_cover` /
@@ -225,6 +228,105 @@ never threatens soundness (it is a completeness/termination device). -/
 theorem rsucc_taut_sound (I : Model Lit) (a : Lit) : sat I ⟨[a], [a]⟩ := by
   intro hbody
   exact ⟨a, List.mem_singleton.mpr rfl, hbody a (List.mem_singleton.mpr rfl)⟩
+
+/-! ## 5b. Predecessor labels over root edges (docs/NOMINALS-CB.md section 12)
+
+r-Succ as stated in arXiv:1805.01396 pushes only `Su^r = {B(o), S(y,o),
+S(o,y)}`, so the ground context never holds a hypothesis about the label of
+an element linked to an individual, and an at-most at an individual whose
+filler must hold at such an element (`{b} ⊑ ≤1 p.B`) never fires Nom.  The
+engine also offers every central label `B(x)` of a context with a root edge
+as the hypothesis `B(y) → B(y)` (`Engine::offer_root_reach`): an instance of
+`rsucc_taut_sound`, `root_label_hyp_sound`.
+
+A ground-context clause whose body holds such a `B(y)` returns to the context
+by r-Pred.  Its substitution `y ↦ x` is an assignment shift for every term
+(`rpredY_valid`: only the value of `y` changes, so even `f(x)` terms keep
+theirs), and the discharge of `B(x)` against a context clause with `B(x)` in
+its head is resolution (`rpred_label_sound`). -/
+
+/-- The predecessor-label hypothesis offered over a root edge. -/
+theorem root_label_hyp_sound (I : Model Lit) (concept : Nat) :
+    sat I ⟨[Lit.P (Pred.concept concept Term.y)], [Lit.P (Pred.concept concept Term.y)]⟩ :=
+  rsucc_taut_sound I _
+
+/-- The r-Pred renaming `y ↦ x`. -/
+def renameY (t : Term) : Term := if t = -1 then 0 else t
+
+def litY : Lit → Lit
+  | Lit.P (Pred.concept i t) => Lit.P (Pred.concept i (renameY t))
+  | Lit.P (Pred.role i s t) => Lit.P (Pred.role i (renameY s) (renameY t))
+  | Lit.eq s t => Lit.eq (renameY s) (renameY t)
+  | Lit.ineq s t => Lit.ineq (renameY s) (renameY t)
+
+def clY (c : CL) : CL := ⟨c.body.map litY, c.head.map litY⟩
+
+/-- The assignment that reads `y` as the central element. -/
+def shiftY (ρ : Term → D) : Term → D := fun v => if v = -1 then ρ 0 else ρ v
+
+theorem shiftY_zero (ρ : Term → D) : shiftY ρ 0 = ρ 0 := by
+  simp [shiftY]
+
+theorem evalT_renameY (M : NModel D) (ρ : Term → D) (t : Term) :
+    M.evalT ρ (renameY t) = M.evalT (shiftY ρ) t := by
+  by_cases h : t = -1
+  · subst h
+    simp [renameY, shiftY, NModel.evalT]
+  · have hr : renameY t = t := by simp [renameY, h]
+    rw [hr]
+    simp only [NModel.evalT, shiftY_zero]
+    by_cases h0 : t ≤ 0
+    · simp [h0, shiftY, h]
+    · simp [h0]
+
+theorem evalL_litY (M : NModel D) (ρ : Term → D) (l : Lit) :
+    M.evalL ρ (litY l) = M.evalL (shiftY ρ) l := by
+  cases l with
+  | P p =>
+    cases p with
+    | concept i t => simp only [litY, NModel.evalL, evalT_renameY]
+    | role i s t => simp only [litY, NModel.evalL, evalT_renameY]
+  | eq s t => simp only [litY, NModel.evalL, evalT_renameY]
+  | ineq s t => simp only [litY, NModel.evalL, evalT_renameY]
+
+theorem sat_clY (M : NModel D) (ρ : Term → D) (c : CL) :
+    sat (M.evalL ρ) (clY c) ↔ sat (M.evalL (shiftY ρ)) c := by
+  constructor
+  · intro hs hbody
+    have hbody' : ∀ a ∈ (clY c).body, M.evalL ρ a := by
+      intro a ha
+      simp only [clY, List.mem_map] at ha
+      obtain ⟨b, hb, rfl⟩ := ha
+      rw [evalL_litY]
+      exact hbody b hb
+    obtain ⟨a, ha, hIa⟩ := hs hbody'
+    simp only [clY, List.mem_map] at ha
+    obtain ⟨b, hb, rfl⟩ := ha
+    rw [evalL_litY] at hIa
+    exact ⟨b, hb, hIa⟩
+  · intro hs hbody
+    have hbody' : ∀ b ∈ c.body, M.evalL (shiftY ρ) b := by
+      intro b hb
+      rw [← evalL_litY]
+      exact hbody (litY b) (by simp only [clY, List.mem_map]; exact ⟨b, hb, rfl⟩)
+    obtain ⟨a, ha, hIa⟩ := hs hbody'
+    refine ⟨litY a, by simp only [clY, List.mem_map]; exact ⟨a, ha, rfl⟩, ?_⟩
+    rw [evalL_litY]
+    exact hIa
+
+/-- **The r-Pred renaming is sound for every clause.** -/
+theorem rpredY_valid (M : NModel D) (c : CL) (h : validN M c) : validN M (clY c) :=
+  fun ρ => (sat_clY M ρ c).mpr (h (shiftY ρ))
+
+/-- **r-Pred of a predecessor label is sound.**  A valid ground-context clause
+    `g` with the body atom `b` (e.g. `B(y)`) and a valid context clause `p`
+    with `b{y ↦ x}` (`B(x)`) in its head yield the valid resolvent. -/
+theorem rpred_label_sound (M : NModel D) (g p : CL) (b : Lit)
+    (hg : validN M g) (hp : validN M p)
+    (hbp : litY b ∈ p.head) (hbg : b ∈ g.body) :
+    validN M (resolvent p (clY g) (litY b)) := fun ρ =>
+  resolution_sound (M.evalL ρ) p (clY g) (litY b) (hp ρ) (rpredY_valid M g hg ρ) hbp
+    (by simp only [clY, List.mem_map]; exact ⟨b, hbg, rfl⟩)
 
 /-! ## 6. The Nom rule: covering the constrained predecessors
 
@@ -463,5 +565,8 @@ theorem ground_fragment_complete {A : Type} [DecidableEq A]
 #print axioms nom_family_sound
 #print axioms nom_shared_cover_sound
 #print axioms independent_nom_witnesses_need_not_share
+#print axioms root_label_hyp_sound
+#print axioms rpredY_valid
+#print axioms rpred_label_sound
 
 end ContextCalculus.Nominals
