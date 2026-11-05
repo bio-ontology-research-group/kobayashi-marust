@@ -260,7 +260,44 @@ runs each).
 On `nn1811`, `r3`, `m1`, `m7`, `m10` and `fx12`, `--route nominals` times out
 with no wrong answer.
 
-FAMILY_PLACEHOLDER
+## Sibling family (`fx0` to `fx1999`, 2,000 seeds with HermiT gold)
+
+Generator `tools/gen_fx.py` (variations of `r19`, `r13` and `nn1811`:
+functionality/at-most encodings on inverse-linked roles, two-step paths,
+nominals in 40% of seeds). All 2,000 seeds have HermiT 1.4 gold
+(`.work/agent-scratch/cb-nn1811/fam/gold/`). Runner `tools/family_complete.py`
+(`data/family-p2.tsv`, `data/family-base.tsv`, `data/family-summary.txt`, 60 s
+cap on `auto`, 15 s cap on forced routes):
+
+| route | binary (runs) | ok | WRONG | TIMEOUT | NOANSWER (forced defer) |
+|---|---|---|---|---|---|
+| `auto` | `km-base` (1 run × 2,000) | 1,949 | **18** | 33 | 0 |
+| `auto` | `km-p2` (3 runs × 2,000 = 6,000) | 5,940 (1,980 × 3) | **0** | 60 (20 × 3) | 0 |
+| `ht_bridge` | `km-base` (1 run × 2,000) | 1,891 | **18** | 39 | 52 |
+| `ht_bridge` | `km-p2` (3 runs × 2,000 = 6,000) | 5,796 (1,932 × 3) | **0** | 48 (16 × 3) | 156 (52 × 3) |
+
+- **0 wrong answers** on `km-p2` across all 12,000 runs (`ht_bridge` and `auto`).
+- All **18 seeds that were wrong on `km-base`** (`fx61`, `fx520`, `fx531`,
+  `fx666`, `fx674`, `fx829`, `fx878`, `fx906`, `fx988`, `fx1034`, `fx1070`,
+  `fx1077`, `fx1154`, `fx1269`, `fx1386`, `fx1673`, `fx1751`, `fx1798`) answer
+  `ok` in 3 of 3 runs on both `ht_bridge` and `auto`.
+- **0 seeds vary across their three runs** on either route.
+- On `ht_bridge`, 0 seeds that were `ok` on `km-base` become non-`ok` on
+  `km-p2`, and 23 seeds that timed out on `km-base` now answer `ok` 3/3 (39
+  timeouts down to 16). The 52 `NOANSWER` seeds are identical on `km-base` and
+  `km-p2` (exactness deferrals when an inverse-role or ABox shape is declined
+  by the forced native bridge).
+- On `auto`, 15 seeds that timed out on `km-base` now answer `ok` 3/3, and 2
+  seeds (`fx346`, `fx1454`, both in the 52 `ht_bridge` deferrals so the
+  automatic route falls back to the nominal CB arm) answered on `km-base` and
+  time out at 60 s on `km-p2` under `Engine::offer_root_reach` (net timeouts
+  33 down to 20).
+- On `--route nominals` over `fx0` to `fx1064` (1,065 seeds × 3 runs in
+  `.work/agent-scratch/cb-nn1811/famrun/new-3runs.tsv`), `km-v1` (before
+  `Engine::offer_root_reach`) had 2,682 `ok`, 509 `TIMEOUT`, and 6 `WRONG`
+  rows across 2 seeds (`fx12` and `fx244`, which reduced to `m1`..`m12`). With
+  `km-p2` (`data/family-nominals-check-p2.tsv`), neither `fx12` nor `fx244`
+  gives a wrong answer.
 
 ## Differential pools (`tools/pools.sh`, `tools/pools_complete.py`, 60 s cap)
 
