@@ -43,8 +43,9 @@ use super::super::process::{ConDescId, NodeId};
 /// arm; a comma list of `functional`, `top`, `value`, `label`, `replay`
 /// restores those arms (`top`: the `⊤` qualifier of `atmost_is_functional_rule`).
 fn satexp_absorb_legacy_arm(arm: &str) -> bool {
-    static ARMS: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
-    match ARMS.get_or_init(|| std::env::var("KM_HT_SATEXP_ABSORB_LEGACY").ok()) {
+    // Read once through the cached accessor in `completion/mod.rs`
+    // (`tests/completion_hot_path_env.rs`).
+    match super::satexp_absorb_legacy_value() {
         None => false,
         Some(v) => v == "1" || v == "all" || v.split(',').any(|a| a.trim() == arm),
     }

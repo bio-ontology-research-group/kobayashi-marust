@@ -174,9 +174,9 @@ fn negative_control_with_the_former_absorption_misses_each() {
 /// pre-section-20 schedule (`KM_BRIDGE_SAT_REFUSE_SELF=1`: completion only,
 /// satisfiable expander cache installed). Its miss was the cache replay that
 /// skipped the AND rule for an entry written before `GO_0003674 ⊑ Function`
-/// was applied (section 23); the SELF gate of section 20 no longer covers
-/// the satisfiable expander cache. `KM_HT_SATEXP_ABSORB_LEGACY=replay`
-/// restores the skip and the miss.
+/// was applied (section 23). (`KM_BRIDGE_SAT_REFUSE_SELF=1` also turns off
+/// the SELF gate of section 20, so the cache is installed here.)
+/// `KM_HT_SATEXP_ABSORB_LEGACY=replay` restores the skip and the miss.
 #[test]
 fn ore12128_reduction_with_the_cache_and_without_the_self_gate() {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -191,6 +191,31 @@ fn ore12128_reduction_with_the_cache_and_without_the_self_gate() {
             normalise(&classify(&path, &env)),
             want,
             "{route:?}: the reduction no longer needs the replay fix"
+        );
+    }
+}
+
+/// Why the SELF gate of section 20 stays on the satisfiable expander cache
+/// (section 23): on `bridge_reflexive/merge1708_min.ofn` (`⊤ ⊑ ≤1 p⁻`,
+/// `InverseFunctional(s)`, `≤1 s⁻ ⊑ B`, `B ⊑ ∃p.Self`, so every element is
+/// its own only `p`-predecessor and `⊤ ⊑ Q3 ≡ ≤2 p.C`) a successor hits an
+/// entry whose model chose `B` and a `p` self edge, absorbs `B ⊔ ≥2 s⁻`, and
+/// never builds the self edge that would merge it into its ancestor. With
+/// the gate lifted (`KM_BRIDGE_SELF_SATEXP_NO_GATE=1`) every `X ⊑ Q3` is
+/// lost; `bridge_reflexive.rs` pins the answer with the gate.
+#[test]
+fn self_gate_negative_control_misses_merge1708() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/bridge_reflexive/merge1708_min.ofn");
+    let want = expected(&path);
+    for route in [&[][..], &[("KM_ROUTE", "ht_bridge")][..]] {
+        let mut env = with_release(route);
+        assert_eq!(normalise(&classify(&path, &env)), want, "{route:?}");
+        env.push(("KM_BRIDGE_SELF_SATEXP_NO_GATE", "1"));
+        assert_ne!(
+            normalise(&classify(&path, &env)),
+            want,
+            "{route:?}: merge1708_min no longer needs the SELF gate"
         );
     }
 }

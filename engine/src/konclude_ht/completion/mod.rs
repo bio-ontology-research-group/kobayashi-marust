@@ -176,6 +176,16 @@ cached_completion_flag!(ht_no_nn_rule, "KM_HT_NO_NN_RULE");
 cached_completion_flag!(ht_nn_trace_enabled, "KM_HT_NN_TRACE");
 cached_completion_flag!(compact_distinct_groups_enabled, "KM_COMPACT_DISTINCT_GROUPS");
 
+/// Cached value of `KM_HT_SATEXP_ABSORB_LEGACY` (diagnostic, read by
+/// `satexp_absorb`; docs/HYBRID-CB-HT.md section 23), looked up once: its
+/// readers sit on the at-most, existential and replay rule paths.
+pub(crate) fn satexp_absorb_legacy_value() -> Option<&'static str> {
+    static VALUE: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    VALUE
+        .get_or_init(|| std::env::var("KM_HT_SATEXP_ABSORB_LEGACY").ok())
+        .as_deref()
+}
+
 macro_rules! cached_completion_i64 {
     ($function:ident, $variable:literal) => {
         /// Cached numeric watch target for the identically named environment

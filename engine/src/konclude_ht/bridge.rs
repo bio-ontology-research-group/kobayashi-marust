@@ -16626,23 +16626,26 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 None => false,
             }
         };
-    // KM-SOUNDNESS-GATE[self-satexp] (docs/HYBRID-CB-HT.md section 20)
-    // removed both expansion caches from terminologies with a positive SELF
-    // concept, after two witnesses: the 23-axiom reduction of ore_ont_12128
-    // (`world_of_BIOMD0000000053` satisfiable with the satisfiable expander
-    // cache) and `∃p.Self ⊓ ≤1 p⁻` seeds (`v1s160`, `v1s1420`, `v1s1543`).
-    // Section 23 traced both to port defects that are not tied to self
-    // edges: the cache replay skipped the AND rule for entries written before
-    // the AND family was applied (`satexp_absorb::expanded_concept_skip_function`),
-    // and the satisfiable-cached node absorbed its functional `≤1 R`
-    // (`satexp_absorb::atmost_is_functional_rule`). With both fixed the
-    // satisfiable expander cache no longer takes the gate;
-    // `KM_BRIDGE_SELF_SATEXP_GATE=1` restores it (diagnostic). The
-    // associated-expansion cache and the saturated-label expansion keep the
-    // gate (`self_cardinality` above and below); section 23 does not cover
-    // them.
+    // KM-SOUNDNESS-GATE[self-satexp] (docs/HYBRID-CB-HT.md sections 20 and
+    // 23): install neither expansion cache on a terminology with a positive
+    // SELF concept. Section 20's witnesses (the 23-axiom reduction of
+    // ore_ont_12128 and the `∃p.Self ⊓ ≤1 p⁻` seeds) turned out to be port
+    // defects that are not tied to self edges and are fixed in
+    // `satexp_absorb`, but a third witness is tied to them:
+    // `tests/fixtures/bridge_reflexive/merge1708_min.ofn`. There a successor
+    // with `⊤ ⊑ ≤1 p⁻` and the disjunction `B ⊔ ≥2 s⁻` (`B ⊑ ∃p.Self`) hits a
+    // satisfiable entry written for a root, whose model chose `B` and so a
+    // `p` self edge; the cached node absorbs the disjunction, and the self
+    // edge, which would make the node a second `p`-predecessor of itself next
+    // to its ancestor, is never built. `isSatisfiableCachedCompatible`
+    // (cpp 6401-6460) tests the entry's universal, at-most and existential
+    // concepts against the ancestor link, but not SELF, so Konclude's test
+    // does not cover this case either. The gate stays until the cache has a
+    // compatibility test for self edges. `KM_BRIDGE_SELF_SATEXP_NO_GATE=1`
+    // lifts it for the satisfiable expander cache (diagnostic, negative
+    // control); production never sets it.
     let self_satexp_gate =
-        self_cardinality && std::env::var_os("KM_BRIDGE_SELF_SATEXP_GATE").is_some();
+        self_cardinality && std::env::var_os("KM_BRIDGE_SELF_SATEXP_NO_GATE").is_none();
     if std::env::var_os("KM_HT_NO_SAT_EXP_CACHE").is_none()
         && (bridged.singleton_concepts.is_empty() || singletons_inert)
         && !self_satexp_gate

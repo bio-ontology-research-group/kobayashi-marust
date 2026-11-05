@@ -2893,7 +2893,9 @@ entry. This section isolates the entries for both, and the sibling family
 built around the three reductions adds a fourth (`sat1096`). In every case
 the entry is correct and the port uses it differently from Konclude; none
 of the defects is tied to nominals or to self edges. `nn1116` turns out not
-to be a cache defect.
+to be a cache defect. The section 20 gate nevertheless stays: a third
+witness, `merge1708_min` of section 21, is tied to self edges ("The SELF
+gate stays" below).
 
 **Gold, by hand.**
 
@@ -3100,13 +3102,15 @@ at four call sites:
 4. `expanded_concept_skip_function` (in `u21.rs` `expand_cached_concepts`,
    through the new `u04.rs` `add_concept_to_individual_with_skip_function`):
    replayed concepts are queued without the AND skip.
-5. `bridge.rs`: the satisfiable expander cache no longer takes the section
-   20 gate. The associated-expansion cache and the saturated-label expansion
-   keep it: this section does not analyse them.
+5. `bridge.rs`: the section 20 gate stays on all three caches. A first
+   version of this branch lifted it from the satisfiable expander cache;
+   the integration target `bridge_reflexive` then failed (see "The SELF
+   gate stays" below), and the gate was restored.
 
 `KM_HT_SATEXP_ABSORB_LEGACY` restores the former behaviour, all arms (`1`)
 or a comma list of `functional`, `top`, `label`, `value`, `replay`;
-`KM_BRIDGE_SELF_SATEXP_GATE=1` restores the gate. Production sets neither.
+`KM_BRIDGE_SELF_SATEXP_NO_GATE=1` lifts the SELF gate from the satisfiable
+expander cache (negative control). Production sets neither.
 Each reduction fails again with all arms restored, and with single arms as
 follows (ht_bridge): `functional,top` loses `nn1313min` and `nn1348min`,
 `label` loses `nn1348min`, `value` loses `sat1096min`; `nn1064min` needs
@@ -3136,16 +3140,45 @@ or adds a rule application.
   those of an expansion entry, whose correctness (each value a deterministic
   consequence of the entry's prefix, by the dependency tracking of
   `cacheIndividualNodeExpansion`) is unchanged.
-- *5 removes a gate whose two witnesses are explained.* The gate's
-  witnesses were `m53tiny` (defect 4) and the seeds `v1s160`, `v1s1420`,
-  `v1s1543` (`∃p.Self ⊓ ≤1 p⁻`, defect 1: the cached node absorbed its
-  `≤1 p⁻`). With the cache installed on SELF terminologies the 14 SELF
-  fixtures (`tests/fixtures/bridge_self` and `m53tiny`) agree with HermiT on
-  both routes; with the gate off and the absorption arms restored the three
-  seeds fail again, and with the replay arm restored `m53tiny` and the 12128
-  reduction fail again under the completion-only schedule. What the gate
-  guarded against was not a property of self edges, so no new precondition
-  replaces it; the SELF pools below are the evidence beyond the fixtures.
+- *5 keeps the section 20 gate.* Its two witnesses are explained by
+  defects 1 and 4 (`m53tiny`; the seeds `v1s160`, `v1s1420`, `v1s1543`,
+  `∃p.Self ⊓ ≤1 p⁻`, where the cached node absorbed its `≤1 p⁻`), and with
+  the gate lifted the 14 SELF fixtures (`tests/fixtures/bridge_self` and
+  `m53tiny`) agree with HermiT on both routes. The first version of this
+  branch concluded from that that the gate guarded against no property of
+  self edges and lifted it. That conclusion was wrong; the next paragraph
+  gives the third witness.
+
+**The SELF gate stays.** With the gate lifted, the integration target
+`bridge_reflexive` fails on `merge1708_min.ofn` (section 21) on both
+routes: KM keeps every `X ⊑ B` and loses every `X ⊑ Q3`. Gold, by hand:
+`InverseFunctional(s)` puts every element into `≤1 s⁻`, so into `B`
+(`≤1 s⁻ ⊑ B`), so every element has a `p` self edge (`B ⊑ ∃p.Self`); with
+`⊤ ⊑ ≤1 p⁻` an element is its own only `p`-predecessor, a `p`-successor `y`
+of `x` has the `p`-predecessors `x` and `y`, so `y = x`: every element has
+at most one `p`-successor and `⊤ ⊑ Q3 ≡ ≤2 p.C`. HermiT agrees. Trace
+(`KM_HT_SATEXP_TRACE=1`, tags: 40 `≤1 p⁻.⊤`, 45 `B ⊔ ≥2 s⁻`, 29 `B`, 47
+`∃p.Self`, 46 `≤2 p.C`): the probe of `C` writes a satisfiable entry for
+the root label `{⊤, C, 40, 45}`, branched, whose model chose `B` and built
+the `p` self edge. In the probe of `C ⊓ ¬Q3` the three `p`-successors of
+the root have the label `{⊤, C, 40, 45}`, hit that entry
+(`compatible=true without_branched=true`), and absorb the disjunction 45 as
+satisfiable-cached nodes. Their self edge is never built, so the `≤1 p⁻` of
+each successor sees one `p`-predecessor (the root) where the model has two
+(the root and the node itself), nothing is merged into the root, and the
+probe is satisfiable. The entry is correct for a root; the use is wrong for
+a node with a `p`-predecessor. Konclude's `isSatisfiableCachedCompatible`
+(cpp 6401-6460) tests the entry's branched universal, at-most and
+existential concepts against the link to the ancestor, and has no case for
+SELF, which acts here like an `∃p⁻` whose filler is the node itself. So the
+port is faithful and Konclude's test would accept the same entry; Konclude
+gives no reference on these seeds (section 20). This branch keeps the gate
+(fail closed) rather than extending Konclude's test: treating a branched
+positive `∃R.Self` as both `∃R` and `∃R⁻` in the existential arm of the
+test looks sufficient, but no argument here shows that the at-most and
+universal arms need nothing more. The gate costs nothing on the measured
+inputs (ore_ont_12128 answers as Konclude with it on the base and on this
+branch, in the same time).
 
 What the cache still rests on, as in Konclude: an entry's values are
 deterministic consequences of its prefix (dependency tracking; nominal nodes
