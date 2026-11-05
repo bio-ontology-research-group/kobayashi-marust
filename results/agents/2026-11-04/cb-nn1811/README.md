@@ -1,5 +1,22 @@
 # cb-nn1811: the nn1811 miss, a native-bridge defect behind a nominal route
 
+## Status (third agent, 2026-11-05 09:35, interim)
+
+State at takeover: commits 862ba3e5, ae5dbbae, 4b4cb4a3 and an uncommitted
+engine edit with Lean (the CB repair `Engine::offer_root_reach`), which I
+committed as 56cf6e56 after reading it. Done since: `lake build ContextCalculus`
+(rc 0, no `sorryAx`), gap fixtures and tests (067201c3, 10 tests in
+`engine/tests/cb_nn1811.rs` pass), NOMINALS-CB.md section 12 rewritten as
+repaired, target seeds 20 of 20 on `ht_bridge` and the automatic route with the
+CB repair (`data/targets-p1.tsv`).
+
+Found by running the held-out inputs, which the earlier agents had not done:
+ae5dbbae made ORE 3917 take more than 100 s (base 4.4 s). The cause is the
+quadratic `add_entailed_functional_clauses` (gdb: `convert_with_rule_abox`), not the CB
+repair. A linear rewrite with a reference test follows in the next commit. Every
+measurement below that was taken with `km-p1` (the binary before that rewrite)
+is void for timing and is repeated with the final binary.
+
 ## Status (continuation, 2026-11-04 23:55)
 
 A second agent took over after the first stopped. State found:

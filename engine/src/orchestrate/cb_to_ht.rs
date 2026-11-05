@@ -4799,6 +4799,273 @@ fn plain_functional_role(clause: &HtClause) -> Option<usize> {
 /// clause, so the view has the same models and every exact HT worker the
 /// same answers.
 fn add_entailed_functional_clauses(ht: &mut Vec<HtClause>) -> usize {
+    use std::collections::{BTreeSet, HashMap, HashSet};
+    fn positive_concept(atom: &HAtom) -> Option<(usize, usize)> {
+        match atom {
+            HAtom::Concept { neg: false, c, t } => Some((*c, *t)),
+            _ => None,
+        }
+    }
+    fn body_roles(clause: &HtClause) -> Vec<(usize, usize, usize)> {
+        clause
+            .body
+            .iter()
+            .filter_map(|atom| match atom {
+                HAtom::Role { r, s, t } => Some((*r, *s, *t)),
+                _ => None,
+            })
+            .collect()
+    }
+    // Every non-role body atom as a positive concept atom, or None.
+    fn body_concepts(clause: &HtClause) -> Option<Vec<(usize, usize)>> {
+        clause
+            .body
+            .iter()
+            .filter(|atom| !matches!(atom, HAtom::Role { .. }))
+            .map(positive_concept)
+            .collect()
+    }
+    // The at-most-1 clauses that could entail a functionality, and the roles
+    // that already have the plain clause. Without a candidate nothing can be
+    // added, and the analysis below (linear in the view, but a view of
+    // 100,000 clauses is common on ORE) is skipped.
+    struct Candidate {
+        role: usize,
+        hub: usize,
+        a: usize,
+        b: usize,
+        forward: bool,
+        concepts: Vec<(usize, usize)>,
+    }
+    let mut candidates: Vec<Candidate> = Vec::new();
+    let mut present: HashSet<usize> = HashSet::new();
+    for clause in ht.iter() {
+        if let Some(r) = plain_functional_role(clause) {
+            present.insert(r);
+            continue;
+        }
+        let [HAtom::Eq { s: e0, t: e1 }] = clause.head.as_slice() else { continue };
+        let roles = body_roles(clause);
+        let [(r0, s0, t0), (r1, s1, t1)] = roles.as_slice() else { continue };
+        if r0 != r1 {
+            continue;
+        }
+        // Forward: R(h,a) ∧ R(h,b); shared target: R(a,h) ∧ R(b,h).
+        let (hub, a, b, forward) = if s0 == s1 && t0 != t1 {
+            (*s0, *t0, *t1, true)
+        } else if t0 == t1 && s0 != s1 {
+            (*t0, *s0, *s1, false)
+        } else {
+            continue;
+        };
+        if hub == a || hub == b || (*e0.min(e1), *e0.max(e1)) != (a.min(b), a.max(b)) {
+            continue;
+        }
+        let Some(concepts) = body_concepts(clause) else { continue };
+        candidates.push(Candidate { role: *r0, hub, a, b, forward, concepts });
+    }
+    if candidates.is_empty() {
+        return 0;
+    }
+    // Role links `R(0,1) → S(1,0)` (inverse, swapped) and `R(0,1) → S(0,1)`
+    // (inclusion), as (R, S, swapped).
+    let mut links: Vec<(usize, usize, bool)> = Vec::new();
+    for clause in ht.iter() {
+        if let ([HAtom::Role { r, s, t }], [HAtom::Role { r: q, s: hs, t: hd }]) =
+            (clause.body.as_slice(), clause.head.as_slice())
+        {
+            if s == t {
+                continue;
+            }
+            if hs == t && hd == s {
+                links.push((*r, *q, true));
+            } else if hs == s && hd == t {
+                links.push((*r, *q, false));
+            }
+        }
+    }
+    // The implied concepts of a candidate role depend on its own clauses and,
+    // through the links, on the roles it links to: nothing else is consulted.
+    let mut relevant: HashSet<usize> = candidates.iter().map(|c| c.role).collect();
+    loop {
+        let before = relevant.len();
+        for &(r, q, _) in &links {
+            if relevant.contains(&r) {
+                relevant.insert(q);
+            }
+        }
+        if relevant.len() == before {
+            break;
+        }
+    }
+    // Universal concepts: the closure of unit facts under one-variable Horn
+    // clauses with positive concept atoms (forward chaining with one counter
+    // per clause).
+    let mut universal: HashSet<usize> = HashSet::new();
+    {
+        let mut need: Vec<usize> = Vec::new();
+        let mut head_of: Vec<usize> = Vec::new();
+        let mut watch: HashMap<usize, Vec<usize>> = HashMap::new();
+        let mut queue: Vec<usize> = Vec::new();
+        for clause in ht.iter() {
+            let [head] = clause.head.as_slice() else { continue };
+            let Some((c, t)) = positive_concept(head) else { continue };
+            let mut body: Vec<usize> = Vec::with_capacity(clause.body.len());
+            let mut eligible = true;
+            for atom in &clause.body {
+                match positive_concept(atom) {
+                    Some((b, bt)) if bt == t => body.push(b),
+                    _ => {
+                        eligible = false;
+                        break;
+                    }
+                }
+            }
+            if !eligible {
+                continue;
+            }
+            body.sort_unstable();
+            body.dedup();
+            let index = need.len();
+            need.push(body.len());
+            head_of.push(c);
+            if body.is_empty() {
+                queue.push(c);
+            } else {
+                for b in body {
+                    watch.entry(b).or_default().push(index);
+                }
+            }
+        }
+        while let Some(c) = queue.pop() {
+            if !universal.insert(c) {
+                continue;
+            }
+            if let Some(indices) = watch.get(&c) {
+                for &i in indices {
+                    need[i] -= 1;
+                    if need[i] == 0 {
+                        queue.push(head_of[i]);
+                    }
+                }
+            }
+        }
+    }
+    // (role, end, concept): the concept holds at the source (end `false`) or
+    // target (end `true`) of every role atom. Only relevant roles are tracked.
+    let mut implied: BTreeSet<(usize, bool, usize)> = BTreeSet::new();
+    // The (role, end) pairs with at least one implied concept.
+    let mut ends: BTreeSet<(usize, bool)> = BTreeSet::new();
+    let holds = |implied: &BTreeSet<(usize, bool, usize)>, role: usize, end: bool, c: usize| {
+        universal.contains(&c) || implied.contains(&(role, end, c))
+    };
+    struct OneRole {
+        r: usize,
+        s: usize,
+        u: usize,
+        c: usize,
+        t: usize,
+        concepts: Vec<(usize, usize)>,
+    }
+    let mut one_role: Vec<OneRole> = Vec::new();
+    let mut no_role: Vec<(usize, usize, Vec<(usize, usize)>)> = Vec::new();
+    for clause in ht.iter() {
+        let [head] = clause.head.as_slice() else { continue };
+        let Some((c, t)) = positive_concept(head) else { continue };
+        let Some(concepts) = body_concepts(clause) else { continue };
+        match body_roles(clause).as_slice() {
+            // R(s,u) ∧ concepts on s or u → C(s) or C(u).
+            [(r, s, u)] if s != u && (t == *s || t == *u) && relevant.contains(r) => {
+                one_role.push(OneRole { r: *r, s: *s, u: *u, c, t, concepts });
+            }
+            // Concepts on the head variable → C, at every role end.
+            [] => no_role.push((c, t, concepts)),
+            _ => {}
+        }
+    }
+    loop {
+        let mut changed = false;
+        for rule in &one_role {
+            let ok = rule.concepts.iter().all(|&(b, bt)| {
+                (bt == rule.s && holds(&implied, rule.r, false, b))
+                    || (bt == rule.u && holds(&implied, rule.r, true, b))
+            });
+            if ok && implied.insert((rule.r, rule.t == rule.u, rule.c)) {
+                ends.insert((rule.r, rule.t == rule.u));
+                changed = true;
+            }
+        }
+        let snapshot: Vec<(usize, bool)> = ends.iter().copied().collect();
+        for (c, t, concepts) in &no_role {
+            for &(r, e) in &snapshot {
+                if concepts.iter().all(|&(b, bt)| bt == *t && holds(&implied, r, e, b))
+                    && implied.insert((r, e, *c))
+                {
+                    ends.insert((r, e));
+                    changed = true;
+                }
+            }
+        }
+        for &(r, q, swapped) in &links {
+            if !relevant.contains(&r) {
+                continue;
+            }
+            // r(x,y) → q(y,x) (or q(x,y)): what holds at an end of every
+            // q-atom holds at the matching end of every r-atom.
+            let from_q: Vec<(bool, usize)> = implied
+                .range((q, false, 0)..=(q, true, usize::MAX))
+                .map(|&(_, e, c)| (e, c))
+                .collect();
+            for (e, c) in from_q {
+                if implied.insert((r, e ^ swapped, c)) {
+                    ends.insert((r, e ^ swapped));
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    let mut functional: BTreeSet<usize> = BTreeSet::new();
+    for cand in &candidates {
+        // The hub is the source of R in the forward orientation.
+        let trivial = cand.concepts.iter().all(|&(c, t)| {
+            if t == cand.hub {
+                holds(&implied, cand.role, !cand.forward, c)
+            } else if t == cand.a || t == cand.b {
+                holds(&implied, cand.role, cand.forward, c)
+            } else {
+                false
+            }
+        });
+        if !trivial {
+            continue;
+        }
+        if cand.forward {
+            functional.insert(cand.role);
+        } else {
+            for &(s, q, swapped) in &links {
+                if swapped && q == cand.role {
+                    functional.insert(s);
+                }
+            }
+        }
+    }
+    let mut added = 0;
+    for role in functional {
+        if present.insert(role) {
+            ht.push(functional_clause(role));
+            added += 1;
+        }
+    }
+    added
+}
+
+/// The first version of the pass (quadratic in the view), kept to test the
+/// current one against it.
+#[cfg(test)]
+fn add_entailed_functional_clauses_reference(ht: &mut Vec<HtClause>) -> usize {
     use std::collections::{BTreeSet, HashSet};
     fn positive_concept(atom: &HAtom) -> Option<(usize, usize)> {
         match atom {
@@ -5031,6 +5298,59 @@ mod entailed_functional_tests {
             cl(vec![r(0, 0, 1)], vec![r(1, 1, 0)]),
         ];
         assert_eq!(added(ht), vec![functional_clause(1)]);
+    }
+
+    /// The pass equals its first (quadratic) version on random small views
+    /// that mix unit facts, one-variable Horn clauses, role-guarded
+    /// implications, role links, at-most clauses in both orientations and
+    /// plain functionality clauses.
+    #[test]
+    fn matches_the_reference_on_random_views() {
+        use super::add_entailed_functional_clauses_reference;
+        let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
+        let mut next = move |n: usize| -> usize {
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            ((state >> 33) as usize) % n
+        };
+        let mut nonempty = 0;
+        for case in 0..6000 {
+            let mut ht: Vec<HtClause> = Vec::new();
+            for _ in 0..(2 + next(10)) {
+                let role = next(3);
+                let clause = match next(9) {
+                    0 => cl(vec![], vec![c(next(5), next(3))]),
+                    1 => cl(vec![c(next(5), 0)], vec![c(next(5), 0)]),
+                    2 => cl(vec![c(next(5), 0), c(next(5), 0)], vec![c(next(5), 0)]),
+                    3 => cl(vec![c(next(5), 1), r(role, 0, 1)], vec![c(next(5), 0)]),
+                    4 => cl(vec![c(next(5), 0), r(role, 0, 1)], vec![c(next(5), 1)]),
+                    5 => {
+                        let to = next(3);
+                        let head = if next(2) == 0 { r(to, 1, 0) } else { r(to, 0, 1) };
+                        cl(vec![r(role, 0, 1)], vec![head])
+                    }
+                    6 => cl(
+                        vec![c(next(5), 1), c(next(5), 2), c(next(5), 0), r(role, 0, 1), r(role, 0, 2)],
+                        vec![eq(1, 2)],
+                    ),
+                    7 => cl(
+                        vec![c(next(5), 1), c(next(5), 2), c(next(5), 0), r(role, 1, 0), r(role, 2, 0)],
+                        vec![eq(1, 2)],
+                    ),
+                    _ => cl(vec![r(role, 0, 1), r(role, 0, 2)], vec![eq(1, 2)]),
+                };
+                ht.push(clause);
+            }
+            let mut fast = ht.clone();
+            let mut slow = ht.clone();
+            let n_fast = add_entailed_functional_clauses(&mut fast);
+            let n_slow = add_entailed_functional_clauses_reference(&mut slow);
+            assert_eq!(n_fast, n_slow, "case {case}: {ht:?}");
+            assert_eq!(fast, slow, "case {case}: {ht:?}");
+            if n_fast > 0 {
+                nonempty += 1;
+            }
+        }
+        assert!(nonempty > 100, "the generator rarely adds a clause: {nonempty}");
     }
 
     /// A guard or filler that the view does not force (`D ⊑ ≤1 s`,
