@@ -246,4 +246,108 @@ equality disjunctions over fresh nominals; `ht_bridge`, `certified_nominals`
 and the automatic route answer all four as HermiT in 0.01 to 0.02 s (20 of 20
 runs each).
 
+## Target seeds and reductions (20 runs per route, final binary `km-p2`)
+
+`tools/runs20.sh`, release flags (`data/targets-p2.tsv`,
+`data/targets-routes-p2.tsv`):
+
+| seeds | routes | runs | verdict | max wall (s) |
+|---|---|---|---|---|
+| `nn1811`, `r1`, `r3`, `r5`, `r12`, `r13`, `r17`, `r19`, `m1`, `m2`, `m6`, `m7`, `m8`, `m9`, `m10`, `m11`, `m12`, `fx12` (18 inputs) | `ht_bridge`, `auto`, `certified_nominals` | 20 per route (1,080 runs) | 1,080 / 1,080 ok | 0.14 (`nn1811`), 0.02 (all others) |
+| `r1`, `r5`, `r12`, `r13`, `r17`, `r19` (6 reductions) | `nominals`, `cb_plain1`, `nominal_ni_abox`, `certified_card_proxy_abox`, `production_all` | 20 per route (600 runs) | 600 / 600 ok | 0.02 |
+| `m2`, `m6`, `m8`, `m9`, `m11`, `m12` (6 gap inputs) | `nominals` | 20 per input (120 runs) | 120 / 120 ok | 0.02 |
+
+On `nn1811`, `r3`, `m1`, `m7`, `m10` and `fx12`, `--route nominals` times out
+with no wrong answer.
+
 FAMILY_PLACEHOLDER
+
+## Differential pools (`tools/pools.sh`, `tools/pools_complete.py`, 60 s cap)
+
+All 21 gold-backed pools of earlier agents (`.work/agent-scratch/bridge-self/pools/*`,
+`bridge-self/{pool,regress,micro}`, `bridge-m413/{respool,kseeds,k2seeds}`,
+`cb-s974/{fam-merge,fam-vacuous}`, `bridge-reflexive/{fam,seeds20}`,
+`bridge-nn-rule/fam`: 19,790 seeds, routes `ht_bridge` and `auto` = 39,580
+seed-routes; `data/pools-summary.txt`):
+
+| route | binary | ok | WRONG | TIMEOUT | ERR / NOANSWER |
+|---|---|---|---|---|---|
+| `auto` | `km-base` | 19,631 | 20 | 135 | 4 |
+| `auto` | `km-p2` | 19,625 | 15 | 146 | 4 |
+| `ht_bridge` | `km-base` | 18,236 | 5 | 65 | 1,484 |
+| `ht_bridge` | `km-p2` | 18,239 | 1 | 59 | 1,491 |
+
+- **0 new wrong answers** (`new wrong vs base: 0`).
+- **9 wrong seed-routes fixed** in `bridge-nn-rule-fam`: `nn1811` (`auto`),
+  `nn1064` (`ht_bridge`, `auto`), `nn1116` (`ht_bridge`, `auto`), `nn1313`
+  (`ht_bridge`, `auto`), and `nn1348` (`ht_bridge`, `auto`) all move from
+  `WRONG` to `ok`.
+- The remaining `WRONG` rows are all pre-existing and identical to base:
+  `nn5` on `ht_bridge` and `auto` in `bridge-nn-rule-fam` (the seed where
+  HermiT's gold is wrong, `docs/HYBRID-CB-HT.md` section 22), and the 14
+  `auto` rows on `bridge-m413-respool` (7),
+  `bridge-self-pools-res-data-values-3` (6), and
+  `bridge-self-pools-res-lean-data-values` (1) (documented facet/string
+  corners, `docs/DATATYPES.md` and `docs/V1.5.5-STATUS.md`).
+
+## The 16 held-out ORE inputs (`tools/heldout_seq.sh`, 240 s cap, one at a time)
+
+Paired `km-base` (`48a1113b`) and `km-p2` (`eea918f1`), release flags
+(`data/heldout-summary.tsv`):
+
+| ORE input | base wall (s) | new wall (s) | base RSS (GiB) | new RSS (GiB) | reference verdicts (both identical) |
+|---|---|---|---|---|---|
+| 4903 | 3.65 | 3.57 | 0.18 | 0.19 | konclude=agreement |
+| 11647 | 4.49 | 4.41 | 0.24 | 0.25 | konclude=agreement hermit=agreement openllet=agreement |
+| 4796 | 3.07 | 3.11 | 0.20 | 0.20 | konclude=agreement openllet=agreement jfact=agreement |
+| 3917 | 4.95 | 4.95 | 0.26 | 0.27 | konclude=agreement jfact=consistency_disagreement |
+| 11378 | 6.19 | 6.62 | 0.31 | 0.31 | konclude=agreement jfact=consistency_disagreement |
+| 12191 | 6.18 | 6.17 | 0.32 | 0.31 | konclude=agreement jfact=consistency_disagreement |
+| 9151 | 58.69 | 57.85 | 0.63 | 0.63 | konclude=agreement jfact=consistency_disagreement |
+| 9577 | 81.18 | 83.49 | 0.66 | 0.67 | konclude=agreement jfact=consistency_disagreement |
+| 6132 | 21.27 | 20.75 | 0.51 | 0.51 | konclude=agreement hermit=agreement |
+| 9899 | 22.44 | 22.82 | 0.51 | 0.51 | konclude=agreement hermit=agreement |
+| 16315 | 28.21 | 28.81 | 1.33 | 1.33 | konclude=agreement |
+| 10838 | 60.59 | 60.27 | 2.35 | 2.35 | konclude=agreement |
+| 3087 | 60.91 | 66.12 | 2.47 | 2.47 | konclude=agreement |
+| 7557 | 95.59 | 100.91 | 3.18 | 3.17 | konclude=agreement |
+| 12128 | 38.03 | 39.59 | 2.20 | 2.22 | konclude=agreement |
+| 10926 | 241.12 (rc=124) | 241.03 (rc=124) | 18.01 | 18.02 | timeout on both |
+
+15 of 16 answer on both binaries and agree with Konclude; 10926 times out on
+both at 18 GiB. Total wall time on the 15 answered inputs: base 495.4 s, new
+509.4 s (ratio 1.028; mean per-input ratio 1.012, median 1.000).
+
+## The 112 nominal ORE design-half inputs (`tools/ore_nominal_seq.sh`, 300 s cap, one at a time)
+
+Paired sequential run (`data/ore-nominal-pair.txt`):
+
+- **104 answered by both binaries, 104 identical signatures (`differ []`)**.
+- **0 route changes**, **0 coverage guard firings**.
+- Time ratio `new/base` over the 33 inputs above 1 s: **mean 0.994, median
+  0.995, max 1.15** (`ore_ont_668`: 2.80 s to 3.21 s).
+- One borderline timeout at the 300 s cap: `ore_ont_3077` finished at 293.9 s
+  in the `before` pass and hit the 300.0 s cap in the `after` pass (ratio
+  1.021); `ore_ont_3077` routes to `ht_bridge` and `cb_to_ht [entailed-functional]`
+  adds `+0 functional clauses`, so both binaries execute the identical HT view
+  and worker.
+
+## C1 regression-pool sample (`tools/c1_pair.sh`, 300 inputs, 60 s cap)
+
+300 inputs drawn with `random.Random(1811)` from the 1,708 admitted rows of
+`.work/v152-correctness-1920/full-candidate-inputs-ws.json`
+(`tools/c1-sample-300.txt`), run side by side with `km-base` and `km-p2` under
+release flags (`data/c1-sample-300-summary.tsv`):
+
+- 294 answered (`rc=0`) by both binaries, 5 timeouts (`rc=124`) on both, 1
+  exactness refusal (`rc=3`, `ore_ont_8250`) on both; **0 status changes**.
+- **0 reference-verdict differences** between `km-base` and `km-p2` across all
+  294 answered inputs. Konclude comparison on the 294 answers: 284 `agreement`,
+  7 `inconsistent_agreement`, and 3 known adjudicated disagreements identical
+  on base and new (`ore_ont_3794`, `ore_ont_6333` where Openllet and JFact
+  agree with KM, and `ore_ont_9540` where HermiT agrees with KM).
+- Time ratio `new/base` over the 83 inputs above 1 s: **mean 0.995, median
+  1.001, max 1.101**.
+- Publication coverage guard fired 0 times.
+
+TESTS_PLACEHOLDER
