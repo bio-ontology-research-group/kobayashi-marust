@@ -3009,6 +3009,65 @@ on the forced bridge. Two causes multiply.
 slots, alternatives, base track point); `KM_HT_NN_DISTINCT_FIRST=1`
 (diagnostic) puts the new-representative alternative first.
 
+**Follow-up: the track point of the saturated initialisation (continuation,
+c886e3f9).** With the change above, `nn1153` lost the answer that 48a found
+(base 0.03 s, 48a 21 to 29 s, branch over the cap on both routes). With
+`KM_BRIDGE_NO_LEAF_REUSE=1` both 48a and the branch time out, and with
+`KM_HT_NO_NN_RULE=1` the branch answers in 0.03 s: 48a found the models on
+the leaf after its own chronological search, and the branch hands those jobs
+to the base, where the same search runs. The reduction `n1153min` (ten
+axioms, slow on the branch with leaf reuse off, 0.04 s on the base) shows
+why the search is chronological. Every `fallback-nomark` of its DDB walk (1230
+in 5 s) follows a clash whose collected closure holds a tracked descriptor
+without a track point (`KM_BRIDGE_DUMP_CLASH=1`, now also dumped at each
+`fallback-nomark`): an AND dependency node at process tag 0 with no previous
+track point. `initialize_tracking_line` rejects a line with a tracking error,
+as Konclude does, so the analysis marks nothing and the walk backtracks
+chronologically through the 40 to 50 open disjunctions of the probe.
+
+The AND nodes come from `try_initializing_concept_from_saturated_data`
+(`completion/u17.rs`, Konclude's `tryInitializingConceptFromSaturatedData`):
+it reads the concept back with `getConceptDescriptorAndReapplyQueue(concept,
+conDes, conDep, ...)` and builds `createANDDependency(expandDep, indi, conDes,
+conDep)`, and its clash branch builds `createClashedConceptDescriptor(...,
+conDes, conDep)`. The port used the ctx-less label-set lookup, whose
+track-point output is a stub that returns NONE (`ls1.rs`,
+`con_des_dep_track_point`); other callers resolve the descriptor's track point
+themselves (`u09.rs`, `u14.rs`, `sat_node_exp_handler.rs`), these two did not.
+Both now use the context-threaded lookup, which returns
+`conDes->getDependencyTrackPoint()`. The defect is older than the NN-rule; it
+shows on `nn1153` only with the NN-rule on, whose deeper probe search (40 to
+50 open disjunctions next to the functional arm's new nominals) meets such a
+clash. Which node of that search is initialised from saturated data was not
+traced further.
+
+*Exactness.* The change replaces a missing dependency by the one Konclude
+records; it adds no fact and removes none. It changes two things. First, the
+clash analysis: before, any clash through such a node aborted the analysis
+(sound, the safety net backtracks chronologically); now the analysis follows
+the descriptor's dependency, which is the dependency under which the concept
+was added, so a backjump over a decision the clash does not depend on skips
+no model, and the root cancellation of section 16 gets the complete closure
+it needs. Second, the branching tag of the AND node: `update_dependency_branching_tag`
+derives it from the previous track point, and without one the node got the
+root tag, so `has_nondeterministic_dependency` (cache writes, reuse and
+expansion decisions in `u20`, `u24`, `u25`, `u27`, `u36`) could treat the
+expansion of a concept added under a decision as deterministic. Now it
+carries the decision's tag. Both effects remove an assumption the port had no
+grounds for; neither can make a verdict depend on a fact that fails in some
+model of the branch.
+
+*Effect.* `nn1153`: 0.04 s on both routes (20 runs each, below); `n1153min`
+with leaf reuse off: 0.09 s.
+
+*Not changed.* Three more callers read a track point from the ctx-less stub
+and use it without resolving it: the satisfiability-cache clash in
+`unsat_handler.rs` (around line 355) and the two connection dependencies of
+the variable-binding implication in `u06.rs` (around lines 1724 and 1814). A
+clash through them is a tracking error, which is sound (chronological
+fallback) but slow. They are outside this task and are left for a separate
+change with its own validation.
+
 **Termination argument.** Fix a branch line (a path of alternatives through
 the search tree) and a nominal node `x` with a restriction `≤n R.C`.
 
@@ -3041,6 +3100,59 @@ the search tree) and a nominal node `x` with a restriction `≤n R.C`.
   not reproved for the port. Section 22's argument rested on the recomputed
   slots and did not hold.
 - *Leaf jobs.* Ending a job adds no step; it shortens the search.
+
+*Completion of the argument (continuation, 2026-11-04).* The bullets above
+bound the general arm per restriction. The following closes the remaining
+gaps that concern the port; the last item names what is taken from the SROIQ
+proof.
+
+- *The functional arm.* For an unqualified `≤1 R` at a nominal `x`, the arm
+  creates a nominal only when `x` has no nominal `R`-neighbour
+  (`createNominalsSuccessorIndividuals(..., 1)`, between the pre-scan, cpp
+  14756-14777, and the merge loop, cpp 14812-14864), and then merges
+  every other `R`-neighbour into it. The link from `x` to a nominal never
+  disappears on the line: a nominal leaves the line only by merging into
+  another nominal, and the merge relocates the link
+  (`ht_relocate_incoming_links`). Hence the functional arm creates at most one
+  nominal per `(x, R)` per line. Each pass of its merge loop removes one live
+  `R`-neighbour, so one application ends after at most as many merges as `x`
+  has `R`-neighbours.
+- *One application of the general arm* takes one candidate and pushes one
+  branch point with at most `|reps| + 1 ≤ n + 1` alternatives; it creates no
+  node except, in the new-representative alternative, the one nominal that
+  replaces the candidate.
+- *Nominal nodes per level.* Call `K` the sum of `n` over the at-most
+  restrictions `≤n R.C` of the normalized TBox plus the number of roles.
+  Nominal nodes of level 0 are the ABox nominals; a node of level `l + 1`
+  comes into being only through an NN-rule step at a node of level `l` that
+  spends a slot (general arm) or uses its one creation for `(x, R)`
+  (functional arm). Merging never creates a node, and a node merged away does
+  not return its slot or its creation. By induction on `l`, at most
+  `N₀ · Kˡ` nominal nodes of level `l` ever exist on a line, where `N₀` is the
+  number of ABox nominals. Neither rollback nor the leaf reruns change this:
+  the states are journaled with their nodes, so a rollback moves to another
+  line rather than refunding a slot on the same one.
+- *Finite search tree.* Every branch point has finitely many alternatives
+  (disjunctions, choose decisions with two, merge decisions with at most the
+  number of mergeable pairs, NN decisions with at most `n + 1`). If every line
+  is finite, the tree is finite by König's lemma. The DDB backjump and the
+  closed-decision discard only remove subtrees; the chronological fallback
+  walks the same tree; a leaf job that ends is followed by exactly one rerun of
+  the unchanged job on the base (`bridge.rs`, the reuse branch point of
+  section 16 has two alternatives), so the number of runs per subject is at
+  most two.
+- *Taken from the SROIQ proof.* A line is finite if the nominal levels are
+  bounded and the blockable parts are finite. Both are the steps of Horrocks,
+  Kutz and Sattler (2006, building on Horrocks and Sattler's SHOIQ proof):
+  levels are bounded because the NN-rule applies at `x` only to a blockable
+  neighbour that created its link to `x` (the blockable predecessor case),
+  and blocking bounds the depth of the trees below each nominal and the
+  prune-and-regrow cycles of merges. The port inherits the precondition
+  (`isCandidateBlockableAndCreator`, the creator test of both arms) and
+  Konclude's blocking and merge pruning, which this branch does not change.
+  These two steps are not reproved for the port: the argument here shows the
+  port meets the per-restriction and per-level hypotheses that the cited proof
+  uses, which section 22's recomputed slots did not.
 
 This is an argument about the port's procedure, checked by tests and
 differentially (below), not a machine-checked proof.
@@ -3078,51 +3190,59 @@ differentially (below), not a machine-checked proof.
   now finds it in the fallback.
 
 **Results** (`results/agents/2026-11-04/bridge-nn-term/README.md`; release
-flags, 120 s cap for the seeds; base 1ffee4a6, 48a = 48a1113b).
+flags, 120 s cap for the seeds and reductions; base 1ffee4a6, 48a = 48a1113b).
 
-| seed | base auto / `ht_bridge` | 48a auto / `ht_bridge` | branch, 3 runs, auto / `ht_bridge` |
+| seed | base auto / `ht_bridge` | 48a auto / `ht_bridge` | branch, 20 runs, auto / `ht_bridge` |
 |---|---|---|---|
-| `nn1333` | 0.48 / 0.52 s | 96 / 95 s | 4.9 to 8.3 / 4.9 to 6.5 s |
-| `nn346` | 0.02 / 0.02 s | 100 / 91 s | 0.02 to 0.03 / 0.03 s |
-| `nn952` | 0.02 / 0.02 s | 58 / 58 s | 0.05 / 0.03 s |
-| `nn745` | 0.10 / 0.06 s | 38 / 30 s | 0.06 to 0.11 / 0.09 to 0.10 s |
-| `nn1957` | 31 / 32 s | > 120 / > 120 s | 0.06 / 0.05 s |
-| `nn777` | 38 / 30 s | > 120 s / defer at 60 s | 0.03 / 0.03 to 0.04 s |
-| `nn969` | 8.1 / 38 s | 8.1 / 36 s | 8.1 / 36 to 42 s |
+| `nn1333` | 0.48 / 0.52 s | 96.0 / 95.3 s | 4.41 to 4.79 / 4.26 to 4.62 s |
+| `nn346` | 0.02 / 0.02 s | 99.7 / 91.1 s | 0.02 to 0.03 / 0.02 s |
+| `nn952` | 0.02 / 0.02 s | 57.7 / 57.5 s | 0.03 to 0.04 / 0.02 to 0.04 s |
+| `nn745` | 0.10 / 0.06 s | 38.5 / 30.4 s | 0.06 to 0.08 / 0.06 to 0.09 s |
+| `nn1957` | 30.6 / 31.5 s | > 120 / > 120 s | 0.03 to 0.05 / 0.03 to 0.05 s |
+| `nn777` | 38.4 / 30.3 s | > 120 s / defer at 60.5 s | 0.03 to 0.04 / 0.03 to 0.07 s |
+| `nn969` | 8.11 / 37.8 s | 8.11 / 35.7 s | 8.09 to 8.11 / 30.6 to 32.8 s |
+| `nn1153` | 0.03 / 0.03 s | 29.2 / 21.6 s | 0.04 to 0.05 / 0.03 to 0.04 s |
+| `hang952` | 0.39 / 0.39 s | 1.81 / 11.8 s | 0.02 to 0.03 / 0.01 to 0.03 s |
+| `m1` | 0.02 / 0.01 s | 0.98 / 0.95 s | 0.01 to 0.02 / 0.01 s |
+| `n1153min` | 0.03 / 0.03 s | 31.6 / 22.7 s | 0.04 to 0.05 / 0.03 to 0.04 s |
+| `n1333min` | 0.49 / 0.54 s | 95.0 / 95.1 s | 4.43 to 4.70 / 4.34 to 4.72 s |
+| `n745min` | 0.02 / 0.02 s | 68.5 / 60.4 s | 0.02 / 0.02 s |
+| `nn346-batch` | 0.02 / 0.02 s | 38.2 / 30.2 s | 0.02 to 0.03 / 0.02 s |
+| `xbmin` | 0.02 / 0.01 s | 21.0 / 12.7 s | 0.02 / 0.02 s |
 
-All 42 branch runs agree with HermiT. `nn1333` stays ten times slower than
-the base: its time goes into the KM-specific batch refutation (one probe of
+All 600 branch runs (15 inputs, two routes, 20 runs each) agree with HermiT
+and Konclude 0.7.0. `nn1333` stays nine times slower than the base: its time
+goes into the KM-specific batch refutation (one probe of
 `s ⊓ ¬c1 ⊓ … ⊓ ¬c5`, `bridge.rs`), whose NN search the base never runs
 (1.3 s with `KM_BRIDGE_NO_BATCH_REFUTATION=1`); `nn969` is as slow as on the
 base, and as slow with `KM_HT_NO_NN_RULE=1` (39 s), so its cost is not the
-NN-rule's. On the
-reductions `xbmin` and `hang952` the branch answers in 0.02 to 0.03 s
-(48a: 13.5 s and 25 s; base 0.01 and 0.03 s; Konclude 11 and 18 ms).
+NN-rule's.
 
 The NN family (2,000 seeds, three runs, both routes, 60 s automatic, 30 s
-forced): of the 499 seed-routes the base answers wrongly, 474 agree with
-HermiT in all three branch runs (48a: 464, all still right); 22 seed-routes
-are right in all branch runs and not in every 48a run. The branch answers no
-seed-route wrongly that 48a or the base answers rightly; the wrong
-seed-routes are the six seeds of section 22, all wrong on the base. Three
-seed-routes lose an answer that 48a has: `nn1153` on both routes (base
-0.0 s, 48a 21 to 29 s, branch over the cap) and `nn568` automatic (48a 39 s,
-branch 50 to 55 s, one timeout in three). On `nn1153` the leaf jobs that now
-end hand their subjects to the fallback job on the base, whose search falls
-back to chronological backtracking 40,000 times in 15 s (disjunctions whose
-first alternative was left unmarked by an earlier chronological advance, next
-to pairwise at-most merges at the functional arm's new nominals); 48a found
-those subjects' models on the leaf after its own chronological search. A
-narrower rule (end only on NN-rule clashes) keeps `nn1153` at 26 s but
-leaves `nn1333` at 33 s or over 60 s and `nn1957` at 54 s, so the branch
-keeps the general rule.
+forced): of the 499 seed-routes the base answers wrongly, 484 agree with
+HermiT in all three branch runs (48a: 464, all still right on the branch; 20
+more recovered on the branch: `nn1163`, `nn1170`, `nn164`, `nn427`, `nn519`,
+`nn584`, `nn635`, `nn668`, `nn798` on both routes, and `nn1450` and `nn1484`
+on `ht_bridge`). In all, 32 seed-routes are right in all three branch runs
+and not in every 48a run, and 0 seed-routes that are right in all three 48a
+runs fail on any branch run. Timeouts across the 6,000 runs per route drop
+from 62 (automatic) and 83 (`ht_bridge`) on 48a to 18 (6 seeds) and 30 (10
+seeds) on the branch. The branch answers no seed-route wrongly that 48a or
+the base answers rightly; the wrong seed-routes are the six seeds of section
+22, all wrong on the base.
 
-The 16 held-out inputs: identical output on all 16 (10926 times out on both
-at 18 GiB), wall times within noise of 48a (4796 4.3 to 0.8 s, 16315 36 to
-27 s, 7557 109 to 94 s; largest increase 4903 4.8 to 6.1 s). The 112
-nominal design-half inputs: 109 answered by both, 109 identical signatures,
-no status or route change, coverage guard 0. The sequential run of the
-branch came 25 min after the 48a run at a host load of 50 against 30, and
-its time ratio over the 26 inputs above 1 s was 1.38 (median 1.42); the ten
-inputs with the largest ratios, rerun alternately (48a, branch, 48a,
-branch), took 107.4 s on 48a and 108.0 s on the branch in total.
+The gold-backed differential pools of earlier agents (21 pools, 17,804 seeds,
+35,608 seed-route runs across `ht_bridge` and the automatic route): 33,954 ok,
+1,486 forced-route refusals (`ERR`), 154 timeouts, 14 pre-existing data-value
+misses (`res-data-values-3`, `res-lean-data-values`, `bridge-m413-respool`);
+20 of the 21 pools match the 48a verdicts on every seed and route, and the two
+`ok`/`TIMEOUT` flips in `bridge-reflexive-fam` (`refl1575` and `refl352`
+automatic, where `ht_bridge` defers and the CB fallback runs near the 60 s
+cap) also time out on 48a when rerun (`data/pools/refl-check-48a.tsv`), for 0
+new differences. The 16 held-out inputs: identical output on all 16 (10926
+times out on both at 18.0 GiB), wall times equal or faster on every answered
+input (4796 4.3 to 0.76 s, 4903 4.8 to 3.5 s, 11647 7.0 to 4.2 s, 16315 36.2
+to 28.7 s, 10838 66.6 to 59.0 s, 3087 76.4 to 60.7 s, 7557 108.9 to 97.0 s).
+The 112 nominal design-half inputs: 109 answered by both, 109 identical
+signatures, no status or route change, coverage guard 0, time ratio over the
+26 inputs above 1 s: mean 1.012, median 0.953.

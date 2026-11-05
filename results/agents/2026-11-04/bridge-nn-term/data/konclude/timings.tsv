@@ -1,11 +1,16 @@
 input	konclude_classification_ms	vs_hermit
-hang952	18	no gold
+hang952	18	ok
+m1	7	ok
+n1153min	12	ok
+n1333min	34	ok
+n745min	8	ok
+nn1153	12	ok
 nn1333	75	ok
 nn1957	31	ok
 nn346	18	ok
+nn346-batch	8	ok
 nn745	54	ok
 nn777	37	ok
 nn952	14	ok
 nn969	19	ok
-xbmin	11	no gold
-n1333min	47	no gold
+xbmin	11	ok
