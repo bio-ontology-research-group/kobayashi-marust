@@ -3189,4 +3189,29 @@ Konclude makes are made. None of these is machine-checked; the bridge has
 no Lean model, and the arguments above are checked differentially against
 HermiT only.
 
-RESULTS23-PLACEHOLDER
+**Results** (`results/agents/2026-11-04/bridge-satcache/README.md`).
+`nn1064`, `nn1064min`, `nn1313`, `nn1313min`, `nn1348`, `nn1348min`,
+`sat1096`, `sat1096min` and `m53tiny`, the 14 SELF fixtures of `bridge_self`
+and the 7 fixtures of `bridge_reflexive` agree with HermiT on `ht_bridge` and
+on the automatic route in 20 of 20 runs (base: the first eight wrong on both
+routes; `m53tiny` and `m53` wrong on both routes under
+`KM_BRIDGE_SAT_REFUSE_SELF=1`, now exact). `nn1116` remains wrong on both
+routes (the `⊤`-qualified `≤1 s⁻.⊤` takes the NN-rule's general arm instead
+of its functional arm; handed to `fix/v155-bridge-nn-term`). A sibling family
+of 2,000 generated seeds (`tools/gen_sat.py`, HermiT gold for 1,883) has 12
+wrong seed-routes over 6 seeds on the base (`sat1090`, `sat1096`, `sat1711`,
+`sat311`, `sat462`, `sat578`, both routes) and 6 wrong rows over 1 seed on
+this branch (`sat578`, 3 of 3 runs on each route, not a cache defect: it
+still fails with `KM_HT_NO_SAT_EXP_CACHE=1`). All five cache-defect seeds
+agree with HermiT in 3 of 3 runs on both routes, and paired timing of the
+slower seeds shows no slowdown against the base. In the 24 gold-backed pools
+(19,820 seeds, 39,642 seed-routes, 60 s cap), `nn1064`, `nn1313` and `nn1348`
+move from wrong to ok on both routes, `nn1811` moves from a wrong answer at
+37 s (which `KM_HT_NO_SAT_EXP_CACHE=1` also prevented on the base) to a 60 s
+timeout, and no seed becomes wrong. The 16 held-out ORE inputs (including
+four paired 240 s runs on `ore_ont_12128`, all in agreement with Konclude)
+and the 112 nominal ORE design-half inputs (109 answered by both, 109
+identical signatures, mean time ratio 1.001, median 0.997) keep their answers
+and times within noise. The library test suite has the 21 baseline
+checker-bound failures and all 92 integration targets pass, including
+`engine/tests/bridge_satcache.rs`.

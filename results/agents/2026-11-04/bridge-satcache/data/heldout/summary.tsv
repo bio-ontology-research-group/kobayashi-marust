@@ -52,3 +52,5 @@
 10926	pair-base	rc=124	wall=241.09	rss_gib=18.01	
 12128	pair-base	rc=0	wall=40.806	rss_gib=2.20	konclude=agreement 
 12128	pair-new	rc=0	wall=40.890	rss_gib=2.20	konclude=agreement 
+12128	final-new	rc=0	wall=36.988	rss_gib=2.20	konclude=agreement 
+12128	final-base	rc=0	wall=38.729	rss_gib=2.20	konclude=agreement 

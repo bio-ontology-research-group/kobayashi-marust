@@ -28,3 +28,9 @@ sat440.ofn	ht_bridge	3	ok	6.68	ok	6.61
 sat440.ofn	auto	1	ok	6.58	ok	6.80
 sat440.ofn	auto	2	ok	6.87	ok	6.67
 sat440.ofn	auto	3	ok	6.64	ok	6.56
+sat1864.ofn	ht_bridge	1	ok	0.01	ok	0.01
+sat1864.ofn	ht_bridge	2	ok	0.01	ok	0.01
+sat1864.ofn	ht_bridge	3	ok	0.01	ok	0.01
+sat1864.ofn	auto	1	ok	0.02	ok	0.02
+sat1864.ofn	auto	2	ok	0.02	ok	0.02
+sat1864.ofn	auto	3	ok	0.02	ok	0.01

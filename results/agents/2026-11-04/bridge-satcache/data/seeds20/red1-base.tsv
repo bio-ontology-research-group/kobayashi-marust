@@ -18,3 +18,5 @@
 /mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-satcache/red/nn1348.ofn	auto	1	WRONG	0.02	missing=[('Q5', 'Q4')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
 /mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-satcache/red/sat1096min.ofn	ht_bridge	1	WRONG	0.10	missing=[('Q4', 'Q2'), ('Q5', 'Q2'), ('Q5', 'Q4')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
 /mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-satcache/red/sat1096min.ofn	auto	1	WRONG	0.09	missing=[('Q4', 'Q2'), ('Q5', 'Q2'), ('Q5', 'Q4')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-satcache/red/sat1096.ofn	ht_bridge	1	WRONG	0.12	missing=[('Q4', 'Q2'), ('Q5', 'Q2'), ('Q5', 'Q4')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-satcache/red/sat1096.ofn	auto	1	WRONG	0.12	missing=[('Q4', 'Q2'), ('Q5', 'Q2'), ('Q5', 'Q4')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
