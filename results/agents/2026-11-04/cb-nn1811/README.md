@@ -1,6 +1,6 @@
 # cb-nn1811: the nn1811 miss, a native-bridge defect behind a nominal route
 
-## Status (fourth agent, 2026-11-05 17:00, continuation)
+## Status (fourth agent, 2026-11-05 19:30, final)
 
 State at takeover: commits 862ba3e5, ae5dbbae, 4b4cb4a3, 56cf6e56, 067201c3 and
 eea918f1 (`km-p2`, sha256 `afcfbfe5…`), plus an uncommitted edit in
@@ -8,10 +8,26 @@ eea918f1 (`km-p2`, sha256 `afcfbfe5…`), plus an uncommitted edit in
 pass) and partial `km-p2` validation runs (`data/targets-p2.tsv`,
 `data/family-p2.tsv` at 2,673 of 12,000 rows, `data/lean-audit.txt`, and 15.5 of
 the 16 held-out ORE inputs in `.work/agent-scratch/cb-nn1811/runs/summary.tsv`).
-Confirming the hand-checked golds, completing the `km-p2` validation runs
-(remaining family rows, differential pools, held-out input 10926, 112 nominal
-ORE inputs, 300-input C1 sample, and full Rust test suite in a clean
-environment), and writing `HANDBACK.md`.
+
+Completed in this continuation:
+- Confirmed the hand-checked golds for `nn1811`, `r1`, `r3`, `r5`, `r12`,
+  `r13`, `r17`, `r19` and `m1`, `m2`, `m6`, `m7`, `m8`, `m9`, `m10`, `m11`,
+  `m12`, `fx12`.
+- Completed the 20-run target route sweep (`data/targets-routes-p2.tsv`:
+  `certified_nominals` 360/360 `ok`; `nominals`, `cb_plain1`,
+  `nominal_ni_abox`, `certified_card_proxy_abox`, `production_all` 600/600 `ok`
+  on `r1, r5, r12, r13, r17, r19`; `nominals` 120/120 `ok` on
+  `m2, m6, m8, m9, m11, m12`).
+- Completed the 2,000-seed sibling family (`data/family-p2.tsv`, 12,000 rows;
+  `data/family-base.tsv`, 4,000 rows; `data/family-summary.txt`;
+  `data/family-nominals-check-p2.tsv`).
+- Completed all 21 differential pools (`data/pools-summary.txt`: 19,790 seeds,
+  0 new wrong answers, 9 base wrong seed-routes fixed).
+- Completed the 16 held-out ORE inputs (`data/heldout-summary.tsv`), the 112
+  nominal ORE design-half inputs (`data/ore-nominal-pair.txt`), and the
+  300-input C1 regression-pool sample (`data/c1-sample-300-summary.tsv`).
+- Ran the full Rust test suite (`data/tests-summary.txt`,
+  `data/lib-failures.txt`), deleted `engine/target`, and wrote `HANDBACK.md`.
 
 ## Status (third agent, 2026-11-05 09:35, interim)
 
@@ -387,4 +403,70 @@ release flags (`data/c1-sample-300-summary.tsv`):
   1.001, max 1.101**.
 - Publication coverage guard fired 0 times.
 
-TESTS_PLACEHOLDER
+## Full Rust test suite (`tools/tests.sh`, `data/tests-summary.txt`)
+
+Run in a clean environment (`env -i PATH=... HOME=... CARGO_TARGET_DIR=...`)
+with `--test-threads=1`:
+
+- **Library (`cargo test --release --lib -- --test-threads=1`)**: 3,120 passed,
+  **21 failed**, 10 ignored (`data/lib-failures.txt`). The 21 failures are the
+  exact 21 baseline tests in
+  `.work/worktrees/fix-bridge-defers/results/agents/2026-11-01/bridge-defers/data/lib-failures.txt`
+  (0 new library failures).
+- **Integration targets (`engine/tests/*.rs`, 90 targets)**: **89 of 90 pass
+  (`rc=0`)**, including `cb_nn1811` (10 passed),
+  `empty_and_universal_data_ranges` (10 passed), and `source_incremental_rules`
+  (4 passed).
+- **Newly failing integration tests (3 tests in `top_nominal_data_successors`)**:
+  - `top_nominal_data_successors::exact_data_cardinality_with_has_value_hub_keeps_counting`
+  - `top_nominal_data_successors::hermit_answers_on_every_route`
+  - `top_nominal_data_successors::top_min_data_cardinality_with_inverse_functional_hub_is_consistent`
+
+  All three fail by hitting the test harness's 120 s timeout on the forced
+  `Some("nominals")` route on `tests/fixtures/top_nominal_data/probe_v7.ofn`
+  (`⊤ ⊑ ≥2 u`, `⊤ ⊑ ∃r.{a}`, `{a} ⊑ ≤1 r⁻`) and `probe_v11.ofn` (the same hub
+  with `⊤ ⊑ =2 u`, `⊤ ⊑ ≤1 r`, `A ⊑ ≥3 u`). Both fixtures write `{a} ⊑ ≤1 r⁻`
+  with the universal `⊤` definer `Q_0(y0) & Q_0(y1) & Q_3(x) & __inv__r(x,y0)
+  & __inv__r(x,y1) -> y0=y1`. Before `Engine::offer_root_reach` (`56cf6e56`),
+  `probe_v7.ofn` and `probe_v11.ofn` finished in 0.06 s on `--route nominals`
+  only because of the section 12 incompleteness bug: `Q_0(y) -> Q_0(y)` never
+  reached the ground context, so `{a} ⊑ ≤1 r⁻` never fired there. With
+  `offer_root_reach`, `{a} ⊑ ≤1 r⁻` fires in the ground context and triggers
+  `Nom`, which in the presence of `⊤ ⊑ ≥2 u` (`Q_0(x) -> Q_1(x) | __data__(x)`,
+  `Q_1(x) -> u(x, f_Q_1_0(x))`) saturates equality disjunctions over fresh
+  nominals past 120 s (the exact phenomenon already recorded in
+  `docs/NOMINALS-CB.md` section 6 lines 815-821 when `Q_0` was eliminated on
+  `probe_v7.ofn`). On the automatic route and on `certified_nominals`, both
+  `probe_v7.ofn` and `probe_v11.ofn` still answer in 0.02 s as HermiT.
+
+## Commits on `fix/v155-cb-nn1811`
+
+- `862ba3e5`: `test(cb-nn1811): add reductions r1..r19 of nn1811`
+- `ae5dbbae`: `fix(orchestrate): carry entailed functionality in the HT view`
+- `4b4cb4a3`: `docs(routing): record the entailed-functionality HT view rule and the nominal CB filler gap`
+- `56cf6e56`: `fix(cb): offer root-edge predecessor labels to the ground context`
+- `067201c3`: `test+docs(cb-nn1811): nominal CB filler gap fixtures, tests and Lean proof note`
+- `eea918f1`: `perf(cb_to_ht): make add_entailed_functional_clauses linear in the clause set`
+- `381441a8`: `docs+test(cb-nn1811): status note, nominal CB gap gold and Lean summary, validation tools and target/held-out results`
+- `2095786f`: `results(cb-nn1811): C1 300-input sample, differential pools and 112 nominal ORE summaries`
+- `3852a11b`: `results(cb-nn1811): completed 2,000-seed sibling family runs and summary`
+
+## Residual / What was not managed
+
+1. **Real-guard / real-filler at-most-1 absorption (`D ⊑ ≤1 s`, `⊤ ⊑ ≤1 s.C`)**:
+   As recorded in `docs/ROUTING.md` ("Entailed functionality in the HT view"),
+   when `s = r⁻` is only conditionally functional under a genuine concept guard
+   `D(x)` or filler `C(y)` that is neither universal nor implied by `s(x,y)`,
+   absorbing `r(y,x) ∧ C(x) → B(y)` requires propagating `C(x)` or `D(y)` across
+   the edge in `absorb_functional_inverse_links` rather than emitting an
+   unconditional functionality clause.
+2. **Nom-rule saturation on forced `--route nominals` (`m1, m7, m10, fx12,
+   probe_v7, probe_v11`)**:
+   `Engine::offer_root_reach` removes the wrong (incomplete) answer on the
+   nominal CB arm by offering `B(y) -> B(y)` to the ground context when a root
+   edge `s(x, #a)` co-occurs with `B(x)`. On ontologies where firing `{a} ⊑ ≤1
+   r⁻` in the ground context combines with unrestricted existential or data
+   successors (`m1, m7, m10, fx12, probe_v7, probe_v11`), the forced
+   `--route nominals` worker now times out instead of returning an incomplete
+   taxonomy; `auto`, `ht_bridge`, and `certified_nominals` answer all of them
+   in 0.02-0.06 s.
