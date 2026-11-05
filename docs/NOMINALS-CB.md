@@ -1906,13 +1906,13 @@ Details and reproduction: `results/agents/2026-11-01/polarity-definers/README.md
   seeds' frontend output, so r163, r219, r461, r481, r575, r696, r1536 and
   r3777 still time out (their cost is section 10.4).
 
-## 12. An at-most with a filler at a nominal (open, 2026-11-04)
+## 12. An at-most with a filler at a nominal (repaired, 2026-11-05)
 
 Found by the nn1811 sibling family (`results/agents/2026-11-04/cb-nn1811/`,
-seed fx12). Not repaired; present on 48a1113b and every earlier build
-checked. The automatic route answers these inputs as HermiT through the
-native bridge; the `nominals` route (and a CB answer of any portfolio that
-carries this stack) misses them.
+seed fx12). The automatic route answers these inputs as HermiT through the
+native bridge; before the repair the `nominals` route (and the nominal CB arm
+of `certified_nominals`, which publishes its answer when it wins the race)
+missed them. Present on 48a1113b and every earlier build checked.
 
 Reduction m9 (`data/cb-gap/m9.ofn`, fixture
 `engine/tests/fixtures/cb_nn1811/nominal_cb_gap/`):
@@ -1922,16 +1922,16 @@ Reduction m9 (`data/cb-gap/m9.ofn`, fixture
     SubClassOf(ObjectOneOf(:b) ObjectMaxCardinality(1 :p))
 
 Every element of `∃s.{b}` is a `p`-successor of `b`, and `b` has at most one,
-so `⊤ ⊑ Q3`. HermiT and the bridge derive it; `--route nominals` gives no
+so `⊤ ⊑ Q3`. HermiT and the bridge derive it; `--route nominals` gave no
 subsumption in every regime tried (`KM_SEQ_ORDER` on, off and `context`,
 `KM_NOMINAL_DYNAMIC`, `KM_NO_MERGE_HYPOTHESES`, `KM_NO_NOMINAL_LABEL_CACHE`,
 `KM_NO_EXCHANGE_CUT`, `KM_NO_MERGE_CUT`, `KM_NO_MERGE_SUBSCRIPTION`,
-`KM_CB_KEEP_INERT_SORTS`, `KM_NO_CENTRAL`, `KM_NO_SHARE`). The same holds for
+`KM_CB_KEEP_INERT_SORTS`, `KM_NO_CENTRAL`, `KM_NO_SHARE`). The same held for
 `⊤ ⊑ ≤1 p`, `ObjectPropertyDomain(p ≤1 p)`, `D(b)` with `D ⊑ ≤1 p`, and
 `∃p.⊤ ⊑ ≤1 p` (m1, m6 to m10), and for the qualified
 `{b} ⊑ ≤1 p.B` with `Q3 ≡ ≤1 r.(B ⊓ ∃s.{b})` (m11). With
 `FunctionalObjectProperty(p)`, whose clause is the bare
-`p(x,y1) ∧ p(x,y2) → y1≈y2`, the stack is right (m2, m12).
+`p(x,y1) ∧ p(x,y2) → y1≈y2`, the stack was right (m2, m12).
 
 What differs. The frontend writes the at-most as
 `Q_3(x) ∧ Q_4(y0) ∧ Q_4(y1) ∧ p(x,y0) ∧ p(x,y1) → y0≈y1` with the `⊤`
@@ -1946,18 +1946,71 @@ only; `B(y)` is a predecessor trigger (`Pr^r`), a head that r-Pred sends
 back, not a premise the ground context can use. A unit fact `→ Q_4(x)` is
 instantiated at individuals in the ground context, not at `y`.
 
-Two remarks for the repair.
+The repair: predecessor labels over root edges (`Engine::offer_root_reach`).
 
-- The universal-definer elimination of section 6 would drop the `⊤` filler
-  (it makes m9 right), but it skips every clause set with an inverse role.
-  Its note gives cost as the reason (probe_v7 from 0.06 s to more than
-  150 s). m9 shows the skip also loses entailments, so the slow run there may
-  be the Nom rule doing work the kept filler had blocked.
-- A real filler (m11) is not universal, so dropping atoms cannot repair it.
-  The ground context needs the filler of each predecessor variable, either
-  by letting r-Succ carry `B(y)` for the fillers of at-most clauses whose
-  role leads to the nominal (a `Su^r` extension; it changes what is derived
-  and needs the Lean model of r-Succ and Nom extended, `lean/ContextCalculus/
-  Nominals.lean`), or by an encoding that moves the filler to the
-  predecessor side, e.g. `≤1 p.B` at `b` as `B ⊓ ∃s.{b}` counted at the
-  predecessor, which is what `FunctionalObjectProperty` gives for `B = ⊤`.
+A context `u` has a root edge labelled `o` when it pushed an r-Succ trigger, a
+merge hypothesis or a merge subscription to the ground context for the
+individual `o`. The ground context reads every element linked to `o` as its
+predecessor variable `y`. A body atom `B(y)` of a ground clause can only match
+a hypothesis `B(y) → B(y)` there. For an ordinary successor edge the engine
+already offers every central label `B(x)` of the source (`rsucc_reach`, the
+labels an ordinary successor receives) as that hypothesis, with the forward
+map `x ↦ y`. For a root edge it offered none, so the ground context never held
+`Q_4(y)` or `B(y)` and the at-most at the nominal never fired.
+
+With r-Succ on, `offer_root_reach` now offers each `rsucc_reach` entry over
+every root label of `u` once (a high-water mark per label, append-only reach),
+as `Msg::Succ { f: o, p: B(y) }` to the ground context, the same message
+`rsucc_cross_step` sends over an ordinary edge. On the return path the r-Pred
+discharge of a ground clause whose body atom is an individual-free `B(y)` now
+looks for one of `u`'s root edges whose pushed set carries `B(y)`; before it
+could never succeed, because `pred_inds` of `B(y)` is empty.
+`KM_NO_ROOT_REACH=1` switches the offers off (negative control).
+
+Why it is exact.
+
+- Soundness. The offered hypothesis `B(y) → B(y)` is a tautology
+  (`Nominals.root_label_hyp_sound`, an instance of `rsucc_taut_sound`). The
+  r-Pred step renames `y ↦ x` in a ground clause: a valid clause stays valid
+  under any substitution of its variables (`rpredY_valid`: only the value of
+  `y` changes, even for `f(x)` terms), and the discharge of the body atom
+  `B(y){y↦x} = B(x)` against a context clause with `B(x)` in its head is one
+  resolution step (`rpred_label_sound`). Every new clause is therefore a
+  consequence of the premises, and the side condition (*) of r-Succ only
+  restricts firing. `CBRSuccClosure.parentOfEdge` now maps the label of a root
+  edge to the source's central variable, so the Lean production closure
+  (`rSuccOffers`) states exactly these offers; `forwardPredicate_root_label`
+  shows that the offer of `B(x)` over a root edge pushes `B(y)`.
+- Completeness. The repair adds derivations and removes none, so every
+  clause the previous stack derived is still derived (saturation is monotone).
+  It supplies the premise the Nom rule needs for an at-most whose filler holds
+  at a linked element, which is the case the paper's `Su^r = {B(o), S(y,o),
+  S(o,y)}` leaves to the ground context's own clauses.
+- Cost. The extra hypotheses are one clause per (root label, reach entry). On
+  the inputs below with a `⊤` filler that is enough to make m6, m8, m9 and m11
+  answer in 0.02 s. Where the filler sits behind a domain axiom or an
+  existential (m1, m7, m10 and fx12 below) the nominal CB stack no longer
+  gives the wrong answer but saturates for longer than 60 s (three
+  saturation threads, 64 MB resident, no memory growth: equality
+  disjunctions over fresh nominals, `Context::fwd_subsumed` and `build_eq`
+  dominate the profile). A timeout is not a wrong answer; on the automatic
+  route the bridge answers these four inputs as HermiT in under a second, and
+  `certified_nominals` publishes the bridge answer.
+
+Results (`data/cb-gap/`, hand-checked gold in the results README):
+
+| input | axioms behind `⊤ ⊑ Q3` | before (`nominals`) | after (`nominals`) |
+|---|---|---|---|
+| m2, m12 | `FunctionalObjectProperty(p)` | right | right |
+| m6 | `D(b)`, `D ⊑ ≤1 p` | `⊤ ⊑ Q3` missed | HermiT |
+| m8 | `⊤ ⊑ ≤1 p` | missed | HermiT |
+| m9 | `{b} ⊑ ≤1 p` | missed | HermiT |
+| m11 | `{b} ⊑ ≤1 p.B` | missed | HermiT |
+| m1 | `Domain(p, ≤1 p)` | missed | timeout |
+| m7 | `∃p.⊤ ⊑ D`, `D ⊑ ≤1 p` | missed | timeout |
+| m10 | `∃p.⊤ ⊑ ≤1 p` | missed | timeout |
+| fx12 | m1 plus nominal assertions | missed | timeout |
+
+The old note on the universal-definer elimination of section 6 stays true: it
+would drop the `⊤` filler for m8 and m9 but skips every clause set with an
+inverse role, and does not touch a real filler (m11).

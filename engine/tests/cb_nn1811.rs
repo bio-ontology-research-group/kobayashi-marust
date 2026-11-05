@@ -195,13 +195,72 @@ fn automatic_route_matches_hermit_on_the_nominal_cb_gap() {
     check_paths(&paths, "auto", &with_release(&[]));
 }
 
-/// The nominal CB stack misses `⊤ ⊑ Q3` on both (base too); with the bare
-/// clause `p(x,y1) ∧ p(x,y2) → y1≈y2` (`FunctionalObjectProperty(p)`) it
-/// is right. Open: results/agents/2026-11-04/cb-nn1811, docs/NOMINALS-CB.md
-/// section 12.
+/// The nominal CB stack answers the same inputs as HermiT: the ground context
+/// holds the predecessor labels that an at-most filler needs
+/// (`Engine::offer_root_reach`, docs/NOMINALS-CB.md section 12). Before the
+/// repair it missed `⊤ ⊑ Q3` on m6, m8, m9 and m11.
 #[test]
-#[ignore = "nominal CB stack: at-most with a filler at a nominal over inverse-linked predecessors (cb-nn1811, NOMINALS-CB.md section 12)"]
 fn nominal_cb_route_matches_hermit_on_the_nominal_cb_gap() {
     let paths = fixtures_in("tests/fixtures/cb_nn1811/nominal_cb_gap");
     check_paths(&paths, "nominals", &with_release(&[("KM_ROUTE", "nominals")]));
+}
+
+/// Negative control: `KM_NO_ROOT_REACH=1` restores the incomplete behaviour,
+/// so the four inputs that need the predecessor labels differ from HermiT.
+#[test]
+fn negative_control_without_root_reach_misses_the_filler_inputs() {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/cb_nn1811/nominal_cb_gap");
+    let env = with_release(&[("KM_ROUTE", "nominals"), ("KM_NO_ROOT_REACH", "1")]);
+    for name in ["m6", "m8", "m9", "m11"] {
+        let path = dir.join(format!("{name}.ofn"));
+        let got = normalise(&classify(&path, &env));
+        assert_ne!(got, expected(&path), "{name}: no longer needs the root-edge labels");
+    }
+}
+
+/// Run `km classify` under `timeout(1)`, which signals the whole process
+/// group so no engine worker survives; `None` when it did not finish.
+fn classify_within(path: &Path, env: &[(&str, &str)], seconds: u64) -> Option<serde_json::Value> {
+    let mut command = Command::new("timeout");
+    for (key, _) in std::env::vars() {
+        if key.starts_with("KM_") {
+            command.env_remove(key);
+        }
+    }
+    for (key, value) in env {
+        command.env(key, value);
+    }
+    let result = command
+        .args(["-k", "2", &seconds.to_string(), env!("CARGO_BIN_EXE_km"), "classify"])
+        .arg(path)
+        .output()
+        .expect("run km classification under timeout");
+    match result.status.code() {
+        Some(0) => Some(serde_json::from_slice(&result.stdout).unwrap()),
+        Some(124) | Some(137) => None,
+        _ => panic!("{}: {}", path.display(), String::from_utf8_lossy(&result.stderr)),
+    }
+}
+
+/// Variants whose filler sits behind a domain axiom or an existential
+/// (`ObjectPropertyDomain(p ≤1 p)`, `∃p.⊤ ⊑ D`): the automatic route answers as
+/// HermiT through the bridge.
+#[test]
+fn automatic_route_matches_hermit_on_the_nominal_cb_slow_inputs() {
+    let paths = fixtures_in("tests/fixtures/cb_nn1811/nominal_cb_slow");
+    check_paths(&paths, "auto", &with_release(&[]));
+}
+
+/// The same inputs on the nominal CB stack never give a wrong answer. The
+/// stack gave a wrong answer on them before the repair; it now saturates for
+/// longer than the limit here (a timeout, documented in the results README).
+/// A finished run must equal HermiT.
+#[test]
+fn nominal_cb_route_is_exact_or_silent_on_the_nominal_cb_slow_inputs() {
+    let env = with_release(&[("KM_ROUTE", "nominals")]);
+    for path in fixtures_in("tests/fixtures/cb_nn1811/nominal_cb_slow") {
+        if let Some(value) = classify_within(&path, &env, 10) {
+            assert_eq!(normalise(&value), expected(&path), "{}", path.display());
+        }
+    }
 }
