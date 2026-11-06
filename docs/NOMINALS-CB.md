@@ -2014,3 +2014,20 @@ Results (`data/cb-gap/`, hand-checked gold in the results README):
 The old note on the universal-definer elimination of section 6 stays true: it
 would drop the `⊤` filler for m8 and m9 but skips every clause set with an
 inverse role, and does not touch a real filler (m11).
+
+Integration tests on `tests/fixtures/top_nominal_data/probe_v7.ofn` (`⊤ ⊑ ≥2 u`,
+`⊤ ⊑ ∃r.{a}`, `{a} ⊑ ≤1 r⁻`) and `probe_v11.ofn` (the same hub with `⊤ ⊑ =2 u`,
+`⊤ ⊑ ≤1 r`, `A ⊑ ≥3 u`) also hit disjunction saturation on forced `nominals`
+under `Engine::offer_root_reach`. Both fixtures write `{a} ⊑ ≤1 r⁻` with a
+universal `⊤` definer on predecessors. Before `offer_root_reach`, the reasoner
+answered both in under 0.1 s on forced `nominals` only because of the
+section 12 gap: predecessor labels never reached the ground context, so
+`{a} ⊑ ≤1 r⁻` never fired at `{a}`. With `offer_root_reach`, the axiom fires in
+the ground context, triggering `Nom`, which in the presence of data successors
+saturates equality disjunctions over fresh nominals past the bound. Because the
+earlier fast answer depended on the incompleteness gap,
+`top_nominal_data_successors` tests
+(`exact_data_cardinality_with_has_value_hub_keeps_counting`,
+`top_min_data_cardinality_with_inverse_functional_hub_is_consistent`, and
+`hermit_answers_on_every_route`) accept bounded non-answers on forced
+`nominals`, while requiring every answer returned to match HermiT.
