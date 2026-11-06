@@ -132,10 +132,11 @@ fn check_on(
     let subs: BTreeSet<(String, String)> =
         subs.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect();
     for &route in routes {
-        let is_nominal_decline_accepted =
-            (name == "probe_v7.ofn" && matches!(route, Some("nominals" | "certified_nominals")))
-                || (name == "probe_v11.ofn"
-                    && matches!(route, None | Some("nominals" | "certified_nominals")));
+        // Only the forced exact nominal CB route may decline these two hub
+        // fixtures (docs/NOMINALS-CB.md section 12); every other route,
+        // the automatic one included, must answer as HermiT.
+        let is_nominal_decline_accepted = matches!(name, "probe_v7.ofn" | "probe_v11.ofn")
+            && route == Some("nominals");
         let bound = if is_nominal_decline_accepted {
             Duration::from_secs(20)
         } else {
