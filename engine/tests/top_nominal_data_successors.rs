@@ -33,14 +33,8 @@ const ROUTES: [Option<&str>; 5] =
 type Taxonomy = (bool, BTreeSet<String>, BTreeSet<(String, String)>);
 
 /// Run `km classify --lines` on a fixture. `None` when the route refuses
-/// the input (it would have to drop an axiom and fails closed instead), or
-/// when the route does not answer within `bound` and `accept_no_answer` is true.
-fn classify(
-    path: &str,
-    route: Option<&str>,
-    bound: Duration,
-    accept_no_answer: bool,
-) -> Option<Taxonomy> {
+/// the input (it would have to drop an axiom and fails closed instead).
+fn classify(path: &str, route: Option<&str>) -> Option<Taxonomy> {
     let mut command = Command::new(env!("CARGO_BIN_EXE_km"));
     for (key, _) in std::env::vars_os() {
         if key.to_string_lossy().starts_with("KM_") {
@@ -64,9 +58,6 @@ fn classify(
             let mut stderr = String::new();
             child.stderr.take().unwrap().read_to_string(&mut stderr).unwrap();
             if !status.success() {
-                if accept_no_answer {
-                    return None;
-                }
                 assert!(
                     stderr.contains("unsupported:") && !stdout.contains("CONSISTENT"),
                     "km failed on {path} {route:?}: {stderr}"
@@ -97,13 +88,10 @@ fn classify(
             subs.retain(|(a, b)| a != b && !unsat.contains(a) && !unsat.contains(b));
             return Some((consistent.expect("CONSISTENT line"), unsat, subs));
         }
-        if started.elapsed() > bound {
+        if started.elapsed() > BOUND {
             let _ = child.kill();
             let _ = child.wait();
-            if accept_no_answer {
-                return None;
-            }
-            panic!("km classify exceeded {bound:?} on {path} {route:?}");
+            panic!("km classify exceeded {BOUND:?} on {path} {route:?}");
         }
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -132,22 +120,9 @@ fn check_on(
     let subs: BTreeSet<(String, String)> =
         subs.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect();
     for &route in routes {
-        // Only the forced exact nominal CB route may decline these two hub
-        // fixtures (docs/NOMINALS-CB.md section 12); every other route,
-        // the automatic one included, must answer as HermiT.
-        let is_nominal_decline_accepted = matches!(name, "probe_v7.ofn" | "probe_v11.ofn")
-            && route == Some("nominals");
-        let bound = if is_nominal_decline_accepted {
-            Duration::from_secs(20)
-        } else {
-            BOUND
-        };
-        let Some((got_consistent, got_unsat, got_subs)) =
-            classify(&path, route, bound, is_nominal_decline_accepted)
-        else {
+        let Some((got_consistent, got_unsat, got_subs)) = classify(&path, route) else {
             assert!(
-                matches!(route, Some("ht_general" | "ht_bridge"))
-                    || is_nominal_decline_accepted,
+                matches!(route, Some("ht_general" | "ht_bridge")),
                 "{name}: {route:?} refused the input"
             );
             continue;

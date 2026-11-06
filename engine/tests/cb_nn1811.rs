@@ -218,30 +218,6 @@ fn negative_control_without_root_reach_misses_the_filler_inputs() {
     }
 }
 
-/// Run `km classify` under `timeout(1)`, which signals the whole process
-/// group so no engine worker survives; `None` when it did not finish.
-fn classify_within(path: &Path, env: &[(&str, &str)], seconds: u64) -> Option<serde_json::Value> {
-    let mut command = Command::new("timeout");
-    for (key, _) in std::env::vars() {
-        if key.starts_with("KM_") {
-            command.env_remove(key);
-        }
-    }
-    for (key, value) in env {
-        command.env(key, value);
-    }
-    let result = command
-        .args(["-k", "2", &seconds.to_string(), env!("CARGO_BIN_EXE_km"), "classify"])
-        .arg(path)
-        .output()
-        .expect("run km classification under timeout");
-    match result.status.code() {
-        Some(0) => Some(serde_json::from_slice(&result.stdout).unwrap()),
-        Some(124) | Some(137) => None,
-        _ => panic!("{}: {}", path.display(), String::from_utf8_lossy(&result.stderr)),
-    }
-}
-
 /// Variants whose filler sits behind a domain axiom or an existential
 /// (`ObjectPropertyDomain(p ≤1 p)`, `∃p.⊤ ⊑ D`): the automatic route answers as
 /// HermiT through the bridge.
@@ -251,16 +227,11 @@ fn automatic_route_matches_hermit_on_the_nominal_cb_slow_inputs() {
     check_paths(&paths, "auto", &with_release(&[]));
 }
 
-/// The same inputs on the nominal CB stack never give a wrong answer. The
-/// stack gave a wrong answer on them before the repair; it now saturates for
-/// longer than the limit here (a timeout, documented in the results README).
-/// A finished run must equal HermiT.
+/// The same inputs on the nominal CB stack also answer as HermiT within the
+/// test bound once `build_hyper_resolvent` uses the exact `n_y - 1 + K''`
+/// covering width and reuses blocks covered by `Nominals.nom_shared_cover_sound`.
 #[test]
 fn nominal_cb_route_is_exact_or_silent_on_the_nominal_cb_slow_inputs() {
-    let env = with_release(&[("KM_ROUTE", "nominals")]);
-    for path in fixtures_in("tests/fixtures/cb_nn1811/nominal_cb_slow") {
-        if let Some(value) = classify_within(&path, &env, 10) {
-            assert_eq!(normalise(&value), expected(&path), "{}", path.display());
-        }
-    }
+    let paths = fixtures_in("tests/fixtures/cb_nn1811/nominal_cb_slow");
+    check_paths(&paths, "nominals", &with_release(&[("KM_ROUTE", "nominals")]));
 }

@@ -1,10 +1,10 @@
-auto       new  (2000 seeds, 6000 runs): {'TIMEOUT': 60, 'ok': 5940}
+auto       new  (2000 seeds, 6000 runs): {'TIMEOUT': 57, 'ok': 5943}
 auto       base (2000 seeds, 2000 runs): {'TIMEOUT': 33, 'WRONG': 18, 'ok': 1949}
 ht_bridge  new  (2000 seeds, 6000 runs): {'NOANSWER': 156, 'TIMEOUT': 48, 'ok': 5796}
 ht_bridge  base (2000 seeds, 2000 runs): {'NOANSWER': 52, 'TIMEOUT': 39, 'WRONG': 18, 'ok': 1891}
 
 auto: seeds with a WRONG/NOANSWER/ERR row in the new binary: 0
-auto: seeds with a TIMEOUT in some new run: 20
+auto: seeds with a TIMEOUT in some new run: 19
   fx1021 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
   fx1108 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
   fx1204 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
@@ -12,10 +12,8 @@ auto: seeds with a TIMEOUT in some new run: 20
   fx1325 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
   fx1401 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
   fx1443 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
-  fx1454 new=TIMEOUT,TIMEOUT,TIMEOUT base=ok
   fx1556 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
   fx1760 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
-  fx1827 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
   fx211 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
   fx279 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
   fx325 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
@@ -24,9 +22,10 @@ auto: seeds with a TIMEOUT in some new run: 20
   fx416 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
   fx728 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
   fx771 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx956 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
   fx981 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
 auto: seeds whose runs differ: 0 []
-auto: seeds not ok in the new binary but ok in the base: 2 ['fx1454', 'fx346']
+auto: seeds not ok in the new binary but ok in the base: 1 ['fx346']
 
 ht_bridge: seeds with a WRONG/NOANSWER/ERR row in the new binary: 52
   fx1007 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r

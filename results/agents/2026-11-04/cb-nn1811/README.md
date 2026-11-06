@@ -1,6 +1,17 @@
 # cb-nn1811: the nn1811 miss, a native-bridge defect behind a nominal route
 
-## Status (fourth agent, 2026-11-05 19:30, final)
+## Status (sixth agent, 2026-11-06, final)
+
+State at takeover: commit `d749c4aa` (`test(cb-nn1811): complete full integration suite and bound forced-nominals probe timeouts`), where `probe_v7.ofn` and `probe_v11.ofn` (`engine/tests/top_nominal_data_successors.rs`) and `m1.ofn`, `m7.ofn`, `m10.ofn`, `fx12.ofn` (`engine/tests/cb_nn1811.rs`) timed out on forced `nominals` under `Engine::offer_root_reach`, and `probe_v7.ofn` (`certified_nominals`) and `probe_v11.ofn` (`automatic`, `certified_nominals`) timed out at 150 s under release flags.
+
+Completed in this continuation:
+- Diagnosed why the race did not publish a bridge answer on `(probe_v7, certified_nominals)`, `(probe_v11, automatic)`, and `(probe_v11, certified_nominals)`, and why `Engine::offer_root_reach` caused the CB nominal saturation to fail to terminate on `probe_v7`, `probe_v11`, `m1`, `m7`, `m10`, `fx12`, and `fx1454`.
+- Certified `Nominals.nom_shared_cover_sound` in `lean/ContextCalculus/Nominals.lean` (`lake build ContextCalculus` and all 41 `cb-*` checkers built with rc 0 and 0 `sorryAx`).
+- Implemented exact per-firing `Nom` covering width `k_eff = repeat_slots + nom_rhs.len()` (`Nominals.nom_cover`), certified common-cover reuse `Engine::nom_terms_covered` (`Nominals.nom_shared_cover_sound`), and ground self-candidate ordering in `engine/src/engine.rs`.
+- Restored strict HermiT assertions on every route in `engine/tests/top_nominal_data_successors.rs` (`probe_v7.ofn` and `probe_v11.ofn`) and `engine/tests/cb_nn1811.rs` (`m1.ofn`, `m7.ofn`, `m10.ofn`, `fx12.ofn` on forced `nominals`).
+- Re-ran target benchmarks (`data/targets-p2.tsv`, `data/targets-routes-p2.tsv`, `data/probes-base.tsv`, `data/probes-p2.tsv`), the 2,000-seed `fx` family (`data/family-p2.tsv`, `data/family-summary.txt`, `data/family-nominals-check-p2.tsv`), the 21 differential pools (`data/pools-summary.txt`), the 16 held-out and 112 nominal ORE inputs (`data/heldout-summary.tsv`, `data/ore-nominal-pair.txt`), and the clean-environment Rust test suite (`data/tests-summary.txt`: **90 of 90 integration test targets pass**, 3,121 passed / 21 baseline failed in `--lib`).
+
+## Status (fourth agent, 2026-11-05 19:30, interim)
 
 State at takeover: commits 862ba3e5, ae5dbbae, 4b4cb4a3, 56cf6e56, 067201c3 and
 eea918f1 (`km-p2`, sha256 `afcfbfe5…`), plus an uncommitted edit in
@@ -253,28 +264,65 @@ Lean re-certification (`data/lean-audit.txt`):
 - `PATH=$HOME/.elan/bin:$PATH LEAN_NUM_THREADS=4 nice taskset -c 17-24 lake build ContextCalculus`
   and all 41 `cb-*` checker executables built with rc 0 and 0 `sorryAx`.
 
-Effect on the gap inputs: `m6`, `m8`, `m9`, `m11` (and `m2`, `m12`) answer as
-HermiT in 0.02 s on `--route nominals`, `ht_bridge`, `certified_nominals` and
-the automatic route (20 of 20 runs each). On `m1`, `m7`, `m10` and `fx12`
-(where the filler sits behind a domain axiom or an existential) `--route nominals`
-no longer gives a wrong answer and instead times out cleanly while saturating
-equality disjunctions over fresh nominals; `ht_bridge`, `certified_nominals`
-and the automatic route answer all four as HermiT in 0.01 to 0.02 s (20 of 20
-runs each).
+Effect on the gap inputs and `top_nominal_data` probes: once `offer_root_reach`
+enabled `{a} ⊑ ≤1 r⁻` and domain-guarded `≤1 p` to fire `Nom` in the ground
+context, two defects in `Engine::build_hyper_resolvent` caused an unbounded
+chain of fresh nominals `o_2 → o_3 → o_4 → …` on `m1`, `m7`, `m10`, `fx12`,
+`probe_v7`, and `probe_v11`:
+1. `let k_eff = self.nom_k + nom_rhs.len()` used the ontology-wide maximum
+   at-most bound `self.nom_k` even when `!has_yy` (`n = 0` in
+   `Nominals.nom_cover`, where `width = 0 + nom_rhs.len()`) or when the current
+   firing bound only `n_y` variables to `y` (`repeat_slots = n_y - 1 <
+   self.nom_k`, as on `probe_v11.ofn` where `⊤ ⊑ =2 u` sets `self.nom_k = 2`
+   while `{a} ⊑ ≤1 r⁻` has `n_y - 1 = 1`). Setting
+   `repeat_slots = if has_yy { (n_y - 1).max(1).min(self.nom_k) } else { 0 }`
+   and `k_eff = repeat_slots + nom_rhs.len()` matches `Nominals.nom_cover` per
+   firing.
+2. After the `y0 ↦ y, y1 ↦ y` firing emitted `C_1: Q_0(y) ∧ r⁻(a, y) → y ≈ o_2`,
+   subsequent firings with `y0 ↦ y, y1 ↦ f(o_k)` (residual sort head
+   `__data__(o_k)`) allocated a fresh `o_{k+1}` via `NomFiringKey`, preventing
+   `fwd_subsumed` from pruning the weakened clause against `C_1`. By
+   `Nominals.nom_shared_cover_sound` (`lean/ContextCalculus/Nominals.lean`), any
+   single-`y` `Nom` firing in the same context whose post-resolution
+   `(body, kept_head)` is a superset of an earlier cover's
+   `(prev_body, prev_kept_head)` with `prev_terms.len() ≥ k_eff` is already
+   satisfied by `prev_terms[..k_eff]`. `Engine::nom_terms_covered` reuses
+   `prev_terms[..k_eff]` so `fwd_subsumed` immediately prunes the composite
+   `f(o_k)` firings, and `hyper_inner` places the ground self-candidate
+   `(usize::MAX, p)` first so the pure `y ≈ y` firing (`kept_head = []`)
+   establishes the base cover first.
+3. On `probe_v7.ofn` and `probe_v11.ofn`, the unguarded two-sorted `ht_bridge`
+   defers with exit code 3 (`datatype gate: a non-datatype axiom rejects a blank
+   data node`). On `probe_v7.ofn`, the third attempt of `bounded_bridge_first`
+   (`orchestrate/mod.rs`) enables `KM_BRIDGE_OBJECT_GUARD=1` on `automatic` and
+   answers in 0.015 s, while under explicit `KM_ROUTE=certified_nominals`,
+   `race_certified_ht_arms` runs only the unguarded two-sorted `ht_bridge` (which
+   defers at 0.00 s) and answers via the CB nominal arm in 0.12 s (matching the
+   0.11 s baseline). On `probe_v11.ofn`, even the object-guarded bridge defers at
+   `bridge.rs` on `SubClassOf(A, AtLeast(3, u, Top))` because
+   `data_role_uses_are_safe_cardinality_only` caps data-role cardinalities at
+   `0..=2`, so `automatic`, `certified_nominals`, and `nominals` all answer
+   through the CB nominal engine in 0.21-0.25 s.
 
-## Target seeds and reductions (20 runs per route, final binary `km-p2`)
+With these repairs, all of `m1, m2, m6, m7, m8, m9, m10, m11, m12, fx12,
+probe_v7, probe_v11` answer as HermiT on `--route nominals`,
+`certified_nominals`, and `auto` (20 of 20 runs each).
+
+## Target seeds, reductions, and `top_nominal_data` probes (20 runs per route, final binary `km-p2`)
 
 `tools/runs20.sh`, release flags (`data/targets-p2.tsv`,
-`data/targets-routes-p2.tsv`):
+`data/targets-routes-p2.tsv`, `data/probes-base.tsv`, `data/probes-p2.tsv`):
 
 | seeds | routes | runs | verdict | max wall (s) |
 |---|---|---|---|---|
-| `nn1811`, `r1`, `r3`, `r5`, `r12`, `r13`, `r17`, `r19`, `m1`, `m2`, `m6`, `m7`, `m8`, `m9`, `m10`, `m11`, `m12`, `fx12` (18 inputs) | `ht_bridge`, `auto`, `certified_nominals` | 20 per route (1,080 runs) | 1,080 / 1,080 ok | 0.14 (`nn1811`), 0.02 (all others) |
-| `r1`, `r5`, `r12`, `r13`, `r17`, `r19` (6 reductions) | `nominals`, `cb_plain1`, `nominal_ni_abox`, `certified_card_proxy_abox`, `production_all` | 20 per route (600 runs) | 600 / 600 ok | 0.02 |
-| `m2`, `m6`, `m8`, `m9`, `m11`, `m12` (6 gap inputs) | `nominals` | 20 per input (120 runs) | 120 / 120 ok | 0.02 |
+| `nn1811`, `nn1116`, `r1`, `r3`, `r5`, `r12`, `r13`, `r17`, `r19`, `m1`, `m2`, `m6`, `m7`, `m8`, `m9`, `m10`, `m11`, `m12`, `fx12` (19 inputs) | `ht_bridge`, `auto`, `certified_nominals` | 20 per route (1,140 runs) | 1,140 / 1,140 ok | 0.07 (`nn1811`), 0.04 (`nn1116`), 0.02 (all others) |
+| `r1`, `r5`, `r12`, `r13`, `r17`, `r19` (6 reductions) | `nominals`, `cb_plain1`, `nominal_ni_abox`, `certified_card_proxy_abox`, `production_all` | 20 per route (600 runs) | 600 / 600 ok | 0.17 (`r1`), 0.02 (all others) |
+| `m1`, `m2`, `m6`, `m7`, `m8`, `m9`, `m10`, `m11`, `m12`, `fx12` (all 10 gap inputs) | `nominals` | 20 per input (200 runs) | 200 / 200 ok | 0.27 (`fx12`), 0.05 (`m7`), 0.03 (all others) |
+| `probe_v7` | `auto`, `certified_nominals`, `nominals` | 20 per route (60 runs) | 60 / 60 ok | 0.02 (`auto`), 0.14 (`certified_nominals`, `nominals`) |
+| `probe_v11` | `auto`, `certified_nominals`, `nominals` | 20 per route (60 runs) | 60 / 60 ok | 0.26 (`auto`), 0.28 (`certified_nominals`), 0.26 (`nominals`) |
 
-On `nn1811`, `r3`, `m1`, `m7`, `m10` and `fx12`, `--route nominals` times out
-with no wrong answer.
+On `nn1811`, `nn1116`, and `r3`, `--route nominals` times out cleanly at 15 s
+with 0 wrong answers.
 
 ## Sibling family (`fx0` to `fx1999`, 2,000 seeds with HermiT gold)
 
@@ -288,7 +336,7 @@ cap on `auto`, 15 s cap on forced routes):
 | route | binary (runs) | ok | WRONG | TIMEOUT | NOANSWER (forced defer) |
 |---|---|---|---|---|---|
 | `auto` | `km-base` (1 run × 2,000) | 1,949 | **18** | 33 | 0 |
-| `auto` | `km-p2` (3 runs × 2,000 = 6,000) | 5,940 (1,980 × 3) | **0** | 60 (20 × 3) | 0 |
+| `auto` | `km-p2` (3 runs × 2,000 = 6,000) | 5,943 (1,981 × 3) | **0** | 57 (19 × 3) | 0 |
 | `ht_bridge` | `km-base` (1 run × 2,000) | 1,891 | **18** | 39 | 52 |
 | `ht_bridge` | `km-p2` (3 runs × 2,000 = 6,000) | 5,796 (1,932 × 3) | **0** | 48 (16 × 3) | 156 (52 × 3) |
 
@@ -303,17 +351,13 @@ cap on `auto`, 15 s cap on forced routes):
   timeouts down to 16). The 52 `NOANSWER` seeds are identical on `km-base` and
   `km-p2` (exactness deferrals when an inverse-role or ABox shape is declined
   by the forced native bridge).
-- On `auto`, 15 seeds that timed out on `km-base` now answer `ok` 3/3, and 2
-  seeds (`fx346`, `fx1454`, both in the 52 `ht_bridge` deferrals so the
-  automatic route falls back to the nominal CB arm) answered on `km-base` and
-  time out at 60 s on `km-p2` under `Engine::offer_root_reach` (net timeouts
-  33 down to 20).
-- On `--route nominals` over `fx0` to `fx1064` (1,065 seeds × 3 runs in
-  `.work/agent-scratch/cb-nn1811/famrun/new-3runs.tsv`), `km-v1` (before
-  `Engine::offer_root_reach`) had 2,682 `ok`, 509 `TIMEOUT`, and 6 `WRONG`
-  rows across 2 seeds (`fx12` and `fx244`, which reduced to `m1`..`m12`). With
-  `km-p2` (`data/family-nominals-check-p2.tsv`), neither `fx12` nor `fx244`
-  gives a wrong answer.
+- On `auto`, 15 seeds that timed out on `km-base` now answer `ok` 3/3, `fx1454`
+  (which previously timed out under `offer_root_reach`) now answers `ok` 3/3 in
+  0.04 s with `Engine::nom_terms_covered`, and 1 seed (`fx346`, in the 52
+  `ht_bridge` deferrals with `Q1 ≡ ≤2 s.(∃s⁻.{c})`) answered on `km-base` and
+  times out at 60 s on `km-p2` (net timeouts 33 down to 19).
+- On `--route nominals` (`data/family-nominals-check-p2.tsv`), `fx12` answers
+  `ok` 3/3 in 0.38-0.44 s and `fx244` times out cleanly with 0 wrong answers.
 
 ## Differential pools (`tools/pools.sh`, `tools/pools_complete.py`, 60 s cap)
 
@@ -326,9 +370,9 @@ seed-routes; `data/pools-summary.txt`):
 | route | binary | ok | WRONG | TIMEOUT | ERR / NOANSWER |
 |---|---|---|---|---|---|
 | `auto` | `km-base` | 19,631 | 20 | 135 | 4 |
-| `auto` | `km-p2` | 19,625 | 15 | 146 | 4 |
+| `auto` | `km-p2` | 19,624 | 15 | 147 | 4 |
 | `ht_bridge` | `km-base` | 18,236 | 5 | 65 | 1,484 |
-| `ht_bridge` | `km-p2` | 18,239 | 1 | 59 | 1,491 |
+| `ht_bridge` | `km-p2` | 18,238 | 1 | 60 | 1,491 |
 
 - **0 new wrong answers** (`new wrong vs base: 0`).
 - **9 wrong seed-routes fixed** in `bridge-nn-rule-fam`: `nn1811` (`auto`),
@@ -345,7 +389,7 @@ seed-routes; `data/pools-summary.txt`):
 
 ## The 16 held-out ORE inputs (`tools/heldout_seq.sh`, 240 s cap, one at a time)
 
-Paired `km-base` (`48a1113b`) and `km-p2` (`eea918f1`), release flags
+Paired `km-base` (`48a1113b`) and `km-p2`, release flags
 (`data/heldout-summary.tsv`):
 
 | ORE input | base wall (s) | new wall (s) | base RSS (GiB) | new RSS (GiB) | reference verdicts (both identical) |
@@ -369,21 +413,24 @@ Paired `km-base` (`48a1113b`) and `km-p2` (`eea918f1`), release flags
 
 15 of 16 answer on both binaries and agree with Konclude; 10926 times out on
 both at 18 GiB. Total wall time on the 15 answered inputs: base 495.4 s, new
-509.4 s (ratio 1.028; mean per-input ratio 1.012, median 1.000).
+509.4 s (ratio 1.028; mean per-input ratio 1.012, median 1.000; 0 inputs rise by
+more than 20% or stop answering).
 
 ## The 112 nominal ORE design-half inputs (`tools/ore_nominal_seq.sh`, 300 s cap, one at a time)
 
 Paired sequential run (`data/ore-nominal-pair.txt`):
 
 - **104 answered by both binaries, 104 identical signatures (`differ []`)**.
-- **0 route changes**, **0 coverage guard firings**.
-- Time ratio `new/base` over the 33 inputs above 1 s: **mean 0.994, median
-  0.995, max 1.15** (`ore_ont_668`: 2.80 s to 3.21 s).
-- One borderline timeout at the 300 s cap: `ore_ont_3077` finished at 293.9 s
-  in the `before` pass and hit the 300.0 s cap in the `after` pass (ratio
-  1.021); `ore_ont_3077` routes to `ht_bridge` and `cb_to_ht [entailed-functional]`
-  adds `+0 functional clauses`, so both binaries execute the identical HT view
-  and worker.
+- **0 answer-status changes (`answer-status changes []`)**, **0 route changes**,
+  **0 coverage guard firings**.
+- Time ratio `new/base` over the 33 inputs above 1 s: **mean 0.841, median
+  0.982, max 1.15** (`ore_ont_668`: 2.80 s to 3.21 s; **0 inputs rise by more
+  than 20% or stop answering**).
+-With `Engine::nom_terms_covered` and exact `k_eff`, `ore_ont_16286`
+  (`certified_nominals`) drops from 294.82 s (`km-base`) / 284.12 s (prior
+  `km-p2`) to **22.77 s**, `ore_ont_15030` from 40.95 s to **1.23 s**,
+  `ore_ont_16666` from 60.06 s to **2.37 s**, and `ore_ont_2792` from 67.65 s to
+  **2.48 s**.
 
 ## C1 regression-pool sample (`tools/c1_pair.sh`, 300 inputs, 60 s cap)
 
@@ -408,48 +455,16 @@ release flags (`data/c1-sample-300-summary.tsv`):
 Run in a clean environment (`env -i PATH=... HOME=... CARGO_TARGET_DIR=...`)
 with `--test-threads=1`:
 
-- **Library (`cargo test --release --lib -- --test-threads=1`)**: 3,120 passed,
+- **Library (`cargo test --release --lib -- --test-threads=1`)**: **3,121 passed**,
   **21 failed**, 10 ignored (`data/lib-failures.txt`). The 21 failures are the
   exact 21 baseline tests in
   `.work/worktrees/fix-bridge-defers/results/agents/2026-11-01/bridge-defers/data/lib-failures.txt`
-  (0 new library failures).
-- **Integration targets (`engine/tests/*.rs`, 90 targets)**: **89 of 90 pass
-  (`rc=0`)**, including `cb_nn1811` (10 passed),
+  (`lib-failures.diff` is empty: 0 new library failures).
+- **Integration targets (`engine/tests/*.rs`, 90 targets)**: **90 of 90 pass
+  (`rc=0`)**, including `top_nominal_data_successors` (16 passed in 4.6 s),
+  `cb_nn1811` (10 passed in 1.6 s), `lean_checkers_dir` (6 passed in 0.2 s),
   `empty_and_universal_data_ranges` (10 passed), and `source_incremental_rules`
   (4 passed).
-- **Newly failing integration tests (3 tests in `top_nominal_data_successors`)**:
-  - `top_nominal_data_successors::exact_data_cardinality_with_has_value_hub_keeps_counting`
-  - `top_nominal_data_successors::hermit_answers_on_every_route`
-  - `top_nominal_data_successors::top_min_data_cardinality_with_inverse_functional_hub_is_consistent`
-
-  All three fail by hitting the test harness's 120 s timeout on the forced
-  `Some("nominals")` route on `tests/fixtures/top_nominal_data/probe_v7.ofn`
-  (`⊤ ⊑ ≥2 u`, `⊤ ⊑ ∃r.{a}`, `{a} ⊑ ≤1 r⁻`) and `probe_v11.ofn` (the same hub
-  with `⊤ ⊑ =2 u`, `⊤ ⊑ ≤1 r`, `A ⊑ ≥3 u`). Both fixtures write `{a} ⊑ ≤1 r⁻`
-  with the universal `⊤` definer `Q_0(y0) & Q_0(y1) & Q_3(x) & __inv__r(x,y0)
-  & __inv__r(x,y1) -> y0=y1`. Before `Engine::offer_root_reach` (`56cf6e56`),
-  `probe_v7.ofn` and `probe_v11.ofn` finished in 0.06 s on `--route nominals`
-  only because of the section 12 incompleteness bug: `Q_0(y) -> Q_0(y)` never
-  reached the ground context, so `{a} ⊑ ≤1 r⁻` never fired there. With
-  `offer_root_reach`, `{a} ⊑ ≤1 r⁻` fires in the ground context and triggers
-  `Nom`, which in the presence of `⊤ ⊑ ≥2 u` (`Q_0(x) -> Q_1(x) | __data__(x)`,
-  `Q_1(x) -> u(x, f_Q_1_0(x))`) saturates equality disjunctions over fresh
-  nominals past 120 s (the exact phenomenon already recorded in
-  `docs/NOMINALS-CB.md` section 6 lines 815-821 when `Q_0` was eliminated on
-  `probe_v7.ofn`). On the automatic route and on `certified_nominals`, both
-  `probe_v7.ofn` and `probe_v11.ofn` still answer in 0.02 s as HermiT.
-
-## Commits on `fix/v155-cb-nn1811`
-
-- `862ba3e5`: `test(cb-nn1811): add reductions r1..r19 of nn1811`
-- `ae5dbbae`: `fix(orchestrate): carry entailed functionality in the HT view`
-- `4b4cb4a3`: `docs(routing): record the entailed-functionality HT view rule and the nominal CB filler gap`
-- `56cf6e56`: `fix(cb): offer root-edge predecessor labels to the ground context`
-- `067201c3`: `test+docs(cb-nn1811): nominal CB filler gap fixtures, tests and Lean proof note`
-- `eea918f1`: `perf(cb_to_ht): make add_entailed_functional_clauses linear in the clause set`
-- `381441a8`: `docs+test(cb-nn1811): status note, nominal CB gap gold and Lean summary, validation tools and target/held-out results`
-- `2095786f`: `results(cb-nn1811): C1 300-input sample, differential pools and 112 nominal ORE summaries`
-- `3852a11b`: `results(cb-nn1811): completed 2,000-seed sibling family runs and summary`
 
 ## Residual / What was not managed
 
@@ -460,13 +475,9 @@ with `--test-threads=1`:
    absorbing `r(y,x) ∧ C(x) → B(y)` requires propagating `C(x)` or `D(y)` across
    the edge in `absorb_functional_inverse_links` rather than emitting an
    unconditional functionality clause.
-2. **Nom-rule saturation on forced `--route nominals` (`m1, m7, m10, fx12,
-   probe_v7, probe_v11`)**:
-   `Engine::offer_root_reach` removes the wrong (incomplete) answer on the
-   nominal CB arm by offering `B(y) -> B(y)` to the ground context when a root
-   edge `s(x, #a)` co-occurs with `B(x)`. On ontologies where firing `{a} ⊑ ≤1
-   r⁻` in the ground context combines with unrestricted existential or data
-   successors (`m1, m7, m10, fx12, probe_v7, probe_v11`), the forced
-   `--route nominals` worker now times out instead of returning an incomplete
-   taxonomy; `auto`, `ht_bridge`, and `certified_nominals` answer all of them
-   in 0.02-0.06 s.
+2. **At-most-`k` (`k ≥ 2`) with a nominal filler on a seed declined by `ht_bridge` (`fx346`)**:
+   On `fx346.ofn` (`Q1 ≡ ≤2 s.(∃s⁻.{c})`, 1 of 2,000 `fx` family seeds), the
+   native bridge declines on an inverse-role guard and the automatic route falls
+   back to the CB nominal engine, where the 7-literal at-most-2 clause fires
+   `Nom` with genuine 2-element covers (`k_eff ≥ 2`) and times out cleanly at
+   60 s.
