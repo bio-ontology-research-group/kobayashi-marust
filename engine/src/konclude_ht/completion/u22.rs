@@ -736,6 +736,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     {
                         return false;
                     }
+                    // A cardinality restriction on `super_role` that is in
+                    // the label but not yet in the reapply queue
+                    // (docs/HYBRID-CB-HT.md section 23).
+                    if super::satexp_absorb::label_restricts_role_cardinality(
+                        calc_alg_context.process_context(),
+                        calc_alg_context.ontology_arenas(),
+                        *process_indi,
+                        super_role,
+                    ) {
+                        return false;
+                    }
                     // check additional for ATMOST restriction
                     let mut reapply_queue_it =
                         IndividualProcessNode::get_role_reapply_iterator_in_context(

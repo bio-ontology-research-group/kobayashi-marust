@@ -71,7 +71,7 @@ type ProcRestrictionHandle = Cint64;
 /// KONCLUDE-PORT-NOTE[pointer-alias]: a `TableauRuleFunction` (pointer-to-member of
 /// an `apply*Rule`) is an opaque rule-slot handle until those methods are ported.
 type TableauRuleFunction = Cint64;
-const TABLEAU_RULE_APPLY_AND: TableauRuleFunction = -2;
+pub(crate) const TABLEAU_RULE_APPLY_AND: TableauRuleFunction = -2;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::searchReactivateIndividualsProcessedPropagated`.
@@ -338,6 +338,36 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         mark_modification: bool,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
+        self.add_concept_to_individual_with_skip_function(
+            adding_concept,
+            negate,
+            process_indi,
+            dependency_track_point,
+            allow_preprocessing,
+            allow_initalization,
+            mark_modification,
+            TABLEAU_RULE_APPLY_AND,
+            calc_alg_context,
+        );
+    }
+
+    /// `addConceptToIndividualSkipANDProcessing` with the skip function as a
+    /// parameter: `TABLEAU_RULE_APPLY_AND` is Konclude's function, `INVALID`
+    /// (no skip) queues every concept that has a rule, AND-family included.
+    /// The satisfiable expander cache's replay uses the latter
+    /// (docs/HYBRID-CB-HT.md section 23, `expand_cached_concepts`).
+    pub fn add_concept_to_individual_with_skip_function(
+        &mut self,
+        adding_concept: ConceptId,
+        negate: bool,
+        process_indi: NodeId,
+        dependency_track_point: TrackPointId,
+        allow_preprocessing: bool,
+        allow_initalization: bool,
+        mark_modification: bool,
+        skip_function: TableauRuleFunction,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
         // W3-DEFER[memory-pool]: taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager();
 
         if super::bridge_watch_tag()
@@ -421,7 +451,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 process_indi,
                 allow_preprocessing,
                 calc_alg_context,
-                TABLEAU_RULE_APPLY_AND,
+                skip_function,
             );
             if reapply_it.has_next() {
                 // reapply reapplying concept

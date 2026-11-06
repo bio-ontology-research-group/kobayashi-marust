@@ -14637,6 +14637,11 @@ fn positive_self_terminology(ctx: &CalculationAlgorithmContextBase, bridged: &Br
     if std::env::var_os("KM_BRIDGE_SAT_REFUSE_SELF").is_some() {
         return false;
     }
+    // Diagnostic (docs/HYBRID-CB-HT.md section 23): install the expansion
+    // caches on SELF terminologies too. Production never sets it.
+    if std::env::var_os("KM_BRIDGE_SELF_SATEXP").is_some() {
+        return false;
+    }
     let arenas = ctx.ontology_arenas();
     (0..arenas.concept_count()).any(|index| {
         let id = ConceptId::new(index as Cint64);
@@ -16621,20 +16626,29 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 None => false,
             }
         };
-    // KM-SOUNDNESS-GATE[self-satexp] (docs/HYBRID-CB-HT.md section 20):
-    // both expansion caches key a node's satisfiability on its own label
-    // (and ancestors). With a self edge that locality fails in the port: on
-    // ore_ont_12128 the completion-only schedule published 1,567 of Konclude's
-    // 4,716 unsatisfiable classes, and a 23-axiom module of it (reflexive
-    // `part-of`, one functional role, `Continuant ⊑ ∀has-part.Continuant`)
-    // classifies `world_of_BIOMD0000000053` as satisfiable with the cache and
-    // as unsatisfiable without it, as HermiT does. `∃p.Self ⊓ ≤1 p⁻` is the
-    // simplest instance: satisfiable on its own, but it merges with every
-    // p-predecessor. Install neither cache when a SELF concept can create a
-    // self edge; the completion then expands every node itself.
+    // KM-SOUNDNESS-GATE[self-satexp] (docs/HYBRID-CB-HT.md sections 20 and
+    // 23): install neither expansion cache on a terminology with a positive
+    // SELF concept. Section 20's witnesses (the 23-axiom reduction of
+    // ore_ont_12128 and the `∃p.Self ⊓ ≤1 p⁻` seeds) turned out to be port
+    // defects that are not tied to self edges and are fixed in
+    // `satexp_absorb`, but a third witness is tied to them:
+    // `tests/fixtures/bridge_reflexive/merge1708_min.ofn`. There a successor
+    // with `⊤ ⊑ ≤1 p⁻` and the disjunction `B ⊔ ≥2 s⁻` (`B ⊑ ∃p.Self`) hits a
+    // satisfiable entry written for a root, whose model chose `B` and so a
+    // `p` self edge; the cached node absorbs the disjunction, and the self
+    // edge, which would make the node a second `p`-predecessor of itself next
+    // to its ancestor, is never built. `isSatisfiableCachedCompatible`
+    // (cpp 6401-6460) tests the entry's universal, at-most and existential
+    // concepts against the ancestor link, but not SELF, so Konclude's test
+    // does not cover this case either. The gate stays until the cache has a
+    // compatibility test for self edges. `KM_BRIDGE_SELF_SATEXP_NO_GATE=1`
+    // lifts it for the satisfiable expander cache (diagnostic, negative
+    // control); production never sets it.
+    let self_satexp_gate =
+        self_cardinality && std::env::var_os("KM_BRIDGE_SELF_SATEXP_NO_GATE").is_none();
     if std::env::var_os("KM_HT_NO_SAT_EXP_CACHE").is_none()
         && (bridged.singleton_concepts.is_empty() || singletons_inert)
-        && !self_cardinality
+        && !self_satexp_gate
     {
         install_bridge_satisfiable_expander_cache(&mut ctx);
     }

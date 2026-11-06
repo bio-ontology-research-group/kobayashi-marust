@@ -513,8 +513,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // is still evaluated ONLY behind `conf_sat_exp_cached_succ_absorp &&
             // has_successor_cache`, so the uncoupled path is byte-for-byte as
             // before; only the residual is now counted.
+            // `∃R.{a}` takes Konclude's VALUE shortcut (cpp 14316-14380) and
+            // never reaches this absorption (docs/HYBRID-CB-HT.md section 23).
             let cache_absorbable = self.conf_sat_exp_cached_succ_absorp
                 && has_successor_cache
+                && !super::satexp_absorb::some_is_value_shortcut(
+                    calc_alg_context.ontology_arenas(),
+                    &concept_op_linker,
+                    negate,
+                )
                 && self.is_generating_concept_satisfiable_cached_absorpable(
                     process_indi,
                     con_des,
@@ -700,6 +707,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 if calc_alg_context.has_pending_signal() {
                     return;
                 }
+            }
+            // Konclude links `∃R.{a}` straight to the nominal (VALUE shortcut,
+            // cpp 14316-14380), so no successor of a cached node stands
+            // between the node and `a`. The port's successor must therefore
+            // not inherit the cached-ancestor processing blocks, or its
+            // nominal concept never merges it into `a`
+            // (docs/HYBRID-CB-HT.md section 23).
+            if super::satexp_absorb::some_is_value_shortcut(
+                calc_alg_context.ontology_arenas(),
+                &concept_op_linker,
+                negate,
+            ) && succ_indi.is_some()
+            {
+                calc_alg_context
+                    .process_context_mut()
+                    .node_mut(succ_indi)
+                    .clear_processing_restriction_flags(
+                        super::satexp_absorb::VALUE_SHORTCUT_CLEARED_ANCESTOR_FLAGS,
+                    );
             }
             // addIndividualToProcessingQueue(succIndi). The faithful router runs for its
             // flag bookkeeping, then the successor is enqueued so
@@ -4494,7 +4520,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // predecessors runs at the head of that path (`ht_apply_nn_rule`,
             // docs/HYBRID-CB-HT.md section 22). Fall through (no early return).
         }
+        // An unqualified `≤1 R` is Konclude's `applyFUNCTIONALRule` (cpp
+        // 14933-14935), which runs before this absorption test and is never
+        // absorbed (docs/HYBRID-CB-HT.md section 23).
         if self.conf_sat_exp_cached_merg_absorp
+            && !super::satexp_absorb::atmost_is_functional_rule(
+                calc_alg_context.ontology_arenas(),
+                concept,
+                negate,
+            )
             && calc_alg_context
                 .process_context()
                 .node(*process_indi)

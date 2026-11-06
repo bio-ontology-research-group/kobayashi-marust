@@ -1,0 +1,132 @@
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--atomic_helly.ofn	ht_bridge	ERR	0.01					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--atomic_helly.ofn	auto	ok	0.03	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--binary_disjoint.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--binary_disjoint.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--bool_cell_equiv.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--bool_cell_equiv.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--bool_complement_dense.ofn	ht_bridge	ERR	0.01					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--bool_complement_dense.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--bool_complement_top.ofn	ht_bridge	ERR	0.01					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--bool_complement_top.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--bool_intersection_abox.ofn	ht_bridge	ERR	0.01					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--bool_intersection_abox.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--bool_intersection_empty.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--bool_intersection_empty.ofn	auto	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--bool_union_exhaust.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--bool_union_exhaust.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--cell_exhaust_tbox.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--cell_exhaust_tbox.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--count_complex.ofn	ht_bridge	ERR	0.01					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--count_complex.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--datetime_empty.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--datetime_empty.ofn	auto	ok	0.00	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--datetime_offset.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--datetime_offset.ofn	auto	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--datetime_stamp.ofn	ht_bridge	ERR	0.01					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--datetime_stamp.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--datetime_subsumption.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--datetime_subsumption.ofn	auto	ok	0.00	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--datetime_value.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--datetime_value.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--decimal_mixed_ok.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--decimal_mixed_ok.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--dense_count.ofn	ht_bridge	ERR	0.01					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--dense_count.ofn	auto	ok	0.03	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--dense_point.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--dense_point.ofn	auto	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--float_cells.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--float_cells.ofn	auto	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--float_complement.ofn	ht_bridge	ERR	0.01					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--float_complement.ofn	auto	ok	0.03	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--float_decimal.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--float_decimal.ofn	auto	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--float_value_decimal.ofn	ht_bridge	ok	0.00	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--float_value_decimal.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--haskey_data.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--haskey_data.ofn	auto	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--haskey_data_ok.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--haskey_data_ok.ofn	auto	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--int_cell_exhaust.ofn	ht_bridge	ERR	0.01					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--int_cell_exhaust.ofn	auto	ok	0.03	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--integer_double_sub.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--integer_double_sub.ofn	auto	ok	0.00	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--length_empty.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--length_empty.ofn	auto	WRONG	0.00	0	0	1	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--length_exhaust.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--length_exhaust.ofn	auto	WRONG	0.01	0	0	1	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--length_value.ofn	ht_bridge	ERR	0.01					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--length_value.ofn	auto	WRONG	0.02	0	0	0	0	1
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--pattern_subsumption.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--pattern_subsumption.ofn	auto	WRONG	0.01	2	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--pattern_value.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--pattern_value.ofn	auto	WRONG	0.02	0	0	0	0	1
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--plain_literal.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--plain_literal.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--string_chain.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--string_chain.ofn	auto	WRONG	0.02	2	0	0	1	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--union_complex.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/data-values-3--union_complex.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v1all.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v1all.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v1neg.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v1neg.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v1.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v1.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v2.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v2.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v3.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v3.ofn	auto	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v4.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v4.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v5b.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v5b.ofn	auto	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v5c.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v5c.ofn	auto	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v5d.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v5d.ofn	auto	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v5e.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v5e.ofn	auto	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v5g.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v5g.ofn	auto	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v5.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v5.ofn	auto	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v6.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v6.ofn	auto	ok	0.03	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v7.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/forced-nominal-data-misses--v7.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/fr282-dropped-rules--diff4.ofn	ht_bridge	ERR	0.01					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/fr282-dropped-rules--diff4.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/fr282-dropped-rules--m1.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/fr282-dropped-rules--m1.ofn	auto	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/fr282-dropped-rules--m3.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/fr282-dropped-rules--m3.ofn	auto	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/fr282-dropped-rules--m4.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/fr282-dropped-rules--m4.ofn	auto	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/fr282-dropped-rules--u2.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/fr282-dropped-rules--u2.ofn	auto	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/fr282-dropped-rules--z7.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/fr282-dropped-rules--z7.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/lean-data-values--opaque_merge_keep.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/lean-data-values--opaque_merge_keep.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/lean-data-values--opaque_merge.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/lean-data-values--opaque_merge.ofn	auto	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/lean-data-values--opaque_merge_tbox_keep.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/lean-data-values--opaque_merge_tbox_keep.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/lean-data-values--opaque_merge_tbox.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/lean-data-values--opaque_merge_tbox.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/lean-data-values--opaque_single.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/lean-data-values--opaque_single.ofn	auto	WRONG	0.01	0	0	0	0	1
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/lean-data-values--range_exhaust8.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/lean-data-values--range_exhaust8.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/lean-data-values--range_exhaust_keep.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/lean-data-values--range_exhaust_keep.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/lean-data-values--range_exhaust.ofn	ht_bridge	ERR	0.00					
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/lean-data-values--range_exhaust.ofn	auto	ok	0.02	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/lean-data-values--range_exhaust_tbox.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/lean-data-values--range_exhaust_tbox.ofn	auto	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/nominal-r1600--m1.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/nominal-r1600--m1.ofn	auto	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/nominal-r1600--m4.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/nominal-r1600--m4.ofn	auto	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/nominal-seeds--bridge_merge_min.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-m413/respool/seeds/nominal-seeds--bridge_merge_min.ofn	auto	ok	0.01	0	0	0	0	0
