@@ -172,7 +172,13 @@ fn bridge_routes_match_hermit() {
 
 #[test]
 fn negative_control_without_the_entailed_functionality_misses_both() {
-    let env = with_release(&[("KM_ROUTE", "ht_bridge"), ("KM_HT_NO_ENTAILED_FUNCTIONAL", "1")]);
+    let env = with_release(&[
+        ("KM_ROUTE", "ht_bridge"),
+        ("KM_HT_NO_ENTAILED_FUNCTIONAL", "1"),
+        // The satisfiable-cache absorption gates (bridge_satcache) also
+        // recover these fixtures, so the control switches them off as well.
+        ("KM_HT_SATEXP_ABSORB_LEGACY", "1"),
+    ]);
     for path in fixtures() {
         let got = normalise(&classify(&path, &env));
         assert_ne!(

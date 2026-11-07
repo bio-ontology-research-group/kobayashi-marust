@@ -158,7 +158,13 @@ fn forced_bridge_completion_only_matches_hermit() {
 
 #[test]
 fn negative_control_with_the_former_absorption_misses_each() {
-    let env = with_release(&[("KM_ROUTE", "ht_bridge"), ("KM_HT_SATEXP_ABSORB_LEGACY", "1")]);
+    let env = with_release(&[
+        ("KM_ROUTE", "ht_bridge"),
+        ("KM_HT_SATEXP_ABSORB_LEGACY", "1"),
+        // The entailed functional clauses (cb_nn1811) also recover these
+        // fixtures, so the control switches them off as well.
+        ("KM_HT_NO_ENTAILED_FUNCTIONAL", "1"),
+    ]);
     for path in fixtures() {
         let got = normalise(&classify(&path, &env));
         assert_ne!(
