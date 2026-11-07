@@ -654,6 +654,20 @@ struct NomFiringKey {
     selected: Vec<(usize, Pred)>,
     substitution: Vec<(Term, Term)>,
 }
+
+/// Recorded common cover for `Nominals.nom_shared_cover_sound`: any grounded
+/// Hyper firing in `context` whose sorted `body` contains `body` and whose
+/// sorted residual `kept_head` contains `kept_head` restricts the same
+/// covered predecessor predicate `B(y)` under a weaker ground escape, so the
+/// existing witness block `terms` already satisfies its obligation and yields
+/// a clause syntactically subsumed by the covering clause.
+#[derive(Clone)]
+struct NomCover {
+    context: usize,
+    body: Vec<Pred>,
+    kept_head: Vec<Lit>,
+    terms: Vec<Term>,
+}
 impl CentralSubst {
     fn new(allow_ground: bool) -> Self {
         CentralSubst {
@@ -958,6 +972,14 @@ fn in_announced_interface(
         }
     }
     true
+}
+
+/// Predecessor labels over root edges (`Engine::offer_root_reach`) are on
+/// unless the diagnostic `KM_NO_ROOT_REACH` is set (negative control; it
+/// restores the incomplete behaviour of docs/NOMINALS-CB.md section 12).
+fn root_reach_off() -> bool {
+    static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *FLAG.get_or_init(|| std::env::var_os("KM_NO_ROOT_REACH").is_some())
 }
 
 /// Merge hypotheses (`Engine::merge_hypotheses`) are on unless the
@@ -2411,6 +2433,17 @@ struct Context {
     /// identical to the unconditional driver.
     rsucc_offered: usize,
     rsucc_edges_grew: bool,
+    /// Root edges (docs/NOMINALS-CB.md section 12): the individuals `o` that
+    /// label an edge from this context to the ground context (an r-Succ push,
+    /// a merge hypothesis or a merge subscription), in first-occurrence order.
+    /// With r-Succ on, every central label `B(x)` in `rsucc_reach` is offered
+    /// over each of them as the predecessor hypothesis `B(y)`
+    /// (`Engine::offer_root_reach`), as over an ordinary successor edge.
+    root_labels: Vec<Term>,
+    root_label_set: HashSet<Term>,
+    /// Per root label, the number of `rsucc_reach` entries already offered
+    /// over it (`rsucc_reach` is append-only, so `reach[hwm..]` is the delta).
+    root_reach_hwm: HashMap<Term, usize>,
     /// Merge hypotheses (docs/NOMINALS-CB.md section 10): the bridge
     /// individuals `o` of body-free merge clauses `⊤ → Δ'' ∨ x ≈ o` whose
     /// core hypotheses this context already pushed to the ground context.
@@ -2460,6 +2493,9 @@ impl Context {
             rsucc_pair_reach_hwm: HashMap::default(),
             rsucc_offered: 0,
             rsucc_edges_grew: false,
+            root_labels: Vec::new(),
+            root_label_set: HashSet::default(),
+            root_reach_hwm: HashMap::default(),
             merge_hyp_inds: Vec::new(),
             seeded_inds: HashSet::default(),
             dirty: true,
@@ -3905,6 +3941,8 @@ pub struct Engine {
     /// Interior mutability: allocation happens inside the otherwise read-only
     /// Hyper resolvent build (single-threaded engine, never shared).
     nom_table: std::cell::RefCell<HashMap<NomFiringKey, Vec<Term>>>,
+    /// Common-cover reuse records (`Nominals.nom_shared_cover_sound`).
+    nom_covers: std::cell::RefCell<Vec<NomCover>>,
     /// Number of additional nominal terms stored across all firing blocks.
     nom_allocated: std::cell::Cell<usize>,
     /// next fresh individual id (starts above every input individual)
@@ -4521,6 +4559,7 @@ impl Engine {
             stop_on_global_refutation: false,
             nom_k: prepared.nom_k,
             nom_table: std::cell::RefCell::new(HashMap::default()),
+            nom_covers: std::cell::RefCell::new(Vec::new()),
             nom_allocated: std::cell::Cell::new(0),
             nom_next: std::cell::Cell::new(prepared.nom_first),
             nom_base: ind_term(prepared.nom_first),
@@ -5860,6 +5899,27 @@ impl Engine {
                         (Pred::Concept { iri, .. }, _) => (ctx.head_concept(iri), false),
                         (Pred::Role { iri, .. }, _) => (ctx.head_role(iri), false),
                     };
+                    // Ground context: the side clause is also a candidate at
+                    // non-side positions (given-clause semantics, S_v ∪ {C}).
+                    // Elsewhere this self-pairing is provably redundant — two
+                    // distinct max heads yield a resolvent the side clause
+                    // subsumes, the same head twice instantiates a head
+                    // equality to a tautology — but in the ground context the
+                    // same-head pair `S(o,y), S(o,y)` instantiates `z_i ≈ z_j`
+                    // to `y ≈ y`, the Nom-rule trigger, which must fire.
+                    // Place the side clause first in the ground context so the
+                    // pure `y ≈ y` firing (with empty residual head) establishes
+                    // its `NomCover` before composite `f(o')` candidates with
+                    // weaker sort/residual heads.
+                    if self.ground_ctx == Some(id) {
+                        for (p, _) in side.max_head_predicates() {
+                            let mark = sigma.mark();
+                            if unify(&mut sigma, &oc.body[i], &p) {
+                                v.push((usize::MAX, p));
+                            }
+                            sigma.rollback(mark);
+                        }
+                    }
                     for ci in cand.iter() {
                         if exact {
                             v.push((ci as usize, wanted));
@@ -5879,23 +5939,7 @@ impl Engine {
                             }
                         }
                     }
-                    // Ground context: the side clause is also a candidate at
-                    // non-side positions (given-clause semantics, S_v ∪ {C}).
-                    // Elsewhere this self-pairing is provably redundant — two
-                    // distinct max heads yield a resolvent the side clause
-                    // subsumes, the same head twice instantiates a head
-                    // equality to a tautology — but in the ground context the
-                    // same-head pair `S(o,y), S(o,y)` instantiates `z_i ≈ z_j`
-                    // to `y ≈ y`, the Nom-rule trigger, which must fire.
-                    if self.ground_ctx == Some(id) {
-                        for (p, _) in side.max_head_predicates() {
-                            let mark = sigma.mark();
-                            if unify(&mut sigma, &oc.body[i], &p) {
-                                v.push((usize::MAX, p));
-                            }
-                            sigma.rollback(mark);
-                        }
-                    } else {
+                    if self.ground_ctx != Some(id) {
                         // Outside the ground context the side clause is
                         // still a premise for a second body position when the
                         // SAME maximal predicate `max` matches it: Sequoia's
@@ -6215,6 +6259,36 @@ impl Engine {
         Some(terms)
     }
 
+    /// Allocate or reuse a nominal witness block, sharing an existing block
+    /// when a prior firing in the same context already covers a subset of
+    /// `(body, kept_head)` (`Nominals.nom_shared_cover_sound`).
+    fn nom_terms_covered(
+        &self,
+        key: NomFiringKey,
+        width: usize,
+        body: &[Pred],
+        kept_head: &[Lit],
+    ) -> Option<Vec<Term>> {
+        if let Some(terms) = self.nom_table.borrow().get(&key) {
+            return Some(terms.clone());
+        }
+        if let Some(cover) = self.nom_covers.borrow().iter().find(|cover| {
+            cover.context == key.context
+                && subset_pred(&cover.body, body)
+                && subset_lit(&cover.kept_head, kept_head)
+        }) {
+            return Some(cover.terms.clone());
+        }
+        let terms = self.nom_terms(key.clone(), width)?;
+        self.nom_covers.borrow_mut().push(NomCover {
+            context: key.context,
+            body: body.to_vec(),
+            kept_head: kept_head.to_vec(),
+            terms: terms.clone(),
+        });
+        Some(terms)
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn build_hyper_resolvent(
         &self,
@@ -6244,6 +6318,7 @@ impl Engine {
         // head: ontology head substituted, filtered
         let mut head: Vec<Lit> = Vec::new();
         let mut nom_pending = false;
+        let mut has_yy = false;
         // Distinct `f(o')` right-hand terms among the replaced `y ≈ f(o')`
         // literals (K''): an anonymous predecessor may be pinned to any of
         // those values, and each needs its own additional nominal to cover
@@ -6251,8 +6326,9 @@ impl Engine {
         // K' = max(K, K''); the bound with a direct pigeonhole proof (any
         // n_y distinct candidates outside the pinned values violate the
         // counting clause, so |candidates| ≤ (n_y − 1) + K'' ≤ K + K'') is
-        // the SUM, which is what the Lean certification proves — so the
-        // engine emits K + K'' disjuncts (weaker conclusions are sound).
+        // the SUM, which is what the Lean certification proves (`nom_cover`
+        // in `Nominals.lean`).  When `!has_yy` (`n_y = 1`, `n = 0` in
+        // `nom_cover`), the repeat slot count is 0 and `k_eff = K''`.
         let mut nom_rhs: Vec<Term> = Vec::new();
         for l in &oc.head {
             let ls = l.apply(&subst);
@@ -6260,7 +6336,9 @@ impl Engine {
                 if let Lit::Eq { s, t } = ls {
                     if (s == Y && t == Y) || (is_comp(s) && t == Y) {
                         nom_pending = true;
-                        if is_comp(s) && !nom_rhs.contains(&s) {
+                        if s == Y && t == Y {
+                            has_yy = true;
+                        } else if is_comp(s) && !nom_rhs.contains(&s) {
                             nom_rhs.push(s);
                         }
                         continue;
@@ -6279,43 +6357,6 @@ impl Engine {
                 }
             }
             head.push(ls);
-        }
-        if nom_pending {
-            let o = ground_o.unwrap();
-            let k_eff = self.nom_k + nom_rhs.len();
-            // The matched premise atom S(o,y) / S(y,o) supplies the role label.
-            let mut labelled = false;
-            'outer: for i in 0..candidates.len() {
-                let (_, matched) = candidates[i][idxs[i]];
-                if let Pred::Role { s, t, .. } = matched {
-                    let fwd = s == o && t == Y;
-                    let bwd = t == o && s == Y;
-                    if fwd || bwd {
-                        let key = NomFiringKey {
-                            context: id,
-                            source_body: oc.body.clone(),
-                            source_head: oc.head.clone(),
-                            side_body: side.body.clone(),
-                            side_head: side.head.clone(),
-                            selected: (0..candidates.len())
-                                .map(|position| candidates[position][idxs[position]])
-                                .collect(),
-                            substitution: sigma.map.to_vec(),
-                        };
-                        for nominal in self.nom_terms(key, k_eff)? {
-                            head.push(Lit::eq(Y, nominal));
-                        }
-                        labelled = true;
-                        break 'outer;
-                    }
-                }
-            }
-            if !labelled {
-                // No connecting role premise: the y-equality cannot be
-                // expressed against additional nominals; the conclusion
-                // degenerates to the pre-nominal tautology drop.
-                return None;
-            }
         }
         // plus each candidate clause's head minus the matched predicate
         let arena = &self.cc_arena[root as usize];
@@ -6353,6 +6394,57 @@ impl Engine {
                 }
             }
             body.extend_from_slice(&clause.body);
+        }
+        if nom_pending {
+            let o = ground_o.unwrap();
+            let n_y = sigma
+                .map
+                .iter()
+                .filter(|&&(k, v)| !is_central(k) && v == Y)
+                .count();
+            let repeat_slots = if has_yy {
+                n_y.saturating_sub(1).max(1).min(self.nom_k)
+            } else {
+                0
+            };
+            let k_eff = repeat_slots + nom_rhs.len();
+            // The matched premise atom S(o,y) / S(y,o) supplies the role label.
+            let mut labelled = false;
+            'outer: for i in 0..candidates.len() {
+                let (_, matched) = candidates[i][idxs[i]];
+                if let Pred::Role { s, t, .. } = matched {
+                    let fwd = s == o && t == Y;
+                    let bwd = t == o && s == Y;
+                    if fwd || bwd {
+                        body.sort();
+                        body.dedup();
+                        head.sort();
+                        head.dedup();
+                        let key = NomFiringKey {
+                            context: id,
+                            source_body: oc.body.clone(),
+                            source_head: oc.head.clone(),
+                            side_body: side.body.clone(),
+                            side_head: side.head.clone(),
+                            selected: (0..candidates.len())
+                                .map(|position| candidates[position][idxs[position]])
+                                .collect(),
+                            substitution: sigma.map.to_vec(),
+                        };
+                        for nominal in self.nom_terms_covered(key, k_eff, &body, &head)? {
+                            head.push(Lit::eq(Y, nominal));
+                        }
+                        labelled = true;
+                        break 'outer;
+                    }
+                }
+            }
+            if !labelled {
+                // No connecting role premise: the y-equality cannot be
+                // expressed against additional nominals; the conclusion
+                // degenerates to the pre-nominal tautology drop.
+                return None;
+            }
         }
         Some(ContextClause::new(body, head, root, &self.sig))
     }
@@ -7543,6 +7635,7 @@ impl Engine {
         if !merge_hyps.is_empty() {
             let target = self.ground_context();
             for (p, o) in merge_hyps {
+                self.note_root_label(id, o);
                 self.msgs.push_back(Msg::Succ {
                     from: pack_msg_context(id),
                     f: o,
@@ -7555,6 +7648,7 @@ impl Engine {
             let target = self.ground_context();
             for (p, o) in ground_succ {
                 if self.contexts[id].pushed_succ.insert(p) {
+                    self.note_root_label(id, o);
                     self.msgs.push_back(Msg::Succ {
                         from: pack_msg_context(id),
                         f: o,
@@ -7868,6 +7962,9 @@ impl Engine {
             // ground-sender (r-Pred) path: a source is dirty when any of its
             // individual-labelled edges gained a pushed predicate.
             let mut sources: Vec<(usize, Term, bool)> = Vec::new();
+            // Ground sender: per source context u, the positions in `edges`
+            // of its individual-labelled edges.
+            let mut source_edges: HashMap<usize, Vec<usize>> = HashMap::default();
             let mut bound_of: HashMap<usize, Term> = HashMap::default();
             if ground_sender && !pair_r2() {
                 let all = !self.nom_table.borrow().is_empty();
@@ -7877,7 +7974,8 @@ impl Engine {
                 }
             }
             if ground_sender {
-                for (e, _, dirty) in &edges {
+                for (k, (e, _, dirty)) in edges.iter().enumerate() {
+                    source_edges.entry(e.0).or_default().push(k);
                     match sources.iter_mut().find(|(u, _, _)| *u == e.0) {
                         Some(s) => {
                             s.2 |= *dirty;
@@ -7966,11 +8064,21 @@ impl Engine {
                         for b in &c.body {
                             let mut inds: Vec<Term> = Vec::new();
                             pred_inds(b, &mut inds);
-                            let discharged = inds.iter().any(|o| {
-                                ctx.predecessors
-                                    .get(&(u, *o))
-                                    .map_or(false, |s| s.contains(b))
-                            });
+                            // An individual-free body atom is a predecessor
+                            // label `B(y)` offered over the root edges of u
+                            // (`offer_root_reach`): it is discharged when one
+                            // of u's edges carries it.
+                            let discharged = if inds.is_empty() {
+                                source_edges
+                                    .get(&u)
+                                    .is_some_and(|ks| ks.iter().any(|&k| edges[k].1.contains(b)))
+                            } else {
+                                inds.iter().any(|o| {
+                                    ctx.predecessors
+                                        .get(&(u, *o))
+                                        .map_or(false, |s| s.contains(b))
+                                })
+                            };
                             if !discharged {
                                 ok = false;
                                 break;
@@ -8076,6 +8184,7 @@ impl Engine {
             self.stat_pred_out_by_ctx[id] += to_send.len() as u64;
         }
         self.subscribe_merge_individuals(id);
+        self.offer_root_reach(id);
         for (edge, pool_idx) in to_send {
             self.contexts[id]
                 .pushed_pred
@@ -8344,6 +8453,7 @@ impl Engine {
         for &o in &new {
             self.contexts[id].merge_subscriptions.insert(o);
             self.contexts[g].predecessors.entry((id, o)).or_default();
+            self.note_root_label(id, o);
         }
         // Deliver the ground context's current body-free x-free clauses whose
         // individuals this context has all announced (the guard of the
@@ -8394,6 +8504,62 @@ impl Engine {
                 from: pack_msg_context(g),
                 edge_label: edge.1,
                 pool_idx,
+            });
+        }
+    }
+
+    /// Record that context `id` has an edge labelled `o` to the ground
+    /// context (see `Context::root_labels`).
+    fn note_root_label(&mut self, id: usize, o: Term) {
+        let ctx = &mut self.contexts[id];
+        if ctx.root_label_set.insert(o) {
+            ctx.root_labels.push(o);
+        }
+    }
+
+    /// Predecessor labels over root edges (docs/NOMINALS-CB.md section 12).
+    /// The ground context reads every element linked to an individual as its
+    /// predecessor variable `y`. Its Hyper can only match a body atom `B(z)`
+    /// at such an element when `B(y)` is a hypothesis there, and r-Succ as
+    /// stated in arXiv:1805.01396 (`Su^r = {B(o), S(y,o), S(o,y)}`) never
+    /// provides one, so an at-most at an individual whose filler `B` must
+    /// hold at a linked element (`{b} ⊑ ≤1 p.B`, or the frontend's `⊤`
+    /// definer filler of `{b} ⊑ ≤1 p`) never fires Nom. With r-Succ on, this
+    /// offers every central label `B(x)` of `id` (`rsucc_reach`, the labels
+    /// an ordinary successor receives) over each root edge as the hypothesis
+    /// `B(y) → B(y)`, exactly as `rsucc_cross_step` does over a successor
+    /// edge. The hypothesis is a tautology; r-Pred resolves a ground-context
+    /// body atom `B(y)` against a clause of the receiver with `B(x)` maximal,
+    /// which exists because the receiver offered `B(y)`.
+    fn offer_root_reach(&mut self, id: usize) {
+        if !self.sig.rsucc || self.contexts[id].root_labels.is_empty() || root_reach_off() {
+            return;
+        }
+        let Some(g) = self.ground_ctx else { return };
+        if g == id {
+            return;
+        }
+        let mut fired: Vec<(Term, Pred)> = Vec::new();
+        {
+            let ctx = &mut self.contexts[id];
+            let n = ctx.rsucc_reach.len();
+            for &o in &ctx.root_labels {
+                let start = ctx.root_reach_hwm.get(&o).copied().unwrap_or(0);
+                if start >= n {
+                    continue;
+                }
+                for &p in &ctx.rsucc_reach[start..n] {
+                    fired.push((o, p.apply(&|v| forwards(o, v))));
+                }
+                ctx.root_reach_hwm.insert(o, n);
+            }
+        }
+        for (o, p) in fired {
+            self.msgs.push_back(Msg::Succ {
+                from: pack_msg_context(id),
+                f: o,
+                p,
+                target: pack_msg_context(g),
             });
         }
     }
@@ -10682,6 +10848,71 @@ mod tests {
         over_budget.context = 1;
         assert!(engine.nom_terms(over_budget, 1).is_none());
         assert!(engine.nom_truncated.get());
+    }
+
+    #[test]
+    fn nominal_covers_share_block_when_body_and_kept_head_are_strengthened() {
+        let mut engine = Engine::new(Sig::default(), Vec::new(), 0);
+        engine.nom_budget = 2;
+        let key1 = NomFiringKey {
+            context: 0,
+            source_body: vec![],
+            source_head: vec![Lit::eq(Y, Y)],
+            side_body: vec![],
+            side_head: vec![],
+            selected: vec![(0, rl(0, ind_term(1), Y))],
+            substitution: vec![(X, ind_term(1)), (zvar(1), Y), (zvar(2), Y)],
+        };
+        let body1 = vec![cx(0, Y), rl(0, ind_term(1), Y)];
+        let head1: Vec<Lit> = vec![];
+        let first = engine
+            .nom_terms_covered(key1, 1, &body1, &head1)
+            .expect("initial covering block");
+        assert_eq!(first.len(), 1);
+        assert_eq!(engine.nom_allocated.get(), 1);
+
+        // A firing in the same context whose sorted body contains `body1` and
+        // whose sorted kept head contains `head1` reuses `first`
+        // (`Nominals.nom_shared_cover_sound`) without consuming budget.
+        let key2 = NomFiringKey {
+            context: 0,
+            source_body: vec![],
+            source_head: vec![Lit::eq(comp_term(fterm(1), ind_term(1)), Y)],
+            side_body: vec![],
+            side_head: vec![Lit::P(cx(1, ind_term(1)))],
+            selected: vec![(1, rl(0, ind_term(1), Y))],
+            substitution: vec![
+                (X, ind_term(1)),
+                (zvar(1), Y),
+                (zvar(2), comp_term(fterm(1), ind_term(1))),
+            ],
+        };
+        let mut body2 = vec![cx(0, Y), cx(2, Y), rl(0, ind_term(1), Y)];
+        body2.sort();
+        let head2 = vec![Lit::P(cx(1, ind_term(1)))];
+        let reused = engine
+            .nom_terms_covered(key2, 1, &body2, &head2)
+            .expect("covered firing reuses existing block");
+        assert_eq!(reused, first);
+        assert_eq!(engine.nom_allocated.get(), 1);
+
+        // A firing whose body does NOT contain `body1` is not covered and
+        // allocates a disjoint block.
+        let key3 = NomFiringKey {
+            context: 0,
+            source_body: vec![],
+            source_head: vec![Lit::eq(Y, Y)],
+            side_body: vec![],
+            side_head: vec![],
+            selected: vec![(2, rl(0, ind_term(1), Y))],
+            substitution: vec![(X, ind_term(1)), (zvar(1), Y), (zvar(2), Y)],
+        };
+        let body3 = vec![rl(0, ind_term(1), Y)];
+        let fresh = engine
+            .nom_terms_covered(key3, 1, &body3, &head1)
+            .expect("uncovered firing allocates fresh block");
+        assert_ne!(fresh, first);
+        assert_eq!(engine.nom_allocated.get(), 2);
     }
 
     /// Trail invariant for the clone-free Hyper join: `mark()` + `rollback()`

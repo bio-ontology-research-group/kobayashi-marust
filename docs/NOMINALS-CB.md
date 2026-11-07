@@ -1905,3 +1905,156 @@ Details and reproduction: `results/agents/2026-11-01/polarity-definers/README.md
   `nominals`: 0 WRONG everywhere. The pass changes none of the `gen_r3`
   seeds' frontend output, so r163, r219, r461, r481, r575, r696, r1536 and
   r3777 still time out (their cost is section 10.4).
+
+## 12. An at-most with a filler at a nominal (repaired, 2026-11-05)
+
+Found by the nn1811 sibling family (`results/agents/2026-11-04/cb-nn1811/`,
+seed fx12). The automatic route answers these inputs as HermiT through the
+native bridge; before the repair the `nominals` route (and the nominal CB arm
+of `certified_nominals`, which publishes its answer when it wins the race)
+missed them. Present on 48a1113b and every earlier build checked.
+
+Reduction m9 (`data/cb-gap/m9.ofn`, fixture
+`engine/tests/fixtures/cb_nn1811/nominal_cb_gap/`):
+
+    EquivalentClasses(:Q3 ObjectMaxCardinality(1 :r ObjectHasValue(:s :b)))
+    InverseObjectProperties(:s :p)
+    SubClassOf(ObjectOneOf(:b) ObjectMaxCardinality(1 :p))
+
+Every element of `∃s.{b}` is a `p`-successor of `b`, and `b` has at most one,
+so `⊤ ⊑ Q3`. HermiT and the bridge derive it; `--route nominals` gave no
+subsumption in every regime tried (`KM_SEQ_ORDER` on, off and `context`,
+`KM_NOMINAL_DYNAMIC`, `KM_NO_MERGE_HYPOTHESES`, `KM_NO_NOMINAL_LABEL_CACHE`,
+`KM_NO_EXCHANGE_CUT`, `KM_NO_MERGE_CUT`, `KM_NO_MERGE_SUBSCRIPTION`,
+`KM_CB_KEEP_INERT_SORTS`, `KM_NO_CENTRAL`, `KM_NO_SHARE`). The same held for
+`⊤ ⊑ ≤1 p`, `ObjectPropertyDomain(p ≤1 p)`, `D(b)` with `D ⊑ ≤1 p`, and
+`∃p.⊤ ⊑ ≤1 p` (m1, m6 to m10), and for the qualified
+`{b} ⊑ ≤1 p.B` with `Q3 ≡ ≤1 r.(B ⊓ ∃s.{b})` (m11). With
+`FunctionalObjectProperty(p)`, whose clause is the bare
+`p(x,y1) ∧ p(x,y2) → y1≈y2`, the stack was right (m2, m12).
+
+What differs. The frontend writes the at-most as
+`Q_3(x) ∧ Q_4(y0) ∧ Q_4(y1) ∧ p(x,y0) ∧ p(x,y1) → y0≈y1` with the `⊤`
+definer `→ Q_4(x)` (or the filler `B`). `km engine` on the clause file with
+only the two filler atoms removed derives `Q3` for every class; with only the
+guard `Q_3(x)` removed it does not. So the miss needs a body atom on the
+successor variables of an at-most clause that fires at the nominal: in the
+ground context the `p`-neighbours of `b` are the predecessor variable `y` of
+the r-Succ edges (`S(o,y)` triggers), and nothing places `Q_4(y)` (or
+`B(y)`) in the ground context. `Su^r` holds `B(o)`, `S(y,o)` and `S(o,y)`
+only; `B(y)` is a predecessor trigger (`Pr^r`), a head that r-Pred sends
+back, not a premise the ground context can use. A unit fact `→ Q_4(x)` is
+instantiated at individuals in the ground context, not at `y`.
+
+The repair: predecessor labels over root edges (`Engine::offer_root_reach`).
+
+A context `u` has a root edge labelled `o` when it pushed an r-Succ trigger, a
+merge hypothesis or a merge subscription to the ground context for the
+individual `o`. The ground context reads every element linked to `o` as its
+predecessor variable `y`. A body atom `B(y)` of a ground clause can only match
+a hypothesis `B(y) → B(y)` there. For an ordinary successor edge the engine
+already offers every central label `B(x)` of the source (`rsucc_reach`, the
+labels an ordinary successor receives) as that hypothesis, with the forward
+map `x ↦ y`. For a root edge it offered none, so the ground context never held
+`Q_4(y)` or `B(y)` and the at-most at the nominal never fired.
+
+With r-Succ on, `offer_root_reach` now offers each `rsucc_reach` entry over
+every root label of `u` once (a high-water mark per label, append-only reach),
+as `Msg::Succ { f: o, p: B(y) }` to the ground context, the same message
+`rsucc_cross_step` sends over an ordinary edge. On the return path the r-Pred
+discharge of a ground clause whose body atom is an individual-free `B(y)` now
+looks for one of `u`'s root edges whose pushed set carries `B(y)`; before it
+could never succeed, because `pred_inds` of `B(y)` is empty.
+`KM_NO_ROOT_REACH=1` switches the offers off (negative control).
+
+Why it is exact.
+
+- Soundness. The offered hypothesis `B(y) → B(y)` is a tautology
+  (`Nominals.root_label_hyp_sound`, an instance of `rsucc_taut_sound`). The
+  r-Pred step renames `y ↦ x` in a ground clause: a valid clause stays valid
+  under any substitution of its variables (`rpredY_valid`: only the value of
+  `y` changes, even for `f(x)` terms), and the discharge of the body atom
+  `B(y){y↦x} = B(x)` against a context clause with `B(x)` in its head is one
+  resolution step (`rpred_label_sound`). Every new clause is therefore a
+  consequence of the premises, and the side condition (*) of r-Succ only
+  restricts firing. `CBRSuccClosure.parentOfEdge` now maps the label of a root
+  edge to the source's central variable, so the Lean production closure
+  (`rSuccOffers`) states exactly these offers; `forwardPredicate_root_label`
+  shows that the offer of `B(x)` over a root edge pushes `B(y)`.
+- Completeness. The repair adds derivations and removes none, so every
+  clause the previous stack derived is still derived (saturation is monotone).
+  It supplies the premise the Nom rule needs for an at-most whose filler holds
+  at a linked element, which is the case the paper's `Su^r = {B(o), S(y,o),
+  S(o,y)}` leaves to the ground context's own clauses.
+- Cost and `Nom` cover reuse (`Engine::nom_terms_covered`). The extra
+  hypotheses are one clause per (root label, reach entry). Once `offer_root_reach`
+  enabled `{a} ⊑ ≤1 r⁻` and domain-guarded `≤1 p` to fire `Nom` in the ground
+  context, two defects in `build_hyper_resolvent` caused an unbounded chain of
+  fresh nominals on `m1`, `m7`, `m10`, `fx12`, `probe_v7`, and `probe_v11`:
+  1. *Covering width (`k_eff`).* `build_hyper_resolvent` set
+     `k_eff = self.nom_k + nom_rhs.len()` from the ontology-wide maximum
+     at-most bound `self.nom_k` even when `!has_yy` (no `y0 ≈ y1` literal in
+     the ontology clause head collapsed to `y ≈ y`, which is the `n = 0` base
+     case of `Nominals.nom_cover` with width `0 + nom_rhs.len()`) or when the
+     current firing bound only `n_y` variables to `y` (`repeat_slots = n_y - 1 <
+     self.nom_k`, as on `probe_v11.ofn` where `⊤ ⊑ =2 u` raises `self.nom_k` to
+     `2` while `{a} ⊑ ≤1 r⁻` has `n_y - 1 = 1`). Computing
+     `repeat_slots = if has_yy { (n_y - 1).max(1).min(self.nom_k) } else { 0 }`
+     and `k_eff = repeat_slots + nom_rhs.len()` matches `Nominals.nom_cover` per
+     firing and emits a unit `y ≈ o_2` instead of a 2-literal disjunction on an
+     at-most-1 restriction.
+  2. *Common-cover reuse across strengthened residual bodies and heads
+     (`Nominals.nom_shared_cover_sound`).* After the `y0 ↦ y, y1 ↦ y` firing
+     emits `C_1: Q_0(y) ∧ r⁻(a, y) → y ≈ o_2`, ground instantiation at `o_2`
+     produces `f(o_2)` with residual sort head `__data__(o_2) ∨ r⁻(a, f(o_2))`.
+     When `Nom` fires again with `y0 ↦ y, y1 ↦ f(o_2)` (`!has_yy`,
+     `nom_rhs = [f(o_2)]`), keying `nom_allocated` by the full `NomFiringKey`
+     allocated a fresh `o_3` for `Q_0(y) ∧ r⁻(a, y) → __data__(o_2) ∨ y ≈ o_3`,
+     which forward subsumption could not prune against `C_1` (`o_3 ≠ o_2`),
+     cascading `o_2 → o_3 → o_4 → …` up to `KM_NOM_BUDGET = 4096`. By
+     `Nominals.nom_shared_cover_sound`, any single-`y` `Nom` firing in the same
+     context whose post-resolution `(body, kept_head)` is a superset of an
+     earlier cover's `(prev_body, prev_kept_head)` with `prev_terms.len() ≥
+     k_eff` is already satisfied by `prev_terms[..k_eff]`: if `prev_body` holds
+     and `prev_kept_head` fails at `y`, then `y` equals one of `prev_terms`.
+     Reusing `prev_terms[..k_eff]` produces `Q_0(y) ∧ r⁻(a, y) → __data__(o_2)
+     ∨ y ≈ o_2`, which `C_1` immediately forward-subsumes. Placing the
+     self-candidate `(usize::MAX, p)` first in `hyper_inner` ensures the pure
+     `y ≈ y` firing (`kept_head = []`) establishes the base cover before any
+     composite `f(o')` firing.
+
+Results (`data/cb-gap/` and `data/probes-p2.tsv`, 20 runs per route):
+
+| input | axioms behind the nominal at-most | before (`nominals`) | after (`nominals`) | after (`certified_nominals`, `auto`) |
+|---|---|---|---|---|
+| m2, m12 | `FunctionalObjectProperty(p)` | HermiT (0.02 s) | HermiT (0.02 s) | HermiT (0.01 s) |
+| m6 | `D(b)`, `D ⊑ ≤1 p` | `⊤ ⊑ Q3` missed | HermiT (0.02 s) | HermiT (0.01 s) |
+| m8 | `⊤ ⊑ ≤1 p` | missed | HermiT (0.02 s) | HermiT (0.01 s) |
+| m9 | `{b} ⊑ ≤1 p` | missed | HermiT (0.02 s) | HermiT (0.01 s) |
+| m11 | `{b} ⊑ ≤1 p.B` | missed | HermiT (0.02 s) | HermiT (0.01 s) |
+| m1 | `Domain(p, ≤1 p)` | missed | HermiT (0.03 s) | HermiT (0.01 s) |
+| m7 | `∃p.⊤ ⊑ D`, `D ⊑ ≤1 p` | missed | HermiT (0.05 s) | HermiT (0.01 s) |
+| m10 | `∃p.⊤ ⊑ ≤1 p` | missed | HermiT (0.03 s) | HermiT (0.01 s) |
+| fx12 | m1 plus nominal assertions | missed | HermiT (0.27 s) | HermiT (0.02 s) |
+| probe_v7 | `⊤ ⊑ ≥2 u`, `⊤ ⊑ ∃r.{a}`, `{a} ⊑ ≤1 r⁻` | HermiT (via gap, 0.07 s) | HermiT (0.13 s) | HermiT (0.12 s `certified_nominals`, 0.02 s `auto`) |
+| probe_v11 | `⊤ ⊑ =2 u`, `⊤ ⊑ ≤1 r`, `A ⊑ ≥3 u`, `{a} ⊑ ≤1 r⁻` | HermiT (via gap, 0.14 s) | HermiT (0.22 s) | HermiT (0.21 s `certified_nominals`, 0.25 s `auto`) |
+
+The old note on the universal-definer elimination of section 6 stays true: it
+would drop the `⊤` filler for m8 and m9 but skips every clause set with an
+inverse role, and does not touch a real filler (m11).
+
+On `probe_v7.ofn` and `probe_v11.ofn` (`engine/tests/top_nominal_data_successors.rs`),
+the two-sorted `ht_bridge` declines with exit code 3 (`datatype gate: a
+non-datatype axiom rejects a blank data node`) because `frontend/sorts.rs`
+relativizes object axioms over `__data__`. On `probe_v7.ofn`, the third attempt
+of `bounded_bridge_first` (`orchestrate/mod.rs`) runs `ht_bridge` with
+`KM_BRIDGE_OBJECT_GUARD=1` (`frontend::object_guard`) on `automatic` and answers
+in 0.015 s; under explicit `KM_ROUTE=certified_nominals`, `race_certified_ht_arms`
+runs the unguarded two-sorted `ht_bridge`, which declines at 0.00 s, and the CB
+nominal arm answers in 0.12 s (matching the 0.11 s baseline). On `probe_v11.ofn`,
+even the object-guarded bridge declines at `bridge.rs` because
+`SubClassOf(A, AtLeast(3, u, Top))` exceeds the `0..=2` safe data-cardinality
+bound (`data_role_uses_are_safe_cardinality_only`), so `automatic`,
+`certified_nominals`, and `nominals` all answer through the CB nominal engine in
+0.21-0.25 s, and all 16 tests in `top_nominal_data_successors` pass with every
+route required to answer as HermiT.

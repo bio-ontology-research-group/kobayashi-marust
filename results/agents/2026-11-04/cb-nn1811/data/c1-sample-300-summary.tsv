@@ -1,0 +1,601 @@
+ore_ont_185	base	rc=0	wall=.092429	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_185	new	rc=0	wall=.098673	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_231	base	rc=0	wall=.055455	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_231	new	rc=0	wall=.062883	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_283	base	rc=0	wall=.987453	konclude=agreement hermit=agreement 
+ore_ont_283	new	rc=0	wall=.995952	konclude=agreement hermit=agreement 
+ore_ont_380	base	rc=0	wall=.041138	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_380	new	rc=0	wall=.041326	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_566	base	rc=0	wall=.082940	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_566	new	rc=0	wall=.084099	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_586	new	rc=0	wall=1.04534	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_586	base	rc=0	wall=1.23540	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_630	new	rc=0	wall=.040381	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_630	base	rc=0	wall=.038417	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_778	base	rc=0	wall=.343886	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_778	new	rc=0	wall=.326652	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_802	base	rc=0	wall=1.03134	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_802	new	rc=0	wall=1.09845	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_869	base	rc=0	wall=.061168	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_869	new	rc=0	wall=.061556	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_964	new	rc=0	wall=.217756	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_964	base	rc=0	wall=.191965	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_1194	new	rc=124	wall=60.4724	
+ore_ont_1194	base	rc=124	wall=60.4819	
+ore_ont_1211	new	rc=0	wall=.331522	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_1211	base	rc=0	wall=.343753	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_1306	base	rc=0	wall=4.40410	konclude=agreement 
+ore_ont_1306	new	rc=0	wall=4.46686	konclude=agreement 
+ore_ont_1310	new	rc=0	wall=2.72147	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_1310	base	rc=0	wall=3.09331	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_1330	new	rc=0	wall=1.49266	konclude=agreement openllet=agreement 
+ore_ont_1330	base	rc=0	wall=1.42616	konclude=agreement openllet=agreement 
+ore_ont_1370	new	rc=0	wall=2.13730	konclude=agreement hermit=agreement 
+ore_ont_1370	base	rc=0	wall=2.26199	konclude=agreement hermit=agreement 
+ore_ont_1397	new	rc=0	wall=.507172	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_1397	base	rc=0	wall=.539161	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_1406	new	rc=0	wall=.038092	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_1406	base	rc=0	wall=.045984	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_1461	base	rc=0	wall=.159791	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_1461	new	rc=0	wall=.250455	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_1478	new	rc=0	wall=.224477	konclude=agreement hermit=agreement jfact=agreement 
+ore_ont_1478	base	rc=0	wall=.266326	konclude=agreement hermit=agreement jfact=agreement 
+ore_ont_1494	base	rc=0	wall=.027088	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_1494	new	rc=0	wall=.026909	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_1524	base	rc=0	wall=.159914	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_1524	new	rc=0	wall=.171862	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_1579	new	rc=0	wall=4.15008	konclude=agreement 
+ore_ont_1579	base	rc=0	wall=4.09184	konclude=agreement 
+ore_ont_1672	base	rc=0	wall=.290969	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_1672	new	rc=0	wall=.342136	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_1707	base	rc=0	wall=.418243	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_1707	new	rc=0	wall=.411887	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_1728	base	rc=0	wall=.032303	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_1728	new	rc=0	wall=.031347	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_1743	base	rc=0	wall=.325684	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_1743	new	rc=0	wall=.325622	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_1821	new	rc=0	wall=3.03802	konclude=agreement hermit=agreement 
+ore_ont_1821	base	rc=0	wall=3.03675	konclude=agreement hermit=agreement 
+ore_ont_1898	base	rc=0	wall=.337284	konclude=agreement hermit=agreement openllet=agreement jfact=consistency_disagreement 
+ore_ont_1898	new	rc=0	wall=.405645	konclude=agreement hermit=agreement openllet=agreement jfact=consistency_disagreement 
+ore_ont_1938	new	rc=0	wall=40.1783	konclude=agreement 
+ore_ont_1938	base	rc=0	wall=40.0004	konclude=agreement 
+ore_ont_1970	base	rc=0	wall=.250305	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_1970	new	rc=0	wall=.251105	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_2017	new	rc=0	wall=.029745	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_2017	base	rc=0	wall=.029481	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_2020	base	rc=0	wall=.393815	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_2020	new	rc=0	wall=.517691	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_2082	new	rc=0	wall=4.65222	konclude=agreement hermit=agreement 
+ore_ont_2082	base	rc=0	wall=4.42408	konclude=agreement hermit=agreement 
+ore_ont_2134	base	rc=0	wall=2.57183	konclude=agreement hermit=agreement 
+ore_ont_2134	new	rc=0	wall=2.51123	konclude=agreement hermit=agreement 
+ore_ont_2228	base	rc=0	wall=.057323	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_2228	new	rc=0	wall=.050579	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_2333	base	rc=0	wall=.245185	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_2333	new	rc=0	wall=.242679	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_2491	base	rc=0	wall=.193076	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_2491	new	rc=0	wall=.193625	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_2526	new	rc=0	wall=.136241	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_2526	base	rc=0	wall=.130679	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_2656	new	rc=0	wall=.177270	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_2656	base	rc=0	wall=.193434	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_2703	base	rc=0	wall=.524267	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_2703	new	rc=0	wall=.504943	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_2792	new	rc=0	wall=2.63832	konclude=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_2792	base	rc=0	wall=2.60081	konclude=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_2803	new	rc=0	wall=1.02601	konclude=agreement hermit=agreement 
+ore_ont_2803	base	rc=0	wall=.959852	konclude=agreement hermit=agreement 
+ore_ont_2820	new	rc=0	wall=2.40640	konclude=agreement hermit=agreement 
+ore_ont_2820	base	rc=0	wall=2.56035	konclude=agreement hermit=agreement 
+ore_ont_2828	new	rc=0	wall=3.78918	konclude=agreement hermit=agreement 
+ore_ont_2828	base	rc=0	wall=3.52556	konclude=agreement hermit=agreement 
+ore_ont_2876	base	rc=0	wall=.034322	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_2876	new	rc=0	wall=.033060	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_2936	new	rc=0	wall=.042749	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_2936	base	rc=0	wall=.041010	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_3238	base	rc=0	wall=.154375	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_3238	new	rc=0	wall=.162468	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_3260	base	rc=0	wall=.051545	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_3260	new	rc=0	wall=.069136	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_3480	new	rc=0	wall=.216200	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_3480	base	rc=0	wall=.215757	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_3560	base	rc=0	wall=3.57418	konclude=agreement hermit=agreement 
+ore_ont_3560	new	rc=0	wall=3.55837	konclude=agreement hermit=agreement 
+ore_ont_3635	base	rc=0	wall=.035336	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_3635	new	rc=0	wall=.034417	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_3639	new	rc=0	wall=.046232	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_3639	base	rc=0	wall=.044144	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_3696	base	rc=0	wall=1.64974	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_3696	new	rc=0	wall=1.49797	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_3781	base	rc=0	wall=.200782	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_3781	new	rc=0	wall=.209361	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_3783	new	rc=0	wall=.217862	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_3783	base	rc=0	wall=.217272	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_3794	new	rc=0	wall=38.2804	konclude=taxonomy_disagreement 
+ore_ont_3794	base	rc=0	wall=38.5748	konclude=taxonomy_disagreement 
+ore_ont_3916	new	rc=0	wall=.318872	konclude=inconsistent_agreement hermit=inconsistent_agreement openllet=inconsistent_agreement jfact=inconsistent_agreement 
+ore_ont_3916	base	rc=0	wall=.336820	konclude=inconsistent_agreement hermit=inconsistent_agreement openllet=inconsistent_agreement jfact=inconsistent_agreement 
+ore_ont_3919	new	rc=0	wall=.515442	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_3919	base	rc=0	wall=.452533	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_4006	new	rc=0	wall=.381983	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_4006	base	rc=0	wall=.384663	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_4033	base	rc=0	wall=.991095	konclude=agreement hermit=agreement 
+ore_ont_4033	new	rc=0	wall=1.02263	konclude=agreement hermit=agreement 
+ore_ont_4074	new	rc=0	wall=.035371	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_4074	base	rc=0	wall=.035355	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_4182	new	rc=0	wall=.158102	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_4182	base	rc=0	wall=.154561	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_4226	base	rc=0	wall=.131755	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_4226	new	rc=0	wall=.131875	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_4242	new	rc=0	wall=1.03327	konclude=agreement hermit=agreement 
+ore_ont_4242	base	rc=0	wall=1.01797	konclude=agreement hermit=agreement 
+ore_ont_4487	new	rc=0	wall=1.21773	konclude=agreement hermit=agreement 
+ore_ont_4487	base	rc=0	wall=1.20176	konclude=agreement hermit=agreement 
+ore_ont_4516	base	rc=0	wall=.060032	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_4516	new	rc=0	wall=.058620	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_4557	base	rc=0	wall=1.71690	konclude=agreement 
+ore_ont_4557	new	rc=0	wall=1.72239	konclude=agreement 
+ore_ont_4609	new	rc=0	wall=17.8757	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_4609	base	rc=0	wall=18.4598	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_4668	new	rc=0	wall=.071405	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_4668	base	rc=0	wall=.074806	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_4732	new	rc=0	wall=.127877	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_4732	base	rc=0	wall=.126176	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_4856	base	rc=0	wall=.026117	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_4856	new	rc=0	wall=.025367	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_4983	base	rc=0	wall=.121669	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_4983	new	rc=0	wall=.122307	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_5090	base	rc=0	wall=.029039	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_5090	new	rc=0	wall=.028848	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_5149	base	rc=0	wall=.120656	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_5149	new	rc=0	wall=.119167	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_5184	new	rc=0	wall=.071383	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_5184	base	rc=0	wall=.072805	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_5188	base	rc=0	wall=.177005	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_5188	new	rc=0	wall=.177204	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_5204	base	rc=0	wall=.069179	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_5204	new	rc=0	wall=.070606	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_5220	base	rc=0	wall=.042909	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_5220	new	rc=0	wall=.041767	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_5258	base	rc=0	wall=.034053	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_5258	new	rc=0	wall=.033481	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_5438	base	rc=0	wall=4.77400	konclude=agreement hermit=agreement 
+ore_ont_5438	new	rc=0	wall=4.72179	konclude=agreement hermit=agreement 
+ore_ont_5544	base	rc=0	wall=1.03175	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_5544	new	rc=0	wall=1.05437	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_5549	new	rc=0	wall=1.42888	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_5549	base	rc=0	wall=1.33616	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_5572	base	rc=0	wall=.037379	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_5572	new	rc=0	wall=.041428	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_5646	new	rc=0	wall=.042312	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_5646	base	rc=0	wall=.042774	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_5755	new	rc=0	wall=1.04149	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_5755	base	rc=0	wall=1.11692	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_5781	base	rc=0	wall=1.07519	konclude=agreement hermit=agreement 
+ore_ont_5781	new	rc=0	wall=1.06019	konclude=agreement hermit=agreement 
+ore_ont_5792	base	rc=0	wall=.092810	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_5792	new	rc=0	wall=.093557	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_5815	new	rc=0	wall=.209300	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_5815	base	rc=0	wall=.217905	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_5840	new	rc=0	wall=.463793	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_5840	base	rc=0	wall=.472718	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_5927	base	rc=0	wall=.993744	konclude=agreement hermit=agreement 
+ore_ont_5927	new	rc=0	wall=1.07632	konclude=agreement hermit=agreement 
+ore_ont_6076	new	rc=0	wall=.505545	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_6076	base	rc=0	wall=.518848	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_6108	new	rc=0	wall=2.67551	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_6108	base	rc=0	wall=2.59305	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_6246	base	rc=0	wall=.056501	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_6246	new	rc=0	wall=.057311	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_6258	new	rc=0	wall=.145521	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_6258	base	rc=0	wall=.145637	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_6298	base	rc=0	wall=.291098	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_6298	new	rc=0	wall=.289515	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_6333	base	rc=0	wall=.464888	konclude=taxonomy_disagreement openllet=agreement jfact=agreement 
+ore_ont_6333	new	rc=0	wall=.497570	konclude=taxonomy_disagreement openllet=agreement jfact=agreement 
+ore_ont_6358	new	rc=0	wall=.130092	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_6358	base	rc=0	wall=.140649	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_6443	new	rc=0	wall=.740398	konclude=agreement hermit=agreement openllet=taxonomy_disagreement jfact=agreement 
+ore_ont_6443	base	rc=0	wall=.763592	konclude=agreement hermit=agreement openllet=taxonomy_disagreement jfact=agreement 
+ore_ont_6453	new	rc=0	wall=.166285	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_6453	base	rc=0	wall=.161264	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_6483	base	rc=0	wall=.727212	konclude=agreement hermit=agreement openllet=taxonomy_disagreement jfact=agreement 
+ore_ont_6483	new	rc=0	wall=.726094	konclude=agreement hermit=agreement openllet=taxonomy_disagreement jfact=agreement 
+ore_ont_6615	base	rc=0	wall=6.25123	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_6615	new	rc=0	wall=6.65966	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_6727	base	rc=0	wall=.501934	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_6727	new	rc=0	wall=.489769	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_6833	base	rc=0	wall=2.00070	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_6833	new	rc=0	wall=2.08224	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_6870	base	rc=0	wall=.146310	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_6870	new	rc=0	wall=.163141	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_6905	base	rc=0	wall=.062020	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_6905	new	rc=0	wall=.061365	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_6923	base	rc=0	wall=.212962	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_6923	new	rc=0	wall=.230652	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_6967	new	rc=0	wall=.761433	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_6967	base	rc=0	wall=.831685	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_6999	base	rc=0	wall=.217726	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_6999	new	rc=0	wall=.469079	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_7127	new	rc=0	wall=12.1696	konclude=agreement hermit=agreement 
+ore_ont_7127	base	rc=0	wall=11.9559	konclude=agreement hermit=agreement 
+ore_ont_7246	new	rc=0	wall=3.26195	konclude=agreement 
+ore_ont_7246	base	rc=0	wall=3.36086	konclude=agreement 
+ore_ont_7275	base	rc=0	wall=.112867	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_7275	new	rc=0	wall=.111555	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_7278	base	rc=0	wall=8.05782	konclude=agreement openllet=agreement jfact=agreement 
+ore_ont_7278	new	rc=0	wall=8.11125	konclude=agreement openllet=agreement jfact=agreement 
+ore_ont_7342	new	rc=0	wall=.123695	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_7342	base	rc=0	wall=.119344	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_7361	new	rc=0	wall=32.5640	konclude=agreement 
+ore_ont_7361	base	rc=0	wall=35.9099	konclude=agreement 
+ore_ont_7493	new	rc=0	wall=.472908	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_7493	base	rc=0	wall=.466037	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_7584	base	rc=0	wall=.124365	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_7584	new	rc=0	wall=.139337	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_7663	base	rc=0	wall=.031112	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_7663	new	rc=0	wall=.032570	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_7775	new	rc=0	wall=.719262	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_7775	base	rc=0	wall=.738961	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_7817	new	rc=0	wall=.461975	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_7817	base	rc=0	wall=.488286	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_7858	new	rc=0	wall=.329761	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_7858	base	rc=0	wall=.351594	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_7893	base	rc=0	wall=.450399	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_7893	new	rc=0	wall=.452049	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_7894	base	rc=0	wall=.036357	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_7894	new	rc=0	wall=.035234	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_7962	base	rc=0	wall=.063471	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_7962	new	rc=0	wall=.078589	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_7969	base	rc=0	wall=.011119	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_7969	new	rc=0	wall=.011934	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_7993	new	rc=0	wall=2.05681	konclude=agreement 
+ore_ont_7993	base	rc=0	wall=2.08366	konclude=agreement 
+ore_ont_8006	base	rc=0	wall=.614591	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8006	new	rc=0	wall=.555127	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8042	base	rc=0	wall=.708725	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8042	new	rc=0	wall=.735250	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8047	new	rc=0	wall=.048141	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8047	base	rc=0	wall=.049844	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8050	base	rc=0	wall=.109212	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8050	new	rc=0	wall=.137646	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8135	base	rc=0	wall=.028951	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8135	new	rc=0	wall=.027487	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8145	new	rc=0	wall=1.08627	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8145	base	rc=0	wall=1.08684	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8250	base	rc=3	wall=.089092	
+ore_ont_8250	new	rc=3	wall=.251770	
+ore_ont_8335	base	rc=0	wall=.051207	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8335	new	rc=0	wall=.054313	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8388	new	rc=0	wall=3.22811	konclude=agreement hermit=agreement 
+ore_ont_8388	base	rc=0	wall=3.38090	konclude=agreement hermit=agreement 
+ore_ont_8399	base	rc=0	wall=.193912	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_8399	new	rc=0	wall=.188898	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_8462	base	rc=0	wall=.043830	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8462	new	rc=0	wall=.040960	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8502	new	rc=0	wall=.035388	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8502	base	rc=0	wall=.034397	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8595	base	rc=0	wall=.415468	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8595	new	rc=0	wall=.463712	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8723	base	rc=0	wall=2.89744	konclude=agreement hermit=agreement 
+ore_ont_8723	new	rc=0	wall=3.10271	konclude=agreement hermit=agreement 
+ore_ont_8744	new	rc=0	wall=.080491	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8744	base	rc=0	wall=.081172	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8781	base	rc=0	wall=.070090	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8781	new	rc=0	wall=.083148	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8787	new	rc=0	wall=1.67562	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_8787	base	rc=0	wall=1.76185	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_8792	new	rc=0	wall=.470356	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8792	base	rc=0	wall=.470220	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_8858	new	rc=0	wall=1.21421	konclude=agreement hermit=agreement 
+ore_ont_8858	base	rc=0	wall=1.18416	konclude=agreement hermit=agreement 
+ore_ont_8995	new	rc=0	wall=.523683	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_8995	base	rc=0	wall=.561617	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_9027	new	rc=0	wall=41.3134	konclude=agreement 
+ore_ont_9027	base	rc=0	wall=41.4819	konclude=agreement 
+ore_ont_9053	base	rc=0	wall=1.03712	konclude=agreement hermit=agreement 
+ore_ont_9053	new	rc=0	wall=1.05647	konclude=agreement hermit=agreement 
+ore_ont_9054	new	rc=0	wall=.497166	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_9054	base	rc=0	wall=.521301	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_9122	base	rc=0	wall=2.28265	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_9122	new	rc=0	wall=2.32797	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_9204	base	rc=0	wall=.043387	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_9204	new	rc=0	wall=.043798	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_9347	new	rc=0	wall=.529745	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_9347	base	rc=0	wall=.504075	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_9386	new	rc=0	wall=.129823	konclude=agreement hermit=agreement 
+ore_ont_9386	base	rc=0	wall=.129177	konclude=agreement hermit=agreement 
+ore_ont_9509	base	rc=0	wall=.034481	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_9509	new	rc=0	wall=.033471	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_9540	new	rc=0	wall=12.6097	konclude=taxonomy_disagreement hermit=agreement 
+ore_ont_9540	base	rc=0	wall=12.8269	konclude=taxonomy_disagreement hermit=agreement 
+ore_ont_9666	new	rc=0	wall=.371796	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_9666	base	rc=0	wall=.369711	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_9674	new	rc=0	wall=12.7366	konclude=agreement 
+ore_ont_9674	base	rc=0	wall=12.6553	konclude=agreement 
+ore_ont_9689	base	rc=0	wall=.074657	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_9689	new	rc=0	wall=.082547	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_9761	new	rc=0	wall=.172407	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_9761	base	rc=0	wall=.190969	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_9772	new	rc=0	wall=.128695	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_9772	base	rc=0	wall=.125773	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_9791	new	rc=0	wall=53.6770	konclude=agreement 
+ore_ont_9791	base	rc=0	wall=53.6810	konclude=agreement 
+ore_ont_9816	base	rc=0	wall=.513394	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_9816	new	rc=0	wall=.467728	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_9867	new	rc=0	wall=.024590	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_9867	base	rc=0	wall=.025742	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_9894	base	rc=0	wall=1.12544	konclude=agreement hermit=agreement 
+ore_ont_9894	new	rc=0	wall=1.12855	konclude=agreement hermit=agreement 
+ore_ont_9899	base	rc=0	wall=28.0746	konclude=agreement hermit=agreement 
+ore_ont_9899	new	rc=0	wall=28.8941	konclude=agreement hermit=agreement 
+ore_ont_9947	new	rc=0	wall=.126565	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_9947	base	rc=0	wall=.119019	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_9957	base	rc=0	wall=.250877	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_9957	new	rc=0	wall=.250227	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10009	base	rc=0	wall=.301381	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10009	new	rc=0	wall=.412470	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10026	base	rc=0	wall=.080831	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10026	new	rc=0	wall=.082910	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10056	base	rc=0	wall=.028708	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10056	new	rc=0	wall=.028443	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10088	new	rc=0	wall=.193834	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10088	base	rc=0	wall=.192822	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10140	new	rc=0	wall=13.3951	konclude=agreement 
+ore_ont_10140	base	rc=0	wall=13.7760	konclude=agreement 
+ore_ont_10146	new	rc=0	wall=.172776	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10146	base	rc=0	wall=.168378	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10162	base	rc=0	wall=.026746	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10162	new	rc=0	wall=.026249	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10176	new	rc=0	wall=.029036	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_10176	base	rc=0	wall=.031114	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_10199	new	rc=0	wall=.044210	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10199	base	rc=0	wall=.044025	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10254	base	rc=0	wall=.065881	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10254	new	rc=0	wall=.066581	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10314	new	rc=0	wall=.042691	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10314	base	rc=0	wall=.044580	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10380	base	rc=0	wall=8.50014	konclude=agreement hermit=agreement 
+ore_ont_10380	new	rc=0	wall=8.59525	konclude=agreement hermit=agreement 
+ore_ont_10388	new	rc=0	wall=.061369	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10388	base	rc=0	wall=.061933	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10389	base	rc=0	wall=.100736	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10389	new	rc=0	wall=.110539	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10413	base	rc=0	wall=.027935	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10413	new	rc=0	wall=.027215	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10419	base	rc=0	wall=.031494	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10419	new	rc=0	wall=.032526	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10749	base	rc=0	wall=.821962	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_10749	new	rc=0	wall=.879330	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_10778	base	rc=0	wall=.573776	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_10778	new	rc=0	wall=.664169	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_10833	new	rc=0	wall=.077002	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10833	base	rc=0	wall=.076968	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10838	base	rc=124	wall=60.0741	
+ore_ont_10838	new	rc=124	wall=60.0854	
+ore_ont_10888	base	rc=0	wall=.056425	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10888	new	rc=0	wall=.057273	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_10908	new	rc=0	wall=.464278	konclude=agreement hermit=agreement jfact=agreement 
+ore_ont_10908	base	rc=0	wall=.495482	konclude=agreement hermit=agreement jfact=agreement 
+ore_ont_10930	base	rc=0	wall=1.09706	konclude=agreement hermit=agreement 
+ore_ont_10930	new	rc=0	wall=1.04252	konclude=agreement hermit=agreement 
+ore_ont_11009	base	rc=0	wall=.067992	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_11009	new	rc=0	wall=.067159	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_11016	new	rc=0	wall=.178688	konclude=agreement hermit=agreement openllet=agreement jfact=consistency_disagreement 
+ore_ont_11016	base	rc=0	wall=.167442	konclude=agreement hermit=agreement openllet=agreement jfact=consistency_disagreement 
+ore_ont_11037	new	rc=0	wall=8.02849	konclude=agreement hermit=agreement 
+ore_ont_11037	base	rc=0	wall=8.13912	konclude=agreement hermit=agreement 
+ore_ont_11270	new	rc=0	wall=16.3390	konclude=agreement 
+ore_ont_11270	base	rc=0	wall=16.2895	konclude=agreement 
+ore_ont_11291	base	rc=0	wall=.051114	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_11291	new	rc=0	wall=.051826	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_11315	new	rc=0	wall=4.73277	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_11315	base	rc=0	wall=5.31541	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_11389	base	rc=0	wall=1.50102	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_11389	new	rc=0	wall=1.51145	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_11392	base	rc=0	wall=.026043	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_11392	new	rc=0	wall=.027688	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_11457	new	rc=0	wall=2.56144	konclude=inconsistent_agreement hermit=inconsistent_agreement openllet=inconsistent_agreement jfact=inconsistent_agreement 
+ore_ont_11457	base	rc=0	wall=3.02461	konclude=inconsistent_agreement hermit=inconsistent_agreement openllet=inconsistent_agreement jfact=inconsistent_agreement 
+ore_ont_11519	new	rc=0	wall=1.17185	konclude=agreement hermit=agreement 
+ore_ont_11519	base	rc=0	wall=1.18335	konclude=agreement hermit=agreement 
+ore_ont_11533	base	rc=0	wall=.197837	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_11533	new	rc=0	wall=.216177	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_11623	new	rc=0	wall=.835301	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_11623	base	rc=0	wall=.840330	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_11629	base	rc=0	wall=9.56309	konclude=agreement 
+ore_ont_11629	new	rc=0	wall=9.57364	konclude=agreement 
+ore_ont_11635	base	rc=0	wall=.104392	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_11635	new	rc=0	wall=.107010	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_11676	base	rc=0	wall=.049423	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_11676	new	rc=0	wall=.048211	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_11695	new	rc=0	wall=50.0701	konclude=agreement 
+ore_ont_11695	base	rc=0	wall=50.1026	konclude=agreement 
+ore_ont_11703	new	rc=0	wall=.132918	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_11703	base	rc=0	wall=.135116	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_11817	new	rc=0	wall=1.92191	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_11817	base	rc=0	wall=1.94085	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_11866	new	rc=0	wall=.049085	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_11866	base	rc=0	wall=.047443	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_11896	new	rc=0	wall=.116875	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_11896	base	rc=0	wall=.108908	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_11906	new	rc=0	wall=.224979	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_11906	base	rc=0	wall=.208967	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_12000	base	rc=0	wall=.157538	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_12000	new	rc=0	wall=.147721	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_12012	base	rc=0	wall=6.32626	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_12012	new	rc=0	wall=6.11170	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_12084	base	rc=0	wall=.374241	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_12084	new	rc=0	wall=.399843	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_12128	new	rc=0	wall=39.9591	konclude=agreement 
+ore_ont_12128	base	rc=0	wall=39.5055	konclude=agreement 
+ore_ont_12161	new	rc=0	wall=.136414	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_12161	base	rc=0	wall=.141186	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_12191	new	rc=0	wall=6.04160	konclude=agreement jfact=consistency_disagreement 
+ore_ont_12191	base	rc=0	wall=6.22887	konclude=agreement jfact=consistency_disagreement 
+ore_ont_12281	base	rc=0	wall=.068802	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_12281	new	rc=0	wall=.072780	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_12284	new	rc=0	wall=.315096	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_12284	base	rc=0	wall=.370635	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_12342	new	rc=0	wall=.258673	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_12342	base	rc=0	wall=.302827	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_12379	base	rc=0	wall=.025106	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_12379	new	rc=0	wall=.023569	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_12567	new	rc=0	wall=46.2584	konclude=agreement 
+ore_ont_12567	base	rc=0	wall=46.4601	konclude=agreement 
+ore_ont_12892	new	rc=0	wall=.050697	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_12892	base	rc=0	wall=.048883	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_12898	base	rc=124	wall=60.1854	
+ore_ont_12898	new	rc=124	wall=60.1838	
+ore_ont_12993	base	rc=0	wall=17.8517	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_12993	new	rc=0	wall=18.6016	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_13018	new	rc=0	wall=.028995	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13018	base	rc=0	wall=.029409	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13053	new	rc=0	wall=.028926	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13053	base	rc=0	wall=.029262	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13066	base	rc=0	wall=.042134	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13066	new	rc=0	wall=.040783	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13100	new	rc=0	wall=.085022	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13100	base	rc=0	wall=.083110	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13113	new	rc=0	wall=.239201	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13113	base	rc=0	wall=.253253	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13122	base	rc=0	wall=.167939	konclude=agreement hermit=agreement 
+ore_ont_13122	new	rc=0	wall=.174954	konclude=agreement hermit=agreement 
+ore_ont_13141	new	rc=0	wall=.080669	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13141	base	rc=0	wall=.080109	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13219	new	rc=0	wall=3.52022	konclude=inconsistent_agreement hermit=inconsistent_agreement openllet=inconsistent_agreement 
+ore_ont_13219	base	rc=0	wall=3.51541	konclude=inconsistent_agreement hermit=inconsistent_agreement openllet=inconsistent_agreement 
+ore_ont_13243	new	rc=0	wall=.582611	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_13243	base	rc=0	wall=.679855	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_13277	new	rc=0	wall=.036785	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13277	base	rc=0	wall=.037560	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13404	new	rc=0	wall=.124504	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13404	base	rc=0	wall=.107349	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13423	base	rc=0	wall=1.66060	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_13423	new	rc=0	wall=1.66837	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_13545	new	rc=0	wall=.628537	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_13545	base	rc=0	wall=.574851	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_13690	base	rc=0	wall=1.28514	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13690	new	rc=0	wall=1.41432	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13700	base	rc=124	wall=60.0283	
+ore_ont_13700	new	rc=124	wall=60.0276	
+ore_ont_13708	base	rc=0	wall=2.79460	konclude=inconsistent_agreement hermit=inconsistent_agreement openllet=inconsistent_agreement jfact=inconsistent_agreement 
+ore_ont_13708	new	rc=0	wall=2.82357	konclude=inconsistent_agreement hermit=inconsistent_agreement openllet=inconsistent_agreement jfact=inconsistent_agreement 
+ore_ont_13752	base	rc=0	wall=.194116	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_13752	new	rc=0	wall=.202968	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_13772	base	rc=0	wall=.058078	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13772	new	rc=0	wall=.055435	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13799	new	rc=0	wall=.109182	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13799	base	rc=0	wall=.111794	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13837	base	rc=0	wall=.323546	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13837	new	rc=0	wall=.326173	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13872	base	rc=0	wall=.035134	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13872	new	rc=0	wall=.035723	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13887	new	rc=0	wall=.071175	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13887	base	rc=0	wall=.068515	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_13897	base	rc=0	wall=.040523	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_13897	new	rc=0	wall=.040528	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_13991	base	rc=0	wall=6.92130	konclude=agreement openllet=agreement jfact=agreement 
+ore_ont_13991	new	rc=0	wall=7.10719	konclude=agreement openllet=agreement jfact=agreement 
+ore_ont_14194	base	rc=0	wall=.736899	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_14194	new	rc=0	wall=.798293	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_14285	base	rc=0	wall=.082110	konclude=inconsistent_agreement hermit=inconsistent_agreement openllet=inconsistent_agreement jfact=inconsistent_agreement 
+ore_ont_14285	new	rc=0	wall=.084459	konclude=inconsistent_agreement hermit=inconsistent_agreement openllet=inconsistent_agreement jfact=inconsistent_agreement 
+ore_ont_14286	new	rc=0	wall=.143892	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_14286	base	rc=0	wall=.151990	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_14381	base	rc=0	wall=.029375	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_14381	new	rc=0	wall=.027286	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_14486	new	rc=0	wall=.028081	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_14486	base	rc=0	wall=.028883	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_14508	new	rc=0	wall=.328331	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_14508	base	rc=0	wall=.330368	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_14517	base	rc=0	wall=.044365	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_14517	new	rc=0	wall=.044929	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_14572	new	rc=0	wall=33.2226	konclude=agreement 
+ore_ont_14572	base	rc=0	wall=34.0049	konclude=agreement 
+ore_ont_14587	base	rc=0	wall=1.10221	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_14587	new	rc=0	wall=1.06752	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_14588	base	rc=0	wall=.156838	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_14588	new	rc=0	wall=.166608	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_14826	base	rc=0	wall=.033720	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_14826	new	rc=0	wall=.032476	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_14861	base	rc=0	wall=2.81284	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_14861	new	rc=0	wall=2.83897	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_14912	new	rc=0	wall=.111901	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_14912	base	rc=0	wall=.109929	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15013	base	rc=0	wall=.180363	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15013	new	rc=0	wall=.170273	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15063	new	rc=0	wall=11.1678	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_15063	base	rc=0	wall=11.6547	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_15103	base	rc=0	wall=.305013	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15103	new	rc=0	wall=.350233	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15273	new	rc=0	wall=.301652	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15273	base	rc=0	wall=.295965	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15288	base	rc=0	wall=1.40960	konclude=inconsistent_agreement hermit=inconsistent_agreement openllet=inconsistent_agreement jfact=inconsistent_agreement 
+ore_ont_15288	new	rc=0	wall=1.41828	konclude=inconsistent_agreement hermit=inconsistent_agreement openllet=inconsistent_agreement jfact=inconsistent_agreement 
+ore_ont_15318	base	rc=0	wall=.040911	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15318	new	rc=0	wall=.041720	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15331	new	rc=0	wall=.022205	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15331	base	rc=0	wall=.020407	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15363	new	rc=0	wall=.167709	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15363	base	rc=0	wall=.170628	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15372	base	rc=0	wall=.847498	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_15372	new	rc=0	wall=.857606	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_15461	new	rc=0	wall=.069119	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15461	base	rc=0	wall=.056665	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15514	base	rc=0	wall=.088312	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15514	new	rc=0	wall=.089141	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15557	base	rc=0	wall=1.10217	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15557	new	rc=0	wall=1.17492	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15583	new	rc=0	wall=.116683	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_15583	base	rc=0	wall=.117383	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_15652	new	rc=0	wall=.076143	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15652	base	rc=0	wall=.079213	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15672	base	rc=0	wall=.092075	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15672	new	rc=0	wall=.092068	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15680	new	rc=0	wall=18.7299	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_15680	base	rc=0	wall=18.7733	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_15695	new	rc=124	wall=60.2006	
+ore_ont_15695	base	rc=124	wall=60.2037	
+ore_ont_15703	new	rc=0	wall=8.71528	konclude=agreement hermit=agreement 
+ore_ont_15703	base	rc=0	wall=8.94501	konclude=agreement hermit=agreement 
+ore_ont_15800	base	rc=0	wall=.028299	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15800	new	rc=0	wall=.028460	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15803	new	rc=0	wall=5.73576	konclude=agreement 
+ore_ont_15803	base	rc=0	wall=5.70466	konclude=agreement 
+ore_ont_15878	new	rc=0	wall=.510775	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_15878	base	rc=0	wall=.483384	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_15929	new	rc=0	wall=1.07182	konclude=agreement hermit=agreement 
+ore_ont_15929	base	rc=0	wall=1.07246	konclude=agreement hermit=agreement 
+ore_ont_15932	base	rc=0	wall=.074561	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_15932	new	rc=0	wall=.076229	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_16167	base	rc=0	wall=.050514	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_16167	new	rc=0	wall=.049683	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_16184	new	rc=0	wall=5.19000	konclude=inconsistent_agreement hermit=inconsistent_agreement openllet=inconsistent_agreement jfact=inconsistent_agreement 
+ore_ont_16184	base	rc=0	wall=5.44231	konclude=inconsistent_agreement hermit=inconsistent_agreement openllet=inconsistent_agreement jfact=inconsistent_agreement 
+ore_ont_16235	base	rc=0	wall=2.19064	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_16235	new	rc=0	wall=2.22691	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_16283	new	rc=0	wall=.899064	konclude=agreement hermit=agreement 
+ore_ont_16283	base	rc=0	wall=.742309	konclude=agreement hermit=agreement 
+ore_ont_16286	new	rc=0	wall=24.2973	konclude=agreement hermit=agreement 
+ore_ont_16286	base	rc=0	wall=23.9524	konclude=agreement hermit=agreement 
+ore_ont_16444	new	rc=0	wall=10.8592	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_16444	base	rc=0	wall=10.9906	konclude=agreement hermit=agreement openllet=agreement 
+ore_ont_16461	base	rc=0	wall=.061993	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_16461	new	rc=0	wall=.059873	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_16481	base	rc=0	wall=.340628	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_16481	new	rc=0	wall=.355085	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_16559	base	rc=0	wall=.251204	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_16559	new	rc=0	wall=.240959	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_16687	new	rc=0	wall=.316511	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_16687	base	rc=0	wall=.324513	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_16708	new	rc=0	wall=.457378	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_16708	base	rc=0	wall=.479686	konclude=agreement hermit=agreement openllet=agreement jfact=taxonomy_disagreement 
+ore_ont_16723	base	rc=0	wall=.078224	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_16723	new	rc=0	wall=.073185	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_16777	new	rc=0	wall=.055053	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_16777	base	rc=0	wall=.055913	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_16827	base	rc=0	wall=.041759	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+ore_ont_16827	new	rc=0	wall=.040227	konclude=agreement hermit=agreement openllet=agreement jfact=agreement 
+DONE

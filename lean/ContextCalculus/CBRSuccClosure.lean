@@ -68,9 +68,22 @@ structure RSuccOffer where
   pushed : FPred
 deriving DecidableEq, Repr
 
+/-- The parent of an edge label, i.e. the term that `forwardTerm` maps to
+the predecessor variable `y`: `x` for an ordinary `f(x)` edge, `o` for a
+grounded `f(o)` edge, and `x` for a root edge labelled by the individual `o`
+(the source context's element is the ground context's predecessor; KM's
+`forwards(o, ·)` maps `x ↦ y`, docs/NOMINALS-CB.md section 12). -/
 def parentOfEdge : FTerm → FTerm
   | .app _ parent => parent
+  | .const _ => .var 0
   | term => term
+
+/-- A root-edge offer of the central label `B(x)` pushes `B(y)`. -/
+theorem forwardPredicate_root_label (individual concept : Nat) :
+    forwardPredicate (.const individual) (parentOfEdge (.const individual))
+        (.concept concept (.var 0)) =
+      .concept concept (.var (-1)) := by
+  simp [parentOfEdge, forwardPredicate, forwardTerm]
 
 def rSuccOffers (coverage : DecodedPredSendCoverageDocument)
     (reachConcepts : List Nat) (order : DecodedFiniteLiteralOrderDocument)
@@ -102,5 +115,6 @@ theorem rSuccOffer_valid {D : Type} (model : TModel D) (offer : RSuccOffer) :
 
 #print axioms mem_rSuccOffers_iff
 #print axioms rSuccOffer_valid
+#print axioms forwardPredicate_root_label
 
 end ContextCalculus.CBRSuccClosure

@@ -1,0 +1,12 @@
+Prefix(:=<http://example.org/nn#>)
+Ontology(<http://example.org/nn>
+Declaration(Class(:A))
+Declaration(Class(:C))
+Declaration(Class(:Q4))
+Declaration(ObjectProperty(:r))
+Declaration(ObjectProperty(:s))
+InverseObjectProperties(:r :s)
+DisjointClasses(:A :C)
+InverseFunctionalObjectProperty(:r)
+SubClassOf(ObjectMaxCardinality(1 :r ObjectSomeValuesFrom(:s :C)) :Q4)
+)

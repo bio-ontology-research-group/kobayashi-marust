@@ -14,7 +14,7 @@ fn sort_dedup_lit(mut v: Vec<Lit>) -> Vec<Lit> {
 }
 
 /// Is `a` a (sorted) subset of `b`?
-fn subset_pred(a: &[Pred], b: &[Pred]) -> bool {
+pub(crate) fn subset_pred(a: &[Pred], b: &[Pred]) -> bool {
     let (mut i, mut j) = (0, 0);
     while i < a.len() && j < b.len() {
         match a[i].cmp(&b[j]) {
@@ -28,7 +28,7 @@ fn subset_pred(a: &[Pred], b: &[Pred]) -> bool {
     }
     i == a.len()
 }
-fn subset_lit(a: &[Lit], b: &[Lit]) -> bool {
+pub(crate) fn subset_lit(a: &[Lit], b: &[Lit]) -> bool {
     let (mut i, mut j) = (0, 0);
     while i < a.len() && j < b.len() {
         match a[i].cmp(&b[j]) {

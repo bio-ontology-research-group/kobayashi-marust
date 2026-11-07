@@ -1,0 +1,102 @@
+auto       new  (2000 seeds, 6000 runs): {'TIMEOUT': 57, 'ok': 5943}
+auto       base (2000 seeds, 2000 runs): {'TIMEOUT': 33, 'WRONG': 18, 'ok': 1949}
+ht_bridge  new  (2000 seeds, 6000 runs): {'NOANSWER': 156, 'TIMEOUT': 48, 'ok': 5796}
+ht_bridge  base (2000 seeds, 2000 runs): {'NOANSWER': 52, 'TIMEOUT': 39, 'WRONG': 18, 'ok': 1891}
+
+auto: seeds with a WRONG/NOANSWER/ERR row in the new binary: 0
+auto: seeds with a TIMEOUT in some new run: 19
+  fx1021 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx1108 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx1204 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx1324 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx1325 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx1401 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx1443 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx1556 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx1760 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx211 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx279 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx325 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx346 new=TIMEOUT,TIMEOUT,TIMEOUT base=ok
+  fx415 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx416 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx728 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx771 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx956 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx981 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+auto: seeds whose runs differ: 0 []
+auto: seeds not ok in the new binary but ok in the base: 1 ['fx346']
+
+ht_bridge: seeds with a WRONG/NOANSWER/ERR row in the new binary: 52
+  fx1007 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1008 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: native HT bridge ABox conversion was incomplete
+  fx102 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1021 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1074 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1098 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx113 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1146 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1220 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx129 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1322 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1324 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1334 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1355 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1454 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: encoder: 1 clause(s) the 
+  fx1469 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1592 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1596 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1597 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1613 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1644 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1661 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1681 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1692 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx170 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1721 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1757 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1768 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1788 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1816 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1817 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx1828 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx235 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx325 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx346 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx367 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx416 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx432 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx497 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: native HT bridge ABox conversion was incomplete
+  fx504 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx586 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: encoder: 2 clause(s) the 
+  fx594 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx63 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx728 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx746 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: native HT bridge ABox conversion was incomplete
+  fx767 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx771 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx811 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx843 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx853 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx903 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+  fx962 new=NOANSWER,NOANSWER,NOANSWER base=NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse r
+ht_bridge: seeds with a TIMEOUT in some new run: 16
+  fx1084 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx1108 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx1204 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx1325 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx1401 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx1443 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx1556 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx1599 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx1760 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx1827 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx211 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx279 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx415 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx473 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx956 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+  fx981 new=TIMEOUT,TIMEOUT,TIMEOUT base=TIMEOUT
+ht_bridge: seeds whose runs differ: 0 []
+ht_bridge: seeds not ok in the new binary but ok in the base: 0 []
+
