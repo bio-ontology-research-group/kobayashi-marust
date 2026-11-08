@@ -1,0 +1,10 @@
+{
+  "ontology": "red_both.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["F", "Q1"],
+    ["F", "Q2"],
+    ["F", "Q4"]
+  ],
+  "unsatisfiable": []
+}

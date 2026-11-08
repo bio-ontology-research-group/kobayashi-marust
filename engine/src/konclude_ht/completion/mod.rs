@@ -173,6 +173,28 @@ cached_completion_flag!(ht_or_trace_enabled, "KM_HT_OR_TRACE");
 cached_completion_flag!(ht_ddb_no_skip_enabled, "KM_HT_DDB_NO_SKIP");
 cached_completion_flag!(ht_atmost_rest_enabled, "KM_HT_ATMOST_REST");
 cached_completion_flag!(ht_no_nn_rule, "KM_HT_NO_NN_RULE");
+// The three changes of docs/HYBRID-CB-HT.md section 25 to optimized blocking
+// (`u19.rs`), each with its own negative-control switch;
+// `KM_HT_NO_SAT578_FIX=1` turns all three off.
+cached_completion_flag!(no_sat578_fix, "KM_HT_NO_SAT578_FIX");
+cached_completion_flag!(no_b6_polarity_fix, "KM_HT_NO_B6_POLARITY_FIX");
+cached_completion_flag!(no_b4a_nominal_guard, "KM_HT_NO_B4A_NOMINAL_GUARD");
+cached_completion_flag!(no_b4a_self_loop, "KM_HT_NO_B4A_SELF_LOOP");
+/// `KM_HT_NO_B6_POLARITY_FIX=1`: B6 tests `C` instead of `not C` for a
+/// `not (<=n R.C)` at the parent, as Konclude does.
+pub(crate) fn ht_no_b6_polarity_fix() -> bool {
+    no_sat578_fix() || no_b6_polarity_fix()
+}
+/// `KM_HT_NO_B4A_NOMINAL_GUARD=1`: B4a counts every nominal neighbour of the
+/// blocker, and ghosts of nodes merged into a nominal, as before.
+pub(crate) fn ht_no_b4a_nominal_guard() -> bool {
+    no_sat578_fix() || no_b4a_nominal_guard()
+}
+/// `KM_HT_NO_B4A_SELF_LOOP=1`: B4a does not count a self-link of the blocker,
+/// as Konclude does.
+pub(crate) fn ht_no_b4a_self_loop() -> bool {
+    no_sat578_fix() || no_b4a_self_loop()
+}
 cached_completion_flag!(ht_nn_trace_enabled, "KM_HT_NN_TRACE");
 cached_completion_flag!(ht_nn_distinct_first, "KM_HT_NN_DISTINCT_FIRST");
 cached_completion_flag!(compact_distinct_groups_enabled, "KM_COMPACT_DISTINCT_GROUPS");
