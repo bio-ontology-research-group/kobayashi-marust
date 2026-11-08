@@ -642,6 +642,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                             cardinality,
                                             calc_alg_context,
                                         );
+                                        if !keep {
+                                            super::sat578_guard_fired();
+                                        }
                                     }
                                     if !keep {
                                         c_blocked = false;
@@ -784,6 +787,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                             .node(target)
                                             .is_nominal_individual_node()
                                     {
+                                        super::sat578_guard_fired();
                                         continue;
                                     }
                                 }
@@ -819,13 +823,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                 // only when w has the same link to o.
                                 // docs/HYBRID-CB-HT.md section 25.
                                 let succ_qualifies = if is_nominal_succ && guard && !nn_protected {
-                                    self.has_individuals_link(
+                                    let linked = self.has_individuals_link(
                                         &mut w_node,
                                         &mut succ_indi,
                                         role,
                                         false,
                                         calc_alg_context,
-                                    )
+                                    );
+                                    if !linked {
+                                        super::sat578_guard_fired();
+                                    }
+                                    linked
                                 } else {
                                     is_nominal_succ || deeper_than_pred
                                 };

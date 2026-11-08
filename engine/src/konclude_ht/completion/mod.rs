@@ -177,6 +177,22 @@ cached_completion_flag!(ht_no_nn_rule, "KM_HT_NO_NN_RULE");
 // (`u19.rs`), each with its own negative-control switch;
 // `KM_HT_NO_SAT578_FIX=1` turns both off.
 cached_completion_flag!(no_sat578_fix, "KM_HT_NO_SAT578_FIX");
+/// `KM_HT_SAT578_GUARD_TRACE=PATH`: create the file PATH (and print
+/// `KM-SAT578-GUARD-FIRED` to stderr) once per process when a section 25
+/// guard refuses something that the base accepted: a c-block in B6, a
+/// nominal neighbour or a merged ghost in B4a. A file, because the automatic
+/// route runs the bridge in worker processes whose stderr is not kept. A run
+/// that never fires computes what the base computes.
+pub(crate) fn sat578_guard_fired() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    static PATH: std::sync::OnceLock<Option<std::ffi::OsString>> = std::sync::OnceLock::new();
+    if let Some(path) = PATH.get_or_init(|| std::env::var_os("KM_HT_SAT578_GUARD_TRACE")) {
+        ONCE.call_once(|| {
+            eprintln!("KM-SAT578-GUARD-FIRED");
+            let _ = std::fs::write(path, b"fired\n");
+        });
+    }
+}
 cached_completion_flag!(no_b6_collision_guard, "KM_HT_NO_B6_COLLISION_GUARD");
 cached_completion_flag!(no_b4a_nominal_guard, "KM_HT_NO_B4A_NOMINAL_GUARD");
 /// `KM_HT_NO_B6_COLLISION_GUARD=1`: B6 keeps a successor in `C` c-blocked
