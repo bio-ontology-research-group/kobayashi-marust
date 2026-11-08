@@ -8,9 +8,10 @@
 //! both by `y` before either linked to `c`, so `c` never saw a second
 //! `s`-predecessor and its bound `≤1 s⁻.(∃s.{c})` never clashed:
 //!
-//! - B6 (`u19.rs`, cpp 18731): c-blocking `w` must leave `v`'s at-least
-//!   restrictions intact, so `w` needs `¬C` for `≥m R.C` at `v`. For the form
-//!   `¬(≤n R.C)` Konclude tests `C` instead of `¬C`.
+//! - B6 (`u19.rs`, cpp 18731): c-blocking `w` by `w'` redirects the edge
+//!   `y → w` to `w'`. For the form `¬(≤n R.C)` Konclude keeps `w` c-blocked
+//!   when `w` is in `C`, so two counted successors redirected to one blocker
+//!   (here `y` itself) count once and `≥2 s⁻.(∃s.{c})` at `y` breaks.
 //! - B4a (`u19.rs`, cpp 18788): a-blocking counted the nominal parent `c` of
 //!   the blocker for `w`'s `∃s.{c}`, although unravelling `w` as a copy of
 //!   `y` would add an `s`-predecessor of `c` that no rule at `c` counts.
@@ -152,20 +153,19 @@ fn forced_bridge_without_saturation_or_caches_matches_hermit() {
     );
 }
 
-/// With the fix off (`KM_HT_NO_SAT578_FIX=1`: Konclude's B6 polarity and
-/// B4a counting), every fixture is wrong again, as on 274faa6a.
+/// With the fix off (`KM_HT_NO_SAT578_FIX=1`: Konclude's B6 and B4a), every
+/// fixture is wrong again, as on 274faa6a.
 #[test]
 fn negative_control_without_the_fix_misses_every_fixture() {
     misses_every_fixture("KM_HT_NO_SAT578_FIX");
 }
 
-/// The B6 polarity and the B4a nominal guard are each needed: with either
+/// The B6 count test and the B4a nominal guard are each needed: with either
 /// one off, every fixture is wrong (with B4a alone `w` stays c-blocked, with
-/// B6 alone it is a-blocked through the nominal `c`). The third part, the
-/// self-link in B4a, serves termination only (section 25.4).
+/// B6 alone it is a-blocked through the nominal `c`).
 #[test]
 fn negative_control_each_part_is_needed() {
-    misses_every_fixture("KM_HT_NO_B6_POLARITY_FIX");
+    misses_every_fixture("KM_HT_NO_B6_COLLISION_GUARD");
     misses_every_fixture("KM_HT_NO_B4A_NOMINAL_GUARD");
 }
 

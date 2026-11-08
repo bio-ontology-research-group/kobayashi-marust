@@ -76,7 +76,7 @@ use super::super::model::op::{
     CCALL, CCAQSOME, CCATLEAST, CCATMOST, CCFS_ALL_AQALL_TYPE, CCFS_AQALL_TYPE, CCFS_AQAND_TYPE,
     CCSOME,
 };
-use super::super::model::substrate::{Cint64, Id, INVALID};
+use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
 use super::super::model::{ConceptId, RoleId};
 use super::super::process::node::IndividualProcessNode;
 use super::super::process::reapply_sat::{
@@ -93,6 +93,73 @@ use super::context::CalculationAlgorithmContextBase;
 type BlockingAlternativeDataHandle = BlockingAltDataId;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
+    /// The count test of B6 for `not (<=n role.C)` at `v`, that is
+    /// `>=n+1 role.C` (docs/HYBRID-CB-HT.md section 25). C-blocking `w` by
+    /// `w_pred` redirects the edge `v -> w` to `w_pred`. Every
+    /// `role`-successor of `v` in `C` then stands for its image: `w_pred` for
+    /// `w`, its blocker for a directly blocked successor (counted as
+    /// c-blocked, which is the worst case), itself otherwise. The redirects
+    /// break the restriction when they merge two counted successors into one
+    /// image and leave fewer than `cardinality` images. Fewer counted
+    /// successors than `cardinality` means the at-least rule at `v` has not
+    /// produced them all yet; each one that it adds and that a block would
+    /// merge into an existing image meets this test in its own blocking test.
+    fn b6_redirect_collides(
+        &mut self,
+        v_node: NodeId,
+        w_node: NodeId,
+        w_pred_node: NodeId,
+        role: RoleId,
+        op_linker: &[NegLink<ConceptId>],
+        cardinality: Cint64,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        let (w_id, w_pred_id) = {
+            let pc = calc_alg_context.process_context();
+            (
+                pc.node(w_node).individual_node_id(),
+                pc.node(w_pred_node).individual_node_id(),
+            )
+        };
+        let mut images: Vec<Cint64> = Vec::new();
+        let mut counted: Cint64 = 0;
+        for (_, succ) in self.ht_role_successor_links(v_node, role, calc_alg_context) {
+            let succ_con_set = calc_alg_context
+                .process_context()
+                .node(succ)
+                .use_reapply_con_label_set;
+            if !self.contains_individual_node_concepts_label_negated(
+                succ_con_set,
+                op_linker,
+                false,
+                calc_alg_context,
+            ) {
+                continue;
+            }
+            counted += 1;
+            let image = {
+                let pc = calc_alg_context.process_context();
+                let n = pc.node(succ);
+                let blocker = n.blocker_individual_node();
+                if n.individual_node_id() == w_id {
+                    w_pred_id
+                } else if n.has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_DIRECTBLOCKED,
+                ) && blocker.is_some()
+                {
+                    pc.node(blocker).individual_node_id()
+                } else {
+                    n.individual_node_id()
+                }
+            };
+            if !images.contains(&image) {
+                images.push(image);
+            }
+        }
+        let after = images.len() as Cint64;
+        after < counted && after < cardinality
+    }
+
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::hasOptimizedBlockingB2AutomateTransitionOperands`.
     ///
     /// Fully ported: the operand recursion / role match dispatch over `CConcept`
@@ -548,27 +615,35 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                     .get_operand_list()
                                     .to_vec();
                                 if !op_linker.is_empty() {
-                                    // B6: c-blocking redirects the edge
-                                    // v -> w to w', so w must not count for
-                                    // `>=m R.C` at v: w needs `not C`. The
-                                    // operands of `>=m R.C` and of
-                                    // `not (<=m-1 R.C)` are both C, so both
-                                    // forms test `not C` (negated = true).
-                                    // Konclude passes `!conNeg` (cpp 18731),
-                                    // which tests C for the `not <=` form and
-                                    // keeps w c-blocked exactly when it counts.
-                                    // docs/HYBRID-CB-HT.md section 25.
-                                    let b6_negated = if super::ht_no_b6_polarity_fix() {
-                                        !con_neg
-                                    } else {
-                                        true
-                                    };
-                                    if !self.contains_individual_node_concepts_label_negated(
+                                    let mut keep = self.contains_individual_node_concepts_label_negated(
                                         w_sub_con_set,
                                         &op_linker,
-                                        b6_negated,
+                                        !con_neg,
                                         calc_alg_context,
-                                    ) {
+                                    );
+                                    // B6 for `not (<=n R.C)` at v (cpp 18731):
+                                    // Konclude keeps w c-blocked when w is in
+                                    // C, that is, when w counts for the
+                                    // at-least restriction `>=n+1 R.C` at v.
+                                    // C-blocking redirects the edge v -> w to
+                                    // the blocker w'. Refuse the block when
+                                    // the redirects merge two R-successors of
+                                    // v in C into one (w' is already one of
+                                    // them, or blocks a sibling too) and
+                                    // leave fewer than n+1.
+                                    // docs/HYBRID-CB-HT.md section 25.
+                                    if keep && con_neg && !super::ht_no_b6_collision_guard() {
+                                        keep = !self.b6_redirect_collides(
+                                            v_node,
+                                            w_node,
+                                            w_pred_node,
+                                            role,
+                                            &op_linker,
+                                            cardinality,
+                                            calc_alg_context,
+                                        );
+                                    }
+                                    if !keep {
                                         c_blocked = false;
                                     }
                                 } else {
@@ -743,25 +818,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                 // keeps, nothing protects o: o counts for w
                                 // only when w has the same link to o.
                                 // docs/HYBRID-CB-HT.md section 25.
-                                // A self-link of w' (a reflexive role, a
-                                // merge of w' with its own neighbour): the
-                                // copy of w' that unravelling puts at w gets
-                                // the same self-link, and every restriction
-                                // that the link satisfies at w' holds at the
-                                // copy, whose label is the label of w'.
-                                // Konclude counts only deeper successors and
-                                // nominals here, so it cannot a-block such a
-                                // node and relies on c-blocking, which B6
-                                // above now refuses where it is unsound.
-                                // docs/HYBRID-CB-HT.md section 25.
-                                let is_self_loop = !super::ht_no_b4a_self_loop() && {
-                                    let pc = calc_alg_context.process_context();
-                                    pc.node(succ_indi).individual_node_id()
-                                        == pc.node(w_pred_node).individual_node_id()
-                                };
-                                let succ_qualifies = if is_self_loop {
-                                    true
-                                } else if is_nominal_succ && guard && !nn_protected {
+                                let succ_qualifies = if is_nominal_succ && guard && !nn_protected {
                                     self.has_individuals_link(
                                         &mut w_node,
                                         &mut succ_indi,
