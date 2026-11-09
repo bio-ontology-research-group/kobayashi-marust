@@ -1,11 +1,20 @@
-# KM 1.5.5 release notes (release candidate `v1.5.5-rc1`, not released)
+# KM 1.5.5 release notes
 
-Status 2026-11-01: candidate edeb7fff measured and certified; not released because the Konclude coverage clause of S1 is not met (562 verified held-out inputs against 575 solved by the same-day Konclude run; see `docs/V1.5.5-ACCEPTANCE.md`, "Evidence"). The text below describes the candidate.
+Released 2026-11-09 from commit a4bb4808 (tag `v1.5.5`, the same commit as
+`v1.5.5-rc3`). The first candidate (edeb7fff, 2026-11-01) was not released
+because it verified fewer held-out inputs than Konclude; the eight days in
+between went into the ported Konclude bridge, which now answers 15 of the
+16 inputs that candidate lost to Konclude. Every clause of the acceptance
+contract `docs/V1.5.5-ACCEPTANCE.md` is met without amendment; the evidence
+is recorded there ("Evidence", candidate rc3) and in the campaign log
+`docs/V1.5.5-STATUS.md`.
 
 Version 1.5.5 fixes every soundness and completeness defect found since
-v1.5.4 in a two-day differential campaign against HermiT 1.4.3 on generated
-nominal, rule, ALCHIQ, ALCI and data-property inputs, including the fr282
-dropped-rule miss and the nominal-mode items deferred from v1.5.4. It adds
+v1.5.4 in a ten-day differential campaign against HermiT 1.4.3 and Konclude
+0.7.0 on generated nominal, rule, ALCHIQ, ALCI, merge, reflexive and
+data-property inputs, including the fr282 dropped-rule miss, the
+nominal-mode items deferred from v1.5.4 and nine bridge defects found after
+the first candidate. It adds
 exact native data-value reasoning (no answer depends on the 512-literal cap;
 QUDT and the merge-and-count inputs are answered), a polarity encoding of
 complement definers in the frontend, an exchange cut and composite Pred
@@ -19,33 +28,49 @@ The campaign log with every branch and its measurements is
 ## Speed
 
 The held-out half (585 ORE inputs) was run from the profile-guided binary
-built from this tag (sha256 `a2caa940…`, the released executable) under the
+built from this tag (sha256 `5ac7eafe…`, the released executable) under the
 v1.5.3 protocol (Ibex `batch`, `cpu_intel_gold_6248`, one core, 240 s,
-20 GiB, scoped watchdog), on the same day and node pool as the v1.5.3
-release binary and as Konclude 0.7.0 (`Konclude-build-a`).
+20 GiB, scoped watchdog), on the same day (2026-11-09) and node pool as the
+v1.5.3 release binary and as Konclude 0.7.0 (`Konclude-build-a`). Two
+inputs that hit the cap on their first node were rerun once under the same
+protocol and verified in 147 s and 166 s (`docs/V1.5.5-ACCEPTANCE.md`, S1).
 
 | Clause | Status | Value |
 |---|---|---|
-| no loss | met | 562 verified against 560 (same-day v1.5.3) and 560 (v1.5.3 run of 2026-10-25); lost none; gained `ore_ont_4567`, `ore_ont_8148` |
-| mean ≤ 1.10 | met | 0.944 on the 560 inputs verified in both runs |
-| median ≤ 1.10 | met | 1.014 |
-| more verified than the same-day Konclude run | not met | 562 against 575 (Konclude answered 578; three answers do not count) |
-| mean and median against Konclude (reported) | KM slower | on 559 common inputs 4.29 s against 2.32 s, median 0.205 s against 0.176 s |
+| no loss | met | 577 verified against 558 (same-day v1.5.3) and 560 (v1.5.3 run of 2026-10-25); lost none; gained 17 against 2026-10-25 |
+| mean ≤ 1.10 | met | 0.903 on the 558 inputs verified in both runs |
+| median ≤ 1.10 | met | 0.827 |
+| more verified than the same-day Konclude run | met | 577 against 575 (Konclude answered 578; three answers do not count) |
+| mean and median against Konclude (reported) | KM slower | on 574 common inputs 3.94 s against 2.12 s, median 0.218 s against 0.202 s |
 
-The 16 held-out inputs Konclude solves and KM does not are timeouts for
-v1.5.3 as well. Counted the same way, Konclude solved 576 held-out inputs on
-2026-10-04; the "558 against 554" of the v1.5.4 release note discarded 22
-Konclude answers whose comparison status was `inconsistent_agreement`
+The seven held-out inputs KM does not verify besides the excused
+`ore_ont_3794`: `ore_ont_10926` runs out of memory (Konclude answers it in
+105 s); `ore_ont_2574` and `ore_ont_11196` time out (Konclude runs out of
+memory); `ore_ont_8475`, `7192`, `15344` and `15695` time out for both.
+Counted the same way, Konclude solved 576 held-out inputs on 2026-10-04;
+the "558 against 554" of the v1.5.4 release note discarded 22 Konclude
+answers whose comparison status was `inconsistent_agreement`
 (`docs/V1.5.5-ACCEPTANCE.md`, "Finding on the Konclude count of record").
-The largest per-input increases against the same-day v1.5.3 run are
-`ore_ont_1673` (81 s to 215 s, the `certified_nominals` race since v1.5.4),
-`ore_ont_1938` (40 s to 90 s) and `ore_ont_9240` (37 s to 66 s).
+Against the first candidate, the bridge work of 2026-11-02 to 2026-11-09
+brought the held-out mean from 0.944 to 0.903 and verified 15 more inputs.
 
 The full regression pool (1,920 rows, 1,708 admitted) was run from the same
-binary: 1,708 of 1,708 admitted inputs measured, 1,671 verified (v1.5.3 run of 2026-10-25: 1,662), lost none, gained `ore_ont_11378`, `16666`, `2792`, `3077`, `3917`, `4567`, `699`, `8148` and `9540`; no wrong answer (`ore_ont_3794` is flagged and excused by the adjudication, as in every run); 33 timeouts, one memout; `ore_ont_8250` refused with exit 3 in 0.1 s (DL-safe rules reach class queries through a nominal and the rule-worker input would omit one SHIQ construct; v1.5.3 and v1.5.4 gave no answer on it either); `ore_ont_4669` answered with no reference to compare against; the 212 rows the manifest marks as invalid inputs were refused as required (`pool-rc-54908317`).
+binary: 1,708 of 1,708 admitted inputs measured, 1,687 verified (v1.5.3 run
+of 2026-10-25: 1,662; first candidate 1,671), lost none, gained 25
+(`ore_ont_10838`, `11378`, `11647`, `12128`, `12191`, `15846`, `16315`,
+`16420`, `16666`, `2792`, `3077`, `3087`, `3917`, `4567`, `4796`, `4903`,
+`6132`, `699`, `7557`, `8148`, `8480`, `9151`, `9540`, `9577`, `9899`); no
+wrong answer (`ore_ont_3794` is flagged and excused by the adjudication, as
+in every run); 18 timeouts; `ore_ont_8250` refused with exit 3 (DL-safe
+rules reach class queries through a nominal and the rule-worker input would
+omit one SHIQ construct; v1.5.3 and v1.5.4 gave no answer on it either);
+`ore_ont_4669` answered with no reference to compare against; the 212 rows
+the manifest marks as invalid inputs were refused as required
+(`pool-rc-55402594`; `ore_ont_10949` verified in 66 s on its protocol
+recheck after a 240 s node timeout).
 
 Full tables: `BENCHMARKS.md` among the release assets; records under
-`/ibex/scratch/projects/c2014/hohndor/km/v155-release-20261101/`.
+`/ibex/scratch/projects/c2014/hohndor/km/v155-release-20261109-rc3/`.
 
 ## Wrong answers fixed
 
@@ -67,7 +92,22 @@ The changelog lists every item with its branch. In summary:
 - **Ported Konclude bridge.** Three defects in the reuse of the consistency
   model and the forward role-assertion transfer with a target merged two or
   more hops away (2,000 merge seeds: 22 wrong to 0 on both routes; Konclude
-  0.7.0 misses the same answers).
+  0.7.0 misses the same answers). After the first candidate, nine more
+  (`docs/HYBRID-CB-HT.md` sections 18 to 25): the saturation refused `SELF`
+  and published an incomplete taxonomy for ORE 12128; a role-successor count
+  stub kept nominals from ever being merge-critical (m413); the at-least rule
+  counted non-distinct successors and reported inconsistent
+  reflexive-plus-functional inputs consistent; Konclude's NN rule was not
+  ported (f1008, f439) and its per-candidate decisions did not terminate on
+  seven seeds; the satisfiable-expander cache was misused on cached nodes
+  next to nominals; two blocking tests of the optimized blocking accepted
+  blocks Konclude refuses (sat578, both routes); and the existing-witness
+  branch of the some-rule did not propagate the nominal-connection flag, so
+  a probe root linked to a nominal entered the cross-probe cache as
+  context-free. Every fix was checked against the Konclude source.
+- **Nominal CB stack.** `x ≈ y` over Pred clauses and the root reach offers
+  to the ground context (s974, s1966, nn1811), with the Lean enumeration
+  and `root_label_hyp_sound` extended.
 - **Global refutation stop.** Rows lost after the stop in the incremental CB
   oracle and the `km engine` worker; the automatic route missed the
   inconsistency of three ALCHIQ seeds.
@@ -119,7 +159,8 @@ route unless `KM_LEAN_CHECKERS=<dir>` is set. New in 1.5.5, all without
 - the hypertableau: `HypertableauSubsetUnravelling` (every mode 1/5 SAT
   terminal's unravelling checked as a finite model);
 - the nominal CB route: `UniversalDefinerElimination`, `ExchangeCut`,
-  `ExchangeEquality`, `CBPredResolving`;
+  `ExchangeEquality`, `CBPredResolving`, the `x ≈ y` case of
+  `CBPredSendEnumeration` and the root reach offers (`root_label_hyp_sound`);
 - the frontend: `PolarityDefiners` (`run_answers`), `ObjectGuardRestriction`,
   `DataAboxOmission`;
 - data values: `TwoSortedDL`, `DataValueProjection`,
@@ -144,7 +185,11 @@ checker step with the released binary, and the Maven Java suite. The gate
 receipts, test logs and tool bindings are in `build-completion.json` among
 the release assets.
 
-Gate times from the tag on 2026-11-01: `elc` 28 min, `routing` 6 min, `ht` 4 min, `cb` 4 min, `rules` 7 min; zero `sorryAx` everywhere.
+Gate times from the tag on 2026-11-09: `elc` 47 s on the cached build,
+`routing` 10 min, `ht` 49 min, `cb` 7 min, `rules` 9 min; zero `sorryAx`
+everywhere. The checker step with the released binary: 57 checker-bound
+test groups passed, checkers-on suite 22 and 33 accepted, 0 rejected, 0
+answers changed in modes `on` and `ht` (`docs/CHECKERS-ON.md`, section 6).
 
 ## Reproducing and inspecting the release
 
