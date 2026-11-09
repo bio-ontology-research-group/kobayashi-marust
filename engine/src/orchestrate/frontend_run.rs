@@ -278,6 +278,17 @@ fn run_ofn_in_process(
         rules: result.rules,
         data_roles: result.data_roles,
     };
+    if let Some(dir) = std::env::var_os("KM_KEEP_CLAUSES").filter(|d| !d.is_empty()) {
+        let dir_path = Path::new(&dir);
+        let out_file = dir_path.join("clauses.json");
+        if !out_file.exists() {
+            std::fs::create_dir_all(dir_path)?;
+            let f = File::create(out_file)?;
+            let mut w = std::io::BufWriter::with_capacity(1 << 20, f);
+            crate::json_io::write_jinput_json(&mut w, &out)?;
+            std::io::Write::flush(&mut w)?;
+        }
+    }
     // Retain this representation only when the selected leaf consumes it
     // directly. Dropping every other input preserves the old frontend lifetime
     // and avoids making parser allocations part of the classifier high-water.
@@ -510,15 +521,19 @@ fn run_ofn_split_cached_once(
     // the recursive probe and fallback routes, leaves freed pages here that
     // the process-tree watchdog would otherwise count beside the child.
     crate::mem::release_transient_heap();
+    let keep_clauses_dir = std::env::var_os("KM_KEEP_CLAUSES")
+        .filter(|d| !d.is_empty() && !Path::new(d).join("clauses.json").exists());
     let (ofn_prog, ofn_pre) = cfg.ofn_cmd();
     let mut command = Command::new(&ofn_prog);
     command
         .args(&ofn_pre)
         .arg(ont)
         .arg("--meta")
-        .arg(meta.path())
-        .arg("--elc-binary")
-        .arg(elc_binary.path())
+        .arg(meta.path());
+    if keep_clauses_dir.is_none() {
+        command.arg("--elc-binary").arg(elc_binary.path());
+    }
+    command
         .stdin(Stdio::null())
         .stdout(File::create(clauses.path())?)
         .stderr(File::create(stderr.path())?)
@@ -554,6 +569,11 @@ fn run_ofn_split_cached_once(
             stderr: msg,
         });
     }
+    if let Some(dir) = keep_clauses_dir {
+        let dir_path = Path::new(&dir);
+        std::fs::create_dir_all(dir_path)?;
+        std::fs::copy(clauses.path(), dir_path.join("clauses.json"))?;
+    }
     // Read the whole meta file and parse with `from_slice`, NOT
     // `from_reader(File)`: serde_json's reader path is unbuffered here and
     // parses a large meta (ore_ont_10073: 21 MB, 473k iri_map entries) ~14 s
@@ -566,6 +586,41 @@ fn run_ofn_split_cached_once(
         .filter(|metadata| metadata.len() > 8)
         .map(|_| elc_binary);
     Ok((clauses, meta_parsed, None, elc_binary))
+}
+
+/// Produce the normalised clause vector and `Meta` for the Lean EL reference
+/// stage under the automatic route's frontend configuration.
+pub fn run_ofn_for_reference(
+    cfg: &Config,
+    ont: &Path,
+) -> Result<(Vec<crate::json_io::JClause>, Meta), OrchestrateError> {
+    let prepared = super::input::prepare_for_reasoning(ont)?;
+    let text = std::fs::read_to_string(prepared.path())?;
+    let _env_guard = crate::routing::EnvironmentGuard::capture();
+    std::env::set_var("KM_ROUTE", crate::routing::Route::Auto.as_str());
+    if let Ok(result) = crate::frontend::ofn_to_clauses_for_classifier(&text) {
+        if result.uncarried_data_assertions == 0 {
+            let meta = Meta {
+                iri_map: result.iri_map,
+                named: result.named,
+                declared: result.declared,
+                el_rbox_safe: result.el_rbox_safe,
+                abox_inconsistent: result.abox_inconsistent,
+                asserted_classes: result.asserted_classes,
+                profile: result.profile,
+                route: result.route,
+                uncarried_data_assertions: result.uncarried_data_assertions,
+                dropped_source_axioms: result.dropped_source_axioms,
+                route_approximations: result.route_approximations,
+                one_sorted_data_successors: result.one_sorted_data_successors,
+            };
+            return Ok((result.clauses, meta));
+        }
+    }
+    let _ = cfg;
+    Err(OrchestrateError::OutOfFragment(
+        "frontend failed for reference stage".into(),
+    ))
 }
 
 /// Run `ofn` once with `KM_ABSORB` forced on/off, streaming the (full) clause

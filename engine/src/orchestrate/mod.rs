@@ -890,6 +890,10 @@ fn run_budgeted_bridge_attempt(
     }
 }
 
+fn reference_force_enabled() -> bool {
+    std::env::var("KM_REFERENCE_FORCE").as_deref() == Ok("1")
+}
+
 /// Dispatch an isolated top-level mechanism. `None` means the explicitly
 /// requested historical portfolio; every other variant returns one worker's
 /// answer or an honest out-of-fragment/error result, never a fallback answer.
@@ -902,6 +906,11 @@ fn run_atomic_mechanism(
     meta: &frontend_run::Meta,
     cached_input: &mut Option<crate::json_io::JInput>,
 ) -> Result<Option<EngineOut>, OrchestrateError> {
+    if !matches!(&cfg.mechanism, Mechanism::Portfolio) && reference_force_enabled() {
+        return Err(OrchestrateError::OutOfFragment(
+            "KM_REFERENCE_FORCE=1".into(),
+        ));
+    }
     let profile = &meta.profile;
     match &cfg.mechanism {
         Mechanism::Portfolio => Ok(None),
@@ -1820,6 +1829,15 @@ fn classify_with_evidence_mode(
     let forced_route = if depth == 0 { forced_route_request() } else { None };
     let mut result = classify_with_evidence_inner(initial_cfg, ont, retain_grouped_output);
     CLASSIFY_DEPTH.with(|d| d.set(depth));
+    if depth == 0
+        && forced_route.is_none()
+        && result.is_err()
+        && std::env::var("KM_REFERENCE_STAGE").as_deref() != Ok("0")
+    {
+        if let Some(ref_result) = try_reference_stage(initial_cfg, ont, retain_grouped_output) {
+            result = ref_result;
+        }
+    }
     if depth == 0 {
         // A data-property assertion the clause set does not carry is an
         // omitted axiom of the published answer: count it with the worker's
@@ -2305,7 +2323,7 @@ fn classify_with_evidence_inner(
     // Public/library classification keeps its established flat result contract
     // and therefore does not enter this path.
     let automatic_route = std::env::var("KM_ROUTE").as_deref() == Ok("auto");
-    if retain_grouped_output && automatic_route {
+    if retain_grouped_output && automatic_route && !reference_force_enabled() {
         if let Some(grouped_subsumptions) = flat_nf1::try_classify(ont)? {
             if timing {
                 eprintln!(
@@ -2332,18 +2350,20 @@ fn classify_with_evidence_inner(
     // classifies in seconds and reconstructs the original taxonomy exactly.
     // Preprocessing only — it classifies ordinary projections through this same
     // pipeline and fails closed (returns None) unless every premise holds.
-    if let Some(classification) = mirror::try_classify(initial_cfg, ont)? {
-        if timing {
-            eprintln!(
-                "KM_TIMING frontend done @ {:.2}s route=mirror_private",
-                t_start.elapsed().as_secs_f64()
-            );
+    if !reference_force_enabled() {
+        if let Some(classification) = mirror::try_classify(initial_cfg, ont)? {
+            if timing {
+                eprintln!(
+                    "KM_TIMING frontend done @ {:.2}s route=mirror_private",
+                    t_start.elapsed().as_secs_f64()
+                );
+            }
+            return Ok(ClassificationEvidence {
+                classification,
+                grouped_subsumptions: None,
+                consistency_certified: true,
+            });
         }
-        return Ok(ClassificationEvidence {
-            classification,
-            grouped_subsumptions: None,
-            consistency_certified: true,
-        });
     }
     let (clauses_path, meta, mut cached_input, elc_binary) =
         frontend_run::run_ofn_split_cached(initial_cfg, ont)?;
@@ -3432,6 +3452,11 @@ fn classify_with_evidence_inner(
             out
         }
         None => {
+            if reference_force_enabled() {
+                return Err(OrchestrateError::OutOfFragment(
+                    "KM_REFERENCE_FORCE=1".into(),
+                ));
+            }
             // The 3 ORE giants OOM under the concurrent elc-portfolio race (it runs CB
             // and elc side by side); keep them on the safe single-arm paths (bare elc
             // when EL-safe, else the CB stack) by suppressing the portfolio for them.
@@ -3693,6 +3718,22 @@ fn classify_with_evidence_inner(
             out.dropped
         )));
     }
+    map_engine_out_to_evidence(
+        out,
+        &meta,
+        retain_grouped_output,
+        consistency_certified,
+        timing,
+    )
+}
+
+fn map_engine_out_to_evidence(
+    mut out: EngineOut,
+    meta: &frontend_run::Meta,
+    retain_grouped_output: bool,
+    consistency_certified: bool,
+    timing: bool,
+) -> Result<ClassificationEvidence, OrchestrateError> {
     // Publication coverage guard (docs/ROUTING.md, "Publication coverage
     // guard"): a worker answer that has no row for some declared class has
     // not answered that class, and publishing it would report the class with
@@ -3920,6 +3961,219 @@ fn classify_with_evidence_inner(
         grouped_subsumptions,
         consistency_certified: consistency_certified || out.dropped == 0,
     })
+}
+
+#[derive(serde::Serialize)]
+struct ReferenceStageInput<'a> {
+    named: &'a [String],
+    clauses: &'a [crate::json_io::JClause],
+}
+
+#[derive(serde::Deserialize)]
+struct ReferenceStageCell {
+    sub: String,
+    sup: String,
+    answer: bool,
+}
+
+#[derive(serde::Deserialize)]
+struct ReferenceStageOutput {
+    named: Vec<String>,
+    cells: Vec<ReferenceStageCell>,
+}
+
+fn resolve_reference_checker_path() -> Option<std::path::PathBuf> {
+    if let Some(p) = std::env::var_os("KM_EL_REFERENCE_CHECKER").filter(|v| !v.is_empty()) {
+        let path = std::path::PathBuf::from(p);
+        return path.is_file().then_some(path);
+    }
+    let rel = std::path::PathBuf::from("lean/.lake/build/bin/km-el-reference");
+    if rel.is_file() {
+        return Some(rel);
+    }
+    let from_manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(|root| root.join("lean/.lake/build/bin/km-el-reference"))?;
+    from_manifest.is_file().then_some(from_manifest)
+}
+
+fn max_clause_symbol_len(clauses: &[crate::json_io::JClause], names: &[String]) -> usize {
+    fn term_max(t: &crate::json_io::JTerm) -> usize {
+        match t {
+            crate::json_io::JTerm::Var { name } | crate::json_io::JTerm::Ind { name } => name.len(),
+            crate::json_io::JTerm::Aux { root, label } => {
+                label.iter().map(|(s, _)| s.len()).max().unwrap_or(0).max(root.len())
+            }
+            crate::json_io::JTerm::Fun { function, arg } => function.len().max(term_max(arg)),
+        }
+    }
+    let mut max_len = names.iter().map(String::len).max().unwrap_or(0);
+    for cl in clauses {
+        for atom in cl.body.iter().chain(cl.head.iter()) {
+            let l = match atom {
+                crate::json_io::JAtom::Concept { concept, term } => {
+                    concept.len().max(term_max(term))
+                }
+                crate::json_io::JAtom::Role {
+                    role,
+                    source,
+                    target,
+                } => role.len().max(term_max(source)).max(term_max(target)),
+                crate::json_io::JAtom::Eq { left, right } => term_max(left).max(term_max(right)),
+            };
+            max_len = max_len.max(l);
+        }
+    }
+    max_len
+}
+
+fn try_reference_stage(
+    initial_cfg: &Config,
+    ont: &Path,
+    retain_grouped_output: bool,
+) -> Option<Result<ClassificationEvidence, OrchestrateError>> {
+    let checker_path = resolve_reference_checker_path()?;
+    let timing = std::env::var_os("KM_TIMING").is_some();
+    let log_declined = |reason: &str| {
+        if timing {
+            eprintln!("KM_TIMING KM_REFERENCE_STAGE declined: {reason}");
+        }
+    };
+    let (clauses, meta) = match frontend_run::run_ofn_for_reference(initial_cfg, ont) {
+        Ok(pair) => pair,
+        Err(err) => {
+            log_declined(&err.to_string());
+            return None;
+        }
+    };
+    if meta.abox_inconsistent
+        || meta.uncarried_data_assertions > 0
+        || !meta.dropped_source_axioms.is_empty()
+        || meta.one_sorted_data_successors
+        || meta.profile.source.rule_axioms > 0
+        || !meta.el_rbox_safe
+    {
+        log_declined("not in pure EL clause-stream fragment");
+        return None;
+    }
+    let mut name_set = std::collections::BTreeSet::new();
+    for n in meta
+        .named
+        .iter()
+        .chain(meta.declared.iter())
+        .chain(meta.asserted_classes.iter())
+    {
+        if n != "owl:Thing" && n != "owl:Nothing" {
+            name_set.insert(n.clone());
+        }
+    }
+    let real_names: Vec<String> = name_set.into_iter().collect();
+    let pad = "x".repeat(max_clause_symbol_len(&clauses, &real_names));
+    let probe_a = format!("__km_ref_probe_a_{pad}");
+    let probe_b = format!("__km_ref_probe_b_{pad}");
+    let mut full_named = real_names.clone();
+    full_named.push(probe_a.clone());
+    full_named.push(probe_b.clone());
+
+    let input_file = tmpfile::TempPath::new(".el-reference-in.json");
+    let write_res = File::create(input_file.path()).and_then(|f| {
+        let mut w = std::io::BufWriter::with_capacity(1 << 20, f);
+        serde_json::to_writer(
+            &mut w,
+            &ReferenceStageInput {
+                named: &full_named,
+                clauses: &clauses,
+            },
+        )
+        .map_err(std::io::Error::other)?;
+        std::io::Write::flush(&mut w)
+    });
+    if let Err(err) = write_res {
+        log_declined(&err.to_string());
+        return None;
+    }
+
+    let output = match std::process::Command::new(&checker_path)
+        .arg(input_file.path())
+        .output()
+    {
+        Ok(out) => out,
+        Err(err) => {
+            log_declined(&err.to_string());
+            return None;
+        }
+    };
+    if !output.status.success() {
+        let stdout_msg = String::from_utf8_lossy(&output.stdout);
+        let stderr_msg = String::from_utf8_lossy(&output.stderr);
+        let reason = stdout_msg
+            .lines()
+            .chain(stderr_msg.lines())
+            .map(str::trim)
+            .find(|line| !line.is_empty())
+            .unwrap_or("km-el-reference exited non-zero");
+        log_declined(reason);
+        return None;
+    }
+
+    let parsed: ReferenceStageOutput = match serde_json::from_slice(&output.stdout) {
+        Ok(p) => p,
+        Err(err) => {
+            log_declined(&format!("invalid reference output JSON: {err}"));
+            return None;
+        }
+    };
+    if parsed.named != full_named || parsed.cells.len() != full_named.len() * full_named.len() {
+        log_declined("reference output named/cells shape mismatch");
+        return None;
+    }
+
+    let inconsistent = parsed
+        .cells
+        .iter()
+        .any(|c| c.sub == probe_a && c.sup == probe_b && c.answer);
+
+    let mut subsumptions: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for c in &real_names {
+        subsumptions.insert(c.clone(), Vec::new());
+    }
+    if !inconsistent {
+        for cell in parsed.cells {
+            if !cell.answer || cell.sub == probe_a || cell.sub == probe_b || cell.sup == probe_a {
+                continue;
+            }
+            if cell.sup == probe_b {
+                if let Some(row) = subsumptions.get_mut(&cell.sub) {
+                    row.push("owl:Nothing".to_string());
+                }
+            } else if cell.sub != cell.sup {
+                if let Some(row) = subsumptions.get_mut(&cell.sub) {
+                    row.push(cell.sup);
+                }
+            }
+        }
+    }
+
+    let engine_out = EngineOut {
+        subsumptions,
+        compact_subsumptions: None,
+        inconsistent,
+        dropped: 0,
+        unresolved: Vec::new(),
+        pair_form: false,
+    };
+    match map_engine_out_to_evidence(engine_out, &meta, retain_grouped_output, true, timing) {
+        Ok(evidence) => {
+            if timing {
+                eprintln!("KM_TIMING KM_REFERENCE_STAGE published");
+            }
+            Some(Ok(evidence))
+        }
+        Err(err) => {
+            log_declined(&err.to_string());
+            None
+        }
+    }
 }
 
 /// Admit a diagnostic production-saturation valve only when it tightens the
