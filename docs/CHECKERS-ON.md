@@ -441,3 +441,28 @@ ELC certificates of 500,000 to 1,000,000 facts whose check does not fit in
 The ELC checker's remaining cost is JSON parsing and the per-fact passes of
 `checkV5Fast`, roughly 25 to 50 s per million facts on this host; this is
 a known limit, bounded by `KM_LEAN_CHECK_MAX_ELC_FACTS`.
+
+## 6. Release run (v1.5.5, a4bb4808, 2026-11-09)
+
+The release checker step (`tools/release/v155/gates/checkers-step.sh`) ran
+after the five Lean gates from the bound snapshot of the tag, with the PGO
+release binary (sha256 `5ac7eafe…`) and the 109 checker executables built
+from the same snapshot (`checkers.sha256`): the 22 CI-skipped checker-bound
+library tests and the three checker integration targets all passed (57
+test groups ok, 0 failed; the receipt's `checker_tests_not_ok` list holds
+only `test result: ok` lines matched by the step's grep for "ignored", a
+reporting defect of the step, not a failure). Checkers-on suite on the 368
+fixture inputs (off-mode answers against cached HermiT gold: 150 ok, no
+disagreement):
+
+| mode | accepted | rejected | cannot check | over budget | no answer | answers changed | wall ratio |
+|---|---:|---:|---:|---:|---:|---:|---|
+| `on` | 22 | 0 | 343 | 0 | 3 | 0 | 1.14 (39.6 s to 45.1 s on 365 inputs) |
+| `ht` | 33 | 0 | 292 | 40 | 3 | 0 | 10.28 (34.4 s to 353.3 s on 325 inputs) |
+
+No checker rejects a published answer and no answer changes with the
+checkers on. The 40 `over_budget` runs in `ht` are the opt-in HT
+certificates of the larger fixtures hitting the 60 s per-run limit, the
+cost noted in section 5.4. Receipt
+`.work/v155-release-cert/ctl/checker-step/receipt.json`, suite summary
+`checker-step/checkers-on-suite/summary.md`.
