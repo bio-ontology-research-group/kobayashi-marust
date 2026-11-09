@@ -1,0 +1,19 @@
+cargo test --release (worktree fix-data-values-3-perf at e4ccb891 + the test fixture change, load 110 to 140):
+
+--lib inert_sorts:                23 passed, 0 failed, 0 ignored
+bridge_conditional_full_replay:    1 passed
+bridge_object_guard:               5 passed
+bridge_self_card_nominal:          1 passed
+cb_nominal_merge_import:           1 passed
+data_assertions_carried:           9 passed
+integral_datatype_difference:      3 passed
+native_data_values:               27 passed, 1 ignored
+nominal_inert_sorts:               3 passed
+rules_inert_sort_certificate:      2 passed
+rules_inert_sorts_routes:          3 passed
+rules_lean_certificate:            7 passed
+top_nominal_data_successors:      15 passed, 1 failed (hermit_answers_on_every_route: m2197, merge hypotheses, fails at the base too; NOMINALS-CB.md 10.4)
+universal_role_and_top_data_range: 12 passed, 1 failed (data_value_singleton_next_to_nominal_successors, case "object value instead of data value" on forced nominals: merge hypotheses, fails at the base 6c48c72e too, 0.4 s at a2e98d95; NOMINALS-CB.md 10.4)
+
+Total: 112 passed, 2 failed (both pre-existing at the base, both the merge hypotheses of 8bbbf1f2), 1 ignored.
+data_value_next_to_universal_role_hub_stays_satisfiable (the target test) passes.

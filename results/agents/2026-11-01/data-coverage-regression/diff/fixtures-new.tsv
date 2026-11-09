@@ -1,0 +1,64 @@
+fixtures/datetime_cells_helly.ofn	auto	ok	0.11	0	0	0	0	0
+fixtures/datetime_cells_helly.ofn	certified_nominals	ok	0.09	0	0	0	0	0
+fixtures/datetime_cells_helly.ofn	nominals	ok	0.07	0	0	0	0	0
+fixtures/datetime_cells_helly.ofn	certified_card_nominals	REFUSED	0.02					
+fixtures/datetime_point_cells.ofn	auto	ok	0.02	0	0	0	0	0
+fixtures/datetime_point_cells.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+fixtures/datetime_point_cells.ofn	nominals	ok	0.01	0	0	0	0	0
+fixtures/datetime_point_cells.ofn	certified_card_nominals	REFUSED	0.01					
+fixtures/datetime_untimezoned.ofn	auto	ok	0.02	0	0	0	0	0
+fixtures/datetime_untimezoned.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+fixtures/datetime_untimezoned.ofn	nominals	ok	0.01	0	0	0	0	0
+fixtures/datetime_untimezoned.ofn	certified_card_nominals	REFUSED	0.01					
+fixtures/datetime_zone_empty.ofn	auto	ok	0.00	0	0	0	0	0
+fixtures/datetime_zone_empty.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+fixtures/datetime_zone_empty.ofn	nominals	ok	0.01	0	0	0	0	0
+fixtures/datetime_zone_empty.ofn	certified_card_nominals	REFUSED	0.01					
+fixtures/datetime_zone_mix_in.ofn	auto	ok	0.04	0	0	0	0	0
+fixtures/datetime_zone_mix_in.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+fixtures/datetime_zone_mix_in.ofn	nominals	ok	0.01	0	0	0	0	0
+fixtures/datetime_zone_mix_in.ofn	certified_card_nominals	REFUSED	0.01					
+fixtures/datetime_zone_mix_out.ofn	auto	ok	0.02	0	0	0	0	0
+fixtures/datetime_zone_mix_out.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+fixtures/datetime_zone_mix_out.ofn	nominals	ok	0.01	0	0	0	0	0
+fixtures/datetime_zone_mix_out.ofn	certified_card_nominals	REFUSED	0.01					
+fixtures/datetime_zone_subsumption.ofn	auto	ok	0.03	0	0	0	0	0
+fixtures/datetime_zone_subsumption.ofn	certified_nominals	ok	0.02	0	0	0	0	0
+fixtures/datetime_zone_subsumption.ofn	nominals	ok	0.02	0	0	0	0	0
+fixtures/datetime_zone_subsumption.ofn	certified_card_nominals	REFUSED	0.01					
+fixtures/xml_literal_distinct.ofn	auto	ok	0.00	0	0	0	0	0
+fixtures/xml_literal_distinct.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+fixtures/xml_literal_distinct.ofn	nominals	ok	0.00	0	0	0	0	0
+fixtures/xml_literal_distinct.ofn	certified_card_nominals	ok	0.00	0	0	0	0	0
+fixtures/xml_literal_identity.ofn	auto	ok	0.02	0	0	0	0	0
+fixtures/xml_literal_identity.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+fixtures/xml_literal_identity.ofn	nominals	ok	0.01	0	0	0	0	0
+fixtures/xml_literal_identity.ofn	certified_card_nominals	REFUSED	0.01					
+fixtures/xml_literal_string.ofn	auto	ok	0.00	0	0	0	0	0
+fixtures/xml_literal_string.ofn	certified_nominals	ok	0.00	0	0	0	0	0
+fixtures/xml_literal_string.ofn	nominals	ok	0.00	0	0	0	0	0
+fixtures/xml_literal_string.ofn	certified_card_nominals	ok	0.00	0	0	0	0	0
+hprobe/h1.ofn	auto	ok	0.02	0	0	0	0	0
+hprobe/h1.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+hprobe/h1.ofn	nominals	ok	0.01	0	0	0	0	0
+hprobe/h1.ofn	certified_card_nominals	REFUSED	0.01					
+hprobe/h2.ofn	auto	ok	0.02	0	0	0	0	0
+hprobe/h2.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+hprobe/h2.ofn	nominals	ok	0.01	0	0	0	0	0
+hprobe/h2.ofn	certified_card_nominals	REFUSED	0.01					
+hprobe/h3.ofn	auto	ok	0.02	0	0	0	0	0
+hprobe/h3.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+hprobe/h3.ofn	nominals	ok	0.01	0	0	0	0	0
+hprobe/h3.ofn	certified_card_nominals	REFUSED	0.01					
+hprobe/h4.ofn	auto	ok	0.01	0	0	0	0	0
+hprobe/h4.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+hprobe/h4.ofn	nominals	ok	0.01	0	0	0	0	0
+hprobe/h4.ofn	certified_card_nominals	ok	0.01	0	0	0	0	0
+hprobe/h5.ofn	auto	ok	0.02	0	0	0	0	0
+hprobe/h5.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+hprobe/h5.ofn	nominals	ok	0.01	0	0	0	0	0
+hprobe/h5.ofn	certified_card_nominals	REFUSED	0.01					
+hprobe/h6.ofn	auto	ok	0.02	0	0	0	0	0
+hprobe/h6.ofn	certified_nominals	ok	0.01	0	0	0	0	0
+hprobe/h6.ofn	nominals	ok	0.01	0	0	0	0	0
+hprobe/h6.ofn	certified_card_nominals	REFUSED	0.01					

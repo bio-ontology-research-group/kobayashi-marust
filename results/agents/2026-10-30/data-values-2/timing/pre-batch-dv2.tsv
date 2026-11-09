@@ -1,0 +1,7 @@
+ore_ont_10425	rc=0	wall=2.52	rss_kib=98832	dropped=0 consistent=True	route=ht_bridge	konclude=True,hermit=True,openllet=True,jfact=True
+ore_ont_15655	rc=0	wall=7.2	rss_kib=292548	dropped=0 consistent=True	route=ht_bridge	konclude=True,hermit=True,openllet=True,jfact=False
+ore_ont_5368	rc=0	wall=1.93	rss_kib=65096	dropped=0 consistent=True	route=ht_bridge	konclude=True,hermit=True,openllet=True,jfact=True
+ore_ont_10874	rc=0	wall=4.35	rss_kib=136920	dropped=0 consistent=True	route=ht_bridge	konclude=True,hermit=True,openllet=True,jfact=False
+ore_ont_4410	rc=0	wall=23.67	rss_kib=2544436	dropped=0 consistent=True	route=certified_nominals	konclude=True,hermit=True,openllet=True,jfact=True
+ore_ont_4572	rc=0	wall=5.96	rss_kib=278056	dropped=0 consistent=True	route=certified_nominals	konclude=True,hermit=True,openllet=True
+ore_ont_7610	rc=124	wall=600.05	rss_kib=336788		route=certified_nominals	none

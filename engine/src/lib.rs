@@ -6,6 +6,7 @@
 //! and the standalone frontend can reuse the exact same serde types for the
 //! `{"clauses":[...]}` contract.
 
+pub mod bigstack;
 pub mod calc;
 pub mod cb_source;
 pub mod clause;
@@ -21,6 +22,7 @@ mod incremental_ht;
 mod incremental_positive_abox;
 mod incremental_rules;
 pub mod json_io;
+pub mod lean_checkers;
 pub mod konclude_ht;
 pub mod mem;
 pub mod orchestrate;

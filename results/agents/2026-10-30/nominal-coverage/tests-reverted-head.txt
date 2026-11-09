@@ -1,0 +1,14 @@
+test-lib2.log:     Running unittests src/lib.rs (target/release/deps/kobayashi_marust-60cbe295eca4d725)
+test-lib2.log:test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 3044 filtered out; finished in 210.93s
+test-int3.log:     Running tests/nominal_inert_sorts.rs (target/release/deps/nominal_inert_sorts-252b500a453464f6)
+test-int3.log:test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 38.05s
+test-int3.log:     Running tests/rules_inert_sort_certificate.rs (target/release/deps/rules_inert_sort_certificate-3f0fa05ca7889abf)
+test-int3.log:test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 27.46s
+test-int2.log:     Running tests/cb_route_completeness.rs (target/release/deps/cb_route_completeness-6cc0884fa4f2f7c5)
+test-int2.log:test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.90s
+test-int2.log:     Running tests/nominal_inert_sorts.rs (target/release/deps/nominal_inert_sorts-252b500a453464f6)
+test-int2.log:test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 37.91s
+test-int2.log:     Running tests/nominal_seq_order.rs (target/release/deps/nominal_seq_order-a6b8af428c610682)
+test-int2.log:test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 18.55s
+test-int2.log:     Running tests/rules_inert_sort_certificate.rs (target/release/deps/rules_inert_sort_certificate-3f0fa05ca7889abf)
+test-int2.log:test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s

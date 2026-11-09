@@ -1,0 +1,4 @@
+thread 'ht_reuses_existential_graphs_and_rechecks_global_deletion' (3549677) panicked at tests/incremental_ht_reasoning.rs:94:5:
+assertion `left == right` failed
+  left: IncrementalResult { subsumptions: {"A": ["owl:Nothing"], "B": ["owl:Nothing"], "C": ["owl:Nothing"]}, inconsistent: true, dropped: 0, unresolved: [] }
+ right: IncrementalResult { subsumptions: {"A": ["owl:Nothing"]}, inconsistent: true, dropped: 0, unresolved: [] }

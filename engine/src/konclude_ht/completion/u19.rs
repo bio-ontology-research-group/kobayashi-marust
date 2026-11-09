@@ -76,7 +76,7 @@ use super::super::model::op::{
     CCALL, CCAQSOME, CCATLEAST, CCATMOST, CCFS_ALL_AQALL_TYPE, CCFS_AQALL_TYPE, CCFS_AQAND_TYPE,
     CCSOME,
 };
-use super::super::model::substrate::{Cint64, Id, INVALID};
+use super::super::model::substrate::{Cint64, Id, NegLink, INVALID};
 use super::super::model::{ConceptId, RoleId};
 use super::super::process::node::IndividualProcessNode;
 use super::super::process::reapply_sat::{
@@ -93,6 +93,127 @@ use super::context::CalculationAlgorithmContextBase;
 type BlockingAlternativeDataHandle = BlockingAltDataId;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
+    /// Whether an at-most restriction in the label of the nominal `o`
+    /// counts `w_pred` (and so a copy of it): a positive `<=n S.C` or a
+    /// negated `>=n S.C` with `w_pred` an `S`-neighbour of `o` and `w_pred`
+    /// in `C` (docs/HYBRID-CB-HT.md section 25).
+    fn nominal_bound_counts_copy(
+        &mut self,
+        o: NodeId,
+        w_pred: NodeId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        let o_set = calc_alg_context.process_context().node(o).use_reapply_con_label_set;
+        let w_set = calc_alg_context.process_context().node(w_pred).use_reapply_con_label_set;
+        let mut bounds: Vec<(RoleId, Vec<NegLink<ConceptId>>, bool)> = Vec::new();
+        {
+            let mut it = calc_alg_context
+                .process_context()
+                .label_set(o_set)
+                .get_concept_label_set_iterator(false, false, false);
+            while it.has_next() {
+                let con_des = it.next(true, calc_alg_context.process_context());
+                if con_des.is_none() {
+                    continue;
+                }
+                let (concept, negated) = {
+                    let pc = calc_alg_context.process_context();
+                    (pc.con_desc(con_des).get_concept(), pc.con_desc(con_des).is_negated())
+                };
+                let c = calc_alg_context.ontology_arenas().concept(concept);
+                let op = c.get_operator_code();
+                if (!negated && op == CCATMOST) || (negated && op == CCATLEAST) {
+                    bounds.push((c.get_role(), c.get_operand_list().to_vec(), negated));
+                }
+            }
+        }
+        for (role, ops, _) in bounds {
+            let mut oo = o;
+            let mut wp = w_pred;
+            if !self.has_individuals_link(&mut oo, &mut wp, role, false, calc_alg_context) {
+                continue;
+            }
+            if ops.is_empty()
+                || !self.contains_individual_node_concepts_label_negated(
+                    w_set,
+                    &ops,
+                    true,
+                    calc_alg_context,
+                )
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// The count test of B6 for `not (<=n role.C)` at `v`, that is
+    /// `>=n+1 role.C` (docs/HYBRID-CB-HT.md section 25). C-blocking `w` by
+    /// `w_pred` redirects the edge `v -> w` to `w_pred`. Every
+    /// `role`-successor of `v` in `C` then stands for its image: `w_pred` for
+    /// `w`, its blocker for a directly blocked successor (counted as
+    /// c-blocked, which is the worst case), itself otherwise. The redirects
+    /// break the restriction when they merge two counted successors into one
+    /// image and leave fewer than `cardinality` images. Fewer counted
+    /// successors than `cardinality` means the at-least rule at `v` has not
+    /// produced them all yet; each one that it adds and that a block would
+    /// merge into an existing image meets this test in its own blocking test.
+    fn b6_redirect_collides(
+        &mut self,
+        v_node: NodeId,
+        w_node: NodeId,
+        w_pred_node: NodeId,
+        role: RoleId,
+        op_linker: &[NegLink<ConceptId>],
+        cardinality: Cint64,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        let (w_id, w_pred_id) = {
+            let pc = calc_alg_context.process_context();
+            (
+                pc.node(w_node).individual_node_id(),
+                pc.node(w_pred_node).individual_node_id(),
+            )
+        };
+        let mut images: Vec<Cint64> = Vec::new();
+        let mut counted: Cint64 = 0;
+        for (_, succ) in self.ht_role_successor_links(v_node, role, calc_alg_context) {
+            let succ_con_set = calc_alg_context
+                .process_context()
+                .node(succ)
+                .use_reapply_con_label_set;
+            if !self.contains_individual_node_concepts_label_negated(
+                succ_con_set,
+                op_linker,
+                false,
+                calc_alg_context,
+            ) {
+                continue;
+            }
+            counted += 1;
+            let image = {
+                let pc = calc_alg_context.process_context();
+                let n = pc.node(succ);
+                let blocker = n.blocker_individual_node();
+                if n.individual_node_id() == w_id {
+                    w_pred_id
+                } else if n.has_partial_processing_restriction_flags(
+                    IndividualProcessNode::PRF_DIRECTBLOCKED,
+                ) && blocker.is_some()
+                {
+                    pc.node(blocker).individual_node_id()
+                } else {
+                    n.individual_node_id()
+                }
+            };
+            if !images.contains(&image) {
+                images.push(image);
+            }
+        }
+        let after = images.len() as Cint64;
+        after < counted && after < cardinality
+    }
+
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::hasOptimizedBlockingB2AutomateTransitionOperands`.
     ///
     /// Fully ported: the operand recursion / role match dispatch over `CConcept`
@@ -184,13 +305,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let w_pred_node = blocking_indi;
 
         let w_sub_con_set = calc_alg_context
-            .process_context_mut()
-            .node_mut(w_node)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(w_node)
+            .use_reapply_con_label_set;
         let w_pred_super_con_set = calc_alg_context
-            .process_context_mut()
-            .node_mut(w_pred_node)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(w_pred_node)
+            .use_reapply_con_label_set;
         let mut first_not_entailed_con_des: ConDescId = Id::NONE;
         // B1 test
         let mut equal_set = false;
@@ -214,9 +335,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             return false;
         }
         let v_con_set = calc_alg_context
-            .process_context_mut()
-            .node_mut(v_node)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(v_node)
+            .use_reapply_con_label_set;
         // B2 test
 
         let anc_role_hash = calc_alg_context
@@ -348,6 +469,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .node(w_pred_node)
             .use_reapply_role_succ_hash;
+        let mut b6_collide_only = false;
         if blocked {
             // test c-blocked and a-blocked specific parts (B3, B5)
             let mut c_blocked = true;
@@ -460,10 +582,21 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                     succ_link,
                                     calc_alg_context,
                                 );
+                                // KM-SOUNDNESS-GATE[self-blocker]: a self link of
+                                // the blocker counts as a neighbour. The model
+                                // replaces `w` by a copy of `w'`, which keeps
+                                // `w'`'s self edges, so the copy's `role`
+                                // neighbours are `v`, the copy itself and the
+                                // copies of `w'`'s successors. Konclude counts
+                                // only the successors (B3/B5, cpp 18635-18705), which lets a
+                                // reflexive `role` exceed `≤n role` at the copy
+                                // (docs/HYBRID-CB-HT.md section 21, `u6`,
+                                // `merge1322`).
                                 let succ_qualifies = {
                                     let pc = calc_alg_context.process_context();
                                     let succ_node = pc.node(succ_indi_node);
-                                    succ_node.is_nominal_individual_node()
+                                    succ_indi_node == w_pred_node
+                                        || succ_node.is_nominal_individual_node()
                                         || succ_node.nominal_individual().is_some()
                                         || succ_node.individual_ancestor_depth()
                                             > pc.node(w_pred_node).individual_ancestor_depth()
@@ -537,22 +670,38 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                     .get_operand_list()
                                     .to_vec();
                                 if !op_linker.is_empty() {
-                                    if !self.contains_individual_node_concepts_label_negated(
+                                    let keep = self.contains_individual_node_concepts_label_negated(
                                         w_sub_con_set,
                                         &op_linker,
                                         !con_neg,
                                         calc_alg_context,
-                                    ) {
+                                    );
+                                    if !keep {
                                         c_blocked = false;
+                                        b6_collide_only = false;
+                                    } else if con_neg && !super::ht_no_b6_collision_guard() {
+                                        if self.b6_redirect_collides(
+                                            v_node,
+                                            w_node,
+                                            w_pred_node,
+                                            role,
+                                            &op_linker,
+                                            cardinality,
+                                            calc_alg_context,
+                                        ) {
+                                            super::sat578_guard_fired();
+                                            b6_collide_only = true;
+                                        }
                                     }
                                 } else {
                                     c_blocked = false;
+                                    b6_collide_only = false;
                                 }
                             }
                         }
                     }
                 }
-                if c_blocked {
+                if c_blocked && !b6_collide_only {
                     return true;
                 }
             }
@@ -630,6 +779,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         // B4a
                         // w' needs m role-successors.
                         let mut min_role_cardinality: Cint64 = 0;
+                        let mut nominal_guard_rejected = false;
                         if w_pred_succ_hash.is_some() {
                             let mut succ_it = {
                                 let pc = calc_alg_context.process_context();
@@ -647,13 +797,108 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                     succ_link,
                                     calc_alg_context,
                                 );
-                                let succ_qualifies = {
+                                // Konclude removes the link to a node that
+                                // merged away and keeps or creates one link
+                                // to its merge target instead
+                                // (`removeIndividualLink`, cpp 21258-21283).
+                                // The port keeps the old link as a ghost.
+                                // A ghost that merged into a nominal is not
+                                // a tree successor that unravelling could
+                                // copy, and the live link to that nominal is
+                                // iterated on its own: skip the ghost.
+                                // docs/HYBRID-CB-HT.md section 25.
+                                let guard = !super::ht_no_b4a_nominal_guard();
+                                if guard {
+                                    let mut target = succ_indi;
+                                    for _ in 0..64 {
+                                        let (merged, into_id) = {
+                                            let n = calc_alg_context.process_context().node(target);
+                                            (
+                                                n.has_merged_into_individual_node_id(),
+                                                n.merged_into_individual_node_id(),
+                                            )
+                                        };
+                                        if !merged {
+                                            break;
+                                        }
+                                        let next = calc_alg_context.get_up_to_date_individual_by_id(into_id);
+                                        if next.is_none() || next == target {
+                                            break;
+                                        }
+                                        target = next;
+                                    }
+                                    if target != succ_indi
+                                        && calc_alg_context
+                                            .process_context()
+                                            .node(target)
+                                            .is_nominal_individual_node()
+                                    {
+                                        super::sat578_guard_fired();
+                                        nominal_guard_rejected = true;
+                                        continue;
+                                    }
+                                }
+                                let (is_nominal_succ, deeper_than_pred, creator_protected) = {
                                     let pc = calc_alg_context.process_context();
                                     let succ_node = pc.node(succ_indi);
-                                    succ_node.is_nominal_individual_node()
-                                        || succ_node.nominal_individual().is_some()
-                                        || succ_node.individual_ancestor_depth()
-                                            > pc.node(w_pred_node).individual_ancestor_depth()
+                                    let pred = pc.node(w_pred_node);
+                                    let creator = pc.edge(succ_link).get_creator_individual();
+                                    (
+                                        succ_node.is_nominal_individual_node()
+                                            || succ_node.nominal_individual().is_some(),
+                                        succ_node.individual_ancestor_depth()
+                                            > pred.individual_ancestor_depth(),
+                                        creator.is_some()
+                                            && pc.node(creator).individual_node_id()
+                                                == pred.individual_node_id()
+                                            && pred.ancestor_link.is_some(),
+                                    )
+                                };
+                                // Konclude (cpp 18788) counts every nominal
+                                // neighbour o of the blocker w'. A-blocking
+                                // unravels w as a copy of w'; a nominal is
+                                // not copied, so the copy needs its own edge
+                                // to o, a neighbour that no at-most
+                                // restriction at o has counted. When w'
+                                // created its link to o, the NN-rule turns w'
+                                // into a nominal wherever an at-most
+                                // restriction at o counts it (section 22),
+                                // and a nominal cannot block. When o created
+                                // the link (w' is a tree successor of o) or
+                                // w' is the probe root, which the NN-rule
+                                // keeps, nothing protects o: o counts for w
+                                // only when w has the same link to o, or when
+                                // no at-most restriction at o counts w' (and
+                                // its copy). docs/HYBRID-CB-HT.md section 25.
+                                let nn_protected = if is_nominal_succ && guard && !creator_protected
+                                {
+                                    let uncounted_at_nominal = !self.nominal_bound_counts_copy(
+                                        succ_indi,
+                                        w_pred_node,
+                                        calc_alg_context,
+                                    );
+                                    if uncounted_at_nominal {
+                                        super::sat578_guard_fired();
+                                    }
+                                    uncounted_at_nominal
+                                } else {
+                                    creator_protected
+                                };
+                                let succ_qualifies = if is_nominal_succ && guard && !nn_protected {
+                                    let linked = self.has_individuals_link(
+                                        &mut w_node,
+                                        &mut succ_indi,
+                                        role,
+                                        false,
+                                        calc_alg_context,
+                                    );
+                                    if !linked {
+                                        super::sat578_guard_fired();
+                                        nominal_guard_rejected = true;
+                                    }
+                                    linked
+                                } else {
+                                    is_nominal_succ || deeper_than_pred
                                 };
                                 if succ_qualifies
                                     && (op_linker.is_empty()
@@ -668,7 +913,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                 }
                             }
                         }
-                        if min_role_cardinality < cardinality {
+                        if min_role_cardinality < cardinality
+                            && (!b6_collide_only || nominal_guard_rejected)
+                        {
                             blocked = false;
                         }
                     }
@@ -748,13 +995,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             return true;
         }
         let sub_con_set = calc_alg_context
-            .process_context_mut()
-            .node_mut(test_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(test_indi)
+            .use_reapply_con_label_set;
         let super_con_set = calc_alg_context
-            .process_context_mut()
-            .node_mut(blocking_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(blocking_indi)
+            .use_reapply_con_label_set;
         let mut first_not_entailed_con_des: ConDescId = Id::NONE;
         let sub_set = self.is_label_concept_sub_set(
             sub_con_set,
@@ -778,13 +1025,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     ) -> bool {
         // W6-DEFER[api]: STATINC(EQUALSETBLOCKINGTESTCOUNT,calcAlgContext);
         let con_set1 = calc_alg_context
-            .process_context_mut()
-            .node_mut(test_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(test_indi)
+            .use_reapply_con_label_set;
         let con_set2 = calc_alg_context
-            .process_context_mut()
-            .node_mut(blocking_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(blocking_indi)
+            .use_reapply_con_label_set;
         self.is_label_concept_equal_set(con_set1, con_set2, calc_alg_context)
     }
 
@@ -830,21 +1077,21 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             return false;
         }
         let con_set1 = calc_alg_context
-            .process_context_mut()
-            .node_mut(test_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(test_indi)
+            .use_reapply_con_label_set;
         let con_set1_pair = calc_alg_context
-            .process_context_mut()
-            .node_mut(blocking_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(blocking_indi)
+            .use_reapply_con_label_set;
         let con_set2 = calc_alg_context
-            .process_context_mut()
-            .node_mut(anc_test_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(anc_test_indi)
+            .use_reapply_con_label_set;
         let con_set2_pair = calc_alg_context
-            .process_context_mut()
-            .node_mut(anc_blocking_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(anc_blocking_indi)
+            .use_reapply_con_label_set;
         self.is_pairwise_label_concept_equal_set(
             con_set1,
             con_set1_pair,
@@ -871,13 +1118,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
 
         let test_con_set = calc_alg_context
-            .process_context_mut()
-            .node_mut(test_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(test_indi)
+            .use_reapply_con_label_set;
         let blocking_con_set = calc_alg_context
-            .process_context_mut()
-            .node_mut(blocking_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(blocking_indi)
+            .use_reapply_con_label_set;
         let test_con_set_count = calc_alg_context
             .process_context()
             .label_set(test_con_set)
@@ -897,9 +1144,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .individual_initialization_concept();
             if !init_con_des.is_none() {
                 let blocking_label_set = calc_alg_context
-                    .process_context_mut()
-                    .node_mut(blocking_indi)
-                    .get_reapply_concept_label_set(false);
+                    .process_context()
+                    .node(blocking_indi)
+                    .use_reapply_con_label_set;
                 let init_concept = calc_alg_context
                     .process_context()
                     .con_desc(init_con_des)
@@ -1011,6 +1258,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
         }
 
+        if super::blocking_scan_trace_enabled() && blocking_concepts && blocking_prop_bindings {
+            let pc = calc_alg_context.process_context();
+            eprintln!(
+                "BLOCK-TEST test={} blocker={} continue={} subset={} optimized={} equal={} pairwise={}",
+                pc.node(test_indi).individual_node_id(),
+                pc.node(blocking_indi).individual_node_id(),
+                test_continue_blocking,
+                test_processing_blocking || self.conf_sub_set_blocking,
+                self.conf_optimized_sub_set_blocking,
+                self.conf_equal_set_blocking,
+                self.conf_pairwise_equal_set_blocking
+            );
+        }
         blocking_concepts && blocking_prop_bindings
     }
 
@@ -1266,9 +1526,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .set_blocker_individual_node(blocking_indi);
                 // locAncTestIndi->mDebugBlockerLastConceptDes = blockingIndi->getReapplyConceptLabelSet(false)->getAddingSortedConceptDescriptionLinker();
                 let blocker_label_set = calc_alg_context
-                    .process_context_mut()
-                    .node_mut(blocking_indi)
-                    .get_reapply_concept_label_set(false);
+                    .process_context()
+                    .node(blocking_indi)
+                    .use_reapply_con_label_set;
                 let adding_sorted = calc_alg_context
                     .process_context()
                     .label_set(blocker_label_set)

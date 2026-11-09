@@ -1,0 +1,14 @@
+forced-nominal-data-misses/fixtures/v1all.ofn	ht_bridge	REFUSED	0.03					
+forced-nominal-data-misses/fixtures/v1neg.ofn	ht_bridge	REFUSED	0.03					
+forced-nominal-data-misses/fixtures/v1.ofn	ht_bridge	REFUSED	0.01					
+forced-nominal-data-misses/fixtures/v2.ofn	ht_bridge	REFUSED	0.01					
+forced-nominal-data-misses/fixtures/v3.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+forced-nominal-data-misses/fixtures/v4.ofn	ht_bridge	REFUSED	0.01					
+forced-nominal-data-misses/fixtures/v5b.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+forced-nominal-data-misses/fixtures/v5c.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+forced-nominal-data-misses/fixtures/v5d.ofn	ht_bridge	ok	0.02	0	0	0	0	0
+forced-nominal-data-misses/fixtures/v5e.ofn	ht_bridge	ok	0.02	0	0	0	0	0
+forced-nominal-data-misses/fixtures/v5g.ofn	ht_bridge	ok	0.02	0	0	0	0	0
+forced-nominal-data-misses/fixtures/v5.ofn	ht_bridge	ok	0.01	0	0	0	0	0
+forced-nominal-data-misses/fixtures/v6.ofn	ht_bridge	REFUSED	0.01					
+forced-nominal-data-misses/fixtures/v7.ofn	ht_bridge	REFUSED	0.01					

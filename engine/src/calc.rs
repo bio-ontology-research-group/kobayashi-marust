@@ -548,6 +548,25 @@ impl Lit {
 /// incomparable so that every entailed `A(x)` is retained).
 pub fn lteq(o1: &Lit, o2: &Lit, root: bool, sig: &Sig) -> bool {
     use Lit::*;
+    // Context regime, R2 for ground (in)equalities (docs/PER-CONTEXT-ORDERING.md
+    // section 8): a ground equality or inequality `o ≈ o'` / `o ≉ o'` between
+    // individuals is an interface atom of every context that announced `o` or
+    // `o'` (R3), so it lies below another ground (in)equality only when both
+    // are over the same two individuals, and below a ground atom only when it
+    // shares an individual with that atom. Only removes comparisons.
+    if ground_eqn_interface_order() {
+        if let (Some(e1), Some(e2)) = (ground_eqn_pair(o1), ground_eqn_pair(o2)) {
+            // Ranked R2 (docs/PER-CONTEXT-ORDERING.md section 11): an
+            // (in)equality lies below one over another pair only when its
+            // larger individual is at most the other's smaller one (term id
+            // as the rank; `KM_R2_MIN_RANK`: its smaller individual at most
+            // the other's smaller one). The diagnostic `KM_CONTEXT_PAIR_R2`
+            // keeps only same-pair comparisons (the rule of 7c238e52).
+            if e1 != e2 && !diag_flag(&DIAG_EQEQ, "KM_DIAG_EQEQ_OPEN") && (pair_r2() || if r2_min_rank() { e1.0 > e2.0 } else { e1.1 > e2.0 }) {
+                return false;
+            }
+        }
+    }
     match (o1, o2) {
         (Eq { s: l1, t: r1 }, Eq { s: l2, t: r2 })
         | (Eq { s: l1, t: r1 }, Ineq { s: l2, t: r2 })
@@ -557,10 +576,27 @@ pub fn lteq(o1: &Lit, o2: &Lit, root: bool, sig: &Sig) -> bool {
         // equation vs predicate
         (eqn @ (Eq { .. } | Ineq { .. }), P(p)) => {
             let es = eqn_s(eqn);
-            match p {
+            let le = match p {
                 Pred::Concept { t, .. } => es <= *t,
                 Pred::Role { s, t, .. } => es <= *s || es <= *t,
+            };
+            // Ranked R2 (section 11): an (in)equality may lie below a ground
+            // atom when its individuals are at most an individual of the
+            // atom. The term-major `le` above already implies it, so
+            // only the diagnostic `KM_CONTEXT_PAIR_R2` (the rule of
+            // 7c238e52: the two must share an individual) filters here.
+            if le && pair_r2() && !diag_flag(&DIAG_EQATOM, "KM_DIAG_EQATOM_OPEN") && ground_eqn_interface_order() && is_ground_atom(p) {
+                if let Some((a, b)) = ground_eqn_pair(eqn) {
+                    let shares = match *p {
+                        Pred::Concept { t, .. } => t == a || t == b,
+                        Pred::Role { s, t, .. } => s == a || s == b || t == a || t == b,
+                    };
+                    if !shares {
+                        return false;
+                    }
+                }
             }
+            le
         }
         (P(p), eqn @ (Eq { .. } | Ineq { .. })) => {
             let es = eqn_s(eqn);
@@ -574,11 +610,7 @@ pub fn lteq(o1: &Lit, o2: &Lit, root: bool, sig: &Sig) -> bool {
             // equality, or the unit stays trapped behind it (seed297_min:
             // `→ Q_0(a) ∨ b ≈ a` with `Q_0(a)` refutable). Only removes
             // comparisons.
-            if le
-                && matches!(eqn, Eq { s, t } if is_individual(*s) && is_individual(*t))
-                && ground_interface_order()
-                && is_ground_atom(p)
-            {
+            if le && ground_eqn_pair(eqn).is_some() && ground_interface_order() && is_ground_atom(p) {
                 return false;
             }
             le
@@ -594,6 +626,14 @@ fn root_only_incomp() -> bool {
     use std::sync::OnceLock;
     static FLAG: OnceLock<bool> = OnceLock::new();
     *FLAG.get_or_init(|| std::env::var_os("KM_ROOT_ONLY_INCOMP").is_some())
+}
+
+/// Whether the literal order depends on the root flag of the context
+/// (`KM_ROOT_ONLY_INCOMP`; `KM_ROOT_ORDERED` is read by `root_ordered_mode`).
+/// The exchange cut (`Engine::rsucc_covered`) needs the same order in the
+/// ground context and its receivers.
+pub(crate) fn root_dependent_order() -> bool {
+    root_only_incomp()
 }
 
 /// `KM_ORDERED_ALL=1`: ordered resolution in EVERY context, root included.
@@ -780,6 +820,67 @@ fn ground_interface_order() -> bool {
         && !context_flag_off(&CONTEXT_NO_R2, "KM_CONTEXT_NO_R2")
 }
 
+/// R3 for disjunctive ground (in)equalities (docs/PER-CONTEXT-ORDERING.md
+/// section 8): the guard delivers every clause inside the announced
+/// interface, where a ground (in)equality needs only one announced side
+/// (`engine::in_announced_interface`). `KM_CONTEXT_UNIT_R3` restores the
+/// v1.5.4 rule (units `→ o ≈ o'` only), a diagnostic that is known to miss
+/// `tests/fixtures/nominal_seq_order/r3_*`.
+#[inline]
+pub fn eq_closure_announce() -> bool {
+    eq_announce() && !context_flag_off(&CONTEXT_UNIT_R3, "KM_CONTEXT_UNIT_R3")
+}
+
+/// R2 for ground (in)equalities below other ground literals (section 8).
+/// `KM_CONTEXT_NO_EQ_R2` restores the v1.5.4 comparisons, a diagnostic.
+#[inline]
+fn ground_eqn_interface_order() -> bool {
+    ground_interface_order() && !context_flag_off(&CONTEXT_NO_EQ_R2, "KM_CONTEXT_NO_EQ_R2")
+}
+
+/// Diagnostic `KM_CONTEXT_NO_GUARD`: the ground context delivers every ground
+/// clause whose body its receiver discharged to every context with an
+/// individual-labelled edge, whatever individuals the clause mentions (the
+/// paper's r-Pred with `n = 0`, without KM's announced-individual guard).
+/// Sound; used to tell guard losses from other incompleteness
+/// (docs/PER-CONTEXT-ORDERING.md section 8.5). Not for production: the guard
+/// exists because unguarded delivery livelocks on ABox-heavy inputs.
+#[inline]
+pub fn ground_guard_off() -> bool {
+    context_flag_off(&CONTEXT_NO_GUARD, "KM_CONTEXT_NO_GUARD")
+}
+
+/// Diagnostic `KM_CONTEXT_PAIR_R2`: R2 for ground (in)equalities and R3 as
+/// committed in 7c238e52 (an equality lies below another only over the same
+/// pair, below a ground atom only when it shares an individual with it, and
+/// the guard admits it when one side is announced). Default off: the ranked
+/// R2 and the ranked guard of docs/PER-CONTEXT-ORDERING.md section 11 apply.
+#[inline]
+pub fn pair_r2() -> bool {
+    context_flag_off(&CONTEXT_PAIR_R2, "KM_CONTEXT_PAIR_R2")
+}
+
+static CONTEXT_PAIR_R2: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+static DIAG_EQEQ: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+static DIAG_EQATOM: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+/// Cost-attribution diagnostics (incomplete, never for answers).
+fn diag_flag(cell: &std::sync::OnceLock<bool>, name: &str) -> bool {
+    context_flag_off(cell, name)
+}
+
+/// Diagnostic `KM_R2_MIN_RANK`: the min-rank variant of the ranked R2 (an
+/// (in)equality lies below one over another pair when its smaller individual
+/// is at most the other's smaller one; the guard admits an (in)equality whose
+/// smaller individual is at most the receiver's bound).
+#[inline]
+pub fn r2_min_rank() -> bool {
+    context_flag_off(&CONTEXT_R2_MIN_RANK, "KM_R2_MIN_RANK")
+}
+
+static CONTEXT_R2_MIN_RANK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+static CONTEXT_NO_GUARD: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+static CONTEXT_UNIT_R3: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+static CONTEXT_NO_EQ_R2: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 static CONTEXT_NO_R2: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 static CONTEXT_NO_R3: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 
@@ -788,6 +889,18 @@ static CONTEXT_NO_R3: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
 #[inline]
 fn context_flag_off(cell: &std::sync::OnceLock<bool>, name: &str) -> bool {
     *cell.get_or_init(|| std::env::var_os(name).is_some())
+}
+
+/// The unordered pair of individuals of a ground equality or inequality
+/// between individuals (named or additional nominals), smaller id first.
+#[inline]
+fn ground_eqn_pair(l: &Lit) -> Option<(Term, Term)> {
+    match *l {
+        Lit::Eq { s, t } | Lit::Ineq { s, t } if is_individual(s) && is_individual(t) => {
+            Some(if s <= t { (s, t) } else { (t, s) })
+        }
+        _ => None,
+    }
 }
 
 /// A ground atom: every argument is a named individual (or additional nominal).

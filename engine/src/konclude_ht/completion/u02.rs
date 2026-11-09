@@ -158,6 +158,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let max_drives: u64 = super::bridge_max_drives();
         let mut drives: u64 = 0;
         self.ddb_root_cancelled = false;
+        self.empty_alternative_witness_stop = false;
         // cpp 783: `mOptBackendExpansionReuse =
         //     satCalcTask->getProcessingDataBox()->isBackendIndividualLateReuseExpansionActivated();`
         // The bridge has no CTask spine, so the per-task derivation happens at the
@@ -172,6 +173,16 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .is_backend_individual_late_reuse_expansion_activated();
         loop {
             if drives >= max_drives {
+                calc_alg_context.raise_stop(false);
+                return false;
+            }
+            // u29 withheld a root cancellation that a driver-run operand
+            // probe may justify (`stop_on_unknown_empty_alternative_witness`):
+            // STOP here, at the same drive boundary as the deadline below, so
+            // the driver can probe the operands and rerun the job. A STOP is
+            // an UNKNOWN verdict.
+            if self.empty_alternative_witness_stop {
+                self.empty_alternative_witness_stop = false;
                 calc_alg_context.raise_stop(false);
                 return false;
             }
@@ -226,6 +237,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         statistics.expanded += 1;
                         statistics.satisfiable += 1;
                     }
+                }
+                if super::automat_closure_audit_enabled() {
+                    self.ht_automat_closure_audit(calc_alg_context);
+                }
+                if super::graph_dump_enabled() {
+                    self.ht_graph_dump("fixpoint", calc_alg_context);
                 }
                 return true;
             }
@@ -381,6 +398,84 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             self.search_log_count += 1;
             eprintln!("SL {}", msg);
         }
+    }
+
+    /// KM_BRIDGE_DDB_TRACE=<N>: print the first N backtrack decisions of
+    /// the DDB walk with a compact branch-stack picture (diagnostic only).
+    fn ht_ddb_trace(
+        &self,
+        what: &str,
+        target: Option<usize>,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) {
+        static COUNT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let limit = super::bridge_ddb_trace_limit().unwrap_or(0).max(0) as u64;
+        if limit == 0 || COUNT.fetch_add(1, std::sync::atomic::Ordering::Relaxed) >= limit {
+            return;
+        }
+        let pc = calc_alg_context.process_context();
+        let mut parts: Vec<String> = Vec::new();
+        for (i, bp) in self.or_branch_stack.iter().enumerate().rev().take(14) {
+            let kind = match &bp.kind {
+                BranchKind::Disjunction => "or",
+                BranchKind::AtMostMerge(_) => "mg",
+                BranchKind::AtMostQualify { .. } => "ch",
+                BranchKind::BackendExpansionReuse(_) => "re",
+            };
+            let marks: String = bp
+                .alt_track_points
+                .iter()
+                .map(|&tp| {
+                    if tp.is_none() {
+                        '?'
+                    } else if pc.track_point(tp).is_clashed_or_irelevant_branch() {
+                        'x'
+                    } else {
+                        '.'
+                    }
+                })
+                .collect();
+            let tag = if bp.branching_concept.is_some() {
+                calc_alg_context
+                    .ontology_arenas()
+                    .concept(bp.branching_concept)
+                    .get_concept_tag()
+            } else {
+                -1
+            };
+            parts.push(format!(
+                "{i}:{kind}n{}c{}[{}/{} cur{} {marks}]",
+                bp.node.index(),
+                tag,
+                bp.next_alt,
+                bp.alternatives_len(),
+                bp.current_track_alternative(),
+            ));
+        }
+        eprintln!(
+            "DDBT {what} target={target:?} depth={} {}",
+            self.or_branch_stack.len(),
+            parts.join(" ")
+        );
+    }
+
+    /// A leaf job's clash that the analysis attributes to no open job
+    /// decision (docs/HYBRID-CB-HT.md section 24). The leaf accepts an
+    /// unsatisfiable job verdict only as a root cancellation (section 16), so
+    /// the chronological fallback can end in nothing but a rejected verdict
+    /// or a model found after enumerating job decisions the clash does not
+    /// depend on; the job's fallback alternative (the unchanged job on the
+    /// unchanged base) answers instead. Ending the job here changes no
+    /// verdict: the caller reports an unsatisfiable outcome without root
+    /// cancellation, which the leaf rejects. Konclude's class tasks do not
+    /// enumerate their own decisions against a contradicted cached model
+    /// either; they reactivate the cached individuals (section 16).
+    fn ht_leaf_job_ends_on_unattributed_clash(&mut self) -> bool {
+        if !self.leaf_job_unattributed_clash_ends_job || self.ddb_root_cancelled {
+            return false;
+        }
+        self.leaf_job_unattributed_clash_count += 1;
+        true
     }
 
     fn discard_topmost_or_branch(
@@ -543,7 +638,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let Some((target, has_remaining)) = target else {
             // No marked branch point — do NOT trust the analysis for an UNSAT
             // verdict; chronological fallback.
+            if self.ht_leaf_job_ends_on_unattributed_clash() {
+                return false;
+            }
             self.ddb_fallback_count += 1;
+            self.ht_ddb_trace("fallback-nomark", None, calc_alg_context);
+            self.ht_dump_final_clash(clash, "fallback-nomark", calc_alg_context);
             return self.try_backtrack_or_branch(calc_alg_context);
         };
         if !has_remaining {
@@ -653,9 +753,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
             // DEFAULT: chronological fallback (sound; thrashy on stale marks).
             self.ddb_fallback_count += 1;
+            self.ht_ddb_trace("fallback-notclosed", Some(target), calc_alg_context);
             return self.try_backtrack_or_branch(calc_alg_context);
         };
         self.ddb_jump_count += 1;
+        self.ht_ddb_trace("jump", Some(target), calc_alg_context);
         self.ddb_jump_pop_total += (self.or_branch_stack.len() - 1 - target) as u64;
         // KM_BRIDGE_DUMP_CLASH: record every branch point this backjump is
         // about to discard while it STILL has unexplored alternatives (task
@@ -1127,6 +1229,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             cardinality,
             con_des,
             rest,
+            nn_decision,
         ) = {
             let bp = self
                 .or_branch_stack
@@ -1154,6 +1257,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 m.cardinality,
                 m.con_des,
                 m.rest,
+                m.nn_decision,
             )
         };
         // DDB: the alternative's branch node becomes the used branch tree node
@@ -1175,9 +1279,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 into.index()
             );
         }
-        self.merge_individual_node_into(into, from, add_tp, calc_alg_context);
-        if !calc_alg_context.has_pending_signal() {
-            self.ht_relocate_incoming_links(parent, from, into, add_tp, calc_alg_context);
+        if nn_decision {
+            self.ht_nn_set_base_track_point(parent, con_des, negate, add_tp, calc_alg_context);
+        }
+        if into.is_none() {
+            // The NN-rule's new-representative alternative
+            // (docs/HYBRID-CB-HT.md section 24).
+            self.ht_nn_make_representative(parent, from, con_des, negate, add_tp, calc_alg_context);
+        } else {
+            self.merge_individual_node_into(into, from, add_tp, calc_alg_context);
+            if !calc_alg_context.has_pending_signal() {
+                self.ht_relocate_incoming_links(parent, from, into, add_tp, calc_alg_context);
+            }
         }
         // re-seed the counted parent so the drive picks it up again.
         let iq = calc_alg_context.get_individual_immediately_processing_queue(true);
@@ -1215,6 +1328,63 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     calc_alg_context,
                 );
             }
+            self.ht_rearm_atmost_reapplication(parent_m, role, con_des, rest, dep_track_point, calc_alg_context);
+        }
+    }
+
+    /// Re-install the at-most rule's reapplication (cpp 15001-15005,
+    /// `installReapplication`) at the start of a later alternative of one of
+    /// its branch points. `apply_atmost_rule` installs it after the merge
+    /// call, i.e. inside the epoch of the first alternative; the epoch pop
+    /// before an advance removes it. Konclude's branch children copy the
+    /// parent's data box only when they start, after the parent has
+    /// installed it, so every alternative sees it. Without it a link that a
+    /// later alternative installs at the counted parent never re-fires the
+    /// bound (docs/HYBRID-CB-HT.md section 18.3).
+    fn ht_rearm_atmost_reapplication(
+        &mut self,
+        parent: NodeId,
+        role: super::super::model::RoleId,
+        con_des: super::super::process::ConDescId,
+        rest: super::super::process::RestrictionSpecId,
+        dep_track_point: TrackPointId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        if calc_alg_context.has_pending_signal() || parent.is_none() || con_des.is_none() {
+            return;
+        }
+        if super::atmost_rearm_disabled() {
+            return;
+        }
+        // A registration that predates the branch's epoch survived the pop;
+        // a second copy would only repeat every bound re-check.
+        let restriction = if rest.is_some() { rest.raw } else { super::super::model::substrate::INVALID };
+        if calc_alg_context.process_context().node_role_static_reapply_contains(
+            parent,
+            role,
+            con_des,
+            restriction,
+        ) {
+            return;
+        }
+        if rest.is_some() {
+            self.add_concept_to_reapply_queue_role_restricted_static(
+                con_des,
+                role,
+                parent,
+                rest.raw,
+                dep_track_point,
+                calc_alg_context,
+            );
+        } else {
+            self.add_concept_to_reapply_queue_role(
+                con_des,
+                role,
+                parent,
+                true,
+                dep_track_point,
+                calc_alg_context,
+            );
         }
     }
 
@@ -1396,6 +1566,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     calc_alg_context,
                 );
             }
+            self.ht_rearm_atmost_reapplication(parent_m, role, con_des, rest, dep_track_point, calc_alg_context);
         }
     }
 
@@ -1540,7 +1711,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // later wave) cannot HANG the build host. Set far above any real test workload; in
         // normal operation it is never reached. On overrun we raise a stop (the drive ends
         // "not consistent" rather than silently claiming consistency).
-        const MAX_DRIVE_ITERATIONS: u64 = 5_000_000;
+        // `KM_HT_MAX_DRIVE_ITERATIONS` raises the cap for measurement; an
+        // overrun still stops the drive, so the value never changes an answer.
+        let max_drive_iterations: u64 = super::max_drive_iterations();
         let progress = super::bridge_progress_enabled();
         let mut drive_iters: u64 = 0;
         // CCalculationTableauCompletionTaskHandleAlgorithm.cpp 1117-1118.
@@ -1593,7 +1766,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     }
                 }
             }
-            if drive_iters > MAX_DRIVE_ITERATIONS {
+            if drive_iters > max_drive_iterations {
                 calc_alg_context.raise_stop(false);
                 return false;
             }
@@ -1619,7 +1792,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 while continue_processing_individual {
                     drive_iters += 1;
                     drive_progress!();
-                    if drive_iters > MAX_DRIVE_ITERATIONS {
+                    if drive_iters > max_drive_iterations {
                         calc_alg_context.raise_stop(false);
                         return false;
                     }
@@ -1733,7 +1906,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         how: &str,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        if !super::bridge_dump_clash_enabled() || self.ddb_analysis_dumps >= 8 {
+        if !super::bridge_dump_clash_enabled()
+            || self.ddb_analysis_dumps >= super::bridge_dump_clash_limit()
+        {
             return;
         }
         self.ddb_analysis_dumps += 1;
@@ -2076,6 +2251,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         cache: &mut SingletonLabelCache,
     ) -> bool {
         let mut merged_any = false;
+        if crate::konclude_ht::value_singletons::audit_enabled() {
+            crate::konclude_ht::value_singletons::audit_labels(calc_alg_context, &self.phantom_node_intervals);
+        }
         // Diagnostic scheduling alternative: after the first mutation, use
         // the existing exact per-concept scan instead of rebuilding every
         // singleton's index after each merge. Both paths select the first two
@@ -3076,9 +3254,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             if indi_node.is_some() {
                 // CReapplyConceptLabelSet* conSet = indiNode->getReapplyConceptLabelSet(false);
                 let con_set: LabelSetId = calc_alg_context
-                    .process_context_mut()
-                    .node_mut(indi_node)
-                    .get_reapply_concept_label_set(false);
+                    .process_context()
+                    .node(indi_node)
+                    .use_reapply_con_label_set;
                 // cint64 conSigValue = indiNode->getReapplyConceptLabelSet(false)->getConceptSignatureValue();
                 let con_sig_value: Cint64 = if con_set.is_some() {
                     calc_alg_context

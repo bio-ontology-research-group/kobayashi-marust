@@ -1,0 +1,8 @@
+{
+  "ontology": "nn952.ofn",
+  "consistent": true,
+  "subsumptions": [],
+  "unsatisfiable": [
+    "Q3"
+  ]
+}

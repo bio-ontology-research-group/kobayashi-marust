@@ -21,10 +21,14 @@ pub mod ground_rule_source;
 pub mod data_abox_projection;
 mod finite_data_rules;
 mod rule_assertions;
+mod pass_cache;
+pub(crate) use pass_cache::with_scope as with_pass_cache;
 mod isolated_rules;
 pub mod iri;
 pub mod literal_profiles;
+pub mod value_projection;
 pub mod normalise;
+pub mod object_guard;
 pub mod parse;
 pub mod preprocess;
 pub mod profile;
@@ -43,6 +47,9 @@ use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 
 use clauses::{clause, clause_into_json, Atom, DLClause, Term};
 use iri::IriRegistry;
+
+/// Largest finite range the relation clauses enumerate for data counting.
+const MAX_COUNTED_COVER: usize = 4096;
 
 /// Coverage diagnostic for data-property assertions the clause set does not
 /// carry (`"<n> data-property assertion axiom(s) are unsupported"`).
@@ -1183,6 +1190,7 @@ fn ofn_to_clauses_representation(
     // pre-normalisation choice at this exact boundary.
     let rule_individual_names = profile_builder.rule_individual_names();
     let data_property_raw = profile_builder.data_property_names();
+    let class_raw = profile_builder.class_names();
     let (mut profile, source_class_raw) =
         profile_builder.finish_with_separable_class_names(text.len() as u64);
     // A contradiction entailed by ordinary source axioms remains a
@@ -1229,10 +1237,14 @@ fn ofn_to_clauses_representation(
     }
     if profile.source.imports == 0 {
         if let Some(scan) = &finite_rule_scan {
+            let started = std::time::Instant::now();
             profile.normalized_constant_data_rules = integer_rule_scan.lower_finite_rules(
                 &mut ontology, &mut reg, scan, profile.source.rule_axioms,
                 rule_certificate_scan.query_only_rules(),
             );
+            if std::env::var_os("KM_TIMING").is_some() && profile.normalized_constant_data_rules > 0 {
+                eprintln!("KM_TIMING frontend finite-rule grounding {:.2}s", started.elapsed().as_secs_f64());
+            }
             profile.normalized_finite_data_rules = profile.normalized_constant_data_rules;
             if profile.normalized_finite_data_rules > 0 {
                 profile.finite_rule_class_projection = scan.class_projection();
@@ -1259,7 +1271,12 @@ fn ofn_to_clauses_representation(
         }
     }
     if profile.normalized_constant_data_rules > 0 || std::env::var_os("KM_RULE_ASSERTION_CLOSURE").is_some() {
+        let started = std::time::Instant::now();
         rule_assertions::materialize(&mut ontology);
+        if std::env::var_os("KM_TIMING").is_some() {
+            eprintln!("KM_TIMING frontend rule-assertion closure {:.2}s (memo hits {})",
+                started.elapsed().as_secs_f64(), pass_cache::stats().closure_hits);
+        }
     }
     let inert_role_probes =
         inert_role_abox_probes(&ontology, &profile, elide_top_role).unwrap_or_default();
@@ -1274,6 +1291,43 @@ fn ofn_to_clauses_representation(
                 syntax::Concept::Name(probe.clone()),
                 syntax::Concept::Name(class.clone()),
             ));
+        }
+    }
+    // Object guard for the native bridge (`object_guard`): an exact rewrite
+    // that makes every class axiom hold at a blank data node. Built only on
+    // the orchestrator's guarded bridge attempt; every other pass records
+    // whether it would apply.
+    let mut guard_moved_assertions = 0u64;
+    {
+        let guard_data_roles: BTreeSet<String> = data_property_raw
+            .iter()
+            .filter_map(|raw| reg.assigned(raw).map(str::to_string))
+            .collect();
+        if object_guard::requested() {
+            // Every class of the signature needs `A ⊑ G`, also one that is
+            // only declared or only named in an RBox domain or range record
+            // (seed 2003: `⊤ ⊑ A` guarded, `B` only declared, `B ⊑ A` lost).
+            let declared_classes: Vec<String> = declared_raw
+                .iter()
+                .chain(class_raw.iter())
+                .filter(|raw| !object_guard::builtin_vocabulary(raw))
+                .map(|raw| reg.short(raw))
+                .filter(|name| name != "owl:Thing" && name != "owl:Nothing")
+                .collect();
+            let guarded = object_guard::encode(&mut ontology, &guard_data_roles, &declared_classes, |name| {
+                reg.is_named_iri(name) && !name.starts_with("__")
+            });
+            profile.object_guard_candidate = guarded.rewritten > 0;
+            guard_moved_assertions = guarded.moved_assertions;
+            if std::env::var_os("KM_TIMING").is_some() {
+                eprintln!(
+                    "KM_TIMING frontend object guard: {} rewritten axiom(s), {} class assertion(s) moved to the TBox",
+                    guarded.rewritten, guarded.moved_assertions
+                );
+            }
+        } else {
+            profile.object_guard_candidate =
+                object_guard::applies(&ontology, &guard_data_roles);
         }
     }
     // An atomic ABox with at most one distinct class per individual has a
@@ -1363,6 +1417,18 @@ fn ofn_to_clauses_representation(
     if profile.normalized_unary_rules > 0 || profile.normalized_constant_data_rules > 0 {
         std::env::set_var("KM_NOMINALS", "1");
     }
+    // DL-safe rules beside a nominal or the universal role: the rule worker
+    // classifies its input (orchestrate `rules_reach_class_queries`), which
+    // is exact only on the sorted stream of nominal clausification (a
+    // one-sorted stream lets `⊤ ⊑ {a}` capture data successors, m2197).
+    // Automatic routing only; a forced route keeps its own clausification.
+    if automatic
+        && route == crate::routing::Route::HtRules
+        && profile.source.rule_axioms > 0
+        && (profile.source.object_nominal_concepts > 0 || profile.expressivity.universal_role)
+    {
+        std::env::set_var("KM_NOMINALS", "1");
+    }
     // The source-profile gate proves that this is the narrow, datatype-free,
     // inverse-free native SHOQ fragment whose first-class cardinality payload
     // is complete. Avoid materialising the quadratic clausal pigeonhole only
@@ -1446,7 +1512,11 @@ fn ofn_to_clauses_representation(
     let mut nominal_abox = if omit_separable_abox {
         crate::json_io::NominalAboxMeta::default()
     } else {
-        collect_nominal_abox(&ontology, &abox, &hooks, &profile.source)
+        // A class assertion the object guard moved to the TBox is carried as
+        // its nominal inclusion `{a} ⊑ C`, no longer as an ABox axiom.
+        let mut source = profile.source.clone();
+        source.class_assertions -= guard_moved_assertions.min(source.class_assertions);
+        collect_nominal_abox(&ontology, &abox, &hooks, &source)
     };
     // Project the named-class ABox-consistency data before the AST is dropped
     // (cheap: `None` unless the ontology has named-class disjointness). The
@@ -1522,6 +1592,16 @@ fn ofn_to_clauses_representation(
             *dropped_source_axioms.entry("DLSafeRule".to_string()).or_default() += unread;
         }
     }
+    // Value singleton clauses are needed only when some construct can force
+    // two data successors of one element apart (or a key or rule compares
+    // values across elements); see `datatypes::datatype_relation_clauses_with`.
+    let elide_value_singletons = converted_data_assertions > 0
+        && !profile.source.axiom_types.contains_key("HasKey")
+        && profile.source.rule_axioms == 0
+        && !literal_profiles::distinct_data_successors_forced(
+            &ontology.axioms_iter().collect::<Vec<_>>(),
+        );
+    let data_count_bound = literal_profiles::data_count_bound(&ontology.axioms_iter().collect::<Vec<_>>());
     drop(ontology); // the syntax AST is dead once clausified
     t.lap("normalise");
     // Under KM_NOMINALS the ground ABox + nominal defining clauses enter the
@@ -1901,7 +1981,53 @@ fn ofn_to_clauses_representation(
                 }
             }
             let groups = datatypes::datatype_role_groups_linked(&tbox, &linked_roles);
-            tbox.extend(datatypes::datatype_relation_clauses_grouped(&dt_names, 8, Some(&groups)));
+            // A finite range of at most as many values as one element can be
+            // forced to have needs its exact cover, so counting over it
+            // clashes (`≥ 10 u.integer[1,9]`). Covers are enumerated up to
+            // that bound; a range the bound can exhaust but no cover
+            // reaches is published as not represented.
+            // The exact vocabulary: Boolean operands, ordered cells, and the
+            // names outside the decided fragment, which are published as not
+            // represented (docs/DATATYPES.md, "Boolean data ranges and
+            // ordered cells"). Exhaustion and counting are decided on the
+            // atomic names and cells; a Boolean name is equivalent to the
+            // combination of its operands.
+            let vocabulary = datatypes::vocabulary::expand(&dt_names, Some(&groups));
+            for (reason, name) in &vocabulary.undecided {
+                if std::env::var_os("KM_DT_AUDIT").is_some() {
+                    eprintln!("KM_DT_AUDIT undecided: {reason}: {name}");
+                }
+                *dropped_source_axioms.entry(format!("data range outside the decided datatype fragment: {reason}"))
+                    .or_default() += 1;
+            }
+            let atomic_names: BTreeSet<String> = vocabulary.names.iter()
+                .filter(|name| !vocabulary.boolean.contains(*name))
+                .cloned()
+                .collect();
+            let mut cover_cap = (data_count_bound.min(MAX_COUNTED_COVER as u64) as usize).max(8);
+            let mut beyond = datatypes::ranges_beyond_cover(&atomic_names, cover_cap, data_count_bound);
+            // A finite range the vocabulary's values plus the count bound
+            // can exhaust also needs its cover (`exhaustible_ranges`); one
+            // too large to enumerate is published as not represented.
+            let exhaustible = datatypes::exhaustible_ranges(&atomic_names, data_count_bound);
+            for (_, size) in &exhaustible {
+                if *size <= MAX_COUNTED_COVER as u128 {
+                    cover_cap = cover_cap.max(*size as usize);
+                }
+            }
+            for (name, _) in exhaustible {
+                if !datatypes::range_has_cover(&name, cover_cap) && !beyond.contains(&name) {
+                    beyond.push(name);
+                }
+            }
+            if !beyond.is_empty() {
+                *dropped_source_axioms
+                    .entry("data cardinality over a range without an exact cover".to_string())
+                    .or_default() += beyond.len() as u64;
+            }
+            tbox.extend(datatypes::datatype_relation_clauses_with(
+                &dt_names, cover_cap, Some(&groups), elide_value_singletons,
+            ));
         }
     }
     // Two-sorted domain encoding (docs/NOMINALS-CB.md, "Object and data

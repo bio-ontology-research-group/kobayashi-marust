@@ -505,6 +505,766 @@ Tests: `hermit_answers_on_every_route` and
 `data_roles_without_datatypes_enter_the_datatype_gate` in
 `konclude_ht/bridge.rs`.
 
+### Inert object sorts in the rule checker (2026-10-30)
+
+Cost. ore_ont_7278 and ore_ont_3726 took about 7 s in v1.5.3 and 32 s in
+v1.5.4 on the automatic route. Their DL-safe rules compare data values, so
+the frontend grounds them over the asserted literals (`lower_finite_rules`,
+which also carries every data assertion as `a : ∃p.{v}`), the run sets
+`KM_NOMINALS`, and this section's sort encoding applies; v1.5.3 had no sort
+encoding. The rule-consistency worker (`orchestrate::rules_consistency`,
+the clausal `Tableau`) then reads 478 more clauses (8,552 instead of
+8,074), and 11 of the clauses it reads are relativized range facts
+`Q_⊤(x) → Q(x) ∨ D(x)` of `DataPropertyRange` definers `Q`. The worker
+branches on each of them at each of the 221 ABox nodes, and every branch
+restarts the Horn saturation over the whole graph (`KM_TAB_STATS=1`: 2,431
+branch points and 2,433 saturations instead of 2 saturations, no
+backtracking). The worker took 25 s instead of 4 s on the same machine.
+Removing the 11 `D` disjuncts and the 11 sort clauses `Q ∧ D → ⊥` from the
+captured worker input, and nothing else, restores 4.3 s; removing the 340
+concept sort clauses or the 56 role sort clauses instead leaves it at 26 to
+27 s.
+
+Remedy (`orchestrate/inert_sorts.rs`). Before conversion, the rule
+checker releases the object sort of every definer `Q` that no clause reads
+on a data element. A guard of a term `t` in a clause body is an atom false
+at every data element in every model: an object-sorted concept with its
+sort clause (not itself released), or a role atom whose domain or range
+position at `t` has its sort clause; an individual is pinned when a unit
+fact with such an atom puts it outside `D`. `Q` is released when it is an
+internal definer (no IRI, not a query, not used by a rule, a cardinality
+or a definer record), every clause with `Q(t)` in its body has a guard of
+`t` or a pinned `t`, and every clause with `Q(t)` in its head has `D(t)` in
+its head too or a guard or a pinned `t`. For released definers the pass
+drops the `D` disjunct of their facts and their sort clauses; the guard
+sort clauses stay. A model of the sorted clause set becomes a model of the
+result by adding `Q` to every data element (every reading of `Q` is
+guarded, so no clause fires there), and a model of the result becomes a
+model of the sorted set by removing `Q` from every data element (every
+unrelativized derivation of `Q` is guarded, and the relativized ones hold
+through `D`). The two sets have the same models up to internal definers on
+data elements, so the worker's consistency verdict, the only thing it
+reports, is the same; the worker is sound on both inputs, so a difference
+could only be a timeout or an error, never the opposite verdict. On 7278
+and 3726 all 11 range definers are released and the worker runs in 4.2 s;
+the classification is byte-identical to v1.5.4. `KM_RULES_KEEP_INERT_SORTS=1`
+keeps the sorts. Frontend output, routing and every other consumer of the
+sorted stream are unchanged.
+
+Tests: the unit tests of `orchestrate/inert_sorts.rs`, among them a
+randomized check over 3,000 sorted clause sets that the release keeps
+satisfiability (decided by ground DPLL) and that releasing without the
+guard conditions changes it on some of them, and
+`unchecked_release_turns_a_consistent_input_inconsistent`, where
+`Q_1(x) → A(x)` reads the definer on a data value. Measurements, the
+differential over finite-rule seeds and the timing table:
+`results/agents/2026-10-30/rules-worker-cost/`.
+
+Lean coverage (2026-10-30). `lean/ContextCalculus/RulesInertSortRelease.lean`
+formalises the worker's clause language (concept, role and equality atoms
+over variables, individual and auxiliary constants and unary Skolem
+functions, read as first-order clauses over a nonempty domain), the release
+exactly as `release_inert_object_sorts` computes it (`conceptSortOf`,
+`roleSortOf`, `removedSortClause`, `dropData`, `release`), and the guard
+conditions as an executable check (`guards`, `guarded`, `bodyOk` for (B),
+`headOk` for (H), `conditions`, which also requires `D ∉ P` and that no
+released concept is reserved). Proved, with no `sorry` and only `propext`,
+`Classical.choice` and `Quot.sound`:
+
+- `extend_models`: a model of the sorted set, with every released definer
+  added on every `D` element, is a model of the released set;
+- `restrict_models`: a model of the released set, with every released
+  definer removed from every `D` element, is a model of the sorted set;
+- `release_equisatisfiable`: if `conditions` accepts, the two sets are
+  satisfiable together with any side theory that reads only the reserved
+  concepts (`ReadsOnly`: it cannot tell apart two interpretations that agree
+  on the domain, roles, constants, functions and reserved concepts), in both
+  directions, so the consistent and the inconsistent verdict are both
+  preserved;
+- `WireInertSortRelease.check_sound`: an accepted certificate's worker input
+  (`result`) is equisatisfiable with its sorted clause set (`original`) in
+  that sense.
+
+The released set and the guards are not trusted: the checker recomputes the
+guard tables from `original` and requires `result` to equal
+`release original` exactly. `KM_RULES_INERT_CERT=<file.json | dir>` makes the
+orchestrator write the certificate (original clauses, released definers,
+reserved concepts, worker clauses, name tables); with
+`KM_RULES_INERT_LEAN_CHECKER` naming `rules-inert-sort-release-check` the run
+fails closed when Lean rejects it. The reserved set is every concept that
+something other than the clauses reads: cardinality and definer records, rule
+atoms, source axioms, and every name that is not a clausifier definer
+(`Q_`, `aux_`, `def_`), which covers source names, queries, built-in
+vocabulary, `__nom__` proxies, `__dt__` ranges and `D`.
+
+This is the first machine check on the rules-consistency route: the
+tableau refuses HT Lean certification under `KM_RULES_CONSISTENCY`, and the
+orchestrator's `consistency_certified` flag is not a Lean check. Both maps in
+the theorem leave every symbol outside `P` unchanged, so the reduct of a model
+to the source symbols is preserved as well, which is what the source checks
+of the `require_source_model` path read (IRI-mapped names, `__nom__`
+proxies, `__dt__` labels; released definers have no IRI). The theorem does not
+need the sort clause of a released definer to be present, and the clause
+language has no negated concept atoms or existential fillers, so a released
+definer occurs only as a positive concept atom by construction.
+
+Argued, not proved: (1) that the worker's side channels (rules, cardinality
+and definer records, datatype and nominal semantics, and the source-model
+check of the `require_source_model` path) read only the reserved concepts,
+which is the `ReadsOnly` premise; (2) that `cb_to_ht::convert` and the
+clausal `Tableau` decide satisfiability of the clauses they are given (the
+theorem is about the clause sets, and the same worker reads both); (3) the
+translation of `JTerm::Aux` terms to constants. Gate:
+`lean/run-rules-certification-gate.sh` (fixture
+`engine/tests/fixtures/rules_inert_sorts/fr373.ofn`, ore_ont_7278, the
+randomized release test with the Lean checker on every certificate, and a
+forged fixture). Results: `results/agents/2026-10-30/lean-v155-coverage/`.
+
+The duplicated frontend pass. On these inputs the frontend also runs twice
+(about 2.8 s each, nearly all of it in the finite-rule grounding): the first
+pass reports the 81 data assertions as not carried, because only the
+parse-time conversion counts as carrying them, and
+`run_ofn_split_cached` reruns it with `KM_DATA_ASSERTION_AS_CLASS`. The
+grounding already carries them, and the two clause streams are identical
+(8,552 clauses in the same order; only the `nominal_abox` diagnostics
+differ). Skipping the second pass would need a proof that the first pass
+then equals the converted one on every input, including every consumer
+that reads the ontology between parsing and the grounding
+(`abox_consistency`, `data_abox`, the ABox probes); that proof is not done,
+so both passes stay. (Superseded for the cost by the closure memo below,
+2026-10-30: the second pass stays and reuses the first pass's closure.)
+
+### Rule checker follow-ups (2026-10-30)
+
+Three findings of the exactness review of the inert-sort release
+(`results/agents/2026-10-30/rules-route-followups/`).
+
+**Worker failures that depended on machine load.** Under parallel load the
+rule checker worker sometimes exited 1 about 0.01 s after it started, and
+`rules_consistency` turned that into a classification error. Cause: the
+worker ran its search on a 2 GiB thread and the rule checker on a nested
+4 GiB thread (`stack_size(4 << 30)`, on the assumption that an untouched
+stack costs nothing). On `ws` the kernel uses strict overcommit
+(`vm.overcommit_memory = 2`, commit limit 264 GiB), so a thread stack is
+charged in full when the thread starts; with other processes holding most
+of the limit, `pthread_create` failed with `EAGAIN` and the worker printed
+`tableau error: Resource temporarily unavailable (os error 11)` to a stderr
+the orchestrator discarded. The same message appears deterministically
+under `ulimit -v 5000000`. Remedy (`engine/src/bigstack.rs`): the main
+thread's stack is the one mapping Linux commits page by page as it grows.
+`km tableau` raises its soft `RLIMIT_STACK` to the deep-stack size plus
+headroom and re-executes itself once, so `execve` reserves the larger gap
+below the stack (address space only, no commit charge); the searches then
+run inline on the main thread (`bigstack::run` checks the stack left below
+the caller). A thread is spawned only when the current thread lacks the
+requested stack (a library caller, the incremental probe), and a failed
+spawn is retried for about 5 s before the error, with the stack size and
+the operating system's reason, is returned. The HT worker pools, which run
+in parallel and cannot share a stack, retry their spawns the same way
+(`bigstack::spawn_scoped_retrying`). The orchestrator now keeps the
+worker's stderr and includes its tail in the error. Exactness: the search
+code is unchanged; only the stack it runs on and the time its pages are
+charged change, so every verdict is the one the old worker computed when
+its threads started. The worker now commits stack only for the depth a
+search reaches; a failure that remains is one the input causes (an actual
+stack or heap demand above the limit), and it reports its reason.
+
+**The incremental rule adapter.** `incremental_rules::rules_consistent`
+now applies the same release (`inert_sorts::release_inert_object_sorts_in`,
+same source-name test, same `KM_RULES_KEEP_INERT_SORTS` switch), with the
+batch exactness argument. The adapter is reached only when the session's
+frontend carries every data assertion (`retained_backend_allowed`); on
+ore_ont_7278 under default settings the frontend reports the 81 assertions
+as uncarried, so every revision is an exact batch rebuild that already ran
+the release. With `KM_DATA_ASSERTION_AS_CLASS=1` the adapter is used, and
+the probe then releases the same 11 definers as the batch checker. The
+probe still did not finish on 7278 with or without the release (stopped
+after 28 and 21 minutes): the batch checker runs 7278 with
+`KM_RULE_JOIN_ORDER=1` (its source-model mode), the incremental probe
+without it, and on the batch checker's captured worker input the worker
+takes 8 s with that setting and more than 100 s without it. Making the
+probe use the selective join order is a separate change (a scheduling
+change of the clause matcher, not made here).
+
+**The second frontend pass.** The 2.8 s per pass is the positive-ABox
+closure `rule_assertions::materialize`, which runs when the finite-rule
+grounding fires; the grounding itself takes 0.2 s (`KM_TIMING frontend
+finite-rule grounding` and `rule-assertion closure` lines). The second pass
+cannot be skipped by a condition on the first pass's output without the
+audit above: the parse-time conversion makes the converted assertions
+visible to every consumer between parsing and the grounding, and on 7278
+the passes already differ in `nominal_abox` (the unsupported-axiom reasons
+and the `ClassAssertion` coverage counts), which the bridge routes and the
+uncarried count read. Instead, `frontend::pass_cache` keeps the first
+pass's closure for the duration of `run_ofn_split_cached`, and the second
+pass reuses it when its closure input is equal. Exactness: `close` reads
+only the asserted concept facts, role facts, class inclusions and positive
+rules, compared as sets. Each round evaluates every inclusion and every
+rule against the facts present at the start of the round and adds its
+conclusions to sets, so the order and repetition of inclusions and rules
+do not change a round; a rule's join order depends on its body order and
+index sizes, and both resource bounds count bindings or facts, which the
+order of index entries does not change. Equal inputs therefore have equal
+closures, and the second pass receives exactly the closure it would
+compute. On 7278 the second pass drops from about 2.8 s to 0.2 s (memo
+hit). `KM_NO_FRONTEND_PASS_CACHE=1` disables the memo.
+
+Lean obligations. None of the three changes alters a calculus, an encoding
+or a worker input: the stack change is below the search, the incremental
+release reuses the batch release (whose obligation, the equisatisfiability
+argument of the previous subsection, is unchanged and not mechanised), and
+the closure memo returns a value equal to the one the frontend computes.
+Nothing was proved in Lean.
+
+### Inert object sorts in the nominal CB input (2026-10-30)
+
+Cost. On the generated nominal-plus-data seeds (`gen_nomdata.py
+--no-inverse`, seeds 2000-2399) 130 of 400 runs of the automatic route gave
+no answer within 60 s at the base of v1.5.5 (87fda54f). Every one of them
+ran the nominal CB route alone: the native bridge defers on its datatype
+gate (ten distinct reasons, `results/agents/2026-10-30/nominal-coverage/`).
+Reducing seed 2032 axiom by axiom while the automatic route stays above 15 s
+leaves three axioms (`tests/fixtures/nominal_inert_sorts/m2032_min.ofn`):
+
+    DataPropertyDomain(:u DataSomeValuesFrom(:u xsd:string))
+    EquivalentClasses(:Q1 ObjectComplementOf(ObjectSomeValuesFrom(:r ObjectHasValue(:r :c))))
+    EquivalentClasses(:Q2 ObjectComplementOf(ObjectSomeValuesFrom(:r :C)))
+
+The sort encoding turns each complement into a relativized fact such as
+`→ Q_4(x) ∨ Q_6(x) ∨ D(x)` (`D` = `__data__`). The ground context
+instantiates those facts at the nominal `c` and at every Skolem successor
+of it, so each case split carries the `D` disjunct, and the engine does not
+finish within 30 s in any ordering regime (context, base context, plain
+Sequoia; `km engine`, one thread). Three of its definers are never read on
+a data element.
+
+Remedy (`inert_sorts::release_inert_object_sorts_for_cb`,
+`orchestrate::nominal_cb_clause_input`). In nominal mode the orchestrator
+gives the CB engine a copy of the clause file in which the object sort of
+every inert definer is released, the pass of the rule checker (section
+above) with two differences:
+
+- Records do not reserve names. The CB engine builds its `Reasoner` from
+  `input.clauses` alone, so a cardinality or definer record has no
+  meaning there. The names it reads with a meaning of their own are the
+  source names (`iri_map`, `named`), the asserted markers, the queries of
+  `KM_QUERIES`, the nominal proxies and the nominal-ABox assertion markers;
+  all of them stay reserved. Rule atoms stay reserved.
+- The fixpoint keeps one of two mutual guards. The complementary markers
+  of `≤1 p` and `≥2 p` share `Q_3 ∧ Q_4 → ⊥`; each is the other's only
+  guard there, so the rule checker's pass keeps both. A failure is *soft*
+  when the failing clause's body holds another candidate on the same term
+  that has a sort clause, and *hard* otherwise. Hard failures are kept at
+  once; when only soft failures remain, the greatest of them is kept and
+  the rest are re-checked. The loop ends only when no candidate violates
+  (B) or (H).
+
+Exactness. The final set `P` satisfies (B) and (H), so the model
+correspondence of the module documentation holds: a model of the sorted
+clause set `S` becomes a model of the released set `S'` by adding every
+`Q ∈ P` to every data element, and a model of `S'` becomes a model of `S`
+by removing them. Neither map changes the interpretation of any name
+outside `P`, of any role, of equality, or of the individuals. Every answer
+the orchestrator reads from the CB engine (consistency, and the
+superclasses and unsatisfiability of source names, asserted markers and
+queries) mentions only names outside `P`, so it is the same for `S` and
+`S'`: `S ⊨ A ⊑ B` iff `S' ⊨ A ⊑ B` for `A, B ∉ P`, because a countermodel
+of one maps to a countermodel of the other with the same extensions of `A`
+and `B`. The CB engine is complete for `S'` to the same standard as for
+`S` (the copy only drops literals and clauses; the regime, R2's switch and
+R3 are computed from it as from any other clause set), so its answers on
+`S'` are the exact answers for the source. HT workers, which read the
+cardinality and definer records, keep the frontend's file; the EL
+certificate racer gets the copy only when it does not run. Runs that must
+publish a CB Lean certificate (`KM_CB_LEAN_REQUIRED`, or a clause file with
+`cb_typed_source`) keep the frontend's file, since the certificate's typed
+source must equal the clauses. `KM_CB_KEEP_INERT_SORTS=1` opts out.
+
+Lean obligation. Not discharged. What has to be proved is the ground
+form of the correspondence: for a finite set of function-free clauses
+over a signature with the sort predicate `D`, and a set `P` of predicates
+satisfying (B) and (H), `S` and `S'` have the same Herbrand models up to
+`P` on the atoms `D(t)` is true for, hence the same entailed ground
+clauses over the predicates outside `P`. The CB obligation then reduces to
+the existing ones (first-order lifting of the context calculus, open as
+before; docs/CERTIFICATION-ROADMAP.md). The unit tests check the ground
+form on random clause sets by DPLL (2,000 sets, consistency and
+satisfiability and subsumption of the source classes with a fresh
+individual), the rule checker's pass already on 3,000; that is evidence,
+not a proof. A parallel review of the rule checker's pass in
+`inert_sorts.rs` was still open on 2026-10-30. This variant reuses that
+pass's sort-clause recognition, guards and (B)/(H) checks unchanged; the
+reservations, the maximal fixpoint and the elimination below are new and
+outside that review.
+
+Second pass: universal definers (`inert_sorts::eliminate_universal_definers`).
+After the release, a released definer `Q` whose relativized fact was
+`→ Q(x) ∨ D(x)` has the unit fact `→ Q(x)`; so has the `⊤` definer of an
+unqualified cardinality. Every model interprets such a `Q` as the whole
+domain, so each body atom `Q(t)` is true and each clause with `Q(t)` in its
+head is true. The pass drops both (the unit fact included) for every
+internal definer with a unit fact, except the reserved names above, and
+except a definer whose elimination would leave a clause with an empty body
+and a role atom, an equality or a function term in its head (a shape the
+frontend never emits; the definer is then kept unchanged). Exactness: a
+model of the input satisfies the result, because every dropped body atom
+was true; a model of the result becomes a model of the input by
+interpreting each eliminated definer as the whole domain. No other name
+changes its interpretation, so the CB engine's answers on every name that
+is not eliminated, the reserved ones included, are the same. (Proved in
+Lean on 2026-10-31; see "Lean coverage of the nominal CB input" below.) Clause sets with an inverse role (an `__inv__` role atom or an `inverse`
+RBox row) are left unchanged by this pass: on
+`tests/fixtures/top_nominal_data/probe_v7.ofn` (`⊤ ⊑ ≥2 u`, `⊤ ⊑ ∃r.{a}`,
+`{a} ⊑ ≤1 r⁻`) dropping the `⊤` filler from the inverse at-most clause took
+the CB engine from 0.06 s past 150 s, an exact answer reached far later
+(nominals, inverse roles and number restrictions together are where the
+Nom rule fires). The guard is about cost only. The Lean obligation is the ground form of that statement
+(not discharged; the unit tests check it on 2,000 random clause sets by
+DPLL, after the release).
+
+On ore_ont_9800 the ground context held 250,295 clauses at work-off
+iteration 250,000, 228,266 of them the 38 relativized facts
+`→ D(a) ∨ Q_k(a)` instantiated at its individuals and 6,039 more the `⊤`
+definer `Q_116`. The release turns the 38 facts into unit facts and the
+elimination removes all 39 definers.
+
+Where the copy is made. The orchestrator makes the copy inside each CB arm
+when it starts (`with_nominal_cb_input`: the portfolio's CB arms and the
+atomic CB worker of the `nominals` route), so a schedule that answers without
+the CB engine (the sequential bridge of a large typed ABox, ORE 10621 and
+11270) never pays for it, and in a race the HT worker starts at once. A byte
+scan for the sort marker or a body-free fact on a `Q_` definer skips the
+parse on every other clause file. If the copy cannot be made the arm runs on
+the frontend's file.
+
+Measurements (`results/agents/2026-10-30/nominal-coverage/`):
+
+- ORE 9800 on the benchmark nodes (IBEX, one core, 240 s, the protocol's
+  flags, 4 runs each): v1.5.4 design-run-9 binary 2 of 4 answered (184 s),
+  87fda54f 1 of 4 (191 s), the merged base e1881695 (R2/R3 fix of
+  7c238e52 included) 2 of 4 (205 s); this branch on that base 4 of 4 in
+  14.1 to 14.2 s (13.8 to 17.3 s before the merge); the CB engine answers
+  6 s after the race starts instead of about 180 s. 10874: 3.3 to 4.8 s on
+  the merged base, 0.56 to 0.59 s with this branch. Both outputs are identical to those
+  of the design-run-9 binary, whose 9800 answer the paired run verified
+  against Konclude, HermiT and Openllet (10874 publishes its 879
+  data-property assertions as dropped, so the protocol does not compare
+  it). `km engine` on 9800's CB input, one thread, same load: 190.7 s user
+  as emitted, 170.9 s with the release only, 39.5 s with the elimination of
+  the `⊤` definer only, 3.4 s with both; the named subsumptions (10,413)
+  are identical in all four.
+- Generated seeds against the merged base (e1881695 against this branch
+  merged onto it, both built on IBEX, run side by side on the shared
+  workstation; 400 seeds, automatic route, 60 s, 3 workers each): 270
+  answered before and 276 after, no wrong answer in either run; six gained
+  (`m2032` 1.1 s, `m2058` 5.2 s, `m2131` 1.0 s, `m2173` 32 s, `m2319` 48 s,
+  `m2342` 52 s), none lost; 124 timeouts remain. Rerun once on this branch
+  merged with the head that carries the native data values and the revert
+  of 0188fcc7 (3ae4185d; merge a814967e), same protocol: 275 answered, 125
+  timeouts, no wrong answer; against the merged-base run five more answers
+  (`m2032`, `m2058`, `m2131`, `m2173`, `m2177`), and `m2319` and `m2342`
+  (48 s and 52 s before) at the cap. None of the 125 takes the native bridge:
+  124 still defer at its datatype gate with the same ten reasons
+  (`seeds-reverted-head-timeouts-bridge-defer.tsv`), and `m2296` defers at
+  the ABox conversion (object property assertion count mismatch). The CB
+  release now emits the rule checker's Lean certificate
+  (`WireInertSortRelease`, KM_RULES_INERT_CERT) with the CB reservations
+  (`reserved_concepts_for_cb`) for the clause set after the release and
+  before the universal-definer elimination, which has no Lean check; the
+  checker `rules-inert-sort-release-check` accepts it on the test fixtures
+  (`cb_release_certificate_is_accepted_by_the_lean_checker`). A rejected
+  certificate keeps the frontend's clause file for the CB arm. Earlier, before the merge
+  (87fda54f against `km.fix`): 270 answered before, 271 after, no wrong
+  answer either time. Five files gained an answer (`m2032`, `m2058`, `m2131`, `m2173`,
+  `m2336`) and four lost one in that run (`m2059`, `m2185`: a worker
+  aborted on an allocation failure under the host's strict overcommit and
+  both answer in 0.05 s on rerun; `m2079`, `m2359`: 58 s and 45 s before,
+  within load noise of the cap). Rerun twice with each binary, the nine
+  files give: `km.base` answers `m2059`, `m2185` (both runs) and `m2359`
+  (one run, 41 s); the final build answers `m2032`, `m2058`, `m2131`,
+  `m2173`, `m2336`, `m2059`, `m2185` and `m2359` in both runs (`m2173` in
+  47 and 59 s); `m2079` times out with both. So five seeds gain an answer
+  and none loses one; 125 of the 130 timeouts remain.
+- ORE inputs with individuals in the design half (353, the 201 gated and
+  425 individual-bearing lists of `results/agents/2026-10-29/per-context-order/`
+  intersected with `split.json`), 240 s, the v1.5.4 release binary
+  (`.work/pgo-v154/km-pgo-use`) against this branch, two streams side by
+  side on the shared workstation: 345 answered by both with identical
+  SUB/UNSAT/CONSISTENT lines, 8 answered by neither, none lost or gained
+  except 9800 (236 s before, 19 s after); the copy was made on 38 inputs
+  (pre-merge build `km.fix`, which made the copy before the race).
+- The same 353 inputs on IBEX against the merged base, paired (each input
+  runs both binaries in one one-core task, order alternating; 240 s,
+  protocol flags): 343 answered by both with identical lines, 9 by neither,
+  9800 gained (240 s to 17.3 s), none lost or changed. Sums over the inputs
+  both answer: 902.3 s base, 900.6 s with this branch; over the 20 of them
+  where the copy was made: 52.2 s and 41.6 s; no input is more than 1.5
+  times and 5 s slower. (The 9 timeouts of both, among them 16666 and 2792
+  that the bridge answered in about 100 s in the v1.5.4 design run, are the
+  same in both columns.)
+
+What remains. Of the 130 seed timeouts, 124 still time out on the merged base. The copy is made
+on most of them, but what remains is the case analysis of the nominal ground
+context, not the sort disjunct: seed 2000 reduced while the CB engine stays
+above 10 s even with every `D` disjunct dropped (an unsound diagnostic, used
+only to locate the cost) leaves two axioms,
+
+    SubClassOf(DataMaxCardinality(1 :u) ObjectHasValue(:s :a))
+    SubClassOf(ObjectUnionOf(DataMinCardinality(1 :u) ObjectMaxCardinality(1 :t :A)) ObjectIntersectionOf(ObjectOneOf(:c :a) ObjectOneOf(:a)))
+
+where every element is `≤1 u` or `≥2 u`, both branches lead to `a`, and the
+ground context splits on `x ≈ a` for every individual and Skolem successor
+under the at-most clauses. The native bridge, which decides these inputs at
+once when it admits them, defers on all 130 at its datatype gate (ten
+distinct reasons; `seeds-base-timeouts-bridge-defer.tsv`). Closing them
+needs either a datatype-complete bridge admission or ground splitting in the
+CB engine; both are calculus or encoding changes outside this pass.
+
+### Two cost regressions of the nominal CB input (2026-10-31)
+
+Agent `data-values-3`, branch `fix/v155-data-values-3-perf`;
+`results/agents/2026-10-30/data-values-3/`. Both passes above are exact
+rewrites; two of their applications cost more than they save. Each remedy
+below only shrinks the set of definers a pass touches, so the clause set
+the CB engine reads is either the frontend's own or one the arguments
+above already cover: no calculus, encoding or route decision changes, and
+the Lean obligation stays the one stated for the two passes.
+
+**Released disjunctive facts on equated values (hub test).** The test
+`data_value_next_to_universal_role_hub_stays_satisfiable`
+(`tests/universal_role_and_top_data_range.rs`; the hub of bug 1 plus
+`W2 ≡ F ⊓ (u value 1)` and `W3 ≡ S6 ⊓ (u value 1)`) took 0.5 to 0.6 s per
+nominal route at e62a4bce and 6 to 15 s from the nominal-coverage merge
+(f41b1af4) on. Bisecting over the first-parent merges and timing with
+`KM_CB_KEEP_INERT_SORTS=1` locates it in the release (50bf7ba9): the CB
+engine takes 0.3 s on the frontend's clause set and 6 s on the released
+copy, which differs from it in two clauses only. The complement definer
+`Q_4` of `¬(u value 1)` sits in the excluded middle `→ Q_4(x) ∨ Q_6(x) ∨ D(x)`
+and is inert (it is read only through `Q_4(x) ∧ u(x, y) → Q_5(y)`, where `u`
+has an object domain), so the pass releases it to `→ Q_4(x) ∨ Q_6(x)`. That
+fact is true at every data element through `D` in the sorted set but a live
+disjunction at every data element in the released one, and the literal's
+identity clause `V(y0) ∧ V(y1) → y0 = y1` (`V` the value marker of
+`"1"^^xsd:integer`) equates the data successors of every `u`-existential.
+The engine's equality rules then copy the disjunction, and what follows from
+it, between the data terms: `KM_STATS` goes from 16,127 to 21,628 worked-off
+successor clauses, 110,690 to 174,586 Pred checks and, under `KM_PROF_TIME`,
+148 ms to 4,646 ms in `add_clause` (3,866 ms of it forward subsumption) and
+67 ms to 1,057 ms in the equality rules. Dropping the identity clause from
+the released set (a diagnostic, unsound) brings the engine back to 0.2 s.
+
+Remedy (`inert_sorts::equates_generated_values`,
+`Options::data_guards_sorted`). When the clause set has the identity clause
+of a value marker `V` and some clause puts `V` on a Skolem term
+(`… → V(f(x))`, a `DataHasValue` in a positive position), a candidate whose
+relativized fact is disjunctive and which guards a data role in a body
+(`Q(t) ∧ p(t, y) → …` with `p(x, y) → D(y)`) keeps its sort. Everything
+else is released as before: the unit facts of range definers (ORE 9800: 38
+released, 39 eliminated, unchanged) and the disjunctive facts of definers
+that read no data role, which the nominal seeds need (m2047 answers in
+0.5 s released and not within 60 s with every disjunctive release withheld;
+a first version of this remedy that withheld all of them lost m2047, m2179
+and m2358 on the forced `nominals` route).
+
+**Eliminated filler of an at-most asserted on an individual (r3602).**
+`results/agents/2026-10-30/r3-unannounced/open_r3602.ofn` on forced
+`nominals` answered in 4 s on the frontend's clause set and not within 60 s
+on the copy. The copy differs in one eliminated definer: the `⊤` filler
+`Q_4` of `ClassAssertion(≤1 s, c)`, dropped from
+`Q_3(x) ∧ Q_4(y0) ∧ Q_4(y1) ∧ s(x, y0) ∧ s(x, y1) → y0 = y1` (`Q_3` the
+assertion marker of `c`; `s(a, a)`, `s(c, a)` and `D ⊑ {a, b}` are in the
+input). Without the filler the equality fires on every pair of
+`s`-successors of `c` before their labels are known, the same cost the pass
+already avoids beside inverse roles (probe_v7). Remedy
+(`eliminate_universal_definers`): a definer on an equality-head term is kept
+when the clause body holds a nominal proxy or an assertion marker and the
+term is not a data successor. Fillers of TBox at-most clauses stay
+eliminable: ORE 9800's one `⊤` filler sits in 33 functional-role clauses,
+and keeping it (a first version of this remedy) took its CB arm from 2.3 s
+to 30 s; the filler of a data at-most asserted on an individual (m2047,
+`≤2 v` on `a`) stays eliminable too (0.5 s against 2.1 s kept).
+
+Measured on the workstation (`km classify --lines`, medians of three runs;
+`km-base-6c48c72e` is development/v1.5.5 before the subset-blocking gap
+merge, "this branch" the final build on 0e1bd99a; load 50 to 70 unless
+marked, the rows marked * at load 110 to 140 in one session; the full
+tables are in `results/agents/2026-10-30/data-values-3/timings.md`):
+
+| input, route | e62a4bce | development | this branch |
+|---|---|---|---|
+| hub test, automatic | 0.54 s | 0.03 s (object guard, bridge) | 0.02 s |
+| hub test, `nominals` | 0.63 s | 12.4 s (a2e98d95); 32.7 s* | 0.53 s; 1.75 s* |
+| hub test, `certified_nominals` | 0.54 s | 8.3 s (a2e98d95); >60 s* | 0.55 s; 1.86 s* |
+| hub test, `nominal_ni_abox` | 0.62 s | 15.6 s (a2e98d95); 26.9 s* | 0.55 s; 2.15 s* |
+| hub test, `certified_card_proxy_abox` | 0.61 s | 9.5 s (97515f0c); 33.2 s* | 0.63 s; 2.11 s* |
+| open_r3602, `nominals` | 0.16 s (6 subsumptions, incomplete) | no answer in 60 s (sorted input: 4.1 s; 10 to 14 s*) | 4.4 s; 14.0 s* (7, HermiT's) |
+| ORE 9800, automatic | | 11.9 s; 15.1 s* | 10.5 s; 12.8 s* |
+| m2131 (nominal_inert_sorts), automatic | | 1.6 s (a2e98d95) | 0.8 s |
+| seeds m2047, m2179, m2358, m2218, `nominals` | | 0.46, 2.5, 1.2, 3.4 s | 1.3, 2.5, 1.2, 3.4 s |
+| seeds m2109, m2233, m2278, `nominals` | | 9.9, 17.5, 20.8 s | 15.8, 18.3, 20.5 s (m2109 keeps one sort) |
+
+All answers are identical across the binaries, except r3602 where the
+merge-hypotheses fix of section 10 made the answer complete.
+
+### Lean coverage of the nominal CB input (2026-10-31)
+
+Agent `lean-universal-definer`, branch `fix/v155-lean-universal-definer`;
+`results/agents/2026-10-31/lean-universal-definer/`. This discharges the two
+Lean items left open above: the universal-definer elimination had no proof,
+and the release certificate of the CB arm was exact but not fail-closed.
+
+**Theorem.** `lean/ContextCalculus/UniversalDefinerElimination.lean` states
+`eliminate_universal_definers` over the clause language of
+`RulesInertSortRelease.lean` (first-order clauses over concepts, roles,
+equality, constants and unary Skolem functions, with arbitrary
+interpretations, not only Herbrand ones). `eliminate U S` drops every clause
+whose head holds `Q(t)` with `Q ∈ U`, then every body atom `Q(t)` with
+`Q ∈ U`, in the order of the Rust pass. `elimConditions U reserved S`
+requires each `Q ∈ U` to be outside `reserved` and to have a unit fact
+`→ Q(x)` in `S`. Under that check, `models_iff` proves that the models of
+`S` are exactly the models of `eliminate U S` that interpret every `Q ∈ U`
+as the whole domain; `eliminate_equisatisfiable` proves equisatisfiability
+with every side theory that reads only reserved concepts. The composed pass
+of the CB arm, `nominalCBInput D P U S = eliminate U (release D P S)`, is
+covered by `pipeline_equisatisfiable`, and the certificate
+`WireNominalCBInput` by `check_sound`, `check_consistent`, `check_unsat`
+and `check_entails`: an accepted certificate's CB input has the
+consistency verdict, the unsatisfiable reserved classes and the
+subsumptions between reserved classes of the frontend's clause set. All
+theorems use only `propext`, `Quot.sound` and, for the answer corollaries,
+`Classical.choice`; none uses `sorryAx`.
+
+The cost guards of the pass (clause sets with inverse roles, the filler of
+an at-most asserted on an individual, a definer whose elimination would
+leave an unconditional role or Skolem head) only shrink `U`, so the theorem
+covers them with no extra hypothesis. No corner of the transformation is
+outside the theorem: a unit fact `→ Q(x)` makes `Q` the whole domain in
+every model, whatever the other clauses say.
+
+**Gate change.** The pass selected candidates with `cb_to_ht::is_internal`,
+which also admits builtin vocabulary written as a CURIE (`owl:Thing`),
+while `reserved_concepts_for_cb`, the reserved set of the certificate,
+reserves every concept outside the frontend's definer prefixes (`Q_`,
+`aux_`, `def_`). A unit fact `→ owl:Thing(x)` would have been eliminated
+(exact, since no answer is read on `owl:Thing`) and the certificate then
+rejected. The pass now also requires `inert_sorts::is_cb_definer`, the
+predicate `reserved_concepts_for_cb` uses, so every eliminated definer is
+unreserved by construction. This only shrinks `U`.
+
+**CB reservation set.** `release_equisatisfiable` needs only its executable
+check (`conditions`) and a side theory that reads reserved concepts. The CB
+engine reads the clauses alone (no side theory), and the orchestrator reads
+its answers on source names, queries and asserted markers, all in
+`reserved_concepts_for_cb`; the subsumption and unsatisfiability queries
+are side theories over two reserved names (`subCounterexample`,
+`classWitness`). So the CB reservation set satisfies the theorem's
+hypotheses; no variant was needed.
+
+**Fail-closed certificate.** `nominal_cb_clause_input` now writes the
+`WireNominalCBInput` document of the whole copy (release, then
+elimination) when `KM_NOMINAL_CB_INPUT_CERT` names a file or directory,
+or under `KM_LEAN_CHECKERS` when the checker directory holds
+`nominal-cb-input-check`. The checker runs through
+`lean_checkers::run`, so under `KM_LEAN_CHECKERS` a rejection is logged
+and `km classify` publishes nothing (exit 6), and `cannot_check` lets the
+arm answer as without the checker. With `KM_NOMINAL_CB_INPUT_LEAN_CHECKER`
+set by hand, anything but acceptance fails the arm. A rejected certificate
+of either kind (this one or the release-only `KM_RULES_INERT_CERT`
+document) no longer falls back to the frontend's clauses: the CB arm
+returns an error and gives no answer. A copy that cannot be made for other
+reasons (I/O, JSON) still keeps the frontend's file, which is exact.
+
+**Lean obligation.** Discharged for the transformation: the CB engine's
+answers on the copy equal its answers on the frontend's clause set, for
+every model, as far as the clause language above describes the clause
+file (the same encoding assumption as `WireInertSortRelease`: variables,
+individuals and auxiliary constants, unary Skolem functions). That the CB
+engine's answers on its input are exact remains the existing CB
+obligation (docs/CERTIFICATION-ROADMAP.md).
+
+### Conditional-full schedule for data values on the bridge (2026-10-31)
+
+ore_ont_10781 (590 individuals, 1,319 data assertions) went from 1.1 s to
+13 to 17 s on the automatic route from the native data values merge
+(c9602c7f) on; binaries of the two intermediate commits put it at 1b0f9239
+(`frontend: carry every data value exactly, without a literal cap`). The
+time is the native bridge running to its 12 s data-assertion budget and
+declining, after which `certified_nominals` answers. The bridge itself
+takes 2.3 s before and 34 to 53 s after on the same input
+(`KM_ROUTE=ht_bridge KM_DATA_ASSERTION_AS_CLASS=1`); `KM_BRIDGE_PROGRESS`
+puts the whole difference in the prepare phase (0.7 s to 33.7 s over 293
+subjects) and shows the schedule change: before, `BRIDGE-REFUTATION
+gated=true … number=true` with a saturation pass; after, `number=false` and
+no saturation. Every carried value used to come with its singleton clause
+`V(y0) ∧ V(y1) → y0 = y1`, whose equality head sets `tin.number`; the
+frontend now leaves that clause out when nothing forces two data successors
+apart (`datatypes::datatype_relation_clauses_with`, DATATYPES.md), so the
+input lost its only number feature and
+`native_conditional_full_abox_profile` moved it from the conditional-full
+schedule (saturation first, one all-root consistency completion) to the
+legacy nominal schedule. `KM_HT_NATIVE_FULL=1` restores 0.66 s.
+
+Remedy (`konclude_ht::bridge::carries_data_values`): a literal value marker
+`__dt__val__…` in the input counts as a number feature for the profile. The
+profile selects the completion's scheduling configuration only; the bridge
+publishes a complete answer or defers under either schedule, so no answer
+changes. ore_ont_10781: 13.2 s to 0.6 s (15.9 s to 2.1 s at load 120),
+identical 1,027 output lines. The 400 nominal seeds on the automatic route
+(60 s, 3 workers per binary, side by side at load 120): 364 and 363
+answered, 0 wrong, the one flip (m2336, 47.9 s before) at the time-out.
+
+### Object guard for the native bridge (2026-10-30)
+
+Cost. After the inert-sort release, 125 of the 400 seeds of `gen_nomdata.py
+--no-inverse` (2000-2399) still had no answer within 60 s on the automatic
+route (`results/agents/2026-10-30/nominal-coverage/seeds-reverted-head-auto.tsv`),
+none wrong. None of them reached the native bridge: it deferred at its
+datatype gate, and the nominal CB route ran alone. On the two-axiom
+reduction of seed 2000 above the CB engine spends its time in single Hyper
+inferences of the ground context: the at-most clause of `≤1 t.A`,
+`A(y0) ∧ A(y1) ∧ Q_6(x) ∧ t(x,y0) ∧ t(x,y1) → y0 ≈ y1`, joins against 46 to
+66 disjunctive context clauses per body atom, about 9 million combinations
+per inference (`KM_TRACE_HYPER_PRODUCT`), and no context reaches its next
+progress line within 15 s.
+
+The gate. The bridge keeps data successors in its completion graph as
+ordinary nodes. It therefore admits an input only if every class axiom
+without a datatype holds at a blank node (no concept name, no edge, no
+individual), or a witness label exists for such nodes; a datatype-bearing
+axiom must have a left side that is false there. 56 of the 125 deferred on
+exactly these two checks (`a non-datatype axiom rejects a blank data node`,
+`a complex datatype subclass axiom can fire on a data node`), and many of
+the 36 `outside the role-local fragment` deferrals are `⊤ ⊑ C` or
+disjointness axioms of the same kind. In OWL 2 such an axiom constrains
+objects only; data values are not objects.
+
+The rewrite (`frontend/object_guard.rs`). With a fresh internal class `G`
+(`__objguard__`), the parsed ontology `O` becomes `O'`:
+
+- each class axiom that fails at a blank element gets `G` on its left:
+  `C ⊑ D` becomes `G ⊓ C ⊑ D`, an equivalence that fails there is split into
+  its two inclusions with the failing one guarded, a disjointness of two
+  blank-true classes becomes `G ⊓ C ⊓ D ⊑ ⊥`;
+- each class axiom with a datatype becomes its inclusions (an equivalence
+  both directions, a disjointness `C ⊓ D ⊑ ⊥`), since the bridge's datatype
+  admission reads inclusions whose left side is false at a blank node, and
+  every one of them whose left side holds at a blank element (`⊤`
+  included) gets `G`; guarding an axiom that already holds there is as
+  exact as guarding one that fails;
+- `A ⊑ G` for every class name of the signature (declared, used, or only
+  named in an RBox domain or range), `∃r.⊤ ⊑ G` and `⊤ ⊑ ∀r.G` for every
+  object role, `{a} ⊑ G` for every individual (an inclusion, not the
+  assertion `G(a)`, so that the native ABox coverage check still counts
+  the source's class assertions; the assertions moved to the TBox below
+  are subtracted from the source count it compares against);
+- a class assertion `C(a)` whose `C` holds a datatype outside the shape the
+  bridge's ABox path admits becomes `{a} ⊑ C`;
+- `∃u.⊤` for a data role `u` becomes `≥1 u.⊤` (the bridge's data-role check
+  reads only the second spelling; `DataPropertyDomain(u C)` parses to the
+  first).
+
+It applies only when the ontology has a data role and an individual, no
+DL-safe rule, no reflexive role, no self restriction and no universal role,
+and when at least one axiom is guarded or moved, or a datatype-bearing axiom
+is split or normalised (`profile.object_guard_candidate`, computed on every frontend
+pass in one allocation-free scan).
+
+Exactness. Two-sorted OWL 2 semantics, object domain `Δ`.
+
+1. A model of `O` is a model of `O'` with `G := Δ`: the added axioms
+   conclude `G` or are trivially true, a guarded axiom is weaker than its
+   original, and the two normalisations are equivalences.
+2. Given a model `J` of `O'`, restrict its object domain to `G^J` (data
+   values and data edges unchanged). `G^J` contains every individual, every
+   member of a named class, and both ends of every object edge (domain and
+   range axioms; an inverse role's edges are the forward role's). By
+   induction every class expression of `O` has the same truth value at a
+   `G` element before and after the restriction (`∃`, `∀` and counting on
+   object roles see only `G` neighbours; data restrictions read the
+   unchanged data edges; nominals denote individuals, which stay). So every
+   axiom of `O`, guarded or not, holds in the restriction, and so do the
+   assertions and the role axioms (Horn conditions on the kept edges).
+   Without reflexive roles, self restrictions and the universal role no
+   other edge can leave `G^J`.
+3. Hence `O` and `O'` are equally consistent; since `A ⊑ G` for each named
+   class, a witness of `A ⊓ ¬B` in `O'` is a `G` element and survives the
+   restriction, so both have the same subsumptions and unsatisfiable named
+   classes. `G` has the `__` prefix and is never published.
+
+After the rewrite every class axiom holds at a blank node by construction,
+so the bridge's blank-node gate passes; whether its one-sorted reading of
+`O'` is exact remains the bridge's own admission argument (the
+blank-node/isolated-extension theorem `IsolatedObjectModelExtension`), which
+this change does not touch. The bridge itself has no Lean model.
+
+Lean. Step 2 is proved in `lean/ContextCalculus/ObjectGuardRestriction.lean`
+(no sorry; axioms: `Classical.choice` only): `restrict_holds` (truth
+preserved at `G` elements, with nominals, data atoms and qualified counting),
+`guarded_inclusion_restricted`, `inclusion_restricted`,
+`assertion_restricted`, `role_assertion_restricted`, the role-axiom lemmas,
+`witness_restricted`, and `original_model_is_guarded` for step 1. Not
+checked: that the Rust pass meets the theorem's hypotheses (the blank
+evaluation `holds_at_blank`, the collected vocabulary, the refused
+constructs); that is argued from the code above. The module was compiled
+with `lean` against the Mathlib build of the `checkers-on` worktree; a full
+`lake build` was not run.
+
+Routing. The guarded ontology is built only on a third bounded bridge-first
+attempt (`orchestrate/mod.rs`), after the historical attempt (or the
+data-assertion attempt) declined and only when the frontend reported the
+candidate flag; it has the budget of the attempt it follows (8 s, or 12 s
+with data assertions; `KM_OBJECT_GUARD_BRIDGE_BUDGET_S`). If the bridge
+declines or runs out of budget the schedule continues unchanged. The
+forced `ht_bridge` route does not use the guard. `KM_NO_BRIDGE_OBJECT_GUARD`
+switches the attempt off.
+
+Repeated assertions (not changed). Seed 2296 states
+`ObjectPropertyAssertion(:r :a :a)` twice; the native ABox coverage check
+compares the parsed count (2, the parser keeps a set) with the source count
+(3) and declines, so the bridge never sees it. Subtracting verbatim
+repetitions from the source count was tried and withdrawn: it let the bridge
+answer two random seeds of `results/agents/2026-10-30/r3-unannounced/`
+(r2730, r3086) that the CB route answers correctly, and the bridge answers
+them incompletely. The bridge answers the same inputs incompletely without
+the repetition as well, on the development head
+(`results/agents/2026-10-30/nominal-seeds/bridge_merge_min.ofn`, seven
+axioms: `{b, c} ⊑ {b}`, `a : {b, c}`, `s(b, c)`, `a : ∀s.A`, `Q1 ≡ {b}`;
+HermiT `Q1 ⊑ A`; `ht_bridge` and the automatic route miss it). That is a
+bridge defect in nominal merging, outside this change; it is listed in
+docs/V1.5.5-STATUS.md.
+
+Measurements (`results/agents/2026-10-30/nominal-seeds/`, workstation under
+load). Seeds 2000-2399, automatic route, 60 s: 275 ok / 125 timeout / 0 wrong
+before, 366 / 34 / 0 after; no ok answer lost. Seeds 7000-7199: 142 / 58 / 0
+before, 181 / 19 / 0 after. 112 nominal ORE inputs of the paired design half
+at 300 s: same 108 answered, identical output, mean time ratio 0.966. A first
+version put only the classes that axioms mention into `G` and missed 28
+subsumptions on declared-only classes (all caught by the HermiT differential);
+the signature-wide `A ⊑ G` fixes it. What remains: 21 seeds use
+`DataComplementOf(xsd:integer)`, outside the bridge's exact atomic datatype
+map; 5 defer on the singleton-elision mismatch between the frontend
+(`literal_profiles::distinct_data_successors_forced`) and the bridge
+(`forced_distinct_data_successors`); 3 use a data bound above 2; 4 other
+datatype-value gates; m2296 the repeated assertion.
+
+
+Implementation note (2026-11-01, agent `perf-9027`). The inference and the
+admissibility closure first ran over `BTreeMap<String, _>` and
+`BTreeMap<&Term, _>` lookups; on ore_ont_9027 (306,558 clauses in, 138,121
+added or relativized) the pass took 4.0 s of a 6.5 s frontend, against
+2.7 s for the whole v1.5.3 frontend, and with the cache defect of
+docs/DATATYPES.md ("Inert value singletons ...") it cost the input its S1
+time. `sorts.rs` now interns concept, role and term names once and runs the
+same passes over id-indexed vectors (0.45 s on 9027). Every pass visits the
+clauses in their order and the terms of a clause in `Term` order, and the
+sort clauses come out in name order, so the output is the same clause
+sequence: a differential test runs the former implementation
+(`sorts_reference.rs`, test only) against the new one on 3,000 random clause
+sets, and `km ofn` under `KM_NOMINALS=1` gives byte-identical clause and meta
+files on 584 of the 585 held-out inputs; 15687 exceeds the 120 s
+bound on both binaries (results/agents/2026-11-01/perf-9027/).
+No Lean obligation: the encoded clause set is unchanged.
+
 ## 7. Sequoia ordering and nominals
 
 `calc::pred_lteq` has two same-term concept orderings for the CB engine. The
@@ -809,7 +1569,492 @@ Measurements (2026-10-29, shared workstation, files in
   1 188 s after, none more than 1.5 times and 5 s slower, five faster
   (ore_ont_8640 9.6 to 0.7 s, ore_ont_2453 19.6 to 6.9 s). 9800, 10874 and
   15655 keep the context regime (127, 10.7, 7.7 s under heavier load).
-- Known incompleteness that remains: a disjunctive ground equality across an
-  unannounced individual is not delivered (section 6 of the note); the
-  first-order lifting is not mechanised.
+- Known incompleteness that remained at v1.5.4: a disjunctive ground
+  equality across an unannounced individual was not delivered (section 6 of
+  the note). 2026-10-30: four HermiT-checked counterexample motifs; R3 now
+  delivers the whole announced interface (an equality needs one announced
+  side) and R2 orders ground equalities by shared individuals (section 8 of
+  the note, `lean/ContextCalculus/ExchangeEquality.lean`). The first-order
+  lifting is not mechanised.
 
+
+## 10. Merge hypotheses and the nominal-label cache (2026-10-30)
+
+Four random seeds of `results/agents/2026-10-30/r3-unannounced/gen_r3.py`
+(`r1600`, `r1646`, `r3403`, `r3602`) were answered incompletely by the exact
+`nominals` route under every rule set and with the announcement guard off;
+`r1600` (`B ⊑ A`) also on the automatic and `certified_nominals` routes,
+a wrong published answer of v1.5.4. They have two causes.
+Results, binaries and commands: `results/agents/2026-10-30/nominal-r1600/`.
+
+### 10.1 A query context whose element is an individual
+
+Minimised from `r1600` (HermiT `B ⊑ D`;
+`engine/tests/fixtures/nominal_seq_order/merge_r1600_min.ofn`):
+
+    SubClassOf(:B ObjectOneOf(:c))
+    ObjectPropertyAssertion(:s :b :c)
+    SubClassOf(ObjectSomeValuesFrom(:s :B) ObjectOneOf(:c))
+    ClassAssertion(ObjectAllValuesFrom(:s :D) :c)
+
+A `B` element is `c`, so `B(c)`, hence `b ∈ ∃s.B`, `b ≈ c`, `s(c,c)` and
+`D(c)`. HermiT's derivation needs the ground facts under the assumption
+`B(c)`. The `B` context derives `⊤ → x ≈ c`. Side condition (*) of r-Succ
+(arXiv:1805.01396 Table 3) then blocks every push from that context (the
+merge clause has empty body and no other literal), so the ground context
+never holds `B(c) → B(c)`; nothing in it mentions `B(c)` and it derives
+nothing conditional on it. An ordinary context in that position is covered
+by its predecessor: Pred carries `f(x) ≈ c` back, the predecessor rewrites
+`B(f(x))` to `B(c)` and pushes it. A query context has no predecessor.
+The paper's completeness proof builds the ground fragment with
+`Γ_o = Ω ∩ R_c`, the ground atoms of the query context's model, and uses
+hypotheses `A → A` for them; for a query context blocked by (*) the
+calculus never adds them (proof-completeness.tex, unfolding strategy and
+`lemma:unfolding:consistency`).
+
+The fix (`Engine::merge_hypotheses`): a query (root) context with core
+`K(x)` and a body-free merge clause `⊤ → Δ'' ∨ x ≈ o` (the Join case 3
+bridge) pushes `K(o) → K(o)` to the ground context on the edge labelled
+`o`. The ground context's conclusions `K(o) ∧ Γ → Δ` return through r-Pred
+with `K(o)` copied verbatim into the body (no clause of the query context has
+`K(o)` maximal), and Join case 3 resolves `K(o)` against the core clause
+`⊤ → K(x)` and the bridge. `KM_NO_MERGE_HYPOTHESES` disables it
+(diagnostic). The same fix answers `r3602` (`D ⊑ Q1`) and `r1646`
+(`E ⊑ Q1`); on the forced route `r1646` and `r1600` need minutes (10.4).
+
+*Exactness.* Soundness: a hypothesis `A → A` is a tautology
+(`Nominals.rsucc_taut_sound`), and Join case 3 is sound
+(`Nominals.join3_sound`); the rule adds premises, never conclusions that do
+not follow. Completeness: only the core needs pushing. Every clause of the
+query context is a consequence of its core and the ontology, so every ground
+atom `A'{x↦o}` of its model under the bridge is derivable in the ground
+context from the hypothesis `K(o)` by the same inferences grounded at `o`
+(the ground context is the one context whose Hyper may map `x` to an
+individual). Ground atoms the query context derives from delivered
+ground-context clauses are heads of ground-context clauses already, and
+ground atoms it derives by local inferences follow from its core and those
+clauses, so the ground context derives them under `K(o)` as well. This is
+argued, not proved: it is the step the paper's proof leaves implicit. The first version pushed
+every maximal ground or `x`-atom of every body-free clause instantiated at
+every bridge individual; it did not terminate on `r1600` within 30 s and
+was replaced.
+
+*Lean obligation.* Open: the paper's completeness argument with the
+hypotheses of `Γ_o` made explicit, i.e. that the ground fragment built under
+`K(o)` contains every ground atom of the query context's model (first-order,
+not mechanised; the certified CB surface does not model r-Succ edges from
+query contexts with merge clauses either). Mechanised parts used: the two
+soundness lemmas above.
+
+### 10.2 The nominal-label cache under an ordered ground context
+
+`r3403` (`Q3 ≡ {c}`, HermiT `Q3 ⊑ A`) was missed by the nominal-label
+cache (`complete_nominal_enumeration_queries`), which answers an enumeration
+class `A ≡ {o1,…,on}` from the body-free unit clauses `→ B(oi)` of the
+saturated ground context. The ground context of `r3403` holds
+`→ A(c) ∨ c ≈ b` with `A(b)`; ordered superposition keeps `A(c)` maximal and
+never derives the unit `→ A(c)`, so the cache saw no `A(c)`. Ordered
+saturation is refutationally complete, not complete for unit readout. The
+cache now runs only when every body-free clause of the saturated ground
+context is a unit: the units then are the least model of the ground
+closure (every fired ground instance has a unit head, every unfired one a
+false premise), so every entailed type of `oi` is a unit up to the unit
+equalities the cache already follows. Otherwise the query takes an ordinary
+root context (and 10.1). Lean obligation: none mechanised (a Horn-readout
+lemma for the ground closure is the statement to prove). Superseded
+2026-10-31: `ExchangeCut.horn_unit_readout` proves it at the propositional
+level (docs/PER-CONTEXT-ORDERING.md section 14.4).
+
+### 10.3 Tests
+
+`engine/tests/merge_hypotheses.rs`: the minimised `r1600` on the automatic,
+`certified_nominals` and `nominals` routes and without the merge hypotheses
+(missed); the four seeds on the automatic and `certified_nominals` routes;
+`r3403` and `r3602` on `nominals`; `r1600` and `r1646` on `nominals` as an
+ignored test (minutes).
+
+### 10.4 Measurements and cost
+
+`results/agents/2026-10-30/nominal-r1600/` (binaries, loads, commands).
+Exact `nominals` route, HermiT oracle.
+
+- Open seeds, 300 s: `r3403` and `r3602` correct on all three routes
+  (7.0 s and 6.5 s on `nominals`, before 0.2 s and 0.5 s wrong); `r1600`
+  correct on the automatic (16.5 s) and `certified_nominals` (18.5 s)
+  routes, the shipping wrong answer is gone; `r1600` and `r1646` time out at
+  300 s on the forced route (`r1600`'s `B` query alone answers correctly in
+  238 s at engine level). `r1646` is correct on the other two routes.
+- `gen_r3.py`, 4,000 seeds, 10 s: 2,191 ok, 0 wrong, 1,809 timeouts (5
+  worker errors, answered or timed out on rerun). The r3-unannounced
+  campaign at higher load: km.final 2,205 ok, 4 wrong (`r1600`, `r1646`,
+  `r3403`, `r3602`), 1,761 timeouts, 30 errors; v1.5.4 2,217 ok, 4 wrong.
+  On the 724 seeds rerun with km.final2 at the same load: km.final2 401 ok,
+  this build 382 ok; 22 seeds km.final2 answered (several in under 0.1 s)
+  time out here. The cost is the merge hypotheses: `r5`, `r10`, `r163` take
+  0.03 s with `KM_NO_MERGE_HYPOTHESES` and more than 10 s with them. On
+  `r5` (`C ⊑ {b, e}`, `e ∈ {a, d}`) the bridges multiply (`x ≈ b`, `x ≈ e`,
+  then `x ≈ a`, `x ≈ d`), each adds a hypothesis, and the ground context and
+  its successor contexts grow to 30,000 clauses with up to four hypotheses
+  per body (122 s for the `C` query). The ground atoms these conclusions
+  carry back are pushed again by ordinary r-Succ from other contexts; that
+  is the calculus's r-Succ, so cutting it needs its own completeness
+  argument (not attempted).
+- Motif sets (section 8 of PER-CONTEXT-ORDERING.md), 20 s: m1 to m5 1,999
+  ok, 1 timeout; m6, m7 997 ok, 3 timeouts; 0 wrong (as km.final).
+- ORE paired design, 112 nominal inputs, automatic route, 300 s, against
+  km.final2: 106 answered by both with identical SUB/UNSAT/CONSISTENT lines,
+  2 answered only here (ore_ont_3077, ore_ont_699; km.final2 timed out at
+  300 s), 3 time out in both (16420, 1833, 2548), and ore_ont_8250 exits 3 after 0.1 s here (the `ht_rules` worker declines; merged from `development/v1.5.5`) where km.final2 timed out; total 622 s against 657 s, median
+  ratio 1.01, mean 1.37 (ore_ont_10781 1.1 s to 14.3 s; the frontend's
+  second pass under `certified_nominals` takes 12 s with every change of this
+  branch switched off, so it comes from the merged `development/v1.5.5`, not
+  from these rules).
+- After merging `development/v1.5.5` at a2e98d95: seeds r0 to r999 530 ok,
+  0 wrong (531 before the merge). On forced `nominals`, r3602 times out on
+  the merged base with the merge hypotheses switched off as well. The five
+  seeds r1536, r1866, r2408, r2564 and r3777 that the automatic route
+  answers wrongly are answered by the typed-nominal bridge's HT worker (the
+  bridge merging defect of `results/agents/2026-10-30/nominal-seeds/`); the
+  forced CB route of km.final2 answers them correctly, so they do not share
+  r1600's cause. Under the merge hypotheses r1536 and r3777 time out at 60 s
+  on forced `nominals`, and the hub with data values takes 30 s instead of
+  10 s on `certified_nominals`.
+- m2197 (`tests/fixtures/top_nominal_data/m2197.ofn`, `⊤ ⊑ {a}` next to
+  data cardinalities and `≤2 t.D`; agent data-values-3, 2026-10-31): on
+  forced `certified_nominals` and `nominals` 0.6 s at a2e98d95 and no
+  answer in 150 s from the r1600 merge (2f5993c7) on, 20 s on
+  `nominal_ni_abox`. `KM_NO_MERGE_HYPOTHESES=1` answers in 0.2 s on every
+  nominal route with the same three subsumptions (HermiT's), and
+  `KM_CONTEXT_PAIR_R2=1` changes nothing, so the cost is the merge
+  hypotheses of 8bbbf1f2 alone, in the same way as r1536 and r3777 above.
+  It is the same input on the sorted and the released clause set, so it is
+  independent of the inert-sort passes. Not remedied: the hypotheses are
+  what makes r1600 complete, and a cheaper form needs the completeness
+  argument this section leaves open. `top_nominal_data_successors::
+  hermit_answers_on_every_route` fails its 120 s bound on these routes.
+- The "object value instead of data value" case of
+  `universal_role_and_top_data_range::data_value_singleton_next_to_nominal_successors`
+  (`¬(p value e) ⊑ B` with `S6 ≡ {c} ⊓ ∃r.{d} ⊓ ∃r⁻.{d}`; same agent, same
+  day) has the same profile: forced `nominals` 0.4 s at e62a4bce and
+  a2e98d95, no answer in 60 s at 6c48c72e on the sorted and the released
+  clause set alike, 0.35 s with `KM_NO_MERGE_HYPOTHESES=1`;
+  `certified_nominals` 0.05 s, `nominal_ni_abox` 20 s,
+  `certified_card_proxy_abox` over 60 s. The test fails its 10 s bound from
+  the r1600 merge on; the other six cases of the test answer in 0.02 s.
+
+### 10.5 The exchange cut and the open obligation of 10.1 (2026-10-31)
+
+docs/PER-CONTEXT-ORDERING.md section 14 removes the push-back cascade of
+10.4 (`Engine::rsucc_covered`, `Engine::merge_hypothesis_covered`) and
+states the propositional skeleton of the exchange with hypotheses in
+`lean/ContextCalculus/ExchangeCut.lean`: the merge hypothesis is the push
+that the demand condition asks for at the Join case 3 clause
+`⊤ → Δ'' ∨ K(o)`, and `no_merge_hypothesis_counterexample` is the skeleton
+of `merge_r1600_min`. What stays first-order and argued is the simulation
+step of 10.1 (the ground context derives under `K(o)` the atoms the query
+context derives by its own inferences).
+
+
+## 11. Polarity encoding of complement definers (2026-11-01)
+
+Agent `polarity-definers`, branch `fix/v155-polarity-definers`. Results:
+`results/agents/2026-11-01/polarity-definers/`.
+
+### 11.1 The defect
+
+For `SubClassOf(ObjectComplementOf(ObjectHasValue(p e)) B)` the clausifier
+reifies the NNF `∀p.¬{e}` (negative polarity) as `Q_0`, the filler `¬{e}` as
+`Q_1 ≡ ¬nom_e`, and emits the `∀` introduction with the complement definer
+`Q_3` of the filler:
+
+    Q_1(x) ∧ nom_e(x) → ⊥        (definition, Q_1 ⊑ ¬{e})
+    → Q_1(x) ∨ nom_e(x)          (excluded middle, ¬{e} ⊑ Q_1)
+    Q_0(x) ∧ p(x,y) → Q_1(y)     (propagation)
+    → Q_0(x) ∨ Q_2(x),  Q_0(x) ∧ Q_2(x) → ⊥
+    Q_2(x) → p(x,f(x)),  Q_2(x) → Q_3(f(x))
+    Q_3(x) ∧ Q_1(x) → ⊥          (complement constraint, Q_3 ⊑ ¬Q_1)
+
+With nominal clausification (`KM_ABSORB=0`, every nominal route) the
+excluded middle puts the bridge `Q_1(x) ∨ x ≈ e` into every context, every
+query context pushes the merge hypothesis `K(e)`, and the `S6(e)` world of
+the test case is the whole cost (docs/PER-CONTEXT-ORDERING.md section 15.4 on
+`fix/v155-objvalue-cost`). `universal_role_and_top_data_range::
+data_value_singleton_next_to_nominal_successors`, case "object value instead
+of data value", exceeded its 10 s bound on forced `nominals` (no answer in
+60 s; `certified_card_proxy_abox` over 60 s, `nominal_ni_abox` 20 s).
+
+### 11.2 The repair (`frontend::normalise::polarity_definers`)
+
+After clausification the frontend runs a Plaisted-Greenbaum pass over the
+TBox and ABox clauses. Its candidates are the complement definers
+`Q ≡ ¬A` of an atomic operand (a class name, a nominal `{o}`, a value
+concept `__dt__val__v`), in definition order. For each candidate it
+evaluates the gate on the current clause set:
+
+* the definition clause `Q(v) ∧ A(v) → ⊥` and the excluded middle
+  `→ Q(v) ∨ A(v)` are present and `Q ≠ A`;
+* every clause whose body mentions `Q` is the definition clause or a
+  complement constraint `N(v) ∧ Q(v) → ⊥` with `N ∉ {Q, A}`.
+
+This is "`Q` occurs with one polarity only": apart from its definition and
+the complement constraints, which the pass rewrites, `Q` occurs in heads
+only. On acceptance the pass rewrites every complement constraint to
+`N(v) → A(v)` (for the `∀` introduction above, `Q_3 → nom_e`, the hand edit
+of section 15.4) and removes the excluded middle. A definer with any other
+body occurrence keeps the biconditional. `KM_NO_POLARITY_DEFINERS=1` turns
+the pass off (diagnostic).
+
+Scope. The pass reads only the clause set, so it covers `¬A` in heads
+(`X ⊑ ¬A`, disjointness) and the `∀` introduction of a filler `¬A` on every
+setting of `KM_ABSORB`. It does not act on:
+
+* `KM_ABSORB=1` with a negation of negative polarity only: absorption then
+  omits the definition clause, so the gate fails and the clause set is
+  unchanged (the excluded middle stays);
+* a filler `¬A` of an `∃`, `≥n` or `≤n` restriction: the recognition clause
+  `r(x,y) ∧ Q(y) → …` is a body occurrence, so the gate fails;
+* `DataComplementOf` inside a data range: the data vocabulary
+  (`frontend/datatypes`) emits its own complement clauses, which carry no
+  `Q_` definer;
+* the complement definers `nq`, `nd` of the `∀` introduction and of
+  number restrictions: they are not candidates.
+
+Consumers. The `definers` metadata (recorded under `KM_TRIGGER_ABSORB` and
+native cardinality) still says `Q ≡ ¬A`; the konclude bridge replaces `Q` by
+`¬A`, under which the removed excluded middle and the old and the new
+complement constraint are tautologies, so its input is unchanged up to
+tautologies. `KM_EMELIM` and the HT `elim_complements` look for excluded
+middles and find fewer. The orchestrator, the incremental session, the
+source-reuse module and the Lean checkers read `Q_` names only to classify
+them as internal (`inert_sorts::is_internal`, `source_incremental`,
+`calc::is_internal_concept`) and re-check every clause shape they use.
+
+### 11.3 Exactness
+
+Let `S` be the clause set before a step and `S'` after it. Every clause of
+`S'` follows from `S`: a rewritten clause `N(v) → A(v)` follows from
+`N(v) ∧ Q(v) → ⊥` and `→ Q(v) ∨ A(v)`. Conversely, let `J` be a model of
+`S'` and `J'` the interpretation that agrees with `J` except that `Q` is
+the complement of `A`. The definition clause is in `S'`, so `J(Q) ⊆ J'(Q)`.
+In `J'` the excluded middle and the definition clause hold by construction,
+a complement constraint holds because `J` satisfies its rewrite, and every
+other clause holds because `Q` occurs in it only in the head, where
+enlarging `Q` preserves truth. `J'` changes no symbol but the fresh `Q`, so
+consistency, the unsatisfiable named classes and the subsumptions between
+named classes are unchanged, and so is every symbol later passes read
+(nominals, value concepts, roles).
+
+### 11.4 Lean
+
+`lean/ContextCalculus/PolarityDefiners.lean` (imported by
+`ContextCalculus.lean`) states the gate (`gate`), the step (`transform`,
+`step`) and the pass (`run`, a fold over the candidate list) exactly as the
+Rust pass computes them, over the clause language of
+`RulesInertSortRelease`, and proves
+
+    theorem step_models_forward (hgate : gate reserved Q A clauses = true)
+        (hmodels : Models I clauses) : Models I (transform Q A clauses)
+    theorem step_models_backward (hgate : gate reserved Q A clauses = true)
+        (hmodels : Models J (transform Q A clauses)) :
+        Models (J.complementAt Q A) clauses
+    theorem step_equisatisfiable (pair : Nat × Nat) (hside : ReadsOnly reserved side) :
+        Satisfiable clauses side ↔ Satisfiable (step reserved clauses pair) side
+    theorem run_equisatisfiable (pairs : List (Nat × Nat)) (clauses : List Clause)
+        (hside : ReadsOnly reserved side) :
+        Satisfiable clauses side ↔ Satisfiable (run reserved pairs clauses) side
+    theorem run_answers (pairs : List (Nat × Nat)) (clauses : List Clause) :
+        (Consistent clauses ↔ Consistent (run reserved pairs clauses)) ∧
+        (∀ A ∈ reserved, ClassUnsat clauses A ↔ ClassUnsat (run reserved pairs clauses) A) ∧
+        (∀ A ∈ reserved, ∀ B ∈ reserved,
+          Entails clauses A B ↔ Entails (run reserved pairs clauses) A B)
+
+`#print axioms`: `step_models_forward` `[propext, Quot.sound]`; the others
+`[propext, Classical.choice, Quot.sound]`; no `sorryAx`. The gate is the
+hypothesis: `gate` is the Rust gate plus `Q ∉ reserved`, which holds because
+every candidate is a fresh `Q_n` and `IriRegistry` escapes source names with
+that prefix. `decide` checks the gate and the result of `run` on the clauses
+of 11.1. The module was compiled with `lake env lean` against hard-linked
+Mathlib packages (no full `lake build`).
+
+The Rust side: `polarity_definer_tests::production_pass_matches_the_lean_definition`
+compares the indexed production pass with a literal transcription of the
+Lean definitions (`gate`, `rewrite`, `transform`, `run`, with the clause
+shapes restated as atom sets) on 20,000 generated clause sets (definition
+clauses, excluded middles, complement constraints in either order, other
+body and head occurrences, other variables, Skolem and individual terms,
+ABox clauses): equal clause sets and equal accepted candidates on all of
+them, with both gate outcomes exercised. What stays argued, not mechanised:
+the translation of the Rust `DLClause` (string names, `Term::Var` names) to
+the Lean clause language, and the frontend before and after the pass.
+
+### 11.5 Validation
+
+Details and reproduction: `results/agents/2026-11-01/polarity-definers/README.md`.
+
+* The object-value case answers in 0.04 s on forced `nominals` (over 60 s
+  before), 0.03 s on `certified_card_proxy_abox` (over 60 s) and on
+  `nominal_ni_abox` (20 s); `universal_role_and_top_data_range` passes
+  13 of 13.
+* Frontend: on the 1,094 ORE design-half inputs, 79 clause files change by
+  default and under `KM_NOMINALS=1`, 23 under `KM_ABSORB=1`, and no meta file
+  changes. On the 79, the automatic route (`KM_THREADS=1`, 240 s) gives
+  identical answers with both binaries (889 s base, 766 s new).
+* HermiT seeds: `gen_r3` r0-r999 on forced `nominals` at 60 s 639 ok, 4,000
+  at 10 s 2,521 ok (forced `nominals`) and 3,795 ok (auto), the data-value
+  pools of `forced-nominal-data-misses` on auto, `certified_nominals` and
+  `nominals`: 0 WRONG everywhere. The pass changes none of the `gen_r3`
+  seeds' frontend output, so r163, r219, r461, r481, r575, r696, r1536 and
+  r3777 still time out (their cost is section 10.4).
+
+## 12. An at-most with a filler at a nominal (repaired, 2026-11-05)
+
+Found by the nn1811 sibling family (`results/agents/2026-11-04/cb-nn1811/`,
+seed fx12). The automatic route answers these inputs as HermiT through the
+native bridge; before the repair the `nominals` route (and the nominal CB arm
+of `certified_nominals`, which publishes its answer when it wins the race)
+missed them. Present on 48a1113b and every earlier build checked.
+
+Reduction m9 (`data/cb-gap/m9.ofn`, fixture
+`engine/tests/fixtures/cb_nn1811/nominal_cb_gap/`):
+
+    EquivalentClasses(:Q3 ObjectMaxCardinality(1 :r ObjectHasValue(:s :b)))
+    InverseObjectProperties(:s :p)
+    SubClassOf(ObjectOneOf(:b) ObjectMaxCardinality(1 :p))
+
+Every element of `∃s.{b}` is a `p`-successor of `b`, and `b` has at most one,
+so `⊤ ⊑ Q3`. HermiT and the bridge derive it; `--route nominals` gave no
+subsumption in every regime tried (`KM_SEQ_ORDER` on, off and `context`,
+`KM_NOMINAL_DYNAMIC`, `KM_NO_MERGE_HYPOTHESES`, `KM_NO_NOMINAL_LABEL_CACHE`,
+`KM_NO_EXCHANGE_CUT`, `KM_NO_MERGE_CUT`, `KM_NO_MERGE_SUBSCRIPTION`,
+`KM_CB_KEEP_INERT_SORTS`, `KM_NO_CENTRAL`, `KM_NO_SHARE`). The same held for
+`⊤ ⊑ ≤1 p`, `ObjectPropertyDomain(p ≤1 p)`, `D(b)` with `D ⊑ ≤1 p`, and
+`∃p.⊤ ⊑ ≤1 p` (m1, m6 to m10), and for the qualified
+`{b} ⊑ ≤1 p.B` with `Q3 ≡ ≤1 r.(B ⊓ ∃s.{b})` (m11). With
+`FunctionalObjectProperty(p)`, whose clause is the bare
+`p(x,y1) ∧ p(x,y2) → y1≈y2`, the stack was right (m2, m12).
+
+What differs. The frontend writes the at-most as
+`Q_3(x) ∧ Q_4(y0) ∧ Q_4(y1) ∧ p(x,y0) ∧ p(x,y1) → y0≈y1` with the `⊤`
+definer `→ Q_4(x)` (or the filler `B`). `km engine` on the clause file with
+only the two filler atoms removed derives `Q3` for every class; with only the
+guard `Q_3(x)` removed it does not. So the miss needs a body atom on the
+successor variables of an at-most clause that fires at the nominal: in the
+ground context the `p`-neighbours of `b` are the predecessor variable `y` of
+the r-Succ edges (`S(o,y)` triggers), and nothing places `Q_4(y)` (or
+`B(y)`) in the ground context. `Su^r` holds `B(o)`, `S(y,o)` and `S(o,y)`
+only; `B(y)` is a predecessor trigger (`Pr^r`), a head that r-Pred sends
+back, not a premise the ground context can use. A unit fact `→ Q_4(x)` is
+instantiated at individuals in the ground context, not at `y`.
+
+The repair: predecessor labels over root edges (`Engine::offer_root_reach`).
+
+A context `u` has a root edge labelled `o` when it pushed an r-Succ trigger, a
+merge hypothesis or a merge subscription to the ground context for the
+individual `o`. The ground context reads every element linked to `o` as its
+predecessor variable `y`. A body atom `B(y)` of a ground clause can only match
+a hypothesis `B(y) → B(y)` there. For an ordinary successor edge the engine
+already offers every central label `B(x)` of the source (`rsucc_reach`, the
+labels an ordinary successor receives) as that hypothesis, with the forward
+map `x ↦ y`. For a root edge it offered none, so the ground context never held
+`Q_4(y)` or `B(y)` and the at-most at the nominal never fired.
+
+With r-Succ on, `offer_root_reach` now offers each `rsucc_reach` entry over
+every root label of `u` once (a high-water mark per label, append-only reach),
+as `Msg::Succ { f: o, p: B(y) }` to the ground context, the same message
+`rsucc_cross_step` sends over an ordinary edge. On the return path the r-Pred
+discharge of a ground clause whose body atom is an individual-free `B(y)` now
+looks for one of `u`'s root edges whose pushed set carries `B(y)`; before it
+could never succeed, because `pred_inds` of `B(y)` is empty.
+`KM_NO_ROOT_REACH=1` switches the offers off (negative control).
+
+Why it is exact.
+
+- Soundness. The offered hypothesis `B(y) → B(y)` is a tautology
+  (`Nominals.root_label_hyp_sound`, an instance of `rsucc_taut_sound`). The
+  r-Pred step renames `y ↦ x` in a ground clause: a valid clause stays valid
+  under any substitution of its variables (`rpredY_valid`: only the value of
+  `y` changes, even for `f(x)` terms), and the discharge of the body atom
+  `B(y){y↦x} = B(x)` against a context clause with `B(x)` in its head is one
+  resolution step (`rpred_label_sound`). Every new clause is therefore a
+  consequence of the premises, and the side condition (*) of r-Succ only
+  restricts firing. `CBRSuccClosure.parentOfEdge` now maps the label of a root
+  edge to the source's central variable, so the Lean production closure
+  (`rSuccOffers`) states exactly these offers; `forwardPredicate_root_label`
+  shows that the offer of `B(x)` over a root edge pushes `B(y)`.
+- Completeness. The repair adds derivations and removes none, so every
+  clause the previous stack derived is still derived (saturation is monotone).
+  It supplies the premise the Nom rule needs for an at-most whose filler holds
+  at a linked element, which is the case the paper's `Su^r = {B(o), S(y,o),
+  S(o,y)}` leaves to the ground context's own clauses.
+- Cost and `Nom` cover reuse (`Engine::nom_terms_covered`). The extra
+  hypotheses are one clause per (root label, reach entry). Once `offer_root_reach`
+  enabled `{a} ⊑ ≤1 r⁻` and domain-guarded `≤1 p` to fire `Nom` in the ground
+  context, two defects in `build_hyper_resolvent` caused an unbounded chain of
+  fresh nominals on `m1`, `m7`, `m10`, `fx12`, `probe_v7`, and `probe_v11`:
+  1. *Covering width (`k_eff`).* `build_hyper_resolvent` set
+     `k_eff = self.nom_k + nom_rhs.len()` from the ontology-wide maximum
+     at-most bound `self.nom_k` even when `!has_yy` (no `y0 ≈ y1` literal in
+     the ontology clause head collapsed to `y ≈ y`, which is the `n = 0` base
+     case of `Nominals.nom_cover` with width `0 + nom_rhs.len()`) or when the
+     current firing bound only `n_y` variables to `y` (`repeat_slots = n_y - 1 <
+     self.nom_k`, as on `probe_v11.ofn` where `⊤ ⊑ =2 u` raises `self.nom_k` to
+     `2` while `{a} ⊑ ≤1 r⁻` has `n_y - 1 = 1`). Computing
+     `repeat_slots = if has_yy { (n_y - 1).max(1).min(self.nom_k) } else { 0 }`
+     and `k_eff = repeat_slots + nom_rhs.len()` matches `Nominals.nom_cover` per
+     firing and emits a unit `y ≈ o_2` instead of a 2-literal disjunction on an
+     at-most-1 restriction.
+  2. *Common-cover reuse across strengthened residual bodies and heads
+     (`Nominals.nom_shared_cover_sound`).* After the `y0 ↦ y, y1 ↦ y` firing
+     emits `C_1: Q_0(y) ∧ r⁻(a, y) → y ≈ o_2`, ground instantiation at `o_2`
+     produces `f(o_2)` with residual sort head `__data__(o_2) ∨ r⁻(a, f(o_2))`.
+     When `Nom` fires again with `y0 ↦ y, y1 ↦ f(o_2)` (`!has_yy`,
+     `nom_rhs = [f(o_2)]`), keying `nom_allocated` by the full `NomFiringKey`
+     allocated a fresh `o_3` for `Q_0(y) ∧ r⁻(a, y) → __data__(o_2) ∨ y ≈ o_3`,
+     which forward subsumption could not prune against `C_1` (`o_3 ≠ o_2`),
+     cascading `o_2 → o_3 → o_4 → …` up to `KM_NOM_BUDGET = 4096`. By
+     `Nominals.nom_shared_cover_sound`, any single-`y` `Nom` firing in the same
+     context whose post-resolution `(body, kept_head)` is a superset of an
+     earlier cover's `(prev_body, prev_kept_head)` with `prev_terms.len() ≥
+     k_eff` is already satisfied by `prev_terms[..k_eff]`: if `prev_body` holds
+     and `prev_kept_head` fails at `y`, then `y` equals one of `prev_terms`.
+     Reusing `prev_terms[..k_eff]` produces `Q_0(y) ∧ r⁻(a, y) → __data__(o_2)
+     ∨ y ≈ o_2`, which `C_1` immediately forward-subsumes. Placing the
+     self-candidate `(usize::MAX, p)` first in `hyper_inner` ensures the pure
+     `y ≈ y` firing (`kept_head = []`) establishes the base cover before any
+     composite `f(o')` firing.
+
+Results (`data/cb-gap/` and `data/probes-p2.tsv`, 20 runs per route):
+
+| input | axioms behind the nominal at-most | before (`nominals`) | after (`nominals`) | after (`certified_nominals`, `auto`) |
+|---|---|---|---|---|
+| m2, m12 | `FunctionalObjectProperty(p)` | HermiT (0.02 s) | HermiT (0.02 s) | HermiT (0.01 s) |
+| m6 | `D(b)`, `D ⊑ ≤1 p` | `⊤ ⊑ Q3` missed | HermiT (0.02 s) | HermiT (0.01 s) |
+| m8 | `⊤ ⊑ ≤1 p` | missed | HermiT (0.02 s) | HermiT (0.01 s) |
+| m9 | `{b} ⊑ ≤1 p` | missed | HermiT (0.02 s) | HermiT (0.01 s) |
+| m11 | `{b} ⊑ ≤1 p.B` | missed | HermiT (0.02 s) | HermiT (0.01 s) |
+| m1 | `Domain(p, ≤1 p)` | missed | HermiT (0.03 s) | HermiT (0.01 s) |
+| m7 | `∃p.⊤ ⊑ D`, `D ⊑ ≤1 p` | missed | HermiT (0.05 s) | HermiT (0.01 s) |
+| m10 | `∃p.⊤ ⊑ ≤1 p` | missed | HermiT (0.03 s) | HermiT (0.01 s) |
+| fx12 | m1 plus nominal assertions | missed | HermiT (0.27 s) | HermiT (0.02 s) |
+| probe_v7 | `⊤ ⊑ ≥2 u`, `⊤ ⊑ ∃r.{a}`, `{a} ⊑ ≤1 r⁻` | HermiT (via gap, 0.07 s) | HermiT (0.13 s) | HermiT (0.12 s `certified_nominals`, 0.02 s `auto`) |
+| probe_v11 | `⊤ ⊑ =2 u`, `⊤ ⊑ ≤1 r`, `A ⊑ ≥3 u`, `{a} ⊑ ≤1 r⁻` | HermiT (via gap, 0.14 s) | HermiT (0.22 s) | HermiT (0.21 s `certified_nominals`, 0.25 s `auto`) |
+
+The old note on the universal-definer elimination of section 6 stays true: it
+would drop the `⊤` filler for m8 and m9 but skips every clause set with an
+inverse role, and does not touch a real filler (m11).
+
+On `probe_v7.ofn` and `probe_v11.ofn` (`engine/tests/top_nominal_data_successors.rs`),
+the two-sorted `ht_bridge` declines with exit code 3 (`datatype gate: a
+non-datatype axiom rejects a blank data node`) because `frontend/sorts.rs`
+relativizes object axioms over `__data__`. On `probe_v7.ofn`, the third attempt
+of `bounded_bridge_first` (`orchestrate/mod.rs`) runs `ht_bridge` with
+`KM_BRIDGE_OBJECT_GUARD=1` (`frontend::object_guard`) on `automatic` and answers
+in 0.015 s; under explicit `KM_ROUTE=certified_nominals`, `race_certified_ht_arms`
+runs the unguarded two-sorted `ht_bridge`, which declines at 0.00 s, and the CB
+nominal arm answers in 0.12 s (matching the 0.11 s baseline). On `probe_v11.ofn`,
+even the object-guarded bridge declines at `bridge.rs` because
+`SubClassOf(A, AtLeast(3, u, Top))` exceeds the `0..=2` safe data-cardinality
+bound (`data_role_uses_are_safe_cardinality_only`), so `automatic`,
+`certified_nominals`, and `nominals` all answer through the CB nominal engine in
+0.21-0.25 s, and all 16 tests in `top_nominal_data_successors` pass with every
+route required to answer as HermiT.

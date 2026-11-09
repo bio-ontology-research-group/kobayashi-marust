@@ -1,0 +1,30 @@
+
+running 13 tests
+test data_range_complement_excluded_middle_still_applies_to_values ... ok
+test data_sorted_top_definer_keeps_data_values_satisfiable ... ok
+test data_property_range_over_the_shared_top_definer_stays_satisfiable ... ok
+test data_value_next_to_universal_role_hub_on_nominals ... ok
+test exists_top_role_thing_is_owl_thing_and_fast ... ok
+test literal_existential_matches_unqualified_min_cardinality ... ok
+test literal_existential_over_free_data_property_is_fast ... ok
+test mixed_object_and_data_assertions_on_one_individual ... ok
+test data_value_next_to_universal_role_hub_stays_satisfiable ... ok
+test nominal_top_role_reproducer ... ok
+test universal_role_restrictions_are_complete ... ok
+test sort_encoding_matches_hermit_on_differential_fixtures ... ok
+test data_value_singleton_next_to_nominal_successors ... FAILED
+
+failures:
+
+---- data_value_singleton_next_to_nominal_successors stdout ----
+
+thread 'data_value_singleton_next_to_nominal_successors' (2685700) panicked at tests/universal_role_and_top_data_range.rs:100:13:
+km classify exceeded 10s (route Some("nominals"))
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    data_value_singleton_next_to_nominal_successors
+
+test result: FAILED. 12 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 10.96s
+

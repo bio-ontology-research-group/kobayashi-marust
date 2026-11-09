@@ -1,0 +1,8 @@
+{
+  "ontology": "count_with_assertions_ok-pad.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["E", "F"]
+  ],
+  "unsatisfiable": []
+}

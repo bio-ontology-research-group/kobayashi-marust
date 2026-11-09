@@ -1,0 +1,11 @@
+KM_TIMING mark: validate_user_input done
+KM_TIMING mark: second source check done
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING ABox quotient not built: site 1
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.00s cached=true sidecar=false
+KM_TIMING frontend done @ 0.00s route=ht_bridge
+KM_TIMING engine block done @ 0.04s (subs_keys=45)
+KM_TIMING mark: output mapping done
+KM_TIMING mark: classify_json returned
+KM_TIMING mark: output written

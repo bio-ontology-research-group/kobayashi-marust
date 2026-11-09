@@ -1,0 +1,4 @@
+DisjointClasses(ObjectSomeValuesFrom(:t DataHasValue(:u "1"^^xsd:integer)) :C)
+ObjectPropertyAssertion(:r :c :c)
+EquivalentClasses(:Q1 ObjectIntersectionOf(ObjectAllValuesFrom(:r ObjectHasValue(:r :a)) :D))
+EquivalentClasses(:Q2 ObjectUnionOf(ObjectUnionOf(DataHasValue(:v "0"^^xsd:integer) :B) ObjectMaxCardinality(2 :r ObjectOneOf(:b :a))))

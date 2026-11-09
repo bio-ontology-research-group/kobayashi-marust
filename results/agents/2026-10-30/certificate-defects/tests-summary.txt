@@ -1,0 +1,46 @@
+# Targeted tests at 267ab7e6 (release, real checkers from lean/.lake/build/bin, one thread)
+== elc-lib
+exit 0
+test result: ok. 128 passed; 0 failed; 0 ignored; 0 measured; 2961 filtered out; finished in 2.38s
+== lean-checkers-lib
+exit 0
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 3082 filtered out; finished in 0.83s
+== lean-checkers-dir-stub
+exit 0
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.21s
+== lean-checkers-dir-real
+exit 0
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.61s
+== elc-certificate
+exit 0
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+== cb-live-state
+exit 0
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.19s
+== lib-all-noenv
+exit 101
+test result: FAILED. 3058 passed; 21 failed; 10 ignored; 0 measured; 0 filtered out; finished in 8.34s
+all-done
+
+lib-all-noenv failures (all 21 on the CI skip list .github/workflows/ci.yml; the same 21 at 8a417f98):
+cli::cb_derivation_candidate_tests::source_exact_taxonomy_uses_real_production_traces_and_models
+tableau::hypertableau::tests::cardinality_decision_blocks_and_checks_a_cyclic_minimum
+tableau::hypertableau::tests::cardinality_decision_emits_sat_or_unsat_checker_ready_evidence
+tableau::hypertableau::tests::certified_unsat_refutation_deepens_past_the_historical_node_cap
+tableau::hypertableau::tests::equality_and_cardinality_folds_copy_incoming_blocker_edges
+tableau::hypertableau::tests::equality_decision_emits_sat_or_unsat_checker_ready_evidence
+tableau::hypertableau::tests::equality_decision_pairwise_blocks_and_checks_a_satisfiable_cycle
+tableau::hypertableau::tests::equality_free_decision_emits_sat_or_unsat_checker_ready_evidence
+tableau::hypertableau::tests::global_decision_wraps_regular_evidence_for_the_main_lean_checker
+tableau::hypertableau::tests::lean_preprocessing_wire_certifies_trigger_and_contrapositives
+tableau::hypertableau::tests::lean_taxonomy_wire_covers_every_concept_and_ordered_pair
+tableau::hypertableau::tests::lean_taxonomy_wire_uses_anchored_negative_cells_for_a_genuine_equality_head
+tableau::hypertableau::tests::native_abox_cardinality_global_decision_uses_joint_wire
+tableau::hypertableau::tests::native_abox_cardinality_taxonomy_matrix_is_joint_and_tamper_evident
+tableau::hypertableau::tests::native_abox_global_decision_uses_joint_sat_wire
+tableau::hypertableau::tests::native_abox_taxonomy_cells_use_one_joint_checked_state
+tableau::hypertableau::tests::native_abox_taxonomy_matrix_is_complete_and_tamper_evident
+tableau::hypertableau::tests::regular_decision_envelope_carries_finite_unsat_and_lean_checks_it
+tableau::hypertableau::tests::regular_decision_prefers_a_checked_finite_sat_model
+tableau::tests::joint_native_abox_classification_carries_one_source_and_abox
+tableau::tests::joint_native_abox_source_matrix_passes_real_lean_checker_on_all_six_routes

@@ -2865,6 +2865,7 @@ impl EnvironmentGuard {
         let values = std::iter::once("KM_ROUTE")
             .chain(std::iter::once("KM_COMP_IND_BITS"))
             .chain(std::iter::once("KM_TRANSITIVE_RULE_REDUCE"))
+            .chain(std::iter::once("KM_RULE_JOIN_ORDER"))
             .chain(std::iter::once("KM_GROUND_RULE_SOURCE"))
             .chain(std::iter::once("KM_GROUND_PRIVATE_CLASS_FILE"))
             .chain(std::iter::once("KM_BRIDGE_PUBLIC_SUBJECT_FILE"))
@@ -2875,6 +2876,7 @@ impl EnvironmentGuard {
             .chain(std::iter::once("KM_DISJOINT_UNION_ABOX_CONSISTENT"))
             .chain(std::iter::once("KM_DISJOINT_UNION_ABOX_DECLINED"))
             .chain(std::iter::once("KM_DATA_ASSERTION_AS_CLASS"))
+            .chain(std::iter::once("KM_BRIDGE_OBJECT_GUARD"))
             .chain(std::iter::once("KM_CB_FIRST_TYPED_NOMINAL_S"))
             .chain(ROUTE_KEYS.iter().copied())
             .map(|key| (key, std::env::var_os(key)))
@@ -3390,6 +3392,42 @@ fn user_diagnostic_overrides() -> &'static [(&'static str, std::ffi::OsString)] 
             .filter_map(|key| std::env::var_os(key).map(|value| (*key, value)))
             .collect()
     })
+}
+
+/// Worker protocol variables that change what a worker answers, not how it
+/// searches: a consistency-only verdict (`KM_HT_GLOBAL`, `KM_HT_TOTAL_GLOBAL`,
+/// `KM_RULES_CONSISTENCY`), a restricted subject set (`KM_QUERIES`,
+/// `KM_QUERIES_FILE`, `KM_RULES_CLASSIFY_KNOWN`), or a shape requirement of an
+/// internal probe. The supervisor sets them itself, per worker or inside an
+/// `EnvironmentGuard`, and reads them as instructions. A user value would make
+/// a published answer depend on them (`KM_HT_GLOBAL=1` on
+/// `--route ht_general` published an empty taxonomy; docs/HYBRID-CB-HT.md
+/// section 12), so the user-facing entries strip them first
+/// ([`strip_worker_only_environment`]).
+pub const WORKER_ONLY_KEYS: &[&str] = &[
+    "KM_HT_GLOBAL",
+    "KM_HT_TOTAL_GLOBAL",
+    "KM_HT_GLOBAL_NATIVE_ABOX",
+    "KM_HT_REQUIRE_MASKED_DISJOINT_UNION_SHAPE",
+    "KM_RULES_CONSISTENCY",
+    "KM_RULES_CLASSIFY",
+    "KM_RULES_CLASSIFY_KNOWN",
+    "KM_QUERIES",
+    "KM_QUERIES_FILE",
+];
+
+/// Remove every [`WORKER_ONLY_KEYS`] variable from this process's
+/// environment and return the names that were set. Call it at a user-facing
+/// entry (`km classify`, `km explain`) before any route or worker runs.
+pub fn strip_worker_only_environment() -> Vec<&'static str> {
+    let mut removed = Vec::new();
+    for key in WORKER_ONLY_KEYS {
+        if std::env::var_os(key).is_some() {
+            std::env::remove_var(key);
+            removed.push(*key);
+        }
+    }
+    removed
 }
 
 const ROUTE_KEYS: &[&str] = &[

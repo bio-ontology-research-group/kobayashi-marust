@@ -1,0 +1,43 @@
+== ht_subset_blocking
+test card_arm_subset_blocking_on_the_automatic_route ... ok
+test gained_literal_at_an_existential_successor ... ok
+test gained_literal_under_an_at_least_recognition ... ok
+test gained_recognition_literal_blocks_no_successor ... ok
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s
+== ht_subset_model_certificate
+test inverse_witnessed_existential_terminals_are_lean_checked ... ok
+test merged_victims_do_not_block_and_every_terminal_is_emitted ... ok
+test seed_507_subset_blocked_terminals_are_lean_checked ... ok
+test seed_639_subset_blocked_terminals_are_lean_checked ... ok
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.13s
+== top_nominal_data_successors
+test asserted_min_data_cardinality_with_top_nominal_is_consistent ... ok
+test exact_data_cardinality_with_has_value_hub_keeps_counting ... ok
+test forced_one_sorted_route_refuses_both_verdicts ... ok
+test hermit_answers_on_every_route ... FAILED
+test m2197_minimal_is_consistent ... ok
+test m2197_original_is_consistent_with_hermit_taxonomy ... ok
+test rule_checker_does_not_publish_a_one_sorted_inconsistency ... ok
+test top_data_existential_with_top_nominal_is_consistent ... ok
+test top_min_data_cardinality_with_inverse_functional_hub_is_consistent ... ok
+test top_min_data_cardinality_with_thing_equivalent_nominal_is_consistent ... ok
+test top_min_data_cardinality_with_top_nominal_is_consistent ... ok
+test top_min_data_cardinality_with_two_nominals_is_consistent ... ok
+test top_min_data_cardinality_with_universal_role_nominal_is_consistent ... ok
+test top_min_data_cardinality_without_nominal_is_consistent ... ok
+test top_min_object_cardinality_with_top_nominal_stays_inconsistent ... ok
+test top_qualified_min_data_cardinality_with_top_nominal_is_consistent ... ok
+thread 'hermit_answers_on_every_route' (2902170) panicked at tests/top_nominal_data_successors.rs:94:13:
+test result: FAILED. 15 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 228.44s
+== empty_and_universal_data_ranges
+test assertions_against_empty_ranges_are_inconsistent ... ok
+test bottom_data_property_has_no_values ... ok
+test complement_of_literal_and_literal_on_every_route ... ok
+test complemented_cardinality_definers_contrapose_on_every_route ... ok
+test complements_of_ordinary_ranges ... ok
+test datatype_definitions_of_empty_and_universal_ranges ... ok
+test empty_data_ranges_in_every_position ... ok
+test excluded_middle_of_complement_ranges ... ok
+test literal_existential_with_universal_complement_of_literal_is_unsatisfiable ... ok
+test universal_data_ranges_in_every_position ... ok
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 232.80s

@@ -241,6 +241,18 @@ exact CB procedure. Smaller inputs keep the concurrent race. This ordering
 reduces process-tree memory when the bridge succeeds; it does not change either
 procedure or the accepted answer contract.
 
+The native bridge admits `SameIndividual` on every route, including the
+automatic HT racer (2026-11-02): the ABox conversion quotients the typed ABox
+by its equality classes (docs/HYBRID-CB-HT.md section 13), and the bridge
+finishes the large equality ABoxes since the changes of section 17. The route
+selection itself is unchanged; an input that the bridge previously declined
+for its `SameIndividual` axioms now reaches the bridge's complete-or-defer
+contract, and a defer still runs the exact CB fallback.
+`KM_HT_NO_ADMIT_SAME=1` restores the decline for measurement. Inside the
+bridge, the choice between the retained full completion graph and the
+per-probe ABox completion follows Konclude's own decision (section 17.3);
+both are complete-or-defer, so the choice changes cost, not answers.
+
 The same sequential schedule applies to very large, source-certified
 disjunctive SHI terminologies with no ABox, at least 50,000 logical axioms,
 300,000 concept expressions, 10,000 unions, and 50,000 named classes. The
@@ -532,6 +544,146 @@ query engine.
 `results/benchmarks/2026-07-15-routing/emit_rust_tree.py` translates the audited
 JSON tree into `engine/src/routing/routing_tree_generated.rs`. The shipped
 classifier has no runtime machine-learning dependency.
+
+## Publication coverage guard
+
+Added 2026-11-03 (`results/agents/2026-11-03/cb-s974/`). Every row-form
+worker answer that reaches the shared output mapping (`EngineOut` from the CB
+engine, the elc workers and their partial-plus-residue merges, on every route
+that ends in `classify_with_evidence_mode`'s mapping) must carry a subject row
+for each declared class of the input, where a row with no superclass counts. If a
+consistent answer has no row for some declared class, the orchestrator
+declines (`coverage guard: the worker answer omits N declared class(es)`)
+instead of publishing.
+
+Why this is needed. The published taxonomy lists pairs, so a class without a
+row is indistinguishable from a class with no named superclass. A worker that
+loses a name internally therefore publishes a wrong answer that looks exact:
+on SELF seed s1966 the certified elc worker's bridge preprocessing deleted the
+only clause naming `C`, the partial answer had no row for `C`, the residue
+engine was asked only about the unresolved names, and the merged answer
+published `C` with no superclass although `C ⊑ Q3`. The race between that
+partial answer and the full CB engine made the error appear in about half of
+the runs.
+
+Why it is exact. The guard only removes answers; it never adds or changes a
+pair, so every published answer is one that a worker produced and covered.
+A declined run is reported as a decline, which is allowed. The frontend seeds
+a declaration clause `C(x) → C(x)` for every declared class that no other
+clause names (`seed_missing_declarations`), so every worker receives every
+declared class; a correct worker has a row for each of them. The CB engine
+already emitted empty rows. The elc worker omitted subjects with no
+superclass; it now emits a row for every public concept node on each of its
+output paths (the completion's string map and compact dictionary, the flat
+hierarchy fast path, the incremental session result and the Lean-verified
+result), which changes no pair. Before the flat path and the session result
+were covered, the guard declined 6 of the 300 inputs of the C1 sample and
+the incremental row-delta session test; that is the failure mode the guard
+exists to make visible, a missing row turned into a decline instead of a
+wrong answer.
+Residue names an answer still lists as `unresolved` do not count as covered.
+
+The guard also found a second instance of the s1966 defect. On the forced
+`ht_rules` route the CB taxonomy run drops the ground clauses, so a class
+named only by class assertions and a DL-safe rule had no CB query, and the
+base published it with no superclass although `⊤ ⊑ G` (fixture
+`engine/tests/fixtures/cb_s974/rules/rules_route_top.ofn`: `A ⊑ G` and
+`B ⊑ G` lost; the automatic route was exact). The guard declined that answer
+(integration test `rules_route`), and the CB builder now keeps a query
+(`C(x) → C(x)`) for every public class of a clause it drops
+(`reasoner::Builder::clauses`), which adds no constraint.
+
+What it does not cover. Inconsistent answers carry no taxonomy and are not
+checked. The HT, bridge and tableau workers answer with a pair list
+or with the compact dictionary transport (`race::tableau_to_out` and
+`race::ht_pair_form` mark these `pair_form`): a class with no named
+superclass is absent from a pair list by construction, so absence carries no
+information and the guard skips these answers. Covering them needs a protocol
+change (each worker reports the query classes it decided); that is open. Publication paths that build the final classification without an
+`EngineOut` (the `flat_nf1` and `mirror_private` fast paths, and the
+rule-aware taxonomy of the rules-consistency route) are outside the guard.
+
+## Entailed functionality in the HT view
+
+Added 2026-11-04 (`results/agents/2026-11-04/cb-nn1811/`,
+`cb_to_ht::add_entailed_functional_clauses`).
+
+The defect. NN seed nn1811 was answered wrongly on the automatic route
+(`A ⊑ Q1`, `A ⊑ Q4` missing against HermiT). The wrong answer came from the
+native bridge HT worker of the `certified_nominals` race (it answers after
+34 s; when it hit the 18 GiB cap the nominal CB arm gave no answer within
+150 s and the run timed out), not from the nominal CB stack. Every CB route
+(`nominals`, `cb_plain1`, `nominal_ni_abox`, `certified_card_proxy_abox`)
+answers the reductions as HermiT. The four-axiom reduction `r19` has no
+individual at all:
+
+    InverseObjectProperties(:r :s)
+    DisjointClasses(:A :C)
+    SubClassOf(owl:Thing ObjectMaxCardinality(1 :s))
+    SubClassOf(ObjectComplementOf(:Q4) ObjectSomeValuesFrom(:r ObjectSomeValuesFrom(:s :C)))
+
+An `r`-successor `y` of a `¬Q4` element `x` has `x` as an `s`-neighbour, so
+`≤1 s` merges the `s`-successor in `C` of `y` into `x`; `x ∈ C`, and
+`A ⊑ Q4`. `ht_bridge`, `production_all` (the automatic route on this TBox),
+`certified_nominals` and the automatic route missed it in 20 of 20 runs.
+In the `A` probe the bridge takes `y` as satisfiable-cached from the earlier
+`C` probe and absorbs the generating concept `∃s.C`
+(`is_generating_concept_satisfiable_cached_absorpable`, Konclude cpp 14217),
+so the successor that would merge into `x` is never built. That test refuses
+the absorption when the role back to the ancestor is functional or an
+at-most of it is already in the node's reapply queue. The bridge flags a role
+functional only from the plain clause `R(x,y1) ∧ R(x,y2) → y1≈y2` that
+`FunctionalObjectProperty(R)` produces; with that axiom in place of
+`⊤ ⊑ ≤1 s` the bridge is right (r5). The frontend writes `⊤ ⊑ ≤1 R` as an
+at-most clause guarded by `⊤` definers
+(`Q_1(y1) ∧ Q_1(y2) ∧ Q_0(x) ∧ R(x,y1) ∧ R(x,y2) → y1≈y2`, `→ Q_1(x)`,
+`→ Q_0(x)`), `ObjectPropertyDomain(R ≤1 R)` as one guarded by a domain
+definer, and `InverseFunctionalObjectProperty(R)` in the shared-target
+orientation; the bridge builds a `⊤`-qualified at-most from these, which
+Konclude would give priority 5.5 only when unqualified, and never flags the
+role. Konclude 0.7.0 does not finish the TBox tasks of these inputs.
+
+The repair. The HT conversion adds the plain functionality clause for every
+role whose functionality the view entails through an at-most-1 clause with
+trivial guards. A concept is universal when the view derives it on every
+element from unit facts by one-variable Horn clauses; it is implied at the
+source (target) of `R` when the view derives it there from one `R`-atom and
+universal or implied concepts, closed under one-variable Horn clauses and
+the inverse and inclusion clauses `R(0,1) → S(1,0)`, `R(0,1) → S(0,1)`. An
+at-most-1 clause over `R` whose concept atoms are all universal or implied at
+their endpoint yields `R(0,1) ∧ R(0,2) → 1≈2`; in the shared-target
+orientation it yields the functionality of every `S` with `S(0,1) → R(1,0)`.
+
+Why it is exact. Each added clause is derived from clauses of the view by
+resolution: the universal and implied atoms of the at-most clause are
+discharged by their derivations, which leaves the plain clause (and, for the
+shared-target case, one more resolution step with `S(0,1) → R(1,0)` on each
+role atom). The pass only adds consequences and keeps every clause, so the
+view has the same models, and every exact HT worker gives the same answer on
+it. It does not touch the CB input, the frontend output or the bridge. It is
+off when proof-carrying HT publication is requested
+(`ht_lean_certification_requested`), whose projection check compares the
+view with its source clause by clause, and with
+`KM_HT_NO_ENTAILED_FUNCTIONAL=1` (negative control). The pass is not proved
+in Lean; the bridge has no Lean model.
+
+Cost. The first version of the pass rescanned the whole view for every
+role end and took more than 100 s on the held-out input ORE 3917 (2.7 MB, base
+4.4 s). The current pass first collects the at-most-1 clauses that could
+entail a functionality (two atoms of one role on one hub, an equality of the
+two other endpoints, positive concept atoms only) and returns at once when
+there is none. Otherwise it computes the universal concepts by forward chaining
+with one counter per clause, tracks implied concepts only for the candidate
+roles and the roles they link to (an implied concept of `R` depends on `R`'s
+own clauses and on the roles `R` links to, nothing else), and decides each
+candidate once. Every step is a monotone least fixpoint, so the result is the
+same as the first version's (`entailed_functional_tests::matches_the_reference_on_random_views`
+compares both on 6,000 random views).
+
+What it does not cover. An at-most-1 restriction with a real guard or filler
+(`D ⊑ ≤1 s`, `⊤ ⊑ ≤1 s.D`) is not a functionality and keeps its qualified
+encoding, so the absorption test can still meet it before the at-most enters
+the reapply queue. A complete repair of that test belongs in the bridge.
 
 ## Validation artifacts
 

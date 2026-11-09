@@ -1,0 +1,17 @@
+ELC certificate cost, single runs on ws (other agents' load varied; load average 20 to 136)
+
+ore_ont_10254 (0.9 MB ontology, 9,287 symbols, 532,564 trace steps, 87 MB certificate)
+  97515f0c (base): producer about 180 s (round-based closure, unbuffered write); checker rejected (E1)
+    after about 120 s (early exit in normalization); the full v5 check is quadratic and was not run to the end
+  after the worklist closure and buffered write: producer 3 s
+  elc-cert-check --profile, hash-indexed check (a6418385): parse 4.4 s, decode 4.2 s, rest 7 s; accepted
+  whole `km classify --route elc` with KM_LEAN_CHECKERS: 27 s, accepted (was over budget)
+
+ore_ont_15793 (2.4 MB, 14 MB certificate)
+  decode with List.Nodup: 34.4 s; with nodupFast (69566b88): 0.055 s
+
+ore_ont_12221 (4.8 MB, 39,025 symbols, 773,178 trace steps, 120 MB certificate)
+  producer closure at 8a417f98: 148 s (under load); borrowed incoming lists: 72 s;
+  smaller-side NF4 joins (0a9bb689): 0.33 s, whole producer 0.67 s, run 2.1 s
+  elc-cert-check: 50 s under load (parse 13 s, origin-ontology 9 s, finite-residuals 5 s,
+  named-output 4.5 s, closure 3.7 s), 18 s at load 20; accepted

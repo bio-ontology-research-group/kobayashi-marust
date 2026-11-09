@@ -1,0 +1,292 @@
+WATCH-SKIP-TAG 18 add to node 1000 at:
+   0: kobayashi_marust::konclude_ht::completion::u04::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concept_to_individual_skip_and_processing
+   1: kobayashi_marust::konclude_ht::completion::u17::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::try_initializing_concept_from_saturated_data
+   2: kobayashi_marust::konclude_ht::bridge::bridged_classify_subject_with_root
+   3: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}}
+   4: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner
+   5: kobayashi_marust::konclude_ht::bridge::bridged_classify
+   6: std::sys::backtrace::__rust_begin_short_backtrace
+   7: core::ops::function::FnOnce::call_once{{vtable.shim}}
+   8: <std::sys::thread::unix::Thread>::new::thread_start
+   9: <unknown>
+  10: <unknown>
+
+WATCH-INSERT-TAG 18 before node=1000 descriptor=3 dependency=#1 branch=Some(0) allow_init=false at:
+   0: kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::insert_concepts_to_individual_concept_set
+   1: kobayashi_marust::konclude_ht::completion::u04::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concept_to_individual_skip_and_processing
+   2: kobayashi_marust::konclude_ht::completion::u17::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::try_initializing_concept_from_saturated_data
+   3: kobayashi_marust::konclude_ht::bridge::bridged_classify_subject_with_root
+   4: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}}
+   5: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner
+   6: kobayashi_marust::konclude_ht::bridge::bridged_classify
+   7: std::sys::backtrace::__rust_begin_short_backtrace
+   8: core::ops::function::FnOnce::call_once{{vtable.shim}}
+   9: <std::sys::thread::unix::Thread>::new::thread_start
+  10: <unknown>
+  11: <unknown>
+
+WATCH-INSERT-TAG 18 after node=1000 contained=false
+WATCH-AND-OPERAND tag=18 node=1000 parent=1 parent-op=1 negate=false operands=[(18, false), (21, false)]
+WATCH-INSERT-TAG 18 before node=1000 descriptor=5 dependency=#2 branch=Some(0) allow_init=false at:
+   0: kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::insert_concepts_to_individual_concept_set
+   1: kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concepts_to_individual
+   2: kobayashi_marust::konclude_ht::completion::u08::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::apply_and_rule
+   3: kobayashi_marust::konclude_ht::completion::u03::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::tableau_rule_choice
+   4: kobayashi_marust::konclude_ht::completion::u02::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on
+   5: kobayashi_marust::konclude_ht::bridge::bridged_classify_subject_with_root
+   6: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}}
+   7: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner
+   8: kobayashi_marust::konclude_ht::bridge::bridged_classify
+   9: std::sys::backtrace::__rust_begin_short_backtrace
+  10: core::ops::function::FnOnce::call_once{{vtable.shim}}
+  11: <std::sys::thread::unix::Thread>::new::thread_start
+  12: <unknown>
+  13: <unknown>
+
+WATCH-INSERT-TAG 18 after node=1000 contained=true
+WATCH-SKIP-TAG 18 add to node 1000 at:
+   0: kobayashi_marust::konclude_ht::completion::u04::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concept_to_individual_skip_and_processing
+   1: kobayashi_marust::konclude_ht::completion::u17::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::try_initializing_concept_from_saturated_data
+   2: kobayashi_marust::konclude_ht::bridge::bridged_classify_subject_with_root
+   3: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}}
+   4: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner
+   5: kobayashi_marust::konclude_ht::bridge::bridged_classify
+   6: std::sys::backtrace::__rust_begin_short_backtrace
+   7: core::ops::function::FnOnce::call_once{{vtable.shim}}
+   8: <std::sys::thread::unix::Thread>::new::thread_start
+   9: <unknown>
+  10: <unknown>
+
+WATCH-INSERT-TAG 18 before node=1000 descriptor=3 dependency=#1 branch=Some(0) allow_init=false at:
+   0: kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::insert_concepts_to_individual_concept_set
+   1: kobayashi_marust::konclude_ht::completion::u04::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concept_to_individual_skip_and_processing
+   2: kobayashi_marust::konclude_ht::completion::u17::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::try_initializing_concept_from_saturated_data
+   3: kobayashi_marust::konclude_ht::bridge::bridged_classify_subject_with_root
+   4: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}}
+   5: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner
+   6: kobayashi_marust::konclude_ht::bridge::bridged_classify
+   7: std::sys::backtrace::__rust_begin_short_backtrace
+   8: core::ops::function::FnOnce::call_once{{vtable.shim}}
+   9: <std::sys::thread::unix::Thread>::new::thread_start
+  10: <unknown>
+  11: <unknown>
+
+WATCH-INSERT-TAG 18 after node=1000 contained=false
+WATCH-AND-OPERAND tag=18 node=1000 parent=1 parent-op=1 negate=false operands=[(18, false), (21, false)]
+WATCH-INSERT-TAG 18 before node=1000 descriptor=5 dependency=#2 branch=Some(0) allow_init=false at:
+   0: kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::insert_concepts_to_individual_concept_set
+   1: kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concepts_to_individual
+   2: kobayashi_marust::konclude_ht::completion::u08::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::apply_and_rule
+   3: kobayashi_marust::konclude_ht::completion::u03::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::tableau_rule_choice
+   4: kobayashi_marust::konclude_ht::completion::u02::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on
+   5: kobayashi_marust::konclude_ht::bridge::bridged_classify_subject_with_root
+   6: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}}
+   7: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner
+   8: kobayashi_marust::konclude_ht::bridge::bridged_classify
+   9: std::sys::backtrace::__rust_begin_short_backtrace
+  10: core::ops::function::FnOnce::call_once{{vtable.shim}}
+  11: <std::sys::thread::unix::Thread>::new::thread_start
+  12: <unknown>
+  13: <unknown>
+
+WATCH-INSERT-TAG 18 after node=1000 contained=true
+WATCH-SKIP-TAG 18 add to node 1000 at:
+   0: kobayashi_marust::konclude_ht::completion::u04::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concept_to_individual_skip_and_processing
+   1: kobayashi_marust::konclude_ht::completion::u17::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::try_initializing_concept_from_saturated_data
+   2: kobayashi_marust::konclude_ht::bridge::bridged_unsat_rooted
+   3: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}}
+   4: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner
+   5: kobayashi_marust::konclude_ht::bridge::bridged_classify
+   6: std::sys::backtrace::__rust_begin_short_backtrace
+   7: core::ops::function::FnOnce::call_once{{vtable.shim}}
+   8: <std::sys::thread::unix::Thread>::new::thread_start
+   9: <unknown>
+  10: <unknown>
+
+WATCH-INSERT-TAG 18 before node=1000 descriptor=3 dependency=#1 branch=Some(0) allow_init=false at:
+   0: kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::insert_concepts_to_individual_concept_set
+   1: kobayashi_marust::konclude_ht::completion::u04::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concept_to_individual_skip_and_processing
+   2: kobayashi_marust::konclude_ht::completion::u17::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::try_initializing_concept_from_saturated_data
+   3: kobayashi_marust::konclude_ht::bridge::bridged_unsat_rooted
+   4: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}}
+   5: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner
+   6: kobayashi_marust::konclude_ht::bridge::bridged_classify
+   7: std::sys::backtrace::__rust_begin_short_backtrace
+   8: core::ops::function::FnOnce::call_once{{vtable.shim}}
+   9: <std::sys::thread::unix::Thread>::new::thread_start
+  10: <unknown>
+  11: <unknown>
+
+WATCH-INSERT-TAG 18 after node=1000 contained=false
+WATCH-AND-OPERAND tag=18 node=1000 parent=1 parent-op=1 negate=false operands=[(18, false), (21, false)]
+WATCH-INSERT-TAG 18 before node=1000 descriptor=8 dependency=#2 branch=Some(0) allow_init=false at:
+   0: kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::insert_concepts_to_individual_concept_set
+   1: kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concepts_to_individual
+   2: kobayashi_marust::konclude_ht::completion::u08::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::apply_and_rule
+   3: kobayashi_marust::konclude_ht::completion::u03::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::tableau_rule_choice
+   4: kobayashi_marust::konclude_ht::completion::u02::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on
+   5: kobayashi_marust::konclude_ht::bridge::bridged_unsat_rooted
+   6: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}}
+   7: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner
+   8: kobayashi_marust::konclude_ht::bridge::bridged_classify
+   9: std::sys::backtrace::__rust_begin_short_backtrace
+  10: core::ops::function::FnOnce::call_once{{vtable.shim}}
+  11: <std::sys::thread::unix::Thread>::new::thread_start
+  12: <unknown>
+  13: <unknown>
+
+WATCH-INSERT-TAG 18 after node=1000 contained=true
+WATCH-SKIP-TAG 18 add to node 1001 at:
+   0: kobayashi_marust::konclude_ht::completion::u04::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concept_to_individual_skip_and_processing
+   1: kobayashi_marust::konclude_ht::completion::u17::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::try_expansion_from_saturated_data
+   2: kobayashi_marust::konclude_ht::completion::u35::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::create_successor_individual
+   3: kobayashi_marust::konclude_ht::completion::u08::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::apply_some_rule
+   4: kobayashi_marust::konclude_ht::completion::u03::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::tableau_rule_choice
+   5: kobayashi_marust::konclude_ht::completion::u02::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on
+   6: kobayashi_marust::konclude_ht::bridge::bridged_unsat_rooted
+   7: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}}
+   8: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner
+   9: kobayashi_marust::konclude_ht::bridge::bridged_classify
+  10: std::sys::backtrace::__rust_begin_short_backtrace
+  11: core::ops::function::FnOnce::call_once{{vtable.shim}}
+  12: <std::sys::thread::unix::Thread>::new::thread_start
+  13: <unknown>
+  14: <unknown>
+
+WATCH-INSERT-TAG 18 before node=1001 descriptor=11 dependency=#5 branch=Some(0) allow_init=false at:
+   0: kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::insert_concepts_to_individual_concept_set
+   1: kobayashi_marust::konclude_ht::completion::u04::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concept_to_individual_skip_and_processing
+   2: kobayashi_marust::konclude_ht::completion::u17::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::try_expansion_from_saturated_data
+   3: kobayashi_marust::konclude_ht::completion::u35::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::create_successor_individual
+   4: kobayashi_marust::konclude_ht::completion::u08::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::apply_some_rule
+   5: kobayashi_marust::konclude_ht::completion::u03::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::tableau_rule_choice
+   6: kobayashi_marust::konclude_ht::completion::u02::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on
+   7: kobayashi_marust::konclude_ht::bridge::bridged_unsat_rooted
+   8: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}}
+   9: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner
+  10: kobayashi_marust::konclude_ht::bridge::bridged_classify
+  11: std::sys::backtrace::__rust_begin_short_backtrace
+  12: core::ops::function::FnOnce::call_once{{vtable.shim}}
+  13: <std::sys::thread::unix::Thread>::new::thread_start
+  14: <unknown>
+  15: <unknown>
+
+WATCH-INSERT-TAG 18 after node=1001 contained=false
+WATCH-AND-OPERAND tag=18 node=1001 parent=1 parent-op=1 negate=false operands=[(18, false), (21, false)]
+WATCH-INSERT-TAG 18 before node=1001 descriptor=13 dependency=#6 branch=Some(0) allow_init=false at:
+   0: kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::insert_concepts_to_individual_concept_set
+   1: kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concepts_to_individual
+   2: kobayashi_marust::konclude_ht::completion::u08::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::apply_and_rule
+   3: kobayashi_marust::konclude_ht::completion::u03::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::tableau_rule_choice
+   4: kobayashi_marust::konclude_ht::completion::u02::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on
+   5: kobayashi_marust::konclude_ht::bridge::bridged_unsat_rooted
+   6: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}}
+   7: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner
+   8: kobayashi_marust::konclude_ht::bridge::bridged_classify
+   9: std::sys::backtrace::__rust_begin_short_backtrace
+  10: core::ops::function::FnOnce::call_once{{vtable.shim}}
+  11: <std::sys::thread::unix::Thread>::new::thread_start
+  12: <unknown>
+  13: <unknown>
+
+WATCH-INSERT-TAG 18 after node=1001 contained=true
+WATCH-SKIP-TAG 18 add to node 1000 at:
+   0: kobayashi_marust::konclude_ht::completion::u04::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concept_to_individual_skip_and_processing
+   1: kobayashi_marust::konclude_ht::completion::u17::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::try_initializing_concept_from_saturated_data
+   2: kobayashi_marust::konclude_ht::bridge::bridged_unsat_rooted
+   3: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}}
+   4: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner
+   5: kobayashi_marust::konclude_ht::bridge::bridged_classify
+   6: std::sys::backtrace::__rust_begin_short_backtrace
+   7: core::ops::function::FnOnce::call_once{{vtable.shim}}
+   8: <std::sys::thread::unix::Thread>::new::thread_start
+   9: <unknown>
+  10: <unknown>
+
+WATCH-INSERT-TAG 18 before node=1000 descriptor=3 dependency=#1 branch=Some(0) allow_init=false at:
+   0: kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::insert_concepts_to_individual_concept_set
+   1: kobayashi_marust::konclude_ht::completion::u04::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concept_to_individual_skip_and_processing
+   2: kobayashi_marust::konclude_ht::completion::u17::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::try_initializing_concept_from_saturated_data
+   3: kobayashi_marust::konclude_ht::bridge::bridged_unsat_rooted
+   4: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}}
+   5: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner
+   6: kobayashi_marust::konclude_ht::bridge::bridged_classify
+   7: std::sys::backtrace::__rust_begin_short_backtrace
+   8: core::ops::function::FnOnce::call_once{{vtable.shim}}
+   9: <std::sys::thread::unix::Thread>::new::thread_start
+  10: <unknown>
+  11: <unknown>
+
+WATCH-INSERT-TAG 18 after node=1000 contained=false
+WATCH-AND-OPERAND tag=18 node=1000 parent=1 parent-op=1 negate=false operands=[(18, false), (21, false)]
+WATCH-INSERT-TAG 18 before node=1000 descriptor=8 dependency=#2 branch=Some(0) allow_init=false at:
+   0: kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::insert_concepts_to_individual_concept_set
+   1: kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concepts_to_individual
+   2: kobayashi_marust::konclude_ht::completion::u08::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::apply_and_rule
+   3: kobayashi_marust::konclude_ht::completion::u03::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::tableau_rule_choice
+   4: kobayashi_marust::konclude_ht::completion::u02::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on
+   5: kobayashi_marust::konclude_ht::bridge::bridged_unsat_rooted
+   6: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}}
+   7: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner
+   8: kobayashi_marust::konclude_ht::bridge::bridged_classify
+   9: std::sys::backtrace::__rust_begin_short_backtrace
+  10: core::ops::function::FnOnce::call_once{{vtable.shim}}
+  11: <std::sys::thread::unix::Thread>::new::thread_start
+  12: <unknown>
+  13: <unknown>
+
+WATCH-INSERT-TAG 18 after node=1000 contained=true
+WATCH-SKIP-TAG 18 add to node 1001 at:
+   0: kobayashi_marust::konclude_ht::completion::u04::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concept_to_individual_skip_and_processing
+   1: kobayashi_marust::konclude_ht::completion::u17::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::try_expansion_from_saturated_data
+   2: kobayashi_marust::konclude_ht::completion::u35::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::create_successor_individual
+   3: kobayashi_marust::konclude_ht::completion::u08::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::apply_some_rule
+   4: kobayashi_marust::konclude_ht::completion::u03::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::tableau_rule_choice
+   5: kobayashi_marust::konclude_ht::completion::u02::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on
+   6: kobayashi_marust::konclude_ht::bridge::bridged_unsat_rooted
+   7: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}}
+   8: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner
+   9: kobayashi_marust::konclude_ht::bridge::bridged_classify
+  10: std::sys::backtrace::__rust_begin_short_backtrace
+  11: core::ops::function::FnOnce::call_once{{vtable.shim}}
+  12: <std::sys::thread::unix::Thread>::new::thread_start
+  13: <unknown>
+  14: <unknown>
+
+WATCH-INSERT-TAG 18 before node=1001 descriptor=11 dependency=#5 branch=Some(0) allow_init=false at:
+   0: kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::insert_concepts_to_individual_concept_set
+   1: kobayashi_marust::konclude_ht::completion::u04::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concept_to_individual_skip_and_processing
+   2: kobayashi_marust::konclude_ht::completion::u17::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::try_expansion_from_saturated_data
+   3: kobayashi_marust::konclude_ht::completion::u35::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::create_successor_individual
+   4: kobayashi_marust::konclude_ht::completion::u08::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::apply_some_rule
+   5: kobayashi_marust::konclude_ht::completion::u03::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::tableau_rule_choice
+   6: kobayashi_marust::konclude_ht::completion::u02::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on
+   7: kobayashi_marust::konclude_ht::bridge::bridged_unsat_rooted
+   8: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}}
+   9: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner
+  10: kobayashi_marust::konclude_ht::bridge::bridged_classify
+  11: std::sys::backtrace::__rust_begin_short_backtrace
+  12: core::ops::function::FnOnce::call_once{{vtable.shim}}
+  13: <std::sys::thread::unix::Thread>::new::thread_start
+  14: <unknown>
+  15: <unknown>
+
+WATCH-INSERT-TAG 18 after node=1001 contained=false
+WATCH-AND-OPERAND tag=18 node=1001 parent=1 parent-op=1 negate=false operands=[(18, false), (21, false)]
+WATCH-INSERT-TAG 18 before node=1001 descriptor=13 dependency=#6 branch=Some(0) allow_init=false at:
+   0: kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::insert_concepts_to_individual_concept_set
+   1: kobayashi_marust::konclude_ht::completion::u36::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::add_concepts_to_individual
+   2: kobayashi_marust::konclude_ht::completion::u08::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::apply_and_rule
+   3: kobayashi_marust::konclude_ht::completion::u03::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::tableau_rule_choice
+   4: kobayashi_marust::konclude_ht::completion::u02::<impl kobayashi_marust::konclude_ht::completion::algorithm::CompletionTaskHandleAlgorithm>::run_completion_on
+   5: kobayashi_marust::konclude_ht::bridge::bridged_unsat_rooted
+   6: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner::{{closure}}
+   7: kobayashi_marust::konclude_ht::bridge::bridged_classify_opts_with_trigger_absorption_inner
+   8: kobayashi_marust::konclude_ht::bridge::bridged_classify
+   9: std::sys::backtrace::__rust_begin_short_backtrace
+  10: core::ops::function::FnOnce::call_once{{vtable.shim}}
+  11: <std::sys::thread::unix::Thread>::new::thread_start
+  12: <unknown>
+  13: <unknown>
+
+WATCH-INSERT-TAG 18 after node=1001 contained=true

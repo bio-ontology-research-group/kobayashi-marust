@@ -1,0 +1,17 @@
+test asserted_min_data_cardinality_with_top_nominal_is_consistent ... ok
+test exact_data_cardinality_with_has_value_hub_keeps_counting ... ok
+test forced_one_sorted_route_refuses_both_verdicts ... ok
+test hermit_answers_on_every_route ... ok
+test m2197_minimal_is_consistent ... ok
+test m2197_original_is_consistent_with_hermit_taxonomy ... ok
+test rule_checker_does_not_publish_a_one_sorted_inconsistency ... ok
+test top_data_existential_with_top_nominal_is_consistent ... ok
+test top_min_data_cardinality_with_inverse_functional_hub_is_consistent ... ok
+test top_min_data_cardinality_with_thing_equivalent_nominal_is_consistent ... ok
+test top_min_data_cardinality_with_top_nominal_is_consistent ... ok
+test top_min_data_cardinality_with_two_nominals_is_consistent ... ok
+test top_min_data_cardinality_with_universal_role_nominal_is_consistent ... ok
+test top_min_data_cardinality_without_nominal_is_consistent ... ok
+test top_min_object_cardinality_with_top_nominal_stays_inconsistent ... ok
+test top_qualified_min_data_cardinality_with_top_nominal_is_consistent ... ok
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 214.39s

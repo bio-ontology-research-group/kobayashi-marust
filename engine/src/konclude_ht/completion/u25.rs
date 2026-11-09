@@ -951,9 +951,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             // --- non-deterministic FULL_CONCEPT_SET values vs the current label ---
             if reusable && replay.cached_concept_values.iter().any(|v| !v.2) {
                 let con_set_label = calc_alg_context
-                    .process_context_mut()
-                    .node_mut(indi_node)
-                    .get_reapply_concept_label_set(false);
+                    .process_context()
+                    .node(indi_node)
+                    .use_reapply_con_label_set;
                 if con_set_label.is_some() {
                     for &(concept, negation, deterministic) in &replay.cached_concept_values {
                         if deterministic {
@@ -1875,9 +1875,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .backend_sync_data(backend_sync_data)
                     .get_last_synchronization_tested_concept_descriptor();
                 let con_set = calc_alg_context
-                    .process_context_mut()
-                    .node_mut(indi_node)
-                    .get_reapply_concept_label_set(false);
+                    .process_context()
+                    .node(indi_node)
+                    .use_reapply_con_label_set;
                 if con_set.is_some() && backend_synched {
                     let con_des_linker = calc_alg_context
                         .process_context()
@@ -1955,9 +1955,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .backend_sync_data(backend_sync_data)
                 .get_last_synchronization_tested_concept_descriptor();
             let con_set = calc_alg_context
-                .process_context_mut()
-                .node_mut(indi)
-                .get_reapply_concept_label_set(false);
+                .process_context()
+                .node(indi)
+                .use_reapply_con_label_set;
             let assoc_data = calc_alg_context
                 .process_context()
                 .backend_sync_data(backend_sync_data)

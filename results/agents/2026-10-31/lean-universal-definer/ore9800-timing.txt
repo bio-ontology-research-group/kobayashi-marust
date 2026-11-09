@@ -1,0 +1,13 @@
+9800-checked-1.err: 12.20 s 724600 KB
+9800-checked-2.err: 12.22 s 724896 KB
+9800-plain-1.err: 10.22 s 178068 KB
+9800-plain-2.err: 10.27 s 177440 KB
+KM_LEAN_CHECK cannot_check family=ht checker=- certificate=ht-publication bytes=0 worker_pid=1832555 detail="HT checkers not enabled (set KM_LEAN_CHECKERS_HT=1); the HT answer is unchecked"
+KM_LEAN_CHECK cannot_check family=ht checker=- certificate=ht-publication bytes=0 worker_pid=1832803 detail="HT checkers not enabled (set KM_LEAN_CHECKERS_HT=1); the HT answer is unchecked"
+KM_LEAN_CHECK accepted family=cb checker=nominal-cb-input-check certificate=nominal-cb-input bytes=7045926 worker_pid=1832515
+KM_LEAN_CHECK cannot_check family=cb checker=- certificate=cb-publication bytes=0 worker_pid=1832857 detail="nominal mode: certified CB would use the unordered regime, which is incomplete with nominals"
+KM_LEAN_CHECK summary accepted=1 rejected=0 cannot_check=3 events=4
+d158eb4b22e51fe325da9acc71913b9e  9800-checked-1.out
+d158eb4b22e51fe325da9acc71913b9e  9800-checked-2.out
+d158eb4b22e51fe325da9acc71913b9e  9800-plain-1.out
+d158eb4b22e51fe325da9acc71913b9e  9800-plain-2.out

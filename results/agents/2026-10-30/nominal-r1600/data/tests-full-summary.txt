@@ -1,0 +1,188 @@
+     Running unittests src/lib.rs (target/release/deps/kobayashi_marust-60cbe295eca4d725)
+test cli::cb_derivation_candidate_tests::source_exact_taxonomy_uses_real_production_traces_and_models ... FAILED
+test tableau::hypertableau::tests::cardinality_decision_blocks_and_checks_a_cyclic_minimum ... FAILED
+test tableau::hypertableau::tests::cardinality_decision_emits_sat_or_unsat_checker_ready_evidence ... FAILED
+test tableau::hypertableau::tests::certified_unsat_refutation_deepens_past_the_historical_node_cap ... FAILED
+test tableau::hypertableau::tests::equality_and_cardinality_folds_copy_incoming_blocker_edges ... FAILED
+test tableau::hypertableau::tests::equality_decision_emits_sat_or_unsat_checker_ready_evidence ... FAILED
+test tableau::hypertableau::tests::equality_decision_pairwise_blocks_and_checks_a_satisfiable_cycle ... FAILED
+test tableau::hypertableau::tests::equality_free_decision_emits_sat_or_unsat_checker_ready_evidence ... FAILED
+test tableau::hypertableau::tests::global_decision_wraps_regular_evidence_for_the_main_lean_checker ... FAILED
+test tableau::hypertableau::tests::lean_preprocessing_wire_certifies_trigger_and_contrapositives ... FAILED
+test tableau::hypertableau::tests::lean_taxonomy_wire_covers_every_concept_and_ordered_pair ... FAILED
+test tableau::hypertableau::tests::lean_taxonomy_wire_uses_anchored_negative_cells_for_a_genuine_equality_head ... FAILED
+test tableau::hypertableau::tests::native_abox_cardinality_global_decision_uses_joint_wire ... FAILED
+test tableau::hypertableau::tests::native_abox_cardinality_taxonomy_matrix_is_joint_and_tamper_evident ... FAILED
+test tableau::hypertableau::tests::native_abox_global_decision_uses_joint_sat_wire ... FAILED
+test tableau::hypertableau::tests::native_abox_taxonomy_cells_use_one_joint_checked_state ... FAILED
+test tableau::hypertableau::tests::native_abox_taxonomy_matrix_is_complete_and_tamper_evident ... FAILED
+test tableau::hypertableau::tests::regular_decision_envelope_carries_finite_unsat_and_lean_checks_it ... FAILED
+test tableau::hypertableau::tests::regular_decision_prefers_a_checked_finite_sat_model ... FAILED
+test tableau::tests::joint_native_abox_classification_carries_one_source_and_abox ... FAILED
+test tableau::tests::joint_native_abox_source_matrix_passes_real_lean_checker_on_all_six_routes ... FAILED
+test result: FAILED. 3024 passed; 21 failed; 10 ignored; 0 measured; 0 filtered out; finished in 11.94s
+     Running unittests src/bin/elc.rs (target/release/deps/elc-bb4525862982a4c3)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/bin/km.rs (target/release/deps/km-a12421f06393ae02)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/main.rs (target/release/deps/kobayashi_marust-6412a02308b07b1d)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/bin/ofn.rs (target/release/deps/ofn-25be0da4910640f1)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running unittests src/bin/tableau_cli.rs (target/release/deps/tableau_cli-03b3b592cefa41bd)
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/bottom_properties.rs (target/release/deps/bottom_properties-80ccfe8ee5453495)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/bridge_atmost_predecessor.rs (target/release/deps/bridge_atmost_predecessor-dea5afb6ffbe1950)
+test result: ok. 5 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.45s
+     Running tests/bridge_atmost_role_hierarchy.rs (target/release/deps/bridge_atmost_role_hierarchy-01d5bf852ca2a22a)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests/bridge_atmost_zero.rs (target/release/deps/bridge_atmost_zero-e46920255c69a1de)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+     Running tests/bridge_blank_witness_and_same_reuse.rs (target/release/deps/bridge_blank_witness_and_same_reuse-af26b41d8745f2ce)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/bridge_conditional_full_replay.rs (target/release/deps/bridge_conditional_full_replay-7a9f778a6d0d2f7f)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.52s
+     Running tests/bridge_cyclic_equivalence_definition.rs (target/release/deps/bridge_cyclic_equivalence_definition-ae765ff6ffd9020b)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+     Running tests/bridge_generator_soundness.rs (target/release/deps/bridge_generator_soundness-cbd0f48530ab4962)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.03s
+     Running tests/bridge_nominal_merge_relocation.rs (target/release/deps/bridge_nominal_merge_relocation-09102417a45965c9)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+     Running tests/bridge_restricted_subject_nominal_merge.rs (target/release/deps/bridge_restricted_subject_nominal_merge-7cc034841977006b)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests/bridge_self_card_nominal.rs (target/release/deps/bridge_self_card_nominal-bb48ec4cf0767982)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+     Running tests/builtin_iri_aliases.rs (target/release/deps/builtin_iri_aliases-753e90d5b6d4271f)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+     Running tests/cached_classification_model.rs (target/release/deps/cached_classification_model-99193d0eda02feee)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.39s
+     Running tests/cardinality_role_colors.rs (target/release/deps/cardinality_role_colors-a655fa2075b2d4a7)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.23s
+     Running tests/cb_live_state.rs (target/release/deps/cb_live_state-9ce2700b5cf42fe8)
+test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests/cb_nominal_merge_import.rs (target/release/deps/cb_nominal_merge_import-5bf60c3fbdfbcf94)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+     Running tests/cb_route_completeness.rs (target/release/deps/cb_route_completeness-6cc0884fa4f2f7c5)
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.78s
+     Running tests/certified_abox_production.rs (target/release/deps/certified_abox_production-a40afbe9be049bb7)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+     Running tests/chain_domain_route.rs (target/release/deps/chain_domain_route-03caefdefd4948cc)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+     Running tests/compact_distinct_cardinality.rs (target/release/deps/compact_distinct_cardinality-8c8d50056223ae30)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+     Running tests/completion_hot_path_env.rs (target/release/deps/completion_hot_path_env-c5f41a7768462667)
+test completion_rule_bodies_never_call_getenv_inline ... FAILED
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.33s
+     Running tests/constant_data_rule_normalization.rs (target/release/deps/constant_data_rule_normalization-153191458687cfef)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+     Running tests/data_abox_projection.rs (target/release/deps/data_abox_projection-8e6e2112ebae48d5)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+     Running tests/data_assertions_carried.rs (target/release/deps/data_assertions_carried-cd1d5e4246dfb57b)
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 21.12s
+     Running tests/elc_certificate.rs (target/release/deps/elc_certificate-98fe1a82e21e83ce)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+     Running tests/empty_and_universal_data_ranges.rs (target/release/deps/empty_and_universal_data_ranges-299bd82a8ba60ed0)
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 220.89s
+     Running tests/endpoint_transitivity.rs (target/release/deps/endpoint_transitivity-a3c28e7c86d4b9fa)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+     Running tests/entity_spellings.rs (target/release/deps/entity_spellings-630de80d04d42bae)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests/explain_cli.rs (target/release/deps/explain_cli-a22362406c4eb2e1)
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.31s
+     Running tests/finite_data_rule_normalization.rs (target/release/deps/finite_data_rule_normalization-1943fe80e27cfa73)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+     Running tests/finite_rule_taxonomy.rs (target/release/deps/finite_rule_taxonomy-00154e1082f0dfca)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+     Running tests/forced_route_fail_closed.rs (target/release/deps/forced_route_fail_closed-83d85babc2bba3d5)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.32s
+     Running tests/graph_json_cli.rs (target/release/deps/graph_json_cli-fbe989b3d2dc0d9a)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/ground_rule_source.rs (target/release/deps/ground_rule_source-87b6c2ee98ff39a3)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+     Running tests/has_key_rules.rs (target/release/deps/has_key_rules-fcd72bd6b12a2604)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.35s
+     Running tests/ht_subset_blocking.rs (target/release/deps/ht_subset_blocking-1e7849c41fddfd1d)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+     Running tests/ht_subset_model_certificate.rs (target/release/deps/ht_subset_model_certificate-376e702fb94a4007)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/ht_taxonomy_certificate.rs (target/release/deps/ht_taxonomy_certificate-2cd52353e70669a4)
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.43s
+     Running tests/incremental_cb_reasoning.rs (target/release/deps/incremental_cb_reasoning-d3b8c2ed7eb80004)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+     Running tests/incremental_ht_reasoning.rs (target/release/deps/incremental_ht_reasoning-d9c5a5340e40dbf2)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/incremental_reasoning.rs (target/release/deps/incremental_reasoning-bc513fb3b584a98f)
+test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/input_utf8_non_ascii.rs (target/release/deps/input_utf8_non_ascii-435daadb64ae11bf)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests/integer_data_rule_normalization.rs (target/release/deps/integer_data_rule_normalization-c1409364d2bdd4dd)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.07s
+     Running tests/integral_datatype_difference.rs (target/release/deps/integral_datatype_difference-d2dc6d397c49a424)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+     Running tests/inverse_predecessor_propagation.rs (target/release/deps/inverse_predecessor_propagation-5e3e05a556706a96)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+     Running tests/inverse_role_chains.rs (target/release/deps/inverse_role_chains-1c1b0141e8f6d5d6)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+     Running tests/isolated_named_rule_normalization.rs (target/release/deps/isolated_named_rule_normalization-e7607581790ce658)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+     Running tests/issue_3_soundness.rs (target/release/deps/issue_3_soundness-af2cddd278574114)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/merge_hypotheses.rs (target/release/deps/merge_hypotheses-8ba18b5336b67983)
+test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 32.41s
+     Running tests/mirror_route.rs (target/release/deps/mirror_route-12b7c2d0e197701a)
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests/native_data_values.rs (target/release/deps/native_data_values-ac0f602c23460063)
+test result: ok. 18 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 29.03s
+     Running tests/nominal_ground_body.rs (target/release/deps/nominal_ground_body-2b87cdc34d470bba)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/nominal_seq_order.rs (target/release/deps/nominal_seq_order-a6b8af428c610682)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 37.98s
+     Running tests/nominal_wine_absorption.rs (target/release/deps/nominal_wine_absorption-2b4034f6b042a016)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/r3_disjunctive_equality.rs (target/release/deps/r3_disjunctive_equality-c453a7f703dfba7a)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 5.68s
+     Running tests/realization_cli.rs (target/release/deps/realization_cli-0efb83955807bac3)
+test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.42s
+     Running tests/role_automaton_completeness.rs (target/release/deps/role_automaton_completeness-f5d27dc4faab6937)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+     Running tests/routing_metamorphic.rs (target/release/deps/routing_metamorphic-a03b1c83cec46b9a)
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 11.63s
+     Running tests/rule_independent_abox_clash.rs (target/release/deps/rule_independent_abox_clash-d43ed75727b785de)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests/rule_taxonomy_nominal.rs (target/release/deps/rule_taxonomy_nominal-91bab100d6da7e02)
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+     Running tests/rules_inert_sort_certificate.rs (target/release/deps/rules_inert_sort_certificate-3f0fa05ca7889abf)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+     Running tests/rules_inert_sorts_routes.rs (target/release/deps/rules_inert_sorts_routes-5c4ea41704fb213f)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+     Running tests/rules_route.rs (target/release/deps/rules_route-ec7fe2317ba56635)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+     Running tests/sequential_classification.rs (target/release/deps/sequential_classification-1ab05b310ccca76e)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+     Running tests/source_axiom_drops.rs (target/release/deps/source_axiom_drops-5e45aacd5be409be)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.39s
+     Running tests/source_incremental.rs (target/release/deps/source_incremental-cbfac4699ae21a2e)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.36s
+     Running tests/source_incremental_nominals.rs (target/release/deps/source_incremental_nominals-97020362de28877a)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+     Running tests/source_incremental_rules.rs (target/release/deps/source_incremental_rules-59b9f2937ba5907e)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+     Running tests/source_module_reuse.rs (target/release/deps/source_module_reuse-91a76d1fa9cd30fd)
+test common_data_core_prefers_plain_module_before_full_common_path ... FAILED
+test result: FAILED. 37 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.21s
+     Running tests/special_source_iris.rs (target/release/deps/special_source_iris-d2fc20b3a4f1992e)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+     Running tests/symbolic_source_classification.rs (target/release/deps/symbolic_source_classification-95aea0e5cb049977)
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+     Running tests/top_nominal_data_successors.rs (target/release/deps/top_nominal_data_successors-cede98c5f4e615c8)
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 275.01s
+     Running tests/transitive_rule_reduction.rs (target/release/deps/transitive_rule_reduction-bf49bf00edf42627)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.15s
+     Running tests/trigger_filler_recognition.rs (target/release/deps/trigger_filler_recognition-00d4a2af535e7e20)
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+     Running tests/unary_rule_normalization.rs (target/release/deps/unary_rule_normalization-d573261ffbc717b1)
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.05s
+     Running tests/universal_role_and_top_data_range.rs (target/release/deps/universal_role_and_top_data_range-bb5a29301eb288ed)
+test data_value_singleton_next_to_nominal_successors ... FAILED
+test result: FAILED. 12 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 20.38s

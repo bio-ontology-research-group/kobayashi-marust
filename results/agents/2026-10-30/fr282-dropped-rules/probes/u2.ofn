@@ -1,0 +1,10 @@
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://example.org/u>
+Declaration(Class(<http://example.org/u#A>)) Declaration(Class(<http://example.org/u#B>)) Declaration(Class(<http://example.org/u#C>)) Declaration(Class(<http://example.org/u#E>)) Declaration(Class(<http://example.org/u#F>)) Declaration(ObjectProperty(<http://example.org/u#r>)) Declaration(NamedIndividual(<http://example.org/u#a>)) Declaration(NamedIndividual(<http://example.org/u#b>))
+SubClassOf(<http://example.org/u#A> ObjectUnionOf(<http://example.org/u#E> <http://example.org/u#F>))
+SubClassOf(<http://example.org/u#F> <http://example.org/u#E>)
+SubClassOf(ObjectSomeValuesFrom(owl:topObjectProperty <http://example.org/u#B>) <http://example.org/u#C>)
+ClassAssertion(<http://example.org/u#A> <http://example.org/u#a>)
+ObjectPropertyAssertion(<http://example.org/u#r> <http://example.org/u#a> <http://example.org/u#b>)
+DLSafeRule(Body(ClassAtom(<http://example.org/u#E> Variable(<http://example.org/u#x>)) ObjectPropertyAtom(<http://example.org/u#r> Variable(<http://example.org/u#x>) Variable(<http://example.org/u#y>))) Head(ClassAtom(<http://example.org/u#B> Variable(<http://example.org/u#x>))))
+)

@@ -685,6 +685,18 @@ struct DatatypeRelationIndex {
     singletons: crate::fxhash::FxHashSet<usize>,
     inclusions: crate::fxhash::FxHashSet<(usize, usize)>,
     disjoint: crate::fxhash::FxHashSet<(usize, usize)>,
+    /// Linear-form helpers (`frontend::datatypes::linear_value_relation_clauses`):
+    /// the helper concepts each value implies directly.
+    value_aux: crate::fxhash::FxHashMap<usize, Vec<usize>>,
+    /// Index-digit helpers: concept -> (position, digit).
+    aux_digit: crate::fxhash::FxHashMap<usize, (u32, u32)>,
+    /// `(position, d, e)` with `d < e` whose two helpers carry their
+    /// disjointness clause.
+    clashing_digits: crate::fxhash::FxHashSet<(u32, u32, u32)>,
+    /// Equality classes of values under mutual inclusion clauses (root per
+    /// value) and the index digits each class implies.
+    value_class: crate::fxhash::FxHashMap<usize, usize>,
+    class_digits: crate::fxhash::FxHashMap<usize, Vec<(u32, u32)>>,
 }
 
 impl DatatypeRelationIndex {
@@ -711,6 +723,245 @@ impl DatatypeRelationIndex {
         }
         index
     }
+
+    /// As [`DatatypeRelationIndex::new`], also reading the helper concepts of
+    /// the linear value encoding, so that a relation the present clauses
+    /// entail through a helper counts as present. Whether the helper clauses
+    /// themselves are exact is checked by [`linear_value_encoding_exact`].
+    fn for_input(tin: &TInput) -> Self {
+        let mut index = Self::new(&tin.clauses);
+        let aux = |concept: usize| tin.concepts.get(concept)
+            .is_some_and(|name| crate::frontend::datatypes::is_value_aux_name(name));
+        for (concept, name) in tin.concepts.iter().enumerate() {
+            if let Some(digit) = crate::frontend::datatypes::value_aux_digit(name) {
+                index.aux_digit.insert(concept, digit);
+            }
+        }
+        for &(left, right) in &index.inclusions {
+            if aux(right) && !aux(left) {
+                index.value_aux.entry(left).or_default().push(right);
+            }
+        }
+        for &(left, right) in &index.disjoint {
+            if let (Some(&(p, a)), Some(&(q, b))) = (index.aux_digit.get(&left), index.aux_digit.get(&right)) {
+                if p == q && a != b {
+                    index.clashing_digits.insert((p, a.min(b), a.max(b)));
+                }
+            }
+        }
+        // Equality classes of values (mutual value inclusions).
+        let is_value = |concept: usize| tin.concepts.get(concept)
+            .is_some_and(|name| name.starts_with("__dt__val__"));
+        let mut parent: crate::fxhash::FxHashMap<usize, usize> = Default::default();
+        fn find(parent: &mut crate::fxhash::FxHashMap<usize, usize>, item: usize) -> usize {
+            let mut root = item;
+            while let Some(&next) = parent.get(&root) {
+                if next == root { break; }
+                root = next;
+            }
+            let mut current = item;
+            while let Some(&next) = parent.get(&current) {
+                if next == root || next == current { break; }
+                parent.insert(current, root);
+                current = next;
+            }
+            root
+        }
+        for &(left, right) in &index.inclusions {
+            if is_value(left) && is_value(right) && index.inclusions.contains(&(right, left)) {
+                let (a, b) = (find(&mut parent, left), find(&mut parent, right));
+                if a != b {
+                    parent.insert(a.max(b), a.min(b));
+                }
+            }
+        }
+        let values: Vec<usize> = index.value_aux.keys().copied()
+            .chain(parent.keys().copied()).collect();
+        for value in values {
+            let root = find(&mut parent, value);
+            index.value_class.insert(value, root);
+        }
+        let mut class_digits: crate::fxhash::FxHashMap<usize, Vec<(u32, u32)>> = Default::default();
+        for (&value, heads) in &index.value_aux {
+            let root = index.value_class.get(&value).copied().unwrap_or(value);
+            for head in heads {
+                if let Some(&digit) = index.aux_digit.get(head) {
+                    class_digits.entry(root).or_default().push(digit);
+                }
+            }
+        }
+        for digits in class_digits.values_mut() {
+            digits.sort_unstable();
+            digits.dedup();
+        }
+        index.class_digits = class_digits;
+        index
+    }
+
+    fn class(&self, concept: usize) -> usize {
+        self.value_class.get(&concept).copied().unwrap_or(concept)
+    }
+
+    /// `left ⊑ right` follows from a direct inclusion clause or through a
+    /// helper of `left` (a membership profile).
+    fn includes(&self, left: usize, right: usize) -> bool {
+        self.inclusions.contains(&(left, right))
+            || self.value_aux.get(&left).is_some_and(|heads| heads.iter()
+                .any(|&head| self.inclusions.contains(&(head, right))))
+    }
+
+    /// `left ⊓ right ⊑ ⊥` follows from a direct disjointness clause, through a
+    /// helper of either side, or from two different index digits at a
+    /// position whose helpers are disjoint.
+    fn separated(&self, left: usize, right: usize) -> bool {
+        let direct = |a: usize, b: usize| self.disjoint.contains(&(a.min(b), a.max(b)));
+        if direct(left, right) {
+            return true;
+        }
+        let through = |a: usize, b: usize| self.value_aux.get(&a)
+            .is_some_and(|heads| heads.iter().any(|&head| direct(head, b)));
+        if through(left, right) || through(right, left) {
+            return true;
+        }
+        let (Some(a), Some(b)) = (self.class_digits.get(&self.class(left)), self.class_digits.get(&self.class(right)))
+        else { return false };
+        a.iter().any(|&(position, d)| b.iter().any(|&(other, e)| other == position && d != e
+            && self.clashing_digits.contains(&(position, d.min(e), d.max(e)))))
+    }
+
+    /// Two values are equal through mutual inclusion clauses, possibly via
+    /// the first value of their identity class.
+    fn equal(&self, left: usize, right: usize) -> bool {
+        (self.inclusions.contains(&(left, right)) && self.inclusions.contains(&(right, left)))
+            || (self.value_class.contains_key(&left) && self.class(left) == self.class(right))
+    }
+}
+
+/// The helper clauses of the linear value encoding are exact: a helper is
+/// implied only by values; two equal values never imply two different
+/// digits of one position (so two values separated by digits are distinct
+/// data values); and a membership profile is included in (disjoint from) a range
+/// only when every value implying it is. Interpreting each helper as the
+/// union of the values that imply it then satisfies every helper clause in
+/// every model of the datatype map, so the helpers add no consequence over
+/// the source vocabulary.
+fn linear_value_encoding_exact(tin: &TInput) -> bool {
+    use crate::frontend::datatypes as dt;
+    macro_rules! defer {
+        ($reason:literal) => {{
+            note_bridge_defer(concat!("datatype gate: ", $reason));
+            if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+                eprintln!("BRIDGE-DATATYPE-DEFER: {}", $reason);
+            }
+            return false;
+        }};
+    }
+    let name = |concept: usize| tin.concepts.get(concept).map(String::as_str).unwrap_or("");
+    let aux = |concept: usize| dt::is_value_aux_name(name(concept));
+    let mut members: crate::fxhash::FxHashMap<usize, Vec<usize>> = Default::default();
+    let mut profile_includes: Vec<(usize, usize)> = Vec::new();
+    let mut profile_excludes: Vec<(usize, usize)> = Vec::new();
+    let mut digits_of: crate::fxhash::FxHashMap<usize, Vec<(u32, u32)>> = Default::default();
+    let mut helper_guards: Vec<(usize, usize)> = Vec::new();
+    for clause in &tin.clauses {
+        if !clause_mentions_value_aux(tin, clause) {
+            continue;
+        }
+        match (clause.body.as_slice(), clause.head.as_slice()) {
+            ([HAtom::Concept { neg: false, c: value, t }], [HAtom::Concept { neg: false, c: helper, t: ht }])
+                if t == ht && aux(*helper) && name(*value).starts_with("__dt__val__") =>
+            {
+                members.entry(*helper).or_default().push(*value);
+                if let Some(digit) = dt::value_aux_digit(name(*helper)) {
+                    digits_of.entry(*value).or_default().push(digit);
+                }
+            }
+            ([HAtom::Concept { neg: false, c: helper, t }], [HAtom::Concept { neg: false, c: range, t: ht }])
+                if t == ht && aux(*helper) && dt::value_aux_digit(name(*helper)).is_none()
+                    && !aux(*range) && dt::bridge_tbox_atomic_name(name(*range)) =>
+                profile_includes.push((*helper, *range)),
+            ([HAtom::Concept { neg: false, c: left, t: lt }, HAtom::Concept { neg: false, c: right, t: rt }], [])
+                if lt == rt =>
+            {
+                match (dt::value_aux_digit(name(*left)), dt::value_aux_digit(name(*right))) {
+                    (Some((p, a)), Some((q, b))) if p == q && a != b => {}
+                    (None, None) if aux(*left) && !aux(*right) && dt::bridge_tbox_atomic_name(name(*right)) =>
+                        profile_excludes.push((*left, *right)),
+                    (None, None) if aux(*right) && !aux(*left) && dt::bridge_tbox_atomic_name(name(*left)) =>
+                        profile_excludes.push((*right, *left)),
+                    // A helper (index digit or membership profile) disjoint
+                    // from a concept that is not a helper: the two-sorted
+                    // nominal encoding's `G ⊓ D ⊑ ⊥` with `D` folded away
+                    // (docs/HYBRID-CB-HT.md section 19). Checked below
+                    // against the values that imply the helper.
+                    _ if aux(*left) && !aux(*right) => helper_guards.push((*left, *right)),
+                    _ if aux(*right) && !aux(*left) => helper_guards.push((*right, *left)),
+                    _ => defer!("a linear value-encoding disjointness has an unsupported shape"),
+                }
+            }
+            _ => defer!("a linear value-encoding clause has an unsupported shape"),
+        }
+    }
+    for (helper, range) in profile_includes {
+        for &value in members.get(&helper).map(Vec::as_slice).unwrap_or(&[]) {
+            if dt::bridge_exact_atomic_subsumed(name(value), name(range)) != Some(true) {
+                defer!("a membership profile includes a range one of its values is not in");
+            }
+        }
+    }
+    for (helper, range) in profile_excludes {
+        for &value in members.get(&helper).map(Vec::as_slice).unwrap_or(&[]) {
+            if dt::bridge_exact_atomic_disjoint(name(value), name(range)) != Some(true) {
+                defer!("a membership profile excludes a range one of its values is in");
+            }
+        }
+    }
+    // `H ⊓ G ⊑ ⊥` holds for `H` read as the union of its values when every
+    // such value `v` has the clause `v ⊓ G ⊑ ⊥` itself: that clause mentions
+    // no helper, so every model of the remaining clauses satisfies it.
+    if !helper_guards.is_empty() {
+        let mut disjoint: crate::fxhash::FxHashSet<(usize, usize)> = Default::default();
+        for clause in &tin.clauses {
+            if let ([HAtom::Concept { neg: false, c: a, t: at }, HAtom::Concept { neg: false, c: b, t: bt }], [])
+                = (clause.body.as_slice(), clause.head.as_slice())
+            {
+                if at == bt {
+                    disjoint.insert(((*a).min(*b), (*a).max(*b)));
+                }
+            }
+        }
+        for (helper, guard) in helper_guards {
+            for &value in members.get(&helper).map(Vec::as_slice).unwrap_or(&[]) {
+                if !disjoint.contains(&(value.min(guard), value.max(guard))) {
+                    defer!("a helper is disjoint from a concept one of its values is not disjoint from");
+                }
+            }
+        }
+    }
+    // Equal values (one identity key) never carry two digits of one position.
+    let mut by_key: std::collections::HashMap<String, Vec<(u32, u32)>> = Default::default();
+    for (value, digits) in digits_of {
+        let Some(key) = dt::bridge_value_identity_key(name(value)) else {
+            defer!("an indexed value has no exact identity");
+        };
+        by_key.entry(key).or_default().extend(digits);
+    }
+    for digits in by_key.values_mut() {
+        digits.sort_unstable();
+        digits.dedup();
+        if digits.windows(2).any(|pair| pair[0].0 == pair[1].0) {
+            defer!("two equal values carry different index digits");
+        }
+    }
+    true
+}
+
+/// A clause of the linear value encoding (checked as a whole by
+/// [`linear_value_encoding_exact`]).
+fn clause_mentions_value_aux(tin: &TInput, clause: &HtClause) -> bool {
+    clause.body.iter().chain(&clause.head).any(|atom| matches!(atom,
+        HAtom::Concept { c, .. } if tin.concepts.get(*c)
+            .is_some_and(|name| crate::frontend::datatypes::is_value_aux_name(name))))
 }
 
 fn supported_datatype_clause_shape(tin: &TInput, clause: &HtClause) -> bool {
@@ -784,6 +1035,24 @@ fn pure_datatype_relation_is_exact(tin: &TInput, clause: &HtClause) -> bool {
                 || crate::frontend::datatypes::bridge_exact_integral_cover(sub_name, &[sup_name]),
         };
     }
+    // The excluded middle `→ ¬A(x) ∨ A(x)` of an admitted complement.
+    if clause.body.is_empty() && clause.head.len() == 2 {
+        let (HAtom::Concept { neg: false, c: left, t: left_term },
+            HAtom::Concept { neg: false, c: right, t: right_term }) = (&clause.head[0], &clause.head[1])
+        else {
+            return false;
+        };
+        if left_term != right_term {
+            return false;
+        }
+        let (Some(left_name), Some(right_name)) = (tin.concepts.get(*left), tin.concepts.get(*right)) else {
+            return false;
+        };
+        let complement_of = |complement: &str, operand: &str| {
+            crate::frontend::datatypes::bridge_exact_complement_operand(complement).as_deref() == Some(operand)
+        };
+        return complement_of(left_name, right_name) || complement_of(right_name, left_name);
+    }
     if clause.head.is_empty() && clause.body.len() == 2 {
         let (
             HAtom::Concept {
@@ -819,9 +1088,9 @@ fn pure_datatype_relation_is_exact(tin: &TInput, clause: &HtClause) -> bool {
     }
     if clause.body.len() == 2 && clause.head.len() == 1 {
         // The only exact equality-head shape is a value singleton.
-        return tin.concepts.iter().enumerate().any(|(concept, name)| {
-            name.starts_with("__dt__val__") && datatype_singleton_clause(clause, concept)
-        });
+        let HAtom::Concept { c: concept, .. } = &clause.body[0] else { return false };
+        return tin.concepts.get(*concept).is_some_and(|name| name.starts_with("__dt__val__"))
+            && datatype_singleton_clause(clause, *concept);
     }
     if let ([HAtom::Concept { neg: false, c, t }], head) =
         (clause.body.as_slice(), clause.head.as_slice())
@@ -836,7 +1105,10 @@ fn pure_datatype_relation_is_exact(tin: &TInput, clause: &HtClause) -> bool {
         }).collect();
         if concept_heads.as_ref().is_some_and(|heads|
             crate::frontend::datatypes::bridge_exact_integral_cover(range_name, heads)
-                || crate::frontend::datatypes::bridge_exact_union_cover(range_name, heads)) {
+                || crate::frontend::datatypes::bridge_exact_union_cover(range_name, heads)
+                || crate::frontend::datatypes::exact_enumerated_cover(range_name, heads)
+                || crate::frontend::datatypes::bridge_exact_ieee_cell_cover(range_name, heads)
+                || crate::frontend::datatypes::bridge_exact_decimal_cell_cover(range_name, heads)) {
             return true;
         }
         if crate::frontend::datatypes::bridge_tbox_finite_values(range_name).is_some() {
@@ -1205,6 +1477,7 @@ fn blank_witness_search(
 fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> bool {
     macro_rules! defer {
         ($reason:literal) => {{
+            note_bridge_defer(concat!("datatype gate: ", $reason));
             if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                 eprintln!("BRIDGE-DATATYPE-DEFER: {}", $reason);
             }
@@ -1216,7 +1489,8 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         .concepts
         .iter()
         .enumerate()
-        .filter_map(|(index, name)| name.starts_with("__dt__").then_some(index))
+        .filter_map(|(index, name)| (name.starts_with("__dt__")
+            && !crate::frontend::datatypes::is_value_aux_name(name)).then_some(index))
         .collect();
     // A source data property makes data successors even when no `__dt__`
     // concept occurs (an unqualified data cardinality reads its
@@ -1584,6 +1858,50 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         }
     }
 
+    // The same bound applies to a data role in a nominal assertion: an
+    // asserted `ClassAssertion(≥ 3 u, a)` carries no datatype name, so the
+    // datatype-assertion loop above skips it, while the TBox axiom
+    // `{a} ⊑ ≥ 3 u` defers below. Check every conjunct of every assertion that
+    // mentions a data role with the TBox rule (an asserted positive
+    // existential over an atomic value or range is the head use admitted
+    // there).
+    fn asserted_data_role_uses_are_safe(
+        concept: &SourceConcept,
+        datatype_roles: &crate::fxhash::FxHashSet<&str>,
+    ) -> bool {
+        match concept {
+            SourceConcept::And(conjuncts) => conjuncts
+                .iter()
+                .all(|conjunct| asserted_data_role_uses_are_safe(conjunct, datatype_roles)),
+            SourceConcept::Exists(SourceRole::Name(role), filler)
+                if datatype_roles.contains(role.as_str())
+                    && matches!(filler.as_ref(), SourceConcept::Name(name) if name.starts_with("__dt__")) =>
+            {
+                true
+            }
+            other => data_role_uses_are_safe_cardinality_only(other, datatype_roles),
+        }
+    }
+    for individual in &tin.nominal_abox.individuals {
+        for assertion in &individual.assertions {
+            if !asserted_data_role_uses_are_safe(assertion, &datatype_role_names) {
+                note_bridge_defer(format!(
+                    "datatype gate: a nominal assertion uses a data role outside an exact bound \
+                     (individual {}: {assertion:?})",
+                    individual.individual
+                ));
+                if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+                    eprintln!(
+                        "BRIDGE-DATATYPE-DEFER: a nominal assertion uses a data role outside \
+                         an exact bound; individual={} value={assertion:?}",
+                        individual.individual
+                    );
+                }
+                return false;
+            }
+        }
+    }
+
     // Data successors share the completion graph implementation with object
     // successors. Prove that every non-datatype source axiom holds on a fresh
     // data element when all object concepts, nominals, and ordinary outgoing
@@ -1655,6 +1973,10 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                 data_role_uses_are_safe_cardinality_only(&axiom.left, &datatype_role_names)
                     && data_role_uses_are_safe_cardinality_only(&axiom.right, &datatype_role_names);
             if !allowed_domain && !allowed_safe_cardinality {
+                note_bridge_defer(format!(
+                    "datatype gate: a data role occurs outside an exact datatype or \
+                     object-domain axiom (source axiom {axiom_index}: {axiom:?})"
+                ));
                 if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                     eprintln!(
                         "BRIDGE-DATATYPE-DEFER: a data role occurs outside an exact datatype \
@@ -1750,6 +2072,11 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         let disjoint_data = disjoint_role_pair_clause(clause).is_some_and(|(left, right)|
             datatype_roles.contains(&left) && datatype_roles.contains(&right));
         if !functional && !domain && !inclusion && !disjoint_data {
+            note_bridge_defer(format!(
+                "datatype gate: a data role occurs in an unsupported non-datatype clause \
+                 (clause {clause_index}: {})",
+                named_clause(tin, clause)
+            ));
             if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                 let encoded = serde_json::to_string(clause)
                     .unwrap_or_else(|_| "<serialization failed>".to_string());
@@ -1777,6 +2104,11 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             && !source_mode_suppresses_ordinary_concept_clause(tin, clause)
             && !supported_datatype_clause_shape(tin, clause)
         {
+            note_bridge_defer(format!(
+                "datatype gate: a datatype-bearing clause has an unsupported shape \
+                 (clause {clause_index}: {})",
+                named_clause(tin, clause)
+            ));
             if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                 let encoded = serde_json::to_string(clause)
                     .unwrap_or_else(|_| "<serialization failed>".to_string());
@@ -1790,8 +2122,14 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
     }
     for (clause_index, clause) in tin.clauses.iter().enumerate() {
         if is_pure_internal_datatype_relation_clause(tin, clause)
+            && !clause_mentions_value_aux(tin, clause)
             && !pure_datatype_relation_is_exact(tin, clause)
         {
+            note_bridge_defer(format!(
+                "datatype gate: a pure datatype relation clause is not exact in the \
+                 supported map (clause {clause_index}: {})",
+                named_clause(tin, clause)
+            ));
             if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                 let encoded = serde_json::to_string(clause)
                     .unwrap_or_else(|_| "<serialization failed>".to_string());
@@ -1822,7 +2160,46 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         ranges.entry(family).or_default().push(concept);
     }
 
-    let relations = DatatypeRelationIndex::new(&tin.clauses);
+    if !linear_value_encoding_exact(tin) {
+        return false;
+    }
+    let relations = DatatypeRelationIndex::for_input(tin);
+    // An admitted complement `¬A` needs its disjointness `¬A ∧ A → ⊥` and
+    // its excluded middle `→ ¬A ∨ A`. A node that carries only complements
+    // is realized by a fresh IRI, which lies in every admitted complement and
+    // outside every other range unless an `xsd:anyURI` range is present.
+    {
+        use crate::frontend::datatypes as dt;
+        // A complement the clause set no longer mentions (the HT conversion
+        // may replace it by a definer) carries no label and needs no clause.
+        let mentioned = |concept: usize| tin.clauses.iter().any(|clause| clause.body.iter().chain(&clause.head)
+            .any(|atom| matches!(atom, HAtom::Concept { c, .. } | HAtom::Exist { c, .. } if *c == concept)))
+            || tin.source_axioms.iter().any(|axiom| {
+                let name = tin.concepts[concept].as_str();
+                source_concept_mentions_name(&axiom.left, name) || source_concept_mentions_name(&axiom.right, name)
+            });
+        let complements: Vec<(usize, usize)> = datatype_ids.iter().filter(|&&concept| mentioned(concept)).filter_map(|&concept| {
+            let operand = dt::bridge_exact_complement_operand(&tin.concepts[concept])?;
+            Some((concept, tin.concepts.iter().position(|name| *name == operand).unwrap_or(usize::MAX)))
+        }).collect();
+        if !complements.is_empty() {
+            if datatype_ids.iter().any(|&concept| dt::bridge_tbox_atomic_family(&tin.concepts[concept]) == Some("anyURI")) {
+                defer!("a data complement next to an anyURI range");
+            }
+            for &(complement, operand) in &complements {
+                if operand == usize::MAX || !relations.separated(complement, operand) {
+                    defer!("a data complement lacks its disjointness from its operand");
+                }
+                let middle = tin.clauses.iter().any(|clause| clause.body.is_empty()
+                    && matches!(clause.head.as_slice(),
+                        [HAtom::Concept { neg: false, c: a, t: ta }, HAtom::Concept { neg: false, c: b, t: tb }]
+                            if ta == tb && ((*a == complement && *b == operand) || (*a == operand && *b == complement))));
+                if !middle {
+                    defer!("a data complement lacks its excluded middle");
+                }
+            }
+        }
+    }
     // A local `forall(r, D)` without a matching global range intersects D
     // with whatever else labels an r-successor. Admit it only when D's
     // relation to every other datatype symbol (except rdfs:Literal) is decided
@@ -1841,19 +2218,19 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             let mut decided = false;
             if dt::bridge_exact_atomic_subsumed(left, right) == Some(true) {
                 decided = true;
-                if !relations.inclusions.contains(&(member, other)) {
+                if !relations.includes(member, other) {
                     defer!("a local datatype restriction lacks an inclusion clause");
                 }
             }
             if dt::bridge_exact_atomic_subsumed(right, left) == Some(true) {
                 decided = true;
-                if !relations.inclusions.contains(&(other, member)) {
+                if !relations.includes(other, member) {
                     defer!("a local datatype restriction lacks a reverse inclusion clause");
                 }
             }
             if dt::bridge_exact_atomic_disjoint(left, right) == Some(true) {
                 decided = true;
-                if !relations.disjoint.contains(&(member.min(other), member.max(other))) {
+                if !relations.separated(member, other) {
                     defer!("a local datatype restriction lacks a disjointness clause");
                 }
             }
@@ -1870,8 +2247,28 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             }
         }
     }
+    // Without a construct that forces two data successors of one element
+    // apart, the frontend leaves out the singleton clause of every value with
+    // a decided identity (`datatypes::datatype_relation_clauses_with`); no
+    // clause then distinguishes two nodes carrying one value.
+    // The elision also needs the relation of an elided value to every other
+    // value decided (`fullyDecided` of `DataValueSingletonElision.lean`).
+    // Two values with identity keys are always related (equal keys or
+    // separated), so a missing singleton is admitted only when every value
+    // of the vocabulary has a key (`opaque_merge.ofn`).
+    let singletons_elidable = {
+        let (distinct, disjoint_data) = forced_distinct_data_successors(tin);
+        !distinct
+            && !disjoint_data
+            && values.iter().all(|&value| {
+                crate::frontend::datatypes::bridge_value_identity_key(&tin.concepts[value]).is_some()
+            })
+    };
     for &value in &values {
-        if !relations.singletons.contains(&value) {
+        if !relations.singletons.contains(&value)
+            && !(singletons_elidable
+                && crate::frontend::datatypes::bridge_value_identity_key(&tin.concepts[value]).is_some())
+        {
             defer!("a datatype value lacks its singleton equality clause");
         }
         let Some(family) =
@@ -1896,13 +2293,13 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                     && crate::frontend::datatypes::bridge_exact_atomic_subsumed(
                         &tin.concepts[value], &tin.concepts[range]) == Some(false)
                 {
-                    if !relations.disjoint.contains(&(value.min(range), value.max(range))) {
+                    if !relations.separated(value, range) {
                         defer!("a datatype value lacks its exclusion from a present family range");
                     }
                     continue;
                 }
                 if crate::frontend::datatypes::bridge_tbox_finite_values(&tin.concepts[range]).is_none()
-                    && !relations.inclusions.contains(&(value, range)) {
+                    && !relations.includes(value, range) {
                     defer!("a datatype value lacks membership in its present family range");
                 }
             }
@@ -1911,12 +2308,12 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             crate::frontend::datatypes::bridge_tbox_atomic_family(&tin.concepts[range]) == Some("finite")) {
             if crate::frontend::datatypes::bridge_exact_atomic_subsumed(
                 &tin.concepts[value], &tin.concepts[range]) == Some(true) {
-                if !relations.inclusions.contains(&(value, range)) {
+                if !relations.includes(value, range) {
                     defer!("a datatype value lacks its exact range membership");
                 }
             } else if crate::frontend::datatypes::bridge_exact_atomic_disjoint(
                 &tin.concepts[value], &tin.concepts[range]) == Some(true) {
-                if !relations.disjoint.contains(&(value.min(range), value.max(range))) {
+                if !relations.separated(value, range) {
                     defer!("a datatype value lacks its exact range exclusion");
                 }
             } else {
@@ -1924,13 +2321,59 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             }
         }
     }
-    for (position, &left) in values.iter().enumerate() {
-        for &right in values.iter().skip(position + 1) {
-            let equal = relations.inclusions.contains(&(left, right))
-                && relations.inclusions.contains(&(right, left));
-            let disjoint = relations.disjoint.contains(&(left.min(right), left.max(right)));
-            if !equal && !disjoint {
-                defer!("a datatype value pair is neither proved equal nor disjoint");
+    // Every pair of values is proved equal or disjoint. Values whose
+    // equality class carries a complete index (one digit at every position
+    // whose used digits are pairwise disjoint) are pairwise disjoint across
+    // classes exactly when their indices differ; the remaining values are
+    // checked pair by pair.
+    {
+        let mut used: std::collections::BTreeMap<u32, std::collections::BTreeSet<u32>> = Default::default();
+        for digits in relations.class_digits.values() {
+            for &(position, digit) in digits {
+                used.entry(position).or_default().insert(digit);
+            }
+        }
+        let clashing_positions: std::collections::BTreeSet<u32> = used.iter()
+            .filter(|(position, digits)| {
+                let digits: Vec<u32> = digits.iter().copied().collect();
+                digits.iter().enumerate().all(|(at, &d)| digits[at + 1..].iter()
+                    .all(|&e| relations.clashing_digits.contains(&(**position, d, e))))
+            })
+            .map(|(position, _)| *position)
+            .collect();
+        let positions = clashing_positions.len();
+        let complete = |value: usize| relations.class_digits.get(&relations.class(value))
+            .filter(|digits| positions > 0 && digits.len() == positions
+                && digits.iter().all(|(position, _)| clashing_positions.contains(position)));
+        let mut index_of_class: crate::fxhash::FxHashMap<Vec<(u32, u32)>, usize> = Default::default();
+        let mut indexed_classes: crate::fxhash::FxHashSet<usize> = Default::default();
+        let mut rest: Vec<usize> = Vec::new();
+        for &value in &values {
+            match complete(value) {
+                Some(bits) => {
+                    let class = relations.class(value);
+                    if !relations.equal(value, class) && value != class {
+                        defer!("a datatype value pair is neither proved equal nor disjoint");
+                    }
+                    if indexed_classes.insert(class) {
+                        if index_of_class.insert(bits.clone(), class).is_some() {
+                            defer!("a datatype value pair is neither proved equal nor disjoint");
+                        }
+                    }
+                }
+                None => rest.push(value),
+            }
+        }
+        let rest_position: crate::fxhash::FxHashMap<usize, usize> =
+            rest.iter().enumerate().map(|(position, &value)| (value, position)).collect();
+        for (position, &left) in rest.iter().enumerate() {
+            for &right in values.iter() {
+                if right == left || rest_position.get(&right).is_some_and(|&other| other <= position) {
+                    continue;
+                }
+                if !relations.equal(left, right) && !relations.separated(left, right) {
+                    defer!("a datatype value pair is neither proved equal nor disjoint");
+                }
             }
         }
     }
@@ -1989,6 +2432,19 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
 /// HT terms these are the datatype atoms that can occur in a clause body
 /// other than a pure datatype relation clause: at-most fillers, left-hand
 /// sides, equivalence definitions, and complemented fillers.
+fn source_concept_mentions_name(concept: &SourceConcept, name: &str) -> bool {
+    match concept {
+        SourceConcept::Name(other) => other == name,
+        SourceConcept::Not(inner) => source_concept_mentions_name(inner, name),
+        SourceConcept::And(items) | SourceConcept::Or(items) =>
+            items.iter().any(|item| source_concept_mentions_name(item, name)),
+        SourceConcept::Exists(_, filler) | SourceConcept::Forall(_, filler)
+        | SourceConcept::AtLeast(_, _, filler) | SourceConcept::AtMost(_, _, filler) =>
+            source_concept_mentions_name(filler, name),
+        _ => false,
+    }
+}
+
 fn collect_negative_datatype_names<'a>(
     concept: &'a SourceConcept,
     positive: bool,
@@ -2034,6 +2490,16 @@ fn body_sensitive_datatype_names(tin: &TInput) -> std::collections::HashSet<&str
             }
         }
     }
+    // A node carrying an admitted complement `¬A` must be realized outside
+    // `A`, and a node without `¬A` carries `A` (excluded middle): `A` is read
+    // in both directions, exactly as a body-sensitive range.
+    for name in &tin.concepts {
+        if let Some(operand) = crate::frontend::datatypes::bridge_exact_complement_operand(name) {
+            if let Some(present) = tin.concepts.iter().find(|other| **other == operand) {
+                out.insert(present.as_str());
+            }
+        }
+    }
     // Source mode (required for any datatype symbol) encodes concept clauses
     // from the source axioms above; only unsuppressed clauses reach the graph.
     for clause in &tin.clauses {
@@ -2068,10 +2534,14 @@ fn source_forces_distinct_data_successors(
     positive: bool,
     data_roles: &std::collections::HashSet<&str>,
 ) -> bool {
-    let data_filler = |role: &SourceRole, filler: &SourceConcept| {
-        source_concept_contains_internal_datatype(filler)
-            || (matches!(filler, SourceConcept::Top)
-                && matches!(role, SourceRole::Name(name) if data_roles.contains(name.as_str())))
+    // The successors of a number restriction are data values exactly when
+    // its role is a data role. An object role whose filler mentions a
+    // datatype (`≤ 1 s.∃v.{"y"}`) counts objects, not data values; reading
+    // it as a data restriction made this gate stricter than the frontend's
+    // `literal_profiles::distinct_data_successors_forced`, which decides by
+    // the role alone (seeds m2009, m2023, m2123, m2255, m2287).
+    let data_filler = |role: &SourceRole, _filler: &SourceConcept| {
+        matches!(role, SourceRole::Name(name) if data_roles.contains(name.as_str()))
     };
     match concept {
         SourceConcept::Not(operand) => source_forces_distinct_data_successors(operand, !positive, data_roles),
@@ -2116,17 +2586,19 @@ fn collect_datatype_roles<'a>(concept: &'a SourceConcept, out: &mut std::collect
     }
 }
 
-/// Literals a realizing value must avoid and the number of realizing values
-/// a cell needs. With possible forced-distinct data siblings, two values that
-/// avoid every present literal; otherwise one value that avoids every
-/// body-sensitive literal (a non-sensitive value concept only occurs in heads
-/// and singleton clauses, which an unforced shared value cannot violate).
-fn cell_literals_and_requirement<'a>(
-    tin: &'a TInput,
-    datatype_ids: &[usize],
-    sensitive: &std::collections::HashSet<&str>,
-) -> (Vec<&'a str>, u128) {
+/// Whether the input can force two data successors of one element to be
+/// distinct values (`distinct`: a number restriction of at least two, see
+/// `source_forces_distinct_data_successors`) and whether two data roles are
+/// disjoint (`disjoint_data`).
+fn forced_distinct_data_successors(tin: &TInput) -> (bool, bool) {
     let mut data_roles: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    // The frontend's source data properties (`TInput::data_roles`) are data
+    // roles even when no datatype filler or range names them.
+    for &role in &tin.data_roles {
+        if let Some(name) = tin.roles.get(role) {
+            data_roles.insert(name.as_str());
+        }
+    }
     for axiom in &tin.source_axioms {
         collect_datatype_roles(&axiom.left, &mut data_roles);
         collect_datatype_roles(&axiom.right, &mut data_roles);
@@ -2164,6 +2636,8 @@ fn cell_literals_and_requirement<'a>(
         let (left, right) = (&axiom.left, &axiom.right);
         match axiom.kind {
             crate::json_io::SourceAxiomKind::SubClass => forces(left, false) || forces(right, true),
+            // `DisjointClasses(a b)` is `a ⊓ b ⊑ ⊥`: both sides are negative.
+            crate::json_io::SourceAxiomKind::Disjoint => forces(left, false) || forces(right, false),
             _ => [left, right].into_iter().any(|side| forces(side, false) || forces(side, true)),
         }
     }) || tin.nominal_abox.individuals.iter().any(|individual| {
@@ -2182,10 +2656,59 @@ fn cell_literals_and_requirement<'a>(
                 .is_some_and(|name| data_roles.contains(name.as_str())))
         })
     });
+    (distinct, disjoint_data)
+}
+
+/// Literals a realizing value must avoid and the number of realizing values
+/// a cell needs. With possible forced-distinct data siblings, two values that
+/// avoid every present literal; otherwise one value that avoids every
+/// body-sensitive literal (a non-sensitive value concept only occurs in heads
+/// and singleton clauses, which an unforced shared value cannot violate).
+fn cell_literals_and_requirement<'a>(
+    tin: &'a TInput,
+    datatype_ids: &[usize],
+    sensitive: &std::collections::HashSet<&str>,
+) -> (Vec<&'a str>, u128) {
+    let (distinct, disjoint_data) = forced_distinct_data_successors(tin);
     let distinct = distinct || disjoint_data;
+    // Values that occur only as heads of an exact enumerated cover (the
+    // counted covers of finite IEEE intervals and bounded integer types)
+    // label a node only through that cover, which picks one of them; a
+    // realizing value outside the literals is never needed for them.
+    let mentioned: std::collections::HashSet<&str> = {
+        fn walk<'a>(concept: &'a SourceConcept, out: &mut std::collections::HashSet<&'a str>) {
+            match concept {
+                SourceConcept::Name(name) => { out.insert(name.as_str()); }
+                SourceConcept::Not(inner) => walk(inner, out),
+                SourceConcept::And(items) | SourceConcept::Or(items) => items.iter().for_each(|c| walk(c, out)),
+                SourceConcept::Exists(_, filler) | SourceConcept::Forall(_, filler)
+                | SourceConcept::AtLeast(_, _, filler) | SourceConcept::AtMost(_, _, filler) => walk(filler, out),
+                _ => {}
+            }
+        }
+        let mut out = std::collections::HashSet::new();
+        for axiom in &tin.source_axioms {
+            walk(&axiom.left, &mut out);
+            walk(&axiom.right, &mut out);
+        }
+        for individual in &tin.nominal_abox.individuals {
+            for assertion in &individual.assertions { walk(assertion, &mut out); }
+        }
+        out
+    };
+    let cover_only: std::collections::HashSet<&str> = tin.clauses.iter().filter_map(|clause| {
+        let ([HAtom::Concept { neg: false, c, t }], head) = (clause.body.as_slice(), clause.head.as_slice()) else { return None };
+        let heads: Option<Vec<&str>> = head.iter().map(|atom| match atom {
+            HAtom::Concept { neg: false, c, t: ht } if ht == t => tin.concepts.get(*c).map(String::as_str),
+            _ => None,
+        }).collect();
+        let heads = heads?;
+        crate::frontend::datatypes::exact_enumerated_cover(tin.concepts.get(*c)?, &heads).then_some(heads)
+    }).flatten().filter(|name| !mentioned.contains(name) && !sensitive.contains(name)).collect();
     let literals: Vec<&str> = datatype_ids.iter()
         .map(|&concept| tin.concepts[concept].as_str())
         .filter(|name| name.starts_with("__dt__val__") && (distinct || sensitive.contains(name)))
+        .filter(|name| !cover_only.contains(name))
         .collect();
     if disjoint_data {
         fn successors(concept: &SourceConcept) -> u128 {
@@ -2232,10 +2755,10 @@ fn decimal_cells_exact(
     let names: Vec<&str> = members.iter().map(|&concept| tin.concepts[concept].as_str()).collect();
     let flags: Vec<bool> = names.iter().map(|name| sensitive.contains(name)).collect();
     let (literals, required) = cell_literals_and_requirement(tin, datatype_ids, &sensitive);
-    let inclusion = |i: usize, j: usize| relations.inclusions.contains(&(members[i], members[j]));
+    let inclusion = |i: usize, j: usize| relations.includes(members[i], members[j]);
     let disjoint = |i: usize, j: usize| {
         let (a, b) = (members[i], members[j]);
-        relations.disjoint.contains(&(a.min(b), a.max(b)))
+        relations.separated(a, b)
     };
     // Present finite-difference covers restrict the admissible labels.
     let member_index: HashMap<usize, usize> =
@@ -2251,7 +2774,12 @@ fn decimal_cells_exact(
         }).collect();
         let Some(heads) = heads else { continue };
         let names_of: Vec<&str> = heads.iter().map(|&h| tin.concepts[h].as_str()).collect();
-        if !dt::bridge_exact_integral_cover(&tin.concepts[*c], &names_of) {
+        // Integral finite-difference covers and dense decimal cell covers
+        // (`bridge_exact_decimal_cell_cover`) are both valid clauses over
+        // the datatype map, so either restricts the admissible labels.
+        if !dt::bridge_exact_integral_cover(&tin.concepts[*c], &names_of)
+            && !dt::bridge_exact_decimal_cell_cover(&tin.concepts[*c], &names_of)
+        {
             continue;
         }
         covers.push((body, heads.iter().filter_map(|h| member_index.get(h).copied()).collect()));
@@ -2297,6 +2825,10 @@ fn decimal_cells_exact(
                     continue;
                 }
                 if dt::bridge_decimal_free_capacity(names[cell], &literals).is_none_or(|free| free < required) {
+                    note_bridge_defer(format!(
+                        "datatype gate: a decimal-tower cell lacks realizing values ({})",
+                        names[cell]
+                    ));
                     if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                         eprintln!("BRIDGE-DATATYPE-DEFER: a decimal-tower cell lacks realizing values; cell={}", names[cell]);
                     }
@@ -2325,6 +2857,10 @@ fn decimal_cells_exact(
         if dt::bridge_decimal_cells_realizable(&local_names, &local_flags, &local_inclusion,
             &local_disjoint, &literals, required, &local_covers) != Some(true)
         {
+            note_bridge_defer(format!(
+                "datatype gate: a decimal-tower vocabulary has a label set without two \
+                 realizing values (group {local_names:?})"
+            ));
             if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                 eprintln!("BRIDGE-DATATYPE-DEFER: a decimal-tower vocabulary has a label set without \
                     two realizing values; group={local_names:?}");
@@ -2439,6 +2975,7 @@ fn tbox_extension_evidence_exact(
     use crate::frontend::datatypes as dt;
     macro_rules! defer {
         ($reason:literal) => {{
+            note_bridge_defer(concat!("datatype gate: ", $reason));
             if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                 eprintln!("BRIDGE-DATATYPE-DEFER: {}", $reason);
             }
@@ -2457,8 +2994,8 @@ fn tbox_extension_evidence_exact(
     if datatype_ids.iter().any(|&concept| literal(concept) && sensitive.contains(tin.concepts[concept].as_str())) {
         defer!("rdfs:Literal occurs in a body-sensitive position");
     }
-    let included = |left: usize, right: usize| relations.inclusions.contains(&(left, right));
-    let separated = |left: usize, right: usize| relations.disjoint.contains(&(left.min(right), left.max(right)));
+    let included = |left: usize, right: usize| relations.includes(left, right);
+    let separated = |left: usize, right: usize| relations.separated(left, right);
     for &member in datatype_ids.iter().filter(|&&concept| is_extension(concept) && !literal(concept)) {
         for &other in datatype_ids.iter().filter(|&&other| other != member && !literal(other)) {
             let (left, right) = (&tin.concepts[member], &tin.concepts[other]);
@@ -2486,7 +3023,20 @@ fn tbox_extension_evidence_exact(
             let overlapping_intervals = ((dt::bridge_ieee_range(left) && dt::bridge_ieee_range(right))
                 || (dt::bridge_decimal_range(left) && dt::bridge_decimal_range(right)))
                 && dt::bridge_tbox_atomic_family(left) == dt::bridge_tbox_atomic_family(right);
-            if !decided && !overlapping_intervals {
+            // A complement `¬A` overlaps another range `B` partially. The
+            // label `{¬A, B}` is decided by `B`'s own exact cover when `B` is
+            // finite or a union, by the cell certificate of `A`'s family when
+            // `B` is in that family (`A` is body-sensitive there), and by a
+            // fresh IRI when `B` is another complement.
+            let complement_overlap = |complement: &str, other: &str| {
+                let Some(operand) = dt::bridge_exact_complement_operand(complement) else { return false };
+                let family = dt::bridge_tbox_atomic_family(other);
+                matches!(family, Some("finite" | "union" | "complement"))
+                    || (family == dt::bridge_tbox_atomic_family(&operand)
+                        && matches!(family, Some("decimal" | "float" | "double")))
+            };
+            if !decided && !overlapping_intervals
+                && !complement_overlap(left, right) && !complement_overlap(right, left) {
                 defer!("an extension datatype pair has no exact decided relation");
             }
         }
@@ -2516,13 +3066,41 @@ fn tbox_extension_evidence_exact(
             .filter(|&concept| dt::bridge_ieee_range(&tin.concepts[concept])
                 && dt::bridge_tbox_atomic_family(&tin.concepts[concept]) == Some(family))
             .collect();
-        if !members.iter().any(|&concept| dt::bridge_ieee_facet_range(&tin.concepts[concept])) {
+        let complemented = datatype_ids.iter().any(|&concept| dt::bridge_exact_complement_operand(&tin.concepts[concept])
+            .is_some_and(|operand| dt::bridge_tbox_atomic_family(&operand) == Some(family)));
+        if !complemented && !members.iter().any(|&concept| dt::bridge_ieee_facet_range(&tin.concepts[concept])) {
             continue;
         }
         let names: Vec<&str> = members.iter().map(|&concept| tin.concepts[concept].as_str()).collect();
         let flags: Vec<bool> = names.iter().map(|name| sensitive.contains(name)).collect();
         let inclusion = |i: usize, j: usize| included(members[i], members[j]);
         let disjoint = |i: usize, j: usize| separated(members[i], members[j]);
+        // Cell path over all members of the width (not per role group), see
+        // `bridge_ieee_cells_by_atoms`; only without complements of the
+        // width, whose labels can avoid every member.
+        if !complemented {
+            let position: HashMap<usize, usize> =
+                members.iter().enumerate().map(|(at, &concept)| (concept, at)).collect();
+            let covers: Vec<(usize, Vec<usize>)> = tin.clauses.iter().filter_map(|clause| {
+                let ([HAtom::Concept { neg: false, c, t }], head) =
+                    (clause.body.as_slice(), clause.head.as_slice()) else { return None };
+                let body = *position.get(c)?;
+                let heads: Option<Vec<usize>> = head.iter().map(|atom| match atom {
+                    HAtom::Concept { neg: false, c, t: ht } if ht == t => Some(*c),
+                    _ => None,
+                }).collect();
+                let heads = heads?;
+                let head_names: Vec<&str> = heads.iter().map(|&h| tin.concepts[h].as_str()).collect();
+                dt::bridge_exact_ieee_cell_cover(&tin.concepts[*c], &head_names).then(|| {
+                    (body, heads.iter().filter_map(|h| position.get(h).copied()).collect())
+                })
+            }).collect();
+            match dt::bridge_ieee_cells_by_atoms(&names, &inclusion, &disjoint, &literals, required, &covers) {
+                Some(true) => continue,
+                Some(false) => defer!("an IEEE cell lacks realizing values"),
+                None => {}
+            }
+        }
         if dt::bridge_ieee_cells_realizable(&names, &flags, &inclusion, &disjoint, &literals, required) != Some(true) {
             defer!("an IEEE facet vocabulary has a label set without two realizing values");
         }
@@ -2533,8 +3111,17 @@ fn tbox_extension_evidence_exact(
 /// Datatype-stage admission only. A positive result does not establish source
 /// coverage, supported inverse/nominal completion, or certified publication.
 pub fn datatype_bridge_route_exact(tin: &TInput, source_mode: bool) -> bool {
-    exact_atomic_datatype_bridge_fragment(tin, source_mode)
-        || datatype_effects_covered_by_unit_bottom(tin, source_mode)
+    let started = std::time::Instant::now();
+    let exact = exact_atomic_datatype_bridge_fragment(tin, source_mode);
+    let reason = (!exact).then(take_bridge_defer_reason).flatten();
+    let admitted = exact || datatype_effects_covered_by_unit_bottom(tin, source_mode);
+    if !admitted {
+        note_bridge_defer(reason.unwrap_or_else(|| "datatype gate: declined (no specific reason recorded)".to_string()));
+    }
+    if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+        eprintln!("BRIDGE-DATATYPE-GATE: admitted={admitted} in {:.2}s", started.elapsed().as_secs_f64());
+    }
+    admitted
 }
 
 /// The bridged terminology: arena ids for the TInput's named concepts/roles
@@ -2558,6 +3145,13 @@ pub struct Bridged {
     /// Implications with no positive concept trigger, attached to the
     /// ontology TOP concept (scanned by EVERY node).
     pub top_attached: usize,
+    /// Of `top_attached`, the exact fallbacks `¬body ∨ head` whose head is
+    /// not gated by any trigger of the body: a structural-left source axiom
+    /// that neither unfolds nor absorbs, and a clause over resolved markers.
+    /// Every node may choose `head` on a branch, so a label analysis that
+    /// gates heads by their bodies (`value_singletons::label_reach`) is not
+    /// an over-approximation when this is non-zero.
+    pub unguarded_top_gcis: usize,
     /// Singleton concepts (`C(x) ∧ C(y) → x = y` clause shape — datatype
     /// value identity): consumed by the kernel's deterministic
     /// scan-at-fixpoint merge; must be installed on every probe algorithm.
@@ -2612,6 +3206,10 @@ pub struct Bridged {
     /// candidate marker (implied by the triggerable conjuncts of its
     /// definition). A complete model lacking the marker refutes the host.
     eq_candidate_markers: HashMap<usize, Cint64>,
+    /// The SELF concepts built for irreflexivity (`R(x,x) → ⊥`, the GCI
+    /// `⊤ ⊑ ¬∃R.Self`): they occur only negated and never create a self
+    /// edge (docs/HYBRID-CB-HT.md section 20).
+    irreflexive_self_concepts: Vec<ConceptId>,
 }
 
 #[derive(Clone)]
@@ -4174,6 +4772,11 @@ enum SourceEncoding {
     RoleLink,
     AbsorbedGci,
     TopGci,
+    /// `¬left ∨ right` on TOP for a structural left side that neither
+    /// unfolds nor absorbs: every node may choose `right` without `left`.
+    /// Counted in `Bridged::unguarded_top_gcis` (the value-singleton
+    /// inertness analysis assumes `right` is gated by `left`).
+    TopFallback,
     Unsupported,
 }
 
@@ -4332,7 +4935,7 @@ fn encode_source_subclass(
     let disjunction = b.or_of(&[(left_built.0, !left_built.1), right_built]);
     tbox.push(disjunction.0);
     top_gcis.push(disjunction.0);
-    SourceEncoding::TopGci
+    SourceEncoding::TopFallback
 }
 
 fn role_tree_trigger(
@@ -4809,11 +5412,48 @@ fn has_any_nominal_input(tin: &TInput) -> bool {
 /// `unsupported == 0` fence independently remain mandatory, so this scheduling
 /// choice cannot admit an unsupported ABox or number construct.
 ///
-/// Konclude enables full completion only below its 10,000-individual
-/// conditional threshold. Larger ABoxes use the lazy/batched precomputation
-/// route and must not enter the retained all-root schedule (or its
-/// definition-containment shortcut).
+/// Konclude's `ConditionalFullCompletionGraphConstruction` decision
+/// (CTotallyPrecomputationThread.cpp 159-172, defaults in
+/// CReasonerConfigurationGroup.cpp 1076-1103): build the full completion
+/// graph unless an exclusion condition holds (at least 300,000 individuals,
+/// or at least 50 individuals per concept) and when a suggestion condition
+/// holds (fewer than 10,000 individuals, or fewer than 5 individuals per
+/// concept). The ratio is individuals over the concepts of the terminology;
+/// the bridge counts the concept names of its input (`TInput::concepts`:
+/// classes, definers and nominal proxies), the closest available count to
+/// Konclude's `CTBox::getConceptCount`.
+///
+/// Both schedules are complete-or-defer; the decision changes no rule. The
+/// earlier port kept only the 10,000-individual suggestion arm, which sent
+/// every larger ABox to the per-probe ABox completion (the port has no
+/// counterpart of Konclude's lazy batched precomputation): about 15 s per
+/// subject probe on ore_ont_16315. See docs/HYBRID-CB-HT.md section 17.
 const CONDITIONAL_FULL_INDIVIDUAL_LIMIT: usize = 10_000;
+const CONDITIONAL_FULL_EXCLUSION_INDIVIDUAL_LIMIT: usize = 300_000;
+const CONDITIONAL_FULL_EXCLUSION_RATIO: f64 = 50.0;
+const CONDITIONAL_FULL_SUGGESTION_RATIO: f64 = 5.0;
+
+/// `KM_HT_CONDITIONAL_FULL_LIMIT=<n>` (diagnostic): replaces the decision
+/// above by the plain bound `individuals < n` (the earlier diagnostic).
+fn conditional_full_individual_limit_override() -> Option<usize> {
+    std::env::var("KM_HT_CONDITIONAL_FULL_LIMIT")
+        .ok()
+        .and_then(|value| value.parse().ok())
+}
+
+/// Konclude's full-completion-graph decision for `individuals` individuals
+/// and `concepts` concepts (see `CONDITIONAL_FULL_INDIVIDUAL_LIMIT`).
+fn konclude_full_completion_graph_suggested(individuals: usize, concepts: usize) -> bool {
+    if let Some(limit) = conditional_full_individual_limit_override() {
+        return individuals < limit;
+    }
+    let ratio = individuals as f64 / concepts.max(1) as f64;
+    let excluded = individuals >= CONDITIONAL_FULL_EXCLUSION_INDIVIDUAL_LIMIT
+        || ratio >= CONDITIONAL_FULL_EXCLUSION_RATIO;
+    let suggested =
+        individuals < CONDITIONAL_FULL_INDIVIDUAL_LIMIT || ratio < CONDITIONAL_FULL_SUGGESTION_RATIO;
+    !excluded && suggested
+}
 
 fn native_cardinality_abox_profile(tin: &TInput, native_nominals: bool) -> bool {
     native_conditional_full_abox_profile(
@@ -4832,8 +5472,32 @@ fn native_conditional_full_abox_profile(
     allow_non_number: bool,
 ) -> bool {
     native_nominals
-        && (tin.number || allow_non_number)
-        && tin.nominal_abox.individuals.len() < CONDITIONAL_FULL_INDIVIDUAL_LIMIT
+        && (tin.number || allow_non_number || carries_data_values(tin))
+        && konclude_full_completion_graph_suggested(
+            tin.nominal_abox.individuals.len(),
+            tin.concepts.len(),
+        )
+        // A role-free ABox of at least 10,000 individuals keeps its validated
+        // independent-component schedule (`independent_component_abox_profile`).
+        && (tin.nominal_abox.individuals.len() < CONDITIONAL_FULL_INDIVIDUAL_LIMIT
+            || !tin.nominal_abox.role_assertions.is_empty()
+            || conditional_full_individual_limit_override().is_some())
+}
+
+/// Whether the input has a literal value marker `__dt__val__v`. Until the
+/// exact data values of v1.5.5 every carried value came with its singleton
+/// clause `V(y0) ∧ V(y1) → y0 = y1`, whose equality head sets `tin.number`;
+/// the frontend now leaves that clause out when nothing forces two data
+/// successors apart (`datatypes::datatype_relation_clauses_with`), which
+/// moved such inputs from the conditional-full schedule to the legacy
+/// nominal one. On ore_ont_10781 (590 individuals, 1,319 data assertions)
+/// that made the bridge's prepare phase 0.7 s to 34 s and pushed the
+/// automatic route past its 12 s data-assertion bridge budget. Counting a
+/// value marker as a number feature keeps the schedule these inputs had.
+/// The profile only selects the completion's scheduling configuration; the
+/// bridge publishes a complete answer or defers under either schedule.
+fn carries_data_values(tin: &TInput) -> bool {
+    tin.concepts.iter().any(|concept| concept.starts_with("__dt__val__"))
 }
 
 /// Nominal-free positive ABoxes that can be consistency-checked component by
@@ -5439,6 +6103,12 @@ fn bridge_tinput_with_trigger_absorption(
     // rest go to TOP.
     let mut absorbed_pairs: Vec<(ConceptId, ConceptId)> = Vec::new();
     let mut top_gcis: Vec<ConceptId> = Vec::new();
+    let mut irreflexive_self_concepts: Vec<ConceptId> = Vec::new();
+    // TOP-attached disjunctions whose head is not gated by their body: the
+    // structural-left fallback of `encode_source_subclass` and the resolved
+    // clause fallback (`install_resolved_top_gci`). See
+    // `Bridged::unguarded_top_gcis`.
+    let mut unguarded_top = 0usize;
     let mut trigger_caches = TriggerCaches::default();
     let mut singleton_concepts: Vec<ConceptId> = Vec::new();
     let mut unsupported = 0usize;
@@ -5983,6 +6653,10 @@ fn bridge_tinput_with_trigger_absorption(
                         SourceEncoding::RoleLink => role_links += 1,
                         SourceEncoding::AbsorbedGci => absorbed += 1,
                         SourceEncoding::TopGci => residual += 1,
+                        SourceEncoding::TopFallback => {
+                            residual += 1;
+                            unguarded_top += 1;
+                        }
                         SourceEncoding::Unsupported => source_unsupported += 1,
                     }
                 }
@@ -6432,6 +7106,7 @@ fn bridge_tinput_with_trigger_absorption(
             if s == t && forced_nonempty_roles.contains(r) {
                 if let Some(&role) = roles.get(*r) {
                     let self_concept = b.self_restriction(role);
+                    irreflexive_self_concepts.push(self_concept);
                     let not_self = b.positive_attachment_concept((self_concept, true));
                     tbox.push(not_self);
                     top_gcis.push(not_self);
@@ -6651,6 +7326,7 @@ fn bridge_tinput_with_trigger_absorption(
                         continue 'clause;
                     }
                     if uses_resolved {
+                        unguarded_top += 1;
                         install_resolved_top_gci(
                             &mut b,
                             &body_ops,
@@ -6823,6 +7499,7 @@ fn bridge_tinput_with_trigger_absorption(
                     continue 'clause;
                 }
                 if uses_resolved {
+                    unguarded_top += 1;
                     install_resolved_top_gci(&mut b, &body_ops, &head_ops, &mut tbox, &mut top_gcis);
                     continue 'clause;
                 }
@@ -6991,6 +7668,7 @@ fn bridge_tinput_with_trigger_absorption(
                 ) {
                     continue 'clause;
                 }
+                unguarded_top += 1;
                 install_resolved_top_gci(&mut b, &body_x, &heads, &mut tbox, &mut top_gcis);
                 continue 'clause;
             }
@@ -7377,6 +8055,31 @@ fn bridge_tinput_with_trigger_absorption(
     if std::env::var_os("KM_HT_STATS").is_some() {
         eprintln!("bridge [branch-triggers] role-markers={branch_role_trigger_count}");
     }
+    // KM_BRIDGE_CONCEPT_DUMP: one line per arena concept (tag, operator,
+    // operand tags, role tag, name for named tags). Diagnostic only.
+    if std::env::var_os("KM_BRIDGE_CONCEPT_DUMP").is_some() {
+        let arenas = ctx.ontology_arenas();
+        for index in 0..arenas.concept_count() {
+            let c = arenas.concept(ConceptId::new(index));
+            let ops: Vec<String> = c
+                .get_operand_list()
+                .iter()
+                .map(|l| {
+                    let t = if l.target.is_some() { arenas.concept(l.target).get_concept_tag() } else { -1 };
+                    format!("{}{}", if l.negated { "-" } else { "" }, t)
+                })
+                .collect();
+            let role = c.get_role();
+            let rtag = if role.is_some() { arenas.role(role).get_role_tag() } else { -1 };
+            let tag = c.get_concept_tag();
+            let name = if tag >= TAG_BASE {
+                tin.concepts.get((tag - TAG_BASE) as usize).map(String::as_str).unwrap_or("")
+            } else {
+                ""
+            };
+            eprintln!("CONCEPT tag={tag} op={} role={rtag} ops=[{}] {name}", c.get_operator_code(), ops.join(","));
+        }
+    }
 
     // KONCLUDE-PORT-NOTE[terminology]: in Konclude every TBox concept carries
     // its owning CTerminology; several guards key on `getTerminology() !=
@@ -7433,6 +8136,7 @@ fn bridge_tinput_with_trigger_absorption(
         unsupported,
         absorbed: absorbed_pairs.len(),
         top_attached: top_gcis.len(),
+        unguarded_top_gcis: unguarded_top,
         singleton_concepts,
         source_tbox: source_mode,
         certified_unsatisfiable,
@@ -7445,6 +8149,7 @@ fn bridge_tinput_with_trigger_absorption(
         retained_base_depth: std::cell::Cell::new(0),
         native_consistency_nominal_nondeterministic_prefix: RefCell::new(None),
         eq_candidate_markers,
+        irreflexive_self_concepts,
     }
 }
 
@@ -7544,8 +8249,10 @@ pub fn configure_default_blocking(algo: &mut CompletionTaskHandleAlgorithm) {
     // Konclude's production default. The generic u20 backend-association path
     // remains fail-closed; the native ABox bridge activates this only after
     // its explicit representative-cache predicate and concept-sync test.
-    algo.conf_allow_backend_successor_expansion_blocking = true;
-    algo.conf_allow_backend_neighbour_expansion_blocking = true;
+    algo.conf_allow_backend_successor_expansion_blocking =
+        std::env::var_os("KM_HT_DIAG_NO_SUCCESSOR_BLOCK").is_none();
+    algo.conf_allow_backend_neighbour_expansion_blocking =
+        std::env::var_os("KM_HT_DIAG_NO_NEIGHBOUR_BLOCK").is_none();
     // Decline the cache-backed selective neighbour expansion per NEIGHBOUR VALUE,
     // never per NODE: one unjustifiable neighbour value must not drop the whole
     // node's association block and raw-replay both assertion chains. See
@@ -7625,6 +8332,171 @@ pub fn bridged_unsat(
     let mut model_root = None;
     bridged_unsat_rooted(algo, ctx, bridged, next_indi_id, seeds, &mut model_root)
 }
+
+/// Independent witness for an EMPTY stored refutation (docs/HYBRID-CB-HT.md
+/// §13): is the disjunction operand `(concept, negated)` of the running
+/// environment unsatisfiable with respect to `tin` on its own?
+///
+/// The probe runs in a FRESH bridge environment over the same input (nothing
+/// of the running search is shared), parks every disjunction instead of
+/// branching on it, and answers `true` only for an UNSAT verdict of a plain
+/// chronological search over the remaining branch points with complete
+/// (copy-on-write) state restoration between alternatives and without
+/// dependency-directed backjumping: every alternative of every branch point
+/// clashed although the disjunctive constraints were left out. Every other
+/// outcome (satisfiable, STOP, budget, an unrestored advance, an arena that
+/// does not line up with the running environment) answers `false`, which
+/// keeps the historical behaviour (the root cancellation stays withheld).
+fn verify_empty_alternative_operand(
+    tin: &TInput,
+    trigger_absorb: bool,
+    expected: (Cint64, Cint64, Vec<(Cint64, bool)>),
+    concept: ConceptId,
+    negated: bool,
+) -> bool {
+    let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(tin, trigger_absorb);
+    let arenas = ctx.ontology_arenas();
+    if concept.is_none() || concept.index() >= arenas.concept_count() as usize {
+        return false;
+    }
+    if concept_signature(&ctx, concept) != expected {
+        return false;
+    }
+    // Bounded like every bridge probe: an overrun is a STOP (no witness).
+    algo.probe_budget = Some(std::time::Duration::from_secs(EMPTY_ALTERNATIVE_WITNESS_BUDGET_S));
+    algo.drive_deadline = algo.probe_budget.map(|b| std::time::Instant::now() + b);
+    // Plain chronological search under in-process copy-on-write branch
+    // epochs: every alternative starts from the complete pre-branch state, so
+    // an UNSAT verdict means every alternative of every branch point clashed.
+    // Dependency-directed backjumping (and with it every root cancellation) is
+    // off, so the witness never rests on the stored-refutation reconstruction
+    // it is meant to back up.
+    algo.conf_dependency_backjumping = false;
+    algo.conf_inprocess_cow = true;
+    // Disjunctions are parked, never expanded (`defer_or_branching`, the
+    // retained-base drain mode): the probe decides a WEAKER problem (the
+    // operand under the input without its disjunctive constraints), and an
+    // UNSAT verdict for a weaker problem holds for the input itself. The
+    // remaining branch kinds (at-most merges, qualification choices, backend
+    // reuse) enumerate all their alternatives, chronologically.
+    algo.defer_or_branching = true;
+    algo.deferred_or_branchings.clear();
+    let mut next_indi_id: i64 = 0;
+    let verdict = bridged_unsat(&mut algo, &mut ctx, &bridged, &mut next_indi_id, &[(concept, negated)]);
+    if super::completion::bridge_progress_enabled() {
+        eprintln!(
+            "BRIDGE-EMPTY-WITNESS-PROBE verdict={verdict:?} unrestored={} opens={} backtracks={} poisoned={} root_cancel={}",
+            algo.unrestored_advance_count, algo.or_branch_open_count, algo.or_backtrack_count, algo.completeness_poisoned, algo.ddb_root_cancelled
+        );
+    }
+    verdict == Some(true)
+        && algo.unrestored_advance_count == 0
+        && !algo.completeness_poisoned
+        && !algo.ddb_root_cancelled
+}
+
+/// The isolation test of a cleared-queue screen job (docs/HYBRID-CB-HT.md
+/// §15): the job modified no retained node (no concept, link or merge reached
+/// one, counted by `propagate_individual_node_modified`), opened no branch
+/// point on one, and no node of the job is blocked by one. A job that passes
+/// never interacted with the retained graph, so its verdict and model are
+/// those of the subject next to any model of the (consistent) input.
+fn cleared_queue_job_isolated(
+    algo: &CompletionTaskHandleAlgorithm,
+    ctx: &CalculationAlgorithmContextBase,
+    fresh_id_start: Cint64,
+) -> bool {
+    let base = algo.retained_base_node_count;
+    if base == 0
+        || algo.retained_node_modified_count != 0
+        || algo.or_branch_open_retained_node_count != 0
+    {
+        return false;
+    }
+    let pc = ctx.process_context();
+    for index in base..pc.node_count() {
+        let node = pc.node(NodeId::new(index as Cint64));
+        let blocker = node.blocker_indi_node;
+        if blocker.is_some() && blocker.index() < base {
+            return false;
+        }
+        // A job-local copy of a retained individual (Konclude localizes an
+        // individual into the task before changing it, so the copy has a new
+        // arena slot but the individual's old id, and the retained slot is
+        // never written), or a fresh node merged into one: the job reached
+        // the retained graph.
+        if node.individual_node_id() < fresh_id_start
+            || node.has_merged_into_individual_node_id()
+                && node.merged_into_individual_node_id() < fresh_id_start
+        {
+            return false;
+        }
+        // An edge (either direction: the successor hash also records the
+        // inverse links) to a retained individual.
+        let mut successors = pc.node_successor_iterator(NodeId::new(index as Cint64));
+        while successors.has_next() {
+            if successors.next_individual_id(true) < fresh_id_start {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+/// Probe every requested operand that has no witness entry yet
+/// ([`verify_empty_alternative_operand`]) and record the verdicts.
+fn probe_empty_alternative_witnesses(
+    tin: &TInput,
+    trigger_absorb: bool,
+    ctx: &CalculationAlgorithmContextBase,
+    requests: Vec<(ConceptId, bool)>,
+    witnesses: &std::cell::RefCell<
+        std::sync::Arc<crate::fxhash::FxHashMap<(usize, bool), bool>>,
+    >,
+    progress_subject: Option<usize>,
+) {
+    for (concept, negated) in requests {
+        if witnesses.borrow().contains_key(&(concept.index(), negated)) {
+            continue;
+        }
+        let expected = concept_signature(ctx, concept);
+        let expected_tag = expected.0;
+        let t_witness = std::time::Instant::now();
+        let witnessed = verify_empty_alternative_operand(tin, trigger_absorb, expected, concept, negated);
+        if let Some(s) = progress_subject {
+            eprintln!(
+                "BRIDGE-EMPTY-WITNESS subject {s}: operand tag={expected_tag} negated={negated} witnessed={witnessed} ({:.3}s)",
+                t_witness.elapsed().as_secs_f64()
+            );
+        }
+        std::sync::Arc::make_mut(&mut witnesses.borrow_mut()).insert((concept.index(), negated), witnessed);
+    }
+}
+
+/// Tag, operator code and operand `(tag, negated)` list of `concept`: the
+/// identity check between the running and the witness environment.
+fn concept_signature(
+    ctx: &CalculationAlgorithmContextBase,
+    concept: ConceptId,
+) -> (Cint64, Cint64, Vec<(Cint64, bool)>) {
+    let arenas = ctx.ontology_arenas();
+    let c = arenas.concept(concept);
+    let operands = c
+        .get_operand_list()
+        .iter()
+        .map(|l| {
+            let tag = if l.target.is_some() { arenas.concept(l.target).get_concept_tag() } else { -1 };
+            (tag, l.negated)
+        })
+        .collect();
+    (c.get_concept_tag(), c.get_operator_code(), operands)
+}
+
+/// Wall-clock bound of one [`verify_empty_alternative_operand`] probe. The
+/// probes complete a single operand and finish in milliseconds on the
+/// measured inputs; the bound only caps a pathological operand, and an
+/// overrun yields no witness.
+const EMPTY_ALTERNATIVE_WITNESS_BUDGET_S: u64 = 5;
 
 /// `bridged_unsat` that also hands back the root of the clash-free model on
 /// a satisfiable (`Some(false)`) verdict, so the caller can read its label.
@@ -7737,10 +8609,12 @@ fn bridged_unsat_rooted(
         let consistent = algo.run_completion_on(ctx);
         if trace {
             eprintln!(
-                "TRACE pass={pass} consistent={consistent} inserts={} backtracks={} nodes={}",
+                "TRACE pass={pass} consistent={consistent} inserts={} backtracks={} nodes={} source_tbox={} cow={}",
                 algo.stat_con_des_insertion_count,
                 algo.or_backtrack_count,
                 ctx.process_context().node_count(),
+                bridged.source_tbox,
+                algo.conf_inprocess_cow,
             );
         }
         if !consistent {
@@ -8199,6 +9073,14 @@ fn bridged_classify_subject_with_root(
         })
         .map(|b| std::time::Instant::now() + b);
 
+    let stats_start = phase_timer.as_ref().map(|_| {
+        (
+            ctx.process_context().node_count(),
+            algo.stat_con_des_insertion_count,
+            algo.or_backtrack_count,
+            algo.or_branch_open_count,
+        )
+    });
     let id = reserve_bridge_query_node_id(ctx, next_indi_id)?;
     let mut root = ctx
         .process_context_mut()
@@ -8310,6 +9192,18 @@ fn bridged_classify_subject_with_root(
     // countermodels. No usable verdict — defer the subject.
     if algo.completeness_poisoned {
         return None;
+    }
+    if let Some((nodes0, ins0, bt0, bo0)) = stats_start {
+        eprintln!(
+            "BRIDGE-SUBJECT-STATS subject={subject} nodes_before={nodes0} nodes_after={} inserts={} backtracks={} branch_opens={} (retained={} nominal={} fresh={})",
+            ctx.process_context().node_count(),
+            algo.stat_con_des_insertion_count - ins0,
+            algo.or_backtrack_count - bt0,
+            algo.or_branch_open_count - bo0,
+            algo.or_branch_open_retained_node_count,
+            algo.or_branch_open_nominal_node_count,
+            algo.or_branch_open_fresh_node_count,
+        );
     }
     BridgeReadOffTiming::advance(&mut phase_timer);
     if algo.conf_sat_exp_cache_writing
@@ -8851,6 +9745,33 @@ fn initialize_native_nominal_state(
     initialize_native_nominal_state_for_tags(algo, ctx, bridged, None)
 }
 
+/// Nominal concepts of the other members of `entry`'s deterministic
+/// same-individual set, or `None` when that set is not recorded or names an
+/// individual without a nominal seed. See
+/// `NativeNominalBackendReplay::deterministic_same_nominal_concepts`.
+fn native_deterministic_same_nominal_concepts(
+    bridged: &Bridged,
+    entry: &NativeAboxRepresentativeEntry,
+    seed: &NominalSeed,
+) -> Option<Vec<ConceptId>> {
+    let same = entry.deterministic_same_individuals.as_ref()?;
+    let mut concepts = Vec::new();
+    for &tag in same {
+        if tag == seed.individual_tag {
+            continue;
+        }
+        let other = bridged
+            .nominal_seeds
+            .iter()
+            .find(|candidate| candidate.individual_tag == tag)?;
+        if other.nominal_concept.is_none() {
+            return None;
+        }
+        concepts.push(other.nominal_concept);
+    }
+    Some(concepts)
+}
+
 fn install_native_nominal_backend_replay(
     algo: &mut CompletionTaskHandleAlgorithm,
     bridged: &Bridged,
@@ -8879,13 +9800,23 @@ fn install_native_nominal_backend_replay(
         // against it exactly.
         let replay_entry = association_entry.filter(|entry|
             native_cache_entry_covers_seed(entry, seed));
+        // Positive nominal concepts are not cache values, so the deterministic
+        // labels below are a closure only together with the nominal concepts of
+        // the deterministic same individuals. When that set is unknown, or one
+        // of its members has no seed, replay no cached label at all: the raw
+        // assertions then re-derive the whole closure.
+        let deterministic_same_nominal_concepts =
+            replay_entry.and_then(|entry| native_deterministic_same_nominal_concepts(bridged, entry, seed));
         let deterministic_cached_concepts = replay_entry
+            .filter(|_| deterministic_same_nominal_concepts.is_some())
             .and_then(|entry| entry.concept_values.as_ref())
             .into_iter()
             .flatten()
             .filter(|value| value.deterministic)
             .map(|value| (value.concept, value.negated))
             .collect();
+        let replay_closed = deterministic_same_nominal_concepts.is_some();
+        let deterministic_same_nominal_concepts = deterministic_same_nominal_concepts.unwrap_or_default();
         let cached_concept_values = replay_entry
             .and_then(|entry| entry.concept_values.as_ref())
             .into_iter()
@@ -8936,7 +9867,11 @@ fn install_native_nominal_backend_replay(
                 expansion_blocking_candidate: replay_entry.is_some_and(|entry| {
                     // replay_entry was already filtered by exact seed coverage
                     // above; the borrowed entry and seed have not changed.
-                    saturation_labels_replayable && entry.reusable_for_full_completion()
+                    // Blocking stands the cached labels in for the raw
+                    // expansion, so it needs the replayed labels closed.
+                    replay_closed
+                        && saturation_labels_replayable
+                        && entry.reusable_for_full_completion()
                 }),
                 // Konclude's independent-neighbour block requires only a non-null
                 // backend association, because its representative cache is
@@ -8951,7 +9886,9 @@ fn install_native_nominal_backend_replay(
                 // Completeness, representative-same, deterministic-same identity
                 // and concept-sync remain mandatory only for the stronger
                 // successor/indirect block above.
-                neighbour_expansion_blocking_candidate: saturation_labels_replayable && replay_entry.is_some(),
+                neighbour_expansion_blocking_candidate: replay_closed
+                    && saturation_labels_replayable
+                    && replay_entry.is_some(),
                 association_present: association_entry.is_some(),
                 // The four reuse slots (`hasReuseableElements`, cpp 22711-22735)
                 // plus the merge target seed. These are read ONLY by
@@ -8974,6 +9911,7 @@ fn install_native_nominal_backend_replay(
                     .is_some_and(NativeAboxRepresentativeEntry::reuse_replay_representable),
                 has_reusable_elements: saturation_labels_replayable && replay_entry
                     .is_some_and(NativeAboxRepresentativeEntry::has_reusable_elements),
+                deterministic_same_nominal_concepts,
             },
         );
     }
@@ -9146,6 +10084,8 @@ fn reset_classification_algorithm_on_retained_base(
     fresh.conf_atomic_semantic_branching = algo.conf_atomic_semantic_branching;
     fresh.current_rec_proc_depth_limit = algo.current_rec_proc_depth_limit;
     fresh.or_branch_learning_stats = branch_learning;
+    // Immutable index of the same retained base (u20 `BlockingBaseIndex`).
+    fresh.blocking_base_index = algo.blocking_base_index.clone();
     *algo = fresh;
     if let Some(snapshot) = replay_snapshot {
         // Only immutable input is shared; every mutable per-job field is fresh.
@@ -9202,6 +10142,37 @@ fn restore_retained_classification_base(
     base_next_id: Cint64,
     replay_snapshot: Option<&NativeReplaySnapshot>,
 ) -> Option<()> {
+    restore_retained_classification_base_with(
+        algo,
+        ctx,
+        bridged,
+        base_databox,
+        base_branch_node,
+        base_next_id,
+        replay_snapshot,
+        false,
+    )
+}
+
+/// [`restore_retained_classification_base`] with a choice of the job's
+/// processing queues on a base that resumes the first fork. `cleared_queues`
+/// starts the job from the same retained graph with every inherited
+/// individual processing queue cleared (Konclude's cleared-queue class task,
+/// `KM_BRIDGE_FORK_DRAIN=konclude`) instead of resuming the base's pending
+/// nondeterministic work. Such a job is a SCREEN only: the driver accepts its
+/// result solely under the isolation test of docs/HYBRID-CB-HT.md §15 and
+/// otherwise reruns the subject on the resuming base.
+#[allow(clippy::too_many_arguments)]
+fn restore_retained_classification_base_with(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    base_databox: &super::process::databox::ProcessingDataBox,
+    base_branch_node: super::process::BranchNodeId,
+    base_next_id: Cint64,
+    replay_snapshot: Option<&NativeReplaySnapshot>,
+    cleared_queues: bool,
+) -> Option<()> {
     let owned_epoch_count = algo
         .or_branch_stack
         .iter()
@@ -9228,6 +10199,9 @@ fn restore_retained_classification_base(
     ctx.base.used_branch_tree_node = base_branch_node;
     ctx.branch_tree_node = base_branch_node;
     ctx.clear_pending_signal();
+    // A job that ended on a clash leaves the clashing node as the context's
+    // current node; the next job starts with no node in processing.
+    ctx.base.set_current_individual_node(NodeId::NONE);
     if let Some(watermark) = ctx.retained_spine_watermark {
         if std::env::var_os("KM_BRIDGE_SPINE_CHECK").is_some() {
             let dangling = ctx.process_context().retained_spine_dangling_clashes(watermark);
@@ -9236,7 +10210,7 @@ fn restore_retained_classification_base(
         ctx.process_context_mut().truncate_dependency_spine(watermark);
     }
     ctx.push_branch_epoch();
-    let resume_fork = bridged.retained_base_resumes_fork.get();
+    let resume_fork = bridged.retained_base_resumes_fork.get() && !cleared_queues;
     if resume_fork {
         // Resume the fork's pending queues exactly (see
         // `Bridged::retained_base_resumes_fork`): the base databox, unchanged.
@@ -9262,6 +10236,223 @@ fn restore_retained_classification_base(
         ctx.process_context().node_count()
     };
     Some(())
+}
+
+// ===========================================================================
+// Retained consistency leaf: reuse of the consistency model with a reuse
+// branch point (docs/HYBRID-CB-HT.md §16, `fix/v155-bridge-replay`).
+//
+// On a base that resumes the first fork of a nondeterministic consistency
+// completion, every class job re-decides the pending ABox disjunctions. The
+// LEAF is that decision made once: the consistency continuation from the
+// resuming base, run to a clash-free fixpoint with no class root, with its
+// open decisions kept below every class job. A class job on the leaf is
+// alternative 0 of a reuse branch point ("adopt the leaf's decisions"); the
+// driver accepts its verdict only when it cannot depend on those decisions
+// being open (a satisfiable fixpoint, or a root cancellation traced to
+// branching level 0). Every other outcome takes alternative 1: the leaf is
+// dropped and the job reruns on the resuming base, unchanged.
+// ===========================================================================
+
+/// The retained consistency leaf. Its own decisions are NOT on the class
+/// job's branch stack: their epochs sit between `base_depth` and `depth`, so
+/// no class-job backtrack can reach them.
+struct RetainedConsistencyLeaf {
+    /// Branch-epoch depth of the leaf (the resuming base, the build's job
+    /// epoch, and one epoch per owned leaf decision).
+    depth: usize,
+    /// `Bridged::retained_base_depth` when the leaf was built.
+    base_depth: usize,
+    databox: super::process::databox::ProcessingDataBox,
+    branch_node: super::process::BranchNodeId,
+    next_id: Cint64,
+    /// Open decisions of the leaf (diagnostic).
+    decisions: usize,
+    /// The job algorithm's backend replay map at the build: immutable input
+    /// data, shared by every leaf job instead of being rebuilt per job.
+    replay: NativeReplaySnapshot,
+}
+
+/// Counters of the reuse branch point (reported under `KM_BRIDGE_PROGRESS`
+/// and `KM_BRIDGE_LEAF_STATS`).
+#[derive(Clone, Copy, Default, Debug)]
+struct RetainedLeafCounts {
+    builds: usize,
+    build_failures: usize,
+    attempts: usize,
+    accepted_sat: usize,
+    accepted_root_cancel: usize,
+    /// Alternative 1 taken: a clash not traced to level 0 (the verdict may
+    /// rest on a leaf decision).
+    fallback_unsat: usize,
+    /// Alternative 1 taken: a STOP, a poisoned search or a withheld witness.
+    fallback_unknown: usize,
+    drops: usize,
+}
+
+impl RetainedLeafCounts {
+    fn fallbacks(&self) -> usize {
+        self.fallback_unsat + self.fallback_unknown
+    }
+}
+
+/// Build the leaf on the resuming base, or (`base_depth` 0, no retained
+/// base) on the ABox a per-job reset just initialized. Precondition: the
+/// caller has just restored that base and configured the job algorithm
+/// exactly as for a class job. Runs the
+/// consistency continuation with no class root. Returns `None` (and leaves
+/// the context as an ordinary finished job, with the spine journal closed)
+/// when the continuation does not end in a trusted clash-free fixpoint.
+fn build_retained_consistency_leaf(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    base_depth: usize,
+) -> Option<RetainedConsistencyLeaf> {
+    // On the per-job reset path (no retained base) the freshly initialized
+    // ABox is the base and the build opens its own job epoch.
+    if ctx.process_context().branch_epoch_depth() == base_depth && algo.or_branch_stack.is_empty() {
+        ctx.push_branch_epoch();
+    }
+    if ctx.process_context().branch_epoch_depth() != base_depth + 1
+        || !algo.or_branch_stack.is_empty()
+    {
+        return None;
+    }
+    ctx.clear_pending_signal();
+    algo.singleton_base_prepared = false;
+    algo.completeness_poisoned = false;
+    algo.drive_deadline = algo.probe_budget.map(|b| std::time::Instant::now() + b);
+    // Spine journal 1: every spine change of the build is undone when the
+    // leaf is dropped, so the resuming base's spine is exactly as before.
+    ctx.process_context_mut().push_spine_journal_epoch();
+    // A materialized model: no satisfiability-cache parking of disjunctions.
+    let absorption = algo.conf_sat_exp_cached_disj_absorp;
+    algo.conf_sat_exp_cached_disj_absorp = false;
+    let consistent = algo.run_completion_on(ctx);
+    algo.conf_sat_exp_cached_disj_absorp = absorption;
+    algo.drive_deadline = None;
+    let owned = algo.or_branch_stack.iter().filter(|branch| branch.own_epoch).count();
+    let trusted = consistent
+        && !ctx.has_pending_signal()
+        && !algo.completeness_poisoned
+        && algo.unrestored_advance_count == 0
+        && ctx.process_context().branch_epoch_depth() == base_depth + 1 + owned;
+    if !trusted {
+        ctx.process_context_mut().pop_spine_journal_epoch();
+        return None;
+    }
+    let decisions = algo.or_branch_stack.len();
+    // The leaf's decisions leave the job branch stack; their epochs stay.
+    algo.or_branch_stack.clear();
+    ctx.clear_pending_signal();
+    ctx.base.set_current_individual_node(NodeId::NONE);
+    let depth = ctx.process_context().branch_epoch_depth();
+    let databox = ctx.processing_data_box().clone();
+    let next_id = ctx.processing_data_box_mut().next_individual_node_id(false);
+    let branch_node = ctx.base.used_branch_tree_node;
+    // Spine journal 2: one class job's spine changes, undone per job.
+    ctx.process_context_mut().push_spine_journal_epoch();
+    // The first leaf job's epoch (popped by `restore_retained_consistency_leaf`).
+    ctx.push_branch_epoch();
+    let replay = std::sync::Arc::clone(&algo.native_nominal_backend_replay);
+    Some(RetainedConsistencyLeaf { depth, base_depth, databox, branch_node, next_id, decisions, replay })
+}
+
+/// Start the next class job on the leaf: roll the previous job back (its
+/// owned branch epochs and its job epoch, and its spine changes through
+/// spine journal 2), then open the new job's epoch with the leaf's databox,
+/// branch cursor and id allocator, and a fresh job algorithm.
+fn restore_retained_consistency_leaf(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    leaf: &RetainedConsistencyLeaf,
+    replay_snapshot: Option<&NativeReplaySnapshot>,
+) -> Option<()> {
+    let owned = algo.or_branch_stack.iter().filter(|branch| branch.own_epoch).count();
+    if ctx.process_context().branch_epoch_depth() != leaf.depth + 1 + owned {
+        return None;
+    }
+    while let Some(branch) = algo.or_branch_stack.pop() {
+        if branch.own_epoch {
+            ctx.pop_branch_epoch();
+        }
+    }
+    ctx.pop_branch_epoch();
+    if ctx.process_context().branch_epoch_depth() != leaf.depth {
+        return None;
+    }
+    ctx.process_context_mut().pop_spine_journal_epoch();
+    ctx.process_context_mut().push_spine_journal_epoch();
+    ctx.base.used_branch_tree_node = leaf.branch_node;
+    ctx.branch_tree_node = leaf.branch_node;
+    ctx.clear_pending_signal();
+    ctx.base.set_current_individual_node(NodeId::NONE);
+    ctx.push_branch_epoch();
+    let mut databox = leaf.databox.clone();
+    databox.set_first_possible_individual_node_id(leaf.next_id);
+    ctx.base.used_processing_data_box = databox;
+    reset_classification_algorithm_on_retained_base(
+        algo,
+        bridged,
+        Some(replay_snapshot.unwrap_or(&leaf.replay)),
+    );
+    // A continuation of the consistency completion: no retained-node special
+    // casing, as on the resuming base.
+    algo.retained_base_node_count = 0;
+    Some(())
+}
+
+/// Take alternative 1 of the reuse branch point: discard the leaf (the
+/// current job, the leaf's decisions and the build's job epoch, and both
+/// spine journals) and leave the context as an ordinary finished job on the
+/// resuming base, ready for `restore_retained_classification_base`.
+fn drop_retained_consistency_leaf(
+    algo: &mut CompletionTaskHandleAlgorithm,
+    ctx: &mut CalculationAlgorithmContextBase,
+    leaf: &RetainedConsistencyLeaf,
+) -> Option<()> {
+    let owned = algo.or_branch_stack.iter().filter(|branch| branch.own_epoch).count();
+    if ctx.process_context().branch_epoch_depth() != leaf.depth + 1 + owned
+        || leaf.depth <= leaf.base_depth
+    {
+        return None;
+    }
+    while let Some(branch) = algo.or_branch_stack.pop() {
+        if branch.own_epoch {
+            ctx.pop_branch_epoch();
+        }
+    }
+    while ctx.process_context().branch_epoch_depth() > leaf.base_depth {
+        ctx.pop_branch_epoch();
+    }
+    ctx.process_context_mut().pop_spine_journal_epoch();
+    ctx.process_context_mut().pop_spine_journal_epoch();
+    ctx.clear_pending_signal();
+    ctx.base.set_current_individual_node(NodeId::NONE);
+    // The shape `restore_retained_classification_base` expects after a job.
+    ctx.push_branch_epoch();
+    Some(())
+}
+
+/// The reuse branch point's acceptance test for a verdict computed on the
+/// leaf. `unsat` is the verdict's polarity. A satisfiable fixpoint is a
+/// complete clash-free graph and always accepted; an unsatisfiable verdict
+/// only when the drive ended in a root cancellation (the clash traced to
+/// branching level 0, independent of every decision, the leaf's included).
+fn retained_leaf_verdict_accepted(
+    algo: &CompletionTaskHandleAlgorithm,
+    ctx: &CalculationAlgorithmContextBase,
+    unsat: bool,
+) -> bool {
+    if algo.completeness_poisoned {
+        return false;
+    }
+    if !unsat {
+        return !ctx.has_pending_signal();
+    }
+    algo.ddb_root_cancelled
+        && matches!(ctx.pending_signal(), super::completion::clash::CalcSignal::Clash(_))
 }
 
 /// Materialize the class-job databox from the retained consistency parent.
@@ -9610,10 +10801,36 @@ fn native_exact_nominal_process_node(
 /// does not yet populate Konclude's phase-6 survivor merging hash. Therefore
 /// the current nominal vector is also scanned and the exact merge-chain
 /// equivalence class is unioned with any live hash values.
+/// Nodes to the nominal tags whose exact process node resolves to them
+/// under `native_completion_merge_target(.., deterministic_only)`, in
+/// individual-arena order: the scan that `native_completion_same_individuals`
+/// made once per association, made once per writer call. `None` when the scan
+/// fails for any individual (a negative tag or an unresolvable merge chain),
+/// where every call of the per-association scan failed as well.
+fn native_completion_same_individual_index(
+    ctx: &CalculationAlgorithmContextBase,
+    deterministic_only: bool,
+) -> Option<HashMap<NodeId, Vec<Cint64>>> {
+    let mut index: HashMap<NodeId, Vec<Cint64>> = HashMap::default();
+    for individual in ctx.ontology_arenas().individual_iter() {
+        let individual_tag = individual.get_individual_id();
+        if individual_tag < 0 {
+            return None;
+        }
+        let Some(original) = native_exact_nominal_process_node(ctx, individual_tag) else {
+            continue;
+        };
+        let representative = native_completion_merge_target(ctx, original, deterministic_only)?;
+        index.entry(representative).or_default().push(individual_tag);
+    }
+    Some(index)
+}
+
 fn native_completion_same_individuals(
     ctx: &CalculationAlgorithmContextBase,
     node: NodeId,
     deterministic_only: bool,
+    index: &mut Option<Option<HashMap<NodeId, Vec<Cint64>>>>,
 ) -> Option<Vec<Cint64>> {
     let own_tag = native_completion_nominal_tag(ctx, node)?;
     let merging_hash = ctx.process_context().node(node).use_individual_merging_hash;
@@ -9638,18 +10855,14 @@ fn native_completion_same_individuals(
             values.push(individual_tag);
         }
     }
-    for individual in ctx.ontology_arenas().individual_iter() {
-        let individual_tag = individual.get_individual_id();
-        if individual_tag < 0 {
-            return None;
-        }
-        let Some(original) = native_exact_nominal_process_node(ctx, individual_tag) else {
-            continue;
-        };
-        let representative = native_completion_merge_target(ctx, original, deterministic_only)?;
-        if representative == node {
-            values.push(individual_tag);
-        }
+    // The scan of every individual for those that resolve to `node`, read
+    // from an index built once (it was quadratic in the number of
+    // individuals: 128 s of ore_ont_16315's 29,495-individual writer).
+    let index = index
+        .get_or_insert_with(|| native_completion_same_individual_index(ctx, deterministic_only))
+        .as_ref()?;
+    if let Some(members) = index.get(&node) {
+        values.extend(members.iter().copied());
     }
     values.sort_unstable();
     values.dedup();
@@ -9833,12 +11046,82 @@ fn native_record_completion_neighbour_role(
     }
 }
 
+/// One source role assertion with both endpoints resolved in the completion
+/// graph (`native_completion_role_metadata`).
+struct NativeCompletionAssertionEdge {
+    role: RoleId,
+    source_tag: Cint64,
+    target_tag: Cint64,
+    source_final: NodeId,
+    target_final: NodeId,
+    source_merge_deterministic: bool,
+    target_merge_deterministic: bool,
+}
+
+/// The assertion journal of every seed, resolved once: `edges` in seed and
+/// assertion order, `by_node` the ascending indices of the edges with an
+/// endpoint at a node.
+struct NativeCompletionAssertionJournal {
+    edges: Vec<NativeCompletionAssertionEdge>,
+    by_node: HashMap<NodeId, Vec<usize>>,
+}
+
+fn native_completion_assertion_journal(
+    ctx: &CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+) -> Option<NativeCompletionAssertionJournal> {
+    let mut edges = Vec::new();
+    let mut by_node: HashMap<NodeId, Vec<usize>> = HashMap::default();
+    for source_seed in &bridged.nominal_seeds {
+        let Some(source_original) =
+            native_exact_nominal_process_node(ctx, source_seed.individual_tag)
+        else {
+            // Sparse representative jobs materialize only their selected
+            // roots and on-demand neighbours. An absent source cannot have
+            // contributed a link to this task graph.
+            continue;
+        };
+        let source_final = native_completion_merge_target(ctx, source_original, false)?;
+        let source_merge_deterministic =
+            native_completion_merge_chain_is_deterministic(ctx, source_original, source_final)?;
+        for &(role, target_tag) in &source_seed.role_assertions {
+            let Some(target_original) = native_exact_nominal_process_node(ctx, target_tag) else {
+                // A successful backend-neighbour expansion deliberately keeps
+                // uninfluenced neighbours unmaterialized. Their canonical
+                // neighbour-role label was copied from the consumed
+                // association, exactly as Konclude's writer reuses previous
+                // label items when all links were not collected.
+                continue;
+            };
+            let target_final = native_completion_merge_target(ctx, target_original, false)?;
+            let target_merge_deterministic =
+                native_completion_merge_chain_is_deterministic(ctx, target_original, target_final)?;
+            let index = edges.len();
+            edges.push(NativeCompletionAssertionEdge {
+                role,
+                source_tag: source_seed.individual_tag,
+                target_tag,
+                source_final,
+                target_final,
+                source_merge_deterministic,
+                target_merge_deterministic,
+            });
+            by_node.entry(source_final).or_default().push(index);
+            if target_final != source_final {
+                by_node.entry(target_final).or_default().push(index);
+            }
+        }
+    }
+    Some(NativeCompletionAssertionJournal { edges, by_node })
+}
+
 fn native_completion_role_metadata(
     ctx: &CalculationAlgorithmContextBase,
     node: NodeId,
     concept_values: &[NativeAboxConceptValue],
     bridged: &Bridged,
     seed: &NominalSeed,
+    journal: &mut Option<Option<NativeCompletionAssertionJournal>>,
 ) -> Option<NativeCompletionRoleMetadata> {
     use super::model::op::{
         CCALL, CCAQALL, CCAQSOME, CCATLEAST, CCATMOST, CCSELF, CCSOME, CCVALUE,
@@ -10040,30 +11323,22 @@ fn native_completion_role_metadata(
     // each endpoint, the final representative and every alias in its merging
     // hash are retained; a nondeterministic endpoint merge makes only that
     // moved link contribution nondeterministic.
-    for source_seed in &bridged.nominal_seeds {
-        let Some(source_original) =
-            native_exact_nominal_process_node(ctx, source_seed.individual_tag)
-        else {
-            // Sparse representative jobs materialize only their selected
-            // roots and on-demand neighbours. An absent source cannot have
-            // contributed a link to this task graph.
-            continue;
-        };
-        let source_final = native_completion_merge_target(ctx, source_original, false)?;
-        let source_merge_deterministic =
-            native_completion_merge_chain_is_deterministic(ctx, source_original, source_final)?;
-        for &(role, target_tag) in &source_seed.role_assertions {
-            let Some(target_original) = native_exact_nominal_process_node(ctx, target_tag) else {
-                // A successful backend-neighbour expansion deliberately keeps
-                // uninfluenced neighbours unmaterialized. Their canonical
-                // neighbour-role label was copied from the consumed
-                // association above, exactly as Konclude's writer reuses
-                // previous label items when all links were not collected.
-                continue;
-            };
-            let target_final = native_completion_merge_target(ctx, target_original, false)?;
-            let target_merge_deterministic =
-                native_completion_merge_chain_is_deterministic(ctx, target_original, target_final)?;
+    // The journal scan below was a loop over every seed's assertions for
+    // every association (quadratic in the ABox: about 150 s of the writer on
+    // ore_ont_16315). The resolved endpoints do not depend on `node`, so they
+    // are computed once per writer call; the per-node pass visits, in the
+    // original seed and assertion order, only the assertions with an endpoint
+    // at `node`. A failed resolution fails every call, as the scan did.
+    let journal = journal
+        .get_or_insert_with(|| native_completion_assertion_journal(ctx, bridged))
+        .as_ref()?;
+    for &index in journal.by_node.get(&node).map(Vec::as_slice).unwrap_or(&[]) {
+        let edge = &journal.edges[index];
+        let (role, target_tag) = (edge.role, edge.target_tag);
+        let (source_final, target_final) = (edge.source_final, edge.target_final);
+        let source_merge_deterministic = edge.source_merge_deterministic;
+        let target_merge_deterministic = edge.target_merge_deterministic;
+        {
             let edge_deterministic = source_merge_deterministic && target_merge_deterministic;
             if source_final == node {
                 let mut aliases = native_completion_connection_aliases(ctx, target_final)?;
@@ -10085,7 +11360,7 @@ fn native_completion_role_metadata(
             if target_final == node {
                 let mut aliases = native_completion_connection_aliases(ctx, source_final)?;
                 aliases
-                    .entry(source_seed.individual_tag)
+                    .entry(edge.source_tag)
                     .and_modify(|current| *current |= source_merge_deterministic)
                     .or_insert(source_merge_deterministic);
                 native_record_completion_neighbour_role(
@@ -10282,6 +11557,9 @@ fn write_completed_native_representative_associations(
     }
     let consumed_updates = completed_task.used_association_update_ids;
     let mut prepared = Vec::new();
+    let mut deterministic_same_index = None;
+    let mut nondeterministic_same_index = None;
+    let mut assertion_journal = None;
     for seed in &bridged.nominal_seeds {
         let Some(original) = native_exact_nominal_process_node(ctx, seed.individual_tag) else {
             if selected_individuals.contains(&seed.individual_tag) {
@@ -10308,7 +11586,14 @@ fn write_completed_native_representative_associations(
             .map(|value| (value.concept, value.negated))
             .collect();
         let role_metadata =
-            native_completion_role_metadata(ctx, extraction_node, &concept_values, bridged, seed)?;
+            native_completion_role_metadata(
+                ctx,
+                extraction_node,
+                &concept_values,
+                bridged,
+                seed,
+                &mut assertion_journal,
+            )?;
         let deterministic_different_individuals = native_completion_different_individuals(
             ctx,
             deterministic_node,
@@ -10321,10 +11606,18 @@ fn write_completed_native_representative_associations(
             false,
             extraction_representative_tag,
         )?;
-        let deterministic_same_individuals =
-            native_completion_same_individuals(ctx, deterministic_node, true)?;
-        let nondeterministic_same_individuals =
-            native_completion_same_individuals(ctx, extraction_node, false)?;
+        let deterministic_same_individuals = native_completion_same_individuals(
+            ctx,
+            deterministic_node,
+            true,
+            &mut deterministic_same_index,
+        )?;
+        let nondeterministic_same_individuals = native_completion_same_individuals(
+            ctx,
+            extraction_node,
+            false,
+            &mut nondeterministic_same_index,
+        )?;
         let deterministic_same_label_identity =
             native_individual_label_identity(&deterministic_same_individuals);
         // The immutable replay journal is the task's
@@ -12107,6 +13400,56 @@ fn native_individual_label_identity(values: &[Cint64]) -> u64 {
 /// Write the bridge-local typed equivalent of Konclude's representative
 /// backend association. Every label family used by the completion read path is
 /// materialised, even when the entry is explicitly marked insufficient.
+/// The typed ABox journal of every seed in both directions, with every
+/// indirect super-role orientation installed by `addRoleAssertion`: for each
+/// individual tag, the `(role, negated, neighbour)` orientations that
+/// `write_native_abox_representative_cache` records for it. `None` when an
+/// assertion names a role outside the arena, as the per-node scan did.
+fn native_saturation_assertion_journal(
+    ctx: &CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+) -> Option<HashMap<Cint64, Vec<(Cint64, bool, Cint64)>>> {
+    let mut journal: HashMap<Cint64, Vec<(Cint64, bool, Cint64)>> = HashMap::default();
+    for source_seed in &bridged.nominal_seeds {
+        for &(asserted_role, target_tag) in &source_seed.role_assertions {
+            if asserted_role.is_none()
+                || asserted_role.index() >= ctx.ontology_arenas().role_count() as usize
+            {
+                return None;
+            }
+            let mut super_roles = ctx
+                .ontology_arenas()
+                .role(asserted_role)
+                .get_indirect_super_role_list()
+                .to_vec();
+            if !super_roles
+                .iter()
+                .any(|link| link.target == asserted_role && !link.negated)
+            {
+                super_roles.push(NegLink {
+                    target: asserted_role,
+                    negated: false,
+                });
+            }
+            for role_link in super_roles {
+                let role = role_link.target;
+                if role.is_none() || role.index() >= ctx.ontology_arenas().role_count() as usize {
+                    return None;
+                }
+                journal
+                    .entry(source_seed.individual_tag)
+                    .or_default()
+                    .push((role.raw, role_link.negated, target_tag));
+                journal
+                    .entry(target_tag)
+                    .or_default()
+                    .push((role.raw, !role_link.negated, source_seed.individual_tag));
+            }
+        }
+    }
+    Some(journal)
+}
+
 fn write_native_abox_representative_cache(
     ctx: &mut CalculationAlgorithmContextBase,
     bridged: &Bridged,
@@ -12121,6 +13464,7 @@ fn write_native_abox_representative_cache(
         return None;
     }
     let mut cache = NativeAboxRepresentativeCache::default();
+    let mut saturation_journal = None;
     for &(individual_tag, node) in nodes {
         if node.is_none() || node.index() >= ctx.process_context().sat_node_count() {
             return None;
@@ -12331,51 +13675,19 @@ fn write_native_abox_representative_cache(
         // indirect super-role orientation installed by `addRoleAssertion`.
         // These are asserted links and therefore deterministic; model-choice
         // links remain exclusively on the completion writeback path below.
-        for source_seed in &bridged.nominal_seeds {
-            for &(asserted_role, target_tag) in &source_seed.role_assertions {
-                if asserted_role.is_none()
-                    || asserted_role.index() >= ctx.ontology_arenas().role_count() as usize
-                {
-                    return None;
-                }
-                let mut super_roles = ctx
-                    .ontology_arenas()
-                    .role(asserted_role)
-                    .get_indirect_super_role_list()
-                    .to_vec();
-                if !super_roles
-                    .iter()
-                    .any(|link| link.target == asserted_role && !link.negated)
-                {
-                    super_roles.push(NegLink {
-                        target: asserted_role,
-                        negated: false,
-                    });
-                }
-                for role_link in super_roles {
-                    let role = role_link.target;
-                    if role.is_none() || role.index() >= ctx.ontology_arenas().role_count() as usize
-                    {
-                        return None;
-                    }
-                    if individual_tag == source_seed.individual_tag {
-                        instantiated_role_orientations.insert((role.raw, role_link.negated));
-                        indirect_nominals.insert(target_tag);
-                        neighbour_roles
-                            .entry(target_tag)
-                            .or_default()
-                            .insert((role.raw, role_link.negated));
-                    }
-                    if individual_tag == target_tag {
-                        instantiated_role_orientations.insert((role.raw, !role_link.negated));
-                        indirect_nominals.insert(source_seed.individual_tag);
-                        neighbour_roles
-                            .entry(source_seed.individual_tag)
-                            .or_default()
-                            .insert((role.raw, !role_link.negated));
-                    }
-                }
-            }
+        // The journal does not depend on the node: it is resolved once, at
+        // the first node that reaches this point (the scan over every seed's
+        // assertions per node, with a role-list copy per assertion, was
+        // quadratic: 130 s of ore_ont_10838's saturation). Every orientation
+        // the scan inserted for `individual_tag` is in its list; the targets
+        // are sets, so the order of insertion does not matter.
+        let journal = saturation_journal
+            .get_or_insert_with(|| native_saturation_assertion_journal(ctx, bridged))
+            .as_ref()?;
+        for &(role, negated, other) in journal.get(&individual_tag).map(Vec::as_slice).unwrap_or(&[]) {
+            instantiated_role_orientations.insert((role, negated));
+            indirect_nominals.insert(other);
+            neighbour_roles.entry(other).or_default().insert((role, negated));
         }
 
         let (completely_handled, completely_propagated) =
@@ -12864,6 +14176,13 @@ fn replay_native_representative_cache(
     let Some(concept_values) = entry.concept_values.as_ref() else {
         return false;
     };
+    // Without the deterministic same individuals' nominal concepts the cached
+    // labels are not closed (positive nominals are not cache values), so the
+    // replay is skipped and the raw assertions re-derive the closure.
+    let Some(same_nominals) = native_deterministic_same_nominal_concepts(bridged, &entry, seed)
+    else {
+        return true;
+    };
     for value in concept_values.iter().filter(|value| value.deterministic) {
         algo.add_concept_to_individual_skip_and_processing(
             value.concept,
@@ -12878,6 +14197,21 @@ fn replay_native_representative_cache(
         if ctx.has_pending_signal() {
             break;
         }
+    }
+    for concept in same_nominals {
+        if ctx.has_pending_signal() {
+            break;
+        }
+        let mut target = node;
+        algo.add_concept_to_individual(
+            concept,
+            false,
+            &mut target,
+            dependency_track_point,
+            true,
+            true,
+            ctx,
+        );
     }
     ctx.process_context_mut()
         .node_mut(node)
@@ -13271,6 +14605,51 @@ fn saturation_refuses_terminology(ctx: &CalculationAlgorithmContextBase) -> bool
     })
 }
 
+/// Whether the concept saturation pass refuses a SELF-bearing terminology.
+/// The saturation SELF rule is ported (`applySELFRule`, docs/HYBRID-CB-HT.md
+/// section 20), so a terminology without native nominals saturates. The
+/// native-nominal individual saturation additionally needs the
+/// representative-cache handler's self-restriction role collection
+/// (`CSaturationNodeBackendAssociationCacheHandler::collectSelfRestrictionRoles`,
+/// cpp 225–250), which the port's cache writer does not have, so that path
+/// keeps the refusal. `KM_BRIDGE_SAT_REFUSE_SELF=1` restores the old refusal
+/// everywhere (A/B measurements).
+fn saturation_refuses_self_terminology(
+    ctx: &CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    native_consistency_prefix: bool,
+) -> bool {
+    if !saturation_refuses_terminology(ctx) {
+        return false;
+    }
+    bridged.has_native_nominals()
+        || native_consistency_prefix
+        || std::env::var_os("KM_BRIDGE_SAT_REFUSE_SELF").is_some()
+}
+
+/// Whether the terminology has a SELF concept that can create a self edge,
+/// i.e. one that is not an irreflexivity concept (those occur only negated).
+/// `KM-SOUNDNESS-GATE[self-satexp]`, docs/HYBRID-CB-HT.md section 20.
+/// `KM_BRIDGE_SAT_REFUSE_SELF=1` (the pre-section-20 behaviour, which
+/// reproduces the incomplete ore_ont_12128 answer) disables the gate together
+/// with the saturation SELF rule.
+fn positive_self_terminology(ctx: &CalculationAlgorithmContextBase, bridged: &Bridged) -> bool {
+    if std::env::var_os("KM_BRIDGE_SAT_REFUSE_SELF").is_some() {
+        return false;
+    }
+    // Diagnostic (docs/HYBRID-CB-HT.md section 23): install the expansion
+    // caches on SELF terminologies too. Production never sets it.
+    if std::env::var_os("KM_BRIDGE_SELF_SATEXP").is_some() {
+        return false;
+    }
+    let arenas = ctx.ontology_arenas();
+    (0..arenas.concept_count()).any(|index| {
+        let id = ConceptId::new(index as Cint64);
+        arenas.concept(id).get_operator_code() == op::CCSELF
+            && !bridged.irreflexive_self_concepts.contains(&id)
+    })
+}
+
 fn run_bridged_saturation(ctx: &mut CalculationAlgorithmContextBase, bridged: &Bridged) -> bool {
     run_bridged_saturation_with_native_consistency_prefix(
         ctx,
@@ -13300,7 +14679,7 @@ fn run_bridged_saturation_with_native_consistency_prefix(
     // implement its backward-propagation rule. Skip the optional pass before
     // it mutates any state; the caller then uses exact completion without
     // extracting saturation verdicts or installing saturation cache links.
-    if saturation_refuses_terminology(ctx) {
+    if saturation_refuses_self_terminology(ctx, bridged, native_consistency_prefix.is_some()) {
         return false;
     }
     let mut sat_algo = super::saturation::algorithm::SaturationTaskHandleAlgorithm::new();
@@ -13913,8 +15292,48 @@ fn has_unhandled_inverse_negative_existential_mirror(tin: &TInput) -> bool {
 /// Keep this check ahead of datatype, bottom-prepass, nominal, and saturation
 /// certificates: none of those certificates reconstructs the inverse feedback
 /// needed by a named `N = not exists R.F` mirror.
+thread_local! {
+    /// The most recent reason the bridge recorded for declining its input on
+    /// this thread. Diagnostic only: it names the gate in the worker's
+    /// `konclude_ht bridge defer` message and never influences a verdict.
+    static BRIDGE_DEFER_REASON: std::cell::RefCell<Option<String>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Record why the bridge declines (or, at a phase milestone, where it is),
+/// overwriting any earlier note of this thread.
+pub(crate) fn note_bridge_defer(reason: impl Into<String>) {
+    BRIDGE_DEFER_REASON.with(|slot| *slot.borrow_mut() = Some(reason.into()));
+}
+
+/// A clause with concept and role names, for defer messages.
+fn named_clause(tin: &TInput, clause: &HtClause) -> String {
+    let concept = |c: usize| tin.concepts.get(c).cloned().unwrap_or_else(|| format!("C{c}"));
+    let role = |r: usize| tin.roles.get(r).cloned().unwrap_or_else(|| format!("R{r}"));
+    let atom = |atom: &HAtom| match atom {
+        HAtom::Concept { neg, c, t } => format!("{}{}(x{t})", if *neg { "¬" } else { "" }, concept(*c)),
+        HAtom::Role { r, s, t } => format!("{}(x{s},x{t})", role(*r)),
+        HAtom::Eq { s, t } => format!("x{s}=x{t}"),
+        HAtom::Exist { r, neg, c, t } =>
+            format!("∃{}.{}{}(x{t})", role(*r), if *neg { "¬" } else { "" }, concept(*c)),
+    };
+    let side = |atoms: &[HAtom], join: &str| {
+        if atoms.is_empty() { "∅".to_string() } else { atoms.iter().map(atom).collect::<Vec<_>>().join(join) }
+    };
+    format!("{} → {}", side(&clause.body, " ∧ "), side(&clause.head, " ∨ "))
+}
+
+/// Take the reason recorded by the last bridge run on this thread.
+pub(crate) fn take_bridge_defer_reason() -> Option<String> {
+    BRIDGE_DEFER_REASON.with(|slot| slot.borrow_mut().take())
+}
+
 fn bridge_input_guard(tin: &TInput) -> bool {
-    !has_unhandled_inverse_negative_existential_mirror(tin)
+    let admitted = !has_unhandled_inverse_negative_existential_mirror(tin);
+    if !admitted {
+        note_bridge_defer("input guard: an inverse role meets a negative existential mirror");
+    }
+    admitted
 }
 
 /// Production classification of a `TInput` over the konclude_ht bridge.
@@ -13940,6 +15359,7 @@ fn bridge_input_guard(tin: &TInput) -> bool {
 /// pathological subject costs bounded time while the cheap bulk completes,
 /// instead of the first budget-STOP discarding all finished work.
 pub fn bridged_classify(tin: &TInput) -> Option<BridgedClassification> {
+    let _ = take_bridge_defer_reason();
     if !bridge_input_guard(tin) {
         return None;
     }
@@ -14190,6 +15610,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // The bridge has no typed data-domain object. Decline before constructing
     // an arena instead of treating a fixed datatype as an ordinary class.
     if has_fixed_datatype_object_position(tin) {
+        note_bridge_defer("input: a fixed datatype occurs in an object position");
         if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
             eprintln!("BRIDGE-INPUT-DEFER: a fixed datatype occurs in an object position");
         }
@@ -14212,12 +15633,14 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // target of the tautology R <= top is semantically inert for the certified
     // component-ABox path, so it need not make that path defer.
     if has_builtin_top_role(tin) && !independent_abox_elided {
+        note_bridge_defer("input: the universal role requires an exact supported source path");
         if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
             eprintln!("BRIDGE-INPUT-DEFER: universal role requires an exact supported source path");
         }
         return None;
     }
     if has_any_nominal_input(tin) && !native_nominals {
+        note_bridge_defer("input: nominal metadata is not covered by the native source path");
         if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
             eprintln!("BRIDGE-INPUT-DEFER: nominal metadata is not covered by the native source path");
         }
@@ -14305,8 +15728,15 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         );
     }
     if bridged.unsupported > 0 {
+        note_bridge_defer(format!(
+            "encoder: {} clause(s) the bridged terminology cannot express",
+            bridged.unsupported
+        ));
         return None;
     }
+    // Milestone: later exits that record no reason of their own report the
+    // phase they left from.
+    note_bridge_defer("consistency or classification phase (no specific reason recorded)");
     let base_budget = std::env::var("KM_BRIDGE_PROBE_BUDGET_S")
         .ok()
         .and_then(|s| s.parse::<u64>().ok())
@@ -14537,6 +15967,12 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                                 || !algo.or_branch_stack.is_empty()
                                 || std::env::var_os("KM_BRIDGE_REPLAY_ALWAYS_OFF").is_some()
                             {
+                                if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+                                    eprintln!(
+                                        "BRIDGE-REPLAY disabled: open_or_branches={} (before {}) stack={}",
+                                        algo.or_branch_open_count, branch_points_before, algo.or_branch_stack.len()
+                                    );
+                                }
                                 bridged.precomputation_replay_disabled.set(true);
                             }
                             if !incomplete_associations.is_empty() {
@@ -14635,6 +16071,19 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                     // cursor. Manual all-branch rollback must do the same.
                     ctx.base.used_branch_tree_node = deterministic_branch_node;
                     ctx.branch_tree_node = deterministic_branch_node;
+                    // The rollback leaves no node in processing. The context's
+                    // current-node pointer is not journaled and can still name
+                    // a node of the completion (on bridge_merge_min it names
+                    // the fork node itself). With it
+                    // set, `add_individual_to_processing_queue` treats that
+                    // node as being processed and reports it inserted without
+                    // queueing it, so the requeue below and the drain lost the
+                    // fork node's pending work (bridge_merge_min: `a`'s
+                    // disjunctions were never reopened in any class job).
+                    // Konclude derives each job from a task with no current
+                    // node; clear the pointer exactly as the in-process
+                    // backtrack does (u02 `advance`).
+                    ctx.base.set_current_individual_node(NodeId::NONE);
                     // Nondeterministic consistency completion: the rolled-back
                     // graph is the state at the first fork, but deterministic
                     // work queued at that moment (on other nodes, and the rest
@@ -14734,6 +16183,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                             && algo.or_branch_stack.is_empty()
                             && ctx.process_context().branch_epoch_depth() == 1;
                         if ok {
+                            // Same reason as at the rollback above: the drain's
+                            // last processed node must not shadow the requeue.
+                            ctx.base.set_current_individual_node(NodeId::NONE);
                             let konclude = drain_mode.as_deref() == Some("konclude");
                             for (node, descriptor, dependency) in deferred {
                                 let queue = ctx.process_context_mut().node_concept_processing_queue(node, true);
@@ -14762,6 +16214,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                             ctx.base.used_processing_data_box = databox;
                             ctx.base.used_branch_tree_node = used_branch;
                             ctx.branch_tree_node = branch;
+                            ctx.base.set_current_individual_node(NodeId::NONE);
                         }
                         if progress {
                             eprintln!("BRIDGE-RETAINED-BASE drain mode={:?} failed={drain_failed}", drain_mode);
@@ -14798,6 +16251,20 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                         }
                         if retain_deterministic_leaf && progress {
                             eprintln!("BRIDGE-RETAINED-BASE retains the deterministic leaf (no open branch)");
+                        }
+                        if std::env::var_os("KM_HT_NO_BLOCKING_BASE_INDEX").is_none() {
+                            let started = std::time::Instant::now();
+                            let index = algo.build_blocking_base_index(&ctx);
+                            if progress {
+                                eprintln!(
+                                    "BRIDGE-RETAINED-BASE blocking index: base_hi={} keys={} entries={} in {:.2}s",
+                                    index.base_hi,
+                                    index.by_key.len(),
+                                    index.by_key.values().map(|list| list.len()).sum::<usize>(),
+                                    started.elapsed().as_secs_f64()
+                                );
+                            }
+                            algo.blocking_base_index = Some(std::sync::Arc::new(index));
                         }
                         ctx.push_branch_epoch();
                         retained_consistency_base = true;
@@ -15090,10 +16557,99 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // suppress only the associated-expansion cache shared across completion
     // probes.  This distinguishes a bad raw saturation label from a bad
     // completion-cache write without disabling the whole saturation coupling.
-    if satcache_active && std::env::var_os("KM_HT_NO_ASSOC_EXP_CACHE").is_none() {
+    // KM-SOUNDNESS-GATE[self-satexp]: see below.
+    let self_cardinality = positive_self_terminology(&ctx, &bridged);
+    if satcache_active && std::env::var_os("KM_HT_NO_ASSOC_EXP_CACHE").is_none() && !self_cardinality {
         install_bridge_saturation_node_expansion_cache(&mut ctx);
     }
-    if std::env::var_os("KM_HT_NO_SAT_EXP_CACHE").is_none() {
+    // KM-SOUNDNESS-GATE[singleton-satexp]: the satisfiable expander cache
+    // keys a node's satisfiability on its own label and ancestors, which is
+    // the locality that nominal nodes break (u21, "nominal-satexp"). A value
+    // singleton `v(y1) ∧ v(y2) → y1 = y2` breaks it in the same way: it merges
+    // any two nodes that take the value `v`, so whether a data successor's
+    // finite cover `R → v1 ⊔ … ⊔ vn` can choose a value depends on its
+    // siblings. A cache hit marks the successor satisfiable-cached and parks
+    // that disjunction (u09), no value is chosen, no merge happens, and the
+    // pigeonhole clash of `≥ n u` over an `n`-value range under `¬F` is never
+    // seen: with `u` ranging over `xsd:boolean`, `G ⊑ ≥ 2 u` and
+    // `F ≡ ∃u.{true}` the probe `G ⊓ ¬F` came out satisfiable and `G ⊑ F` was
+    // lost (tests/native_data_values.rs, `count_with_assertions_ok`). Inputs
+    // with a consumed singleton concept therefore run without the cache;
+    // skipping it removes an optimisation only (the nodes are expanded by the
+    // ordinary rules).
+    // The gate needs a node that can carry a singleton. When the least
+    // fixpoint of `value_singletons::label_reach` proves that no probe can put
+    // any consumed singleton into a label positively, the merge rule never
+    // fires, every probe runs as it runs without the singleton, and the cache
+    // keeps its singleton-free locality argument (docs/DATATYPES.md, "Inert
+    // value singletons and the satisfiable expander cache").
+    // `label_reach` gates every head by its body; a TOP fallback disjunction
+    // lets a node choose a head without its body, so such inputs keep the
+    // 0520da9d gate.
+    let singletons_inert = !bridged.singleton_concepts.is_empty()
+        && std::env::var_os("KM_HT_NO_SINGLETON_INERT").is_none()
+        && bridged.unguarded_top_gcis == 0
+        && {
+            let singleton_set: HashSet<ConceptId> =
+                bridged.singleton_concepts.iter().copied().collect();
+            let indices: Vec<usize> = bridged
+                .named
+                .iter()
+                .enumerate()
+                .filter_map(|(i, id)| singleton_set.contains(id).then_some(i))
+                .collect();
+            let started = std::time::Instant::now();
+            let reach = super::value_singletons::value_singletons_inert(tin, &indices);
+            if std::env::var_os("KM_HT_STATS").is_some() || std::env::var_os("KM_TIMING").is_some() {
+                eprintln!(
+                    "bridge [singleton-inert] singletons={} inert={} unguarded-top-gcis={} in {:.3}s",
+                    bridged.singleton_concepts.len(),
+                    reach.is_some(),
+                    bridged.unguarded_top_gcis,
+                    started.elapsed().as_secs_f64()
+                );
+            }
+            match reach {
+                Some(reach) => {
+                    if super::value_singletons::audit_enabled() {
+                        let excluded = bridged
+                            .named
+                            .iter()
+                            .enumerate()
+                            .filter(|&(i, _)| !reach.pos[i])
+                            .map(|(_, &id)| ctx.ontology_arenas().concept(id).get_concept_tag())
+                            .collect();
+                        super::value_singletons::install_audit(excluded);
+                    }
+                    true
+                }
+                None => false,
+            }
+        };
+    // KM-SOUNDNESS-GATE[self-satexp] (docs/HYBRID-CB-HT.md sections 20 and
+    // 23): install neither expansion cache on a terminology with a positive
+    // SELF concept. Section 20's witnesses (the 23-axiom reduction of
+    // ore_ont_12128 and the `∃p.Self ⊓ ≤1 p⁻` seeds) turned out to be port
+    // defects that are not tied to self edges and are fixed in
+    // `satexp_absorb`, but a third witness is tied to them:
+    // `tests/fixtures/bridge_reflexive/merge1708_min.ofn`. There a successor
+    // with `⊤ ⊑ ≤1 p⁻` and the disjunction `B ⊔ ≥2 s⁻` (`B ⊑ ∃p.Self`) hits a
+    // satisfiable entry written for a root, whose model chose `B` and so a
+    // `p` self edge; the cached node absorbs the disjunction, and the self
+    // edge, which would make the node a second `p`-predecessor of itself next
+    // to its ancestor, is never built. `isSatisfiableCachedCompatible`
+    // (cpp 6401-6460) tests the entry's universal, at-most and existential
+    // concepts against the ancestor link, but not SELF, so Konclude's test
+    // does not cover this case either. The gate stays until the cache has a
+    // compatibility test for self edges. `KM_BRIDGE_SELF_SATEXP_NO_GATE=1`
+    // lifts it for the satisfiable expander cache (diagnostic, negative
+    // control); production never sets it.
+    let self_satexp_gate =
+        self_cardinality && std::env::var_os("KM_BRIDGE_SELF_SATEXP_NO_GATE").is_none();
+    if std::env::var_os("KM_HT_NO_SAT_EXP_CACHE").is_none()
+        && (bridged.singleton_concepts.is_empty() || singletons_inert)
+        && !self_satexp_gate
+    {
         install_bridge_satisfiable_expander_cache(&mut ctx);
     }
     report_bridge_memory("probe-caches-installed");
@@ -15254,6 +16810,61 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // candidate markers its root carries. Recorded in the prepare phase, read
     // when the subject's possible subsumers are verified.
     let mut readoff_eq_markers: HashMap<usize, HashSet<Cint64>> = HashMap::default();
+    // Root-cancellation witnesses for EMPTY stored refutations, shared by
+    // every subject job of this classification (docs/HYBRID-CB-HT.md §13).
+    // Cleared-queue screen of docs/HYBRID-CB-HT.md §15. Opt-in
+    // (`KM_BRIDGE_CLEARED_QUEUE_SCREEN=1`): on the automatic route of the
+    // measured inputs every job reaches the retained graph, so the screen
+    // only adds rejected jobs there.
+    let cleared_queue_screen = retained_consistency_base
+        && !fresh_env
+        && std::env::var_os("KM_BRIDGE_NO_RETAINED_BASE").is_none()
+        && std::env::var_os("KM_BRIDGE_CLEARED_QUEUE_SCREEN").is_some();
+    let cleared_queue_job = std::cell::Cell::new(false);
+    let cleared_queue_screen_counts = std::cell::Cell::new((0usize, 0usize));
+    // Retained consistency leaf (docs/HYBRID-CB-HT.md §16): on a base that
+    // resumes the first fork, class jobs first run on the leaf (the reuse
+    // branch point's alternative 0) and fall back to the resuming base.
+    // Default on; `KM_BRIDGE_NO_LEAF_REUSE=1` restores the resume-only path.
+    // Also on the per-job reset path that re-initializes the whole native
+    // ABox for every job (no retained base, e.g. when the saturation
+    // refuses `SELF`): the leaf is then the consistency completion of that
+    // ABox, and alternative 1 is the per-job reset itself.
+    let leaf_reuse = !fresh_env
+        && std::env::var_os("KM_BRIDGE_NO_LEAF_REUSE").is_none()
+        && if retained_consistency_base {
+            bridged.retained_base_resumes_fork.get()
+                && std::env::var_os("KM_BRIDGE_NO_RETAINED_BASE").is_none()
+        } else {
+            // Only on the representative-batch (card+nominal) profile, whose
+            // job algorithm `reset_classification_algorithm_on_retained_base`
+            // reproduces.
+            bridged.has_native_nominals()
+                && !independent_abox_elided
+                && algo.conf_direct_rule_preprocessing
+                && algo.conf_cache_oriented_or_ordering
+        };
+    let leaf_state: std::cell::RefCell<Option<RetainedConsistencyLeaf>> = Default::default();
+    let leaf_job = std::cell::Cell::new(false);
+    let leaf_job_ran = std::cell::Cell::new(false);
+    let leaf_disabled = std::cell::Cell::new(false);
+    let leaf_counts = std::cell::Cell::new(RetainedLeafCounts::default());
+    let leaf_update = |f: &dyn Fn(&mut RetainedLeafCounts)| {
+        let mut counts = leaf_counts.get();
+        f(&mut counts);
+        leaf_counts.set(counts);
+    };
+    // Scheduling only: stop trying the leaf once alternative 1 was taken at
+    // least 256 times and on more than half of the attempts (each fallback
+    // costs the attempt, the resuming job and a rebuild of the leaf).
+    let leaf_useful = || {
+        let counts = leaf_counts.get();
+        !leaf_disabled.get()
+            && (counts.fallbacks() < 256 || counts.fallbacks() * 2 <= counts.attempts)
+    };
+    let empty_alternative_witnesses: std::cell::RefCell<
+        std::sync::Arc<crate::fxhash::FxHashMap<(usize, bool), bool>>,
+    > = Default::default();
     let mut classify_one = |s: usize,
                             algo: &mut CompletionTaskHandleAlgorithm,
                             ctx: &mut CalculationAlgorithmContextBase,
@@ -15284,28 +16895,71 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                          cow: bool|
          -> Option<()> {
             let phase_start = phase_timing.then(std::time::Instant::now);
+            // Round 0 builds the retained consistency leaf when a leaf job
+            // finds none (docs/HYBRID-CB-HT.md §16); round 1 then restores it.
+            // (Body not re-indented to keep the merge with parallel work small.)
+            for leaf_round in 0..2 {
             // The fresh-environment diagnostic must also bypass a retained
             // consistency base; otherwise it silently repeats the reuse path
             // it is intended to distinguish from a fresh complete probe.
+            leaf_job_ran.set(false);
             if retained_consistency_base && !fresh_env
                 && std::env::var_os("KM_BRIDGE_NO_RETAINED_BASE").is_none()
             {
-                restore_retained_classification_base(
-                    algo,
-                    ctx,
-                    &bridged,
-                    retained_consistency_databox.as_ref()?,
-                    retained_consistency_branch_node,
-                    retained_consistency_next_id,
-                    retained_replay_snapshot.as_ref(),
-                )?;
+                // Leaf jobs (docs/HYBRID-CB-HT.md §16) restore the leaf;
+                // every other job first drops a leaf that is still built.
+                if !leaf_job.get() {
+                    if let Some(leaf) = leaf_state.borrow_mut().take() {
+                        drop_retained_consistency_leaf(algo, ctx, &leaf)?;
+                        leaf_update(&|c| c.drops += 1);
+                    }
+                }
+                if leaf_job.get() && leaf_state.borrow().is_some() {
+                    restore_retained_consistency_leaf(
+                        algo,
+                        ctx,
+                        &bridged,
+                        leaf_state.borrow().as_ref()?,
+                        retained_replay_snapshot.as_ref(),
+                    )?;
+                    leaf_job_ran.set(true);
+                } else {
+                    restore_retained_classification_base_with(
+                        algo,
+                        ctx,
+                        &bridged,
+                        retained_consistency_databox.as_ref()?,
+                        retained_consistency_branch_node,
+                        retained_consistency_next_id,
+                        retained_replay_snapshot.as_ref(),
+                        cleared_queue_job.get(),
+                    )?;
+                }
             } else if fresh_env {
                 let budget = algo.probe_budget;
                 let (a2, c2, _b2) = fresh_bridge_env_with_trigger_absorption(tin, trigger_absorb);
                 *algo = a2;
                 *ctx = c2;
                 algo.probe_budget = budget;
+            } else if leaf_job.get() && leaf_state.borrow().is_some() {
+                // Per-job reset path with a retained consistency leaf
+                // (docs/HYBRID-CB-HT.md §16).
+                restore_retained_consistency_leaf(
+                    algo,
+                    ctx,
+                    &bridged,
+                    leaf_state.borrow().as_ref()?,
+                    None,
+                )?;
+                // The per-job reset runs its jobs with COW epochs.
+                algo.conf_inprocess_cow = true;
+                leaf_job_ran.set(true);
             } else {
+                // The reset rebuilds the whole context: a leaf still built
+                // is discarded with it.
+                if leaf_state.borrow_mut().take().is_some() {
+                    leaf_update(&|c| c.drops += 1);
+                }
                 reset_classification_probe_env(
                     algo,
                     ctx,
@@ -15315,6 +16969,10 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 );
             }
             configure_production_search(algo);
+            // Every job of the classification sees the operand witnesses
+            // established so far (docs/HYBRID-CB-HT.md §13).
+            algo.empty_alternative_witnesses =
+                std::sync::Arc::clone(&empty_alternative_witnesses.borrow());
             if ctx.base.used_sat_exp_cache_handler.is_some() {
                 // CCalculationTableauCompletionTaskHandleAlgorithm defaults,
                 // cpp 194-199 and readCalculationConfig cpp 536-539.
@@ -15335,6 +16993,25 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 configure_production_completion_saturation_coupling(algo);
                 algo.conf_saturation_satisfiabilitiy_expansion_cache_writing =
                     std::env::var_os("KM_HT_NO_SAT_CACHE_WRITING").is_none();
+                // KM-SOUNDNESS-GATE[self-satexp], successor half
+                // (docs/HYBRID-CB-HT.md section 20): with a self edge in the
+                // terminology, created successors are not expanded from
+                // saturated labels; on the SELF seed `s9` that expansion made
+                // the completion non-terminating (0.02 s without the
+                // saturation, no answer within 60 s with it). Caching
+                // blocking from saturation goes off with it (section 21):
+                // Konclude caches a successor against its saturation node
+                // after `tryExpansionFromSaturatedData` has copied the
+                // saturated label, whose backward-propagating concepts reach
+                // the predecessor from there. Without that copy a cached
+                // successor propagates nothing back, so a defined class
+                // reached through an inverse trigger is lost (`merge1585`:
+                // `F ⊑ ∃r.∃s.C` and `Q2 ≡ ∃r.(≥1 s.C)` lost `F ⊑ Q2`). With
+                // both options off the completion expands every node itself.
+                if self_cardinality {
+                    algo.conf_expand_created_successors_from_saturation = false;
+                    algo.conf_caching_blocking_from_saturation = false;
+                }
             } else if native_saturation_coupling && !fresh_env {
                 // Native-nominal route: the same Konclude coupling, but reading
                 // the precomputation saturation instead of a classification-time
@@ -15355,6 +17032,52 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             if cow {
                 algo.conf_inprocess_cow = true;
             }
+            if leaf_job.get() && !leaf_job_ran.get() && leaf_round == 0
+                && !leaf_disabled.get() && leaf_state.borrow().is_none()
+                && leaf_reuse
+            {
+                let base_depth = if retained_consistency_base {
+                    bridged.retained_base_depth.get()
+                } else {
+                    0
+                };
+                if !retained_consistency_base && ctx.has_pending_signal() {
+                    // The reset's ABox initialization stopped.
+                    leaf_disabled.set(true);
+                    break;
+                }
+                match build_retained_consistency_leaf(algo, ctx, base_depth) {
+                    Some(leaf) => {
+                        if progress {
+                            eprintln!("BRIDGE-LEAF built: decisions={} depth={} nodes={}",
+                                leaf.decisions, leaf.depth, ctx.process_context().node_count());
+                        }
+                        *leaf_state.borrow_mut() = Some(leaf);
+                        leaf_update(&|c| c.builds += 1);
+                    }
+                    None => {
+                        if progress {
+                            eprintln!("BRIDGE-LEAF build failed; leaf reuse off for this input");
+                        }
+                        leaf_disabled.set(true);
+                        leaf_update(&|c| c.build_failures += 1);
+                    }
+                }
+                continue;
+            }
+            break;
+            }
+            if leaf_job_ran.get() {
+                // A leaf job publishes nothing to the shared satisfiability
+                // caches (docs/HYBRID-CB-HT.md §16).
+                algo.conf_sat_exp_cache_writing = false;
+                algo.conf_saturation_satisfiabilitiy_expansion_cache_writing = false;
+            }
+            // A leaf job ends on a clash that no job decision explains
+            // (docs/HYBRID-CB-HT.md §24); every other job keeps the
+            // chronological fallback.
+            algo.leaf_job_unattributed_clash_ends_job = leaf_job_ran.get()
+                && std::env::var_os("KM_BRIDGE_LEAF_CHRONOLOGICAL").is_none();
             record_phase(0, phase_start);
             Some(())
         };
@@ -15394,10 +17117,134 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             }
             (subs, false, None)
         } else {
+            // Cleared-queue screen (docs/HYBRID-CB-HT.md §15): on a base that
+            // resumes the first fork, first run the job without the base's
+            // pending nondeterministic work and accept it only when the job
+            // stayed isolated from the retained graph. Otherwise the subject
+            // runs exactly as before, on the resuming base.
+            let mut screened = None;
+            // The screen costs a second job whenever it is rejected. Stop
+            // screening once it has proved useless on this input: at least
+            // 512 rejections and fewer than one acceptance per four
+            // rejections. Scheduling only; every answer still comes from an
+            // accepted screen or from the unchanged resuming job.
+            let screen_useful = {
+                let (accepted, rejected) = cleared_queue_screen_counts.get();
+                rejected < 512 || accepted * 4 >= rejected
+            };
+            if cleared_queue_screen && screen_useful && bridged.retained_base_resumes_fork.get() {
+                cleared_queue_job.set(true);
+                let restored = renew(algo, ctx, false);
+                cleared_queue_job.set(false);
+                restored?;
+                // A screen job publishes nothing to the shared satisfiability
+                // caches: its graph is only trusted after the isolation test.
+                algo.conf_sat_exp_cache_writing = false;
+                algo.conf_saturation_satisfiabilitiy_expansion_cache_writing = false;
+                algo.empty_alternative_witnesses = std::sync::Arc::clone(&empty_alternative_witnesses.borrow());
+                algo.empty_alternative_witness_requests.clear();
+                algo.stop_on_unknown_empty_alternative_witness = true;
+                let mut id_screen: i64 = probe_start_id;
+                let phase_start = phase_timing.then(std::time::Instant::now);
+                let attempt = bridged_classify_subject_with_root(
+                    algo,
+                    ctx,
+                    &bridged,
+                    &mut id_screen,
+                    s,
+                    n_named,
+                );
+                record_phase(1, phase_start);
+                // Operands the screen asked for are probed now, so the rerun
+                // below starts with their witnesses.
+                let requests = std::mem::take(&mut algo.empty_alternative_witness_requests);
+                probe_empty_alternative_witnesses(
+                    tin,
+                    trigger_absorb,
+                    ctx,
+                    requests,
+                    &empty_alternative_witnesses,
+                    progress.then_some(s),
+                );
+                let isolated = attempt.is_some() && cleared_queue_job_isolated(algo, ctx, probe_start_id);
+                if progress && !isolated {
+                    let base = algo.retained_base_node_count;
+                    let blocked = (base..ctx.process_context().node_count()).any(|index| {
+                        let b = ctx.process_context().node(NodeId::new(index as Cint64)).blocker_indi_node;
+                        b.is_some() && b.index() < base
+                    });
+                    eprintln!(
+                        "BRIDGE-CLEARED-QUEUE-RERUN subject {s}: answered={} modified={} retained_opens={} blocked_by_retained={blocked}",
+                        attempt.is_some(),
+                        algo.retained_node_modified_count,
+                        algo.or_branch_open_retained_node_count,
+                    );
+                }
+                cleared_queue_screen_counts.set({
+                    let (accepted, rejected) = cleared_queue_screen_counts.get();
+                    if isolated { (accepted + 1, rejected) } else { (accepted, rejected + 1) }
+                });
+                if isolated {
+                    screened = attempt;
+                }
+            }
+            // Reuse branch point (docs/HYBRID-CB-HT.md §16): alternative 0
+            // runs the read-off on the retained consistency leaf; a verdict
+            // the acceptance test rejects takes alternative 1, the unchanged
+            // job on the resuming base below.
+            if leaf_reuse && screened.is_none() && leaf_useful() {
+                leaf_job.set(true);
+                let restored = renew(algo, ctx, false);
+                leaf_job.set(false);
+                restored?;
+                if leaf_job_ran.get() {
+                    algo.empty_alternative_witnesses = std::sync::Arc::clone(&empty_alternative_witnesses.borrow());
+                    algo.empty_alternative_witness_requests.clear();
+                    algo.stop_on_unknown_empty_alternative_witness = false;
+                    let mut id_leaf: i64 = probe_start_id;
+                    let phase_start = phase_timing.then(std::time::Instant::now);
+                    let attempt = bridged_classify_subject_with_root(
+                        algo,
+                        ctx,
+                        &bridged,
+                        &mut id_leaf,
+                        s,
+                        n_named,
+                    );
+                    record_phase(1, phase_start);
+                    algo.empty_alternative_witness_requests.clear();
+                    let unsat = matches!(ctx.pending_signal(), super::completion::clash::CalcSignal::Clash(_));
+                    let accepted = attempt.is_some() && retained_leaf_verdict_accepted(algo, ctx, unsat);
+                    leaf_update(&|c| {
+                        c.attempts += 1;
+                        match (accepted, unsat, attempt.is_some()) {
+                            (true, false, _) => c.accepted_sat += 1,
+                            (true, true, _) => c.accepted_root_cancel += 1,
+                            (false, true, true) => c.fallback_unsat += 1,
+                            _ => c.fallback_unknown += 1,
+                        }
+                    });
+                    if progress && !accepted {
+                        eprintln!("BRIDGE-LEAF-FALLBACK subject {s}: read-off answered={} unsat={unsat}", attempt.is_some());
+                    }
+                    if accepted {
+                        // A model that keeps the leaf's decisions is a model,
+                        // but its root label is not entailed: never
+                        // authoritative unless the subject is unsatisfiable.
+                        screened = attempt.map(|(subs, _, root)| (subs, unsat, root));
+                    }
+                }
+            }
+            let mut readoff = if screened.is_some() {
+                screened
+            } else {
             renew(algo, ctx, false)?;
+            algo.empty_alternative_witnesses = std::sync::Arc::clone(&empty_alternative_witnesses.borrow());
+            algo.empty_alternative_witness_requests.clear();
+            algo.stop_on_unknown_empty_alternative_witness = true;
             let mut next_indi_id: i64 = probe_start_id;
             let phase_start = phase_timing.then(std::time::Instant::now);
-            let mut readoff = bridged_classify_subject_with_root(
+            let readoff = bridged_classify_subject_with_root(
                 algo,
                 ctx,
                 &bridged,
@@ -15406,9 +17253,59 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 n_named,
             );
             record_phase(1, phase_start);
+            readoff
+            };
+            // A STOP raised for an unknown root-cancellation witness: probe the
+            // requested operands in fresh environments, then rerun the job
+            // from scratch with the extended witness map (docs/HYBRID-CB-HT.md
+            // §13). Every round adds at least one map entry, so the loop ends;
+            // the round cap only bounds a pathological input.
+            let mut witness_rounds = 0usize;
+            while readoff.is_none()
+                && !algo.empty_alternative_witness_requests.is_empty()
+                && witness_rounds < 64
+            {
+                witness_rounds += 1;
+                let requests = std::mem::take(&mut algo.empty_alternative_witness_requests);
+                probe_empty_alternative_witnesses(
+                    tin,
+                    trigger_absorb,
+                    ctx,
+                    requests,
+                    &empty_alternative_witnesses,
+                    progress.then_some(s),
+                );
+                if renew(algo, ctx, false).is_none() {
+                    if progress {
+                        eprintln!("BRIDGE-EMPTY-WITNESS subject {s}: rerun could not restore the base");
+                    }
+                    return None;
+                }
+                algo.empty_alternative_witnesses = std::sync::Arc::clone(&empty_alternative_witnesses.borrow());
+                algo.empty_alternative_witness_requests.clear();
+                algo.stop_on_unknown_empty_alternative_witness = true;
+                let mut id_witness: i64 = probe_start_id;
+                let phase_start = phase_timing.then(std::time::Instant::now);
+                readoff = bridged_classify_subject_with_root(
+                    algo,
+                    ctx,
+                    &bridged,
+                    &mut id_witness,
+                    s,
+                    n_named,
+                );
+                record_phase(1, phase_start);
+            }
+            // Later probes of this job keep the witnesses but never STOP for
+            // a missing one (historical behaviour).
+            algo.stop_on_unknown_empty_alternative_witness = false;
+            algo.empty_alternative_witness_requests.clear();
             if readoff.is_none() && algo.completeness_poisoned && cow_confirm {
                 // Plain search untrusted (an unrestored advance phantomized
                 // nodes) — the poison deferred the read-off. Escalate to COW.
+                if progress {
+                    eprintln!("BRIDGE-COW-ESCALATE subject {s}");
+                }
                 renew(algo, ctx, true)?;
                 let mut id_cow: i64 = probe_start_id;
                 let phase_start = phase_timing.then(std::time::Instant::now);
@@ -15424,7 +17321,8 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             }
             if readoff.is_none() && progress {
                 eprintln!(
-                    "BRIDGE-DEFER subject {s}: READ-OFF stop after {:.1}s (signal={:?}, nodes={}, sat-blocks={}, sat-expanded={})",
+                    "BRIDGE-DEFER subject {s} ({}): READ-OFF stop after {:.1}s (signal={:?}, nodes={}, sat-blocks={}, sat-expanded={})",
+                    tin.concepts.get(s).map(String::as_str).unwrap_or("?"),
                     t_subj.elapsed().as_secs_f64(),
                     ctx.pending_signal(),
                     ctx.process_context().node_count(),
@@ -15596,11 +17494,82 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         // possible-subsumer update from every satisfiable test model).
         let mut probe_models: Vec<HashSet<Cint64>> = Vec::new();
         let readoff_markers = readoff_eq_markers.get(&s);
+        // Batched refutation: one probe of `s and not c1 and ... and not ck`
+        // over the candidates that would each need their own probe. A model
+        // of the conjunction is a countermodel of every `s <= ci`, so a
+        // satisfiable verdict refutes all of them at once; any other verdict
+        // (unsatisfiable, or no verdict within the budget) leaves the
+        // pairwise probes below unchanged. On qudt-merged the 13 candidates
+        // of every subject are universal definitions (`C = all qk.D`) that
+        // one model refutes together, and each probe re-derives the
+        // nominal-connected ABox, so the pairwise probes dominated.
+        let batch_refuted: HashSet<usize> = {
+            let batch: Vec<usize> = subs.iter().copied().filter(|&c| {
+                c != s
+                    && !saturation_known_pairs.contains(&(s, c))
+                    && !(deterministic_subsumer_shortcut && kpset_state.certain_subsumer(s, c))
+                    && kpset_state.candidate_state(s, c).is_none_or(|(confirmed, invalid)| !confirmed && !invalid)
+                    && !(hierarchy_countermodels && hierarchy_refuted_candidates.contains(&(s, c)))
+            }).collect();
+            if batch.len() >= 2 && std::env::var_os("KM_BRIDGE_NO_BATCH_REFUTATION").is_none() {
+                // Only a satisfiable batch verdict is used, and that one is
+                // accepted on the leaf (docs/HYBRID-CB-HT.md §16); any other
+                // verdict just leaves the pairs to their own probes.
+                let on_leaf = leaf_reuse && leaf_useful();
+                leaf_job.set(on_leaf);
+                let restored = renew(algo, ctx, false);
+                leaf_job.set(false);
+                restored?;
+                let mut id_batch: i64 = probe_start_id;
+                let mut seeds: Vec<(ConceptId, bool)> = vec![(bridged.named[s], false)];
+                seeds.extend(batch.iter().map(|&c| (bridged.named[c], true)));
+                let mut batch_root = None;
+                let verdict = bridged_unsat_rooted(algo, ctx, &bridged, &mut id_batch, &seeds, &mut batch_root);
+                if progress {
+                    eprintln!(
+                        "BRIDGE-BATCH-REFUTATION {} candidates={} verdict={:?}",
+                        tin.concepts[s], batch.len(), verdict.map(|unsat| if unsat { "unsat" } else { "sat" })
+                    );
+                }
+                let leaf_batch_ok = !leaf_job_ran.get() || retained_leaf_verdict_accepted(algo, ctx, false);
+                if verdict == Some(false) && leaf_batch_ok { batch.into_iter().collect() } else { HashSet::default() }
+            } else {
+                HashSet::default()
+            }
+        };
         for c in subs {
             if c == s {
                 continue;
             }
             if saturation_known_pairs.contains(&(s, c)) {
+                continue;
+            }
+            if batch_refuted.contains(&c) {
+                if progress {
+                    eprintln!(
+                        "BRIDGE-KPSET-SKIP {} v {}: batch-countermodel",
+                        tin.concepts[s], tin.concepts[c]
+                    );
+                }
+                kpset_state
+                    .ontology_item
+                    .inc_running_possible_subsumption_tests_count(1);
+                classifier.interprete_subsumption_result(
+                    &mut kpset_state.ontology_item,
+                    bridged.named[s],
+                    bridged.named[c],
+                    false,
+                    ctx.ontology_arenas().concepts(),
+                );
+                if hierarchy_countermodels {
+                    propagate_refuted_candidate_to_known_supers(
+                        s,
+                        c,
+                        &known_supers_by_sub,
+                        &mut hierarchy_refuted_candidates,
+                    );
+                }
+                refuted_here.push(c);
                 continue;
             }
             if !refuted_here.is_empty()
@@ -15754,6 +17723,47 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                     }
                 );
             }
+            // Reuse branch point (docs/HYBRID-CB-HT.md §16): the pair probe
+            // first runs on the retained consistency leaf.
+            let mut leaf_verdict = None;
+            if leaf_reuse && leaf_useful() {
+                leaf_job.set(true);
+                let restored = renew(algo, ctx, false);
+                leaf_job.set(false);
+                restored?;
+                if leaf_job_ran.get() {
+                    let mut id_leaf: i64 = probe_start_id;
+                    let parked = algo.saturation_cached_absorbed_disjunction_count;
+                    let mut leaf_root = None;
+                    let verdict = bridged_unsat_rooted(
+                        algo,
+                        ctx,
+                        &bridged,
+                        &mut id_leaf,
+                        &[(bridged.named[s], false), (bridged.named[c], true)],
+                        &mut leaf_root,
+                    );
+                    let accepted = verdict.is_some_and(|unsat| retained_leaf_verdict_accepted(algo, ctx, unsat));
+                    leaf_update(&|counts| {
+                        counts.attempts += 1;
+                        match (accepted, verdict) {
+                            (true, Some(false)) => counts.accepted_sat += 1,
+                            (true, _) => counts.accepted_root_cancel += 1,
+                            (false, Some(true)) => counts.fallback_unsat += 1,
+                            _ => counts.fallback_unknown += 1,
+                        }
+                    });
+                    if progress && !accepted {
+                        eprintln!("BRIDGE-LEAF-FALLBACK pair {s} v {c}: verdict={verdict:?}");
+                    }
+                    if accepted {
+                        leaf_verdict = Some((verdict, parked, leaf_root));
+                    }
+                }
+            }
+            let (mut v, mut parked_before, mut model_root) = if let Some(accepted) = leaf_verdict {
+                accepted
+            } else {
             renew(algo, ctx, false)?;
             let mut id2: i64 = probe_start_id;
             // Model harvesting needs a materialized model, as in the read-off:
@@ -15762,9 +17772,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             // turns the parking off; forcing that here made probes up to 4x
             // dearer (ore_ont_5260), so keep the configured parking and use
             // the model only when the probe parked no disjunction at all.
-            let mut parked_before = algo.saturation_cached_absorbed_disjunction_count;
+            let parked_before = algo.saturation_cached_absorbed_disjunction_count;
             let mut model_root = None;
-            let mut v = bridged_unsat_rooted(
+            let v = bridged_unsat_rooted(
                 algo,
                 ctx,
                 &bridged,
@@ -15772,6 +17782,8 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 &[(bridged.named[s], false), (bridged.named[c], true)],
                 &mut model_root,
             );
+            (v, parked_before, model_root)
+            };
             if v.is_none() && algo.completeness_poisoned && cow_confirm {
                 // plain verdict untrusted — confirm under COW epochs
                 renew(algo, ctx, true)?;
@@ -15842,6 +17854,10 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                     refuted_here.push(c);
                 }
                 None => {
+                    note_bridge_defer(format!(
+                        "classify: pair {} vs {} undecided within its budget",
+                        tin.concepts[s], tin.concepts[c]
+                    ));
                     if progress {
                         eprintln!(
                             "BRIDGE-DEFER subject {s}: PAIR {}v{} stop after {:.1}s subj-total",
@@ -15913,6 +17929,11 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         }
     }
     if !pending.is_empty() || permanent_defer > 0 {
+        note_bridge_defer(format!(
+            "prepare: {} budget + {} permanent subject(s) without a model",
+            pending.len(),
+            permanent_defer
+        ));
         if progress {
             eprintln!(
                 "BRIDGE-PREPARE defer: {} budget + {} permanent subjects without a model",
@@ -15929,6 +17950,11 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             t_prepare.elapsed().as_secs_f64(),
             verification_subjects.len()
         );
+        let (accepted, rejected) = cleared_queue_screen_counts.get();
+        eprintln!("BRIDGE-CLEARED-QUEUE-SCREEN accepted={accepted} rerun={rejected}");
+    }
+    if progress || std::env::var_os("KM_BRIDGE_LEAF_STATS").is_some() {
+        eprintln!("BRIDGE-LEAF prepare reuse={leaf_reuse} {:?}", leaf_counts.get());
     }
 
     // Phase 2: the first call crosses the all-models barrier inside
@@ -15979,6 +18005,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             t_verify.elapsed().as_secs_f64()
         );
     }
+    if progress || std::env::var_os("KM_BRIDGE_LEAF_STATS").is_some() {
+        eprintln!("BRIDGE-LEAF total reuse={leaf_reuse} {:?}", leaf_counts.get());
+    }
     // KM_HT_UNSATCACHE diagnostics: writes vs hits across the WHOLE
     // classification (the handler is carried across probe resets, so these
     // are cumulative). Interprets a null A/B result: 0 writes = the u22
@@ -15994,6 +18023,11 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         }
     }
     if !pending.is_empty() || permanent_defer > 0 {
+        note_bridge_defer(format!(
+            "classify: {} budget + {} permanent subject(s) without a verdict",
+            pending.len(),
+            permanent_defer
+        ));
         if progress {
             eprintln!(
                 "BRIDGE-CLASSIFY defer: {} budget + {} permanent subjects without verdict",
@@ -16054,6 +18088,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                     });
                 }
                 None => {
+                    note_bridge_defer("classify: owl:Thing satisfiability undecided");
                     if progress {
                         eprintln!("BRIDGE-CLASSIFY defer: owl:Thing satisfiability undecided");
                     }
@@ -16355,6 +18390,59 @@ mod tests {
         }
     }
 
+    /// Section 19 of docs/HYBRID-CB-HT.md: the folded sort clause
+    /// `G ⊓ H ⊑ ⊥` of a value helper `H` is admitted exactly when every
+    /// value implying `H` is itself disjoint from `G` by an input clause.
+    #[test]
+    fn value_helper_disjoint_from_a_folded_sort_needs_every_value_disjoint() {
+        let concept = |c: usize| HAtom::Concept { neg: false, c, t: 0 };
+        let clause = |body: Vec<HAtom>, head: Vec<HAtom>| HtClause { body, head };
+        // 0, 1: values; 2, 3: digit helpers of one position; 4: profile; 5: G.
+        let input = |value_guards: &[usize]| {
+            let mut clauses = vec![
+                clause(vec![concept(0)], vec![concept(2)]),
+                clause(vec![concept(1)], vec![concept(3)]),
+                clause(vec![concept(0)], vec![concept(4)]),
+                clause(vec![concept(1)], vec![concept(4)]),
+                clause(vec![concept(2), concept(3)], vec![]),
+                clause(vec![concept(5), concept(2)], vec![]),
+                clause(vec![concept(3), concept(5)], vec![]),
+                clause(vec![concept(5), concept(4)], vec![]),
+            ];
+            clauses.extend(value_guards.iter().map(|&v| clause(vec![concept(v), concept(5)], vec![])));
+            TInput {
+                concepts: vec![
+                    "__dt__val__\"a\"^^xsd:string".into(),
+                    "__dt__val__\"b\"^^xsd:string".into(),
+                    "__dt__aux__digit__0__0".into(),
+                    "__dt__aux__digit__0__1".into(),
+                    "__dt__aux__profile__0".into(),
+                    "Q_1".into(),
+                ],
+                clauses,
+                ..Default::default()
+            }
+        };
+        let _ = take_bridge_defer_reason();
+        assert!(linear_value_encoding_exact(&input(&[0, 1])));
+        assert_eq!(take_bridge_defer_reason(), None);
+        // `b ⊓ G` is satisfiable, so `G` may meet the helpers `b` implies.
+        assert!(!linear_value_encoding_exact(&input(&[0])));
+        assert_eq!(
+            take_bridge_defer_reason().as_deref(),
+            Some("datatype gate: a helper is disjoint from a concept one of its values is not disjoint from")
+        );
+        // Two helpers remain an unsupported pair when they are not digits of
+        // one position.
+        let mut pair = input(&[0, 1]);
+        pair.clauses.push(clause(vec![concept(2), concept(4)], vec![]));
+        assert!(!linear_value_encoding_exact(&pair));
+        assert_eq!(
+            take_bridge_defer_reason().as_deref(),
+            Some("datatype gate: a linear value-encoding disjointness has an unsupported shape")
+        );
+    }
+
     fn empty_role_model_input() -> TInput {
         use crate::frontend::syntax::Concept as C;
 
@@ -16516,14 +18604,32 @@ mod tests {
     #[test]
     fn conditional_full_profile_rejects_konclude_threshold_sized_abox() {
         let mut tin = cached_native_role_input();
+        // 1,000 concepts: 9,999 individuals satisfy the 10,000-individual
+        // suggestion; 10,000 individuals give a ratio of 10, which satisfies
+        // neither suggestion (ratio below 5) nor exclusion (ratio 50).
+        tin.concepts.extend((tin.concepts.len()..1_000).map(|k| format!("Pad{k}")));
         let template = tin.nominal_abox.individuals[0].clone();
         tin.nominal_abox.individuals.resize(9_999, template.clone());
         assert!(native_cardinality_abox_profile(&tin, true));
         tin.nominal_abox.individuals.push(template);
         assert!(
             !native_cardinality_abox_profile(&tin, true),
-            "Konclude's conditional-full profile is strict below 10,000 individuals"
+            "Konclude's conditional-full profile is strict below 10,000 individuals at ratio 10"
         );
+    }
+
+    #[test]
+    fn konclude_full_completion_graph_decision_matches_its_conditions() {
+        // suggestion by size, unless excluded by ratio
+        assert!(konclude_full_completion_graph_suggested(9_999, 1_000));
+        assert!(!konclude_full_completion_graph_suggested(9_999, 100));
+        // above the size suggestion only the ratio suggests (below 5)
+        assert!(!konclude_full_completion_graph_suggested(10_000, 1_000));
+        assert!(konclude_full_completion_graph_suggested(10_000, 2_001));
+        assert!(konclude_full_completion_graph_suggested(55_433, 103_295));
+        // the size exclusion wins over any ratio
+        assert!(!konclude_full_completion_graph_suggested(300_000, 10_000_000));
+        assert!(konclude_full_completion_graph_suggested(299_999, 10_000_000));
     }
 
     #[test]
@@ -17104,7 +19210,12 @@ mod tests {
         let value = missing_singleton.concepts.iter().position(|name|
             name.starts_with("__dt__val__")).unwrap();
         missing_singleton.clauses.retain(|clause| !datatype_singleton_clause(clause, value));
-        assert!(!exact_atomic_datatype_bridge_fragment(&missing_singleton, true));
+        // Without a construct that forces two data successors apart the
+        // frontend leaves the singleton clause out (DATATYPES.md, "Value
+        // singletons"), and the bridge admits the value without it; with
+        // such a construct the clause is required.
+        let elidable = forced_distinct_data_successors(&missing_singleton) == (false, false);
+        assert_eq!(exact_atomic_datatype_bridge_fragment(&missing_singleton, true), elidable);
     }
 
     #[test]
@@ -17685,11 +19796,14 @@ mod tests {
             SubClassOf(<http://x#A> DataMinCardinality(2 <http://x#p> DatatypeRestriction(xsd:double xsd:minInclusive "0.0"^^xsd:double xsd:maxInclusive "0.0"^^xsd:double)))"#)
             .expect("a two-value zero interval is admitted");
         assert!(!result.unsatisfiable.contains(&tbox_extension_class(&input, &evidence, "#A")));
-        // [1,1] holds one value: no two-value realization, so the bridge defers.
-        assert!(tbox_extension_classify(r#"
+        // [1,1] holds one value: `≥ 2 p.[1,1]` is empty, which the frontend
+        // states directly (`syntax::data_at_least`), so `A` is unsatisfiable
+        // (until v1.5.4 the bridge deferred here).
+        let (input, evidence, result) = tbox_extension_classify(r#"
             Declaration(Class(<http://x#A>))
             SubClassOf(<http://x#A> DataMinCardinality(2 <http://x#p> DatatypeRestriction(xsd:double xsd:minInclusive "1.0"^^xsd:double xsd:maxInclusive "1.0"^^xsd:double)))"#)
-            .is_none());
+            .expect("an empty count is answered");
+        assert!(result.unsatisfiable.contains(&tbox_extension_class(&input, &evidence, "#A")));
     }
 
     #[test]
@@ -17849,11 +19963,16 @@ mod tests {
         let mut tin = exact_atomic_datatype_input();
         tin.clauses
             .retain(|clause| !datatype_singleton_clause(clause, 3));
-        assert!(!exact_atomic_datatype_bridge_fragment(&tin, true));
-        assert!(
-            bridged_classify_opts_with_trigger_absorption(&tin, false, false, true).is_none(),
-            "missing value-singleton evidence must defer the route"
-        );
+        // A missing singleton clause is admitted only where the frontend
+        // may elide it: no construct forces two data successors apart.
+        let elidable = forced_distinct_data_successors(&tin) == (false, false);
+        assert_eq!(exact_atomic_datatype_bridge_fragment(&tin, true), elidable);
+        if !elidable {
+            assert!(
+                bridged_classify_opts_with_trigger_absorption(&tin, false, false, true).is_none(),
+                "missing value-singleton evidence must defer the route"
+            );
+        }
 
         let mut no_cover = exact_atomic_datatype_input();
         no_cover.clauses.retain(|clause| {
@@ -19194,10 +21313,13 @@ mod tests {
         let legacy = basic_native_role_input(&["r"], legacy_meta);
         let (mut legacy_algo, mut legacy_ctx, legacy_bridged) =
             fresh_bridge_env_with_trigger_absorption(&legacy, true);
-        assert!(!native_cardinality_abox_profile(
-            &legacy,
-            legacy_bridged.has_native_nominals()
-        ));
+        // Number-free, so the conditional-full schedule applies to it only
+        // under `KM_HT_NATIVE_FULL=1` (a release flag that may reach the
+        // test process). Every root must be retained on either schedule.
+        assert_eq!(
+            native_cardinality_abox_profile(&legacy, legacy_bridged.has_native_nominals()),
+            std::env::var_os("KM_HT_NATIVE_FULL").is_some()
+        );
         reset_classification_probe_env(
             &mut legacy_algo,
             &mut legacy_ctx,
@@ -21453,7 +23575,7 @@ mod tests {
     }
 
     #[test]
-    fn native_direct_role_assertion_defers_on_multihop_target_merge() {
+    fn native_direct_role_assertion_follows_multihop_target_merge() {
         use crate::frontend::syntax::Concept as C;
         use crate::orchestrate::cb_to_ht::CardDefJson;
 
@@ -21509,20 +23631,33 @@ mod tests {
             .set_merged_into_individual_node_id(representative_id)
             .set_merged_dependency_track_point(merge_track);
 
+        // Konclude finds the representative and the combined dependency in
+        // the final node's IndividualMergingHash; the port folds the hop
+        // dependencies into the same MERGEDINDIVIDUAL chain
+        // (`resolve_native_merge_chain`, docs/HYBRID-CB-HT.md section 10).
+        assert_eq!(
+            algo.resolve_native_merge_chain(target, &mut ctx)
+                .map(|(node, dep, deterministic)| (node, dep.is_some(), deterministic)),
+            Some((representative, true, true))
+        );
         assert!(
-            !algo.install_native_role_assertion_edge(
+            algo.install_native_role_assertion_edge(
                 source,
                 bridged.roles[0],
                 bridged.nominal_seeds[1].individual_tag,
                 merge_track,
                 &mut ctx,
             ),
-            "a multi-hop target merge was accepted without Konclude's combined merging hash"
+            "a multi-hop target merge must relocate the asserted edge"
+        );
+        let links = algo.ht_role_successor_links(source, bridged.roles[0], &ctx);
+        assert!(
+            links.iter().any(|&(_, successor)| successor == representative),
+            "the asserted edge must reach the live representative"
         );
         assert!(
-            algo.ht_role_successor_links(source, bridged.roles[0], &ctx)
-                .is_empty(),
-            "the failed-closed multi-hop assertion installed an under-justified edge"
+            !links.iter().any(|&(_, successor)| successor == target || successor == middle),
+            "no edge may point at a merged-away node"
         );
     }
 
@@ -22029,7 +24164,7 @@ mod tests {
             native_completion_label_values(&ctx, extraction_node, deterministic_node)
                 .expect("completion label");
         let metadata =
-            native_completion_role_metadata(&ctx, extraction_node, &concept_values, &bridged, seed)
+            native_completion_role_metadata(&ctx, extraction_node, &concept_values, &bridged, seed, &mut None)
                 .expect("live-successor role metadata");
         assert!(
             metadata
@@ -22894,6 +25029,36 @@ mod tests {
     }
 
     #[test]
+    fn saturation_self_rule_decides_reflexive_terminology() {
+        // docs/HYBRID-CB-HT.md section 20: the saturation SELF rule installs
+        // a self-connected backward link, so the pass no longer refuses a
+        // SELF terminology and decides its classes itself.
+        let mut tin = TInput {
+            concepts: vec!["A".into(), "B".into(), "C".into()],
+            roles: vec!["r".into()],
+            queries: vec![0, 1, 2],
+            clauses: vec![
+                HtClause { body: vec![], head: vec![HAtom::Role { r: 0, s: 0, t: 0 }] },
+                HtClause { body: vec![HAtom::Concept { neg: false, c: 0, t: 0 }, HAtom::Role { r: 0, s: 0, t: 1 }],
+                    head: vec![HAtom::Concept { neg: false, c: 1, t: 1 }] },
+                HtClause { body: vec![HAtom::Concept { neg: false, c: 2, t: 0 }],
+                    head: vec![HAtom::Exist { r: 0, neg: false, c: 0, t: 0 }] },
+            ],
+            ..Default::default()
+        };
+        let outcome = bridged_saturate(&tin).expect("SELF terminology saturates");
+        assert_eq!(outcome.sat_verdict[0], Some(false), "A is satisfiable");
+        assert!(outcome.certain_subsumers[0].as_ref().is_some_and(|s| s.contains(&1)),
+            "A's saturated label holds B through the self link");
+        assert!(outcome.certain_subsumers[1].as_ref().is_some_and(|s| !s.contains(&0)));
+        tin.clauses[1].head = vec![HAtom::Concept { neg: true, c: 0, t: 1 }];
+        let outcome = bridged_saturate(&tin).expect("SELF terminology saturates");
+        assert_eq!(outcome.sat_verdict[0], Some(true), "A clashes on its own self edge");
+        assert_ne!(outcome.sat_verdict[2], Some(false), "C's A-successor is unsatisfiable");
+        assert_ne!(outcome.sat_verdict[1], Some(true));
+    }
+
+    #[test]
     fn production_rbox_compiles_symmetric_role_as_self_inverse() {
         let env = bridge_ofn(
             "Prefix(:=<http://example.org/>)\n\
@@ -23646,8 +25811,11 @@ mod tests {
         let (mut algo, mut ctx, bridged) = fresh_bridge_env(&env.tin);
         configure_production_search(&mut algo);
         assert!(algo.conf_build_dependencies);
-        assert!(
-            !algo.conf_dependency_backjumping,
+        // The release flags (`KM_HT_DDB=1`) may reach the test process; the
+        // read-off property below must hold with and without DDB.
+        assert_eq!(
+            algo.conf_dependency_backjumping,
+            std::env::var_os("KM_HT_DDB").is_some(),
             "the production classifier builds dependencies independently of DDB"
         );
         let mut classifier = OptimizedKPSetClassSubsumptionClassifierThread::new();

@@ -1,0 +1,4 @@
+m2197 nominals km-fix3 r1 rc=0 46.7s 183b4416
+m2197 nominals km-base r1 rc=0 64.2s 183b4416
+m2197 nominals km-base r2 rc=0 50.5s 183b4416
+m2197 nominals km-fix3 r2 rc=0 52.4s 183b4416

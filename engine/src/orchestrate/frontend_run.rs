@@ -17,6 +17,11 @@ use super::{Config, OrchestrateError};
 pub struct Meta {
     pub iri_map: BTreeMap<String, String>,
     pub named: Vec<String>,
+    /// Short names of every declared class (`FrontendResult::declared`).
+    /// The publication coverage guard (`orchestrate::undeclared_coverage`)
+    /// requires every worker answer to carry a row for each of them.
+    #[serde(default)]
+    pub declared: Vec<String>,
     pub el_rbox_safe: bool,
     #[serde(default)]
     pub abox_inconsistent: bool,
@@ -251,6 +256,7 @@ fn run_ofn_in_process(
     let meta = Meta {
         iri_map: result.iri_map,
         named: result.named,
+        declared: result.declared.clone(),
         el_rbox_safe: result.el_rbox_safe,
         abox_inconsistent: result.abox_inconsistent,
         asserted_classes: result.asserted_classes,
@@ -347,6 +353,23 @@ pub fn run_ofn_split(cfg: &Config, ont: &Path) -> Result<(TempPath, Meta), Orche
 /// subprocess fallback; callers consume the cache only when the selected
 /// classifier also runs in this process.
 pub fn run_ofn_split_cached(
+    cfg: &Config,
+    ont: &Path,
+) -> Result<
+    (
+        TempPath,
+        Meta,
+        Option<crate::json_io::JInput>,
+        Option<TempPath>,
+    ),
+    OrchestrateError,
+> {
+    // Both passes below close the same positive ABox on finite-rule inputs;
+    // the second reads the first's closure (`frontend::pass_cache`).
+    crate::frontend::with_pass_cache(|| run_ofn_split_cached_passes(cfg, ont))
+}
+
+fn run_ofn_split_cached_passes(
     cfg: &Config,
     ont: &Path,
 ) -> Result<

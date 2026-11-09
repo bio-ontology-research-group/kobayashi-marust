@@ -1,0 +1,8 @@
+{
+  "ontology": "atleast_two_shared.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["F", "D"]
+  ],
+  "unsatisfiable": []
+}

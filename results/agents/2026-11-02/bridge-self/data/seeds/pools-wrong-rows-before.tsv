@@ -1,0 +1,16 @@
+pools/abox-probes-m/seeds/m413.ofn	ht_bridge	WRONG	0.01	2	0	0	0	0
+pools/abox-probes-m/seeds/m413.ofn	auto	WRONG	0.03	2	0	0	0	0
+pools/res-data-values-3/seeds/length_empty.ofn	ht_bridge	ERR	0.01					
+pools/res-data-values-3/seeds/length_empty.ofn	auto	WRONG	0.01	0	0	1	0	0
+pools/res-data-values-3/seeds/length_exhaust.ofn	ht_bridge	ERR	0.01					
+pools/res-data-values-3/seeds/length_exhaust.ofn	auto	WRONG	0.02	0	0	1	0	0
+pools/res-data-values-3/seeds/length_value.ofn	ht_bridge	ERR	0.01					
+pools/res-data-values-3/seeds/length_value.ofn	auto	WRONG	0.03	0	0	0	0	1
+pools/res-data-values-3/seeds/pattern_subsumption.ofn	ht_bridge	ERR	0.01					
+pools/res-data-values-3/seeds/pattern_subsumption.ofn	auto	WRONG	0.02	2	0	0	0	0
+pools/res-data-values-3/seeds/pattern_value.ofn	ht_bridge	ERR	0.01					
+pools/res-data-values-3/seeds/pattern_value.ofn	auto	WRONG	0.03	0	0	0	0	1
+pools/res-data-values-3/seeds/string_chain.ofn	ht_bridge	ERR	0.01					
+pools/res-data-values-3/seeds/string_chain.ofn	auto	WRONG	0.03	2	0	0	1	0
+pools/res-lean-data-values/seeds/opaque_single.ofn	ht_bridge	ERR	0.01					
+pools/res-lean-data-values/seeds/opaque_single.ofn	auto	WRONG	0.01	0	0	0	0	1

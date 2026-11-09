@@ -1,0 +1,125 @@
+auto: new {'NOGOLD': 117, 'TIMEOUT': 55, 'WRONG': 3, 'ok': 5485} | base {'NOGOLD': 117, 'TIMEOUT': 54, 'WRONG': 6, 'ok': 1823}
+ht_bridge: new {'NOANSWER': 21, 'NOGOLD': 117, 'TIMEOUT': 52, 'WRONG': 3, 'ok': 5469} | base {'NOANSWER': 7, 'NOGOLD': 117, 'TIMEOUT': 52, 'WRONG': 6, 'ok': 1818}
+
+not ok on the new binary in some run (verdicts of the new runs; base):
+  sat1008.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1008.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1014.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1014.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1019.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1019.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1033.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1033.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1049.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1049.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1122.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1122.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1130.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1130.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1147.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1147.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1297.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1297.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1354.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1354.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1380.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1380.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1397.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1397.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat14.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat14.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1435.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1435.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1450.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1450.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1489.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1489.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1493.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1493.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1502.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1502.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1508.ofn ht_bridge: new ['NOANSWER', 'NOANSWER', 'NOANSWER'] base NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse role meets a negative existential mirror)
+  sat1515.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1515.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1544.ofn ht_bridge: new ['NOANSWER', 'NOANSWER', 'NOANSWER'] base NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse role meets a negative existential mirror)
+  sat1571.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1571.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1594.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1594.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1614.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1614.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1647.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1647.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1671.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1671.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1673.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1673.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1677.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1677.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1750.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1750.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1787.ofn ht_bridge: new ['NOANSWER', 'NOANSWER', 'NOANSWER'] base NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: input guard: an inverse role meets a negative existential mirror)
+  sat1789.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1789.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1798.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1798.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1840.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1840.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1864.ofn auto: new ['ok', 'TIMEOUT', 'TIMEOUT'] base ok 
+  sat1873.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1873.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat190.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat190.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1903.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1903.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat191.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1973.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1973.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat1977.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat1977.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat21.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat21.ofn ht_bridge: new ['NOANSWER', 'NOANSWER', 'NOANSWER'] base NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: encoder: 1 clause(s) the bridged terminology cannot express)
+  sat300.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat300.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat305.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat305.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat326.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat326.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat335.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat335.ofn ht_bridge: new ['NOANSWER', 'NOANSWER', 'NOANSWER'] base NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: encoder: 1 clause(s) the bridged terminology cannot express)
+  sat355.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat355.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat391.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat391.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat42.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat42.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat489.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat489.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat496.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat496.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat520.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat520.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat578.ofn auto: new ['WRONG', 'WRONG', 'WRONG'] base WRONG missing=[('F', 'Q1'), ('F', 'Q4')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+  sat578.ofn ht_bridge: new ['WRONG', 'WRONG', 'WRONG'] base WRONG missing=[('F', 'Q1'), ('F', 'Q4')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+  sat691.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat691.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat693.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat693.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat711.ofn ht_bridge: new ['NOANSWER', 'NOANSWER', 'NOANSWER'] base NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: encoder: 1 clause(s) the bridged terminology cannot express)
+  sat798.ofn ht_bridge: new ['NOANSWER', 'NOANSWER', 'NOANSWER'] base NOANSWER unsupported: selected native HT bridge deferred (konclude_ht bridge defer: encoder: 1 clause(s) the bridged terminology cannot express)
+  sat819.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat819.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat827.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat827.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat879.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat879.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat91.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat91.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+  sat936.ofn auto: new ['TIMEOUT'] base TIMEOUT 
+  sat936.ofn ht_bridge: new ['TIMEOUT'] base TIMEOUT 
+
+ok on the base, not ok on the new binary in some run:
+  sat1864.ofn auto: new ['ok', 'TIMEOUT', 'TIMEOUT']
+
+WRONG on the base, ok in every new run: 10 seed-routes, 5 seeds
+WRONG on the base: 12 seed-routes, 6 seeds

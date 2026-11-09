@@ -189,7 +189,85 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
                 process_indi,
                 calc_alg_context,
             );
+            // KONCLUDE-PORT-NOTE[exactness]: not in cpp. A self edge on
+            // `role` already fills one of the node's `role`-neighbour slots,
+            // which neither the critical at-most check nor the completion's
+            // saturation caching counts (docs/HYBRID-CB-HT.md section 20).
+            if Self::sat_node_has_self_edge_for_role(*process_indi, role, calc_alg_context) {
+                self.update_direct_adding_individual_status_flags(
+                    *process_indi,
+                    IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT,
+                    calc_alg_context,
+                );
+                self.set_insufficient_node_occured(calc_alg_context);
+            }
         }
+    }
+
+    /// Whether `node` carries a SELF edge for `role` (a link installed by
+    /// `apply_self_rule` or carried over by a node copy). The hash-level
+    /// `self_connected` flag is set only by those two paths, so a node of a
+    /// SELF-free terminology never answers true.
+    pub(in crate::konclude_ht) fn sat_node_has_self_edge_for_role(
+        node: SatNodeId,
+        role: RoleId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> bool {
+        let hash = calc_alg_context.process_context().sat_node(node).role_back_prop_hash;
+        if hash.is_none() {
+            return false;
+        }
+        let hash_ref = calc_alg_context.process_context().role_backward_sat_prop_hash(hash);
+        if !hash_ref.self_connected {
+            return false;
+        }
+        let Some(data) = hash_ref.get_role_backward_propagation_data_hash().get(&role) else {
+            return false;
+        };
+        if data.self_connected {
+            return true;
+        }
+        let mut link = data.link_linker;
+        while link.is_some() {
+            let link_ref = calc_alg_context.process_context().backward_sat_prop_link(link);
+            if link_ref.get_source_individual() == node {
+                return true;
+            }
+            link = link_ref.get_next();
+        }
+        false
+    }
+
+    /// Whether the label of `node` holds an at-most restriction on `role`
+    /// (`≤n role.C`, or `¬≥n role.C`).
+    pub(in crate::konclude_ht) fn sat_node_label_has_atmost_on_role(
+        node: SatNodeId,
+        role: RoleId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> bool {
+        let label = calc_alg_context.process_context().sat_node(node).reapply_con_sat_label_set;
+        if label.is_none() {
+            return false;
+        }
+        let mut des = calc_alg_context
+            .process_context()
+            .reapply_con_sat_label_set(label)
+            .get_concept_saturation_description_linker();
+        while des.is_some() {
+            let (concept, negated, next) = {
+                let d = calc_alg_context.process_context().con_sat_desc(des);
+                (d.get_concept(), d.get_negation(), d.get_next_concept_desciptor())
+            };
+            let concept_ref = calc_alg_context.ontology_arenas().concept(concept);
+            let op_code = concept_ref.get_operator_code();
+            if concept_ref.get_role() == role
+                && ((!negated && op_code == CCATMOST) || (negated && op_code == CCATLEAST))
+            {
+                return true;
+            }
+            des = next;
+        }
+        false
     }
 
     // =======================================================================

@@ -1,0 +1,12 @@
+Prefix(:=<http://e.org/p#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(rdf:=<http://www.w3.org/1999/02/22-rdf-syntax-ns#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+Ontology(<http://e.org/p/binary_disjoint>
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(Class(:D)) Declaration(DataProperty(:p)) Declaration(DataProperty(:q)) Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+SubClassOf(:A DataSomeValuesFrom(:p xsd:hexBinary))
+SubClassOf(:A DataAllValuesFrom(:p xsd:base64Binary))
+EquivalentClasses(:B DataSomeValuesFrom(:p xsd:hexBinary))
+EquivalentClasses(:C DataSomeValuesFrom(:p xsd:base64Binary))
+)

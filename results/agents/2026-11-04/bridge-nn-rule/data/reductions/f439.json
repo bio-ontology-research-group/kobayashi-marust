@@ -1,0 +1,8 @@
+{
+  "ontology": "c20.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["Q2", "Q5"]
+  ],
+  "unsatisfiable": []
+}

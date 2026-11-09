@@ -1,0 +1,12 @@
+Prefix(:=<http://e.org/p#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+Ontology(<http://e.org/p/bool_union_exhaust>
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(DataProperty(:p)) Declaration(DataProperty(:q)) Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+SubClassOf(:A DataSomeValuesFrom(:p DataUnionOf(DatatypeRestriction(xsd:integer xsd:minInclusive "1"^^xsd:integer xsd:maxInclusive "2"^^xsd:integer) DataOneOf("5"^^xsd:integer))))
+SubClassOf(:A ObjectComplementOf(DataHasValue(:p "1"^^xsd:integer)))
+SubClassOf(:A ObjectComplementOf(DataHasValue(:p "2"^^xsd:integer)))
+SubClassOf(:A ObjectComplementOf(DataHasValue(:p "5"^^xsd:integer)))
+SubClassOf(:B DataHasValue(:p "7"^^xsd:integer))
+)

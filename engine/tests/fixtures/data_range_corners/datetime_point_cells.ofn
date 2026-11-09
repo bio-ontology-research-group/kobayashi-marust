@@ -1,0 +1,13 @@
+Prefix(:=<http://e.org/p#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(rdf:=<http://www.w3.org/1999/02/22-rdf-syntax-ns#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+Ontology(<http://e.org/p/datetime_point_cells>
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(Class(:D)) Declaration(DataProperty(:p)) Declaration(DataProperty(:q)) Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+FunctionalDataProperty(:p)
+SubClassOf(:A DataSomeValuesFrom(:p DatatypeRestriction(xsd:dateTime xsd:minInclusive "2020-01-01T10:30:15"^^xsd:dateTime xsd:maxInclusive "2020-01-01T10:30:15"^^xsd:dateTime)))
+SubClassOf(:A DataAllValuesFrom(:p DataComplementOf(DataOneOf("2020-01-01T10:30:15"^^xsd:dateTime))))
+SubClassOf(:B DataSomeValuesFrom(:p DatatypeRestriction(xsd:dateTime xsd:minInclusive "2020-01-01T10:30:15Z"^^xsd:dateTime xsd:maxInclusive "2020-01-01T10:30:15Z"^^xsd:dateTime)))
+SubClassOf(:B DataAllValuesFrom(:p DataComplementOf(DataOneOf("2020-01-01T10:30:15Z"^^xsd:dateTime))))
+)

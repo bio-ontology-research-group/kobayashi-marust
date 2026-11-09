@@ -1,0 +1,93 @@
+0.562265 KM_TIMING mark: second source check done
+0.562444 KM_TIMING mark: data source candidate done
+0.577420 KM_TIMING mark: symbolic candidate done
+0.654451 KM_TIMING ABox quotient item declined: SubObjectPropertyOf Iri("<http://purl.obolibrary.org/obo/RO_0001000>") Word("owl:topObjectProperty")
+0.654540 KM_TIMING ABox quotient not built: site 5
+0.660913 KM_TIMING ABox quotient not built: site 3
+0.678711 KM_TIMING mirror-route: declined by lexical prefilter: bytes=28585731 complements_below=0
+0.689657 KM_TIMING in-process frontend declined by the exact-EL screen: bytes=28585731 screen=0.00s
+3.853327 KM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false
+3.853603 KM_TIMING frontend done @ 3.28s route=certified_nominals
+4.445495 cb_to_ht [emelim] eliminated 0 complementary pairs
+4.447098 cb_to_ht [trigger-absorb] definers=3013 moved=0 tautologies=0
+4.656241 native ABox pre-merge: 40850 SameIndividual pair(s), 95653 individual(s) to 55433 class(es)
+4.921099 KM_TIMING spawn_ht: read+convert 189095 clauses (ht_view=12703) in 0.62s
+5.133924 KM_TIMING race: synchronous bridge classes=4327 typed_nominal=true cb_threads=1
+5.134015 KM_TIMING race: HT worker spawned @ 1.27s after the CB stack started
+5.391577 BRIDGE-DATATYPE-GATE: admitted=true in 0.00s
+6.029553 bridge [source-tbox] axioms=2488 eq=0/0 [] direct=2484 role-links=9 absorbed-gci=223 top-gci=0 unsupported=0
+6.045885 bridge [or-replacements] implications=0 common=1
+6.046942 role-automata begin concepts=126524 next-tag=126533
+6.076665 bridge [branch-triggers] role-markers=5
+10.675227 BRIDGE-ENV: 5.09s (named=103295, trigger_absorb=true, unsupported=0, independent_abox=false)
+10.691588 BRIDGE-SOURCE-CLOSURE pairs=10640 definition-containment=true
+10.918233 BRIDGE-SAT-PHASE propagation-direction: 0.01s
+10.961235 BRIDGE-SATURATION-SEEDS: base=26261 extended=26281 invalid-special=20 substitute=1019 copy=832
+10.961369 BRIDGE-SAT-PHASE seeds: 0.04s
+11.923608 BRIDGE-SAT-PHASE loop: 0.91s (nodes=84213)
+12.546096 SAT-STATS: insufficient all=0 atmost=0 or=25 eqcand=0 value=0 nominal=0
+22.251329 BRIDGE-NOMINAL-CONSISTENCY: consistent=true signal=Continue poisoned=false
+25.522047 BRIDGE-REFUTATION gated=true restricted=false nominals=true inverse=true number=true
+25.667502 BRIDGE-PREPARE round 0 subject 1/4327 deferred=0 permanent=0
+36.114889 BRIDGE-PREPARE round 0 subject 65/4327 deferred=0 permanent=0
+45.406085 BRIDGE-PREPARE round 0 subject 129/4327 deferred=0 permanent=0
+56.061400 BRIDGE-PREPARE round 0 subject 193/4327 deferred=0 permanent=0
+63.990458 BRIDGE-PREPARE round 0 subject 257/4327 deferred=0 permanent=0
+73.898012 BRIDGE-PREPARE round 0 subject 321/4327 deferred=0 permanent=0
+85.400929 BRIDGE-PREPARE round 0 subject 385/4327 deferred=0 permanent=0
+93.497178 BRIDGE-PREPARE round 0 subject 449/4327 deferred=0 permanent=0
+101.873400 BRIDGE-PREPARE round 0 subject 513/4327 deferred=0 permanent=0
+112.881995 BRIDGE-PREPARE round 0 subject 577/4327 deferred=0 permanent=0
+120.509037 BRIDGE-PREPARE round 0 subject 641/4327 deferred=0 permanent=0
+130.738727 BRIDGE-PREPARE round 0 subject 705/4327 deferred=0 permanent=0
+132.265656 BRIDGE-PREPARE round 0 subject 769/4327 deferred=0 permanent=0
+135.761215 BRIDGE-PREPARE round 0 subject 833/4327 deferred=0 permanent=0
+147.027643 BRIDGE-PREPARE round 0 subject 897/4327 deferred=0 permanent=0
+152.062321 BRIDGE-PREPARE round 0 subject 961/4327 deferred=0 permanent=0
+162.324505 BRIDGE-PREPARE round 0 subject 1025/4327 deferred=0 permanent=0
+169.914194 BRIDGE-PREPARE round 0 subject 1089/4327 deferred=0 permanent=0
+181.514573 BRIDGE-PREPARE round 0 subject 1153/4327 deferred=0 permanent=0
+187.695727 BRIDGE-PREPARE round 0 subject 1217/4327 deferred=0 permanent=0
+191.288724 BRIDGE-PREPARE round 0 subject 1281/4327 deferred=0 permanent=0
+197.939033 BRIDGE-PREPARE round 0 subject 1345/4327 deferred=0 permanent=0
+207.879368 BRIDGE-PREPARE round 0 subject 1409/4327 deferred=0 permanent=0
+215.612615 BRIDGE-PREPARE round 0 subject 1473/4327 deferred=0 permanent=0
+216.127967 BRIDGE-PREPARE round 0 subject 1537/4327 deferred=0 permanent=0
+219.751539 BRIDGE-PREPARE round 0 subject 1601/4327 deferred=0 permanent=0
+224.582930 BRIDGE-PREPARE round 0 subject 1665/4327 deferred=0 permanent=0
+224.882400 BRIDGE-PREPARE round 0 subject 1729/4327 deferred=0 permanent=0
+227.071655 BRIDGE-PREPARE round 0 subject 1793/4327 deferred=0 permanent=0
+229.531059 BRIDGE-PREPARE round 0 subject 1857/4327 deferred=0 permanent=0
+229.833277 BRIDGE-PREPARE round 0 subject 1921/4327 deferred=0 permanent=0
+230.149412 BRIDGE-PREPARE round 0 subject 1985/4327 deferred=0 permanent=0
+230.464189 BRIDGE-PREPARE round 0 subject 2049/4327 deferred=0 permanent=0
+230.787933 BRIDGE-PREPARE round 0 subject 2113/4327 deferred=0 permanent=0
+231.113286 BRIDGE-PREPARE round 0 subject 2177/4327 deferred=0 permanent=0
+231.432669 BRIDGE-PREPARE round 0 subject 2241/4327 deferred=0 permanent=0
+231.746806 BRIDGE-PREPARE round 0 subject 2305/4327 deferred=0 permanent=0
+232.061015 BRIDGE-PREPARE round 0 subject 2369/4327 deferred=0 permanent=0
+232.370364 BRIDGE-PREPARE round 0 subject 2433/4327 deferred=0 permanent=0
+232.673457 BRIDGE-PREPARE round 0 subject 2497/4327 deferred=0 permanent=0
+232.980140 BRIDGE-PREPARE round 0 subject 2561/4327 deferred=0 permanent=0
+233.278688 BRIDGE-PREPARE round 0 subject 2625/4327 deferred=0 permanent=0
+233.581235 BRIDGE-PREPARE round 0 subject 2689/4327 deferred=0 permanent=0
+233.878764 BRIDGE-PREPARE round 0 subject 2753/4327 deferred=0 permanent=0
+234.194571 BRIDGE-PREPARE round 0 subject 2817/4327 deferred=0 permanent=0
+234.518067 BRIDGE-PREPARE round 0 subject 2881/4327 deferred=0 permanent=0
+234.827397 BRIDGE-PREPARE round 0 subject 2945/4327 deferred=0 permanent=0
+235.140335 BRIDGE-PREPARE round 0 subject 3009/4327 deferred=0 permanent=0
+235.460415 BRIDGE-PREPARE round 0 subject 3073/4327 deferred=0 permanent=0
+235.777857 BRIDGE-PREPARE round 0 subject 3137/4327 deferred=0 permanent=0
+236.089217 BRIDGE-PREPARE round 0 subject 3201/4327 deferred=0 permanent=0
+236.411939 BRIDGE-PREPARE round 0 subject 3265/4327 deferred=0 permanent=0
+236.727608 BRIDGE-PREPARE round 0 subject 3329/4327 deferred=0 permanent=0
+237.049073 BRIDGE-PREPARE round 0 subject 3393/4327 deferred=0 permanent=0
+237.364330 BRIDGE-PREPARE round 0 subject 3457/4327 deferred=0 permanent=0
+237.679172 BRIDGE-PREPARE round 0 subject 3521/4327 deferred=0 permanent=0
+237.998586 BRIDGE-PREPARE round 0 subject 3585/4327 deferred=0 permanent=0
+238.312097 BRIDGE-PREPARE round 0 subject 3649/4327 deferred=0 permanent=0
+238.631357 BRIDGE-PREPARE round 0 subject 3713/4327 deferred=0 permanent=0
+238.942065 BRIDGE-PREPARE round 0 subject 3777/4327 deferred=0 permanent=0
+239.260251 BRIDGE-PREPARE round 0 subject 3841/4327 deferred=0 permanent=0
+239.581178 BRIDGE-PREPARE round 0 subject 3905/4327 deferred=0 permanent=0
+239.902891 BRIDGE-PREPARE round 0 subject 3969/4327 deferred=0 permanent=0

@@ -1,0 +1,15 @@
+k1.ofn	auto	REFUSED	0.01						
+k2.ofn	auto	REFUSED	0.01						
+k3.ofn	auto	REFUSED	0.01						
+k4.ofn	auto	REFUSED	0.01						
+k5.ofn	auto	REFUSED	0.01						
+s10.ofn	auto	ok	0.02	0	0	0	0	0	0
+s1.ofn	auto	ok	0.04	0	0	0	0	0	0
+s2.ofn	auto	ok	0.03	0	0	0	0	0	0
+s3.ofn	auto	REFUSED	0.01						
+s4.ofn	auto	REFUSED	0.01						
+s5.ofn	auto	REFUSED	0.01						
+s6.ofn	auto	ok	0.04	0	0	0	0	0	0
+s7.ofn	auto	ok	0.03	0	0	0	0	0	0
+s8.ofn	auto	ok	0.03	0	0	0	0	0	0
+s9.ofn	auto	ok	0.02	0	0	0	0	0	0

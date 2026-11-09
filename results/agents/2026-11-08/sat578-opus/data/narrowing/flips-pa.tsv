@@ -1,0 +1,12 @@
+bridge-nn-rule-fam	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-nn-rule/fam/seeds/nn1881.ofn	auto	TIMEOUT	60.02					
+bridge-nn-rule-fam	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-nn-rule/fam/seeds/nn1881.ofn	ht_bridge	ERR	40.33					
+bridge-nn-rule-fam	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-nn-rule/fam/seeds/nn969.ofn	ht_bridge	ok	31.39	0	0	0	0	0
+sat578-fam	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/sat578/fam/s578_1026.ofn	auto	ok	38.55	0	0	0	0	0
+sat578-fam	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/sat578/fam/s578_1288.ofn	auto	ok	0.10	0	0	0	0	0
+sat578-fam	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/sat578/fam/s578_171.ofn	auto	ok	0.97	0	0	0	0	0
+sat578-fam	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/sat578/fam/s578_733.ofn	auto	ok	0.17	0	0	0	0	0
+sat578-fam	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/sat578/fam/s578_1026.ofn	ht_bridge	ok	30.20	0	0	0	0	0
+sat578-fam	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/sat578/fam/s578_1288.ofn	ht_bridge	ok	0.06	0	0	0	0	0
+sat578-fam	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/sat578/fam/s578_171.ofn	ht_bridge	ok	1.05	0	0	0	0	0
+sat578-fam	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/sat578/fam/s578_733.ofn	ht_bridge	ok	0.15	0	0	0	0	0
+sat578-fam	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/sat578/fam/s578_908.ofn	ht_bridge	TIMEOUT	60.45					

@@ -1,0 +1,150 @@
+{
+ "version": 1,
+ "oguard": 0,
+ "nominals": [
+  1
+ ],
+ "ontology": [
+  {
+   "body": [
+    {
+     "concept": {
+      "literal": {
+       "concept": 1,
+       "neg": false
+      },
+      "node": 0
+     }
+    }
+   ],
+   "head": [
+    {
+     "concept": {
+      "literal": {
+       "concept": 2,
+       "neg": false
+      },
+      "node": 0
+     }
+    }
+   ]
+  },
+  {
+   "body": [
+    {
+     "concept": {
+      "literal": {
+       "concept": 1,
+       "neg": false
+      },
+      "node": 0
+     }
+    }
+   ],
+   "head": [
+    {
+     "concept": {
+      "literal": {
+       "concept": 0,
+       "neg": false
+      },
+      "node": 0
+     }
+    }
+   ]
+  },
+  {
+   "body": [
+    {
+     "concept": {
+      "literal": {
+       "concept": 2,
+       "neg": false
+      },
+      "node": 0
+     }
+    },
+    {
+     "concept": {
+      "literal": {
+       "concept": 0,
+       "neg": false
+      },
+      "node": 0
+     }
+    }
+   ],
+   "head": [
+    {
+     "concept": {
+      "literal": {
+       "concept": 3,
+       "neg": false
+      },
+      "node": 0
+     }
+    }
+   ]
+  },
+  {
+   "body": [
+    {
+     "concept": {
+      "literal": {
+       "concept": 3,
+       "neg": false
+      },
+      "node": 0
+     }
+    }
+   ],
+   "head": []
+  }
+ ],
+ "queries": [],
+ "consistent": false,
+ "unsatisfiable": [],
+ "subsumptions": [],
+ "premise_subsumptions": [],
+ "premise_unsatisfiable": [],
+ "refutations": [
+  {
+   "claim": "inconsistent",
+   "proof": {
+    "bottom": {
+     "steps": [
+      {
+       "horn": {
+        "clause": 0,
+        "assignment": [
+         1
+        ]
+       }
+      },
+      {
+       "horn": {
+        "clause": 1,
+        "assignment": [
+         1
+        ]
+       }
+      },
+      {
+       "horn": {
+        "clause": 2,
+        "assignment": [
+         1
+        ]
+       }
+      }
+     ],
+     "clause": 3,
+     "assignment": [
+      0
+     ]
+    }
+   }
+  }
+ ],
+ "models": []
+}

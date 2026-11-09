@@ -1,0 +1,1 @@
+{"consistent": true, "subsumptions": [["http://example.org/nn#Q1", "http://example.org/nn#E"], ["http://example.org/nn#Q1", "http://example.org/nn#Q5"], ["http://example.org/nn#Q2", "http://example.org/nn#E"], ["http://example.org/nn#Q2", "http://example.org/nn#Q5"]], "unsatisfiable": ["http://example.org/nn#B"]}

@@ -160,11 +160,14 @@ def Clause.mentionsConcept (concept : Concept) : Clause Concept Role → Prop
   | .nf5 sub => concept = sub
   | .nf6 _ _ | .nf7 _ _ _ | .reflexive _ => False
 
-structure SignatureClosed (active : Concept → Prop) (top : Concept)
+/-- Every concept an axiom mentions is active, except `bottom`. `bottom` may
+occur in a normal form (for example `A ⊓ B ⊑ ⊥`) but is never an element of an
+alive canonical domain, so it needs no context of its own. -/
+structure SignatureClosed (active : Concept → Prop) (top bottom : Concept)
     (O : Ontology Concept Role) : Prop where
   top_active : active top
   clause_active : ∀ clause ∈ O, ∀ concept,
-    clause.mentionsConcept concept → active concept
+    clause.mentionsConcept concept → concept ≠ bottom → active concept
 
 abbrev ActiveAlive (active : Concept → Prop) (top bottom : Concept)
     (O : Ontology Concept Role) :=
@@ -179,7 +182,7 @@ def canonOn (active : Concept → Prop) {top bottom : Concept}
   bottom_false := fun x => x.2.2
 
 theorem canonOn_models {active : Concept → Prop} {top bottom : Concept}
-    {O : Ontology Concept Role} (hsig : SignatureClosed active top O) :
+    {O : Ontology Concept Role} (hsig : SignatureClosed active top bottom O) :
     models (canonOn active (top := top) (bottom := bottom) (O := O)) O := by
   intro clause hcl
   cases clause with
@@ -197,6 +200,7 @@ theorem canonOn_models {active : Concept → Prop} {top bottom : Concept}
         exact x.2.2 (Sub.bottomEdge hedge hbottom)
       have activeFiller : active filler :=
         hsig.clause_active (.nf3 sub role filler) hcl filler (Or.inr rfl)
+          (fun hfiller => alive (hfiller ▸ Sub.refl filler))
       exact ⟨⟨filler, activeFiller, alive⟩, hedge, Sub.refl filler⟩
   | nf4 role filler sup =>
       intro x hex
@@ -216,7 +220,7 @@ theorem canonOn_models {active : Concept → Prop} {top bottom : Concept}
       exact Edge.reflexive x.1 hcl
 
 theorem activeAlive_nonempty {active : Concept → Prop} {top bottom : Concept}
-    {O : Ontology Concept Role} (hsig : SignatureClosed active top O)
+    {O : Ontology Concept Role} (hsig : SignatureClosed active top bottom O)
     (h : ¬Sub top bottom O top bottom) :
     Nonempty (ActiveAlive active top bottom O) :=
   ⟨⟨top, hsig.top_active, h⟩⟩
@@ -242,7 +246,7 @@ native residual checker enumerates. -/
 theorem materializedCanon_models
     (active : Concept → Prop) (m : Materialization Concept Role)
     (closed : ClosedState m top bottom O)
-    (hsig : SignatureClosed active top O) :
+    (hsig : SignatureClosed active top bottom O) :
     models (materializedCanon active m top bottom closed) O := by
   intro clause hclause
   cases clause with
@@ -260,6 +264,7 @@ theorem materializedCanon_models
         exact x.2.2 (closed.closeBottomEdge hedge hbottom)
       have hactive : active filler :=
         hsig.clause_active (.nf3 sub role filler) hclause filler (Or.inr rfl)
+          (fun hfiller => halive (hfiller ▸ closed.initRefl filler))
       exact ⟨⟨filler, hactive, halive⟩, hedge, closed.initRefl filler⟩
   | nf4 role filler sup =>
       intro x hexists
@@ -280,7 +285,7 @@ theorem materializedCanon_models
 
 theorem materializedActiveAlive_nonempty
     (active : Concept → Prop) (m : Materialization Concept Role)
-    (hsig : SignatureClosed active top O)
+    (hsig : SignatureClosed active top bottom O)
     (halive : ¬m.sub top bottom) :
     Nonempty (MaterializedActiveAlive active m bottom) :=
   ⟨⟨top, hsig.top_active, halive⟩⟩
@@ -370,7 +375,7 @@ theorem unsatisfiableWithResidual_iff {O : Ontology Concept Role}
 
 /-- Exact taxonomy theorem over the concept-only domain enumerated by Rust. -/
 theorem entailsSubWithResidual_iff_on {O : Ontology Concept Role}
-    (active : Concept → Prop) (hsig : SignatureClosed active top O)
+    (active : Concept → Prop) (hsig : SignatureClosed active top bottom O)
     (R : ResidualTheory Concept Role top bottom)
     (hresidual : R.holds (canonOn active (top := top) (bottom := bottom) (O := O)))
     (a b : Concept) (ha : active a) :
@@ -389,7 +394,7 @@ theorem entailsSubWithResidual_iff_on {O : Ontology Concept Role}
 
 /-- Exact inconsistency theorem over Rust's concept-only canonical domain. -/
 theorem unsatisfiableWithResidual_iff_on {O : Ontology Concept Role}
-    (active : Concept → Prop) (hsig : SignatureClosed active top O)
+    (active : Concept → Prop) (hsig : SignatureClosed active top bottom O)
     (R : ResidualTheory Concept Role top bottom)
     (hresidual : R.holds (canonOn active (top := top) (bottom := bottom) (O := O))) :
     UnsatisfiableWithResidual O R ↔ Sub top bottom O top bottom := by
@@ -432,7 +437,7 @@ theorem unsatisfiableWithResidual_iff_materialized {O : Ontology Concept Role}
 theorem entailsSubWithResidual_iff_materialized_on {O : Ontology Concept Role}
     {m : Materialization Concept Role}
     (closed : ClosedState m top bottom O) (sound : SoundState m top bottom O)
-    (active : Concept → Prop) (hsig : SignatureClosed active top O)
+    (active : Concept → Prop) (hsig : SignatureClosed active top bottom O)
     (R : ResidualTheory Concept Role top bottom)
     (hresidual : R.holds (canonOn active (top := top) (bottom := bottom) (O := O)))
     (a b : Concept) (ha : active a) :
@@ -450,7 +455,7 @@ theorem entailsSubWithResidual_iff_materialized_on {O : Ontology Concept Role}
 theorem unsatisfiableWithResidual_iff_materialized_on {O : Ontology Concept Role}
     {m : Materialization Concept Role}
     (closed : ClosedState m top bottom O) (sound : SoundState m top bottom O)
-    (active : Concept → Prop) (hsig : SignatureClosed active top O)
+    (active : Concept → Prop) (hsig : SignatureClosed active top bottom O)
     (R : ResidualTheory Concept Role top bottom)
     (hresidual : R.holds (canonOn active (top := top) (bottom := bottom) (O := O))) :
     UnsatisfiableWithResidual O R ↔ m.sub top bottom := by
@@ -463,7 +468,7 @@ corollaries, its residual premise is checked on that same finite domain. -/
 theorem entailsSubWithResidual_iff_finiteMaterialized {O : Ontology Concept Role}
     {m : Materialization Concept Role}
     (closed : ClosedState m top bottom O) (sound : SoundState m top bottom O)
-    (active : Concept → Prop) (hsig : SignatureClosed active top O)
+    (active : Concept → Prop) (hsig : SignatureClosed active top bottom O)
     (R : ResidualTheory Concept Role top bottom)
     (hresidual : R.holds (materializedCanon active m top bottom closed))
     (a b : Concept) (ha : active a) :
@@ -486,7 +491,7 @@ by the native residual checker. -/
 theorem unsatisfiableWithResidual_iff_finiteMaterialized
     {O : Ontology Concept Role} {m : Materialization Concept Role}
     (closed : ClosedState m top bottom O) (sound : SoundState m top bottom O)
-    (active : Concept → Prop) (hsig : SignatureClosed active top O)
+    (active : Concept → Prop) (hsig : SignatureClosed active top bottom O)
     (R : ResidualTheory Concept Role top bottom)
     (hresidual : R.holds (materializedCanon active m top bottom closed)) :
     UnsatisfiableWithResidual O R ↔ m.sub top bottom := by

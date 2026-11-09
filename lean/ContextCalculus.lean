@@ -3,6 +3,8 @@ import ContextCalculus.CompletenessProp
 import ContextCalculus.CompletenessOrdered
 import ContextCalculus.CompletenessOrderedSubsumption
 import ContextCalculus.CompletenessExchange
+import ContextCalculus.ExchangeEquality
+import ContextCalculus.ExchangeCut
 import ContextCalculus.CompletenessClause
 import ContextCalculus.CompletenessEL
 import ContextCalculus.ELCompletion
@@ -21,6 +23,7 @@ import ContextCalculus.ELResidualWitness
 import ContextCalculus.ELCompletionCertificate
 import ContextCalculus.ELCompletionWire
 import ContextCalculus.ELCompletionPublication
+import ContextCalculus.ELCompletionFastCheck
 import ContextCalculus.CompletenessContext
 import ContextCalculus.CompletenessStrategy
 import ContextCalculus.CompletenessEq
@@ -45,6 +48,7 @@ import ContextCalculus.CBProductionTraceWire
 import ContextCalculus.CBInterContext
 import ContextCalculus.CBInterContextWire
 import ContextCalculus.CBPredEnumeration
+import ContextCalculus.CBPredResolving
 import ContextCalculus.CBPredSendEnumeration
 import ContextCalculus.CBPredSendCoverageWire
 import ContextCalculus.CBTerminalStateWire
@@ -110,6 +114,16 @@ import ContextCalculus.CompletenessFO
 import ContextCalculus.CompletenessInverse
 import ContextCalculus.Nominals
 import ContextCalculus.Certification
+import ContextCalculus.LinearValueEncoding
+import ContextCalculus.TwoSortedDL
+import ContextCalculus.DataValueProjection
+import ContextCalculus.DataAboxOmission
+import ContextCalculus.DataValueSingletonElision
+import ContextCalculus.DataRangeBoolean
+import ContextCalculus.DataRangeCells
+import ContextCalculus.DataRangeStrings
+import ContextCalculus.DataRangeDecimalBands
+import ContextCalculus.DataRangeDateTime
 import ContextCalculus.Hypertableau
 import ContextCalculus.HypertableauCertifiedInput
 import ContextCalculus.HypertableauDirectProjectionWire
@@ -226,3 +240,9 @@ import ContextCalculus.HypertableauWire
 import ContextCalculus.HypertableauWireCompleteness
 import ContextCalculus.HypertableauTaxonomyCertificate
 import ContextCalculus.HypertableauTaxonomyWire
+import ContextCalculus.RulesInertSortRelease
+import ContextCalculus.UniversalDefinerElimination
+import ContextCalculus.RulesRouteCertificate
+import ContextCalculus.HypertableauSubsetUnravelling
+import ContextCalculus.ObjectGuardRestriction
+import ContextCalculus.PolarityDefiners

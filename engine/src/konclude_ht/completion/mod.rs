@@ -22,6 +22,8 @@ pub mod computed_cons_handler; // W129: CComputedConsequencesCacheHandler type-w
 pub mod context; // W3: CCalculationAlgorithmContext{,Base} — the per-thread context
 pub mod dependency_factory;
 pub mod grounding; // W44: CConceptNominalSchemaGroundingHandler helper methods
+pub mod satexp_absorb; // satisfiable-cached absorption gates (docs/HYBRID-CB-HT.md section 23)
+pub mod satexp_trace; // diagnostic: KM_HT_SATEXP_TRACE (docs/HYBRID-CB-HT.md section 23)
 pub mod sat_node_exp_handler; // W128: CSaturationNodeExpansionCacheHandler concept-unsat queueing
 pub mod strategy; // W3: Strategy/ rule-application priority + cache-retrieval policies
 pub mod stubs; // W3: Algorithm-layer not-yet-ported placeholder markers // W3c: the create*Dependency allocator (CDependencyFactory)
@@ -97,7 +99,64 @@ macro_rules! cached_completion_flag {
 }
 
 cached_completion_flag!(bridge_progress_enabled, "KM_BRIDGE_PROGRESS");
+cached_completion_flag!(automat_rest_link_disabled, "KM_HT_NO_AUTOMAT_REST_LINK");
+/// Konclude's restricted automaton re-fire (cpp 9662-9700): a state re-fired
+/// for one freshly installed link propagates over that link only. On by
+/// default since 2026-11-02 (docs/HYBRID-CB-HT.md section 17 argues it
+/// derives the same closure as the all-successors arm);
+/// `KM_HT_NO_AUTOMAT_REST_LINK=1` restores the all-successors re-fire.
+pub(crate) fn automat_rest_link_enabled() -> bool {
+    !automat_rest_link_disabled()
+}
+cached_completion_flag!(stop_trace_enabled, "KM_HT_STOP_TRACE");
+cached_completion_flag!(blocking_scan_trace_enabled, "KM_HT_BLOCKING_SCAN_TRACE");
+cached_completion_flag!(automat_rest_link_audit_enabled, "KM_HT_AUTOMAT_REST_LINK_AUDIT");
+cached_completion_flag!(automat_rest_link_drop_enabled, "KM_HT_AUTOMAT_REST_LINK_DROP");
+cached_completion_flag!(automat_closure_audit_enabled, "KM_HT_AUTOMAT_CLOSURE_AUDIT");
+cached_completion_flag!(graph_dump_enabled, "KM_HT_GRAPH_DUMP");
+cached_completion_flag!(satexp_trace_enabled, "KM_HT_SATEXP_TRACE");
+cached_completion_flag!(atmost_rearm_disabled, "KM_HT_DIAG_NO_ATMOST_REARM");
+cached_completion_flag!(automat_rest_link_audit_detail, "KM_HT_AUTOMAT_REST_LINK_AUDIT_DETAIL");
+
+/// One operand the all-successors arm adds outside a restricted link
+/// (`KM_HT_AUTOMAT_REST_LINK_AUDIT`). Printed at the first miss and at exit
+/// of the worker through [`automat_rest_link_audit_report`].
+pub(crate) fn automat_rest_link_audit_miss() {
+    let n = AUTOMAT_REST_LINK_AUDIT_MISSES.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    if n == 1 || n.is_power_of_two() {
+        eprintln!("AUTOMAT-REST-LINK-AUDIT misses={n}");
+    }
+}
+/// One automaton re-fire restricted to a link (counted under
+/// `KM_HT_AUTOMAT_REST_LINK_AUDIT` only, printed at powers of two).
+pub(crate) fn automat_rest_link_refire() {
+    if !automat_rest_link_audit_enabled() {
+        return;
+    }
+    let n = AUTOMAT_REST_LINK_REFIRES.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    if n.is_power_of_two() {
+        eprintln!("AUTOMAT-REST-LINK-AUDIT refires={n} misses={}",
+            AUTOMAT_REST_LINK_AUDIT_MISSES.load(std::sync::atomic::Ordering::Relaxed));
+    }
+}
+pub(crate) static AUTOMAT_REST_LINK_REFIRES: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+pub(crate) static AUTOMAT_REST_LINK_AUDIT_MISSES: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
 cached_completion_flag!(bridge_phase_timing_enabled, "KM_BRIDGE_PHASE_TIMING");
+
+/// Cap on the drive iterations of one completion run (`u02.rs`), looked up
+/// once. `KM_HT_MAX_DRIVE_ITERATIONS` raises it for measurement; an overrun
+/// still stops the drive, so the value never changes an answer.
+pub(crate) fn max_drive_iterations() -> u64 {
+    static CAP: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    *CAP.get_or_init(|| {
+        std::env::var("KM_HT_MAX_DRIVE_ITERATIONS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(5_000_000)
+    })
+}
 cached_completion_flag!(ht_singleton_scan_after_merge_enabled, "KM_HT_SINGLETON_SCAN_AFTER_MERGE");
 cached_completion_flag!(bridge_base_audit_enabled, "KM_BRIDGE_BASE_AUDIT");
 cached_completion_flag!(bridge_search_log_enabled, "KM_BRIDGE_SEARCH_LOG");
@@ -113,7 +172,53 @@ cached_completion_flag!(sat_no_successor_label_replay, "KM_HT_NO_SAT_SUCCESSOR_L
 cached_completion_flag!(ht_or_trace_enabled, "KM_HT_OR_TRACE");
 cached_completion_flag!(ht_ddb_no_skip_enabled, "KM_HT_DDB_NO_SKIP");
 cached_completion_flag!(ht_atmost_rest_enabled, "KM_HT_ATMOST_REST");
+cached_completion_flag!(ht_no_nn_rule, "KM_HT_NO_NN_RULE");
+// The two changes of docs/HYBRID-CB-HT.md section 25 to optimized blocking
+// (`u19.rs`), each with its own negative-control switch;
+// `KM_HT_NO_SAT578_FIX=1` turns both off.
+cached_completion_flag!(no_sat578_fix, "KM_HT_NO_SAT578_FIX");
+/// `KM_HT_SAT578_GUARD_TRACE=PATH`: create the file PATH (and print
+/// `KM-SAT578-GUARD-FIRED` to stderr) once per process when a section 25
+/// guard refuses something that the base accepted: a c-block in B6, a
+/// nominal neighbour or a merged ghost in B4a. A file, because the automatic
+/// route runs the bridge in worker processes whose stderr is not kept. A run
+/// that never fires computes what the base computes.
+pub(crate) fn sat578_guard_fired() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    static PATH: std::sync::OnceLock<Option<std::ffi::OsString>> = std::sync::OnceLock::new();
+    if let Some(path) = PATH.get_or_init(|| std::env::var_os("KM_HT_SAT578_GUARD_TRACE")) {
+        ONCE.call_once(|| {
+            eprintln!("KM-SAT578-GUARD-FIRED");
+            let _ = std::fs::write(path, b"fired\n");
+        });
+    }
+}
+cached_completion_flag!(no_b6_collision_guard, "KM_HT_NO_B6_COLLISION_GUARD");
+cached_completion_flag!(no_b4a_nominal_guard, "KM_HT_NO_B4A_NOMINAL_GUARD");
+/// `KM_HT_NO_B6_COLLISION_GUARD=1`: B6 keeps a successor in `C` c-blocked
+/// under `not (<=n R.C)` at the parent without the collision test, as
+/// Konclude does.
+pub(crate) fn ht_no_b6_collision_guard() -> bool {
+    no_sat578_fix() || no_b6_collision_guard()
+}
+/// `KM_HT_NO_B4A_NOMINAL_GUARD=1`: B4a counts every nominal neighbour of the
+/// blocker, and ghosts of nodes merged into a nominal, as before.
+pub(crate) fn ht_no_b4a_nominal_guard() -> bool {
+    no_sat578_fix() || no_b4a_nominal_guard()
+}
+cached_completion_flag!(ht_nn_trace_enabled, "KM_HT_NN_TRACE");
+cached_completion_flag!(ht_nn_distinct_first, "KM_HT_NN_DISTINCT_FIRST");
 cached_completion_flag!(compact_distinct_groups_enabled, "KM_COMPACT_DISTINCT_GROUPS");
+
+/// Cached value of `KM_HT_SATEXP_ABSORB_LEGACY` (diagnostic, read by
+/// `satexp_absorb`; docs/HYBRID-CB-HT.md section 23), looked up once: its
+/// readers sit on the at-most, existential and replay rule paths.
+pub(crate) fn satexp_absorb_legacy_value() -> Option<&'static str> {
+    static VALUE: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    VALUE
+        .get_or_init(|| std::env::var("KM_HT_SATEXP_ABSORB_LEGACY").ok())
+        .as_deref()
+}
 
 macro_rules! cached_completion_i64 {
     ($function:ident, $variable:literal) => {
@@ -137,6 +242,7 @@ macro_rules! cached_completion_i64 {
 cached_completion_i64!(bridge_watch_tag, "KM_BRIDGE_WATCH_TAG");
 cached_completion_i64!(bridge_watch_negtag, "KM_BRIDGE_WATCH_NEGTAG");
 cached_completion_i64!(bridge_watch_node, "KM_BRIDGE_WATCH_NODE");
+cached_completion_i64!(bridge_ddb_trace_limit, "KM_BRIDGE_DDB_TRACE");
 cached_completion_i64!(sat_label_debug_tag, "KM_SAT_LABEL_DEBUG_TAG");
 
 macro_rules! cached_completion_u64 {
@@ -156,6 +262,7 @@ macro_rules! cached_completion_u64 {
 
 cached_completion_u64!(bridge_max_drives, "KM_BRIDGE_MAX_DRIVES", u64::MAX);
 cached_completion_u64!(bridge_search_log_limit, "KM_BRIDGE_SEARCH_LOG", 0);
+cached_completion_u64!(bridge_dump_clash_limit, "KM_BRIDGE_DUMP_CLASH_LIMIT", 8);
 
 /// Cached `KM_SAT_CACHE_TRACE_TAG=<tag>[,<tag>...]` watch list (empty = off).
 pub(crate) fn sat_cache_trace_tags() -> &'static [crate::konclude_ht::model::Cint64] {

@@ -1,0 +1,14 @@
+SCRATCH/seeds20/merge1322.ofn	ht_bridge	1	WRONG	0.02	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1322.ofn	auto	1	WRONG	0.03	missing=[] extra=[('Q1', 'A'), ('Q1', 'B'), ('Q1', 'F'), ('Q1', 'Q4')] unsat_missing=['Q1'] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	ht_bridge	1	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1585.ofn	auto	1	WRONG	0.01	missing=[('F', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	ht_bridge	1	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1708.ofn	auto	1	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('Q1', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge1722.ofn	ht_bridge	1	WRONG	0.02	consistency gold=False km=True
+SCRATCH/seeds20/merge1722.ofn	auto	1	WRONG	0.03	consistency gold=False km=True
+SCRATCH/seeds20/merge526.ofn	ht_bridge	1	WRONG	0.02	missing=[('A', 'Q3'), ('C', 'Q3'), ('D', 'Q3'), ('E', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/merge526.ofn	auto	1	WRONG	0.03	missing=[('A', 'Q3'), ('C', 'Q3'), ('D', 'Q3'), ('E', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/min1722.ofn	ht_bridge	1	WRONG	0.02	consistency gold=False km=True
+SCRATCH/seeds20/min1722.ofn	auto	1	WRONG	0.03	consistency gold=False km=True
+SCRATCH/seeds20/min526.ofn	ht_bridge	1	WRONG	0.01	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('D', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+SCRATCH/seeds20/min526.ofn	auto	1	WRONG	0.02	missing=[('A', 'Q3'), ('B', 'Q3'), ('C', 'Q3'), ('D', 'Q3')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0

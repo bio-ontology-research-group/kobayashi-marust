@@ -1,0 +1,16 @@
+KM_TIMING mark: validate_user_input done
+KM_TIMING mark: second source check done
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING ABox quotient not built: site 1
+KM_TIMING mirror-route: declined by lexical prefilter: bytes=2072561 complements_below=1
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.07s cached=false sidecar=false
+KM_TIMING frontend done @ 0.07s route=certified_card_proxy_abox
+KM_TIMING spawn_ht: read+convert 20414 clauses (ht_view=20191) in 0.04s
+KM_TIMING race: HT worker spawned @ 0.07s after the CB stack started
+KM_TIMING race: HT worker exited @ 160.14s (success=true)
+KM_TIMING race: read_tout done @ 160.35s
+KM_TIMING engine block done @ 160.56s (subs_keys=4841)
+KM_TIMING mark: output mapping done
+KM_TIMING mark: classify_json returned
+KM_TIMING mark: output written

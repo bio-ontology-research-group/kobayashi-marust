@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -euo pipefail
+[[ $# -gt 0 ]] || exit 64
+command=$1
+shift
+case "$command" in
+  test|build) exec /home/leechuck/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo "$command" --offline --locked "$@" ;;
+  *) echo "unexpected cargo command in certification" >&2; exit 64 ;;
+esac

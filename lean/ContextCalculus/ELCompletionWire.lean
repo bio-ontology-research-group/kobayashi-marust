@@ -4,6 +4,7 @@ import ContextCalculus.ELRawNormalization
 import ContextCalculus.ELResidualCertificate
 import ContextCalculus.ELResidualWitness
 import Lean
+import Std.Data.HashSet.Lemmas
 
 /-!
 # JSON wire format for executable ELC certificates
@@ -358,6 +359,47 @@ def WireEdgeFact.decode (n : Nat) (fact : WireEdgeFact) :
   return .edge (← checkedFin n fact.source) (← checkedFin n fact.role)
     (← checkedFin n fact.target)
 
+/-! ## Linear-time duplicate check used by the decoder -/
+
+instance instHashableSum {α β : Type} [Hashable α] [Hashable β] : Hashable (Sum α β) where
+  hash
+    | .inl a => mixHash 11 (hash a)
+    | .inr b => mixHash 13 (hash b)
+
+/-- Scan `l` once, keeping the elements seen so far in a hash set. -/
+def nodupFastAux {α : Type} [BEq α] [Hashable α] : List α → Std.HashSet α → Bool
+  | [], _ => true
+  | x :: xs, seen => !seen.contains x && nodupFastAux xs (seen.insert x)
+
+def nodupFast {α : Type} [BEq α] [Hashable α] (l : List α) : Bool :=
+  nodupFastAux l ∅
+
+theorem nodupFastAux_sound {α : Type} [BEq α] [LawfulBEq α] [Hashable α] :
+    ∀ (l : List α) (seen : Std.HashSet α), nodupFastAux l seen = true →
+      (∀ x ∈ l, seen.contains x = false) ∧ l.Nodup
+  | [], _, _ => by simp
+  | x :: xs, seen, h => by
+      simp only [nodupFastAux, Bool.and_eq_true, Bool.not_eq_true'] at h
+      obtain ⟨hx, hrest⟩ := h
+      obtain ⟨hfresh, hnodup⟩ := nodupFastAux_sound xs (seen.insert x) hrest
+      refine ⟨?_, ?_⟩
+      · intro y hy
+        rcases List.mem_cons.mp hy with rfl | hy
+        · exact hx
+        · have := hfresh y hy
+          rw [Std.HashSet.contains_insert] at this
+          simp only [Bool.or_eq_false_iff] at this
+          exact this.2
+      · refine List.nodup_cons.mpr ⟨?_, hnodup⟩
+        intro hmem
+        have := hfresh x hmem
+        rw [Std.HashSet.contains_insert] at this
+        simp at this
+
+theorem nodupFast_nodup {α : Type} [BEq α] [LawfulBEq α] [Hashable α] {l : List α}
+    (h : nodupFast l = true) : l.Nodup :=
+  (nodupFastAux_sound l ∅ h).2
+
 def WireCertificate.decode (doc : WireCertificate) :
     Except String (DecodedCertificate doc.symbol_count) := do
   if doc.version != 5 then
@@ -366,15 +408,22 @@ def WireCertificate.decode (doc : WireCertificate) :
   let bottom ← checkedFin doc.symbol_count doc.bottom
   if hne : top ≠ bottom then
     if hsymbols : doc.symbols.length = doc.symbol_count then
-      if hsymbolsNodup : doc.symbols.Nodup then
+      if hsymbolsFast : nodupFast doc.symbols = true then
+       have hsymbolsNodup : doc.symbols.Nodup := nodupFast_nodup hsymbolsFast
        if horiginCount : doc.concept_origins.length = doc.symbol_count then
+        let wireOrigins := doc.concept_origins.toArray
         let origins ← (List.finRange doc.symbol_count).mapM fun id =>
-          (doc.concept_origins.get ⟨id.val, by rw [horiginCount]; exact id.isLt⟩).decode
+          (wireOrigins[id.val]'(by simp [wireOrigins, horiginCount])).decode
             doc.symbol_count id
+        -- Array lookups keep decoding linear in the certificate size.
+        let originArray := origins.toArray
+        let symbolArray := doc.symbols.toArray
         let origin : Fin doc.symbol_count → ExtendedConcept (Fin doc.symbol_count) :=
-          fun id => origins.getD id.val (.inl top)
+          fun id => originArray.getD id.val (.inl top)
         if horiginsLength : origins.length = doc.symbol_count then
-          if horiginsNodup : origins.Nodup then
+          if horiginsFast : @nodupFast _ instBEqOfDecidableEq _ origins = true then
+            have horiginsNodup : origins.Nodup :=
+              @nodupFast_nodup _ instBEqOfDecidableEq _ _ _ horiginsFast
             return {
             top := top
             bottom := bottom
@@ -400,9 +449,10 @@ def WireCertificate.decode (doc : WireCertificate) :
               (← doc.rust_edges.mapM (WireEdgeFact.decode doc.symbol_count))
             public_subsumptions := ← doc.public_subsumptions.mapM fun fact =>
               return (← checkedFin doc.symbol_count fact.sub, ← checkedFin doc.symbol_count fact.sup)
-            symbols := fun id => doc.symbols.get ⟨id.val, by simpa [hsymbols] using id.isLt⟩
+            symbols := fun id => symbolArray[id.val]'(by simpa [symbolArray, hsymbols] using id.isLt)
             symbols_injective := by
               intro left right heq
+              simp only [symbolArray, List.getElem_toArray] at heq
               let leftIndex : Fin doc.symbols.length :=
                 ⟨left.val, by simpa [hsymbols] using left.isLt⟩
               let rightIndex : Fin doc.symbols.length :=
@@ -457,11 +507,14 @@ def DecodedCertificate.checkActiveConcepts {n : Nat} (doc : DecodedCertificate n
   doc.active_concepts.all (fun id => decide (id ∈ doc.expectedActiveConcepts)) &&
     doc.expectedActiveConcepts.all (fun id => decide (id ∈ doc.active_concepts))
 
+/-- `bottom` is exempt: a normal form may mention it (`A ⊓ B ⊑ ⊥`), while
+`checkActiveConcepts` keeps it out of the active contexts. -/
 def DecodedCertificate.checkSignatureClosed {n : Nat}
     (doc : DecodedCertificate n) : Bool :=
   decide (doc.top ∈ doc.active_concepts) &&
     doc.ontology.all fun clause =>
-      clause.concepts.all fun concept => decide (concept ∈ doc.active_concepts)
+      clause.concepts.all fun concept =>
+        concept == doc.bottom || decide (concept ∈ doc.active_concepts)
 
 theorem Clause.mentionsConcept_iff_mem_concepts
     (clause : Clause Concept Role) (concept : Concept) :
@@ -472,20 +525,22 @@ theorem DecodedCertificate.checkSignatureClosed_iff {n : Nat}
     (doc : DecodedCertificate n) :
     doc.checkSignatureClosed = true ↔
       SignatureClosed (fun concept => concept ∈ doc.active_concepts)
-        doc.top doc.ontology := by
+        doc.top doc.bottom doc.ontology := by
   simp only [DecodedCertificate.checkSignatureClosed, Bool.and_eq_true,
-    decide_eq_true_eq, List.all_eq_true]
+    decide_eq_true_eq, List.all_eq_true, Bool.or_eq_true, beq_iff_eq]
   constructor
   · rintro ⟨htop, hclauses⟩
     refine ⟨htop, ?_⟩
-    intro clause hclause concept hmentions
-    exact hclauses clause hclause concept
-      ((Clause.mentionsConcept_iff_mem_concepts clause concept).mp hmentions)
+    intro clause hclause concept hmentions hne
+    exact (hclauses clause hclause concept
+      ((Clause.mentionsConcept_iff_mem_concepts clause concept).mp hmentions)).resolve_left hne
   · intro hclosed
     refine ⟨hclosed.top_active, ?_⟩
     intro clause hclause concept hconcept
-    exact hclosed.clause_active clause hclause concept
-      ((Clause.mentionsConcept_iff_mem_concepts clause concept).mpr hconcept)
+    by_cases hbottom : concept = doc.bottom
+    · exact Or.inl hbottom
+    · exact Or.inr (hclosed.clause_active clause hclause concept
+        ((Clause.mentionsConcept_iff_mem_concepts clause concept).mpr hconcept) hbottom)
 
 def DecodedCertificate.checkStateAgreement {n : Nat} (doc : DecodedCertificate n) : Bool :=
   doc.checkFactAgreement && doc.checkActiveConcepts
@@ -888,9 +943,12 @@ def DecodedResidualCompilation.functionBindings {n variableCount : Nat}
     | .source _ => none
     | .function function witness => some (function, witness)
 
+/-- Records with a dead witness pin nothing: their Skolem clauses hold
+vacuously on the alive domain, whatever the function denotes. -/
 def DecodedCertificate.functionBindings {n : Nat}
     (doc : DecodedCertificate n) : List (Nat × Fin n) :=
-  (doc.witness_records.map fun record => (record.function, record.witness)) ++
+  ((doc.witness_records.filter fun record => doc.residualValueAlive record.witness).map
+      fun record => (record.function, record.witness)) ++
     doc.residual_compilations.flatMap fun residual =>
       residual.decoded.functionBindings
 
@@ -904,7 +962,7 @@ def DecodedCertificate.checkFunctionBindings {n : Nat}
 def DecodedCertificate.checkWitnessRecords {n : Nat}
     (doc : DecodedCertificate n) : Bool :=
   doc.witness_records.all fun record =>
-    doc.residualValueAlive record.witness &&
+    decide (record.witness ∈ doc.active_concepts) &&
       decide (Clause.nf3 record.sub record.role record.witness ∈ doc.ontology) &&
       decide (Clause.nf1 record.witness record.filler ∈ doc.ontology)
 
@@ -987,11 +1045,14 @@ theorem DecodedCertificate.sharedPin_eq_of_binding {n : Nat}
 theorem DecodedCertificate.witnessBinding_mem {n : Nat}
     (doc : DecodedCertificate n)
     (record : CanonicalWitnessRecord (Fin n) (Fin n))
-    (hrecord : record ∈ doc.witness_records) :
+    (hrecord : record ∈ doc.witness_records)
+    (hactive : record.witness ∈ doc.active_concepts)
+    (halive : ¬doc.materialization.sub record.witness doc.bottom) :
     (record.function, record.witness) ∈ doc.functionBindings := by
   unfold DecodedCertificate.functionBindings
   apply List.mem_append_left
-  exact List.mem_map.mpr ⟨record, hrecord, rfl⟩
+  refine List.mem_map.mpr ⟨record, List.mem_filter.mpr ⟨hrecord, ?_⟩, rfl⟩
+  simp [DecodedCertificate.residualValueAlive, hactive, halive]
 
 theorem DecodedCertificate.residualBinding_mem {n : Nat}
     (doc : DecodedCertificate n)
@@ -1020,9 +1081,7 @@ theorem DecodedCertificate.checkWitnessRecords_valid {n : Nat}
     Bool.and_eq_true, decide_eq_true_eq] at hcheck
   have hvalid := hcheck record hrecord
   simp only [CanonicalWitnessRecord.MaterializedValid]
-  simp only [DecodedCertificate.residualValueAlive, Bool.and_eq_true,
-    decide_eq_true_eq] at hvalid
-  exact ⟨hvalid.1.1.1, hvalid.1.1.2, hvalid.1.2, hvalid.2⟩
+  exact ⟨hvalid.1.1, hvalid.1.2, hvalid.2⟩
 
 theorem DecodedCertificate.checkWitnessRecords_pinCompatible {n : Nat}
     (doc : DecodedCertificate n)
@@ -1035,7 +1094,7 @@ theorem DecodedCertificate.checkWitnessRecords_pinCompatible {n : Nat}
       (fun concept => concept ∈ doc.active_concepts) doc.materialization
       (doc.sharedPin htopActive htopAlive) := by
   intro hactive halive
-  have hbinding := doc.witnessBinding_mem record hrecord
+  have hbinding := doc.witnessBinding_mem record hrecord hactive halive
   simpa using doc.sharedPin_eq_of_binding htopActive htopAlive hbindings
     record.function record.witness hbinding
 
@@ -1427,7 +1486,7 @@ theorem DecodedCertificate.checkPartitionedNormalization_direct_models_materiali
     {n : Nat} (doc : DecodedCertificate n)
     (closed : ClosedState doc.materialization doc.top doc.bottom doc.ontology)
     (hsig : SignatureClosed (fun concept => concept ∈ doc.active_concepts)
-      doc.top doc.ontology)
+      doc.top doc.bottom doc.ontology)
     (T : RawTermInterp doc.ResidualDomain)
     (hnormal : doc.checkPartitionedNormalization = true)
     (horigin : doc.checkOriginOntology = true)

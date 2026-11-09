@@ -1,0 +1,10 @@
+ore_ont_9240 km-v1.5.5-rc-pgo rc=0 wall=51.341821891 subs=3038 CONSISTENT 1 DROPPED 0 
+ore_ont_205 km-v1.5.5-rc-pgo rc=0 wall=88.619693848 subs=38638 CONSISTENT 1 DROPPED 0 
+ore_ont_1938 km-v1.5.5-rc-pgo rc=0 wall=64.218478858 subs=805342 CONSISTENT 1 DROPPED 0 
+ore_ont_12567 km-v1.5.5-rc-pgo rc=0 wall=29.102442829 subs=2535542 CONSISTENT 1 DROPPED 0 
+ore_ont_5289 km-v1.5.5-rc-pgo rc=0 wall=24.420359608 subs=295267 CONSISTENT 1 DROPPED 0 
+ore_ont_13928 km-v1.5.5-rc-pgo rc=0 wall=24.725852320 subs=297914 CONSISTENT 1 DROPPED 0 
+ore_ont_10754 km-v1.5.5-rc-pgo rc=0 wall=24.807344286 subs=507 CONSISTENT 1 DROPPED 0 
+ore_ont_762 km-v1.5.5-rc-pgo rc=0 wall=3.037306198 subs=504220 CONSISTENT 1 DROPPED 0 
+ore_ont_5218 km-v1.5.5-rc-pgo rc=0 wall=10.306065669 subs=492784 CONSISTENT 1 DROPPED 0 
+ore_ont_15226 km-v1.5.5-rc-pgo rc=0 wall=20.994895805 subs=298197 CONSISTENT 1 DROPPED 0 

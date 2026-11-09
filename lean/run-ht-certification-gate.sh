@@ -91,6 +91,7 @@ checkers=(
     ht-anchored-eq-cert-check
     ht-anchored-cardinality-cert-check
     ht-taxonomy-cert-check
+    ht-subset-unravelling-check
 )
 
 # These statically linked executables are disposable gate products and can
@@ -145,6 +146,20 @@ fi
     LEAN_NUM_THREADS=4 lake build ContextCalculus.HypertableauCertificationSurface \
         2>&1 | tee "$surface_log"
 )
+
+# Subset-blocked production terminals (docs/HYBRID-CB-HT.md section 9).
+(
+    cd "$lean_root"
+    LEAN_NUM_THREADS=4 lake build ContextCalculus.HypertableauSubsetUnravelling \
+        2>&1 | tee -a "$surface_log"
+)
+for theorem in SubsetUnravelling.check_sound SubsetUnravelling.check_not_unsatisfiable \
+    SubsetUnravelling.check_not_entailsSub WireSubsetUnravelling.check_sound; do
+    grep -q "'ContextCalculus.Hypertableau.$theorem' depends on axioms" "$surface_log" || {
+        echo "missing subset-unravelling axiom audit: $theorem" >&2
+        exit 1
+    }
+done
 
 if grep -q 'sorryAx' "$surface_log"; then
     echo "HT certification surface depends on an admitted theorem" >&2
@@ -368,6 +383,17 @@ done
     export KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER="$bin_root/ht-native-abox-taxonomy-source-cert-check"
     export KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_SOURCE_CHECKER="$bin_root/ht-native-abox-cardinality-taxonomy-source-cert-check"
     export KM_HT_TEST_LEAN_JOINT_NATIVE_ABOX_CLASSIFICATION_CHECKER="$bin_root/ht-joint-native-abox-classification-cert-check"
+    # The global verdict, taxonomy and remaining HT test checkers. Without
+    # them the tests below fall back to /bin/true or skip their Lean step, so
+    # a wire mismatch with these checkers stayed outside the gate (defects H1
+    # and T1, docs/HYBRID-CB-HT.md section 10).
+    export KM_HT_TEST_LEAN_CHECKER="$bin_root/ht-cert-check"
+    export KM_HT_TEST_LEAN_GLOBAL_CHECKER="$bin_root/ht-cert-check"
+    export KM_HT_TEST_LEAN_TAXONOMY_CHECKER="$bin_root/ht-taxonomy-cert-check"
+    export KM_HT_TEST_LEAN_CARDINALITY_CHECKER="$bin_root/ht-cardinality-cert-check"
+    export KM_HT_TEST_NATIVE_ABOX_DECISION_CHECKER="$bin_root/ht-native-abox-decision-cert-check"
+    export KM_HT_TEST_PROJECTION_CHECKER="$bin_root/ht-projection-cert-check"
+    export KM_HT_TEST_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER="$bin_root/ht-native-abox-source-decision-cert-check"
 
     cargo test --release --lib equality_decision_pairwise_blocks_and_checks_a_satisfiable_cycle -- --nocapture
     cargo test --release --lib cardinality_decision_blocks_and_checks_a_cyclic_minimum -- --nocapture
@@ -412,5 +438,35 @@ done
     cargo test --release --lib s07_successor_work_budget_preserves_pending_work_and_allows_a_finite_drain -- --nocapture
     cargo test --release --lib s07_successor_deadline_interrupts_cyclic_qualified_notifications -- --nocapture
     cargo test --release --lib regular_certificate_serializes_general_guarded_residual_bodies -- --nocapture
-    cargo test --release --test ht_taxonomy_certificate -- --nocapture
+    # Tests that read the variables above and are not listed earlier. Lean
+    # checkers fail to start threads near the host's commit limit when many
+    # run in parallel, so these run one at a time.
+    for test in \
+        identity_normalized_regular_source_lists_the_lean_target_ontology \
+        regular_decision_prefers_a_checked_finite_sat_model \
+        lean_taxonomy_checker_accepts_a_materialized_equality_body \
+        lean_taxonomy_wire_passes_native_checker_when_configured \
+        lean_query_wires_pass_native_checker_when_configured \
+        lean_unsat_wire_passes_native_checker_when_configured \
+        lean_equality_query_wires_pass_native_checker_when_configured \
+        lean_equality_refutation_query_wires_serialize \
+        lean_equality_sat_wire_passes_native_checker_when_configured \
+        lean_equality_unsat_wire_passes_native_checker_when_configured \
+        lean_body_equality_normalization_wire_certifies_the_source_clause \
+        lean_cardinality_sat_wire_passes_native_checker_when_configured \
+        lean_distinct_cardinality_wire_passes_native_checker_when_configured \
+        anchored_equality_producer_derives_a_unique_nominal_representative \
+        native_abox_cardinality_refutation_uses_joint_lean_boundary \
+        native_abox_unsat_refutation_uses_joint_lean_boundary \
+        certified_raw_role_chain_participates_in_ht_refutation \
+        _native_abox_refutation_passes_real_lean_checker \
+        _native_abox_cardinality_refutation_passes_real_lean_checker \
+        _native_abox_sat_source_decision_passes_real_lean_checker \
+        _native_abox_cardinality_sat_source_decision_passes_real_lean_checker; do
+        cargo test --release --lib "$test" -- --nocapture --test-threads=1
+    done
+    cargo test --release --test ht_taxonomy_certificate -- --nocapture --test-threads=1
+    KM_REQUIRE_LEAN_CHECKERS=1 \
+      KM_HT_TEST_SUBSET_MODEL_CHECKER="$bin_root/ht-subset-unravelling-check" \
+      cargo test --release --test ht_subset_model_certificate -- --nocapture --test-threads=1
 )

@@ -1,0 +1,10 @@
+Prefix(:=<http://example.org/g#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://example.org/g>
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(Class(:D)) Declaration(Class(:Q1)) Declaration(Class(:Q2)) Declaration(Class(:Q3)) Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s)) Declaration(ObjectProperty(:t)) Declaration(DataProperty(:u)) Declaration(DataProperty(:v)) Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:c))
+SubClassOf(ObjectMaxCardinality(2 :t ObjectIntersectionOf(:B :A)) ObjectMinCardinality(1 :t DataMaxCardinality(1 :u)))
+SubClassOf(DataMaxCardinality(0 :v) ObjectOneOf(:c))
+EquivalentClasses(:Q1 ObjectUnionOf(ObjectUnionOf(ObjectOneOf(:b) :C) :B))
+)

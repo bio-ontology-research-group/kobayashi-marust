@@ -1,0 +1,701 @@
+3	ok	15	0	0	0	
+4	ok	30	0	0	0	
+5	ok	23	0	0	0	
+1	ok	23	0	1	0	
+7	ok	15	0	0	0	
+8	km-error	14	0	6	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+9	km-error	19	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+10	km-error	14	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+2	km-error	14	0	10	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+12	km-error	36	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+13	ok	11	0	0	0	
+6	no-gold	0	0	12	0	
+15	km-error	9	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+16	km-error	32	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+17	km-error	22	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+18	km-error	19	0	0	3	blocked node 6 has no admitted unblocked blocker in the unravelled model
+11	km-error	9	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=8 nodes=3 folds=1 written
+20	ok	20	0	0	0	
+21	km-error	25	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+22	ok	24	0	0	0	
+23	km-error	10	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+24	ok	18	0	0	0	
+19	km-error	19	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+26	ok	24	0	0	0	
+14	km-error	21	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=20 nodes=7 folds=4 written
+27	km-error	21	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+25	km-error	4	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=3 nodes=1 folds=0 written
+28	km-error	0	0	0	0	
+31	ok	25	0	0	0	
+32	km-error	9	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+33	ok	8	0	0	0	
+34	ok	14	0	0	0	
+35	ok	8	0	0	0	
+30	km-error	0	0	0	0	
+36	km-error	19	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=18 nodes=1 folds=0 written
+38	km-error	10	0	2	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+39	ok	30	0	0	0	
+37	km-error	26	0	10	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+41	ok	10	0	0	0	
+29	km-error	1	0	24	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+43	ok	4	0	0	0	
+44	ok	0	0	0	0	
+45	ok	10	0	0	0	
+46	km-error	12	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+42	km-error	24	0	11	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+40	km-error	0	0	14	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+48	km-error	14	0	2	0	KM_HT_SUBSET_MODEL_CERT terminal=15 nodes=13 folds=9 written
+50	ok	14	0	0	0	
+51	ok	40	0	0	0	
+49	km-error	0	0	0	0	
+52	km-error	24	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+54	ok	22	0	0	0	
+55	ok	14	0	0	0	
+53	km-error	0	0	0	0	
+57	ok	30	0	0	0	
+58	ok	22	0	0	0	
+59	km-error	32	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+60	km-error	10	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+61	ok	22	0	0	0	
+62	km-error	23	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+63	ok	0	0	0	0	
+64	ok	21	0	0	0	
+56	km-error	10	0	5	2	blocked node 10 has no admitted unblocked blocker in the unravelled model
+66	km-error	20	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+67	ok	14	0	0	0	
+68	ok	7	0	0	0	
+65	ok	37	0	0	0	
+70	ok	20	0	0	0	
+69	km-error	0	0	0	0	
+71	km-error	3	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=2 nodes=1 folds=0 written
+47	ok	6	0	29	0	
+74	km-error	12	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+75	km-error	26	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+76	ok	33	0	0	0	
+72	km-error	0	0	0	0	
+78	ok	16	0	0	0	
+79	ok	16	0	0	0	
+80	km-error	14	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+81	km-error	7	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+82	km-error	12	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+73	km-error	18	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=17 nodes=1 folds=0 written
+84	ok	0	0	0	0	
+85	ok	24	0	0	0	
+86	ok	33	0	0	0	
+87	ok	24	0	0	0	
+88	ok	25	0	0	0	
+89	ok	19	0	0	0	
+77	km-error	0	0	0	0	
+91	ok	24	0	0	0	
+92	km-error	30	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+93	ok	0	0	0	0	
+83	km-error	7	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=6 nodes=1 folds=0 written
+95	ok	14	0	0	0	
+96	ok	0	0	0	0	
+94	km-error	0	0	0	0	
+98	km-error	7	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+97	km-error	15	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=14 nodes=12 folds=8 written
+100	ok	26	0	0	0	
+101	ok	7	0	0	0	
+99	km-error	13	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=12 nodes=1 folds=0 written
+103	ok	0	0	0	0	
+104	km-error	14	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+105	ok	11	0	0	0	
+90	km-error	15	0	17	1	blocked node 212 has no admitted unblocked blocker in the unravelled model (only a blocked or droppe
+107	ok	15	0	0	0	
+108	ok	15	0	0	0	
+102	km-error	30	0	4	1	blocked node 8 has no admitted unblocked blocker in the unravelled model
+106	km-error	0	0	0	0	
+111	ok	43	0	0	0	
+109	km-error	20	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=19 nodes=3 folds=1 written
+113	ok	25	0	0	0	
+112	km-error	20	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+115	ok	22	0	0	0	
+116	ok	0	0	0	0	
+117	ok	34	0	0	0	
+110	km-error	0	0	0	0	
+119	km-error	15	0	0	1	blocked node 4 has no admitted unblocked blocker in the unravelled model
+120	km-error	27	0	2	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+121	ok	8	0	0	0	
+122	ok	19	0	0	0	
+123	km-error	11	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+124	km-error	24	0	0	3	blocked node 3 has no admitted unblocked blocker in the unravelled model
+114	km-error	12	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=11 nodes=1 folds=0 written
+126	km-error	15	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+127	ok	20	0	0	0	
+118	km-error	0	0	0	0	
+129	km-error	28	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+130	km-error	17	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+131	km-error	25	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+132	ok	22	0	0	0	
+128	km-error	18	0	2	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+134	ok	17	0	0	0	
+135	ok	25	0	0	0	
+125	km-error	5	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=4 nodes=3 folds=1 written
+137	ok	13	0	0	0	
+136	km-error	0	0	0	0	
+139	ok	19	0	0	0	
+140	ok	15	0	0	0	
+133	km-error	16	0	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+138	ok	20	0	1	0	
+143	ok	35	0	0	0	
+144	ok	16	0	0	0	
+142	km-error	18	0	4	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+146	ok	25	0	0	0	
+141	ok	0	0	11	7	blocked node 76 has no admitted unblocked blocker in the unravelled model (only a blocked or dropped
+147	km-error	0	0	0	0	
+149	ok	21	0	0	0	
+150	ok	22	0	0	0	
+145	ok	23	0	8	0	
+152	ok	6	0	0	0	
+151	km-error	16	0	2	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+154	ok	22	0	0	0	
+155	km-error	0	0	0	0	
+156	km-error	11	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+157	ok	29	0	0	0	
+148	km-error	21	0	16	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+158	km-error	0	0	0	0	
+160	ok	18	0	0	0	
+161	ok	0	0	0	0	
+162	ok	23	0	0	0	
+163	ok	0	0	0	0	
+164	ok	32	0	0	0	
+153	ok	11	0	19	0	
+166	ok	23	0	0	0	
+167	km-error	33	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+159	km-error	0	0	0	0	
+165	ok	25	0	5	0	
+170	km-error	23	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+169	km-error	27	0	2	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+172	km-error	19	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+173	km-error	20	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+174	ok	13	0	0	0	
+168	km-error	3	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=2 nodes=1 folds=0 written
+175	km-error	8	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=4 nodes=5 folds=2 written
+177	ok	41	0	0	0	
+178	ok	19	0	0	0	
+179	ok	14	0	0	0	
+176	km-error	0	0	0	0	
+181	ok	37	0	0	0	
+182	km-error	14	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+183	ok	21	0	0	0	
+184	km-error	25	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+171	km-error	8	0	9	0	KM_HT_SUBSET_MODEL_CERT terminal=16 nodes=35 folds=27 written
+185	km-error	27	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=26 nodes=6 folds=1 written
+186	ok	30	0	0	0	
+188	km-error	32	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+180	km-error	20	0	10	0	KM_HT_SUBSET_MODEL_CERT terminal=29 nodes=55 folds=45 written
+190	km-error	22	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+191	km-error	5	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=4 nodes=1 folds=0 written
+189	km-error	1	0	19	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+193	ok	18	0	0	0	
+194	ok	0	0	0	0	
+195	km-error	31	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+196	km-error	6	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+197	ok	20	0	0	0	
+198	ok	23	0	0	0	
+192	km-error	0	0	0	0	
+187	ok	0	0	24	0	
+200	km-error	18	0	8	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+202	ok	15	0	0	0	
+203	ok	29	0	0	0	
+204	ok	26	0	0	0	
+205	km-error	20	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+206	ok	20	0	0	0	
+199	km-error	2	0	10	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+207	km-error	0	0	0	0	
+209	km-error	14	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+201	km-error	1	0	6	0	KM_HT_SUBSET_MODEL_CERT terminal=6 nodes=13 folds=9 written
+208	km-error	7	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=6 nodes=2 folds=1 written
+212	km-error	20	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+213	ok	27	0	0	0	
+214	ok	0	0	0	0	
+215	km-error	14	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+210	km-error	18	0	6	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+217	ok	33	0	0	0	
+211	km-error	0	0	0	0	
+219	ok	23	0	0	0	
+220	km-error	0	0	0	0	
+218	km-error	23	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=22 nodes=1 folds=0 written
+222	km-error	5	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+221	ok	14	0	0	0	
+224	km-error	15	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+225	ok	26	0	0	0	
+223	km-error	0	0	0	0	
+227	km-error	14	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+228	ok	30	0	0	0	
+226	km-error	9	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=8 nodes=1 folds=0 written
+216	km-error	18	0	16	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+231	ok	12	0	0	0	
+232	ok	5	0	0	0	
+229	km-error	15	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=13 nodes=3 folds=1 written
+230	km-error	17	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=16 nodes=1 folds=0 written
+234	km-error	39	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+236	km-error	10	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+235	ok	14	0	0	0	
+237	km-error	13	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+239	ok	18	0	0	0	
+240	km-error	27	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+238	km-error	26	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+242	km-error	25	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+243	ok	10	0	0	0	
+233	km-error	1	0	6	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+245	ok	13	0	0	0	
+246	ok	19	0	0	0	
+247	km-error	14	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+248	ok	18	0	0	0	
+241	km-error	22	0	1	0	KM_HT_SUBSET_MODEL_CERT terminal=22 nodes=2 folds=0 written
+244	km-error	0	0	0	0	
+251	ok	0	0	0	0	
+250	km-error	27	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+253	ok	28	0	0	0	
+249	km-error	11	0	5	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+255	ok	22	0	0	0	
+256	km-error	17	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+252	km-error	12	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=11 nodes=3 folds=1 written
+254	km-error	0	0	0	0	
+259	ok	7	0	0	0	
+257	km-error	21	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=20 nodes=1 folds=0 written
+261	km-error	24	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+262	km-error	19	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+258	km-error	9	0	14	2	blocked node 40 has no admitted unblocked blocker in the unravelled model (only a blocked or dropped
+264	km-error	8	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+265	km-error	9	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+266	km-error	12	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+267	ok	20	0	0	0	
+268	km-error	22	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+269	ok	24	0	0	0	
+270	ok	8	0	0	0	
+271	ok	14	0	0	0	
+272	ok	0	0	0	0	
+263	km-error	0	0	0	0	
+274	ok	27	0	0	0	
+273	km-error	16	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=14 nodes=13 folds=9 written
+276	ok	26	0	0	0	
+277	km-error	8	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+278	ok	24	0	0	0	
+279	km-error	18	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+280	ok	27	0	0	0	
+281	ok	19	0	0	0	
+275	km-error	0	0	0	0	
+283	ok	27	0	0	0	
+260	km-error	16	0	17	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+282	no-gold	0	0	0	0	
+286	ok	36	0	0	0	
+284	km-error	19	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=18 nodes=2 folds=0 written
+288	ok	8	0	0	0	
+289	ok	5	0	0	0	
+290	km-error	12	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+291	km-error	16	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+292	ok	25	0	0	0	
+293	km-error	9	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+294	km-error	22	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+295	ok	15	0	0	0	
+296	ok	24	0	0	0	
+285	km-error	0	0	0	0	
+298	km-error	11	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+299	ok	0	0	0	0	
+297	ok	20	0	0	0	
+300	ok	12	0	0	0	
+302	ok	0	0	0	0	
+301	ok	26	0	0	0	
+304	ok	19	0	0	0	
+303	ok	20	0	6	0	
+306	km-error	24	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+287	km-error	3	0	11	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+307	km-error	0	0	0	0	
+309	km-error	17	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+310	ok	26	0	0	0	
+311	km-error	19	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+312	ok	22	0	0	0	
+305	km-error	27	0	19	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+308	km-error	9	0	14	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+315	km-error	0	0	0	0	
+316	ok	14	0	0	0	
+317	km-error	13	0	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+318	km-error	23	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+314	km-error	2	0	7	0	KM_HT_SUBSET_MODEL_CERT terminal=8 nodes=21 folds=16 written
+320	ok	13	0	0	0	
+321	km-error	16	0	3	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+322	ok	11	0	0	0	
+323	km-error	2	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+324	ok	16	0	0	0	
+325	km-error	13	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=12 nodes=1 folds=0 written
+326	ok	14	0	0	0	
+327	km-error	15	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+328	km-error	24	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+329	km-error	22	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+330	km-error	25	0	2	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+313	ok	0	0	34	0	
+319	km-error	12	0	15	0	KM_HT_SUBSET_MODEL_CERT terminal=26 nodes=56 folds=45 written
+333	km-error	5	0	0	1	blocked node 4 has no admitted unblocked blocker in the unravelled model
+332	ok	34	0	0	0	
+335	ok	19	0	0	0	
+336	km-error	9	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+337	km-error	26	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+338	ok	33	0	0	0	
+339	ok	15	0	0	0	
+334	km-error	13	0	2	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+331	km-error	26	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=25 nodes=3 folds=1 written
+340	km-error	0	0	0	0	
+343	km-error	14	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+341	km-error	0	0	0	0	
+342	km-error	11	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=10 nodes=3 folds=1 written
+345	km-error	8	0	6	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+347	km-error	23	0	0	1	blocked node 7 has no admitted unblocked blocker in the unravelled model (only a blocked or dropped 
+348	ok	21	0	0	0	
+346	km-error	4	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=3 nodes=1 folds=0 written
+350	km-error	25	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+351	km-error	19	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+352	ok	17	0	0	0	
+353	ok	19	0	0	0	
+354	ok	29	0	0	0	
+355	ok	0	0	0	0	
+356	km-error	8	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+357	ok	23	0	0	0	
+358	ok	21	0	0	0	
+359	ok	17	0	0	0	
+360	km-error	19	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=18 nodes=5 folds=2 written
+361	km-error	19	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+362	ok	18	0	0	0	
+363	ok	32	0	0	0	
+364	ok	14	0	0	0	
+344	km-error	14	0	21	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+366	km-error	15	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+367	ok	16	0	0	0	
+365	ok	40	0	0	0	
+369	ok	0	0	0	0	
+370	ok	20	0	0	0	
+371	ok	13	0	0	0	
+372	km-error	14	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+373	ok	26	0	0	0	
+368	km-error	0	0	0	0	
+375	ok	12	0	0	0	
+376	km-error	10	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+374	km-error	0	0	0	0	
+378	km-error	12	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+377	ok	33	0	0	0	
+380	ok	0	0	0	0	
+349	km-error	13	0	20	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+382	ok	15	0	0	0	
+383	km-error	27	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+384	ok	22	0	1	0	
+385	ok	31	0	0	0	
+381	km-error	5	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=3 nodes=1 folds=0 written
+387	km-error	16	0	2	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+388	ok	0	0	0	0	
+389	km-error	17	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+390	ok	5	0	0	0	
+391	ok	20	0	0	0	
+392	km-error	12	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+393	ok	5	0	0	0	
+394	ok	24	0	0	0	
+395	km-error	16	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=15 nodes=1 folds=0 written
+379	km-error	0	0	14	0	KM_HT_SUBSET_MODEL_CERT terminal=13 nodes=13 folds=9 written
+397	km-error	0	0	0	0	
+386	km-error	0	0	21	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+398	ok	25	0	4	0	
+399	ok	18	0	2	0	
+401	ok	6	0	0	0	
+400	km-error	18	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+403	ok	14	0	0	0	
+404	ok	19	0	0	0	
+396	ok	14	0	19	0	
+406	ok	12	0	0	0	
+407	ok	14	0	0	0	
+402	km-error	0	0	0	0	
+409	km-error	16	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+410	ok	14	0	0	0	
+408	km-error	34	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+412	ok	43	0	0	0	
+413	ok	14	0	0	0	
+405	km-error	0	0	0	0	
+415	km-error	20	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+416	ok	5	0	0	0	
+417	km-error	8	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+411	km-error	9	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=8 nodes=7 folds=3 written
+419	km-error	18	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+414	km-error	8	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=4 nodes=3 folds=1 written
+418	km-error	12	0	5	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+420	km-error	24	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=23 nodes=1 folds=0 written
+423	km-error	30	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+424	ok	9	0	0	0	
+421	km-error	0	0	0	0	
+426	ok	17	0	0	0	
+427	ok	26	0	0	0	
+428	km-error	15	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+425	km-error	0	0	0	0	
+430	km-error	22	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+431	km-error	25	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+429	km-error	7	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=6 nodes=1 folds=0 written
+433	ok	18	0	0	0	
+422	km-error	4	0	3	0	KM_HT_SUBSET_MODEL_CERT terminal=6 nodes=19 folds=12 written
+435	ok	27	0	0	0	
+436	ok	35	0	0	0	
+437	ok	36	0	0	0	
+432	km-error	7	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=6 nodes=6 folds=2 written
+439	ok	16	0	0	0	
+440	km-error	16	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+441	ok	17	0	0	0	
+442	ok	29	0	0	0	
+434	km-error	0	0	0	0	
+438	km-error	0	0	0	0	
+443	km-error	0	0	0	0	
+444	km-error	0	0	0	0	
+447	km-error	25	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+448	ok	0	0	0	0	
+449	ok	25	0	0	0	
+450	ok	10	0	0	0	
+451	ok	24	0	0	0	
+452	km-error	14	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+445	km-error	9	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=8 nodes=1 folds=0 written
+454	ok	12	0	0	0	
+453	km-error	8	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+455	km-error	17	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+457	ok	36	0	0	0	
+446	km-error	16	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+459	ok	18	0	0	0	
+460	ok	16	0	0	0	
+461	ok	0	0	0	0	
+462	ok	33	0	0	0	
+463	ok	31	0	0	0	
+464	km-error	15	0	3	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+456	km-error	17	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=16 nodes=1 folds=0 written
+465	ok	25	0	0	0	
+467	ok	30	0	0	0	
+468	km-error	23	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+458	km-error	0	0	0	0	
+470	ok	7	0	0	0	
+471	ok	6	0	4	0	
+472	km-error	25	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+473	ok	18	0	0	0	
+469	km-error	6	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=5 nodes=4 folds=2 written
+475	km-error	4	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+476	ok	12	0	0	0	
+477	ok	8	0	0	0	
+478	ok	24	0	0	0	
+479	km-error	16	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+474	km-error	1	0	8	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+466	km-error	20	0	17	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+482	ok	0	0	0	0	
+480	km-error	9	0	7	0	KM_HT_SUBSET_MODEL_CERT terminal=15 nodes=31 folds=25 written
+481	km-error	0	0	0	0	
+485	ok	25	0	0	0	
+484	ok	33	0	0	0	
+486	ok	14	0	0	0	
+487	ok	28	0	0	0	
+488	km-error	24	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+490	km-error	24	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+491	km-error	20	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+492	km-error	36	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+493	ok	24	0	0	0	
+483	km-error	0	0	0	0	
+495	km-error	25	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+489	km-error	20	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=19 nodes=9 folds=4 written
+497	km-error	21	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+494	km-error	0	0	0	0	
+499	ok	32	0	0	0	
+500	ok	37	0	0	0	
+501	ok	0	0	0	0	
+502	km-error	12	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+503	ok	22	0	0	2	blocked node 3 has no admitted unblocked blocker in the unravelled model
+496	km-error	0	0	0	0	
+505	km-error	27	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+506	km-error	17	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+507	ok	0	0	0	0	
+508	ok	22	0	0	0	
+509	km-error	30	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+498	km-error	13	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=12 nodes=1 folds=0 written
+511	ok	23	0	0	0	
+512	ok	8	0	0	0	
+513	ok	19	0	0	0	
+514	ok	33	0	0	0	
+515	ok	31	0	0	0	
+510	km-error	9	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=8 nodes=9 folds=3 written
+517	ok	0	0	0	0	
+518	km-error	23	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+516	km-error	0	0	0	0	
+520	ok	22	0	0	0	
+521	ok	26	0	0	0	
+519	km-error	32	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+504	km-error	0	0	15	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+523	km-error	0	0	0	0	
+525	ok	14	0	0	0	
+526	ok	28	0	0	0	
+522	km-error	19	0	2	0	KM_HT_SUBSET_MODEL_CERT terminal=20 nodes=13 folds=9 written
+528	km-error	21	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+527	km-error	13	0	3	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+524	km-error	8	0	4	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+531	km-error	4	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+532	ok	12	0	0	0	
+533	ok	29	0	0	0	
+529	km-error	7	0	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+530	km-error	0	0	0	0	
+534	km-error	0	0	0	0	
+535	km-error	24	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=23 nodes=3 folds=1 written
+538	km-error	30	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+539	ok	44	0	0	0	
+540	ok	4	0	0	0	
+536	km-error	0	0	0	0	
+541	ok	28	0	0	0	
+543	km-error	4	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+544	ok	0	0	0	0	
+545	ok	22	0	0	0	
+546	ok	41	0	0	0	
+537	km-error	0	0	0	0	
+548	ok	4	0	20	5	blocked node 9 has no admitted unblocked blocker in the unravelled model (only a blocked or dropped 
+542	km-error	0	0	0	0	
+550	ok	34	0	0	0	
+549	km-error	0	0	0	0	
+552	km-error	20	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+553	km-error	12	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+551	ok	16	0	0	0	
+547	ok	15	0	11	0	
+554	km-error	24	0	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+557	ok	14	0	0	0	
+558	km-error	15	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+559	ok	10	0	0	0	
+560	km-error	21	0	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+561	ok	24	0	0	1	blocked node 6 has no admitted unblocked blocker in the unravelled model
+562	km-error	7	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+563	km-error	20	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+564	ok	24	0	0	0	
+565	km-error	11	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+566	km-error	18	0	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+567	ok	14	0	0	0	
+568	km-error	14	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+569	km-error	27	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+570	ok	27	0	0	0	
+571	ok	14	0	0	0	
+572	km-error	0	0	0	0	
+573	km-error	30	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+574	km-error	0	0	0	0	
+575	ok	15	0	0	0	
+556	ok	11	0	23	0	
+577	km-error	27	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+578	ok	11	0	0	0	
+579	ok	16	0	0	0	
+580	km-error	22	0	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+576	km-error	12	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=11 nodes=8 folds=4 written
+555	km-error	13	0	29	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+581	km-error	0	0	0	0	
+582	ok	15	0	3	0	
+584	km-error	0	0	0	0	
+583	km-error	33	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=32 nodes=11 folds=7 written
+587	ok	10	0	0	0	
+585	ok	26	0	1	0	
+589	ok	8	0	0	0	
+590	km-error	12	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+591	ok	0	0	0	0	
+592	ok	8	0	0	0	
+593	ok	4	0	0	0	
+586	ok	24	0	11	0	
+595	km-error	18	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+596	km-error	3	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+597	ok	36	0	0	0	
+598	ok	31	0	0	0	
+588	km-error	9	0	16	1	blocked node 14 has no admitted unblocked blocker in the unravelled model (only a blocked or dropped
+600	ok	9	0	0	0	
+601	km-error	27	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+602	km-error	18	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+603	ok	16	0	0	0	
+604	ok	17	0	0	0	
+605	km-error	17	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+594	km-error	16	0	2	0	KM_HT_SUBSET_MODEL_CERT terminal=17 nodes=13 folds=9 written
+607	km-error	9	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+608	km-error	13	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+609	km-error	11	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+599	km-error	5	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=4 nodes=2 folds=0 written
+611	km-error	10	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+612	km-error	19	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+613	ok	24	0	0	0	
+614	km-error	27	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+615	ok	9	0	0	0	
+616	ok	31	0	0	0	
+617	km-error	10	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+618	ok	0	0	0	0	
+619	ok	14	0	0	0	
+620	ok	11	0	0	0	
+621	ok	0	0	0	0	
+622	km-error	12	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+623	ok	28	0	0	0	
+606	km-error	14	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=12 nodes=2 folds=0 written
+610	km-error	10	0	2	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+626	ok	20	0	0	0	
+624	km-error	7	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=6 nodes=1 folds=0 written
+628	ok	20	0	0	0	
+627	ok	31	0	4	0	
+629	ok	36	0	0	0	
+625	km-error	10	0	12	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+632	ok	0	0	0	0	
+633	ok	6	0	0	0	
+634	ok	14	0	0	0	
+635	ok	17	0	0	0	
+630	km-error	16	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=15 nodes=4 folds=0 written
+637	ok	24	0	0	0	
+638	ok	14	0	0	0	
+639	ok	25	0	0	0	
+640	ok	30	0	0	0	
+631	km-error	13	0	7	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+642	ok	0	0	0	0	
+636	km-error	21	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=20 nodes=13 folds=9 written
+644	ok	5	0	0	0	
+645	ok	6	0	0	0	
+646	km-error	8	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+647	ok	12	0	0	0	
+643	km-error	0	0	0	0	
+649	ok	0	0	0	0	
+650	ok	14	0	0	0	
+651	km-error	20	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+652	ok	8	0	0	0	
+641	km-error	20	0	10	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+654	ok	0	0	0	0	
+655	km-error	11	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+648	km-error	10	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=9 nodes=1 folds=0 written
+653	km-error	0	0	0	0	
+656	km-error	6	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=4 nodes=1 folds=0 written
+657	km-error	13	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=12 nodes=1 folds=0 written
+658	km-error	22	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=21 nodes=3 folds=1 written
+661	km-error	24	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+662	ok	0	0	0	0	
+663	ok	30	0	0	0	
+659	km-error	0	0	0	0	
+665	ok	0	0	0	0	
+666	km-error	9	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+667	km-error	22	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+668	km-error	14	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+660	km-error	0	0	0	0	
+664	km-error	12	0	5	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+671	ok	0	0	0	0	
+672	km-error	24	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+673	ok	0	0	0	0	
+674	ok	12	0	0	0	
+669	km-error	0	0	0	0	
+670	km-error	0	0	0	0	
+677	km-error	11	0	2	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+678	ok	8	0	0	0	
+679	ok	0	0	0	0	
+680	km-error	11	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+681	km-error	8	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+675	km-error	14	0	1	0	KM_HT_SUBSET_MODEL_CERT terminal=14 nodes=18 folds=13 written
+683	km-error	30	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+682	km-error	0	0	0	0	
+685	km-error	7	0	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+686	km-error	8	0	4	0	KM_HT_SUBSET_MODEL_CERT terminal=11 nodes=5 folds=2 written
+687	ok	8	0	0	0	
+688	km-error	8	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+689	ok	0	0	0	0	
+690	km-error	27	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+684	km-error	21	0	8	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+692	ok	12	0	0	0	
+693	km-error	16	0	1	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+691	km-error	0	0	0	0	
+676	km-error	0	0	26	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+696	ok	14	0	0	0	
+697	km-error	20	0	0	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+698	ok	17	0	0	0	
+699	ok	15	0	0	0	
+700	ok	7	0	0	0	
+695	km-error	17	0	0	0	KM_HT_SUBSET_MODEL_CERT terminal=16 nodes=5 folds=2 written
+694	km-error	4	0	10	0	unsupported: route `ht_general` drops 1 clause outside the worker's fragment; the answer would be approximate; use the automatic route (--route auto) 
+SUMMARY Counter({'km-error': 372, 'ok': 326, 'no-gold': 2}) acc 10506 rej 0 cert-timeout 880 noemit 31 seeds-with-rej 0 WRONG-with-rej 0

@@ -88,6 +88,10 @@ pub const X: Var = 0;
 #[path = "hypertableau.rs"]
 pub mod hypertableau;
 
+/// Lean certificates of rule-route answers (`KM_RULES_LEAN_CERT`).
+#[path = "tableau_rules_cert.rs"]
+pub(crate) mod rules_cert;
+
 /// A concept literal `A` or `¬A` (post-NNF, so concepts are atomic).
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
 pub struct CLit {
@@ -207,6 +211,13 @@ struct Graph {
     cdep: Vec<HashMap<CLit, DepSet>>,
     edep: HashMap<(R, Node, Node), DepSet>,
     xdep: Vec<HashMap<(R, CLit), DepSet>>,
+    /// Existence dependencies of each node (careful path): the decisions the
+    /// obligation that created a fresh successor depends on. Empty for roots
+    /// and on the non-careful path. `body_dep` adds the existence dependencies
+    /// of every node a match binds, so a fact on a fresh node always depends
+    /// on the decisions that created it, even when a node-triggered clause
+    /// derives it from an empty body.
+    ndep: Vec<DepSet>,
 }
 
 impl Graph {
@@ -225,6 +236,7 @@ impl Graph {
             cdep: Vec::new(),
             edep: HashMap::default(),
             xdep: Vec::new(),
+            ndep: Vec::new(),
         }
     }
 
@@ -235,6 +247,7 @@ impl Graph {
         self.out_edges.push(Vec::new());
         self.cdep.push(HashMap::default());
         self.xdep.push(HashMap::default());
+        self.ndep.push(DepSet::new());
         self.pred.push(pred);
         self.blockable.push(blockable);
         self.repr.push(id);
@@ -300,6 +313,7 @@ impl Graph {
                     self.out_edges.pop();
                     self.cdep.pop();
                     self.xdep.pop();
+                    self.ndep.pop();
                     self.pred.pop();
                     self.blockable.pop();
                     self.repr.pop();
@@ -331,20 +345,25 @@ impl Graph {
                 let s2 = if s == gone { keep } else { s };
                 let t2 = if t == gone { keep } else { t };
                 self.raw_edge_remove(r, s2, t2);
+                self.edep.remove(&(r, s2, t2));
             }
         }
         for &((r, s, t), _) in &moved_edges {
             self.raw_edge_insert(r, s, t);
         }
+        // The dependency entries of `gone` were left in place by `merge`;
+        // only the survivor's fresh entries are removed.
         for &(o, fresh) in &moved_exobl {
             if fresh {
                 self.exobl[keep].remove(&o);
+                self.xdep[keep].remove(&o);
             }
             self.exobl[gone].insert(o);
         }
         for &(l, fresh) in &moved_concepts {
             if fresh {
                 self.concepts[keep].remove(&l);
+                self.cdep[keep].remove(&l);
             }
             self.concepts[gone].insert(l);
         }
@@ -370,7 +389,12 @@ impl Graph {
     /// Concept labels and ∃-obligations are unioned onto the survivor and every
     /// edge / tree-predecessor pointing at the merged node is rewritten, so the
     /// graph never again references the dead node.
-    fn merge(&mut self, x: Node, y: Node) {
+    ///
+    /// `dep` is the dependency set of the merge (the facts that forced it). A
+    /// fact moved freshly onto the survivor depends on its own dependencies and
+    /// on `dep`; the merged node keeps its dependency entries, so `undo_merge`
+    /// restores them unchanged.
+    fn merge(&mut self, x: Node, y: Node, dep: &DepSet) {
         let a = self.find(x);
         let b = self.find(y);
         if a == b {
@@ -385,6 +409,9 @@ impl Graph {
             let fresh = self.concepts[keep].insert(l);
             if fresh {
                 self.present_lits.insert(l);
+                let mut d = self.cdep[gone].get(&l).cloned().unwrap_or_default();
+                d.union_with(dep);
+                self.cdep[keep].insert(l, d);
             }
             moved_concepts.push((l, fresh));
         }
@@ -393,6 +420,11 @@ impl Graph {
         let mut moved_exobl = Vec::with_capacity(obls.len());
         for o in obls {
             let fresh = self.exobl[keep].insert(o);
+            if fresh {
+                let mut d = self.xdep[gone].get(&o).cloned().unwrap_or_default();
+                d.union_with(dep);
+                self.xdep[keep].insert(o, d);
+            }
             moved_exobl.push((o, fresh));
         }
         // rewrite every edge that touches `gone` (leave the rest untouched).
@@ -408,6 +440,11 @@ impl Graph {
             let s2 = if s == gone { keep } else { s };
             let t2 = if t == gone { keep } else { t };
             let fresh = self.raw_edge_insert(r, s2, t2);
+            if fresh {
+                let mut d = self.edep.get(&(r, s, t)).cloned().unwrap_or_default();
+                d.union_with(dep);
+                self.edep.insert((r, s2, t2), d);
+            }
             moved_edges.push(((r, s, t), fresh));
         }
         // children of `gone` become children of `keep`
@@ -457,6 +494,64 @@ impl Graph {
             self.trail.push(Undo::Exobl(node, r, fil));
         }
         fresh
+    }
+
+    /// `add_concept` that records `dep` for a fresh fact (careful path). An
+    /// existing fact keeps the dependencies of its first derivation.
+    fn add_concept_d(&mut self, node: Node, lit: CLit, dep: &DepSet) -> bool {
+        let fresh = self.add_concept(node, lit);
+        if fresh {
+            self.cdep[node].insert(lit, dep.clone());
+        }
+        fresh
+    }
+
+    fn add_edge_d(&mut self, r: R, s: Node, t: Node, dep: &DepSet) -> bool {
+        let fresh = self.add_edge(r, s, t);
+        if fresh {
+            self.edep.insert((r, s, t), dep.clone());
+        }
+        fresh
+    }
+
+    fn add_exobl_d(&mut self, node: Node, r: R, fil: CLit, dep: &DepSet) -> bool {
+        let fresh = self.add_exobl(node, r, fil);
+        if fresh {
+            self.xdep[node].insert((r, fil), dep.clone());
+        }
+        fresh
+    }
+
+    /// Dependencies of the concept literal `lit` on node `n` (with the node's
+    /// existence dependencies); empty for a root fact.
+    fn lit_dep(&self, n: Node, lit: CLit) -> DepSet {
+        let mut d = self.cdep[n].get(&lit).cloned().unwrap_or_default();
+        d.union_with(&self.ndep[n]);
+        d
+    }
+
+    /// The clash the careful path reports: among the nodes carrying `A` and
+    /// `¬A`, the one whose dependency set has the lowest highest level (the
+    /// deepest backjump), ties broken by size. `(node, concept, deps)`.
+    fn clash_info(&self) -> Option<(Node, C, DepSet)> {
+        let mut best: Option<(Node, C, DepSet)> = None;
+        for n in 0..self.n() {
+            if !self.alive(n) {
+                continue;
+            }
+            for l in self.concepts[n].iter() {
+                if l.neg || !self.concepts[n].contains(&l.complement()) {
+                    continue;
+                }
+                let mut d = self.lit_dep(n, *l);
+                d.union_with(&self.lit_dep(n, l.complement()));
+                let key = |d: &DepSet| (d.v.last().copied().unwrap_or(0), d.v.len());
+                if best.as_ref().is_none_or(|(_, _, b)| key(&d) < key(b)) {
+                    best = Some((n, l.c, d));
+                }
+            }
+        }
+        best
     }
 
     fn n(&self) -> usize {
@@ -569,8 +664,8 @@ fn clause_vars(cl: &Clause) -> Vec<Var> {
 /// so the search backjumps past it (and its untried siblings) instead of
 /// exploring them. Kept sorted and duplicate-free; usually tiny (most facts
 /// depend on a single choice), so an inline 4-element vector avoids allocation.
-#[derive(Clone, Default, PartialEq)]
-struct DepSet {
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct DepSet {
     v: SmallVec<[u32; 4]>,
 }
 
@@ -624,6 +719,13 @@ struct ClauseInfo {
 }
 
 pub struct Tableau {
+    /// Evidence recorder for rule-route Lean certificates; `None` unless
+    /// `enable_certificates` was called.
+    cert: Option<std::sync::Mutex<rules_cert::CertSink>>,
+    /// Entailed subsumptions and unsatisfiable classes `classify` takes as
+    /// given (`set_known`); empty unless a caller supplies them.
+    known_subsumptions: HashSet<(C, C)>,
+    known_unsatisfiable: HashSet<C>,
     clauses: Vec<ClauseInfo>,
     /// Clause ids with genuinely disjunctive heads. Branch selection used to
     /// walk every Horn clause on every DFS node; large rule-aware inputs can
@@ -840,6 +942,7 @@ impl Tableau {
             }
         }
         Tableau {
+            cert: None,
             clauses: infos,
             disjunctive_indices,
             lit_index,
@@ -854,7 +957,29 @@ impl Tableau {
             eqblock: std::env::var_os("KM_HT_EQBLOCK").is_some(),
             lazy: std::env::var_os("KM_HT_LAZY").is_some(),
             dod: std::env::var_os("KM_HT_DOD").is_some(),
+            known_subsumptions: HashSet::default(),
+            known_unsatisfiable: HashSet::default(),
         }
+    }
+
+    /// Record certificate evidence for every test (`rules_cert`). Selects the
+    /// careful expansion, whose steps the recorder follows. Fails when the
+    /// clause list was extended with contrapositives (`KM_HT_CONTRA`): the
+    /// certificate must state the input clauses.
+    pub fn enable_certificates(&mut self) -> Result<(), String> {
+        if std::env::var_os("KM_HT_CONTRA").is_some() {
+            return Err("rule-route certificates require the input clauses (unset KM_HT_CONTRA)".into());
+        }
+        self.cert = Some(std::sync::Mutex::new(rules_cert::CertSink::default()));
+        Ok(())
+    }
+
+    /// Entailments of the input established elsewhere (the rule-free CB
+    /// taxonomy of a subset of the input): `classify` records them without
+    /// a test. Sound only for pairs the input entails.
+    pub fn set_known(&mut self, subsumptions: HashSet<(C, C)>, unsatisfiable: HashSet<C>) {
+        self.known_subsumptions = subsumptions;
+        self.known_unsatisfiable = unsatisfiable;
     }
 
     /// Enable pairwise blocking (for KBs with inverse roles).
@@ -879,7 +1004,7 @@ impl Tableau {
     /// `horn_saturate` (deterministic merges) rather than the fast batched
     /// `saturate`.
     fn careful(&self) -> bool {
-        self.number || self.pairwise || !self.nominals.is_empty()
+        self.number || self.pairwise || !self.nominals.is_empty() || self.cert.is_some()
     }
 
     /// Is node `s` blocked? Subset (ancestor) blocking for the inverse-free case;
@@ -1063,22 +1188,69 @@ impl Tableau {
     }
 
     fn expand_careful(&self, g: &mut Graph, start: CarefulStart) -> bool {
+        matches!(self.expand_careful_at(g, start, 0), Outcome::Sat)
+    }
+
+    /// Careful expansion at decision level `dl`, with conflict-directed
+    /// backjumping (docs/DL-SAFE-RULES.md, "Backjumping on the careful path").
+    ///
+    /// Each disjunction (and each loop-back choice of the pairwise path) opens
+    /// level `dl + 1`; its head atom depends on that level and on the matched
+    /// body. A failed subtree returns the dependency set of its refutation. When
+    /// that set does not contain the level of the enclosing choice, the
+    /// refutation never used the chosen alternative, so it refutes the parent
+    /// state as well: the remaining alternatives are skipped and the conflict
+    /// is passed up. The certificate recorder keeps the refuted alternative's
+    /// proof as a `Skip`, which `rules_cert` turns into a proof of the parent
+    /// state by dropping every step that depends on the skipped level.
+    ///
+    /// Without dependency tracking (`KM_TAB_CAREFUL_INC`, whose delta
+    /// saturation records no dependencies, or `KM_TAB_CAREFUL_NOBJ`) every
+    /// conflict depends on all open levels, which is chronological
+    /// backtracking.
+    fn expand_careful_at(&self, g: &mut Graph, start: CarefulStart, dl: u32) -> Outcome {
         stat_expand();
-        let incremental = std::env::var_os("KM_TAB_CAREFUL_INC").is_some();
-        let ordered = std::env::var_os("KM_TAB_CAREFUL_ORDER").is_some();
+        // The certificate recorder follows the full (non-delta) saturation and
+        // the clause order of disjunction heads.
+        let incremental = !self.rec_on() && std::env::var_os("KM_TAB_CAREFUL_INC").is_some();
+        let ordered = !self.rec_on() && std::env::var_os("KM_TAB_CAREFUL_ORDER").is_some();
+        let track = !incremental && std::env::var_os("KM_TAB_CAREFUL_NOBJ").is_none();
+        let fail = |d: DepSet| -> Outcome {
+            if track {
+                Outcome::Conflict(d)
+            } else {
+                Outcome::Conflict(DepSet { v: (1..=dl).collect() })
+            }
+        };
+        let mark = self.rec_mark();
         // Careful path (number restrictions and/or inverse roles): saturate Horn
         // *including deterministic ≈-merges* (a single-eq head is a forced
         // merge), then take ONE branching decision. The Hyp-rule branch covers
         // disjunctions, including a ≤n head with several ≈ disjuncts (each branch
         // merges a different pair).
         let saturated = match start {
-            CarefulStart::Delta(queue) if incremental => self.horn_saturate_careful_delta(g, queue),
-            CarefulStart::Full | CarefulStart::Delta(_) => self.horn_saturate(g),
+            CarefulStart::Delta(queue) if incremental => {
+                if self.horn_saturate_careful_delta(g, queue) { Ok(()) } else { Err(DepSet::new()) }
+            }
+            CarefulStart::Full | CarefulStart::Delta(_) => self.horn_saturate_d(g),
         };
-        if !saturated {
-            return false;
+        if let Err(d) = saturated {
+            self.rec_close(mark);
+            return fail(d);
         }
-        if let Some((mut head, subst, _)) = self.find_disjunctive(g) {
+        if let Some((mut head, subst, bdep)) = self.find_disjunctive(g) {
+            let disjunction = if self.rec_on() {
+                let ci = self.cert.as_ref().and_then(|c| c.lock().unwrap().last_disjunction.take());
+                ci.map(|ci| (ci, self.rec_asg(g, &self.clauses[ci].cl, &subst)))
+            } else {
+                None
+            };
+            let level = dl + 1;
+            let mut hdep = bdep.clone();
+            hdep.insert(level);
+            // The split itself depends on its body.
+            let mut conflict = bdep;
+            let mut children = Vec::new();
             if ordered {
                 head.sort_by_key(|atom| self.immediate_existential_cost(atom));
             }
@@ -1087,15 +1259,34 @@ impl Tableau {
                 let next = if incremental {
                     self.add_head_atom_careful(g, v, &subst)
                 } else {
-                    self.add_head_atom(g, v, &subst);
+                    self.add_head_atom_d(g, v, &subst, &hdep);
                     CarefulStart::Full
                 };
-                if self.expand_careful(g, next) {
-                    return true;
-                }
+                let Outcome::Conflict(mut d) = self.expand_careful_at(g, next, level) else {
+                    return Outcome::Sat;
+                };
+                let child = if self.rec_on() { Some(self.rec_take_last()) } else { None };
                 g.rollback_to(cp);
+                if track && !d.contains(level) {
+                    // Backjump: the refutation did not use this alternative.
+                    if let Some(child) = child {
+                        self.rec_skip(mark, level, child);
+                    }
+                    stat_backtrack();
+                    return Outcome::Conflict(d);
+                }
+                d.remove(level);
+                conflict.union_with(&d);
+                if let Some(child) = child {
+                    children.push(child);
+                }
             }
-            return false;
+            if let Some((ci, asg)) = disjunction {
+                self.rec_split(mark, ci, asg, children);
+            } else if self.rec_on() {
+                self.rec_close(mark); // no clause index: an invalid proof
+            }
+            return fail(conflict);
         }
         if !self.pairwise {
             // Number-only path (SHQ, no inverse): no loop-back needed, so batch
@@ -1114,17 +1305,22 @@ impl Tableau {
                         .iter()
                         .any(|&(rr, t)| rr == r && g.alive(t) && g.concepts[t].contains(&fil));
                     if !sat {
-                        let t = g.new_node(Some(s), true);
-                        g.add_edge(r, s, t);
-                        g.add_concept(t, fil);
+                        let odep = self.obligation_dep(g, s, r, fil);
+                        self.rec_step_d(rules_cert::RStep::Witness { node: s, role: r, fil }, &odep);
+                        self.add_witness(g, s, r, fil, odep);
                         changed = true;
                     }
                 }
             }
             if changed {
-                return self.expand_careful(g, CarefulStart::Full);
+                let found = self.expand_careful_at(g, CarefulStart::Full, dl);
+                if let Outcome::Conflict(d) = found {
+                    self.rec_prepend(mark);
+                    return fail(d);
+                }
+                return Outcome::Sat;
             }
-            return true;
+            return Outcome::Sat;
         }
         // Inverse path (pairwise blocking). The ∃-rule becomes a CHOICE: an
         // `∃r.fil` obligation may be satisfied by looping back to an existing
@@ -1134,27 +1330,60 @@ impl Tableau {
         // search complete (no model is pruned) and saturation keeps it sound (a
         // loop-back that violates a constraint just clashes and is abandoned).
         if let Some((s, r, fil)) = self.first_unsat_exists(g) {
+            let odep = self.obligation_dep(g, s, r, fil);
+            let level = dl + 1;
             // 1. loop-back branches: reuse a matching ancestor as the successor.
             for t in self.loopback_targets(g, s, r, fil) {
                 let cp = g.checkpoint();
-                g.add_edge(r, s, t);
-                if self.expand_careful(g, CarefulStart::Full) {
-                    return true;
-                }
+                let mut ldep = odep.clone();
+                ldep.insert(level);
+                g.add_edge_d(r, s, t, &ldep);
+                let Outcome::Conflict(d) = self.expand_careful_at(g, CarefulStart::Full, level) else {
+                    return Outcome::Sat;
+                };
+                // A refutation needs only the fresh-successor alternative,
+                // unless this one refutes the parent state by itself.
+                let child = self.rec_take_last();
                 g.rollback_to(cp);
+                if track && !d.contains(level) {
+                    if self.rec_on() {
+                        self.rec_skip(mark, level, child);
+                    }
+                    stat_backtrack();
+                    return Outcome::Conflict(d);
+                }
             }
-            // 2. fallback branch: a fresh successor (the last alternative).
+            // 2. fallback branch: a fresh successor (the last alternative). It is
+            // a sound deterministic step, so its refutation depends only on the
+            // obligation and on what the subtree used, not on the loop-backs.
             let cp = g.checkpoint();
-            let t = g.new_node(Some(s), true);
-            g.add_edge(r, s, t);
-            g.add_concept(t, fil);
-            if self.expand_careful(g, CarefulStart::Full) {
-                return true;
-            }
+            self.rec_step_d(rules_cert::RStep::Witness { node: s, role: r, fil }, &odep);
+            self.add_witness(g, s, r, fil, odep);
+            let Outcome::Conflict(d) = self.expand_careful_at(g, CarefulStart::Full, dl) else {
+                return Outcome::Sat;
+            };
+            self.rec_prepend(mark);
             g.rollback_to(cp);
-            return false;
+            return fail(d);
         }
-        true
+        Outcome::Sat
+    }
+
+    /// Dependencies of the obligation `∃r.fil` at `s` (with the node's own).
+    fn obligation_dep(&self, g: &Graph, s: Node, r: R, fil: CLit) -> DepSet {
+        let mut d = g.xdep[s].get(&(r, fil)).cloned().unwrap_or_default();
+        d.union_with(&g.ndep[s]);
+        d
+    }
+
+    /// The ∃-rule: a fresh successor `t` of `s` with `r(s, t)` and `fil(t)`,
+    /// all three depending on the obligation (`dep`).
+    fn add_witness(&self, g: &mut Graph, s: Node, r: R, fil: CLit, dep: DepSet) -> Node {
+        let t = g.new_node(Some(s), true);
+        g.add_edge_d(r, s, t, &dep);
+        g.add_concept_d(t, fil, &dep);
+        g.ndep[t] = dep;
+        t
     }
 
     /// Cheap branch-order estimate: how many directly indexed Horn rules turn a
@@ -1200,7 +1429,7 @@ impl Tableau {
                 g.add_exobl(n, *r, *fil);
             }
             Atom::Eq { s, t } => {
-                g.merge(subst.lookup(*s), subst.lookup(*t));
+                g.merge(subst.lookup(*s), subst.lookup(*t), &DepSet::new());
                 return CarefulStart::Full;
             }
         }
@@ -1276,7 +1505,7 @@ impl Tableau {
                             g.add_exobl(n, r, fil);
                         }
                         Atom::Eq { s, t } => {
-                            g.merge(subst.lookup(s), subst.lookup(t));
+                            g.merge(subst.lookup(s), subst.lookup(t), &DepSet::new());
                             return self.horn_saturate(g);
                         }
                     }
@@ -1296,6 +1525,14 @@ impl Tableau {
     /// nominal o-rule (singleton merges). Returns `false` on clash (empty-head
     /// clause, or `A` and `¬A` on a node).
     fn horn_saturate(&self, g: &mut Graph) -> bool {
+        self.horn_saturate_d(g).is_ok()
+    }
+
+    /// `horn_saturate` with dependency tracking: every derived fact (and every
+    /// merge) records the union of the dependencies of the facts its match
+    /// used. On a clash, `Err` carries the dependency set of the clash (the
+    /// decisions it depends on), for backjumping.
+    fn horn_saturate_d(&self, g: &mut Graph) -> Result<(), DepSet> {
         let prog = std::env::var_os("KM_TAB_STATS").is_some();
         let mut hs_iter = 0u64;
         loop {
@@ -1333,11 +1570,14 @@ impl Tableau {
                 }
                 for subst in matches {
                     if info.cl.head.is_empty() {
-                        return false; // body matched, empty head ⇒ ⊥
+                        self.rec_bottom(g, ci, &info.cl, &subst);
+                        return Err(self.body_dep(g, &info.cl, &subst)); // body matched, empty head ⇒ ⊥
                     }
                     let v = &info.cl.head[0];
                     if !self.head_atom_present(g, v, &subst) {
-                        self.add_head_atom(g, v, &subst);
+                        let dep = self.body_dep(g, &info.cl, &subst);
+                        self.rec_horn(g, ci, &info.cl, &subst, &dep);
+                        self.add_head_atom_d(g, v, &subst, &dep);
                         changed = true;
                     }
                 }
@@ -1349,11 +1589,12 @@ impl Tableau {
             if !self.nominals.is_empty() && self.apply_nominal_merges(g) {
                 changed = true;
             }
-            if g.clash() {
-                return false;
+            if let Some((node, concept, dep)) = g.clash_info() {
+                self.rec_clash(node, concept);
+                return Err(dep);
             }
             if !changed {
-                return true;
+                return Ok(());
             }
         }
     }
@@ -1375,7 +1616,15 @@ impl Tableau {
             let keep = carriers[0];
             for &other in &carriers[1..] {
                 if g.find(keep) != g.find(other) {
-                    g.merge(keep, other);
+                    let (k, o) = (g.find(keep), g.find(other));
+                    let mut dep = g.lit_dep(k, lit);
+                    dep.union_with(&g.lit_dep(o, lit));
+                    self.rec_step_d(rules_cert::RStep::Nominal {
+                        concept: nc,
+                        left: k,
+                        right: o,
+                    }, &dep);
+                    g.merge(keep, other, &dep);
                     merged = true;
                 }
             }
@@ -1548,6 +1797,9 @@ impl Tableau {
                     );
                 }
                 let bdep = self.body_dep(g, &info.cl, &subst);
+                if let Some(c) = &self.cert {
+                    c.lock().unwrap().last_disjunction = Some(ci);
+                }
                 return Some((info.cl.head.clone(), subst, bdep));
             }
         }
@@ -1663,22 +1915,28 @@ impl Tableau {
     }
 
     fn add_head_atom(&self, g: &mut Graph, v: &Atom, subst: &Subst) {
+        self.add_head_atom_d(g, v, subst, &DepSet::new());
+    }
+
+    /// `add_head_atom` recording `dep` as the dependency set of the new fact
+    /// (or of the merge, for an equality head).
+    fn add_head_atom_d(&self, g: &mut Graph, v: &Atom, subst: &Subst, dep: &DepSet) {
         match v {
             Atom::Concept { lit, t } => {
                 let n = g.find(subst.lookup(*t));
-                g.add_concept(n, *lit);
+                g.add_concept_d(n, *lit, dep);
             }
             Atom::Role { r, s, t } => {
                 let (a, b) = (g.find(subst.lookup(*s)), g.find(subst.lookup(*t)));
-                g.add_edge(*r, a, b);
+                g.add_edge_d(*r, a, b, dep);
             }
             Atom::Exists { r, fil, t } => {
                 let n = g.find(subst.lookup(*t));
-                g.add_exobl(n, *r, *fil);
+                g.add_exobl_d(n, *r, *fil, dep);
             }
             // Discharge ≈ by merging the two nodes (the ≤-rule / functional role).
             Atom::Eq { s, t } => {
-                g.merge(subst.lookup(*s), subst.lookup(*t));
+                g.merge(subst.lookup(*s), subst.lookup(*t), dep);
             }
         }
     }
@@ -1909,6 +2167,11 @@ impl Tableau {
                 }
                 _ => {}
             }
+        }
+        // Existence dependencies of every bound node (always empty on the
+        // non-careful path, which creates no node inside a decision).
+        for &(_, n) in &subst.v {
+            d.union_with(&g.ndep[g.find(n)]);
         }
         d
     }
@@ -2632,7 +2895,11 @@ impl Tableau {
                 named.len()
             );
         }
-        let consistent = self.consistent(&[]);
+        let consistent = if self.rec_on() {
+            self.cert_test(rules_cert::Claim::Inconsistent, None).is_some()
+        } else {
+            self.consistent(&[])
+        };
         if std::env::var_os("KM_TAB_STATS").is_some() {
             eprintln!("KM_TAB_STATS classify: consistent([])={}", consistent);
         }
@@ -2749,12 +3016,21 @@ impl Tableau {
                     subs.len()
                 );
             }
+            if self.known_unsatisfiable.contains(&a) {
+                unsat.push(a);
+                continue;
+            }
             let key = SatCache::key(&[CLit::pos(a)]);
             if cache.query(&key) == Some(false) {
                 unsat.push(a);
                 continue;
             }
-            match self.find_model(&[CLit::pos(a)]) {
+            let model = if self.rec_on() {
+                self.cert_test(rules_cert::Claim::Unsat(a), Some(a))
+            } else {
+                self.find_model(&[CLit::pos(a)])
+            };
+            match model {
                 None => {
                     cache.insert(key, false);
                     unsat.push(a)
@@ -2774,7 +3050,12 @@ impl Tableau {
                         if p2 {
                             labset.insert(l.c);
                         }
-                        let definite = matches!(g.cdep[0].get(l), Some(d) if d.v.is_empty());
+                        // The careful path now records dependencies for
+                        // backjumping, but every candidate there keeps its
+                        // confirmation test: a certificate needs a recorded
+                        // refutation for each published subsumption.
+                        let definite = !self.careful()
+                            && matches!(g.cdep[0].get(l), Some(d) if d.v.is_empty());
                         if definite {
                             subs.push((a, l.c));
                             def_set.insert(l.c);
@@ -2854,6 +3135,10 @@ impl Tableau {
         let (mut skipped_known, mut pm_refuted, mut prop) = (0u64, 0u64, 0u64);
         for (a, sup) in &cand {
             for &b in sup {
+                if self.known_subsumptions.contains(&(*a, b)) {
+                    subs.push((*a, b));
+                    continue;
+                }
                 if p2 {
                     if pos.get(a).is_some_and(|s| s.contains(&b)) {
                         // already entailed (TC or a prior confirmation): record it
@@ -2890,7 +3175,11 @@ impl Tableau {
                 let sat = match cache.query(&key) {
                     Some(v) => v,
                     None => {
-                        let v = self.consistent(&[CLit::pos(*a), CLit::neg(b)]);
+                        let v = if self.rec_on() {
+                            self.cert_test(rules_cert::Claim::Sub(*a, b), Some(*a)).is_some()
+                        } else {
+                            self.consistent(&[CLit::pos(*a), CLit::neg(b)])
+                        };
                         cache.insert(key, v);
                         v
                     }
@@ -3770,14 +4059,8 @@ impl Tableau {
 /// search can nest as deep as the model (thousands of frames on the
 /// live-disjunction ontologies), which would overflow the default 8 MB stack.
 fn with_big_stack<T: Send>(f: impl FnOnce() -> T + Send) -> T {
-    std::thread::scope(|s| {
-        std::thread::Builder::new()
-            .stack_size(4 << 30)
-            .spawn_scoped(s, f)
-            .expect("spawn tableau worker")
-            .join()
-            .expect("tableau worker panicked")
-    })
+    crate::bigstack::run("tableau search", crate::bigstack::DEEP_STACK, f)
+        .unwrap_or_else(|error| panic!("{error}"))
 }
 
 /// The two-level global-caching checker. Level 1 (per node): a transient
@@ -6191,14 +6474,47 @@ fn rules_consistency_with_sorts(inp: &TInput, mut ht_clauses: Vec<Clause>,
     }
     let datatype_names = verify_data.then(|| inp.concepts.clone());
     let verify_finite = verify_data || std::env::var_os("KM_RULES_FINITE_MODEL_VERIFY").is_some();
-    std::thread::Builder::new()
-        .stack_size(4usize << 30)
-        .spawn(move || {
+    let certify = std::env::var_os("KM_RULES_LEAN_CERT").is_some();
+    let oguard = rules_oguard(inp);
+    crate::bigstack::run("rules-consistency", crate::bigstack::DEEP_STACK, move || {
             let evidence = verify_finite.then(|| ht_clauses.clone());
             let mut t = Tableau::new(ht_clauses);
             t.set_pairwise(inverse);
             t.set_number(number);
             t.set_nominals(noms.clone());
+            if certify {
+                // KM_RULES_LEAN_CERT: decide by the recorded careful search and
+                // publish only a verdict the Lean checker accepts.
+                t.enable_certificates()?;
+                let graph = t.cert_test(rules_cert::Claim::Inconsistent, None);
+                let consistent = graph.is_some();
+                rules_cert::write_and_check(&t, &rules_cert::Answer {
+                    oguard,
+                    queries: &[],
+                    consistent,
+                    unsatisfiable: &[],
+                    subsumptions: &[],
+                    premise_subsumptions: &[],
+                    premise_unsatisfiable: &[],
+                })?;
+                if let (Some(clauses), Some(graph)) = (evidence, graph) {
+                    verify_finite_rule_model(&graph, &clauses, &noms, 10_000_000)?;
+                    if let Some(names) = datatype_names {
+                        let values = finite_datatype_values(&graph, &names)?;
+                        let data_nodes = values.keys().copied().collect();
+                        if let Some(source) = source_classes {
+                            verify_finite_source_classes(&graph, &data_nodes, &source)?;
+                        }
+                        if let Some(source) = source_abox {
+                            verify_finite_source_abox(&graph, &data_nodes, &source, Some(&values))?;
+                        }
+                        if let Some(sorts) = role_sorts {
+                            verify_finite_role_sorts(&graph, &data_nodes, &noms, &sorts)?;
+                        }
+                    }
+                }
+                return Ok(consistent);
+            }
             if let Some(clauses) = evidence {
                 match t.find_model(&[]) {
                     Some(graph) => {
@@ -6224,10 +6540,96 @@ fn rules_consistency_with_sorts(inp: &TInput, mut ht_clauses: Vec<Clause>,
                     None => Ok(false),
                 }
             } else { Ok(t.consistent(&[])) }
-        })
-        .map_err(|e| e.to_string())?
-        .join()
-        .map_err(|_| "rules-consistency thread panicked".to_string())?
+        })?
+}
+
+/// The concept id of the rule guard `__O__`, or an unused id when the input
+/// has no rule clause (then no clause mentions the guard).
+pub(crate) fn rules_oguard(inp: &TInput) -> C {
+    inp.concepts
+        .iter()
+        .position(|name| name == "__O__")
+        .unwrap_or(inp.concepts.len()) as C
+
+}
+
+/// Classification of a rule-aware input (`KM_RULES_CLASSIFY`): the
+/// `KM_RULES_CONSISTENCY` tableau (ABox seeded as nominal roots, O-guarded
+/// rule clauses, certified role-chain clauses) running `Tableau::classify`
+/// over `queries`. Every subsumption test `{A, ¬B}` and unsatisfiability
+/// test `{A}` is a satisfiability check of the input plus one fresh unnamed
+/// root, the same procedure as the consistency verdict. Refuses inputs whose
+/// conversion omitted a clause or fenced a construct, and inputs with
+/// nominals, inverse roles and number restrictions together (the tableau has
+/// no NN-rule, so its satisfiable verdicts are not exact there).
+pub fn rules_classification(inp: &TInput, mut ht_clauses: Vec<Clause>, queries: Vec<C>)
+    -> Result<(bool, Vec<C>, Vec<(C, C)>), String> {
+    // The orchestrator checked that this many omitted clauses are individual
+    // proxy definitions `__nom__a(x) → x ≈ a`, which the nominal declaration
+    // of `__nom__a` represents (orchestrate `proxy_definition`).
+    let proxy_definitions: usize = std::env::var("KM_RULES_CLASSIFY_PROXY_DEFINITIONS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0);
+    if inp.dropped > proxy_definitions || !inp.fenced.is_empty() {
+        return Err(format!(
+            "rule-aware classification requires a complete conversion ({} clause(s) omitted, {} fence(s))",
+            inp.dropped,
+            inp.fenced.len()
+        ));
+    }
+    let number = inp.number || !inp.card_defs.is_empty();
+    if inp.inverse && number && !inp.nominals.is_empty() {
+        return Err("rule-aware classification of nominals with inverse roles and number restrictions \
+                    (SHOIQ) is not supported by the rule tableau".into());
+    }
+    if inp.rule_source_classes.is_some() || inp.rule_source_abox.is_some() {
+        return Err("rule-aware classification does not read source-model verification input".into());
+    }
+    ht_clauses.extend(certified_role_chain_clauses(&inp.chains, &inp.transitive));
+    let inverse = inp.inverse;
+    let noms = inp.nominals.clone();
+    // `KM_RULES_CLASSIFY_KNOWN`: the rule-free CB taxonomy of the same
+    // ontology, `{"subsumptions": [[a, b], ...], "unsatisfiable": [a, ...]}`
+    // in worker concept names. The rules only add constraints, so these are
+    // entailed by the input; names the input lacks are ignored.
+    let (known_subs, known_unsat) = match std::env::var_os("KM_RULES_CLASSIFY_KNOWN") {
+        None => (HashSet::default(), HashSet::default()),
+        Some(path) => {
+            #[derive(Deserialize)]
+            struct Known { subsumptions: Vec<[String; 2]>, unsatisfiable: Vec<String> }
+            let known: Known = serde_json::from_slice(&std::fs::read(path).map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
+            let id: HashMap<&str, C> = inp.concepts.iter().enumerate()
+                .map(|(i, name)| (name.as_str(), i as C)).collect();
+            let subs = known.subsumptions.iter()
+                .filter_map(|[a, b]| Some((*id.get(a.as_str())?, *id.get(b.as_str())?))).collect();
+            let unsat = known.unsatisfiable.iter().filter_map(|a| id.get(a.as_str()).copied()).collect();
+            (subs, unsat)
+        }
+    };
+    // KM_RULES_LEAN_CERT: record the evidence of every test and publish
+    // the taxonomy only when the Lean checker accepts its certificate
+    // (`rules_cert::certify_classification`).
+    let certify = std::env::var_os("KM_RULES_LEAN_CERT").is_some();
+    let oguard = rules_oguard(inp);
+    crate::bigstack::run("rule-aware classification", crate::bigstack::DEEP_STACK, move || {
+        let mut t = Tableau::new(ht_clauses);
+        t.set_pairwise(inverse);
+        t.set_number(number);
+        t.set_nominals(noms);
+        t.set_known(known_subs.clone(), known_unsat.clone());
+        if certify {
+            t.enable_certificates()?;
+        }
+        let (consistent, unsat, subs) = t.classify(&queries);
+        let subs = hypertableau::transitive_close_subs(subs);
+        if certify {
+            rules_cert::certify_classification(&t, oguard, &queries, consistent, &unsat, &subs,
+                &known_subs, &known_unsat)?;
+        }
+        Ok((consistent, unsat, subs))
+    })?
 }
 
 /// Build the tableau clause vector from a parsed `TInput` (the deserialised
@@ -6435,18 +6837,22 @@ pub(crate) fn run_bridge_json_owned_compact(
     // keeps the transport optimization visible in peak RSS, not only live bytes.
     crate::mem::release_transient_heap();
 
-    let (result, concepts) = std::thread::Builder::new()
-        .stack_size(4usize << 30)
-        .spawn(move || {
+    let (result, concepts, reason) = crate::bigstack::run("konclude_ht bridge", crate::bigstack::DEEP_STACK, move || {
             let result = crate::konclude_ht::bridge::bridged_classify(&producer_input);
-            (result, producer_input.concepts)
-        })
-        .map_err(|error| error.to_string())?
-        .join()
-        .map_err(|_| "konclude_ht bridge thread panicked".to_string())?;
-    let result = result.ok_or_else(|| "konclude_ht bridge defer".to_string())?;
+            let reason = crate::konclude_ht::bridge::take_bridge_defer_reason();
+            (result, producer_input.concepts, reason)
+        })?;
+    let result = result.ok_or_else(|| bridge_defer_message(reason))?;
     crate::mem::release_transient_heap();
     compact_bridge_classification(concepts, result)
+}
+
+/// The worker's defer error, naming the gate the bridge recorded.
+fn bridge_defer_message(reason: Option<String>) -> String {
+    match reason {
+        Some(reason) => format!("konclude_ht bridge defer: {reason}"),
+        None => "konclude_ht bridge defer".to_string(),
+    }
 }
 
 fn compact_bridge_classification(
@@ -6652,13 +7058,12 @@ pub(crate) fn run_bridge_producer_input_typed(
 ) -> Result<TOutput, String> {
     let concepts = input.concepts.clone();
     crate::mem::release_transient_heap();
-    let result = std::thread::Builder::new()
-        .stack_size(4usize << 30)
-        .spawn(move || crate::konclude_ht::bridge::bridged_classify(&input))
-        .map_err(|error| error.to_string())?
-        .join()
-        .map_err(|_| "konclude_ht bridge thread panicked".to_string())?
-        .ok_or_else(|| "konclude_ht bridge defer".to_string())?;
+    let (result, reason) = crate::bigstack::run("konclude_ht bridge", crate::bigstack::DEEP_STACK,
+            move || {
+                let result = crate::konclude_ht::bridge::bridged_classify(&input);
+                (result, crate::konclude_ht::bridge::take_bridge_defer_reason())
+            })?;
+    let result = result.ok_or_else(|| bridge_defer_message(reason))?;
     crate::mem::release_transient_heap();
     let name = |concept: usize| {
         concepts
@@ -6959,25 +7364,20 @@ fn run_ht_projection_checker(
     ));
     std::fs::write(&path, encoded)
         .map_err(|error| format!("cannot write HT {document_kind} projection: {error}"))?;
-    let status = std::process::Command::new(checker)
-        .arg(&path)
-        .stdout(std::process::Stdio::null())
-        .status()
-        .map_err(|error| {
-            format!(
-                "cannot execute HT projection checker {}: {error}",
-                checker.display()
-            )
-        });
+    let outcome =
+        crate::lean_checkers::run("ht", checker, &format!("ht-{document_kind}"), &path);
     let _ = std::fs::remove_file(&path);
-    let status = status?;
-    if !status.success() {
-        return Err(format!(
-            "HT {document_kind} projection checker {} rejected the conversion ({status})",
+    match outcome {
+        crate::lean_checkers::Outcome::Accepted => Ok(()),
+        crate::lean_checkers::Outcome::Rejected(detail) => Err(format!(
+            "HT {document_kind} projection checker {} rejected the conversion: {detail}",
             checker.display()
-        ));
+        )),
+        crate::lean_checkers::Outcome::CannotCheck(detail) => Err(format!(
+            "cannot execute HT projection checker {}: {detail}",
+            checker.display()
+        )),
     }
-    Ok(())
 }
 
 fn check_native_abox_projection(inp: &TInput, checker: &std::path::Path) -> Result<(), String> {
@@ -7940,7 +8340,7 @@ fn check_certified_ht_input_coverage(inp: &TInput, native_abox_active: bool) -> 
 /// test outside the individual worker branches: rules consistency, the
 /// Konclude bridge, and the legacy tableau all precede or follow the fast-Ht
 /// arm and must not bypass its Lean checker boundary.
-const HT_LEAN_CERTIFICATION_ENV: &[&str] = &[
+pub(crate) const HT_LEAN_CERTIFICATION_ENV: &[&str] = &[
     "KM_HT_LEAN_CERT_OUT",
     "KM_HT_LEAN_CERT_CHECKER",
     "KM_HT_LEAN_PROJECTION_CHECKER",
@@ -7993,6 +8393,12 @@ const HT_LEAN_CERTIFICATION_ENV: &[&str] = &[
     "KM_HT_LEAN_SOURCE_BOUND_ORDINARY_TAXONOMY_CHECKER",
 ];
 
+/// Rule-route Lean certification: certificates written and checked.
+pub(crate) fn rules_lean_certification_active() -> bool {
+    std::env::var_os("KM_RULES_LEAN_CERT").is_some()
+        && std::env::var_os("KM_RULES_LEAN_CHECKER").is_some()
+}
+
 pub(crate) fn ht_lean_certification_requested() -> bool {
     HT_LEAN_CERTIFICATION_ENV
         .iter()
@@ -8016,7 +8422,9 @@ fn run_tinput_inner(
     let native_abox_active = native_abox.active;
     let ht_enabled = forced_ht.unwrap_or_else(|| std::env::var_os("KM_HT").is_some());
     let lean_cert_requested = ht_lean_certification_requested();
-    if lean_cert_requested && !ht_enabled {
+    if lean_cert_requested && !ht_enabled
+        && !(std::env::var_os("KM_RULES_CONSISTENCY").is_some() && rules_lean_certification_active())
+    {
         return Err("HT Lean certification requires the hypertableau mechanism".to_string());
     }
     if native_abox_active && (!ht_enabled || std::env::var_os("KM_RULES_CONSISTENCY").is_some()) {
@@ -8040,11 +8448,32 @@ fn run_tinput_inner(
     // default Tableau (whose `find_model` seeds one root per nominal and applies the
     // o-rule). Run on a large stack since the careful DFS can recurse deeply.
     if std::env::var_os("KM_RULES_CONSISTENCY").is_some() {
-        if lean_cert_requested {
+        // The HT checkers have no O-guarded rule clause. The rule route has
+        // its own Lean certificate (`rules_cert`, KM_RULES_LEAN_CERT with
+        // KM_RULES_LEAN_CHECKER); an HT certification request is served by it
+        // and refused without it.
+        if lean_cert_requested && !rules_lean_certification_active() {
             return Err(
-                "HT Lean certification cannot publish the unchecked rules-consistency route"
+                "HT Lean certification cannot publish the rules-consistency route without \
+                 KM_RULES_LEAN_CERT and KM_RULES_LEAN_CHECKER"
                     .to_string(),
             );
+        }
+        // KM_RULES_CLASSIFY: the same rule-aware input, classified instead
+        // of only checked (docs/DL-SAFE-RULES.md, "Rule-aware taxonomy beside
+        // a nominal"). Each test adds one fresh unnamed root to the seeded
+        // named-individual graph, so a rule fires on the tested element only
+        // when the tableau identifies it with a named individual.
+        if std::env::var_os("KM_RULES_CLASSIFY").is_some() {
+            let (consistent, unsat, subs) = rules_classification(&inp, clauses, queries)?;
+            let name = |c: C| {
+                inp.concepts.get(c as usize).cloned().unwrap_or_else(|| format!("C{c}"))
+            };
+            return Ok(TOutput {
+                consistent,
+                unsatisfiable: unsat.iter().map(|&c| name(c)).collect(),
+                subsumptions: subs.iter().map(|&(a, b)| [name(a), name(b)]).collect(),
+            });
         }
         let consistent = rules_consistency_verdict(&inp, clauses.clone())?;
         let out = TOutput {
@@ -8078,12 +8507,11 @@ fn run_tinput_inner(
                 .ok_or_else(|| "typed tableau input cannot enter the bridge route".to_string())?,
         )
         .map_err(|e| e.to_string())?;
-        let res = std::thread::Builder::new()
-            .stack_size(4usize << 30)
-            .spawn(move || crate::konclude_ht::bridge::bridged_classify(&tin_bridge))
-            .map_err(|e| e.to_string())?
-            .join()
-            .map_err(|_| "konclude_ht bridge thread panicked".to_string())?;
+        let (res, defer_reason) = crate::bigstack::run("konclude_ht bridge", crate::bigstack::DEEP_STACK,
+            move || {
+                let res = crate::konclude_ht::bridge::bridged_classify(&tin_bridge);
+                (res, crate::konclude_ht::bridge::take_bridge_defer_reason())
+            })?;
         if let Some(r) = res {
             let subs: Vec<(C, C)> = r
                 .subsumptions
@@ -8120,7 +8548,7 @@ fn run_tinput_inner(
         // orchestrator's CB arm must decide. Otherwise fall through to the
         // route the worker was actually spawned for (monotone-safe).
         if std::env::var_os("KM_HT_BRIDGE_ONLY").is_some() {
-            return Err("konclude_ht bridge defer".to_string());
+            return Err(bridge_defer_message(defer_reason));
         }
     }
 
@@ -8496,13 +8924,12 @@ fn run_tinput_inner(
         // side data are dead by now. Return their pages before the parallel
         // classify workers allocate their own state (see `crate::mem`).
         crate::mem::release_transient_heap();
-        let res = std::thread::Builder::new()
-            // 4 GiB virtual stack (lazily paged): the DFS recurses once per active
-            // branch level; SHOQ number+nominal search can nest tens of thousands
-            // deep, overflowing the prior 1 GiB reservation. Virtual, so the unused
-            // tail costs nothing.
-            .stack_size(4usize << 30)
-            .spawn(move || {
+        // 4 GiB stack: the DFS recurses once per active branch level; SHOQ
+        // number+nominal search can nest tens of thousands deep, overflowing
+        // the prior 1 GiB reservation. A spawned stack is charged in full under
+        // strict overcommit, so `bigstack` runs this inline on the worker's
+        // main thread, whose stack is committed only as it grows.
+        let res = crate::bigstack::run("hypertableau", crate::bigstack::DEEP_STACK, move || {
                 let mut ht = if lean_cert_requested {
                     hypertableau::Ht::new_certified(ht_clauses)
                 } else {
@@ -8581,10 +9008,7 @@ fn run_tinput_inner(
                     ht.classify(&q)
                 };
                 Ok::<_, String>(classification.map(|classification| (classification, None)))
-            })
-            .map_err(|e| e.to_string())?
-            .join()
-            .map_err(|_| "hypertableau thread panicked".to_string())??;
+            })??;
         // Every classify worker's arena retains the largest model it built.
         // Release those pages before the taxonomy is named and serialised.
         crate::mem::release_transient_heap();
@@ -8626,24 +9050,25 @@ fn run_tinput_inner(
                     lean_cert_checker.as_deref()
                 };
                 if let Some(checker) = verdict_checker {
-                    let status = std::process::Command::new(checker)
-                        .arg(path)
-                        .stdout(std::process::Stdio::null())
-                        .status()
-                        .map_err(|error| {
-                            format!(
-                                "KM_HT_LEAN_CERT cannot execute {}: {error}",
-                                checker.display()
-                            )
-                        })?;
+                    let outcome =
+                        crate::lean_checkers::run("ht", checker, "ht-global-verdict", path);
                     if lean_cert_path.is_none() {
                         let _ = std::fs::remove_file(path);
                     }
-                    if !status.success() {
-                        return Err(format!(
-                            "KM_HT_LEAN_CERT checker {} rejected the certificate ({status})",
-                            checker.display()
-                        ));
+                    match outcome {
+                        crate::lean_checkers::Outcome::Accepted => {}
+                        crate::lean_checkers::Outcome::Rejected(detail) => {
+                            return Err(format!(
+                                "KM_HT_LEAN_CERT checker {} rejected the certificate: {detail}",
+                                checker.display()
+                            ));
+                        }
+                        crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                            return Err(format!(
+                                "KM_HT_LEAN_CERT cannot execute {}: {detail}",
+                                checker.display()
+                            ));
+                        }
                     }
                 }
                 if native_abox_active {
@@ -8722,24 +9147,29 @@ fn run_tinput_inner(
                         lean_taxonomy_checker.as_deref()
                     }
                     .ok_or_else(|| "missing HT taxonomy Lean checker".to_string())?;
-                    let status = std::process::Command::new(checker)
-                        .arg(taxonomy_path)
-                        .stdout(std::process::Stdio::null())
-                        .status()
-                        .map_err(|error| {
-                            format!(
-                                "KM_HT_LEAN_TAXONOMY_CERT cannot execute {}: {error}",
-                                checker.display()
-                            )
-                        })?;
+                    let outcome = crate::lean_checkers::run(
+                        "ht",
+                        checker,
+                        "ht-taxonomy",
+                        taxonomy_path,
+                    );
                     if lean_taxonomy_path.is_none() {
                         let _ = std::fs::remove_file(taxonomy_path);
                     }
-                    if !status.success() {
-                        return Err(format!(
-                            "KM_HT_LEAN_TAXONOMY_CERT checker {} rejected the certificate ({status})",
-                            checker.display()
-                        ));
+                    match outcome {
+                        crate::lean_checkers::Outcome::Accepted => {}
+                        crate::lean_checkers::Outcome::Rejected(detail) => {
+                            return Err(format!(
+                                "KM_HT_LEAN_TAXONOMY_CERT checker {} rejected the certificate: {detail}",
+                                checker.display()
+                            ));
+                        }
+                        crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                            return Err(format!(
+                                "KM_HT_LEAN_TAXONOMY_CERT cannot execute {}: {detail}",
+                                checker.display()
+                            ));
+                        }
                     }
                     if !native_abox_active && !inp.card_defs.is_empty() {
                         let checker = lean_cardinality_common_taxonomy_checker
@@ -9191,6 +9621,9 @@ mod tests {
     fn typed_producer_handoff_matches_the_json_worker_contract() {
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause};
 
+        // Hold the module's environment lock: these keys are shared with the
+        // bridge tests, which read them while they run.
+        let _environment = lock_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();
         std::env::set_var("KM_HT", "1");
         let input = crate::orchestrate::cb_to_ht::TInput {
@@ -9221,6 +9654,9 @@ mod tests {
     fn owned_wire_entry_matches_the_borrowed_worker_contract() {
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause};
 
+        // Hold the module's environment lock: these keys are shared with the
+        // bridge tests, which read them while they run.
+        let _environment = lock_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();
         std::env::set_var("KM_HT", "1");
         std::env::remove_var("KM_HT_BRIDGE");
@@ -11729,7 +12165,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, &document).unwrap();
-            let output = std::process::Command::new(checker)
+            let output = crate::lean_checkers::CheckerCommand::new(checker)
                 .arg(&path)
                 .output()
                 .expect("run native Lean checker on raw role-chain refutation");
@@ -11813,6 +12249,119 @@ mod tests {
         ];
         let t = Tableau::new(cls);
         assert!(t.consistent(&[CLit::pos(A)]));
+    }
+
+    /// `n` irrelevant choices `A → P_i ∨ Q_i` on the root, each `P_i`
+    /// creating a successor; then a two-step chain `A → ∃t.H`, `H → ∃t.G` to a
+    /// node where `G → X ∨ Y` closes both ways. The refutation depends on no
+    /// choice of the root, so backjumping skips every `Q_i`.
+    fn irrelevant_choice_clauses(n: u32) -> Vec<Clause> {
+        let (h, g, x, y, t) = (70, 71, 72, 73, 20);
+        let mut clauses = Vec::new();
+        for i in 1..=n {
+            clauses.push(Clause::new(vec![con(false, A, X)], vec![con(false, 10 + i, X), con(false, 30 + i, X)]));
+            clauses.push(Clause::new(vec![con(false, 10 + i, X)], vec![exists(i, false, 50 + i, X)]));
+        }
+        clauses.push(Clause::new(vec![con(false, A, X)], vec![exists(t, false, h, X)]));
+        clauses.push(Clause::new(vec![con(false, h, X)], vec![exists(t, false, g, X)]));
+        clauses.push(Clause::new(vec![con(false, g, X)], vec![con(false, x, X), con(false, y, X)]));
+        clauses.push(Clause::new(vec![con(false, x, X)], vec![]));
+        clauses.push(Clause::new(vec![con(false, y, X)], vec![]));
+        clauses
+    }
+
+    fn expands() -> u64 {
+        STATS.with(|s| s.get().0)
+    }
+
+    #[test]
+    fn careful_backjumping_skips_choices_the_refutation_does_not_use() {
+        let _environment = lock_environment();
+        let mut t = Tableau::new(irrelevant_choice_clauses(8));
+        t.set_number(true); // the careful path
+        std::env::remove_var("KM_TAB_CAREFUL_NOBJ");
+        let before = expands();
+        assert!(!t.consistent(&[CLit::pos(A)]));
+        let backjumping = expands() - before;
+        std::env::set_var("KM_TAB_CAREFUL_NOBJ", "1");
+        let before = expands();
+        assert!(!t.consistent(&[CLit::pos(A)]));
+        let chronological = expands() - before;
+        std::env::remove_var("KM_TAB_CAREFUL_NOBJ");
+        // 2^8 leaves of irrelevant choices without backjumping; one path with.
+        assert!(backjumping < 40, "backjumping expands={backjumping}");
+        assert!(chronological > 256, "chronological expands={chronological}");
+        // Satisfiable variant: drop the closing clause for Y; both searches agree.
+        let mut clauses = irrelevant_choice_clauses(8);
+        clauses.pop();
+        let mut t = Tableau::new(clauses);
+        t.set_number(true);
+        assert!(t.consistent(&[CLit::pos(A)]));
+    }
+
+    #[test]
+    fn backjumped_refutation_resolves_to_a_checkable_proof() {
+        let _environment = lock_environment();
+        std::env::remove_var("KM_TAB_CAREFUL_NOBJ");
+        let mut t = Tableau::new(irrelevant_choice_clauses(4));
+        t.enable_certificates().unwrap();
+        assert!(t.cert_test(rules_cert::Claim::Unsat(A), Some(A)).is_none());
+        let proof = {
+            let sink = t.cert.as_ref().unwrap().lock().unwrap();
+            assert!(sink.uncertified.is_empty(), "{:?}", sink.uncertified);
+            assert_eq!(sink.refutations.len(), 1);
+            sink.refutations[0].1.clone()
+        };
+        // No skip survives; the witnesses of the skipped `P_i` choices are
+        // gone, so `h` and `g` are renumbered 1 and 2 (root 0).
+        fn walk(p: &rules_cert::RProof, witnesses: &mut Vec<usize>, split_nodes: &mut Vec<usize>) {
+            for step in &p.steps {
+                if let rules_cert::RStep::Witness { node, .. } = step {
+                    witnesses.push(*node);
+                }
+            }
+            match &p.end {
+                rules_cert::REnd::Split { asg, children, .. } => {
+                    split_nodes.push(asg[0]);
+                    for c in children {
+                        walk(c, witnesses, split_nodes);
+                    }
+                }
+                rules_cert::REnd::Skip { .. } | rules_cert::REnd::Invalid => panic!("unresolved proof"),
+                _ => {}
+            }
+        }
+        let (mut witnesses, mut split_nodes) = (Vec::new(), Vec::new());
+        walk(&proof, &mut witnesses, &mut split_nodes);
+        assert_eq!(witnesses, vec![0, 1], "witness parents: {proof:?}");
+        assert_eq!(split_nodes, vec![2], "split on g: {proof:?}");
+        // With the Lean checker available, the whole classification document
+        // must be accepted.
+        let mut t = Tableau::new(irrelevant_choice_clauses(4));
+        t.enable_certificates().unwrap();
+        let (consistent, unsat, subs) = t.classify(&[A]);
+        assert!(consistent);
+        assert_eq!(unsat, vec![A]);
+        assert!(subs.is_empty());
+        let (bytes, stats) = t
+            .certificate_document(&rules_cert::Answer {
+                oguard: 99,
+                queries: &[A],
+                consistent,
+                unsatisfiable: &unsat,
+                subsumptions: &subs,
+                premise_subsumptions: &[],
+                premise_unsatisfiable: &[],
+            })
+            .unwrap();
+        assert_eq!(stats.refutations, 1);
+        if let Some(checker) = std::env::var_os("KM_RULES_TEST_LEAN_CHECKER") {
+            let path = std::env::temp_dir().join(format!("km-rules-backjump-{}.json", std::process::id()));
+            std::fs::write(&path, &bytes).unwrap();
+            let output = std::process::Command::new(checker).arg(&path).output().unwrap();
+            let _ = std::fs::remove_file(&path);
+            assert!(output.status.success(), "Lean rejected: {}", String::from_utf8_lossy(&output.stderr));
+        }
     }
 
     #[test]

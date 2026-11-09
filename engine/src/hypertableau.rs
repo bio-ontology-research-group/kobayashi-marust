@@ -624,6 +624,39 @@ pub struct Ext {
     i3_sig: HashMap<Vec<u64>, Node>,
     i3_node_sig: Vec<Option<Vec<u64>>>,
     block3: bool,
+    /// Checked subset blocking (modes 1 and 5 with a non-trivial
+    /// `SubsetGain`) reads a node's edges as well as its label, so
+    /// `add_edge` and its undo widen the dirty suffix to the endpoints that
+    /// read the edge (`edge_note_node`). Set by `Ht` for those modes.
+    edge_note: bool,
+    /// With `edge_note`: `SubsetGain::back_need(m)` also reads the labels
+    /// of the targets of `m`'s non-successor out-edges and whether each
+    /// target is an unmerged successor, so a label change at `t` widens the
+    /// dirty suffix to the sources of `t`'s non-successor in-edges, and a
+    /// merge of `t` also to `pred(t)` (`Ext::label_note_node`,
+    /// `Ext::merge_note_node`).
+    back_note: bool,
+    /// `Ht::checked_subset_recompute` state, kept for the stable prefix
+    /// `0..i2_lo`: per encoded literal, the candidate blockers carrying it in
+    /// id order (`cs_lists`); every posting in order of insertion
+    /// (`cs_log`, node and slot), so a recompute pops exactly the postings of
+    /// the suffix; each node's final and direct (mode 5: before the indirect
+    /// pass) status; and, for each candidate blocker, the literals of its
+    /// label that `SubsetGain` finds relevant for some edge (`cs_rel`).
+    cs_lists: Vec<Vec<Node>>,
+    cs_log: Vec<(Node, usize)>,
+    cs_blocked: Vec<bool>,
+    cs_direct: Vec<bool>,
+    cs_rel: Vec<smallvec::SmallVec<[CLit; 4]>>,
+    /// Mode 5: for each candidate blocker, the literals of its label that
+    /// are `forall_idx` body concepts (B2a reads only those).
+    cs_fa: Vec<smallvec::SmallVec<[CLit; 4]>>,
+    /// For each candidate blocker, `SubsetGain::back_need` (the obligations
+    /// it witnesses only through a non-successor).
+    cs_back: Vec<smallvec::SmallVec<[(R, CLit); 2]>>,
+    /// `SubsetGain::id` of the gain `cs_rel` was computed with; another one
+    /// forces a full recompute.
+    cs_gain: u64,
 
     /// KM_HT_INCROBLIG: incremental ∃-obligation processing. The flat obligation
     /// loop in `process_obligations` re-scanned EVERY accumulated obligation on
@@ -702,6 +735,16 @@ impl Ext {
             i3_sig: HashMap::default(),
             i3_node_sig: Vec::new(),
             block3: false,
+            edge_note: false,
+            back_note: false,
+            cs_lists: Vec::new(),
+            cs_log: Vec::new(),
+            cs_blocked: Vec::new(),
+            cs_direct: Vec::new(),
+            cs_rel: Vec::new(),
+            cs_fa: Vec::new(),
+            cs_back: Vec::new(),
+            cs_gain: 0,
             incroblig: std::env::var_os("KM_HT_INCROBLIG").is_some(),
             node_obligs: Vec::new(),
             oblig_sat: Vec::new(),
@@ -723,6 +766,55 @@ impl Ext {
         if self.incr2 && n < self.i2_lo {
             self.i2_lo = n;
         }
+    }
+
+    /// The smallest node whose blocking status can read `n`'s label: `n`,
+    /// and with `back_note` also every source of an edge into `n` of which
+    /// `n` is not the successor (`SubsetGain::back_need` of a node reads the
+    /// labels of its non-successor out-edge targets). In a tree these
+    /// sources are `n`'s children, which have larger ids.
+    #[inline]
+    fn label_note_node(&self, n: Node) -> Node {
+        let mut lo = n;
+        if self.back_note {
+            if let Some(sources) = self.in_edges.get(n) {
+                let parent = self.pred.get(n).copied().flatten();
+                for &(_, s, _) in sources {
+                    if parent != Some(s) {
+                        lo = lo.min(s);
+                    }
+                }
+            }
+        }
+        lo
+    }
+
+    /// Is `n` a merged victim? A victim is dead (its label is a stale copy
+    /// and its edges were redirected to the survivor), so the checked subset
+    /// scans do not post it as a candidate blocker.
+    #[inline]
+    fn merged_victim(&self, n: Node) -> bool {
+        self.number && self.merged[n].is_some()
+    }
+
+    /// The predecessor of `n` in the merged graph: `resolve(pred(n))`. A
+    /// merge redirects the victim's edges to the survivor, so a victim's
+    /// successor becomes a successor of the survivor (which has the smaller
+    /// id). The checked mode-1 scan's indirect blocking and the certificate
+    /// read this predecessor (docs/HYBRID-CB-HT.md section 9, "Predecessor
+    /// fold"). A merge or its undo notes the victim, below every successor.
+    #[inline]
+    fn live_pred(&self, n: Node) -> Option<Node> {
+        self.pred[n].map(|p| self.resolve(p))
+    }
+
+    /// A merge of `v` changes whether `v` is a successor of `pred(v)` for
+    /// `SubsetGain::back_need`, and whether `v` can witness for its
+    /// children (`SubsetGain::back_witnessed`).
+    #[inline]
+    fn merge_note_node(&self, v: Node) -> Node {
+        let lo = self.label_note_node(v);
+        self.pred.get(v).copied().flatten().map_or(lo, |p| p.min(lo))
     }
 
     /// Is blockable node `n` blocked by an EARLIER unblocked node (subset blocking)?
@@ -1149,7 +1241,7 @@ impl Ext {
                     }
                     self.block_index[e].push(node);
                 }
-                self.i2_note(node);
+                self.i2_note(self.label_note_node(node));
                 self.queue.push(Event::Concept(node, lit));
                 self.mark_disj_dirty(node, lit);
                 // Nominals: a fresh positive nominal concept makes `node` a carrier
@@ -1185,6 +1277,22 @@ impl Ext {
         // new edge into `t` can change `t`'s blocking signature: widen the suffix.
         if self.block3 {
             self.i2_note(t);
+        }
+        if self.edge_note {
+            self.i2_note(self.edge_note_node(s, t));
+        }
+    }
+
+    /// The smallest node whose checked subset-blocking status can read the
+    /// edge `s -> t`: both endpoints, except that a node ignores the edge to
+    /// its own successor (`SubsetGain::admits` skips it, and mode 5's B2a only
+    /// reads the edge to the predecessor), so a successor edge concerns `t`.
+    #[inline]
+    fn edge_note_node(&self, s: Node, t: Node) -> Node {
+        if self.pred[t] == Some(s) {
+            t
+        } else {
+            s.min(t)
         }
     }
 
@@ -1268,6 +1376,13 @@ impl Ext {
         }
         self.trail.push(Trail::Merge(victim));
         self.merged[victim] = Some(survivor);
+        if self.back_note {
+            self.i2_note(self.merge_note_node(victim));
+        } else if self.edge_note {
+            // The checked scans post no merged victim as a candidate blocker,
+            // and their indirect blocking reads `Ext::live_pred`.
+            self.i2_note(victim);
+        }
         self.merge_deps[victim] = mdep.clone();
         let cs: Vec<(CLit, DepSet)> = self.concepts[victim]
             .iter()
@@ -1403,9 +1518,7 @@ impl Ext {
         while self.trail.len() > mark {
             match self.trail.pop().unwrap() {
                 Trail::Concept(node, lit) => {
-                    if node < min_aff {
-                        min_aff = node;
-                    }
+                    min_aff = min_aff.min(self.label_note_node(node));
                     self.concepts[node].remove(&lit);
                     if let Some(block_bits) = &mut self.block_bits {
                         let e = Ext::enc_lit(lit);
@@ -1425,6 +1538,9 @@ impl Ext {
                     self.mark_disj_dirty(node, lit);
                 }
                 Trail::Edge(r, s, t) => {
+                    if self.edge_note {
+                        min_aff = min_aff.min(self.edge_note_node(s, t));
+                    }
                     if let Some(pos) = self.out_edges[s]
                         .iter()
                         .position(|&(rr, tt, _)| rr == r && tt == t)
@@ -1468,6 +1584,11 @@ impl Ext {
                     }
                 }
                 Trail::Merge(v) => {
+                    if self.back_note && v < self.pred.len() {
+                        min_aff = min_aff.min(self.merge_note_node(v));
+                    } else if self.edge_note {
+                        min_aff = min_aff.min(v);
+                    }
                     if v < self.merged.len() {
                         self.merged[v] = None;
                         self.merge_deps[v] = dep_empty();
@@ -1619,6 +1740,13 @@ impl Ext {
         self.i2_last_lo = 0;
         self.i3_sig.clear();
         self.i3_node_sig.clear();
+        self.cs_lists.clear();
+        self.cs_log.clear();
+        self.cs_blocked.clear();
+        self.cs_direct.clear();
+        self.cs_rel.clear();
+        self.cs_fa.clear();
+        self.cs_back.clear();
         self.node_obligs.clear();
         self.node_obligs.resize_with(self.concepts.len(), Vec::new);
         self.oblig_sat.clear();
@@ -2352,7 +2480,37 @@ struct SubsetGain {
     multi_in: HashSet<R>,
     any: HashSet<CLit>,
     two_hop: bool,
+    /// Existential heads `∃r.F` by role: the fillers (`ex_fill`) and, per
+    /// `(r, F)`, the body literals at the existential's own variable of every
+    /// clause with that head (`ex_trig`). A blocker `w'` whose label triggers
+    /// `∃r.F` and witnesses it only through an edge to a non-successor (the
+    /// inverse edge to its predecessor) passes on to the blocked position an
+    /// obligation that the copies of `w'`'s successors do not witness, so the
+    /// pair is admitted only when the blocked node's own predecessor witnesses
+    /// it (`back_need`, `back_witnessed`).
+    ex_fill: HashMap<R, Vec<CLit>>,
+    ex_trig: HashMap<(R, CLit), Vec<Vec<CLit>>>,
+    /// Some clause body has two role atoms between the same two variables
+    /// (for example disjoint roles, `r(x, y) ∧ s(x, y) → ⊥`). The
+    /// predecessor fold can join a kept edge and a copied edge between the
+    /// same two nodes, so with such a clause `back_need` keeps the
+    /// predecessor's witnesses (see `pred_fold_ok`).
+    parallel: bool,
+    /// Some edge can point from a node to a non-successor: a role head
+    /// whose source is not the clause centre (inverse roles) or an equality
+    /// head (merges redirect edges), and there are no nominals and no
+    /// first-class cardinality rules. Without it `back_need` is empty.
+    back: bool,
+    /// Dense bitset (by `Ext::enc_lit`) of the union of every set above: a
+    /// literal outside it is relevant for no edge, so `admits` skips it
+    /// without probing the per-edge sets.
+    relevant_bits: Vec<u64>,
+    /// Distinct for every built value (never 0), so cached per-node results
+    /// (`Ext::cs_rel`) are not reused across another clause set.
+    id: u64,
 }
+
+static SUBSET_GAIN_IDS: AtomicU64 = AtomicU64::new(1);
 
 impl SubsetGain {
     fn empty() -> SubsetGain {
@@ -2365,7 +2523,21 @@ impl SubsetGain {
             multi_in: HashSet::default(),
             any: HashSet::default(),
             two_hop: false,
+            ex_fill: HashMap::default(),
+            ex_trig: HashMap::default(),
+            back: false,
+            parallel: false,
+            relevant_bits: Vec::new(),
+            id: SUBSET_GAIN_IDS.fetch_add(1, Ordering::Relaxed),
         }
+    }
+
+    #[inline]
+    fn relevant_anywhere(&self, k: CLit) -> bool {
+        let e = Ext::enc_lit(k);
+        self.relevant_bits
+            .get(e >> 6)
+            .is_some_and(|word| word & (1u64 << (e & 63)) != 0)
     }
 
     fn build(clauses: &[ClauseRec], card_defs: &HashMap<C, CardDef>, nominals: &[C]) -> SubsetGain {
@@ -2378,8 +2550,15 @@ impl SubsetGain {
             let mut neighbours: Vec<Var> = Vec::new();
             let mut out_roles: Vec<(R, Var)> = Vec::new();
             let mut in_roles: Vec<(R, Var)> = Vec::new();
+            let mut pairs: Vec<(Var, Var)> = Vec::new();
             for atom in &clause.body {
                 if let Atom::Role { r, s, t } = atom {
+                    let pair = ((*s).min(*t), (*s).max(*t));
+                    if pairs.contains(&pair) {
+                        g.parallel = true;
+                    } else {
+                        pairs.push(pair);
+                    }
                     if *s == X && *t != X {
                         out_roles.push((*r, *t));
                     } else if *t == X && *s != X {
@@ -2427,7 +2606,29 @@ impl SubsetGain {
                 g.multi_out.extend(out_roles.iter().map(|(r, _)| *r));
                 g.multi_in.extend(in_roles.iter().map(|(r, _)| *r));
             }
+            for atom in &clause.head {
+                match *atom {
+                    Atom::Role { s, .. } if s != X => g.back = true,
+                    Atom::Eq { .. } => g.back = true,
+                    _ => {}
+                }
+            }
         }
+        // With nominals the merges of the o-rule link nodes to shared
+        // nominal nodes, which no unravelling copies; the finite certificate
+        // is not emitted then, and `back_need` stays empty (see section 9,
+        // "Inverse witnesses").
+        //
+        // The card arm (first-class cardinality rules) has no finite
+        // certificate either: its number rules count `r`-neighbours, the
+        // predecessor included, and the fold changes those counts at the
+        // blocker's successors, so `back_need` would not make its fold a
+        // model. It keeps the body-literal rule, whose argument is the
+        // infinite unravelling, and its cost (ore_ont_205, ore_ont_7499).
+        if !nominals.is_empty() || !card_defs.is_empty() {
+            g.back = false;
+        }
+        (g.ex_fill, g.ex_trig) = existential_triggers(clauses);
         // The number and recognition rules at a node `u` with marker `m` count
         // `u`'s `r`-out-edges whose target carries the filler: an instance
         // centred at `u` with the shape of `m(x) ∧ r(x, y1) ∧ … ∧ F(y1) ∧ …`.
@@ -2440,6 +2641,22 @@ impl SubsetGain {
         for &nominal in nominals {
             both(&mut g.any, nominal);
         }
+        let mut bits: Vec<u64> = Vec::new();
+        for set in std::iter::once(&g.any)
+            .chain(g.nb_in.values())
+            .chain(g.nb_out.values())
+            .chain(g.ctr_in.values())
+            .chain(g.ctr_out.values())
+        {
+            for &k in set {
+                let e = Ext::enc_lit(k);
+                if e >> 6 >= bits.len() {
+                    bits.resize((e >> 6) + 1, 0);
+                }
+                bits[e >> 6] |= 1u64 << (e & 63);
+            }
+        }
+        g.relevant_bits = bits;
         g
     }
 
@@ -2447,6 +2664,7 @@ impl SubsetGain {
     /// and no edge points back to a predecessor.
     fn trivial(&self, inverse: bool) -> bool {
         !inverse
+            && !self.back_possible()
             && !self.two_hop
             && self.any.is_empty()
             && self.multi_in.is_empty()
@@ -2456,18 +2674,174 @@ impl SubsetGain {
             && (self.multi_out.is_empty() && self.ctr_out.values().all(HashSet::is_empty))
     }
 
-    /// May `w` be blocked by `wp`, given `L(w) ⊆ L(wp)`?
+    /// May `w` be blocked by `wp`, given `L(w) ⊆ L(wp)`? Every caller
+    /// establishes that inclusion first; equal sizes then mean equal labels.
     fn admits(&self, ext: &Ext, w: Node, wp: Node) -> bool {
-        if self.two_hop {
+        match self.kept_edge_sets(ext, w) {
+            None => false,
+            Some(relevant) => {
+                self.gain_irrelevant(ext, w, wp, &relevant, ext.concepts[wp].keys())
+                    && self.back_witnessed(ext, w, &self.back_need(ext, wp))
+            }
+        }
+    }
+
+    /// Can the predecessor fold copy the edges between `m` and its own
+    /// predecessor `p'` to a node blocked by `m`? The copies make the blocked
+    /// position a second neighbour of `p'` with `m`'s label, so no role on
+    /// those edges may be counted at `p'` (a clause with two or more
+    /// neighbours or an equality head over it: `multi_in` for `m -r-> p'`,
+    /// `multi_out` for `p' -r-> m`), and no clause may read two role atoms
+    /// between the same two nodes (`parallel`), since the blocked node's
+    /// own edges to `p'` are kept beside the copies. Reads `pred(m)` (fixed
+    /// for `m`'s lifetime) and `m`'s in- and out-edges.
+    fn pred_fold_ok(&self, ext: &Ext, m: Node) -> bool {
+        if self.parallel {
             return false;
         }
-        let mut relevant: Vec<&HashSet<CLit>> = Vec::new();
+        let Some(p) = ext.pred[m] else { return false };
+        ext.out_edges[m].iter().all(|&(r, t, _)| t != p || !self.multi_in.contains(&r))
+            && ext.in_edges[m].iter().all(|&(r, s, _)| s != p || !self.multi_out.contains(&r))
+    }
+
+    /// Can some existential be witnessed through a non-successor edge?
+    #[inline]
+    fn back_possible(&self) -> bool {
+        self.back && !self.ex_fill.is_empty()
+    }
+
+    /// The existentials `∃r.F` that `L(m)` triggers (the body literals at the
+    /// existential's variable of some clause with that head are in `L(m)`)
+    /// and that `m` witnesses through an `r`-edge to a non-successor `u`
+    /// with `F ∈ L(u)`. The unravelled position of a node blocked by `m`
+    /// copies `m`'s obligations and its successor edges, not the edge to
+    /// `u`, so the copies may leave these unwitnessed. A successor of `m`
+    /// that also witnesses one is not consulted (conservative: the pair is
+    /// then judged as if it did not), so the result reads only `L(m)`, `m`'s
+    /// out-edges, and `pred`, merge status and label of their non-successor
+    /// targets. Witnesses at a non-blockable node other than `pred(m)`
+    /// (nominal and ABox nodes) are not counted; see the loop.
+    ///
+    /// Witnesses at `pred(m)` are dropped when `pred_fold_ok(m)`: the
+    /// certificate then uses the predecessor fold for the pair (see
+    /// `back_need_strict`), which copies `m`'s edges to `pred(m)` to the
+    /// blocked position, and the infinite unravelling of section 9 copies
+    /// them as well, so the pair needs only the body-literal and
+    /// counted-role rules.
+    fn back_need(&self, ext: &Ext, m: Node) -> smallvec::SmallVec<[(R, CLit); 2]> {
+        self.back_need_with(ext, m, true)
+    }
+
+    /// `back_need` without dropping the predecessor's witnesses (the rule of
+    /// 2026-10-30): the obligations that the successor fold leaves
+    /// unwitnessed unless the blocked node's own predecessor witnesses them.
+    /// The certificate uses the predecessor fold for a pair exactly when
+    /// these are not witnessed.
+    fn back_need_strict(&self, ext: &Ext, m: Node) -> smallvec::SmallVec<[(R, CLit); 2]> {
+        self.back_need_with(ext, m, false)
+    }
+
+    fn back_need_with(&self, ext: &Ext, m: Node, relax: bool) -> smallvec::SmallVec<[(R, CLit); 2]> {
+        let mut need: smallvec::SmallVec<[(R, CLit); 2]> = smallvec::SmallVec::new();
+        if !self.back_possible() {
+            return need;
+        }
+        let pred_copy = relax && self.pred_fold_ok(ext, m);
+        let mut via_pred: smallvec::SmallVec<[(R, CLit); 2]> = smallvec::SmallVec::new();
+        let lm = &ext.concepts[m];
+        for &(r, u, _) in &ext.out_edges[m] {
+            // A merged victim is dead; its edges were redirected to the
+            // survivor, which has its own out-edge here.
+            if ext.merged[u].is_some() || ext.pred[u] == Some(m) {
+                continue;
+            }
+            // A shared individual (the query root reached otherwise than as
+            // the predecessor, a nominal or ABox node) is not unravelled: the
+            // infinite unravelling keeps one copy of it and links every copy
+            // of `m` to it, and the finite certificate is not emitted with
+            // nominals or ABox individuals (fail closed if Lean rejects).
+            if !ext.blockable[u] && ext.pred[m] != Some(u) {
+                continue;
+            }
+            let Some(fillers) = self.ex_fill.get(&r) else { continue };
+            let lu = &ext.concepts[u];
+            let at_pred = pred_copy && ext.pred[m] == Some(u);
+            let mut consider = |fil: CLit, need: &mut smallvec::SmallVec<[(R, CLit); 2]>| {
+                if at_pred {
+                    if !via_pred.contains(&(r, fil)) {
+                        via_pred.push((r, fil));
+                    }
+                }
+                if need.contains(&(r, fil)) {
+                    return;
+                }
+                let triggered = self
+                    .ex_trig
+                    .get(&(r, fil))
+                    .is_some_and(|ts| ts.iter().any(|t| t.iter().all(|k| lm.contains_key(k))));
+                if triggered {
+                    need.push((r, fil));
+                }
+            };
+            // The fillers `u` carries: scan the shorter of the filler list
+            // and `L(u)` (the same set either way).
+            if fillers.len() <= lu.len() {
+                for &fil in fillers {
+                    if lu.contains_key(&fil) {
+                        consider(fil, &mut need);
+                    }
+                }
+            } else {
+                for &k in lu.keys() {
+                    if self.ex_trig.contains_key(&(r, k)) {
+                        consider(k, &mut need);
+                    }
+                }
+            }
+        }
+        // A witness at `pred(m)` covers the obligation in the predecessor
+        // fold, whatever other non-successor witnesses exist.
+        if !via_pred.is_empty() {
+            need.retain(|entry| !via_pred.contains(entry));
+        }
+        need.sort_unstable_by_key(|&(r, k)| (r, Ext::enc_lit(k)));
+        need
+    }
+
+    /// Does `w`'s own predecessor witness every obligation of `need` (over
+    /// an out-edge of `w`, which the unravelling keeps)? The predecessor of
+    /// a kept blocked node is kept, unblocked and keeps its own label.
+    fn back_witnessed(&self, ext: &Ext, w: Node, need: &[(R, CLit)]) -> bool {
+        if need.is_empty() {
+            return true;
+        }
+        let Some(p) = ext.pred[w] else { return false };
+        if ext.merged[p].is_some() {
+            return false;
+        }
+        need.iter().all(|&(r, fil)| {
+            ext.has_concept(p, fil) && ext.out_edges[w].iter().any(|&(rr, t, _)| rr == r && t == p)
+        })
+    }
+
+    /// The literal sets relevant for `w`'s kept edges, or `None` when no
+    /// pair with `w` as the blocked node is admitted (a role atom between
+    /// two neighbours, or a kept edge on a counted role).
+    fn kept_edge_sets<'a>(
+        &'a self,
+        ext: &Ext,
+        w: Node,
+    ) -> Option<smallvec::SmallVec<[&'a HashSet<CLit>; 8]>> {
+        if self.two_hop {
+            return None;
+        }
+        let mut relevant: smallvec::SmallVec<[&HashSet<CLit>; 8]> = smallvec::SmallVec::new();
         if !self.any.is_empty() {
             relevant.push(&self.any);
         }
         for (r, _, _) in &ext.in_edges[w] {
             if self.multi_in.contains(r) {
-                return false;
+                return None;
             }
             relevant.extend(self.nb_in.get(r));
             relevant.extend(self.ctr_in.get(r));
@@ -2477,19 +2851,78 @@ impl SubsetGain {
                 continue;
             }
             if self.multi_out.contains(r) {
-                return false;
+                return None;
             }
             relevant.extend(self.nb_out.get(r));
             relevant.extend(self.ctr_out.get(r));
         }
+        Some(relevant)
+    }
+
+    /// Given `L(w) ⊆ L(wp)` and `w`'s kept-edge sets, is no gained literal
+    /// relevant? `literals` must contain every literal of `L(wp)` that is
+    /// relevant anywhere (all of `L(wp)`, or the subset cached in
+    /// `Ext::cs_rel`); the others pass the test trivially.
+    fn gain_irrelevant<'k>(
+        &self,
+        ext: &Ext,
+        w: Node,
+        wp: Node,
+        relevant: &[&HashSet<CLit>],
+        mut literals: impl Iterator<Item = &'k CLit>,
+    ) -> bool {
         if relevant.is_empty() {
             return true;
         }
         let lw = &ext.concepts[w];
-        ext.concepts[wp]
-            .keys()
-            .all(|k| lw.contains_key(k) || !relevant.iter().any(|set| set.contains(k)))
+        let lwp = &ext.concepts[wp];
+        debug_assert!(lw.keys().all(|k| lwp.contains_key(k)));
+        if lwp.len() == lw.len() {
+            return true;
+        }
+        literals.all(|k| {
+            !self.relevant_anywhere(*k)
+                || lw.contains_key(k)
+                || !relevant.iter().any(|set| set.contains(k))
+        })
     }
+}
+
+/// Existential heads `∃r.F` of `clauses`: the fillers by role, and for each
+/// `(r, F)` the body literals at the existential's variable of every clause
+/// with that head (sorted, deduplicated). `L(n)` triggers `∃r.F` when it
+/// contains one of these literal sets; the other body atoms are ignored, so
+/// this over-approximates the clause instances whose body holds at `n`.
+fn existential_triggers(
+    clauses: &[ClauseRec],
+) -> (HashMap<R, Vec<CLit>>, HashMap<(R, CLit), Vec<Vec<CLit>>>) {
+    let mut ex_fill: HashMap<R, Vec<CLit>> = HashMap::default();
+    let mut ex_trig: HashMap<(R, CLit), Vec<Vec<CLit>>> = HashMap::default();
+    for (clause, _, _) in clauses {
+        for atom in &clause.head {
+            if let Atom::Exists { r, fil, t } = *atom {
+                let mut trigger: Vec<CLit> = clause
+                    .body
+                    .iter()
+                    .filter_map(|a| match *a {
+                        Atom::Concept { lit, t: v } if v == t => Some(lit),
+                        _ => None,
+                    })
+                    .collect();
+                trigger.sort_unstable_by_key(|k| Ext::enc_lit(*k));
+                trigger.dedup();
+                let fillers = ex_fill.entry(r).or_default();
+                if !fillers.contains(&fil) {
+                    fillers.push(fil);
+                }
+                let triggers = ex_trig.entry((r, fil)).or_default();
+                if !triggers.contains(&trigger) {
+                    triggers.push(trigger);
+                }
+            }
+        }
+    }
+    (ex_fill, ex_trig)
 }
 
 fn label_subset(ext: &Ext, n: Node, m: Node) -> bool {
@@ -2497,6 +2930,33 @@ fn label_subset(ext: &Ext, n: Node, m: Node) -> bool {
         .keys()
         .all(|k| ext.concepts[m].contains_key(k))
 }
+/// Is some node in `n`'s rarest-literal posting list (`lists`, encoded
+/// literal to candidate blockers in id order) a label superset of `n` that
+/// `accept` admits? The answer does not depend on which list is scanned:
+/// every superset of `L(n)` is in the list of each literal of `n`.
+fn subset_blocker_exists(
+    ext: &Ext,
+    lists: &[Vec<Node>],
+    n: Node,
+    mut accept: impl FnMut(Node) -> bool,
+) -> bool {
+    let ln = &ext.concepts[n];
+    let lnlen = ln.len();
+    let mut best: &[Node] = &[];
+    let mut best_len = usize::MAX;
+    for k in ln.keys() {
+        let candidates = lists.get(Ext::enc_lit(*k)).map_or(&[][..], |v| v.as_slice());
+        if candidates.len() < best_len {
+            best_len = candidates.len();
+            best = candidates;
+        }
+    }
+    best.iter().any(|&m| {
+        let lm = &ext.concepts[m];
+        lm.len() >= lnlen && ln.keys().all(|k| lm.contains_key(k)) && accept(m)
+    })
+}
+
 fn ancestor_blocked(ext: &Ext, n: Node) -> bool {
     if !ext.blockable[n] {
         return false;
@@ -2631,6 +3091,154 @@ enum LeanHtNormalizedRoleClause {
         role: usize,
         source: usize,
     },
+}
+
+/// Wrap a raw (version 1 or 2) global decision document, whose source and
+/// target coincide, in the version-3 normalized wire with an explicit
+/// identity normalization, as the source-bound ordinary global checker
+/// expects. Already normalized documents are returned unchanged.
+fn lean_identity_normalized_global_source(
+    source: serde_json::Value,
+) -> Result<serde_json::Value, String> {
+    let identity_normalization =
+        |target: &serde_json::Value| -> Result<Vec<serde_json::Value>, String> {
+            let variable_count = target["variable_count"]
+                .as_u64()
+                .or_else(|| {
+                    target["evidence"]["regular_sat"]["certificate"]["variable_count"].as_u64()
+                })
+                .or_else(|| {
+                    target["evidence"]["finite_sat"]["certificate"]["variable_count"].as_u64()
+                })
+                .or_else(|| {
+                    target["evidence"]["finite_unsat"]["certificate"]["variable_count"].as_u64()
+                })
+                .ok_or_else(|| {
+                    "identity-normalized global decision has no variable_count".to_string()
+                })? as usize;
+            // A regular certificate carries no `ontology` field. Lean
+            // decodes its target ontology as the role clauses followed by
+            // the residual clauses (`FiniteRegularCertificate.ontology`),
+            // so the identity normalization must list exactly those
+            // clauses in that order.
+            let regular_ontology = target["evidence"]["regular_sat"]["certificate"]
+                .as_object()
+                .map(|_| {
+                    lean_regular_wire_ontology(
+                        &target["evidence"]["regular_sat"]["certificate"],
+                    )
+                })
+                .transpose()?;
+            let ontology = target["ontology"]
+                .as_array()
+                .or(regular_ontology.as_ref())
+                .or_else(|| {
+                    target["evidence"]["finite_sat"]["certificate"]["ontology"].as_array()
+                })
+                .or_else(|| {
+                    target["evidence"]["finite_unsat"]["certificate"]["ontology"].as_array()
+                })
+                .ok_or_else(|| {
+                    "identity-normalized global decision has no ontology".to_string()
+                })?;
+            let representatives: Vec<_> = (0..variable_count).collect();
+            let representative_paths: Vec<Vec<_>> =
+                (0..variable_count).map(|variable| vec![variable]).collect();
+            Ok(ontology
+                .iter()
+                .map(|clause| {
+                    serde_json::json!({
+                        "source": clause,
+                        "representatives": representatives,
+                        "representative_paths": representative_paths,
+                    })
+                })
+                .collect())
+        };
+    Ok(match source.get("version").and_then(serde_json::Value::as_u64) {
+        Some(1) => {
+            let regular = source
+                .get("evidence")
+                .and_then(serde_json::Value::as_object)
+                .is_some_and(|evidence| {
+                    evidence.contains_key("regular_sat")
+                        || evidence.contains_key("finite_sat")
+                        || evidence.contains_key("finite_unsat")
+                });
+            let payload = if regular {
+                serde_json::json!({ "regular": { "certificate": source.clone() } })
+            } else {
+                serde_json::json!({ "plain": { "certificate": source.clone() } })
+            };
+            serde_json::json!({
+                "version": 3,
+                "normalization": identity_normalization(&source)?,
+                "payload": payload,
+            })
+        }
+        Some(2) => serde_json::json!({
+            "version": 3,
+            "normalization": identity_normalization(&source)?,
+            "payload": { "equality": { "certificate": source } },
+        }),
+        _ => source,
+    })
+}
+
+/// The target ontology Lean decodes from a serialized regular certificate:
+/// `FiniteRegularCertificate.ontology` is the role clauses, each read through
+/// `NormalizedRoleClause.toClause`, followed by the residual clauses. The
+/// result uses the `WireClause` JSON shape.
+fn lean_regular_wire_ontology(
+    certificate: &serde_json::Value,
+) -> Result<Vec<serde_json::Value>, String> {
+    let field = |value: &serde_json::Value, name: &str| -> Result<u64, String> {
+        value[name]
+            .as_u64()
+            .ok_or_else(|| format!("regular role clause has no numeric {name}"))
+    };
+    let role = |role: u64, source: u64, target: u64| {
+        serde_json::json!({ "role": { "role": role, "source": source, "target": target } })
+    };
+    let role_clauses = certificate["role_clauses"]
+        .as_array()
+        .ok_or_else(|| "regular certificate has no role_clauses".to_string())?;
+    let residual = certificate["residual"]
+        .as_array()
+        .ok_or_else(|| "regular certificate has no residual".to_string())?;
+    let mut ontology = Vec::with_capacity(role_clauses.len() + residual.len());
+    for clause in role_clauses {
+        let object = clause
+            .as_object()
+            .filter(|object| object.len() == 1)
+            .ok_or_else(|| "regular role clause is not a tagged object".to_string())?;
+        let (tag, value) = object.iter().next().expect("one entry");
+        let (body, head) = match tag.as_str() {
+            "subRole" => (
+                vec![role(field(value, "premise")?, field(value, "source")?, field(value, "target")?)],
+                vec![role(field(value, "conclusion")?, field(value, "source")?, field(value, "target")?)],
+            ),
+            "inverseRole" => (
+                vec![role(field(value, "premise")?, field(value, "source")?, field(value, "target")?)],
+                vec![role(field(value, "conclusion")?, field(value, "target")?, field(value, "source")?)],
+            ),
+            "chain" => (
+                vec![
+                    role(field(value, "first")?, field(value, "source")?, field(value, "middle")?),
+                    role(field(value, "second")?, field(value, "middle")?, field(value, "target")?),
+                ],
+                vec![role(field(value, "conclusion")?, field(value, "source")?, field(value, "target")?)],
+            ),
+            "reflexive" => (
+                Vec::new(),
+                vec![role(field(value, "role")?, field(value, "source")?, field(value, "source")?)],
+            ),
+            other => return Err(format!("unknown regular role clause {other}")),
+        };
+        ontology.push(serde_json::json!({ "body": body, "head": head }));
+    }
+    ontology.extend(residual.iter().cloned());
+    Ok(ontology)
 }
 
 #[derive(Clone, serde::Serialize)]
@@ -4642,6 +5250,9 @@ struct ClauseIndex {
     /// label". B2a consults it: for each ∀r.D the blocker w' carries, the predecessor
     /// v must already carry D. Built once at construction.
     forall_idx: HashMap<(CLit, R), Vec<CLit>>,
+    /// Dense bitset (by `Ext::enc_lit`) of the body concepts `C0` of
+    /// `forall_idx`: a label literal outside it never makes B2a fail.
+    forall_ops: Vec<u64>,
     /// Roles occurring in an equality-head (at-most/functionality) clause of
     /// the clause set. Each `Ht` starts its `cert_number_roles` from this set;
     /// `set_card_defs` extends that per-`Ht` copy.
@@ -4719,8 +5330,18 @@ impl ClauseIndex {
                 })
             })
             .collect();
+        let forall_idx = index_forall(clauses);
+        let mut forall_ops: Vec<u64> = Vec::new();
+        for (c0, _) in forall_idx.keys() {
+            let e = Ext::enc_lit(*c0);
+            if e >> 6 >= forall_ops.len() {
+                forall_ops.resize((e >> 6) + 1, 0);
+            }
+            forall_ops[e >> 6] |= 1u64 << (e & 63);
+        }
         ClauseIndex {
-            forall_idx: index_forall(clauses),
+            forall_idx,
+            forall_ops,
             inverse_bridge: has_inverse_bridge(clauses),
             number_roles,
             global_disj_set: global_disj.iter().copied().collect(),
@@ -10381,7 +11002,7 @@ impl Ht {
                 path.display()
             )
         })?;
-        let status = std::process::Command::new(checker)
+        let status = crate::lean_checkers::CheckerCommand::new(checker)
             .arg(&path)
             .stdout(std::process::Stdio::null())
             .status()
@@ -11595,78 +12216,7 @@ impl Ht {
             })?;
         let source: serde_json::Value =
             serde_json::from_str(source).map_err(|error| error.to_string())?;
-        let identity_normalization =
-            |target: &serde_json::Value| -> Result<Vec<serde_json::Value>, String> {
-                let variable_count = target["variable_count"]
-                    .as_u64()
-                    .or_else(|| {
-                        target["evidence"]["regular_sat"]["certificate"]["variable_count"].as_u64()
-                    })
-                    .or_else(|| {
-                        target["evidence"]["finite_sat"]["certificate"]["variable_count"].as_u64()
-                    })
-                    .or_else(|| {
-                        target["evidence"]["finite_unsat"]["certificate"]["variable_count"].as_u64()
-                    })
-                    .ok_or_else(|| {
-                        "identity-normalized global decision has no variable_count".to_string()
-                    })? as usize;
-                let ontology = target["ontology"]
-                    .as_array()
-                    .or_else(|| {
-                        target["evidence"]["regular_sat"]["certificate"]["ontology"].as_array()
-                    })
-                    .or_else(|| {
-                        target["evidence"]["finite_sat"]["certificate"]["ontology"].as_array()
-                    })
-                    .or_else(|| {
-                        target["evidence"]["finite_unsat"]["certificate"]["ontology"].as_array()
-                    })
-                    .ok_or_else(|| {
-                        "identity-normalized global decision has no ontology".to_string()
-                    })?;
-                let representatives: Vec<_> = (0..variable_count).collect();
-                let representative_paths: Vec<Vec<_>> =
-                    (0..variable_count).map(|variable| vec![variable]).collect();
-                Ok(ontology
-                    .iter()
-                    .map(|clause| {
-                        serde_json::json!({
-                            "source": clause,
-                            "representatives": representatives,
-                            "representative_paths": representative_paths,
-                        })
-                    })
-                    .collect())
-            };
-        let source = match source.get("version").and_then(serde_json::Value::as_u64) {
-            Some(1) => {
-                let regular = source
-                    .get("evidence")
-                    .and_then(serde_json::Value::as_object)
-                    .is_some_and(|evidence| {
-                        evidence.contains_key("regular_sat")
-                            || evidence.contains_key("finite_sat")
-                            || evidence.contains_key("finite_unsat")
-                    });
-                let payload = if regular {
-                    serde_json::json!({ "regular": { "certificate": source.clone() } })
-                } else {
-                    serde_json::json!({ "plain": { "certificate": source.clone() } })
-                };
-                serde_json::json!({
-                    "version": 3,
-                    "normalization": identity_normalization(&source)?,
-                    "payload": payload,
-                })
-            }
-            Some(2) => serde_json::json!({
-                "version": 3,
-                "normalization": identity_normalization(&source)?,
-                "payload": { "equality": { "certificate": source } },
-            }),
-            _ => source,
-        };
+        let source = lean_identity_normalized_global_source(source)?;
         let production = match production_kind {
             "sat" => serde_json::json!({ "sat": { "run": run } }),
             "unsat" => serde_json::json!({ "unsat": { "run": run } }),
@@ -18755,11 +19305,34 @@ impl Ht {
     /// back to `v` (no inverse) ⇒ B1 subset alone suffices. See
     /// docs/KONCLUDE-BLOCKING-SPEC.md.
     fn b2a_holds(&self, w: Node, wp: Node, v: Node) -> bool {
+        self.b2a_holds_over(w, v, self.ext.concepts[wp].keys())
+    }
+
+    /// Is `c0` the body concept of some `forall_idx` entry?
+    #[inline]
+    fn forall_operand(&self, c0: CLit) -> bool {
+        let e = Ext::enc_lit(c0);
+        self.index
+            .forall_ops
+            .get(e >> 6)
+            .is_some_and(|word| word & (1u64 << (e & 63)) != 0)
+    }
+
+    /// B2a over the blocker literals `operands`, which must include every
+    /// literal of `L(wp)` that is a `forall_idx` body concept (all of
+    /// `L(wp)`, or the subset cached in `Ext::cs_fa`); no other literal has
+    /// a `forall_idx` entry.
+    fn b2a_holds_over<'k>(
+        &self,
+        w: Node,
+        v: Node,
+        operands: impl Iterator<Item = &'k CLit> + Clone,
+    ) -> bool {
         for (r, t, _) in &self.ext.out_edges[w] {
             if *t != v {
                 continue;
             }
-            for c0 in self.ext.concepts[wp].keys() {
+            for c0 in operands.clone() {
                 if let Some(heads) = self.index.forall_idx.get(&(*c0, *r)) {
                     for d in heads {
                         if !self.ext.concepts[v].contains_key(d) {
@@ -18822,6 +19395,457 @@ impl Ht {
         false
     }
 
+    /// `KM_HT_SUBSET_MODEL_CERT=<dir>`: write the subset-blocked SAT terminal
+    /// as a `WireSubsetUnravelling`
+    /// (lean/ContextCalculus/HypertableauSubsetUnravelling.lean) and, when
+    /// `KM_HT_SUBSET_MODEL_CHECKER` names `ht-subset-unravelling-check`, run it.
+    /// Returns false (the caller then reports no verdict) when the checker is
+    /// set and the terminal has no certificate or the checker rejects it.
+    fn emit_subset_model_certificate(&mut self, dir: &std::path::Path, seed: &[CLit]) -> bool {
+        static NONCE: AtomicU64 = AtomicU64::new(0);
+        let n = NONCE.fetch_add(1, Ordering::Relaxed);
+        let checker = std::env::var_os("KM_HT_SUBSET_MODEL_CHECKER");
+        let _ = std::fs::create_dir_all(dir);
+        let stem = dir.join(format!("ht-subset-{}-{n}", std::process::id()));
+        let (document, nodes, folds, pred_folds) = match self.subset_model_certificate_json(seed) {
+            Ok(certificate) => certificate,
+            Err(reason) => {
+                let _ = std::fs::write(stem.with_extension("err"), &reason);
+                eprintln!("KM_HT_SUBSET_MODEL_CERT terminal={n} not emitted: {reason}");
+                return checker.is_none();
+            }
+        };
+        let path = stem.with_extension("json");
+        if let Err(error) = std::fs::write(&path, &document) {
+            eprintln!("KM_HT_SUBSET_MODEL_CERT terminal={n} cannot write {}: {error}", path.display());
+            return checker.is_none();
+        }
+        let Some(checker) = checker else {
+            eprintln!(
+                "KM_HT_SUBSET_MODEL_CERT terminal={n} nodes={nodes} folds={folds} predecessor_folds={pred_folds} written"
+            );
+            return true;
+        };
+        let passes = |path: &std::path::Path| {
+            crate::lean_checkers::CheckerCommand::new(&checker)
+                .arg(path)
+                .stdout(std::process::Stdio::null())
+                .status()
+                .is_ok_and(|status| status.success())
+        };
+        // The section-9 construction relabels a blocked position with its
+        // blocker's label (with the predecessor fold for the pairs listed in
+        // `predecessor`); when Lean rejects that model, try the fold that
+        // keeps the blocked node's own label (either is a model if accepted).
+        let mut accepted = passes(&path);
+        let mut variant = if pred_folds > 0 { "relabel+predecessor" } else { "relabel" };
+        if !accepted && folds > 0 {
+            let own = stem.with_extension("own.json");
+            let keep_label = document.replacen("\"relabel\":true", "\"relabel\":false", 1);
+            if std::fs::write(&own, keep_label).is_ok() && passes(&own) {
+                accepted = true;
+                variant = "own-label";
+            }
+        }
+        eprintln!(
+            "KM_HT_SUBSET_MODEL_CERT terminal={n} nodes={nodes} folds={folds} predecessor_folds={pred_folds} variant={variant} {}",
+            if accepted { "accepted" } else { "rejected" }
+        );
+        accepted
+    }
+
+    /// The unravelled model of docs/HYBRID-CB-HT.md section 9 for the
+    /// current SAT terminal, as untrusted data for the Lean checker: the
+    /// kept nodes (every node except merged ones and the descendants of
+    /// blocked nodes), their labels, edges and existential obligations, the
+    /// predecessor pairs, one admitted unblocked blocker for every blocked
+    /// kept node, the pairs that use the predecessor fold, the root and the
+    /// query seed. Returns the document, the number of kept nodes, the
+    /// number of blocking pairs and the number of predecessor folds.
+    fn subset_model_certificate_json(&mut self, seed: &[CLit]) -> Result<(String, usize, usize, usize), String> {
+        if !matches!(self.block_mode, 1 | 5) {
+            return Err(format!("blocking mode {} is not subset blocking", self.block_mode));
+        }
+        if !self.card_defs.is_empty() {
+            return Err("first-class cardinality rules are outside the certificate's clauses".into());
+        }
+        if !self.nom_set.is_empty() || !self.ext.nominals.is_empty() {
+            return Err("nominal merging is outside the certificate's clauses".into());
+        }
+        if !self.ht_chain_fwd.is_empty() || !self.ht_chain_bwd.is_empty() || !self.ht_tcc_clauses.is_empty() {
+            return Err("role-chain composition is outside the certificate's clauses".into());
+        }
+        if !self.native_abox.individuals.is_empty() {
+            return Err("native ABox individuals are outside the certificate's clauses".into());
+        }
+        if self.ext.unsupported || self.ext.has_clash() {
+            return Err("the terminal is unsupported or clashes".into());
+        }
+        let nn = self.ext.num_nodes();
+        // The relation the search used: the incremental pass when it is on
+        // (compared with the full scan here as well), the full scan otherwise.
+        let full = self.compute_blocked();
+        let blocked = if self.checked_subset_incremental() {
+            let incremental = self.checked_subset_recompute();
+            if incremental != full {
+                return Err("incremental and full checked subset blocking differ".into());
+            }
+            incremental
+        } else {
+            full
+        };
+        let merged = |n: Node| self.ext.number && self.ext.merged[n].is_some();
+        let mut dropped = vec![false; nn];
+        for n in 0..nn {
+            // A victim's successor is the survivor's successor in the merged
+            // graph (`Ext::live_pred`), so it is kept unless the survivor is.
+            dropped[n] = merged(n) || self.ext.live_pred(n).is_some_and(|p| dropped[p] || blocked[p]);
+        }
+        let gain = self.subset_gain.clone();
+        let exact = self.block_mode == 1 && self.subset_exact;
+        let admitted = |n: Node, m: Node| {
+            label_subset(&self.ext, n, m)
+                && (exact || gain.as_ref().is_some_and(|gain| gain.admits(&self.ext, n, m)))
+                && (self.block_mode != 5 || self.ext.pred[n].is_some_and(|v| self.b2a_holds(n, m, v)))
+        };
+        let mut folds: Vec<(Node, Node)> = Vec::new();
+        for n in 0..nn {
+            if dropped[n] || !blocked[n] {
+                continue;
+            }
+            let Some(m) = (0..n).find(|&m| !dropped[m] && !blocked[m] && admitted(n, m)) else {
+                let other = (0..n).find(|&m| (blocked[m] || dropped[m]) && admitted(n, m));
+                let why = other.map_or(String::new(), |m| {
+                    let mut chain = Vec::new();
+                    let mut cur = Some(m);
+                    while let Some(c) = cur {
+                        chain.push(format!(
+                            "{c}{}{}",
+                            if merged(c) { "M" } else { "" },
+                            if blocked[c] { "B" } else { "" }
+                        ));
+                        cur = self.ext.pred[c];
+                    }
+                    format!(" (admitted by node {m}: blocked={} dropped={} chain {})", blocked[m], dropped[m], chain.join("<"))
+                });
+                return Err(format!("blocked node {n} has no admitted unblocked blocker in the unravelled model{why}"));
+            };
+            folds.push((n, m));
+        }
+        // The predecessor fold (lean `predecessorFolds`) for a pair whose
+        // blocker witnesses an obligation through its own predecessor that
+        // the successor fold leaves unwitnessed (`back_need_strict` not
+        // witnessed by the blocked node's own predecessor); the successor
+        // fold, as before, for every other pair.
+        let pred_folds: Vec<Node> = folds
+            .iter()
+            .filter(|&&(w, m)| {
+                gain.as_ref().is_some_and(|gain| {
+                    !gain.back_witnessed(&self.ext, w, &gain.back_need_strict(&self.ext, m))
+                })
+            })
+            .map(|&(w, _)| w)
+            .collect();
+        let mut id = vec![usize::MAX; nn];
+        let mut kept = 0usize;
+        for n in 0..nn {
+            if !dropped[n] {
+                id[n] = kept;
+                kept += 1;
+            }
+        }
+        let live = |n: Node| {
+            let n = self.ext.resolve(n);
+            (n < nn && !dropped[n]).then_some(n)
+        };
+        let mut variable_count = 1usize;
+        let mut concept_count = 1usize;
+        let mut role_count = 1usize;
+        let mut existentials: HashMap<R, Vec<CLit>> = HashMap::default();
+        for record in &self.index.clauses {
+            for atom in record.0.body.iter().chain(record.0.head.iter()) {
+                match *atom {
+                    Atom::Concept { lit, t } => {
+                        variable_count = variable_count.max(t as usize + 1);
+                        concept_count = concept_count.max(lit.c as usize + 1);
+                    }
+                    Atom::Role { r, s, t } => {
+                        variable_count = variable_count.max(s as usize + 1).max(t as usize + 1);
+                        role_count = role_count.max(r as usize + 1);
+                    }
+                    Atom::Exists { r, fil, t } => {
+                        variable_count = variable_count.max(t as usize + 1);
+                        concept_count = concept_count.max(fil.c as usize + 1);
+                        role_count = role_count.max(r as usize + 1);
+                    }
+                    Atom::Eq { s, t } => {
+                        variable_count = variable_count.max(s as usize + 1).max(t as usize + 1);
+                    }
+                }
+            }
+            for atom in &record.0.head {
+                if let Atom::Exists { r, fil, .. } = *atom {
+                    let fillers = existentials.entry(r).or_default();
+                    if !fillers.contains(&fil) {
+                        fillers.push(fil);
+                    }
+                }
+            }
+        }
+        let mut labels = Vec::new();
+        for n in (0..nn).filter(|&n| !dropped[n]) {
+            let mut lits: Vec<CLit> = self.ext.concepts[n].keys().copied().collect();
+            lits.sort_unstable_by_key(|k| Ext::enc_lit(*k));
+            for lit in lits {
+                concept_count = concept_count.max(lit.c as usize + 1);
+                labels.push(LeanHtLabel { node: id[n], literal: Self::lean_wire_lit(lit) });
+            }
+        }
+        let mut edges: Vec<(R, Node, Node)> = Vec::new();
+        for s in (0..nn).filter(|&s| !dropped[s]) {
+            for &(r, t, _) in &self.ext.out_edges[s] {
+                if let Some(t) = live(t) {
+                    edges.push((r, s, t));
+                }
+            }
+        }
+        edges.sort_unstable();
+        edges.dedup();
+        let mut obligations: Vec<(R, CLit, Node)> = Vec::new();
+        for oblig in &self.ext.obligations {
+            if let Some(n) = live(oblig.n) {
+                obligations.push((oblig.r, oblig.fil, n));
+            }
+        }
+        // An existential head that already held needs no recorded obligation
+        // in the search, but the Lean model reads every existential head atom
+        // through the obligation list; list every satisfied one that the
+        // node's label triggers (every clause instance with that head whose
+        // body holds is among these). An untriggered one is not needed, and
+        // listing it would ask a blocked position that copies the node's
+        // obligations to witness it too.
+        let (_, ex_trig) = existential_triggers(&self.index.clauses);
+        for &(r, s, t) in &edges {
+            for &fil in existentials.get(&r).map_or(&[][..], |v| v.as_slice()) {
+                let triggered = ex_trig.get(&(r, fil)).is_some_and(|ts| {
+                    ts.iter().any(|ks| ks.iter().all(|k| self.ext.concepts[s].contains_key(k)))
+                });
+                if triggered && self.ext.concepts[t].contains_key(&fil) {
+                    obligations.push((r, fil, s));
+                }
+            }
+        }
+        obligations.sort_unstable_by_key(|&(r, fil, n)| (r, Ext::enc_lit(fil), n));
+        obligations.dedup();
+        for lit in seed {
+            concept_count = concept_count.max(lit.c as usize + 1);
+        }
+        for &(r, _, _) in &edges {
+            role_count = role_count.max(r as usize + 1);
+        }
+        for &(r, fil, _) in &obligations {
+            role_count = role_count.max(r as usize + 1);
+            concept_count = concept_count.max(fil.c as usize + 1);
+        }
+        let base = LeanHtCertificate {
+            version: 1,
+            node_count: kept,
+            concept_count,
+            role_count,
+            variable_count,
+            ontology: self
+                .index
+                .clauses
+                .iter()
+                .map(|record| LeanHtClause {
+                    body: record.0.body.iter().map(Self::lean_wire_atom).collect(),
+                    head: record.0.head.iter().map(Self::lean_wire_atom).collect(),
+                })
+                .collect(),
+            labels,
+            edges: edges
+                .iter()
+                .map(|&(role, source, target)| LeanHtEdge { role: role as usize, source: id[source], target: id[target] })
+                .collect(),
+            obligations: obligations
+                .iter()
+                .map(|&(role, filler, node)| LeanHtObligation {
+                    role: role as usize,
+                    filler: Self::lean_wire_lit(filler),
+                    node: id[node],
+                })
+                .collect(),
+            evidence: LeanHtEvidence::Sat,
+        };
+        let parents: Vec<serde_json::Value> = (0..nn)
+            .filter(|&n| !dropped[n])
+            .filter_map(|n| {
+                let p = self.ext.live_pred(n)?;
+                (!dropped[p]).then(|| serde_json::json!({ "source": id[n], "target": id[p] }))
+            })
+            .collect();
+        let fold_pairs: Vec<serde_json::Value> = folds
+            .iter()
+            .map(|&(w, m)| serde_json::json!({ "source": id[w], "target": id[m] }))
+            .collect();
+        let document = serde_json::json!({
+            "version": 1,
+            "base": serde_json::to_value(&base).map_err(|error| error.to_string())?,
+            "parents": parents,
+            "folds": fold_pairs,
+            "root": id[0],
+            "seed": seed.iter().map(|&lit| serde_json::to_value(Self::lean_wire_lit(lit)).unwrap()).collect::<Vec<_>>(),
+            "relabel": true,
+            "predecessor": pred_folds.iter().map(|&w| id[w]).collect::<Vec<_>>(),
+        });
+        Ok((document.to_string(), kept, folds.len(), pred_folds.len()))
+    }
+
+    /// Checked subset blocking runs on the incremental suffix path
+    /// ([`Ht::checked_subset_recompute`]): mode 5, or mode 1 when some pair
+    /// needs [`SubsetGain::admits`].
+    fn checked_subset_incremental(&self) -> bool {
+        self.ext.incr2
+            && self.ext.edge_note
+            && self.subset_gain.is_some()
+            && self.anywhere
+            && (self.block_mode == 5 || (self.block_mode == 1 && !self.subset_exact))
+    }
+
+    /// The checked subset scans of [`Ht::compute_blocked`] (mode 1 with a
+    /// non-trivial [`SubsetGain`], and mode 5), re-evaluated only on the
+    /// suffix `i2_lo..nn` (docs/HYBRID-CB-HT.md section 9, "Cost").
+    ///
+    /// A node's status in those scans depends only on nodes with smaller or
+    /// equal ids: its label and edges, the labels and statuses of the
+    /// earlier candidate blockers, its predecessor's label (mode 5's B2a) and
+    /// status (indirect blocking), and `pred` of its edge targets, which only
+    /// changes when an edge of the node is removed. `Ext` lowers `i2_lo` to
+    /// the smaller endpoint of every label change, new or removed node, and
+    /// (with `edge_note`) added or removed edge, so the prefix below `i2_lo`
+    /// keeps its statuses and posting lists, and one ascending pass over the
+    /// suffix with the same predicates gives the full scan's result.
+    fn checked_subset_recompute(&mut self) -> Vec<bool> {
+        let gain = self.subset_gain.clone().expect("checked_subset_incremental");
+        let mode5 = self.block_mode == 5;
+        let nn = self.ext.num_nodes();
+        let lo = if self.ext.cs_gain == gain.id { self.ext.i2_lo.min(nn) } else { 0 };
+        self.ext.cs_gain = gain.id;
+        self.ext.i2_last_lo = lo;
+        let mut lists = std::mem::take(&mut self.ext.cs_lists);
+        let mut log = std::mem::take(&mut self.ext.cs_log);
+        let mut blocked = std::mem::take(&mut self.ext.cs_blocked);
+        let mut direct = std::mem::take(&mut self.ext.cs_direct);
+        let mut rel = std::mem::take(&mut self.ext.cs_rel);
+        let mut fa = std::mem::take(&mut self.ext.cs_fa);
+        let mut back = std::mem::take(&mut self.ext.cs_back);
+        // Postings were made in ascending node order, so the suffix's are the
+        // tail of the log and the tail of each list.
+        while let Some(&(node, slot)) = log.last() {
+            if node < lo {
+                break;
+            }
+            let popped = lists[slot].pop();
+            debug_assert_eq!(popped, Some(node));
+            log.pop();
+        }
+        blocked.truncate(lo);
+        blocked.resize(nn, false);
+        direct.truncate(lo);
+        direct.resize(nn, false);
+        rel.truncate(lo);
+        rel.resize_with(nn, smallvec::SmallVec::new);
+        fa.truncate(lo);
+        fa.resize_with(nn, smallvec::SmallVec::new);
+        back.truncate(lo);
+        back.resize_with(nn, smallvec::SmallVec::new);
+        {
+            let ext = &self.ext;
+            for n in lo..nn {
+                let blockable = ext.blockable[n];
+                // Mode 1 reads the predecessor in the merged graph
+                // (`Ext::live_pred`), as compute_blocked does.
+                let parent_blocked = if mode5 {
+                    ext.pred[n].is_some_and(|p| blocked[p])
+                } else {
+                    ext.live_pred(n).is_some_and(|p| blocked[p])
+                };
+                // `None`: SubsetGain::admits rejects every pair with `n`
+                // blocked, so no candidate can block it directly.
+                let sets = |n: Node| gain.kept_edge_sets(ext, n);
+                let admitted = |n: Node, m: Node, sets: &[&HashSet<CLit>]| {
+                    gain.gain_irrelevant(ext, n, m, sets, rel[m].iter())
+                        && gain.back_witnessed(ext, n, &back[m])
+                };
+                let (is_direct, is_blocked) = if mode5 {
+                    // compute_blocked mode 5: direct B1 + B2a + admits, then
+                    // the ascending indirect pass.
+                    let d = blockable
+                        && !ext.concepts[n].is_empty()
+                        && ext.pred[n].is_some_and(|v| {
+                            sets(n).is_some_and(|sets| {
+                                subset_blocker_exists(ext, &lists, n, |m| {
+                                    self.b2a_holds_over(n, v, fa[m].iter())
+                                        && admitted(n, m, &sets)
+                                })
+                            })
+                        });
+                    (d, d || (blockable && parent_blocked))
+                } else {
+                    // compute_blocked mode 1, checked: indirect first, then
+                    // an admitted earlier unblocked superset.
+                    let b = blockable
+                        && (parent_blocked
+                            || (!ext.concepts[n].is_empty()
+                                && sets(n).is_some_and(|sets| {
+                                    subset_blocker_exists(ext, &lists, n, |m| {
+                                        admitted(n, m, &sets)
+                                    })
+                                })));
+                    (b, b)
+                };
+                direct[n] = is_direct;
+                blocked[n] = is_blocked;
+                if !is_direct && !ext.merged_victim(n) {
+                    back[n] = gain.back_need(ext, n);
+                    for &k in ext.concepts[n].keys() {
+                        let e = Ext::enc_lit(k);
+                        if e >= lists.len() {
+                            lists.resize_with(e + 1, Vec::new);
+                        }
+                        lists[e].push(n);
+                        log.push((n, e));
+                        if gain.relevant_anywhere(k) {
+                            rel[n].push(k);
+                        }
+                        if mode5 && self.forall_operand(k) {
+                            fa[n].push(k);
+                        }
+                    }
+                }
+            }
+        }
+        let mut out = blocked.clone();
+        self.ext.cs_lists = lists;
+        self.ext.cs_log = log;
+        self.ext.cs_blocked = blocked;
+        self.ext.cs_direct = direct;
+        self.ext.cs_rel = rel;
+        self.ext.cs_fa = fa;
+        self.ext.cs_back = back;
+        self.ext.i2_lo = usize::MAX;
+        // As in compute_blocked: a merged victim is dead; it is no candidate
+        // blocker inside the scan and is marked blocked after it.
+        if self.ext.number {
+            for (n, b) in out.iter_mut().enumerate() {
+                if self.ext.merged[n].is_some() {
+                    *b = true;
+                }
+            }
+        }
+        out
+    }
+
     fn compute_blocked(&self) -> Vec<bool> {
         let nn = self.ext.num_nodes();
         let mut blocked = vec![false; nn];
@@ -18851,9 +19875,13 @@ impl Ht {
         // are outside the unravelled model, so block them too (indirect
         // blocking; `pred[n] < n`, so one ascending pass is final). Plain
         // subset blocking keeps its historical behaviour.
+        // The predecessor is the one in the merged graph (`Ext::live_pred`):
+        // a merge redirects a victim's successor edges to the survivor.
         let indirect = |blocked: &[bool], n: Node| {
-            !exact && self.ext.pred[n].is_some_and(|p| blocked[p])
+            !exact && self.ext.live_pred(n).is_some_and(|p| blocked[p])
         };
+        // The checked scans post no merged victim as a candidate blocker.
+        let dead = |n: Node| matches!(mode, 1 | 5) && !exact && self.ext.merged_victim(n);
         if mode == 0 || mode == 2 {
             // O(n) hashed equality blocking — HermiT's BlockingSignatureCache idea.
             // The equality modes block n by the FIRST earlier unblocked node with
@@ -19034,8 +20062,10 @@ impl Ht {
                         }
                     }
                 }
-                // only earlier UNBLOCKED nodes are candidate blockers.
-                if !blocked[w] {
+                // only earlier UNBLOCKED nodes are candidate blockers, and not
+                // a merged victim: it is dead (its label is a stale copy, its
+                // edges were redirected) and the certificate drops it.
+                if !blocked[w] && !dead(w) {
                     for k in self.ext.concepts[w].keys() {
                         let e = enc(k);
                         if e >= lists.len() {
@@ -19112,7 +20142,7 @@ impl Ht {
                 let ln = &self.ext.concepts[n];
                 let lnlen = ln.len();
                 for m in 0..n {
-                    if blocked[m] {
+                    if blocked[m] || dead(m) {
                         continue;
                     }
                     let lm = &self.ext.concepts[m];
@@ -19170,7 +20200,10 @@ impl Ht {
                         }
                     }
                 }
-                if !blocked[n] {
+                // Checked pairs (not `exact`, whose unchecked incremental
+                // twin posts every unblocked node): a merged victim is no
+                // candidate blocker, as in mode 5.
+                if !blocked[n] && !dead(n) {
                     for k in self.ext.concepts[n].keys() {
                         let e = enc(k);
                         if e >= lists.len() {
@@ -19517,6 +20550,30 @@ impl Ht {
                             b.iter().filter(|x| **x).count(),
                             fd
                         );
+                        }
+                    }
+                    b
+                } else if self.checked_subset_incremental() {
+                    let b = self.checked_subset_recompute();
+                    if self.stats {
+                        self.i2_suf_sum += (b.len() - self.ext.i2_last_lo) as u128;
+                        self.i2_calls += 1;
+                        if self.ext.i2_last_lo == 0 {
+                            self.i2_full += 1;
+                        }
+                    }
+                    if self.i2_check {
+                        let full = self.compute_blocked();
+                        if full != b {
+                            let fd = (0..b.len()).find(|&k| full[k] != b[k]);
+                            panic!(
+                                "checked subset blocking mismatch (mode {}): nn={} full_blk={} inc_blk={} first_diff={:?}",
+                                self.block_mode,
+                                b.len(),
+                                full.iter().filter(|x| **x).count(),
+                                b.iter().filter(|x| **x).count(),
+                                fd
+                            );
                         }
                     }
                     b
@@ -20744,6 +21801,9 @@ impl Ht {
             self.ext.number = true;
         }
         self.ext.block3 = self.block_mode == 3;
+        self.ext.edge_note = self.checked_subset_mode();
+        self.ext.back_note = self.ext.edge_note
+            && self.subset_gain.as_ref().is_some_and(|gain| gain.back_possible());
         if !self.nom_set.is_empty() {
             self.ext.nominals = self.nom_set.iter().copied().collect();
         }
@@ -20791,9 +21851,15 @@ impl Ht {
             )));
         }
         self.subset_exact = self.subset_gain.as_ref().unwrap().trivial(self.index.inverse_bridge);
+
         if !self.subset_exact && !self.anywhere {
             self.anywhere = true;
         }
+    }
+
+    /// Modes 1 and 5 check each subset pair unless every pair is admitted.
+    fn checked_subset_mode(&self) -> bool {
+        self.block_mode == 5 || (self.block_mode == 1 && !self.subset_exact)
     }
 
     pub fn consistent(&mut self, seed: &[CLit]) -> Option<bool> {
@@ -20841,6 +21907,10 @@ impl Ht {
             // widens the incremental suffix on edge changes (the signature uses
             // the parent edge). Subset blocking (mode 1) is label-only.
             self.ext.block3 = self.block_mode == 3;
+            // Checked subset blocking also reads edges; see `Ext::edge_note`.
+            self.ext.edge_note = self.checked_subset_mode();
+            self.ext.back_note = self.ext.edge_note
+                && self.subset_gain.as_ref().is_some_and(|gain| gain.back_possible());
             // Nominals (o-rule): Ext::new resets the set, so re-apply each rebuild.
             if !self.nom_set.is_empty() {
                 self.ext.nominals = self.nom_set.iter().copied().collect();
@@ -20909,6 +21979,16 @@ impl Ht {
                         }
                     }
                     let sat = matches!(other, Out::Sat);
+                    // KM_HT_SUBSET_MODEL_CERT: check the unravelled model of a
+                    // subset-blocked terminal in Lean (fails closed when
+                    // KM_HT_SUBSET_MODEL_CHECKER is set).
+                    if sat && matches!(self.block_mode, 1 | 5) {
+                        if let Some(dir) = std::env::var_os("KM_HT_SUBSET_MODEL_CERT") {
+                            if !self.emit_subset_model_certificate(std::path::Path::new(&dir), seed) {
+                                return None;
+                            }
+                        }
+                    }
                     // KM_HT_SATCACHE3: pool the FULL-label pairwise signatures of
                     // this completed clash-free model's UNBLOCKED blockable nodes —
                     // genuine witnesses whose subtree was fully expanded. A pooled
@@ -21452,9 +22532,7 @@ impl Ht {
                     let tmpl = template.clone();
                     let ec_fwd = ec_fwd.clone();
                     let ec_bwd = ec_bwd.clone();
-                    std::thread::Builder::new()
-                        .stack_size(RWORKER_STACK)
-                        .spawn_scoped(
+                    crate::bigstack::spawn_scoped_retrying(RWORKER_STACK,
                             s,
                             move || -> Option<(Vec<C>, Vec<(C, C)>, u64, f64, f64)> {
                                 let mut w = Ht::new(tmpl);
@@ -22020,9 +23098,7 @@ impl Ht {
             let handles: Vec<_> = (0..nthreads)
                 .map(|_| {
                     let worker = worker.clone();
-                    std::thread::Builder::new()
-                        .stack_size(HT_WORKER_STACK)
-                        .spawn_scoped(s, move || -> Option<Vec<(C, bool, Vec<C>)>> {
+                    crate::bigstack::spawn_scoped_retrying(HT_WORKER_STACK, s, move || -> Option<Vec<(C, bool, Vec<C>)>> {
                             let mut w = worker.into_worker();
                             let mut out = Vec::new();
                             loop {
@@ -22084,9 +23160,7 @@ impl Ht {
             let handles: Vec<_> = (0..nthreads.min(nl.max(1)))
                 .map(|_| {
                     let worker = worker.clone();
-                    std::thread::Builder::new()
-                        .stack_size(HT_WORKER_STACK)
-                        .spawn_scoped(s, move || -> Option<Vec<(C, C)>> {
+                    crate::bigstack::spawn_scoped_retrying(HT_WORKER_STACK, s, move || -> Option<Vec<(C, C)>> {
                             let mut w = worker.into_worker();
                             let mut subs = Vec::new();
                             loop {
@@ -22698,9 +23772,7 @@ impl Ht {
                 let next = &next;
                 let handles: Vec<_> = (0..nthreads)
                     .map(|_| {
-                        std::thread::Builder::new()
-                            .stack_size(QO_WORKER_STACK)
-                            .spawn_scoped(s, move || -> Option<(Vec<(C, C)>, Vec<C>)> {
+                        crate::bigstack::spawn_scoped_retrying(QO_WORKER_STACK, s, move || -> Option<(Vec<(C, C)>, Vec<C>)> {
                                 let mut qpc = QoSat::new_opts(
                                     clauses_ref,
                                     false,
@@ -23063,9 +24135,7 @@ impl Ht {
                 let handles: Vec<_> = (0..nthreads)
                     .map(|_| {
                         let tmpl: Vec<ClauseRec> = clauses_ref.to_vec();
-                        std::thread::Builder::new()
-                            .stack_size(64 * 1024 * 1024)
-                            .spawn_scoped(s, move || -> Option<PcPart> {
+                        crate::bigstack::spawn_scoped_retrying(64 * 1024 * 1024, s, move || -> Option<PcPart> {
                                 let mut qf = QoSat::new_opts(&tmpl, true, fprop);
                                 qf.install_edge_compose(chains_ref);
                                 qf.complete_roles = true;
@@ -23967,9 +25037,7 @@ impl Ht {
                             let handles: Vec<_> = (0..nthreads)
                                 .map(|_| {
                                     let tmpl = template.clone();
-                                    std::thread::Builder::new()
-                                        .stack_size(PMWORKER_STACK)
-                                        .spawn_scoped(s, move || -> Vec<(C, Option<HashSet<C>>)> {
+                                    crate::bigstack::spawn_scoped_retrying(PMWORKER_STACK, s, move || -> Vec<(C, Option<HashSet<C>>)> {
                                             let mut w = Ht::new(tmpl);
                                             w.set_anywhere(anywhere);
                                             w.set_fast_tableau(); // result-identical speedups
@@ -24061,9 +25129,7 @@ impl Ht {
                         let handles: Vec<_> = (0..nthreads)
                             .map(|_| {
                                 let tmpl = template.clone();
-                                std::thread::Builder::new()
-                                    .stack_size(VWORKER_STACK)
-                                    .spawn_scoped(s, move || -> (Vec<(C, C)>, u64, u64, u64) {
+                                crate::bigstack::spawn_scoped_retrying(VWORKER_STACK, s, move || -> (Vec<(C, C)>, u64, u64, u64) {
                                         let mut w = Ht::new(tmpl);
                                         w.set_anywhere(anywhere);
                                         w.set_fast_tableau(); // result-identical speedups
@@ -25644,6 +26710,158 @@ mod tests {
         t.set_anywhere(true);
         assert_eq!(t.consistent(&[CLit::pos(A)]), Some(true));
     }
+    /// Modes 1 and 5 check subset pairs on the incremental suffix path when
+    /// the fast tableau is on; `i2_check` compares every pass with the full
+    /// `compute_blocked` scan and panics on a difference. Every element needs
+    /// a `t`-successor outside `D`, and a `t`-successor carrying `A` or `NA`
+    /// puts its source in `D`, so the clause set is inconsistent (the
+    /// seed-103 core of docs/HYBRID-CB-HT.md section 9).
+    #[test]
+    fn checked_subset_blocking_incremental_matches_full_scan() {
+        const NA: C = 4;
+        const T: R = 1;
+        let y: Var = 1;
+        let cls = vec![
+            Clause::new(vec![], vec![exists(T, true, D, X)]),
+            Clause::new(vec![], vec![con(false, A, X), con(false, NA, X)]),
+            Clause::new(vec![con(false, A, y), role(T, X, y)], vec![con(false, D, X)]),
+            Clause::new(vec![con(false, NA, y), role(T, X, y)], vec![con(false, D, X)]),
+        ];
+        for mode in [1u8, 5] {
+            let mut t = ht(cls.clone());
+            t.block_mode = mode;
+            t.set_fast_tableau();
+            t.i2_check = true;
+            t.stats = true;
+            assert_eq!(t.consistent(&[]), Some(false), "mode {mode}");
+            assert!(t.checked_subset_mode(), "mode {mode}");
+            assert!(t.i2_calls > 0, "mode {mode}: the incremental path ran");
+        }
+    }
+    /// The inverse-witness pattern of docs/HYBRID-CB-HT.md section 9: `m`
+    /// (`M`, so `A`, `P`) witnesses `A ⊑ ∃r0.C` through the inverse edge to
+    /// its predecessor, the root; its successor `w` (`P` only) has
+    /// `L(w) ⊆ L(m)` and gains `A`, but `w`'s own predecessor `m` lacks `C`.
+    /// The body-literal rule admits the pair. The predecessor fold copies
+    /// `m`'s edges to the root to `w`, so `back_need` admits it (2026-10-31);
+    /// `back_need_strict` (the successor fold) needs `C` at `m`.
+    fn inverse_witness_clauses() -> Vec<Clause> {
+        const RR: C = 10;
+        const M: C = 11;
+        const P: C = 12;
+        const CC: C = 13;
+        const R1: R = 1;
+        let y: Var = 1;
+        vec![
+            Clause::new(vec![con(false, RR, X)], vec![exists(R1, false, M, X)]),
+            Clause::new(vec![con(false, M, X)], vec![con(false, A, X)]),
+            Clause::new(vec![con(false, M, X)], vec![con(false, P, X)]),
+            Clause::new(vec![con(false, A, X)], vec![exists(R0, false, CC, X)]),
+            Clause::new(vec![con(false, P, X)], vec![exists(R1, false, P, X)]),
+            Clause::new(vec![role(R1, X, y)], vec![role(R0, y, X)]),
+            Clause::new(vec![role(R0, X, y)], vec![role(R1, y, X)]),
+        ]
+    }
+    #[test]
+    fn subset_gain_rejects_a_blocker_witnessed_through_its_predecessor() {
+        let t = ht(inverse_witness_clauses());
+        let gain = SubsetGain::build(&t.index.clauses, &HashMap::default(), &[]);
+        assert!(gain.back_possible());
+        assert!(!gain.trivial(false));
+        // With nominals the o-rule links nodes to shared nominal nodes, which
+        // no unravelling copies; `back_need` stays empty (section 9).
+        assert!(!SubsetGain::build(&t.index.clauses, &HashMap::default(), &[42]).back_possible());
+        let mut e = Ext::new();
+        let d = dep_empty();
+        let root = e.new_root();
+        let m = e.new_node(Some(root));
+        let w = e.new_node(Some(m));
+        for c in [10, 13] {
+            e.add_concept(root, lit(false, c), &d);
+        }
+        for c in [11, 0, 12] {
+            e.add_concept(m, lit(false, c), &d);
+        }
+        e.add_concept(w, lit(false, 12), &d);
+        e.add_edge(1, root, m, &d);
+        e.add_edge(R0, m, root, &d);
+        e.add_edge(1, m, w, &d);
+        e.add_edge(R0, w, m, &d);
+        let sets = gain.kept_edge_sets(&e, w).expect("no counted kept edge");
+        assert!(
+            gain.gain_irrelevant(&e, w, m, &sets, e.concepts[m].keys()),
+            "the body-literal rule alone admits the pair"
+        );
+        assert_eq!(gain.back_need_strict(&e, m).as_slice(), &[(R0, lit(false, 13))]);
+        assert!(gain.pred_fold_ok(&e, m));
+        assert!(gain.back_need(&e, m).is_empty(), "the predecessor fold witnesses it");
+        assert!(gain.admits(&e, w, m));
+        assert!(!gain.back_witnessed(&e, w, &gain.back_need_strict(&e, m)), "a predecessor fold");
+        e.add_concept(m, lit(false, 13), &d);
+        assert!(gain.admits(&e, w, m));
+        assert!(
+            gain.back_witnessed(&e, w, &gain.back_need_strict(&e, m)),
+            "w's predecessor now witnesses the obligation: the successor fold suffices"
+        );
+    }
+    /// The same terminal when `r0` is inverse functional: the predecessor
+    /// fold would give the root a second `r0`-predecessor, which the
+    /// counting clause at the root reads, so `back_need` keeps the root's
+    /// witness and the pair is rejected as on 2026-10-30. The same holds
+    /// with a clause that reads two role atoms between the same nodes.
+    #[test]
+    fn subset_gain_keeps_predecessor_witnesses_on_counted_roles() {
+        let y: Var = 1;
+        let z: Var = 2;
+        let build = |extra: Clause| {
+            let mut cls = inverse_witness_clauses();
+            cls.push(extra);
+            let t = ht(cls);
+            SubsetGain::build(&t.index.clauses, &HashMap::default(), &[])
+        };
+        let counted = build(Clause::new(
+            vec![role(R0, y, X), role(R0, z, X)],
+            vec![Atom::Eq { s: y, t: z }],
+        ));
+        let parallel = build(Clause::new(vec![role(R0, X, y), role(1, y, X)], vec![con(false, 14, X)]));
+        assert!(parallel.parallel);
+        for gain in [counted, parallel] {
+            assert!(gain.back_possible());
+            let mut e = Ext::new();
+            let d = dep_empty();
+            let root = e.new_root();
+            let m = e.new_node(Some(root));
+            let w = e.new_node(Some(m));
+            for c in [10, 13] {
+                e.add_concept(root, lit(false, c), &d);
+            }
+            for c in [11, 0, 12] {
+                e.add_concept(m, lit(false, c), &d);
+            }
+            e.add_concept(w, lit(false, 12), &d);
+            e.add_edge(1, root, m, &d);
+            e.add_edge(R0, m, root, &d);
+            e.add_edge(1, m, w, &d);
+            e.add_edge(R0, w, m, &d);
+            assert!(!gain.pred_fold_ok(&e, m));
+            assert_eq!(gain.back_need(&e, m).as_slice(), &[(R0, lit(false, 13))]);
+            assert!(!gain.admits(&e, w, m));
+        }
+    }
+    #[test]
+    fn inverse_witness_incremental_matches_full_scan() {
+        for mode in [1u8, 5] {
+            let mut t = ht(inverse_witness_clauses());
+            t.block_mode = mode;
+            t.set_fast_tableau();
+            t.i2_check = true;
+            t.stats = true;
+            assert_eq!(t.consistent(&[lit(false, 10), lit(false, 13)]), Some(true), "mode {mode}");
+            assert!(t.checked_subset_mode(), "mode {mode}");
+            assert!(t.ext.back_note, "mode {mode}");
+            assert!(t.i2_calls > 0, "mode {mode}: the incremental path ran");
+        }
+    }
     #[test]
     fn backjump_skips_irrelevant_branch() {
         const P: C = 6;
@@ -26976,7 +28194,7 @@ mod tests {
                 std::process::id()
             ));
             std::fs::write(&path, &payload).unwrap();
-            let accepted = std::process::Command::new(checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(checker)
                 .arg(&path)
                 .status()
                 .expect("run native ABox Lean refutation checker")
@@ -27021,7 +28239,7 @@ mod tests {
                     std::thread::current().name().unwrap_or("test")
                 ));
                 std::fs::write(&path, document).unwrap();
-                let accepted = std::process::Command::new(&checker)
+                let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                     .arg(&path)
                     .output()
                     .expect("run native ABox decision checker");
@@ -27118,7 +28336,7 @@ mod tests {
             .expect("SAT seed labels");
         labels.retain(|label| !(label["node"] == 1 && label["literal"]["concept"] == ASSERTED));
         std::fs::write(&path, serde_json::to_vec(&tampered).unwrap()).unwrap();
-        let output = std::process::Command::new(checker)
+        let output = crate::lean_checkers::CheckerCommand::new(checker)
             .arg(&path)
             .output()
             .expect("run native ABox taxonomy checker on a tampered cell");
@@ -27163,7 +28381,7 @@ mod tests {
             std::process::id()
         ));
         std::fs::write(&path, serde_json::to_vec(&wire).unwrap()).unwrap();
-        let output = std::process::Command::new(checker)
+        let output = crate::lean_checkers::CheckerCommand::new(checker)
             .arg(&path)
             .output()
             .expect("run complete native ABox taxonomy checker on missing cell");
@@ -27244,7 +28462,7 @@ mod tests {
             std::process::id()
         ));
         std::fs::write(&path, serde_json::to_vec(&wire).unwrap()).unwrap();
-        let output = std::process::Command::new(checker)
+        let output = crate::lean_checkers::CheckerCommand::new(checker)
             .arg(&path)
             .output()
             .expect("run native ABox cardinality taxonomy checker on forged definitions");
@@ -27322,7 +28540,7 @@ mod tests {
                 std::process::id()
             ));
             std::fs::write(&path, &payload).unwrap();
-            let accepted = std::process::Command::new(checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(checker)
                 .arg(&path)
                 .status()
                 .expect("run native ABox cardinality Lean refutation checker")
@@ -27380,7 +28598,7 @@ mod tests {
                     std::thread::current().name().unwrap_or("test")
                 ));
                 std::fs::write(&path, document).unwrap();
-                let output = std::process::Command::new(&checker)
+                let output = crate::lean_checkers::CheckerCommand::new(&checker)
                     .arg(&path)
                     .output()
                     .expect("run native ABox cardinality decision checker");
@@ -27756,7 +28974,7 @@ mod tests {
             std::thread::current().name().unwrap_or("test")
         ));
         std::fs::write(&path, t.lean_sat_certificate_json().unwrap()).unwrap();
-        let accepted = std::process::Command::new(&checker)
+        let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -27819,7 +29037,7 @@ mod tests {
                 .unwrap(),
         )
         .unwrap();
-        let accepted = std::process::Command::new(&checker)
+        let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .stdout(std::process::Stdio::null())
             .status()
@@ -27845,7 +29063,7 @@ mod tests {
             std::thread::current().name().unwrap_or("test")
         ));
         std::fs::write(&path, reasoner.lean_sat_certificate_json().unwrap()).unwrap();
-        let accepted = std::process::Command::new(&checker)
+        let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .stdout(std::process::Stdio::null())
             .status()
@@ -27901,7 +29119,7 @@ mod tests {
                 std::process::id()
             ));
             std::fs::write(&path, &document).unwrap();
-            let accepted = std::process::Command::new(&checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -27945,7 +29163,7 @@ mod tests {
                 std::process::id()
             ));
             std::fs::write(&path, document).unwrap();
-            let accepted = std::process::Command::new(&checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -28185,7 +29403,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, document).unwrap();
-            let accepted = std::process::Command::new(&checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -28259,7 +29477,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, &document).unwrap();
-            let output = std::process::Command::new(&checker)
+            let output = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .output()
                 .expect("run native Lean preprocessing checker");
@@ -28274,7 +29492,7 @@ mod tests {
             let mut tampered = wire.clone();
             tampered["preprocessing"]["contrapositives"][0]["source_clause"] = serde_json::json!(1);
             std::fs::write(&path, serde_json::to_vec(&tampered).unwrap()).unwrap();
-            let rejected = std::process::Command::new(&checker)
+            let rejected = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -28293,7 +29511,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, taxonomy_document).unwrap();
-            let output = std::process::Command::new(checker)
+            let output = crate::lean_checkers::CheckerCommand::new(checker)
                 .arg(&path)
                 .output()
                 .expect("run native Lean preprocessing taxonomy checker");
@@ -28322,7 +29540,7 @@ mod tests {
             std::thread::current().name().unwrap_or("test")
         ));
         std::fs::write(&path, t.lean_unsat_certificate_json().unwrap()).unwrap();
-        let accepted = std::process::Command::new(&checker)
+        let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -28506,7 +29724,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, &document).unwrap();
-            let accepted = std::process::Command::new(&checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .output()
                 .expect("run quotient production blocker checker");
@@ -28519,7 +29737,7 @@ mod tests {
             let mut forged_rejections: serde_json::Value = serde_json::from_str(&document).unwrap();
             forged_rejections["validate_rejections"] = serde_json::json!(true);
             std::fs::write(&path, serde_json::to_vec(&forged_rejections).unwrap()).unwrap();
-            let rejected_document = std::process::Command::new(&checker)
+            let rejected_document = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .status()
                 .expect("run checker on a falsely rejected valid fold candidate");
@@ -28531,7 +29749,7 @@ mod tests {
             let mut missing_blocker: serde_json::Value = serde_json::from_str(&document).unwrap();
             missing_blocker["options"][0]["blockers"] = serde_json::json!([]);
             std::fs::write(&path, serde_json::to_vec(&missing_blocker).unwrap()).unwrap();
-            let rejected_document = std::process::Command::new(&checker)
+            let rejected_document = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .status()
                 .expect("run checker on missing quotient blocker");
@@ -28540,7 +29758,7 @@ mod tests {
             let mut unexhausted: serde_json::Value = serde_json::from_str(&document).unwrap();
             unexhausted["rejected"] = serde_json::json!([]);
             std::fs::write(&path, serde_json::to_vec(&unexhausted).unwrap()).unwrap();
-            let rejected_document = std::process::Command::new(&checker)
+            let rejected_document = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .status()
                 .expect("run checker on incomplete quotient assignment exhaustion");
@@ -28573,7 +29791,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, anchored).unwrap();
-            let output = std::process::Command::new(anchored_checker)
+            let output = crate::lean_checkers::CheckerCommand::new(anchored_checker)
                 .arg(&path)
                 .output()
                 .expect("run native equality-backed anchored checker");
@@ -28590,7 +29808,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, normalized_anchored).unwrap();
-            let output = std::process::Command::new(main_checker)
+            let output = crate::lean_checkers::CheckerCommand::new(main_checker)
                 .arg(&path)
                 .output()
                 .expect("run main native HT checker on anchored equality evidence");
@@ -28610,7 +29828,7 @@ mod tests {
             ));
             std::fs::write(&path, serde_json::to_vec(&forged).unwrap()).unwrap();
             let output =
-                std::process::Command::new(std::env::var_os("KM_HT_TEST_LEAN_CHECKER").unwrap())
+                crate::lean_checkers::CheckerCommand::new(std::env::var_os("KM_HT_TEST_LEAN_CHECKER").unwrap())
                     .arg(&path)
                     .output()
                     .expect("run main native HT checker on forged normalization");
@@ -28661,7 +29879,7 @@ mod tests {
             std::thread::current().name().unwrap_or("test")
         ));
         std::fs::write(&path, &document).unwrap();
-        let accepted = std::process::Command::new(checker)
+        let accepted = crate::lean_checkers::CheckerCommand::new(checker)
             .arg(&path)
             .output()
             .expect("run production checker on genuinely invalid fold candidates");
@@ -28702,7 +29920,7 @@ mod tests {
             let round: serde_json::Value = serde_json::from_str(&document).unwrap();
             let trace = serde_json::json!({"version": 1, "rounds": [round]});
             std::fs::write(&path, serde_json::to_vec(&trace).unwrap()).unwrap();
-            let traced = std::process::Command::new(&trace_checker)
+            let traced = crate::lean_checkers::CheckerCommand::new(&trace_checker)
                 .arg(&path)
                 .output()
                 .expect("run complete equality production trace checker");
@@ -28717,7 +29935,7 @@ mod tests {
                 "rounds": [trace["rounds"][0].clone(), trace["rounds"][0].clone()]
             });
             std::fs::write(&path, serde_json::to_vec(&forged).unwrap()).unwrap();
-            let stale = std::process::Command::new(trace_checker)
+            let stale = crate::lean_checkers::CheckerCommand::new(trace_checker)
                 .arg(&path)
                 .output()
                 .expect("run trace checker on a stale forbidden-set transition");
@@ -28769,7 +29987,7 @@ mod tests {
             std::thread::current().name().unwrap_or("test")
         ));
         std::fs::write(&path, serde_json::to_vec(&wire).unwrap()).unwrap();
-        let accepted = std::process::Command::new(&checker)
+        let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .output()
             .expect("run production checker on native ABox fold rejections");
@@ -28781,7 +29999,7 @@ mod tests {
 
         wire["native_seed"]["roots"] = serde_json::json!([]);
         std::fs::write(&path, serde_json::to_vec(&wire).unwrap()).unwrap();
-        let forged = std::process::Command::new(checker)
+        let forged = crate::lean_checkers::CheckerCommand::new(checker)
             .arg(&path)
             .output()
             .expect("run production checker on forged native ABox roots");
@@ -28828,7 +30046,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, document).unwrap();
-            let output = std::process::Command::new(checker)
+            let output = crate::lean_checkers::CheckerCommand::new(checker)
                 .arg(&path)
                 .output()
                 .expect("run native anchored nominal checker");
@@ -28920,7 +30138,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, document).unwrap();
-            let accepted = std::process::Command::new(checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(checker)
                 .arg(&path)
                 .status()
                 .expect("run the native Lean cardinality-frontier checker");
@@ -29148,7 +30366,7 @@ mod tests {
             std::thread::current().name().unwrap_or("test")
         ));
         std::fs::write(&path, &document).unwrap();
-        let accepted = std::process::Command::new(&checker)
+        let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .output()
             .expect("run rooted cardinality checker");
@@ -29161,7 +30379,7 @@ mod tests {
         let mut duplicate: serde_json::Value = serde_json::from_str(&document).unwrap();
         duplicate["frontier"]["addresses"][2]["root"] = serde_json::json!(1);
         std::fs::write(&path, serde_json::to_vec(&duplicate).unwrap()).unwrap();
-        let rejected = std::process::Command::new(checker)
+        let rejected = crate::lean_checkers::CheckerCommand::new(checker)
             .arg(&path)
             .status()
             .expect("run checker on duplicate rooted address");
@@ -29201,7 +30419,7 @@ mod tests {
                 .lean_address_refinement_json(&frontier)
                 .expect("serialize the cyclic state/address refinement");
             std::fs::write(&path, &document).unwrap();
-            let accepted = std::process::Command::new(&frontier_checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(&frontier_checker)
                 .arg(&path)
                 .output()
                 .expect("run the native Lean frontier checker");
@@ -29214,7 +30432,7 @@ mod tests {
             let mut duplicate: serde_json::Value = serde_json::from_str(&document).unwrap();
             duplicate["frontier"]["addresses"][1] = duplicate["frontier"]["addresses"][0].clone();
             std::fs::write(&path, serde_json::to_vec(&duplicate).unwrap()).unwrap();
-            let rejected = std::process::Command::new(&frontier_checker)
+            let rejected = crate::lean_checkers::CheckerCommand::new(&frontier_checker)
                 .arg(&path)
                 .status()
                 .expect("run the native Lean checker on a duplicate frontier");
@@ -29226,7 +30444,7 @@ mod tests {
             let mut missing_edge: serde_json::Value = serde_json::from_str(&document).unwrap();
             missing_edge["state"]["edges"] = serde_json::json!([]);
             std::fs::write(&path, serde_json::to_vec(&missing_edge).unwrap()).unwrap();
-            let rejected = std::process::Command::new(&frontier_checker)
+            let rejected = crate::lean_checkers::CheckerCommand::new(&frontier_checker)
                 .arg(&path)
                 .status()
                 .expect("run the native Lean checker on a mismatched frontier state");
@@ -29460,7 +30678,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, &document).unwrap();
-            let accepted = std::process::Command::new(&checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .output()
                 .expect("run the native production blocker checker");
@@ -29472,7 +30690,7 @@ mod tests {
             let mut forged: serde_json::Value = serde_json::from_str(&document).unwrap();
             forged["options"][0]["blockers"] = serde_json::json!([]);
             std::fs::write(&path, serde_json::to_string(&forged).unwrap()).unwrap();
-            let rejected = std::process::Command::new(&checker)
+            let rejected = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .output()
                 .expect("run the native production blocker checker on forged options");
@@ -29484,7 +30702,7 @@ mod tests {
             let mut unexhausted: serde_json::Value = serde_json::from_str(&document).unwrap();
             unexhausted["rejected"] = serde_json::json!([]);
             std::fs::write(&path, serde_json::to_string(&unexhausted).unwrap()).unwrap();
-            let rejected = std::process::Command::new(&checker)
+            let rejected = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .output()
                 .expect("run the native production blocker checker on missing rejections");
@@ -29520,7 +30738,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, regular_raw).unwrap();
-            let accepted = std::process::Command::new(&checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .output()
                 .expect("run the native Lean regular checker");
@@ -29544,7 +30762,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&decision_path, decision).unwrap();
-            let accepted = std::process::Command::new(&decision_checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(&decision_checker)
                 .arg(&decision_path)
                 .output()
                 .expect("run the native Lean regular decision checker");
@@ -29569,7 +30787,7 @@ mod tests {
                     .expect("wrap the blocked SAT candidate with normalization evidence"),
             )
             .unwrap();
-            let accepted = std::process::Command::new(&checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -29588,7 +30806,7 @@ mod tests {
                 .finalize_lean_certificate(serde_json::to_string(&forged).unwrap())
                 .expect("wrap the forged blocked candidate");
             std::fs::write(&path, forged).unwrap();
-            let rejected = std::process::Command::new(&checker)
+            let rejected = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -29598,6 +30816,137 @@ mod tests {
             assert!(
                 !rejected.success(),
                 "Lean must reject a blocked leaf missing its copied witness edge"
+            );
+        }
+    }
+
+    #[test]
+    fn identity_normalized_regular_source_lists_the_lean_target_ontology() {
+        // A residual clause precedes the role clauses in source order. Lean
+        // decodes the regular target ontology as role clauses first, then the
+        // residual, so the identity normalization must follow that order.
+        let reasoner = Ht::new_certified(vec![
+            Clause::new(vec![con(false, A, 0)], vec![con(false, B, 0)]),
+            Clause::new(
+                vec![Atom::Role { r: R0, s: 0, t: 1 }],
+                vec![Atom::Role { r: 1, s: 0, t: 1 }],
+            ),
+            Clause::new(
+                vec![Atom::Role { r: 1, s: 0, t: 1 }],
+                vec![Atom::Role { r: 2, s: 1, t: 0 }],
+            ),
+            Clause::new(
+                vec![
+                    Atom::Role { r: R0, s: 0, t: 1 },
+                    Atom::Role { r: R0, s: 1, t: 2 },
+                ],
+                vec![Atom::Role { r: 3, s: 0, t: 2 }],
+            ),
+            Clause::new(Vec::new(), vec![Atom::Role { r: 4, s: 0, t: 0 }]),
+        ]);
+        assert!(
+            reasoner.cert_body_normalization.is_none(),
+            "an equality-free source without preprocessing has no normalization records"
+        );
+        let leaf = LeanHtBlockedOpenLeaf {
+            node_count: 3,
+            labels: Vec::new(),
+            edges: vec![
+                (R0, 0, 1),
+                (R0, 1, 2),
+                (1, 0, 1),
+                (1, 1, 2),
+                (2, 1, 0),
+                (2, 2, 1),
+                (3, 0, 2),
+                (4, 0, 0),
+                (4, 1, 1),
+                (4, 2, 2),
+            ],
+            obligations: Vec::new(),
+            folds: Vec::new(),
+            fold_options: Vec::new(),
+            witness_parent: vec![None; 3],
+            forbidden_folds: Vec::new(),
+        };
+        let regular = reasoner
+            .lean_regular_blocked_open_certificate_json(&leaf)
+            .expect("serialize the regular certificate");
+        let envelope = Ht::lean_regular_decision_envelope(regular, true).unwrap();
+        // Without normalization records the published global document is the
+        // raw envelope; the source-bound checker receives the identity wrap.
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(
+                &reasoner.finalize_lean_certificate(envelope.clone()).unwrap()
+            )
+            .unwrap(),
+            serde_json::from_str::<serde_json::Value>(&envelope).unwrap()
+        );
+        let source = lean_identity_normalized_global_source(
+            serde_json::from_str(&envelope).unwrap(),
+        )
+        .expect("identity-normalize a regular SAT decision");
+        let normalization = source["normalization"].as_array().unwrap();
+        assert_eq!(normalization.len(), 5);
+        assert_eq!(
+            normalization[0]["source"],
+            serde_json::json!({
+                "body": [{"role": {"role": R0, "source": 0, "target": 1}}],
+                "head": [{"role": {"role": 1, "source": 0, "target": 1}}],
+            })
+        );
+        assert_eq!(
+            normalization[2]["source"],
+            serde_json::json!({
+                "body": [
+                    {"role": {"role": R0, "source": 0, "target": 1}},
+                    {"role": {"role": R0, "source": 1, "target": 2}},
+                ],
+                "head": [{"role": {"role": 3, "source": 0, "target": 2}}],
+            })
+        );
+        assert_eq!(
+            normalization[3]["source"],
+            serde_json::json!({
+                "body": [],
+                "head": [{"role": {"role": 4, "source": 0, "target": 0}}],
+            })
+        );
+        assert_eq!(normalization[4]["source"]["body"][0]["concept"]["literal"]["concept"], A);
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") {
+            let check = |document: &serde_json::Value, tag: &str| {
+                let path = std::env::temp_dir().join(format!(
+                    "km-ht-identity-regular-{tag}-{}.json",
+                    std::process::id()
+                ));
+                std::fs::write(&path, serde_json::to_string(document).unwrap()).unwrap();
+                let output = crate::lean_checkers::CheckerCommand::new(&checker)
+                    .arg(&path)
+                    .output()
+                    .expect("run the main Lean checker");
+                let _ = std::fs::remove_file(path);
+                output
+            };
+            let accepted = check(&source, "accepted");
+            assert!(
+                accepted.status.success(),
+                "Lean must accept the identity-normalized regular source: {}",
+                String::from_utf8_lossy(&accepted.stderr)
+            );
+            let raw = check(&serde_json::from_str(&envelope).unwrap(), "raw");
+            assert!(
+                raw.status.success(),
+                "Lean must accept the raw regular SAT envelope: {}",
+                String::from_utf8_lossy(&raw.stderr)
+            );
+            // The source clause order is not the Lean target order.
+            let mut source_order = source.clone();
+            let entries = source_order["normalization"].as_array_mut().unwrap();
+            let residual = entries.pop().unwrap();
+            entries.insert(0, residual);
+            assert!(
+                !check(&source_order, "source-order").status.success(),
+                "Lean must reject a normalization listed in source clause order"
             );
         }
     }
@@ -29682,7 +31031,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, document).unwrap();
-            let accepted = std::process::Command::new(&checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .output()
                 .expect("run the native Lean regular checker");
@@ -29693,7 +31042,7 @@ mod tests {
                 String::from_utf8_lossy(&accepted.stderr),
             );
             std::fs::write(&path, unsaturated_document).unwrap();
-            let accepted_cover = std::process::Command::new(&checker)
+            let accepted_cover = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .output()
                 .expect("run the regular checker on role closure supplied by the cover");
@@ -29799,7 +31148,7 @@ mod tests {
                 .expect("checker-backed tests keep temporary evidence in CARGO_TARGET_DIR");
             let joined_path = target.join("km-ht-general-guarded-accepted.json");
             std::fs::write(&joined_path, joined_document).unwrap();
-            let joined_result = std::process::Command::new(&checker)
+            let joined_result = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&joined_path)
                 .output()
                 .expect("run the regular checker on a dormant joined body");
@@ -29812,7 +31161,7 @@ mod tests {
 
             let obstructed_path = target.join("km-ht-general-guarded-rejected.json");
             std::fs::write(&obstructed_path, non_simple_document).unwrap();
-            let obstructed_result = std::process::Command::new(&checker)
+            let obstructed_result = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&obstructed_path)
                 .output()
                 .expect("run the regular checker on a cover-visible obstruction");
@@ -29832,7 +31181,7 @@ mod tests {
                 assignment: &obstruction.1,
             };
             std::fs::write(&witness_path, serde_json::to_vec(&witness).unwrap()).unwrap();
-            let witness_result = std::process::Command::new(&obstruction_checker)
+            let witness_result = crate::lean_checkers::CheckerCommand::new(&obstruction_checker)
                 .arg(&witness_path)
                 .output()
                 .expect("run the native Lean cover-obstruction checker");
@@ -29850,7 +31199,7 @@ mod tests {
                 assignment: &forged_assignment,
             };
             std::fs::write(&witness_path, serde_json::to_vec(&forged).unwrap()).unwrap();
-            let forged_result = std::process::Command::new(&obstruction_checker)
+            let forged_result = crate::lean_checkers::CheckerCommand::new(&obstruction_checker)
                 .arg(&witness_path)
                 .output()
                 .expect("run the cover-obstruction checker on a forged assignment");
@@ -29866,7 +31215,7 @@ mod tests {
                 assignment: &obstruction.1,
             };
             std::fs::write(&witness_path, serde_json::to_vec(&out_of_range).unwrap()).unwrap();
-            let bounds_result = std::process::Command::new(obstruction_checker)
+            let bounds_result = crate::lean_checkers::CheckerCommand::new(obstruction_checker)
                 .arg(&witness_path)
                 .output()
                 .expect("run the cover-obstruction checker on an invalid clause index");
@@ -29889,7 +31238,7 @@ mod tests {
                 serde_json::to_vec(&endpoint_document).unwrap(),
             )
             .unwrap();
-            let endpoint_result = std::process::Command::new(endpoint_checker)
+            let endpoint_result = crate::lean_checkers::CheckerCommand::new(endpoint_checker)
                 .arg(&endpoint_path)
                 .output()
                 .expect("run the endpoint-role evidence checker");
@@ -29915,7 +31264,7 @@ mod tests {
                 serde_json::to_vec(&refinement_document).unwrap(),
             )
             .unwrap();
-            let refinement_result = std::process::Command::new(refinement_checker)
+            let refinement_result = crate::lean_checkers::CheckerCommand::new(refinement_checker)
                 .arg(&refinement_path)
                 .output()
                 .expect("run the combined cover-refinement checker");
@@ -29940,7 +31289,7 @@ mod tests {
             .unwrap();
             let mut refinement_checker = std::path::PathBuf::from(&checker);
             refinement_checker.set_file_name("ht-cover-refinement-check");
-            let incomplete_rbox_result = std::process::Command::new(refinement_checker)
+            let incomplete_rbox_result = crate::lean_checkers::CheckerCommand::new(refinement_checker)
                 .arg(&refinement_path)
                 .output()
                 .expect("run the combined checker without RBox representation");
@@ -29967,7 +31316,7 @@ mod tests {
             .unwrap();
             let mut refinement_checker = std::path::PathBuf::from(&checker);
             refinement_checker.set_file_name("ht-cover-refinement-check");
-            let forged_refinement_result = std::process::Command::new(refinement_checker)
+            let forged_refinement_result = crate::lean_checkers::CheckerCommand::new(refinement_checker)
                 .arg(&refinement_path)
                 .output()
                 .expect("run the combined checker on forged direct provenance");
@@ -29997,7 +31346,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, document).unwrap();
-            let accepted = std::process::Command::new(checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(checker)
                 .arg(&path)
                 .output()
                 .expect("run the native Lean regular decision checker");
@@ -30028,8 +31377,8 @@ mod tests {
                 std::process::id(),
                 std::thread::current().name().unwrap_or("test")
             ));
-            std::fs::write(&path, document).unwrap();
-            let accepted = std::process::Command::new(checker)
+            std::fs::write(&path, &document).unwrap();
+            let accepted = crate::lean_checkers::CheckerCommand::new(checker)
                 .arg(&path)
                 .output()
                 .expect("run the native Lean regular decision checker");
@@ -30040,6 +31389,27 @@ mod tests {
                 String::from_utf8_lossy(&accepted.stderr),
             );
             let _ = std::fs::remove_file(path);
+        }
+        // The global verdict checker (`ht-cert-check`) receives the same raw
+        // envelope when the source has no normalization records. Its version-1
+        // dispatch must route `finite_sat` to the regular-decision decoder.
+        if let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CHECKER") {
+            let path = std::env::temp_dir().join(format!(
+                "km-ht-global-finite-sat-{}-{}.json",
+                std::process::id(),
+                std::thread::current().name().unwrap_or("test")
+            ));
+            std::fs::write(&path, &document).unwrap();
+            let accepted = crate::lean_checkers::CheckerCommand::new(checker)
+                .arg(&path)
+                .output()
+                .expect("run the main Lean checker on a finite SAT decision");
+            let _ = std::fs::remove_file(&path);
+            assert!(
+                accepted.status.success(),
+                "the main Lean checker must accept Rust's finite SAT decision: {}",
+                String::from_utf8_lossy(&accepted.stderr),
+            );
         }
     }
 
@@ -30068,7 +31438,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, document).unwrap();
-            let accepted = std::process::Command::new(&checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .output()
                 .expect("run the main Lean checker on normalized regular evidence");
@@ -30148,7 +31518,7 @@ mod tests {
                     std::thread::current().name().unwrap_or("test")
                 ));
                 std::fs::write(&path, certificate).unwrap();
-                let accepted = std::process::Command::new(&checker)
+                let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                     .arg(&path)
                     .stdout(std::process::Stdio::null())
                     .stderr(std::process::Stdio::null())
@@ -30231,7 +31601,7 @@ mod tests {
                     std::thread::current().name().unwrap_or("test")
                 ));
                 std::fs::write(&path, certificate).unwrap();
-                let accepted = std::process::Command::new(&checker)
+                let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                     .arg(&path)
                     .stdout(std::process::Stdio::null())
                     .stderr(std::process::Stdio::null())
@@ -30353,7 +31723,7 @@ mod tests {
                 std::thread::current().name().unwrap_or("test")
             ));
             std::fs::write(&path, document).unwrap();
-            let accepted = std::process::Command::new(checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(checker)
                 .arg(&path)
                 .output()
                 .expect("run cardinality production blocker checker");
@@ -30429,7 +31799,7 @@ mod tests {
                     std::thread::current().name().unwrap_or("test")
                 ));
                 std::fs::write(&path, certificate).unwrap();
-                let accepted = std::process::Command::new(&checker)
+                let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                     .arg(&path)
                     .stdout(std::process::Stdio::null())
                     .stderr(std::process::Stdio::null())
@@ -30486,7 +31856,7 @@ mod tests {
                 .expect("the fresh existential witness closes"),
         )
         .expect("write temporary HT certificate");
-        let accepted = std::process::Command::new(&checker)
+        let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -30534,7 +31904,7 @@ mod tests {
                 std::process::id()
             ));
             std::fs::write(&path, document).expect("write temporary HT query certificate");
-            let accepted = std::process::Command::new(&checker)
+            let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -30615,7 +31985,7 @@ mod tests {
         );
         for (index, document) in documents.iter().enumerate() {
             std::fs::write(&path, document).expect("write temporary HT taxonomy certificate");
-            let output = std::process::Command::new(&checker)
+            let output = crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .output()
                 .expect("run native Lean HT taxonomy checker");
@@ -30640,7 +32010,7 @@ mod tests {
         matrix[0].as_array_mut().expect("first taxonomy row").pop();
         std::fs::write(&path, serde_json::to_vec(&tampered).unwrap())
             .expect("write tampered HT taxonomy certificate");
-        let rejected = !std::process::Command::new(&checker)
+        let rejected = !crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -30684,7 +32054,7 @@ mod tests {
         let run_checker = |document: &serde_json::Value| {
             std::fs::write(&path, serde_json::to_vec(document).unwrap())
                 .expect("write cardinality taxonomy run matrix");
-            std::process::Command::new(&checker)
+            crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -30855,7 +32225,7 @@ mod tests {
         let run_checker = |document: &serde_json::Value| {
             std::fs::write(&path, serde_json::to_vec(document).unwrap())
                 .expect("write ordinary taxonomy run matrix");
-            std::process::Command::new(&checker)
+            crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -30949,7 +32319,7 @@ mod tests {
         ));
         let run_checker = |document: &serde_json::Value| {
             std::fs::write(&path, serde_json::to_vec(document).unwrap()).unwrap();
-            std::process::Command::new(&checker)
+            crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -30994,13 +32364,17 @@ mod tests {
             serde_json::from_str(&document).expect("normalized taxonomy is JSON");
         assert_eq!(wire["version"], 3);
         assert!(wire["normalization"][0]["source"]["body"][0]["eq"].is_object());
-        assert!(wire["payload"]["plain"]["certificate"].is_object());
+        // Every certified taxonomy uses the mixed (version-2) matrix, which
+        // `WireOrdinaryTaxonomyRunMatrix.terminalMatrix?` derives for every
+        // fragment; the legacy plain payload is no longer produced.
+        assert_eq!(wire["payload"]["mixed"]["certificate"]["version"], 2);
+        assert!(wire["payload"].get("plain").is_none());
         let path = std::env::temp_dir().join(format!(
             "km-ht-taxonomy-equality-body-gap-{}.json",
             std::process::id()
         ));
         std::fs::write(&path, document).unwrap();
-        let accepted = std::process::Command::new(&checker)
+        let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())

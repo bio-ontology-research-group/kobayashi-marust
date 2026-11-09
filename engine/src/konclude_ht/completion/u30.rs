@@ -167,6 +167,11 @@ pub struct TrackedClashedDependencyLine {
     free_tracked_clashed_descriptors: ClashDescId,
     clashed_set: HashSet<TrackedClashedDescriptorHasher>,
     involved_individual_set: Option<HashSet<Cint64>>,
+    /// Set when the analysis met a dependency whose appropriate individual
+    /// was released at a branch-epoch pop (docs/HYBRID-CB-HT.md section
+    /// 18.2): some descriptor of this line carries a substitute attribution,
+    /// so the line writes no unsatisfiability-cache entry.
+    released_individual_attribution: bool,
 }
 
 impl Default for TrackedClashedDependencyLine {
@@ -184,6 +189,7 @@ impl Default for TrackedClashedDependencyLine {
             free_tracked_clashed_descriptors: ClashDescId::NONE,
             clashed_set: HashSet::default(),
             involved_individual_set: None,
+            released_individual_attribution: false,
         }
     }
 }
@@ -569,6 +575,14 @@ impl TrackedClashedDependencyLine {
         self.involved_individual_set = indi_tracking_set;
         self
     }
+    /// See `released_individual_attribution`.
+    pub fn set_released_individual_attribution(&mut self) -> &mut Self {
+        self.released_individual_attribution = true;
+        self
+    }
+    pub fn has_released_individual_attribution(&self) -> bool {
+        self.released_individual_attribution
+    }
     pub fn get_involved_individual_tracking_set(&self) -> Option<&HashSet<Cint64>> {
         self.involved_individual_set.as_ref()
     }
@@ -655,9 +669,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // return clashDes;
         let mut clash_des = prev_clashes;
         let con_set: LabelSetId = calc_alg_context
-            .process_context_mut()
-            .node_mut(*process_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(*process_indi)
+            .use_reapply_con_label_set;
         let mut con_des_it = if con_set.is_some() {
             calc_alg_context
                 .process_context()
@@ -842,9 +856,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .get_appropriated_individual_id();
         let indi = self.get_corrected_nominal_individual_node(indi_id, calc_alg_context);
         let con_set = calc_alg_context
-            .process_context_mut()
-            .node_mut(indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(indi)
+            .use_reapply_con_label_set;
         let con_sig = calc_alg_context
             .process_context()
             .label_set(con_set)
@@ -1646,13 +1660,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         let mut super_set_indi = super_set_indi;
 
         let mut sub_concept_set = calc_alg_context
-            .process_context_mut()
-            .node_mut(sub_set_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(sub_set_indi)
+            .use_reapply_con_label_set;
         let mut super_concept_set = calc_alg_context
-            .process_context_mut()
-            .node_mut(super_set_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(super_set_indi)
+            .use_reapply_con_label_set;
 
         // if (superConceptSet->getConceptCount() < subConceptSet->getConceptCount()) { swap sets + indis }
         let super_count = calc_alg_context

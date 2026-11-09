@@ -1,0 +1,6 @@
+one-x1 g621 CONSISTENT 1 WRONG miss=[] extra=[]
+one-x1 g1014 CONSISTENT 1 WRONG miss=[] extra=[]
+one-x1 g1022 CONSISTENT 1 WRONG miss=[] extra=[]
+one-x2 g621 CONSISTENT 0 ok
+one-x2 g1014 CONSISTENT 0 ok
+one-x2 g1022 CONSISTENT 0 ok

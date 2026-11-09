@@ -1,0 +1,4 @@
+CONSISTENT 1
+DROPPED 0
+SUB	http://example.org/f#C	http://example.org/f#E
+SUB	http://example.org/f#E	http://example.org/f#C

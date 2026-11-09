@@ -1,0 +1,2 @@
+SubClassOf(DataMinCardinality(2 :u) ObjectComplementOf(ObjectIntersectionOf(ObjectHasValue(:r :a) :C)))
+SubClassOf(ObjectAllValuesFrom(:t ObjectUnionOf(:C ObjectHasValue(:t :b))) :B)

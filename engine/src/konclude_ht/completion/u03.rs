@@ -443,8 +443,22 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // `tableauRuleChoice`, which recomputes them; omitted here to avoid an
         // unused arena read — the descriptor/concept reads happen in the choice.)
 
+        if super::satexp_trace_enabled() {
+            let pc = calc_alg_context.process_context();
+            let des = pc.con_desc(pc.con_proc_desc(con_proc_des).get_concept_descriptor());
+            eprintln!(
+                "SATEXP-RULE node={} tag={}{} flags={:#x}",
+                pc.node(indi_proc_node).individual_node_id(),
+                if des.is_negated() { "-" } else { "" },
+                calc_alg_context.ontology_arenas().concept(des.get_concept()).get_concept_tag(),
+                pc.node(indi_proc_node).processing_restriction_flags
+            );
+        }
         // if (tryDelayNominalProcessing(conProcDes,indiProcNode,calcAlgContext)) return false;
         if self.try_delay_nominal_processing(con_proc_des, indi_proc_node, calc_alg_context) {
+            if super::satexp_trace_enabled() {
+                eprintln!("SATEXP-RULE   delayed-nominal");
+            }
             return false;
         }
 
@@ -463,6 +477,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             }
             // if (isIndividualNodeExpansionBlocked(indiProcNode,calcAlgContext)) return false;
             if self.is_individual_node_expansion_blocked(indi_proc_node, calc_alg_context) {
+                if super::satexp_trace_enabled() {
+                    eprintln!("SATEXP-RULE   expansion-blocked");
+                }
                 return false;
             }
         }

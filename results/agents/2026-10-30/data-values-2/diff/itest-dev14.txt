@@ -1,0 +1,26 @@
+     Running tests/constant_data_rule_normalization.rs (target/release/deps/constant_data_rule_normalization-54df4184ebb135b4)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.10s
+     Running tests/data_abox_projection.rs (target/release/deps/data_abox_projection-b0378957bd260321)
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+     Running tests/data_assertions_carried.rs (target/release/deps/data_assertions_carried-774a0284fc64632e)
+test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 24.89s
+     Running tests/empty_and_universal_data_ranges.rs (target/release/deps/empty_and_universal_data_ranges-624dfee4551b7ca1)
+test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 347.75s
+     Running tests/finite_data_rule_normalization.rs (target/release/deps/finite_data_rule_normalization-57376a88f766ef53)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.67s
+     Running tests/forced_route_fail_closed.rs (target/release/deps/forced_route_fail_closed-7daba3966632fc6d)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.46s
+     Running tests/has_key_rules.rs (target/release/deps/has_key_rules-fa119cabd5faf7eb)
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.55s
+     Running tests/integral_datatype_difference.rs (target/release/deps/integral_datatype_difference-2c5a8f2d44c2394b)
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.62s
+     Running tests/native_data_values.rs (target/release/deps/native_data_values-cd914381789e0a40)
+test result: ok. 27 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 66.86s
+     Running tests/source_axiom_drops.rs (target/release/deps/source_axiom_drops-23ca64f51a7e57c3)
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+     Running tests/top_nominal_data_successors.rs (target/release/deps/top_nominal_data_successors-1a177515898ed0c8)
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.03s
+     Running tests/universal_role_and_top_data_range.rs (target/release/deps/universal_role_and_top_data_range-19e30562fd317257)
+test data_value_next_to_universal_role_hub_stays_satisfiable ... FAILED
+km classify exceeded 10s (route Some("nominals"))
+test result: FAILED. 12 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 19.87s

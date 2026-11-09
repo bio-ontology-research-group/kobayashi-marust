@@ -1,0 +1,48 @@
+test cli::cb_derivation_candidate_tests::source_exact_taxonomy_uses_real_production_traces_and_models ... source-bound chronological CB context proof accepted
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3038 filtered out; finished in 1.93s
+test tableau::hypertableau::tests::cardinality_decision_blocks_and_checks_a_cyclic_minimum ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3038 filtered out; finished in 4.39s
+test tableau::hypertableau::tests::cardinality_decision_emits_sat_or_unsat_checker_ready_evidence ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3038 filtered out; finished in 1.99s
+test tableau::hypertableau::tests::cardinality_frontier_distinguishes_minimum_siblings_and_lean_checks_it ... HT cardinality frontier accepted
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3038 filtered out; finished in 1.61s
+test tableau::hypertableau::tests::certified_unsat_refutation_deepens_past_the_historical_node_cap ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3038 filtered out; finished in 4.04s
+test tableau::hypertableau::tests::equality_and_cardinality_folds_copy_incoming_blocker_edges ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3038 filtered out; finished in 4.87s
+test tableau::hypertableau::tests::equality_decision_emits_sat_or_unsat_checker_ready_evidence ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3038 filtered out; finished in 1.29s
+test tableau::hypertableau::tests::equality_decision_pairwise_blocks_and_checks_a_satisfiable_cycle ... HT source-bound ordinary global decision rejected
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3038 filtered out; finished in 3.13s
+test tableau::hypertableau::tests::equality_free_decision_emits_sat_or_unsat_checker_ready_evidence ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3038 filtered out; finished in 1.61s
+test tableau::hypertableau::tests::global_decision_wraps_regular_evidence_for_the_main_lean_checker ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3038 filtered out; finished in 0.39s
+test tableau::hypertableau::tests::lean_preprocessing_wire_certifies_trigger_and_contrapositives ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3038 filtered out; finished in 5.30s
+test tableau::hypertableau::tests::lean_taxonomy_wire_covers_every_concept_and_ordered_pair ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3038 filtered out; finished in 1.86s
+test tableau::hypertableau::tests::lean_taxonomy_wire_uses_anchored_negative_cells_for_a_genuine_equality_head ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3038 filtered out; finished in 0.83s
+test tableau::hypertableau::tests::native_abox_cardinality_global_decision_uses_joint_wire ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3038 filtered out; finished in 1.20s
+test tableau::hypertableau::tests::native_abox_cardinality_taxonomy_matrix_is_joint_and_tamper_evident ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3038 filtered out; finished in 2.80s
+test tableau::hypertableau::tests::native_abox_global_decision_uses_joint_sat_wire ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3038 filtered out; finished in 1.74s
+test tableau::hypertableau::tests::native_abox_taxonomy_cells_use_one_joint_checked_state ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3038 filtered out; finished in 3.25s
+test tableau::hypertableau::tests::native_abox_taxonomy_matrix_is_complete_and_tamper_evident ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3038 filtered out; finished in 4.50s
+test tableau::hypertableau::tests::regular_decision_envelope_carries_finite_unsat_and_lean_checks_it ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3038 filtered out; finished in 0.82s
+test tableau::hypertableau::tests::regular_decision_prefers_a_checked_finite_sat_model ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3038 filtered out; finished in 0.54s
+test tableau::tests::joint_native_abox_classification_carries_one_source_and_abox ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3038 filtered out; finished in 0.69s
+test tableau::tests::joint_native_abox_source_matrix_passes_real_lean_checker_on_all_six_routes ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3038 filtered out; finished in 14.60s
+
+real	1m3.555s
+user	0m21.914s
+sys	0m5.963s

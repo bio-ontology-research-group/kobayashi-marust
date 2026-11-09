@@ -1,0 +1,13 @@
+Prefix(:=<http://example.org/fx#>)
+Ontology(<http://example.org/fx>
+Declaration(Class(:A))
+Declaration(Class(:D))
+Declaration(Class(:Q3))
+Declaration(ObjectProperty(:r))
+Declaration(ObjectProperty(:s))
+Declaration(ObjectProperty(:p))
+Declaration(NamedIndividual(:b))
+EquivalentClasses(:Q3 ObjectMaxCardinality(1 :r ObjectHasValue(:s :b)))
+InverseObjectProperties(:s :p)
+SubClassOf(ObjectSomeValuesFrom(:p owl:Thing) ObjectMaxCardinality(1 :p))
+)

@@ -1,0 +1,35 @@
+{
+  "phase": "instrumented",
+  "status": "complete",
+  "version": "1.5.5",
+  "command": [
+    "taskset",
+    "-c",
+    "17-24",
+    "/home/leechuck/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/cargo",
+    "build",
+    "--offline",
+    "--locked",
+    "--release",
+    "--target=x86_64-unknown-linux-gnu",
+    "--features",
+    "mimalloc",
+    "--bin",
+    "km"
+  ],
+  "source_manifest_sha256": "31f4e2f894f83a0cce6f3bf25198192803a162f07800e9dc118dd184ee30b091",
+  "rustflags": "-Cprofile-generate=/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/release-pipeline/pgo-895d4baf/profiles",
+  "compiler": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: x86_64-unknown-linux-gnu\nrelease: 1.95.0\nLLVM version: 22.1.2\n",
+  "production_environment": {
+    "CARGO_TARGET_DIR": "/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/release-pipeline/pgo-895d4baf/target-instrumented",
+    "CARGO_PROFILE_RELEASE_LTO": "true",
+    "CARGO_PROFILE_RELEASE_CODEGEN_UNITS": "1",
+    "CARGO_BUILD_JOBS": "8"
+  },
+  "explicit_generic_target": true,
+  "exit_code": 0,
+  "elapsed_s": 550.6752423910657,
+  "sources_verified_after": true,
+  "binary_path": "/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/release-pipeline/pgo-895d4baf/km-instrumented",
+  "binary_sha256": "d514f0557634233938fd1545ff1160ae27df21cc5076ac1577540ec5fec74ba2"
+}

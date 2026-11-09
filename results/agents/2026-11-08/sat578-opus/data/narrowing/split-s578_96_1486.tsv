@@ -1,0 +1,6 @@
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/sat578/fam/s578_1486.ofn	ht_bridge[KM_HT_B6_MODE=vshare]	1	ok	0.04	
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/sat578/fam/s578_96.ofn	ht_bridge[KM_HT_B6_MODE=vshare]	1	WRONG	1.27	missing=[] extra=[('Q2', 'A'), ('Q2', 'Q4')] unsat_missing=['Q2'] unsat_extra=[] dropped=0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/sat578/fam/s578_1486.ofn	ht_bridge[KM_HT_B4A_MODE=atmost]	1	WRONG	0.05	missing=[('Q5', 'Q1')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/sat578/fam/s578_96.ofn	ht_bridge[KM_HT_B4A_MODE=atmost]	1	ok	2.84	
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/sat578/fam/s578_1486.ofn	ht_bridge[KM_HT_B6_MODE=vshare;KM_HT_B4A_MODE=atmost]	1	WRONG	0.05	missing=[('Q5', 'Q1')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/sat578/fam/s578_96.ofn	ht_bridge[KM_HT_B6_MODE=vshare;KM_HT_B4A_MODE=atmost]	1	WRONG	1.14	missing=[] extra=[('Q2', 'A'), ('Q2', 'Q4')] unsat_missing=['Q2'] unsat_extra=[] dropped=0

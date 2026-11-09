@@ -1,0 +1,21 @@
+{
+  "ontology": "s974.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["B", "A"],
+    ["B", "F"],
+    ["B", "Q3"],
+    ["B", "Q5"],
+    ["F", "A"],
+    ["F", "Q3"],
+    ["F", "Q5"],
+    ["Q1", "A"],
+    ["Q1", "F"],
+    ["Q1", "Q3"],
+    ["Q1", "Q5"],
+    ["Q5", "Q3"]
+  ],
+  "unsatisfiable": [
+    "Q2"
+  ]
+}

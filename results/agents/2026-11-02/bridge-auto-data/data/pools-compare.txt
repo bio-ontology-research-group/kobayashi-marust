@@ -1,0 +1,11 @@
+bnm.tsv: runs=400 before={'ok': 399, 'ERR': 1} after={'ok': 399, 'ERR': 1} transitions={}
+dcr.tsv: runs=800 before={'ok': 424, 'ERR': 376} after={'ok': 424, 'ERR': 376} transitions={}
+dec.tsv: runs=600 before={'ok': 447, 'ERR': 153} after={'ok': 447, 'ERR': 153} transitions={}
+decf.tsv: runs=400 before={'ok': 318, 'TIMEOUT': 37, 'ERR': 45} after={'ok': 318, 'TIMEOUT': 37, 'ERR': 45} transitions={}
+dvprobes.tsv: runs=76 before={'ok': 60, 'TIMEOUT': 3, 'ERR': 13} after={'ok': 60, 'TIMEOUT': 3, 'ERR': 13} transitions={}
+fndm.tsv: runs=28 before={'ok': 21, 'ERR': 7} after={'ok': 21, 'ERR': 7} transitions={}
+nomcov.tsv: runs=800 before={'ok': 500, 'ERR': 287, 'TIMEOUT': 13} after={'ok': 500, 'ERR': 287, 'TIMEOUT': 13} transitions={('ok', 'TIMEOUT'): 1, ('TIMEOUT', 'ok'): 1}
+r3.tsv: runs=400 before={'ok': 344, 'TIMEOUT': 12, 'ERR': 44} after={'ok': 345, 'TIMEOUT': 11, 'ERR': 44} transitions={('TIMEOUT', 'ok'): 1}
+replay.tsv: runs=400 before={'ok': 398, 'ERR': 2} after={'ok': 398, 'ERR': 2} transitions={}
+same.tsv: runs=852 before={'ok': 849, 'ERR': 3} after={'ok': 849, 'ERR': 3} transitions={}
+tnd.tsv: runs=400 before={'ok': 247, 'ERR': 145, 'TIMEOUT': 8} after={'ok': 247, 'ERR': 145, 'TIMEOUT': 8} transitions={}

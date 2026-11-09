@@ -1,0 +1,8 @@
+CONCEPT tag=965 op=3 role=-1 ops=[248,961,962,963,964] 
+CONCEPT tag=248 op=7 role=-1 ops=[47,935,936] social-object
+CONCEPT tag=961 op=-5 role=141 ops=[12] 
+CONCEPT tag=962 op=5 role=142 ops=[12] 
+CONCEPT tag=963 op=5 role=143 ops=[72] 
+CONCEPT tag=964 op=5 role=144 ops=[742] 
+CONCEPT tag=12 op=7 role=-1 ops=[888,946,967,1011] particular
+CONCEPT tag=742 op=-3 role=-1 ops=[122,177] 

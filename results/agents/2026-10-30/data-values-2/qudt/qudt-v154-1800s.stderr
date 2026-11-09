@@ -1,0 +1,22 @@
+KM_TIMING mark: validate_user_input done
+KM_TIMING mark: second source check done
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING ABox quotient not built: site 1
+KM_TIMING mirror-route: declined by lexical prefilter: bytes=2462363 complements_below=0
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.06s cached=false sidecar=false
+KM_TIMING frontend: 6124 data-property assertion(s) not carried; re-running with the DataHasValue conversion
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.11s cached=false sidecar=false
+KM_TIMING frontend: 6124 data-property assertion(s) stay uncarried after the conversion
+KM_TIMING mark: second source check done
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.08s cached=false sidecar=false
+KM_TIMING frontend: 3217 source axiom(s) not represented: {"ClassAssertion": 1201, "ObjectPropertyAssertion": 2016}
+KM_TIMING frontend done @ 0.58s route=ht_bridge
+native ABox conversion declined: 6124 data-property assertion axiom(s) are unsupported
+KM_TIMING bounded bridge-first declined @ 2.42s: out of fragment: speculative native bridge attempt deferred or exceeded its budget
+KM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false
+KM_TIMING frontend done @ 2.42s route=certified_nominals
+native ABox conversion declined: 6124 data-property assertion axiom(s) are unsupported
+KM_TIMING race: HT not routable @ 0.03s after the CB stack started

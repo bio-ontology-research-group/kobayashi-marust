@@ -615,7 +615,24 @@ pub fn run_engine() {
     }
 
     let t1 = std::time::Instant::now();
-    let cb_typed_source = if let Some(source) = input.cb_typed_source.clone() {
+    // KM_LEAN_CHECKERS: certify this CB run when its typed source compiles;
+    // otherwise run exactly as without the checkers and report cannot_check.
+    let mut lean_checkers_source = None;
+    if crate::lean_checkers::active() && std::env::var_os("KM_CB_LEAN_REQUIRED").is_none() {
+        let compiled = match input.cb_typed_source.clone() {
+            Some(source) => Ok(source),
+            None => crate::cb_source::typed_source_candidate(&input.clauses)
+                .map_err(|error| error.to_string()),
+        };
+        let status = compiled.as_ref().map(|_| ()).map_err(Clone::clone);
+        if crate::lean_checkers::configure_cb(status) {
+            lean_checkers_source = compiled.ok();
+        }
+    }
+    let lean_checkers_mode = lean_checkers_source.is_some();
+    let cb_typed_source = if let Some(source) = lean_checkers_source {
+        Some(source)
+    } else if let Some(source) = input.cb_typed_source.clone() {
         Some(source)
     } else if std::env::var_os("KM_CB_LEAN_REQUIRED").is_some()
         || std::env::var_os("KM_CB_DUMP_TYPED_SOURCE").is_some()
@@ -672,7 +689,18 @@ pub fn run_engine() {
     }
     let certified_subsumptions = if std::env::var_os("KM_CB_LEAN_REQUIRED").is_some() {
         match verify_cb_lean_publication(&r, cb_typed_source.as_ref()) {
+            Ok(_) if crate::lean_checkers::rejected_in_process() => {
+                eprintln!("CB Lean certification failed: a checker rejected its certificate");
+                exit(5);
+            }
             Ok(subsumptions) => Some(subsumptions),
+            // Under KM_LEAN_CHECKERS a certificate that could not be produced
+            // is `cannot_check`: the run publishes the answer it computed,
+            // which is the uncertified answer. A rejection always fails closed.
+            Err(error) if lean_checkers_mode && !crate::lean_checkers::rejected_in_process() => {
+                crate::lean_checkers::record_cannot_check("cb", "cb-publication", &error);
+                None
+            }
             Err(error) => {
                 eprintln!("CB Lean certification failed: {error}");
                 exit(5);
@@ -1481,7 +1509,7 @@ fn cb_filtered_seed_event_evidence(
             live,
             event,
             assumption,
-            serde_json::json!({"assumption": index}),
+            serde_json::json!({"assumption": {"index": index}}),
         ) {
             return Some(evidence);
         }
@@ -2111,235 +2139,249 @@ fn verify_cb_lean_publication(
         let path = source_live_path
             .as_ref()
             .ok_or_else(|| "source-bound CB live checker has no candidate path".to_string())?;
-        let status = std::process::Command::new(&source_checker)
-            .arg(path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run source-bound CB live checker {}: {error}",
-                    std::path::Path::new(&source_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "source-bound CB live checker rejected the candidate with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&source_checker),
+            "cb-source-bound-live",
+            std::path::Path::new(path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("source-bound CB live checker rejected the candidate: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("source-bound CB live checker did not run: {detail}"));
+            }
         }
     }
     if let Some(local_checker) = source_local_checker {
         let path = source_local_path.as_ref().ok_or_else(|| {
             "source-bound CB local-closure checker has no candidate path".to_string()
         })?;
-        let status = std::process::Command::new(&local_checker)
-            .arg(path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run source-bound CB local-closure checker {}: {error}",
-                    std::path::Path::new(&local_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "source-bound CB local-closure checker rejected the candidate with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&local_checker),
+            "cb-source-bound-local-closure",
+            std::path::Path::new(path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("source-bound CB local-closure checker rejected the candidate: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("source-bound CB local-closure checker did not run: {detail}"));
+            }
         }
     }
     if let Some(hyper_checker) = source_hyper_checker {
         let path = source_hyper_path
             .as_ref()
             .ok_or_else(|| "source-bound CB Hyper checker has no candidate path".to_string())?;
-        let status = std::process::Command::new(&hyper_checker)
-            .arg(path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run source-bound CB Hyper checker {}: {error}",
-                    std::path::Path::new(&hyper_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "source-bound CB Hyper checker rejected the candidate with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&hyper_checker),
+            "cb-source-bound-hyper",
+            std::path::Path::new(path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("source-bound CB Hyper checker rejected the candidate: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("source-bound CB Hyper checker did not run: {detail}"));
+            }
         }
     }
     if let Some(join3_checker) = source_join3_checker {
         let path = source_join3_path
             .as_ref()
             .ok_or_else(|| "source-bound CB Join-3 checker has no candidate path".to_string())?;
-        let status = std::process::Command::new(&join3_checker)
-            .arg(path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run source-bound CB Join-3 checker {}: {error}",
-                    std::path::Path::new(&join3_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "source-bound CB Join-3 checker rejected the candidate with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&join3_checker),
+            "cb-source-bound-join-3",
+            std::path::Path::new(path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("source-bound CB Join-3 checker rejected the candidate: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("source-bound CB Join-3 checker did not run: {detail}"));
+            }
         }
     }
     if let Some(succ_checker) = source_succ_checker {
         let path = source_succ_path
             .as_ref()
             .ok_or_else(|| "source-bound CB Succ checker has no candidate path".to_string())?;
-        let status = std::process::Command::new(&succ_checker)
-            .arg(path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run source-bound CB Succ checker {}: {error}",
-                    std::path::Path::new(&succ_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "source-bound CB Succ checker rejected the candidate with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&succ_checker),
+            "cb-source-bound-succ",
+            std::path::Path::new(path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("source-bound CB Succ checker rejected the candidate: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("source-bound CB Succ checker did not run: {detail}"));
+            }
         }
     }
     if let Some(eq_checker) = source_eq_checker {
         let path = source_eq_path
             .as_ref()
             .ok_or_else(|| "source-bound CB Eq checker has no candidate path".to_string())?;
-        let status = std::process::Command::new(&eq_checker)
-            .arg(path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run source-bound CB Eq checker {}: {error}",
-                    std::path::Path::new(&eq_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "source-bound CB Eq checker rejected the candidate with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&eq_checker),
+            "cb-source-bound-eq",
+            std::path::Path::new(path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("source-bound CB Eq checker rejected the candidate: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("source-bound CB Eq checker did not run: {detail}"));
+            }
         }
     }
     if let Some(pred_checker) = source_ordinary_pred_checker {
         let path = source_ordinary_pred_path.as_ref().ok_or_else(|| {
             "source-bound CB ordinary Pred checker has no candidate path".to_string()
         })?;
-        let status = std::process::Command::new(&pred_checker)
-            .arg(path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run source-bound CB ordinary Pred checker {}: {error}",
-                    std::path::Path::new(&pred_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "source-bound CB ordinary Pred checker rejected the candidate with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&pred_checker),
+            "cb-source-bound-ordinary-pred",
+            std::path::Path::new(path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("source-bound CB ordinary Pred checker rejected the candidate: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("source-bound CB ordinary Pred checker did not run: {detail}"));
+            }
         }
     }
     if let Some(pred_checker) = source_root_pred_checker {
         let path = source_root_pred_path
             .as_ref()
             .ok_or_else(|| "source-bound CB root Pred checker has no candidate path".to_string())?;
-        let status = std::process::Command::new(&pred_checker)
-            .arg(path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run source-bound CB root Pred checker {}: {error}",
-                    std::path::Path::new(&pred_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "source-bound CB root Pred checker rejected the candidate with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&pred_checker),
+            "cb-source-bound-root-pred",
+            std::path::Path::new(path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("source-bound CB root Pred checker rejected the candidate: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("source-bound CB root Pred checker did not run: {detail}"));
+            }
         }
     }
     if let Some(checker) = checker {
-        let status = std::process::Command::new(&checker)
-            .arg(&bundle_path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run CB Lean checker {}: {error}",
-                    std::path::Path::new(&checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!("CB Lean checker rejected the bundle with {status}"));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&checker),
+            "cb-live-bundle",
+            std::path::Path::new(&bundle_path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("CB Lean checker rejected the bundle: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("CB Lean checker did not run: {detail}"));
+            }
         }
     }
     if let Some(terminal_checker) = terminal_state_checker {
         let path = terminal_state_path
             .as_ref()
             .ok_or_else(|| "CB terminal-state checker has no candidate path".to_string())?;
-        let status = std::process::Command::new(&terminal_checker)
-            .arg(path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run CB terminal-state checker {}: {error}",
-                    std::path::Path::new(&terminal_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "CB terminal-state checker rejected the candidate with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&terminal_checker),
+            "cb-terminal-state",
+            std::path::Path::new(path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("CB terminal-state checker rejected the candidate: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("CB terminal-state checker did not run: {detail}"));
+            }
         }
     }
     if let Some(context_checker) = standalone_context_checker {
         let path = standalone_context_path
             .as_ref()
             .ok_or_else(|| "standalone CB context checker has no candidate path".to_string())?;
-        let status = std::process::Command::new(&context_checker)
-            .arg(path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run standalone CB context checker {}: {error}",
-                    std::path::Path::new(&context_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "standalone CB context checker rejected the proof with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&context_checker),
+            "cb-standalone-context",
+            std::path::Path::new(path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("standalone CB context checker rejected the proof: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("standalone CB context checker did not run: {detail}"));
+            }
         }
     }
     if let Some(production_checker) = source_production_checker {
         let path = source_production_path.as_ref().ok_or_else(|| {
             "source-production CB taxonomy checker has no candidate path".to_string()
         })?;
-        let status = std::process::Command::new(&production_checker)
-            .arg(path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run source-production CB taxonomy checker {}: {error}",
-                    std::path::Path::new(&production_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "source-production CB taxonomy checker rejected the matrix with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&production_checker),
+            "cb-source-production-taxonomy",
+            std::path::Path::new(path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("source-production CB taxonomy checker rejected the matrix: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("source-production CB taxonomy checker did not run: {detail}"));
+            }
         }
     }
     if let Some(exact_checker) = exact_checker {
@@ -2353,20 +2395,21 @@ fn verify_cb_lean_publication(
         let exact_path = exact_candidate_path
             .as_ref()
             .ok_or_else(|| "exact CB checker has no candidate path".to_string())?;
-        let status = std::process::Command::new(&exact_checker)
-            .arg(exact_path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run exact CB Lean checker {}: {error}",
-                    std::path::Path::new(&exact_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "exact CB Lean checker rejected the matrix with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&exact_checker),
+            "cb-live-exact-taxonomy",
+            std::path::Path::new(exact_path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("exact CB Lean checker rejected the matrix: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("exact CB Lean checker did not run: {detail}"));
+            }
         }
     }
     if let Some(source_checker) = source_exact_checker {
@@ -2394,20 +2437,21 @@ fn verify_cb_lean_publication(
         writer
             .flush()
             .map_err(|error| format!("cannot flush source-exact CB taxonomy: {error}"))?;
-        let status = std::process::Command::new(&source_checker)
-            .arg(source_path)
-            .stdout(std::process::Stdio::null())
-            .status()
-            .map_err(|error| {
-                format!(
-                    "cannot run source-exact CB Lean checker {}: {error}",
-                    std::path::Path::new(&source_checker).display()
-                )
-            })?;
-        if !status.success() {
-            return Err(format!(
-                "source-exact CB Lean checker rejected the matrix with {status}"
-            ));
+        match crate::lean_checkers::run(
+            "cb",
+            std::path::Path::new(&source_checker),
+            "cb-source-exact-taxonomy",
+            std::path::Path::new(source_path),
+        ) {
+            crate::lean_checkers::Outcome::Accepted => {}
+            crate::lean_checkers::Outcome::Rejected(detail) => {
+                if !crate::lean_checkers::continue_after_rejection() {
+                    return Err(format!("source-exact CB Lean checker rejected the matrix: {detail}"));
+                }
+            }
+            crate::lean_checkers::Outcome::CannotCheck(detail) => {
+                return Err(format!("source-exact CB Lean checker did not run: {detail}"));
+            }
         }
     }
     Ok(public_answer)
@@ -3922,6 +3966,62 @@ fn cb_wire_live_predicate_json(
 /// compact chronological proof DAG checked by `CBStandaloneContextProofWire`.
 /// Each live event is emitted at most once, and every edge points to an earlier
 /// node. This is the native positive-evidence boundary for nested Pred chains.
+/// Literal-set equality of two wire clauses: the relation `clEquivT` the
+/// Lean trace checker uses for every step (`CheckerTerm.lean`).
+fn cb_wire_clause_set_eq(left: &serde_json::Value, right: &serde_json::Value) -> bool {
+    let side = |clause: &serde_json::Value, name: &str| {
+        clause
+            .get(name)
+            .and_then(serde_json::Value::as_array)
+            .map(|literals| {
+                literals
+                    .iter()
+                    .map(serde_json::Value::to_string)
+                    .collect::<std::collections::BTreeSet<_>>()
+            })
+    };
+    let (Some(left_body), Some(left_head), Some(right_body), Some(right_head)) = (
+        side(left, "body"),
+        side(left, "head"),
+        side(right, "body"),
+        side(right, "head"),
+    ) else {
+        return false;
+    };
+    left_body == right_body && left_head == right_head
+}
+
+/// The standalone node checker (`CBStandaloneContextProofWire`
+/// `decodeLocal`) requires the node's claimed clause to occur verbatim in
+/// the prior-node clauses or the local trace, while each trace step is
+/// checked only up to literal-set equality (`clEquivT`). A derived step can
+/// therefore produce the claimed clause with its literals in another order
+/// (the Hyper/resolution evidence keeps premise order; the arena clause is
+/// sorted). When the claim is absent verbatim, replace the clause of the
+/// last trace entry that is set-equal to the claim by the claim itself: the
+/// entry's own step check is unchanged (`clEquivT` is invariant under
+/// set-equal replacement) and so is every later step that references it
+/// (they test literal membership only). If no entry is set-equal, the trace
+/// is left unchanged and the checker rejects it.
+fn cb_align_local_trace_with_claim(
+    trace: &mut [serde_json::Value],
+    claim: &serde_json::Value,
+    prior_clauses: &[&serde_json::Value],
+) {
+    if prior_clauses.iter().any(|clause| *clause == claim)
+        || trace.iter().any(|entry| entry.get("clause") == Some(claim))
+    {
+        return;
+    }
+    if let Some(entry) = trace.iter_mut().rev().find(|entry| {
+        entry
+            .get("clause")
+            .is_some_and(|clause| cb_wire_clause_set_eq(clause, claim))
+    }) {
+        entry["clause"] = claim.clone();
+    }
+}
+
 fn cb_standalone_context_proof_document(
     live_publication: &serde_json::Value,
     terminal_events: &[usize],
@@ -4068,11 +4168,17 @@ fn cb_standalone_context_proof_document(
                         }
                         prior_nodes.push(self.append(dependency)?);
                     }
-                    let trace = proof
+                    let mut trace = proof
                         .get("trace")
                         .and_then(serde_json::Value::as_array)
                         .cloned()
                         .ok_or_else(|| "local CB evidence has no trace".to_string())?;
+                    let prior_clauses = prior_nodes
+                        .iter()
+                        .filter_map(|&node| self.nodes.get(node))
+                        .filter_map(|node| node.get("clause"))
+                        .collect::<Vec<_>>();
+                    cb_align_local_trace_with_claim(&mut trace, &clause, &prior_clauses);
                     serde_json::json!({"local": {
                         "prior_nodes": prior_nodes,
                         "trace": trace,
@@ -5709,7 +5815,7 @@ mod cb_derivation_candidate_tests {
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join(format!("native-pred-send-{}.json", std::process::id()));
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
-        let status = std::process::Command::new(checker)
+        let status = crate::lean_checkers::CheckerCommand::new(checker)
             .arg(&path)
             .status()
             .unwrap();
@@ -5861,7 +5967,7 @@ mod cb_derivation_candidate_tests {
         std::fs::create_dir_all(&root).unwrap();
         let path = root.join(format!("native-root-pred-send-{}.json", std::process::id()));
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
-        let status = std::process::Command::new(checker)
+        let status = crate::lean_checkers::CheckerCommand::new(checker)
             .arg(&path)
             .status()
             .unwrap();
@@ -5882,7 +5988,7 @@ mod cb_derivation_candidate_tests {
             let root_candidate = cb_source_root_pred_closure_candidate(&source, &live, &evidence)
                 .expect("construct source-bound root Pred candidate");
             std::fs::write(&path, serde_json::to_vec(&root_candidate).unwrap()).unwrap();
-            let root_status = std::process::Command::new(root_checker)
+            let root_status = crate::lean_checkers::CheckerCommand::new(root_checker)
                 .arg(&path)
                 .status()
                 .unwrap();
@@ -5899,7 +6005,7 @@ mod cb_derivation_candidate_tests {
                     "production_closure": root_candidate,
                 });
                 std::fs::write(&path, serde_json::to_vec(&canonical_candidate).unwrap()).unwrap();
-                let canonical_status = std::process::Command::new(canonical_checker)
+                let canonical_status = crate::lean_checkers::CheckerCommand::new(canonical_checker)
                     .arg(&path)
                     .status()
                     .unwrap();
@@ -6261,7 +6367,7 @@ mod cb_derivation_candidate_tests {
         );
         std::fs::write(&proof_path, serde_json::to_vec(&context_document).unwrap()).unwrap();
         assert!(
-            std::process::Command::new(&context_checker)
+            crate::lean_checkers::CheckerCommand::new(&context_checker)
                 .arg(&proof_path)
                 .status()
                 .unwrap()
@@ -6277,7 +6383,7 @@ mod cb_derivation_candidate_tests {
         )
         .unwrap();
         assert!(
-            std::process::Command::new(&production_checker)
+            crate::lean_checkers::CheckerCommand::new(&production_checker)
                 .arg(&production_path)
                 .status()
                 .unwrap()
@@ -6292,7 +6398,7 @@ mod cb_derivation_candidate_tests {
         )
         .unwrap();
         assert!(
-            !std::process::Command::new(&production_checker)
+            !crate::lean_checkers::CheckerCommand::new(&production_checker)
                 .arg(&production_path)
                 .status()
                 .unwrap()
@@ -6300,7 +6406,7 @@ mod cb_derivation_candidate_tests {
             "Lean must reject a matrix cell redirected to the wrong shared node"
         );
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
-        let accepted = std::process::Command::new(&checker)
+        let accepted = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .status()
             .unwrap()
@@ -6322,7 +6428,7 @@ mod cb_derivation_candidate_tests {
             serde_json::json!({"regularArbitraryChain": {"model": regular}});
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
         assert!(
-            std::process::Command::new(&checker)
+            crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .status()
                 .unwrap()
@@ -6332,7 +6438,7 @@ mod cb_derivation_candidate_tests {
         let mut forged = candidate;
         forged["taxonomy"]["published"][2] = serde_json::json!(true);
         std::fs::write(&path, serde_json::to_vec(&forged).unwrap()).unwrap();
-        let rejected = !std::process::Command::new(checker)
+        let rejected = !crate::lean_checkers::CheckerCommand::new(checker)
             .arg(&path)
             .status()
             .unwrap()
@@ -6411,7 +6517,7 @@ mod cb_derivation_candidate_tests {
         ));
         let check = |value: &serde_json::Value| {
             std::fs::write(&path, serde_json::to_vec(value).unwrap()).unwrap();
-            std::process::Command::new(&checker)
+            crate::lean_checkers::CheckerCommand::new(&checker)
                 .arg(&path)
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
@@ -6711,7 +6817,7 @@ mod cb_derivation_candidate_tests {
             std::process::id()
         ));
         std::fs::write(&path, serde_json::to_vec(&document).unwrap()).unwrap();
-        let output = std::process::Command::new(&checker)
+        let output = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .output()
             .expect("run the typed regular Lean checker");
@@ -6726,7 +6832,7 @@ mod cb_derivation_candidate_tests {
         document["source"]["function_allocation"]["sparse_allocation"][0]["target"] =
             serde_json::json!(production_count);
         std::fs::write(&path, serde_json::to_vec(&document).unwrap()).unwrap();
-        let forged = std::process::Command::new(&checker)
+        let forged = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .output()
             .expect("run the typed regular Lean checker on forged allocation");
@@ -7275,7 +7381,7 @@ mod cb_derivation_candidate_tests {
             .join(format!("cb-source-live-pred-{}.json", std::process::id()));
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, serde_json::to_vec(&candidate).unwrap()).unwrap();
-        let status = std::process::Command::new(&checker)
+        let status = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .status()
             .unwrap();
@@ -7287,7 +7393,7 @@ mod cb_derivation_candidate_tests {
         let mut pending = candidate.clone();
         pending["pending_messages"] = serde_json::json!(1);
         std::fs::write(&path, serde_json::to_vec(&pending).unwrap()).unwrap();
-        let pending_status = std::process::Command::new(&checker)
+        let pending_status = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .status()
             .unwrap();
@@ -7299,7 +7405,7 @@ mod cb_derivation_candidate_tests {
         let mut dirty = candidate.clone();
         dirty["contexts"][0]["dirty"] = serde_json::json!(true);
         std::fs::write(&path, serde_json::to_vec(&dirty).unwrap()).unwrap();
-        let dirty_status = std::process::Command::new(&checker)
+        let dirty_status = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .status()
             .unwrap();
@@ -7312,7 +7418,7 @@ mod cb_derivation_candidate_tests {
         missing_pool_entry["contexts"][0]["pred_pool_ids"] = serde_json::json!([]);
         missing_pool_entry["contexts"][0]["pred_hwm"] = serde_json::json!(0);
         std::fs::write(&path, serde_json::to_vec(&missing_pool_entry).unwrap()).unwrap();
-        let missing_pool_status = std::process::Command::new(&checker)
+        let missing_pool_status = crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .status()
             .unwrap();
@@ -7324,7 +7430,7 @@ mod cb_derivation_candidate_tests {
         if let Some(local_checker) = std::env::var_os("KM_CB_TEST_SOURCE_LOCAL_CLOSURE_CHECKER") {
             let local = serde_json::json!({"version": 1, "live": candidate});
             std::fs::write(&path, serde_json::to_vec(&local).unwrap()).unwrap();
-            let local_status = std::process::Command::new(local_checker)
+            let local_status = crate::lean_checkers::CheckerCommand::new(local_checker)
                 .arg(&path)
                 .status()
                 .unwrap();
@@ -7338,7 +7444,7 @@ mod cb_derivation_candidate_tests {
             let hyper = cb_source_hyper_closure_candidate(&source, &live, &evidence)
                 .expect("construct source-bound Hyper candidate");
             std::fs::write(&path, serde_json::to_vec(&hyper).unwrap()).unwrap();
-            let hyper_status = std::process::Command::new(hyper_checker)
+            let hyper_status = crate::lean_checkers::CheckerCommand::new(hyper_checker)
                 .arg(&path)
                 .status()
                 .unwrap();
@@ -7354,7 +7460,7 @@ mod cb_derivation_candidate_tests {
                 .unwrap()
                 .push(first_term);
             std::fs::write(&path, serde_json::to_vec(&forged).unwrap()).unwrap();
-            let forged_status = std::process::Command::new(
+            let forged_status = crate::lean_checkers::CheckerCommand::new(
                 std::env::var_os("KM_CB_TEST_SOURCE_HYPER_CLOSURE_CHECKER").unwrap(),
             )
             .arg(&path)
@@ -7371,7 +7477,7 @@ mod cb_derivation_candidate_tests {
                 .expect("construct source-bound Join-3 parent candidate");
             let join3 = serde_json::json!({"version": 1, "hyper_closure": hyper});
             std::fs::write(&path, serde_json::to_vec(&join3).unwrap()).unwrap();
-            let join3_status = std::process::Command::new(join3_checker)
+            let join3_status = crate::lean_checkers::CheckerCommand::new(join3_checker)
                 .arg(&path)
                 .status()
                 .unwrap();
@@ -7385,7 +7491,7 @@ mod cb_derivation_candidate_tests {
             let succ = cb_source_succ_closure_candidate(&source, &live, &evidence)
                 .expect("construct source-bound Succ candidate");
             std::fs::write(&path, serde_json::to_vec(&succ).unwrap()).unwrap();
-            let succ_status = std::process::Command::new(succ_checker)
+            let succ_status = crate::lean_checkers::CheckerCommand::new(succ_checker)
                 .arg(&path)
                 .status()
                 .unwrap();
@@ -7400,7 +7506,7 @@ mod cb_derivation_candidate_tests {
                 .expect("construct source-bound Eq parent candidate");
             let eq = serde_json::json!({"version": 1, "succ_closure": succ});
             std::fs::write(&path, serde_json::to_vec(&eq).unwrap()).unwrap();
-            let eq_status = std::process::Command::new(eq_checker)
+            let eq_status = crate::lean_checkers::CheckerCommand::new(eq_checker)
                 .arg(&path)
                 .status()
                 .unwrap();
@@ -7414,7 +7520,7 @@ mod cb_derivation_candidate_tests {
                 .expect("construct source-bound ordinary Pred parent candidate");
             let pred = serde_json::json!({"version": 1, "eq_closure": eq});
             std::fs::write(&path, serde_json::to_vec(&pred).unwrap()).unwrap();
-            let pred_status = std::process::Command::new(pred_checker)
+            let pred_status = crate::lean_checkers::CheckerCommand::new(pred_checker)
                 .arg(&path)
                 .status()
                 .unwrap();
@@ -7427,7 +7533,7 @@ mod cb_derivation_candidate_tests {
         let mut forged = candidate;
         forged["insertion_evidence"][1]["sender_event"]["event_index"] = serde_json::json!(1);
         std::fs::write(&path, serde_json::to_vec(&forged).unwrap()).unwrap();
-        let rejected = !std::process::Command::new(&checker)
+        let rejected = !crate::lean_checkers::CheckerCommand::new(&checker)
             .arg(&path)
             .status()
             .unwrap()
@@ -7548,7 +7654,7 @@ mod cb_derivation_candidate_tests {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(&path, serde_json::to_vec(&document).unwrap()).unwrap();
         assert!(
-            std::process::Command::new(checker)
+            crate::lean_checkers::CheckerCommand::new(checker)
                 .arg(&path)
                 .status()
                 .unwrap()
@@ -7638,8 +7744,42 @@ mod cb_derivation_candidate_tests {
         let evidence = cb_filtered_seed_event_evidence(&live, &event).unwrap();
         let trace = evidence["trace"].as_array().unwrap();
         assert_eq!(trace.len(), 3);
-        assert_eq!(trace[0]["justification"]["assumption"], 0);
+        // `WireProductionJustification.assumption` decodes `{"index": n}`.
+        assert_eq!(trace[0]["justification"]["assumption"]["index"], 0);
         assert!(trace[2]["justification"]["resolve"].is_object());
+    }
+
+    #[test]
+    fn standalone_local_trace_ends_in_the_claimed_literal_order() {
+        // Checkers-on defect C2: a resolvent with head [C2, C1] proves the
+        // arena clause [C1, C2]; the standalone node needs it verbatim.
+        let concept = |id: u64| {
+            serde_json::json!({"predicate": {"predicate": {"concept": {
+                "concept": id, "term": {"var": {"index": 0}}
+            }}}})
+        };
+        let claim = serde_json::json!({"body": [], "head": [concept(1), concept(2)]});
+        let premise = serde_json::json!({"body": [concept(4)], "head": [concept(1)]});
+        let mut trace = vec![
+            serde_json::json!({"clause": premise, "justification": {"tautology": {}}}),
+            serde_json::json!({
+                "clause": {"body": [], "head": [concept(2), concept(1)]},
+                "justification": {"resolve": {"positive": 0, "negative": 1}}
+            }),
+        ];
+        let original = trace.clone();
+        cb_align_local_trace_with_claim(&mut trace, &claim, &[]);
+        assert_eq!(trace[1]["clause"], claim);
+        assert_eq!(trace[1]["justification"], original[1]["justification"]);
+        assert_eq!(trace[0], original[0]);
+
+        // A verbatim prior clause, or no set-equal entry: nothing changes.
+        let mut untouched = original.clone();
+        cb_align_local_trace_with_claim(&mut untouched, &claim, &[&claim]);
+        assert_eq!(untouched, original);
+        let other = serde_json::json!({"body": [], "head": [concept(1), concept(3)]});
+        cb_align_local_trace_with_claim(&mut untouched, &other, &[]);
+        assert_eq!(untouched, original);
     }
 }
 
@@ -7647,6 +7787,21 @@ mod cb_derivation_candidate_tests {
 // tableau — the ALC(HOQ) hypertableau (TInput on stdin -> TOutput on stdout)
 // ---------------------------------------------------------------------------
 pub fn run_tableau() {
+    // Run the model build on a deep stack. The QO/tableau saturation and
+    // consistency check recurse proportional to role-chain depth and overflow
+    // the default 8 MB main stack on deep ontologies (e.g. transitive-chain
+    // composition on ore_ont_14817 — 178 MB RSS yet main-thread stack
+    // overflow). KM_TAB_STACK_MB sets the size (default 2 GB); the nested
+    // searches ask for `bigstack::DEEP_STACK`. The main thread's stack is
+    // committed page by page as it grows, so it serves both without charging
+    // gigabytes of unused stack against a strict commit limit at startup
+    // (`bigstack`). This must run before any thread exists or stdin is read:
+    // it may re-execute the worker once with a larger RLIMIT_STACK.
+    let stack_mb = std::env::var("KM_TAB_STACK_MB")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(2048);
+    crate::bigstack::ensure_main_stack((stack_mb << 20).max(crate::bigstack::DEEP_STACK));
     die_with_supervisor();
     maybe_enable_debug();
     let mut buf = String::new();
@@ -7654,34 +7809,24 @@ pub fn run_tableau() {
         eprintln!("failed to read stdin: {e}");
         exit(1);
     }
-    // Run the model build on a large-stack worker thread. The QO/tableau
-    // saturation and consistency check recurse proportional to role-chain
-    // depth and overflow the default 8 MB main stack on deep ontologies (e.g.
-    // transitive-chain composition on ore_ont_14817 — 178 MB RSS yet
-    // main-thread stack overflow). KM_TAB_STACK_MB overrides (default 2 GB).
-    let stack_mb = std::env::var("KM_TAB_STACK_MB")
-        .ok()
-        .and_then(|s| s.parse::<usize>().ok())
-        .unwrap_or(2048);
+    // KM_LEAN_CHECKERS with KM_LEAN_CHECKERS_HT: certified HT for this worker.
+    let lean_ht = crate::lean_checkers::configure_ht();
     enum WorkerOutput {
         Json(String),
         Compact(crate::json_io::CompactElcOutput),
     }
     let compact_bridge = std::env::var_os("KM_HT_BRIDGE_OUTPUT_BINARY").is_some();
-    let worker = std::thread::Builder::new()
-        .stack_size(stack_mb * 1024 * 1024)
-        // The wire text is released inside `run_json_owned` as soon as its
-        // clause graph is parsed (unless the bridge route re-reads it), so the
-        // complete stdin document does not sit under the classification peak.
-        .spawn(move || {
-            if compact_bridge {
-                crate::tableau::run_bridge_json_owned_compact(buf).map(WorkerOutput::Compact)
-            } else {
-                crate::tableau::run_json_owned(buf).map(WorkerOutput::Json)
-            }
-        })
-        .expect("spawn tableau worker thread");
-    match worker.join() {
+    // The wire text is released inside `run_json_owned` as soon as its
+    // clause graph is parsed (unless the bridge route re-reads it), so the
+    // complete stdin document does not sit under the classification peak.
+    let worker = crate::bigstack::run("tableau worker", stack_mb << 20, move || {
+        if compact_bridge {
+            crate::tableau::run_bridge_json_owned_compact(buf).map(WorkerOutput::Compact)
+        } else {
+            crate::tableau::run_json_owned(buf).map(WorkerOutput::Json)
+        }
+    });
+    match worker {
         Ok(Ok(WorkerOutput::Json(s))) => {
             let stdout = std::io::stdout();
             let mut h = stdout.lock();
@@ -7696,12 +7841,16 @@ pub fn run_tableau() {
             h.flush().expect("flush compact bridge output");
         }
         Ok(Err(e)) => {
+            if lean_ht && !crate::lean_checkers::rejected_in_process() {
+                crate::lean_checkers::record_cannot_check("ht", "ht-publication", &e);
+            }
             eprintln!("tableau error: {e}");
             exit(1);
         }
-        Err(_) => {
-            eprintln!("tableau worker thread panicked");
-            exit(101);
+        Err(e) => {
+            // A failed spawn (after retries) or a panic: report the reason.
+            eprintln!("tableau error: {e}");
+            exit(if e.ends_with("panicked") { 101 } else { 1 });
         }
     }
 }

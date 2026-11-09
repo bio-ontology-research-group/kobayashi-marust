@@ -190,9 +190,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     calc_alg_context.blocking_individual_node_linked_candidate_hash(false);
                 // conSet = blockingTestIndi->getReapplyConceptLabelSet(false)
                 let con_set: LabelSetId = calc_alg_context
-                    .process_context_mut()
-                    .node_mut(blocking_test_indi)
-                    .get_reapply_concept_label_set(false);
+                    .process_context()
+                    .node(blocking_test_indi)
+                    .use_reapply_con_label_set;
                 let core_con_des_linker = if con_set.is_some() {
                     calc_alg_context
                         .process_context()
@@ -677,6 +677,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         );
 
         if self.conf_anywhere_blocking_lazy_exact_hashing {
+            self.seed_blocking_candidates_from_base_index(
+                blocking_cand_data,
+                initialization_concept_des,
+                testing_indi_id,
+                calc_alg_context,
+            );
             let mut max_valid_indi_id = calc_alg_context
                 .process_context()
                 .blocking_indi_node_cand_data(blocking_cand_data)
@@ -713,6 +719,18 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 }
                 let mut dest_indi_id = max_valid_indi_id.min(min_test_indi_node_id);
                 dest_indi_id = dest_indi_id.max(0);
+                if super::blocking_scan_trace_enabled() && testing_indi_id - dest_indi_id > 1000 {
+                    static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+                    let n = N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    if n < 200 || n.is_power_of_two() {
+                        eprintln!(
+                            "BLOCKING-SCAN n={n} testing={testing_indi_id} max_valid={max_valid_indi_id} min_test={min_test_indi_node_id} dest={dest_indi_id} switch_tag={node_switch_tag} init_tag={}",
+                            calc_alg_context.ontology_arenas().concept(
+                                calc_alg_context.process_context().con_desc(initialization_concept_des).get_concept()
+                            ).get_concept_tag()
+                        );
+                    }
+                }
                 let mut indi_id = testing_indi_id - 1;
                 while indi_id >= dest_indi_id {
                     let mut indi = self.get_up_to_date_individual_by_id(indi_id, calc_alg_context);
@@ -733,10 +751,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                 calc_alg_context,
                             )
                         {
+                            // `getReapplyConceptLabelSet(false)` is a read. Through
+                            // `node_mut` it journaled a copy of every scanned node
+                            // under the probe's branch epoch (and the epoch pop
+                            // restored each one): the per-probe cost on large
+                            // retained graphs. A shared borrow returns the same id.
                             let label_set: LabelSetId = calc_alg_context
-                                .process_context_mut()
-                                .node_mut(indi)
-                                .get_reapply_concept_label_set(false);
+                                .process_context()
+                                .node(indi)
+                                .use_reapply_con_label_set;
                             if label_set.is_some()
                                 && calc_alg_context
                                     .process_context()
@@ -1347,9 +1370,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             .as_ref()
                             .is_some_and(|replay| !replay.cached_at_most_cardinalities.is_empty());
                         let role_succ_hash = calc_alg_context
-                            .process_context_mut()
-                            .node_mut(indi_node)
-                            .get_reapply_role_successor_hash(false);
+                            .process_context()
+                            .node(indi_node)
+                            .use_reapply_role_succ_hash;
                         if role_succ_hash != Id::NONE && has_cardinality_extension {
                             let replay = replay.expect("cardinality extension implies a replay");
                             let last_added_link_edge: EdgeId = calc_alg_context
@@ -1410,9 +1433,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     let card_extension_data: Cint64 = INVALID;
                     // roleSuccHash = indiNode->getReapplyRoleSuccessorHash(false);
                     let role_succ_hash = calc_alg_context
-                        .process_context_mut()
-                        .node_mut(indi_node)
-                        .get_reapply_role_successor_hash(false);
+                        .process_context()
+                        .node(indi_node)
+                        .use_reapply_role_succ_hash;
                     if role_succ_hash != Id::NONE && card_extension_data != INVALID {
                         let last_added_link_edge: EdgeId = calc_alg_context
                             .process_context()
@@ -1461,8 +1484,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                             }
                             let mut link_count: Cint64 = calc_alg_context
                                 .process_context()
-                                .node(indi_node)
-                                .get_role_successor_count(role);
+                                .node_role_successor_count(indi_node, role);
                             if calc_alg_context
                                 .process_context()
                                 .node(indi_node)
@@ -1656,9 +1678,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         }
                         // conSet = indiNode->getReapplyConceptLabelSet(false);
                         let con_set: LabelSetId = calc_alg_context
-                            .process_context_mut()
-                            .node_mut(indi_node)
-                            .get_reapply_concept_label_set(false);
+                            .process_context()
+                            .node(indi_node)
+                            .use_reapply_con_label_set;
                         if con_set != Id::NONE {
                             let con_des_linker = calc_alg_context
                                 .process_context()
@@ -1831,19 +1853,25 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             {
                 expansion_blocking_critical = true;
             } else if self.native_association_completely_propagated(assoc_data) {
+                // cpp 26314:
                 // if (!mBackendCacheHandler
-                //     || !nondeterministic && !mBackendCacheHandler->hasConceptInAssociatedFullConceptSetLabel(
+                //     || !mBackendCacheHandler->hasConceptInAssociatedFullConceptSetLabel(
                 //          assocData, FULL_CONCEPT_SET_LABEL, concept, conNegation,
                 //          !nondeterministic, calcAlgContext))
                 //   expansionBlockingCritical = true;
-                if !nondeterministic
-                    && !self.native_has_concept_in_full_concept_set_label(
-                        assoc_data,
-                        concept,
-                        con_negation,
-                        !nondeterministic,
-                    )
-                {
+                //
+                // `!nondeterministic` selects the label partition the concept is
+                // looked up in. The port also required `!nondeterministic` as a
+                // conjunct, so a non-deterministically derived `∀` or automaton
+                // state never released the neighbour-expansion block and its
+                // operand never crossed a cached edge (m413; docs/HYBRID-CB-HT.md
+                // section 18.1).
+                if !self.native_has_concept_in_full_concept_set_label(
+                    assoc_data,
+                    concept,
+                    con_negation,
+                    !nondeterministic,
+                ) {
                     expansion_blocking_critical = true;
                 }
             } else {
@@ -1985,5 +2013,153 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     /// Port of `CCalculationTableauCompletionTaskHandleAlgorithm::getAppliedTotalRuleCount`.
     pub fn get_applied_total_rule_count(&self) -> Cint64 {
         self.applied_total_rule_count
+    }
+}
+
+
+/// The blocking candidates of a retained consistency base, by concept: for
+/// every `(concept tag, negation)` in the label of a blockable, unpurged base
+/// node, the base's blockable, unpurged nodes whose label holds it, with the
+/// label-modification and node-switch tags current at the base.
+///
+/// A class job on the retained base asks the anywhere-blocking hash for the
+/// candidates of each initialization concept it meets. The base's hash has no
+/// entry for most of them, so the lazy update (`max_valid == 0`) walked every
+/// base node id and read its label, once per (job, concept): on ore_ont_7557
+/// (119,132 base node ids, 33,520 subjects) this was nearly all of the probe
+/// time. Seeding the job's fresh entry from this index (a shared list, no
+/// copy) puts it in the state the same lazy update would have left had it run
+/// at the base; the update then rechecks the base nodes switched or relabelled
+/// since (`max_valid`, the label-modification tag and the node-switch
+/// history), as it does for an entry the base itself had built. A key no base
+/// label holds has no base candidate.
+///
+/// The candidate set only orders the blocker search: every candidate is
+/// tested by `is_individual_node_blocking` on the current graph, and a node
+/// without a blocker is expanded. A different candidate set can change which
+/// blocker is found, never a verdict.
+#[derive(Default)]
+pub struct BlockingBaseIndex {
+    /// Largest positive node id of the base.
+    pub base_hi: Cint64,
+    pub label_mod_tag: Cint64,
+    pub node_switch_tag: Cint64,
+    /// Per `(concept tag, negation)`, the candidate entries `(-id, node)` in
+    /// ascending key order (the order of the candidate map), shared by every
+    /// class job.
+    pub by_key: crate::fxhash::FxHashMap<(Cint64, bool), std::sync::Arc<Vec<(Cint64, NodeId)>>>,
+    /// Set once the first class job has swept the base ids for satisfiable
+    /// cache writes (`cache_satisfiable_individual_nodes`, u21).
+    pub base_cache_swept: std::sync::atomic::AtomicBool,
+}
+
+impl super::algorithm::CompletionTaskHandleAlgorithm {
+    /// Build [`BlockingBaseIndex`] from the current graph (called at the
+    /// retained consistency base, before the first class job).
+    pub fn build_blocking_base_index(
+        &self,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> BlockingBaseIndex {
+        let pc = calc_alg_context.process_context();
+        let onto = calc_alg_context.ontology_arenas();
+        let vector = calc_alg_context.processing_data_box().individual_process_node_vector();
+        let hi = vector.get_item_max_index();
+        let mut lists: crate::fxhash::FxHashMap<(Cint64, bool), Vec<(Cint64, NodeId)>> =
+            Default::default();
+        // Descending ids: ascending keys `-id`, the order of the candidate map.
+        let mut id = hi;
+        while id >= 1 {
+            let node = vector.get_data(id);
+            id -= 1;
+            if node.is_none() || node.index() >= pc.node_count() {
+                continue;
+            }
+            let n = pc.node(node);
+            if !n.is_blockable_individual() || n.has_purged_blocked_processing_restriction_flags() {
+                continue;
+            }
+            let ls = n.use_reapply_con_label_set;
+            if ls.is_none() {
+                continue;
+            }
+            let node_id = n.individual_node_id();
+            let label = pc.label_set(ls);
+            let mut it = label.get_concept_label_set_iterator_in_context(pc, true, false, false);
+            while it.has_next() {
+                let cd: ConDescId = it.next(true, pc);
+                if cd.is_none() {
+                    break;
+                }
+                let concept = pc.con_desc(cd).get_concept();
+                let negated = pc.con_desc(cd).is_negated();
+                // `has_concept_in_context` is the containment the scan uses.
+                if !label.has_concept_in_context(pc, onto, concept, negated) {
+                    continue;
+                }
+                let list = lists.entry((onto.concept(concept).get_concept_tag(), negated)).or_default();
+                if list.last().map(|&(key, _)| key) != Some(-node_id) {
+                    list.push((-node_id, node));
+                }
+            }
+        }
+        BlockingBaseIndex {
+            base_hi: hi.max(0),
+            label_mod_tag: pc.used_process_tagger().get_current_concept_label_set_modification_tag(),
+            node_switch_tag: pc.used_process_tagger().get_current_node_switch_tag(),
+            by_key: lists.into_iter().map(|(k, v)| (k, std::sync::Arc::new(v))).collect(),
+            base_cache_swept: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+
+    /// Seed a fresh candidate entry of a class job from the base index (see
+    /// [`BlockingBaseIndex`]). No-op without an index, for a non-fresh entry,
+    /// or for a node of the base itself; a key no base label holds seeds an
+    /// empty base list.
+    fn seed_blocking_candidates_from_base_index(
+        &mut self,
+        data: super::super::process::blocking_hash::BlockingIndividualNodeCandidateDataId,
+        initialization_concept_des: ConDescId,
+        testing_indi_id: Cint64,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        let Some(index) = self.blocking_base_index.clone() else {
+            return;
+        };
+        if testing_indi_id <= index.base_hi {
+            return;
+        }
+        {
+            let d = calc_alg_context.process_context().blocking_indi_node_cand_data(data);
+            if d.get_max_valid_individual_id() != 0
+                || d.get_node_switch_tag() != 0
+                || !d.candidate_indi_map.is_empty()
+                || d.shared_candidates.is_some()
+            {
+                return;
+            }
+        }
+        let key = {
+            let d = calc_alg_context.process_context().con_desc(initialization_concept_des);
+            (
+                calc_alg_context.ontology_arenas().concept(d.get_concept()).get_concept_tag(),
+                d.is_negated(),
+            )
+        };
+        static EMPTY: std::sync::OnceLock<std::sync::Arc<Vec<(Cint64, NodeId)>>> =
+            std::sync::OnceLock::new();
+        let list = index
+            .by_key
+            .get(&key)
+            .unwrap_or_else(|| EMPTY.get_or_init(|| std::sync::Arc::new(Vec::new())));
+        // The base's node ids name the same elements in every job (a job
+        // allocates above the base); the iteration resolves each candidate to
+        // its up-to-date node and drops purged or unblockable ones, as for
+        // any candidate the lazy update inserted earlier.
+        let d = calc_alg_context.process_context_mut().blocking_indi_node_cand_data_mut(data);
+        d.shared_candidates = Some(std::sync::Arc::clone(list));
+        d.shared_removed.clear();
+        d.set_max_valid_individual_id(index.base_hi);
+        d.update_concept_label_set_modification_tag(index.label_mod_tag);
+        d.update_node_switch_tag(index.node_switch_tag);
     }
 }

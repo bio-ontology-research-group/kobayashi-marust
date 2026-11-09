@@ -1,0 +1,17 @@
+KM_TIMING mark: second source check done
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING ABox quotient not built: site 1
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.01s cached=false sidecar=false
+KM_TIMING frontend: 7 data-property assertion(s) not carried; re-running with the DataHasValue conversion
+KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.00s cached=false sidecar=false
+KM_TIMING frontend done @ 0.01s route=ht_rules
+KM_TIMING rules-consistency input parsed @ 0.00s clauses=201 rules=9
+KM_TIMING rules-consistency released 3 inert object sort(s): 3 fact(s) unrelativized, 3 sort clause(s) removed
+KM_TIMING rules-consistency converted @ 0.00s ht_clauses=193 queries=5
+KM_TIMING rules-consistency serialized @ 0.00s bytes=19450
+KM_TIMING rules-consistency worker input sent @ 0.01s
+KM_TIMING rules-consistency worker exited @ 0.02s success=true
+KM_TIMING rules-consistency: 2 rule(s) not applied to a nominal taxonomy
+KM_TIMING engine block done @ 17.33s (subs_keys=5)
+KM_TIMING mark: output mapping done

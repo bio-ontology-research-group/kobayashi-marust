@@ -1,0 +1,40 @@
+PROGRESS drives=266240 backtracks=394087 nodes=329 inserts=9308637 bp_depth=304 ddb_jumps=191540 ddb_pops=2 ddb_fallbacks=74699 ddb_marks=266242 ddb_line_fails=0
+PROGRESS drives=270336 backtracks=400148 nodes=328 inserts=9451710 bp_depth=302 ddb_jumps=194487 ddb_pops=2 ddb_fallbacks=75848 ddb_marks=270338 ddb_line_fails=0
+PROGRESS drives=274432 backtracks=406213 nodes=329 inserts=9595112 bp_depth=300 ddb_jumps=197433 ddb_pops=2 ddb_fallbacks=76998 ddb_marks=274434 ddb_line_fails=0
+PROGRESS drives=278528 backtracks=412274 nodes=330 inserts=9738003 bp_depth=295 ddb_jumps=200381 ddb_pops=2 ddb_fallbacks=78146 ddb_marks=278530 ddb_line_fails=0
+PROGRESS drives=282624 backtracks=418337 nodes=323 inserts=9881110 bp_depth=305 ddb_jumps=203327 ddb_pops=2 ddb_fallbacks=79296 ddb_marks=282626 ddb_line_fails=0
+PROGRESS drives=286720 backtracks=424401 nodes=327 inserts=10024501 bp_depth=305 ddb_jumps=206273 ddb_pops=2 ddb_fallbacks=80446 ddb_marks=286722 ddb_line_fails=0
+PROGRESS drives=290816 backtracks=430464 nodes=329 inserts=10167668 bp_depth=302 ddb_jumps=209220 ddb_pops=2 ddb_fallbacks=81595 ddb_marks=290818 ddb_line_fails=0
+PROGRESS drives=294912 backtracks=436529 nodes=319 inserts=10310788 bp_depth=293 ddb_jumps=212166 ddb_pops=2 ddb_fallbacks=82745 ddb_marks=294914 ddb_line_fails=0
+PROGRESS drives=299008 backtracks=442589 nodes=330 inserts=10453929 bp_depth=296 ddb_jumps=215114 ddb_pops=2 ddb_fallbacks=83893 ddb_marks=299010 ddb_line_fails=0
+PROGRESS drives=303104 backtracks=448654 nodes=323 inserts=10597076 bp_depth=304 ddb_jumps=218060 ddb_pops=2 ddb_fallbacks=85043 ddb_marks=303106 ddb_line_fails=0
+PROGRESS drives=307200 backtracks=454715 nodes=327 inserts=10740177 bp_depth=305 ddb_jumps=221007 ddb_pops=2 ddb_fallbacks=86192 ddb_marks=307202 ddb_line_fails=0
+PROGRESS drives=311296 backtracks=460780 nodes=328 inserts=10883604 bp_depth=301 ddb_jumps=223953 ddb_pops=2 ddb_fallbacks=87342 ddb_marks=311298 ddb_line_fails=0
+PROGRESS drives=315392 backtracks=466839 nodes=330 inserts=11026447 bp_depth=297 ddb_jumps=226902 ddb_pops=2 ddb_fallbacks=88489 ddb_marks=315394 ddb_line_fails=0
+PROGRESS drives=319488 backtracks=472904 nodes=328 inserts=11169769 bp_depth=296 ddb_jumps=229847 ddb_pops=2 ddb_fallbacks=89640 ddb_marks=319490 ddb_line_fails=0
+PROGRESS drives=323584 backtracks=478970 nodes=322 inserts=11313053 bp_depth=303 ddb_jumps=232793 ddb_pops=2 ddb_fallbacks=90790 ddb_marks=323586 ddb_line_fails=0
+PROGRESS drives=327680 backtracks=485030 nodes=330 inserts=11456152 bp_depth=303 ddb_jumps=235741 ddb_pops=2 ddb_fallbacks=91938 ddb_marks=327682 ddb_line_fails=0
+PROGRESS drives=331776 backtracks=491096 nodes=327 inserts=11599547 bp_depth=301 ddb_jumps=238686 ddb_pops=2 ddb_fallbacks=93089 ddb_marks=331778 ddb_line_fails=0
+PROGRESS drives=335872 backtracks=497156 nodes=331 inserts=11742490 bp_depth=296 ddb_jumps=241635 ddb_pops=2 ddb_fallbacks=94236 ddb_marks=335874 ddb_line_fails=0
+PROGRESS drives=339968 backtracks=503219 nodes=329 inserts=11885765 bp_depth=294 ddb_jumps=244581 ddb_pops=2 ddb_fallbacks=95386 ddb_marks=339970 ddb_line_fails=0
+PROGRESS drives=344064 backtracks=509281 nodes=328 inserts=12028849 bp_depth=294 ddb_jumps=247528 ddb_pops=2 ddb_fallbacks=96535 ddb_marks=344066 ddb_line_fails=0
+PROGRESS drives=348160 backtracks=515349 nodes=326 inserts=12172112 bp_depth=305 ddb_jumps=250473 ddb_pops=2 ddb_fallbacks=97686 ddb_marks=348162 ddb_line_fails=0
+PROGRESS drives=352256 backtracks=521409 nodes=327 inserts=12314927 bp_depth=297 ddb_jumps=253422 ddb_pops=2 ddb_fallbacks=98833 ddb_marks=352258 ddb_line_fails=0
+PROGRESS drives=356352 backtracks=527471 nodes=327 inserts=12458254 bp_depth=299 ddb_jumps=256368 ddb_pops=2 ddb_fallbacks=99983 ddb_marks=356354 ddb_line_fails=0
+PROGRESS drives=360448 backtracks=533538 nodes=326 inserts=12601704 bp_depth=296 ddb_jumps=259313 ddb_pops=2 ddb_fallbacks=101134 ddb_marks=360450 ddb_line_fails=0
+PROGRESS drives=364544 backtracks=539598 nodes=330 inserts=12744857 bp_depth=293 ddb_jumps=262262 ddb_pops=2 ddb_fallbacks=102281 ddb_marks=364546 ddb_line_fails=0
+PROGRESS drives=368640 backtracks=545662 nodes=327 inserts=12887974 bp_depth=305 ddb_jumps=265207 ddb_pops=2 ddb_fallbacks=103432 ddb_marks=368642 ddb_line_fails=0
+PROGRESS drives=372736 backtracks=551724 nodes=329 inserts=13030949 bp_depth=301 ddb_jumps=268155 ddb_pops=2 ddb_fallbacks=104580 ddb_marks=372738 ddb_line_fails=0
+PROGRESS drives=376832 backtracks=557787 nodes=327 inserts=13174249 bp_depth=297 ddb_jumps=271101 ddb_pops=2 ddb_fallbacks=105730 ddb_marks=376834 ddb_line_fails=0
+PROGRESS drives=380928 backtracks=563847 nodes=327 inserts=13317294 bp_depth=298 ddb_jumps=274049 ddb_pops=2 ddb_fallbacks=106878 ddb_marks=380930 ddb_line_fails=0
+PROGRESS drives=385024 backtracks=569914 nodes=327 inserts=13460735 bp_depth=295 ddb_jumps=276994 ddb_pops=2 ddb_fallbacks=108029 ddb_marks=385026 ddb_line_fails=0
+PROGRESS drives=389120 backtracks=575976 nodes=320 inserts=13603453 bp_depth=297 ddb_jumps=279942 ddb_pops=2 ddb_fallbacks=109177 ddb_marks=389122 ddb_line_fails=0
+PROGRESS drives=393216 backtracks=582038 nodes=328 inserts=13746804 bp_depth=301 ddb_jumps=282888 ddb_pops=2 ddb_fallbacks=110327 ddb_marks=393218 ddb_line_fails=0
+PROGRESS drives=397312 backtracks=588102 nodes=326 inserts=13890148 bp_depth=299 ddb_jumps=285834 ddb_pops=2 ddb_fallbacks=111477 ddb_marks=397314 ddb_line_fails=0
+PROGRESS drives=401408 backtracks=594166 nodes=328 inserts=14033358 bp_depth=298 ddb_jumps=288781 ddb_pops=2 ddb_fallbacks=112626 ddb_marks=401410 ddb_line_fails=0
+PROGRESS drives=405504 backtracks=600228 nodes=328 inserts=14176687 bp_depth=294 ddb_jumps=291728 ddb_pops=2 ddb_fallbacks=113775 ddb_marks=405506 ddb_line_fails=0
+PROGRESS drives=409600 backtracks=606290 nodes=327 inserts=14319377 bp_depth=303 ddb_jumps=294675 ddb_pops=2 ddb_fallbacks=114924 ddb_marks=409602 ddb_line_fails=0
+BRIDGE-DEFER subject 368: READ-OFF stop after 30.0s (signal=Stop { task_completed: false }, nodes=326, sat-blocks=0, sat-expanded=9585035)
+BRIDGE-PREPARE-TIMING subjects=129 elapsed=66.809310 renew=0.996732 completion=65.729227 analysis=0.081809
+BRIDGE-PREPARE-TIMING subjects=193 elapsed=70.271105 renew=1.432999 completion=68.729404 analysis=0.106435
+BRIDGE-PREPARE-TIMING subjects=199 elapsed=70.611770 renew=1.477479 completion=69.023504 analysis=0.108407

@@ -178,10 +178,43 @@ fn rule_multiset(rules: &[JRule]) -> HashMap<JRule, usize> {
     counts
 }
 
+/// The rule checker's clause set: the frontend clauses after the inert-sort
+/// release that the batch route applies in `orchestrate::rules_consistency`
+/// (same pass, same source-name test, same `KM_RULES_KEEP_INERT_SORTS`
+/// switch; docs/NOMINALS-CB.md section 6). The release keeps the consistency
+/// verdict, which is all this probe reads.
+fn checker_clauses(
+    frontend: &FrontendResult,
+    named: &HashSet<String>,
+) -> (Vec<JClause>, crate::orchestrate::inert_sorts::Released) {
+    let mut clauses = frontend.clauses.clone();
+    if std::env::var_os("KM_RULES_KEEP_INERT_SORTS").is_some() {
+        return (clauses, Default::default());
+    }
+    let released = crate::orchestrate::inert_sorts::release_inert_object_sorts_in(
+        &mut clauses,
+        &frontend.cardinalities,
+        &frontend.definers,
+        &frontend.rules,
+        |name| named.contains(name) || frontend.iri_map.contains_key(name),
+    );
+    (clauses, released)
+}
+
 fn rules_consistent(frontend: &FrontendResult) -> Result<bool, String> {
     let named: HashSet<String> = frontend.named.iter().cloned().collect();
+    let (clauses, released) = checker_clauses(frontend, &named);
+    if std::env::var_os("KM_TIMING").is_some() && !released.concepts.is_empty() {
+        eprintln!(
+            "KM_TIMING incremental rules-consistency released {} inert object sort(s): {} fact(s) unrelativized, {} sort clause(s) removed; released: {}",
+            released.concepts.len(),
+            released.facts,
+            released.sort_clauses,
+            released.concepts.join(","),
+        );
+    }
     let tin = cb_to_ht::convert(
-        &frontend.clauses,
+        &clauses,
         None,
         &named,
         &frontend.cardinalities,
@@ -194,14 +227,15 @@ fn rules_consistent(frontend: &FrontendResult) -> Result<bool, String> {
     let input = serde_json::to_string(&tin).map_err(|error| error.to_string())?;
     let _environment = crate::routing::EnvironmentGuard::capture();
     std::env::set_var("KM_RULES_CONSISTENCY", "1");
+    // The batch checker's join order (`orchestrate::rules_consistency`): long
+    // rule bodies are matched most selective atom first. Same matches, same
+    // verdict; without it ore_ont_7278's probe ran for many minutes.
+    std::env::set_var("KM_RULE_JOIN_ORDER", "1");
     std::env::remove_var("KM_HT");
-    let output = std::thread::Builder::new()
-        .name("km-incremental-rules".into())
-        .stack_size(4usize << 30)
-        .spawn(move || crate::tableau::run_json(&input))
-        .map_err(|error| error.to_string())?
-        .join()
-        .map_err(|_| "incremental rules probe panicked".to_string())??;
+    // `run` spawns one deep thread here (the caller's stack is unknown); the
+    // checker's own deep-stack request then runs inline on it.
+    let output = crate::bigstack::run("km-incremental-rules", crate::bigstack::DEEP_STACK,
+        move || crate::tableau::run_json(&input))??;
     let value: serde_json::Value =
         serde_json::from_str(&output).map_err(|error| error.to_string())?;
     value["consistent"]

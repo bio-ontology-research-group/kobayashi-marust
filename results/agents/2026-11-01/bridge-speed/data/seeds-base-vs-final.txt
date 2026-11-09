@@ -1,0 +1,5 @@
+bridge-defers: runs=600 wrong 0->0 transitions={('ok', 'ok'): 408, ('ERR', 'ERR'): 192} both-ok seconds 9.6->8.4
+bridge-nominal-merge: runs=4000 wrong 0->0 transitions={('ok', 'ok'): 3993, ('ERR', 'ERR'): 7} both-ok seconds 85.3->40.8
+nominal-coverage: runs=800 wrong 0->0 transitions={('ok', 'ok'): 499, ('ERR', 'ERR'): 287, ('TIMEOUT', 'TIMEOUT'): 12, ('TIMEOUT', 'ok'): 2} both-ok seconds 62.9->55.3
+r3-unannounced: runs=8000 wrong 0->0 transitions={('ok', 'ok'): 7181, ('TIMEOUT', 'TIMEOUT'): 152, ('ERR', 'ERR'): 667} both-ok seconds 974.3->946.9
+sameindividual-bridge: runs=3892 wrong 11->11 transitions={('ok', 'ok'): 3870, ('WRONG', 'WRONG'): 11, ('ERR', 'ERR'): 11} both-ok seconds 34.9->33.9

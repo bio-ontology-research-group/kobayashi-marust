@@ -1,0 +1,9 @@
+{
+  "ontology": "refl439.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["E", "Q3"],
+    ["Q2", "Q5"]
+  ],
+  "unsatisfiable": []
+}

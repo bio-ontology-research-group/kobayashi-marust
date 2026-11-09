@@ -1,0 +1,4 @@
+inputs 4 both-answered 3 identical 3 differ []
+answer-status changes []
+time ratio new/base over 3 inputs above 1 s: mean 1.076 median 1.066 max 1.10
+route changes []

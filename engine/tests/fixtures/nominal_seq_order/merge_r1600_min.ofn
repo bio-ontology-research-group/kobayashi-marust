@@ -1,0 +1,12 @@
+Prefix(:=<http://example.org/r3#>)
+Ontology(<http://example.org/r3>
+Declaration(Class(:B))
+Declaration(Class(:D))
+Declaration(ObjectProperty(:s))
+Declaration(NamedIndividual(:b))
+Declaration(NamedIndividual(:c))
+SubClassOf(:B ObjectOneOf(:c))
+ObjectPropertyAssertion(:s :b :c)
+SubClassOf(ObjectSomeValuesFrom(:s :B) ObjectOneOf(:c))
+ClassAssertion(ObjectAllValuesFrom(:s :D) :c)
+)

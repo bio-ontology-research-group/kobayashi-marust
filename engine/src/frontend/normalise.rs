@@ -300,6 +300,10 @@ pub struct Clausifier {
     /// section 8). Exact for every consumer and on for every mechanism; the
     /// field exists so unit tests can compare against the unshared clause set.
     share_equal_restrictions: bool,
+    /// `(Q, A)` for every complement definer `Q ≡ ¬A` of an atomic operand
+    /// (a concept name, a nominal or a value concept), in definition order.
+    /// Read by [`polarity_definers`] after clausification.
+    not_definers: Vec<(String, String)>,
 }
 
 impl Clausifier {
@@ -334,6 +338,7 @@ impl Clausifier {
             trigger_absorb: std::env::var_os("KM_TRIGGER_ABSORB").is_some()
                 || test_trigger_absorb(),
             share_equal_restrictions: true,
+            not_definers: Vec::new(),
         }
     }
 
@@ -873,7 +878,8 @@ impl Clausifier {
                     Atom::Concept(name, _) => name.clone(),
                     _ => unreachable!(),
                 };
-                self.record_definer(q, DefinerKind::Not, vec![operand], None, None);
+                self.record_definer(q, DefinerKind::Not, vec![operand.clone()], None, None);
+                self.not_definers.push((q.to_string(), operand));
                 // `Q ∧ A → ⊥` (def: Q ⊑ ¬A) and `⊤ → Q ∨ A` (rec: ¬A ⊑ Q). The
                 // recognition clause is the unguarded excluded-middle disjunction
                 // dropped when ¬A never occurs on a subclass LHS.
@@ -2165,7 +2171,192 @@ pub fn normalise_with_native_cardinality(
         }
     }
 
+    // Polarity encoding of complement definers (docs/NOMINALS-CB.md section 11,
+    // `lean/ContextCalculus/PolarityDefiners.lean`).
+    if std::env::var_os("KM_NO_POLARITY_DEFINERS").is_none() {
+        let pairs = std::mem::take(&mut clausifier.not_definers);
+        polarity_definers(&mut clausifier.clauses, &mut abox_clauses, &pairs);
+    }
+
     (clausifier.clauses, abox_clauses, clausifier.hooks)
+}
+
+/// What [`polarity_definers`] changed.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct PolarityReport {
+    /// Complement definers that passed the gate, in processing order.
+    pub definers: Vec<String>,
+    /// Excluded-middle clauses `→ Q(x) ∨ A(x)` removed.
+    pub dropped: usize,
+    /// Complement constraints `N(v) ∧ Q(v) → ⊥` rewritten to `N(v) → A(v)`.
+    pub rewritten: usize,
+}
+
+/// `Q(v) ∧ A(v)` or `Q(v) ∨ A(v)`: exactly the two concept atoms `Q`, `A`
+/// (either order) on one variable. `Lean: isPair`.
+fn is_pair(atoms: &[Atom], q: &str, a: &str) -> bool {
+    match atoms {
+        [Atom::Concept(c1, Term::Var(v1)), Atom::Concept(c2, Term::Var(v2))] => {
+            v1 == v2 && ((c1 == q && c2 == a) || (c1 == a && c2 == q))
+        }
+        _ => false,
+    }
+}
+
+/// The definition clause `Q(v) ∧ A(v) → ⊥` of `Q ≡ ¬A` (`Lean: isDefClause`).
+fn is_def_clause(c: &DLClause, q: &str, a: &str) -> bool {
+    c.head.is_empty() && is_pair(&c.body, q, a)
+}
+
+/// The excluded middle `→ Q(v) ∨ A(v)` of `Q ≡ ¬A` (`Lean: isEMClause`).
+fn is_em_clause(c: &DLClause, q: &str, a: &str) -> bool {
+    c.body.is_empty() && is_pair(&c.head, q, a)
+}
+
+/// A complement constraint `N(v) ∧ Q(v) → ⊥` (either order, `N ∉ {Q, A}`):
+/// its `N` and `v` (`Lean: targetOf`).
+fn target_of<'c>(c: &'c DLClause, q: &str, a: &str) -> Option<(&'c str, &'c Term)> {
+    if !c.head.is_empty() {
+        return None;
+    }
+    match c.body.as_slice() {
+        [Atom::Concept(c1, t1 @ Term::Var(v1)), Atom::Concept(c2, Term::Var(v2))] if v1 == v2 => {
+            if c2 == q && c1 != q && c1 != a {
+                Some((c1, t1))
+            } else if c1 == q && c2 != q && c2 != a {
+                Some((c2, t1))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn body_mentions(c: &DLClause, q: &str) -> bool {
+    c.body.iter().any(|atom| matches!(atom, Atom::Concept(name, _) if name == q))
+}
+
+/// Plaisted-Greenbaum encoding of complement definers, applied to the whole
+/// clause set (`parts`: the TBox clauses, then the ABox clauses).
+///
+/// For each `(Q, A)` in order, where the clausifier introduced `Q ≡ ¬A` with
+/// the definition clause `Q ∧ A → ⊥` and the excluded middle `→ Q ∨ A`, the
+/// gate accepts when both clauses are present, `Q ≠ A`, and every clause
+/// whose body mentions `Q` is the definition clause or a complement
+/// constraint `N(v) ∧ Q(v) → ⊥` (`N ∉ {Q, A}`), that is, `Q` occurs only
+/// positively apart from its definition and those constraints. On
+/// acceptance every complement constraint becomes `N(v) → A(v)` and every
+/// excluded middle of the pair is removed. The gate is evaluated on the
+/// clause set as left by the previous pairs.
+///
+/// Exactness (`PolarityDefiners.step_answers`): every model of the input is a
+/// model of the output, and a model `J` of the output becomes a model of the
+/// input by reinterpreting `Q` as the complement of `A`, which enlarges `Q`
+/// (the definition clause stays in the output) and changes no other symbol.
+/// `Q` is a fresh definer, outside the named signature, so consistency,
+/// unsatisfiable named classes and subsumptions between named classes are
+/// unchanged.
+pub fn polarity_definers(
+    tbox: &mut Vec<DLClause>,
+    abox: &mut Vec<DLClause>,
+    pairs: &[(String, String)],
+) -> PolarityReport {
+    let mut report = PolarityReport::default();
+    if pairs.is_empty() {
+        return report;
+    }
+    let names: FxHashSet<&str> = pairs.iter().map(|(q, _)| q.as_str()).collect();
+    // Body occurrences and excluded-middle candidates of every candidate `Q`,
+    // as (part, index). A rewrite only removes `Q` from one body and adds no
+    // body atom, so the body index stays a superset of the current
+    // occurrences; every use re-reads the clause.
+    let mut body_occ: FxHashMap<String, Vec<(usize, usize)>> = FxHashMap::default();
+    let mut em_occ: FxHashMap<String, Vec<(usize, usize)>> = FxHashMap::default();
+    for (part, clauses) in [&*tbox, &*abox].into_iter().enumerate() {
+        for (index, c) in clauses.iter().enumerate() {
+            for atom in &c.body {
+                if let Atom::Concept(name, _) = atom {
+                    if names.contains(name.as_str()) {
+                        let entry = body_occ.entry(name.clone()).or_default();
+                        if entry.last() != Some(&(part, index)) {
+                            entry.push((part, index));
+                        }
+                    }
+                }
+            }
+            if c.body.is_empty() && c.head.len() == 2 {
+                for atom in &c.head {
+                    if let Atom::Concept(name, _) = atom {
+                        if names.contains(name.as_str()) {
+                            em_occ.entry(name.clone()).or_default().push((part, index));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let mut removed = [vec![false; tbox.len()], vec![false; abox.len()]];
+    let empty = Vec::new();
+    for (q, a) in pairs {
+        if q == a {
+            continue;
+        }
+        let parts = [&*tbox, &*abox];
+        let get = |(part, index): (usize, usize)| &parts[part][index];
+        let occurrences = body_occ.get(q).unwrap_or(&empty);
+        let ems: Vec<(usize, usize)> = em_occ
+            .get(q)
+            .unwrap_or(&empty)
+            .iter()
+            .copied()
+            .filter(|&(part, index)| !removed[part][index] && is_em_clause(get((part, index)), q, a))
+            .collect();
+        if ems.is_empty() {
+            continue;
+        }
+        let mut has_def = false;
+        let mut targets = Vec::new();
+        let mut accepted = true;
+        for &at in occurrences {
+            let c = get(at);
+            if !body_mentions(c, q) {
+                continue;
+            }
+            if is_def_clause(c, q, a) {
+                has_def = true;
+            } else if let Some((n, v)) = target_of(c, q, a) {
+                targets.push((at, n.to_string(), v.clone()));
+            } else {
+                accepted = false;
+                break;
+            }
+        }
+        if !accepted || !has_def {
+            continue;
+        }
+        for ((part, index), n, v) in targets {
+            let c = if part == 0 { &mut tbox[index] } else { &mut abox[index] };
+            *c = clause([Atom::Concept(n, v.clone())], [Atom::Concept(a.clone(), v)]);
+            report.rewritten += 1;
+        }
+        for (part, index) in ems {
+            removed[part][index] = true;
+            report.dropped += 1;
+        }
+        report.definers.push(q.clone());
+    }
+    for (part, clauses) in [tbox, abox].into_iter().enumerate() {
+        if removed[part].iter().any(|&r| r) {
+            let mut index = 0;
+            clauses.retain(|_| {
+                let keep = !removed[part][index];
+                index += 1;
+                keep
+            });
+        }
+    }
+    report
 }
 
 #[cfg(test)]
@@ -2440,4 +2631,266 @@ fn test_trigger_absorb() -> bool {
 #[inline(always)]
 fn test_trigger_absorb() -> bool {
     false
+}
+
+#[cfg(test)]
+mod polarity_definer_tests {
+    use super::*;
+
+    fn c(name: &str, v: &str) -> Atom {
+        Atom::Concept(name.to_string(), Term::Var(v.to_string()))
+    }
+
+    /// The Lean definitions of `PolarityDefiners.lean`, transcribed literally
+    /// (`gate`, `rewrite`, `transform`, `run`) over one clause list.
+    /// The predicates are restated here from their Lean meaning (two atoms
+    /// as a set), independently of the production helpers.
+    mod reference {
+        use super::super::*;
+
+        fn on(atoms: &[Atom], name: &str, v: &Term) -> bool {
+            atoms.contains(&Atom::Concept(name.to_string(), v.clone()))
+        }
+
+        fn vars(atoms: &[Atom]) -> Vec<Term> {
+            atoms
+                .iter()
+                .filter_map(|atom| match atom {
+                    Atom::Concept(_, t @ Term::Var(_)) => Some(t.clone()),
+                    _ => None,
+                })
+                .collect()
+        }
+
+        /// Exactly `{Q(v), A(v)}` for one variable `v` (`Q ≠ A`).
+        fn pair(atoms: &[Atom], q: &str, a: &str) -> bool {
+            q != a && atoms.len() == 2 && vars(atoms).iter().any(|v| on(atoms, q, v) && on(atoms, a, v))
+        }
+
+        pub fn is_def(c: &DLClause, q: &str, a: &str) -> bool {
+            c.head.is_empty() && pair(&c.body, q, a)
+        }
+
+        pub fn is_em(c: &DLClause, q: &str, a: &str) -> bool {
+            c.body.is_empty() && pair(&c.head, q, a)
+        }
+
+        /// `{N(v), Q(v)} → ⊥` with `N ∉ {Q, A}`.
+        pub fn target(c: &DLClause, q: &str, a: &str) -> Option<(String, Term)> {
+            if !c.head.is_empty() || c.body.len() != 2 {
+                return None;
+            }
+            for v in vars(&c.body) {
+                if !on(&c.body, q, &v) {
+                    continue;
+                }
+                for atom in &c.body {
+                    if let Atom::Concept(n, t) = atom {
+                        if t == &v && n != q && n != a {
+                            return Some((n.clone(), v.clone()));
+                        }
+                    }
+                }
+            }
+            None
+        }
+
+        fn mentions(c: &DLClause, q: &str) -> bool {
+            c.body.iter().any(|atom| matches!(atom, Atom::Concept(n, _) if n == q))
+        }
+
+        pub fn gate(q: &str, a: &str, clauses: &[DLClause]) -> bool {
+            q != a
+                && clauses.iter().any(|c| is_def(c, q, a))
+                && clauses.iter().any(|c| is_em(c, q, a))
+                && clauses
+                    .iter()
+                    .all(|c| !mentions(c, q) || is_def(c, q, a) || target(c, q, a).is_some())
+        }
+
+        pub fn rewrite(q: &str, a: &str, c: &DLClause) -> DLClause {
+            match target(c, q, a) {
+                Some((n, v)) => DLClause {
+                    body: vec![Atom::Concept(n, v.clone())],
+                    head: vec![Atom::Concept(a.to_string(), v)],
+                },
+                None => c.clone(),
+            }
+        }
+
+        pub fn run(pairs: &[(String, String)], mut clauses: Vec<DLClause>) -> (Vec<DLClause>, Vec<String>) {
+            let mut accepted = Vec::new();
+            for (q, a) in pairs {
+                if gate(q, a, &clauses) {
+                    clauses = clauses
+                        .iter()
+                        .filter(|c| !is_em(c, q, a))
+                        .map(|c| rewrite(q, a, c))
+                        .collect();
+                    accepted.push(q.clone());
+                }
+            }
+            (clauses, accepted)
+        }
+    }
+
+    /// Deterministic generator (no `rand` dependency).
+    struct Lcg(u64);
+    impl Lcg {
+        fn next(&mut self, n: usize) -> usize {
+            self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            ((self.0 >> 33) as usize) % n
+        }
+    }
+
+    /// Clause sets built from the shapes the gate distinguishes (definition
+    /// clauses, excluded middles, complement constraints in both orders, body
+    /// and head occurrences, other variables and terms, longer clauses), over
+    /// a small vocabulary so that the shapes collide.
+    fn generate(rng: &mut Lcg) -> (Vec<DLClause>, Vec<DLClause>, Vec<(String, String)>) {
+        let names = ["Q_0", "Q_1", "Q_2", "A", "B", "__nom__e", "N"];
+        let vars = ["x", "y"];
+        let pick = |rng: &mut Lcg| names[rng.next(names.len())];
+        let atom = |rng: &mut Lcg| -> Atom {
+            match rng.next(6) {
+                0 => Atom::Role("r".into(), Term::Var("x".into()), Term::Var("y".into())),
+                1 => Atom::Concept(
+                    names[rng.next(names.len())].into(),
+                    Term::Fun("f_Q_0".into(), Box::new(Term::Var("x".into()))),
+                ),
+                2 => Atom::Concept(names[rng.next(names.len())].into(), Term::Ind("e".into())),
+                _ => c(names[rng.next(names.len())], vars[rng.next(2)]),
+            }
+        };
+        let mut make = |rng: &mut Lcg| -> DLClause {
+            let (q, a) = (pick(rng), pick(rng));
+            let v = vars[rng.next(2)];
+            match rng.next(9) {
+                0 => clause([c(q, v), c(a, v)], []),
+                1 => fact([c(q, v), c(a, v)]),
+                2 => clause([c(q, "x"), c(a, "y")], []),
+                3 => clause([c(q, v)], [c(a, v)]),
+                4 => clause([c(q, v), c(a, v)], [atom(rng)]),
+                5 => fact([c(q, v), c(a, v), atom(rng)]),
+                6 => clause([atom(rng)], [atom(rng)]),
+                7 => clause([atom(rng), atom(rng), atom(rng)], []),
+                _ => fact([atom(rng)]),
+            }
+        };
+        let fixed = [("Q_0", "A"), ("Q_1", "__nom__e"), ("Q_2", "B"), ("Q_0", "B")];
+        let pairs: Vec<(String, String)> = (0..1 + rng.next(4))
+            .map(|_| {
+                let (q, a) = if rng.next(4) == 0 { (pick(rng), pick(rng)) } else { fixed[rng.next(4)] };
+                (q.to_string(), a.to_string())
+            })
+            .collect();
+        // Definition clauses, excluded middles and complement constraints of
+        // the candidates, most of the time, so that the gate often accepts.
+        let mut tbox: Vec<DLClause> = Vec::new();
+        for (q, a) in &pairs {
+            let v = vars[rng.next(2)];
+            if rng.next(5) != 0 { tbox.push(clause([c(q, v), c(a, v)], [])); }
+            if rng.next(5) != 0 { tbox.push(fact([c(q, v), c(a, v)])); }
+            for _ in 0..rng.next(3) { tbox.push(clause([c(q, v), c(pick(rng), v)], [])); }
+            for _ in 0..rng.next(3) { tbox.push(clause([atom(rng)], [c(q, vars[rng.next(2)])])); }
+        }
+        for _ in 0..rng.next(6) {
+            tbox.push(make(rng));
+        }
+        // Shuffle.
+        for i in (1..tbox.len()).rev() {
+            let j = rng.next(i + 1);
+            tbox.swap(i, j);
+        }
+        let abox = (0..rng.next(3)).map(|_| make(rng)).collect();
+        (tbox, abox, pairs)
+    }
+
+    /// The indexed production pass computes the Lean `run` exactly, gate by
+    /// gate, on the concatenation of its TBox and ABox parts.
+    #[test]
+    fn production_pass_matches_the_lean_definition() {
+        let mut rng = Lcg(0x5eed_1234);
+        let mut accepted_total = 0;
+        let mut rejected_total = 0;
+        for _ in 0..20_000 {
+            let (tbox, abox, pairs) = generate(&mut rng);
+            let mut all = tbox.clone();
+            all.extend(abox.iter().cloned());
+            let (expected, accepted) = reference::run(&pairs, all);
+            let (mut t, mut b) = (tbox.clone(), abox.clone());
+            let report = polarity_definers(&mut t, &mut b, &pairs);
+            let mut got = t.clone();
+            got.extend(b.iter().cloned());
+            assert_eq!(got, expected, "tbox {tbox:?} abox {abox:?} pairs {pairs:?}");
+            assert_eq!(report.definers, accepted, "tbox {tbox:?} pairs {pairs:?}");
+            accepted_total += accepted.len();
+            rejected_total += pairs.len() - accepted.len();
+        }
+        // The generator exercises both outcomes of the gate.
+        assert!(accepted_total > 1000 && rejected_total > 1000, "{accepted_total} {rejected_total}");
+    }
+
+    fn not_value_forall_case() -> Ontology {
+        // ¬∃p.{e} ⊑ B, NNF ∀p.¬{e} ⊑ B: the ∀ introduction's complement
+        // constraint on the filler definer `¬{e}`.
+        let mut ontology = Ontology::new();
+        ontology.add(Axiom::SubClassOf(
+            Concept::Not(Box::new(Concept::Exists(
+                Role::Name("p".into()),
+                Box::new(Concept::Nominal("e".into())),
+            ))),
+            Concept::Name("B".into()),
+        ));
+        ontology
+    }
+
+    fn is_em_of_nominal(c: &DLClause) -> bool {
+        c.body.is_empty()
+            && c.head.len() == 2
+            && c.head.iter().any(|a| matches!(a, Atom::Concept(n, _) if n == "__nom__e"))
+    }
+
+    #[test]
+    fn forall_of_a_negated_nominal_loses_its_excluded_middle() {
+        let (tbox, _, _) = normalise(&not_value_forall_case());
+        assert!(!tbox.iter().any(is_em_of_nominal), "{tbox:?}");
+        // `Q_3 ∧ Q_1 → ⊥` became `Q_3 → nom_e`.
+        assert!(tbox.iter().any(|c| c.body.len() == 1
+            && c.head == vec![c_x("__nom__e")]
+            && matches!(&c.body[0], Atom::Concept(n, _) if n.starts_with("Q_"))));
+        // The definition clause `Q_1 ∧ nom_e → ⊥` stays.
+        assert!(tbox.iter().any(|c| c.head.is_empty()
+            && c.body.len() == 2
+            && c.body.contains(&c_x("__nom__e"))));
+    }
+
+    fn c_x(name: &str) -> Atom {
+        c(name, "x")
+    }
+
+    #[test]
+    fn a_negative_occurrence_keeps_the_excluded_middle() {
+        // ¬{e} ⊑ B puts the definer of ¬{e} into a body: both polarities.
+        let mut ontology = not_value_forall_case();
+        ontology.add(Axiom::SubClassOf(
+            Concept::Not(Box::new(Concept::Nominal("e".into()))),
+            Concept::Name("C".into()),
+        ));
+        let (tbox, _, _) = normalise(&ontology);
+        assert!(tbox.iter().any(is_em_of_nominal), "{tbox:?}");
+    }
+
+    #[test]
+    fn positive_only_negation_loses_its_excluded_middle() {
+        // X ⊑ ¬A: Q ≡ ¬A occurs in a head only.
+        let mut ontology = Ontology::new();
+        ontology.add(Axiom::SubClassOf(
+            Concept::Name("X".into()),
+            Concept::Not(Box::new(Concept::Name("A".into()))),
+        ));
+        let (tbox, _, _) = normalise(&ontology);
+        assert!(!tbox.iter().any(|c| c.body.is_empty() && c.head.len() == 2), "{tbox:?}");
+        assert!(tbox.iter().any(|c| c.head.is_empty() && c.body.contains(&c_x("A"))), "{tbox:?}");
+    }
 }

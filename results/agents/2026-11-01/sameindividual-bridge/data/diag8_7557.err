@@ -1,0 +1,48 @@
+0.817117 KM_TIMING mark: second source check done
+0.817304 KM_TIMING mark: data source candidate done
+0.846660 KM_TIMING mark: symbolic candidate done
+1.000946 KM_TIMING ABox quotient item declined: SubObjectPropertyOf Iri("<http://purl.obolibrary.org/obo/RO_0001000>") Word("owl:topObjectProperty")
+1.001086 KM_TIMING ABox quotient not built: site 5
+1.007398 KM_TIMING ABox quotient not built: site 3
+1.048064 KM_TIMING mirror-route: declined by lexical prefilter: bytes=41575343 complements_below=0
+1.073541 KM_TIMING in-process frontend declined by the exact-EL screen: bytes=41575343 screen=0.00s
+6.602910 KM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false
+6.603169 KM_TIMING frontend done @ 5.76s route=certified_nominals
+7.789979 cb_to_ht [emelim] eliminated 0 complementary pairs
+7.802228 cb_to_ht [trigger-absorb] definers=16028 moved=0 tautologies=0
+8.115435 native ABox pre-merge: 56568 SameIndividual pair(s), 112691 individual(s) to 57768 class(es)
+8.498177 KM_TIMING spawn_ht: read+convert 303479 clauses (ht_view=75615) in 1.14s
+8.891939 KM_TIMING race: synchronous bridge classes=33520 typed_nominal=true cb_threads=1
+8.892060 KM_TIMING race: HT worker spawned @ 2.27s after the CB stack started
+9.364049 BRIDGE-DATATYPE-GATE: admitted=true in 0.00s
+10.215636 bridge [source-tbox] axioms=26211 eq=72/72 ["PR_000025257", "PR_000025266", "PR_000025272", "PR_000025277", "PR_000025281", "PR_000025285", "PR_000025289", "PR_000025294", "PR_000025297", "PR_000025302", "PR_000025311", "PR_000025321", "PR_000025325", "PR_000025327", "PR_000025331", "PR_000025333", "PR_000025338", "PR_000025354", "PR_000025357", "PR_000025358", "PR_000025360", "PR_000025361", "PR_000025362", "PR_000025363", "PR_000025366", "PR_000025368", "PR_000025369", "PR_000025370", "PR_000025372", "PR_000025373", "PR_000025374", "PR_000025375", "PR_000025376", "PR_000025377", "PR_000025378", "PR_000025379", "PR_000025380", "PR_000025381", "PR_000025382", "PR_000025383", "PR_000025479", "PR_000025484", "PR_000025500", "PR_000025506", "PR_000025520", "PR_000025533", "PR_000025671", "PR_000025677", "PR_000025771", "PR_000025894", "PR_000026025", "PR_000026091", "PR_000026092", "PR_000026105", "PR_000026851", "PR_000026937", "PR_000026969", "PR_000026970", "PR_000027099", "PR_000027100", "PR_000027104", "PR_000027113", "PR_000027115", "PR_000027203", "PR_000027206", "PR_000027223", "PR_000027265", "PR_000027268", "PR_000027270", "PR_000027275", "PR_000027276", "PR_000027748"] direct=26135 role-links=9 absorbed-gci=223 top-gci=0 unsupported=0
+10.271531 bridge [or-replacements] implications=0 common=1
+10.273639 role-automata begin concepts=199300 next-tag=199309
+10.313545 bridge [branch-triggers] role-markers=6
+15.222883 BRIDGE-ENV: 5.63s (named=162541, trigger_absorb=true, unsupported=0, independent_abox=false)
+15.286597 BRIDGE-SOURCE-CLOSURE pairs=46226 definition-containment=true
+15.515430 BRIDGE-SAT-PHASE propagation-direction: 0.01s
+15.637673 BRIDGE-SATURATION-SEEDS: base=68766 extended=68786 invalid-special=20 substitute=16828 copy=16359
+15.637992 BRIDGE-SAT-PHASE seeds: 0.12s
+17.016968 BRIDGE-SAT-PHASE loop: 1.33s (nodes=141915)
+17.799756 SAT-STATS: insufficient all=0 atmost=0 or=25 eqcand=0 value=0 nominal=0
+29.384784 BRIDGE-NOMINAL-CONSISTENCY: consistent=true signal=Continue poisoned=false
+34.150577 BRIDGE-REFUTATION gated=true restricted=false nominals=true inverse=true number=true
+34.366843 BRIDGE-PREPARE round 0 subject 1/33520 deferred=0 permanent=0
+49.391350 BRIDGE-PREPARE round 0 subject 65/33520 deferred=0 permanent=0
+62.637178 BRIDGE-PREPARE round 0 subject 129/33520 deferred=0 permanent=0
+77.135240 BRIDGE-PREPARE round 0 subject 193/33520 deferred=0 permanent=0
+88.212201 BRIDGE-PREPARE round 0 subject 257/33520 deferred=0 permanent=0
+102.558224 BRIDGE-PREPARE round 0 subject 321/33520 deferred=0 permanent=0
+119.091572 BRIDGE-PREPARE round 0 subject 385/33520 deferred=0 permanent=0
+131.179093 BRIDGE-PREPARE round 0 subject 449/33520 deferred=0 permanent=0
+142.982887 BRIDGE-PREPARE round 0 subject 513/33520 deferred=0 permanent=0
+158.512303 BRIDGE-PREPARE round 0 subject 577/33520 deferred=0 permanent=0
+169.220000 BRIDGE-PREPARE round 0 subject 641/33520 deferred=0 permanent=0
+183.147648 BRIDGE-PREPARE round 0 subject 705/33520 deferred=0 permanent=0
+185.110811 BRIDGE-PREPARE round 0 subject 769/33520 deferred=0 permanent=0
+189.835258 BRIDGE-PREPARE round 0 subject 833/33520 deferred=0 permanent=0
+204.701180 BRIDGE-PREPARE round 0 subject 897/33520 deferred=0 permanent=0
+211.353269 BRIDGE-PREPARE round 0 subject 961/33520 deferred=0 permanent=0
+225.032478 BRIDGE-PREPARE round 0 subject 1025/33520 deferred=0 permanent=0
+235.725279 BRIDGE-PREPARE round 0 subject 1089/33520 deferred=0 permanent=0

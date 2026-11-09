@@ -1,0 +1,1 @@
+{"ontology": "opaque_single.ofn", "consistent": false, "subsumptions": [], "unsatisfiable": [], "note": "OWL 2 datatype map: xsd:token values are xsd:string values, so \"abc\"^^xsd:token = \"abc\". HermiT answers consistent here but entails A = B in opaque_merge_tbox, which needs the same equality."}

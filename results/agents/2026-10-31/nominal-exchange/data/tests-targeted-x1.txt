@@ -1,0 +1,8 @@
+     Running tests/cb_route_completeness.rs (target/release/deps/cb_route_completeness-6cc0884fa4f2f7c5)
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 68.96s
+     Running tests/merge_hypotheses.rs (target/release/deps/merge_hypotheses-8ba18b5336b67983)
+test result: ok. 4 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 513.98s
+     Running tests/nominal_seq_order.rs (target/release/deps/nominal_seq_order-a6b8af428c610682)
+test seed_297_q1_is_unsatisfiable_on_every_nominal_route ... FAILED
+thread 'seed_297_q1_is_unsatisfiable_on_every_nominal_route' (2665913) panicked at tests/nominal_seq_order.rs:71:13:
+test result: FAILED. 5 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 169.22s

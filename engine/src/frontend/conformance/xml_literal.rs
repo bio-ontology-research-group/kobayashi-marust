@@ -51,7 +51,11 @@ pub(super) fn check(text: &str) -> Result<(), String> {
             }
             Event::DocType(_) | Event::Decl(_) => return Err(error()),
             Event::End(_) => { depth = depth.checked_sub(1).ok_or_else(error)?; if depth==0 && reader.buffer_position() as usize != source.len() { return Err(error()); } }
-            Event::Eof => return if depth==0 {Ok(())} else {Err(error())},
+            Event::Eof => return if depth != 0 { Err(error()) } else if crate::frontend::datatypes::xml_canonical_text(text) == Some(false) {
+                // RDF Concepts 5.1: the lexical space is exclusive canonical
+                // XML; a well-formed but non-canonical form is ill-typed.
+                Err("invalid OWL 2 DL input: rdf:XMLLiteral lexical form is not exclusive canonical XML".to_owned())
+            } else { Ok(()) },
             _ => {}
         }
     }
@@ -62,10 +66,17 @@ mod tests {
     use super::check;
     #[test]
     fn accepts_xml_content_and_rejects_unbound_or_malformed_markup() {
-        for value in ["", "text &amp; more", "<a/><b/>", "<p:a xmlns:p='urn:p' p:x='1'/>", "<!--ok--><?target data?>"] {
+        for value in ["", "text &amp; more", "<a></a><b></b>", "<p:a xmlns:p='urn:p' p:x='1'/>", "<!--ok--><?target data?>",
+            "\n  <i>g<sub>n</sub>\n  </i>\n", "wèi le", "a &lt; b &gt; c"] {
             assert!(check(value).is_ok(), "{value}");
         }
         for value in ["<a x='<b'/>", "bad]]>text", "<a xmlns:p=''/>", "<a>", "<a></b>", "<p:a/>", "<a p:x='1'/>", "&unknown;", "&#0;", "<!--a--b-->", "<?xml version='1.0'?>", "</kmLiteralRoot><x>", "<a xmlns:p='urn:x' xmlns:q='urn:x' p:x='1' q:x='2'/>"] {
+            assert!(check(value).is_err(), "{value}");
+        }
+    }
+    #[test]
+    fn rejects_well_formed_non_canonical_forms() {
+        for value in ["<a/>", "a > b", "&#65;", "&quot;", "<![CDATA[x]]>", "<a >x</a>", "<a>x</a >", "a\rb"] {
             assert!(check(value).is_err(), "{value}");
         }
     }

@@ -335,6 +335,19 @@ macro_rules! arena_accessors {
 /// Field order groups the arenas by subsystem (nodes, edges, descriptors,
 /// dependency spine, satellites) for readability; allocation order within a test
 /// is whatever the completion engine drives, not the field order.
+/// Release bookkeeping of one open branch epoch (see
+/// `ProcessContext::release_dependency_individuals_of_popped_nodes`).
+#[derive(Clone, Debug, Default)]
+struct EpochReleaseFrame {
+    /// Node-arena length at the push: nodes at or above it are this epoch's
+    /// (or an inner one's) and are truncated when it pops.
+    node_len: usize,
+    /// Dependency nodes below this index have been filed.
+    cursor: usize,
+    /// Dependency nodes whose individual this epoch allocated.
+    pending: Vec<usize>,
+}
+
 pub struct ProcessContext {
     singleton_descriptor_limit: Option<usize>,
     singleton_descriptor_epoch: u64,
@@ -342,6 +355,16 @@ pub struct ProcessContext {
     singleton_descriptor_changes: HashMap<usize, (ConceptId, bool, TrackPointId)>,
     /// Open branch-epoch count (in-process COW; see `push_branch_epoch`).
     branch_epoch_depth: usize,
+    /// One frame per open branch epoch (see
+    /// `release_dependency_individuals_of_popped_nodes`).
+    branch_epoch_release_frames: Vec<EpochReleaseFrame>,
+    /// Dependency nodes whose appropriate individual was a node allocated in
+    /// a popped branch epoch (docs/HYBRID-CB-HT.md section 18.2). Their
+    /// individual was cleared at the pop; the DDB analysis reads this set to
+    /// keep an attribution it can no longer make out of the unsatisfiability
+    /// cache. Entries may outlive a spine truncation; a stale entry only
+    /// suppresses a cache write.
+    released_dependency_individuals: crate::fxhash::FxHashSet<usize>,
     // --- graph nodes ---
     /// `CIndividualProcessNode` pool. The databox's `individual_process_node_vector`
     /// holds `NodeId`s into THIS arena (it tracks; this owns).
@@ -735,6 +758,8 @@ impl ProcessContext {
             singleton_descriptor_epoch: 0,
             singleton_changed_descriptors: Vec::new(),
             singleton_descriptor_changes: HashMap::default(),            branch_epoch_depth: 0,
+            branch_epoch_release_frames: Vec::new(),
+            released_dependency_individuals: Default::default(),
             nodes: Arena::new(),
             sat_nodes: Arena::new_tight(),
             edges: Arena::new(),
@@ -915,6 +940,8 @@ impl ProcessContext {
             self.release_large_partial_saturation_capacity();
         }
         self.branch_epoch_depth = 0;
+        self.branch_epoch_release_frames.clear();
+        self.released_dependency_individuals.clear();
         self.used_mem_man = INVALID;
         self.used_process_tagger = ProcessTagger::new();
         self.used_process_stat_gath = INVALID;
@@ -1834,6 +1861,36 @@ impl ProcessContext {
             self.con_descs.len(),
             self.branch_nodes.len(),
         ]
+    }
+
+    // --- retained consistency leaf (docs/HYBRID-CB-HT.md §16) ---------------
+    /// Open a JOURNALED epoch on the six dependency-spine arenas, which
+    /// `push_branch_epoch` leaves epoch-exempt. Inside it the spine still
+    /// behaves as watermark memory for the branch epochs of a job (DDB marks
+    /// survive alternative pops), but the first change to a spine entry that
+    /// existed when the epoch opened saves a rollback copy, so
+    /// [`Self::pop_spine_journal_epoch`] restores the opening state exactly:
+    /// the marks a class job puts on the retained leaf's nondeterministic
+    /// track points do not survive into the next job.
+    pub fn push_spine_journal_epoch(&mut self) {
+        self.track_points.push_epoch();
+        self.dep_nodes.push_epoch();
+        self.dep_links.push_epoch();
+        self.clash_descs.push_epoch();
+        self.con_descs.push_epoch();
+        self.branch_nodes.push_epoch();
+    }
+
+    /// Close the innermost [`Self::push_spine_journal_epoch`]: restore every
+    /// spine entry changed since it opened and drop every entry allocated
+    /// since.
+    pub fn pop_spine_journal_epoch(&mut self) {
+        self.track_points.pop_epoch();
+        self.dep_nodes.pop_epoch();
+        self.dep_links.pop_epoch();
+        self.clash_descs.pop_epoch();
+        self.con_descs.pop_epoch();
+        self.branch_nodes.pop_epoch();
     }
 
     pub fn node_count(&self) -> usize {
@@ -3343,6 +3400,12 @@ impl ProcessContext {
         // alternative leaves dangling ids in persisted clash sets (measured:
         // ore_ont_541 Plan⊑Particular probe panicked reading a truncated
         // continue track point). Append-only per probe environment.
+        self.assign_new_dependency_individuals_to_epochs();
+        self.branch_epoch_release_frames.push(EpochReleaseFrame {
+            node_len: self.nodes.len(),
+            cursor: self.dep_nodes.len(),
+            pending: Vec::new(),
+        });
         self.branch_epoch_depth += 1;
     }
 
@@ -3462,6 +3525,7 @@ impl ProcessContext {
         self.marker_indi_node_datas.pop_epoch();
         self.marker_indi_node_hashes.pop_epoch();
         self.nodes.pop_epoch();
+        self.release_dependency_individuals_of_popped_nodes();
         self.node_switch_histories.pop_epoch();
         self.nominal_caching_loss_reactivation_datas.pop_epoch();
         self.nominal_caching_loss_reactivation_hashes.pop_epoch();
@@ -3543,6 +3607,98 @@ impl ProcessContext {
         self.var_binding_trigger_linkers.pop_epoch();
         // dependency spine arenas: epoch-exempt (see push_branch_epoch).
         self.branch_epoch_depth -= 1;
+    }
+
+    /// The dependency spine is epoch-exempt, the node arena is not: a
+    /// dependency node created inside a popped epoch can name a node that
+    /// the pop just truncated (a deterministic consequence derived inside a
+    /// refuted alternative, kept in that alternative's stored refutation).
+    /// Konclude keeps the node object alive in the task's memory; the port
+    /// cannot, and a later DDB analysis that walks such a dependency read the
+    /// truncated slot (index out of bounds) or a node that took the slot
+    /// since. Clear the individual of every such dependency node, so that the
+    /// analysis takes Konclude's path for a dependency without an appropriate
+    /// individual, and record it (docs/HYBRID-CB-HT.md section 18.2).
+    ///
+    /// Each dependency is examined once: `assign_new_dependency_individuals_to_epochs`
+    /// files it under the innermost open epoch whose push-time node length is
+    /// at most its node's index (the epoch that allocated the node), and this
+    /// pop releases the dependencies filed under the popped epoch. A rescan
+    /// of every dependency above the epoch's mark at every pop was quadratic
+    /// in the nesting depth (a 120-decision consistency leaf).
+    fn release_dependency_individuals_of_popped_nodes(&mut self) {
+        self.assign_new_dependency_individuals_to_epochs();
+        let Some(frame) = self.branch_epoch_release_frames.pop() else {
+            return;
+        };
+        let node_len = self.nodes.len();
+        let dep_len = self.dep_nodes.len();
+        for index in frame.pending {
+            if index >= dep_len {
+                continue;
+            }
+            let id = DependencyId::new(index as Cint64);
+            let individual = self.dep_nodes.get(id).base().individual_node;
+            // Self-validating: a filed index may have been reused after a
+            // spine truncation; only a dependency that names a truncated
+            // node is released.
+            if individual.is_some() && individual.index() >= node_len {
+                self.dep_nodes.get_mut_journaled(id).base_mut().individual_node = NodeId::NONE;
+                self.released_dependency_individuals.insert(index);
+            }
+        }
+        if let Some(top) = self.branch_epoch_release_frames.last_mut() {
+            top.cursor = dep_len;
+        }
+    }
+
+    /// File every dependency created since the innermost frame's cursor under
+    /// the epoch that allocated its node (see
+    /// `release_dependency_individuals_of_popped_nodes`). A dependency whose
+    /// node predates every open epoch is never released by a pop.
+    fn assign_new_dependency_individuals_to_epochs(&mut self) {
+        let dep_len = self.dep_nodes.len();
+        let Some(top) = self.branch_epoch_release_frames.last() else {
+            return;
+        };
+        let start = top.cursor.min(dep_len);
+        for index in start..dep_len {
+            let individual = self
+                .dep_nodes
+                .get(DependencyId::new(index as Cint64))
+                .base()
+                .individual_node;
+            if individual.is_none() {
+                continue;
+            }
+            let node_index = individual.index();
+            let owner = self
+                .branch_epoch_release_frames
+                .partition_point(|frame| frame.node_len <= node_index);
+            if owner > 0 {
+                self.branch_epoch_release_frames[owner - 1].pending.push(index);
+            }
+        }
+        if let Some(top) = self.branch_epoch_release_frames.last_mut() {
+            top.cursor = dep_len;
+        }
+    }
+
+    /// Release one dependency's individual at read time: the guard for a
+    /// dependency whose individual was set after it was filed, so that no
+    /// pop examined it (`release_dependency_individuals_of_popped_nodes`).
+    pub fn release_dependency_individual(&mut self, dep_node: DependencyId) {
+        if dep_node.is_none() {
+            return;
+        }
+        self.dep_nodes.get_mut_journaled(dep_node).base_mut().individual_node = NodeId::NONE;
+        self.released_dependency_individuals.insert(dep_node.index());
+    }
+
+    /// True when `dep_node`'s appropriate individual was released by
+    /// [`Self::release_dependency_individuals_of_popped_nodes`].
+    pub fn dependency_individual_released(&self, dep_node: DependencyId) -> bool {
+        dep_node.is_some() && self.released_dependency_individuals.contains(&dep_node.index())
     }
 
     /// Open branch epochs (0 = none).
@@ -5413,13 +5569,26 @@ impl ProcessContext {
         if hash.is_none() {
             return BackwardSaturationPropagationReapplyDescriptorId::NONE;
         }
+        // cpp CRoleBackwardSaturationPropagationHash.cpp 82–93: the hash flag
+        // is set unconditionally, the per-role flag only when the link is
+        // appended (the duplicate-head early return leaves it unchanged).
         self.role_backward_sat_prop_hash_mut(hash).self_connected = true;
+        let head = |ctx: &Self| {
+            ctx.role_backward_sat_prop_hash(hash)
+                .role_back_prop_data_hash
+                .get(&role)
+                .map(|data| data.link_linker)
+                .unwrap_or(BackwardSaturationPropagationLinkId::NONE)
+        };
+        let head_before = head(self);
         let reapply = self.sat_node_add_backward_propagation_link(node, role, source_individual);
-        self.role_backward_sat_prop_hash_mut(hash)
-            .role_back_prop_data_hash
-            .entry(role)
-            .or_insert_with(RoleBackwardSaturationPropagationHashData::new)
-            .self_connected = true;
+        if head(self) != head_before {
+            self.role_backward_sat_prop_hash_mut(hash)
+                .role_back_prop_data_hash
+                .entry(role)
+                .or_insert_with(RoleBackwardSaturationPropagationHashData::new)
+                .self_connected = true;
+        }
         reapply
     }
 
@@ -7821,6 +7990,35 @@ impl ProcessContext {
 
     /// Context-threaded port of `CIndividualProcessNode::getRoleReapplyQueue(role,true)`
     /// followed by `CReapplyQueue::addReapplyConceptDescriptor`.
+    /// True when `node`'s static reapply queue of `role` already holds a
+    /// descriptor for `concept_descriptor` with `processing_restriction`.
+    pub fn node_role_static_reapply_contains(
+        &self,
+        node: NodeId,
+        role: RoleId,
+        concept_descriptor: ConDescId,
+        processing_restriction: Cint64,
+    ) -> bool {
+        let hash = self.node(node).use_reapply_role_succ_hash;
+        if hash.is_none() {
+            return false;
+        }
+        let Some(data) = self.role_succ_hash(hash).role_successor_data_hash.get(&role) else {
+            return false;
+        };
+        let mut it = data.reapply_queue.static_reapply_des_linker;
+        let mut walked = 0usize;
+        while it.is_some() && walked <= self.reapply_con_descs.len() {
+            let des = self.reapply_con_desc(it);
+            if des.data == concept_descriptor && des.processing_restriction == processing_restriction {
+                return true;
+            }
+            it = des.next;
+            walked += 1;
+        }
+        false
+    }
+
     pub fn node_add_role_reapply_concept_descriptor(
         &mut self,
         node: NodeId,
@@ -8809,6 +9007,31 @@ mod tests {
         VariableBindingPath, VariableBindingPathMergingHash, VariableBindingPathMergingHashData,
     };
     use super::*;
+
+    /// docs/HYBRID-CB-HT.md §16: a spine journal epoch restores marks on
+    /// pre-existing track points and drops track points allocated inside it,
+    /// and nested journals unwind independently.
+    #[test]
+    fn spine_journal_epoch_restores_marks_and_drops_new_entries() {
+        let mut ctx = ProcessContext::new();
+        let base = ctx.alloc_track_point(DependencyTrackPoint::new(DependencyId::NONE));
+        ctx.push_spine_journal_epoch();
+        let leaf = ctx.alloc_track_point(DependencyTrackPoint::new(DependencyId::NONE));
+        ctx.track_point_mut(base).clashed_irrelevant = true;
+        ctx.push_spine_journal_epoch();
+        ctx.track_point_mut(base).relevant_flag = true;
+        ctx.track_point_mut(leaf).clashed_irrelevant = true;
+        let job = ctx.alloc_track_point(DependencyTrackPoint::new(DependencyId::NONE));
+        assert_eq!(job.index(), 2);
+        ctx.pop_spine_journal_epoch();
+        assert_eq!(ctx.spine_lens()[0], 2);
+        assert!(ctx.track_point(base).clashed_irrelevant);
+        assert!(!ctx.track_point(base).relevant_flag);
+        assert!(!ctx.track_point(leaf).clashed_irrelevant);
+        ctx.pop_spine_journal_epoch();
+        assert_eq!(ctx.spine_lens()[0], 1);
+        assert!(!ctx.track_point(base).clashed_irrelevant);
+    }
 
     fn backward_source_context(reverse: bool) -> (ProcessContext, SatNodeId) {
         let mut ctx = ProcessContext::new();

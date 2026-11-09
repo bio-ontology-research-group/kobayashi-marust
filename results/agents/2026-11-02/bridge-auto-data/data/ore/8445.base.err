@@ -1,0 +1,12 @@
+KM_TIMING mark: second source check done
+KM_TIMING mark: data source candidate done
+KM_TIMING mark: symbolic candidate done
+KM_TIMING ABox quotient reduction too small: individuals=26615 blocks=26502 assertions=137612 lines=137223 roles=75057 classes=26598 data=35957 restricted_roles=16 restricted_data=30
+KM_TIMING ABox quotient not built: site 7
+KM_TIMING ABox quotient not built: site 3
+KM_TIMING mirror-route: declined by lexical prefilter: bytes=23834546 complements_below=0
+KM_TIMING in-process frontend declined by the exact-EL screen: bytes=23834546 screen=0.00s
+KM_TIMING frontend: 35957 data-property assertion(s) not carried; re-running with the DataHasValue conversion
+KM_TIMING in-process frontend declined by the exact-EL screen: bytes=23834546 screen=0.00s
+KM_TIMING nominal HT schedule: workers1=false workers3=false workers4=false
+KM_TIMING frontend done @ 7.32s route=certified_nominals

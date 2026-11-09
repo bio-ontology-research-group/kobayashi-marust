@@ -464,8 +464,12 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         tracking_line: &mut TrackedClashedDependencyLine,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) -> bool {
-        let _ = tracking_line;
-        if !self.conf_write_unsat_caching || tracked_clashed_des.is_none() {
+        // A line with a substitute attribution (docs/HYBRID-CB-HT.md section
+        // 18.2) cannot tell which node its descriptors belong to.
+        if !self.conf_write_unsat_caching
+            || tracked_clashed_des.is_none()
+            || tracking_line.has_released_individual_attribution()
+        {
             return false;
         }
 
@@ -730,6 +734,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         .role(super_role)
                         .is_functional()
                     {
+                        return false;
+                    }
+                    // A cardinality restriction on `super_role` that is in
+                    // the label but not yet in the reapply queue
+                    // (docs/HYBRID-CB-HT.md section 23).
+                    if super::satexp_absorb::label_restricts_role_cardinality(
+                        calc_alg_context.process_context(),
+                        calc_alg_context.ontology_arenas(),
+                        *process_indi,
+                        super_role,
+                    ) {
                         return false;
                     }
                     // check additional for ATMOST restriction

@@ -718,6 +718,14 @@ pub struct BlockingIndividualNodeCandidateData {
     pub candidate_indi_map: BTreeMap<Cint64, NodeId>,
     /// `cint64 mMaxValidIndividualID`.
     pub max_valid_individual_id: Cint64,
+    /// Shared, immutable candidates of a retained consistency base (sorted by
+    /// key `-id`, ascending), seeded by the completion's `BlockingBaseIndex`.
+    /// The candidate set is `shared - shared_removed`, overridden and extended
+    /// by `candidate_indi_map`. `None` everywhere else, and then the map is the
+    /// whole set, exactly as before.
+    pub shared_candidates: Option<std::sync::Arc<Vec<(Cint64, NodeId)>>>,
+    /// Keys of `shared_candidates` erased by `removeLastIndividualCandidate`.
+    pub shared_removed: BTreeSet<Cint64>,
     // KONCLUDE-PORT-NOTE[memory-pool]: `CProcessContext* mContext` /
     // `CMemoryAllocationManager* mMemMan` (opaque).
     pub context: Cint64,
@@ -731,6 +739,8 @@ impl Default for BlockingIndividualNodeCandidateData {
             modification_tag: ConceptLabelSetModificationTag::default(),
             candidate_indi_map: BTreeMap::new(),
             max_valid_individual_id: 0,
+            shared_candidates: None,
+            shared_removed: BTreeSet::new(),
             context: INVALID,
             mem_man: INVALID,
         }
@@ -797,9 +807,13 @@ impl BlockingIndividualNodeCandidateData {
         if let Some(prev) = prev {
             self.candidate_indi_map = prev.candidate_indi_map.clone();
             self.max_valid_individual_id = prev.max_valid_individual_id;
+            self.shared_candidates = prev.shared_candidates.clone();
+            self.shared_removed = prev.shared_removed.clone();
         } else {
             self.max_valid_individual_id = 0;
             self.candidate_indi_map.clear();
+            self.shared_candidates = None;
+            self.shared_removed.clear();
         }
         self
     }
@@ -891,6 +905,25 @@ pub struct BlockingIndividualNodeCandidateIterator {
     map_present: bool,
     /// Arena owner for context-threaded `removeLastIndividualCandidate`.
     owner_data: BlockingIndividualNodeCandidateDataId,
+    /// Merged mode (the owner has `shared_candidates`): `entries` holds the
+    /// owner's map only, and the shared list is walked lazily beside it.
+    shared: Option<SharedCursor>,
+}
+
+/// Lazy walk of a candidate data's shared base list (see
+/// `BlockingIndividualNodeCandidateData::shared_candidates`), merged in key
+/// order with the iterator's `entries` (the overlay map).
+struct SharedCursor {
+    list: std::sync::Arc<Vec<(Cint64, NodeId)>>,
+    /// Next shared position not yet yielded.
+    pos: usize,
+    /// Keys not to yield from the shared list: erased ones, and those the
+    /// overlay map overrides (looked up in `entries`).
+    removed: BTreeSet<Cint64>,
+    /// Whether the last yielded entry came from the shared list, and its key.
+    last_shared: Option<Cint64>,
+    /// Whether at least one candidate existed at construction.
+    any: bool,
 }
 
 impl BlockingIndividualNodeCandidateIterator {
@@ -903,6 +936,7 @@ impl BlockingIndividualNodeCandidateIterator {
             it_last: 0,
             map_present: false,
             owner_data: Id::NONE,
+            shared: None,
         }
     }
 
@@ -921,6 +955,7 @@ impl BlockingIndividualNodeCandidateIterator {
             it_last: it_begin,
             map_present: true,
             owner_data: Id::NONE,
+            shared: None,
         }
     }
 
@@ -930,27 +965,89 @@ impl BlockingIndividualNodeCandidateIterator {
         owner_data: BlockingIndividualNodeCandidateDataId,
         candidate_individual_id: Cint64,
     ) -> Self {
-        let mut iterator = Self::new(
-            &ctx.blocking_indi_node_cand_data(owner_data)
-                .candidate_indi_map,
-            candidate_individual_id,
-        );
+        let data = ctx.blocking_indi_node_cand_data(owner_data);
+        let mut iterator = Self::new(&data.candidate_indi_map, candidate_individual_id);
         iterator.owner_data = owner_data;
+        if let Some(list) = &data.shared_candidates {
+            let target = -candidate_individual_id;
+            let pos = list.partition_point(|(k, _)| *k <= target);
+            let removed = data.shared_removed.clone();
+            let any = !data.candidate_indi_map.is_empty()
+                || list.iter().any(|(k, _)| !removed.contains(k));
+            iterator.shared = Some(SharedCursor {
+                list: std::sync::Arc::clone(list),
+                pos,
+                removed,
+                last_shared: None,
+                any,
+            });
+        }
         iterator
+    }
+
+    /// Merged mode: the next shared position that is neither erased nor
+    /// overridden by the overlay map.
+    fn shared_next_pos(&self) -> Option<usize> {
+        let cursor = self.shared.as_ref()?;
+        let mut pos = cursor.pos;
+        while pos < cursor.list.len() {
+            let key = cursor.list[pos].0;
+            let overridden = self.entries.binary_search_by(|(k, _)| k.cmp(&key)).is_ok();
+            if !cursor.removed.contains(&key) && !overridden {
+                return Some(pos);
+            }
+            pos += 1;
+        }
+        None
+    }
+
+    /// Merged mode: which stream yields next (`true` = shared) and its entry.
+    fn merged_peek(&self) -> Option<(bool, usize, Cint64, NodeId)> {
+        let overlay = (self.it_begin != self.it_end).then(|| self.entries[self.it_begin]);
+        let shared = self.shared_next_pos().map(|pos| {
+            let cursor = self.shared.as_ref().unwrap();
+            (pos, cursor.list[pos])
+        });
+        match (overlay, shared) {
+            (None, None) => None,
+            (Some((k, n)), None) => Some((false, self.it_begin, k, n)),
+            (None, Some((pos, (k, n)))) => Some((true, pos, k, n)),
+            (Some((ko, no)), Some((pos, (ks, ns)))) => {
+                if ko <= ks {
+                    Some((false, self.it_begin, ko, no))
+                } else {
+                    Some((true, pos, ks, ns))
+                }
+            }
+        }
     }
 
     /// Port of `hasNext` (`mCandidateMap && mItBegin != mItEnd`).
     pub fn has_next(&self) -> bool {
+        if self.shared.is_some() {
+            return self.merged_peek().is_some();
+        }
         self.map_present && self.it_begin != self.it_end
     }
 
     /// Port of `hasIndividualCandidates` (`mCandidateMap && !mCandidateMap->isEmpty()`).
     pub fn has_individual_candidates(&self) -> bool {
+        if let Some(cursor) = &self.shared {
+            return cursor.any;
+        }
         self.map_present && !self.entries.is_empty()
     }
 
     /// Port of `hasIndividualCandidate(cint64)` (`mCandidateMap->contains(-indiID)`).
     pub fn has_individual_candidate(&self, indi_id: Cint64) -> bool {
+        if let Some(cursor) = &self.shared {
+            let key = -indi_id;
+            if self.entries.iter().any(|(k, _)| *k == key) {
+                return true;
+            }
+            return !cursor.removed.contains(&key)
+                && cursor.list.binary_search_by(|(k, _)| k.cmp(&key)).is_ok();
+        }
         self.map_present && self.entries.iter().any(|(k, _)| *k == -indi_id)
     }
 
@@ -969,6 +1066,26 @@ impl BlockingIndividualNodeCandidateIterator {
 
     /// Port of `nextIndividualCandidate(bool moveNext)`.
     pub fn next_individual_candidate(&mut self, move_next: bool) -> Option<NodeId> {
+        if self.shared.is_some() {
+            let (from_shared, pos, key, node) = self.merged_peek()?;
+            if from_shared {
+                let cursor = self.shared.as_mut().unwrap();
+                cursor.last_shared = Some(key);
+                if move_next {
+                    cursor.pos = pos + 1;
+                } else {
+                    cursor.pos = pos;
+                }
+                self.it_last = self.it_end;
+            } else {
+                self.shared.as_mut().unwrap().last_shared = None;
+                self.it_last = self.it_begin;
+                if move_next {
+                    self.it_begin += 1;
+                }
+            }
+            return Some(node);
+        }
         if self.map_present && self.it_begin != self.it_end {
             let indi = self.entries[self.it_begin].1;
             self.it_last = self.it_begin;
@@ -1005,6 +1122,15 @@ impl BlockingIndividualNodeCandidateIterator {
         &mut self,
         ctx: &mut ProcessContext,
     ) -> bool {
+        if let Some(key) = self.shared.as_mut().and_then(|cursor| cursor.last_shared.take()) {
+            self.shared.as_mut().unwrap().removed.insert(key);
+            if self.owner_data.is_some() {
+                ctx.blocking_indi_node_cand_data_mut(self.owner_data)
+                    .shared_removed
+                    .insert(key);
+            }
+            return true;
+        }
         if self.it_last != self.it_end {
             let removed_key = self.entries[self.it_last].0;
             self.entries.remove(self.it_last);
@@ -1062,6 +1188,42 @@ mod tests {
             .blocking_indi_node_cand_data(data)
             .candidate_indi_map
             .contains_key(&-3));
+    }
+
+    #[test]
+    fn blocking_candidate_iterator_merges_shared_base_list_in_key_order() {
+        let mut ctx = ProcessContext::new();
+        let data = ctx
+            .alloc_blocking_indi_node_cand_data(BlockingIndividualNodeCandidateData::new(INVALID));
+        let mk = |ctx: &mut ProcessContext, id: Cint64| {
+            let n = ctx.alloc_node(IndividualProcessNode::default());
+            ctx.node_mut(n).set_individual_node_id(id);
+            n
+        };
+        let (a, b, c, d, e) = (mk(&mut ctx, 9), mk(&mut ctx, 5), mk(&mut ctx, 2), mk(&mut ctx, 7), mk(&mut ctx, 5));
+        {
+            let data = ctx.blocking_indi_node_cand_data_mut(data);
+            data.shared_candidates = Some(std::sync::Arc::new(vec![(-9, a), (-5, b), (-2, c)]));
+            data.shared_removed.insert(-2);
+        }
+        ctx.blocking_indi_node_cand_data_insert_blocking_candidate_individual_node(data, d);
+        ctx.blocking_indi_node_cand_data_insert_blocking_candidate_individual_node(data, e);
+        // the overlay's node for id 5 overrides the shared one; id 2 is erased
+        let mut it = BlockingIndividualNodeCandidateIterator::new_in_context(&ctx, data, 10);
+        assert!(it.has_individual_candidates());
+        assert!(it.has_individual_candidate(9) && !it.has_individual_candidate(2));
+        assert_eq!(it.next_individual_candidate(true), Some(a));
+        assert!(it.remove_last_individual_candidate_in_context(&mut ctx));
+        assert!(ctx.blocking_indi_node_cand_data(data).shared_removed.contains(&-9));
+        assert_eq!(it.next_individual_candidate(false), Some(d));
+        assert_eq!(it.next_individual_candidate(true), Some(d));
+        assert_eq!(it.next_individual_candidate(true), Some(e));
+        assert_eq!(it.next_individual_candidate(true), None);
+        assert!(!it.has_next());
+        // starting below an id skips the larger ones
+        let mut it = BlockingIndividualNodeCandidateIterator::new_in_context(&ctx, data, 7);
+        assert_eq!(it.next_individual_candidate(true), Some(e));
+        assert_eq!(it.next_individual_candidate(true), None);
     }
 
     #[test]

@@ -118,6 +118,14 @@ struct TOutput {
     unsatisfiable: Vec<String>,
 }
 
+/// An HT worker answer decoded from the compact dictionary transport. Like
+/// the pair list it lists only subjects that have a superclass, so the
+/// publication coverage guard treats it as pair-form (docs/ROUTING.md).
+fn ht_pair_form(mut out: EngineOut) -> EngineOut {
+    out.pair_form = true;
+    out
+}
+
 fn tableau_to_out(t: TOutput) -> EngineOut {
     let mut subs: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for [subject, superclass] in t.subsumptions {
@@ -134,6 +142,7 @@ fn tableau_to_out(t: TOutput) -> EngineOut {
         inconsistent: !t.consistent,
         dropped: 0,
         unresolved: Vec::new(),
+        pair_form: true,
     }
 }
 
@@ -2245,8 +2254,16 @@ fn prepare_ht(
         && card_candidate_from(&tin, cfg.ht_card, card_recog, has_datatype(&cl));
     let mut proxy_abox_certificate = None;
     let global_native_abox = std::env::var_os("KM_HT_GLOBAL_NATIVE_ABOX").is_some();
+    // `install_nominal_abox_with_same` installs the exact `SameIndividual`
+    // pre-merge (docs/HYBRID-CB-HT.md section 13). Every route admits it
+    // since the restricted automaton re-fire, the read-only blocking scans and
+    // Konclude's full-completion-graph decision let the bridge finish the
+    // large equality ABoxes (section 17). `KM_HT_NO_ADMIT_SAME=1` restores
+    // the earlier decline on the generic automatic racer (measurement only).
     let allow_same = std::env::var_os("KM_HT_CERT_NO_BLOCKING").is_some()
-        || global_native_abox || specialist_only.as_deref() == Some("bridge");
+        || global_native_abox
+        || specialist_only.as_deref() == Some("bridge")
+        || std::env::var_os("KM_HT_NO_ADMIT_SAME").is_none();
     if card_proxy_abox {
         let mut native = tin.clone();
         cb_to_ht::install_nominal_abox_with_same(&mut native, &nominal_abox, allow_same);
@@ -2457,9 +2474,13 @@ fn prepare_ht(
     };
     cmd.stdin(Stdio::piped())
         .stdout(File::create(out_path.path()).ok()?);
-    // stderr: inherit when stats/trace requested (diagnostic), else null.
+    // stderr: inherit when stats/trace requested (diagnostic). Under
+    // KM_TIMING alone, pipe it so `PreparedHt::launch` can forward the
+    // worker's error line (for a bridge defer, the gate it names); else null.
     if std::env::var_os("KM_HT_STATS").is_some() || std::env::var_os("KM_HT_TRACE").is_some() {
         cmd.stderr(Stdio::inherit());
+    } else if std::env::var_os("KM_TIMING").is_some() {
+        cmd.stderr(Stdio::piped());
     } else {
         cmd.stderr(Stdio::null());
     }
@@ -2728,6 +2749,9 @@ impl PreparedHt {
             bridge_answer_marker,
         } = self;
         let mut child = cmd.spawn().ok()?;
+        if let Some(stderr) = child.stderr.take() {
+            forward_ht_worker_errors(stderr);
+        }
         let stdin = child.stdin.take()?;
         let bytes = serde_json::to_vec(&tin).ok()?;
         thread::spawn(move || {
@@ -2776,6 +2800,21 @@ impl PreparedHt {
     }
 }
 
+/// Drain a race HT worker's piped stderr (piped only under `KM_TIMING`) and
+/// repeat its error lines, so a decline names its reason in the timing trace
+/// (`tableau error: konclude_ht bridge defer: <gate>`). Every other line is
+/// dropped, exactly as the null stderr dropped it. Diagnostic only: the
+/// thread never touches the worker's answer or exit status.
+fn forward_ht_worker_errors(stderr: std::process::ChildStderr) {
+    thread::spawn(move || {
+        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+            if line.starts_with("tableau error:") || line.contains("bridge defer") {
+                eprintln!("KM_TIMING race: HT worker reported: {line}");
+            }
+        }
+    });
+}
+
 /// Read a finished HT worker's taxonomy, applying the proxy ABox certificate
 /// exactly as the race does. `None` when the output is missing, malformed, or
 /// rejected by the certificate.
@@ -2788,7 +2827,8 @@ fn read_ht_answer(p: &Path, proxy_abox_certificate: Option<&ProxyAboxCertificate
         if proxy_abox_certificate.is_some() {
             return None;
         }
-        return super::parse_out_path(p).ok();
+        // HT compact output lists only subjects with a superclass.
+        return super::parse_out_path(p).ok().map(ht_pair_form);
     }
     let f = File::open(p).ok()?;
     let mut output = serde_json::from_reader::<_, TOutput>(BufReader::new(f)).ok()?;
@@ -3003,7 +3043,7 @@ pub fn run_ht_only(
             return Err(OrchestrateError::OutOfFragment(
                 "compact native output cannot bypass proxy ABox verification".into()));
         }
-        let mut out = super::parse_out_path(out_path.path())?;
+        let mut out = ht_pair_form(super::parse_out_path(out_path.path())?);
         out.dropped += bypass_drops;
         return Ok(out);
     }
@@ -3381,7 +3421,7 @@ fn run_ht_only_bounded_from(
             return Err(OrchestrateError::OutOfFragment(
                 "compact native output cannot bypass proxy ABox verification".into()));
         }
-        return super::parse_out_path(out_path.path()).map(Some);
+        return super::parse_out_path(out_path.path()).map(|out| Some(ht_pair_form(out)));
     }
     let output = File::open(out_path.path())?;
     let mut parsed: TOutput = serde_json::from_reader(BufReader::new(output)).map_err(|error| {

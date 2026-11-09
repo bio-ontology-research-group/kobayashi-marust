@@ -1,0 +1,7 @@
+#!/bin/bash
+# run /mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/forced-nominal-data-misses/km.base on one CPU (44-49 claimed by lock files), so available_parallelism is 1
+for c in 44 45 46 47 48 49; do
+  exec 9>/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/forced-nominal-data-misses/locks/cpu$c
+  if flock -n 9; then exec taskset -c $c /mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/forced-nominal-data-misses/km.base "$@"; fi
+done
+exec taskset -c 49 /mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/forced-nominal-data-misses/km.base "$@"

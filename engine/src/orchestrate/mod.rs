@@ -17,6 +17,7 @@ pub mod explain;
 pub mod features;
 mod flat_nf1;
 pub mod frontend_run;
+pub(crate) mod inert_sorts;
 pub mod input;
 pub mod mirror;
 mod abox_quotient;
@@ -42,6 +43,34 @@ use config::Mechanism;
 /// A class in another namespace may legitimately have local name `Nothing`;
 /// the frontend keeps it as an ordinary named class, so bare `Nothing` must
 /// not be interpreted as OWL bottom here.
+/// The declared classes for which a consistent worker answer carries no
+/// subject row (rows with no superclass count), in declaration order, or
+/// `None` when every declared class is covered. Residue names an answer
+/// still lists as unresolved are not covered.
+pub(crate) fn undeclared_coverage(out: &EngineOut, declared: &[String]) -> Option<Vec<String>> {
+    if declared.is_empty() {
+        return None;
+    }
+    let mut covered: crate::fxhash::FxHashSet<&str> = crate::fxhash::FxHashSet::default();
+    if let Some(compact) = &out.compact_subsumptions {
+        for (subject, _) in &compact.rows {
+            covered.insert(compact.names[*subject as usize].as_ref());
+        }
+    }
+    for subject in out.subsumptions.keys() {
+        covered.insert(subject.as_str());
+    }
+    for name in &out.unresolved {
+        covered.remove(name.as_str());
+    }
+    let missing: Vec<String> = declared
+        .iter()
+        .filter(|name| !covered.contains(name.as_str()))
+        .cloned()
+        .collect();
+    (!missing.is_empty()).then_some(missing)
+}
+
 fn is_bottom(s: &str) -> bool {
     s == "owl:Nothing" || s == "http://www.w3.org/2002/07/owl#Nothing" || s == "\u{22A5}"
 }
@@ -283,6 +312,12 @@ pub struct EngineOut {
     /// elc exit-4 residue (named subjects the certificate could not determine)
     #[serde(default)]
     pub unresolved: Vec<String>,
+    /// The answer came as a pair list (HT, bridge and tableau workers,
+    /// `race::tableau_to_out`), which has no subject rows: a class without a
+    /// named superclass is absent by construction, so the publication
+    /// coverage guard cannot check it (docs/ROUTING.md).
+    #[serde(skip)]
+    pub pair_form: bool,
 }
 
 /// The final classification, serialised exactly like `owl_classify`'s output.
@@ -328,6 +363,7 @@ pub(crate) fn parse_out_path(path: &Path) -> Result<EngineOut, OrchestrateError>
             subsumptions: BTreeMap::new(),
             compact_subsumptions: Some(compact),
             unresolved: Vec::new(),
+            pair_form: false,
         });
     }
     Ok(serde_json::from_reader(reader)?)
@@ -342,10 +378,16 @@ pub(crate) fn parse_out_path(path: &Path) -> Result<EngineOut, OrchestrateError>
 /// stack — `cfg.threads` normally, or a reduced count when the HT racer reserved
 /// a core (Python achieves this by mutating the global `os.environ`; the Rust
 /// port threads it explicitly).
+///
+/// `engine_clauses` is the plain CB engine's input: `clauses_path` itself, or
+/// its copy with the inert object sorts released in nominal mode
+/// (`nominal_cb_clause_input`). The tableau and the absorption portfolio keep
+/// `clauses_path`.
 fn cb_stack(
     cfg: &Config,
     ont: &std::path::Path,
     clauses_path: &std::path::Path,
+    engine_clauses: &std::path::Path,
     named: &HashSet<String>,
     engine_threads: race::ThreadBudget,
 ) -> Result<EngineOut, OrchestrateError> {
@@ -359,10 +401,264 @@ fn cb_stack(
     }
     if cfg.tab_race {
         return race::race_cb_vs_tableau(cfg, clauses_path, named, || {
-            run_adaptive(cfg, clauses_path, engine_threads.get())
+            run_adaptive(cfg, engine_clauses, engine_threads.get())
         });
     }
-    run_adaptive(cfg, clauses_path, engine_threads.get())
+    run_adaptive(cfg, engine_clauses, engine_threads.get())
+}
+
+/// Whether `needle` occurs in `haystack`.
+fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
+    let Some((&first, rest)) = needle.split_first() else { return true };
+    let mut from = 0;
+    while let Some(offset) = haystack[from..].iter().position(|&byte| byte == first) {
+        let start = from + offset;
+        if haystack[start + 1..].starts_with(rest) {
+            return true;
+        }
+        from = start + 1;
+    }
+    false
+}
+
+/// Why [`nominal_cb_clause_input`] made no copy.
+enum CbInputError {
+    /// A Lean checker rejected a certificate of the copy (or could not give a
+    /// verdict outside `KM_LEAN_CHECKERS`). The arm must not answer: fail
+    /// closed.
+    Rejected(String),
+    /// The copy could not be made (I/O, JSON). The frontend's file is exact,
+    /// so the arm keeps it.
+    Other(OrchestrateError),
+}
+
+impl From<OrchestrateError> for CbInputError {
+    fn from(error: OrchestrateError) -> Self {
+        CbInputError::Other(error)
+    }
+}
+
+impl From<std::io::Error> for CbInputError {
+    fn from(error: std::io::Error) -> Self {
+        CbInputError::Other(error.into())
+    }
+}
+
+impl From<serde_json::Error> for CbInputError {
+    fn from(error: serde_json::Error) -> Self {
+        CbInputError::Other(error.into())
+    }
+}
+
+/// The executable of the nominal CB input checker in a `KM_LEAN_CHECKERS`
+/// directory.
+pub(crate) const NOMINAL_CB_INPUT_CHECKER: &str = "nominal-cb-input-check";
+
+/// Where the nominal CB input certificate goes and which checker reads it:
+/// `KM_NOMINAL_CB_INPUT_CERT` (a `.json` file or a directory) and
+/// `KM_NOMINAL_CB_INPUT_LEAN_CHECKER`, or, under `KM_LEAN_CHECKERS`, a fresh
+/// file in the run directory and `nominal-cb-input-check` from the checker
+/// directory. `None` when nothing asks for the certificate.
+fn nominal_cb_certificate_plan() -> Option<(std::path::PathBuf, Option<std::path::PathBuf>)> {
+    static NONCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let explicit_checker = std::env::var_os("KM_NOMINAL_CB_INPUT_LEAN_CHECKER").map(std::path::PathBuf::from);
+    let switch_checker = crate::lean_checkers::dir()
+        .map(|dir| dir.join(NOMINAL_CB_INPUT_CHECKER))
+        .filter(|path| path.is_file());
+    let checker = explicit_checker.or(switch_checker);
+    let file = match std::env::var_os("KM_NOMINAL_CB_INPUT_CERT") {
+        Some(target) => {
+            let target = std::path::PathBuf::from(target);
+            if target.extension().is_some_and(|ext| ext == "json") {
+                target
+            } else {
+                let n = NONCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                target.join(format!("nominal-cb-input-{}-{n}.json", std::process::id()))
+            }
+        }
+        None if checker.is_some() => crate::lean_checkers::fresh_path("nominal_cb_input"),
+        None => {
+            if crate::lean_checkers::active() {
+                crate::lean_checkers::record_cannot_check(
+                    "cb",
+                    "nominal-cb-input",
+                    "no nominal-cb-input-check in the checker directory; the nominal CB input is unchecked",
+                );
+            }
+            return None;
+        }
+    };
+    Some((file, checker))
+}
+
+/// Write the nominal CB input certificate and run its checker. Under
+/// `KM_LEAN_CHECKERS` a rejection is recorded in the run log, so `km
+/// classify` publishes nothing, and `cannot_check` lets the arm answer as it
+/// does without the checker. Outside it, anything but acceptance fails the
+/// arm.
+fn check_nominal_cb_input(
+    file: &Path,
+    checker: Option<&Path>,
+    document: &serde_json::Value,
+) -> Result<(), CbInputError> {
+    if let Some(parent) = file.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(file, serde_json::to_vec(document)?)?;
+    let Some(checker) = checker else { return Ok(()) };
+    match crate::lean_checkers::run("cb", checker, "nominal-cb-input", file) {
+        crate::lean_checkers::Outcome::Accepted => Ok(()),
+        crate::lean_checkers::Outcome::Rejected(detail) => Err(CbInputError::Rejected(format!(
+            "the Lean checker rejected the nominal CB input certificate {}: {detail}",
+            file.display()
+        ))),
+        crate::lean_checkers::Outcome::CannotCheck(detail) if !crate::lean_checkers::active() => {
+            Err(CbInputError::Rejected(format!(
+                "the Lean checker gave no verdict on the nominal CB input certificate {}: {detail}",
+                file.display()
+            )))
+        }
+        crate::lean_checkers::Outcome::CannotCheck(_) => Ok(()),
+    }
+}
+
+/// Clause input of the nominal CB engine with the inert object sorts released
+/// (`inert_sorts::release_inert_object_sorts_for_cb`, docs/NOMINALS-CB.md
+/// "Inert object sorts in the nominal CB input (2026-10-30)") and the
+/// universal definers eliminated (`inert_sorts::eliminate_universal_definers`).
+///
+/// Only in nominal mode, never for a run that must publish a CB Lean
+/// certificate (its typed source must equal the clauses), and never under
+/// `KM_CB_KEEP_INERT_SORTS`. `None` when nothing is released or eliminated;
+/// the caller then keeps the frontend's file. The copy goes only to workers
+/// that read the clauses alone; HT workers keep the frontend's file and its
+/// records.
+fn nominal_cb_clause_input(
+    clauses_path: &Path,
+    meta: &frontend_run::Meta,
+) -> Result<Option<tmpfile::TempPath>, CbInputError> {
+    if std::env::var_os("KM_NOMINALS").is_none()
+        || std::env::var_os("KM_CB_LEAN_REQUIRED").is_some()
+        || std::env::var_os("KM_CB_KEEP_INERT_SORTS").is_some()
+    {
+        return Ok(None);
+    }
+    // Both passes need a fact: the sort marker occurs only where the sort
+    // encoding ran, and an eliminable definer needs a body-free fact on an
+    // internal definer. A byte scan for either spares the parse of every
+    // other nominal clause file (the frontend writes compact JSON).
+    let bytes = std::fs::read(clauses_path)?;
+    let marker = format!("\"{}\"", crate::frontend::sorts::DATA_SORT);
+    if !contains_bytes(&bytes, marker.as_bytes())
+        && !contains_bytes(&bytes, br#""body":[],"head":[{"kind":"concept","concept":"Q_"#)
+    {
+        return Ok(None);
+    }
+    let mut input: crate::json_io::JInput = serde_json::from_slice(&bytes)?;
+    drop(bytes);
+    if input.cb_typed_source.is_some() {
+        return Ok(None);
+    }
+    let named: HashSet<&str> = meta.named.iter().map(String::as_str).collect();
+    let asserted: HashSet<&str> = meta.asserted_classes.iter().map(String::as_str).collect();
+    let queries: Vec<String> = std::env::var("KM_QUERIES")
+        .map(|q| q.split(',').map(|name| name.trim().to_string()).collect())
+        .unwrap_or_default();
+    let is_source = |name: &str| {
+        !cb_to_ht::is_internal(name)
+            || named.contains(name)
+            || meta.iri_map.contains_key(name)
+            || asserted.contains(name)
+            || queries.iter().any(|query| query == name)
+    };
+    // Two Lean certificates, both with the reservations of the CB variant
+    // (`inert_sorts::reserved_concepts_for_cb`), and both fail closed:
+    //
+    // * KM_RULES_INERT_CERT / KM_RULES_INERT_LEAN_CHECKER: the rule
+    //   checker's release certificate (`WireInertSortRelease`), for the clause
+    //   set after the release and before the elimination.
+    // * KM_NOMINAL_CB_INPUT_CERT / KM_NOMINAL_CB_INPUT_LEAN_CHECKER, and
+    //   `nominal-cb-input-check` under KM_LEAN_CHECKERS: the whole copy, the
+    //   release followed by the elimination (`WireNominalCBInput`, theorems
+    //   `check_consistent`, `check_unsat`, `check_entails`).
+    let release_certificate = std::env::var_os("KM_RULES_INERT_CERT");
+    let input_certificate = nominal_cb_certificate_plan();
+    let certified = (release_certificate.is_some() || input_certificate.is_some())
+        .then(|| (input.clauses.clone(), inert_sorts::reserved_concepts_for_cb(&input, is_source)));
+    let released = inert_sorts::release_inert_object_sorts_for_cb(&mut input, is_source);
+    if let (Some(path), Some((original, reserved))) = (&release_certificate, &certified) {
+        if !released.concepts.is_empty() {
+            write_rules_inert_certificate(Path::new(path), original, &input.clauses, &released.concepts, reserved)
+                .map_err(|error| CbInputError::Rejected(error.to_string()))?;
+        }
+    }
+    let eliminated = inert_sorts::eliminate_universal_definers(&mut input, is_source);
+    if released.concepts.is_empty() && eliminated.concepts.is_empty() {
+        return Ok(None);
+    }
+    if let (Some((file, checker)), Some((original, reserved))) = (&input_certificate, &certified) {
+        let document = inert_sorts::nominal_cb_input_certificate(
+            original,
+            &input.clauses,
+            &released.concepts,
+            &eliminated.concepts,
+            reserved,
+        );
+        check_nominal_cb_input(file, checker.as_deref(), &document)?;
+    }
+    if std::env::var_os("KM_TIMING").is_some() {
+        eprintln!(
+            "KM_TIMING nominal CB input: released {} inert object sort(s): {} fact(s) unrelativized, {} sort clause(s) removed; eliminated {} universal definer(s): {} clause(s) and {} body atom(s) dropped",
+            released.concepts.len(),
+            released.facts,
+            released.sort_clauses,
+            eliminated.concepts.len(),
+            eliminated.clauses,
+            eliminated.body_atoms,
+        );
+    }
+    let out = tmpfile::TempPath::new(".cb.clauses.json");
+    let mut writer = std::io::BufWriter::new(File::create(out.path())?);
+    serde_json::to_writer(&mut writer, &input)?;
+    writer.flush()?;
+    Ok(Some(out))
+}
+
+/// `nominal_cb_clause_input`, keeping the frontend's file when the copy
+/// cannot be made (the copy only saves time; the frontend's file is exact).
+/// A rejected certificate is an error: the arm gives no answer.
+fn nominal_cb_clause_input_or_keep(
+    clauses_path: &Path,
+    meta: &frontend_run::Meta,
+) -> Result<Option<tmpfile::TempPath>, OrchestrateError> {
+    match nominal_cb_clause_input(clauses_path, meta) {
+        Ok(copy) => Ok(copy),
+        Err(CbInputError::Rejected(message)) => {
+            eprintln!("KM nominal CB input: {message}; the CB arm gives no answer");
+            Err(OrchestrateError::Worker {
+                bin: NOMINAL_CB_INPUT_CHECKER.into(),
+                code: crate::lean_checkers::REJECTED_EXIT,
+                stderr: message,
+            })
+        }
+        Err(CbInputError::Other(error)) => {
+            if std::env::var_os("KM_TIMING").is_some() {
+                eprintln!("KM_TIMING nominal CB input: kept the frontend's clauses ({error})");
+            }
+            Ok(None)
+        }
+    }
+}
+
+/// Run a CB arm on its nominal clause input (`nominal_cb_clause_input`), made
+/// when the arm starts and removed when it returns.
+fn with_nominal_cb_input<T>(
+    clauses_path: &Path,
+    meta: &frontend_run::Meta,
+    run: &dyn Fn(&Path) -> Result<T, OrchestrateError>,
+) -> Result<T, OrchestrateError> {
+    let copy = nominal_cb_clause_input_or_keep(clauses_path, meta)?;
+    run(copy.as_ref().map_or(clauses_path, |copy| copy.path()))
 }
 
 fn run_adaptive(
@@ -433,6 +729,7 @@ fn run_atomic_elc(
                 inconsistent: res.inconsistent,
                 dropped: 0,
                 unresolved: Vec::new(),
+                pair_form: false,
             }),
         };
     }
@@ -602,9 +899,10 @@ fn run_atomic_mechanism(
     elc_input_path: &Path,
     named: &HashSet<String>,
     selected_route: crate::routing::Route,
-    profile: &crate::frontend::profile::OntologyProfile,
+    meta: &frontend_run::Meta,
     cached_input: &mut Option<crate::json_io::JInput>,
 ) -> Result<Option<EngineOut>, OrchestrateError> {
+    let profile = &meta.profile;
     match &cfg.mechanism {
         Mechanism::Portfolio => Ok(None),
         Mechanism::Elc => {
@@ -625,7 +923,9 @@ fn run_atomic_mechanism(
         }
         Mechanism::Cb => {
             drop(cached_input.take());
-            run_atomic_cb(cfg, clauses_path).map(Some)
+            // The nominal CB input copy (`nominal_cb_clause_input`): the
+            // atomic CB worker reads only the clauses.
+            with_nominal_cb_input(clauses_path, meta, &|path| run_atomic_cb(cfg, path)).map(Some)
         }
         // Bridge-only worker inside a bounded speculative attempt. Identify it
         // by its bridge-only specialist selection rather than by the route
@@ -974,6 +1274,7 @@ fn inproc_engine_out(r: &mut crate::reasoner::Reasoner) -> Option<EngineOut> {
         inconsistent: r.inconsistent(),
         dropped: r.dropped_unsupported(),
         unresolved: Vec::new(),
+        pair_form: false,
     })
 }
 
@@ -998,6 +1299,7 @@ fn try_inproc_elc(
                 inconsistent: res.inconsistent,
                 dropped: 0,
                 unresolved: res.unresolved,
+                pair_form: false,
             };
             if out.unresolved.is_empty() {
                 Ok(Some(out))
@@ -2082,7 +2384,7 @@ fn classify_with_evidence_inner(
     // satisfiability of the class projection alone cannot authorize this.
     if std::env::var_os("KM_NO_FINITE_RULE_TAXONOMY").is_none() {
         if let Some(source) = meta.profile.finite_rule_class_projection.as_ref() {
-            match rules_consistency(initial_cfg, clauses_path.path(), &meta, true)?.map(|v| v.consistent) {
+            match rules_consistency(initial_cfg, clauses_path.path(), &meta, true, RuleTaxonomyRequest::default())?.map(|v| v.consistent) {
                 Some(true) => {},
                 // Not exact on a one-sorted stream beside a nominal (see the
                 // rule-consistency step below).
@@ -2153,8 +2455,15 @@ fn classify_with_evidence_inner(
             .get("DataPropertyAssertion")
             .is_some_and(|&count| count > 0)
             && meta.profile.source.abox_axioms <= 5_000;
+        // A last attempt reads the ontology through the object guard
+        // (`frontend::object_guard`, an exact rewrite) when the frontend
+        // reports that the guard applies: a class axiom that fails at a
+        // blank data node or another datatype shape the bridge's admission
+        // does not read, its most common deferral on nominal inputs with
+        // data roles.
         let attempts = [
             (
+                false,
                 false,
                 (!data_assertions)
                     .then(|| speculative_bridge_budget("KM_BRIDGE_FIRST_BUDGET_S", BRIDGE_FIRST_BUDGET_S))
@@ -2162,6 +2471,7 @@ fn classify_with_evidence_inner(
             ),
             (
                 true,
+                false,
                 data_assertions
                     .then(|| {
                         speculative_bridge_budget(
@@ -2171,8 +2481,21 @@ fn classify_with_evidence_inner(
                     })
                     .flatten(),
             ),
+            (
+                data_assertions,
+                true,
+                (meta.profile.object_guard_candidate
+                    && std::env::var_os("KM_NO_BRIDGE_OBJECT_GUARD").is_none())
+                .then(|| {
+                    speculative_bridge_budget(
+                        "KM_OBJECT_GUARD_BRIDGE_BUDGET_S",
+                        if data_assertions { DATA_ASSERTION_BRIDGE_BUDGET_S } else { BRIDGE_FIRST_BUDGET_S },
+                    )
+                })
+                .flatten(),
+            ),
         ];
-        for (convert_data_assertions, budget) in attempts {
+        for (convert_data_assertions, object_guard, budget) in attempts {
             let Some(budget) = budget else { continue };
             let attempt_t0 = std::time::Instant::now();
             let bridge_attempt = {
@@ -2183,10 +2506,17 @@ fn classify_with_evidence_inner(
                 if convert_data_assertions {
                     std::env::set_var("KM_DATA_ASSERTION_AS_CLASS", "1");
                 }
+                if object_guard {
+                    std::env::set_var(crate::frontend::object_guard::ENV, "1");
+                }
                 let bridge_cfg = Config::from_env();
                 classify_with_evidence_mode(&bridge_cfg, ont, retain_grouped_output)
             };
-            let label = if convert_data_assertions { " (data assertions as class)" } else { "" };
+            let label = match (convert_data_assertions, object_guard) {
+                (_, true) => " (object guard)",
+                (true, false) => " (data assertions as class)",
+                (false, false) => "",
+            };
             match bridge_attempt {
                 Ok(evidence) => {
                     if timing {
@@ -2208,12 +2538,20 @@ fn classify_with_evidence_inner(
                     // rather than declining early during ABox conversion, the
                     // native ABox was already accepted and the bridge timed out
                     // during saturation/probing; do not spend a second budget.
-                    if !convert_data_assertions
-                        && attempt_t0
-                            .elapsed()
-                            .saturating_add(std::time::Duration::from_millis(250))
-                            >= budget
-                    {
+                    let exhausted = attempt_t0
+                        .elapsed()
+                        .saturating_add(std::time::Duration::from_millis(250))
+                        >= budget;
+                    if !convert_data_assertions && !object_guard && exhausted {
+                        break;
+                    }
+                    // The same holds for the data-assertion attempt with
+                    // respect to the object-guard attempt: a run to the
+                    // budget means the bridge admitted the input and was
+                    // slow, so the guard (which only widens admission) would
+                    // spend a third budget for nothing (ore_ont_2792, 10781,
+                    // 16666: 12 s each).
+                    if convert_data_assertions && exhausted {
                         break;
                     }
                 }
@@ -2809,6 +3147,7 @@ fn classify_with_evidence_inner(
                                 inconsistent: classification.inconsistent,
                                 dropped: 0,
                                 unresolved: Vec::new(),
+                                pair_form: false,
                             });
                         }
                     }
@@ -2838,8 +3177,50 @@ fn classify_with_evidence_inner(
     // Ground clauses the rule worker certified that the atomic CB taxonomy
     // below may drop without affecting its answer (see the `Some(true)` arm).
     let mut certified_ground_clauses = 0usize;
+    // The rule-aware classification ran past its budget: classify the
+    // rule-free ontology first, then let the rule worker confirm the rest.
+    let mut deferred_rule_taxonomy = false;
     if cfg.ht_rules {
-        let verdict = rules_consistency(cfg, clauses_path.path(), &meta, false)?;
+        // Rule conclusions about named individuals reach class queries only
+        // through a nominal or the universal role. Then the worker classifies
+        // the rule-aware input instead of only checking it, and its taxonomy
+        // is the answer (docs/DL-SAFE-RULES.md, "Rule-aware taxonomy beside a
+        // nominal"); `KM_RULES_NO_TAXONOMY=1` restores the earlier
+        // consistency-only check, whose taxonomy then counts the rules as
+        // dropped.
+        let rule_taxonomy = rules_reach_class_queries(&meta.profile)
+            && std::env::var_os("KM_RULES_NO_TAXONOMY").is_none();
+        // Schedule: the rule-aware classification alone first, within a
+        // budget (`KM_RULES_TAXONOMY_BUDGET_S`, default 10 s); it answers
+        // most inputs in milliseconds where the CB route takes much longer.
+        // The rule tableau has no backjumping, so a subsumption test can
+        // explode where the CB route is fast; past the budget the CB
+        // taxonomy runs first and the rule worker then confirms only the
+        // candidates CB did not establish (`deferred_rule_taxonomy` below).
+        // Both schedules publish the same exact answer.
+        let classify_now = rule_taxonomy && !meta.one_sorted_data_successors;
+        let budget = std::env::var("KM_RULES_TAXONOMY_BUDGET_S")
+            .ok()
+            .and_then(|v| v.parse::<f64>().ok())
+            .filter(|v| v.is_finite() && *v >= 0.0)
+            .unwrap_or(10.0);
+        let mut verdict = rules_consistency(
+            cfg,
+            clauses_path.path(),
+            &meta,
+            false,
+            RuleTaxonomyRequest {
+                classify: classify_now,
+                budget: Some(std::time::Duration::from_secs_f64(budget)),
+                known: None,
+            },
+        )?;
+        if verdict.as_ref().is_some_and(|v| v.timed_out) {
+            deferred_rule_taxonomy = true;
+            verdict = rules_consistency(cfg, clauses_path.path(), &meta, false, RuleTaxonomyRequest::default())?;
+        }
+        let taxonomy = verdict.as_mut().and_then(|v| v.taxonomy.take());
+        let executable_rules = verdict.as_ref().is_some_and(|v| v.executable_rules);
         let represented_ground = verdict.as_ref().map_or(0, |v| v.represented_ground_clauses);
         // The rule worker reads `__nom__` proxies as nominals over this clause
         // stream. When the stream is one-sorted beside a TBox nominal and data
@@ -2853,6 +3234,17 @@ fn classify_with_evidence_inner(
             return Err(OrchestrateError::OutOfFragment(
                 "DL-safe rule consistency read data successors as objects beside a nominal; \
                  its inconsistency would not be exact"
+                    .into(),
+            ));
+        }
+        // A taxonomy read from the one-sorted stream would be as inexact as
+        // its inconsistency, and the rule-free taxonomy below misses rule
+        // conclusions that reach class queries: refuse.
+        if rule_taxonomy && meta.one_sorted_data_successors && executable_rules {
+            return Err(OrchestrateError::OutOfFragment(
+                "DL-safe rules reach class queries through a nominal, and the rule worker \
+                 input reads data successors as objects; neither its verdict nor its \
+                 taxonomy would be exact"
                     .into(),
             ));
         }
@@ -2876,6 +3268,25 @@ fn classify_with_evidence_inner(
                     consistency_certified: true,
                 });
             }
+            Some(true) if taxonomy.is_some() => {
+                let classification = rule_taxonomy_classification(
+                    taxonomy.expect("checked by the guard"),
+                    &meta,
+                );
+                if timing {
+                    eprintln!(
+                        "KM_TIMING rules-consistency rule-aware taxonomy done @ {:.2}s subsumptions={} unsatisfiable={}",
+                        t_start.elapsed().as_secs_f64(),
+                        classification.subsumptions.len(),
+                        classification.unsatisfiable.len(),
+                    );
+                }
+                return Ok(ClassificationEvidence {
+                    classification,
+                    grouped_subsumptions: None,
+                    consistency_certified: true,
+                });
+            }
             Some(true) => {
                 consistency_certified = true;
                 // The taxonomy below does not apply the rules. Rules conclude
@@ -2887,7 +3298,11 @@ fn classify_with_evidence_inner(
                 // a realization probe, the universal-role hub) lets rule
                 // conclusions reach class queries: count the rules then.
                 let source = &meta.profile.source;
-                if source.object_nominal_concepts > 0 {
+                // Only executable rules are outside the clause stream; the
+                // normalized ones are ordinary clauses of the taxonomy below.
+                if deferred_rule_taxonomy {
+                    // Completed after the CB taxonomy, before output mapping.
+                } else if rules_reach_class_queries(&meta.profile) && executable_rules {
                     let rules = source.rule_axioms.max(1);
                     RULES_OUTSIDE_TAXONOMY.with(|u| u.set(u.get() + rules));
                     if timing {
@@ -2959,7 +3374,7 @@ fn classify_with_evidence_inner(
                     elc_input_path,
                     &named_set,
                     selected_route,
-                    &meta.profile,
+                    &meta,
                     &mut cached_input,
                 )
             })
@@ -2970,7 +3385,7 @@ fn classify_with_evidence_inner(
             elc_input_path,
             &named_set,
             selected_route,
-            &meta.profile,
+            &meta,
             &mut cached_input,
         )
     };
@@ -3136,6 +3551,17 @@ fn classify_with_evidence_inner(
                     out = handle_elc_result(cfg, res, clauses_path.path())?;
                 }
             }
+            // Nominal mode: the CB engine reads a copy of the clause set with
+            // the inert object sorts released and the universal definers
+            // eliminated (same named answers; see `nominal_cb_clause_input`).
+            // The copy is made by each CB arm when it starts, so a schedule
+            // that answers without the CB engine (the sequential bridge of a
+            // large typed ABox) never pays for it. HT workers keep
+            // `clauses_path`; the EL certificate racer gets the copy only when
+            // it does not run.
+            let cb_input = |run: &dyn Fn(&Path) -> Result<EngineOut, OrchestrateError>| {
+                with_nominal_cb_input(clauses_path.path(), &meta, run)
+            };
             // In-process CB engine fast path for SMALL NON-EL HORN ontologies: run
             // the trusted CB engine as a library call and, when it finishes, skip
             // the fork/race entirely. Eligible when the ont is small (same file
@@ -3161,12 +3587,14 @@ fn classify_with_evidence_inner(
                 let spawn_probe = || {
                     race::HtFirstProbe::spawn(cfg, clauses_path.path(), &named_set, ht_mode)
                 };
+                let released = nominal_cb_clause_input_or_keep(clauses_path.path(), &meta)?;
                 out = try_inproc_engine(
-                    clauses_path.path(),
+                    released.as_ref().map_or(clauses_path.path(), |copy| copy.path()),
                     std::time::Duration::from_secs_f64(budget_s),
                     cfg.ht_race
                         .then_some(&spawn_probe as &dyn Fn() -> Option<race::HtFirstProbe>),
                 )?;
+                drop(released);
                 if timing && out.is_some() {
                     eprintln!(
                         "KM_TIMING in-process engine done @ {:.2}s (no race)",
@@ -3190,7 +3618,10 @@ fn classify_with_evidence_inner(
                             &named_set,
                             ht_mode,
                             |budget| {
-                                race::race_adaptive_vs_elc(cfg, ont, clauses_path.path(), budget)
+                                cb_input(&|path| {
+                                    let path = if cfg.elc { clauses_path.path() } else { path };
+                                    race::race_adaptive_vs_elc(cfg, ont, path, budget.clone())
+                                })
                             },
                         )?
                     } else if portfolio_on {
@@ -3198,12 +3629,10 @@ fn classify_with_evidence_inner(
                         // are sound+complete so the first finisher wins. Reserve a core
                         // (only when KM_THREADS is unset) for the certificate racer.
                         let th = race::elc_portfolio_threads(cfg);
-                        race::race_adaptive_vs_elc(
-                            cfg,
-                            ont,
-                            clauses_path.path(),
-                            race::ThreadBudget::ready(th),
-                        )?
+                        cb_input(&|path| {
+                            let path = if cfg.elc { clauses_path.path() } else { path };
+                            race::race_adaptive_vs_elc(cfg, ont, path, race::ThreadBudget::ready(th))
+                        })?
                     } else if cfg.ht_race {
                         // race the whole CB stack against the KM_HT hypertableau.
                         race::race_cb_vs_ht(
@@ -3211,16 +3640,23 @@ fn classify_with_evidence_inner(
                             clauses_path.path(),
                             &named_set,
                             ht_mode,
-                            |budget| cb_stack(cfg, ont, clauses_path.path(), &named_set, budget),
+                            |budget| {
+                                cb_input(&|path| {
+                                    cb_stack(cfg, ont, clauses_path.path(), path, &named_set, budget.clone())
+                                })
+                            },
                         )?
                     } else {
-                        cb_stack(
-                            cfg,
-                            ont,
-                            clauses_path.path(),
-                            &named_set,
-                            race::ThreadBudget::ready(cfg.threads),
-                        )?
+                        cb_input(&|path| {
+                            cb_stack(
+                                cfg,
+                                ont,
+                                clauses_path.path(),
+                                path,
+                                &named_set,
+                                race::ThreadBudget::ready(cfg.threads),
+                            )
+                        })?
                     }
                 }
             }
@@ -3238,6 +3674,15 @@ fn classify_with_evidence_inner(
             subs_keys
         );
     }
+    if deferred_rule_taxonomy && !out.inconsistent {
+        out = complete_rule_taxonomy(cfg, clauses_path.path(), &meta, out)?;
+        if timing {
+            eprintln!(
+                "KM_TIMING rules-consistency rule-aware taxonomy completed after CB @ {:.2}s",
+                t_start.elapsed().as_secs_f64()
+            );
+        }
+    }
     if (meta.profile.existential_witness_abox_candidate
         || meta.profile.atomic_class_abox_candidate
         || meta.profile.inert_role_abox_probe_candidate)
@@ -3247,6 +3692,26 @@ fn classify_with_evidence_inner(
             "projected ABox requires a complete TBox result; worker dropped {} clause(s)",
             out.dropped
         )));
+    }
+    // Publication coverage guard (docs/ROUTING.md, "Publication coverage
+    // guard"): a worker answer that has no row for some declared class has
+    // not answered that class, and publishing it would report the class with
+    // no superclasses. Decline instead. Pair-form answers have no rows and
+    // are outside the guard.
+    if !out.inconsistent && !out.pair_form {
+        if let Some(missing) = undeclared_coverage(&out, &meta.declared) {
+            if timing {
+                eprintln!(
+                    "KM_TIMING coverage guard fired: worker answer omits {} declared class(es)",
+                    missing.len()
+                );
+            }
+            return Err(OrchestrateError::OutOfFragment(format!(
+                "coverage guard: the worker answer omits {} declared class(es) (first: {})",
+                missing.len(),
+                missing[0]
+            )));
+        }
     }
     // These borrowed lookup tables are consumed only by public-output mapping.
     // Constructing them before classification made their bucket allocations
@@ -3529,6 +3994,14 @@ fn checked_finite_rule_taxonomy(mut evidence: ClassificationEvidence) -> Result<
 /// Verdict of the DL-safe-rule consistency worker.
 struct RulesVerdict {
     consistent: bool,
+    /// The rule-aware taxonomy (`KM_RULES_CLASSIFY`), in worker concept
+    /// names, when the caller asked for it and the input is consistent.
+    taxonomy: Option<RuleTaxonomy>,
+    /// The worker input had a rule clause the clause stream does not carry.
+    executable_rules: bool,
+    /// The rule-aware classification exceeded its budget; `consistent` and
+    /// `taxonomy` carry no verdict.
+    timed_out: bool,
     /// Clauses of the checked clause file that carry an individual term,
     /// when the conversion represented every clause (`dropped == 0`) and so
     /// the verdict covers them; zero otherwise.
@@ -3553,13 +4026,202 @@ fn clause_has_individual(clause: &crate::json_io::JClause) -> bool {
     })
 }
 
+/// Classification of the rule-aware worker input, in worker concept names.
+#[derive(serde::Deserialize)]
+struct RuleTaxonomy {
+    unsatisfiable: Vec<String>,
+    subsumptions: Vec<[String; 2]>,
+}
+
+/// Whether a rule conclusion about a named individual can reach a class
+/// query: through a nominal (`ObjectOneOf`, `ObjectHasValue`) or the
+/// universal role. Without either, a consistent rule ontology has the
+/// taxonomy of its rule-free part (see the `ht_rules` step).
+fn rules_reach_class_queries(profile: &crate::frontend::profile::OntologyProfile) -> bool {
+    profile.source.object_nominal_concepts > 0 || profile.expressivity.universal_role
+}
+
+/// Complete a rule-free CB taxonomy with the rules (the CB-first schedule of
+/// the `ht_rules` step). Every CB subsumption and unsatisfiable class is
+/// entailed by the ontology with its rules (the rules only add
+/// constraints), so the rule worker takes them as given and tests only the
+/// remaining model-label candidates; its taxonomy is the exact answer.
+fn complete_rule_taxonomy(
+    cfg: &Config,
+    clauses_path: &Path,
+    meta: &frontend_run::Meta,
+    mut out: EngineOut,
+) -> Result<EngineOut, OrchestrateError> {
+    if let Some(compact) = out.compact_subsumptions.take() {
+        for (subject, supers) in &compact.rows {
+            let row = out.subsumptions.entry(compact.names[*subject as usize].to_string()).or_default();
+            row.extend(supers.iter().map(|&s| compact.names[s as usize].to_string()));
+        }
+    }
+    let mut known_subs: Vec<[String; 2]> = Vec::new();
+    let mut known_unsat: Vec<String> = Vec::new();
+    for (subject, supers) in &out.subsumptions {
+        for superclass in supers {
+            if is_bottom(superclass) {
+                known_unsat.push(subject.clone());
+            } else if superclass != subject {
+                known_subs.push([subject.clone(), superclass.clone()]);
+            }
+        }
+    }
+    let known = tmpfile::TempPath::new(".rule-known.json");
+    std::fs::write(
+        known.path(),
+        serde_json::to_vec(&serde_json::json!({
+            "subsumptions": known_subs,
+            "unsatisfiable": known_unsat,
+        }))?,
+    )?;
+    let verdict = rules_consistency(
+        cfg,
+        clauses_path,
+        meta,
+        false,
+        RuleTaxonomyRequest { classify: true, budget: None, known: Some(known.path()) },
+    )?
+    .ok_or_else(|| OrchestrateError::OutOfFragment("rule-aware taxonomy lost its rules".into()))?;
+    if !verdict.consistent {
+        out.subsumptions.clear();
+        out.inconsistent = true;
+        return Ok(out);
+    }
+    let taxonomy = verdict
+        .taxonomy
+        .ok_or_else(|| OrchestrateError::OutOfFragment("rule-aware taxonomy produced no answer".into()))?;
+    for [a, b] in taxonomy.subsumptions {
+        out.subsumptions.entry(a).or_default().push(b);
+    }
+    for a in taxonomy.unsatisfiable {
+        out.subsumptions.entry(a).or_default().push("owl:Nothing".to_string());
+    }
+    for supers in out.subsumptions.values_mut() {
+        supers.sort_unstable();
+        supers.dedup();
+    }
+    // The rule worker decided every query over its complete input; the CB
+    // answer only supplied entailments, which stay sound whatever CB
+    // omitted. Its clause omissions are therefore not omissions of this
+    // answer (front-end omissions are counted separately at depth 0).
+    out.dropped = 0;
+    Ok(out)
+}
+
+/// Map a rule-aware taxonomy to public IRIs, dropping internal names, the
+/// same way the output mapping treats a worker answer.
+fn rule_taxonomy_classification(taxonomy: RuleTaxonomy, meta: &frontend_run::Meta) -> Classification {
+    let named: HashSet<&str> = meta.named.iter().map(String::as_str).collect();
+    let public = |n: &str| named.contains(n) && !is_bottom(n);
+    let unsat: std::collections::BTreeSet<String> = taxonomy
+        .unsatisfiable
+        .iter()
+        .filter(|a| public(a))
+        .map(|a| mapped_iri(&meta.iri_map, a).to_string())
+        .collect();
+    let mut grouped: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for [a, b] in &taxonomy.subsumptions {
+        if a == b || !public(a) || !public(b) {
+            continue;
+        }
+        let fa = mapped_iri(&meta.iri_map, a);
+        let fb = mapped_iri(&meta.iri_map, b);
+        if fa != fb {
+            grouped.entry(fa.to_string()).or_default().push(fb.to_string());
+        }
+    }
+    for supers in grouped.values_mut() {
+        supers.sort_unstable();
+        supers.dedup();
+    }
+    Classification {
+        approximate: None,
+        consistent: true,
+        subsumptions: flatten_grouped_subsumptions(grouped),
+        unsatisfiable: unsat.into_iter().collect(),
+        dropped: 0,
+    }
+}
+
+/// `__nom__a(x) → x ≈ a` (either orientation) for a proxy the worker
+/// declares a nominal: the definition of an individual proxy under nominal
+/// clausification.
+fn proxy_definition(clause: &crate::json_io::JClause, nominals: &HashSet<&str>) -> bool {
+    use crate::json_io::{JAtom, JTerm};
+    let ([JAtom::Concept { concept, term: JTerm::Var { name: x } }], [JAtom::Eq { left, right }]) =
+        (clause.body.as_slice(), clause.head.as_slice())
+    else {
+        return false;
+    };
+    let individual = match (left, right) {
+        (JTerm::Var { name }, JTerm::Ind { name: a }) | (JTerm::Ind { name: a }, JTerm::Var { name })
+            if name == x => a,
+        _ => return false,
+    };
+    nominals.contains(concept.as_str())
+        && concept.strip_prefix("__nom__") == Some(individual.as_str())
+}
+
+/// What the rule worker should do beyond the consistency check.
+#[derive(Clone, Copy, Default)]
+struct RuleTaxonomyRequest<'a> {
+    /// Classify the rule-aware input (`KM_RULES_CLASSIFY`).
+    classify: bool,
+    /// Stop the worker after this long and report `timed_out`; a scheduling
+    /// bound only (the caller then takes the CB-first schedule).
+    budget: Option<std::time::Duration>,
+    /// The rule-free CB taxonomy of the same ontology, written for
+    /// `KM_RULES_CLASSIFY_KNOWN`.
+    known: Option<&'a Path>,
+}
+
+/// Write the inert-sort release certificate (`KM_RULES_INERT_CERT`) and, when
+/// `KM_RULES_INERT_LEAN_CHECKER` names the Lean checker, require it to accept.
+/// A path ending in `.json` is the file; any other path is a directory that
+/// receives `rules-inert-<pid>-<n>.json`.
+fn write_rules_inert_certificate(
+    path: &Path,
+    original: &[crate::json_io::JClause],
+    result: &[crate::json_io::JClause],
+    released: &[String],
+    reserved: &std::collections::BTreeSet<String>,
+) -> Result<(), OrchestrateError> {
+    static NONCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let file = if path.extension().is_some_and(|ext| ext == "json") {
+        path.to_path_buf()
+    } else {
+        std::fs::create_dir_all(path)?;
+        let n = NONCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        path.join(format!("rules-inert-{}-{n}.json", std::process::id()))
+    };
+    let document = inert_sorts::release_certificate(original, result, released, reserved);
+    std::fs::write(&file, serde_json::to_vec(&document)?)?;
+    if let Some(checker) = std::env::var_os("KM_RULES_INERT_LEAN_CHECKER") {
+        let status = crate::lean_checkers::run_document(Path::new(&checker), &file)
+            .map_err(|e| OrchestrateError::Spawn { bin: "rules-inert-sort-release-check".into(), source: e })?
+            .status;
+        if !status.success() {
+            return Err(OrchestrateError::OutOfFragment(format!(
+                "the Lean checker rejected the inert-sort release certificate {}",
+                file.display()
+            )));
+        }
+    }
+    Ok(())
+}
+
 fn rules_consistency(
     cfg: &Config,
     clauses_path: &Path,
     meta: &frontend_run::Meta,
     require_source_model: bool,
+    request: RuleTaxonomyRequest,
 ) -> Result<Option<RulesVerdict>, OrchestrateError> {
     use crate::json_io::JInput;
+    let classify = request.classify;
     use std::process::{Command, Stdio};
     let _rule_environment = crate::routing::EnvironmentGuard::capture();
     if require_source_model {
@@ -3567,7 +4229,7 @@ fn rules_consistency(
     }
     let timing = std::env::var_os("KM_TIMING").is_some();
     let started = std::time::Instant::now();
-    let input: JInput = serde_json::from_reader(BufReader::new(File::open(clauses_path)?))?;
+    let mut input: JInput = serde_json::from_reader(BufReader::new(File::open(clauses_path)?))?;
     // Finite grounding can erase every executable rule when no source data
     // value matches its body. The original-rule/model check is still needed
     // before publishing the class projection in that case.
@@ -3586,7 +4248,46 @@ fn rules_consistency(
             input.rules.len(),
         );
     }
+    // Rules the frontend normalized into ordinary clauses (unary and
+    // constant-data rules) are part of the clause stream every taxonomy
+    // worker reads; only executable rules (`input.rules`) are outside it.
+    // Without one there is nothing for a rule-aware taxonomy to add.
+    let executable_rules = !input.rules.is_empty();
+    let classify = classify && executable_rules;
     let named: HashSet<String> = meta.named.iter().cloned().collect();
+    // The sort encoding branches on `Q_⊤(x) → Q(x) ∨ D(x)` at every node for
+    // a definer `Q` no clause reads on a data element; release those sorts
+    // (same models up to the internal definers on data elements, so the same
+    // verdict; `inert_sorts`). `KM_RULES_KEEP_INERT_SORTS=1` keeps them.
+    if std::env::var_os("KM_RULES_KEEP_INERT_SORTS").is_none() {
+        let is_source = |name: &str| named.contains(name) || meta.iri_map.contains_key(name);
+        // KM_RULES_INERT_CERT=<file.json | dir>: record the release for the
+        // Lean checker (`rules-inert-sort-release-check`, theorem
+        // `WireInertSortRelease.check_sound`); KM_RULES_INERT_LEAN_CHECKER
+        // runs it and fails closed on a rejection. Every schedule of the
+        // rule-aware taxonomy (`KM_RULES_CLASSIFY`, with or without
+        // `KM_RULES_CLASSIFY_KNOWN`) calls this function and the worker reads
+        // the released clause set certified here. Its tests add one root
+        // labelled with named classes (`{A}`, `{A, ¬B}`), which are reserved
+        // concepts, so they are a side theory over reserved concepts
+        // (`release_equisatisfiable`) and each test keeps its verdict; the
+        // known CB pairs are entailments, not clauses.
+        let certificate = std::env::var_os("KM_RULES_INERT_CERT")
+            .map(|path| (path, input.clauses.clone(), inert_sorts::reserved_concepts(&input, is_source)));
+        let released = inert_sorts::release_inert_object_sorts(&mut input, is_source);
+        if let Some((path, original, reserved)) = certificate {
+            write_rules_inert_certificate(Path::new(&path), &original, &input.clauses, &released.concepts, &reserved)?;
+        }
+        if timing && !released.concepts.is_empty() {
+            eprintln!(
+                "KM_TIMING rules-consistency released {} inert object sort(s): {} fact(s) unrelativized, {} sort clause(s) removed; released: {}",
+                released.concepts.len(),
+                released.facts,
+                released.sort_clauses,
+                released.concepts.join(","),
+            );
+        }
+    }
     // rbox is deliberately NOT threaded here (`None`): this is the validated
     // 2669/15516 precheck configuration. The rbox side channel only feeds the
     // fast-Ht first-class role machinery and, crucially, its inverse records
@@ -3649,6 +4350,58 @@ fn rules_consistency(
                 .and_then(|individual| meta.iri_map.get(individual)).cloned()).collect(),
         });
     }
+    // The rule-aware taxonomy is exact only over a complete conversion; the
+    // worker checks the same conditions, this gives the refusal its reason.
+    let mut proxy_definitions_checked = 0usize;
+    if classify {
+        // Nominal clausification defines each individual proxy by
+        // `__nom__a(x) → x ≈ a`. The converter cannot encode an individual
+        // constant and drops these clauses, but it declares every `__nom__a`
+        // a nominal of the worker, which seeds one root for it and merges
+        // every carrier into that root: `__nom__a` denotes exactly one
+        // element, which is `a` (the constant occurs in the worker input only
+        // through its proxy). So these drops omit nothing; any other drop does.
+        let nominal_names: HashSet<&str> = tin
+            .nominals
+            .iter()
+            .filter_map(|&id| tin.concepts.get(id).map(String::as_str))
+            .collect();
+        let proxy_definitions = input
+            .clauses
+            .iter()
+            .filter(|clause| proxy_definition(clause, &nominal_names))
+            .count();
+        let omitted = tin.dropped.saturating_sub(proxy_definitions);
+        proxy_definitions_checked = proxy_definitions;
+        if omitted != 0 || !tin.fenced.is_empty() {
+            return Err(OrchestrateError::OutOfFragment(format!(
+                "DL-safe rules reach class queries through a nominal, and the rule-aware \
+                 taxonomy would omit {} clause(s) and {} fenced construct(s) of the rule \
+                 worker input{}; a taxonomy without them would be incomplete",
+                omitted,
+                tin.fenced.len(),
+                if tin.fenced.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        " ({})",
+                        tin.fenced.iter().map(|f| f.reason.as_str()).collect::<Vec<_>>().join(", ")
+                    )
+                }
+            )));
+        }
+        if tin.inverse
+            && (tin.number || !tin.card_defs.is_empty())
+            && !tin.nominals.is_empty()
+        {
+            return Err(OrchestrateError::OutOfFragment(
+                "DL-safe rules reach class queries through a nominal, and the rule-aware \
+                 taxonomy does not support nominals with inverse roles and number \
+                 restrictions (SHOIQ)"
+                    .into(),
+            ));
+        }
+    }
     let represented_ground_clauses = if tin.dropped == 0 {
         input.clauses.iter().filter(|clause| clause_has_individual(clause)).count()
     } else {
@@ -3664,16 +4417,36 @@ fn rules_consistency(
     }
     let (tab_prog, tab_pre) = cfg.tab_cmd();
     let out_path = tmpfile::TempPath::new(".rulescons.json");
+    // The worker's stderr is kept so that a failure reports its reason.
+    let err_path = tmpfile::TempPath::new(".rulescons.err");
     let mut cmd = Command::new(&tab_prog);
     cmd.args(&tab_pre)
         .stdin(Stdio::piped())
         .stdout(File::create(out_path.path())?)
-        .stderr(Stdio::null())
+        .stderr(File::create(err_path.path())?)
         .env("KM_RULES_CONSISTENCY", "1");
+    if classify {
+        // The rule-aware classification runs the plain search-based
+        // `Tableau::classify`; no label cache or pseudo-model shortcut.
+        cmd.env("KM_RULES_CLASSIFY", "1");
+        cmd.env("KM_RULES_CLASSIFY_PROXY_DEFINITIONS", proxy_definitions_checked.to_string());
+        for name in ["KM_TAB_CACHE", "KM_HT_CACHE", "KM_HT_PMMERGE", "KM_HT_ALLCAND"] {
+            cmd.env_remove(name);
+        }
+        match request.known {
+            Some(path) => { cmd.env("KM_RULES_CLASSIFY_KNOWN", path); }
+            None => { cmd.env_remove("KM_RULES_CLASSIFY_KNOWN"); }
+        }
+    }
     // do NOT set KM_HT here: the default Tableau is what seeds the nominal roots
     // and applies the o-rule in `consistent(&[])`.
     cmd.env_remove("KM_HT");
-    if require_source_model { cmd.env("KM_RULE_JOIN_ORDER", "1"); }
+    // Selective join order for long rule bodies on every rule-worker call
+    // (also the incremental probe, `incremental_rules::rules_consistent`). It
+    // reorders body atoms for matching only, so it changes the enumeration
+    // order and never the set of matches (docs/DL-SAFE-RULES.md, "One join
+    // order for both rule probes").
+    cmd.env("KM_RULE_JOIN_ORDER", "1");
     let mut child = cmd.spawn().map_err(|e| OrchestrateError::Spawn {
         bin: "tableau".into(),
         source: e,
@@ -3697,7 +4470,35 @@ fn rules_consistency(
     drop(named);
     drop(input);
     crate::mem::release_transient_heap();
-    let status = child.wait()?;
+    let status = match request.budget.filter(|_| classify) {
+        None => child.wait()?,
+        Some(budget) => {
+            let deadline = std::time::Instant::now() + budget;
+            loop {
+                if let Some(status) = child.try_wait()? {
+                    break status;
+                }
+                if std::time::Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    if timing {
+                        eprintln!(
+                            "KM_TIMING rules-consistency rule-aware taxonomy stopped after its {:.1}s budget",
+                            budget.as_secs_f64()
+                        );
+                    }
+                    return Ok(Some(RulesVerdict {
+                        consistent: true,
+                        taxonomy: None,
+                        executable_rules,
+                        timed_out: true,
+                        represented_ground_clauses: 0,
+                    }));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+        }
+    };
     if timing {
         eprintln!(
             "KM_TIMING rules-consistency worker exited @ {:.2}s success={}",
@@ -3706,18 +4507,31 @@ fn rules_consistency(
         );
     }
     if !status.success() {
+        // The reason is the last line(s); keep the tail of a long diagnostic log.
+        let stderr = std::fs::read_to_string(err_path.path()).unwrap_or_default();
+        let stderr = stderr.trim_end();
+        let mut tail = stderr.len().saturating_sub(4096);
+        while !stderr.is_char_boundary(tail) { tail += 1; }
         return Err(OrchestrateError::Worker {
             bin: "tableau".into(),
             code: crate::orchestrate::engine_run::exit_status_code(&status),
-            stderr: String::new(),
+            stderr: stderr[tail..].to_string(),
         });
     }
     #[derive(serde::Deserialize)]
     struct TOut {
         consistent: bool,
+        #[serde(default)]
+        unsatisfiable: Vec<String>,
+        #[serde(default)]
+        subsumptions: Vec<[String; 2]>,
     }
     let t: TOut = serde_json::from_reader(BufReader::new(File::open(out_path.path())?))?;
-    Ok(Some(RulesVerdict { consistent: t.consistent, represented_ground_clauses }))
+    let taxonomy = (classify && t.consistent).then(|| RuleTaxonomy {
+        unsatisfiable: t.unsatisfiable,
+        subsumptions: t.subsumptions,
+    });
+    Ok(Some(RulesVerdict { consistent: t.consistent, taxonomy, executable_rules, timed_out: false, represented_ground_clauses }))
 }
 
 /// Complete a PARTIAL certified-elc answer (exit 4): classify the residue with
@@ -3826,6 +4640,38 @@ impl Classification {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn coverage_guard_declines_an_answer_without_a_declared_class() {
+        // s1966: the elc partial answer had no row for C. Removing a declared
+        // class from an otherwise complete worker answer must decline.
+        let declared: Vec<String> = ["A", "B", "C"].iter().map(|s| s.to_string()).collect();
+        let mut out = super::EngineOut::default();
+        out.subsumptions.insert("A".into(), vec!["B".into()]);
+        out.subsumptions.insert("B".into(), vec![]);
+        out.subsumptions.insert("C".into(), vec!["Q3".into()]);
+        out.subsumptions.insert("Q_0".into(), vec![]);
+        assert_eq!(super::undeclared_coverage(&out, &declared), None);
+        // An empty row counts: C without superclasses is covered.
+        out.subsumptions.insert("C".into(), vec![]);
+        assert_eq!(super::undeclared_coverage(&out, &declared), None);
+        out.subsumptions.remove("C");
+        assert_eq!(super::undeclared_coverage(&out, &declared), Some(vec!["C".to_string()]));
+        // A name still listed as unresolved residue is not covered.
+        out.subsumptions.insert("C".into(), vec![]);
+        out.unresolved.push("B".into());
+        assert_eq!(super::undeclared_coverage(&out, &declared), Some(vec!["B".to_string()]));
+        // The compact dictionary output counts its subject rows.
+        let compact = crate::json_io::CompactElcOutput {
+            names: vec!["A".into(), "B".into(), "C".into()],
+            rows: vec![(0, vec![1]), (1, vec![])],
+            inconsistent: false,
+            dropped: 0,
+        };
+        let out = super::EngineOut { compact_subsumptions: Some(compact), ..Default::default() };
+        assert_eq!(super::undeclared_coverage(&out, &declared), Some(vec!["C".to_string()]));
+        assert_eq!(super::undeclared_coverage(&out, &[]), None);
+    }
+
     #[test]
     fn only_registered_rewrites_skip_revalidation_and_only_while_registered() {
         let user = super::tmpfile::TempPath::new("-user.ofn");

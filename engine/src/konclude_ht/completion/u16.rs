@@ -184,9 +184,9 @@ impl CompletionTaskHandleAlgorithm {
         let sig_nom_del_cand_hash = ctx.signature_nominal_delaying_candidate_hash(false);
 
         let con_set = ctx
-            .process_context_mut()
-            .node_mut(test_indi)
-            .get_reapply_concept_label_set(false);
+            .process_context()
+            .node(test_indi)
+            .use_reapply_con_label_set;
         if con_set.is_some() && sig_nom_del_cand_hash.is_some() {
             let _ass_con_sig = ctx
                 .process_context()
@@ -1039,13 +1039,17 @@ impl CompletionTaskHandleAlgorithm {
         dep_track_point: TrackPointId,
         succ_card_count: Cint64,
         ctx: &mut CalculationAlgorithmContextBase,
-    ) {
+    ) -> Vec<(NodeId, EdgeId)> {
         // CMemoryAllocationManager* taskMemMan = calcAlgContext->getUsedProcessTaskMemoryAllocationManager();
         // [memory-pool]: the per-task allocator is replaced by the process-context arenas.
+        // KONCLUDE-PORT-NOTE[api]: returns the created nodes with their
+        // `ancRole` links; Konclude's caller re-reads them through
+        // `getRoleSuccessorHistoryLinkIterator(role, nullptr)` (cpp 14783).
+        let mut created = Vec::new();
         for _i in 0..succ_card_count {
             // STATINC(NOMINALSUCCESSORINDINODECREATIONCOUNT, calcAlgContext);
             let succ_indi = self.create_new_individual(dep_track_point, false, ctx);
-            let _anc_link: EdgeId = self.create_new_individuals_links_reapplyed(
+            let anc_link: EdgeId = self.create_new_individuals_links_reapplyed(
                 indi,
                 succ_indi,
                 role_linker_it,
@@ -1063,8 +1067,13 @@ impl CompletionTaskHandleAlgorithm {
                 .set_individual_nominal_level(level);
 
             self.add_individual_to_processing_queue(succ_indi, ctx);
+            created.push((succ_indi, anc_link));
+            if ctx.has_pending_signal() {
+                break;
+            }
         }
         let _ = (concept_linker_it, negate);
+        created
     }
 
     /// Port of `createNewTemporaryNominalIndividual`. `.cpp` 22497–22504.

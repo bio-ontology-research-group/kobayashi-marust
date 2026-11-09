@@ -1,0 +1,76 @@
+--- hypertableau.inc2.rs	2026-10-29 22:39:08.006517677 +0300
++++ hypertableau.prof2.rs	2026-10-29 22:49:15.242490961 +0300
+@@ -2585,10 +2585,25 @@
+             best = candidates;
+         }
+     }
+-    best.iter().any(|&m| {
++    bstat(1, 1);
++    let t0 = Instant::now();
++    let r = best.iter().any(|&m| {
++        bstat(2, 1);
+         let lm = &ext.concepts[m];
+-        lm.len() >= lnlen && ln.keys().all(|k| lm.contains_key(k)) && accept(m)
+-    })
++        lm.len() >= lnlen && ln.keys().all(|k| lm.contains_key(k)) && { bstat(3, 1); accept(m) }
++    });
++    bstat(8, t0.elapsed().as_nanos() as u64);
++    r
++}
++
++thread_local! {
++    static BSTAT: std::cell::RefCell<[u64; 10]> = const { std::cell::RefCell::new([0; 10]) };
++}
++fn bstat(i: usize, v: u64) {
++    BSTAT.with(|b| b.borrow_mut()[i] += v);
++}
++pub fn bstat_dump() -> [u64; 10] {
++    BSTAT.with(|b| *b.borrow())
+ }
+ 
+ fn ancestor_blocked(ext: &Ext, n: Node) -> bool {
+@@ -18942,6 +18957,8 @@
+     /// suffix with the same predicates gives the full scan's result.
+     fn checked_subset_recompute(&mut self) -> Vec<bool> {
+         let gain = self.subset_gain.clone().expect("checked_subset_incremental");
++        let _t0 = Instant::now();
++        bstat(0, 1);
+         let mode5 = self.block_mode == 5;
+         let nn = self.ext.num_nodes();
+         let lo = self.ext.i2_lo.min(nn);
+@@ -18980,7 +18997,14 @@
+                         && !ext.concepts[n].is_empty()
+                         && ext.pred[n].is_some_and(|v| {
+                             subset_blocker_exists(ext, &lists, n, |m| {
+-                                self.b2a_holds(n, m, v) && gain.admits(ext, n, m)
++                                self.b2a_holds(n, m, v) && {
++                                    let t0 = Instant::now();
++                                    let r = gain.admits(ext, n, m);
++                                    bstat(4, 1);
++                                    if !r { bstat(5, 1); }
++                                    bstat(6, t0.elapsed().as_nanos() as u64);
++                                    r
++                                }
+                             })
+                         });
+                     (d, d || (blockable && parent_blocked))
+@@ -19016,6 +19040,7 @@
+             }
+         }
+         let mut out = blocked.clone();
++        bstat(7, _t0.elapsed().as_nanos() as u64);
+         self.ext.i2_lists = lists;
+         self.ext.i2_touched = touched;
+         self.ext.i2_in_touched = in_touched;
+@@ -22198,6 +22223,11 @@
+                 expand_ms, 100 * expand_ms / tot,
+                 self.eager_us / 1000, self.obligloop_us / 1000, self.obl_iters,
+             );
++            let b = bstat_dump();
++            eprintln!(
++                "KM_HT [bstat] passes={} nodes_searched={} cands={} superset={} admits={} admits_false={} admits_ms={} recompute_ms={} search_ms={}",
++                b[0], b[1], b[2], b[3], b[4], b[5], b[6] / 1_000_000, b[7] / 1_000_000, b[8] / 1_000_000
++            );
+             eprintln!(
+                 "KM_HT [classify-i2] calls={} full_rebuilds={} avg_suffix={} (vs ~node count)",
+                 self.i2_calls,

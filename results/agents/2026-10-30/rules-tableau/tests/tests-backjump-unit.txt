@@ -1,0 +1,5 @@
+test tableau::hypertableau::tests::clash_union_dep_is_backjump_target ... ok
+test tableau::hypertableau::tests::backjump_skips_irrelevant_branch ... ok
+test tableau::tests::backjumped_refutation_resolves_to_a_checkable_proof ... ok
+test tableau::tests::careful_backjumping_skips_choices_the_refutation_does_not_use ... ok
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 3080 filtered out; finished in 0.11s

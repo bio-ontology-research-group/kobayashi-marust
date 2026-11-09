@@ -202,6 +202,12 @@ fn posting_remove<K: std::hash::Hash + Eq>(map: &mut HashMap<K, Posting>, key: K
     }
 }
 
+/// Incoming heads up to this size use the unit, least-pair and least-triple
+/// forward-subsumption postings (`ClauseLayer::active_min2_head_index`,
+/// `active_min3_head_index`); larger heads scan the least-literal postings,
+/// which need fewer lookups there.
+const FWD_PAIR_HEAD_MAX: usize = 10;
+
 /// Insert into a compact ordered set represented by a `Vec`.
 ///
 /// Successor trigger sets are read in sorted order every time their central
@@ -439,6 +445,22 @@ impl RedundancyTrie {
 static ANY_CANCEL_ARMED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 thread_local! {
+    /// `KM_NO_ACTIVE_BODY_INDEX`: the full scans, for A/B checks.
+    static ACTIVE_BODY_INDEX_OFF: bool = std::env::var_os("KM_NO_ACTIVE_BODY_INDEX").is_some();
+    /// Layer size from which the empty-head subsumption scans read the body
+    /// indexes (`active_body_index`, `empty_head_body_index`) instead of every
+    /// candidate; `KM_ACTIVE_BODY_INDEX_MIN` overrides it (an A/B check with
+    /// `1` runs the indexes everywhere).
+    static ACTIVE_BODY_INDEX_MIN_CELL: usize = std::env::var("KM_ACTIVE_BODY_INDEX_MIN")
+        .ok().and_then(|v| v.parse().ok()).unwrap_or(4096);
+}
+
+#[inline]
+fn active_body_index_min() -> usize {
+    ACTIVE_BODY_INDEX_MIN_CELL.with(|min| *min)
+}
+
+thread_local! {
     static THREAD_CANCEL: std::cell::RefCell<Option<std::sync::Arc<std::sync::atomic::AtomicBool>>> =
         const { std::cell::RefCell::new(None) };
 }
@@ -631,6 +653,20 @@ struct NomFiringKey {
     side_head: Vec<Lit>,
     selected: Vec<(usize, Pred)>,
     substitution: Vec<(Term, Term)>,
+}
+
+/// Recorded common cover for `Nominals.nom_shared_cover_sound`: any grounded
+/// Hyper firing in `context` whose sorted `body` contains `body` and whose
+/// sorted residual `kept_head` contains `kept_head` restricts the same
+/// covered predecessor predicate `B(y)` under a weaker ground escape, so the
+/// existing witness block `terms` already satisfies its obligation and yields
+/// a clause syntactically subsumed by the covering clause.
+#[derive(Clone)]
+struct NomCover {
+    context: usize,
+    body: Vec<Pred>,
+    kept_head: Vec<Lit>,
+    terms: Vec<Term>,
 }
 impl CentralSubst {
     fn new(allow_ground: bool) -> Self {
@@ -880,12 +916,91 @@ fn rsucc_blocked(ctx: &Context, arena: &[ContextClause], c: &ContextClause, a: &
 /// `true` if the clause mentions the central variable x anywhere (such
 /// ground-context clauses are instantiated per individual-labelled edge by the
 /// Pred back-substitution, so they keep the per-edge propagation path).
-/// `→ o ≈ o'` between two individuals: the clause the context regime delivers
-/// across the announced-individual guard (`calc::eq_announce`).
+/// `→ o ≈ o'` between two individuals: the only clause the v1.5.4 form of R3
+/// delivered across the guard (diagnostic `KM_CONTEXT_UNIT_R3`).
 fn ground_unit_equality(c: &ContextClause) -> bool {
     c.body.is_empty()
         && c.head.len() == 1
         && matches!(c.head[0], Lit::Eq { s, t } if is_individual(s) && is_individual(t))
+}
+
+/// R3 of the context regime (`calc::eq_announce`, docs/PER-CONTEXT-ORDERING.md
+/// section 8): whether a ground-context clause lies inside the announced
+/// interface of a context whose announced individuals satisfy `announced`
+/// (additional nominals count as announced). A ground equality `o ≈ o'` or
+/// inequality `o ≉ o'` between individuals lies inside when `o` or `o'` is
+/// announced; every other literal when all its individuals are. The unit
+/// `→ o ≈ o'` is the special case that R3 covered before; the disjunctive
+/// form `→ Δ ∨ o ≈ o'` (`E(a) ∨ a ≈ d` from `≤1 r.B` on a third individual,
+/// `tests/r3_disjunctive_equality.rs`) is the case it missed. The receiving
+/// context rewrites `o` to `x`, so the clause becomes a merge clause
+/// `→ Δ ∨ x ≈ o'` and its merge subscription announces `o'`. This is the
+/// delivery condition of `lean/ContextCalculus/ExchangeEquality.lean`
+/// (`InIface`, `exchangeCond_of_guard`).
+fn in_announced_interface(
+    c: &ContextClause,
+    announced: impl Fn(Term) -> bool,
+    rank_bound: Term,
+) -> bool {
+    let mut inds: Vec<Term> = Vec::new();
+    for p in &c.body {
+        inds.clear();
+        pred_inds(p, &mut inds);
+        if !inds.iter().all(|&o| announced(o)) {
+            return false;
+        }
+    }
+    for l in &c.head {
+        match *l {
+            Lit::Eq { s, t } | Lit::Ineq { s, t } if is_individual(s) && is_individual(t) => {
+                // Ranked R3 (docs/PER-CONTEXT-ORDERING.md section 11): an
+                // (in)equality lies in the interface when one side is
+                // announced or its smaller individual is at most the largest
+                // individual the receiver announced (`rank_bound`).
+                let key = if r2_min_rank() { s.min(t) } else { s.max(t) };
+                if !(announced(s) || announced(t) || key <= rank_bound) {
+                    return false;
+                }
+            }
+            _ => {
+                inds.clear();
+                lit_inds(l, &mut inds);
+                if !inds.iter().all(|&o| announced(o)) {
+                    return false;
+                }
+            }
+        }
+    }
+    true
+}
+
+/// Predecessor labels over root edges (`Engine::offer_root_reach`) are on
+/// unless the diagnostic `KM_NO_ROOT_REACH` is set (negative control; it
+/// restores the incomplete behaviour of docs/NOMINALS-CB.md section 12).
+fn root_reach_off() -> bool {
+    static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *FLAG.get_or_init(|| std::env::var_os("KM_NO_ROOT_REACH").is_some())
+}
+
+/// Merge hypotheses (`Engine::merge_hypotheses`) are on unless the
+/// diagnostic `KM_NO_MERGE_HYPOTHESES` is set (restores v1.5.4 behaviour).
+fn merge_hypotheses_on() -> bool {
+    static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *FLAG.get_or_init(|| std::env::var_os("KM_NO_MERGE_HYPOTHESES").is_none())
+}
+
+/// The exchange cut (`Engine::rsucc_covered`) is on unless the diagnostic
+/// `KM_NO_EXCHANGE_CUT` is set.
+fn diag_cut() -> bool {
+    static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *FLAG.get_or_init(|| std::env::var_os("KM_DIAG_CUT").is_some())
+}
+
+fn exchange_cut_on() -> bool {
+    static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *FLAG.get_or_init(|| std::env::var_os("KM_NO_EXCHANGE_CUT").is_none())
+        && root_ordered_mode() == 0
+        && !root_dependent_order()
 }
 
 fn cc_mentions_x(c: &ContextClause) -> bool {
@@ -1000,6 +1115,31 @@ fn hyper_term_determined(term: Term, sigma: &CentralSubst) -> bool {
 /// Optional diagnostic threshold for logging Hyper's pre-join Cartesian upper
 /// bound. Cached because Hyper is the hottest rule and reading the environment
 /// per invocation would perturb the profile being measured.
+/// `KM_PROF` progress interval of `saturate_inner` (diagnostic; default 200 000
+/// work-off iterations, `KM_PROF_EVERY` overrides).
+fn prof_every() -> u64 {
+    static V: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    *V.get_or_init(|| {
+        std::env::var("KM_PROF_EVERY")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .filter(|&v| v > 0)
+            .unwrap_or(200_000)
+    })
+}
+
+/// `KM_PROF_DUMP_AT=N` (diagnostic, with `KM_PROF`): dump the clauses of the
+/// context being saturated when its work-off loop reaches iteration `N`.
+fn prof_dump_at() -> u64 {
+    static V: std::sync::OnceLock<u64> = std::sync::OnceLock::new();
+    *V.get_or_init(|| {
+        std::env::var("KM_PROF_DUMP_AT")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(u64::MAX)
+    })
+}
+
 fn hyper_product_trace_threshold() -> Option<u128> {
     static THRESHOLD: std::sync::OnceLock<Option<u128>> = std::sync::OnceLock::new();
     *THRESHOLD.get_or_init(|| {
@@ -1977,10 +2117,33 @@ struct ClauseLayer {
     /// these postings for all incoming literals and visit every possible
     /// candidate exactly once, without a generation-stamp side table.
     active_min_head_lit_index: HashMap<Lit, Posting>,
+    /// Forward-subsumption candidates of this layer, by head size: a clause
+    /// with a one-literal head under that literal, a two-literal head under
+    /// its pair, a longer head under its three least literals (heads are
+    /// sorted). A clause whose head is a subset of an incoming head has its
+    /// key among the incoming literals, pairs or triples (in sorted order), so
+    /// `fwd_subsumed` looks those up instead of scanning every clause that
+    /// shares the least literal (docs/PER-CONTEXT-ORDERING.md section 15.3).
+    /// Kept beside `active_min_head_lit_index`, which the other readers use.
+    active_unit_head_index: HashMap<Lit, Posting>,
+    active_min2_head_index: HashMap<(Lit, Lit), Posting>,
+    active_min3_head_index: HashMap<(Lit, Lit, Lit), Posting>,
     /// Active clauses with an empty head. Such a clause can subsume a
     /// non-empty-head clause without sharing a literal, so it has a dedicated
     /// posting list.
     active_empty_head: Vec<u32>,
+    /// Every active clause of this layer indexed by each of its body
+    /// predicates, built on demand (`ensure_active_body_index`) once a layer
+    /// is large enough for the empty-head backward subsumption scan to
+    /// matter, and maintained with the active index from then on.
+    active_body_index: Option<HashMap<Pred, Vec<u32>>>,
+    /// The empty-head clauses of `active_empty_head`, each indexed once by
+    /// its least body predicate (and those with an empty body in the list),
+    /// built once the layer holds `active_body_index_min()` of them. A clause
+    /// whose body is a subset of an incoming body has its least body
+    /// predicate in that body, so forward subsumption visits every possible
+    /// empty-head candidate exactly once.
+    empty_head_body_index: Option<(HashMap<Pred, Vec<u32>>, Vec<u32>)>,
     /// Join rule (arXiv:1805.01396 Table 3): worked-off clauses indexed by
     /// each *ground* body atom (the verbatim-copied `C_i` of Pred/r-Pred),
     /// so a later-derived provider for that atom can resolve it.  Empty
@@ -2270,6 +2433,21 @@ struct Context {
     /// identical to the unconditional driver.
     rsucc_offered: usize,
     rsucc_edges_grew: bool,
+    /// Root edges (docs/NOMINALS-CB.md section 12): the individuals `o` that
+    /// label an edge from this context to the ground context (an r-Succ push,
+    /// a merge hypothesis or a merge subscription), in first-occurrence order.
+    /// With r-Succ on, every central label `B(x)` in `rsucc_reach` is offered
+    /// over each of them as the predecessor hypothesis `B(y)`
+    /// (`Engine::offer_root_reach`), as over an ordinary successor edge.
+    root_labels: Vec<Term>,
+    root_label_set: HashSet<Term>,
+    /// Per root label, the number of `rsucc_reach` entries already offered
+    /// over it (`rsucc_reach` is append-only, so `reach[hwm..]` is the delta).
+    root_reach_hwm: HashMap<Term, usize>,
+    /// Merge hypotheses (docs/NOMINALS-CB.md section 10): the bridge
+    /// individuals `o` of body-free merge clauses `⊤ → Δ'' ∨ x ≈ o` whose
+    /// core hypotheses this context already pushed to the ground context.
+    merge_hyp_inds: Vec<Term>,
     /// Individuals whose ground ontology facts have been seeded into this
     /// context (demand-driven; see `Ontology::ground_facts`).
     seeded_inds: HashSet<Term>,
@@ -2315,6 +2493,10 @@ impl Context {
             rsucc_pair_reach_hwm: HashMap::default(),
             rsucc_offered: 0,
             rsucc_edges_grew: false,
+            root_labels: Vec::new(),
+            root_label_set: HashSet::default(),
+            root_reach_hwm: HashMap::default(),
+            merge_hyp_inds: Vec::new(),
             seeded_inds: HashSet::default(),
             dirty: true,
         }
@@ -2343,7 +2525,15 @@ fn pred_pool_eligible(clause: &ContextClause) -> bool {
         literal.is_function_free()
             && match literal {
                 Lit::P(_) => true,
-                Lit::Eq { s, t } => is_individual(*s) && (*t == X || *t == Y || is_individual(*t)),
+                // `x ≈ y` is a predecessor trigger (arXiv:1805.01396,
+                // Definition 2: `{x ≈ y} ⊆ Pr`); it crosses as `f(x) ≈ x`.
+                // Without it two successors merged into their common
+                // predecessor never meet (Reflexive + InverseFunctional `r`
+                // with `≥ 2 r`), see results/agents/2026-11-03/cb-s974.
+                Lit::Eq { s, t } => {
+                    (*s == X && *t == Y)
+                        || (is_individual(*s) && (*t == X || *t == Y || is_individual(*t)))
+                }
                 Lit::Ineq { .. } => false,
             }
     })
@@ -2594,13 +2784,53 @@ impl ClauseLayer {
     /// once.
     fn index_active_clause(&mut self, arena: &[ContextClause], cid: u32) {
         let clause = &arena[cid as usize];
+        if let Some(index) = self.active_body_index.as_mut() {
+            for (position, pred) in clause.body.iter().enumerate() {
+                if !clause.body[..position].contains(pred) {
+                    index.entry(*pred).or_default().push(cid);
+                }
+            }
+        }
         if clause.head.is_empty() {
             self.active_empty_head.push(cid);
+            match self.empty_head_body_index.as_mut() {
+                Some((index, empty)) => match clause.body.iter().min() {
+                    Some(least) => index.entry(*least).or_default().push(cid),
+                    None => empty.push(cid),
+                },
+                None if self.active_empty_head.len() >= active_body_index_min()
+                    && !ACTIVE_BODY_INDEX_OFF.with(|off| *off) =>
+                {
+                    let mut index: HashMap<Pred, Vec<u32>> = HashMap::default();
+                    let mut empty = Vec::new();
+                    for &candidate in &self.active_empty_head {
+                        match arena[candidate as usize].body.iter().min() {
+                            Some(least) => index.entry(*least).or_default().push(candidate),
+                            None => empty.push(candidate),
+                        }
+                    }
+                    self.empty_head_body_index = Some((index, empty));
+                }
+                None => {}
+            }
         } else {
             self.active_min_head_lit_index
                 .entry(clause.head[0])
                 .or_default()
                 .push(cid);
+            match clause.head.len() {
+                1 => self.active_unit_head_index.entry(clause.head[0]).or_default().push(cid),
+                2 => self
+                    .active_min2_head_index
+                    .entry((clause.head[0], clause.head[1]))
+                    .or_default()
+                    .push(cid),
+                _ => self
+                    .active_min3_head_index
+                    .entry((clause.head[0], clause.head[1], clause.head[2]))
+                    .or_default()
+                    .push(cid),
+            }
             for &literal in clause.head.iter().skip(1) {
                 self.active_head_lit_index
                     .entry(literal)
@@ -2610,13 +2840,62 @@ impl ClauseLayer {
         }
     }
 
+    /// Build `active_body_index` over the active clauses of this layer, once.
+    fn ensure_active_body_index(&mut self, arena: &[ContextClause]) {
+        if self.active_body_index.is_some() {
+            return;
+        }
+        let mut index: HashMap<Pred, Vec<u32>> = HashMap::default();
+        for &cid in &self.clause_keys {
+            let clause = &arena[cid as usize];
+            for (position, pred) in clause.body.iter().enumerate() {
+                if !clause.body[..position].contains(pred) {
+                    index.entry(*pred).or_default().push(cid);
+                }
+            }
+        }
+        self.active_body_index = Some(index);
+    }
+
     /// Remove one clause from the active redundancy index.
     fn unindex_active_clause(&mut self, arena: &[ContextClause], cid: u32) {
         let clause = &arena[cid as usize];
+        if let Some(index) = self.active_body_index.as_mut() {
+            for pred in &clause.body {
+                if let Some(posting) = index.get_mut(pred) {
+                    posting.retain(|&candidate| candidate != cid);
+                    if posting.is_empty() {
+                        index.remove(pred);
+                    }
+                }
+            }
+        }
         if clause.head.is_empty() {
             self.active_empty_head.retain(|&candidate| candidate != cid);
+            if let Some((index, empty)) = self.empty_head_body_index.as_mut() {
+                match clause.body.iter().min() {
+                    Some(least) => {
+                        if let Some(posting) = index.get_mut(least) {
+                            posting.retain(|&candidate| candidate != cid);
+                            if posting.is_empty() {
+                                index.remove(least);
+                            }
+                        }
+                    }
+                    None => empty.retain(|&candidate| candidate != cid),
+                }
+            }
         } else {
             posting_remove(&mut self.active_min_head_lit_index, clause.head[0], cid);
+            match clause.head.len() {
+                1 => posting_remove(&mut self.active_unit_head_index, clause.head[0], cid),
+                2 => posting_remove(&mut self.active_min2_head_index, (clause.head[0], clause.head[1]), cid),
+                _ => posting_remove(
+                    &mut self.active_min3_head_index,
+                    (clause.head[0], clause.head[1], clause.head[2]),
+                    cid,
+                ),
+            }
             let mut empty = Vec::new();
             for &literal in clause.head.iter().skip(1) {
                 if let Some(posting) = self.active_head_lit_index.get_mut(&literal) {
@@ -2917,27 +3196,80 @@ impl Context {
     ) -> bool {
         debug_assert_eq!(sigs.len(), arena.len(), "ClauseSig mirror out of sync");
         let want = ClauseSig::of(clause);
-        for ci in self.active_empty_head().iter() {
-            if Some(ci) == exclude {
-                continue;
-            }
-            if !sigs[ci as usize].may_strengthen(&want) {
-                continue;
-            }
-            if arena[ci as usize].strengthens(clause) {
+        let check = |ci: u32| {
+            Some(ci) != exclude
+                && sigs[ci as usize].may_strengthen(&want)
+                && arena[ci as usize].strengthens(clause)
+        };
+        if let Some((index, empty)) = self.delta.empty_head_body_index.as_ref() {
+            // Base segment as before; delta candidates through the index.
+            let base = self.base.as_deref().map_or(&[][..], |b| b.active_empty_head.as_slice());
+            if base.iter().copied().filter(|ci| !self.base_removed.contains(ci)).any(check) {
                 return true;
             }
-        }
-        for literal in &clause.head {
-            for ci in self.active_min_head_lit(*literal).iter() {
-                if Some(ci) == exclude {
+            if empty.iter().copied().any(check) {
+                return true;
+            }
+            for (position, pred) in clause.body.iter().enumerate() {
+                if clause.body[..position].contains(pred) {
                     continue;
                 }
-                if !sigs[ci as usize].may_strengthen(&want) {
-                    continue;
+                if let Some(posting) = index.get(pred) {
+                    if posting.iter().copied().any(check) {
+                        return true;
+                    }
                 }
-                if arena[ci as usize].strengthens(clause) {
+            }
+        } else {
+            for ci in self.active_empty_head().iter() {
+                if check(ci) {
                     return true;
+                }
+            }
+        }
+        let head = &clause.head;
+        if head.len() > FWD_PAIR_HEAD_MAX {
+            for literal in head {
+                if self.active_min_head_lit(*literal).iter().any(check) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        // Base segment through the least-literal postings, as before; delta
+        // candidates through the unit, least-pair and least-triple postings.
+        // Every delta clause whose head is a subset of `head` is visited (its
+        // key literals are among `head`, in the same sorted order), so the
+        // answer is the one the least-literal scan gives.
+        if let Some(b) = self.base.as_deref() {
+            for literal in head {
+                if let Some(posting) = b.active_min_head_lit_index.get(literal) {
+                    if posting.iter().copied().filter(|ci| !self.base_removed.contains(ci)).any(check) {
+                        return true;
+                    }
+                }
+            }
+        }
+        for (i, first) in head.iter().enumerate() {
+            if let Some(posting) = self.delta.active_unit_head_index.get(first) {
+                if posting.iter().copied().any(check) {
+                    return true;
+                }
+            }
+            for (j, second) in head.iter().enumerate().skip(i + 1) {
+                if let Some(posting) = self.delta.active_min2_head_index.get(&(*first, *second)) {
+                    if posting.iter().copied().any(check) {
+                        return true;
+                    }
+                }
+                for third in &head[j + 1..] {
+                    if let Some(posting) =
+                        self.delta.active_min3_head_index.get(&(*first, *second, *third))
+                    {
+                        if posting.iter().copied().any(check) {
+                            return true;
+                        }
+                    }
                 }
             }
         }
@@ -2961,7 +3293,29 @@ impl Context {
         let same = |candidate: &ContextClause| {
             candidate.body == clause.body && candidate.head == clause.head
         };
-        let candidates: Vec<u32> = if clause.head.is_empty() {
+        let candidates: Vec<u32> = if clause.head.is_empty() && !clause.body.is_empty()
+            && self.delta.clause_keys.len() >= active_body_index_min()
+            && !ACTIVE_BODY_INDEX_OFF.with(|off| *off)
+        {
+            // A candidate must contain every body predicate of `clause`, so
+            // the delta clauses that can be strengthened are among those of
+            // the rarest body-predicate posting; the base segment is read as
+            // before. The removed set is the same as with the full scan.
+            self.delta.ensure_active_body_index(arena);
+            let index = self.delta.active_body_index.as_ref().expect("built above");
+            let rarest = clause.body.iter()
+                .map(|pred| index.get(pred).map_or(&[][..], Vec::as_slice))
+                .min_by_key(|posting| posting.len())
+                .unwrap_or(&[]);
+            let removed = &self.base_removed;
+            self.base
+                .as_deref()
+                .into_iter()
+                .flat_map(|b| b.clause_keys.iter().copied())
+                .filter(move |cid| !removed.contains(cid))
+                .chain(rarest.iter().copied())
+                .collect()
+        } else if clause.head.is_empty() {
             self.clause_keys_iter().collect()
         } else {
             // Rarest-posting selection over the base-plus-delta views.  The flat
@@ -3050,10 +3404,45 @@ impl Context {
 /// of the ALCHOIQ calculus). Heads are full literals so those equalities
 /// survive the crossing; without individuals only `Lit::P` heads ever enter
 /// the pred pool, so this is representation-only for the SRIQ fragment.
+///
+/// `resolve` (sorted, a subset of `body`) lists the premises `A_iσ` that the
+/// Pred rule must resolve against a predecessor clause with `A_iσ` maximal:
+/// on an edge labelled by a composite `f(o)` (the ground context's own
+/// successor edges) the substitution `{y↦o, x↦f(o)}` makes every image of an
+/// atom over `x` ground, and only the atoms that were already ground in the
+/// sender are the verbatim-copied `C_i` of arXiv:1805.01396 Table 2
+/// (docs/PER-CONTEXT-ORDERING.md section 15). Empty on every other edge.
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct PredClause {
     body: Vec<Pred>,
     head: Vec<Lit>,
+    resolve: Vec<Pred>,
+}
+
+impl PredClause {
+    /// Whether the body atom `bp`, without a provider in the receiver, is a
+    /// ground label `C_i` that the Pred rule copies verbatim into the
+    /// conclusion (as opposed to a premise `A_iσ` that has to wait for one).
+    fn copies_verbatim(&self, bp: Pred) -> bool {
+        bp.is_ground() && self.resolve.binary_search(&bp).is_err()
+    }
+}
+
+/// `KM_PRED_COPY_ALL`: diagnostic switch restoring the pre-v1.5.5 Pred into
+/// the ground context, which copied every ground image `A_iσ` without a
+/// provider into the conclusion's body as a label (section 15).
+///
+/// The certified CB surface (`KM_CB_LEAN_REQUIRED`) keeps the previous rule:
+/// its Pred enumeration (`lean/ContextCalculus/CBPredEnumeration.lean`,
+/// `providerPlan`) decides groundness on the transported payload, and
+/// `providerPlanResolving_sub` there shows that the restored rule's plans are
+/// among its plans.
+fn pred_copy_all() -> bool {
+    static FLAG: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *FLAG.get_or_init(|| {
+        std::env::var_os("KM_PRED_COPY_ALL").is_some()
+            || std::env::var_os("KM_CB_LEAN_REQUIRED").is_some()
+    })
 }
 
 #[derive(Clone, Copy)]
@@ -3528,6 +3917,17 @@ pub struct Engine {
     /// derived clauses remain sound, but classification is not complete and
     /// must never be published as a successful answer.
     message_truncated: bool,
+    /// A context whose empty clause is global inconsistency (the ground
+    /// context, or a root context with an empty core: the ⊤ context or the
+    /// throwaway ⊤ closure of `ensure_shared_root_closure`) has worked off
+    /// the empty clause; `inconsistent()` reads this flag. Monotone: worked-off clauses are only ever replaced by
+    /// clauses that subsume them, and only the empty clause subsumes the
+    /// empty clause, so `inconsistent()` stays true from here on.
+    global_refutation: bool,
+    /// Stop the run once `global_refutation` holds (see
+    /// `set_stop_on_global_refutation`). Off by default; the one-shot
+    /// classification paths of `Reasoner::saturate` switch it on.
+    stop_on_global_refutation: bool,
     /// Nom rule (arXiv:1805.01396 Table 3): `K`, where `K + 1` is the largest
     /// neighbour-variable index `i` (of `z_i`) over the whole ontology — the
     /// width of the additional-nominal disjunction `⋁_{i=1}^K y ≈ o'_{ρ·S^i}`.
@@ -3541,6 +3941,8 @@ pub struct Engine {
     /// Interior mutability: allocation happens inside the otherwise read-only
     /// Hyper resolvent build (single-threaded engine, never shared).
     nom_table: std::cell::RefCell<HashMap<NomFiringKey, Vec<Term>>>,
+    /// Common-cover reuse records (`Nominals.nom_shared_cover_sound`).
+    nom_covers: std::cell::RefCell<Vec<NomCover>>,
     /// Number of additional nominal terms stored across all firing blocks.
     nom_allocated: std::cell::Cell<usize>,
     /// next fresh individual id (starts above every input individual)
@@ -3880,6 +4282,40 @@ mod cb_live_snapshot_tests {
     }
 
     #[test]
+    fn successor_edge_without_reach_leaves_no_pending_rsucc_sweep() {
+        // D ⊑ ∃r.A: context D gains an r-successor edge but never an r-Succ
+        // pool entry, so the terminal snapshot must not report a pending
+        // `successors × reach` sweep (checkers-on defect B2).
+        let mut sig = Sig::default();
+        let d = sig.concept("D");
+        let a = sig.concept("A");
+        let r = sig.role("r");
+        let f = fterm(1);
+        let clauses = vec![
+            OntologyClause::new(
+                vec![Pred::Concept { iri: d, t: X }],
+                vec![Lit::P(Pred::Role { iri: r, s: X, t: f })],
+            ),
+            OntologyClause::new(
+                vec![Pred::Concept { iri: d, t: X }],
+                vec![Lit::P(Pred::Concept { iri: a, t: f })],
+            ),
+        ];
+        let mut engine = Engine::new(sig, clauses, 0);
+        Arc::make_mut(&mut engine.sig).rsucc = true;
+        engine.run_for(&[d]);
+        let snapshot = engine.live_terminal_snapshot();
+        assert!(snapshot
+            .contexts
+            .iter()
+            .any(|context| !context.successors.is_empty()));
+        for context in &snapshot.contexts {
+            assert!(!context.rsucc_edges_grew, "context {}", context.context_index);
+            assert_eq!(context.rsucc_offered, context.rsucc_reach.len());
+        }
+    }
+
+    #[test]
     fn terminal_snapshot_is_exact_stable_and_complete() {
         let mut sig = Sig::default();
         let query = sig.concept("A");
@@ -4119,8 +4555,11 @@ impl Engine {
                 .then(Vec::new),
             dropped_unsupported: prepared.dropped_unsupported,
             message_truncated: false,
+            global_refutation: false,
+            stop_on_global_refutation: false,
             nom_k: prepared.nom_k,
             nom_table: std::cell::RefCell::new(HashMap::default()),
+            nom_covers: std::cell::RefCell::new(Vec::new()),
             nom_allocated: std::cell::Cell::new(0),
             nom_next: std::cell::Cell::new(prepared.nom_first),
             nom_base: ind_term(prepared.nom_first),
@@ -4643,6 +5082,21 @@ impl Engine {
             // that globally, so no per-class shortcut is needed.
             return;
         }
+        // The readout below takes the body-free unit clauses `→ B(o)` and
+        // `→ o ≈ o'` as the complete set of ground facts. That holds when
+        // every body-free clause of the saturated ground context is a unit
+        // (a Horn ground closure: the units generate its least model). A
+        // body-free disjunction `→ B(o) ∨ Δ` can hide an entailed unit: the
+        // ground context resolves only on maximal literals, so with `Δ`
+        // refutable but not maximal the unit `→ B(o)` is never derived
+        // (seed r3403: `→ A(c) ∨ c ≈ b` with `A(b)`, docs/NOMINALS-CB.md
+        // section 10). Ordinary CB then answers the query.
+        if ground.worked_off().iter().any(|ci| {
+            let c = &arena[ci as usize];
+            c.body.is_empty() && c.head.len() > 1
+        }) {
+            return;
+        }
 
         let mut direct_types: HashMap<Term, BTreeSet<Iri>> = HashMap::default();
         let mut equal: HashMap<Term, Vec<Term>> = HashMap::default();
@@ -4907,6 +5361,70 @@ impl Engine {
         );
     }
 
+    /// Diagnostic dump (`KM_PROF_DUMP_AT`): core, worked-off and todo clauses
+    /// of context `id`, in the `KM_DUMP_WO` notation.
+    fn dump_context_clauses(&self, id: usize) {
+        let fmt_t = |t: Term| -> String {
+            if t == X {
+                "x".to_string()
+            } else if t == Y {
+                "y".to_string()
+            } else if is_neighbour(t) {
+                format!("z{}", Y - t)
+            } else {
+                format!("f{}(x)", t)
+            }
+        };
+        let fmt_p = |p: &Pred| -> String {
+            match *p {
+                Pred::Concept { iri, t } => {
+                    format!("{}({})", self.sig.concept_names[iri as usize], fmt_t(t))
+                }
+                Pred::Role { iri, s, t } => format!(
+                    "{}({},{})",
+                    self.sig.role_names[iri as usize],
+                    fmt_t(s),
+                    fmt_t(t)
+                ),
+            }
+        };
+        let fmt_l = |l: &Lit| -> String {
+            match *l {
+                Lit::P(p) => fmt_p(&p),
+                Lit::Eq { s, t } => format!("{}={}", fmt_t(s), fmt_t(t)),
+                Lit::Ineq { s, t } => format!("{}!={}", fmt_t(s), fmt_t(t)),
+            }
+        };
+        let ctx = &self.contexts[id];
+        let core: Vec<String> = ctx.core.iter().map(&fmt_p).collect();
+        eprintln!(
+            "== KM_PROF_DUMP ctx {} root={} core=[{}] wo={} todo={}",
+            ctx.id,
+            ctx.root,
+            core.join(", "),
+            ctx.worked_off_len(),
+            ctx.todo.len()
+        );
+        let arena = &self.cc_arena[ctx.root as usize];
+        let show = |tag: &str, ci: u32| {
+            let c = &arena[ci as usize];
+            let b: Vec<String> = c.body.iter().map(&fmt_p).collect();
+            let h: Vec<String> = c.head.iter().map(&fmt_l).collect();
+            eprintln!(
+                "   {} {} -> {}",
+                tag,
+                if b.is_empty() { "T".to_string() } else { b.join(" & ") },
+                if h.is_empty() { "F".to_string() } else { h.join(" | ") }
+            );
+        };
+        for ci in ctx.worked_off().iter() {
+            show("wo", ci);
+        }
+        for &ci in ctx.todo.iter() {
+            show("todo", ci);
+        }
+    }
+
     fn saturate_inner(&mut self, id: usize) {
         self.stat_saturate += 1;
         let trace_sat = self.trace_sat;
@@ -4938,7 +5456,10 @@ impl Engine {
             let clause = self.cc_arena[d][cid as usize].clone();
             if prof {
                 iters += 1;
-                if iters % 200_000 == 0 {
+                if iters == prof_dump_at() {
+                    self.dump_context_clauses(id);
+                }
+                if iters % prof_every() == 0 {
                     let ctx = &self.contexts[id];
                     eprintln!(
                         "KM_PROF ctx={} iters={} subsumed_at_workoff={} added={} todo={} wo={} | hyper_out={} pred_out={} eq_pred_out={} eq_eqn_out={} factor_out={} | backsub_unindex_events={} reindex_avoided={}",
@@ -5151,8 +5672,9 @@ impl Engine {
             // Feed the semi-naive propagation pools (append-only).  Pred-eligible:
             // function-free head of predicates plus (nominal mode) the Pr
             // equality forms `x ≈ o` / `y ≈ o` / `o ≈ o'` (canonical
-            // `Eq{o, ·}` — individuals sit above x and y in the term order);
-            // other equalities stay local, as before.  Succ-eligible: some
+            // `Eq{o, ·}` — individuals sit above x and y in the term order)
+            // and the predecessor merge `x ≈ y`; other equalities stay local.
+            // Succ-eligible: some
             // maximal head predicate is on a function term (succ-trigger
             // candidate) or is an Su^r ground form (r-Succ candidate).
             let pred_eligible = pred_pool_eligible(&clause);
@@ -5183,6 +5705,13 @@ impl Engine {
             // pred-eligible (empty head), so propagate still pushes the
             // contradiction back. Sound: dropping subsumed clauses preserves
             // completeness; the unsat verdict / pushback is retained.
+            if clause.body.is_empty()
+                && clause.head.is_empty()
+                && (self.ground_ctx == Some(id)
+                    || (self.contexts[id].root && self.contexts[id].core.is_empty()))
+            {
+                self.global_refutation = true;
+            }
             if self.early_unsat && clause.body.is_empty() && clause.head.is_empty() {
                 self.contexts[id].todo.clear();
                 break;
@@ -5370,6 +5899,27 @@ impl Engine {
                         (Pred::Concept { iri, .. }, _) => (ctx.head_concept(iri), false),
                         (Pred::Role { iri, .. }, _) => (ctx.head_role(iri), false),
                     };
+                    // Ground context: the side clause is also a candidate at
+                    // non-side positions (given-clause semantics, S_v ∪ {C}).
+                    // Elsewhere this self-pairing is provably redundant — two
+                    // distinct max heads yield a resolvent the side clause
+                    // subsumes, the same head twice instantiates a head
+                    // equality to a tautology — but in the ground context the
+                    // same-head pair `S(o,y), S(o,y)` instantiates `z_i ≈ z_j`
+                    // to `y ≈ y`, the Nom-rule trigger, which must fire.
+                    // Place the side clause first in the ground context so the
+                    // pure `y ≈ y` firing (with empty residual head) establishes
+                    // its `NomCover` before composite `f(o')` candidates with
+                    // weaker sort/residual heads.
+                    if self.ground_ctx == Some(id) {
+                        for (p, _) in side.max_head_predicates() {
+                            let mark = sigma.mark();
+                            if unify(&mut sigma, &oc.body[i], &p) {
+                                v.push((usize::MAX, p));
+                            }
+                            sigma.rollback(mark);
+                        }
+                    }
                     for ci in cand.iter() {
                         if exact {
                             v.push((ci as usize, wanted));
@@ -5389,23 +5939,7 @@ impl Engine {
                             }
                         }
                     }
-                    // Ground context: the side clause is also a candidate at
-                    // non-side positions (given-clause semantics, S_v ∪ {C}).
-                    // Elsewhere this self-pairing is provably redundant — two
-                    // distinct max heads yield a resolvent the side clause
-                    // subsumes, the same head twice instantiates a head
-                    // equality to a tautology — but in the ground context the
-                    // same-head pair `S(o,y), S(o,y)` instantiates `z_i ≈ z_j`
-                    // to `y ≈ y`, the Nom-rule trigger, which must fire.
-                    if self.ground_ctx == Some(id) {
-                        for (p, _) in side.max_head_predicates() {
-                            let mark = sigma.mark();
-                            if unify(&mut sigma, &oc.body[i], &p) {
-                                v.push((usize::MAX, p));
-                            }
-                            sigma.rollback(mark);
-                        }
-                    } else {
+                    if self.ground_ctx != Some(id) {
                         // Outside the ground context the side clause is
                         // still a premise for a second body position when the
                         // SAME maximal predicate `max` matches it: Sequoia's
@@ -5725,6 +6259,36 @@ impl Engine {
         Some(terms)
     }
 
+    /// Allocate or reuse a nominal witness block, sharing an existing block
+    /// when a prior firing in the same context already covers a subset of
+    /// `(body, kept_head)` (`Nominals.nom_shared_cover_sound`).
+    fn nom_terms_covered(
+        &self,
+        key: NomFiringKey,
+        width: usize,
+        body: &[Pred],
+        kept_head: &[Lit],
+    ) -> Option<Vec<Term>> {
+        if let Some(terms) = self.nom_table.borrow().get(&key) {
+            return Some(terms.clone());
+        }
+        if let Some(cover) = self.nom_covers.borrow().iter().find(|cover| {
+            cover.context == key.context
+                && subset_pred(&cover.body, body)
+                && subset_lit(&cover.kept_head, kept_head)
+        }) {
+            return Some(cover.terms.clone());
+        }
+        let terms = self.nom_terms(key.clone(), width)?;
+        self.nom_covers.borrow_mut().push(NomCover {
+            context: key.context,
+            body: body.to_vec(),
+            kept_head: kept_head.to_vec(),
+            terms: terms.clone(),
+        });
+        Some(terms)
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn build_hyper_resolvent(
         &self,
@@ -5754,6 +6318,7 @@ impl Engine {
         // head: ontology head substituted, filtered
         let mut head: Vec<Lit> = Vec::new();
         let mut nom_pending = false;
+        let mut has_yy = false;
         // Distinct `f(o')` right-hand terms among the replaced `y ≈ f(o')`
         // literals (K''): an anonymous predecessor may be pinned to any of
         // those values, and each needs its own additional nominal to cover
@@ -5761,8 +6326,9 @@ impl Engine {
         // K' = max(K, K''); the bound with a direct pigeonhole proof (any
         // n_y distinct candidates outside the pinned values violate the
         // counting clause, so |candidates| ≤ (n_y − 1) + K'' ≤ K + K'') is
-        // the SUM, which is what the Lean certification proves — so the
-        // engine emits K + K'' disjuncts (weaker conclusions are sound).
+        // the SUM, which is what the Lean certification proves (`nom_cover`
+        // in `Nominals.lean`).  When `!has_yy` (`n_y = 1`, `n = 0` in
+        // `nom_cover`), the repeat slot count is 0 and `k_eff = K''`.
         let mut nom_rhs: Vec<Term> = Vec::new();
         for l in &oc.head {
             let ls = l.apply(&subst);
@@ -5770,7 +6336,9 @@ impl Engine {
                 if let Lit::Eq { s, t } = ls {
                     if (s == Y && t == Y) || (is_comp(s) && t == Y) {
                         nom_pending = true;
-                        if is_comp(s) && !nom_rhs.contains(&s) {
+                        if s == Y && t == Y {
+                            has_yy = true;
+                        } else if is_comp(s) && !nom_rhs.contains(&s) {
                             nom_rhs.push(s);
                         }
                         continue;
@@ -5789,43 +6357,6 @@ impl Engine {
                 }
             }
             head.push(ls);
-        }
-        if nom_pending {
-            let o = ground_o.unwrap();
-            let k_eff = self.nom_k + nom_rhs.len();
-            // The matched premise atom S(o,y) / S(y,o) supplies the role label.
-            let mut labelled = false;
-            'outer: for i in 0..candidates.len() {
-                let (_, matched) = candidates[i][idxs[i]];
-                if let Pred::Role { s, t, .. } = matched {
-                    let fwd = s == o && t == Y;
-                    let bwd = t == o && s == Y;
-                    if fwd || bwd {
-                        let key = NomFiringKey {
-                            context: id,
-                            source_body: oc.body.clone(),
-                            source_head: oc.head.clone(),
-                            side_body: side.body.clone(),
-                            side_head: side.head.clone(),
-                            selected: (0..candidates.len())
-                                .map(|position| candidates[position][idxs[position]])
-                                .collect(),
-                            substitution: sigma.map.to_vec(),
-                        };
-                        for nominal in self.nom_terms(key, k_eff)? {
-                            head.push(Lit::eq(Y, nominal));
-                        }
-                        labelled = true;
-                        break 'outer;
-                    }
-                }
-            }
-            if !labelled {
-                // No connecting role premise: the y-equality cannot be
-                // expressed against additional nominals; the conclusion
-                // degenerates to the pre-nominal tautology drop.
-                return None;
-            }
         }
         // plus each candidate clause's head minus the matched predicate
         let arena = &self.cc_arena[root as usize];
@@ -5863,6 +6394,57 @@ impl Engine {
                 }
             }
             body.extend_from_slice(&clause.body);
+        }
+        if nom_pending {
+            let o = ground_o.unwrap();
+            let n_y = sigma
+                .map
+                .iter()
+                .filter(|&&(k, v)| !is_central(k) && v == Y)
+                .count();
+            let repeat_slots = if has_yy {
+                n_y.saturating_sub(1).max(1).min(self.nom_k)
+            } else {
+                0
+            };
+            let k_eff = repeat_slots + nom_rhs.len();
+            // The matched premise atom S(o,y) / S(y,o) supplies the role label.
+            let mut labelled = false;
+            'outer: for i in 0..candidates.len() {
+                let (_, matched) = candidates[i][idxs[i]];
+                if let Pred::Role { s, t, .. } = matched {
+                    let fwd = s == o && t == Y;
+                    let bwd = t == o && s == Y;
+                    if fwd || bwd {
+                        body.sort();
+                        body.dedup();
+                        head.sort();
+                        head.dedup();
+                        let key = NomFiringKey {
+                            context: id,
+                            source_body: oc.body.clone(),
+                            source_head: oc.head.clone(),
+                            side_body: side.body.clone(),
+                            side_head: side.head.clone(),
+                            selected: (0..candidates.len())
+                                .map(|position| candidates[position][idxs[position]])
+                                .collect(),
+                            substitution: sigma.map.to_vec(),
+                        };
+                        for nominal in self.nom_terms_covered(key, k_eff, &body, &head)? {
+                            head.push(Lit::eq(Y, nominal));
+                        }
+                        labelled = true;
+                        break 'outer;
+                    }
+                }
+            }
+            if !labelled {
+                // No connecting role premise: the y-equality cannot be
+                // expressed against additional nominals; the conclusion
+                // degenerates to the pre-nominal tautology drop.
+                return None;
+            }
         }
         Some(ContextClause::new(body, head, root, &self.sig))
     }
@@ -5923,7 +6505,7 @@ impl Engine {
                 let mut v = Vec::new();
                 v.extend(ctx.max_head_pred(bp).iter().map(|ci| (ci as usize, bp)));
                 if v.is_empty() {
-                    if bp.is_ground() {
+                    if pc.copies_verbatim(bp) {
                         ground.push(bp);
                         continue;
                     }
@@ -6071,7 +6653,7 @@ impl Engine {
                 let mut v = Vec::new();
                 v.extend(ctx.max_head_pred(bp).iter().map(|ci| (ci as usize, bp)));
                 if v.is_empty() {
-                    if bp.is_ground() {
+                    if pc.copies_verbatim(bp) {
                         ground.push(bp);
                         continue;
                     }
@@ -7040,6 +7622,7 @@ impl Engine {
                         if let Some((yform, o)) = root_succ_form(&p) {
                             if !ctx.pushed_succ.contains(&yform)
                                 && !rsucc_blocked(ctx, arena, c, &p)
+                                && !self.rsucc_covered(id, c, &p)
                             {
                                 ground_succ.push((yform, o));
                             }
@@ -7048,10 +7631,24 @@ impl Engine {
                 }
             }
         }
+        let merge_hyps = self.merge_hypotheses(id);
+        if !merge_hyps.is_empty() {
+            let target = self.ground_context();
+            for (p, o) in merge_hyps {
+                self.note_root_label(id, o);
+                self.msgs.push_back(Msg::Succ {
+                    from: pack_msg_context(id),
+                    f: o,
+                    p,
+                    target: pack_msg_context(target),
+                });
+            }
+        }
         if !ground_succ.is_empty() {
             let target = self.ground_context();
             for (p, o) in ground_succ {
                 if self.contexts[id].pushed_succ.insert(p) {
+                    self.note_root_label(id, o);
                     self.msgs.push_back(Msg::Succ {
                         from: pack_msg_context(id),
                         f: o,
@@ -7316,6 +7913,20 @@ impl Engine {
                     });
                 }
             }
+        } else if self.contexts[id].rsucc_reach.is_empty() {
+            // No reach predicate exists (r-Succ is off or the pool is empty;
+            // `rsucc_reach` grows only in the branch above). The
+            // `successors × reach` sweep over an empty reach set fires
+            // nothing and leaves every edge's hwm at 0 = `rsucc_reach.len()`,
+            // so it has already run: record that, as the branch above does
+            // after a sweep. Without this, a context that gains a successor
+            // edge but never an r-Succ pool entry keeps `rsucc_edges_grew`
+            // set at the fixpoint, and its terminal snapshot claims a pending
+            // sweep that does not exist (the source-bound closure checkers
+            // reject it). No message changes: once reach grows,
+            // `reach_len > rsucc_offered` (= 0) triggers the sweep and every
+            // edge is offered `reach[0..]`, exactly as before.
+            self.contexts[id].rsucc_edges_grew = false;
         }
         // ---- Pred ---- (semi-naive).  The Pred-eligible clauses live in
         // `pred_pool` (function-free, predicate-only head — built when a clause is
@@ -7351,8 +7962,20 @@ impl Engine {
             // ground-sender (r-Pred) path: a source is dirty when any of its
             // individual-labelled edges gained a pushed predicate.
             let mut sources: Vec<(usize, Term, bool)> = Vec::new();
+            // Ground sender: per source context u, the positions in `edges`
+            // of its individual-labelled edges.
+            let mut source_edges: HashMap<usize, Vec<usize>> = HashMap::default();
+            let mut bound_of: HashMap<usize, Term> = HashMap::default();
+            if ground_sender && !pair_r2() {
+                let all = !self.nom_table.borrow().is_empty();
+                for (e, _, _) in &edges {
+                    let b = bound_of.entry(e.0).or_insert(Term::MIN);
+                    *b = if all { Term::MAX } else { (*b).max(e.1) };
+                }
+            }
             if ground_sender {
-                for (e, _, dirty) in &edges {
+                for (k, (e, _, dirty)) in edges.iter().enumerate() {
+                    source_edges.entry(e.0).or_default().push(k);
                     match sources.iter_mut().find(|(u, _, _)| *u == e.0) {
                         Some(s) => {
                             s.2 |= *dirty;
@@ -7441,11 +8064,21 @@ impl Engine {
                         for b in &c.body {
                             let mut inds: Vec<Term> = Vec::new();
                             pred_inds(b, &mut inds);
-                            let discharged = inds.iter().any(|o| {
-                                ctx.predecessors
-                                    .get(&(u, *o))
-                                    .map_or(false, |s| s.contains(b))
-                            });
+                            // An individual-free body atom is a predecessor
+                            // label `B(y)` offered over the root edges of u
+                            // (`offer_root_reach`): it is discharged when one
+                            // of u's edges carries it.
+                            let discharged = if inds.is_empty() {
+                                source_edges
+                                    .get(&u)
+                                    .is_some_and(|ks| ks.iter().any(|&k| edges[k].1.contains(b)))
+                            } else {
+                                inds.iter().any(|o| {
+                                    ctx.predecessors
+                                        .get(&(u, *o))
+                                        .map_or(false, |s| s.contains(b))
+                                })
+                            };
                             if !discharged {
                                 ok = false;
                                 break;
@@ -7459,11 +8092,17 @@ impl Engine {
                             for l in &c.head {
                                 lit_inds(l, &mut inds);
                             }
-                            ok = inds.iter().all(|o| {
-                                *o >= self.nom_base || ctx.predecessors.contains_key(&(u, *o))
-                            }) || (eq_announce()
-                                && ground_unit_equality(c)
-                                && inds.iter().any(|o| ctx.predecessors.contains_key(&(u, *o))));
+                            let announced = |o: Term| {
+                                o >= self.nom_base || ground_guard_off() || ctx.predecessors.contains_key(&(u, o))
+                            };
+                            ok = inds.iter().all(|&o| announced(o))
+                                || (eq_announce()
+                                    && inds.iter().any(|o| ctx.predecessors.contains_key(&(u, *o)))
+                                    && if eq_closure_announce() {
+                                        in_announced_interface(c, announced, bound_of.get(&u).copied().unwrap_or(Term::MIN))
+                                    } else {
+                                        ground_unit_equality(c)
+                                    });
                         }
                         if ok {
                             let edge = (u, label);
@@ -7545,6 +8184,7 @@ impl Engine {
             self.stat_pred_out_by_ctx[id] += to_send.len() as u64;
         }
         self.subscribe_merge_individuals(id);
+        self.offer_root_reach(id);
         for (edge, pool_idx) in to_send {
             self.contexts[id]
                 .pushed_pred
@@ -7558,6 +8198,208 @@ impl Engine {
                 pool_idx,
             });
         }
+    }
+
+    /// Exchange cut (docs/PER-CONTEXT-ORDERING.md section 14): the r-Succ
+    /// push of the maximal ground atom `a` of clause `c = Γ → Δ ∨ a` of
+    /// context `id` to the ground context is unnecessary when the ground
+    /// context holds a worked-off clause `e` that strengthens `c` modulo the
+    /// hypotheses of `id`: every head literal of `e` is a head literal of `c`,
+    /// and every body atom of `e` is a hypothesis `id` pushed to the ground
+    /// context that is a body atom of `c` or a merge hypothesis `K(o)` of
+    /// `id` with a body-free bridge `⊤ → Δ'' ∨ x ≈ o` of `id` whose other
+    /// literals are head literals of `c` other than `a` (Join case 3 read as
+    /// the clause `⊤ → Δ'' ∨ K(o)`). Every clause the receiver delivers
+    /// verbatim is such an `e` for itself. Because the literal order is the
+    /// same in both contexts, a model of the receiver in which `c` produces
+    /// `a` makes the body of `e` true and every head literal of `e` other
+    /// than `a` false and smaller than `a`, so the ground model built under
+    /// the receiver's true hypotheses satisfies `e` only through `a`
+    /// (`lean/ContextCalculus/ExchangeCut.lean`, `cut_exchange_complete`).
+    /// The check is monotone: the ground context removes `e` only for a
+    /// strengthening, which again strengthens `c` modulo the hypotheses.
+    /// `KM_NO_EXCHANGE_CUT` disables it (diagnostic); the cut is off under
+    /// the experimental root-dependent orders (`KM_ROOT_ORDERED`,
+    /// `KM_ROOT_ONLY_INCOMP`), where the two contexts' orders differ.
+    fn rsucc_covered(&self, id: usize, c: &ContextClause, a: &Pred) -> bool {
+        if !exchange_cut_on() || !a.is_ground() {
+            return false;
+        }
+        let Some(g) = self.ground_ctx else { return false };
+        if g == id {
+            return false;
+        }
+        let gctx = &self.contexts[g];
+        let garena = &self.cc_arena[gctx.root as usize];
+        let u = &self.contexts[id];
+        let uarena = &self.cc_arena[u.root as usize];
+        let target = Lit::P(*a);
+        let rest_in_c = |l: &Lit| *l != target && c.head.contains(l);
+        // A hypothesis `id` pushed to the ground context: an edge `(id, o)`
+        // whose pushed set holds `h`.
+        let pushed = |h: &Pred| {
+            let mut inds: Vec<Term> = Vec::new();
+            pred_inds(h, &mut inds);
+            inds.iter().any(|&o| gctx.predecessors.get(&(id, o)).is_some_and(|set| set.contains(h)))
+        };
+        let body_ok = |h: &Pred| {
+            if !pushed(h) {
+                return false;
+            }
+            if c.body.contains(h) {
+                return true;
+            }
+            let Pred::Concept { iri, t: o } = *h else { return false };
+            if !is_individual(o)
+                || !u.merge_hyp_inds.contains(&o)
+                || !u.core.contains(&Pred::Concept { iri, t: X })
+            {
+                return false;
+            }
+            let bl = Lit::Eq { s: o, t: X };
+            u.bridge(o).iter().any(|bi| {
+                if !u.has_clause(bi) {
+                    return false;
+                }
+                let b = &uarena[bi as usize];
+                b.body.is_empty() && b.head.iter().all(|l| *l == bl || rest_in_c(l))
+            })
+        };
+        let mut seen: Vec<Pred> = Vec::new();
+        for l in &c.head {
+            let Lit::P(p) = *l else { continue };
+            if !p.is_ground() || seen.contains(&p) {
+                continue;
+            }
+            seen.push(p);
+            for ei in gctx.max_head_pred(p).iter() {
+                if !gctx.has_clause(ei) {
+                    continue;
+                }
+                let e = &garena[ei as usize];
+                if cc_mentions_x(e) || !e.head.iter().all(|l| c.head.contains(l)) {
+                    continue;
+                }
+                if e.body.iter().all(&body_ok) {
+                    return true;
+                }
+            }
+        }
+        if diag_cut() {
+            eprintln!(
+                "KM_DIAG_CUT miss ctx={} root={} a={:?} body={:?} head={:?}",
+                id, u.root, a, c.body, c.head
+            );
+        }
+        false
+    }
+
+    /// The rank bound `m` of the ranked R3 (docs/PER-CONTEXT-ORDERING.md
+    /// section 11) for receiver `u` of the ground context `g`: the largest
+    /// individual `u` announced (an individual-labelled edge), or every
+    /// individual once additional nominals exist (they count as announced
+    /// for every receiver, so the bound must cover them). `Term::MIN` under
+    /// the diagnostic `KM_CONTEXT_PAIR_R2` (the guard of 7c238e52).
+    fn rank_bound(&self, g: &Context, u: usize) -> Term {
+        if pair_r2() {
+            return Term::MIN;
+        }
+        if !self.nom_table.borrow().is_empty() {
+            return Term::MAX;
+        }
+        g.predecessors
+            .keys()
+            .filter(|(src, o)| *src == u && is_individual(*o))
+            .map(|&(_, o)| o)
+            .max()
+            .unwrap_or(Term::MIN)
+    }
+
+    /// Merge hypotheses (docs/NOMINALS-CB.md section 10): a query context
+    /// `u` with core `K(x)` whose element may be the individual `o` (a
+    /// body-free merge clause `⊤ → Δ'' ∨ x ≈ o`, the Join case 3 bridge)
+    /// pushes the hypotheses `K(o) → K(o)` to the ground context, on the
+    /// edge labelled `o`. Side condition (*) blocks every r-Succ push of
+    /// such a context, and a query context has no predecessor that could
+    /// carry its labels to `o` (an ordinary context's merge `f(x) ≈ o` reaches
+    /// its predecessor, which rewrites `f(x)` to `o` and pushes the ground
+    /// atoms itself), so without these hypotheses the ground context never
+    /// reasons under the assumption that `o` is an instance of the query
+    /// (seed r1600, `tests/merge_hypotheses.rs`). The ground context returns
+    /// its conclusions `K(o) ∧ Γ → Δ` with the body atom `K(o)` copied
+    /// verbatim (no clause of `u` has `K(o)` maximal), and Join case 3
+    /// resolves `K(o)` against the core clause `⊤ → K(x)` and the bridge.
+    fn merge_hypotheses(&mut self, id: usize) -> Vec<(Pred, Term)> {
+        if Some(id) == self.ground_ctx
+            || !self.contexts[id].root
+            || self.ont.individuals.is_empty()
+            || !merge_hypotheses_on()
+        {
+            return Vec::new();
+        }
+        let bridges = self.contexts[id].bridge_keys();
+        let mut out: Vec<(Pred, Term)> = Vec::new();
+        for o in bridges {
+            if self.contexts[id].merge_hyp_inds.contains(&o) {
+                continue;
+            }
+            let core = self.contexts[id].core.clone();
+            let mut atoms: Vec<Pred> = Vec::new();
+            for p in &core {
+                let plain = |t: Term| t == X || is_individual(t);
+                let ok = match *p {
+                    Pred::Concept { t, .. } => t == X,
+                    Pred::Role { s, t, .. } => (s == X || t == X) && plain(s) && plain(t),
+                };
+                if !ok {
+                    continue;
+                }
+                let a = p.apply(&|v| if v == X { o } else { v });
+                // Exchange cut for the Join case 3 clause `⊤ → Δ'' ∨ K(o)`
+                // (docs/PER-CONTEXT-ORDERING.md section 14): the hypothesis
+                // is not needed when the ground context already covers that
+                // clause for some bridge of `o`, typically by
+                // `K(o') → K(o) ∨ Φ` for a bridge `o` that the receiver
+                // derived from the bridge of `o'` and `o ≈ o' ∨ Φ`.
+                if self.merge_hypothesis_covered(id, o, a) {
+                    continue;
+                }
+                atoms.push(a);
+            }
+            self.contexts[id].merge_hyp_inds.push(o);
+            for a in atoms {
+                let mut inds: Vec<Term> = Vec::new();
+                pred_inds(&a, &mut inds);
+                for i in inds {
+                    out.push((a, i));
+                }
+            }
+        }
+        out
+    }
+
+    /// Whether the merge hypothesis `a = K(o)` of query context `id` is
+    /// covered (`rsucc_covered`) for the clause `⊤ → Δ'' ∨ K(o)` of some
+    /// body-free bridge `⊤ → Δ'' ∨ x ≈ o` of `id`.
+    fn merge_hypothesis_covered(&self, id: usize, o: Term, a: Pred) -> bool {
+        if !exchange_cut_on() || std::env::var_os("KM_NO_MERGE_CUT").is_some() {
+            return false;
+        }
+        let u = &self.contexts[id];
+        let arena = &self.cc_arena[u.root as usize];
+        let bl = Lit::Eq { s: o, t: X };
+        u.bridge(o).iter().any(|bi| {
+            if !u.has_clause(bi) {
+                return false;
+            }
+            let b = &arena[bi as usize];
+            if !b.body.is_empty() || !b.head.contains(&bl) {
+                return false;
+            }
+            let head: Vec<Lit> = b.head.iter().map(|l| if *l == bl { Lit::P(a) } else { *l }).collect();
+            let v = ContextClause::new(Vec::new(), head, u.root, &self.sig);
+            self.rsucc_covered(id, &v, &a)
+        })
     }
 
     /// r-Pred with no `A_i` (arXiv:1805.01396 Table 3, n = 0) for contexts
@@ -7611,6 +8453,7 @@ impl Engine {
         for &o in &new {
             self.contexts[id].merge_subscriptions.insert(o);
             self.contexts[g].predecessors.entry((id, o)).or_default();
+            self.note_root_label(id, o);
         }
         // Deliver the ground context's current body-free x-free clauses whose
         // individuals this context has all announced (the guard of the
@@ -7632,10 +8475,18 @@ impl Engine {
                     lit_inds(l, &mut inds);
                 }
                 let Some(&label) = inds.iter().find(|o| new.contains(o)) else { continue };
-                // Context regime: a ground equality follows either announced
-                // side (`calc::eq_announce`, docs/PER-CONTEXT-ORDERING.md).
-                if !inds.iter().all(|o| *o >= self.nom_base || gctx.predecessors.contains_key(&(id, *o)))
-                    && !(eq_announce() && ground_unit_equality(c))
+                // Context regime: a ground (in)equality of the clause needs
+                // only one announced side (R3, `in_announced_interface`,
+                // docs/PER-CONTEXT-ORDERING.md section 8).
+                let announced =
+                    |o: Term| o >= self.nom_base || ground_guard_off() || gctx.predecessors.contains_key(&(id, o));
+                if !inds.iter().all(|&o| announced(o))
+                    && !(eq_announce()
+                        && if eq_closure_announce() {
+                            in_announced_interface(c, announced, self.rank_bound(gctx, id))
+                        } else {
+                            ground_unit_equality(c)
+                        })
                 {
                     continue;
                 }
@@ -7653,6 +8504,62 @@ impl Engine {
                 from: pack_msg_context(g),
                 edge_label: edge.1,
                 pool_idx,
+            });
+        }
+    }
+
+    /// Record that context `id` has an edge labelled `o` to the ground
+    /// context (see `Context::root_labels`).
+    fn note_root_label(&mut self, id: usize, o: Term) {
+        let ctx = &mut self.contexts[id];
+        if ctx.root_label_set.insert(o) {
+            ctx.root_labels.push(o);
+        }
+    }
+
+    /// Predecessor labels over root edges (docs/NOMINALS-CB.md section 12).
+    /// The ground context reads every element linked to an individual as its
+    /// predecessor variable `y`. Its Hyper can only match a body atom `B(z)`
+    /// at such an element when `B(y)` is a hypothesis there, and r-Succ as
+    /// stated in arXiv:1805.01396 (`Su^r = {B(o), S(y,o), S(o,y)}`) never
+    /// provides one, so an at-most at an individual whose filler `B` must
+    /// hold at a linked element (`{b} ⊑ ≤1 p.B`, or the frontend's `⊤`
+    /// definer filler of `{b} ⊑ ≤1 p`) never fires Nom. With r-Succ on, this
+    /// offers every central label `B(x)` of `id` (`rsucc_reach`, the labels
+    /// an ordinary successor receives) over each root edge as the hypothesis
+    /// `B(y) → B(y)`, exactly as `rsucc_cross_step` does over a successor
+    /// edge. The hypothesis is a tautology; r-Pred resolves a ground-context
+    /// body atom `B(y)` against a clause of the receiver with `B(x)` maximal,
+    /// which exists because the receiver offered `B(y)`.
+    fn offer_root_reach(&mut self, id: usize) {
+        if !self.sig.rsucc || self.contexts[id].root_labels.is_empty() || root_reach_off() {
+            return;
+        }
+        let Some(g) = self.ground_ctx else { return };
+        if g == id {
+            return;
+        }
+        let mut fired: Vec<(Term, Pred)> = Vec::new();
+        {
+            let ctx = &mut self.contexts[id];
+            let n = ctx.rsucc_reach.len();
+            for &o in &ctx.root_labels {
+                let start = ctx.root_reach_hwm.get(&o).copied().unwrap_or(0);
+                if start >= n {
+                    continue;
+                }
+                for &p in &ctx.rsucc_reach[start..n] {
+                    fired.push((o, p.apply(&|v| forwards(o, v))));
+                }
+                ctx.root_reach_hwm.insert(o, n);
+            }
+        }
+        for (o, p) in fired {
+            self.msgs.push_back(Msg::Succ {
+                from: pack_msg_context(id),
+                f: o,
+                p,
+                target: pack_msg_context(g),
             });
         }
     }
@@ -7730,6 +8637,28 @@ impl Engine {
         for p in &from_ctx.core {
             body.push(p.apply(&subst));
         }
+        // On a composite edge `f(o)` the images of the sender's atoms over `x`
+        // are the premises `A_iσ`; the sender's own ground atoms are the
+        // labels `C_i`. An image that coincides with a label stays copyable.
+        let mut resolve: Vec<Pred> = Vec::new();
+        if is_comp(f) && !pred_copy_all() {
+            let mentions_x = |p: &Pred| match *p {
+                Pred::Concept { t, .. } => t == X,
+                Pred::Role { s, t, .. } => s == X || t == X,
+            };
+            let senders = clause.body.iter().chain(from_ctx.core.iter());
+            let labels: Vec<Pred> = senders.clone().filter(|p| p.is_ground()).copied().collect();
+            for p in senders {
+                if mentions_x(p) {
+                    let image = p.apply(&subst);
+                    if !labels.contains(&image) {
+                        resolve.push(image);
+                    }
+                }
+            }
+            resolve.sort();
+            resolve.dedup();
+        }
         // Full literals: pool-eligible heads are predicates plus (nominal
         // mode) the individual equality forms; `x ≈ o` crosses as
         // `f(x) ≈ o`, which the receiver's Eq rule then rewrites.
@@ -7744,7 +8673,7 @@ impl Engine {
         let mut head: Vec<Lit> = clause.head.iter().map(|l| l.apply(&subst)).collect();
         head.sort();
         head.dedup();
-        PredClause { body, head }
+        PredClause { body, head, resolve }
     }
 
     /// The receiver-side half of a Pred message: intern the back-substituted
@@ -7890,7 +8819,7 @@ impl Engine {
             let mut v = Vec::new();
             v.extend(ctx.max_head_pred(bp).iter().map(|ci| (ci as usize, bp)));
             if v.is_empty() {
-                if bp.is_ground() {
+                if pc.copies_verbatim(bp) {
                     ground.push(bp);
                     continue;
                 }
@@ -8014,7 +8943,7 @@ impl Engine {
                     .map(|clause_id| (clause_id, body_predicate))
                     .collect();
                 if providers.is_empty() {
-                    if body_predicate.is_ground() {
+                    if payload.copies_verbatim(body_predicate) {
                         ground.push(body_predicate);
                     } else {
                         possible = false;
@@ -8145,6 +9074,24 @@ impl Engine {
         }
     }
 
+    /// Stop `run_for` as soon as a context whose empty clause means global
+    /// inconsistency (the ground context, or the ⊤ root context) has worked
+    /// off the empty clause. The published answer of an inconsistent
+    /// ontology is fixed, `inconsistent()` stays true under further
+    /// saturation (the empty clause is never removed), and the remaining
+    /// messages can only add clauses to other contexts. The engine is then
+    /// not saturated, so callers that read anything beyond `inconsistent()`
+    /// (retained or certified engines, incremental reuse) must leave this
+    /// off; `subsumptions()` of a stopped engine lists only what was derived.
+    pub fn set_stop_on_global_refutation(&mut self, on: bool) {
+        self.stop_on_global_refutation = on;
+    }
+
+    #[inline]
+    fn global_refutation_stops(&self) -> bool {
+        self.stop_on_global_refutation && self.global_refutation
+    }
+
     pub fn run_for(&mut self, queries: &[Iri]) {
         let prof = std::env::var("KM_PROF").is_ok();
         if std::env::var_os("KM_MSGPROF").is_some() && self.stat_pred_out_by_ctx.is_empty() {
@@ -8169,6 +9116,9 @@ impl Engine {
         self.complete_nominal_enumeration_queries(queries);
         // Root contexts: one per named (query) concept.
         for (qi, &iri) in queries.iter().enumerate() {
+            if self.global_refutation_stops() {
+                break;
+            }
             if self.nominal_shortcuts.contains_key(&iri) {
                 continue;
             }
@@ -8200,9 +9150,11 @@ impl Engine {
         // (owl:Thing unsatisfiable) is detected regardless of which concepts are
         // named in the input (audit M2). It carries query=None, so `subsumptions`
         // skips it and it never contributes to the classification output.
-        let top = self.get_or_create_context(vec![], true, None);
-        self.saturate(top);
-        self.propagate(top);
+        if !self.global_refutation_stops() {
+            let top = self.get_or_create_context(vec![], true, None);
+            self.saturate(top);
+            self.propagate(top);
+        }
         let t_seed = t_start.elapsed();
         // Process inter-context messages to fixpoint, *batched*: drain the whole
         // pending set, apply every message as a clause/edge delta, record the
@@ -8262,6 +9214,13 @@ impl Engine {
                 round_epoch = 1;
             }
             while let Some(msg) = batch.pop_front() {
+                if self.global_refutation_stops() {
+                    // The ontology is inconsistent (see
+                    // `set_stop_on_global_refutation`); the remaining work
+                    // cannot change the answer.
+                    batch.clear();
+                    break;
+                }
                 guard += 1;
                 if guard > msg_cap {
                     // Hard safety cap on the inter-context message fixpoint.
@@ -8375,6 +9334,10 @@ impl Engine {
                 }
             }
             if truncated {
+                break;
+            }
+            if self.global_refutation_stops() {
+                self.msgs.clear();
                 break;
             }
             debug_assert!(batch.is_empty());
@@ -8960,6 +9923,16 @@ impl Engine {
         // alone are contradictory (e.g. {o} ⊑ B, {o} ⊑ C, B ⊓ C ⊑ ⊥) — the
         // individuals exist in every model, so that too is global
         // inconsistency.
+        // `global_refutation` also records the throwaway ⊤ closure of
+        // `ensure_shared_root_closure` (root, empty core, facts only: the
+        // closure the ⊤ context is seeded with), which is popped from
+        // `contexts` before the scan below can see it. A run stopped by
+        // `set_stop_on_global_refutation` may never create the ⊤ context, so
+        // the flag itself must answer (seeds 621, 1014, 1022 of the
+        // 2026-10-29 ALCHIQ set; docs/PER-CONTEXT-ORDERING.md section 12).
+        if self.global_refutation {
+            return true;
+        }
         let arena = &self.cc_arena[1];
         let top_bot = self.contexts.iter().any(|ctx| {
             ctx.root
@@ -9875,6 +10848,71 @@ mod tests {
         over_budget.context = 1;
         assert!(engine.nom_terms(over_budget, 1).is_none());
         assert!(engine.nom_truncated.get());
+    }
+
+    #[test]
+    fn nominal_covers_share_block_when_body_and_kept_head_are_strengthened() {
+        let mut engine = Engine::new(Sig::default(), Vec::new(), 0);
+        engine.nom_budget = 2;
+        let key1 = NomFiringKey {
+            context: 0,
+            source_body: vec![],
+            source_head: vec![Lit::eq(Y, Y)],
+            side_body: vec![],
+            side_head: vec![],
+            selected: vec![(0, rl(0, ind_term(1), Y))],
+            substitution: vec![(X, ind_term(1)), (zvar(1), Y), (zvar(2), Y)],
+        };
+        let body1 = vec![cx(0, Y), rl(0, ind_term(1), Y)];
+        let head1: Vec<Lit> = vec![];
+        let first = engine
+            .nom_terms_covered(key1, 1, &body1, &head1)
+            .expect("initial covering block");
+        assert_eq!(first.len(), 1);
+        assert_eq!(engine.nom_allocated.get(), 1);
+
+        // A firing in the same context whose sorted body contains `body1` and
+        // whose sorted kept head contains `head1` reuses `first`
+        // (`Nominals.nom_shared_cover_sound`) without consuming budget.
+        let key2 = NomFiringKey {
+            context: 0,
+            source_body: vec![],
+            source_head: vec![Lit::eq(comp_term(fterm(1), ind_term(1)), Y)],
+            side_body: vec![],
+            side_head: vec![Lit::P(cx(1, ind_term(1)))],
+            selected: vec![(1, rl(0, ind_term(1), Y))],
+            substitution: vec![
+                (X, ind_term(1)),
+                (zvar(1), Y),
+                (zvar(2), comp_term(fterm(1), ind_term(1))),
+            ],
+        };
+        let mut body2 = vec![cx(0, Y), cx(2, Y), rl(0, ind_term(1), Y)];
+        body2.sort();
+        let head2 = vec![Lit::P(cx(1, ind_term(1)))];
+        let reused = engine
+            .nom_terms_covered(key2, 1, &body2, &head2)
+            .expect("covered firing reuses existing block");
+        assert_eq!(reused, first);
+        assert_eq!(engine.nom_allocated.get(), 1);
+
+        // A firing whose body does NOT contain `body1` is not covered and
+        // allocates a disjoint block.
+        let key3 = NomFiringKey {
+            context: 0,
+            source_body: vec![],
+            source_head: vec![Lit::eq(Y, Y)],
+            side_body: vec![],
+            side_head: vec![],
+            selected: vec![(2, rl(0, ind_term(1), Y))],
+            substitution: vec![(X, ind_term(1)), (zvar(1), Y), (zvar(2), Y)],
+        };
+        let body3 = vec![rl(0, ind_term(1), Y)];
+        let fresh = engine
+            .nom_terms_covered(key3, 1, &body3, &head1)
+            .expect("uncovered firing allocates fresh block");
+        assert_ne!(fresh, first);
+        assert_eq!(engine.nom_allocated.get(), 2);
     }
 
     /// Trail invariant for the clone-free Hyper join: `mark()` + `rollback()`
@@ -11668,6 +12706,7 @@ mod tests {
         e.pred_interned.push(PredClause {
             body: vec![max, other],
             head: vec![],
+            resolve: Vec::new(),
         });
         e.certificate_history = Some(Vec::new());
         e.pred_origins.push(Some(PredOrigin {
@@ -11744,6 +12783,7 @@ mod tests {
         let pred = PredClause {
             body: vec![p1, p2, p3],
             head: vec![h],
+            resolve: Vec::new(),
         };
 
         let incremental = e.pred_from_neighbor_ordered(0, &pred, false, false);
@@ -11852,7 +12892,7 @@ mod tests {
             } else {
                 vec![extra[0], extra[1]]
             };
-            e.pred_interned.push(PredClause { body, head });
+            e.pred_interned.push(PredClause { body, head, resolve: Vec::new() });
             e.contexts[0]
                 .neighbor_pred_body_index
                 .entry(trigger)
@@ -11927,6 +12967,7 @@ mod tests {
         e.pred_interned.push(PredClause {
             body,
             head: vec![h],
+            resolve: Vec::new(),
         });
         e.contexts[0]
             .neighbor_pred_body_index
@@ -11975,6 +13016,101 @@ mod tests {
         let payload = e.pred_payload(0, edge, 0);
         assert_eq!(payload.body, vec![cx(a, edge)]);
         assert_eq!(payload.head, vec![Lit::P(cx(b, o))]);
+    }
+
+    /// docs/PER-CONTEXT-ORDERING.md section 15.2: on a composite edge `f(o)`
+    /// the image `A(f(o))` of a sender atom `A(x)` is a premise of Pred that
+    /// must resolve against a receiver clause with it maximal, while a sender
+    /// atom that is already ground (`L(o')`) is a label `C_i` and is copied.
+    #[test]
+    fn composite_edge_pred_resolves_premises_and_copies_labels() {
+        let mut sig = Sig::default();
+        let a = sig.concept("A");
+        let b = sig.concept("B");
+        let l = sig.concept("L");
+        let o = ind_term(1);
+        let o2 = ind_term(2);
+        let edge = comp_term(fterm(1), o);
+        let mut e = Engine::new(sig, vec![], 0);
+        // context 0: the receiver (no clause yet); context 1: the sender.
+        e.contexts.push(Context::new(0, vec![], false, None));
+        e.contexts.push(Context::new(1, vec![], false, None));
+        e.cc_arena[0].push(ContextClause::new(
+            vec![cx(a, X), cx(l, o2)],
+            vec![Lit::P(cx(b, Y))],
+            false,
+            &e.sig,
+        ));
+        e.contexts[1].delta.pred_pool.push(0);
+        let payload = e.pred_payload(1, edge, 0);
+        assert_eq!(payload.body, vec![cx(a, edge), cx(l, o2)]);
+        assert_eq!(payload.resolve, vec![cx(a, edge)]);
+        assert!(!payload.copies_verbatim(cx(a, edge)));
+        assert!(payload.copies_verbatim(cx(l, o2)));
+        // No provider for `A(f(o))`: no conclusion (the pre-v1.5.5 rule made
+        // `A(f(o))` a label of `A(f(o)) ∧ L(o') → B(o)`).
+        assert!(e.pred_from_neighbor(0, &payload, false).is_empty());
+        // A provider `→ A(f(o)) ∨ B(o2)` with `A(f(o))` maximal resolves it;
+        // the label `L(o')` is copied.
+        e.cc_arena[0].push(ContextClause::new(
+            vec![],
+            vec![Lit::P(cx(a, edge))],
+            false,
+            &e.sig,
+        ));
+        e.contexts[0].delta.worked_off.push(1);
+        e.contexts[0].delta.index_clause(&e.cc_arena[0], 1);
+        let out = e.pred_from_neighbor(0, &payload, false);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].body, vec![cx(l, o2)]);
+        assert_eq!(out[0].head, vec![Lit::P(cx(b, o))]);
+        // An ordinary edge marks nothing.
+        let plain = e.pred_payload(1, fterm(1), 0);
+        assert!(plain.resolve.is_empty());
+    }
+
+    /// docs/PER-CONTEXT-ORDERING.md section 15.3: forward subsumption through
+    /// the unit, least-pair and least-triple postings answers exactly as a
+    /// scan over every active clause, under insertions and removals.
+    #[test]
+    fn forward_subsumption_postings_match_a_full_scan() {
+        let sig = Sig::default();
+        let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
+        let mut next = |n: u64| {
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (state >> 33) % n
+        };
+        let lit = |k: u64| Lit::P(cx((k % 7) as Iri, ind_term(1 + (k / 7) as i32)));
+        let body_atom = |k: u64| cx(20 + k as Iri, ind_term(1));
+        let mut arena: Vec<ContextClause> = Vec::new();
+        let mut ctx = Context::new(0, vec![], false, None);
+        let mut live: Vec<u32> = Vec::new();
+        for round in 0..3000u32 {
+            let nh = next(13) as usize; // 0..12, past FWD_PAIR_HEAD_MAX
+            let nb = next(3) as usize;
+            let mut head: Vec<Lit> = (0..nh).map(|_| lit(next(21))).collect();
+            head.sort();
+            head.dedup();
+            let mut body: Vec<Pred> = (0..nb).map(|_| body_atom(next(3))).collect();
+            body.sort();
+            body.dedup();
+            let c = ContextClause::new(body, head, false, &sig);
+            let sigs: Vec<ClauseSig> = arena.iter().map(ClauseSig::of).collect();
+            let expected = live.iter().any(|&ci| arena[ci as usize].strengthens(&c));
+            assert_eq!(ctx.fwd_subsumed(&arena, &sigs, &c, None), expected, "round {round}");
+            if !expected && next(2) == 0 {
+                let cid = arena.len() as u32;
+                arena.push(c);
+                ctx.delta.clause_keys.insert(cid);
+                ctx.delta.index_active_clause(&arena, cid);
+                live.push(cid);
+            } else if !live.is_empty() && next(4) == 0 {
+                let k = next(live.len() as u64) as usize;
+                let cid = live.swap_remove(k);
+                ctx.delta.unindex_active_clause(&arena, cid);
+                ctx.delta.clause_keys.remove(&cid);
+            }
+        }
     }
 
     #[test]

@@ -1,0 +1,12 @@
+KM_TIMING ABox quotient item declined: SubObjectPropertyOf Iri("<http://bioonto.de/ro2.owl#function-of>") Word("owl:topObjectProperty")
+KM_TIMING ABox quotient not built: site 5
+KM_TIMING ABox quotient not built: site 3
+KM_TIMING mirror-route: declined by lexical prefilter: bytes=98372757 complements_below=0
+KM_TIMING frontend done @ 13.55s route=production_all
+KM_TIMING spawn_ht: read+convert 946107 clauses (ht_view=946107) in 3.04s
+KM_TIMING race: synchronous bridge classes=187518 typed_nominal=false cb_threads=1
+KM_TIMING race: HT worker spawned @ 7.02s after the CB stack started
+KM_TIMING race: HT-first phase ended @ 180.02s (exited=false answer=false budget=0s)
+KM_TIMING race: HT worker exited @ 19.42s (success=true)
+KM_TIMING race: read_tout done @ 19.50s
+KM_TIMING engine block done @ 225.14s (subs_keys=187185)

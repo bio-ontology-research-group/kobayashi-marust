@@ -114,7 +114,13 @@ impl CalculationAlgorithmContext {
     /// pending stop. `task_completed` is the C++ `taskCompleted` ctor argument
     /// (default `true` in Konclude).
     #[inline]
+    #[track_caller]
     pub fn raise_stop(&mut self, task_completed: bool) {
+        // Diagnostic only (`KM_HT_STOP_TRACE=1`): name the site that stops an
+        // unfinished task, which the bridge otherwise reports as a bare defer.
+        if !task_completed && super::stop_trace_enabled() {
+            eprintln!("HT-STOP incomplete at {}", std::panic::Location::caller());
+        }
         self.pending_signal = CalcSignal::Stop { task_completed };
     }
 
@@ -163,6 +169,7 @@ impl CalculationAlgorithmContextBase {
     }
     /// Forwarder for [`CalculationAlgorithmContext::raise_stop`].
     #[inline]
+    #[track_caller]
     pub fn raise_stop(&mut self, task_completed: bool) {
         self.base.raise_stop(task_completed);
     }

@@ -1,0 +1,6 @@
+init 12.72 ht_rules None True 259
+replace 6.62 ht_rules ht_delta True 259
+rc 0
+init 13.51 ht_rules None True 259
+replace 5.95 ht_rules ht_delta True 259
+rc 0

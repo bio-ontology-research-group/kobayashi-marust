@@ -1,0 +1,9 @@
+{
+  "ontology": "qualified_atmost_ok-pad.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["E", "A"],
+    ["E", "F"]
+  ],
+  "unsatisfiable": []
+}

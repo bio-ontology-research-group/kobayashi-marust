@@ -1,0 +1,8 @@
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-speed/data/final-3917-auto-diag.err:BRIDGE-SAT-PHASE prepare-total: 66.58s (5383 subjects)
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-speed/data/final-3917-auto-diag.err:BRIDGE-CLEARED-QUEUE-SCREEN accepted=0 rerun=512
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-speed/data/final-3917-auto-diag.err:BRIDGE-SAT-PHASE verify-total: 5.39s
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-speed/data/fix6-3917-forced.err:BRIDGE-SAT-PHASE prepare-total: 42.49s (5383 subjects)
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-speed/data/fix6-3917-forced.err:BRIDGE-CLEARED-QUEUE-SCREEN accepted=2514 rerun=2869
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-speed/data/fix6-3917-forced.err:BRIDGE-SAT-PHASE verify-total: 5.07s
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-speed/data/base-3917-prog.err:BRIDGE-SAT-PHASE prepare-total: 117.08s (5383 subjects)
+/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-speed/data/base-3917-prog.err:BRIDGE-SAT-PHASE verify-total: 10.75s

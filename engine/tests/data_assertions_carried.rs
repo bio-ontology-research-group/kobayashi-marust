@@ -26,6 +26,14 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 const BOUND: Duration = Duration::from_secs(60);
+/// Hang guard for `unproxied_assertions_can_hide_a_clash` only. Above the
+/// 512-literal cap every unproxied individual carries the same abstracted
+/// value profile, and the exact `nominals` CB route merges their 520 equal
+/// data successors through the value-identity clause: 48 s on an idle
+/// workstation, 85 s under load (2026-10-30, results/agents/2026-10-30/
+/// checkers-on-suite). The bound guards against a hang; the claim the test
+/// checks (no route publishes a complete consistent answer) is unchanged.
+const HEAVY_BOUND: Duration = Duration::from_secs(240);
 static NEXT: AtomicUsize = AtomicUsize::new(0);
 
 struct Fixture(PathBuf);
@@ -58,6 +66,15 @@ struct Answer {
 /// `KM_ALLOW_APPROXIMATE=1`. `Ok` carries the answer and whether it is marked
 /// `APPROXIMATE`; `Err` the exit code and stderr of a refusal.
 fn run(text: &str, route: Option<&str>, allow: bool) -> Result<(Answer, bool), (Option<i32>, String)> {
+    run_within(text, route, allow, BOUND)
+}
+
+fn run_within(
+    text: &str,
+    route: Option<&str>,
+    allow: bool,
+    bound: Duration,
+) -> Result<(Answer, bool), (Option<i32>, String)> {
     let fixture = Fixture::new(text);
     let mut command = Command::new(env!("CARGO_BIN_EXE_km"));
     for (key, _) in std::env::vars_os() {
@@ -91,10 +108,10 @@ fn run(text: &str, route: Option<&str>, allow: bool) -> Result<(Answer, bool), (
             let approximate = stdout.lines().any(|line| line.starts_with("APPROXIMATE\t"));
             return Ok((parse(&stdout), approximate));
         }
-        if started.elapsed() > BOUND {
+        if started.elapsed() > bound {
             let _ = child.kill();
             let _ = child.wait();
-            panic!("km classify exceeded {BOUND:?} on route {route:?}:\n{text}");
+            panic!("km classify exceeded {bound:?} on route {route:?}:\n{text}");
         }
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -229,23 +246,24 @@ fn mixed_object_and_data_assertions_are_carried() {
     refused(text, "default", "nominal");
 }
 
-/// The clause frontend never carries a negative data assertion: the positive
-/// one still gives `E ⊑ D`, and a clause route counts the omitted axiom once,
-/// so a selected one refuses unless approximation is allowed. The automatic
-/// route may instead answer through the exact ground source compilation,
-/// which carries the negative assertion as a complemented class assertion
-/// (nothing dropped).
+/// A negative data assertion `¬u(a, v)` is carried as the class assertion
+/// `a : ¬∃u.{v}` (v1.5.5): nothing is dropped on any ABox route, and the
+/// positive one still gives `E ⊑ D`. With `¬u(a, 1)` beside `u(a, 1)` the
+/// ontology is inconsistent (HermiT agrees on both).
 #[test]
-fn negative_data_assertion_is_published_as_dropped() {
+fn negative_data_assertion_is_carried() {
     let text = format!("{HEADER}{SINGLE}NegativeDataPropertyAssertion(:u :a \"2\"^^xsd:integer)\n)\n");
-    let answer = classify(&text, None);
-    assert!(answer.consistent);
-    assert!(answer.dropped <= 1);
-    assert_eq!(answer.subs, pairs(&[("E", "D")]));
-    for route in ["nominals", "certified_nominals"] {
-        let answer = refused(&text, route, "1 data-property assertion");
-        assert_eq!(answer.dropped, 1, "route {route}");
-        assert_eq!(answer.subs, pairs(&[("E", "D")]), "route {route}");
+    for route in ROUTES {
+        let answer = classify(&text, route);
+        assert_eq!(
+            answer,
+            Answer { consistent: true, dropped: 0, unsat: BTreeSet::new(), subs: pairs(&[("E", "D")]) },
+            "route {route:?}"
+        );
+    }
+    let clash = format!("{HEADER}{SINGLE}NegativeDataPropertyAssertion(:u :a \"01\"^^xsd:integer)\n)\n");
+    for route in ROUTES {
+        assert!(!classify(&clash, route).consistent, "route {route:?}");
     }
     refused(&text, "default", "nominal");
 }
@@ -276,12 +294,13 @@ fn assertions_above_the_literal_cap_are_carried_by_profile() {
 }
 
 /// A data cardinality counts distinct values, which the profile abstraction
-/// does not preserve: above the cap the conversion still declines and every
-/// assertion is published as dropped. (The bound sits on a superproperty
-/// and on a class with no instances, so the answer itself does not depend
-/// on it.)
+/// does not preserve. Until v1.5.4 the conversion then declined above the cap
+/// and every assertion was published as dropped; now every literal keeps its
+/// identity under the linear relation form and nothing is dropped. (The
+/// bound sits on a superproperty and on a class with no instances, so the
+/// answer itself does not depend on it.)
 #[test]
-fn counted_assertions_above_the_literal_cap_are_published_as_dropped() {
+fn counted_assertions_above_the_literal_cap_are_carried() {
     let mut text = format!(
         "{HEADER}SubClassOf(DataHasValue(:u \"1\"^^xsd:integer) :D)\nEquivalentClasses(:E ObjectOneOf(:a))\n\
          Declaration(DataProperty(:w)) Declaration(Class(:Never)) SubDataPropertyOf(:u :w)\n\
@@ -291,11 +310,13 @@ fn counted_assertions_above_the_literal_cap_are_published_as_dropped() {
         text.push_str(&format!("DataPropertyAssertion(:u :a \"{value}\"^^xsd:integer)\n"));
     }
     text.push_str(")\n");
-    let answer = classify(&text, None);
-    assert!(answer.consistent);
-    assert_eq!(answer.dropped, 600);
-    for route in ["nominals", "certified_nominals"] {
-        assert_eq!(refused(&text, route, "600 data-property assertions").dropped, 600, "route {route}");
+    for route in ROUTES {
+        let answer = classify(&text, route);
+        assert_eq!(
+            answer,
+            Answer { consistent: true, dropped: 0, unsat: BTreeSet::new(), subs: pairs(&[("E", "D")]) },
+            "route {route:?}"
+        );
     }
     refused(&text, "default", "nominal");
 }
@@ -362,7 +383,7 @@ fn unproxied_assertions_can_hide_a_clash() {
     text.push_str(")\n");
     for route in ALL_ROUTES {
         // A selected route that leaves them out refuses (exit 3).
-        match run(&text, route, false) {
+        match run_within(&text, route, false, HEAVY_BOUND) {
             Ok((answer, _)) => assert!(!answer.consistent || answer.dropped > 0, "route {route:?}: {answer:?}"),
             Err((code, stderr)) => assert!(route.is_some() && code == Some(3), "route {route:?}: {stderr}"),
         }
@@ -372,8 +393,8 @@ fn unproxied_assertions_can_hide_a_clash() {
 /// The counterexample to a per-subject abstraction under counting: `a` and
 /// `b` are identified through the functional object property `r`, and the
 /// functional data property `u` then has two distinct values. It must stay
-/// inconsistent; padded above the literal cap it must not be published as a
-/// complete consistent answer.
+/// inconsistent, also padded above the literal cap (v1.5.5: answered exactly;
+/// until v1.5.4 the padded input was published with its assertions dropped).
 #[test]
 fn merged_individuals_keep_distinct_values_under_counting() {
     let body = "Declaration(ObjectProperty(:r)) Declaration(NamedIndividual(:x)) Declaration(NamedIndividual(:b))\n\
@@ -389,6 +410,9 @@ fn merged_individuals_keep_distinct_values_under_counting() {
         padded.push_str(&format!("DataPropertyAssertion(:u <http://example.org/t#i{value}> \"{value}\"^^xsd:integer)\n"));
     }
     padded.push_str(")\n");
+    for route in ROUTES {
+        assert!(!classify(&padded, route).consistent, "route {route:?}");
+    }
     for route in ALL_ROUTES {
         match run(&padded, route, false) {
             Ok((answer, _)) => assert!(!answer.consistent || answer.dropped > 0, "route {route:?}: {answer:?}"),

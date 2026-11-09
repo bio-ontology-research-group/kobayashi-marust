@@ -1,0 +1,17 @@
+11647	rc=0	wall=5.0559	rss_gib=0.24	konclude=agreement hermit=agreement openllet=agreement 
+4903	rc=0	wall=4.9057	rss_gib=0.18	konclude=agreement 
+4796	rc=0	wall=3.2987	rss_gib=0.20	konclude=agreement openllet=agreement jfact=agreement 
+3917	rc=0	wall=5.0152	rss_gib=0.27	konclude=agreement jfact=consistency_disagreement 
+11378	rc=0	wall=6.5009	rss_gib=0.32	konclude=agreement jfact=consistency_disagreement 
+12191	rc=0	wall=6.5649	rss_gib=0.32	konclude=agreement jfact=consistency_disagreement 
+9151	rc=0	wall=62.428	rss_gib=0.63	konclude=agreement jfact=consistency_disagreement 
+9577	rc=0	wall=86.535	rss_gib=0.67	konclude=agreement jfact=consistency_disagreement 
+6132	rc=0	wall=11.637	rss_gib=0.51	konclude=agreement hermit=agreement 
+9899	rc=0	wall=11.867	rss_gib=0.51	konclude=agreement hermit=agreement 
+16315	rc=0	wall=30.607	rss_gib=1.33	konclude=agreement 
+10838	rc=0	wall=66.518	rss_gib=2.37	konclude=agreement 
+3087	rc=0	wall=72.291	rss_gib=2.49	konclude=agreement 
+7557	rc=0	wall=110.29	rss_gib=3.74	konclude=agreement 
+12128	rc=124	wall=240.29	rss_gib=2.18	
+10926	rc=124	wall=240.93	rss_gib=18.03	
+DONE

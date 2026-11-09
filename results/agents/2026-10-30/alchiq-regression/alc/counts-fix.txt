@@ -1,0 +1,4 @@
+f300_fix_auto.txt:     297 ok       3 TIMEOUT 
+f300_fix_htb.txt:      18 DECLINE     279 ok       3 TIMEOUT 
+s700_fix_auto.txt:       2 hermit-error     695 ok       3 TIMEOUT 
+s700_fix_htb.txt:      43 DECLINE       2 hermit-error     654 ok       1 TIMEOUT 

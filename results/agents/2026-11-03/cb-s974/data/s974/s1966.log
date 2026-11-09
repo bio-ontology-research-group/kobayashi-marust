@@ -1,0 +1,10 @@
+{info} 18:22:47:379 >> Starting Konclude ... 
+{info} 18:22:47:379 >> Konclude - Uni Ulm Parallel Reasoner
+{info} 18:22:47:379 >> Reasoner for the SROIQV(D) Description Logic, 64-bit, Version v0.7.0-1138 - 500e11d9 (Jun 27 2026)
+
+{info} 18:22:47:382 >> Starting classification for '/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/agent-scratch/bridge-self/pool/seeds/s1966.ofn'.
+{info} 18:22:47:383 >> Initializing reasoner. Creating calculation context.
+{info} 18:22:47:384 >> Reasoner initialized with 1 processing unit(s).
+{info} 18:22:47:386 >> Preprocessing ontology 'http://konclude.com/test/kb'.
+{info} 18:22:47:387 >> Finished preprocessing in 1 ms for ontology 'http://konclude.com/test/kb'.
+{info} 18:22:47:387 >> Precomputing ontology 'http://konclude.com/test/kb', expressiveness 'SIQ'.

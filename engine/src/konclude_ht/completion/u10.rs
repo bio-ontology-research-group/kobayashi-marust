@@ -182,6 +182,39 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         calc_alg_context: &CalculationAlgorithmContextBase,
     ) -> smallvec::SmallVec<[(EdgeId, NodeId); 4]> {
         let mut out: smallvec::SmallVec<[(EdgeId, NodeId); 4]> = smallvec::SmallVec::new();
+        // Membership index over `out`'s nodes. A linear scan of `out` per
+        // candidate made this function quadratic in the degree of a node: an
+        // ABox hub with tens of thousands of asserted neighbours spent most of
+        // its consistency completion here (ore_ont_16315). The set holds the
+        // same nodes as `out` once it is past a few entries; the output, its
+        // order and its first-occurrence choice of link are unchanged.
+        let mut out_nodes: crate::fxhash::FxHashSet<NodeId> = Default::default();
+        const LINEAR_LIMIT: usize = 16;
+        fn out_contains(
+            out: &[(EdgeId, NodeId)],
+            out_nodes: &crate::fxhash::FxHashSet<NodeId>,
+            node: NodeId,
+        ) -> bool {
+            if out.len() <= LINEAR_LIMIT {
+                out.iter().any(|&(_, seen)| seen == node)
+            } else {
+                out_nodes.contains(&node)
+            }
+        }
+        fn out_push(
+            out: &mut smallvec::SmallVec<[(EdgeId, NodeId); 4]>,
+            out_nodes: &mut crate::fxhash::FxHashSet<NodeId>,
+            item: (EdgeId, NodeId),
+        ) {
+            out.push(item);
+            if out.len() > LINEAR_LIMIT {
+                if out_nodes.is_empty() {
+                    out_nodes.extend(out.iter().map(|&(_, node)| node));
+                } else {
+                    out_nodes.insert(item.1);
+                }
+            }
+        }
         let pc = calc_alg_context.process_context();
 
         // (1) forward successors, hierarchy-resolved.
@@ -222,8 +255,8 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .processing_data_box()
                     .individual_process_node_vector()
                     .get_data(succ_id);
-                if succ.is_some() && !out.iter().any(|&(_, node)| node == succ) {
-                    out.push((link, succ));
+                if succ.is_some() && !out_contains(&out, &out_nodes, succ) {
+                    out_push(&mut out, &mut out_nodes, (link, succ));
                 }
             }
         }
@@ -249,9 +282,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 };
                 if opposite.is_some()
                     && self.ht_signed_role_matches(edge_role, role, inverse, calc_alg_context)
-                    && !out.iter().any(|&(_, node)| node == opposite)
+                    && !out_contains(&out, &out_nodes, opposite)
                 {
-                    out.push((anc_link, opposite));
+                    out_push(&mut out, &mut out_nodes, (anc_link, opposite));
                 }
             }
         }
@@ -275,7 +308,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     .processing_data_box()
                     .individual_process_node_vector()
                     .get_data(pred_id);
-                if pred.is_none() || out.iter().any(|&(_, node)| node == pred) {
+                if pred.is_none() || out_contains(&out, &out_nodes, pred) {
                     continue;
                 }
                 let pn = pc.node(pred);
@@ -297,10 +330,56 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     let inv_matches =
                         self.ht_signed_role_matches(edge_role, role, true, calc_alg_context);
                     if inv_matches {
-                        out.push((link, pred));
+                        out_push(&mut out, &mut out_nodes, (link, pred));
                         break;
                     }
                 }
+            }
+        }
+        out
+    }
+
+    /// The target of a `∀role` state over one link `link` at `source`: the
+    /// opposite endpoint when the link is a `role`-edge out of `source` (role
+    /// hierarchy resolved) or an inverse-`role` edge into it, as
+    /// [`Self::ht_all_rule_target_links`] reads each link; empty otherwise.
+    pub fn ht_rule_target_of_link(
+        &self,
+        source: NodeId,
+        link: EdgeId,
+        role: RoleId,
+        calc_alg_context: &CalculationAlgorithmContextBase,
+    ) -> smallvec::SmallVec<[(EdgeId, NodeId); 4]> {
+        let mut out: smallvec::SmallVec<[(EdgeId, NodeId); 4]> = smallvec::SmallVec::new();
+        let pc = calc_alg_context.process_context();
+        let e = pc.edge(link);
+        let edge_role: RoleId = e.get_link_role();
+        let edge_source = e.get_source_individual();
+        let edge_destination = e.get_destination_individual();
+        if edge_role.is_none() || edge_source.is_none() || edge_destination.is_none() {
+            return out;
+        }
+        let source_id = pc.node(source).individual_node_id();
+        let (opposite_id, inverse) = if pc.node(edge_source).individual_node_id() == source_id {
+            (pc.node(edge_destination).individual_node_id(), false)
+        } else if pc.node(edge_destination).individual_node_id() == source_id {
+            (pc.node(edge_source).individual_node_id(), true)
+        } else {
+            return out;
+        };
+        if !self.ht_signed_role_matches(edge_role, role, inverse, calc_alg_context) {
+            return out;
+        }
+        let opposite = calc_alg_context
+            .processing_data_box()
+            .individual_process_node_vector()
+            .get_data(opposite_id);
+        if opposite.is_some() {
+            let on = pc.node(opposite);
+            if !on.has_merged_into_individual_node_id()
+                && !on.has_purged_blocked_processing_restriction_flags()
+            {
+                out.push((link, opposite));
             }
         }
         out
@@ -1700,3 +1779,227 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
     // method definition on the shared impl.
     // =======================================================================
 }
+
+impl super::algorithm::CompletionTaskHandleAlgorithm {
+    /// Diagnostic (`KM_HT_GRAPH_DUMP=1`): print every node of the graph with
+    /// its flags, merge target, label tags and links. No effect on rules.
+    pub fn ht_graph_dump(
+        &mut self,
+        what: &str,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        let (lo, hi) = {
+            let v = calc_alg_context.processing_data_box().individual_process_node_vector();
+            (v.get_item_min_index(), v.get_item_max_index())
+        };
+        eprintln!("GRAPH-DUMP {} ids {}..={}", what, lo, hi);
+        for id in lo..=hi {
+            let node = calc_alg_context
+                .processing_data_box()
+                .individual_process_node_vector()
+                .get_data(id);
+            if node.is_none() {
+                continue;
+            }
+            let pc = calc_alg_context.process_context();
+            let onto = calc_alg_context.ontology_arenas();
+            let n = pc.node(node);
+            let mut labels: Vec<String> = Vec::new();
+            let ls = n.use_reapply_con_label_set;
+            if ls.is_some() {
+                let mut it = pc.label_set(ls).get_concept_label_set_iterator(true, false, false);
+                while it.has_next() {
+                    let cd: ConDescId = it.next(true, pc);
+                    if cd.is_none() {
+                        break;
+                    }
+                    let des = pc.con_desc(cd);
+                    let con = des.get_concept();
+                    labels.push(format!("{}{}", if des.is_negated() { "-" } else { "" }, onto.concept(con).get_concept_tag()));
+                }
+            }
+            let mut links: Vec<String> = Vec::new();
+            let mut keys: Vec<Cint64> = Vec::new();
+            let mut it = pc.node_successor_iterator(node);
+            while it.has_next() {
+                let link = it.next_link(false);
+                let other = it.next_individual_id(true);
+                if link.is_some() {
+                    keys.push(other);
+                }
+            }
+            keys.sort_unstable();
+            keys.dedup();
+            let sid = |x: NodeId| if x.is_some() { pc.node(x).individual_node_id() } else { i64::MIN };
+            for other in keys {
+                let mut rit = pc.node_successor_role_iterator(node, other);
+                while rit.has_next() {
+                    let link = rit.next(true);
+                    if link.is_some() {
+                        let e = pc.edge(link);
+                        links.push(format!("[{}:{}->{}]", onto.role(e.get_link_role()).get_role_tag(), sid(e.get_source_individual()), sid(e.get_destination_individual())));
+                    }
+                }
+            }
+            let merged = if n.has_merged_into_individual_node_id() { format!(" merged->{}", n.merged_into_individual_node_id()) } else { String::new() };
+            eprintln!(
+                "  node {} nom={} flags={:#x}{} L=[{}] links={}",
+                n.individual_node_id(),
+                n.is_nominal_individual_node(),
+                n.processing_restriction_flags,
+                merged,
+                labels.join(","),
+                links.join("")
+            );
+        }
+    }
+
+    /// `KM_HT_AUTOMAT_CLOSURE_AUDIT=1` (diagnostic): at a clash-free fixpoint,
+    /// check that the completion graph is closed under the all-successors
+    /// automaton rule. For every node whose own rules have run (not merged,
+    /// blocked, purged or represented by a cache), every automaton state in its
+    /// label (`CCAQAND` family, walked as `apply_automat_transactions`
+    /// recurses) and every plain `∀` / `CCAQALL` concept, each target the
+    /// all-successors arm reaches (`ht_all_rule_target_links`) must hold the
+    /// operand. A miss is a concept the full arm would still add, i.e. a
+    /// completion that stopped early. Returns the number of misses.
+    pub fn ht_automat_closure_audit(
+        &mut self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> u64 {
+        use super::super::model::op;
+        use super::super::process::node::IndividualProcessNode as N;
+        let skip_flags: Cint64 = N::PRF_DIRECTBLOCKED
+            | N::PRF_PROCESSINGBLOCKED
+            | N::PRF_INDIRECTBLOCKED
+            | N::PRF_PURGEDBLOCKED
+            | N::PRF_SATISFIABLECACHED
+            | N::PRF_ANCESTORSATISFIABLECACHED
+            | N::PRF_SIGNATUREBLOCKINGCACHED
+            | N::PRF_ANCESTORSIGNATUREBLOCKINGCACHED
+            | N::PRF_SATURATIONBLOCKINGCACHED
+            | N::PRF_ANCESTORSATURATIONBLOCKINGCACHED
+            | N::PRF_SATURATIONSUCCESSORCREATIONBLOCKINGCACHED
+            | N::PRF_COMPLETIONGRAPHCACHED;
+        let (lo, hi) = {
+            let v = calc_alg_context.processing_data_box().individual_process_node_vector();
+            (v.get_item_min_index(), v.get_item_max_index())
+        };
+        let mut checks: Vec<(NodeId, RoleId, ConceptId, bool, ConceptId)> = Vec::new();
+        for id in lo..=hi {
+            let node = calc_alg_context
+                .processing_data_box()
+                .individual_process_node_vector()
+                .get_data(id);
+            if node.is_none() {
+                continue;
+            }
+            let pc = calc_alg_context.process_context();
+            let n = pc.node(node);
+            if n.has_merged_into_individual_node_id()
+                || n.processing_restriction_flags & skip_flags != 0
+            {
+                continue;
+            }
+            let ls = n.use_reapply_con_label_set;
+            if ls.is_none() {
+                continue;
+            }
+            let onto = calc_alg_context.ontology_arenas();
+            let mut it = pc.label_set(ls).get_concept_label_set_iterator(true, false, false);
+            while it.has_next() {
+                let cd: ConDescId = it.next(true, pc);
+                if cd.is_none() {
+                    break;
+                }
+                let des = pc.con_desc(cd);
+                let con: ConceptId = des.get_concept();
+                let neg = des.is_negated();
+                let oc = onto.concept(con).get_operator_code();
+                let is_all = |oc: Cint64| {
+                    oc == op::CCAQALL || oc == op::CCIMPLAQALL || oc == op::CCBRANCHAQALL
+                };
+                let is_and = |oc: Cint64| {
+                    oc == op::CCAQAND || oc == op::CCIMPLAQAND || oc == op::CCBRANCHAQAND
+                };
+                if (oc == op::CCALL && !neg) || is_all(oc) {
+                    for nl in onto.concept(con).get_operand_list() {
+                        checks.push((node, onto.concept(con).get_role(), nl.target, nl.negated ^ neg, con));
+                    }
+                } else if is_and(oc) {
+                    let mut visited: crate::fxhash::FxHashSet<ConceptId> = Default::default();
+                    let mut stack: Vec<(ConceptId, bool)> = vec![(con, neg)];
+                    while let Some((state, sneg)) = stack.pop() {
+                        if !visited.insert(state) {
+                            continue;
+                        }
+                        let soc = onto.concept(state).get_operator_code();
+                        if is_all(soc) {
+                            for tl in onto.concept(state).get_operand_list() {
+                                checks.push((node, onto.concept(state).get_role(), tl.target, tl.negated ^ sneg, con));
+                            }
+                        } else if is_and(soc) {
+                            for nl in onto.concept(state).get_operand_list() {
+                                stack.push((nl.target, nl.negated));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let mut misses = 0u64;
+        let detail = super::automat_rest_link_audit_detail();
+        for (source, role, operand, operand_neg, origin) in checks {
+            let targets = self.ht_all_rule_target_links(source, role, calc_alg_context);
+            for (link, succ) in targets {
+                let loc = self.get_localized_individual(succ, false, calc_alg_context);
+                {
+                    // A merged-away or purged node is no longer an element of
+                    // the graph (its links were relocated to the merge target,
+                    // which the all-successors arm reaches by the relocated
+                    // link); the full arm may still write into its stale
+                    // label, but the model does not read it.
+                    let tn = calc_alg_context.process_context().node(loc);
+                    if tn.has_merged_into_individual_node_id()
+                        || tn.has_purged_blocked_processing_restriction_flags()
+                    {
+                        continue;
+                    }
+                }
+                let ls = calc_alg_context.process_context().node(loc).use_reapply_con_label_set;
+                let present = ls.is_some()
+                    && self.label_set_contains_concept_resolved(ls, operand, operand_neg, calc_alg_context);
+                if present {
+                    continue;
+                }
+                misses += 1;
+                if detail && misses <= 64 {
+                    let pc = calc_alg_context.process_context();
+                    let on = calc_alg_context.ontology_arenas();
+                    let ed = pc.edge(link);
+                    let id = |n: NodeId| if n.is_some() { pc.node(n).individual_node_id() } else { i64::MIN };
+                    eprintln!(
+                        "AUTOMAT-CLOSURE-AUDIT-MISS src={} src_flags={:#x} succ={} succ_flags={:#x} origin={}:{} role={} op={}{} link=e{}[{}:{}->{} cr={}]",
+                        id(source), pc.node(source).processing_restriction_flags,
+                        id(loc), pc.node(loc).processing_restriction_flags,
+                        on.concept(origin).get_concept_tag(), on.concept(origin).get_operator_code(),
+                        on.role(role).get_role_tag(),
+                        if operand_neg { "-" } else { "" }, on.concept(operand).get_concept_tag(),
+                        link.index(), on.role(ed.get_link_role()).get_role_tag(),
+                        id(ed.get_source_individual()), id(ed.get_destination_individual()), id(ed.creator));
+                }
+            }
+        }
+        let runs = AUTOMAT_CLOSURE_AUDIT_RUNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+        let total = AUTOMAT_CLOSURE_AUDIT_MISSES.fetch_add(misses, std::sync::atomic::Ordering::Relaxed) + misses;
+        if misses > 0 || runs.is_power_of_two() {
+            eprintln!("AUTOMAT-CLOSURE-AUDIT runs={runs} misses_here={misses} misses_total={total}");
+        }
+        misses
+    }
+}
+
+pub(crate) static AUTOMAT_CLOSURE_AUDIT_RUNS: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+pub(crate) static AUTOMAT_CLOSURE_AUDIT_MISSES: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);

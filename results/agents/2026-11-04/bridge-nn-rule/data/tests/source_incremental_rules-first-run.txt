@@ -1,0 +1,10 @@
+test incremental_rule_probe_matches_the_batch_checker_on_graph_rules ... FAILED
+test rules_route_retains_taxonomy_across_abox_clash_and_retraction ... FAILED
+test source_session_migrates_el_rules_el_and_rolls_back_a_declined_revision ... FAILED
+thread 'incremental_rule_probe_matches_the_batch_checker_on_graph_rules' (3956157) panicked at tests/source_incremental_rules.rs:322:5:
+thread 'rules_route_retains_taxonomy_across_abox_clash_and_retraction' (3957221) panicked at tests/source_incremental_rules.rs:171:9:
+    "error": String("could not start the rules-consistency thread with a 4160 MiB stack after 10 attempt(s): Resource temporarily unavailable (os error 11)"),
+    "status": String("error"),
+thread 'source_session_migrates_el_rules_el_and_rolls_back_a_declined_revision' (3957326) panicked at tests/source_incremental_rules.rs:219:5:
+test result: FAILED. 1 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 60.99s
+error: test failed, to rerun pass `--test source_incremental_rules`

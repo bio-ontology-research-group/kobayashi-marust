@@ -34,7 +34,7 @@ enum AboxFact {
     Role(String, String, String), // r(a,b)
     NegativeRole(String, String, String), // ¬r(a,b)
     Same(String, String),         // a ≈ b
-    Diff(String, String),         // a ≠ b  (recorded, not encoded — see below)
+    Diff(String, String),         // a ≠ b  (encoded over the proxies, see below)
 }
 
 fn ind_name(t: &JTerm) -> Option<&str> {
@@ -868,6 +868,46 @@ pub(crate) fn install_nominal_abox_with_same(
 ) -> bool {
     use std::collections::{HashMap, HashSet};
 
+    // Pre-merge (docs/HYBRID-CB-HT.md section 13): with equality admitted,
+    // install the quotient of the ABox by its `SameIndividual` classes and
+    // rename the source TBox's nominals to the representatives. Every
+    // consumer of the typed ABox then sees an equality-free ABox whose models
+    // are the original models up to the renaming. `KM_NO_SAME_PREMERGE=1`
+    // keeps the previous encoding (`{b}(a)` assertions merged at run time).
+    // Rule inputs carry a second, unrenamed source ABox and keep that path.
+    let source_meta = meta;
+    let quotient = if allow_same
+        && !meta.same.is_empty()
+        && tin.rule_source_abox.is_none()
+        && std::env::var_os("KM_NO_SAME_PREMERGE").is_none()
+    {
+        quotient_same_individuals(meta)
+    } else {
+        None
+    };
+    let (meta, renamed_axioms) = match &quotient {
+        Some((quotient, rename)) => {
+            if std::env::var_os("KM_TIMING").is_some() {
+                eprintln!(
+                    "native ABox pre-merge: {} SameIndividual pair(s), {} individual(s) to {} class(es)",
+                    meta.same.len(),
+                    meta.individuals.len(),
+                    quotient.individuals.len(),
+                );
+            }
+            let axioms: Vec<crate::json_io::SourceAxiomMeta> = tin
+                .source_axioms
+                .iter()
+                .map(|axiom| crate::json_io::SourceAxiomMeta {
+                    kind: axiom.kind,
+                    left: rename_concept_individuals(&axiom.left, rename),
+                    right: rename_concept_individuals(&axiom.right, rename),
+                })
+                .collect();
+            (quotient, Some(axioms))
+        }
+        None => (meta, None),
+    };
     tin.nominal_abox = meta.clone();
     let has_nominal_input = !meta.individuals.is_empty()
         || !meta.same.is_empty()
@@ -1147,6 +1187,9 @@ pub(crate) fn install_nominal_abox_with_same(
 
     match resolved {
         Ok((native, concepts, roles, negative_clauses, nominals)) => {
+            if let Some(axioms) = renamed_axioms {
+                tin.source_axioms = axioms;
+            }
             tin.concepts = concepts;
             tin.roles = roles;
             tin.clauses.extend(negative_clauses);
@@ -1155,6 +1198,10 @@ pub(crate) fn install_nominal_abox_with_same(
             true
         }
         Err(detail) => {
+            if quotient.is_some() {
+                // Fail closed with the source payload: no renamed state stays.
+                tin.nominal_abox = source_meta.clone();
+            }
             if std::env::var_os("KM_TIMING").is_some() {
                 eprintln!("native ABox conversion declined: {detail}");
             }
@@ -1171,6 +1218,161 @@ pub(crate) fn install_nominal_abox_with_same(
             }
             false
         }
+    }
+}
+
+/// Quotient of a typed ABox by its `SameIndividual` assertions
+/// (docs/HYBRID-CB-HT.md section 13).
+///
+/// The explicit equalities generate an equivalence relation `~` on the named
+/// individuals. Every class gets one representative, its first member in
+/// `meta.individuals` order, and `σ` maps each individual to it. The result
+/// is `σ` applied to the whole typed ABox: one entry per class whose proxies,
+/// class assertions and assertion markers are the union of its members'
+/// (assertions renamed under `σ`), `same` empty, and `σ` applied to both ends
+/// of every `DifferentIndividuals` pair and every positive and negative role
+/// assertion. Role assertions that become equal under `σ` are kept once (the
+/// native conversion declines repeated assertions, and a set of facts is
+/// unchanged by repetition). A different pair inside one class becomes
+/// `(r, r)`, which every consumer reads as an inconsistency.
+///
+/// Every proxy of a member stays on the merged entry, so a clause that names
+/// the proxy `{b}` of a merged-away `b` denotes the representative's
+/// singleton. `rename` is `σ` on individual names; callers apply it to every
+/// other structure that names an individual (the source TBox).
+///
+/// Returns `None` when an equality names an individual without an entry; the
+/// caller then declines as before.
+pub(crate) fn quotient_same_individuals(
+    meta: &crate::json_io::NominalAboxMeta,
+) -> Option<(
+    crate::json_io::NominalAboxMeta,
+    std::collections::HashMap<String, String>,
+)> {
+    use std::collections::{HashMap, HashSet};
+    let index: HashMap<&str, usize> = meta
+        .individuals
+        .iter()
+        .enumerate()
+        .map(|(i, entry)| (entry.individual.as_str(), i))
+        .collect();
+    if index.len() != meta.individuals.len() {
+        return None;
+    }
+    let mut parent: Vec<usize> = (0..meta.individuals.len()).collect();
+    fn find(parent: &mut [usize], mut item: usize) -> usize {
+        while parent[item] != item {
+            parent[item] = parent[parent[item]];
+            item = parent[item];
+        }
+        item
+    }
+    for (left, right) in &meta.same {
+        let left = *index.get(left.as_str())?;
+        let right = *index.get(right.as_str())?;
+        let (a, b) = (find(&mut parent, left), find(&mut parent, right));
+        // Keep the smaller index as root: the representative is the first
+        // member in entry order, independent of the order of `same`.
+        if a != b {
+            let (low, high) = if a < b { (a, b) } else { (b, a) };
+            parent[high] = low;
+        }
+    }
+    let mut rename: HashMap<String, String> = HashMap::new();
+    let mut slot: HashMap<usize, usize> = HashMap::new();
+    let mut out = crate::json_io::NominalAboxMeta {
+        complete: meta.complete,
+        unsupported: meta.unsupported.clone(),
+        ..Default::default()
+    };
+    let mut seen_assertions: Vec<HashSet<(crate::frontend::syntax::Concept, String)>> = Vec::new();
+    for i in 0..meta.individuals.len() {
+        let root = find(&mut parent, i);
+        if root != i {
+            rename.insert(
+                meta.individuals[i].individual.clone(),
+                meta.individuals[root].individual.clone(),
+            );
+        }
+    }
+    let sigma = |name: &str| -> String { rename.get(name).cloned().unwrap_or_else(|| name.to_string()) };
+    for (i, entry) in meta.individuals.iter().enumerate() {
+        let root = find(&mut parent, i);
+        let at = *slot.entry(root).or_insert_with(|| {
+            out.individuals.push(crate::json_io::NominalIndividualMeta {
+                individual: meta.individuals[root].individual.clone(),
+                ..Default::default()
+            });
+            seen_assertions.push(HashSet::new());
+            out.individuals.len() - 1
+        });
+        let target = &mut out.individuals[at];
+        for proxy in &entry.proxies {
+            if !target.proxies.contains(proxy) {
+                target.proxies.push(proxy.clone());
+            }
+        }
+        if entry.assertions.len() != entry.assertion_markers.len() {
+            // Keep the mismatch visible to the conversion's own check.
+            target.assertions.extend(entry.assertions.iter().map(|c| rename_concept_individuals(c, &rename)));
+            target.assertion_markers.extend(entry.assertion_markers.iter().cloned());
+            continue;
+        }
+        for (concept, marker) in entry.assertions.iter().zip(&entry.assertion_markers) {
+            let concept = rename_concept_individuals(concept, &rename);
+            if seen_assertions[at].insert((concept.clone(), marker.clone())) {
+                target.assertions.push(concept);
+                target.assertion_markers.push(marker.clone());
+            }
+        }
+    }
+    let mut seen_different = HashSet::new();
+    for (left, right) in &meta.different {
+        let pair = (sigma(left), sigma(right));
+        let key = if pair.0 <= pair.1 { pair.clone() } else { (pair.1.clone(), pair.0.clone()) };
+        if seen_different.insert(key) {
+            out.different.push(pair);
+        }
+    }
+    let rename_roles = |assertions: &[crate::json_io::NominalRoleAssertionMeta]| {
+        let mut seen = HashSet::new();
+        let mut kept = Vec::with_capacity(assertions.len());
+        for assertion in assertions {
+            let renamed = crate::json_io::NominalRoleAssertionMeta {
+                role: assertion.role.clone(),
+                source: sigma(&assertion.source),
+                target: sigma(&assertion.target),
+            };
+            if seen.insert((renamed.role.clone(), renamed.source.clone(), renamed.target.clone())) {
+                kept.push(renamed);
+            }
+        }
+        kept
+    };
+    out.role_assertions = rename_roles(&meta.role_assertions);
+    out.negative_role_assertions = rename_roles(&meta.negative_role_assertions);
+    Some((out, rename))
+}
+
+/// `σ` on the individual names of a source concept (`Concept::Nominal`).
+pub(crate) fn rename_concept_individuals(
+    concept: &crate::frontend::syntax::Concept,
+    rename: &std::collections::HashMap<String, String>,
+) -> crate::frontend::syntax::Concept {
+    use crate::frontend::syntax::Concept;
+    if rename.is_empty() {
+        return concept.clone();
+    }
+    match concept {
+        Concept::Nominal(name) => Concept::Nominal(rename.get(name).cloned().unwrap_or_else(|| name.clone())),
+        Concept::Name(_) | Concept::Top | Concept::Bottom | Concept::HasSelf(_) => concept.clone(),
+        Concept::Not(inner) => Concept::Not(Box::new(rename_concept_individuals(inner, rename))),
+        Concept::And(items) => Concept::And(items.iter().map(|c| rename_concept_individuals(c, rename)).collect()),
+        Concept::Or(items) => Concept::Or(items.iter().map(|c| rename_concept_individuals(c, rename)).collect()),
+        Concept::Exists(role, inner) => Concept::Exists(role.clone(), Box::new(rename_concept_individuals(inner, rename))),
+        Concept::Forall(role, inner) => Concept::Forall(role.clone(), Box::new(rename_concept_individuals(inner, rename))),
+        Concept::AtLeast(n, role, inner) => Concept::AtLeast(*n, role.clone(), Box::new(rename_concept_individuals(inner, rename))),
+        Concept::AtMost(n, role, inner) => Concept::AtMost(*n, role.clone(), Box::new(rename_concept_individuals(inner, rename))),
     }
 }
 
@@ -3445,6 +3647,7 @@ fn convert_with_rule_abox(
         }
         if !head_funs.is_empty() {
             if c.body.iter().any(atom_has_fun) || head_funs.len() != 1 {
+                if std::env::var_os("KM_HT_TRACE_DROPPED").is_some() { eprintln!("KM_HT_TRACE_DROPPED clause={}", serde_json::to_string(c).unwrap_or_default()); }
                 dropped += 1;
                 continue;
             }
@@ -3516,6 +3719,7 @@ fn convert_with_rule_abox(
         if !body_eq_pairs.is_empty() && c.head.is_empty() {
             distinct_pairs.extend(body_eq_pairs);
         } else if c.body.iter().any(atom_has_fun) {
+            if std::env::var_os("KM_HT_TRACE_DROPPED").is_some() { eprintln!("KM_HT_TRACE_DROPPED clause={}", serde_json::to_string(c).unwrap_or_default()); }
             dropped += 1;
         } else if c
             .head
@@ -3646,6 +3850,7 @@ fn convert_with_rule_abox(
     for f in &exj_order {
         let rec = &exj[f];
         if !rec.ok || rec.role.is_none() || rec.fillers.is_empty() {
+            if std::env::var_os("KM_HT_TRACE_DROPPED").is_some() { eprintln!("KM_HT_TRACE_DROPPED existential={} ok={} role={:?} fillers={}", f, rec.ok, rec.role, rec.fillers.len()); }
             dropped += 1;
             continue;
         }
@@ -3965,6 +4170,7 @@ fn convert_with_rule_abox(
             }
         }
         if bad {
+            if std::env::var_os("KM_HT_TRACE_DROPPED").is_some() { eprintln!("KM_HT_TRACE_DROPPED clause={}", serde_json::to_string(c).unwrap_or_default()); }
             dropped += 1;
             continue;
         }
@@ -3984,8 +4190,7 @@ fn convert_with_rule_abox(
     //   q(a)      ⇒ {a} ⊑ q              : __nom__a(x) → q(x)
     //   r(a,b)    ⇒ {a} ⊑ ∃r.{b}         : __nom__a(x) → ∃r.__nom__b(x)
     //   a ≈ b     ⇒ {a} ⊑ {b}, {b} ⊑ {a} : the two nodes merge via the o-rule
-    //   a ≠ b     ⇒ dropped (sound: losing a distinctness can never INVENT a clash;
-    //              encoding it as a tableau distinct-edge is left to a later increment)
+    //   a ≠ b     ⇒ {a} ⊓ {b} ⊑ ⊥        : __nom__a(x) ∧ __nom__b(x) → ⊥
     // Every named node also carries the O-guard `__O__`, and every rule variable is
     // guarded by `__O__` so it only binds to a named individual (DL-safety): firing
     // over an anonymous ∃-successor would be unsound.
@@ -4089,10 +4294,22 @@ fn convert_with_rule_abox(
                     });
                 }
                 AboxFact::Diff(a, b) => {
+                    // `a ≉ b` over the nominal roots: each proxy denotes
+                    // exactly one element (the worker seeds one root per
+                    // proxy and merges every carrier into it), so the two
+                    // individuals differ iff no element carries both
+                    // proxies. The clause is entailed by the ontology, so it
+                    // can only remove models the ontology does not have
+                    // (2026-10-30; it was omitted without being counted).
                     note(a, &mut individuals);
                     note(b, &mut individuals);
-                    let _ = ids.cid(&nom_of(a));
-                    let _ = ids.cid(&nom_of(b));
+                    let na = ids.cid(&nom_of(a));
+                    let nb = ids.cid(&nom_of(b));
+                    ht.push(HtClause {
+                        body: vec![HAtom::Concept { neg: false, c: na, t: 0 },
+                            HAtom::Concept { neg: false, c: nb, t: 0 }],
+                        head: vec![],
+                    });
                 }
             }
         }
@@ -4470,6 +4687,21 @@ fn convert_with_rule_abox(
         }
     }
 
+    // ---- entailed functionality (results/agents/2026-11-04/cb-nn1811) ----
+    // Adds `R(0,1) ∧ R(0,2) → 1≈2` for every role whose functionality the
+    // view entails through an at-most-1 clause with trivial guards. Exact:
+    // each added clause is a consequence of the view, which keeps every
+    // clause. Proof-carrying HT publication compares this view with its
+    // source clause by clause, so it keeps the view unchanged.
+    if !crate::tableau::ht_lean_certification_requested()
+        && std::env::var_os("KM_HT_NO_ENTAILED_FUNCTIONAL").is_none()
+    {
+        let added = add_entailed_functional_clauses(&mut ht);
+        if std::env::var_os("KM_HT_STATS").is_some() {
+            eprintln!("cb_to_ht [entailed-functional] +{added} functional clauses");
+        }
+    }
+
     nominal_ids.sort();
     nominal_ids.dedup();
     TInput {
@@ -4501,6 +4733,656 @@ fn convert_with_rule_abox(
         definers: definers.to_vec(),
         source_axioms: source_axioms.to_vec(),
         data_roles: Vec::new(),
+    }
+}
+
+/// The plain functionality clause `R(0,1) ∧ R(0,2) → 1≈2`.
+fn functional_clause(role: usize) -> HtClause {
+    HtClause {
+        body: vec![
+            HAtom::Role { r: role, s: 0, t: 1 },
+            HAtom::Role { r: role, s: 0, t: 2 },
+        ],
+        head: vec![HAtom::Eq { s: 1, t: 2 }],
+    }
+}
+
+/// The role of a plain functionality clause `R(h,a) ∧ R(h,b) → a≈b`.
+fn plain_functional_role(clause: &HtClause) -> Option<usize> {
+    match (clause.body.as_slice(), clause.head.as_slice()) {
+        (
+            [HAtom::Role { r: r0, s: s0, t: t0 }, HAtom::Role { r: r1, s: s1, t: t1 }],
+            [HAtom::Eq { s, t }],
+        ) if r0 == r1
+            && s0 == s1
+            && t0 != t1
+            && s0 != t0
+            && s0 != t1
+            && (s.min(t), s.max(t)) == (t0.min(t1), t0.max(t1)) =>
+        {
+            Some(*r0)
+        }
+        _ => None,
+    }
+}
+
+/// Add the functionality clause of every role whose functionality the view
+/// entails through an at-most-1 clause with trivial guards, and return how
+/// many clauses it added.
+///
+/// Why. The frontend writes `⊤ ⊑ ≤1 R`, `ObjectPropertyDomain(R ≤1 R)` and
+/// `InverseFunctionalObjectProperty` as at-most clauses qualified by
+/// definers (`Q_1(1) ∧ Q_1(2) ∧ Q_0(0) ∧ R(0,1) ∧ R(0,2) → 1≈2` with
+/// `→ Q_1(x)` and `→ Q_0(x)`) or in the shared-target orientation. The
+/// native bridge flags a role functional only from the plain clause that
+/// `FunctionalObjectProperty` produces (`bridge.rs`, functional scan), and
+/// its satisfiable-expander cache refuses to absorb an existential at a
+/// cached node whose role leads back to the ancestor only when that role is
+/// functional or an at-most of it is already in the node's reapply queue
+/// (Konclude's `isGeneratingConceptSatisfiableCachedAbsorpable`). Without
+/// the flag the bridge missed `A ⊑ Q4` on nn1811 and on the four-axiom
+/// reduction `r19` (`InverseObjectProperties(r s)`, `DisjointClasses(A C)`,
+/// `⊤ ⊑ ≤1 s`, `¬Q4 ⊑ ∃r.∃s.C`).
+///
+/// Exactness. A concept is *universal* when the view derives it on every
+/// element from unit facts by Horn clauses over one variable; it is
+/// *implied at the source* (target) of `R` when the view derives it there
+/// from one `R`-atom and universal or already implied concepts, closed
+/// under one-variable Horn clauses and under the inverse and inclusion
+/// clauses `R(0,1) → S(1,0)` and `R(0,1) → S(0,1)`. Each such derivation is
+/// a chain of resolution steps with clauses of the view. An at-most-1
+/// clause `G(h) ∧ F(a) ∧ F(b) ∧ R(h,a) ∧ R(h,b) → a≈b` whose concept atoms
+/// are all universal or implied at their endpoint therefore entails
+/// `R(h,a) ∧ R(h,b) → a≈b`; in the shared-target orientation
+/// (`R(a,h) ∧ R(b,h)`) it entails the functionality of every `S` with
+/// `S(0,1) → R(1,0)`. The pass only adds these consequences and keeps every
+/// clause, so the view has the same models and every exact HT worker the
+/// same answers.
+fn add_entailed_functional_clauses(ht: &mut Vec<HtClause>) -> usize {
+    use std::collections::{BTreeSet, HashMap, HashSet};
+    fn positive_concept(atom: &HAtom) -> Option<(usize, usize)> {
+        match atom {
+            HAtom::Concept { neg: false, c, t } => Some((*c, *t)),
+            _ => None,
+        }
+    }
+    fn body_roles(clause: &HtClause) -> Vec<(usize, usize, usize)> {
+        clause
+            .body
+            .iter()
+            .filter_map(|atom| match atom {
+                HAtom::Role { r, s, t } => Some((*r, *s, *t)),
+                _ => None,
+            })
+            .collect()
+    }
+    // Every non-role body atom as a positive concept atom, or None.
+    fn body_concepts(clause: &HtClause) -> Option<Vec<(usize, usize)>> {
+        clause
+            .body
+            .iter()
+            .filter(|atom| !matches!(atom, HAtom::Role { .. }))
+            .map(positive_concept)
+            .collect()
+    }
+    // The at-most-1 clauses that could entail a functionality, and the roles
+    // that already have the plain clause. Without a candidate nothing can be
+    // added, and the analysis below (linear in the view, but a view of
+    // 100,000 clauses is common on ORE) is skipped.
+    struct Candidate {
+        role: usize,
+        hub: usize,
+        a: usize,
+        b: usize,
+        forward: bool,
+        concepts: Vec<(usize, usize)>,
+    }
+    let mut candidates: Vec<Candidate> = Vec::new();
+    let mut present: HashSet<usize> = HashSet::new();
+    for clause in ht.iter() {
+        if let Some(r) = plain_functional_role(clause) {
+            present.insert(r);
+            continue;
+        }
+        let [HAtom::Eq { s: e0, t: e1 }] = clause.head.as_slice() else { continue };
+        let roles = body_roles(clause);
+        let [(r0, s0, t0), (r1, s1, t1)] = roles.as_slice() else { continue };
+        if r0 != r1 {
+            continue;
+        }
+        // Forward: R(h,a) ∧ R(h,b); shared target: R(a,h) ∧ R(b,h).
+        let (hub, a, b, forward) = if s0 == s1 && t0 != t1 {
+            (*s0, *t0, *t1, true)
+        } else if t0 == t1 && s0 != s1 {
+            (*t0, *s0, *s1, false)
+        } else {
+            continue;
+        };
+        if hub == a || hub == b || (*e0.min(e1), *e0.max(e1)) != (a.min(b), a.max(b)) {
+            continue;
+        }
+        let Some(concepts) = body_concepts(clause) else { continue };
+        candidates.push(Candidate { role: *r0, hub, a, b, forward, concepts });
+    }
+    if candidates.is_empty() {
+        return 0;
+    }
+    // Role links `R(0,1) → S(1,0)` (inverse, swapped) and `R(0,1) → S(0,1)`
+    // (inclusion), as (R, S, swapped).
+    let mut links: Vec<(usize, usize, bool)> = Vec::new();
+    for clause in ht.iter() {
+        if let ([HAtom::Role { r, s, t }], [HAtom::Role { r: q, s: hs, t: hd }]) =
+            (clause.body.as_slice(), clause.head.as_slice())
+        {
+            if s == t {
+                continue;
+            }
+            if hs == t && hd == s {
+                links.push((*r, *q, true));
+            } else if hs == s && hd == t {
+                links.push((*r, *q, false));
+            }
+        }
+    }
+    // The implied concepts of a candidate role depend on its own clauses and,
+    // through the links, on the roles it links to: nothing else is consulted.
+    let mut relevant: HashSet<usize> = candidates.iter().map(|c| c.role).collect();
+    loop {
+        let before = relevant.len();
+        for &(r, q, _) in &links {
+            if relevant.contains(&r) {
+                relevant.insert(q);
+            }
+        }
+        if relevant.len() == before {
+            break;
+        }
+    }
+    // Universal concepts: the closure of unit facts under one-variable Horn
+    // clauses with positive concept atoms (forward chaining with one counter
+    // per clause).
+    let mut universal: HashSet<usize> = HashSet::new();
+    {
+        let mut need: Vec<usize> = Vec::new();
+        let mut head_of: Vec<usize> = Vec::new();
+        let mut watch: HashMap<usize, Vec<usize>> = HashMap::new();
+        let mut queue: Vec<usize> = Vec::new();
+        for clause in ht.iter() {
+            let [head] = clause.head.as_slice() else { continue };
+            let Some((c, t)) = positive_concept(head) else { continue };
+            let mut body: Vec<usize> = Vec::with_capacity(clause.body.len());
+            let mut eligible = true;
+            for atom in &clause.body {
+                match positive_concept(atom) {
+                    Some((b, bt)) if bt == t => body.push(b),
+                    _ => {
+                        eligible = false;
+                        break;
+                    }
+                }
+            }
+            if !eligible {
+                continue;
+            }
+            body.sort_unstable();
+            body.dedup();
+            let index = need.len();
+            need.push(body.len());
+            head_of.push(c);
+            if body.is_empty() {
+                queue.push(c);
+            } else {
+                for b in body {
+                    watch.entry(b).or_default().push(index);
+                }
+            }
+        }
+        while let Some(c) = queue.pop() {
+            if !universal.insert(c) {
+                continue;
+            }
+            if let Some(indices) = watch.get(&c) {
+                for &i in indices {
+                    need[i] -= 1;
+                    if need[i] == 0 {
+                        queue.push(head_of[i]);
+                    }
+                }
+            }
+        }
+    }
+    // (role, end, concept): the concept holds at the source (end `false`) or
+    // target (end `true`) of every role atom. Only relevant roles are tracked.
+    let mut implied: BTreeSet<(usize, bool, usize)> = BTreeSet::new();
+    // The (role, end) pairs with at least one implied concept.
+    let mut ends: BTreeSet<(usize, bool)> = BTreeSet::new();
+    let holds = |implied: &BTreeSet<(usize, bool, usize)>, role: usize, end: bool, c: usize| {
+        universal.contains(&c) || implied.contains(&(role, end, c))
+    };
+    struct OneRole {
+        r: usize,
+        s: usize,
+        u: usize,
+        c: usize,
+        t: usize,
+        concepts: Vec<(usize, usize)>,
+    }
+    let mut one_role: Vec<OneRole> = Vec::new();
+    let mut no_role: Vec<(usize, usize, Vec<(usize, usize)>)> = Vec::new();
+    for clause in ht.iter() {
+        let [head] = clause.head.as_slice() else { continue };
+        let Some((c, t)) = positive_concept(head) else { continue };
+        let Some(concepts) = body_concepts(clause) else { continue };
+        match body_roles(clause).as_slice() {
+            // R(s,u) ∧ concepts on s or u → C(s) or C(u).
+            [(r, s, u)] if s != u && (t == *s || t == *u) && relevant.contains(r) => {
+                one_role.push(OneRole { r: *r, s: *s, u: *u, c, t, concepts });
+            }
+            // Concepts on the head variable → C, at every role end.
+            [] => no_role.push((c, t, concepts)),
+            _ => {}
+        }
+    }
+    loop {
+        let mut changed = false;
+        for rule in &one_role {
+            let ok = rule.concepts.iter().all(|&(b, bt)| {
+                (bt == rule.s && holds(&implied, rule.r, false, b))
+                    || (bt == rule.u && holds(&implied, rule.r, true, b))
+            });
+            if ok && implied.insert((rule.r, rule.t == rule.u, rule.c)) {
+                ends.insert((rule.r, rule.t == rule.u));
+                changed = true;
+            }
+        }
+        let snapshot: Vec<(usize, bool)> = ends.iter().copied().collect();
+        for (c, t, concepts) in &no_role {
+            for &(r, e) in &snapshot {
+                if concepts.iter().all(|&(b, bt)| bt == *t && holds(&implied, r, e, b))
+                    && implied.insert((r, e, *c))
+                {
+                    ends.insert((r, e));
+                    changed = true;
+                }
+            }
+        }
+        for &(r, q, swapped) in &links {
+            if !relevant.contains(&r) {
+                continue;
+            }
+            // r(x,y) → q(y,x) (or q(x,y)): what holds at an end of every
+            // q-atom holds at the matching end of every r-atom.
+            let from_q: Vec<(bool, usize)> = implied
+                .range((q, false, 0)..=(q, true, usize::MAX))
+                .map(|&(_, e, c)| (e, c))
+                .collect();
+            for (e, c) in from_q {
+                if implied.insert((r, e ^ swapped, c)) {
+                    ends.insert((r, e ^ swapped));
+                    changed = true;
+                }
+            }
+        }
+        if !changed {
+            break;
+        }
+    }
+    let mut functional: BTreeSet<usize> = BTreeSet::new();
+    for cand in &candidates {
+        // The hub is the source of R in the forward orientation.
+        let trivial = cand.concepts.iter().all(|&(c, t)| {
+            if t == cand.hub {
+                holds(&implied, cand.role, !cand.forward, c)
+            } else if t == cand.a || t == cand.b {
+                holds(&implied, cand.role, cand.forward, c)
+            } else {
+                false
+            }
+        });
+        if !trivial {
+            continue;
+        }
+        if cand.forward {
+            functional.insert(cand.role);
+        } else {
+            for &(s, q, swapped) in &links {
+                if swapped && q == cand.role {
+                    functional.insert(s);
+                }
+            }
+        }
+    }
+    let mut added = 0;
+    for role in functional {
+        if present.insert(role) {
+            ht.push(functional_clause(role));
+            added += 1;
+        }
+    }
+    added
+}
+
+/// The first version of the pass (quadratic in the view), kept to test the
+/// current one against it.
+#[cfg(test)]
+fn add_entailed_functional_clauses_reference(ht: &mut Vec<HtClause>) -> usize {
+    use std::collections::{BTreeSet, HashSet};
+    fn positive_concept(atom: &HAtom) -> Option<(usize, usize)> {
+        match atom {
+            HAtom::Concept { neg: false, c, t } => Some((*c, *t)),
+            _ => None,
+        }
+    }
+    fn body_roles(clause: &HtClause) -> Vec<(usize, usize, usize)> {
+        clause
+            .body
+            .iter()
+            .filter_map(|atom| match atom {
+                HAtom::Role { r, s, t } => Some((*r, *s, *t)),
+                _ => None,
+            })
+            .collect()
+    }
+    // Every non-role body atom as a positive concept atom, or None.
+    fn body_concepts(clause: &HtClause) -> Option<Vec<(usize, usize)>> {
+        clause
+            .body
+            .iter()
+            .filter(|atom| !matches!(atom, HAtom::Role { .. }))
+            .map(positive_concept)
+            .collect()
+    }
+    // Universal concepts: the closure of unit facts under one-variable Horn
+    // clauses with positive concept atoms.
+    let mut universal: HashSet<usize> = HashSet::new();
+    loop {
+        let before = universal.len();
+        for clause in ht.iter() {
+            let [head] = clause.head.as_slice() else { continue };
+            let Some((c, t)) = positive_concept(head) else { continue };
+            if universal.contains(&c) {
+                continue;
+            }
+            if clause.body.iter().all(|atom| {
+                matches!(positive_concept(atom), Some((b, bt)) if bt == t && universal.contains(&b))
+            }) {
+                universal.insert(c);
+            }
+        }
+        if universal.len() == before {
+            break;
+        }
+    }
+    // Role links `R(0,1) → S(1,0)` (inverse, swapped) and `R(0,1) → S(0,1)`
+    // (inclusion), as (R, S, swapped).
+    let mut links: Vec<(usize, usize, bool)> = Vec::new();
+    for clause in ht.iter() {
+        if let ([HAtom::Role { r, s, t }], [HAtom::Role { r: q, s: hs, t: hd }]) =
+            (clause.body.as_slice(), clause.head.as_slice())
+        {
+            if s == t {
+                continue;
+            }
+            if hs == t && hd == s {
+                links.push((*r, *q, true));
+            } else if hs == s && hd == t {
+                links.push((*r, *q, false));
+            }
+        }
+    }
+    // (role, end, concept): the concept holds at the source (end `false`) or
+    // target (end `true`) of every role atom.
+    let mut implied: BTreeSet<(usize, bool, usize)> = BTreeSet::new();
+    let holds = |implied: &BTreeSet<(usize, bool, usize)>, role: usize, end: bool, c: usize| {
+        universal.contains(&c) || implied.contains(&(role, end, c))
+    };
+    loop {
+        let before = implied.len();
+        for clause in ht.iter() {
+            let [head] = clause.head.as_slice() else { continue };
+            let Some((c, t)) = positive_concept(head) else { continue };
+            let Some(concepts) = body_concepts(clause) else { continue };
+            match body_roles(clause).as_slice() {
+                // R(s,u) ∧ concepts on s or u → C(s) or C(u).
+                [(r, s, u)] if s != u && (t == *s || t == *u) => {
+                    let ok = concepts.iter().all(|&(b, bt)| {
+                        (bt == *s && holds(&implied, *r, false, b))
+                            || (bt == *u && holds(&implied, *r, true, b))
+                    });
+                    if ok {
+                        implied.insert((*r, t == *u, c));
+                    }
+                }
+                // Concepts on the head variable → C, at every role end.
+                [] => {
+                    let ends: BTreeSet<(usize, bool)> =
+                        implied.iter().map(|&(r, e, _)| (r, e)).collect();
+                    for (r, e) in ends {
+                        if concepts.iter().all(|&(b, bt)| bt == t && holds(&implied, r, e, b)) {
+                            implied.insert((r, e, c));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        for &(r, q, swapped) in &links {
+            // r(x,y) → q(y,x) (or q(x,y)): what holds at an end of every
+            // q-atom holds at the matching end of every r-atom.
+            let from_q: Vec<(bool, usize)> = implied
+                .iter()
+                .filter(|&&(role, _, _)| role == q)
+                .map(|&(_, e, c)| (e, c))
+                .collect();
+            for (e, c) in from_q {
+                implied.insert((r, e ^ swapped, c));
+            }
+        }
+        if implied.len() == before {
+            break;
+        }
+    }
+    let mut functional: BTreeSet<usize> = BTreeSet::new();
+    let mut present: HashSet<usize> = HashSet::new();
+    for clause in ht.iter() {
+        if let Some(r) = plain_functional_role(clause) {
+            present.insert(r);
+            continue;
+        }
+        let [HAtom::Eq { s: e0, t: e1 }] = clause.head.as_slice() else { continue };
+        let roles = body_roles(clause);
+        let [(r0, s0, t0), (r1, s1, t1)] = roles.as_slice() else { continue };
+        if r0 != r1 {
+            continue;
+        }
+        // Forward: R(h,a) ∧ R(h,b); shared target: R(a,h) ∧ R(b,h).
+        let (hub, a, b, forward) = if s0 == s1 && t0 != t1 {
+            (*s0, *t0, *t1, true)
+        } else if t0 == t1 && s0 != s1 {
+            (*t0, *s0, *s1, false)
+        } else {
+            continue;
+        };
+        if hub == a || hub == b || (*e0.min(e1), *e0.max(e1)) != (a.min(b), a.max(b)) {
+            continue;
+        }
+        let Some(concepts) = body_concepts(clause) else { continue };
+        // The hub is the source of R in the forward orientation.
+        let trivial = concepts.iter().all(|&(c, t)| {
+            if t == hub {
+                holds(&implied, *r0, !forward, c)
+            } else if t == a || t == b {
+                holds(&implied, *r0, forward, c)
+            } else {
+                false
+            }
+        });
+        if !trivial {
+            continue;
+        }
+        if forward {
+            functional.insert(*r0);
+        } else {
+            for &(s, q, swapped) in &links {
+                if swapped && q == *r0 {
+                    functional.insert(s);
+                }
+            }
+        }
+    }
+    let mut added = 0;
+    for role in functional {
+        if present.insert(role) {
+            ht.push(functional_clause(role));
+            added += 1;
+        }
+    }
+    added
+}
+
+#[cfg(test)]
+mod entailed_functional_tests {
+    use super::{add_entailed_functional_clauses, functional_clause, HAtom, HtClause};
+
+    fn c(c: usize, t: usize) -> HAtom {
+        HAtom::Concept { neg: false, c, t }
+    }
+    fn r(r: usize, s: usize, t: usize) -> HAtom {
+        HAtom::Role { r, s, t }
+    }
+    fn eq(s: usize, t: usize) -> HAtom {
+        HAtom::Eq { s, t }
+    }
+    fn cl(body: Vec<HAtom>, head: Vec<HAtom>) -> HtClause {
+        HtClause { body, head }
+    }
+    fn added(mut ht: Vec<HtClause>) -> Vec<HtClause> {
+        let before = ht.len();
+        let n = add_entailed_functional_clauses(&mut ht);
+        assert_eq!(ht.len(), before + n);
+        ht.split_off(before)
+    }
+
+    /// `⊤ ⊑ ≤1 s` as the frontend writes it: `→ Q1`, `→ Q0`,
+    /// `Q1(1) ∧ Q1(2) ∧ Q0(0) ∧ s(0,1) ∧ s(0,2) → 1≈2`.
+    #[test]
+    fn top_guarded_at_most_one_adds_functionality() {
+        let ht = vec![
+            cl(vec![], vec![c(1, 0)]),
+            cl(vec![], vec![c(0, 0)]),
+            cl(vec![c(1, 1), c(1, 2), c(0, 0), r(0, 0, 1), r(0, 0, 2)], vec![eq(1, 2)]),
+        ];
+        assert_eq!(added(ht), vec![functional_clause(0)]);
+    }
+
+    /// `ObjectPropertyDomain(s ≤1 s)`: the guard holds at the source of
+    /// every `s`-atom (`Q1(1) ∧ s(0,1) → Q0(0)`, `Q0 → Q2`).
+    #[test]
+    fn domain_guard_is_implied_by_the_role_atom() {
+        let ht = vec![
+            cl(vec![], vec![c(1, 0)]),
+            cl(vec![c(1, 1), r(0, 0, 1)], vec![c(0, 0)]),
+            cl(vec![c(0, 0)], vec![c(2, 0)]),
+            cl(vec![c(1, 1), c(1, 2), c(2, 0), r(0, 0, 1), r(0, 0, 2)], vec![eq(1, 2)]),
+        ];
+        assert_eq!(added(ht), vec![functional_clause(0)]);
+    }
+
+    /// `InverseFunctional(r)` with `s = r⁻`: `r(1,0) ∧ r(2,0) → 1≈2` and
+    /// `s(0,1) → r(1,0)` entail the functionality of `s` (role 1).
+    #[test]
+    fn shared_target_adds_functionality_of_the_inverse_name() {
+        let ht = vec![
+            cl(vec![r(0, 1, 0), r(0, 2, 0)], vec![eq(1, 2)]),
+            cl(vec![r(1, 0, 1)], vec![r(0, 1, 0)]),
+            cl(vec![r(0, 0, 1)], vec![r(1, 1, 0)]),
+        ];
+        assert_eq!(added(ht), vec![functional_clause(1)]);
+    }
+
+    /// The pass equals its first (quadratic) version on random small views
+    /// that mix unit facts, one-variable Horn clauses, role-guarded
+    /// implications, role links, at-most clauses in both orientations and
+    /// plain functionality clauses.
+    #[test]
+    fn matches_the_reference_on_random_views() {
+        use super::add_entailed_functional_clauses_reference;
+        let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
+        let mut next = move |n: usize| -> usize {
+            state = state.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            ((state >> 33) as usize) % n
+        };
+        let mut nonempty = 0;
+        for case in 0..6000 {
+            let mut ht: Vec<HtClause> = Vec::new();
+            for _ in 0..(2 + next(10)) {
+                let role = next(3);
+                let clause = match next(9) {
+                    0 => cl(vec![], vec![c(next(5), next(3))]),
+                    1 => cl(vec![c(next(5), 0)], vec![c(next(5), 0)]),
+                    2 => cl(vec![c(next(5), 0), c(next(5), 0)], vec![c(next(5), 0)]),
+                    3 => cl(vec![c(next(5), 1), r(role, 0, 1)], vec![c(next(5), 0)]),
+                    4 => cl(vec![c(next(5), 0), r(role, 0, 1)], vec![c(next(5), 1)]),
+                    5 => {
+                        let to = next(3);
+                        let head = if next(2) == 0 { r(to, 1, 0) } else { r(to, 0, 1) };
+                        cl(vec![r(role, 0, 1)], vec![head])
+                    }
+                    6 => cl(
+                        vec![c(next(5), 1), c(next(5), 2), c(next(5), 0), r(role, 0, 1), r(role, 0, 2)],
+                        vec![eq(1, 2)],
+                    ),
+                    7 => cl(
+                        vec![c(next(5), 1), c(next(5), 2), c(next(5), 0), r(role, 1, 0), r(role, 2, 0)],
+                        vec![eq(1, 2)],
+                    ),
+                    _ => cl(vec![r(role, 0, 1), r(role, 0, 2)], vec![eq(1, 2)]),
+                };
+                ht.push(clause);
+            }
+            let mut fast = ht.clone();
+            let mut slow = ht.clone();
+            let n_fast = add_entailed_functional_clauses(&mut fast);
+            let n_slow = add_entailed_functional_clauses_reference(&mut slow);
+            assert_eq!(n_fast, n_slow, "case {case}: {ht:?}");
+            assert_eq!(fast, slow, "case {case}: {ht:?}");
+            if n_fast > 0 {
+                nonempty += 1;
+            }
+        }
+        assert!(nonempty > 100, "the generator rarely adds a clause: {nonempty}");
+    }
+
+    /// A guard or filler that the view does not force (`D ⊑ ≤1 s`,
+    /// `⊤ ⊑ ≤1 s.C`), a negative literal, an existing functionality clause
+    /// and a shared target without an inverse name add nothing.
+    #[test]
+    fn nontrivial_guards_and_fillers_add_nothing() {
+        let guarded = vec![
+            cl(vec![], vec![c(1, 0)]),
+            cl(vec![c(1, 1), c(1, 2), c(5, 0), r(0, 0, 1), r(0, 0, 2)], vec![eq(1, 2)]),
+        ];
+        assert!(added(guarded).is_empty());
+        let qualified = vec![
+            cl(vec![], vec![c(0, 0)]),
+            cl(vec![c(5, 1), c(5, 2), c(0, 0), r(0, 0, 1), r(0, 0, 2)], vec![eq(1, 2)]),
+        ];
+        assert!(added(qualified).is_empty());
+        let negative = vec![cl(
+            vec![HAtom::Concept { neg: true, c: 3, t: 0 }, r(0, 0, 1), r(0, 0, 2)],
+            vec![eq(1, 2)],
+        )];
+        assert!(added(negative).is_empty());
+        let present = vec![cl(vec![r(0, 0, 1), r(0, 0, 2)], vec![eq(1, 2)])];
+        assert!(added(present).is_empty());
+        let no_inverse = vec![cl(vec![r(0, 1, 0), r(0, 2, 0)], vec![eq(1, 2)])];
+        assert!(added(no_inverse).is_empty());
+        // A universal concept needs a unit fact: `Q0 → Q1` alone forces nothing.
+        let not_universal = vec![
+            cl(vec![c(0, 0)], vec![c(1, 0)]),
+            cl(vec![c(1, 1), c(1, 2), r(0, 0, 1), r(0, 0, 2)], vec![eq(1, 2)]),
+        ];
+        assert!(added(not_universal).is_empty());
     }
 }
 
@@ -4810,6 +5692,101 @@ mod native_abox_install_tests {
         assert_eq!(tin.native_abox.individuals[0].assertions, vec![0, 1]);
         assert_eq!(tin.native_abox.different, vec![(0, 1)]);
         assert_eq!(tin.native_abox.role_assertions, vec![(0, 0, 1)]);
+    }
+
+    #[test]
+    fn same_individual_premerge_installs_the_quotient_and_renames_nominals() {
+        use crate::json_io::{SourceAxiomKind, SourceAxiomMeta};
+        let mut tin = TInput {
+            concepts: vec!["A".into(), "B".into(), "Q".into()],
+            source_axioms: vec![SourceAxiomMeta {
+                kind: SourceAxiomKind::Equivalent,
+                left: Concept::Name("Q".into()),
+                right: Concept::Exists(
+                    crate::frontend::syntax::Role::Name("r".into()),
+                    Box::new(Concept::Nominal("alias".into())),
+                ),
+            }],
+            ..TInput::default()
+        };
+        let mut alias = individual("alias", "__nom__alias", Some("B"));
+        alias.assertions.push(Concept::Nominal("c".into()));
+        alias.assertion_markers.push("__nom__c".into());
+        let meta = NominalAboxMeta {
+            complete: true,
+            individuals: vec![
+                individual("a", "__nom__a", Some("A")),
+                alias,
+                individual("c", "__nom__c", Some("A")),
+                individual("target", "__nom__target", None),
+            ],
+            // A chain a = alias = c in an order that roots it at `c` first.
+            same: vec![("c".into(), "alias".into()), ("alias".into(), "a".into())],
+            different: vec![("alias".into(), "target".into()), ("a".into(), "target".into())],
+            role_assertions: vec![
+                NominalRoleAssertionMeta { role: "r".into(), source: "alias".into(), target: "target".into() },
+                NominalRoleAssertionMeta { role: "r".into(), source: "c".into(), target: "target".into() },
+                NominalRoleAssertionMeta { role: "s".into(), source: "a".into(), target: "c".into() },
+            ],
+            ..NominalAboxMeta::default()
+        };
+
+        assert!(install_nominal_abox_with_same(&mut tin, &meta, true));
+        let q = &tin.nominal_abox;
+        assert!(q.same.is_empty());
+        assert_eq!(q.individuals.len(), 2);
+        assert_eq!(q.individuals[0].individual, "a");
+        assert_eq!(q.individuals[0].proxies, vec!["__nom__a", "__nom__alias", "__nom__c"]);
+        // A from a and c is kept once; the nested nominal {c} becomes {a}.
+        assert_eq!(q.individuals[0].assertions,
+            vec![Concept::Name("A".into()), Concept::Name("B".into()), Concept::Nominal("a".into())]);
+        assert_eq!(q.individuals[0].assertion_markers.len(), 3);
+        assert_eq!(q.different, vec![("a".to_string(), "target".to_string())]);
+        assert_eq!(q.role_assertions.len(), 2);
+        assert_eq!(q.role_assertions[1].source, "a");
+        assert_eq!(q.role_assertions[1].target, "a");
+        assert_eq!(tin.source_axioms[0].right, Concept::Exists(
+            crate::frontend::syntax::Role::Name("r".into()),
+            Box::new(Concept::Nominal("a".into()))));
+        assert_eq!(tin.native_abox.individuals.len(), 2);
+        assert_eq!(tin.native_abox.individuals[0].proxies.len(), 3);
+        assert_eq!(tin.native_abox.different, vec![(0, 1)]);
+        assert_eq!(tin.native_abox.role_assertions, vec![(0, 0, 1), (1, 0, 0)]);
+    }
+
+    #[test]
+    fn same_individual_premerge_turns_a_merged_difference_into_a_self_pair() {
+        let mut tin = TInput { concepts: vec!["A".into()], ..TInput::default() };
+        let meta = NominalAboxMeta {
+            complete: true,
+            individuals: vec![
+                individual("a", "__nom__a", Some("A")),
+                individual("b", "__nom__b", None),
+            ],
+            same: vec![("a".into(), "b".into())],
+            different: vec![("b".into(), "a".into())],
+            ..NominalAboxMeta::default()
+        };
+        assert!(install_nominal_abox_with_same(&mut tin, &meta, true));
+        assert_eq!(tin.nominal_abox.different, vec![("a".to_string(), "a".to_string())]);
+        assert_eq!(tin.native_abox.different, vec![(0, 0)]);
+    }
+
+    #[test]
+    fn same_individual_premerge_failure_restores_the_source_payload() {
+        let mut tin = TInput { concepts: vec!["A".into()], ..TInput::default() };
+        let meta = NominalAboxMeta {
+            complete: true,
+            individuals: vec![
+                individual("a", "__nom__a", Some("A")),
+                individual("b", "__nom__b", Some("__generated_marker")),
+            ],
+            same: vec![("a".into(), "b".into())],
+            ..NominalAboxMeta::default()
+        };
+        assert!(!install_nominal_abox_with_same(&mut tin, &meta, true));
+        assert_eq!(tin.nominal_abox, meta);
+        assert!(tin.native_abox.is_empty());
     }
 
     #[test]

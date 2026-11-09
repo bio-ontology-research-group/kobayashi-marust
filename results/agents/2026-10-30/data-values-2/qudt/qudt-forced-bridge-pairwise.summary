@@ -1,0 +1,761 @@
+     0.54 KM_TIMING mark: validate_user_input done
+     0.93 KM_TIMING mark: second source check done
+     0.93 KM_TIMING mark: data source candidate done
+     0.93 KM_TIMING mark: symbolic candidate done
+     1.74 KM_TIMING in-process frontend: read=0.00s screen=0.00s parse+clausify+handoff=0.30s cached=false sidecar=false
+     1.74 KM_TIMING frontend done @ 0.82s route=ht_bridge
+     1.78 cb_to_ht [emelim] eliminated 0 complementary pairs
+     1.78 cb_to_ht [trigger-absorb] definers=224 moved=0 tautologies=6
+     1.79 KM_TIMING spawn_ht: read+convert 1683 clauses (ht_view=1683) in 0.02s
+     1.85 BRIDGE-DATATYPE-BLANK-WITNESS Some(Some(["AtomicPhysicsUnit", "ChemistryUnit", "ElectricityAndMagnetismUnit", "FinancialUnit", "MechanicsUnit", "OpticsUnit", "PhysicalUnit", "RadiologyUnit", "ResourceUnit", "ScienceAndEngineeringUnit", "SpaceAndTimeUnit", "ThermodynamicsUnit", "Unit"]))
+     1.86 BRIDGE-DATATYPE-GATE: admitted=true in 0.01s
+     1.89 bridge [source-tbox] axioms=468 eq=0/0 [] direct=424 role-links=20 absorbed-gci=30 top-gci=9 unsupported=0
+     1.89 bridge [or-replacements] implications=0 common=2
+     1.89 role-automata begin concepts=3227 next-tag=3236
+     1.89 bridge [branch-triggers] role-markers=5
+     1.93 BRIDGE-ENV: 0.07s (named=1809, trigger_absorb=true, unsupported=0, independent_abox=false)
+     1.93 BRIDGE-SOURCE-CLOSURE pairs=759 definition-containment=true
+     1.94 BRIDGE-SAT-PHASE propagation-direction: 0.00s
+     1.94 BRIDGE-SATURATION-SEEDS: base=1065 extended=1065 invalid-special=0 substitute=59 copy=147
+     1.94 BRIDGE-SAT-PHASE seeds: 0.00s
+     2.02 BRIDGE-SAT-PHASE loop: 0.08s (nodes=3352)
+     2.28 SAT-STATS: insufficient all=0 atmost=0 or=1439 eqcand=0 value=0 nominal=0
+     2.99 BRIDGE-NOMINAL-CONSISTENCY: consistent=true signal=Continue poisoned=false
+     3.50 BRIDGE-RETAINED-BASE drain mode=Some("resume") failed=false
+     3.52 BRIDGE-RETAINED-BASE resumes the first fork's pending queues
+     3.53 BRIDGE-REFUTATION gated=true restricted=false nominals=true inverse=true number=true
+     3.93 BRIDGE-PREPARE round 0 subject 1/227 deferred=0 permanent=0
+    23.68 BRIDGE-PREPARE round 0 subject 65/227 deferred=0 permanent=0
+    41.92 BRIDGE-PREPARE round 0 subject 129/227 deferred=0 permanent=0
+    58.70 BRIDGE-PREPARE round 0 subject 193/227 deferred=0 permanent=0
+    67.91 BRIDGE-PREPARE round 0 subject 227/227 deferred=0 permanent=0
+    67.91 BRIDGE-SAT-PHASE prepare-total: 64.37s (227 subjects)
+    67.91 BRIDGE-SAT-PHASE kpset-barrier: 0.00s
+    67.91 BRIDGE-KPSET-DERIVED subject 353: 15 candidates, no satisfiability job
+    69.92 BRIDGE-VERIFY round 0 subject 1/227 deferred=0 permanent=0
+    69.92 BRIDGE-KPSET-DERIVED subject 345: 15 candidates, no satisfiability job
+    72.50 BRIDGE-KPSET-DERIVED subject 318: 15 candidates, no satisfiability job
+    74.69 BRIDGE-KPSET-DERIVED subject 389: 14 candidates, no satisfiability job
+    76.72 BRIDGE-KPSET-DERIVED subject 356: 14 candidates, no satisfiability job
+    79.57 BRIDGE-KPSET-DERIVED subject 309: 15 candidates, no satisfiability job
+    83.13 BRIDGE-KPSET-DERIVED subject 311: 15 candidates, no satisfiability job
+    86.57 BRIDGE-KPSET-DERIVED subject 364: 14 candidates, no satisfiability job
+    88.93 BRIDGE-KPSET-DERIVED subject 366: 14 candidates, no satisfiability job
+    90.82 BRIDGE-KPSET-DERIVED subject 430: 14 candidates, no satisfiability job
+    92.80 BRIDGE-KPSET-DERIVED subject 431: 14 candidates, no satisfiability job
+    95.28 BRIDGE-KPSET-DERIVED subject 432: 14 candidates, no satisfiability job
+    98.00 BRIDGE-KPSET-DERIVED subject 433: 14 candidates, no satisfiability job
+   100.17 BRIDGE-KPSET-DERIVED subject 434: 14 candidates, no satisfiability job
+   102.01 BRIDGE-KPSET-DERIVED subject 435: 14 candidates, no satisfiability job
+   104.94 BRIDGE-KPSET-DERIVED subject 462: 14 candidates, no satisfiability job
+   108.03 BRIDGE-KPSET-DERIVED subject 463: 14 candidates, no satisfiability job
+   111.22 BRIDGE-KPSET-DERIVED subject 334: 14 candidates, no satisfiability job
+   111.22 BRIDGE-KPSET-SKIP ElectrochemistryUnit v ResourceUnit: inherited-countermodel
+   111.22 BRIDGE-KPSET-SKIP ElectrochemistryUnit v FinancialUnit: inherited-countermodel
+   111.22 BRIDGE-KPSET-SKIP ElectrochemistryUnit v AtomicPhysicsUnit: inherited-countermodel
+   111.22 BRIDGE-KPSET-SKIP ElectrochemistryUnit v MechanicsUnit: inherited-countermodel
+   111.22 BRIDGE-KPSET-SKIP ElectrochemistryUnit v RadiologyUnit: inherited-countermodel
+   111.22 BRIDGE-KPSET-SKIP ElectrochemistryUnit v SpaceAndTimeUnit: inherited-countermodel
+   111.22 BRIDGE-KPSET-SKIP ElectrochemistryUnit v ThermodynamicsUnit: inherited-countermodel
+   111.22 BRIDGE-KPSET-SKIP ElectrochemistryUnit v OpticsUnit: inherited-countermodel
+   111.22 BRIDGE-KPSET-SKIP ElectrochemistryUnit v ElectricChargePerAmountOfSubstanceUnit: propagated-false
+   111.22 BRIDGE-KPSET-DERIVED subject 310: 15 candidates, no satisfiability job
+   111.22 BRIDGE-KPSET-SKIP AngleUnit v ResourceUnit: inherited-countermodel
+   111.22 BRIDGE-KPSET-SKIP AngleUnit v FinancialUnit: inherited-countermodel
+   111.22 BRIDGE-KPSET-SKIP AngleUnit v AtomicPhysicsUnit: inherited-countermodel
+   111.22 BRIDGE-KPSET-SKIP AngleUnit v ChemistryUnit: inherited-countermodel
+   111.22 BRIDGE-KPSET-SKIP AngleUnit v ElectricityAndMagnetismUnit: inherited-countermodel
+   111.22 BRIDGE-KPSET-SKIP AngleUnit v MechanicsUnit: inherited-countermodel
+   111.22 BRIDGE-KPSET-SKIP AngleUnit v RadiologyUnit: inherited-countermodel
+   111.22 BRIDGE-KPSET-SKIP AngleUnit v ThermodynamicsUnit: inherited-countermodel
+   111.22 BRIDGE-KPSET-SKIP AngleUnit v OpticsUnit: inherited-countermodel
+   111.22 BRIDGE-KPSET-SKIP AngleUnit v PlaneAngleUnit: propagated-false
+   111.22 BRIDGE-KPSET-DERIVED subject 347: 14 candidates, no satisfiability job
+   115.31 BRIDGE-KPSET-DERIVED subject 348: 14 candidates, no satisfiability job
+   119.98 BRIDGE-KPSET-DERIVED subject 349: 14 candidates, no satisfiability job
+   123.62 BRIDGE-KPSET-DERIVED subject 359: 14 candidates, no satisfiability job
+   127.00 BRIDGE-KPSET-DERIVED subject 361: 14 candidates, no satisfiability job
+   130.67 BRIDGE-KPSET-DERIVED subject 362: 14 candidates, no satisfiability job
+   134.48 BRIDGE-KPSET-DERIVED subject 363: 14 candidates, no satisfiability job
+   137.94 BRIDGE-KPSET-DERIVED subject 428: 15 candidates, no satisfiability job
+   137.94 BRIDGE-KPSET-SKIP PhotometryUnit v DimensionlessUnit: propagated-false
+   137.94 BRIDGE-KPSET-SKIP PhotometryUnit v ResourceUnit: inherited-countermodel
+   137.94 BRIDGE-KPSET-SKIP PhotometryUnit v FinancialUnit: inherited-countermodel
+   137.94 BRIDGE-KPSET-SKIP PhotometryUnit v AtomicPhysicsUnit: inherited-countermodel
+   137.94 BRIDGE-KPSET-SKIP PhotometryUnit v ChemistryUnit: inherited-countermodel
+   137.94 BRIDGE-KPSET-SKIP PhotometryUnit v MechanicsUnit: inherited-countermodel
+   137.94 BRIDGE-KPSET-SKIP PhotometryUnit v RadiologyUnit: inherited-countermodel
+   137.94 BRIDGE-KPSET-SKIP PhotometryUnit v SpaceAndTimeUnit: inherited-countermodel
+   137.94 BRIDGE-KPSET-SKIP PhotometryUnit v ThermodynamicsUnit: inherited-countermodel
+   137.94 BRIDGE-KPSET-SKIP PhotometryUnit v AbsorbanceUnit: propagated-false
+   137.94 BRIDGE-KPSET-DERIVED subject 429: 14 candidates, no satisfiability job
+   137.94 BRIDGE-KPSET-SKIP RadiometryUnit v ResourceUnit: inherited-countermodel
+   137.94 BRIDGE-KPSET-SKIP RadiometryUnit v FinancialUnit: inherited-countermodel
+   137.94 BRIDGE-KPSET-SKIP RadiometryUnit v AtomicPhysicsUnit: inherited-countermodel
+   137.94 BRIDGE-KPSET-SKIP RadiometryUnit v ChemistryUnit: inherited-countermodel
+   137.94 BRIDGE-KPSET-SKIP RadiometryUnit v MechanicsUnit: inherited-countermodel
+   137.94 BRIDGE-KPSET-SKIP RadiometryUnit v RadiologyUnit: inherited-countermodel
+   137.94 BRIDGE-KPSET-SKIP RadiometryUnit v SpaceAndTimeUnit: inherited-countermodel
+   137.94 BRIDGE-KPSET-SKIP RadiometryUnit v ThermodynamicsUnit: inherited-countermodel
+   137.94 BRIDGE-KPSET-SKIP RadiometryUnit v RadianceUnit: propagated-false
+   137.94 BRIDGE-KPSET-DERIVED subject 423: 14 candidates, no satisfiability job
+   142.08 BRIDGE-KPSET-DERIVED subject 424: 14 candidates, no satisfiability job
+   147.06 BRIDGE-KPSET-DERIVED subject 306: 14 candidates, no satisfiability job
+   151.32 BRIDGE-KPSET-DERIVED subject 308: 14 candidates, no satisfiability job
+   155.51 BRIDGE-KPSET-DERIVED subject 512: 14 candidates, no satisfiability job
+   160.18 BRIDGE-KPSET-DERIVED subject 513: 14 candidates, no satisfiability job
+   163.57 BRIDGE-KPSET-DERIVED subject 486: 14 candidates, no satisfiability job
+   168.93 BRIDGE-KPSET-DERIVED subject 488: 14 candidates, no satisfiability job
+   173.06 BRIDGE-KPSET-DERIVED subject 489: 14 candidates, no satisfiability job
+   176.68 BRIDGE-KPSET-DERIVED subject 442: 16 candidates, no satisfiability job
+   198.18 BRIDGE-KPSET-DERIVED subject 343: 14 candidates, no satisfiability job
+   208.36 BRIDGE-KPSET-DERIVED subject 312: 13 candidates, no satisfiability job
+   219.41 BRIDGE-KPSET-DERIVED subject 314: 13 candidates, no satisfiability job
+   228.58 BRIDGE-KPSET-DERIVED subject 315: 13 candidates, no satisfiability job
+   239.52 BRIDGE-KPSET-DERIVED subject 325: 15 candidates, no satisfiability job
+   239.52 BRIDGE-KPSET-SKIP CatalyticActivityUnit v ResourceUnit: inherited-countermodel
+   239.52 BRIDGE-KPSET-SKIP CatalyticActivityUnit v BiomedicalUnit: propagated-false
+   239.52 BRIDGE-KPSET-SKIP CatalyticActivityUnit v FinancialUnit: inherited-countermodel
+   239.52 BRIDGE-KPSET-SKIP CatalyticActivityUnit v AtomicPhysicsUnit: inherited-countermodel
+   239.52 BRIDGE-KPSET-SKIP CatalyticActivityUnit v ElectricityAndMagnetismUnit: inherited-countermodel
+   239.52 BRIDGE-KPSET-SKIP CatalyticActivityUnit v MechanicsUnit: inherited-countermodel
+   239.52 BRIDGE-KPSET-SKIP CatalyticActivityUnit v RadiologyUnit: inherited-countermodel
+   239.52 BRIDGE-KPSET-SKIP CatalyticActivityUnit v SpaceAndTimeUnit: inherited-countermodel
+   239.52 BRIDGE-KPSET-SKIP CatalyticActivityUnit v ThermodynamicsUnit: inherited-countermodel
+   239.52 BRIDGE-KPSET-SKIP CatalyticActivityUnit v OpticsUnit: inherited-countermodel
+   239.52 BRIDGE-KPSET-SKIP CatalyticActivityUnit v EnzymaticActivityUnit: propagated-false
+   239.52 BRIDGE-KPSET-DERIVED subject 326: 13 candidates, no satisfiability job
+   253.48 BRIDGE-KPSET-DERIVED subject 328: 13 candidates, no satisfiability job
+   266.41 BRIDGE-KPSET-DERIVED subject 329: 13 candidates, no satisfiability job
+   279.69 BRIDGE-KPSET-DERIVED subject 330: 13 candidates, no satisfiability job
+   293.69 BRIDGE-KPSET-DERIVED subject 331: 13 candidates, no satisfiability job
+   303.13 BRIDGE-KPSET-DERIVED subject 332: 13 candidates, no satisfiability job
+   312.24 BRIDGE-KPSET-DERIVED subject 333: 14 candidates, no satisfiability job
+   312.24 BRIDGE-KPSET-SKIP ConcentrationUnit v ResourceUnit: inherited-countermodel
+   312.24 BRIDGE-KPSET-SKIP ConcentrationUnit v FinancialUnit: inherited-countermodel
+   312.24 BRIDGE-KPSET-SKIP ConcentrationUnit v AtomicPhysicsUnit: inherited-countermodel
+   312.24 BRIDGE-KPSET-SKIP ConcentrationUnit v ElectricityAndMagnetismUnit: inherited-countermodel
+   312.24 BRIDGE-KPSET-SKIP ConcentrationUnit v MechanicsUnit: inherited-countermodel
+   312.24 BRIDGE-KPSET-SKIP ConcentrationUnit v RadiologyUnit: inherited-countermodel
+   312.24 BRIDGE-KPSET-SKIP ConcentrationUnit v SpaceAndTimeUnit: inherited-countermodel
+   312.24 BRIDGE-KPSET-SKIP ConcentrationUnit v ThermodynamicsUnit: inherited-countermodel
+   312.24 BRIDGE-KPSET-SKIP ConcentrationUnit v OpticsUnit: inherited-countermodel
+   312.24 BRIDGE-KPSET-SKIP ConcentrationUnit v VolumeConcentrationUnit: propagated-false
+   312.24 BRIDGE-KPSET-DERIVED subject 335: 13 candidates, no satisfiability job
+   321.38 BRIDGE-KPSET-DERIVED subject 336: 13 candidates, no satisfiability job
+   331.23 BRIDGE-KPSET-DERIVED subject 337: 13 candidates, no satisfiability job
+   341.11 BRIDGE-KPSET-DERIVED subject 338: 13 candidates, no satisfiability job
+   354.47 BRIDGE-KPSET-DERIVED subject 339: 13 candidates, no satisfiability job
+   366.12 BRIDGE-KPSET-DERIVED subject 360: 14 candidates, no satisfiability job
+   366.12 BRIDGE-KPSET-SKIP ElectricChargeDensityUnit v ResourceUnit: inherited-countermodel
+   366.12 BRIDGE-KPSET-SKIP ElectricChargeDensityUnit v FinancialUnit: inherited-countermodel
+   366.12 BRIDGE-KPSET-SKIP ElectricChargeDensityUnit v AtomicPhysicsUnit: inherited-countermodel
+   366.12 BRIDGE-KPSET-SKIP ElectricChargeDensityUnit v ChemistryUnit: inherited-countermodel
+   366.12 BRIDGE-KPSET-SKIP ElectricChargeDensityUnit v MechanicsUnit: inherited-countermodel
+   366.12 BRIDGE-KPSET-SKIP ElectricChargeDensityUnit v RadiologyUnit: inherited-countermodel
+   366.12 BRIDGE-KPSET-SKIP ElectricChargeDensityUnit v SpaceAndTimeUnit: inherited-countermodel
+   366.12 BRIDGE-KPSET-SKIP ElectricChargeDensityUnit v ThermodynamicsUnit: inherited-countermodel
+   366.12 BRIDGE-KPSET-SKIP ElectricChargeDensityUnit v OpticsUnit: inherited-countermodel
+   366.12 BRIDGE-KPSET-SKIP ElectricChargeDensityUnit v ElectricChargeAreaDensityUnit: propagated-false
+   366.12 BRIDGE-KPSET-DERIVED subject 367: 13 candidates, no satisfiability job
+   378.50 BRIDGE-KPSET-DERIVED subject 368: 13 candidates, no satisfiability job
+   391.98 BRIDGE-KPSET-DERIVED subject 369: 13 candidates, no satisfiability job
+   403.72 BRIDGE-KPSET-DERIVED subject 370: 13 candidates, no satisfiability job
+   417.02 BRIDGE-KPSET-DERIVED subject 371: 13 candidates, no satisfiability job
+   427.66 BRIDGE-KPSET-DERIVED subject 372: 13 candidates, no satisfiability job
+   444.27 BRIDGE-KPSET-DERIVED subject 373: 13 candidates, no satisfiability job
+   459.58 BRIDGE-KPSET-DERIVED subject 374: 13 candidates, no satisfiability job
+   477.22 BRIDGE-KPSET-DERIVED subject 375: 13 candidates, no satisfiability job
+   496.04 BRIDGE-VERIFY round 0 subject 65/227 deferred=0 permanent=0
+   496.04 BRIDGE-KPSET-DERIVED subject 376: 13 candidates, no satisfiability job
+   510.04 BRIDGE-KPSET-DERIVED subject 377: 13 candidates, no satisfiability job
+   527.08 BRIDGE-KPSET-DERIVED subject 378: 13 candidates, no satisfiability job
+   542.92 BRIDGE-KPSET-DERIVED subject 379: 13 candidates, no satisfiability job
+   559.32 BRIDGE-KPSET-DERIVED subject 380: 13 candidates, no satisfiability job
+   573.36 BRIDGE-KPSET-DERIVED subject 381: 13 candidates, no satisfiability job
+   588.79 BRIDGE-KPSET-DERIVED subject 382: 13 candidates, no satisfiability job
+   604.48 BRIDGE-KPSET-DERIVED subject 383: 13 candidates, no satisfiability job
+   620.42 BRIDGE-KPSET-DERIVED subject 384: 15 candidates, no satisfiability job
+   620.42 BRIDGE-KPSET-SKIP OpticsUnit v DimensionlessUnit: propagated-false
+   620.42 BRIDGE-KPSET-SKIP OpticsUnit v ResourceUnit: inherited-countermodel
+   620.42 BRIDGE-KPSET-SKIP OpticsUnit v FinancialUnit: inherited-countermodel
+   620.42 BRIDGE-KPSET-SKIP OpticsUnit v AtomicPhysicsUnit: inherited-countermodel
+   620.42 BRIDGE-KPSET-SKIP OpticsUnit v ChemistryUnit: inherited-countermodel
+   620.42 BRIDGE-KPSET-SKIP OpticsUnit v MechanicsUnit: inherited-countermodel
+   620.42 BRIDGE-KPSET-SKIP OpticsUnit v RadiologyUnit: inherited-countermodel
+   620.42 BRIDGE-KPSET-SKIP OpticsUnit v SpaceAndTimeUnit: inherited-countermodel
+   620.42 BRIDGE-KPSET-SKIP OpticsUnit v ThermodynamicsUnit: inherited-countermodel
+   620.42 BRIDGE-KPSET-SKIP OpticsUnit v PhotometryUnit: propagated-false
+   620.42 BRIDGE-KPSET-SKIP OpticsUnit v AbsorbanceUnit: propagated-false
+   620.42 BRIDGE-KPSET-DERIVED subject 385: 13 candidates, no satisfiability job
+   637.15 BRIDGE-KPSET-DERIVED subject 386: 13 candidates, no satisfiability job
+   653.25 BRIDGE-KPSET-DERIVED subject 387: 13 candidates, no satisfiability job
+   668.52 BRIDGE-KPSET-DERIVED subject 388: 13 candidates, no satisfiability job
+   683.66 BRIDGE-KPSET-DERIVED subject 398: 13 candidates, no satisfiability job
+   697.29 BRIDGE-KPSET-DERIVED subject 400: 13 candidates, no satisfiability job
+   711.60 BRIDGE-KPSET-DERIVED subject 401: 13 candidates, no satisfiability job
+   725.73 BRIDGE-KPSET-DERIVED subject 402: 13 candidates, no satisfiability job
+   739.77 BRIDGE-KPSET-DERIVED subject 403: 13 candidates, no satisfiability job
+   753.63 BRIDGE-KPSET-DERIVED subject 404: 13 candidates, no satisfiability job
+   767.28 BRIDGE-KPSET-DERIVED subject 405: 13 candidates, no satisfiability job
+   781.66 BRIDGE-KPSET-DERIVED subject 406: 13 candidates, no satisfiability job
+   796.38 BRIDGE-KPSET-DERIVED subject 407: 13 candidates, no satisfiability job
+   810.11 BRIDGE-KPSET-DERIVED subject 408: 13 candidates, no satisfiability job
+   825.90 BRIDGE-KPSET-DERIVED subject 409: 13 candidates, no satisfiability job
+   840.94 BRIDGE-KPSET-DERIVED subject 410: 13 candidates, no satisfiability job
+   860.68 BRIDGE-KPSET-DERIVED subject 411: 13 candidates, no satisfiability job
+   877.21 BRIDGE-KPSET-DERIVED subject 412: 13 candidates, no satisfiability job
+   895.72 BRIDGE-KPSET-DERIVED subject 413: 13 candidates, no satisfiability job
+   915.01 BRIDGE-KPSET-DERIVED subject 414: 14 candidates, no satisfiability job
+   915.01 BRIDGE-KPSET-SKIP MomentumUnit v ResourceUnit: inherited-countermodel
+   915.01 BRIDGE-KPSET-SKIP MomentumUnit v FinancialUnit: inherited-countermodel
+   915.01 BRIDGE-KPSET-SKIP MomentumUnit v AtomicPhysicsUnit: inherited-countermodel
+   915.01 BRIDGE-KPSET-SKIP MomentumUnit v ChemistryUnit: inherited-countermodel
+   915.01 BRIDGE-KPSET-SKIP MomentumUnit v ElectricityAndMagnetismUnit: inherited-countermodel
+   915.01 BRIDGE-KPSET-SKIP MomentumUnit v RadiologyUnit: inherited-countermodel
+   915.01 BRIDGE-KPSET-SKIP MomentumUnit v SpaceAndTimeUnit: inherited-countermodel
+   915.01 BRIDGE-KPSET-SKIP MomentumUnit v ThermodynamicsUnit: inherited-countermodel
+   915.01 BRIDGE-KPSET-SKIP MomentumUnit v OpticsUnit: inherited-countermodel
+   915.01 BRIDGE-KPSET-SKIP MomentumUnit v AngularMomentumUnit: propagated-false
+   915.01 BRIDGE-KPSET-DERIVED subject 415: 13 candidates, no satisfiability job
+   929.45 BRIDGE-KPSET-DERIVED subject 416: 13 candidates, no satisfiability job
+   944.83 BRIDGE-KPSET-DERIVED subject 417: 13 candidates, no satisfiability job
+   961.50 BRIDGE-KPSET-DERIVED subject 418: 13 candidates, no satisfiability job
+   978.75 BRIDGE-KPSET-DERIVED subject 419: 13 candidates, no satisfiability job
+   994.19 BRIDGE-KPSET-DERIVED subject 420: 13 candidates, no satisfiability job
+  1008.04 BRIDGE-KPSET-DERIVED subject 421: 13 candidates, no satisfiability job
+  1021.70 BRIDGE-KPSET-DERIVED subject 422: 13 candidates, no satisfiability job
+  1041.28 BRIDGE-KPSET-DERIVED subject 457: 13 candidates, no satisfiability job
+  1057.15 BRIDGE-KPSET-DERIVED subject 458: 13 candidates, no satisfiability job
+  1072.74 BRIDGE-KPSET-DERIVED subject 459: 13 candidates, no satisfiability job
+  1087.58 BRIDGE-KPSET-DERIVED subject 460: 13 candidates, no satisfiability job
+  1107.35 BRIDGE-KPSET-DERIVED subject 461: 13 candidates, no satisfiability job
+  1125.71 BRIDGE-KPSET-DERIVED subject 307: 14 candidates, no satisfiability job
+  1125.71 BRIDGE-KPSET-SKIP AccelerationUnit v ResourceUnit: inherited-countermodel
+  1125.71 BRIDGE-KPSET-SKIP AccelerationUnit v FinancialUnit: inherited-countermodel
+  1125.71 BRIDGE-KPSET-SKIP AccelerationUnit v AtomicPhysicsUnit: inherited-countermodel
+  1125.71 BRIDGE-KPSET-SKIP AccelerationUnit v ChemistryUnit: inherited-countermodel
+  1125.71 BRIDGE-KPSET-SKIP AccelerationUnit v ElectricityAndMagnetismUnit: inherited-countermodel
+  1125.71 BRIDGE-KPSET-SKIP AccelerationUnit v MechanicsUnit: inherited-countermodel
+  1125.71 BRIDGE-KPSET-SKIP AccelerationUnit v RadiologyUnit: inherited-countermodel
+  1125.71 BRIDGE-KPSET-SKIP AccelerationUnit v ThermodynamicsUnit: inherited-countermodel
+  1125.71 BRIDGE-KPSET-SKIP AccelerationUnit v OpticsUnit: inherited-countermodel
+  1125.71 BRIDGE-KPSET-SKIP AccelerationUnit v AngularAccelerationUnit: propagated-false
+  1125.71 BRIDGE-KPSET-DERIVED subject 469: 13 candidates, no satisfiability job
+  1144.19 BRIDGE-KPSET-DERIVED subject 470: 13 candidates, no satisfiability job
+  1159.84 BRIDGE-KPSET-DERIVED subject 471: 13 candidates, no satisfiability job
+  1177.33 BRIDGE-KPSET-DERIVED subject 472: 13 candidates, no satisfiability job
+  1190.49 BRIDGE-KPSET-DERIVED subject 473: 13 candidates, no satisfiability job
+  1203.86 BRIDGE-KPSET-DERIVED subject 474: 13 candidates, no satisfiability job
+  1219.09 BRIDGE-KPSET-DERIVED subject 475: 13 candidates, no satisfiability job
+  1234.07 BRIDGE-KPSET-DERIVED subject 476: 13 candidates, no satisfiability job
+  1248.99 BRIDGE-KPSET-DERIVED subject 477: 13 candidates, no satisfiability job
+  1263.26 BRIDGE-KPSET-DERIVED subject 478: 13 candidates, no satisfiability job
+  1278.13 BRIDGE-KPSET-DERIVED subject 479: 13 candidates, no satisfiability job
+  1292.94 BRIDGE-KPSET-DERIVED subject 480: 13 candidates, no satisfiability job
+  1306.68 BRIDGE-KPSET-DERIVED subject 481: 14 candidates, no satisfiability job
+  1306.68 BRIDGE-KPSET-SKIP VelocityUnit v ResourceUnit: inherited-countermodel
+  1306.68 BRIDGE-KPSET-SKIP VelocityUnit v FinancialUnit: inherited-countermodel
+  1306.68 BRIDGE-KPSET-SKIP VelocityUnit v AtomicPhysicsUnit: inherited-countermodel
+  1306.68 BRIDGE-KPSET-SKIP VelocityUnit v ChemistryUnit: inherited-countermodel
+  1306.68 BRIDGE-KPSET-SKIP VelocityUnit v ElectricityAndMagnetismUnit: inherited-countermodel
+  1306.68 BRIDGE-KPSET-SKIP VelocityUnit v MechanicsUnit: inherited-countermodel
+  1306.68 BRIDGE-KPSET-SKIP VelocityUnit v RadiologyUnit: inherited-countermodel
+  1306.68 BRIDGE-KPSET-SKIP VelocityUnit v ThermodynamicsUnit: inherited-countermodel
+  1306.68 BRIDGE-KPSET-SKIP VelocityUnit v OpticsUnit: inherited-countermodel
+  1306.68 BRIDGE-KPSET-SKIP VelocityUnit v AngularVelocityUnit: propagated-false
+  1306.68 BRIDGE-KPSET-DERIVED subject 482: 13 candidates, no satisfiability job
+  1319.42 BRIDGE-KPSET-DERIVED subject 483: 13 candidates, no satisfiability job
+  1331.82 BRIDGE-KPSET-DERIVED subject 487: 14 candidates, no satisfiability job
+  1331.82 BRIDGE-KPSET-SKIP ThermalExpansionUnit v ResourceUnit: inherited-countermodel
+  1331.82 BRIDGE-KPSET-SKIP ThermalExpansionUnit v FinancialUnit: inherited-countermodel
+  1331.82 BRIDGE-KPSET-SKIP ThermalExpansionUnit v AtomicPhysicsUnit: inherited-countermodel
+  1331.82 BRIDGE-KPSET-SKIP ThermalExpansionUnit v ChemistryUnit: inherited-countermodel
+  1331.82 BRIDGE-KPSET-SKIP ThermalExpansionUnit v ElectricityAndMagnetismUnit: inherited-countermodel
+  1331.82 BRIDGE-KPSET-SKIP ThermalExpansionUnit v MechanicsUnit: inherited-countermodel
+  1331.82 BRIDGE-KPSET-SKIP ThermalExpansionUnit v RadiologyUnit: inherited-countermodel
+  1331.82 BRIDGE-KPSET-SKIP ThermalExpansionUnit v SpaceAndTimeUnit: inherited-countermodel
+  1331.82 BRIDGE-KPSET-SKIP ThermalExpansionUnit v OpticsUnit: inherited-countermodel
+  1331.82 BRIDGE-KPSET-SKIP ThermalExpansionUnit v AreaThermalExpansionUnit: propagated-false
+  1331.82 BRIDGE-KPSET-DERIVED subject 490: 13 candidates, no satisfiability job
+  1341.42 BRIDGE-KPSET-DERIVED subject 491: 13 candidates, no satisfiability job
+  1353.73 BRIDGE-KPSET-DERIVED subject 492: 13 candidates, no satisfiability job
+  1365.06 BRIDGE-KPSET-DERIVED subject 493: 13 candidates, no satisfiability job
+  1376.69 BRIDGE-KPSET-DERIVED subject 494: 13 candidates, no satisfiability job
+  1388.40 BRIDGE-VERIFY round 0 subject 129/227 deferred=0 permanent=0
+  1388.40 BRIDGE-KPSET-DERIVED subject 495: 13 candidates, no satisfiability job
+  1399.61 BRIDGE-KPSET-DERIVED subject 496: 13 candidates, no satisfiability job
+  1410.78 BRIDGE-KPSET-DERIVED subject 497: 13 candidates, no satisfiability job
+  1422.22 BRIDGE-KPSET-DERIVED subject 498: 13 candidates, no satisfiability job
+  1434.63 BRIDGE-KPSET-DERIVED subject 499: 13 candidates, no satisfiability job
+  1448.50 BRIDGE-KPSET-DERIVED subject 500: 13 candidates, no satisfiability job
+  1461.72 BRIDGE-KPSET-DERIVED subject 501: 13 candidates, no satisfiability job
+  1476.03 BRIDGE-KPSET-DERIVED subject 502: 13 candidates, no satisfiability job
+  1490.39 BRIDGE-KPSET-DERIVED subject 503: 13 candidates, no satisfiability job
+  1505.12 BRIDGE-KPSET-DERIVED subject 504: 13 candidates, no satisfiability job
+  1519.08 BRIDGE-KPSET-DERIVED subject 505: 13 candidates, no satisfiability job
+  1532.80 BRIDGE-KPSET-DERIVED subject 506: 13 candidates, no satisfiability job
+  1547.88 BRIDGE-KPSET-DERIVED subject 507: 13 candidates, no satisfiability job
+  1561.55 BRIDGE-KPSET-DERIVED subject 508: 13 candidates, no satisfiability job
+  1575.62 BRIDGE-KPSET-DERIVED subject 509: 13 candidates, no satisfiability job
+  1590.07 BRIDGE-KPSET-DERIVED subject 510: 13 candidates, no satisfiability job
+  1604.56 BRIDGE-KPSET-DERIVED subject 357: 14 candidates, no satisfiability job
+  1620.81 BRIDGE-KPSET-DERIVED subject 350: 16 candidates, no satisfiability job
+  1644.33 BRIDGE-KPSET-DERIVED subject 352: 16 candidates, no satisfiability job
+  1666.01 BRIDGE-KPSET-DERIVED subject 441: 15 candidates, no satisfiability job
+  1684.84 BRIDGE-KPSET-DERIVED subject 392: 13 candidates, no satisfiability job
+  1699.12 BRIDGE-KPSET-DERIVED subject 394: 13 candidates, no satisfiability job
+  1713.09 BRIDGE-KPSET-DERIVED subject 316: 14 candidates, no satisfiability job
+  1728.14 BRIDGE-KPSET-DERIVED subject 319: 14 candidates, no satisfiability job
+  1744.87 BRIDGE-KPSET-DERIVED subject 320: 14 candidates, no satisfiability job
+  1761.61 BRIDGE-KPSET-DERIVED subject 321: 14 candidates, no satisfiability job
+  1777.84 BRIDGE-KPSET-DERIVED subject 322: 14 candidates, no satisfiability job
+  1793.54 BRIDGE-KPSET-DERIVED subject 323: 14 candidates, no satisfiability job
+  1809.95 BRIDGE-KPSET-DERIVED subject 324: 14 candidates, no satisfiability job
+  1827.07 BRIDGE-KPSET-DERIVED subject 340: 14 candidates, no satisfiability job
+  1842.70 BRIDGE-KPSET-DERIVED subject 342: 14 candidates, no satisfiability job
+  1857.12 BRIDGE-KPSET-DERIVED subject 346: 14 candidates, no satisfiability job
+  1870.51 BRIDGE-KPSET-DERIVED subject 313: 15 candidates, no satisfiability job
+  1870.51 BRIDGE-KPSET-SKIP AtomicPhysicsUnit v DimensionlessUnit: propagated-false
+  1870.51 BRIDGE-KPSET-SKIP AtomicPhysicsUnit v ResourceUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP AtomicPhysicsUnit v FinancialUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP AtomicPhysicsUnit v ChemistryUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP AtomicPhysicsUnit v ElectricityAndMagnetismUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP AtomicPhysicsUnit v MechanicsUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP AtomicPhysicsUnit v RadiologyUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP AtomicPhysicsUnit v SpaceAndTimeUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP AtomicPhysicsUnit v ThermodynamicsUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP AtomicPhysicsUnit v OpticsUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP AtomicPhysicsUnit v PhotometryUnit: propagated-false
+  1870.51 BRIDGE-KPSET-SKIP AtomicPhysicsUnit v AbsorbanceUnit: propagated-false
+  1870.51 BRIDGE-KPSET-DERIVED subject 327: 15 candidates, no satisfiability job
+  1870.51 BRIDGE-KPSET-SKIP ChemistryUnit v DimensionlessUnit: propagated-false
+  1870.51 BRIDGE-KPSET-SKIP ChemistryUnit v ResourceUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP ChemistryUnit v FinancialUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP ChemistryUnit v AtomicPhysicsUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP ChemistryUnit v ElectricityAndMagnetismUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP ChemistryUnit v MechanicsUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP ChemistryUnit v RadiologyUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP ChemistryUnit v SpaceAndTimeUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP ChemistryUnit v ThermodynamicsUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP ChemistryUnit v OpticsUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP ChemistryUnit v PhotometryUnit: propagated-false
+  1870.51 BRIDGE-KPSET-SKIP ChemistryUnit v AbsorbanceUnit: propagated-false
+  1870.51 BRIDGE-KPSET-DERIVED subject 365: 15 candidates, no satisfiability job
+  1870.51 BRIDGE-KPSET-SKIP ElectricityAndMagnetismUnit v DimensionlessUnit: propagated-false
+  1870.51 BRIDGE-KPSET-SKIP ElectricityAndMagnetismUnit v ResourceUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP ElectricityAndMagnetismUnit v FinancialUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP ElectricityAndMagnetismUnit v AtomicPhysicsUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP ElectricityAndMagnetismUnit v ChemistryUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP ElectricityAndMagnetismUnit v MechanicsUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP ElectricityAndMagnetismUnit v RadiologyUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP ElectricityAndMagnetismUnit v SpaceAndTimeUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP ElectricityAndMagnetismUnit v ThermodynamicsUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP ElectricityAndMagnetismUnit v OpticsUnit: inherited-countermodel
+  1870.51 BRIDGE-KPSET-SKIP ElectricityAndMagnetismUnit v PhotometryUnit: propagated-false
+  1870.51 BRIDGE-KPSET-SKIP ElectricityAndMagnetismUnit v AbsorbanceUnit: propagated-false
+  1870.51 BRIDGE-KPSET-DERIVED subject 395: 15 candidates, no satisfiability job
+  1871.97 BRIDGE-KPSET-SKIP LogarithmicUnit v ComputingUnit: propagated-false
+  1871.97 BRIDGE-KPSET-SKIP LogarithmicUnit v FinancialUnit: inherited-countermodel
+  1871.97 BRIDGE-KPSET-SKIP LogarithmicUnit v AtomicPhysicsUnit: inherited-countermodel
+  1871.97 BRIDGE-KPSET-SKIP LogarithmicUnit v ChemistryUnit: inherited-countermodel
+  1871.97 BRIDGE-KPSET-SKIP LogarithmicUnit v ElectricityAndMagnetismUnit: inherited-countermodel
+  1871.97 BRIDGE-KPSET-SKIP LogarithmicUnit v MechanicsUnit: inherited-countermodel
+  1871.97 BRIDGE-KPSET-SKIP LogarithmicUnit v RadiologyUnit: inherited-countermodel
+  1871.97 BRIDGE-KPSET-SKIP LogarithmicUnit v SpaceAndTimeUnit: inherited-countermodel
+  1871.97 BRIDGE-KPSET-SKIP LogarithmicUnit v ThermodynamicsUnit: inherited-countermodel
+  1871.97 BRIDGE-KPSET-SKIP LogarithmicUnit v OpticsUnit: inherited-countermodel
+  1871.97 BRIDGE-KPSET-SKIP LogarithmicUnit v InformationEntropyUnit: propagated-false
+  1871.97 BRIDGE-KPSET-DERIVED subject 399: 15 candidates, no satisfiability job
+  1871.97 BRIDGE-KPSET-SKIP MechanicsUnit v DimensionlessUnit: propagated-false
+  1871.97 BRIDGE-KPSET-SKIP MechanicsUnit v ResourceUnit: inherited-countermodel
+  1871.97 BRIDGE-KPSET-SKIP MechanicsUnit v FinancialUnit: inherited-countermodel
+  1871.97 BRIDGE-KPSET-SKIP MechanicsUnit v AtomicPhysicsUnit: inherited-countermodel
+  1871.97 BRIDGE-KPSET-SKIP MechanicsUnit v ChemistryUnit: inherited-countermodel
+  1871.97 BRIDGE-KPSET-SKIP MechanicsUnit v ElectricityAndMagnetismUnit: inherited-countermodel
+  1871.97 BRIDGE-KPSET-SKIP MechanicsUnit v RadiologyUnit: inherited-countermodel
+  1871.97 BRIDGE-KPSET-SKIP MechanicsUnit v SpaceAndTimeUnit: inherited-countermodel
+  1871.97 BRIDGE-KPSET-SKIP MechanicsUnit v ThermodynamicsUnit: inherited-countermodel
+  1871.97 BRIDGE-KPSET-SKIP MechanicsUnit v OpticsUnit: inherited-countermodel
+  1871.97 BRIDGE-KPSET-SKIP MechanicsUnit v PhotometryUnit: propagated-false
+  1871.97 BRIDGE-KPSET-SKIP MechanicsUnit v AbsorbanceUnit: propagated-false
+  1871.97 BRIDGE-KPSET-DERIVED subject 436: 13 candidates, no satisfiability job
+  1885.66 BRIDGE-KPSET-DERIVED subject 438: 15 candidates, no satisfiability job
+  1885.66 BRIDGE-KPSET-SKIP RadiologyUnit v DimensionlessUnit: propagated-false
+  1885.66 BRIDGE-KPSET-SKIP RadiologyUnit v ResourceUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP RadiologyUnit v FinancialUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP RadiologyUnit v AtomicPhysicsUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP RadiologyUnit v ChemistryUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP RadiologyUnit v ElectricityAndMagnetismUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP RadiologyUnit v MechanicsUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP RadiologyUnit v SpaceAndTimeUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP RadiologyUnit v ThermodynamicsUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP RadiologyUnit v OpticsUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP RadiologyUnit v PhotometryUnit: propagated-false
+  1885.67 BRIDGE-KPSET-SKIP RadiologyUnit v AbsorbanceUnit: propagated-false
+  1885.67 BRIDGE-KPSET-DERIVED subject 439: 15 candidates, no satisfiability job
+  1885.67 BRIDGE-KPSET-SKIP SpaceAndTimeUnit v DimensionlessUnit: propagated-false
+  1885.67 BRIDGE-KPSET-SKIP SpaceAndTimeUnit v ResourceUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP SpaceAndTimeUnit v FinancialUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP SpaceAndTimeUnit v AtomicPhysicsUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP SpaceAndTimeUnit v ChemistryUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP SpaceAndTimeUnit v ElectricityAndMagnetismUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP SpaceAndTimeUnit v MechanicsUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP SpaceAndTimeUnit v RadiologyUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP SpaceAndTimeUnit v ThermodynamicsUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP SpaceAndTimeUnit v OpticsUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP SpaceAndTimeUnit v PhotometryUnit: propagated-false
+  1885.67 BRIDGE-KPSET-SKIP SpaceAndTimeUnit v AbsorbanceUnit: propagated-false
+  1885.67 BRIDGE-KPSET-DERIVED subject 440: 15 candidates, no satisfiability job
+  1885.67 BRIDGE-KPSET-SKIP ThermodynamicsUnit v DimensionlessUnit: propagated-false
+  1885.67 BRIDGE-KPSET-SKIP ThermodynamicsUnit v ResourceUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP ThermodynamicsUnit v FinancialUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP ThermodynamicsUnit v AtomicPhysicsUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP ThermodynamicsUnit v ChemistryUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP ThermodynamicsUnit v ElectricityAndMagnetismUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP ThermodynamicsUnit v MechanicsUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP ThermodynamicsUnit v RadiologyUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP ThermodynamicsUnit v SpaceAndTimeUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP ThermodynamicsUnit v OpticsUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP ThermodynamicsUnit v PhotometryUnit: propagated-false
+  1885.67 BRIDGE-KPSET-SKIP ThermodynamicsUnit v AbsorbanceUnit: propagated-false
+  1885.67 BRIDGE-KPSET-DERIVED subject 351: 15 candidates, no satisfiability job
+  1885.67 BRIDGE-KPSET-SKIP ContinuumMechanicsQuantityKind v Unit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP ContinuumMechanicsQuantityKind v ResourceUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP ContinuumMechanicsQuantityKind v ScienceAndEngineeringUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP ContinuumMechanicsQuantityKind v FinancialUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP ContinuumMechanicsQuantityKind v PhysicalUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP ContinuumMechanicsQuantityKind v AtomicPhysicsUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP ContinuumMechanicsQuantityKind v ChemistryUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP ContinuumMechanicsQuantityKind v ElectricityAndMagnetismUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP ContinuumMechanicsQuantityKind v MechanicsUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP ContinuumMechanicsQuantityKind v RadiologyUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP ContinuumMechanicsQuantityKind v SpaceAndTimeUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP ContinuumMechanicsQuantityKind v ThermodynamicsUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-SKIP ContinuumMechanicsQuantityKind v OpticsUnit: inherited-countermodel
+  1885.67 BRIDGE-KPSET-DERIVED subject 397: 15 candidates, no satisfiability job
+  1905.43 BRIDGE-KPSET-DERIVED subject 425: 15 candidates, no satisfiability job
+  1925.22 BRIDGE-KPSET-DERIVED subject 427: 15 candidates, no satisfiability job
+  1947.92 BRIDGE-KPSET-DERIVED subject 355: 14 candidates, no satisfiability job
+  1966.01 BRIDGE-KPSET-DERIVED subject 358: 16 candidates, no satisfiability job
+  1966.01 BRIDGE-KPSET-SKIP PrefixUnit v ResourceUnit: inherited-countermodel
+  1966.01 BRIDGE-KPSET-SKIP PrefixUnit v SIUnit: propagated-false
+  1966.01 BRIDGE-KPSET-SKIP PrefixUnit v ScienceAndEngineeringUnit: inherited-countermodel
+  1966.01 BRIDGE-KPSET-SKIP PrefixUnit v FinancialUnit: inherited-countermodel
+  1966.01 BRIDGE-KPSET-SKIP PrefixUnit v PhysicalUnit: inherited-countermodel
+  1966.01 BRIDGE-KPSET-SKIP PrefixUnit v AtomicPhysicsUnit: inherited-countermodel
+  1966.01 BRIDGE-KPSET-SKIP PrefixUnit v ChemistryUnit: inherited-countermodel
+  1966.01 BRIDGE-KPSET-SKIP PrefixUnit v ElectricityAndMagnetismUnit: inherited-countermodel
+  1966.01 BRIDGE-KPSET-SKIP PrefixUnit v MechanicsUnit: inherited-countermodel
+  1966.01 BRIDGE-KPSET-SKIP PrefixUnit v RadiologyUnit: inherited-countermodel
+  1966.01 BRIDGE-KPSET-SKIP PrefixUnit v SpaceAndTimeUnit: inherited-countermodel
+  1966.01 BRIDGE-KPSET-SKIP PrefixUnit v ThermodynamicsUnit: inherited-countermodel
+  1966.01 BRIDGE-KPSET-SKIP PrefixUnit v OpticsUnit: inherited-countermodel
+  1966.01 BRIDGE-KPSET-SKIP PrefixUnit v DecimalPrefixUnit: propagated-false
+  1966.01 BRIDGE-KPSET-DERIVED subject 393: 15 candidates, no satisfiability job
+  1966.01 BRIDGE-KPSET-SKIP FinancialUnit v DimensionlessUnit: propagated-false
+  1966.01 BRIDGE-KPSET-SKIP FinancialUnit v ScienceAndEngineeringUnit: inherited-countermodel
+  1966.01 BRIDGE-KPSET-SKIP FinancialUnit v PhysicalUnit: inherited-countermodel
+  1966.01 BRIDGE-KPSET-SKIP FinancialUnit v AtomicPhysicsUnit: inherited-countermodel
+  1966.01 BRIDGE-KPSET-SKIP FinancialUnit v ChemistryUnit: inherited-countermodel
+  1966.01 BRIDGE-KPSET-SKIP FinancialUnit v ElectricityAndMagnetismUnit: inherited-countermodel
+  1966.01 BRIDGE-KPSET-SKIP FinancialUnit v MechanicsUnit: inherited-countermodel
+  1966.01 BRIDGE-KPSET-SKIP FinancialUnit v RadiologyUnit: inherited-countermodel
+  1966.01 BRIDGE-KPSET-SKIP FinancialUnit v SpaceAndTimeUnit: inherited-countermodel
+  1966.01 BRIDGE-KPSET-SKIP FinancialUnit v ThermodynamicsUnit: inherited-countermodel
+  1966.01 BRIDGE-KPSET-SKIP FinancialUnit v OpticsUnit: inherited-countermodel
+  1966.01 BRIDGE-KPSET-SKIP FinancialUnit v PhotometryUnit: propagated-false
+  1966.01 BRIDGE-KPSET-SKIP FinancialUnit v AbsorbanceUnit: propagated-false
+  1966.01 BRIDGE-KPSET-DERIVED subject 465: 13 candidates, no satisfiability job
+  1983.16 BRIDGE-KPSET-DERIVED subject 466: 13 candidates, no satisfiability job
+  2001.30 BRIDGE-KPSET-DERIVED subject 317: 15 candidates, no satisfiability job
+  2001.30 BRIDGE-KPSET-SKIP BiomedicalUnit v ResourceUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP BiomedicalUnit v FinancialUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP BiomedicalUnit v PhysicalUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP BiomedicalUnit v AtomicPhysicsUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP BiomedicalUnit v ChemistryUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP BiomedicalUnit v ElectricityAndMagnetismUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP BiomedicalUnit v MechanicsUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP BiomedicalUnit v RadiologyUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP BiomedicalUnit v SpaceAndTimeUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP BiomedicalUnit v ThermodynamicsUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP BiomedicalUnit v CatalyticActivityUnit: propagated-false
+  2001.30 BRIDGE-KPSET-SKIP BiomedicalUnit v OpticsUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP BiomedicalUnit v EnzymaticActivityUnit: propagated-false
+  2001.30 BRIDGE-KPSET-DERIVED subject 341: 14 candidates, no satisfiability job
+  2001.30 BRIDGE-KPSET-SKIP CommunicationsUnit v ResourceUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP CommunicationsUnit v FinancialUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP CommunicationsUnit v PhysicalUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP CommunicationsUnit v AtomicPhysicsUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP CommunicationsUnit v ChemistryUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP CommunicationsUnit v RF-PowerUnit: propagated-false
+  2001.30 BRIDGE-KPSET-SKIP CommunicationsUnit v ElectricityAndMagnetismUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP CommunicationsUnit v MechanicsUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP CommunicationsUnit v RadiologyUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP CommunicationsUnit v SpaceAndTimeUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP CommunicationsUnit v ThermodynamicsUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP CommunicationsUnit v OpticsUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-DERIVED subject 344: 15 candidates, no satisfiability job
+  2001.30 BRIDGE-KPSET-SKIP ComputingUnit v ResourceUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP ComputingUnit v FinancialUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP ComputingUnit v PhysicalUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP ComputingUnit v AtomicPhysicsUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP ComputingUnit v ChemistryUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP ComputingUnit v ElectricityAndMagnetismUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP ComputingUnit v LogarithmicUnit: propagated-false
+  2001.30 BRIDGE-KPSET-SKIP ComputingUnit v MechanicsUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP ComputingUnit v RadiologyUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP ComputingUnit v SpaceAndTimeUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP ComputingUnit v ThermodynamicsUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP ComputingUnit v OpticsUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP ComputingUnit v InformationEntropyUnit: propagated-false
+  2001.30 BRIDGE-KPSET-DERIVED subject 437: 15 candidates, no satisfiability job
+  2001.30 BRIDGE-KPSET-SKIP PhysicalUnit v DimensionlessUnit: propagated-false
+  2001.30 BRIDGE-KPSET-SKIP PhysicalUnit v ResourceUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP PhysicalUnit v FinancialUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP PhysicalUnit v AtomicPhysicsUnit: inherited-countermodel
+  2001.30 BRIDGE-KPSET-SKIP PhysicalUnit v ChemistryUnit: inherited-countermodel
+  2001.31 BRIDGE-KPSET-SKIP PhysicalUnit v ElectricityAndMagnetismUnit: inherited-countermodel
+  2001.31 BRIDGE-KPSET-SKIP PhysicalUnit v MechanicsUnit: inherited-countermodel
+  2001.31 BRIDGE-KPSET-SKIP PhysicalUnit v RadiologyUnit: inherited-countermodel
+  2001.31 BRIDGE-KPSET-SKIP PhysicalUnit v SpaceAndTimeUnit: inherited-countermodel
+  2001.31 BRIDGE-KPSET-SKIP PhysicalUnit v ThermodynamicsUnit: inherited-countermodel
+  2001.31 BRIDGE-KPSET-SKIP PhysicalUnit v OpticsUnit: inherited-countermodel
+  2001.31 BRIDGE-KPSET-SKIP PhysicalUnit v PhotometryUnit: propagated-false
+  2001.31 BRIDGE-KPSET-SKIP PhysicalUnit v AbsorbanceUnit: propagated-false
+  2001.31 BRIDGE-KPSET-DERIVED subject 456: 14 candidates, no satisfiability job
+  2025.70 BRIDGE-KPSET-DERIVED subject 396: 14 candidates, no satisfiability job
+  2025.70 BRIDGE-KPSET-SKIP MechanicsQuantityKind v Unit: inherited-countermodel
+  2025.70 BRIDGE-KPSET-SKIP MechanicsQuantityKind v ResourceUnit: inherited-countermodel
+  2025.70 BRIDGE-KPSET-SKIP MechanicsQuantityKind v ScienceAndEngineeringUnit: inherited-countermodel
+  2025.70 BRIDGE-KPSET-SKIP MechanicsQuantityKind v FinancialUnit: inherited-countermodel
+  2025.70 BRIDGE-KPSET-SKIP MechanicsQuantityKind v PhysicalUnit: inherited-countermodel
+  2025.70 BRIDGE-KPSET-SKIP MechanicsQuantityKind v AtomicPhysicsUnit: inherited-countermodel
+  2025.70 BRIDGE-KPSET-SKIP MechanicsQuantityKind v ChemistryUnit: inherited-countermodel
+  2025.71 BRIDGE-KPSET-SKIP MechanicsQuantityKind v ElectricityAndMagnetismUnit: inherited-countermodel
+  2025.71 BRIDGE-KPSET-SKIP MechanicsQuantityKind v MechanicsUnit: inherited-countermodel
+  2025.71 BRIDGE-KPSET-SKIP MechanicsQuantityKind v RadiologyUnit: inherited-countermodel
+  2025.71 BRIDGE-KPSET-SKIP MechanicsQuantityKind v SpaceAndTimeUnit: inherited-countermodel
+  2025.71 BRIDGE-KPSET-SKIP MechanicsQuantityKind v ThermodynamicsUnit: inherited-countermodel
+  2025.71 BRIDGE-KPSET-SKIP MechanicsQuantityKind v OpticsUnit: inherited-countermodel
+  2025.71 BRIDGE-KPSET-DERIVED subject 426: 14 candidates, no satisfiability job
+  2025.71 BRIDGE-KPSET-SKIP OpticsQuantityKind v Unit: inherited-countermodel
+  2025.71 BRIDGE-KPSET-SKIP OpticsQuantityKind v ResourceUnit: inherited-countermodel
+  2025.71 BRIDGE-KPSET-SKIP OpticsQuantityKind v ScienceAndEngineeringUnit: inherited-countermodel
+  2025.71 BRIDGE-KPSET-SKIP OpticsQuantityKind v FinancialUnit: inherited-countermodel
+  2025.71 BRIDGE-KPSET-SKIP OpticsQuantityKind v PhysicalUnit: inherited-countermodel
+  2025.71 BRIDGE-KPSET-SKIP OpticsQuantityKind v AtomicPhysicsUnit: inherited-countermodel
+  2025.71 BRIDGE-KPSET-SKIP OpticsQuantityKind v ChemistryUnit: inherited-countermodel
+  2025.71 BRIDGE-KPSET-SKIP OpticsQuantityKind v ElectricityAndMagnetismUnit: inherited-countermodel
+  2025.71 BRIDGE-KPSET-SKIP OpticsQuantityKind v MechanicsUnit: inherited-countermodel
+  2025.71 BRIDGE-KPSET-SKIP OpticsQuantityKind v RadiologyUnit: inherited-countermodel
+  2025.71 BRIDGE-KPSET-SKIP OpticsQuantityKind v SpaceAndTimeUnit: inherited-countermodel
+  2025.71 BRIDGE-KPSET-SKIP OpticsQuantityKind v ThermodynamicsUnit: inherited-countermodel
+  2025.71 BRIDGE-KPSET-SKIP OpticsQuantityKind v OpticsUnit: inherited-countermodel
+  2025.71 BRIDGE-KPSET-DERIVED subject 446: 14 candidates, no satisfiability job
+  2049.91 BRIDGE-KPSET-DERIVED subject 447: 14 candidates, no satisfiability job
+  2071.14 BRIDGE-KPSET-DERIVED subject 448: 14 candidates, no satisfiability job
+  2093.76 BRIDGE-KPSET-DERIVED subject 449: 14 candidates, no satisfiability job
+  2116.01 BRIDGE-KPSET-DERIVED subject 450: 14 candidates, no satisfiability job
+  2138.32 BRIDGE-KPSET-DERIVED subject 451: 14 candidates, no satisfiability job
+  2159.37 BRIDGE-KPSET-DERIVED subject 452: 14 candidates, no satisfiability job
+  2184.25 BRIDGE-VERIFY round 0 subject 193/227 deferred=0 permanent=0
+  2184.25 BRIDGE-KPSET-DERIVED subject 453: 14 candidates, no satisfiability job
+  2211.16 BRIDGE-KPSET-DERIVED subject 454: 14 candidates, no satisfiability job
+  2232.25 BRIDGE-KPSET-DERIVED subject 455: 14 candidates, no satisfiability job
+  2252.90 BRIDGE-KPSET-DERIVED subject 354: 15 candidates, no satisfiability job
+  2252.90 BRIDGE-KPSET-SKIP DimensionlessUnit v ResourceUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP DimensionlessUnit v ScienceAndEngineeringUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP DimensionlessUnit v FinancialUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP DimensionlessUnit v PhysicalUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP DimensionlessUnit v AtomicPhysicsUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP DimensionlessUnit v ChemistryUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP DimensionlessUnit v ElectricityAndMagnetismUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP DimensionlessUnit v MechanicsUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP DimensionlessUnit v RadiologyUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP DimensionlessUnit v SpaceAndTimeUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP DimensionlessUnit v ThermodynamicsUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP DimensionlessUnit v OpticsUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP DimensionlessUnit v PhotometryUnit: propagated-false
+  2252.90 BRIDGE-KPSET-SKIP DimensionlessUnit v AbsorbanceUnit: propagated-false
+  2252.90 BRIDGE-KPSET-DERIVED subject 464: 15 candidates, no satisfiability job
+  2252.90 BRIDGE-KPSET-SKIP ResourceUnit v DimensionlessUnit: propagated-false
+  2252.90 BRIDGE-KPSET-SKIP ResourceUnit v ScienceAndEngineeringUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP ResourceUnit v FinancialUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP ResourceUnit v PhysicalUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP ResourceUnit v AtomicPhysicsUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP ResourceUnit v ChemistryUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP ResourceUnit v ElectricityAndMagnetismUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP ResourceUnit v MechanicsUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP ResourceUnit v RadiologyUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP ResourceUnit v SpaceAndTimeUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP ResourceUnit v ThermodynamicsUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP ResourceUnit v OpticsUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP ResourceUnit v PhotometryUnit: propagated-false
+  2252.90 BRIDGE-KPSET-SKIP ResourceUnit v AbsorbanceUnit: propagated-false
+  2252.90 BRIDGE-KPSET-DERIVED subject 467: 16 candidates, no satisfiability job
+  2252.90 BRIDGE-KPSET-SKIP SIUnit v DimensionlessUnit: propagated-false
+  2252.90 BRIDGE-KPSET-SKIP SIUnit v ResourceUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP SIUnit v ScienceAndEngineeringUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP SIUnit v PrefixUnit: propagated-false
+  2252.90 BRIDGE-KPSET-SKIP SIUnit v FinancialUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP SIUnit v PhysicalUnit: inherited-countermodel
+  2252.90 BRIDGE-KPSET-SKIP SIUnit v AtomicPhysicsUnit: inherited-countermodel
+  2252.91 BRIDGE-KPSET-SKIP SIUnit v ChemistryUnit: inherited-countermodel
+  2252.91 BRIDGE-KPSET-SKIP SIUnit v ElectricityAndMagnetismUnit: inherited-countermodel
+  2252.91 BRIDGE-KPSET-SKIP SIUnit v MechanicsUnit: inherited-countermodel
+  2252.91 BRIDGE-KPSET-SKIP SIUnit v RadiologyUnit: inherited-countermodel
+  2252.91 BRIDGE-KPSET-SKIP SIUnit v SpaceAndTimeUnit: inherited-countermodel
+  2252.91 BRIDGE-KPSET-SKIP SIUnit v ThermodynamicsUnit: inherited-countermodel
+  2252.91 BRIDGE-KPSET-SKIP SIUnit v OpticsUnit: inherited-countermodel
+  2252.91 BRIDGE-KPSET-SKIP SIUnit v DecimalPrefixUnit: propagated-false
+  2252.91 BRIDGE-KPSET-DERIVED subject 468: 15 candidates, no satisfiability job
+  2252.91 BRIDGE-KPSET-SKIP ScienceAndEngineeringUnit v DimensionlessUnit: propagated-false
+  2252.91 BRIDGE-KPSET-SKIP ScienceAndEngineeringUnit v ResourceUnit: inherited-countermodel
+  2252.91 BRIDGE-KPSET-SKIP ScienceAndEngineeringUnit v FinancialUnit: inherited-countermodel
+  2252.91 BRIDGE-KPSET-SKIP ScienceAndEngineeringUnit v PhysicalUnit: inherited-countermodel
+  2252.91 BRIDGE-KPSET-SKIP ScienceAndEngineeringUnit v AtomicPhysicsUnit: inherited-countermodel
+  2252.91 BRIDGE-KPSET-SKIP ScienceAndEngineeringUnit v ChemistryUnit: inherited-countermodel
+  2252.91 BRIDGE-KPSET-SKIP ScienceAndEngineeringUnit v ElectricityAndMagnetismUnit: inherited-countermodel
+  2252.91 BRIDGE-KPSET-SKIP ScienceAndEngineeringUnit v MechanicsUnit: inherited-countermodel
+  2252.91 BRIDGE-KPSET-SKIP ScienceAndEngineeringUnit v RadiologyUnit: inherited-countermodel
+  2252.91 BRIDGE-KPSET-SKIP ScienceAndEngineeringUnit v SpaceAndTimeUnit: inherited-countermodel
+  2252.91 BRIDGE-KPSET-SKIP ScienceAndEngineeringUnit v ThermodynamicsUnit: inherited-countermodel
+  2252.91 BRIDGE-KPSET-SKIP ScienceAndEngineeringUnit v OpticsUnit: inherited-countermodel
+  2252.91 BRIDGE-KPSET-SKIP ScienceAndEngineeringUnit v PhotometryUnit: propagated-false
+  2252.91 BRIDGE-KPSET-SKIP ScienceAndEngineeringUnit v AbsorbanceUnit: propagated-false
+  2252.91 BRIDGE-KPSET-DERIVED subject 511: 13 candidates, no satisfiability job
+  2276.02 BRIDGE-KPSET-DERIVED subject 390: 14 candidates, no satisfiability job
+  2307.03 BRIDGE-KPSET-DERIVED subject 443: 14 candidates, no satisfiability job
+  2329.70 BRIDGE-KPSET-DERIVED subject 445: 14 candidates, no satisfiability job
+  2351.37 BRIDGE-KPSET-DERIVED subject 484: 14 candidates, no satisfiability job
+  2373.58 BRIDGE-KPSET-DERIVED subject 514: 14 candidates, no satisfiability job
+  2401.27 BRIDGE-KPSET-DERIVED subject 285: 14 candidates, no satisfiability job
+  2401.27 BRIDGE-KPSET-SKIP QuantityValue v Unit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP QuantityValue v ConstantValue: propagated-false
+  2401.27 BRIDGE-KPSET-SKIP QuantityValue v ResourceUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP QuantityValue v ScienceAndEngineeringUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP QuantityValue v FinancialUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP QuantityValue v PhysicalUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP QuantityValue v AtomicPhysicsUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP QuantityValue v ChemistryUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP QuantityValue v ElectricityAndMagnetismUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP QuantityValue v MechanicsUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP QuantityValue v RadiologyUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP QuantityValue v SpaceAndTimeUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP QuantityValue v ThermodynamicsUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP QuantityValue v OpticsUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-DERIVED subject 287: 14 candidates, no satisfiability job
+  2401.27 BRIDGE-KPSET-SKIP QuantityKind v Unit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP QuantityKind v ResourceUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP QuantityKind v ScienceAndEngineeringUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP QuantityKind v FinancialUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP QuantityKind v PhysicalUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP QuantityKind v AtomicPhysicsUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP QuantityKind v ChemistryUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP QuantityKind v FluidMechanicsQuantityKind: propagated-false
+  2401.27 BRIDGE-KPSET-SKIP QuantityKind v ElectricityAndMagnetismUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP QuantityKind v MechanicsUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP QuantityKind v RadiologyUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP QuantityKind v SpaceAndTimeUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP QuantityKind v ThermodynamicsUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP QuantityKind v OpticsUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-DERIVED subject 289: 15 candidates, no satisfiability job
+  2401.27 BRIDGE-KPSET-SKIP Unit v DimensionlessUnit: propagated-false
+  2401.27 BRIDGE-KPSET-SKIP Unit v ResourceUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP Unit v ScienceAndEngineeringUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP Unit v FinancialUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP Unit v PhysicalUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP Unit v AtomicPhysicsUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP Unit v ChemistryUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP Unit v ElectricityAndMagnetismUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP Unit v MechanicsUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP Unit v RadiologyUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP Unit v SpaceAndTimeUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP Unit v ThermodynamicsUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP Unit v OpticsUnit: inherited-countermodel
+  2401.27 BRIDGE-KPSET-SKIP Unit v PhotometryUnit: propagated-false
+  2401.27 BRIDGE-KPSET-SKIP Unit v AbsorbanceUnit: propagated-false
+  2401.27 BRIDGE-KPSET-DERIVED subject 299: 13 candidates, no satisfiability job
+  2431.52 BRIDGE-KPSET-DERIVED subject 301: 13 candidates, no satisfiability job
+  2468.58 BRIDGE-KPSET-DERIVED subject 303: 13 candidates, no satisfiability job
+  2505.82 BRIDGE-KPSET-DERIVED subject 305: 13 candidates, no satisfiability job
+  2545.10 BRIDGE-KPSET-DERIVED subject 391: 14 candidates, no satisfiability job
+  2545.10 BRIDGE-KPSET-SKIP EnumeratedValue v Unit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP EnumeratedValue v Dimension: propagated-false
+  2545.10 BRIDGE-KPSET-SKIP EnumeratedValue v ResourceUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP EnumeratedValue v ScienceAndEngineeringUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP EnumeratedValue v FinancialUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP EnumeratedValue v PhysicalUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP EnumeratedValue v AtomicPhysicsUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP EnumeratedValue v ChemistryUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP EnumeratedValue v ElectricityAndMagnetismUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP EnumeratedValue v MechanicsUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP EnumeratedValue v RadiologyUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP EnumeratedValue v SpaceAndTimeUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP EnumeratedValue v ThermodynamicsUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP EnumeratedValue v OpticsUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-DERIVED subject 444: 14 candidates, no satisfiability job
+  2545.10 BRIDGE-KPSET-SKIP Quantity v Unit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP Quantity v PhysicalConstant: propagated-false
+  2545.10 BRIDGE-KPSET-SKIP Quantity v ResourceUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP Quantity v ScienceAndEngineeringUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP Quantity v FinancialUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP Quantity v PhysicalUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP Quantity v AtomicPhysicsUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP Quantity v ChemistryUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP Quantity v ElectricityAndMagnetismUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP Quantity v MechanicsUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP Quantity v RadiologyUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP Quantity v SpaceAndTimeUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP Quantity v ThermodynamicsUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP Quantity v OpticsUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-DERIVED subject 485: 14 candidates, no satisfiability job
+  2545.10 BRIDGE-KPSET-SKIP SystemOfUnits v Unit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP SystemOfUnits v ResourceUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP SystemOfUnits v ScienceAndEngineeringUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP SystemOfUnits v SystemOfNaturalUnits: propagated-false
+  2545.10 BRIDGE-KPSET-SKIP SystemOfUnits v FinancialUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP SystemOfUnits v PhysicalUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP SystemOfUnits v AtomicPhysicsUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP SystemOfUnits v ChemistryUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP SystemOfUnits v ElectricityAndMagnetismUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP SystemOfUnits v MechanicsUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP SystemOfUnits v RadiologyUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP SystemOfUnits v SpaceAndTimeUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP SystemOfUnits v ThermodynamicsUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP SystemOfUnits v OpticsUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-DERIVED subject 515: 14 candidates, no satisfiability job
+  2545.10 BRIDGE-KPSET-SKIP Collection v Unit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP Collection v ResourceUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP Collection v ScienceAndEngineeringUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP Collection v OrderedCollection: propagated-false
+  2545.10 BRIDGE-KPSET-SKIP Collection v FinancialUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP Collection v PhysicalUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP Collection v AtomicPhysicsUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP Collection v ChemistryUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP Collection v ElectricityAndMagnetismUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP Collection v MechanicsUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP Collection v RadiologyUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP Collection v SpaceAndTimeUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP Collection v ThermodynamicsUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-SKIP Collection v OpticsUnit: inherited-countermodel
+  2545.10 BRIDGE-KPSET-DERIVED subject 517: 13 candidates, no satisfiability job
+  2582.78 BRIDGE-KPSET-DERIVED subject 533: 13 candidates, no satisfiability job
+  2633.69 BRIDGE-KPSET-DERIVED subject 558: 13 candidates, no satisfiability job
+  2694.53 BRIDGE-KPSET-DERIVED subject 559: 13 candidates, no satisfiability job
+  2759.05 BRIDGE-KPSET-DERIVED subject 670: 13 candidates, no satisfiability job
+  2832.92 BRIDGE-KPSET-DERIVED subject 671: 13 candidates, no satisfiability job
+  2970.47 BRIDGE-KPSET-DERIVED subject 672: 13 candidates, no satisfiability job
+  3076.22 BRIDGE-KPSET-DERIVED subject 673: 13 candidates, no satisfiability job
+  3181.95 BRIDGE-KPSET-DERIVED subject 674: 13 candidates, no satisfiability job
+  3273.07 BRIDGE-KPSET-DERIVED subject 675: 13 candidates, no satisfiability job
+  3376.34 BRIDGE-VERIFY round 0 subject 227/227 deferred=0 permanent=0
+  3376.34 BRIDGE-SAT-PHASE verify-total: 3308.43s
+  3376.34 BRIDGE-SOURCE-POST-CLOSURE seeded=759 combined=1518
+  3379.49 KM_TIMING engine block done @ 3378.56s (subs_keys=206)
+  3379.49 KM_TIMING mark: output mapping done
+  3379.49 KM_TIMING mark: classify_json returned
+  3379.49 KM_TIMING mark: output written
+  3379.50 3379.51 s 9059300 KB
+1853

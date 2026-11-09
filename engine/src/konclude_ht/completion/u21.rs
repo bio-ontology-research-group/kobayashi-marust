@@ -656,9 +656,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         }
         if self.conf_test_occur_unsat_cached {
             let label_set_id = calc_alg_context
-                .process_context_mut()
-                .node_mut(individual_node)
-                .get_reapply_concept_label_set(false);
+                .process_context()
+                .node(individual_node)
+                .use_reapply_con_label_set;
             let con_set_size = if label_set_id.is_some() {
                 calc_alg_context
                     .process_context()
@@ -844,6 +844,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             );
         }
 
+        // A class job on a retained consistency base (the bridge's
+        // conditional-full schedule) starts above the base. Konclude skips the
+        // nodes of a completion-graph-cached base the same way
+        // (`satisfiable_cache_write_in_completion_graph_range`); the bridge's
+        // retained base is not registered as such a cache, so without this
+        // every job swept every base id (ore_ont_7557: 119,132 ids per job,
+        // most of the late probe time). The writes only add satisfiable-cache
+        // entries, so a skipped write can cost an expansion, never change a
+        // verdict. The first class job still sweeps the base ids, as before.
+        if let Some(index) = &self.blocking_base_index {
+            if index.base_cache_swept.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                indi_idx = indi_idx.max(index.base_hi + 1);
+            }
+        }
         while indi_idx < indi_max {
             let indi_node = self.get_up_to_date_individual_by_id(indi_idx, calc_alg_context);
             node_cached |= self.write_satisfiable_node_cache_if_allowed(
@@ -1562,6 +1576,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                         .get_next();
                                 }
                             }
+                            if super::satexp_trace_enabled() {
+                                let mut current_node = individual_node;
+                                let ancestor_node = self
+                                    .get_ancestor_individual(&mut current_node, calc_alg_context);
+                                let pc = calc_alg_context.process_context();
+                                let onto = calc_alg_context.ontology_arenas();
+                                eprintln!(
+                                    "SATEXP-HIT compatible={} without_branched={} {} | anc {}",
+                                    sat_compatible,
+                                    without_branched,
+                                    super::satexp_trace::describe_node(pc, onto, individual_node),
+                                    super::satexp_trace::describe_node(pc, onto, ancestor_node)
+                                );
+                            }
                             if sat_compatible {
                                 handler_state.handler.stat_compatible_satisfiable_hits += 1;
                             } else {
@@ -1749,9 +1777,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 .concept(concept)
                 .get_role();
             let anc_con_set: LabelSetId = calc_alg_context
-                .process_context_mut()
-                .node_mut(ancestor_indi_node)
-                .get_reapply_concept_label_set(false);
+                .process_context()
+                .node(ancestor_indi_node)
+                .use_reapply_con_label_set;
             let anc_id = calc_alg_context
                 .process_context()
                 .node(ancestor_indi_node)
@@ -2077,6 +2105,15 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     concept,
                     None,
                 );
+            if super::satexp_trace_enabled() {
+                eprintln!(
+                    "SATEXP-EXPAND node={} concept={}{} present={}",
+                    calc_alg_context.process_context().node(individual_node).individual_node_id(),
+                    if concept_negated { "-" } else { "" },
+                    calc_alg_context.ontology_arenas().concept(concept).get_concept_tag(),
+                    already_present
+                );
+            }
             if !already_present {
                 let mut dependencies: DepLinkId = Id::NONE;
                 let mut first_dep_track_point: TrackPointId = Id::NONE;
@@ -2148,6 +2185,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                     !dependencies_present || first_dep_track_point.is_some(),
                     "expandCachedConcepts: missing dependency"
                 );
+                if super::satexp_trace_enabled() && !(dependencies_present && first_dep_track_point.is_some()) {
+                    eprintln!("SATEXP-EXPAND   declined (missing dependency)");
+                }
                 if dependencies_present && first_dep_track_point.is_some() {
                     let mut expanded_dep_track_point = TrackPointId::NONE;
                     self.create_expanded_dependency(
@@ -2157,7 +2197,13 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         dependencies,
                         calc_alg_context,
                     );
-                    self.add_concept_to_individual_skip_and_processing(
+                    // Konclude skips the AND rule for replayed concepts
+                    // (`addConceptToIndividualSkipANDProcessing`): its entries
+                    // are written after direct rule preprocessing has closed
+                    // the label under the AND family. The port's schedule does
+                    // not guarantee that closure (docs/HYBRID-CB-HT.md section
+                    // 23), so the replay queues AND-family concepts too.
+                    self.add_concept_to_individual_with_skip_function(
                         concept,
                         concept_negated,
                         individual_node,
@@ -2165,6 +2211,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         true,
                         false,
                         true,
+                        super::satexp_absorb::expanded_concept_skip_function(),
                         calc_alg_context,
                     );
                 }

@@ -155,6 +155,10 @@ pub struct AtMostMergeBranch {
     /// (`restriction_spec_mut` is journal-routed and merge/qualify branch
     /// points always own an epoch).
     pub rest: super::super::process::RestrictionSpecId,
+    /// The alternatives decide one candidate of an NN-rule distinct set
+    /// (docs/HYBRID-CB-HT.md section 24): `(NONE, c)` makes `c` a new
+    /// representative, every other pair merges `c` into a representative.
+    pub nn_decision: bool,
 }
 
 /// The backend-expansion-reuse branching payload
@@ -375,6 +379,15 @@ pub struct NativeNominalBackendReplay {
     /// association carry any of the four non-deterministic slots? Only then is
     /// the individual queued for reuse expansion (cpp 22765–22771).
     pub has_reusable_elements: bool,
+    /// Nominal concepts of the OTHER individuals in the association's
+    /// `DETERMINISTIC_SAME_INDIVIDUAL_SET_LABEL`. The cached label values omit
+    /// every positive nominal concept, but `deterministic_cached_concepts` are
+    /// inserted with AND processing skipped, so a cached trigger or
+    /// definition whose operand is such a nominal can no longer derive it.
+    /// The loader adds these concepts with ordinary processing after the
+    /// cached labels, which restores the deterministic merges of the recorded
+    /// model (bridge_merge_min, r2730: `c = b` from `{b,c} <= {b}`).
+    pub deterministic_same_nominal_concepts: Vec<ConceptId>,
 }
 
 impl Default for NativeNominalBackendReplay {
@@ -402,6 +415,7 @@ impl Default for NativeNominalBackendReplay {
             cached_representative_same_individual_id: None,
             reuse_replay_representable: false,
             has_reusable_elements: false,
+            deterministic_same_nominal_concepts: Vec::new(),
         }
     }
 }
@@ -967,6 +981,12 @@ pub struct CompletionTaskHandleAlgorithm {
     /// KM-BRIDGE (Stage 8): OR branch points opened on a node that already
     /// existed in the retained base (arena index `< retained_base_node_count`).
     pub or_branch_open_retained_node_count: u64,
+    /// Modifications (concept, link or merge, see
+    /// `propagate_individual_node_modified`) of nodes that belong to the
+    /// retained base (arena index `< retained_base_node_count`). The
+    /// cleared-queue screen of docs/HYBRID-CB-HT.md §15 accepts a job only
+    /// when this stays 0.
+    pub retained_node_modified_count: u64,
     /// KM-BRIDGE (Stage 8): OR branch points opened on a nominal (ABox) node,
     /// whether retained or materialized inside this job.
     pub or_branch_open_nominal_node_count: u64,
@@ -1045,6 +1065,9 @@ pub struct CompletionTaskHandleAlgorithm {
     /// association was installed. Instrumentation only — the HIT path is a
     /// RESOLUTION, not a "reached/influenced", so it never activates.
     pub native_reuse_lazy_lookup_hit_count: u64,
+    /// Blocking candidates of the retained consistency base (u20
+    /// `BlockingBaseIndex`); set at the base snapshot, `None` otherwise.
+    pub blocking_base_index: Option<std::sync::Arc<super::u20::BlockingBaseIndex>>,
     /// Nodes taken off the backend-individual reuse-expansion queue
     /// (`u02` Probes 19/34 → `handle_backend_expansion_reuse_queue_node`).
     pub native_reuse_queue_drain_count: u64,
@@ -1273,6 +1296,28 @@ pub struct CompletionTaskHandleAlgorithm {
     /// `…_before_processing_tag`, cpp 7587–7644 / 7669–7764) is still lossy;
     /// withholding costs an early exit, never a verdict.
     pub ddb_root_cancel_withheld_count: u64,
+    /// Root-cancellation witnesses for disjunction alternatives whose stored
+    /// refutation is EMPTY (see u29's witness test and docs/HYBRID-CB-HT.md
+    /// section 14). Keyed by the alternative's `(concept index, negated)`;
+    /// `true` means an independent probe of that operand alone, in a fresh
+    /// bridge environment over the same input, ended in a clash without
+    /// opening a single branch point, so the operand is unsatisfiable with
+    /// respect to the input. `false` means the probe did not establish it.
+    /// Shared read-only between subject jobs; the classification driver owns
+    /// the map and extends it between jobs.
+    pub empty_alternative_witnesses:
+        std::sync::Arc<crate::fxhash::FxHashMap<(usize, bool), bool>>,
+    /// Operands that a withheld root cancellation needed but that have no
+    /// entry in `empty_alternative_witnesses` yet. Filled by u29; drained by
+    /// the classification driver.
+    pub empty_alternative_witness_requests: Vec<(ConceptId, bool)>,
+    /// When set (by a driver that can answer the requests), a root
+    /// cancellation withheld only for want of an unknown witness raises a
+    /// STOP so the driver can probe the operands and rerun the job. Unset:
+    /// the historical behaviour (withhold and continue the search).
+    pub stop_on_unknown_empty_alternative_witness: bool,
+    /// Set by u29 when it asks for that STOP; read by `run_completion_on`.
+    pub empty_alternative_witness_stop: bool,
     /// KM_BRIDGE_SEARCH_LOG budget counter.
     pub search_log_count: u64,
     /// DDB diagnostics: backjumps taken (target found by the scan).
@@ -1284,6 +1329,14 @@ pub struct CompletionTaskHandleAlgorithm {
     /// DDB diagnostics: clashes where the analysis marked NO open branch
     /// point (chronological fallback taken).
     pub ddb_fallback_count: u64,
+    /// A leaf job (docs/HYBRID-CB-HT.md sections 16 and 24) whose clash
+    /// analysis marked no open job decision ends the job instead of
+    /// backtracking chronologically: on the leaf only a satisfiable fixpoint
+    /// or a root cancellation is accepted, and a clash independent of every
+    /// job decision rests on a leaf decision the job cannot revise.
+    pub leaf_job_unattributed_clash_ends_job: bool,
+    /// How often that happened (diagnostic).
+    pub leaf_job_unattributed_clash_count: u64,
     /// DDB diagnostics: `set_clashes` markings performed by the analysis.
     pub ddb_mark_count: u64,
     /// Advances where the snapshot restore was SKIPPED (successor nodes were
@@ -1299,6 +1352,8 @@ pub struct CompletionTaskHandleAlgorithm {
     /// DDB diagnostics: clash-closure dumps emitted so far (first few
     /// analyses under KM_BRIDGE_PROGRESS).
     pub ddb_analysis_dumps: u64,
+    /// Diagnostic: the last clash closure formatted under KM_BRIDGE_DUMP_CLASH.
+    pub ddb_last_closure: String,
     /// KM_BRIDGE_DUMP_CLASH: line budget for the per-walk DDB-DISCARD-LIVE
     /// dump (task #12 — which live alternatives the mark-driven walk drops).
     pub ddb_discard_dump_lines: u64,
@@ -1660,6 +1715,7 @@ impl CompletionTaskHandleAlgorithm {
             deferred_or_branchings: Vec::new(),
             drain_aborted: false,
             or_branch_open_retained_node_count: 0,
+            retained_node_modified_count: 0,
             or_branch_open_nominal_node_count: 0,
             or_branch_open_fresh_node_count: 0,
             native_reuse_activated_individuals: HashSet::default(),
@@ -1672,6 +1728,7 @@ impl CompletionTaskHandleAlgorithm {
             native_reuse_activation_queued_count: 0,
             native_reuse_pending_defer_count: 0,
             native_reuse_lazy_lookup_hit_count: 0,
+            blocking_base_index: None,
             native_reuse_queue_drain_count: 0,
             native_reuse_check_pass_count: 0,
             native_reuse_check_decline_count: 0,
@@ -1762,12 +1819,19 @@ impl CompletionTaskHandleAlgorithm {
             ddb_refuted_discard_count: 0,
             ddb_closed_decision_discard_count: 0,
             ddb_root_cancel_withheld_count: 0,
+            empty_alternative_witnesses: Default::default(),
+            empty_alternative_witness_requests: Vec::new(),
+            stop_on_unknown_empty_alternative_witness: false,
+            empty_alternative_witness_stop: false,
             search_log_count: 0,
             ddb_jump_count: 0,
             ddb_jump_pop_total: 0,
             ddb_fallback_count: 0,
+            leaf_job_unattributed_clash_ends_job: false,
+            leaf_job_unattributed_clash_count: 0,
             ddb_mark_count: 0,
             ddb_analysis_dumps: 0,
+            ddb_last_closure: String::new(),
             ddb_discard_dump_lines: 0,
             ddb_walk_chain_dumps: 0,
             unrestored_advance_count: 0,

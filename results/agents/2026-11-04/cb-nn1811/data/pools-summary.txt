@@ -1,0 +1,47 @@
+bridge-m413-k                                base: auto/ok=2000 ht_bridge/ok=2000
+                                             new:  auto/ok=2000 ht_bridge/ok=2000
+bridge-m413-k2                               base: auto/ok=2000 ht_bridge/ok=2000
+                                             new:  auto/ok=2000 ht_bridge/ok=2000
+bridge-m413-respool                          base: auto/ERR=2 auto/WRONG=7 auto/ok=57 ht_bridge/ERR=51 ht_bridge/ok=15
+                                             new:  auto/ERR=2 auto/WRONG=7 auto/ok=57 ht_bridge/ERR=51 ht_bridge/ok=15
+bridge-nn-rule-fam                           base: auto/TIMEOUT=20 auto/WRONG=6 auto/ok=1967 ht_bridge/NOANSWER=2 ht_bridge/TIMEOUT=28 ht_bridge/WRONG=5 ht_bridge/ok=1958
+                                             new:  auto/TIMEOUT=21 auto/WRONG=1 auto/ok=1971 ht_bridge/ERR=6 ht_bridge/TIMEOUT=17 ht_bridge/WRONG=1 ht_bridge/ok=1969
+bridge-reflexive-fam                         base: auto/TIMEOUT=15 auto/ok=1983 ht_bridge/ERR=12 ht_bridge/TIMEOUT=22 ht_bridge/ok=1964
+                                             new:  auto/TIMEOUT=23 auto/ok=1975 ht_bridge/ERR=15 ht_bridge/TIMEOUT=25 ht_bridge/ok=1958
+bridge-reflexive-seeds20                     base: auto/ok=10 ht_bridge/ok=10
+                                             new:  auto/ok=10 ht_bridge/ok=10
+bridge-self-micro                            base: auto/ok=8 ht_bridge/ERR=1 ht_bridge/ok=7
+                                             new:  auto/ok=8 ht_bridge/ERR=1 ht_bridge/ok=7
+bridge-self-pool                             base: auto/TIMEOUT=9 auto/ok=1991 ht_bridge/ERR=247 ht_bridge/TIMEOUT=1 ht_bridge/ok=1752
+                                             new:  auto/TIMEOUT=10 auto/ok=1990 ht_bridge/ERR=247 ht_bridge/TIMEOUT=1 ht_bridge/ok=1752
+bridge-self-pools-abox-probes-f              base: auto/TIMEOUT=37 auto/ok=163 ht_bridge/ERR=45 ht_bridge/ok=155
+                                             new:  auto/TIMEOUT=37 auto/ok=163 ht_bridge/ERR=45 ht_bridge/ok=155
+bridge-self-pools-abox-probes-m              base: auto/TIMEOUT=10 auto/ok=1990 ht_bridge/ERR=4 ht_bridge/TIMEOUT=9 ht_bridge/ok=1987
+                                             new:  auto/TIMEOUT=10 auto/ok=1990 ht_bridge/ERR=4 ht_bridge/TIMEOUT=9 ht_bridge/ok=1987
+bridge-self-pools-bridge-defers              base: auto/ok=300 ht_bridge/ERR=153 ht_bridge/ok=147
+                                             new:  auto/ok=300 ht_bridge/ERR=153 ht_bridge/ok=147
+bridge-self-pools-bridge-defers-f            base: auto/TIMEOUT=37 auto/ok=163 ht_bridge/ERR=45 ht_bridge/ok=155
+                                             new:  auto/TIMEOUT=37 auto/ok=163 ht_bridge/ERR=45 ht_bridge/ok=155
+bridge-self-pools-bridge-replay              base: auto/TIMEOUT=1 auto/ok=999 ht_bridge/ERR=3 ht_bridge/ok=997
+                                             new:  auto/TIMEOUT=1 auto/ok=999 ht_bridge/ERR=3 ht_bridge/ok=997
+bridge-self-pools-res-data-values-3          base: auto/ERR=2 auto/WRONG=6 auto/ok=26 ht_bridge/ERR=30 ht_bridge/ok=4
+                                             new:  auto/ERR=2 auto/WRONG=6 auto/ok=26 ht_bridge/ERR=30 ht_bridge/ok=4
+bridge-self-pools-res-forced-nominal         base: auto/ok=14 ht_bridge/ERR=7 ht_bridge/ok=7
+                                             new:  auto/ok=14 ht_bridge/ERR=7 ht_bridge/ok=7
+bridge-self-pools-res-fr282                  base: auto/ok=6 ht_bridge/ERR=6
+                                             new:  auto/ok=6 ht_bridge/ERR=6
+bridge-self-pools-res-lean-data-values       base: auto/WRONG=1 auto/ok=8 ht_bridge/ERR=8 ht_bridge/ok=1
+                                             new:  auto/WRONG=1 auto/ok=8 ht_bridge/ERR=8 ht_bridge/ok=1
+bridge-self-pools-sameindividual-bridge      base: auto/ok=1946 ht_bridge/ERR=11 ht_bridge/ok=1935
+                                             new:  auto/ok=1946 ht_bridge/ERR=11 ht_bridge/ok=1935
+bridge-self-regress                          base: auto/ok=6 ht_bridge/ok=6
+                                             new:  auto/ok=6 ht_bridge/ok=6
+cb-s974-merge                                base: auto/TIMEOUT=1 auto/ok=1999 ht_bridge/ERR=10 ht_bridge/TIMEOUT=2 ht_bridge/ok=1988
+                                             new:  auto/TIMEOUT=3 auto/ok=1997 ht_bridge/ERR=10 ht_bridge/TIMEOUT=5 ht_bridge/ok=1985
+cb-s974-vacuous                              base: auto/TIMEOUT=5 auto/ok=1995 ht_bridge/ERR=849 ht_bridge/TIMEOUT=3 ht_bridge/ok=1148
+                                             new:  auto/TIMEOUT=5 auto/ok=1995 ht_bridge/ERR=849 ht_bridge/TIMEOUT=3 ht_bridge/ok=1148
+
+TOTAL base: auto/ERR=4 auto/TIMEOUT=135 auto/WRONG=20 auto/ok=19631 ht_bridge/ERR=1482 ht_bridge/NOANSWER=2 ht_bridge/TIMEOUT=65 ht_bridge/WRONG=5 ht_bridge/ok=18236
+TOTAL new:  auto/ERR=4 auto/TIMEOUT=147 auto/WRONG=15 auto/ok=19624 ht_bridge/ERR=1491 ht_bridge/TIMEOUT=60 ht_bridge/WRONG=1 ht_bridge/ok=18238
+new wrong vs base: 0 []
+base wrong fixed in new: 9 [('bridge-nn-rule-fam', 'nn1064.ofn', 'ht_bridge', 'WRONG', 'ok'), ('bridge-nn-rule-fam', 'nn1064.ofn', 'auto', 'WRONG', 'ok'), ('bridge-nn-rule-fam', 'nn1116.ofn', 'ht_bridge', 'WRONG', 'ok'), ('bridge-nn-rule-fam', 'nn1116.ofn', 'auto', 'WRONG', 'ok'), ('bridge-nn-rule-fam', 'nn1313.ofn', 'ht_bridge', 'WRONG', 'ok'), ('bridge-nn-rule-fam', 'nn1313.ofn', 'auto', 'WRONG', 'ok'), ('bridge-nn-rule-fam', 'nn1348.ofn', 'ht_bridge', 'WRONG', 'ok'), ('bridge-nn-rule-fam', 'nn1348.ofn', 'auto', 'WRONG', 'ok'), ('bridge-nn-rule-fam', 'nn1811.ofn', 'auto', 'WRONG', 'ok')]

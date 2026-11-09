@@ -1,0 +1,11 @@
+DDB-ROOT-CANCEL[propagated] collected closure: [c=¬965 ind=false det=true tag=0 lvl=1 tp=#5082] [c=248 ind=false det=true tag=0 lvl=1 tp=#3764] [c=12 ind=false det=true tag=0 lvl=0 tp=#3644] [c=807 ind=false det=true tag=0 lvl=0 tp=#3644] [c=¬148 ind=false det=true tag=0 lvl=1 tp=#3764]
+  SIBLING[0] tp#5128 tag=306 marked=true stored: (EMPTY)
+  SIBLING[1] tp#5127 tag=306 marked=true stored: [c=¬148 ind=false det=true tag=0 lvl=1 tp=#3764]
+  SIBLING[2] tp#5126 tag=306 marked=true stored: (EMPTY)
+  SIBLING[3] tp#5125 tag=306 marked=true stored: [c=807 ind=false det=true tag=0 lvl=0 tp=#3644] [c=12 ind=false det=true tag=0 lvl=0 tp=#3644]
+  SIBLING[4] tp#5124 tag=0 marked=true stored: [c=-1 ind=false det=false tag=-1 lvl=-1 tp=#3764]
+DDBT fallback-nomark target=None depth=305 304:orn267c820[1/2 cur1 ..] 303:orn267c1028[1/3 cur0 ...] 302:orn267c1080[1/2 cur0 ..] 301:orn267c1081[1/2 cur1 ..] 300:orn266c1205[1/2 cur0 ..] 299:orn266c1028[1/3 cur0 ...] 298:orn266c1080[1/2 cur0 ..] 297:orn266c1081[1/2 cur1 ..] 296:orn265c1028[1/3 cur0 ...] 295:orn265c1080[1/2 cur0 ..] 294:orn265c1081[1/2 cur1 ..] 293:orn264c859[1/2 cur0 ..] 292:orn2
+--
+DDB-MARK-EMPTY clash: [c=12 ind=false det=true tag=306 lvl=2 tp=#5136] [c=¬12 ind=false det=true tag=306 lvl=2 tp=#5136]
+DDB-MARK-EMPTY clash: [c=742 ind=false det=true tag=306 lvl=2 tp=#5153] [c=¬742 ind=false det=true tag=306 lvl=2 tp=#5153]
+DDB-MARK-EMPTY clash: [c=12 ind=false det=true tag=306 lvl=2 tp=#5166] [c=¬12 ind=false det=true tag=306 lvl=2 tp=#5166]

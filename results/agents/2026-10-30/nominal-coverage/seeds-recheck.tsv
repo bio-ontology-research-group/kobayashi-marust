@@ -1,0 +1,36 @@
+km.base	m2032.ofn	auto	TIMEOUT	60.07					
+km.base	m2058.ofn	auto	TIMEOUT	60.06					
+km.base	m2059.ofn	auto	ok	0.03	0	0	0	0	0
+km.base	m2079.ofn	auto	TIMEOUT	60.06					
+km.base	m2131.ofn	auto	TIMEOUT	60.06					
+km.base	m2173.ofn	auto	TIMEOUT	60.07					
+km.base	m2185.ofn	auto	ok	0.04	0	0	0	0	0
+km.base	m2336.ofn	auto	TIMEOUT	60.07					
+km.base	m2359.ofn	auto	TIMEOUT	60.07					
+km.base	m2032.ofn	auto	TIMEOUT	60.08					
+km.base	m2058.ofn	auto	TIMEOUT	60.07					
+km.base	m2059.ofn	auto	ok	0.04	0	0	0	0	0
+km.base	m2079.ofn	auto	TIMEOUT	60.06					
+km.base	m2131.ofn	auto	TIMEOUT	60.07					
+km.base	m2173.ofn	auto	TIMEOUT	60.08					
+km.base	m2185.ofn	auto	ok	0.03	0	0	0	0	0
+km.base	m2336.ofn	auto	TIMEOUT	60.07					
+km.base	m2359.ofn	auto	ok	41.17	0	0	0	0	0
+km.fix2	m2032.ofn	auto	ok	2.89	0	0	0	0	0
+km.fix2	m2058.ofn	auto	ok	11.72	0	0	0	0	0
+km.fix2	m2059.ofn	auto	ok	0.05	0	0	0	0	0
+km.fix2	m2079.ofn	auto	TIMEOUT	60.07					
+km.fix2	m2131.ofn	auto	ok	3.04	0	0	0	0	0
+km.fix2	m2173.ofn	auto	ok	58.80	0	0	0	0	0
+km.fix2	m2185.ofn	auto	ok	0.04	0	0	0	0	0
+km.fix2	m2336.ofn	auto	ok	32.67	0	0	0	0	0
+km.fix2	m2359.ofn	auto	ok	37.01	0	0	0	0	0
+km.fix2	m2032.ofn	auto	ok	2.92	0	0	0	0	0
+km.fix2	m2058.ofn	auto	ok	13.04	0	0	0	0	0
+km.fix2	m2059.ofn	auto	ok	0.05	0	0	0	0	0
+km.fix2	m2079.ofn	auto	TIMEOUT	60.08					
+km.fix2	m2131.ofn	auto	ok	2.47	0	0	0	0	0
+km.fix2	m2173.ofn	auto	ok	46.62	0	0	0	0	0
+km.fix2	m2185.ofn	auto	ok	0.03	0	0	0	0	0
+km.fix2	m2336.ofn	auto	ok	29.09	0	0	0	0	0
+km.fix2	m2359.ofn	auto	ok	35.22	0	0	0	0	0
