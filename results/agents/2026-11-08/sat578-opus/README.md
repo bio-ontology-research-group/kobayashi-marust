@@ -80,3 +80,16 @@ unmarked completed runs compute what the base computes, the base ran on the
 `rows.sh`, `fired.py`, `final.py`). Not run: the 16 held-out ORE inputs and
 the 112 nominal design-half inputs; no timing comparison beyond the 60 s
 verdicts.
+
+## Narrowing attempt (2026-11-09, `5c0cfa67`, reverted in `e3672218`)
+
+`km-5c0cfa67` (sha256
+`c095925a6e79167351685ee2ebbd362fece5ff4b1aed0fadfd8c4acc1806a812`; data in
+`data/narrowing/`): B6 counts a sibling's
+image as `v` only when `v` blocks it; B4a refuses a nominal neighbour only when
+an at-most restriction now in its label counts the blocker. Fixtures 54/54 ok
+(`fx-5c0cfa67.tsv`). Rerun of the 7,032 fired runs (`fired-rerun-5c0cfa67.tsv.gz`,
+`diff-5c0cfa67.tsv`): 11 of the 12 lost answers back (all but `nn1881`), but
+`s578_96` and `s578_1486` wrong again on both routes (as on the base);
+`split-s578_96_1486.tsv` shows each narrowing alone loses one of them.
+Reverted; section 25.6.

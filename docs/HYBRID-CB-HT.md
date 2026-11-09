@@ -3830,3 +3830,42 @@ cap; data in `results/agents/2026-11-08/sat578-opus/data/`.
   absorption fix). `bridge_nn_rule`'s control passes unchanged.
 - Not run: the 16 held-out ORE inputs and the 112 nominal design-half inputs
   of the common validation list.
+
+### 25.6 Narrowing the guards (2026-11-09, commit `5c0cfa67`, reverted in `e3672218`)
+
+Konclude's B6 (cpp 18716-18741) tests each block on its own: it reads the
+label of `w` and never counts the parent's successors, so it has no notion of
+two successors sharing one blocker. The port transcribes that exactly; the
+lost answers come from blocks that Konclude accepts. I tried narrower guards
+that refuse only part of what section 25.4 refuses:
+
+- B6 `parent`: refuse only when the blocker is `v` itself or already an
+  `R`-neighbour of `v`. B6 `vshare` (kept for `5c0cfa67`): the count test of
+  25.4, but a sibling's image is `v` only when `v` blocks it; two siblings
+  redirected to one blocker other than `v` are not counted.
+- B4a `atmost` (kept for `5c0cfa67`): refuse a nominal neighbour `o` only
+  when an at-most restriction now in the label of `o` counts the blocker.
+- B4a counting a reflexive self-link of the blocker, and dropping the probe
+  root exclusion: neither changed any of the lost seeds.
+
+With `vshare` and `atmost` (`km-5c0cfa67`, data in
+`results/agents/2026-11-08/sat578-opus/data/narrowing/`): the nine fixtures
+are right in 3 of 3 runs on both routes; on rerunning all 7,032 runs that
+fired on `b1fcbb93` (the narrowed guards refuse a subset, so the other runs
+stay identical to the base), 11 of the 12 lost answers come back (`nn969`,
+`s578_1026`, `s578_1288`, `s578_171`, `s578_733`, `s578_908`; `nn1881` stays
+lost on both routes: its base block redirects a successor onto an `R`-neighbour
+that `v` already counts, a merge that every variant refuses). But two seeds
+that `b1fcbb93` recovers are wrong again, as on the base, on both routes:
+`s578_96` needs the case `vshare` drops (two siblings redirected to one
+blocker other than the parent; `KM_HT_B6_MODE=vshare` alone leaves it wrong),
+and `s578_1486` needs the case `atmost` drops (the at-most restriction that
+counts the copy is not yet in the nominal's label when the block is taken,
+and the port does not retest the block when it arrives; `KM_HT_B4A_MODE=atmost`
+alone leaves it wrong). Both narrowings are therefore unsound in practice,
+not only in principle, and the sat578 family would lose its zero-wrong
+result. I reverted `5c0cfa67`; the branch keeps the guards of section 25.4.
+Recovering the lost answers exactly needs either a second blocker candidate
+when the first one collides (the port's blocker search returns the first
+candidate that passes) or a retest of blocks when a nominal neighbour of the
+blocker gains an at-most restriction.
