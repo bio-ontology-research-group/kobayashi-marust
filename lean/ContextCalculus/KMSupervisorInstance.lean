@@ -34,11 +34,18 @@ def ELFragment (source : RoutingSource) : Prop :=
       true ∧
     source.named.Nodup
 
-/-- Every route runs its Rust execution first and the EL reference procedure
-when that execution does not publish. -/
+/-- The ALC fragment of the common source, as the recogniser accepts it, with a
+duplicate-free request list. -/
+def ALCFragment (source : RoutingSource) : Prop :=
+  (ALCCommonSourceRecognizer.recognizeALC source.named source.ontology).isSome =
+      true ∧
+    source.named.Nodup
+
+/-- Every route runs its Rust execution first, then the EL reference procedure,
+and finally the ALC reference procedure when earlier stages do not publish. -/
 def kmExecute (rust : Route → KMRequestedExecution) (route : Route) :
     KMRequestedExecution :=
-  (rust route).orElse elReferenceExecution
+  ((rust route).orElse elReferenceExecution).orElse alcReferenceExecution
 
 /-- The KM supervisor for a fail-closed Rust executor and a router decision.
 Both are parameters: nothing about the Rust workers' behaviour on a source, and
@@ -60,8 +67,9 @@ theorem kmSupervisor_coversAt_of_EL (rust : Route → KMRequestedExecution)
     (hsource : ELFragment source) :
     (kmSupervisor rust decide).CoversAt source :=
   ⟨select (decide source), select_mem_executionRoutes (decide source),
-    KMRequestedExecution.orElse_completeAt_right _ _ source
-      (elReferenceExecution_completeAt source hsource.1 hsource.2)⟩
+    KMRequestedExecution.orElse_completeAt_left _ _ source
+      (KMRequestedExecution.orElse_completeAt_right _ _ source
+        (elReferenceExecution_completeAt source hsource.1 hsource.2))⟩
 
 theorem kmSupervisor_complete_on_EL (rust : Route → KMRequestedExecution)
     (decide : RoutingSource → Decision) :
@@ -81,9 +89,50 @@ theorem kmSupervisor_sound_and_complete_on_EL
         RequestedCorrect source answer) :=
   ⟨kmSupervisor_sound rust decide, kmSupervisor_complete_on_EL rust decide⟩
 
+/-- On the ALC fragment the selected route covers the source through its ALC
+reference stage. -/
+theorem kmSupervisor_coversAt_of_ALC (rust : Route → KMRequestedExecution)
+    (decide : RoutingSource → Decision) (source : RoutingSource)
+    (hsource : ALCFragment source) :
+    (kmSupervisor rust decide).CoversAt source :=
+  ⟨select (decide source), select_mem_executionRoutes (decide source),
+    KMRequestedExecution.orElse_completeAt_right _ _ source
+      (alcReferenceExecution_completeAt source hsource.1 hsource.2)⟩
+
+theorem kmSupervisor_complete_on_ALC (rust : Route → KMRequestedExecution)
+    (decide : RoutingSource → Decision) :
+    CompleteOn RequestedCorrect ALCFragment (kmSupervisor rust decide).run :=
+  (kmSupervisor rust decide).complete_on ALCFragment
+    (kmSupervisor_coversAt_of_ALC rust decide)
+
+theorem kmSupervisor_sound_and_complete_on_ALC
+    (rust : Route → KMRequestedExecution) (decide : RoutingSource → Decision) :
+    (∀ source answer,
+      (kmSupervisor rust decide).run.run source = .publish answer →
+        RequestedCorrect source answer) ∧
+    (∀ source, ALCFragment source →
+      ∃ answer, (kmSupervisor rust decide).run.run source = .publish answer ∧
+        RequestedCorrect source answer) :=
+  ⟨kmSupervisor_sound rust decide, kmSupervisor_complete_on_ALC rust decide⟩
+
+theorem kmSupervisor_complete_on_EL_or_ALC
+    (rust : Route → KMRequestedExecution) (decide : RoutingSource → Decision) :
+    CompleteOn RequestedCorrect (fun source => ELFragment source ∨ ALCFragment source)
+      (kmSupervisor rust decide).run :=
+  (kmSupervisor rust decide).complete_on
+    (fun source => ELFragment source ∨ ALCFragment source)
+    (fun source hsource =>
+      match hsource with
+      | .inl hel => kmSupervisor_coversAt_of_EL rust decide source hel
+      | .inr halc => kmSupervisor_coversAt_of_ALC rust decide source halc)
+
 #print axioms kmSupervisor_sound
 #print axioms kmSupervisor_coversAt_of_EL
 #print axioms kmSupervisor_complete_on_EL
 #print axioms kmSupervisor_sound_and_complete_on_EL
+#print axioms kmSupervisor_coversAt_of_ALC
+#print axioms kmSupervisor_complete_on_ALC
+#print axioms kmSupervisor_sound_and_complete_on_ALC
+#print axioms kmSupervisor_complete_on_EL_or_ALC
 
 end ContextCalculus.KMSupervisorInstance
