@@ -17,6 +17,9 @@ import ContextCalculus.ELRenaming
 import ContextCalculus.ELNormalization
 import ContextCalculus.ELRawNormalization
 import ContextCalculus.ELCompletionRefinement
+import ContextCalculus.ELCompletionRelativeRefinement
+import ContextCalculus.ELReferenceSaturation
+import ContextCalculus.ELCommonSourceRecognizer
 import ContextCalculus.ELResidualCertificate
 import ContextCalculus.ELResidualCompilation
 import ContextCalculus.ELResidualWitness
