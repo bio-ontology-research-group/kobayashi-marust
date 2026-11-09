@@ -20,6 +20,7 @@ import ContextCalculus.ELCompletionRefinement
 import ContextCalculus.ELCompletionRelativeRefinement
 import ContextCalculus.ELReferenceSaturation
 import ContextCalculus.ELCommonSourceRecognizer
+import ContextCalculus.ELCommonSourceRecognizerTests
 import ContextCalculus.ELResidualCertificate
 import ContextCalculus.ELResidualCompilation
 import ContextCalculus.ELResidualWitness
