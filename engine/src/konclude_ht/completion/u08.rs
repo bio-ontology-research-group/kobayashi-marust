@@ -747,10 +747,38 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             calc_alg_context
                 .process_context_mut()
                 .indi_depth_queue_insert(dq, succ_indi);
-        } else {
+        } else if !super::ht_no_b4a_nominal_guard() {
             // A suitable successor already exists — Konclude records a backward
-            // dependency to the ancestor (cpp 14403–14418); the backward-dependency
-            // linker subsystem is W3-DEFER, no graph mutation needed here.
+            // dependency to the ancestor (cpp 14440–14452) and propagates its
+            // nominal-connection status up from `process_indi`. Because the
+            // port routes `∃R.{a}` through this general branch rather than the
+            // VALUE shortcut (cpp 14316–14380), `already_exist` can also be a
+            // nominal (for instance, `process_indi`'s nominal parent when an
+            // inverse link already exists), which `propagate_individual_node_nominal_connection_status_to_ancestors`
+            // handles alongside `PRF_SUCCESSORNOMINALCONNECTION`.
+            let is_nominal = calc_alg_context
+                .process_context()
+                .node(*process_indi)
+                .is_nominal_individual_node();
+            if !is_nominal {
+                let loc_already_exist =
+                    self.get_localized_individual(already_exist, false, calc_alg_context);
+                let has_nom_conn = {
+                    let node = calc_alg_context.process_context().node(loc_already_exist);
+                    node.is_nominal_individual_node()
+                        || node.has_partial_processing_restriction_flags(
+                            IndividualProcessNode::PRF_SUCCESSORNOMINALCONNECTION,
+                        )
+                };
+                if has_nom_conn {
+                    super::sat578_guard_fired();
+                    self.propagate_individual_node_nominal_connection_status_to_ancestors(
+                        *process_indi,
+                        loc_already_exist,
+                        calc_alg_context,
+                    );
+                }
+            }
         }
     }
 
