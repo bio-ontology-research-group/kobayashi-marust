@@ -1,0 +1,11 @@
+Prefix(:=<http://example.org/ref/existentials#>)
+Ontology(<http://example.org/ref/existentials>
+  Declaration(Class(:A))
+  Declaration(Class(:B))
+  Declaration(Class(:C))
+  Declaration(Class(:D))
+  Declaration(ObjectProperty(:r))
+  SubClassOf(:A ObjectSomeValuesFrom(:r :B))
+  SubClassOf(:B :C)
+  SubClassOf(ObjectSomeValuesFrom(:r :C) :D)
+)

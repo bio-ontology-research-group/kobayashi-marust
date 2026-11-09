@@ -1,0 +1,7 @@
+Prefix(:=<http://example.org/ref/non_el#>)
+Ontology(<http://example.org/ref/non_el>
+  Declaration(Class(:A))
+  Declaration(Class(:B))
+  Declaration(Class(:C))
+  SubClassOf(:A ObjectUnionOf(:B :C))
+)
