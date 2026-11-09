@@ -164,6 +164,9 @@ fn negative_control_with_the_former_absorption_misses_each() {
         // The entailed functional clauses (cb_nn1811) also recover these
         // fixtures, so the control switches them off as well.
         ("KM_HT_NO_ENTAILED_FUNCTIONAL", "1"),
+        // The blocking fix of docs/HYBRID-CB-HT.md section 25 (sat578) also
+        // recovers sat1096min, so the control switches it off too.
+        ("KM_HT_NO_SAT578_FIX", "1"),
     ]);
     for path in fixtures() {
         let got = normalise(&classify(&path, &env));
