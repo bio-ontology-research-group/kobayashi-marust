@@ -93,17 +93,66 @@ use super::context::CalculationAlgorithmContextBase;
 type BlockingAlternativeDataHandle = BlockingAltDataId;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
+    /// Whether an at-most restriction in the label of the nominal `o`
+    /// counts `w_pred` (and so a copy of it): a positive `<=n S.C` or a
+    /// negated `>=n S.C` with `w_pred` an `S`-neighbour of `o` and `w_pred`
+    /// in `C` (docs/HYBRID-CB-HT.md section 25).
+    fn nominal_bound_counts_copy(
+        &mut self,
+        o: NodeId,
+        w_pred: NodeId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        let o_set = calc_alg_context.process_context().node(o).use_reapply_con_label_set;
+        let w_set = calc_alg_context.process_context().node(w_pred).use_reapply_con_label_set;
+        let mut bounds: Vec<(RoleId, Vec<NegLink<ConceptId>>, bool)> = Vec::new();
+        {
+            let mut it = calc_alg_context
+                .process_context()
+                .label_set(o_set)
+                .get_concept_label_set_iterator(false, false, false);
+            while it.has_next() {
+                let con_des = it.next(true, calc_alg_context.process_context());
+                if con_des.is_none() {
+                    continue;
+                }
+                let (concept, negated) = {
+                    let pc = calc_alg_context.process_context();
+                    (pc.con_desc(con_des).get_concept(), pc.con_desc(con_des).is_negated())
+                };
+                let c = calc_alg_context.ontology_arenas().concept(concept);
+                let op = c.get_operator_code();
+                if (!negated && op == CCATMOST) || (negated && op == CCATLEAST) {
+                    bounds.push((c.get_role(), c.get_operand_list().to_vec(), negated));
+                }
+            }
+        }
+        for (role, ops, _) in bounds {
+            let mut oo = o;
+            let mut wp = w_pred;
+            if !self.has_individuals_link(&mut oo, &mut wp, role, false, calc_alg_context) {
+                continue;
+            }
+            if ops.is_empty()
+                || !self.contains_individual_node_concepts_label_negated(w_set, &ops, true, calc_alg_context)
+            {
+                return true;
+            }
+        }
+        false
+    }
+
     /// The count test of B6 for `not (<=n role.C)` at `v`, that is
     /// `>=n+1 role.C` (docs/HYBRID-CB-HT.md section 25). C-blocking `w` by
     /// `w_pred` redirects the edge `v -> w` to `w_pred`. Every
     /// `role`-successor of `v` in `C` then stands for its image: `w_pred` for
-    /// `w`, its blocker for a directly blocked successor (counted as
-    /// c-blocked, which is the worst case), itself otherwise. The redirects
-    /// break the restriction when they merge two counted successors into one
-    /// image and leave fewer than `cardinality` images. Fewer counted
-    /// successors than `cardinality` means the at-least rule at `v` has not
-    /// produced them all yet; each one that it adds and that a block would
-    /// merge into an existing image meets this test in its own blocking test.
+    /// `w`, `v` for a successor that is directly blocked by `v` itself, and
+    /// itself otherwise. The redirect breaks the restriction when it merges
+    /// two counted successors into one image (`w_pred` is `v` and a sibling
+    /// is already redirected to `v`, or `w_pred` is itself a counted
+    /// successor) and leaves fewer than `cardinality` images. Two siblings
+    /// redirected to one blocker other than `v` are not detected (as in the
+    /// base and in Konclude); detecting them cost twelve answers.
     fn b6_redirect_collides(
         &mut self,
         v_node: NodeId,
@@ -121,6 +170,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 pc.node(w_pred_node).individual_node_id(),
             )
         };
+        let v_id = calc_alg_context.process_context().node(v_node).individual_node_id();
         let mut images: Vec<Cint64> = Vec::new();
         let mut counted: Cint64 = 0;
         for (_, succ) in self.ht_role_successor_links(v_node, role, calc_alg_context) {
@@ -146,6 +196,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 } else if n.has_partial_processing_restriction_flags(
                     IndividualProcessNode::PRF_DIRECTBLOCKED,
                 ) && blocker.is_some()
+                    && pc.node(blocker).individual_node_id() == v_id
                 {
                     pc.node(blocker).individual_node_id()
                 } else {
@@ -627,10 +678,10 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                     // at-least restriction `>=n+1 R.C` at v.
                                     // C-blocking redirects the edge v -> w to
                                     // the blocker w'. Refuse the block when
-                                    // the redirects merge two R-successors of
+                                    // the redirect merges two R-successors of
                                     // v in C into one (w' is already one of
-                                    // them, or blocks a sibling too) and
-                                    // leave fewer than n+1.
+                                    // them, or w' is v and v blocks a sibling
+                                    // too) and leaves fewer than n+1.
                                     // docs/HYBRID-CB-HT.md section 25.
                                     if keep && con_neg && !super::ht_no_b6_collision_guard() {
                                         keep = !self.b6_redirect_collides(
@@ -822,6 +873,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                 // keeps, nothing protects o: o counts for w
                                 // only when w has the same link to o.
                                 // docs/HYBRID-CB-HT.md section 25.
+                                // Narrowed: the copy's edge matters only if
+                                // an at-most restriction now in the label of
+                                // o counts w' (and so the copy).
+                                let nn_protected = nn_protected
+                                    || (is_nominal_succ
+                                        && guard
+                                        && !self.nominal_bound_counts_copy(
+                                            succ_indi,
+                                            w_pred_node,
+                                            calc_alg_context,
+                                        ));
                                 let succ_qualifies = if is_nominal_succ && guard && !nn_protected {
                                     let linked = self.has_individuals_link(
                                         &mut w_node,
