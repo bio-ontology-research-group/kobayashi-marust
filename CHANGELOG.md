@@ -1,11 +1,13 @@
 # Changelog
 
-## [1.5.5] - unreleased (release candidate `v1.5.5-rc1`, 2026-11-01)
+## [1.5.5] - 2026-11-09
 
 Version 1.5.5 fixes every soundness and completeness defect found since
-v1.5.4, including the fr282 dropped-rule miss and the nominal-mode items
-deferred from v1.5.4, adds exact native data-value reasoning, and recovers
-the speed of v1.5.3 without a performance amendment. Every calculus or
+v1.5.4, including the fr282 dropped-rule miss, the nominal-mode items
+deferred from v1.5.4 and nine defects of the ported Konclude bridge found
+after the first candidate, adds exact native data-value reasoning, and
+recovers the speed of v1.5.3 without a performance amendment (released
+from a4bb4808 after candidates rc1 of 2026-11-01, not released, and rc3). Every calculus or
 encoding change is covered by a Lean theorem or by a Lean checker whose
 acceptance implies exactness. The acceptance contract is
 `docs/V1.5.5-ACCEPTANCE.md`; the campaign log is `docs/V1.5.5-STATUS.md`.
@@ -120,6 +122,26 @@ acceptance implies exactness. The acceptance contract is
   7499 at 0.36 and 0.35 of the v1.5.4 time. `HypertableauSubsetUnravelling.lean`
   and `ht-subset-unravelling-check` check every mode 1/5 SAT terminal's
   unravelling as a finite model.
+- Ported Konclude bridge, after the first candidate (`docs/HYBRID-CB-HT.md`
+  sections 18 to 25, each defect checked against the Konclude source):
+  `SELF` in the concept saturation and the expansion-cache gate (ORE 12128
+  published an incomplete taxonomy); the role-successor count, a u20
+  mis-port, DDB popped-node attribution and at-most re-arm (m413, forced
+  bridge panic); distinct at-least successors and the blocker self link
+  (inconsistent reflexive-plus-functional inputs were reported consistent);
+  Konclude's NN rule in the at-most rule with cached-nominal criticality
+  (f1008, f439) and per-candidate NN decisions with a fixed slot budget and a
+  termination argument (seven seeds); the satisfiable-cached absorption gates
+  and replay without the AND skip (nn1064, nn1313, nn1348); the B6 count test
+  and B4a nominal guard of the optimized blocking (sat578, `F ⊑ Q1`,
+  `F ⊑ Q4` on both routes) with nominal-connection propagation for existing
+  some-rule witnesses, so the 12 seed-route answers the first sat578 fix had
+  lost are back; precomputation replay for nondeterministic consistency
+  completions (3917, 11378, 12191, 9151, 9577) and retained base under
+  `SELF` (6132, 9899); exact value-helper disjointness admission and
+  `SameIndividual` admission on the automatic route. Nominal CB stack:
+  `x ≈ y` over Pred (s974, s1966), entailed functional clauses in the HT view
+  and root reach offers to the ground context (nn1811).
 
 ### Lean
 
@@ -128,7 +150,8 @@ acceptance implies exactness. The acceptance contract is
   `RulesRouteModel`, `RulesRouteCertificate` (executable `rules-cert-check`),
   `RulesInertSortRelease`, `HypertableauSubsetUnravelling`,
   `UniversalDefinerElimination`, `ExchangeCut`, `ExchangeEquality`,
-  `CBPredResolving`, `PolarityDefiners`, `ObjectGuardRestriction`,
+  `CBPredResolving` (and the `x ≈ y` case of `CBPredSendEnumeration`,
+  `root_label_hyp_sound`), `PolarityDefiners`, `ObjectGuardRestriction`,
   `DataValueProjection`, `DataValueSingletonElision`, `TwoSortedDL`,
   `DataAboxOmission`, `DataRangeDateTime`.
 - Checkers-on suite (`docs/CHECKERS-ON.md`): `KM_LEAN_CHECKERS=<dir>` runs
@@ -143,8 +166,8 @@ acceptance implies exactness. The acceptance contract is
 
 ### Performance
 
-- Held-out half (585 inputs, same day, v1.5.3 protocol, PGO binary `a2caa940…`): 562 verified against 560 for v1.5.3, no loss, gained `ore_ont_4567` and `ore_ont_8148`; mean ratio 0.944 and median 1.014 against v1.5.3 on the 560 common inputs (bound 1.10). Against the same-day Konclude run: 562 against 575 solved, and KM slower in mean (4.29 s against 2.32 s) and median (0.205 s against 0.176 s) on 559 common inputs; this clause of S1 is not met, which is why the candidate is not released (`docs/V1.5.5-ACCEPTANCE.md`).
-- Full regression pool: 1,671 of 1,708 admitted inputs verified (v1.5.3: 1,662), no loss, nine gained, no wrong answer.
+- Held-out half (585 inputs, same day 2026-11-09, v1.5.3 protocol, PGO binary `5ac7eafe…`): 577 verified against 558 for the same-day v1.5.3 run and 560 for its 2026-10-25 run, no loss, 17 gained; mean ratio 0.903 and median 0.827 against v1.5.3 on the 558 common inputs (bound 1.10). Against the same-day Konclude run: 577 against 575 solved (more verified, the clause the first candidate missed at 562), KM slower in mean (3.94 s against 2.12 s) and median (0.218 s against 0.202 s) on 574 common inputs. Two inputs that hit the cap on their first node were rerun once under the protocol (`docs/V1.5.5-ACCEPTANCE.md`, S1).
+- Full regression pool: 1,687 of 1,708 admitted inputs verified (v1.5.3: 1,662; first candidate 1,671), no loss, 25 gained, no wrong answer, 18 timeouts.
 - ORE 205 and 7499 at about a third of the v1.5.4 time; 7278 and 3726 from 31 s to 9.3 s; 9027 back from a 240 s timeout to 40 s; 13077 and 13584 answer with `DROPPED 0` again.
 
 ### Known limits

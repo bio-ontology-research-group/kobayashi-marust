@@ -187,7 +187,9 @@ the release assets.
 
 Gate times from the tag on 2026-11-09: `elc` 47 s on the cached build,
 `routing` 10 min, `ht` 49 min, `cb` 7 min, `rules` 9 min; zero `sorryAx`
-everywhere. The checker step with the released binary: 57 checker-bound
+everywhere. The serial Rust CI suite from the tag: 93 `cargo test`
+commands, 3,598 tests passed, 0 failed; the Maven suite: 76 tests, 0
+failures. The checker step with the released binary: 57 checker-bound
 test groups passed, checkers-on suite 22 and 33 accepted, 0 rejected, 0
 answers changed in modes `on` and `ht` (`docs/CHECKERS-ON.md`, section 6).
 
