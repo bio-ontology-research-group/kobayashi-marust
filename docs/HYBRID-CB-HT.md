@@ -3582,3 +3582,251 @@ to 28.7 s, 10838 66.6 to 59.0 s, 3087 76.4 to 60.7 s, 7557 108.9 to 97.0 s).
 The 112 nominal design-half inputs: 109 answered by both, 109 identical
 signatures, no status or route change, coverage guard 0, time ratio over the
 26 inputs above 1 s: mean 1.012, median 0.953.
+
+## 25. Optimized blocking next to nominals and at-least restrictions: sat578 (2026-11-08, `fix/v155-sat578-opus`)
+
+**Defect.** Seed `sat578` of the satisfiable-cache family
+(`.work/agent-scratch/bridge-satcache/fam/sat578.ofn`, HermiT gold
+`famgold/sat578.json`) is answered wrongly on `--route ht_bridge` and on the
+automatic route at `274faa6a`: KM misses `F ⊑ Q1` and `F ⊑ Q4`. A first
+attempt (`fix/v155-sat578`, commit `fbd1932c`) recovered the seed but added
+three wrong answers (`nn1183` on both routes, `s1422` automatic) and about 30
+`ok` to `TIMEOUT`/`ERR` flips, and could not be merged. This section is an
+independent second attempt from `274faa6a`. It reuses the first attempt's
+eight fixtures and their HermiT answers (`engine/tests/fixtures/sat578/`) and
+its hand proofs; everything else was rederived.
+
+### 25.1 Gold, by hand
+
+The fixtures (axiom lists in `engine/tests/fixtures/sat578/*.ofn`): `sat578`
+(13 axioms), its reductions `red_both` (10), `red_q1` (9), `red_q4` (7), the
+five-axiom cores `min_q1`, `min_q1_some`, `min_q1_inter_f`, and the variant
+`var_inter_f`. The hand proofs of all eight are in section 25.1 of the working
+tree of `fix/v155-sat578` (uncommitted text on top of `fbd1932c`); I checked
+each of them and repeat the two that the trace below uses.
+
+- `min_q1`: `F ⊑ {c}`, `Q2 ≡ {c}`, `Q2 ≡ ≤1 s⁻.(∃s.{c})`, `c ∈ ≤0 s`,
+  `Q1 ≡ ∀s⁻.E`. Every element `y` of `∃s.{c}` is an `s⁻`-successor of `c`, and
+  `c ∈ Q2` allows at most one, so `|(∃s.{c})ᴵ| ≤ 1`. Then no element has two
+  `s⁻`-successors in `∃s.{c}`, every element is in `≤1 s⁻.(∃s.{c}) = Q2 = {c}`,
+  and `Δ = {c}`. `c ∈ ≤0 s` gives `sᴵ = ∅`, so `∀s⁻.E` holds everywhere:
+  `Q1 = Q2 = Δ`. Every class is under `Q1` and `Q2`; the one-element model with
+  `A, E, F` free separates the rest. HermiT's eight subsumptions.
+  `min_q1_some` writes `ObjectHasValue(s c)` as `∃s.{c}`; `min_q1_inter_f` uses
+  `∃s.({c} ⊓ F)`, whose extension is contained in that of `∃s.{c}`, and the
+  same argument applies.
+- `sat578` and `red_both`: for `x ∈ F`, `x = c` and `c ∈ Q2`; the axiom
+  `F ⊑ ∃p⁻.(≤1 p⁻ ⊓ ∃p.{a})` and `Functional(p)` give `a = c`, so
+  `Q2 ≡ ≤1 s⁻.(∃s.{c})` and, as above, `Q2 = Δ`. `r(a,c) = r(c,c)` and
+  `InverseFunctional(r)` make `c` its own only `r`-predecessor, and
+  `Q2 ≡ {c} ⊔ (∃p⁻.{c} ⊓ ∃r.({c} ⊓ F))` then forces every element to be `c`.
+  In `Δ = {c}`, `sᴵ = ∅` gives `F ⊑ Q1` and `|Δ| = 1` gives `F ⊑ Q4`. In
+  `sat578`, `Functional(p)` makes `Q3 ≡ ≤1 p` equal to `⊤` and
+  `Functional(r)` makes `C ⊑ ≥2 r.(∃r.{c})` unsatisfiable, which is the rest of
+  HermiT's answer.
+- `fx279` (`.work/agent-scratch/cb-nn1811/fam/seeds/fx279.ofn`, found by the
+  Ibex seed round on the merged head and added on the coordinator's request;
+  wrong on both routes at the merged head, missing `B, C, D, E ⊑ Q2`): with
+  `InverseObjectProperties(r, s)`, `Q2 ≡ ≤2 s⁻.(∃r.{c}) = ≤2 r.(∃r.{c})`.
+  Every element of `∃r.{c}` is an `r`-predecessor of `c`, and `⊤ ⊑ ≤2 r⁻`
+  allows `c` at most two, so no element has more than two `r`-successors in
+  `∃r.{c}`: `Q2 ≡ ⊤`, and every class is under `Q2`. `D ⊑ B` follows from
+  `D ⊔ ¬E ⊑ B`. The one-element model `Δ = {a} = {b} = {c}` with `r = p =
+  {(c,c)}`, `A = B = D = Δ` satisfies every axiom (`Q1 = Q2 = Δ`), so the
+  ontology is consistent. HermiT's seven subsumptions.
+
+### 25.2 Trace on the base
+
+`KM_HT_GRAPH_DUMP=1 KM_BRIDGE_CONCEPT_DUMP=1` on `min_q1` (tags: `30 = ∃s.{c}`,
+`31 = ≤1 s⁻.30`, `-31 = ≥2 s⁻.30`, `22 = Q2`, `-25 = ¬E`). The probe of
+`F ⊓ ¬Q1` merges its root into the nominal `c` (node 0). `¬Q1 = ∃s⁻.¬E` gives
+`c` a tree successor `y` (node 1001) with `s(y,c)`, so `y ∈ ∃s.{c}` through its
+parent `c`. `y = c` would give `s(c,c)` against `c ∈ ≤0 s`, so `y ∈ ¬Q2`, hence
+`y ∈ ≥2 s⁻.(∃s.{c})`, and the at-least rule creates two distinct
+`s⁻`-successors `w₁, w₂` (nodes 1002, 1003) with label `{⊤, 30, 32}`. The
+final graph has both marked DIRECTBLOCKED by their parent `y`:
+
+```
+node 1001 L=[1,-22,-25,30,-31,32] links=[s:1001->0][s⁻:1001->1002][s⁻:1001->1003]
+node 1002 flags=0x1 L=[1,30,32]
+node 1003 flags=0x1 L=[1,30,32]
+```
+
+Neither `w` ever links to `c`, `c` sees one `s⁻`-predecessor in `∃s.{c}`,
+`≤1 s⁻.(∃s.{c})` at `c` never clashes, and the probe is satisfiable: `F ⋢ Q1`.
+In every model, `w₁` and `w₂` are two distinct `s`-predecessors of `c` in
+`∃s.{c}`, against `c ∈ Q2`. The switches of the brief (`KM_HT_NO_NN_RULE`,
+`KM_BRIDGE_NO_LEAF_REUSE`, `KM_BRIDGE_FRESH_ENV`,
+`KM_BRIDGE_NO_PRECOMPUTATION_REPLAY`, `KM_HT_NO_SAT_EXP_CACHE`,
+`KM_HT_NO_SATURATION`) leave this unchanged (first attempt, confirmed here for
+`KM_HT_NO_SAT_EXP_CACHE`). With the satisfiable-expansion cache on, the
+automatic probe of `A ⊓ ¬Q1` reaches the same state through a cached `y`.
+
+### 25.3 Cause: two unsound blocks in `isLabelConceptOptimizedBlocking`
+
+Line numbers refer to
+`~/konclude-build/Source/Reasoner/Kernel/Algorithm/CCalculationTableauCompletionTaskHandleAlgorithm.cpp`;
+the port is `is_label_concept_optimized_blocking` in `completion/u19.rs`.
+Optimized blocking (Horrocks and Sattler's c- and a-blocking) accepts `w`
+blocked by `w'` after B1 (label subset) and B2 (universal restrictions of `w'`
+towards the parent `v`), and then either as c-blocked (B3/B5 and B6, cpp
+18624-18745: the model redirects the edge `v → w` to `w'`) or as a-blocked
+(B4, cpp 18747-18803: the model replaces `w` by a copy of `w'` and copies the
+tree below `w'`). In the trace `w₁` and `w₂` are blocked by `y = v` itself.
+
+1. **B6 (cpp 18716-18741).** For an at-least restriction of `v` with
+   cardinality above 1 over the role of the edge `v → w`, Konclude keeps the
+   c-block only if `containsIndividualNodeConcepts(wSubConSet, opLinker,
+   !conNeg)` (cpp 18731). For `≥m R.C` (`conNeg = false`) that tests `¬C ∈
+   L(w)`: `w` does not count for the restriction, so redirecting it cannot
+   lower the count. For `¬(≤n R.C)` (`conNeg = true`, the form that
+   `Q2 ≡ ≤1 s⁻.(∃s.{c})` gives `y`) it tests `C ∈ L(w)`, so the c-block stays
+   exactly when `w` counts. Here both `w₁` and `w₂` count, both are redirected
+   to `y`, and `y` keeps one `s⁻`-successor in `∃s.{c}` (itself) where it needs
+   two. The port transcribes the same call.
+2. **B4a (cpp 18780-18800).** When c-blocking fails, B4 needs every
+   existential and at-least restriction of `w'` to be met by `w`'s parent
+   (B4b) or by `w'`'s successors, counting tree successors deeper than `w'`
+   and every nominal neighbour (cpp 18788). Unravelling copies the tree below
+   `w'`, but a nominal is one element: the copy of `w'` at `w` needs its own
+   edge to that nominal `o`, and `o` gains a neighbour that none of its
+   at-most restrictions has counted. Here `y`'s `∃s.{c}` is met by its parent
+   `c`, so `w₁`, `w₂` would be a-blocked through a copy of `y` with an edge to
+   `c`, which is again a second `s`-predecessor of `c` in `∃s.{c}`.
+   When `w'` created its link to `o` (an existential of `w'` linked to `o`, or
+   its tree successor merged into `o`), the NN-rule of section 22 turns `w'`
+   into a nominal as soon as an at-most restriction at `o` counts it, and a
+   nominal is not a valid blocker (`isIndividualNodeValidBlocker`, cpp 4229);
+   so only links that `o` created (`w'` is a tree successor of `o`) are
+   unprotected. The port adds one more path: it keeps the link from `w'` to a
+   tree successor that later merged into a nominal (Konclude removes it,
+   `locConnIndi->removeIndividualLink(link)`, cpp 21283) and B4a counted that
+   ghost as a tree successor deeper than `w'` whose label contains the
+   nominal (`min_q1_inter_f`, `var_inter_f`).
+
+Konclude itself hangs without output on every sat578 fixture (6 to 25 hours,
+first attempt); I did not run it.
+
+**The first attempt.** `fbd1932c` quotes cpp 18788 as
+`(succIndiNode->getNodeId() > wPredNode->getNodeId()) || (succIndi->isNominalIndividual()
+&& hasIndividualsLink(wNode, succIndi, role, false, calcAlgContext))`. That
+condition is not in Konclude's source: cpp 18788 counts every nominal
+neighbour, as quoted above, and `hasIndividualsLink(wNode, …)` appears in this
+function only at cpp 18774 (B4b, towards `v`). Its other changes are wider
+than Konclude: it clears `cBlocked` whenever the blocker has
+`PRF_SUCCESSORNOMINALCONNECTION` (no such test in cpp 18545-18825), and it
+exempts VALUE-shortcut existentials from `needsIndividualNodeExpansionBlockingTest`
+(Konclude's cpp 20117 lists `CCSOME` unconditionally). It also ports the
+VALUE shortcut of `applySOMERule` (cpp 14315-14380), which Konclude has but
+which the fixtures do not need: without it the port reaches the same links
+through a tree successor that merges into the nominal.
+
+### 25.4 Change and exactness
+
+Two changes in `completion/u19.rs`, each with a negative-control switch,
+`KM_HT_NO_SAT578_FIX=1` for both (`completion/mod.rs`):
+
+1. **B6 count test** (`b6_redirect_collides`, `KM_HT_NO_B6_COLLISION_GUARD`).
+   Where Konclude keeps the c-block for `¬(≤n R.C)` at `v` because `w ∈ C`,
+   the port now also requires that the redirects keep the count: each
+   `R`-successor `u` of `v` in `C` (merged-away ghosts filtered) maps to an
+   image, `w'` for `w`, its blocker for a directly blocked `u`, `u` otherwise;
+   the c-block is refused when two counted successors share an image and fewer
+   than `n+1` images remain. The `≥m R.C` arm stays as Konclude has it.
+2. **B4a nominal guard** (`KM_HT_NO_B4A_NOMINAL_GUARD`). A link of `w'` to a
+   node that merged into a nominal is skipped (the live link to the nominal is
+   iterated on its own). A nominal neighbour `o` of `w'` counts as before when
+   `w'` created the link and `w'` has an ancestor (the probe root is never
+   turned into a nominal by the NN-rule, `is_kept_root` in `u08.rs`);
+   otherwise it counts only when `w` has the same link to `o`
+   (`has_individuals_link(w, o, role)`), in which case the copy adds no edge.
+
+*Soundness of verdicts (no wrong subsumption).* Both changes only refuse
+blocks that the base accepted. Blocking is not a tableau rule: refusing a
+block lets the expansion rules run on `w`, and every rule application is
+sound, so a clash found on the extended graph is a clash of the input. Neither
+change can turn a satisfiable probe into an unsatisfiable one.
+
+*Completeness (no missed subsumption).* A clash-free complete graph must
+yield a model. For a c-blocked `w` the model redirects `v → w` to `w'`; B6 is
+the premise that keeps `v`'s at-least restrictions. With the count test, the
+redirected successors of `v` in `C` keep at least `min(n+1, counted)` distinct
+images, and in a complete graph `counted ≥ n+1`, so `≥n+1 R.C` holds at `v`.
+Treating every directly blocked sibling as c-blocked overestimates the merges,
+which only refuses more. For an a-blocked `w` the model copies `w'`; every
+edge of the copy to a nominal `o` is either an edge that `w` already has (no
+new neighbour of `o`) or an edge that `w'` created, where `o`'s at-most
+restrictions cannot count `w'` without the NN-rule having made `w'` a nominal.
+The skipped ghost was never a tree successor of the copy.
+
+*Termination and cost (open).* Refusing a block never makes an answer
+wrong, but it can make the search longer or infinite: a node whose block is
+refused expands its own restrictions, and its successors meet the same test.
+I have no termination proof for the two guards together, and the validation
+below shows the cost. Konclude can a-block no node whose restriction is met
+through a self-link (B4a counts only deeper nodes and nominals), so it relies
+on c-blocking for reflexive roles. A first version of the B6 change that
+refused every counted successor (the plain polarity flip) did not terminate
+on the reflexive seeds `sat1106`, `sat1479` and `sat28`; the count test
+answers them as fast as the base. With the count test, eight seeds of the
+families and pools that the base answers (most within a second) time out or
+fail at 60 s (section 25.5). On the four I examined (`nn969`, `nn1881`,
+`s578_1026`, `s578_1288`, `--route ht_bridge`) the B6 count test is the
+cause: with `KM_HT_NO_B6_COLLISION_GUARD=1` each answers in the base time,
+with `KM_HT_NO_B4A_NOMINAL_GUARD=1` each still runs past 30 s. A trace build
+(`KM_HT_B6_TRACE`, not committed) shows the pattern on `s578_1288`: the count
+test refuses the c-block of a third `s⁻`-successor because the blocker already
+stands for a sibling, and B4 then fails because the blocker meets
+`∃s.({c} ⊓ F)` through `c` without a link of its own (`found=0`), so the node
+expands. Counting a reflexive self-link of the blocker in B4a (tried as a
+third change) did not help these seeds and is not part of the branch. These
+are blocks that Konclude's B6 accepts and that are unsound in general (the
+redirect drops a counted successor); a cheaper exact alternative would be to
+let the refused node fall back to a blocker that is not shared, which the
+port's blocker search does not offer. I did not attempt it.
+
+*Results.* Section 25.5.
+
+### 25.5 Results
+
+Binaries `km-274faa6a` (base) and `km-b1fcbb93` (fix), release flags, 60 s
+cap; data in `results/agents/2026-11-08/sat578-opus/data/`.
+
+- *Fixtures* (`fx-final.tsv`, `fx-base.tsv`): the nine fixtures (`sat578`,
+  `red_both`, `red_q1`, `red_q4`, `min_q1`, `min_q1_some`, `min_q1_inter_f`,
+  `var_inter_f`, `fx279`) are right on `ht_bridge` and the automatic route in
+  3 of 3 runs; the base is wrong on all nine on both routes.
+- *Method for the pools.* Every pool seed ran once on the fix with
+  `KM_HT_SAT578_GUARD_TRACE`, which marks a run in which a guard refused what
+  the base accepted. A completed run without a mark computes what the base
+  computes, so the base was run (60 s) only on marked runs and on fix
+  timeouts. The three families ran at 60 s; the other pools ran at 20 s and
+  their 194 timeouts were rerun at 60 s. 47,344 seed-route runs, 7,032 marked.
+- *No new wrong answer.* The fix answers wrongly only where the base does,
+  with an unmarked (identical) computation: `nn5` (wrong HermiT gold, both
+  routes), 7 data-value seeds of `bridge-m413-respool`, 6 of
+  `res-data-values-3`, 1 of `res-lean-data-values` (automatic route).
+  `nn1183` and `s1422` are right.
+- *Recovered.* `sat578` (both routes), and `s578_126`, `s578_1486`,
+  `s578_1489`, `s578_1661`, `s578_319`, `s578_96` of the sat578 family (both
+  routes); `s578_843` moves from wrong to timeout/refusal; `sat1979`
+  (automatic) from timeout to ok.
+- *sat578 family* (1,968 seeds with gold): 0 wrong on both routes.
+- *Lost answers (the open cost of 25.4).* Twelve seed-routes that the base
+  answers in 3 of 3 runs time out or refuse in 3 of 3 runs on the fix
+  (`flips-base.tsv`, `flips-fix.tsv`): `nn1881` (both routes; base 0.03 s),
+  `nn969` (`ht_bridge`; base 30 to 44 s), `s578_1026` (both; base 30 to 39 s),
+  `s578_1288` (both; base 0.06 s), `s578_171` (both; base 1 s), `s578_733`
+  (both; base 0.2 s), `s578_908` (`ht_bridge`; base 34 s). Two further
+  differences are timing noise on unmarked runs (`refl1213` automatic: base
+  times out 3 of 3, fix answers 2 of 3; `refl1421` `ht_bridge`: base refuses
+  at 58 s, fix times out).
+- *Regression rows of `fbd1932c`* (`reg-final.tsv`, 3 runs): every row ok 3
+  of 3 except `nn969` `ht_bridge` (TIMEOUT 3 of 3, one of the lost answers
+  above).
+- *Tests.* Library: 3,121 passed, the 21 known failures and no other. All 95
+  integration targets pass, `bridge_satcache` after its negative control
+  also sets `KM_HT_NO_SAT578_FIX=1` (the fix recovers `sat1096min` without the
+  absorption fix). `bridge_nn_rule`'s control passes unchanged.
+- Not run: the 16 held-out ORE inputs and the 112 nominal design-half inputs
+  of the common validation list.

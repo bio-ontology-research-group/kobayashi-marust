@@ -1,0 +1,26 @@
+bridge-m413-k auto:ok->ok=2000 ht_bridge:ok->ok=2000
+bridge-m413-k2 auto:ok->ok=2000 ht_bridge:ok->ok=2000
+bridge-m413-respool auto:ERR->ERR=2 auto:WRONG->WRONG=7 auto:ok->ok=57 ht_bridge:ERR->ERR=51 ht_bridge:ok->ok=15
+bridge-nn-rule-fam auto:TIMEOUT->TIMEOUT=4 auto:WRONG->WRONG=1 auto:ok->TIMEOUT=1 auto:ok->ok=1987 ht_bridge:ERR->ERR=5 ht_bridge:TIMEOUT->TIMEOUT=1 ht_bridge:WRONG->WRONG=1 ht_bridge:ok->TIMEOUT=2 ht_bridge:ok->ok=1984
+bridge-nn-rule-red auto:ok->ok=7 ht_bridge:ok->ok=7
+bridge-reflexive-fam auto:TIMEOUT->TIMEOUT=17 auto:ok->TIMEOUT=1 auto:ok->ok=1980 ht_bridge:ERR->ERR=14 ht_bridge:ERR->TIMEOUT=1 ht_bridge:TIMEOUT->TIMEOUT=25 ht_bridge:ok->ok=1958
+bridge-reflexive-seeds20 auto:ok->ok=10 ht_bridge:ok->ok=10
+bridge-satcache-fam auto:TIMEOUT->TIMEOUT=8 auto:TIMEOUT->ok=1 auto:WRONG->ok=1 auto:ok->ok=1873 ht_bridge:ERR->ERR=8 ht_bridge:TIMEOUT->TIMEOUT=7 ht_bridge:WRONG->ok=1 ht_bridge:ok->ok=1867
+bridge-satcache-red auto:ok->ok=10 ht_bridge:ok->ok=10
+bridge-satcache-self auto:ok->ok=14 ht_bridge:ok->ok=14
+bridge-self-micro auto:ok->ok=8 ht_bridge:ERR->ERR=1 ht_bridge:ok->ok=7
+bridge-self-pool auto:TIMEOUT->TIMEOUT=9 auto:ok->ok=1991 ht_bridge:ERR->ERR=247 ht_bridge:TIMEOUT->TIMEOUT=1 ht_bridge:ok->ok=1752
+bridge-self-pools-abox-probes-f auto:TIMEOUT->TIMEOUT=37 auto:ok->ok=163 ht_bridge:ERR->ERR=45 ht_bridge:ok->ok=155
+bridge-self-pools-abox-probes-m auto:TIMEOUT->TIMEOUT=10 auto:ok->ok=1990 ht_bridge:ERR->ERR=4 ht_bridge:TIMEOUT->TIMEOUT=9 ht_bridge:ok->ok=1987
+bridge-self-pools-bridge-defers-f auto:TIMEOUT->TIMEOUT=37 auto:ok->ok=163 ht_bridge:ERR->ERR=45 ht_bridge:ok->ok=155
+bridge-self-pools-bridge-defers auto:ok->ok=300 ht_bridge:ERR->ERR=153 ht_bridge:ok->ok=147
+bridge-self-pools-bridge-replay auto:TIMEOUT->TIMEOUT=1 auto:ok->ok=999 ht_bridge:ERR->ERR=3 ht_bridge:ok->ok=997
+bridge-self-pools-res-data-values-3 auto:ERR->ERR=2 auto:WRONG->WRONG=6 auto:ok->ok=26 ht_bridge:ERR->ERR=30 ht_bridge:ok->ok=4
+bridge-self-pools-res-forced-nominal auto:ok->ok=14 ht_bridge:ERR->ERR=7 ht_bridge:ok->ok=7
+bridge-self-pools-res-fr282 auto:ok->ok=6 ht_bridge:ERR->ERR=6
+bridge-self-pools-res-lean-data-values auto:WRONG->WRONG=1 auto:ok->ok=8 ht_bridge:ERR->ERR=8 ht_bridge:ok->ok=1
+bridge-self-pools-sameindividual-bridge auto:ok->ok=1946 ht_bridge:ERR->ERR=11 ht_bridge:ok->ok=1935
+bridge-self-regress auto:ok->ok=6 ht_bridge:ok->ok=6
+cb-s974-merge auto:TIMEOUT->TIMEOUT=3 auto:ok->ok=1997 ht_bridge:ERR->ERR=10 ht_bridge:TIMEOUT->TIMEOUT=5 ht_bridge:ok->ok=1985
+cb-s974-vacuous auto:TIMEOUT->TIMEOUT=5 auto:ok->ok=1995 ht_bridge:ERR->ERR=849 ht_bridge:TIMEOUT->TIMEOUT=3 ht_bridge:ok->ok=1148
+sat578-fam auto:TIMEOUT->TIMEOUT=47 auto:WRONG->TIMEOUT=1 auto:WRONG->ok=6 auto:ok->TIMEOUT=4 auto:ok->ok=1910 ht_bridge:ERR->ERR=35 ht_bridge:TIMEOUT->TIMEOUT=18 ht_bridge:WRONG->ERR=1 ht_bridge:WRONG->ok=6 ht_bridge:ok->ERR=2 ht_bridge:ok->TIMEOUT=3 ht_bridge:ok->ok=1903

@@ -1,0 +1,18 @@
+fx/fx279.ofn	ht_bridge	1	WRONG	0.05	missing=[('B', 'Q2'), ('C', 'Q2'), ('D', 'Q2'), ('E', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+fx/fx279.ofn	auto	1	WRONG	0.06	missing=[('B', 'Q2'), ('C', 'Q2'), ('D', 'Q2'), ('E', 'Q2')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+fx/min_q1_inter_f.ofn	ht_bridge	1	WRONG	0.01	missing=[('A', 'Q1'), ('E', 'Q1'), ('F', 'Q1'), ('Q2', 'Q1')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+fx/min_q1_inter_f.ofn	auto	1	WRONG	0.02	missing=[('A', 'Q1'), ('E', 'Q1'), ('F', 'Q1'), ('Q2', 'Q1')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+fx/min_q1.ofn	ht_bridge	1	WRONG	0.01	missing=[('A', 'Q1'), ('E', 'Q1'), ('F', 'Q1'), ('Q2', 'Q1')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+fx/min_q1.ofn	auto	1	WRONG	0.01	missing=[('A', 'Q1'), ('E', 'Q1'), ('F', 'Q1'), ('Q2', 'Q1')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+fx/min_q1_some.ofn	ht_bridge	1	WRONG	0.01	missing=[('A', 'Q1'), ('E', 'Q1'), ('F', 'Q1'), ('Q2', 'Q1')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+fx/min_q1_some.ofn	auto	1	WRONG	0.01	missing=[('A', 'Q1'), ('E', 'Q1'), ('F', 'Q1'), ('Q2', 'Q1')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+fx/red_both.ofn	ht_bridge	1	WRONG	0.02	missing=[('F', 'Q1'), ('F', 'Q4')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+fx/red_both.ofn	auto	1	WRONG	0.03	missing=[('F', 'Q1'), ('F', 'Q4')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+fx/red_q1.ofn	ht_bridge	1	WRONG	0.01	missing=[('F', 'Q1')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+fx/red_q1.ofn	auto	1	WRONG	0.02	missing=[('F', 'Q1')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+fx/red_q4.ofn	ht_bridge	1	WRONG	0.08	missing=[('F', 'Q4')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+fx/red_q4.ofn	auto	1	WRONG	0.09	missing=[('F', 'Q4')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+fx/sat578.ofn	ht_bridge	1	WRONG	0.19	missing=[('F', 'Q1'), ('F', 'Q4')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+fx/sat578.ofn	auto	1	WRONG	0.19	missing=[('F', 'Q1'), ('F', 'Q4')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+fx/var_inter_f.ofn	ht_bridge	1	WRONG	0.37	missing=[('A', 'Q1'), ('B', 'Q1'), ('C', 'Q1'), ('D', 'Q1')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
+fx/var_inter_f.ofn	auto	1	WRONG	0.39	missing=[('A', 'Q1'), ('B', 'Q1'), ('C', 'Q1'), ('D', 'Q1')] extra=[] unsat_missing=[] unsat_extra=[] dropped=0
