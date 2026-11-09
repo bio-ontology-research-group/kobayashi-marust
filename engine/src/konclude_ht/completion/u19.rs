@@ -93,6 +93,60 @@ use super::context::CalculationAlgorithmContextBase;
 type BlockingAlternativeDataHandle = BlockingAltDataId;
 
 impl super::algorithm::CompletionTaskHandleAlgorithm {
+    /// Whether an at-most restriction in the label of the nominal `o`
+    /// counts `w_pred` (and so a copy of it): a positive `<=n S.C` or a
+    /// negated `>=n S.C` with `w_pred` an `S`-neighbour of `o` and `w_pred`
+    /// in `C` (docs/HYBRID-CB-HT.md section 25).
+    fn nominal_bound_counts_copy(
+        &mut self,
+        o: NodeId,
+        w_pred: NodeId,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) -> bool {
+        let o_set = calc_alg_context.process_context().node(o).use_reapply_con_label_set;
+        let w_set = calc_alg_context.process_context().node(w_pred).use_reapply_con_label_set;
+        let mut bounds: Vec<(RoleId, Vec<NegLink<ConceptId>>, bool)> = Vec::new();
+        {
+            let mut it = calc_alg_context
+                .process_context()
+                .label_set(o_set)
+                .get_concept_label_set_iterator(false, false, false);
+            while it.has_next() {
+                let con_des = it.next(true, calc_alg_context.process_context());
+                if con_des.is_none() {
+                    continue;
+                }
+                let (concept, negated) = {
+                    let pc = calc_alg_context.process_context();
+                    (pc.con_desc(con_des).get_concept(), pc.con_desc(con_des).is_negated())
+                };
+                let c = calc_alg_context.ontology_arenas().concept(concept);
+                let op = c.get_operator_code();
+                if (!negated && op == CCATMOST) || (negated && op == CCATLEAST) {
+                    bounds.push((c.get_role(), c.get_operand_list().to_vec(), negated));
+                }
+            }
+        }
+        for (role, ops, _) in bounds {
+            let mut oo = o;
+            let mut wp = w_pred;
+            if !self.has_individuals_link(&mut oo, &mut wp, role, false, calc_alg_context) {
+                continue;
+            }
+            if ops.is_empty()
+                || !self.contains_individual_node_concepts_label_negated(
+                    w_set,
+                    &ops,
+                    true,
+                    calc_alg_context,
+                )
+            {
+                return true;
+            }
+        }
+        false
+    }
+
     /// The count test of B6 for `not (<=n role.C)` at `v`, that is
     /// `>=n+1 role.C` (docs/HYBRID-CB-HT.md section 25). C-blocking `w` by
     /// `w_pred` redirects the edge `v -> w` to `w_pred`. Every
@@ -415,6 +469,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .process_context()
             .node(w_pred_node)
             .use_reapply_role_succ_hash;
+        let mut b6_collide_only = false;
         if blocked {
             // test c-blocked and a-blocked specific parts (B3, B5)
             let mut c_blocked = true;
@@ -615,25 +670,17 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                     .get_operand_list()
                                     .to_vec();
                                 if !op_linker.is_empty() {
-                                    let mut keep = self.contains_individual_node_concepts_label_negated(
+                                    let keep = self.contains_individual_node_concepts_label_negated(
                                         w_sub_con_set,
                                         &op_linker,
                                         !con_neg,
                                         calc_alg_context,
                                     );
-                                    // B6 for `not (<=n R.C)` at v (cpp 18731):
-                                    // Konclude keeps w c-blocked when w is in
-                                    // C, that is, when w counts for the
-                                    // at-least restriction `>=n+1 R.C` at v.
-                                    // C-blocking redirects the edge v -> w to
-                                    // the blocker w'. Refuse the block when
-                                    // the redirects merge two R-successors of
-                                    // v in C into one (w' is already one of
-                                    // them, or blocks a sibling too) and
-                                    // leave fewer than n+1.
-                                    // docs/HYBRID-CB-HT.md section 25.
-                                    if keep && con_neg && !super::ht_no_b6_collision_guard() {
-                                        keep = !self.b6_redirect_collides(
+                                    if !keep {
+                                        c_blocked = false;
+                                        b6_collide_only = false;
+                                    } else if con_neg && !super::ht_no_b6_collision_guard() {
+                                        if self.b6_redirect_collides(
                                             v_node,
                                             w_node,
                                             w_pred_node,
@@ -641,22 +688,20 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                             &op_linker,
                                             cardinality,
                                             calc_alg_context,
-                                        );
-                                        if !keep {
+                                        ) {
                                             super::sat578_guard_fired();
+                                            b6_collide_only = true;
                                         }
-                                    }
-                                    if !keep {
-                                        c_blocked = false;
                                     }
                                 } else {
                                     c_blocked = false;
+                                    b6_collide_only = false;
                                 }
                             }
                         }
                     }
                 }
-                if c_blocked {
+                if c_blocked && !b6_collide_only {
                     return true;
                 }
             }
@@ -734,6 +779,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         // B4a
                         // w' needs m role-successors.
                         let mut min_role_cardinality: Cint64 = 0;
+                        let mut nominal_guard_rejected = false;
                         if w_pred_succ_hash.is_some() {
                             let mut succ_it = {
                                 let pc = calc_alg_context.process_context();
@@ -788,10 +834,11 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                             .is_nominal_individual_node()
                                     {
                                         super::sat578_guard_fired();
+                                        nominal_guard_rejected = true;
                                         continue;
                                     }
                                 }
-                                let (is_nominal_succ, deeper_than_pred, nn_protected) = {
+                                let (is_nominal_succ, deeper_than_pred, creator_protected) = {
                                     let pc = calc_alg_context.process_context();
                                     let succ_node = pc.node(succ_indi);
                                     let pred = pc.node(w_pred_node);
@@ -820,8 +867,23 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                 // the link (w' is a tree successor of o) or
                                 // w' is the probe root, which the NN-rule
                                 // keeps, nothing protects o: o counts for w
-                                // only when w has the same link to o.
-                                // docs/HYBRID-CB-HT.md section 25.
+                                // only when w has the same link to o, or when
+                                // no at-most restriction at o counts w' (and
+                                // its copy). docs/HYBRID-CB-HT.md section 25.
+                                let nn_protected = if is_nominal_succ && guard && !creator_protected
+                                {
+                                    let uncounted_at_nominal = !self.nominal_bound_counts_copy(
+                                        succ_indi,
+                                        w_pred_node,
+                                        calc_alg_context,
+                                    );
+                                    if uncounted_at_nominal {
+                                        super::sat578_guard_fired();
+                                    }
+                                    uncounted_at_nominal
+                                } else {
+                                    creator_protected
+                                };
                                 let succ_qualifies = if is_nominal_succ && guard && !nn_protected {
                                     let linked = self.has_individuals_link(
                                         &mut w_node,
@@ -832,6 +894,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                     );
                                     if !linked {
                                         super::sat578_guard_fired();
+                                        nominal_guard_rejected = true;
                                     }
                                     linked
                                 } else {
@@ -850,7 +913,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                                 }
                             }
                         }
-                        if min_role_cardinality < cardinality {
+                        if min_role_cardinality < cardinality
+                            && (!b6_collide_only || nominal_guard_rejected)
+                        {
                             blocked = false;
                         }
                     }

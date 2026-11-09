@@ -20,10 +20,13 @@
 //!
 //! Fixtures: `sat578` (the seed of the satisfiable-cache family), the
 //! reductions `red_both`, `red_q1`, `red_q4`, the five-axiom cores `min_q1`,
-//! `min_q1_some`, `min_q1_inter_f`, and `var_inter_f`; and `fx279` from the
+//! `min_q1_some`, `min_q1_inter_f`, and `var_inter_f`; `fx279` from the
 //! cb-nn1811 family (`Q2 ≡ ≤2 r.(∃r.{c})` with `⊤ ⊑ ≤2 r⁻`, so `Q2 ≡ ⊤`), the
-//! same cause on a HasValue over a nominal. Each `.hermit.json` holds HermiT
-//! 1.4's answer, checked by hand in section 25.1.
+//! same cause on a HasValue over a nominal; and `nn1881_red`, the eight-axiom
+//! reduction of `nn1881` from the bridge-nn-rule family (`Q4 ≡ ≤1 p⁻` under
+//! `Reflexive(p)` and `Inverse(s, p)`, so `Q4 ⊑ ≤1 s.(∃r.{a}) = Q2`, section
+//! 25.7). Each `.hermit.json` holds HermiT 1.4's answer, checked by hand in
+//! sections 25.1 and 25.7.
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -173,7 +176,10 @@ fn negative_control_each_part_is_needed() {
 
 fn misses_every_fixture(switch: &'static str) {
     let env = with_release(&[("KM_ROUTE", "ht_bridge"), (switch, "1")]);
-    for path in fixtures().into_iter().filter(|path| !path.ends_with("fx279.ofn")) {
+    for path in fixtures()
+        .into_iter()
+        .filter(|path| !path.ends_with("fx279.ofn") && !path.ends_with("nn1881_red.ofn"))
+    {
         let got = normalise(&classify(&path, &env));
         assert_ne!(
             got,

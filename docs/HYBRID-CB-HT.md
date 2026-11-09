@@ -3869,3 +3869,162 @@ Recovering the lost answers exactly needs either a second blocker candidate
 when the first one collides (the port's blocker search returns the first
 candidate that passes) or a retest of blocks when a nominal neighbour of the
 blocker gains an at-most restriction.
+
+### 25.7 Recovering the 12 lost answers (`fix/v155-sat578-lost-argon`, 2026-11-09)
+
+Tracing `s578_1486`, `s578_96`, `nn1881`, `s578_1288`, `s578_1026`, `s578_171`,
+`s578_733`, `s578_908`, and `nn969` against Konclude's source (`CCalculationTableauCompletionTaskHandleAlgorithm.cpp`)
+identifies why both parts of section 25.6 failed and how Konclude keeps
+`s578_96` and `s578_1486` right while accepting the blocks that recover the
+12 lost seed-route answers.
+
+1. **Why B4a `atmost` (`nominal_bound_counts_copy`) lost `s578_1486`, and what the port lacked in `applySOMERule` (`u08.rs`, cpp 14440–14452, 20368–20403, 4670–4734).**
+   Section 25.6 hypothesized that `s578_1486` failed under `nominal_bound_counts_copy`
+   because the at-most restriction reached the nominal after the block on the
+   same probe and the block was never retested. A trace of `s578_1486` shows
+   that the failure crosses two separate probes through the satisfiable
+   expander cache (`u21.rs`, `test_all_successors_processed_and_write_satisfiable_cache`,
+   cpp 4670–4734). During the earlier probe `A ⊓ ¬E`, the probe root `w' = 1000`
+   is linked to the nominal `b` (`p(b, b)` and `p(b, w')`). Because `b`'s label
+   in `A ⊓ ¬E` carries no at-most restriction on `p`, `nominal_bound_counts_copy(b, w')`
+   returns `false` and `w'` blocks its successor `w = 1002`. When `apply_some_rule`
+   (`u08.rs`, `applySOMERule`, cpp 14313–14453) expands `w'`'s existential
+   `∃p⁻.{b}`, `has_role_neighbour_with_concepts` (cpp 14382) finds the existing
+   neighbour `already_exist = b`. In Konclude, when `applySOMERule` reuses an
+   existing neighbour, the `else` branch (cpp 14440–14452) records a backward
+   dependency and calls
+   `propagateIndividualNodeNominalConnectionStatusToAncestors(indi, alreadyExist, calcAlgContext)`
+   (cpp 14449; ported in `u16.rs` lines 782–850 from cpp 20368–20403). In
+   addition, Konclude's VALUE shortcut for `∃R.{o}` (cpp 14316–14380) links
+   directly to `o` and calls `propagateIndividualNodeNominalConnectionToAncestors(indi, calcAlgContext)`
+   (cpp 14375). Because the port omits the VALUE shortcut and its `else` branch
+   in `apply_some_rule` (`u08.rs` line 750) was empty, reusing the existing link
+   to `b` never set `PRF_SUCCESSORNOMINALCONNECTION` on `w' = 1000`. When
+   `A ⊓ ¬E` completed, `test_all_successors_processed_and_write_satisfiable_cache`
+   (`u21.rs` lines 1026–1035, cpp 4676:
+   `!indiNode->hasPartialProcessingRestrictionFlags(PRFINVALIDATEBLOCKERFLAGSCOMPINATION | PRFSUCCESSORNOMINALCONNECTION)`)
+   saw no `PRF_SUCCESSORNOMINALCONNECTION` flag on `w'` and wrote `w'`'s label
+   into the cross-probe satisfiable expander cache as context-free satisfiable,
+   even though its model depended on `b` having no at-most bound on `p`. The
+   subsequent probe `Q5 ⊓ ¬Q1` (which activates the at-most bound on `b`) then
+   absorbed `w'`'s cached label and missed `Q5 ⊑ Q1`.
+
+   Porting Konclude's `propagate_individual_node_nominal_connection_status_to_ancestors`
+   call into the `else` branch of `apply_some_rule` (`u08.rs` lines 750–782,
+   cpp 14449) sets `PRF_SUCCESSORNOMINALCONNECTION` on `process_indi` and its
+   ancestors whenever the existing witness `already_exist` is a nominal or
+   carries `PRF_SUCCESSORNOMINALCONNECTION`. With that flag propagated as in
+   Konclude, `u21.rs` excludes the nominal-connected subtree from the
+   context-free satisfiable expander cache, and `nominal_bound_counts_copy` in
+   B4a (`u19.rs` lines 100–148) keeps `s578_1486` right on both routes while
+   recovering `s578_171`, `s578_733`, `s578_908`, and `nn969`.
+
+2. **Why `b6_redirect_collides` lost `nn1881`, `s578_1288`, `s578_1026`, and `nn969`, and how B6 couples with B4a (`u19.rs`, cpp 18716–18803, 19376–19442).**
+   In Konclude's `isLabelConceptOptimizedBlocking` (cpp 18716–18745), when B3
+   and B5 hold and `w ∈ C` for every `¬(≤n R.C)` at `v`, `cBlocked` stays
+   `true` and the function returns `true` at `if (cBlocked) return true;`
+   (cpp 18743) without running the B4 loop (cpp 18747–18803). When two siblings
+   `w₁, w₂` share a blocker `w'` so that C-block edge redirects would collide
+   at `v`, standard unravelling can instead instantiate `w₂` as a fresh tree
+   copy of `w'` (A-blocking) without merging the two `R`-edges from `v`,
+   provided no restriction of `w'` relies on a witness that tree unravelling
+   cannot copy. For non-nominal restrictions of `w'`, Konclude does not require
+   B4a to pass at the moment `w` is tested: blocking runs at priority 3
+   (`check_for_blocking`, `u02.rs`), before `w'` has popped its priority-4
+   `SOME` (`∃S.D`) or priority-5 `ATLEAST` (`≥m S.D`) queues (`nn1881`), or
+   when `w'`'s non-nominal witness is its tree parent (`s578_1288` on `con=79`,
+   `s578_1026` on `con=74`). When `b1fcbb93` cleared `c_blocked = false` on
+   `b6_redirect_collides` and forced `(w, w')` through the full B4a check, B4a
+   rejected `w'` whenever `w'` had not yet expanded its priority-4/5 queue, and
+   `getAnywhereBlockingIndividualNodeCanidateHashed` (`u20.rs` line 636,
+   cpp 19412) updated `w`'s `concept_label_set_modification_tag`; once `w'`
+   later expanded its `SOME`/`ATLEAST` concept (which adds edges, not concepts,
+   to `w'`), `is_individual_node_concept_label_set_modified(w')` (cpp 19415)
+   returned `false` and skipped `w'` on subsequent blocking passes (`nn1881`).
+
+   By contrast, unravelling `w` as a copy of `w'` fails when `w'` satisfies an
+   existential or at-least restriction in B4a only through a nominal `o` (or a
+   ghost link to a node merged into `o`) that the B4a nominal guard rejects: a
+   nominal denotes a single domain element and is not copied by unravelling, so
+   the copy of `w'` would add a new uncounted edge to `o` (`sat578`, its eight
+   reductions, `fx279`, `s578_96`, and `s578_1288` on `con=83`). In `u19.rs`,
+   we therefore keep Konclude's `c_blocked` distinct from a boolean
+   `b6_collide_only`:
+   - When `c_blocked && !b6_collide_only`, `is_label_concept_optimized_blocking`
+     returns `true` at line 704 (cpp 18743).
+   - When `c_blocked && b6_collide_only`, execution proceeds into B4 solely to
+     test whether any existential or at-least restriction of `w'` fails B4a
+     because the B4a nominal guard rejected a merged-nominal ghost or an
+     unprotected nominal neighbour (`nominal_guard_rejected`, line 908). If so,
+     `blocked` becomes `false`; otherwise the block is accepted as in Konclude.
+   - When `!c_blocked`, B4a runs in full with `nominal_bound_counts_copy`.
+
+**Hand derivation of `nn1881_red` (`engine/tests/fixtures/sat578/nn1881_red.ofn`, 8 axioms).**
+Axioms: `Q2 ≡ ≤1 s.(∃r.{a})`, `F ⊑ ∀s⁻.{b}`, `≥3 s.(≥2 p.¬E) ⊑ B`,
+`Functional(r)`, `Inverse(s, p)`, `Reflexive(p)`, `Q4 ≡ ≤1 p⁻`, and
+`Q4 ≡ ≤2 r⁻.(∃r.F)`.
+- *Subsumption `Q4 ⊑ Q2`.* By `Reflexive(p)` and `Inverse(s, p)`, every element
+  `x ∈ Δ` satisfies `p(x, x)` and `s(x, x)`. For any `x ∈ Q4 = ≤1 p⁻`, `x` has
+  at most one `p⁻`-successor, and since `p(x, x)` holds, `{y ∈ Δ | p(y, x)} = {x}`.
+  Because `s ≡ p⁻`, `{y ∈ Δ | s(x, y)} = {x}`, so `x` has at most one
+  `s`-successor in total and therefore at most one `s`-successor in `∃r.{a}`.
+  Hence `x ∈ ≤1 s.(∃r.{a}) = Q2`, proving `Q4 ⊑ Q2`.
+- *Consistency and absence of other subsumptions.* In the one-element interpretation
+  `Δ = {b}` with `aᴵ = bᴵ = b`, `pᴵ = sᴵ = {(b, b)}`, and `rᴵ = ∅`,
+  `Functional(r)`, `Reflexive(p)`, and `Inverse(s, p)` hold; `(∃r.F)ᴵ = ∅` and
+  `(∃r.{a})ᴵ = ∅`, so `(≤2 r⁻.(∃r.F))ᴵ = (≤1 p⁻)ᴵ = Q4ᴵ = Q2ᴵ = Δ`;
+  `(≥3 s.(≥2 p.¬E))ᴵ = ∅`; and `(∀s⁻.{b})ᴵ = Δ`. Choosing `Bᴵ, Eᴵ, Fᴵ ⊆ {b}`
+  independently separates `B, E, F` from one another and shows `Q2, Q4 ⋢ B, E, F`.
+  To separate `Q2 ⋢ Q4` and `B, E, F ⋢ Q2, Q4`, take `Δ = {b, u, v}` with
+  `aᴵ = b`, `pᴵ = {(x, x) | x ∈ Δ} ∪ {(u, b), (v, b)}`, `sᴵ = (pᴵ)⁻`, and
+  `rᴵ = {(u, b), (v, b)}` (functional): `b` has three `p⁻`/`s`-neighbours
+  (`b, u, v`), of which two (`u, v`) lie in `∃r.{a}`, whereas `b`'s only
+  `s⁻`-neighbour (`p`-successor) is `b` itself (`p(b, y) ⟺ y = b`). Consequently,
+  `b ∈ ∀s⁻.{b}` and `b ∉ Q4, Q2`, so setting `Bᴵ = Eᴵ = Fᴵ = {b}` (with
+  `u, v` having only one `s`-successor each, so `(≥3 s.(≥2 p.¬E))ᴵ = ∅`) shows
+  `B, E, F ⋢ Q2, Q4`; shrinking `rᴵ` to `{(u, b)}` leaves `b` with only one
+  `s`-successor in `∃r.{a}` (`u`) while keeping three `p⁻`-neighbours, so
+  `b ∈ Q2 \ Q4` and `Q2 ⋢ Q4`. This matches HermiT 1.4 and Konclude 0.7.0
+  (`subsumptions: [["Q4", "Q2"]]`, `unsatisfiable: []`).
+
+**Results** (`results/agents/2026-11-09/sat578-lost-argon/README.md`; binaries
+`km-4bf690c8` with sha256 `1caca2fa5cd53765d3ffcec206acb95a55750e2e19811561bca1634e949ce035`
+and `km-fix` with sha256 `930835f332cf6cedc7dacbb39d69cce2f0a559f7a0164cf072b5b2990df361c3`,
+release flags, `KM_THREADS=1`):
+
+- *Recovered lost answers* (`data/lost-answers-fix.tsv`, 3 runs per row): all
+  12 lost seed-route answers of `lost-answers-base.tsv` are `ok` in 3 of 3 runs
+  on `km-fix` within the `274faa6a` base times: `nn1881` (`auto` 0.03 s,
+  `ht_bridge` 0.02–0.03 s), `nn969` (`ht_bridge` 33.9–36.0 s vs base
+  29.9–30.9 s), `s578_1026` (`auto` 39.6–41.6 s vs base 36.0–37.5 s,
+  `ht_bridge` 31.4–31.7 s vs base 27.9–28.8 s), `s578_1288` (`auto` 0.06 s,
+  `ht_bridge` 0.06 s), `s578_171` (`auto` 1.34–1.41 s, `ht_bridge` 1.32–1.46 s),
+  `s578_733` (`auto` 0.16–0.18 s, `ht_bridge` 0.16–0.18 s), and `s578_908`
+  (`ht_bridge` 28.3–29.0 s vs base 26.0–26.4 s). In addition, `s578_908` on
+  `auto` (which timed out at 60 s in 3 of 3 runs on both `274faa6a` and
+  `4bf690c8`) is now `ok` in 3 of 3 runs (`42.1–42.8` s).
+- *Fixtures* (`data/fx-final.tsv`, 20 runs per route): all 10 fixtures in
+  `engine/tests/fixtures/sat578/` (`sat578`, its eight reductions, `fx279`, and
+  `nn1881_red`) are `ok` in 20 of 20 runs on both `auto` and `ht_bridge`
+  (400 of 400 runs).
+- *Families and differential pools* (`data/pools/final-table.txt`,
+  `data/pools/final-diff.tsv`, `data/pools/flips-3runs.tsv`): across all 27
+  families and pools (`sat578-fam`, `bridge-nn-rule-fam`, `bridge-nn-term-fam`,
+  `bridge-reflexive-fam`, `bridge-satcache-fam`, `cb-nn1811-fam`, and the 21
+  earlier pools; 55,330 seed-route runs), `km-fix` introduces 0 new `WRONG`
+  answers and 0 `ok` to `TIMEOUT`/`ERR` regressions against `km-4bf690c8` (and
+  against `274faa6a`), while keeping all 16 seed-routes recovered by `4bf690c8`
+  (`sat578`, `fx279`, `s578_96`, `s578_126`, `s578_319`, `s578_1486`,
+  `s578_1489`, `s578_1661`, both routes) and recovering all 12 lost seed-routes
+  plus `s578_908` (`auto`).
+- *16 held-out ORE inputs* (`data/heldout/summary.tsv`, 240 s cap): all 15
+  answered inputs have identical reference agreement on `km-4bf690c8` and
+  `km-fix` (`10926` hits the memory/time limit on both), with no time
+  regression (`7557` peak RSS 4.03 to 3.16 GiB; `16315` 32.0 to 28.0 s).
+- *112 nominal ORE design-half inputs* (`data/nominal/pair.txt`, 300 s cap):
+  109 answered by both, 109 identical signatures, 0 status or route changes,
+  coverage guard fired 0 times, and time ratio `km-fix`/`km-4bf690c8` over the
+  28 inputs above 1 s has mean 0.988 and median 0.981.
+- *Tests* (`data/tests/summary.txt`, `data/tests/lib-failures.txt`, clean
+  environment, `KM_THREADS=1`, `--test-threads=1`): library has 3,121 passed
+  and the exact 21 baseline failures; all 95 integration targets pass (`rc=0`).

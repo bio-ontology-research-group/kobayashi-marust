@@ -1,0 +1,5 @@
+inputs 112 both-answered 109 identical 109 differ []
+answer-status changes []
+time ratio new/base over 28 inputs above 1 s: mean 0.988 median 0.981 max 1.13
+route changes []
+guard fired (after): 0
