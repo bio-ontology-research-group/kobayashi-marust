@@ -1,0 +1,14 @@
+{
+  "ontology": "fx279.ofn",
+  "consistent": true,
+  "subsumptions": [
+    ["A", "Q2"],
+    ["B", "Q2"],
+    ["C", "Q2"],
+    ["D", "B"],
+    ["D", "Q2"],
+    ["E", "Q2"],
+    ["Q1", "Q2"]
+  ],
+  "unsatisfiable": []
+}
