@@ -1,0 +1,10 @@
+Prefix(:=<http://example.org/ref/alc_disjunction#>)
+Ontology(<http://example.org/ref/alc_disjunction>
+  Declaration(Class(:A))
+  Declaration(Class(:B))
+  Declaration(Class(:C))
+  Declaration(Class(:D))
+  SubClassOf(:A ObjectUnionOf(:B :C))
+  SubClassOf(:B :D)
+  SubClassOf(:C :D)
+)

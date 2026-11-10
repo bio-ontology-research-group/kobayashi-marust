@@ -3,5 +3,8 @@ Ontology(<http://example.org/ref/non_el>
   Declaration(Class(:A))
   Declaration(Class(:B))
   Declaration(Class(:C))
+  Declaration(ObjectProperty(:r))
+  Declaration(ObjectProperty(:s))
+  SubObjectPropertyOf(:r :s)
   SubClassOf(:A ObjectUnionOf(:B :C))
 )

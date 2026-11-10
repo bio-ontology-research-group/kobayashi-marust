@@ -4053,7 +4053,7 @@ fn try_reference_stage(
         || meta.profile.source.rule_axioms > 0
         || !meta.el_rbox_safe
     {
-        log_declined("not in pure EL clause-stream fragment");
+        log_declined("not recognised: not in pure EL/ALC clause-stream fragment");
         return None;
     }
     let mut name_set = std::collections::BTreeSet::new();
@@ -4094,6 +4094,7 @@ fn try_reference_stage(
     }
 
     let output = match std::process::Command::new(&checker_path)
+        .args(["--procedure", "el-then-alc"])
         .arg(input_file.path())
         .output()
     {

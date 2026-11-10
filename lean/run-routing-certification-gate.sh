@@ -83,6 +83,8 @@ trap cleanup_checker EXIT
         ContextCalculus.HTRoutingSource \
         ContextCalculus.ELCommonSourceRecognizer \
         ContextCalculus.ELReferenceSaturation \
+        ContextCalculus.ALCCommonSourceRecognizer \
+        ContextCalculus.ALCReferenceSaturation \
         ContextCalculus.KMSupervisorInstance \
         km-automatic-routing-check \
         km-el-reference 2>&1 | tee "$surface_log"
@@ -391,10 +393,17 @@ for theorem in \
     KMSupervisorInstance.kmSupervisor_sound \
     KMSupervisorInstance.kmSupervisor_complete_on_EL \
     KMSupervisorInstance.kmSupervisor_sound_and_complete_on_EL \
+    KMSupervisorInstance.kmSupervisor_complete_on_ALC \
+    KMSupervisorInstance.kmSupervisor_sound_and_complete_on_ALC \
+    KMSupervisorInstance.kmSupervisor_complete_on_EL_or_ALC \
     KMConcreteWorkerAdapters.elReferenceExecution_completeAt \
     KMConcreteWorkerAdapters.elReferenceAccept_sound \
+    KMConcreteWorkerAdapters.alcReferenceExecution_completeAt \
+    KMConcreteWorkerAdapters.alcReferenceAccept_sound \
     ELReference.referenceBit_exact \
-    ELCommonSourceRecognizer.recognizeEL_entails_iff
+    ELCommonSourceRecognizer.recognizeEL_entails_iff \
+    ALCReference.alcBit_exact \
+    ALCCommonSourceRecognizer.recognizeALC_entails_iff
 do
     grep -q "$theorem" "$surface_log" || {
         echo "missing routing certification-surface axiom audit: $theorem" >&2
@@ -408,7 +417,8 @@ if "$bin_path" "$lean_root/testdata/km-routing-large-horn-forged.json"; then
     exit 1
 fi
 
-"$ref_bin_path" "$lean_root/testdata/el-reference-valid.json"
+"$ref_bin_path" --procedure el-then-alc "$lean_root/testdata/el-reference-valid.json"
+"$ref_bin_path" --procedure alc "$lean_root/testdata/alc-reference-valid.json"
 if "$ref_bin_path" "$lean_root/testdata/el-reference-malformed.json"; then
     echo "malformed EL reference input was accepted" >&2
     exit 1

@@ -98,6 +98,39 @@ fn reference_stage_el_unsat_class_matches_unforced() {
 }
 
 #[test]
+fn reference_stage_alc_disjunction_matches_unforced() {
+    assert_forced_matches_unforced("alc_disjunction.ofn");
+}
+
+#[test]
+fn reference_stage_alc_budget_declines_without_publishing() {
+    let Some(checker_path) = checker() else {
+        return;
+    };
+    let ont = fixture("alc_budget.ofn");
+    let forced = run_km(
+        &ont,
+        &[
+            ("KM_REFERENCE_FORCE", std::ffi::OsStr::new("1")),
+            ("KM_EL_REFERENCE_CHECKER", checker_path.as_os_str()),
+        ],
+    );
+    let stderr = String::from_utf8_lossy(&forced.stderr);
+    assert!(
+        !forced.status.success(),
+        "over-budget ALC fixture should fail when production is forced to decline, stderr:\n{stderr}"
+    );
+    assert!(
+        forced.stdout.is_empty(),
+        "over-budget ALC fixture must not publish stdout when declined"
+    );
+    assert!(
+        stderr.contains("KM_REFERENCE_STAGE declined: alc budget:"),
+        "expected KM_REFERENCE_STAGE declined: alc budget: in stderr, got:\n{stderr}"
+    );
+}
+
+#[test]
 fn reference_stage_non_el_declines_without_publishing() {
     let Some(checker_path) = checker() else {
         return;
@@ -113,14 +146,14 @@ fn reference_stage_non_el_declines_without_publishing() {
     let stderr = String::from_utf8_lossy(&forced.stderr);
     assert!(
         !forced.status.success(),
-        "non-EL fixture should fail when production is forced to decline, stderr:\n{stderr}"
+        "non-EL/ALC fixture should fail when production is forced to decline, stderr:\n{stderr}"
     );
     assert!(
         forced.stdout.is_empty(),
-        "non-EL fixture must not publish stdout when declined"
+        "non-EL/ALC fixture must not publish stdout when declined"
     );
     assert!(
-        stderr.contains("KM_REFERENCE_STAGE declined:"),
-        "expected KM_REFERENCE_STAGE declined: in stderr, got:\n{stderr}"
+        stderr.contains("KM_REFERENCE_STAGE declined: not recognised:"),
+        "expected KM_REFERENCE_STAGE declined: not recognised: in stderr, got:\n{stderr}"
     );
 }
