@@ -132,7 +132,7 @@ def run_km_once(
         if m_route:
             routes.append(m_route.group(1))
         if "KM_REFERENCE_STAGE" in s:
-            ref_stage_line = s
+            ref_stage_line = s[:400]
         if s and not s.startswith("KM_TIMING") and not s.startswith("KM_LEAN_CHECK"):
             last_err = s[:300]
 
@@ -280,27 +280,41 @@ def run_suite(args):
             "forced_wall_s": f"{frc['wall_s']:.3f}",
         }
 
-    with cf.ThreadPoolExecutor(max_workers=args.jobs) as ex:
-        results = list(ex.map(eval_input, enumerate(suite_rows)))
-
     fieldnames = [
-        "family",
-        "input",
-        "p2_status",
-        "unforced_route",
-        "unforced_status",
-        "unforced_digest",
-        "unforced_wall_s",
-        "forced_status",
-        "forced_outcome",
-        "forced_procedure",
-        "forced_digest",
-        "forced_wall_s",
+        "family", "input", "p2_status", "unforced_route", "unforced_status",
+        "unforced_digest", "unforced_wall_s", "forced_status", "forced_outcome",
+        "forced_procedure", "forced_digest", "forced_wall_s",
     ]
-    with open(args.out_tsv, "w", newline="") as out_f:
-        writer = csv.DictWriter(out_f, fieldnames=fieldnames, delimiter="\t")
+    # Resumable: each finished row is appended at once, so a crash of this
+    # driver (the host is short of commit memory) loses nothing.
+    import threading
+    lock = threading.Lock()
+    done = set()
+    if os.path.exists(args.out_tsv):
+        with open(args.out_tsv, newline="") as f:
+            done = {r["input"] for r in csv.DictReader(f, delimiter="\t")}
+    new_file = not os.path.exists(args.out_tsv)
+    out_f = open(args.out_tsv, "a", newline="")
+    writer = csv.DictWriter(out_f, fieldnames=fieldnames, delimiter="\t")
+    if new_file:
         writer.writeheader()
-        writer.writerows(results)
+
+    def guarded(idx_row):
+        if idx_row[1]["input"] in done:
+            return
+        while True:
+            try:
+                res = eval_input(idx_row)
+                break
+            except (MemoryError, OSError):
+                time.sleep(60)
+        with lock:
+            writer.writerow(res)
+            out_f.flush()
+
+    with cf.ThreadPoolExecutor(max_workers=args.jobs) as ex:
+        list(ex.map(guarded, enumerate(suite_rows)))
+    out_f.close()
 
 
 def summarize_tsv(tsv_path: str, p2_path: str):

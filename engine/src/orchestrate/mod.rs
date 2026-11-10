@@ -4187,7 +4187,9 @@ fn try_reference_stage(
             .map(str::trim)
             .find(|line| !line.is_empty())
             .unwrap_or("km-el-reference exited non-zero");
-        log_declined(reason);
+        // The first output line can be the whole answer matrix: cut it.
+        let reason: String = reason.chars().take(200).collect();
+        log_declined(&format!("{reason} (checker status: {})", output.status));
         return None;
     }
 
