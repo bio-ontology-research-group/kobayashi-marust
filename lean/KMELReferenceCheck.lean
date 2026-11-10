@@ -1,5 +1,6 @@
 import Lean.Data.Json
 import Std.Data.HashMap
+import Std.Data.HashSet
 import ContextCalculus.ALCCommonSourceRecognizer
 import ContextCalculus.KMConcreteWorkerAdapters
 
@@ -273,7 +274,7 @@ private def freshConceptLocal (named : List Nat) (cs : List FCL) : Nat :=
   let m2 := cs.foldl (fun acc c => max acc (maxConceptClause c)) 0
   max m1 m2 + 1
 
-private def classifyRejectedClause (seenFns : List Nat) (idx : Nat) (c : FCL) : String :=
+private def classifyRejectedClause (seenFns : Std.HashSet Nat) (idx : Nat) (c : FCL) : String :=
   if c.head.any litIsEqOrIneq then
     s!"equality_or_inequality_literal (clause {idx})"
   else if c.body.any litHasConst || c.head.any litHasConst then
@@ -321,7 +322,7 @@ private def classifyRejectedClause (seenFns : List Nat) (idx : Nat) (c : FCL) : 
     | _, _ =>
       match (c.body.findSome? litFirstApp).orElse (fun _ => c.head.findSome? litFirstApp) with
       | some f =>
-        if f ∈ seenFns then
+        if seenFns.contains f then
           s!"reused_skolem_function (clause {idx})"
         else
           s!"unpaired_or_nonadjacent_skolem_clause (clause {idx})"
@@ -329,7 +330,7 @@ private def classifyRejectedClause (seenFns : List Nat) (idx : Nat) (c : FCL) : 
         s!"unsupported_clause_shape (clause {idx}, body_len={c.body.length}, head_len={c.head.length})"
 
 partial def explainFirstRejectionAux
-    (top bottom : Nat) (seenFns : List Nat) (idx : Nat) : List FCL → String
+    (top bottom : Nat) (seenFns : Std.HashSet Nat) (idx : Nat) : List FCL → String
   | [] => "unknown rejection"
   | c1 :: c2 :: rest =>
     match c1.body, c1.head, c2.body, c2.head with
@@ -338,9 +339,9 @@ partial def explainFirstRejectionAux
       [FLit.P (FPred.concept a2 (FTerm.var vy))],
       [FLit.P (FPred.concept b (FTerm.app f' (FTerm.var vy')))] =>
       if a1 == a2 && vx == vx' && vx == vx'' && vy == vy' &&
-          f ∉ seenFns && f == f' &&
+          !seenFns.contains f && f == f' &&
           a1 != top && a1 != bottom && b != top && b != bottom then
-        explainFirstRejectionAux top bottom (f :: seenFns) (idx + 2) rest
+        explainFirstRejectionAux top bottom (seenFns.insert f) (idx + 2) rest
       else if (recognizeEL [] [c1]).isSome then
         explainFirstRejectionAux top bottom seenFns (idx + 1) (c2 :: rest)
       else
@@ -350,9 +351,9 @@ partial def explainFirstRejectionAux
       [FLit.P (FPred.concept a1 (FTerm.var vx))],
       [FLit.P (FPred.role _ (FTerm.var vx') (FTerm.app f (FTerm.var vx'')))] =>
       if a1 == a2 && vx == vx' && vx == vx'' && vy == vy' &&
-          f ∉ seenFns && f == f' &&
+          !seenFns.contains f && f == f' &&
           a1 != top && a1 != bottom && b != top && b != bottom then
-        explainFirstRejectionAux top bottom (f :: seenFns) (idx + 2) rest
+        explainFirstRejectionAux top bottom (seenFns.insert f) (idx + 2) rest
       else if (recognizeEL [] [c1]).isSome then
         explainFirstRejectionAux top bottom seenFns (idx + 1) (c2 :: rest)
       else
@@ -371,7 +372,7 @@ partial def explainFirstRejectionAux
 def explainFirstRejection (source : RequestedTaxonomySource) : String :=
   let top := freshConceptLocal source.named source.ontology
   let bottom := max (top + 1) (freshConceptLocal (top :: source.named) source.ontology)
-  explainFirstRejectionAux top bottom [] 0 source.ontology
+  explainFirstRejectionAux top bottom {} 0 source.ontology
 
 private def classifyAlcRejectedClause (idx : Nat) (c : FCL) : String :=
   if c.body.any litIsEqOrIneq || c.head.any litIsEqOrIneq then
@@ -386,7 +387,7 @@ private def classifyAlcRejectedClause (idx : Nat) (c : FCL) : String :=
   else if c.body.length == 1 && c.body.all litIsRole && c.head.length == 1 && c.head.all litIsConcept then
     s!"role_domain_or_range_clause (clause {idx})"
   else
-    classifyRejectedClause [] idx c
+    classifyRejectedClause {} idx c
 
 private def explainFirstAlcRejectionAux (idx : Nat) : List FCL → String
   | [] => "unpaired_or_duplicate_skolem_witness"
@@ -399,7 +400,49 @@ private def explainFirstAlcRejectionAux (idx : Nat) : List FCL → String
 def explainFirstAlcRejection (source : RequestedTaxonomySource) : String :=
   explainFirstAlcRejectionAux 0 source.ontology
 
-def renderTaxonomyJson (answer : TaxonomyAnswer) (concepts : Interner) : String :=
+/-- Linear-time precheck of ALC clause shapes, Skolem pairing, and distinct
+concept count before running `recognizeALC`. -/
+def fastAlcPrecheck (source : RequestedTaxonomySource) : Option Nat := do
+  let items ← source.ontology.mapM ALCCommonSourceRecognizer.classifyClause
+  let mut roleMap : Std.HashMap Nat Nat := {}
+  let mut fillerMap : Std.HashMap Nat Nat := {}
+  let mut cSet : Std.HashSet Nat := {}
+  for c in source.named do
+    cSet := cSet.insert c
+  for item in items do
+    match item with
+    | .gci body head =>
+      for c in body do
+        cSet := cSet.insert c
+      for c in head do
+        cSet := cSet.insert c
+    | .exLeft _ d c =>
+      cSet := (cSet.insert d).insert c
+    | .allRight a _ b =>
+      cSet := (cSet.insert a).insert b
+    | .exRightRole f a _ =>
+      if roleMap.contains f then
+        failure
+      roleMap := roleMap.insert f a
+      cSet := cSet.insert a
+    | .exRightFiller f a b =>
+      if fillerMap.contains f then
+        failure
+      fillerMap := fillerMap.insert f a
+      cSet := (cSet.insert a).insert b
+  if roleMap.size != fillerMap.size then
+    failure
+  for (f, a) in roleMap do
+    match fillerMap[f]? with
+    | some a' =>
+      if a != a' then
+        failure
+    | none =>
+      failure
+  pure cSet.size
+
+def renderTaxonomyJson (procName : String) (answer : TaxonomyAnswer)
+    (concepts : Interner) : String :=
   let nameOf (id : Nat) : Json :=
     match concepts.names[id]? with
     | some s => Json.str s
@@ -412,6 +455,7 @@ def renderTaxonomyJson (answer : TaxonomyAnswer) (concepts : Interner) : String 
       ("answer", Json.bool cell.answer)
     ])
   (Json.mkObj [
+    ("procedure", Json.str procName),
     ("named", namedJson),
     ("cells", cellsJson)
   ]).compress
@@ -467,11 +511,11 @@ def getAlcMaxConcepts : IO Nat := do
     | some n => pure n
     | none => pure defaultAlcMaxConcepts
 
-private def publishChecked (source : RequestedTaxonomySource)
+private def publishChecked (procName : String) (source : RequestedTaxonomySource)
     (published : Publication RequestedTaxonomySource TaxonomyAnswer KMExactEvidence)
     (concepts : Interner) : IO UInt32 := do
   if requestedExactAccept source published.answer published.evidence then
-    IO.println (renderTaxonomyJson published.answer concepts)
+    IO.println (renderTaxonomyJson procName published.answer concepts)
     return 0
   else
     IO.eprintln "internal error: reference output rejected by requestedExactAccept"
@@ -479,26 +523,36 @@ private def publishChecked (source : RequestedTaxonomySource)
 
 private def runAlcStage (recognizeOnly : Bool) (maxConcepts : Nat)
     (source : RequestedTaxonomySource) (concepts : Interner) : IO UInt32 := do
-  match ALCCommonSourceRecognizer.recognizeALC source.named source.ontology with
+  match fastAlcPrecheck source with
   | none =>
     let reason := explainFirstAlcRejection source
     IO.eprintln s!"not recognised: {reason}"
     return 3
-  | some recognized =>
-    if recognized.conceptCount > maxConcepts then
-      IO.eprintln s!"alc budget: {recognized.conceptCount} concept names"
+  | some preCount =>
+    if preCount > maxConcepts then
+      IO.eprintln s!"alc budget: {preCount} concept names"
       return 3
-    else if recognizeOnly then
-      IO.println "recognised"
-      return 0
     else
-      match alcReferenceExecution.run source with
-      | .publish published =>
-        publishChecked source published concepts
-      | .defer | .timeout | .error =>
+      match ALCCommonSourceRecognizer.recognizeALC source.named source.ontology with
+      | none =>
         let reason := explainFirstAlcRejection source
         IO.eprintln s!"not recognised: {reason}"
         return 3
+      | some recognized =>
+        if recognized.conceptCount > maxConcepts then
+          IO.eprintln s!"alc budget: {recognized.conceptCount} concept names"
+          return 3
+        else if recognizeOnly then
+          IO.println "recognised"
+          return 0
+        else
+          match alcReferenceExecution.run source with
+          | .publish published =>
+            publishChecked "alc" source published concepts
+          | .defer | .timeout | .error =>
+            let reason := explainFirstAlcRejection source
+            IO.eprintln s!"not recognised: {reason}"
+            return 3
 
 def runFile (recognizeOnly : Bool) (proc : Procedure) (path : String) : IO UInt32 := do
   let raw ← IO.FS.readFile path
@@ -512,7 +566,7 @@ def runFile (recognizeOnly : Bool) (proc : Procedure) (path : String) : IO UInt3
     | .error err =>
       IO.eprintln s!"invalid EL reference input: {err}"
       return 2
-  if !source.named.Nodup then
+  if !ELReference.nodupFast source.named then
     IO.eprintln "duplicate names"
     return 3
   match proc with
@@ -529,7 +583,7 @@ def runFile (recognizeOnly : Bool) (proc : Procedure) (path : String) : IO UInt3
     else
       match elReferenceExecution.run source with
       | .publish published =>
-        publishChecked source published concepts
+        publishChecked "el" source published concepts
       | .defer | .timeout | .error =>
         let reason := explainFirstRejection source
         IO.eprintln s!"not recognised: {reason}"
@@ -549,7 +603,7 @@ def runFile (recognizeOnly : Bool) (proc : Procedure) (path : String) : IO UInt3
     else
       match elReferenceExecution.run source with
       | .publish published =>
-        publishChecked source published concepts
+        publishChecked "el" source published concepts
       | .defer | .timeout | .error =>
         let maxConcepts ← getAlcMaxConcepts
         runAlcStage false maxConcepts source concepts

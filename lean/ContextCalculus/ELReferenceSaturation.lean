@@ -1526,6 +1526,51 @@ theorem referenceInconsistent_exact (top bottom : Nat) (named : List Nat)
   have hwf := (closure_wf top bottom named O).sub_iff
   simp [referenceInconsistent, State.hasSub, State.toMaterialization, hwf]
 
+/-- Tail-recursive $O(n \log n)$ duplicate check backed by `Std.TreeSet`. -/
+def nodupFastLoop : List Nat → TreeSet Nat → Bool
+  | [], _ => true
+  | x :: xs, seen => !seen.contains x && nodupFastLoop xs (seen.insert x)
+
+/-- $O(n \log n)$ duplicate-free check on `List Nat`. -/
+def nodupFast (xs : List Nat) : Bool :=
+  nodupFastLoop xs ∅
+
+private theorem nodupFastLoop_iff :
+    ∀ (xs : List Nat) (seen : TreeSet Nat),
+      nodupFastLoop xs seen = true ↔
+        xs.Nodup ∧ ∀ y ∈ xs, seen.contains y = false
+  | [], seen => by simp [nodupFastLoop]
+  | x :: xs, seen => by
+      rw [nodupFastLoop, Bool.and_eq_true, Bool.not_eq_true',
+        nodupFastLoop_iff xs (seen.insert x), List.nodup_cons]
+      constructor
+      · rintro ⟨hx_seen, hnd, hrest⟩
+        refine ⟨⟨?_, hnd⟩, ?_⟩
+        · intro hx_xs
+          have h := hrest x hx_xs
+          rw [TreeSet.contains_insert] at h
+          simp at h
+        · intro y hy
+          rcases List.mem_cons.mp hy with rfl | hy'
+          · exact hx_seen
+          · have h := hrest y hy'
+            rw [TreeSet.contains_insert, Bool.or_eq_false_iff] at h
+            exact h.2
+      · rintro ⟨⟨hx_xs, hnd⟩, hall⟩
+        refine ⟨hall x List.mem_cons_self, hnd, ?_⟩
+        intro y hy
+        rw [TreeSet.contains_insert, Bool.or_eq_false_iff]
+        refine ⟨?_, hall y (List.mem_cons_of_mem x hy)⟩
+        rw [beq_eq_false_iff_ne]
+        intro hcmp
+        have hxy : x = y := LawfulEqCmp.compare_eq_iff_eq.mp hcmp
+        subst hxy
+        exact hx_xs hy
+
+theorem nodupFast_iff (xs : List Nat) :
+    nodupFast xs = true ↔ xs.Nodup := by
+  simpa [nodupFast] using nodupFastLoop_iff xs ∅
+
 #print axioms mem_universe_of_concept
 #print axioms top_mem_contextUniverse
 #print axioms bottom_mem_contextUniverse
