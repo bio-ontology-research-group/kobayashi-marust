@@ -1,6 +1,30 @@
 import Lean.Data.Json
 import Std.Data.HashMap
+import ContextCalculus.ALCCommonSourceRecognizer
 import ContextCalculus.KMConcreteWorkerAdapters
+
+/-!
+# Executable EL and ALC reference taxonomy stage (`km-el-reference`)
+
+Command-line wrapper over `KMConcreteWorkerAdapters.elReferenceExecution` and
+`KMConcreteWorkerAdapters.alcReferenceExecution` for the common clause-stream
+JSON format.
+
+Supports `--procedure el|alc|el-then-alc` (default `el-then-alc`) and
+`--recognize-only`:
+- In `el-then-alc` mode, `elReferenceExecution.run` runs first; if it declines,
+  the ALC reference stage runs next, matching the stage order of
+  `KMSupervisorInstance.kmSupervisor_complete_on_EL_or_ALC`.
+- Before evaluating `alcReferenceExecution.run` (which enumerates candidate
+  types over `Fin recognized.conceptCount`), the binary enforces a runtime
+  concept-count budget from `KM_ALC_REFERENCE_MAX_CONCEPTS` (default `16`),
+  declining with exit code `3` and stderr reason
+  `alc budget: N concept names` when `recognized.conceptCount` exceeds the
+  limit. This budget is a runtime resource bound outside the Lean completeness
+  proof.
+- Any `.publish` outcome is rechecked with `requestedExactAccept` before
+  emitting the output JSON.
+-/
 
 open Lean
 open ContextCalculus
@@ -349,6 +373,32 @@ def explainFirstRejection (source : RequestedTaxonomySource) : String :=
   let bottom := max (top + 1) (freshConceptLocal (top :: source.named) source.ontology)
   explainFirstRejectionAux top bottom [] 0 source.ontology
 
+private def classifyAlcRejectedClause (idx : Nat) (c : FCL) : String :=
+  if c.body.any litIsEqOrIneq || c.head.any litIsEqOrIneq then
+    s!"equality_or_inequality_literal (clause {idx})"
+  else if c.body.any litHasConst || c.head.any litHasConst then
+    s!"individual_or_constant_term (clause {idx})"
+  else if !c.body.isEmpty && c.body.all litIsRole && !c.head.isEmpty && c.head.all litIsRole then
+    if c.body.length == 1 && c.head.length == 1 then
+      s!"role_inclusion_or_inverse_clause (clause {idx})"
+    else
+      s!"role_chain_or_transitivity_clause (clause {idx}, body_len={c.body.length})"
+  else if c.body.length == 1 && c.body.all litIsRole && c.head.length == 1 && c.head.all litIsConcept then
+    s!"role_domain_or_range_clause (clause {idx})"
+  else
+    classifyRejectedClause [] idx c
+
+private def explainFirstAlcRejectionAux (idx : Nat) : List FCL → String
+  | [] => "unpaired_or_duplicate_skolem_witness"
+  | c :: rest =>
+    if (ALCCommonSourceRecognizer.classifyClause c).isSome then
+      explainFirstAlcRejectionAux (idx + 1) rest
+    else
+      classifyAlcRejectedClause idx c
+
+def explainFirstAlcRejection (source : RequestedTaxonomySource) : String :=
+  explainFirstAlcRejectionAux 0 source.ontology
+
 def renderTaxonomyJson (answer : TaxonomyAnswer) (concepts : Interner) : String :=
   let nameOf (id : Nat) : Json :=
     match concepts.names[id]? with
@@ -366,13 +416,91 @@ def renderTaxonomyJson (answer : TaxonomyAnswer) (concepts : Interner) : String 
     ("cells", cellsJson)
   ]).compress
 
-private def parseCliArgs : List String → Option (Bool × String)
-  | [path] => some (false, path)
-  | ["--recognize-only", path] => some (true, path)
-  | [path, "--recognize-only"] => some (true, path)
+inductive Procedure where
+  | el
+  | alc
+  | elThenAlc
+  deriving DecidableEq, Repr
+
+private def parseProcedure : String → Option Procedure
+  | "el" => some .el
+  | "alc" => some .alc
+  | "el-then-alc" => some .elThenAlc
   | _ => none
 
-def runFile (recognizeOnly : Bool) (path : String) : IO UInt32 := do
+private def parseCliArgsLoop (recognizeOnly : Bool) (proc : Procedure)
+    (pathOpt : Option String) : List String → Option (Bool × Procedure × String)
+  | [] =>
+    match pathOpt with
+    | some path => some (recognizeOnly, proc, path)
+    | none => none
+  | "--recognize-only" :: rest =>
+    parseCliArgsLoop true proc pathOpt rest
+  | "--procedure" :: rawProc :: rest =>
+    match parseProcedure rawProc with
+    | some p => parseCliArgsLoop recognizeOnly p pathOpt rest
+    | none => none
+  | "--procedure=el" :: rest =>
+    parseCliArgsLoop recognizeOnly .el pathOpt rest
+  | "--procedure=alc" :: rest =>
+    parseCliArgsLoop recognizeOnly .alc pathOpt rest
+  | "--procedure=el-then-alc" :: rest =>
+    parseCliArgsLoop recognizeOnly .elThenAlc pathOpt rest
+  | arg :: rest =>
+    if arg.startsWith "-" then
+      none
+    else
+      match pathOpt with
+      | none => parseCliArgsLoop recognizeOnly proc (some arg) rest
+      | some _ => none
+
+private def parseCliArgs (args : List String) : Option (Bool × Procedure × String) :=
+  parseCliArgsLoop false .elThenAlc none args
+
+def defaultAlcMaxConcepts : Nat := 16
+
+def getAlcMaxConcepts : IO Nat := do
+  match (← IO.getEnv "KM_ALC_REFERENCE_MAX_CONCEPTS") with
+  | none => pure defaultAlcMaxConcepts
+  | some raw =>
+    match raw.toNat? with
+    | some n => pure n
+    | none => pure defaultAlcMaxConcepts
+
+private def publishChecked (source : RequestedTaxonomySource)
+    (published : Publication RequestedTaxonomySource TaxonomyAnswer KMExactEvidence)
+    (concepts : Interner) : IO UInt32 := do
+  if requestedExactAccept source published.answer published.evidence then
+    IO.println (renderTaxonomyJson published.answer concepts)
+    return 0
+  else
+    IO.eprintln "internal error: reference output rejected by requestedExactAccept"
+    return 2
+
+private def runAlcStage (recognizeOnly : Bool) (maxConcepts : Nat)
+    (source : RequestedTaxonomySource) (concepts : Interner) : IO UInt32 := do
+  match ALCCommonSourceRecognizer.recognizeALC source.named source.ontology with
+  | none =>
+    let reason := explainFirstAlcRejection source
+    IO.eprintln s!"not recognised: {reason}"
+    return 3
+  | some recognized =>
+    if recognized.conceptCount > maxConcepts then
+      IO.eprintln s!"alc budget: {recognized.conceptCount} concept names"
+      return 3
+    else if recognizeOnly then
+      IO.println "recognised"
+      return 0
+    else
+      match alcReferenceExecution.run source with
+      | .publish published =>
+        publishChecked source published concepts
+      | .defer | .timeout | .error =>
+        let reason := explainFirstAlcRejection source
+        IO.eprintln s!"not recognised: {reason}"
+        return 3
+
+def runFile (recognizeOnly : Bool) (proc : Procedure) (path : String) : IO UInt32 := do
   let raw ← IO.FS.readFile path
   let json ← match Json.parse raw with
     | .ok value => pure value
@@ -387,34 +515,55 @@ def runFile (recognizeOnly : Bool) (path : String) : IO UInt32 := do
   if !source.named.Nodup then
     IO.eprintln "duplicate names"
     return 3
-  if recognizeOnly then
-    match recognizeEL source.named source.ontology with
-    | some _ =>
-      IO.println "recognised"
-      return 0
-    | none =>
-      let reason := explainFirstRejection source
-      IO.eprintln s!"not recognised: {reason}"
-      return 3
-  match elReferenceExecution.run source with
-  | .publish published =>
-    IO.println (renderTaxonomyJson published.answer concepts)
-    return 0
-  | .defer | .timeout | .error =>
-    let reason := explainFirstRejection source
-    IO.eprintln s!"not recognised: {reason}"
-    return 3
+  match proc with
+  | .el =>
+    if recognizeOnly then
+      match recognizeEL source.named source.ontology with
+      | some _ =>
+        IO.println "recognised"
+        return 0
+      | none =>
+        let reason := explainFirstRejection source
+        IO.eprintln s!"not recognised: {reason}"
+        return 3
+    else
+      match elReferenceExecution.run source with
+      | .publish published =>
+        publishChecked source published concepts
+      | .defer | .timeout | .error =>
+        let reason := explainFirstRejection source
+        IO.eprintln s!"not recognised: {reason}"
+        return 3
+  | .alc =>
+    let maxConcepts ← getAlcMaxConcepts
+    runAlcStage recognizeOnly maxConcepts source concepts
+  | .elThenAlc =>
+    if recognizeOnly then
+      match recognizeEL source.named source.ontology with
+      | some _ =>
+        IO.println "recognised"
+        return 0
+      | none =>
+        let maxConcepts ← getAlcMaxConcepts
+        runAlcStage true maxConcepts source concepts
+    else
+      match elReferenceExecution.run source with
+      | .publish published =>
+        publishChecked source published concepts
+      | .defer | .timeout | .error =>
+        let maxConcepts ← getAlcMaxConcepts
+        runAlcStage false maxConcepts source concepts
 
 end KMELReferenceCheck
 
 def main (args : List String) : IO UInt32 := do
   match KMELReferenceCheck.parseCliArgs args with
   | none =>
-    IO.eprintln "usage: km-el-reference [--recognize-only] <clauses.json>"
+    IO.eprintln "usage: km-el-reference [--recognize-only] [--procedure el|alc|el-then-alc] <clauses.json>"
     return 2
-  | some (recognizeOnly, path) =>
+  | some (recognizeOnly, proc, path) =>
     try
-      KMELReferenceCheck.runFile recognizeOnly path
+      KMELReferenceCheck.runFile recognizeOnly proc path
     catch err =>
       IO.eprintln s!"failed to read {path}: {err}"
       pure (2 : UInt32)
