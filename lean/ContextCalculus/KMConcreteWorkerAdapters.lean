@@ -1142,12 +1142,18 @@ verified closure of `ELReferenceSaturation`, and reads the matrix out.  Its
 acceptance recomputes that closure; soundness comes from the closure theorems,
 not from a certificate.  See `docs/V1.6.0-COMPLETENESS-PLAN.md`. -/
 
+local instance (priority := 2000) instDecidableNodupNatFast (xs : List Nat) :
+    Decidable xs.Nodup :=
+  decidable_of_iff (ELReference.nodupFast xs = true)
+    (ELReference.nodupFast_iff xs)
+
 /-- The reference answer for a recognised source and a requested name list. -/
 def referenceAnswer (recognized : ELCommonSourceRecognizer.RecognizedEL)
     (named : List Nat) : TaxonomyAnswer :=
+  let c := ELReference.closure recognized.top recognized.bottom named
+    recognized.ontology
   matrixAnswer named fun sub sup =>
-    ELReference.referenceBit recognized.top recognized.bottom named
-      recognized.ontology sub sup
+    ELReference.referenceBitOf c recognized.bottom sub sup
 
 theorem referenceAnswer_correct (named : List Nat) (ontology : List FCL)
     (recognized : ELCommonSourceRecognizer.RecognizedEL)
@@ -1157,8 +1163,9 @@ theorem referenceAnswer_correct (named : List Nat) (ontology : List FCL)
     Correct ontology (referenceAnswer recognized named) := by
   apply matrixAnswer_correct ontology named _ hnodup
   intro sub hsub sup hsup
-  rw [ELReference.referenceBit_exact_of_named recognized.top recognized.bottom
-    named recognized.ontology hsub sup]
+  rw [← ELReference.referenceBit_eq,
+    ELReference.referenceBit_exact_of_named recognized.top recognized.bottom
+      named recognized.ontology hsub sup]
   exact (ELCommonSourceRecognizer.recognizeEL_entails_iff named ontology
     recognized hrecognized hsub hsup).symm
 
@@ -1199,18 +1206,26 @@ The ALC reference procedure is the completeness witness of the ALC fragment:
 it recognises the common source as an ALC ontology, computes the good-type
 set with `ALCReferenceSaturation.saturateC`, and reads the matrix out. -/
 
+def alcReferenceBitOf {named : List Nat} {ontology : List FCL}
+    (recognized : ALCCommonSourceRecognizer.RecognizedALC named ontology)
+    (G : Finset (Finset (Fin recognized.conceptCount)))
+    (sub sup : Nat) : Bool :=
+  match recognized.conceptIndex sub, recognized.conceptIndex sup with
+  | some i, some j => ALCReference.alcBitOf G i j
+  | _, _ => false
+
 def alcReferenceBit {named : List Nat} {ontology : List FCL}
     (recognized : ALCCommonSourceRecognizer.RecognizedALC named ontology)
     (sub sup : Nat) : Bool :=
-  match recognized.conceptIndex sub, recognized.conceptIndex sup with
-  | some i, some j => ALCReference.alcBit recognized.ontology i j
-  | _, _ => false
+  alcReferenceBitOf recognized
+    (ALCReference.saturateC recognized.ontology) sub sup
 
 /-- The ALC reference answer for a recognised source and a requested name list. -/
 def alcReferenceAnswer {named : List Nat} {ontology : List FCL}
     (recognized : ALCCommonSourceRecognizer.RecognizedALC named ontology)
     (names : List Nat) : TaxonomyAnswer :=
-  matrixAnswer names (alcReferenceBit recognized)
+  let G := ALCReference.saturateC recognized.ontology
+  matrixAnswer names (alcReferenceBitOf recognized G)
 
 theorem alcReferenceAnswer_correct (named : List Nat) (ontology : List FCL)
     (recognized : ALCCommonSourceRecognizer.RecognizedALC named ontology)
@@ -1224,7 +1239,8 @@ theorem alcReferenceAnswer_correct (named : List Nat) (ontology : List FCL)
       named ontology recognized hrecognized hsub with ⟨i, hi⟩
   rcases ALCCommonSourceRecognizer.recognizeALC_conceptIndex_of_named
       named ontology recognized hrecognized hsup with ⟨j, hj⟩
-  simp only [alcReferenceBit, hi, hj, ALCReference.alcBit_iff_entailsSub]
+  simp only [alcReferenceBitOf, hi, hj, ← ALCReference.alcBit_eq,
+    ALCReference.alcBit_iff_entailsSub]
   exact (ALCCommonSourceRecognizer.recognizeALC_entails_iff named ontology
     recognized hrecognized hi hj).symm
 
