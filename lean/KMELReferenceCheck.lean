@@ -441,24 +441,36 @@ def fastAlcPrecheck (source : RequestedTaxonomySource) : Option Nat := do
       failure
   pure cSet.size
 
-def renderTaxonomyJson (procName : String) (answer : TaxonomyAnswer)
-    (concepts : Interner) : String :=
-  let nameOf (id : Nat) : Json :=
-    match concepts.names[id]? with
-    | some s => Json.str s
-    | none => Json.num id
-  let namedJson := Json.arr (answer.named.toArray.map nameOf)
-  let cellsJson := Json.arr (answer.cells.toArray.map fun cell =>
-    Json.mkObj [
-      ("sub", nameOf cell.sub),
-      ("sup", nameOf cell.sup),
-      ("answer", Json.bool cell.answer)
-    ])
-  (Json.mkObj [
-    ("procedure", Json.str procName),
-    ("named", namedJson),
-    ("cells", cellsJson)
-  ]).compress
+private partial def writeCellsLoop (stdout : IO.FS.Stream) (encodedNames : Array String)
+    (first : Bool) (chunkAcc : String) (chunkCount : Nat) : List TaxonomyCell → IO Unit
+  | [] => do
+    if !chunkAcc.isEmpty then
+      stdout.putStr chunkAcc
+  | cell :: rest => do
+    let subStr := encodedNames[cell.sub]?.getD (toString cell.sub)
+    let supStr := encodedNames[cell.sup]?.getD (toString cell.sup)
+    let ansStr := if cell.answer then "true" else "false"
+    let sep := if first then "" else ","
+    let item := s!"{sep}\{\"answer\":{ansStr},\"sub\":{subStr},\"sup\":{supStr}}"
+    let chunkAcc' := chunkAcc ++ item
+    let chunkCount' := chunkCount + 1
+    if chunkCount' >= 4096 then
+      stdout.putStr chunkAcc'
+      writeCellsLoop stdout encodedNames false "" 0 rest
+    else
+      writeCellsLoop stdout encodedNames false chunkAcc' chunkCount' rest
+
+def writeTaxonomyJson (procName : String) (answer : TaxonomyAnswer)
+    (concepts : Interner) : IO Unit := do
+  let stdout ← IO.getStdout
+  let encodedNames : Array String := concepts.names.map fun s => (Json.str s).compress
+  let nameOf (id : Nat) : String := encodedNames[id]?.getD (toString id)
+  let namedStr := String.intercalate "," (answer.named.map nameOf)
+  let procStr := (Json.str procName).compress
+  stdout.putStr "{\"cells\":["
+  writeCellsLoop stdout encodedNames true "" 0 answer.cells
+  stdout.putStr s!"],\"named\":[{namedStr}],\"procedure\":{procStr}}\n"
+  stdout.flush
 
 inductive Procedure where
   | el
@@ -513,13 +525,10 @@ def getAlcMaxConcepts : IO Nat := do
 
 private def publishChecked (procName : String) (source : RequestedTaxonomySource)
     (published : Publication RequestedTaxonomySource TaxonomyAnswer KMExactEvidence)
+    (_haccepted : requestedExactAccept source published.answer published.evidence = true)
     (concepts : Interner) : IO UInt32 := do
-  if requestedExactAccept source published.answer published.evidence then
-    IO.println (renderTaxonomyJson procName published.answer concepts)
-    return 0
-  else
-    IO.eprintln "internal error: reference output rejected by requestedExactAccept"
-    return 2
+  writeTaxonomyJson procName published.answer concepts
+  return 0
 
 private def runAlcStage (recognizeOnly : Bool) (maxConcepts : Nat)
     (source : RequestedTaxonomySource) (concepts : Interner) : IO UInt32 := do
@@ -546,9 +555,10 @@ private def runAlcStage (recognizeOnly : Bool) (maxConcepts : Nat)
           IO.println "recognised"
           return 0
         else
-          match alcReferenceExecution.run source with
+          match hrun : alcReferenceExecution.run source with
           | .publish published =>
-            publishChecked "alc" source published concepts
+            publishChecked "alc" source published
+              (alcReferenceExecution.accepted source published hrun) concepts
           | .defer | .timeout | .error =>
             let reason := explainFirstAlcRejection source
             IO.eprintln s!"not recognised: {reason}"
@@ -581,9 +591,10 @@ def runFile (recognizeOnly : Bool) (proc : Procedure) (path : String) : IO UInt3
         IO.eprintln s!"not recognised: {reason}"
         return 3
     else
-      match elReferenceExecution.run source with
+      match hrun : elReferenceExecution.run source with
       | .publish published =>
-        publishChecked "el" source published concepts
+        publishChecked "el" source published
+          (elReferenceExecution.accepted source published hrun) concepts
       | .defer | .timeout | .error =>
         let reason := explainFirstRejection source
         IO.eprintln s!"not recognised: {reason}"
@@ -601,9 +612,10 @@ def runFile (recognizeOnly : Bool) (proc : Procedure) (path : String) : IO UInt3
         let maxConcepts ← getAlcMaxConcepts
         runAlcStage true maxConcepts source concepts
     else
-      match elReferenceExecution.run source with
+      match hrun : elReferenceExecution.run source with
       | .publish published =>
-        publishChecked "el" source published concepts
+        publishChecked "el" source published
+          (elReferenceExecution.accepted source published hrun) concepts
       | .defer | .timeout | .error =>
         let maxConcepts ← getAlcMaxConcepts
         runAlcStage false maxConcepts source concepts
