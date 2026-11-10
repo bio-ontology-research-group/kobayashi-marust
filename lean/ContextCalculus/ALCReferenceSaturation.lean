@@ -142,10 +142,20 @@ def satC (O : Ontology (Fin conceptCount) (Fin roleCount)) (n : Nat) :
     Finset (Finset (Fin conceptCount)) :=
   (stepC O)^[n] (candC O)
 
+/-- Iterate `stepC` with early exit as soon as a round removes no types. -/
+def saturateLoop (O : Ontology (Fin conceptCount) (Fin roleCount)) :
+    Nat → Finset (Finset (Fin conceptCount)) →
+      Finset (Finset (Fin conceptCount))
+  | 0, G => G
+  | fuel + 1, G =>
+      let next := stepC O G
+      if next.card = G.card then G else saturateLoop O fuel next
+
 /-- Computable converged set of good types. -/
 def saturateC (O : Ontology (Fin conceptCount) (Fin roleCount)) :
     Finset (Finset (Fin conceptCount)) :=
-  satC O (candC O).card
+  let init := candC O
+  saturateLoop O init.card init
 
 theorem stepC_eq (O : Ontology (Fin conceptCount) (Fin roleCount))
     (G : Finset (Finset (Fin conceptCount))) :
@@ -163,18 +173,45 @@ theorem satC_eq (O : Ontology (Fin conceptCount) (Fin roleCount)) (n : Nat) :
   unfold satC Ctx.sat
   rw [funext (stepC_eq O), candC_eq]
 
+theorem saturateLoop_eq (O : Ontology (Fin conceptCount) (Fin roleCount)) :
+    ∀ (n : Nat) (G : Finset (Finset (Fin conceptCount))),
+      saturateLoop O n G = (Ctx.step O)^[n] G
+  | 0, G => rfl
+  | n + 1, G => by
+      dsimp only [saturateLoop]
+      split
+      · next hcard =>
+          have hsub : stepC O G ⊆ G := Finset.filter_subset _ _
+          have hfix : stepC O G = G :=
+            Finset.eq_of_subset_of_card_le hsub (Nat.le_of_eq hcard.symm)
+          have hfix' : Ctx.step O G = G := by
+            rw [← stepC_eq, hfix]
+          exact (Function.iterate_fixed hfix' (n + 1)).symm
+      · next _ =>
+          rw [saturateLoop_eq O n (stepC O G), stepC_eq, Function.iterate_succ_apply]
+
 /-- The computable saturation produces the exact same finset of good types as
 the classical specification. -/
 theorem saturateC_eq (O : Ontology (Fin conceptCount) (Fin roleCount)) :
     saturateC O = Ctx.saturate O := by
-  unfold saturateC Ctx.saturate
-  rw [satC_eq, candC_eq]
+  unfold saturateC Ctx.saturate Ctx.sat
+  rw [saturateLoop_eq, candC_eq]
+
+/-- Executable ALC subsumption decision bit on a precomputed good-type set `G`:
+`A ⊑ B` holds iff every type in `G` containing `A` also contains `B`. -/
+def alcBitOf (G : Finset (Finset (Fin conceptCount)))
+    (A B : Fin conceptCount) : Bool :=
+  decide (∀ t ∈ G, A ∈ t → B ∈ t)
 
 /-- Executable ALC subsumption decision bit: `A ⊑ B` holds iff every type in
 `saturateC O` containing `A` also contains `B`. -/
 def alcBit (O : Ontology (Fin conceptCount) (Fin roleCount))
     (A B : Fin conceptCount) : Bool :=
-  decide (∀ t ∈ saturateC O, A ∈ t → B ∈ t)
+  alcBitOf (saturateC O) A B
+
+theorem alcBit_eq (O : Ontology (Fin conceptCount) (Fin roleCount))
+    (A B : Fin conceptCount) :
+    alcBit O A B = alcBitOf (saturateC O) A B := rfl
 
 /-- `alcBit` decides atomic subsumption over all interpretations of `O`. -/
 theorem alcBit_exact (O : Ontology (Fin conceptCount) (Fin roleCount))
@@ -182,7 +219,7 @@ theorem alcBit_exact (O : Ontology (Fin conceptCount) (Fin roleCount))
     alcBit O A B = true ↔
       (∀ (D : Type) (I : Interp D (Fin conceptCount) (Fin roleCount)),
         models I O → ∀ x, I.c A x → I.c B x) := by
-  simp only [alcBit, decide_eq_true_eq, saturateC_eq, saturate_decides]
+  simp only [alcBit, alcBitOf, decide_eq_true_eq, saturateC_eq, saturate_decides]
 
 /-- `alcBit` agrees with `CBALCEncoding.EntailsSub`. -/
 theorem alcBit_iff_entailsSub (O : Ontology (Fin conceptCount) (Fin roleCount))
@@ -200,6 +237,7 @@ namespace ContextCalculus.ALCReferenceSaturation
 export ContextCalculus.ALCReference
   (consistentClause compatClause realizedClause
    instDecidableConsistent instDecidableCompat instDecidableRealizedIn
-   stepC candC satC saturateC stepC_eq candC_eq satC_eq saturateC_eq
-   alcBit alcBit_exact alcBit_iff_entailsSub)
+   stepC candC satC saturateLoop saturateC
+   stepC_eq candC_eq satC_eq saturateLoop_eq saturateC_eq
+   alcBitOf alcBit alcBit_eq alcBit_exact alcBit_iff_entailsSub)
 end ContextCalculus.ALCReferenceSaturation
