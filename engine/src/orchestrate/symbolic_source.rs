@@ -36,6 +36,9 @@ pub(super) fn classify(path: &Path) -> Result<ClassificationEvidence, Orchestrat
 }
 
 pub(super) fn classify_text(text: String) -> Result<ClassificationEvidence, OrchestrateError> {
+    if super::reference_force_enabled() {
+        return Err(OrchestrateError::OutOfFragment("KM_REFERENCE_FORCE=1".into()));
+    }
     if crate::tableau::ht_lean_certification_requested() {
         return Err(OrchestrateError::OutOfFragment(
             "symbolic source bridge cannot bypass requested HT runtime certification".into()));

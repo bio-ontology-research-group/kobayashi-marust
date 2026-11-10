@@ -157,3 +157,115 @@ fn reference_stage_non_el_declines_without_publishing() {
         "expected KM_REFERENCE_STAGE declined: not recognised: in stderr, got:\n{stderr}"
     );
 }
+
+#[test]
+fn reference_stage_rules_declines_under_force() {
+    let Some(checker_path) = checker() else {
+        return;
+    };
+    let ont = fixture("rules_taxonomy.ofn");
+    let unforced = run_km(&ont, &[]);
+    assert!(
+        unforced.status.success(),
+        "unforced classify failed on rules_taxonomy.ofn: {}",
+        String::from_utf8_lossy(&unforced.stderr)
+    );
+    let unforced_json: serde_json::Value =
+        serde_json::from_slice(&unforced.stdout).expect("unforced rules JSON output");
+    assert_eq!(unforced_json["consistent"], serde_json::json!(true));
+
+    let forced = run_km(
+        &ont,
+        &[
+            ("KM_REFERENCE_FORCE", std::ffi::OsStr::new("1")),
+            ("KM_EL_REFERENCE_CHECKER", checker_path.as_os_str()),
+        ],
+    );
+    let stderr = String::from_utf8_lossy(&forced.stderr);
+    assert!(
+        !forced.status.success(),
+        "rules fixture must decline under KM_REFERENCE_FORCE=1, stderr:\n{stderr}"
+    );
+    assert!(
+        forced.stdout.is_empty(),
+        "rules fixture must not publish stdout when declined under force"
+    );
+    assert!(
+        stderr.contains("KM_REFERENCE_STAGE declined: not recognised:"),
+        "expected KM_REFERENCE_STAGE declined: not recognised: in stderr, got:\n{stderr}"
+    );
+}
+
+#[test]
+fn reference_stage_abox_inconsistent_declines_under_force() {
+    let Some(checker_path) = checker() else {
+        return;
+    };
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let fixtures = [
+        fixture("abox_inconsistent.ofn"),
+        manifest_dir.join("tests/fixtures/realization/inconsistent.ofn"),
+    ];
+    for ont in &fixtures {
+        let label = ont.display();
+        let unforced = run_km(ont, &[]);
+        assert!(
+            unforced.status.success(),
+            "unforced classify failed on {label}: {}",
+            String::from_utf8_lossy(&unforced.stderr)
+        );
+        let unforced_json: serde_json::Value =
+            serde_json::from_slice(&unforced.stdout).expect("unforced abox_inconsistent JSON output");
+        assert_eq!(unforced_json["consistent"], serde_json::json!(false));
+
+        let forced = run_km(
+            ont,
+            &[
+                ("KM_REFERENCE_FORCE", std::ffi::OsStr::new("1")),
+                ("KM_EL_REFERENCE_CHECKER", checker_path.as_os_str()),
+            ],
+        );
+        let stderr = String::from_utf8_lossy(&forced.stderr);
+        assert!(
+            !forced.status.success(),
+            "ABox-inconsistent fixture {label} must decline under KM_REFERENCE_FORCE=1, stderr:\n{stderr}"
+        );
+        assert!(
+            forced.stdout.is_empty(),
+            "ABox-inconsistent fixture {label} must not publish stdout when declined under force"
+        );
+        assert!(
+            stderr.contains("KM_REFERENCE_STAGE declined: not recognised:"),
+            "expected KM_REFERENCE_STAGE declined: not recognised: in stderr on {label}, got:\n{stderr}"
+        );
+    }
+}
+
+#[test]
+fn reference_stage_budget_timeout_declines_with_budget_reason() {
+    let Some(checker_path) = checker() else {
+        return;
+    };
+    let ont = fixture("el_existentials.ofn");
+    let forced = run_km(
+        &ont,
+        &[
+            ("KM_REFERENCE_FORCE", std::ffi::OsStr::new("1")),
+            ("KM_REFERENCE_BUDGET_S", std::ffi::OsStr::new("0")),
+            ("KM_EL_REFERENCE_CHECKER", checker_path.as_os_str()),
+        ],
+    );
+    let stderr = String::from_utf8_lossy(&forced.stderr);
+    assert!(
+        !forced.status.success(),
+        "zero-budget reference stage must decline under force, stderr:\n{stderr}"
+    );
+    assert!(
+        forced.stdout.is_empty(),
+        "zero-budget reference stage must not publish stdout when declined"
+    );
+    assert!(
+        stderr.contains("KM_REFERENCE_STAGE declined: budget"),
+        "expected KM_REFERENCE_STAGE declined: budget in stderr, got:\n{stderr}"
+    );
+}

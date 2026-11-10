@@ -583,6 +583,7 @@ pub struct CheckerCommand {
     command: std::process::Command,
     stdout_set: bool,
     stderr_set: bool,
+    time_limit: Option<Option<std::time::Duration>>,
 }
 
 impl CheckerCommand {
@@ -595,7 +596,13 @@ impl CheckerCommand {
             command,
             stdout_set: false,
             stderr_set: false,
+            time_limit: None,
         }
+    }
+
+    pub fn time_limit(&mut self, limit: Option<std::time::Duration>) -> &mut Self {
+        self.time_limit = Some(limit);
+        self
     }
 
     pub fn arg<S: AsRef<std::ffi::OsStr>>(&mut self, arg: S) -> &mut Self {
@@ -639,9 +646,10 @@ impl CheckerCommand {
         self
     }
 
-    /// Run to completion and collect the output (stdout is captured unless
-    /// the caller configured it), retrying a start-up thread failure.
-    pub fn output(&mut self) -> std::io::Result<std::process::Output> {
+    /// Run to completion and collect the output together with whether the
+    /// configured wall-clock deadline expired (`true` when killed on timeout),
+    /// retrying a start-up thread failure.
+    pub fn output_timed(&mut self) -> std::io::Result<(std::process::Output, bool)> {
         self.command.stderr(std::process::Stdio::piped());
         if !self.stdout_set {
             self.command.stdout(std::process::Stdio::piped());
@@ -657,15 +665,22 @@ impl CheckerCommand {
                 Ok(())
             });
         }
+        let limit = self.time_limit.unwrap_or_else(checker_time_limit);
         let mut attempt = 0;
         loop {
-            let output = run_with_deadline(&mut self.command, checker_time_limit())?;
-            if !startup_thread_failure(&output) || attempt == RETRY_PAUSES_MS.len() {
-                return Ok(output);
+            let (output, timed_out) = run_with_deadline(&mut self.command, limit)?;
+            if timed_out || !startup_thread_failure(&output) || attempt == RETRY_PAUSES_MS.len() {
+                return Ok((output, timed_out));
             }
             std::thread::sleep(std::time::Duration::from_millis(RETRY_PAUSES_MS[attempt]));
             attempt += 1;
         }
+    }
+
+    /// Run to completion and collect the output (stdout is captured unless
+    /// the caller configured it), retrying a start-up thread failure.
+    pub fn output(&mut self) -> std::io::Result<std::process::Output> {
+        self.output_timed().map(|(output, _)| output)
     }
 
     /// Run to completion and return the exit status (stdout inherited unless
@@ -702,7 +717,7 @@ fn checker_time_limit() -> Option<std::time::Duration> {
 fn run_with_deadline(
     command: &mut std::process::Command,
     limit: Option<std::time::Duration>,
-) -> std::io::Result<std::process::Output> {
+) -> std::io::Result<(std::process::Output, bool)> {
     use std::io::Read;
     let mut child = command.spawn()?;
     let read_all = |pipe: Option<Box<dyn Read + Send>>| {
@@ -717,21 +732,26 @@ fn run_with_deadline(
     let stdout = read_all(child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
     let stderr = read_all(child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>));
     let start = std::time::Instant::now();
+    let mut timed_out = false;
     let status = loop {
-        if let Some(status) = child.try_wait()? {
-            break status;
-        }
         if limit.is_some_and(|limit| start.elapsed() >= limit) {
+            timed_out = true;
             let _ = child.kill();
             break child.wait()?;
         }
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
         std::thread::sleep(std::time::Duration::from_millis(20));
     };
-    Ok(std::process::Output {
-        status,
-        stdout: stdout.join().unwrap_or_default(),
-        stderr: stderr.join().unwrap_or_default(),
-    })
+    Ok((
+        std::process::Output {
+            status,
+            stdout: stdout.join().unwrap_or_default(),
+            stderr: stderr.join().unwrap_or_default(),
+        },
+        timed_out,
+    ))
 }
 
 /// Run `checker DOCUMENT` and collect its output.
@@ -1100,9 +1120,10 @@ mod checker_start_tests {
         let mut command = std::process::Command::new("/bin/sleep");
         command.arg("30").stdout(std::process::Stdio::null());
         let start = std::time::Instant::now();
-        let output =
+        let (output, timed_out) =
             run_with_deadline(&mut command, Some(std::time::Duration::from_millis(200))).unwrap();
         assert!(start.elapsed() < std::time::Duration::from_secs(10));
+        assert!(timed_out);
         assert!(!output.status.success());
         assert_eq!(output.status.code(), None, "killed by a signal");
     }

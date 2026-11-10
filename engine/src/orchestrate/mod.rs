@@ -1974,17 +1974,21 @@ fn classify_with_evidence_inner(
     let _environment_guard = crate::routing::EnvironmentGuard::capture();
     let project_data_abox = std::env::var_os("KM_DATA_ABOX_PROJECT").is_some();
     if std::env::var_os("KM_GROUND_RULE_SOURCE").is_some() || project_data_abox {
+        if reference_force_enabled() {
+            return Err(OrchestrateError::OutOfFragment("KM_REFERENCE_FORCE=1".into()));
+        }
         if crate::tableau::ht_lean_certification_requested() {
             return Err(OrchestrateError::OutOfFragment(
                 "ground-rule source cannot bypass requested runtime certification".into()));
         }
         let source = std::fs::read_to_string(ont)?;
         let grounded = if project_data_abox {
-            crate::frontend::ground_rule_source::GroundedRuleSource {
-                text: crate::frontend::data_abox_projection::project(&source)
-                    .map_err(OrchestrateError::OutOfFragment)?,
-                source_rules: 0, instances: 0, private_classes: Default::default(),
-            }
+            crate::frontend::data_abox_projection::project(&source)
+                .map(|text| crate::frontend::ground_rule_source::GroundedRuleSource {
+                    text,
+                    source_rules: 0, instances: 0, private_classes: Default::default(),
+                })
+                .map_err(OrchestrateError::OutOfFragment)?
         } else {
             crate::frontend::ground_rule_source::compile(&source, 100_000)
                 .map_err(OrchestrateError::OutOfFragment)?
@@ -2029,7 +2033,10 @@ fn classify_with_evidence_inner(
     // complete-answer-or-defer gate. Restore all route flags on refusal and
     // continue with the unchanged input. Runtime certificate requests retain
     // their existing path; source reduction must not bypass them.
-    if automatic_requested && !crate::tableau::ht_lean_certification_requested() {
+    if automatic_requested
+        && !reference_force_enabled()
+        && !crate::tableau::ht_lean_certification_requested()
+    {
         if let Some(mode) = data_source::automatic_candidate(ont)? {
             if std::env::var_os("KM_TIMING").is_some() {
                 eprintln!("KM_TIMING automatic data source attempt: {mode}");
@@ -2062,9 +2069,15 @@ fn classify_with_evidence_inner(
     }
     timing_mark("data source candidate done");
     if std::env::var_os("KM_SYMBOLIC_SOURCE_BRIDGE").is_some() {
+        if reference_force_enabled() {
+            return Err(OrchestrateError::OutOfFragment("KM_REFERENCE_FORCE=1".into()));
+        }
         return symbolic_source::classify(ont);
     }
-    if automatic_requested && std::env::var_os("KM_NO_SYMBOLIC_SOURCE_BRIDGE").is_none() {
+    if automatic_requested
+        && !reference_force_enabled()
+        && std::env::var_os("KM_NO_SYMBOLIC_SOURCE_BRIDGE").is_none()
+    {
         if let Some(source) = symbolic_source::automatic_candidate(ont)? {
             let runtime_certificate = crate::tableau::ht_lean_certification_requested();
             let attempt = {
@@ -2097,6 +2110,7 @@ fn classify_with_evidence_inner(
     // quotient clash, or worker error leaves the unchanged ontology as the
     // authoritative fallback.
     if automatic_requested
+        && !reference_force_enabled()
         && !quotient_active
         && std::env::var_os("KM_NO_POSITIVE_ABOX_QUOTIENT").is_none()
     {
@@ -2134,6 +2148,7 @@ fn classify_with_evidence_inner(
     // pipeline classifies T ∪ Q; only a certified consistent, complete answer
     // is published. A quotient clash or decline falls through unchanged.
     if automatic_requested
+        && !reference_force_enabled()
         && !quotient_active
         && std::env::var_os("KM_ABOX_QUOTIENT_ACTIVE").is_none()
         && std::env::var_os("KM_NO_ABOX_QUOTIENT").is_none()
@@ -2404,6 +2419,9 @@ fn classify_with_evidence_inner(
     // satisfiability of the class projection alone cannot authorize this.
     if std::env::var_os("KM_NO_FINITE_RULE_TAXONOMY").is_none() {
         if let Some(source) = meta.profile.finite_rule_class_projection.as_ref() {
+            if reference_force_enabled() {
+                return Err(OrchestrateError::OutOfFragment("KM_REFERENCE_FORCE=1".into()));
+            }
             match rules_consistency(initial_cfg, clauses_path.path(), &meta, true, RuleTaxonomyRequest::default())?.map(|v| v.consistent) {
                 Some(true) => {},
                 // Not exact on a one-sorted stream beside a nominal (see the
@@ -2459,6 +2477,7 @@ fn classify_with_evidence_inner(
     // publishable as is; any decline or budget expiry restores this call's
     // environment and continues with the unchanged schedule below.
     if automatic_requested
+        && !reference_force_enabled()
         && !meta.profile.atomic_class_abox_candidate
         && crate::routing::bounded_bridge_first_candidate(selected_route, &meta.profile)
     {
@@ -2585,6 +2604,7 @@ fn classify_with_evidence_inner(
     // broader general HT probe. Any refusal restores this call's environment
     // and leaves the unchanged certified-nominal fallback authoritative.
     if automatic_requested
+        && !reference_force_enabled()
         && ((matches!(
             selected_route,
             crate::routing::Route::CertifiedNominals | crate::routing::Route::Nominals
@@ -2667,6 +2687,7 @@ fn classify_with_evidence_inner(
     // no certificate beyond lossless clause coverage (see routing::select).
     // It is a measurement arm only and must be requested explicitly.
     if automatic_requested
+        && !reference_force_enabled()
         && std::env::var_os("KM_NOMINAL_GENERAL_HT_PROBE_UNCERTIFIED").is_some()
         && matches!(
             selected_route,
@@ -2722,6 +2743,7 @@ fn classify_with_evidence_inner(
     // any decline or worker failure restores this call's environment and keeps
     // the unchanged exact nominal route below.
     if automatic_requested
+        && !reference_force_enabled()
         && !meta.profile.atomic_class_abox_candidate
         && matches!(
             selected_route,
@@ -2772,6 +2794,7 @@ fn classify_with_evidence_inner(
     // recursively restores the complete v1 nominal clause view; an
     // inconsistent result is already the complete OWL classification.
     if automatic_requested
+        && !reference_force_enabled()
         && meta.profile.disjoint_union_abox_candidate
         && !meta.profile.positive_abox_tbox_separable
         && meta.profile.source.abox_axioms >= 8
@@ -3081,6 +3104,9 @@ fn classify_with_evidence_inner(
     // The frontend proved the ABox forces an individual into disjoint named
     // classes: inconsistent. The CB engine drops the ABox, so short-circuit.
     if meta.abox_inconsistent {
+        if reference_force_enabled() {
+            return Err(OrchestrateError::OutOfFragment("KM_REFERENCE_FORCE=1".into()));
+        }
         return Ok(ClassificationEvidence {
             classification: Classification {
                 approximate: None,
@@ -3107,6 +3133,9 @@ fn classify_with_evidence_inner(
     if meta.profile.positive_el_abox_materializable
         || std::env::var_os("KM_EL_ABOX_CHECK").is_some()
     {
+        if reference_force_enabled() {
+            return Err(OrchestrateError::OutOfFragment("KM_REFERENCE_FORCE=1".into()));
+        }
         let (input, reloadable): (crate::json_io::JInput, bool) = match cached_input.take() {
             Some(input) => (input, false),
             // The value the frontend wrote to `clauses_path`; the file stays
@@ -3200,7 +3229,7 @@ fn classify_with_evidence_inner(
     // The rule-aware classification ran past its budget: classify the
     // rule-free ontology first, then let the rule worker confirm the rest.
     let mut deferred_rule_taxonomy = false;
-    if cfg.ht_rules {
+    if cfg.ht_rules && !reference_force_enabled() {
         // Rule conclusions about named individuals reach class queries only
         // through a nominal or the universal role. Then the worker classifies
         // the rule-aware input instead of only checking it, and its taxonomy
@@ -3382,7 +3411,7 @@ fn classify_with_evidence_inner(
     // let the faster incomplete certify win). On a CB-timeout ont (7581) CB never
     // finishes, so the certify (done in ~31s) is taken and the ont is recovered.
     let ht_mode: &str = cfg.ht_mode.as_str();
-    let atomic_attempt = if matches!(cfg.mechanism, Mechanism::Elc) {
+    let atomic_attempt = if matches!(cfg.mechanism, Mechanism::Elc) && !reference_force_enabled() {
         certified_el_out
             .take()
             .map(Some)
@@ -3718,6 +3747,9 @@ fn classify_with_evidence_inner(
             out.dropped
         )));
     }
+    if reference_force_enabled() {
+        return Err(OrchestrateError::OutOfFragment("KM_REFERENCE_FORCE=1".into()));
+    }
     map_engine_out_to_evidence(
         out,
         &meta,
@@ -3978,8 +4010,21 @@ struct ReferenceStageCell {
 
 #[derive(serde::Deserialize)]
 struct ReferenceStageOutput {
+    #[serde(default)]
+    procedure: Option<String>,
     named: Vec<String>,
     cells: Vec<ReferenceStageCell>,
+}
+
+const DEFAULT_REFERENCE_BUDGET_S: f64 = 300.0;
+
+fn reference_stage_budget() -> std::time::Duration {
+    let secs = std::env::var("KM_REFERENCE_BUDGET_S")
+        .ok()
+        .and_then(|v| v.parse::<f64>().ok())
+        .filter(|v| v.is_finite() && *v >= 0.0)
+        .unwrap_or(DEFAULT_REFERENCE_BUDGET_S);
+    std::time::Duration::from_secs_f64(secs)
 }
 
 fn resolve_reference_checker_path() -> Option<std::path::PathBuf> {
@@ -4047,6 +4092,7 @@ fn try_reference_stage(
         }
     };
     if meta.abox_inconsistent
+        || meta.profile.positive_el_abox_materializable
         || meta.uncarried_data_assertions > 0
         || !meta.dropped_source_axioms.is_empty()
         || meta.one_sorted_data_successors
@@ -4093,17 +4139,22 @@ fn try_reference_stage(
         return None;
     }
 
-    let output = match std::process::Command::new(&checker_path)
+    let (output, timed_out) = match crate::lean_checkers::CheckerCommand::new(&checker_path)
+        .time_limit(Some(reference_stage_budget()))
         .args(["--procedure", "el-then-alc"])
         .arg(input_file.path())
-        .output()
+        .output_timed()
     {
-        Ok(out) => out,
+        Ok(res) => res,
         Err(err) => {
             log_declined(&err.to_string());
             return None;
         }
     };
+    if timed_out {
+        log_declined("budget");
+        return None;
+    }
     if !output.status.success() {
         let stdout_msg = String::from_utf8_lossy(&output.stdout);
         let stderr_msg = String::from_utf8_lossy(&output.stderr);
@@ -4128,6 +4179,12 @@ fn try_reference_stage(
         log_declined("reference output named/cells shape mismatch");
         return None;
     }
+    let procedure = parsed
+        .procedure
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_ascii_lowercase);
 
     let inconsistent = parsed
         .cells
@@ -4166,7 +4223,11 @@ fn try_reference_stage(
     match map_engine_out_to_evidence(engine_out, &meta, retain_grouped_output, true, timing) {
         Ok(evidence) => {
             if timing {
-                eprintln!("KM_TIMING KM_REFERENCE_STAGE published");
+                if let Some(proc) = procedure.as_deref() {
+                    eprintln!("KM_TIMING KM_REFERENCE_STAGE published procedure={proc}");
+                } else {
+                    eprintln!("KM_TIMING KM_REFERENCE_STAGE published");
+                }
             }
             Some(Ok(evidence))
         }
@@ -4195,6 +4256,9 @@ fn disjoint_union_global_consistency(
     clauses_path: &Path,
     _meta: &frontend_run::Meta,
 ) -> Result<Option<bool>, OrchestrateError> {
+    if reference_force_enabled() {
+        return Err(OrchestrateError::OutOfFragment("KM_REFERENCE_FORCE=1".into()));
+    }
     let _guard = crate::routing::EnvironmentGuard::capture();
     crate::routing::Route::HtGeneral.apply_environment();
     std::env::set_var("KM_ROUTE", "manual");
@@ -4238,6 +4302,9 @@ fn disjoint_union_global_consistency(
 /// Returns `Some(consistent)` when rules are present, `None` otherwise (caller
 /// then takes the normal route).
 fn checked_finite_rule_taxonomy(mut evidence: ClassificationEvidence) -> Result<ClassificationEvidence, OrchestrateError> {
+    if reference_force_enabled() {
+        return Err(OrchestrateError::OutOfFragment("KM_REFERENCE_FORCE=1".into()));
+    }
     if !evidence.classification.consistent || evidence.classification.dropped != 0 {
         return Err(OrchestrateError::OutOfFragment(
             "finite-rule class projection did not produce a complete consistent taxonomy".into()));
@@ -4307,6 +4374,9 @@ fn complete_rule_taxonomy(
     meta: &frontend_run::Meta,
     mut out: EngineOut,
 ) -> Result<EngineOut, OrchestrateError> {
+    if reference_force_enabled() {
+        return Err(OrchestrateError::OutOfFragment("KM_REFERENCE_FORCE=1".into()));
+    }
     if let Some(compact) = out.compact_subsumptions.take() {
         for (subject, supers) in &compact.rows {
             let row = out.subsumptions.entry(compact.names[*subject as usize].to_string()).or_default();
@@ -4475,6 +4545,9 @@ fn rules_consistency(
     require_source_model: bool,
     request: RuleTaxonomyRequest,
 ) -> Result<Option<RulesVerdict>, OrchestrateError> {
+    if reference_force_enabled() {
+        return Err(OrchestrateError::OutOfFragment("KM_REFERENCE_FORCE=1".into()));
+    }
     use crate::json_io::JInput;
     let classify = request.classify;
     use std::process::{Command, Stdio};

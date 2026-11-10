@@ -1,0 +1,9 @@
+Prefix(:=<http://example.org/ref/abox_inconsistent#>)
+Ontology(<http://example.org/ref/abox_inconsistent>
+  Declaration(Class(:A))
+  Declaration(Class(:B))
+  Declaration(NamedIndividual(:a))
+  DisjointClasses(:A :B)
+  ClassAssertion(:A :a)
+  ClassAssertion(:B :a)
+)
