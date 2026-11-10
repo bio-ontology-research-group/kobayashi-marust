@@ -4219,10 +4219,17 @@ fn try_reference_stage(
         subsumptions.insert(c.clone(), Vec::new());
     }
     if !inconsistent {
-        // An unsatisfiable class keeps its entailed superclass rows next to
-        // the unsatisfiability: the production EL and ALC routes publish both
-        // (checked on el_unsat_class.ofn and alc_property_unsat.ofn).
-        for cell in parsed.cells {
+        // Canonical minimal form: an unsatisfiable class `u` (`u SUB probe_b`)
+        // is published as unsatisfiable only. Every `u SUB x` is entailed, so
+        // the production routes print a route-dependent subset of those rows
+        // and the comparison is semantic on them.
+        let unsat: std::collections::HashSet<&str> = parsed
+            .cells
+            .iter()
+            .filter(|c| c.answer && c.sup == probe_b && c.sub != probe_a && c.sub != probe_b)
+            .map(|c| c.sub.as_str())
+            .collect();
+        for cell in &parsed.cells {
             if !cell.answer || cell.sub == probe_a || cell.sub == probe_b || cell.sup == probe_a {
                 continue;
             }
@@ -4231,8 +4238,8 @@ fn try_reference_stage(
             };
             if cell.sup == probe_b {
                 row.push("owl:Nothing".to_string());
-            } else if cell.sub != cell.sup {
-                row.push(cell.sup);
+            } else if cell.sub != cell.sup && !unsat.contains(cell.sub.as_str()) {
+                row.push(cell.sup.clone());
             }
         }
     }

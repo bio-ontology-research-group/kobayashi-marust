@@ -45,6 +45,33 @@ fn run_km(ontology: &Path, extra_env: &[(&str, &std::ffi::OsStr)]) -> std::proce
     command.output().expect("spawn km classify")
 }
 
+/// Drop the SUB rows whose subclass is unsatisfiable: `U SUB X` is entailed
+/// for every X, and the production routes print a route-dependent subset.
+/// A row with a satisfiable subclass and an unsatisfiable superclass cannot
+/// occur and fails the test.
+fn normalised(v: &serde_json::Value) -> serde_json::Value {
+    let unsat: std::collections::BTreeSet<String> = v["unsatisfiable"]
+        .as_array()
+        .map(|a| a.iter().map(|x| x.as_str().unwrap().to_string()).collect())
+        .unwrap_or_default();
+    let mut subs: Vec<(String, String)> = Vec::new();
+    for p in v["subsumptions"].as_array().into_iter().flatten() {
+        let (a, b) = (p[0].as_str().unwrap(), p[1].as_str().unwrap());
+        if unsat.contains(a) {
+            continue;
+        }
+        assert!(!unsat.contains(b), "anomaly: satisfiable {a} below unsatisfiable {b}");
+        subs.push((a.to_string(), b.to_string()));
+    }
+    subs.sort();
+    serde_json::json!({
+        "consistent": v["consistent"],
+        "subsumptions": subs,
+        "unsatisfiable": unsat,
+        "dropped": v["dropped"],
+    })
+}
+
 fn assert_forced_matches_unforced(fixture_name: &str) {
     let Some(checker_path) = checker() else {
         return;
@@ -77,7 +104,8 @@ fn assert_forced_matches_unforced(fixture_name: &str) {
     let got: serde_json::Value =
         serde_json::from_slice(&forced.stdout).expect("forced reference stage JSON output");
     assert_eq!(
-        got, want,
+        normalised(&got),
+        normalised(&want),
         "reference stage taxonomy differs from unforced answer on {fixture_name}"
     );
 }
@@ -103,18 +131,12 @@ fn reference_stage_alc_property_names_match_unforced() {
     assert_forced_matches_unforced("alc_property_names.ofn");
 }
 
-// Known open difference, reported in results/agents/2026-11-10/v160-p3-rerun:
-// for an unsatisfiable class the production routes omit entailed superclass
-// rows that need the unsatisfiability (U SUB V when V is unsatisfiable too),
-// while the reference matrix answers every entailed cell.
 #[test]
-#[ignore = "forced answer lists entailed superclass rows of unsatisfiable classes that production omits"]
 fn reference_stage_el_property_and_unsat_matches_unforced() {
     assert_forced_matches_unforced("el_property_unsat.ofn");
 }
 
 #[test]
-#[ignore = "forced answer lists entailed superclass rows of unsatisfiable classes that production omits"]
 fn reference_stage_alc_property_and_unsat_matches_unforced() {
     assert_forced_matches_unforced("alc_property_unsat.ofn");
 }
