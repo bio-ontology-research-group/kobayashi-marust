@@ -1459,38 +1459,281 @@ theorem mem_lookupHalf_of_nodup {f a x : Nat} {halves : List (Nat × Nat × Nat)
           exact List.mem_map.mpr ⟨(f', a, x), htail, rfl⟩
         simp [lookupHalf, hne, ih htailNodup htail]
 
-/-- Check whether `(f, a, _)` has a partner with matching subject `a` in `other`. -/
-def halfMatches (other : List (Nat × Nat × Nat)) (p : Nat × Nat × Nat) : Bool :=
-  match lookupHalf p.1 other with
-  | some (a', _) => decide (p.2.1 = a')
-  | none => false
+/-- Order `nf3` halves by their function identifier. -/
+def halfLe (x y : Nat × Nat × Nat) : Bool :=
+  decide (x.1 ≤ y.1)
+
+/-- Fuel-bounded structurally recursive merge of two sorted `nf3` half lists. -/
+def mergeHalvesFuel :
+    Nat → List (Nat × Nat × Nat) → List (Nat × Nat × Nat) → List (Nat × Nat × Nat)
+  | _, [], ys => ys
+  | _, xs, [] => xs
+  | 0, xs, ys => xs ++ ys
+  | fuel + 1, x :: xs, y :: ys =>
+      if halfLe x y then
+        x :: mergeHalvesFuel fuel xs (y :: ys)
+      else
+        y :: mergeHalvesFuel fuel (x :: xs) ys
+
+/-- Merge two sorted `nf3` half lists. -/
+def mergeHalves (xs ys : List (Nat × Nat × Nat)) : List (Nat × Nat × Nat) :=
+  mergeHalvesFuel (xs.length + ys.length) xs ys
+
+/-- Merge adjacent pairs of runs in one bottom-up pass. -/
+def mergePairs : List (List (Nat × Nat × Nat)) → List (List (Nat × Nat × Nat))
+  | [] => []
+  | [xs] => [xs]
+  | xs :: ys :: rest => mergeHalves xs ys :: mergePairs rest
+
+/-- Repeatedly merge runs using structural recursion on fuel. -/
+def mergeAllRuns : Nat → List (List (Nat × Nat × Nat)) → List (Nat × Nat × Nat)
+  | _, [] => []
+  | _, [xs] => xs
+  | 0, runs => runs.flatten
+  | fuel + 1, runs => mergeAllRuns fuel (mergePairs runs)
+
+/-- Bottom-up merge sort on `nf3` halves using structural recursion. -/
+def sortHalves (xs : List (Nat × Nat × Nat)) : List (Nat × Nat × Nat) :=
+  mergeAllRuns xs.length (xs.map (fun x => [x]))
+
+theorem mergeHalvesFuel_perm (fuel : Nat) (xs ys : List (Nat × Nat × Nat)) :
+    (mergeHalvesFuel fuel xs ys).Perm (xs ++ ys) := by
+  induction fuel generalizing xs ys with
+  | zero =>
+      cases xs <;> cases ys <;> simp [mergeHalvesFuel]
+  | succ fuel ih =>
+      cases xs with
+      | nil => simp [mergeHalvesFuel]
+      | cons x xs' =>
+          cases ys with
+          | nil => simp [mergeHalvesFuel]
+          | cons y ys' =>
+              unfold mergeHalvesFuel
+              split
+              · exact List.Perm.cons x (ih xs' (y :: ys'))
+              · exact (List.Perm.cons y (ih (x :: xs') ys')).trans
+                  List.perm_middle.symm
+
+theorem mergeHalves_perm (xs ys : List (Nat × Nat × Nat)) :
+    (mergeHalves xs ys).Perm (xs ++ ys) :=
+  mergeHalvesFuel_perm (xs.length + ys.length) xs ys
+
+theorem mergePairs_flatten_perm :
+    ∀ (runs : List (List (Nat × Nat × Nat))),
+      (mergePairs runs).flatten.Perm runs.flatten
+  | [] => List.Perm.refl _
+  | [xs] => List.Perm.refl _
+  | xs :: ys :: rest => by
+      simp only [mergePairs, List.flatten_cons, ← List.append_assoc]
+      exact (mergeHalves_perm xs ys).append (mergePairs_flatten_perm rest)
+
+theorem mergeAllRuns_perm (fuel : Nat) (runs : List (List (Nat × Nat × Nat))) :
+    (mergeAllRuns fuel runs).Perm runs.flatten := by
+  induction fuel generalizing runs with
+  | zero =>
+      cases runs with
+      | nil => simp [mergeAllRuns]
+      | cons r rs =>
+          cases rs <;> simp [mergeAllRuns]
+  | succ fuel ih =>
+      cases runs with
+      | nil => simp [mergeAllRuns]
+      | cons r rs =>
+          cases rs with
+          | nil => simp [mergeAllRuns]
+          | cons r2 rs' =>
+              simp only [mergeAllRuns]
+              exact (ih (mergePairs (r :: r2 :: rs'))).trans
+                (mergePairs_flatten_perm (r :: r2 :: rs'))
+
+theorem flatten_map_singleton :
+    ∀ (xs : List (Nat × Nat × Nat)), (xs.map (fun x => [x])).flatten = xs
+  | [] => rfl
+  | x :: xs => by simp [flatten_map_singleton xs]
+
+theorem sortHalves_perm (xs : List (Nat × Nat × Nat)) :
+    (sortHalves xs).Perm xs := by
+  simpa [sortHalves, flatten_map_singleton] using
+    mergeAllRuns_perm xs.length (xs.map (fun x => [x]))
+
+/-- Check in one tail-recursive pass that two function-sorted `nf3` half lists
+have strictly increasing function identifiers and matching `(fn, sub)` pairs. -/
+def validSortedHalves (prevF : Option Nat) :
+    List (Nat × Nat × Nat) → List (Nat × Nat × Nat) → Bool
+  | [], [] => true
+  | (f, a, _) :: rs, (f', a', _) :: fs =>
+      if prevF.all (fun p => decide (p < f)) && decide (f = f') && decide (a = a') then
+        validSortedHalves (some f) rs fs
+      else
+        false
+  | _, _ => false
+
+/-- Zip paired role and filler halves into `.nf3` clauses. -/
+def zipSortedHalves :
+    List (Nat × Nat × Nat) → List (Nat × Nat × Nat) →
+      List (ELCompletion.Clause Nat Nat)
+  | (_, a, r) :: rs, (_, _, b) :: fs => .nf3 a r b :: zipSortedHalves rs fs
+  | _, _ => []
 
 /-- Validate and pair `nf3` role and filler halves into `.nf3` clauses. -/
 def buildNF3Clauses (roles fillers : List (Nat × Nat × Nat)) :
     Option (List (ELCompletion.Clause Nat Nat)) :=
-  if (roles.map Prod.fst).Nodup && (fillers.map Prod.fst).Nodup &&
-      roles.all (halfMatches fillers) &&
-      fillers.all (halfMatches roles) then
-    some (roles.filterMap fun (f, a, r) =>
-      match lookupHalf f fillers with
-      | some (_, b) => some (.nf3 a r b)
-      | none => none)
+  let sRoles := sortHalves roles
+  let sFillers := sortHalves fillers
+  if validSortedHalves none sRoles sFillers then
+    some (zipSortedHalves sRoles sFillers)
   else
     none
 
-theorem halfMatches_iff {other : List (Nat × Nat × Nat)} {f a x : Nat} :
-    halfMatches other (f, a, x) = true ↔ ∃ y, lookupHalf f other = some (a, y) := by
-  unfold halfMatches
-  cases h : lookupHalf f other with
-  | none => simp
-  | some pair =>
-      rcases pair with ⟨a', y⟩
-      simp only [Option.some.injEq, Prod.mk.injEq, decide_eq_true_eq]
-      constructor
-      · intro heq
-        exact ⟨y, heq.symm, rfl⟩
-      · rintro ⟨y', ha, _⟩
-        exact ha.symm
+theorem validSortedHalves_cons {prevF : Option Nat}
+    {f a r f' a' b : Nat} {rs fs : List (Nat × Nat × Nat)}
+    (h : validSortedHalves prevF ((f, a, r) :: rs) ((f', a', b) :: fs) = true) :
+    prevF.all (fun p => decide (p < f)) = true ∧
+      f = f' ∧ a = a' ∧
+      validSortedHalves (some f) rs fs = true := by
+  unfold validSortedHalves at h
+  split at h
+  · rename_i hcond
+    simp only [Bool.and_eq_true, decide_eq_true_eq] at hcond
+    rcases hcond with ⟨⟨hprev, hfeq⟩, haeq⟩
+    exact ⟨hprev, hfeq, haeq, h⟩
+  · contradiction
+
+theorem validSortedHalves_fst_gt {prevF : Option Nat} {rs fs : List (Nat × Nat × Nat)}
+    (hvalid : validSortedHalves prevF rs fs = true)
+    {p : Nat} (hp : prevF = some p)
+    {q : Nat} (hq : q ∈ rs.map Prod.fst) : p < q := by
+  induction rs generalizing prevF fs p with
+  | nil => simp at hq
+  | cons rhead rs' ih =>
+      cases fs with
+      | nil =>
+          rcases rhead with ⟨f, a, r⟩
+          simp [validSortedHalves] at hvalid
+      | cons fhead fs' =>
+          rcases rhead with ⟨f, a, r⟩
+          rcases fhead with ⟨f', a', b⟩
+          obtain ⟨hprev, _, _, htail⟩ := validSortedHalves_cons hvalid
+          subst hp
+          simp only [Option.all, decide_eq_true_eq] at hprev
+          rcases List.mem_cons.mp hq with rfl | hqTail
+          · exact hprev
+          · exact Nat.lt_trans hprev (ih htail rfl hqTail)
+
+theorem validSortedHalves_roles_nodup {prevF : Option Nat} {rs fs : List (Nat × Nat × Nat)}
+    (hvalid : validSortedHalves prevF rs fs = true) :
+    (rs.map Prod.fst).Nodup := by
+  induction rs generalizing prevF fs with
+  | nil => simp
+  | cons rhead rs' ih =>
+      cases fs with
+      | nil =>
+          rcases rhead with ⟨f, a, r⟩
+          simp [validSortedHalves] at hvalid
+      | cons fhead fs' =>
+          rcases rhead with ⟨f, a, r⟩
+          rcases fhead with ⟨f', a', b⟩
+          obtain ⟨_, _, _, htail⟩ := validSortedHalves_cons hvalid
+          simp only [List.map_cons, List.nodup_cons]
+          refine ⟨?_, ih htail⟩
+          intro hmem
+          exact Nat.lt_irrefl f (validSortedHalves_fst_gt htail rfl hmem)
+
+theorem validSortedHalves_map_fst_eq {prevF : Option Nat} {rs fs : List (Nat × Nat × Nat)}
+    (hvalid : validSortedHalves prevF rs fs = true) :
+    fs.map Prod.fst = rs.map Prod.fst := by
+  induction rs generalizing prevF fs with
+  | nil =>
+      cases fs with
+      | nil => rfl
+      | cons fhead fs' =>
+          rcases fhead with ⟨f', a', b⟩
+          simp [validSortedHalves] at hvalid
+  | cons rhead rs' ih =>
+      cases fs with
+      | nil =>
+          rcases rhead with ⟨f, a, r⟩
+          simp [validSortedHalves] at hvalid
+      | cons fhead fs' =>
+          rcases rhead with ⟨f, a, r⟩
+          rcases fhead with ⟨f', a', b⟩
+          obtain ⟨_, rfl, _, htail⟩ := validSortedHalves_cons hvalid
+          simp [ih htail]
+
+theorem validSortedHalves_fillers_nodup {prevF : Option Nat} {rs fs : List (Nat × Nat × Nat)}
+    (hvalid : validSortedHalves prevF rs fs = true) :
+    (fs.map Prod.fst).Nodup := by
+  rw [validSortedHalves_map_fst_eq hvalid]
+  exact validSortedHalves_roles_nodup hvalid
+
+theorem validSortedHalves_role_mem {prevF : Option Nat} {rs fs : List (Nat × Nat × Nat)}
+    (hvalid : validSortedHalves prevF rs fs = true)
+    {f a r : Nat} (hmem : (f, a, r) ∈ rs) :
+    ∃ b, (f, a, b) ∈ fs ∧ .nf3 a r b ∈ zipSortedHalves rs fs := by
+  induction rs generalizing prevF fs with
+  | nil => contradiction
+  | cons rhead rs' ih =>
+      cases fs with
+      | nil =>
+          rcases rhead with ⟨f₁, a₁, r₁⟩
+          simp [validSortedHalves] at hvalid
+      | cons fhead fs' =>
+          rcases rhead with ⟨f₁, a₁, r₁⟩
+          rcases fhead with ⟨f₂, a₂, b₂⟩
+          obtain ⟨_, rfl, rfl, htail⟩ := validSortedHalves_cons hvalid
+          rcases List.mem_cons.mp hmem with heq | htailMem
+          · simp only [Prod.mk.injEq] at heq
+            rcases heq with ⟨rfl, rfl, rfl⟩
+            exact ⟨b₂, List.Mem.head _, List.Mem.head _⟩
+          · obtain ⟨b, hbfs, hbzip⟩ := ih htail htailMem
+            exact ⟨b, List.Mem.tail _ hbfs, List.Mem.tail _ hbzip⟩
+
+theorem validSortedHalves_filler_mem {prevF : Option Nat} {rs fs : List (Nat × Nat × Nat)}
+    (hvalid : validSortedHalves prevF rs fs = true)
+    {f a b : Nat} (hmem : (f, a, b) ∈ fs) :
+    ∃ r, (f, a, r) ∈ rs ∧ .nf3 a r b ∈ zipSortedHalves rs fs := by
+  induction rs generalizing prevF fs with
+  | nil =>
+      cases fs with
+      | nil => contradiction
+      | cons fhead fs' =>
+          rcases fhead with ⟨f₂, a₂, b₂⟩
+          simp [validSortedHalves] at hvalid
+  | cons rhead rs' ih =>
+      cases fs with
+      | nil =>
+          rcases rhead with ⟨f₁, a₁, r₁⟩
+          simp [validSortedHalves] at hvalid
+      | cons fhead fs' =>
+          rcases rhead with ⟨f₁, a₁, r₁⟩
+          rcases fhead with ⟨f₂, a₂, b₂⟩
+          obtain ⟨_, rfl, rfl, htail⟩ := validSortedHalves_cons hvalid
+          rcases List.mem_cons.mp hmem with heq | htailMem
+          · simp only [Prod.mk.injEq] at heq
+            rcases heq with ⟨rfl, rfl, rfl⟩
+            exact ⟨r₁, List.Mem.head _, List.Mem.head _⟩
+          · obtain ⟨r, hrrs, hrzip⟩ := ih htail htailMem
+            exact ⟨r, List.Mem.tail _ hrrs, List.Mem.tail _ hrzip⟩
+
+theorem validSortedHalves_clause_mem {prevF : Option Nat} {rs fs : List (Nat × Nat × Nat)}
+    (hvalid : validSortedHalves prevF rs fs = true)
+    {cl : ELCompletion.Clause Nat Nat} (hcl : cl ∈ zipSortedHalves rs fs) :
+    ∃ f a r b, cl = .nf3 a r b ∧ (f, a, r) ∈ rs ∧ (f, a, b) ∈ fs := by
+  induction rs generalizing prevF fs with
+  | nil => simp [zipSortedHalves] at hcl
+  | cons rhead rs' ih =>
+      cases fs with
+      | nil =>
+          rcases rhead with ⟨f₁, a₁, r₁⟩
+          simp [zipSortedHalves] at hcl
+      | cons fhead fs' =>
+          rcases rhead with ⟨f₁, a₁, r₁⟩
+          rcases fhead with ⟨f₂, a₂, b₂⟩
+          obtain ⟨_, rfl, rfl, htail⟩ := validSortedHalves_cons hvalid
+          rcases List.mem_cons.mp hcl with rfl | htailCl
+          · exact ⟨f₁, a₁, r₁, b₂, rfl, List.Mem.head _, List.Mem.head _⟩
+          · obtain ⟨f, a, r, b, rfl, hrrs, hffs⟩ := ih htail htailCl
+            exact ⟨f, a, r, b, rfl, List.Mem.tail _ hrrs, List.Mem.tail _ hffs⟩
 
 theorem buildNF3Clauses_role_mem {roles fillers : List (Nat × Nat × Nat)}
     {nf3Clauses : List (ELCompletion.Clause Nat Nat)}
@@ -1498,17 +1741,22 @@ theorem buildNF3Clauses_role_mem {roles fillers : List (Nat × Nat × Nat)}
     {f a r : Nat} (hmem : (f, a, r) ∈ roles) :
     lookupHalf f roles = some (a, r) ∧
       ∃ b, lookupHalf f fillers = some (a, b) ∧ .nf3 a r b ∈ nf3Clauses := by
-  unfold buildNF3Clauses at hbuild
+  dsimp only [buildNF3Clauses] at hbuild
   split at hbuild
-  · rename_i hcond
+  · rename_i hvalid
     simp only [Option.some.injEq] at hbuild
     subst hbuild
-    simp only [Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true] at hcond
-    rcases hcond with ⟨⟨⟨hroleNodup, _⟩, hrolesAll⟩, _⟩
-    have hroleLookup := mem_lookupHalf_of_nodup hroleNodup hmem
-    obtain ⟨b, hfillerLookup⟩ := halfMatches_iff.mp (hrolesAll (f, a, r) hmem)
-    refine ⟨hroleLookup, b, hfillerLookup, ?_⟩
-    exact List.mem_filterMap.mpr ⟨(f, a, r), hmem, by simp [hfillerLookup]⟩
+    have hpermR := sortHalves_perm roles
+    have hpermF := sortHalves_perm fillers
+    have hroleNodup : (roles.map Prod.fst).Nodup :=
+      (hpermR.map Prod.fst).nodup_iff.mp (validSortedHalves_roles_nodup hvalid)
+    have hfillerNodup : (fillers.map Prod.fst).Nodup :=
+      (hpermF.map Prod.fst).nodup_iff.mp (validSortedHalves_fillers_nodup hvalid)
+    have hmemSR : (f, a, r) ∈ sortHalves roles := hpermR.mem_iff.mpr hmem
+    obtain ⟨b, hmemSF, hmemZip⟩ := validSortedHalves_role_mem hvalid hmemSR
+    have hmemF : (f, a, b) ∈ fillers := hpermF.mem_iff.mp hmemSF
+    exact ⟨mem_lookupHalf_of_nodup hroleNodup hmem,
+      b, mem_lookupHalf_of_nodup hfillerNodup hmemF, hmemZip⟩
   · simp at hbuild
 
 theorem buildNF3Clauses_filler_mem {roles fillers : List (Nat × Nat × Nat)}
@@ -1517,18 +1765,22 @@ theorem buildNF3Clauses_filler_mem {roles fillers : List (Nat × Nat × Nat)}
     {f a b : Nat} (hmem : (f, a, b) ∈ fillers) :
     lookupHalf f fillers = some (a, b) ∧
       ∃ r, lookupHalf f roles = some (a, r) ∧ .nf3 a r b ∈ nf3Clauses := by
-  unfold buildNF3Clauses at hbuild
+  dsimp only [buildNF3Clauses] at hbuild
   split at hbuild
-  · rename_i hcond
+  · rename_i hvalid
     simp only [Option.some.injEq] at hbuild
     subst hbuild
-    simp only [Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true] at hcond
-    rcases hcond with ⟨⟨⟨_, hfillerNodup⟩, _⟩, hfillersAll⟩
-    have hfillerLookup := mem_lookupHalf_of_nodup hfillerNodup hmem
-    obtain ⟨r, hroleLookup⟩ := halfMatches_iff.mp (hfillersAll (f, a, b) hmem)
-    have hroleMem : (f, a, r) ∈ roles := lookupHalf_mem hroleLookup
-    refine ⟨hfillerLookup, r, hroleLookup, ?_⟩
-    exact List.mem_filterMap.mpr ⟨(f, a, r), hroleMem, by simp [hfillerLookup]⟩
+    have hpermR := sortHalves_perm roles
+    have hpermF := sortHalves_perm fillers
+    have hroleNodup : (roles.map Prod.fst).Nodup :=
+      (hpermR.map Prod.fst).nodup_iff.mp (validSortedHalves_roles_nodup hvalid)
+    have hfillerNodup : (fillers.map Prod.fst).Nodup :=
+      (hpermF.map Prod.fst).nodup_iff.mp (validSortedHalves_fillers_nodup hvalid)
+    have hmemSF : (f, a, b) ∈ sortHalves fillers := hpermF.mem_iff.mpr hmem
+    obtain ⟨r, hmemSR, hmemZip⟩ := validSortedHalves_filler_mem hvalid hmemSF
+    have hmemR : (f, a, r) ∈ roles := hpermR.mem_iff.mp hmemSR
+    exact ⟨mem_lookupHalf_of_nodup hfillerNodup hmem,
+      r, mem_lookupHalf_of_nodup hroleNodup hmemR, hmemZip⟩
   · simp at hbuild
 
 theorem buildNF3Clauses_clause_mem {roles fillers : List (Nat × Nat × Nat)}
@@ -1536,18 +1788,15 @@ theorem buildNF3Clauses_clause_mem {roles fillers : List (Nat × Nat × Nat)}
     (hbuild : buildNF3Clauses roles fillers = some nf3Clauses)
     {cl : ELCompletion.Clause Nat Nat} (hcl : cl ∈ nf3Clauses) :
     ∃ f a r b, cl = .nf3 a r b ∧ (f, a, r) ∈ roles ∧ (f, a, b) ∈ fillers := by
-  unfold buildNF3Clauses at hbuild
+  dsimp only [buildNF3Clauses] at hbuild
   split at hbuild
-  · rename_i hcond
+  · rename_i hvalid
     simp only [Option.some.injEq] at hbuild
     subst hbuild
-    simp only [Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true] at hcond
-    rcases hcond with ⟨⟨_, hrolesAll⟩, _⟩
-    rcases List.mem_filterMap.mp hcl with ⟨⟨f, a, r⟩, hroleMem, hfilter⟩
-    obtain ⟨b, hfillerLookup⟩ := halfMatches_iff.mp (hrolesAll (f, a, r) hroleMem)
-    simp only [hfillerLookup, Option.some.injEq] at hfilter
-    subst hfilter
-    exact ⟨f, a, r, b, rfl, hroleMem, lookupHalf_mem hfillerLookup⟩
+    have hpermR := sortHalves_perm roles
+    have hpermF := sortHalves_perm fillers
+    obtain ⟨f, a, r, b, rfl, hmemSR, hmemSF⟩ := validSortedHalves_clause_mem hvalid hcl
+    exact ⟨f, a, r, b, rfl, hpermR.mem_iff.mp hmemSR, hpermF.mem_iff.mp hmemSF⟩
   · simp at hbuild
 
 /-- Witness function interpretation built from an `ELCompletion.Interp`. -/
