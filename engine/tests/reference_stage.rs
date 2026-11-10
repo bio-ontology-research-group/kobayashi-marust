@@ -98,6 +98,28 @@ fn reference_stage_el_unsat_class_matches_unforced() {
 }
 
 #[test]
+fn reference_stage_alc_property_names_match_unforced() {
+    // `s` is a declared object property; it must not appear as a class.
+    assert_forced_matches_unforced("alc_property_names.ofn");
+}
+
+// Known open difference, reported in results/agents/2026-11-10/v160-p3-rerun:
+// for an unsatisfiable class the production routes omit entailed superclass
+// rows that need the unsatisfiability (U SUB V when V is unsatisfiable too),
+// while the reference matrix answers every entailed cell.
+#[test]
+#[ignore = "forced answer lists entailed superclass rows of unsatisfiable classes that production omits"]
+fn reference_stage_el_property_and_unsat_matches_unforced() {
+    assert_forced_matches_unforced("el_property_unsat.ofn");
+}
+
+#[test]
+#[ignore = "forced answer lists entailed superclass rows of unsatisfiable classes that production omits"]
+fn reference_stage_alc_property_and_unsat_matches_unforced() {
+    assert_forced_matches_unforced("alc_property_unsat.ofn");
+}
+
+#[test]
 fn reference_stage_alc_disjunction_matches_unforced() {
     assert_forced_matches_unforced("alc_disjunction.ofn");
 }

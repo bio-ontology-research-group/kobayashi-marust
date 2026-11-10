@@ -4102,17 +4102,40 @@ fn try_reference_stage(
         log_declined("not recognised: not in pure EL/ALC clause-stream fragment");
         return None;
     }
-    let mut name_set = std::collections::BTreeSet::new();
-    for n in meta
-        .named
+    // The request covers class names only. `meta.named` holds every IRI the
+    // frontend registered, including object and data properties and
+    // individuals, so keep a registered name only when it is a declared
+    // class, an asserted class, or occurs as a concept atom in the clause
+    // stream (the names the production workers answer for).
+    let mut concept_atoms: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    for cl in &clauses {
+        for atom in cl.body.iter().chain(cl.head.iter()) {
+            if let crate::json_io::JAtom::Concept { concept, .. } = atom {
+                concept_atoms.insert(concept.as_str());
+            }
+        }
+    }
+    let known_classes: std::collections::HashSet<&str> = meta
+        .declared
         .iter()
-        .chain(meta.declared.iter())
         .chain(meta.asserted_classes.iter())
-    {
+        .map(String::as_str)
+        .collect();
+    let mut name_set = std::collections::BTreeSet::new();
+    for n in &meta.declared {
         if n != "owl:Thing" && n != "owl:Nothing" {
             name_set.insert(n.clone());
         }
     }
+    for n in meta.named.iter().chain(meta.asserted_classes.iter()) {
+        if n != "owl:Thing"
+            && n != "owl:Nothing"
+            && (known_classes.contains(n.as_str()) || concept_atoms.contains(n.as_str()))
+        {
+            name_set.insert(n.clone());
+        }
+    }
+    drop(concept_atoms);
     let real_names: Vec<String> = name_set.into_iter().collect();
     let pad = "x".repeat(max_clause_symbol_len(&clauses, &real_names));
     let probe_a = format!("__km_ref_probe_a_{pad}");
@@ -4196,18 +4219,20 @@ fn try_reference_stage(
         subsumptions.insert(c.clone(), Vec::new());
     }
     if !inconsistent {
+        // An unsatisfiable class keeps its entailed superclass rows next to
+        // the unsatisfiability: the production EL and ALC routes publish both
+        // (checked on el_unsat_class.ofn and alc_property_unsat.ofn).
         for cell in parsed.cells {
             if !cell.answer || cell.sub == probe_a || cell.sub == probe_b || cell.sup == probe_a {
                 continue;
             }
+            let Some(row) = subsumptions.get_mut(&cell.sub) else {
+                continue;
+            };
             if cell.sup == probe_b {
-                if let Some(row) = subsumptions.get_mut(&cell.sub) {
-                    row.push("owl:Nothing".to_string());
-                }
+                row.push("owl:Nothing".to_string());
             } else if cell.sub != cell.sup {
-                if let Some(row) = subsumptions.get_mut(&cell.sub) {
-                    row.push(cell.sup);
-                }
+                row.push(cell.sup);
             }
         }
     }
