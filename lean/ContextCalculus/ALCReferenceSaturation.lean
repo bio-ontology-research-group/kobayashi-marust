@@ -201,7 +201,7 @@ theorem saturateC_eq (O : Ontology (Fin conceptCount) (Fin roleCount)) :
 `A ⊑ B` holds iff every type in `G` containing `A` also contains `B`. -/
 def alcBitOf (G : Finset (Finset (Fin conceptCount)))
     (A B : Fin conceptCount) : Bool :=
-  decide (∀ t ∈ G, A ∈ t → B ∈ t)
+  @decide (∀ t ∈ G, A ∈ t → B ∈ t) Finset.decidableDforallFinset
 
 /-- Executable ALC subsumption decision bit: `A ⊑ B` holds iff every type in
 `saturateC O` containing `A` also contains `B`. -/
