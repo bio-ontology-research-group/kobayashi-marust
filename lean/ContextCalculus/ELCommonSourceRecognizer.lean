@@ -19,6 +19,8 @@ Accepted clause shapes (`x`, `y`, `z` distinct per-clause variables; `C a t` is
 | `⟨[C a x], [C b x]⟩` | `nf1 a b` |
 | `⟨[C a x, C b x], [C c x]⟩` | `nf2 a b c` |
 | `⟨[C a x, C b x], []⟩` | `nf2 a b bottom` |
+| `⟨[C a1 x, …, C an x], [C d x]⟩` (`n ≥ 3`) | `nf2 a1 a2 p2`, `nf2 p2 a3 p3`, …, `nf2 p(n-1) an d` (fresh `pk`) |
+| `⟨[C a1 x, …, C an x], []⟩` (`n ≥ 3`) | `nf2 a1 a2 p2`, `nf2 p2 a3 p3`, …, `nf2 p(n-1) an bottom` (fresh `pk`) |
 | `⟨[C a x], [R r x (app f x)]⟩` with `⟨[C a y], [C b (app f y)]⟩` | `nf3 a r b`; both halves share `a` and `f`, `f` is used by exactly one pair |
 | `⟨[R r x y, C b y], [C c x]⟩` or `⟨[C b y, R r x y], [C c x]⟩` | `nf4 r b c` |
 | `⟨[R r x y], [C c x]⟩` | `nf4 r top c` |
@@ -76,6 +78,8 @@ inductive ParsedItem where
   | nf1 (a b : Nat)
   | nf2 (a b c : Nat)
   | nf2Bottom (a b : Nat)
+  | naryConj (a1 a2 a3 : Nat) (rest : List Nat) (d : Nat)
+  | naryConjBottom (a1 a2 a3 : Nat) (rest : List Nat)
   | nf3Role (a r f : Nat)
   | nf3Filler (a b f : Nat)
   | nf4 (r b c : Nat)
@@ -92,6 +96,8 @@ def itemConcepts : ParsedItem → List Nat
   | .nf1 a b => [a, b]
   | .nf2 a b c => [a, b, c]
   | .nf2Bottom a b => [a, b]
+  | .naryConj a1 a2 a3 rest d => a1 :: a2 :: a3 :: d :: rest
+  | .naryConjBottom a1 a2 a3 rest => a1 :: a2 :: a3 :: rest
   | .nf3Role a _ _ => [a]
   | .nf3Filler a b _ => [a, b]
   | .nf4 _ b c => [b, c]
@@ -111,6 +117,12 @@ def satParsedItem {Domain : Type} (M : TModel Domain) : ParsedItem → Prop
   | .nf1 a b => ∀ x, M.conc a x → M.conc b x
   | .nf2 a b c => ∀ x, M.conc a x → M.conc b x → M.conc c x
   | .nf2Bottom a b => ∀ x, M.conc a x → M.conc b x → False
+  | .naryConj a1 a2 a3 rest d =>
+      ∀ x, M.conc a1 x → M.conc a2 x → M.conc a3 x →
+        (∀ c ∈ rest, M.conc c x) → M.conc d x
+  | .naryConjBottom a1 a2 a3 rest =>
+      ∀ x, M.conc a1 x → M.conc a2 x → M.conc a3 x →
+        (∀ c ∈ rest, M.conc c x) → False
   | .nf3Role a r f => ∀ x, M.conc a x → M.rol r x (M.fn f x)
   | .nf3Filler a b f => ∀ x, M.conc a x → M.conc b (M.fn f x)
   | .nf4 r b c => ∀ x, (∃ y, M.rol r x y ∧ M.conc b y) → M.conc c x
@@ -143,6 +155,25 @@ theorem satParsedItem_congr {Domain : Type} {M₁ M₂ : TModel Domain} {item : 
       have ha : M₁.conc a = M₂.conc a := hconc a (by simp [itemConcepts])
       have hb : M₁.conc b = M₂.conc b := hconc b (by simp [itemConcepts])
       simp [satParsedItem, ha, hb]
+  | naryConj a1 a2 a3 rest d =>
+      have ha1 : M₁.conc a1 = M₂.conc a1 := hconc a1 (by simp [itemConcepts])
+      have ha2 : M₁.conc a2 = M₂.conc a2 := hconc a2 (by simp [itemConcepts])
+      have ha3 : M₁.conc a3 = M₂.conc a3 := hconc a3 (by simp [itemConcepts])
+      have hd : M₁.conc d = M₂.conc d := hconc d (by simp [itemConcepts])
+      have hrest : ∀ x, (∀ c ∈ rest, M₁.conc c x) ↔ (∀ c ∈ rest, M₂.conc c x) := by
+        intro x
+        refine forall_congr' fun c => imp_congr_right fun hc => ?_
+        rw [hconc c (by simp [itemConcepts, hc])]
+      simp [satParsedItem, ha1, ha2, ha3, hd, hrest]
+  | naryConjBottom a1 a2 a3 rest =>
+      have ha1 : M₁.conc a1 = M₂.conc a1 := hconc a1 (by simp [itemConcepts])
+      have ha2 : M₁.conc a2 = M₂.conc a2 := hconc a2 (by simp [itemConcepts])
+      have ha3 : M₁.conc a3 = M₂.conc a3 := hconc a3 (by simp [itemConcepts])
+      have hrest : ∀ x, (∀ c ∈ rest, M₁.conc c x) ↔ (∀ c ∈ rest, M₂.conc c x) := by
+        intro x
+        refine forall_congr' fun c => imp_congr_right fun hc => ?_
+        rw [hconc c (by simp [itemConcepts, hc])]
+      simp [satParsedItem, ha1, ha2, ha3, hrest]
   | nf3Role a r f =>
       have ha : M₁.conc a = M₂.conc a := hconc a (by simp [itemConcepts])
       simp [satParsedItem, ha, hrol, hfn]
@@ -163,6 +194,28 @@ theorem satParsedItem_congr {Domain : Type} {M₁ M₂ : TModel Domain} {item : 
       simp [satParsedItem, hrol]
   | reflexive r =>
       simp [satParsedItem, hrol]
+
+/-- Concept literals on variable `x` for a list of concept identifiers. -/
+def conceptVarLits (x : Int) (cs : List Nat) : List FLit :=
+  cs.map fun c => .P (.concept c (.var x))
+
+/-- Extract concept identifiers from a list of concept literals on variable `x`. -/
+def extractConceptVarLits (x : Int) : (lits : List FLit) →
+    Option { cs : List Nat // lits = conceptVarLits x cs }
+  | [] => some ⟨[], rfl⟩
+  | .P (.concept c (.var x')) :: tail =>
+      if h : x' = x then
+        match extractConceptVarLits x tail with
+        | some ⟨rest, hrest⟩ =>
+            some ⟨c :: rest, by subst h; simp [conceptVarLits, hrest]⟩
+        | none => none
+      else none
+  | _ => none
+
+theorem evalL_conceptVarLits_iff {Domain : Type} (M : TModel Domain)
+    (ρ : Int → Domain) (x : Int) (cs : List Nat) :
+    (∀ l ∈ conceptVarLits x cs, M.evalL ρ l) ↔ ∀ c ∈ cs, M.conc c (ρ x) := by
+  simp [conceptVarLits, TModel.evalL, TModel.evalT]
 
 /-- Structural evidence connecting a raw `FCL` clause to its `ParsedItem`. -/
 inductive ClauseItemEvidence : FCL → ParsedItem → Prop where
@@ -193,6 +246,18 @@ inductive ClauseItemEvidence : FCL → ParsedItem → Prop where
         ⟨[.P (.concept a (.var x)), .P (.concept b (.var x))],
          [.P (.concept c (.var x))]⟩
         (.nf2 a b c)
+  | naryConj (a1 a2 a3 : Nat) (rest : List Nat) (d : Nat) (x : Int) :
+      ClauseItemEvidence
+        ⟨.P (.concept a1 (.var x)) :: .P (.concept a2 (.var x)) ::
+          .P (.concept a3 (.var x)) :: conceptVarLits x rest,
+         [.P (.concept d (.var x))]⟩
+        (.naryConj a1 a2 a3 rest d)
+  | naryConjBottom (a1 a2 a3 : Nat) (rest : List Nat) (x : Int) :
+      ClauseItemEvidence
+        ⟨.P (.concept a1 (.var x)) :: .P (.concept a2 (.var x)) ::
+          .P (.concept a3 (.var x)) :: conceptVarLits x rest,
+         []⟩
+        (.naryConjBottom a1 a2 a3 rest)
   | nf4Top (r c : Nat) (x y : Int) (hne : x ≠ y) :
       ClauseItemEvidence
         ⟨[.P (.role r (.var x) (.var y))], [.P (.concept c (.var x))]⟩
@@ -257,6 +322,30 @@ def classifyClauseWithProof : (clause : FCL) →
         some ⟨.nf2 a b c, by
           rcases h with ⟨rfl, rfl⟩
           exact .nf2 a b c _⟩
+      else none
+  | ⟨.P (.concept a1 (.var x)) :: .P (.concept a2 (.var x')) ::
+      .P (.concept a3 (.var x'')) :: tail,
+     [.P (.concept d (.var xd))]⟩ =>
+      if h : x' = x ∧ x'' = x ∧ xd = x then
+        match extractConceptVarLits x tail with
+        | some ⟨rest, htail⟩ =>
+            some ⟨.naryConj a1 a2 a3 rest d, by
+              rcases h with ⟨rfl, rfl, rfl⟩
+              subst htail
+              exact .naryConj a1 a2 a3 rest d _⟩
+        | none => none
+      else none
+  | ⟨.P (.concept a1 (.var x)) :: .P (.concept a2 (.var x')) ::
+      .P (.concept a3 (.var x'')) :: tail,
+     []⟩ =>
+      if h : x' = x ∧ x'' = x then
+        match extractConceptVarLits x tail with
+        | some ⟨rest, htail⟩ =>
+            some ⟨.naryConjBottom a1 a2 a3 rest, by
+              rcases h with ⟨rfl, rfl⟩
+              subst htail
+              exact .naryConjBottom a1 a2 a3 rest _⟩
+        | none => none
       else none
   | ⟨[.P (.role r (.var x) (.var y))], [.P (.concept c (.var x'))]⟩ =>
       if h : x' = x ∧ x ≠ y then
@@ -394,6 +483,56 @@ theorem ClauseItemEvidence.valid_iff {Domain : Type} {clause : FCL} {item : Pars
         have ha : M.conc a (ρ x) := hbody (.P (.concept a (.var x))) (by simp)
         have hb : M.conc b (ρ x) := hbody (.P (.concept b (.var x))) (by simp)
         exact ⟨.P (.concept c (.var x)), by simp, hsat (ρ x) ha hb⟩
+  | naryConj a1 a2 a3 rest d x =>
+      constructor
+      · intro hval u ha1 ha2 ha3 hrest
+        have hsat := hval (fun _ => u)
+        have hbody : ∀ l ∈ (.P (.concept a1 (.var x)) :: .P (.concept a2 (.var x)) ::
+            .P (.concept a3 (.var x)) :: conceptVarLits x rest : List FLit),
+            M.evalL (fun _ => u) l := by
+          intro l hl
+          rcases List.mem_cons.mp hl with rfl | hl
+          · exact ha1
+          · rcases List.mem_cons.mp hl with rfl | hl
+            · exact ha2
+            · rcases List.mem_cons.mp hl with rfl | hl
+              · exact ha3
+              · exact (evalL_conceptVarLits_iff M (fun _ => u) x rest).mpr hrest l hl
+        simpa [sat, TModel.evalL, TModel.evalT] using hsat hbody
+      · intro hsat ρ hbody
+        have ha1 : M.conc a1 (ρ x) := hbody (.P (.concept a1 (.var x))) (by simp)
+        have ha2 : M.conc a2 (ρ x) := hbody (.P (.concept a2 (.var x))) (by simp)
+        have ha3 : M.conc a3 (ρ x) := hbody (.P (.concept a3 (.var x))) (by simp)
+        have hrest : ∀ c ∈ rest, M.conc c (ρ x) := by
+          apply (evalL_conceptVarLits_iff M ρ x rest).mp
+          intro l hl
+          exact hbody l (by simp [hl])
+        exact ⟨.P (.concept d (.var x)), by simp, hsat (ρ x) ha1 ha2 ha3 hrest⟩
+  | naryConjBottom a1 a2 a3 rest x =>
+      constructor
+      · intro hval u ha1 ha2 ha3 hrest
+        have hsat := hval (fun _ => u)
+        have hbody : ∀ l ∈ (.P (.concept a1 (.var x)) :: .P (.concept a2 (.var x)) ::
+            .P (.concept a3 (.var x)) :: conceptVarLits x rest : List FLit),
+            M.evalL (fun _ => u) l := by
+          intro l hl
+          rcases List.mem_cons.mp hl with rfl | hl
+          · exact ha1
+          · rcases List.mem_cons.mp hl with rfl | hl
+            · exact ha2
+            · rcases List.mem_cons.mp hl with rfl | hl
+              · exact ha3
+              · exact (evalL_conceptVarLits_iff M (fun _ => u) x rest).mpr hrest l hl
+        simpa [sat] using hsat hbody
+      · intro hsat ρ hbody
+        have ha1 : M.conc a1 (ρ x) := hbody (.P (.concept a1 (.var x))) (by simp)
+        have ha2 : M.conc a2 (ρ x) := hbody (.P (.concept a2 (.var x))) (by simp)
+        have ha3 : M.conc a3 (ρ x) := hbody (.P (.concept a3 (.var x))) (by simp)
+        have hrest : ∀ c ∈ rest, M.conc c (ρ x) := by
+          apply (evalL_conceptVarLits_iff M ρ x rest).mp
+          intro l hl
+          exact hbody l (by simp [hl])
+        exact False.elim (hsat (ρ x) ha1 ha2 ha3 hrest)
   | nf4Top r c x y hne =>
       constructor
       · intro hval u ⟨v, hruv⟩
@@ -606,30 +745,63 @@ def selectBottom (named : List Nat) (items : List ParsedItem) : Nat :=
   | some a => a
   | none => freshBase named items + 1
 
+theorem selectBottom_le_freshBase_succ (named : List Nat) (items : List ParsedItem) :
+    selectBottom named items ≤ freshBase named items + 1 := by
+  unfold selectBottom
+  cases h : findBottomCand items with
+  | none => exact Nat.le_refl _
+  | some b =>
+      have hmem : .nf5 b ∈ items := findBottomCand_mem h
+      have hconc : b ∈ itemsConcepts items := by
+        unfold itemsConcepts
+        exact List.mem_flatMap.mpr ⟨.nf5 b, hmem, by simp [itemConcepts]⟩
+      exact Nat.le_of_lt (Nat.lt_succ_of_lt (lt_freshBase_of_mem_itemsConcepts hconc))
+
+/-- Emit the NF2 prefix chain from accumulator `acc` across `middle :: rem`
+ending in `target`, using fresh auxiliary concepts starting at `nextAux`. -/
+def compileConjChain (acc middle : Nat) :
+    List Nat → (target nextAux : Nat) → List (ELCompletion.Clause Nat Nat)
+  | [], target, _ => [.nf2 acc middle target]
+  | next :: rest, target, nextAux =>
+      .nf2 acc middle nextAux :: compileConjChain nextAux next rest target (nextAux + 1)
+
+/-- Number of fresh auxiliary concepts consumed by one parsed item. -/
+def itemAuxCount : ParsedItem → Nat
+  | .naryConj _ _ _ rem _ => rem.length + 1
+  | .naryConjBottom _ _ _ rem => rem.length + 1
+  | _ => 0
+
 /-- Compile all non-`nf3` items into normal-form clauses. -/
-def compileDirect (top bottom : Nat) (seenTop : Bool) :
+def compileDirect (top bottom : Nat) (seenTop : Bool) (nextAux : Nat) :
     List ParsedItem → List (ELCompletion.Clause Nat Nat)
   | [] => []
   | item :: rest =>
+      let nextAux' := nextAux + itemAuxCount item
       match item with
       | .topCand a =>
           if seenTop then
-            .nf1 top a :: compileDirect top bottom true rest
+            .nf1 top a :: compileDirect top bottom true nextAux' rest
           else
-            compileDirect top bottom true rest
-      | .nf5 a => .nf5 a :: compileDirect top bottom seenTop rest
-      | .nf1 a b => .nf1 a b :: compileDirect top bottom seenTop rest
-      | .nf2 a b c => .nf2 a b c :: compileDirect top bottom seenTop rest
-      | .nf2Bottom a b => .nf2 a b bottom :: compileDirect top bottom seenTop rest
-      | .nf3Role _ _ _ => compileDirect top bottom seenTop rest
-      | .nf3Filler _ _ _ => compileDirect top bottom seenTop rest
-      | .nf4 r b c => .nf4 r b c :: compileDirect top bottom seenTop rest
-      | .nf4Top r c => .nf4 r top c :: compileDirect top bottom seenTop rest
-      | .nf6 r s => .nf6 r s :: compileDirect top bottom seenTop rest
-      | .nf7 r s t => .nf7 r s t :: compileDirect top bottom seenTop rest
-      | .reflexive r => .reflexive r :: compileDirect top bottom seenTop rest
+            compileDirect top bottom true nextAux' rest
+      | .nf5 a => .nf5 a :: compileDirect top bottom seenTop nextAux' rest
+      | .nf1 a b => .nf1 a b :: compileDirect top bottom seenTop nextAux' rest
+      | .nf2 a b c => .nf2 a b c :: compileDirect top bottom seenTop nextAux' rest
+      | .nf2Bottom a b => .nf2 a b bottom :: compileDirect top bottom seenTop nextAux' rest
+      | .naryConj a1 a2 a3 rem d =>
+          compileConjChain a1 a2 (a3 :: rem) d nextAux ++
+            compileDirect top bottom seenTop nextAux' rest
+      | .naryConjBottom a1 a2 a3 rem =>
+          compileConjChain a1 a2 (a3 :: rem) bottom nextAux ++
+            compileDirect top bottom seenTop nextAux' rest
+      | .nf3Role _ _ _ => compileDirect top bottom seenTop nextAux' rest
+      | .nf3Filler _ _ _ => compileDirect top bottom seenTop nextAux' rest
+      | .nf4 r b c => .nf4 r b c :: compileDirect top bottom seenTop nextAux' rest
+      | .nf4Top r c => .nf4 r top c :: compileDirect top bottom seenTop nextAux' rest
+      | .nf6 r s => .nf6 r s :: compileDirect top bottom seenTop nextAux' rest
+      | .nf7 r s t => .nf7 r s t :: compileDirect top bottom seenTop nextAux' rest
+      | .reflexive r => .reflexive r :: compileDirect top bottom seenTop nextAux' rest
 
-/-- Direct normal-form clause corresponding to a non-`topCand`, non-`nf3` item. -/
+/-- Direct normal-form clause corresponding to a non-`topCand`, non-`nf3`, non-nary item. -/
 def directClauseOf (top bottom : Nat) : ParsedItem → Option (ELCompletion.Clause Nat Nat)
   | .nf5 a => some (.nf5 a)
   | .nf1 a b => some (.nf1 a b)
@@ -642,27 +814,28 @@ def directClauseOf (top bottom : Nat) : ParsedItem → Option (ELCompletion.Clau
   | .reflexive r => some (.reflexive r)
   | _ => none
 
-theorem mem_compileDirect_of_directClauseOf {top bottom : Nat} (seenTop : Bool)
+theorem mem_compileDirect_of_directClauseOf {top bottom : Nat} (seenTop : Bool) (nextAux : Nat)
     {items : List ParsedItem} {item : ParsedItem} {cl : ELCompletion.Clause Nat Nat}
     (hmem : item ∈ items) (hcl : directClauseOf top bottom item = some cl) :
-    cl ∈ compileDirect top bottom seenTop items := by
-  induction items generalizing seenTop with
+    cl ∈ compileDirect top bottom seenTop nextAux items := by
+  induction items generalizing seenTop nextAux with
   | nil => contradiction
   | cons head rest ih =>
       rcases List.mem_cons.mp hmem with rfl | htail
       · cases item <;> simp [directClauseOf] at hcl <;>
           subst hcl <;> simp [compileDirect]
-      · cases head <;> simp [compileDirect, ih _ htail]
-        cases seenTop <;> simp [ih _ htail]
+      · cases head <;> simp [compileDirect, ih _ _ htail]
+        cases seenTop <;> simp [ih _ _ htail]
 
-theorem topCand_compileDirect {top bottom : Nat} {seenTop : Bool}
+theorem topCand_compileDirect {top bottom : Nat} {seenTop : Bool} (nextAux : Nat)
     {items : List ParsedItem} {a : Nat}
     (hmem : .topCand a ∈ items)
     (hfirst : seenTop = false → ∀ b, findTopCand items = some b → b = top) :
-    a = top ∨ .nf1 top a ∈ compileDirect top bottom seenTop items := by
-  induction items generalizing seenTop with
+    a = top ∨ .nf1 top a ∈ compileDirect top bottom seenTop nextAux items := by
+  induction items generalizing seenTop nextAux with
   | nil => contradiction
   | cons item rest ih =>
+      let nextAux' := nextAux + itemAuxCount item
       cases item with
       | topCand b =>
           rcases List.mem_cons.mp hmem with hhead | htail
@@ -672,111 +845,537 @@ theorem topCand_compileDirect {top bottom : Nat} {seenTop : Bool}
               exact hfirst rfl a rfl
             · right
               simp [compileDirect]
-          · have hrec : a = top ∨ .nf1 top a ∈ compileDirect top bottom true rest :=
-              ih htail (by intro h; cases h)
+          · have hrec : a = top ∨ .nf1 top a ∈
+                compileDirect top bottom true nextAux' rest :=
+              ih nextAux' htail (by intro h; cases h)
             rcases hrec with rfl | hcl
             · left; rfl
             · right
-              cases seenTop <;> simp [compileDirect, hcl]
+              cases seenTop <;> simp [compileDirect, nextAux', hcl]
       | _ =>
           rcases List.mem_cons.mp hmem with hhead | htail
           · cases hhead
-          · have hrec : a = top ∨ .nf1 top a ∈ compileDirect top bottom seenTop rest :=
-              ih htail (by
+          · have hrec : a = top ∨ .nf1 top a ∈
+                compileDirect top bottom seenTop nextAux' rest :=
+              ih nextAux' htail (by
                 intro hfalse c hc
                 exact hfirst hfalse c (by simpa [findTopCand] using hc))
             rcases hrec with rfl | hcl
             · left; rfl
             · right
-              simp [compileDirect, hcl]
+              simp [compileDirect, nextAux', hcl]
+
+theorem sub_compileDirect_of_naryConj {top bottom : Nat} (seenTop : Bool) (nextAux : Nat)
+    {items : List ParsedItem} {a1 a2 a3 : Nat} {rem : List Nat} {d : Nat}
+    (hmem : .naryConj a1 a2 a3 rem d ∈ items) :
+    ∃ aux, ∀ cl ∈ compileConjChain a1 a2 (a3 :: rem) d aux,
+      cl ∈ compileDirect top bottom seenTop nextAux items := by
+  induction items generalizing seenTop nextAux with
+  | nil => contradiction
+  | cons head rest ih =>
+      rcases List.mem_cons.mp hmem with rfl | htail
+      · refine ⟨nextAux, fun cl hcl => ?_⟩
+        simp [compileDirect, hcl]
+      · obtain ⟨aux, haux⟩ := ih (match head with | .topCand _ => true | _ => seenTop)
+          (nextAux + itemAuxCount head) htail
+        refine ⟨aux, fun cl hcl => ?_⟩
+        have hmemTail := haux cl hcl
+        cases head <;> simp [compileDirect] at hmemTail ⊢
+        · cases seenTop <;> simp [hmemTail]
+        all_goals simp [hmemTail]
+
+theorem sub_compileDirect_of_naryConjBottom {top bottom : Nat} (seenTop : Bool) (nextAux : Nat)
+    {items : List ParsedItem} {a1 a2 a3 : Nat} {rem : List Nat}
+    (hmem : .naryConjBottom a1 a2 a3 rem ∈ items) :
+    ∃ aux, ∀ cl ∈ compileConjChain a1 a2 (a3 :: rem) bottom aux,
+      cl ∈ compileDirect top bottom seenTop nextAux items := by
+  induction items generalizing seenTop nextAux with
+  | nil => contradiction
+  | cons head rest ih =>
+      rcases List.mem_cons.mp hmem with rfl | htail
+      · refine ⟨nextAux, fun cl hcl => ?_⟩
+        simp [compileDirect, hcl]
+      · obtain ⟨aux, haux⟩ := ih (match head with | .topCand _ => true | _ => seenTop)
+          (nextAux + itemAuxCount head) htail
+        refine ⟨aux, fun cl hcl => ?_⟩
+        have hmemTail := haux cl hcl
+        cases head <;> simp [compileDirect] at hmemTail ⊢
+        · cases seenTop <;> simp [hmemTail]
+        all_goals simp [hmemTail]
+
+theorem compileConjChain_derives {Domain : Type} {top bottom : Nat}
+    (I : ELCompletion.Interp Domain Nat Nat top bottom)
+    (acc middle : Nat) (rem : List Nat) (target nextAux : Nat)
+    (hmodels : ∀ cl ∈ compileConjChain acc middle rem target nextAux,
+      ELCompletion.satClause I cl)
+    (u : Domain) (hacc : I.concept acc u) (hmid : I.concept middle u)
+    (hrem : ∀ c ∈ rem, I.concept c u) :
+    I.concept target u := by
+  induction rem generalizing acc middle nextAux with
+  | nil =>
+      have hcl : ELCompletion.satClause I (.nf2 acc middle target) :=
+        hmodels _ (by simp [compileConjChain])
+      exact hcl u hacc hmid
+  | cons next rest ih =>
+      have hhead : ELCompletion.satClause I (.nf2 acc middle nextAux) :=
+        hmodels _ (by simp [compileConjChain])
+      have htail : ∀ cl ∈ compileConjChain nextAux next rest target (nextAux + 1),
+          ELCompletion.satClause I cl :=
+        fun cl hcl => hmodels cl (by simp [compileConjChain, hcl])
+      exact ih nextAux next (nextAux + 1) htail (hhead u hacc hmid)
+        (hrem next (List.Mem.head _))
+        (fun c hc => hrem c (List.Mem.tail _ hc))
+
+/-- Concept identifiers occurring in one normal-form EL clause. -/
+def nfClauseConcepts : ELCompletion.Clause Nat Nat → List Nat
+  | .nf1 a b => [a, b]
+  | .nf2 a b c => [a, b, c]
+  | .nf3 a _ b => [a, b]
+  | .nf4 _ b c => [b, c]
+  | .nf5 a => [a]
+  | .nf6 _ _ => []
+  | .nf7 _ _ _ => []
+  | .reflexive _ => []
+
+theorem satClause_congr {Domain : Type} {top bottom : Nat}
+    {I₁ I₂ : ELCompletion.Interp Domain Nat Nat top bottom}
+    {cl : ELCompletion.Clause Nat Nat}
+    (hrol : I₁.role = I₂.role)
+    (hconc : ∀ c ∈ nfClauseConcepts cl, I₁.concept c = I₂.concept c) :
+    ELCompletion.satClause I₁ cl ↔ ELCompletion.satClause I₂ cl := by
+  cases cl with
+  | nf1 a b =>
+      have ha : I₁.concept a = I₂.concept a := hconc a (by simp [nfClauseConcepts])
+      have hb : I₁.concept b = I₂.concept b := hconc b (by simp [nfClauseConcepts])
+      simp [ELCompletion.satClause, ha, hb]
+  | nf2 a b c =>
+      have ha : I₁.concept a = I₂.concept a := hconc a (by simp [nfClauseConcepts])
+      have hb : I₁.concept b = I₂.concept b := hconc b (by simp [nfClauseConcepts])
+      have hc : I₁.concept c = I₂.concept c := hconc c (by simp [nfClauseConcepts])
+      simp [ELCompletion.satClause, ha, hb, hc]
+  | nf3 a r b =>
+      have ha : I₁.concept a = I₂.concept a := hconc a (by simp [nfClauseConcepts])
+      have hb : I₁.concept b = I₂.concept b := hconc b (by simp [nfClauseConcepts])
+      simp [ELCompletion.satClause, ha, hb, hrol]
+  | nf4 r b c =>
+      have hb : I₁.concept b = I₂.concept b := hconc b (by simp [nfClauseConcepts])
+      have hc : I₁.concept c = I₂.concept c := hconc c (by simp [nfClauseConcepts])
+      simp [ELCompletion.satClause, hb, hc, hrol]
+  | nf5 a =>
+      have ha : I₁.concept a = I₂.concept a := hconc a (by simp [nfClauseConcepts])
+      simp [ELCompletion.satClause, ha]
+  | nf6 r s =>
+      simp [ELCompletion.satClause, hrol]
+  | nf7 r s t =>
+      simp [ELCompletion.satClause, hrol]
+  | reflexive r =>
+      simp [ELCompletion.satClause, hrol]
+
+theorem compileConjChain_concepts_lt {acc middle : Nat} {rem : List Nat} {target nextAux : Nat}
+    (hacc : acc < nextAux) (hmid : middle < nextAux)
+    (hrem : ∀ b ∈ rem, b < nextAux) (htarget : target < nextAux) :
+    ∀ cl ∈ compileConjChain acc middle rem target nextAux,
+      ∀ c ∈ nfClauseConcepts cl, c < nextAux + rem.length := by
+  induction rem generalizing acc middle nextAux with
+  | nil =>
+      intro cl hcl c hc
+      simp only [compileConjChain, List.length_nil, Nat.add_zero, List.mem_singleton] at hcl ⊢
+      subst hcl
+      simp only [nfClauseConcepts, List.mem_cons, List.not_mem_nil, or_false] at hc
+      rcases hc with rfl | rfl | rfl <;> omega
+  | cons next rest ih =>
+      intro cl hcl c hc
+      have hnext : next < nextAux := hrem next (List.Mem.head _)
+      have hrest : ∀ b ∈ rest, b < nextAux := fun b hb => hrem b (List.Mem.tail _ hb)
+      simp only [compileConjChain, List.length_cons, List.mem_cons] at hcl ⊢
+      rcases hcl with rfl | htail
+      · simp only [nfClauseConcepts, List.mem_cons, List.not_mem_nil, or_false] at hc
+        rcases hc with rfl | rfl | rfl <;> omega
+      · have hlt := ih (acc := nextAux) (middle := next) (nextAux := nextAux + 1)
+          (by omega) (by omega)
+          (fun b hb => Nat.lt_succ_of_lt (hrest b hb))
+          (by omega) cl htail c hc
+        omega
+
+/-- Update a single auxiliary concept interpretation in an `ELCompletion.Interp`
+when that concept is distinct from `top` and `bottom`. -/
+def setAuxConcept {Domain : Type} {top bottom : Nat}
+    (I : ELCompletion.Interp Domain Nat Nat top bottom)
+    (p : Nat) (P : Domain → Prop)
+    (htop : p ≠ top) (hbot : p ≠ bottom) :
+    ELCompletion.Interp Domain Nat Nat top bottom where
+  concept := fun c u => if c = p then P u else I.concept c u
+  role := I.role
+  top_true := fun u => by simp [htop.symm, I.top_true u]
+  bottom_false := fun u => by simp [hbot.symm, I.bottom_false u]
+
+theorem compileConjChain_extend_interp {Domain : Type} {top bottom : Nat}
+    (I : ELCompletion.Interp Domain Nat Nat top bottom)
+    (acc middle : Nat) (rem : List Nat) (target nextAux : Nat)
+    (htop : top < nextAux) (hbot : bottom < nextAux)
+    (hacc : acc < nextAux) (hmid : middle < nextAux)
+    (hrem : ∀ b ∈ rem, b < nextAux) (htarget : target < nextAux)
+    (hsat : ∀ u, I.concept acc u → I.concept middle u →
+      (∀ b ∈ rem, I.concept b u) → I.concept target u) :
+    ∃ I' : ELCompletion.Interp Domain Nat Nat top bottom,
+      I'.role = I.role ∧
+      (∀ c < nextAux, I'.concept c = I.concept c) ∧
+      (∀ cl ∈ compileConjChain acc middle rem target nextAux, ELCompletion.satClause I' cl) := by
+  induction rem generalizing I acc middle nextAux with
+  | nil =>
+      refine ⟨I, rfl, fun _ _ => rfl, ?_⟩
+      intro cl hcl
+      simp only [compileConjChain, List.mem_singleton] at hcl
+      subst hcl
+      intro u h1 h2
+      exact hsat u h1 h2 (by intro b hb; cases hb)
+  | cons next rest ih =>
+      have hnext : next < nextAux := hrem next (List.Mem.head _)
+      have hrest : ∀ b ∈ rest, b < nextAux := fun b hb => hrem b (List.Mem.tail _ hb)
+      let I₁ := setAuxConcept I nextAux (fun u => I.concept acc u ∧ I.concept middle u)
+        (Nat.ne_of_gt htop) (Nat.ne_of_gt hbot)
+      have hacc_ne : acc ≠ nextAux := Nat.ne_of_lt hacc
+      have hmid_ne : middle ≠ nextAux := Nat.ne_of_lt hmid
+      have hnext_ne : next ≠ nextAux := Nat.ne_of_lt hnext
+      have htarget_ne : target ≠ nextAux := Nat.ne_of_lt htarget
+      have hsat₁ : ∀ u, I₁.concept nextAux u → I₁.concept next u →
+          (∀ b ∈ rest, I₁.concept b u) → I₁.concept target u := by
+        intro u hp h3 hall
+        have hp' : I.concept acc u ∧ I.concept middle u := by
+          simpa [I₁, setAuxConcept] using hp
+        have h3' : I.concept next u := by
+          simpa [I₁, setAuxConcept, hnext_ne] using h3
+        have hall' : ∀ b ∈ next :: rest, I.concept b u := by
+          intro b hb
+          rcases List.mem_cons.mp hb with rfl | hmem
+          · exact h3'
+          · have hb_ne : b ≠ nextAux := Nat.ne_of_lt (hrest b hmem)
+            have hbu := hall b hmem
+            simpa [I₁, setAuxConcept, hb_ne] using hbu
+        have htu : I.concept target u := hsat u hp'.1 hp'.2 hall'
+        simpa [I₁, setAuxConcept, htarget_ne] using htu
+      obtain ⟨I', hrol', hconc', hclauses'⟩ :=
+        ih I₁ nextAux next (nextAux + 1)
+          (Nat.lt_succ_of_lt htop) (Nat.lt_succ_of_lt hbot)
+          (Nat.lt_succ_self _) (Nat.lt_succ_of_lt hnext)
+          (fun b hb => Nat.lt_succ_of_lt (hrest b hb))
+          (Nat.lt_succ_of_lt htarget)
+          hsat₁
+      refine ⟨I', hrol', ?_, ?_⟩
+      · intro c hc
+        have hc1 : I'.concept c = I₁.concept c := hconc' c (Nat.lt_succ_of_lt hc)
+        have hne : c ≠ nextAux := Nat.ne_of_lt hc
+        rw [hc1]
+        funext u
+        simp [I₁, setAuxConcept, hne]
+      · intro cl hcl
+        simp only [compileConjChain, List.mem_cons] at hcl
+        rcases hcl with rfl | htail
+        · have hsat_head : ELCompletion.satClause I₁ (.nf2 acc middle nextAux) := by
+            intro u h1 h2
+            have h1' : I.concept acc u := by simpa [I₁, setAuxConcept, hacc_ne] using h1
+            have h2' : I.concept middle u := by simpa [I₁, setAuxConcept, hmid_ne] using h2
+            simp [I₁, setAuxConcept, h1', h2']
+          apply (satClause_congr hrol' ?_).mpr hsat_head
+          intro c hc
+          simp only [nfClauseConcepts, List.mem_cons, List.not_mem_nil, or_false] at hc
+          rcases hc with rfl | rfl | rfl
+          · exact hconc' c (Nat.lt_succ_of_lt hacc)
+          · exact hconc' c (Nat.lt_succ_of_lt hmid)
+          · exact hconc' c (Nat.lt_succ_self _)
+        · exact hclauses' cl htail
 
 theorem compileDirect_models {Domain : Type} {top bottom : Nat}
     (M : TModel Domain)
     (I : ELCompletion.Interp Domain Nat Nat top bottom)
-    (hconc : I.concept = M.conc) (hrol : I.role = M.rol)
-    {items : List ParsedItem} (seenTop : Bool)
+    {items : List ParsedItem} (seenTop : Bool) (nextAux : Nat)
+    (htop : top < nextAux) (hbot : bottom < nextAux)
+    (hconcepts : ∀ item ∈ items, ∀ c ∈ itemConcepts item, c < nextAux)
+    (hconc : ∀ item ∈ items, ∀ c ∈ itemConcepts item, I.concept c = M.conc c)
+    (hrol : I.role = M.rol)
     (hitems : ∀ item ∈ items, satParsedItem M item) :
-    ∀ cl ∈ compileDirect top bottom seenTop items, ELCompletion.satClause I cl := by
-  induction items generalizing seenTop with
+    ∃ I' : ELCompletion.Interp Domain Nat Nat top bottom,
+      I'.role = I.role ∧
+      (∀ c < nextAux, I'.concept c = I.concept c) ∧
+      (∀ cl ∈ compileDirect top bottom seenTop nextAux items,
+        ELCompletion.satClause I' cl) := by
+  induction items generalizing I seenTop nextAux with
   | nil =>
+      refine ⟨I, rfl, fun _ _ => rfl, ?_⟩
       intro cl hcl
       cases hcl
   | cons item rest ih =>
       have hhead : satParsedItem M item := hitems item (List.Mem.head _)
       have htail : ∀ x ∈ rest, satParsedItem M x :=
         fun x hx => hitems x (List.Mem.tail _ hx)
-      intro cl hcl
+      have hheadConcepts : ∀ c ∈ itemConcepts item, c < nextAux :=
+        hconcepts item (List.Mem.head _)
+      have htailConcepts : ∀ x ∈ rest, ∀ c ∈ itemConcepts x, c < nextAux :=
+        fun x hx => hconcepts x (List.Mem.tail _ hx)
+      have hheadConc : ∀ c ∈ itemConcepts item, I.concept c = M.conc c :=
+        hconc item (List.Mem.head _)
+      have htailConc : ∀ x ∈ rest, ∀ c ∈ itemConcepts x, I.concept c = M.conc c :=
+        fun x hx => hconc x (List.Mem.tail _ hx)
       cases item with
       | topCand a =>
           cases seenTop with
           | false =>
-              exact ih true htail cl hcl
+              exact ih I true nextAux htop hbot htailConcepts htailConc hrol htail
           | true =>
+              obtain ⟨I', hrol', hpres, hclauses⟩ :=
+                ih I true nextAux htop hbot htailConcepts htailConc hrol htail
+              refine ⟨I', hrol', hpres, ?_⟩
+              intro cl hcl
               rcases List.mem_cons.mp hcl with rfl | hrest
-              · intro u _
-                rw [hconc]
+              · have ha_lt : a < nextAux := hheadConcepts a (by simp [itemConcepts])
+                have ha_eq : I'.concept a = M.conc a :=
+                  (hpres a ha_lt).trans (hheadConc a (by simp [itemConcepts]))
+                intro u _
+                rw [ha_eq]
                 exact hhead u
-              · exact ih true htail cl hrest
+              · exact hclauses cl hrest
       | nf5 a =>
+          obtain ⟨I', hrol', hpres, hclauses⟩ :=
+            ih I seenTop nextAux htop hbot htailConcepts htailConc hrol htail
+          refine ⟨I', hrol', hpres, ?_⟩
+          intro cl hcl
           rcases List.mem_cons.mp hcl with rfl | hrest
-          · intro u hu
-            rw [hconc] at hu
+          · have ha_lt : a < nextAux := hheadConcepts a (by simp [itemConcepts])
+            have ha_eq : I'.concept a = M.conc a :=
+              (hpres a ha_lt).trans (hheadConc a (by simp [itemConcepts]))
+            intro u hu
+            rw [ha_eq] at hu
             exact hhead u hu
-          · exact ih seenTop htail cl hrest
+          · exact hclauses cl hrest
       | nf1 a b =>
+          obtain ⟨I', hrol', hpres, hclauses⟩ :=
+            ih I seenTop nextAux htop hbot htailConcepts htailConc hrol htail
+          refine ⟨I', hrol', hpres, ?_⟩
+          intro cl hcl
           rcases List.mem_cons.mp hcl with rfl | hrest
-          · intro u hu
-            rw [hconc] at hu ⊢
+          · have ha_lt : a < nextAux := hheadConcepts a (by simp [itemConcepts])
+            have hb_lt : b < nextAux := hheadConcepts b (by simp [itemConcepts])
+            have ha_eq : I'.concept a = M.conc a :=
+              (hpres a ha_lt).trans (hheadConc a (by simp [itemConcepts]))
+            have hb_eq : I'.concept b = M.conc b :=
+              (hpres b hb_lt).trans (hheadConc b (by simp [itemConcepts]))
+            intro u hu
+            rw [ha_eq] at hu
+            rw [hb_eq]
             exact hhead u hu
-          · exact ih seenTop htail cl hrest
+          · exact hclauses cl hrest
       | nf2 a b c =>
+          obtain ⟨I', hrol', hpres, hclauses⟩ :=
+            ih I seenTop nextAux htop hbot htailConcepts htailConc hrol htail
+          refine ⟨I', hrol', hpres, ?_⟩
+          intro cl hcl
           rcases List.mem_cons.mp hcl with rfl | hrest
-          · intro u ha hb
-            rw [hconc] at ha hb ⊢
+          · have ha_lt : a < nextAux := hheadConcepts a (by simp [itemConcepts])
+            have hb_lt : b < nextAux := hheadConcepts b (by simp [itemConcepts])
+            have hc_lt : c < nextAux := hheadConcepts c (by simp [itemConcepts])
+            have ha_eq : I'.concept a = M.conc a :=
+              (hpres a ha_lt).trans (hheadConc a (by simp [itemConcepts]))
+            have hb_eq : I'.concept b = M.conc b :=
+              (hpres b hb_lt).trans (hheadConc b (by simp [itemConcepts]))
+            have hc_eq : I'.concept c = M.conc c :=
+              (hpres c hc_lt).trans (hheadConc c (by simp [itemConcepts]))
+            intro u ha hb
+            rw [ha_eq] at ha
+            rw [hb_eq] at hb
+            rw [hc_eq]
             exact hhead u ha hb
-          · exact ih seenTop htail cl hrest
+          · exact hclauses cl hrest
       | nf2Bottom a b =>
+          obtain ⟨I', hrol', hpres, hclauses⟩ :=
+            ih I seenTop nextAux htop hbot htailConcepts htailConc hrol htail
+          refine ⟨I', hrol', hpres, ?_⟩
+          intro cl hcl
           rcases List.mem_cons.mp hcl with rfl | hrest
-          · intro u ha hb
-            rw [hconc] at ha hb
+          · have ha_lt : a < nextAux := hheadConcepts a (by simp [itemConcepts])
+            have hb_lt : b < nextAux := hheadConcepts b (by simp [itemConcepts])
+            have ha_eq : I'.concept a = M.conc a :=
+              (hpres a ha_lt).trans (hheadConc a (by simp [itemConcepts]))
+            have hb_eq : I'.concept b = M.conc b :=
+              (hpres b hb_lt).trans (hheadConc b (by simp [itemConcepts]))
+            intro u ha hb
+            rw [ha_eq] at ha
+            rw [hb_eq] at hb
             exact False.elim (hhead u ha hb)
-          · exact ih seenTop htail cl hrest
+          · exact hclauses cl hrest
+      | naryConj a1 a2 a3 rem d =>
+          have ha1_lt : a1 < nextAux := hheadConcepts a1 (by simp [itemConcepts])
+          have ha2_lt : a2 < nextAux := hheadConcepts a2 (by simp [itemConcepts])
+          have ha3_lt : a3 < nextAux := hheadConcepts a3 (by simp [itemConcepts])
+          have hd_lt : d < nextAux := hheadConcepts d (by simp [itemConcepts])
+          have hrem_lt : ∀ b ∈ a3 :: rem, b < nextAux := by
+            intro b hb
+            rcases List.mem_cons.mp hb with rfl | hmem
+            · exact ha3_lt
+            · exact hheadConcepts b (by simp [itemConcepts, hmem])
+          have ha1_eq : I.concept a1 = M.conc a1 := hheadConc a1 (by simp [itemConcepts])
+          have ha2_eq : I.concept a2 = M.conc a2 := hheadConc a2 (by simp [itemConcepts])
+          have ha3_eq : I.concept a3 = M.conc a3 := hheadConc a3 (by simp [itemConcepts])
+          have hd_eq : I.concept d = M.conc d := hheadConc d (by simp [itemConcepts])
+          have hrem_eq : ∀ b ∈ rem, I.concept b = M.conc b :=
+            fun b hb => hheadConc b (by simp [itemConcepts, hb])
+          have hsatChain : ∀ u, I.concept a1 u → I.concept a2 u →
+              (∀ b ∈ a3 :: rem, I.concept b u) → I.concept d u := by
+            intro u h1 h2 hall
+            have h3 : I.concept a3 u := hall a3 (List.Mem.head _)
+            rw [ha1_eq] at h1
+            rw [ha2_eq] at h2
+            rw [ha3_eq] at h3
+            rw [hd_eq]
+            apply hhead u h1 h2 h3
+            intro b hb
+            rw [← hrem_eq b hb]
+            exact hall b (List.Mem.tail _ hb)
+          obtain ⟨I₁, hrol₁, hpres₁, hchain₁⟩ :=
+            compileConjChain_extend_interp I a1 a2 (a3 :: rem) d nextAux
+              htop hbot ha1_lt ha2_lt hrem_lt hd_lt hsatChain
+          let nextAux' := nextAux + (rem.length + 1)
+          have hle : nextAux ≤ nextAux' := Nat.le_add_right _ _
+          obtain ⟨I', hrol', hpres', hclauses'⟩ :=
+            ih I₁ seenTop nextAux'
+              (Nat.lt_of_lt_of_le htop hle)
+              (Nat.lt_of_lt_of_le hbot hle)
+              (fun x hx c hc => Nat.lt_of_lt_of_le (htailConcepts x hx c hc) hle)
+              (fun x hx c hc =>
+                (hpres₁ c (htailConcepts x hx c hc)).trans (htailConc x hx c hc))
+              (hrol₁.trans hrol)
+              htail
+          refine ⟨I', hrol'.trans hrol₁, ?_, ?_⟩
+          · intro c hc
+            exact (hpres' c (Nat.lt_of_lt_of_le hc hle)).trans (hpres₁ c hc)
+          · intro cl hcl
+            simp only [compileDirect, itemAuxCount] at hcl
+            rcases List.mem_append.mp hcl with hchain | hrest
+            · have hlt_cl := compileConjChain_concepts_lt ha1_lt ha2_lt hrem_lt hd_lt cl hchain
+              apply (satClause_congr hrol' ?_).mpr (hchain₁ cl hchain)
+              intro c hc
+              exact hpres' c (hlt_cl c hc)
+            · exact hclauses' cl hrest
+      | naryConjBottom a1 a2 a3 rem =>
+          have ha1_lt : a1 < nextAux := hheadConcepts a1 (by simp [itemConcepts])
+          have ha2_lt : a2 < nextAux := hheadConcepts a2 (by simp [itemConcepts])
+          have ha3_lt : a3 < nextAux := hheadConcepts a3 (by simp [itemConcepts])
+          have hrem_lt : ∀ b ∈ a3 :: rem, b < nextAux := by
+            intro b hb
+            rcases List.mem_cons.mp hb with rfl | hmem
+            · exact ha3_lt
+            · exact hheadConcepts b (by simp [itemConcepts, hmem])
+          have ha1_eq : I.concept a1 = M.conc a1 := hheadConc a1 (by simp [itemConcepts])
+          have ha2_eq : I.concept a2 = M.conc a2 := hheadConc a2 (by simp [itemConcepts])
+          have ha3_eq : I.concept a3 = M.conc a3 := hheadConc a3 (by simp [itemConcepts])
+          have hrem_eq : ∀ b ∈ rem, I.concept b = M.conc b :=
+            fun b hb => hheadConc b (by simp [itemConcepts, hb])
+          have hsatChain : ∀ u, I.concept a1 u → I.concept a2 u →
+              (∀ b ∈ a3 :: rem, I.concept b u) → I.concept bottom u := by
+            intro u h1 h2 hall
+            have h3 : I.concept a3 u := hall a3 (List.Mem.head _)
+            rw [ha1_eq] at h1
+            rw [ha2_eq] at h2
+            rw [ha3_eq] at h3
+            refine False.elim (hhead u h1 h2 h3 ?_)
+            intro b hb
+            rw [← hrem_eq b hb]
+            exact hall b (List.Mem.tail _ hb)
+          obtain ⟨I₁, hrol₁, hpres₁, hchain₁⟩ :=
+            compileConjChain_extend_interp I a1 a2 (a3 :: rem) bottom nextAux
+              htop hbot ha1_lt ha2_lt hrem_lt hbot hsatChain
+          let nextAux' := nextAux + (rem.length + 1)
+          have hle : nextAux ≤ nextAux' := Nat.le_add_right _ _
+          obtain ⟨I', hrol', hpres', hclauses'⟩ :=
+            ih I₁ seenTop nextAux'
+              (Nat.lt_of_lt_of_le htop hle)
+              (Nat.lt_of_lt_of_le hbot hle)
+              (fun x hx c hc => Nat.lt_of_lt_of_le (htailConcepts x hx c hc) hle)
+              (fun x hx c hc =>
+                (hpres₁ c (htailConcepts x hx c hc)).trans (htailConc x hx c hc))
+              (hrol₁.trans hrol)
+              htail
+          refine ⟨I', hrol'.trans hrol₁, ?_, ?_⟩
+          · intro c hc
+            exact (hpres' c (Nat.lt_of_lt_of_le hc hle)).trans (hpres₁ c hc)
+          · intro cl hcl
+            simp only [compileDirect, itemAuxCount] at hcl
+            rcases List.mem_append.mp hcl with hchain | hrest
+            · have hlt_cl := compileConjChain_concepts_lt ha1_lt ha2_lt hrem_lt hbot cl hchain
+              apply (satClause_congr hrol' ?_).mpr (hchain₁ cl hchain)
+              intro c hc
+              exact hpres' c (hlt_cl c hc)
+            · exact hclauses' cl hrest
       | nf3Role a r f =>
-          exact ih seenTop htail cl hcl
+          exact ih I seenTop nextAux htop hbot htailConcepts htailConc hrol htail
       | nf3Filler a b f =>
-          exact ih seenTop htail cl hcl
+          exact ih I seenTop nextAux htop hbot htailConcepts htailConc hrol htail
       | nf4 r b c =>
+          obtain ⟨I', hrol', hpres, hclauses⟩ :=
+            ih I seenTop nextAux htop hbot htailConcepts htailConc hrol htail
+          refine ⟨I', hrol', hpres, ?_⟩
+          intro cl hcl
           rcases List.mem_cons.mp hcl with rfl | hrest
-          · intro u ⟨v, hrv, hbv⟩
-            rw [hrol] at hrv
-            rw [hconc] at hbv ⊢
+          · have hb_lt : b < nextAux := hheadConcepts b (by simp [itemConcepts])
+            have hc_lt : c < nextAux := hheadConcepts c (by simp [itemConcepts])
+            have hb_eq : I'.concept b = M.conc b :=
+              (hpres b hb_lt).trans (hheadConc b (by simp [itemConcepts]))
+            have hc_eq : I'.concept c = M.conc c :=
+              (hpres c hc_lt).trans (hheadConc c (by simp [itemConcepts]))
+            have hrol_eq : I'.role = M.rol := hrol'.trans hrol
+            intro u ⟨v, hrv, hbv⟩
+            rw [hrol_eq] at hrv
+            rw [hb_eq] at hbv
+            rw [hc_eq]
             exact hhead u ⟨v, hrv, hbv⟩
-          · exact ih seenTop htail cl hrest
+          · exact hclauses cl hrest
       | nf4Top r c =>
+          obtain ⟨I', hrol', hpres, hclauses⟩ :=
+            ih I seenTop nextAux htop hbot htailConcepts htailConc hrol htail
+          refine ⟨I', hrol', hpres, ?_⟩
+          intro cl hcl
           rcases List.mem_cons.mp hcl with rfl | hrest
-          · intro u ⟨v, hrv, _⟩
-            rw [hrol] at hrv
-            rw [hconc]
+          · have hc_lt : c < nextAux := hheadConcepts c (by simp [itemConcepts])
+            have hc_eq : I'.concept c = M.conc c :=
+              (hpres c hc_lt).trans (hheadConc c (by simp [itemConcepts]))
+            have hrol_eq : I'.role = M.rol := hrol'.trans hrol
+            intro u ⟨v, hrv, _⟩
+            rw [hrol_eq] at hrv
+            rw [hc_eq]
             exact hhead u ⟨v, hrv⟩
-          · exact ih seenTop htail cl hrest
+          · exact hclauses cl hrest
       | nf6 r s =>
+          obtain ⟨I', hrol', hpres, hclauses⟩ :=
+            ih I seenTop nextAux htop hbot htailConcepts htailConc hrol htail
+          refine ⟨I', hrol', hpres, ?_⟩
+          intro cl hcl
           rcases List.mem_cons.mp hcl with rfl | hrest
-          · intro u v hrv
-            rw [hrol] at hrv ⊢
+          · have hrol_eq : I'.role = M.rol := hrol'.trans hrol
+            intro u v hrv
+            rw [hrol_eq] at hrv ⊢
             exact hhead u v hrv
-          · exact ih seenTop htail cl hrest
+          · exact hclauses cl hrest
       | nf7 r s t =>
+          obtain ⟨I', hrol', hpres, hclauses⟩ :=
+            ih I seenTop nextAux htop hbot htailConcepts htailConc hrol htail
+          refine ⟨I', hrol', hpres, ?_⟩
+          intro cl hcl
           rcases List.mem_cons.mp hcl with rfl | hrest
-          · intro u v w hruv hsvw
-            rw [hrol] at hruv hsvw ⊢
+          · have hrol_eq : I'.role = M.rol := hrol'.trans hrol
+            intro u v w hruv hsvw
+            rw [hrol_eq] at hruv hsvw ⊢
             exact hhead u v w hruv hsvw
-          · exact ih seenTop htail cl hrest
+          · exact hclauses cl hrest
       | reflexive r =>
+          obtain ⟨I', hrol', hpres, hclauses⟩ :=
+            ih I seenTop nextAux htop hbot htailConcepts htailConc hrol htail
+          refine ⟨I', hrol', hpres, ?_⟩
+          intro cl hcl
           rcases List.mem_cons.mp hcl with rfl | hrest
-          · intro u
-            rw [hrol]
+          · have hrol_eq : I'.role = M.rol := hrol'.trans hrol
+            intro u
+            rw [hrol_eq]
             exact hhead u
-          · exact ih seenTop htail cl hrest
+          · exact hclauses cl hrest
 
 /-- Collect `(fn, sub, role)` for every `nf3Role` item. -/
 def collectRoleHalves : List ParsedItem → List (Nat × Nat × Nat)
@@ -989,6 +1588,7 @@ noncomputable def modelOfInterp {Domain : Type} {top bottom : Nat}
 def recognizeItems (named : List Nat) (items : List ParsedItem) : Option RecognizedEL :=
   let top := selectTop named items
   let bottom := selectBottom named items
+  let firstAux := freshBase named items + 2
   let roles := collectRoleHalves items
   let fillers := collectFillerHalves items
   match buildNF3Clauses roles fillers with
@@ -997,7 +1597,7 @@ def recognizeItems (named : List Nat) (items : List ParsedItem) : Option Recogni
       some {
         top := top
         bottom := bottom
-        ontology := compileDirect top bottom false items ++ nf3Clauses
+        ontology := compileDirect top bottom false firstAux items ++ nf3Clauses
       }
 
 theorem recognizeItems_models_to_satParsedItem {Domain : Type}
@@ -1017,16 +1617,17 @@ theorem recognizeItems_models_to_satParsedItem {Domain : Type}
       simp only [RecognizedEL.mk.injEq] at hrec
       rcases hrec with ⟨htopEq, hbotEq, hontEq⟩
       subst htopEq; subst hbotEq; subst hontEq
+      let firstAux := freshBase named items + 2
       intro item hmem
       have hdirect : ∀ cl, directClauseOf (selectTop named items) (selectBottom named items) item = some cl →
           ELCompletion.satClause I cl := by
         intro cl hcl
         apply hI cl
-        exact List.mem_append_left _ (mem_compileDirect_of_directClauseOf false hmem hcl)
+        exact List.mem_append_left _ (mem_compileDirect_of_directClauseOf false firstAux hmem hcl)
       cases item with
       | topCand a =>
           have htopOr := topCand_compileDirect (top := selectTop named items)
-            (bottom := selectBottom named items) (seenTop := false) hmem (by
+            (bottom := selectBottom named items) (seenTop := false) (nextAux := firstAux) hmem (by
               intro _ b hb
               simp [selectTop, hb])
           rcases htopOr with rfl | hnf1
@@ -1046,6 +1647,33 @@ theorem recognizeItems_models_to_satParsedItem {Domain : Type}
           have hsat := hdirect (.nf2 a b (selectBottom named items)) rfl
           intro u ha hb
           exact I.bottom_false u (hsat u ha hb)
+      | naryConj a1 a2 a3 rem d =>
+          obtain ⟨aux, hsub⟩ := sub_compileDirect_of_naryConj
+            (top := selectTop named items) (bottom := selectBottom named items)
+            false firstAux hmem
+          have hchain : ∀ cl ∈ compileConjChain a1 a2 (a3 :: rem) d aux,
+              ELCompletion.satClause I cl :=
+            fun cl hcl => hI cl (List.mem_append_left _ (hsub cl hcl))
+          intro u h1 h2 h3 hall
+          refine compileConjChain_derives I a1 a2 (a3 :: rem) d aux hchain u h1 h2 ?_
+          intro c hc
+          rcases List.mem_cons.mp hc with rfl | hmem
+          · exact h3
+          · exact hall c hmem
+      | naryConjBottom a1 a2 a3 rem =>
+          obtain ⟨aux, hsub⟩ := sub_compileDirect_of_naryConjBottom
+            (top := selectTop named items) (bottom := selectBottom named items)
+            false firstAux hmem
+          have hchain : ∀ cl ∈ compileConjChain a1 a2 (a3 :: rem) (selectBottom named items) aux,
+              ELCompletion.satClause I cl :=
+            fun cl hcl => hI cl (List.mem_append_left _ (hsub cl hcl))
+          intro u h1 h2 h3 hall
+          refine I.bottom_false u
+            (compileConjChain_derives I a1 a2 (a3 :: rem) (selectBottom named items) aux hchain u h1 h2 ?_)
+          intro c hc
+          rcases List.mem_cons.mp hc with rfl | hmem
+          · exact h3
+          · exact hall c hmem
       | nf4 r b c =>
           exact hdirect (.nf4 r b c) rfl
       | nf4Top r c =>
@@ -1167,26 +1795,55 @@ theorem recognizeItems_satParsedItem_to_models {Domain : Type}
       obtain ⟨M₁, hitems₁, htop₁, hnamed₁⟩ := adjustModelTop named items M hitems
       obtain ⟨M₂, hitems₂, htop₂, hbot₂, hnamed₂⟩ :=
         adjustModelBottom named items M₁ hitems₁ htop₁
-      let I : ELCompletion.Interp Domain Nat Nat (selectTop named items) (selectBottom named items) := {
+      let I₀ : ELCompletion.Interp Domain Nat Nat (selectTop named items) (selectBottom named items) := {
         concept := M₂.conc
         role := M₂.rol
         top_true := htop₂
         bottom_false := hbot₂
       }
+      let firstAux := freshBase named items + 2
+      have htop_lt : selectTop named items < firstAux := by
+        have hle := selectTop_le_freshBase named items
+        omega
+      have hbot_lt : selectBottom named items < firstAux := by
+        have hle := selectBottom_le_freshBase_succ named items
+        omega
+      have hconcepts_lt : ∀ item ∈ items, ∀ c ∈ itemConcepts item, c < firstAux := by
+        intro item hmem c hc
+        have hlt : c < freshBase named items := lt_freshBase_of_mem_itemsConcepts
+          (List.mem_flatMap.mpr ⟨item, hmem, hc⟩)
+        omega
+      obtain ⟨I, hrolI, hpresI, hdirectI⟩ :=
+        compileDirect_models M₂ I₀ false firstAux htop_lt hbot_lt hconcepts_lt
+          (fun _ _ _ _ => rfl) rfl hitems₂
       refine ⟨I, ?_, ?_⟩
       · intro c hc
-        exact (hnamed₂ c hc).trans (hnamed₁ c hc)
+        have hlt_named : c < firstAux := by
+          have hlt : c < freshBase named items := lt_freshBase_of_mem_named hc
+          omega
+        exact (hpresI c hlt_named).trans ((hnamed₂ c hc).trans (hnamed₁ c hc))
       · intro cl hcl
         rcases List.mem_append.mp hcl with hdirect | hnf3
-        · exact compileDirect_models M₂ I rfl rfl false hitems₂ cl hdirect
+        · exact hdirectI cl hdirect
         · obtain ⟨f, a, r, b, rfl, hroleMem, hfillerMem⟩ :=
             buildNF3Clauses_clause_mem hbuild hnf3
+          have hroleItem : .nf3Role a r f ∈ items := mem_collectRoleHalves.mp hroleMem
+          have hfillerItem : .nf3Filler a b f ∈ items := mem_collectFillerHalves.mp hfillerMem
           have hroleSat : satParsedItem M₂ (.nf3Role a r f) :=
-            hitems₂ (.nf3Role a r f) (mem_collectRoleHalves.mp hroleMem)
+            hitems₂ (.nf3Role a r f) hroleItem
           have hfillerSat : satParsedItem M₂ (.nf3Filler a b f) :=
-            hitems₂ (.nf3Filler a b f) (mem_collectFillerHalves.mp hfillerMem)
+            hitems₂ (.nf3Filler a b f) hfillerItem
+          have ha_lt : a < firstAux := hconcepts_lt (.nf3Role a r f) hroleItem a (by simp [itemConcepts])
+          have hb_lt : b < firstAux := hconcepts_lt (.nf3Filler a b f) hfillerItem b (by simp [itemConcepts])
+          have ha_eq : I.concept a = M₂.conc a := hpresI a ha_lt
+          have hb_eq : I.concept b = M₂.conc b := hpresI b hb_lt
           intro u hu
-          exact ⟨M₂.fn f u, hroleSat u hu, hfillerSat u hu⟩
+          rw [ha_eq] at hu
+          refine ⟨M₂.fn f u, ?_, ?_⟩
+          · rw [hrolI]
+            exact hroleSat u hu
+          · rw [hb_eq]
+            exact hfillerSat u hu
 
 /-- Read the common clause source as a pure EL ontology.  Fails closed
 (`none`) on any clause outside the table above.  The requested names are
