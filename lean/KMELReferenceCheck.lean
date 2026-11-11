@@ -3,28 +3,49 @@ import Std.Data.HashMap
 import Std.Data.HashSet
 import ContextCalculus.ALCCommonSourceRecognizer
 import ContextCalculus.KMConcreteWorkerAdapters
+import ContextCalculus.SparseTaxonomy
 
 /-!
 # Executable EL and ALC reference taxonomy stage (`km-el-reference`)
 
-Command-line wrapper over `KMConcreteWorkerAdapters.elReferenceExecution` and
-`KMConcreteWorkerAdapters.alcReferenceExecution` for the common clause-stream
-JSON format.
+Command-line wrapper over `SparseTaxonomy.sparseElReference` and
+`SparseTaxonomy.sparseAlcReference` for the common clause-stream JSON format.
+`SparseTaxonomy.sparseElReference_agrees` and
+`SparseTaxonomy.sparseAlcReference_agrees` prove that the dense expansion of
+each sparse answer is exactly the publication of the v1.6.0 executions
+`KMConcreteWorkerAdapters.elReferenceExecution` and
+`KMConcreteWorkerAdapters.alcReferenceExecution`, so every v1.6.0 theorem about
+those executions covers what this binary prints.
 
 Supports `--procedure el|alc|el-then-alc` (default `el-then-alc`) and
 `--recognize-only`:
-- In `el-then-alc` mode, `elReferenceExecution.run` runs first; if it declines,
+- In `el-then-alc` mode, `sparseElReference` runs first; if it declines,
   the ALC reference stage runs next, matching the stage order of
   `KMSupervisorInstance.kmSupervisor_complete_on_EL_or_ALC`.
-- Before evaluating `alcReferenceExecution.run` (which enumerates candidate
+- Before evaluating `sparseAlcReference` (which enumerates candidate
   types over `Fin recognized.conceptCount`), the binary enforces a runtime
   concept-count budget from `KM_ALC_REFERENCE_MAX_CONCEPTS` (default `16`),
   declining with exit code `3` and stderr reason
   `alc budget: N concept names` when `recognized.conceptCount` exceeds the
   limit. This budget is a runtime resource bound outside the Lean completeness
   proof.
-- Any `.publish` outcome is rechecked with `requestedExactAccept` before
-  emitting the output JSON.
+- The publishing function `publishSparse` takes a proof of
+  `RequestedCorrect source t.dense` (from `sparseElReference_correct` or
+  `sparseAlcReference_correct`), so its type records that the printed
+  taxonomy is correct for the exact requested source.  v1.6.0 rechecked every
+  publication at run time with `requestedExactAccept`; on the computed answer
+  that recheck was a no-op by construction (it recomputed the same closure and
+  compared the dense matrix with itself).  The theorems replace it, and the
+  binary no longer builds the dense matrix at all.
+
+Output (`format` `sparse-v1`), streamed row by row:
+`{"format":"sparse-v1","named":[...],"procedure":"el","rows":[{"sub":"A","unsat":false,"sups":["A","B"]},...]}`.
+A row denotes the bits `bit sup = unsat || sup ∈ sups` (`SparseRow.bit`);
+`SparseTaxonomy.dense` is the dense answer it stands for.
+
+Exit codes: `0` publish (or `recognised`), `2` unreadable input file
+(`failed to read <path>: ...`), invalid JSON or invalid input, `3` decline,
+`4` any later IO error (`io error: ...`, for example a failed stdout write).
 -/
 
 open Lean
@@ -441,35 +462,40 @@ def fastAlcPrecheck (source : RequestedTaxonomySource) : Option Nat := do
       failure
   pure cSet.size
 
-private partial def writeCellsLoop (stdout : IO.FS.Stream) (encodedNames : Array String)
-    (first : Bool) (chunkAcc : String) (chunkCount : Nat) : List TaxonomyCell → IO Unit
+/-- Stream `items` to stdout as comma-separated JSON fragments, a chunk of at
+most 4096 items at a time, never building the whole output string. -/
+private partial def writeChunked {α : Type} (stdout : IO.FS.Stream)
+    (render : α → String) (first : Bool) (chunkAcc : String) (chunkCount : Nat) :
+    List α → IO Unit
   | [] => do
     if !chunkAcc.isEmpty then
       stdout.putStr chunkAcc
-  | cell :: rest => do
-    let subStr := encodedNames[cell.sub]?.getD (toString cell.sub)
-    let supStr := encodedNames[cell.sup]?.getD (toString cell.sup)
-    let ansStr := if cell.answer then "true" else "false"
+  | item :: rest => do
     let sep := if first then "" else ","
-    let item := s!"{sep}\{\"answer\":{ansStr},\"sub\":{subStr},\"sup\":{supStr}}"
-    let chunkAcc' := chunkAcc ++ item
+    let chunkAcc' := chunkAcc ++ sep ++ render item
     let chunkCount' := chunkCount + 1
     if chunkCount' >= 4096 then
       stdout.putStr chunkAcc'
-      writeCellsLoop stdout encodedNames false "" 0 rest
+      writeChunked stdout render false "" 0 rest
     else
-      writeCellsLoop stdout encodedNames false chunkAcc' chunkCount' rest
+      writeChunked stdout render false chunkAcc' chunkCount' rest
 
-def writeTaxonomyJson (procName : String) (answer : TaxonomyAnswer)
+/-- Print a sparse taxonomy as `sparse-v1` JSON, streamed row by row. -/
+def writeSparseJson (procName : String) (t : SparseTaxonomy.SparseTaxonomy)
     (concepts : Interner) : IO Unit := do
   let stdout ← IO.getStdout
   let encodedNames : Array String := concepts.names.map fun s => (Json.str s).compress
   let nameOf (id : Nat) : String := encodedNames[id]?.getD (toString id)
-  let namedStr := String.intercalate "," (answer.named.map nameOf)
+  let renderRow (row : SparseTaxonomy.SparseRow) : String :=
+    let unsatStr := if row.unsat then "true" else "false"
+    let supsStr := String.intercalate "," (row.sups.map nameOf)
+    s!"\{\"sub\":{nameOf row.sub},\"unsat\":{unsatStr},\"sups\":[{supsStr}]}"
   let procStr := (Json.str procName).compress
-  stdout.putStr "{\"cells\":["
-  writeCellsLoop stdout encodedNames true "" 0 answer.cells
-  stdout.putStr s!"],\"named\":[{namedStr}],\"procedure\":{procStr}}\n"
+  stdout.putStr "{\"format\":\"sparse-v1\",\"named\":["
+  writeChunked stdout nameOf true "" 0 t.named
+  stdout.putStr s!"],\"procedure\":{procStr},\"rows\":["
+  writeChunked stdout renderRow true "" 0 t.rows
+  stdout.putStr "]}\n"
   stdout.flush
 
 inductive Procedure where
@@ -523,11 +549,13 @@ def getAlcMaxConcepts : IO Nat := do
     | some n => pure n
     | none => pure defaultAlcMaxConcepts
 
-private def publishChecked (procName : String) (source : RequestedTaxonomySource)
-    (published : Publication RequestedTaxonomySource TaxonomyAnswer KMExactEvidence)
-    (_haccepted : requestedExactAccept source published.answer published.evidence = true)
+/-- Publish a sparse taxonomy.  The proof argument records in the type that
+the printed taxonomy is correct for the exact requested source. -/
+private def publishSparse (procName : String) (source : RequestedTaxonomySource)
+    (t : SparseTaxonomy.SparseTaxonomy)
+    (_hcorrect : RequestedCorrect source t.dense)
     (concepts : Interner) : IO UInt32 := do
-  writeTaxonomyJson procName published.answer concepts
+  writeSparseJson procName t concepts
   return 0
 
 private def runAlcStage (recognizeOnly : Bool) (maxConcepts : Nat)
@@ -555,17 +583,17 @@ private def runAlcStage (recognizeOnly : Bool) (maxConcepts : Nat)
           IO.println "recognised"
           return 0
         else
-          match hrun : alcReferenceExecution.run source with
-          | .publish published =>
-            publishChecked "alc" source published
-              (alcReferenceExecution.accepted source published hrun) concepts
-          | .defer | .timeout | .error =>
+          match hrun : SparseTaxonomy.sparseAlcReference source with
+          | some t =>
+            publishSparse "alc" source t
+              (SparseTaxonomy.sparseAlcReference_correct source t hrun) concepts
+          | none =>
             let reason := explainFirstAlcRejection source
             IO.eprintln s!"not recognised: {reason}"
             return 3
 
-def runFile (recognizeOnly : Bool) (proc : Procedure) (path : String) : IO UInt32 := do
-  let raw ← IO.FS.readFile path
+/-- Run one procedure on the already read input text. -/
+def runSource (recognizeOnly : Bool) (proc : Procedure) (raw : String) : IO UInt32 := do
   let json ← match Json.parse raw with
     | .ok value => pure value
     | .error err =>
@@ -591,11 +619,11 @@ def runFile (recognizeOnly : Bool) (proc : Procedure) (path : String) : IO UInt3
         IO.eprintln s!"not recognised: {reason}"
         return 3
     else
-      match hrun : elReferenceExecution.run source with
-      | .publish published =>
-        publishChecked "el" source published
-          (elReferenceExecution.accepted source published hrun) concepts
-      | .defer | .timeout | .error =>
+      match hrun : SparseTaxonomy.sparseElReference source with
+      | some t =>
+        publishSparse "el" source t
+          (SparseTaxonomy.sparseElReference_correct source t hrun) concepts
+      | none =>
         let reason := explainFirstRejection source
         IO.eprintln s!"not recognised: {reason}"
         return 3
@@ -612,13 +640,28 @@ def runFile (recognizeOnly : Bool) (proc : Procedure) (path : String) : IO UInt3
         let maxConcepts ← getAlcMaxConcepts
         runAlcStage true maxConcepts source concepts
     else
-      match hrun : elReferenceExecution.run source with
-      | .publish published =>
-        publishChecked "el" source published
-          (elReferenceExecution.accepted source published hrun) concepts
-      | .defer | .timeout | .error =>
+      match hrun : SparseTaxonomy.sparseElReference source with
+      | some t =>
+        publishSparse "el" source t
+          (SparseTaxonomy.sparseElReference_correct source t hrun) concepts
+      | none =>
         let maxConcepts ← getAlcMaxConcepts
         runAlcStage false maxConcepts source concepts
+
+/-- Read the input file, then run the procedure.  Only a failed read reports
+`failed to read` (exit 2); an IO error raised afterwards, for example a failed
+stdout write, reports `io error` (exit 4). -/
+def runFile (recognizeOnly : Bool) (proc : Procedure) (path : String) : IO UInt32 := do
+  match ← (IO.FS.readFile path).toBaseIO with
+  | .error err =>
+    IO.eprintln s!"failed to read {path}: {err}"
+    return 2
+  | .ok raw =>
+    match ← (runSource recognizeOnly proc raw).toBaseIO with
+    | .ok code => return code
+    | .error err =>
+      IO.eprintln s!"io error: {err}"
+      return 4
 
 end KMELReferenceCheck
 
@@ -628,8 +671,4 @@ def main (args : List String) : IO UInt32 := do
     IO.eprintln "usage: km-el-reference [--recognize-only] [--procedure el|alc|el-then-alc] <clauses.json>"
     return 2
   | some (recognizeOnly, proc, path) =>
-    try
-      KMELReferenceCheck.runFile recognizeOnly proc path
-    catch err =>
-      IO.eprintln s!"failed to read {path}: {err}"
-      pure (2 : UInt32)
+    KMELReferenceCheck.runFile recognizeOnly proc path

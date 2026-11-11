@@ -85,6 +85,7 @@ trap cleanup_checker EXIT
         ContextCalculus.ELReferenceSaturation \
         ContextCalculus.ALCCommonSourceRecognizer \
         ContextCalculus.ALCReferenceSaturation \
+        ContextCalculus.SparseTaxonomy \
         ContextCalculus.KMSupervisorInstance \
         km-automatic-routing-check \
         km-el-reference 2>&1 | tee "$surface_log"
@@ -400,6 +401,13 @@ for theorem in \
     KMConcreteWorkerAdapters.elReferenceAccept_sound \
     KMConcreteWorkerAdapters.alcReferenceExecution_completeAt \
     KMConcreteWorkerAdapters.alcReferenceAccept_sound \
+    SparseTaxonomy.sparseReferenceAnswer_dense \
+    SparseTaxonomy.ofMatrix_dense \
+    SparseTaxonomy.sparseElReference_agrees \
+    SparseTaxonomy.sparseAlcReference_agrees \
+    SparseTaxonomy.sparseElReference_correct \
+    SparseTaxonomy.sparseAlcReference_correct \
+    SparseTaxonomy.sparseElReference_complete \
     ELReference.referenceBit_exact \
     ELCommonSourceRecognizer.recognizeEL_entails_iff \
     ALCReference.alcBit_exact \
