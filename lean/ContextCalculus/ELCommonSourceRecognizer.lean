@@ -43,6 +43,15 @@ fresh names above every identifier of the source and the requested list.  A
 fresh distinguished name is conservative: a model of the source extends to a
 model interpreting the fresh names as the total and the empty concept, and the
 equivalence `recognizeEL_entails_iff` holds for every pair of requested names.
+
+Run-time implementations (v1.6.1): the list functions that recurse once per
+clause or item (`parseSource`, `maxNatList`, `compileDirect`,
+`collectRoleHalves`, `collectFillerHalves`, `mergeHalvesFuel`, `mergePairs`,
+`zipSortedHalves`) are structural and not tail-recursive, so on millions of
+clauses they overflow the reference stage's 256 MiB stack.  Each has a
+tail-recursive `…TR` twin with an `Array` accumulator (or a `filterMap`/`foldl`)
+and an `@[csimp]` theorem `foo = fooTR`: compiled code runs the twin, every
+proof keeps reasoning about the original definition.
 -/
 
 namespace ContextCalculus.ELCommonSourceRecognizer
@@ -653,6 +662,31 @@ theorem parseSource_valid_iff {Domain : Type} {source : List FCL} {items : List 
       simp only [List.mem_cons, forall_eq_or_imp]
       exact and_congr (hev.valid_iff M) (ih htail)
 
+/-- Tail-recursive `parseSource`: one pass with an `Array` accumulator. -/
+def parseSourceTR (source : List FCL) : Option (List ParsedItem) :=
+  go source #[]
+where
+  go : List FCL → Array ParsedItem → Option (List ParsedItem)
+    | [], acc => some acc.toList
+    | clause :: rest, acc =>
+        match classifyClause clause with
+        | some item => go rest (acc.push item)
+        | none => none
+
+private theorem parseSourceTR_go (source : List FCL) (acc : Array ParsedItem) :
+    parseSourceTR.go source acc = (parseSource source).map (acc.toList ++ ·) := by
+  induction source generalizing acc with
+  | nil => simp [parseSourceTR.go, parseSource]
+  | cons clause rest ih =>
+      simp only [parseSourceTR.go, parseSource]
+      cases classifyClause clause <;> cases h : parseSource rest <;> simp [ih, h]
+
+@[csimp] theorem parseSource_eq_parseSourceTR : @parseSource = @parseSourceTR := by
+  funext source
+  simp [parseSourceTR, parseSourceTR_go]
+
+#print axioms parseSource_eq_parseSourceTR
+
 /-- Maximum of a list of natural numbers (0 on empty). -/
 def maxNatList : List Nat → Nat
   | [] => 0
@@ -666,6 +700,21 @@ theorem le_maxNatList {x : Nat} {xs : List Nat} (hx : x ∈ xs) :
       rcases List.mem_cons.mp hx with rfl | hmem
       · exact Nat.le_max_left _ _
       · exact Nat.le_trans (ih hmem) (Nat.le_max_right _ _)
+
+/-- Tail-recursive `maxNatList`. -/
+def maxNatListTR (xs : List Nat) : Nat := xs.foldl max 0
+
+private theorem foldl_max_eq (xs : List Nat) (acc : Nat) :
+    xs.foldl max acc = max acc (maxNatList xs) := by
+  induction xs generalizing acc with
+  | nil => simp [maxNatList]
+  | cons x xs ih => simp [maxNatList, ih, Nat.max_assoc]
+
+@[csimp] theorem maxNatList_eq_maxNatListTR : @maxNatList = @maxNatListTR := by
+  funext xs
+  simp [maxNatListTR, foldl_max_eq]
+
+#print axioms maxNatList_eq_maxNatListTR
 
 /-- A fresh identifier strictly greater than every requested or item concept. -/
 def freshBase (named : List Nat) (items : List ParsedItem) : Nat :=
@@ -800,6 +849,63 @@ def compileDirect (top bottom : Nat) (seenTop : Bool) (nextAux : Nat) :
       | .nf6 r s => .nf6 r s :: compileDirect top bottom seenTop nextAux' rest
       | .nf7 r s t => .nf7 r s t :: compileDirect top bottom seenTop nextAux' rest
       | .reflexive r => .reflexive r :: compileDirect top bottom seenTop nextAux' rest
+
+/-- The clauses `compileDirect` emits for one item, and the updated `seenTop`. -/
+def compileItem (top bottom : Nat) (seenTop : Bool) (nextAux : Nat) :
+    ParsedItem → List (ELCompletion.Clause Nat Nat) × Bool
+  | .topCand a => (if seenTop then [.nf1 top a] else [], true)
+  | .nf5 a => ([.nf5 a], seenTop)
+  | .nf1 a b => ([.nf1 a b], seenTop)
+  | .nf2 a b c => ([.nf2 a b c], seenTop)
+  | .nf2Bottom a b => ([.nf2 a b bottom], seenTop)
+  | .naryConj a1 a2 a3 rem d => (compileConjChain a1 a2 (a3 :: rem) d nextAux, seenTop)
+  | .naryConjBottom a1 a2 a3 rem =>
+      (compileConjChain a1 a2 (a3 :: rem) bottom nextAux, seenTop)
+  | .nf3Role _ _ _ => ([], seenTop)
+  | .nf3Filler _ _ _ => ([], seenTop)
+  | .nf4 r b c => ([.nf4 r b c], seenTop)
+  | .nf4Top r c => ([.nf4 r top c], seenTop)
+  | .nf6 r s => ([.nf6 r s], seenTop)
+  | .nf7 r s t => ([.nf7 r s t], seenTop)
+  | .reflexive r => ([.reflexive r], seenTop)
+
+private theorem compileDirect_cons (top bottom : Nat) (seenTop : Bool) (nextAux : Nat)
+    (item : ParsedItem) (rest : List ParsedItem) :
+    compileDirect top bottom seenTop nextAux (item :: rest) =
+      (compileItem top bottom seenTop nextAux item).1 ++
+        compileDirect top bottom (compileItem top bottom seenTop nextAux item).2
+          (nextAux + itemAuxCount item) rest := by
+  cases item <;> simp [compileDirect, compileItem]
+  case topCand a => cases seenTop <;> simp
+
+/-- Tail-recursive `compileDirect`: one pass with an `Array` accumulator. -/
+def compileDirectTR (top bottom : Nat) (seenTop : Bool) (nextAux : Nat)
+    (items : List ParsedItem) : List (ELCompletion.Clause Nat Nat) :=
+  go seenTop nextAux items #[]
+where
+  go (seenTop : Bool) (nextAux : Nat) :
+      List ParsedItem → Array (ELCompletion.Clause Nat Nat) →
+        List (ELCompletion.Clause Nat Nat)
+    | [], acc => acc.toList
+    | item :: rest, acc =>
+        let out := compileItem top bottom seenTop nextAux item
+        go out.2 (nextAux + itemAuxCount item) rest (acc ++ out.1)
+
+private theorem compileDirectTR_go (top bottom : Nat) (seenTop : Bool) (nextAux : Nat)
+    (items : List ParsedItem) (acc : Array (ELCompletion.Clause Nat Nat)) :
+    compileDirectTR.go top bottom seenTop nextAux items acc =
+      acc.toList ++ compileDirect top bottom seenTop nextAux items := by
+  induction items generalizing seenTop nextAux acc with
+  | nil => simp [compileDirectTR.go, compileDirect]
+  | cons item rest ih =>
+      simp [compileDirectTR.go, ih, compileDirect_cons]
+
+@[csimp] theorem compileDirect_eq_compileDirectTR :
+    @compileDirect = @compileDirectTR := by
+  funext top bottom seenTop nextAux items
+  simp [compileDirectTR, compileDirectTR_go]
+
+#print axioms compileDirect_eq_compileDirectTR
 
 /-- Direct normal-form clause corresponding to a non-`topCand`, non-`nf3`, non-nary item. -/
 def directClauseOf (top bottom : Nat) : ParsedItem → Option (ELCompletion.Clause Nat Nat)
@@ -1419,6 +1525,43 @@ theorem mem_collectFillerHalves {items : List ParsedItem} {f a b : Nat} :
           · left; exact ⟨rfl, rfl, rfl⟩
           · right; exact h
 
+/-- The `(fn, sub, role)` half of an `nf3Role` item. -/
+def roleHalfOf : ParsedItem → Option (Nat × Nat × Nat)
+  | .nf3Role a r f => some (f, a, r)
+  | _ => none
+
+/-- The `(fn, sub, filler)` half of an `nf3Filler` item. -/
+def fillerHalfOf : ParsedItem → Option (Nat × Nat × Nat)
+  | .nf3Filler a b f => some (f, a, b)
+  | _ => none
+
+/-- `collectRoleHalves` as a `filterMap` (tail-recursive at run time). -/
+def collectRoleHalvesTR (items : List ParsedItem) : List (Nat × Nat × Nat) :=
+  items.filterMap roleHalfOf
+
+/-- `collectFillerHalves` as a `filterMap` (tail-recursive at run time). -/
+def collectFillerHalvesTR (items : List ParsedItem) : List (Nat × Nat × Nat) :=
+  items.filterMap fillerHalfOf
+
+@[csimp] theorem collectRoleHalves_eq_collectRoleHalvesTR :
+    @collectRoleHalves = @collectRoleHalvesTR := by
+  funext items
+  induction items with
+  | nil => rfl
+  | cons item rest ih =>
+      cases item <;> simp [collectRoleHalves, collectRoleHalvesTR, roleHalfOf, ih]
+
+@[csimp] theorem collectFillerHalves_eq_collectFillerHalvesTR :
+    @collectFillerHalves = @collectFillerHalvesTR := by
+  funext items
+  induction items with
+  | nil => rfl
+  | cons item rest ih =>
+      cases item <;> simp [collectFillerHalves, collectFillerHalvesTR, fillerHalfOf, ih]
+
+#print axioms collectRoleHalves_eq_collectRoleHalvesTR
+#print axioms collectFillerHalves_eq_collectFillerHalvesTR
+
 /-- Look up a function symbol in a list of `(fn, sub, payload)` triples. -/
 def lookupHalf (f : Nat) : List (Nat × Nat × Nat) → Option (Nat × Nat)
   | [] => none
@@ -1475,6 +1618,43 @@ def mergeHalvesFuel :
       else
         y :: mergeHalvesFuel fuel (x :: xs) ys
 
+/-- Tail-recursive `mergeHalvesFuel`. -/
+def mergeHalvesFuelTR (fuel : Nat) (xs ys : List (Nat × Nat × Nat)) :
+    List (Nat × Nat × Nat) :=
+  go fuel xs ys #[]
+where
+  go : Nat → List (Nat × Nat × Nat) → List (Nat × Nat × Nat) →
+      Array (Nat × Nat × Nat) → List (Nat × Nat × Nat)
+    | _, [], ys, acc => acc.toList ++ ys
+    | _, xs, [], acc => acc.toList ++ xs
+    | 0, xs, ys, acc => acc.toList ++ (xs ++ ys)
+    | fuel + 1, x :: xs, y :: ys, acc =>
+        if halfLe x y then go fuel xs (y :: ys) (acc.push x)
+        else go fuel (x :: xs) ys (acc.push y)
+
+private theorem mergeHalvesFuelTR_go (fuel : Nat) (xs ys : List (Nat × Nat × Nat))
+    (acc : Array (Nat × Nat × Nat)) :
+    mergeHalvesFuelTR.go fuel xs ys acc = acc.toList ++ mergeHalvesFuel fuel xs ys := by
+  induction fuel generalizing xs ys acc with
+  | zero =>
+      cases xs <;> cases ys <;> simp [mergeHalvesFuelTR.go, mergeHalvesFuel]
+  | succ fuel ih =>
+      cases xs with
+      | nil => simp [mergeHalvesFuelTR.go, mergeHalvesFuel]
+      | cons x xs =>
+          cases ys with
+          | nil => simp [mergeHalvesFuelTR.go, mergeHalvesFuel]
+          | cons y ys =>
+              simp only [mergeHalvesFuelTR.go, mergeHalvesFuel]
+              split <;> simp [ih]
+
+@[csimp] theorem mergeHalvesFuel_eq_mergeHalvesFuelTR :
+    @mergeHalvesFuel = @mergeHalvesFuelTR := by
+  funext fuel xs ys
+  simp [mergeHalvesFuelTR, mergeHalvesFuelTR_go]
+
+#print axioms mergeHalvesFuel_eq_mergeHalvesFuelTR
+
 /-- Merge two sorted `nf3` half lists. -/
 def mergeHalves (xs ys : List (Nat × Nat × Nat)) : List (Nat × Nat × Nat) :=
   mergeHalvesFuel (xs.length + ys.length) xs ys
@@ -1484,6 +1664,31 @@ def mergePairs : List (List (Nat × Nat × Nat)) → List (List (Nat × Nat × N
   | [] => []
   | [xs] => [xs]
   | xs :: ys :: rest => mergeHalves xs ys :: mergePairs rest
+
+/-- Tail-recursive `mergePairs`. -/
+def mergePairsTR (runs : List (List (Nat × Nat × Nat))) :
+    List (List (Nat × Nat × Nat)) :=
+  go runs #[]
+where
+  go : List (List (Nat × Nat × Nat)) → Array (List (Nat × Nat × Nat)) →
+      List (List (Nat × Nat × Nat))
+    | [], acc => acc.toList
+    | [xs], acc => (acc.push xs).toList
+    | xs :: ys :: rest, acc => go rest (acc.push (mergeHalves xs ys))
+
+private theorem mergePairsTR_go (runs : List (List (Nat × Nat × Nat)))
+    (acc : Array (List (Nat × Nat × Nat))) :
+    mergePairsTR.go runs acc = acc.toList ++ mergePairs runs := by
+  induction runs, acc using mergePairsTR.go.induct with
+  | case1 acc => simp [mergePairsTR.go, mergePairs]
+  | case2 xs acc => simp [mergePairsTR.go, mergePairs]
+  | case3 xs ys rest acc ih => simp [mergePairsTR.go, mergePairs, ih]
+
+@[csimp] theorem mergePairs_eq_mergePairsTR : @mergePairs = @mergePairsTR := by
+  funext runs
+  simp [mergePairsTR, mergePairsTR_go]
+
+#print axioms mergePairs_eq_mergePairsTR
 
 /-- Repeatedly merge runs using structural recursion on fuel. -/
 def mergeAllRuns : Nat → List (List (Nat × Nat × Nat)) → List (Nat × Nat × Nat)
@@ -1574,6 +1779,33 @@ def zipSortedHalves :
       List (ELCompletion.Clause Nat Nat)
   | (_, a, r) :: rs, (_, _, b) :: fs => .nf3 a r b :: zipSortedHalves rs fs
   | _, _ => []
+
+/-- Tail-recursive `zipSortedHalves`. -/
+def zipSortedHalvesTR (rs fs : List (Nat × Nat × Nat)) :
+    List (ELCompletion.Clause Nat Nat) :=
+  go rs fs #[]
+where
+  go : List (Nat × Nat × Nat) → List (Nat × Nat × Nat) →
+      Array (ELCompletion.Clause Nat Nat) → List (ELCompletion.Clause Nat Nat)
+    | (_, a, r) :: rs, (_, _, b) :: fs, acc => go rs fs (acc.push (.nf3 a r b))
+    | _, _, acc => acc.toList
+
+private theorem zipSortedHalvesTR_go (rs fs : List (Nat × Nat × Nat))
+    (acc : Array (ELCompletion.Clause Nat Nat)) :
+    zipSortedHalvesTR.go rs fs acc = acc.toList ++ zipSortedHalves rs fs := by
+  induction rs generalizing fs acc with
+  | nil => simp [zipSortedHalvesTR.go, zipSortedHalves]
+  | cons r rs ih =>
+      cases fs with
+      | nil => simp [zipSortedHalvesTR.go, zipSortedHalves]
+      | cons f fs => simp [zipSortedHalvesTR.go, zipSortedHalves, ih]
+
+@[csimp] theorem zipSortedHalves_eq_zipSortedHalvesTR :
+    @zipSortedHalves = @zipSortedHalvesTR := by
+  funext rs fs
+  simp [zipSortedHalvesTR, zipSortedHalvesTR_go]
+
+#print axioms zipSortedHalves_eq_zipSortedHalvesTR
 
 /-- Validate and pair `nf3` role and filler halves into `.nf3` clauses. -/
 def buildNF3Clauses (roles fillers : List (Nat × Nat × Nat)) :

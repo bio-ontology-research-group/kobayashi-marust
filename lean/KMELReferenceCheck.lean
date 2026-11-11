@@ -69,6 +69,33 @@ def Interner.intern (it : Interner) (name : String) : Nat × Interner :=
     let id := it.names.size
     (id, { toId := it.toId.insert name id, names := it.names.push name })
 
+/-! ### Phase timing (`KM_REFERENCE_TIMING=1`) -/
+
+/-- Evaluate `f ()` at this point of the `IO` sequence.  `noinline` keeps the
+compiler from moving the pure computation past the surrounding clock reads;
+the subtype records which value was computed, so callers keep the equation
+their proofs need. -/
+@[noinline] def evalNow {α : Type} (f : Unit → α) : BaseIO { a : α // a = f () } :=
+  pure ⟨f (), rfl⟩
+
+/-- Whether `KM_REFERENCE_TIMING=1` asks for phase timing on stderr. -/
+def timingEnabled : IO Bool := do
+  return (← IO.getEnv "KM_REFERENCE_TIMING") == some "1"
+
+/-- Print one phase line `KM_REFERENCE_TIMING phase=<name> ms=<ms>` to stderr. -/
+def reportPhase (enabled : Bool) (name : String) (t0 : Nat) : IO Unit := do
+  if enabled then
+    let t1 ← IO.monoNanosNow
+    IO.eprintln s!"KM_REFERENCE_TIMING phase={name} ms={(t1 - t0) / 1000000}"
+
+/-- Evaluate `f ()` as one timed phase. -/
+def timedPhase {α : Type} (enabled : Bool) (name : String) (f : Unit → α) :
+    IO { a : α // a = f () } := do
+  let t0 ← IO.monoNanosNow
+  let r ← evalNow f
+  reportPhase enabled name t0
+  return r
+
 private def objField (json : Json) (name : String) : Except String Json :=
   json.getObjVal? name
 
@@ -558,9 +585,59 @@ private def publishSparse (procName : String) (source : RequestedTaxonomySource)
   writeSparseJson procName t concepts
   return 0
 
-private def runAlcStage (recognizeOnly : Bool) (maxConcepts : Nat)
+/-- The body of `SparseTaxonomy.sparseReferenceAnswer` with its closure passed
+in, so the binary can time the closure and the readout separately. -/
+def sparseAnswerOfClosure (c : ELReference.State)
+    (recognized : ELCommonSourceRecognizer.RecognizedEL) (named : List Nat) :
+    SparseTaxonomy.SparseTaxonomy :=
+  let index := SparseTaxonomy.superIndex (Std.TreeSet.ofList named) c.subs
+  { named, rows := named.map (SparseTaxonomy.sparseRowOf c recognized.bottom index) }
+
+theorem sparseAnswerOfClosure_closure
+    (recognized : ELCommonSourceRecognizer.RecognizedEL) (named : List Nat) :
+    sparseAnswerOfClosure
+        (ELReference.closure recognized.top recognized.bottom named recognized.ontology)
+        recognized named =
+      SparseTaxonomy.sparseReferenceAnswer recognized named := rfl
+
+/-- `SparseTaxonomy.sparseElReference source`, computed phase by phase
+(recognition, closure, readout) with one timing line per phase.  The result
+carries the equation `sparseElReference source = some t` that publication
+needs. -/
+def runElPhases (timing : Bool) (source : RequestedTaxonomySource) :
+    IO (Option { t : SparseTaxonomy.SparseTaxonomy //
+      SparseTaxonomy.sparseElReference source = some t }) := do
+  let ⟨recOpt, hrecEq⟩ ← timedPhase timing "recognise"
+    (fun _ => recognizeEL source.named source.ontology)
+  match recOpt, hrecEq with
+  | none, _ => return none
+  | some recognized, hrec =>
+    if hnd : ELReference.nodupFast source.named = true then
+      let ⟨c, hc⟩ ← timedPhase timing "closure" (fun _ =>
+        ELReference.closure recognized.top recognized.bottom source.named
+          recognized.ontology)
+      let ⟨t, ht⟩ ← timedPhase timing "readout"
+        (fun _ => sparseAnswerOfClosure c recognized source.named)
+      return some ⟨t, by
+        subst ht hc
+        rw [sparseAnswerOfClosure_closure]
+        simp [SparseTaxonomy.sparseElReference, ← hrec, hnd]⟩
+    else
+      return none
+
+/-- Publish with an `output` timing line. -/
+private def publishTimed (timing : Bool) (procName : String)
+    (source : RequestedTaxonomySource) (t : SparseTaxonomy.SparseTaxonomy)
+    (hcorrect : RequestedCorrect source t.dense) (concepts : Interner) : IO UInt32 := do
+  let t0 ← IO.monoNanosNow
+  let code ← publishSparse procName source t hcorrect concepts
+  reportPhase timing "output" t0
+  return code
+
+private def runAlcStage (timing : Bool) (recognizeOnly : Bool) (maxConcepts : Nat)
     (source : RequestedTaxonomySource) (concepts : Interner) : IO UInt32 := do
-  match fastAlcPrecheck source with
+  let ⟨pre, _⟩ ← timedPhase timing "alc-precheck" (fun _ => fastAlcPrecheck source)
+  match pre with
   | none =>
     let reason := explainFirstAlcRejection source
     IO.eprintln s!"not recognised: {reason}"
@@ -570,7 +647,9 @@ private def runAlcStage (recognizeOnly : Bool) (maxConcepts : Nat)
       IO.eprintln s!"alc budget: {preCount} concept names"
       return 3
     else
-      match ALCCommonSourceRecognizer.recognizeALC source.named source.ontology with
+      let ⟨recOpt, _⟩ ← timedPhase timing "alc-recognise"
+        (fun _ => ALCCommonSourceRecognizer.recognizeALC source.named source.ontology)
+      match recOpt with
       | none =>
         let reason := explainFirstAlcRejection source
         IO.eprintln s!"not recognised: {reason}"
@@ -583,23 +662,28 @@ private def runAlcStage (recognizeOnly : Bool) (maxConcepts : Nat)
           IO.println "recognised"
           return 0
         else
-          match hrun : SparseTaxonomy.sparseAlcReference source with
-          | some t =>
-            publishSparse "alc" source t
-              (SparseTaxonomy.sparseAlcReference_correct source t hrun) concepts
-          | none =>
+          let ⟨res, hres⟩ ← timedPhase timing "alc-reference"
+            (fun _ => SparseTaxonomy.sparseAlcReference source)
+          match res, hres with
+          | some t, hrun =>
+            publishTimed timing "alc" source t
+              (SparseTaxonomy.sparseAlcReference_correct source t hrun.symm) concepts
+          | none, _ =>
             let reason := explainFirstAlcRejection source
             IO.eprintln s!"not recognised: {reason}"
             return 3
 
 /-- Run one procedure on the already read input text. -/
-def runSource (recognizeOnly : Bool) (proc : Procedure) (raw : String) : IO UInt32 := do
-  let json ← match Json.parse raw with
+def runSource (timing : Bool) (recognizeOnly : Bool) (proc : Procedure) (raw : String) :
+    IO UInt32 := do
+  let ⟨jsonRes, _⟩ ← timedPhase timing "json" (fun _ => Json.parse raw)
+  let json ← match jsonRes with
     | .ok value => pure value
     | .error err =>
       IO.eprintln s!"invalid JSON: {err}"
       return 2
-  let (source, concepts) ← match parseSource json (!recognizeOnly) with
+  let ⟨sourceRes, _⟩ ← timedPhase timing "source" (fun _ => parseSource json (!recognizeOnly))
+  let (source, concepts) ← match sourceRes with
     | .ok value => pure value
     | .error err =>
       IO.eprintln s!"invalid EL reference input: {err}"
@@ -610,7 +694,9 @@ def runSource (recognizeOnly : Bool) (proc : Procedure) (raw : String) : IO UInt
   match proc with
   | .el =>
     if recognizeOnly then
-      match recognizeEL source.named source.ontology with
+      let ⟨recOpt, _⟩ ← timedPhase timing "recognise"
+        (fun _ => recognizeEL source.named source.ontology)
+      match recOpt with
       | some _ =>
         IO.println "recognised"
         return 0
@@ -619,9 +705,9 @@ def runSource (recognizeOnly : Bool) (proc : Procedure) (raw : String) : IO UInt
         IO.eprintln s!"not recognised: {reason}"
         return 3
     else
-      match hrun : SparseTaxonomy.sparseElReference source with
-      | some t =>
-        publishSparse "el" source t
+      match ← runElPhases timing source with
+      | some ⟨t, hrun⟩ =>
+        publishTimed timing "el" source t
           (SparseTaxonomy.sparseElReference_correct source t hrun) concepts
       | none =>
         let reason := explainFirstRejection source
@@ -629,39 +715,48 @@ def runSource (recognizeOnly : Bool) (proc : Procedure) (raw : String) : IO UInt
         return 3
   | .alc =>
     let maxConcepts ← getAlcMaxConcepts
-    runAlcStage recognizeOnly maxConcepts source concepts
+    runAlcStage timing recognizeOnly maxConcepts source concepts
   | .elThenAlc =>
     if recognizeOnly then
-      match recognizeEL source.named source.ontology with
+      let ⟨recOpt, _⟩ ← timedPhase timing "recognise"
+        (fun _ => recognizeEL source.named source.ontology)
+      match recOpt with
       | some _ =>
         IO.println "recognised"
         return 0
       | none =>
         let maxConcepts ← getAlcMaxConcepts
-        runAlcStage true maxConcepts source concepts
+        runAlcStage timing true maxConcepts source concepts
     else
-      match hrun : SparseTaxonomy.sparseElReference source with
-      | some t =>
-        publishSparse "el" source t
+      match ← runElPhases timing source with
+      | some ⟨t, hrun⟩ =>
+        publishTimed timing "el" source t
           (SparseTaxonomy.sparseElReference_correct source t hrun) concepts
       | none =>
         let maxConcepts ← getAlcMaxConcepts
-        runAlcStage false maxConcepts source concepts
+        runAlcStage timing false maxConcepts source concepts
 
 /-- Read the input file, then run the procedure.  Only a failed read reports
 `failed to read` (exit 2); an IO error raised afterwards, for example a failed
-stdout write, reports `io error` (exit 4). -/
+stdout write, reports `io error` (exit 4).  With `KM_REFERENCE_TIMING=1` every
+phase prints `KM_REFERENCE_TIMING phase=<name> ms=<ms>` to stderr, and the run
+ends with `phase=total`. -/
 def runFile (recognizeOnly : Bool) (proc : Procedure) (path : String) : IO UInt32 := do
+  let timing ← timingEnabled
+  let t0 ← IO.monoNanosNow
   match ← (IO.FS.readFile path).toBaseIO with
   | .error err =>
     IO.eprintln s!"failed to read {path}: {err}"
     return 2
   | .ok raw =>
-    match ← (runSource recognizeOnly proc raw).toBaseIO with
-    | .ok code => return code
-    | .error err =>
-      IO.eprintln s!"io error: {err}"
-      return 4
+    reportPhase timing "read" t0
+    let code ← match ← (runSource timing recognizeOnly proc raw).toBaseIO with
+      | .ok code => pure code
+      | .error err =>
+        IO.eprintln s!"io error: {err}"
+        pure 4
+    reportPhase timing "total" t0
+    return code
 
 end KMELReferenceCheck
 

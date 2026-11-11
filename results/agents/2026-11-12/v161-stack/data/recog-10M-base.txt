@@ -1,0 +1,4 @@
+
+Stack overflow detected. Aborting.
+Command terminated by signal 6
+130.63 s 33249112 KB exit=0

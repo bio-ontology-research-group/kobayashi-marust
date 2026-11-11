@@ -411,7 +411,18 @@ for theorem in \
     ELReference.referenceBit_exact \
     ELCommonSourceRecognizer.recognizeEL_entails_iff \
     ALCReference.alcBit_exact \
-    ALCCommonSourceRecognizer.recognizeALC_entails_iff
+    ALCCommonSourceRecognizer.recognizeALC_entails_iff \
+    ELCommonSourceRecognizer.parseSource_eq_parseSourceTR \
+    ELCommonSourceRecognizer.maxNatList_eq_maxNatListTR \
+    ELCommonSourceRecognizer.compileDirect_eq_compileDirectTR \
+    ELCommonSourceRecognizer.collectRoleHalves_eq_collectRoleHalvesTR \
+    ELCommonSourceRecognizer.collectFillerHalves_eq_collectFillerHalvesTR \
+    ELCommonSourceRecognizer.mergeHalvesFuel_eq_mergeHalvesFuelTR \
+    ELCommonSourceRecognizer.mergePairs_eq_mergePairsTR \
+    ELCommonSourceRecognizer.zipSortedHalves_eq_zipSortedHalvesTR \
+    ALCCommonSourceRecognizer.listMax_eq_listMaxTR \
+    ALCCommonSourceRecognizer.buildIndexedClauses_eq_buildIndexedClausesTR \
+    ALCCommonSourceRecognizer.assignFnNames_eq_assignFnNamesTR
 do
     grep -q "$theorem" "$surface_log" || {
         echo "missing routing certification-surface axiom audit: $theorem" >&2

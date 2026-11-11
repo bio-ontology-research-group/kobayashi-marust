@@ -4506,6 +4506,16 @@ fn try_reference_stage(
             return None;
         }
     };
+    if timing {
+        // With `KM_REFERENCE_TIMING=1` the checker prints one
+        // `KM_REFERENCE_TIMING phase=<name> ms=<ms>` line per finished phase
+        // (also before a budget kill); pass them on.
+        for line in String::from_utf8_lossy(&output.stderr).lines() {
+            if line.starts_with("KM_REFERENCE_TIMING ") {
+                eprintln!("KM_TIMING {line}");
+            }
+        }
+    }
     if timed_out {
         log_declined("budget");
         return None;
