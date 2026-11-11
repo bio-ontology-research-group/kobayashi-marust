@@ -33,6 +33,14 @@ The theorem `recognizeALC_entails_iff` proves that for every recognised source
 and every pair of concept identifiers mapped to `i, j : Fin r.conceptCount`,
 `KMCommonRoutingSource.Entails source sub sup` is equivalent to
 `CBALCEncoding.EntailsSub r.ontology i j`.
+
+Run-time implementations (v1.6.1): `listMax`, `buildIndexedClauses` and
+`assignFnNames` recurse once per clause and are not tail-recursive; each has a
+tail-recursive `…TR` twin and an `@[csimp]` theorem, so compiled code runs the
+twin and every proof keeps reasoning about the original definition.  The
+recogniser stays quadratic in the clause count (`decide` of `List.Nodup` on the
+Skolem halves and of `ALCOntologyVariant`), so on large sources it is bound by
+time, not by stack depth.
 -/
 
 namespace ContextCalculus.ALCCommonSourceRecognizer
@@ -112,6 +120,21 @@ theorem le_listMax_of_mem {xs : List Nat} {a : Nat} (h : a ∈ xs) :
       rcases List.mem_cons.mp h with rfl | hmem
       · exact Nat.le_max_left _ _
       · exact Nat.le_trans (ih hmem) (Nat.le_max_right _ _)
+
+/-- Tail-recursive `listMax`. -/
+def listMaxTR (xs : List Nat) : Nat := xs.foldl max 0
+
+private theorem foldl_max_eq_listMax (xs : List Nat) (acc : Nat) :
+    xs.foldl max acc = max acc (listMax xs) := by
+  induction xs generalizing acc with
+  | nil => simp [listMax]
+  | cons x xs ih => simp [listMax, ih, Nat.max_assoc]
+
+@[csimp] theorem listMax_eq_listMaxTR : @listMax = @listMaxTR := by
+  funext xs
+  simp [listMaxTR, foldl_max_eq_listMax]
+
+#print axioms listMax_eq_listMaxTR
 
 /-- Extend a duplicate-free list `xs` to a globally injective map `Nat → Nat`. -/
 def extendInj (xs : List Nat) (k : Nat) : Nat :=
@@ -688,6 +711,129 @@ def assignFnNames (maxFn : Nat) : List (Option Nat) → Nat → List Nat
   | [], _ => []
   | some f :: rest, idx => f :: assignFnNames maxFn rest (idx + 1)
   | none :: rest, idx => (maxFn + 1 + idx) :: assignFnNames maxFn rest (idx + 1)
+
+/-- The indexed clauses `buildIndexedClauses` emits for one raw item (`none`
+when the item fails to index). -/
+def indexItem (cNames rNames : List Nat) (fillerHalves : List (Nat × Nat × Nat)) :
+    RawClauseItem →
+      Option (List (Option Nat × Ctx.Clause (Fin cNames.length) (Fin rNames.length)))
+  | .gci body head => do
+      let bFin ← body.mapM (finIndexOf? cNames)
+      let hFin ← head.mapM (finIndexOf? cNames)
+      some [(none, .gci bFin hFin)]
+  | .exLeft r d c => do
+      let rFin ← finIndexOf? rNames r
+      let dFin ← finIndexOf? cNames d
+      let cFin ← finIndexOf? cNames c
+      some [(none, .exLeft rFin dFin cFin)]
+  | .allRight a r b => do
+      let aFin ← finIndexOf? cNames a
+      let rFin ← finIndexOf? rNames r
+      let bFin ← finIndexOf? cNames b
+      some [(none, .allRight aFin rFin bFin)]
+  | .exRightRole f a r =>
+      match fillerHalves.find? (fun entry => entry.1 == f) with
+      | none => none
+      | some (_, a', b) =>
+          if a = a' then do
+            let aFin ← finIndexOf? cNames a
+            let rFin ← finIndexOf? rNames r
+            let bFin ← finIndexOf? cNames b
+            some [(some f, .exRight aFin rFin bFin)]
+          else none
+  | .exRightFiller _ _ _ => some []
+
+private theorem buildIndexedClauses_cons (cNames rNames : List Nat)
+    (fillerHalves : List (Nat × Nat × Nat)) (item : RawClauseItem)
+    (rest : List RawClauseItem) :
+    buildIndexedClauses cNames rNames fillerHalves (item :: rest) =
+      (buildIndexedClauses cNames rNames fillerHalves rest).bind fun tail =>
+        (indexItem cNames rNames fillerHalves item).map (· ++ tail) := by
+  cases h : buildIndexedClauses cNames rNames fillerHalves rest with
+  | none => simp [buildIndexedClauses, h]
+  | some tail =>
+      cases item with
+      | gci body head =>
+          simp only [buildIndexedClauses, h, indexItem]
+          cases body.mapM (finIndexOf? cNames) <;>
+            cases head.mapM (finIndexOf? cNames) <;> simp
+      | exLeft r d c =>
+          simp only [buildIndexedClauses, h, indexItem]
+          cases finIndexOf? rNames r <;> cases finIndexOf? cNames d <;>
+            cases finIndexOf? cNames c <;> simp
+      | allRight a r b =>
+          simp only [buildIndexedClauses, h, indexItem]
+          cases finIndexOf? cNames a <;> cases finIndexOf? rNames r <;>
+            cases finIndexOf? cNames b <;> simp
+      | exRightRole f a r =>
+          simp only [buildIndexedClauses, h, indexItem]
+          cases fillerHalves.find? (fun entry => entry.1 == f) with
+          | none => simp
+          | some e =>
+              obtain ⟨_, a', b⟩ := e
+              by_cases ha : a = a'
+              · simp only [ha, if_true]
+                cases finIndexOf? cNames a' <;> cases finIndexOf? rNames r <;>
+                  cases finIndexOf? cNames b <;> simp
+              · simp [ha]
+      | exRightFiller f a b => simp [buildIndexedClauses, h, indexItem]
+
+/-- Tail-recursive `buildIndexedClauses`: one pass with an `Array` accumulator. -/
+def buildIndexedClausesTR (cNames rNames : List Nat)
+    (fillerHalves : List (Nat × Nat × Nat)) (items : List RawClauseItem) :
+    Option (List (Option Nat × Ctx.Clause (Fin cNames.length) (Fin rNames.length))) :=
+  go items #[]
+where
+  go : List RawClauseItem →
+      Array (Option Nat × Ctx.Clause (Fin cNames.length) (Fin rNames.length)) →
+      Option (List (Option Nat × Ctx.Clause (Fin cNames.length) (Fin rNames.length)))
+    | [], acc => some acc.toList
+    | item :: rest, acc =>
+        match indexItem cNames rNames fillerHalves item with
+        | some out => go rest (acc ++ out)
+        | none => none
+
+private theorem buildIndexedClausesTR_go (cNames rNames : List Nat)
+    (fillerHalves : List (Nat × Nat × Nat)) (items : List RawClauseItem)
+    (acc : Array (Option Nat × Ctx.Clause (Fin cNames.length) (Fin rNames.length))) :
+    buildIndexedClausesTR.go cNames rNames fillerHalves items acc =
+      (buildIndexedClauses cNames rNames fillerHalves items).map (acc.toList ++ ·) := by
+  induction items generalizing acc with
+  | nil => simp [buildIndexedClausesTR.go, buildIndexedClauses]
+  | cons item rest ih =>
+      rw [buildIndexedClauses_cons]
+      simp only [buildIndexedClausesTR.go]
+      cases hi : indexItem cNames rNames fillerHalves item <;>
+        cases hb : buildIndexedClauses cNames rNames fillerHalves rest <;>
+        simp [ih, hb]
+
+@[csimp] theorem buildIndexedClauses_eq_buildIndexedClausesTR :
+    @buildIndexedClauses = @buildIndexedClausesTR := by
+  funext cNames rNames fillerHalves items
+  simp [buildIndexedClausesTR, buildIndexedClausesTR_go]
+
+/-- Tail-recursive `assignFnNames`. -/
+def assignFnNamesTR (maxFn : Nat) (fnOpts : List (Option Nat)) (idx : Nat) : List Nat :=
+  go fnOpts idx #[]
+where
+  go : List (Option Nat) → Nat → Array Nat → List Nat
+    | [], _, acc => acc.toList
+    | some f :: rest, idx, acc => go rest (idx + 1) (acc.push f)
+    | none :: rest, idx, acc => go rest (idx + 1) (acc.push (maxFn + 1 + idx))
+
+private theorem assignFnNamesTR_go (maxFn : Nat) (fnOpts : List (Option Nat))
+    (idx : Nat) (acc : Array Nat) :
+    assignFnNamesTR.go maxFn fnOpts idx acc = acc.toList ++ assignFnNames maxFn fnOpts idx := by
+  induction fnOpts generalizing idx acc with
+  | nil => simp [assignFnNamesTR.go, assignFnNames]
+  | cons o rest ih => cases o <;> simp [assignFnNamesTR.go, assignFnNames, ih]
+
+@[csimp] theorem assignFnNames_eq_assignFnNamesTR : @assignFnNames = @assignFnNamesTR := by
+  funext maxFn fnOpts idx
+  simp [assignFnNamesTR, assignFnNamesTR_go]
+
+#print axioms buildIndexedClauses_eq_buildIndexedClausesTR
+#print axioms assignFnNames_eq_assignFnNamesTR
 
 /-- Recognise a common clause source `source : List FCL` as a finite-signature
 ALC ontology covering `named`.  Fails closed (`none`) on any non-ALC construct. -/
