@@ -1,7 +1,6 @@
-# KM 1.6.0 release notes (draft)
+# KM 1.6.0 release notes
 
-Status: draft on `development/v1.6.0`; the release date, commit, speed
-table and acceptance evidence are filled in when the tag is cut.
+Released 2026-11-12 from commit 45543658 (tag `v1.6.0`).
 
 ## What this release proves
 
@@ -57,14 +56,43 @@ decline so the stage can be exercised.
 
 Fragment measurement on the 593 `elc`-routed inputs of the checkers-on
 suite: 592 recognised (all 585 ORE inputs); the one rejection is a rule
-fixture whose first frontend pass carries individual constants. The
-recogniser runs in 0.17 s median and 32 s at most (2.9 million clauses).
+fixture whose first frontend pass carries individual constants. With every
+production route forced to decline, the stage publishes 378 of those 592
+within its budget and never disagrees with the production answer (0 of
+1,781 suite inputs). The practical limit is the dense `named × named`
+answer matrix of the Lean answer type, which exceeds memory above about
+20,000 classes; a sparse answer type is the first post-release item.
 
-## Acceptance
+## Speed and correctness (Ibex, same day)
 
-(filled in at release: P1 to P5 of `docs/V1.6.0-ACCEPTANCE.md`, the
-forced-decline suite run, the Ibex speed and coverage clauses against
-1.5.3 and Konclude, the five gates, Rust, Java, checkers-on suite.)
+| | v1.6.0 | v1.5.3 same day | Konclude same day |
+|---|---:|---:|---:|
+| held-out inputs verified (of 585) | 577 | 560 | 575 |
+| mean wall-time ratio against v1.5.3 (bound 1.10) | 0.735 | 1 | |
+| median wall-time ratio against v1.5.3 (bound 1.10) | 1.026 | 1 | |
+| median wall time on the 574 inputs v1.6.0 and Konclude both verify | 0.166 s | | 0.188 s |
+
+No wrong answer on the held-out half or on the 1,708-input pool (1,685
+verified; v1.5.3 1,662). The held-out median is after a protocol recheck of
+the inputs that ran on four slow Ibex nodes (first pass 1.413; details in
+`docs/V1.6.0-ACCEPTANCE.md`).
+
+## Certification
+
+Run on Ibex from the tag because the workstation was out of disk and
+memory (`tools/release/v160-ibex/`, asset `certification-ibex.json`): PGO
+build (22 of 22 training answers verified), five Lean gates (634 tests, no
+`sorryAx`), full Rust suite (95 cargo commands, 3,610 passed, 0 failed),
+Java plugin (76 tests), checker step (57 checker tests; checkers-on suite,
+0 rejected, 0 answers changed).
+
+## Assets
+
+`km-v1.6.0-linux-x86_64` (PGO, GLIBC at most 2.34), `km-v1.6.0-certified-source.tar.gz`,
+`kobayashi-marust-protege-1.6.0.jar`, `BENCHMARKS.md`, `build-completion.json`
+(S1 and C1 `met`; L1 and R1 read the workstation receipt layout and show
+`pending`; their evidence is `certification-ibex.json`),
+`certification-ibex.json`, `SHA256SUMS`.
 
 ## Records
 

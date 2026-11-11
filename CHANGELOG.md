@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.6.0] - unreleased (development/v1.6.0)
+## [1.6.0] - 2026-11-12
 
 Version 1.6.0 is the completeness release. The Lean routing capstone no
 longer assumes that the selected procedure or its fallback is complete:
