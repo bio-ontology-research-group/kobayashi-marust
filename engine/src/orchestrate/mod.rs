@@ -4135,7 +4135,7 @@ fn reference_checker_failure_reason(
     let first_line = |text: &str| -> Option<String> {
         text.lines()
             .map(str::trim)
-            .find(|line| !line.is_empty())
+            .find(|line| !line.is_empty() && !line.starts_with("KM_REFERENCE_TIMING "))
             .map(str::to_string)
     };
     let reason = first_line(&stderr_msg)
@@ -4401,6 +4401,12 @@ mod reference_stage_tests {
         let long = "x".repeat(500);
         let reason = reference_checker_failure_reason(b"", long.as_bytes(), &"s");
         assert_eq!(reason, format!("{} (checker status: s)", "x".repeat(200)));
+        let reason = reference_checker_failure_reason(
+            b"",
+            b"KM_REFERENCE_TIMING phase=read ms=0\nnot recognised: x\n",
+            &"exit status: 3",
+        );
+        assert_eq!(reason, "not recognised: x (checker status: exit status: 3)");
     }
 }
 
