@@ -1,0 +1,11 @@
+Prefix(:=<http://example.org/ref/tbox-inconsistent#>)
+Ontology(<http://example.org/ref/tbox-inconsistent>
+  Declaration(Class(:A))
+  Declaration(Class(:B))
+  Declaration(Class(:C))
+  Declaration(ObjectProperty(:r))
+  SubClassOf(owl:Thing :A)
+  SubClassOf(:A :B)
+  SubClassOf(:A :C)
+  DisjointClasses(:B :C)
+)

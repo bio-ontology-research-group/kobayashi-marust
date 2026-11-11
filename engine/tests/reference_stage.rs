@@ -4,6 +4,10 @@
 //! The checker path comes from `KM_EL_TEST_REFERENCE_CHECKER` (or
 //! `KM_EL_REFERENCE_CHECKER`); without it the tests skip with a message unless
 //! `KM_REQUIRE_LEAN_CHECKERS` is set.
+//!
+//! Since v1.6.1 the stage prints the `sparse-v1` answer (one row per requested
+//! name); the fake-checker tests below feed crafted answers to check that the
+//! caller fails closed on a malformed one.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -49,7 +53,20 @@ fn run_km(ontology: &Path, extra_env: &[(&str, &std::ffi::OsStr)]) -> std::proce
 /// for every X, and the production routes print a route-dependent subset.
 /// A row with a satisfiable subclass and an unsatisfiable superclass cannot
 /// occur and fails the test.
+///
+/// An inconsistent ontology entails every subsumption: as in the suite digest
+/// (`parse_answer_digest`), only the verdict and `dropped` are compared. The
+/// production routes list every class as unsatisfiable there, while the
+/// reference stage (v1.6.0 and v1.6.1 alike) prints no rows.
 fn normalised(v: &serde_json::Value) -> serde_json::Value {
+    if v["consistent"] == serde_json::json!(false) {
+        return serde_json::json!({
+            "consistent": false,
+            "subsumptions": [],
+            "unsatisfiable": [],
+            "dropped": v["dropped"],
+        });
+    }
     let unsat: std::collections::BTreeSet<String> = v["unsatisfiable"]
         .as_array()
         .map(|a| a.iter().map(|x| x.as_str().unwrap().to_string()).collect())
@@ -312,4 +329,101 @@ fn reference_stage_budget_timeout_declines_with_budget_reason() {
         stderr.contains("KM_REFERENCE_STAGE declined: budget"),
         "expected KM_REFERENCE_STAGE declined: budget in stderr, got:\n{stderr}"
     );
+}
+
+#[test]
+fn reference_stage_el_tbox_inconsistent_matches_unforced() {
+    // The probe pair `probe_a SUB probe_b` carries the inconsistency verdict.
+    assert_forced_matches_unforced("el_tbox_inconsistent.ofn");
+}
+
+/// A stand-in checker: a POSIX shell script that reads the requested names
+/// from the stage input (its last argument) and prints a crafted answer.
+fn fake_checker(name: &str, body: &str) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join("reference_stage_fakes");
+    std::fs::create_dir_all(&dir).expect("create fake checker dir");
+    let path = dir.join(name);
+    let script = format!(
+        "#!/bin/sh\n\
+         for last; do :; done\n\
+         named=$(sed -n 's/^{{\"named\":\\(\\[[^]]*\\]\\),\"clauses\".*$/\\1/p' \"$last\")\n\
+         list=$(printf '%s' \"$named\" | tr -d '[]' | tr ',' ' ')\n\
+         {body}\n"
+    );
+    std::fs::write(&path, script).expect("write fake checker");
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
+        .expect("chmod fake checker");
+    path
+}
+
+fn assert_fake_declines(checker_path: &Path, expected: &str) {
+    let ont = fixture("el_existentials.ofn");
+    let forced = run_km(
+        &ont,
+        &[
+            ("KM_REFERENCE_FORCE", std::ffi::OsStr::new("1")),
+            ("KM_EL_REFERENCE_CHECKER", checker_path.as_os_str()),
+        ],
+    );
+    let stderr = String::from_utf8_lossy(&forced.stderr);
+    assert!(
+        !forced.status.success(),
+        "a malformed reference answer must not publish, stderr:\n{stderr}"
+    );
+    assert!(forced.stdout.is_empty(), "declined stage must not publish stdout");
+    assert!(
+        stderr.contains(&format!("KM_REFERENCE_STAGE declined: {expected}")),
+        "expected KM_REFERENCE_STAGE declined: {expected} in stderr, got:\n{stderr}"
+    );
+}
+
+#[test]
+fn reference_stage_rows_out_of_order_declines() {
+    // Rows in reverse request order: `rows[0].sub` is not `named[0]`.
+    let checker_path = fake_checker(
+        "rows_reversed.sh",
+        "rows=''\n\
+         for n in $list; do r=\"{\\\"sub\\\":$n,\\\"unsat\\\":false,\\\"sups\\\":[]}\"; \
+         if [ -z \"$rows\" ]; then rows=\"$r\"; else rows=\"$r,$rows\"; fi; done\n\
+         printf '{\"format\":\"sparse-v1\",\"named\":%s,\"procedure\":\"el\",\"rows\":[%s]}\\n' \"$named\" \"$rows\"",
+    );
+    assert_fake_declines(&checker_path, "reference output rows shape mismatch at row 0");
+}
+
+#[test]
+fn reference_stage_unknown_sup_declines() {
+    let checker_path = fake_checker(
+        "unknown_sup.sh",
+        "rows=''\n\
+         for n in $list; do r=\"{\\\"sub\\\":$n,\\\"unsat\\\":false,\\\"sups\\\":[\\\"__km_unknown_sup__\\\"]}\"; \
+         if [ -z \"$rows\" ]; then rows=\"$r\"; else rows=\"$rows,$r\"; fi; done\n\
+         printf '{\"format\":\"sparse-v1\",\"named\":%s,\"procedure\":\"el\",\"rows\":[%s]}\\n' \"$named\" \"$rows\"",
+    );
+    assert_fake_declines(
+        &checker_path,
+        "reference output names an unknown sup: __km_unknown_sup__",
+    );
+}
+
+#[test]
+fn reference_stage_dense_format_declines() {
+    // A v1.6.0 dense answer is not accepted any more: fail closed.
+    let checker_path = fake_checker(
+        "dense_format.sh",
+        "printf '{\"cells\":[],\"named\":%s,\"procedure\":\"el\"}\\n' \"$named\"",
+    );
+    assert_fake_declines(&checker_path, "invalid reference output JSON");
+}
+
+#[test]
+fn reference_stage_nonzero_exit_reports_stderr_line() {
+    // Both streams carry text; the stage's own error is on stderr.
+    let checker_path = fake_checker(
+        "stderr_first.sh",
+        "printf '{\"format\":\"sparse-v1\",\"named\":%s,\"rows\":[\\n' \"$named\"\n\
+         echo 'io error: fake stdout failure' >&2\n\
+         exit 4",
+    );
+    assert_fake_declines(&checker_path, "io error: fake stdout failure (checker status:");
 }
