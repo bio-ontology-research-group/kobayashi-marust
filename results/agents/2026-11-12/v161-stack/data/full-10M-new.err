@@ -1,0 +1,6 @@
+KM_REFERENCE_TIMING phase=read ms=7935
+KM_REFERENCE_TIMING phase=json ms=57653
+KM_REFERENCE_TIMING phase=source ms=66739
+KM_REFERENCE_TIMING phase=recognise ms=8180
+Command exited with non-zero status 124
+300.44 s 33248960 KB exit=124

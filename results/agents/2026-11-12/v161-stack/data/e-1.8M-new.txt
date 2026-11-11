@@ -1,0 +1,9 @@
+KM_REFERENCE_TIMING phase=read ms=1446
+KM_REFERENCE_TIMING phase=json ms=8191
+KM_REFERENCE_TIMING phase=source ms=7193
+KM_REFERENCE_TIMING phase=recognise ms=1049
+KM_REFERENCE_TIMING phase=closure ms=73887
+KM_REFERENCE_TIMING phase=readout ms=171
+KM_REFERENCE_TIMING phase=output ms=44
+KM_REFERENCE_TIMING phase=total ms=92300
+92.38 s 6045152 KB
