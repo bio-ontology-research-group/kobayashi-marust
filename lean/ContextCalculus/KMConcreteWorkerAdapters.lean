@@ -1,5 +1,9 @@
 import ContextCalculus.KMCommonRoutingSource
 import ContextCalculus.CertifiedRouting
+import ContextCalculus.ELReferenceSaturation
+import ContextCalculus.ELCommonSourceRecognizer
+import ContextCalculus.ALCReferenceSaturation
+import ContextCalculus.ALCCommonSourceRecognizer
 
 /-!
 # Concrete common taxonomy publications for KM workers
@@ -1130,18 +1134,163 @@ theorem HTExecution.worker_soundAt (execution : HTExecution)
     Certification.SoundAt Correct execution.worker.erase ontology :=
   execution.worker.erase_soundAt ontology
 
+/-! ### The EL reference procedure (v1.6.0)
+
+The reference procedure is the completeness witness of the EL fragment: it
+recognises the common source as a pure EL ontology, saturates it with the
+verified closure of `ELReferenceSaturation`, and reads the matrix out.  Its
+acceptance recomputes that closure; soundness comes from the closure theorems,
+not from a certificate.  See `docs/V1.6.0-COMPLETENESS-PLAN.md`. -/
+
+local instance (priority := 2000) instDecidableNodupNatFast (xs : List Nat) :
+    Decidable xs.Nodup :=
+  decidable_of_iff (ELReference.nodupFast xs = true)
+    (ELReference.nodupFast_iff xs)
+
+/-- The reference answer for a recognised source and a requested name list. -/
+def referenceAnswer (recognized : ELCommonSourceRecognizer.RecognizedEL)
+    (named : List Nat) : TaxonomyAnswer :=
+  let c := ELReference.closure recognized.top recognized.bottom named
+    recognized.ontology
+  matrixAnswer named fun sub sup =>
+    ELReference.referenceBitOf c recognized.bottom sub sup
+
+theorem referenceAnswer_correct (named : List Nat) (ontology : List FCL)
+    (recognized : ELCommonSourceRecognizer.RecognizedEL)
+    (hrecognized : ELCommonSourceRecognizer.recognizeEL named ontology =
+      some recognized)
+    (hnodup : named.Nodup) :
+    Correct ontology (referenceAnswer recognized named) := by
+  apply matrixAnswer_correct ontology named _ hnodup
+  intro sub hsub sup hsup
+  rw [← ELReference.referenceBit_eq,
+    ELReference.referenceBit_exact_of_named recognized.top recognized.bottom
+      named recognized.ontology hsub sup]
+  exact (ELCommonSourceRecognizer.recognizeEL_entails_iff named ontology
+    recognized hrecognized hsub hsup).symm
+
+/-- Evidence of a reference publication.  It carries no semantic content: the
+checker recomputes the reference closure for the exact source. -/
+structure ELReferenceEvidence where
+  version : Nat
+deriving DecidableEq, Repr
+
+/-- Fail-closed reference acceptance: the source must be recognised as pure
+EL, the names must be duplicate-free, and the answer must equal the
+recomputed reference matrix. -/
+def elReferenceAccept (ontology : List FCL) (answer : TaxonomyAnswer)
+    (_evidence : ELReferenceEvidence) : Bool :=
+  match ELCommonSourceRecognizer.recognizeEL answer.named ontology with
+  | none => false
+  | some recognized =>
+      decide answer.named.Nodup &&
+        decide (answer = referenceAnswer recognized answer.named)
+
+theorem elReferenceAccept_sound (ontology : List FCL) (answer : TaxonomyAnswer)
+    (evidence : ELReferenceEvidence)
+    (haccept : elReferenceAccept ontology answer evidence = true) :
+    Correct ontology answer := by
+  unfold elReferenceAccept at haccept
+  split at haccept
+  · simp at haccept
+  · next recognized hrecognized =>
+      simp only [Bool.and_eq_true, decide_eq_true_eq] at haccept
+      rcases haccept with ⟨hnodup, hanswer⟩
+      rw [hanswer]
+      exact referenceAnswer_correct answer.named ontology recognized
+        hrecognized hnodup
+
+/-! ### The ALC reference procedure (v1.6.0)
+
+The ALC reference procedure is the completeness witness of the ALC fragment:
+it recognises the common source as an ALC ontology, computes the good-type
+set with `ALCReferenceSaturation.saturateC`, and reads the matrix out. -/
+
+def alcReferenceBitOf {named : List Nat} {ontology : List FCL}
+    (recognized : ALCCommonSourceRecognizer.RecognizedALC named ontology)
+    (G : Finset (Finset (Fin recognized.conceptCount)))
+    (sub sup : Nat) : Bool :=
+  match recognized.conceptIndex sub, recognized.conceptIndex sup with
+  | some i, some j => ALCReference.alcBitOf G i j
+  | _, _ => false
+
+def alcReferenceBit {named : List Nat} {ontology : List FCL}
+    (recognized : ALCCommonSourceRecognizer.RecognizedALC named ontology)
+    (sub sup : Nat) : Bool :=
+  alcReferenceBitOf recognized
+    (ALCReference.saturateC recognized.ontology) sub sup
+
+/-- The ALC reference answer for a recognised source and a requested name list. -/
+def alcReferenceAnswer {named : List Nat} {ontology : List FCL}
+    (recognized : ALCCommonSourceRecognizer.RecognizedALC named ontology)
+    (names : List Nat) : TaxonomyAnswer :=
+  let G := ALCReference.saturateC recognized.ontology
+  matrixAnswer names (alcReferenceBitOf recognized G)
+
+theorem alcReferenceAnswer_correct (named : List Nat) (ontology : List FCL)
+    (recognized : ALCCommonSourceRecognizer.RecognizedALC named ontology)
+    (hrecognized : ALCCommonSourceRecognizer.recognizeALC named ontology =
+      some recognized)
+    (hnodup : named.Nodup) :
+    Correct ontology (alcReferenceAnswer recognized named) := by
+  apply matrixAnswer_correct ontology named _ hnodup
+  intro sub hsub sup hsup
+  rcases ALCCommonSourceRecognizer.recognizeALC_conceptIndex_of_named
+      named ontology recognized hrecognized hsub with ⟨i, hi⟩
+  rcases ALCCommonSourceRecognizer.recognizeALC_conceptIndex_of_named
+      named ontology recognized hrecognized hsup with ⟨j, hj⟩
+  simp only [alcReferenceBitOf, hi, hj, ← ALCReference.alcBit_eq,
+    ALCReference.alcBit_iff_entailsSub]
+  exact (ALCCommonSourceRecognizer.recognizeALC_entails_iff named ontology
+    recognized hrecognized hi hj).symm
+
+/-- Evidence of an ALC reference publication. -/
+structure ALCReferenceEvidence where
+  version : Nat
+deriving DecidableEq, Repr
+
+/-- Fail-closed ALC reference acceptance: the source must be recognised as ALC,
+the names must be duplicate-free, and the answer must equal the recomputed
+reference matrix. -/
+def alcReferenceAccept (ontology : List FCL) (answer : TaxonomyAnswer)
+    (_evidence : ALCReferenceEvidence) : Bool :=
+  match ALCCommonSourceRecognizer.recognizeALC answer.named ontology with
+  | none => false
+  | some recognized =>
+      decide answer.named.Nodup &&
+        decide (answer = alcReferenceAnswer recognized answer.named)
+
+theorem alcReferenceAccept_sound (ontology : List FCL) (answer : TaxonomyAnswer)
+    (evidence : ALCReferenceEvidence)
+    (haccept : alcReferenceAccept ontology answer evidence = true) :
+    Correct ontology answer := by
+  unfold alcReferenceAccept at haccept
+  split at haccept
+  · simp at haccept
+  · next recognized hrecognized =>
+      simp only [Bool.and_eq_true, decide_eq_true_eq] at haccept
+      rcases haccept with ⟨hnodup, hanswer⟩
+      rw [hanswer]
+      exact alcReferenceAnswer_correct answer.named ontology recognized
+        hrecognized hnodup
+
 /-- The common evidence type at the automatic supervisor boundary.  Every
-constructor delegates to an executable, source-bound calculus checker. -/
+constructor delegates to an executable, source-bound calculus checker; the
+reference constructors delegate to the verified reference closures. -/
 inductive KMExactEvidence where
   | elc (evidence : ELCEvidence)
   | ht (evidence : HTEvidence)
   | cb (evidence : CBEvidence)
+  | elReference (evidence : ELReferenceEvidence)
+  | alcReference (evidence : ALCReferenceEvidence)
 
 def kmExactAccept (ontology : List FCL) (answer : TaxonomyAnswer) :
     KMExactEvidence → Bool
   | .elc evidence => elcAccept ontology answer evidence
   | .ht evidence => htAccept ontology answer evidence
   | .cb evidence => cbAccept ontology answer evidence
+  | .elReference evidence => elReferenceAccept ontology answer evidence
+  | .alcReference evidence => alcReferenceAccept ontology answer evidence
 
 theorem kmExactAccept_sound (ontology : List FCL) (answer : TaxonomyAnswer)
     (evidence : KMExactEvidence)
@@ -1151,6 +1300,10 @@ theorem kmExactAccept_sound (ontology : List FCL) (answer : TaxonomyAnswer)
   | elc evidence => exact elcAccept_sound ontology answer evidence haccept
   | ht evidence => exact htAccept_sound ontology answer evidence haccept
   | cb evidence => exact cbAccept_sound ontology answer evidence haccept
+  | elReference evidence =>
+      exact elReferenceAccept_sound ontology answer evidence haccept
+  | alcReference evidence =>
+      exact alcReferenceAccept_sound ontology answer evidence haccept
 
 structure KMExactExecution where
   run : List FCL →
@@ -1233,6 +1386,168 @@ theorem KMRequestedExecution.worker_soundAt (execution : KMRequestedExecution)
     Certification.SoundAt RequestedCorrect execution.worker.erase source :=
   execution.worker.erase_soundAt source
 
+/-! ### Reference execution and fail-closed composition (v1.6.0) -/
+
+/-- The EL reference procedure as a requested execution.  It publishes the
+reference matrix when the source is recognised as pure EL and the requested
+names are duplicate-free, and defers otherwise. -/
+def elReferenceExecution : KMRequestedExecution where
+  run source :=
+    match ELCommonSourceRecognizer.recognizeEL source.named source.ontology with
+    | none => .defer
+    | some recognized =>
+        if source.named.Nodup then
+          .publish {
+            source
+            answer := referenceAnswer recognized source.named
+            evidence := .elReference ⟨1⟩ }
+        else .defer
+  sourceExact := by
+    intro source publication hrun
+    split at hrun
+    · cases hrun
+    · split at hrun
+      · cases hrun
+        rfl
+      · cases hrun
+  accepted := by
+    intro source publication hrun
+    split at hrun
+    · cases hrun
+    · next recognized hrecognized =>
+        split at hrun
+        · next hnodup =>
+            cases hrun
+            simp [requestedExactAccept, kmExactAccept, elReferenceAccept,
+              referenceAnswer, matrixAnswer, hrecognized, hnodup]
+        · cases hrun
+
+/-- Totality of the reference execution on the recognised EL fragment. -/
+theorem elReferenceExecution_completeAt (source : RequestedTaxonomySource)
+    (hrecognized :
+      (ELCommonSourceRecognizer.recognizeEL source.named source.ontology).isSome =
+        true)
+    (hnodup : source.named.Nodup) :
+    elReferenceExecution.worker.CompleteAt source := by
+  rcases Option.isSome_iff_exists.mp hrecognized with ⟨recognized, hsome⟩
+  refine ⟨{
+    source
+    answer := referenceAnswer recognized source.named
+    evidence := .elReference ⟨1⟩ }, ?_⟩
+  simp [KMRequestedExecution.worker, elReferenceExecution, hsome, hnodup]
+
+/-- The ALC reference procedure as a requested execution.  It publishes the
+ALC reference matrix when the source is recognised as ALC and the requested
+names are duplicate-free, and defers otherwise. -/
+def alcReferenceExecution : KMRequestedExecution where
+  run source :=
+    match ALCCommonSourceRecognizer.recognizeALC source.named source.ontology with
+    | none => .defer
+    | some recognized =>
+        if source.named.Nodup then
+          .publish {
+            source
+            answer := alcReferenceAnswer recognized source.named
+            evidence := .alcReference ⟨1⟩ }
+        else .defer
+  sourceExact := by
+    intro source publication hrun
+    split at hrun
+    · cases hrun
+    · split at hrun
+      · cases hrun
+        rfl
+      · cases hrun
+  accepted := by
+    intro source publication hrun
+    split at hrun
+    · cases hrun
+    · next recognized hrecognized =>
+        split at hrun
+        · next hnodup =>
+            cases hrun
+            simp [requestedExactAccept, kmExactAccept, alcReferenceAccept,
+              alcReferenceAnswer, matrixAnswer, hrecognized, hnodup]
+        · cases hrun
+
+/-- Totality of the ALC reference execution on the recognised ALC fragment. -/
+theorem alcReferenceExecution_completeAt (source : RequestedTaxonomySource)
+    (hrecognized :
+      (ALCCommonSourceRecognizer.recognizeALC source.named source.ontology).isSome =
+        true)
+    (hnodup : source.named.Nodup) :
+    alcReferenceExecution.worker.CompleteAt source := by
+  rcases Option.isSome_iff_exists.mp hrecognized with ⟨recognized, hsome⟩
+  refine ⟨{
+    source
+    answer := alcReferenceAnswer recognized source.named
+    evidence := .alcReference ⟨1⟩ }, ?_⟩
+  simp [KMRequestedExecution.worker, alcReferenceExecution, hsome, hnodup]
+
+/-- Run `first`; when it does not publish, run `second`.  Both publications
+keep their own checked evidence, so the composition stays fail-closed. -/
+def KMRequestedExecution.orElse (first second : KMRequestedExecution) :
+    KMRequestedExecution where
+  run source :=
+    match first.run source with
+    | .publish publication => .publish publication
+    | .defer => second.run source
+    | .error => second.run source
+    | .timeout => second.run source
+  sourceExact := by
+    intro source publication hrun
+    cases hfirst : first.run source with
+    | publish first_publication =>
+        simp only [hfirst] at hrun
+        cases hrun
+        exact first.sourceExact source _ hfirst
+    | defer => simp only [hfirst] at hrun; exact second.sourceExact source publication hrun
+    | error => simp only [hfirst] at hrun; exact second.sourceExact source publication hrun
+    | timeout => simp only [hfirst] at hrun; exact second.sourceExact source publication hrun
+  accepted := by
+    intro source publication hrun
+    cases hfirst : first.run source with
+    | publish first_publication =>
+        simp only [hfirst] at hrun
+        cases hrun
+        exact first.accepted source _ hfirst
+    | defer => simp only [hfirst] at hrun; exact second.accepted source publication hrun
+    | error => simp only [hfirst] at hrun; exact second.accepted source publication hrun
+    | timeout => simp only [hfirst] at hrun; exact second.accepted source publication hrun
+
+/-- Coverage transfers from the second stage of a composition. -/
+theorem KMRequestedExecution.orElse_completeAt_right
+    (first second : KMRequestedExecution) (source : RequestedTaxonomySource)
+    (hsecond : second.worker.CompleteAt source) :
+    (first.orElse second).worker.CompleteAt source := by
+  rcases hsecond with ⟨publication, hpublication⟩
+  cases hfirst : first.run source with
+  | publish first_publication =>
+      exact ⟨first_publication, by
+        simp [KMRequestedExecution.worker, KMRequestedExecution.orElse, hfirst]⟩
+  | defer =>
+      exact ⟨publication, by
+        simpa [KMRequestedExecution.worker, KMRequestedExecution.orElse, hfirst]
+          using hpublication⟩
+  | error =>
+      exact ⟨publication, by
+        simpa [KMRequestedExecution.worker, KMRequestedExecution.orElse, hfirst]
+          using hpublication⟩
+  | timeout =>
+      exact ⟨publication, by
+        simpa [KMRequestedExecution.worker, KMRequestedExecution.orElse, hfirst]
+          using hpublication⟩
+
+/-- Coverage transfers from the first stage of a composition. -/
+theorem KMRequestedExecution.orElse_completeAt_left
+    (first second : KMRequestedExecution) (source : RequestedTaxonomySource)
+    (hfirst : first.worker.CompleteAt source) :
+    (first.orElse second).worker.CompleteAt source := by
+  rcases hfirst with ⟨publication, hpublication⟩
+  exact ⟨publication, by
+    simp [KMRequestedExecution.worker, KMRequestedExecution.orElse] at hpublication ⊢
+    simp [hpublication]⟩
+
 #print axioms cbAnswer_correct
 #print axioms cbCheck_correct
 #print axioms cbAccept_sound
@@ -1275,5 +1590,13 @@ theorem KMRequestedExecution.worker_soundAt (execution : KMRequestedExecution)
 #print axioms KMExactExecution.worker_soundAt
 #print axioms requestedExactAccept_sound
 #print axioms KMRequestedExecution.worker_soundAt
+#print axioms referenceAnswer_correct
+#print axioms elReferenceAccept_sound
+#print axioms elReferenceExecution_completeAt
+#print axioms alcReferenceAnswer_correct
+#print axioms alcReferenceAccept_sound
+#print axioms alcReferenceExecution_completeAt
+#print axioms KMRequestedExecution.orElse_completeAt_right
+#print axioms KMRequestedExecution.orElse_completeAt_left
 
 end ContextCalculus.KMConcreteWorkerAdapters

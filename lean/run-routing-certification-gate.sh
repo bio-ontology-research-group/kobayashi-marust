@@ -5,6 +5,7 @@ repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 lean_root="$repo_root/lean"
 engine_root="$repo_root/engine"
 bin_path="$lean_root/.lake/build/bin/km-automatic-routing-check"
+ref_bin_path="$lean_root/.lake/build/bin/km-el-reference"
 work_root="${KM_WORK_ROOT:-$repo_root/.work}"
 target_root="$work_root/target"
 artifact_root="$work_root/artifacts"
@@ -24,6 +25,7 @@ fi
 cleanup_checker() {
     [[ "${KM_CERT_KEEP_NATIVE_CHECKERS:-0}" == "1" ]] && return
     [[ ! -e "$bin_path" ]] || unlink "$bin_path"
+    [[ ! -e "$ref_bin_path" ]] || unlink "$ref_bin_path"
 }
 trap cleanup_checker EXIT
 
@@ -79,7 +81,13 @@ trap cleanup_checker EXIT
         ContextCalculus.HTBundleCardinalityCommonSourceWire \
         ContextCalculus.HTCommonRoutingWire \
         ContextCalculus.HTRoutingSource \
-        km-automatic-routing-check 2>&1 | tee "$surface_log"
+        ContextCalculus.ELCommonSourceRecognizer \
+        ContextCalculus.ELReferenceSaturation \
+        ContextCalculus.ALCCommonSourceRecognizer \
+        ContextCalculus.ALCReferenceSaturation \
+        ContextCalculus.KMSupervisorInstance \
+        km-automatic-routing-check \
+        km-el-reference 2>&1 | tee "$surface_log"
 )
 
 if grep -q 'sorryAx' "$surface_log"; then
@@ -381,7 +389,21 @@ for theorem in \
     NativeABox.unsatisfiableConceptWith_iff_of_sandwich \
     NativeABox.unsatisfiableConceptWith_iff_of_modelAmalgamationFor \
     NativeABox.entailsSubWith_iff_of_quotient \
-    NativeABox.unsatisfiableConceptWith_iff_of_quotient
+    NativeABox.unsatisfiableConceptWith_iff_of_quotient \
+    KMSupervisorInstance.kmSupervisor_sound \
+    KMSupervisorInstance.kmSupervisor_complete_on_EL \
+    KMSupervisorInstance.kmSupervisor_sound_and_complete_on_EL \
+    KMSupervisorInstance.kmSupervisor_complete_on_ALC \
+    KMSupervisorInstance.kmSupervisor_sound_and_complete_on_ALC \
+    KMSupervisorInstance.kmSupervisor_complete_on_EL_or_ALC \
+    KMConcreteWorkerAdapters.elReferenceExecution_completeAt \
+    KMConcreteWorkerAdapters.elReferenceAccept_sound \
+    KMConcreteWorkerAdapters.alcReferenceExecution_completeAt \
+    KMConcreteWorkerAdapters.alcReferenceAccept_sound \
+    ELReference.referenceBit_exact \
+    ELCommonSourceRecognizer.recognizeEL_entails_iff \
+    ALCReference.alcBit_exact \
+    ALCCommonSourceRecognizer.recognizeALC_entails_iff
 do
     grep -q "$theorem" "$surface_log" || {
         echo "missing routing certification-surface axiom audit: $theorem" >&2
@@ -395,8 +417,17 @@ if "$bin_path" "$lean_root/testdata/km-routing-large-horn-forged.json"; then
     exit 1
 fi
 
+"$ref_bin_path" --procedure el-then-alc "$lean_root/testdata/el-reference-valid.json"
+"$ref_bin_path" --procedure alc "$lean_root/testdata/alc-reference-valid.json"
+if "$ref_bin_path" "$lean_root/testdata/el-reference-malformed.json"; then
+    echo "malformed EL reference input was accepted" >&2
+    exit 1
+fi
+
 (
     cd "$engine_root"
+    KM_EL_TEST_REFERENCE_CHECKER="$ref_bin_path" CARGO_TARGET_DIR="$target_root" \
+        cargo test --release --test reference_stage
     CARGO_TARGET_DIR="$target_root" cargo test --release --lib \
         routing::tests::large_horn_functional_terminology_retains_exact_fallback
     CARGO_TARGET_DIR="$target_root" cargo test --release --lib \

@@ -1,0 +1,19 @@
+Prefix(:=<http://example.org/ref/rules#>)
+Ontology(<http://example.org/ref/rules>
+  Declaration(Class(:A))
+  Declaration(Class(:B))
+  Declaration(ObjectProperty(:r))
+  Declaration(ObjectProperty(:s))
+  Declaration(NamedIndividual(:a))
+  Declaration(NamedIndividual(:b))
+  SubClassOf(:A ObjectOneOf(:a))
+  ObjectPropertyAssertion(:r :a :b)
+  ObjectPropertyAssertion(:s :a :b)
+  DLSafeRule(
+    Body(
+      ObjectPropertyAtom(:r Variable(:x) Variable(:y))
+      ObjectPropertyAtom(:s Variable(:x) Variable(:y))
+    )
+    Head(ClassAtom(:B Variable(:x)))
+  )
+)

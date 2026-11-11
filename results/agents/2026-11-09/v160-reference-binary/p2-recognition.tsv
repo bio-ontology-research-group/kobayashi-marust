@@ -1,0 +1,594 @@
+family	input	status	exit_code	reason_group	raw_reason	wall_s
+fixture	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-checkers-on-suite/engine/tests/fixtures/automatic_el_fallback.ofn	accepted	0	recognised	recognised	0.089
+fixture	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-checkers-on-suite/engine/tests/fixtures/bridge_generator/clause_top_conjunction.ofn	accepted	0	recognised	recognised	0.092
+fixture	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-checkers-on-suite/engine/tests/fixtures/finite_rule_taxonomy.ofn	rejected	3	not recognised: individual_or_constant_term	not recognised: individual_or_constant_term (clause 11)	0.088
+fixture	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-checkers-on-suite/engine/tests/fixtures/lean_el_v3_mixed.ofn	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 3, body_len=3)	0.082
+fixture	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-checkers-on-suite/engine/tests/fixtures/realization/inconsistent.ofn	accepted	0	recognised	recognised	0.084
+fixture	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-checkers-on-suite/engine/tests/fixtures/realization/sameas.ofn	accepted	0	recognised	recognised	0.085
+fixture	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-checkers-on-suite/engine/tests/fixtures/utf8_non_ascii.ofn	accepted	0	recognised	recognised	0.084
+fixture	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/.work/worktrees/fix-checkers-on-suite/engine/tests/fixtures/utf8_non_ascii.ttl	accepted	0	recognised	recognised	0.085
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10004.owl	accepted	0	recognised	recognised	0.213
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10008.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 71616, body_len=3)	3.631
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10056.owl	accepted	0	recognised	recognised	0.113
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10073.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 1453, body_len=3)	18.54
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10088.owl	accepted	0	recognised	recognised	0.1
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_1012.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 183, body_len=3)	72.363
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10123.owl	accepted	0	recognised	recognised	0.708
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10134.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 403, body_len=3)	0.196
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10160.owl	accepted	0	recognised	recognised	0.258
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10161.owl	accepted	0	recognised	recognised	32.247
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10162.owl	accepted	0	recognised	recognised	0.304
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_1017.owl	accepted	0	recognised	recognised	0.22
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10174.owl	accepted	0	recognised	recognised	0.108
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10175.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 1832, body_len=3)	5.494
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10248.owl	accepted	0	recognised	recognised	13.306
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10254.owl	accepted	0	recognised	recognised	0.562
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10275.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 777, body_len=3)	0.547
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10280.owl	accepted	0	recognised	recognised	0.509
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10283.owl	accepted	0	recognised	recognised	0.17
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10309.owl	accepted	0	recognised	recognised	0.104
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10326.owl	accepted	0	recognised	recognised	0.415
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10348.owl	accepted	0	recognised	recognised	0.804
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10350.owl	accepted	0	recognised	recognised	0.297
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10355.owl	accepted	0	recognised	recognised	0.127
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10366.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 33, body_len=3)	0.318
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10419.owl	accepted	0	recognised	recognised	0.169
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_1043.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 33083, body_len=3)	7.714
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10431.owl	accepted	0	recognised	recognised	0.187
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10445.owl	accepted	0	recognised	recognised	15.516
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_105.owl	accepted	0	recognised	recognised	0.21
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10516.owl	accepted	0	recognised	recognised	0.191
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10536.owl	accepted	0	recognised	recognised	0.108
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_1065.owl	accepted	0	recognised	recognised	0.39
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10689.owl	accepted	0	recognised	recognised	71.911
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10742.owl	accepted	0	recognised	recognised	0.414
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10750.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 179, body_len=3)	71.44
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10778.owl	accepted	0	recognised	recognised	6.013
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10806.owl	accepted	0	recognised	recognised	0.688
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_1082.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 65949, body_len=3)	3.136
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10890.owl	accepted	0	recognised	recognised	0.679
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10930.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 772, body_len=3)	2.913
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10965.owl	accepted	0	recognised	recognised	4.126
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_10968.owl	accepted	0	recognised	recognised	0.414
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11009.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 190, body_len=3)	0.229
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11010.owl	accepted	0	recognised	recognised	0.12
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11014.owl	accepted	0	recognised	recognised	0.191
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11053.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 7898, body_len=3)	6.522
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11081.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 28143, body_len=3)	1.578
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11110.owl	accepted	0	recognised	recognised	5.547
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11131.owl	accepted	0	recognised	recognised	0.601
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11133.owl	accepted	0	recognised	recognised	0.115
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11140.owl	accepted	0	recognised	recognised	0.593
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_1117.owl	accepted	0	recognised	recognised	0.242
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_1119.owl	accepted	0	recognised	recognised	1.009
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11198.owl	accepted	0	recognised	recognised	4.848
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11293.owl	accepted	0	recognised	recognised	12.75
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11298.owl	accepted	0	recognised	recognised	0.437
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11315.owl	accepted	0	recognised	recognised	24.912
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11316.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 693, body_len=3)	0.276
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11362.owl	accepted	0	recognised	recognised	0.243
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11389.owl	accepted	0	recognised	recognised	13.315
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11395.owl	rejected	124	exit 124	exit 124	343.325
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11464.owl	accepted	0	recognised	recognised	17.562
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11497.owl	accepted	0	recognised	recognised	0.126
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11502.owl	accepted	0	recognised	recognised	0.895
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11504.owl	accepted	0	recognised	recognised	0.116
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11519.owl	accepted	0	recognised	recognised	10.456
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11522.owl	accepted	0	recognised	recognised	0.109
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11536.owl	accepted	0	recognised	recognised	0.685
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11559.owl	accepted	0	recognised	recognised	4.041
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11572.owl	accepted	0	recognised	recognised	0.169
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11600.owl	accepted	0	recognised	recognised	1.381
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11619.owl	accepted	0	recognised	recognised	0.322
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11626.owl	accepted	0	recognised	recognised	0.453
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11639.owl	accepted	0	recognised	recognised	0.114
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11694.owl	accepted	0	recognised	recognised	0.154
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11739.owl	accepted	0	recognised	recognised	30.636
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11778.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 164775, body_len=3)	7.582
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11792.owl	accepted	0	recognised	recognised	0.146
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11817.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 1832, body_len=3)	5.163
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11827.owl	accepted	0	recognised	recognised	13.623
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11896.owl	accepted	0	recognised	recognised	0.595
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_11910.owl	accepted	0	recognised	recognised	0.458
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12007.owl	accepted	0	recognised	recognised	0.268
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12061.owl	accepted	0	recognised	recognised	0.28
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12087.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 16900, body_len=3)	13.167
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12097.owl	accepted	0	recognised	recognised	0.192
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_1211.owl	accepted	0	recognised	recognised	0.193
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12118.owl	accepted	0	recognised	recognised	0.103
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_1212.owl	accepted	0	recognised	recognised	1.37
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12149.owl	accepted	0	recognised	recognised	1.975
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12194.owl	accepted	0	recognised	recognised	1.145
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12221.owl	accepted	0	recognised	recognised	2.792
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12281.owl	accepted	0	recognised	recognised	0.257
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12284.owl	accepted	0	recognised	recognised	1.688
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12330.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 306, body_len=3)	1.939
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12379.owl	accepted	0	recognised	recognised	0.141
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12387.owl	accepted	0	recognised	recognised	14.276
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12397.owl	accepted	0	recognised	recognised	0.211
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12405.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 292, body_len=3)	0.719
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12414.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 8865, body_len=3)	9.037
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12415.owl	accepted	0	recognised	recognised	0.136
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12448.owl	accepted	0	recognised	recognised	7.884
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12486.owl	accepted	0	recognised	recognised	1.513
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12522.owl	accepted	0	recognised	recognised	2.513
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12528.owl	accepted	0	recognised	recognised	27.065
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12635.owl	accepted	0	recognised	recognised	0.358
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12651.owl	accepted	0	recognised	recognised	14.102
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12676.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 819, body_len=3)	1.306
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12764.owl	accepted	0	recognised	recognised	0.173
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12776.owl	accepted	0	recognised	recognised	0.428
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12802.owl	accepted	0	recognised	recognised	1.036
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12831.owl	accepted	0	recognised	recognised	0.156
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12906.owl	accepted	0	recognised	recognised	0.094
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12932.owl	accepted	0	recognised	recognised	0.145
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12936.owl	accepted	0	recognised	recognised	0.992
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12965.owl	accepted	0	recognised	recognised	0.233
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12985.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 128164, body_len=3)	7.244
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_12992.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 32359, body_len=3)	3.06
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13000.owl	accepted	0	recognised	recognised	1.36
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13018.owl	accepted	0	recognised	recognised	0.104
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13053.owl	accepted	0	recognised	recognised	0.115
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_1306.owl	accepted	0	recognised	recognised	56.871
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13100.owl	accepted	0	recognised	recognised	0.121
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13112.owl	accepted	0	recognised	recognised	0.158
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13141.owl	accepted	0	recognised	recognised	0.464
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13224.owl	accepted	0	recognised	recognised	135.108
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13233.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 3513, body_len=3)	1.855
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13234.owl	accepted	0	recognised	recognised	0.12
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13243.owl	accepted	0	recognised	recognised	6.407
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_1325.owl	accepted	0	recognised	recognised	0.132
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13298.owl	accepted	0	recognised	recognised	0.21
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13301.owl	accepted	0	recognised	recognised	0.113
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13355.owl	accepted	0	recognised	recognised	22.528
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13359.owl	accepted	0	recognised	recognised	2.851
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13398.owl	accepted	0	recognised	recognised	0.138
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13413.owl	accepted	0	recognised	recognised	0.249
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13423.owl	accepted	0	recognised	recognised	14.343
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13429.owl	accepted	0	recognised	recognised	0.095
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13451.owl	accepted	0	recognised	recognised	0.698
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_1346.owl	accepted	0	recognised	recognised	0.205
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13460.owl	accepted	0	recognised	recognised	0.598
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13474.owl	accepted	0	recognised	recognised	0.242
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13482.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 157042, body_len=4)	93.666
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13530.owl	accepted	0	recognised	recognised	0.11
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_1357.owl	accepted	0	recognised	recognised	8.569
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13578.owl	accepted	0	recognised	recognised	0.233
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13643.owl	accepted	0	recognised	recognised	0.096
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13664.owl	accepted	0	recognised	recognised	2.144
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_1370.owl	accepted	0	recognised	recognised	13.548
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13752.owl	accepted	0	recognised	recognised	1.695
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13755.owl	accepted	0	recognised	recognised	0.525
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13840.owl	accepted	0	recognised	recognised	0.663
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13852.owl	accepted	0	recognised	recognised	0.877
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13872.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 305, body_len=3)	0.122
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13902.owl	accepted	0	recognised	recognised	4.201
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13919.owl	accepted	0	recognised	recognised	0.716
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13937.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 116821, body_len=3)	7.423
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13964.owl	accepted	0	recognised	recognised	3.499
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_13969.owl	accepted	0	recognised	recognised	15.145
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14027.owl	accepted	0	recognised	recognised	0.768
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14031.owl	accepted	0	recognised	recognised	0.249
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14042.owl	rejected	124	exit 124	exit 124	342.94
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14101.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 50035, body_len=3)	4.855
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14123.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 2282, body_len=3)	0.203
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14128.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 89, body_len=3)	0.106
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_1420.owl	accepted	0	recognised	recognised	0.103
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14216.owl	accepted	0	recognised	recognised	17.881
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14258.owl	accepted	0	recognised	recognised	0.554
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14280.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 1156, body_len=3)	0.858
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14365.owl	accepted	0	recognised	recognised	2.301
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14396.owl	accepted	0	recognised	recognised	0.364
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14407.owl	accepted	0	recognised	recognised	1.047
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14459.owl	accepted	0	recognised	recognised	61.379
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14508.owl	accepted	0	recognised	recognised	1.859
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14518.owl	accepted	0	recognised	recognised	0.117
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14543.owl	accepted	0	recognised	recognised	6.313
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14587.owl	accepted	0	recognised	recognised	0.72
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14607.owl	accepted	0	recognised	recognised	10.83
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_1473.owl	accepted	0	recognised	recognised	0.161
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14826.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 74, body_len=3)	0.11
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14840.owl	accepted	0	recognised	recognised	0.188
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14863.owl	accepted	0	recognised	recognised	0.473
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14901.owl	accepted	0	recognised	recognised	0.129
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14909.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 238, body_len=3)	1.625
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14926.owl	accepted	0	recognised	recognised	0.101
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_1493.owl	accepted	0	recognised	recognised	0.325
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14934.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 82734, body_len=3)	3.553
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_1494.owl	accepted	0	recognised	recognised	0.125
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_14995.owl	accepted	0	recognised	recognised	0.607
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_1501.owl	accepted	0	recognised	recognised	1.331
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15068.owl	accepted	0	recognised	recognised	0.14
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15099.owl	accepted	0	recognised	recognised	2.042
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15133.owl	accepted	0	recognised	recognised	14.45
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15145.owl	accepted	0	recognised	recognised	0.109
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15152.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 17, body_len=3)	0.63
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15172.owl	accepted	0	recognised	recognised	4.267
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15178.owl	accepted	0	recognised	recognised	2.14
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15217.owl	accepted	0	recognised	recognised	0.127
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15222.owl	accepted	0	recognised	recognised	0.31
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15231.owl	accepted	0	recognised	recognised	0.138
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15260.owl	accepted	0	recognised	recognised	1.211
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15280.owl	accepted	0	recognised	recognised	105.88
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15292.owl	accepted	0	recognised	recognised	0.28
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15341.owl	accepted	0	recognised	recognised	0.81
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_1537.owl	accepted	0	recognised	recognised	0.138
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15388.owl	accepted	0	recognised	recognised	4.556
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15397.owl	accepted	0	recognised	recognised	0.149
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15399.owl	accepted	0	recognised	recognised	0.098
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15407.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 103, body_len=3)	0.177
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15490.owl	accepted	0	recognised	recognised	0.533
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15576.owl	accepted	0	recognised	recognised	0.113
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_1559.owl	rejected	124	exit 124	exit 124	386.954
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15612.owl	accepted	0	recognised	recognised	0.937
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15696.owl	accepted	0	recognised	recognised	5.669
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15741.owl	accepted	0	recognised	recognised	0.272
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_1579.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 3517, body_len=3)	4.969
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15790.owl	accepted	0	recognised	recognised	1.393
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15793.owl	accepted	0	recognised	recognised	1.871
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15860.owl	accepted	0	recognised	recognised	0.225
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15882.owl	accepted	0	recognised	recognised	0.117
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15917.owl	accepted	0	recognised	recognised	0.625
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15929.owl	accepted	0	recognised	recognised	12.58
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15932.owl	accepted	0	recognised	recognised	0.633
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15944.owl	accepted	0	recognised	recognised	0.514
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15950.owl	accepted	0	recognised	recognised	0.2
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15968.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 4329, body_len=4)	0.387
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15976.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 309880, body_len=3)	18.652
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_15985.owl	accepted	0	recognised	recognised	0.197
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16008.owl	accepted	0	recognised	recognised	47.031
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16033.owl	accepted	0	recognised	recognised	0.12
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16054.owl	accepted	0	recognised	recognised	0.135
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16076.owl	accepted	0	recognised	recognised	0.176
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16089.owl	accepted	0	recognised	recognised	12.557
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16105.owl	accepted	0	recognised	recognised	0.828
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16114.owl	accepted	0	recognised	recognised	0.855
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16166.owl	accepted	0	recognised	recognised	0.13
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16268.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 129, body_len=3)	0.14
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16283.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 706, body_len=3)	2.368
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16312.owl	accepted	0	recognised	recognised	0.158
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16351.owl	accepted	0	recognised	recognised	0.108
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16428.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 219421, body_len=3)	17.414
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16501.owl	accepted	0	recognised	recognised	0.14
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16547.owl	accepted	0	recognised	recognised	0.553
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16558.owl	accepted	0	recognised	recognised	0.496
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16559.owl	accepted	0	recognised	recognised	2.4
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16596.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 16936, body_len=3)	16.051
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16619.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 819, body_len=3)	1.271
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16626.owl	accepted	0	recognised	recognised	0.106
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_1666.owl	accepted	0	recognised	recognised	1.038
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16684.owl	accepted	0	recognised	recognised	2.998
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16687.owl	accepted	0	recognised	recognised	1.726
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16703.owl	accepted	0	recognised	recognised	2.917
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16730.owl	accepted	0	recognised	recognised	0.115
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16746.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 19882, body_len=4)	1.188
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16767.owl	accepted	0	recognised	recognised	3.193
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16806.owl	accepted	0	recognised	recognised	0.299
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_16821.owl	accepted	0	recognised	recognised	0.139
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_1743.owl	accepted	0	recognised	recognised	2.054
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_1967.owl	accepted	0	recognised	recognised	0.108
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2011.owl	accepted	0	recognised	recognised	0.167
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2022.owl	accepted	0	recognised	recognised	0.237
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2036.owl	accepted	0	recognised	recognised	0.109
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2038.owl	accepted	0	recognised	recognised	0.098
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2046.owl	accepted	0	recognised	recognised	13.287
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2063.owl	accepted	0	recognised	recognised	0.138
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2066.owl	accepted	0	recognised	recognised	0.126
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2105.owl	accepted	0	recognised	recognised	1.517
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2128.owl	accepted	0	recognised	recognised	0.774
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2129.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 22, body_len=7)	0.961
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2134.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 1179, body_len=3)	6.636
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_22.owl	accepted	0	recognised	recognised	0.8
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2243.owl	accepted	0	recognised	recognised	12.466
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2253.owl	accepted	0	recognised	recognised	15.846
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2266.owl	accepted	0	recognised	recognised	0.226
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2317.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 22350, body_len=7)	1.455
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_236.owl	accepted	0	recognised	recognised	0.759
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2361.owl	accepted	0	recognised	recognised	13.597
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2377.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 22, body_len=3)	0.373
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2378.owl	accepted	0	recognised	recognised	0.17
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2440.owl	accepted	0	recognised	recognised	0.281
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2469.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 204670, body_len=3)	14.959
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2486.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 117923, body_len=3)	9.177
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2496.owl	accepted	0	recognised	recognised	0.251
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2497.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 1156, body_len=3)	0.845
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_253.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 4190, body_len=3)	0.36
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2569.owl	accepted	0	recognised	recognised	0.28
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_258.owl	accepted	0	recognised	recognised	0.117
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2591.owl	accepted	0	recognised	recognised	1.541
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2608.owl	accepted	0	recognised	recognised	0.138
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2624.owl	accepted	0	recognised	recognised	0.816
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_264.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 17, body_len=5)	0.932
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2646.owl	accepted	0	recognised	recognised	0.208
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2658.owl	accepted	0	recognised	recognised	4.299
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2661.owl	accepted	0	recognised	recognised	1.398
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2672.owl	accepted	0	recognised	recognised	0.354
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_269.owl	accepted	0	recognised	recognised	3.628
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2713.owl	accepted	0	recognised	recognised	0.136
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2720.owl	accepted	0	recognised	recognised	0.131
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2753.owl	accepted	0	recognised	recognised	0.118
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2803.owl	accepted	0	recognised	recognised	12.987
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2820.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 772, body_len=3)	7.393
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2828.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 223265, body_len=3)	17.682
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_283.owl	accepted	0	recognised	recognised	18.715
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_2876.owl	accepted	0	recognised	recognised	0.116
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_307.owl	accepted	0	recognised	recognised	1.377
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3082.owl	accepted	0	recognised	recognised	0.102
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3100.owl	accepted	0	recognised	recognised	14.283
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3106.owl	accepted	0	recognised	recognised	0.588
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_316.owl	accepted	0	recognised	recognised	0.24
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_318.owl	accepted	0	recognised	recognised	18.943
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3241.owl	accepted	0	recognised	recognised	0.582
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3263.owl	accepted	0	recognised	recognised	0.121
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3274.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 17956, body_len=3)	12.973
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_330.owl	accepted	0	recognised	recognised	0.59
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3313.owl	accepted	0	recognised	recognised	0.226
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3349.owl	accepted	0	recognised	recognised	0.163
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3377.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 826177, body_len=3)	39.082
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3406.owl	accepted	0	recognised	recognised	4.382
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3418.owl	accepted	0	recognised	recognised	0.135
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3463.owl	accepted	0	recognised	recognised	0.096
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3480.owl	accepted	0	recognised	recognised	1.047
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3515.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 223, body_len=3)	0.2
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3516.owl	accepted	0	recognised	recognised	0.98
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3524.owl	accepted	0	recognised	recognised	62.818
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3550.owl	accepted	0	recognised	recognised	0.333
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3560.owl	accepted	0	recognised	recognised	46.96
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_360.owl	accepted	0	recognised	recognised	0.611
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3635.owl	accepted	0	recognised	recognised	0.208
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3712.owl	accepted	0	recognised	recognised	0.643
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3771.owl	accepted	0	recognised	recognised	0.332
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3780.owl	accepted	0	recognised	recognised	0.121
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3781.owl	accepted	0	recognised	recognised	1.039
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3784.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 10, body_len=4)	0.697
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3797.owl	accepted	0	recognised	recognised	0.847
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_380.owl	accepted	0	recognised	recognised	0.188
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3832.owl	accepted	0	recognised	recognised	0.124
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3836.owl	accepted	0	recognised	recognised	79.228
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3873.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 311, body_len=3)	7.049
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3884.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 323, body_len=3)	0.107
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3909.owl	accepted	0	recognised	recognised	0.105
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3910.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 989, body_len=3)	0.15
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3936.owl	accepted	0	recognised	recognised	0.116
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3954.owl	accepted	0	recognised	recognised	5.505
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_3978.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 202, body_len=3)	0.238
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4033.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 8284, body_len=3)	6.691
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4035.owl	accepted	0	recognised	recognised	0.144
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4054.owl	accepted	0	recognised	recognised	12.594
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4074.owl	accepted	0	recognised	recognised	0.15
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_412.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 2809, body_len=3)	0.276
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4127.owl	accepted	0	recognised	recognised	1.236
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4182.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 3107, body_len=3)	0.449
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4226.owl	accepted	0	recognised	recognised	1.248
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4233.owl	accepted	0	recognised	recognised	7.906
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4235.owl	accepted	0	recognised	recognised	1.578
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4242.owl	accepted	0	recognised	recognised	3.682
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4260.owl	accepted	0	recognised	recognised	0.466
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4382.owl	accepted	0	recognised	recognised	0.122
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4383.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 9, body_len=3)	0.316
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4388.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 692, body_len=3)	0.125
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4400.owl	accepted	0	recognised	recognised	0.148
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4460.owl	accepted	0	recognised	recognised	0.644
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4487.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 707, body_len=3)	3.146
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4527.owl	accepted	0	recognised	recognised	0.262
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4557.owl	accepted	0	recognised	recognised	15.16
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_457.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 10, body_len=4)	0.223
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4570.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 1711, body_len=3)	1.473
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4578.owl	accepted	0	recognised	recognised	0.544
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4616.owl	accepted	0	recognised	recognised	1.954
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4617.owl	accepted	0	recognised	recognised	4.159
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4652.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 384, body_len=3)	0.347
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4655.owl	accepted	0	recognised	recognised	0.475
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4662.owl	accepted	0	recognised	recognised	1.404
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4671.owl	accepted	0	recognised	recognised	0.152
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4732.owl	accepted	0	recognised	recognised	0.56
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4733.owl	accepted	0	recognised	recognised	0.828
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4755.owl	accepted	0	recognised	recognised	13.434
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4767.owl	accepted	0	recognised	recognised	0.107
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4782.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 772, body_len=3)	3.888
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4798.owl	accepted	0	recognised	recognised	0.322
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4802.owl	accepted	0	recognised	recognised	15.811
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4855.owl	accepted	0	recognised	recognised	0.089
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4856.owl	accepted	0	recognised	recognised	0.091
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4938.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 19022, body_len=3)	1.286
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_4952.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 772, body_len=3)	10.004
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5002.owl	accepted	0	recognised	recognised	1.254
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5057.owl	accepted	0	recognised	recognised	0.163
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5074.owl	accepted	0	recognised	recognised	0.109
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_508.owl	accepted	0	recognised	recognised	0.119
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5080.owl	accepted	0	recognised	recognised	0.253
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5089.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 224, body_len=3)	0.105
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5090.owl	accepted	0	recognised	recognised	0.096
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5115.owl	accepted	0	recognised	recognised	0.371
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5193.owl	accepted	0	recognised	recognised	2.799
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5197.owl	accepted	0	recognised	recognised	0.325
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5213.owl	accepted	0	recognised	recognised	0.249
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5216.owl	accepted	0	recognised	recognised	0.185
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5220.owl	accepted	0	recognised	recognised	0.165
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5255.owl	accepted	0	recognised	recognised	0.112
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5266.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 224, body_len=3)	0.214
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5295.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 27323, body_len=3)	5.587
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_544.owl	accepted	0	recognised	recognised	0.543
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5462.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 276, body_len=3)	0.711
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5481.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 1453, body_len=3)	17.873
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5485.owl	accepted	0	recognised	recognised	0.248
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5487.owl	accepted	0	recognised	recognised	1.12
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5492.owl	accepted	0	recognised	recognised	0.622
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5507.owl	accepted	0	recognised	recognised	1.539
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5519.owl	accepted	0	recognised	recognised	46.164
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5549.owl	accepted	0	recognised	recognised	14.095
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5550.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 3102, body_len=4)	0.409
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5566.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 12895, body_len=3)	10.637
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5596.owl	accepted	0	recognised	recognised	2.133
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5602.owl	accepted	0	recognised	recognised	15.914
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5612.owl	accepted	0	recognised	recognised	12.961
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_566.owl	accepted	0	recognised	recognised	0.486
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5665.owl	accepted	0	recognised	recognised	0.125
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5669.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 758, body_len=3)	0.502
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5690.owl	accepted	0	recognised	recognised	1.388
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5742.owl	accepted	0	recognised	recognised	0.079
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5755.owl	accepted	0	recognised	recognised	5.387
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5760.owl	accepted	0	recognised	recognised	18.726
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5769.owl	accepted	0	recognised	recognised	5.961
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5781.owl	accepted	0	recognised	recognised	5.402
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5815.owl	accepted	0	recognised	recognised	1.511
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5852.owl	accepted	0	recognised	recognised	0.102
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5927.owl	accepted	0	recognised	recognised	9.037
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5932.owl	accepted	0	recognised	recognised	0.117
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5965.owl	accepted	0	recognised	recognised	1.529
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5966.owl	accepted	0	recognised	recognised	0.129
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5974.owl	accepted	0	recognised	recognised	1.552
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_5978.owl	accepted	0	recognised	recognised	0.118
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6035.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 819, body_len=3)	1.272
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6076.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 819, body_len=3)	1.284
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6102.owl	accepted	0	recognised	recognised	1.233
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6149.owl	accepted	0	recognised	recognised	0.176
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6198.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 13, body_len=3)	0.986
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6202.owl	accepted	0	recognised	recognised	0.354
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6207.owl	accepted	0	recognised	recognised	0.076
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6223.owl	accepted	0	recognised	recognised	20.375
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6230.owl	accepted	0	recognised	recognised	1.58
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6233.owl	accepted	0	recognised	recognised	56.813
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_630.owl	accepted	0	recognised	recognised	0.146
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6310.owl	accepted	0	recognised	recognised	1.795
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6358.owl	accepted	0	recognised	recognised	0.682
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6368.owl	accepted	0	recognised	recognised	0.115
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_637.owl	accepted	0	recognised	recognised	0.139
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6378.owl	accepted	0	recognised	recognised	0.12
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6409.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 224, body_len=3)	0.203
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6433.owl	accepted	0	recognised	recognised	1.024
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_644.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 758, body_len=3)	0.538
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6453.owl	accepted	0	recognised	recognised	1.534
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6461.owl	accepted	0	recognised	recognised	0.104
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6477.owl	accepted	0	recognised	recognised	20.452
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6478.owl	accepted	0	recognised	recognised	3.12
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6566.owl	accepted	0	recognised	recognised	0.298
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6659.owl	accepted	0	recognised	recognised	5.181
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6696.owl	accepted	0	recognised	recognised	0.176
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6722.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 121035, body_len=5)	8.663
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6726.owl	accepted	0	recognised	recognised	3.93
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6735.owl	accepted	0	recognised	recognised	0.099
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6737.owl	accepted	0	recognised	recognised	0.472
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6812.owl	accepted	0	recognised	recognised	0.088
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6816.owl	accepted	0	recognised	recognised	8.335
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6817.owl	accepted	0	recognised	recognised	0.251
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6869.owl	accepted	0	recognised	recognised	0.56
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6889.owl	accepted	0	recognised	recognised	0.123
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6905.owl	accepted	0	recognised	recognised	0.312
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_6948.owl	accepted	0	recognised	recognised	64.819
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_703.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 166, body_len=4)	0.157
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7120.owl	accepted	0	recognised	recognised	0.205
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7169.owl	accepted	0	recognised	recognised	0.169
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7178.owl	accepted	0	recognised	recognised	6.712
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7188.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 4194, body_len=3)	0.399
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7195.owl	accepted	0	recognised	recognised	0.71
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7216.owl	accepted	0	recognised	recognised	0.169
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7218.owl	accepted	0	recognised	recognised	0.616
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7220.owl	accepted	0	recognised	recognised	0.143
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7226.owl	accepted	0	recognised	recognised	0.339
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7234.owl	accepted	0	recognised	recognised	1.216
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_725.owl	accepted	0	recognised	recognised	0.209
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7251.owl	accepted	0	recognised	recognised	1.128
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7256.owl	accepted	0	recognised	recognised	2.286
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7270.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 192, body_len=3)	0.108
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7340.owl	accepted	0	recognised	recognised	10.507
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7343.owl	accepted	0	recognised	recognised	7.262
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7364.owl	accepted	0	recognised	recognised	0.313
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7370.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 187091, body_len=3)	16.901
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7401.owl	accepted	0	recognised	recognised	2.738
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7439.owl	accepted	0	recognised	recognised	1.273
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7455.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 62040, body_len=3)	3.494
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7488.owl	accepted	0	recognised	recognised	0.497
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7493.owl	accepted	0	recognised	recognised	1.92
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7567.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 706, body_len=3)	7.696
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7576.owl	accepted	0	recognised	recognised	0.386
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7608.owl	accepted	0	recognised	recognised	1.101
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7663.owl	accepted	0	recognised	recognised	0.118
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7716.owl	accepted	0	recognised	recognised	1.86
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7728.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 7479, body_len=3)	6.742
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7831.owl	accepted	0	recognised	recognised	3.244
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7833.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 25, body_len=3)	0.28
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7858.owl	accepted	0	recognised	recognised	1.379
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7868.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 164881, body_len=3)	12.934
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7890.owl	accepted	0	recognised	recognised	0.106
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7894.owl	accepted	0	recognised	recognised	0.135
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7926.owl	accepted	0	recognised	recognised	0.804
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_795.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 126172, body_len=3)	7.836
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7969.owl	accepted	0	recognised	recognised	0.112
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7993.owl	accepted	0	recognised	recognised	17.633
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_7995.owl	accepted	0	recognised	recognised	0.129
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8021.owl	accepted	0	recognised	recognised	0.15
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8068.owl	accepted	0	recognised	recognised	9.037
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8135.owl	accepted	0	recognised	recognised	0.171
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8145.owl	accepted	0	recognised	recognised	6.319
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8169.owl	accepted	0	recognised	recognised	0.095
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8175.owl	accepted	0	recognised	recognised	0.252
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8187.owl	accepted	0	recognised	recognised	0.16
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8298.owl	accepted	0	recognised	recognised	0.268
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8329.owl	accepted	0	recognised	recognised	0.578
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8347.owl	accepted	0	recognised	recognised	0.7
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_840.owl	accepted	0	recognised	recognised	2.128
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8470.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 784, body_len=3)	1.578
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8486.owl	accepted	0	recognised	recognised	58.61
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8492.owl	accepted	0	recognised	recognised	1.55
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8502.owl	accepted	0	recognised	recognised	0.126
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8557.owl	accepted	0	recognised	recognised	3.175
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8579.owl	accepted	0	recognised	recognised	0.912
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8634.owl	accepted	0	recognised	recognised	4.63
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8641.owl	accepted	0	recognised	recognised	0.509
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8671.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 772, body_len=3)	13.419
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_868.owl	accepted	0	recognised	recognised	66.168
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_869.owl	accepted	0	recognised	recognised	0.263
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8744.owl	accepted	0	recognised	recognised	0.299
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8755.owl	accepted	0	recognised	recognised	0.709
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8759.owl	accepted	0	recognised	recognised	0.412
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8787.owl	accepted	0	recognised	recognised	8.917
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8792.owl	accepted	0	recognised	recognised	1.329
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8806.owl	accepted	0	recognised	recognised	0.11
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8864.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 9, body_len=3)	1.204
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8916.owl	accepted	0	recognised	recognised	0.2
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8933.owl	accepted	0	recognised	recognised	0.497
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8937.owl	accepted	0	recognised	recognised	0.113
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_894.owl	accepted	0	recognised	recognised	0.22
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8974.owl	accepted	0	recognised	recognised	0.1
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8982.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 12895, body_len=3)	10.016
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_8995.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 819, body_len=3)	1.279
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9014.owl	accepted	0	recognised	recognised	0.633
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9031.owl	accepted	0	recognised	recognised	0.116
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9046.owl	accepted	0	recognised	recognised	4.155
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9119.owl	accepted	0	recognised	recognised	4.572
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9154.owl	accepted	0	recognised	recognised	0.139
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_928.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 3280, body_len=3)	0.348
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_935.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 22401, body_len=4)	1.219
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9400.owl	accepted	0	recognised	recognised	7.577
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9435.owl	accepted	0	recognised	recognised	0.367
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9462.owl	accepted	0	recognised	recognised	0.111
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_947.owl	accepted	0	recognised	recognised	0.962
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9498.owl	accepted	0	recognised	recognised	23.276
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9499.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 96065, body_len=3)	8.012
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9509.owl	accepted	0	recognised	recognised	0.097
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9513.owl	accepted	0	recognised	recognised	1.181
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_954.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 229504, body_len=3)	18.526
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9567.owl	accepted	0	recognised	recognised	5.225
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9590.owl	accepted	0	recognised	recognised	0.796
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9598.owl	accepted	0	recognised	recognised	0.236
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9612.owl	accepted	0	recognised	recognised	0.938
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9617.owl	accepted	0	recognised	recognised	0.236
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_964.owl	accepted	0	recognised	recognised	0.966
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9646.owl	accepted	0	recognised	recognised	0.343
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9673.owl	accepted	0	recognised	recognised	0.299
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9674.owl	accepted	0	recognised	recognised	71.707
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9695.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 37, body_len=3)	0.494
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9761.owl	accepted	0	recognised	recognised	0.971
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9768.owl	accepted	0	recognised	recognised	15.004
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9772.owl	accepted	0	recognised	recognised	0.503
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9790.owl	accepted	0	recognised	recognised	0.418
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9792.owl	accepted	0	recognised	recognised	0.786
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9794.owl	accepted	0	recognised	recognised	31.695
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9816.owl	accepted	0	recognised	recognised	2.739
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9854.owl	accepted	0	recognised	recognised	0.109
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9857.owl	accepted	0	recognised	recognised	0.245
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9884.owl	accepted	0	recognised	recognised	0.666
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9886.owl	accepted	0	recognised	recognised	7.189
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9894.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 706, body_len=3)	3.114
+ore	/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files/ore_ont_9998.owl	rejected	3	not recognised: nary_concept_conjunction	not recognised: nary_concept_conjunction (clause 4305, body_len=3)	0.42

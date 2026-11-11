@@ -1,5 +1,77 @@
 # Changelog
 
+## [1.6.0] - 2026-11-12
+
+Version 1.6.0 is the completeness release. The Lean routing capstone no
+longer assumes that the selected procedure or its fallback is complete:
+the two assumed fields are gone, the supervisor is instantiated, and
+completeness is proved on the EL and ALC fragments of the common clause
+source through two executable reference procedures that the shipped
+binary runs after its production routes decline. The acceptance contract
+is `docs/V1.6.0-ACCEPTANCE.md`; the plan and the exact statement of the
+claim are `docs/V1.6.0-COMPLETENESS-PLAN.md`; the campaign log is
+`docs/V1.6.0-STATUS.md`.
+
+### Lean: completeness
+
+- `KMAutomaticSupervisor.CertifiedSupervisor` and
+  `KMConcreteAutomaticSupervisor.ConcreteSupervisor` lose the fields
+  `selectedComplete` and `fallbackComplete`. Coverage is the predicate
+  `CoversAt`; soundness is unconditional; the completeness theorems take
+  coverage as a hypothesis (`completeAt`, `complete_on`,
+  `sound_and_complete`).
+- `ELCompletionRelativeRefinement`: closure obligations relative to a
+  context universe (`ClosedStateOn`), with the exact readout theorems.
+- `ELReferenceSaturation`: an executable fixpoint of the NF1 to NF7
+  completion closure, proved closed on its universe and sound; the readout
+  `referenceBit` is exact (`referenceBit_exact`).
+- `ELCommonSourceRecognizer`: `recognizeEL` reads the common clause source
+  as a pure EL ontology (NF1 to NF7, reflexive roles, role domains, binary
+  and n-ary conjunction bodies through fresh NF2 prefix chains,
+  disjointness) and fails closed otherwise; `recognizeEL_entails_iff`
+  and `recognizeEL_unsat_iff` state that the reading changes no requested
+  subsumption and no inconsistency verdict. The existential pairing is a
+  merge-sort pass (linear up to the sort).
+- `ALCReferenceSaturation`: a computable twin of
+  `CompletenessStrategy.saturate` (`saturateC_eq`) with the exact readout
+  `alcBit_exact`; `ALCCommonSourceRecognizer`: `recognizeALC` inverting
+  `CBALCEncoding.encode` with `recognizeALC_entails_iff`.
+- `KMConcreteWorkerAdapters`: evidence constructors `elReference` and
+  `alcReference` whose acceptance recomputes the reference answer;
+  `elReferenceExecution`, `alcReferenceExecution` and their totality
+  theorems; `KMRequestedExecution.orElse` with both coverage lemmas.
+- `KMSupervisorInstance`: `kmSupervisor rust decide`, for every
+  fail-closed executor and every router decision, with
+  `kmSupervisor_sound`, `kmSupervisor_complete_on_EL`,
+  `kmSupervisor_complete_on_ALC` and `kmSupervisor_complete_on_EL_or_ALC`,
+  all at `[propext, Classical.choice, Quot.sound]`.
+- The boundary is stated in `docs/CERTIFICATION-ROADMAP.md` and
+  `lean/README.md`: complete up to resource exhaustion on the recognised
+  fragments; the frontend, role hierarchies, inverses, chains, nominals,
+  cardinalities, data and rules remain outside. The hypertableau and CB
+  completeness status is surveyed in
+  `docs/history/SURVEY-HT-CB-COMPLETENESS-2026-11-09.md`.
+
+### Shipped reference stage
+
+- `km-el-reference` (Lean executable): reads the engine's normalised
+  clause stream and the requested names, runs the EL reference and then
+  the ALC reference (`--procedure el|alc|el-then-alc`), rechecks every
+  publication with `requestedExactAccept`, and prints the matrix;
+  `--recognize-only` reports fragment membership. The ALC procedure is
+  exponential and runs under the signature budget
+  `KM_ALC_REFERENCE_MAX_CONCEPTS` (default 16).
+- `km classify` on the automatic route runs the reference stage after the
+  selected route and its exact fallback have declined
+  (`KM_REFERENCE_STAGE=0` disables it; `KM_REFERENCE_FORCE=1` forces every
+  production route to decline; `KM_KEEP_CLAUSES=<dir>` saves the clause
+  stream). Integration tests `engine/tests/reference_stage.rs`; the
+  routing gate builds the binary, audits the new theorems and runs the
+  tests.
+- Fragment measurement on the 593 `elc`-routed inputs of the checkers-on
+  suite: 592 recognised, including all 585 ORE inputs; recogniser time
+  0.17 s median, 32 s maximum (2.9 million clauses).
+
 ## [1.5.5] - 2026-11-09
 
 Version 1.5.5 fixes every soundness and completeness defect found since

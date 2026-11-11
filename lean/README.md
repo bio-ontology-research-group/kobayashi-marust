@@ -8,8 +8,12 @@ mathlib.
 
 Each of ELC, HT, and CB has a checker theorem: evidence accepted by its Lean
 checker is exact for the normalised clause set it encodes. The routing
-composition is proved under explicit premises that the selected procedure and
-its fallback are complete; those premises are not proved. The OWL frontend
+composition (`KMSupervisorInstance`) is sound for every source and complete,
+up to resource exhaustion, on the EL and ALC fragments of the common clause
+source, through two executable reference procedures that run after the
+production workers decline (v1.6.0; the earlier completeness premises are
+gone). Completeness outside those fragments (role hierarchies, inverses,
+chains, nominals, cardinalities, data, rules) is not proved. The OWL frontend
 (parsing, IRI identity, normalisation, role-chain encoding) is not modelled,
 and the checkers run only when their environment variables request them. See
 `../docs/CERTIFICATION-ROADMAP.md`.
@@ -31,10 +35,15 @@ The capstones are:
 - `CBCertificationSurface.lean` exposes the source-bound production closure,
   canonical model, and exact positive-or-countermodel taxonomy publication.
 - `KMConcreteWorkerAdapters.lean` binds all accepted worker outputs to one
-  common clause semantics. `KMConcreteAutomaticSupervisor.lean` additionally
-  binds the complete requested named-class signature and proves the selected
-  route plus retained fallback sound and complete from their concrete
-  publication facts.
+  common clause semantics and adds the EL and ALC reference executions.
+  `KMConcreteAutomaticSupervisor.lean` binds the complete requested
+  named-class signature and proves the execution plan sound, and complete
+  wherever one of its routes covers the source. `KMSupervisorInstance.lean`
+  instantiates it for every fail-closed executor and every router decision
+  and proves `kmSupervisor_sound`, `kmSupervisor_complete_on_EL`,
+  `kmSupervisor_complete_on_ALC` and `kmSupervisor_complete_on_EL_or_ALC`
+  (`ELReferenceSaturation`, `ELCommonSourceRecognizer`,
+  `ALCReferenceSaturation`, `ALCCommonSourceRecognizer`).
 
 The public capstones contain no `sorryAx`; their reported dependencies are
 limited to `propext`, `Classical.choice`, and `Quot.sound`. Run

@@ -890,6 +890,10 @@ fn run_budgeted_bridge_attempt(
     }
 }
 
+fn reference_force_enabled() -> bool {
+    std::env::var("KM_REFERENCE_FORCE").as_deref() == Ok("1")
+}
+
 /// Dispatch an isolated top-level mechanism. `None` means the explicitly
 /// requested historical portfolio; every other variant returns one worker's
 /// answer or an honest out-of-fragment/error result, never a fallback answer.
@@ -902,6 +906,11 @@ fn run_atomic_mechanism(
     meta: &frontend_run::Meta,
     cached_input: &mut Option<crate::json_io::JInput>,
 ) -> Result<Option<EngineOut>, OrchestrateError> {
+    if !matches!(&cfg.mechanism, Mechanism::Portfolio) && reference_force_enabled() {
+        return Err(OrchestrateError::OutOfFragment(
+            "KM_REFERENCE_FORCE=1".into(),
+        ));
+    }
     let profile = &meta.profile;
     match &cfg.mechanism {
         Mechanism::Portfolio => Ok(None),
@@ -1820,6 +1829,15 @@ fn classify_with_evidence_mode(
     let forced_route = if depth == 0 { forced_route_request() } else { None };
     let mut result = classify_with_evidence_inner(initial_cfg, ont, retain_grouped_output);
     CLASSIFY_DEPTH.with(|d| d.set(depth));
+    if depth == 0
+        && forced_route.is_none()
+        && result.is_err()
+        && std::env::var("KM_REFERENCE_STAGE").as_deref() != Ok("0")
+    {
+        if let Some(ref_result) = try_reference_stage(initial_cfg, ont, retain_grouped_output) {
+            result = ref_result;
+        }
+    }
     if depth == 0 {
         // A data-property assertion the clause set does not carry is an
         // omitted axiom of the published answer: count it with the worker's
@@ -1956,17 +1974,21 @@ fn classify_with_evidence_inner(
     let _environment_guard = crate::routing::EnvironmentGuard::capture();
     let project_data_abox = std::env::var_os("KM_DATA_ABOX_PROJECT").is_some();
     if std::env::var_os("KM_GROUND_RULE_SOURCE").is_some() || project_data_abox {
+        if reference_force_enabled() {
+            return Err(OrchestrateError::OutOfFragment("KM_REFERENCE_FORCE=1".into()));
+        }
         if crate::tableau::ht_lean_certification_requested() {
             return Err(OrchestrateError::OutOfFragment(
                 "ground-rule source cannot bypass requested runtime certification".into()));
         }
         let source = std::fs::read_to_string(ont)?;
         let grounded = if project_data_abox {
-            crate::frontend::ground_rule_source::GroundedRuleSource {
-                text: crate::frontend::data_abox_projection::project(&source)
-                    .map_err(OrchestrateError::OutOfFragment)?,
-                source_rules: 0, instances: 0, private_classes: Default::default(),
-            }
+            crate::frontend::data_abox_projection::project(&source)
+                .map(|text| crate::frontend::ground_rule_source::GroundedRuleSource {
+                    text,
+                    source_rules: 0, instances: 0, private_classes: Default::default(),
+                })
+                .map_err(OrchestrateError::OutOfFragment)?
         } else {
             crate::frontend::ground_rule_source::compile(&source, 100_000)
                 .map_err(OrchestrateError::OutOfFragment)?
@@ -2011,7 +2033,10 @@ fn classify_with_evidence_inner(
     // complete-answer-or-defer gate. Restore all route flags on refusal and
     // continue with the unchanged input. Runtime certificate requests retain
     // their existing path; source reduction must not bypass them.
-    if automatic_requested && !crate::tableau::ht_lean_certification_requested() {
+    if automatic_requested
+        && !reference_force_enabled()
+        && !crate::tableau::ht_lean_certification_requested()
+    {
         if let Some(mode) = data_source::automatic_candidate(ont)? {
             if std::env::var_os("KM_TIMING").is_some() {
                 eprintln!("KM_TIMING automatic data source attempt: {mode}");
@@ -2044,9 +2069,15 @@ fn classify_with_evidence_inner(
     }
     timing_mark("data source candidate done");
     if std::env::var_os("KM_SYMBOLIC_SOURCE_BRIDGE").is_some() {
+        if reference_force_enabled() {
+            return Err(OrchestrateError::OutOfFragment("KM_REFERENCE_FORCE=1".into()));
+        }
         return symbolic_source::classify(ont);
     }
-    if automatic_requested && std::env::var_os("KM_NO_SYMBOLIC_SOURCE_BRIDGE").is_none() {
+    if automatic_requested
+        && !reference_force_enabled()
+        && std::env::var_os("KM_NO_SYMBOLIC_SOURCE_BRIDGE").is_none()
+    {
         if let Some(source) = symbolic_source::automatic_candidate(ont)? {
             let runtime_certificate = crate::tableau::ht_lean_certification_requested();
             let attempt = {
@@ -2079,6 +2110,7 @@ fn classify_with_evidence_inner(
     // quotient clash, or worker error leaves the unchanged ontology as the
     // authoritative fallback.
     if automatic_requested
+        && !reference_force_enabled()
         && !quotient_active
         && std::env::var_os("KM_NO_POSITIVE_ABOX_QUOTIENT").is_none()
     {
@@ -2116,6 +2148,7 @@ fn classify_with_evidence_inner(
     // pipeline classifies T ∪ Q; only a certified consistent, complete answer
     // is published. A quotient clash or decline falls through unchanged.
     if automatic_requested
+        && !reference_force_enabled()
         && !quotient_active
         && std::env::var_os("KM_ABOX_QUOTIENT_ACTIVE").is_none()
         && std::env::var_os("KM_NO_ABOX_QUOTIENT").is_none()
@@ -2305,7 +2338,7 @@ fn classify_with_evidence_inner(
     // Public/library classification keeps its established flat result contract
     // and therefore does not enter this path.
     let automatic_route = std::env::var("KM_ROUTE").as_deref() == Ok("auto");
-    if retain_grouped_output && automatic_route {
+    if retain_grouped_output && automatic_route && !reference_force_enabled() {
         if let Some(grouped_subsumptions) = flat_nf1::try_classify(ont)? {
             if timing {
                 eprintln!(
@@ -2332,18 +2365,20 @@ fn classify_with_evidence_inner(
     // classifies in seconds and reconstructs the original taxonomy exactly.
     // Preprocessing only — it classifies ordinary projections through this same
     // pipeline and fails closed (returns None) unless every premise holds.
-    if let Some(classification) = mirror::try_classify(initial_cfg, ont)? {
-        if timing {
-            eprintln!(
-                "KM_TIMING frontend done @ {:.2}s route=mirror_private",
-                t_start.elapsed().as_secs_f64()
-            );
+    if !reference_force_enabled() {
+        if let Some(classification) = mirror::try_classify(initial_cfg, ont)? {
+            if timing {
+                eprintln!(
+                    "KM_TIMING frontend done @ {:.2}s route=mirror_private",
+                    t_start.elapsed().as_secs_f64()
+                );
+            }
+            return Ok(ClassificationEvidence {
+                classification,
+                grouped_subsumptions: None,
+                consistency_certified: true,
+            });
         }
-        return Ok(ClassificationEvidence {
-            classification,
-            grouped_subsumptions: None,
-            consistency_certified: true,
-        });
     }
     let (clauses_path, meta, mut cached_input, elc_binary) =
         frontend_run::run_ofn_split_cached(initial_cfg, ont)?;
@@ -2384,6 +2419,9 @@ fn classify_with_evidence_inner(
     // satisfiability of the class projection alone cannot authorize this.
     if std::env::var_os("KM_NO_FINITE_RULE_TAXONOMY").is_none() {
         if let Some(source) = meta.profile.finite_rule_class_projection.as_ref() {
+            if reference_force_enabled() {
+                return Err(OrchestrateError::OutOfFragment("KM_REFERENCE_FORCE=1".into()));
+            }
             match rules_consistency(initial_cfg, clauses_path.path(), &meta, true, RuleTaxonomyRequest::default())?.map(|v| v.consistent) {
                 Some(true) => {},
                 // Not exact on a one-sorted stream beside a nominal (see the
@@ -2439,6 +2477,7 @@ fn classify_with_evidence_inner(
     // publishable as is; any decline or budget expiry restores this call's
     // environment and continues with the unchanged schedule below.
     if automatic_requested
+        && !reference_force_enabled()
         && !meta.profile.atomic_class_abox_candidate
         && crate::routing::bounded_bridge_first_candidate(selected_route, &meta.profile)
     {
@@ -2565,6 +2604,7 @@ fn classify_with_evidence_inner(
     // broader general HT probe. Any refusal restores this call's environment
     // and leaves the unchanged certified-nominal fallback authoritative.
     if automatic_requested
+        && !reference_force_enabled()
         && ((matches!(
             selected_route,
             crate::routing::Route::CertifiedNominals | crate::routing::Route::Nominals
@@ -2647,6 +2687,7 @@ fn classify_with_evidence_inner(
     // no certificate beyond lossless clause coverage (see routing::select).
     // It is a measurement arm only and must be requested explicitly.
     if automatic_requested
+        && !reference_force_enabled()
         && std::env::var_os("KM_NOMINAL_GENERAL_HT_PROBE_UNCERTIFIED").is_some()
         && matches!(
             selected_route,
@@ -2702,6 +2743,7 @@ fn classify_with_evidence_inner(
     // any decline or worker failure restores this call's environment and keeps
     // the unchanged exact nominal route below.
     if automatic_requested
+        && !reference_force_enabled()
         && !meta.profile.atomic_class_abox_candidate
         && matches!(
             selected_route,
@@ -2752,6 +2794,7 @@ fn classify_with_evidence_inner(
     // recursively restores the complete v1 nominal clause view; an
     // inconsistent result is already the complete OWL classification.
     if automatic_requested
+        && !reference_force_enabled()
         && meta.profile.disjoint_union_abox_candidate
         && !meta.profile.positive_abox_tbox_separable
         && meta.profile.source.abox_axioms >= 8
@@ -3061,6 +3104,9 @@ fn classify_with_evidence_inner(
     // The frontend proved the ABox forces an individual into disjoint named
     // classes: inconsistent. The CB engine drops the ABox, so short-circuit.
     if meta.abox_inconsistent {
+        if reference_force_enabled() {
+            return Err(OrchestrateError::OutOfFragment("KM_REFERENCE_FORCE=1".into()));
+        }
         return Ok(ClassificationEvidence {
             classification: Classification {
                 approximate: None,
@@ -3087,6 +3133,9 @@ fn classify_with_evidence_inner(
     if meta.profile.positive_el_abox_materializable
         || std::env::var_os("KM_EL_ABOX_CHECK").is_some()
     {
+        if reference_force_enabled() {
+            return Err(OrchestrateError::OutOfFragment("KM_REFERENCE_FORCE=1".into()));
+        }
         let (input, reloadable): (crate::json_io::JInput, bool) = match cached_input.take() {
             Some(input) => (input, false),
             // The value the frontend wrote to `clauses_path`; the file stays
@@ -3180,7 +3229,7 @@ fn classify_with_evidence_inner(
     // The rule-aware classification ran past its budget: classify the
     // rule-free ontology first, then let the rule worker confirm the rest.
     let mut deferred_rule_taxonomy = false;
-    if cfg.ht_rules {
+    if cfg.ht_rules && !reference_force_enabled() {
         // Rule conclusions about named individuals reach class queries only
         // through a nominal or the universal role. Then the worker classifies
         // the rule-aware input instead of only checking it, and its taxonomy
@@ -3362,7 +3411,7 @@ fn classify_with_evidence_inner(
     // let the faster incomplete certify win). On a CB-timeout ont (7581) CB never
     // finishes, so the certify (done in ~31s) is taken and the ont is recovered.
     let ht_mode: &str = cfg.ht_mode.as_str();
-    let atomic_attempt = if matches!(cfg.mechanism, Mechanism::Elc) {
+    let atomic_attempt = if matches!(cfg.mechanism, Mechanism::Elc) && !reference_force_enabled() {
         certified_el_out
             .take()
             .map(Some)
@@ -3432,6 +3481,11 @@ fn classify_with_evidence_inner(
             out
         }
         None => {
+            if reference_force_enabled() {
+                return Err(OrchestrateError::OutOfFragment(
+                    "KM_REFERENCE_FORCE=1".into(),
+                ));
+            }
             // The 3 ORE giants OOM under the concurrent elc-portfolio race (it runs CB
             // and elc side by side); keep them on the safe single-arm paths (bare elc
             // when EL-safe, else the CB stack) by suppressing the portfolio for them.
@@ -3693,6 +3747,25 @@ fn classify_with_evidence_inner(
             out.dropped
         )));
     }
+    if reference_force_enabled() {
+        return Err(OrchestrateError::OutOfFragment("KM_REFERENCE_FORCE=1".into()));
+    }
+    map_engine_out_to_evidence(
+        out,
+        &meta,
+        retain_grouped_output,
+        consistency_certified,
+        timing,
+    )
+}
+
+fn map_engine_out_to_evidence(
+    mut out: EngineOut,
+    meta: &frontend_run::Meta,
+    retain_grouped_output: bool,
+    consistency_certified: bool,
+    timing: bool,
+) -> Result<ClassificationEvidence, OrchestrateError> {
     // Publication coverage guard (docs/ROUTING.md, "Publication coverage
     // guard"): a worker answer that has no row for some declared class has
     // not answered that class, and publishing it would report the class with
@@ -3922,6 +3995,283 @@ fn classify_with_evidence_inner(
     })
 }
 
+#[derive(serde::Serialize)]
+struct ReferenceStageInput<'a> {
+    named: &'a [String],
+    clauses: &'a [crate::json_io::JClause],
+}
+
+#[derive(serde::Deserialize)]
+struct ReferenceStageCell {
+    sub: String,
+    sup: String,
+    answer: bool,
+}
+
+#[derive(serde::Deserialize)]
+struct ReferenceStageOutput {
+    #[serde(default)]
+    procedure: Option<String>,
+    named: Vec<String>,
+    cells: Vec<ReferenceStageCell>,
+}
+
+const DEFAULT_REFERENCE_BUDGET_S: f64 = 300.0;
+
+fn reference_stage_budget() -> std::time::Duration {
+    let secs = std::env::var("KM_REFERENCE_BUDGET_S")
+        .ok()
+        .and_then(|v| v.parse::<f64>().ok())
+        .filter(|v| v.is_finite() && *v >= 0.0)
+        .unwrap_or(DEFAULT_REFERENCE_BUDGET_S);
+    std::time::Duration::from_secs_f64(secs)
+}
+
+fn resolve_reference_checker_path() -> Option<std::path::PathBuf> {
+    if let Some(p) = std::env::var_os("KM_EL_REFERENCE_CHECKER").filter(|v| !v.is_empty()) {
+        let path = std::path::PathBuf::from(p);
+        return path.is_file().then_some(path);
+    }
+    let rel = std::path::PathBuf::from("lean/.lake/build/bin/km-el-reference");
+    if rel.is_file() {
+        return Some(rel);
+    }
+    let from_manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .map(|root| root.join("lean/.lake/build/bin/km-el-reference"))?;
+    from_manifest.is_file().then_some(from_manifest)
+}
+
+fn max_clause_symbol_len(clauses: &[crate::json_io::JClause], names: &[String]) -> usize {
+    fn term_max(t: &crate::json_io::JTerm) -> usize {
+        match t {
+            crate::json_io::JTerm::Var { name } | crate::json_io::JTerm::Ind { name } => name.len(),
+            crate::json_io::JTerm::Aux { root, label } => {
+                label.iter().map(|(s, _)| s.len()).max().unwrap_or(0).max(root.len())
+            }
+            crate::json_io::JTerm::Fun { function, arg } => function.len().max(term_max(arg)),
+        }
+    }
+    let mut max_len = names.iter().map(String::len).max().unwrap_or(0);
+    for cl in clauses {
+        for atom in cl.body.iter().chain(cl.head.iter()) {
+            let l = match atom {
+                crate::json_io::JAtom::Concept { concept, term } => {
+                    concept.len().max(term_max(term))
+                }
+                crate::json_io::JAtom::Role {
+                    role,
+                    source,
+                    target,
+                } => role.len().max(term_max(source)).max(term_max(target)),
+                crate::json_io::JAtom::Eq { left, right } => term_max(left).max(term_max(right)),
+            };
+            max_len = max_len.max(l);
+        }
+    }
+    max_len
+}
+
+fn try_reference_stage(
+    initial_cfg: &Config,
+    ont: &Path,
+    retain_grouped_output: bool,
+) -> Option<Result<ClassificationEvidence, OrchestrateError>> {
+    let checker_path = resolve_reference_checker_path()?;
+    let timing = std::env::var_os("KM_TIMING").is_some();
+    let log_declined = |reason: &str| {
+        if timing {
+            eprintln!("KM_TIMING KM_REFERENCE_STAGE declined: {reason}");
+        }
+    };
+    let (clauses, meta) = match frontend_run::run_ofn_for_reference(initial_cfg, ont) {
+        Ok(pair) => pair,
+        Err(err) => {
+            log_declined(&err.to_string());
+            return None;
+        }
+    };
+    if meta.abox_inconsistent
+        || meta.profile.positive_el_abox_materializable
+        || meta.uncarried_data_assertions > 0
+        || !meta.dropped_source_axioms.is_empty()
+        || meta.one_sorted_data_successors
+        || meta.profile.source.rule_axioms > 0
+        || !meta.el_rbox_safe
+    {
+        log_declined("not recognised: not in pure EL/ALC clause-stream fragment");
+        return None;
+    }
+    // The request covers class names only. `meta.named` holds every IRI the
+    // frontend registered, including object and data properties and
+    // individuals, so keep a registered name only when it is a declared
+    // class, an asserted class, or occurs as a concept atom in the clause
+    // stream (the names the production workers answer for).
+    let mut concept_atoms: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    for cl in &clauses {
+        for atom in cl.body.iter().chain(cl.head.iter()) {
+            if let crate::json_io::JAtom::Concept { concept, .. } = atom {
+                concept_atoms.insert(concept.as_str());
+            }
+        }
+    }
+    let known_classes: std::collections::HashSet<&str> = meta
+        .declared
+        .iter()
+        .chain(meta.asserted_classes.iter())
+        .map(String::as_str)
+        .collect();
+    let mut name_set = std::collections::BTreeSet::new();
+    for n in &meta.declared {
+        if n != "owl:Thing" && n != "owl:Nothing" {
+            name_set.insert(n.clone());
+        }
+    }
+    for n in meta.named.iter().chain(meta.asserted_classes.iter()) {
+        if n != "owl:Thing"
+            && n != "owl:Nothing"
+            && (known_classes.contains(n.as_str()) || concept_atoms.contains(n.as_str()))
+        {
+            name_set.insert(n.clone());
+        }
+    }
+    drop(concept_atoms);
+    let real_names: Vec<String> = name_set.into_iter().collect();
+    let pad = "x".repeat(max_clause_symbol_len(&clauses, &real_names));
+    let probe_a = format!("__km_ref_probe_a_{pad}");
+    let probe_b = format!("__km_ref_probe_b_{pad}");
+    let mut full_named = real_names.clone();
+    full_named.push(probe_a.clone());
+    full_named.push(probe_b.clone());
+
+    let input_file = tmpfile::TempPath::new(".el-reference-in.json");
+    let write_res = File::create(input_file.path()).and_then(|f| {
+        let mut w = std::io::BufWriter::with_capacity(1 << 20, f);
+        serde_json::to_writer(
+            &mut w,
+            &ReferenceStageInput {
+                named: &full_named,
+                clauses: &clauses,
+            },
+        )
+        .map_err(std::io::Error::other)?;
+        std::io::Write::flush(&mut w)
+    });
+    if let Err(err) = write_res {
+        log_declined(&err.to_string());
+        return None;
+    }
+
+    let (output, timed_out) = match crate::lean_checkers::CheckerCommand::new(&checker_path)
+        .time_limit(Some(reference_stage_budget()))
+        .args(["--procedure", "el-then-alc"])
+        .arg(input_file.path())
+        .output_timed()
+    {
+        Ok(res) => res,
+        Err(err) => {
+            log_declined(&err.to_string());
+            return None;
+        }
+    };
+    if timed_out {
+        log_declined("budget");
+        return None;
+    }
+    if !output.status.success() {
+        let stdout_msg = String::from_utf8_lossy(&output.stdout);
+        let stderr_msg = String::from_utf8_lossy(&output.stderr);
+        let reason = stdout_msg
+            .lines()
+            .chain(stderr_msg.lines())
+            .map(str::trim)
+            .find(|line| !line.is_empty())
+            .unwrap_or("km-el-reference exited non-zero");
+        // The first output line can be the whole answer matrix: cut it.
+        let reason: String = reason.chars().take(200).collect();
+        log_declined(&format!("{reason} (checker status: {})", output.status));
+        return None;
+    }
+
+    let parsed: ReferenceStageOutput = match serde_json::from_slice(&output.stdout) {
+        Ok(p) => p,
+        Err(err) => {
+            log_declined(&format!("invalid reference output JSON: {err}"));
+            return None;
+        }
+    };
+    if parsed.named != full_named || parsed.cells.len() != full_named.len() * full_named.len() {
+        log_declined("reference output named/cells shape mismatch");
+        return None;
+    }
+    let procedure = parsed
+        .procedure
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_ascii_lowercase);
+
+    let inconsistent = parsed
+        .cells
+        .iter()
+        .any(|c| c.sub == probe_a && c.sup == probe_b && c.answer);
+
+    let mut subsumptions: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for c in &real_names {
+        subsumptions.insert(c.clone(), Vec::new());
+    }
+    if !inconsistent {
+        // Canonical minimal form: an unsatisfiable class `u` (`u SUB probe_b`)
+        // is published as unsatisfiable only. Every `u SUB x` is entailed, so
+        // the production routes print a route-dependent subset of those rows
+        // and the comparison is semantic on them.
+        let unsat: std::collections::HashSet<&str> = parsed
+            .cells
+            .iter()
+            .filter(|c| c.answer && c.sup == probe_b && c.sub != probe_a && c.sub != probe_b)
+            .map(|c| c.sub.as_str())
+            .collect();
+        for cell in &parsed.cells {
+            if !cell.answer || cell.sub == probe_a || cell.sub == probe_b || cell.sup == probe_a {
+                continue;
+            }
+            let Some(row) = subsumptions.get_mut(&cell.sub) else {
+                continue;
+            };
+            if cell.sup == probe_b {
+                row.push("owl:Nothing".to_string());
+            } else if cell.sub != cell.sup && !unsat.contains(cell.sub.as_str()) {
+                row.push(cell.sup.clone());
+            }
+        }
+    }
+
+    let engine_out = EngineOut {
+        subsumptions,
+        compact_subsumptions: None,
+        inconsistent,
+        dropped: 0,
+        unresolved: Vec::new(),
+        pair_form: false,
+    };
+    match map_engine_out_to_evidence(engine_out, &meta, retain_grouped_output, true, timing) {
+        Ok(evidence) => {
+            if timing {
+                if let Some(proc) = procedure.as_deref() {
+                    eprintln!("KM_TIMING KM_REFERENCE_STAGE published procedure={proc}");
+                } else {
+                    eprintln!("KM_TIMING KM_REFERENCE_STAGE published");
+                }
+            }
+            Some(Ok(evidence))
+        }
+        Err(err) => {
+            log_declined(&err.to_string());
+            None
+        }
+    }
+}
+
 /// Admit a diagnostic production-saturation valve only when it tightens the
 /// validated 14-GiB default. The override deliberately lives outside the
 /// normalized route environment: it changes only when an optional monotone
@@ -3940,6 +4290,9 @@ fn disjoint_union_global_consistency(
     clauses_path: &Path,
     _meta: &frontend_run::Meta,
 ) -> Result<Option<bool>, OrchestrateError> {
+    if reference_force_enabled() {
+        return Err(OrchestrateError::OutOfFragment("KM_REFERENCE_FORCE=1".into()));
+    }
     let _guard = crate::routing::EnvironmentGuard::capture();
     crate::routing::Route::HtGeneral.apply_environment();
     std::env::set_var("KM_ROUTE", "manual");
@@ -3983,6 +4336,9 @@ fn disjoint_union_global_consistency(
 /// Returns `Some(consistent)` when rules are present, `None` otherwise (caller
 /// then takes the normal route).
 fn checked_finite_rule_taxonomy(mut evidence: ClassificationEvidence) -> Result<ClassificationEvidence, OrchestrateError> {
+    if reference_force_enabled() {
+        return Err(OrchestrateError::OutOfFragment("KM_REFERENCE_FORCE=1".into()));
+    }
     if !evidence.classification.consistent || evidence.classification.dropped != 0 {
         return Err(OrchestrateError::OutOfFragment(
             "finite-rule class projection did not produce a complete consistent taxonomy".into()));
@@ -4052,6 +4408,9 @@ fn complete_rule_taxonomy(
     meta: &frontend_run::Meta,
     mut out: EngineOut,
 ) -> Result<EngineOut, OrchestrateError> {
+    if reference_force_enabled() {
+        return Err(OrchestrateError::OutOfFragment("KM_REFERENCE_FORCE=1".into()));
+    }
     if let Some(compact) = out.compact_subsumptions.take() {
         for (subject, supers) in &compact.rows {
             let row = out.subsumptions.entry(compact.names[*subject as usize].to_string()).or_default();
@@ -4220,6 +4579,9 @@ fn rules_consistency(
     require_source_model: bool,
     request: RuleTaxonomyRequest,
 ) -> Result<Option<RulesVerdict>, OrchestrateError> {
+    if reference_force_enabled() {
+        return Err(OrchestrateError::OutOfFragment("KM_REFERENCE_FORCE=1".into()));
+    }
     use crate::json_io::JInput;
     let classify = request.classify;
     use std::process::{Command, Stdio};

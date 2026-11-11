@@ -447,3 +447,8 @@ root = "RulesCertCheck"
 [[lean_exe]]
 name = "ht-subset-unravelling-check"
 root = "HTSubsetUnravellingCheck"
+
+[[lean_exe]]
+name = "km-el-reference"
+root = "KMELReferenceCheck"
+
