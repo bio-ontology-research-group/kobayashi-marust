@@ -38,6 +38,7 @@ import ContextCalculus.OWL.ParseTests
 import ContextCalculus.OWLFrontend.ALCTranslate
 import ContextCalculus.OWLFrontend.ALCTranslateCorrect
 import ContextCalculus.OWLFrontend.ALCTranslateTests
+import ContextCalculus.OWLFrontend.Reference
 import ContextCalculus.ELResidualCertificate
 import ContextCalculus.ELResidualCompilation
 import ContextCalculus.ELResidualWitness
