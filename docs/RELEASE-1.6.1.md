@@ -1,6 +1,6 @@
 # KM 1.6.1 release notes
 
-Draft. Release commit and tag are filled in at release.
+Released 2026-11-12 from commit 37e75e28 (tag `v1.6.1`).
 
 ## What changes
 
@@ -60,11 +60,32 @@ checker's time over all published inputs, and on the largest inputs 76 to
 
 ## Speed and correctness (Ibex, same day)
 
-(filled at release)
+| | v1.6.1 | v1.5.3 same day | Konclude same day |
+|---|---:|---:|---:|
+| held-out inputs verified (of 585) | 576 | 560 | 575 |
+| mean wall-time ratio against v1.5.3 (bound 1.10) | 0.936 | 1 | |
+| median wall-time ratio against v1.5.3 (bound 1.10) | 1.004 | 1 | |
+| median wall time on the 573 inputs v1.6.1 and Konclude both verify | 0.246 s | | 0.177 s |
+
+No wrong answer on the held-out half or on the 1,708-input pool (1,683
+verified). The reference stage runs only after every production route
+declines, so these numbers measure the production routes.
 
 ## Certification
 
-(filled at release)
+On Ibex from the tag (`tools/release/v160-ibex/`): PGO build (22 of 22
+training answers verified), five Lean gates (639 tests, no `sorryAx`),
+full Rust suite (95 cargo commands, 3,623 passed, 0 failed), Java plugin
+(76 tests), checker step (57 checker tests; checkers-on suite, 0 rejected,
+0 answers changed).
+
+## Assets
+
+`km-v1.6.1-linux-x86_64` (PGO, GLIBC at most 2.34),
+`km-v1.6.1-certified-source.tar.gz`, `kobayashi-marust-protege-1.6.1.jar`,
+`BENCHMARKS.md`, `build-completion.json` (S1 and C1 `met`; L1 and R1 read
+the workstation receipt layout and show `pending`; their evidence is
+`certification-ibex.json`), `certification-ibex.json`, `SHA256SUMS`.
 
 ## Records
 
