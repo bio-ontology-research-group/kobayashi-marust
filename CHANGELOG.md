@@ -32,6 +32,13 @@ against it. No theorem of 1.6.0 or 1.6.1 changes. Acceptance:
   (`KM_OWL_REFERENCE_CHECKER`, budget `KM_FRONTEND_CHECK_BUDGET_S`);
   disagreement fails closed with exit 6, a decline changes nothing. Off by
   default.
+- OWL functional syntax parsing follows the specification on IRI identity:
+  an abbreviated IRI and its expansion denote one entity, builtins and
+  datatypes are recognised by their expanded IRI, whitespace is U+20, U+9,
+  U+A, U+D and comments end at LF or CR. Malformed input (missing operands,
+  `SubClassOf()`, non-ASCII bytes in bare words, nested `ObjectInverseOf`)
+  gives a parse error with exit 2 instead of a panic. Inputs that spell each
+  entity one way print the same answer as before.
 
 ### Certification
 
