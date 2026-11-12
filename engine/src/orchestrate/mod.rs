@@ -16,6 +16,7 @@ pub mod engine_run;
 pub mod explain;
 pub mod features;
 mod flat_nf1;
+pub mod frontend_check;
 pub mod frontend_run;
 pub(crate) mod inert_sorts;
 pub mod input;
@@ -99,6 +100,72 @@ pub(super) struct GroupedJsonTaxonomy {
     /// subject at a time. This avoids retaining every pair for very large flat
     /// taxonomies while preserving the canonical subject/superclass order.
     pub(super) reachability_graph: Option<Vec<Vec<u32>>>,
+}
+
+impl GroupedJsonTaxonomy {
+    /// Call `f` on every published pair `(subject, superclass)` in
+    /// serialization order. With a reachability graph, `graph_edges` gives the
+    /// graph's non-reflexive edges (`--json-edges`), otherwise the transitive
+    /// closure one subject at a time, reflexive pairs omitted.
+    pub(super) fn try_for_each_pair<E>(
+        &self,
+        graph_edges: bool,
+        mut f: impl FnMut(&str, &str) -> Result<(), E>,
+    ) -> Result<(), E> {
+        if let Some(graph) = &self.reachability_graph {
+            if graph_edges {
+                // Same named graph as the expanded encoder. Consumers
+                // take its closure; omitting self edges preserves it.
+                // See TaxonomyGraphSerialization.graph_encoding_same_closure.
+                for (subject, successors) in graph.iter().enumerate() {
+                    for &superclass in successors {
+                        if subject != superclass as usize {
+                            f(self.iris[subject].as_ref(), self.iris[superclass as usize].as_ref())?;
+                        }
+                    }
+                }
+                return Ok(());
+            }
+            let mut seen = vec![0u32; graph.len()];
+            let mut generation = 0u32;
+            let mut stack = Vec::new();
+            let mut reached = Vec::new();
+            for (subject, successors) in graph.iter().enumerate() {
+                generation = generation.wrapping_add(1);
+                if generation == 0 {
+                    seen.fill(0);
+                    generation = 1;
+                }
+                // Taxonomy output omits reflexive pairs. Mark the
+                // source before traversal so a non-trivial cycle emits
+                // every equivalent peer but never source ⊑ source.
+                seen[subject] = generation;
+                stack.clear();
+                reached.clear();
+                stack.extend(successors.iter().copied());
+                while let Some(superclass) = stack.pop() {
+                    let index = superclass as usize;
+                    if seen[index] == generation {
+                        continue;
+                    }
+                    seen[index] = generation;
+                    reached.push(superclass);
+                    stack.extend(graph[index].iter().copied());
+                }
+                reached.sort_unstable();
+                for superclass in &reached {
+                    f(self.iris[subject].as_ref(), self.iris[*superclass as usize].as_ref())?;
+                }
+            }
+            return Ok(());
+        }
+        for (subject, supers) in &self.rows {
+            for superclass in supers {
+                f(self.iris[*subject as usize].as_ref(), self.iris[*superclass as usize].as_ref())?;
+            }
+        }
+        Ok(())
+    }
 }
 
 struct JsonIriIds<'a> {
@@ -1346,6 +1413,36 @@ impl JsonClassification {
         let mut ser = serde_json::Serializer::with_formatter(writer, PyFmt);
         serde::Serialize::serialize(self, &mut ser)
     }
+
+    /// `KM_FRONTEND_CHECK=1` on this answer ([`frontend_check::gate`]):
+    /// `Err(message)` when the OWL reference procedure disagrees, in which
+    /// case the caller publishes nothing. Returns at once when the check is
+    /// off.
+    pub fn frontend_check_gate(&self, ontology: &Path) -> Result<(), String> {
+        if !frontend_check::enabled() {
+            return Ok(());
+        }
+        let Some(grouped) = &self.grouped_subsumptions else {
+            return self.classification.frontend_check_gate(ontology);
+        };
+        let pairs = |f: &mut dyn FnMut(&str, &str)| {
+            let _ = grouped.try_for_each_pair(false, |subject, superclass| {
+                f(subject, superclass);
+                Ok::<(), std::convert::Infallible>(())
+            });
+        };
+        let c = &self.classification;
+        frontend_check::gate(
+            ontology,
+            &frontend_check::KmAnswer {
+                consistent: c.consistent,
+                dropped: c.dropped,
+                approximate: c.approximate.as_deref(),
+                unsatisfiable: &c.unsatisfiable,
+                pairs: &pairs,
+            },
+        )
+    }
 }
 
 /// Per-subject taxonomy rows (the retained source session's representation).
@@ -1462,70 +1559,16 @@ impl serde::Serialize for JsonClassificationEncoding<'_> {
         impl serde::Serialize for GroupedPairs<'_> {
             fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
                 use serde::ser::SerializeSeq;
-                if let Some(graph) = &self.0.reachability_graph {
-                    let mut seq = serializer.serialize_seq(None)?;
-                    if self.1 {
-                        // Same named graph as the expanded encoder. Consumers
-                        // take its closure; omitting self edges preserves it.
-                        // See TaxonomyGraphSerialization.graph_encoding_same_closure.
-                        for (subject, successors) in graph.iter().enumerate() {
-                            for &superclass in successors {
-                                if subject != superclass as usize {
-                                    seq.serialize_element(&(
-                                        self.0.iris[subject].as_ref(),
-                                        self.0.iris[superclass as usize].as_ref(),
-                                    ))?;
-                                }
-                            }
-                        }
-                        return seq.end();
-                    }
-                    let mut seen = vec![0u32; graph.len()];
-                    let mut generation = 0u32;
-                    let mut stack = Vec::new();
-                    let mut reached = Vec::new();
-                    for (subject, successors) in graph.iter().enumerate() {
-                        generation = generation.wrapping_add(1);
-                        if generation == 0 {
-                            seen.fill(0);
-                            generation = 1;
-                        }
-                        // Taxonomy output omits reflexive pairs. Mark the
-                        // source before traversal so a non-trivial cycle emits
-                        // every equivalent peer but never source ⊑ source.
-                        seen[subject] = generation;
-                        stack.clear();
-                        reached.clear();
-                        stack.extend(successors.iter().copied());
-                        while let Some(superclass) = stack.pop() {
-                            let index = superclass as usize;
-                            if seen[index] == generation {
-                                continue;
-                            }
-                            seen[index] = generation;
-                            reached.push(superclass);
-                            stack.extend(graph[index].iter().copied());
-                        }
-                        reached.sort_unstable();
-                        for superclass in &reached {
-                            seq.serialize_element(&(
-                                self.0.iris[subject].as_ref(),
-                                self.0.iris[*superclass as usize].as_ref(),
-                            ))?;
-                        }
-                    }
-                    return seq.end();
-                }
-                let len = self.0.rows.values().map(Vec::len).sum();
-                let mut seq = serializer.serialize_seq(Some(len))?;
-                for (subject, supers) in &self.0.rows {
-                    for superclass in supers {
-                        seq.serialize_element(&(
-                            self.0.iris[*subject as usize].as_ref(),
-                            self.0.iris[*superclass as usize].as_ref(),
-                        ))?;
-                    }
-                }
+                let len = if self.0.reachability_graph.is_some() {
+                    None
+                } else {
+                    Some(self.0.rows.values().map(Vec::len).sum())
+                };
+                let mut seq = serializer.serialize_seq(len)?;
+                self.0
+                    .try_for_each_pair(self.1, |subject, superclass| {
+                        seq.serialize_element(&(subject, superclass))
+                    })?;
                 seq.end()
             }
         }
@@ -5295,6 +5338,31 @@ impl Classification {
         let mut buf = Vec::new();
         self.write_json(&mut buf).expect("serialise Classification");
         buf
+    }
+
+    /// `KM_FRONTEND_CHECK=1` on this answer ([`frontend_check::gate`]):
+    /// `Err(message)` when the OWL reference procedure disagrees, in which
+    /// case the caller publishes nothing. Returns at once when the check is
+    /// off.
+    pub fn frontend_check_gate(&self, ontology: &Path) -> Result<(), String> {
+        if !frontend_check::enabled() {
+            return Ok(());
+        }
+        let pairs = |f: &mut dyn FnMut(&str, &str)| {
+            for pair in &self.subsumptions {
+                f(&pair[0], &pair[1]);
+            }
+        };
+        frontend_check::gate(
+            ontology,
+            &frontend_check::KmAnswer {
+                consistent: self.consistent,
+                dropped: self.dropped,
+                approximate: self.approximate.as_deref(),
+                unsatisfiable: &self.unsatisfiable,
+                pairs: &pairs,
+            },
+        )
     }
 
     /// The dependency-free line format for the Java/Protégé plugin (`--lines`).
