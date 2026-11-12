@@ -479,6 +479,9 @@ variable (F : St) {D : Type} (J : Ctx.Interp D Nat Nat)
 
 include hJ hT hB
 
+-- `transList_restrict` reaches the section hypotheses only through the mutual
+-- call to `transExpr_restrict`, which the unused-variable linter does not see.
+set_option linter.unusedSectionVars false in
 mutual
 
 theorem transExpr_restrict : ∀ (E : ClassExpr) (p : Bool) (s : St),
