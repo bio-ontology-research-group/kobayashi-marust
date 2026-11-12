@@ -650,4 +650,597 @@ end
 
 end Extend
 
+/-! ## Axiom-level helpers -/
+
+theorem mem_foldl {α β : Type} (g : List β → α → List β) (P : α → β → Prop)
+    (hg : ∀ o m c, c ∈ g o m ↔ c ∈ o ∨ P m c) :
+    ∀ (l : List α) (o : List β) (c : β), c ∈ l.foldl g o ↔ c ∈ o ∨ ∃ m ∈ l, P m c
+  | [], o, c => by simp
+  | m :: l, o, c => by
+      rw [List.foldl_cons, mem_foldl g P hg l, hg]
+      simp only [List.mem_cons, exists_eq_or_imp]
+      constructor
+      · rintro ((h | h) | h)
+        · exact Or.inl h
+        · exact Or.inr (Or.inl h)
+        · exact Or.inr (Or.inr h)
+      · rintro (h | h | h)
+        · exact Or.inl (Or.inl h)
+        · exact Or.inl (Or.inr h)
+        · exact Or.inr h
+
+theorem mem_emitEquiv (negs poss : List (ClassExpr × Nat)) (out : List NF) (c : NF) :
+    c ∈ emitEquiv negs poss out ↔
+      c ∈ out ∨ ∃ n ∈ negs, ∃ p ∈ poss, n.2 ≠ p.2 ∧ c = .nf1 n.2 p.2 := by
+  unfold emitEquiv
+  refine mem_foldl _ (fun n c => ∃ p ∈ poss, n.2 ≠ p.2 ∧ c = .nf1 n.2 p.2)
+    (fun o n c => ?_) negs out c
+  refine (mem_foldl _ (fun p c => n.2 ≠ p.2 ∧ c = .nf1 n.2 p.2) (fun o p c => ?_) poss o c)
+  split <;> simp_all [or_comm]
+
+theorem mem_emitRoleEquiv (roles : List (ObjProp × Nat)) (out : List NF) (c : NF) :
+    c ∈ emitRoleEquiv roles out ↔
+      c ∈ out ∨ ∃ a ∈ roles, ∃ b ∈ roles, a.2 ≠ b.2 ∧ c = .nf6 a.2 b.2 := by
+  unfold emitRoleEquiv
+  refine mem_foldl _ (fun a c => ∃ b ∈ roles, a.2 ≠ b.2 ∧ c = .nf6 a.2 b.2)
+    (fun o a c => ?_) roles out c
+  refine (mem_foldl _ (fun b c => a.2 ≠ b.2 ∧ c = .nf6 a.2 b.2) (fun o b c => ?_) roles o c)
+  split <;> simp_all [or_comm]
+
+theorem pair_sublist_cons {α : Type} {m n h : α} {t : List α} :
+    List.Sublist [m, n] (h :: t) ↔ (m = h ∧ n ∈ t) ∨ List.Sublist [m, n] t := by
+  rw [List.sublist_cons_iff]
+  constructor
+  · rintro (h' | ⟨r, hr, h'⟩)
+    · exact Or.inr h'
+    · simp only [List.cons.injEq] at hr
+      obtain ⟨rfl, rfl⟩ := hr
+      exact Or.inl ⟨rfl, List.singleton_sublist.1 h'⟩
+  · rintro (⟨rfl, hn⟩ | h')
+    · exact Or.inr ⟨[n], rfl, List.singleton_sublist.2 hn⟩
+    · exact Or.inl h'
+
+theorem mem_emitDisjoint (b : Nat) :
+    ∀ (L : List (ClassExpr × Nat)) (o : List NF) (c : NF),
+      c ∈ emitDisjoint b L o ↔ c ∈ o ∨ ∃ m n, List.Sublist [m, n] L ∧ c = .nf2 m.2 n.2 b
+  | [], o, c => by simp [emitDisjoint]
+  | h :: t, o, c => by
+      rw [emitDisjoint, mem_emitDisjoint b t,
+        mem_foldl _ (fun m c => c = .nf2 h.2 m.2 b) (fun o m c => by simp [or_comm]) t o c]
+      simp only [pair_sublist_cons]
+      constructor
+      · rintro ((h₁ | ⟨m, hm, rfl⟩) | ⟨m, n, hmn, rfl⟩)
+        · exact Or.inl h₁
+        · exact Or.inr ⟨h, m, Or.inl ⟨rfl, hm⟩, rfl⟩
+        · exact Or.inr ⟨m, n, Or.inr hmn, rfl⟩
+      · rintro (h₁ | ⟨m, n, (⟨rfl, hn⟩ | hmn), rfl⟩)
+        · exact Or.inl (Or.inl h₁)
+        · exact Or.inl (Or.inr ⟨n, hn, rfl⟩)
+        · exact Or.inr ⟨m, n, hmn, rfl⟩
+
+theorem setOut_le {s : St} {o : List NF} (h : ∀ c ∈ s.out, c ∈ o) :
+    Le s { s with out := o } :=
+  ⟨fun _ _ h => h, fun _ _ h => h, fun _ _ h => h, fun _ _ h => h, h, rfl, rfl⟩
+
+theorem setOut_wf {s : St} {o : List NF} (hs : WF s) : WF { s with out := o } :=
+  ⟨hs.cmap, hs.rmap⟩
+
+theorem transMembers_le (p : Bool) : ∀ (cs : List ClassExpr) (s : St) acc,
+    Le s (transMembers p cs s acc).2
+  | [], s, acc => by simp only [transMembers]; exact Le.rfl
+  | c :: cs, s, acc => by
+      simp only [transMembers]
+      exact (transExpr_le c p s).trans (transMembers_le p cs _ _)
+
+theorem transMembers_wf (p : Bool) : ∀ (cs : List ClassExpr) (s : St) acc,
+    WF s → WF (transMembers p cs s acc).2
+  | [], s, acc, hs => by simp only [transMembers]; exact hs
+  | c :: cs, s, acc, hs => by
+      simp only [transMembers]
+      exact transMembers_wf p cs _ _ (transExpr_wf c p s hs)
+
+theorem transMembers_fst (p : Bool) : ∀ (cs : List ClassExpr) (s : St) acc,
+    (transMembers p cs s acc).1.map Prod.fst = acc.reverse.map Prod.fst ++ cs
+  | [], s, acc => by simp [transMembers]
+  | c :: cs, s, acc => by
+      simp only [transMembers]
+      rw [transMembers_fst p cs]
+      simp
+
+theorem internRoles_le : ∀ (rs : List ObjProp) (s : St) acc, Le s (internRoles rs s acc).2
+  | [], s, acc => by simp only [internRoles]; exact Le.rfl
+  | r :: rs, s, acc => by
+      simp only [internRoles]
+      exact (internR_le _ s).trans (internRoles_le rs _ _)
+
+theorem internRoles_wf : ∀ (rs : List ObjProp) (s : St) acc, WF s → WF (internRoles rs s acc).2
+  | [], s, acc, hs => by simp only [internRoles]; exact hs
+  | r :: rs, s, acc, hs => by
+      simp only [internRoles]
+      exact internRoles_wf rs _ _ (internR_wf hs)
+
+/-- Every role of `internRoles` has its index in the final maps and tables. -/
+def RoleOK (F : St) (q : ObjProp × Nat) : Prop :=
+  F.rmap[propIRI q.1]? = some q.2 ∧ F.rdefs[q.2]? = some [propIRI q.1]
+
+theorem internRoles_ok (F : St) : ∀ (rs : List ObjProp) (s : St) acc, WF s →
+    Le (internRoles rs s acc).2 F → (∀ q ∈ acc, RoleOK F q) →
+      (∀ q ∈ (internRoles rs s acc).1, RoleOK F q ∧ (q ∈ acc ∨ q.1 ∈ rs)) ∧
+      (∀ r ∈ rs, ∃ q ∈ (internRoles rs s acc).1, q.1 = r)
+  | [], s, acc, _, _, hacc => by
+      simp only [internRoles]
+      exact ⟨fun q hq => ⟨hacc q hq, Or.inl hq⟩, by simp⟩
+  | r :: rs, s, acc, hs, hle, hacc => by
+      simp only [internRoles] at hle ⊢
+      have hle₁ := (internRoles_le rs _ _).trans hle
+      have hq : RoleOK F (r, (internR (propIRI r) s).1) :=
+        ⟨hle₁.rmap _ _ (internR_rmap _ s), hle₁.rdefs _ _ (internR_rdefs hs)⟩
+      have ih := internRoles_ok F rs _ _ (internR_wf hs) hle (by
+        intro q hq'
+        rcases List.mem_cons.1 hq' with rfl | hq'
+        · exact hq
+        · exact hacc q hq')
+      refine ⟨fun q hq' => ?_, ?_⟩
+      · obtain ⟨hok, hor⟩ := ih.1 q hq'
+        refine ⟨hok, ?_⟩
+        rcases hor with hor | hor
+        · rcases List.mem_cons.1 hor with rfl | hor
+          · exact Or.inr List.mem_cons_self
+          · exact Or.inl hor
+        · exact Or.inr (List.mem_cons_of_mem _ hor)
+      · intro r' hr'
+        rcases List.mem_cons.1 hr' with rfl | hr'
+        · obtain ⟨hok, hor⟩ := hq
+          -- the role `r` was pushed onto the accumulator; it stays in the result
+          have : ∀ (rs : List ObjProp) (s : St) acc, ∀ q ∈ acc, q ∈ (internRoles rs s acc).1 := by
+            intro rs
+            induction rs with
+            | nil => intro s acc q hq; simpa [internRoles] using hq
+            | cons r rs ih' =>
+                intro s acc q hq
+                simp only [internRoles]
+                exact ih' _ _ q (List.mem_cons_of_mem _ hq)
+          exact ⟨_, this rs _ _ _ List.mem_cons_self, rfl⟩
+        · exact ih.2 r' hr'
+
+theorem transChain_le (sup : Nat) : ∀ (acc : Nat) (pre rest : List IRI) (s : St),
+    Le s (transChain sup acc pre rest s)
+  | acc, _, [], s => by simp only [transChain]; exact emit_le _ _
+  | acc, _, [r], s => by
+      simp only [transChain]; exact (internR_le r s).trans (emit_le _ _)
+  | acc, pre, r :: r' :: rest, s => by
+      simp only [transChain]
+      exact (internR_le r s).trans ((freshR_le _ _).trans
+        ((emit_le _ _).trans (transChain_le sup _ _ _ _)))
+
+theorem transChain_wf (sup : Nat) : ∀ (acc : Nat) (pre rest : List IRI) (s : St),
+    WF s → WF (transChain sup acc pre rest s)
+  | acc, _, [], s, hs => by simp only [transChain]; exact emit_wf hs
+  | acc, _, [r], s, hs => by
+      simp only [transChain]; exact emit_wf (internR_wf hs)
+  | acc, pre, r :: r' :: rest, s, hs => by
+      simp only [transChain]
+      exact transChain_wf sup _ _ _ _ (emit_wf (freshR_wf (internR_wf hs)))
+
+theorem transAxiom_le (s : St) (ax : Axiom) : Le s (transAxiom s ax) := by
+  cases ax with
+  | subClassOf c d =>
+      simp only [transAxiom]
+      exact (transExpr_le c false s).trans ((transExpr_le d true _).trans (emit_le _ _))
+  | equivalentClasses cs =>
+      simp only [transAxiom]
+      refine (transMembers_le false cs s []).trans ((transMembers_le true cs _ []).trans
+        (setOut_le fun c hc => (mem_emitEquiv _ _ _ c).2 (Or.inl hc)))
+  | disjointClasses cs =>
+      simp only [transAxiom]
+      refine (transMembers_le false cs s []).trans
+        (setOut_le fun c hc => (mem_emitDisjoint _ _ _ c).2 (Or.inl hc))
+  | domain r c =>
+      simp only [transAxiom]
+      exact (internR_le _ s).trans ((transExpr_le c true _).trans (emit_le _ _))
+  | subObjectPropertyOf rs r =>
+      simp only [transAxiom]
+      cases rs with
+      | nil => exact (internR_le _ s).trans (emit_le _ _)
+      | cons r1 rest =>
+          exact (internR_le _ s).trans ((internR_le _ _).trans (transChain_le _ _ _ _ _))
+  | equivalentObjectProperties rs =>
+      simp only [transAxiom]
+      exact (internRoles_le rs s []).trans
+        (setOut_le fun c hc => (mem_emitRoleEquiv _ _ c).2 (Or.inl hc))
+  | transitive r =>
+      simp only [transAxiom]; exact (internR_le _ s).trans (emit_le _ _)
+  | range _ _ | inverseObjectProperties _ _ | symmetric _ | declareClass _
+  | declareObjectProperty _ => simp only [transAxiom]; exact Le.rfl
+
+theorem transAxiom_wf {s : St} (hs : WF s) (ax : Axiom) : WF (transAxiom s ax) := by
+  cases ax with
+  | subClassOf c d =>
+      simp only [transAxiom]
+      exact emit_wf (transExpr_wf d true _ (transExpr_wf c false s hs))
+  | equivalentClasses cs =>
+      simp only [transAxiom]
+      exact setOut_wf (transMembers_wf true cs _ [] (transMembers_wf false cs s [] hs))
+  | disjointClasses cs =>
+      simp only [transAxiom]
+      exact setOut_wf (transMembers_wf false cs s [] hs)
+  | domain r c =>
+      simp only [transAxiom]
+      exact emit_wf (transExpr_wf c true _ (internR_wf hs))
+  | subObjectPropertyOf rs r =>
+      simp only [transAxiom]
+      cases rs with
+      | nil => exact emit_wf (internR_wf hs)
+      | cons r1 rest => exact transChain_wf _ _ _ _ _ (internR_wf (internR_wf hs))
+  | equivalentObjectProperties rs =>
+      simp only [transAxiom]
+      exact setOut_wf (internRoles_wf rs s [] hs)
+  | transitive r =>
+      simp only [transAxiom]; exact emit_wf (internR_wf hs)
+  | range _ _ | inverseObjectProperties _ _ | symmetric _ | declareClass _
+  | declareObjectProperty _ => simp only [transAxiom]; exact hs
+
+theorem map_named_propIRI : ∀ (rs : List ObjProp), (∀ r ∈ rs, r.isNamed = true) →
+    (rs.map propIRI).map ObjProp.named = rs
+  | [], _ => rfl
+  | r :: rs, h => by
+      have hr := h r List.mem_cons_self
+      cases r with
+      | named r =>
+          simp only [List.map_cons, propIRI, List.cons.injEq, true_and]
+          exact map_named_propIRI rs (fun q hq => h q (List.mem_cons_of_mem _ hq))
+      | inv r => simp [ObjProp.isNamed] at hr
+
+/-! ## (⇒) at the axiom level -/
+
+section RestrictAxiom
+
+variable (F : St) {D : Type} (J : ELCompletion.Interp D Nat Nat F.top F.bottom)
+  (hJ : ∀ c ∈ F.out, ELCompletion.satClause J c)
+
+include hJ
+
+theorem transMembers_restrict (p : Bool) : ∀ (cs : List ClassExpr) (s : St) acc,
+    Le (transMembers p cs s acc).2 F → (∀ c ∈ cs, c.isEL = true) →
+    (∀ q ∈ acc, Covers (restrict F J) J.concept p q.1 q.2) →
+    ∀ q ∈ (transMembers p cs s acc).1, Covers (restrict F J) J.concept p q.1 q.2
+  | [], s, acc, _, _, hacc => by
+      simp only [transMembers]; intro q hq; exact hacc q (List.mem_reverse.1 hq)
+  | c :: cs, s, acc, hle, hEL, hacc => by
+      simp only [transMembers] at hle ⊢
+      have hle₁ := (transMembers_le p cs _ _).trans hle
+      have ih := transExpr_restrict F J hJ c p s hle₁ (hEL c List.mem_cons_self)
+      refine transMembers_restrict p cs _ _ hle (fun d hd => hEL d (List.mem_cons_of_mem _ hd)) ?_
+      intro q hq
+      rcases List.mem_cons.1 hq with rfl | hq
+      · exact ih
+      · exact hacc q hq
+
+theorem transChain_restrict (sup : Nat) : ∀ (acc : Nat) (pre rest : List IRI) (s : St),
+    Le (transChain sup acc pre rest s) F →
+    (∀ x y, (restrict F J).chain (pre.reverse.map .named) x y → J.role acc x y) →
+    ∀ x y, (restrict F J).chain ((pre.reverse ++ rest).map .named) x y → J.role sup x y
+  | acc, pre, [], s, hle, hacc => by
+      simp only [transChain] at hle
+      have hcl := hJ _ (hle.out _ (mem_emit _ _))
+      intro x y h
+      simp only [List.append_nil] at h
+      exact hcl x y (hacc x y h)
+  | acc, pre, [r], s, hle, hacc => by
+      simp only [transChain] at hle
+      have hcl := hJ _ (hle.out _ (mem_emit _ _))
+      have hrk := ((emit_le _ _).trans hle).rmap _ _ (internR_rmap r s)
+      intro x y h
+      rw [List.map_append, chain_append] at h
+      obtain ⟨w, hxw, hwy⟩ := h
+      simp only [List.map_cons, List.map_nil, chain_single] at hwy
+      exact hcl x w y (hacc x w hxw) ((restrict_role hrk w y).1 hwy)
+  | acc, pre, r :: r' :: rest, s, hle, hacc => by
+      simp only [transChain] at hle
+      have hle₂ := (transChain_le _ _ _ _ _).trans hle
+      have hcl := hJ _ (hle₂.out _ (mem_emit _ _))
+      have hrk := ((freshR_le _ _).trans ((emit_le _ _).trans hle₂)).rmap _ _
+        (internR_rmap r s)
+      have := transChain_restrict sup _ (r :: pre) (r' :: rest) _ hle (by
+        intro x y h
+        rw [List.reverse_cons, List.map_append, chain_append] at h
+        obtain ⟨w, hxw, hwy⟩ := h
+        simp only [List.map_cons, List.map_nil, chain_single] at hwy
+        exact hcl x w y (hacc x w hxw) ((restrict_role hrk w y).1 hwy))
+      intro x y h
+      apply this x y
+      simpa using h
+
+theorem transAxiom_restrict (s : St) (hs : WF s) (ax : Axiom)
+    (hle : Le (transAxiom s ax) F) (hEL : ax.isEL = true) : (restrict F J).sat ax := by
+  cases ax with
+  | subClassOf c d =>
+      simp only [transAxiom] at hle
+      simp only [Axiom.isEL, Bool.and_eq_true] at hEL
+      have hle₂ := (emit_le _ _).trans hle
+      have hle₁ := (transExpr_le d true _).trans hle₂
+      have hn := transExpr_restrict F J hJ c false s hle₁ hEL.1
+      have hp := transExpr_restrict F J hJ d true _ hle₂ hEL.2
+      have hcl := hJ _ (hle.out _ (mem_emit _ _))
+      intro x hx
+      exact hp x (hcl x (hn x hx))
+  | equivalentClasses cs =>
+      simp only [transAxiom] at hle
+      simp only [Axiom.isEL, List.all_eq_true] at hEL
+      have hle₂ := (setOut_le fun c hc => (mem_emitEquiv _ _ _ c).2 (Or.inl hc)).trans hle
+      have hle₁ := (transMembers_le true cs _ []).trans hle₂
+      have hN := transMembers_restrict F J hJ false cs s [] hle₁ hEL (by simp)
+      have hP := transMembers_restrict F J hJ true cs _ [] hle₂ hEL (by simp)
+      have hNf := transMembers_fst false cs s []
+      have hPf := transMembers_fst true cs (transMembers false cs s []).2 []
+      simp only [List.reverse_nil, List.map_nil, List.nil_append] at hNf hPf
+      intro c hc d hd x hx
+      obtain ⟨qn, hqn, rfl⟩ := List.mem_map.1 (hNf ▸ hc)
+      obtain ⟨qp, hqp, rfl⟩ := List.mem_map.1 (hPf ▸ hd)
+      have h₁ := hN qn hqn x hx
+      apply hP qp hqp x
+      by_cases hq : qn.2 = qp.2
+      · exact hq ▸ h₁
+      · exact hJ _ (hle.out _ ((mem_emitEquiv _ _ _ _).2 (Or.inr ⟨qn, hqn, qp, hqp, hq, rfl⟩)))
+          x h₁
+  | disjointClasses cs =>
+      simp only [transAxiom] at hle
+      simp only [Axiom.isEL, List.all_eq_true] at hEL
+      have hle₁ := (setOut_le fun c hc => (mem_emitDisjoint _ _ _ c).2 (Or.inl hc)).trans hle
+      have hN := transMembers_restrict F J hJ false cs s [] hle₁ hEL (by simp)
+      have hNf := transMembers_fst false cs s []
+      simp only [List.reverse_nil, List.map_nil, List.nil_append] at hNf
+      show cs.Pairwise _
+      rw [← hNf, List.pairwise_map, List.pairwise_iff_forall_sublist]
+      intro m n hmn x ⟨hm, hn⟩
+      have hmL : m ∈ (transMembers false cs s []).1 := hmn.subset (by simp)
+      have hnL : n ∈ (transMembers false cs s []).1 := hmn.subset (by simp)
+      have hcl := hJ _ (hle.out _ ((mem_emitDisjoint _ _ _ _).2 (Or.inr ⟨m, n, hmn, rfl⟩)))
+      have := hcl x (hN m hmL x hm) (hN n hnL x hn)
+      rw [← hle₁.bottom] at this
+      exact J.bottom_false x this
+  | domain r c =>
+      simp only [transAxiom] at hle
+      simp only [Axiom.isEL, Bool.and_eq_true] at hEL
+      have hle₂ := (emit_le _ _).trans hle
+      have hle₁ := (transExpr_le c true _).trans hle₂
+      have hrk := hle₁.rmap _ _ (internR_rmap (propIRI r) s)
+      have hp := transExpr_restrict F J hJ c true _ hle₂ hEL.2
+      have hcl := hJ _ (hle.out _ (mem_emit _ _))
+      intro x y hxy
+      apply hp x
+      apply hcl x
+      refine ⟨y, (restrict_prop hEL.1 hrk x y).1 hxy, ?_⟩
+      rw [← hle₂.top]; exact J.top_true y
+  | subObjectPropertyOf rs r =>
+      simp only [Axiom.isEL, Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff,
+        List.all_eq_true] at hEL
+      obtain ⟨⟨hne, hrs⟩, hr⟩ := hEL
+      cases rs with
+      | nil => exact absurd rfl hne
+      | cons r1 rest =>
+          simp only [transAxiom] at hle
+          have hle₂ := (transChain_le _ _ _ _ _).trans hle
+          have hle₁ := (internR_le _ _).trans hle₂
+          have hrk := hle₁.rmap _ _ (internR_rmap (propIRI r) s)
+          have hbk := hle₂.rmap _ _ (internR_rmap (propIRI r1) (internR (propIRI r) s).2)
+          have := transChain_restrict F J hJ _ _ [propIRI r1] (rest.map propIRI) _ hle (by
+            intro x y h
+            simp only [List.reverse_cons, List.reverse_nil, List.nil_append, List.map_cons,
+              List.map_nil, chain_single] at h
+            exact (restrict_role hbk x y).1 h)
+          intro x y h
+          rw [← map_named_propIRI (r1 :: rest) hrs] at h
+          exact (restrict_prop hr hrk x y).2 (this x y (by simpa using h))
+  | equivalentObjectProperties rs =>
+      simp only [transAxiom] at hle
+      simp only [Axiom.isEL, List.all_eq_true] at hEL
+      have hle₁ := (setOut_le fun c hc => (mem_emitRoleEquiv _ _ c).2 (Or.inl hc)).trans hle
+      have hok := internRoles_ok F rs s [] hs hle₁ (by simp)
+      intro r hr r' hr' x y hxy
+      obtain ⟨q, hq, rfl⟩ := hok.2 r hr
+      obtain ⟨q', hq', rfl⟩ := hok.2 r' hr'
+      have h₁ := (restrict_prop (hEL _ hr) (hok.1 q hq).1.1 x y).1 hxy
+      apply (restrict_prop (hEL _ hr') (hok.1 q' hq').1.1 x y).2
+      by_cases hqq : q.2 = q'.2
+      · exact hqq ▸ h₁
+      · exact hJ _ (hle.out _ ((mem_emitRoleEquiv _ _ _).2 (Or.inr ⟨q, hq, q', hq', hqq, rfl⟩)))
+          x y h₁
+  | transitive r =>
+      simp only [transAxiom] at hle
+      simp only [Axiom.isEL] at hEL
+      have hrk := ((emit_le _ _).trans hle).rmap _ _ (internR_rmap (propIRI r) s)
+      have hcl := hJ _ (hle.out _ (mem_emit _ _))
+      intro x y z hxy hyz
+      exact (restrict_prop hEL hrk x z).2 (hcl x y z ((restrict_prop hEL hrk x y).1 hxy)
+        ((restrict_prop hEL hrk y z).1 hyz))
+  | range _ _ | inverseObjectProperties _ _ | symmetric _ => simp [Axiom.isEL] at hEL
+  | declareClass _ | declareObjectProperty _ => trivial
+
+end RestrictAxiom
+
+/-! ## (⇐) at the axiom level -/
+
+section ExtendAxiom
+
+variable {D : Type} (I : OWL.Interp D) (F : St)
+  (hT : F.cdefs[F.top]? = some .thing) (hB : F.cdefs[F.bottom]? = some .nothing)
+
+theorem transMembers_extend (p : Bool) : ∀ (cs : List ClassExpr) (s : St) acc, WF s →
+    Le (transMembers p cs s acc).2 F → (∀ c ∈ cs, c.isEL = true) →
+    (∀ q ∈ acc, ∀ x, (extend I F hT hB).concept q.2 x ↔ I.ext q.1 x) →
+    (Good I F hT hB s → Good I F hT hB (transMembers p cs s acc).2) ∧
+    ∀ q ∈ (transMembers p cs s acc).1, ∀ x, (extend I F hT hB).concept q.2 x ↔ I.ext q.1 x
+  | [], s, acc, _, _, _, hacc => by
+      simp only [transMembers]
+      exact ⟨id, fun q hq => hacc q (List.mem_reverse.1 hq)⟩
+  | c :: cs, s, acc, hs, hle, hEL, hacc => by
+      simp only [transMembers] at hle ⊢
+      have hle₁ := (transMembers_le p cs _ _).trans hle
+      have ih := transExpr_extend I F hT hB c p s hs hle₁ (hEL c List.mem_cons_self)
+      have := transMembers_extend p cs _ _ (transExpr_wf c p s hs) hle
+        (fun d hd => hEL d (List.mem_cons_of_mem _ hd)) (by
+          intro q hq
+          rcases List.mem_cons.1 hq with rfl | hq
+          · exact ih.2
+          · exact hacc q hq)
+      exact ⟨fun hg => this.1 (ih.1 hg), this.2⟩
+
+theorem good_internR {r : IRI} {s : St} (hg : Good I F hT hB s) :
+    Good I F hT hB (internR r s).2 := by
+  intro c hc; rw [internR_out] at hc; exact hg c hc
+
+theorem transChain_extend (sup : Nat) : ∀ (acc : Nat) (pre rest : List IRI) (s : St), WF s →
+    Le (transChain sup acc pre rest s) F → F.rdefs[acc]? = some pre →
+    (∀ x y, I.chain ((pre.reverse ++ rest).map .named) x y →
+      (extend I F hT hB).role sup x y) →
+    Good I F hT hB s → Good I F hT hB (transChain sup acc pre rest s)
+  | acc, pre, [], s, _, hle, hacc, H, hg => by
+      simp only [transChain] at hle ⊢
+      refine good_emit I F hT hB hg ?_
+      intro x y hxy
+      rw [extend_role I F hT hB hacc] at hxy
+      exact H x y (by simpa using hxy)
+  | acc, pre, [r], s, hs, hle, hacc, H, hg => by
+      simp only [transChain] at hle ⊢
+      have hrk := ((emit_le _ _).trans hle).rdefs _ _ (internR_rdefs (r := r) hs)
+      refine good_emit I F hT hB (good_internR I F hT hB hg) ?_
+      intro x w y hxw hwy
+      rw [extend_role I F hT hB hacc] at hxw
+      rw [extend_role_named I F hT hB hrk] at hwy
+      apply H x y
+      rw [List.map_append, chain_append]
+      exact ⟨w, hxw, (chain_single I r w y).2 hwy⟩
+  | acc, pre, r :: r' :: rest, s, hs, hle, hacc, H, hg => by
+      simp only [transChain] at hle ⊢
+      have hle₂ := (transChain_le _ _ _ _ _).trans hle
+      have hle₁ := (emit_le _ _).trans hle₂
+      have hrk := ((freshR_le _ _).trans hle₁).rdefs _ _ (internR_rdefs (r := r) hs)
+      have huk := hle₁.rdefs _ _ (freshR_rdefs (r :: pre) (internR r s).2)
+      refine transChain_extend sup _ (r :: pre) (r' :: rest) _
+        (emit_wf (freshR_wf (internR_wf hs))) hle huk ?_ ?_
+      · intro x y h
+        exact H x y (by simpa using h)
+      · refine good_emit I F hT hB (good_internR I F hT hB hg) ?_
+        intro x w y hxw hwy
+        rw [extend_role I F hT hB hacc] at hxw
+        rw [extend_role_named I F hT hB hrk] at hwy
+        rw [extend_role I F hT hB huk, List.reverse_cons, List.map_append, chain_append]
+        exact ⟨w, hxw, (chain_single I r w y).2 hwy⟩
+
+theorem transAxiom_extend (s : St) (hs : WF s) (ax : Axiom)
+    (hle : Le (transAxiom s ax) F) (hEL : ax.isEL = true) (hI : I.sat ax)
+    (hg : Good I F hT hB s) : Good I F hT hB (transAxiom s ax) := by
+  cases ax with
+  | subClassOf c d =>
+      simp only [transAxiom] at hle ⊢
+      simp only [Axiom.isEL, Bool.and_eq_true] at hEL
+      have hle₂ := (emit_le _ _).trans hle
+      have hle₁ := (transExpr_le d true _).trans hle₂
+      have hn := transExpr_extend I F hT hB c false s hs hle₁ hEL.1
+      have hp := transExpr_extend I F hT hB d true _ (transExpr_wf c false s hs) hle₂ hEL.2
+      exact good_emit I F hT hB (hp.1 (hn.1 hg))
+        (fun x hx => (hp.2 x).2 (hI x ((hn.2 x).1 hx)))
+  | equivalentClasses cs =>
+      simp only [transAxiom] at hle ⊢
+      simp only [Axiom.isEL, List.all_eq_true] at hEL
+      have hle₂ := (setOut_le fun c hc => (mem_emitEquiv _ _ _ c).2 (Or.inl hc)).trans hle
+      have hle₁ := (transMembers_le true cs _ []).trans hle₂
+      have hN := transMembers_extend I F hT hB false cs s [] hs hle₁ hEL (by simp)
+      have hP := transMembers_extend I F hT hB true cs _ []
+        (transMembers_wf false cs s [] hs) hle₂ hEL (by simp)
+      have hNf := transMembers_fst false cs s []
+      have hPf := transMembers_fst true cs (transMembers false cs s []).2 []
+      simp only [List.reverse_nil, List.map_nil, List.nil_append] at hNf hPf
+      intro c hc
+      rcases (mem_emitEquiv _ _ _ _).1 hc with hc | ⟨qn, hqn, qp, hqp, _, rfl⟩
+      · exact hP.1 (hN.1 hg) c hc
+      · intro x hx
+        have hcn : qn.1 ∈ cs := hNf ▸ List.mem_map_of_mem hqn
+        have hcp : qp.1 ∈ cs := hPf ▸ List.mem_map_of_mem hqp
+        exact (hP.2 qp hqp x).2 (hI qn.1 hcn qp.1 hcp x ((hN.2 qn hqn x).1 hx))
+  | disjointClasses cs =>
+      simp only [transAxiom] at hle ⊢
+      simp only [Axiom.isEL, List.all_eq_true] at hEL
+      have hle₁ := (setOut_le fun c hc => (mem_emitDisjoint _ _ _ c).2 (Or.inl hc)).trans hle
+      have hN := transMembers_extend I F hT hB false cs s [] hs hle₁ hEL (by simp)
+      have hNf := transMembers_fst false cs s []
+      simp only [List.reverse_nil, List.map_nil, List.nil_append] at hNf
+      have hI' : cs.Pairwise fun c d => ∀ x, ¬ (I.ext c x ∧ I.ext d x) := hI
+      rw [← hNf, List.pairwise_map, List.pairwise_iff_forall_sublist] at hI'
+      intro c hc
+      rcases (mem_emitDisjoint _ _ _ _).1 hc with hc | ⟨m, n, hmn, rfl⟩
+      · exact hN.1 hg c hc
+      · intro x hm hn
+        have hmL : m ∈ (transMembers false cs s []).1 := hmn.subset (by simp)
+        have hnL : n ∈ (transMembers false cs s []).1 := hmn.subset (by simp)
+        exact absurd ⟨(hN.2 m hmL x).1 hm, (hN.2 n hnL x).1 hn⟩ (hI' hmn x)
+  | domain r c =>
+      simp only [transAxiom] at hle ⊢
+      simp only [Axiom.isEL, Bool.and_eq_true] at hEL
+      have hle₂ := (emit_le _ _).trans hle
+      have hle₁ := (transExpr_le c true _).trans hle₂
+      have hrk := extend_prop I F hT hB hEL.1 (hle₁.rdefs _ _ (internR_rdefs (r := propIRI r) hs))
+      have hp := transExpr_extend I F hT hB c true _ (internR_wf hs) hle₂ hEL.2
+      refine good_emit I F hT hB (hp.1 (good_internR I F hT hB hg)) ?_
+      rintro x ⟨y, hxy, -⟩
+      exact (hp.2 x).2 (hI x y ((hrk x y).1 hxy))
+  | subObjectPropertyOf rs r =>
+      simp only [Axiom.isEL, Bool.and_eq_true, Bool.not_eq_true', List.isEmpty_eq_false_iff,
+        List.all_eq_true] at hEL
+      obtain ⟨⟨hne, hrs⟩, hr⟩ := hEL
+      cases rs with
+      | nil => exact absurd rfl hne
+      | cons r1 rest =>
+          simp only [transAxiom] at hle ⊢
+          have hle₂ := (transChain_le _ _ _ _ _).trans hle
+          have hle₁ := (internR_le _ _).trans hle₂
+          have hrk := extend_prop I F hT hB hr
+            (hle₁.rdefs _ _ (internR_rdefs (r := propIRI r) hs))
+          have hbk := hle₂.rdefs _ _ (internR_rdefs (r := propIRI r1) (internR_wf (r := propIRI r) hs))
+          refine transChain_extend I F hT hB _ _ [propIRI r1] (rest.map propIRI) _
+            (internR_wf (internR_wf hs)) hle hbk ?_
+            (good_internR I F hT hB (good_internR I F hT hB hg))
+          intro x y h
+          apply (hrk x y).2
+          apply hI x y
+          rw [← map_named_propIRI (r1 :: rest) hrs]
+          simpa using h
+  | equivalentObjectProperties rs =>
+      simp only [transAxiom] at hle ⊢
+      simp only [Axiom.isEL, List.all_eq_true] at hEL
+      have hle₁ := (setOut_le fun c hc => (mem_emitRoleEquiv _ _ c).2 (Or.inl hc)).trans hle
+      have hok := internRoles_ok F rs s [] hs hle₁ (by simp)
+      have hg' : Good I F hT hB (internRoles rs s []).2 := by
+        intro c hc
+        have : ∀ (rs : List ObjProp) (s : St) acc, (internRoles rs s acc).2.out = s.out := by
+          intro rs
+          induction rs with
+          | nil => intro s acc; rfl
+          | cons r rs ih' => intro s acc; simp only [internRoles]; rw [ih', internR_out]
+        rw [this] at hc
+        exact hg c hc
+      intro c hc
+      rcases (mem_emitRoleEquiv _ _ _).1 hc with hc | ⟨q, hq, q', hq', _, rfl⟩
+      · exact hg' c hc
+      · intro x y hxy
+        obtain ⟨hokq, hmq⟩ := hok.1 q hq
+        obtain ⟨hokq', hmq'⟩ := hok.1 q' hq'
+        simp only [List.not_mem_nil, false_or] at hmq hmq'
+        rw [extend_prop I F hT hB (hEL _ hmq) hokq.2] at hxy
+        rw [extend_prop I F hT hB (hEL _ hmq') hokq'.2]
+        exact hI q.1 hmq q'.1 hmq' x y hxy
+  | transitive r =>
+      simp only [transAxiom] at hle ⊢
+      simp only [Axiom.isEL] at hEL
+      have hrk := extend_prop I F hT hB hEL
+        (((emit_le _ _).trans hle).rdefs _ _ (internR_rdefs (r := propIRI r) hs))
+      refine good_emit I F hT hB (good_internR I F hT hB hg) ?_
+      intro x y z hxy hyz
+      exact (hrk x z).2 (hI x y z ((hrk x y).1 hxy) ((hrk y z).1 hyz))
+  | range _ _ | inverseObjectProperties _ _ | symmetric _ => simp [Axiom.isEL] at hEL
+  | declareClass _ | declareObjectProperty _ => simpa [transAxiom] using hg
+
+end ExtendAxiom
+
 end ContextCalculus.OWLFrontend.EL
