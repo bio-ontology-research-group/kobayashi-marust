@@ -1243,4 +1243,282 @@ theorem transAxiom_extend (s : St) (hs : WF s) (ax : Axiom)
 
 end ExtendAxiom
 
+/-! ## The pipeline: prepass, requested names, the loop over axioms -/
+
+mutual
+
+theorem scanExpr_le : ∀ (E : ClassExpr) (s : St), Le s (scanExpr E s)
+  | .cls a, s => by simp only [scanExpr]; exact internC_le a s
+  | .thing, s => by simp only [scanExpr]; exact Le.rfl
+  | .nothing, s => by simp only [scanExpr]; exact Le.rfl
+  | .and cs, s => by simp only [scanExpr]; exact scanList_le cs s
+  | .or cs, s => by simp only [scanExpr]; exact scanList_le cs s
+  | .not c, s => by simp only [scanExpr]; exact scanExpr_le c s
+  | .some r c, s => by simp only [scanExpr]; exact (internR_le _ s).trans (scanExpr_le c _)
+  | .all r c, s => by simp only [scanExpr]; exact (internR_le _ s).trans (scanExpr_le c _)
+
+theorem scanList_le : ∀ (cs : List ClassExpr) (s : St), Le s (scanList cs s)
+  | [], s => by simp only [scanList]; exact Le.rfl
+  | c :: cs, s => by simp only [scanList]; exact (scanExpr_le c s).trans (scanList_le cs _)
+
+end
+
+mutual
+
+theorem scanExpr_wf : ∀ (E : ClassExpr) (s : St), WF s → WF (scanExpr E s)
+  | .cls a, s, hs => by simp only [scanExpr]; exact internC_wf hs
+  | .thing, s, hs => by simp only [scanExpr]; exact hs
+  | .nothing, s, hs => by simp only [scanExpr]; exact hs
+  | .and cs, s, hs => by simp only [scanExpr]; exact scanList_wf cs s hs
+  | .or cs, s, hs => by simp only [scanExpr]; exact scanList_wf cs s hs
+  | .not c, s, hs => by simp only [scanExpr]; exact scanExpr_wf c s hs
+  | .some r c, s, hs => by simp only [scanExpr]; exact scanExpr_wf c _ (internR_wf hs)
+  | .all r c, s, hs => by simp only [scanExpr]; exact scanExpr_wf c _ (internR_wf hs)
+
+theorem scanList_wf : ∀ (cs : List ClassExpr) (s : St), WF s → WF (scanList cs s)
+  | [], s, hs => by simp only [scanList]; exact hs
+  | c :: cs, s, hs => by simp only [scanList]; exact scanList_wf cs _ (scanExpr_wf c s hs)
+
+end
+
+theorem scanRoles_le_wf : ∀ (rs : List ObjProp) (s : St), Le s (scanRoles rs s) ∧
+    (WF s → WF (scanRoles rs s))
+  | [], s => ⟨Le.rfl, id⟩
+  | r :: rs, s => by
+      have ih := scanRoles_le_wf rs (internR (propIRI r) s).2
+      exact ⟨(internR_le _ s).trans ih.1, fun hs => ih.2 (internR_wf hs)⟩
+
+theorem scanAxiom_le_wf (s : St) (ax : Axiom) :
+    Le s (scanAxiom s ax) ∧ (WF s → WF (scanAxiom s ax)) := by
+  cases ax with
+  | subClassOf c d =>
+      exact ⟨(scanExpr_le c s).trans (scanExpr_le d _),
+        fun hs => scanExpr_wf d _ (scanExpr_wf c s hs)⟩
+  | equivalentClasses cs | disjointClasses cs => exact ⟨scanList_le cs s, scanList_wf cs s⟩
+  | domain r c | range r c =>
+      exact ⟨(internR_le _ s).trans (scanExpr_le c _), fun hs => scanExpr_wf c _ (internR_wf hs)⟩
+  | subObjectPropertyOf rs r =>
+      exact ⟨(scanRoles_le_wf rs s).1.trans (internR_le _ _),
+        fun hs => internR_wf ((scanRoles_le_wf rs s).2 hs)⟩
+  | equivalentObjectProperties rs => exact scanRoles_le_wf rs s
+  | inverseObjectProperties r r' => exact scanRoles_le_wf [r, r'] s
+  | transitive r | symmetric r => exact ⟨internR_le _ s, internR_wf⟩
+  | declareClass a => exact ⟨internC_le a s, internC_wf⟩
+  | declareObjectProperty r => exact ⟨internR_le r s, internR_wf⟩
+
+theorem foldl_scan : ∀ (axs : List Axiom) (s : St),
+    Le s (axs.foldl scanAxiom s) ∧ (WF s → WF (axs.foldl scanAxiom s))
+  | [], s => ⟨Le.rfl, id⟩
+  | ax :: axs, s => by
+      have h₁ := scanAxiom_le_wf s ax
+      have h₂ := foldl_scan axs (scanAxiom s ax)
+      exact ⟨h₁.1.trans h₂.1, fun hs => h₂.2 (h₁.2 hs)⟩
+
+theorem foldl_trans_le : ∀ (axs : List Axiom) (s : St), Le s (axs.foldl transAxiom s)
+  | [], s => Le.rfl
+  | ax :: axs, s => (transAxiom_le s ax).trans (foldl_trans_le axs _)
+
+theorem foldl_trans_wf : ∀ (axs : List Axiom) (s : St), WF s → WF (axs.foldl transAxiom s)
+  | [], s, hs => hs
+  | ax :: axs, s, hs => foldl_trans_wf axs _ (transAxiom_wf hs ax)
+
+/-- Every axiom is translated from some well-formed state below the final one. -/
+theorem foldl_trans_mem : ∀ (axs : List Axiom) (s : St), WF s → ∀ ax ∈ axs,
+    ∃ s', WF s' ∧ Le (transAxiom s' ax) (axs.foldl transAxiom s)
+  | [], _, _, ax, h => absurd h List.not_mem_nil
+  | ax' :: axs, s, hs, ax, h => by
+      rcases List.mem_cons.1 h with rfl | h
+      · exact ⟨s, hs, foldl_trans_le axs _⟩
+      · exact foldl_trans_mem axs _ (transAxiom_wf hs ax') ax h
+
+theorem foldl_trans_good {D : Type} (I : OWL.Interp D) (F : St)
+    (hT : F.cdefs[F.top]? = some .thing) (hB : F.cdefs[F.bottom]? = some .nothing) :
+    ∀ (axs : List Axiom) (s : St), WF s → Le (axs.foldl transAxiom s) F →
+      (∀ ax ∈ axs, ax.isEL = true ∧ I.sat ax) →
+      Good I F hT hB s → Good I F hT hB (axs.foldl transAxiom s)
+  | [], _, _, _, _, hg => hg
+  | ax :: axs, s, hs, hle, hax, hg => by
+      simp only [List.foldl_cons] at hle ⊢
+      have h₀ := hax ax List.mem_cons_self
+      exact foldl_trans_good I F hT hB axs _ (transAxiom_wf hs ax) hle
+        (fun a ha => hax a (List.mem_cons_of_mem _ ha))
+        (transAxiom_extend I F hT hB s hs ax ((foldl_trans_le axs _).trans hle) h₀.1 h₀.2 hg)
+
+/-- The invariant of `internRequested`: the map holds exactly the accumulated
+IRIs, and the `i`-th of them (in order) has index `i`. -/
+structure ReqInv (s : St) (acc : List IRI) : Prop where
+  wf : WF s
+  contains : ∀ b, s.cmap.contains b = acc.contains b
+  size : s.cdefs.size = acc.length
+  idx : ∀ (i : Nat) (b : IRI), acc.reverse[i]? = some b → s.cmap[b]? = some i
+
+theorem reqInv_step {s : St} {acc : List IRI} {a : IRI} (hs : ReqInv s acc)
+    (ha : acc.contains a = false) : ReqInv (internC a s).2 (a :: acc) := by
+  have hnone : s.cmap[a]? = none :=
+    Std.HashMap.getElem?_eq_none_of_contains_eq_false (by rw [hs.contains]; exact ha)
+  have hmem : a ∉ acc := by simpa using ha
+  refine ⟨internC_wf hs.wf, ?_, ?_, ?_⟩
+  · intro b
+    simp only [internC, hnone, Std.HashMap.contains_insert, List.contains_cons, hs.contains]
+    by_cases hab : a = b
+    · subst hab; simp
+    · have h₁ : (a == b) = false := by simpa using hab
+      have h₂ : (b == a) = false := by simpa using Ne.symm hab
+      rw [h₁, h₂]
+  · simp [internC, hnone, hs.size]
+  · intro i b hb
+    simp only [internC, hnone, Std.HashMap.getElem?_insert]
+    simp only [List.reverse_cons, List.getElem?_append, List.length_reverse] at hb
+    split at hb
+    · have hbm : b ∈ acc := List.mem_reverse.1 (List.mem_of_getElem? hb)
+      have hne : ¬ (a == b) = true := by
+        rw [beq_iff_eq]; rintro rfl; exact hmem hbm
+      simp only [hne, if_false]
+      exact hs.idx i b hb
+    · rename_i hlt
+      have hi : i - acc.length < 1 := by
+        rcases Nat.lt_or_ge (i - acc.length) 1 with h | h
+        · exact h
+        · rw [List.getElem?_eq_none (by simpa using h)] at hb; exact absurd hb (by simp)
+      have hi' : i = acc.length := by omega
+      subst hi'
+      simp only [Nat.sub_self, List.getElem?_cons_zero, Option.some.injEq] at hb
+      subst hb
+      simp [hs.size]
+
+theorem internRequested_spec : ∀ (as : List IRI) (s : St) (acc : List IRI), ReqInv s acc →
+    ∃ acc', ReqInv (internRequested as s acc).1 acc' ∧
+      (internRequested as s acc).2 = acc'.reverse ∧
+      acc'.reverse = acc.reverse ++ (as.filter fun b => !acc.contains b).eraseDups
+  | [], s, acc, hs => ⟨acc, hs, rfl, by simp⟩
+  | a :: as, s, acc, hs => by
+      simp only [internRequested]
+      by_cases hc : s.cmap.contains a = true
+      · simp only [hc, if_true]
+        obtain ⟨acc', h₁, h₂, h₃⟩ := internRequested_spec as s acc hs
+        refine ⟨acc', h₁, h₂, ?_⟩
+        rw [h₃]
+        rw [hs.contains] at hc
+        have hc' : a ∈ acc := by simpa using hc
+        simp [List.filter_cons, hc']
+      · simp only [hc]
+        have ha : acc.contains a = false := by rw [← hs.contains]; simpa using hc
+        obtain ⟨acc', h₁, h₂, h₃⟩ := internRequested_spec as _ (a :: acc) (reqInv_step hs ha)
+        refine ⟨acc', h₁, h₂, ?_⟩
+        rw [h₃, List.filter_cons, ha]
+        simp only [Bool.not_false, if_true, List.eraseDups_cons, List.filter_filter,
+          List.reverse_cons, List.append_assoc, List.singleton_append]
+        congr 3
+        apply List.filter_congr
+        intro b _
+        simp only [List.contains_cons, Bool.not_or]
+
+theorem reqInv_empty : ReqInv {} [] :=
+  ⟨⟨fun a k h => by simp at h, fun r k h => by simp at h⟩, fun b => by simp, rfl,
+    fun i b h => by simp at h⟩
+
+/-- The facts about the state after the prepass and `setTopBottom`. -/
+theorem start_spec (O : Ontology) (requested : List IRI) :
+    let S := setTopBottom (O.axioms.foldl scanAxiom (internRequested requested {} []).1)
+    (internRequested requested {} []).2 = requested.eraseDups ∧ WF S ∧ S.out = [] ∧
+      S.cdefs[S.top]? = some .thing ∧ S.cdefs[S.bottom]? = some .nothing ∧
+      ∀ (i : Nat) (h : i < (internRequested requested {} []).2.length),
+        S.cmap[(internRequested requested {} []).2[i]]? = some i := by
+  intro S
+  obtain ⟨acc, hinv, hL, hacc⟩ := internRequested_spec requested {} [] reqInv_empty
+  simp only [List.reverse_nil, List.nil_append, List.contains_nil, Bool.not_false] at hacc
+  have hscan := foldl_scan O.axioms (internRequested requested {} []).1
+  have hwf₀ := hscan.2 hinv.wf
+  have hft : requested.filter (fun _ => true) = requested := List.filter_eq_self.2 (fun _ _ => rfl)
+  rw [hft] at hacc
+  refine ⟨hL.trans hacc,
+    ⟨fun a k h => push_getElem? (push_getElem? (hwf₀.cmap a k h)), hwf₀.rmap⟩, rfl, ?_, ?_, ?_⟩
+  · exact push_getElem? (push_size_getElem? _ _)
+  · simp [S, setTopBottom, Array.getElem_push]
+  · intro i hi
+    refine hscan.1.cmap _ _ (hinv.idx i _ ?_)
+    rw [← hL]
+    exact List.getElem?_eq_getElem hi
+
+/-- The correctness argument on the states of the pipeline. -/
+theorem correct_core (O : Ontology) (hEL : O.isEL = true) (S F : St) (L : List IRI)
+    (hSwf : WF S) (hSout : S.out = []) (hStop : S.cdefs[S.top]? = some .thing)
+    (hSbot : S.cdefs[S.bottom]? = some .nothing)
+    (hSidx : ∀ (i : Nat) (h : i < L.length), S.cmap[L[i]]? = some i)
+    (hF : O.axioms.foldl transAxiom S = F)
+    (i j : Nat) (hi : i < L.length) (hj : j < L.length) :
+    OWL.EntailsSub O L[i] L[j] ↔
+      ELCompletion.EntailsSub (top := F.top) (bottom := F.bottom) F.out.reverse i j := by
+  have hLe : Le S F := hF ▸ foldl_trans_le O.axioms S
+  have hFwf : WF F := hF ▸ foldl_trans_wf O.axioms S hSwf
+  have hT : F.cdefs[F.top]? = some .thing := by
+    rw [hLe.top]; exact hLe.cdefs _ _ hStop
+  have hB : F.cdefs[F.bottom]? = some .nothing := by
+    rw [hLe.bottom]; exact hLe.cdefs _ _ hSbot
+  have hEL' : ∀ ax ∈ O.axioms, ax.isEL = true := by
+    simpa [Ontology.isEL, List.all_eq_true] using hEL
+  have hidx : ∀ k (hk : k < L.length), F.cmap[L[k]]? = some k :=
+    fun k hk => hLe.cmap _ _ (hSidx k hk)
+  constructor
+  · intro hsub D J hJ x hx
+    have hJ' : ∀ c ∈ F.out, ELCompletion.satClause J c :=
+      fun c hc => hJ c (List.mem_reverse.2 hc)
+    have hmodel : OWL.Model O (restrict F J) := by
+      intro ax hax
+      obtain ⟨s', hs', hle⟩ := foldl_trans_mem O.axioms S hSwf ax hax
+      exact transAxiom_restrict F J hJ' s' hs' ax (hF ▸ hle) (hEL' ax hax)
+    have := @hsub D ⟨x⟩ (restrict F J) hmodel x
+    rw [restrict_cls (hidx i hi), restrict_cls (hidx j hj)] at this
+    exact this hx
+  · intro hent D _ I hI x hx
+    have hgood : Good I F hT hB F := by
+      have := foldl_trans_good I F hT hB O.axioms S hSwf (hF ▸ Le.rfl)
+        (fun ax hax => ⟨hEL' ax hax, hI ax hax⟩) (by intro c hc; simp [hSout] at hc)
+      rwa [hF] at this
+    have hmodels : ELCompletion.models (extend I F hT hB) F.out.reverse :=
+      fun c hc => hgood c (List.mem_reverse.1 hc)
+    have := hent (extend I F hT hB) hmodels x
+    rw [extend_concept I F hT hB (hFwf.cmap _ _ (hidx i hi)),
+      extend_concept I F hT hB (hFwf.cmap _ _ (hidx j hj)), ext_cls, ext_cls] at this
+    exact this hx
+
 end ContextCalculus.OWLFrontend.EL
+
+namespace ContextCalculus.OWLFrontend
+
+open ContextCalculus.OWL EL
+
+theorem translateEL_named {O : OWL.Ontology} {requested : List OWL.IRI} {T : ELTranslation}
+    (h : translateEL O requested = some T) :
+    T.named = requested.eraseDups := by
+  unfold translateEL at h
+  split at h
+  · simp only [Option.some.injEq] at h
+    subst h
+    exact (start_spec O requested).1
+  · exact absurd h (by simp)
+
+theorem translateEL_isSome {O : OWL.Ontology} {requested : List OWL.IRI}
+    (hEL : O.isEL = true) :
+    (translateEL O requested).isSome = true := by
+  simp [translateEL, hEL]
+
+theorem translateEL_correct {O : OWL.Ontology} {requested : List OWL.IRI} {T : ELTranslation}
+    (h : translateEL O requested = some T)
+    (i j : Nat) (hi : i < T.named.length) (hj : j < T.named.length) :
+    OWL.EntailsSub O T.named[i] T.named[j] ↔
+      ELCompletion.EntailsSub (top := T.top) (bottom := T.bottom) T.ontology i j := by
+  unfold translateEL at h
+  split at h
+  case isFalse => exact absurd h (by simp)
+  rename_i hEL
+  simp only [Option.some.injEq] at h
+  subst h
+  obtain ⟨_, hSwf, hSout, hStop, hSbot, hSidx⟩ := start_spec O requested
+  exact correct_core O hEL _ _ _ hSwf hSout hStop hSbot hSidx rfl i j hi hj
+
+#print axioms translateEL_named
+#print axioms translateEL_isSome
+#print axioms translateEL_correct
+
+end ContextCalculus.OWLFrontend
