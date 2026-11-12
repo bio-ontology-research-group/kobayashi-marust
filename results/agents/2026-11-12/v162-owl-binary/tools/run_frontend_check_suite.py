@@ -256,7 +256,7 @@ def summarize(args):
     print()
     print("Procedures of agreements:", dict(Counter(r["procedure"] for r in rows
                                                     if r["check"] == "agreed")))
-    reasons = Counter(re.sub(r"\(clause \d+.*", "", r["reason"])[:90]
+    reasons = Counter(re.sub(r" \(checker status:.*|\(clause \d+.*", "", r["reason"])[:110]
                       for r in rows if r["check"] == "declined")
     print()
     print("| decline reason | inputs |")
