@@ -179,6 +179,18 @@ Ontology(<http://example.org/onto>
 #guard axiomsOf r#"Ontology(SubClassOf(Annotation(<http://e#n> "back\\") <http://e#A> <http://e#B>))"# ==
   some [.subClassOf (.cls "http://e#A") (.cls "http://e#B")]
 
+-- A comment also ends at a carriage return (Rust ends it only at a line feed).
+#guard axiomsOf "Ontology(# comment\rSubClassOf(<http://e#A> <http://e#B>))" ==
+  some [.subClassOf (.cls "http://e#A") (.cls "http://e#B")]
+
+-- Non-ASCII text in an abbreviated IRI (Rust panics on `à`: its byte 0xA0
+-- counts as whitespace there).
+#guard axiomsOf (exPrefix ++ "Ontology(SubClassOf(ex:à ex:Zürich))") ==
+  some [.subClassOf (.cls (ex "à")) (.cls (ex "Zürich"))]
+
+-- A full IRI that looks like an abbreviated one stays as written.
+#guard classNamesOf (exPrefix ++ "Ontology(SubClassOf(<ex:A> ex:A))") == ["ex:A", ex "A"]
+
 /-! ## Rejections -/
 
 #guard rejects "Ontology(Import(<http://e>))" "out of fragment: Import"
