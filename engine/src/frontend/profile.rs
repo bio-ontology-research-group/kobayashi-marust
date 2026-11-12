@@ -2554,7 +2554,7 @@ mod tests {
             "Ontology(EquivalentClasses(<A> ObjectOneOf(<a>)) ClassAssertion(<A> <a>))",
             "Ontology(ObjectPropertyDomain(<r> ObjectHasValue(<s> <a>)) ClassAssertion(<A> <a>))",
             "Ontology(SubClassOf(<A> ObjectAllValuesFrom(owl:topObjectProperty <B>)) ClassAssertion(<A> <a>))",
-            "Ontology(HasKey(<A> (<p>)) ClassAssertion(<A> <a>))",
+            "Ontology(HasKey(<A> (<p>) ()) ClassAssertion(<A> <a>))",
             "Ontology(Import(<http://e/import>) ClassAssertion(<A> <a>))",
             "Ontology(DLSafeRule(Body(ClassAtom(<A> Variable(<x>))) Head(ClassAtom(<B> Variable(<x>)))) ClassAssertion(<A> <a>))",
         ] {
