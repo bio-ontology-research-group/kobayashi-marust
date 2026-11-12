@@ -4429,15 +4429,23 @@ fn try_reference_stage(
             return None;
         }
     };
-    if meta.abox_inconsistent
-        || meta.profile.positive_el_abox_materializable
-        || meta.uncarried_data_assertions > 0
-        || !meta.dropped_source_axioms.is_empty()
-        || meta.one_sorted_data_successors
-        || meta.profile.source.rule_axioms > 0
-        || !meta.el_rbox_safe
-    {
-        log_declined("not recognised: not in pure EL/ALC clause-stream fragment");
+    let guards: Vec<&str> = [
+        (meta.abox_inconsistent, "abox_inconsistent"),
+        (meta.profile.positive_el_abox_materializable, "el_abox"),
+        (meta.uncarried_data_assertions > 0, "uncarried_data_assertions"),
+        (!meta.dropped_source_axioms.is_empty(), "dropped_source_axioms"),
+        (meta.one_sorted_data_successors, "one_sorted_data_successors"),
+        (meta.profile.source.rule_axioms > 0, "rule_axioms"),
+        (!meta.el_rbox_safe, "el_rbox_unsafe"),
+    ]
+    .into_iter()
+    .filter_map(|(fired, name)| fired.then_some(name))
+    .collect();
+    if !guards.is_empty() {
+        log_declined(&format!(
+            "not recognised: not in pure EL/ALC clause-stream fragment ({})",
+            guards.join(",")
+        ));
         return None;
     }
     // The request covers class names only. `meta.named` holds every IRI the
