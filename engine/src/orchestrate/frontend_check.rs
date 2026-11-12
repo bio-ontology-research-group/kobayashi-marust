@@ -182,7 +182,38 @@ pub fn check(ontology: &Path, answer: &KmAnswer<'_>, timing: bool) -> Outcome {
         Ok(prefixes) => prefixes,
         Err(reason) => return declined(reason),
     };
-    compare(&reference, answer, &prefixes)
+    let verbatim = match document_verbatim_names(ontology, &prefixes) {
+        Ok(verbatim) => verbatim,
+        Err(reason) => return declined(reason),
+    };
+    compare_with(&reference, answer, &prefixes, &verbatim)
+}
+
+/// The full IRIs `<p:x>` of the document whose text starts with a known
+/// prefix `p:`. km prints such an IRI as `p:x`, like an abbreviated IRI, but
+/// it is the IRI `p:x` itself: `builtin_aliases::canonicalize` respells every
+/// abbreviated `p:x` of such a document in full. So the comparison must not
+/// expand these names. Empty, without a token scan, when the text has no
+/// `<p:` at all.
+fn document_verbatim_names(
+    ontology: &Path,
+    prefixes: &BTreeMap<String, String>,
+) -> Result<std::collections::HashSet<String>, String> {
+    let mut verbatim = std::collections::HashSet::new();
+    let text = std::fs::read_to_string(ontology)
+        .map_err(|err| format!("cannot read {}: {err}", ontology.display()))?;
+    if !prefixes.keys().any(|prefix| text.contains(&format!("<{prefix}:"))) {
+        return Ok(verbatim);
+    }
+    for token in crate::frontend::sexpr::tokens(&text) {
+        let iri = token.strip_prefix("^^").unwrap_or(token);
+        if let Some(iri) = iri.strip_prefix('<').and_then(|s| s.strip_suffix('>')) {
+            if iri.split_once(':').is_some_and(|(prefix, _)| prefixes.contains_key(prefix)) {
+                verbatim.insert(iri.to_string());
+            }
+        }
+    }
+    Ok(verbatim)
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -313,6 +344,24 @@ pub(crate) fn compare(
     answer: &KmAnswer<'_>,
     prefixes: &BTreeMap<String, String>,
 ) -> Outcome {
+    compare_with(reference, answer, prefixes, &std::collections::HashSet::new())
+}
+
+/// [`compare`], keeping the names in `verbatim` (full IRIs that read like
+/// abbreviated ones, [`document_verbatim_names`]) unexpanded.
+pub(crate) fn compare_with(
+    reference: &ReferenceAnswer<'_>,
+    answer: &KmAnswer<'_>,
+    prefixes: &BTreeMap<String, String>,
+    verbatim: &std::collections::HashSet<String>,
+) -> Outcome {
+    let expand = |name: &'_ str| -> String {
+        if verbatim.contains(name) {
+            name.to_string()
+        } else {
+            expand(name, prefixes).into_owned()
+        }
+    };
     let procedure = reference.procedure.clone();
     let disagreed = |first: String| Outcome::Disagreed {
         procedure: procedure.clone(),
@@ -334,7 +383,7 @@ pub(crate) fn compare(
     let mut km_unsat: Vec<u32> = answer
         .unsatisfiable
         .iter()
-        .map(|n| expand(n, prefixes))
+        .map(|n| expand(n))
         .filter(|n| !is_builtin(n))
         .map(|n| names.id(&n))
         .collect();
@@ -363,8 +412,8 @@ pub(crate) fn compare(
     let unsat: std::collections::HashSet<u32> = km_unsat.iter().copied().collect();
     let mut km_pairs: Vec<(u32, u32)> = Vec::new();
     (answer.pairs)(&mut |sub: &str, sup: &str| {
-        let sub = expand(sub, prefixes);
-        let sup = expand(sup, prefixes);
+        let sub = expand(sub);
+        let sup = expand(sup);
         if is_builtin(&sub) || is_builtin(&sup) {
             return;
         }
