@@ -6,6 +6,8 @@ lean_root="$repo_root/lean"
 engine_root="$repo_root/engine"
 bin_path="$lean_root/.lake/build/bin/km-automatic-routing-check"
 ref_bin_path="$lean_root/.lake/build/bin/km-el-reference"
+owl_bin_path="$lean_root/.lake/build/bin/km-owl-reference"
+owl_fixtures="$engine_root/tests/fixtures/reference_stage"
 work_root="${KM_WORK_ROOT:-$repo_root/.work}"
 target_root="$work_root/target"
 artifact_root="$work_root/artifacts"
@@ -26,6 +28,7 @@ cleanup_checker() {
     [[ "${KM_CERT_KEEP_NATIVE_CHECKERS:-0}" == "1" ]] && return
     [[ ! -e "$bin_path" ]] || unlink "$bin_path"
     [[ ! -e "$ref_bin_path" ]] || unlink "$ref_bin_path"
+    [[ ! -e "$owl_bin_path" ]] || unlink "$owl_bin_path"
 }
 trap cleanup_checker EXIT
 
@@ -87,8 +90,20 @@ trap cleanup_checker EXIT
         ContextCalculus.ALCReferenceSaturation \
         ContextCalculus.SparseTaxonomy \
         ContextCalculus.KMSupervisorInstance \
+        ContextCalculus.OWL.Semantics \
+        ContextCalculus.OWL.Fragment \
+        ContextCalculus.OWL.Parse \
+        ContextCalculus.OWL.Names \
+        ContextCalculus.OWL.ParseTests \
+        ContextCalculus.OWLFrontend.ELTranslateCorrect \
+        ContextCalculus.OWLFrontend.ELTranslateTests \
+        ContextCalculus.OWLFrontend.ALCTranslateCorrect \
+        ContextCalculus.OWLFrontend.ALCTranslateTests \
+        ContextCalculus.OWLFrontend.Reference \
+        ContextCalculus.OWLFrontend.ReferenceReadout \
         km-automatic-routing-check \
-        km-el-reference 2>&1 | tee "$surface_log"
+        km-el-reference \
+        km-owl-reference 2>&1 | tee "$surface_log"
 )
 
 if grep -q 'sorryAx' "$surface_log"; then
@@ -422,7 +437,20 @@ for theorem in \
     ELCommonSourceRecognizer.zipSortedHalves_eq_zipSortedHalvesTR \
     ALCCommonSourceRecognizer.listMax_eq_listMaxTR \
     ALCCommonSourceRecognizer.buildIndexedClauses_eq_buildIndexedClausesTR \
-    ALCCommonSourceRecognizer.assignFnNames_eq_assignFnNamesTR
+    ALCCommonSourceRecognizer.assignFnNames_eq_assignFnNamesTR \
+    OWL.Ontology.mem_classNames \
+    OWL.Ontology.classNames_nodup \
+    OWL.inconsistent_iff_entailsSub_fresh \
+    OWL.unsatisfiable_iff_entailsSub_fresh \
+    OWLFrontend.translateEL_correct \
+    OWLFrontend.translateEL_isSome \
+    OWLFrontend.translateALC_correct \
+    OWLFrontend.translateALC_isSome \
+    OWLFrontend.owlELReference_sound \
+    OWLFrontend.owlALCReference_sound \
+    OWLFrontend.owlReference_sound \
+    OWLFrontend.owlReference_complete \
+    OWLFrontend.owlReadout_exact
 do
     grep -q "$theorem" "$surface_log" || {
         echo "missing routing certification-surface axiom audit: $theorem" >&2
@@ -457,8 +485,33 @@ if [ "$ref_status" -ne 4 ] || ! grep -q '^io error' <<<"$ref_err"; then
     exit 1
 fi
 
+# km-owl-reference (v1.6.2): an EL and an ALC answer in owl-sparse-v1, a
+# decline outside the fragment (exit 3), and the exit codes 2 and 4.
+grep -q '"format":"owl-sparse-v1","procedure":"el"' <("$owl_bin_path" "$owl_fixtures/el_existentials.ofn")
+grep -q '"format":"owl-sparse-v1","procedure":"alc"' <("$owl_bin_path" "$owl_fixtures/alc_disjunction.ofn")
+owl_status=0
+"$owl_bin_path" "$owl_fixtures/rules_taxonomy.ofn" >/dev/null 2>&1 || owl_status=$?
+if [ "$owl_status" -ne 3 ]; then
+    echo "km-owl-reference outside the fragment: expected a decline (exit 3), got exit $owl_status" >&2
+    exit 1
+fi
+owl_status=0
+owl_err=$("$owl_bin_path" "$owl_fixtures/__missing__.ofn" 2>&1 >/dev/null) || owl_status=$?
+if [ "$owl_status" -ne 2 ] || ! grep -q '^failed to read' <<<"$owl_err"; then
+    echo "km-owl-reference missing input: expected 'failed to read' with exit 2, got exit $owl_status: $owl_err" >&2
+    exit 1
+fi
+owl_status=0
+owl_err=$("$owl_bin_path" "$owl_fixtures/el_existentials.ofn" 2>&1 >/dev/full) || owl_status=$?
+if [ "$owl_status" -ne 4 ] || ! grep -q '^io error' <<<"$owl_err"; then
+    echo "km-owl-reference failed stdout write: expected 'io error' with exit 4, got exit $owl_status: $owl_err" >&2
+    exit 1
+fi
+
 (
     cd "$engine_root"
+    KM_OWL_TEST_REFERENCE_CHECKER="$owl_bin_path" KM_REQUIRE_LEAN_CHECKERS=1 \
+        CARGO_TARGET_DIR="$target_root" cargo test --release --test frontend_check
     KM_EL_TEST_REFERENCE_CHECKER="$ref_bin_path" CARGO_TARGET_DIR="$target_root" \
         cargo test --release --test reference_stage
     CARGO_TARGET_DIR="$target_root" cargo test --release --lib \
