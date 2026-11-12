@@ -26,6 +26,7 @@ import ContextCalculus.ALCReferenceSaturation
 import ContextCalculus.ALCReferenceSaturationTests
 import ContextCalculus.ALCCommonSourceRecognizer
 import ContextCalculus.ALCCommonSourceRecognizerTests
+import ContextCalculus.SparseTaxonomy
 import ContextCalculus.ELResidualCertificate
 import ContextCalculus.ELResidualCompilation
 import ContextCalculus.ELResidualWitness

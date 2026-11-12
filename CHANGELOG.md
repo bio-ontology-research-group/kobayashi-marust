@@ -1,5 +1,41 @@
 # Changelog
 
+## [1.6.1] - 2026-11-12
+
+The reference stage of 1.6.0 scales to the suite's large inputs and its
+failures name their cause. No theorem of 1.6.0 changes. Acceptance:
+`docs/V1.6.1-ACCEPTANCE.md`; notes: `docs/RELEASE-1.6.1.md`.
+
+### Lean
+
+- `SparseTaxonomy`: the sparse reference answer (one row per requested
+  name: unsatisfiability flag, named subsumers), its dense denotation, and
+  the agreement theorems `sparseElReference_agrees` and
+  `sparseAlcReference_agrees` with the 1.6.0 executions, plus
+  `sparseElReference_correct`, `sparseAlcReference_correct`,
+  `sparseElReference_complete` and `sparseAlcReference_complete`.
+- Tail-recursive `@[csimp]` twins, each proved equal to its original, for
+  `parseSource`, `maxNatList`, `compileDirect`, `collectRoleHalves`,
+  `collectFillerHalves`, `mergeHalvesFuel`, `mergePairs`,
+  `zipSortedHalves` (EL recogniser) and `listMax`, `buildIndexedClauses`,
+  `assignFnNames` (ALC recogniser). The routing gate audits all eleven.
+
+### km-el-reference and the reference stage
+
+- Output format `sparse-v1`; publication takes the correctness proof
+  (`publishSparse`) in place of the runtime recheck; streamed output.
+- Read failures exit 2 (`failed to read`), later I/O failures exit 4
+  (`io error`); `KM_REFERENCE_TIMING=1` prints per-phase timing.
+- Rust: parses the sparse rows without an N x N structure and declines on
+  any shape deviation; decline reasons come from stderr first and skip
+  timing lines; the metadata guard names the condition that fired.
+
+### Measurement
+
+- Forced suite on Ibex: 575 of 592 recognised inputs published (1.6.0:
+  378), none lost, 0 disagreements with the production answer over 1,781
+  inputs (`results/agents/2026-11-12/v161-q2/`).
+
 ## [1.6.0] - 2026-11-12
 
 Version 1.6.0 is the completeness release. The Lean routing capstone no

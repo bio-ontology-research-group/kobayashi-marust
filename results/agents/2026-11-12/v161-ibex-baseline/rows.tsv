@@ -1,0 +1,215 @@
+input	km_exit	km_wall_s	ref_exit	ref_wall	ref_peak_rss_kb	ref_stdout_bytes	stage	ref_stderr	host
+inconsistent.ofn	3	.035477633					KM_TIMING KM_REFERENCE_STAGE declined: not recognised: not in pure EL/ALC clause-stream fragment		cn605-18-r
+ore_ont_10008.owl	3	301.146712769				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn511-07
+ore_ont_10073.owl	0	249.747177653	0	1:52.19	19350344	13035211004	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn605-14-l
+ore_ont_1012.owl	3	313.817385167				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn504-06
+ore_ont_10161.owl	3	316.439723657				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn605-14-l
+ore_ont_10175.owl	3	302.684201614				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn605-14-l
+ore_ont_10248.owl	3	304.206672315				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn605-12-l
+ore_ont_1043.owl	3	303.991520947				31132643328	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn605-09-l
+ore_ont_10445.owl	0	291.172459360	0	2:16.24	25071620	19514764591	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn605-11-l
+ore_ont_10689.owl	124	330.135514004				0			cn603-23-r
+ore_ont_10750.owl	3	326.828681355				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn605-06-l
+ore_ont_10778.owl	3	302.646025838				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn605-06-l
+ore_ont_10806.owl	0	147.939312223	0	1:21.45	18680708	14642829524	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn605-03-r
+ore_ont_1082.owl	0	313.513371681	0	2:39.21	26575528	19493518799	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn603-29-l
+ore_ont_10930.owl	3	302.391444095				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-26-r
+ore_ont_11110.owl	0	236.959368294	0	2:02.58	20958148	14622136668	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn603-26-r
+ore_ont_11198.owl	3	301.751008393				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-23-l
+ore_ont_1119.owl	3	300.728828618				13887524864	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-23-r
+ore_ont_11293.owl	3	303.213309768				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-22-r
+ore_ont_11315.owl	3	311.738561711				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-21-l
+ore_ont_11389.owl	3	306.012553552				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-22-r
+ore_ont_11395.owl	124	330.113694896				0			cn603-21-l
+ore_ont_11519.owl	3	304.044772872				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-18-l
+ore_ont_11536.owl	0	89.765050291	0	0:49.79	7705540	5174577809	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn603-20-r
+ore_ont_11559.owl	3	303.092825211				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-20-r
+ore_ont_11739.owl	3	313.811445027				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-05-r
+ore_ont_11778.owl	3	304.586857837				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-23-r
+ore_ont_11817.owl	3	302.722365396				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-18-l
+ore_ont_11827.owl	3	304.584789990				25742618624	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-08-l
+ore_ont_12087.owl	3	309.203533847				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-10-l
+ore_ont_12149.owl	3	301.144090464				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-23-l
+ore_ont_12194.owl	0	327.859169459	0	2:31.00	30056804	19720792622	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn512-23-l
+ore_ont_12221.owl	124	330.438795819	0	3:07.41	30992516	20394735476			cn512-10-r
+ore_ont_12330.owl	3	301.094045831				10768760832	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-17-l
+ore_ont_12387.owl	3	309.531744983				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-09-l
+ore_ont_12414.owl	3	305.632099476				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn509-26-r
+ore_ont_12448.owl	124	330.822255843	0	3:12.83	31854712	21456196951			cn509-28-r
+ore_ont_12486.owl	3	301.111284690				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-09-l
+ore_ont_12528.owl	3	313.955002175				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn509-26-r
+ore_ont_12651.owl	3	307.638754580				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-03-r
+ore_ont_12776.owl	0	41.047610578	0	0:21.73	4055932	3660277031	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn509-27-l
+ore_ont_12802.owl	124	330.504877533	0	2:01.01	20679940	22990922559			cn509-28-r
+ore_ont_12936.owl	3	300.641196617				38644764672	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn509-24-r
+ore_ont_12985.owl	3	305.417960375				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn509-24-l
+ore_ont_13000.owl	0	33.784256282	0	0:15.79	3840256	2718302770	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn509-24-r
+ore_ont_1306.owl	3	308.352529806				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn504-04
+ore_ont_13224.owl	3	302.964556339				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn504-04
+ore_ont_13233.owl	3	.826624850					KM_TIMING KM_REFERENCE_STAGE declined: not recognised: not in pure EL/ALC clause-stream fragment		cn509-19-r
+ore_ont_13243.owl	3	301.973021404				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn509-19-r
+ore_ont_13355.owl	3	311.915389296				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-12-r
+ore_ont_13423.owl	3	302.644285626				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn504-04
+ore_ont_13482.owl	3	313.632479363				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn504-04
+ore_ont_1357.owl	3	302.028650425				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn504-04
+ore_ont_13664.owl	3	301.191113268				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-22-l
+ore_ont_1370.owl	124	331.149243814	0	3:13.48	35378120	25034176657			cn603-22-l
+ore_ont_13755.owl	0	17.987556690	0	0:09.03	1639248	1085348273	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn603-20-r
+ore_ont_13902.owl	3	303.134212637				18205831168	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-02-l
+ore_ont_13937.owl	3	1.857487497					KM_TIMING KM_REFERENCE_STAGE declined: not recognised: not in pure EL/ALC clause-stream fragment		cn603-09-r
+ore_ont_13964.owl	124	330.665291484	0	3:34.05	34166364	32819678575			cn603-08-l
+ore_ont_13969.owl	3	305.264022009				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-05-l
+ore_ont_14027.owl	0	305.408875714	0	1:51.97	19879400	17372924452	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn512-26-l
+ore_ont_14042.owl	124	330.060285907				0			cn509-24-r
+ore_ont_14101.owl	3	302.085579121				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn509-27-l
+ore_ont_14216.owl	124	330.820276266	0	3:30.50	30402836	22332757029			cn605-25-l
+ore_ont_14365.owl	3	301.672083740				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn509-18-r
+ore_ont_14407.owl	124	330.104410753	0	4:22.11	32227092	19459293474			cn509-19-r
+ore_ont_14459.owl	124	330.093579906				0			cn605-14-l
+ore_ont_14508.owl	3	301.374444955				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn509-18-r
+ore_ont_14543.owl	124	330.083514859	0	4:42.39	55596044	36744163373			cn504-06
+ore_ont_14607.owl	0	317.197893595	0	2:49.14	31245556	21959291546	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn605-14-l
+ore_ont_14934.owl	3	302.529371215				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn605-06-l
+ore_ont_1493.owl	0	29.059560994	0	0:15.37	3605056	2646278874	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn605-14-l
+ore_ont_15099.owl	3	301.583771634				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn605-12-l
+ore_ont_15133.owl	3	306.057642788				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn605-06-l
+ore_ont_15172.owl	0	75.843171137	0	0:38.16	8546992	5828730599	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn605-11-l
+ore_ont_15178.owl	124	330.245168235	0	2:51.06	30272388	31583983559			cn603-29-l
+ore_ont_15280.owl	124	330.061283498				0			cn603-26-r
+ore_ont_15388.owl	124	330.207002797	0	4:33.58	54225236	36848391186			cn605-03-r
+ore_ont_1559.owl	3	86.566297867	134	0:22.50	8037488	0	KM_TIMING KM_REFERENCE_STAGE declined: km-el-reference exited non-zero (checker status: exit status: 134)	 Stack overflow detected. Aborting. 	cn603-23-l
+ore_ont_15696.owl	3	304.382064379				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-26-r
+ore_ont_15790.owl	3	301.083614999				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-23-r
+ore_ont_1579.owl	3	6.152946968					KM_TIMING KM_REFERENCE_STAGE declined: not recognised: not in pure EL/ALC clause-stream fragment		cn603-23-r
+ore_ont_15929.owl	3	303.285293939				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-22-r
+ore_ont_15976.owl	3	307.729357585				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-22-r
+ore_ont_16008.owl	124	330.119061966				0			cn603-20-r
+ore_ont_16089.owl	3	305.823608777				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-20-r
+ore_ont_16114.owl	0	315.590745927	0	2:21.70	28204612	22442766150	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn603-21-l
+ore_ont_16283.owl	3	323.324366516	0	4:12.01	41992200	30504366249	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-21-l
+ore_ont_16428.owl	3	305.983820675				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-18-l
+ore_ont_16596.owl	3	308.213972378				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-05-r
+ore_ont_16684.owl	3	301.989984667				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-09-r
+ore_ont_16687.owl	3	301.082897982				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-08-l
+ore_ont_16703.owl	0	47.071999826	0	0:24.40	6327560	4020556361	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn603-18-l
+ore_ont_2128.owl	0	140.457230350	0	1:17.09	18680448	13723224752	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn512-23-l
+ore_ont_2134.owl	3	305.725880987				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-23-r
+ore_ont_2243.owl	3	305.636773817				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-23-l
+ore_ont_2253.owl	124	330.133707624	0	4:53.64	34305192	28199687980			cn512-23-r
+ore_ont_2361.owl	3	305.262582650				28364341248	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-22-l
+ore_ont_2469.owl	3	305.283560037				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-10-r
+ore_ont_2486.owl	3	319.203000594				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-10-l
+ore_ont_253.owl	3	.155183424					KM_TIMING KM_REFERENCE_STAGE declined: not recognised: not in pure EL/ALC clause-stream fragment		cn512-22-l
+ore_ont_2591.owl	0	170.507718648	0	1:20.50	15477896	10075905059	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn512-17-l
+ore_ont_264.owl	0	34.153266776	0	0:19.12	3248768	2081933847	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn512-15-l
+ore_ont_2661.owl	3	301.186897800				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn509-28-r
+ore_ont_269.owl	124	330.763782084	0	2:37.96	30261888	24371810911			cn512-09-l
+ore_ont_2803.owl	3	303.323405755				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-09-l
+ore_ont_2820.owl	3	306.601714262				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-03-r
+ore_ont_2828.owl	3	306.513779130				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn509-26-r
+ore_ont_283.owl	3	304.395588120				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn509-28-r
+ore_ont_3100.owl	3	305.024113143				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn605-14-l
+ore_ont_318.owl	3	304.881880175				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn504-04
+ore_ont_3274.owl	3	308.279496435				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn605-11-l
+ore_ont_3377.owl	3	14.641774882					KM_TIMING KM_REFERENCE_STAGE declined: not recognised: not in pure EL/ALC clause-stream fragment		cn605-09-l
+ore_ont_3480.owl	3	300.619872226				13825650688	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn605-09-l
+ore_ont_3524.owl	124	330.136544032				0			cn603-23-r
+ore_ont_3560.owl	3	316.396576030				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-26-r
+ore_ont_3836.owl	124	330.119486849				0			cn603-18-l
+ore_ont_3873.owl	3	304.362500356				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-12-r
+ore_ont_3884.owl	3	.036390862					KM_TIMING KM_REFERENCE_STAGE declined: not recognised: not in pure EL/ALC clause-stream fragment		cn603-23-l
+ore_ont_3910.owl	3	.114348705					KM_TIMING KM_REFERENCE_STAGE declined: not recognised: not in pure EL/ALC clause-stream fragment		cn603-22-l
+ore_ont_4054.owl	3	306.226813283				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-22-l
+ore_ont_4233.owl	3	305.439103603				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-05-l
+ore_ont_4235.owl	124	330.076453423	0	4:59.77	50493256	29235039766			cn603-08-l
+ore_ont_4487.owl	3	301.997789463				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-24-r
+ore_ont_4557.owl	124	330.177836825	0	4:07.55	29217208	21336626245			cn603-02-l
+ore_ont_4570.owl	0	79.583969597	0	0:41.29	4087032	2814094755	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn603-02-l
+ore_ont_4616.owl	3	301.497902655				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-26-l
+ore_ont_4617.owl	3	304.491968714				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-15-l
+ore_ont_4733.owl	0	161.212350638	0	1:27.64	18768836	13923087603	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn512-22-l
+ore_ont_4755.owl	3	308.204838926				29178462208	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-23-l
+ore_ont_4782.owl	3	301.521621803				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn511-21
+ore_ont_4802.owl	3	304.487352837				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn509-24-r
+ore_ont_4952.owl	3	308.175466930				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-08-r
+ore_ont_5115.owl	0	36.519826920	0	0:19.81	3605072	2646278874	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn509-27-l
+ore_ont_5193.owl	0	52.086654525	0	0:27.10	6329280	4023637505	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn509-26-r
+ore_ont_5295.owl	3	5.302693672					KM_TIMING KM_REFERENCE_STAGE declined: not recognised: not in pure EL/ALC clause-stream fragment		cn509-24-r
+ore_ont_5481.owl	0	89.034068003	0	0:49.85	19349516	13035211004	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn511-19
+ore_ont_5487.owl	124	330.508876258	0	1:56.79	32134760	34428894553			cn504-15
+ore_ont_5507.owl	0	159.932405641	0	1:09.93	15479948	10076179729	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn605-25-l
+ore_ont_5519.owl	3	315.159698602				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn605-12-l
+ore_ont_5549.owl	3	304.033309211				14725984256	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn504-06
+ore_ont_5566.owl	3	309.537048338				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn605-06-l
+ore_ont_5596.owl	3	4.416586065					KM_TIMING KM_REFERENCE_STAGE declined: not recognised: not in pure EL/ALC clause-stream fragment		cn605-18-r
+ore_ont_5602.owl	124	330.431182124	0	3:30.05	33258408	25974648598			cn603-26-r
+ore_ont_5612.owl	3	305.083464568				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn605-06-l
+ore_ont_5690.owl	0	131.172662500	0	1:17.07	9530676	7529238778	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn605-09-l
+ore_ont_5755.owl	0	56.024516866	0	0:28.25	7101060	4848938645	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn605-03-r
+ore_ont_5760.owl	3	314.313595416				15840706560	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-23-r
+ore_ont_5781.owl	0	54.604062948	0	0:27.92	6628288	4469845857	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn603-29-l
+ore_ont_5815.owl	124	330.155824513	0	4:24.45	39218520	43111298233			cn603-22-l
+ore_ont_5927.owl	3	305.062176155				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-26-r
+ore_ont_5965.owl	0	129.526844324	0	1:05.61	15479624	10075905059	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn603-22-r
+ore_ont_5974.owl	0	117.108218044	0	1:04.02	15485136	10081059427	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn603-23-l
+ore_ont_6035.owl	0	29.459069330	0	0:19.90	2595448	1826764890	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn603-22-r
+ore_ont_6223.owl	3	309.851871901				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-21-l
+ore_ont_6233.owl	3	316.911594531				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-21-l
+ore_ont_6310.owl	3	301.119218975				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-21-l
+ore_ont_6433.owl	0	254.149244550	0	2:41.90	20094152	15627949278	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn603-20-r
+ore_ont_6453.owl	0	140.902040517	0	1:19.86	15479308	10075905059	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn603-20-r
+ore_ont_6477.owl	3	310.031745845				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-14-l
+ore_ont_6659.owl	124	330.722702824	0	2:40.92	26540988	19492537548			cn603-08-l
+ore_ont_6722.owl	3	2.020275946					KM_TIMING KM_REFERENCE_STAGE declined: not recognised: not in pure EL/ALC clause-stream fragment		cn603-18-l
+ore_ont_6726.owl	3	302.295901940				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-17-l
+ore_ont_6816.owl	124	330.763009465	0	2:52.17	31864064	21463426528			cn603-09-r
+ore_ont_6948.owl	124	330.050789838				0			cn512-23-r
+ore_ont_7178.owl	3	301.765641304				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-23-r
+ore_ont_7188.owl	3	.340804940					KM_TIMING KM_REFERENCE_STAGE declined: not recognised: not in pure EL/ALC clause-stream fragment		cn603-05-r
+ore_ont_7226.owl	3	.403545251					KM_TIMING KM_REFERENCE_STAGE declined: not recognised: not in pure EL/ALC clause-stream fragment		cn603-04-l
+ore_ont_7256.owl	3	302.433961645				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-02-l
+ore_ont_7340.owl	3	306.346039937				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-23-l
+ore_ont_7343.owl	124	330.151137116	0	3:43.83	31276240	23591318090			cn512-17-l
+ore_ont_7370.owl	3	307.579520602				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-09-l
+ore_ont_7401.owl	3	302.022645759				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-10-l
+ore_ont_7455.owl	3	1.561645902					KM_TIMING KM_REFERENCE_STAGE declined: not recognised: not in pure EL/ALC clause-stream fragment		cn512-11-r
+ore_ont_7493.owl	3	301.488083146				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-10-r
+ore_ont_7567.owl	3	303.161973225				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn511-08
+ore_ont_7608.owl	3	301.056176930				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-03-r
+ore_ont_7716.owl	0	305.362844969	0	1:53.21	25321152	15895292820	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn512-09-l
+ore_ont_7728.owl	3	303.642892584				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn511-10
+ore_ont_7831.owl	3	326.047823273	0	4:02.45	34166052	26973793134	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-17-r
+ore_ont_7868.owl	3	304.957736854				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn603-14-r
+ore_ont_7926.owl	0	234.517666554	0	1:30.71	17738052	16160245580	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn605-16-l
+ore_ont_795.owl	3	303.043460395				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-22-l
+ore_ont_7993.owl	124	330.093687710	0	4:45.24	33063680	30954888053			cn605-16-l
+ore_ont_8068.owl	124	330.220961174	0	4:13.56	54452564	35828690315			cn509-27-r
+ore_ont_8145.owl	0	245.870644067	0	1:42.89	19303676	17299838923	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn512-22-l
+ore_ont_8347.owl	0	186.187538771	0	1:26.20	18680244	13723224752	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn509-14-l
+ore_ont_840.owl	3	301.985327971				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-15-l
+ore_ont_8470.owl	0	310.924425952	0	2:46.19	33631176	24891489217	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn509-07-r
+ore_ont_8486.owl	124	330.122479122				0			cn605-21-r
+ore_ont_8557.owl	0	147.940512129	0	0:58.53	12415940	10544192428	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn509-08-r
+ore_ont_8579.owl	0	152.341494598	0	1:26.07	17752964	16177405149	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn509-09-l
+ore_ont_8634.owl	3	301.771032539				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn509-08-r
+ore_ont_8671.owl	3	305.746621651				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn513-13-r
+ore_ont_868.owl	124	330.102409596				0			cn513-09-r
+ore_ont_8787.owl	124	331.008225958	0	3:05.09	26053240	17548649943			cn603-20-l
+ore_ont_8792.owl	0	66.991265200	0	0:36.21	7849216	5285003173	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn605-22-l
+ore_ont_8982.owl	3	305.847119766				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-09-l
+ore_ont_9046.owl	0	64.719866097	0	0:34.09	8546356	5828730599	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn512-24-r
+ore_ont_9119.owl	0	148.709677518	0	1:25.08	16118724	13081754845	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn512-23-l
+ore_ont_9400.owl	3	309.123155001				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-06-r
+ore_ont_9498.owl	3	313.665877778				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn509-10-l
+ore_ont_9499.owl	3	307.705458547				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn509-15-r
+ore_ont_9513.owl	3	300.805999838				20403765248	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn512-09-l
+ore_ont_954.owl	3	304.301516491				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn506-20-l
+ore_ont_9590.owl	3	300.696128347				16828370944	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn513-21-r
+ore_ont_9612.owl	0	88.062626429	0	0:38.44	7018988	4784297186	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn509-08-r
+ore_ont_964.owl	124	330.383147685	0	2:04.06	26932800	28009991803	KM_TIMING KM_REFERENCE_STAGE published procedure=el		cn513-15-r
+ore_ont_9674.owl	124	330.117235923				0			cn605-22-l
+ore_ont_9768.owl	124	330.200613088	0	2:52.43	33666992	27646500070			cn506-07-r
+ore_ont_9794.owl	3	312.335597703				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn506-06-l
+ore_ont_9816.owl	3	301.872380912				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn605-25-l
+ore_ont_9886.owl	3	302.524598814				0	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn511-08
+ore_ont_9894.owl	3	302.175770438				7197147136	KM_TIMING KM_REFERENCE_STAGE declined: budget		cn605-20-r

@@ -3,28 +3,49 @@ import Std.Data.HashMap
 import Std.Data.HashSet
 import ContextCalculus.ALCCommonSourceRecognizer
 import ContextCalculus.KMConcreteWorkerAdapters
+import ContextCalculus.SparseTaxonomy
 
 /-!
 # Executable EL and ALC reference taxonomy stage (`km-el-reference`)
 
-Command-line wrapper over `KMConcreteWorkerAdapters.elReferenceExecution` and
-`KMConcreteWorkerAdapters.alcReferenceExecution` for the common clause-stream
-JSON format.
+Command-line wrapper over `SparseTaxonomy.sparseElReference` and
+`SparseTaxonomy.sparseAlcReference` for the common clause-stream JSON format.
+`SparseTaxonomy.sparseElReference_agrees` and
+`SparseTaxonomy.sparseAlcReference_agrees` prove that the dense expansion of
+each sparse answer is exactly the publication of the v1.6.0 executions
+`KMConcreteWorkerAdapters.elReferenceExecution` and
+`KMConcreteWorkerAdapters.alcReferenceExecution`, so every v1.6.0 theorem about
+those executions covers what this binary prints.
 
 Supports `--procedure el|alc|el-then-alc` (default `el-then-alc`) and
 `--recognize-only`:
-- In `el-then-alc` mode, `elReferenceExecution.run` runs first; if it declines,
+- In `el-then-alc` mode, `sparseElReference` runs first; if it declines,
   the ALC reference stage runs next, matching the stage order of
   `KMSupervisorInstance.kmSupervisor_complete_on_EL_or_ALC`.
-- Before evaluating `alcReferenceExecution.run` (which enumerates candidate
+- Before evaluating `sparseAlcReference` (which enumerates candidate
   types over `Fin recognized.conceptCount`), the binary enforces a runtime
   concept-count budget from `KM_ALC_REFERENCE_MAX_CONCEPTS` (default `16`),
   declining with exit code `3` and stderr reason
   `alc budget: N concept names` when `recognized.conceptCount` exceeds the
   limit. This budget is a runtime resource bound outside the Lean completeness
   proof.
-- Any `.publish` outcome is rechecked with `requestedExactAccept` before
-  emitting the output JSON.
+- The publishing function `publishSparse` takes a proof of
+  `RequestedCorrect source t.dense` (from `sparseElReference_correct` or
+  `sparseAlcReference_correct`), so its type records that the printed
+  taxonomy is correct for the exact requested source.  v1.6.0 rechecked every
+  publication at run time with `requestedExactAccept`; on the computed answer
+  that recheck was a no-op by construction (it recomputed the same closure and
+  compared the dense matrix with itself).  The theorems replace it, and the
+  binary no longer builds the dense matrix at all.
+
+Output (`format` `sparse-v1`), streamed row by row:
+`{"format":"sparse-v1","named":[...],"procedure":"el","rows":[{"sub":"A","unsat":false,"sups":["A","B"]},...]}`.
+A row denotes the bits `bit sup = unsat || sup ∈ sups` (`SparseRow.bit`);
+`SparseTaxonomy.dense` is the dense answer it stands for.
+
+Exit codes: `0` publish (or `recognised`), `2` unreadable input file
+(`failed to read <path>: ...`), invalid JSON or invalid input, `3` decline,
+`4` any later IO error (`io error: ...`, for example a failed stdout write).
 -/
 
 open Lean
@@ -47,6 +68,33 @@ def Interner.intern (it : Interner) (name : String) : Nat × Interner :=
   | none =>
     let id := it.names.size
     (id, { toId := it.toId.insert name id, names := it.names.push name })
+
+/-! ### Phase timing (`KM_REFERENCE_TIMING=1`) -/
+
+/-- Evaluate `f ()` at this point of the `IO` sequence.  `noinline` keeps the
+compiler from moving the pure computation past the surrounding clock reads;
+the subtype records which value was computed, so callers keep the equation
+their proofs need. -/
+@[noinline] def evalNow {α : Type} (f : Unit → α) : BaseIO { a : α // a = f () } :=
+  pure ⟨f (), rfl⟩
+
+/-- Whether `KM_REFERENCE_TIMING=1` asks for phase timing on stderr. -/
+def timingEnabled : IO Bool := do
+  return (← IO.getEnv "KM_REFERENCE_TIMING") == some "1"
+
+/-- Print one phase line `KM_REFERENCE_TIMING phase=<name> ms=<ms>` to stderr. -/
+def reportPhase (enabled : Bool) (name : String) (t0 : Nat) : IO Unit := do
+  if enabled then
+    let t1 ← IO.monoNanosNow
+    IO.eprintln s!"KM_REFERENCE_TIMING phase={name} ms={(t1 - t0) / 1000000}"
+
+/-- Evaluate `f ()` as one timed phase. -/
+def timedPhase {α : Type} (enabled : Bool) (name : String) (f : Unit → α) :
+    IO { a : α // a = f () } := do
+  let t0 ← IO.monoNanosNow
+  let r ← evalNow f
+  reportPhase enabled name t0
+  return r
 
 private def objField (json : Json) (name : String) : Except String Json :=
   json.getObjVal? name
@@ -441,35 +489,40 @@ def fastAlcPrecheck (source : RequestedTaxonomySource) : Option Nat := do
       failure
   pure cSet.size
 
-private partial def writeCellsLoop (stdout : IO.FS.Stream) (encodedNames : Array String)
-    (first : Bool) (chunkAcc : String) (chunkCount : Nat) : List TaxonomyCell → IO Unit
+/-- Stream `items` to stdout as comma-separated JSON fragments, a chunk of at
+most 4096 items at a time, never building the whole output string. -/
+private partial def writeChunked {α : Type} (stdout : IO.FS.Stream)
+    (render : α → String) (first : Bool) (chunkAcc : String) (chunkCount : Nat) :
+    List α → IO Unit
   | [] => do
     if !chunkAcc.isEmpty then
       stdout.putStr chunkAcc
-  | cell :: rest => do
-    let subStr := encodedNames[cell.sub]?.getD (toString cell.sub)
-    let supStr := encodedNames[cell.sup]?.getD (toString cell.sup)
-    let ansStr := if cell.answer then "true" else "false"
+  | item :: rest => do
     let sep := if first then "" else ","
-    let item := s!"{sep}\{\"answer\":{ansStr},\"sub\":{subStr},\"sup\":{supStr}}"
-    let chunkAcc' := chunkAcc ++ item
+    let chunkAcc' := chunkAcc ++ sep ++ render item
     let chunkCount' := chunkCount + 1
     if chunkCount' >= 4096 then
       stdout.putStr chunkAcc'
-      writeCellsLoop stdout encodedNames false "" 0 rest
+      writeChunked stdout render false "" 0 rest
     else
-      writeCellsLoop stdout encodedNames false chunkAcc' chunkCount' rest
+      writeChunked stdout render false chunkAcc' chunkCount' rest
 
-def writeTaxonomyJson (procName : String) (answer : TaxonomyAnswer)
+/-- Print a sparse taxonomy as `sparse-v1` JSON, streamed row by row. -/
+def writeSparseJson (procName : String) (t : SparseTaxonomy.SparseTaxonomy)
     (concepts : Interner) : IO Unit := do
   let stdout ← IO.getStdout
   let encodedNames : Array String := concepts.names.map fun s => (Json.str s).compress
   let nameOf (id : Nat) : String := encodedNames[id]?.getD (toString id)
-  let namedStr := String.intercalate "," (answer.named.map nameOf)
+  let renderRow (row : SparseTaxonomy.SparseRow) : String :=
+    let unsatStr := if row.unsat then "true" else "false"
+    let supsStr := String.intercalate "," (row.sups.map nameOf)
+    s!"\{\"sub\":{nameOf row.sub},\"unsat\":{unsatStr},\"sups\":[{supsStr}]}"
   let procStr := (Json.str procName).compress
-  stdout.putStr "{\"cells\":["
-  writeCellsLoop stdout encodedNames true "" 0 answer.cells
-  stdout.putStr s!"],\"named\":[{namedStr}],\"procedure\":{procStr}}\n"
+  stdout.putStr "{\"format\":\"sparse-v1\",\"named\":["
+  writeChunked stdout nameOf true "" 0 t.named
+  stdout.putStr s!"],\"procedure\":{procStr},\"rows\":["
+  writeChunked stdout renderRow true "" 0 t.rows
+  stdout.putStr "]}\n"
   stdout.flush
 
 inductive Procedure where
@@ -523,16 +576,68 @@ def getAlcMaxConcepts : IO Nat := do
     | some n => pure n
     | none => pure defaultAlcMaxConcepts
 
-private def publishChecked (procName : String) (source : RequestedTaxonomySource)
-    (published : Publication RequestedTaxonomySource TaxonomyAnswer KMExactEvidence)
-    (_haccepted : requestedExactAccept source published.answer published.evidence = true)
+/-- Publish a sparse taxonomy.  The proof argument records in the type that
+the printed taxonomy is correct for the exact requested source. -/
+private def publishSparse (procName : String) (source : RequestedTaxonomySource)
+    (t : SparseTaxonomy.SparseTaxonomy)
+    (_hcorrect : RequestedCorrect source t.dense)
     (concepts : Interner) : IO UInt32 := do
-  writeTaxonomyJson procName published.answer concepts
+  writeSparseJson procName t concepts
   return 0
 
-private def runAlcStage (recognizeOnly : Bool) (maxConcepts : Nat)
+/-- The body of `SparseTaxonomy.sparseReferenceAnswer` with its closure passed
+in, so the binary can time the closure and the readout separately. -/
+def sparseAnswerOfClosure (c : ELReference.State)
+    (recognized : ELCommonSourceRecognizer.RecognizedEL) (named : List Nat) :
+    SparseTaxonomy.SparseTaxonomy :=
+  let index := SparseTaxonomy.superIndex (Std.TreeSet.ofList named) c.subs
+  { named, rows := named.map (SparseTaxonomy.sparseRowOf c recognized.bottom index) }
+
+theorem sparseAnswerOfClosure_closure
+    (recognized : ELCommonSourceRecognizer.RecognizedEL) (named : List Nat) :
+    sparseAnswerOfClosure
+        (ELReference.closure recognized.top recognized.bottom named recognized.ontology)
+        recognized named =
+      SparseTaxonomy.sparseReferenceAnswer recognized named := rfl
+
+/-- `SparseTaxonomy.sparseElReference source`, computed phase by phase
+(recognition, closure, readout) with one timing line per phase.  The result
+carries the equation `sparseElReference source = some t` that publication
+needs. -/
+def runElPhases (timing : Bool) (source : RequestedTaxonomySource) :
+    IO (Option { t : SparseTaxonomy.SparseTaxonomy //
+      SparseTaxonomy.sparseElReference source = some t }) := do
+  let ⟨recOpt, hrecEq⟩ ← timedPhase timing "recognise"
+    (fun _ => recognizeEL source.named source.ontology)
+  match recOpt, hrecEq with
+  | none, _ => return none
+  | some recognized, hrec =>
+    if hnd : ELReference.nodupFast source.named = true then
+      let ⟨c, hc⟩ ← timedPhase timing "closure" (fun _ =>
+        ELReference.closure recognized.top recognized.bottom source.named
+          recognized.ontology)
+      let ⟨t, ht⟩ ← timedPhase timing "readout"
+        (fun _ => sparseAnswerOfClosure c recognized source.named)
+      return some ⟨t, by
+        subst ht hc
+        rw [sparseAnswerOfClosure_closure]
+        simp [SparseTaxonomy.sparseElReference, ← hrec, hnd]⟩
+    else
+      return none
+
+/-- Publish with an `output` timing line. -/
+private def publishTimed (timing : Bool) (procName : String)
+    (source : RequestedTaxonomySource) (t : SparseTaxonomy.SparseTaxonomy)
+    (hcorrect : RequestedCorrect source t.dense) (concepts : Interner) : IO UInt32 := do
+  let t0 ← IO.monoNanosNow
+  let code ← publishSparse procName source t hcorrect concepts
+  reportPhase timing "output" t0
+  return code
+
+private def runAlcStage (timing : Bool) (recognizeOnly : Bool) (maxConcepts : Nat)
     (source : RequestedTaxonomySource) (concepts : Interner) : IO UInt32 := do
-  match fastAlcPrecheck source with
+  let ⟨pre, _⟩ ← timedPhase timing "alc-precheck" (fun _ => fastAlcPrecheck source)
+  match pre with
   | none =>
     let reason := explainFirstAlcRejection source
     IO.eprintln s!"not recognised: {reason}"
@@ -542,7 +647,9 @@ private def runAlcStage (recognizeOnly : Bool) (maxConcepts : Nat)
       IO.eprintln s!"alc budget: {preCount} concept names"
       return 3
     else
-      match ALCCommonSourceRecognizer.recognizeALC source.named source.ontology with
+      let ⟨recOpt, _⟩ ← timedPhase timing "alc-recognise"
+        (fun _ => ALCCommonSourceRecognizer.recognizeALC source.named source.ontology)
+      match recOpt with
       | none =>
         let reason := explainFirstAlcRejection source
         IO.eprintln s!"not recognised: {reason}"
@@ -555,23 +662,28 @@ private def runAlcStage (recognizeOnly : Bool) (maxConcepts : Nat)
           IO.println "recognised"
           return 0
         else
-          match hrun : alcReferenceExecution.run source with
-          | .publish published =>
-            publishChecked "alc" source published
-              (alcReferenceExecution.accepted source published hrun) concepts
-          | .defer | .timeout | .error =>
+          let ⟨res, hres⟩ ← timedPhase timing "alc-reference"
+            (fun _ => SparseTaxonomy.sparseAlcReference source)
+          match res, hres with
+          | some t, hrun =>
+            publishTimed timing "alc" source t
+              (SparseTaxonomy.sparseAlcReference_correct source t hrun.symm) concepts
+          | none, _ =>
             let reason := explainFirstAlcRejection source
             IO.eprintln s!"not recognised: {reason}"
             return 3
 
-def runFile (recognizeOnly : Bool) (proc : Procedure) (path : String) : IO UInt32 := do
-  let raw ← IO.FS.readFile path
-  let json ← match Json.parse raw with
+/-- Run one procedure on the already read input text. -/
+def runSource (timing : Bool) (recognizeOnly : Bool) (proc : Procedure) (raw : String) :
+    IO UInt32 := do
+  let ⟨jsonRes, _⟩ ← timedPhase timing "json" (fun _ => Json.parse raw)
+  let json ← match jsonRes with
     | .ok value => pure value
     | .error err =>
       IO.eprintln s!"invalid JSON: {err}"
       return 2
-  let (source, concepts) ← match parseSource json (!recognizeOnly) with
+  let ⟨sourceRes, _⟩ ← timedPhase timing "source" (fun _ => parseSource json (!recognizeOnly))
+  let (source, concepts) ← match sourceRes with
     | .ok value => pure value
     | .error err =>
       IO.eprintln s!"invalid EL reference input: {err}"
@@ -582,7 +694,9 @@ def runFile (recognizeOnly : Bool) (proc : Procedure) (path : String) : IO UInt3
   match proc with
   | .el =>
     if recognizeOnly then
-      match recognizeEL source.named source.ontology with
+      let ⟨recOpt, _⟩ ← timedPhase timing "recognise"
+        (fun _ => recognizeEL source.named source.ontology)
+      match recOpt with
       | some _ =>
         IO.println "recognised"
         return 0
@@ -591,34 +705,58 @@ def runFile (recognizeOnly : Bool) (proc : Procedure) (path : String) : IO UInt3
         IO.eprintln s!"not recognised: {reason}"
         return 3
     else
-      match hrun : elReferenceExecution.run source with
-      | .publish published =>
-        publishChecked "el" source published
-          (elReferenceExecution.accepted source published hrun) concepts
-      | .defer | .timeout | .error =>
+      match ← runElPhases timing source with
+      | some ⟨t, hrun⟩ =>
+        publishTimed timing "el" source t
+          (SparseTaxonomy.sparseElReference_correct source t hrun) concepts
+      | none =>
         let reason := explainFirstRejection source
         IO.eprintln s!"not recognised: {reason}"
         return 3
   | .alc =>
     let maxConcepts ← getAlcMaxConcepts
-    runAlcStage recognizeOnly maxConcepts source concepts
+    runAlcStage timing recognizeOnly maxConcepts source concepts
   | .elThenAlc =>
     if recognizeOnly then
-      match recognizeEL source.named source.ontology with
+      let ⟨recOpt, _⟩ ← timedPhase timing "recognise"
+        (fun _ => recognizeEL source.named source.ontology)
+      match recOpt with
       | some _ =>
         IO.println "recognised"
         return 0
       | none =>
         let maxConcepts ← getAlcMaxConcepts
-        runAlcStage true maxConcepts source concepts
+        runAlcStage timing true maxConcepts source concepts
     else
-      match hrun : elReferenceExecution.run source with
-      | .publish published =>
-        publishChecked "el" source published
-          (elReferenceExecution.accepted source published hrun) concepts
-      | .defer | .timeout | .error =>
+      match ← runElPhases timing source with
+      | some ⟨t, hrun⟩ =>
+        publishTimed timing "el" source t
+          (SparseTaxonomy.sparseElReference_correct source t hrun) concepts
+      | none =>
         let maxConcepts ← getAlcMaxConcepts
-        runAlcStage false maxConcepts source concepts
+        runAlcStage timing false maxConcepts source concepts
+
+/-- Read the input file, then run the procedure.  Only a failed read reports
+`failed to read` (exit 2); an IO error raised afterwards, for example a failed
+stdout write, reports `io error` (exit 4).  With `KM_REFERENCE_TIMING=1` every
+phase prints `KM_REFERENCE_TIMING phase=<name> ms=<ms>` to stderr, and the run
+ends with `phase=total`. -/
+def runFile (recognizeOnly : Bool) (proc : Procedure) (path : String) : IO UInt32 := do
+  let timing ← timingEnabled
+  let t0 ← IO.monoNanosNow
+  match ← (IO.FS.readFile path).toBaseIO with
+  | .error err =>
+    IO.eprintln s!"failed to read {path}: {err}"
+    return 2
+  | .ok raw =>
+    reportPhase timing "read" t0
+    let code ← match ← (runSource timing recognizeOnly proc raw).toBaseIO with
+      | .ok code => pure code
+      | .error err =>
+        IO.eprintln s!"io error: {err}"
+        pure 4
+    reportPhase timing "total" t0
+    return code
 
 end KMELReferenceCheck
 
@@ -628,8 +766,4 @@ def main (args : List String) : IO UInt32 := do
     IO.eprintln "usage: km-el-reference [--recognize-only] [--procedure el|alc|el-then-alc] <clauses.json>"
     return 2
   | some (recognizeOnly, proc, path) =>
-    try
-      KMELReferenceCheck.runFile recognizeOnly proc path
-    catch err =>
-      IO.eprintln s!"failed to read {path}: {err}"
-      pure (2 : UInt32)
+    KMELReferenceCheck.runFile recognizeOnly proc path

@@ -4001,19 +4001,149 @@ struct ReferenceStageInput<'a> {
     clauses: &'a [crate::json_io::JClause],
 }
 
+/// One row of the `sparse-v1` reference answer: the bit `sub SUB sup` is
+/// `unsat || sup in sups` (Lean `SparseTaxonomy.SparseRow.bit`).
 #[derive(serde::Deserialize)]
-struct ReferenceStageCell {
+struct ReferenceStageRow {
     sub: String,
-    sup: String,
-    answer: bool,
+    unsat: bool,
+    sups: Vec<String>,
 }
 
 #[derive(serde::Deserialize)]
 struct ReferenceStageOutput {
+    format: String,
     #[serde(default)]
     procedure: Option<String>,
     named: Vec<String>,
-    cells: Vec<ReferenceStageCell>,
+    rows: Vec<ReferenceStageRow>,
+}
+
+/// What the reference stage contributes to the evidence: the subsumption rows
+/// of every real class name and the inconsistency flag.
+#[derive(Debug, PartialEq, Eq)]
+struct ReferenceStageAnswer {
+    subsumptions: BTreeMap<String, Vec<String>>,
+    inconsistent: bool,
+    procedure: Option<String>,
+}
+
+const REFERENCE_STAGE_FORMAT: &str = "sparse-v1";
+
+/// Check a `sparse-v1` reference answer against the request and derive the
+/// evidence v1.6.0 derived from the dense cells, without building an N x N
+/// structure. Fails closed: any format or shape mismatch is an error.
+///
+/// `full_named` is `real_names` followed by `probe_a` and `probe_b`.
+fn interpret_reference_stage_output(
+    stdout: &[u8],
+    full_named: &[String],
+    real_names: &[String],
+    probe_a: &str,
+    probe_b: &str,
+) -> Result<ReferenceStageAnswer, String> {
+    let parsed: ReferenceStageOutput = serde_json::from_slice(stdout)
+        .map_err(|err| format!("invalid reference output JSON: {err}"))?;
+    if parsed.format != REFERENCE_STAGE_FORMAT {
+        let format: String = parsed.format.chars().take(64).collect();
+        return Err(format!("unsupported reference output format: {format}"));
+    }
+    if parsed.named != full_named {
+        return Err("reference output named mismatch".to_string());
+    }
+    if parsed.rows.len() != full_named.len() {
+        return Err("reference output rows shape mismatch".to_string());
+    }
+    let index: HashMap<&str, usize> = full_named
+        .iter()
+        .enumerate()
+        .map(|(i, name)| (name.as_str(), i))
+        .collect();
+    let mut sups: Vec<HashSet<usize>> = Vec::with_capacity(parsed.rows.len());
+    for (i, row) in parsed.rows.iter().enumerate() {
+        if row.sub != full_named[i] {
+            return Err(format!("reference output rows shape mismatch at row {i}"));
+        }
+        let mut set = HashSet::with_capacity(row.sups.len());
+        for sup in &row.sups {
+            let Some(&j) = index.get(sup.as_str()) else {
+                let sup: String = sup.chars().take(120).collect();
+                return Err(format!("reference output names an unknown sup: {sup}"));
+            };
+            set.insert(j);
+        }
+        sups.push(set);
+    }
+    let (Some(&ia), Some(&ib)) = (index.get(probe_a), index.get(probe_b)) else {
+        return Err("reference output misses a probe".to_string());
+    };
+    let bit = |i: usize, j: usize| parsed.rows[i].unsat || sups[i].contains(&j);
+    let inconsistent = bit(ia, ib);
+    let mut subsumptions: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for name in real_names {
+        subsumptions.insert(name.clone(), Vec::new());
+    }
+    if !inconsistent {
+        for name in real_names {
+            let Some(&i) = index.get(name.as_str()) else {
+                return Err("reference output misses a requested name".to_string());
+            };
+            let row = subsumptions.get_mut(name).expect("inserted above");
+            if bit(i, ib) {
+                // Canonical minimal form: an unsatisfiable class `u`
+                // (`u SUB probe_b`) is published as unsatisfiable only. Every
+                // `u SUB x` is entailed, so the production routes print a
+                // route-dependent subset of those rows and the comparison is
+                // semantic on them.
+                row.push("owl:Nothing".to_string());
+                continue;
+            }
+            // v1.6.0 emitted a satisfiable row's superclasses in the order of
+            // the requested names; keep that order.
+            let mut js: Vec<usize> = sups[i]
+                .iter()
+                .copied()
+                .filter(|&j| j != i && j != ia && j != ib)
+                .collect();
+            js.sort_unstable();
+            row.extend(js.into_iter().map(|j| full_named[j].clone()));
+        }
+    }
+    let procedure = parsed
+        .procedure
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_ascii_lowercase);
+    Ok(ReferenceStageAnswer {
+        subsumptions,
+        inconsistent,
+        procedure,
+    })
+}
+
+/// Decline reason for a non-zero checker exit: the first non-empty stderr
+/// line (the stage's own error), else the first non-empty stdout line, cut to
+/// 200 characters, plus the exit status.
+fn reference_checker_failure_reason(
+    stdout: &[u8],
+    stderr: &[u8],
+    status: &dyn std::fmt::Display,
+) -> String {
+    let stdout_msg = String::from_utf8_lossy(stdout);
+    let stderr_msg = String::from_utf8_lossy(stderr);
+    let first_line = |text: &str| -> Option<String> {
+        text.lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty() && !line.starts_with("KM_REFERENCE_TIMING "))
+            .map(str::to_string)
+    };
+    let reason = first_line(&stderr_msg)
+        .or_else(|| first_line(&stdout_msg))
+        .unwrap_or_else(|| "km-el-reference exited non-zero".to_string());
+    // A stdout line can be the whole answer: cut it.
+    let reason: String = reason.chars().take(200).collect();
+    format!("{reason} (checker status: {status})")
 }
 
 const DEFAULT_REFERENCE_BUDGET_S: f64 = 300.0;
@@ -4072,6 +4202,214 @@ fn max_clause_symbol_len(clauses: &[crate::json_io::JClause], names: &[String]) 
     max_len
 }
 
+#[cfg(test)]
+mod reference_stage_tests {
+    use super::{
+        interpret_reference_stage_output, reference_checker_failure_reason, ReferenceStageAnswer,
+    };
+    use std::collections::{BTreeMap, HashSet};
+
+    const PA: &str = "__km_ref_probe_a_x";
+    const PB: &str = "__km_ref_probe_b_x";
+
+    fn names(real: &[&str]) -> (Vec<String>, Vec<String>) {
+        let real: Vec<String> = real.iter().map(|s| s.to_string()).collect();
+        let mut full = real.clone();
+        full.push(PA.to_string());
+        full.push(PB.to_string());
+        (real, full)
+    }
+
+    /// `rows`: (sub, unsat, sups) in request order.
+    fn sparse_json(full: &[String], rows: &[(&str, bool, &[&str])]) -> Vec<u8> {
+        let rows: Vec<serde_json::Value> = rows
+            .iter()
+            .map(|(sub, unsat, sups)| serde_json::json!({"sub": sub, "unsat": unsat, "sups": sups}))
+            .collect();
+        serde_json::to_vec(&serde_json::json!({
+            "format": "sparse-v1",
+            "named": full,
+            "procedure": "el",
+            "rows": rows,
+        }))
+        .unwrap()
+    }
+
+    /// The v1.6.0 derivation from the dense cells, kept as the oracle.
+    fn dense_v160(
+        full: &[String],
+        real: &[String],
+        bit: &dyn Fn(&str, &str) -> bool,
+    ) -> (BTreeMap<String, Vec<String>>, bool) {
+        let cells: Vec<(String, String, bool)> = full
+            .iter()
+            .flat_map(|a| full.iter().map(move |b| (a.clone(), b.clone(), bit(a, b))))
+            .collect();
+        let inconsistent = cells.iter().any(|c| c.0 == PA && c.1 == PB && c.2);
+        let mut subsumptions: BTreeMap<String, Vec<String>> = BTreeMap::new();
+        for c in real {
+            subsumptions.insert(c.clone(), Vec::new());
+        }
+        if !inconsistent {
+            let unsat: HashSet<&str> = cells
+                .iter()
+                .filter(|c| c.2 && c.1 == PB && c.0 != PA && c.0 != PB)
+                .map(|c| c.0.as_str())
+                .collect();
+            for (sub, sup, answer) in &cells {
+                if !answer || sub == PA || sub == PB || sup == PA {
+                    continue;
+                }
+                let Some(row) = subsumptions.get_mut(sub) else {
+                    continue;
+                };
+                if sup == PB {
+                    row.push("owl:Nothing".to_string());
+                } else if sub != sup && !unsat.contains(sub.as_str()) {
+                    row.push(sup.clone());
+                }
+            }
+        }
+        (subsumptions, inconsistent)
+    }
+
+    fn check_against_dense(real: &[&str], rows: &[(&str, bool, &[&str])]) -> ReferenceStageAnswer {
+        let (real, full) = names(real);
+        let out = sparse_json(&full, rows);
+        let got = interpret_reference_stage_output(&out, &full, &real, PA, PB).expect("accepted");
+        let bit = |a: &str, b: &str| {
+            let row = rows.iter().find(|r| r.0 == a).unwrap();
+            row.1 || row.2.contains(&b)
+        };
+        let (want_subs, want_inconsistent) = dense_v160(&full, &real, &bit);
+        assert_eq!(got.subsumptions, want_subs);
+        assert_eq!(got.inconsistent, want_inconsistent);
+        assert_eq!(got.procedure.as_deref(), Some("el"));
+        got
+    }
+
+    #[test]
+    fn sparse_satisfiable_rows_match_dense_derivation() {
+        let got = check_against_dense(
+            &["A", "B", "C"],
+            &[
+                ("A", false, &["C", "A", "B"]),
+                ("B", false, &["B"]),
+                ("C", false, &["C"]),
+                (PA, false, &[PA]),
+                (PB, true, &[]),
+            ],
+        );
+        assert_eq!(got.subsumptions["A"], vec!["B".to_string(), "C".to_string()]);
+        assert!(!got.inconsistent);
+    }
+
+    #[test]
+    fn sparse_unsatisfiable_class_matches_dense_derivation() {
+        let got = check_against_dense(
+            &["A", "B", "U"],
+            &[
+                ("A", false, &["A", "B"]),
+                ("B", false, &["B"]),
+                ("U", true, &[]),
+                (PA, false, &[PA]),
+                (PB, true, &[]),
+            ],
+        );
+        assert_eq!(got.subsumptions["U"], vec!["owl:Nothing".to_string()]);
+    }
+
+    #[test]
+    fn sparse_inconsistent_ontology_matches_dense_derivation() {
+        let got = check_against_dense(
+            &["A", "B"],
+            &[
+                ("A", true, &[]),
+                ("B", true, &[]),
+                (PA, true, &[]),
+                (PB, true, &[]),
+            ],
+        );
+        assert!(got.inconsistent);
+        assert!(got.subsumptions.values().all(Vec::is_empty));
+    }
+
+    #[test]
+    fn sparse_rejects_unknown_format() {
+        let (real, full) = names(&["A"]);
+        let mut v: serde_json::Value =
+            serde_json::from_slice(&sparse_json(&full, &[("A", false, &[]), (PA, false, &[]), (PB, true, &[])]))
+                .unwrap();
+        v["format"] = serde_json::json!("dense-v0");
+        let out = serde_json::to_vec(&v).unwrap();
+        let err = interpret_reference_stage_output(&out, &full, &real, PA, PB).unwrap_err();
+        assert!(err.contains("unsupported reference output format"), "{err}");
+        // A v1.6.0 dense answer has no `format` and no `rows`: rejected too.
+        let dense = serde_json::to_vec(&serde_json::json!({
+            "cells": [], "named": full, "procedure": "el"
+        }))
+        .unwrap();
+        let err = interpret_reference_stage_output(&dense, &full, &real, PA, PB).unwrap_err();
+        assert!(err.contains("invalid reference output JSON"), "{err}");
+    }
+
+    #[test]
+    fn sparse_rejects_rows_out_of_order() {
+        let (real, full) = names(&["A", "B"]);
+        let out = sparse_json(
+            &full,
+            &[("B", false, &[]), ("A", false, &[]), (PA, false, &[]), (PB, true, &[])],
+        );
+        let err = interpret_reference_stage_output(&out, &full, &real, PA, PB).unwrap_err();
+        assert!(err.contains("rows shape mismatch"), "{err}");
+    }
+
+    #[test]
+    fn sparse_rejects_missing_row_and_named_mismatch() {
+        let (real, full) = names(&["A", "B"]);
+        let out = sparse_json(&full, &[("A", false, &[]), ("B", false, &[]), (PA, false, &[])]);
+        let err = interpret_reference_stage_output(&out, &full, &real, PA, PB).unwrap_err();
+        assert!(err.contains("rows shape mismatch"), "{err}");
+        let mut other = full.clone();
+        other.swap(0, 1);
+        let out = sparse_json(&other, &[("B", false, &[]), ("A", false, &[]), (PA, false, &[]), (PB, true, &[])]);
+        let err = interpret_reference_stage_output(&out, &full, &real, PA, PB).unwrap_err();
+        assert!(err.contains("named mismatch"), "{err}");
+    }
+
+    #[test]
+    fn sparse_rejects_unknown_sup() {
+        let (real, full) = names(&["A"]);
+        let out = sparse_json(
+            &full,
+            &[("A", false, &["A", "Z"]), (PA, false, &[]), (PB, true, &[])],
+        );
+        let err = interpret_reference_stage_output(&out, &full, &real, PA, PB).unwrap_err();
+        assert!(err.contains("unknown sup: Z"), "{err}");
+    }
+
+    #[test]
+    fn checker_failure_reason_prefers_stderr() {
+        let reason = reference_checker_failure_reason(
+            b"{\"format\":\"sparse-v1\"}\n",
+            b"\nio error: broken pipe\n",
+            &"exit status: 4",
+        );
+        assert_eq!(reason, "io error: broken pipe (checker status: exit status: 4)");
+        let reason = reference_checker_failure_reason(b"only stdout\n", b"", &"exit status: 1");
+        assert_eq!(reason, "only stdout (checker status: exit status: 1)");
+        let long = "x".repeat(500);
+        let reason = reference_checker_failure_reason(b"", long.as_bytes(), &"s");
+        assert_eq!(reason, format!("{} (checker status: s)", "x".repeat(200)));
+        let reason = reference_checker_failure_reason(
+            b"",
+            b"KM_REFERENCE_TIMING phase=read ms=0\nnot recognised: x\n",
+            &"exit status: 3",
+        );
+        assert_eq!(reason, "not recognised: x (checker status: exit status: 3)");
+    }
+}
+
 fn try_reference_stage(
     initial_cfg: &Config,
     ont: &Path,
@@ -4091,15 +4429,23 @@ fn try_reference_stage(
             return None;
         }
     };
-    if meta.abox_inconsistent
-        || meta.profile.positive_el_abox_materializable
-        || meta.uncarried_data_assertions > 0
-        || !meta.dropped_source_axioms.is_empty()
-        || meta.one_sorted_data_successors
-        || meta.profile.source.rule_axioms > 0
-        || !meta.el_rbox_safe
-    {
-        log_declined("not recognised: not in pure EL/ALC clause-stream fragment");
+    let guards: Vec<&str> = [
+        (meta.abox_inconsistent, "abox_inconsistent"),
+        (meta.profile.positive_el_abox_materializable, "el_abox"),
+        (meta.uncarried_data_assertions > 0, "uncarried_data_assertions"),
+        (!meta.dropped_source_axioms.is_empty(), "dropped_source_axioms"),
+        (meta.one_sorted_data_successors, "one_sorted_data_successors"),
+        (meta.profile.source.rule_axioms > 0, "rule_axioms"),
+        (!meta.el_rbox_safe, "el_rbox_unsafe"),
+    ]
+    .into_iter()
+    .filter_map(|(fired, name)| fired.then_some(name))
+    .collect();
+    if !guards.is_empty() {
+        log_declined(&format!(
+            "not recognised: not in pure EL/ALC clause-stream fragment ({})",
+            guards.join(",")
+        ));
         return None;
     }
     // The request covers class names only. `meta.named` holds every IRI the
@@ -4174,77 +4520,47 @@ fn try_reference_stage(
             return None;
         }
     };
+    if timing {
+        // With `KM_REFERENCE_TIMING=1` the checker prints one
+        // `KM_REFERENCE_TIMING phase=<name> ms=<ms>` line per finished phase
+        // (also before a budget kill); pass them on.
+        for line in String::from_utf8_lossy(&output.stderr).lines() {
+            if line.starts_with("KM_REFERENCE_TIMING ") {
+                eprintln!("KM_TIMING {line}");
+            }
+        }
+    }
     if timed_out {
         log_declined("budget");
         return None;
     }
     if !output.status.success() {
-        let stdout_msg = String::from_utf8_lossy(&output.stdout);
-        let stderr_msg = String::from_utf8_lossy(&output.stderr);
-        let reason = stdout_msg
-            .lines()
-            .chain(stderr_msg.lines())
-            .map(str::trim)
-            .find(|line| !line.is_empty())
-            .unwrap_or("km-el-reference exited non-zero");
-        // The first output line can be the whole answer matrix: cut it.
-        let reason: String = reason.chars().take(200).collect();
-        log_declined(&format!("{reason} (checker status: {})", output.status));
+        log_declined(&reference_checker_failure_reason(
+            &output.stdout,
+            &output.stderr,
+            &output.status,
+        ));
         return None;
     }
 
-    let parsed: ReferenceStageOutput = match serde_json::from_slice(&output.stdout) {
-        Ok(p) => p,
-        Err(err) => {
-            log_declined(&format!("invalid reference output JSON: {err}"));
+    let ReferenceStageAnswer {
+        subsumptions,
+        inconsistent,
+        procedure,
+    } = match interpret_reference_stage_output(
+        &output.stdout,
+        &full_named,
+        &real_names,
+        &probe_a,
+        &probe_b,
+    ) {
+        Ok(answer) => answer,
+        Err(reason) => {
+            log_declined(&reason);
             return None;
         }
     };
-    if parsed.named != full_named || parsed.cells.len() != full_named.len() * full_named.len() {
-        log_declined("reference output named/cells shape mismatch");
-        return None;
-    }
-    let procedure = parsed
-        .procedure
-        .as_deref()
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_ascii_lowercase);
-
-    let inconsistent = parsed
-        .cells
-        .iter()
-        .any(|c| c.sub == probe_a && c.sup == probe_b && c.answer);
-
-    let mut subsumptions: BTreeMap<String, Vec<String>> = BTreeMap::new();
-    for c in &real_names {
-        subsumptions.insert(c.clone(), Vec::new());
-    }
-    if !inconsistent {
-        // Canonical minimal form: an unsatisfiable class `u` (`u SUB probe_b`)
-        // is published as unsatisfiable only. Every `u SUB x` is entailed, so
-        // the production routes print a route-dependent subset of those rows
-        // and the comparison is semantic on them.
-        let unsat: std::collections::HashSet<&str> = parsed
-            .cells
-            .iter()
-            .filter(|c| c.answer && c.sup == probe_b && c.sub != probe_a && c.sub != probe_b)
-            .map(|c| c.sub.as_str())
-            .collect();
-        for cell in &parsed.cells {
-            if !cell.answer || cell.sub == probe_a || cell.sub == probe_b || cell.sup == probe_a {
-                continue;
-            }
-            let Some(row) = subsumptions.get_mut(&cell.sub) else {
-                continue;
-            };
-            if cell.sup == probe_b {
-                row.push("owl:Nothing".to_string());
-            } else if cell.sub != cell.sup && !unsat.contains(cell.sub.as_str()) {
-                row.push(cell.sup.clone());
-            }
-        }
-    }
+    drop(output);
 
     let engine_out = EngineOut {
         subsumptions,

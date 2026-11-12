@@ -1,0 +1,4 @@
+ Stack overflow detected. Aborting. Command terminated by signal 6 2.54 s 3031180 KB  [recognizeEL baseline rc=134]
+recognizeEL 10000000 ok 11000000 10.62 s 3562996 KB  [recognizeEL fixed rc=0]
+Command exited with non-zero status 124 300.06 s 4075084 KB  [sparseEL 3000000 fixed rc=124]
+Command terminated by signal 15 33.12 s 3673748 KB  [sparseEL 10000000 fixed rc=143]

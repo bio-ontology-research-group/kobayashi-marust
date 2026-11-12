@@ -1,0 +1,8 @@
+KM_TIMING frontend done @ 38.82s route=production_all
+KM_TIMING KM_REFERENCE_TIMING phase=read ms=4129
+KM_TIMING KM_REFERENCE_TIMING phase=json ms=27439
+KM_TIMING KM_REFERENCE_TIMING phase=source ms=25820
+KM_TIMING KM_REFERENCE_TIMING phase=recognise ms=4955
+KM_TIMING KM_REFERENCE_STAGE declined: budget
+unsupported: KM_REFERENCE_FORCE=1
+298.87 s 16700120 KB

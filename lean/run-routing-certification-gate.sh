@@ -85,6 +85,7 @@ trap cleanup_checker EXIT
         ContextCalculus.ELReferenceSaturation \
         ContextCalculus.ALCCommonSourceRecognizer \
         ContextCalculus.ALCReferenceSaturation \
+        ContextCalculus.SparseTaxonomy \
         ContextCalculus.KMSupervisorInstance \
         km-automatic-routing-check \
         km-el-reference 2>&1 | tee "$surface_log"
@@ -400,10 +401,28 @@ for theorem in \
     KMConcreteWorkerAdapters.elReferenceAccept_sound \
     KMConcreteWorkerAdapters.alcReferenceExecution_completeAt \
     KMConcreteWorkerAdapters.alcReferenceAccept_sound \
+    SparseTaxonomy.sparseReferenceAnswer_dense \
+    SparseTaxonomy.ofMatrix_dense \
+    SparseTaxonomy.sparseElReference_agrees \
+    SparseTaxonomy.sparseAlcReference_agrees \
+    SparseTaxonomy.sparseElReference_correct \
+    SparseTaxonomy.sparseAlcReference_correct \
+    SparseTaxonomy.sparseElReference_complete \
     ELReference.referenceBit_exact \
     ELCommonSourceRecognizer.recognizeEL_entails_iff \
     ALCReference.alcBit_exact \
-    ALCCommonSourceRecognizer.recognizeALC_entails_iff
+    ALCCommonSourceRecognizer.recognizeALC_entails_iff \
+    ELCommonSourceRecognizer.parseSource_eq_parseSourceTR \
+    ELCommonSourceRecognizer.maxNatList_eq_maxNatListTR \
+    ELCommonSourceRecognizer.compileDirect_eq_compileDirectTR \
+    ELCommonSourceRecognizer.collectRoleHalves_eq_collectRoleHalvesTR \
+    ELCommonSourceRecognizer.collectFillerHalves_eq_collectFillerHalvesTR \
+    ELCommonSourceRecognizer.mergeHalvesFuel_eq_mergeHalvesFuelTR \
+    ELCommonSourceRecognizer.mergePairs_eq_mergePairsTR \
+    ELCommonSourceRecognizer.zipSortedHalves_eq_zipSortedHalvesTR \
+    ALCCommonSourceRecognizer.listMax_eq_listMaxTR \
+    ALCCommonSourceRecognizer.buildIndexedClauses_eq_buildIndexedClausesTR \
+    ALCCommonSourceRecognizer.assignFnNames_eq_assignFnNamesTR
 do
     grep -q "$theorem" "$surface_log" || {
         echo "missing routing certification-surface axiom audit: $theorem" >&2
@@ -421,6 +440,20 @@ fi
 "$ref_bin_path" --procedure alc "$lean_root/testdata/alc-reference-valid.json"
 if "$ref_bin_path" "$lean_root/testdata/el-reference-malformed.json"; then
     echo "malformed EL reference input was accepted" >&2
+    exit 1
+fi
+# Exit codes of km-el-reference (v1.6.1 Q3): an unreadable input is
+# `failed to read` with exit 2; a failed stdout write is `io error` with exit 4.
+ref_status=0
+ref_err=$("$ref_bin_path" "$lean_root/testdata/__missing__.json" 2>&1 >/dev/null) || ref_status=$?
+if [ "$ref_status" -ne 2 ] || ! grep -q '^failed to read' <<<"$ref_err"; then
+    echo "missing input: expected 'failed to read' with exit 2, got exit $ref_status: $ref_err" >&2
+    exit 1
+fi
+ref_status=0
+ref_err=$("$ref_bin_path" "$lean_root/testdata/el-reference-valid.json" 2>&1 >/dev/full) || ref_status=$?
+if [ "$ref_status" -ne 4 ] || ! grep -q '^io error' <<<"$ref_err"; then
+    echo "failed stdout write: expected 'io error' with exit 4, got exit $ref_status: $ref_err" >&2
     exit 1
 fi
 
