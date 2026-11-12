@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.6.1] - unreleased
+## [1.6.1] - 2026-11-12
 
 The reference stage of 1.6.0 scales to the suite's large inputs and its
 failures name their cause. No theorem of 1.6.0 changes. Acceptance:
