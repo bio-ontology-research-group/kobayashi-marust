@@ -1,0 +1,3 @@
+Prefix(ex:=<http://e.org/#>)
+Ontology(Declaration(Class(ex:A)) Declaration(Class(ex:B)) Declaration(Class(ex:C))
+SubClassOf(ex:A <http://e.org/#B>) SubClassOf(<http://e.org/#B> ex:C))
