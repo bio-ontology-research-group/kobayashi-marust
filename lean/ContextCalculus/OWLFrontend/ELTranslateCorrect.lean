@@ -1315,12 +1315,12 @@ theorem foldl_scan : ∀ (axs : List Axiom) (s : St),
       exact ⟨h₁.1.trans h₂.1, fun hs => h₂.2 (h₁.2 hs)⟩
 
 theorem foldl_trans_le : ∀ (axs : List Axiom) (s : St), Le s (axs.foldl transAxiom s)
-  | [], s => Le.rfl
+  | [], _ => Le.rfl
   | ax :: axs, s => (transAxiom_le s ax).trans (foldl_trans_le axs _)
 
 theorem foldl_trans_wf : ∀ (axs : List Axiom) (s : St), WF s → WF (axs.foldl transAxiom s)
-  | [], s, hs => hs
-  | ax :: axs, s, hs => foldl_trans_wf axs _ (transAxiom_wf hs ax)
+  | [], _, hs => hs
+  | ax :: axs, _, hs => foldl_trans_wf axs _ (transAxiom_wf hs ax)
 
 /-- Every axiom is translated from some well-formed state below the final one. -/
 theorem foldl_trans_mem : ∀ (axs : List Axiom) (s : St), WF s → ∀ ax ∈ axs,
@@ -1373,7 +1373,7 @@ theorem reqInv_step {s : St} {acc : List IRI} {a : IRI} (hs : ReqInv s acc)
     · have hbm : b ∈ acc := List.mem_reverse.1 (List.mem_of_getElem? hb)
       have hne : ¬ (a == b) = true := by
         rw [beq_iff_eq]; rintro rfl; exact hmem hbm
-      simp only [hne, if_false]
+      simp only [hne]
       exact hs.idx i b hb
     · rename_i hlt
       have hi : i - acc.length < 1 := by
@@ -1400,7 +1400,7 @@ theorem internRequested_spec : ∀ (as : List IRI) (s : St) (acc : List IRI), Re
         rw [h₃]
         rw [hs.contains] at hc
         have hc' : a ∈ acc := by simpa using hc
-        simp [List.filter_cons, hc']
+        simp [hc']
       · simp only [hc]
         have ha : acc.contains a = false := by rw [← hs.contains]; simpa using hc
         obtain ⟨acc', h₁, h₂, h₃⟩ := internRequested_spec as _ (a :: acc) (reqInv_step hs ha)
