@@ -1,0 +1,31 @@
+=== base 1-spellings.ofn
+invalid OWL 2 DL input: <http://e.org/#A> is used as Class but has no matching declaration
+exit 2
+=== base d1-spellings.ofn
+KM_TIMING KM_FRONTEND_CHECK agreed procedure=el
+exit 0
+=== base d10-ambiguous.ofn
+KM_TIMING KM_FRONTEND_CHECK disagreed: SubClassOf(ex:A http://e.org/#A): km=no reference=yes (procedure=el)
+KM_FRONTEND_CHECK fail closed: km-owl-reference (procedure el) disagrees with the answer (SubClassOf(ex:A http://e.org/#A): km=no reference=yes); no answer published
+exit 6
+=== base d2-thing.ofn
+KM_TIMING KM_FRONTEND_CHECK agreed procedure=el
+exit 0
+=== base d4-nonascii.ofn
+thread 'main' (3063909) panicked at src/frontend/sexpr.rs:156:35:
+exit 134
+=== new 1-spellings.ofn
+invalid OWL 2 DL input: <http://e.org/#A> is used as Class but has no matching declaration
+exit 2
+=== new d1-spellings.ofn
+KM_TIMING KM_FRONTEND_CHECK agreed procedure=el
+exit 0
+=== new d10-ambiguous.ofn
+KM_TIMING KM_FRONTEND_CHECK agreed procedure=el
+exit 0
+=== new d2-thing.ofn
+KM_TIMING KM_FRONTEND_CHECK agreed procedure=el
+exit 0
+=== new d4-nonascii.ofn
+KM_TIMING KM_FRONTEND_CHECK agreed procedure=el
+exit 0
