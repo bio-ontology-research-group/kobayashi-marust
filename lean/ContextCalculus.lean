@@ -35,6 +35,9 @@ import ContextCalculus.OWLFrontend.ELTranslateTests
 import ContextCalculus.OWL.Parse
 import ContextCalculus.OWL.Names
 import ContextCalculus.OWL.ParseTests
+import ContextCalculus.OWLFrontend.ALCTranslate
+import ContextCalculus.OWLFrontend.ALCTranslateCorrect
+import ContextCalculus.OWLFrontend.ALCTranslateTests
 import ContextCalculus.ELResidualCertificate
 import ContextCalculus.ELResidualCompilation
 import ContextCalculus.ELResidualWitness
