@@ -89,7 +89,9 @@ const STANDARD_PREFIXES: [(&str, &str); 4] = [
     ("rdf", "http://www.w3.org/1999/02/22-rdf-syntax-ns#"),
 ];
 
-fn prefixes(text: &str) -> Result<BTreeMap<String, String>, String> {
+/// The prefix map of a document: its `Prefix` declarations and the four
+/// standard prefixes.
+pub(crate) fn prefixes(text: &str) -> Result<BTreeMap<String, String>, String> {
     let mut prefixes: BTreeMap<_, _> = STANDARD_PREFIXES.iter()
         .map(|(name, iri)| ((*name).to_owned(), (*iri).to_owned())).collect();
     let mut parser = Parser::new(text);

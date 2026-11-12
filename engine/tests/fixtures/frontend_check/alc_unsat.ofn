@@ -1,0 +1,11 @@
+Prefix(:=<http://example.org/fc/alc_unsat#>)
+Ontology(<http://example.org/fc/alc_unsat>
+  Declaration(Class(:A))
+  Declaration(Class(:B))
+  Declaration(Class(:C))
+  Declaration(Class(:U))
+  Declaration(ObjectProperty(:r))
+  SubClassOf(:A ObjectAllValuesFrom(:r :B))
+  SubClassOf(:C ObjectSomeValuesFrom(:r ObjectComplementOf(:B)))
+  SubClassOf(:U ObjectIntersectionOf(:A :C))
+)

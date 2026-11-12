@@ -1,0 +1,12 @@
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://example.org/fc/full>
+  Declaration(Class(<http://example.org/fc/full#A>))
+  Declaration(Class(<http://example.org/fc/full#B>))
+  Declaration(Class(<http://example.org/fc/full#C>))
+  Declaration(Class(<http://example.org/fc/full#N>))
+  Declaration(ObjectProperty(<http://example.org/fc/full#r>))
+  SubClassOf(<http://example.org/fc/full#A> ObjectSomeValuesFrom(<http://example.org/fc/full#r> <http://example.org/fc/full#B>))
+  SubClassOf(ObjectSomeValuesFrom(<http://example.org/fc/full#r> owl:Thing) <http://example.org/fc/full#C>)
+  SubClassOf(<http://example.org/fc/full#N> owl:Nothing)
+  EquivalentClasses(<http://example.org/fc/full#B> owl:Thing)
+)
