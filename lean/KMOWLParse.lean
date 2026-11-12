@@ -13,7 +13,7 @@ prints one JSON object on stdout:
   the number of axioms per `Axiom` constructor, or
 * `{"status":"rejected","reason":".."}`.
 
-Read, parse and name times go to stderr. Exit code 0 for both answers, 2
+Read and parse times go to stderr. Exit code 0 for both answers, 2
 when the file cannot be read as UTF-8 text.
 -/
 
@@ -44,8 +44,11 @@ def axiomCounts (O : Ontology) : Json :=
     O.axioms.foldl (init := {}) fun m ax => m.insert (axiomKind ax) (m.getD (axiomKind ax) 0 + 1)
   Json.mkObj (kinds.map fun k => (k, toJson (counts.getD k 0)))
 
+/-- The names in code-point order. `List.mergeSort` rather than
+`Array.qsort`, which took minutes on the 981,151 nearly sorted class names
+of `ore_ont_868`. -/
 def sortedJson (names : List IRI) : Json :=
-  Json.arr ((names.toArray.qsort (· < ·)).map Json.str)
+  Json.arr ((names.mergeSort fun a b => !(b < a)).toArray.map Json.str)
 
 def main (args : List String) : IO UInt32 := do
   match args with
@@ -69,8 +72,7 @@ def main (args : List String) : IO UInt32 := do
       let roles := O.objectPropertyNames
       let out := Json.mkObj [("status", "ok"), ("classes", sortedJson classes),
         ("objectProperties", sortedJson roles), ("axiomCounts", axiomCounts O)]
-      let t3 ← IO.monoMsNow
-      IO.eprintln s!"read {t1 - t0} ms, parse {t2 - t1} ms, names {t3 - t2} ms"
+      IO.eprintln s!"read {t1 - t0} ms, parse {t2 - t1} ms"
       IO.println out.compress
       return 0
   | _ =>
