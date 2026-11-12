@@ -442,6 +442,20 @@ if "$ref_bin_path" "$lean_root/testdata/el-reference-malformed.json"; then
     echo "malformed EL reference input was accepted" >&2
     exit 1
 fi
+# Exit codes of km-el-reference (v1.6.1 Q3): an unreadable input is
+# `failed to read` with exit 2; a failed stdout write is `io error` with exit 4.
+ref_status=0
+ref_err=$("$ref_bin_path" "$lean_root/testdata/__missing__.json" 2>&1 >/dev/null) || ref_status=$?
+if [ "$ref_status" -ne 2 ] || ! grep -q '^failed to read' <<<"$ref_err"; then
+    echo "missing input: expected 'failed to read' with exit 2, got exit $ref_status: $ref_err" >&2
+    exit 1
+fi
+ref_status=0
+ref_err=$("$ref_bin_path" "$lean_root/testdata/el-reference-valid.json" 2>&1 >/dev/full) || ref_status=$?
+if [ "$ref_status" -ne 4 ] || ! grep -q '^io error' <<<"$ref_err"; then
+    echo "failed stdout write: expected 'io error' with exit 4, got exit $ref_status: $ref_err" >&2
+    exit 1
+fi
 
 (
     cd "$engine_root"
