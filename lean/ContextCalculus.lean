@@ -49,6 +49,8 @@ import ContextCalculus.SRI.Abstract
 import ContextCalculus.SRI.Completeness
 import ContextCalculus.SRI.Transitivity
 import ContextCalculus.SRI.TransitivityTests
+import ContextCalculus.SRI.Fast
+import ContextCalculus.SRI.FastTests
 import ContextCalculus.OWLFrontend.Reference
 import ContextCalculus.OWLFrontend.ReferenceReadout
 import ContextCalculus.ELResidualCertificate
