@@ -2981,9 +2981,16 @@ impl Drop for HtFirstProbe {
 
 /// Whether a worker was terminated by SIGABRT (Rust's response to an
 /// allocation failure) rather than exiting with a status of its own.
+#[cfg(unix)]
 fn worker_aborted(status: &std::process::ExitStatus) -> bool {
     use std::os::unix::process::ExitStatusExt;
     status.signal() == Some(6)
+}
+
+/// Other platforms report no signal number: no exit counts as an abort.
+#[cfg(not(unix))]
+fn worker_aborted(_status: &std::process::ExitStatus) -> bool {
+    false
 }
 
 /// Run exactly the selected HT mechanism. Unlike `race_cb_vs_ht`, this starts
