@@ -607,6 +607,15 @@ fn classify_cmd(rest: &[String]) {
             }
         }
     };
+    // KM_FRONTEND_CHECK=1: the OWL reference procedure checks the final
+    // answer; a disagreement publishes nothing, as a rejected Lean checker
+    // does (see `orchestrate::frontend_check`).
+    let frontend_gate = |checked: Result<(), String>| {
+        if let Err(message) = checked {
+            eprintln!("{message}");
+            exit(kobayashi_marust::lean_checkers::REJECTED_EXIT);
+        }
+    };
     let cfg = Config::from_env();
     if let Some(mode) = realize {
         if graph_edges {
@@ -647,6 +656,7 @@ fn classify_cmd(rest: &[String]) {
         lean_gate(lean_run);
         match classified {
             Ok(res) => {
+                frontend_gate(res.frontend_check_gate(Path::new(ontology)));
                 if std::env::var_os("KM_TIMING").is_some() {
                     eprintln!("KM_TIMING mark: classify_json returned");
                 }
@@ -683,6 +693,7 @@ fn classify_cmd(rest: &[String]) {
     lean_gate(lean_run);
     match classified {
         Ok(res) => {
+            frontend_gate(res.frontend_check_gate(Path::new(ontology)));
             use std::io::{BufWriter, Write};
             let stdout = std::io::stdout();
             // serde emits many small writes. Buffer them so direct streaming

@@ -17,6 +17,173 @@ use super::syntax::{data_all, data_at_least, data_at_most, data_some, mk_and, mk
 #[derive(Debug)]
 pub struct OutOfFragment(pub String);
 
+/// Operand `i` of a constructor or axiom. The streaming walker checks every
+/// operand count first ([`check_operands`]); this keeps a node built some
+/// other way from indexing past its operands.
+fn arg<T>(args: &[T], i: usize) -> Result<&T, OutOfFragment> {
+    args.get(i)
+        .ok_or_else(|| OutOfFragment(format!("parse error: missing operand {}", i + 1)))
+}
+
+/// Operand `i` of an axiom's annotation-free operand list.
+fn op<'n, 'a>(args: &[&'n Node<'a>], i: usize) -> Result<&'n Node<'a>, OutOfFragment> {
+    arg(args, i).copied()
+}
+
+/// Which operands of a constructor or axiom must be single tokens (named
+/// entities, anonymous individuals, numbers or literals) rather than nested
+/// expressions.
+#[derive(Clone, Copy)]
+enum Atoms {
+    /// No constraint.
+    Any,
+    /// Every operand.
+    All,
+    /// The operands with these indices.
+    At(&'static [usize]),
+    /// Every operand except the last (`DataSomeValuesFrom(p1 .. pn D)`).
+    AllButLast,
+}
+
+/// Operand counts of the OWL 2 functional syntax (FSS sections 6 to 11, and
+/// the DL-safe SWRL atoms): `(min, max, atoms)` for a head, `None` for a
+/// head this check does not know. Axiom annotations are not operands, and a
+/// literal split by the tokenizer into `"lex"` and `^^dt` / `@lang` counts
+/// once.
+fn operand_spec(head: &str) -> Option<(usize, usize, Atoms)> {
+    const N: usize = usize::MAX;
+    Some(match head {
+        // Class expressions (FSS 8.1 to 8.5).
+        "ObjectIntersectionOf" | "ObjectUnionOf" => (2, N, Atoms::Any),
+        "ObjectComplementOf" => (1, 1, Atoms::Any),
+        "ObjectOneOf" => (1, N, Atoms::All),
+        "ObjectSomeValuesFrom" | "ObjectAllValuesFrom" => (2, 2, Atoms::Any),
+        "ObjectHasValue" => (2, 2, Atoms::At(&[1])),
+        "ObjectHasSelf" => (1, 1, Atoms::Any),
+        "ObjectMinCardinality" | "ObjectMaxCardinality" | "ObjectExactCardinality" => {
+            (2, 3, Atoms::At(&[0]))
+        }
+        "DataSomeValuesFrom" | "DataAllValuesFrom" => (2, N, Atoms::AllButLast),
+        "DataHasValue" => (2, 2, Atoms::All),
+        "DataMinCardinality" | "DataMaxCardinality" | "DataExactCardinality" => {
+            (2, 3, Atoms::At(&[0, 1]))
+        }
+        // Property expressions (FSS 6.1): only a named property is inverted.
+        "ObjectInverseOf" => (1, 1, Atoms::All),
+        "ObjectPropertyChain" => (2, N, Atoms::Any),
+        // Data ranges (FSS 7).
+        "DataIntersectionOf" | "DataUnionOf" => (2, N, Atoms::Any),
+        "DataComplementOf" => (1, 1, Atoms::Any),
+        "DataOneOf" => (1, N, Atoms::All),
+        "DatatypeRestriction" => (3, N, Atoms::All),
+        // Class axioms (FSS 9.1).
+        "SubClassOf" => (2, 2, Atoms::Any),
+        "EquivalentClasses" | "DisjointClasses" => (2, N, Atoms::Any),
+        "DisjointUnion" => (3, N, Atoms::At(&[0])),
+        // Object property axioms (FSS 9.2).
+        "SubObjectPropertyOf" | "InverseObjectProperties" => (2, 2, Atoms::Any),
+        "EquivalentObjectProperties" | "DisjointObjectProperties" => (2, N, Atoms::Any),
+        "ObjectPropertyDomain" | "ObjectPropertyRange" => (2, 2, Atoms::Any),
+        "FunctionalObjectProperty"
+        | "InverseFunctionalObjectProperty"
+        | "ReflexiveObjectProperty"
+        | "IrreflexiveObjectProperty"
+        | "SymmetricObjectProperty"
+        | "AsymmetricObjectProperty"
+        | "TransitiveObjectProperty" => (1, 1, Atoms::Any),
+        // Data property axioms (FSS 9.3) and datatype definitions (9.4).
+        "SubDataPropertyOf" => (2, 2, Atoms::All),
+        "EquivalentDataProperties" | "DisjointDataProperties" => (2, N, Atoms::All),
+        "DataPropertyDomain" | "DataPropertyRange" => (2, 2, Atoms::At(&[0])),
+        "FunctionalDataProperty" => (1, 1, Atoms::All),
+        "DatatypeDefinition" => (2, 2, Atoms::At(&[0])),
+        // Keys (FSS 9.5): a class expression and two property lists.
+        "HasKey" => (3, 3, Atoms::Any),
+        // Assertions (FSS 9.6).
+        "SameIndividual" | "DifferentIndividuals" => (2, N, Atoms::All),
+        "ClassAssertion" => (2, 2, Atoms::At(&[1])),
+        "ObjectPropertyAssertion" | "NegativeObjectPropertyAssertion" => {
+            (3, 3, Atoms::At(&[1, 2]))
+        }
+        "DataPropertyAssertion" | "NegativeDataPropertyAssertion" => (3, 3, Atoms::All),
+        // Declarations (FSS 5.8) and annotation axioms (FSS 10).
+        "Declaration" => (1, 1, Atoms::Any),
+        "Class" | "Datatype" | "ObjectProperty" | "DataProperty" | "AnnotationProperty"
+        | "NamedIndividual" => (1, 1, Atoms::All),
+        "AnnotationAssertion" => (3, 3, Atoms::At(&[0])),
+        "SubAnnotationPropertyOf" | "AnnotationPropertyDomain" | "AnnotationPropertyRange" => {
+            (2, 2, Atoms::All)
+        }
+        // DL-safe SWRL rules.
+        "DLSafeRule" => (2, 2, Atoms::Any),
+        "Variable" => (1, 1, Atoms::All),
+        "ClassAtom" | "SameIndividualAtom" | "DifferentIndividualsAtom" => (2, 2, Atoms::Any),
+        "ObjectPropertyAtom" | "DataPropertyAtom" => (3, 3, Atoms::Any),
+        "DataRangeAtom" => (2, 2, Atoms::Any),
+        "BuiltInAtom" => (1, N, Atoms::At(&[0])),
+        _ => return None,
+    })
+}
+
+/// Check the operand counts of `node` and of every expression inside it
+/// against [`operand_spec`]: `SubClassOf()`, `ObjectIntersectionOf(B)`,
+/// `EquivalentClasses(C)` or `ObjectInverseOf(ObjectInverseOf(r))` are
+/// errors, never a panic or a silently different axiom. Annotations are not
+/// checked inside: they carry no logical content.
+pub(crate) fn check_operands(node: &Node) -> Result<(), OutOfFragment> {
+    let Node::List(head, args) = node else {
+        return Ok(());
+    };
+    if *head == "Annotation" {
+        return Ok(());
+    }
+    let operands = strip_annotations(args);
+    if let Some((min, max, atoms)) = operand_spec(head) {
+        // Logical operands: a literal and its `^^dt` / `@lang` suffix are one.
+        let mut glued: SmallVec<[&Node; 4]> = SmallVec::new();
+        let mut i = 0;
+        while i < operands.len() {
+            glued.push(operands[i]);
+            let literal = operands[i].as_atom().is_some_and(|t| t.starts_with('"'));
+            let suffix = operands
+                .get(i + 1)
+                .and_then(|n| n.as_atom())
+                .is_some_and(|t| t.starts_with("^^") || t.starts_with('@'));
+            i += if literal && suffix { 2 } else { 1 };
+        }
+        let n = glued.len();
+        if n < min || n > max {
+            let expected = match (min, max) {
+                (min, max) if min == max => format!("{min}"),
+                (min, usize::MAX) => format!("at least {min}"),
+                (min, max) => format!("{min} to {max}"),
+            };
+            return Err(OutOfFragment(format!(
+                "parse error: {head} takes {expected} operand(s), found {n}"
+            )));
+        }
+        let atom_required = |k: usize| match atoms {
+            Atoms::Any => false,
+            Atoms::All => true,
+            Atoms::At(at) => at.contains(&k),
+            Atoms::AllButLast => k + 1 < n,
+        };
+        for (k, operand) in glued.iter().enumerate() {
+            if atom_required(k) && !matches!(operand, Node::Atom(_)) {
+                return Err(OutOfFragment(format!(
+                    "parse error: operand {} of {head} must be a name or a literal, found {}",
+                    k + 1,
+                    operand.head().unwrap_or("")
+                )));
+            }
+        }
+    }
+    for operand in operands {
+        check_operands(operand)?;
+    }
+    Ok(())
+}
+
 /// Port of `role_str`: a *named* role -> short string.
 fn role_str(reg: &mut IriRegistry, node: &Node) -> Result<String, OutOfFragment> {
     match node {
@@ -54,9 +221,15 @@ pub(super) fn chain_role(
 fn role_cls(reg: &mut IriRegistry, node: &Node) -> Result<Role, OutOfFragment> {
     match node {
         Node::Atom(s) => Ok(Role::Name(reg.short(s))),
-        Node::List(head, args) if *head == "ObjectInverseOf" => {
-            Ok(Role::Inverse(reg.short(args[0].as_atom().unwrap_or(""))))
-        }
+        // FSS 6.1: only a named object property may occur inside
+        // `ObjectInverseOf`. `ObjectInverseOf(ObjectInverseOf(r))` used to
+        // read as the inverse of a property named `""`; it is an error now.
+        Node::List(head, args) if *head == "ObjectInverseOf" => match args.as_slice() {
+            [Node::Atom(name)] => Ok(Role::Inverse(reg.short(name))),
+            _ => Err(OutOfFragment(
+                "parse error: ObjectInverseOf takes exactly one named object property".into(),
+            )),
+        },
         Node::List(head, _) => Err(OutOfFragment(format!("role: {}", head))),
     }
 }
@@ -170,23 +343,23 @@ pub(crate) fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFr
                 }
                 Ok(mk_or(cs))
             }
-            "ObjectComplementOf" => Ok(Concept::Not(Box::new(cls(reg, &args[0])?))),
+            "ObjectComplementOf" => Ok(Concept::Not(Box::new(cls(reg, arg(args, 0)?)?))),
             "ObjectSomeValuesFrom" => Ok(Concept::Exists(
-                role_cls(reg, &args[0])?,
-                Box::new(cls(reg, &args[1])?),
+                role_cls(reg, arg(args, 0)?)?,
+                Box::new(cls(reg, arg(args, 1)?)?),
             )),
             "ObjectAllValuesFrom" => Ok(Concept::Forall(
-                role_cls(reg, &args[0])?,
-                Box::new(cls(reg, &args[1])?),
+                role_cls(reg, arg(args, 0)?)?,
+                Box::new(cls(reg, arg(args, 1)?)?),
             )),
             "ObjectMinCardinality" | "ObjectMaxCardinality" | "ObjectExactCardinality" => {
-                let n: i64 = args[0]
+                let n: i64 = arg(args, 0)?
                     .as_atom()
                     .and_then(|s| s.parse().ok())
-                    .ok_or_else(|| OutOfFragment(format!("bad cardinality: {:?}", args[0])))?;
-                let r = role_cls(reg, &args[1])?;
+                    .ok_or_else(|| OutOfFragment(format!("bad cardinality: {:?}", args.first())))?;
+                let r = role_cls(reg, arg(args, 1)?)?;
                 let filler = if args.len() > 2 {
-                    cls(reg, &args[2])?
+                    cls(reg, arg(args, 2)?)?
                 } else {
                     Concept::Top
                 };
@@ -211,10 +384,10 @@ pub(crate) fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFr
                 }
             }
             "ObjectHasValue" => Ok(Concept::Exists(
-                role_cls(reg, &args[0])?,
-                Box::new(Concept::Nominal(reg.short(args[1].as_atom().unwrap_or("")))),
+                role_cls(reg, arg(args, 0)?)?,
+                Box::new(Concept::Nominal(reg.short(arg(args, 1)?.as_atom().unwrap_or("")))),
             )),
-            "ObjectHasSelf" => Ok(Concept::HasSelf(role_cls(reg, &args[0])?)),
+            "ObjectHasSelf" => Ok(Concept::HasSelf(role_cls(reg, arg(args, 0)?)?)),
             // A provably empty range makes the restriction `⊥`; a provably
             // universal one (`rdfs:Literal`, every value a data property can
             // take, OWL 2 Structural Specification 4.1, or an equivalent
@@ -224,33 +397,33 @@ pub(crate) fn cls(reg: &mut IriRegistry, node: &Node) -> Result<Concept, OutOfFr
             // carry added nothing a model could falsify, and keeping it made
             // the native completion bridge defer to much slower calculi.
             "DataSomeValuesFrom" => Ok(data_some(
-                Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
-                dt_concept(&args[1]),
+                Role::Name(reg.short(arg(args, 0)?.as_atom().unwrap_or(""))),
+                dt_concept(arg(args, 1)?),
             )),
             "DataAllValuesFrom" => Ok(data_all(
-                Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
-                dt_concept(&args[1]),
+                Role::Name(reg.short(arg(args, 0)?.as_atom().unwrap_or(""))),
+                dt_concept(arg(args, 1)?),
             )),
             "DataHasValue" => {
                 let refs: Vec<&Node> = args.iter().collect();
                 Ok(Concept::Exists(
-                    Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
+                    Role::Name(reg.short(arg(args, 0)?.as_atom().unwrap_or(""))),
                     Box::new(dt_value_concept(&refs, 1)),
                 ))
             }
             "DataMinCardinality" | "DataMaxCardinality" | "DataExactCardinality" => {
-                let n: i64 = args[0]
+                let n: i64 = arg(args, 0)?
                     .as_atom()
                     .and_then(|s| s.parse().ok())
-                    .ok_or_else(|| OutOfFragment(format!("bad cardinality: {:?}", args[0])))?;
-                let r = Role::Name(reg.short(args[1].as_atom().unwrap_or("")));
+                    .ok_or_else(|| OutOfFragment(format!("bad cardinality: {:?}", args.first())))?;
+                let r = Role::Name(reg.short(arg(args, 1)?.as_atom().unwrap_or("")));
                 // Unqualified data cardinalities count ALL successors: the old
                 // `__dt__val` filler only counted nodes carrying that one
                 // concept, so e.g. `≤1 p` never clashed with two DataHasValue
                 // successors (their classes are `__dt__val__<v>`, not
                 // `__dt__val`).  `⊤` is the correct unqualified filler.
                 let filler = if args.len() > 2 {
-                    dt_concept(&args[2])
+                    dt_concept(arg(args, 2)?)
                 } else {
                     Concept::Top
                 };
@@ -386,7 +559,7 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
     let args = strip_annotations(args);
     match head {
         "SubClassOf" => {
-            o.add(Axiom::SubClassOf(cls(reg, args[0])?, cls(reg, args[1])?));
+            o.add(Axiom::SubClassOf(cls(reg, op(&args, 0)?)?, cls(reg, op(&args, 1)?)?));
         }
         "EquivalentClasses" => {
             let mut cs = Vec::new();
@@ -416,7 +589,7 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
             // disjointness were all lost (both an incompleteness and a missed
             // unsatisfiability). Desugared here into the two axiom kinds the
             // clausifier already handles.
-            let a = cls(reg, args[0])?;
+            let a = cls(reg, op(&args, 0)?)?;
             let mut cs = Vec::new();
             for arg in &args[1..] {
                 cs.push(cls(reg, arg)?);
@@ -429,7 +602,7 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
             }
         }
         "SubObjectPropertyOf" => {
-            let sub = args[0];
+            let sub = op(&args, 0)?;
             if let Node::List(h, chain_args) = sub {
                 if *h == "ObjectPropertyChain" {
                     let mut chain = Vec::new();
@@ -445,7 +618,7 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
                             "ObjectPropertyChain requires at least two roles".to_string(),
                         ));
                     }
-                    let (sup, inverse) = chain_role(reg, args[1])?;
+                    let (sup, inverse) = chain_role(reg, op(&args, 1)?)?;
                     if let Some((base, proxy)) = inverse {
                         o.add(Axiom::InverseRoles(base, proxy));
                     }
@@ -455,7 +628,7 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
             }
             o.add(Axiom::RoleInclusion(
                 role_str(reg, sub)?,
-                role_str(reg, args[1])?,
+                role_str(reg, op(&args, 1)?)?,
             ));
         }
         "EquivalentObjectProperties" => {
@@ -474,23 +647,23 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
         }
         "InverseObjectProperties" => {
             o.add(Axiom::InverseRoles(
-                role_str(reg, args[0])?,
-                role_str(reg, args[1])?,
+                role_str(reg, op(&args, 0)?)?,
+                role_str(reg, op(&args, 1)?)?,
             ));
         }
-        "TransitiveObjectProperty" => o.add(Axiom::TransitiveRole(role_str(reg, args[0])?)),
-        "SymmetricObjectProperty" => o.add(Axiom::SymmetricRole(role_str(reg, args[0])?)),
-        "ReflexiveObjectProperty" => o.add(Axiom::ReflexiveRole(role_str(reg, args[0])?)),
-        "FunctionalObjectProperty" => o.add(Axiom::FunctionalRole(role_str(reg, args[0])?)),
+        "TransitiveObjectProperty" => o.add(Axiom::TransitiveRole(role_str(reg, op(&args, 0)?)?)),
+        "SymmetricObjectProperty" => o.add(Axiom::SymmetricRole(role_str(reg, op(&args, 0)?)?)),
+        "ReflexiveObjectProperty" => o.add(Axiom::ReflexiveRole(role_str(reg, op(&args, 0)?)?)),
+        "FunctionalObjectProperty" => o.add(Axiom::FunctionalRole(role_str(reg, op(&args, 0)?)?)),
         "InverseFunctionalObjectProperty" => {
-            o.add(Axiom::InverseFunctionalRole(role_str(reg, args[0])?))
+            o.add(Axiom::InverseFunctionalRole(role_str(reg, op(&args, 0)?)?))
         }
-        "AsymmetricObjectProperty" => o.add(Axiom::AsymmetricRole(role_str(reg, args[0])?)),
-        "IrreflexiveObjectProperty" => o.add(Axiom::IrreflexiveRole(role_str(reg, args[0])?)),
+        "AsymmetricObjectProperty" => o.add(Axiom::AsymmetricRole(role_str(reg, op(&args, 0)?)?)),
+        "IrreflexiveObjectProperty" => o.add(Axiom::IrreflexiveRole(role_str(reg, op(&args, 0)?)?)),
         "ClassAssertion" => {
             o.add(Axiom::ConceptAssertion(
-                cls(reg, args[0])?,
-                reg.short(args[1].as_atom().unwrap_or("")),
+                cls(reg, op(&args, 0)?)?,
+                reg.short(op(&args, 1)?.as_atom().unwrap_or("")),
             ));
         }
         // OWL 2 Direct Semantics: `DataPropertyAssertion(p a v)` holds iff
@@ -502,15 +675,15 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
         "DataPropertyAssertion"
             if data_assertion_as_class_enabled()
                 && args.len() >= 3
-                && matches!(args[0], Node::Atom(_))
-                && matches!(args[1], Node::Atom(_)) =>
+                && matches!(op(&args, 0)?, Node::Atom(_))
+                && matches!(op(&args, 1)?, Node::Atom(_)) =>
         {
-            let refs: Vec<&Node> = std::iter::once(args[0]).chain(args[2..].iter().copied()).collect();
+            let refs: Vec<&Node> = std::iter::once(op(&args, 0)?).chain(args[2..].iter().copied()).collect();
             if let Some((literal, used)) = glue_literal(&refs, 1) {
                 if refs.len() == 1 + used {
-                    let role = Role::Name(reg.short(args[0].as_atom().unwrap_or("")));
+                    let role = Role::Name(reg.short(op(&args, 0)?.as_atom().unwrap_or("")));
                     let value = dt_value_concept(&refs, 1);
-                    let individual = reg.short(args[1].as_atom().unwrap_or(""));
+                    let individual = reg.short(op(&args, 1)?.as_atom().unwrap_or(""));
                     o.defer_data_assertion_as_class(
                         Axiom::ConceptAssertion(Concept::Exists(role, Box::new(value)), individual),
                         literal,
@@ -519,16 +692,16 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
             }
         }
         "ObjectPropertyAssertion" => {
-            let (role, inverse) = match args[0] {
-                Node::Atom(_) => (role_str(reg, args[0])?, false),
+            let (role, inverse) = match op(&args, 0)? {
+                Node::Atom(_) => (role_str(reg, op(&args, 0)?)?, false),
                 Node::List("ObjectInverseOf", inner) => match inner.as_slice() {
                     [Node::Atom(name)] => (reg.short(name), true),
                     _ => return Err(OutOfFragment("inverse assertion requires one named role".into())),
                 },
                 _ => return Err(OutOfFragment("unsupported assertion role expression".into())),
             };
-            let a = reg.short(args[1].as_atom().unwrap_or(""));
-            let b = reg.short(args[2].as_atom().unwrap_or(""));
+            let a = reg.short(op(&args, 1)?.as_atom().unwrap_or(""));
+            let b = reg.short(op(&args, 2)?.as_atom().unwrap_or(""));
             o.add(if inverse { Axiom::RoleAssertion(role, b, a) }
                 else { Axiom::RoleAssertion(role, a, b) });
         }
@@ -538,9 +711,9 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
             // full taxonomy. Record it for the ABox-inconsistency precheck
             // (the clause pipeline still drops it — sound for subsumption).
             // The inverse spelling ¬R⁻(a,b) is ¬R(b,a).
-            let a = reg.short(args[1].as_atom().unwrap_or(""));
-            let b = reg.short(args[2].as_atom().unwrap_or(""));
-            match args[0] {
+            let a = reg.short(op(&args, 1)?.as_atom().unwrap_or(""));
+            let b = reg.short(op(&args, 2)?.as_atom().unwrap_or(""));
+            match op(&args, 0)? {
                 Node::Atom(s) => {
                     let r = reg.short(s);
                     o.add(Axiom::NegativeRoleAssertion(r, a, b));
@@ -609,10 +782,10 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
             // domain(p) = C ≡ ∃p.⊤ ⊑ C
             o.add(Axiom::SubClassOf(
                 Concept::Exists(
-                    Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
+                    Role::Name(reg.short(op(&args, 0)?.as_atom().unwrap_or(""))),
                     Box::new(Concept::Top),
                 ),
-                cls(reg, args[1])?,
+                cls(reg, op(&args, 1)?)?,
             ));
         }
         "ObjectPropertyDomain"
@@ -626,8 +799,8 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
             // `domain(hasCase) = Adjective ⊔ ...`) — is clausified here through
             // the normal subclass encoding.
             o.add(Axiom::SubClassOf(
-                Concept::Exists(role_cls(reg, args[0])?, Box::new(Concept::Top)),
-                cls(reg, args[1])?,
+                Concept::Exists(role_cls(reg, op(&args, 0)?)?, Box::new(Concept::Top)),
+                cls(reg, op(&args, 1)?)?,
             ));
         }
         "ObjectPropertyRange"
@@ -637,7 +810,7 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
             // range(R) = C ≡ ⊤ ⊑ ∀R.C; complex-range case on a named role only.
             o.add(Axiom::SubClassOf(
                 Concept::Top,
-                Concept::Forall(role_cls(reg, args[0])?, Box::new(cls(reg, args[1])?)),
+                Concept::Forall(role_cls(reg, op(&args, 0)?)?, Box::new(cls(reg, op(&args, 1)?)?)),
             ));
         }
         "ObjectPropertyDomain"
@@ -659,7 +832,7 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
                 let r = reg.short(rname);
                 o.add(Axiom::SubClassOf(
                     Concept::Top,
-                    Concept::Forall(Role::Name(r), Box::new(cls(reg, args[1])?)),
+                    Concept::Forall(Role::Name(r), Box::new(cls(reg, op(&args, 1)?)?)),
                 ));
             }
         }
@@ -675,7 +848,7 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
                 let r = reg.short(rname);
                 o.add(Axiom::SubClassOf(
                     Concept::Exists(Role::Name(r), Box::new(Concept::Top)),
-                    cls(reg, args[1])?,
+                    cls(reg, op(&args, 1)?)?,
                 ));
             }
         }
@@ -714,13 +887,13 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
         // unsatisfiable, which the dropped functionality silently missed.
         "FunctionalDataProperty" => {
             o.add(Axiom::FunctionalRole(
-                reg.short(args[0].as_atom().unwrap_or("")),
+                reg.short(op(&args, 0)?.as_atom().unwrap_or("")),
             ));
         }
         "SubDataPropertyOf" => {
             o.add(Axiom::RoleInclusion(
-                reg.short(args[0].as_atom().unwrap_or("")),
-                reg.short(args[1].as_atom().unwrap_or("")),
+                reg.short(op(&args, 0)?.as_atom().unwrap_or("")),
+                reg.short(op(&args, 1)?.as_atom().unwrap_or("")),
             ));
         }
         "EquivalentDataProperties" => {
@@ -753,8 +926,8 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
             // A universal range constrains nothing; an empty one gives
             // `⊤ ⊑ ∀p.⊥`, i.e. p has no value anywhere.
             let range = data_all(
-                Role::Name(reg.short(args[0].as_atom().unwrap_or(""))),
-                dt_concept(args[1]),
+                Role::Name(reg.short(op(&args, 0)?.as_atom().unwrap_or(""))),
+                dt_concept(op(&args, 1)?),
             );
             if range != Concept::Top {
                 o.add(Axiom::SubClassOf(Concept::Top, range));
@@ -762,8 +935,8 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
         }
         "DatatypeDefinition" => {
             o.add(Axiom::EquivalentClasses(
-                dt_concept(args[0]),
-                dt_concept(args[1]),
+                dt_concept(op(&args, 0)?),
+                dt_concept(op(&args, 1)?),
             ));
         }
         other if other.starts_with("Data") || other == "HasKey" => {
@@ -787,15 +960,15 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
         "NegativeDataPropertyAssertion"
             if data_assertion_as_class_enabled()
                 && args.len() >= 3
-                && matches!(args[0], Node::Atom(_))
-                && matches!(args[1], Node::Atom(_)) =>
+                && matches!(op(&args, 0)?, Node::Atom(_))
+                && matches!(op(&args, 1)?, Node::Atom(_)) =>
         {
-            let refs: Vec<&Node> = std::iter::once(args[0]).chain(args[2..].iter().copied()).collect();
+            let refs: Vec<&Node> = std::iter::once(op(&args, 0)?).chain(args[2..].iter().copied()).collect();
             if let Some((_, used)) = glue_literal(&refs, 1) {
                 if refs.len() == 1 + used {
-                    let role = Role::Name(reg.short(args[0].as_atom().unwrap_or("")));
+                    let role = Role::Name(reg.short(op(&args, 0)?.as_atom().unwrap_or("")));
                     let value = dt_value_concept(&refs, 1);
-                    let individual = reg.short(args[1].as_atom().unwrap_or(""));
+                    let individual = reg.short(op(&args, 1)?.as_atom().unwrap_or(""));
                     o.add_negative_data_assertion(Axiom::ConceptAssertion(
                         Concept::Not(Box::new(Concept::Exists(role, Box::new(value)))),
                         individual,
@@ -840,6 +1013,7 @@ where
                 }
                 let node = p.parse().map_err(perr)?;
                 if streamed {
+                    check_operands(&node)?;
                     f(&node)?;
                 }
             }
@@ -1588,5 +1762,204 @@ Head(ClassAtom(<http://e#D> Variable(<http://e#x>)))))";
         let ontology = parse_axioms(&mut IriRegistry::new(), "Ontology(DLSafeRule(Body(ClassAtom(<A> \"literal\")) Head(ClassAtom(<B> Variable(<x>)))))").unwrap();
         assert_eq!(ontology.rules().count(), 0);
         assert_eq!(ontology.datatype_rules().count(), 0);
+    }
+}
+
+/// One test per deviation probe of `results/agents/2026-11-12/v162-parse/
+/// deviation-probes/` (v1.6.2 task v162-rust-iri). The frontend reads a
+/// document as `builtin_aliases::canonicalize` and then this parser; the
+/// identity probes go through both, as `ofn_to_clauses` does.
+#[cfg(test)]
+mod deviation_probe_tests {
+    use super::*;
+    use crate::frontend::builtin_aliases::canonicalize;
+    use std::collections::BTreeSet;
+
+    /// Canonicalize, parse, and return the ontology with the full IRI of
+    /// every registry-owned name.
+    fn frontend(text: &str) -> (Ontology, IriRegistry, BTreeSet<String>) {
+        let canonical = canonicalize(text).expect("canonicalize").into_owned();
+        let mut reg = IriRegistry::new();
+        let ontology = parse_axioms(&mut reg, &canonical).expect("parse");
+        let iris = reg.owned_entries().map(|(_, iri)| iri.to_string()).collect();
+        (ontology, reg, iris)
+    }
+
+    fn name(reg: &IriRegistry, iri: &str) -> Concept {
+        let internal = reg.owned_entries().find(|(_, full)| *full == iri).expect(iri).0;
+        Concept::Name(internal.to_string())
+    }
+
+    fn rejects(text: &str, needle: &str) {
+        let mut reg = IriRegistry::new();
+        match parse_axioms(&mut reg, text) {
+            Ok(_) => panic!("accepted: {text}"),
+            Err(OutOfFragment(message)) => {
+                assert!(message.starts_with("parse error"), "{text}: {message}");
+                assert!(message.contains(needle), "{text}: {message}");
+            }
+        }
+    }
+
+    /// Probe `1-spellings.ofn` (deviation 1): `ex:A` and `<http://e.org/#A>`
+    /// are one entity, as are `ex:B` and its full IRI.
+    #[test]
+    fn probe_1_two_spellings_are_one_entity() {
+        let text = "Prefix(ex:=<http://e.org/#>)\nOntology(SubClassOf(ex:A <http://e.org/#B>) SubClassOf(<http://e.org/#A> ex:B))\n";
+        let (ontology, reg, iris) = frontend(text);
+        assert_eq!(iris, BTreeSet::from(["http://e.org/#A".to_string(), "http://e.org/#B".to_string()]));
+        let axioms: Vec<_> = ontology.axioms_iter().cloned().collect();
+        assert_eq!(axioms, vec![Axiom::SubClassOf(name(&reg, "http://e.org/#A"), name(&reg, "http://e.org/#B"))]);
+    }
+
+    /// Probe `10-ambiguous.ofn` (deviation 2): the full IRI `<ex:A>` is the
+    /// IRI `ex:A`, not the expansion `http://e.org/#A` of the abbreviated
+    /// `ex:A`. Two entities.
+    #[test]
+    fn probe_10_full_iri_that_reads_like_an_abbreviation_is_another_entity() {
+        let text = "Prefix(ex:=<http://e.org/#>)\nOntology(SubClassOf(<ex:A> ex:A))\n";
+        let (ontology, reg, iris) = frontend(text);
+        assert_eq!(iris, BTreeSet::from(["ex:A".to_string(), "http://e.org/#A".to_string()]));
+        let axioms: Vec<_> = ontology.axioms_iter().cloned().collect();
+        assert_eq!(axioms, vec![Axiom::SubClassOf(name(&reg, "ex:A"), name(&reg, "http://e.org/#A"))]);
+        // The same holds for a standard prefix: `<owl:Thing>` is a class.
+        let (ontology, reg, iris) = frontend("Ontology(SubClassOf(<owl:Thing> owl:Thing))");
+        assert_eq!(iris, BTreeSet::from(["owl:Thing".to_string()]));
+        let axioms: Vec<_> = ontology.axioms_iter().cloned().collect();
+        assert_eq!(axioms, vec![Axiom::SubClassOf(name(&reg, "owl:Thing"), Concept::Top)]);
+    }
+
+    /// Probe `2-thing.ofn` (deviation 3): builtins are recognised by their
+    /// expansion, whatever prefix spells them.
+    #[test]
+    fn probe_2_builtins_by_expansion() {
+        let text = "Prefix(o:=<http://www.w3.org/2002/07/owl#>)\nOntology(SubClassOf(<http://e#A> o:Thing) SubClassOf(o:Nothing <http://e#A>))\n";
+        let (ontology, reg, iris) = frontend(text);
+        assert_eq!(iris, BTreeSet::from(["http://e#A".to_string()]));
+        let a = name(&reg, "http://e#A");
+        let axioms: Vec<_> = ontology.axioms_iter().cloned().collect();
+        assert_eq!(axioms, vec![
+            Axiom::SubClassOf(a.clone(), Concept::Top),
+            Axiom::SubClassOf(Concept::Bottom, a),
+        ]);
+        // Datatypes and facets spelled with another prefix for the XSD
+        // namespace read as the standard spelling.
+        let aliased = "Prefix(x:=<http://www.w3.org/2001/XMLSchema#>)\nOntology(SubClassOf(<http://e#A> DataSomeValuesFrom(<http://e#p> DatatypeRestriction(x:integer x:minInclusive \"1\"^^x:integer))))";
+        let standard = "Prefix(x:=<http://www.w3.org/2001/XMLSchema#>)\nOntology(SubClassOf(<http://e#A> DataSomeValuesFrom(<http://e#p> DatatypeRestriction(xsd:integer xsd:minInclusive \"1\"^^xsd:integer))))";
+        assert_eq!(canonicalize(aliased).unwrap(), standard);
+        let (left, _, _) = frontend(aliased);
+        let (right, _, _) = frontend(standard);
+        assert_eq!(left.axioms_iter().cloned().collect::<Vec<_>>(), right.axioms_iter().cloned().collect::<Vec<_>>());
+        // Object and data property builtins.
+        let roles = "Prefix(o:=<http://www.w3.org/2002/07/owl#>)\nOntology(SubObjectPropertyOf(<http://e#r> o:topObjectProperty) SubDataPropertyOf(o:bottomDataProperty <http://e#d>))";
+        let canonical = canonicalize(roles).unwrap();
+        assert!(canonical.contains("<http://www.w3.org/2002/07/owl#topObjectProperty>"), "{canonical}");
+        assert!(canonical.contains("<http://www.w3.org/2002/07/owl#bottomDataProperty>"), "{canonical}");
+    }
+
+    /// Probe `3-double-inverse.ofn` (deviation 4): FSS 6.1 allows only a named
+    /// property inside `ObjectInverseOf`; the nested form is an error.
+    #[test]
+    fn probe_3_double_inverse_is_an_error() {
+        rejects("Ontology(SubClassOf(<http://e#A> ObjectSomeValuesFrom(ObjectInverseOf(ObjectInverseOf(<http://e#r>)) <http://e#B>)))\n",
+            "ObjectInverseOf");
+        let mut reg = IriRegistry::new();
+        let nested = Node::List("ObjectInverseOf", vec![Node::List("ObjectInverseOf", vec![Node::Atom("<r>")])]);
+        assert!(role_cls(&mut reg, &nested).is_err());
+    }
+
+    /// Probe `4-nonascii-word.ofn` (deviation 5): a bare word with `à`
+    /// parses (it used to panic in the tokenizer).
+    #[test]
+    fn probe_4_non_ascii_bare_word() {
+        let text = "Prefix(ex:=<http://e.org/#>)\nOntology(SubClassOf(ex:\u{e0} ex:B))\n";
+        let (ontology, reg, iris) = frontend(text);
+        assert_eq!(iris, BTreeSet::from(["ex:\u{e0}".to_string(), "ex:B".to_string()]));
+        let axioms: Vec<_> = ontology.axioms_iter().cloned().collect();
+        assert_eq!(axioms, vec![Axiom::SubClassOf(name(&reg, "ex:\u{e0}"), name(&reg, "ex:B"))]);
+    }
+
+    /// Probe `9-cr-comment.ofn` (deviation 7): a comment ends at CR.
+    #[test]
+    fn probe_9_cr_ends_a_comment() {
+        let mut reg = IriRegistry::new();
+        let ontology = parse_axioms(&mut reg, "Ontology(# comment\rSubClassOf(<http://e#A> <http://e#B>))\n").unwrap();
+        assert_eq!(ontology.axioms_iter().count(), 1);
+    }
+
+    /// Probe `8-arity.ofn` (deviation 9): one operand for a constructor or
+    /// axiom that takes at least two is an error.
+    #[test]
+    fn probe_8_wrong_arities_are_errors() {
+        rejects("Ontology(SubClassOf(<http://e#A> ObjectIntersectionOf(<http://e#B>)))", "ObjectIntersectionOf");
+        rejects("Ontology(EquivalentClasses(<http://e#C>))", "EquivalentClasses");
+        rejects("Ontology(SubClassOf(<http://e#A> <http://e#B> <http://e#C>))", "SubClassOf");
+        rejects("Ontology(DisjointUnion(<http://e#A> <http://e#B>))", "DisjointUnion");
+        rejects("Ontology(ClassAssertion(<http://e#A> ObjectOneOf(<http://e#a>)))", "ClassAssertion");
+        // Axiom annotations and split literals are not extra operands.
+        let mut reg = IriRegistry::new();
+        parse_axioms(&mut reg, "Ontology(SubClassOf(Annotation(<http://e#n> \"x\"@en) <http://e#A> <http://e#B>) \
+            ClassAssertion(DataHasValue(<http://e#p> \"1\"^^xsd:integer) <http://e#a>) \
+            DataPropertyAssertion(<http://e#p> <http://e#a> \"2\"^^xsd:integer))").unwrap();
+    }
+
+    /// Probe `14-empty-subclass.ofn` (deviation 8): `SubClassOf()` and every
+    /// axiom or constructor without operands is an error, not a panic.
+    #[test]
+    fn probe_14_missing_operands_are_errors() {
+        rejects("Ontology(SubClassOf())\n", "SubClassOf takes 2 operand(s), found 0");
+        const AXIOMS: &[&str] = &[
+            "SubClassOf", "EquivalentClasses", "DisjointClasses", "DisjointUnion",
+            "SubObjectPropertyOf", "EquivalentObjectProperties", "DisjointObjectProperties",
+            "InverseObjectProperties", "ObjectPropertyDomain", "ObjectPropertyRange",
+            "FunctionalObjectProperty", "InverseFunctionalObjectProperty", "ReflexiveObjectProperty",
+            "IrreflexiveObjectProperty", "SymmetricObjectProperty", "AsymmetricObjectProperty",
+            "TransitiveObjectProperty", "SubDataPropertyOf", "EquivalentDataProperties",
+            "DisjointDataProperties", "DataPropertyDomain", "DataPropertyRange",
+            "FunctionalDataProperty", "DatatypeDefinition", "HasKey", "SameIndividual",
+            "DifferentIndividuals", "ClassAssertion", "ObjectPropertyAssertion",
+            "NegativeObjectPropertyAssertion", "DataPropertyAssertion",
+            "NegativeDataPropertyAssertion", "Declaration", "AnnotationAssertion",
+            "SubAnnotationPropertyOf", "AnnotationPropertyDomain", "AnnotationPropertyRange",
+            "DLSafeRule",
+        ];
+        for head in AXIOMS {
+            rejects(&format!("Ontology({head}())"), head);
+            // One operand short of the minimum (or of the exact count).
+            if !matches!(*head, "Declaration" | "DLSafeRule") {
+                let (min, _, _) = operand_spec(head).unwrap();
+                let operands = vec!["<http://e#x>"; min - 1].join(" ");
+                rejects(&format!("Ontology({head}({operands}))"), head);
+            }
+        }
+        const CONSTRUCTORS: &[&str] = &[
+            "ObjectIntersectionOf", "ObjectUnionOf", "ObjectComplementOf", "ObjectOneOf",
+            "ObjectSomeValuesFrom", "ObjectAllValuesFrom", "ObjectHasValue", "ObjectHasSelf",
+            "ObjectMinCardinality", "ObjectMaxCardinality", "ObjectExactCardinality",
+            "DataSomeValuesFrom", "DataAllValuesFrom", "DataHasValue", "DataMinCardinality",
+            "DataMaxCardinality", "DataExactCardinality",
+        ];
+        for head in CONSTRUCTORS {
+            rejects(&format!("Ontology(SubClassOf(<http://e#A> {head}()))"), head);
+            rejects(&format!("Ontology(ClassAssertion({head}() <http://e#a>))"), head);
+        }
+        for role in ["ObjectInverseOf()", "ObjectPropertyChain()", "ObjectPropertyChain(<http://e#r>)"] {
+            rejects(&format!("Ontology(SubObjectPropertyOf({role} <http://e#s>))"), role.split('(').next().unwrap());
+        }
+        for range in ["DataIntersectionOf()", "DataUnionOf(xsd:integer)", "DataComplementOf()", "DataOneOf()", "DatatypeRestriction(xsd:integer)"] {
+            rejects(&format!("Ontology(DataPropertyRange(<http://e#p> {range}))"), range.split('(').next().unwrap());
+        }
+        for atom in ["ClassAtom()", "ObjectPropertyAtom(<http://e#r>)", "DataPropertyAtom()", "BuiltInAtom()", "Variable()"] {
+            rejects(&format!("Ontology(DLSafeRule(Body({atom}) Head()))"), atom.split('(').next().unwrap());
+        }
+        // The `cls` entry point does not panic on a node built without the
+        // walker (the n-ary constructors read an empty list as their unit).
+        let mut reg = IriRegistry::new();
+        for head in CONSTRUCTORS {
+            let result = cls(&mut reg, &Node::List(head, vec![]));
+            if !matches!(*head, "ObjectIntersectionOf" | "ObjectUnionOf" | "ObjectOneOf") {
+                assert!(result.is_err(), "{head}");
+            }
+        }
     }
 }

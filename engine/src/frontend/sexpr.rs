@@ -31,7 +31,7 @@ impl<'a> Node<'a> {
 }
 
 /// Lazy tokeniser. Port of `frontend.tokenize` / `_TOK`:
-/// `\s+ | (<[^>]*>) | (#[^\n]*) | ([()]) | ("(?:[^"\\]|\\.)*") | ([^\s()]+)`.
+/// `\s+ | (<[^>]*>) | (#[^\n\r]*) | ([()]) | ("(?:[^"\\]|\\.)*") | ([^\s()]+)`.
 /// IRIs `<...>` are matched before the comment rule so a `#` inside an IRI is
 /// not treated as a comment. Comments (the `#...` group) are dropped.
 pub struct Tokens<'a> {
@@ -42,15 +42,18 @@ pub struct Tokens<'a> {
 const WHITESPACE: u8 = 1;
 const ATOM_END: u8 = 2;
 
-/// Byte classes for the tokenizer. `WHITESPACE` is exactly the set of bytes
-/// `b` with `(b as char).is_whitespace()` (ASCII whitespace plus 0x85 and
-/// 0xA0, as the per-byte `char` test has always classified them); `ATOM_END`
-/// adds `(` and `)`.
+/// Byte classes for the tokenizer. `WHITESPACE` is the OWL 2 functional
+/// syntax whitespace of FSS 2.3: U+20, U+9, U+A and U+D, nothing else. The
+/// tokenizer used to take the per-byte `char::is_whitespace` set, which adds
+/// VT, FF and the bytes 0x85 and 0xA0; the last two occur inside the UTF-8
+/// encoding of characters such as `à` (C3 A0), so a bare word containing one
+/// was cut inside a character and the slice panicked. `ATOM_END` adds `(`
+/// and `)`.
 const BYTE_CLASS: [u8; 256] = {
     let mut table = [0u8; 256];
     let mut b = 0;
     while b < 256 {
-        if matches!(b, 0x09..=0x0D | 0x20 | 0x85 | 0xA0) {
+        if matches!(b, 0x09 | 0x0A | 0x0D | 0x20) {
             table[b] = WHITESPACE | ATOM_END;
         } else if b == b'(' as usize || b == b')' as usize {
             table[b] = ATOM_END;
@@ -116,8 +119,11 @@ impl<'a> Iterator for Tokens<'a> {
                 return Some(&self.text[start..i]);
             }
             if c == '#' {
-                // comment to end of line
-                i = find_byte(bytes, i, b'\n');
+                // A comment ends at the next LF or CR (FSS 2.3); a document
+                // with CR line ends must not lose the rest of its text.
+                while i < n && bytes[i] != b'\n' && bytes[i] != b'\r' {
+                    i += 1;
+                }
                 continue;
             }
             if c == '(' || c == ')' {
@@ -263,12 +269,42 @@ mod tests {
     }
 
     #[test]
-    fn byte_classes_match_the_per_byte_char_tests() {
+    fn byte_classes_are_the_functional_syntax_whitespace() {
         for b in 0..=255u8 {
-            let c = b as char;
-            assert_eq!(BYTE_CLASS[b as usize] & WHITESPACE != 0, c.is_whitespace(), "{b:#x}");
+            let space = matches!(b, b' ' | b'\t' | b'\n' | b'\r');
+            assert_eq!(BYTE_CLASS[b as usize] & WHITESPACE != 0, space, "{b:#x}");
             assert_eq!(BYTE_CLASS[b as usize] & ATOM_END != 0,
-                c.is_whitespace() || c == '(' || c == ')', "{b:#x}");
+                space || b == b'(' || b == b')', "{b:#x}");
         }
+    }
+
+    /// Probe `4-nonascii-word.ofn`: `à` is C3 A0 in UTF-8. The old byte
+    /// classes took A0 as whitespace and sliced the word inside the character.
+    #[test]
+    fn non_ascii_bare_word_is_one_token() {
+        let text = "Prefix(ex:=<http://e.org/#>)\nOntology(SubClassOf(ex:\u{e0} ex:B))\n";
+        let toks = tokenize(text);
+        assert!(toks.contains(&"ex:\u{e0}"), "{toks:?}");
+        assert!(toks.contains(&"ex:B"), "{toks:?}");
+        for word in ["ex:\u{85}x", "ex:\u{a0}y", "ex:\u{2028}z", "\u{e0}\u{e0}"] {
+            assert_eq!(tokenize(word), vec![word], "{word:?}");
+        }
+    }
+
+    /// Probe `9-cr-comment.ofn`: a comment ends at CR as well as at LF.
+    #[test]
+    fn comments_end_at_cr_or_lf() {
+        let text = "Ontology(# comment\rSubClassOf(<http://e#A> <http://e#B>))\n";
+        assert_eq!(tokenize(text), vec!["Ontology", "(", "SubClassOf", "(",
+            "<http://e#A>", "<http://e#B>", ")", ")"]);
+        assert_eq!(tokenize("a # c\nb # d\r\nc #e"), vec!["a", "b", "c"]);
+    }
+
+    /// Probe `13-vt.ofn`: VT and FF are not functional-syntax whitespace, so
+    /// they no longer separate tokens.
+    #[test]
+    fn vertical_tab_and_form_feed_are_not_whitespace() {
+        assert_eq!(tokenize("<http://e#A>\u{b}<http://e#B>"), vec!["<http://e#A>", "\u{b}<http://e#B>"]);
+        assert_eq!(tokenize("a\u{c}b c"), vec!["a\u{c}b", "c"]);
     }
 }

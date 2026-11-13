@@ -1,0 +1,1 @@
+Ontology(Declaration(Class(<http://e#A>)) Declaration(Class(<http://e#B>)) # commentSubClassOf(<http://e#A> <http://e#B>))

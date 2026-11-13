@@ -452,3 +452,11 @@ root = "HTSubsetUnravellingCheck"
 name = "km-el-reference"
 root = "KMELReferenceCheck"
 
+
+[[lean_exe]]
+name = "km-owl-parse"
+root = "KMOWLParse"
+
+[[lean_exe]]
+name = "km-owl-reference"
+root = "KMOWLReferenceCheck"

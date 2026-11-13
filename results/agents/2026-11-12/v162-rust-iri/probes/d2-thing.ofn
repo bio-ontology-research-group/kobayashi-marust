@@ -1,0 +1,3 @@
+Prefix(o:=<http://www.w3.org/2002/07/owl#>)
+Ontology(Declaration(Class(<http://e#A>)) Declaration(Class(<http://e#B>))
+SubClassOf(<http://e#A> o:Nothing) SubClassOf(o:Thing <http://e#B>))

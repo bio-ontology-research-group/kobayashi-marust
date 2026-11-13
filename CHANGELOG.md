@@ -1,5 +1,50 @@
 # Changelog
 
+## [1.6.2] - 2026-11-13
+
+The reference procedures get a proved frontend: from the OWL 2 functional
+syntax text to an answer that is exact under the OWL 2 direct semantics,
+for OWL EL and OWL ALC. km's answers on those inputs can be certified
+against it. No theorem of 1.6.0 or 1.6.1 changes. Acceptance:
+`docs/V1.6.2-ACCEPTANCE.md`; notes: `docs/RELEASE-1.6.2.md`.
+
+### Lean
+
+- `OWL.Semantics`: OWL 2 class expressions, axioms and the direct
+  semantics; `OWL.Fragment`: the EL and ALC fragments and the probe lemmas
+  (`unsatisfiable_iff_entailsSub_fresh`, `inconsistent_iff_entailsSub_fresh`).
+- `OWL.Parse`: a functional-syntax parser with prefix expansion
+  (FSS 2.4, 3.7); it agrees with the Rust parser on all 499 suite inputs of
+  the fragment.
+- `OWLFrontend.translateEL` and `translateALC` normalise OWL directly into
+  the reference procedures' normal forms with polarity definers;
+  `translateEL_correct`, `translateALC_correct`.
+- `owlReference_sound` and `owlReference_complete`: the OWL reference
+  procedure publishes on every OWL EL and OWL ALC ontology, and what it
+  publishes is exact for `OWL.EntailsSub`; `owlReadout_exact` covers what
+  the executable prints.
+- `km-owl-reference`: the executable (`owl-sparse-v1` output; exit codes
+  0, 2, 3, 4 as `km-el-reference`; ALC budget of 16 concept names).
+
+### Engine
+
+- `KM_FRONTEND_CHECK=1` compares km's answer with `km-owl-reference`
+  (`KM_OWL_REFERENCE_CHECKER`, budget `KM_FRONTEND_CHECK_BUDGET_S`);
+  disagreement fails closed with exit 6, a decline changes nothing. Off by
+  default.
+- OWL functional syntax parsing follows the specification on IRI identity:
+  an abbreviated IRI and its expansion denote one entity, builtins and
+  datatypes are recognised by their expanded IRI, whitespace is U+20, U+9,
+  U+A, U+D and comments end at LF or CR. Malformed input (missing operands,
+  `SubClassOf()`, non-ASCII bytes in bare words, nested `ObjectInverseOf`)
+  gives a parse error with exit 2 instead of a panic. Inputs that spell each
+  entity one way print the same answer as before.
+
+### Certification
+
+- The routing gate builds and audits the OWL frontend and checks
+  `km-owl-reference` and `engine/tests/frontend_check.rs`.
+
 ## [1.6.1] - 2026-11-12
 
 The reference stage of 1.6.0 scales to the suite's large inputs and its

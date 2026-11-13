@@ -1,0 +1,2 @@
+Prefix(ex:=<http://e.org/#>)
+Ontology(SubClassOf(ex:à ex:B))

@@ -13,16 +13,19 @@ const OWL_NOTHING_IRI: &str = "http://www.w3.org/2002/07/owl#Nothing";
 ///
 /// This tests the complete source token rather than its local name. A non-OWL
 /// class IRI may legally end in `#Thing` or `#Nothing` and must remain named.
+/// The abbreviation `owl:Thing` is a builtin only as an abbreviated IRI: the
+/// full IRI `<owl:Thing>` (scheme `owl`) is an ordinary class.
 fn owl_builtin_class(name: &str) -> Option<&'static str> {
     let raw = name.trim();
-    let raw = raw
-        .strip_prefix('<')
-        .and_then(|s| s.strip_suffix('>'))
-        .unwrap_or(raw);
-    match raw {
-        "owl:Thing" | OWL_THING_IRI => Some("owl:Thing"),
-        "owl:Nothing" | OWL_NOTHING_IRI => Some("owl:Nothing"),
-        _ => None,
+    match raw.strip_prefix('<').and_then(|s| s.strip_suffix('>')) {
+        Some(OWL_THING_IRI) => Some("owl:Thing"),
+        Some(OWL_NOTHING_IRI) => Some("owl:Nothing"),
+        Some(_) => None,
+        None => match raw {
+            "owl:Thing" => Some("owl:Thing"),
+            "owl:Nothing" => Some("owl:Nothing"),
+            _ => None,
+        },
     }
 }
 

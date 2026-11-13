@@ -1,0 +1,4 @@
+base run1 exit 0 KM_TIMING in-process frontend: read=0.40s screen=0.00s parse+clausify+handoff=42.55s cached=true sidecar=false KM_TIMING frontend done @ 46.29s route=elc 
+new run1 exit 0 KM_TIMING in-process frontend: read=0.35s screen=0.00s parse+clausify+handoff=34.50s cached=true sidecar=false KM_TIMING frontend done @ 38.15s route=elc 
+base run2 exit 0 KM_TIMING in-process frontend: read=0.53s screen=0.00s parse+clausify+handoff=48.99s cached=true sidecar=false KM_TIMING frontend done @ 53.19s route=elc 
+new run2 exit 0 KM_TIMING in-process frontend: read=0.34s screen=0.00s parse+clausify+handoff=40.21s cached=true sidecar=false KM_TIMING frontend done @ 43.64s route=elc 

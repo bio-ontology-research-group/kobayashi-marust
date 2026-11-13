@@ -1,0 +1,1 @@
+Ontology(SubClassOf(<http://e#A> ObjectSomeValuesFrom(ObjectInverseOf(ObjectInverseOf(<http://e#r>)) <http://e#B>)))

@@ -1,0 +1,1 @@
+Ontology(SubClassOf(<http://e#A> <http://e#B>)) Ontology(SubClassOf(<http://e#C> <http://e#D>)) Junk(x)
