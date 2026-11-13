@@ -74,10 +74,12 @@ jobs:
              "native/${{ matrix.platform }}/${{ matrix.exe }}"
       - name: Classify a small ontology with km
         shell: bash
+        # macOS runners have no `timeout` command; the step limit bounds the run.
+        timeout-minutes: 5
         env:
           KM_THREADS: "1"
         run: |
-          out=$(timeout 300 "native/${{ matrix.platform }}/${{ matrix.exe }}" \
+          out=$("native/${{ matrix.platform }}/${{ matrix.exe }}" \
             classify --lines --format functional examples/ontologies/disjunction.ofn)
           printf '%s\n' "$out"
           grep -q '^CONSISTENT ' <<<"$out"
