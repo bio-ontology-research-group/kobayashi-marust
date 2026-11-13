@@ -1,4 +1,4 @@
-import ContextCalculus.SRI.Procedure
+import ContextCalculus.SRI.Abstract
 
 /-!
 # Completeness of the v1.6.3 procedure (plan, section 2b, core lemma)
@@ -21,13 +21,18 @@ only when `x` is active at stage `k`. A path is active at stage `k` when
 every step is a demand of `m k` of its parent. `m` and activity increase
 with `k`; each `m · x` stops at `M x`.
 
-1. `sim`: an active path at stage `k` has a `Gstar` record with context
+1. `sim`: an active path at stage `k` has a record of `G` with context
    `K k x` and type `m k x` (child rule, then augment with the children's
    back sets stage by stage from the stage the path became active).
 2. `selfReal`: the records whose type is some `M x` of an eventually
    active `x` are witnessed among themselves.
 3. `subset_alive` puts them into `alive`; the root record has `a` and not
    `b` because `M [] ⊆ tp [] = t0`.
+
+Steps 1 to 3 use only `RulesClosed` and `IsElim` (`Abstract.lean`), so
+the file proves them for any candidate set `G` and elimination result
+`E`, gives `entails_iff_of`, and then derives `complete` and
+`entails_iff` for `Gstar` and `alive`.
 -/
 
 namespace ContextCalculus.SRI.Proc
@@ -106,7 +111,7 @@ end Stages
 -- (a) `stage k x ⊆ T x`, and every seed is inside `T x` (compat of `w`).
 -- (b) `stage k x ⊆ stage (k+1) x` and `active k x → active (k+1) x`.
 -- (c) eventual value `M x` and `∀ k, stage k x ⊆ M x`.
--- (d) `sim`: `active k x → ∃ A, ⟨ctx k x, A, stage k x⟩ ∈ Gstar O req`
+-- (d) `sim`: `active k x → ∃ A, ⟨ctx k x, A, stage k x⟩ ∈ G`
 --     (with `a ∈ req`); by induction on `k`, then on `x`.
 -- (e) `selfReal` of the records whose type is `M x` for an eventually
 --     active `x`.
@@ -360,23 +365,24 @@ theorem stage_stab (x : List (Dm n m)) :
     ∃ N, ∀ k, N ≤ k → stage O T a k x = stage O T a N x :=
   chain_stab (fun k => stage O T a k x) (fun k => stage_mono_succ k x)
 
-/-! ### (d) Every active stage type is a record of `Gstar` -/
+/-! ### (d) Every active stage type is a record of `G` -/
 
-variable {req : List (Fin n)}
+variable {req : List (Fin n)} {G : Finset (Rec n)}
 
 /-- Augment along a list of demands of `stage j x`, using the records of
 the children at stage `j`. The current type contains `stage j x`, so each
 child's context passes the augment condition. -/
-theorem aug_list (hT : UnravelOK O T a) {x : List (Dm n m)} {K : Ty n} {j : Nat}
+theorem aug_list (hG : RulesClosed O req G) (hT : UnravelOK O T a) {x : List (Dm n m)}
+    {K : Ty n} {j : Nat}
     (hK : K ⊆ T x) :
     ∀ (L : List (Dm n m)) (A : Ty n),
-      (⟨K, A, guided O (T x) (K ∪ A)⟩ : Rec n) ∈ Gstar O req → A ⊆ T x →
+      (⟨K, A, guided O (T x) (K ∪ A)⟩ : Rec n) ∈ G → A ⊆ T x →
       stage O T a j x ⊆ guided O (T x) (K ∪ A) →
       (∀ d ∈ L, d ∈ demands O (stage O T a j x) ∧
-        (∃ A', (⟨stage.ctx O T a j (d :: x), A', stage O T a j (d :: x)⟩ : Rec n) ∈ Gstar O req) ∧
+        (∃ A', (⟨stage.ctx O T a j (d :: x), A', stage O T a j (d :: x)⟩ : Rec n) ∈ G) ∧
         back O (stage O T a j (d :: x)) d.2.1 ⊆ T x) →
       ∃ B : Ty n, (∀ c, c ∈ B ↔ c ∈ A ∨ ∃ d ∈ L, c ∈ back O (stage O T a j (d :: x)) d.2.1) ∧
-        (⟨K, B, guided O (T x) (K ∪ B)⟩ : Rec n) ∈ Gstar O req := by
+        (⟨K, B, guided O (T x) (K ∪ B)⟩ : Rec n) ∈ G := by
   intro L
   induction L with
   | nil =>
@@ -390,8 +396,8 @@ theorem aug_list (hT : UnravelOK O T a) {x : List (Dm n m)} {K : Ty n} {j : Nat}
       Finset.union_subset hK (Finset.union_subset hA hbk)
     have hnew : (⟨K, A ∪ back O (stage O T a j (d :: x)) d.2.1,
         guided O (T x) (K ∪ (A ∪ back O (stage O T a j (d :: x)) d.2.1))⟩ : Rec n) ∈
-          Gstar O req :=
-      Gstar_augment (r := ⟨K, A, guided O (T x) (K ∪ A)⟩) hr hr' hd' (mem_ctx_cons j d x)
+          G :=
+      hG.mem_augment (r := ⟨K, A, guided O (T x) (K ∪ A)⟩) hr hr' hd' (mem_ctx_cons j d x)
         (by
           show stage.ctx O T a j (d :: x) ⊆ insert d.2.2 (fwd O (guided O (T x) (K ∪ A)) d.2.1)
           rw [stage.ctx.eq_2]
@@ -416,15 +422,15 @@ theorem aug_list (hT : UnravelOK O T a) {x : List (Dm n m)} {K : Ty n} {j : Nat}
 
 /-- Augment with the back sets of stages `0` to `i - 1`, in increasing
 order, starting from the record the child (or root) rule gives. -/
-theorem aug_stages (hT : UnravelOK O T a) {k : Nat}
+theorem aug_stages (hG : RulesClosed O req G) (hT : UnravelOK O T a) {k : Nat}
     (ih : ∀ j < k + 1, ∀ y, stage.active O T a j y →
-      ∃ A, (⟨stage.ctx O T a j y, A, stage O T a j y⟩ : Rec n) ∈ Gstar O req)
+      ∃ A, (⟨stage.ctx O T a j y, A, stage O T a j y⟩ : Rec n) ∈ G)
     {x : List (Dm n m)} (hv : Valid O T x)
     (hbase : (⟨stage.ctx O T a (k + 1) x, ∅, guided O (T x) (stage.ctx O T a (k + 1) x)⟩ : Rec n) ∈
-      Gstar O req) :
+      G) :
     ∀ i ≤ k + 1, ∃ B : Ty n, (∀ c, c ∈ B ↔ ∃ j < i, c ∈ stage.backs O T a j x) ∧
       (⟨stage.ctx O T a (k + 1) x, B, guided O (T x) (stage.ctx O T a (k + 1) x ∪ B)⟩ : Rec n) ∈
-        Gstar O req := by
+        G := by
   have hK : stage.ctx O T a (k + 1) x ⊆ T x :=
     (ctx_sub_stage _ _).trans (stage_le_T hT _ x hv)
   intro i
@@ -450,7 +456,7 @@ theorem aug_stages (hT : UnravelOK O T a) {k : Nat}
           refine guided_mono (Finset.union_subset_union
             (ctx_mono_of (fun p => stage_mono (by omega) p) x) fun c hc => ?_)
           exact (hB c).2 ⟨i, Nat.lt_succ_self i, hc⟩
-      obtain ⟨B', hB', hr'⟩ := aug_list (j := i) hT hK (demands O (stage O T a i x)) B hr hBT hU
+      obtain ⟨B', hB', hr'⟩ := aug_list (j := i) hG hT hK (demands O (stage O T a i x)) B hr hBT hU
         (fun d hd => ⟨hd, ih i (by omega) (d :: x) (active_cons.2 ⟨hd, hact⟩),
           fun c hc => backs_le_T hT hv (mem_backs.2 ⟨hact, d, hd, hc⟩)⟩)
       refine ⟨B', fun c => ?_, hr'⟩
@@ -460,30 +466,30 @@ theorem aug_stages (hT : UnravelOK O T a) {k : Nat}
       rw [hB, exists_lt_succ_iff, mem_backs]
       simp [hact]
 
-/-- **(d)** An active path at stage `k` has a `Gstar` record with context
+/-- **(d)** An active path at stage `k` has a `G` record with context
 `ctx k x` and type `stage k x`. -/
-theorem sim (hT : UnravelOK O T a) (ha : a ∈ req) :
+theorem sim (hG : RulesClosed O req G) (hT : UnravelOK O T a) (ha : a ∈ req) :
     ∀ k x, stage.active O T a k x →
-      ∃ A, (⟨stage.ctx O T a k x, A, stage O T a k x⟩ : Rec n) ∈ Gstar O req := by
+      ∃ A, (⟨stage.ctx O T a k x, A, stage O T a k x⟩ : Rec n) ∈ G := by
   intro k
   induction k using Nat.strong_induction_on with
   | _ k ih =>
   -- The record the root or child rule gives at stage `k`, from the
   -- parent's record at stage `k`.
   have hbase : ∀ x, stage.active O T a k x → (∀ p, x ≠ [] → x.tail = p →
-      ∃ A, (⟨stage.ctx O T a k p, A, stage O T a k p⟩ : Rec n) ∈ Gstar O req) →
-      (⟨stage.ctx O T a k x, ∅, guided O (T x) (stage.ctx O T a k x)⟩ : Rec n) ∈ Gstar O req := by
+      ∃ A, (⟨stage.ctx O T a k p, A, stage O T a k p⟩ : Rec n) ∈ G) →
+      (⟨stage.ctx O T a k x, ∅, guided O (T x) (stage.ctx O T a k x)⟩ : Rec n) ∈ G := by
     intro x hx hpar
     cases x with
     | nil =>
       rw [stage.ctx.eq_1]
-      exact Gstar_root ha (guided_mem_branches (hT.2.1 _) (Finset.singleton_subset_iff.2 hT.1))
+      exact hG.mem_root ha (guided_mem_branches (hT.2.1 _) (Finset.singleton_subset_iff.2 hT.1))
     | cons d p =>
       obtain ⟨A, hr⟩ := hpar p (List.cons_ne_nil _ _) rfl
       have hv := valid_of_active hT hx
       have hK := ctx_cons_le hT hv (stage_le_T hT k p hv.2.2)
       rw [stage.ctx.eq_2] at hK ⊢
-      exact Gstar_child (r := ⟨_, A, stage O T a k p⟩) hr (active_cons.1 hx).1
+      exact hG.mem_child (r := ⟨_, A, stage O T a k p⟩) hr (active_cons.1 hx).1
         (guided_mem_branches (hT.2.1 _) hK)
   intro x
   induction x with
@@ -493,7 +499,7 @@ theorem sim (hT : UnravelOK O T a) (ha : a ∈ req) :
     cases k with
     | zero => exact ⟨∅, by rw [stage_zero]; exact hb⟩
     | succ k =>
-      obtain ⟨B, hB, hr⟩ := aug_stages (x := []) hT ih trivial hb (k + 1) le_rfl
+      obtain ⟨B, hB, hr⟩ := aug_stages (x := []) hG hT ih trivial hb (k + 1) le_rfl
       refine ⟨B, ?_⟩
       have hBe : B = stage.backs O T a k [] := by
         ext c
@@ -512,7 +518,7 @@ theorem sim (hT : UnravelOK O T a) (ha : a ∈ req) :
     cases k with
     | zero => exact ⟨∅, by rw [stage_zero]; exact hb⟩
     | succ k =>
-      obtain ⟨B, hB, hr⟩ := aug_stages hT ih (valid_of_active hT hx) hb (k + 1) le_rfl
+      obtain ⟨B, hB, hr⟩ := aug_stages hG hT ih (valid_of_active hT hx) hb (k + 1) le_rfl
       refine ⟨B, ?_⟩
       have hBe : B = stage.backs O T a k (d :: p) := by
         ext c
@@ -527,25 +533,26 @@ theorem sim (hT : UnravelOK O T a) (ha : a ∈ req) :
 
 /-! ### (e) The eventual records are witnessed among themselves -/
 
-variable (O T a req) in
-/-- The `Gstar` records whose type is the eventual stage of an eventually
+variable (O T a) in
+/-- The `G` records whose type is the eventual stage of an eventually
 active path. -/
-noncomputable def limRecs (N : List (Dm n m) → Nat) : Finset (Rec n) := by
+noncomputable def limRecs (G : Finset (Rec n)) (N : List (Dm n m) → Nat) : Finset (Rec n) := by
   classical
-  exact (Gstar O req).filter fun r =>
+  exact (G).filter fun r =>
     ∃ x, (∃ k, stage.active O T a k x) ∧ r.t = stage O T a (N x) x
 
 theorem mem_limRecs {N : List (Dm n m) → Nat} {r : Rec n} :
-    r ∈ limRecs O T a req N ↔
-      r ∈ Gstar O req ∧ ∃ x, (∃ k, stage.active O T a k x) ∧ r.t = stage O T a (N x) x := by
+    r ∈ limRecs O T a G N ↔
+      r ∈ G ∧ ∃ x, (∃ k, stage.active O T a k x) ∧ r.t = stage O T a (N x) x := by
   classical
   unfold limRecs
   rw [Finset.mem_filter]
 
 /-- **(e)** The eventual records are witnessed among themselves. -/
-theorem limRecs_witnessed (hT : UnravelOK O T a) (ha : a ∈ req) {N : List (Dm n m) → Nat}
+theorem limRecs_witnessed (hG : RulesClosed O req G) (hT : UnravelOK O T a) (ha : a ∈ req)
+    {N : List (Dm n m) → Nat}
     (hN : ∀ x k, N x ≤ k → stage O T a k x = stage O T a (N x) x) :
-    ∀ r ∈ limRecs O T a req N, witnessed O (limRecs O T a req N) r := by
+    ∀ r ∈ limRecs O T a G N, witnessed O (limRecs O T a G N) r := by
   intro r hr d hd
   obtain ⟨-, x, ⟨k0, hk0⟩, hrt⟩ := mem_limRecs.1 hr
   rw [hrt] at hd ⊢
@@ -556,7 +563,7 @@ theorem limRecs_witnessed (hT : UnravelOK O T a) (ha : a ∈ req) {N : List (Dm 
   have hact : stage.active O T a k x := active_mono (by omega) hk0
   have hd' : d ∈ demands O (stage O T a k x) := hsx ▸ hd
   have hactd : stage.active O T a k (d :: x) := active_cons.2 ⟨hd', hact⟩
-  obtain ⟨A, hrec⟩ := sim hT ha k (d :: x) hactd
+  obtain ⟨A, hrec⟩ := sim hG hT ha k (d :: x) hactd
   refine ⟨⟨stage.ctx O T a k (d :: x), A, stage O T a k (d :: x)⟩,
     mem_limRecs.2 ⟨hrec, d :: x, ⟨k, hactd⟩, hsd⟩, ?_, ?_, ?_⟩
   · exact ctx_sub_stage k (d :: x) (mem_ctx_cons k d x)
@@ -574,38 +581,55 @@ theorem tp_ok {G : Finset (Ty n)} (hG : SelfReal O G) {t0 : Ty n} (h0 : t0 ∈ G
   obtain ⟨-, hb, hc⟩ := wit_spec O G hG (tp_mem O G hG h0 p) hex hd
   exact ⟨hb, hc⟩
 
-/-- **P4, completeness.** -/
-theorem complete (hA : IsALCHI O) {req : List (Fin n)} {a b : Fin n} (ha : a ∈ req)
+/-- **Completeness for any rule-closed set and elimination result.** -/
+theorem complete_of {req : List (Fin n)} {Gr E : Finset (Rec n)} (hGr : RulesClosed O req Gr)
+    (hE : IsElim O Gr E) {a b : Fin n} (ha : a ∈ req)
     {t0 : Ty n} (hgood : Good O t0) (hat : a ∈ t0) (hbt : b ∉ t0) :
-    ∃ r ∈ alive O req, a ∈ r.t ∧ b ∉ r.t := by
+    ∃ r ∈ E, a ∈ r.t ∧ b ∉ r.t := by
   obtain ⟨G, ht0, hG⟩ := hgood
   have hT := tp_ok hG ht0 hat
   choose N hN using fun x => stage_stab (O := O) (T := tp O G hG t0) (a := a) x
   have hN' : ∀ x k, N x ≤ k →
       stage O (tp O G hG t0) a k x = stage O (tp O G hG t0) a (N x) x := hN
-  obtain ⟨A, hr⟩ := sim hT ha (N []) [] (active_nil _)
+  obtain ⟨A, hr⟩ := sim hGr hT ha (N []) [] (active_nil _)
   have hmem : (⟨stage.ctx O (tp O G hG t0) a (N []) [], A, stage O (tp O G hG t0) a (N []) []⟩ :
-      Rec n) ∈ limRecs O (tp O G hG t0) a req N :=
+      Rec n) ∈ limRecs O (tp O G hG t0) a Gr N :=
     mem_limRecs.2 ⟨hr, [], ⟨0, active_nil 0⟩, rfl⟩
-  refine ⟨_, subset_alive (fun r hr => (mem_limRecs.1 hr).1) (limRecs_witnessed hT ha hN') hmem, ?_, ?_⟩
+  refine ⟨_, hE.greatest _ (fun r hr => (mem_limRecs.1 hr).1)
+    (limRecs_witnessed hGr hT ha hN') hmem, ?_, ?_⟩
   · apply ctx_sub_stage
     rw [stage.ctx.eq_1]
     exact Finset.mem_singleton_self a
   · exact fun hb => hbt (stage_le_T hT (N []) [] trivial hb)
 
-/-- **Exactness of the procedure on requested names.** -/
-theorem entails_iff (hA : IsALCHI O) {req : List (Fin n)} {a : Fin n} (ha : a ∈ req)
-    (b : Fin n) : entails O req a b = true ↔ EntailsSub O a b := by
-  rw [entailsSub_iff_good O hA, entails, decide_eq_true_iff]
+/-- **Exactness for any rule-closed set and elimination result.** -/
+theorem entails_iff_of (hA : IsALCHI O) {req : List (Fin n)} {G E : Finset (Rec n)}
+    (hG : RulesClosed O req G) (hE : IsElim O G E) {a : Fin n} (ha : a ∈ req) (b : Fin n) :
+    (∀ r ∈ E, a ∈ r.t → b ∈ r.t) ↔ EntailsSub O a b := by
+  rw [entailsSub_iff_good O hA]
   constructor
   · intro h t ht hat
     by_contra hbt
-    obtain ⟨r, hr, har, hbr⟩ := complete hA ha ht hat hbt
+    obtain ⟨r, hr, har, hbr⟩ := complete_of hG hE ha ht hat hbt
     exact hbr (h r hr har)
   · intro h r hr har
-    exact h r.t (alive_good hr) har
+    exact h r.t (good_of_isElim hG hE hr) har
+
+/-- **P4, completeness.** -/
+theorem complete (hA : IsALCHI O) {req : List (Fin n)} {a b : Fin n} (ha : a ∈ req)
+    {t0 : Ty n} (hgood : Good O t0) (hat : a ∈ t0) (hbt : b ∉ t0) :
+    ∃ r ∈ alive O req, a ∈ r.t ∧ b ∉ r.t :=
+  complete_of Gstar_rulesClosed alive_isElim ha hgood hat hbt
+
+/-- **Exactness of the procedure on requested names.** -/
+theorem entails_iff (hA : IsALCHI O) {req : List (Fin n)} {a : Fin n} (ha : a ∈ req)
+    (b : Fin n) : entails O req a b = true ↔ EntailsSub O a b := by
+  rw [entails, decide_eq_true_iff]
+  exact entails_iff_of hA Gstar_rulesClosed alive_isElim ha b
 
 end ContextCalculus.SRI.Proc
 
+#print axioms ContextCalculus.SRI.Proc.complete_of
+#print axioms ContextCalculus.SRI.Proc.entails_iff_of
 #print axioms ContextCalculus.SRI.Proc.complete
 #print axioms ContextCalculus.SRI.Proc.entails_iff
