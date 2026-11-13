@@ -1,5 +1,54 @@
 # Changelog
 
+## [1.6.3] - 2026-11-13
+
+The proved OWL reference procedure extends from OWL EL and OWL ALC to
+SHI: ALC with inverse roles, role hierarchies and transitive roles. km's
+answers on those inputs can be certified against it, and the Protégé
+plugin becomes installable from Protégé's plugin list with km bundled for
+five platforms. No theorem of 1.6.0 to 1.6.2 changes. Notes:
+`docs/RELEASE-1.6.3.md`.
+
+### Lean
+
+- `SRI`: a normal form for SHI ontologies with inverses and role chains,
+  `translateSRI` from OWL with `translateSRI_correct`.
+- A complete procedure on that normal form: candidate types closed under
+  the rules, then elimination (`classify_spec`, `classifyF_spec` for the
+  fast executable version); transitivity removed by `encTrans` with
+  `encTrans_correct`.
+- `OWL.Ontology.isSHI` (role inclusions and transitivity only);
+  `owlSRIReference_sound` and `owlSRIReference_complete`: on every OWL SHI
+  ontology the route publishes an answer that is exact for
+  `OWL.EntailsSub`. `owlReferenceSHI` tries EL first, then SHI, and is
+  complete on OWL EL and OWL SHI (OWL ALC included).
+- `km-owl-reference --procedure el|alc|el-then-alc|sri|el-then-sri`; the
+  default is `el-then-sri`, with no concept budget. Inputs with other
+  role chains are declined, naming the first such axiom.
+
+### Engine
+
+- `KM_FRONTEND_CHECK=1` uses `km-owl-reference --procedure el-then-sri`.
+  Off by default; the production routes are unchanged.
+- The engine compiles for macOS and Windows (code that uses Unix process
+  groups and signals is gated; Windows stops a child with `taskkill`).
+  Linux behaviour is unchanged.
+
+### Protégé plugin
+
+- The plugin jar bundles `km` for linux-x86_64, linux-aarch64,
+  macos-x86_64, macos-aarch64 and windows-x86_64 and unpacks the matching
+  one to a per-user cache on first use (`km.bin` and `KM_BIN` still take
+  precedence, `PATH` comes last).
+- Two jars: `kobayashi-marust-protege5-1.6.3.jar` (Protégé 5.x, OWL API
+  4) and `kobayashi-marust-protege6-1.6.3.jar` (Protégé 6.0.0-alpha-1,
+  OWL API 5).
+- CI (`.github/workflows/protege-plugin.yml`) builds km on all five
+  platforms, builds and tests both jars, runs an installation test in
+  Protégé 5.6.9 and 6.0.0-alpha-1, and attaches the jars to the release.
+- Descriptors for the Protégé plugin lists in `protege/update-info/`.
+  Licence BSD-3-Clause, copyright Robert Hoehndorf.
+
 ## [1.6.2] - 2026-11-13
 
 The reference procedures get a proved frontend: from the OWL 2 functional
