@@ -187,9 +187,18 @@ pub fn cancel_and_kill_engines() {
     CANCEL.store(true, Ordering::SeqCst);
     let pids = LIVE.lock().unwrap().clone();
     for pid in pids {
+        #[cfg(unix)]
         unsafe {
             libc::kill(pid as i32, libc::SIGKILL);
         }
+        // Windows has no signals: ask the system to end the process.
+        #[cfg(windows)]
+        let _ = std::process::Command::new("taskkill")
+            .args(["/F", "/PID", &pid.to_string()])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
     }
 }
 /// Clear the race-won flag (mirrors `_RACE_WON.clear()` before residue resolution).

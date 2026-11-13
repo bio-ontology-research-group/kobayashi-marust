@@ -34,8 +34,9 @@ import java.util.concurrent.Future;
  *
  * <p>Configuration (system property, else environment variable, else default):
  * <ul>
- *   <li>{@code km.bin} / {@code KM_BIN} — path to the {@code km} binary.
- *       Default: {@code km}, resolved from {@code PATH}.</li>
+ *   <li>{@code km.bin} / {@code KM_BIN}: path to the {@code km} binary.
+ *       Otherwise the plugin uses its bundled executable for this platform,
+ *       then {@code km} on {@code PATH} (see {@link KMExecutable}).</li>
  *   <li>{@code km.timeout.seconds} / {@code KM_TIMEOUT_SECONDS} — maximum
  *       classification time. Default: 600 seconds.</li>
  * </ul>
@@ -134,7 +135,7 @@ public final class Classifier {
         }
 
         public Session(String functionalSyntax) throws Exception {
-            this.kmBin = cfg("km.bin", "KM_BIN", "km");
+            this.kmBin = KMExecutable.resolve();
             this.timeoutSeconds = parseTimeout();
             this.log = Files.createTempFile("kmarust-incremental-", ".log");
             ProcessBuilder builder = new ProcessBuilder(kmBin, "incremental-source");
@@ -597,7 +598,7 @@ public final class Classifier {
     }
 
     public static Result classify(OWLOntology ontology) throws Exception {
-        String kmBin = cfg("km.bin", "KM_BIN", "km");
+        String kmBin = KMExecutable.resolve();
         long timeout = parseTimeout();
 
         // Flatten the complete imports closure. KM intentionally rejects

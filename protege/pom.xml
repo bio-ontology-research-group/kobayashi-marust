@@ -6,7 +6,7 @@
 
   <groupId>org.bioontology</groupId>
   <artifactId>kobayashi-marust-protege</artifactId>
-  <version>1.6.2</version>
+  <version>1.6.3</version>
   <packaging>bundle</packaging>
 
   <name>Kobayashi-MaRust Protege plugin</name>
@@ -20,7 +20,16 @@
     <owlexplanation.version>2.0.1</owlexplanation.version>
     <telemetry.version>2.0.0</telemetry.version>
     <protege.version>5.6.6</protege.version>
+    <!-- The Protégé line this build targets. The protege6 profile switches
+         it, with the OWL API and OWL Explanation versions, to Protégé 6. -->
+    <protege.line>5</protege.line>
+    <!-- Dependencies embedded in the bundle (Embed-Dependency). -->
+    <km.embed>owlexplanation|telemetry|gson</km.embed>
     <gson.version>2.11.0</gson.version>
+    <!-- Staging directory for bundled km executables. Pass
+         -Dkm.native.dir=<dir> with <dir>/<os>-<arch>/km (km.exe on Windows)
+         to bundle them; without it the jar bundles none. -->
+    <km.native.stage>${project.build.directory}/km-native/native</km.native.stage>
   </properties>
 
   <dependencies>
@@ -90,8 +99,48 @@
     </dependency>
   </dependencies>
 
+  <profiles>
+    <!-- Protégé 6 (6.0.0-alpha-1 and later) runs on OWL API 5.5.1 and does
+         not load plugins built for Protégé 5. The same sources compile
+         against both lines; this profile changes only the versions:
+           mvn -Pprotege6 verify -->
+    <profile>
+      <id>protege6</id>
+      <properties>
+        <protege.line>6</protege.line>
+        <owlapi.version>5.5.1</owlapi.version>
+        <owlexplanation.version>5.0.1</owlexplanation.version>
+        <telemetry.version>5.0.0</telemetry.version>
+        <protege.version>6.0.0-alpha-1</protege.version>
+        <hppcrt.version>0.7.5</hppcrt.version>
+        <!-- OWL Explanation 5 uses HPPC-RT, which Protégé 6 does not export. -->
+        <km.embed>owlexplanation|telemetry|gson|hppcrt</km.embed>
+      </properties>
+      <dependencies>
+        <dependency>
+          <groupId>com.github.vsonnier</groupId>
+          <artifactId>hppcrt</artifactId>
+          <version>${hppcrt.version}</version>
+        </dependency>
+      </dependencies>
+    </profile>
+  </profiles>
+
   <build>
-    <finalName>kobayashi-marust-protege-${project.version}</finalName>
+    <finalName>kobayashi-marust-protege${protege.line}-${project.version}</finalName>
+    <!-- Keep the two builds apart so neither overwrites the other's jar. -->
+    <directory>${project.basedir}/target/protege${protege.line}</directory>
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+      </resource>
+      <!-- Records the plugin version for the cache directory of the
+           bundled km executable. -->
+      <resource>
+        <directory>src/main/filtered-resources</directory>
+        <filtering>true</filtering>
+      </resource>
+    </resources>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -121,7 +170,8 @@
             <Bundle-ContactAddress>https://github.com/bio-ontology-research-group/kobayashi-marust</Bundle-ContactAddress>
             <Bundle-Vendor>Bio-Ontology Research Group, KAUST</Bundle-Vendor>
             <Bundle-RequiredExecutionEnvironment>JavaSE-11</Bundle-RequiredExecutionEnvironment>
-            <Bundle-License>BSD-3-Clause,LGPL-3.0-only</Bundle-License>
+            <Bundle-License>BSD-3-Clause</Bundle-License>
+            <Bundle-Copyright>Copyright (c) 2026 Robert Hoehndorf</Bundle-Copyright>
             <Bundle-Activator>org.protege.editor.core.plugin.DefaultPluginActivator</Bundle-Activator>
             <Export-Package>
               org.bioontology.kobayashimarust.protege;version="${project.version}",
@@ -144,10 +194,12 @@
               *
             </Import-Package>
             <Embed-Dependency>
-              owlexplanation|telemetry|gson;scope=compile;inline=false
+              ${km.embed};scope=compile;inline=false
             </Embed-Dependency>
             <Embed-Transitive>false</Embed-Transitive>
-            <Include-Resource>{maven-resources}, plugin.xml=src/main/resources/plugin.xml</Include-Resource>
+            <!-- The antrun stage step always creates km.native.stage; it is
+                 empty in a developer build without -Dkm.native.dir. -->
+            <Include-Resource>{maven-resources}, plugin.xml=src/main/resources/plugin.xml, native=${km.native.stage}</Include-Resource>
           </instructions>
         </configuration>
       </plugin>
@@ -157,13 +209,57 @@
         <version>3.1.0</version>
         <executions>
           <execution>
+            <!-- Copies the executables named by -Dkm.native.dir into the
+                 staging directory and writes native/SHA256SUMS. -->
+            <id>stage-km-native-executables</id>
+            <phase>generate-resources</phase>
+            <goals>
+              <goal>run</goal>
+            </goals>
+            <configuration>
+              <target xmlns:if="ant:if">
+                <delete dir="${project.build.directory}/km-native"/>
+                <mkdir dir="${km.native.stage}"/>
+                <macrodef name="km-native">
+                  <attribute name="platform"/>
+                  <attribute name="exe" default="km"/>
+                  <sequential>
+                    <local name="present"/>
+                    <local name="sum"/>
+                    <available file="${km.native.dir}/@{platform}/@{exe}" type="file" property="present"/>
+                    <sequential if:set="present">
+                      <copy file="${km.native.dir}/@{platform}/@{exe}" todir="${km.native.stage}/@{platform}"/>
+                      <checksum file="${km.native.dir}/@{platform}/@{exe}" algorithm="SHA-256" property="sum"/>
+                      <echo file="${km.native.stage}/SHA256SUMS" append="true" message="${sum}  @{platform}/@{exe}${line.separator}"/>
+                      <echo level="info">bundling km for @{platform}: ${sum}</echo>
+                    </sequential>
+                  </sequential>
+                </macrodef>
+                <sequential if:set="km.native.dir">
+                  <km-native platform="linux-x86_64"/>
+                  <km-native platform="linux-aarch64"/>
+                  <km-native platform="macos-x86_64"/>
+                  <km-native platform="macos-aarch64"/>
+                  <km-native platform="windows-x86_64" exe="km.exe"/>
+                  <fail message="-Dkm.native.dir=${km.native.dir} holds no executable laid out as &lt;os&gt;-&lt;arch&gt;/km">
+                    <condition>
+                      <not>
+                        <available file="${km.native.stage}/SHA256SUMS"/>
+                      </not>
+                    </condition>
+                  </fail>
+                </sequential>
+              </target>
+            </configuration>
+          </execution>
+          <execution>
             <id>verify-protege-bundle-entries</id>
             <phase>verify</phase>
             <goals>
               <goal>run</goal>
             </goals>
             <configuration>
-              <target>
+              <target xmlns:if="ant:if">
                 <delete dir="${project.build.directory}/bundle-verification"/>
                 <unzip
                     src="${project.build.directory}/${project.build.finalName}.jar"
@@ -196,6 +292,62 @@
                 <fail unless="km.bundle.explanation.api">OWL Explanation API missing from bundle</fail>
                 <fail unless="km.bundle.telemetry">OWL Explanation telemetry dependency missing from bundle</fail>
                 <fail unless="km.bundle.gson">Gson missing from bundle</fail>
+                <!-- Every bundled executable must match native/SHA256SUMS.
+                     With -Dkm.native.require=all, every release platform
+                     must be present. -->
+                <fail message="km.native.require accepts only the value all">
+                  <condition>
+                    <and>
+                      <isset property="km.native.require"/>
+                      <not>
+                        <equals arg1="${km.native.require}" arg2="all"/>
+                      </not>
+                    </and>
+                  </condition>
+                </fail>
+                <available file="${project.build.directory}/bundle-verification/native/SHA256SUMS" property="km.native.sums"/>
+                <macrodef name="km-native-verify">
+                  <attribute name="platform"/>
+                  <attribute name="exe" default="km"/>
+                  <sequential>
+                    <property name="km.native.unpacked" location="${project.build.directory}/bundle-verification/native"/>
+                    <available file="${km.native.unpacked}/@{platform}/@{exe}" type="file" property="km.verify.present.@{platform}"/>
+                    <fail message="bundle lacks native/@{platform}/@{exe}, required by -Dkm.native.require=all">
+                      <condition>
+                        <and>
+                          <isset property="km.native.require"/>
+                          <not>
+                            <isset property="km.verify.present.@{platform}"/>
+                          </not>
+                        </and>
+                      </condition>
+                    </fail>
+                    <sequential if:set="km.verify.present.@{platform}">
+                      <fail unless="km.sum.@{platform}/@{exe}" message="native/SHA256SUMS does not list @{platform}/@{exe}"/>
+                      <checksum file="${km.native.unpacked}/@{platform}/@{exe}" algorithm="SHA-256" property="${km.sum.@{platform}/@{exe}}" verifyproperty="km.verify.matches.@{platform}"/>
+                      <fail message="native/@{platform}/@{exe} does not match its SHA-256 sum">
+                        <condition>
+                          <isfalse value="${km.verify.matches.@{platform}}"/>
+                        </condition>
+                      </fail>
+                      <echo level="info">verified bundled km for @{platform}</echo>
+                    </sequential>
+                  </sequential>
+                </macrodef>
+                <!-- Reads "<sum>  <platform>/<exe>" lines as km.sum.<platform>/<exe>. -->
+                <loadproperties prefix="km.sum." if:set="km.native.sums">
+                  <file file="${project.build.directory}/bundle-verification/native/SHA256SUMS"/>
+                  <filterchain>
+                    <tokenfilter>
+                      <replaceregex pattern="^([0-9a-f]{64})  (\S+)$" replace="\2=\1"/>
+                    </tokenfilter>
+                  </filterchain>
+                </loadproperties>
+                <km-native-verify platform="linux-x86_64"/>
+                <km-native-verify platform="linux-aarch64"/>
+                <km-native-verify platform="macos-x86_64"/>
+                <km-native-verify platform="macos-aarch64"/>
+                <km-native-verify platform="windows-x86_64" exe="km.exe"/>
               </target>
             </configuration>
           </execution>
