@@ -1,0 +1,188 @@
+name: Protégé plugin
+
+# Builds km for the five release platforms, bundles all five executables into
+# the Protégé 5 and Protégé 6 plugin jars, tests both jars, and on a version
+# tag attaches them to the GitHub release that release.yml creates.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  km:
+    name: km ${{ matrix.platform }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The oldest supported Ubuntu runners keep the glibc requirement low.
+          - platform: linux-x86_64
+            runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            exe: km
+          - platform: linux-aarch64
+            runner: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            exe: km
+          - platform: macos-x86_64
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+            exe: km
+          - platform: macos-aarch64
+            runner: macos-15
+            target: aarch64-apple-darwin
+            exe: km
+          - platform: windows-x86_64
+            runner: windows-2022
+            target: x86_64-pc-windows-msvc
+            exe: km.exe
+    env:
+      CARGO_TERM_COLOR: never
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engine
+          key: ${{ matrix.target }}
+      - name: Build km
+        working-directory: engine
+        shell: bash
+        run: cargo build --release --locked --bin km --target "${{ matrix.target }}"
+      - name: Stage km
+        shell: bash
+        run: |
+          mkdir -p "native/${{ matrix.platform }}"
+          cp "engine/target/${{ matrix.target }}/release/${{ matrix.exe }}" \
+             "native/${{ matrix.platform }}/${{ matrix.exe }}"
+      - name: Classify a small ontology with km
+        shell: bash
+        env:
+          KM_THREADS: "1"
+        run: |
+          out=$(timeout 300 "native/${{ matrix.platform }}/${{ matrix.exe }}" \
+            classify --lines --format functional examples/ontologies/disjunction.ofn)
+          printf '%s\n' "$out"
+          grep -q '^CONSISTENT ' <<<"$out"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: km-${{ matrix.platform }}
+          path: native/${{ matrix.platform }}/${{ matrix.exe }}
+          if-no-files-found: error
+          retention-days: 14
+
+  plugin:
+    name: Protégé plugin jars
+    needs: km
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: km-*
+          path: artifacts
+      - name: Lay out the bundled executables
+        run: |
+          for platform in linux-x86_64 linux-aarch64 macos-x86_64 macos-aarch64 windows-x86_64; do
+            mkdir -p "native/$platform"
+            cp artifacts/km-"$platform"/* "native/$platform/"
+          done
+          chmod +x native/*/km native/*/km.exe
+          find native -type f -exec sha256sum {} +
+      - name: Check the plugin version against the tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        working-directory: protege
+        run: |
+          version=$(mvn -B -q help:evaluate -Dexpression=project.version -DforceStdout)
+          test "v$version" = "$GITHUB_REF_NAME"
+      - name: Build and test the Protégé 5 jar
+        working-directory: protege
+        run: |
+          mvn -B verify \
+            -Dkm.native.dir="$GITHUB_WORKSPACE/native" \
+            -Dkm.native.require=all \
+            -Dkm.bin="$GITHUB_WORKSPACE/native/linux-x86_64/km"
+      - name: Build and test the Protégé 6 jar
+        working-directory: protege
+        run: |
+          mvn -B -Pprotege6 verify \
+            -Dkm.native.dir="$GITHUB_WORKSPACE/native" \
+            -Dkm.native.require=all \
+            -Dkm.bin="$GITHUB_WORKSPACE/native/linux-x86_64/km"
+      - name: Install both jars in stock Protégé and use the bundled km
+        env:
+          KM_SMOKE_WORK_DIR: ${{ runner.temp }}/smoke
+        run: |
+          mkdir -p "$RUNNER_TEMP/protege"
+          cd "$RUNNER_TEMP/protege"
+          curl -fsSLO https://github.com/protegeproject/protege-distribution/releases/download/protege-5.6.9/Protege-5.6.9-platform-independent.zip
+          curl -fsSLO https://github.com/protegeproject/protege-distribution/releases/download/protege-6.0.0-alpha-1/Protege-6.0.0-alpha-1-platform-independent.zip
+          unzip -q Protege-5.6.9-platform-independent.zip
+          unzip -q Protege-6.0.0-alpha-1-platform-independent.zip
+          cd "$GITHUB_WORKSPACE"
+          version=$(cd protege && mvn -B -q help:evaluate -Dexpression=project.version -DforceStdout)
+          protege/run-installation-smoke.sh "$RUNNER_TEMP/protege/Protege-5.6.9" \
+            "protege/target/protege5/kobayashi-marust-protege5-$version.jar"
+          protege/run-installation-smoke.sh "$RUNNER_TEMP/protege/Protege-6.0.0-alpha-1" \
+            "protege/target/protege6/kobayashi-marust-protege6-$version.jar"
+      - name: Collect the jars
+        run: |
+          mkdir -p dist
+          cp protege/target/protege5/kobayashi-marust-protege5-*.jar dist/
+          cp protege/target/protege6/kobayashi-marust-protege6-*.jar dist/
+          (cd dist && sha256sum ./*.jar > SHA256SUMS-protege && cat SHA256SUMS-protege && ls -l)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: protege-plugin-jars
+          path: dist/
+          if-no-files-found: error
+
+  publish:
+    name: Attach the jars to the release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: plugin
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: protege-plugin-jars
+          path: dist
+      - name: Wait for the release from release.yml
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for _ in $(seq 1 60); do
+            if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "release $GITHUB_REF_NAME does not exist after 20 minutes" >&2
+          exit 1
+      - name: Upload the jars
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            dist/kobayashi-marust-protege5-*.jar \
+            dist/kobayashi-marust-protege6-*.jar \
+            dist/SHA256SUMS-protege
