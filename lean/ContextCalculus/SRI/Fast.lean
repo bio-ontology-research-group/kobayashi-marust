@@ -65,14 +65,6 @@ def Idx.ofList {β : Type} (L : List (Fin n × β)) : Idx n β :=
 
 /-! ## Indexes of the ontology -/
 
-/-- Close a list of super-roles of `R` under the inclusion steps; stop
-when a round adds nothing. If the fuel runs out, fall back to `roleUp`. -/
-def upFix (O : Ontology (Fin n) (Fin m)) (R : RT m) : Nat → List (RT m) → List (RT m)
-  | 0, _ => roleUp O R
-  | k + 1, L =>
-    let L' := upStep O L
-    if L'.all (· ∈ L) then L else upFix O R k L'
-
 structure Ix (n m : Nat) where
   /-- `a ↦ (S, c)` for each `allRight a S c`. -/
   allBy : Idx n (RT m × Fin n)
@@ -471,25 +463,6 @@ theorem mem_gciTop {i : Nat} :
     exact ⟨q, List.mem_zipIdx_iff_getElem?.1 hq, he⟩
   · rintro ⟨q, hq, he⟩
     exact ⟨⟨q, i⟩, ⟨List.mem_zipIdx_iff_getElem?.2 hq, he⟩, rfl⟩
-
-theorem mem_upFix {R S : RT m} :
-    ∀ (k : Nat) (L : List (RT m)), (∀ T ∈ L, RoleLe O R T) → R ∈ L →
-      (S ∈ upFix O R k L ↔ RoleLe O R S)
-  | 0, _, _, _ => by rw [upFix]; exact mem_roleUp
-  | k + 1, L, hL, hR => by
-    rw [upFix]
-    split
-    · next hall =>
-      rw [List.all_eq_true] at hall
-      refine ⟨hL S, fun h => ?_⟩
-      induction h with
-      | refl => exact hR
-      | tail _ hst ih =>
-        exact of_decide_eq_true (hall _ (mem_upStep.2 (Or.inr ⟨_, ih, hst⟩)))
-    · refine mem_upFix k _ (fun T hT => ?_) (mem_upStep.2 (Or.inl hR))
-      rcases mem_upStep.1 hT with hT | ⟨U, hU, hs⟩
-      · exact hL T hT
-      · exact Relation.ReflTransGen.tail (hL U hU) hs
 
 theorem mem_up {R S : RT m} : S ∈ (mkIx O).up R ↔ RoleLe O R S := by
   have h0 : ∀ R : RT m, S ∈ upFix O R (2 * m + 2) [R] ↔ RoleLe O R S := fun R =>

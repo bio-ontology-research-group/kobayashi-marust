@@ -24,6 +24,8 @@ working with `Finset`.
 
 namespace ContextCalculus.SRI.Proc
 
+open ContextCalculus.SRI
+
 variable {n : Nat}
 
 /-! ## Increasing lists -/
@@ -260,5 +262,47 @@ theorem toL_ofSorted {l : List (Fin n)} (h : l.Pairwise (· < ·)) : toL (ofSort
   show toLRaw l = l
   rw [toLRaw_eq]
   exact List.mergeSort_eq_self (r := (· ≤ ·)) (h.imp le_of_lt)
+
+/-! ## Super-roles -/
+
+section Roles
+
+variable {m : Nat} (O : Ontology (Fin n) (Fin m))
+
+/-- Close a list of super-roles of `R` under the inclusion steps; stop
+when a round adds nothing. If the fuel runs out, fall back to `roleUp`. -/
+def upFix (O : Ontology (Fin n) (Fin m)) (R : RT m) : Nat → List (RT m) → List (RT m)
+  | 0, _ => roleUp O R
+  | k + 1, L =>
+    let L' := upStep O L
+    if L'.all (· ∈ L) then L else upFix O R k L'
+
+variable {O}
+
+theorem mem_upFix {R S : RT m} :
+    ∀ (k : Nat) (L : List (RT m)), (∀ T ∈ L, RoleLe O R T) → R ∈ L →
+      (S ∈ upFix O R k L ↔ RoleLe O R S)
+  | 0, _, _, _ => by rw [upFix]; exact mem_roleUp
+  | k + 1, L, hL, hR => by
+    rw [upFix]
+    split
+    · next hall =>
+      rw [List.all_eq_true] at hall
+      refine ⟨hL S, fun h => ?_⟩
+      induction h with
+      | refl => exact hR
+      | tail _ hst ih =>
+        exact of_decide_eq_true (hall _ (mem_upStep.2 (Or.inr ⟨_, ih, hst⟩)))
+    · refine mem_upFix k _ (fun T hT => ?_) (mem_upStep.2 (Or.inl hR))
+      rcases mem_upStep.1 hT with hT | ⟨U, hU, hs⟩
+      · exact hL T hT
+      · exact Relation.ReflTransGen.tail (hL U hU) hs
+
+theorem mem_upFix' {R S : RT m} : S ∈ upFix O R (2 * m + 2) [R] ↔ RoleLe O R S :=
+  mem_upFix _ _ (fun T hT => by
+    rw [List.mem_singleton] at hT; subst hT; exact Relation.ReflTransGen.refl)
+    (List.mem_singleton_self _)
+
+end Roles
 
 end ContextCalculus.SRI.Proc

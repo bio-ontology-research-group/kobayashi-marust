@@ -56,6 +56,32 @@ def main (args : List String) : IO UInt32 := do
         | _ => acc) (0, 0)
       IO.eprintln s!"global_disj={gl.1} local_disj={gl.2}"
       IO.eprintln s!"named={T.named.length} concepts={T.conceptCount} roles={T.roleCount} clauses={T.ontology.length} shi={isSHIB T.ontology} parse_ms={t1-t0} translate_ms={t2-t1}"
+      if (← IO.getEnv "KM_SRI_BF") == some "1" then
+        let b0 ← IO.monoMsNow
+        let E ← IO.lazyPure fun _ => ContextCalculus.SRI.Proc.encTrans T.ontology
+        IO.eprintln s!"bf fresh={E.1} clauses={E.2.length} enc_ms={(← IO.monoMsNow) - b0}"
+        let rq := sriRequest T E.1
+        let b1 ← IO.monoMsNow
+        let ix ← IO.lazyPure fun _ => (ContextCalculus.SRI.Proc.mkIx E.2).allBy
+        IO.eprintln s!"bf allBy_ms={(← IO.monoMsNow) - b1}"
+        let b2 ← IO.monoMsNow
+        let ix ← IO.lazyPure fun _ => (ContextCalculus.SRI.Proc.mkIx E.2).upPos
+        IO.eprintln s!"bf upPos_ms={(← IO.monoMsNow) - b2} {ix.size}"
+        let ix ← IO.lazyPure fun _ => ContextCalculus.SRI.Proc.mkIx E.2
+        let byLens := ix.gciBy.toList.map (·.2.length)
+        let alls := ix.allBy.toList.map (·.2.length)
+        IO.eprintln s!"bf gcis={ix.gciArr.size} top={ix.gciTop.length} maxGciBy={byLens.foldl max 0} sumGciBy={byLens.foldl (· + ·) 0} maxAllBy={alls.foldl max 0} maxBody={ix.gciArr.foldl (fun a q => max a q.1.length) 0} maxHead={ix.gciArr.foldl (fun a q => max a q.2.length) 0}"
+        let mut worst : Nat × Nat × Nat := (0, 0, 0)
+        let mut tot := 0
+        for a in rq.take 300 do
+          let s0 ← IO.monoNanosNow
+          let L ← IO.lazyPure fun _ => ContextCalculus.SRI.Proc.branchesF E.2 ix {a}
+          let d := (← IO.monoNanosNow) - s0
+          tot := tot + d
+          let sz := L.foldl (fun m t => max m t.card) 0
+          if d > worst.1 then worst := (d, a.val, sz)
+        IO.eprintln s!"bf first300_ms={tot/1000000} worst_us={worst.1/1000} worst_name={worst.2.1} worst_size={worst.2.2}"
+        return 0
       if (← IO.getEnv "KM_SRI_PROF") == some "1" then
         let E := ContextCalculus.SRI.Proc.encTrans T.ontology
         let rq := sriRequest T E.1

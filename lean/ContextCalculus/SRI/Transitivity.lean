@@ -1,4 +1,4 @@
-import ContextCalculus.SRI.Procedure
+import ContextCalculus.SRI.FastTy
 
 /-!
 # Transitivity by universal propagation (v1.6.3 plan, section 2d)
@@ -34,10 +34,12 @@ def transTerms : List (RT m) :=
     | _ => none
   (base ++ base.map RoleT.flip).dedup
 
-/-- One fresh name per universal restriction and transitive sub-role. -/
+/-- One fresh name per universal restriction and transitive sub-role. The
+super-roles of each transitive role term are computed once. -/
 def transPairs : List ((Fin n × RT m × Fin n) × RT m) :=
+  let ups := (transTerms O).map fun T => (T, upFix O T (2 * m + 2) [T])
   (alls O).flatMap fun q =>
-    ((transTerms O).filter fun T => decide (q.2.1 ∈ roleUp O T)).map fun T => (q, T)
+    (ups.filter fun p => decide (q.2.1 ∈ p.2)).map fun p => (q, p.1)
 
 def liftClause (k : Nat) : Clause (Fin n) (Fin m) → Option (Clause (Fin (n + k)) (Fin m))
   | .gci body head => some (.gci (body.map (Fin.castAdd k)) (head.map (Fin.castAdd k)))
@@ -91,14 +93,14 @@ theorem mem_transPairs {a c : Fin n} {S T : RT m} :
     ((a, S, c), T) ∈ transPairs O ↔
       Clause.allRight a S c ∈ O ∧ T ∈ transTerms O ∧ RoleLe O T S := by
   unfold transPairs
-  simp only [List.mem_flatMap, List.mem_map, List.mem_filter, decide_eq_true_eq, mem_roleUp]
+  simp only [List.mem_flatMap, List.mem_map, List.mem_filter, decide_eq_true_eq]
   constructor
-  · rintro ⟨⟨a', S', c'⟩, hq, T', ⟨hT, hle⟩, he⟩
+  · rintro ⟨⟨a', S', c'⟩, hq, _, ⟨⟨T', hT, rfl⟩, hle⟩, he⟩
     simp only [Prod.mk.injEq] at he
     obtain ⟨⟨rfl, rfl, rfl⟩, rfl⟩ := he
-    exact ⟨mem_alls.1 hq, hT, hle⟩
+    exact ⟨mem_alls.1 hq, hT, mem_upFix'.1 hle⟩
   · rintro ⟨h1, h2, h3⟩
-    exact ⟨(a, S, c), mem_alls.2 h1, T, ⟨h2, h3⟩, rfl⟩
+    exact ⟨(a, S, c), mem_alls.2 h1, (T, _), ⟨⟨T, h2, rfl⟩, mem_upFix'.2 h3⟩, rfl⟩
 
 theorem mem_encTrans_of_lift {cl0 : Clause (Fin n) (Fin m)}
     {cl : Clause (Fin (n + (transPairs O).length)) (Fin m)} (h : cl0 ∈ O)
