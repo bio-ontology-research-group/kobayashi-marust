@@ -572,6 +572,32 @@ theorem limRecs_witnessed (hG : RulesClosed O req G) (hT : UnravelOK O T a) (ha 
   · rw [← hsx1]
     exact fun c hc => backs_sub_stage k x (mem_backs.2 ⟨hact, d, hd', hc⟩)
 
+/-- **(e), by exact context.** The witness of a demand `d` of the record
+at `x` is the record at `d :: x`, whose context is the child context of
+`d`, so the eventual records are witnessed among themselves by exact
+context. -/
+theorem limRecs_witnessedK (hG : RulesClosed O req G) (hT : UnravelOK O T a) (ha : a ∈ req)
+    {N : List (Dm n m) → Nat}
+    (hN : ∀ x k, N x ≤ k → stage O T a k x = stage O T a (N x) x) :
+    ∀ r ∈ limRecs O T a G N, witnessedK O (limRecs O T a G N) r := by
+  intro r hr d hd
+  obtain ⟨-, x, ⟨k0, hk0⟩, hrt⟩ := mem_limRecs.1 hr
+  rw [hrt] at hd ⊢
+  let k := max (max (N x) (N (d :: x))) k0
+  have hsx : stage O T a k x = stage O T a (N x) x := hN x k (by omega)
+  have hsx1 : stage O T a (k + 1) x = stage O T a (N x) x := hN x (k + 1) (by omega)
+  have hsd : stage O T a k (d :: x) = stage O T a (N (d :: x)) (d :: x) := hN _ k (by omega)
+  have hact : stage.active O T a k x := active_mono (by omega) hk0
+  have hd' : d ∈ demands O (stage O T a k x) := hsx ▸ hd
+  have hactd : stage.active O T a k (d :: x) := active_cons.2 ⟨hd', hact⟩
+  obtain ⟨A, hrec⟩ := sim hG hT ha k (d :: x) hactd
+  refine ⟨⟨stage.ctx O T a k (d :: x), A, stage O T a k (d :: x)⟩,
+    mem_limRecs.2 ⟨hrec, d :: x, ⟨k, hactd⟩, hsd⟩, ?_, ?_⟩
+  · show stage.ctx O T a k (d :: x) = insert d.2.2 (fwd O (stage O T a (N x) x) d.2.1)
+    rw [stage.ctx.eq_2, hsx]
+  · rw [← hsx1]
+    exact fun c hc => backs_sub_stage k x (mem_backs.2 ⟨hact, d, hd', hc⟩)
+
 end Lemmas
 
 /-- The unravelling of a self-realising set meets `UnravelOK`. -/
@@ -615,6 +641,56 @@ theorem entails_iff_of (hA : IsALCHI O) {req : List (Fin n)} {G E : Finset (Rec 
   · intro h r hr har
     exact h r.t (good_of_isElim hG hE hr) har
 
+/-- **Completeness by exact context.** A good type with a requested name
+`a` contains the type of an alive record with `a`. -/
+theorem realize_ofK {req : List (Fin n)} {Gr E : Finset (Rec n)} (hGr : RulesClosed O req Gr)
+    (hE : IsElimK O Gr E) {a : Fin n} (ha : a ∈ req)
+    {t0 : Ty n} (hgood : Good O t0) (hat : a ∈ t0) :
+    ∃ r ∈ E, a ∈ r.t ∧ r.t ⊆ t0 := by
+  obtain ⟨G, ht0, hG⟩ := hgood
+  have hT := tp_ok hG ht0 hat
+  choose N hN using fun x => stage_stab (O := O) (T := tp O G hG t0) (a := a) x
+  have hN' : ∀ x k, N x ≤ k →
+      stage O (tp O G hG t0) a k x = stage O (tp O G hG t0) a (N x) x := hN
+  obtain ⟨A, hr⟩ := sim hGr hT ha (N []) [] (active_nil _)
+  have hmem : (⟨stage.ctx O (tp O G hG t0) a (N []) [], A, stage O (tp O G hG t0) a (N []) []⟩ :
+      Rec n) ∈ limRecs O (tp O G hG t0) a Gr N :=
+    mem_limRecs.2 ⟨hr, [], ⟨0, active_nil 0⟩, rfl⟩
+  refine ⟨_, hE.greatest _ (fun r hr => (mem_limRecs.1 hr).1)
+    (limRecs_witnessedK hGr hT ha hN') hmem, ?_, ?_⟩
+  · apply ctx_sub_stage
+    rw [stage.ctx.eq_1]
+    exact Finset.mem_singleton_self a
+  · exact stage_le_T hT (N []) [] trivial
+
+/-- **Exactness for elimination by exact context.** -/
+theorem entails_iff_ofK (hA : IsALCHI O) {req : List (Fin n)} {G E : Finset (Rec n)}
+    (hG : RulesClosed O req G) (hKt : ∀ r ∈ G, r.K ⊆ r.t) (hE : IsElimK O G E) {a : Fin n}
+    (ha : a ∈ req) (b : Fin n) :
+    (∀ r ∈ E, a ∈ r.t → b ∈ r.t) ↔ EntailsSub O a b := by
+  rw [entailsSub_iff_good O hA]
+  constructor
+  · intro h t ht hat
+    obtain ⟨r, hr, har, hrt⟩ := realize_ofK hG hE ha ht hat
+    exact hrt (h r hr har)
+  · intro h r hr har
+    exact h r.t (good_of_isElimK hG hKt hE hr) har
+
+/-- **Unsatisfiability for elimination by exact context.** A requested
+name is unsatisfiable iff no alive record holds it. -/
+theorem unsat_iff_ofK (hA : IsALCHI O) {req : List (Fin n)} {G E : Finset (Rec n)}
+    (hG : RulesClosed O req G) (hKt : ∀ r ∈ G, r.K ⊆ r.t) (hE : IsElimK O G E) {a : Fin n}
+    (ha : a ∈ req) :
+    (∀ r ∈ E, a ∉ r.t) ↔
+      ∀ (D : Type) [Nonempty D] (I : Interp D (Fin n) (Fin m)), models I O → ∀ x, ¬ I.c a x := by
+  rw [unsat_iff_no_good O hA]
+  constructor
+  · intro h t ht hat
+    obtain ⟨r, hr, har, -⟩ := realize_ofK hG hE ha ht hat
+    exact h r hr har
+  · intro h r hr har
+    exact h r.t (good_of_isElimK hG hKt hE hr) har
+
 /-- **P4, completeness.** -/
 theorem complete (hA : IsALCHI O) {req : List (Fin n)} {a b : Fin n} (ha : a ∈ req)
     {t0 : Ty n} (hgood : Good O t0) (hat : a ∈ t0) (hbt : b ∉ t0) :
@@ -631,5 +707,7 @@ end ContextCalculus.SRI.Proc
 
 #print axioms ContextCalculus.SRI.Proc.complete_of
 #print axioms ContextCalculus.SRI.Proc.entails_iff_of
+#print axioms ContextCalculus.SRI.Proc.entails_iff_ofK
+#print axioms ContextCalculus.SRI.Proc.unsat_iff_ofK
 #print axioms ContextCalculus.SRI.Proc.complete
 #print axioms ContextCalculus.SRI.Proc.entails_iff

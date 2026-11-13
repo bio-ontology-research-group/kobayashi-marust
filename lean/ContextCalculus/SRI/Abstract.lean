@@ -39,6 +39,20 @@ structure IsElim (O : Ontology (Fin n) (Fin m)) (G E : Finset (Rec n)) : Prop wh
   witnessed : ∀ r ∈ E, Proc.witnessed O E r
   greatest : ∀ S ⊆ G, (∀ r ∈ S, Proc.witnessed O S r) → S ⊆ E
 
+/-- `witnessed` with the witness found by its exact context: a record
+whose context is the child context `insert b (fwd O r.t R)` of the
+demand. The completeness proof always finds its witnesses there. -/
+def witnessedK (O : Ontology (Fin n) (Fin m)) (G : Finset (Rec n)) (r : Rec n) : Prop :=
+  ∀ d ∈ demands O r.t, ∃ r' ∈ G, r'.K = insert d.2.2 (fwd O r.t d.2.1) ∧
+    back O r'.t d.2.1 ⊆ r.t
+
+/-- `E` is the greatest subset of `G` whose records are witnessed in it
+by exact context. -/
+structure IsElimK (O : Ontology (Fin n) (Fin m)) (G E : Finset (Rec n)) : Prop where
+  subset : E ⊆ G
+  witnessed : ∀ r ∈ E, witnessedK O E r
+  greatest : ∀ S ⊆ G, (∀ r ∈ S, witnessedK O S r) → S ⊆ E
+
 variable {O : Ontology (Fin n) (Fin m)} {req : List (Fin n)} {G E : Finset (Rec n)}
 
 /-! ## The rules in the form the completeness proof uses -/
@@ -73,6 +87,28 @@ theorem good_of_isElim (hG : RulesClosed O req G) (hE : IsElim O G E) {r : Rec n
   obtain ⟨r', hr', hb, hf, hbk⟩ := hE.witnessed r0 hr0 (a, R, b) (mem_demands.2 ⟨hcl, ha⟩)
   exact ⟨r'.t, Finset.mem_image_of_mem _ hr', hb, (compat_iff R r0.t r'.t).2 ⟨hf, hbk⟩⟩
 
+/-- When every record of `G` holds its context in its type, a witness by
+exact context is a witness. -/
+theorem witnessed_of_witnessedK (hKt : ∀ r ∈ G, r.K ⊆ r.t) {S : Finset (Rec n)} (hSG : S ⊆ G)
+    {r : Rec n} (h : witnessedK O S r) : witnessed O S r := by
+  intro d hd
+  obtain ⟨r', hr', hK, hb⟩ := h d hd
+  have hsub : insert d.2.2 (fwd O r.t d.2.1) ⊆ r'.t := by
+    rw [← hK]; exact hKt r' (hSG hr')
+  exact ⟨r', hr', hsub (Finset.mem_insert_self _ _), (Finset.subset_insert _ _).trans hsub, hb⟩
+
+/-- **Soundness** for elimination by exact context. -/
+theorem good_of_isElimK (hG : RulesClosed O req G) (hKt : ∀ r ∈ G, r.K ⊆ r.t)
+    (hE : IsElimK O G E) {r : Rec n} (hr : r ∈ E) : Good O r.t := by
+  refine ⟨E.image Rec.t, Finset.mem_image_of_mem _ hr, ?_⟩
+  intro t ht
+  obtain ⟨r0, hr0, rfl⟩ := Finset.mem_image.1 ht
+  refine ⟨hG.closed r0 (hE.subset hr0), ?_⟩
+  intro a R b hcl ha
+  obtain ⟨r', hr', hb, hf, hbk⟩ := witnessed_of_witnessedK hKt hE.subset (hE.witnessed r0 hr0)
+    (a, R, b) (mem_demands.2 ⟨hcl, ha⟩)
+  exact ⟨r'.t, Finset.mem_image_of_mem _ hr', hb, (compat_iff R r0.t r'.t).2 ⟨hf, hbk⟩⟩
+
 /-! ## The reference sets meet the interface -/
 
 theorem Gstar_rulesClosed : RulesClosed O req (Gstar O req) where
@@ -89,5 +125,6 @@ theorem alive_isElim : IsElim O (Gstar O req) (alive O req) where
 end ContextCalculus.SRI.Proc
 
 #print axioms ContextCalculus.SRI.Proc.good_of_isElim
+#print axioms ContextCalculus.SRI.Proc.good_of_isElimK
 #print axioms ContextCalculus.SRI.Proc.Gstar_rulesClosed
 #print axioms ContextCalculus.SRI.Proc.alive_isElim
