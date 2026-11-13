@@ -45,6 +45,7 @@ import ContextCalculus.SRI.GoodTypes
 import ContextCalculus.SRI.GoodTypesTests
 import ContextCalculus.SRI.Procedure
 import ContextCalculus.SRI.ProcedureTests
+import ContextCalculus.SRI.Completeness
 import ContextCalculus.OWLFrontend.Reference
 import ContextCalculus.OWLFrontend.ReferenceReadout
 import ContextCalculus.ELResidualCertificate
