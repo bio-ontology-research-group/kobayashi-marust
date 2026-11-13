@@ -43,6 +43,8 @@ import ContextCalculus.OWLFrontend.SRITranslateCorrect
 import ContextCalculus.OWLFrontend.SRITranslateTests
 import ContextCalculus.SRI.GoodTypes
 import ContextCalculus.SRI.GoodTypesTests
+import ContextCalculus.SRI.Procedure
+import ContextCalculus.SRI.ProcedureTests
 import ContextCalculus.OWLFrontend.Reference
 import ContextCalculus.OWLFrontend.ReferenceReadout
 import ContextCalculus.ELResidualCertificate
