@@ -1,4 +1,4 @@
-import ContextCalculus.OWLFrontend.Reference
+import ContextCalculus.OWLFrontend.ReferenceSHI
 import ContextCalculus.OWL.Names
 
 /-!
@@ -6,8 +6,8 @@ import ContextCalculus.OWL.Names
 
 `docs/V1.6.2-FRONTEND-PLAN.md`, section 7. The executable `km-owl-reference`
 requests the class IRIs of the ontology (`OWL.Ontology.classNames`) followed
-by two probe IRIs, `probeA` and `probeB`, runs `owlReference` (or one of its
-routes) and prints three things read from the answer's bits:
+by two probe IRIs, `probeA` and `probeB`, runs `owlReference` or
+`owlReferenceSHI` (or one of their routes) and prints three things read from the answer's bits:
 
 - the inconsistency verdict: the bit `probeA ⊑ probeB`
   (`OWL.inconsistent_iff_entailsSub_fresh`);
@@ -60,6 +60,10 @@ inductive OWLProcedure where
   | el
   | alc
   | elThenAlc
+  /-- The SHI route alone (`owlSRIReference`). -/
+  | sri
+  /-- EL first, then SHI (`owlReferenceSHI`). -/
+  | elThenSri
   deriving DecidableEq, Repr
 
 /-- The equation a published answer of a procedure comes with. -/
@@ -67,6 +71,8 @@ def RouteAnswer : OWLProcedure → OWL.Ontology → List OWL.IRI → OWLAnswer �
   | .el, O, requested, a => owlELReference O requested = some a
   | .alc, O, requested, a => owlALCReference O requested = some a
   | .elThenAlc, O, requested, a => owlReference O requested = some a
+  | .sri, O, requested, a => owlSRIReference O requested = some a
+  | .elThenSri, O, requested, a => owlReferenceSHI O requested = some a
 
 theorem routeAnswer_exact {p : OWLProcedure} {O : OWL.Ontology}
     {requested : List OWL.IRI} {a : OWLAnswer} (h : RouteAnswer p O requested a) :
@@ -75,6 +81,8 @@ theorem routeAnswer_exact {p : OWLProcedure} {O : OWL.Ontology}
   | el => exact owlELReference_sound h
   | alc => exact owlALCReference_sound h
   | elThenAlc => exact owlReference_sound h
+  | sri => exact owlSRIReference_sound h
+  | elThenSri => exact owlReferenceSHI_sound h
 
 /-! ### The readout -/
 
