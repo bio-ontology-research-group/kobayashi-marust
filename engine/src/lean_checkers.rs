@@ -567,10 +567,18 @@ const MAIN_STACK_KB: &str = "262144";
 /// thread (milliseconds).
 const RETRY_PAUSES_MS: [u64; 9] = [10, 20, 40, 80, 160, 320, 640, 1280, 2560];
 
+#[cfg(unix)]
 fn startup_thread_failure(output: &std::process::Output) -> bool {
     use std::os::unix::process::ExitStatusExt;
     output.status.signal() == Some(6)
         && String::from_utf8_lossy(&output.stderr).contains("failed to create thread")
+}
+
+// Other platforms report no signal number, so no exit counts as this failure
+// and a checker run is never retried there.
+#[cfg(not(unix))]
+fn startup_thread_failure(_output: &std::process::Output) -> bool {
+    false
 }
 
 /// A `std::process::Command` for a Lean checker with the start-up handling
@@ -656,6 +664,8 @@ impl CheckerCommand {
         }
         // The checker dies with the thread that started it, so a worker that
         // is killed (for example by a caller's time limit) leaves no orphan.
+        // Only Linux has this parent-death signal.
+        #[cfg(target_os = "linux")]
         unsafe {
             use std::os::unix::process::CommandExt;
             self.command.pre_exec(|| {

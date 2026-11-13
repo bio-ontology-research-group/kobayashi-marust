@@ -485,10 +485,12 @@ if [ "$ref_status" -ne 4 ] || ! grep -q '^io error' <<<"$ref_err"; then
     exit 1
 fi
 
-# km-owl-reference (v1.6.2): an EL and an ALC answer in owl-sparse-v1, a
-# decline outside the fragment (exit 3), and the exit codes 2 and 4.
+# km-owl-reference: an EL answer and an SHI answer (the v1.6.3 default
+# el-then-sri) in owl-sparse-v1, the ALC route on request, a decline
+# outside the fragment (exit 3), and the exit codes 2 and 4.
 grep -q '"format":"owl-sparse-v1","procedure":"el"' <("$owl_bin_path" "$owl_fixtures/el_existentials.ofn")
-grep -q '"format":"owl-sparse-v1","procedure":"alc"' <("$owl_bin_path" "$owl_fixtures/alc_disjunction.ofn")
+grep -q '"format":"owl-sparse-v1","procedure":"sri"' <("$owl_bin_path" "$owl_fixtures/alc_disjunction.ofn")
+grep -q '"format":"owl-sparse-v1","procedure":"alc"' <("$owl_bin_path" --procedure el-then-alc "$owl_fixtures/alc_disjunction.ofn")
 owl_status=0
 "$owl_bin_path" "$owl_fixtures/rules_taxonomy.ofn" >/dev/null 2>&1 || owl_status=$?
 if [ "$owl_status" -ne 3 ]; then

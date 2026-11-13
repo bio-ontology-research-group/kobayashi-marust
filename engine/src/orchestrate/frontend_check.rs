@@ -2,17 +2,19 @@
 //! OWL reference procedure (`km-owl-reference`, `lean/KMOWLReferenceCheck.lean`)
 //! on the same OFN text (docs/V1.6.2-FRONTEND-PLAN.md, section 7, phase A).
 //!
-//! The Lean executable parses the text, translates it into the normal forms
-//! of the v1.6.0 reference procedures and publishes only through
-//! `owlReference`'s equation, so its answer is exact under the OWL 2 direct
-//! semantics (`owlReference_sound`, `owlReadout_exact`). When km's answer
+//! The Lean executable parses the text, translates it into the EL normal
+//! form or the SRI normal form (v1.6.3 SHI route) and publishes only through
+//! `owlReferenceSHI`'s equation, so its answer is exact under the OWL 2
+//! direct semantics (`owlReferenceSHI_sound`, `owlReadout_exact`). It
+//! publishes on every OWL EL and every SHI ontology
+//! (`owlReferenceSHI_complete`), with no concept budget. When km's answer
 //! agrees with it, km's answer is exact too.
 //!
 //! After km has its final answer (any route), with `KM_FRONTEND_CHECK=1`:
 //!
 //! * the checker is `KM_OWL_REFERENCE_CHECKER`, else
 //!   `lean/.lake/build/bin/km-owl-reference`; it runs on the input file with
-//!   `--procedure el-then-alc` under `KM_FRONTEND_CHECK_BUDGET_S` (default
+//!   `--procedure el-then-sri` (EL first, then SHI) under `KM_FRONTEND_CHECK_BUDGET_S` (default
 //!   300 s) and a 256 MiB Lean stack, as the reference stage does;
 //! * the comparison uses the normal form of the v1.6.0 digest
 //!   (`parse_answer_digest` of the checkers-on suite tooling): the
@@ -144,7 +146,7 @@ pub fn check(ontology: &Path, answer: &KmAnswer<'_>, timing: bool) -> Outcome {
     let mut command = crate::lean_checkers::CheckerCommand::new(&checker);
     command
         .time_limit(Some(budget()))
-        .args(["--procedure", "el-then-alc"])
+        .args(["--procedure", "el-then-sri"])
         .arg(ontology);
     if timing {
         command.env("KM_REFERENCE_TIMING", "1");
@@ -550,6 +552,30 @@ mod tests {
         };
         let got = compare(&r, &km(false, &unsat, &pairs), &prefixes());
         assert_eq!(got, Outcome::Agreed { procedure: "alc".into() });
+    }
+
+    #[test]
+    fn answers_of_the_shi_route_are_compared_like_the_others() {
+        let r = reference(
+            r#"{"format":"owl-sparse-v1","procedure":"sri","inconsistent":false,
+            "unsat":["http://ex.org/o#U"],
+            "rows":[{"sub":"http://ex.org/o#A","sups":["http://ex.org/o#A","http://ex.org/o#B"]},
+                    {"sub":"http://ex.org/o#B","sups":["http://ex.org/o#B"]}]}"#,
+        );
+        assert_eq!(r.procedure, "sri");
+        let unsat = vec![":U".to_string()];
+        let pairs = |f: &mut dyn FnMut(&str, &str)| f(":A", ":B");
+        let got = compare(&r, &km(true, &unsat, &pairs), &prefixes());
+        assert_eq!(got, Outcome::Agreed { procedure: "sri".into() });
+        let missing = |_: &mut dyn FnMut(&str, &str)| {};
+        let got = compare(&r, &km(true, &unsat, &missing), &prefixes());
+        assert_eq!(
+            got,
+            Outcome::Disagreed {
+                procedure: "sri".into(),
+                first: "SubClassOf(http://ex.org/o#A http://ex.org/o#B): km=no reference=yes".into()
+            }
+        );
     }
 
     #[test]

@@ -460,3 +460,7 @@ root = "KMOWLParse"
 [[lean_exe]]
 name = "km-owl-reference"
 root = "KMOWLReferenceCheck"
+
+[[lean_exe]]
+name = "km-sri-probe"
+root = "KMSRIProbe"

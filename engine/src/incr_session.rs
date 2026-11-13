@@ -127,9 +127,13 @@ fn classify_process_json(doc: &str, limit: std::time::Duration) -> Option<Option
     std::fs::write(path.path(), doc).ok()?;
     let exe = std::env::current_exe().ok()?;
     let out = crate::orchestrate::tmpfile::TempPath::new("-witness.json");
-    use std::os::unix::process::CommandExt;
-    let mut child = std::process::Command::new(exe)
-        .process_group(0)
+    let mut command = std::process::Command::new(exe);
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
+    let mut child = command
         .arg("classify")
         .arg(path.path())
         .stdin(std::process::Stdio::null())
@@ -148,7 +152,11 @@ fn classify_process_json(doc: &str, limit: std::time::Duration) -> Option<Option
         }
         if started.elapsed() > limit {
             // The whole group: the worker may have spawned its own workers.
+            #[cfg(unix)]
             unsafe { libc::kill(-(child.id() as i32), libc::SIGKILL) };
+            // Other platforms have no process groups: end the worker itself.
+            #[cfg(not(unix))]
+            let _ = child.kill();
             let _ = child.wait();
             return None;
         }
