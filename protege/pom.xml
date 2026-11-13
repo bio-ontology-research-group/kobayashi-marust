@@ -6,7 +6,7 @@
 
   <groupId>org.bioontology</groupId>
   <artifactId>kobayashi-marust-protege</artifactId>
-  <version>1.6.2</version>
+  <version>1.6.3</version>
   <packaging>bundle</packaging>
 
   <name>Kobayashi-MaRust Protege plugin</name>
@@ -20,6 +20,11 @@
     <owlexplanation.version>2.0.1</owlexplanation.version>
     <telemetry.version>2.0.0</telemetry.version>
     <protege.version>5.6.6</protege.version>
+    <!-- The Protégé line this build targets. The protege6 profile switches
+         it, with the OWL API and OWL Explanation versions, to Protégé 6. -->
+    <protege.line>5</protege.line>
+    <!-- Dependencies embedded in the bundle (Embed-Dependency). -->
+    <km.embed>owlexplanation|telemetry|gson</km.embed>
     <gson.version>2.11.0</gson.version>
     <!-- Staging directory for bundled km executables. Pass
          -Dkm.native.dir=<dir> with <dir>/<os>-<arch>/km (km.exe on Windows)
@@ -94,8 +99,37 @@
     </dependency>
   </dependencies>
 
+  <profiles>
+    <!-- Protégé 6 (6.0.0-alpha-1 and later) runs on OWL API 5.5.1 and does
+         not load plugins built for Protégé 5. The same sources compile
+         against both lines; this profile changes only the versions:
+           mvn -Pprotege6 verify -->
+    <profile>
+      <id>protege6</id>
+      <properties>
+        <protege.line>6</protege.line>
+        <owlapi.version>5.5.1</owlapi.version>
+        <owlexplanation.version>5.0.1</owlexplanation.version>
+        <telemetry.version>5.0.0</telemetry.version>
+        <protege.version>6.0.0-alpha-1</protege.version>
+        <hppcrt.version>0.7.5</hppcrt.version>
+        <!-- OWL Explanation 5 uses HPPC-RT, which Protégé 6 does not export. -->
+        <km.embed>owlexplanation|telemetry|gson|hppcrt</km.embed>
+      </properties>
+      <dependencies>
+        <dependency>
+          <groupId>com.github.vsonnier</groupId>
+          <artifactId>hppcrt</artifactId>
+          <version>${hppcrt.version}</version>
+        </dependency>
+      </dependencies>
+    </profile>
+  </profiles>
+
   <build>
-    <finalName>kobayashi-marust-protege-${project.version}</finalName>
+    <finalName>kobayashi-marust-protege${protege.line}-${project.version}</finalName>
+    <!-- Keep the two builds apart so neither overwrites the other's jar. -->
+    <directory>${project.basedir}/target/protege${protege.line}</directory>
     <resources>
       <resource>
         <directory>src/main/resources</directory>
@@ -159,7 +193,7 @@
               *
             </Import-Package>
             <Embed-Dependency>
-              owlexplanation|telemetry|gson;scope=compile;inline=false
+              ${km.embed};scope=compile;inline=false
             </Embed-Dependency>
             <Embed-Transitive>false</Embed-Transitive>
             <!-- The antrun stage step always creates km.native.stage; it is
