@@ -59,7 +59,10 @@ transitivity stay outside the proved route.
 The engine's production routes did not change since v1.6.2 (the only
 Linux change is the procedure that the off-by-default `KM_FRONTEND_CHECK`
 calls), so the v1.6.2 speed and correctness records stand. Run for this
-release: the engine library tests, the routing gate's `km-owl-reference`
+release: the engine library tests on the workstation (3,140 passed; the
+30 failures need the Lean checker programs that the Ibex gate provides,
+or share a lock when run in parallel, and fail the same way at v1.6.2;
+`elcomplete` passes in full with one test thread), the routing gate's `km-owl-reference`
 checks, and the Protégé CI on all five platforms (km built and run on
 each; both jars built with 86 tests passing; installation tested in
 Protégé 5.6.9 and 6.0.0-alpha-1 with the bundled km). The Ibex
