@@ -43,6 +43,9 @@ jobs:
             runner: windows-2022
             target: x86_64-pc-windows-msvc
             exe: km.exe
+            # Link the C runtime statically, so km.exe runs without the
+            # Visual C++ redistributable.
+            rustflags: -C target-feature=+crt-static
     env:
       CARGO_TERM_COLOR: never
       MACOSX_DEPLOYMENT_TARGET: "11.0"
@@ -58,6 +61,8 @@ jobs:
       - name: Build km
         working-directory: engine
         shell: bash
+        env:
+          RUSTFLAGS: ${{ matrix.rustflags }}
         run: cargo build --release --locked --bin km --target "${{ matrix.target }}"
       - name: Stage km
         shell: bash
