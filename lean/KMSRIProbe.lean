@@ -113,7 +113,16 @@ def main (args : List String) : IO UInt32 := do
         let c ← IO.lazyPure fun _ => ContextCalculus.SRI.Proc.candidates E.2 ix rq
         IO.eprintln s!"candidates={c.length} cand_ms={(← IO.monoMsNow) - tc0}"
         let te0 ← IO.monoMsNow
-        let al ← IO.lazyPure fun _ => ContextCalculus.SRI.Proc.elimK ix c
+        let kI ← IO.lazyPure fun _ => ContextCalculus.SRI.Proc.ctxIdxI c
+        let te1 ← IO.monoMsNow
+        let A := ContextCalculus.SRI.Proc.withBack ix c
+        let sp ← IO.lazyPure fun _ => c.zipIdx.map fun q => (q.2, ContextCalculus.SRI.Proc.supportsI ix A kI q.1)
+        let te2 ← IO.monoMsNow
+        let el ← IO.lazyPure fun _ => ContextCalculus.SRI.Proc.elimLoop sp
+        let te3 ← IO.monoMsNow
+        IO.eprintln s!"elim ctxIdx_ms={te1-te0} supports_ms={te2-te1} loop_ms={te3-te2} alive={el.length} supports={sp.foldl (fun a p => a + p.2.foldl (fun b l => b + l.length) 0) 0}"
+        let te0 ← IO.monoMsNow
+        let al ← IO.lazyPure fun _ => ContextCalculus.SRI.Proc.elimI ix c
         IO.eprintln s!"alive={al.length} elim_ms={(← IO.monoMsNow) - te0}"
         let tr0 ← IO.monoMsNow
         let rows ← IO.lazyPure fun _ =>

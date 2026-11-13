@@ -4,7 +4,7 @@ import Std.Data.HashSet.Lemmas
 import Std.Data.HashMap.Lemmas
 
 /-!
-# A fast executable procedure for ALCHI (v1.6.3, P2b)
+# A fast executable procedure for ALCHI (v1.6.3, P2b to P2d)
 
 `Procedure.lean` computes `Gstar` in rounds that apply every rule to
 every record and pair of records, and `alive` in rounds over the whole
@@ -23,22 +23,31 @@ The parts:
   indexes, equal to `fwd`, `back` and `demands`.
 - `branchesF`: the branches of a seed. It fires gcis from a queue of the
   gcis whose body gained a name, instead of scanning every gci at each
-  step. Its result contains every member of `branches` and holds closed
-  types only.
+  step, and tests membership in hash sets (`fbAuxH`, equal to `fbAux`).
+  Its result contains every member of `branches` and holds closed types
+  only.
 - `loop`: the worklist saturation. The state keeps the records seen so
   far (a hash set), the records still to process, the seen records by
-  each name of their context, and the demands of the seen records by
-  their filler. Processing a record applies the child rule to it and the
-  augment rule with it as the parent and as the child, against the seen
-  records. The measure `2 * unseen + todo` falls at every step.
+  each name of their context (with their back sets per role), the
+  demands of the seen records by their filler, and the seeds `(K, A)`
+  whose records are all seen. Processing a record lists the seeds of the
+  child rule and of the augment rule with it as the parent and as the
+  child (`seedsOf`); `addSeed` expands a seed through `branchesF` only
+  the first time. The measure `2 * unseen + todo` falls at every step.
 - `elimF`: elimination in rounds; each record keeps, for each demand, the
   list of records that could witness it.
 - `elimK` (P2c): elimination as `elimF`, but each demand looks up its
   candidate witnesses by exact context (`witnessedK`) in a hash map from
-  the sorted context to its records. `fastAlive` uses it.
+  the sorted context to its records.
+- `elimI` (P2d): `elimK` on the positions of the records, so the rounds
+  hash numbers. `fastAlive` uses it.
 - `classifyF` (P2c): the readout. For each requested name it gives `none`
   when no alive record holds the name, and otherwise filters the names of
   one such type against hash sets of the others.
+
+Types are `Finset`s; `FastTy.lean` gives union, insertion, subset and
+`toL` on their stored lists in linear time, and the code here uses them.
+Each record builds its forward and back sets once per role (`RoleTab`).
 
 Unlike `Gstar`, the candidate set need not be least: `entails_iff_of`
 asks only that it is closed under the rules and holds closed types.
@@ -81,16 +90,33 @@ structure Ix (n m : Nat) where
   upInv : Array (List (RT m))
   /-- The roles of the universal clauses, by `rtCode`. -/
   allRoles : Std.HashSet (Bool × Fin m)
+  /-- The roles `R` of the existential clauses along which some universal
+  clause propagates forward (`fwdF` along `R` can be nonempty), and those
+  along which some propagates back. Only these get a cached entry in a
+  `RoleTab`. -/
+  fwdRoles : List (RT m)
+  backRoles : List (RT m)
 
-def mkIx (O : Ontology (Fin n) (Fin m)) : Ix n m where
-  allBy := Idx.ofList (alls O)
-  exBy := Idx.ofList (exs O)
-  gciArr := (gcis O).toArray
-  gciBy := Idx.ofList ((gcis O).zipIdx.flatMap fun q => q.1.1.map fun a => (a, q.2))
-  gciTop := ((gcis O).zipIdx.filter fun q => q.1.1.isEmpty).map (·.2)
-  upPos := Array.ofFn fun r : Fin m => upFix O (.pos r) (2 * m + 2) [.pos r]
-  upInv := Array.ofFn fun r : Fin m => upFix O (.inv r) (2 * m + 2) [.inv r]
-  allRoles := Std.HashSet.ofList ((alls O).map fun q => rtCode q.2.1)
+def decodeRT : Bool × Fin m → RT m
+  | (true, r) => .pos r
+  | (false, r) => .inv r
+
+def mkIx (O : Ontology (Fin n) (Fin m)) : Ix n m :=
+  let allRoles := Std.HashSet.ofList ((alls O).map fun q => rtCode q.2.1)
+  let hasAll : RT m → Bool := fun R =>
+    (upFix O R (2 * m + 2) [R]).any fun S => allRoles.contains (rtCode S)
+  let rs : List (RT m) :=
+    (Std.HashSet.ofList ((exs O).map fun q => rtCode q.2.1)).toList.map decodeRT
+  { allBy := Idx.ofList (alls O)
+    exBy := Idx.ofList (exs O)
+    gciArr := (gcis O).toArray
+    gciBy := Idx.ofList ((gcis O).zipIdx.flatMap fun q => q.1.1.map fun a => (a, q.2))
+    gciTop := ((gcis O).zipIdx.filter fun q => q.1.1.isEmpty).map (·.2)
+    upPos := Array.ofFn fun r : Fin m => upFix O (.pos r) (2 * m + 2) [.pos r]
+    upInv := Array.ofFn fun r : Fin m => upFix O (.inv r) (2 * m + 2) [.inv r]
+    allRoles := allRoles
+    fwdRoles := rs.filter hasAll
+    backRoles := rs.filter fun R => hasAll R.flip }
 
 def Ix.up (ix : Ix n m) : RT m → List (RT m)
   | .pos r => ix.upPos.getD r.val []
@@ -113,27 +139,30 @@ def fwdF (ix : Ix n m) (t : Ty n) (R : RT m) : Ty n :=
 def backF (ix : Ix n m) (s : Ty n) (R : RT m) : Ty n :=
   fwdF ix s R.flip
 
-/-- The values of `f` at every role term, each computed on first use. A
-record builds one for its propagation sets, so that demands along the
-same role share them. -/
-structure RoleTab (n m : Nat) where
-  pos : Array (Thunk (Ty n))
-  inv : Array (Thunk (Ty n))
+/-- The values of `f` at the listed role terms, each computed on first
+use. A record builds one for its propagation sets, so that demands along
+the same role share them; other roles fall back to `f`. -/
+abbrev RoleTab (n m : Nat) := List (RT m × Thunk (Ty n))
 
-def RoleTab.of (f : RT m → Ty n) : RoleTab n m :=
-  ⟨Array.ofFn fun r => Thunk.mk fun _ => f (.pos r),
-    Array.ofFn fun r => Thunk.mk fun _ => f (.inv r)⟩
+def RoleTab.of (rs : List (RT m)) (f : RT m → Ty n) : RoleTab n m :=
+  rs.map fun R => (R, Thunk.mk fun _ => f R)
 
-def RoleTab.get (tb : RoleTab n m) (f : RT m → Ty n) : RT m → Ty n
-  | .pos r => match tb.pos[r.val]? with
-    | some th => th.get
-    | none => f (.pos r)
-  | .inv r => match tb.inv[r.val]? with
-    | some th => th.get
-    | none => f (.inv r)
+def RoleTab.get (tb : RoleTab n m) (f : RT m → Ty n) (R : RT m) : Ty n :=
+  match tb.find? (fun p => p.1 == R) with
+  | some p => p.2.get
+  | none => f R
 
-theorem RoleTab.get_of (f : RT m → Ty n) (R : RT m) : (RoleTab.of f).get f R = f R := by
-  cases R <;> simp [RoleTab.get, RoleTab.of, Thunk.get]
+theorem RoleTab.get_of (rs : List (RT m)) (f : RT m → Ty n) (R : RT m) :
+    (RoleTab.of rs f).get f R = f R := by
+  unfold RoleTab.get
+  split
+  · next p hp =>
+    have h1 := List.find?_some hp
+    obtain ⟨R', -, rfl⟩ := List.mem_map.1 (List.mem_of_find?_eq_some hp)
+    simp only [beq_iff_eq] at h1
+    subst h1
+    rfl
+  · rfl
 
 def demF (ix : Ix n m) (t : Ty n) : List (Fin n × RT m × Fin n) :=
   (toL t).flatMap fun a => (ix.exBy.get a).map fun q => (a, q.1, q.2)
@@ -247,8 +276,8 @@ def St.empty : St n m := ⟨∅, [], ∅, ∅, ∅⟩
 /-- Add a record unless it is seen: mark it seen, queue it, index it. -/
 def addRec (ix : Ix n m) (st : St n m) (x : Rec n) : St n m :=
   if st.seen.contains x then st else
-  let fw := RoleTab.of (fwdF ix x.t)
-  let bk := RoleTab.of (backF ix x.t)
+  let fw := RoleTab.of ix.fwdRoles (fwdF ix x.t)
+  let bk := RoleTab.of ix.backRoles (backF ix x.t)
   { st with
     seen := st.seen.insert x
     todo := x :: st.todo
@@ -269,8 +298,8 @@ rule, the augment rule with `r` as the parent and with `r` as the child.
 An augment seed `(K, A ∪ B)` with `B ⊆ A` is the seed of a seen record,
 which is done, so it is left out. -/
 def seedsOf (ix : Ix n m) (st : St n m) (r : Rec n) : List (Ty n × Ty n) :=
-  let fw := RoleTab.of (fwdF ix r.t)
-  let bk := RoleTab.of (backF ix r.t)
+  let fw := RoleTab.of ix.fwdRoles (fwdF ix r.t)
+  let bk := RoleTab.of ix.backRoles (backF ix r.t)
   let fs := (demF ix r.t).map fun d => (d, ins d.2.2 (fw.get (fwdF ix r.t) d.2.1))
   let ch := fs.map fun p => (p.2, (∅ : Ty n))
   let ap := fs.flatMap fun p =>
@@ -357,12 +386,14 @@ def supports (ix : Ix n m) (tIdx : Idx n (Rec n)) (r : Rec n) : List (List (Rec 
     let F := fwdF ix r.t d.2.1
     (tIdx.get d.2.2).filter fun r' => decide (F ⊆ r'.t) && decide (backF ix r'.t d.2.1 ⊆ r.t)
 
-def okIn (E : Std.HashSet (Rec n)) (ss : List (List (Rec n))) : Bool :=
+def okIn {α : Type} [BEq α] [Hashable α] (E : Std.HashSet α) (ss : List (List α)) : Bool :=
   ss.all fun l => l.any fun r' => E.contains r'
 
-/-- Drop the records with an unwitnessed demand until none is dropped. -/
-def elimLoop (L : List (Rec n × List (List (Rec n)))) : List (Rec n × List (List (Rec n))) :=
-  let E : Std.HashSet (Rec n) := Std.HashSet.ofList (L.map Prod.fst)
+/-- Drop the entries with an unwitnessed demand until none is dropped. The
+entries are records (`elimF`, `elimK`) or positions of records (`elimI`). -/
+def elimLoop {α : Type} [BEq α] [Hashable α] (L : List (α × List (List α))) :
+    List (α × List (List α)) :=
+  let E : Std.HashSet α := Std.HashSet.ofList (L.map Prod.fst)
   let L' := L.filter fun p => okIn E p.2
   if h : L'.length < L.length then elimLoop L' else L
 termination_by L.length
@@ -385,7 +416,7 @@ def ctxIdx (G : List (Rec n)) : Std.HashMap (List (Fin n)) (List (Rec n)) :=
 context of the demand and whose back set fits `r`. -/
 def supportsK (ix : Ix n m) (kIdx : Std.HashMap (List (Fin n)) (List (Rec n))) (r : Rec n) :
     List (List (Rec n)) :=
-  let fw := RoleTab.of (fwdF ix r.t)
+  let fw := RoleTab.of ix.fwdRoles (fwdF ix r.t)
   (demF ix r.t).map fun d =>
     (kIdx.getD (toL (ins d.2.2 (fw.get (fwdF ix r.t) d.2.1))) []).filter fun r' =>
       sub (backF ix r'.t d.2.1) r.t
@@ -394,12 +425,41 @@ def elimK (ix : Ix n m) (G : List (Rec n)) : List (Rec n) :=
   let kIdx := ctxIdx G
   (elimLoop (G.map fun r => (r, supportsK ix kIdx r))).map Prod.fst
 
+/-! ## Elimination by position (P2d) -/
+
+/-- The positions of the records of `G` by their context, keyed by its
+sorted list of names. -/
+def ctxIdxI (G : List (Rec n)) : Std.HashMap (List (Fin n)) (List Nat) :=
+  G.zipIdx.foldl (fun ix q => ix.insert (toL q.1.K) (q.2 :: ix.getD (toL q.1.K) [])) ∅
+
+/-- `supportsK` by position: for each demand of `r`, the positions of the
+records whose context is the child context of the demand and whose back
+set fits `r`. -/
+def supportsI (ix : Ix n m) (A : Array (Rec n × RoleTab n m))
+    (kIdx : Std.HashMap (List (Fin n)) (List Nat)) (r : Rec n) : List (List Nat) :=
+  let fw := RoleTab.of ix.fwdRoles (fwdF ix r.t)
+  (demF ix r.t).map fun d =>
+    (kIdx.getD (toL (ins d.2.2 (fw.get (fwdF ix r.t) d.2.1))) []).filter fun j =>
+      (A[j]?.map fun q => sub (q.2.get (backF ix q.1.t) d.2.1) r.t).getD false
+
+/-- The records with their back sets per role, each computed on first use. -/
+def withBack (ix : Ix n m) (G : List (Rec n)) : Array (Rec n × RoleTab n m) :=
+  (G.map fun r => (r, RoleTab.of ix.backRoles (backF ix r.t))).toArray
+
+/-- Elimination as `elimK`, on the positions of the records: the rounds
+hash numbers instead of records. -/
+def elimI (ix : Ix n m) (G : List (Rec n)) : List (Rec n) :=
+  let A := withBack ix G
+  let kIdx := ctxIdxI G
+  (elimLoop (G.zipIdx.map fun q => (q.2, supportsI ix A kIdx q.1))).filterMap fun p =>
+    A[p.1]?.map Prod.fst
+
 /-! ## The answers -/
 
 /-- The alive records of the fast procedure. -/
 def fastAlive (O : Ontology (Fin n) (Fin m)) (req : List (Fin n)) : List (Rec n) :=
   let ix := mkIx O
-  elimK ix (candidates O ix req)
+  elimI ix (candidates O ix req)
 
 /-- The fast procedure's verdict on `a ⊑ b`. -/
 def fastEntails (O : Ontology (Fin n) (Fin m)) (req : List (Fin n)) (a b : Fin n) : Bool :=
@@ -970,7 +1030,7 @@ theorem AugOK.mono {P P' : Rec n → Prop} (h : ∀ x, P x → P' x) {x y : Rec 
 
 /-- The context index covers the seen records. -/
 def KI (ix : Ix n m) (st : St n m) : Prop :=
-  ∀ y ∈ st.seen, ∀ b ∈ y.K, (y, RoleTab.of (backF ix y.t)) ∈ st.kidx.get b
+  ∀ y ∈ st.seen, ∀ b ∈ y.K, (y, RoleTab.of ix.backRoles (backF ix y.t)) ∈ st.kidx.get b
 
 /-- The seed of every seen record is done. -/
 def RS (st : St n m) : Prop := ∀ x ∈ st.seen, (toL x.K, toL x.A) ∈ st.seeds
@@ -1058,7 +1118,7 @@ theorem addRec_kidx {ix : Ix n m} {st : St n m} {x : Rec n} (h : KI ix st) :
     rw [if_neg hc] at hy
     simp only [Std.HashSet.mem_insert, beq_iff_eq] at hy
     dsimp only
-    rw [Idx.mem_foldl_add (fun b => b) (fun _ => (x, RoleTab.of (backF ix x.t)))]
+    rw [Idx.mem_foldl_add (fun b => b) (fun _ => (x, RoleTab.of ix.backRoles (backF ix x.t)))]
     rcases hy with rfl | hy
     · exact Or.inr ⟨b, mem_toL.2 hb, rfl, rfl⟩
     · exact Or.inl (h y hy b hb)
@@ -1074,7 +1134,7 @@ theorem addRec_fidx {st : St n m} {x : Rec n} (h : FI O st) : FI O (addRec (mkIx
     dsimp only
     rw [Idx.mem_foldl_add (fun d : Fin n × RT m × Fin n => d.2.2)
       (fun d : Fin n × RT m × Fin n => (x, d.2.1,
-        ins d.2.2 ((RoleTab.of (fwdF (mkIx O) x.t)).get (fwdF (mkIx O) x.t) d.2.1)))]
+        ins d.2.2 ((RoleTab.of (mkIx O).fwdRoles (fwdF (mkIx O) x.t)).get (fwdF (mkIx O) x.t) d.2.1)))]
     rcases hy with rfl | hy
     · exact Or.inr ⟨(a, R, b), mem_demF.2 hd, rfl, by rw [RoleTab.get_of, ins_eq, fwdF_eq]⟩
     · exact Or.inl (h y hy a R b hd)
@@ -1192,7 +1252,7 @@ theorem seedsOf_augP {st : St n m} {r w : Rec n} (hk : KI (mkIx O) st) (hw : w �
   simp only [seedsOf, List.mem_append, List.mem_map, List.mem_flatMap, List.mem_filter,
     List.mem_filterMap]
   refine Or.inl (Or.inr ⟨((a, R, b), ins b (fwdF (mkIx O) r.t R)),
-    ⟨(a, R, b), mem_demF.2 hd, by rw [RoleTab.get_of]⟩, (w, RoleTab.of (backF (mkIx O) w.t)),
+    ⟨(a, R, b), mem_demF.2 hd, by rw [RoleTab.get_of]⟩, (w, RoleTab.of (mkIx O).backRoles (backF (mkIx O) w.t)),
     ⟨hk w hw b hb, ?_⟩, ?_⟩)
   · rw [sub_eq, ins_eq, fwdF_eq]
     exact decide_eq_true hK
@@ -1582,11 +1642,160 @@ theorem elimK_isElimK (G : List (Rec n)) :
     exact (hmem r).2 (List.mem_map.1
       (hgr S (fun r hr => List.mem_toFinset.1 (hS hr)) hw r hr))
 
+/-! ## Proofs: elimination by position -/
+
+theorem mem_ofList_iff' {L : List Nat} {j : Nat} : j ∈ Std.HashSet.ofList L ↔ j ∈ L := by
+  rw [Std.HashSet.mem_ofList, List.contains_iff_mem]
+
+theorem mem_ctxIdxI_foldl {k : List (Fin n)} {x : Nat} :
+    ∀ (L : List (Rec n × Nat)) (ix : Std.HashMap (List (Fin n)) (List Nat)),
+      x ∈ (L.foldl (fun ix q => ix.insert (toL q.1.K) (q.2 :: ix.getD (toL q.1.K) [])) ix).getD
+          k [] ↔
+        x ∈ ix.getD k [] ∨ ∃ q ∈ L, toL q.1.K = k ∧ q.2 = x
+  | [], ix => by simp
+  | q :: L, ix => by
+    rw [List.foldl_cons, mem_ctxIdxI_foldl L, Std.HashMap.getD_insert]
+    by_cases h : toL q.1.K = k
+    · subst h
+      simp only [beq_self_eq_true, if_true, List.mem_cons]
+      constructor
+      · rintro ((rfl | h) | ⟨q', hq', hk, rfl⟩)
+        · exact Or.inr ⟨q, Or.inl rfl, rfl, rfl⟩
+        · exact Or.inl h
+        · exact Or.inr ⟨q', Or.inr hq', hk, rfl⟩
+      · rintro (h | ⟨q', rfl | hq', hk, rfl⟩)
+        · exact Or.inl (Or.inr h)
+        · exact Or.inl (Or.inl rfl)
+        · exact Or.inr ⟨q', hq', hk, rfl⟩
+    · have h' : (toL q.1.K == k) = false := by simpa using h
+      simp only [h', Bool.false_eq_true, if_false, List.mem_cons]
+      constructor
+      · rintro (h1 | ⟨q', hq', hk, rfl⟩)
+        · exact Or.inl h1
+        · exact Or.inr ⟨q', Or.inr hq', hk, rfl⟩
+      · rintro (h1 | ⟨q', rfl | hq', hk, rfl⟩)
+        · exact Or.inl h1
+        · exact absurd hk h
+        · exact Or.inr ⟨q', hq', hk, rfl⟩
+
+theorem mem_ctxIdxI {G : List (Rec n)} {K : Ty n} {j : Nat} :
+    j ∈ (ctxIdxI G).getD (toL K) [] ↔ ∃ r, G[j]? = some r ∧ r.K = K := by
+  unfold ctxIdxI
+  rw [mem_ctxIdxI_foldl]
+  simp only [Std.HashMap.getD_empty, List.not_mem_nil, false_or]
+  constructor
+  · rintro ⟨⟨r, i⟩, hq, hk, rfl⟩
+    exact ⟨r, List.mem_zipIdx_iff_getElem?.1 hq, toL_inj hk⟩
+  · rintro ⟨r, hr, rfl⟩
+    exact ⟨(r, j), List.mem_zipIdx_iff_getElem?.2 hr, rfl, rfl⟩
+
+/-- The precomputed supports decide witnessing by exact context inside the
+records at any set of positions. -/
+theorem okInI_iff {G : List (Rec n)} (E : Std.HashSet Nat) (r : Rec n) :
+    okIn E (supportsI (mkIx O) (withBack (mkIx O) G) (ctxIdxI G) r) = true ↔
+      ∀ d ∈ demands O r.t, ∃ j ∈ E, ∃ r', G[j]? = some r' ∧
+        r'.K = insert d.2.2 (fwd O r.t d.2.1) ∧ back O r'.t d.2.1 ⊆ r.t := by
+  simp only [okIn, supportsI, withBack, List.all_map, List.all_eq_true, Function.comp_apply,
+    List.any_eq_true, List.mem_filter, ins_eq, RoleTab.get_of, fwdF_eq,
+    Std.HashSet.contains_iff_mem, List.getElem?_toArray, List.getElem?_map]
+  constructor
+  · intro h d hd
+    obtain ⟨j, ⟨hj, hb⟩, hjE⟩ := h d (mem_demF.2 hd)
+    obtain ⟨r', hr', hK⟩ := (mem_ctxIdxI (K := insert d.2.2 (fwd O r.t d.2.1))).1 hj
+    rw [hr'] at hb
+    simp only [Option.map_some, Option.getD_some, RoleTab.get_of, sub_eq, backF_eq,
+      decide_eq_true_eq] at hb
+    exact ⟨j, hjE, r', hr', hK, hb⟩
+  · intro h d hd
+    obtain ⟨j, hjE, r', hr', hK, hb⟩ := h d (mem_demF.1 hd)
+    refine ⟨j, ⟨(mem_ctxIdxI (K := insert d.2.2 (fwd O r.t d.2.1))).2 ⟨r', hr', hK⟩, ?_⟩, hjE⟩
+    rw [hr']
+    simp only [Option.map_some, Option.getD_some, RoleTab.get_of, sub_eq, backF_eq,
+      decide_eq_true_eq]
+    exact hb
+
+theorem elimLoopI_spec {G : List (Rec n)} :
+    ∀ L : List (Nat × List (List Nat)),
+      (∀ p ∈ L, ∃ r, G[p.1]? = some r ∧ p.2 = supportsI (mkIx O) (withBack (mkIx O) G) (ctxIdxI G) r) →
+      (∀ S : Finset (Rec n), (∀ r ∈ S, r ∈ G) → (∀ r ∈ S, witnessedK O S r) →
+        ∀ j r, G[j]? = some r → r ∈ S → j ∈ L.map Prod.fst) →
+      (∀ p ∈ elimLoop L, ∃ r, G[p.1]? = some r ∧
+        p.2 = supportsI (mkIx O) (withBack (mkIx O) G) (ctxIdxI G) r) ∧
+      (∀ p ∈ elimLoop L, okIn (Std.HashSet.ofList ((elimLoop L).map Prod.fst)) p.2 = true) ∧
+      (∀ S : Finset (Rec n), (∀ r ∈ S, r ∈ G) → (∀ r ∈ S, witnessedK O S r) →
+        ∀ j r, G[j]? = some r → r ∈ S → j ∈ (elimLoop L).map Prod.fst) := by
+  intro L
+  induction hl : L.length using Nat.strong_induction_on generalizing L with
+  | _ k ih =>
+    intro hP hS
+    rw [elimLoop]
+    split
+    · next h =>
+      refine ih _ (hl ▸ h) _ rfl (fun p hp => hP p (List.mem_of_mem_filter hp)) ?_
+      intro S hSG hw j r hj hr
+      obtain ⟨p, hp, rfl⟩ := List.mem_map.1 (hS S hSG hw j r hj hr)
+      refine List.mem_map.2 ⟨p, List.mem_filter.2 ⟨hp, ?_⟩, rfl⟩
+      obtain ⟨r0, hr0, hp2⟩ := hP p hp
+      rw [hj] at hr0
+      cases hr0
+      rw [hp2, okInI_iff]
+      intro d hd
+      obtain ⟨r', hr', h1, h2⟩ := hw r hr d hd
+      obtain ⟨j', hj'⟩ := List.mem_iff_getElem?.1 (hSG r' hr')
+      exact ⟨j', mem_ofList_iff'.2 (hS S hSG hw j' r' hj' hr'), r', hj', h1, h2⟩
+    · next h =>
+      refine ⟨hP, fun p hp => ?_, hS⟩
+      by_contra hne
+      exact h (List.length_filter_lt_length_iff_exists.2 ⟨p, hp, by simpa using hne⟩)
+
+theorem elimI_isElimK (G : List (Rec n)) :
+    IsElimK O G.toFinset (elimI (mkIx O) G).toFinset := by
+  have hspec := elimLoopI_spec (O := O) (G := G)
+    (G.zipIdx.map fun q => (q.2, supportsI (mkIx O) (withBack (mkIx O) G) (ctxIdxI G) q.1))
+    (fun p hp => by
+      obtain ⟨⟨r, i⟩, hq, rfl⟩ := List.mem_map.1 hp
+      exact ⟨r, List.mem_zipIdx_iff_getElem?.1 hq, rfl⟩)
+    (fun S _ _ j r hj _ => by
+      rw [List.map_map]
+      exact List.mem_map.2 ⟨(r, j), List.mem_zipIdx_iff_getElem?.2 hj, rfl⟩)
+  obtain ⟨hP, hok, hgr⟩ := hspec
+  set F := elimLoop (G.zipIdx.map fun q => (q.2, supportsI (mkIx O) (withBack (mkIx O) G) (ctxIdxI G) q.1))
+  have hmem : ∀ r, r ∈ (elimI (mkIx O) G).toFinset ↔ ∃ p ∈ F, G[p.1]? = some r := by
+    intro r
+    simp only [elimI, withBack, List.mem_toFinset, List.mem_filterMap, List.getElem?_toArray,
+      List.getElem?_map, Option.map_map, F]
+    constructor
+    · rintro ⟨p, hp, h⟩
+      refine ⟨p, hp, ?_⟩
+      cases hg : G[p.1]? <;> simp_all
+    · rintro ⟨p, hp, h⟩
+      exact ⟨p, hp, by simp [h]⟩
+  refine ⟨?_, ?_, ?_⟩
+  · intro r hr
+    obtain ⟨p, -, hp⟩ := (hmem r).1 hr
+    exact List.mem_toFinset.2 (List.mem_of_getElem? hp)
+  · intro r hr
+    obtain ⟨p, hp, hpr⟩ := (hmem r).1 hr
+    obtain ⟨r0, hr0, hp2⟩ := hP p hp
+    rw [hpr] at hr0
+    cases hr0
+    have h := hok p hp
+    rw [hp2, okInI_iff] at h
+    intro d hd
+    obtain ⟨j, hjE, r', hr', h1, h2⟩ := h d hd
+    obtain ⟨p', hp', rfl⟩ := List.mem_map.1 (mem_ofList_iff'.1 hjE)
+    exact ⟨r', (hmem r').2 ⟨p', hp', hr'⟩, h1, h2⟩
+  · intro S hS hw r hr
+    obtain ⟨j, hj⟩ := List.mem_iff_getElem?.1 (List.mem_toFinset.1 (hS hr))
+    obtain ⟨p, hp, rfl⟩ := List.mem_map.1
+      (hgr S (fun r hr => List.mem_toFinset.1 (hS hr)) hw j r hj hr)
+    exact (hmem r).2 ⟨p, hp, hj⟩
+
 /-! ## The final statements -/
 
 theorem fastAlive_isElimK (req : List (Fin n)) :
     IsElimK O (candidates O (mkIx O) req).toFinset (fastAlive O req).toFinset :=
-  elimK_isElimK _
+  elimI_isElimK _
 
 /-- **Exactness of the fast procedure on requested names.** -/
 theorem fastEntails_iff (hA : IsALCHI O) {req : List (Fin n)} {a : Fin n} (ha : a ∈ req)
