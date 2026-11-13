@@ -1,5 +1,6 @@
 import ContextCalculus.SRI.NormalForm
 import Mathlib.Data.Fintype.Basic
+import Mathlib.Data.Fintype.Powerset
 import Mathlib.Data.Finset.Basic
 import Mathlib.Logic.Relation
 
@@ -60,50 +61,137 @@ def canon (O : Ontology CName Role) : Interp {t : Finset CName // Good O t} CNam
 
 theorem roleLe_flip {O : Ontology CName Role} {R S : RoleT Role} (h : RoleLe O R S) :
     RoleLe O R.flip S.flip := by
-  sorry
+  induction h with
+  | refl => exact Relation.ReflTransGen.refl
+  | tail _ hst ih =>
+    refine Relation.ReflTransGen.tail ih ?_
+    rcases hst with h1 | h2
+    · exact Or.inr (by simpa using h1)
+    · exact Or.inl h2
 
 theorem compat_flip (O : Ontology CName Role) (R : RoleT Role) (t s : Finset CName) :
     Compat O R.flip t s ↔ Compat O R s t := by
-  sorry
+  simp only [Compat, RoleT.flip_flip]
+  exact And.comm
 
 theorem compat_mono {O : Ontology CName Role} {R S : RoleT Role} (h : RoleLe O R S)
     {t s : Finset CName} (hc : Compat O R t s) : Compat O S t s := by
-  sorry
+  refine ⟨fun a S' c hcl hS ha => hc.1 a S' c hcl (h.trans hS) ha,
+    fun a S' c hcl hS ha => hc.2 a S' c hcl ((roleLe_flip h).trans hS) ha⟩
 
 theorem canon_rt (O : Ontology CName Role) (R : RoleT Role) (x y : {t : Finset CName // Good O t}) :
     (canon O).rt R x y ↔ Compat O R x.val y.val := by
-  sorry
+  cases R with
+  | pos r => exact Iff.rfl
+  | inv r => exact (compat_flip O (.pos r) x.val y.val).symm
 
 theorem canon_models (O : Ontology CName Role) (h : IsALCHI O) : models (canon O) O := by
-  sorry
+  intro cl hcl
+  cases cl with
+  | gci body head =>
+    intro x hx
+    obtain ⟨G, hxG, hG⟩ := x.property
+    exact (hG x.val hxG).1 body head hcl hx
+  | exRight a R b =>
+    intro x hx
+    obtain ⟨G, hxG, hG⟩ := x.property
+    obtain ⟨s, hsG, hbs, hc⟩ := (hG x.val hxG).2 a R b hcl hx
+    exact ⟨⟨s, ⟨G, hsG, hG⟩⟩, (canon_rt O R _ _).2 hc, hbs⟩
+  | allRight a R b =>
+    intro x hx y hxy
+    exact ((canon_rt O R x y).1 hxy).1 a R b hcl Relation.ReflTransGen.refl hx
+  | chain body S =>
+    have hlen := h body S hcl
+    match body, hlen, hcl with
+    | [R], _, hcl =>
+      intro x y hxy
+      obtain ⟨z, hxz, rfl⟩ := hxy
+      have hle : RoleLe O R S := Relation.ReflTransGen.single (Or.inl hcl)
+      exact (canon_rt O S x z).2 (compat_mono hle ((canon_rt O R x z).1 hxz))
 
 section TypeOf
+
+-- `typeOf` needs the instances; some theorems carry them only through the
+-- statement, so the section-variable linter flags them.
+set_option linter.unusedSectionVars false
 
 variable [Fintype CName] [DecidableEq CName]
 
 noncomputable def typeOf {D : Type} (I : Interp D CName Role) (e : D) : Finset CName :=
   by classical exact Finset.univ.filter fun B => I.c B e
 
+/-- Membership in the type of an element. -/
+theorem mem_typeOf {D : Type} (I : Interp D CName Role) (e : D) (b : CName) :
+    b ∈ typeOf I e ↔ I.c b e := by
+  classical
+  simp [typeOf]
+
 theorem roleLe_sound {D : Type} {I : Interp D CName Role} {O : Ontology CName Role}
     (hI : models I O) {R S : RoleT Role} (h : RoleLe O R S) (x y : D) :
     I.rt R x y → I.rt S x y := by
-  sorry
+  induction h generalizing x y with
+  | refl => exact id
+  | tail _ hst ih =>
+    intro hxy
+    have hS := ih x y hxy
+    rcases hst with h1 | h2
+    · exact hI _ h1 x y ⟨y, hS, rfl⟩
+    · have := hI _ h2 y x ⟨x, (Interp.rt_flip I _ y x).2 hS, rfl⟩
+      exact (Interp.rt_flip I _ y x).1 this
 
 theorem type_good {D : Type} {I : Interp D CName Role} {O : Ontology CName Role}
     (hI : models I O) (e : D) : Good O (typeOf I e) := by
-  sorry
+  classical
+  refine ⟨Finset.univ.filter (fun t => ∃ d : D, t = typeOf I d), ?_, ?_⟩
+  · simp only [Finset.mem_filter, Finset.mem_univ, true_and]
+    exact ⟨e, rfl⟩
+  · intro t ht
+    simp only [Finset.mem_filter, Finset.mem_univ, true_and] at ht
+    obtain ⟨d, rfl⟩ := ht
+    refine ⟨?_, ?_⟩
+    · intro body head hcl hbody
+      obtain ⟨b, hbh, hb⟩ := hI _ hcl d (fun a ha => (mem_typeOf I d a).1 (hbody a ha))
+      exact ⟨b, hbh, (mem_typeOf I d b).2 hb⟩
+    · intro a R b hcl ha
+      obtain ⟨y, hry, hby⟩ := hI _ hcl d ((mem_typeOf I d a).1 ha)
+      refine ⟨typeOf I y, ?_, (mem_typeOf I y b).2 hby, ?_, ?_⟩
+      · simp only [Finset.mem_filter, Finset.mem_univ, true_and]
+        exact ⟨y, rfl⟩
+      · intro a' S c hcl' hS ha'
+        exact (mem_typeOf I y c).2
+          (hI _ hcl' d ((mem_typeOf I d a').1 ha') y (roleLe_sound hI hS d y hry))
+      · intro a' S c hcl' hS ha'
+        have hyd : I.rt R.flip y d := (Interp.rt_flip I R y d).2 hry
+        exact (mem_typeOf I d c).2
+          (hI _ hcl' y ((mem_typeOf I y a').1 ha') d (roleLe_sound hI hS y d hyd))
 
 /-- **Step 1.** Subsumption is decided by the good types. -/
 theorem entailsSub_iff_good (O : Ontology CName Role) (h : IsALCHI O) (a b : CName) :
     EntailsSub O a b ↔ ∀ t, Good O t → a ∈ t → b ∈ t := by
-  sorry
+  constructor
+  · intro hent t ht hat
+    haveI : Nonempty {t : Finset CName // Good O t} := ⟨⟨t, ht⟩⟩
+    exact hent _ (canon O) (canon_models O h) ⟨t, ht⟩ hat
+  · intro hgood D _ I hI x hax
+    exact (mem_typeOf I x b).1
+      (hgood _ (type_good hI x) ((mem_typeOf I x a).2 hax))
 
 /-- A concept name is unsatisfiable iff no good type contains it. -/
 theorem unsat_iff_no_good (O : Ontology CName Role) (h : IsALCHI O) (a : CName) :
     (∀ (D : Type) [Nonempty D] (I : Interp D CName Role), models I O → ∀ x, ¬ I.c a x) ↔
       ∀ t, Good O t → a ∉ t := by
-  sorry
+  constructor
+  · intro hun t ht hat
+    haveI : Nonempty {t : Finset CName // Good O t} := ⟨⟨t, ht⟩⟩
+    exact hun _ (canon O) (canon_models O h) ⟨t, ht⟩ hat
+  · intro hno D _ I hI x hax
+    exact hno _ (type_good hI x) ((mem_typeOf I x a).2 hax)
 
 end TypeOf
 
 end ContextCalculus.SRI
+
+#print axioms ContextCalculus.SRI.canon_models
+#print axioms ContextCalculus.SRI.type_good
+#print axioms ContextCalculus.SRI.entailsSub_iff_good
+#print axioms ContextCalculus.SRI.unsat_iff_no_good
