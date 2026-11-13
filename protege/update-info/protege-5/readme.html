@@ -1,0 +1,42 @@
+<html>
+<body>
+<h2>Kobayashi-MaRust Reasoner</h2>
+
+<p>Kobayashi-MaRust (KM) is an experimental OWL 2 DL (SROIQ) reasoner written
+in Rust by the Bio-Ontology Research Group at KAUST. It classifies ontologies
+and refuses to publish an answer it cannot justify as complete.</p>
+
+<h3>What the plugin does</h3>
+<ul>
+  <li>Adds <b>Kobayashi-MaRust</b> to the <b>Reasoner</b> menu.</li>
+  <li>Computes the inferred class hierarchy, equivalent classes, unsatisfiable
+      classes and ontology consistency, over the loaded imports closure.</li>
+  <li>Keeps a native session, so later edits update the hierarchy
+      incrementally.</li>
+  <li>Explains inferred named-class subclass relations, unsatisfiable classes
+      and inconsistency with verified, minimal sets of source axioms, through
+      Protégé's <b>Explain inference</b> button.</li>
+</ul>
+
+<h3>What it does not do</h3>
+<ul>
+  <li>No inferred object or data property hierarchy.</li>
+  <li>No individual queries (types, property values, realization).</li>
+  <li>No explanations for anonymous class expressions or property and
+      individual entailments.</li>
+</ul>
+
+<h3>Platforms</h3>
+<p>The plugin bundles the native <code>km</code> reasoner for Linux (x86_64,
+aarch64), macOS (Intel, Apple silicon) and Windows (x86_64) and unpacks it on
+first use. Nothing else needs to be installed. On another platform, build
+<code>km</code> yourself and set the Java option
+<code>-Dkm.bin=/path/to/km</code>.</p>
+
+<p>Two builds exist: one for Protégé 5.6 and one for Protégé 6.</p>
+
+<p>Documentation:
+<a href="https://github.com/bio-ontology-research-group/kobayashi-marust/blob/main/protege/README.md">plugin README</a>,
+<a href="https://github.com/bio-ontology-research-group/kobayashi-marust">project page</a>.</p>
+</body>
+</html>
