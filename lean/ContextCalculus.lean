@@ -53,6 +53,8 @@ import ContextCalculus.SRI.Fast
 import ContextCalculus.SRI.FastTests
 import ContextCalculus.OWLFrontend.Reference
 import ContextCalculus.OWLFrontend.ReferenceReadout
+import ContextCalculus.OWLFrontend.SRIReference
+import ContextCalculus.OWLFrontend.SRIComplete
 import ContextCalculus.ELResidualCertificate
 import ContextCalculus.ELResidualCompilation
 import ContextCalculus.ELResidualWitness
