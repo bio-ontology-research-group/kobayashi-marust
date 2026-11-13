@@ -92,6 +92,17 @@
 
   <build>
     <finalName>kobayashi-marust-protege-${project.version}</finalName>
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+      </resource>
+      <!-- Records the plugin version for the cache directory of the
+           bundled km executable. -->
+      <resource>
+        <directory>src/main/filtered-resources</directory>
+        <filtering>true</filtering>
+      </resource>
+    </resources>
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>

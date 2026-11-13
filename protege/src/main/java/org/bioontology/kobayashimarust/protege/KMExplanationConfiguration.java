@@ -23,7 +23,20 @@ public final class KMExplanationConfiguration {
             int maxChecks,
             long maxSourceBytes,
             int allJustificationsCap) {
-        this.executable = requireText(executable, "executable");
+        this(requireText(executable, "executable"), timeoutSeconds, maxAxioms, maxChecks,
+                maxSourceBytes, allJustificationsCap, true);
+    }
+
+    /** A null executable means: resolve it with {@link KMExecutable} on first use. */
+    private KMExplanationConfiguration(
+            String executable,
+            long timeoutSeconds,
+            int maxAxioms,
+            int maxChecks,
+            long maxSourceBytes,
+            int allJustificationsCap,
+            boolean checked) {
+        this.executable = executable;
         this.timeoutSeconds = requirePositive(timeoutSeconds, "timeoutSeconds");
         this.maxAxioms = requirePositive(maxAxioms, "maxAxioms");
         this.maxChecks = requirePositive(maxChecks, "maxChecks");
@@ -34,7 +47,7 @@ public final class KMExplanationConfiguration {
 
     public static KMExplanationConfiguration fromSystemProperties() {
         return new KMExplanationConfiguration(
-                setting("km.bin", "KM_BIN", "km"),
+                null,
                 longSetting(
                         "km.timeout.seconds",
                         "KM_TIMEOUT_SECONDS",
@@ -54,11 +67,16 @@ public final class KMExplanationConfiguration {
                 intSetting(
                         "km.explain.all.justifications.cap",
                         "KM_EXPLAIN_ALL_JUSTIFICATIONS_CAP",
-                        DEFAULT_ALL_JUSTIFICATIONS_CAP));
+                        DEFAULT_ALL_JUSTIFICATIONS_CAP),
+                true);
     }
 
+    /**
+     * The km executable: the configured one, or the one that
+     * {@link KMExecutable#resolve()} finds (km.bin, KM_BIN, bundled, PATH).
+     */
     public String getExecutable() {
-        return executable;
+        return executable != null ? executable : KMExecutable.resolve();
     }
 
     public long getTimeoutSeconds() {
