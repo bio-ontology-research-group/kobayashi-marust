@@ -99,6 +99,21 @@ def main (args : List String) : IO UInt32 := do
         let ks := (c.map fun r => ContextCalculus.SRI.Proc.toL r.K).eraseDups
         let as := c.foldl (fun acc r => max acc (ContextCalculus.SRI.Proc.toL r.A).length) 0
         IO.eprintln s!"records={c.length} contexts={ks.length} max_aug={as} fresh={E.1}"
+      if (← IO.getEnv "KM_SRI_ROUTE") == some "1" then
+        let r0 ← IO.monoMsNow
+        let T2 ← IO.lazyPure fun _ => translateSRI O req
+        let r1 ← IO.monoMsNow
+        match T2 with
+        | none => pure ()
+        | some T2 =>
+          let E := ContextCalculus.SRI.Proc.encTrans T2.ontology
+          let rq ← IO.lazyPure fun _ => sriRequest T2 E.1
+          let r2 ← IO.monoMsNow
+          let cf ← IO.lazyPure fun _ => ContextCalculus.SRI.Proc.classifyF E.2 rq
+          let r3 ← IO.monoMsNow
+          let rows ← IO.lazyPure fun _ => sriRows T2 cf
+          let r4 ← IO.monoMsNow
+          IO.eprintln s!"route translate_ms={r1-r0} enc_req_ms={r2-r1} classifyF_ms={r3-r2} rows_ms={r4-r3} rows={rows.length}"
       let t2b ← IO.monoMsNow
       match (← IO.lazyPure fun _ => owlSRIReference O req) with
       | none => IO.eprintln "declined (chains)"; return 3

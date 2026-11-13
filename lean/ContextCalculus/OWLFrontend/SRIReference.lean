@@ -43,21 +43,37 @@ def sriRequest (T : SRITranslation) (k : Nat) : List (Fin (T.conceptCount + k)) 
   List.ofFn fun i : Fin T.named.length =>
     Fin.castAdd k ⟨i.val, Nat.lt_of_lt_of_le i.isLt T.hnamed⟩
 
-/-- The row of one classified name: unsatisfiable, or its subsumers among
-the requested indices. -/
-def sriRow (T : SRITranslation) {k : Nat}
-    (p : Fin (T.conceptCount + k) × Option (List (Fin (T.conceptCount + k)))) : SparseRow :=
+/-- The row of one classified name, with the number `named` of requested
+names passed in: unsatisfiable, or its subsumers among the requested
+indices. -/
+def sriRowN {N : Nat} (named : Nat) (p : Fin N × Option (List (Fin N))) : SparseRow :=
   match p.2 with
   | none => { sub := p.1.val, unsat := true, sups := [] }
   | some L =>
     { sub := p.1.val, unsat := false,
-      sups := (L.map Fin.val).filter (· < T.named.length) }
+      sups := (L.map Fin.val).filter (· < named) }
+
+/-- The row of one classified name: unsatisfiable, or its subsumers among
+the requested indices. -/
+def sriRow (T : SRITranslation) {k : Nat}
+    (p : Fin (T.conceptCount + k) × Option (List (Fin (T.conceptCount + k)))) : SparseRow :=
+  sriRowN T.named.length p
+
+/-- The rows, with the number of requested names computed once (not once
+per listed subsumer). -/
+def sriRowsN {N : Nat} (named : Nat) (cls : List (Fin N × Option (List (Fin N)))) :
+    List SparseRow :=
+  cls.map (sriRowN named)
 
 /-- One row per requested index. -/
 def sriRows (T : SRITranslation) {k : Nat}
     (cls : List (Fin (T.conceptCount + k) × Option (List (Fin (T.conceptCount + k))))) :
     List SparseRow :=
-  cls.map (sriRow T)
+  sriRowsN T.named.length cls
+
+theorem sriRows_eq (T : SRITranslation) {k : Nat}
+    (cls : List (Fin (T.conceptCount + k) × Option (List (Fin (T.conceptCount + k))))) :
+    sriRows T cls = cls.map (sriRow T) := rfl
 
 /-- The SHI route. -/
 def owlSRIReference (O : OWL.Ontology) (requested : List OWL.IRI) : Option OWLAnswer :=
@@ -93,17 +109,17 @@ theorem sri_bit (T : SRITranslation) {k : Nat}
   obtain ⟨-, hnone, hsome⟩ := classifyF_spec hA _ hmem
   have hrow : OWLAnswer.bit { named := T.named, rows := sriRows T (classifyF O' (sriRequest T k)) } i j
       = (sriRow T (Fin.castAdd k ⟨i, hiC⟩, g (Fin.castAdd k ⟨i, hiC⟩))).bit j := by
-    simp only [OWLAnswer.bit, sriRows]
+    simp only [OWLAnswer.bit, sriRows_eq]
     rw [hg, List.map_map, List.getElem?_map]
     simp only [sriRequest, List.getElem?_ofFn, hi, dite_true, Option.map_some, Function.comp]
   rw [hrow]
   cases hga : g (Fin.castAdd k ⟨i, hiC⟩) with
   | none =>
-    simp only [sriRow, SparseRow.bit, Bool.true_or, true_iff]
+    simp only [sriRow, sriRowN, SparseRow.bit, Bool.true_or, true_iff]
     intro D _ I hI x hx
     exact absurd hx (hnone.1 hga D I hI x)
   | some L =>
-    simp only [sriRow, SparseRow.bit, Bool.false_or, List.contains_iff_mem, List.mem_filter,
+    simp only [sriRow, sriRowN, SparseRow.bit, Bool.false_or, List.contains_iff_mem, List.mem_filter,
       List.mem_map, decide_eq_true_eq]
     rw [← hsome L hga]
     constructor

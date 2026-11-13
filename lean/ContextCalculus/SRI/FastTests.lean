@@ -128,4 +128,36 @@ def chainO (k : Nat) : Ontology (Fin (2 * k + 1)) (Fin 2) :=
 #guard ((classifyF (chainO 200) (List.finRange 401)).map fun p => (p.2.getD []).length).sum ==
   1001
 
+/-! ## The sorted type operations against `Finset` -/
+
+/-- Every type over five names, stored in decreasing order (so `toL`
+takes the slow path on each). -/
+def tys5 : List (Ty 5) :=
+  (List.finRange 5).sublists.map fun l => l.reverse.toFinset
+
+#guard tys5.length == 32
+-- union, subset and insertion
+#guard tys5.all fun s => tys5.all fun t => decide (uni s t = s ∪ t)
+#guard tys5.all fun s => tys5.all fun t => sub s t == decide (s ⊆ t)
+#guard tys5.all fun s => (List.finRange 5).all fun a => decide (ins a s = insert a s)
+-- the results of the operations, used again, give the same answers
+#guard tys5.all fun s => tys5.all fun t =>
+  sub (uni s t) (uni t s) && sub s (uni s t) && toL (uni s t) == (s ∪ t).sort (· ≤ ·)
+-- `toL` sorts, and `ofL` builds the type of a list
+#guard tys5.all fun s => toL s == s.sort (· ≤ ·) && sortedB (toL s)
+#guard ([[], [3, 1, 4, 1, 5, 9, 2, 6], [0, 0, 0], [9, 8, 7, 6, 5, 4, 3, 2, 1, 0]] :
+    List (List (Fin 10))).all fun L => decide (ofL L = L.toFinset) && sortedB (toL (ofL L))
+-- membership in the hash set of `branchesF` agrees with the type
+#guard tys5.all fun s => (List.finRange 5).all fun a =>
+  (Cur.ofTy s).h.contains a == decide (a ∈ s) &&
+    ((Cur.ofTy s).addAll [a, 0]).h.contains 0 &&
+    decide (((Cur.ofTy s).addAll [a, 0]).ty = s ∪ {a, 0})
+-- `branchesF` gives the branches of `O4` and `O5`
+#guard tys5.all fun s =>
+  let s4 : Ty 4 :=
+    ((toL s).filterMap fun a => if h : a.val < 4 then some (⟨a.val, h⟩ : Fin 4) else none).toFinset
+  (branches O4 s4).all (· ∈ branchesF O4 (mkIx O4) s4) &&
+    (branchesF O4 (mkIx O4) s4).all fun t => decide (s4 ⊆ t)
+#guard (branchesF O5 (mkIx O5) {1}).isEmpty && (branches O5 {1}).isEmpty
+
 end ContextCalculus.SRI.FastTests
