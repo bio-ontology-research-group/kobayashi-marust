@@ -23,6 +23,10 @@ partial def profLoop {n m : Nat} (O : ContextCalculus.SRI.Ontology (Fin n) (Fin 
     if (← IO.monoMsNow) > stopAt then
       IO.eprintln s!"prof stopped: queued={st.todo.length}"
       return st
+    let f0 ← IO.monoNanosNow
+    let fs ← IO.lazyPure fun _ => (demF ix r.t).map fun d => ins d.2.2 (fwdF ix r.t d.2.1)
+    bump c 5 ((← IO.monoNanosNow) - f0); bump c 6 fs.length
+    bump c 7 (fs.foldl (fun a F => a + F.card) 0)
     let g0 ← IO.monoNanosNow
     let L ← IO.lazyPure fun _ => seedsOf ix st r
     let g1 ← IO.monoNanosNow
@@ -86,7 +90,7 @@ def main (args : List String) : IO UInt32 := do
         let E := ContextCalculus.SRI.Proc.encTrans T.ontology
         let rq := sriRequest T E.1
         let ix ← IO.lazyPure fun _ => ContextCalculus.SRI.Proc.mkIx E.2
-        let c ← IO.mkRef (Array.replicate 5 0)
+        let c ← IO.mkRef (Array.replicate 8 0)
         let tp0 ← IO.monoMsNow
         let lim := ((← IO.getEnv "KM_SRI_PROF_S").bind String.toNat?).getD 100000
         let st0 ← IO.lazyPure fun _ => (ContextCalculus.SRI.Proc.roots rq).foldl
@@ -96,7 +100,9 @@ def main (args : List String) : IO UInt32 := do
         let tp2 ← IO.monoMsNow
         let g (i : Nat) : IO Nat := return (← c.get)[i]!
         IO.eprintln s!"prof roots_ms={tp1-tp0} loop_ms={tp2-tp1} records={st.seen.size} steps={← g 0} seeds_listed={← g 2} seed_hits={← g 3} distinct_seeds={st.seeds.size}"
-        IO.eprintln s!"prof seedsOf_ms={(← g 1)/1000000} expand_ms={(← g 4)/1000000}"
+        IO.eprintln s!"prof seedsOf_ms={(← g 1)/1000000} expand_ms={(← g 4)/1000000} fwd_ms={(← g 5)/1000000} demands={← g 6} sum_ctx={← g 7}"
+        let recs := st.seen.toList
+        IO.eprintln s!"prof max_K={recs.foldl (fun a r => max a r.K.card) 0} max_A={recs.foldl (fun a r => max a r.A.card) 0} max_t={recs.foldl (fun a r => max a r.t.card) 0} sum_t={recs.foldl (fun a r => a + r.t.card) 0}"
         return 0
       if (← IO.getEnv "KM_SRI_COUNT") == some "1" then
         -- `IO.lazyPure` keeps each phase at its place between the clock reads.

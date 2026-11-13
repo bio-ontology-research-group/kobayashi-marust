@@ -79,6 +79,8 @@ structure Ix (n m : Nat) where
   /-- The super-roles of `.pos r` and of `.inv r`. -/
   upPos : Array (List (RT m))
   upInv : Array (List (RT m))
+  /-- The roles of the universal clauses, by `rtCode`. -/
+  allRoles : Std.HashSet (Bool × Fin m)
 
 def mkIx (O : Ontology (Fin n) (Fin m)) : Ix n m where
   allBy := Idx.ofList (alls O)
@@ -88,6 +90,7 @@ def mkIx (O : Ontology (Fin n) (Fin m)) : Ix n m where
   gciTop := ((gcis O).zipIdx.filter fun q => q.1.1.isEmpty).map (·.2)
   upPos := Array.ofFn fun r : Fin m => upFix O (.pos r) (2 * m + 2) [.pos r]
   upInv := Array.ofFn fun r : Fin m => upFix O (.inv r) (2 * m + 2) [.inv r]
+  allRoles := Std.HashSet.ofList ((alls O).map fun q => rtCode q.2.1)
 
 def Ix.up (ix : Ix n m) : RT m → List (RT m)
   | .pos r => ix.upPos.getD r.val []
@@ -95,13 +98,42 @@ def Ix.up (ix : Ix n m) : RT m → List (RT m)
 
 /-! ## Propagation and demands through the indexes -/
 
+/-- Whether some universal clause has a super-role of `R`. If none has,
+propagation along `R` gives nothing and `fwdF` skips the scan. -/
+def Ix.hasAll (ix : Ix n m) (R : RT m) : Bool :=
+  (ix.up R).any fun S => ix.allRoles.contains (rtCode S)
+
 def fwdF (ix : Ix n m) (t : Ty n) (R : RT m) : Ty n :=
-  let up := ix.up R
-  ofL ((toL t).flatMap fun a =>
-    (ix.allBy.get a).filterMap fun q => if q.1 ∈ up then some q.2 else none)
+  if ix.hasAll R then
+    let up := ix.up R
+    ofL ((toL t).flatMap fun a =>
+      (ix.allBy.get a).filterMap fun q => if q.1 ∈ up then some q.2 else none)
+  else ∅
 
 def backF (ix : Ix n m) (s : Ty n) (R : RT m) : Ty n :=
   fwdF ix s R.flip
+
+/-- The values of `f` at every role term, each computed on first use. A
+record builds one for its propagation sets, so that demands along the
+same role share them. -/
+structure RoleTab (n m : Nat) where
+  pos : Array (Thunk (Ty n))
+  inv : Array (Thunk (Ty n))
+
+def RoleTab.of (f : RT m → Ty n) : RoleTab n m :=
+  ⟨Array.ofFn fun r => Thunk.mk fun _ => f (.pos r),
+    Array.ofFn fun r => Thunk.mk fun _ => f (.inv r)⟩
+
+def RoleTab.get (tb : RoleTab n m) (f : RT m → Ty n) : RT m → Ty n
+  | .pos r => match tb.pos[r.val]? with
+    | some th => th.get
+    | none => f (.pos r)
+  | .inv r => match tb.inv[r.val]? with
+    | some th => th.get
+    | none => f (.inv r)
+
+theorem RoleTab.get_of (f : RT m → Ty n) (R : RT m) : (RoleTab.of f).get f R = f R := by
+  cases R <;> simp [RoleTab.get, RoleTab.of, Thunk.get]
 
 def demF (ix : Ix n m) (t : Ty n) : List (Fin n × RT m × Fin n) :=
   (toL t).flatMap fun a => (ix.exBy.get a).map fun q => (a, q.1, q.2)
@@ -201,8 +233,9 @@ instance : Hashable (Rec n) where
 structure St (n m : Nat) where
   seen : Std.HashSet (Rec n)
   todo : List (Rec n)
-  /-- `b ↦ r` for each seen `r` with `b ∈ r.K`. -/
-  kidx : Idx n (Rec n)
+  /-- `b ↦ (r, B)` for each seen `r` with `b ∈ r.K`, where `B` holds the
+  back sets `backF r.t R`, each computed on first use. -/
+  kidx : Idx n (Rec n × RoleTab n m)
   /-- `b ↦ (r, R, insert b (fwd r.t R))` for each seen `r` and demand
   `(a, R, b)` of `r.t`. -/
   fidx : Idx n (Rec n × RT m × Ty n)
@@ -214,12 +247,14 @@ def St.empty : St n m := ⟨∅, [], ∅, ∅, ∅⟩
 /-- Add a record unless it is seen: mark it seen, queue it, index it. -/
 def addRec (ix : Ix n m) (st : St n m) (x : Rec n) : St n m :=
   if st.seen.contains x then st else
+  let fw := RoleTab.of (fwdF ix x.t)
+  let bk := RoleTab.of (backF ix x.t)
   { st with
     seen := st.seen.insert x
     todo := x :: st.todo
-    kidx := (toL x.K).foldl (fun k b => k.add b x) st.kidx
+    kidx := (toL x.K).foldl (fun k b => k.add b (x, bk)) st.kidx
     fidx := (demF ix x.t).foldl
-      (fun f d => f.add d.2.2 (x, d.2.1, ins d.2.2 (fwdF ix x.t d.2.1))) st.fidx }
+      (fun f d => f.add d.2.2 (x, d.2.1, ins d.2.2 (fw.get (fwdF ix x.t) d.2.1))) st.fidx }
 
 /-- Add the records `(K, A, t)` of a seed `(K, A)`, for every branch `t`
 of `K ∪ A`, unless the seed is done; then mark it done. -/
@@ -230,16 +265,22 @@ def addSeed (O : Ontology (Fin n) (Fin m)) (ix : Ix n m) (st : St n m) (s : Ty n
     { st with seeds := st.seeds.insert (toL s.1, toL s.2) }
 
 /-- The seeds the rules give from `r` and the seen records: the child
-rule, the augment rule with `r` as the parent and with `r` as the child. -/
+rule, the augment rule with `r` as the parent and with `r` as the child.
+An augment seed `(K, A ∪ B)` with `B ⊆ A` is the seed of a seen record,
+which is done, so it is left out. -/
 def seedsOf (ix : Ix n m) (st : St n m) (r : Rec n) : List (Ty n × Ty n) :=
-  let fs := (demF ix r.t).map fun d => (d, ins d.2.2 (fwdF ix r.t d.2.1))
+  let fw := RoleTab.of (fwdF ix r.t)
+  let bk := RoleTab.of (backF ix r.t)
+  let fs := (demF ix r.t).map fun d => (d, ins d.2.2 (fw.get (fwdF ix r.t) d.2.1))
   let ch := fs.map fun p => (p.2, (∅ : Ty n))
   let ap := fs.flatMap fun p =>
-    ((st.kidx.get p.1.2.2).filter fun r' => sub r'.K p.2).map fun r' =>
-      (r.K, uni r.A (backF ix r'.t p.1.2.1))
+    ((st.kidx.get p.1.2.2).filter fun q => sub q.1.K p.2).filterMap fun q =>
+      let B := q.2.get (backF ix q.1.t) p.1.2.1
+      if sub B r.A then none else some (r.K, uni r.A B)
   let ac := (toL r.K).flatMap fun b =>
-    ((st.fidx.get b).filter fun e => sub r.K e.2.2).map fun e =>
-      (e.1.K, uni e.1.A (backF ix r.t e.2.1))
+    ((st.fidx.get b).filter fun e => sub r.K e.2.2).filterMap fun e =>
+      let B := bk.get (backF ix r.t) e.2.1
+      if sub B e.1.A then none else some (e.1.K, uni e.1.A B)
   ch ++ ap ++ ac
 
 /-- Twice the number of unseen records plus the queue length. -/
@@ -344,8 +385,9 @@ def ctxIdx (G : List (Rec n)) : Std.HashMap (List (Fin n)) (List (Rec n)) :=
 context of the demand and whose back set fits `r`. -/
 def supportsK (ix : Ix n m) (kIdx : Std.HashMap (List (Fin n)) (List (Rec n))) (r : Rec n) :
     List (List (Rec n)) :=
+  let fw := RoleTab.of (fwdF ix r.t)
   (demF ix r.t).map fun d =>
-    (kIdx.getD (toL (ins d.2.2 (fwdF ix r.t d.2.1))) []).filter fun r' =>
+    (kIdx.getD (toL (ins d.2.2 (fw.get (fwdF ix r.t) d.2.1))) []).filter fun r' =>
       sub (backF ix r'.t d.2.1) r.t
 
 def elimK (ix : Ix n m) (G : List (Rec n)) : List (Rec n) :=
@@ -482,7 +524,17 @@ theorem mem_up {R S : RT m} : S ∈ (mkIx O).up R ↔ RoleLe O R S := by
 theorem fwdF_eq (t : Ty n) (R : RT m) : fwdF (mkIx O) t R = fwd O t R := by
   ext c
   rw [mem_fwd]
-  simp only [fwdF, ofL_eq, List.mem_toFinset, List.mem_flatMap, List.mem_filterMap, mem_toL]
+  unfold fwdF
+  split
+  swap
+  · next hno =>
+    simp only [Finset.notMem_empty, false_iff, not_exists, not_and]
+    intro a S hcl _ hS
+    apply hno
+    refine List.any_eq_true.2 ⟨S, mem_up.2 hS, ?_⟩
+    simp only [mkIx, Std.HashSet.contains_ofList, List.contains_iff_mem, List.mem_map]
+    exact ⟨(a, S, c), mem_alls.2 hcl, rfl⟩
+  simp only [ofL_eq, List.mem_toFinset, List.mem_flatMap, List.mem_filterMap, mem_toL]
   constructor
   · rintro ⟨a, ha, ⟨S, c'⟩, hq, he⟩
     split at he
@@ -917,7 +969,11 @@ theorem AugOK.mono {P P' : Rec n → Prop} (h : ∀ x, P x → P' x) {x y : Rec 
   fun a R b hd hb hK t' ht' => h _ (hx a R b hd hb hK t' ht')
 
 /-- The context index covers the seen records. -/
-def KI (st : St n m) : Prop := ∀ y ∈ st.seen, ∀ b ∈ y.K, y ∈ st.kidx.get b
+def KI (ix : Ix n m) (st : St n m) : Prop :=
+  ∀ y ∈ st.seen, ∀ b ∈ y.K, (y, RoleTab.of (backF ix y.t)) ∈ st.kidx.get b
+
+/-- The seed of every seen record is done. -/
+def RS (st : St n m) : Prop := ∀ x ∈ st.seen, (toL x.K, toL x.A) ∈ st.seeds
 
 /-- The demand index covers the demands of the seen records. -/
 def FI (O : Ontology (Fin n) (Fin m)) (st : St n m) : Prop :=
@@ -992,8 +1048,8 @@ theorem addRec_ext {ix : Ix n m} {st : St n m} {x : Rec n} (hx : Closed O x.t �
     · simp only [hz, false_and, false_or, or_false]
       tauto
 
-theorem addRec_kidx {ix : Ix n m} {st : St n m} {x : Rec n} (h : KI st) :
-    KI (addRec ix st x) := by
+theorem addRec_kidx {ix : Ix n m} {st : St n m} {x : Rec n} (h : KI ix st) :
+    KI ix (addRec ix st x) := by
   intro y hy b hb
   unfold addRec at hy ⊢
   split
@@ -1001,7 +1057,8 @@ theorem addRec_kidx {ix : Ix n m} {st : St n m} {x : Rec n} (h : KI st) :
   · next hc =>
     rw [if_neg hc] at hy
     simp only [Std.HashSet.mem_insert, beq_iff_eq] at hy
-    rw [Idx.mem_foldl_add (fun b => b) (fun _ => x)]
+    dsimp only
+    rw [Idx.mem_foldl_add (fun b => b) (fun _ => (x, RoleTab.of (backF ix x.t)))]
     rcases hy with rfl | hy
     · exact Or.inr ⟨b, mem_toL.2 hb, rfl, rfl⟩
     · exact Or.inl (h y hy b hb)
@@ -1016,10 +1073,19 @@ theorem addRec_fidx {st : St n m} {x : Rec n} (h : FI O st) : FI O (addRec (mkIx
     simp only [Std.HashSet.mem_insert, beq_iff_eq] at hy
     dsimp only
     rw [Idx.mem_foldl_add (fun d : Fin n × RT m × Fin n => d.2.2)
-      (fun d : Fin n × RT m × Fin n => (x, d.2.1, ins d.2.2 (fwdF (mkIx O) x.t d.2.1)))]
+      (fun d : Fin n × RT m × Fin n => (x, d.2.1,
+        ins d.2.2 ((RoleTab.of (fwdF (mkIx O) x.t)).get (fwdF (mkIx O) x.t) d.2.1)))]
     rcases hy with rfl | hy
-    · exact Or.inr ⟨(a, R, b), mem_demF.2 hd, rfl, by rw [ins_eq, fwdF_eq]⟩
+    · exact Or.inr ⟨(a, R, b), mem_demF.2 hd, rfl, by rw [RoleTab.get_of, ins_eq, fwdF_eq]⟩
     · exact Or.inl (h y hy a R b hd)
+
+theorem addRec_rs {ix : Ix n m} {st : St n m} {x : Rec n} (hx : (toL x.K, toL x.A) ∈ st.seeds)
+    (h : RS st) : RS (addRec ix st x) := by
+  intro z hz
+  rw [addRec_seeds]
+  rcases addRec_seen.1 hz with rfl | hz
+  · exact hx
+  · exact h z hz
 
 theorem foldl_seen {ix : Ix n m} {z : Rec n} :
     ∀ (L : List (Rec n)) (st : St n m),
@@ -1031,28 +1097,32 @@ theorem foldl_seen {ix : Ix n m} {z : Rec n} :
 
 /-- The invariants `addRec` keeps, over a list of records. -/
 theorem foldl_addRec {L : List (Rec n)} (hL : ∀ x ∈ L, Closed O x.t ∧ x.K ⊆ x.t) :
-    ∀ (st : St n m), KI st → FI O st →
+    ∀ (st : St n m), (∀ x ∈ L, (toL x.K, toL x.A) ∈ st.seeds) → KI (mkIx O) st → FI O st →
+      RS st →
       let st' := L.foldl (addRec (mkIx O)) st
-      Ext O st st' ∧ KI st' ∧ FI O st' ∧ st'.seeds = st.seeds := by
+      Ext O st st' ∧ KI (mkIx O) st' ∧ FI O st' ∧ RS st' ∧ st'.seeds = st.seeds := by
   induction L with
-  | nil => intro st hk hf; exact ⟨Ext.refl st, hk, hf, rfl⟩
+  | nil => intro st _ hk hf hr; exact ⟨Ext.refl st, hk, hf, hr, rfl⟩
   | cons x L ih =>
-    intro st hk hf
-    obtain ⟨he, hk', hf', hsd⟩ := ih (fun y hy => hL y (List.mem_cons_of_mem _ hy))
-      (addRec (mkIx O) st x) (addRec_kidx hk) (addRec_fidx hf)
-    exact ⟨(addRec_ext (hL x (List.mem_cons_self ..))).trans he, hk', hf',
+    intro st hLk hk hf hr
+    obtain ⟨he, hk', hf', hr', hsd⟩ := ih (fun y hy => hL y (List.mem_cons_of_mem _ hy))
+      (addRec (mkIx O) st x)
+      (fun y hy => by rw [addRec_seeds]; exact hLk y (List.mem_cons_of_mem _ hy))
+      (addRec_kidx hk) (addRec_fidx hf) (addRec_rs (hLk x (List.mem_cons_self ..)) hr)
+    exact ⟨(addRec_ext (hL x (List.mem_cons_self ..))).trans he, hk', hf', hr',
       hsd.trans addRec_seeds⟩
 
 /-- The invariants `addSeed` keeps; afterwards the seed is done, and the
 seeds done before stay done. -/
-theorem addSeed_spec (st : St n m) (s : Ty n × Ty n) (hk : KI st) (hf : FI O st)
-    (hs : SI O st) :
+theorem addSeed_spec (st : St n m) (s : Ty n × Ty n) (hk : KI (mkIx O) st) (hf : FI O st)
+    (hs : SI O st) (hr : RS st) :
     let st' := addSeed O (mkIx O) st s
-    Ext O st st' ∧ KI st' ∧ FI O st' ∧ SI O st' ∧ (toL s.1, toL s.2) ∈ st'.seeds ∧
-      ∀ k ∈ st.seeds, k ∈ st'.seeds := by
+    Ext O st st' ∧ KI (mkIx O) st' ∧ FI O st' ∧ SI O st' ∧ RS st' ∧
+      (toL s.1, toL s.2) ∈ st'.seeds ∧ ∀ k ∈ st.seeds, k ∈ st'.seeds := by
   unfold addSeed
   split
-  · next hc => exact ⟨Ext.refl st, hk, hf, hs, Std.HashSet.mem_iff_contains.2 hc, fun _ h => h⟩
+  · next hc =>
+    exact ⟨Ext.refl st, hk, hf, hs, hr, Std.HashSet.mem_iff_contains.2 hc, fun _ h => h⟩
   · set st1 : St n m := { st with seeds := st.seeds.insert (toL s.1, toL s.2) }
     set L := (branchesF O (mkIx O) (uni s.1 s.2)).map fun t => (⟨s.1, s.2, t⟩ : Rec n)
     have hL : ∀ x ∈ L, Closed O x.t ∧ x.K ⊆ x.t := by
@@ -1075,25 +1145,32 @@ theorem addSeed_spec (st : St n m) (s : Ty n × Ty n) (hk : KI st) (hf : FI O st
         rw [uni_eq]
         exact mem_branchesF ht
       · exact Or.inr (hs K A hka t ht)
-    obtain ⟨he, hk', hf', hsd⟩ := foldl_addRec hL st1 hk hf
+    have hkey : (toL s.1, toL s.2) ∈ st1.seeds :=
+      Std.HashSet.mem_insert.2 (Or.inl (beq_self_eq_true _))
+    have hLk : ∀ x ∈ L, (toL x.K, toL x.A) ∈ st1.seeds := by
+      intro x hx
+      obtain ⟨t, -, rfl⟩ := List.mem_map.1 hx
+      exact hkey
+    obtain ⟨he, hk', hf', hr', hsd⟩ := foldl_addRec hL st1 hLk hk hf
+      (fun z hz => Std.HashSet.mem_insert.2 (Or.inr (hr z hz)))
     have h01 : Ext O st st1 :=
       ⟨fun _ h => h, fun _ h => Or.inl h, fun _ => ⟨Or.inl, fun h => h.elim id fun h => absurd h.1 h.2⟩⟩
-    refine ⟨h01.trans he, hk', hf', fun K A hka => hs1 K A (hsd ▸ hka),
+    refine ⟨h01.trans he, hk', hf', fun K A hka => hs1 K A (hsd ▸ hka), hr',
       hsd ▸ Std.HashSet.mem_insert.2 (Or.inl (beq_self_eq_true _)),
       fun k hk => hsd ▸ Std.HashSet.mem_insert.2 (Or.inr hk)⟩
 
 theorem foldl_addSeed (L : List (Ty n × Ty n)) :
-    ∀ (st : St n m), KI st → FI O st → SI O st →
+    ∀ (st : St n m), KI (mkIx O) st → FI O st → SI O st → RS st →
       let st' := L.foldl (addSeed O (mkIx O)) st
-      Ext O st st' ∧ KI st' ∧ FI O st' ∧ SI O st' ∧
+      Ext O st st' ∧ KI (mkIx O) st' ∧ FI O st' ∧ SI O st' ∧ RS st' ∧
         ∀ s ∈ L, ∀ t ∈ branches O (s.1 ∪ s.2), (⟨s.1, s.2, t⟩ : Rec n) ∈ st'.seen := by
   induction L with
-  | nil => intro st hk hf hs; exact ⟨Ext.refl st, hk, hf, hs, by simp⟩
+  | nil => intro st hk hf hs hr; exact ⟨Ext.refl st, hk, hf, hs, hr, by simp⟩
   | cons x L ih =>
-    intro st hk hf hs
-    obtain ⟨he1, hk1, hf1, hs1, hx1, -⟩ := addSeed_spec st x hk hf hs
-    obtain ⟨he, hk', hf', hs', hL⟩ := ih _ hk1 hf1 hs1
-    refine ⟨he1.trans he, hk', hf', hs', fun s hs t ht => ?_⟩
+    intro st hk hf hs hr
+    obtain ⟨he1, hk1, hf1, hs1, hr1, hx1, -⟩ := addSeed_spec st x hk hf hs hr
+    obtain ⟨he, hk', hf', hs', hr', hL⟩ := ih _ hk1 hf1 hs1 hr1
+    refine ⟨he1.trans he, hk', hf', hs', hr', fun s hs t ht => ?_⟩
     rcases List.mem_cons.1 hs with rfl | hs
     · exact he.mono _ (hs1 _ _ hx1 t ht)
     · exact hL s hs t ht
@@ -1103,27 +1180,39 @@ theorem seedsOf_child {st : St n m} {r : Rec n} {a b : Fin n} {R : RT m}
     (insert b (fwd O r.t R), (∅ : Ty n)) ∈ seedsOf (mkIx O) st r := by
   simp only [seedsOf, List.mem_append, List.mem_map, List.mem_flatMap]
   refine Or.inl (Or.inl ⟨((a, R, b), ins b (fwdF (mkIx O) r.t R)),
-    ⟨(a, R, b), mem_demF.2 hd, rfl⟩, by rw [ins_eq, fwdF_eq]⟩)
+    ⟨(a, R, b), mem_demF.2 hd, by rw [RoleTab.get_of]⟩, by rw [ins_eq, fwdF_eq]⟩)
 
-theorem seedsOf_augP {st : St n m} {r w : Rec n} (hk : KI st) (hw : w ∈ st.seen)
+theorem seedsOf_augP {st : St n m} {r w : Rec n} (hk : KI (mkIx O) st) (hw : w ∈ st.seen)
     {a b : Fin n} {R : RT m} (hd : (a, R, b) ∈ demands O r.t) (hb : b ∈ w.K)
     (hK : w.K ⊆ insert b (fwd O r.t R)) :
-    (r.K, r.A ∪ back O w.t R) ∈ seedsOf (mkIx O) st r := by
-  simp only [seedsOf, List.mem_append, List.mem_map, List.mem_flatMap, List.mem_filter]
+    back O w.t R ⊆ r.A ∨ (r.K, r.A ∪ back O w.t R) ∈ seedsOf (mkIx O) st r := by
+  by_cases hB : back O w.t R ⊆ r.A
+  · exact Or.inl hB
+  right
+  simp only [seedsOf, List.mem_append, List.mem_map, List.mem_flatMap, List.mem_filter,
+    List.mem_filterMap]
   refine Or.inl (Or.inr ⟨((a, R, b), ins b (fwdF (mkIx O) r.t R)),
-    ⟨(a, R, b), mem_demF.2 hd, rfl⟩, w, ⟨hk w hw b hb, ?_⟩, by rw [uni_eq, backF_eq]⟩)
-  rw [sub_eq, ins_eq, fwdF_eq]
-  exact decide_eq_true hK
+    ⟨(a, R, b), mem_demF.2 hd, by rw [RoleTab.get_of]⟩, (w, RoleTab.of (backF (mkIx O) w.t)),
+    ⟨hk w hw b hb, ?_⟩, ?_⟩)
+  · rw [sub_eq, ins_eq, fwdF_eq]
+    exact decide_eq_true hK
+  · rw [RoleTab.get_of, backF_eq, sub_eq, uni_eq]
+    simp [hB]
 
 theorem seedsOf_augC {st : St n m} {r z : Rec n} (hf : FI O st) (hz : z ∈ st.seen)
     {a b : Fin n} {R : RT m} (hd : (a, R, b) ∈ demands O z.t) (hb : b ∈ r.K)
     (hK : r.K ⊆ insert b (fwd O z.t R)) :
-    (z.K, z.A ∪ back O r.t R) ∈ seedsOf (mkIx O) st r := by
-  simp only [seedsOf, List.mem_append, List.mem_map, List.mem_flatMap, List.mem_filter]
-  refine Or.inr ⟨b, mem_toL.2 hb, (z, R, insert b (fwd O z.t R)), ⟨hf z hz a R b hd, ?_⟩,
-    by rw [uni_eq, backF_eq]⟩
-  rw [sub_eq]
-  exact decide_eq_true hK
+    back O r.t R ⊆ z.A ∨ (z.K, z.A ∪ back O r.t R) ∈ seedsOf (mkIx O) st r := by
+  by_cases hB : back O r.t R ⊆ z.A
+  · exact Or.inl hB
+  right
+  simp only [seedsOf, List.mem_append, List.mem_map, List.mem_flatMap, List.mem_filter,
+    List.mem_filterMap]
+  refine Or.inr ⟨b, mem_toL.2 hb, (z, R, insert b (fwd O z.t R)), ⟨hf z hz a R b hd, ?_⟩, ?_⟩
+  · rw [sub_eq]
+    exact decide_eq_true hK
+  · rw [RoleTab.get_of, backF_eq, sub_eq, uni_eq]
+    simp [hB]
 
 /-- The loop invariant: the indexes cover the seen records, every record
 of a done seed is seen, and every seen record that is not queued
@@ -1132,9 +1221,10 @@ structure Inv (O : Ontology (Fin n) (Fin m)) (req : List (Fin n)) (st : St n m) 
   closed : ∀ x ∈ st.seen, Closed O x.t
   ksub : ∀ x ∈ st.seen, x.K ⊆ x.t
   todo : ∀ x ∈ st.todo, x ∈ st.seen
-  kidx : KI st
+  kidx : KI (mkIx O) st
   fidx : FI O st
   seeds : SI O st
+  recs : RS st
   child : ∀ x ∈ st.seen, x ∉ st.todo → ChildOK O (· ∈ st.seen) x
   aug : ∀ x ∈ st.seen, ∀ y ∈ st.seen, x ∉ st.todo → y ∉ st.todo → AugOK O (· ∈ st.seen) x y
   root : ∀ a ∈ req, ∀ t ∈ branches O {a}, (⟨{a}, ∅, t⟩ : Rec n) ∈ st.seen
@@ -1146,7 +1236,8 @@ theorem Inv.step {req : List (Fin n)} {st : St n m} (hI : Inv O req st) {r : Rec
   set L := seedsOf (mkIx O) st r
   set st1 : St n m := { st with todo := rest }
   set st2 := L.foldl (addSeed O (mkIx O)) st1
-  obtain ⟨he, hk2, hf2, hs2, hcov⟩ := foldl_addSeed (O := O) L st1 hI.kidx hI.fidx hI.seeds
+  obtain ⟨he, hk2, hf2, hs2, hr2, hcov⟩ :=
+    foldl_addSeed (O := O) L st1 hI.kidx hI.fidx hI.seeds hI.recs
   have hmono : ∀ z, z ∈ st.seen → z ∈ st2.seen := fun z hz => he.mono z hz
   have hdone : ∀ z, z ∈ st2.seen → z ∉ st2.todo → z ∈ st.seen ∧ z ∉ rest := by
     intro z hz hnt
@@ -1159,7 +1250,7 @@ theorem Inv.step {req : List (Fin n)} {st : St n m} (hI : Inv O req st) {r : Rec
     rcases List.mem_cons.1 h3 with h3 | h3
     · exact h2 h3
     · exact h1 h3
-  refine ⟨?_, ?_, ?_, hk2, hf2, hs2, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, hk2, hf2, hs2, hr2, ?_, ?_, ?_⟩
   · intro z hz
     rcases he.new z hz with hz | hz
     · exact hI.closed z hz
@@ -1185,10 +1276,18 @@ theorem Inv.step {req : List (Fin n)} {st : St n m} (hI : Inv O req st) {r : Rec
     obtain ⟨hws, hwr⟩ := hdone w hw hwt
     by_cases hz' : z = r
     · subst hz'
-      exact fun a R b hd hb hK t' ht' => hcov _ (seedsOf_augP hI.kidx hws hd hb hK) t' ht'
+      intro a R b hd hb hK t' ht'
+      rcases seedsOf_augP hI.kidx hws hd hb hK with hB | hm
+      · rw [Finset.union_eq_left.2 hB] at ht' ⊢
+        exact hmono _ (hI.seeds _ _ (hI.recs _ hzs) t' ht')
+      · exact hcov _ hm t' ht'
     · by_cases hw' : w = r
       · subst hw'
-        exact fun a R b hd hb hK t' ht' => hcov _ (seedsOf_augC hI.fidx hzs hd hb hK) t' ht'
+        intro a R b hd hb hK t' ht'
+        rcases seedsOf_augC hI.fidx hzs hd hb hK with hB | hm
+        · rw [Finset.union_eq_left.2 hB] at ht' ⊢
+          exact hmono _ (hI.seeds _ _ (hI.recs _ hzs) t' ht')
+        · exact hcov _ hm t' ht'
       · exact (hI.aug z hzs w hws (hold z hzr hz') (hold w hwr hw')).mono hmono
   · exact fun a ha t ht => hmono _ (hI.root a ha t ht)
 
@@ -1212,15 +1311,15 @@ theorem loop_spec {req : List (Fin n)} :
 theorem Inv.init (req : List (Fin n)) :
     Inv O req ((roots req).foldl (addSeed O (mkIx O)) St.empty) := by
   have he0 : ∀ z : Rec n, z ∉ (St.empty : St n m).seen := fun z => Std.HashSet.not_mem_empty
-  obtain ⟨he, hk, hf, hs, hcov⟩ := foldl_addSeed (O := O) (roots req) (St.empty : St n m)
+  obtain ⟨he, hk, hf, hs, hr, hcov⟩ := foldl_addSeed (O := O) (roots req) (St.empty : St n m)
     (fun z hz => absurd hz (he0 z)) (fun z hz => absurd hz (he0 z))
-    (fun K A hka => absurd hka Std.HashSet.not_mem_empty)
+    (fun K A hka => absurd hka Std.HashSet.not_mem_empty) (fun z hz => absurd hz (he0 z))
   have hnew : ∀ z ∈ ((roots req).foldl (addSeed O (mkIx O)) (St.empty : St n m)).seen,
       Closed O z.t ∧ z.K ⊆ z.t := fun z hz => (he.new z hz).resolve_left (he0 z)
   have htodo : ∀ z ∈ ((roots req).foldl (addSeed O (mkIx O)) (St.empty : St n m)).seen,
       z ∈ ((roots req).foldl (addSeed O (mkIx O)) (St.empty : St n m)).todo :=
     fun z hz => (he.todo z).2 (Or.inr ⟨hz, he0 z⟩)
-  refine ⟨fun z hz => (hnew z hz).1, fun z hz => (hnew z hz).2, ?_, hk, hf, hs,
+  refine ⟨fun z hz => (hnew z hz).1, fun z hz => (hnew z hz).2, ?_, hk, hf, hs, hr,
     fun z hz hnt => absurd (htodo z hz) hnt, fun z hz _ _ hnt _ => absurd (htodo z hz) hnt, ?_⟩
   · intro z hz
     rcases (he.todo z).1 hz with hz | ⟨hz, -⟩
@@ -1404,7 +1503,8 @@ theorem okInK_iff {G : List (Rec n)} {E : Std.HashSet (Rec n)} (hE : ∀ r', r' 
       ∀ d ∈ demands O r.t, ∃ r', r' ∈ E ∧ r'.K = insert d.2.2 (fwd O r.t d.2.1) ∧
         back O r'.t d.2.1 ⊆ r.t := by
   simp only [okIn, supportsK, List.all_map, List.all_eq_true, Function.comp_apply,
-    List.any_eq_true, List.mem_filter, sub_eq, ins_eq, decide_eq_true_eq, fwdF_eq, backF_eq, mem_ctxIdx,
+    List.any_eq_true, List.mem_filter, sub_eq, ins_eq, RoleTab.get_of, decide_eq_true_eq, fwdF_eq,
+    backF_eq, mem_ctxIdx,
     Std.HashSet.contains_iff_mem]
   constructor
   · intro h d hd
