@@ -170,7 +170,8 @@
             <Bundle-ContactAddress>https://github.com/bio-ontology-research-group/kobayashi-marust</Bundle-ContactAddress>
             <Bundle-Vendor>Bio-Ontology Research Group, KAUST</Bundle-Vendor>
             <Bundle-RequiredExecutionEnvironment>JavaSE-11</Bundle-RequiredExecutionEnvironment>
-            <Bundle-License>BSD-3-Clause,LGPL-3.0-only</Bundle-License>
+            <Bundle-License>BSD-3-Clause</Bundle-License>
+            <Bundle-Copyright>Copyright (c) 2026 Robert Hoehndorf</Bundle-Copyright>
             <Bundle-Activator>org.protege.editor.core.plugin.DefaultPluginActivator</Bundle-Activator>
             <Export-Package>
               org.bioontology.kobayashimarust.protege;version="${project.version}",

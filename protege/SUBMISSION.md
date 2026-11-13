@@ -25,8 +25,8 @@ first.
       platforms: km builds and classifies a small ontology on each runner,
       both jars pass `mvn verify -Dkm.native.require=all`, and both pass the
       installation smoke test in stock Protégé 5.6.9 and 6.0.0-alpha-1.
-- [ ] Settle the licence statement (see "Licence" below) and, if it changes,
-      the `license=` lines in both descriptors.
+- [x] Settle the licence statement: BSD-3-Clause, copyright Robert
+      Hoehndorf (maintainer decision, 2026-11-13).
 - [ ] Release v1.6.3 by pushing the `v1.6.3` tag. `release.yml` creates the
       release; `protege-plugin.yml` attaches
       `kobayashi-marust-protege5-1.6.3.jar`,
@@ -74,7 +74,7 @@ download=https://github.com/bio-ontology-research-group/kobayashi-marust/release
 name=Kobayashi-MaRust Reasoner
 readme=https://raw.githubusercontent.com/bio-ontology-research-group/kobayashi-marust/main/protege/update-info/protege-5/readme.html
 license=https://raw.githubusercontent.com/bio-ontology-research-group/kobayashi-marust/main/LICENSE
-author=Robert Hoehndorf and the Bio-Ontology Research Group, KAUST
+author=Robert Hoehndorf
 ```
 
 Title:
@@ -122,7 +122,7 @@ Changes:
    name=Kobayashi-MaRust Reasoner
    readme=https://raw.githubusercontent.com/bio-ontology-research-group/kobayashi-marust/main/protege/update-info/protege-5/readme.html
    license=https://raw.githubusercontent.com/bio-ontology-research-group/kobayashi-marust/main/LICENSE
-   author=Robert Hoehndorf and the Bio-Ontology Research Group, KAUST
+   author=Robert Hoehndorf
    ```
 
 2. In `update-info/6.0.0/plugins.repository`, append this line after the
@@ -173,11 +173,7 @@ For each KM release `X.Y.Z`:
 
 ## Licence
 
-The descriptors point `license=` at the repository `LICENSE`
-(BSD-3-Clause). The jars also carry code under other licences: the embedded
-OWL Explanation and telemetry jars (LGPL-3.0), Gson and, in the Protégé 6
-jar, HPPC-RT (Apache-2.0), and the bundled `km` executables, which link
-LGPL-3.0 code (horned-owl, pretty_rdf, the vendored functional-syntax parser
-and the `konclude_ht` port of Konclude) and MIT or Apache-2.0 Rust crates.
-Decide whether `license=` should point at a file that states all of these
-before submitting.
+The plugin is released under the BSD 3-Clause licence, copyright Robert
+Hoehndorf (maintainer decision, 2026-11-13). The descriptors point
+`license=` at the repository `LICENSE`. Third-party components bundled in
+the jars keep their own licences.
