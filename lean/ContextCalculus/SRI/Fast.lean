@@ -9,10 +9,10 @@ import Std.Data.HashMap.Lemmas
 `Procedure.lean` computes `Gstar` in rounds that apply every rule to
 every record and pair of records, and `alive` in rounds over the whole
 set. This file computes a rule-closed candidate set and its elimination
-result with indexes and a worklist, and proves the two properties of
-`Abstract.lean` (`RulesClosed`, `IsElim`). `entails_iff_of` then gives
-`fastEntails_iff`, and `classify_spec` gives every subsumer of every
-requested name from one run.
+result with indexes and a worklist, and proves the properties of
+`Abstract.lean` (`RulesClosed`, `IsElimK`). `entails_iff_ofK` then gives
+`fastEntails_iff`; `classify_spec` and `classifyF_spec` give every
+subsumer of every requested name from one run.
 
 The parts:
 
@@ -33,6 +33,12 @@ The parts:
   records. The measure `2 * unseen + todo` falls at every step.
 - `elimF`: elimination in rounds; each record keeps, for each demand, the
   list of records that could witness it.
+- `elimK` (P2c): elimination as `elimF`, but each demand looks up its
+  candidate witnesses by exact context (`witnessedK`) in a hash map from
+  the sorted context to its records. `fastAlive` uses it.
+- `classifyF` (P2c): the readout. For each requested name it gives `none`
+  when no alive record holds the name, and otherwise filters the names of
+  one such type against hash sets of the others.
 
 Unlike `Gstar`, the candidate set need not be least: `entails_iff_of`
 asks only that it is closed under the rules and holds closed types.
@@ -273,12 +279,30 @@ def elimF (ix : Ix n m) (G : List (Rec n)) : List (Rec n) :=
   let tIdx := typeIdx G
   (elimLoop (G.map fun r => (r, supports ix tIdx r))).map Prod.fst
 
+/-! ## Elimination by exact context -/
+
+/-- The records by their context, keyed by its sorted list of names. -/
+def ctxIdx (G : List (Rec n)) : Std.HashMap (List (Fin n)) (List (Rec n)) :=
+  G.foldl (fun ix r => ix.insert (toL r.K) (r :: ix.getD (toL r.K) [])) ∅
+
+/-- For each demand of `r`, the records whose context is the child
+context of the demand and whose back set fits `r`. -/
+def supportsK (ix : Ix n m) (kIdx : Std.HashMap (List (Fin n)) (List (Rec n))) (r : Rec n) :
+    List (List (Rec n)) :=
+  (demF ix r.t).map fun d =>
+    (kIdx.getD (toL (insert d.2.2 (fwdF ix r.t d.2.1))) []).filter fun r' =>
+      decide (backF ix r'.t d.2.1 ⊆ r.t)
+
+def elimK (ix : Ix n m) (G : List (Rec n)) : List (Rec n) :=
+  let kIdx := ctxIdx G
+  (elimLoop (G.map fun r => (r, supportsK ix kIdx r))).map Prod.fst
+
 /-! ## The answers -/
 
 /-- The alive records of the fast procedure. -/
 def fastAlive (O : Ontology (Fin n) (Fin m)) (req : List (Fin n)) : List (Rec n) :=
   let ix := mkIx O
-  elimF ix (candidates O ix req)
+  elimK ix (candidates O ix req)
 
 /-- The fast procedure's verdict on `a ⊑ b`. -/
 def fastEntails (O : Ontology (Fin n) (Fin m)) (req : List (Fin n)) (a b : Fin n) : Bool :=
@@ -294,6 +318,26 @@ def classify (O : Ontology (Fin n) (Fin m)) (req : List (Fin n)) :
     List (Fin n × List (Fin n)) :=
   let eIdx := typeIdx (fastAlive O req)
   req.map fun a => (a, toL (interAll (eIdx.get a)))
+
+/-- Each listed type with its hash set, by each of its names. -/
+def hashIdx (L : List (Rec n)) : Idx n (Ty n × Std.HashSet (Fin n)) :=
+  Idx.ofList (L.flatMap fun r =>
+    let h := Std.HashSet.ofList (toL r.t)
+    (toL r.t).map fun b => (b, (r.t, h)))
+
+/-- The members of `L` in every listed hash set. -/
+def meetH (L : List (Fin n)) (rest : List (Ty n × Std.HashSet (Fin n))) : List (Fin n) :=
+  rest.foldl (fun cur q => cur.filter fun b => q.2.contains b) L
+
+/-- Every requested name with its subsumers, from one run: `none` when no
+alive record holds the name (it is unsatisfiable), otherwise the names of
+one alive type with the name that are in every other such type. -/
+def classifyF (O : Ontology (Fin n) (Fin m)) (req : List (Fin n)) :
+    List (Fin n × Option (List (Fin n))) :=
+  let hIdx := hashIdx (fastAlive O req)
+  req.map fun a => (a, match hIdx.get a with
+    | [] => none
+    | q :: rest => some (meetH (toL q.1) rest))
 
 /-! ## Proofs: indexes -/
 
@@ -695,6 +739,44 @@ theorem QInv.init (σ : Ty n) :
     exact List.mem_append_right _
       (List.mem_flatMap.2 ⟨x, mem_toL.2 (hb x hx), mem_gciBy.2 ⟨q, hq, hx⟩⟩)
 
+/-- Every type `fbAux` returns holds the seed. -/
+theorem fbAux_sup {ix : Ix n m} {σ : Ty n} : ∀ (fuel : Nat) (cur : Ty n) (done queue : List Nat)
+    (t : Ty n), t ∈ fbAux O ix σ fuel cur done queue → σ ⊆ cur → σ ⊆ t := by
+  intro fuel
+  induction fuel with
+  | zero =>
+    intro cur done queue
+    induction queue with
+    | nil =>
+      intro t ht hσ
+      rw [fbAux, List.mem_singleton] at ht
+      subst ht
+      exact hσ
+    | cons i rest ih =>
+      intro t ht hσ
+      rw [fbAux] at ht
+      split at ht
+      · exact ih t ht hσ
+      · exact (branches_closed ht).2
+  | succ f ihf =>
+    intro cur done queue
+    induction queue with
+    | nil =>
+      intro t ht hσ
+      rw [fbAux, List.mem_singleton] at ht
+      subst ht
+      exact hσ
+    | cons i rest ih =>
+      intro t ht hσ
+      rw [fbAux] at ht
+      split at ht
+      · exact ih t ht hσ
+      · obtain ⟨Y, -, ht⟩ := List.mem_flatMap.1 ht
+        exact ihf _ _ _ t ht (hσ.trans Finset.subset_union_left)
+
+theorem branchesF_sup {ix : Ix n m} {σ t : Ty n} (h : t ∈ branchesF O ix σ) : σ ⊆ t :=
+  fbAux_sup _ _ _ _ t h (Finset.Subset.refl _)
+
 theorem branchesF_closed {σ t : Ty n} (h : t ∈ branchesF O (mkIx O) σ) : Closed O t :=
   fbAux_closed _ _ _ _ t h (by simp) (QInv.init σ)
 
@@ -730,6 +812,7 @@ seen record that is not queued satisfies the rules, alone and in pairs
 with the other such records. -/
 structure Inv (O : Ontology (Fin n) (Fin m)) (req : List (Fin n)) (st : St n m) : Prop where
   closed : ∀ x ∈ st.seen, Closed O x.t
+  ksub : ∀ x ∈ st.seen, x.K ⊆ x.t
   todo : ∀ x ∈ st.todo, x ∈ st.seen
   kidx : ∀ x ∈ st.seen, ∀ b ∈ x.K, x ∈ st.kidx.get b
   fidx : ∀ x ∈ st.seen, ∀ a R b, (a, R, b) ∈ demands O x.t →
@@ -839,6 +922,13 @@ theorem gen_closed {st : St n m} {r x : Rec n} (h : x ∈ gen O (mkIx O) st r) :
   rcases h with (⟨_, _, s, hs, rfl⟩ | ⟨_, _, _, _, s, hs, rfl⟩) | ⟨_, _, _, _, s, hs, rfl⟩
   all_goals exact branchesF_closed hs
 
+theorem gen_ksub {st : St n m} {r x : Rec n} (h : x ∈ gen O (mkIx O) st r) : x.K ⊆ x.t := by
+  simp only [gen, List.mem_append, List.mem_flatMap, List.mem_map, List.mem_filter] at h
+  rcases h with (⟨_, _, s, hs, rfl⟩ | ⟨_, _, _, _, s, hs, rfl⟩) | ⟨_, _, _, _, s, hs, rfl⟩
+  · exact branchesF_sup hs
+  · exact Finset.subset_union_left.trans (branchesF_sup hs)
+  · exact Finset.subset_union_left.trans (branchesF_sup hs)
+
 theorem gen_child {st : St n m} {r : Rec n} {a b : Fin n} {R : RT m}
     (hd : (a, R, b) ∈ demands O r.t) {s : Ty n} (hs : s ∈ branches O (insert b (fwd O r.t R))) :
     (⟨insert b (fwd O r.t R), ∅, s⟩ : Rec n) ∈ gen O (mkIx O) st r := by
@@ -892,11 +982,15 @@ theorem Inv.step {req : List (Fin n)} {st : St n m} (hI : Inv O req st) {r : Rec
     · exact h2 h3
     · exact h1 h3
   have hr : r ∈ st.seen := hI.todo r (by rw [h]; exact List.mem_cons_self ..)
-  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · intro z hz
     rcases (hseen z).1 hz with hz | hz
     · exact gen_closed hz
     · exact hI.closed z hz
+  · intro z hz
+    rcases (hseen z).1 hz with hz | hz
+    · exact gen_ksub hz
+    · exact hI.ksub z hz
   · intro z hz
     rcases (htodo z).1 hz with hz | ⟨hz, -⟩
     · exact hmono z (hI.todo z (by rw [h]; exact List.mem_cons_of_mem _ hz))
@@ -951,7 +1045,12 @@ theorem Inv.init (req : List (Fin n)) :
     simp only [L, roots, List.mem_flatMap, List.mem_map] at hz
     obtain ⟨_, _, t, ht, rfl⟩ := hz
     exact branchesF_closed ht
-  refine ⟨fun z hz => hL z ((hseen z).1 hz), fun z hz => (hseen z).2 ((htodo z).1 hz),
+  have hLk : ∀ z ∈ L, z.K ⊆ z.t := by
+    intro z hz
+    simp only [L, roots, List.mem_flatMap, List.mem_map] at hz
+    obtain ⟨_, _, t, ht, rfl⟩ := hz
+    exact branchesF_sup ht
+  refine ⟨fun z hz => hL z ((hseen z).1 hz), fun z hz => hLk z ((hseen z).1 hz), fun z hz => (hseen z).2 ((htodo z).1 hz),
     foldl_kidx L _ (fun z hz => absurd hz (he z)),
     foldl_fidx L _ (fun z hz => absurd hz (he z)),
     fun z hz hnt => absurd ((htodo z).2 ((hseen z).1 hz)) hnt,
@@ -984,6 +1083,13 @@ theorem candidates_rulesClosed (req : List (Fin n)) :
       t' ht')
   · intro r hr
     exact hI.closed r ((hm r).1 hr)
+
+/-- The candidate records hold their context. -/
+theorem candidates_ksub (req : List (Fin n)) :
+    ∀ r ∈ (candidates O (mkIx O) req).toFinset, r.K ⊆ r.t := by
+  obtain ⟨hI, -⟩ := loop_spec _ (Inv.init (O := O) req)
+  intro r hr
+  exact hI.ksub r (mem_candidates.1 (List.mem_toFinset.1 hr))
 
 /-! ## Proofs: elimination -/
 
@@ -1081,16 +1187,146 @@ theorem elimF_isElim (G : List (Rec n)) : IsElim O G.toFinset (elimF (mkIx O) G)
     exact (hmem r).2 (List.mem_map.1
       (hgr S (fun r hr => List.mem_toFinset.1 (hS hr)) hw r hr))
 
+/-! ## Proofs: elimination by exact context -/
+
+theorem toL_inj {K K' : Ty n} (h : toL K = toL K') : K = K' := by
+  have := congrArg List.toFinset h
+  simpa only [toL, Finset.sort_toFinset] using this
+
+theorem mem_ctxIdx_foldl {k : List (Fin n)} {x : Rec n} :
+    ∀ (G : List (Rec n)) (ix : Std.HashMap (List (Fin n)) (List (Rec n))),
+      x ∈ (G.foldl (fun ix r => ix.insert (toL r.K) (r :: ix.getD (toL r.K) [])) ix).getD k [] ↔
+        x ∈ ix.getD k [] ∨ (x ∈ G ∧ toL x.K = k)
+  | [], ix => by simp
+  | r :: G, ix => by
+    rw [List.foldl_cons, mem_ctxIdx_foldl G, Std.HashMap.getD_insert]
+    by_cases h : toL r.K = k
+    · subst h
+      simp only [beq_self_eq_true, if_true, List.mem_cons]
+      constructor
+      · rintro ((rfl | h) | ⟨hx, hk⟩)
+        · exact Or.inr ⟨Or.inl rfl, rfl⟩
+        · exact Or.inl h
+        · exact Or.inr ⟨Or.inr hx, hk⟩
+      · rintro (h | ⟨rfl | hx, hk⟩)
+        · exact Or.inl (Or.inr h)
+        · exact Or.inl (Or.inl rfl)
+        · exact Or.inr ⟨hx, hk⟩
+    · have h' : (toL r.K == k) = false := by simpa using h
+      simp only [h', Bool.false_eq_true, if_false, List.mem_cons]
+      constructor
+      · rintro (h1 | ⟨hx, hk⟩)
+        · exact Or.inl h1
+        · exact Or.inr ⟨Or.inr hx, hk⟩
+      · rintro (h1 | ⟨rfl | hx, hk⟩)
+        · exact Or.inl h1
+        · exact absurd hk h
+        · exact Or.inr ⟨hx, hk⟩
+
+theorem mem_ctxIdx {G : List (Rec n)} {K : Ty n} {x : Rec n} :
+    x ∈ (ctxIdx G).getD (toL K) [] ↔ x ∈ G ∧ x.K = K := by
+  unfold ctxIdx
+  rw [mem_ctxIdx_foldl]
+  simp only [Std.HashMap.getD_empty, List.not_mem_nil, false_or]
+  exact and_congr_right fun _ => ⟨toL_inj, fun h => h ▸ rfl⟩
+
+/-- The precomputed supports decide witnessing by exact context inside
+any subset of `G`. -/
+theorem okInK_iff {G : List (Rec n)} {E : Std.HashSet (Rec n)} (hE : ∀ r', r' ∈ E → r' ∈ G)
+    (r : Rec n) :
+    okIn E (supportsK (mkIx O) (ctxIdx G) r) = true ↔
+      ∀ d ∈ demands O r.t, ∃ r', r' ∈ E ∧ r'.K = insert d.2.2 (fwd O r.t d.2.1) ∧
+        back O r'.t d.2.1 ⊆ r.t := by
+  simp only [okIn, supportsK, List.all_map, List.all_eq_true, Function.comp_apply,
+    List.any_eq_true, List.mem_filter, decide_eq_true_eq, fwdF_eq, backF_eq, mem_ctxIdx,
+    Std.HashSet.contains_iff_mem]
+  constructor
+  · intro h d hd
+    obtain ⟨r', ⟨⟨-, hK⟩, hbk⟩, hrE⟩ := h d (mem_demF.2 hd)
+    exact ⟨r', hrE, hK, hbk⟩
+  · intro h d hd
+    obtain ⟨r', hrE, hK, hbk⟩ := h d (mem_demF.1 hd)
+    exact ⟨r', ⟨⟨hE r' hrE, hK⟩, hbk⟩, hrE⟩
+
+theorem elimLoopK_spec {G : List (Rec n)} :
+    ∀ L : List (Rec n × List (List (Rec n))),
+      (∀ p ∈ L, p.1 ∈ G ∧ p.2 = supportsK (mkIx O) (ctxIdx G) p.1) →
+      (∀ S : Finset (Rec n), (∀ r ∈ S, r ∈ G) → (∀ r ∈ S, witnessedK O S r) →
+        ∀ r ∈ S, r ∈ L.map Prod.fst) →
+      (∀ p ∈ elimLoop L, p.1 ∈ G ∧ p.2 = supportsK (mkIx O) (ctxIdx G) p.1) ∧
+      (∀ p ∈ elimLoop L, okIn (Std.HashSet.ofList ((elimLoop L).map Prod.fst)) p.2 = true) ∧
+      (∀ S : Finset (Rec n), (∀ r ∈ S, r ∈ G) → (∀ r ∈ S, witnessedK O S r) →
+        ∀ r ∈ S, r ∈ (elimLoop L).map Prod.fst) := by
+  intro L
+  induction hl : L.length using Nat.strong_induction_on generalizing L with
+  | _ k ih =>
+    intro hP hS
+    rw [elimLoop]
+    split
+    · next h =>
+      refine ih _ (hl ▸ h) _ rfl (fun p hp => hP p (List.mem_of_mem_filter hp)) ?_
+      intro S hSG hw r hr
+      obtain ⟨p, hp, rfl⟩ := List.mem_map.1 (hS S hSG hw r hr)
+      refine List.mem_map.2 ⟨p, List.mem_filter.2 ⟨hp, ?_⟩, rfl⟩
+      have hE : ∀ r', r' ∈ Std.HashSet.ofList (L.map Prod.fst) → r' ∈ G := by
+        intro r' hr'
+        obtain ⟨p', hp', rfl⟩ := List.mem_map.1 (mem_ofList_iff.1 hr')
+        exact (hP p' hp').1
+      rw [(hP p hp).2, okInK_iff hE]
+      intro d hd
+      obtain ⟨r', hr', h1, h2⟩ := hw p.1 hr d hd
+      exact ⟨r', mem_ofList_iff.2 (hS S hSG hw r' hr'), h1, h2⟩
+    · next h =>
+      refine ⟨hP, fun p hp => ?_, hS⟩
+      by_contra hne
+      exact h (List.length_filter_lt_length_iff_exists.2 ⟨p, hp, by simpa using hne⟩)
+
+theorem elimK_isElimK (G : List (Rec n)) :
+    IsElimK O G.toFinset (elimK (mkIx O) G).toFinset := by
+  have hspec := elimLoopK_spec (O := O) (G := G)
+    (G.map fun r => (r, supportsK (mkIx O) (ctxIdx G) r))
+    (fun p hp => by
+      obtain ⟨r, hr, rfl⟩ := List.mem_map.1 hp
+      exact ⟨hr, rfl⟩)
+    (fun S hSG _ r hr => by
+      rw [List.map_map]
+      exact List.mem_map.2 ⟨r, hSG r hr, rfl⟩)
+  obtain ⟨hP, hok, hgr⟩ := hspec
+  have hmem : ∀ r, r ∈ (elimK (mkIx O) G).toFinset ↔ ∃ p ∈ elimLoop (G.map fun r =>
+      (r, supportsK (mkIx O) (ctxIdx G) r)), p.1 = r := by
+    intro r
+    simp only [elimK, List.mem_toFinset, List.mem_map]
+  refine ⟨?_, ?_, ?_⟩
+  · intro r hr
+    obtain ⟨p, hp, rfl⟩ := (hmem r).1 hr
+    exact List.mem_toFinset.2 (hP p hp).1
+  · intro r hr
+    obtain ⟨p, hp, rfl⟩ := (hmem r).1 hr
+    have hE : ∀ r', r' ∈ Std.HashSet.ofList ((elimLoop (G.map fun r =>
+        (r, supportsK (mkIx O) (ctxIdx G) r))).map Prod.fst) → r' ∈ G := by
+      intro r' hr'
+      obtain ⟨p', hp', rfl⟩ := List.mem_map.1 (mem_ofList_iff.1 hr')
+      exact (hP p' hp').1
+    have h := hok p hp
+    rw [(hP p hp).2, okInK_iff hE] at h
+    intro d hd
+    obtain ⟨r', hr', h1, h2⟩ := h d hd
+    exact ⟨r', (hmem r').2 (List.mem_map.1 (mem_ofList_iff.1 hr')), h1, h2⟩
+  · intro S hS hw r hr
+    exact (hmem r).2 (List.mem_map.1
+      (hgr S (fun r hr => List.mem_toFinset.1 (hS hr)) hw r hr))
+
 /-! ## The final statements -/
 
-theorem fastAlive_isElim (req : List (Fin n)) :
-    IsElim O (candidates O (mkIx O) req).toFinset (fastAlive O req).toFinset :=
-  elimF_isElim _
+theorem fastAlive_isElimK (req : List (Fin n)) :
+    IsElimK O (candidates O (mkIx O) req).toFinset (fastAlive O req).toFinset :=
+  elimK_isElimK _
 
 /-- **Exactness of the fast procedure on requested names.** -/
 theorem fastEntails_iff (hA : IsALCHI O) {req : List (Fin n)} {a : Fin n} (ha : a ∈ req)
     (b : Fin n) : fastEntails O req a b = true ↔ EntailsSub O a b := by
-  rw [← entails_iff_of hA (candidates_rulesClosed req) (fastAlive_isElim req) ha b]
+  rw [← entails_iff_ofK hA (candidates_rulesClosed req) (candidates_ksub req)
+    (fastAlive_isElimK req) ha b]
   simp only [fastEntails, List.all_eq_true, Bool.or_eq_true, Bool.not_eq_true',
     decide_eq_false_iff_not, decide_eq_true_eq, List.mem_toFinset]
   exact forall₂_congr fun _ _ => imp_iff_not_or.symm
@@ -1121,15 +1357,99 @@ theorem classify_spec (hA : IsALCHI O) {req : List (Fin n)} :
   simp only [classify, List.mem_map] at hp
   obtain ⟨a, ha, rfl⟩ := hp
   refine ⟨ha, fun b => ?_⟩
-  rw [← entails_iff_of hA (candidates_rulesClosed req) (fastAlive_isElim req) ha b]
+  rw [← entails_iff_ofK hA (candidates_rulesClosed req) (candidates_ksub req)
+    (fastAlive_isElimK req) ha b]
   simp only [mem_toL, mem_interAll, mem_typeIdx, List.mem_toFinset]
   exact ⟨fun h r hr har => h r ⟨hr, har⟩, fun h r hr => h r hr.1 hr.2⟩
+
+theorem mem_hashIdx {L : List (Rec n)} {a : Fin n} {q : Ty n × Std.HashSet (Fin n)} :
+    q ∈ (hashIdx L).get a ↔ ∃ r ∈ L, a ∈ r.t ∧ q = (r.t, Std.HashSet.ofList (toL r.t)) := by
+  simp only [hashIdx, Idx.mem_ofList, List.mem_flatMap, List.mem_map, Prod.mk.injEq, mem_toL]
+  constructor
+  · rintro ⟨r, hr, b, hb, rfl, rfl⟩; exact ⟨r, hr, hb, rfl⟩
+  · rintro ⟨r, hr, hb, rfl⟩; exact ⟨r, hr, a, hb, rfl, rfl⟩
+
+theorem mem_meetH {b : Fin n} :
+    ∀ (rest : List (Ty n × Std.HashSet (Fin n))) (L : List (Fin n)),
+      b ∈ meetH L rest ↔ b ∈ L ∧ ∀ q ∈ rest, q.2.contains b = true
+  | [], L => by simp [meetH]
+  | q :: rest, L => by
+    simp only [meetH, List.foldl_cons] at *
+    rw [← meetH, mem_meetH rest, List.mem_filter]
+    simp only [List.mem_cons, forall_eq_or_imp]
+    tauto
+
+/-- **Classification with unsatisfiability.** Each requested name comes
+with `none` exactly when it is unsatisfiable, and otherwise with exactly
+its subsumers. -/
+theorem classifyF_spec (hA : IsALCHI O) {req : List (Fin n)} :
+    ∀ p ∈ classifyF O req, p.1 ∈ req ∧
+      (p.2 = none ↔
+        ∀ (D : Type) [Nonempty D] (I : Interp D (Fin n) (Fin m)), models I O → ∀ x, ¬ I.c p.1 x) ∧
+      ∀ L, p.2 = some L → ∀ b, b ∈ L ↔ EntailsSub O p.1 b := by
+  intro p hp
+  simp only [classifyF, List.mem_map] at hp
+  obtain ⟨a, ha, rfl⟩ := hp
+  have hG := candidates_rulesClosed (O := O) req
+  have hKt := candidates_ksub (O := O) req
+  have hE := fastAlive_isElimK (O := O) req
+  -- the index entries of `a` are the alive types holding `a`
+  have hidx : ∀ q, q ∈ (hashIdx (fastAlive O req)).get a ↔
+      ∃ r ∈ (fastAlive O req).toFinset, a ∈ r.t ∧ q = (r.t, Std.HashSet.ofList (toL r.t)) := by
+    intro q
+    rw [mem_hashIdx]
+    simp only [List.mem_toFinset]
+  refine ⟨ha, ?_, ?_⟩
+  · rw [← unsat_iff_ofK hA hG hKt hE ha]
+    dsimp only
+    split
+    · next h =>
+      simp only [true_iff]
+      intro r hr har
+      have := (hidx _).2 ⟨r, hr, har, rfl⟩
+      rw [h] at this
+      exact List.not_mem_nil this
+    · next q rest h =>
+      simp only [reduceCtorEq, false_iff, not_forall, not_not]
+      have hq : q ∈ (hashIdx (fastAlive O req)).get a := by rw [h]; exact List.mem_cons_self ..
+      obtain ⟨r, hr, har, -⟩ := (hidx q).1 hq
+      exact ⟨r, hr, har⟩
+  · intro L hL b
+    rw [← entails_iff_ofK hA hG hKt hE ha b]
+    dsimp only at hL
+    split at hL
+    · cases hL
+    · next q rest h =>
+      cases hL
+      have hall : ∀ q', q' ∈ q :: rest ↔ ∃ r ∈ (fastAlive O req).toFinset, a ∈ r.t ∧
+          q' = (r.t, Std.HashSet.ofList (toL r.t)) := by
+        intro q'; rw [← h]; exact hidx q'
+      have hct : ∀ q' ∈ q :: rest, (q'.2.contains b = true ↔ b ∈ q'.1) := by
+        intro q' hq'
+        obtain ⟨r, -, -, rfl⟩ := (hall q').1 hq'
+        simp only [Std.HashSet.contains_ofList, List.contains_iff_mem, mem_toL]
+      rw [mem_meetH, mem_toL]
+      constructor
+      · rintro ⟨hb, hrest⟩ r hr har
+        have hq' := (hall _).2 ⟨r, hr, har, rfl⟩
+        rcases List.mem_cons.1 hq' with he | hm
+        · rw [show r.t = q.1 from congrArg Prod.fst he]; exact hb
+        · exact (hct _ (List.mem_cons_of_mem _ hm)).1 (hrest _ hm)
+      · intro hb
+        have hb' : ∀ q' ∈ q :: rest, b ∈ q'.1 := by
+          intro q' hq'
+          obtain ⟨r, hr, har, rfl⟩ := (hall q').1 hq'
+          exact hb r hr har
+        refine ⟨hb' q (List.mem_cons_self ..), fun q' hq' => ?_⟩
+        exact (hct _ (List.mem_cons_of_mem _ hq')).2 (hb' q' (List.mem_cons_of_mem _ hq'))
 
 end Proofs
 
 end ContextCalculus.SRI.Proc
 
 #print axioms ContextCalculus.SRI.Proc.candidates_rulesClosed
-#print axioms ContextCalculus.SRI.Proc.fastAlive_isElim
+#print axioms ContextCalculus.SRI.Proc.candidates_ksub
+#print axioms ContextCalculus.SRI.Proc.fastAlive_isElimK
 #print axioms ContextCalculus.SRI.Proc.fastEntails_iff
 #print axioms ContextCalculus.SRI.Proc.classify_spec
+#print axioms ContextCalculus.SRI.Proc.classifyF_spec

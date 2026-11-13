@@ -7,7 +7,8 @@ import ContextCalculus.SRI.Transitivity
 The cases of `ProcedureTests.lean` and `TransitivityTests.lean`, run with
 `fastEntails`; each `#guard` checks the expected answer, and the small
 cases also check agreement with `entails` of `Procedure.lean`. Then
-`classify` on the disjunction example and on a chain with 401 names.
+`classify` and `classifyF` on the disjunction example, an unsatisfiable
+name, and a chain with 401 names.
 -/
 
 namespace ContextCalculus.SRI.FastTests
@@ -107,6 +108,11 @@ def T3 : Ontology (Fin 4) (Fin 2) := .chain [.pos 0, .pos 0] (.pos 0) :: base3
 -- An unsatisfiable name has every name as a subsumer.
 #guard classify O5 [0, 1, 2] == [(0, [0, 1, 2]), (1, [0, 1, 2]), (2, [2])]
 
+-- `classifyF` gives the same subsumers, and `none` for an unsatisfiable name.
+#guard classifyF O4 [0, 1, 2, 3] ==
+  [(0, some [0, 3]), (1, some [1, 3]), (2, some [2, 3]), (3, some [3])]
+#guard classifyF O5 [0, 1, 2] == [(0, none), (1, none), (2, some [2])]
+
 /-- A chain with `2k + 1` names: `Aᵢ ⊑ ∃r.Aᵢ₊₁`, `Aᵢ₊₁ ⊑ ∀s⁻.Bᵢ`,
 `Bᵢ ⊑ Z` and `r ⊑ s`, with `Aᵢ = i`, `Bᵢ = k + i` (so `B₀ = Aₖ`) and
 `Z = 2k`. Each `Aᵢ` with `i < k` has the subsumers `Aᵢ`, `Bᵢ`, `Z`. -/
@@ -119,5 +125,7 @@ def chainO (k : Nat) : Ontology (Fin (2 * k + 1)) (Fin 2) :=
 -- 401 names: `5k + 1` subsumer pairs in all.
 #guard ((classify (chainO 200) (List.finRange 401)).map (·.2.length)).sum == 1001
 #guard fastEntails (chainO 200) [37] 37 237 && !fastEntails (chainO 200) [37] 37 38
+#guard ((classifyF (chainO 200) (List.finRange 401)).map fun p => (p.2.getD []).length).sum ==
+  1001
 
 end ContextCalculus.SRI.FastTests

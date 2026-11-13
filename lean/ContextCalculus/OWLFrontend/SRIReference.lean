@@ -9,10 +9,10 @@ import ContextCalculus.SRI.Transitivity
 `docs/V1.6.3-HT-PLAN.md`. `owlSRIReference` translates the ontology to the
 SRI normal form (`translateSRI`), checks that every role chain is an
 inclusion or a transitivity axiom, removes transitivity (`encTrans`),
-classifies the requested names with the fast procedure (`classify`) and
+classifies the requested names with the fast procedure (`classifyF`) and
 reads out one sparse row per requested IRI, in the format of the EL and
-ALC routes. `owlSRIReference_sound`: every published row is exact for
-`OWL.EntailsSub`.
+ALC routes. An unsatisfiable name gets a row with `unsat := true` and no
+listed subsumers.
 -/
 
 namespace ContextCalculus.OWLFrontend
@@ -43,13 +43,17 @@ def sriRequest (T : SRITranslation) (k : Nat) : List (Fin (T.conceptCount + k)) 
   (List.range T.named.length).filterMap fun i =>
     if h : i < T.conceptCount then some (Fin.castAdd k ⟨i, h⟩) else none
 
-/-- One row per requested index: its subsumers among the requested indices. -/
+/-- One row per requested index: unsatisfiable, or its subsumers among the
+requested indices. -/
 def sriRows (T : SRITranslation) {k m : Nat}
-    (cls : List (Fin (T.conceptCount + k) × List (Fin (T.conceptCount + k)))) :
+    (cls : List (Fin (T.conceptCount + k) × Option (List (Fin (T.conceptCount + k))))) :
     List SparseRow :=
   cls.map fun p =>
-    { sub := p.1.val, unsat := false,
-      sups := (p.2.map Fin.val).filter (· < T.named.length) }
+    match p.2 with
+    | none => { sub := p.1.val, unsat := true, sups := [] }
+    | some L =>
+      { sub := p.1.val, unsat := false,
+        sups := (L.map Fin.val).filter (· < T.named.length) }
 
 /-- The SHI route. -/
 def owlSRIReference (O : OWL.Ontology) (requested : List OWL.IRI) : Option OWLAnswer :=
@@ -59,7 +63,7 @@ def owlSRIReference (O : OWL.Ontology) (requested : List OWL.IRI) : Option OWLAn
       if isSHIB T.ontology then
         let E := encTrans T.ontology
         some { named := T.named,
-               rows := sriRows T (m := T.roleCount) (classify E.2 (sriRequest T E.1)) }
+               rows := sriRows T (m := T.roleCount) (classifyF E.2 (sriRequest T E.1)) }
       else none
 
 end ContextCalculus.OWLFrontend

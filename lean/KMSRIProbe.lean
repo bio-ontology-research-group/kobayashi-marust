@@ -27,32 +27,37 @@ def main (args : List String) : IO UInt32 := do
       IO.eprintln s!"global_disj={gl.1} local_disj={gl.2}"
       IO.eprintln s!"named={T.named.length} concepts={T.conceptCount} roles={T.roleCount} clauses={T.ontology.length} shi={isSHIB T.ontology} parse_ms={t1-t0} translate_ms={t2-t1}"
       if (← IO.getEnv "KM_SRI_COUNT") == some "1" then
+        -- `IO.lazyPure` keeps each phase at its place between the clock reads.
         let E := ContextCalculus.SRI.Proc.encTrans T.ontology
-        let ix := ContextCalculus.SRI.Proc.mkIx E.2
+        let rq := sriRequest T E.1
+        let ix ← IO.lazyPure fun _ => ContextCalculus.SRI.Proc.mkIx E.2
         let tc0 ← IO.monoMsNow
-        let c := ContextCalculus.SRI.Proc.candidates E.2 ix (sriRequest T E.1)
+        let c ← IO.lazyPure fun _ => ContextCalculus.SRI.Proc.candidates E.2 ix rq
         IO.eprintln s!"candidates={c.length} cand_ms={(← IO.monoMsNow) - tc0}"
         let te0 ← IO.monoMsNow
-        let al := ContextCalculus.SRI.Proc.elimF ix c
+        let al ← IO.lazyPure fun _ => ContextCalculus.SRI.Proc.elimK ix c
         IO.eprintln s!"alive={al.length} elim_ms={(← IO.monoMsNow) - te0}"
         let tr0 ← IO.monoMsNow
-        let arr := al.toArray
-        let hs : Array (Std.HashSet (Fin (T.conceptCount + E.1))) := arr.map fun r => Std.HashSet.ofList (ContextCalculus.SRI.Proc.toL r.t)
-        let idx := ContextCalculus.SRI.Proc.Idx.ofList ((List.range arr.size).flatMap fun i => (ContextCalculus.SRI.Proc.toL (arr.getD i ⟨∅, ∅, ∅⟩).t).map fun b => (b, i))
-        let rows := (sriRequest T E.1).map fun a =>
-          match idx.getD a [] with
-          | [] => 0
-          | i :: rest => (rest.foldl (fun cur j => cur.filter (hs[j]!.contains ·)) (ContextCalculus.SRI.Proc.toL (arr.getD i ⟨∅, ∅, ∅⟩).t)).length
-        IO.eprintln s!"fast_readout_sups={rows.foldl (· + ·) 0} readout_ms={(← IO.monoMsNow) - tr0}"
+        let rows ← IO.lazyPure fun _ =>
+          let hIdx := ContextCalculus.SRI.Proc.hashIdx al
+          rq.map fun a =>
+            match hIdx.get a with
+            | [] => (1, 0)
+            | q :: rest => (0, (ContextCalculus.SRI.Proc.meetH (ContextCalculus.SRI.Proc.toL q.1) rest).length)
+        IO.eprintln s!"readout_unsat={rows.foldl (· + ·.1) 0} readout_sups={rows.foldl (· + ·.2) 0} readout_ms={(← IO.monoMsNow) - tr0}"
+        let tf0 ← IO.monoMsNow
+        let cf ← IO.lazyPure fun _ => ContextCalculus.SRI.Proc.classifyF E.2 rq
+        IO.eprintln s!"classifyF_rows={cf.length} classifyF_unsat={(cf.filter (·.2.isNone)).length} classifyF_ms={(← IO.monoMsNow) - tf0}"
         let tsz := c.foldl (fun acc r => max acc r.t.card) 0
         IO.eprintln s!"max_type={tsz}"
         let ks := (c.map fun r => ContextCalculus.SRI.Proc.toL r.K).eraseDups
         let as := c.foldl (fun acc r => max acc (ContextCalculus.SRI.Proc.toL r.A).length) 0
         IO.eprintln s!"records={c.length} contexts={ks.length} max_aug={as} fresh={E.1}"
-      match owlSRIReference O req with
+      let t2b ← IO.monoMsNow
+      match (← IO.lazyPure fun _ => owlSRIReference O req) with
       | none => IO.eprintln "declined (chains)"; return 3
       | some a =>
         let total := a.rows.foldl (fun s r => s + r.sups.length) 0
         let t3 ← IO.monoMsNow
-        IO.println s!"rows={a.rows.length} sups={total} classify_ms={t3-t2}"
+        IO.println s!"rows={a.rows.length} sups={total} route_ms={t3-t2b}"
         return 0
