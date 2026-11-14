@@ -340,6 +340,16 @@ final class ObjectPropertyModel {
         return nodeSet(all);
     }
 
+    /** Number of nodes; node 0 is the top node, node 1 the bottom node. */
+    int nodeCount() { return members.size(); }
+
+    Node<OWLObjectPropertyExpression> nodeAt(int c) { return node(c); }
+
+    /** One expression of a node other than top and bottom (every member is equivalent). */
+    OWLObjectPropertyExpression representative(int c) {
+        return members.get(c).isEmpty() ? null : expression(members.get(c).get(0));
+    }
+
     Node<OWLObjectPropertyExpression> topNode() { return node(TOP_NODE); }
 
     Node<OWLObjectPropertyExpression> bottomNode() { return node(BOTTOM_NODE); }

@@ -7,8 +7,11 @@ consistency.
 
 The plugin answers class and individual queries; see
 [What the reasoner answers](#what-the-reasoner-answers). The object property
-hierarchy, inverses, domains and ranges are answered; property assertion
-queries are not yet exposed through the OWL API.
+hierarchy, inverses, domains and ranges are answered. Class expression
+queries (DL Query), disjoint classes and properties, property values,
+different individuals and most `isEntailed` checks are answered by
+reduction to a km run on an extended copy of the ontology; see
+[Queries answered by reduction](#queries-answered-by-reduction).
 The bundle also contains an OWL Explanation API
 `ExplanationGenerator` and `ExplanationGeneratorFactory` (OWL Explanation
 2.0.1 in the Protégé 5 jar, 5.0.1 in the Protégé 6 jar). It returns verified,
@@ -54,16 +57,20 @@ code remains BSD-3-Clause.
 | --- | --- |
 | `isConsistent`, `isSatisfiable`, `getUnsatisfiableClasses` | for named classes |
 | `getTopClassNode`, `getBottomClassNode`, `getSuperClasses`, `getSubClasses`, `getEquivalentClasses` | the inferred named-class hierarchy, with HermiT's conventions for `owl:Thing` and `owl:Nothing` (below) |
-| `getDisjointClasses(C)` | for `owl:Thing` (only the bottom node), `owl:Nothing` or an unsatisfiable class (every node) and a class outside the signature (only the bottom node); other classes throw |
+| `getSuperClasses`, `getSubClasses`, `getEquivalentClasses`, `isSatisfiable`, `getInstances` with a class expression | by reduction (below), with HermiT's shapes: an expression equivalent to no named class has an empty equivalence node; an unsatisfiable one sits where `owl:Nothing` does |
+| `getDisjointClasses(CE)` | every class `D` with `D ⊓ CE` unsatisfiable, and the bottom node, for named classes and class expressions (reduction) |
 | `getTypes(ind, direct)` | the named classes the individual belongs to, as class nodes, with `owl:Thing` as HermiT reports it; `direct` keeps the most specific nodes |
 | `getInstances(C, direct)` | for a named class `C`: the individuals that are instances of `C` (direct: those whose most specific types include `C` or a class equivalent to it), one node per individual under the default `BY_NAME` policy and one node per same-individual group under `BY_SAME_AS`; an anonymous class expression throws |
 | `getSameIndividuals(ind)` | the entailed equalities (`SameIndividual`, functional and inverse-functional roles, cardinality, nominals, any other entailment) |
 | `getSubObjectProperties`, `getSuperObjectProperties` (direct or not), `getEquivalentObjectProperties`, `getInverseObjectProperties`, `getTopObjectPropertyNode`, `getBottomObjectPropertyNode` | the inferred object property hierarchy, for named properties and `ObjectInverseOf` expressions. Equivalent expressions share a node as in HermiT (`r` and an equivalent `s⁻` in one node; empty properties in the bottom node, universal ones in the top node). |
 | `getObjectPropertyDomains`, `getObjectPropertyRanges` (direct or not) | the entailed named domains and ranges of a property or an inverse expression; an empty property has every class, direct answer `owl:Nothing` |
-| `getDisjointObjectProperties(p)` | for `owl:topObjectProperty` and universal properties (the bottom node), `owl:bottomObjectProperty` and empty properties (every node) and properties outside the signature (the bottom node); other properties throw |
-| `getSubDataProperties`, `getSuperDataProperties`, `getEquivalentDataProperties`, `getTopDataPropertyNode`, `getBottomDataPropertyNode`, `getDataPropertyDomains`, `getDisjointDataProperties` | for an ontology whose data properties occur only in sub-property, equivalence, assertion, functionality, domain (named class) and range (built-in datatype) axioms, and with no nominal (`ObjectOneOf`, `ObjectHasValue`, `DataHasValue`) or rule when a data property is functional: the data property hierarchy and the named domains, computed in Java from those axioms and the class hierarchy ([`DataPropertyModel`](src/main/java/org/bioontology/kobayashimarust/protege/DataPropertyModel.java) explains why that is complete). Any other ontology throws `UnsupportedOperationException`. `getDisjointDataProperties` is answered for `owl:topDataProperty`, `owl:bottomDataProperty`, empty properties and properties outside the signature only. |
-| `isEntailed` | declarations and annotation axioms (always true, as in HermiT); `SubClassOf` between named classes, `ClassAssertion` of a named class, `SameIndividual` of named individuals, `SubObjectPropertyOf` (no chains), `EquivalentObjectProperties`, `InverseObjectProperties`, `SymmetricObjectProperty`, `ObjectPropertyDomain` and `ObjectPropertyRange` with a named class |
-| `getPrecomputableInferenceTypes` | `CLASS_HIERARCHY`, `OBJECT_PROPERTY_HIERARCHY`, `CLASS_ASSERTIONS`, `SAME_INDIVIDUAL`, and `DATA_PROPERTY_HIERARCHY` when the ontology is inside the data property fragment. HermiT also lists `OBJECT_PROPERTY_ASSERTIONS`; KM does not compute it, so Protégé does not ask for it. |
+| `getDisjointObjectProperties(p)` | for `owl:topObjectProperty` and universal properties (the bottom node), `owl:bottomObjectProperty` and empty properties (every node) and properties outside the signature (the bottom node); for other properties by reduction |
+| `getObjectPropertyValues(a, p)` | the named individuals `b` of the signature with `p(a, b)` entailed, for named and inverse properties (reduction) |
+| `getDataPropertyValues(a, p)` | the literals of the ontology whose value is an entailed `p`-value of `a`, for ontologies whose data ranges cannot pin a value that no literal of the ontology writes (reduction; see below) |
+| `getDifferentIndividuals(a)` | the named individuals entailed to differ from `a` (reduction) |
+| `getSubDataProperties`, `getSuperDataProperties`, `getEquivalentDataProperties`, `getTopDataPropertyNode`, `getBottomDataPropertyNode`, `getDataPropertyDomains`, `getDisjointDataProperties` | for an ontology whose data properties occur only in sub-property, equivalence, assertion, functionality, domain (named class) and range (built-in datatype) axioms, and with no nominal (`ObjectOneOf`, `ObjectHasValue`, `DataHasValue`) or rule when a data property is functional: the data property hierarchy and the named domains, computed in Java from those axioms and the class hierarchy ([`DataPropertyModel`](src/main/java/org/bioontology/kobayashimarust/protege/DataPropertyModel.java) explains why that is complete). Any other ontology throws `UnsupportedOperationException`, except `getDataPropertyDomains`, which is answered by reduction outside the fragment. `getDisjointDataProperties` is answered for `owl:topDataProperty`, `owl:bottomDataProperty`, empty properties and properties outside the signature, and inside the fragment for the others: `q` is disjoint with `p` iff the conjunction of the stated domains over the super properties of both is unsatisfiable (one satisfiability run; ranges naming two datatypes throw). |
+| `isEntailed` | declarations and annotation axioms (always true, as in HermiT); axioms of the ontology (true, also with anonymous individuals); every logical axiom type except `HasKey`, `DLSafeRule` and `DatatypeDefinition`, and `SubDataPropertyOf`, `EquivalentDataProperties` and `DisjointDataProperties` outside the data property fragment (table below); other axioms with anonymous individuals throw |
+| `getPrecomputableInferenceTypes` | `CLASS_HIERARCHY`, `OBJECT_PROPERTY_HIERARCHY`, `CLASS_ASSERTIONS`, `SAME_INDIVIDUAL`, and `DATA_PROPERTY_HIERARCHY` when the ontology is inside the data property fragment. HermiT also lists `OBJECT_PROPERTY_ASSERTIONS`; KM answers property values on demand, one km run per property, and precomputing all of them took longer than 290 s on ore_ont_5841 (215 properties, 1,466 individuals), so it is not offered and Protégé does not ask for it. |
 
 Classification costs the same as before. The individual queries use
 `km classify --realize` ([`docs/REALIZATION.md`](../docs/REALIZATION.md)). The
@@ -115,8 +122,6 @@ Behaviour as HermiT (Protégé integration):
   nothing.
 - A named class or object property outside the signature sits between Top and
   Bottom (HermiT's default `FreshEntityPolicy.ALLOW`).
-- `isSatisfiable` of an anonymous class expression throws
-  `ClassExpressionNotInProfileException` instead of answering `true`.
 - `isEntailed(Set)` ignores annotation and declaration axioms.
 - `isPrecomputed` is true only for the types the plugin holds now.
 - A query the plugin cannot answer soundly and completely throws; it never
@@ -171,28 +176,141 @@ Differences from HermiT:
   property other than the bottom property: HermiT leaves out the top property,
   which is disjoint with an empty property. KM lists every node, as HermiT
   does for the bottom property itself.
-- `ObjectPropertyDomain` and `ObjectPropertyRange` with a class expression are
-  not answered by `isEntailed` (`UnsupportedEntailmentTypeException`).
+- `getDataPropertyValues`: HermiT returns the asserted values of the property
+  and its sub-properties only. KM returns every literal of the ontology whose
+  value is entailed, which includes values from `DataHasValue` in class
+  axioms and literals that denote the same value in another way (`"5"` and
+  `"5.0"^^xsd:decimal`).
+
+## Queries answered by reduction
+
+Every query below is an entailment question about the ontology `O`. The
+plugin adds fresh axioms over fresh names (IRIs under
+`urn:kobayashi-marust:fresh:<uuid>:`, checked against the signature) to a
+copy of the committed revision, runs `km classify --lines` (with
+`--realize` when instances are read) on it, reads the rows of the fresh
+names, and drops every fresh name from the answer. There are two kinds of
+extension:
+
+- **Definitions** `Q ≡ CE` for a fresh class `Q`. They are conservative:
+  every model of `O` becomes a model of the extension by setting `Q` to the
+  extension of `CE`, so the answers for the names of `O` do not change and
+  `Q`'s rows answer `CE`. Several definitions go into one run where one query
+  needs them.
+- **Refutations**: `O ⊨ α` iff `O ∪ {¬α}` is inconsistent, with `¬α` written
+  as positive assertions about fresh individuals (the witnesses of a
+  violation). These are not conservative by design; the run only reports
+  consistency.
+- **Witness entailments**: `O ∪ A ⊨ C(x)` for positive assertions `A` about
+  fresh individuals, read from a realization with a fresh `V ≡ C`; an
+  inconsistent `O ∪ A` entails everything.
+
+The reductions avoid negated nominals (`¬∃r.{b}`) and negative property
+assertions where they can: the km build under test (5eea1411) misses the
+inconsistency of `{p(b,c), p(a,b), Transitive(p), ¬∃p.{c}(a)}` (it finds it
+when the two assertions come in the other order), and it reports
+`{r(a,b), NegativeObjectPropertyAssertion(r a c)}` inconsistent. For the
+second, every reduction run writes the ontology's negative object property
+assertions as the equivalent `ClassAssertion(¬∃r.{b} a)`; plain
+classification and realization still send them unchanged (engine items).
+
+| Query or axiom | Extension | Read-out | Why exact |
+|---|---|---|---|
+| super, sub, equivalent classes, satisfiability of `CE` | `Q ≡ CE` | rows of `Q`; `UNSAT Q`; `TOP Q` | definition |
+| instances of `CE` | `Q ≡ CE`, realized | `TYPE a Q`; direct: no type strictly below `Q` | definition |
+| `getDisjointClasses(CE)` | `N ≡ ¬CE` | classes below `N`, and the bottom node | `D ⊓ CE ⊑ ⊥` iff `D ⊑ ¬CE` |
+| `getDifferentIndividuals(a)` | `X_b ≡ {a} ⊓ {b}` per individual `b`; each `b` left satisfiable again as `SameIndividual(a b)` | `UNSAT X_b`, or inconsistent | `{a} ⊓ {b}` is empty in a model iff `a ≠ b` there; the second check because km 5eea1411 misses some of these (ore_ont_15667, colours with different values of a functional data property) |
+| `getObjectPropertyValues(a, r)` | `V_b ≡ ∃r.{b}` per individual `b`, realized | `TYPE a V_b`; `r⁻` reads the rows backwards | `r(a,b)` iff `a ∈ ∃r.{b}` |
+| `getDataPropertyValues(a, p)` | `V_l ≡ ∃p.{l}` per literal `l` of `O`, realized | `TYPE a V_l` | definition; completeness of the candidates below |
+| `getDisjointObjectProperties(r)` | `X_s ≡ ∃r.{y} ⊓ ∃s.{y}` per node `s`, one fresh individual `y` | `UNSAT X_s` | a pair in `r ∩ s` gives `y` its second element; satisfiability is decided per class, so one `y` serves all |
+| `getDataPropertyDomains(p)` outside the data fragment | `Q ≡ ∃p.rdfs:Literal` | named superclasses of `Q` | definition |
+| `SubClassOf(C D)` | `Q ≡ C ⊓ ¬D` | `UNSAT Q` | definition |
+| `EquivalentClasses`, `DisjointClasses`, `DisjointUnion` | pairwise `C ⊓ ¬D`, `C ⊓ D` | all unsatisfiable | definition |
+| `ClassAssertion(C a)` with an expression | `Q ≡ C`, realized | `TYPE a Q` | definition |
+| `ObjectPropertyAssertion(r a b)` | the value query of `r` | `b` among the values | definition |
+| `NegativeObjectPropertyAssertion(r a b)` | `ObjectPropertyAssertion(r a b)` | inconsistent | refutation |
+| `DataPropertyAssertion(p a l)` | `V ≡ ∃p.{l}`, realized | `TYPE a V` | definition |
+| `NegativeDataPropertyAssertion(p a l)` | `DataPropertyAssertion(p a l)` | inconsistent | refutation |
+| `DifferentIndividuals(a b ...)` | `SameIndividual(a b)` per pair | inconsistent | refutation |
+| `SubObjectPropertyOf(ObjectPropertyChain(r1 ... rn) s)` | `r1(x0,x1) ... rn(xn-1,xn)` for fresh `xi`, `V ≡ ∃s.{xn}`, realized | `TYPE x0 V` (or inconsistent) | witness: a violating path interprets the `xi` |
+| `TransitiveObjectProperty(r)` | the chain `r r ⊑ r` | as above | as above |
+| `DisjointObjectProperties(r s ...)` | `r(x,y)`, `s(x,y)` per pair | inconsistent | refutation |
+| `ObjectPropertyDomain(r C)`, `ObjectPropertyRange(r C)` with an expression | `Q ≡ ∃r.⊤ ⊓ ¬C`, `Q ≡ ∃r.¬C` | `UNSAT Q` | definition |
+| `FunctionalObjectProperty(r)`, `InverseFunctionalObjectProperty(r)` | `r(x,y1)`, `r(x,y2)`, `y1 ≠ y2` (with `r⁻` for the inverse) | inconsistent | refutation (`≥2 r.⊤` is not OWL 2 DL for a non-simple `r`) |
+| `AsymmetricObjectProperty(r)` | `r(x,y)`, `r(y,x)` | inconsistent | `x = y` covers a loop |
+| `ReflexiveObjectProperty(r)` | `V ≡ ∃r.{x}` for a fresh `x`, realized | `TYPE x V` | witness: `x` is an arbitrary element |
+| `IrreflexiveObjectProperty(r)` | `r(x,x)` | inconsistent | refutation |
+| `DataPropertyDomain(p C)`, `DataPropertyRange(p D)`, `FunctionalDataProperty(p)` | `Q ≡ ∃p.rdfs:Literal ⊓ ¬C`, `Q ≡ ∃p.¬D`, `Q ≡ ≥2 p.rdfs:Literal` | `UNSAT Q` | definition |
+
+`SubClassOf` between named classes, `ClassAssertion` of a named class,
+`SameIndividual`, `SubObjectPropertyOf`, `EquivalentObjectProperties`,
+`InverseObjectProperties`, `SymmetricObjectProperty`, and domains and ranges
+with a named class are read from the held hierarchies, without a run. The
+universal and empty object and data properties are decided from their fixed
+meaning (for example `FunctionalObjectProperty(owl:topObjectProperty)` holds
+iff every model has one element, decided as `UNSAT ¬{x}`).
+
+**Data property values.** Infinitely many literals denote each value, so the
+answer is the set of candidate literals whose value is entailed: the literals
+occurring in the ontology, plus `true` and `false` when `xsd:boolean` is used
+and the integers of every interval of at most 256 values that the integer
+datatypes in use cut out (so `0` is found for `xsd:nonNegativeInteger ⊓
+xsd:nonPositiveInteger`). It is complete when no other value can be entailed.
+That fails for data ranges with few elements that the candidates do not
+cover, such as a facet restriction `xsd:integer[> 4, < 6]`, which holds one
+value. The plugin answers only when the ontology's data
+ranges use `rdfs:Literal`, `xsd:string`, `rdf:PlainLiteral`,
+`rdf:langString`, `xsd:integer`, `xsd:decimal`, `xsd:double`, `xsd:float`,
+`xsd:anyURI`, `xsd:dateTime`, the bounded and sign-restricted integer types
+(`xsd:int`, `xsd:positiveInteger` and the like, as long as every interval
+their bounds cut out of the integers is unbounded, covered by literals of the
+ontology, larger than the data restrictions can count, or at most 256 long)
+and `xsd:boolean` (also inside `DataOneOf`,
+`DataIntersectionOf`, `DataUnionOf` and `DataComplementOf`), with no facet,
+datatype definition, rule or axiom on `owl:topDataProperty`, and throws
+otherwise. The argument (in `DataValues.java`): values that no admitted
+datatype and no candidate tell apart form classes larger than the number of
+candidates plus the restriction numbers; a model can be cut down to finitely many data values per
+element without changing any class membership; swapping an unwritten value
+for an unused equivalent one then gives a model in which it is not a value.
+
+Each run answers one query (or one batch: every value of one property, every
+candidate of one disjointness query) and is cached for the ontology revision,
+like the realization. The cache is dropped when the ontology changes; a
+refused run is remembered until the ontology changes or `flush()` runs. A run
+that km declines (a dropped clause, an approximate answer, an error, a time
+out) makes the query throw: the plugin never answers without the run. The
+runs honour the reasoner time out and `interrupt()`, and their temporary
+files go to `java.io.tmpdir` and are deleted afterwards.
+Property values are computed one property per run (one run over 12
+properties took km 54 s on the test ontology, against about 0.4 s per
+property alone).
 
 ## Queries that throw
 
-These calls throw `UnsupportedOperationException` (the engine work items):
+These calls throw `UnsupportedOperationException` (or, for `isEntailed`,
+`UnsupportedEntailmentTypeException`, matching
+`isEntailmentCheckingSupported`):
 
-- `getObjectPropertyValues`, `getDataPropertyValues`, `getDifferentIndividuals`;
-- `getDisjointClasses` of a satisfiable class other than `owl:Thing`,
-  `getDisjointObjectProperties` and `getDisjointDataProperties` of a
-  satisfiable property;
-- `getSuperClasses`, `getSubClasses`, `getEquivalentClasses`,
-  `getDisjointClasses` and `getInstances` with an anonymous class expression
-  (a conjunction, restriction, complement, enumeration, and so on);
-- the data property methods listed above, for an ontology outside their
-  fragment (a data property in a class axiom, a disjointness or key, a complex
-  range, domains or ranges that cannot be combined);
-- `isSatisfiable` of an anonymous class expression
-  (`ClassExpressionNotInProfileException`);
-- `isEntailed` of an axiom type outside the table above, or with a class
-  expression or an anonymous individual where the table says "named"
-  (`UnsupportedEntailmentTypeException`).
+- `getSubDataProperties`, `getSuperDataProperties`,
+  `getEquivalentDataProperties`, the top and bottom data property nodes and
+  `getDisjointDataProperties` of a satisfiable property, outside the data
+  property fragment (and `getDisjointDataProperties` inside it when the
+  ranges involved name two datatypes). KM has no exact reduction for these: a data value cannot
+  be fresh, and km rejects a fresh datatype (`DataSomeValuesFrom(p T)` with an
+  undeclared `T`), which the class form `∃p.T ⊑ ∃q.T` would need.
+- `getDataPropertyValues` outside the fragment described above.
+- `isEntailed` of `HasKey`, `DLSafeRule` and `DatatypeDefinition` axioms
+  (keys and rules hold for named individuals only, and the plugin has no
+  reduction that respects that), of `SubDataPropertyOf`,
+  `EquivalentDataProperties` and `DisjointDataProperties` outside the data
+  property fragment, of a `DataPropertyRange` of `owl:topDataProperty` other
+  than `rdfs:Literal`, and of axioms with anonymous individuals that are not
+  in the ontology.
+- A class expression that is not OWL 2 DL next to the ontology, such as a
+  cardinality restriction on a transitive property: km rejects the extended
+  ontology, so every query on that expression throws.
+- Any reduction that km declines or does not finish within the time out.
 
 `precomputeInferences` ignores a type it does not compute, as the OWL API
 specifies.

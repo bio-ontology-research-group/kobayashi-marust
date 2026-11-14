@@ -414,7 +414,7 @@ class RetainedFunctionalSyntax {
         renderer.setPrefixManager(prefixes);
     }
 
-    private static String renderAxiom(OWLOntology ontology, OWLAxiom axiom) {
+    static String renderAxiom(OWLOntology ontology, OWLAxiom axiom) {
         StringWriter output = new StringWriter();
         FunctionalSyntaxObjectRenderer renderer = new FunctionalSyntaxObjectRenderer(
                 ontology, new FunctionalSyntaxDocumentFormat(), output);

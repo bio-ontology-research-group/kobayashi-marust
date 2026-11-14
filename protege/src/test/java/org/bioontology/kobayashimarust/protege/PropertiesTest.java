@@ -296,18 +296,13 @@ public class PropertiesTest {
         assertTrue(r.isEntailed(df.getOWLObjectPropertyRangeAxiom(hasParent, c(df, "Person"))));
         assertTrue(r.isEntailed(df.getOWLObjectPropertyDomainAxiom(parentOf, c(df, "Adult"))));
         assertTrue(r.isEntailed(df.getOWLObjectPropertyDomainAxiom(hasParent, df.getOWLThing())));
-        // Chains are not answered.
-        assertFalse(r.isEntailmentCheckingSupported(AxiomType.SUB_PROPERTY_CHAIN_OF));
+        // Chains are answered by refutation with fresh individuals.
+        assertTrue(r.isEntailmentCheckingSupported(AxiomType.SUB_PROPERTY_CHAIN_OF));
         assertTrue(r.isEntailmentCheckingSupported(AxiomType.SUB_OBJECT_PROPERTY));
         assertTrue(r.isEntailmentCheckingSupported(AxiomType.OBJECT_PROPERTY_RANGE));
-        // A domain with a class expression is not answered yet.
-        try {
-            r.isEntailed(df.getOWLObjectPropertyDomainAxiom(hasParent,
-                    df.getOWLObjectSomeValuesFrom(hasParent, df.getOWLThing())));
-            fail("expected UnsupportedEntailmentTypeException");
-        } catch (org.semanticweb.owlapi.reasoner.UnsupportedEntailmentTypeException expected) {
-            // TODO W5
-        }
+        // A domain with a class expression: ∃r.⊤ ⊓ ¬C unsatisfiable.
+        assertTrue(r.isEntailed(df.getOWLObjectPropertyDomainAxiom(hasParent,
+                df.getOWLObjectSomeValuesFrom(hasParent, df.getOWLThing()))));
     }
 
     @Test
