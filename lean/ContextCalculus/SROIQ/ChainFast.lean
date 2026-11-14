@@ -119,13 +119,50 @@ def encChainF (O : Ontology (Fin n) (Fin m)) : Ontology (Fin (n + kC O)) (Fin m)
 
 /-! ## The regularity check -/
 
+section Close
+
+set_option linter.unusedSectionVars false
+
+variable {α : Type} [DecidableEq α] [Fintype α]
+
+/-- The closure, stopping at the first round that adds nothing. -/
+def closeS (E : α → Finset α) : Nat → Finset α → Finset α
+  | 0, A => A
+  | k + 1, A =>
+    let B := stepF E A
+    if B = A then A else closeS E k B
+
+theorem iter_fix {E : α → Finset α} {A : Finset α} (h : stepF E A = A) :
+    ∀ k, (stepF E)^[k] A = A
+  | 0 => rfl
+  | k + 1 => by rw [Function.iterate_succ_apply, h, iter_fix h k]
+
+theorem closeS_eq (E : α → Finset α) : ∀ (k : Nat) (A : Finset α), closeS E k A = (stepF E)^[k] A
+  | 0, _ => rfl
+  | k + 1, A => by
+    simp only [closeS]
+    split_ifs with h
+    · exact (iter_fix h (k + 1)).symm
+    · rw [closeS_eq E k, Function.iterate_succ_apply]
+
+theorem closeS_closeF (E : α → Finset α) (A : Finset α) :
+    closeS E (Fintype.card α + 1) A = closeF E A := closeS_eq E _ A
+
+end Close
+
+/-- `regularB` with the forced pairs computed once and each closure
+stopped when it is stable. -/
 def regularBF (O : Ontology (Fin n) (Fin m)) : Bool :=
-  let le := leF (mkTab O)
-  decide (∀ R : RT m, R ∉ ltAbove O R ∧ ∀ S ∈ ltAbove O R, le S R = false)
+  let nl := needL O
+  let sc : RT m → Finset (RT m) := fun R =>
+    (nl.filterMap fun p => if p.1 = R then some p.2 else none).toFinset
+  let N := Fintype.card (RT m) + 1
+  decide (∀ R : RT m,
+    (fun A => R ∉ A ∧ ∀ S ∈ A, leB O S R = false) (closeS sc N (sc R)))
 
 @[csimp] theorem regularB_eq_F : @regularB = @regularBF := by
   funext n m O
-  simp only [regularBF, leF_mkTab]
+  simp only [regularBF, closeS_closeF]
   rfl
 
 end ContextCalculus.SROIQ.Proc
