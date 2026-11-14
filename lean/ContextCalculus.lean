@@ -361,5 +361,6 @@ import ContextCalculus.SRIQN.Forest
 import ContextCalculus.SRIQN.C2a
 import ContextCalculus.SRIQN.Procedure
 import ContextCalculus.SRIQN.Rows
+import ContextCalculus.SRIQN.Transitivity
 import ContextCalculus.OWLFrontend.SHOIQNom
 import ContextCalculus.OWLFrontend.SHOIQC2aReference

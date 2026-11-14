@@ -82,6 +82,12 @@ def nomI (nm : IRI → IRI) : Individual → ClassExpr
   | .named a => .cls (nm a)
   | .anon _ => .nothing
 
+/-- `ObjectOneOf` as nominal classes: one member is its nominal class,
+several members their union. -/
+def nomOneOf (nm : IRI → IRI) : List Individual → ClassExpr
+  | [i] => nomI nm i
+  | as => .or (as.map (nomI nm))
+
 /-- Nominals as nominal classes. -/
 def rwC (nm : IRI → IRI) : ClassExpr → ClassExpr
   | .cls a => .cls a
@@ -92,7 +98,7 @@ def rwC (nm : IRI → IRI) : ClassExpr → ClassExpr
   | .not c => .not (rwC nm c)
   | .some r c => .some r (rwC nm c)
   | .all r c => .all r (rwC nm c)
-  | .oneOf as => .or (as.map (nomI nm))
+  | .oneOf as => nomOneOf nm as
   | .hasValue r a => .some r (nomI nm a)
   | .hasSelf r => .hasSelf r
   | .min k r c => .min k r (rwC nm c)
@@ -170,6 +176,16 @@ variable {DM : DatatypeMap} {Dom : Type}
 theorem nomI_isALCIQ (nm : IRI → IRI) (i : Individual) : (nomI nm i).isALCIQ = true := by
   cases i <;> simp [nomI, ClassExpr.isALCIQ]
 
+theorem nomOneOf_isALCIQ (nm : IRI → IRI) (as : List Individual) :
+    (nomOneOf nm as).isALCIQ = true := by
+  unfold nomOneOf
+  split
+  · exact nomI_isALCIQ nm _
+  · rw [ClassExpr.isALCIQ]
+    simp only [List.all_eq_true, List.mem_attach, true_implies, Subtype.forall, List.mem_map]
+    rintro _ ⟨i, -, rfl⟩
+    exact nomI_isALCIQ nm i
+
 theorem rwC_isALCIQ (nm : IRI → IRI) : ∀ c : ClassExpr, c.isALCOIQ = true →
     (rwC nm c).isALCIQ = true
   | .cls _, _ => by rw [rwC, ClassExpr.isALCIQ]
@@ -216,10 +232,8 @@ theorem rwC_isALCIQ (nm : IRI → IRI) : ∀ c : ClassExpr, c.isALCOIQ = true �
     rw [rwC, ClassExpr.isALCIQ, Bool.and_eq_true]
     exact ⟨h.1, rwC_isALCIQ nm c h.2⟩
   | .oneOf as, _ => by
-    rw [rwC, ClassExpr.isALCIQ]
-    simp only [List.all_eq_true, List.mem_attach, true_implies, Subtype.forall, List.mem_map]
-    rintro _ ⟨i, -, rfl⟩
-    exact nomI_isALCIQ nm i
+    rw [rwC]
+    exact nomOneOf_isALCIQ nm as
   | .hasValue r a, h => by
     rw [ClassExpr.isALCOIQ, Bool.and_eq_true] at h
     rw [rwC, ClassExpr.isALCIQ, Bool.and_eq_true]
@@ -238,6 +252,16 @@ theorem nomI_names {nm : IRI → IRI} {i : Individual} {a : IRI} (h : a ∈ (nom
     simp only [nomI, ClassExpr.names, List.mem_singleton] at h
     exact ⟨b, by simp [Individual.namedIRI], h⟩
   | anon _ => simp [nomI, ClassExpr.names] at h
+
+theorem nomOneOf_names {nm : IRI → IRI} {as : List Individual} {a : IRI}
+    (h : a ∈ (nomOneOf nm as).names) : ∃ i ∈ as, ∃ b ∈ i.namedIRI, a = nm b := by
+  unfold nomOneOf at h
+  split at h
+  · exact ⟨_, List.mem_singleton_self _, nomI_names h⟩
+  · rw [ClassExpr.names] at h
+    simp only [List.mem_flatMap, List.mem_attach, true_and, Subtype.exists, List.mem_map] at h
+    obtain ⟨_, ⟨i, hi, rfl⟩, ha⟩ := h
+    exact ⟨i, hi, nomI_names ha⟩
 
 theorem rwC_names (nm : IRI → IRI) : ∀ (c : ClassExpr) {a : IRI}, a ∈ (rwC nm c).names →
     a ∈ c.names ∨ ∃ b ∈ c.namedIndividuals, a = nm b
@@ -283,10 +307,8 @@ theorem rwC_names (nm : IRI → IRI) : ∀ (c : ClassExpr) {a : IRI}, a ∈ (rwC
     rw [ClassExpr.names, ClassExpr.namedIndividuals]
     exact rwC_names nm c h
   | .oneOf as, a, h => by
-    rw [rwC, ClassExpr.names] at h
-    simp only [List.mem_flatMap, List.mem_attach, true_and, Subtype.exists, List.mem_map] at h
-    obtain ⟨_, ⟨i, hi, rfl⟩, ha⟩ := h
-    obtain ⟨b, hb, rfl⟩ := nomI_names ha
+    rw [rwC] at h
+    obtain ⟨i, hi, b, hb, rfl⟩ := nomOneOf_names h
     refine Or.inr ⟨b, ?_, rfl⟩
     rw [ClassExpr.namedIndividuals]
     exact List.mem_flatMap.2 ⟨i, hi, hb⟩
@@ -312,6 +334,23 @@ theorem nomI_ext {I J : Interp DM Dom} {nm : IRI → IRI} {i : Individual} (hi :
     rw [nomI, Interp.ext]
     exact hn a (by simp [Individual.namedIRI]) x
   | anon _ => simp [Individual.isNamed] at hi
+
+theorem nomOneOf_ext {I J : Interp DM Dom} {nm : IRI → IRI} {as : List Individual}
+    (hc : ∀ i ∈ as, i.isNamed = true)
+    (hn : ∀ i ∈ as, ∀ a ∈ i.namedIRI, ∀ x, J.cls (nm a) x ↔ x = I.ind (.named a)) (x : Dom) :
+    J.ext (nomOneOf nm as) x ↔ ∃ i ∈ as, x = I.ind i := by
+  unfold nomOneOf
+  split
+  · rename_i i
+    rw [nomI_ext (hc i (by simp)) (hn i (by simp)) x]
+    simp
+  · rw [Interp.ext]
+    constructor
+    · rintro ⟨c', hc', H⟩
+      obtain ⟨i, hi, rfl⟩ := List.mem_map.1 hc'
+      exact ⟨i, hi, (nomI_ext (hc i hi) (hn i hi) x).1 H⟩
+    · rintro ⟨i, hi, rfl⟩
+      exact ⟨_, List.mem_map.2 ⟨i, hi, rfl⟩, (nomI_ext (hc i hi) (hn i hi) _).2 rfl⟩
 
 /-- **Rewriting keeps extensions** when the nominal classes stand for
 their individuals and the other class IRIs are unchanged. -/
@@ -385,14 +424,8 @@ theorem rwC_ext {I J : Interp DM Dom} (hr : J.role = I.role) (nm : IRI → IRI) 
     rw [ClassExpr.isALCOIQ, List.all_eq_true] at hc
     have hn' : ∀ i ∈ as, ∀ a ∈ i.namedIRI, ∀ x, J.cls (nm a) x ↔ x = I.ind (.named a) :=
       fun i hi a ha => hn a (by rw [ClassExpr.namedIndividuals]; exact List.mem_flatMap.2 ⟨i, hi, ha⟩)
-    funext x; rw [rwC, Interp.ext, Interp.ext]
-    apply propext
-    constructor
-    · rintro ⟨c', hc', H⟩
-      obtain ⟨i, hi, rfl⟩ := List.mem_map.1 hc'
-      exact ⟨i, hi, (nomI_ext (hc i hi) (hn' i hi) x).1 H⟩
-    · rintro ⟨i, hi, rfl⟩
-      exact ⟨_, List.mem_map.2 ⟨i, hi, rfl⟩, (nomI_ext (hc i hi) (hn' i hi) _).2 rfl⟩
+    funext x; rw [rwC, Interp.ext]
+    exact propext (nomOneOf_ext hc hn' x)
   | .hasValue r i, hc, _, hn => by
     rw [ClassExpr.isALCOIQ, Bool.and_eq_true] at hc
     have hn' : ∀ a ∈ i.namedIRI, ∀ x, J.cls (nm a) x ↔ x = I.ind (.named a) :=

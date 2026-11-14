@@ -1,6 +1,6 @@
 import ContextCalculus.OWLFrontend.SHOIQNom
 import ContextCalculus.OWLFrontend.SRIQKBReference
-import ContextCalculus.SRIQN.Rows
+import ContextCalculus.SRIQN.Transitivity
 
 /-!
 # The OWL route for SHOIQ knowledge bases in C2a (stage C2a)
@@ -10,9 +10,10 @@ the SHOIQ knowledge-base part (`Ontology.isSHOIQKB`) is rewritten with
 nominal classes (`nomOnt`), translated by the SHIQ knowledge-base
 translation (`translateSRIQKB`, here without assertions), and read as an
 `SRIQN` ontology: the translated clauses plus `nom X` for the index `X`
-of each nominal class (`osn`). The route requires the `SRIQN` ontology to
-be ALCHOIQ (no transitivity yet) and C2a (`c2aOK`), and decides with the
-C2a procedures.
+of each nominal class (`osn`). Transitivity is removed by `encTransN`
+(`osnE`). The route requires a SHIQ base part (simple roles in counting
+clauses) and C2a after transitivity removal (`c2aOK`), and decides with
+the C2a procedures.
 
 * `owlSHOIQC2aConsistent O hint`: consistency, exact for every hint
   (`owlSHOIQC2aConsistent_sound`), answering exactly on the SHOIQ
@@ -27,7 +28,8 @@ Hints use the text format of `SRIQKBReference.lean` without `blk` lines:
 `blocks K` is the number of core elements, `ty`, `lab` and `kid` lines as
 there (`RawHint.toHintN`). Concept indices: the requested IRIs, then the
 nominal classes (one per named individual, in the order of
-`O.individualNames`), then the other names of the translation.
+`O.individualNames`), then the other names of the translation, then the
+names the transitivity encoding adds.
 -/
 
 namespace ContextCalculus.OWLFrontend
@@ -307,21 +309,30 @@ def RawHint.toHintN (h : RawHint) (n m : Nat) : Option (SRIQN.Proc.HintN n m) :=
            kids := fun b => (kids.filter fun e => e.1 = b.val).map fun e => (e.2.1, e.2.2) }
   | _, _, _ => none
 
-/-- The hint over the names of a translation. -/
-def hintN (T : SRIQKBTranslation) (hint : Option RawHint) :
-    Option (SRIQN.Proc.HintN T.conceptCount T.roleCount) :=
-  hint.bind fun h => h.toHintN _ _
-
 /-! ## The route -/
 
-/-- The route's checks on the `SRIQN` ontology: ALCHOIQ and C2a. -/
+/-- The `SRIQN` ontology after transitivity removal. -/
+abbrev osnE (T : SRIQKBTranslation) (L : List IRI) :=
+  SRIQN.encTransN (osn T L)
+
+/-- The route's checks on the `SRIQN` ontology: SHIQ base part (transitivity
+and inclusions, simple roles in counting clauses) and C2a after
+transitivity removal. -/
 def c2aOK (T : SRIQKBTranslation) (L : List IRI) : Bool :=
-  decide (SRIQN.IsALCHOIQ (osn T L)) && decide (SRIQN.IsC2a (osn T L))
+  isSHIQB (SRIQN.basePart (osn T L)) && decide (SRIQN.IsC2a (osnE T L))
 
 theorem of_c2aOK {T : SRIQKBTranslation} {L : List IRI} (h : c2aOK T L = true) :
-    SRIQN.IsALCHOIQ (osn T L) ∧ SRIQN.IsC2a (osn T L) := by
+    SRIQN.IsSHOIQ (osn T L) ∧ SRIQN.IsALCHOIQ (osnE T L) ∧ SRIQN.IsC2a (osnE T L) := by
   simp only [c2aOK, Bool.and_eq_true, decide_eq_true_eq] at h
-  exact h
+  exact ⟨isSHIQ_of_isSHIQB h.1, SRIQN.isALCHOIQ_encTransN _, h.2⟩
+
+theorem nomE_mem {O : Ontology} {requested : List IRI} {T : SRIQKBTranslation}
+    (h : translateSHOIQ O requested = some T) {a : IRI} (ha : a ∈ O.individualNames)
+    {x : Fin T.conceptCount} (hx : nameIx T (nmOf O requested a) = some x) :
+    Fin.castAdd (SRIQN.encK (osn T (nomNames O requested))) x ∈
+      SRIQN.noms (osnE T (nomNames O requested)) := by
+  rw [SRIQN.noms_encTransN]
+  exact List.mem_map_of_mem (nom_mem_noms h ha hx)
 
 /-- The checks pass on the translation. -/
 def SHOIQC2aChecks (O : Ontology) (requested : List IRI) : Prop :=
@@ -333,8 +344,8 @@ def owlSHOIQC2aConsistent (O : Ontology) (hint : Option RawHint) : Option Bool :
   | none => none
   | some T =>
     if c2aOK T (nomNames O []) then
-      some (SRIQN.Proc.consistentN (SRIQN.basePart (osn T (nomNames O [])))
-        (SRIQN.noms (osn T (nomNames O []))) (hintN T hint))
+      some (SRIQN.Proc.consistentN (SRIQN.basePart (osnE T (nomNames O [])))
+        (SRIQN.noms (osnE T (nomNames O []))) (hint.bind (·.toHintN _ _)))
     else none
 
 /-- **Soundness.** Every answer is exact under the OWL 2 direct semantics,
@@ -349,8 +360,8 @@ theorem owlSHOIQC2aConsistent_sound {O : Ontology} {hint : Option RawHint} {v : 
     · next hok =>
       simp only [Option.some.injEq] at h
       subst h
-      obtain ⟨hA, hC⟩ := of_c2aOK hok
-      rw [SRIQN.Proc.consistentN_iff hA hC, shoiq_consistent hT]
+      obtain ⟨hS, hA, hC⟩ := of_c2aOK hok
+      rw [SRIQN.Proc.consistentN_iff hA hC, ← SRIQN.consistentN_encTransN hS, shoiq_consistent hT]
     · simp at h
 
 /-- **Completeness.** The route answers exactly on the SHOIQ knowledge-base
@@ -425,7 +436,8 @@ def owlSHOIQC2aSubRow (O : Ontology) (A B : IRI) (hint : Option RawHint) : Optio
     if c2aOK T (nomNames O [A, B]) then
       match nameIx T A, nameIx T B with
       | some ia, some ib =>
-        some (SRIQN.Proc.subRowN (osn T (nomNames O [A, B])) ia ib (hint.bind (·.toHintN _ _)))
+        some (SRIQN.Proc.subRowN (osnE T (nomNames O [A, B])) (Fin.castAdd _ ia) (Fin.castAdd _ ib)
+          (hint.bind (·.toHintN _ _)))
       | _, _ => none
     else none
 
@@ -441,8 +453,9 @@ theorem owlSHOIQC2aSubRow_sound {O : Ontology} {A B : IRI} {hint : Option RawHin
       · next ia ib hia hib =>
         simp only [Option.some.injEq] at h
         subst h
-        obtain ⟨hA, hC⟩ := of_c2aOK hok
-        rw [SRIQN.Proc.subRowN_iff hA hC, shoiq_entailsSub hT (by simp) (by simp) hia hib]
+        obtain ⟨hS, hA, hC⟩ := of_c2aOK hok
+        rw [SRIQN.Proc.subRowN_iff hA hC, ← SRIQN.entailsSubN_encTransN hS,
+          shoiq_entailsSub hT (by simp) (by simp) hia hib]
       · simp at h
     · simp at h
 
@@ -466,8 +479,8 @@ def owlSHOIQC2aTypeRow (O : Ontology) (C a : IRI) (hint : Option RawHint) : Opti
     if c2aOK T (nomNames (withInds O [a]) [C]) then
       match nameIx T C, nameIx T (nmOf (withInds O [a]) [C] a) with
       | some ic, some ia =>
-        some (SRIQN.Proc.nomRowN (osn T (nomNames (withInds O [a]) [C])) ia ic
-          (hint.bind (·.toHintN _ _)))
+        some (SRIQN.Proc.nomRowN (osnE T (nomNames (withInds O [a]) [C])) (Fin.castAdd _ ia)
+          (Fin.castAdd _ ic) (hint.bind (·.toHintN _ _)))
       | _, _ => none
     else none
 
@@ -484,10 +497,10 @@ theorem owlSHOIQC2aTypeRow_sound {O : Ontology} {C a : IRI} {hint : Option RawHi
       · next ic ia hic hia =>
         simp only [Option.some.injEq] at h
         subst h
-        obtain ⟨hA, hC⟩ := of_c2aOK hok
+        obtain ⟨hS, hA, hC⟩ := of_c2aOK hok
         have hO := (translateSHOIQ_spec hT).1
         have ha : a ∈ (withInds O [a]).individualNames := mem_individualNames_withInds (by simp)
-        rw [SRIQN.Proc.nomRowN_iff hA hC (nom_mem_noms hT ha hia),
+        rw [SRIQN.Proc.nomRowN_iff hA hC (nomE_mem hT ha hia), ← SRIQN.entailsSubN_encTransN hS,
           ← shoiq_entailsType hT (by simp) ha hic hia]
         refine entails_withInds ?_ [a] _
         simp only [Ontology.isSHOIQKB, withInds, List.all_append, Bool.and_eq_true] at hO
@@ -516,8 +529,8 @@ def owlSHOIQC2aSameRow (O : Ontology) (a b : IRI) (hint : Option RawHint) : Opti
     if c2aOK T (nomNames (withInds O [a, b]) []) then
       match nameIx T (nmOf (withInds O [a, b]) [] a), nameIx T (nmOf (withInds O [a, b]) [] b) with
       | some ia, some ib =>
-        some (SRIQN.Proc.nomRowN (osn T (nomNames (withInds O [a, b]) [])) ia ib
-          (hint.bind (·.toHintN _ _)))
+        some (SRIQN.Proc.nomRowN (osnE T (nomNames (withInds O [a, b]) [])) (Fin.castAdd _ ia)
+          (Fin.castAdd _ ib) (hint.bind (·.toHintN _ _)))
       | _, _ => none
     else none
 
@@ -534,11 +547,11 @@ theorem owlSHOIQC2aSameRow_sound {O : Ontology} {a b : IRI} {hint : Option RawHi
       · next ia ib hia hib =>
         simp only [Option.some.injEq] at h
         subst h
-        obtain ⟨hA, hC⟩ := of_c2aOK hok
+        obtain ⟨hS, hA, hC⟩ := of_c2aOK hok
         have hO := (translateSHOIQ_spec hT).1
         have ha : a ∈ (withInds O [a, b]).individualNames := mem_individualNames_withInds (by simp)
         have hb : b ∈ (withInds O [a, b]).individualNames := mem_individualNames_withInds (by simp)
-        rw [SRIQN.Proc.nomRowN_iff hA hC (nom_mem_noms hT ha hia),
+        rw [SRIQN.Proc.nomRowN_iff hA hC (nomE_mem hT ha hia), ← SRIQN.entailsSubN_encTransN hS,
           ← shoiq_entailsSame hT ha hb hia hib]
         refine entails_withInds ?_ [a, b] _
         simp only [Ontology.isSHOIQKB, withInds, List.all_append, Bool.and_eq_true] at hO
