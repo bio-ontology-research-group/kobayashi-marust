@@ -21,8 +21,12 @@ import java.util.*;
  * It computes the named-class hierarchy and unsatisfiable classes. It answers
  * the individual queries ({@code getTypes}, {@code getInstances} for named
  * classes, {@code getSameIndividuals}) from {@code km classify --realize},
- * which it runs once per ontology revision on the first such query. Property
- * inferences are not provided (empty results).
+ * which it runs once per ontology revision on the first such query. It
+ * answers the object property queries (hierarchy, equivalents, inverses,
+ * domains, ranges) from {@code km classify --properties}, likewise run once
+ * per revision, only when a property query or a precompute of
+ * {@code OBJECT_PROPERTY_HIERARCHY} needs it. Data property inferences are
+ * not provided (empty results).
  */
 public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasonerBase {
 
@@ -65,6 +69,9 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private FlushContext flushContext;
     /** Individual realization of the committed revision; null until first needed. */
     private volatile Realized realized;
+    /** Object property hierarchy of the committed revision; null until first needed. */
+    private volatile ObjectPropertyModel propertyModel;
+    /** The one-shot native process of a running realization or property run. */
     private volatile Process realizeProcess;
     /** True while a monitored task runs; interrupt() acts only then. */
     private volatile boolean taskRunning;
@@ -247,6 +254,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         // Class ids are rebuilt below and the ABox may have changed, so the
         // realization of the previous revision no longer applies.
         realized = null;
+        propertyModel = null;
         // Commit the Java-side hierarchy only after the native transaction has
         // succeeded. A declined update therefore leaves the preceding answers
         // intact, matching the native session's atomic revision contract.
@@ -666,17 +674,20 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
     @Override public synchronized void precomputeInferences(InferenceType... types) {
         checkPreConditions();
-        // checkPreConditions has classified. Individual inferences cost one
-        // more native run, made on demand.
+        // checkPreConditions has classified. Individual inferences and the
+        // object property hierarchy cost one more native run each, made on demand.
         for (InferenceType type : types) {
             if (type == InferenceType.CLASS_ASSERTIONS || type == InferenceType.SAME_INDIVIDUAL) {
                 ensureRealized();
+            } else if (type == InferenceType.OBJECT_PROPERTY_HIERARCHY) {
+                ensureProperties();
             }
         }
     }
     /**
      * True only for a type whose answer is held now: the class hierarchy once
-     * classified, the individual types once realized. Every other type is
+     * classified, the individual types once realized, the object property
+     * hierarchy once classified. Every other type is
      * not computed at all. Not synchronized: Protege may ask while a
      * classification runs on another thread.
      */
@@ -686,10 +697,14 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                 || inferenceType == InferenceType.SAME_INDIVIDUAL) {
             return realized != null;
         }
+        if (inferenceType == InferenceType.OBJECT_PROPERTY_HIERARCHY) {
+            return propertyModel != null;
+        }
         return false;
     }
     @Override public Set<InferenceType> getPrecomputableInferenceTypes() {
         return new HashSet<>(Arrays.asList(InferenceType.CLASS_HIERARCHY,
+                InferenceType.OBJECT_PROPERTY_HIERARCHY,
                 InferenceType.CLASS_ASSERTIONS, InferenceType.SAME_INDIVIDUAL));
     }
 
@@ -749,7 +764,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     /**
-     * Cancel the running classification or realization. Like HermiT's
+     * Cancel the running classification, realization or property run. Like HermiT's
      * interrupt flag it has no effect when nothing runs, and the thread that
      * computes then fails with {@link ReasonerInterruptedException}. Not
      * synchronized: the computing thread holds the reasoner monitor.
@@ -774,6 +789,14 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         checkPreConditions();
         if (axiom instanceof OWLClassAssertionAxiom) return isEntailedClassAssertion((OWLClassAssertionAxiom) axiom);
         if (axiom instanceof OWLSameIndividualAxiom) return isEntailedSameIndividual((OWLSameIndividualAxiom) axiom);
+        if (axiom instanceof OWLSubObjectPropertyOfAxiom
+                || axiom instanceof OWLEquivalentObjectPropertiesAxiom
+                || axiom instanceof OWLInverseObjectPropertiesAxiom
+                || axiom instanceof OWLSymmetricObjectPropertyAxiom
+                || axiom instanceof OWLObjectPropertyDomainAxiom
+                || axiom instanceof OWLObjectPropertyRangeAxiom) {
+            return isEntailedObjectPropertyAxiom(axiom);
+        }
         if (!(axiom instanceof OWLSubClassOfAxiom)) {
             throw new UnsupportedEntailmentTypeException(axiom);
         }
@@ -814,7 +837,13 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     @Override public boolean isEntailmentCheckingSupported(AxiomType<?> axiomType) {
         return AxiomType.SUBCLASS_OF.equals(axiomType)
                 || AxiomType.CLASS_ASSERTION.equals(axiomType)
-                || AxiomType.SAME_INDIVIDUAL.equals(axiomType);
+                || AxiomType.SAME_INDIVIDUAL.equals(axiomType)
+                || AxiomType.SUB_OBJECT_PROPERTY.equals(axiomType)
+                || AxiomType.EQUIVALENT_OBJECT_PROPERTIES.equals(axiomType)
+                || AxiomType.INVERSE_OBJECT_PROPERTIES.equals(axiomType)
+                || AxiomType.SYMMETRIC_OBJECT_PROPERTY.equals(axiomType)
+                || AxiomType.OBJECT_PROPERTY_DOMAIN.equals(axiomType)
+                || AxiomType.OBJECT_PROPERTY_RANGE.equals(axiomType);
     }
 
 
@@ -1030,7 +1059,130 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         return true;
     }
 
-    // ---- unsupported (no property inference yet): empty / trivial results ---
+    // ---- object properties (from km classify --properties) ----------------
+
+    private static final String CLASSIFYING_OBJECT_PROPERTIES = "Classifying object properties";
+
+    private ObjectPropertyModel ensureProperties() {
+        ensureClassified();
+        ObjectPropertyModel model = propertyModel;
+        if (model != null) return model;
+        ObjectPropertyModel[] out = new ObjectPropertyModel[1];
+        runTask(CLASSIFYING_OBJECT_PROPERTIES, () -> out[0] = propertiesNow());
+        return out[0];
+    }
+
+    /**
+     * HermiT only puts inverse roles into its role hierarchy when the
+     * normalised ontology uses them (DLOntology.hasInverseRoles, set by
+     * OWLAxiomsExpressivity). Those are the ontologies that mention
+     * ObjectInverseOf, or that have an InverseObjectProperties, an
+     * InverseFunctionalObjectProperty, a SymmetricObjectProperty or an
+     * AsymmetricObjectProperty axiom, which HermiT's normalisation rewrites
+     * with an inverse. The test reads the functional syntax of the revision.
+     */
+    private static final java.util.regex.Pattern USES_INVERSE = java.util.regex.Pattern.compile(
+            "ObjectInverseOf\\(|InverseObjectProperties\\(|(?<![A-Za-z])(Symmetric|Asymmetric|InverseFunctional)ObjectProperty\\(");
+
+    private int propertyRuns;
+
+    /** Whether HermiT's rule counts the ontology as using inverse roles (for tests). */
+    synchronized boolean usesInverseRoles() { return ensureProperties().hasInverseRoles(); }
+
+    /** Native {@code --properties} runs made so far (for tests). */
+    synchronized int propertyRunCount() { return propertyRuns; }
+
+    private ObjectPropertyModel propertiesNow() {
+        ObjectPropertyModel built;
+        if (!consistent) {
+            built = new ObjectPropertyModel(df, Collections.<OWLObjectProperty>emptySet(), null, false);
+            propertyModel = built;
+            return built;
+        }
+        try {
+            OWLOntology snapshot = getCommittedOntologySnapshot();
+            Set<OWLObjectProperty> signature = new LinkedHashSet<>(snapshot.getObjectPropertiesInSignature());
+            signature.remove(df.getOWLTopObjectProperty());
+            signature.remove(df.getOWLBottomObjectProperty());
+            if (signature.isEmpty()) {
+                // No object property: nothing to ask the engine.
+                built = new ObjectPropertyModel(df, signature, null, false);
+            } else {
+                String source = FlattenedOntology.functionalSyntaxOfSnapshot(snapshot);
+                propertyRuns++;
+                Classifier.Properties rows = Classifier.properties(source,
+                        process -> {
+                            realizeProcess = process;
+                            if (process != null && (interruptRequested || timedOut)) {
+                                NativeProcessTree.terminateAndWait(process);
+                            }
+                        });
+                built = rows.consistent
+                        ? new ObjectPropertyModel(df, signature, rows, USES_INVERSE.matcher(source).find())
+                        : new ObjectPropertyModel(df, Collections.<OWLObjectProperty>emptySet(), null, false);
+            }
+        } catch (RuntimeException error) {
+            throw error;
+        } catch (Exception error) {
+            throw new ReasonerInternalException(error);
+        }
+        propertyModel = built;
+        return built;
+    }
+
+    /**
+     * The distinct representatives of the classes that are domains of the
+     * expression: every class entailed to contain all sources of the property
+     * (rows plus owl:Thing, closed upwards), or every class for an empty
+     * property. HermiT searches the class hierarchy for the classes C with
+     * {@code r(a,b) and not C(a)} unsatisfiable (Reasoner.getObjectPropertyDomains).
+     */
+    private int[] domainReps(ObjectPropertyModel model, int code) {
+        Set<Integer> reps = new TreeSet<>();
+        if (model.isEmpty(code)) {
+            for (int c = 0; c < repId.length; c++) reps.add(repId[c]);
+        } else {
+            reps.add(repId[thingId]);
+            for (String iri : model.domainIris(code)) {
+                Integer id = idByIri.get(normalizeIri(iri));
+                if (id == null) continue;
+                int r = repId[id];
+                reps.add(r);
+                int[] sups = supersByRep[r];
+                if (sups != null) for (int s : sups) reps.add(s);
+            }
+        }
+        int[] out = new int[reps.size()];
+        int k = 0;
+        for (int r : reps) out[k++] = r;
+        return out;
+    }
+
+    private NodeSet<OWLClass> classNodeSet(int[] reps, boolean direct, boolean empty) {
+        OWLClassNodeSet ns = new OWLClassNodeSet();
+        if (direct && empty) {
+            ns.addNode(nodeOfId(repId[nothingId]));
+        } else {
+            for (int r : direct ? minimalIds(reps) : reps) ns.addNode(nodeOfId(r));
+        }
+        return ns;
+    }
+
+    @Override public synchronized NodeSet<OWLClass> getObjectPropertyDomains(OWLObjectPropertyExpression pe, boolean direct) {
+        checkPreConditions();
+        ObjectPropertyModel model = ensureProperties();
+        int code = model.code(pe);
+        return classNodeSet(domainReps(model, code), direct, model.isEmpty(code));
+    }
+    @Override public synchronized NodeSet<OWLClass> getObjectPropertyRanges(OWLObjectPropertyExpression pe, boolean direct) {
+        checkPreConditions();
+        ObjectPropertyModel model = ensureProperties();
+        // The range of r is the domain of its inverse.
+        int code = ObjectPropertyModel.inverse(model.code(pe));
+        return classNodeSet(domainReps(model, code), direct, model.isEmpty(code));
+    }
+
+    // ---- unsupported (no inference yet): empty / trivial results ---
 
     private static final NodeSet<OWLClass> EMPTY_C = new OWLClassNodeSet();
     private static final NodeSet<OWLNamedIndividual> EMPTY_I = new OWLNamedIndividualNodeSet();
@@ -1039,56 +1191,99 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         checkPreConditions();
         return EMPTY_C;
     }
-    @Override public synchronized NodeSet<OWLClass> getObjectPropertyDomains(OWLObjectPropertyExpression pe, boolean direct) {
-        checkPreConditions();
-        return EMPTY_C;
-    }
-    @Override public synchronized NodeSet<OWLClass> getObjectPropertyRanges(OWLObjectPropertyExpression pe, boolean direct) {
-        checkPreConditions();
-        return EMPTY_C;
-    }
     @Override public synchronized NodeSet<OWLClass> getDataPropertyDomains(OWLDataProperty pe, boolean direct) {
         checkPreConditions();
         return EMPTY_C;
     }
 
-    @Override public Node<OWLObjectPropertyExpression> getTopObjectPropertyNode() { return new OWLObjectPropertyNode(df.getOWLTopObjectProperty()); }
-    @Override public Node<OWLObjectPropertyExpression> getBottomObjectPropertyNode() { return new OWLObjectPropertyNode(df.getOWLBottomObjectProperty()); }
+    @Override public synchronized Node<OWLObjectPropertyExpression> getTopObjectPropertyNode() {
+        checkPreConditions();
+        return ensureProperties().topNode();
+    }
+    @Override public synchronized Node<OWLObjectPropertyExpression> getBottomObjectPropertyNode() {
+        checkPreConditions();
+        return ensureProperties().bottomNode();
+    }
     @Override public Node<OWLDataProperty> getTopDataPropertyNode() { return new OWLDataPropertyNode(df.getOWLTopDataProperty()); }
     @Override public Node<OWLDataProperty> getBottomDataPropertyNode() { return new OWLDataPropertyNode(df.getOWLBottomDataProperty()); }
 
     @Override public synchronized NodeSet<OWLObjectPropertyExpression> getSubObjectProperties(OWLObjectPropertyExpression pe, boolean direct) {
         checkPreConditions();
-        return new OWLObjectPropertyNodeSet();
+        return ensureProperties().subs(pe, direct);
     }
     @Override public synchronized NodeSet<OWLObjectPropertyExpression> getSuperObjectProperties(OWLObjectPropertyExpression pe, boolean direct) {
         checkPreConditions();
-        return new OWLObjectPropertyNodeSet();
+        return ensureProperties().supers(pe, direct);
     }
     @Override public synchronized Node<OWLObjectPropertyExpression> getEquivalentObjectProperties(OWLObjectPropertyExpression pe) {
         checkPreConditions();
-        return new OWLObjectPropertyNode(pe);
+        return ensureProperties().equivalents(pe);
     }
     @Override public synchronized NodeSet<OWLObjectPropertyExpression> getDisjointObjectProperties(OWLObjectPropertyExpression pe) {
         checkPreConditions();
         return new OWLObjectPropertyNodeSet();
     }
-    /**
-     * Without property inference the answer holds only the inverse expression
-     * itself. HermiT answers {@code getEquivalentObjectProperties(pe^-)}
-     * (Reasoner.getInverseObjectProperties); {@code pe^-} is a member of that
-     * node by reflexivity, so this is incomplete but never wrong. The top and
-     * bottom properties are their own inverses.
-     * TODO W2-plugin: add the properties the engine reports as equivalent to pe^-.
-     */
+    /** HermiT answers {@code getEquivalentObjectProperties(pe^-)} (Reasoner.getInverseObjectProperties). */
     @Override public synchronized Node<OWLObjectPropertyExpression> getInverseObjectProperties(OWLObjectPropertyExpression pe) {
         checkPreConditions();
-        OWLObjectPropertyExpression simple = pe.getSimplified();
-        if (simple.isOWLTopObjectProperty() || simple.isOWLBottomObjectProperty()) {
-            return new OWLObjectPropertyNode(simple);
-        }
-        return new OWLObjectPropertyNode(simple.getInverseProperty().getSimplified());
+        return ensureProperties().equivalents(pe.getInverseProperty());
     }
+
+    /**
+     * Entailment of the property axioms HermiT's EntailmentChecker reduces to
+     * the role hierarchy: sub-property (no chains), equivalence, inverse,
+     * symmetry, and domain and range with a named class. A domain or range
+     * with a class expression needs a class expression query.
+     * TODO W5: domain and range with an anonymous class.
+     */
+    private boolean isEntailedObjectPropertyAxiom(OWLAxiom axiom) {
+        ObjectPropertyModel model = ensureProperties();
+        if (axiom instanceof OWLSubObjectPropertyOfAxiom) {
+            OWLSubObjectPropertyOfAxiom a = (OWLSubObjectPropertyOfAxiom) axiom;
+            return model.entails(a.getSubProperty(), a.getSuperProperty());
+        }
+        if (axiom instanceof OWLEquivalentObjectPropertiesAxiom) {
+            // HermiT compares every property with the first one, in both directions.
+            Iterator<OWLObjectPropertyExpression> it =
+                    ((OWLEquivalentObjectPropertiesAxiom) axiom).getProperties().iterator();
+            if (!it.hasNext()) return true;
+            OWLObjectPropertyExpression first = it.next();
+            while (it.hasNext()) {
+                OWLObjectPropertyExpression other = it.next();
+                if (!model.entails(first, other) || !model.entails(other, first)) return false;
+            }
+            return true;
+        }
+        if (axiom instanceof OWLInverseObjectPropertiesAxiom) {
+            OWLInverseObjectPropertiesAxiom a = (OWLInverseObjectPropertiesAxiom) axiom;
+            OWLObjectPropertyExpression first = a.getFirstProperty().getInverseProperty();
+            OWLObjectPropertyExpression second = a.getSecondProperty();
+            return model.entails(first, second) && model.entails(second, first);
+        }
+        if (axiom instanceof OWLSymmetricObjectPropertyAxiom) {
+            OWLObjectPropertyExpression p = ((OWLSymmetricObjectPropertyAxiom) axiom).getProperty();
+            return model.entails(p, p.getInverseProperty());
+        }
+        OWLObjectPropertyExpression property;
+        OWLClassExpression cls;
+        int code;
+        if (axiom instanceof OWLObjectPropertyDomainAxiom) {
+            property = ((OWLObjectPropertyDomainAxiom) axiom).getProperty();
+            cls = ((OWLObjectPropertyDomainAxiom) axiom).getDomain();
+            code = model.code(property);
+        } else {
+            property = ((OWLObjectPropertyRangeAxiom) axiom).getProperty();
+            cls = ((OWLObjectPropertyRangeAxiom) axiom).getRange();
+            code = ObjectPropertyModel.inverse(model.code(property));
+        }
+        if (cls.isAnonymous()) throw new UnsupportedEntailmentTypeException(axiom);
+        if (cls.isOWLThing() || model.isEmpty(code)) return true;
+        int r = repIdOf(cls);
+        if (r < 0) return false; // a class outside the signature contains nothing it is not told to
+        for (int rep : domainReps(model, code)) if (rep == r) return true;
+        return false;
+    }
+
     @Override public synchronized NodeSet<OWLNamedIndividual> getObjectPropertyValues(OWLNamedIndividual ind, OWLObjectPropertyExpression pe) {
         checkPreConditions();
         return EMPTY_I;

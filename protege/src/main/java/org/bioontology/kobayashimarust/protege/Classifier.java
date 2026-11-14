@@ -624,22 +624,30 @@ public final class Classifier {
     }
 
     /**
-     * Run {@code km classify --lines --realize} once on the given functional
-     * syntax. The incremental session cannot realize, so this is a separate
-     * one-shot native run. {@code onStart} receives the process so the caller
-     * can cancel it.
+     * Run {@code km classify --lines <flags>} once on the given functional
+     * syntax and return the output lines. The incremental session cannot
+     * realize or report properties, so these are separate one-shot native
+     * runs. {@code onStart} receives the process so the caller can cancel it.
+     * Fails on a non-zero exit, on a time out, and when the output has no
+     * {@code CONSISTENT} row.
      */
-    public static Realization realize(String functionalSyntax,
-                                      java.util.function.Consumer<Process> onStart) throws Exception {
+    private static List<String> oneShot(String functionalSyntax, String[] flags, String label,
+                                        java.util.function.Consumer<Process> onStart) throws Exception {
         String kmBin = KMExecutable.resolve();
         long timeout = parseTimeout();
-        Path tmp = Files.createTempFile("kmarust-realize-", ".ofn");
-        Path log = Files.createTempFile("kmarust-realize-", ".log");
+        Path tmp = Files.createTempFile("kmarust-" + label + "-", ".ofn");
+        Path log = Files.createTempFile("kmarust-" + label + "-", ".log");
         try {
             Files.write(tmp, functionalSyntax.getBytes(StandardCharsets.UTF_8));
-            ProcessBuilder pb = new ProcessBuilder(
-                    kmBin, "classify", "--lines", "--realize", "--format", "functional",
-                    tmp.toString());
+            List<String> command = new ArrayList<>();
+            command.add(kmBin);
+            command.add("classify");
+            command.add("--lines");
+            for (String flag : flags) command.add(flag);
+            command.add("--format");
+            command.add("functional");
+            command.add(tmp.toString());
+            ProcessBuilder pb = new ProcessBuilder(command);
             pb.redirectErrorStream(true);
             pb.redirectOutput(log.toFile());
             Process proc = pb.start();
@@ -648,7 +656,7 @@ public final class Classifier {
                 if (!proc.waitFor(timeout, TimeUnit.SECONDS)) {
                     NativeProcessTree.terminateAndWait(proc);
                     throw new RuntimeException(
-                            "Kobayashi-MaRust realization timed out after " + timeout + " seconds");
+                            "Kobayashi-MaRust " + label + " timed out after " + timeout + " seconds");
                 }
             } finally {
                 if (onStart != null) onStart.accept(null);
@@ -656,45 +664,131 @@ public final class Classifier {
             int rc = proc.exitValue();
             List<String> lines = Files.readAllLines(log, StandardCharsets.UTF_8);
             if (rc != 0) {
-                throw new RuntimeException("Kobayashi-MaRust realization failed (exit "
+                throw new RuntimeException("Kobayashi-MaRust " + label + " failed (exit "
                         + rc + "):\n" + String.join("\n", lines));
             }
-            Realization r = new Realization();
             boolean protocolSeen = false;
-            String approximate = null;
             for (String line : lines) {
-                String[] f = line.split("\t");
-                if (line.startsWith("CONSISTENT ")) {
-                    protocolSeen = true;
-                    r.consistent = line.trim().endsWith("1");
-                } else if (line.startsWith("DROPPED ")) {
-                    try { r.dropped = Integer.parseInt(line.trim().substring(8)); }
-                    catch (NumberFormatException ignore) {}
-                } else if (f.length == 2 && f[0].equals("APPROXIMATE")) {
-                    approximate = f[1];
-                } else if (f.length == 3 && f[0].equals("TYPE")) {
-                    r.types.computeIfAbsent(f[1], k -> new ArrayList<>()).add(f[2]);
-                } else if (f.length == 3 && f[0].equals("SAME")) {
-                    r.same.add(new String[]{f[1], f[2]});
-                }
+                if (line.startsWith("CONSISTENT ")) protocolSeen = true;
             }
             if (!protocolSeen) {
-                throw new RuntimeException("Kobayashi-MaRust returned no realization result:\n"
+                throw new RuntimeException("Kobayashi-MaRust returned no " + label + " result:\n"
                         + String.join("\n", lines));
             }
-            if (approximate != null) {
-                throw new RuntimeException("Kobayashi-MaRust declined a complete realization: "
-                        + "the answer is approximate (" + approximate + ")");
-            }
-            if (r.dropped != 0) {
-                throw new RuntimeException("Kobayashi-MaRust declined a complete realization: "
-                        + r.dropped + " clause(s) were dropped");
-            }
-            return r;
+            return lines;
         } finally {
             Files.deleteIfExists(tmp);
             Files.deleteIfExists(log);
         }
+    }
+
+    /** The one value of an {@code APPROXIMATE} row, or null. */
+    private static String approximate(List<String> lines) {
+        for (String line : lines) {
+            String[] f = line.split("\t");
+            if (f.length == 2 && f[0].equals("APPROXIMATE")) return f[1];
+        }
+        return null;
+    }
+
+    private static boolean consistentRow(List<String> lines) {
+        boolean consistent = true;
+        for (String line : lines) {
+            if (line.startsWith("CONSISTENT ")) consistent = line.trim().endsWith("1");
+        }
+        return consistent;
+    }
+
+    private static int droppedRow(List<String> lines) {
+        int dropped = 0;
+        for (String line : lines) {
+            if (line.startsWith("DROPPED ")) {
+                try { dropped = Integer.parseInt(line.trim().substring(8)); }
+                catch (NumberFormatException ignore) { }
+            }
+        }
+        return dropped;
+    }
+
+    /**
+     * Run {@code km classify --lines --realize} once on the given functional
+     * syntax. {@code onStart} receives the process so the caller can cancel it.
+     */
+    public static Realization realize(String functionalSyntax,
+                                      java.util.function.Consumer<Process> onStart) throws Exception {
+        List<String> lines = oneShot(functionalSyntax, new String[]{"--realize"}, "realization", onStart);
+        Realization r = new Realization();
+        r.consistent = consistentRow(lines);
+        r.dropped = droppedRow(lines);
+        for (String line : lines) {
+            String[] f = line.split("\t");
+            if (f.length == 3 && f[0].equals("TYPE")) {
+                r.types.computeIfAbsent(f[1], k -> new ArrayList<>()).add(f[2]);
+            } else if (f.length == 3 && f[0].equals("SAME")) {
+                r.same.add(new String[]{f[1], f[2]});
+            }
+        }
+        String approximate = approximate(lines);
+        if (approximate != null) {
+            throw new RuntimeException("Kobayashi-MaRust declined a complete realization: "
+                    + "the answer is approximate (" + approximate + ")");
+        }
+        if (r.dropped != 0) {
+            throw new RuntimeException("Kobayashi-MaRust declined a complete realization: "
+                    + r.dropped + " clause(s) were dropped");
+        }
+        return r;
+    }
+
+    /**
+     * The object property rows of {@code km classify --lines --properties}
+     * (see {@code docs/PROPERTIES.md}). Names are full IRIs; an inverse
+     * expression keeps its {@code ObjectInverseOf(...)} spelling.
+     */
+    public static final class Properties {
+        public boolean consistent = true;
+        public int dropped = 0;
+        /** Pairs {r, f}: {@code r} named, {@code f} a property expression. */
+        public final List<String[]> subproperties = new ArrayList<>();
+        /** Properties equivalent to the universal property. */
+        public final List<String> top = new ArrayList<>();
+        /** Empty properties. */
+        public final List<String> bottom = new ArrayList<>();
+        /** Pairs {r, C}. */
+        public final List<String[]> domains = new ArrayList<>();
+        public final List<String[]> ranges = new ArrayList<>();
+    }
+
+    /**
+     * Run {@code km classify --lines --properties} once on the given
+     * functional syntax. {@code onStart} receives the process so the caller
+     * can cancel it. An approximate answer or a dropped clause is refused.
+     */
+    public static Properties properties(String functionalSyntax,
+                                        java.util.function.Consumer<Process> onStart) throws Exception {
+        List<String> lines = oneShot(functionalSyntax, new String[]{"--properties"},
+                "property classification", onStart);
+        Properties p = new Properties();
+        p.consistent = consistentRow(lines);
+        p.dropped = droppedRow(lines);
+        for (String line : lines) {
+            String[] f = line.split("\t");
+            if (f.length == 3 && f[0].equals("SUBPROP")) p.subproperties.add(new String[]{f[1], f[2]});
+            else if (f.length == 2 && f[0].equals("TOPPROP")) p.top.add(f[1]);
+            else if (f.length == 2 && f[0].equals("BOTPROP")) p.bottom.add(f[1]);
+            else if (f.length == 3 && f[0].equals("DOMAIN")) p.domains.add(new String[]{f[1], f[2]});
+            else if (f.length == 3 && f[0].equals("RANGE")) p.ranges.add(new String[]{f[1], f[2]});
+        }
+        String approximate = approximate(lines);
+        if (approximate != null) {
+            throw new RuntimeException("Kobayashi-MaRust declined a complete property classification: "
+                    + "the answer is approximate (" + approximate + ")");
+        }
+        if (p.dropped != 0) {
+            throw new RuntimeException("Kobayashi-MaRust declined a complete property classification: "
+                    + p.dropped + " clause(s) were dropped");
+        }
+        return p;
     }
 
     public static Result classify(OWLOntology ontology) throws Exception {

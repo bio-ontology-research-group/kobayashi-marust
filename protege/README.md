@@ -6,8 +6,9 @@ class hierarchy, equivalence classes, unsatisfiable classes, and ontology
 consistency.
 
 The plugin answers class and individual queries; see
-[What the reasoner answers](#what-the-reasoner-answers). Property hierarchy
-and property assertion queries are not yet exposed through the OWL API.
+[What the reasoner answers](#what-the-reasoner-answers). The object property
+hierarchy, inverses, domains and ranges are answered; property assertion
+queries are not yet exposed through the OWL API.
 The bundle also contains an OWL Explanation API
 `ExplanationGenerator` and `ExplanationGeneratorFactory` (OWL Explanation
 2.0.1 in the Protégé 5 jar, 5.0.1 in the Protégé 6 jar). It returns verified,
@@ -56,8 +57,10 @@ code remains BSD-3-Clause.
 | `getTypes(ind, direct)` | the named classes the individual belongs to, as class nodes, with `owl:Thing` as HermiT reports it; `direct` keeps the most specific nodes |
 | `getInstances(C, direct)` | for a named class `C`: the individuals that are instances of `C` (direct: those whose most specific types include `C` or a class equivalent to it), grouped into same-individual nodes; an anonymous class expression gives an empty set |
 | `getSameIndividuals(ind)` | the entailed equalities (`SameIndividual`, functional and inverse-functional roles, cardinality, nominals, any other entailment) |
-| `isEntailed` | `SubClassOf` between named classes, `ClassAssertion` of a named class, `SameIndividual` of named individuals |
-| `getPrecomputableInferenceTypes` | `CLASS_HIERARCHY`, `CLASS_ASSERTIONS`, `SAME_INDIVIDUAL` |
+| `getSubObjectProperties`, `getSuperObjectProperties` (direct or not), `getEquivalentObjectProperties`, `getInverseObjectProperties`, `getTopObjectPropertyNode`, `getBottomObjectPropertyNode` | the inferred object property hierarchy, for named properties and `ObjectInverseOf` expressions. Equivalent expressions share a node as in HermiT (`r` and an equivalent `s⁻` in one node; empty properties in the bottom node, universal ones in the top node). |
+| `getObjectPropertyDomains`, `getObjectPropertyRanges` (direct or not) | the entailed named domains and ranges of a property or an inverse expression; an empty property has every class, direct answer `owl:Nothing` |
+| `isEntailed` | `SubClassOf` between named classes, `ClassAssertion` of a named class, `SameIndividual` of named individuals, `SubObjectPropertyOf` (no chains), `EquivalentObjectProperties`, `InverseObjectProperties`, `SymmetricObjectProperty`, `ObjectPropertyDomain` and `ObjectPropertyRange` with a named class |
+| `getPrecomputableInferenceTypes` | `CLASS_HIERARCHY`, `OBJECT_PROPERTY_HIERARCHY`, `CLASS_ASSERTIONS`, `SAME_INDIVIDUAL` |
 
 Classification costs the same as before. The individual queries use
 `km classify --realize` ([`docs/REALIZATION.md`](../docs/REALIZATION.md)). The
@@ -71,17 +74,71 @@ full classification of the ontology with one extra class per individual. An
 ontology with no named individuals needs no extra run. A realization that KM
 declines (a dropped clause or an approximate answer) raises a reasoner error.
 
+The object property queries use `km classify --properties`
+([`docs/PROPERTIES.md`](../docs/PROPERTIES.md)) in the same way: one one-shot
+run per ontology revision, made on the first property query (including the
+property axioms of `isEntailed`) or when Protégé asks to precompute
+`OBJECT_PROPERTY_HIERARCHY`, cached, dropped on flush, and refused with a
+reasoner error when KM declines. Class and individual queries never start it.
+An ontology with no object property needs no run. The run can cost much more
+than a plain classification (docs/PROPERTIES.md, "Cost"). Protégé's default
+preferences show inferred object property information (unsatisfiable, super,
+equivalent and inverse properties), and Protégé maps these to
+`OBJECT_PROPERTY_HIERARCHY` when you start the reasoner, so with the default
+preferences "Start reasoner" should make this run (read from Protégé's
+preference mapping, not yet seen in a running Protégé). Turn those displays off in
+"Configure reasoner" or mark `OBJECT_PROPERTY_HIERARCHY` as disallowed to skip
+it.
+
+Behaviour as HermiT (Protégé integration):
+
+- The constructor does no native work. The first query or
+  `precomputeInferences` classifies the ontology as it is then; a failed first
+  run leaves the reasoner unclassified and the next use retries.
+- Queries on an inconsistent ontology throw `InconsistentOntologyException`,
+  which Protégé catches to open its inconsistency explanation. `isConsistent`,
+  `getTopClassNode`, `getBottomClassNode` and `getUnsatisfiableClasses` do not
+  throw. `getInstances` throws only when the ontology has individuals.
+- Native work reports to the progress monitor of the reasoner configuration
+  (started, busy, stopped), ends with `TimeOutException` after `getTimeOut()`
+  milliseconds, and ends with `ReasonerInterruptedException` when `interrupt()`
+  is called (the one exception Protégé catches). `interrupt()` while idle does
+  nothing.
+- A named class or object property outside the signature sits between Top and
+  Bottom (HermiT's default `FreshEntityPolicy.ALLOW`).
+- `isSatisfiable` of an anonymous class expression throws
+  `ClassExpressionNotInProfileException` instead of answering `true`.
+- `isEntailed(Set)` ignores annotation and declaration axioms.
+- `isPrecomputed` is true only for the types the plugin holds now.
+
 Differences from HermiT:
 
-- An inconsistent ontology gives empty answers to the class and individual
-  queries, as the class queries always did. HermiT throws
-  `InconsistentOntologyException`.
 - `getInstances` returns same-individual nodes as the OWL API specifies.
   HermiT returns one node per individual; the individuals are the same.
 - A class declared equivalent to `owl:Thing` is a type of every individual,
   but KM's class hierarchy does not yet put it in the node of `owl:Thing`, so
   the node shapes (and the `direct` answers for such individuals) differ.
-- `getDifferentIndividuals`, property values and domains, and class
+- HermiT keeps `ObjectInverseOf(r)` out of its property hierarchy when the
+  ontology uses no inverse role, and answers such a query with a node of its
+  own between top and bottom. The plugin does the same, deciding "uses an
+  inverse role" from the axioms in the way HermiT's normalisation does
+  (`ObjectInverseOf`, inverse, inverse functional, symmetric and asymmetric
+  properties); a case where the two disagree gives one more or one fewer
+  inverse expression in the nodes.
+- `getObjectPropertyDomains` and `getObjectPropertyRanges` of
+  `owl:bottomObjectProperty`: HermiT answers `owl:Thing` (direct) and nothing
+  (not direct); KM answers every class (direct: `owl:Nothing`), as for any empty
+  property.
+- `isEntailed` for property axioms is answered from the semantics. HermiT looks
+  an inverse expression up in its hierarchy, so without inverse roles in the
+  ontology it fails (null pointer) or answers false for such an axiom, even for
+  an empty property; KM answers true. For a property outside the signature, KM
+  finds only the trivial entailments; HermiT also finds `p ⊑ p⁻` when every
+  model of the ontology has one individual.
+- `ObjectPropertyDomain` and `ObjectPropertyRange` with a class expression are
+  not answered by `isEntailed` (`UnsupportedEntailmentTypeException`).
+- `getDisjointObjectProperties`, `getDisjointClasses`, `getDifferentIndividuals`,
+  object and data property values, data property inferences, and class
   expression queries (`getInstances` of an anonymous class) are not answered
   yet.
 
