@@ -1,0 +1,1 @@
+heads.py completed on 1142 of 1142 accepted inputs; counts agree on 1142

@@ -273,6 +273,18 @@ theorem transExpr_le : ∀ (E : ClassExpr) (p : Bool) (s : St), Le s (transExpr 
       simp only [transExpr]
       exact (internR_le _ s).trans ((transExpr_le c true _).trans
         ((freshC_le _ _).trans (emit_le _ _)))
+  | .oneOf _, _, s => by simp only [transExpr]; exact Le.rfl
+  | .hasValue _ _, _, s => by simp only [transExpr]; exact Le.rfl
+  | .hasSelf _, _, s => by simp only [transExpr]; exact Le.rfl
+  | .min _ _ _, _, s => by simp only [transExpr]; exact Le.rfl
+  | .max _ _ _, _, s => by simp only [transExpr]; exact Le.rfl
+  | .exact _ _ _, _, s => by simp only [transExpr]; exact Le.rfl
+  | .dataSome _ _, _, s => by simp only [transExpr]; exact Le.rfl
+  | .dataAll _ _, _, s => by simp only [transExpr]; exact Le.rfl
+  | .dataHasValue _ _, _, s => by simp only [transExpr]; exact Le.rfl
+  | .dataMin _ _ _, _, s => by simp only [transExpr]; exact Le.rfl
+  | .dataMax _ _ _, _, s => by simp only [transExpr]; exact Le.rfl
+  | .dataExact _ _ _, _, s => by simp only [transExpr]; exact Le.rfl
 
 theorem transList_le : ∀ (cs : List ClassExpr) (p : Bool) (s : St) acc,
     Le s (transList cs p s acc).2
@@ -399,6 +411,18 @@ theorem transExpr_wf : ∀ (E : ClassExpr) (p : Bool) (s : St), WF s →
       have hle₂ := (freshC_le (.all r c) (transExpr c true (internR (EL.propIRI r) s).2).2).b
       exact ⟨emit_wf (freshC_wf ih.1) (valid_allRight (freshC_in _ _)
         ((ha.mono hle₁).mono hle₂) (ih.2.mono hle₂)), freshC_in _ _⟩
+  | .oneOf _, _, s, hs => by simp only [transExpr]; exact ⟨hs, hs.top_in⟩
+  | .hasValue _ _, _, s, hs => by simp only [transExpr]; exact ⟨hs, hs.top_in⟩
+  | .hasSelf _, _, s, hs => by simp only [transExpr]; exact ⟨hs, hs.top_in⟩
+  | .min _ _ _, _, s, hs => by simp only [transExpr]; exact ⟨hs, hs.top_in⟩
+  | .max _ _ _, _, s, hs => by simp only [transExpr]; exact ⟨hs, hs.top_in⟩
+  | .exact _ _ _, _, s, hs => by simp only [transExpr]; exact ⟨hs, hs.top_in⟩
+  | .dataSome _ _, _, s, hs => by simp only [transExpr]; exact ⟨hs, hs.top_in⟩
+  | .dataAll _ _, _, s, hs => by simp only [transExpr]; exact ⟨hs, hs.top_in⟩
+  | .dataHasValue _ _, _, s, hs => by simp only [transExpr]; exact ⟨hs, hs.top_in⟩
+  | .dataMin _ _ _, _, s, hs => by simp only [transExpr]; exact ⟨hs, hs.top_in⟩
+  | .dataMax _ _ _, _, s, hs => by simp only [transExpr]; exact ⟨hs, hs.top_in⟩
+  | .dataExact _ _ _, _, s, hs => by simp only [transExpr]; exact ⟨hs, hs.top_in⟩
 
 theorem transList_wf : ∀ (cs : List ClassExpr) (p : Bool) (s : St) acc, WF s →
     (∀ q ∈ acc, CIn s.b q.2) →
@@ -422,7 +446,7 @@ end
 
 section Unfold
 
-variable {D : Type} (I : OWL.Interp D)
+variable {DM : OWL.DatatypeMap} {D : Type} (I : OWL.Interp DM D)
 
 theorem ext_not (c : ClassExpr) (x : D) : I.ext (.not c) x ↔ ¬ I.ext c x := by
   rw [Interp.ext]
@@ -455,25 +479,30 @@ theorem isALC_all {r : ObjProp} {c : ClassExpr} :
 /-- The OWL interpretation read off a clause interpretation through the
 final maps. IRIs without an index get `bottom` and role `0`; they do not
 occur. -/
-def restrict (F : St) {D : Type} (J : Ctx.Interp D Nat Nat) : OWL.Interp D where
+noncomputable def restrict (F : St) {D : Type} [Nonempty D] (J : Ctx.Interp D Nat Nat) : OWL.Interp OWL.DatatypeMap.trivial D where
+  ind _ := Classical.choice inferInstance
+  dprop _ _ _ := False
+  dtype _ _ := False
   cls a := J.c (F.b.cmap[a]?.getD F.b.bottom)
   role r := J.r (F.b.rmap[r]?.getD 0)
 
-theorem restrict_cls {F : St} {D : Type} {J : Ctx.Interp D Nat Nat}
+theorem restrict_cls {F : St} {D : Type} [Nonempty D] {J : Ctx.Interp D Nat Nat}
     {a : IRI} {k : Nat} (h : F.b.cmap[a]? = some k) (x : D) :
     (restrict F J).cls a x ↔ J.c k x := by
   simp [restrict, h]
 
-theorem restrict_prop {F : St} {D : Type} {J : Ctx.Interp D Nat Nat}
+theorem restrict_prop {F : St} {D : Type} [Nonempty D] {J : Ctx.Interp D Nat Nat}
     {r : ObjProp} (hr : r.isNamed = true) {k : Nat} (h : F.b.rmap[EL.propIRI r]? = some k)
     (x y : D) : (restrict F J).prop r x y ↔ J.r k x y := by
   cases r with
   | named r => simp [Interp.prop, restrict, EL.propIRI] at h ⊢; simp [h]
   | inv r => simp [ObjProp.isNamed] at hr
+  | top => simp [ObjProp.isNamed] at hr
+  | bot => simp [ObjProp.isNamed] at hr
 
 section Restrict
 
-variable (F : St) {D : Type} (J : Ctx.Interp D Nat Nat)
+variable (F : St) {D : Type} [Nonempty D] (J : Ctx.Interp D Nat Nat)
   (hJ : ∀ c ∈ F.out, Ctx.satClause J c)
   (hT : ∀ x, J.c F.b.top x) (hB : ∀ x, ¬ J.c F.b.bottom x)
 
@@ -655,6 +684,18 @@ theorem transExpr_restrict : ∀ (E : ClassExpr) (p : Bool) (s : St),
       rw [ext_all]
       intro y hxy
       exact ih y (hcl x hx y ((restrict_prop hr hrk x y).1 hxy))
+  | .oneOf _, _, _, _, hA => by simp [ClassExpr.isALC] at hA
+  | .hasValue _ _, _, _, _, hA => by simp [ClassExpr.isALC] at hA
+  | .hasSelf _, _, _, _, hA => by simp [ClassExpr.isALC] at hA
+  | .min _ _ _, _, _, _, hA => by simp [ClassExpr.isALC] at hA
+  | .max _ _ _, _, _, _, hA => by simp [ClassExpr.isALC] at hA
+  | .exact _ _ _, _, _, _, hA => by simp [ClassExpr.isALC] at hA
+  | .dataSome _ _, _, _, _, hA => by simp [ClassExpr.isALC] at hA
+  | .dataAll _ _, _, _, _, hA => by simp [ClassExpr.isALC] at hA
+  | .dataHasValue _ _, _, _, _, hA => by simp [ClassExpr.isALC] at hA
+  | .dataMin _ _ _, _, _, _, hA => by simp [ClassExpr.isALC] at hA
+  | .dataMax _ _ _, _, _, _, hA => by simp [ClassExpr.isALC] at hA
+  | .dataExact _ _ _, _, _, _, hA => by simp [ClassExpr.isALC] at hA
 
 theorem transList_restrict : ∀ (cs : List ClassExpr) (p : Bool) (s : St) acc,
     Le (transList cs p s acc).2 F → (∀ c ∈ cs, c.isALC = true) →
@@ -681,13 +722,13 @@ end Restrict
 /-- The clause interpretation of a model `I`: index `k` stands for the class
 expression `F.b.cdefs[k]`, role index `k` for the composition of
 `F.b.rdefs[k].reverse` (a single property IRI here). -/
-def extend {D : Type} (I : OWL.Interp D) (F : St) : Ctx.Interp D Nat Nat where
+def extend {DM : OWL.DatatypeMap} {D : Type} (I : OWL.Interp DM D) (F : St) : Ctx.Interp D Nat Nat where
   c k x := I.ext (F.b.cdefs[k]?.getD .nothing) x
   r k x y := I.chain ((F.b.rdefs[k]?.getD []).reverse.map ObjProp.named) x y
 
 section Extend
 
-variable {D : Type} (I : OWL.Interp D) (F : St)
+variable {DM : OWL.DatatypeMap} {D : Type} (I : OWL.Interp DM D) (F : St)
 
 theorem extend_c {k : Nat} {e : ClassExpr} (h : F.b.cdefs[k]? = some e) (x : D) :
     (extend I F).c k x ↔ I.ext e x := by
@@ -702,6 +743,8 @@ theorem extend_prop {k : Nat} {r : ObjProp} (hr : r.isNamed = true)
         List.nil_append, List.map_cons, List.map_nil, EL.propIRI]
       rw [EL.chain_single]; rfl
   | inv r => simp [ObjProp.isNamed] at hr
+  | top => simp [ObjProp.isNamed] at hr
+  | bot => simp [ObjProp.isNamed] at hr
 
 /-- Every clause emitted so far holds in `extend I F`. -/
 def Good (s : St) : Prop := ∀ c ∈ s.out, Ctx.satClause (extend I F) c
@@ -906,6 +949,18 @@ theorem transExpr_extend : ∀ (E : ClassExpr) (p : Bool) (s : St), WF s →
       intro x hx y hxy
       rw [hX, ext_all] at hx
       exact (ih.2 y).2 (hx y ((hrk x y).1 hxy))
+  | .oneOf _, _, _, _, _, hA => by simp [ClassExpr.isALC] at hA
+  | .hasValue _ _, _, _, _, _, hA => by simp [ClassExpr.isALC] at hA
+  | .hasSelf _, _, _, _, _, hA => by simp [ClassExpr.isALC] at hA
+  | .min _ _ _, _, _, _, _, hA => by simp [ClassExpr.isALC] at hA
+  | .max _ _ _, _, _, _, _, hA => by simp [ClassExpr.isALC] at hA
+  | .exact _ _ _, _, _, _, _, hA => by simp [ClassExpr.isALC] at hA
+  | .dataSome _ _, _, _, _, _, hA => by simp [ClassExpr.isALC] at hA
+  | .dataAll _ _, _, _, _, _, hA => by simp [ClassExpr.isALC] at hA
+  | .dataHasValue _ _, _, _, _, _, hA => by simp [ClassExpr.isALC] at hA
+  | .dataMin _ _ _, _, _, _, _, hA => by simp [ClassExpr.isALC] at hA
+  | .dataMax _ _ _, _, _, _, _, hA => by simp [ClassExpr.isALC] at hA
+  | .dataExact _ _ _, _, _, _, _, hA => by simp [ClassExpr.isALC] at hA
 
 theorem transList_extend : ∀ (cs : List ClassExpr) (p : Bool) (s : St) acc, WF s →
     Le (transList cs p s acc).2 F → (∀ c ∈ cs, c.isALC = true) →
@@ -990,6 +1045,32 @@ theorem transAxiom_le (s : St) (ax : Axiom) : Le s (transAxiom s ax) := by
   | subObjectPropertyOf _ _ | equivalentObjectProperties _ | inverseObjectProperties _ _
   | transitive _ | symmetric _ | declareClass _ | declareObjectProperty _ =>
       simp only [transAxiom]; exact Le.rfl
+  | declareDataProperty _ => simp only [transAxiom]; exact Le.rfl
+  | declareNamedIndividual _ => simp only [transAxiom]; exact Le.rfl
+  | declareDatatype _ => simp only [transAxiom]; exact Le.rfl
+  | declareAnnotationProperty _ => simp only [transAxiom]; exact Le.rfl
+  | disjointUnion _ _ => simp only [transAxiom]; exact Le.rfl
+  | disjointObjectProperties _ => simp only [transAxiom]; exact Le.rfl
+  | functional _ => simp only [transAxiom]; exact Le.rfl
+  | inverseFunctional _ => simp only [transAxiom]; exact Le.rfl
+  | reflexive _ => simp only [transAxiom]; exact Le.rfl
+  | irreflexive _ => simp only [transAxiom]; exact Le.rfl
+  | asymmetric _ => simp only [transAxiom]; exact Le.rfl
+  | subDataPropertyOf _ _ => simp only [transAxiom]; exact Le.rfl
+  | equivalentDataProperties _ => simp only [transAxiom]; exact Le.rfl
+  | disjointDataProperties _ => simp only [transAxiom]; exact Le.rfl
+  | dataDomain _ _ => simp only [transAxiom]; exact Le.rfl
+  | dataRange _ _ => simp only [transAxiom]; exact Le.rfl
+  | functionalData _ => simp only [transAxiom]; exact Le.rfl
+  | datatypeDefinition _ _ => simp only [transAxiom]; exact Le.rfl
+  | hasKey _ _ _ => simp only [transAxiom]; exact Le.rfl
+  | sameIndividual _ => simp only [transAxiom]; exact Le.rfl
+  | differentIndividuals _ => simp only [transAxiom]; exact Le.rfl
+  | classAssertion _ _ => simp only [transAxiom]; exact Le.rfl
+  | objectPropertyAssertion _ _ _ => simp only [transAxiom]; exact Le.rfl
+  | negativeObjectPropertyAssertion _ _ _ => simp only [transAxiom]; exact Le.rfl
+  | dataPropertyAssertion _ _ _ => simp only [transAxiom]; exact Le.rfl
+  | negativeDataPropertyAssertion _ _ _ => simp only [transAxiom]; exact Le.rfl
 
 theorem transAxiom_wf {s : St} (hs : WF s) (ax : Axiom) : WF (transAxiom s ax) := by
   cases ax with
@@ -1034,12 +1115,38 @@ theorem transAxiom_wf {s : St} (hs : WF s) (ax : Axiom) : WF (transAxiom s ax) :
   | subObjectPropertyOf _ _ | equivalentObjectProperties _ | inverseObjectProperties _ _
   | transitive _ | symmetric _ | declareClass _ | declareObjectProperty _ =>
       simp only [transAxiom]; exact hs
+  | declareDataProperty _ => simp only [transAxiom]; exact hs
+  | declareNamedIndividual _ => simp only [transAxiom]; exact hs
+  | declareDatatype _ => simp only [transAxiom]; exact hs
+  | declareAnnotationProperty _ => simp only [transAxiom]; exact hs
+  | disjointUnion _ _ => simp only [transAxiom]; exact hs
+  | disjointObjectProperties _ => simp only [transAxiom]; exact hs
+  | functional _ => simp only [transAxiom]; exact hs
+  | inverseFunctional _ => simp only [transAxiom]; exact hs
+  | reflexive _ => simp only [transAxiom]; exact hs
+  | irreflexive _ => simp only [transAxiom]; exact hs
+  | asymmetric _ => simp only [transAxiom]; exact hs
+  | subDataPropertyOf _ _ => simp only [transAxiom]; exact hs
+  | equivalentDataProperties _ => simp only [transAxiom]; exact hs
+  | disjointDataProperties _ => simp only [transAxiom]; exact hs
+  | dataDomain _ _ => simp only [transAxiom]; exact hs
+  | dataRange _ _ => simp only [transAxiom]; exact hs
+  | functionalData _ => simp only [transAxiom]; exact hs
+  | datatypeDefinition _ _ => simp only [transAxiom]; exact hs
+  | hasKey _ _ _ => simp only [transAxiom]; exact hs
+  | sameIndividual _ => simp only [transAxiom]; exact hs
+  | differentIndividuals _ => simp only [transAxiom]; exact hs
+  | classAssertion _ _ => simp only [transAxiom]; exact hs
+  | objectPropertyAssertion _ _ _ => simp only [transAxiom]; exact hs
+  | negativeObjectPropertyAssertion _ _ _ => simp only [transAxiom]; exact hs
+  | dataPropertyAssertion _ _ _ => simp only [transAxiom]; exact hs
+  | negativeDataPropertyAssertion _ _ _ => simp only [transAxiom]; exact hs
 
 /-! ## (⇒) at the axiom level -/
 
 section RestrictAxiom
 
-variable (F : St) {D : Type} (J : Ctx.Interp D Nat Nat)
+variable (F : St) {D : Type} [Nonempty D] (J : Ctx.Interp D Nat Nat)
   (hJ : ∀ c ∈ F.out, Ctx.satClause J c)
   (hT : ∀ x, J.c F.b.top x) (hB : ∀ x, ¬ J.c F.b.bottom x)
 
@@ -1051,7 +1158,7 @@ theorem transList_restrict' {cs : List ClassExpr} {p : Bool} {s : St}
   transList_restrict F J hJ hT hB cs p s [] hle hA (by simp)
 
 theorem transAxiom_restrict (s : St) (ax : Axiom) (hle : Le (transAxiom s ax) F)
-    (hA : ax.isALC = true) : (restrict F J).sat ax := by
+    (hA : ax.isALC = true) {N : List IRI} : (restrict F J).sat N ax := by
   cases ax with
   | subClassOf c d =>
       simp only [transAxiom] at hle
@@ -1128,6 +1235,32 @@ theorem transAxiom_restrict (s : St) (ax : Axiom) (hle : Le (transAxiom s ax) F)
   | subObjectPropertyOf _ _ | equivalentObjectProperties _ | inverseObjectProperties _ _
   | transitive _ | symmetric _ => simp [Axiom.isALC] at hA
   | declareClass _ | declareObjectProperty _ => simp [Interp.sat]
+  | disjointUnion _ _ => simp [Axiom.isALC] at hA
+  | disjointObjectProperties _ => simp [Axiom.isALC] at hA
+  | functional _ => simp [Axiom.isALC] at hA
+  | inverseFunctional _ => simp [Axiom.isALC] at hA
+  | reflexive _ => simp [Axiom.isALC] at hA
+  | irreflexive _ => simp [Axiom.isALC] at hA
+  | asymmetric _ => simp [Axiom.isALC] at hA
+  | subDataPropertyOf _ _ => simp [Axiom.isALC] at hA
+  | equivalentDataProperties _ => simp [Axiom.isALC] at hA
+  | disjointDataProperties _ => simp [Axiom.isALC] at hA
+  | dataDomain _ _ => simp [Axiom.isALC] at hA
+  | dataRange _ _ => simp [Axiom.isALC] at hA
+  | functionalData _ => simp [Axiom.isALC] at hA
+  | datatypeDefinition _ _ => simp [Axiom.isALC] at hA
+  | hasKey _ _ _ => simp [Axiom.isALC] at hA
+  | sameIndividual _ => simp [Axiom.isALC] at hA
+  | differentIndividuals _ => simp [Axiom.isALC] at hA
+  | classAssertion _ _ => simp [Axiom.isALC] at hA
+  | objectPropertyAssertion _ _ _ => simp [Axiom.isALC] at hA
+  | negativeObjectPropertyAssertion _ _ _ => simp [Axiom.isALC] at hA
+  | dataPropertyAssertion _ _ _ => simp [Axiom.isALC] at hA
+  | negativeDataPropertyAssertion _ _ _ => simp [Axiom.isALC] at hA
+  | declareDataProperty _ => simp [Interp.sat]
+  | declareNamedIndividual _ => simp [Interp.sat]
+  | declareDatatype _ => simp [Interp.sat]
+  | declareAnnotationProperty _ => simp [Interp.sat]
 
 end RestrictAxiom
 
@@ -1135,10 +1268,10 @@ end RestrictAxiom
 
 section ExtendAxiom
 
-variable {D : Type} (I : OWL.Interp D) (F : St)
+variable {DM : OWL.DatatypeMap} {D : Type} (I : OWL.Interp DM D) (F : St)
 
 theorem transAxiom_extend (s : St) (hs : WF s) (ax : Axiom) (hle : Le (transAxiom s ax) F)
-    (hA : ax.isALC = true) (hI : I.sat ax) (hg : Good I F s) :
+    (hA : ax.isALC = true) {N : List IRI} (hI : I.sat N ax) (hg : Good I F s) :
     Good I F (transAxiom s ax) := by
   cases ax with
   | subClassOf c d =>
@@ -1208,6 +1341,32 @@ theorem transAxiom_extend (s : St) (hs : WF s) (ax : Axiom) (hle : Le (transAxio
   | subObjectPropertyOf _ _ | equivalentObjectProperties _ | inverseObjectProperties _ _
   | transitive _ | symmetric _ => simp [Axiom.isALC] at hA
   | declareClass _ | declareObjectProperty _ => simpa [transAxiom] using hg
+  | disjointUnion _ _ => simp [Axiom.isALC] at hA
+  | disjointObjectProperties _ => simp [Axiom.isALC] at hA
+  | functional _ => simp [Axiom.isALC] at hA
+  | inverseFunctional _ => simp [Axiom.isALC] at hA
+  | reflexive _ => simp [Axiom.isALC] at hA
+  | irreflexive _ => simp [Axiom.isALC] at hA
+  | asymmetric _ => simp [Axiom.isALC] at hA
+  | subDataPropertyOf _ _ => simp [Axiom.isALC] at hA
+  | equivalentDataProperties _ => simp [Axiom.isALC] at hA
+  | disjointDataProperties _ => simp [Axiom.isALC] at hA
+  | dataDomain _ _ => simp [Axiom.isALC] at hA
+  | dataRange _ _ => simp [Axiom.isALC] at hA
+  | functionalData _ => simp [Axiom.isALC] at hA
+  | datatypeDefinition _ _ => simp [Axiom.isALC] at hA
+  | hasKey _ _ _ => simp [Axiom.isALC] at hA
+  | sameIndividual _ => simp [Axiom.isALC] at hA
+  | differentIndividuals _ => simp [Axiom.isALC] at hA
+  | classAssertion _ _ => simp [Axiom.isALC] at hA
+  | objectPropertyAssertion _ _ _ => simp [Axiom.isALC] at hA
+  | negativeObjectPropertyAssertion _ _ _ => simp [Axiom.isALC] at hA
+  | dataPropertyAssertion _ _ _ => simp [Axiom.isALC] at hA
+  | negativeDataPropertyAssertion _ _ _ => simp [Axiom.isALC] at hA
+  | declareDataProperty _ => simpa [transAxiom] using hg
+  | declareNamedIndividual _ => simpa [transAxiom] using hg
+  | declareDatatype _ => simpa [transAxiom] using hg
+  | declareAnnotationProperty _ => simpa [transAxiom] using hg
 
 end ExtendAxiom
 
@@ -1229,9 +1388,10 @@ theorem foldl_trans_mem : ∀ (axs : List Axiom) (s : St), WF s → ∀ ax ∈ a
       · exact ⟨s, hs, foldl_trans_le axs _⟩
       · exact foldl_trans_mem axs _ (transAxiom_wf hs ax') ax h
 
-theorem foldl_trans_good {D : Type} (I : OWL.Interp D) (F : St) :
+theorem foldl_trans_good {DM : OWL.DatatypeMap} {D : Type} (I : OWL.Interp DM D) (F : St)
+    {N : List IRI} :
     ∀ (axs : List Axiom) (s : St), WF s → Le (axs.foldl transAxiom s) F →
-      (∀ ax ∈ axs, ax.isALC = true ∧ I.sat ax) →
+      (∀ ax ∈ axs, ax.isALC = true ∧ I.sat N ax) →
       Good I F s → Good I F (axs.foldl transAxiom s)
   | [], _, _, _, _, hg => hg
   | ax :: axs, s, hs, hle, hax, hg => by
@@ -1410,6 +1570,7 @@ theorem correct_core (O : Ontology) (hALC : O.isALC = true) (b : EL.St) (F : St)
     hLe.b.cmap _ _ (hidxS k hk)
   constructor
   · intro hsub D J hJ x hx
+    haveI : Nonempty D := ⟨x⟩
     let K := raise F.b.cdefs.size F.b.rdefs.size J
     have hK : ∀ c ∈ F.out, Ctx.satClause K c := (fin_models hFwf).2 J hJ
     have hT : ∀ x, K.c F.b.top x := by
@@ -1427,11 +1588,11 @@ theorem correct_core (O : Ontology) (hALC : O.isALC = true) (b : EL.St) (F : St)
       intro ax hax
       obtain ⟨s', _, hle⟩ := foldl_trans_mem O.axioms (start b) hS ax hax
       exact transAxiom_restrict F K hK hT hB s' ax (hF ▸ hle) (hA ax hax)
-    have := @hsub D ⟨x⟩ (restrict F K) hmodel x
+    have := @hsub OWL.DatatypeMap.trivial D ⟨x⟩ (restrict F K) hmodel x
     rw [restrict_cls (hidx i hi), restrict_cls (hidx j hj)] at this
     obtain ⟨_, hjx⟩ := this ⟨hi', hx⟩
     exact hjx
-  · intro hent D _ I hI x hx
+  · intro hent DM D _ I hI x hx
     have hgood : Good I F F := by
       have := foldl_trans_good I F O.axioms (start b) hS (hF ▸ Le.rfl)
         (fun ax hax => ⟨hA ax hax, hI ax hax⟩) (by

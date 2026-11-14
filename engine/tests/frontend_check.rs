@@ -160,19 +160,21 @@ fn frontend_check_declines_outside_the_fragment() {
     let Some(checker_path) = checker() else {
         return;
     };
-    // A nominal: outside F, the Lean parser rejects it.
+    // A DL-safe rule: the Lean parser rejects it (v1.7.0 stage C0 parses
+    // the nominal and the assertions of this file, but not rules).
     assert_declines(
         &fixture("rules_taxonomy.ofn"),
         &checker_path,
         &[],
-        "parse rejected: out of fragment",
+        "parse rejected: out of fragment: DLSafeRule",
     );
-    // A cardinality restriction.
+    // A cardinality restriction: parsed since v1.7.0 stage C0, outside the
+    // EL and SHI routes.
     assert_declines(
         &fixture("alc_property_names.ofn"),
         &checker_path,
         &[],
-        "parse rejected: out of fragment: ObjectMinCardinality",
+        "not recognised: neither OWL EL",
     );
 }
 

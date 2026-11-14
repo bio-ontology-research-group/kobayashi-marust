@@ -28,7 +28,7 @@ namespace ContextCalculus.OWL
 /-- An object-property expression is a property IRI, not an inverse. -/
 def ObjProp.isNamed : ObjProp → Bool
   | .named _ => true
-  | .inv _ => false
+  | .inv _ | .top | .bot => false
 
 /-- EL class expressions. -/
 def ClassExpr.isEL : ClassExpr → Bool
@@ -36,6 +36,9 @@ def ClassExpr.isEL : ClassExpr → Bool
   | .and cs => cs.attach.all fun ⟨c, _⟩ => c.isEL
   | .some r c => r.isNamed && c.isEL
   | .or _ | .not _ | .all _ _ => false
+  | .oneOf _ | .hasValue .. | .hasSelf _ | .min .. | .max .. | .exact ..
+  | .dataSome .. | .dataAll .. | .dataHasValue .. | .dataMin .. | .dataMax ..
+  | .dataExact .. => false
 termination_by c => sizeOf c
 decreasing_by
   all_goals simp_wf
@@ -49,6 +52,9 @@ def ClassExpr.isALC : ClassExpr → Bool
   | .and cs | .or cs => cs.attach.all fun ⟨c, _⟩ => c.isALC
   | .not c => c.isALC
   | .some r c | .all r c => r.isNamed && c.isALC
+  | .oneOf _ | .hasValue .. | .hasSelf _ | .min .. | .max .. | .exact ..
+  | .dataSome .. | .dataAll .. | .dataHasValue .. | .dataMin .. | .dataMax ..
+  | .dataExact .. => false
 termination_by c => sizeOf c
 decreasing_by
   all_goals simp_wf
@@ -66,6 +72,15 @@ def Axiom.isEL : Axiom → Bool
   | .transitive r => r.isNamed
   | .inverseObjectProperties _ _ | .symmetric _ => false
   | .declareClass _ | .declareObjectProperty _ => true
+  | .declareDataProperty _ | .declareNamedIndividual _ | .declareDatatype _
+  | .declareAnnotationProperty _ => true
+  | .disjointUnion .. | .disjointObjectProperties _ | .functional _
+  | .inverseFunctional _ | .reflexive _ | .irreflexive _ | .asymmetric _
+  | .subDataPropertyOf .. | .equivalentDataProperties _ | .disjointDataProperties _
+  | .dataDomain .. | .dataRange .. | .functionalData _ | .datatypeDefinition ..
+  | .hasKey .. | .sameIndividual _ | .differentIndividuals _ | .classAssertion ..
+  | .objectPropertyAssertion .. | .negativeObjectPropertyAssertion ..
+  | .dataPropertyAssertion .. | .negativeDataPropertyAssertion .. => false
 
 def Axiom.isALC : Axiom → Bool
   | .subClassOf c d => c.isALC && d.isALC
@@ -74,6 +89,15 @@ def Axiom.isALC : Axiom → Bool
   | .subObjectPropertyOf _ _ | .equivalentObjectProperties _
   | .inverseObjectProperties _ _ | .transitive _ | .symmetric _ => false
   | .declareClass _ | .declareObjectProperty _ => true
+  | .declareDataProperty _ | .declareNamedIndividual _ | .declareDatatype _
+  | .declareAnnotationProperty _ => true
+  | .disjointUnion .. | .disjointObjectProperties _ | .functional _
+  | .inverseFunctional _ | .reflexive _ | .irreflexive _ | .asymmetric _
+  | .subDataPropertyOf .. | .equivalentDataProperties _ | .disjointDataProperties _
+  | .dataDomain .. | .dataRange .. | .functionalData _ | .datatypeDefinition ..
+  | .hasKey .. | .sameIndividual _ | .differentIndividuals _ | .classAssertion ..
+  | .objectPropertyAssertion .. | .negativeObjectPropertyAssertion ..
+  | .dataPropertyAssertion .. | .negativeDataPropertyAssertion .. => false
 
 def Ontology.isEL (O : Ontology) : Bool := O.axioms.all Axiom.isEL
 def Ontology.isALC (O : Ontology) : Bool := O.axioms.all Axiom.isALC
@@ -84,6 +108,8 @@ def Axiom.classIRIs : Axiom → List IRI
   | .equivalentClasses cs | .disjointClasses cs => cs.flatMap ClassExpr.names
   | .domain _ c | .range _ c => c.names
   | .declareClass a => [a]
+  | .disjointUnion a cs => a :: cs.flatMap ClassExpr.names
+  | .dataDomain _ c | .hasKey c _ _ | .classAssertion c _ => c.names
   | _ => []
 
 /-- `O` mentions the class IRI `A`. -/
@@ -94,41 +120,57 @@ def Ontology.mentionsClass (O : Ontology) (A : IRI) : Prop :=
 
 namespace Interp
 
-variable {Domain : Type}
+variable {D : DatatypeMap} {Domain : Type}
 
 /-- `I` with its class extensions replaced by `c`. -/
-def withCls (I : Interp Domain) (c : IRI → Domain → Prop) : Interp Domain :=
+def withCls (I : Interp D Domain) (c : IRI → Domain → Prop) : Interp D Domain :=
   { I with cls := c }
 
-@[simp] theorem withCls_cls (I : Interp Domain) (c : IRI → Domain → Prop) :
+@[simp] theorem withCls_ind (I : Interp D Domain) (c : IRI → Domain → Prop) :
+    (I.withCls c).ind = I.ind := rfl
+
+@[simp] theorem withCls_dp (I : Interp D Domain) (c : IRI → Domain → Prop)
+    (p : DataProp) : (I.withCls c).dp p = I.dp p := by
+  cases p <;> rfl
+
+@[simp] theorem withCls_dt (I : Interp D Domain) (c : IRI → Domain → Prop) :
+    (I.withCls c).dt = I.dt := rfl
+
+@[simp] theorem withCls_drExt (I : Interp D Domain) (c : IRI → Domain → Prop) :
+    (I.withCls c).drExt = I.drExt := rfl
+
+@[simp] theorem withCls_isNamed (I : Interp D Domain) (c : IRI → Domain → Prop) :
+    (I.withCls c).IsNamed = I.IsNamed := rfl
+
+@[simp] theorem withCls_cls (I : Interp D Domain) (c : IRI → Domain → Prop) :
     (I.withCls c).cls = c := rfl
 
-@[simp] theorem withCls_role (I : Interp Domain) (c : IRI → Domain → Prop) :
+@[simp] theorem withCls_role (I : Interp D Domain) (c : IRI → Domain → Prop) :
     (I.withCls c).role = I.role := rfl
 
-@[simp] theorem withCls_prop (I : Interp Domain) (c : IRI → Domain → Prop)
+@[simp] theorem withCls_prop (I : Interp D Domain) (c : IRI → Domain → Prop)
     (r : ObjProp) : (I.withCls c).prop r = I.prop r := by
   cases r <;> rfl
 
-theorem withCls_chain (I : Interp Domain) (c : IRI → Domain → Prop) :
+theorem withCls_chain (I : Interp D Domain) (c : IRI → Domain → Prop) :
     ∀ (rs : List ObjProp), (I.withCls c).chain rs = I.chain rs
   | [] => rfl
   | r :: rs => by
       funext x z
       simp only [chain, withCls_prop, withCls_chain I c rs]
 
-theorem ext_and (I : Interp Domain) (cs : List ClassExpr) (x : Domain) :
+theorem ext_and (I : Interp D Domain) (cs : List ClassExpr) (x : Domain) :
     I.ext (.and cs) x ↔ ∀ c ∈ cs, I.ext c x := by
   rw [ext]
 
-theorem ext_or (I : Interp Domain) (cs : List ClassExpr) (x : Domain) :
+theorem ext_or (I : Interp D Domain) (cs : List ClassExpr) (x : Domain) :
     I.ext (.or cs) x ↔ ∃ c ∈ cs, I.ext c x := by
   rw [ext]; simp
 
 mutual
 
 /-- The extension of `E` depends only on the class IRIs `E` mentions. -/
-theorem ext_withCls (I : Interp Domain) (c : IRI → Domain → Prop) :
+theorem ext_withCls (I : Interp D Domain) (c : IRI → Domain → Prop) :
     ∀ (E : ClassExpr), (∀ a ∈ E.names, c a = I.cls a) →
       ∀ x, (I.withCls c).ext E x ↔ I.ext E x
   | .cls a, h, x => by
@@ -158,8 +200,29 @@ theorem ext_withCls (I : Interp Domain) (c : IRI → Domain → Prop) :
       rw [ext, ext]
       have := ext_withCls I c d (fun a ha => h a (by rw [ClassExpr.names]; exact ha))
       simp only [withCls_prop, this]
+  | .min n r d, h, x => by
+      rw [ext, ext]
+      have := ext_withCls I c d (fun a ha => h a (by rw [ClassExpr.names]; exact ha))
+      simp only [withCls_prop, this]
+  | .max n r d, h, x => by
+      rw [ext, ext]
+      have := ext_withCls I c d (fun a ha => h a (by rw [ClassExpr.names]; exact ha))
+      simp only [withCls_prop, this]
+  | .exact n r d, h, x => by
+      rw [ext, ext]
+      have := ext_withCls I c d (fun a ha => h a (by rw [ClassExpr.names]; exact ha))
+      simp only [withCls_prop, this]
+  | .oneOf _, _, x => by rw [ext, ext]; rfl
+  | .hasValue r a, _, x => by rw [ext, ext]; simp only [withCls_prop, withCls_ind]
+  | .hasSelf r, _, x => by rw [ext, ext]; simp only [withCls_prop]
+  | .dataSome p r, _, x => by rw [ext, ext]; simp only [withCls_dp, withCls_drExt]
+  | .dataAll p r, _, x => by rw [ext, ext]; simp only [withCls_dp, withCls_drExt]
+  | .dataHasValue p l, _, x => by rw [ext, ext]; simp only [withCls_dp]
+  | .dataMin n p r, _, x => by rw [ext, ext]; simp only [withCls_dp, withCls_drExt]
+  | .dataMax n p r, _, x => by rw [ext, ext]; simp only [withCls_dp, withCls_drExt]
+  | .dataExact n p r, _, x => by rw [ext, ext]; simp only [withCls_dp, withCls_drExt]
 
-theorem ext_withCls_list (I : Interp Domain) (c : IRI → Domain → Prop) :
+theorem ext_withCls_list (I : Interp D Domain) (c : IRI → Domain → Prop) :
     ∀ (cs : List ClassExpr), (∀ d ∈ cs, ∀ a ∈ d.names, c a = I.cls a) →
       ∀ x, (∀ d ∈ cs, (I.withCls c).ext d x) ↔ (∀ d ∈ cs, I.ext d x)
   | [], _, x => by simp
@@ -168,7 +231,7 @@ theorem ext_withCls_list (I : Interp Domain) (c : IRI → Domain → Prop) :
       rw [ext_withCls I c d (h d (by simp)) x,
         ext_withCls_list I c ds (fun e he => h e (by simp [he])) x]
 
-theorem ext_withCls_list_or (I : Interp Domain) (c : IRI → Domain → Prop) :
+theorem ext_withCls_list_or (I : Interp D Domain) (c : IRI → Domain → Prop) :
     ∀ (cs : List ClassExpr), (∀ d ∈ cs, ∀ a ∈ d.names, c a = I.cls a) →
       ∀ x, (∃ d ∈ cs, (I.withCls c).ext d x) ↔ (∃ d ∈ cs, I.ext d x)
   | [], _, x => by simp
@@ -180,9 +243,9 @@ theorem ext_withCls_list_or (I : Interp Domain) (c : IRI → Domain → Prop) :
 end
 
 /-- Satisfaction of an axiom depends only on the class IRIs it mentions. -/
-theorem sat_withCls (I : Interp Domain) (c : IRI → Domain → Prop) (ax : Axiom)
-    (h : ∀ a ∈ ax.classIRIs, c a = I.cls a) :
-    (I.withCls c).sat ax ↔ I.sat ax := by
+theorem sat_withCls (I : Interp D Domain) (c : IRI → Domain → Prop) (N : List IRI)
+    (ax : Axiom) (h : ∀ a ∈ ax.classIRIs, c a = I.cls a) :
+    (I.withCls c).sat N ax ↔ I.sat N ax := by
   have hE : ∀ E : ClassExpr, (∀ a ∈ E.names, a ∈ ax.classIRIs) →
       ∀ x, (I.withCls c).ext E x ↔ I.ext E x :=
     fun E hE => ext_withCls I c E (fun a ha => h a (hE a ha))
@@ -231,16 +294,75 @@ theorem sat_withCls (I : Interp Domain) (c : IRI → Domain → Prop) (ax : Axio
   | symmetric r => simp only [sat, withCls_prop]
   | declareClass a => simp only [sat]
   | declareObjectProperty r => simp only [sat]
+  | disjointUnion b cs =>
+      simp only [sat]
+      have hm : ∀ d ∈ cs, ∀ x, (I.withCls c).ext d x ↔ I.ext d x := fun d hd =>
+        hE d (fun a ha => by
+          simp only [Axiom.classIRIs, List.mem_cons, List.mem_flatMap]; exact Or.inr ⟨d, hd, ha⟩)
+      have hb : c b = I.cls b := h b (by simp [Axiom.classIRIs])
+      constructor
+      · rintro ⟨H1, H2⟩
+        refine ⟨fun x => ?_, ?_⟩
+        · have := H1 x
+          simp only [withCls_cls, hb] at this
+          rw [this]
+          exact ⟨fun ⟨d, hd, hx⟩ => ⟨d, hd, (hm d hd x).1 hx⟩,
+            fun ⟨d, hd, hx⟩ => ⟨d, hd, (hm d hd x).2 hx⟩⟩
+        · refine List.Pairwise.imp_of_mem ?_ H2
+          intro d e hd he hde x hx
+          exact hde x ⟨(hm d hd x).2 hx.1, (hm e he x).2 hx.2⟩
+      · rintro ⟨H1, H2⟩
+        refine ⟨fun x => ?_, ?_⟩
+        · simp only [withCls_cls, hb]
+          rw [H1 x]
+          exact ⟨fun ⟨d, hd, hx⟩ => ⟨d, hd, (hm d hd x).2 hx⟩,
+            fun ⟨d, hd, hx⟩ => ⟨d, hd, (hm d hd x).1 hx⟩⟩
+        · refine List.Pairwise.imp_of_mem ?_ H2
+          intro d e hd he hde x hx
+          exact hde x ⟨(hm d hd x).1 hx.1, (hm e he x).1 hx.2⟩
+  | disjointObjectProperties rs => simp only [sat, withCls_prop]
+  | functional r => simp only [sat, withCls_prop]
+  | inverseFunctional r => simp only [sat, withCls_prop]
+  | reflexive r => simp only [sat, withCls_prop]
+  | irreflexive r => simp only [sat, withCls_prop]
+  | asymmetric r => simp only [sat, withCls_prop]
+  | subDataPropertyOf p q => simp only [sat, withCls_dp]
+  | equivalentDataProperties ps => simp only [sat, withCls_dp]
+  | disjointDataProperties ps => simp only [sat, withCls_dp]
+  | dataDomain p d =>
+      simp only [sat, withCls_dp]
+      have h1 := hE d (fun a ha => by simpa [Axiom.classIRIs] using ha)
+      simp only [h1]
+  | dataRange p r => simp only [sat, withCls_dp, withCls_drExt]
+  | functionalData p => simp only [sat, withCls_dp]
+  | datatypeDefinition t r => simp only [sat, withCls_dt, withCls_drExt]
+  | hasKey d rs ps =>
+      simp only [sat, withCls_dp, withCls_prop, withCls_isNamed]
+      have h1 := hE d (fun a ha => by simpa [Axiom.classIRIs] using ha)
+      simp only [h1]
+  | sameIndividual as => simp only [sat, withCls_ind]
+  | differentIndividuals as => simp only [sat, withCls_ind]
+  | classAssertion d a =>
+      simp only [sat, withCls_ind]
+      exact hE d (fun a ha => by simpa [Axiom.classIRIs] using ha) _
+  | objectPropertyAssertion r a b => simp only [sat, withCls_prop, withCls_ind]
+  | negativeObjectPropertyAssertion r a b => simp only [sat, withCls_prop, withCls_ind]
+  | dataPropertyAssertion p a l => simp only [sat, withCls_dp, withCls_ind]
+  | negativeDataPropertyAssertion p a l => simp only [sat, withCls_dp, withCls_ind]
+  | declareDataProperty _ => simp only [sat]
+  | declareNamedIndividual _ => simp only [sat]
+  | declareDatatype _ => simp only [sat]
+  | declareAnnotationProperty _ => simp only [sat]
 
 end Interp
 
 /-- The agreement lemma: changing the extension of a class IRI that `O` does
 not mention keeps a model of `O` a model of `O`. -/
-theorem model_update_unmentioned {Domain : Type} {O : Ontology} {I : Interp Domain}
+theorem model_update_unmentioned {D : DatatypeMap} {Domain : Type} {O : Ontology} {I : Interp D Domain}
     {Q : IRI} (hQ : ¬ O.mentionsClass Q) (f : Domain → Prop) (hI : Model O I) :
     Model O (I.withCls fun b => if b = Q then f else I.cls b) := by
   intro ax hax
-  refine (Interp.sat_withCls I _ ax ?_).2 (hI ax hax)
+  refine (Interp.sat_withCls I _ _ ax ?_).2 (hI ax hax)
   intro a ha
   have : a ≠ Q := by
     rintro rfl
@@ -259,11 +381,11 @@ theorem inconsistent_iff_entailsSub_fresh {O : Ontology} {P Q : IRI}
     (hP : ¬ O.mentionsClass P) (hQ : ¬ O.mentionsClass Q) (hPQ : P ≠ Q) :
     Inconsistent O ↔ EntailsSub O P Q := by
   refine ⟨fun h => entailsSub_of_inconsistent h P Q, ?_⟩
-  intro hsub Domain _ I hI
+  intro hsub D Domain _ I hI
   obtain ⟨x⟩ := ‹Nonempty Domain›
   have hI' := model_update_unmentioned hQ (fun _ => False)
     (model_update_unmentioned hP (fun _ => True) hI)
-  have := hsub Domain _ hI' x
+  have := hsub D Domain _ hI' x
   simp [hPQ] at this
 
 /-- For an IRI `Q` not mentioned by `O` and different from `A`, the class
@@ -272,11 +394,11 @@ theorem unsatisfiable_iff_entailsSub_fresh {O : Ontology} {A Q : IRI}
     (hQ : ¬ O.mentionsClass Q) (hAQ : A ≠ Q) :
     Unsatisfiable O A ↔ EntailsSub O A Q := by
   constructor
-  · intro h Domain _ I hI x hx
-    exact absurd hx (h Domain I hI x)
-  · intro hsub Domain _ I hI x hx
+  · intro h D Domain _ I hI x hx
+    exact absurd hx (h D Domain I hI x)
+  · intro hsub D Domain _ I hI x hx
     have hI' := model_update_unmentioned hQ (fun _ => False) hI
-    have := hsub Domain _ hI' x
+    have := hsub D Domain _ hI' x
     simp [hAQ] at this
     exact this hx
 

@@ -12,6 +12,8 @@ namespace ContextCalculus.OWL.ParseTests
 open ContextCalculus.OWL
 
 deriving instance BEq for ObjProp
+deriving instance BEq for DataProp
+deriving instance BEq for DataRange
 deriving instance BEq for ClassExpr
 deriving instance BEq for Axiom
 
@@ -173,7 +175,9 @@ Ontology(<http://example.org/onto>
 "#
 
 #guard axiomsOf annotated ==
-  some [.subClassOf (.cls (ex "A")) (.cls (ex "B")), .declareClass (ex "C")]
+  some [.declareAnnotationProperty (ex "note"), .declareDataProperty (ex "age"),
+        .declareNamedIndividual (ex "i"), .declareDatatype (ex "dt"),
+        .subClassOf (.cls (ex "A")) (.cls (ex "B")), .declareClass (ex "C")]
 
 -- Literal escapes: `\\` before the closing quote ends the literal.
 #guard axiomsOf r#"Ontology(SubClassOf(Annotation(<http://e#n> "back\\") <http://e#A> <http://e#B>))"# ==
@@ -191,51 +195,187 @@ Ontology(<http://example.org/onto>
 -- A full IRI that looks like an abbreviated one stays as written.
 #guard classNamesOf (exPrefix ++ "Ontology(SubClassOf(<ex:A> ex:A))") == ["ex:A", ex "A"]
 
+/-! ## The OWL 2 DL constructs of stage C0 (v1.7.0) -/
+
+def e (local_ : String) : IRI := "http://e#" ++ local_
+def xsd (local_ : String) : IRI := "http://www.w3.org/2001/XMLSchema#" ++ local_
+def lit (lex dt : String) : Literal := { lexical := lex, datatype := xsd dt, lang := none }
+
+-- Individuals, nominals, HasValue, Self.
+#guard axiomsOf "Ontology(SubClassOf(<http://e#A> ObjectOneOf(<http://e#a> _:b)))" ==
+  some [.subClassOf (.cls (e "A")) (.oneOf [.named (e "a"), .anon "b"])]
+#guard axiomsOf "Ontology(SubClassOf(<http://e#A> ObjectHasValue(<http://e#r> <http://e#a>)))" ==
+  some [.subClassOf (.cls (e "A")) (.hasValue (.named (e "r")) (.named (e "a")))]
+#guard axiomsOf "Ontology(SubClassOf(<http://e#A> ObjectHasSelf(ObjectInverseOf(<http://e#r>))))" ==
+  some [.subClassOf (.cls (e "A")) (.hasSelf (.inv (e "r")))]
+
+-- Cardinalities, qualified and unqualified.
+#guard axiomsOf "Ontology(SubClassOf(<http://e#A> ObjectMinCardinality(2 <http://e#r>))
+  SubClassOf(<http://e#A> ObjectMaxCardinality(0 <http://e#r> <http://e#B>))
+  SubClassOf(<http://e#A> ObjectExactCardinality(1 <http://e#r> <http://e#B>)))" ==
+  some [.subClassOf (.cls (e "A")) (.min 2 (.named (e "r")) .thing),
+        .subClassOf (.cls (e "A")) (.max 0 (.named (e "r")) (.cls (e "B"))),
+        .subClassOf (.cls (e "A")) (.exact 1 (.named (e "r")) (.cls (e "B")))]
+#guard rejects "Ontology(SubClassOf(<http://e#A> ObjectMinCardinality(-1 <http://e#r>)))"
+  "syntax error: -1 is not a nonnegative integer"
+#guard rejects "Ontology(SubClassOf(<http://e#A> ObjectMinCardinality(<http://e#r>)))"
+  "syntax error: ObjectMinCardinality takes"
+
+-- Top and bottom properties.
+#guard axiomsOf "Ontology(SubClassOf(<http://e#A> ObjectSomeValuesFrom(owl:topObjectProperty <http://e#B>))
+  SubObjectPropertyOf(<http://e#r> <http://www.w3.org/2002/07/owl#bottomObjectProperty>)
+  SubClassOf(<http://e#A> ObjectAllValuesFrom(ObjectInverseOf(owl:topObjectProperty) <http://e#B>))
+  SubDataPropertyOf(owl:bottomDataProperty owl:topDataProperty))" ==
+  some [.subClassOf (.cls (e "A")) (.some .top (.cls (e "B"))),
+        .subObjectPropertyOf [.named (e "r")] .bot,
+        .subClassOf (.cls (e "A")) (.all .top (.cls (e "B"))),
+        .subDataPropertyOf .bot .top]
+
+-- Object property axioms.
+#guard axiomsOf "Ontology(DisjointObjectProperties(<http://e#r> <http://e#s>)
+  FunctionalObjectProperty(<http://e#r>) InverseFunctionalObjectProperty(<http://e#r>)
+  ReflexiveObjectProperty(<http://e#r>) IrreflexiveObjectProperty(<http://e#r>)
+  AsymmetricObjectProperty(ObjectInverseOf(<http://e#r>)))" ==
+  some [.disjointObjectProperties [.named (e "r"), .named (e "s")],
+        .functional (.named (e "r")), .inverseFunctional (.named (e "r")),
+        .reflexive (.named (e "r")), .irreflexive (.named (e "r")),
+        .asymmetric (.inv (e "r"))]
+#guard rejects "Ontology(DisjointObjectProperties(<http://e#r>))" "syntax error: wrong number"
+#guard rejects "Ontology(FunctionalObjectProperty(<http://e#r> <http://e#s>))"
+  "syntax error: wrong number"
+
+-- Class axioms: DisjointUnion.
+#guard axiomsOf "Ontology(DisjointUnion(<http://e#A> <http://e#B> <http://e#C>))" ==
+  some [.disjointUnion (e "A") [.cls (e "B"), .cls (e "C")]]
+#guard rejects "Ontology(DisjointUnion(<http://e#A> <http://e#B>))" "syntax error: wrong number"
+
+-- Data property axioms and data ranges.
+#guard axiomsOf "Ontology(SubDataPropertyOf(<http://e#p> <http://e#q>)
+  EquivalentDataProperties(<http://e#p> <http://e#q>)
+  DisjointDataProperties(<http://e#p> <http://e#q>)
+  DataPropertyDomain(<http://e#p> <http://e#A>)
+  DataPropertyRange(<http://e#p> DataUnionOf(xsd:integer DataComplementOf(xsd:string)))
+  FunctionalDataProperty(<http://e#p>))" ==
+  some [.subDataPropertyOf (.named (e "p")) (.named (e "q")),
+        .equivalentDataProperties [.named (e "p"), .named (e "q")],
+        .disjointDataProperties [.named (e "p"), .named (e "q")],
+        .dataDomain (.named (e "p")) (.cls (e "A")),
+        .dataRange (.named (e "p")) (.or [.datatype (xsd "integer"), .not (.datatype (xsd "string"))]),
+        .functionalData (.named (e "p"))]
+#guard axiomsOf "Ontology(DatatypeDefinition(<http://e#adult>
+  DatatypeRestriction(xsd:integer xsd:minInclusive \"18\"^^xsd:integer))
+  DataPropertyRange(<http://e#p> DataIntersectionOf(<http://e#adult> DataOneOf(\"1\"^^xsd:integer \"x\"))))" ==
+  some [.datatypeDefinition (e "adult")
+          (.restriction (xsd "integer") [(xsd "minInclusive", lit "18" "integer")]),
+        .dataRange (.named (e "p")) (.and [.datatype (e "adult"),
+          .oneOf [lit "1" "integer", lit "x" "string"]])]
+
+-- Data class expressions.
+#guard axiomsOf "Ontology(SubClassOf(<http://e#A> DataSomeValuesFrom(<http://e#p> xsd:integer))
+  SubClassOf(<http://e#A> DataAllValuesFrom(<http://e#p> rdfs:Literal))
+  SubClassOf(<http://e#A> DataHasValue(<http://e#p> \"true\"^^xsd:boolean))
+  SubClassOf(<http://e#A> DataMinCardinality(1 <http://e#p>))
+  SubClassOf(<http://e#A> DataMaxCardinality(2 <http://e#p> xsd:string))
+  SubClassOf(<http://e#A> DataExactCardinality(3 owl:topDataProperty xsd:integer)))" ==
+  some [.subClassOf (.cls (e "A")) (.dataSome (.named (e "p")) (.datatype (xsd "integer"))),
+        .subClassOf (.cls (e "A")) (.dataAll (.named (e "p")) (.datatype rdfsLiteral)),
+        .subClassOf (.cls (e "A")) (.dataHasValue (.named (e "p")) (lit "true" "boolean")),
+        .subClassOf (.cls (e "A")) (.dataMin 1 (.named (e "p")) (.datatype rdfsLiteral)),
+        .subClassOf (.cls (e "A")) (.dataMax 2 (.named (e "p")) (.datatype (xsd "string"))),
+        .subClassOf (.cls (e "A")) (.dataExact 3 .top (.datatype (xsd "integer")))]
+-- n-ary data ranges stay rejected.
+#guard rejects "Ontology(SubClassOf(<http://e#A> DataSomeValuesFrom(<http://e#p> <http://e#q> xsd:integer)))"
+  "out of fragment: DataSomeValuesFrom with 2 data properties (n-ary data range)"
+#guard rejects "Ontology(SubClassOf(<http://e#A> DataAllValuesFrom(<http://e#p> <http://e#q> xsd:integer)))"
+  "out of fragment: DataAllValuesFrom with 2 data properties (n-ary data range)"
+
+-- Keys.
+#guard axiomsOf "Ontology(HasKey(<http://e#A> (<http://e#r> ObjectInverseOf(<http://e#s>)) (<http://e#p>))
+  HasKey(<http://e#A> () (<http://e#p>)))" ==
+  some [.hasKey (.cls (e "A")) [.named (e "r"), .inv (e "s")] [.named (e "p")],
+        .hasKey (.cls (e "A")) [] [.named (e "p")]]
+#guard rejects "Ontology(HasKey(<http://e#A> (<http://e#r>)))" "syntax error: HasKey takes"
+
+-- Assertions.
+#guard axiomsOf "Ontology(SameIndividual(<http://e#a> _:b) DifferentIndividuals(<http://e#a> <http://e#c>)
+  ClassAssertion(<http://e#A> <http://e#a>)
+  ObjectPropertyAssertion(ObjectInverseOf(<http://e#r>) <http://e#a> _:b)
+  NegativeObjectPropertyAssertion(<http://e#r> <http://e#a> <http://e#c>)
+  DataPropertyAssertion(<http://e#p> <http://e#a> \"5\"^^xsd:integer)
+  NegativeDataPropertyAssertion(<http://e#p> _:b \"hi\"@en))" ==
+  some [.sameIndividual [.named (e "a"), .anon "b"],
+        .differentIndividuals [.named (e "a"), .named (e "c")],
+        .classAssertion (.cls (e "A")) (.named (e "a")),
+        .objectPropertyAssertion (.inv (e "r")) (.named (e "a")) (.anon "b"),
+        .negativeObjectPropertyAssertion (.named (e "r")) (.named (e "a")) (.named (e "c")),
+        .dataPropertyAssertion (.named (e "p")) (.named (e "a")) (lit "5" "integer"),
+        .negativeDataPropertyAssertion (.named (e "p")) (.anon "b")
+          { lexical := "hi", datatype := "http://www.w3.org/1999/02/22-rdf-syntax-ns#PlainLiteral",
+            lang := some "en" }]
+#guard rejects "Ontology(SameIndividual(<http://e#a>))" "syntax error: wrong number"
+-- A node ID is an individual only.
+#guard rejects "Ontology(SubClassOf(_:x <http://e#B>))" "syntax error: anonymous individual _:x"
+
+-- Declarations of every entity kind; the top and bottom entities are skipped.
+#guard axiomsOf "Ontology(Declaration(DataProperty(<http://e#p>)) Declaration(NamedIndividual(<http://e#a>))
+  Declaration(Datatype(<http://e#d>)) Declaration(AnnotationProperty(<http://e#n>))
+  Declaration(DataProperty(owl:topDataProperty)) Declaration(ObjectProperty(owl:bottomObjectProperty)))" ==
+  some [.declareDataProperty (e "p"), .declareNamedIndividual (e "a"),
+        .declareDatatype (e "d"), .declareAnnotationProperty (e "n")]
+#guard rejects "Ontology(Declaration(Thing(<http://e#a>)))" "syntax error: unknown entity kind Thing"
+
+-- Literals: escapes, suffix spellings, whitespace before `^^`.
+#guard axiomsOf r#"Ontology(DataPropertyAssertion(<http://e#p> <http://e#a> "a\"b\\c"))"# ==
+  some [.dataPropertyAssertion (.named (e "p")) (.named (e "a")) (lit "a\"b\\c" "string")]
+#guard axiomsOf "Ontology(DataPropertyAssertion(<http://e#p> <http://e#a> \"7\" ^^<http://www.w3.org/2001/XMLSchema#byte>))" ==
+  some [.dataPropertyAssertion (.named (e "p")) (.named (e "a")) (lit "7" "byte")]
+-- A datatype outside the OWL 2 datatype map is accepted (no lexical check).
+#guard axiomsOf "Ontology(DataPropertyAssertion(<http://e#p> <http://e#a> \"q\"^^<http://e#dt>))" ==
+  some [.dataPropertyAssertion (.named (e "p")) (.named (e "a"))
+    { lexical := "q", datatype := e "dt", lang := none }]
+
+-- Ill-typed literals are rejected.
+#guard rejects "Ontology(DataPropertyAssertion(<http://e#p> <http://e#a> \"x\"^^xsd:integer))"
+  "ill-typed literal"
+#guard rejects "Ontology(DataPropertyAssertion(<http://e#p> <http://e#a> \"300\"^^xsd:byte))"
+  "ill-typed literal"
+#guard rejects "Ontology(DataPropertyAssertion(<http://e#p> <http://e#a> \"1\"^^owl:real))"
+  "ill-typed literal"
+#guard rejects "Ontology(DataPropertyAssertion(<http://e#p> <http://e#a> \"2026-02-30T00:00:00\"^^xsd:dateTime))"
+  "ill-typed literal"
+#guard rejects "Ontology(DataPropertyAssertion(<http://e#p> <http://e#a> \"2026-02-03T10:00:00\"^^xsd:dateTimeStamp))"
+  "ill-typed literal"
+#guard rejects "Ontology(DataPropertyAssertion(<http://e#p> <http://e#a> \"x\"@1bad))"
+  "ill-typed literal"
+-- Well-typed forms of several datatypes.
+#guard (axiomsOf "Ontology(DataPropertyAssertion(<http://e#p> <http://e#a> \"-1.5E3\"^^xsd:double)
+  DataPropertyAssertion(<http://e#p> <http://e#a> \"2024-02-29T24:00:00Z\"^^xsd:dateTimeStamp)
+  DataPropertyAssertion(<http://e#p> <http://e#a> \"3/4\"^^owl:rational)
+  DataPropertyAssertion(<http://e#p> <http://e#a> \"0aFF\"^^xsd:hexBinary)
+  DataPropertyAssertion(<http://e#p> <http://e#a> \"+.5\"^^xsd:decimal)
+  DataPropertyAssertion(<http://e#p> <http://e#a> \"abc@en-GB\"^^rdf:PlainLiteral))").isSome
+
+-- Facets: unknown or inapplicable facets and facets outside the map are rejected.
+#guard rejects "Ontology(DataPropertyRange(<http://e#p> DatatypeRestriction(xsd:integer xsd:foo \"1\"^^xsd:integer)))"
+  "bad facet"
+#guard rejects "Ontology(DataPropertyRange(<http://e#p> DatatypeRestriction(xsd:string xsd:minInclusive \"1\"^^xsd:integer)))"
+  "bad facet"
+#guard rejects "Ontology(DataPropertyRange(<http://e#p> DatatypeRestriction(<http://e#dt> xsd:minLength \"1\"^^xsd:integer)))"
+  "bad facet"
+#guard rejects "Ontology(DataPropertyRange(<http://e#p> DatatypeRestriction(xsd:string xsd:length \"-1\"^^xsd:integer)))"
+  "bad facet"
+#guard rejects "Ontology(DataPropertyRange(<http://e#p> DatatypeRestriction(xsd:integer)))"
+  "syntax error: DatatypeRestriction needs facet and literal pairs"
+#guard (axiomsOf "Ontology(DataPropertyRange(<http://e#p> DatatypeRestriction(xsd:string xsd:pattern \"a*\" xsd:maxLength \"3\"^^xsd:nonNegativeInteger)))").isSome
+
 /-! ## Rejections -/
 
 #guard rejects "Ontology(Import(<http://e>))" "out of fragment: Import"
-#guard rejects "Ontology(ClassAssertion(<http://e#A> <http://e#a>))"
-  "out of fragment: ClassAssertion (ABox assertion)"
-#guard rejects "Ontology(ObjectPropertyAssertion(<http://e#r> <http://e#a> <http://e#b>))"
-  "out of fragment: ObjectPropertyAssertion (ABox assertion)"
-#guard rejects "Ontology(SameIndividual(<http://e#a> <http://e#b>))"
-  "out of fragment: SameIndividual (ABox assertion)"
-#guard rejects "Ontology(SubClassOf(<http://e#A> DataSomeValuesFrom(<http://e#p> xsd:integer)))"
-  "out of fragment: DataSomeValuesFrom (data construct)"
-#guard rejects "Ontology(DataPropertyRange(<http://e#p> xsd:integer))"
-  "out of fragment: DataPropertyRange (data property axiom)"
-#guard rejects "Ontology(SubClassOf(<http://e#A> ObjectMinCardinality(2 <http://e#r>)))"
-  "out of fragment: ObjectMinCardinality (cardinality restriction)"
-#guard rejects "Ontology(SubClassOf(<http://e#A> ObjectExactCardinality(1 <http://e#r> <http://e#B>)))"
-  "out of fragment: ObjectExactCardinality (cardinality restriction)"
-#guard rejects "Ontology(SubClassOf(<http://e#A> ObjectOneOf(<http://e#a>)))"
-  "out of fragment: ObjectOneOf (nominal)"
-#guard rejects "Ontology(SubClassOf(<http://e#A> ObjectHasValue(<http://e#r> <http://e#a>)))"
-  "out of fragment: ObjectHasValue (nominal)"
-#guard rejects "Ontology(SubClassOf(<http://e#A> ObjectHasSelf(<http://e#r>)))"
-  "out of fragment: ObjectHasSelf (self restriction)"
 #guard rejects "Ontology(DLSafeRule(Body() Head()))" "out of fragment: DLSafeRule (rule)"
-#guard rejects "Ontology(SubClassOf(<http://e#A> ObjectSomeValuesFrom(owl:topObjectProperty <http://e#B>)))"
-  "out of fragment: owl:topObjectProperty"
-#guard rejects "Ontology(SubObjectPropertyOf(<http://e#r> <http://www.w3.org/2002/07/owl#bottomObjectProperty>))"
-  "out of fragment: owl:bottomObjectProperty"
-#guard rejects "Ontology(HasKey(<http://e#A> (<http://e#r>) ()))" "out of fragment: HasKey (key)"
-#guard rejects "Ontology(DisjointUnion(<http://e#A> <http://e#B> <http://e#C>))"
-  "out of fragment: DisjointUnion (disjoint union)"
-#guard rejects "Ontology(FunctionalObjectProperty(<http://e#r>))"
-  "out of fragment: FunctionalObjectProperty (object property characteristic)"
-#guard rejects "Ontology(InverseFunctionalObjectProperty(<http://e#r>))"
-  "out of fragment: InverseFunctionalObjectProperty (object property characteristic)"
-#guard rejects "Ontology(ReflexiveObjectProperty(<http://e#r>))"
-  "out of fragment: ReflexiveObjectProperty (object property characteristic)"
-#guard rejects "Ontology(IrreflexiveObjectProperty(<http://e#r>))"
-  "out of fragment: IrreflexiveObjectProperty (object property characteristic)"
-#guard rejects "Ontology(AsymmetricObjectProperty(<http://e#r>))"
-  "out of fragment: AsymmetricObjectProperty (object property characteristic)"
-#guard rejects "Ontology(DisjointObjectProperties(<http://e#r> <http://e#s>))"
-  "out of fragment: DisjointObjectProperties (object property characteristic)"
 #guard rejects "Ontology(SubClassOf(<http://e#A> ObjectSomeValuesFrom(ObjectPropertyChain(<http://e#r> <http://e#s>) <http://e#B>)))"
   "out of fragment: object property expression ObjectPropertyChain"
+#guard rejects "Ontology(SubClassOf(<http://e#A> ObjectFoo(<http://e#B>)))"
+  "out of fragment: class expression ObjectFoo"
 
 -- Syntax errors.
 #guard rejects "Ontology(SubClassOf(Annotation(<http://e#n> \"open) <http://e#A> <http://e#B>))"
@@ -262,7 +402,8 @@ Ontology(<http://example.org/onto>
   "syntax error: ontology Annotation after an axiom"
 #guard rejects "Ontology(SubClassOf(<http://e#A> ObjectSomeValuesFrom(<http://e#r> \"x\")))"
   "syntax error: expected an IRI, found a literal"
-#guard rejects "Ontology(ClassAssertion(<http://e#A> _:x))" "out of fragment: ClassAssertion"
+#guard axiomsOf "Ontology(ClassAssertion(<http://e#A> _:x))" ==
+  some [.classAssertion (.cls "http://e#A") (.anon "x")]
 #guard rejects "" "syntax error: no Ontology"
 #guard reasonOf "Ontology()" == "accepted"
 
