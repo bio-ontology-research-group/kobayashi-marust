@@ -2185,12 +2185,16 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
             return unsatisfiable(df.getOWLObjectSomeValuesFrom(a.getProperty(), not(a.getRange())));
         }
         if (ax instanceof OWLFunctionalObjectPropertyAxiom || ax instanceof OWLInverseFunctionalObjectPropertyAxiom) {
-            // Functional iff ≥2 r.⊤ is unsatisfiable; inverse functional uses r⁻.
+            // Functional iff O ∪ {r(x,y1), r(x,y2), y1 ≠ y2} is inconsistent for fresh
+            // x, y1, y2; inverse functional uses r⁻. (The class form ≥2 r.⊤ is not
+            // OWL 2 DL for a non-simple r, and km rejects it.)
             OWLObjectPropertyExpression r = ((OWLObjectPropertyCharacteristicAxiom) ax).getProperty();
             if (isBottom(r)) return true;
             if (isTop(r)) return universalFunctional();
             if (ax instanceof OWLInverseFunctionalObjectPropertyAxiom) r = r.getInverseProperty().getSimplified();
-            return unsatisfiable(df.getOWLObjectMinCardinality(2, r, owlThing));
+            OWLNamedIndividual x = freshIndividual(), y1 = freshIndividual(), y2 = freshIndividual();
+            return !consistentWith(Arrays.asList(assertion(r, x, y1, false), assertion(r, x, y2, false),
+                    df.getOWLDifferentIndividualsAxiom(y1, y2)));
         }
         if (ax instanceof OWLAsymmetricObjectPropertyAxiom) {
             // Asymmetric iff O ∪ {r(x,y), r(y,x)} is inconsistent (x = y covers r(x,x)).

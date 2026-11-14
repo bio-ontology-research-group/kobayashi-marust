@@ -307,6 +307,8 @@ public class ReductionsTest {
                 f.getOWLInverseFunctionalObjectPropertyAxiom(p("ownedBy")),
                 f.getOWLInverseFunctionalObjectPropertyAxiom(f.getOWLObjectInverseOf(p("spouse"))),
                 f.getOWLTransitiveObjectPropertyAxiom(p("partOf")),
+                f.getOWLFunctionalObjectPropertyAxiom(p("partOf")),
+                f.getOWLInverseFunctionalObjectPropertyAxiom(p("partOf")),
                 f.getOWLTransitiveObjectPropertyAxiom(p("friend")),
                 f.getOWLAsymmetricObjectPropertyAxiom(p("hasParent")),
                 f.getOWLAsymmetricObjectPropertyAxiom(p("friend")),

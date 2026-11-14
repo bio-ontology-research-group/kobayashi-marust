@@ -25,8 +25,9 @@ import java.util.*;
  * one value, and {@code xsd:boolean} has two. The fragment admits only the
  * datatypes {@code rdfs:Literal}, {@code xsd:string}, {@code rdf:PlainLiteral},
  * {@code rdf:langString}, {@code xsd:integer}, {@code xsd:decimal},
- * {@code xsd:double}, {@code xsd:float}, {@code xsd:anyURI} and
- * {@code xsd:dateTime} (with {@code DataOneOf}, {@code DataIntersectionOf},
+ * {@code xsd:double}, {@code xsd:float}, {@code xsd:anyURI},
+ * {@code xsd:dateTime} and the sign-restricted integer types (two or more
+ * of those only with a literal for 0) (with {@code DataOneOf}, {@code DataIntersectionOf},
  * {@code DataUnionOf} and {@code DataComplementOf} over them), no facet
  * restriction, datatype definition, rule or axiom with
  * {@code owl:topDataProperty}, and data restrictions whose numbers (plus one
@@ -67,6 +68,19 @@ final class DataValues {
             OWL2Datatype.XSD_ANY_URI.getIRI(),
             OWL2Datatype.XSD_DATE_TIME.getIRI()));
 
+    /**
+     * Integer types that split the integers by sign. One of them next to
+     * xsd:integer and xsd:decimal cuts only infinite classes; two of them can
+     * isolate 0 (nonNegative ∩ nonPositive, nonNegative minus positive,
+     * the integers that are neither positive nor negative), so two or more are
+     * admitted only when a literal of the ontology denotes 0.
+     */
+    private static final Set<IRI> SIGNED = new HashSet<>(Arrays.asList(
+            OWL2Datatype.XSD_NON_NEGATIVE_INTEGER.getIRI(),
+            OWL2Datatype.XSD_POSITIVE_INTEGER.getIRI(),
+            OWL2Datatype.XSD_NON_POSITIVE_INTEGER.getIRI(),
+            OWL2Datatype.XSD_NEGATIVE_INTEGER.getIRI()));
+
     private static final long CARDINALITY_BOUND = 1L << 30;
 
     /** The candidate literals and why the ontology is outside the fragment (null when inside). */
@@ -74,6 +88,7 @@ final class DataValues {
         final Set<OWLLiteral> literals = new LinkedHashSet<>();
         String outside;
         long cardinalities;
+        final Set<IRI> signed = new HashSet<>();
     }
 
     static Candidates collect(OWLOntology snapshot) {
@@ -111,16 +126,35 @@ final class DataValues {
                 }
             }
         }
+        if (out.outside == null && out.signed.size() > 1 && !denotesZero(out.literals)) {
+            out.outside = "two sign-restricted integer datatypes " + out.signed + " and no literal for 0";
+        }
         if (out.outside == null && out.cardinalities + out.literals.size() >= CARDINALITY_BOUND) {
             out.outside = "data cardinalities too large for the completeness argument";
         }
         return out;
     }
 
+    private static boolean denotesZero(Set<OWLLiteral> literals) {
+        for (OWLLiteral l : literals) {
+            String dt = l.getDatatype().getIRI().toString();
+            if (!dt.startsWith("http://www.w3.org/2001/XMLSchema#") || !(dt.endsWith("nteger")
+                    || dt.endsWith("#decimal") || dt.endsWith("#int") || dt.endsWith("#long")
+                    || dt.endsWith("#short") || dt.endsWith("#byte"))) continue;
+            try {
+                if (new java.math.BigDecimal(l.getLiteral().trim()).signum() == 0) return true;
+            } catch (NumberFormatException ignored) {
+                // not a numeral
+            }
+        }
+        return false;
+    }
+
     private static void range(OWLDataRange range, Candidates out) {
         if (range instanceof OWLDatatype) {
             OWLDatatype dt = (OWLDatatype) range;
-            if (!ADMITTED.contains(dt.getIRI())) out.outside = "the datatype " + dt.getIRI();
+            if (SIGNED.contains(dt.getIRI())) out.signed.add(dt.getIRI());
+            else if (!ADMITTED.contains(dt.getIRI())) out.outside = "the datatype " + dt.getIRI();
         } else if (range instanceof OWLDataOneOf) {
             out.literals.addAll(((OWLDataOneOf) range).getValues());
         } else if (range instanceof OWLDataIntersectionOf) {
