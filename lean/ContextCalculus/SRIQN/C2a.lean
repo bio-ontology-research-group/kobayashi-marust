@@ -258,9 +258,9 @@ theorem parentE_recM (x y : D) :
     rw [h.choose_spec]
   · rfl
 
-variable (hI : models I O) (hC : IsC2a O)
+variable {S : CName → Prop} (hI : models I O) (hC : IsC2aS O S)
   (hcov : ∀ a ∈ noms O, ∀ x, I.c a x → ∃ c, v c = x)
-  (hS : ∀ X, NomOnly O X → ∀ x, I.c X x → ∃ c, v c = x)
+  (hS : ∀ X, S X → ∀ x, I.c X x → ∃ c, v c = x)
 
 include hv hI hC hcov hS in
 theorem recsM_selfSupp :
@@ -430,17 +430,16 @@ section Char
 
 variable [Fintype CName] [DecidableEq CName] [Fintype Role] [DecidableEq Role]
 
-/-- **C2a completeness.** A consistent C2a ontology has a realisation over
-`Fin k`, `0 < k ≤ max 1 |Nom O|`, whose core elements each carry a
-nominal name when there is one. -/
-theorem c2a_complete {O : Ontology CName Role} (hC : IsC2a O) (hc : ConsistentN O) :
+/-- **C2a completeness from a model** in which the exempt names `S` hold at
+nominal elements only. -/
+theorem c2a_complete_of {O : Ontology CName Role} {S : CName → Prop} (hC : IsC2aS O S)
+    {D : Type} [Nonempty D] (I : Interp D CName Role) (hI : models I O)
+    (hS0 : ∀ X, S X → ∀ x, I.c X x → ∃ a ∈ noms O, I.c a x) :
     ∃ k, 0 < k ∧ k ≤ max 1 (noms O).toFinset.card ∧
       ∃ r : RealisationN (basePart O) (noms O) (Fin k),
         noms O = [] ∨ ∀ c, ∃ a ∈ noms O, a ∈ r.ty c := by
   classical
-  obtain ⟨D, ⟨x0⟩, I0, hI0⟩ := hc
-  let I := shrinkI O I0
-  have hI : models I O := shrinkI_models hI0
+  obtain ⟨x0⟩ := (inferInstance : Nonempty D)
   have hnom := (models_iff.1 hI).2
   let e : CName → D := fun a => if h : NomAt I a then h.choose else x0
   have he : ∀ a ∈ noms O, ∀ x, I.c a x ↔ x = e a := by
@@ -470,10 +469,10 @@ theorem c2a_complete {O : Ontology CName Role} (hC : IsC2a O) (hc : ConsistentN 
       simp only [T, if_neg this]
       exact Finset.mem_image.2 ⟨a, List.mem_toFinset.2 ha, ((he a ha x).1 hx).symm⟩
     exact ⟨eq.symm ⟨x, hxT⟩, by simp [v]⟩
-  have hS : ∀ X, NomOnly O X → ∀ x, I.c X x → ∃ c, v c = x := by
+  have hS : ∀ X, S X → ∀ x, I.c X x → ∃ c, v c = x := by
     intro X hX x hx
-    obtain ⟨a, ha, hax⟩ := shrinkI_nomOnly hX hx
-    exact hcov a ha x ((shrinkI_c_of_not I0 (nom_not_nomOnly ha) x).2 hax)
+    obtain ⟨a, ha, hax⟩ := hS0 X hX x hx
+    exact hcov a ha x hax
   refine ⟨T.card, hTpos, hTle, realOfModelN I hv hI hC hcov hS, ?_⟩
   by_cases hN : noms O = []
   · exact Or.inl hN
@@ -486,6 +485,18 @@ theorem c2a_complete {O : Ontology CName Role} (hC : IsC2a O) (hc : ConsistentN 
     show a ∈ typeOf I (v c)
     rw [mem_typeOf]
     exact (he a ha' _).2 hae.symm
+
+/-- **C2a completeness.** A consistent C2a ontology has a realisation over
+`Fin k`, `0 < k ≤ max 1 |Nom O|`, whose core elements each carry a
+nominal name when there is one. -/
+theorem c2a_complete {O : Ontology CName Role} (hC : IsC2a O) (hc : ConsistentN O) :
+    ∃ k, 0 < k ∧ k ≤ max 1 (noms O).toFinset.card ∧
+      ∃ r : RealisationN (basePart O) (noms O) (Fin k),
+        noms O = [] ∨ ∀ c, ∃ a ∈ noms O, a ∈ r.ty c := by
+  obtain ⟨D, hD, I0, hI0⟩ := hc
+  refine c2a_complete_of hC (shrinkI O I0) (shrinkI_models hI0) fun X hX x hx => ?_
+  obtain ⟨a, ha, hax⟩ := shrinkI_nomOnly hX hx
+  exact ⟨a, ha, (shrinkI_c_of_not I0 (nom_not_nomOnly ha) x).2 hax⟩
 
 /-- **C2a characterisation.** -/
 theorem consistentN_iff_c2a {O : Ontology CName Role} (hA : IsALCHOIQ O) (hC : IsC2a O) :

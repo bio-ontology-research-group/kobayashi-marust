@@ -482,7 +482,11 @@ theorem mem_funsL {α : Type} {L : List α} : ∀ {k : Nat} (f : Fin k → α), 
     refine List.mem_flatMap.2 ⟨Fin.tail f, mem_funsL _ fun i => hf _, ?_⟩
     exact List.mem_map.2 ⟨f 0, hf 0, Fin.cons_self_tail f⟩
 
-theorem searchN_iff {O : Ontology (Fin n) (Fin m)} (hA : IsALCHOIQ O) (hC : IsC2a O) :
+/-- **Exactness of the search** for any ontology whose consistency gives a
+realisation with at most `max 1 |Nom|` core elements. -/
+theorem searchN_iff_of {O : Ontology (Fin n) (Fin m)} (hA : IsALCHOIQ O)
+    (hcomp : ConsistentN O → ∃ k, 0 < k ∧ k ≤ max 1 (noms O).toFinset.card ∧
+      Nonempty (RealisationN (basePart O) (noms O) (Fin k))) :
     searchN (basePart O) (noms O) = true ↔ ConsistentN O := by
   unfold searchN
   rw [decide_eq_true_iff]
@@ -497,7 +501,7 @@ theorem searchN_iff {O : Ontology (Fin n) (Fin m)} (hA : IsALCHOIQ O) (hC : IsC2
     refine ⟨C, hok, fun e he => (good_iff_mem_aliveN _).2 ?_⟩
     exact (mem_candsA.1 ((mem_listsUpTo _ _).1 hCm |>.2 e he)).1
   · intro hc
-    obtain ⟨k, hk, hle, r, -⟩ := c2a_complete hC hc
+    obtain ⟨k, hk, hle, ⟨r⟩⟩ := hcomp hc
     obtain ⟨j, rfl⟩ : ∃ j, k = j + 1 := ⟨k - 1, by omega⟩
     refine ⟨j, List.mem_range.2 (by omega), r.ty, mem_funsL _ fun b => List.mem_filter.2
       ⟨mem_allTypesN _, decide_eq_true (r.kids b).choose_spec.1.closed⟩, ?_⟩
@@ -509,6 +513,30 @@ theorem searchN_iff {O : Ontology (Fin n) (Fin m)} (hA : IsALCHOIQ O) (hC : IsC2
     · intro b
       rw [mkLab_half r.symm]
       exact supBlkN_of_real r b
+
+/-- **Exactness of the search on C2a.** -/
+theorem searchN_iff {O : Ontology (Fin n) (Fin m)} (hA : IsALCHOIQ O) (hC : IsC2a O) :
+    searchN (basePart O) (noms O) = true ↔ ConsistentN O :=
+  searchN_iff_of hA fun hc => by
+    obtain ⟨k, hk, hle, r, -⟩ := c2a_complete hC hc
+    exact ⟨k, hk, hle, ⟨r⟩⟩
+
+/-- **Consistency with a hint is exact**, for every hint, given the
+completeness of small realisations. -/
+theorem consistentN_iff_of {O : Ontology (Fin n) (Fin m)} (hA : IsALCHOIQ O)
+    (hcomp : ConsistentN O → ∃ k, 0 < k ∧ k ≤ max 1 (noms O).toFinset.card ∧
+      Nonempty (RealisationN (basePart O) (noms O) (Fin k)))
+    (hint : Option (HintN n m)) :
+    consistentN (basePart O) (noms O) hint = true ↔ ConsistentN O := by
+  unfold consistentN
+  rw [Bool.or_eq_true, searchN_iff_of hA hcomp]
+  constructor
+  · rintro (h | h)
+    · cases hint with
+      | none => simp at h
+      | some h' => exact checkRealisationN_sound hA h' (by simpa using h)
+    · exact h
+  · exact Or.inr
 
 /-- **Consistency with a hint is exact on C2a, for every hint.** -/
 theorem consistentN_iff {O : Ontology (Fin n) (Fin m)} (hA : IsALCHOIQ O) (hC : IsC2a O)
