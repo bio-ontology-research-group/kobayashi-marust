@@ -33,8 +33,9 @@
   read as an ordinary property, and its other occurrences were then not
   rewritten either, which lost consequences. Every such position is now
   encoded exactly through the nominal hub of the universal-role rewrite
-  (`U` becomes the chain `S ∘ S⁻`) or removed as a tautology; a key on
-  `owl:topObjectProperty` is rejected (exit code 3).
+  (`U` becomes the chain `S ∘ S⁻`) or removed as a tautology. Keys are
+  rewritten to rules first, so a key on `owl:topObjectProperty` is encoded
+  too.
 
 ## [1.6.4] - 2026-11-14
 

@@ -132,6 +132,7 @@ cost time; removing either alone is not enough.
 
 ## Known limitations
 
-- `owl:topObjectProperty` in a `HasKey` axiom is rejected (exit code 3). Every
-  other position is encoded exactly (`frontend/universal_role.rs`), or is not
-  OWL 2 DL and fails the conformance check.
+- None known for `owl:Nothing` domains and ranges or `owl:topObjectProperty`:
+  every position of `owl:topObjectProperty` is encoded exactly
+  (`frontend/universal_role.rs`) or is not OWL 2 DL and fails the
+  conformance check.
