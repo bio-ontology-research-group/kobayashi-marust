@@ -22,8 +22,8 @@ values of each cell (`OWL/Datatypes/CellsSpec.lean` proves the cells exact,
   derived from it, `xsd:double`, `xsd:float`, `xsd:string`,
   `rdf:PlainLiteral`, `xsd:boolean`, `xsd:hexBinary`, `xsd:base64Binary`,
   `xsd:anyURI`, `xsd:dateTime`, `xsd:dateTimeStamp`, `rdf:XMLLiteral`,
-  `rdfs:Literal`, `owl:rational`. Declined (`supportedKind`):
-  `xsd:normalizedString`, `xsd:token`, `xsd:language`, `xsd:Name`,
+  `rdfs:Literal`, `owl:rational`, `xsd:language`. Declined
+  (`supportedKind`): `xsd:normalizedString`, `xsd:token`, `xsd:Name`,
   `xsd:NCName`, `xsd:NMTOKEN`.
 * `numR k bs`: a numeric datatype (`owl:real`, `owl:rational`,
   `xsd:decimal`, an integer type) with bound facets `bs` (minimum or maximum, strict or not, a
@@ -40,8 +40,9 @@ values of each cell (`OWL/Datatypes/CellsSpec.lean` proves the cells exact,
   points (`none`: unbounded), of class `cls`: integers (`0`), decimals
   that are not integers (`1`), rationals that are not decimals (`2`),
   irrationals (`3`).
-* the rest of each other value space (`dblR`, `fltR`, `strR` for strings
-  without a tag, `tagR` with a tag, `uriR`, `hexR`, `b64R`, `xmlR`,
+* the rest of each other value space (`dblR`, `fltR`, `langR` for the
+  strings without a tag that are language tags (`xsd:language`), `strR` for
+  the other strings without a tag, `tagR` with a tag, `uriR`, `hexR`, `b64R`, `xmlR`,
   `timeTz`, `timeLoc`), and `other` for the values outside every value
   space of the supported datatypes.
 
@@ -150,7 +151,7 @@ def BAtom.sem : BAtom → Val → Prop
 
 /-- The kinds of the supported sub-theory. -/
 def supportedKind : Kind → Bool
-  | .normalizedString | .token | .language | .name | .ncName | .nmToken => false
+  | .normalizedString | .token | .name | .ncName | .nmToken => false
   | _ => true
 
 /-- The numeric kinds with bound facets in the sub-theory. -/
@@ -203,6 +204,7 @@ inductive Cell where
   | dblR
   | fltR
   | strR
+  | langR
   | tagR
   | uriR
   | hexR
@@ -238,7 +240,7 @@ def gapPairs (P : List ℚ) : List (Option ℚ × Option ℚ) :=
 
 /-- The rest cells. -/
 def restCells : List Cell :=
-  [.dblR, .fltR, .strR, .tagR, .uriR, .hexR, .b64R, .xmlR, .timeTz, .timeLoc, .other]
+  [.dblR, .fltR, .strR, .langR, .tagR, .uriR, .hexR, .b64R, .xmlR, .timeTz, .timeLoc, .other]
 
 /-- The cells of a list of atoms. -/
 def cellsOf (as : List BAtom) : List Cell :=
@@ -349,7 +351,10 @@ def kindRest : Kind → Cell → Bool
   | .double, .dblR => true
   | .float, .fltR => true
   | .string, .strR => true
+  | .string, .langR => true
+  | .language, .langR => true
   | .plainLiteral, .strR => true
+  | .plainLiteral, .langR => true
   | .plainLiteral, .tagR => true
   | .anyURI, .uriR => true
   | .hexBinary, .hexR => true
@@ -397,7 +402,8 @@ def restCell : Val → Cell
   | .num _ => .other
   | .dbl _ => .dblR
   | .flt _ => .fltR
-  | .str s none => if xmlString s then .strR else .other
+  | .str s none =>
+    if xmlString s then (if Parse.isLanguageTag s.toList then .langR else .strR) else .other
   | .str s (some t) => if xmlString s && langTagOK t.toList && lowerTag t == t then .tagR else .other
   | .bool _ => .other
   | .hex _ => .hexR

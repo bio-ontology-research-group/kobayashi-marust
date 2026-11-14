@@ -818,6 +818,59 @@ theorem rep_inj : Function.Injective fun n : Nat => String.ofList (List.replicat
 theorem decQ_nat (n : Nat) : decQ (n : ℚ) = true := by
   simp [decQ]
 
+
+/-- `a-a-…-a` with `n + 1` letters: a language tag. -/
+def langW (n : Nat) : List Char := List.intercalate ['-'] (List.replicate (n + 1) ['a'])
+
+theorem langW_chars (n : Nat) : ∀ c ∈ langW n, c = 'a' ∨ c = '-' := by
+  induction n with
+  | zero => simp [langW]
+  | succ n ih =>
+    intro c hc
+    have : langW (n + 1) = ['a', '-'] ++ langW n := by
+      simp [langW, List.replicate_succ, List.intercalate_cons_cons]
+    rw [this] at hc
+    simp only [List.cons_append, List.nil_append, List.mem_cons] at hc
+    rcases hc with h | h | h
+    · exact Or.inl h
+    · exact Or.inr h
+    · exact ih c h
+
+theorem langW_split (n : Nat) : (langW n).splitOn '-' = List.replicate (n + 1) ['a'] :=
+  List.splitOn_intercalate '-' (by simp) (by simp)
+
+theorem langW_tag (n : Nat) : Parse.isLanguageTag (langW n) = true := by
+  unfold Parse.isLanguageTag
+  rw [langW_split, List.replicate_succ]
+  simp [Parse.isAlphaC]
+
+theorem langW_inj : Function.Injective langW := by
+  intro n n' h
+  have := congrArg (·.splitOn '-') h
+  simp only [langW_split] at this
+  simpa using congrArg List.length this
+
+theorem digits_not_tag (n : Nat) : Parse.isLanguageTag (List.replicate n '1') = false := by
+  unfold Parse.isLanguageTag
+  rw [List.splitOn_eq_singleton (by simp)]
+  cases n <;> simp [List.replicate_succ, Parse.isAlphaC]
+
+theorem xmlString_langW (n : Nat) : xmlString (String.ofList (langW n)) = true := by
+  unfold xmlString
+  rw [String.toList_ofList, List.all_eq_true]
+  intro c hc
+  rcases langW_chars n c hc with rfl | rfl <;> decide
+
+theorem xmlString_digits (n : Nat) : xmlString (String.ofList (List.replicate n '1')) = true := by
+  unfold xmlString
+  rw [String.toList_ofList, List.all_replicate]
+  split_ifs <;> decide
+
+theorem digits_inj : Function.Injective fun n : Nat => String.ofList (List.replicate n '1') := by
+  intro n n' h
+  have := congrArg List.length (String.ofList_injective h)
+  simpa using this
+
 /-- Every rest cell has its size. -/
 theorem encard_rest {c : Cell} (hc : c ∈ restCells) :
     {v | cellOf as v = c}.encard = toE (cellSize as c) := by
@@ -825,7 +878,7 @@ theorem encard_rest {c : Cell} (hc : c ∈ restCells) :
       (∀ n x, f n ≠ .num x) → {v | cellOf as v = c}.encard = ⊤ := fun f hf hr hn =>
     encard_top_of_inj f hf fun n hp => (cellOf_eq_rest_iff hc).2 ⟨hp, hr n, hn n⟩
   simp only [restCells, List.mem_cons, List.not_mem_nil, or_false] at hc
-  rcases hc with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  rcases hc with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
   · -- doubles
     have hS : {v | cellOf as v = .dblR} = Set.range (ValOf.dbl : FloatV 11 52 → Val) \
         toVal '' {w | w ∈ allPts as} := by
@@ -856,8 +909,13 @@ theorem encard_rest {c : Cell} (hc : c ∈ restCells) :
     rw [hS, encard_diff_eq (encard_range_float _ (fun a b h => by cases h; rfl)) (by
       rw [flt_pts, encard_list_image (otherPts_nodup.filter _)])]
     rfl
-  · exact key (fun n => .str (String.ofList (List.replicate n 'a')) none)
-      (fun n n' h => rep_inj (by simpa using h)) (fun n => by simp [restCell, xmlString_rep])
+  · exact key (fun n => .str (String.ofList (List.replicate n '1')) none)
+      (fun n n' h => digits_inj (by simpa using h))
+      (fun n => by simp [restCell, xmlString_digits, String.toList_ofList, digits_not_tag])
+      (by intro n x h; cases h)
+  · exact key (fun n => .str (String.ofList (langW n)) none)
+      (fun n n' h => langW_inj (String.ofList_injective (by simpa using h)))
+      (fun n => by simp [restCell, xmlString_langW, String.toList_ofList, langW_tag])
       (by intro n x h; cases h)
   · exact key (fun n => .str (String.ofList (List.replicate n 'a')) (some "en"))
       (fun n n' h => rep_inj (by simpa using h))

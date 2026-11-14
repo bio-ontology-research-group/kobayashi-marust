@@ -15,3 +15,5 @@ free-literal.ofn	row http://ex/A http://ex/A
 datetime-offsets.ofn	row http://ex/A http://ex/A
 rational-nondecimal.ofn	row http://ex/A http://ex/A
 rational-point.ofn	row http://ex/A unsat
+language-literal.ofn	row http://ex/A unsat
+language-rest.ofn	row http://ex/A http://ex/A
