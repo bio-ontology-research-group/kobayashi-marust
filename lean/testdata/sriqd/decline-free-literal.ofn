@@ -1,0 +1,5 @@
+Prefix(:=<http://ex/>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://ex/decline-free-literal>
+SubClassOf(:A DataSomeValuesFrom(:p DataIntersectionOf(<http://ex/myDT> DataOneOf("a"))))
+)

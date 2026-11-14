@@ -1,0 +1,5 @@
+Prefix(:=<http://ex/>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://ex/complement>
+SubClassOf(:A DataSomeValuesFrom(:p DataIntersectionOf(xsd:integer DataComplementOf(xsd:decimal))))
+)

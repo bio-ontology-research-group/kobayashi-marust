@@ -1,0 +1,13 @@
+# file	expected km-sriqd-probe stdout (one line per class), or "declined" (exit 3)
+bool-min3.ofn	row http://ex/A unsat
+bool-min2.ofn	row http://ex/A http://ex/A
+int-bounds.ofn	row http://ex/A unsat
+int-two.ofn	row http://ex/A http://ex/A
+int-three.ofn	row http://ex/A unsat
+complement.ofn	row http://ex/A unsat
+int-eq-decimal.ofn	row http://ex/A unsat
+float-ne-int.ofn	row http://ex/A http://ex/A
+functional-two.ofn	row http://ex/A unsat
+sub-bounds.ofn	row http://ex/A http://ex/A http://ex/B | row http://ex/B http://ex/B
+decline-string-facet.ofn	declined
+decline-free-literal.ofn	declined

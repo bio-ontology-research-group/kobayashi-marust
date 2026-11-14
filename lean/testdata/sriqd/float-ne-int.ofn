@@ -1,0 +1,5 @@
+Prefix(:=<http://ex/>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://ex/float-ne-int>
+SubClassOf(:A DataMinCardinality(2 :p DataOneOf("1"^^xsd:float "1"^^xsd:integer)))
+)
