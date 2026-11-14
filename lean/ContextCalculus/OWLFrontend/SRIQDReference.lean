@@ -45,7 +45,7 @@ def owlSHIQDReference (O : OWL.Ontology) (requested : List OWL.IRI) : Option OWL
     if h : (isSHIQB (ContextCalculus.SRIQD.objPart T.ontology) && owlCheck (spec T.tab)) = true ∧
         T.named.length ≤ T.obj.conceptCount then
       let E := ContextCalculus.SRIQD.Proc.encTransQD T.ontology
-      some { named := T.named, rows := sriqdRows T h.2 E.2 (owlCard (spec T.tab)) }
+      some { named := T.named, rows := sriqdRows T h.2 E.2 (owlCardC (spec T.tab)) }
     else none
 
 theorem translateSRIQD_named {O : OWL.Ontology} {requested : List OWL.IRI} {T : SRIQDTranslation}
@@ -108,7 +108,7 @@ theorem owlSHIQDReference_sound (pat : String → String → Prop) {O : OWL.Onto
       obtain ⟨hc1, hle⟩ := hc
       rw [Bool.and_eq_true] at hc1
       have hS : ContextCalculus.SRIQD.Proc.IsSHIQD T.ontology := isSHIQ_of_isSHIQB hc1.1
-      have hspec := oracleSpec_owl pat hc1.2
+      have hspec := owlCardC_eq (spec T.tab) ▸ oracleSpec_owl pat hc1.2
       rw [sriqd_bit T hle hspec (ContextCalculus.SRIQD.Proc.encTransQD_isALCHIQ T.ontology) i j hi hj,
         ← ContextCalculus.SRIQD.Proc.encTransQD_correct hS,
         translateSRIQD_correct pat hT hi hj]

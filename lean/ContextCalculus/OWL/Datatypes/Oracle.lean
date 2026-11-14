@@ -458,6 +458,14 @@ def owlE (spec : Fin q → DataRange) : Fin q → Cell → (Fin (allFrees spec).
 def owlCard (spec : Fin q → DataRange) : Finset (Fin q) → Option Nat :=
   cellCard (cellsOf (allBases spec)) (cellSize (allBases spec)) (owlE spec)
 
+/-- `owlCard` with the cells computed once (for the executable). -/
+def owlCardC (spec : Fin q → DataRange) : Finset (Fin q) → Option Nat :=
+  let as := allBases spec
+  let cs := cellsOf as
+  fun τ => cellCard cs (cellSize as) (owlE spec) τ
+
+theorem owlCardC_eq (spec : Fin q → DataRange) : owlCardC spec = owlCard spec := rfl
+
 /-- Every atom is supported, and the free datatypes pass `freeCheck`. -/
 def owlCheck (spec : Fin q → DataRange) : Bool :=
   (List.finRange q).all (fun p => drSupported (spec p)) &&
