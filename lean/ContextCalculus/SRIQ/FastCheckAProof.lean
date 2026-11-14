@@ -96,6 +96,53 @@ theorem mem_fwdL {T L : Array Nat} (hL : SortedA L) (y : Fin n) :
   · rintro ⟨a, ha, p, ⟨hp, hS⟩, rfl⟩
     exact ⟨p, ⟨⟨a, ha, hp⟩, hS⟩, rfl⟩
 
+theorem mem_abMap : ∀ (ab : List (RoleT (Fin m) × Fin n)) (mp : Std.HashMap Nat (List Nat)) (c x : Nat),
+    x ∈ (ab.foldl (fun mp p => mp.insert (rc p.1) (p.2.val :: mp.getD (rc p.1) [])) mp).getD c [] ↔
+      x ∈ mp.getD c [] ∨ ∃ p ∈ ab, rc p.1 = c ∧ p.2.val = x
+  | [], mp, c, x => by simp
+  | p :: ab, mp, c, x => by
+    rw [List.foldl_cons, mem_abMap ab _ c x, Std.HashMap.getD_insert]
+    constructor
+    · rintro (h | ⟨q, hq, h1, h2⟩)
+      · split at h
+        · next hc =>
+          have hc' : rc p.1 = c := beq_iff_eq.1 hc
+          rcases List.mem_cons.1 h with h | h
+          · exact Or.inr ⟨p, List.mem_cons_self, hc', h.symm⟩
+          · exact Or.inl (hc' ▸ h)
+        · exact Or.inl h
+      · exact Or.inr ⟨q, List.mem_cons_of_mem _ hq, h1, h2⟩
+    · rintro (h | ⟨q, hq, h1, h2⟩)
+      · left
+        split
+        · next hc =>
+          have hc' : rc p.1 = c := beq_iff_eq.1 hc
+          subst hc'
+          exact List.mem_cons_of_mem _ h
+        · exact h
+      · rcases List.mem_cons.1 hq with rfl | hq
+        · left
+          rw [if_pos (beq_iff_eq.2 h1), ← h2]
+          exact List.mem_cons_self
+        · exact Or.inr ⟨q, hq, h1, h2⟩
+
+theorem mem_fwdM {T L : Array Nat} (y : Fin n) :
+    y.val ∈ fwdM (abMap (abOf ix (finL n T.toList))) L ↔ y ∈ fwdI ix (absTy n T) (absLab m L) := by
+  simp only [fwdM, abMap, List.mem_flatMap, mem_abMap, Std.HashMap.getD_empty, List.not_mem_nil,
+    false_or, fwdI, Finset.mem_biUnion, List.mem_toFinset, List.mem_map, List.mem_filter, mem_absLab,
+    absTy, decide_eq_true_eq, abOf]
+  constructor
+  · rintro ⟨c, hc, p, ⟨a, ha, hp⟩, hpc, he⟩
+    exact ⟨a, ha, p, ⟨hp, by rw [hpc]; exact Array.mem_def.2 hc⟩, Fin.ext he⟩
+  · rintro ⟨a, ha, p, ⟨hp, hS⟩, rfl⟩
+    exact ⟨rc p.1, Array.mem_def.1 hS, p, ⟨a, ha, hp⟩, rfl, rfl⟩
+
+theorem absTy_canon_fwdM {F T L : Array Nat} :
+    absTy n (canon (F.toList ++ fwdM (abMap (abOf ix (finL n T.toList))) L)) =
+      absTy n F ∪ fwdI ix (absTy n T) (absLab m L) := by
+  refine absTy_canon fun y => ?_
+  rw [Finset.mem_union, mem_absTy, List.mem_append, ← mem_fwdM ix, Array.mem_def]
+
 theorem absTy_canon_fwd {F T L : Array Nat} (hL : SortedA L) :
     absTy n (canon (F.toList ++ fwdL (abOf ix (finL n T.toList)) L)) =
       absTy n F ∪ fwdI ix (absTy n T) (absLab m L) := by
@@ -165,18 +212,18 @@ theorem nodeOKA_sound (hW : WF n m C) {i : Nat}
     have := all_mem h4 (mem_absTy.1 hy)
     exact (bsA_iff (hW.ty i)).1 this
 
-theorem childKeyA_view {T : Array Nat} {e : EntryA} (hl : SortedA e.lab) :
-    viewKey n m (childKeyA (mkIxF O (mkIx O)) T (abOf (mkIx O) (finL n T.toList)) e) =
+theorem childKeyA_view {T : Array Nat} {e : EntryA} :
+    viewKey n m (childKeyA (mkIxF O (mkIx O)) T (abMap (abOf (mkIx O) (finL n T.toList))) e) =
       childKey (mkIx O) (absTy n T) (viewEntry n m e).spec := by
   simp only [childKeyA, childKey, viewKey, viewEntry, Key.mk.injEq]
-  refine ⟨absTy_canon_fwd _ hl, absLab_flipA _, ?_⟩
+  refine ⟨absTy_canon_fwdM _, absLab_flipA _, ?_⟩
   ext y
   rw [mem_absTy, Array.mem_filter, Finset.mem_inter, mem_absTy, flipA,
     relHitA_iff (sorted_canon _), ← flipA, absLab_flipA]
 
 theorem entryOKA_sound (hW : WF n m C) {i : Nat} {e : EntryA} (he : e ∈ (ndA C i).pool)
     (h : entryOKA (mkIx O) (mkIxF O (mkIx O)) C (ndA C i).ty
-      (abOf (mkIx O) (finL n (ndA C i).ty.toList)) e = true) :
+      (abMap (abOf (mkIx O) (finL n (ndA C i).ty.toList))) e = true) :
     entryOK (mkIx O) (C.view n m) (nd (C.view n m) i).ty (viewEntry n m e) := by
   simp only [entryOKA, Bool.and_eq_true, decide_eq_true_eq] at h
   obtain ⟨⟨h1, h2⟩, h3⟩ := h
@@ -185,7 +232,7 @@ theorem entryOKA_sound (hW : WF n m C) {i : Nat} {e : EntryA} (he : e ∈ (ndA C
   rw [view_nd_ty, keyOf_view]
   simp only [viewEntry] at *
   rw [h2]
-  exact childKeyA_view hl
+  exact childKeyA_view
 
 theorem poolSet_sound {i : Nat} {l f : Array Nat}
     (h : (poolSet (ndA C i)).contains (l, f) = true) :

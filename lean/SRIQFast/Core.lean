@@ -235,8 +235,13 @@ partial def branches (O : Onto) (seed : Ty) (closedPart : Option Ty := none) : A
         if h.any (cur.contains ·) then go cur acc rest out
         else match O.lazyDef.get? i with
         | some w => go (cur.insert w) (acc.push w) rest out
-        | none => h.foldl (fun out y =>
-          go (cur.insert y) (acc.push y) (O.gciBy[y]!.toList ++ rest) out) out
+        | none =>
+          if h.size == 1 then
+            -- one head name: no copy of `cur` and `acc` (they are not shared)
+            let y := h[0]!
+            go (cur.insert y) (acc.push y) (O.gciBy[y]!.toList ++ rest) out
+          else h.foldl (fun out y =>
+            go (cur.insert y) (acc.push y) (O.gciBy[y]!.toList ++ rest) out) out
       else go cur acc rest out
   let cur : HashSet Nat := seed.foldl (fun s x => s.insert x) ∅
   let q := match closedPart with

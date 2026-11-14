@@ -62,9 +62,17 @@ def abOf (tf : List (Fin n)) : List (RoleT (Fin m) × Fin n) :=
 def fwdL (ab : List (RoleT (Fin m) × Fin n)) (L : Array Nat) : List Nat :=
   (ab.filter fun p => bsA L (rc p.1)).map fun p => p.2.val
 
-def childKeyA (T : Array Nat) (ab : List (RoleT (Fin m) × Fin n)) (e : EntryA) : KeyA :=
+/-- The fillers of `abOf` by role code. -/
+def abMap (ab : List (RoleT (Fin m) × Fin n)) : Std.HashMap Nat (List Nat) :=
+  ab.foldl (fun mp p => mp.insert (rc p.1) (p.2.val :: mp.getD (rc p.1) [])) ∅
+
+/-- `fwdL` through `abMap`. -/
+def fwdM (am : Std.HashMap Nat (List Nat)) (L : Array Nat) : List Nat :=
+  L.toList.flatMap fun c => am.getD c []
+
+def childKeyA (T : Array Nat) (am : Std.HashMap Nat (List Nat)) (e : EntryA) : KeyA :=
   let fl := flipA e.lab
-  ⟨canon (e.fill.toList ++ fwdL ab e.lab), fl, T.filter fun a => relHitA ixf a fl⟩
+  ⟨canon (e.fill.toList ++ fwdM am e.lab), fl, T.filter fun a => relHitA ixf a fl⟩
 
 def closedIA (T : Array Nat) (tf : List (Fin n)) : Bool :=
   ix.gciTop.all (fun g => (gciAt ix g).2.any fun h => bsA T h.val) &&
@@ -78,8 +86,8 @@ def nodeOKA (i : Nat) (tf : List (Fin n)) : Bool :=
   decide (i < C.nodes.size) && decide ((ndA C i).ctx < C.keys.size) && closedIA ix (ndA C i).ty tf &&
     (keyA C (ndA C i).ctx).seed.all (bsA (ndA C i).ty)
 
-def entryOKA (T : Array Nat) (ab : List (RoleT (Fin m) × Fin n)) (e : EntryA) : Bool :=
-  decide (e.kid < C.keys.size) && decide (keyA C e.kid = childKeyA ixf T ab e) && upClosedA ix e.lab
+def entryOKA (T : Array Nat) (am : Std.HashMap Nat (List Nat)) (e : EntryA) : Bool :=
+  decide (e.kid < C.keys.size) && decide (keyA C e.kid = childKeyA ixf T am e) && upClosedA ix e.lab
 
 /-- The specs of a pool, for lookups. -/
 def poolSet (v : NodeA) : Std.HashSet (Array Nat × Array Nat) :=
@@ -218,8 +226,8 @@ def nodeClosedA (W : Array (List (Array Nat × Array Nat))) (i : Nat) : Bool :=
   let tf := finL n v.ty.toList
   let lows := lowAtF ix tf
   let ps := poolSet v
-  let ab := abOf ix tf
-  nodeOKA ix C i tf && v.pool.all (entryOKA ix ixf C v.ty ab) && r3A ixf κ lows ps &&
+  let am := abMap (abOf ix tf)
+  nodeOKA ix C i tf && v.pool.all (entryOKA ix ixf C v.ty am) && r3A ixf κ lows ps &&
     backOKA ix C v κ lows && r5A ix ixf C v κ lows (uppAtF ix tf) ps && witOKA ix C W v ps
 
 def rootOKA (a : Fin n) (k : Nat) : Bool :=
