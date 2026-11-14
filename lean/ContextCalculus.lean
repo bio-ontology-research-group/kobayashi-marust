@@ -328,3 +328,4 @@ import ContextCalculus.OWL.Datatypes.Oracle
 import ContextCalculus.OWL.Datatypes.OracleTests
 import ContextCalculus.OWL.EntailsAt
 import ContextCalculus.OWLFrontend.SRIQModels
+import ContextCalculus.OWLFrontend.SRIQDTranslate
