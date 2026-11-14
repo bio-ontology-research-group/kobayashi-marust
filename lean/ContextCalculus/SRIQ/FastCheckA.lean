@@ -130,7 +130,7 @@ def interLA : List (Array Nat) → Array Nat
   | [] => #[]
   | x :: xs => xs.foldl interA x
 
-def forcedA (cl : List (List (Array Nat))) : Array Nat := cl.foldr (fun l acc => acc ++ interLA l) #[]
+def forcedA (cl : List (List (Array Nat))) : Array Nat := cl.foldr (fun l acc => unionA acc (interLA l)) #[]
 
 def backOKA (v : NodeA) (κ : KeyA) (lows : List (Fin n × Nat × RoleT (Fin m) × Fin n)) : Bool :=
   let T := v.ty
@@ -140,7 +140,7 @@ def backOKA (v : NodeA) (κ : KeyA) (lows : List (Fin n × Nat × RoleT (Fin m) 
     if F.all (bsA T) then
       (dedupKey id ((cl.flatMap id).filter fun X => !X.all (bsA T))).all fun X =>
         brCovA ix C v.ctx (unionA T X)
-    else brCovA ix C v.ctx (canon (T.toList ++ F.toList))
+    else brCovA ix C v.ctx (unionA T F)
   else true
 
 def csetA (v : NodeA) (S : RoleT (Fin m)) (e : Fin n) : List EntryA :=
@@ -188,9 +188,11 @@ def r5A (v : NodeA) (κ : KeyA) (lows upps : List (Fin n × Nat × RoleT (Fin m)
 /-- The specs node `j` asks its parents to grow for (rule R6). -/
 def witA (j : Nat) : List (Array Nat × Array Nat) :=
   let v := ndA C j
+  let upps := uppAtA ix v.ty
+  if upps.isEmpty then [] else
   let κ := keyA C v.ctx
   let lows := lowAtA ix v.ty
-  (uppAtA ix v.ty).flatMap fun u =>
+  upps.flatMap fun u =>
     if pcBA κ u.2.2.1 u.2.2.2 = 1 ∧ u.2.1 < potA C v κ lows u.2.2.1 u.2.2.2 then
       (csetA C v u.2.2.1 u.2.2.2).map fun σ => (σ.lab, σ.fill)
     else []
@@ -227,7 +229,7 @@ def cacheOKA : Bool :=
   (List.range C.nodes.size).all (fun j =>
     decide (bkA C j = canon (fwdL (abOf ix (finL n (ndA C j).ty.toList)) (keyA C (ndA C j).ctx).lab))) &&
   (List.range C.keys.size).all fun k =>
-    decide (uniA C k = canon ((membA C k).flatMap fun j => (ndA C j).ty.toList))
+    decide (uniA C k = (membA C k).foldl (fun acc j => unionA acc (ndA C j).ty) #[])
 
 /-- **The fast check.** -/
 def closedFastB (req : List (Fin n)) : Bool :=

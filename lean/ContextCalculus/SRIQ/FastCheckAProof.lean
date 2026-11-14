@@ -355,6 +355,16 @@ theorem backLists_view (hW : WF n m C) (i : Nat) :
   refine List.map_congr_left fun p _ => ?_
   exact bkOf_view p.2
 
+theorem sorted_interA' {a : Array Nat} (ha : SortedA a) (b : Array Nat) : SortedA (interA a b) := by
+  unfold SortedA interA
+  rw [Array.toList_filter]
+  exact ha.filter _
+
+theorem sorted_foldl_interA' : ∀ (ts : List (Array Nat)) {t : Array Nat}, SortedA t →
+    SortedA (ts.foldl interA t)
+  | [], _, ht => ht
+  | x :: ts, _, ht => by rw [List.foldl_cons]; exact sorted_foldl_interA' ts (sorted_interA' ht x)
+
 theorem absTy_interA {a b : Array Nat} (hb : SortedA b) : absTy n (interA a b) = absTy n a ∩ absTy n b := by
   ext y
   rw [Finset.mem_inter, mem_absTy, mem_absTy, mem_absTy, interA, Array.mem_filter, bsA_iff hb]
@@ -382,9 +392,7 @@ theorem absTy_forcedA {cl : List (List (Array Nat))} (h : ∀ l ∈ cl, ∀ X �
   | cons l cl ih =>
     have h1 := ih fun l' hl' => h l' (List.mem_cons_of_mem _ hl')
     simp only [forcedA, forcedOf, List.foldr_cons, List.map_cons] at h1 ⊢
-    ext y
-    rw [mem_absTy, Array.mem_append, Finset.mem_union, ← mem_absTy, ← mem_absTy, h1,
-      absTy_interLA (h l List.mem_cons_self)]
+    rw [absTy_unionA, h1, absTy_interLA (h l List.mem_cons_self)]
 
 theorem mem_foldl_interA : ∀ (xs : List (Array Nat)) (x : Array Nat) (z : Nat),
     z ∈ xs.foldl interA x → z ∈ x
@@ -398,13 +406,29 @@ theorem mem_forcedA : ∀ {cl : List (List (Array Nat))} {z : Nat}, z ∈ forced
   | [], z, h => by simp [forcedA] at h
   | l :: cl, z, h => by
     simp only [forcedA, List.foldr_cons] at h
-    rcases Array.mem_append.1 h with h | h
+    rcases mem_unionA.1 h with h | h
     · obtain ⟨l', hl', X, hX, hz⟩ := mem_forcedA (cl := cl) h
       exact ⟨l', List.mem_cons_of_mem _ hl', X, hX, hz⟩
     · cases l with
       | nil => simp [interLA] at h
       | cons x xs =>
         exact ⟨_, List.mem_cons_self, x, List.mem_cons_self, mem_foldl_interA xs x z h⟩
+
+theorem sorted_interLA {l : List (Array Nat)} (h : ∀ X ∈ l, SortedA X) : SortedA (interLA l) := by
+  cases l with
+  | nil => simp [interLA, SortedA]
+  | cons x xs =>
+    simp only [interLA]
+    exact sorted_foldl_interA' xs (h x List.mem_cons_self)
+
+theorem sorted_forcedA {cl : List (List (Array Nat))} (h : ∀ l ∈ cl, ∀ X ∈ l, SortedA X) :
+    SortedA (forcedA cl) := by
+  induction cl with
+  | nil => simp [forcedA, SortedA]
+  | cons l cl ih =>
+    simp only [forcedA, List.foldr_cons] at ih ⊢
+    exact sorted_unionA (ih fun l' hl' => h l' (List.mem_cons_of_mem _ hl'))
+      (sorted_interLA (h l List.mem_cons_self))
 
 theorem mem_backListsA {v : NodeA} {κ : KeyA} {lows : List (Fin n × Nat × RoleT (Fin m) × Fin n)}
     {l : List (Array Nat)} (hl : l ∈ backListsA C v κ lows) {X : Array Nat} (hX : X ∈ l) :
@@ -453,10 +477,8 @@ theorem backOKA_sound (hW : WF n m C) {i : Nat}
       rwa [absTy_unionA] at hc
   · rw [if_neg hF] at h
     refine ⟨fun _ => ?_, fun hsub => absurd hsub ?_⟩
-    · have hc := brCovA_sound (sorted_canon _) h
-      rwa [absTy_canon (s := absTy n (ndA C i).ty ∪ absTy n (forcedA cl)) fun y => by
-        rw [Finset.mem_union, mem_absTy, mem_absTy, List.mem_append, Array.mem_def,
-          Array.mem_def]] at hc
+    · have hc := brCovA_sound (sorted_unionA (hW.ty i) (sorted_forcedA hS)) h
+      rwa [absTy_unionA] at hc
     · intro hsub
       rw [Bool.not_eq_true, Bool.eq_false_iff] at hF
       apply hF
@@ -687,7 +709,9 @@ theorem mem_witA (hW : WF n m C) {j : Nat} {u : Fin n × Nat × RoleT (Fin m) ×
   rw [view_nd_ty, ← uppAtA_eq _ (hW.ty j)] at hu
   rw [view_key_ctx, ← pcBA_eq (hW.lab _) (hW.pi _)] at hpc
   rw [pot_view hW] at hk
-  simp only [witA, List.mem_flatMap]
+  simp only [witA]
+  rw [if_neg (by rw [List.isEmpty_iff]; exact List.ne_nil_of_mem hu)]
+  simp only [List.mem_flatMap]
   refine ⟨u, hu, ?_⟩
   rw [if_pos ⟨hpc, hk⟩]
   exact List.mem_map.2 ⟨σA, hσA, rfl⟩
@@ -783,6 +807,14 @@ theorem mem_foldr_union {l : List Nat} {f : Nat → Ty n} {y : Fin n} :
   | nil => simp
   | cons j l ih => simp [ih]
 
+theorem mem_foldl_unionA {f : Nat → Array Nat} : ∀ (l : List Nat) (acc : Array Nat) (z : Nat),
+    z ∈ l.foldl (fun acc j => unionA acc (f j)) acc ↔ z ∈ acc ∨ ∃ j ∈ l, z ∈ f j
+  | [], acc, z => by simp
+  | j :: l, acc, z => by
+    rw [List.foldl_cons, mem_foldl_unionA l _ z, mem_unionA]
+    simp only [List.mem_cons, exists_eq_or_imp]
+    tauto
+
 theorem cacheOKA_sound (hW : WF n m C) (h : cacheOKA (mkIx O) C = true) :
     CacheOK (mkIx O) (C.view n m) := by
   simp only [cacheOKA, Bool.and_eq_true, List.all_eq_true, List.mem_range, decide_eq_true_eq] at h
@@ -794,8 +826,8 @@ theorem cacheOKA_sound (hW : WF n m C) (h : cacheOKA (mkIx O) C = true) :
   · rw [view_keys_size] at hk
     rw [uniOf_view, h2 k hk, memb_view]
     ext y
-    rw [mem_absTy, mem_canon, List.mem_flatMap, mem_foldr_union]
-    simp only [view_nd_ty, mem_absTy, Array.mem_def]
+    rw [mem_absTy, mem_foldl_unionA, mem_foldr_union]
+    simp only [view_nd_ty, mem_absTy, Array.mem_def, List.not_mem_nil, false_or]
 
 /-- **The fast check is sound**: when it accepts, the finset candidate set
 the arrays denote satisfies the closure conditions. -/
