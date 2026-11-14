@@ -4,6 +4,7 @@ import SRIQFast.Core
 import SRIQFast.Brute
 import SRIQFast.ToCand
 import ContextCalculus.OWLFrontend.SRIQFastRoute
+import ContextCalculus.SRIQ.ElimMarkers
 
 /-! Development probe for stage C1c: the unproved demand-driven SHIQ
 prototype (`SRIQFast`). `km-sriq-fast-probe <file.ofn>` runs the parser,
@@ -26,6 +27,10 @@ Environment:
   `KM_SRIQF_OLDCHECK=1` uses the finset check `closedB` and `fastRows`.
 - `KM_SRIQF_SHIQ=slow` (`isSHIQB`) or `unproved` (`isSHIQFast`): the
   simple-role check; the default is the proved `isSHIQFastB`.
+- `KM_SRIQF_ELIM=0`: skip the elimination of body markers (`elimChecked`,
+  which the certified route applies after `encTransQ`).
+- `KM_SRIQF_DUMP=<path>`: write the ontology the generator sees in the
+  `--sriq` format; `KM_SRIQF_DIAG=1`: statistics on the generated contexts.
 - `KM_SRIQF_INHERIT=0`, `KM_SRIQF_SKIPCOVERED=0`, `KM_SRIQF_MAXNODES=k`:
   variants of the procedure. -/
 
@@ -86,6 +91,7 @@ def readCfg : IO Cfg := do
            funcMerge := ← envFlag "KM_SRIQF_FUNCMERGE" true
            piFull := ← envFlag "KM_SRIQF_PIFULL" false
            checkedMerge := ← envFlag "KM_SRIQF_CHECKEDMERGE" true
+           staticBack := ← envFlag "KM_SRIQF_STATICBACK" false
            maxNodes }
 
 structure Result where
@@ -175,6 +181,44 @@ def elimStats {n m : Nat} (Es : Array (NodeE n m)) (A : Array Bool) : IO Unit :=
     hist := hist.modify b (· + 1)
   IO.eprintln s!"dfsstats: total_steps={tot} max={mx} fails={fails} hist4={hist}"
 
+/-- Diagnostic: where the nodes and contexts of a generation state come from. -/
+def genDiag (st : St) : IO Unit := do
+  -- nodes per context
+  let mut hist : Array Nat := Array.replicate 12 0
+  for c in st.ctxs do
+    let b := min 11 (Nat.log2 (c.nodes.size + 1))
+    hist := hist.modify b (· + 1)
+  IO.eprintln s!"diag: nodes-per-ctx log2 histogram {hist}"
+  -- contexts that share (seed, lab) but differ in pi; share lab only
+  let mut bySL : Std.HashMap (Ty × Ty) Nat := ∅
+  let mut byL : Std.HashMap Ty Nat := ∅
+  for c in st.ctxs do
+    bySL := bySL.insert (c.key.seed, c.key.lab) (bySL.getD (c.key.seed, c.key.lab) 0 + 1)
+    byL := byL.insert c.key.lab (byL.getD c.key.lab 0 + 1)
+  IO.eprintln s!"diag: ctxs={st.ctxs.size} seed_lab={bySL.size} labs={byL.size}"
+  -- parents per context
+  let mut ph : Array Nat := Array.replicate 16 0
+  for c in st.ctxs do
+    ph := ph.modify (min 15 (Nat.log2 (c.parents.size + 1))) (· + 1)
+  IO.eprintln s!"diag: parents-per-ctx log2 histogram {ph}"
+  -- the largest contexts
+  let order := (Array.range st.ctxs.size).qsort fun a b => st.ctxs[a]!.nodes.size > st.ctxs[b]!.nodes.size
+  for k in order.extract 0 3 do
+    let c := st.ctxs[k]!
+    IO.eprintln s!"diag: ctx {k} nodes={c.nodes.size} parents={c.parents.size} seed={c.key.seed} lab={c.key.lab} pi={c.key.pi}"
+    for v in c.nodes.extract 0 12 do
+      let nd := st.nodes[v]!
+      IO.eprintln s!"diag:   node {v} |ty|={nd.ty.size} extra={(nd.ty.filter fun x => !mem c.key.seed x).toList.take 40} pool={nd.pool.size} back={nd.back}"
+  -- seeds: how many contexts per fill-only part? (seed minus names that are universal fillers)
+  let mut seedSz : Array Nat := Array.replicate 16 0
+  for c in st.ctxs do
+    seedSz := seedSz.modify (min 15 (Nat.log2 (c.key.seed.size + 1))) (· + 1)
+  IO.eprintln s!"diag: seed size log2 histogram {seedSz}"
+  if let some k0 := (← IO.getEnv "KM_SRIQF_DIAGCTX").bind String.toNat? then
+    for k in [k0:min st.ctxs.size (k0 + 40)] do
+      let c := st.ctxs[k]!
+      IO.eprintln s!"diagctx {k} n={c.nodes.size} par={c.parents.size} lab={c.key.lab} pi={c.key.pi} seed={c.key.seed}"
+
 /-- Run the prototype on an ALCHIQ ontology, printing statistics. -/
 def runFast {n m : Nat} (E : SRIQ.Ontology (Fin n) (Fin m)) (req : Array Nat)
     (reqF : List (Fin n) := []) (checked : Bool := false) : IO (Option Result) := do
@@ -216,7 +260,8 @@ def runFast {n m : Nat} (E : SRIQ.Ontology (Fin n) (Fin m)) (req : Array Nat)
     let avgSeed := (st.ctxs.foldl (fun a c => a + c.key.seed.size) 0) / max 1 st.ctxs.size
     let avgTy := (st.nodes.foldl (fun a nd => a + nd.ty.size) 0) / max 1 st.nodes.size
     IO.eprintln s!"ctx: seed_lab_pairs={seeds} avg_seed={avgSeed} avg_type={avgTy}"
-    IO.eprintln s!"gen: ctxs={st.ctxs.size} nodes={st.nodes.size} specs={specs} merges={st.nMerge} pw_requests={st.nPW} back_variants={st.nBackVar} pw_variants={st.nPWVar} lazy_variants={st.nLazyVar} rounds={st.nRounds} branch_calls={st.nBranchCalls} branches={st.nBranches} max_branches={st.maxBranches} multi_node_ctxs={multi} max_nodes_per_ctx={maxNodesCtx} aborted={st.aborted} index_ms={t1-t0} gen_elim_ms={t2-t1}"
+    IO.eprintln s!"gen: ctxs={st.ctxs.size} nodes={st.nodes.size} specs={specs} merges={st.nMerge} pw_requests={st.nPW} back_variants={st.nBackVar} pw_variants={st.nPWVar} lazy_variants={st.nLazyVar} superseded={st.nSup} rounds={st.nRounds} branch_calls={st.nBranchCalls} branches={st.nBranches} max_branches={st.maxBranches} multi_node_ctxs={multi} max_nodes_per_ctx={maxNodesCtx} aborted={st.aborted} index_ms={t1-t0} gen_elim_ms={t2-t1}"
+    if (← IO.getEnv "KM_SRIQF_DIAG") == some "1" then genDiag st
     if st.aborted then
       return some { rows := #[], aborted := true }
     let t3 ← IO.monoMsNow
@@ -316,23 +361,33 @@ def mainSriq (path : String) (checkedArg : Bool := false) : IO UInt32 := do
   let (n, m) ← match hdr with
     | ["n", a, "m", b] => pure (a.toNat!, b.toNat!)
     | _ => do IO.eprintln "first line: n <N> m <M>"; return 2
-  let mut cls : List (SRIQ.Clause Nat Nat) := []
+  let mut cls : Array (SRIQ.Clause Nat Nat) := #[]
   let mut nreq := n
+  let mut reqList : Option (List Nat) := none
   for l in lines.drop 1 do
     if let ["req", r] := l then
       nreq := r.toNat!
       continue
+    if l.head? == some "reqs" then
+      reqList := some ((l.drop 1).map String.toNat!)
+      continue
     match parseLine l with
     | .error e => IO.eprintln e; return 2
     | .ok none => pure ()
-    | .ok (some c) => cls := cls ++ [c]
-  let some O := cls.mapM (SRIQT.toFin n m) | IO.eprintln "index out of range"; return 2
+    | .ok (some c) => cls := cls.push c
+  let some O := cls.toList.mapM (SRIQT.toFin n m) | IO.eprintln "index out of range"; return 2
   if !isSHIQB O then
     IO.eprintln "declined: not SHIQ"; return 3
   let E := SRIQ.Proc.encTransQ O
-  let req : List (Fin (n + E.1)) := ((List.finRange n).filter (·.val < nreq)).map (Fin.castAdd E.1)
+  let req : List (Fin (n + E.1)) := match reqList with
+    | some rl => ((List.finRange n).filter (fun x => rl.contains x.val)).map (Fin.castAdd E.1)
+    | none => ((List.finRange n).filter (·.val < nreq)).map (Fin.castAdd E.1)
   let checked := checkedArg || (← envFlag "KM_SRIQF_CHECKED" false)
-  let some res ← runFast E.2 (req.map (·.val)).toArray req checked | return 3
+  -- the elimination of body markers, as the certified route (names below `nreq` kept)
+  let E2 := if reqList.isNone && (← envFlag "KM_SRIQF_ELIM" true) then
+    SRIQ.Elim.elimChecked E.2 nreq else E.2
+  if E2.length != E.2.length then IO.eprintln s!"elim: clauses={E.2.length}->{E2.length}"
+  let some res ← runFast E2 (req.map (·.val)).toArray req checked | return 3
   if res.aborted then IO.println "aborted"; return 4
   if res.checked == some false then IO.println "declined: closedB"; return 3
   let showRows (rs : Array (Nat × Option Ty)) (tag : String) : IO Unit := do
@@ -369,6 +424,28 @@ def mainSriq (path : String) (checkedArg : Bool := false) : IO UInt32 := do
       return 1
   return status
 
+def rtStr {m : Nat} : SRI.RoleT (Fin m) → String
+  | .pos r => toString r.val
+  | .inv r => s!"-{r.val}"
+
+/-- Write an ALCHIQ ontology (after `encTransQ`) in the `--sriq` format,
+requesting the names below `nreq`. -/
+def dumpSriq {n m : Nat} (path : String) (nn mm : Nat) (O : SRIQ.Ontology (Fin n) (Fin m)) (nreq : Nat) :
+    IO Unit := do
+  let h ← IO.FS.Handle.mk path .write
+  h.putStrLn s!"n {nn} m {mm}"
+  h.putStrLn s!"req {nreq}"
+  for cl in O do
+    match cl with
+    | .gci b hd => h.putStrLn s!"gci {String.intercalate " " (b.map (toString ·.val))} | {String.intercalate " " (hd.map (toString ·.val))}"
+    | .exRight a R b => h.putStrLn s!"ex {a.val} {rtStr R} {b.val}"
+    | .allRight a S c => h.putStrLn s!"all {a.val} {rtStr S} {c.val}"
+    | .atLeast a k R b => h.putStrLn s!"ge {a.val} {k} {rtStr R} {b.val}"
+    | .atMost a k S e => h.putStrLn s!"le {a.val} {k} {rtStr S} {e.val}"
+    | .chain [R] S => h.putStrLn s!"sub {rtStr R} {rtStr S}"
+    | .chain _ _ => h.putStrLn "# chain"
+  h.flush
+
 def mainOfn (path : String) (checkedArg : Bool) : IO UInt32 := do
     let t0 ← IO.monoMsNow
     let text ← IO.FS.readFile path
@@ -396,8 +473,22 @@ def mainOfn (path : String) (checkedArg : Bool) : IO UInt32 := do
         let t4 ← IO.monoMsNow
         IO.eprintln s!"fresh={E.1} enc_clauses={E.2.length} names={T.conceptCount + E.1} enc_ms={t4-t3}"
         let req := sriqRequest T E.1
+        let EO : SRIQ.Ontology (Fin (T.conceptCount + E.1)) (Fin T.roleCount) ←
+          if (← envFlag "KM_SRIQF_ELIM" true) then do
+            -- as the certified route `owlSHIQFast`: `elimChecked`
+            let e0 ← IO.monoMsNow
+            let S := SRIQ.Elim.elimHint E.2 T.named.length
+            let ok := SRIQ.Elim.hintOK E.2 T.named.length S
+            let E2 := SRIQ.Elim.elimChecked E.2 T.named.length
+            let nS := S.foldl (fun a o => if o.isSome then a + 1 else a) 0
+            IO.eprintln s!"elim: names={nS} hint_ok={ok} clauses={E.2.length}->{E2.length} ms={(← IO.monoMsNow) - e0}"
+            pure E2
+          else pure E.2
+        if let some dp := ← IO.getEnv "KM_SRIQF_DUMP" then
+          dumpSriq dp (T.conceptCount + E.1) T.roleCount EO T.named.length
+          IO.eprintln s!"dumped {dp}"
         let checked := checkedArg || (← envFlag "KM_SRIQF_CHECKED" false)
-        let some res ← runFast E.2 (req.map (·.val)).toArray req checked | return 3
+        let some res ← runFast EO (req.map (·.val)).toArray req checked | return 3
         if res.aborted then IO.println "aborted"; return 4
         if res.checked == some false then IO.println "declined: closedB"; return 3
         let named := T.named.length

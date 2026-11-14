@@ -261,6 +261,40 @@ partial def branches (O : Onto) (seed : Ty) (closedPart : Option Ty := none) : A
       out := out.push t
   return out
 
+/-- Horn closure: add the head of every gci with one head name whose body
+holds (and of every top gci with one head name). -/
+partial def hornClose (O : Onto) (s : Ty) : Ty := Id.run do
+  let mut cur : HashSet Nat := s.foldl (fun h x => h.insert x) ∅
+  let mut acc : Array Nat := #[]
+  let mut todo : Array Nat := s
+  for g in O.gciTop do
+    let (_, h) := O.gcis[g]!
+    if h.size == 1 && !cur.contains h[0]! then
+      cur := cur.insert h[0]!; acc := acc.push h[0]!; todo := todo.push h[0]!
+  let mut i := 0
+  while i < todo.size do
+    let x := todo[i]!
+    i := i + 1
+    for g in O.gciBy[x]! do
+      let (b, h) := O.gcis[g]!
+      if h.size == 1 && !cur.contains h[0]! && b.all (cur.contains ·) then
+        cur := cur.insert h[0]!; acc := acc.push h[0]!; todo := todo.push h[0]!
+  return if acc.isEmpty then s else union s (sortDedup acc)
+
+/-- The static back set of a type: for every lower clause `(a, k, R, b)`
+with `a ∈ t`, the names that every witness (holding `b` and the names
+`t` pushes across `up R`, and their Horn closure) pushes back across the
+flipped label. Every model element with type above `t` holds them. -/
+def staticBack (O : Onto) (t : Ty) : Ty := Id.run do
+  let mut acc : Ty := #[]
+  for a in t do
+    for qi in O.lowBy[a]! do
+      let (_, _, R, b) := O.low[qi]!
+      let L := O.up[R]!
+      let w := hornClose O (union #[b] (fwd O t L))
+      acc := union acc (fwd O w (flipL L))
+  return acc
+
 /-! ## Contexts, nodes, the generation state -/
 
 structure Spec where
@@ -295,6 +329,8 @@ structure NodeD where
   backDone : HashSet Ty := ∅
   kids : Array Nat := #[]
   back : Ty := #[]
+  /-- superseded by a static back set: no pool, not a candidate -/
+  sup : Bool := false
   deriving Inhabited
 
 structure Cfg where
@@ -318,6 +354,11 @@ structure Cfg where
   rule, which merged default specs only, misses a merge of a merged spec
   with a default: `lean/testdata/sriq-fast/funcmerge-cx.sriq`) -/
   checkedMerge : Bool := true
+  /-- static back sets: a node whose type misses the back set that the
+  witness of one of its lower clauses must push (computed from the
+  ontology alone) is superseded: it gets the variant with that set and no
+  pool of its own -/
+  staticBack : Bool := false
   deriving Repr
 
 inductive Ev where
@@ -338,6 +379,7 @@ structure St where
   nBackVar : Nat := 0
   nPWVar : Nat := 0
   nLazyVar : Nat := 0
+  nSup : Nat := 0
   nBranchCalls : Nat := 0
   maxBranches : Nat := 0
   nBranches : Nat := 0
@@ -403,7 +445,8 @@ partial def addNode (k : Nat) (t : Ty) (inh : Array Spec) : M Unit := do
   let existing ← (fun s => (s.ctxs[k]!.byTy.get? t)) <$> get
   match existing with
   | some v =>
-    for σ in inh do addSpec v σ
+    if !(← (fun s => s.nodes[v]!.sup) <$> get) then
+      for σ in inh do addSpec v σ
   | none =>
     let cfg ← getCfg
     let size ← (fun s => s.nodes.size) <$> get
@@ -414,7 +457,9 @@ partial def addNode (k : Nat) (t : Ty) (inh : Array Spec) : M Unit := do
     let v := size
     let lab ← (fun s => s.ctxs[k]!.key.lab) <$> get
     let bk := fwd O t lab
-    let nd : NodeD := { ctx := k, ty := t, back := bk }
+    let sb := if cfg.staticBack then staticBack O t else #[]
+    let isSup := cfg.staticBack && !sub sb t
+    let nd : NodeD := { ctx := k, ty := t, back := bk, sup := isSup }
     let isNewBack ← (fun s => !s.ctxs[k]!.backs.contains bk) <$> get
     -- one field per update: a multi-field update copies the later fields
     modify fun s => { s with nodes := s.nodes.push nd }
@@ -422,8 +467,12 @@ partial def addNode (k : Nat) (t : Ty) (inh : Array Spec) : M Unit := do
       let c := { c with nodes := c.nodes.push v }
       let c := { c with byTy := c.byTy.insert t v }
       let c := { c with uni := t.foldl (fun u x => u.insert x) c.uni }
-      let c := { c with byName := t.foldl (fun m x => m.insert x ((m.getD x #[]).push v)) c.byName }
-      { c with backs := c.backs.insert bk } }
+      let c := if isSup then c else { c with byName := t.foldl (fun m x => m.insert x ((m.getD x #[]).push v)) c.byName }
+      if isSup then c else { c with backs := c.backs.insert bk } }
+    if isSup then
+      modify fun s => { s with nSup := s.nSup + 1 }
+      for t' in ← branchesM (union t sb) (some t) do addNode k t' #[]
+      return
     enqueue (.init v inh)
     let parents ← (fun s => s.ctxs[k]!.parents) <$> get
     for (μ, _) in parents do
@@ -723,7 +772,7 @@ def initNode (v : Nat) (inh : Array Spec) : M Unit := do
 
 def progressLine (s : St) : String :=
   let specs := s.nodes.foldl (fun a nd => a + nd.pool.size) 0
-  s!"progress: events={s.nEvents} queue={s.queue.size - s.qpos} ctxs={s.ctxs.size} nodes={s.nodes.size} specs={specs} merges={s.nMerge} pw_requests={s.nPW} back_variants={s.nBackVar} pw_variants={s.nPWVar} lazy_variants={s.nLazyVar} rounds={s.nRounds} ms_init={s.nsInit/1000000} ms_trig={s.nsTrig/1000000} ms_back={s.nsBack/1000000} ms_branch={s.nsBranch/1000000} branch_calls={s.nBranchCalls} branches={s.nBranches} max_branches={s.maxBranches}"
+  s!"progress: events={s.nEvents} queue={s.queue.size - s.qpos} ctxs={s.ctxs.size} nodes={s.nodes.size} specs={specs} merges={s.nMerge} pw_requests={s.nPW} back_variants={s.nBackVar} pw_variants={s.nPWVar} lazy_variants={s.nLazyVar} superseded={s.nSup} rounds={s.nRounds} ms_init={s.nsInit/1000000} ms_trig={s.nsTrig/1000000} ms_back={s.nsBack/1000000} ms_branch={s.nsBranch/1000000} branch_calls={s.nBranchCalls} branches={s.nBranches} max_branches={s.maxBranches}"
 
 /-- One step of the event loop; `false` when nothing is left. -/
 def step : M Bool := do
