@@ -404,6 +404,78 @@ public class ConventionsTest {
         }
     }
 
+    /** Nominal D = {a}: every model has p = q = {(a, 1)}, so p and q are equivalent, which no told axiom shows. */
+    static final String DATA_NOMINAL = HEAD + "Ontology(<http://example.org/conv-data-nom>\n"
+            + "Declaration(Class(:D)) Declaration(DataProperty(:p)) Declaration(DataProperty(:q))\n"
+            + "EquivalentClasses(:D ObjectOneOf(:a))\n"
+            + "DataPropertyDomain(:p :D) DataPropertyDomain(:q :D)\n"
+            + "FunctionalDataProperty(:p) FunctionalDataProperty(:q)\n"
+            + "DataPropertyAssertion(:p :a \"1\"^^xsd:integer) DataPropertyAssertion(:q :a \"1\"^^xsd:integer)\n"
+            + ")\n";
+
+    /** The same without a nominal: functional properties, and the answer is the told hierarchy. */
+    static final String DATA_FUNCTIONAL = HEAD + "Ontology(<http://example.org/conv-data-fun>\n"
+            + "Declaration(Class(:D)) Declaration(NamedIndividual(:a)) Declaration(DataProperty(:p)) Declaration(DataProperty(:q))\n"
+            + "ClassAssertion(:D :a)\n"
+            + "DataPropertyDomain(:p :D) DataPropertyDomain(:q :D) SubDataPropertyOf(:p :q)\n"
+            + "FunctionalDataProperty(:p) FunctionalDataProperty(:q)\n"
+            + "DataPropertyAssertion(:p :a \"1\"^^xsd:integer) DataPropertyAssertion(:q :a \"1\"^^xsd:integer)\n"
+            + ")\n";
+
+    @Test
+    public void functionalDataPropertiesWithNominalsAreRefused() throws Exception {
+        OWLOntology o = IndividualsTest.parse(DATA_NOMINAL);
+        OWLDataFactory df = df(o);
+        // HermiT finds the equivalence that the stated axioms do not show.
+        OWLReasoner h = hermit(o);
+        assertEquals("[p, q]", node(h.getEquivalentDataProperties(dp(df, "p"))));
+        KMReasoner k = km(o);
+        assertFalse(k.getPrecomputableInferenceTypes().contains(InferenceType.DATA_PROPERTY_HIERARCHY));
+        for (Query q : Arrays.<Query>asList(r -> r.getEquivalentDataProperties(dp(df, "p")),
+                r -> r.getSuperDataProperties(dp(df, "q"), true), r -> r.getDataPropertyDomains(dp(df, "p"), true),
+                r -> r.getTopDataPropertyNode())) {
+            try {
+                q.run(k);
+                fail("a functional data property next to a nominal must be refused");
+            } catch (UnsupportedOperationException expected) {
+                assertTrue(expected.getMessage(), expected.getMessage().contains("nominal"));
+            }
+        }
+    }
+
+    @Test
+    public void functionalDataPropertiesWithoutNominalsStillAnswer() throws Exception {
+        OWLOntology o = IndividualsTest.parse(DATA_FUNCTIONAL);
+        OWLDataFactory df = df(o);
+        OWLReasoner h = hermit(o);
+        KMReasoner k = km(o);
+        assertTrue(k.getPrecomputableInferenceTypes().contains(InferenceType.DATA_PROPERTY_HIERARCHY));
+        for (String n : new String[]{"p", "q"}) {
+            for (boolean direct : new boolean[]{true, false}) {
+                assertEquals(nodes(h.getSuperDataProperties(dp(df, n), direct)), nodes(k.getSuperDataProperties(dp(df, n), direct)));
+                assertEquals(nodes(h.getSubDataProperties(dp(df, n), direct)), nodes(k.getSubDataProperties(dp(df, n), direct)));
+                assertEquals(nodes(h.getDataPropertyDomains(dp(df, n), direct)), nodes(k.getDataPropertyDomains(dp(df, n), direct)));
+            }
+            assertEquals(node(h.getEquivalentDataProperties(dp(df, n))), node(k.getEquivalentDataProperties(dp(df, n))));
+        }
+    }
+
+    @Test
+    public void anAssertedLiteralOutsideTheRangeMakesTheOntologyInconsistent() throws Exception {
+        // The emptiness rules assume this: a value outside the stated datatype is no model.
+        String own = HEAD + "Ontology(<http://example.org/conv-data-badlit>\n"
+                + "Declaration(DataProperty(:p)) DataPropertyRange(:p xsd:integer)\n"
+                + "DataPropertyAssertion(:p :a \"s\")\n)\n";
+        String inherited = HEAD + "Ontology(<http://example.org/conv-data-badlit2>\n"
+                + "Declaration(DataProperty(:p)) Declaration(DataProperty(:q)) SubDataPropertyOf(:p :q)\n"
+                + "DataPropertyRange(:q xsd:integer) DataPropertyAssertion(:p :a \"s\")\n)\n";
+        for (String source : new String[]{own, inherited}) {
+            OWLOntology o = IndividualsTest.parse(source);
+            assertFalse(hermit(o).isConsistent());
+            assertFalse(source, km(o).isConsistent());
+        }
+    }
+
     // ---- item 2: nothing answers empty ----------------------------------------
 
     private interface Query { void run(OWLReasoner r) throws Exception; }

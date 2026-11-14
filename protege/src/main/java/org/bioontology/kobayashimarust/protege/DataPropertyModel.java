@@ -24,7 +24,10 @@ import java.util.*;
  * {@code FunctionalDataProperty}, {@code DataPropertyDomain} with a named
  * class and {@code DataPropertyRange} with a built-in datatype, these three
  * only on properties other than top and bottom. No class axiom, rule, key,
- * disjointness or complex range mentions a data property.
+ * disjointness or complex range mentions a data property. If the ontology
+ * has a {@code FunctionalDataProperty} axiom it must also have no nominal:
+ * no {@code ObjectOneOf}, {@code ObjectHasValue} or {@code DataHasValue} in
+ * any class expression and no SWRL rule (imports included).
  *
  * <p><b>Why the told hierarchy is then complete.</b> Let {@code r(p)} be the
  * properties reachable from {@code p} by the stated sub-property and
@@ -39,11 +42,26 @@ import java.util.*;
  * {@code p} and to every property of {@code r(p)}, with {@code x} in the
  * conjunction of the domains over {@code r(p)} and {@code l} in their one
  * datatype. The domains form a chain in the taxonomy (checked), so the
- * conjunction is the most specific one, which is satisfiable. No axiom
- * outside the fragment mentions a data property, so no other axiom can fail,
- * and functionality holds because a property that already has a value for
- * {@code x} in the minimal model of the assertions has its asserted pair as a
- * witness anyway. The pair is in {@code p} but not in {@code q}.
+ * conjunction is the most specific one, which is satisfiable, so some element
+ * of the model lies in it. The pair is in {@code p} but not in {@code q}.
+ * Two things must hold for the extended interpretation to be a model.
+ * (1) Functionality: {@code x} must have no data value for a functional
+ * property of {@code r(p)}. Take the disjoint union of the model with a copy
+ * of itself in which every element has no data value and no named individual
+ * is interpreted (the named individuals stay in the original part), and let
+ * {@code x} be the copy of an element of the conjunction. Without nominals
+ * every class expression is satisfied by an element of the copy exactly as by
+ * the original (the copy has the same object property and class structure),
+ * so {@code x} lies in the conjunction, and every axiom of the ontology still
+ * holds: assertions concern named individuals only, and the fragment's data
+ * axioms are satisfied by empty data property extensions in the copy. With a
+ * nominal this fails (for {@code D ≡ {a}} the only element of {@code D} is
+ * {@code a}, which may carry a forced value) and the model refuses when a
+ * functional property exists. Without functional properties {@code x} may be
+ * any element of the conjunction, named or not, because adding a pair
+ * violates no axiom. (2) No other axiom mentions a data property, so none can
+ * fail; the sub-property axioms hold because the pair was added to all of
+ * {@code r(p)}, and the range holds by the choice of {@code l}.
  *
  * <p>Domains follow the same way: {@code ∃p.rdfs:Literal ⊑ C} holds iff
  * {@code p} is empty, or {@code C} is a super class of the most specific
@@ -114,11 +132,36 @@ final class DataPropertyModel {
      * taxonomy (incomparable domains).
      */
     static String outsideFragment(OWLOntology ontology) {
+        String nominal = functionalWithNominals(ontology);
+        if (nominal != null) return nominal;
         for (OWLDataProperty p : ontology.getDataPropertiesInSignature(Imports.INCLUDED)) {
             boolean special = p.isOWLTopDataProperty() || p.isOWLBottomDataProperty();
             for (OWLAxiom axiom : ontology.getReferencingAxioms(p, Imports.INCLUDED)) {
                 String why = whyOutside(axiom, special);
                 if (why != null) return why;
+            }
+        }
+        return null;
+    }
+
+    /** A functional data property next to a nominal or a rule: the witness argument needs an unnamed element. */
+    private static String functionalWithNominals(OWLOntology ontology) {
+        boolean functional = false;
+        for (OWLOntology o : ontology.getImportsClosure()) {
+            if (!o.getAxioms(AxiomType.FUNCTIONAL_DATA_PROPERTY).isEmpty()) {
+                functional = true;
+                break;
+            }
+        }
+        if (!functional) return null;
+        for (OWLOntology o : ontology.getImportsClosure()) {
+            for (OWLAxiom axiom : o.getLogicalAxioms()) {
+                if (axiom instanceof SWRLRule) return "a functional data property and the rule " + axiom;
+                for (OWLClassExpression ce : axiom.getNestedClassExpressions()) {
+                    if (ce instanceof OWLObjectOneOf || ce instanceof OWLObjectHasValue || ce instanceof OWLDataHasValue) {
+                        return "a functional data property and the nominal in " + axiom;
+                    }
+                }
             }
         }
         return null;
