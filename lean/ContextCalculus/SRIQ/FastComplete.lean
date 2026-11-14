@@ -1,4 +1,5 @@
 import ContextCalculus.SRIQ.FastSound
+import Mathlib.Algebra.Order.BigOperators.Group.Finset
 
 /-!
 # Certificate check for the fast SHIQ procedure: completeness (stage C1c)
@@ -261,5 +262,321 @@ theorem child_pg (hI : models I O) (hC : ClosedP (mkIx O) U req) {i : Nat} {z w 
     exact Finset.mem_inter.2 ⟨hfill hb1, hb2⟩
 
 end Sim
+
+/-! ## Configurations -/
+
+section Config
+
+open Classical
+
+variable (O U I)
+
+/-- A spec serves a lower clause: it has the role and the filler. -/
+def Covers (q : Fin n × Nat × RoleT (Fin m) × Fin n) (σ : Spec n m) : Prop :=
+  q.2.2.1 ∈ σ.lab ∧ q.2.2.2 ∈ σ.fill
+
+/-- The model elements that serve `q` in configuration `E`, with the parent
+element when the parent entry counts for `q`. -/
+noncomputable def coverSet (i : Nat) (py : Option D) (E : Finset (D × Entry n m))
+    (q : Fin n × Nat × RoleT (Fin m) × Fin n) : Finset D :=
+  (E.filter fun p => Covers q p.2.spec).image Prod.fst ∪
+    (if pcB (keyOf U (nd U i).ctx) q.2.2.1 q.2.2.2 = 1 then py.toFinset else ∅)
+
+/-- Every pair of the configuration is a pool entry with a maximal valid spec. -/
+def CfgOK (i : Nat) (z : D) (E : Finset (D × Entry n m)) : Prop :=
+  ∀ p ∈ E, p.2 ∈ (nd U i).pool ∧ MaxValid U I i z p.1 p.2.spec
+
+/-- Every lower clause at the node has as many serving elements as its number. -/
+def Cover (i : Nat) (py : Option D) (E : Finset (D × Entry n m)) : Prop :=
+  ∀ q ∈ lowAt (mkIx O) (nd U i).ty, q.2.1 ≤ (coverSet U i py E q).card
+
+variable {O U I}
+
+theorem coverSet_mono {i : Nat} {py : Option D} {E E' : Finset (D × Entry n m)} (h : E ⊆ E')
+    (q : Fin n × Nat × RoleT (Fin m) × Fin n) : coverSet U i py E q ⊆ coverSet U i py E' q := by
+  unfold coverSet
+  refine Finset.union_subset_union (Finset.image_subset_image ?_) (Finset.Subset.refl _)
+  exact Finset.filter_subset_filter _ h
+
+theorem coverSet_erase {i : Nat} {py : Option D} {E : Finset (D × Entry n m)} (p : D × Entry n m)
+    (q : Fin n × Nat × RoleT (Fin m) × Fin n) :
+    coverSet U i py E q ⊆ insert p.1 (coverSet U i py (E.erase p) q) := by
+  intro x hx
+  unfold coverSet at hx ⊢
+  rcases Finset.mem_union.1 hx with hx | hx
+  · obtain ⟨p', hp', rfl⟩ := Finset.mem_image.1 hx
+    by_cases he : p' = p
+    · subst he; exact Finset.mem_insert_self _ _
+    · refine Finset.mem_insert_of_mem (Finset.mem_union_left _ (Finset.mem_image.2 ⟨p', ?_, rfl⟩))
+      obtain ⟨h1, h2⟩ := Finset.mem_filter.1 hp'
+      exact Finset.mem_filter.2 ⟨Finset.mem_erase.2 ⟨he, h1⟩, h2⟩
+  · exact Finset.mem_insert_of_mem (Finset.mem_union_right _ hx)
+
+theorem covers_le {q : Fin n × Nat × RoleT (Fin m) × Fin n} {σ τ : Spec n m} (h : Covers q σ)
+    (hle : σ.le τ) : Covers q τ := ⟨hle.1 h.1, hle.2 h.2⟩
+
+theorem upAux_mono (R : RoleT (Fin m)) : ∀ (f : Nat) (acc : Lab m) (q : List (RoleT (Fin m))),
+    acc ⊆ upAux (mkIx O).stepsBy f acc q
+  | 0, acc, q => by simp [upAux]
+  | _ + 1, acc, [] => by simp [upAux]
+  | f + 1, acc, x :: rest => by
+    simp only [upAux]
+    exact Finset.subset_union_left.trans (upAux_mono R f _ _)
+
+theorem upS_self (R : RoleT (Fin m)) : R ∈ upS (mkIx O) R := by
+  simp only [upS, mkIx, Array.getElem?_ofFn, rc_lt R, dite_true, Option.getD_some]
+  rw [ofRc_rc]
+  exact upAux_mono (O := O) R _ _ _ (Finset.mem_singleton_self R)
+
+theorem dflt_covers (q : Fin n × Nat × RoleT (Fin m) × Fin n) : Covers q (dflt (mkIx O) q) :=
+  ⟨upS_self q.2.2.1, Finset.mem_singleton_self _⟩
+
+theorem pc_some {i : Nat} {z : D} {py : Option D} (hs : Sim U I i z py) {R : RoleT (Fin m)}
+    {b : Fin n} (h : pcB (keyOf U (nd U i).ctx) R b = 1) :
+    ∃ y, py = some y ∧ I.rt R z y ∧ I.c b y := by
+  unfold pcB at h
+  split at h
+  · next hh =>
+    obtain ⟨hs1, hs2⟩ := hs
+    cases py with
+    | none => simp_all
+    | some y =>
+      exact ⟨y, rfl, (mem_labelOf I).1 (hs2.1 hh.1), (mem_typeOf I).1 (hs2.2 hh.2)⟩
+  · simp at h
+
+theorem pcB_cases (κ : Key n m) (R : RoleT (Fin m)) (b : Fin n) : pcB κ R b = 0 ∨ pcB κ R b = 1 := by
+  unfold pcB; split <;> simp
+
+/-- Entries for every listed witness of a lower clause. -/
+theorem cfg_wit (hI : models I O) {i : Nat} {z : D} {q : Fin n × Nat × RoleT (Fin m) × Fin n}
+    (hd : inPool U i (dflt (mkIx O) q)) :
+    ∀ l : List D, (∀ w ∈ l, I.rt q.2.2.1 z w ∧ I.c q.2.2.2 w) →
+      ∃ F, CfgOK U I i z F ∧ ∀ w ∈ l, ∃ p ∈ F, p.1 = w ∧ Covers q p.2.spec
+  | [], _ => ⟨∅, by simp [CfgOK], by simp⟩
+  | w :: l, hl => by
+    obtain ⟨F, hF, hFl⟩ := cfg_wit hI hd l fun w' h => hl w' (List.mem_cons_of_mem _ h)
+    obtain ⟨e, he, hspec⟩ := hd
+    have hw := hl w List.mem_cons_self
+    have hv : Valid I z w e.spec := by
+      rw [hspec]
+      exact ⟨upS_sub_label hI hw.1, by simpa [dflt] using (mem_typeOf I).2 hw.2⟩
+    obtain ⟨e', he', hle, hmv⟩ := maxValid_above he hv
+    refine ⟨insert (w, e') F, fun p hp => ?_, fun w' hw' => ?_⟩
+    · rcases Finset.mem_insert.1 hp with rfl | hp
+      · exact ⟨he', hmv⟩
+      · exact hF p hp
+    · rcases List.mem_cons.1 hw' with rfl | hw'
+      · exact ⟨(w', e'), Finset.mem_insert_self _ _, rfl,
+          covers_le (by rw [hspec]; exact dflt_covers q) hle⟩
+      · obtain ⟨p, hp, h1, h2⟩ := hFl w' hw'
+        exact ⟨p, Finset.mem_insert_of_mem hp, h1, h2⟩
+
+/-- A configuration exists. -/
+theorem cfg_exists (hI : models I O) (hC : ClosedP (mkIx O) U req) {i : Nat} {z : D}
+    {py : Option D} (hm : TypeMax U I i z py) : ∃ E, CfgOK U I i z E ∧ Cover O U i py E := by
+  have hNC := nodeClosed hC hm.1
+  suffices h : ∀ Q : List (Fin n × Nat × RoleT (Fin m) × Fin n),
+      (∀ q ∈ Q, q ∈ lowAt (mkIx O) (nd U i).ty) →
+      ∃ E, CfgOK U I i z E ∧ ∀ q ∈ Q, q.2.1 ≤ (coverSet U i py E q).card from
+    h _ fun q hq => hq
+  intro Q
+  induction Q with
+  | nil => exact fun _ => ⟨∅, by simp [CfgOK], by simp⟩
+  | cons q Q ih =>
+    intro hQ
+    obtain ⟨E, hE, hEQ⟩ := ih fun q' h => hQ q' (List.mem_cons_of_mem _ h)
+    have hq := hQ q List.mem_cons_self
+    have hmono : ∀ F, CfgOK U I i z F → CfgOK U I i z (E ∪ F) ∧
+        ∀ q' ∈ Q, q'.2.1 ≤ (coverSet U i py (E ∪ F) q').card := fun F hF =>
+      ⟨fun p hp => (Finset.mem_union.1 hp).elim (hE p) (hF p),
+        fun q' hq' => (hEQ q' hq').trans (Finset.card_le_card
+          (coverSet_mono Finset.subset_union_left q'))⟩
+    by_cases hk : q.2.1 = 0
+    · exact ⟨E, hE, fun q' hq' => by
+        rcases List.mem_cons.1 hq' with rfl | hq'
+        · omega
+        · exact hEQ q' hq'⟩
+    by_cases hsk : skipQ (keyOf U (nd U i).ctx) q
+    · obtain ⟨y, rfl, -, -⟩ := pc_some hm.2.1 hsk.2
+      refine ⟨E, hE, fun q' hq' => ?_⟩
+      rcases List.mem_cons.1 hq' with rfl | hq'
+      · rw [hsk.1]
+        refine Finset.card_pos.2 ⟨y, Finset.mem_union_right _ ?_⟩
+        simp [hsk.2]
+      · exact hEQ q' hq'
+    · have hd := hNC.2.2.1 q hq (by omega) hsk
+      obtain ⟨hql, hqa⟩ := mem_lowAt.1 hq
+      obtain ⟨l, hnd, hlen, hl⟩ := lower_wit hI hql ((mem_typeOf I).1 (hm.2.1.1 hqa))
+      obtain ⟨F, hF, hFl⟩ := cfg_wit hI hd l hl
+      obtain ⟨h1, h2⟩ := hmono F hF
+      refine ⟨E ∪ F, h1, fun q' hq' => ?_⟩
+      rcases List.mem_cons.1 hq' with rfl | hq'
+      · rw [← hlen, ← List.toFinset_card_of_nodup hnd]
+        refine Finset.card_le_card fun w hw => ?_
+        obtain ⟨p, hp, rfl, hcov⟩ := hFl w (List.mem_toFinset.1 hw)
+        exact Finset.mem_union_left _ (Finset.mem_image.2 ⟨p, Finset.mem_filter.2
+          ⟨Finset.mem_union_right _ hp, hcov⟩, rfl⟩)
+      · exact h2 q' hq'
+
+/-- A configuration of least size. -/
+theorem cfg_min (hI : models I O) (hC : ClosedP (mkIx O) U req) {i : Nat} {z : D}
+    {py : Option D} (hm : TypeMax U I i z py) :
+    ∃ E, CfgOK U I i z E ∧ Cover O U i py E ∧
+      ∀ E', CfgOK U I i z E' → Cover O U i py E' → E.card ≤ E'.card := by
+  have hex : ∃ k, ∃ E, CfgOK U I i z E ∧ Cover O U i py E ∧ E.card = k := by
+    obtain ⟨E, h1, h2⟩ := cfg_exists hI hC hm
+    exact ⟨_, E, h1, h2, rfl⟩
+  obtain ⟨E, h1, h2, h3⟩ := Nat.find_spec hex
+  refine ⟨E, h1, h2, fun E' h1' h2' => ?_⟩
+  rw [h3]
+  exact Nat.find_min' hex ⟨E', h1', h2', rfl⟩
+
+/-- Every pair of a least configuration is needed for some lower clause. -/
+theorem crit_exists {i : Nat} {z : D} {py : Option D} {E : Finset (D × Entry n m)}
+    (hE : CfgOK U I i z E) (hcv : Cover O U i py E) (hmin : ∀ E', CfgOK U I i z E' → Cover O U i py E' → E.card ≤ E'.card)
+    {p : D × Entry n m} (hp : p ∈ E) :
+    ∃ q ∈ lowAt (mkIx O) (nd U i).ty, Covers q p.2.spec ∧
+      (coverSet U i py (E.erase p) q).card < q.2.1 ∧ p.1 ∉ coverSet U i py (E.erase p) q := by
+  have hok : CfgOK U I i z (E.erase p) := fun p' hp' => hE p' (Finset.mem_of_mem_erase hp')
+  have hnc : ¬ Cover O U i py (E.erase p) := fun hc =>
+    absurd (hmin _ hok hc) (by have := Finset.card_erase_lt_of_mem hp; omega)
+  simp only [Cover, not_forall, not_le] at hnc
+  obtain ⟨q, hq, hlt⟩ := hnc
+  have hcov : Covers q p.2.spec := by
+    by_contra hn
+    have : coverSet U i py E q ⊆ coverSet U i py (E.erase p) q := by
+      intro x hx
+      rcases Finset.mem_insert.1 (coverSet_erase p q hx) with rfl | hx
+      · unfold coverSet at hx ⊢
+        rcases Finset.mem_union.1 hx with hx | hx
+        · obtain ⟨p', hp', he⟩ := Finset.mem_image.1 hx
+          obtain ⟨hp'E, hp'c⟩ := Finset.mem_filter.1 hp'
+          have hne : p' ≠ p := fun h => hn (h ▸ hp'c)
+          exact Finset.mem_union_left _ (Finset.mem_image.2 ⟨p', Finset.mem_filter.2
+            ⟨Finset.mem_erase.2 ⟨hne, hp'E⟩, hp'c⟩, he⟩)
+        · exact Finset.mem_union_right _ hx
+      · exact hx
+    have := Finset.card_le_card this
+    have := hcv q hq
+    omega
+  refine ⟨q, hq, hcov, hlt, fun hin => ?_⟩
+  have hsub : coverSet U i py E q ⊆ coverSet U i py (E.erase p) q := by
+    intro x hx
+    rcases Finset.mem_insert.1 (coverSet_erase p q hx) with rfl | hx
+    · exact hin
+    · exact hx
+  have := Finset.card_le_card hsub
+  have := hcv q hq
+  omega
+
+end Config
+
+/-! ## The star of a node of `SS` -/
+
+section Star
+
+open Classical
+
+variable (U I)
+
+/-- The type-maximal child chosen for a configuration pair. -/
+noncomputable def kidOf (z : D) (p : D × Entry n m) : Nat :=
+  if h : ∃ j, (nd U j).ctx = p.2.kid ∧ TypeMax U I j p.1 (some z) then h.choose else 0
+
+/-- The star entry of a configuration pair. -/
+noncomputable def entOf (z : D) (p : D × Entry n m) : Lab m × Ty n :=
+  (p.2.spec.lab, (nd U (kidOf U I z p)).ty)
+
+variable {U I}
+
+theorem sum_toFinset_le {α : Type} (l : List α) (f : α → Nat) :
+    l.toFinset.sum f ≤ (l.map f).sum := by
+  rw [Finset.sum_list_map_count]
+  refine Finset.sum_le_sum fun x hx => ?_
+  have : 1 ≤ l.count x := List.count_pos_iff.2 (List.mem_toFinset.1 hx)
+  rw [Nat.nsmul_eq_mul]
+  exact Nat.le_mul_of_pos_left _ this
+
+theorem countP_toList {α β : Type} (E : Finset α) (f : α → β) (P : β → Bool) :
+    (E.toList.map f).countP P = (E.filter fun a => P (f a) = true).card := by
+  rw [List.countP_map]
+  have := Multiset.coe_countP (fun a => P (f a) = true) E.toList
+  simp only [Bool.decide_eq_true] at this
+  show List.countP (fun b => P (f b)) E.toList = _
+  rw [← this, Finset.coe_toList, Multiset.countP_eq_card_filter]
+  rfl
+
+/-- The fixed data of the star construction at node `i`. -/
+structure StarData (O : Ontology (Fin n) (Fin m)) (U : Cand n m) (req : List (Fin n))
+    (I : Interp D (Fin n) (Fin m)) (i : Nat) (z : D) (py : Option D)
+    (E : Finset (D × Entry n m)) : Prop where
+  hI : models I O
+  hC : ClosedP (mkIx O) U req
+  hm : TypeMax U I i z py
+  hpg : PG O U I i z py
+  hE : CfgOK U I i z E
+  hcv : Cover O U i py E
+  hmin : ∀ E', CfgOK U I i z E' → Cover O U i py E' → E.card ≤ E'.card
+
+variable {i : Nat} {z : D} {py : Option D} {E : Finset (D × Entry n m)}
+
+theorem StarData.nc (h : StarData O U req I i z py E) : NodeClosed (mkIx O) U i :=
+  nodeClosed h.hC h.hm.1
+
+theorem StarData.ok (h : StarData O U req I i z py E) {p : D × Entry n m} (hp : p ∈ E) :
+    entryOK (mkIx O) U (nd U i).ty p.2 :=
+  h.nc.2.1 p.2 (h.hE p hp).1
+
+theorem StarData.kid (h : StarData O U req I i z py E) {p : D × Entry n m} (hp : p ∈ E) :
+    (nd U (kidOf U I z p)).ctx = p.2.kid ∧ TypeMax U I (kidOf U I z p) p.1 (some z) := by
+  have hex := child_exists h.hI h.hC h.hm.2.1 (h.ok hp) (h.hE p hp).2.1
+  unfold kidOf
+  rw [dif_pos hex]
+  exact hex.choose_spec
+
+theorem StarData.kid_memb (h : StarData O U req I i z py E) {p : D × Entry n m} (hp : p ∈ E) :
+    kidOf U I z p ∈ memb U p.2.kid := by
+  have := (h.kid hp).2.1
+  rw [(h.kid hp).1] at this
+  exact this
+
+theorem StarData.fill_sub (h : StarData O U req I i z py E) {p : D × Entry n m} (hp : p ∈ E) :
+    p.2.spec.fill ⊆ (nd U (kidOf U I z p)).ty := by
+  have hNC := nodeClosed h.hC (h.kid_memb hp)
+  have hseed := hNC.1.2.2.2
+  rw [(h.kid hp).1, (h.ok hp).2.1] at hseed
+  exact Finset.subset_union_left.trans hseed
+
+theorem StarData.cnt_of_covers (h : StarData O U req I i z py E) {p : D × Entry n m} (hp : p ∈ E)
+    {q : Fin n × Nat × RoleT (Fin m) × Fin n} (hc : Covers q p.2.spec) :
+    cntP q.2.2.1 q.2.2.2 (entOf U I z p) = true := by
+  simp only [cntP, entOf, decide_eq_true_eq]
+  exact ⟨hc.1, h.fill_sub hp hc.2⟩
+
+theorem card_py_le {py : Option D} : py.toFinset.card ≤ 1 := by
+  cases py <;> simp
+
+/-- **Lower bounds.** -/
+theorem StarData.lower (h : StarData O U req I i z py E) {q : Fin n × Nat × RoleT (Fin m) × Fin n}
+    (hq : q ∈ lowAt (mkIx O) (nd U i).ty) :
+    q.2.1 ≤ pcB (keyOf U (nd U i).ctx) q.2.2.1 q.2.2.2 +
+      (E.toList.map (entOf U I z)).countP (cntP q.2.2.1 q.2.2.2) := by
+  rw [countP_toList]
+  have h1 := h.hcv q hq
+  have h2 : (coverSet U i py E q).card ≤ (E.filter fun p => Covers q p.2.spec).card +
+      pcB (keyOf U (nd U i).ctx) q.2.2.1 q.2.2.2 := by
+    unfold coverSet
+    refine (Finset.card_union_le _ _).trans (Nat.add_le_add Finset.card_image_le ?_)
+    split
+    · next he => rw [he]; exact card_py_le
+    · simp
+  have h3 : (E.filter fun p => Covers q p.2.spec).card ≤
+      (E.filter fun p => cntP q.2.2.1 q.2.2.2 (entOf U I z p) = true).card := by
+    refine Finset.card_le_card fun p hp => ?_
+    obtain ⟨hpE, hpc⟩ := Finset.mem_filter.1 hp
+    exact Finset.mem_filter.2 ⟨hpE, h.cnt_of_covers hpE hpc⟩
+  omega
+
+end Star
 
 end ContextCalculus.SRIQ.Fast
