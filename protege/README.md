@@ -5,8 +5,9 @@ the **Reasoner** menu as **Kobayashi-MaRust** and supplies the inferred named
 class hierarchy, equivalence classes, unsatisfiable classes, and ontology
 consistency.
 
-The plugin is a TBox classifier. Property hierarchy, property assertion, and
-individual realization queries are not currently exposed through the OWL API.
+The plugin answers class and individual queries; see
+[What the reasoner answers](#what-the-reasoner-answers). Property hierarchy
+and property assertion queries are not yet exposed through the OWL API.
 The bundle also contains an OWL Explanation API
 `ExplanationGenerator` and `ExplanationGeneratorFactory` (OWL Explanation
 2.0.1 in the Protégé 5 jar, 5.0.1 in the Protégé 6 jar). It returns verified,
@@ -45,6 +46,44 @@ for Protégé 6, HPPC-RT.
 The embedded OWL Explanation and telemetry JARs remain intact with their
 upstream LGPL 3 license metadata; Gson and HPPC-RT are Apache-2.0; KM's own
 code remains BSD-3-Clause.
+
+## What the reasoner answers
+
+| OWL API call | Answer |
+| --- | --- |
+| `isConsistent`, `isSatisfiable`, `getUnsatisfiableClasses` | for named classes |
+| `getTopClassNode`, `getBottomClassNode`, `getSuperClasses`, `getSubClasses`, `getEquivalentClasses` | the inferred named-class hierarchy |
+| `getTypes(ind, direct)` | the named classes the individual belongs to, as class nodes, with `owl:Thing` as HermiT reports it; `direct` keeps the most specific nodes |
+| `getInstances(C, direct)` | for a named class `C`: the individuals that are instances of `C` (direct: those whose most specific types include `C` or a class equivalent to it), grouped into same-individual nodes; an anonymous class expression gives an empty set |
+| `getSameIndividuals(ind)` | the entailed equalities (`SameIndividual`, functional and inverse-functional roles, cardinality, nominals, any other entailment) |
+| `isEntailed` | `SubClassOf` between named classes, `ClassAssertion` of a named class, `SameIndividual` of named individuals |
+| `getPrecomputableInferenceTypes` | `CLASS_HIERARCHY`, `CLASS_ASSERTIONS`, `SAME_INDIVIDUAL` |
+
+Classification costs the same as before. The individual queries use
+`km classify --realize` ([`docs/REALIZATION.md`](../docs/REALIZATION.md)). The
+plugin runs it once, on the first individual query or when Protégé asks to
+precompute `CLASS_ASSERTIONS` or `SAME_INDIVIDUAL`, on the ontology revision
+the class hierarchy was built from. It caches the answer and drops it when the
+ontology changes and the reasoner flushes, so the next individual query runs
+KM again. The incremental session cannot realize, so each realization is a
+separate one-shot `km classify --realize` run; it takes about as long as a
+full classification of the ontology with one extra class per individual. An
+ontology with no named individuals needs no extra run. A realization that KM
+declines (a dropped clause or an approximate answer) raises a reasoner error.
+
+Differences from HermiT:
+
+- An inconsistent ontology gives empty answers to the class and individual
+  queries, as the class queries always did. HermiT throws
+  `InconsistentOntologyException`.
+- `getInstances` returns same-individual nodes as the OWL API specifies.
+  HermiT returns one node per individual; the individuals are the same.
+- A class declared equivalent to `owl:Thing` is a type of every individual,
+  but KM's class hierarchy does not yet put it in the node of `owl:Thing`, so
+  the node shapes (and the `direct` answers for such individuals) differ.
+- `getDifferentIndividuals`, property values and domains, and class
+  expression queries (`getInstances` of an anonymous class) are not answered
+  yet.
 
 ## Install in Protégé
 
@@ -243,7 +282,12 @@ The headless OWL API tests cover:
 - the bundled kinship ontology;
 - inclusion of the loaded imports closure; and
 - rejection of unresolved imports;
-- distinct classes that share the same local-name fragment.
+- distinct classes that share the same local-name fragment;
+- individual queries (`IndividualsTest`): types, instances, same individuals,
+  entailment, lazy realization and its invalidation after a change; and
+- the same queries compared with HermiT on a small ABox, a nominal and
+  cardinality ontology, and the W3C wine and food ontologies
+  (`HermitDifferentialTest`; HermiT is a test-scope dependency).
 
 The explanation tests cover exhaustive and bounded multiple EL
 justifications, named unsatisfiability, CB inverse-role inference, rules/HT

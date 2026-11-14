@@ -5,6 +5,7 @@ import org.semanticweb.owlapi.model.parameters.Imports;
 import org.semanticweb.owlapi.reasoner.*;
 import org.semanticweb.owlapi.reasoner.impl.OWLClassNode;
 import org.semanticweb.owlapi.reasoner.impl.OWLClassNodeSet;
+import org.semanticweb.owlapi.reasoner.impl.OWLNamedIndividualNode;
 import org.semanticweb.owlapi.reasoner.impl.OWLNamedIndividualNodeSet;
 import org.semanticweb.owlapi.reasoner.impl.OWLObjectPropertyNode;
 import org.semanticweb.owlapi.reasoner.impl.OWLDataPropertyNode;
@@ -17,9 +18,11 @@ import java.util.*;
 
 /**
  * An {@link OWLReasoner} backed by the Kobayashi-MaRust SROIQ context engine.
- * It is a <em>TBox classifier</em>: it computes the named-class hierarchy and
- * unsatisfiable classes. Property/individual inferences are not provided
- * (empty results), which is the honest scope of the engine.
+ * It computes the named-class hierarchy and unsatisfiable classes. It answers
+ * the individual queries ({@code getTypes}, {@code getInstances} for named
+ * classes, {@code getSameIndividuals}) from {@code km classify --realize},
+ * which it runs once per ontology revision on the first such query. Property
+ * inferences are not provided (empty results).
  */
 public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasonerBase {
 
@@ -51,6 +54,9 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private Set<OWLClass> lastPreparedClasses;
     private Set<OWLClass> lastClasses;
     private FlushContext flushContext;
+    /** Individual realization of the committed revision; null until first needed. */
+    private Realized realized;
+    private volatile Process realizeProcess;
 
     private static final class FlushContext {
         final boolean allowDelta;
@@ -119,6 +125,9 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         // state now; preparation and native refusal never mutate this cache.
         serialized.commit(prepared);
         committedImports = prepared.imports;
+        // Class ids are rebuilt below and the ABox may have changed, so the
+        // realization of the previous revision no longer applies.
+        realized = null;
         // Commit the Java-side hierarchy only after the native transaction has
         // succeeded. A declined update therefore leaves the preceding answers
         // intact, matching the native session's atomic revision contract.
@@ -461,12 +470,41 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     // ---- precompute / metadata -----------------------------------------
 
     @Override public String getReasonerName() { return "Kobayashi-MaRust"; }
-    @Override public Version getReasonerVersion() { return new Version(1, 5, 2, 0); }
+    @Override public Version getReasonerVersion() { return versionOf(KMExecutable.pluginVersion()); }
 
-    @Override public void precomputeInferences(InferenceType... types) { /* eager in ctor */ }
-    @Override public boolean isPrecomputed(InferenceType inferenceType) { return true; }
+    /** Parse "1.6.4" or "1.7.0-rc1" into a Version; "dev" and unparsable text give 0.0.0.0. */
+    static Version versionOf(String text) {
+        int[] part = new int[3];
+        String[] pieces = text.split("[.\\-+]");
+        for (int i = 0; i < 3 && i < pieces.length; i++) {
+            try {
+                part[i] = Integer.parseInt(pieces[i]);
+            } catch (NumberFormatException e) {
+                break;
+            }
+        }
+        return new Version(part[0], part[1], part[2], 0);
+    }
+
+    @Override public synchronized void precomputeInferences(InferenceType... types) {
+        // The class hierarchy is computed in the constructor and on flush.
+        // Individual inferences cost one more native run, made on demand.
+        for (InferenceType type : types) {
+            if (type == InferenceType.CLASS_ASSERTIONS || type == InferenceType.SAME_INDIVIDUAL) {
+                ensureRealized();
+            }
+        }
+    }
+    @Override public synchronized boolean isPrecomputed(InferenceType inferenceType) {
+        if (inferenceType == InferenceType.CLASS_ASSERTIONS
+                || inferenceType == InferenceType.SAME_INDIVIDUAL) {
+            return realized != null;
+        }
+        return true;
+    }
     @Override public Set<InferenceType> getPrecomputableInferenceTypes() {
-        return new HashSet<>(Arrays.asList(InferenceType.CLASS_HIERARCHY));
+        return new HashSet<>(Arrays.asList(InferenceType.CLASS_HIERARCHY,
+                InferenceType.CLASS_ASSERTIONS, InferenceType.SAME_INDIVIDUAL));
     }
 
     @Override public synchronized void flush() {
@@ -507,6 +545,8 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     @Override public void interrupt() {
+        Process realizing = realizeProcess;
+        if (realizing != null) NativeProcessTree.terminateAndWait(realizing);
         Classifier.Session session = incrementalSession;
         if (session != null) {
             session.interrupt();
@@ -525,6 +565,8 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     // ---- entailment ----------------------------------------------------
 
     @Override public synchronized boolean isEntailed(OWLAxiom axiom) {
+        if (axiom instanceof OWLClassAssertionAxiom) return isEntailedClassAssertion((OWLClassAssertionAxiom) axiom);
+        if (axiom instanceof OWLSameIndividualAxiom) return isEntailedSameIndividual((OWLSameIndividualAxiom) axiom);
         if (!(axiom instanceof OWLSubClassOfAxiom)) {
             throw new UnsupportedEntailmentTypeException(axiom);
         }
@@ -555,17 +597,212 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     @Override public boolean isEntailmentCheckingSupported(AxiomType<?> axiomType) {
-        return AxiomType.SUBCLASS_OF.equals(axiomType);
+        return AxiomType.SUBCLASS_OF.equals(axiomType)
+                || AxiomType.CLASS_ASSERTION.equals(axiomType)
+                || AxiomType.SAME_INDIVIDUAL.equals(axiomType);
     }
 
-    // ---- unsupported (TBox-only reasoner): empty / trivial results ------
+
+    // ---- individuals (from km classify --realize) -----------------------
+
+    /**
+     * Entailed types and equalities of the named individuals at the committed
+     * revision. Individuals that KM reports as equal share one component.
+     */
+    private static final class Realized {
+        final Map<OWLNamedIndividual, Integer> componentOf = new HashMap<>();
+        final List<Set<OWLNamedIndividual>> members = new ArrayList<>();
+        /** Per component: representative ids of all entailed types, owl:Thing included. */
+        final List<int[]> allTypes = new ArrayList<>();
+        /** Per component: representative ids of the most specific types. */
+        final List<int[]> directTypes = new ArrayList<>();
+    }
+
+    private Realized ensureRealized() {
+        if (realized != null) return realized;
+        Realized built = new Realized();
+        if (!consistent) {
+            // Like the class queries, answer an inconsistent ontology with empty sets.
+            realized = built;
+            return built;
+        }
+        try {
+            OWLOntology snapshot = getCommittedOntologySnapshot();
+            Set<OWLNamedIndividual> individuals = new LinkedHashSet<>(snapshot.getIndividualsInSignature());
+            Classifier.Realization result;
+            if (individuals.isEmpty()) {
+                // A TBox needs no native run.
+                result = new Classifier.Realization();
+            } else {
+                result = Classifier.realize(FlattenedOntology.functionalSyntaxOfSnapshot(snapshot),
+                        process -> realizeProcess = process);
+            }
+            if (!result.consistent) {
+                realized = built;
+                return built;
+            }
+            fillRealized(built, individuals, result);
+        } catch (RuntimeException error) {
+            throw error;
+        } catch (Exception error) {
+            throw new ReasonerInternalException(error);
+        }
+        realized = built;
+        return built;
+    }
+
+    private void fillRealized(Realized out, Set<OWLNamedIndividual> individuals, Classifier.Realization result) {
+        // Union-find over the individual universe and the SAME pairs.
+        List<OWLNamedIndividual> all = new ArrayList<>(individuals);
+        Map<OWLNamedIndividual, Integer> index = new HashMap<>();
+        for (OWLNamedIndividual i : all) index.put(i, index.size());
+        java.util.function.Function<String, Integer> indexOf = iri -> {
+            OWLNamedIndividual i = df.getOWLNamedIndividual(IRI.create(normalizeIri(iri)));
+            Integer at = index.get(i);
+            if (at == null) {
+                at = all.size();
+                all.add(i);
+                index.put(i, at);
+            }
+            return at;
+        };
+        for (String iri : result.types.keySet()) indexOf.apply(iri);
+        for (String[] pair : result.same) { indexOf.apply(pair[0]); indexOf.apply(pair[1]); }
+        int[] parent = new int[all.size()];
+        for (int i = 0; i < parent.length; i++) parent[i] = i;
+        for (String[] pair : result.same) {
+            int a = find(parent, indexOf.apply(pair[0])), b = find(parent, indexOf.apply(pair[1]));
+            if (a != b) parent[a] = b;
+        }
+        Map<Integer, Integer> componentOfRoot = new HashMap<>();
+        for (int i = 0; i < parent.length; i++) {
+            int root = find(parent, i);
+            Integer c = componentOfRoot.get(root);
+            if (c == null) {
+                c = out.members.size();
+                componentOfRoot.put(root, c);
+                out.members.add(new LinkedHashSet<>());
+            }
+            out.members.get(c).add(all.get(i));
+            out.componentOf.put(all.get(i), c);
+        }
+        List<Set<Integer>> typeSets = new ArrayList<>();
+        for (int c = 0; c < out.members.size(); c++) {
+            Set<Integer> reps = new TreeSet<>();
+            reps.add(repId[thingId]);
+            typeSets.add(reps);
+        }
+        for (Map.Entry<String, List<String>> e : result.types.entrySet()) {
+            Set<Integer> reps = typeSets.get(out.componentOf.get(
+                    df.getOWLNamedIndividual(IRI.create(normalizeIri(e.getKey())))));
+            for (String classIri : e.getValue()) {
+                Integer id = idByIri.get(normalizeIri(classIri));
+                if (id == null) continue;
+                int r = repId[id];
+                reps.add(r);
+                // The rows list every entailed type; closing under the taxonomy
+                // keeps the answer a union of whole nodes.
+                int[] sups = supersByRep[r];
+                if (sups != null) for (int s : sups) reps.add(s);
+            }
+        }
+        for (Set<Integer> reps : typeSets) {
+            int[] closed = new int[reps.size()];
+            int k = 0;
+            for (int r : reps) closed[k++] = r;
+            out.allTypes.add(closed);
+            out.directTypes.add(minimalIds(closed));
+        }
+    }
+
+    private static int find(int[] parent, int x) {
+        while (parent[x] != x) {
+            parent[x] = parent[parent[x]];
+            x = parent[x];
+        }
+        return x;
+    }
+
+    @Override public synchronized NodeSet<OWLClass> getTypes(OWLNamedIndividual ind, boolean direct) {
+        OWLClassNodeSet ns = new OWLClassNodeSet();
+        Realized data = ensureRealized();
+        if (!consistent) return ns;
+        Integer c = data.componentOf.get(ind);
+        if (c == null) {
+            // An individual outside the signature has no named type but owl:Thing.
+            ns.addNode(nodeOfId(repId[thingId]));
+            return ns;
+        }
+        for (int r : (direct ? data.directTypes : data.allTypes).get(c)) ns.addNode(nodeOfId(r));
+        return ns;
+    }
+
+    @Override public synchronized NodeSet<OWLNamedIndividual> getInstances(OWLClassExpression ce, boolean direct) {
+        OWLNamedIndividualNodeSet ns = new OWLNamedIndividualNodeSet();
+        if (ce.isAnonymous()) {
+            // TODO W5: class expression queries (DL Query) via a fresh definition Q = CE.
+            return ns;
+        }
+        Realized data = ensureRealized();
+        if (!consistent) return ns;
+        int r = repIdOf(ce);
+        if (r < 0 || r == repId[nothingId]) return ns;
+        for (int c = 0; c < data.members.size(); c++) {
+            for (int t : (direct ? data.directTypes : data.allTypes).get(c)) {
+                if (t == r) {
+                    ns.addNode(new OWLNamedIndividualNode(data.members.get(c)));
+                    break;
+                }
+            }
+        }
+        return ns;
+    }
+
+    @Override public synchronized Node<OWLNamedIndividual> getSameIndividuals(OWLNamedIndividual ind) {
+        Realized data = ensureRealized();
+        Integer c = consistent ? data.componentOf.get(ind) : null;
+        return c == null ? new OWLNamedIndividualNode(ind)
+                : new OWLNamedIndividualNode(data.members.get(c));
+    }
+
+    private boolean isEntailedClassAssertion(OWLClassAssertionAxiom axiom) {
+        if (axiom.getClassExpression().isAnonymous() || axiom.getIndividual().isAnonymous()) {
+            throw new UnsupportedEntailmentTypeException(axiom);
+        }
+        if (!consistent || axiom.getClassExpression().isOWLThing()) return true;
+        OWLNamedIndividual ind = axiom.getIndividual().asOWLNamedIndividual();
+        int r = repIdOf(axiom.getClassExpression());
+        if (r < 0) return false;
+        Realized data = ensureRealized();
+        Integer c = data.componentOf.get(ind);
+        if (c == null) return r == repId[thingId];
+        for (int t : data.allTypes.get(c)) if (t == r) return true;
+        return false;
+    }
+
+    private boolean isEntailedSameIndividual(OWLSameIndividualAxiom axiom) {
+        Set<OWLNamedIndividual> named = new HashSet<>();
+        for (OWLIndividual i : axiom.getIndividuals()) {
+            if (i.isAnonymous()) throw new UnsupportedEntailmentTypeException(axiom);
+            named.add(i.asOWLNamedIndividual());
+        }
+        if (!consistent || named.size() <= 1) return true;
+        Realized data = ensureRealized();
+        Integer first = null;
+        for (OWLNamedIndividual i : named) {
+            Integer c = data.componentOf.get(i);
+            if (c == null || (first != null && !first.equals(c))) return false;
+            first = c;
+        }
+        return true;
+    }
+
+    // ---- unsupported (no property inference yet): empty / trivial results ---
 
     private static final NodeSet<OWLClass> EMPTY_C = new OWLClassNodeSet();
     private static final NodeSet<OWLNamedIndividual> EMPTY_I = new OWLNamedIndividualNodeSet();
 
     @Override public NodeSet<OWLClass> getDisjointClasses(OWLClassExpression ce) { return EMPTY_C; }
-    @Override public NodeSet<OWLClass> getTypes(OWLNamedIndividual ind, boolean direct) { return EMPTY_C; }
-    @Override public NodeSet<OWLNamedIndividual> getInstances(OWLClassExpression ce, boolean direct) { return EMPTY_I; }
     @Override public NodeSet<OWLClass> getObjectPropertyDomains(OWLObjectPropertyExpression pe, boolean direct) { return EMPTY_C; }
     @Override public NodeSet<OWLClass> getObjectPropertyRanges(OWLObjectPropertyExpression pe, boolean direct) { return EMPTY_C; }
     @Override public NodeSet<OWLClass> getDataPropertyDomains(OWLDataProperty pe, boolean direct) { return EMPTY_C; }
@@ -588,8 +825,5 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     @Override public NodeSet<OWLDataProperty> getDisjointDataProperties(OWLDataPropertyExpression pe) { return new OWLDataPropertyNodeSet(); }
     @Override public Set<OWLLiteral> getDataPropertyValues(OWLNamedIndividual ind, OWLDataProperty pe) { return Collections.emptySet(); }
 
-    @Override public Node<OWLNamedIndividual> getSameIndividuals(OWLNamedIndividual ind) {
-        return new org.semanticweb.owlapi.reasoner.impl.OWLNamedIndividualNode(ind);
-    }
     @Override public NodeSet<OWLNamedIndividual> getDifferentIndividuals(OWLNamedIndividual ind) { return EMPTY_I; }
 }

@@ -597,6 +597,95 @@ public final class Classifier {
         return timeout;
     }
 
+    /**
+     * Entailed types and equalities of the named individuals, as reported by
+     * {@code km classify --lines --realize}. Individuals and classes are full
+     * IRIs. {@code owl:Thing} is never listed; individuals with no entry have
+     * only {@code owl:Thing} as a type.
+     */
+    public static final class Realization {
+        public boolean consistent = true;
+        public int dropped = 0;
+        /** Individual IRI to the IRIs of all its entailed named classes. */
+        public final Map<String, List<String>> types = new HashMap<>();
+        /** Pairs {a, b} with a &lt; b. */
+        public final List<String[]> same = new ArrayList<>();
+    }
+
+    /**
+     * Run {@code km classify --lines --realize} once on the given functional
+     * syntax. The incremental session cannot realize, so this is a separate
+     * one-shot native run. {@code onStart} receives the process so the caller
+     * can cancel it.
+     */
+    public static Realization realize(String functionalSyntax,
+                                      java.util.function.Consumer<Process> onStart) throws Exception {
+        String kmBin = KMExecutable.resolve();
+        long timeout = parseTimeout();
+        Path tmp = Files.createTempFile("kmarust-realize-", ".ofn");
+        Path log = Files.createTempFile("kmarust-realize-", ".log");
+        try {
+            Files.write(tmp, functionalSyntax.getBytes(StandardCharsets.UTF_8));
+            ProcessBuilder pb = new ProcessBuilder(
+                    kmBin, "classify", "--lines", "--realize", "--format", "functional",
+                    tmp.toString());
+            pb.redirectErrorStream(true);
+            pb.redirectOutput(log.toFile());
+            Process proc = pb.start();
+            if (onStart != null) onStart.accept(proc);
+            try {
+                if (!proc.waitFor(timeout, TimeUnit.SECONDS)) {
+                    NativeProcessTree.terminateAndWait(proc);
+                    throw new RuntimeException(
+                            "Kobayashi-MaRust realization timed out after " + timeout + " seconds");
+                }
+            } finally {
+                if (onStart != null) onStart.accept(null);
+            }
+            int rc = proc.exitValue();
+            List<String> lines = Files.readAllLines(log, StandardCharsets.UTF_8);
+            if (rc != 0) {
+                throw new RuntimeException("Kobayashi-MaRust realization failed (exit "
+                        + rc + "):\n" + String.join("\n", lines));
+            }
+            Realization r = new Realization();
+            boolean protocolSeen = false;
+            String approximate = null;
+            for (String line : lines) {
+                String[] f = line.split("\t");
+                if (line.startsWith("CONSISTENT ")) {
+                    protocolSeen = true;
+                    r.consistent = line.trim().endsWith("1");
+                } else if (line.startsWith("DROPPED ")) {
+                    try { r.dropped = Integer.parseInt(line.trim().substring(8)); }
+                    catch (NumberFormatException ignore) {}
+                } else if (f.length == 2 && f[0].equals("APPROXIMATE")) {
+                    approximate = f[1];
+                } else if (f.length == 3 && f[0].equals("TYPE")) {
+                    r.types.computeIfAbsent(f[1], k -> new ArrayList<>()).add(f[2]);
+                } else if (f.length == 3 && f[0].equals("SAME")) {
+                    r.same.add(new String[]{f[1], f[2]});
+                }
+            }
+            if (!protocolSeen) {
+                throw new RuntimeException("Kobayashi-MaRust returned no realization result:\n"
+                        + String.join("\n", lines));
+            }
+            if (approximate != null) {
+                throw new RuntimeException("Kobayashi-MaRust declined a complete realization: "
+                        + "the answer is approximate (" + approximate + ")");
+            }
+            if (r.dropped != 0) {
+                throw new RuntimeException("Kobayashi-MaRust declined a complete realization: "
+                        + r.dropped + " clause(s) were dropped");
+            }
+            return r;
+        } finally {
+            Files.deleteIfExists(tmp);
+            Files.deleteIfExists(log);
+        }
+    }
+
     public static Result classify(OWLOntology ontology) throws Exception {
         String kmBin = KMExecutable.resolve();
         long timeout = parseTimeout();

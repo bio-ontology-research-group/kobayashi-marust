@@ -20,6 +20,8 @@
     <owlexplanation.version>2.0.1</owlexplanation.version>
     <telemetry.version>2.0.0</telemetry.version>
     <protege.version>5.6.6</protege.version>
+    <!-- Test only: the reference reasoner for the differential tests. -->
+    <hermit.version>1.4.3.456</hermit.version>
     <!-- The Protégé line this build targets. The protege6 profile switches
          it, with the OWL API and OWL Explanation versions, to Protégé 6. -->
     <protege.line>5</protege.line>
@@ -97,6 +99,18 @@
       <version>4.13.2</version>
       <scope>test</scope>
     </dependency>
+    <dependency>
+      <groupId>net.sourceforge.owlapi</groupId>
+      <artifactId>org.semanticweb.hermit</artifactId>
+      <version>${hermit.version}</version>
+      <scope>test</scope>
+      <exclusions>
+        <exclusion>
+          <groupId>net.sourceforge.owlapi</groupId>
+          <artifactId>owlapi-distribution</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
   </dependencies>
 
   <profiles>
@@ -112,6 +126,7 @@
         <owlexplanation.version>5.0.1</owlexplanation.version>
         <telemetry.version>5.0.0</telemetry.version>
         <protege.version>6.0.0-alpha-1</protege.version>
+        <hermit.version>1.4.5.519</hermit.version>
         <hppcrt.version>0.7.5</hppcrt.version>
         <!-- OWL Explanation 5 uses HPPC-RT, which Protégé 6 does not export. -->
         <km.embed>owlexplanation|telemetry|gson|hppcrt</km.embed>
