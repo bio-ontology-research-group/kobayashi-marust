@@ -20,7 +20,12 @@ km-owl-reference --procedure sriq-kb [--hint FILE] [--type CLASS INDIVIDUAL] <fi
 km-owl-reference --procedure sriqd <file.ofn>
 km-owl-reference --procedure sriqd-kb [--hint FILE] [--type CLASS INDIVIDUAL] <file.ofn>
 km-owl-reference --procedure shoiq-c2a [--hint FILE] [--type CLASS INDIVIDUAL] <file.ofn>
+km-owl-reference --procedure sriq-kb|sriqd-kb|shoiq-c2a --print-index <file.ofn>
 ```
+
+`--print-index` prints the index tables a hint refers to (`printIndex`).
+`--check` (with `shoiq-c2a`) runs the fragment checks only and prints
+`accepted` or the decline reason.
 
 `shoiq-c2a` is `owlSHOIQDC2aConsistent`, the v1.7.0 stage C2a route for
 SHOIQ(D) knowledge bases with nominals and datatypes
@@ -871,6 +876,10 @@ structure Args where
   query : Option (OWL.IRI × OWL.IRI) := none
   /-- `sriqd` or `sriqd-kb` (the data routes, outside `OWLProcedure`). -/
   dataRoute : Option String := none
+  /-- Print the index tables of the translation instead of deciding. -/
+  printIndex : Bool := false
+  /-- Run the fragment checks of `shoiq-c2a` only (no decision). -/
+  checkOnly : Bool := false
 
 def parseArgs (acc : Args) : List String → Option Args
   | [] => if acc.path.isSome then some acc else none
@@ -883,6 +892,8 @@ def parseArgs (acc : Args) : List String → Option Args
     | some p' => parseArgs { acc with procedure := p' } rest
     | none => none
   | "--hint" :: f :: rest => parseArgs { acc with hint := some f } rest
+  | "--print-index" :: rest => parseArgs { acc with printIndex := true } rest
+  | "--check" :: rest => parseArgs { acc with checkOnly := true } rest
   | "--type" :: C :: a :: rest => parseArgs { acc with query := some (C, a) } rest
   | arg :: rest =>
     if arg.startsWith "--procedure=" then
@@ -895,6 +906,56 @@ def parseArgs (acc : Args) : List String → Option Args
     else match acc.path with
       | none => parseArgs { acc with path := some arg } rest
       | some _ => none
+
+/-- The index lines of a knowledge-base translation: concept and role
+indices of the IRIs, sorted by index. -/
+def indexLines (T : SRIQKBTranslation) : List String :=
+  let cs := (T.cnames.toArray.qsort (fun a b => a.2 < b.2)).toList
+  let rs := (T.rnames.toArray.qsort (fun a b => a.2 < b.2)).toList
+  (cs.map fun p => s!"concept {p.2} {p.1}") ++ (rs.map fun p => s!"role {p.2} {p.1}")
+
+/-- **Index printer** (`--print-index`): the concept, role and individual
+indices a hint for the route refers to. Lines: `concepts N` (the number of
+concept indices of the ontology the hint is checked against, encoding
+names included), `roles M`, `concept I IRI`, `role I IRI`, and
+`nominal I IRI` (shoiq-c2a: the index of the nominal class of a named
+individual) or `individual I IRI` (sriq-kb, sriqd-kb). Indices from the
+end of the `concept` lines up to `N - 1` are names of the normalisation
+and of the transitivity encoding. -/
+def printIndex (route : String) (O : OWL.Ontology) : IO UInt32 := do
+  let out ← IO.getStdout
+  let emit (ls : List String) : IO Unit := do for l in ls do out.putStrLn l
+  if route == "shoiq-c2a" then
+    match translateSHOIQD O [] with
+    | none => decline (shoiqDecline O)
+    | some T =>
+      let L := OWLFrontend.SHOIQ.nomNames O []
+      emit [s!"concepts {T.obj.conceptCount + SRIQN.Proc.encKD (dosn T L)}",
+        s!"roles {T.obj.roleCount}"]
+      emit (indexLines T.obj)
+      emit (O.individualNames.filterMap fun a =>
+        (nameIx T.obj (OWLFrontend.SHOIQ.nmOf O [] a)).map fun i => s!"nominal {i.val} {a}")
+      out.flush
+      return 0
+  else if route == "sriqd-kb" then
+    match translateSRIQDKB O [] [] with
+    | none => decline (sriqdKBDecline O)
+    | some T =>
+      emit [s!"concepts {T.obj.conceptCount}", s!"roles {T.obj.roleCount}"]
+      emit (indexLines T.obj)
+      emit ((List.range T.obj.inds.length).zip T.obj.inds |>.map fun p => s!"individual {p.1} {p.2}")
+      out.flush
+      return 0
+  else
+    match translateSRIQKB O [] with
+    | none => decline "not recognised: not an OWL SHIQ knowledge base"
+    | some T =>
+      emit [s!"concepts {T.conceptCount + (SRIQ.Proc.encTransQ T.ontology).1}",
+        s!"roles {T.roleCount}"]
+      emit (indexLines T)
+      emit ((List.range T.inds.length).zip T.inds |>.map fun p => s!"individual {p.1} {p.2}")
+      out.flush
+      return 0
 
 /-- Read the hint file, if any. -/
 def readHint (path : Option String) : IO (Except String (Option RawHint)) := do
@@ -925,7 +986,22 @@ def runFile (args : Args) (path : String) : IO UInt32 := do
     return 2
   | .ok text =>
     reportPhase timing "read" t0
-    let run : IO UInt32 := match args.dataRoute with
+    let run : IO UInt32 := if args.checkOnly then do
+        match OWL.parse text with
+        | .error reason => decline s!"parse rejected: {reason}"
+        | .ok O =>
+          match translateSHOIQD O [] with
+          | some T =>
+            if kbdnOK T (OWLFrontend.SHOIQ.nomNames O []) then do
+              IO.println "accepted"
+              return 0
+            else decline (shoiqDecline O)
+          | none => decline (shoiqDecline O)
+      else if args.printIndex then do
+        match OWL.parse text with
+        | .error reason => decline s!"parse rejected: {reason}"
+        | .ok O => printIndex (args.dataRoute.getD "sriq-kb") O
+      else match args.dataRoute with
       | some route => do
         let ⟨parsed, _⟩ ← timedPhase timing "parse" (fun _ => OWL.parse text)
         match parsed with
@@ -943,12 +1019,12 @@ def runFile (args : Args) (path : String) : IO UInt32 := do
 end KMOWLReferenceCheck
 
 def main (args : List String) : IO UInt32 := do
-  let usage := "usage: km-owl-reference [--procedure el|sri|el-then-sri|sriq|el-then-sriq|alc|el-then-alc|sriq-kb|sriqd|sriqd-kb|shoiq-c2a] [--hint FILE] [--type CLASS INDIVIDUAL] <file.ofn> (default el-then-sri; --hint and --type with sriq-kb, sriqd-kb and shoiq-c2a only)"
+  let usage := "usage: km-owl-reference [--procedure el|sri|el-then-sri|sriq|el-then-sriq|alc|el-then-alc|sriq-kb|sriqd|sriqd-kb|shoiq-c2a] [--hint FILE] [--type CLASS INDIVIDUAL] [--print-index] <file.ofn> (default el-then-sri; --hint, --type and --print-index with sriq-kb, sriqd-kb and shoiq-c2a only)"
   match KMOWLReferenceCheck.parseArgs {} args with
   | some a =>
     match a.path with
     | some path =>
-      if (a.hint.isSome || a.query.isSome) &&
+      if (a.hint.isSome || a.query.isSome || a.printIndex || a.checkOnly) &&
           !((a.procedure == .sriqKB && a.dataRoute.isNone) || a.dataRoute == some "sriqd-kb" ||
             a.dataRoute == some "shoiq-c2a") then
         IO.eprintln usage

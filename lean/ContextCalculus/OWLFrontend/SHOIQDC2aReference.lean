@@ -295,7 +295,7 @@ theorem objOntK_nonAssert {O : Ontology}
   obtain ⟨h1, h2⟩ := hna ax0 h0
   cases ax0 <;> first
     | (simp [Axiom.isSHIQD, Axiom.isSHI, Axiom.isSRI] at h1; done)
-    | (simp [Axiom.isAssertion] at h2)
+    | (simp [Axiom.isAssertion] at h2; done)
     | (simp only [rwAxiomK, rwAxiom, List.mem_singleton, List.not_mem_nil] at h'
        subst h'; rfl)
     | (simp [rwAxiomK, rwAxiom] at h'; done)

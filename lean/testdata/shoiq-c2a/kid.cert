@@ -1,0 +1,7 @@
+# core a (type: nominal class 0, A = 1, top = 3, definer 5), one child of type B = 2
+blocks 1
+ty 0 0 1 3 5
+kid 0 +0 / 2 3
+# certificate: the anchor record of the child
+rec 0 2 3
+ranc 0 0 -0

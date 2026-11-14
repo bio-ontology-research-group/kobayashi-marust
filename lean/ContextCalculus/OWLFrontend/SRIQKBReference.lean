@@ -107,6 +107,19 @@ theorem isSHIQKB_of_kbOK {T : SRIQKBTranslation} (h : kbOK T = true) :
 
 /-! ## Hints -/
 
+/-- A record of a certificate (route `shoiq-c2a`), on `Nat` indices: its
+type, its parent (a core element `anchor`, or a tree node of type `pty`),
+the label `plab` from the record to its parent, core entries and
+children. -/
+structure RawRec where
+  ty : List Nat := []
+  anchor : Option Nat := none
+  plab : List (RoleT Nat) := []
+  pty : List Nat := []
+  ce : List (Nat × List (RoleT Nat)) := []
+  kids : List (List (RoleT Nat) × List Nat) := []
+deriving Repr, Inhabited
+
 /-- A hint in the text format: a realisation over the blocks `0 .. nb - 1`,
 on `Nat` indices. -/
 structure RawHint where
@@ -115,9 +128,17 @@ structure RawHint where
   ty : List (Nat × List Nat) := []
   lab : List (Nat × Nat × List (RoleT Nat)) := []
   kids : List (Nat × List (RoleT Nat) × List Nat) := []
+  /-- Certificate records by id (route `shoiq-c2a` only). -/
+  recs : List (Nat × RawRec) := []
 deriving Repr, Inhabited
 
 namespace RawHint
+
+/-- Update the record with id `r`, creating it when absent. -/
+def updRec (h : RawHint) (r : Nat) (f : RawRec → RawRec) : RawHint :=
+  if h.recs.any (·.1 == r) then
+    { h with recs := h.recs.map fun p => if p.1 == r then (p.1, f p.2) else p }
+  else { h with recs := h.recs ++ [(r, f {})] }
 
 def finOf (n x : Nat) : Option (Fin n) := if h : x < n then some ⟨x, h⟩ else none
 
@@ -196,6 +217,34 @@ def parseLine (h : RawHint) (ws : List String) : Except String RawHint :=
       let cs' ← parseNats cs
       .ok { h with kids := h.kids ++ [(b'.headD 0, Rs, cs')] }
     | _ => .error "kid: expected `kid B R ... / C ...`"
+  | "rec" :: r :: rest => do
+    let r' ← parseNats [r]
+    let cs ← parseNats rest
+    .ok (h.updRec (r'.headD 0) fun x => { x with ty := x.ty ++ cs })
+  | "ranc" :: r :: b :: rest => do
+    let rb ← parseNats [r, b]
+    let Rs ← parseRTs rest
+    .ok (h.updRec (rb.headD 0) fun x => { x with anchor := some (rb.getD 1 0), plab := x.plab ++ Rs })
+  | "rpar" :: r :: rest => do
+    let r' ← parseNats [r]
+    match rest.splitOn "/" with
+    | [rs, cs] =>
+      let Rs ← parseRTs rs
+      let cs' ← parseNats cs
+      .ok (h.updRec (r'.headD 0) fun x => { x with plab := x.plab ++ Rs, pty := x.pty ++ cs' })
+    | _ => .error "rpar: expected `rpar R R1 ... / C ...`"
+  | "rce" :: r :: b :: rest => do
+    let rb ← parseNats [r, b]
+    let Rs ← parseRTs rest
+    .ok (h.updRec (rb.headD 0) fun x => { x with ce := x.ce ++ [(rb.getD 1 0, Rs)] })
+  | "rkid" :: r :: rest => do
+    let r' ← parseNats [r]
+    match rest.splitOn "/" with
+    | [rs, cs] =>
+      let Rs ← parseRTs rs
+      let cs' ← parseNats cs
+      .ok (h.updRec (r'.headD 0) fun x => { x with kids := x.kids ++ [(Rs, cs')] })
+    | _ => .error "rkid: expected `rkid R R1 ... / C ...`"
   | w :: _ => .error s!"unknown directive: {w}"
 
 /-- Parse the text format. -/
