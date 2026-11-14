@@ -42,10 +42,11 @@ section Enc
 
 variable (O : Ontology (Fin n) (Fin m))
 
-/-- The universal clauses. -/
+/-- The universal clauses whose role has a rule below it (on the others
+the encoding keeps the clause as it is). -/
 def allsQ : List (Fin n × RT m × Fin n) :=
   O.filterMap fun
-    | .allRight a S c => some (a, S, c)
+    | .allRight a S c => if (rules O).any (fun p => leB O p.1 S) then some (a, S, c) else none
     | _ => none
 
 abbrev Pair (n m : Nat) := (Fin n × RT m × Fin n) × Stack (Fin m)
@@ -99,14 +100,23 @@ end Enc
 
 variable {O : Ontology (Fin n) (Fin m)}
 
-theorem mem_allsQ {a c : Fin n} {S : RT m} : (a, S, c) ∈ allsQ O ↔ Clause.allRight a S c ∈ O := by
+theorem mem_allsQ {a c : Fin n} {S : RT m} : (a, S, c) ∈ allsQ O ↔
+    Clause.allRight a S c ∈ O ∧ (rules O).any (fun p => leB O p.1 S) = true := by
   simp only [allsQ, List.mem_filterMap]
   constructor
   · rintro ⟨cl, hcl, he⟩
-    cases cl <;> simp only [Option.some.injEq, reduceCtorEq, Prod.mk.injEq] at he
+    cases cl <;> simp only [reduceCtorEq] at he
+    rename_i a' S' c'
+    split_ifs at he with hs
+    simp only [Option.some.injEq, Prod.mk.injEq] at he
     obtain ⟨rfl, rfl, rfl⟩ := he
-    exact hcl
-  · intro h; exact ⟨_, h, rfl⟩
+    exact ⟨hcl, hs⟩
+  · rintro ⟨h, hs⟩; exact ⟨_, h, by simp [hs]⟩
+
+theorem simpleC_of_not_any {S : RT m} (h : ¬ (rules O).any (fun p => leB O p.1 S) = true) :
+    SimpleC O S := by
+  intro T body hr hle
+  exact h (List.any_eq_true.2 ⟨(T, body), hr, leB_iff.2 hle⟩)
 
 theorem mem_pairsP {q : Fin n × RT m × Fin n} {st : Stack (Fin m)} :
     (q, st) ∈ pairsP O ↔ q ∈ allsQ O ∧ st ∈ reachL O q.2.1 := by
@@ -240,7 +250,7 @@ theorem models_upC {I : Interp D (Fin n) (Fin m)} (hI : models I O) : models (up
     generalize hp : (pairsP O)[j] = p at hm
     obtain ⟨⟨a, S, c⟩, st⟩ := p
     have hpm : ((a, S, c), st) ∈ pairsP O := hp ▸ List.getElem_mem hj
-    have hall : Clause.allRight a S c ∈ O := mem_allsQ.1 (mem_pairsP.1 hpm).1
+    have hall : Clause.allRight a S c ∈ O := (mem_allsQ.1 (mem_pairsP.1 hpm).1).1
     simp only [freshOf, List.mem_append, List.mem_filterMap] at hm
     rcases hm with (hm | hm) | ⟨lp, hlp, ht⟩
     · split_ifs at hm with hst
@@ -400,8 +410,12 @@ theorem models_downC (hC : CondC O) (hJ : models J (encChain O)) : models (downC
     exact ⟨y, (downC_rt R x y).2 ⟨[R], gen_self R, (path_single J R x y).2 hxy⟩, hy⟩
   | allRight a S c =>
     intro x hx y hxy
+    by_cases hany : (rules O).any (fun p => leB O p.1 S) = true
+    swap
+    · have hs := hJ _ (mem_encChain_lift (cl0 := .allRight a S c) hcl rfl)
+      exact hs x hx y ((downC_rt_simple hJ (simpleC_of_not_any hany) x y).1 hxy)
     obtain ⟨w, hg, hp⟩ := (downC_rt S x y).1 hxy
-    have hq : (a, S, c) ∈ allsQ O := mem_allsQ.2 hcl
+    have hq : (a, S, c) ∈ allsQ O := mem_allsQ.2 ⟨hcl, hany⟩
     have hacc : Acc O [(S, false)] w := acc_iff_gen.2 hg
     have hst : [(S, false)] ∈ reachL O S := init_mem_reachL S
     obtain ⟨j, hj, hn, hpj⟩ := nameOf_isSome ((mem_pairsP (q := (a, S, c)) (st := [(S, false)])).2 ⟨hq, hst⟩)

@@ -34,6 +34,7 @@ namespace ContextCalculus.OWL
 `SubObjectPropertyOf` outside the SHI part (a chain of length at least two
 that is not transitivity) and reflexivity, over basic properties. -/
 def Axiom.isRoleC3 : Axiom → Bool
+  | .subObjectPropertyOf rs .top => !rs.isEmpty && rs.all ObjProp.isBasic
   | .subObjectPropertyOf rs r =>
       !(rs.length == 1 || rs == [r, r]) && !rs.isEmpty && rs.all ObjProp.isBasic && r.isBasic
   | .reflexive r => r.isBasic
@@ -65,6 +66,7 @@ variable {DM : DatatypeMap} {D : Type}
 
 /-- The properties of a role axiom. -/
 def offProps : Axiom → List ObjProp
+  | .subObjectPropertyOf rs .top => rs
   | .subObjectPropertyOf rs r => rs ++ [r]
   | .reflexive r => [r]
   | _ => []
@@ -81,12 +83,18 @@ def roleAxsC3 (O : Ontology) : List Axiom := O.axioms.filter Axiom.isRoleC3
 theorem offProps_basic {ax : Axiom} (h : ax.isRoleC3 = true) : ∀ p ∈ offProps ax, p.isBasic = true := by
   cases ax with
   | subObjectPropertyOf rs r =>
-    simp only [Axiom.isRoleC3, Bool.and_eq_true, List.all_eq_true] at h
-    intro p hp
-    simp only [offProps, List.mem_append, List.mem_singleton] at hp
-    rcases hp with hp | rfl
-    · exact h.1.2 p hp
-    · exact h.2
+    cases r with
+    | top =>
+      simp only [Axiom.isRoleC3, Bool.and_eq_true, List.all_eq_true] at h
+      intro p hp
+      exact h.2 p hp
+    | _ =>
+      simp only [Axiom.isRoleC3, Bool.and_eq_true, List.all_eq_true] at h
+      intro p hp
+      simp only [offProps, List.mem_append, List.mem_singleton] at hp
+      rcases hp with hp | rfl
+      · exact h.1.2 p hp
+      · exact h.2
   | reflexive r =>
     simp only [Axiom.isRoleC3] at h
     intro p hp
@@ -177,6 +185,7 @@ def roleOfL (T : SRIQDKBTranslation) : List ObjProp → Option (List (SRI.RoleT 
 /-- The normal-form chain of a role axiom. -/
 def roleClause (T : SRIQDKBTranslation) :
     Axiom → Option (List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount)))
+  | .subObjectPropertyOf _ .top => some []
   | .subObjectPropertyOf rs r =>
     match roleOfL T rs, roleOfT T r with
     | some body, some S => some [.chain body S]
@@ -246,6 +255,12 @@ theorem sat_roleClause {K : SRI.Interp Dom (Fin T.obj.conceptCount) (Fin T.obj.r
     (h : roleClause T ax = some l) : (∀ cl ∈ l, SRIQ.satClause K cl) ↔ I.sat [] ax := by
   cases ax with
   | subObjectPropertyOf rs r =>
+    cases r with
+    | top =>
+      simp only [roleClause, Option.some.injEq] at h; subst h
+      simp only [List.not_mem_nil, false_implies, implies_true, true_iff]
+      intro x y _; trivial
+    | _ =>
     simp only [Axiom.isRoleC3, Bool.and_eq_true, Bool.not_eq_eq_eq_not, Bool.not_true,
       List.all_eq_true] at hax
     simp only [roleClause] at h

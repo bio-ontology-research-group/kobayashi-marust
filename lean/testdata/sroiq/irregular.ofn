@@ -1,0 +1,5 @@
+Prefix(:=<http://ex/>)
+Ontology(<http://ex/irregular>
+SubObjectPropertyOf(ObjectPropertyChain(:s :r :t) :r)
+ClassAssertion(ObjectAllValuesFrom(:r :C) :a)
+)
