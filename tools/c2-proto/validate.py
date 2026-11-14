@@ -180,7 +180,9 @@ def main():
     mode = sys.argv[1]
     rows = []
     if mode == "hand":
-        items = [(name, parse(src), exp, note) for (name, src, exp, note) in CASES]
+        only = os.environ.get("C2_ONLY")
+        items = [(name, parse(src), exp, note) for (name, src, exp, note) in CASES
+                 if not only or any(name.startswith(p) for p in only.split(","))]
         for name, kb, exp, note in items:
             rows.append({"name": name, "query": "kb", "expected": exp, "note": note, "kb": kb})
     else:
@@ -200,9 +202,10 @@ def main():
             if (k + 1) % 50 == 0:
                 print(f"... {k + 1}/{len(rows)} queries, {time.time() - t0:.0f} s", flush=True)
     hv = hermit_batch([r["ofn"] for r in rows])
-    use_km = mode == "hand" or os.environ.get("C2_KM_ALL") == "1"
+    use_km = (mode == "hand" or os.environ.get("C2_KM_ALL") == "1") and not os.environ.get("C2_NO_KM")
     kv = km_batch([r["ofn"] for r in rows]) if use_km else {}
-    out = os.path.join(SCRATCH, f"results-{mode}{'' if mode == 'hand' else '-' + sys.argv[3]}.jsonl")
+    tag = os.environ.get("C2_TAG", "")
+    out = os.path.join(SCRATCH, f"results-{mode}{'' if mode == 'hand' else '-' + sys.argv[3]}{tag}.jsonl")
     dis = 0
     with open(out, "w") as f:
         for r in rows:

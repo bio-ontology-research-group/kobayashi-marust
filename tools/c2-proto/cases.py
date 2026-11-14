@@ -401,4 +401,66 @@ O <= some r.C
 B & C <= F
 T <= <=1 r.T
 """, False, "functional r with two disjoint successors: inconsistent"),
+    # --- small cases that need a promoted (non-nominal) core element ---
+    ("small-share", """
+nom O
+nom P
+distinct O P
+anon A B
+P <= >=2 r.A
+A <= some r.B
+B <= some r-.O
+O <= <=1 r.B
+A & B <= F
+""", True, "the two A elements share one B element, which is counted at o: core O, P and the B element"),
+    ("small-share-clash", """
+nom O
+nom P
+distinct O P
+anon A1 A2 B1 B2
+P <= some r.A1
+P <= some r.A2
+A1 <= some r.B1
+A2 <= some r.B2
+B1 <= B
+B2 <= B
+B1 & B2 <= F
+B <= some r-.O
+O <= <=1 r.B
+""", False, "the two B elements differ but o has only one B successor: inconsistent"),
+    ("small-share-two", """
+nom O
+nom P
+distinct O P
+anon A1 A2 B1 B2
+P <= some r.A1
+P <= some r.A2
+A1 <= some r.B1
+A2 <= some r.B2
+B1 <= B
+B2 <= B
+B1 & B2 <= F
+B <= some r-.O
+O <= <=2 r.B
+""", True, "two B slots at o: core O, P and both B elements"),
+    ("small-level2", """
+nom O
+anon A B C
+O <= some r-.C
+C <= >=2 r-.A
+A <= some r.B
+B <= some r.O
+O <= <=1 r-.B
+B <= <=1 r-.A
+""", False, "one B element (counted at o), both A elements of the C element need it and are counted there: inconsistent"),
+    ("small-level2-ok", """
+nom O
+anon A B C
+O <= some r-.C
+C <= >=2 r-.A
+A <= some r.B
+B <= some r.O
+O <= <=1 r-.B
+B <= <=2 r-.A
+""", True, "as small-level2 with room for two A elements at the B element"),
 ]

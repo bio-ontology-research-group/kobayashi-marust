@@ -340,6 +340,11 @@ def _nondecreasing(nt, k, start=0):
             yield (i,) + rest
 
 
+def _entry_key(e):
+    L, t = e
+    return (sorted(L), sorted(t))
+
+
 def _search_labels(kb: KB, cty, G):
     """Backtracking over the core labels pair by pair (rows in order),
     pruning on the at-most clauses at both ends; a core element's star is
@@ -352,6 +357,7 @@ def _search_labels(kb: KB, cty, G):
     ups = [[(kk, R, b) for (a, kk, R, b) in kb.upper if a in cty[c]] for c in range(k)]
     cnt = [[0] * len(ups[c]) for c in range(k)]
     anchors = [anchor_options(kb, G, c) for c in range(k)]
+    memo = {}
 
     def add(c, L, t, sign):
         ok = True
@@ -378,7 +384,12 @@ def _search_labels(kb: KB, cty, G):
                 row_done = (d == k - 1)
                 w = None
                 if row_done:
-                    w = _support(kb, cty[c], core_nbrs(cty, lab, c), {}, anchors[c])
+                    nb = core_nbrs(cty, lab, c)
+                    key = (c, tuple(sorted(nb, key=_entry_key)))
+                    if key in memo:
+                        w = memo[key]
+                    else:
+                        w = memo[key] = _support(kb, cty[c], nb, {}, anchors[c])
                 if not row_done or w is not None:
                     if row_done:
                         kids[c] = w[1]

@@ -8,7 +8,28 @@ import sys
 from collections import Counter
 
 
+def hand_table(paths):
+    """Markdown table of the hand cases; the first file that decided a case
+    wins (pass the runs with the largest core limit first)."""
+    from cases import CASES
+    runs = [{json.loads(l)["name"]: json.loads(l) for l in open(p)} for p in paths]
+    print("| Case | Expected | HermiT | Procedure (core limit) | Core | Finite model | NI steps |")
+    print("|---|---|---|---|---:|---:|---:|")
+    for (name, _, exp, _) in CASES:
+        r = next((run[name] for run in runs if name in run and run[name]["proc"] is not None),
+                 next(run[name] for run in runs if name in run))
+        p = r["proc"]
+        proc = "timeout" if p is None else ("realisation" if p else "none")
+        st = r.get("steer_stats", {})
+        print(f"| `{name}` | {'cons.' if exp else 'incons.'} | {r['hermit']} | {proc} (≤ {r['kmax']}) | "
+              f"{r.get('core_size', '')} | {r['bf'] if r['bf'] is not None else '–'} | "
+              f"{st.get('ni', '') if r['bf'] is not None else ''} |")
+
+
 def main():
+    if sys.argv[1] == "--hand":
+        hand_table(sys.argv[2:])
+        return
     for path in sys.argv[1:]:
         rows = [json.loads(line) for line in open(path)]
         c = Counter()
