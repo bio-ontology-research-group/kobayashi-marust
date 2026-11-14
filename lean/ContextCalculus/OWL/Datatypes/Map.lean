@@ -79,8 +79,8 @@ def kindSem : Kind → Val → Prop
   | .hexBinary => fun v => ∃ bs, v = .hex bs
   | .base64Binary => fun v => ∃ bs, v = .b64 bs
   | .anyURI => fun v => ∃ s, v = .uri s ∧ xmlString s = true
-  | .dateTime => fun v => ∃ t z, v = .time t z ∧ IsDecimalQ t
-  | .dateTimeStamp => fun v => ∃ t, v = .time t true ∧ IsDecimalQ t
+  | .dateTime => fun v => ∃ t z, v = .time t z ∧ IsDecimalQ t ∧ ∀ o ∈ z, -840 ≤ o ∧ o ≤ 840
+  | .dateTimeStamp => fun v => ∃ t o, v = .time t (some o) ∧ IsDecimalQ t ∧ -840 ≤ o ∧ o ≤ 840
   | .xmlLiteral => fun v => ∃ s, v = .xml s ∧ xmlString s = true
   | .literal => fun _ => True
 
@@ -127,17 +127,23 @@ def floatRel {e m : Nat} (b : Bool × Bool) (x y : FloatV e m) : Prop :=
 
 /-- `(t₁, z₁) < (t₂, z₂)` in the order of `xsd:dateTime` (XML Schema 1.1):
 the timeline order if both or neither have a timezone; otherwise the
-value without a timezone may lie 14 hours either way. -/
-def timeLt (a b : ℚ × Bool) : Prop :=
-  if a.2 = b.2 then a.1 < b.1 else a.1 + 50400 < b.1
+value without a timezone may lie 14 hours either way. The offset takes no
+part (values with an offset are compared as instants). -/
+def timeLt (a b : ℚ × Option Int) : Prop :=
+  if a.2.isSome = b.2.isSome then a.1 < b.1 else a.1 + 50400 < b.1
+
+/-- Equality in the order of `xsd:dateTime`: the same instant (or the same
+local time), whatever the offsets. -/
+def timeEq (a b : ℚ × Option Int) : Prop :=
+  a.2.isSome = b.2.isSome ∧ a.1 = b.1
 
 /-- A bound facet on `dateTime` values (a partial order: `≥` is `>` or
-`=`). -/
-def timeRel (b : Bool × Bool) (x y : ℚ × Bool) : Prop :=
+equal in the order). -/
+def timeRel (b : Bool × Bool) (x y : ℚ × Option Int) : Prop :=
   match b with
-  | (true, false) => timeLt y x ∨ x = y
+  | (true, false) => timeLt y x ∨ timeEq x y
   | (true, true) => timeLt y x
-  | (false, false) => timeLt x y ∨ x = y
+  | (false, false) => timeLt x y ∨ timeEq x y
   | (false, true) => timeLt x y
 
 /-- Basic filtering (RFC 4647, section 3.3.1) of a lower-case tag by a

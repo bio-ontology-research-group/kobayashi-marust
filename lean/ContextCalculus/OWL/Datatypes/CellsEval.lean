@@ -74,11 +74,11 @@ theorem kindPt_integer (lo hi : Option ℤ) (q : ℚ) :
 theorem kindPt_correct (k : Kind) (w : ValOf ℚ) : kindSem k (toVal w) ↔ kindPt k w = true := by
   cases k
   case integer lo hi =>
-    rcases w with q | x | x | ⟨s, _ | t⟩ | b | bs | bs | s | ⟨t, z⟩ | s | n
+    rcases w with q | x | x | ⟨s, _ | t⟩ | b | bs | bs | s | ⟨t, _ | z⟩ | s | n
     · exact kindPt_integer lo hi q
     all_goals simp [kindSem, kindPt, toVal, ValOf.map]
-  all_goals rcases w with q | x | x | ⟨s, _ | t⟩ | b | bs | bs | s | ⟨t, z⟩ | s | n <;>
-    simp [kindSem, kindPt, toVal, ValOf.map, strSem, ← decQ_iff_real, ← isDecimalQ_iff, and_assoc]
+  all_goals rcases w with q | x | x | ⟨s, _ | t⟩ | b | bs | bs | s | ⟨t, _ | z⟩ | s | n <;>
+    simp [kindSem, kindPt, toVal, ValOf.map, strSem, ← decQ_iff_real, ← isDecimalQ_iff, and_assoc, offOK]
 
 theorem boundRel_cast (b : Bool × Bool) (q y : ℚ) :
     boundRel b (q : ℝ) (y : ℝ) ↔ boundB b q y = true := by
@@ -233,12 +233,12 @@ end GapEval
 theorem kindRest_correct {k : Kind} (hk : supportedKind k = true) {v : Val}
     (hn : ∀ x, v ≠ .num x) (hb : ∀ b, v ≠ .bool b) :
     kindSem k v ↔ kindRest k (restCell v) = true := by
-  rcases v with x | x | x | ⟨s, _ | t⟩ | b | bs | bs | s | ⟨t, z⟩ | s | n
+  rcases v with x | x | x | ⟨s, _ | t⟩ | b | bs | bs | s | ⟨t, _ | z⟩ | s | n
   · exact absurd rfl (hn x)
   all_goals try exact absurd rfl (hb _)
   all_goals cases k <;> simp [supportedKind] at hk <;>
     simp only [kindSem, restCell, strSem] <;> (try split_ifs) <;>
-    simp_all [kindRest, isDecimalQ_iff]
+    simp_all [kindRest, isDecimalQ_iff, offOK]
 
 theorem evalCell_restCell (a : BAtom) (v : Val) :
     evalCell a (restCell v) = match a with

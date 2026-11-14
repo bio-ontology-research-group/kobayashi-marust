@@ -71,4 +71,13 @@ def tok : Fin 1 → DataRange := ![.datatype (xs "token")]
 def strLen : Fin 1 → DataRange := ![.restriction (xs "string") [(xs "maxLength", L "3" "integer")]]
 #guard !owlCheck strLen
 
+/-- Section 4.7: the same instant with offsets `+01:00` and `Z` gives two
+values; `Z` and `+00:00` give one. -/
+def dt2 : Fin 1 → DataRange :=
+  ![.oneOf [L "2008-07-08T20:44:11.656+01:00" "dateTime", L "2008-07-08T19:44:11.656Z" "dateTime"]]
+#guard owlCard dt2 {0} = some 2
+def dt1 : Fin 1 → DataRange :=
+  ![.oneOf [L "2008-07-08T19:44:11Z" "dateTime", L "2008-07-08T19:44:11+00:00" "dateTime"]]
+#guard owlCard dt1 {0} = some 1
+
 end ContextCalculus.OWL.Datatypes.OracleTests

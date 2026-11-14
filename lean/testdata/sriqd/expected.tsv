@@ -12,3 +12,4 @@ functional-two.ofn	row http://ex/A unsat
 sub-bounds.ofn	row http://ex/A http://ex/A http://ex/B | row http://ex/B http://ex/B
 decline-string-facet.ofn	declined
 decline-free-literal.ofn	declined
+datetime-offsets.ofn	row http://ex/A http://ex/A

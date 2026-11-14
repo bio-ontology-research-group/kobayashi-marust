@@ -264,6 +264,12 @@ def cellSize (as : List BAtom) : Cell → Option Nat
 
 /-! ## Evaluating atoms on cells -/
 
+/-- A timezone offset within `±14:00` (or none). -/
+def offOK (z : Option Int) : Bool := z.all fun o => decide (-840 ≤ o ∧ o ≤ 840)
+
+theorem offOK_iff (z : Option Int) : offOK z = true ↔ ∀ o ∈ z, -840 ≤ o ∧ o ≤ 840 := by
+  cases z <;> simp [offOK]
+
 /-- The kind check on a literal value (a computable `kindSem`). -/
 def kindPt : Kind → ValOf ℚ → Bool
   | .real, .num _ => true
@@ -286,8 +292,8 @@ def kindPt : Kind → ValOf ℚ → Bool
   | .hexBinary, .hex _ => true
   | .base64Binary, .b64 _ => true
   | .anyURI, .uri s => xmlString s
-  | .dateTime, .time t _ => decQ t
-  | .dateTimeStamp, .time t z => z && decQ t
+  | .dateTime, .time t z => decQ t && offOK z
+  | .dateTimeStamp, .time t z => z.isSome && decQ t && offOK z
   | .xmlLiteral, .xml s => xmlString s
   | .literal, _ => true
   | _, _ => false
@@ -393,7 +399,7 @@ def restCell : Val → Cell
   | .hex _ => .hexR
   | .b64 _ => .b64R
   | .uri s => if xmlString s then .uriR else .other
-  | .time t z => if decQ t then (if z then .timeTz else .timeLoc) else .other
+  | .time t z => if decQ t && offOK z then (if z.isSome then .timeTz else .timeLoc) else .other
   | .xml s => if xmlString s then .xmlR else .other
   | .extra _ => .other
 

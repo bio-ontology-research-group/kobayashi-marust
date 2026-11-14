@@ -36,10 +36,17 @@ into `ValOf ℝ`, the value type of the map.
   4.5), finite sequences of octets, as two disjoint value spaces (see
   "Points to check" below).
 * `uri s`: `xsd:anyURI` (section 4.6), disjoint from the strings.
-* `time t tz`: `xsd:dateTime` (section 4.7): `t` seconds on the timeline
-  from 1970-01-01T00:00:00, in UTC if `tz` (the timezone offset is
-  applied and dropped), local time otherwise. `xsd:dateTimeStamp` is the
-  part with `tz`.
+* `time t tz`: `xsd:dateTime` (section 4.7): `tz` is the timezone offset
+  in minutes (`none` without a timezone); `t` is the instant in seconds from
+  1970-01-01T00:00:00 UTC when there is an offset, the local time in
+  seconds otherwise. The offset is part of the value: section 4.7 says that
+  two values for the same instant with different offsets are equal but not
+  identical, and OWL 2 value spaces use identity.
+  `"2008-07-08T20:44:11.656+01:00"` and `"2008-07-08T19:44:11.656Z"` are
+  two values. `Z`, `+00:00` and `-00:00` are the offset `0` (XML Schema
+  1.1, `timezoneOffset`), and `24:00:00` is `00:00:00` of the next day
+  (XML Schema 1.1, `dateTimeLexicalMap`). `xsd:dateTimeStamp` is the part
+  with an offset.
 * `xml s`: `rdf:XMLLiteral` (section 4.8).
 * `extra n`: data values outside every value space of the map. The direct
   semantics (section 2.2) only asks the data domain to contain the value
@@ -72,8 +79,6 @@ of XML Schema 1.1.
   primitive datatypes have disjoint value spaces); OWL 2, section 4.5,
   describes both as sequences of octets.
 * `uri` values are disjoint from strings.
-* `time`: two `dateTime` values with timezones that name the same instant
-  are the same value.
 -/
 
 namespace ContextCalculus.OWL.Datatypes
@@ -223,7 +228,7 @@ inductive ValOf (R : Type) where
   | hex (bs : List UInt8)
   | b64 (bs : List UInt8)
   | uri (s : String)
-  | time (t : ℚ) (tz : Bool)
+  | time (t : ℚ) (tz : Option Int)
   | xml (s : String)
   | extra (n : Nat)
 deriving DecidableEq, Repr
@@ -421,9 +426,9 @@ def tzMinutes : List Char → Option Int
 
 /-- The value of an `xsd:dateTime` lexical form (`needTz` for
 `xsd:dateTimeStamp`): seconds from 1970-01-01T00:00:00 (UTC if a timezone
-is given) and whether a timezone is given. The lexical check is the one of
-the OFN parser (`Parse.isDateTime`). -/
-def parseDateTime (needTz : Bool) (cs : List Char) : Option (ℚ × Bool) :=
+is given) and the timezone offset in minutes, if given. The lexical check
+is the one of the OFN parser (`Parse.isDateTime`). -/
+def parseDateTime (needTz : Bool) (cs : List Char) : Option (ℚ × Option Int) :=
   if !isDateTime needTz cs then none
   else match cs.splitOn 'T' with
   | [date, time] =>
@@ -442,8 +447,8 @@ def parseDateTime (needTz : Bool) (cs : List Char) : Option (ℚ × Bool) :=
           | r => ([], r)
         let secs : ℚ := (s : ℚ) + (digitsVal frac : ℚ) / (10 : ℚ) ^ frac.length
         let loc : ℚ := ((daysFromCivil year mo' d' * 86400 + h * 3600 + mi * 60 : Int) : ℚ) + secs
-        if tz.isEmpty then some (loc, false)
-        else (tzMinutes tz).map fun off => (loc - ((off * 60 : Int) : ℚ), true)
+        if tz.isEmpty then some (loc, none)
+        else (tzMinutes tz).map fun off => (loc - ((off * 60 : Int) : ℚ), some off)
       | _, _, _, _, _ => none
     | _ => none
   | _ => none

@@ -57,11 +57,28 @@ theorem double_nan : (owl2MapP pat).literal (X "NaN" "double") = some (.dbl .nan
 /-- `1e39` overflows `xsd:float` to `+INF`. -/
 theorem float_overflow : litVal (X "1e39" "float") = some (.flt (.inf false)) := by decide +kernel
 
-/-- Two time stamps of the same instant are one value. -/
-theorem dateTime_same_instant :
-    (owl2MapP pat).literal (X "2000-01-01T00:00:00Z" "dateTime") =
-      (owl2MapP pat).literal (X "2000-01-01T01:00:00+01:00" "dateTimeStamp") :=
+/-- Structural Specification, section 4.7: the same instant with different
+timezone offsets gives two different values (equal, not identical). -/
+theorem dateTime_offsets_differ :
+    (owl2MapP pat).literal (X "2008-07-08T20:44:11.656+01:00" "dateTime") ≠
+      (owl2MapP pat).literal (X "2008-07-08T19:44:11.656Z" "dateTime") :=
+  fun h => absurd ((owl2MapP_literal_eq pat _ _).1 h) (by decide +kernel)
+
+/-- The same instant with the same offset is one value, whatever the lexical
+form (here trailing zeros of the fraction). -/
+theorem dateTime_same_offset :
+    (owl2MapP pat).literal (X "2008-07-08T20:44:11.656+01:00" "dateTime") =
+      (owl2MapP pat).literal (X "2008-07-08T20:44:11.6560+01:00" "dateTimeStamp") :=
   (owl2MapP_literal_eq pat _ _).2 (by decide +kernel)
+
+/-- `Z`, `+00:00` and `-00:00` are the same offset (XML Schema 1.1). -/
+theorem dateTime_zero_offsets :
+    (owl2MapP pat).literal (X "2008-07-08T19:44:11Z" "dateTime") =
+      (owl2MapP pat).literal (X "2008-07-08T19:44:11+00:00" "dateTime") ∧
+    (owl2MapP pat).literal (X "2008-07-08T19:44:11Z" "dateTime") =
+      (owl2MapP pat).literal (X "2008-07-08T19:44:11-00:00" "dateTime") :=
+  ⟨(owl2MapP_literal_eq pat _ _).2 (by decide +kernel),
+    (owl2MapP_literal_eq pat _ _).2 (by decide +kernel)⟩
 
 /-- A time without a timezone differs from the same clock time in UTC. -/
 theorem dateTime_local_ne_utc :
@@ -69,7 +86,8 @@ theorem dateTime_local_ne_utc :
       (owl2MapP pat).literal (X "2000-01-01T00:00:00Z" "dateTime") :=
   fun h => absurd ((owl2MapP_literal_eq pat _ _).1 h) (by decide +kernel)
 
-/-- `24:00:00` is the start of the next day. -/
+/-- `24:00:00` is `00:00:00` of the next day, with the same offset (XML Schema
+1.1, `dateTimeLexicalMap`). -/
 theorem dateTime_midnight :
     (owl2MapP pat).literal (X "1999-12-31T24:00:00Z" "dateTime") =
       (owl2MapP pat).literal (X "2000-01-01T00:00:00Z" "dateTime") :=
@@ -117,5 +135,6 @@ end ContextCalculus.OWL.Datatypes.Tests
 #print axioms ContextCalculus.OWL.Datatypes.Tests.integer_eq_decimal
 #print axioms ContextCalculus.OWL.Datatypes.Tests.float_ne_integer
 #print axioms ContextCalculus.OWL.Datatypes.Tests.float_point_one
-#print axioms ContextCalculus.OWL.Datatypes.Tests.dateTime_same_instant
+#print axioms ContextCalculus.OWL.Datatypes.Tests.dateTime_offsets_differ
+#print axioms ContextCalculus.OWL.Datatypes.Tests.dateTime_zero_offsets
 #print axioms ContextCalculus.OWL.Datatypes.Tests.ill_typed
