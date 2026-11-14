@@ -454,6 +454,334 @@ theorem blockSet_finite [Finite Ind] : (blockSet ind x0).Finite := by
 
 end FromModel
 
+/-! ### From a realisation to a forest model -/
+
+/-- The good records. -/
+def goodSet [DecidableEq CName] [DecidableEq Role] (O : Ontology CName Role) :
+    Set (Rec CName Role) :=
+  {r | Good O r}
+
+/-- The good records support themselves. -/
+theorem gS [DecidableEq CName] [DecidableEq Role] {O : Ontology CName Role} :
+    SelfSupp O (goodSet O) := by
+  rintro r ⟨G, hr, hG⟩
+  obtain ⟨C, hok, hC⟩ := hG r hr
+  exact ⟨C, hok, fun e he => ⟨G, hC e he, hG⟩⟩
+
+section Forest
+
+open Classical
+
+set_option linter.unusedSectionVars false
+
+variable [Fintype Role] [DecidableEq CName] [DecidableEq Role]
+variable {O : Ontology CName Role} {A : ABox CName Role Ind} {B : Type} [Fintype B]
+  (ρ : Realisation O A B)
+
+/-- The chosen tree children of each block. -/
+noncomputable def bkids (b : B) : List (Nbr CName Role) := (ρ.kids b).choose
+
+theorem bkids_spec (b : B) : StarOK O (ρ.ty b) (nbrs ρ.ty ρ.lab b ++ bkids ρ b) ∧
+    ∀ e ∈ bkids ρ b, Good O (childRec (ρ.ty b) e) :=
+  (ρ.kids b).choose_spec
+
+/-- The raw forest: blocks, and tree nodes `(b, i, p)` at the path `p`
+below the child `i` of block `b`. -/
+abbrev FR (B : Type) := B ⊕ (B × Nat × List Nat)
+
+/-- The record of a tree node. -/
+noncomputable def recT (b : B) (i : Nat) (p : List Nat) : Option (Rec CName Role) :=
+  ((bkids ρ b)[i]?).bind fun e => recOf (gS (O := O)) (childRec (ρ.ty b) e) p
+
+theorem recT_eq {b : B} {i : Nat} {p : List Nat} {r : Rec CName Role} :
+    recT ρ b i p = some r ↔ ∃ e, (bkids ρ b)[i]? = some e ∧
+      recOf (gS (O := O)) (childRec (ρ.ty b) e) p = some r := by
+  simp only [recT, Option.bind_eq_some_iff]
+
+/-- Roles in the raw forest. -/
+def rawRT (R : RoleT Role) : FR B → FR B → Prop
+  | .inl b, .inl c => R ∈ ρ.lab b c
+  | .inl b, .inr (c, i, p) => c = b ∧ p = [] ∧ ∃ e, (bkids ρ b)[i]? = some e ∧ R ∈ e.1
+  | .inr (c, i, p), .inl b => c = b ∧ p = [] ∧ ∃ e, (bkids ρ b)[i]? = some e ∧ R.flip ∈ e.1
+  | .inr (b, i, p), .inr (c, j, q) => b = c ∧ i = j ∧ ∃ e, (bkids ρ b)[i]? = some e ∧
+      Adj (gS (O := O)) (childRec (ρ.ty b) e) R p q
+
+/-- Types in the raw forest. -/
+noncomputable def typR : FR B → Finset CName
+  | .inl b => ρ.ty b
+  | .inr (b, i, p) => ((recT ρ b i p).map Prod.fst).getD ∅
+
+/-- The nodes of the forest. -/
+def validR : FR B → Prop
+  | .inl _ => True
+  | .inr (b, i, p) => ∃ r, recT ρ b i p = some r
+
+/-- The forest interpretation. -/
+def forestI : Interp {x : FR B // validR ρ x} CName Role where
+  c a x := a ∈ typR ρ x.1
+  r r x y := rawRT ρ (.pos r) x.1 y.1
+
+variable {G : Set (Rec CName Role)} {hG : SelfSupp O G} {ρ0 : Rec CName Role} in
+theorem adj_flip (R : RoleT Role) (p q : List Nat) :
+    Adj hG ρ0 R.flip p q ↔ Adj hG ρ0 R q p := by
+  unfold Adj
+  simp only [RoleT.flip_flip]
+  exact Or.comm
+
+theorem rawRT_flip (R : RoleT Role) (x y : FR B) : rawRT ρ R.flip x y ↔ rawRT ρ R y x := by
+  rcases x with b | ⟨b, i, p⟩ <;> rcases y with c | ⟨c, j, q⟩
+  · simp only [rawRT]
+    rw [ρ.symm, mem_flipL, RoleT.flip_flip]
+  · simp only [rawRT]
+  · simp only [rawRT, RoleT.flip_flip]
+  · simp only [rawRT, adj_flip]
+    constructor
+    · rintro ⟨rfl, rfl, e, he, h⟩
+      exact ⟨rfl, rfl, e, he, h⟩
+    · rintro ⟨rfl, rfl, e, he, h⟩
+      exact ⟨rfl, rfl, e, he, h⟩
+
+theorem forestI_rt (R : RoleT Role) (x y : {x : FR B // validR ρ x}) :
+    (forestI ρ).rt R x y ↔ rawRT ρ R x.1 y.1 := by
+  cases R with
+  | pos r => exact Iff.rfl
+  | inv r =>
+    show rawRT ρ (.pos r) y.1 x.1 ↔ _
+    exact (rawRT_flip ρ (.pos r) x.1 y.1).symm
+
+/-- Labels in the raw forest. -/
+noncomputable def rawLab (x y : FR B) : Finset (RoleT Role) :=
+  Finset.univ.filter fun R => rawRT ρ R x y
+
+theorem mem_rawLab {x y : FR B} {R : RoleT Role} : R ∈ rawLab ρ x y ↔ rawRT ρ R x y := by
+  simp [rawLab]
+
+/-- The neighbours of a raw node. -/
+noncomputable def nbR : FR B → List (FR B)
+  | .inl b => ((Finset.univ.filter fun c => ρ.lab b c ≠ ∅).toList.map Sum.inl) ++
+      (List.finRange (bkids ρ b).length).map fun i => Sum.inr (b, i.val, [])
+  | .inr (b, i, p) => (if p = [] then [Sum.inl b] else []) ++
+      (match recT ρ b i p with
+       | some r => (nb (gS (O := O)) p r).map fun q => Sum.inr (b, i, q)
+       | none => [])
+
+/-- The facts the star lemma needs at one valid node. -/
+structure NodeOK (x : FR B) : Prop where
+  nodup : (nbR ρ x).Nodup
+  comp : ∀ R y, rawRT ρ R x y → y ∈ nbR ρ x
+  valid : ∀ y ∈ nbR ρ x, validR ρ y
+  star : StarOK O (typR ρ x) ((nbR ρ x).map fun y => (rawLab ρ x y, typR ρ y))
+
+theorem nodeOK_block (b : B) : NodeOK ρ (.inl b) := by
+  have hroot : ∀ i (h : i < (bkids ρ b).length),
+      recT ρ b i [] = some (childRec (ρ.ty b) (bkids ρ b)[i]) := by
+    intro i h
+    rw [recT_eq]
+    exact ⟨_, List.getElem?_eq_getElem h, rfl⟩
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · simp only [nbR]
+    rw [List.nodup_append]
+    refine ⟨(Finset.nodup_toList _).map Sum.inl_injective, ?_, ?_⟩
+    · refine (List.nodup_finRange _).map fun i j h => ?_
+      simp only [Sum.inr.injEq, Prod.mk.injEq, and_true, true_and] at h
+      exact Fin.ext h
+    · intro u hu v hv huv
+      subst huv
+      obtain ⟨c, -, rfl⟩ := List.mem_map.1 hu
+      obtain ⟨i, -, h⟩ := List.mem_map.1 hv
+      exact Sum.inr_ne_inl h
+  · rintro R (c | ⟨c, i, p⟩) h
+    · simp only [rawRT] at h
+      refine List.mem_append_left _ (List.mem_map.2 ⟨c, ?_, rfl⟩)
+      rw [Finset.mem_toList, Finset.mem_filter]
+      refine ⟨Finset.mem_univ _, fun h0 => ?_⟩
+      rw [h0] at h
+      exact absurd h (Finset.notMem_empty _)
+    · simp only [rawRT] at h
+      obtain ⟨rfl, rfl, e, he, -⟩ := h
+      have hlt : i < (bkids ρ c).length := (List.getElem?_eq_some_iff.1 he).1
+      exact List.mem_append_right _ (List.mem_map.2 ⟨⟨i, hlt⟩, List.mem_finRange _, rfl⟩)
+  · intro y hy
+    rcases List.mem_append.1 hy with hy | hy
+    · obtain ⟨c, -, rfl⟩ := List.mem_map.1 hy
+      trivial
+    · obtain ⟨i, -, rfl⟩ := List.mem_map.1 hy
+      exact ⟨_, hroot i.val i.2⟩
+  · have heq : (nbR ρ (.inl b)).map (fun y => (rawLab ρ (.inl b) y, typR ρ y)) =
+        nbrs ρ.ty ρ.lab b ++ bkids ρ b := by
+      simp only [nbR, List.map_append, List.map_map, nbrs]
+      congr 1
+      · refine List.map_congr_left fun c _ => ?_
+        simp only [Function.comp_apply, typR, Prod.mk.injEq, and_true]
+        ext R
+        rw [mem_rawLab]
+        rfl
+      · conv_rhs => rw [← List.map_getElem_finRange (bkids ρ b)]
+        refine List.map_congr_left fun i _ => ?_
+        simp only [Function.comp_apply, typR, hroot i.val i.2, Option.map_some,
+          Option.getD_some, childRec]
+        congr 1
+        ext R
+        rw [mem_rawLab]
+        simp only [rawRT, true_and, List.getElem?_eq_getElem i.2, Option.some.injEq,
+          exists_eq_left', List.get_eq_getElem]
+    rw [heq]
+    exact (bkids_spec ρ b).1
+
+theorem nodeOK_tree {b : B} {i : Nat} {p : List Nat} {r : Rec CName Role}
+    (hr : recT ρ b i p = some r) : NodeOK ρ (.inr (b, i, p)) := by
+  obtain ⟨e, he, hp⟩ := (recT_eq ρ).1 hr
+  have h0 : childRec (ρ.ty b) e ∈ goodSet O :=
+    (bkids_spec ρ b).2 e (List.mem_of_getElem? he)
+  have hrG : r ∈ goodSet O := recOf_mem gS _ h0 p r hp
+  have hnbR : nbR ρ (.inr (b, i, p)) = (if p = [] then [Sum.inl b] else []) ++
+      (nb (gS (O := O)) p r).map fun q => Sum.inr (b, i, q) := by
+    simp only [nbR, hr]
+  -- the record of a neighbour path
+  have hrecq : ∀ q σ, recOf (gS (O := O)) (childRec (ρ.ty b) e) q = some σ →
+      recT ρ b i q = some σ := fun q σ h => (recT_eq ρ).2 ⟨e, he, h⟩
+  have hlabT : ∀ q, rawLab ρ (.inr (b, i, p)) (.inr (b, i, q)) =
+      Finset.univ.filter fun R => Adj (gS (O := O)) (childRec (ρ.ty b) e) R p q := by
+    intro q
+    ext R
+    rw [mem_rawLab]
+    simp only [rawRT, true_and, he, Option.some.injEq, exists_eq_left', Finset.mem_filter,
+      Finset.mem_univ]
+  refine ⟨?_, ?_, ?_, ?_⟩
+  · rw [hnbR, List.nodup_append]
+    refine ⟨?_, (nb_nodup p r).map fun q q' h => ?_, ?_⟩
+    · split <;> simp
+    · simp only [Sum.inr.injEq, Prod.mk.injEq, true_and] at h
+      exact h
+    · intro u hu v hv huv
+      subst huv
+      split at hu
+      · obtain rfl := List.mem_singleton.1 hu
+        obtain ⟨q, -, h⟩ := List.mem_map.1 hv
+        exact Sum.inr_ne_inl h
+      · simp at hu
+  · rintro R (c | ⟨c, j, q⟩) h
+    · simp only [rawRT] at h
+      obtain ⟨rfl, rfl, -⟩ := h
+      rw [hnbR]
+      simp
+    · simp only [rawRT] at h
+      obtain ⟨rfl, rfl, e', he', hadj⟩ := h
+      rw [he, Option.some.injEq] at he'
+      subst he'
+      rw [hnbR]
+      exact List.mem_append_right _ (List.mem_map.2 ⟨q, adj_mem_nb hp hadj, rfl⟩)
+  · intro y hy
+    rw [hnbR] at hy
+    rcases List.mem_append.1 hy with hy | hy
+    · split at hy
+      · obtain rfl := List.mem_singleton.1 hy
+        trivial
+      · simp at hy
+    · obtain ⟨q, hq, rfl⟩ := List.mem_map.1 hy
+      obtain ⟨σ, hσ⟩ := nb_valid hp hq
+      exact ⟨σ, hrecq q σ hσ⟩
+  · have htyp : typR ρ (.inr (b, i, p)) = r.1 := by
+      simp only [typR, hr, Option.map_some, Option.getD_some]
+    -- the children part
+    have hch : ((List.finRange (ch (gS (O := O)) r).length).map fun j => j.val :: p).map
+        (fun q => (rawLab ρ (.inr (b, i, p)) (.inr (b, i, q)), typR ρ (.inr (b, i, q)))) =
+        ch (gS (O := O)) r := by
+      conv_rhs => rw [← List.map_getElem_finRange (ch (gS (O := O)) r)]
+      rw [List.map_map]
+      refine List.map_congr_left fun j _ => ?_
+      have hrj : recT ρ b i (j.val :: p) = some (childRec r.1 (ch (gS (O := O)) r)[j.val]) :=
+        hrecq _ _ ((recOf_cons gS _).2 ⟨r, _, hp, List.getElem?_eq_getElem j.2, rfl⟩)
+      simp only [Function.comp_apply, typR, hrj, Option.map_some, Option.getD_some, childRec,
+        hlabT]
+      congr 1
+      ext R
+      simp only [Finset.mem_filter, Finset.mem_univ, true_and]
+      exact adj_child hp j.2
+    have hmapnb : ∀ l : List (List Nat), (l.map fun q => (Sum.inr (b, i, q) : FR B)).map
+        (fun y => (rawLab ρ (.inr (b, i, p)) y, typR ρ y)) =
+        l.map fun q => (rawLab ρ (.inr (b, i, p)) (.inr (b, i, q)), typR ρ (.inr (b, i, q))) :=
+      fun l => by rw [List.map_map]; rfl
+    have heq : (nbR ρ (.inr (b, i, p))).map (fun y => (rawLab ρ (.inr (b, i, p)) y, typR ρ y)) =
+        r.2.toList ++ ch (gS (O := O)) r := by
+      rw [hnbR, List.map_append, hmapnb]
+      unfold nb
+      rw [List.map_append, hch, ← List.append_assoc]
+      congr 1
+      cases p with
+      | nil =>
+        simp only [recOf, Option.some.injEq] at hp
+        subst hp
+        simp only [if_true, parentL, List.map_nil, List.append_nil, List.map_cons, childRec,
+          Option.toList_some, typR, List.cons.injEq, Prod.mk.injEq, and_true]
+        ext R
+        rw [mem_rawLab, mem_flipL]
+        simp only [rawRT, true_and, he, Option.some.injEq, exists_eq_left']
+      | cons j q =>
+        obtain ⟨σ, e', h1, h2, rfl⟩ := (recOf_cons gS _).1 hp
+        simp only [reduceCtorEq, if_false, List.map_nil, List.nil_append, parentL,
+          List.map_cons, childRec, Option.toList_some, List.cons.injEq, and_true, typR,
+          hrecq q σ h1, Option.map_some, Option.getD_some, Prod.mk.injEq, hlabT]
+        ext R
+        simp only [Finset.mem_filter, Finset.mem_univ, true_and, mem_flipL]
+        exact adj_parent h1 h2
+    rw [heq, htyp]
+    exact (ch_spec gS hrG).1
+
+theorem nodeOK (x : {x : FR B // validR ρ x}) : NodeOK ρ x.1 := by
+  obtain ⟨x | ⟨b, i, p⟩, hx⟩ := x
+  · exact nodeOK_block ρ x
+  · obtain ⟨r, hr⟩ := hx
+    exact nodeOK_tree ρ hr
+
+/-- **Forest model.** The forest of a realisation models an ALCHIQ ontology. -/
+theorem forestI_models (hA : IsALCHIQ O) : models (forestI ρ) O := by
+  refine models_of_starLists hA (forestI ρ) (fun x => typR ρ x.1) (fun _ _ => Iff.rfl)
+    (fun x y => rawLab ρ x.1 y.1) (fun R x y => by rw [mem_rawLab, forestI_rt])
+    (fun x => (nbR ρ x.1).pmap Subtype.mk (nodeOK ρ x).valid)
+    (fun x => (nodeOK ρ x).nodup.pmap fun _ _ _ _ h => congrArg Subtype.val h)
+    (fun R x y h => ?_) (fun x => ?_)
+  · rw [List.mem_pmap]
+    exact ⟨y.1, (nodeOK ρ x).comp R y.1 ((forestI_rt ρ R x y).1 h), rfl⟩
+  · simp only [List.map_pmap, List.pmap_eq_map]
+    exact (nodeOK ρ x).star
+
+theorem forestI_satABox : satABox (forestI ρ) (fun a => ⟨.inl (ρ.blk a), trivial⟩) A := by
+  intro as has
+  cases as with
+  | cls a X => exact ρ.cls a X has
+  | role a R b => exact (forestI_rt ρ R _ _).2 (ρ.role a R b has)
+  | nrole a R b => exact fun h => ρ.nrole a R b has ((forestI_rt ρ R _ _).1 h)
+  | same a b =>
+    show (⟨.inl (ρ.blk a), trivial⟩ : {x : FR B // validR ρ x}) = ⟨.inl (ρ.blk b), trivial⟩
+    rw [ρ.same a b has]
+  | diff a b =>
+    intro h
+    exact ρ.diff a b has (Sum.inl_injective (congrArg Subtype.val h))
+
+end Forest
+
+/-! ### The characterisation -/
+
+/-- **Realisations.** For an ALCHIQ ontology and finitely many individuals,
+a knowledge base is consistent iff it has a realisation over a finite
+nonempty type of blocks. -/
+theorem consistentKB_iff_realisation [Fintype CName] [DecidableEq CName] [Fintype Role]
+    [DecidableEq Role] [Finite Ind] (O : Ontology CName Role) (hA : IsALCHIQ O)
+    (A : ABox CName Role Ind) :
+    ConsistentKB O A ↔ ∃ (B : Type) (_ : Fintype B) (_ : Nonempty B),
+      Nonempty (Realisation O A B) := by
+  constructor
+  · rintro ⟨D, hD, I, ind, hI, hAs⟩
+    obtain ⟨x0⟩ := hD
+    haveI : Finite (blockSet ind x0) := (blockSet_finite ind x0).to_subtype
+    letI : Fintype (blockSet ind x0) := Fintype.ofFinite _
+    exact ⟨blockSet ind x0, inferInstance, ⟨⟨x0, Or.inl rfl⟩⟩,
+      ⟨realOfModel I ind x0 hI hAs⟩⟩
+  · rintro ⟨B, _, ⟨b0⟩, ⟨ρ⟩⟩
+    exact ⟨_, ⟨⟨.inl b0, trivial⟩⟩, forestI ρ, _, forestI_models ρ hA, forestI_satABox ρ⟩
+
 end ContextCalculus.SRIQ
 
 #print axioms ContextCalculus.SRIQ.entailsSubKB_iff
+#print axioms ContextCalculus.SRIQ.consistentKB_iff_realisation
