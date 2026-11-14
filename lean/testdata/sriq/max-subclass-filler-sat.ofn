@@ -1,5 +1,8 @@
 Prefix(:=<http://example.org/t#>)
 Ontology(<http://example.org/t>
+Declaration(Class(:B))
+Declaration(Class(:C))
+Declaration(ObjectProperty(:r))
 SubClassOf(:C ObjectMaxCardinality(0 :r :B))
 SubClassOf(:C ObjectMinCardinality(1 :r :C))
 )

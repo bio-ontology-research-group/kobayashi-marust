@@ -1,5 +1,7 @@
 Prefix(:=<http://example.org/t#>)
 Ontology(<http://example.org/t>
+Declaration(Class(:A))
+Declaration(ObjectProperty(:r))
 SubClassOf(:A ObjectMinCardinality(2 :r))
 FunctionalObjectProperty(:r)
 )
