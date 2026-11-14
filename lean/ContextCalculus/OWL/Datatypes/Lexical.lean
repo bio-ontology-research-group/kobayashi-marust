@@ -83,7 +83,7 @@ of XML Schema 1.1.
   pairwise disjoint" and "the value space of owl:real is defined as being
   disjoint with the value spaces of xsd:double and xsd:float as well";
   positive and negative zero are "equal, but not identical". Section 4 does
-  not mention NaN; XML Schema 1.1 (section 3.3.5, `float`) makes NaN
+  not mention NaN; XML Schema 1.1 (datatypes `float` and `double`) makes NaN
   identical to itself and equal to nothing, which is the choice here (the
   facet order excludes NaN, `FloatV.key`).
 * strings: "the value spaces of all of these datatypes are contained in the
