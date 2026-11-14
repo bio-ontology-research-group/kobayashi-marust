@@ -36,6 +36,14 @@
   (`U` becomes the chain `S ∘ S⁻`) or removed as a tautology. Keys are
   rewritten to rules first, so a key on `owl:topObjectProperty` is encoded
   too.
+- `km classify --top` (E1) reports the named classes equivalent to
+  `owl:Thing` as `TOP<TAB>C` rows after the class rows (JSON key `top`),
+  so a consumer can build the Top node. km reads them off one fresh class
+  `T ≡ owl:Thing` added to the classified ontology (`T ⊑ C` iff `C` is
+  equivalent to `owl:Thing`), the same conservative reduction as
+  `--realize`. It combines with `--realize` and `--properties` in one run;
+  without the flag the output is unchanged. The incremental sessions do not
+  report these rows (their protocol has no place for them yet).
 
 ## [1.6.4] - 2026-11-14
 

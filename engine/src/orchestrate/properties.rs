@@ -210,6 +210,11 @@ impl PropertyProbes {
     fn named(&self, index: usize) -> &str {
         &self.expressions[2 * index]
     }
+
+    /// Is `name` one of these probe classes?
+    pub(super) fn is_probe(&self, name: &str) -> bool {
+        self.probes.contains_key(name)
+    }
 }
 
 /// The probe axioms for `properties` (source spellings) and their probes.
@@ -355,18 +360,28 @@ impl PropertyHierarchy {
 }
 
 impl super::realize::Extended {
-    /// `--lines` output: the classification rows, then the realization rows
-    /// (with `--realize`), then the property rows (with `--properties`).
+    /// `--lines` output: the classification rows, then the `TOP` rows (with
+    /// `--top`), the realization rows (with `--realize`) and the property
+    /// rows (with `--properties`).
     pub fn to_lines(&self) -> String {
-        let mut out = self.realization.to_lines();
+        let mut out = self.realization.classification.to_lines();
+        for class in self.top.iter().flatten() {
+            out.push_str(&format!("\nTOP\t{class}"));
+        }
+        for [a, c] in &self.realization.types {
+            out.push_str(&format!("\nTYPE\t{a}\t{c}"));
+        }
+        for [a, b] in &self.realization.same {
+            out.push_str(&format!("\nSAME\t{a}\t{b}"));
+        }
         if let Some(properties) = &self.properties {
             out.push_str(&properties.to_lines());
         }
         out
     }
 
-    /// JSON output: the classification object, with `types` and `same` keys
-    /// when `realized`, and `subproperties`, `topproperties`,
+    /// JSON output: the classification object, with a `top` key with
+    /// `--top`, `types` and `same` keys when `realized`, and `subproperties`, `topproperties`,
     /// `bottomproperties`, `domains` and `ranges` with `--properties`.
     pub fn write_json<W: Write>(&self, writer: W, realized: bool) -> serde_json::Result<()> {
         #[derive(serde::Serialize)]
@@ -377,6 +392,8 @@ impl super::realize::Extended {
             dropped: usize,
             #[serde(skip_serializing_if = "Option::is_none")]
             approximate: Option<&'a str>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            top: Option<&'a [String]>,
             #[serde(skip_serializing_if = "Option::is_none")]
             types: Option<&'a [[String; 2]]>,
             #[serde(skip_serializing_if = "Option::is_none")]
@@ -400,6 +417,7 @@ impl super::realize::Extended {
             unsatisfiable: &c.unsatisfiable,
             dropped: c.dropped,
             approximate: c.approximate.as_deref(),
+            top: self.top.as_deref(),
             types: realized.then_some(self.realization.types.as_slice()),
             same: realized.then_some(self.realization.same.as_slice()),
             subproperties: p.map(|p| p.sub.as_slice()),

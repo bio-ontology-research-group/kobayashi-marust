@@ -401,7 +401,7 @@ fn split(
 /// non-nominal routes are incomplete. `KM_REALIZE_ANY_ROUTE=1` lifts this check
 /// for route diagnostics only.
 pub fn realize(cfg: &Config, ont: &Path, mode: TypeMode) -> Result<Realization, OrchestrateError> {
-    Ok(classify_extended(cfg, ont, Some(mode), false)?.realization)
+    Ok(classify_extended(cfg, ont, Some(mode), false, false)?.realization)
 }
 
 /// The classification of an ontology with the answers to the requested probe
@@ -414,6 +414,48 @@ pub struct Extended {
     pub realization: Realization,
     /// Present iff the property hierarchy was requested.
     pub properties: Option<super::properties::PropertyHierarchy>,
+    /// Present iff `--top` was requested: the named classes equivalent to
+    /// `owl:Thing`, sorted.
+    pub top: Option<Vec<String>>,
+}
+
+/// The `--top` probe: a fresh class `T ≡ owl:Thing`. A named class `C` is
+/// equivalent to `owl:Thing` iff `O ⊨ ⊤ ⊑ C` iff `O' ⊨ T ⊑ C`; the
+/// definition only names a fresh class, so the extension is conservative.
+fn top_extension(text: &str) -> (String, String) {
+    let probe = format!("{}thing", fresh_namespace_for(text, "top"));
+    (format!("Declaration(Class(<{probe}>))\nEquivalentClasses(<{probe}> owl:Thing)\n"), probe)
+}
+
+/// Remove the `--top` probe from the classification and return the named
+/// classes it is subsumed by. `foreign` names the probe classes of the other
+/// queries, which are not source classes.
+fn split_top(
+    extended: &mut Classification,
+    probe: &str,
+    foreign: &dyn Fn(&str) -> bool,
+) -> Result<Vec<String>, OrchestrateError> {
+    let mut top = BTreeSet::new();
+    extended.subsumptions.retain(|[low, high]| {
+        if low == probe {
+            if high != OWL_THING && high != probe && !foreign(high) {
+                top.insert(high.clone());
+            }
+            return false;
+        }
+        high != probe
+    });
+    let unsatisfiable = extended.unsatisfiable.iter().any(|name| name == probe);
+    extended.unsatisfiable.retain(|name| name != probe);
+    if !extended.consistent {
+        return Ok(Vec::new());
+    }
+    if unsatisfiable {
+        return Err(OrchestrateError::InvalidOntology(
+            "top classes: the owl:Thing probe is unsatisfiable in a consistent classification".into(),
+        ));
+    }
+    Ok(top.into_iter().collect())
 }
 
 /// Classify `ont` once, extended with the probe classes of every requested
@@ -425,12 +467,19 @@ pub fn classify_extended(
     ont: &Path,
     mode: Option<TypeMode>,
     properties: bool,
+    top: bool,
 ) -> Result<Extended, OrchestrateError> {
     let route = std::env::var("KM_ROUTE").unwrap_or_default();
     if route != crate::routing::Route::Auto.as_str()
         && std::env::var_os(ANY_ROUTE_ENV).is_none()
     {
-        let what = if mode.is_some() { "realization" } else { "property hierarchy" };
+        let what = if mode.is_some() {
+            "realization"
+        } else if properties {
+            "property hierarchy"
+        } else {
+            "top class"
+        };
         return Err(OrchestrateError::OutOfFragment(format!(
             "route {route:?} is not a {what}-safe production oracle; use auto"
         )));
@@ -449,12 +498,19 @@ pub fn classify_extended(
         Vec::new()
     };
     let empty_properties = properties.then(super::properties::PropertyHierarchy::default);
-    if individuals.is_empty() && roles.is_empty() {
+    if individuals.is_empty() && roles.is_empty() && !top {
         let classification = super::classify_with_evidence(cfg, ont)?.classification;
         let realization = Realization { classification, types: Vec::new(), same: Vec::new() };
-        return Ok(Extended { realization, properties: empty_properties });
+        return Ok(Extended { realization, properties: empty_properties, top: None });
     }
     let (mut extension, probes) = individual_extension(&text, &individuals);
+    let top_probe = if top {
+        let (top_axioms, probe) = top_extension(&text);
+        extension.push_str(&top_axioms);
+        Some(probe)
+    } else {
+        None
+    };
     let property_probes = if roles.is_empty() {
         None
     } else {
@@ -477,16 +533,26 @@ pub fn classify_extended(
     // `owl:Thing` and `owl:topObjectProperty`.
     let _trusted = TrustedRewrite::register(rewritten.path());
     let mut classification = super::classify_with_evidence(cfg, rewritten.path())?.classification;
+    let individual_probes: HashSet<&str> = probes.iter().map(|(probe, _)| probe.as_str()).collect();
+    let top_classes = match &top_probe {
+        Some(top_probe) => {
+            let foreign = |name: &str| {
+                individual_probes.contains(name)
+                    || property_probes.as_ref().is_some_and(|p| p.is_probe(name))
+            };
+            Some(split_top(&mut classification, top_probe, &foreign)?)
+        }
+        None => None,
+    };
     let hierarchy = match property_probes {
         Some(property_probes) => {
-            let individual_probes: HashSet<&str> = probes.iter().map(|(probe, _)| probe.as_str()).collect();
             let foreign = |name: &str| individual_probes.contains(name);
             Some(super::properties::split(&mut classification, &property_probes, &foreign)?)
         }
         None => empty_properties,
     };
     let realization = split(classification, &probes, mode.unwrap_or(TypeMode::All))?;
-    Ok(Extended { realization, properties: hierarchy })
+    Ok(Extended { realization, properties: hierarchy, top: top_classes })
 }
 
 impl Realization {
@@ -633,6 +699,36 @@ mod tests {
         };
         let direct = split(extended, &probes, TypeMode::Direct).unwrap();
         assert_eq!(direct.types, [row("a", "A"), row("a", "A2")]);
+    }
+
+    #[test]
+    fn split_top_reads_classes_below_the_thing_probe() {
+        let text = "Ontology(<urn:o> EquivalentClasses(<urn:E> owl:Thing))";
+        let (axioms, probe) = top_extension(text);
+        assert!(axioms.contains(&format!("EquivalentClasses(<{probe}> owl:Thing)")), "{axioms}");
+        let mut extended = Classification {
+            approximate: None,
+            consistent: true,
+            subsumptions: vec![
+                row("A", "B"),
+                row(&probe, "urn:E"),
+                row(&probe, OWL_THING),
+                row(&probe, "foreign"),
+                row("urn:E", &probe),
+                row("A", &probe),
+            ],
+            unsatisfiable: vec!["U".into()],
+            dropped: 0,
+        };
+        let top = split_top(&mut extended, &probe, &|name| name == "foreign").unwrap();
+        assert_eq!(top, ["urn:E"]);
+        assert_eq!(extended.subsumptions, [row("A", "B")]);
+        assert_eq!(extended.unsatisfiable, ["U"]);
+        extended.unsatisfiable.push(probe.clone());
+        assert!(split_top(&mut extended, &probe, &|_| false).is_err());
+        extended.consistent = false;
+        extended.unsatisfiable.push(probe.clone());
+        assert!(split_top(&mut extended, &probe, &|_| false).unwrap().is_empty());
     }
 
     #[test]

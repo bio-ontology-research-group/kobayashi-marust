@@ -14,8 +14,9 @@ km classify --lines --realize --properties ontology.owl   # with realization, on
 ## Output
 
 Line output (`--lines`) prints the ordinary classification rows first, exactly
-as `km classify --lines` prints them, then the `TYPE` and `SAME` rows if
-`--realize` is given (see `docs/REALIZATION.md`), then:
+as `km classify --lines` prints them, then the `TOP` rows of the classes
+equivalent to `owl:Thing` if `--top` is given, then the `TYPE` and `SAME`
+rows if `--realize` is given (see `docs/REALIZATION.md`), then:
 
 | Row | Meaning |
 |---|---|
