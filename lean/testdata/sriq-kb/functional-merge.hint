@@ -1,0 +1,7 @@
+# Realisation of functional-merge.ofn: r is functional, so b and c share a
+# block. Concepts: probe-a = 0, probe-b = 1, top = 2, bottom = 3. Role :r = 0.
+blocks 2
+blk 0 1 1        # a in block 0, b and c in block 1
+ty 0 2
+ty 1 2
+lab 0 1 +0       # r from a to the block of b and c

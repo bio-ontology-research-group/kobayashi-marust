@@ -1,0 +1,6 @@
+Prefix(:=<http://example.org/t#>)
+Ontology(<http://example.org/t>
+Declaration(ObjectProperty(:r))
+TransitiveObjectProperty(:r)
+NegativeObjectPropertyAssertion(:r :a :b)
+)

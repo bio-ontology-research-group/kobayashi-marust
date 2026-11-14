@@ -1,0 +1,10 @@
+Prefix(:=<http://example.org/t#>)
+Ontology(<http://example.org/t>
+Declaration(ObjectProperty(:r))
+Declaration(NamedIndividual(:a))
+Declaration(NamedIndividual(:b))
+FunctionalObjectProperty(:r)
+ObjectPropertyAssertion(:r :a :a)
+ObjectPropertyAssertion(:r :a :b)
+DifferentIndividuals(:a :b)
+)

@@ -59,6 +59,7 @@ import ContextCalculus.SRIQ.Transitivity
 import ContextCalculus.SRIQ.ABox
 import ContextCalculus.SRIQ.ABoxProcedure
 import ContextCalculus.SRIQ.ABoxTests
+import ContextCalculus.SRIQ.Realization
 import ContextCalculus.OWLFrontend.Reference
 import ContextCalculus.OWLFrontend.ReferenceReadout
 import ContextCalculus.OWLFrontend.SRIReference
@@ -70,6 +71,11 @@ import ContextCalculus.OWLFrontend.SRIQTranslateCorrect
 import ContextCalculus.OWLFrontend.SRIQTranslateTests
 import ContextCalculus.OWLFrontend.SRIQReference
 import ContextCalculus.OWLFrontend.SRIQComplete
+import ContextCalculus.OWL.FragmentSHIQKB
+import ContextCalculus.OWLFrontend.SRIQKBTranslate
+import ContextCalculus.OWLFrontend.SRIQKBTranslateCorrect
+import ContextCalculus.OWLFrontend.SRIQKBReference
+import ContextCalculus.OWLFrontend.SRIQKBTests
 import ContextCalculus.OWLFrontend.ReferenceSHIQ
 import ContextCalculus.ELResidualCertificate
 import ContextCalculus.ELResidualCompilation
