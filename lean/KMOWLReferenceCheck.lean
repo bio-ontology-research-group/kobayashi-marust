@@ -4,6 +4,7 @@ import ContextCalculus.OWLFrontend.ReferenceReadout
 import ContextCalculus.OWLFrontend.ReadoutAt
 import ContextCalculus.OWLFrontend.SRIQDReference
 import ContextCalculus.OWLFrontend.SRIQDKBRows
+import ContextCalculus.OWLFrontend.SHOIQC2aReference
 
 /-!
 # Executable OWL reference procedure (`km-owl-reference`)
@@ -18,7 +19,17 @@ km-owl-reference [--procedure el|sri|el-then-sri|sriq|el-then-sriq|alc|el-then-a
 km-owl-reference --procedure sriq-kb [--hint FILE] [--type CLASS INDIVIDUAL] <file.ofn>
 km-owl-reference --procedure sriqd <file.ofn>
 km-owl-reference --procedure sriqd-kb [--hint FILE] [--type CLASS INDIVIDUAL] <file.ofn>
+km-owl-reference --procedure shoiq-c2a [--hint FILE] [--type CLASS INDIVIDUAL] <file.ofn>
 ```
+
+`shoiq-c2a` is `owlSHOIQC2aConsistent`, the v1.7.0 stage C2a route for
+SHOIQ knowledge bases with nominals (`docs/V1.7.0-C2-NOMINALS-DESIGN.md`).
+It prints the `owl-consistency-v1` line, exact for every hint
+(`owlSHOIQC2aConsistent_sound`); with `--type CLASS INDIVIDUAL` it decides
+the class assertion (`owlSHOIQC2aTypeRow`, `owlSHOIQC2aTypeRow_sound`) and
+prints the `owl-type-v1` line. It declines outside the SHOIQ
+knowledge-base part, on transitivity, and outside C2a. The hint is a core
+in the text format of `SHOIQC2aReference.lean`.
 
 `sriqd` is `owlSHIQDReference`, the v1.7.0 stage C4 route for SHIQ with
 data properties and datatypes. Its answers are exact under the OWL 2 direct
@@ -631,6 +642,57 @@ def publishTypeD (C a : OWL.IRI) (v : Bool) {O : OWL.Ontology} {hint : Option Ra
   out.flush
   return 0
 
+/-- Why the SHOIQ C2a route declines. -/
+def shoiqDecline (O : OWL.Ontology) (requested : List OWL.IRI) : String :=
+  if !O.isSHOIQKB then
+    s!"not recognised: not an OWL SHOIQ knowledge base ({firstFailing O OWL.Axiom.isSHOIQKB})"
+  else match translateSHOIQ O requested with
+    | none => "not recognised: the SHOIQ translation failed"
+    | some T =>
+      if !decide (SRIQN.IsALCHOIQ (osn T (OWLFrontend.SHOIQ.nomNames O requested))) then
+        "not ALCHOIQ: transitivity or a role chain"
+      else "not C2a: an existential or at-least restriction on a non-nominal subject has a " ++
+        "role below the inverse of the role of an at-most restriction"
+
+/-- Print the consistency verdict of `owlSHOIQC2aConsistent`
+(`owlSHOIQC2aConsistent_sound`). -/
+def publishConsistentN (v : Bool) {O : OWL.Ontology} {hint : Option RawHint}
+    (_h : owlSHOIQC2aConsistent O hint = some v) : IO UInt32 := do
+  let out ← IO.getStdout
+  out.putStrLn ("{\"format\":\"owl-consistency-v1\",\"consistent\":" ++
+    (if v then "true" else "false") ++ "}")
+  out.flush
+  return 0
+
+/-- Print the verdict of `owlSHOIQC2aTypeRow` (`owlSHOIQC2aTypeRow_sound`). -/
+def publishTypeN (C a : OWL.IRI) (v : Bool) {O : OWL.Ontology} {hint : Option RawHint}
+    (_h : owlSHOIQC2aTypeRow O C a hint = some v) : IO UInt32 := do
+  let out ← IO.getStdout
+  out.putStrLn ("{\"format\":\"owl-type-v1\",\"class\":" ++ (Json.str C).compress ++
+    ",\"individual\":" ++ (Json.str a).compress ++ ",\"entailed\":" ++
+    (if v then "true" else "false") ++ "}")
+  out.flush
+  return 0
+
+/-- The SHOIQ C2a route on an ontology. -/
+def runOntologyN (timing : Bool) (hint : Option RawHint) (query : Option (OWL.IRI × OWL.IRI))
+    (O : OWL.Ontology) : IO UInt32 := do
+  match query with
+  | some (C, a) =>
+    let ⟨res, hres⟩ ← timedPhase timing "type" (fun _ => owlSHOIQC2aTypeRow O C a hint)
+    match res, hres with
+    | some v, h => publishTypeN C a v h.symm
+    | none, _ =>
+      IO.eprintln (shoiqDecline (withInds O [a]) [C])
+      return 3
+  | none =>
+    let ⟨res, hres⟩ ← timedPhase timing "consistency" (fun _ => owlSHOIQC2aConsistent O hint)
+    match res, hres with
+    | some v, h => publishConsistentN v h.symm
+    | none, _ =>
+      IO.eprintln (shoiqDecline O [])
+      return 3
+
 /-- The SHIQ(D) knowledge-base route on an ontology. -/
 def runOntologyDKB (timing : Bool) (hint : Option RawHint) (query : Option (OWL.IRI × OWL.IRI))
     (O : OWL.Ontology) : IO UInt32 := do
@@ -656,6 +718,8 @@ def runOntologyD (timing : Bool) (route : String) (hint : Option RawHint)
   let t0 ← IO.monoNanosNow
   if route == "sriqd-kb" then
     return ← runOntologyDKB timing hint query O
+  if route == "shoiq-c2a" then
+    return ← runOntologyN timing hint query O
   let names := O.classNames
   if hA : probeA ∈ names then
     IO.eprintln s!"probe IRI mentioned: {probeA}"
@@ -808,6 +872,8 @@ def parseArgs (acc : Args) : List String → Option Args
   | [] => if acc.path.isSome then some acc else none
   | "--procedure" :: "sriqd" :: rest => parseArgs { acc with dataRoute := some "sriqd" } rest
   | "--procedure" :: "sriqd-kb" :: rest => parseArgs { acc with dataRoute := some "sriqd-kb" } rest
+  | "--procedure" :: "shoiq-c2a" :: rest =>
+    parseArgs { acc with dataRoute := some "shoiq-c2a" } rest
   | "--procedure" :: raw :: rest =>
     match parseProcedure raw with
     | some p' => parseArgs { acc with procedure := p' } rest
@@ -873,13 +939,14 @@ def runFile (args : Args) (path : String) : IO UInt32 := do
 end KMOWLReferenceCheck
 
 def main (args : List String) : IO UInt32 := do
-  let usage := "usage: km-owl-reference [--procedure el|sri|el-then-sri|sriq|el-then-sriq|alc|el-then-alc|sriq-kb|sriqd|sriqd-kb] [--hint FILE] [--type CLASS INDIVIDUAL] <file.ofn> (default el-then-sri; --hint and --type with sriq-kb and sriqd-kb only)"
+  let usage := "usage: km-owl-reference [--procedure el|sri|el-then-sri|sriq|el-then-sriq|alc|el-then-alc|sriq-kb|sriqd|sriqd-kb|shoiq-c2a] [--hint FILE] [--type CLASS INDIVIDUAL] <file.ofn> (default el-then-sri; --hint and --type with sriq-kb, sriqd-kb and shoiq-c2a only)"
   match KMOWLReferenceCheck.parseArgs {} args with
   | some a =>
     match a.path with
     | some path =>
       if (a.hint.isSome || a.query.isSome) &&
-          !((a.procedure == .sriqKB && a.dataRoute.isNone) || a.dataRoute == some "sriqd-kb") then
+          !((a.procedure == .sriqKB && a.dataRoute.isNone) || a.dataRoute == some "sriqd-kb" ||
+            a.dataRoute == some "shoiq-c2a") then
         IO.eprintln usage
         return 2
       else KMOWLReferenceCheck.runFile a path

@@ -1,0 +1,6 @@
+Prefix(:=<http://ex/>)
+Ontology(<http://ex/not-c2a>
+SubClassOf(:A ObjectSomeValuesFrom(:r ObjectOneOf(:o)))
+SubClassOf(ObjectOneOf(:o) ObjectMaxCardinality(1 ObjectInverseOf(:r)))
+ClassAssertion(:A :a)
+)

@@ -1,0 +1,17 @@
+# file	args	expected km-owl-reference --procedure shoiq-c2a stdout (ws, 2026-11-14); declines print to stderr, exit 3
+nom-sat.ofn		{"format":"owl-consistency-v1","consistent":true}
+nom-sat.ofn	--hint nom-sat.hint	{"format":"owl-consistency-v1","consistent":true}
+nom-sat.ofn	--hint nom-sat-bad.hint	{"format":"owl-consistency-v1","consistent":true}
+oneof-clash.ofn		{"format":"owl-consistency-v1","consistent":false}
+same-diff.ofn		{"format":"owl-consistency-v1","consistent":false}
+not-c2a.ofn		declined: not C2a
+nominal-count-sat.ofn	--hint nominal-count-sat.hint	{"format":"owl-consistency-v1","consistent":true}
+transitive-sat.ofn	--hint transitive-sat.hint	{"format":"owl-consistency-v1","consistent":true}
+type.ofn	--type http://ex/C http://ex/a	{"format":"owl-type-v1","class":"http://ex/C","individual":"http://ex/a","entailed":true}
+type.ofn	--type http://ex/C http://ex/b	{"format":"owl-type-v1","class":"http://ex/C","individual":"http://ex/b","entailed":true}
+type.ofn	--type http://ex/D http://ex/a	{"format":"owl-type-v1","class":"http://ex/D","individual":"http://ex/a","entailed":true}
+type.ofn	--type http://ex/D http://ex/b	{"format":"owl-type-v1","class":"http://ex/D","individual":"http://ex/b","entailed":false}
+# Each line above runs in under 1 s (most under 0.1 s); all rechecked after 22:55 (disk incident).
+# Without a hint the exhaustive search did not finish in the time we gave it: nominal-count.ofn
+# (expected false: a and b must both be the one r-predecessor of o; over 10 min), transitive.ofn
+# (expected false; over 3 min) and transitive-sat.ofn (expected true; over 2 min).

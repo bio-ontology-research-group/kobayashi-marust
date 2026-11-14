@@ -1,0 +1,5 @@
+Prefix(:=<http://ex/>)
+Ontology(<http://ex/same-diff>
+SubClassOf(ObjectOneOf(:a) ObjectOneOf(:b))
+DifferentIndividuals(:a :b)
+)

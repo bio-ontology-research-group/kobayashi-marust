@@ -1,0 +1,6 @@
+# core for transitive-sat.ofn: a, b, c (concept indices from the translation)
+blocks 3
+ty 0 0 3 5 7
+ty 1 1 3 6 8
+ty 2 2 3
+lab 0 1 +0
