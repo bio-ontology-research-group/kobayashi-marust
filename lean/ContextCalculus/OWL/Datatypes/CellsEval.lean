@@ -92,6 +92,7 @@ theorem kindSem_num_of {k : Kind} (hk : numKind k = true) {v : Val} (h : kindSem
     ∃ x, v = .num x := by
   cases k <;> simp [numKind] at hk
   · obtain ⟨x, rfl⟩ := h; exact ⟨x, rfl⟩
+  · obtain ⟨q, rfl⟩ := h; exact ⟨_, rfl⟩
   · obtain ⟨x, rfl, -⟩ := h; exact ⟨x, rfl⟩
   · obtain ⟨z, rfl, -⟩ := h; exact ⟨_, rfl⟩
 
@@ -164,19 +165,25 @@ theorem gt_iff_ptAbove {p : ℚ} (hp : p ∈ P) :
       have h1 : (b : ℝ) ≤ p := by exact_mod_cast h
       exact lt_of_lt_of_le (minAbove_some hm).2.1 h1
 
-theorem isDecimalR_iff_class (x : ℝ) : IsDecimalR x ↔ numClass x ≠ 2 := by
+theorem isDecimalR_iff_class (x : ℝ) : IsDecimalR x ↔ numClass x = 0 ∨ numClass x = 1 := by
   constructor
-  · intro h h2
-    exact (numClass_two.1 h2).2 h
   · intro h
     by_cases h0 : numClass x = 0
+    · exact Or.inl h0
+    · refine Or.inr (numClass_one.2 ⟨fun hz => h0 (numClass_zero.2 hz), h⟩)
+  · rintro (h0 | h1)
     · obtain ⟨z, rfl⟩ := numClass_zero.1 h0
       exact ⟨z, 0, by simp⟩
-    · have h1 : numClass x = 1 := by
-        have := numClass x |>.isLt
-        generalize hc : numClass x = c at h h0 ⊢
-        fin_cases c <;> simp_all
-      exact (numClass_one.1 h1).2
+    · exact (numClass_one.1 h1).2
+
+theorem isRat_iff_class (x : ℝ) : (∃ q : ℚ, x = q) ↔ numClass x ≠ 3 := by
+  constructor
+  · intro h h3
+    exact (numClass_three.1 h3).2.2 h
+  · intro h
+    by_contra hq
+    refine h (numClass_three.2 ⟨fun ⟨z, hz⟩ => hq ⟨z, by rw [hz]; push_cast; rfl⟩,
+      fun hd => hq (rat_of_isDecimalR hd), hq⟩)
 
 /-- A kind at a real off the points. -/
 theorem kindGap_correct {k : Kind} (hk : supportedKind k = true) (hP : ∀ p ∈ intBounds k, p ∈ P)
@@ -184,7 +191,9 @@ theorem kindGap_correct {k : Kind} (hk : supportedKind k = true) (hP : ∀ p ∈
     kindSem k (.num x) ↔ kindGap k (maxBelow P x) (minAbove P x) (numClass x) = true := by
   cases k <;> simp [supportedKind] at hk <;> simp only [kindSem, kindGap]
   · simp
-  · simp only [ValOf.num.injEq, exists_eq_left', bne_iff_ne, ne_eq]
+  · simp only [ValOf.num.injEq, bne_iff_ne, ne_eq]
+    exact isRat_iff_class x
+  · simp only [ValOf.num.injEq, exists_eq_left', Bool.or_eq_true, beq_iff_eq]
     rw [isDecimalR_iff_class]
   · rename_i lo hi
     simp only [ValOf.num.injEq, Bool.and_eq_true, beq_iff_eq]

@@ -276,7 +276,7 @@ theorem restCell_ne_pt (v : Val) (w : ValOf ℚ) : restCell v ≠ .pt w := by
   rcases v with x | x | x | ⟨s, _ | t⟩ | b | bs | bs | s | ⟨t, z⟩ | s | n <;>
     simp only [restCell] <;> (try split_ifs) <;> simp
 
-theorem restCell_ne_gap (v : Val) (lo hi : Option ℚ) (c : Fin 3) : restCell v ≠ .gap lo hi c := by
+theorem restCell_ne_gap (v : Val) (lo hi : Option ℚ) (c : Fin 4) : restCell v ≠ .gap lo hi c := by
   rcases v with x | x | x | ⟨s, _ | t⟩ | b | bs | bs | s | ⟨t, z⟩ | s | n <;>
     simp only [restCell] <;> (try split_ifs) <;> simp
 
@@ -348,7 +348,7 @@ theorem cellOf_mem (v : Val) : cellOf as v ∈ cellsOf as := by
       exact List.mem_append_right _ (restCell_mem _)
 
 /-- The values of a gap cell. -/
-theorem cellOf_eq_gap_iff {v : Val} {lo hi : Option ℚ} {c : Fin 3} (hg : (lo, hi) ∈ gapPairs (numPts as)) :
+theorem cellOf_eq_gap_iff {v : Val} {lo hi : Option ℚ} {c : Fin 4} (hg : (lo, hi) ∈ gapPairs (numPts as)) :
     cellOf as v = .gap lo hi c ↔ ∃ x, v = .num x ∧ InGap lo hi x ∧ numClass x = c := by
   classical
   constructor
@@ -387,10 +387,17 @@ theorem numClass_one {x : ℝ} : numClass x = 1 ↔ (¬ ∃ z : ℤ, x = z) ∧ 
   unfold numClass
   split_ifs with h1 h2 <;> simp_all
 
-theorem numClass_two {x : ℝ} : numClass x = 2 ↔ (¬ ∃ z : ℤ, x = z) ∧ ¬ IsDecimalR x := by
+theorem numClass_two {x : ℝ} :
+    numClass x = 2 ↔ (¬ ∃ z : ℤ, x = z) ∧ ¬ IsDecimalR x ∧ ∃ q : ℚ, x = q := by
   classical
   unfold numClass
-  split_ifs with h1 h2 <;> simp_all
+  split_ifs with h1 h2 h3 <;> simp_all
+
+theorem numClass_three {x : ℝ} :
+    numClass x = 3 ↔ (¬ ∃ z : ℤ, x = z) ∧ ¬ IsDecimalR x ∧ ¬ ∃ q : ℚ, x = q := by
+  classical
+  unfold numClass
+  split_ifs with h1 h2 h3 <;> simp_all
 
 theorem isDecimalR_cast (q : ℚ) : IsDecimalR (q : ℝ) ↔ IsDecimalQ q := by
   constructor
@@ -467,13 +474,83 @@ theorem dec_witness {c d : ℚ} (hcd : c < d) :
     have : (10 : ℤ) * (z * 10 ^ n) + 1 = 10 * (w * 10 ^ (k + n)) := by linarith
     omega
 
+/-- Infinitely many rationals that are not decimals between two rationals. -/
+theorem rat_witness {c d : ℚ} (hcd : c < d) :
+    ∃ f : ℕ → ℝ, Function.Injective f ∧ ∀ n, (c : ℝ) < f n ∧ f n < d ∧ numClass (f n) = 2 := by
+  obtain ⟨k, hk⟩ := pow_unbounded_of_one_lt (2 / (d - c)) (show (1 : ℚ) < 10 by norm_num)
+  have hdc : 0 < d - c := sub_pos.2 hcd
+  have hk' : 2 / (10 : ℚ) ^ k < d - c := by
+    rw [div_lt_iff₀ (by positivity)]
+    rw [div_lt_iff₀ hdc] at hk
+    linarith
+  let z : ℤ := ⌊c * 10 ^ k⌋ + 1
+  have hz1 : c < (z : ℚ) / 10 ^ k := by
+    rw [lt_div_iff₀ (by positivity)]
+    have := Int.lt_floor_add_one (c * 10 ^ k)
+    push_cast [z]
+    linarith
+  have hz2 : (z : ℚ) / 10 ^ k ≤ c + 1 / 10 ^ k := by
+    rw [div_le_iff₀ (by positivity), add_mul, one_div, inv_mul_cancel₀ (by positivity)]
+    have := Int.floor_le (c * 10 ^ k)
+    push_cast [z]
+    linarith
+  let g : ℕ → ℚ := fun n => (z : ℚ) / 10 ^ k + 1 / (3 * 10 ^ (k + n + 1))
+  refine ⟨fun n => ((g n : ℚ) : ℝ), ?_, fun n => ⟨?_, ?_, ?_⟩⟩
+  · intro n n' h
+    simp only at h
+    have h' : g n = g n' := by exact_mod_cast h
+    simp only [g, add_right_inj, one_div, inv_inj] at h'
+    have h'' : (10 : ℕ) ^ (k + n + 1) = 10 ^ (k + n' + 1) := by
+      have : (10 : ℚ) ^ (k + n + 1) = 10 ^ (k + n' + 1) := by linarith
+      exact_mod_cast this
+    have := Nat.pow_right_injective (by norm_num : 2 ≤ 10) h''
+    omega
+  · have : c < g n := by
+      have : (0 : ℚ) < 1 / (3 * 10 ^ (k + n + 1)) := by positivity
+      simp only [g]; linarith
+    show (c : ℝ) < (g n : ℝ)
+    exact_mod_cast this
+  · have : g n < d := by
+      have h1 : (1 : ℚ) / (3 * 10 ^ (k + n + 1)) ≤ 1 / 10 ^ k := by
+        apply one_div_le_one_div_of_le (by positivity)
+        have : (10 : ℚ) ^ k ≤ 10 ^ (k + n + 1) := pow_le_pow_right₀ (by norm_num) (by omega)
+        nlinarith [pow_pos (show (0 : ℚ) < 10 by norm_num) (k + n + 1)]
+      have h2 : (1 : ℚ) / 10 ^ k + 1 / 10 ^ k = 2 / 10 ^ k := by ring
+      simp only [g]; linarith
+    show (g n : ℝ) < d
+    exact_mod_cast this
+  · show numClass (g n : ℝ) = 2
+    have hg : g n = ((3 * z * 10 ^ (n + 1) + 1 : ℤ) : ℚ) / (3 * 10 ^ (k + n + 1)) := by
+      simp only [g]
+      push_cast
+      field_simp
+      ring
+    have hnd : ¬ IsDecimalQ (g n) := by
+      rintro ⟨w, j, hw⟩
+      rw [hg, div_eq_div_iff (by positivity) (by positivity)] at hw
+      have hint : ((3 * z * 10 ^ (n + 1) + 1 : ℤ)) * 10 ^ j = w * (3 * 10 ^ (k + n + 1)) := by
+        exact_mod_cast hw
+      have := congrArg (Int.cast : ℤ → ZMod 3) hint
+      push_cast at this
+      have h3 : (3 : ZMod 3) = 0 := rfl
+      have h10 : (10 : ZMod 3) = 1 := rfl
+      rw [h3, h10] at this
+      simp at this
+      exact absurd this (by decide)
+    rw [numClass_two]
+    refine ⟨?_, fun hd => hnd ((isDecimalR_cast _).1 hd), ⟨g n, rfl⟩⟩
+    rintro ⟨w, hw⟩
+    exact hnd ⟨w, 0, by
+      have : g n = w := by exact_mod_cast hw
+      rw [this]; simp⟩
+
 theorem sqrt_two_lt_two : √2 < 2 := by
   rw [Real.sqrt_lt' (by norm_num)]
   norm_num
 
 /-- Infinitely many reals that are not decimals between two rationals. -/
 theorem other_witness {c d : ℚ} (hcd : c < d) :
-    ∃ f : ℕ → ℝ, Function.Injective f ∧ ∀ n, (c : ℝ) < f n ∧ f n < d ∧ numClass (f n) = 2 := by
+    ∃ f : ℕ → ℝ, Function.Injective f ∧ ∀ n, (c : ℝ) < f n ∧ f n < d ∧ numClass (f n) = 3 := by
   have hdc : (0 : ℝ) < d - c := by exact_mod_cast sub_pos.2 hcd
   have hs1 : 0 < √2 - 1 := by linarith [Real.one_lt_sqrt_two]
   have hs2 : √2 - 1 < 1 := by linarith [sqrt_two_lt_two]
@@ -506,8 +583,8 @@ theorem other_witness {c d : ℚ} (hcd : c < d) :
       simp only [f]
       push_cast
       ring
-    rw [numClass_two]
-    refine ⟨?_, fun hd => ?_⟩
+    rw [numClass_three]
+    refine ⟨?_, fun hd => ?_, fun ⟨q, hq⟩ => hirr ⟨q, hq.symm⟩⟩
     · rintro ⟨z, hz⟩
       exact hirr ⟨z, by rw [hz]; push_cast; rfl⟩
     · obtain ⟨q, hq⟩ := rat_of_isDecimalR hd
@@ -577,16 +654,16 @@ theorem inGap_of {lo hi : Option ℚ} {x : ℝ} (h1 : (gc lo hi : ℝ) < x) (h2 
     subst hc <;> assumption
 
 /-- Infinitely many values of a gap class from real witnesses. -/
-theorem encard_gap_inf {lo hi : Option ℚ} {c : Fin 3} (hg : (lo, hi) ∈ gapPairs (numPts as))
+theorem encard_gap_inf {lo hi : Option ℚ} {c : Fin 4} (hg : (lo, hi) ∈ gapPairs (numPts as))
     (f : ℕ → ℝ) (hf : Function.Injective f) (hin : ∀ n, InGap lo hi (f n) ∧ numClass (f n) = c) :
     {v | cellOf as v = .gap lo hi c}.encard = ⊤ :=
   encard_top_of_inj (fun n => .num (f n)) (fun n n' h => hf (by simpa using h))
     fun n _ => (cellOf_eq_gap_iff hg).2 ⟨f n, rfl, (hin n).1, (hin n).2⟩
 
-theorem encard_gap (hg : (lo, hi) ∈ gapPairs (numPts as)) (c : Fin 3) :
+theorem encard_gap (hg : (lo, hi) ∈ gapPairs (numPts as)) (c : Fin 4) :
     {v | cellOf as v = .gap lo hi c}.encard = toE (cellSize as (.gap lo hi c)) := by
   have hlt := gc_lt_gd (gapPairs_lt hg)
-  obtain rfl | rfl | rfl : c = 0 ∨ c = 1 ∨ c = 2 := by fin_cases c <;> simp
+  obtain rfl | rfl | rfl | rfl : c = 0 ∨ c = 1 ∨ c = 2 ∨ c = 3 := by fin_cases c <;> simp
   · -- integers
     rcases lo with _ | a <;> rcases hi with _ | b
     · refine (encard_gap_inf hg (fun n => ((n : ℤ) : ℝ)) ?_ fun n =>
@@ -634,6 +711,9 @@ theorem encard_gap (hg : (lo, hi) ∈ gapPairs (numPts as)) (c : Fin 3) :
       · rfl
       · intro z z' h; simpa using h
   · obtain ⟨f, hf, hfin⟩ := dec_witness hlt
+    rw [encard_gap_inf hg f hf fun n => ⟨inGap_of (hfin n).1 (hfin n).2.1, (hfin n).2.2⟩]
+    rcases lo with _ | a <;> rcases hi with _ | b <;> rfl
+  · obtain ⟨f, hf, hfin⟩ := rat_witness hlt
     rw [encard_gap_inf hg f hf fun n => ⟨inGap_of (hfin n).1 (hfin n).2.1, (hfin n).2.2⟩]
     rcases lo with _ | a <;> rcases hi with _ | b <;> rfl
   · obtain ⟨f, hf, hfin⟩ := other_witness hlt

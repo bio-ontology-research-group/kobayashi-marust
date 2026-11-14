@@ -3,3 +3,5 @@ kb-sat.ofn		{"format":"owl-consistency-v1","consistent":true}
 kb-range-clash.ofn		{"format":"owl-consistency-v1","consistent":false}
 kb-neg-eq.ofn		{"format":"owl-consistency-v1","consistent":false}
 kb-type.ofn		{"format":"owl-consistency-v1","consistent":true}
+kb-type.ofn	--type http://ex/C http://ex/a	{"format":"owl-type-v1","class":"http://ex/C","individual":"http://ex/a","entailed":true}
+# kb-type.ofn --type http://ex/D http://ex/a (expected entailed false) did not finish within 600 s on ws (2026-11-14).
