@@ -12,6 +12,9 @@ name = "ContextCalculus"
 [[lean_lib]]
 name = "Validation"
 
+[[lean_lib]]
+name = "SRIQFast"
+
 [[lean_exe]]
 name = "elc-cert-check"
 root = "ELCertCheck"
@@ -472,3 +475,7 @@ root = "KMSRIQProbe"
 [[lean_exe]]
 name = "km-sriqd-probe"
 root = "KMSRIQDProbe"
+
+[[lean_exe]]
+name = "km-sriq-fast-probe"
+root = "KMSRIQFastProbe"
