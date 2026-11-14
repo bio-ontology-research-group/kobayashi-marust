@@ -345,3 +345,4 @@ import ContextCalculus.SRIQD.KBParts
 import ContextCalculus.OWLFrontend.SRIQDKBTranslate
 import ContextCalculus.OWLFrontend.SRIQDKBLemmas
 import ContextCalculus.OWLFrontend.SRIQDKBCorrect
+import ContextCalculus.OWLFrontend.SRIQDKBReference
