@@ -345,17 +345,37 @@ instance (G : Finset (NRec n m k)) (ty : Fin k → Finset (Fin n))
     Decidable (supBlkN B G ty lab b) := by
   unfold supBlkN; exact Multiset.decidableExistsMultiset
 
-/-- The search space of C2a: at most `max 1 |Nom|` core elements, types
-with each nominal name in exactly one, labels on the pairs `b ≤ c`. -/
-def SearchPropN : Prop :=
-  ∃ j ∈ List.range (max 1 N.toFinset.card), ∃ ty : Fin (j + 1) → Finset (Fin n),
-    NomOK N ty ∧ (∀ b, Closed B (ty b)) ∧
-    ∃ half : {p : Fin (j + 1) × Fin (j + 1) // p.1 ≤ p.2} → Finset (RoleT (Fin m)),
-      (∀ b, mkLab half b b = flipL (mkLab half b b)) ∧
-      ∀ b, supBlkN B (aliveN B N ty) ty (mkLab half) b
+/-- All sets of names. -/
+def allTypesN (n : Nat) : List (Finset (Fin n)) :=
+  (List.finRange n).sublists.map List.toFinset
+
+/-- All functions from `Fin k` into the members of `L`. -/
+def funsL {α : Type} (L : List α) : (k : Nat) → List (Fin k → α)
+  | 0 => [Fin.elim0]
+  | k + 1 => (funsL L k).flatMap fun f => L.map fun x => Fin.cons x f
+
+/-- The labels of the search for fixed core types and alive records `G`. -/
+def LabProp {k : Nat} (G : Finset (NRec n m (k + 1))) (ty : Fin (k + 1) → Finset (Fin n)) : Prop :=
+  ∃ half : {p : Fin (k + 1) × Fin (k + 1) // p.1 ≤ p.2} → Finset (RoleT (Fin m)),
+    (∀ b, mkLab half b b = flipL (mkLab half b b)) ∧ ∀ b, supBlkN B G ty (mkLab half) b
 
 set_option synthInstance.maxHeartbeats 200000 in
 set_option synthInstance.maxSize 1024 in
+instance {k : Nat} (G : Finset (NRec n m (k + 1))) (ty : Fin (k + 1) → Finset (Fin n)) :
+    Decidable (LabProp B G ty) := by
+  unfold LabProp; infer_instance
+
+/-- The checks for fixed core types; the alive records are computed once. -/
+def tyCheck {k : Nat} (ty : Fin (k + 1) → Finset (Fin n)) : Bool :=
+  decide (NomOK N ty) && (let G := aliveN B N ty; decide (LabProp B G ty))
+
+/-- The search space of C2a: at most `max 1 |Nom|` core elements, closed
+types with each nominal name in exactly one, labels on the pairs `b ≤ c`. -/
+def SearchPropN : Prop :=
+  ∃ j ∈ List.range (max 1 N.toFinset.card),
+    ∃ ty ∈ funsL ((allTypesN n).filter fun t => decide (Closed B t)) (j + 1),
+      tyCheck B N ty = true
+
 instance : Decidable (SearchPropN B N) := by
   unfold SearchPropN; infer_instance
 
@@ -438,12 +458,29 @@ theorem supBlkN_of_real {k : Nat} (r : RealisationN B N (Fin k)) (b : Fin k) :
     exact ⟨hedge.1, hedge.2, hcb e he⟩
 
 /-- **Exactness of the search on C2a.** -/
+theorem mem_allTypesN (t : Finset (Fin n)) : t ∈ allTypesN n := by
+  refine List.mem_map.2 ⟨(List.finRange n).filter (· ∈ t), List.mem_sublists.2 List.filter_sublist,
+    ?_⟩
+  ext a
+  simp
+
+theorem mem_funsL {α : Type} {L : List α} : ∀ {k : Nat} (f : Fin k → α), (∀ i, f i ∈ L) →
+    f ∈ funsL L k
+  | 0, f, _ => by
+    have : f = Fin.elim0 := funext fun i => i.elim0
+    simp [funsL, this]
+  | k + 1, f, hf => by
+    refine List.mem_flatMap.2 ⟨Fin.tail f, mem_funsL _ fun i => hf _, ?_⟩
+    exact List.mem_map.2 ⟨f 0, hf 0, Fin.cons_self_tail f⟩
+
 theorem searchN_iff {O : Ontology (Fin n) (Fin m)} (hA : IsALCHOIQ O) (hC : IsC2a O) :
     searchN (basePart O) (noms O) = true ↔ ConsistentN O := by
   unfold searchN
   rw [decide_eq_true_iff]
   constructor
-  · rintro ⟨j, -, ty, hnom, -, half, hd, hs⟩
+  · rintro ⟨j, -, ty, -, hchk⟩
+    simp only [tyCheck, Bool.and_eq_true, decide_eq_true_eq] at hchk
+    obtain ⟨hnom, half, hd, hs⟩ := hchk
     have hc : coreOKN (noms O) ty (mkLab half) := ⟨mkLab_symm hd, hnom⟩
     haveI : Nonempty (Fin (j + 1)) := ⟨0⟩
     refine realisation_sound hA (realOfCoreN hc fun b => ?_)
@@ -453,10 +490,10 @@ theorem searchN_iff {O : Ontology (Fin n) (Fin m)} (hA : IsALCHOIQ O) (hC : IsC2
   · intro hc
     obtain ⟨k, hk, hle, r, -⟩ := c2a_complete hC hc
     obtain ⟨j, rfl⟩ : ∃ j, k = j + 1 := ⟨k - 1, by omega⟩
-    refine ⟨j, List.mem_range.2 (by omega), r.ty, r.nom, fun b => ?_,
-      fun p => r.lab p.1.1 p.1.2, ?_, ?_⟩
-    · obtain ⟨C, hok, -⟩ := r.kids b
-      exact hok.closed
+    refine ⟨j, List.mem_range.2 (by omega), r.ty, mem_funsL _ fun b => List.mem_filter.2
+      ⟨mem_allTypesN _, decide_eq_true (r.kids b).choose_spec.1.closed⟩, ?_⟩
+    simp only [tyCheck, Bool.and_eq_true, decide_eq_true_eq]
+    refine ⟨r.nom, fun p => r.lab p.1.1 p.1.2, ?_, ?_⟩
     · intro b
       rw [mkLab_half r.symm]
       exact r.symm b b
