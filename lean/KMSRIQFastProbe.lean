@@ -11,7 +11,7 @@ stderr and a summary line on stdout. Exit `0` when it answers, `3` when it
 declines, `4` when generation hit the node cap.
 
 `km-sriq-fast-probe --sriq <file>` reads normal-form clauses directly
-(format in `SRIQFast/README` of the report: one clause per line) and
+(one clause per line; format in `C1C-PROTOTYPE.md`, section 1) and
 classifies every name.
 
 Environment:
