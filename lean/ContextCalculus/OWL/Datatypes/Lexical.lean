@@ -73,12 +73,28 @@ types with the XML 1.0 (fifth edition) `Char`, `Name`, `NCName` and
 `Nmtoken` productions, `xsd:base64Binary` with the canonical-padding rule
 of XML Schema 1.1.
 
-## Points to check against the specification
+## Sources of the identity choices (Structural Specification, section 4)
 
-* `hex` and `b64` are disjoint value spaces here (XML Schema 1.0, where
-  primitive datatypes have disjoint value spaces); OWL 2, section 4.5,
-  describes both as sequences of octets.
-* `uri` values are disjoint from strings.
+* numbers: "The value space of owl:real is the set of all real numbers";
+  `owl:rational` "is a subset of the value space of owl:real, and it
+  contains the value space of xsd:decimal"; the integer types take their
+  value spaces from XML Schema (subsets of the decimals).
+* floats: "the value spaces of xsd:double, xsd:float, and xsd:decimal are
+  pairwise disjoint" and "the value space of owl:real is defined as being
+  disjoint with the value spaces of xsd:double and xsd:float as well";
+  positive and negative zero are "equal, but not identical". Section 4 does
+  not mention NaN; XML Schema 1.1 makes NaN identical to itself (and equal
+  to nothing), which is the choice here.
+* strings: "the value spaces of all of these datatypes are contained in the
+  value space of rdf:PlainLiteral"; the lower-case tags follow the
+  rdf:PlainLiteral specification.
+* binary: "the value spaces of these two datatypes are disjoint" (they are
+  "isomorphic copies").
+* anyURI: "IRIs are not strings" and "the value spaces of xsd:anyURI and
+  xsd:string are disjoint".
+* dateTime: two values for the same instant with different offsets are
+  "equal, but nonidentical data values".
+* facets: "equality is used only in the definition of facets".
 -/
 
 namespace ContextCalculus.OWL.Datatypes
