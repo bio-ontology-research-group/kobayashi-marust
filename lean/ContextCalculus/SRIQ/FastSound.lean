@@ -83,8 +83,10 @@ theorem backG_eq {j : Nat} (h : j < U.nodes.size) : backG (mkIx O) U j = backOf 
   simp [backG, backs, Array.getElem?_ofFn, h]
 
 theorem mem_candsA {A : Array Bool} {i : Nat} {c : Lab m × Ty n} :
-    c ∈ candsA (mkIx O) U A i ↔ CandP O U (fun j : Nat => A[j]? = some true) i c := by
-  simp only [candsA, List.mem_flatMap, List.mem_map, List.mem_filter, Bool.and_eq_true,
+    c ∈ candsA U (mkCache (mkIx O) U) A i ↔ CandP O U (fun j : Nat => A[j]? = some true) i c := by
+  have h1 : getL (mkCache (mkIx O) U).vp i = vpool (mkIx O) U i := rfl
+  have h2 : ∀ j, (mkCache (mkIx O) U).bk[j]?.getD ∅ = backG (mkIx O) U j := fun _ => rfl
+  simp only [candsA, h1, h2, List.mem_flatMap, List.mem_map, List.mem_filter, Bool.and_eq_true,
     decide_eq_true_eq, mem_vpool, CandP]
   constructor
   · rintro ⟨e, ⟨he, hok⟩, j, ⟨hj, hA, hb⟩, rfl⟩
@@ -114,8 +116,9 @@ theorem sol_iff {i : Nat} (hl : limsOK (mkIx O) U i) {E : List (Lab m × Ty n)} 
 
 /-- **The support test is exact.** -/
 theorem suppB_iff {A : Array Bool} {i : Nat} :
-    suppB (mkIx O) U (okArr (mkIx O) U) A i = true ↔ SuppP O U (fun j : Nat => A[j]? = some true) i := by
-  simp only [suppB, Bool.and_eq_true, decide_eq_true_eq, okArr_iff]
+    suppB (mkIx O) U (mkCache (mkIx O) U) A i = true ↔ SuppP O U (fun j : Nat => A[j]? = some true) i := by
+  have hok : (mkCache (mkIx O) U).ok = okArr (mkIx O) U := rfl
+  simp only [suppB, hok, Bool.and_eq_true, decide_eq_true_eq, okArr_iff]
   constructor
   · rintro ⟨⟨hok, hl⟩, hd⟩
     obtain ⟨E, hE, hS⟩ := dfs_sound _ _ _ hd
@@ -123,7 +126,7 @@ theorem suppB_iff {A : Array Bool} {i : Nat} :
     exact mem_candsA.1 (dedupKey_subset _ _ c (hE c hc))
   · rintro ⟨hok, hl, E, hE, hlow, hupp⟩
     refine ⟨⟨hok, hl⟩, ?_⟩
-    obtain ⟨E', hE', h2, h3⟩ := sol_dedup (cs := candsA (mkIx O) U A i)
+    obtain ⟨E', hE', h2, h3⟩ := sol_dedup (cs := candsA U (mkCache (mkIx O) U) A i)
       (needs := needsV (mkIx O) U i) (lims := limsV (mkIx O) U i) E
       (fun c hc => mem_candsA.2 (hE c hc))
     have hS : Sol E (needsV (mkIx O) U i) (limsV (mkIx O) U i) := (sol_iff hl).2 ⟨hlow, hupp⟩
@@ -140,16 +143,17 @@ section Elim
 variable {U : Cand n m}
 
 theorem prune_get (A : Array Bool) (i : Nat) :
-    (prune (mkIx O) U A)[i]? = A[i]?.map fun b => b && suppB (mkIx O) U (okArr (mkIx O) U) A i := by
+    (prune (mkIx O) U (mkCache (mkIx O) U) A)[i]? =
+      A[i]?.map fun b => b && suppB (mkIx O) U (mkCache (mkIx O) U) A i := by
   simp only [prune, List.getElem?_toArray, List.getElem?_map, List.getElem?_zipIdx,
     Array.getElem?_toList, Option.map_map, Function.comp_def, zero_add]
 
 theorem elim_spec : ∀ A : Array Bool,
-    (∀ i : Nat, (elim (mkIx O) U A)[i]? = some true → A[i]? = some true) ∧
-    (∀ i : Nat, (elim (mkIx O) U A)[i]? = some true →
-      suppB (mkIx O) U (okArr (mkIx O) U) (elim (mkIx O) U A) i = true) ∧
+    (∀ i : Nat, (elim (mkIx O) U (mkCache (mkIx O) U) A)[i]? = some true → A[i]? = some true) ∧
+    (∀ i : Nat, (elim (mkIx O) U (mkCache (mkIx O) U) A)[i]? = some true →
+      suppB (mkIx O) U (mkCache (mkIx O) U) (elim (mkIx O) U (mkCache (mkIx O) U) A) i = true) ∧
     (∀ S : Nat → Prop, (∀ i : Nat, S i → A[i]? = some true) → (∀ i, S i → SuppP O U S i) →
-      ∀ i : Nat, S i → (elim (mkIx O) U A)[i]? = some true) := by
+      ∀ i : Nat, S i → (elim (mkIx O) U (mkCache (mkIx O) U) A)[i]? = some true) := by
   intro A
   induction h : trues A using Nat.strong_induction_on generalizing A with
   | _ k ih =>
@@ -162,7 +166,7 @@ theorem elim_spec : ∀ A : Array Bool,
       simp only [Option.map_some, Option.some.injEq, Bool.true_and] at this
       exact this.symm
     · next hp =>
-      obtain ⟨h1, h2, h3⟩ := ih _ (h ▸ trues_prune_lt (mkIx O) U hp) (prune (mkIx O) U A) rfl
+      obtain ⟨h1, h2, h3⟩ := ih _ (h ▸ trues_prune_lt (mkIx O) U hp) (prune (mkIx O) U (mkCache (mkIx O) U) A) rfl
       refine ⟨fun i hi => ?_, h2, fun S hS hsup => h3 S (fun i hi => ?_) hsup⟩
       · have := h1 i hi
         rw [prune_get] at this
@@ -189,6 +193,7 @@ theorem al_nodeOK {i : Nat} (h : Al O U i) : nodeOK (mkIx O) U i := (al_supp h).
 theorem subset_al {S : Nat → Prop} (hS : ∀ i, S i → nodeOK (mkIx O) U i)
     (hsup : ∀ i, S i → SuppP O U S i) {i : Nat} (hi : S i) : Al O U i := by
   refine (elim_spec (O := O) (U := U) _).2.2 S (fun j hj => ?_) hsup i hi
+  show (okArr (mkIx O) U)[j]? = some true
   have := okArr_iff (O := O) (U := U) (i := j)
   have h2 := this.2 (hS j hj)
   revert h2

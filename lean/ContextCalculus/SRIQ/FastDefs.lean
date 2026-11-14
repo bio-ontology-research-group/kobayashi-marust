@@ -553,10 +553,22 @@ def limsOK (i : Nat) : Prop :=
 
 instance (i : Nat) : Decidable (limsOK ix U i) := by unfold limsOK; infer_instance
 
+/-- Per-node data computed once for the elimination: the checked nodes, the
+checked pool entries and the back sets. -/
+structure ECache (n m : Nat) where
+  ok : Array Bool
+  vp : Array (List (Entry n m))
+  bk : Array (Ty n)
+
+/-- The nodes that pass their own checks. -/
+def okArr : Array Bool := Array.ofFn fun i : Fin U.nodes.size => decide (nodeOK ix U i.val)
+
+def mkCache : ECache n m := ⟨okArr ix U, vpools ix U, backs ix U⟩
+
 /-- The entries of node `i` among the live nodes `A`. -/
-def candsA (A : Array Bool) (i : Nat) : List (Lab m × Ty n) :=
-  (vpool ix U i).flatMap fun e =>
-    ((memb U e.kid).filter fun j => A[j]?.getD false && decide (backG ix U j ⊆ (nd U i).ty)).map
+def candsA (C : ECache n m) (A : Array Bool) (i : Nat) : List (Lab m × Ty n) :=
+  (getL C.vp i).flatMap fun e =>
+    ((memb U e.kid).filter fun j => A[j]?.getD false && decide (C.bk[j]?.getD ∅ ⊆ (nd U i).ty)).map
       fun j => (e.spec.lab, (nd U j).ty)
 
 /-- The signature of an entry: which needs and limits it counts for. -/
@@ -564,17 +576,14 @@ def sig (i : Nat) (c : Lab m × Ty n) : List Bool × List Bool :=
   ((needsV ix U i).map fun x => cntP x.1 x.2.1 c, (limsV ix U i).map fun x => cntP x.1 x.2.1 c)
 
 /-- Node `i` has a supporting star among the live nodes `A`. -/
-def suppB (ok : Array Bool) (A : Array Bool) (i : Nat) : Bool :=
-  ok[i]?.getD false && decide (limsOK ix U i) &&
-    dfs (dedupKey (sig ix U i) (candsA ix U A i)) (((needsV ix U i).map (·.2.2)).sum + 1)
+def suppB (C : ECache n m) (A : Array Bool) (i : Nat) : Bool :=
+  C.ok[i]?.getD false && decide (limsOK ix U i) &&
+    dfs (dedupKey (sig ix U i) (candsA U C A i)) (((needsV ix U i).map (·.2.2)).sum + 1)
       (needsV ix U i) (limsV ix U i)
 
-/-- The nodes that pass their own checks. -/
-def okArr : Array Bool := Array.ofFn fun i : Fin U.nodes.size => decide (nodeOK ix U i.val)
-
 /-- One round: keep the nodes that are supported among the live ones. -/
-def prune (A : Array Bool) : Array Bool :=
-  (A.toList.zipIdx.map fun p => p.1 && suppB ix U (okArr ix U) A p.2).toArray
+def prune (C : ECache n m) (A : Array Bool) : Array Bool :=
+  (A.toList.zipIdx.map fun p => p.1 && suppB ix U C A p.2).toArray
 
 def trues (A : Array Bool) : Nat := A.toList.count true
 
@@ -588,25 +597,27 @@ theorem count_map_and (f : Nat → Bool) : ∀ l : List (Bool × Nat),
     obtain ⟨b, i⟩ := p
     cases b <;> cases hf : f i <;> simp_all [List.count_cons] <;> omega
 
-theorem trues_prune_lt {A : Array Bool} (h : prune ix U A ≠ A) :
-    trues (prune ix U A) < trues A := by
+theorem trues_prune_lt {C : ECache n m} {A : Array Bool} (h : prune ix U C A ≠ A) :
+    trues (prune ix U C A) < trues A := by
   unfold trues prune
   rw [List.toList_toArray]
   have hA : A.toList = A.toList.zipIdx.map Prod.fst := by simp
-  have := (count_map_and (fun i => suppB ix U (okArr ix U) A i) A.toList.zipIdx).2
+  have := (count_map_and (fun i => suppB ix U C A i) A.toList.zipIdx).2
   rw [← hA] at this
   refine this fun he => h ?_
   unfold prune
   rw [he, Array.toArray_toList]
 
 /-- Remove unsupported nodes until stable. -/
-def elim (A : Array Bool) : Array Bool :=
-  if h : prune ix U A = A then A else elim (prune ix U A)
+def elim (C : ECache n m) (A : Array Bool) : Array Bool :=
+  if h : prune ix U C A = A then A else elim C (prune ix U C A)
 termination_by trues A
 decreasing_by exact trues_prune_lt ix U h
 
 /-- The live nodes. -/
-def aliveArr : Array Bool := elim ix U (okArr ix U)
+def aliveArr : Array Bool :=
+  let C := mkCache ix U
+  elim ix U C C.ok
 
 end Elim
 
