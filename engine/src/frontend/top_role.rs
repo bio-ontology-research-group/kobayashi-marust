@@ -279,16 +279,22 @@ mod tests {
             "the retained ontology has no universal role"
         );
 
-        // A use the universal-role rewrite does not encode (U as a sub-role) keeps the
-        // builtin, and with it the conservative occurrence flag.
+        // A use that is not OWL 2 DL (a cardinality on U) is rejected; the
+        // builtin is never read as an ordinary role.
         let real_use = "Ontology(\
              SubObjectPropertyOf(<http://e#r> owl:topObjectProperty)\
+             SubClassOf(<http://e#A> ObjectMinCardinality(2 owl:topObjectProperty <http://e#B>)))";
+        assert!(ofn_to_clauses(real_use).is_err(), "a cardinality on the universal role is rejected");
+
+        // U as a sub-role is rewritten to the hub chain `S ∘ S⁻`: the
+        // remaining inclusion is vacuous and the profile describes the hub
+        // ontology.
+        let sub_role = "Ontology(\
+             SubObjectPropertyOf(<http://e#r> owl:topObjectProperty)\
              SubObjectPropertyOf(owl:topObjectProperty <http://e#s>))";
-        let result = ofn_to_clauses(real_use).expect("frontend");
-        assert!(
-            result.profile.expressivity.universal_role,
-            "a read universal role keeps the conservative occurrence flag"
-        );
+        let result = ofn_to_clauses(sub_role).expect("frontend");
+        assert!(!result.profile.expressivity.universal_role);
+        assert!(result.profile.expressivity.nominal);
 
         // `∀U.B` is rewritten to the nominal hub before the scan, so the
         // remaining inclusion is vacuous again and the profile describes the
@@ -304,15 +310,16 @@ mod tests {
     }
 
     #[test]
-    fn a_real_universal_role_use_keeps_the_inclusion() {
+    fn a_universal_sub_role_leaves_no_builtin_in_the_clauses() {
+        // `U ⊑ s` becomes `S ∘ S⁻ ⊑ s` (see `universal_role`), after which the
+        // vacuous `r ⊑ U` is elided: no clause reads or writes the builtin.
         let ontology = "Ontology(\
              SubObjectPropertyOf(<http://e#r> owl:topObjectProperty)\
              SubObjectPropertyOf(owl:topObjectProperty <http://e#s>))";
         let result = ofn_to_clauses(ontology).expect("frontend");
         let json = serde_json::to_string(&result.clauses).expect("clause json");
-        assert!(
-            json.contains("topObjectProperty"),
-            "the inclusion must survive when the builtin is really used"
-        );
+        assert!(!json.contains("topObjectProperty"), "{json}");
+        // The chain `S ∘ S⁻ ⊑ s` uses the converse proxy of the hub role.
+        assert!(json.contains("__inv__"), "{json}");
     }
 }
