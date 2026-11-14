@@ -305,6 +305,9 @@ structure HintN (n m : Nat) where
   ty : Fin k → Finset (Fin n)
   lab : Fin k → Fin k → Finset (RoleT (Fin m))
   kids : Fin k → List (QNbr n m)
+  /-- An optional certificate: a table of records, each with its core
+  entries and children. -/
+  recs : List (NRec n m k × (Fin k → Finset (RoleT (Fin m))) × List (QNbr n m)) := []
 
 /-- The core conditions other than the children. -/
 def coreOKN (ty : Fin k → Finset (Fin n)) (lab : Fin k → Fin k → Finset (RoleT (Fin m))) : Prop :=
@@ -324,11 +327,46 @@ instance (G : Finset (NRec n m k)) (ty : Fin k → Finset (Fin n))
     Decidable (kidsOKN B G ty lab b C) := by
   unfold kidsOKN; infer_instance
 
-/-- **Hint check.** -/
+/-- Membership in a list of records, decided through `DecidableEq`. -/
+def MemL {α : Type} (G : List α) (x : α) : Prop := ∃ y ∈ G, y = x
+
+theorem memL_iff {α : Type} {G : List α} {x : α} : MemL G x ↔ x ∈ G :=
+  ⟨fun ⟨_, hy, he⟩ => he ▸ hy, fun h => ⟨x, h, rfl⟩⟩
+
+instance {α : Type} [DecidableEq α] (G : List α) (x : α) : Decidable (MemL G x) := by
+  unfold MemL; infer_instance
+
+/-- A row of a certificate checks locally against the records `G` of the
+table: no nominal name, valid core entries, the star, and children
+records in the table. -/
+def recOK {k : Nat} (ty : Fin k → Finset (Fin n)) (G : List (NRec n m k))
+    (e : NRec n m k × (Fin k → Finset (RoleT (Fin m))) × List (QNbr n m)) : Prop :=
+  (∀ a ∈ N, a ∉ e.1.1) ∧ ceOK B ty e.1 e.2.1 ∧
+    StarOK B e.1.1 ((parentE ty e.1.2 :: cEntriesL ty e.2.1) ++ e.2.2) ∧
+    ∀ x ∈ e.2.2, MemL G (childRecN e.1.1 x)
+
+instance {k : Nat} (ty : Fin k → Finset (Fin n)) (G : List (NRec n m k))
+    (e : NRec n m k × (Fin k → Finset (RoleT (Fin m))) × List (QNbr n m)) :
+    Decidable (recOK B N ty G e) := by
+  unfold recOK; infer_instance
+
+/-- **Certificate check** (`checkCertN` of the design): the anchor records
+of the core children are in the table and every row checks locally. Linear
+in the certificate; no elimination. -/
+def CertOK (h : HintN n m) : Prop :=
+  (∀ b, ∀ e ∈ h.kids b, MemL (h.recs.map Prod.fst) (anchorRec b e)) ∧
+    ∀ e ∈ h.recs, recOK B N h.ty (h.recs.map Prod.fst) e
+
+instance (h : HintN n m) : Decidable (CertOK B N h) := by
+  unfold CertOK; infer_instance
+
+/-- **Hint check.** The core conditions, and the goodness of the anchor
+records of the core children: none, or a certificate that checks, or
+membership in the alive records. -/
 def checkRealisationN (h : HintN n m) : Bool :=
   decide (0 < h.k ∧ coreOKN N h.ty h.lab ∧
       ∀ b, StarOK B (h.ty b) (nbrsL h.ty h.lab b ++ h.kids b)) &&
-    ((List.finRange h.k).all (fun b => (h.kids b).isEmpty) ||
+    ((List.finRange h.k).all (fun b => (h.kids b).isEmpty) || decide (CertOK B N h) ||
       (let G := aliveN B N h.ty; decide (∀ b, ∀ e ∈ h.kids b, anchorRec b e ∈ G)))
 
 /-- The anchor child entries of core element `b` of type `t` with records
@@ -431,6 +469,53 @@ def realOfCoreN {ty : Fin k → Finset (Fin n)} {lab : Fin k → Fin k → Finse
     obtain ⟨C, hok, hC⟩ := hk b
     exact ⟨C, starOK_perm' ((nbrs_perm_nbrsL ty lab b).symm.append_right C) hok, hC⟩
 
+/-- The records of a certificate that checks are good. -/
+theorem cert_good {h : HintN n m} (hc : CertOK B N h) :
+    ∀ b, ∀ e ∈ h.kids b, GoodN B N h.ty (anchorRec b e) := by
+  intro b e he
+  refine ⟨{ρ | ρ ∈ h.recs.map Prod.fst}, memL_iff.1 (hc.1 b e he), ?_⟩
+  intro ρ hρ
+  obtain ⟨x, hx, rfl⟩ := List.mem_map.1 hρ
+  obtain ⟨h1, ⟨h2, h3⟩, h4, h5⟩ := hc.2 x hx
+  exact ⟨(x.2.1, x.2.2), h1, fun c L hL => h2 c ⟨L, hL⟩, h3,
+    starOK_perm' (((cEntries_perm x.2.1).symm.cons _).append_right _) h4,
+    fun y hy => memL_iff.1 (h5 y hy)⟩
+
+/-- **Completeness of certificates.** Every realisation over a nonempty
+`Fin k` gives a hint with a certificate that checks. -/
+theorem cert_complete {k : Nat} (hk : 0 < k) (r : RealisationN B N (Fin k)) :
+    ∃ h : HintN n m, h.k = k ∧ CertOK B N h ∧ checkRealisationN B N h = true := by
+  classical
+  let C : Fin k → List (QNbr n m) := fun b => (r.kids b).choose
+  let sup : NRec n m k → (Fin k → Finset (RoleT (Fin m))) × List (QNbr n m) := fun ρ =>
+    if hρ : ρ ∈ aliveN B N r.ty then
+      ((aliveN_supBN hρ).choose, (aliveN_supBN hρ).choose_spec.2.choose)
+    else (fun _ => ∅, [])
+  have hsup : ∀ ρ ∈ aliveN B N r.ty, ceOK B r.ty ρ (sup ρ).1 ∧
+      (sup ρ).2 ∈ listsUpTo (bnd B) (candsN B (aliveN B N r.ty) ρ.1) ∧
+      StarOK B ρ.1 ((parentE r.ty ρ.2 :: cEntriesL r.ty (sup ρ).1) ++ (sup ρ).2) := by
+    intro ρ hρ
+    simp only [sup, dif_pos hρ]
+    exact ⟨(aliveN_supBN hρ).choose_spec.1, (aliveN_supBN hρ).choose_spec.2.choose_spec.1,
+      (aliveN_supBN hρ).choose_spec.2.choose_spec.2⟩
+  let h : HintN n m := ⟨k, r.ty, r.lab, C, (aliveN B N r.ty).toList.map fun ρ => (ρ, sup ρ)⟩
+  have hG : h.recs.map Prod.fst = (aliveN B N r.ty).toList := by
+    simp [h, List.map_map, Function.comp_def]
+  have hcert : CertOK B N h := by
+    refine ⟨fun b e he => ?_, fun x hx => ?_⟩
+    · rw [memL_iff, hG, Finset.mem_toList]
+      exact (good_iff_mem_aliveN _).1 ((r.kids b).choose_spec.2 e he)
+    · obtain ⟨ρ, hρ, rfl⟩ := List.mem_map.1 hx
+      rw [Finset.mem_toList] at hρ
+      obtain ⟨h1, h2, h3⟩ := hsup ρ hρ
+      refine ⟨(Finset.mem_filter.1 (aliveN_init hρ)).2.2.1, h1, h3, fun x hx' => ?_⟩
+      rw [memL_iff, hG, Finset.mem_toList]
+      exact (mem_candsN.1 ((mem_listsUpTo _ _).1 h2 |>.2 x hx')).1
+  refine ⟨h, rfl, hcert, ?_⟩
+  simp only [checkRealisationN, Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq]
+  refine ⟨⟨hk, ⟨r.symm, r.nom⟩, fun b => ?_⟩, Or.inl (Or.inr hcert)⟩
+  exact starOK_perm' ((nbrs_perm_nbrsL r.ty r.lab b).append_right _) (r.kids b).choose_spec.1
+
 /-- **Soundness of the hint check**, for every hint. -/
 theorem checkRealisationN_sound {O : Ontology (Fin n) (Fin m)} (hA : IsALCHOIQ O) (h : HintN n m)
     (hc : checkRealisationN (basePart O) (noms O) h = true) : ConsistentN O := by
@@ -439,9 +524,10 @@ theorem checkRealisationN_sound {O : Ontology (Fin n) (Fin m)} (hA : IsALCHOIQ O
   obtain ⟨⟨hpos, hcore, hstar⟩, hkids⟩ := hc
   haveI : Nonempty (Fin h.k) := ⟨⟨0, hpos⟩⟩
   refine realisation_sound hA (realOfCoreN hcore fun b => ⟨h.kids b, hstar b, fun e he => ?_⟩)
-  rcases hkids with hk | hk
+  rcases hkids with (hk | hk) | hk
   · rw [hk b] at he
     simp at he
+  · exact cert_good hk b e he
   · exact (good_iff_mem_aliveN _).2 (hk b e he)
 
 /-- **Completeness of the hint check.** Every realisation over a nonempty
@@ -450,7 +536,7 @@ theorem checkRealisationN_complete {k : Nat} (hk : 0 < k) (r : RealisationN B N 
     ∃ h : HintN n m, checkRealisationN B N h = true := by
   classical
   let C : Fin k → List (QNbr n m) := fun b => (r.kids b).choose
-  refine ⟨⟨k, r.ty, r.lab, C⟩, ?_⟩
+  refine ⟨⟨k, r.ty, r.lab, C, []⟩, ?_⟩
   simp only [checkRealisationN, Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq]
   refine ⟨⟨hk, ⟨r.symm, r.nom⟩, fun b => ?_⟩, Or.inr fun b e he => ?_⟩
   · exact starOK_perm' ((nbrs_perm_nbrsL r.ty r.lab b).append_right _) (r.kids b).choose_spec.1
@@ -482,7 +568,11 @@ theorem mem_funsL {α : Type} {L : List α} : ∀ {k : Nat} (f : Fin k → α), 
     refine List.mem_flatMap.2 ⟨Fin.tail f, mem_funsL _ fun i => hf _, ?_⟩
     exact List.mem_map.2 ⟨f 0, hf 0, Fin.cons_self_tail f⟩
 
-theorem searchN_iff {O : Ontology (Fin n) (Fin m)} (hA : IsALCHOIQ O) (hC : IsC2a O) :
+/-- **Exactness of the search** for any ontology whose consistency gives a
+realisation with at most `max 1 |Nom|` core elements. -/
+theorem searchN_iff_of {O : Ontology (Fin n) (Fin m)} (hA : IsALCHOIQ O)
+    (hcomp : ConsistentN O → ∃ k, 0 < k ∧ k ≤ max 1 (noms O).toFinset.card ∧
+      Nonempty (RealisationN (basePart O) (noms O) (Fin k))) :
     searchN (basePart O) (noms O) = true ↔ ConsistentN O := by
   unfold searchN
   rw [decide_eq_true_iff]
@@ -497,7 +587,7 @@ theorem searchN_iff {O : Ontology (Fin n) (Fin m)} (hA : IsALCHOIQ O) (hC : IsC2
     refine ⟨C, hok, fun e he => (good_iff_mem_aliveN _).2 ?_⟩
     exact (mem_candsA.1 ((mem_listsUpTo _ _).1 hCm |>.2 e he)).1
   · intro hc
-    obtain ⟨k, hk, hle, r, -⟩ := c2a_complete hC hc
+    obtain ⟨k, hk, hle, ⟨r⟩⟩ := hcomp hc
     obtain ⟨j, rfl⟩ : ∃ j, k = j + 1 := ⟨k - 1, by omega⟩
     refine ⟨j, List.mem_range.2 (by omega), r.ty, mem_funsL _ fun b => List.mem_filter.2
       ⟨mem_allTypesN _, decide_eq_true (r.kids b).choose_spec.1.closed⟩, ?_⟩
@@ -509,6 +599,30 @@ theorem searchN_iff {O : Ontology (Fin n) (Fin m)} (hA : IsALCHOIQ O) (hC : IsC2
     · intro b
       rw [mkLab_half r.symm]
       exact supBlkN_of_real r b
+
+/-- **Exactness of the search on C2a.** -/
+theorem searchN_iff {O : Ontology (Fin n) (Fin m)} (hA : IsALCHOIQ O) (hC : IsC2a O) :
+    searchN (basePart O) (noms O) = true ↔ ConsistentN O :=
+  searchN_iff_of hA fun hc => by
+    obtain ⟨k, hk, hle, r, -⟩ := c2a_complete hC hc
+    exact ⟨k, hk, hle, ⟨r⟩⟩
+
+/-- **Consistency with a hint is exact**, for every hint, given the
+completeness of small realisations. -/
+theorem consistentN_iff_of {O : Ontology (Fin n) (Fin m)} (hA : IsALCHOIQ O)
+    (hcomp : ConsistentN O → ∃ k, 0 < k ∧ k ≤ max 1 (noms O).toFinset.card ∧
+      Nonempty (RealisationN (basePart O) (noms O) (Fin k)))
+    (hint : Option (HintN n m)) :
+    consistentN (basePart O) (noms O) hint = true ↔ ConsistentN O := by
+  unfold consistentN
+  rw [Bool.or_eq_true, searchN_iff_of hA hcomp]
+  constructor
+  · rintro (h | h)
+    · cases hint with
+      | none => simp at h
+      | some h' => exact checkRealisationN_sound hA h' (by simpa using h)
+    · exact h
+  · exact Or.inr
 
 /-- **Consistency with a hint is exact on C2a, for every hint.** -/
 theorem consistentN_iff {O : Ontology (Fin n) (Fin m)} (hA : IsALCHOIQ O) (hC : IsC2a O)
@@ -531,5 +645,7 @@ end ContextCalculus.SRIQN.Proc
 #print axioms ContextCalculus.SRIQN.Proc.good_iff_mem_aliveN
 #print axioms ContextCalculus.SRIQN.Proc.checkRealisationN_sound
 #print axioms ContextCalculus.SRIQN.Proc.checkRealisationN_complete
+#print axioms ContextCalculus.SRIQN.Proc.cert_good
+#print axioms ContextCalculus.SRIQN.Proc.cert_complete
 #print axioms ContextCalculus.SRIQN.Proc.searchN_iff
 #print axioms ContextCalculus.SRIQN.Proc.consistentN_iff

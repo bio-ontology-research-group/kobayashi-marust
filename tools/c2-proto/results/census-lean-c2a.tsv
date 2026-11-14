@@ -1,0 +1,342 @@
+ore_ont_10006	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.35 
+ore_ont_10080	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.20 
+ore_ont_10026	0	accepted 19.73 
+ore_ont_10320	0	accepted 0.48 
+ore_ont_10321	0	accepted 0.09 
+ore_ont_10242	124	Command exited with non-zero status 124 60.00 
+ore_ont_10391	124	Command exited with non-zero status 124 60.00 
+ore_ont_10517	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: ReflexiveObjectProperty) Command exited with non-zero status 3 0.25 
+ore_ont_10568	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 2.49 
+ore_ont_10571	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.31 
+ore_ont_10481	124	Command exited with non-zero status 124 60.00 
+ore_ont_10702	0	accepted 9.21 
+ore_ont_10621	124	Command exited with non-zero status 124 60.00 
+ore_ont_10749	124	Command exited with non-zero status 124 60.00 
+ore_ont_10838	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.76 
+ore_ont_10860	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.12 
+ore_ont_10908	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubClassOf) Command exited with non-zero status 3 0.09 
+ore_ont_10754	124	Command exited with non-zero status 124 60.01 
+ore_ont_10926	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 15.27 
+ore_ont_10929	124	Command exited with non-zero status 124 60.01 
+ore_ont_10949	124	Command exited with non-zero status 124 60.01 
+ore_ont_11005	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.75 
+ore_ont_11016	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.44 
+ore_ont_11203	0	accepted 0.14 
+ore_ont_1123	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: ClassAssertion) Command exited with non-zero status 3 0.70 
+ore_ont_10952	0	accepted 13.77 
+ore_ont_11270	124	Command exited with non-zero status 124 60.01 
+ore_ont_11305	124	Command exited with non-zero status 124 60.00 
+ore_ont_11378	124	Command exited with non-zero status 124 60.00 
+ore_ont_11457	124	Command exited with non-zero status 124 60.00 
+ore_ont_11592	0	accepted 0.26 
+ore_ont_11647	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.10 
+ore_ont_11694	0	accepted 2.58 
+ore_ont_11895	0	accepted 0.11 
+ore_ont_1199	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 1.32 
+ore_ont_11477	0	accepted 24.20 
+ore_ont_12084	0	accepted 0.64 
+ore_ont_12043	124	Command exited with non-zero status 124 60.00 
+ore_ont_12152	124	Command exited with non-zero status 124 60.00 
+ore_ont_12174	124	Command exited with non-zero status 124 60.00 
+ore_ont_12191	124	Command exited with non-zero status 124 60.01 
+ore_ont_12253	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 1.30 
+ore_ont_12270	0	accepted 2.53 
+ore_ont_12325	0	accepted 15.16 
+ore_ont_12342	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: ClassAssertion) Command exited with non-zero status 3 0.09 
+ore_ont_12451	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.11 
+ore_ont_12566	0	accepted 0.39 
+ore_ont_12698	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.23 
+ore_ont_12743	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 1.26 
+ore_ont_12898	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 18.97 
+ore_ont_12219	124	Command exited with non-zero status 124 60.00 
+ore_ont_12925	0	accepted 0.83 
+ore_ont_13035	0	accepted 0.76 
+ore_ont_12916	0	accepted 22.63 
+ore_ont_13077	3	datatypes: a data range outside the supported sub-theory of the OWL 2 datatype map Command exited with non-zero status 3 0.14 
+ore_ont_13113	0	accepted 3.29 
+ore_ont_13132	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: ObjectPropertyAssertion) Command exited with non-zero status 3 0.09 
+ore_ont_13153	0	accepted 13.18 
+ore_ont_13052	124	Command exited with non-zero status 124 60.00 
+ore_ont_13178	124	Command exited with non-zero status 124 60.00 
+ore_ont_13233	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.37 
+ore_ont_13299	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.12 
+ore_ont_13230	124	Command exited with non-zero status 124 60.00 
+ore_ont_13383	0	accepted 0.60 
+ore_ont_13336	124	Command exited with non-zero status 124 60.00 
+ore_ont_13404	0	accepted 1.11 
+ore_ont_1342	0	accepted 0.85 
+ore_ont_13483	0	accepted 0.13 
+ore_ont_1340	124	Command exited with non-zero status 124 60.00 
+ore_ont_13545	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.10 
+ore_ont_13584	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: ReflexiveObjectProperty) Command exited with non-zero status 3 0.09 
+ore_ont_13526	124	Command exited with non-zero status 124 60.00 
+ore_ont_13646	0	accepted 0.89 
+ore_ont_13621	124	Command exited with non-zero status 124 60.00 
+ore_ont_13737	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.18 
+ore_ont_13762	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.10 
+ore_ont_13799	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.13 
+ore_ont_13805	0	accepted 1.48 
+ore_ont_13708	124	Command exited with non-zero status 124 60.00 
+ore_ont_13837	124	Command exited with non-zero status 124 60.00 
+ore_ont_13872	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.09 
+ore_ont_13898	0	accepted 0.54 
+ore_ont_13928	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.59 
+ore_ont_13937	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 1.04 
+ore_ont_13859	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 32.80 
+ore_ont_13954	0	accepted 7.77 
+ore_ont_1397	0	accepted 10.37 
+ore_ont_13991	124	Command exited with non-zero status 124 60.00 
+ore_ont_14191	124	Command exited with non-zero status 124 60.00 
+ore_ont_14285	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.10 
+ore_ont_14334	0	accepted 11.60 
+ore_ont_14348	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: ClassAssertion) Command exited with non-zero status 3 0.09 
+ore_ont_14194	124	Command exited with non-zero status 124 60.00 
+ore_ont_14551	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: ClassAssertion) Command exited with non-zero status 3 0.15 
+ore_ont_1461	0	accepted 9.33 
+ore_ont_14450	124	Command exited with non-zero status 124 60.00 
+ore_ont_1478	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 45.52 
+ore_ont_1469	124	Command exited with non-zero status 124 60.00 
+ore_ont_14818	0	accepted 22.61 
+ore_ont_1481	124	Command exited with non-zero status 124 60.01 
+ore_ont_14883	0	accepted 0.31 
+ore_ont_14924	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.12 
+ore_ont_14931	0	accepted 0.15 
+ore_ont_14981	0	accepted 8.63 
+ore_ont_14860	124	Command exited with non-zero status 124 60.01 
+ore_ont_15058	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.26 
+ore_ont_1509	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 20.71 
+ore_ont_15226	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.57 
+ore_ont_15291	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.08 
+ore_ont_15030	0	accepted 51.53 
+ore_ont_15297	0	accepted 14.37 
+ore_ont_15413	0	accepted 0.83 
+ore_ont_1533	124	Command exited with non-zero status 124 60.00 
+ore_ont_155	0	accepted 0.27 
+ore_ont_15575	0	accepted 0.64 
+ore_ont_15596	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.09 
+ore_ont_15475	124	Command exited with non-zero status 124 60.00 
+ore_ont_15615	124	Command exited with non-zero status 124 60.00 
+ore_ont_15667	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.10 
+ore_ont_15672	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.15 
+ore_ont_15655	124	Command exited with non-zero status 124 60.01 
+ore_ont_15680	124	Command exited with non-zero status 124 60.01 
+ore_ont_15753	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.09 
+ore_ont_1579	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 1.51 
+ore_ont_15687	124	Command exited with non-zero status 124 60.00 
+ore_ont_15803	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 5.16 
+ore_ont_15846	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 1.14 
+ore_ont_15860	0	accepted 0.83 
+ore_ont_16115	0	accepted 0.20 
+ore_ont_15871	124	Command exited with non-zero status 124 60.01 
+ore_ont_16124	124	Command exited with non-zero status 124 60.00 
+ore_ont_16191	0	accepted 0.51 
+ore_ont_16197	0	accepted 0.19 
+ore_ont_16255	0	accepted 1.54 
+ore_ont_16303	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.16 
+ore_ont_16315	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.80 
+ore_ont_16371	0	accepted 1.00 
+ore_ont_16372	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.08 
+ore_ont_16420	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: ObjectPropertyAssertion) Command exited with non-zero status 3 0.28 
+ore_ont_16462	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 1.49 
+ore_ont_16481	0	accepted 4.66 
+ore_ont_16535	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.22 
+ore_ont_16630	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.08 
+ore_ont_16184	124	Command exited with non-zero status 124 60.01 
+ore_ont_16708	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.09 
+ore_ont_16666	124	Command exited with non-zero status 124 60.00 
+ore_ont_1673	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 3.39 
+ore_ont_1672	124	Command exited with non-zero status 124 60.00 
+ore_ont_1705	0	accepted 2.05 
+ore_ont_178	0	accepted 0.83 
+ore_ont_1784	0	accepted 0.25 
+ore_ont_1823	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: ClassAssertion) Command exited with non-zero status 3 0.09 
+ore_ont_185	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.16 
+ore_ont_1853	0	accepted 0.89 
+ore_ont_16759	124	Command exited with non-zero status 124 60.00 
+ore_ont_1931	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.27 
+ore_ont_1938	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 1.22 
+ore_ont_1958	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.09 
+ore_ont_1886	124	Command exited with non-zero status 124 60.01 
+ore_ont_2066	0	accepted 0.15 
+ore_ont_2142	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.26 
+ore_ont_2182	0	accepted 4.57 
+ore_ont_1965	124	Command exited with non-zero status 124 60.00 
+ore_ont_2313	0	accepted 8.34 
+ore_ont_2453	0	accepted 4.98 
+ore_ont_2488	0	accepted 0.87 
+ore_ont_2318	0	accepted 23.40 
+ore_ont_2526	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.09 
+ore_ont_2504	124	Command exited with non-zero status 124 60.00 
+ore_ont_2574	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 3.44 
+ore_ont_2577	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.36 
+ore_ont_257	124	Command exited with non-zero status 124 60.01 
+ore_ont_2604	0	accepted 40.97 
+ore_ont_2632	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.42 
+ore_ont_260	124	Command exited with non-zero status 124 60.00 
+ore_ont_2677	0	accepted 22.45 
+ore_ont_2744	0	accepted 0.63 
+ore_ont_2703	0	accepted 20.85 
+ore_ont_2826	0	accepted 9.97 
+ore_ont_3010	0	accepted 12.10 
+ore_ont_304	0	accepted 0.12 
+ore_ont_3053	0	accepted 0.26 
+ore_ont_3060	0	accepted 1.60 
+ore_ont_2792	124	Command exited with non-zero status 124 60.00 
+ore_ont_3080	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: ReflexiveObjectProperty) Command exited with non-zero status 3 0.13 
+ore_ont_3087	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.98 
+ore_ont_3156	0	accepted 9.89 
+ore_ont_3250	0	accepted 0.70 
+ore_ont_3262	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 6.17 
+ore_ont_3282	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.53 
+ore_ont_3301	0	accepted 0.90 
+ore_ont_3377	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 5.63 
+ore_ont_3077	124	Command exited with non-zero status 124 60.01 
+ore_ont_3411	0	accepted 1.08 
+ore_ont_3503	0	accepted 3.60 
+ore_ont_3504	0	accepted 0.28 
+ore_ont_3381	0	accepted 21.55 
+ore_ont_3708	0	accepted 1.27 
+ore_ont_3726	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.10 
+ore_ont_3783	0	accepted 0.59 
+ore_ont_3806	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.10 
+ore_ont_3835	0	accepted 0.18 
+ore_ont_3843	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 4.40 
+ore_ont_385	0	accepted 0.64 
+ore_ont_3884	0	accepted 0.22 
+ore_ont_3561	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 43.22 
+ore_ont_3905	124	Command exited with non-zero status 124 60.00 
+ore_ont_394	0	accepted 0.18 
+ore_ont_3917	124	Command exited with non-zero status 124 60.00 
+ore_ont_4032	0	accepted 0.59 
+ore_ont_4133	0	accepted 0.15 
+ore_ont_399	0	accepted 23.21 
+ore_ont_4354	0	accepted 0.66 
+ore_ont_4141	124	Command exited with non-zero status 124 60.01 
+ore_ont_4363	124	Command exited with non-zero status 124 60.00 
+ore_ont_4469	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 18.18 
+ore_ont_4567	124	Command exited with non-zero status 124 60.00 
+ore_ont_4719	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: ClassAssertion) Command exited with non-zero status 3 0.39 
+ore_ont_4609	124	Command exited with non-zero status 124 60.00 
+ore_ont_4780	124	Command exited with non-zero status 124 60.00 
+ore_ont_4796	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 46.39 
+ore_ont_4983	0	accepted 0.96 
+ore_ont_5033	0	accepted 1.19 
+ore_ont_4903	124	Command exited with non-zero status 124 60.00 
+ore_ont_5059	124	Command exited with non-zero status 124 60.00 
+ore_ont_5107	0	accepted 0.09 
+ore_ont_5184	0	accepted 0.19 
+ore_ont_5204	0	accepted 0.42 
+ore_ont_5258	0	accepted 0.08 
+ore_ont_5289	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.77 
+ore_ont_5295	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 1.58 
+ore_ont_5359	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.15 
+ore_ont_5502	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.12 
+ore_ont_509	0	accepted 13.99 
+ore_ont_5548	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 50.56 
+ore_ont_5564	0	accepted 0.51 
+ore_ont_5544	124	Command exited with non-zero status 124 60.00 
+ore_ont_568	0	accepted 0.45 
+ore_ont_5688	0	accepted 3.23 
+ore_ont_5664	124	Command exited with non-zero status 124 60.00 
+ore_ont_5774	0	accepted 1.26 
+ore_ont_5730	124	Command exited with non-zero status 124 60.00 
+ore_ont_5849	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.51 
+ore_ont_5834	0	accepted 8.98 
+ore_ont_5932	0	accepted 0.35 
+ore_ont_5894	0	accepted 11.78 
+ore_ont_6020	0	accepted 5.61 
+ore_ont_5964	124	Command exited with non-zero status 124 60.00 
+ore_ont_6258	0	accepted 1.47 
+ore_ont_6272	0	accepted 5.42 
+ore_ont_6278	0	accepted 1.08 
+ore_ont_6226	124	Command exited with non-zero status 124 60.00 
+ore_ont_6401	0	accepted 5.31 
+ore_ont_6354	124	Command exited with non-zero status 124 60.00 
+ore_ont_6446	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.18 
+ore_ont_6443	124	Command exited with non-zero status 124 60.00 
+ore_ont_6452	124	Command exited with non-zero status 124 60.00 
+ore_ont_6615	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.08 
+ore_ont_668	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: DisjointObjectProperties) Command exited with non-zero status 3 0.18 
+ore_ont_6720	0	accepted 1.14 
+ore_ont_6722	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.87 
+ore_ont_6483	124	Command exited with non-zero status 124 60.00 
+ore_ont_6727	0	accepted 13.34 
+ore_ont_6822	0	accepted 15.91 
+ore_ont_6857	0	accepted 0.53 
+ore_ont_6859	0	accepted 0.23 
+ore_ont_6934	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.10 
+ore_ont_6951	0	accepted 1.48 
+ore_ont_6967	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.09 
+ore_ont_6983	0	accepted 0.44 
+ore_ont_6792	124	Command exited with non-zero status 124 60.01 
+ore_ont_6999	0	accepted 8.82 
+ore_ont_7011	0	accepted 3.92 
+ore_ont_699	124	Command exited with non-zero status 124 60.01 
+ore_ont_7179	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.09 
+ore_ont_7108	0	accepted 20.62 
+ore_ont_7278	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.10 
+ore_ont_7327	0	accepted 1.42 
+ore_ont_7192	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 12.45 
+ore_ont_7342	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.08 
+ore_ont_7339	0	accepted 1.19 
+ore_ont_7455	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.43 
+ore_ont_7409	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 1.08 
+ore_ont_7517	0	accepted 0.10 
+ore_ont_7532	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubClassOf) Command exited with non-zero status 3 0.10 
+ore_ont_7557	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 1.07 
+ore_ont_7668	0	accepted 4.03 
+ore_ont_7729	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 1.61 
+ore_ont_7730	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.90 
+ore_ont_7479	124	Command exited with non-zero status 124 60.00 
+ore_ont_778	0	accepted 0.12 
+ore_ont_7789	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.24 
+ore_ont_7775	124	Command exited with non-zero status 124 60.00 
+ore_ont_7818	0	accepted 1.47 
+ore_ont_7820	0	accepted 0.79 
+ore_ont_7828	0	accepted 1.06 
+ore_ont_8006	0	accepted 1.36 
+ore_ont_7817	0	accepted 13.35 
+ore_ont_8019	0	accepted 2.37 
+ore_ont_8030	0	accepted 0.79 
+ore_ont_8042	0	accepted 9.04 
+ore_ont_8050	0	accepted 1.33 
+ore_ont_8141	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.15 
+ore_ont_8142	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 15.78 
+ore_ont_802	124	Command exited with non-zero status 124 60.00 
+ore_ont_8250	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.08 
+ore_ont_8294	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: ReflexiveObjectProperty) Command exited with non-zero status 3 0.11 
+ore_ont_8387	0	accepted 10.05 
+ore_ont_8399	0	accepted 0.59 
+ore_ont_8148	124	Command exited with non-zero status 124 60.00 
+ore_ont_8460	0	accepted 0.31 
+ore_ont_8445	124	Command exited with non-zero status 124 60.00 
+ore_ont_8480	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.29 
+ore_ont_850	0	accepted 9.29 
+ore_ont_8509	0	accepted 3.65 
+ore_ont_8578	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.11 
+ore_ont_8475	124	Command exited with non-zero status 124 60.01 
+ore_ont_8595	0	accepted 13.26 
+ore_ont_8631	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.08 
+ore_ont_8640	0	accepted 6.21 
+ore_ont_8723	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.68 
+ore_ont_8786	0	accepted 10.81 
+ore_ont_8627	124	Command exited with non-zero status 124 60.00 
+ore_ont_8844	124	Command exited with non-zero status 124 60.00 
+ore_ont_8902	0	accepted 22.36 
+ore_ont_8882	124	Command exited with non-zero status 124 60.00 
+ore_ont_8948	0	accepted 0.55 
+ore_ont_8975	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.09 
+ore_ont_9096	0	accepted 0.94 
+ore_ont_9122	0	accepted 28.45 
+ore_ont_9151	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: ObjectPropertyAssertion) Command exited with non-zero status 3 0.26 
+ore_ont_9248	0	accepted 14.11 
+ore_ont_8911	124	Command exited with non-zero status 124 60.00 
+ore_ont_934	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 3.76 
+ore_ont_9429	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: ClassAssertion) Command exited with non-zero status 3 0.14 
+ore_ont_9540	0	accepted 19.44 
+ore_ont_9557	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 2.10 
+ore_ont_9577	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: ObjectPropertyAssertion) Command exited with non-zero status 3 0.24 
+ore_ont_9690	0	accepted 0.21 
+ore_ont_9783	0	accepted 0.20 
+ore_ont_9890	3	not recognised: not an OWL SHOIQ(D) knowledge base (first: SubObjectPropertyOf) Command exited with non-zero status 3 0.09 
+ore_ont_9303	124	Command exited with non-zero status 124 60.00 

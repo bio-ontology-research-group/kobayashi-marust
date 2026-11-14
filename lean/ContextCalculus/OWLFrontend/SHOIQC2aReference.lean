@@ -291,23 +291,59 @@ theorem shoiq_entailsSame (h : translateSHOIQ O requested = some T) {a b : IRI}
 
 /-! ## Hints -/
 
+/-- A certificate record over `Fin n` names, `Fin m` roles and the core
+`Fin k`; `none` when an index is out of range. -/
+def RawRec.toRec (n m k : Nat) (x : RawRec) :
+    Option (SRIQN.Proc.NRec n m k × (Fin k → Finset (RoleT (Fin m))) ×
+      List (SRIQ.Proc.QNbr n m)) :=
+  match RawHint.finsOf n x.ty, RawHint.rtsOf m x.plab,
+    x.ce.mapM (fun e => (RawHint.finOf k e.1).bind fun d => (RawHint.rtsOf m e.2).map (d, ·)),
+    x.kids.mapM (fun e => (RawHint.rtsOf m e.1).bind fun L => (RawHint.finsOf n e.2).map (L, ·))
+  with
+  | some t, some L, some ces, some ks =>
+    let par : Option (SRIQ.Nbr (Fin n) (Fin m) ⊕ (Fin k × Finset (RoleT (Fin m)))) :=
+      match x.anchor with
+      | some b => (RawHint.finOf k b).map fun b' => .inr (b', L)
+      | none => (RawHint.finsOf n x.pty).map fun s => .inl (L, s)
+    par.map fun p => ((t, p),
+      fun d => ces.foldl (fun acc e => if e.1 = d then acc ∪ e.2 else acc) ∅, ks)
+  | _, _, _, _ => none
+
 /-- A hint in the text format as a core over `Fin K`: `blocks K`, `ty`,
-`lab` and `kid` lines (the `blk` lines are ignored); `none` when an index
-is out of range. -/
+`lab` and `kid` lines (the `blk` lines are ignored), and optionally a
+certificate (`rec`, `ranc`, `rpar`, `rce`, `rkid` lines); `none` when an
+index is out of range.
+
+Certificate lines, `R` a record id, `B` a core element, `Ri` roles
+(`+k`, `-k`), `Ci` concept indices:
+
+```
+rec R C1 C2 ...           -- the type of record R (repeatable)
+ranc R B R1 ...           -- R is a child of core element B; label from R to B
+rpar R R1 ... / C1 ...    -- R is a child of a tree node: label from R to it, `/`, its type
+rce R B R1 ...            -- core entry of R: label from R to core element B
+rkid R R1 ... / C1 ...    -- a child of R: label from R to the child, `/`, its type
+```
+
+The record of a child is computed from its entry; the table must contain
+it, and the anchor record of every `kid` of a core element. With a table
+the check is local (`CertOK`); without one the alive records are computed. -/
 def RawHint.toHintN (h : RawHint) (n m : Nat) : Option (SRIQN.Proc.HintN n m) :=
   match h.ty.mapM (fun e => (RawHint.finsOf n e.2).map (e.1, ·)),
     h.lab.mapM (fun e => (RawHint.rtsOf m e.2.2).map (e.1, e.2.1, ·)),
     h.kids.mapM (fun e => ((RawHint.rtsOf m e.2.1).bind fun L =>
-      (RawHint.finsOf n e.2.2).map (e.1, L, ·)))
+      (RawHint.finsOf n e.2.2).map (e.1, L, ·))),
+    h.recs.mapM (fun x => x.2.toRec n m h.nb)
   with
-  | some ty, some lab, some kids =>
+  | some ty, some lab, some kids, some recs =>
     let half := fun (b c : Fin h.nb) =>
       lab.foldl (fun acc e => if e.1 = b.val ∧ e.2.1 = c.val then acc ∪ e.2.2 else acc) ∅
     some { k := h.nb
            ty := fun b => ty.foldl (fun acc e => if e.1 = b.val then acc ∪ e.2 else acc) ∅
            lab := fun b c => half b c ∪ flipL (half c b)
-           kids := fun b => (kids.filter fun e => e.1 = b.val).map fun e => (e.2.1, e.2.2) }
-  | _, _, _ => none
+           kids := fun b => (kids.filter fun e => e.1 = b.val).map fun e => (e.2.1, e.2.2)
+           recs := recs }
+  | _, _, _, _ => none
 
 /-! ## The route -/
 

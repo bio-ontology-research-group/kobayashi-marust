@@ -55,6 +55,11 @@ structure SRIQKBTranslation where
   hnamed : named.length ≤ conceptCount
   ontology : SRIQ.Ontology (Fin conceptCount) (Fin roleCount)
   abox : SRIQ.ABox (Fin conceptCount) (Fin roleCount) (Fin inds.length)
+  /-- The concept index of every class IRI of the translation (for index
+  printers; no theorem uses it). -/
+  cnames : List (OWL.IRI × Nat) := []
+  /-- The role index of every property IRI. -/
+  rnames : List (OWL.IRI × Nat) := []
 
 namespace SRIQKB
 
@@ -164,7 +169,7 @@ def translateSRIQKB (O : OWL.Ontology) (requested : List OWL.IRI) (extra : List 
           { named := r.2, inds := inds, conceptCount := r.1.b.cdefs.size,
             roleCount := r.1.b.rdefs.size, hnamed := h,
             ontology := r.1.out.reverse.filterMap (SRIQT.toFin r.1.b.cdefs.size r.1.b.rdefs.size),
-            abox := A }
+            abox := A, cnames := r.1.b.cmap.toList, rnames := r.1.b.rmap.toList }
     else none
   else none
 

@@ -205,6 +205,14 @@ def IsC2a (O : Ontology CName Role) : Prop :=
   ∀ q ∈ SRIQ.lowerL (basePart O), q.1 ∉ noms O → ¬ NomOnly O q.1 →
     ∀ q' ∈ SRIQ.upperL (basePart O), ¬ SRIQ.RoleLe (basePart O) q.2.2.1 q'.2.2.1.flip
 
+/-- C2a relative to a set `S` of exempt names (names that hold at nominal
+elements only in the models considered). `IsC2a O` is `IsC2aS O (NomOnly O)`. -/
+def IsC2aS (O : Ontology CName Role) (S : CName → Prop) : Prop :=
+  ∀ q ∈ SRIQ.lowerL (basePart O), q.1 ∉ noms O → ¬ S q.1 →
+    ∀ q' ∈ SRIQ.upperL (basePart O), ¬ SRIQ.RoleLe (basePart O) q.2.2.1 q'.2.2.1.flip
+
+theorem isC2a_iff_S (O : Ontology CName Role) : IsC2a O ↔ IsC2aS O (NomOnly O) := Iff.rfl
+
 end ContextCalculus.SRIQN
 
 #print axioms ContextCalculus.SRIQN.models_iff

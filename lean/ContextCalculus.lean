@@ -363,6 +363,9 @@ import ContextCalculus.SRIQN.Procedure
 import ContextCalculus.SRIQN.Rows
 import ContextCalculus.SRIQN.Transitivity
 import ContextCalculus.SRIQN.Data
+import ContextCalculus.SRIQN.DataParts
 import ContextCalculus.OWLFrontend.SHOIQNom
 import ContextCalculus.OWLFrontend.SHOIQC2aReference
 import ContextCalculus.OWLFrontend.SHOIQC2aTests
+import ContextCalculus.OWLFrontend.SHOIQDNom
+import ContextCalculus.OWLFrontend.SHOIQDC2aReference
