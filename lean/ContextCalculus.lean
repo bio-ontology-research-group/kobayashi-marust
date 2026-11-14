@@ -74,6 +74,7 @@ import ContextCalculus.OWLFrontend.SRIQComplete
 import ContextCalculus.OWL.FragmentSHIQKB
 import ContextCalculus.OWLFrontend.SRIQKBTranslate
 import ContextCalculus.OWLFrontend.SRIQKBTranslateCorrect
+import ContextCalculus.OWLFrontend.SRIQKBReference
 import ContextCalculus.OWLFrontend.ReferenceSHIQ
 import ContextCalculus.ELResidualCertificate
 import ContextCalculus.ELResidualCompilation
