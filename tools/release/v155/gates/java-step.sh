@@ -25,7 +25,7 @@ text = Path(log).read_text(errors='replace')
 m = re.findall(r'Tests run: (\d+), Failures: (\d+), Errors: (\d+), Skipped: (\d+)\s*$', text, re.M)
 assert m, 'no Maven test summary'
 run, fail, err, skip = map(int, m[-1])
-jars = [j for j in glob.glob(f'{snap}/protege/target/kobayashi-marust-protege-*.jar') if 'sources' not in j and 'javadoc' not in j]
+jars = [j for j in glob.glob(f'{snap}/protege/target/protege5/kobayashi-marust-protege5-*.jar') if 'sources' not in j and 'javadoc' not in j]
 assert len(jars) == 1, jars
 r = {'schema': 'km-v155-java-receipt-v1', 'source_commit': commit, 'execution_source': f'{snap}/protege',
      'command': [mvn, '-o', '-B', f'-Dkm.bin={km}', 'package'],
