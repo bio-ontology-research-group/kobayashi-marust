@@ -9390,6 +9390,10 @@ fn bridge_named_positive_subsumers(
     subsumers
 }
 
+/// Default largest number of candidates in one batched refutation probe of
+/// the bridge classifier (`KM_BRIDGE_BATCH_CHUNK` overrides it).
+const BRIDGE_BATCH_CHUNK: usize = 16;
+
 /// Does a complete clash-free model whose root carries `root_tags` refute
 /// `subject <= candidate`? A plain named concept is decided by its label. A
 /// still-`CCEQ` host has no reverse rule (Konclude's update analysis never
@@ -16798,6 +16802,14 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // Diagnostic only: distinguish shared-state restoration, completion, and
     // classification-message analysis without changing scheduling or verdicts.
     let phase_timing = std::env::var_os("KM_BRIDGE_PHASE_TIMING").is_some();
+    // Largest number of candidates in one batched refutation probe (see
+    // `batch_refuted`). `KM_BRIDGE_BATCH_CHUNK=N` overrides it; 0 means no
+    // limit (one probe over the whole batch, the behaviour before v1.6.4).
+    let batch_chunk: usize = match std::env::var("KM_BRIDGE_BATCH_CHUNK").ok().and_then(|v| v.parse().ok()) {
+        Some(0) => usize::MAX,
+        Some(n) => n,
+        None => BRIDGE_BATCH_CHUNK,
+    };
     let phase_times = std::cell::Cell::new([std::time::Duration::ZERO; 3]);
     let record_phase = |phase: usize, start: Option<std::time::Instant>| {
         if let Some(start) = start {
@@ -17331,7 +17343,15 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 );
             }
             let (subs, authoritative, root) = readoff?;
-            if harvest_probe_models && !authoritative && !bridged.eq_candidate_markers.is_empty() {
+            // An authoritative read-off answers every named subsumer of `s`
+            // except the still-`CCEQ` hosts, which no completion adds from
+            // their definition. Those stay possible subsumers and are
+            // verified later, so their markers are kept for every read-off,
+            // the authoritative ones included: a deterministic clash-free
+            // model is a model of `s` like any other (issue #5: all 6,430
+            // read-offs were authoritative, so no marker was kept and every
+            // subject probed all 173 FLOPO definitions).
+            if harvest_probe_models && !bridged.eq_candidate_markers.is_empty() {
                 // Keep only what a later pair needs: which definition
                 // candidate markers this subject's satisfiability model has.
                 if let Some(tags) = bridge_model_root_positive_tags(ctx, root) {
@@ -17503,36 +17523,94 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         // of every subject are universal definitions (`C = all qk.D`) that
         // one model refutes together, and each probe re-derives the
         // nominal-connected ABox, so the pairwise probes dominated.
+        // A still-`CCEQ` host (non-triggerable definition, Konclude's
+        // `mEquivConNonCandidateSet`) carries no reverse rule: the
+        // completion never adds it from its definition, so its absence
+        // is not a countermodel. Konclude's update analysis skips exactly
+        // these (`operator_code != CCEQ`, CSatisfiableTaskClassification-
+        // MessageAnalyser). Such a host is refuted when the subject's
+        // satisfiability model lacks its partial-equivalence marker, which
+        // every instance of its definition carries.
+        let readoff_refutes = |ctx: &CalculationAlgorithmContextBase, c: usize| {
+            readoff_markers.is_some_and(|present| {
+                bridged
+                    .eq_candidate_markers
+                    .get(&c)
+                    .is_some_and(|marker| !present.contains(marker))
+                    && ctx.ontology_arenas().concept(bridged.named[c]).get_operator_code()
+                        == op::CCEQ
+            })
+        };
         let batch_refuted: HashSet<usize> = {
+            // Candidates the satisfiability model refutes stay out of the
+            // batch; the loop below refutes them by that model whatever the
+            // batch verdict, so a batch over them is wasted work.
             let batch: Vec<usize> = subs.iter().copied().filter(|&c| {
                 c != s
+                    && !readoff_refutes(ctx, c)
                     && !saturation_known_pairs.contains(&(s, c))
                     && !(deterministic_subsumer_shortcut && kpset_state.certain_subsumer(s, c))
                     && kpset_state.candidate_state(s, c).is_none_or(|(confirmed, invalid)| !confirmed && !invalid)
                     && !(hierarchy_countermodels && hierarchy_refuted_candidates.contains(&(s, c)))
             }).collect();
             if batch.len() >= 2 && std::env::var_os("KM_BRIDGE_NO_BATCH_REFUTATION").is_none() {
-                // Only a satisfiable batch verdict is used, and that one is
-                // accepted on the leaf (docs/HYBRID-CB-HT.md §16); any other
-                // verdict just leaves the pairs to their own probes.
-                let on_leaf = leaf_reuse && leaf_useful();
-                leaf_job.set(on_leaf);
-                let restored = renew(algo, ctx, false);
-                leaf_job.set(false);
-                restored?;
-                let mut id_batch: i64 = probe_start_id;
-                let mut seeds: Vec<(ConceptId, bool)> = vec![(bridged.named[s], false)];
-                seeds.extend(batch.iter().map(|&c| (bridged.named[c], true)));
-                let mut batch_root = None;
-                let verdict = bridged_unsat_rooted(algo, ctx, &bridged, &mut id_batch, &seeds, &mut batch_root);
-                if progress {
-                    eprintln!(
-                        "BRIDGE-BATCH-REFUTATION {} candidates={} verdict={:?}",
-                        tin.concepts[s], batch.len(), verdict.map(|unsat| if unsat { "unsat" } else { "sat" })
-                    );
+                // The batch is probed in chunks of at most `batch_chunk`
+                // candidates. A satisfiable chunk is a model of `s and not c`
+                // for each of its members, so it refutes exactly them, as the
+                // whole batch did; an unsatisfiable or undecided chunk leaves
+                // its members to their own probes below. Splitting therefore
+                // changes which probes run, never a verdict. It bounds the
+                // model of one probe: each negated candidate adds its own
+                // constraints, and they interact (issue #5: 37 negated
+                // FLOPO definitions `S and not (some has_part.(P and some
+                // q.D))` each add a has_part successor, and the 136
+                // definitions `S and some has_part.(P and not some q.D)` add
+                // a universal over has_part to every one of them, about 880
+                // nodes and 0.09 s per full batch on 1,374 subjects).
+                let mut refuted: HashSet<usize> = HashSet::default();
+                for chunk in batch.chunks(batch_chunk) {
+                    if chunk.len() < 2 {
+                        continue;
+                    }
+                    // Only a satisfiable batch verdict is used, and that one is
+                    // accepted on the leaf (docs/HYBRID-CB-HT.md §16); any other
+                    // verdict just leaves the pairs to their own probes.
+                    let on_leaf = leaf_reuse && leaf_useful();
+                    leaf_job.set(on_leaf);
+                    let restored = renew(algo, ctx, false);
+                    leaf_job.set(false);
+                    restored?;
+                    let mut id_batch: i64 = probe_start_id;
+                    let mut seeds: Vec<(ConceptId, bool)> = vec![(bridged.named[s], false)];
+                    seeds.extend(chunk.iter().map(|&c| (bridged.named[c], true)));
+                    let mut batch_root = None;
+                    let t_batch = phase_timing.then(std::time::Instant::now);
+                    let (ins0, bt0, bo0) = (algo.stat_con_des_insertion_count, algo.or_backtrack_count, algo.or_branch_open_count);
+                    let verdict = bridged_unsat_rooted(algo, ctx, &bridged, &mut id_batch, &seeds, &mut batch_root);
+                    if progress {
+                        eprintln!(
+                            "BRIDGE-BATCH-REFUTATION {} candidates={} of {} verdict={:?}",
+                            tin.concepts[s], chunk.len(), batch.len(), verdict.map(|unsat| if unsat { "unsat" } else { "sat" })
+                        );
+                    }
+                    if let Some(t) = t_batch {
+                        eprintln!(
+                            "BRIDGE-BATCH-TIMING {} candidates={} seconds={:.6} nodes={} inserts={} backtracks={} branch_opens={}",
+                            tin.concepts[s],
+                            chunk.len(),
+                            t.elapsed().as_secs_f64(),
+                            ctx.process_context().node_count(),
+                            algo.stat_con_des_insertion_count - ins0,
+                            algo.or_backtrack_count - bt0,
+                            algo.or_branch_open_count - bo0,
+                        );
+                    }
+                    let leaf_batch_ok = !leaf_job_ran.get() || retained_leaf_verdict_accepted(algo, ctx, false);
+                    if verdict == Some(false) && leaf_batch_ok {
+                        refuted.extend(chunk.iter().copied());
+                    }
                 }
-                let leaf_batch_ok = !leaf_job_ran.get() || retained_leaf_verdict_accepted(algo, ctx, false);
-                if verdict == Some(false) && leaf_batch_ok { batch.into_iter().collect() } else { HashSet::default() }
+                refuted
             } else {
                 HashSet::default()
             }
@@ -17605,21 +17683,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 refuted_here.push(c);
                 continue;
             }
-            // A still-`CCEQ` host (non-triggerable definition, Konclude's
-            // `mEquivConNonCandidateSet`) carries no reverse rule: the
-            // completion never adds it from its definition, so its absence
-            // is not a countermodel. Konclude's update analysis skips exactly
-            // these (`operator_code != CCEQ`, CSatisfiableTaskClassification-
-            // MessageAnalyser); everything else is decided by the label.
-            let readoff_refutes = readoff_markers.is_some_and(|present| {
-                bridged
-                    .eq_candidate_markers
-                    .get(&c)
-                    .is_some_and(|marker| !present.contains(marker))
-                    && ctx.ontology_arenas().concept(bridged.named[c]).get_operator_code()
-                        == op::CCEQ
-            });
-            if readoff_refutes
+            // `readoff_refutes` (defined above the batch); everything else
+            // is decided by the label.
+            if readoff_refutes(ctx, c)
                 || probe_models
                     .iter()
                     .any(|tags| bridge_model_refutes_candidate(&bridged, ctx, c, tags))
@@ -17971,7 +18037,16 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
         let total = pending.len();
         let mut deferred: Vec<usize> = Vec::new();
         for (k, &s) in pending.iter().enumerate() {
-            if classify_one(s, &mut algo, &mut ctx, &mut out, false).is_none() {
+            let t_subject = phase_timing.then(std::time::Instant::now);
+            let verified = classify_one(s, &mut algo, &mut ctx, &mut out, false);
+            if let Some(t) = t_subject {
+                eprintln!(
+                    "BRIDGE-VERIFY-SUBJECT {} seconds={:.6}",
+                    tin.concepts[s],
+                    t.elapsed().as_secs_f64()
+                );
+            }
+            if verified.is_none() {
                 if algo.completeness_poisoned {
                     permanent_defer += 1;
                 } else {

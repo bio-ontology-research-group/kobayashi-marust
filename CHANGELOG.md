@@ -13,6 +13,13 @@
   FLOPO inputs of issue #5 did not finish in 300 s; with it, 17.5 s (136
   negated definitions of one form and one of the other) and 133 s (the full
   reproducer). `KM_NO_RELEASE_DEFAULTS=1` restores the old behaviour.
+- konclude_ht bridge, possible-subsumer verification: the satisfiability
+  model's definition markers are kept for authoritative read-offs too, so a
+  non-triggerable definition whose marker the model lacks is refuted
+  without a probe and no longer enters the batched refutation probe. The
+  batch is probed in chunks of at most 16 candidates
+  (`KM_BRIDGE_BATCH_CHUNK`, 0 = one probe). Issue #5 reproducer: 132 s to
+  17 s on one thread, same answer.
 
 ## [1.6.3] - 2026-11-13
 
