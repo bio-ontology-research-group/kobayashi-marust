@@ -360,3 +360,4 @@ import ContextCalculus.SRIQN.Core
 import ContextCalculus.SRIQN.Forest
 import ContextCalculus.SRIQN.C2a
 import ContextCalculus.SRIQN.Procedure
+import ContextCalculus.SRIQN.Rows
