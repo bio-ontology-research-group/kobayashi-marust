@@ -221,10 +221,11 @@ def rel (O : Onto) (L : Ty) : Ty :=
 
 /-! ## Branches with one head name per fired gci -/
 
-/-- Every branch of `seed`: fire gcis whose body holds and whose head has
+/-- Every branch of `seed` (with `closedPart = some t`: `t ⊆ seed` is
+closed, so only the gcis triggered by names outside `t` are queued): fire gcis whose body holds and whose head has
 no present name, adding one head name each time (a clash for an empty
 head). Every closed superset `T` of `seed` contains some branch. -/
-partial def branches (O : Onto) (seed : Ty) : Array Ty := Id.run do
+partial def branches (O : Onto) (seed : Ty) (closedPart : Option Ty := none) : Array Ty := Id.run do
   let rec go (cur : HashSet Nat) (acc : Array Nat) (queue : List Nat) (out : Array Ty) : Array Ty :=
     match queue with
     | [] => out.push (sortDedup acc)
@@ -238,7 +239,9 @@ partial def branches (O : Onto) (seed : Ty) : Array Ty := Id.run do
           go (cur.insert y) (acc.push y) (O.gciBy[y]!.toList ++ rest) out) out
       else go cur acc rest out
   let cur : HashSet Nat := seed.foldl (fun s x => s.insert x) ∅
-  let q := O.gciTop.toList ++ (seed.toList.flatMap fun a => (O.gciBy[a]!).toList)
+  let q := match closedPart with
+    | none => O.gciTop.toList ++ (seed.toList.flatMap fun a => (O.gciBy[a]!).toList)
+    | some t => (seed.toList.filter (!mem t ·)).flatMap fun a => (O.gciBy[a]!).toList
   let res := go cur seed q #[]
   -- remove duplicates
   let mut seen : HashSet Ty := ∅
@@ -268,6 +271,8 @@ structure CtxD where
   byTy : HashMap Ty Nat := ∅
   parents : Array (Nat × Nat) := #[]
   uni : HashSet Nat := ∅
+  /-- name ↦ nodes of the context whose type holds it -/
+  byName : HashMap Nat (Array Nat) := ∅
   backs : HashSet Ty := ∅
   pw : HashSet (Ty × Ty) := ∅
   deriving Inhabited
@@ -325,6 +330,11 @@ structure St where
   pendTrig : HashSet Nat := ∅
   pendBack : HashSet Nat := ∅
   nRounds : Nat := 0
+  relCache : HashMap Ty Ty := ∅
+  nsInit : Nat := 0
+  nsTrig : Nat := 0
+  nsBack : Nat := 0
+  nsBranch : Nat := 0
   lastReport : Nat := 0
   deriving Inhabited
 
@@ -344,18 +354,27 @@ def enqueue (e : Ev) : M Unit := do
   | .init .. => pure ()
   modify fun s => { s with queue := s.queue.push e }
 
-def branchesM (t : Ty) : M (Array Ty) := do
+def branchesM (t : Ty) (closedPart : Option Ty := none) : M (Array Ty) := do
   let O ← getO
-  let bs := branches O t
+  let t0 ← IO.monoNanosNow
+  let bs := branches O t closedPart
+  let t1 ← IO.monoNanosNow
+  modify fun s => { s with nsBranch := s.nsBranch + (t1 - t0) }
   modify fun s => { s with nBranchCalls := s.nBranchCalls + 1 }
   modify fun s => { s with nBranches := s.nBranches + bs.size }
   modify fun s => { s with maxBranches := max s.maxBranches bs.size }
   return bs
 
 /-- The child context of spec `σ` at a node of type `t`. -/
-def childKey (O : Onto) (t : Ty) (σ : Spec) : CtxKey :=
+def childKey (O : Onto) (t : Ty) (σ : Spec) : M CtxKey := do
   let L := flipL σ.lab
-  { seed := union σ.fill (fwd O t σ.lab), lab := L, pi := inter t (rel O L) }
+  let r ← match (← get).relCache.get? L with
+    | some r => pure r
+    | none =>
+      let r := rel O L
+      modify fun s => { s with relCache := s.relCache.insert L r }
+      pure r
+  return { seed := union σ.fill (fwd O t σ.lab), lab := L, pi := inter t r }
 
 mutual
 
@@ -381,6 +400,7 @@ partial def addNode (k : Nat) (t : Ty) (inh : Array Spec) : M Unit := do
       ctxs := s.ctxs.modify k fun c =>
         { c with nodes := c.nodes.push v, byTy := c.byTy.insert t v,
                  uni := t.foldl (fun u x => u.insert x) c.uni,
+                 byName := t.foldl (fun m x => m.insert x ((m.getD x #[]).push v)) c.byName,
                  backs := c.backs.insert bk } }
     enqueue (.init v inh)
     let parents := (← get).ctxs[k]!.parents
@@ -407,7 +427,7 @@ partial def addSpec (v : Nat) (σ : Spec) : M Unit := do
   let i := nd.pool.size
   modify fun s => { s with nodes := s.nodes.modify v fun nd =>
     { nd with pool := nd.pool.push σ, poolSet := nd.poolSet.insert σ } }
-  let k ← getCtx (childKey O nd.ty σ)
+  let k ← getCtx (← childKey O nd.ty σ)
   modify fun s => { s with
     nodes := s.nodes.modify v (fun nd => { nd with kids := nd.kids.push k })
     ctxs := s.ctxs.modify k fun c => { c with parents := c.parents.push (v, i) } }
@@ -423,7 +443,7 @@ partial def applyBack (v : Nat) (bk : Ty) : M Unit := do
   if sub bk nd.ty then return
   let cfg ← getCfg
   let inh := if cfg.inherit then nd.pool else #[]
-  for t' in ← branchesM (union nd.ty bk) do
+  for t' in ← branchesM (union nd.ty bk) (some nd.ty) do
     modify fun s => { s with nBackVar := s.nBackVar + 1 }
     addNode nd.ctx t' inh
 
@@ -438,7 +458,7 @@ partial def applyPW (v : Nat) (i : Nat) (r : Ty × Ty) : M Unit := do
   else
     let cfg ← getCfg
     let inh := (if cfg.inherit then nd.pool else #[]).push grown
-    for t' in ← branchesM (union nd.ty r.1) do
+    for t' in ← branchesM (union nd.ty r.1) (some nd.ty) do
       modify fun s => { s with nPWVar := s.nPWVar + 1 }
       addNode nd.ctx t' inh
 
@@ -475,9 +495,9 @@ def backRule (v : Nat) : M Unit := do
       let mut inter? : Option Ty := none
       for i in [0:nd.pool.size] do
         if !mem nd.pool[i]!.lab R then continue
-        for w in s.ctxs[nd.kids[i]!]!.nodes do
+        for w in s.ctxs[nd.kids[i]!]!.byName.getD b #[] do
           let nw := s.nodes[w]!
-          if mem nw.ty b then
+          do
             inter? := some (match inter? with | none => nw.back | some x => inter x nw.back)
             if !candSet.contains nw.back then
               candSet := candSet.insert nw.back
@@ -493,7 +513,7 @@ def backRule (v : Nat) : M Unit := do
   for sd in seeds do
     if (← get).nodes[v]!.backDone.contains sd then continue
     modify fun s => { s with nodes := s.nodes.modify v fun nd => { nd with backDone := nd.backDone.insert sd } }
-    for t' in ← branchesM sd do
+    for t' in ← branchesM sd (some nd.ty) do
       modify fun s => { s with nBackVar := s.nBackVar + 1 }
       addNode nd.ctx t' inh
 
@@ -637,7 +657,7 @@ def initNode (v : Nat) (inh : Array Spec) : M Unit := do
 
 def progressLine (s : St) : String :=
   let specs := s.nodes.foldl (fun a nd => a + nd.pool.size) 0
-  s!"progress: events={s.nEvents} queue={s.queue.size - s.qpos} ctxs={s.ctxs.size} nodes={s.nodes.size} specs={specs} merges={s.nMerge} pw_requests={s.nPW} back_variants={s.nBackVar} pw_variants={s.nPWVar} lazy_variants={s.nLazyVar} rounds={s.nRounds} branch_calls={s.nBranchCalls} branches={s.nBranches} max_branches={s.maxBranches}"
+  s!"progress: events={s.nEvents} queue={s.queue.size - s.qpos} ctxs={s.ctxs.size} nodes={s.nodes.size} specs={specs} merges={s.nMerge} pw_requests={s.nPW} back_variants={s.nBackVar} pw_variants={s.nPWVar} lazy_variants={s.nLazyVar} rounds={s.nRounds} ms_init={s.nsInit/1000000} ms_trig={s.nsTrig/1000000} ms_back={s.nsBack/1000000} ms_branch={s.nsBranch/1000000} branch_calls={s.nBranchCalls} branches={s.nBranches} max_branches={s.maxBranches}"
 
 /-- One step of the event loop; `false` when nothing is left. -/
 def step : M Bool := do
@@ -653,14 +673,22 @@ def step : M Bool := do
   if s.qpos < s.queue.size then
     let e := s.queue[s.qpos]!
     modify fun s => { s with qpos := s.qpos + 1 }
+    let t0 ← IO.monoNanosNow
     match e with
-    | .init v inh => initNode v inh
+    | .init v inh =>
+      initNode v inh
+      let t1 ← IO.monoNanosNow
+      modify fun s => { s with nsInit := s.nsInit + (t1 - t0) }
     | .trig v =>
       modify fun s => { s with pendTrig := s.pendTrig.erase v }
       trigger v
+      let t1 ← IO.monoNanosNow
+      modify fun s => { s with nsTrig := s.nsTrig + (t1 - t0) }
     | .back v =>
       modify fun s => { s with pendBack := s.pendBack.erase v }
       backRule v
+      let t1 ← IO.monoNanosNow
+      modify fun s => { s with nsBack := s.nsBack + (t1 - t0) }
     let s ← get
     if s.qpos > 100000 then
       modify fun s => { s with queue := s.queue.extract s.qpos s.queue.size, qpos := 0 }
