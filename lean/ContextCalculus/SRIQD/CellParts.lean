@@ -251,4 +251,158 @@ theorem part_of_cellTheory (hc : CellSpec key cells size) (L : Nat) {V : Type}
   simp only [toE] at hsum
   exact_mod_cast hsum
 
+/-! ## Each part has a bounded oracle -/
+
+theorem sum_map_ite_filter' {β : Type} (L : List β) (P : β → Prop) [DecidablePred P]
+    (w : β → ℕ∞) :
+    (L.map fun c => if P c then w c else 0).sum = ((L.filter fun c => decide (P c)).map w).sum := by
+  induction L with
+  | nil => rfl
+  | cons c L ih => by_cases h : P c <;> simp [h, ih]
+
+theorem toE_partCard {L : Nat} {n : K → (Fin s → Bool) → Nat} (τ : Finset (Fin q)) :
+    toE (partCard cells size L E n τ) = (((pairs cells s).filter fun cg =>
+      decide (vtc E cg.1 cg.2 = τ)).map fun cg => toE (pairBound size L n cg)).sum := by
+  rw [partCard, toE_osum, List.map_map, ← sum_map_ite_filter']
+  congr 1
+  refine List.map_congr_left fun cg _ => ?_
+  simp only [Function.comp]
+  split_ifs <;> rfl
+
+theorem vt_part {V : Type} {atom : Fin q → V → Prop} {e : V ≃ Val} {fr : Fin s → Val → Bool}
+    (hat : ∀ p v, atom p v ↔ E p (key (e v)) (readOf fr (e v)) = true) (v : V) :
+    vt atom v = vtc E (key (e v)) (readOf fr (e v)) := by
+  ext p
+  rw [mem_vt, hat]
+  simp [vtc]
+
+/-- **Each part has a bounded oracle.** -/
+theorem oracleSpecB_part (hc : CellSpec key cells size) {B L : Nat}
+    (hL : B * (allG s).length ≤ L) {n : K → (Fin s → Bool) → Nat}
+    (hv : ValidPart cells size L n) :
+    OracleSpecB (partTheory key cells size L E n) (partCard cells size L E n) B := by
+  classical
+  constructor
+  · rintro V atom ⟨e, fr, hin, hat⟩ τ k hk l hl hvt
+    let κ : Val → K × (Fin s → Bool) := fun w => (key w, readOf fr w)
+    let Lv := l.map e
+    have hLv : Lv.Nodup := hl.map e.injective
+    let D := (pairs cells s).filter fun cg => decide (vtc E cg.1 cg.2 = τ)
+    have hDn : D.Nodup := (pairs_nodup hc.nodup).filter _
+    have hcov : ∀ w ∈ Lv, κ w ∈ D := by
+      intro w hw
+      obtain ⟨v, hv', rfl⟩ := List.mem_map.1 hw
+      refine List.mem_filter.2 ⟨mem_pairs.2 (hc.mem _), ?_⟩
+      rw [← vt_part hat, hvt v hv']
+      simp
+    have hlen := length_eq_sum_count κ Lv hDn hcov
+    have hcnt : ∀ cg ∈ D, ((Lv.countP fun w => κ w = cg : Nat) : ℕ∞) ≤
+        toE (pairBound size L n cg) := by
+      intro cg hcg
+      have h1 : ((Lv.countP fun w => κ w = cg : Nat) : ℕ∞) ≤ {w | κ w = cg}.encard := by
+        rw [List.countP_eq_length_filter]
+        exact length_le_encard (hLv.filter _) fun w hw => by simpa using (List.mem_filter.1 hw).2
+      refine h1.trans ?_
+      obtain ⟨c, g⟩ := cg
+      have hcc : c ∈ cells := mem_pairs.1 (List.mem_filter.1 hcg).1
+      unfold pairBound
+      split_ifs with hs
+      · have := hin c hcc hs g
+        simp only [toE]
+        rw [← this]
+        exact le_of_eq (congrArg Set.encard (by ext w; simp [κ]))
+      · rw [← hc.size c hcc]
+        exact Set.encard_le_encard fun w hw => by
+          simp only [Set.mem_setOf_eq, κ, Prod.mk.injEq] at hw ⊢; exact hw.1
+    have hsum : ((l.length : Nat) : ℕ∞) ≤ toE (partCard cells size L E n τ) := by
+      rw [show l.length = Lv.length from (List.length_map _).symm, hlen, Nat.cast_list_sum,
+        List.map_map, toE_partCard]
+      exact sum_map_mono fun cg hcg => by simpa using hcnt cg hcg
+    rw [hk] at hsum
+    simpa [toE] using hsum
+  · intro need hB hneed
+    -- a colouring of every cell
+    have hcol : ∀ c : K, ∃ F : Val → (Fin s → Bool),
+        (c ∈ cells → small size L c = true → ∀ g, {v | key v = c ∧ F v = g}.encard = n c g) ∧
+        (c ∈ cells → small size L c = false → ∀ g, (B : ℕ∞) ≤ {v | key v = c ∧ F v = g}.encard) := by
+      intro c
+      by_cases hcc : c ∈ cells
+      · cases hs : small size L c
+        · -- a large or infinite cell: colour `B · |readings|` of its values
+          have hbig : ((B * (allG s).length : Nat) : ℕ∞) ≤ {v | key v = c}.encard := by
+            rw [hc.size c hcc]
+            rcases not_small_size hs with h | ⟨k, hk, hk'⟩
+            · rw [h]; exact le_top
+            · rw [hk]; simp only [toE]; exact_mod_cast (hL.trans hk'.le)
+          obtain ⟨T, hT, hTc⟩ := Set.exists_subset_encard_eq hbig
+          have hsum : T.encard = (((allG s).map fun _ => B).sum : ℕ∞) := by
+            rw [hTc]; simp [List.map_const', List.sum_replicate, mul_comm]
+          obtain ⟨F, -, hF⟩ := exists_colouring (allG s) (allG_nodup s) (fun _ => B) T hsum
+          refine ⟨F, fun _ h => absurd h (by simp), fun _ _ g => ?_⟩
+          rw [← hF g (mem_allG g)]
+          exact Set.encard_le_encard fun v hv => ⟨hT hv.1, hv.2⟩
+        · obtain ⟨k, hk, -⟩ := small_size hs
+          have hsum : {v | key v = c}.encard = (((allG s).map (n c)).sum : ℕ∞) := by
+            rw [hc.size c hcc, hv c hcc hs]; rfl
+          obtain ⟨F, -, hF⟩ := exists_colouring (allG s) (allG_nodup s) (n c) _ hsum
+          exact ⟨F, fun _ _ g => hF g (mem_allG g), fun _ h => absurd h (by simp)⟩
+      · exact ⟨fun _ => fun _ => false, fun h => absurd h hcc, fun h => absurd h hcc⟩
+    choose F hF using hcol
+    let fr : Fin s → Val → Bool := fun j v => F (key v) v j
+    have hread : ∀ v, readOf fr v = F (key v) v := fun v => rfl
+    have hfib : ∀ c g, {v | key v = c ∧ readOf fr v = g} = {v | key v = c ∧ F c v = g} := by
+      intro c g; ext v
+      simp only [Set.mem_setOf_eq, hread]
+      constructor
+      · rintro ⟨rfl, h⟩; exact ⟨rfl, h⟩
+      · rintro ⟨rfl, h⟩; exact ⟨rfl, h⟩
+    have hin : InPart key cells size L n fr := fun c hcc hs g => by
+      rw [hfib]; exact (hF c).1 hcc hs g
+    let atom : Fin q → Val → Prop := fun p v => E p (key v) (readOf fr v) = true
+    refine ⟨Val, atom, ⟨Equiv.refl _, fr, hin, fun _ _ => Iff.rfl⟩, fun τ => ?_⟩
+    have hvtv : ∀ v, vt atom v = vtc E (key v) (readOf fr v) := fun v =>
+      vt_part (e := Equiv.refl Val) (fun _ _ => Iff.rfl) v
+    let S := {v | vtc E (key v) (readOf fr v) = τ}
+    have hneedE : (need τ : ℕ∞) ≤ toE (partCard cells size L E n τ) := by
+      cases h : partCard cells size L E n τ with
+      | none => exact le_top
+      | some k => simp only [toE]; exact_mod_cast hneed τ k h
+    have hle : (need τ : ℕ∞) ≤ S.encard := by
+      let D := (pairs cells s).filter fun cg => decide (vtc E cg.1 cg.2 = τ)
+      by_cases hall : ∀ cg ∈ D, small size L cg.1 = true
+      · have hS := encard_sum_fibers (fun v => (key v, readOf fr v)) S (D := D)
+          ((pairs_nodup hc.nodup).filter _) (fun v hv =>
+            List.mem_filter.2 ⟨mem_pairs.2 (hc.mem v), decide_eq_true hv⟩)
+        have hS' : S.encard = toE (partCard cells size L E n τ) := by
+          rw [hS, toE_partCard]
+          congr 1
+          refine List.map_congr_left fun cg hcg => ?_
+          obtain ⟨c, g⟩ := cg
+          have hcc : c ∈ cells := mem_pairs.1 (List.mem_filter.1 hcg).1
+          have hτ : vtc E c g = τ := by simpa using (List.mem_filter.1 hcg).2
+          have hs := hall _ hcg
+          simp only [pairBound, hs, if_true, toE]
+          rw [← hin c hcc hs g]
+          congr 1
+          ext v
+          simp only [Set.mem_setOf_eq, S, Prod.mk.injEq]
+          constructor
+          · rintro ⟨-, h1, h2⟩; exact ⟨h1, h2⟩
+          · rintro ⟨h1, h2⟩; exact ⟨by rw [h1, h2]; exact hτ, h1, h2⟩
+        rw [hS']; exact hneedE
+      · push Not at hall
+        obtain ⟨⟨c, g⟩, hcg, hs⟩ := hall
+        have hcc : c ∈ cells := mem_pairs.1 (List.mem_filter.1 hcg).1
+        have hτ : vtc E c g = τ := by simpa using (List.mem_filter.1 hcg).2
+        have h1 := (hF c).2 hcc (by simpa using hs) g
+        refine le_trans (by exact_mod_cast hB τ) (h1.trans (Set.encard_le_encard ?_))
+        rintro v ⟨hkv, hfv⟩
+        show vtc E (key v) (readOf fr v) = τ
+        rw [hread, hkv, hfv, hτ]
+    obtain ⟨l, hl, hlen, hmem⟩ := exists_list_of_encard hle
+    exact ⟨l, hl, hlen, fun v hv => by rw [hvtv]; exact hmem v hv⟩
+
 end ContextCalculus.SRIQD
+
+#print axioms ContextCalculus.SRIQD.part_of_cellTheory
+#print axioms ContextCalculus.SRIQD.oracleSpecB_part
