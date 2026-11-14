@@ -381,12 +381,17 @@ instance (k : Nat) (s : Ty n) : Decidable (BranchCov ix U k s) := by
 def cset (i : Nat) (S : RoleT (Fin m)) (e : Fin n) : List (Entry n m) :=
   (nd U i).pool.filter fun σ => decide (S ∈ σ.spec.lab ∧ ∃ j ∈ memb U σ.kid, e ∈ (nd U j).ty)
 
-/-- The trigger of the merge rule: the parent entry plus the numbers of the
-lower clauses that some spec of `cset` may serve. -/
-def pot (i : Nat) (S : RoleT (Fin m)) (e : Fin n) : Nat :=
-  pcB (keyOf U (nd U i).ctx) S e +
-    (((lowAt ix (nd U i).ty).filter fun q => decide (∃ σ ∈ cset U i S e,
+/-- The trigger of the merge rule, given the specs `C` that may count and
+the parent count `pc`: the parent entry plus the numbers of the lower
+clauses that some spec of `C` may serve. -/
+def potOf (i : Nat) (C : List (Entry n m)) (pc : Nat) : Nat :=
+  pc + (((lowAt ix (nd U i).ty).filter fun q => decide (∃ σ ∈ C,
       q.2.2.1 ∈ σ.spec.lab ∧ ∃ j ∈ memb U σ.kid, q.2.2.2 ∈ (nd U j).ty)).map (·.2.1)).sum
+
+/-- The trigger of the merge rule for an upper clause with role `S` and
+filler `e`. -/
+def pot (i : Nat) (S : RoleT (Fin m)) (e : Fin n) : Nat :=
+  potOf ix U i (cset U i S e) (pcB (keyOf U (nd U i).ctx) S e)
 
 /-- The definitely counted default specs of `cset`. -/
 def ddef (i : Nat) (S : RoleT (Fin m)) (e : Fin n) : List (Spec n m) :=
@@ -436,18 +441,33 @@ def candsQ (i : Nat) (q : Fin n × Nat × RoleT (Fin m) × Fin n) : List (Entry 
 def needsL (i : Nat) : List (Fin n × Nat × RoleT (Fin m) × Fin n) :=
   (lowAt ix (nd U i).ty).filter fun q => decide (pcB (keyOf U (nd U i).ctx) q.2.2.1 q.2.2.2 < q.2.1)
 
-/-- The union of the forced back sets. -/
-def forced (i : Nat) : Ty n :=
-  (needsL ix U i).foldr (fun q acc => acc ∪ interL ((candsQ U i q).map fun p => backOf ix U p.2)) ∅
+/-- For each need, the back sets of its candidate entries. -/
+def backLists (i : Nat) : List (List (Ty n)) :=
+  (needsL ix U i).map fun q => (candsQ U i q).map fun p => backOf ix U p.2
+
+/-- The union over the needs of the back sets every candidate forces. -/
+def forcedOf (cl : List (List (Ty n))) : Ty n := cl.foldr (fun l acc => acc ∪ interL l) ∅
+
+def forced (i : Nat) : Ty n := forcedOf (backLists ix U i)
+
+/-- The back rule R4 at node `i`, given the back lists `cl` and their forced
+union `F`. -/
+def backCore (i : Nat) (cl : List (List (Ty n))) (F : Ty n) : Prop :=
+  (∀ l ∈ cl, l ≠ []) →
+    (¬ F ⊆ (nd U i).ty → BranchCov ix U (nd U i).ctx ((nd U i).ty ∪ F)) ∧
+    (F ⊆ (nd U i).ty → ∀ l ∈ cl, ∀ X ∈ l, ¬ X ⊆ (nd U i).ty →
+      BranchCov ix U (nd U i).ctx ((nd U i).ty ∪ X))
+
+instance (i : Nat) (cl : List (List (Ty n))) (F : Ty n) : Decidable (backCore ix U i cl F) := by
+  unfold backCore; infer_instance
 
 /-- The back rule R4 at node `i`. -/
-def BackOK (i : Nat) : Prop :=
-  (∀ q ∈ needsL ix U i, candsQ U i q ≠ []) →
-    (¬ forced ix U i ⊆ (nd U i).ty → BranchCov ix U (nd U i).ctx ((nd U i).ty ∪ forced ix U i)) ∧
-    (forced ix U i ⊆ (nd U i).ty → ∀ q ∈ needsL ix U i, ∀ p ∈ candsQ U i q,
-      ¬ backOf ix U p.2 ⊆ (nd U i).ty → BranchCov ix U (nd U i).ctx ((nd U i).ty ∪ backOf ix U p.2))
+def BackOK (i : Nat) : Prop := backCore ix U i (backLists ix U i) (forcedOf (backLists ix U i))
 
-instance (i : Nat) : Decidable (BackOK ix U i) := by unfold BackOK; infer_instance
+instance (i : Nat) : Decidable (BackOK ix U i) :=
+  let cl := backLists ix U i
+  (inferInstance : Decidable (backCore ix U i cl (forcedOf cl)))
+
 
 /-- The parent-witness rule R6 at node `i` as a parent: for a node `j` of
 the child context of a pool entry that shows the trigger of an upper clause

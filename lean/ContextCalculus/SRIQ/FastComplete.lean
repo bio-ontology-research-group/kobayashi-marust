@@ -601,7 +601,7 @@ configuration that count for an upper clause are at most `pot`. -/
 theorem StarData.count_le_pot (h : StarData O U req I i z py E) (S : RoleT (Fin m)) (e : Fin n) :
     pcB (keyOf U (nd U i).ctx) S e + (E.filter fun p => cntP S e (entOf U I z p) = true).card ≤
       pot (mkIx O) U i S e := by
-  unfold pot
+  unfold pot potOf
   refine Nat.add_le_add_left (card_le_sum_of _ _ (·.2.1)
     (fun q p => Covers q p.2.spec ∧ (coverSet U i py (E.erase p) q).card < q.2.1 ∧
       p.1 ∉ coverSet U i py (E.erase p) q) ?_ ?_) _
@@ -869,7 +869,8 @@ theorem interL_sub {x : Ty n} : ∀ {l : List (Ty n)}, x ∈ l → interL l ⊆ 
 theorem forced_sub {i : Nat} {T : Ty n}
     (h : ∀ q ∈ needsL (mkIx O) U i, ∃ c ∈ candsQ U i q, backOf (mkIx O) U c.2 ⊆ T) :
     forced (mkIx O) U i ⊆ T := by
-  unfold forced
+  unfold forced forcedOf backLists
+  rw [List.foldr_map]
   suffices ∀ l : List (Fin n × Nat × RoleT (Fin m) × Fin n), (∀ q ∈ l, q ∈ needsL (mkIx O) U i) →
       l.foldr (fun q acc => acc ∪ interL ((candsQ U i q).map fun c => backOf (mkIx O) U c.2)) ∅
         ⊆ T from this _ fun q hq => hq
@@ -921,11 +922,12 @@ nothing new to the node (R4). -/
 theorem StarData.back (h : StarData O U req I i z py E) {p : D × Entry n m} (hp : p ∈ E) :
     backOf (mkIx O) U (kidOf U I z p) ⊆ (nd U i).ty := by
   have hBack : BackOK (mkIx O) U i := h.nc.2.2.2.1
-  unfold BackOK at hBack
-  have hcands : ∀ q ∈ needsL (mkIx O) U i, candsQ U i q ≠ [] := by
-    intro q hq
+  unfold BackOK backCore at hBack
+  have hcands : ∀ l ∈ backLists (mkIx O) U i, l ≠ [] := by
+    intro l hl
+    obtain ⟨q, hq, rfl⟩ := List.mem_map.1 hl
     obtain ⟨p', hp', hc'⟩ := h.need_covered hq
-    exact List.ne_nil_of_mem (h.cand_mem hp' hc')
+    exact List.ne_nil_of_mem (List.mem_map.2 ⟨_, h.cand_mem hp' hc', rfl⟩)
   obtain ⟨hF1, hF2⟩ := hBack hcands
   have hbz : ∀ p' ∈ E, backOf (mkIx O) U (kidOf U I z p') ⊆ typeOf I z := fun p' hp' =>
     back_model h.hI (h.kid hp').2.2.1
@@ -950,7 +952,7 @@ theorem StarData.back (h : StarData O U req I i z py E) {p : D × Entry n m} (hp
       have := Finset.card_pos.2 ⟨y, hy'⟩
       omega
   have hc2 := h.cand_mem hp hcov
-  have h3 := hF2 hFt q hneed _ hc2
+  have h3 := hF2 hFt _ (List.mem_map.2 ⟨q, hneed, rfl⟩) _ (List.mem_map.2 ⟨_, hc2, rfl⟩)
   simp only at h3
   have hbzp := hbz p hp
   rcases Classical.em (backOf (mkIx O) U (kidOf U I z p) ⊆ (nd U i).ty) with hb | hb
