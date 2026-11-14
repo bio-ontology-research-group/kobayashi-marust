@@ -358,3 +358,4 @@ import ContextCalculus.SRIQN.NormalForm
 import ContextCalculus.SRIQN.ABoxEnc
 import ContextCalculus.SRIQN.Core
 import ContextCalculus.SRIQN.Forest
+import ContextCalculus.SRIQN.C2a
