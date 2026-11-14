@@ -32,19 +32,34 @@
 //!
 //! The reduction to classification with fresh names, as for realization. Let
 //! `B` be a fresh class. For each expression `e` KM adds a fresh class
-//! `P_e ≡ ∃e.B`, plus `P_⊤ ≡ ∃owl:topObjectProperty.B`, and for each named `r`
-//! the fresh classes `Dom_r ≡ ∃r.⊤` and `Ran_r ≡ ∃r⁻.⊤`. The extension only
-//! defines fresh names, so it is conservative. Because `B` is fresh it can be
-//! interpreted as any set, in particular a singleton `{y}`:
+//! `P_e ≡ ∃e.B`. The extension only defines fresh names, so it is
+//! conservative. Because `B` is fresh it can be interpreted as any set, in
+//! particular a singleton `{y}` or the whole domain:
 //!
 //! * if `(x, y) ∈ e \ f` in a model of `O`, set `B = {y}`: then
 //!   `x ∈ P_e \ P_f`; conversely `x ∈ P_e \ P_f` gives a `y ∈ B` with
 //!   `(x, y) ∈ e \ f`. So `O ⊨ e ⊑ f` iff `O' ⊨ P_e ⊑ P_f`;
 //! * `e` is empty iff `P_e` is unsatisfiable;
-//! * `owl:topObjectProperty ⊑ f` iff `P_⊤ ⊑ P_f`.
+//! * `P_r ⊑ C` iff `∃r.⊤ ⊑ C` for a source class `C`, so the domains of `r`
+//!   are the named superclasses of `P_r`, and the ranges those of `P_{r⁻}`.
 //!
-//! One classification of `O'` answers all of it; rows that mention a probe
-//! class are removed from the taxonomy, which leaves the classification of `O`.
+//! The probes depend on the source (plan section 12, [`SourceShape`]):
+//!
+//! * `P_⊤ ≡ ∃owl:topObjectProperty.B` (`owl:topObjectProperty ⊑ f` iff
+//!   `P_⊤ ⊑ P_f`) only when the source uses `owl:topObjectProperty` or an
+//!   object nominal. Otherwise every model has a disjoint union with an
+//!   individual-free copy of itself, which is a model in which no named
+//!   property relates the two parts, so no named property is universal.
+//! * On an inverse-free source no `P_{r⁻}` is added. Unravel a model into a
+//!   forest from the named individuals: an `r`-edge to a child has no edge
+//!   back, so a nonempty named `r` is below no inverse `s⁻`, and there are no
+//!   inverse rows. The ranges then come from a second classification, of the
+//!   source with fresh asserted pairs `r(a_r, b_r)` for the nonempty `r`
+//!   ([`range_extension`]).
+//!
+//! One classification of `O'` answers the rest; rows that mention a probe
+//! class are removed from the taxonomy, which leaves the classification of
+//! `O`.
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::io::Write;
@@ -174,6 +189,89 @@ fn properties_in<'a>(node: &Node<'a>, out: &mut Vec<&'a str>) {
     }
 }
 
+/// What the reduction needs to know about the source (plan section 12).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct SourceShape {
+    /// The source uses `owl:topObjectProperty` other than as the super-role of
+    /// a `SubObjectPropertyOf` tautology, or an object nominal (`ObjectOneOf`,
+    /// `ObjectHasValue`). Otherwise every model has a disjoint union with an
+    /// individual-free copy of itself, so no named property is universal and
+    /// `P_⊤` is not needed.
+    pub universal_possible: bool,
+    /// No inverse role can be entailed above a nonempty named property, and
+    /// fresh asserted pairs do not interact: no `ObjectInverseOf`,
+    /// `InverseObjectProperties`, symmetric, inverse functional or reflexive
+    /// property, `ObjectHasSelf`, object nominal or `owl:topObjectProperty`
+    /// (beyond the tautology above), and no `DLSafeRule` or `HasKey`, whose
+    /// named-individual semantics would also apply to the fresh individuals
+    /// of the range run.
+    pub inverse_free: bool,
+}
+
+fn is_universal_property(token: &str) -> bool {
+    matches!(token, "owl:topObjectProperty" | "<http://www.w3.org/2002/07/owl#topObjectProperty>")
+}
+
+fn mentions_universal_property(node: &Node<'_>) -> bool {
+    match node {
+        Node::Atom(token) => is_universal_property(token),
+        Node::List("Annotation", _) => false,
+        Node::List(_, args) => args.iter().any(mentions_universal_property),
+    }
+}
+
+/// Collect the shape facts of one logical node (annotations are skipped).
+fn shape_in(node: &Node<'_>, universal: &mut bool, inverse: &mut bool) {
+    let Node::List(head, args) = node else {
+        if let Node::Atom(token) = node {
+            if is_universal_property(token) {
+                *universal = true;
+                *inverse = true;
+            }
+        }
+        return;
+    };
+    match *head {
+        "Annotation" | "AnnotationAssertion" | "SubAnnotationPropertyOf"
+        | "AnnotationPropertyDomain" | "AnnotationPropertyRange" | "Declaration" => return,
+        "SubObjectPropertyOf" => {
+            let plain: Vec<&Node<'_>> =
+                args.iter().filter(|arg| arg.head() != Some("Annotation")).collect();
+            // `R ⊑ U` holds in every interpretation (see `frontend::top_role`).
+            if let [sub, Node::Atom(sup)] = plain.as_slice() {
+                if is_universal_property(sup) && !mentions_universal_property(sub) {
+                    shape_in(sub, universal, inverse);
+                    return;
+                }
+            }
+        }
+        "ObjectOneOf" | "ObjectHasValue" => {
+            *universal = true;
+            *inverse = true;
+        }
+        "ObjectInverseOf" | "InverseObjectProperties" | "SymmetricObjectProperty"
+        | "InverseFunctionalObjectProperty" | "ReflexiveObjectProperty" | "ObjectHasSelf"
+        | "DLSafeRule" | "HasKey" => *inverse = true,
+        _ => {}
+    }
+    for arg in args {
+        shape_in(arg, universal, inverse);
+    }
+}
+
+/// The [`SourceShape`] of the canonical source, decided syntactically on the
+/// document km parses (km resolves no imports).
+pub(super) fn source_shape(canonical: &str) -> Result<SourceShape, OrchestrateError> {
+    let mut universal = false;
+    let mut inverse = false;
+    crate::frontend::parse::for_each_ontology_child(canonical, |node| {
+        shape_in(node, &mut universal, &mut inverse);
+        Ok(())
+    })
+    .map_err(|error| OrchestrateError::OutOfFragment(error.0))?;
+    Ok(SourceShape { universal_possible: universal, inverse_free: !inverse })
+}
+
 /// The named object properties of the canonical source (see
 /// `realize::canonical_individuals` for the spelling invariant).
 pub(super) fn canonical_properties(canonical: &str) -> Result<Vec<String>, OrchestrateError> {
@@ -191,10 +289,6 @@ enum Probe {
     Top,
     /// `∃e.B` for the expression `e` (index into the expression names).
     Some(usize),
-    /// `∃r.⊤` for the named property with this index.
-    Domain(usize),
-    /// `∃r⁻.⊤` for the named property with this index.
-    Range(usize),
 }
 
 /// The probe classes of one extension.
@@ -204,6 +298,10 @@ pub struct PropertyProbes {
     probes: BTreeMap<String, Probe>,
     /// Public names: `2 i` is the named property `i`, `2 i + 1` its inverse.
     expressions: Vec<String>,
+    /// Source spellings of the named properties.
+    tokens: Vec<String>,
+    /// The shape the extension was built for.
+    shape: SourceShape,
 }
 
 impl PropertyProbes {
@@ -215,44 +313,102 @@ impl PropertyProbes {
     pub(super) fn is_probe(&self, name: &str) -> bool {
         self.probes.contains_key(name)
     }
+
+    /// Ranges come from a second run with asserted pairs (plan 12, item 4).
+    pub(super) fn ranges_by_assertion(&self) -> bool {
+        self.shape.inverse_free
+    }
 }
 
 /// The probe axioms for `properties` (source spellings) and their probes.
-pub(super) fn extension(text: &str, properties: &[String]) -> (String, PropertyProbes) {
+///
+/// `P_e ≡ ∃e.B` for every named property, and for its inverse unless the
+/// source is inverse-free; `P_⊤ ≡ ∃owl:topObjectProperty.B` only when a
+/// universal named property is possible (see [`SourceShape`]).
+pub(super) fn extension(text: &str, properties: &[String], shape: SourceShape) -> (String, PropertyProbes) {
     let ns = fresh_namespace_for(text, "properties");
-    let mut out = String::with_capacity(properties.len() * 512 + 256);
+    let mut out = String::with_capacity(properties.len() * 256 + 256);
     let mut probes = BTreeMap::new();
     let mut expressions = Vec::with_capacity(properties.len() * 2);
     let filler = format!("{ns}filler");
-    let top = format!("{ns}top");
-    out.push_str(&format!("Declaration(Class(<{filler}>))\nDeclaration(Class(<{top}>))\n"));
-    out.push_str(&format!(
-        "EquivalentClasses(<{top}> ObjectSomeValuesFrom(owl:topObjectProperty <{filler}>))\n"
-    ));
+    out.push_str(&format!("Declaration(Class(<{filler}>))\n"));
     probes.insert(filler.clone(), Probe::Filler);
-    probes.insert(top, Probe::Top);
+    if shape.universal_possible {
+        let top = format!("{ns}top");
+        out.push_str(&format!(
+            "Declaration(Class(<{top}>))\nEquivalentClasses(<{top}> ObjectSomeValuesFrom(owl:topObjectProperty <{filler}>))\n"
+        ));
+        probes.insert(top, Probe::Top);
+    }
     for (index, token) in properties.iter().enumerate() {
         let name = public_name(token);
         expressions.push(name.clone());
         expressions.push(format!("ObjectInverseOf({name})"));
         let inverse = format!("ObjectInverseOf({token})");
-        for (offset, expression) in [token.as_str(), inverse.as_str()].into_iter().enumerate() {
+        let both = [token.as_str(), inverse.as_str()];
+        let wanted = if shape.inverse_free { &both[..1] } else { &both[..] };
+        for (offset, expression) in wanted.iter().enumerate() {
             let probe = format!("{ns}some{}", 2 * index + offset);
             out.push_str(&format!(
                 "Declaration(Class(<{probe}>))\nEquivalentClasses(<{probe}> ObjectSomeValuesFrom({expression} <{filler}>))\n"
             ));
             probes.insert(probe, Probe::Some(2 * index + offset));
         }
-        let domain = format!("{ns}domain{index}");
-        let range = format!("{ns}range{index}");
-        out.push_str(&format!(
-            "Declaration(Class(<{domain}>))\nEquivalentClasses(<{domain}> ObjectSomeValuesFrom({token} owl:Thing))\n\
-             Declaration(Class(<{range}>))\nEquivalentClasses(<{range}> ObjectSomeValuesFrom({inverse} owl:Thing))\n"
-        ));
-        probes.insert(domain, Probe::Domain(index));
-        probes.insert(range, Probe::Range(index));
     }
-    (out, PropertyProbes { probes, expressions })
+    (out, PropertyProbes { probes, expressions, tokens: properties.to_vec(), shape })
+}
+
+/// The range run of an inverse-free source (plan 12, item 4): one fresh pair
+/// `r(a_r, b_r)` per nonempty named property `r`. Returns the assertions and,
+/// per asserted property, the source spelling of `b_r`.
+///
+/// Soundness: `O ⊨ ∃r⁻.⊤ ⊑ C` iff `O ∪ {r(a, b)} ⊨ C(b)` for fresh `a`, `b`
+/// (a model of `O` with an `r`-edge into `¬C` interprets `a`, `b` on it, and
+/// conversely). All pairs go into one ontology: for each `r` take such a
+/// model of `O`; the disjoint union of these models, with the source
+/// individuals interpreted in one of them, is a model of `O` (no nominals),
+/// and the fresh individuals do not meet any key or rule (none in an
+/// inverse-free source). So each `b_r` has exactly the types it has alone.
+pub(super) fn range_extension(
+    text: &str,
+    probes: &PropertyProbes,
+    hierarchy: &PropertyHierarchy,
+) -> (String, Vec<(usize, String)>) {
+    let ns = fresh_namespace_for(text, "ranges");
+    let empty: HashSet<&str> = hierarchy.bottom.iter().map(String::as_str).collect();
+    let mut out = String::from("\n");
+    let mut pairs = Vec::new();
+    for (index, token) in probes.tokens.iter().enumerate() {
+        if empty.contains(probes.named(index)) {
+            continue;
+        }
+        let a = format!("<{ns}a{index}>");
+        let b = format!("<{ns}b{index}>");
+        out.push_str(&format!(
+            "Declaration(NamedIndividual({a}))\nDeclaration(NamedIndividual({b}))\nObjectPropertyAssertion({token} {a} {b})\n"
+        ));
+        pairs.push((index, b));
+    }
+    (out, pairs)
+}
+
+/// `RANGE` rows from the named types of the fresh range individuals.
+pub(super) fn ranges_from_types(
+    probes: &PropertyProbes,
+    pairs: &[(usize, String)],
+    types: &[[String; 2]],
+) -> Vec<[String; 2]> {
+    let property_of: BTreeMap<String, usize> =
+        pairs.iter().map(|(index, b)| (public_name(b), *index)).collect();
+    let mut ranges = BTreeSet::new();
+    for [individual, class] in types {
+        if let Some(&index) = property_of.get(individual) {
+            if class != OWL_THING {
+                ranges.insert([probes.named(index).to_string(), class.clone()]);
+            }
+        }
+    }
+    ranges.into_iter().collect()
 }
 
 /// Remove the property probes from the classification of the extended
@@ -286,14 +442,17 @@ pub(super) fn split(
             (Some(Probe::Top), Some(Probe::Some(f))) if f % 2 == 0 => {
                 top.insert(probes.expressions[f].clone());
             }
-            (Some(Probe::Domain(r)), None) if high != OWL_THING && !foreign(&high) => {
-                domains.insert([probes.named(r).to_string(), high]);
+            // `∃r.B ⊑ C` iff `∃r.⊤ ⊑ C`, because `B` is fresh: the domains.
+            (Some(Probe::Some(e)), None) if high != OWL_THING && !foreign(&high) => {
+                let row = [probes.named(e / 2).to_string(), high];
+                if e % 2 == 0 {
+                    domains.insert(row);
+                } else {
+                    ranges.insert(row);
+                }
             }
-            (Some(Probe::Range(r)), None) if high != OWL_THING && !foreign(&high) => {
-                ranges.insert([probes.named(r).to_string(), high]);
-            }
-            // Mirrors of reported pairs, `∃e.B ⊑ C` (the domain again), and
-            // facts about source classes or individual probes.
+            // Mirrors of reported pairs and facts about source classes or
+            // individual probes.
             _ => {}
         }
     }
@@ -308,10 +467,14 @@ pub(super) fn split(
     }
     let mut bottom: BTreeSet<String> = BTreeSet::new();
     for index in 0..probes.expressions.len() / 2 {
-        let empty = [Probe::Some(2 * index), Probe::Some(2 * index + 1), Probe::Domain(index), Probe::Range(index)]
-            .map(|p| unsatisfiable.contains(&p));
+        let checked: &[Probe] = if probes.shape.inverse_free {
+            &[Probe::Some(2 * index)]
+        } else {
+            &[Probe::Some(2 * index), Probe::Some(2 * index + 1)]
+        };
+        let empty: Vec<bool> = checked.iter().map(|p| unsatisfiable.contains(p)).collect();
         if empty.iter().any(|&e| e) != empty.iter().all(|&e| e) {
-            // `r`, `r⁻`, `∃r.⊤` and `∃r⁻.⊤` are empty together in every model.
+            // `∃r.B` and `∃r⁻.B` are empty together in every model.
             return Err(OrchestrateError::InvalidOntology(format!(
                 "property hierarchy: the probes of {} disagree on its emptiness",
                 probes.named(index)
@@ -456,23 +619,55 @@ mod tests {
         assert_eq!(found, [":d", ":a", ":b", ":c", ":e", ":f", ":g", ":h", ":i", ":j", ":k", ":l", ":m", ":n", ":o"]);
     }
 
+    const GENERAL: SourceShape = SourceShape { universal_possible: true, inverse_free: false };
+    const INVERSE_FREE: SourceShape = SourceShape { universal_possible: false, inverse_free: true };
+
     #[test]
     fn extension_defines_every_probe() {
         let text = "Ontology(<urn:o> SubObjectPropertyOf(<urn:r> <urn:s>))";
         let roles = source_object_properties(text).unwrap();
-        let (extension, probes) = extension(text, &roles);
+        let (extension, probes) = extension(text, &roles, GENERAL);
         assert_eq!(probes.expressions, ["urn:r", "ObjectInverseOf(urn:r)", "urn:s", "ObjectInverseOf(urn:s)"]);
         let ns = "http://km.invalid/properties#";
         for line in [
             format!("EquivalentClasses(<{ns}top> ObjectSomeValuesFrom(owl:topObjectProperty <{ns}filler>))"),
             format!("EquivalentClasses(<{ns}some0> ObjectSomeValuesFrom(<urn:r> <{ns}filler>))"),
             format!("EquivalentClasses(<{ns}some1> ObjectSomeValuesFrom(ObjectInverseOf(<urn:r>) <{ns}filler>))"),
-            format!("EquivalentClasses(<{ns}domain1> ObjectSomeValuesFrom(<urn:s> owl:Thing))"),
-            format!("EquivalentClasses(<{ns}range1> ObjectSomeValuesFrom(ObjectInverseOf(<urn:s>) owl:Thing))"),
         ] {
             assert!(extension.contains(&line), "{line}");
         }
-        assert_eq!(probes.probes.len(), 2 + 4 * 2);
+        assert!(!extension.contains("owl:Thing"), "{extension}");
+        assert_eq!(probes.probes.len(), 2 + 2 * 2);
+        // Inverse-free: no inverse probes and no universal-role probe.
+        let (extension, probes) = super::extension(text, &roles, INVERSE_FREE);
+        assert!(!extension.contains("ObjectInverseOf"), "{extension}");
+        assert!(!extension.contains("topObjectProperty"), "{extension}");
+        assert_eq!(probes.probes.len(), 1 + 2);
+        assert!(probes.ranges_by_assertion());
+    }
+
+    #[test]
+    fn source_shape_follows_the_plan() {
+        let shape = |body: &str| source_shape(&format!("Prefix(:=<urn:t#>) Ontology({body})")).unwrap();
+        let free = shape("SubObjectPropertyOf(:r :s) ObjectPropertyRange(:r :A) \
+            SubObjectPropertyOf(:s owl:topObjectProperty) TransitiveObjectProperty(:r) \
+            FunctionalObjectProperty(:r) SubClassOf(:A ObjectMaxCardinality(1 :r :B)) \
+            ClassAssertion(:A :a) ObjectPropertyAssertion(:r :a :b) \
+            AnnotationAssertion(rdfs:comment :A \"ObjectInverseOf ObjectOneOf\")");
+        assert_eq!(free, INVERSE_FREE);
+        for body in ["SubClassOf(:A ObjectSomeValuesFrom(ObjectInverseOf(:r) :B))",
+            "InverseObjectProperties(:r :s)", "SymmetricObjectProperty(:r)",
+            "InverseFunctionalObjectProperty(:r)", "ReflexiveObjectProperty(:r)",
+            "SubClassOf(:A ObjectHasSelf(:r))",
+            "DLSafeRule(Body(ClassAtom(:A Variable(<urn:x>))) Head(ClassAtom(:B Variable(<urn:x>))))",
+            "HasKey(:A (:r) ())"] {
+            assert_eq!(shape(body), SourceShape { universal_possible: false, inverse_free: false }, "{body}");
+        }
+        for body in ["SubClassOf(:A ObjectOneOf(:a))", "SubClassOf(:A ObjectHasValue(:r :a))",
+            "SubObjectPropertyOf(owl:topObjectProperty :r)",
+            "SubClassOf(:A ObjectAllValuesFrom(owl:topObjectProperty :B))"] {
+            assert_eq!(shape(body), SourceShape { universal_possible: true, inverse_free: false }, "{body}");
+        }
     }
 
     fn row(a: &str, b: &str) -> [String; 2] {
@@ -482,7 +677,7 @@ mod tests {
     fn probes() -> PropertyProbes {
         let text = "Ontology(<urn:o> SubObjectPropertyOf(<urn:r> <urn:s>) ObjectPropertyDomain(<urn:e> owl:Nothing))";
         let roles = source_object_properties(text).unwrap();
-        extension(text, &roles).1
+        extension(text, &roles, GENERAL).1
     }
 
     #[test]
@@ -501,16 +696,16 @@ mod tests {
                 row(&p("top"), &p("some2")),
                 row(&p("top"), &p("some3")),
                 row(&p("some0"), "A"),
-                row(&p("domain0"), "A"),
-                row(&p("domain0"), OWL_THING),
-                row(&p("range0"), "B"),
-                row(&p("domain2"), "T"),
+                row(&p("some0"), OWL_THING),
+                row(&p("some1"), "B"),
+                row(&p("some4"), "T"),
+                row(&p("some0"), "foreign"),
                 row("A", &p("some0")),
             ],
-            unsatisfiable: vec!["U".into(), p("some4"), p("some5"), p("domain2"), p("range2")],
+            unsatisfiable: vec!["U".into(), p("some4"), p("some5")],
             dropped: 0,
         };
-        let hierarchy = split(&mut extended, &probes(), &|_| false).unwrap();
+        let hierarchy = split(&mut extended, &probes(), &|name| name == "foreign").unwrap();
         assert_eq!(extended.subsumptions, [row("A", "B")]);
         assert_eq!(extended.unsatisfiable, ["U"]);
         assert_eq!(hierarchy.sub, [row("urn:r", "urn:s"), row("urn:s", "ObjectInverseOf(urn:s)")]);
@@ -524,6 +719,27 @@ mod tests {
             "\nSUBPROP\turn:r\turn:s\nSUBPROP\turn:s\tObjectInverseOf(urn:s)\nTOPPROP\turn:s\
              \nBOTPROP\turn:e\nDOMAIN\turn:r\tA\nRANGE\turn:r\tB"
         );
+    }
+
+    #[test]
+    fn range_run_asserts_one_pair_per_nonempty_property() {
+        let text = "Ontology(<urn:o> SubObjectPropertyOf(<urn:r> <urn:s>) ObjectPropertyDomain(<urn:e> owl:Nothing))";
+        let roles = source_object_properties(text).unwrap();
+        let (_, probes) = extension(text, &roles, INVERSE_FREE);
+        let hierarchy = PropertyHierarchy { bottom: vec!["urn:e".into()], ..Default::default() };
+        let (assertions, pairs) = range_extension(text, &probes, &hierarchy);
+        let ns = "http://km.invalid/ranges#";
+        assert!(assertions.contains(&format!("ObjectPropertyAssertion(<urn:r> <{ns}a0> <{ns}b0>)")), "{assertions}");
+        assert!(assertions.contains(&format!("ObjectPropertyAssertion(<urn:s> <{ns}a1> <{ns}b1>)")), "{assertions}");
+        assert!(!assertions.contains("<urn:e>"), "{assertions}");
+        assert_eq!(pairs.len(), 2);
+        let types = [
+            row(&format!("{ns}b0"), "C"),
+            row(&format!("{ns}b0"), OWL_THING),
+            row(&format!("{ns}b1"), "D"),
+            row("urn:other", "E"),
+        ];
+        assert_eq!(ranges_from_types(&probes, &pairs, &types), [row("urn:r", "C"), row("urn:s", "D")]);
     }
 
     #[test]

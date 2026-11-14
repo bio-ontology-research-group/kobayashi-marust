@@ -12,17 +12,11 @@
   `RANGE`), after the class rows. JSON output carries them under
   `subproperties`, `topproperties`, `bottomproperties`, `domains` and
   `ranges`. It combines with `--lines` and `--realize` (one
-  classification answers both). The rows come from one classification of
+  classification answers both). The rows come from the classification of
   the source extended with fresh classes `P_e ≡ ∃e.B` per property
-  expression, `P_⊤ ≡ ∃owl:topObjectProperty.B`, `Dom_r ≡ ∃r.⊤` and
-  `Ran_r ≡ ∃r⁻.⊤`, for a fresh class `B`, the same reduction as
-  `--realize`. Without the flag the output is unchanged. The rows agree
-  with HermiT 1.4.3 on 30 ORE 2015 inputs and on hand-written cases, except
-  where HermiT misses an entailment. Cost: on 32 ORE inputs the median time
-  rose from 0.10 s to 1.1 s; inverse-free, nominal-free inputs that plain
-  classification answers in under a second can take minutes (one exceeds
-  300 s), because the probes add inverse roles and the universal role. See
-  `docs/PROPERTIES.md`.
+  expression, for a fresh class `B`, the same reduction as `--realize`
+  (see the cheaper revision below). Without the flag the output is
+  unchanged. See `docs/PROPERTIES.md`.
 - Fixed (E7): `ObjectPropertyDomain(r owl:Nothing)` and
   `ObjectPropertyRange(r owl:Nothing)` were dropped without being counted,
   so classes that need an `r` edge were not reported unsatisfiable. They
@@ -36,6 +30,19 @@
   (`U` becomes the chain `S ∘ S⁻`) or removed as a tautology. Keys are
   rewritten to rules first, so a key on `owl:topObjectProperty` is encoded
   too.
+- `km classify --properties` is much cheaper (plan section 12, W2b). The
+  domains are the named superclasses of `P_r ≡ ∃r.B` (`Dom_r` and `Ran_r`
+  are gone); `P_⊤` is added only when the source uses
+  `owl:topObjectProperty` or an object nominal; on an inverse-free source
+  (no inverses, symmetric, inverse functional or reflexive properties, self
+  restrictions, nominals, universal role, rules or keys) no inverse probes
+  are added and the ranges come from a second classification with fresh
+  asserted pairs `r(a_r, b_r)`. On 32 ORE inputs every inverse-free input now
+  takes at most three times its plain time plus one second (ore_ont_10009:
+  77 s to 0.9 s; ore_ont_9800: over 300 s to 5.9 s), and the rows agree with
+  HermiT 1.4.3 on 60 ORE inputs and the hand cases except the known HermiT
+  miss. When the positive-EL ABox certificate declines a probe extension,
+  KM now classifies it on the general route instead of failing.
 - `km classify --top` (E1) reports the named classes equivalent to
   `owl:Thing` as `TOP<TAB>C` rows after the class rows (JSON key `top`),
   so a consumer can build the Top node. km reads them off one fresh class
