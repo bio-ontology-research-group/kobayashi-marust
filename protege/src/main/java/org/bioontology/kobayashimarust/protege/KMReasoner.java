@@ -353,7 +353,18 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     @Override public synchronized Node<OWLClass> getTopClassNode() { return nodeOfId(repId[thingId]); }
     @Override public synchronized Node<OWLClass> getBottomClassNode() { return nodeOfId(repId[nothingId]); }
 
+    /**
+     * A named class outside the signature. HermiT's default FreshEntityPolicy
+     * (ALLOW) gives it a node of its own with owl:Thing above and owl:Nothing
+     * below (Reasoner.getHierarchyNode); isEntailed follows the same shape.
+     */
+    private boolean isFresh(OWLClassExpression ce) {
+        return ce instanceof OWLClass && !ce.isOWLThing() && !ce.isOWLNothing()
+                && !idByClass.containsKey((OWLClass) ce);
+    }
+
     @Override public synchronized Node<OWLClass> getEquivalentClasses(OWLClassExpression ce) {
+        if (isFresh(ce)) return new OWLClassNode(Collections.singleton(ce.asOWLClass()));
         int r = repIdOf(ce);
         return r >= 0 ? nodeOfId(r) : new OWLClassNode();
     }
@@ -361,6 +372,10 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     @Override public synchronized NodeSet<OWLClass> getSuperClasses(OWLClassExpression ce, boolean direct) {
         int r = repIdOf(ce);
         OWLClassNodeSet ns = new OWLClassNodeSet();
+        if (isFresh(ce)) {
+            ns.addNode(nodeOfId(repId[thingId]));
+            return ns;
+        }
         if (r < 0) return ns;
         int[] all = supersByRep[r];
         if (all == null || all.length == 0) return ns;
@@ -375,6 +390,10 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     @Override public synchronized NodeSet<OWLClass> getSubClasses(OWLClassExpression ce, boolean direct) {
         int r = repIdOf(ce);
         OWLClassNodeSet ns = new OWLClassNodeSet();
+        if (isFresh(ce)) {
+            ns.addNode(nodeOfId(repId[nothingId]));
+            return ns;
+        }
         if (r < 0) return ns;
         int[][] subs = ensureSubsByRep();
         int[] all = subs[r];
@@ -595,7 +614,11 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         int subRep = repIdOf(sub);
         if (subRep >= 0 && subRep == repId[nothingId]) return true;
         int supRep = repIdOf(sup);
-        if (subRep < 0 || supRep < 0) return false;
+        // A class outside the signature is only below owl:Thing and above
+        // owl:Nothing (and unsatisfiable classes, handled above).
+        if (subRep < 0 && supRep < 0) return false;
+        if (subRep < 0) return supRep == repId[thingId];
+        if (supRep < 0) return false;
         if (subRep == supRep) return true;
         int[] sups = supersByRep[subRep];
         return sups != null && Arrays.binarySearch(sups, supRep) >= 0;
