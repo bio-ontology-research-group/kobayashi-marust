@@ -44,7 +44,7 @@ open ContextCalculus.OWL ContextCalculus.OWL.Datatypes SHIQD
 
 /-- **The model maps of the SHIQ(D) knowledge-base translation**, with each
 requested IRI standing for its index. -/
-theorem translateSRIQDKB_maps (pat : String → String → Prop) {O : Ontology}
+theorem translateSRIQDKB_mapsR (pat : String → String → Prop) {O : Ontology}
     {requested extra : List IRI} {T : SRIQDKBTranslation}
     (h : translateSRIQDKB O requested extra = some T) :
     (∀ (Dom : Type) [Nonempty Dom] (I : Interp (owl2MapP pat) Dom), OWL.Model O I →
@@ -53,8 +53,11 @@ theorem translateSRIQDKB_maps (pat : String → String → Prop) {O : Ontology}
             (Fin T.dps.length)) (ind : Fin T.obj.inds.length → Dom),
           ContextCalculus.SRIQD.models atom K T.ontology ∧
           ContextCalculus.SRIQD.satABox atom K ind T.abox ∧
-          ∀ (i : Nat) (hi : i < T.obj.named.length), T.obj.named[i] ∈ requested → ∀ y,
+          (∀ (i : Nat) (hi : i < T.obj.named.length), T.obj.named[i] ∈ requested → ∀ y,
             K.c ⟨i, Nat.lt_of_lt_of_le hi T.obj.hnamed⟩ y ↔ I.cls T.obj.named[i] y) ∧
+          ∀ (r : ObjProp), r.isBasic = true → ∀ k, (EL.propIRI r, k) ∈ T.obj.rnames →
+            ∀ R, SRIT.finRT T.obj.roleCount (SRIT.mkRT r k) = some R →
+            ∀ x y, K.rt R x y ↔ I.prop r x y) ∧
     (∀ (Dom V : Type) [Nonempty Dom] (atom : Fin T.tab.length → V → Prop),
       owlTheory pat (spec T.tab) V atom →
       ∀ (K : ContextCalculus.SRIQD.DInterp Dom V (Fin T.obj.conceptCount) (Fin T.obj.roleCount)
@@ -62,8 +65,11 @@ theorem translateSRIQDKB_maps (pat : String → String → Prop) {O : Ontology}
         ContextCalculus.SRIQD.models atom K T.ontology →
         ContextCalculus.SRIQD.satABox atom K ind T.abox →
         ∃ I : Interp (owl2MapP pat) Dom, OWL.Model O I ∧
-          ∀ (i : Nat) (hi : i < T.obj.named.length), T.obj.named[i] ∈ requested → ∀ y,
-            I.cls T.obj.named[i] y ↔ K.c ⟨i, Nat.lt_of_lt_of_le hi T.obj.hnamed⟩ y) := by
+          (∀ (i : Nat) (hi : i < T.obj.named.length), T.obj.named[i] ∈ requested → ∀ y,
+            I.cls T.obj.named[i] y ↔ K.c ⟨i, Nat.lt_of_lt_of_le hi T.obj.hnamed⟩ y) ∧
+          ∀ (r : ObjProp), r.isBasic = true → ∀ k, (EL.propIRI r, k) ∈ T.obj.rnames →
+            ∀ R, SRIT.finRT T.obj.roleCount (SRIT.mkRT r k) = some R →
+            ∀ x y, I.prop r x y ↔ K.rt R x y) := by
   classical
   unfold translateSRIQDKB at h
   split_ifs at h with hO
@@ -238,7 +244,7 @@ theorem translateSRIQDKB_maps (pat : String → String → Prop) {O : Ontology}
       · rw [hI'F e (hdex_tab ax0 h0 ax' hax'0 e he) y, hI'ext]
       · exact (hNsw I' (rwOK_isSHIQDKB hrw) _ _).1
           (((sat_rwAxiomK I' (hO' ax0 h0) _).1 (hI'O ax0 h0)).1 ax' hax'0)
-    obtain ⟨J, hJ, hA, hJc⟩ := translateSRIQKB_up hTobj I' hI'obj
+    obtain ⟨J, hJ, hA, hJc, hJr⟩ := translateSRIQKB_upR hTobj I' hI'obj
     let K : ContextCalculus.SRIQD.DInterp Dom Val (Fin Tobj.conceptCount) (Fin Tobj.roleCount)
         (Fin (dpropsK O).length) :=
       { toInterp := J, d := fun u y v => I.dprop (dpropsK O)[u] y v }
@@ -291,12 +297,14 @@ theorem translateSRIQDKB_maps (pat : String → String → Prop) {O : Ontology}
         rw [hw]
         exact this (by rw [← hu]; exact hv)
     refine ⟨Val, atom, hΘ, K, _, hK, ContextCalculus.SRIQD.satABox_map_obj.2 hA,
-      fun i hi hreq y => (hKc ⟨i, _⟩ hi y).trans ?_⟩
-    rw [hI'old _ fun n => SRIQKB.fresh_req hreq n]
+      fun i hi hreq y => (hKc ⟨i, _⟩ hi y).trans ?_, fun r hr k hk R hfin x y => ?_⟩
+    · rw [hI'old _ fun n => SRIQKB.fresh_req hreq n]
+    · exact (hJr r hr k hk R hfin x y).trans
+        (Iff.of_eq (congrFun (congrFun (Interp.prop_congr (I := I') (J := I) rfl r) x) y))
   · intro Dom V hD atom hΘ K ind hK hA
     obtain ⟨eqv, dtype, hatom⟩ := hΘ
     have hKm := ContextCalculus.SRIQD.models_iff.1 hK
-    obtain ⟨R, hR, -, hRc⟩ := translateSRIQKB_down hTobj K.toInterp ind
+    obtain ⟨R, hR, -, hRc, hRr⟩ := translateSRIQKB_downR hTobj K.toInterp ind
       (fun c hc => hKm.1 c (hobj_sub c hc)) (ContextCalculus.SRIQD.satABox_map_obj.1 hA)
     let I : Interp (owl2MapP pat) Dom :=
       { cls := R.cls, role := R.role, ind := R.ind,
@@ -368,7 +376,36 @@ theorem translateSRIQDKB_maps (pat : String → String → Prop) {O : Ontology}
         have h1 := (hdpK u y (eqv.symm v)).1 (by simpa using hv)
         have h2 := hloc (eqv.symm v) h1
         simpa using (hdpK w y (eqv.symm v)).2 h2
-    exact ⟨I, hIO, fun i hi _ y => hIc ⟨i, _⟩ hi y⟩
+    refine ⟨I, hIO, fun i hi _ y => hIc ⟨i, _⟩ hi y, fun r hr k hk R' hfin x y => ?_⟩
+    have h := hRr r hr k hk R' hfin x y
+    cases r <;> exact h
+
+theorem translateSRIQDKB_maps (pat : String → String → Prop) {O : Ontology}
+    {requested extra : List IRI} {T : SRIQDKBTranslation}
+    (h : translateSRIQDKB O requested extra = some T) :
+    (∀ (Dom : Type) [Nonempty Dom] (I : Interp (owl2MapP pat) Dom), OWL.Model O I →
+      ∃ (V : Type) (atom : Fin T.tab.length → V → Prop), owlTheory pat (spec T.tab) V atom ∧
+        ∃ (K : ContextCalculus.SRIQD.DInterp Dom V (Fin T.obj.conceptCount) (Fin T.obj.roleCount)
+            (Fin T.dps.length)) (ind : Fin T.obj.inds.length → Dom),
+          ContextCalculus.SRIQD.models atom K T.ontology ∧
+          ContextCalculus.SRIQD.satABox atom K ind T.abox ∧
+          ∀ (i : Nat) (hi : i < T.obj.named.length), T.obj.named[i] ∈ requested → ∀ y,
+            K.c ⟨i, Nat.lt_of_lt_of_le hi T.obj.hnamed⟩ y ↔ I.cls T.obj.named[i] y) ∧
+    (∀ (Dom V : Type) [Nonempty Dom] (atom : Fin T.tab.length → V → Prop),
+      owlTheory pat (spec T.tab) V atom →
+      ∀ (K : ContextCalculus.SRIQD.DInterp Dom V (Fin T.obj.conceptCount) (Fin T.obj.roleCount)
+          (Fin T.dps.length)) (ind : Fin T.obj.inds.length → Dom),
+        ContextCalculus.SRIQD.models atom K T.ontology →
+        ContextCalculus.SRIQD.satABox atom K ind T.abox →
+        ∃ I : Interp (owl2MapP pat) Dom, OWL.Model O I ∧
+          ∀ (i : Nat) (hi : i < T.obj.named.length), T.obj.named[i] ∈ requested → ∀ y,
+            I.cls T.obj.named[i] y ↔ K.c ⟨i, Nat.lt_of_lt_of_le hi T.obj.hnamed⟩ y)  := by
+  obtain ⟨h1, h2⟩ := translateSRIQDKB_mapsR pat h
+  refine ⟨fun Dom _ I hI => ?_, fun Dom V _ atom hΘ K ind hK hA => ?_⟩
+  · obtain ⟨V, atom, hΘ, K, ind, hK, hA, hc, -⟩ := h1 Dom I hI
+    exact ⟨V, atom, hΘ, K, ind, hK, hA, hc⟩
+  · obtain ⟨I, hI, hc, -⟩ := h2 Dom V atom hΘ K ind hK hA
+    exact ⟨I, hI, hc⟩
 
 /-- **Consistency through the SHIQ(D) knowledge-base translation.** -/
 theorem translateSRIQDKB_consistent (pat : String → String → Prop) {O : Ontology}
@@ -388,4 +425,5 @@ theorem translateSRIQDKB_consistent (pat : String → String → Prop) {O : Onto
 end ContextCalculus.OWLFrontend
 
 #print axioms ContextCalculus.OWLFrontend.translateSRIQDKB_maps
+#print axioms ContextCalculus.OWLFrontend.translateSRIQDKB_mapsR
 #print axioms ContextCalculus.OWLFrontend.translateSRIQDKB_consistent

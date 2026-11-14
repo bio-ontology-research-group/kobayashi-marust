@@ -437,8 +437,11 @@ theorem core_up {O : Ontology} {requested inds : List IRI} (hO : O.isSHIQKB = tr
     ∃ J : SRI.Interp D (Fin F.b.cdefs.size) (Fin F.b.rdefs.size),
       SRIQ.models J (F.out.reverse.filterMap (toFin F.b.cdefs.size F.b.rdefs.size)) ∧
       SRIQ.satABox J (fun j => I.ind (.named inds[j])) A ∧
-      ∀ (i : Nat) (hi : i < L.length) (hi' : i < F.b.cdefs.size) (x : D),
-        J.c ⟨i, hi'⟩ x ↔ I.cls L[i] x := by
+      (∀ (i : Nat) (hi : i < L.length) (hi' : i < F.b.cdefs.size) (x : D),
+        J.c ⟨i, hi'⟩ x ↔ I.cls L[i] x) ∧
+      ∀ (r : ObjProp), r.isBasic = true → ∀ k, F.b.rmap[EL.propIRI r]? = some k →
+        ∀ R, SRIT.finRT F.b.rdefs.size (SRIT.mkRT r k) = some R →
+        ∀ x y, J.rt R x y ↔ I.prop r x y := by
   set base := defBase O requested
   set I' := extI O base I
   have hS := start_wf hb
@@ -497,7 +500,11 @@ theorem core_up {O : Ontology} {requested inds : List IRI} (hO : O.isSHIQKB = tr
         · intro y _
           exact ⟨_, by simp [start], extend_top I' F hS hLe y⟩)
     rwa [hF] at this
-  refine ⟨SRIT.lower _ _ (extend I' F), (fin_models hFwf).1 _ hgood, ?_, ?_⟩
+  refine ⟨SRIT.lower _ _ (extend I' F), (fin_models hFwf).1 _ hgood, ?_, ?_, ?_⟩
+  rotate_left 2
+  · intro r hr k hk R hfin x y
+    rw [SRIT.finRT_sat _ _ _ hfin, extend_prop I' F hr ⟨k, hFwf.b.rmap _ _ hk, rfl⟩]
+    exact Iff.of_eq (congrFun (congrFun (Interp.prop_congr (I := I') (J := I) rfl r) x) y)
   · intro y hy
     obtain ⟨⟨ax, j⟩, hp, l, hl, hyl⟩ := collect_mem hA y hy
     have hj : O.axioms[j]? = some ax := List.mem_zipIdx_iff_getElem?.1 hp
@@ -598,8 +605,11 @@ theorem core_down {O : Ontology} {requested inds : List IRI} (hO : O.isSHIQKB = 
     (hAs : SRIQ.satABox J ind A) :
     ∃ I : Interp DatatypeMap.trivial D, OWL.Model O I ∧
       (∀ (a : IRI) (h : inds.idxOf a < inds.length), I.ind (.named a) = ind ⟨_, h⟩) ∧
-      ∀ (i : Nat) (hi : i < L.length) (hi' : i < F.b.cdefs.size) (x : D),
-        I.cls L[i] x ↔ J.c ⟨i, hi'⟩ x := by
+      (∀ (i : Nat) (hi : i < L.length) (hi' : i < F.b.cdefs.size) (x : D),
+        I.cls L[i] x ↔ J.c ⟨i, hi'⟩ x) ∧
+      ∀ (r : ObjProp), r.isBasic = true → ∀ k, F.b.rmap[EL.propIRI r]? = some k →
+        ∀ R, SRIT.finRT F.b.rdefs.size (SRIT.mkRT r k) = some R →
+        ∀ x y, I.prop r x y ↔ J.rt R x y := by
   set base := defBase O requested
   have hS := start_wf hb
   have hLe : Le (start b) F := hF ▸ foldl_trans_le _ (start b)
@@ -635,7 +645,7 @@ theorem core_down {O : Ontology} {requested inds : List IRI} (hO : O.isSHIQKB = 
     rw [SRIT.lower_raise] at h1
     rw [h1, ← restrict_prop hr ⟨k, hk, rfl⟩]
     exact Iff.of_eq (congrFun (congrFun (Interp.prop_congr (I := I) (J := restrict F K) rfl r) x) y)
-  refine ⟨I, ?_, ?_, ?_⟩
+  refine ⟨I, ?_, ?_, ?_, hrt⟩
   · intro ax hax
     have hk := hO' ax hax
     cases hn : ax.isAssertion
@@ -749,7 +759,7 @@ theorem translateSRIQKB_up (h : translateSRIQKB O requested extra = some T)
   case isFalse => exact absurd h (by simp)
   obtain ⟨A, hA, rfl⟩ := Option.map_eq_some_iff.1 h
   obtain ⟨b, hb, hL, hidx, hF⟩ := SRIQT.run_spec (kbTBox O (defBase O requested)) requested
-  obtain ⟨J, h1, h2, h3⟩ := core_up hO hb hF hL hidx hA I hI
+  obtain ⟨J, h1, h2, h3, -⟩ := core_up hO hb hF hL hidx hA I hI
   exact ⟨J, h1, h2, fun i hi x => h3 i hi _ x⟩
 
 /-- **Down.** A model of the translated knowledge base gives a model of
@@ -771,8 +781,55 @@ theorem translateSRIQKB_down (h : translateSRIQKB O requested extra = some T)
   case isFalse => exact absurd h (by simp)
   obtain ⟨A, hA', rfl⟩ := Option.map_eq_some_iff.1 h
   obtain ⟨b, hb, -, hidx, hF⟩ := SRIQT.run_spec (kbTBox O (defBase O requested)) requested
-  obtain ⟨I, h1, h2, h3⟩ := core_down hO hb hF hidx hA' J ind hJ hA
+  obtain ⟨I, h1, h2, h3, -⟩ := core_down hO hb hF hidx hA' J ind hJ hA
   exact ⟨I, h1, h2, fun i hi x => h3 i hi _ x⟩
+
+/-- **Up, with roles.** `translateSRIQKB_up`, and the role term of every
+entry of the role table stands for its property. -/
+theorem translateSRIQKB_upR (h : translateSRIQKB O requested extra = some T)
+    {DM : DatatypeMap} {D : Type} [Nonempty D] (I : Interp DM D) (hI : OWL.Model O I) :
+    ∃ J : SRI.Interp D (Fin T.conceptCount) (Fin T.roleCount),
+      SRIQ.models J T.ontology ∧ SRIQ.satABox J (fun j => I.ind (.named T.inds[j])) T.abox ∧
+      (∀ (i : Nat) (hi : i < T.named.length) (x : D),
+        J.c ⟨i, Nat.lt_of_lt_of_le hi T.hnamed⟩ x ↔ I.cls T.named[i] x) ∧
+      ∀ (r : ObjProp), r.isBasic = true → ∀ k, (EL.propIRI r, k) ∈ T.rnames →
+        ∀ R, SRIT.finRT T.roleCount (SRIT.mkRT r k) = some R →
+        ∀ x y, J.rt R x y ↔ I.prop r x y := by
+  simp only [translateSRIQKB] at h
+  split at h
+  case isFalse => exact absurd h (by simp)
+  rename_i hO
+  split at h
+  case isFalse => exact absurd h (by simp)
+  obtain ⟨A, hA, rfl⟩ := Option.map_eq_some_iff.1 h
+  obtain ⟨b, hb, hL, hidx, hF⟩ := SRIQT.run_spec (kbTBox O (defBase O requested)) requested
+  obtain ⟨J, h1, h2, h3, h4⟩ := core_up hO hb hF hL hidx hA I hI
+  exact ⟨J, h1, h2, fun i hi x => h3 i hi _ x, fun r hr k hk R hfin x y =>
+    h4 r hr k (Std.HashMap.mem_toList_iff_getElem?_eq_some.1 hk) R hfin x y⟩
+
+/-- **Down, with roles.** -/
+theorem translateSRIQKB_downR (h : translateSRIQKB O requested extra = some T)
+    {D : Type} [Nonempty D] (J : SRI.Interp D (Fin T.conceptCount) (Fin T.roleCount))
+    (ind : Fin T.inds.length → D) (hJ : SRIQ.models J T.ontology)
+    (hA : SRIQ.satABox J ind T.abox) :
+    ∃ I : Interp DatatypeMap.trivial D, OWL.Model O I ∧
+      (∀ (a : IRI) (ha : T.inds.idxOf a < T.inds.length), I.ind (.named a) = ind ⟨_, ha⟩) ∧
+      (∀ (i : Nat) (hi : i < T.named.length) (x : D),
+        I.cls T.named[i] x ↔ J.c ⟨i, Nat.lt_of_lt_of_le hi T.hnamed⟩ x) ∧
+      ∀ (r : ObjProp), r.isBasic = true → ∀ k, (EL.propIRI r, k) ∈ T.rnames →
+        ∀ R, SRIT.finRT T.roleCount (SRIT.mkRT r k) = some R →
+        ∀ x y, I.prop r x y ↔ J.rt R x y := by
+  simp only [translateSRIQKB] at h
+  split at h
+  case isFalse => exact absurd h (by simp)
+  rename_i hO
+  split at h
+  case isFalse => exact absurd h (by simp)
+  obtain ⟨A, hA', rfl⟩ := Option.map_eq_some_iff.1 h
+  obtain ⟨b, hb, -, hidx, hF⟩ := SRIQT.run_spec (kbTBox O (defBase O requested)) requested
+  obtain ⟨I, h1, h2, h3, h4⟩ := core_down hO hb hF hidx hA' J ind hJ hA
+  exact ⟨I, h1, h2, fun i hi x => h3 i hi _ x, fun r hr k hk R hfin x y =>
+    h4 r hr k (Std.HashMap.mem_toList_iff_getElem?_eq_some.1 hk) R hfin x y⟩
 
 /-- Subsumption between requested IRIs is subsumption under the translated
 knowledge base. -/
@@ -1031,6 +1088,8 @@ theorem translateSRIQKB_chainsOK (h : translateSRIQKB O requested extra = some T
 #print axioms translateSRIQKB_chainsOK
 #print axioms translateSRIQKB_up
 #print axioms translateSRIQKB_down
+#print axioms translateSRIQKB_upR
+#print axioms translateSRIQKB_downR
 #print axioms translateSRIQKB_entailsSub
 #print axioms translateSRIQKB_inconsistent
 #print axioms translateSRIQKB_entailsType
