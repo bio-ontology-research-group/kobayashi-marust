@@ -384,30 +384,35 @@ mutual
 
 /-- Add a node (or the specs `inh` to an existing one). -/
 partial def addNode (k : Nat) (t : Ty) (inh : Array Spec) : M Unit := do
-  let s ← get
-  let c := s.ctxs[k]!
-  match c.byTy.get? t with
+  -- read plain values only, so that no reference to the state or to the
+  -- context survives into the updates below (a live reference would make
+  -- every update copy the whole array)
+  let existing ← (fun s => (s.ctxs[k]!.byTy.get? t)) <$> get
+  match existing with
   | some v =>
     for σ in inh do addSpec v σ
   | none =>
     let cfg ← getCfg
-    if cfg.maxNodes > 0 && s.nodes.size ≥ cfg.maxNodes then
+    let size ← (fun s => s.nodes.size) <$> get
+    if cfg.maxNodes > 0 && size ≥ cfg.maxNodes then
       modify fun s => { s with aborted := true }
       return
     let O ← getO
-    let v := s.nodes.size
-    let bk := fwd O t c.key.lab
+    let v := size
+    let lab ← (fun s => s.ctxs[k]!.key.lab) <$> get
+    let bk := fwd O t lab
     let nd : NodeD := { ctx := k, ty := t, back := bk }
-    let isNewBack := !c.backs.contains bk
-    modify fun s => { s with
-      nodes := s.nodes.push nd
-      ctxs := s.ctxs.modify k fun c =>
-        { c with nodes := c.nodes.push v, byTy := c.byTy.insert t v,
-                 uni := t.foldl (fun u x => u.insert x) c.uni,
-                 byName := t.foldl (fun m x => m.insert x ((m.getD x #[]).push v)) c.byName,
-                 backs := c.backs.insert bk } }
+    let isNewBack ← (fun s => !s.ctxs[k]!.backs.contains bk) <$> get
+    -- one field per update: a multi-field update copies the later fields
+    modify fun s => { s with nodes := s.nodes.push nd }
+    modify fun s => { s with ctxs := s.ctxs.modify k fun c =>
+      let c := { c with nodes := c.nodes.push v }
+      let c := { c with byTy := c.byTy.insert t v }
+      let c := { c with uni := t.foldl (fun u x => u.insert x) c.uni }
+      let c := { c with byName := t.foldl (fun m x => m.insert x ((m.getD x #[]).push v)) c.byName }
+      { c with backs := c.backs.insert bk } }
     enqueue (.init v inh)
-    let parents := (← get).ctxs[k]!.parents
+    let parents ← (fun s => s.ctxs[k]!.parents) <$> get
     for (μ, _) in parents do
       if cfg.forcedBack then enqueue (.back μ)
       else if isNewBack then applyBack μ bk
@@ -419,59 +424,60 @@ partial def getCtx (key : CtxKey) : M Nat := do
   | some k => return k
   | none =>
     let k := (← get).ctxs.size
-    modify fun s => { s with ctxs := s.ctxs.push { key }, ctxIdx := s.ctxIdx.insert key k }
+    modify fun s => { s with ctxs := s.ctxs.push { key } }
+    modify fun s => { s with ctxIdx := s.ctxIdx.insert key k }
     for t in ← branchesM key.seed do addNode k t #[]
     return k
 
 /-- Add spec `σ` to the pool of node `v` and register `v` as a parent of its context. -/
 partial def addSpec (v : Nat) (σ : Spec) : M Unit := do
-  let nd := (← get).nodes[v]!
-  if nd.poolSet.contains σ then return
+  let (has, i, ty) ← (fun s => let nd := s.nodes[v]!; (nd.poolSet.contains σ, nd.pool.size, nd.ty)) <$> get
+  if has then return
   let O ← getO
-  let i := nd.pool.size
   modify fun s => { s with nodes := s.nodes.modify v fun nd =>
-    { nd with pool := nd.pool.push σ, poolSet := nd.poolSet.insert σ } }
-  let k ← getCtx (← childKey O nd.ty σ)
-  modify fun s => { s with
-    nodes := s.nodes.modify v (fun nd => { nd with kids := nd.kids.push k })
-    ctxs := s.ctxs.modify k fun c => { c with parents := c.parents.push (v, i) } }
-  let c := (← get).ctxs[k]!
+    let nd := { nd with pool := nd.pool.push σ }
+    { nd with poolSet := nd.poolSet.insert σ } }
+  let k ← getCtx (← childKey O ty σ)
+  modify fun s => { s with nodes := s.nodes.modify v (fun nd => { nd with kids := nd.kids.push k }) }
+  modify fun s => { s with ctxs := s.ctxs.modify k fun c => { c with parents := c.parents.push (v, i) } }
+  let (backs, pws) ← (fun s => let c := s.ctxs[k]!; (c.backs.toArray, c.pw.toArray)) <$> get
   if (← getCfg).forcedBack then enqueue (.back v)
-  else for bk in c.backs.toArray do applyBack v bk
-  for r in c.pw.toArray do applyPW v i r
+  else for bk in backs do applyBack v bk
+  for r in pws do applyPW v i r
   enqueue (.trig v)
 
 /-- Back rule: a child pushes `bk` to the parent `v`. -/
 partial def applyBack (v : Nat) (bk : Ty) : M Unit := do
-  let nd := (← get).nodes[v]!
-  if sub bk nd.ty then return
+  let (ty, k, pool) ← (fun s => let nd := s.nodes[v]!; (nd.ty, nd.ctx, nd.pool)) <$> get
+  if sub bk ty then return
   let cfg ← getCfg
-  let inh := if cfg.inherit then nd.pool else #[]
-  for t' in ← branchesM (union nd.ty bk) (some nd.ty) do
+  let inh := if cfg.inherit then pool else #[]
+  for t' in ← branchesM (union ty bk) (some ty) do
     modify fun s => { s with nBackVar := s.nBackVar + 1 }
-    addNode nd.ctx t' inh
+    addNode k t' inh
 
 /-- Parent-witness rule: a child of `v` through pool spec `i` asks that
 `v` holds `r.1` and that the edge label grows by `flip r.2`. -/
 partial def applyPW (v : Nat) (i : Nat) (r : Ty × Ty) : M Unit := do
-  let nd := (← get).nodes[v]!
-  let σ := nd.pool[i]!
+  let (ty, k, pool) ← (fun s => let nd := s.nodes[v]!; (nd.ty, nd.ctx, nd.pool)) <$> get
+  let σ := pool[i]!
   let grown : Spec := { σ with lab := union σ.lab (flipL r.2) }
-  if sub r.1 nd.ty then
+  if sub r.1 ty then
     addSpec v grown
   else
     let cfg ← getCfg
-    let inh := (if cfg.inherit then nd.pool else #[]).push grown
-    for t' in ← branchesM (union nd.ty r.1) (some nd.ty) do
+    let inh := (if cfg.inherit then pool else #[]).push grown
+    for t' in ← branchesM (union ty r.1) (some ty) do
       modify fun s => { s with nPWVar := s.nPWVar + 1 }
-      addNode nd.ctx t' inh
+      addNode k t' inh
 
 /-- Record a parent-witness request in context `k` and apply it to every parent. -/
 partial def addPW (k : Nat) (r : Ty × Ty) : M Unit := do
-  let c := (← get).ctxs[k]!
-  if c.pw.contains r then return
-  modify fun s => { s with nPW := s.nPW + 1, ctxs := s.ctxs.modify k fun c => { c with pw := c.pw.insert r } }
-  for (μ, i) in c.parents do applyPW μ i r
+  let (has, parents) ← (fun s => let c := s.ctxs[k]!; (c.pw.contains r, c.parents)) <$> get
+  if has then return
+  modify fun s => { s with nPW := s.nPW + 1 }
+  modify fun s => { s with ctxs := s.ctxs.modify k fun c => { c with pw := c.pw.insert r } }
+  for (μ, i) in parents do applyPW μ i r
 
 end
 
@@ -482,9 +488,7 @@ the intersection of their back sets. If the union `F` of the `F q` is not
 in the type, every star of `v` fails, and only the variants of `t ∪ F` are
 made. Otherwise each candidate back set `X ⊄ t` gives the variants of
 `t ∪ X`. Back sets of entries that count for no need are not used. -/
-def backRule (v : Nat) : M Unit := do
-  let O ← getO
-  let s ← get
+def backPlan (O : Onto) (s : St) (v : Nat) : Array Ty := Id.run do
   let nd := s.nodes[v]!
   let key := s.ctxs[nd.ctx]!.key
   let t := nd.ty
@@ -507,19 +511,24 @@ def backRule (v : Nat) : M Unit := do
               candSet := candSet.insert nw.back
               cands := cands.push nw.back
       match inter? with
-      | none => return   -- no entry for this need yet: nothing to do
+      | none => return #[]   -- no entry for this need yet: nothing to do
       | some x => F := union F x
+  if sub F t then
+    return (cands.filter fun X => !sub X t).map (union t ·)
+  else return #[union t F]
+
+def backRule (v : Nat) : M Unit := do
+  let O ← getO
+  let seeds ← (backPlan O · v) <$> get
+  let (ty, k, pool) ← (fun s => let nd := s.nodes[v]!; (nd.ty, nd.ctx, nd.pool)) <$> get
   let cfg ← getCfg
-  let inh := if cfg.inherit then nd.pool else #[]
-  let seeds : Array Ty := if sub F t then
-      (cands.filter fun X => !sub X t).map (union t ·)
-    else #[union t F]
+  let inh := if cfg.inherit then pool else #[]
   for sd in seeds do
-    if (← get).nodes[v]!.backDone.contains sd then continue
+    if (← (fun s => s.nodes[v]!.backDone.contains sd) <$> get) then continue
     modify fun s => { s with nodes := s.nodes.modify v fun nd => { nd with backDone := nd.backDone.insert sd } }
-    for t' in ← branchesM sd (some nd.ty) do
+    for t' in ← branchesM sd (some ty) do
       modify fun s => { s with nBackVar := s.nBackVar + 1 }
-      addNode nd.ctx t' inh
+      addNode k t' inh
 
 /-- Default specs of a node: one per lower clause at its type (unless the
 parent entry meets it). -/
@@ -538,19 +547,19 @@ disjunction; its at-most clause may be violated, so add the variants that
 take each other head name instead (the branches of `(t \ {w}) ∪ {h}`). -/
 def lazyAlt (v : Nat) (w : Nat) : M Unit := do
   let O ← getO
-  let nd := (← get).nodes[v]!
-  if (← get).nodes[v]!.backDone.contains #[w, w] then return
+  let (ty, k, pool, done) ← (fun s => let nd := s.nodes[v]!; (nd.ty, nd.ctx, nd.pool, nd.backDone.contains #[w, w])) <$> get
+  if done then return
   modify fun s => { s with nodes := s.nodes.modify v fun nd => { nd with backDone := nd.backDone.insert #[w, w] } }
   let some gi := O.lazyOf.get? w | return
   let (_, h) := O.gcis[gi]!
   let cfg ← getCfg
-  let inh := if cfg.inherit then nd.pool else #[]
-  let base := nd.ty.filter (· != w)
+  let inh := if cfg.inherit then pool else #[]
+  let base := ty.filter (· != w)
   for x in h do
     if x == w then continue
     for t' in ← branchesM (union base #[x]) do
       modify fun s => { s with nLazyVar := s.nLazyVar + 1 }
-      addNode nd.ctx t' inh
+      addNode k t' inh
 
 /-- Whether the at-most clauses of `w` may be violated at node `v`: the
 parent entry plus the bound on counting entries of a minimal star (as in
@@ -577,13 +586,18 @@ def mayViolate (v : Nat) (w : Nat) : M Bool := do
     if pot > n then return true
   return false
 
-/-- Merge and parent-witness triggers of node `v`. -/
-def trigger (v : Nat) : M Unit := do
-  let O ← getO
-  let s ← get
+/-- What the merge and parent-witness rules ask at node `v`: specs to add,
+parent-witness requests `(B, Lc)`, and lazy definers whose clause may be
+violated. A pure function of the state, so that the state is not held
+while the updates run. -/
+def triggerPlan (O : Onto) (cfg : Cfg) (s : St) (v : Nat) :
+    Array Spec × Array (Ty × Ty) × Array Nat := Id.run do
   let nd := s.nodes[v]!
   let key := s.ctxs[nd.ctx]!.key
   let t := nd.ty
+  let mut adds : Array Spec := #[]
+  let mut pws : Array (Ty × Ty) := #[]
+  let mut lz : Array Nat := #[]
   for a in t do
     for ui in O.uppBy[a]! do
       let (_, n, S, e) := O.upp[ui]!
@@ -605,12 +619,11 @@ def trigger (v : Nat) : M Unit := do
           if cs.any fun i => mem nd.pool[i]!.lab R && s.ctxs[nd.kids[i]!]!.uni.contains b then
             pot := pot + k
       if pot ≤ n then continue
-      if lazyA && (← getCfg).lazyEager then lazyAlt v a
-      let cfg ← getCfg
+      if lazyA && cfg.lazyEager then lz := lz.push a
       if cfg.funcMerge && n == 1 then
         -- at most one counted neighbour: the definitely counted default
-        -- specs (filler in the child seed) all go into one child; the
-        -- possibly counted ones join it in every combination
+        -- specs (filler in the child seed or in every type) all go into
+        -- one child; the possibly counted ones join it in every combination
         let atomic : HashSet Spec := (defaultSpecs O cfg key t).foldl (·.insert ·) ∅
         let mut defs : Array Spec := #[]
         let mut poss : Array Spec := #[]
@@ -631,30 +644,37 @@ def trigger (v : Nat) : M Unit := do
             alone := (alone ++ alone.map (fun (m : Spec) => ({ lab := union m.lab σ.lab, fill := union m.fill σ.fill } : Spec))).push σ
           outs := outs ++ alone
           for m in outs do
-            if !(← get).nodes[v]!.poolSet.contains m then
-              modify fun s => { s with nMerge := s.nMerge + 1 }
-              addSpec v m
-            if parentC then addPW nd.ctx (m.fill, m.lab)
+            adds := adds.push m
+            if parentC then pws := pws.push (m.fill, m.lab)
           continue
       for x in [0:cs.size] do
         for y in [x+1:cs.size] do
           let σ1 := nd.pool[cs[x]!]!; let σ2 := nd.pool[cs[y]!]!
-          let m : Spec := { lab := union σ1.lab σ2.lab, fill := union σ1.fill σ2.fill }
-          if !(← get).nodes[v]!.poolSet.contains m then
-            modify fun s => { s with nMerge := s.nMerge + 1 }
-            addSpec v m
+          adds := adds.push { lab := union σ1.lab σ2.lab, fill := union σ1.fill σ2.fill }
       if parentC then
         for i in cs do
           let σ := nd.pool[i]!
-          addPW nd.ctx (σ.fill, σ.lab)
+          pws := pws.push (σ.fill, σ.lab)
+  return (adds, pws, lz)
+
+/-- Merge and parent-witness triggers of node `v`. -/
+def trigger (v : Nat) : M Unit := do
+  let O ← getO
+  let cfg ← getCfg
+  let (adds, pws, lz) ← (triggerPlan O cfg · v) <$> get
+  let k ← (fun s => s.nodes[v]!.ctx) <$> get
+  for a in lz do lazyAlt v a
+  for m in adds do
+    if !(← (fun s => s.nodes[v]!.poolSet.contains m) <$> get) then
+      modify fun s => { s with nMerge := s.nMerge + 1 }
+      addSpec v m
+  for r in pws do addPW k r
 
 def initNode (v : Nat) (inh : Array Spec) : M Unit := do
   let O ← getO
   let cfg ← getCfg
-  let s ← get
-  let nd := s.nodes[v]!
-  let key := s.ctxs[nd.ctx]!.key
-  for σ in defaultSpecs O cfg key nd.ty do addSpec v σ
+  let specs ← (fun s => let nd := s.nodes[v]!; defaultSpecs O cfg s.ctxs[nd.ctx]!.key nd.ty) <$> get
+  for σ in specs do addSpec v σ
   for σ in inh do addSpec v σ
   enqueue (.trig v)
   if cfg.forcedBack then enqueue (.back v)
@@ -665,17 +685,17 @@ def progressLine (s : St) : String :=
 
 /-- One step of the event loop; `false` when nothing is left. -/
 def step : M Bool := do
-  let s ← get
-  if s.aborted then return false
-  if s.nEvents % 1000 == 0 then
+  let (aborted, nEv, last) ← (fun s => (s.aborted, s.nEvents, s.lastReport)) <$> get
+  if aborted then return false
+  if nEv % 1000 == 0 then
     let now ← IO.monoMsNow
-    if s.lastReport == 0 then modify fun s => { s with lastReport := now }
-    else if now - s.lastReport ≥ 5000 then
-      IO.eprintln (progressLine s)
+    if last == 0 then modify fun s => { s with lastReport := now }
+    else if now - last ≥ 5000 then
+      IO.eprintln (progressLine (← get))
       modify fun s => { s with lastReport := now }
   modify fun s => { s with nEvents := s.nEvents + 1 }
-  if s.qpos < s.queue.size then
-    let e := s.queue[s.qpos]!
+  let next ← (fun s => if s.qpos < s.queue.size then some s.queue[s.qpos]! else none) <$> get
+  if let some e := next then
     modify fun s => { s with qpos := s.qpos + 1 }
     let t0 ← IO.monoNanosNow
     match e with
@@ -693,9 +713,9 @@ def step : M Bool := do
       backRule v
       let t1 ← IO.monoNanosNow
       modify fun s => { s with nsBack := s.nsBack + (t1 - t0) }
-    let s ← get
-    if s.qpos > 100000 then
-      modify fun s => { s with queue := s.queue.extract s.qpos s.queue.size, qpos := 0 }
+    if (← (fun s => s.qpos) <$> get) > 100000 then
+      modify fun s => { s with queue := s.queue.extract s.qpos s.queue.size }
+      modify fun s => { s with qpos := 0 }
     return true
   else return false
 
@@ -826,21 +846,27 @@ def generateRounds (O : Onto) (cfg : Cfg) (req : Array Nat) :
     IO (St × Array Nat × Array Bool × ElimStats) := do
   let act : M (Array Nat × Array Bool × ElimStats) := do
     let mut roots := #[]
+    let tr0 ← IO.monoMsNow
     for a in req do
       roots := roots.push (← getCtx { seed := #[a], lab := #[], pi := #[] })
+      if roots.size % 10000 == 0 && (← IO.getEnv "KM_SRIQF_TRACEROOTS").isSome then
+        IO.eprintln s!"roots {roots.size} ms {(← IO.monoMsNow) - tr0} nodes {(← get).nodes.size}"
     let mut res : Array Bool × ElimStats := (#[], {})
     repeat
       run
       if (← get).aborted then break
       modify fun s => { s with nRounds := s.nRounds + 1 }
-      let st ← get
-      res := eliminate O st
-      let before := st.nodes.size
-      for v in [0:st.nodes.size] do
-        if res.1[v]! then continue
-        for w in st.nodes[v]!.ty do
-          if O.lazyOf.contains w then
-            if ← mayViolate v w then lazyAlt v w
+      res ← (eliminate O ·) <$> get
+      let before ← (fun s => s.nodes.size) <$> get
+      let todo ← (fun (s : St) => Id.run do
+        let mut out : Array (Nat × Nat) := #[]
+        for v in [0:s.nodes.size] do
+          if res.1[v]! then continue
+          for w in s.nodes[v]!.ty do
+            if O.lazyOf.contains w then out := out.push (v, w)
+        return out) <$> get
+      for (v, w) in todo do
+        if ← mayViolate v w then lazyAlt v w
       if (← get).nodes.size == before then break
       if (← get).nRounds > 0 then
         IO.eprintln s!"round {(← get).nRounds}: nodes {before} -> {(← get).nodes.size}"

@@ -29,6 +29,30 @@ def rtCode {m : Nat} : SRI.RoleT (Fin m) → Nat
   | .pos r => 2 * r.val
   | .inv r => 2 * r.val + 1
 
+/-- `isSHIQB` with the super-roles from one breadth-first search per
+transitive role (`isSHIQB` iterates `upStep` `2m + 1` times per role,
+seconds on inputs with hundreds of roles). Same answer: chains are
+inclusions or transitivity, and no transitive role lies below a counting
+role or its inverse, with the inclusions closed under flips. -/
+def isSHIQFast {n m : Nat} (O : SRIQ.Ontology (Fin n) (Fin m)) : Bool :=
+  let chainsOK := O.all fun cl => match cl with
+    | .chain [_] _ => true
+    | .chain [T, T'] S => T == S && T' == S
+    | .chain _ _ => false
+    | _ => true
+  let subs : Array (Array Nat) := O.foldl (fun subs cl => match cl with
+    | .chain [R] S =>
+      (subs.modify (rtCode R) (·.push (rtCode S))).modify (rtCode R ^^^ 1) (·.push (rtCode S ^^^ 1))
+    | _ => subs) (Array.replicate (2 * m) #[])
+  let trans : List Nat := O.filterMap fun cl => match cl with
+    | .chain [_, _] S => some (rtCode S)
+    | _ => none
+  let counted : Std.HashSet Nat := O.foldl (fun h cl => match cl with
+    | .atLeast _ _ R _ | .atMost _ _ R _ => h.insert (rtCode R)
+    | _ => h) ∅
+  chainsOK && trans.all fun T =>
+    (upClose subs T).all fun R => !(counted.contains R || counted.contains (R ^^^ 1))
+
 /-- The clauses of an ALCHIQ ontology on `Nat` indices. -/
 def toQC {n m : Nat} (O : SRIQ.Ontology (Fin n) (Fin m)) : Except String (Array QC) :=
   O.foldlM (fun acc cl => match cl with
@@ -227,7 +251,8 @@ def main (args : List String) : IO UInt32 := do
       | none => IO.eprintln "declined: not SHIQ"; return 3
       | some T =>
         let t2 ← IO.monoMsNow
-        let ok := isSHIQB T.ontology
+        let ok := if (← IO.getEnv "KM_SRIQF_PROVEDSHIQ") == some "1" then isSHIQB T.ontology
+          else isSHIQFast T.ontology
         IO.eprintln s!"named={T.named.length} concepts={T.conceptCount} roles={T.roleCount} clauses={T.ontology.length} shiq={ok} parse_ms={t1-t0} translate_ms={t2-t1}"
         if !ok then
           IO.eprintln "declined: non-simple role in a number restriction or functionality axiom"
@@ -261,5 +286,7 @@ def main (args : List String) : IO UInt32 := do
             IO.println "DISAGREE"
             for x in d do IO.println x
             return 1
-        return 0
+        -- skip freeing the generated structures at exit (seconds on large inputs)
+        (← IO.getStdout).flush
+        IO.Process.exit 0
   | _ => IO.eprintln "usage: km-sriq-fast-probe <file.ofn> | --sriq <file>"; return 2
