@@ -182,16 +182,23 @@ def mkLab {nb : Nat} (half : {p : Fin nb × Fin nb // p.1 ≤ p.2} → Finset (R
     (b c : Fin nb) : Finset (RoleT (Fin m)) :=
   if h : b ≤ c then half ⟨(b, c), h⟩ else flipL (half ⟨(c, b), (not_le.1 h).le⟩)
 
-/-- The search space: `j + 1 ≤ max 1 k` blocks, block maps onto the blocks
-(when there are individuals), closed types, and labels given on the
-pairs `b ≤ c`. The cheap conditions come first. -/
+/-- The search space: `max 1 k - j` blocks for `j < max 1 k` (the
+enumeration of `Fin` runs downwards, so few blocks come first), block
+maps onto the blocks (when there are individuals), closed types, and
+labels given on the pairs `b ≤ c`. The cheap conditions come first;
+`mkLab` is symmetric off the diagonal by construction. -/
 def SearchProp (G : Finset (QRec n m)) : Prop :=
-  ∃ j : Fin (max 1 k), ∃ blk : Fin k → Fin (j.val + 1),
+  ∃ j : Fin (max 1 k), ∃ blk : Fin k → Fin (max 1 k - j.val),
     (k = 0 ∨ Function.Surjective blk) ∧ (∀ as ∈ A, idOK blk as) ∧
-    ∃ ty : Fin (j.val + 1) → Finset (Fin n), (∀ b, Closed O (ty b)) ∧ (∀ as ∈ A, clsOK blk ty as) ∧
-      ∃ half : {p : Fin (j.val + 1) × Fin (j.val + 1) // p.1 ≤ p.2} → Finset (RoleT (Fin m)),
-        coreOK O A blk ty (mkLab half) ∧ ∀ b, supBlk O G ty (mkLab half) b
+    ∃ ty : Fin (max 1 k - j.val) → Finset (Fin n), (∀ b, Closed O (ty b)) ∧
+      (∀ as ∈ A, clsOK blk ty as) ∧
+      ∃ half : {p : Fin (max 1 k - j.val) × Fin (max 1 k - j.val) // p.1 ≤ p.2} →
+          Finset (RoleT (Fin m)),
+        (∀ as ∈ A, assertOK blk ty (mkLab half) as) ∧ (∀ b c, UpClosed O (mkLab half b c)) ∧
+        (∀ b, mkLab half b b = flipL (mkLab half b b)) ∧ ∀ b, supBlk O G ty (mkLab half) b
 
+set_option synthInstance.maxHeartbeats 200000 in
+set_option synthInstance.maxSize 1024 in
 instance (G : Finset (QRec n m)) : Decidable (SearchProp O A G) := by
   unfold SearchProp; infer_instance
 
@@ -327,19 +334,36 @@ theorem mkLab_half {nb : Nat} {lab : Fin nb → Fin nb → Finset (RoleT (Fin m)
   · rfl
   · exact (hs c b).symm
 
+theorem mkLab_symm {nb : Nat} {half : {p : Fin nb × Fin nb // p.1 ≤ p.2} → Finset (RoleT (Fin m))}
+    (hd : ∀ b, mkLab half b b = flipL (mkLab half b b)) (b c : Fin nb) :
+    mkLab half c b = flipL (mkLab half b c) := by
+  rcases lt_trichotomy b c with h | rfl | h
+  · unfold mkLab
+    rw [dif_neg (not_le.2 h), dif_pos h.le]
+  · exact hd b
+  · unfold mkLab
+    rw [dif_pos h.le, dif_neg (not_le.2 h), flipL_flipL]
+
 /-- **Exactness of the search.** -/
 theorem searchKB_iff (hA : IsALCHIQ O) : searchKB O A = true ↔ ConsistentKB O A := by
   show decide (SearchProp O A (alive O)) = true ↔ _
   rw [decide_eq_true_iff]
   constructor
-  · rintro ⟨j, blk, -, -, ty, -, -, half, hc, hs⟩
-    refine (consistentKB_iff_realisation O hA A).2 ⟨Fin (j.val + 1), inferInstance, ⟨0⟩,
-      ⟨realOfCore hc fun b => ?_⟩⟩
+  · rintro ⟨j, blk, -, -, ty, -, -, half, has, hup, hd, hs⟩
+    have hc : coreOK O A blk ty (mkLab half) := ⟨hup, mkLab_symm hd, has⟩
+    refine (consistentKB_iff_realisation O hA A).2 ⟨Fin (max 1 k - j.val), inferInstance,
+      ⟨⟨0, by omega⟩⟩, ⟨realOfCore hc fun b => ?_⟩⟩
     obtain ⟨C, hC, hok⟩ := hs b
     refine ⟨C, hok, fun e he => (good_iff_mem_alive _).2 ?_⟩
     exact (mem_cands.1 ((mem_listsUpTo _ _).1 hC |>.2 e he)).1
   · intro hc
-    obtain ⟨j, ρ, hsurj⟩ := exists_small_realisation hc
+    obtain ⟨j0, ρ0, hsurj0⟩ := exists_small_realisation hc
+    let j : Fin (max 1 k) := ⟨max 1 k - (j0.val + 1), by omega⟩
+    let e : Fin (j0.val + 1) ≃ Fin (max 1 k - j.val) :=
+      Fintype.equivFinOfCardEq (by simp only [Fintype.card_fin, j]; omega)
+    let ρ := ρ0.equiv e
+    have hsurj : k = 0 ∨ Function.Surjective ρ.blk :=
+      hsurj0.imp_right fun h => e.surjective.comp h
     obtain ⟨hcore, hsup⟩ := core_of_real ρ
     refine ⟨j, ρ.blk, hsurj, fun as has => ?_, ρ.ty, fun b => ?_, fun as has => ?_,
       fun p => ρ.lab p.1.1 p.1.2, ?_⟩
@@ -353,7 +377,7 @@ theorem searchKB_iff (hA : IsALCHIQ O) : searchKB O A = true ↔ ConsistentKB O 
       | cls a X => exact ρ.cls a X has
       | _ => trivial
     · rw [mkLab_half ρ.symm]
-      exact ⟨hcore, hsup⟩
+      exact ⟨hcore.2.2, hcore.1, fun b => ρ.symm b b, hsup⟩
 
 /-- **Consistency with a hint is exact for every hint.** -/
 theorem consistentKB_iff (hA : IsALCHIQ O) (hint : Option (Hint n m k)) :
