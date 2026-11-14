@@ -1,4 +1,5 @@
 import ContextCalculus.SRIQ.FastDefs
+import ContextCalculus.SRIQ.FastElimA
 import SRIQFast.Core
 
 /-! The candidate set of the prototype generator as the input of the
@@ -35,5 +36,17 @@ def toCand {n m : Nat} (ix : Ix n m) (st : St) (roots : Array Nat) : Cand n m :=
     bk := Array.ofFn fun j : Fin U.nodes.size => backOf ix U j.val
     uni := Array.ofFn fun k : Fin U.keys.size =>
       (memb U k.val).foldr (fun j acc => (nd U j).ty ∪ acc) ∅ }
+
+open ContextCalculus.SRIQ.Fast (CandA KeyA NodeA EntryA) in
+/-- The array candidate set of the generator state, with the generator's
+back sets and context unions as hints (the check recomputes them). -/
+def toCandA (st : St) (roots : Array Nat) : CandA :=
+  { keys := st.ctxs.map fun c => ⟨c.key.seed, c.key.lab, c.key.pi⟩
+    nodes := st.nodes.map fun nd =>
+      ⟨nd.ctx, nd.ty, (nd.pool.zip nd.kids).toList.map fun p => ⟨p.1.lab, p.1.fill, p.2⟩⟩
+    members := st.ctxs.map (·.nodes)
+    roots := roots.toList
+    bk := st.nodes.map (·.back)
+    uni := st.ctxs.map fun c => sortDedup c.uni.toArray }
 
 end SRIQFast

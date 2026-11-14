@@ -137,6 +137,38 @@ def checkProf {n m : Nat} (ix : Ix n m) (U : Cand n m) : IO Unit := do
   IO.eprintln s!"checkprof supp: total={tot/1000000}ms max={mx/1000000}ms at {mxi} slow(>1ms)={slow} cands={(candsA U Cc Cc.ok mxi).length} needs={(needsV ix U mxi).length}"
   IO.eprintln s!"checkprof: r2ok={r2} ms: wf={tms[0]!/1000000} r3={tms[1]!/1000000} r4={tms[2]!/1000000} r5={tms[3]!/1000000} r6={tms[4]!/1000000} r2={tms[6]!/1000000}"
 
+open ContextCalculus.SRIQ.Fast in
+/-- Diagnostic: dfsG with a step counter. -/
+partial def dfsCnt {α κ : Type} (cnt : κ → α → Bool) (cs : List α) (fuel : Nat) (needs lims : List (κ × Nat)) (steps : Nat) : Bool × Nat :=
+  match needs.find? (fun x => decide (0 < x.2)) with
+  | none => (true, steps + 1)
+  | some x =>
+    match fuel with
+    | 0 => (false, steps + 1)
+    | f + 1 => cs.foldl (fun (acc : Bool × Nat) c =>
+        if acc.1 then acc else
+        if cnt x.1 c && lims.all (fun y => !cnt y.1 c || decide (0 < y.2)) then
+          dfsCnt cnt cs f (subG cnt c needs) (subG cnt c lims) acc.2
+        else acc) (false, steps + 1)
+
+open ContextCalculus.SRIQ.Fast in
+def elimStats {n m : Nat} (Es : Array (NodeE n m)) (A : Array Bool) : IO Unit := do
+  let mut tot := 0
+  let mut mx := 0
+  let mut fails := 0
+  let mut hist : Array Nat := Array.replicate 8 0
+  for E in Es do
+    let ss := dedupKey id ((E.cands.filter fun p => A[p.1]?.getD false).map (·.2.2))
+    let pre := E.nS.all (fun x => ss.any (cntS x.1))
+    if !pre then fails := fails + 1; continue
+    let (r, st) := dfsCnt cntS ss ((E.nS.map (·.2)).sum + 1) E.nS E.lS 0
+    if !r then fails := fails + 1
+    tot := tot + st
+    mx := max mx st
+    let b := min 7 (Nat.log2 (st + 1) / 2)
+    hist := hist.modify b (· + 1)
+  IO.eprintln s!"dfsstats: total_steps={tot} max={mx} fails={fails} hist4={hist}"
+
 /-- Run the prototype on an ALCHIQ ontology, printing statistics. -/
 def runFast {n m : Nat} (E : SRIQ.Ontology (Fin n) (Fin m)) (req : Array Nat)
     (reqF : List (Fin n) := []) (checked : Bool := false) : IO (Option Result) := do
@@ -189,6 +221,39 @@ def runFast {n m : Nat} (E : SRIQ.Ontology (Fin n) (Fin m)) (req : Array Nat)
     IO.eprintln s!"readout_ms={t4-t3} fast_total_ms={t4-t0}"
     if !checked then return some { rows, aborted := false }
     -- checked mode: the certified check, elimination and readout
+    if (← IO.getEnv "KM_SRIQF_FAST") == some "1" then
+      let c0 ← IO.monoMsNow
+      let ix ← IO.lazyPure fun _ => ContextCalculus.SRIQ.Fast.mkIx E
+      let ixf ← IO.lazyPure fun _ => ContextCalculus.SRIQ.Fast.mkIxF E ix
+      let CA ← IO.lazyPure fun _ => toCandA st roots
+      let c1 ← IO.monoMsNow
+      IO.eprintln s!"fast: indexes+convert nodes={CA.nodes.size} ms={c1 - c0} ups={ixf.upA.size}"
+      let rep := ((← IO.getEnv "KM_SRIQF_REPEAT").bind String.toNat?).getD 0
+      for r in [0:rep] do
+        let ok' ← IO.lazyPure fun _ => ContextCalculus.SRIQ.Fast.closedFastB ix ixf (if r > 1000000 then toCandA st roots else CA) reqF
+        if !ok' then IO.eprintln "repeat: declined"
+      let ok ← IO.lazyPure fun _ => ContextCalculus.SRIQ.Fast.closedFastB ix ixf CA reqF
+      let c2 ← IO.monoMsNow
+      IO.eprintln s!"fast: closedFastB={ok} check_ms={c2 - c1}"
+      if !ok then return some { rows, aborted := false, checked := some false }
+      if (← IO.getEnv "KM_SRIQF_ELIMPROF") == some "1" then
+        let e0 ← IO.monoMsNow
+        let Es ← IO.lazyPure fun _ => ContextCalculus.SRIQ.Fast.nodeEs ix CA
+        let e1 ← IO.monoMsNow
+        let P ← IO.lazyPure fun _ => ContextCalculus.SRIQ.Fast.parentsOf CA
+        let e2 ← IO.monoMsNow
+        let ncand := Es.foldl (fun a E => a + E.cands.length) 0
+        let nneed := Es.foldl (fun a E => a + E.needs.length) 0
+        let A ← IO.lazyPure fun _ => ContextCalculus.SRIQ.Fast.elimW CA Es P (Array.replicate CA.nodes.size true) (Array.replicate CA.nodes.size true) (List.range CA.nodes.size).reverse []
+        let e3 ← IO.monoMsNow
+        elimStats Es (Array.replicate CA.nodes.size true)
+        elimStats Es A
+        IO.eprintln s!"elimprof: nodeEs_ms={e1-e0} parents_ms={e2-e1} elimW_ms={e3-e2} cands={ncand} needs={nneed} alive={A.toList.count true}"
+      let crows ← IO.lazyPure fun _ => certRows (ContextCalculus.SRIQ.Fast.fastRowsA ix CA reqF)
+      let c3 ← IO.monoMsNow
+      let same := cmpRows crows rows reqF.length |>.isEmpty
+      IO.eprintln s!"fast: elim_readout_ms={c3 - c2} same_as_prototype={same} checked_total_ms={c3 - c0}"
+      return some { rows := crows, aborted := false, checked := some true }
     let c0 ← IO.monoMsNow
     let ix ← IO.lazyPure fun _ => ContextCalculus.SRIQ.Fast.mkIx E
     IO.eprintln s!"checked: indexes ups={ix.upArr.size} ms={(← IO.monoMsNow) - c0}"
