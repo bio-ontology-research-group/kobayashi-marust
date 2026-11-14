@@ -642,10 +642,10 @@ def suppB (C : ECache n m) (A : Array Bool) (i : Nat) : Bool :=
 def sweepStep (C : ECache n m) (A : Array Bool) (i : Nat) : Array Bool :=
   if A[i]?.getD false then A.set! i (suppB ix U C A i) else A
 
-/-- One round: check every live node in order, against the live set as it
-shrinks during the round. -/
+/-- One round: check every live node, last index first (children are made
+after their parents), against the live set as it shrinks during the round. -/
 def prune (C : ECache n m) (A : Array Bool) : Array Bool :=
-  (List.range A.size).foldl (sweepStep ix U C) A
+  (List.range A.size).reverse.foldl (sweepStep ix U C) A
 
 def trues (A : Array Bool) : Nat := A.toList.count true
 

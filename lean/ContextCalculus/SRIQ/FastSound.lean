@@ -214,7 +214,8 @@ theorem elim_spec : ∀ A : Array Bool,
       refine ⟨fun i hi => hi, fun i hi => ?_, fun S hS _ i hi => hS i hi⟩
       have hlt : i < A.size := by
         by_contra hn; rw [Array.getElem?_eq_none (by omega)] at hi; simp at hi
-      exact prune_fix_aux (O := O) (U := U) (List.range A.size) A hp i (List.mem_range.2 hlt) hi
+      exact prune_fix_aux (O := O) (U := U) (List.range A.size).reverse A hp i
+        (List.mem_reverse.2 (List.mem_range.2 hlt)) hi
     · next hp =>
       obtain ⟨h1, h2, h3⟩ := ih _ (h ▸ trues_prune_lt (mkIx O) U hp)
         (prune (mkIx O) U (mkCache (mkIx O) U) A) rfl
