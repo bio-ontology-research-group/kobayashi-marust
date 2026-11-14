@@ -70,4 +70,37 @@ public class PluginBehaviourTest {
         assertFalse(r.isEntailed(set));
         assertTrue(r.isEntailed(Collections.<OWLAxiom>emptySet()));
     }
+
+    // ---- item 2: no wrong answers ------------------------------------
+
+    @Test
+    public void satisfiabilityOfAnAnonymousExpressionIsNotGuessed() throws Exception {
+        OWLOntology o = IndividualsTest.parse(IndividualsTest.SMALL);
+        OWLDataFactory df = dataFactory(o);
+        KMReasoner r = km(o);
+        OWLClassExpression anonymous = df.getOWLObjectIntersectionOf(cls(df, "Dog"), cls(df, "Cat"));
+        try {
+            r.isSatisfiable(anonymous);
+            fail("an anonymous expression must not get a guessed answer");
+        } catch (ClassExpressionNotInProfileException expected) {
+            assertEquals(anonymous, expected.getClassExpression());
+        }
+        assertTrue(r.isSatisfiable(cls(df, "Dog")));
+        assertTrue(r.isSatisfiable(df.getOWLThing()));
+        assertFalse(r.isSatisfiable(df.getOWLNothing()));
+    }
+
+    @Test
+    public void inverseOfAPropertyIsNeverItself() throws Exception {
+        OWLOntology o = IndividualsTest.parse(IndividualsTest.SMALL);
+        OWLDataFactory df = dataFactory(o);
+        KMReasoner r = km(o);
+        OWLObjectProperty owned = df.getOWLObjectProperty(IRI.create(NS + "ownedBy"));
+        Set<OWLObjectPropertyExpression> inverse = r.getInverseObjectProperties(owned).getEntities();
+        assertEquals(Collections.singleton(owned.getInverseProperty()), inverse);
+        assertEquals(Collections.singleton(owned),
+                r.getInverseObjectProperties(owned.getInverseProperty()).getEntities());
+        assertEquals(Collections.singleton(df.getOWLTopObjectProperty()),
+                r.getInverseObjectProperties(df.getOWLTopObjectProperty()).getEntities());
+    }
 }

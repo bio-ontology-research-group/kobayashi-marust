@@ -31,6 +31,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private final OWLClass owlNothing;
 
     private static final int[] EMPTY_INTS = new int[0];
+    private static final IRI NOT_DECIDED_PROFILE = IRI.create("http://www.w3.org/ns/owl-profile/DL");
 
     private boolean consistent = true;
     private int dropped = 0;
@@ -431,10 +432,19 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     @Override public synchronized boolean isConsistent() { return consistent; }
 
     @Override public synchronized boolean isSatisfiable(OWLClassExpression ce) {
+        if (ce.isAnonymous()) {
+            // The taxonomy cannot decide an anonymous expression, and answering
+            // "satisfiable" would be wrong for unsatisfiable ones. Protege's
+            // frame sections and DL Query catch exceptions from the reasoner;
+            // ClassExpressionNotInProfileException is the one the OWLReasoner
+            // interface declares for isSatisfiable.
+            // TODO W5: decide anonymous expressions with a fresh definition Q = CE.
+            throw new ClassExpressionNotInProfileException(ce, NOT_DECIDED_PROFILE);
+        }
         if (!consistent) return false;
         if (ce.isOWLNothing()) return false;
         int r = repIdOf(ce);
-        if (r < 0) return true; // unknown complex expression: not refuted
+        if (r < 0) return true; // a class outside the signature is satisfiable
         return r != repId[nothingId];
     }
 
@@ -820,7 +830,21 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     @Override public NodeSet<OWLObjectPropertyExpression> getSuperObjectProperties(OWLObjectPropertyExpression pe, boolean direct) { return new OWLObjectPropertyNodeSet(); }
     @Override public Node<OWLObjectPropertyExpression> getEquivalentObjectProperties(OWLObjectPropertyExpression pe) { return new OWLObjectPropertyNode(pe); }
     @Override public NodeSet<OWLObjectPropertyExpression> getDisjointObjectProperties(OWLObjectPropertyExpression pe) { return new OWLObjectPropertyNodeSet(); }
-    @Override public Node<OWLObjectPropertyExpression> getInverseObjectProperties(OWLObjectPropertyExpression pe) { return new OWLObjectPropertyNode(pe); }
+    /**
+     * Without property inference the answer holds only the inverse expression
+     * itself. HermiT answers {@code getEquivalentObjectProperties(pe^-)}
+     * (Reasoner.getInverseObjectProperties); {@code pe^-} is a member of that
+     * node by reflexivity, so this is incomplete but never wrong. The top and
+     * bottom properties are their own inverses.
+     * TODO W2-plugin: add the properties the engine reports as equivalent to pe^-.
+     */
+    @Override public Node<OWLObjectPropertyExpression> getInverseObjectProperties(OWLObjectPropertyExpression pe) {
+        OWLObjectPropertyExpression simple = pe.getSimplified();
+        if (simple.isOWLTopObjectProperty() || simple.isOWLBottomObjectProperty()) {
+            return new OWLObjectPropertyNode(simple);
+        }
+        return new OWLObjectPropertyNode(simple.getInverseProperty().getSimplified());
+    }
     @Override public NodeSet<OWLNamedIndividual> getObjectPropertyValues(OWLNamedIndividual ind, OWLObjectPropertyExpression pe) { return EMPTY_I; }
 
     @Override public NodeSet<OWLDataProperty> getSubDataProperties(OWLDataProperty pe, boolean direct) { return new OWLDataPropertyNodeSet(); }
