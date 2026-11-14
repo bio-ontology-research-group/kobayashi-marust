@@ -712,7 +712,7 @@ theorem StarData.no_merge (h : StarData O U req I i z py E)
   rw [← hw] at hmv'
   have hMerge := h.nc.2.2.2.2.1 u hu hpot
   have hun : inPool U i (p.2.spec.union p'.2.spec) := by
-    unfold MergeOK at hMerge
+    unfold MergeOK mergeCore at hMerge
     split at hMerge
     · next hcase =>
       have hw1 : I.rt u.2.2.1 z p.1 ∧ I.c u.2.2.2 p.1 := by

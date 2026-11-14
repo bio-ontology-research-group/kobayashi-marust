@@ -396,13 +396,22 @@ def ddef (i : Nat) (S : RoleT (Fin m)) (e : Fin n) : List (Spec n m) :=
 
 def specUnion (l : List (Spec n m)) : Spec n m := l.foldr Spec.union ⟨∅, ∅⟩
 
+/-- The merge rule R5 at node `i` for an upper clause with number `k`, given
+its specs `C` that may count, whether its definitely counted default specs
+exist, and their union `M`. -/
+def mergeCore (i k : Nat) (C : List (Entry n m)) (hasD : Bool) (M : Spec n m) : Prop :=
+  if k = 1 ∧ hasD = true then
+    (∀ σ ∈ C, inPool U i (σ.spec.union M)) ∧
+    (∀ σ₁ ∈ C, ∀ σ₂ ∈ C, M.le σ₁.spec → M.le σ₂.spec → inPool U i (σ₁.spec.union σ₂.spec))
+  else ∀ σ₁ ∈ C, ∀ σ₂ ∈ C, inPool U i (σ₁.spec.union σ₂.spec)
+
+instance (i k : Nat) (C : List (Entry n m)) (hasD : Bool) (M : Spec n m) :
+    Decidable (mergeCore U i k C hasD M) := by
+  unfold mergeCore; infer_instance
+
 /-- The merge rule R5 at node `i` for an upper clause with number `k`. -/
 def MergeOK (i : Nat) (k : Nat) (S : RoleT (Fin m)) (e : Fin n) : Prop :=
-  if k = 1 ∧ ddef ix U i S e ≠ [] then
-    (∀ σ ∈ cset U i S e, inPool U i (σ.spec.union (specUnion (ddef ix U i S e)))) ∧
-    (∀ σ₁ ∈ cset U i S e, ∀ σ₂ ∈ cset U i S e, (specUnion (ddef ix U i S e)).le σ₁.spec →
-      (specUnion (ddef ix U i S e)).le σ₂.spec → inPool U i (σ₁.spec.union σ₂.spec))
-  else ∀ σ₁ ∈ cset U i S e, ∀ σ₂ ∈ cset U i S e, inPool U i (σ₁.spec.union σ₂.spec)
+  mergeCore U i k (cset U i S e) (!(ddef ix U i S e).isEmpty) (specUnion (ddef ix U i S e))
 
 instance (i k : Nat) (S : RoleT (Fin m)) (e : Fin n) : Decidable (MergeOK ix U i k S e) := by
   unfold MergeOK; infer_instance

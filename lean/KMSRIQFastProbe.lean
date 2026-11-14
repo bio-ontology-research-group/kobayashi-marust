@@ -103,6 +103,27 @@ def cmpRows (a b : Array (Nat × Option Ty)) (bound : Nat) : List String := Id.r
       out := s!"name {x.1}: fast={repr (cut x.2)} ref={repr (cut y.2)}" :: out
   return out.reverse
 
+open ContextCalculus.SRIQ.Fast in
+/-- Diagnostic: time of each closure condition over all nodes. -/
+def checkProf {n m : Nat} (ix : Ix n m) (U : Cand n m) : IO Unit := do
+  let mut tms : Array Nat := #[0, 0, 0, 0, 0, 0, 0]
+  let p0 ← IO.monoNanosNow
+  let r2 ← IO.lazyPure fun _ => (List.range U.keys.size).all fun k => decide (BranchCov ix U k (keyOf U k).seed)
+  let p1 ← IO.monoNanosNow
+  tms := tms.set! 6 (p1 - p0)
+  for i in [0:U.nodes.size] do
+    let parts : Array (Unit → Bool) := #[fun _ => decide (nodeOK ix U i ∧ ∀ e ∈ (nd U i).pool, entryOK ix U (nd U i).ty e),
+      fun _ => decide (∀ q ∈ lowAt ix (nd U i).ty, 1 ≤ q.2.1 → ¬ skipQ (keyOf U (nd U i).ctx) q → inPool U i (dflt ix q)),
+      fun _ => decide (BackOK ix U i),
+      fun _ => decide (∀ u ∈ uppAt ix (nd U i).ty, u.2.1 < pot ix U i u.2.2.1 u.2.2.2 → MergeOK ix U i u.2.1 u.2.2.1 u.2.2.2),
+      fun _ => decide (WitOK ix U i)]
+    for j in [0:parts.size] do
+      let a ← IO.monoNanosNow
+      let _ ← IO.lazyPure parts[j]!
+      let b ← IO.monoNanosNow
+      tms := tms.modify j (· + (b - a))
+  IO.eprintln s!"checkprof: r2ok={r2} ms: wf={tms[0]!/1000000} r3={tms[1]!/1000000} r4={tms[2]!/1000000} r5={tms[3]!/1000000} r6={tms[4]!/1000000} r2={tms[6]!/1000000}"
+
 /-- Run the prototype on an ALCHIQ ontology, printing statistics. -/
 def runFast {n m : Nat} (E : SRIQ.Ontology (Fin n) (Fin m)) (req : Array Nat)
     (reqF : List (Fin n) := []) (checked : Bool := false) : IO (Option Result) := do
@@ -160,6 +181,7 @@ def runFast {n m : Nat} (E : SRIQ.Ontology (Fin n) (Fin m)) (req : Array Nat)
     IO.eprintln s!"checked: converted nodes={U.nodes.size} ctxs={U.keys.size} ms={(← IO.monoMsNow) - c0}"
     let ix ← IO.lazyPure fun _ => ContextCalculus.SRIQ.Fast.mkIx E
     IO.eprintln s!"checked: indexes ups={ix.upArr.size} ms={(← IO.monoMsNow) - c0}"
+    if (← IO.getEnv "KM_SRIQF_CHECKPROF") == some "1" then checkProf ix U
     let c1 ← IO.monoMsNow
     let ok ← IO.lazyPure fun _ => ContextCalculus.SRIQ.Fast.closedB ix U reqF
     let c2 ← IO.monoMsNow
