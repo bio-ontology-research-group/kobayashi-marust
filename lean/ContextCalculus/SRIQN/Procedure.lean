@@ -14,7 +14,8 @@ labels; the anchor gets none and no entry may count at its core element).
 
 * `checkRealisationN`: a hint is a core with explicit core children.
   Sound for every hint (`checkRealisationN_sound`), and every realisation
-  gives a hint that checks (`checkRealisationN_complete`).
+  gives a hint that checks (`checkRealisationN_complete`). The alive
+  records are computed only when some core element has children.
 * `searchN`: every core with at most `max 1 |Nom|` elements, its types and
   labels, and children lists up to `bnd`. Exact on C2a ontologies
   (`searchN_iff`).
@@ -325,8 +326,10 @@ instance (G : Finset (NRec n m k)) (ty : Fin k → Finset (Fin n))
 
 /-- **Hint check.** -/
 def checkRealisationN (h : HintN n m) : Bool :=
-  let G := aliveN B N h.ty
-  decide (0 < h.k ∧ coreOKN N h.ty h.lab ∧ ∀ b, kidsOKN B G h.ty h.lab b (h.kids b))
+  decide (0 < h.k ∧ coreOKN N h.ty h.lab ∧
+      ∀ b, StarOK B (h.ty b) (nbrsL h.ty h.lab b ++ h.kids b)) &&
+    ((List.finRange h.k).all (fun b => (h.kids b).isEmpty) ||
+      (let G := aliveN B N h.ty; decide (∀ b, ∀ e ∈ h.kids b, anchorRec b e ∈ G)))
 
 /-- The anchor child entries of core element `b` of type `t` with records
 in `G`. -/
@@ -431,10 +434,15 @@ def realOfCoreN {ty : Fin k → Finset (Fin n)} {lab : Fin k → Fin k → Finse
 /-- **Soundness of the hint check**, for every hint. -/
 theorem checkRealisationN_sound {O : Ontology (Fin n) (Fin m)} (hA : IsALCHOIQ O) (h : HintN n m)
     (hc : checkRealisationN (basePart O) (noms O) h = true) : ConsistentN O := by
-  obtain ⟨hpos, hcore, hkids⟩ := of_decide_eq_true hc
+  simp only [checkRealisationN, Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq,
+    List.all_eq_true, List.mem_finRange, true_implies, List.isEmpty_iff] at hc
+  obtain ⟨⟨hpos, hcore, hstar⟩, hkids⟩ := hc
   haveI : Nonempty (Fin h.k) := ⟨⟨0, hpos⟩⟩
-  refine realisation_sound hA (realOfCoreN hcore fun b => ⟨h.kids b, (hkids b).1, fun e he => ?_⟩)
-  exact (good_iff_mem_aliveN _).2 ((hkids b).2 e he)
+  refine realisation_sound hA (realOfCoreN hcore fun b => ⟨h.kids b, hstar b, fun e he => ?_⟩)
+  rcases hkids with hk | hk
+  · rw [hk b] at he
+    simp at he
+  · exact (good_iff_mem_aliveN _).2 (hk b e he)
 
 /-- **Completeness of the hint check.** Every realisation over a nonempty
 `Fin k` gives a hint that checks. -/
@@ -442,10 +450,11 @@ theorem checkRealisationN_complete {k : Nat} (hk : 0 < k) (r : RealisationN B N 
     ∃ h : HintN n m, checkRealisationN B N h = true := by
   classical
   let C : Fin k → List (QNbr n m) := fun b => (r.kids b).choose
-  refine ⟨⟨k, r.ty, r.lab, C⟩, decide_eq_true ⟨hk, ⟨r.symm, r.nom⟩, fun b => ?_⟩⟩
-  obtain ⟨hok, hgood⟩ := (r.kids b).choose_spec
-  exact ⟨starOK_perm' ((nbrs_perm_nbrsL r.ty r.lab b).append_right _) hok,
-    fun e he => (good_iff_mem_aliveN _).1 (hgood e he)⟩
+  refine ⟨⟨k, r.ty, r.lab, C⟩, ?_⟩
+  simp only [checkRealisationN, Bool.and_eq_true, Bool.or_eq_true, decide_eq_true_eq]
+  refine ⟨⟨hk, ⟨r.symm, r.nom⟩, fun b => ?_⟩, Or.inr fun b e he => ?_⟩
+  · exact starOK_perm' ((nbrs_perm_nbrsL r.ty r.lab b).append_right _) (r.kids b).choose_spec.1
+  · exact (good_iff_mem_aliveN _).1 ((r.kids b).choose_spec.2 e he)
 
 theorem supBlkN_of_real {k : Nat} (r : RealisationN B N (Fin k)) (b : Fin k) :
     supBlkN B (aliveN B N r.ty) r.ty r.lab b := by
