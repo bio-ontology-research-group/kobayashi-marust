@@ -51,6 +51,8 @@ def readCfg : IO Cfg := do
   return { inherit := ← envFlag "KM_SRIQF_INHERIT" true
            skipCovered := ← envFlag "KM_SRIQF_SKIPCOVERED" true
            forcedBack := ← envFlag "KM_SRIQF_FORCEDBACK" true
+           lazyEager := ← envFlag "KM_SRIQF_LAZYEAGER" false
+           funcMerge := ← envFlag "KM_SRIQF_FUNCMERGE" true
            maxNodes }
 
 structure Result where
@@ -65,28 +67,44 @@ def runFast {n m : Nat} (E : SRIQ.Ontology (Fin n) (Fin m)) (req : Array Nat) : 
   | .ok cls =>
     let t0 ← IO.monoMsNow
     let fullRel ← envFlag "KM_SRIQF_FULLREL" false
-    let O ← IO.lazyPure fun _ => mkOnto n m cls fullRel
+    let lazy ← envFlag "KM_SRIQF_LAZY" true
+    let O ← IO.lazyPure fun _ => mkOnto n m cls fullRel lazy (req.foldl (fun a x => max a (x + 1)) 0)
     let t1 ← IO.monoMsNow
     let topDisj := O.gciTop.foldl (fun a i => if (O.gcis[i]!).2.size ≥ 2 then a + 1 else a) 0
-    IO.eprintln s!"onto: names={O.n} gcis={O.gcis.size} top_disjunctions={topDisj} lower={O.low.size} upper={O.upp.size}"
-    if (← IO.getEnv "KM_SRIQF_STATSONLY") == some "1" then return none
-    let (st, roots) ← generate O cfg req
+    IO.eprintln s!"onto: lazy_disjunctions={O.lazyDef.size} names={O.n} gcis={O.gcis.size} top_disjunctions={topDisj} lower={O.low.size} upper={O.upp.size}"
+    if (← IO.getEnv "KM_SRIQF_STATSONLY") == some "1" then
+      -- classify the head names of top disjunctions
+      let mut headCnt : Std.HashMap Nat Nat := ∅
+      for (_, h) in O.gcis do
+        for x in h do headCnt := headCnt.insert x (headCnt.getD x 0 + 1)
+      let mut kinds : Std.HashMap String Nat := ∅
+      for i in O.gciTop do
+        let (_, h) := O.gcis[i]!
+        if h.size < 2 then continue
+        let ks := h.toList.map fun x =>
+          let inBody := !(O.gciBy[x]!).isEmpty
+          let nl := (O.lowBy[x]!).size; let nu := (O.uppBy[x]!).size; let na := (O.allBy[x]!).size
+          if headCnt.getD x 0 == 1 && !inBody && na == 0 && nl + nu == 1 then
+            (if nu == 1 then "U" else "L") else "X"
+        let k := String.intercalate "" (ks.mergeSort (· ≤ ·))
+        kinds := kinds.insert k (kinds.getD k 0 + 1)
+      IO.eprintln s!"top_kinds: {kinds.toList}"
+      return none
+    let (st, roots, alive, es) ← generateRounds O cfg req
     let t2 ← IO.monoMsNow
     let specs := st.nodes.foldl (fun a nd => a + nd.pool.size) 0
     let multi := st.ctxs.foldl (fun a c => if c.nodes.size > 1 then a + 1 else a) 0
     let maxNodesCtx := st.ctxs.foldl (fun a c => max a c.nodes.size) 0
     let seeds := (st.ctxs.foldl (fun (h : Std.HashSet (Array Nat × Array Nat)) c => h.insert (c.key.seed, c.key.lab)) ∅).size
-    let seedsOnly := (st.ctxs.foldl (fun (h : Std.HashSet (Array Nat)) c => h.insert c.key.seed) ∅).size
     let avgSeed := (st.ctxs.foldl (fun a c => a + c.key.seed.size) 0) / max 1 st.ctxs.size
     let avgTy := (st.nodes.foldl (fun a nd => a + nd.ty.size) 0) / max 1 st.nodes.size
-    IO.eprintln s!"ctx: seed_lab_pairs={seeds} seeds={seedsOnly} avg_seed={avgSeed} avg_type={avgTy}"
-    IO.eprintln s!"gen: ctxs={st.ctxs.size} nodes={st.nodes.size} specs={specs} merges={st.nMerge} pw_requests={st.nPW} back_variants={st.nBackVar} pw_variants={st.nPWVar} branch_calls={st.nBranchCalls} branches={st.nBranches} max_branches={st.maxBranches} multi_node_ctxs={multi} max_nodes_per_ctx={maxNodesCtx} aborted={st.aborted} index_ms={t1-t0} gen_ms={t2-t1}"
+    IO.eprintln s!"ctx: seed_lab_pairs={seeds} avg_seed={avgSeed} avg_type={avgTy}"
+    IO.eprintln s!"gen: ctxs={st.ctxs.size} nodes={st.nodes.size} specs={specs} merges={st.nMerge} pw_requests={st.nPW} back_variants={st.nBackVar} pw_variants={st.nPWVar} lazy_variants={st.nLazyVar} rounds={st.nRounds} branch_calls={st.nBranchCalls} branches={st.nBranches} max_branches={st.maxBranches} multi_node_ctxs={multi} max_nodes_per_ctx={maxNodesCtx} aborted={st.aborted} index_ms={t1-t0} gen_elim_ms={t2-t1}"
     if st.aborted then
       return some { rows := #[], aborted := true }
-    let (alive, es) ← IO.lazyPure fun _ => eliminate O st
     let t3 ← IO.monoMsNow
     let nAlive := alive.foldl (fun a b => if b then a + 1 else a) 0
-    IO.eprintln s!"elim: alive={nAlive} checks={es.checks} searches={es.searches} elim_ms={t3-t2}"
+    IO.eprintln s!"elim(last round): alive={nAlive} checks={es.checks} searches={es.searches}"
     let rows ← IO.lazyPure fun _ => readout st alive roots req
     let t4 ← IO.monoMsNow
     IO.eprintln s!"readout_ms={t4-t3} fast_total_ms={t4-t0}"
@@ -142,7 +160,11 @@ def mainSriq (path : String) : IO UInt32 := do
     | ["n", a, "m", b] => pure (a.toNat!, b.toNat!)
     | _ => do IO.eprintln "first line: n <N> m <M>"; return 2
   let mut cls : List (SRIQ.Clause Nat Nat) := []
+  let mut nreq := n
   for l in lines.drop 1 do
+    if let ["req", r] := l then
+      nreq := r.toNat!
+      continue
     match parseLine l with
     | .error e => IO.eprintln e; return 2
     | .ok none => pure ()
@@ -151,14 +173,14 @@ def mainSriq (path : String) : IO UInt32 := do
   if !isSHIQB O then
     IO.eprintln "declined: not SHIQ"; return 3
   let E := SRIQ.Proc.encTransQ O
-  let req : List (Fin (n + E.1)) := (List.finRange n).map (Fin.castAdd E.1)
+  let req : List (Fin (n + E.1)) := ((List.finRange n).filter (·.val < nreq)).map (Fin.castAdd E.1)
   let some res ← runFast E.2 (req.map (·.val)).toArray | return 3
   if res.aborted then IO.println "aborted"; return 4
   let showRows (rs : Array (Nat × Option Ty)) (tag : String) : IO Unit := do
     for (a, o) in rs do
       match o with
       | none => IO.println s!"{tag} {a} unsat"
-      | some t => IO.println s!"{tag} {a} {(t.filter (· < n)).toList}"
+      | some t => IO.println s!"{tag} {a} {(t.filter (· < nreq)).toList}"
   if (← IO.getEnv "KM_SRIQF_ROWS") == some "1" then showRows res.rows "fast"
   let mut status : UInt32 := 0
   if (← IO.getEnv "KM_SRIQF_BRUTE") == some "1" then
@@ -167,7 +189,7 @@ def mainSriq (path : String) : IO UInt32 := do
     let br ← IO.lazyPure fun _ => Brute.rows (mkOnto (n + E.1) m qcs) (req.map (·.val)).toArray
     let t1 ← IO.monoMsNow
     IO.eprintln s!"brute_ms={t1-t0}"
-    let d := cmpRows res.rows br n
+    let d := cmpRows res.rows br nreq
     if d.isEmpty then IO.println "BRUTE-AGREE"
     else
       IO.println "BRUTE-DISAGREE"
@@ -179,7 +201,7 @@ def mainSriq (path : String) : IO UInt32 := do
     let ref ← IO.lazyPure fun _ => refRows E.2 req
     let t1 ← IO.monoMsNow
     IO.eprintln s!"ref_ms={t1-t0}"
-    let d := cmpRows res.rows ref n
+    let d := cmpRows res.rows ref nreq
     if d.isEmpty then IO.println "AGREE"
     else
       IO.println "DISAGREE"

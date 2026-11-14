@@ -122,6 +122,13 @@ structure Onto where
   uppBy : Array (Array Nat)
   up : Array Ty
   relBy : Array Ty
+  /-- for a lazy disjunction (gci index): its default head name, a pure
+  definer `W` (not requested, head of this gci only, in no body, no
+  filler, left side of exactly one at-most, at-least or existential clause
+  and of nothing else); an at-most definer is preferred -/
+  lazyDef : HashMap Nat Nat := ∅
+  /-- the lazy disjunction of a default name -/
+  lazyOf : HashMap Nat Nat := ∅
 
 def pushAt (a : Array (Array α)) (i : Nat) (x : α) : Array (Array α) :=
   a.modify i (·.push x)
@@ -135,7 +142,7 @@ partial def upClose (subs : Array (Array Nat)) (r : Nat) : Ty :=
       go (nxt ++ rest) (nxt.foldl (fun s y => s.insert y) seen)
   sortDedup (go [r] ((∅ : HashSet Nat).insert r)).toArray
 
-def mkOnto (n m : Nat) (cls : Array QC) (fullRel : Bool := false) : Onto := Id.run do
+def mkOnto (n m : Nat) (cls : Array QC) (fullRel : Bool := false) (lazy : Bool := false) (nreq : Nat := 0) : Onto := Id.run do
   let nr := 2 * m
   let mut gcis : Array (Array Nat × Array Nat) := #[]
   let mut gciBy : Array (Array Nat) := Array.replicate n #[]
@@ -173,8 +180,31 @@ def mkOnto (n m : Nat) (cls : Array QC) (fullRel : Bool := false) : Onto := Id.r
   let uppRoles : HashSet Nat := upp.foldl (fun h q => h.insert q.2.2.1) ∅
   for (_, _, R, b) in low do
     if fullRel || (up[R]!).any (uppRoles.contains ·) then rel := pushAt rel R b
+  -- lazy disjunctions
+  let mut lazyDef : HashMap Nat Nat := ∅
+  let mut lazyOf : HashMap Nat Nat := ∅
+  if lazy then
+    let mut headCnt : HashMap Nat Nat := ∅
+    for (_, h) in gcis do
+      for x in h do headCnt := headCnt.insert x (headCnt.getD x 0 + 1)
+    let mut filler : HashSet Nat := ∅
+    for (_, _, _, b) in low do filler := filler.insert b
+    for (_, _, _, b) in upp do filler := filler.insert b
+    for l in allBy do
+      for (_, c) in l do filler := filler.insert c
+    for i in gciTop do
+      let (_, h) := gcis[i]!
+      if h.size < 2 then continue
+      let pure := h.filter fun x =>
+        x ≥ nreq && headCnt.getD x 0 == 1 && (gciBy[x]!).isEmpty && !filler.contains x &&
+        (allBy[x]!).isEmpty && (lowBy[x]!).size + (uppBy[x]!).size == 1
+      -- prefer an at-most definer as the default
+      let pure := pure.filter (fun x => (uppBy[x]!).size == 1) ++ pure.filter (fun x => (uppBy[x]!).size == 0)
+      if h : 0 < pure.size then
+        lazyDef := lazyDef.insert i pure[0]
+        lazyOf := lazyOf.insert pure[0] i
   return { n, nr, gcis, gciBy, gciTop, allBy, low, upp, lowBy, uppBy, up,
-           relBy := rel.map sortDedup }
+           relBy := rel.map sortDedup, lazyDef, lazyOf }
 
 /-- Names a neighbour across label `L` (from `t`) must hold. -/
 def fwd (O : Onto) (t : Ty) (L : Ty) : Ty := Id.run do
@@ -202,7 +232,9 @@ partial def branches (O : Onto) (seed : Ty) : Array Ty := Id.run do
       let (b, h) := O.gcis[i]!
       if b.all (cur.contains ·) then
         if h.any (cur.contains ·) then go cur acc rest out
-        else h.foldl (fun out y =>
+        else match O.lazyDef.get? i with
+        | some w => go (cur.insert w) (acc.push w) rest out
+        | none => h.foldl (fun out y =>
           go (cur.insert y) (acc.push y) (O.gciBy[y]!.toList ++ rest) out) out
       else go cur acc rest out
   let cur : HashSet Nat := seed.foldl (fun s x => s.insert x) ∅
@@ -258,6 +290,11 @@ structure Cfg where
   skipCovered : Bool := true
   /-- back rule through forced sets (`backRule`) instead of every child back set -/
   forcedBack : Bool := true
+  /-- for an at-most 1 clause, merge every definitely counted default spec at once -/
+  funcMerge : Bool := true
+  /-- lazy alternatives from the at-most trigger during generation (else
+  only for dead nodes between rounds) -/
+  lazyEager : Bool := false
   /-- stop generation after this many nodes (0: no cap) -/
   maxNodes : Nat := 0
   deriving Repr
@@ -279,11 +316,15 @@ structure St where
   nPW : Nat := 0
   nBackVar : Nat := 0
   nPWVar : Nat := 0
+  nLazyVar : Nat := 0
   nBranchCalls : Nat := 0
   maxBranches : Nat := 0
   nBranches : Nat := 0
   aborted : Bool := false
   nEvents : Nat := 0
+  pendTrig : HashSet Nat := ∅
+  pendBack : HashSet Nat := ∅
+  nRounds : Nat := 0
   lastReport : Nat := 0
   deriving Inhabited
 
@@ -292,7 +333,16 @@ abbrev M := ReaderT (Onto × Cfg) (StateT St IO)
 def getO : M Onto := return (← read).1
 def getCfg : M Cfg := return (← read).2
 
-def enqueue (e : Ev) : M Unit := modify fun s => { s with queue := s.queue.push e }
+def enqueue (e : Ev) : M Unit := do
+  match e with
+  | .trig v =>
+    if (← get).pendTrig.contains v then return
+    modify fun s => { s with pendTrig := s.pendTrig.insert v }
+  | .back v =>
+    if (← get).pendBack.contains v then return
+    modify fun s => { s with pendBack := s.pendBack.insert v }
+  | .init .. => pure ()
+  modify fun s => { s with queue := s.queue.push e }
 
 def branchesM (t : Ty) : M (Array Ty) := do
   let O ← getO
@@ -459,6 +509,50 @@ def defaultSpecs (O : Onto) (cfg : Cfg) (key : CtxKey) (t : Ty) : Array Spec := 
         out := out.push { lab := O.up[R]!, fill := #[b] }
   return out
 
+/-- Lazy disjunction: node `v` took the default definer `w` of a top
+disjunction; its at-most clause may be violated, so add the variants that
+take each other head name instead (the branches of `(t \ {w}) ∪ {h}`). -/
+def lazyAlt (v : Nat) (w : Nat) : M Unit := do
+  let O ← getO
+  let nd := (← get).nodes[v]!
+  if (← get).nodes[v]!.backDone.contains #[w, w] then return
+  modify fun s => { s with nodes := s.nodes.modify v fun nd => { nd with backDone := nd.backDone.insert #[w, w] } }
+  let some gi := O.lazyOf.get? w | return
+  let (_, h) := O.gcis[gi]!
+  let cfg ← getCfg
+  let inh := if cfg.inherit then nd.pool else #[]
+  let base := nd.ty.filter (· != w)
+  for x in h do
+    if x == w then continue
+    for t' in ← branchesM (union base #[x]) do
+      modify fun s => { s with nLazyVar := s.nLazyVar + 1 }
+      addNode nd.ctx t' inh
+
+/-- Whether the at-most clauses of `w` may be violated at node `v`: the
+parent entry plus the bound on counting entries of a minimal star (as in
+`trigger`) exceeds the number. A name with no at-most clause gives `true`. -/
+def mayViolate (v : Nat) (w : Nat) : M Bool := do
+  let O ← getO
+  let s ← get
+  let nd := s.nodes[v]!
+  let key := s.ctxs[nd.ctx]!.key
+  let t := nd.ty
+  if (O.uppBy[w]!).isEmpty then return true
+  for ui in O.uppBy[w]! do
+    let (_, n, S, e) := O.upp[ui]!
+    let parentC := mem key.lab S && mem key.pi e
+    let mut cs : Array Nat := #[]
+    for i in [0:nd.pool.size] do
+      if mem nd.pool[i]!.lab S && s.ctxs[nd.kids[i]!]!.uni.contains e then cs := cs.push i
+    let mut pot := if parentC then 1 else 0
+    for a' in t do
+      for qi in O.lowBy[a']! do
+        let (_, k, R, b) := O.low[qi]!
+        if cs.any fun i => mem nd.pool[i]!.lab R && s.ctxs[nd.kids[i]!]!.uni.contains b then
+          pot := pot + k
+    if pot > n then return true
+  return false
+
 /-- Merge and parent-witness triggers of node `v`. -/
 def trigger (v : Nat) : M Unit := do
   let O ← getO
@@ -477,7 +571,8 @@ def trigger (v : Nat) : M Unit := do
         if mem σ.lab S then
           let u := s.ctxs[nd.kids[i]!]!.uni
           if u.contains e then cs := cs.push i
-      if cs.isEmpty then continue
+      let lazyA := O.lazyOf.contains a
+      if cs.isEmpty && !(lazyA && parentC && n == 0) then continue
       -- an upper bound on the entries of a minimal star that count
       let mut pot := if parentC then 1 else 0
       for a' in t do
@@ -486,6 +581,37 @@ def trigger (v : Nat) : M Unit := do
           if cs.any fun i => mem nd.pool[i]!.lab R && s.ctxs[nd.kids[i]!]!.uni.contains b then
             pot := pot + k
       if pot ≤ n then continue
+      if lazyA && (← getCfg).lazyEager then lazyAlt v a
+      let cfg ← getCfg
+      if cfg.funcMerge && n == 1 then
+        -- at most one counted neighbour: the definitely counted default
+        -- specs (filler in the child seed) all go into one child; the
+        -- possibly counted ones join it in every combination
+        let atomic : HashSet Spec := (defaultSpecs O cfg key t).foldl (·.insert ·) ∅
+        let mut defs : Array Spec := #[]
+        let mut poss : Array Spec := #[]
+        for i in cs do
+          let σ := nd.pool[i]!
+          if !atomic.contains σ then continue
+          let always := O.gciTop.any fun g => (O.gcis[g]!).2 == #[e]
+          if always || mem s.ctxs[nd.kids[i]!]!.key.seed e then defs := defs.push σ else poss := poss.push σ
+        if !defs.isEmpty && poss.size ≤ 8 then
+          let M : Spec := defs.foldl (fun m σ => { lab := union m.lab σ.lab, fill := union m.fill σ.fill }) defs[0]!
+          -- the definite group all or nothing (a definite spec left out is
+          -- one whose demands another entry or the parent serves), with
+          -- every subset of the possible ones
+          let mut outs : Array Spec := #[M]
+          let mut alone : Array Spec := #[]
+          for σ in poss do
+            outs := outs ++ outs.map fun (m : Spec) => ({ lab := union m.lab σ.lab, fill := union m.fill σ.fill } : Spec)
+            alone := (alone ++ alone.map (fun (m : Spec) => ({ lab := union m.lab σ.lab, fill := union m.fill σ.fill } : Spec))).push σ
+          outs := outs ++ alone
+          for m in outs do
+            if !(← get).nodes[v]!.poolSet.contains m then
+              modify fun s => { s with nMerge := s.nMerge + 1 }
+              addSpec v m
+            if parentC then addPW nd.ctx (m.fill, m.lab)
+          continue
       for x in [0:cs.size] do
         for y in [x+1:cs.size] do
           let σ1 := nd.pool[cs[x]!]!; let σ2 := nd.pool[cs[y]!]!
@@ -511,7 +637,7 @@ def initNode (v : Nat) (inh : Array Spec) : M Unit := do
 
 def progressLine (s : St) : String :=
   let specs := s.nodes.foldl (fun a nd => a + nd.pool.size) 0
-  s!"progress: events={s.nEvents} queue={s.queue.size - s.qpos} ctxs={s.ctxs.size} nodes={s.nodes.size} specs={specs} merges={s.nMerge} pw_requests={s.nPW} back_variants={s.nBackVar} pw_variants={s.nPWVar} branch_calls={s.nBranchCalls} branches={s.nBranches} max_branches={s.maxBranches}"
+  s!"progress: events={s.nEvents} queue={s.queue.size - s.qpos} ctxs={s.ctxs.size} nodes={s.nodes.size} specs={specs} merges={s.nMerge} pw_requests={s.nPW} back_variants={s.nBackVar} pw_variants={s.nPWVar} lazy_variants={s.nLazyVar} rounds={s.nRounds} branch_calls={s.nBranchCalls} branches={s.nBranches} max_branches={s.maxBranches}"
 
 /-- One step of the event loop; `false` when nothing is left. -/
 def step : M Bool := do
@@ -529,8 +655,12 @@ def step : M Bool := do
     modify fun s => { s with qpos := s.qpos + 1 }
     match e with
     | .init v inh => initNode v inh
-    | .trig v => trigger v
-    | .back v => backRule v
+    | .trig v =>
+      modify fun s => { s with pendTrig := s.pendTrig.erase v }
+      trigger v
+    | .back v =>
+      modify fun s => { s with pendBack := s.pendBack.erase v }
+      backRule v
     let s ← get
     if s.qpos > 100000 then
       modify fun s => { s with queue := s.queue.extract s.qpos s.queue.size, qpos := 0 }
@@ -655,6 +785,36 @@ partial def eliminate (O : Onto) (st : St) : Array Bool × ElimStats := Id.run d
           inQ := inQ.set! μ true
           q := q.push μ
   return (alive, stats)
+
+/-- Generation and elimination in rounds: after each elimination, every
+dead node that holds the default definer `w` of a lazy disjunction gets
+the variants that take the other head names (`lazyAlt`); stop when a round
+adds no node. Returns the state, the root contexts and the alive flags. -/
+def generateRounds (O : Onto) (cfg : Cfg) (req : Array Nat) :
+    IO (St × Array Nat × Array Bool × ElimStats) := do
+  let act : M (Array Nat × Array Bool × ElimStats) := do
+    let mut roots := #[]
+    for a in req do
+      roots := roots.push (← getCtx { seed := #[a], lab := #[], pi := #[] })
+    let mut res : Array Bool × ElimStats := (#[], {})
+    repeat
+      run
+      if (← get).aborted then break
+      modify fun s => { s with nRounds := s.nRounds + 1 }
+      let st ← get
+      res := eliminate O st
+      let before := st.nodes.size
+      for v in [0:st.nodes.size] do
+        if res.1[v]! then continue
+        for w in st.nodes[v]!.ty do
+          if O.lazyOf.contains w then
+            if ← mayViolate v w then lazyAlt v w
+      if (← get).nodes.size == before then break
+      if (← get).nRounds > 0 then
+        IO.eprintln s!"round {(← get).nRounds}: nodes {before} -> {(← get).nodes.size}"
+    return (roots, res)
+  let ((roots, alive, es), st) ← (act.run (O, cfg)).run {}
+  return (st, roots, alive, es)
 
 /-! ## Readout -/
 
