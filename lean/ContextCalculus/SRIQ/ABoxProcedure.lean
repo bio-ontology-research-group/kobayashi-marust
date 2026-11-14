@@ -13,9 +13,11 @@ individuals `Fin k`. A hint is a concrete realisation over the blocks
 * `checkRealisation` checks a hint, using `alive` for the goodness of the
   children records. Sound: `true` implies `ConsistentKB`
   (`checkRealisation_sound`).
-* `searchKB` searches every realisation with at most `k + 1` blocks,
-  with children lists up to the bound of `support_bound` over the alive
-  candidates. Exact (`searchKB_iff`), and far too slow for real inputs.
+* `searchKB` searches every realisation with at most `max 1 k` blocks
+  whose block map is onto (when there are individuals), with children
+  lists up to the bound of `support_bound` over the alive candidates. A
+  model gives such a realisation (`exists_small_realisation`). Exact
+  (`searchKB_iff`), and far too slow for real inputs.
 * `consistentKB` answers `true` if the hint checks, else runs
   `searchKB`; it equals `ConsistentKB` for every hint
   (`consistentKB_iff`).
