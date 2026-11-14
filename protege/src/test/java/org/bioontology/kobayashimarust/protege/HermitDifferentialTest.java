@@ -198,7 +198,7 @@ public class HermitDifferentialTest {
     }
 
     @Test
-    public void inconsistentOntologyAnswersEmptyWhereHermitThrows() throws Exception {
+    public void inconsistentOntologyThrowsAsHermitDoes() throws Exception {
         String src = IndividualsTest.SMALL.replace("Declaration(NamedIndividual(:loner))",
                 "DisjointClasses(:Dog :Cat)\nClassAssertion(:Dog :tom)");
         OWLOntology o = IndividualsTest.parse(src);
@@ -211,12 +211,17 @@ public class HermitDifferentialTest {
             hermit.getTypes(rex, false);
             fail("HermiT is expected to throw on an inconsistent ontology");
         } catch (org.semanticweb.owlapi.reasoner.InconsistentOntologyException expected) {
-            // HermiT throws; KM answers with an empty set as its class queries do.
+            // HermiT throws, and so does KM.
         }
         OWLReasoner km = new KMReasonerFactory().createReasoner(o);
         open.add(km);
         assertFalse(km.isConsistent());
-        assertTrue(km.getTypes(rex, false).isEmpty());
+        try {
+            km.getTypes(rex, false);
+            fail("KM is expected to throw like HermiT");
+        } catch (org.semanticweb.owlapi.reasoner.InconsistentOntologyException expected) {
+            // same as HermiT
+        }
     }
 
     @Test
@@ -232,5 +237,53 @@ public class HermitDifferentialTest {
         assertTrue("wine has individuals",
                 wine.getIndividualsInSignature(org.semanticweb.owlapi.model.parameters.Imports.INCLUDED).size() > 100);
         assertNoDifferences("wine and food", wine);
+    }
+
+    /** HermiT's default FreshEntityPolicy: a class outside the signature sits between Top and Bottom. */
+    @Test
+    public void freshNamedClassSitsBetweenTopAndBottom() throws Exception {
+        OWLOntology o = IndividualsTest.parse(IndividualsTest.SMALL);
+        OWLDataFactory df = o.getOWLOntologyManager().getOWLDataFactory();
+        OWLReasoner hermit = new org.semanticweb.HermiT.ReasonerFactory().createReasoner(o);
+        OWLReasoner km = new KMReasonerFactory().createReasoner(o);
+        open.add(hermit);
+        open.add(km);
+        OWLClass fresh = df.getOWLClass(IRI.create(NS + "NeverDeclared"));
+        OWLClass dog = df.getOWLClass(IRI.create(NS + "Dog"));
+        for (boolean direct : new boolean[]{true, false}) {
+            assertEquals(nodes(hermit.getSuperClasses(fresh, direct)), nodes(km.getSuperClasses(fresh, direct)));
+            assertEquals(nodes(hermit.getSubClasses(fresh, direct)), nodes(km.getSubClasses(fresh, direct)));
+        }
+        assertEquals(node(hermit.getEquivalentClasses(fresh)), node(km.getEquivalentClasses(fresh)));
+        OWLClass animal = df.getOWLClass(IRI.create(NS + "Animal"));
+        OWLClass other = df.getOWLClass(IRI.create(NS + "OtherFresh"));
+        for (OWLClassExpression sub : new OWLClassExpression[]{fresh, dog, animal, df.getOWLThing(), df.getOWLNothing(), other}) {
+            for (OWLClassExpression sup : new OWLClassExpression[]{fresh, dog, animal, df.getOWLThing(), df.getOWLNothing(), other}) {
+                OWLAxiom axiom = df.getOWLSubClassOfAxiom(sub, sup);
+                assertEquals(axiom.toString(), hermit.isEntailed(axiom), km.isEntailed(axiom));
+            }
+        }
+        assertEquals(hermit.isSatisfiable(fresh), km.isSatisfiable(fresh));
+    }
+
+    /** isEntailed(Set) ignores annotation and declaration axioms like HermiT. */
+    @Test
+    public void entailedSetIgnoresNonLogicalAxioms() throws Exception {
+        OWLOntology o = IndividualsTest.parse(IndividualsTest.SMALL);
+        OWLDataFactory df = o.getOWLOntologyManager().getOWLDataFactory();
+        OWLReasoner hermit = new org.semanticweb.HermiT.ReasonerFactory().createReasoner(o);
+        OWLReasoner km = new KMReasonerFactory().createReasoner(o);
+        open.add(hermit);
+        open.add(km);
+        OWLClass dog = df.getOWLClass(IRI.create(NS + "Dog"));
+        OWLClass animal = df.getOWLClass(IRI.create(NS + "Animal"));
+        Set<OWLAxiom> set = new HashSet<>();
+        set.add(df.getOWLDeclarationAxiom(df.getOWLClass(IRI.create(NS + "NeverSeen"))));
+        set.add(df.getOWLAnnotationAssertionAxiom(df.getRDFSLabel(), dog.getIRI(), df.getOWLLiteral("label")));
+        assertEquals(hermit.isEntailed(set), km.isEntailed(set));
+        set.add(df.getOWLSubClassOfAxiom(dog, animal));
+        assertEquals(hermit.isEntailed(set), km.isEntailed(set));
+        set.add(df.getOWLSubClassOfAxiom(animal, dog));
+        assertEquals(hermit.isEntailed(set), km.isEntailed(set));
     }
 }

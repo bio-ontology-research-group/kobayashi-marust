@@ -135,6 +135,16 @@ public final class Classifier {
         }
 
         public Session(String functionalSyntax) throws Exception {
+            this(functionalSyntax, null);
+        }
+
+        /**
+         * Start a session. {@code started} receives the session as soon as its
+         * native process runs, before the first (long) transaction, so a caller
+         * can interrupt that transaction.
+         */
+        public Session(String functionalSyntax, java.util.function.Consumer<Session> started)
+                throws Exception {
             this.kmBin = KMExecutable.resolve();
             this.timeoutSeconds = parseTimeout();
             this.log = Files.createTempFile("kmarust-incremental-", ".log");
@@ -151,6 +161,7 @@ public final class Classifier {
                 return thread;
             });
             try {
+                if (started != null) started.accept(this);
                 transact("init", functionalSyntax);
             } catch (Exception error) {
                 close();

@@ -31,6 +31,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private final OWLClass owlNothing;
 
     private static final int[] EMPTY_INTS = new int[0];
+    private static final IRI NOT_DECIDED_PROFILE = IRI.create("http://www.w3.org/ns/owl-profile/DL");
 
     private boolean consistent = true;
     private int dropped = 0;
@@ -48,6 +49,14 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private volatile Classifier.Session incrementalSession;
     private final RetainedFunctionalSyntax serialized = new RetainedFunctionalSyntax();
     private boolean sourceSynchronized;
+    /**
+     * True once one classification has committed an answer. It never goes back
+     * to false: a later failed transaction keeps the previous answers. Before
+     * it is true the reasoner holds no native session and no taxonomy; the
+     * first query or precomputeInferences classifies the ontology as it is
+     * then.
+     */
+    private volatile boolean classified;
     private Set<OWLOntology> committedImports = Collections.emptySet();
     private boolean lastPreparationUsedDelta;
     private boolean hierarchyBuilt;
@@ -55,8 +64,21 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private Set<OWLClass> lastClasses;
     private FlushContext flushContext;
     /** Individual realization of the committed revision; null until first needed. */
-    private Realized realized;
+    private volatile Realized realized;
     private volatile Process realizeProcess;
+    /** True while a monitored task runs; interrupt() acts only then. */
+    private volatile boolean taskRunning;
+    private volatile boolean interruptRequested;
+    private volatile boolean timedOut;
+    /** Identifies the running task so a late timer cannot hit the next one. */
+    private volatile long taskGeneration;
+    private int taskDepth;
+    private static final java.util.concurrent.ScheduledExecutorService TIMER =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "km-reasoner-timeout");
+                thread.setDaemon(true);
+                return thread;
+            });
 
     private static final class FlushContext {
         final boolean allowDelta;
@@ -72,17 +94,108 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         this.df = rootOntology.getOWLOntologyManager().getOWLDataFactory();
         this.owlThing = df.getOWLThing();
         this.owlNothing = df.getOWLNothing();
-        classify();
+        // No native work here. Protege stores the reasoner only after this
+        // constructor returns, and interrupt() can reach it only then. The
+        // first query or precomputeInferences classifies (as HermiT does).
     }
 
     // ---- classification -------------------------------------------------
 
     private synchronized void classify() { classify(null, null); }
 
+    /**
+     * Run native work the way HermiT runs a task: report to the progress
+     * monitor of the configuration (started, busy, stopped), end it with
+     * {@link TimeOutException} once {@code getTimeOut()} milliseconds have
+     * passed, and end it with {@link ReasonerInterruptedException} when
+     * {@link #interrupt()} was called. Protege catches only the latter, so a
+     * killed native process must not surface as a plain failure. Callers hold
+     * the reasoner monitor; nested calls join the outer task.
+     */
+    private void runTask(String title, Runnable work) {
+        if (taskDepth > 0) {
+            work.run();
+            return;
+        }
+        ReasonerProgressMonitor monitor = getReasonerConfiguration().getProgressMonitor();
+        long limit = getTimeOut();
+        long generation = ++taskGeneration;
+        interruptRequested = false;
+        timedOut = false;
+        taskDepth++;
+        taskRunning = true;
+        java.util.concurrent.ScheduledFuture<?> timer = null;
+        if (monitor != null) {
+            monitor.reasonerTaskStarted(title);
+            monitor.reasonerTaskBusy();
+        }
+        try {
+            if (limit > 0 && limit < Long.MAX_VALUE) {
+                timer = TIMER.schedule(() -> {
+                    if (taskGeneration == generation) {
+                        timedOut = true;
+                        killNative();
+                    }
+                }, limit, java.util.concurrent.TimeUnit.MILLISECONDS);
+            }
+            try {
+                work.run();
+            } catch (RuntimeException failure) {
+                throw translate(failure);
+            }
+        } finally {
+            if (timer != null) timer.cancel(false);
+            taskRunning = false;
+            taskDepth--;
+            taskGeneration++;
+            if (monitor != null) monitor.reasonerTaskStopped();
+            interruptRequested = false;
+            timedOut = false;
+        }
+    }
+
+    private RuntimeException translate(RuntimeException failure) {
+        if (failure instanceof ReasonerInterruptedException || failure instanceof TimeOutException) {
+            return failure;
+        }
+        if (timedOut) {
+            return new TimeOutException("Kobayashi-MaRust exceeded the time out of "
+                    + getTimeOut() + " ms");
+        }
+        if (interruptRequested || Thread.interrupted()) {
+            return new ReasonerInterruptedException(failure);
+        }
+        return failure;
+    }
+
+    /** Stop the native work of the running task. Does not wait for the reasoner monitor. */
+    private void killNative() {
+        Process realizing = realizeProcess;
+        if (realizing != null) NativeProcessTree.terminateAndWait(realizing);
+        Classifier.Session session = incrementalSession;
+        if (session != null) {
+            session.interrupt();
+            if (incrementalSession == session) incrementalSession = null;
+        }
+    }
+
+    /**
+     * Run the first classification if it has not happened. The ontology
+     * changes buffered since construction are folded into this run: they are
+     * dropped from the pending list first, because the run reads the ontology
+     * as it is now.
+     */
+    private synchronized void ensureClassified() {
+        if (classified) return;
+        if (!getPendingChanges().isEmpty()) flush();
+        runTask(ReasonerProgressMonitor.CLASSIFYING, this::classify);
+    }
+
     private void classify(Set<OWLAxiom> added, Set<OWLAxiom> removed) {
         try {
             classifySource(added, removed);
             sourceSynchronized = true;
+            classified = true;
         } catch (RuntimeException | Error failure) {
             sourceSynchronized = false;
             throw failure;
@@ -105,7 +218,13 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         Classifier.Session session;
         try {
             if (incrementalSession == null) {
-                incrementalSession = new Classifier.Session(candidateSource);
+                // Register the session as soon as its process runs, so interrupt()
+                // reaches the first (longest) transaction too.
+                incrementalSession = new Classifier.Session(candidateSource, s -> {
+                    incrementalSession = s;
+                    // An interrupt or time out that came before the process existed.
+                    if (interruptRequested || timedOut) s.interrupt();
+                });
                 answerChanged = true;
             } else {
                 answerChanged = incrementalSession.replaceRows(candidateSource);
@@ -304,6 +423,18 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         return iri;
     }
 
+    /**
+     * HermiT's checkPreConditions: queries on an inconsistent ontology throw
+     * {@link InconsistentOntologyException} (Reasoner.throwInconsistentOntologyExceptionIfNecessary).
+     * Protege catches it around the classification run and opens its
+     * inconsistency explanation. isConsistent, getTopClassNode,
+     * getBottomClassNode and getUnsatisfiableClasses do not throw here.
+     */
+    private void checkPreConditions() {
+        ensureClassified();
+        if (!consistent) throw new InconsistentOntologyException();
+    }
+
     // ---- node helpers ---------------------------------------------------
 
     private OWLClassNode nodeOfId(int r) {
@@ -349,17 +480,40 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
     // ---- class hierarchy queries ---------------------------------------
 
-    @Override public synchronized Node<OWLClass> getTopClassNode() { return nodeOfId(repId[thingId]); }
-    @Override public synchronized Node<OWLClass> getBottomClassNode() { return nodeOfId(repId[nothingId]); }
+    @Override public synchronized Node<OWLClass> getTopClassNode() {
+        ensureClassified();
+        return nodeOfId(repId[thingId]);
+    }
+    @Override public synchronized Node<OWLClass> getBottomClassNode() {
+        ensureClassified();
+        return nodeOfId(repId[nothingId]);
+    }
+
+    /**
+     * A named class outside the signature. HermiT's default FreshEntityPolicy
+     * (ALLOW) gives it a node of its own with owl:Thing above and owl:Nothing
+     * below (Reasoner.getHierarchyNode); isEntailed follows the same shape.
+     */
+    private boolean isFresh(OWLClassExpression ce) {
+        return ce instanceof OWLClass && !ce.isOWLThing() && !ce.isOWLNothing()
+                && !idByClass.containsKey((OWLClass) ce);
+    }
 
     @Override public synchronized Node<OWLClass> getEquivalentClasses(OWLClassExpression ce) {
+        checkPreConditions();
+        if (isFresh(ce)) return new OWLClassNode(Collections.singleton(ce.asOWLClass()));
         int r = repIdOf(ce);
         return r >= 0 ? nodeOfId(r) : new OWLClassNode();
     }
 
     @Override public synchronized NodeSet<OWLClass> getSuperClasses(OWLClassExpression ce, boolean direct) {
+        checkPreConditions();
         int r = repIdOf(ce);
         OWLClassNodeSet ns = new OWLClassNodeSet();
+        if (isFresh(ce)) {
+            ns.addNode(nodeOfId(repId[thingId]));
+            return ns;
+        }
         if (r < 0) return ns;
         int[] all = supersByRep[r];
         if (all == null || all.length == 0) return ns;
@@ -372,8 +526,13 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     @Override public synchronized NodeSet<OWLClass> getSubClasses(OWLClassExpression ce, boolean direct) {
+        checkPreConditions();
         int r = repIdOf(ce);
         OWLClassNodeSet ns = new OWLClassNodeSet();
+        if (isFresh(ce)) {
+            ns.addNode(nodeOfId(repId[nothingId]));
+            return ns;
+        }
         if (r < 0) return ns;
         int[][] subs = ensureSubsByRep();
         int[] all = subs[r];
@@ -426,20 +585,38 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         return count == buf.length ? buf : Arrays.copyOf(buf, count);
     }
 
-    @Override public synchronized Node<OWLClass> getUnsatisfiableClasses() { return nodeOfId(repId[nothingId]); }
+    @Override public synchronized Node<OWLClass> getUnsatisfiableClasses() {
+        ensureClassified();
+        return nodeOfId(repId[nothingId]);
+    }
 
-    @Override public synchronized boolean isConsistent() { return consistent; }
+    @Override public synchronized boolean isConsistent() {
+        ensureClassified();
+        return consistent;
+    }
 
     @Override public synchronized boolean isSatisfiable(OWLClassExpression ce) {
-        if (!consistent) return false;
+        checkPreConditions();
+        if (ce.isAnonymous()) {
+            // The taxonomy cannot decide an anonymous expression, and answering
+            // "satisfiable" would be wrong for unsatisfiable ones. Protege's
+            // frame sections and DL Query catch exceptions from the reasoner;
+            // ClassExpressionNotInProfileException is the one the OWLReasoner
+            // interface declares for isSatisfiable.
+            // TODO W5: decide anonymous expressions with a fresh definition Q = CE.
+            throw new ClassExpressionNotInProfileException(ce, NOT_DECIDED_PROFILE);
+        }
         if (ce.isOWLNothing()) return false;
         int r = repIdOf(ce);
-        if (r < 0) return true; // unknown complex expression: not refuted
+        if (r < 0) return true; // a class outside the signature is satisfiable
         return r != repId[nothingId];
     }
 
     /** convenience for tests: dropped-clause count from the last classification. */
-    public synchronized int getDroppedClauseCount() { return dropped; }
+    public synchronized int getDroppedClauseCount() {
+        ensureClassified();
+        return dropped;
+    }
 
     /** Last native transaction receipt; null for the initial revision. */
     public synchronized Classifier.IncrementalReceipt getLastIncrementalReceipt() {
@@ -448,6 +625,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
     /** A detached copy of the source snapshot backing the current answers. */
     public synchronized OWLOntology getCommittedOntologySnapshot() {
+        ensureClassified();
         if (!serialized.hasCommittedRevision()) {
             throw new ReasonerInternalException("KM has no committed ontology revision");
         }
@@ -487,20 +665,28 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     @Override public synchronized void precomputeInferences(InferenceType... types) {
-        // The class hierarchy is computed in the constructor and on flush.
-        // Individual inferences cost one more native run, made on demand.
+        checkPreConditions();
+        // checkPreConditions has classified. Individual inferences cost one
+        // more native run, made on demand.
         for (InferenceType type : types) {
             if (type == InferenceType.CLASS_ASSERTIONS || type == InferenceType.SAME_INDIVIDUAL) {
                 ensureRealized();
             }
         }
     }
-    @Override public synchronized boolean isPrecomputed(InferenceType inferenceType) {
+    /**
+     * True only for a type whose answer is held now: the class hierarchy once
+     * classified, the individual types once realized. Every other type is
+     * not computed at all. Not synchronized: Protege may ask while a
+     * classification runs on another thread.
+     */
+    @Override public boolean isPrecomputed(InferenceType inferenceType) {
+        if (inferenceType == InferenceType.CLASS_HIERARCHY) return classified;
         if (inferenceType == InferenceType.CLASS_ASSERTIONS
                 || inferenceType == InferenceType.SAME_INDIVIDUAL) {
             return realized != null;
         }
-        return true;
+        return false;
     }
     @Override public Set<InferenceType> getPrecomputableInferenceTypes() {
         return new HashSet<>(Arrays.asList(InferenceType.CLASS_HIERARCHY,
@@ -508,6 +694,23 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     @Override public synchronized void flush() {
+        if (!classified) {
+            // Nothing is committed yet, so there is nothing to update: drop the
+            // pending list (handleChanges ignores it) and let the first
+            // classification read the ontology as it is.
+            super.flush();
+            return;
+        }
+        // Nothing pending and in step with the native session: nothing to do,
+        // so no progress report either.
+        if (getPendingChanges().isEmpty() && sourceSynchronized
+                && RetainedFunctionalSyntax.importsView(getRootOntology()).equals(committedImports)) {
+            return;
+        }
+        runTask(ReasonerProgressMonitor.CLASSIFYING, this::flushClassified);
+    }
+
+    private void flushClassified() {
         // OWLReasonerBase advances its private bookkeeping before handleChanges
         // succeeds. Its effective delta is usable only while both revisions agree.
         Set<OWLOntology> closure = RetainedFunctionalSyntax.importsView(getRootOntology());
@@ -540,18 +743,21 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     @Override protected void handleChanges(Set<OWLAxiom> addAxioms, Set<OWLAxiom> removeAxioms) {
         FlushContext context = flushContext;
         if (context != null) context.handled = true;
+        if (!classified) return;
         if (context != null && context.allowDelta) classify(addAxioms, removeAxioms);
         else classify();
     }
 
+    /**
+     * Cancel the running classification or realization. Like HermiT's
+     * interrupt flag it has no effect when nothing runs, and the thread that
+     * computes then fails with {@link ReasonerInterruptedException}. Not
+     * synchronized: the computing thread holds the reasoner monitor.
+     */
     @Override public void interrupt() {
-        Process realizing = realizeProcess;
-        if (realizing != null) NativeProcessTree.terminateAndWait(realizing);
-        Classifier.Session session = incrementalSession;
-        if (session != null) {
-            session.interrupt();
-            if (incrementalSession == session) incrementalSession = null;
-        }
+        if (!taskRunning) return;
+        interruptRequested = true;
+        killNative();
     }
 
     @Override public synchronized void dispose() {
@@ -565,6 +771,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     // ---- entailment ----------------------------------------------------
 
     @Override public synchronized boolean isEntailed(OWLAxiom axiom) {
+        checkPreConditions();
         if (axiom instanceof OWLClassAssertionAxiom) return isEntailedClassAssertion((OWLClassAssertionAxiom) axiom);
         if (axiom instanceof OWLSameIndividualAxiom) return isEntailedSameIndividual((OWLSameIndividualAxiom) axiom);
         if (!(axiom instanceof OWLSubClassOfAxiom)) {
@@ -577,22 +784,30 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         }
         OWLClass sub = subClassOf.getSubClass().asOWLClass();
         OWLClass sup = subClassOf.getSuperClass().asOWLClass();
-        // Classical OWL semantics: inconsistency entails every supported
-        // query; bottom and an unsatisfiable named class entail every class.
-        if (!consistent || sub.isOWLNothing() || sup.isOWLThing() || sub.equals(sup)) {
+        // Bottom and an unsatisfiable named class entail every class.
+        if (sub.isOWLNothing() || sup.isOWLThing() || sub.equals(sup)) {
             return true;
         }
         int subRep = repIdOf(sub);
         if (subRep >= 0 && subRep == repId[nothingId]) return true;
         int supRep = repIdOf(sup);
-        if (subRep < 0 || supRep < 0) return false;
+        // A class outside the signature is only below owl:Thing and above
+        // owl:Nothing (and unsatisfiable classes, handled above).
+        if (subRep < 0 && supRep < 0) return false;
+        if (subRep < 0) return supRep == repId[thingId];
+        if (supRep < 0) return false;
         if (subRep == supRep) return true;
         int[] sups = supersByRep[subRep];
         return sups != null && Arrays.binarySearch(sups, supRep) >= 0;
     }
 
     @Override public synchronized boolean isEntailed(Set<? extends OWLAxiom> axioms) {
-        for (OWLAxiom a : axioms) if (!isEntailed(a)) return false;
+        checkPreConditions();
+        // HermiT's EntailmentChecker.entails(Set) skips non-logical axioms
+        // (annotations, declarations); they hold in every ontology.
+        for (OWLAxiom a : axioms) {
+            if (a.isLogicalAxiom() && !isEntailed(a)) return false;
+        }
         return true;
     }
 
@@ -619,7 +834,14 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     private Realized ensureRealized() {
+        ensureClassified();
         if (realized != null) return realized;
+        Realized[] out = new Realized[1];
+        runTask(ReasonerProgressMonitor.REALIZING, () -> out[0] = realizeNow());
+        return out[0];
+    }
+
+    private Realized realizeNow() {
         Realized built = new Realized();
         if (!consistent) {
             // Like the class queries, answer an inconsistent ontology with empty sets.
@@ -635,7 +857,12 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                 result = new Classifier.Realization();
             } else {
                 result = Classifier.realize(FlattenedOntology.functionalSyntaxOfSnapshot(snapshot),
-                        process -> realizeProcess = process);
+                        process -> {
+                            realizeProcess = process;
+                            if (process != null && (interruptRequested || timedOut)) {
+                                NativeProcessTree.terminateAndWait(process);
+                            }
+                        });
             }
             if (!result.consistent) {
                 realized = built;
@@ -724,6 +951,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     @Override public synchronized NodeSet<OWLClass> getTypes(OWLNamedIndividual ind, boolean direct) {
+        checkPreConditions();
         OWLClassNodeSet ns = new OWLClassNodeSet();
         Realized data = ensureRealized();
         if (!consistent) return ns;
@@ -739,6 +967,10 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
     @Override public synchronized NodeSet<OWLNamedIndividual> getInstances(OWLClassExpression ce, boolean direct) {
         OWLNamedIndividualNodeSet ns = new OWLNamedIndividualNodeSet();
+        // HermiT checks the preconditions only when the ontology has individuals.
+        if (!consistent && !getRootOntology().getIndividualsInSignature(Imports.INCLUDED).isEmpty()) {
+            throw new InconsistentOntologyException();
+        }
         if (ce.isAnonymous()) {
             // TODO W5: class expression queries (DL Query) via a fresh definition Q = CE.
             return ns;
@@ -759,6 +991,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     @Override public synchronized Node<OWLNamedIndividual> getSameIndividuals(OWLNamedIndividual ind) {
+        checkPreConditions();
         Realized data = ensureRealized();
         Integer c = consistent ? data.componentOf.get(ind) : null;
         return c == null ? new OWLNamedIndividualNode(ind)
@@ -802,28 +1035,88 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private static final NodeSet<OWLClass> EMPTY_C = new OWLClassNodeSet();
     private static final NodeSet<OWLNamedIndividual> EMPTY_I = new OWLNamedIndividualNodeSet();
 
-    @Override public NodeSet<OWLClass> getDisjointClasses(OWLClassExpression ce) { return EMPTY_C; }
-    @Override public NodeSet<OWLClass> getObjectPropertyDomains(OWLObjectPropertyExpression pe, boolean direct) { return EMPTY_C; }
-    @Override public NodeSet<OWLClass> getObjectPropertyRanges(OWLObjectPropertyExpression pe, boolean direct) { return EMPTY_C; }
-    @Override public NodeSet<OWLClass> getDataPropertyDomains(OWLDataProperty pe, boolean direct) { return EMPTY_C; }
+    @Override public synchronized NodeSet<OWLClass> getDisjointClasses(OWLClassExpression ce) {
+        checkPreConditions();
+        return EMPTY_C;
+    }
+    @Override public synchronized NodeSet<OWLClass> getObjectPropertyDomains(OWLObjectPropertyExpression pe, boolean direct) {
+        checkPreConditions();
+        return EMPTY_C;
+    }
+    @Override public synchronized NodeSet<OWLClass> getObjectPropertyRanges(OWLObjectPropertyExpression pe, boolean direct) {
+        checkPreConditions();
+        return EMPTY_C;
+    }
+    @Override public synchronized NodeSet<OWLClass> getDataPropertyDomains(OWLDataProperty pe, boolean direct) {
+        checkPreConditions();
+        return EMPTY_C;
+    }
 
     @Override public Node<OWLObjectPropertyExpression> getTopObjectPropertyNode() { return new OWLObjectPropertyNode(df.getOWLTopObjectProperty()); }
     @Override public Node<OWLObjectPropertyExpression> getBottomObjectPropertyNode() { return new OWLObjectPropertyNode(df.getOWLBottomObjectProperty()); }
     @Override public Node<OWLDataProperty> getTopDataPropertyNode() { return new OWLDataPropertyNode(df.getOWLTopDataProperty()); }
     @Override public Node<OWLDataProperty> getBottomDataPropertyNode() { return new OWLDataPropertyNode(df.getOWLBottomDataProperty()); }
 
-    @Override public NodeSet<OWLObjectPropertyExpression> getSubObjectProperties(OWLObjectPropertyExpression pe, boolean direct) { return new OWLObjectPropertyNodeSet(); }
-    @Override public NodeSet<OWLObjectPropertyExpression> getSuperObjectProperties(OWLObjectPropertyExpression pe, boolean direct) { return new OWLObjectPropertyNodeSet(); }
-    @Override public Node<OWLObjectPropertyExpression> getEquivalentObjectProperties(OWLObjectPropertyExpression pe) { return new OWLObjectPropertyNode(pe); }
-    @Override public NodeSet<OWLObjectPropertyExpression> getDisjointObjectProperties(OWLObjectPropertyExpression pe) { return new OWLObjectPropertyNodeSet(); }
-    @Override public Node<OWLObjectPropertyExpression> getInverseObjectProperties(OWLObjectPropertyExpression pe) { return new OWLObjectPropertyNode(pe); }
-    @Override public NodeSet<OWLNamedIndividual> getObjectPropertyValues(OWLNamedIndividual ind, OWLObjectPropertyExpression pe) { return EMPTY_I; }
+    @Override public synchronized NodeSet<OWLObjectPropertyExpression> getSubObjectProperties(OWLObjectPropertyExpression pe, boolean direct) {
+        checkPreConditions();
+        return new OWLObjectPropertyNodeSet();
+    }
+    @Override public synchronized NodeSet<OWLObjectPropertyExpression> getSuperObjectProperties(OWLObjectPropertyExpression pe, boolean direct) {
+        checkPreConditions();
+        return new OWLObjectPropertyNodeSet();
+    }
+    @Override public synchronized Node<OWLObjectPropertyExpression> getEquivalentObjectProperties(OWLObjectPropertyExpression pe) {
+        checkPreConditions();
+        return new OWLObjectPropertyNode(pe);
+    }
+    @Override public synchronized NodeSet<OWLObjectPropertyExpression> getDisjointObjectProperties(OWLObjectPropertyExpression pe) {
+        checkPreConditions();
+        return new OWLObjectPropertyNodeSet();
+    }
+    /**
+     * Without property inference the answer holds only the inverse expression
+     * itself. HermiT answers {@code getEquivalentObjectProperties(pe^-)}
+     * (Reasoner.getInverseObjectProperties); {@code pe^-} is a member of that
+     * node by reflexivity, so this is incomplete but never wrong. The top and
+     * bottom properties are their own inverses.
+     * TODO W2-plugin: add the properties the engine reports as equivalent to pe^-.
+     */
+    @Override public synchronized Node<OWLObjectPropertyExpression> getInverseObjectProperties(OWLObjectPropertyExpression pe) {
+        checkPreConditions();
+        OWLObjectPropertyExpression simple = pe.getSimplified();
+        if (simple.isOWLTopObjectProperty() || simple.isOWLBottomObjectProperty()) {
+            return new OWLObjectPropertyNode(simple);
+        }
+        return new OWLObjectPropertyNode(simple.getInverseProperty().getSimplified());
+    }
+    @Override public synchronized NodeSet<OWLNamedIndividual> getObjectPropertyValues(OWLNamedIndividual ind, OWLObjectPropertyExpression pe) {
+        checkPreConditions();
+        return EMPTY_I;
+    }
 
-    @Override public NodeSet<OWLDataProperty> getSubDataProperties(OWLDataProperty pe, boolean direct) { return new OWLDataPropertyNodeSet(); }
-    @Override public NodeSet<OWLDataProperty> getSuperDataProperties(OWLDataProperty pe, boolean direct) { return new OWLDataPropertyNodeSet(); }
-    @Override public Node<OWLDataProperty> getEquivalentDataProperties(OWLDataProperty pe) { return new OWLDataPropertyNode(pe); }
-    @Override public NodeSet<OWLDataProperty> getDisjointDataProperties(OWLDataPropertyExpression pe) { return new OWLDataPropertyNodeSet(); }
-    @Override public Set<OWLLiteral> getDataPropertyValues(OWLNamedIndividual ind, OWLDataProperty pe) { return Collections.emptySet(); }
+    @Override public synchronized NodeSet<OWLDataProperty> getSubDataProperties(OWLDataProperty pe, boolean direct) {
+        checkPreConditions();
+        return new OWLDataPropertyNodeSet();
+    }
+    @Override public synchronized NodeSet<OWLDataProperty> getSuperDataProperties(OWLDataProperty pe, boolean direct) {
+        checkPreConditions();
+        return new OWLDataPropertyNodeSet();
+    }
+    @Override public synchronized Node<OWLDataProperty> getEquivalentDataProperties(OWLDataProperty pe) {
+        checkPreConditions();
+        return new OWLDataPropertyNode(pe);
+    }
+    @Override public synchronized NodeSet<OWLDataProperty> getDisjointDataProperties(OWLDataPropertyExpression pe) {
+        checkPreConditions();
+        return new OWLDataPropertyNodeSet();
+    }
+    @Override public synchronized Set<OWLLiteral> getDataPropertyValues(OWLNamedIndividual ind, OWLDataProperty pe) {
+        checkPreConditions();
+        return Collections.emptySet();
+    }
 
-    @Override public NodeSet<OWLNamedIndividual> getDifferentIndividuals(OWLNamedIndividual ind) { return EMPTY_I; }
+    @Override public synchronized NodeSet<OWLNamedIndividual> getDifferentIndividuals(OWLNamedIndividual ind) {
+        checkPreConditions();
+        return EMPTY_I;
+    }
 }

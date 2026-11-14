@@ -88,8 +88,13 @@ public class ReasonerTest {
         OWLReasoner inconsistentReasoner =
                 new KMReasonerFactory().createReasoner(inconsistent);
         assertFalse(inconsistentReasoner.isConsistent());
-        assertTrue(inconsistentReasoner.isEntailed(
-                dataFactory.getOWLSubClassOfAxiom(a, b)));
+        try {
+            // Like HermiT, an inconsistent ontology throws instead of entailing everything.
+            inconsistentReasoner.isEntailed(dataFactory.getOWLSubClassOfAxiom(a, b));
+            fail("inconsistent ontology should throw");
+        } catch (org.semanticweb.owlapi.reasoner.InconsistentOntologyException expected) {
+            // Protege opens its inconsistency explanation on this exception.
+        }
         inconsistentReasoner.dispose();
     }
 
@@ -162,8 +167,10 @@ public class ReasonerTest {
         m.applyChange(new AddImport(root, m.getOWLDataFactory()
                 .getOWLImportsDeclaration(IRI.create(NS + "missing"))));
 
+        // The constructor does no native work; the first query classifies.
+        OWLReasoner reasoner = new KMReasonerFactory().createReasoner(root);
         try {
-            new KMReasonerFactory().createReasoner(root);
+            reasoner.isConsistent();
             fail("unresolved import should fail");
         } catch (org.semanticweb.owlapi.reasoner.ReasonerInternalException expected) {
             assertTrue(expected.getCause().getMessage().contains("has not loaded"));
