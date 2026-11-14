@@ -373,3 +373,5 @@ import ContextCalculus.SROIQ.Regular
 import ContextCalculus.SROIQ.RegularCheck
 import ContextCalculus.SROIQ.Automaton
 import ContextCalculus.SROIQ.AutomatonFin
+import ContextCalculus.SROIQ.ChainEnc
+import ContextCalculus.SROIQ.ChainEncN
