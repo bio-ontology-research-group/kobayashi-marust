@@ -1,0 +1,5 @@
+Prefix(:=<http://example.org/t#>)
+Ontology(<http://example.org/t>
+TransitiveObjectProperty(:r)
+SubClassOf(:A ObjectMaxCardinality(1 :r :B))
+)

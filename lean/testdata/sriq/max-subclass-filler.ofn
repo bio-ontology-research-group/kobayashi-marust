@@ -1,0 +1,6 @@
+Prefix(:=<http://example.org/t#>)
+Ontology(<http://example.org/t>
+SubClassOf(:C :B)
+SubClassOf(:C ObjectMaxCardinality(0 :r :B))
+SubClassOf(:C ObjectMinCardinality(1 :r :C))
+)

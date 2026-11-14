@@ -1,0 +1,5 @@
+Prefix(:=<http://example.org/t#>)
+Ontology(<http://example.org/t>
+SubClassOf(:A ObjectMinCardinality(2 ObjectInverseOf(:r)))
+InverseFunctionalObjectProperty(:r)
+)

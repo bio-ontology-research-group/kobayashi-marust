@@ -11,7 +11,7 @@ Command-line wrapper over `OWLFrontend.owlReferenceSHI`,
 document:
 
 ```
-km-owl-reference [--procedure el|sri|el-then-sri|alc|el-then-alc] <file.ofn>
+km-owl-reference [--procedure el|sri|el-then-sri|sriq|el-then-sriq|alc|el-then-alc] <file.ofn>
 ```
 
 1. read the file and run `OWL.parse` (a rejection declines);
@@ -21,8 +21,9 @@ km-owl-reference [--procedure el|sri|el-then-sri|alc|el-then-alc] <file.ofn>
    declines);
 3. run the route: `el` is `owlELReference`, `sri` is `owlSRIReference` (the
    SHI route), `el-then-sri` (default) is `owlReferenceSHI`, EL first, then
-   SHI; `alc` is `owlALCReference`, `el-then-alc` is `owlReference`, EL
-   first, then ALC. The SHI route has no concept budget. It declines when
+   SHI; `sriq` is `owlSHIQReference` (the v1.7.0 SHIQ route),
+   `el-then-sriq` is `owlReferenceSHIQ`, EL, then SHI, then SHIQ; `alc` is
+   `owlALCReference`, `el-then-alc` is `owlReference`, EL first, then ALC. The SHI route has no concept budget. It declines when
    the ontology is outside the SRI fragment, or when a property chain is
    neither a plain inclusion nor `ObjectPropertyChain(r r)` below `r`; the
    reason names the first such axiom. `owlReferenceSHI_complete` says this
@@ -31,7 +32,12 @@ km-owl-reference [--procedure el|sri|el-then-sri|alc|el-then-alc] <file.ofn>
    v1.6.0 stage: it declines with `alc budget: N concept names` when the
    ALC translation's `conceptCount` exceeds `KM_ALC_REFERENCE_MAX_CONCEPTS`
    (default `16`). The budget is a resource bound outside the completeness
-   theorem;
+   theorem. The SHIQ route declines outside the SHIQ part, and when a role
+   of a number restriction or of a functionality axiom has a transitive role
+   below it or below its inverse (the OWL 2 DL simple-role restriction); the
+   reason names the two roles. `owlSHIQReference_isSome_iff` says it
+   publishes exactly on the other ontologies. It has no budget: its star
+   elimination is exponential in the number of concept and role indices;
 4. publish through `publish`, which takes the route's equation
    (`RouteAnswer`), so its type records which theorem covers the output:
    `routeAnswer_exact` gives the conclusion of `owlReference_sound` (and of
@@ -41,7 +47,7 @@ km-owl-reference [--procedure el|sri|el-then-sri|alc|el-then-alc] <file.ofn>
 
 Output (`format` `owl-sparse-v1`), streamed:
 `{"format":"owl-sparse-v1","procedure":"el","inconsistent":false,"unsat":[IRIs],"rows":[{"sub":IRI,"sups":[IRIs]},...]}`.
-`procedure` names the route that answered: `el`, `sri` or `alc`.
+`procedure` names the route that answered: `el`, `sri`, `sriq` or `alc`.
 `inconsistent` is the probe bit `probe-a ⊑ probe-b`; `unsat` lists the classes
 `A` with `A ⊑ probe-b`; one row per satisfiable class lists its class
 superclasses (itself included). An inconsistent ontology prints empty `unsat`
@@ -51,8 +57,8 @@ Exit codes: `0` publish, `2` usage or unreadable input file
 (`failed to read <path>: ...`), `3` decline (reason on stderr), `4` any later
 IO error (`io error: ...`). With `KM_REFERENCE_TIMING=1` every phase prints
 `KM_REFERENCE_TIMING phase=<name> ms=<ms>` on stderr: `read`, `parse`,
-`names`, `translate`, `closure` (EL), `transitivity` and `classify` (SHI) or
-`types` (ALC), `rows`, `readout`, `output`, `total`.
+`names`, `translate`, `closure` (EL), `transitivity` and `classify` (SHI and
+SHIQ) or `types` (ALC), `rows`, `readout`, `output`, `total`.
 
 Loops over input-sized lists are tail recursive (`foldl`, `filter`,
 `filterMap`, `map` and `append` compile to their tail-recursive twins), and
@@ -194,6 +200,19 @@ theorem owlSRIReference_of_translate {O : OWL.Ontology} {requested : List OWL.IR
   simp only [owlSRIReference, hT, hS, if_true]
   rfl
 
+/-- The SHIQ answer with the transitivity encoding passed in (the body of
+`owlSHIQReference`). -/
+def sriqAnswerOf (T : SRIQTranslation)
+    (E : Σ k, SRIQ.Ontology (Fin (T.conceptCount + k)) (Fin T.roleCount)) : OWLAnswer :=
+  { named := T.named, rows := sriqRows T (QProc.classifyQO E.2 (sriqRequest T E.1)) }
+
+theorem owlSHIQReference_of_translate {O : OWL.Ontology} {requested : List OWL.IRI}
+    {T : SRIQTranslation} (hT : translateSRIQ O requested = some T)
+    (hS : isSHIQB T.ontology = true) :
+    owlSHIQReference O requested = some (sriqAnswerOf T (SRIQ.Proc.encTransQ T.ontology)) := by
+  simp only [owlSHIQReference, hT, hS, if_true]
+  rfl
+
 /-- What a route run gives: an answer with its equation, or a decline. -/
 inductive Run (P : OWLAnswer → Prop) (Q : Prop) where
   | published (a : OWLAnswer) (h : P a)
@@ -254,6 +273,66 @@ def runSRI (timing : Bool) (O : OWL.Ontology) (requested : List OWL.IRI) :
     else
       return .declined s!"not SHI: property chain outside SHI: {firstOutsideSHI O}"
 
+/-- The SHI route for `el-then-sriq`: a decline of the chain check is a
+proof that the route gives `none`, so the SHIQ route runs next. -/
+def runSRIOrNone (timing : Bool) (O : OWL.Ontology) (requested : List OWL.IRI) :
+    IO (Run (fun a => owlSRIReference O requested = some a)
+      (owlSRIReference O requested = none)) := do
+  let ⟨tOpt, ht⟩ ← timedPhase timing "translate" (fun _ => translateSRI O requested)
+  match tOpt, ht with
+  | none, ht => return .notApplicable (by simp [owlSRIReference, ← ht])
+  | some T, ht =>
+    if hS : isSHIB T.ontology = true then
+      let ⟨E, hE⟩ ← timedPhase timing "transitivity" (fun _ => SRI.Proc.encTrans T.ontology)
+      let ⟨cls, hcls⟩ ← timedPhase timing "classify" (fun _ =>
+        SRI.Proc.classifyF E.2 (sriRequest T E.1))
+      let ⟨a, ha⟩ ← timedPhase timing "rows" (fun _ =>
+        ({ named := T.named, rows := sriRows T cls } : OWLAnswer))
+      return .published a (by
+        rw [owlSRIReference_of_translate ht.symm hS, ha, hcls, hE]
+        rfl)
+    else
+      return .notApplicable (by simp [owlSRIReference, ← ht, hS])
+
+/-- The IRI of role index `k` of the SHIQ translation, for a decline
+reason. -/
+def sriqRoleText (O : OWL.Ontology) (requested : List OWL.IRI) {m : Nat} :
+    SRI.RoleT (Fin m) → String
+  | .pos k => s!"<{(((SRIQT.run O requested).1.b.rdefs[k.val]?).bind List.head?).getD "?"}>"
+  | .inv k =>
+    s!"ObjectInverseOf(<{(((SRIQT.run O requested).1.b.rdefs[k.val]?).bind List.head?).getD "?"}>)"
+
+/-- The first pair `(T, R)` that fails the simple-role check: `T` transitive
+and below `R` or below the inverse of `R`, `R` a role of a counting clause. -/
+def nonSimpleWitness {n m : Nat} (O : SRIQ.Ontology (Fin n) (Fin m)) :
+    Option (SRI.RoleT (Fin m) × SRI.RoleT (Fin m)) :=
+  (transRoles O).findSome? fun T =>
+    let up := SRI.Proc.roleUp (SRIQ.sriPart O) T
+    ((countRoles O).find? fun R => up.contains R || up.contains R.flip).map fun R => (T, R)
+
+def runSRIQ (timing : Bool) (O : OWL.Ontology) (requested : List OWL.IRI) :
+    IO (Run (fun a => owlSHIQReference O requested = some a) True) := do
+  let ⟨tOpt, ht⟩ ← timedPhase timing "translate" (fun _ => translateSRIQ O requested)
+  match tOpt, ht with
+  | none, _ => return .notApplicable trivial
+  | some T, ht =>
+    if hS : isSHIQB T.ontology = true then
+      let ⟨E, hE⟩ ← timedPhase timing "transitivity" (fun _ => SRIQ.Proc.encTransQ T.ontology)
+      let ⟨cls, hcls⟩ ← timedPhase timing "classify" (fun _ =>
+        QProc.classifyQO E.2 (sriqRequest T E.1))
+      let ⟨a, ha⟩ ← timedPhase timing "rows" (fun _ =>
+        ({ named := T.named, rows := sriqRows T cls } : OWLAnswer))
+      return .published a (by
+        rw [owlSHIQReference_of_translate ht.symm hS, ha, hcls, hE]
+        rfl)
+    else
+      match nonSimpleWitness T.ontology with
+      | some (tr, R) =>
+        return .declined
+          s!"not SHIQ: non-simple role in a number restriction or functionality axiom: {sriqRoleText O requested R} has the transitive role {sriqRoleText O requested tr} below it or below its inverse"
+      | none =>
+        return .declined s!"not SHIQ: property chain outside SHIQ: {firstOutsideSHI O}"
+
 /-! ### Output -/
 
 /-- Stream `items` as comma-separated JSON fragments, at most 4096 items per
@@ -275,12 +354,14 @@ def procedureName : OWLProcedure → String
   | .elThenAlc => "el-then-alc"
   | .sri => "sri"
   | .elThenSri => "el-then-sri"
+  | .sriq => "sriq"
+  | .elThenSriq => "el-then-sriq"
 
 /-- Publish the readout of an answer to `probeRequest O`. The proof argument
 records in the type that the answer comes from the route's equation; with the
 freshness of the probes, `owlReadout_exact` gives the meaning of every printed
 field under the OWL 2 direct semantics. `route` names the route that answered
-(`el`, `sri` or `alc`). -/
+(`el`, `sri`, `sriq` or `alc`). -/
 def publish (timing : Bool) (route : String) (p : OWLProcedure) (O : OWL.Ontology)
     (a : OWLAnswer) (_h : RouteAnswer p O (probeRequest O) a)
     (_hA : probeA ∉ O.classNames) (_hB : probeB ∉ O.classNames) : IO UInt32 := do
@@ -353,6 +434,35 @@ def runOntology (timing : Bool) (p : OWLProcedure) (O : OWL.Ontology) : IO UInt3
         | .notApplicable _ =>
           decline s!"not recognised: neither OWL EL ({firstFailing O OWL.Axiom.isEL}) nor OWL SRI ({firstFailing O OWL.Axiom.isSRI})"
         | .declined reason => decline reason
+    | .sriq =>
+      match ← runSRIQ timing O requested with
+      | .published a h => publish timing "sriq" .sriq O a h hA hB
+      | .notApplicable _ =>
+        decline s!"not recognised: not OWL SHIQ ({firstFailing O OWL.Axiom.isSHIQ})"
+      | .declined reason => decline reason
+    | .elThenSriq =>
+      match ← runEL timing O requested with
+      | .published a h =>
+        publish timing "el" .elThenSriq O a
+          (show owlReferenceSHIQ O requested = some a by
+            simp [owlReferenceSHIQ, owlReferenceSHI, h]) hA hB
+      | .declined reason => decline reason
+      | .notApplicable hEL =>
+        match ← runSRIOrNone timing O requested with
+        | .published a h =>
+          publish timing "sri" .elThenSriq O a
+            (show owlReferenceSHIQ O requested = some a by
+              simp [owlReferenceSHIQ, owlReferenceSHI, hEL, h]) hA hB
+        | .declined reason => decline reason
+        | .notApplicable hSRI =>
+          match ← runSRIQ timing O requested with
+          | .published a h =>
+            publish timing "sriq" .elThenSriq O a
+              (show owlReferenceSHIQ O requested = some a by
+                simp [owlReferenceSHIQ, owlReferenceSHI, hEL, hSRI, h]) hA hB
+          | .notApplicable _ =>
+            decline s!"not recognised: neither OWL EL ({firstFailing O OWL.Axiom.isEL}) nor OWL SHIQ ({firstFailing O OWL.Axiom.isSHIQ})"
+          | .declined reason => decline reason
     | .elThenAlc =>
       match ← runEL timing O requested with
       | .published a h =>
@@ -381,6 +491,8 @@ def parseProcedure : String → Option OWLProcedure
   | "el-then-alc" => some .elThenAlc
   | "sri" => some .sri
   | "el-then-sri" => some .elThenSri
+  | "sriq" => some .sriq
+  | "el-then-sriq" => some .elThenSriq
   | _ => none
 
 def parseArgs (p : OWLProcedure) (path : Option String) :
@@ -424,6 +536,6 @@ end KMOWLReferenceCheck
 def main (args : List String) : IO UInt32 := do
   match KMOWLReferenceCheck.parseArgs .elThenSri none args with
   | none =>
-    IO.eprintln "usage: km-owl-reference [--procedure el|sri|el-then-sri|alc|el-then-alc] <file.ofn> (default el-then-sri)"
+    IO.eprintln "usage: km-owl-reference [--procedure el|sri|el-then-sri|sriq|el-then-sriq|alc|el-then-alc] <file.ofn> (default el-then-sri)"
     return 2
   | some (p, path) => KMOWLReferenceCheck.runFile p path
