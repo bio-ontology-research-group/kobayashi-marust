@@ -60,6 +60,11 @@ import ContextCalculus.SRIQ.ABox
 import ContextCalculus.SRIQ.ABoxProcedure
 import ContextCalculus.SRIQ.ABoxTests
 import ContextCalculus.SRIQ.Realization
+import ContextCalculus.SRIQ.FastDefs
+import ContextCalculus.SRIQ.FastBasic
+import ContextCalculus.SRIQ.FastSound
+import ContextCalculus.SRIQ.FastComplete
+import ContextCalculus.SRIQ.FastCheck
 import ContextCalculus.SRIQD.NormalForm
 import ContextCalculus.SRIQD.Stars
 import ContextCalculus.SRIQD.OracleExamples
@@ -82,6 +87,7 @@ import ContextCalculus.OWLFrontend.SRIQTranslate
 import ContextCalculus.OWLFrontend.SRIQTranslateCorrect
 import ContextCalculus.OWLFrontend.SRIQTranslateTests
 import ContextCalculus.OWLFrontend.SRIQReference
+import ContextCalculus.OWLFrontend.SRIQFastRoute
 import ContextCalculus.OWLFrontend.SRIQComplete
 import ContextCalculus.OWL.FragmentSHIQKB
 import ContextCalculus.OWLFrontend.SRIQKBTranslate
