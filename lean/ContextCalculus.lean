@@ -327,3 +327,4 @@ import ContextCalculus.OWL.Datatypes.CellsEval
 import ContextCalculus.OWL.Datatypes.Oracle
 import ContextCalculus.OWL.Datatypes.OracleTests
 import ContextCalculus.OWL.EntailsAt
+import ContextCalculus.OWLFrontend.SRIQModels
