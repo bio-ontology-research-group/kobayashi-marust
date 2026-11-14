@@ -336,3 +336,4 @@ import ContextCalculus.OWLFrontend.SRIQDReference
 import ContextCalculus.OWLFrontend.ReadoutAt
 import ContextCalculus.OWLFrontend.SRIQDComplete
 import ContextCalculus.OWLFrontend.SRIQDTests
+import ContextCalculus.OWL.Datatypes.OracleObstacle
