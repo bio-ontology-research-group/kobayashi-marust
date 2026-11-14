@@ -168,7 +168,8 @@ theorem translateSRIQD_correct (pat : String → String → Prop) {O : Ontology}
     intro cl hcl
     obtain ⟨⟨e, k⟩, hek, l, hf, hcl⟩ := SRIQKB.collect_mem hdc cl hcl
     have hk := List.mem_zipIdx_iff_getElem?.1 hek
-    simp only at hk hf
+    simp only at hk
+    unfold dataClauseOf at hf
     split at hf
     · rename_i F W u hF hW hu
       split_ifs at hf with hk'
@@ -185,7 +186,7 @@ theorem translateSRIQD_correct (pat : String → String → Prop) {O : Ontology}
     have hek : (e, (table O).idxOf e) ∈ (table O).zipIdx := List.mem_zipIdx_iff_getElem?.2 (by
       rw [List.getElem?_eq_getElem (List.idxOf_lt_length_of_mem he), List.getElem_idxOf])
     obtain ⟨l, hf, hl⟩ := SRIQKB.collect_some hdc _ hek
-    simp only at hf
+    unfold dataClauseOf at hf
     split at hf
     · rename_i F W u hF hW hu
       split_ifs at hf with hk'
@@ -197,6 +198,7 @@ theorem translateSRIQD_correct (pat : String → String → Prop) {O : Ontology}
       (dprops O)[u] = pq.1 ∧ (dprops O)[w] = pq.2 ∧ cl = .dSub u w := by
     intro cl hcl
     obtain ⟨pq, hpq, l, hf, hcl⟩ := SRIQKB.collect_mem hsc cl hcl
+    unfold subClauseOf at hf
     split at hf
     · rename_i u w hu hw
       cases hf
@@ -207,6 +209,7 @@ theorem translateSRIQD_correct (pat : String → String → Prop) {O : Ontology}
       (dprops O)[u] = pq.1 ∧ (dprops O)[w] = pq.2 ∧ ContextCalculus.SRIQD.Clause.dSub u w ∈ sc := by
     intro pq hpq
     obtain ⟨l, hf, hl⟩ := SRIQKB.collect_some hsc pq hpq
+    unfold subClauseOf at hf
     split at hf
     · rename_i u w hu hw
       cases hf
