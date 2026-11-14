@@ -47,10 +47,15 @@ kid B R1 ... / C1 ...     -- a tree child of block B: its label, `/`, its type
 
 The label from `B'` back to `B` is completed with the inverses, so each
 edge needs one `lab` line. Concept indices: the requested IRIs first (in
-request order, duplicates removed), then the other class IRIs, `top`,
+request order, duplicates removed), then the other class IRIs in axiom
+order (the definition names of complex class assertions among them), `top`,
 `bottom` and the definers of the translation, then the names the
-transitivity encoding adds. Role indices follow the first occurrence of each
-property IRI.
+transitivity encoding adds. For `owlTypeRow` the complement name of the
+class comes after the names of the translation and before those of the
+encoding. Role indices follow the first occurrence of each property IRI;
+individual indices follow `O.individualNames`, then the queried
+individuals. km will export such a hint from its model in a later engine
+step.
 -/
 
 namespace ContextCalculus.OWLFrontend
