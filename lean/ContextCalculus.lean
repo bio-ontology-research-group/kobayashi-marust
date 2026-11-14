@@ -354,3 +354,7 @@ import ContextCalculus.OWLFrontend.SRIQDKBLemmas
 import ContextCalculus.OWLFrontend.SRIQDKBCorrect
 import ContextCalculus.OWLFrontend.SRIQDKBReference
 import ContextCalculus.OWLFrontend.SRIQDKBRows
+import ContextCalculus.SRIQN.NormalForm
+import ContextCalculus.SRIQN.ABoxEnc
+import ContextCalculus.SRIQN.Core
+import ContextCalculus.SRIQN.Forest
