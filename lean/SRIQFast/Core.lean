@@ -295,6 +295,9 @@ structure Cfg where
   skipCovered : Bool := true
   /-- back rule through forced sets (`backRule`) instead of every child back set -/
   forcedBack : Bool := true
+  /-- key child contexts on the parent's whole type instead of its
+  projection `t ∩ Rel L` (no sharing between parents; for measurement) -/
+  piFull : Bool := false
   /-- for an at-most 1 clause, merge every definitely counted default spec at once -/
   funcMerge : Bool := true
   /-- lazy alternatives from the at-most trigger during generation (else
@@ -374,7 +377,8 @@ def childKey (O : Onto) (t : Ty) (σ : Spec) : M CtxKey := do
       let r := rel O L
       modify fun s => { s with relCache := s.relCache.insert L r }
       pure r
-  return { seed := union σ.fill (fwd O t σ.lab), lab := L, pi := inter t r }
+  let pi := if (← getCfg).piFull then t else inter t r
+  return { seed := union σ.fill (fwd O t σ.lab), lab := L, pi }
 
 mutual
 

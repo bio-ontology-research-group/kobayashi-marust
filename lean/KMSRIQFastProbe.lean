@@ -53,6 +53,7 @@ def readCfg : IO Cfg := do
            forcedBack := ← envFlag "KM_SRIQF_FORCEDBACK" true
            lazyEager := ← envFlag "KM_SRIQF_LAZYEAGER" false
            funcMerge := ← envFlag "KM_SRIQF_FUNCMERGE" true
+           piFull := ← envFlag "KM_SRIQF_PIFULL" false
            maxNodes }
 
 structure Result where
