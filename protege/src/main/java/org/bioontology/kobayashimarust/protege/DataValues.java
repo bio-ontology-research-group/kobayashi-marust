@@ -26,18 +26,23 @@ import java.util.*;
  * datatypes {@code rdfs:Literal}, {@code xsd:string}, {@code rdf:PlainLiteral},
  * {@code rdf:langString}, {@code xsd:integer}, {@code xsd:decimal},
  * {@code xsd:double}, {@code xsd:float}, {@code xsd:anyURI},
- * {@code xsd:dateTime} and the sign-restricted integer types (two or more
- * of those only with a literal for 0) (with {@code DataOneOf}, {@code DataIntersectionOf},
+ * {@code xsd:dateTime}, the bounded and sign-restricted integer types
+ * (as long as the intervals they cut out of the integers are unbounded,
+ * covered by literals, or larger than the data restrictions can count) and {@code xsd:boolean} (only with
+ * literals for both truth values) (with {@code DataOneOf}, {@code DataIntersectionOf},
  * {@code DataUnionOf} and {@code DataComplementOf} over them), no facet
  * restriction, datatype definition, rule or axiom with
  * {@code owl:topDataProperty}, and data restrictions whose numbers (plus one
  * each) sum to less than 2^30. Argument: call two values equivalent when they belong to the
- * same admitted datatypes and neither is the value of a candidate. Every
- * class of this equivalence is empty or has at least 2^31 elements (the
- * admitted datatypes cut the value space into the integers, the decimals
- * that are not integers, the floats, the doubles, the strings, the
- * language-tagged strings, the URIs, the date-times and the rest; only the
- * floats and doubles are finite, with more than 2^31 elements). Suppose
+ * same admitted datatypes and neither is the value of a candidate. Let
+ * {@code N} be the number of candidates plus the sum of the restriction
+ * numbers. Every class of this equivalence is empty or has more than
+ * {@code N} elements: the admitted datatypes cut the value space into the
+ * decimals that are not integers, the floats, the doubles (2^32 and 2^64
+ * values, against {@code N < 2^30}), the strings, the language-tagged
+ * strings, the URIs, the date-times, the rest, and intervals of integers
+ * between the bounds of the integer types in use, which are checked one by
+ * one ({@code integerCellsSafe}). Suppose
  * {@code O ⊨ p(a, v)} for a value {@code v} of no candidate, and take a model.
  * Restrict the data values of every element to a finite set {@code K} that
  * keeps the candidates and, for every data restriction of the ontology the
@@ -46,7 +51,7 @@ import java.util.*;
  * cardinalities and universal restrictions only get easier with fewer values,
  * and the witnesses keep the existential and minimum restrictions and the
  * negated universal and maximum ones). For {@code a},
- * {@code K} is smaller than 2^31, so some {@code w} equivalent to {@code v}
+ * {@code K} has at most {@code N} elements, so some {@code w} equivalent to {@code v}
  * is outside {@code K}. Swapping {@code v} and {@code w} in the whole model
  * preserves every admitted datatype and fixes every candidate, so it gives a
  * model of the ontology in which {@code v} is no value of {@code a}: a
@@ -69,17 +74,35 @@ final class DataValues {
             OWL2Datatype.XSD_DATE_TIME.getIRI()));
 
     /**
-     * Integer types that split the integers by sign. One of them next to
-     * xsd:integer and xsd:decimal cuts only infinite classes; two of them can
-     * isolate 0 (nonNegative ∩ nonPositive, nonNegative minus positive,
-     * the integers that are neither positive nor negative), so two or more are
-     * admitted only when a literal of the ontology denotes 0.
+     * The integer datatypes as intervals of integers (null: unbounded). Used
+     * together they cut the integers into intervals between their bounds; such
+     * an interval is a class of the completeness argument, and it must be
+     * unbounded, hold no value outside the literals of the ontology, or hold
+     * more values outside them than the data restrictions can ask for
+     * (checked in {@link #integerCellsSafe}).
      */
-    private static final Set<IRI> SIGNED = new HashSet<>(Arrays.asList(
-            OWL2Datatype.XSD_NON_NEGATIVE_INTEGER.getIRI(),
-            OWL2Datatype.XSD_POSITIVE_INTEGER.getIRI(),
-            OWL2Datatype.XSD_NON_POSITIVE_INTEGER.getIRI(),
-            OWL2Datatype.XSD_NEGATIVE_INTEGER.getIRI()));
+    private static final Map<IRI, java.math.BigInteger[]> INTEGER_TYPES = new HashMap<>();
+    static {
+        java.math.BigInteger two = java.math.BigInteger.valueOf(2);
+        java.math.BigInteger one = java.math.BigInteger.ONE;
+        interval(OWL2Datatype.XSD_NON_NEGATIVE_INTEGER, java.math.BigInteger.ZERO, null);
+        interval(OWL2Datatype.XSD_POSITIVE_INTEGER, one, null);
+        interval(OWL2Datatype.XSD_NON_POSITIVE_INTEGER, null, java.math.BigInteger.ZERO);
+        interval(OWL2Datatype.XSD_NEGATIVE_INTEGER, null, one.negate());
+        for (Object[] t : new Object[][]{{OWL2Datatype.XSD_LONG, 63}, {OWL2Datatype.XSD_INT, 31},
+                {OWL2Datatype.XSD_SHORT, 15}, {OWL2Datatype.XSD_BYTE, 7}}) {
+            java.math.BigInteger m = two.pow((Integer) t[1]);
+            interval((OWL2Datatype) t[0], m.negate(), m.subtract(one));
+        }
+        for (Object[] t : new Object[][]{{OWL2Datatype.XSD_UNSIGNED_LONG, 64}, {OWL2Datatype.XSD_UNSIGNED_INT, 32},
+                {OWL2Datatype.XSD_UNSIGNED_SHORT, 16}, {OWL2Datatype.XSD_UNSIGNED_BYTE, 8}}) {
+            interval((OWL2Datatype) t[0], java.math.BigInteger.ZERO, two.pow((Integer) t[1]).subtract(one));
+        }
+    }
+
+    private static void interval(OWL2Datatype dt, java.math.BigInteger lo, java.math.BigInteger hi) {
+        INTEGER_TYPES.put(dt.getIRI(), new java.math.BigInteger[]{lo, hi});
+    }
 
     private static final long CARDINALITY_BOUND = 1L << 30;
 
@@ -88,7 +111,8 @@ final class DataValues {
         final Set<OWLLiteral> literals = new LinkedHashSet<>();
         String outside;
         long cardinalities;
-        final Set<IRI> signed = new HashSet<>();
+        final Set<IRI> integerTypes = new HashSet<>();
+        boolean booleans;
     }
 
     static Candidates collect(OWLOntology snapshot) {
@@ -126,8 +150,15 @@ final class DataValues {
                 }
             }
         }
-        if (out.outside == null && out.signed.size() > 1 && !denotesZero(out.literals)) {
-            out.outside = "two sign-restricted integer datatypes " + out.signed + " and no literal for 0";
+        // xsd:boolean has two values; with a literal for each, no unwritten
+        // boolean value is left.
+        if (out.outside == null && out.booleans && !(denotesBoolean(out.literals, true)
+                && denotesBoolean(out.literals, false))) {
+            out.outside = "xsd:boolean without literals for both truth values";
+        }
+        if (out.outside == null && !integerCellsSafe(out)) {
+            out.outside = "the integer datatypes " + out.integerTypes
+                    + " cut out a small set of integers that no literal of the ontology covers";
         }
         if (out.outside == null && out.cardinalities + out.literals.size() >= CARDINALITY_BOUND) {
             out.outside = "data cardinalities too large for the completeness argument";
@@ -135,25 +166,71 @@ final class DataValues {
         return out;
     }
 
-    private static boolean denotesZero(Set<OWLLiteral> literals) {
+    private static boolean denotesBoolean(Set<OWLLiteral> literals, boolean value) {
         for (OWLLiteral l : literals) {
-            String dt = l.getDatatype().getIRI().toString();
-            if (!dt.startsWith("http://www.w3.org/2001/XMLSchema#") || !(dt.endsWith("nteger")
-                    || dt.endsWith("#decimal") || dt.endsWith("#int") || dt.endsWith("#long")
-                    || dt.endsWith("#short") || dt.endsWith("#byte"))) continue;
-            try {
-                if (new java.math.BigDecimal(l.getLiteral().trim()).signum() == 0) return true;
-            } catch (NumberFormatException ignored) {
-                // not a numeral
-            }
+            if (!l.getDatatype().getIRI().equals(OWL2Datatype.XSD_BOOLEAN.getIRI())) continue;
+            String t = l.getLiteral().trim();
+            if (value ? (t.equals("true") || t.equals("1")) : (t.equals("false") || t.equals("0"))) return true;
         }
         return false;
+    }
+
+    /** The integer values of the candidate literals (integer types and integral decimals). */
+    private static Set<java.math.BigInteger> integerValues(Set<OWLLiteral> literals) {
+        Set<java.math.BigInteger> out = new HashSet<>();
+        for (OWLLiteral l : literals) {
+            String dt = l.getDatatype().getIRI().toString();
+            boolean numeric = INTEGER_TYPES.containsKey(l.getDatatype().getIRI())
+                    || dt.equals(OWL2Datatype.XSD_INTEGER.getIRI().toString())
+                    || dt.equals(OWL2Datatype.XSD_DECIMAL.getIRI().toString());
+            if (!numeric) continue;
+            try {
+                java.math.BigDecimal v = new java.math.BigDecimal(l.getLiteral().trim().replaceFirst("^\\+", ""));
+                if (v.signum() == 0 || v.stripTrailingZeros().scale() <= 0) out.add(v.toBigIntegerExact());
+            } catch (NumberFormatException | ArithmeticException ignored) {
+                // not an integral numeral
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Every interval between consecutive bounds of the integer types in use is
+     * unbounded, or all its values are candidate values, or it keeps more than
+     * the bound of the completeness argument outside the candidates.
+     */
+    private static boolean integerCellsSafe(Candidates out) {
+        if (out.integerTypes.isEmpty()) return true;
+        TreeSet<java.math.BigInteger> cuts = new TreeSet<>();
+        for (IRI t : out.integerTypes) {
+            java.math.BigInteger[] b = INTEGER_TYPES.get(t);
+            if (b[0] != null) cuts.add(b[0]);
+            if (b[1] != null) cuts.add(b[1].add(java.math.BigInteger.ONE));
+        }
+        Set<java.math.BigInteger> values = integerValues(out.literals);
+        java.math.BigInteger need = java.math.BigInteger.valueOf(out.cardinalities + out.literals.size() + 1);
+        java.math.BigInteger previous = null;
+        for (java.math.BigInteger cut : cuts) {
+            if (previous != null) {
+                // the interval [previous, cut - 1]
+                java.math.BigInteger size = cut.subtract(previous);
+                java.math.BigInteger covered = java.math.BigInteger.ZERO;
+                for (java.math.BigInteger v : values) {
+                    if (v.compareTo(previous) >= 0 && v.compareTo(cut) < 0) covered = covered.add(java.math.BigInteger.ONE);
+                }
+                java.math.BigInteger left = size.subtract(covered);
+                if (left.signum() > 0 && left.compareTo(need) <= 0) return false;
+            }
+            previous = cut;
+        }
+        return true;
     }
 
     private static void range(OWLDataRange range, Candidates out) {
         if (range instanceof OWLDatatype) {
             OWLDatatype dt = (OWLDatatype) range;
-            if (SIGNED.contains(dt.getIRI())) out.signed.add(dt.getIRI());
+            if (INTEGER_TYPES.containsKey(dt.getIRI())) out.integerTypes.add(dt.getIRI());
+            else if (dt.getIRI().equals(OWL2Datatype.XSD_BOOLEAN.getIRI())) out.booleans = true;
             else if (!ADMITTED.contains(dt.getIRI())) out.outside = "the datatype " + dt.getIRI();
         } else if (range instanceof OWLDataOneOf) {
             out.literals.addAll(((OWLDataOneOf) range).getValues());

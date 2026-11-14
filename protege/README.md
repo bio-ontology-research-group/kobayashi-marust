@@ -68,9 +68,9 @@ code remains BSD-3-Clause.
 | `getObjectPropertyValues(a, p)` | the named individuals `b` of the signature with `p(a, b)` entailed, for named and inverse properties (reduction) |
 | `getDataPropertyValues(a, p)` | the literals of the ontology whose value is an entailed `p`-value of `a`, for ontologies whose data ranges cannot pin a value that no literal of the ontology writes (reduction; see below) |
 | `getDifferentIndividuals(a)` | the named individuals entailed to differ from `a` (reduction) |
-| `getSubDataProperties`, `getSuperDataProperties`, `getEquivalentDataProperties`, `getTopDataPropertyNode`, `getBottomDataPropertyNode`, `getDataPropertyDomains`, `getDisjointDataProperties` | for an ontology whose data properties occur only in sub-property, equivalence, assertion, functionality, domain (named class) and range (built-in datatype) axioms, and with no nominal (`ObjectOneOf`, `ObjectHasValue`, `DataHasValue`) or rule when a data property is functional: the data property hierarchy and the named domains, computed in Java from those axioms and the class hierarchy ([`DataPropertyModel`](src/main/java/org/bioontology/kobayashimarust/protege/DataPropertyModel.java) explains why that is complete). Any other ontology throws `UnsupportedOperationException`, except `getDataPropertyDomains`, which is answered by reduction outside the fragment. `getDisjointDataProperties` is answered for `owl:topDataProperty`, `owl:bottomDataProperty`, empty properties and properties outside the signature only. |
-| `isEntailed` | declarations and annotation axioms (always true, as in HermiT); every logical axiom type except `HasKey`, `DLSafeRule`, `DatatypeDefinition` and `DisjointDataProperties`, and `SubDataPropertyOf` and `EquivalentDataProperties` outside the data property fragment (table below); anonymous individuals throw |
-| `getPrecomputableInferenceTypes` | `CLASS_HIERARCHY`, `OBJECT_PROPERTY_HIERARCHY`, `OBJECT_PROPERTY_ASSERTIONS`, `CLASS_ASSERTIONS`, `SAME_INDIVIDUAL`, and `DATA_PROPERTY_HIERARCHY` when the ontology is inside the data property fragment (HermiT's six) |
+| `getSubDataProperties`, `getSuperDataProperties`, `getEquivalentDataProperties`, `getTopDataPropertyNode`, `getBottomDataPropertyNode`, `getDataPropertyDomains`, `getDisjointDataProperties` | for an ontology whose data properties occur only in sub-property, equivalence, assertion, functionality, domain (named class) and range (built-in datatype) axioms, and with no nominal (`ObjectOneOf`, `ObjectHasValue`, `DataHasValue`) or rule when a data property is functional: the data property hierarchy and the named domains, computed in Java from those axioms and the class hierarchy ([`DataPropertyModel`](src/main/java/org/bioontology/kobayashimarust/protege/DataPropertyModel.java) explains why that is complete). Any other ontology throws `UnsupportedOperationException`, except `getDataPropertyDomains`, which is answered by reduction outside the fragment. `getDisjointDataProperties` is answered for `owl:topDataProperty`, `owl:bottomDataProperty`, empty properties and properties outside the signature, and inside the fragment for the others: `q` is disjoint with `p` iff the conjunction of the stated domains over the super properties of both is unsatisfiable (one satisfiability run; ranges naming two datatypes throw). |
+| `isEntailed` | declarations and annotation axioms (always true, as in HermiT); axioms of the ontology (true, also with anonymous individuals); every logical axiom type except `HasKey`, `DLSafeRule` and `DatatypeDefinition`, and `SubDataPropertyOf`, `EquivalentDataProperties` and `DisjointDataProperties` outside the data property fragment (table below); other axioms with anonymous individuals throw |
+| `getPrecomputableInferenceTypes` | `CLASS_HIERARCHY`, `OBJECT_PROPERTY_HIERARCHY`, `CLASS_ASSERTIONS`, `SAME_INDIVIDUAL`, and `DATA_PROPERTY_HIERARCHY` when the ontology is inside the data property fragment. HermiT also lists `OBJECT_PROPERTY_ASSERTIONS`; KM answers property values on demand, one km run per property, and precomputing all of them took longer than 290 s on ore_ont_5841 (215 properties, 1,466 individuals), so it is not offered and Protégé does not ask for it. |
 
 Classification costs the same as before. The individual queries use
 `km classify --realize` ([`docs/REALIZATION.md`](../docs/REALIZATION.md)). The
@@ -219,7 +219,7 @@ classification and realization still send them unchanged (engine items).
 | super, sub, equivalent classes, satisfiability of `CE` | `Q ≡ CE` | rows of `Q`; `UNSAT Q`; `TOP Q` | definition |
 | instances of `CE` | `Q ≡ CE`, realized | `TYPE a Q`; direct: no type strictly below `Q` | definition |
 | `getDisjointClasses(CE)` | `N ≡ ¬CE` | classes below `N`, and the bottom node | `D ⊓ CE ⊑ ⊥` iff `D ⊑ ¬CE` |
-| `getDifferentIndividuals(a)` | `X_b ≡ {a} ⊓ {b}` per individual `b` | `UNSAT X_b` | `{a} ⊓ {b}` is empty in a model iff `a ≠ b` there |
+| `getDifferentIndividuals(a)` | `X_b ≡ {a} ⊓ {b}` per individual `b`; each `b` left satisfiable again as `SameIndividual(a b)` | `UNSAT X_b`, or inconsistent | `{a} ⊓ {b}` is empty in a model iff `a ≠ b` there; the second check because km 5eea1411 misses some of these (ore_ont_15667, colours with different values of a functional data property) |
 | `getObjectPropertyValues(a, r)` | `V_b ≡ ∃r.{b}` per individual `b`, realized | `TYPE a V_b`; `r⁻` reads the rows backwards | `r(a,b)` iff `a ∈ ∃r.{b}` |
 | `getDataPropertyValues(a, p)` | `V_l ≡ ∃p.{l}` per literal `l` of `O`, realized | `TYPE a V_l` | definition; completeness of the candidates below |
 | `getDisjointObjectProperties(r)` | `X_s ≡ ∃r.{y} ⊓ ∃s.{y}` per node `s`, one fresh individual `y` | `UNSAT X_s` | a pair in `r ∩ s` gives `y` its second element; satisfiability is decided per class, so one `y` serves all |
@@ -258,9 +258,11 @@ is `{0}`, a facet restriction such as `xsd:integer[> 4, < 6]` holds one value,
 and `xsd:boolean` has two. The plugin answers only when the ontology's data
 ranges use `rdfs:Literal`, `xsd:string`, `rdf:PlainLiteral`,
 `rdf:langString`, `xsd:integer`, `xsd:decimal`, `xsd:double`, `xsd:float`,
-`xsd:anyURI`, `xsd:dateTime` and one of the sign-restricted integer types
-(`xsd:positiveInteger` and the like; two or more only when a literal of the
-ontology denotes 0) (also inside `DataOneOf`,
+`xsd:anyURI`, `xsd:dateTime`, the bounded and sign-restricted integer types
+(`xsd:int`, `xsd:positiveInteger` and the like, as long as every interval
+their bounds cut out of the integers is unbounded, covered by literals of the
+ontology, or larger than the data restrictions can count) and `xsd:boolean` (only with literals for both
+truth values) (also inside `DataOneOf`,
 `DataIntersectionOf`, `DataUnionOf` and `DataComplementOf`), with no facet,
 datatype definition, rule or axiom on `owl:topDataProperty`, and throws
 otherwise. The argument (in `DataValues.java`): values that no admitted
@@ -277,9 +279,9 @@ that km declines (a dropped clause, an approximate answer, an error, a time
 out) makes the query throw: the plugin never answers without the run. The
 runs honour the reasoner time out and `interrupt()`, and their temporary
 files go to `java.io.tmpdir` and are deleted afterwards.
-`precomputeInferences(OBJECT_PROPERTY_ASSERTIONS)` computes the values of
-every property, one run per property (one run over 12 properties took km
-54 s on the test ontology, against about 0.4 s per property alone).
+Property values are computed one property per run (one run over 12
+properties took km 54 s on the test ontology, against about 0.4 s per
+property alone).
 
 ## Queries that throw
 
@@ -290,15 +292,22 @@ These calls throw `UnsupportedOperationException` (or, for `isEntailed`,
 - `getSubDataProperties`, `getSuperDataProperties`,
   `getEquivalentDataProperties`, the top and bottom data property nodes and
   `getDisjointDataProperties` of a satisfiable property, outside the data
-  property fragment. KM has no exact reduction for these: a data value cannot
+  property fragment (and `getDisjointDataProperties` inside it when the
+  ranges involved name two datatypes). KM has no exact reduction for these: a data value cannot
   be fresh, and km rejects a fresh datatype (`DataSomeValuesFrom(p T)` with an
   undeclared `T`), which the class form `∃p.T ⊑ ∃q.T` would need.
 - `getDataPropertyValues` outside the fragment described above.
-- `isEntailed` of `HasKey`, `DLSafeRule`, `DatatypeDefinition` and
-  `DisjointDataProperties` axioms, of `SubDataPropertyOf` and
-  `EquivalentDataProperties` outside the data property fragment, of a
-  `DataPropertyRange` of `owl:topDataProperty` other than `rdfs:Literal`, and
-  of axioms with anonymous individuals.
+- `isEntailed` of `HasKey`, `DLSafeRule` and `DatatypeDefinition` axioms
+  (keys and rules hold for named individuals only, and the plugin has no
+  reduction that respects that), of `SubDataPropertyOf`,
+  `EquivalentDataProperties` and `DisjointDataProperties` outside the data
+  property fragment, of a `DataPropertyRange` of `owl:topDataProperty` other
+  than `rdfs:Literal`, and of axioms with anonymous individuals that are not
+  in the ontology.
+- A class expression that is not OWL 2 DL next to the ontology, such as a
+  cardinality restriction on a transitive property: km rejects the extended
+  ontology, so every query on that expression throws.
+- Any reduction that km declines or does not finish within the time out.
 
 `precomputeInferences` ignores a type it does not compute, as the OWL API
 specifies.

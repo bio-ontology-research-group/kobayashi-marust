@@ -102,6 +102,9 @@ final class DataPropertyModel {
     private boolean[] empty;
     /** The most specific domain class representative per property; -1 when none. */
     private int[] domainRep;
+    /** Stated domain classes and range datatypes (other than rdfs:Literal) per property id. */
+    private List<List<OWLClass>> statedDomains;
+    private List<Set<IRI>> statedRanges;
     private int[] nodeOf;
     private final List<List<Integer>> members = new ArrayList<>();
     private final List<BitSet> ancestors = new ArrayList<>();
@@ -237,6 +240,8 @@ final class DataPropertyModel {
                 if (!datatype.equals(OWL2Datatype.RDFS_LITERAL.getIRI())) ranges.get(m.id(a.getProperty())).add(datatype);
             }
         }
+        m.statedDomains = domains;
+        m.statedRanges = ranges;
         // Reflexive and transitive closure over the stated edges (n is the property count; BFS per property).
         m.reach = new BitSet[n];
         for (int i = 0; i < n; i++) {
@@ -496,6 +501,43 @@ final class DataPropertyModel {
     }
 
     boolean isFresh(OWLDataProperty p) { return code(p) == FRESH; }
+
+    /** Number of nodes; node 0 is the top node, node 1 the bottom node. */
+    int nodeCount() { return members.size(); }
+
+    Node<OWLDataProperty> nodeAt(int c) { return node(c); }
+
+    /** One property of a node other than top and bottom, or null. */
+    OWLDataProperty representative(int c) {
+        return members.get(c).isEmpty() ? null : props.get(members.get(c).get(0));
+    }
+
+    /**
+     * The stated domain classes over the properties reachable from {@code p} or
+     * {@code q} (both in the signature). In the fragment, two properties that are
+     * neither empty nor universal share a pair iff the conjunction of these
+     * classes is satisfiable and their range datatypes admit a common value: add
+     * one pair {@code (x, l)} to every reachable property, with {@code x} in the
+     * conjunction (taken in the value-free copy of the class comment when a
+     * functional property exists) and {@code l} in the one range datatype; no
+     * axiom of the fragment forbids it. The reverse direction is immediate.
+     */
+    List<OWLClass> jointDomains(OWLDataProperty p, OWLDataProperty q) {
+        BitSet up = (BitSet) reach[code(p)].clone();
+        up.or(reach[code(q)]);
+        List<OWLClass> out = new ArrayList<>();
+        for (int r = up.nextSetBit(0); r >= 0; r = up.nextSetBit(r + 1)) out.addAll(statedDomains.get(r));
+        return out;
+    }
+
+    /** The stated range datatypes over the properties reachable from {@code p} or {@code q}. */
+    Set<IRI> jointRanges(OWLDataProperty p, OWLDataProperty q) {
+        BitSet up = (BitSet) reach[code(p)].clone();
+        up.or(reach[code(q)]);
+        Set<IRI> out = new TreeSet<>();
+        for (int r = up.nextSetBit(0); r >= 0; r = up.nextSetBit(r + 1)) out.addAll(statedRanges.get(r));
+        return out;
+    }
 
     /** A node set holding the bottom node alone. */
     NodeSet<OWLDataProperty> bottomOnly() {

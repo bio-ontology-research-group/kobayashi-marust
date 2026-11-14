@@ -236,16 +236,16 @@ public class ReductionsTest {
     }
 
     @Test
-    public void objectPropertyAssertionsArePrecomputable() throws Exception {
+    public void objectPropertyValuesAreComputedOnDemandPerProperty() throws Exception {
         OWLOntology o = load(ZOO);
         KMReasoner k = km(o);
-        assertTrue(k.getPrecomputableInferenceTypes().contains(InferenceType.OBJECT_PROPERTY_ASSERTIONS));
+        assertFalse(k.getPrecomputableInferenceTypes().contains(InferenceType.OBJECT_PROPERTY_ASSERTIONS));
+        k.precomputeInferences(InferenceType.OBJECT_PROPERTY_ASSERTIONS); // ignored
         assertFalse(k.isPrecomputed(InferenceType.OBJECT_PROPERTY_ASSERTIONS));
-        k.precomputeInferences(InferenceType.OBJECT_PROPERTY_ASSERTIONS);
-        assertTrue(k.isPrecomputed(InferenceType.OBJECT_PROPERTY_ASSERTIONS));
-        int runs = k.reductionRunCount();
         assertEquals(new TreeSet<>(Arrays.asList("dora")), flat(k.getObjectPropertyValues(i("carl"), p("hasGrandparent"))));
-        assertEquals("precomputed values need no run", runs, k.reductionRunCount());
+        int runs = k.reductionRunCount();
+        assertTrue(flat(k.getObjectPropertyValues(i("dora"), df().getOWLObjectInverseOf(p("hasGrandparent")))).contains("carl"));
+        assertEquals("one run serves every subject and the inverse", runs, k.reductionRunCount());
     }
 
     @Test
@@ -446,5 +446,30 @@ public class ReductionsTest {
             assertSame(first, e);
         }
         assertEquals(runs, k.reductionRunCount());
+    }
+
+    @Test
+    public void disjointDataPropertiesInsideTheToldFragmentAgreeWithHermit() throws Exception {
+        String text = "Prefix(:=<" + NS + ">)\nPrefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)\n"
+                + "Ontology(<http://example.org/red-ddp>\n"
+                + "Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))\n"
+                + "Declaration(DataProperty(:p)) Declaration(DataProperty(:q)) Declaration(DataProperty(:r))\n"
+                + "Declaration(DataProperty(:s)) Declaration(DataProperty(:t))\n"
+                + "DisjointClasses(:A :B) SubClassOf(:C :A)\n"
+                + "DataPropertyDomain(:p :A) DataPropertyDomain(:q :B) DataPropertyDomain(:r :C)\n"
+                + "SubDataPropertyOf(:s :q) DataPropertyRange(:t xsd:integer)\n"
+                + "DataPropertyAssertion(:t :i \"1\"^^xsd:integer)\n)\n";
+        OWLOntology o = load(text);
+        OWLReasoner h = hermit(o);
+        KMReasoner k = km(o);
+        List<String> diffs = new ArrayList<>();
+        for (OWLDataProperty dp : new TreeSet<>(o.getDataPropertiesInSignature())) {
+            same(diffs, "disjoint " + name(dp), nodes(h.getDisjointDataProperties(dp)), nodes(k.getDisjointDataProperties(dp)));
+        }
+        assertTrue(String.join("\n", diffs), diffs.isEmpty());
+        assertTrue(flat(k.getDisjointDataProperties(d("p"))).contains("s"));
+        assertTrue(k.isEntailmentCheckingSupported(AxiomType.DISJOINT_DATA_PROPERTIES));
+        assertTrue(k.isEntailed(df().getOWLDisjointDataPropertiesAxiom(d("p"), d("q"))));
+        assertFalse(k.isEntailed(df().getOWLDisjointDataPropertiesAxiom(d("p"), d("t"))));
     }
 }

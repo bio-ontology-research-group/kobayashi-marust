@@ -374,13 +374,12 @@ public class ConventionsTest {
         assertFalse(k.isPrecomputed(InferenceType.DATA_PROPERTY_HIERARCHY));
         k.precomputeInferences(InferenceType.DATA_PROPERTY_HIERARCHY);
         assertTrue(k.isPrecomputed(InferenceType.DATA_PROPERTY_HIERARCHY));
-        // Object property assertions are computed by reduction; data property
-        // assertions are not offered (HermiT does not list them either).
-        assertTrue(k.getPrecomputableInferenceTypes().contains(InferenceType.OBJECT_PROPERTY_ASSERTIONS));
+        // Property assertions are answered on demand, not precomputed.
+        assertFalse(k.getPrecomputableInferenceTypes().contains(InferenceType.OBJECT_PROPERTY_ASSERTIONS));
         assertFalse(k.getPrecomputableInferenceTypes().contains(InferenceType.DATA_PROPERTY_ASSERTIONS));
         assertFalse(k.isPrecomputed(InferenceType.OBJECT_PROPERTY_ASSERTIONS));
-        k.precomputeInferences(InferenceType.OBJECT_PROPERTY_ASSERTIONS);
-        assertTrue(k.isPrecomputed(InferenceType.OBJECT_PROPERTY_ASSERTIONS));
+        k.precomputeInferences(InferenceType.OBJECT_PROPERTY_ASSERTIONS); // ignored
+        assertFalse(k.isPrecomputed(InferenceType.OBJECT_PROPERTY_ASSERTIONS));
     }
 
     @Test
@@ -504,10 +503,13 @@ public class ConventionsTest {
         assertTrue(flat(k.getDifferentIndividuals(rex)).isEmpty());
         assertTrue(k.isSatisfiable(anonymous));
         assertTrue(k.getSubClasses(anonymous, false).isBottomSingleton());
-        // Disjointness of a satisfiable data property has no reduction yet.
+        // Inside the data property fragment: nothing but the bottom property.
+        assertTrue(k.getDisjointDataProperties(age).isBottomSingleton());
+        // Outside it the data property hierarchy still throws.
+        OWLOntology outside = IndividualsTest.parse(DATA_OUTSIDE);
         try {
-            k.getDisjointDataProperties(age);
-            fail("getDisjointDataProperties(age) must throw, not answer");
+            km(outside).getDisjointDataProperties(dp(df(outside), "p"));
+            fail("getDisjointDataProperties outside the fragment must throw, not answer");
         } catch (UnsupportedOperationException expected) {
             assertNotNull(expected.getMessage());
         }
@@ -696,6 +698,7 @@ public class ConventionsTest {
         Set<InferenceType> km = k.getPrecomputableInferenceTypes();
         assertTrue("KM lists only types HermiT lists", hermit.containsAll(km));
         assertTrue(km.contains(InferenceType.CLASS_HIERARCHY));
+        assertFalse(km.contains(InferenceType.OBJECT_PROPERTY_ASSERTIONS));
         for (InferenceType t : InferenceType.values()) assertFalse("not yet computed: " + t, k.isPrecomputed(t));
         k.precomputeInferences(km.toArray(new InferenceType[0]));
         for (InferenceType t : km) assertTrue("computed: " + t, k.isPrecomputed(t));

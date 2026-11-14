@@ -765,8 +765,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                 ensureRealized();
             } else if (type == InferenceType.OBJECT_PROPERTY_HIERARCHY) {
                 ensureProperties();
-            } else if (type == InferenceType.OBJECT_PROPERTY_ASSERTIONS) {
-                precomputeObjectPropertyValues();
+
             } else if (type == InferenceType.DATA_PROPERTY_HIERARCHY && dataHierarchyInFragment()) {
                 try {
                     ensureDataProperties();
@@ -776,9 +775,9 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                     // to precompute a type the reasoner cannot compute is ignored.
                 }
             }
-            // The remaining types (data property assertions, different
-            // individuals, disjoint classes, ...) are not precomputed; their
-            // queries run their reductions on demand.
+            // The remaining types (object and data property assertions,
+            // different individuals, disjoint classes, ...) are not
+            // precomputed; their queries run their reductions on demand.
         }
     }
     /**
@@ -800,22 +799,21 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         if (inferenceType == InferenceType.DATA_PROPERTY_HIERARCHY) {
             return dataModel != null;
         }
-        if (inferenceType == InferenceType.OBJECT_PROPERTY_ASSERTIONS) {
-            return objectValuesPrecomputed;
-        }
         return false;
     }
     /**
      * The types this reasoner computes. HermiT lists six; KM lists the class
-     * hierarchy, the object property hierarchy, the object property
-     * assertions, the individual types and equalities, and the data property
-     * hierarchy for an ontology inside the fragment of
-     * {@link DataPropertyModel}. Data property assertions are not an
-     * inference type of the OWL API.
+     * hierarchy, the object property hierarchy, the individual types and
+     * equalities, and the data property hierarchy for an ontology inside the
+     * fragment of {@link DataPropertyModel}. Object property assertions are
+     * answered on demand, one km run per property: precomputing all of them
+     * took longer than 290 s on ore_ont_5841 (215 properties, 1,466
+     * individuals), where HermiT needs seconds, so they are not offered for
+     * precomputation (Protege precomputes only the listed types).
      */
     @Override public Set<InferenceType> getPrecomputableInferenceTypes() {
         Set<InferenceType> types = new HashSet<>(Arrays.asList(InferenceType.CLASS_HIERARCHY,
-                InferenceType.OBJECT_PROPERTY_HIERARCHY, InferenceType.OBJECT_PROPERTY_ASSERTIONS,
+                InferenceType.OBJECT_PROPERTY_HIERARCHY,
                 InferenceType.CLASS_ASSERTIONS, InferenceType.SAME_INDIVIDUAL));
         if (dataHierarchyInFragment()) types.add(InferenceType.DATA_PROPERTY_HIERARCHY);
         return types;
@@ -913,6 +911,12 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         if (!axiom.isLogicalAxiom()) return true;
         if (!entailmentSupported(axiom.getAxiomType())) throw new UnsupportedEntailmentTypeException(axiom);
         OWLAxiom plain = axiom.getAxiomWithoutAnnotations();
+        // An axiom of the committed revision is entailed, also when it mentions
+        // anonymous individuals (which the reductions below refuse).
+        if (querySnapshot().containsAxiom(plain, Imports.EXCLUDED,
+                org.semanticweb.owlapi.model.parameters.AxiomAnnotations.IGNORE_AXIOM_ANNOTATIONS)) {
+            return true;
+        }
         // First the axioms that the held answers decide (taxonomy, realization,
         // property hierarchy), then the reductions to a km run on an extension.
         if (plain instanceof OWLClassAssertionAxiom
@@ -974,21 +978,20 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
     /**
      * The axiom types {@link #isEntailed(OWLAxiom)} answers; it throws
-     * {@link UnsupportedEntailmentTypeException} for the others. Keys, rules,
-     * datatype definitions and data property disjointness have no exact
-     * reduction here (see protege/README.md, "isEntailed"); data
-     * sub-properties and equivalences are answered inside the fragment of
-     * {@link DataPropertyModel} only.
+     * {@link UnsupportedEntailmentTypeException} for the others. Keys, rules
+     * and datatype definitions have no exact reduction here (see
+     * protege/README.md); data sub-properties, equivalences and disjointness
+     * are answered inside the fragment of {@link DataPropertyModel} only.
      */
     private boolean entailmentSupported(AxiomType<?> axiomType) {
         if (!axiomType.isLogical()) return true;
         if (AxiomType.HAS_KEY.equals(axiomType) || AxiomType.SWRL_RULE.equals(axiomType)
-                || AxiomType.DATATYPE_DEFINITION.equals(axiomType)
-                || AxiomType.DISJOINT_DATA_PROPERTIES.equals(axiomType)) {
+                || AxiomType.DATATYPE_DEFINITION.equals(axiomType)) {
             return false;
         }
         if (AxiomType.SUB_DATA_PROPERTY.equals(axiomType)
-                || AxiomType.EQUIVALENT_DATA_PROPERTIES.equals(axiomType)) {
+                || AxiomType.EQUIVALENT_DATA_PROPERTIES.equals(axiomType)
+                || AxiomType.DISJOINT_DATA_PROPERTIES.equals(axiomType)) {
             return dataHierarchyInFragment();
         }
         return true;
@@ -1534,7 +1537,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         OWLDataProperty named = pe.asOWLDataProperty();
         if (model.isEmpty(named)) return model.allNodes();
         if (model.isFresh(named) || model.isUniversal(named)) return model.bottomOnly();
-        throw unsupported("getDisjointDataProperties", "the satisfiable data property " + pe);
+        return disjointDataProperties(model, named);
     }
     @Override public synchronized Set<OWLLiteral> getDataPropertyValues(OWLNamedIndividual ind, OWLDataProperty pe) {
         checkPreConditions();
@@ -1598,7 +1601,6 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private OWLOntology querySnapshot;
     private String querySource;
     private ExtendedRun.Fresh freshNames;
-    private boolean objectValuesPrecomputed;
     private int reductionRuns;
 
     /** Native reduction runs made so far (for tests). */
@@ -1609,7 +1611,6 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         querySnapshot = null;
         querySource = null;
         freshNames = null;
-        objectValuesPrecomputed = false;
     }
 
     /**
@@ -1926,22 +1927,23 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
      */
     private boolean allUnsatisfiable(List<OWLClassExpression> ces) {
         List<OWLClassExpression> missing = new ArrayList<>();
+        boolean all = true;
         for (OWLClassExpression ce : ces) {
             Object known = peek(Arrays.asList("class", ce, true));
             if (known == null) known = peek(Arrays.asList("class", ce, false));
             if (known != null) {
-                if (!((ClassAnswer) known).unsat) return false;
+                if (!((ClassAnswer) known).unsat) all = false;
                 continue;
             }
             Object held = reductions.get(Arrays.asList("unsat", ce));
             if (held instanceof RuntimeException) throw (RuntimeException) held;
             if (held != null) {
-                if (!(Boolean) held) return false;
+                if (!(Boolean) held) all = false;
                 continue;
             }
             if (!missing.contains(ce)) missing.add(ce);
         }
-        if (missing.isEmpty()) return true;
+        if (missing.isEmpty()) return all;
         try {
             runTask(CHECKING_ENTAILMENT, () -> {
                 List<OWLAxiom> defs = new ArrayList<>();
@@ -1964,9 +1966,9 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
             throw failure;
         }
         for (OWLClassExpression ce : missing) {
-            if (!(Boolean) reductions.get(Arrays.asList("unsat", ce))) return false;
+            if (!(Boolean) reductions.get(Arrays.asList("unsat", ce))) all = false;
         }
-        return true;
+        return all;
     }
 
     private boolean unsatisfiable(OWLClassExpression ce) {
@@ -2232,6 +2234,17 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
             }
             return true;
         }
+        if (ax instanceof OWLDisjointDataPropertiesAxiom) {
+            // Pairwise, from getDisjointDataProperties (inside the data property fragment).
+            List<OWLDataPropertyExpression> ps = new ArrayList<>(((OWLDisjointDataPropertiesAxiom) ax).getProperties());
+            for (int i = 0; i < ps.size(); i++) {
+                for (int j = i + 1; j < ps.size(); j++) {
+                    OWLDataProperty a = ps.get(i).asOWLDataProperty(), b = ps.get(j).asOWLDataProperty();
+                    if (!getDisjointDataProperties(a).containsEntity(b)) return false;
+                }
+            }
+            return true;
+        }
         if (ax instanceof OWLDataPropertyDomainAxiom) {
             // Domain C iff ∃p.rdfs:Literal ⊓ ¬C is unsatisfiable.
             OWLDataPropertyDomainAxiom a = (OWLDataPropertyDomainAxiom) ax;
@@ -2328,44 +2341,6 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                 out.get((OWLObjectProperty) m[0]).computeIfAbsent(a, k -> new LinkedHashSet<>())
                         .add((OWLNamedIndividual) m[1]);
             }
-        }
-        return out;
-    }
-
-    /**
-     * Properties per value run when precomputing. One property per run: on the
-     * test ontologies km needs far longer for one run over 12 properties (54 s)
-     * than for 12 runs over one property each (0.3 to 0.5 s per run).
-     */
-    private static final int VALUE_PROPERTIES_PER_RUN = 1;
-
-    /** OBJECT_PROPERTY_ASSERTIONS: the values of every named property, in batches of runs. */
-    private void precomputeObjectPropertyValues() {
-        if (objectValuesPrecomputed) return;
-        List<OWLObjectProperty> pending = new ArrayList<>();
-        for (OWLObjectProperty r : querySnapshot().getObjectPropertiesInSignature()) {
-            if (r.isOWLTopObjectProperty() || r.isOWLBottomObjectProperty()) continue;
-            Object held = reductions.get(Arrays.asList("values", r));
-            if (held instanceof RuntimeException) throw (RuntimeException) held;
-            if (held == null) pending.add(r);
-        }
-        int perRun = VALUE_PROPERTIES_PER_RUN;
-        for (int from = 0; from < pending.size(); from += perRun) {
-            List<OWLObjectProperty> batch = pending.subList(from, Math.min(pending.size(), from + perRun));
-            try {
-                runTask(COMPUTING_VALUES, () -> reductions.putAll(keyed(objectValuesNow(batch))));
-            } catch (RuntimeException failure) {
-                if (cacheable(failure)) for (OWLObjectProperty r : batch) reductions.put(Arrays.asList("values", r), failure);
-                throw failure;
-            }
-        }
-        objectValuesPrecomputed = true;
-    }
-
-    private static Map<Object, Object> keyed(Map<OWLObjectProperty, Map<OWLNamedIndividual, Set<OWLNamedIndividual>>> in) {
-        Map<Object, Object> out = new HashMap<>();
-        for (Map.Entry<OWLObjectProperty, Map<OWLNamedIndividual, Set<OWLNamedIndividual>>> e : in.entrySet()) {
-            out.put(Arrays.asList("values", e.getKey()), e.getValue());
         }
         return out;
     }
@@ -2477,7 +2452,8 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
      * fresh {@code X_b ≡ {a} ⊓ {b}} is unsatisfiable, all in one classification
      * run (exact: {@code {a} ⊓ {b}} is empty in a model iff {@code a ≠ b} there).
      * The instance form {@code ¬{a}} needs a realization, which km finishes far
-     * more slowly on the same inputs.
+     * more slowly on the same inputs. Pairs the batch leaves satisfiable are
+     * checked again by refutation ({@code O ∪ {a = b}} inconsistent), one run each.
      */
     private NodeSet<OWLNamedIndividual> computeDifferentIndividuals(OWLNamedIndividual ind) {
         List<OWLNamedIndividual> different = reduce(Arrays.asList("different", ind), CHECKING_ENTAILMENT, () -> {
@@ -2494,8 +2470,24 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
             if (defs.isEmpty()) return found;
             ExtendedRun.Answer answer = extendedRun("different individuals query", defs, false, false);
             requireConsistent(answer, "different individuals query");
+            // Individuals entailed equal to a are not different (O is consistent);
+            // skipping them also avoids a km refusal (dropped clauses) seen on
+            // SameIndividual(a b) when O already asserts it.
+            Realized same = ensureRealized();
+            Integer component = same.componentOf.get(ind);
             for (Map.Entry<String, OWLNamedIndividual> e : meaning.entrySet()) {
-                if (answer.unsat.contains(e.getKey())) found.add(e.getValue());
+                OWLNamedIndividual b = e.getValue();
+                if (answer.unsat.contains(e.getKey())) {
+                    found.add(b);
+                } else if (component != null && component.equals(same.componentOf.get(b))) {
+                    continue;
+                } else if (!consistentWith(Collections.<OWLAxiom>singletonList(df.getOWLSameIndividualAxiom(ind, b)))) {
+                    // km 5eea1411 leaves {a} ⊓ {b} satisfiable on some inputs where
+                    // O ∪ {a = b} is inconsistent (ore_ont_15667: two colours with
+                    // different values of a functional data property), so every
+                    // pair the batch leaves open is decided by refutation.
+                    found.add(b);
+                }
             }
             return found;
         });
@@ -2544,6 +2536,43 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     /**
+     * Data properties disjoint with a satisfiable, non-universal {@code p} inside
+     * the fragment of {@link DataPropertyModel}: {@code q} is disjoint with
+     * {@code p} iff the conjunction of the stated domains over both is
+     * unsatisfiable ({@link DataPropertyModel#jointDomains} gives the argument);
+     * the conjunctions go into one satisfiability run. Two different range
+     * datatypes are not decided and throw.
+     */
+    private NodeSet<OWLDataProperty> disjointDataProperties(DataPropertyModel model, OWLDataProperty p) {
+        List<Integer> nodes = reduce(Arrays.asList("disjoint-data", p), CHECKING_ENTAILMENT, () -> {
+            List<Integer> candidates = new ArrayList<>();
+            List<OWLClassExpression> checks = new ArrayList<>();
+            for (int c = 2; c < model.nodeCount(); c++) {
+                OWLDataProperty q = model.representative(c);
+                if (q == null) continue;
+                if (model.jointRanges(p, q).size() > 1) {
+                    throw unsupported("getDisjointDataProperties", "the data property " + p
+                            + " next to " + q + ", whose ranges name different datatypes");
+                }
+                Set<OWLClassExpression> domains = new LinkedHashSet<>(model.jointDomains(p, q));
+                if (domains.isEmpty()) continue; // only owl:Thing: some element takes the pair
+                candidates.add(c);
+                checks.add(domains.size() == 1 ? domains.iterator().next() : df.getOWLObjectIntersectionOf(domains));
+            }
+            List<Integer> found = new ArrayList<>();
+            if (!checks.isEmpty()) allUnsatisfiable(checks); // one run fills the cache for every check
+            for (int i = 0; i < checks.size(); i++) {
+                if (unsatisfiable(checks.get(i))) found.add(candidates.get(i));
+            }
+            return found;
+        });
+        OWLDataPropertyNodeSet ns = new OWLDataPropertyNodeSet();
+        for (int c : nodes) ns.addNode(model.nodeAt(c));
+        ns.addNode(model.bottomNode());
+        return ns;
+    }
+
+    /**
      * Data property domains outside the fragment of {@link DataPropertyModel}:
      * the named superclasses of the fresh {@code Q ≡ ∃p.rdfs:Literal} (exact:
      * {@code C} is a domain iff {@code ∃p.rdfs:Literal ⊑ C}).
@@ -2551,6 +2580,9 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private NodeSet<OWLClass> dataDomainsByReduction(OWLDataProperty p, boolean direct) {
         int[] all = nonBottomRepsWithBottom();
         if (p.isOWLBottomDataProperty()) return classNodeSet(all, direct, true);
+        // The universal data property relates every element to every value, so
+        // ∃U.rdfs:Literal is owl:Thing (km rejects the expression itself).
+        if (p.isOWLTopDataProperty()) return classNodeSet(new int[]{repId[thingId]}, direct, false);
         ClassAnswer a = classAnswer(df.getOWLDataSomeValuesFrom(p, df.getTopDatatype()), false);
         if (a.unsat) return classNodeSet(all, direct, true);
         return classNodeSet(a.supers, direct, false);
