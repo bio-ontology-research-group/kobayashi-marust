@@ -54,6 +54,39 @@ def succs : Stack (Fin m) → List (Option (RT m) × Stack (Fin m))
   | (S, false) :: rest => succsI O S rest
   | (S, true) :: rest => succsF O S rest
 
+/-! The moves with the rules and the hierarchy test as arguments (for
+fast evaluation with a precomputed table; `succsT_eq`). -/
+
+def succsIT (rs : List (RT m × List (RT m))) (le : RT m → RT m → Bool) (S : RT m)
+    (rest : Stack (Fin m)) : List (Option (RT m) × Stack (Fin m)) :=
+  (allRT m).filterMap (fun R => if le R S then some (some R, (S, true) :: rest) else none) ++
+  rs.filterMap (fun p => if le p.1 S && !le S p.1 then
+      some (none, (p.1, false) :: (S, true) :: rest) else none) ++
+  rs.filterMap (fun p => match shapeOf p.1 p.2 with
+    | .refl => if le p.1 S then some (none, (S, true) :: rest) else none
+    | .ord => if le p.1 S && le S p.1 then some (none, ini p.2 ++ (S, true) :: rest) else none
+    | .right => if le p.1 S && le S p.1 then some (none, ini p.2.dropLast ++ (S, false) :: rest)
+        else none
+    | _ => none)
+
+def succsFT (rs : List (RT m × List (RT m))) (le : RT m → RT m → Bool) (S : RT m)
+    (rest : Stack (Fin m)) : List (Option (RT m) × Stack (Fin m)) :=
+  (none, rest) ::
+  rs.filterMap (fun p => match shapeOf p.1 p.2 with
+    | .left => if le p.1 S && le S p.1 then some (none, ini p.2.tail ++ (S, true) :: rest) else none
+    | .trans => if le p.1 S && le S p.1 then some (none, (S, false) :: rest) else none
+    | _ => none)
+
+def succsT (rs : List (RT m × List (RT m))) (le : RT m → RT m → Bool) :
+    Stack (Fin m) → List (Option (RT m) × Stack (Fin m))
+  | [] => []
+  | (S, false) :: rest => succsIT rs le S rest
+  | (S, true) :: rest => succsFT rs le S rest
+
+theorem succsT_eq : succsT (rules O) (leB O) = succs O := by
+  funext st
+  rcases st with _ | ⟨⟨S, _ | _⟩, rest⟩ <;> rfl
+
 end Defs
 
 variable {O : Ontology (Fin n) (Fin m)}

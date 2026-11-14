@@ -1,4 +1,4 @@
-import ContextCalculus.SROIQ.ChainEnc
+import ContextCalculus.SROIQ.ChainFast
 import ContextCalculus.SRIQN.DataParts
 
 /-!
@@ -105,7 +105,8 @@ def encChainQD (O : SRIQD.Ontology (Fin n) (Fin m) (Fin p) (Fin q)) :
 /-- **Chain elimination with nominals and data.** -/
 def encChainDN (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) :
     DOntology (Fin (n + kCD O)) (Fin m) (Fin p) (Fin q) :=
-  (encChainQD (dbase O)).map DClause.base ++ (dnoms O).map fun a => .nom (Fin.castAdd (kCD O) a)
+  let k := kCD O
+  (encChainQD (dbase O)).map DClause.base ++ (dnoms O).map fun a => .nom (Fin.castAdd k a)
 
 theorem dbase_encChainDN (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) :
     dbase (encChainDN O) = encChainQD (dbase O) :=

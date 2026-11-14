@@ -27,6 +27,7 @@ table lookups of `roleCls` are checked as well.
 namespace ContextCalculus.SROIQ.Proc
 
 open ContextCalculus.SRIQ (Clause Ontology)
+open ContextCalculus.SROIQ (rules)
 
 variable {n m : Nat}
 
@@ -49,6 +50,21 @@ theorem condC_of_condB {O : Ontology (Fin n) (Fin m)} (h : condB O = true) : Con
     simp only [List.all_eq_true, Bool.not_eq_eq_eq_not, Bool.not_true] at this
     have h2 := this (T, body) hr
     rw [leB_iff.2 hle] at h2; cases h2
+
+/-- `condB` with the table of super-roles computed once. -/
+def condBF (O : Ontology (Fin n) (Fin m)) : Bool :=
+  let rs := rules O
+  let le := leF (mkTab O)
+  let sf := succsT rs le
+  (allsQT rs le O).all (fun q => closedT sf (reachItT sf 4096 64 [[(q.2.1, false)]])) &&
+  O.all fun
+    | .atLeast _ _ R _ | .atMost _ _ R _ => rs.all fun p => !le p.1 R
+    | _ => true
+
+@[csimp] theorem condB_eq_F : @condB = @condBF := by
+  funext n m O
+  simp only [condBF, leF_mkTab, succsT_eq, condB, reachL, reachIt_eq, closedB_eq]
+  rfl
 
 end ContextCalculus.SROIQ.Proc
 

@@ -22,7 +22,7 @@ km-owl-reference --procedure sriqd <file.ofn>
 km-owl-reference --procedure sriqd-kb [--hint FILE] [--type CLASS INDIVIDUAL] <file.ofn>
 km-owl-reference --procedure shoiq-c2a [--hint FILE] [--type CLASS INDIVIDUAL] <file.ofn>
 km-owl-reference --procedure sroiq-c2a [--hint FILE] [--type CLASS INDIVIDUAL] [--check] <file.ofn>
-km-owl-reference --procedure sriq-kb|sriqd-kb|shoiq-c2a --print-index <file.ofn>
+km-owl-reference --procedure sriq-kb|sriqd-kb|shoiq-c2a|sroiq-c2a --print-index <file.ofn>
 ```
 
 `--print-index` prints the index tables a hint refers to (`printIndex`).
@@ -771,15 +771,29 @@ def runOntologyS (timing : Bool) (hint : Option RawHint) (query : Option (OWL.IR
       IO.eprintln (sroiqDecline O)
       return 3
 
-/-- The fragment checks of `sroiq-c2a`, without the decision. -/
-def checkS (O : OWL.Ontology) : Bool :=
-  O.isSROIQDKB &&
-    match translateSHOIQD (roleOff O) [] with
-    | none => false
-    | some T =>
-      match roleCls T O with
-      | none => false
-      | some E => sroiqOK T (OWLFrontend.SHOIQ.nomNames (roleOff O) []) E
+/-- The fragment checks of `sroiq-c2a`, without the decision (phases timed
+with `KM_REFERENCE_TIMING=1`). -/
+def checkS (timing : Bool) (O : OWL.Ontology) : IO Bool := do
+  if !O.isSROIQDKB then return false
+  let ⟨tr, _⟩ ← timedPhase timing "translate" (fun _ => translateSHOIQD (roleOff O) [])
+  match tr with
+  | none => return false
+  | some T =>
+    let ⟨rc, _⟩ ← timedPhase timing "roles" (fun _ => roleCls T O)
+    match rc with
+    | none => return false
+    | some E =>
+      let L := OWLFrontend.SHOIQ.nomNames (roleOff O) []
+      let ⟨r1, _⟩ ← timedPhase timing "regular" (fun _ => SROIQ.Proc.regularB (objC T L E))
+      if !r1 then return false
+      let ⟨r2, _⟩ ← timedPhase timing "automata" (fun _ => SROIQ.Proc.condB (objC T L E))
+      if !r2 then return false
+      let ⟨r3, _⟩ ← timedPhase timing "c2a"
+        (fun _ => decide (SRIQN.IsC2aD (SRIQN.Proc.encTransDN (encC T L E))))
+      if !r3 then return false
+      let ⟨r4, _⟩ ← timedPhase timing "data"
+        (fun _ => (List.finRange T.tab.length).all fun p => OWL.Datatypes.drSupported (OWLFrontend.SHIQD.spec T.tab p))
+      return r4
 
 /-- The SHIQ(D) knowledge-base route on an ontology. -/
 def runOntologyDKB (timing : Bool) (hint : Option RawHint) (query : Option (OWL.IRI × OWL.IRI))
@@ -1008,7 +1022,22 @@ and of the transitivity encoding. -/
 def printIndex (route : String) (O : OWL.Ontology) : IO UInt32 := do
   let out ← IO.getStdout
   let emit (ls : List String) : IO Unit := do for l in ls do out.putStrLn l
-  if route == "shoiq-c2a" then
+  if route == "sroiq-c2a" then
+    match translateSHOIQD (roleOff O) [] with
+    | none => decline (sroiqDecline O)
+    | some T =>
+      match roleCls T O with
+      | none => decline (sroiqDecline O)
+      | some E =>
+        let L := OWLFrontend.SHOIQ.nomNames (roleOff O) []
+        emit [s!"concepts {T.obj.conceptCount + SROIQ.Proc.kCD (dosnC T L E) + SRIQN.Proc.encKD (encC T L E)}",
+          s!"roles {T.obj.roleCount}"]
+        emit (indexLines T.obj)
+        emit ((roleOff O).individualNames.filterMap fun a =>
+          (nameIx T.obj (OWLFrontend.SHOIQ.nmOf (roleOff O) [] a)).map fun i => s!"nominal {i.val} {a}")
+        out.flush
+        return 0
+  else if route == "shoiq-c2a" then
     match translateSHOIQD O [] with
     | none => decline (shoiqDecline O)
     | some T =>
@@ -1074,7 +1103,7 @@ def runFile (args : Args) (path : String) : IO UInt32 := do
         | .error reason => decline s!"parse rejected: {reason}"
         | .ok O =>
           if args.dataRoute == some "sroiq-c2a" then
-            if checkS O then do
+            if ← checkS (← timingEnabled) O then do
               IO.println "accepted"
               return 0
             else decline (sroiqDecline O)
@@ -1115,7 +1144,7 @@ def main (args : List String) : IO UInt32 := do
     | some path =>
       if (a.hint.isSome || a.query.isSome || a.printIndex || a.checkOnly) &&
           !((a.procedure == .sriqKB && a.dataRoute.isNone) || a.dataRoute == some "sriqd-kb" ||
-            a.dataRoute == some "shoiq-c2a" || (a.dataRoute == some "sroiq-c2a" && !a.printIndex)) then
+            a.dataRoute == some "shoiq-c2a" || a.dataRoute == some "sroiq-c2a") then
         IO.eprintln usage
         return 2
       else KMOWLReferenceCheck.runFile a path
