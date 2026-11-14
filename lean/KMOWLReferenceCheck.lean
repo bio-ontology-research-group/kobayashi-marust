@@ -12,7 +12,21 @@ document:
 
 ```
 km-owl-reference [--procedure el|sri|el-then-sri|sriq|el-then-sriq|alc|el-then-alc] <file.ofn>
+km-owl-reference --procedure sriq-kb [--hint FILE] [--type CLASS INDIVIDUAL] <file.ofn>
 ```
+
+`sriq-kb` is `owlSHIQKBReference`, the v1.7.0 route for SHIQ knowledge
+bases with individuals (`docs/V1.7.0-C1B-ABOX-DESIGN.md`). It decides
+consistency with the hint of `--hint FILE` first (text format in the
+docstring of `SRIQKBReference.lean`) and the exhaustive search as fallback;
+the stderr line `hint: accepted`, `hint: rejected, searching` or
+`hint: does not fit the translation, searching` says what happened. Its
+theorems hold for every hint (`owlSHIQKBReference_sound`). With
+`--type CLASS INDIVIDUAL` it decides the class assertion instead
+(`owlTypeRow`, `owlTypeRow_sound`; the hint is then a countermodel of the
+knowledge base with the complement of the class at the individual) and
+prints `{"format":"owl-type-v1","class":C,"individual":a,"entailed":true|false}`.
+`--hint` and `--type` are usage errors with any other procedure.
 
 1. read the file and run `OWL.parse` (a rejection declines);
 2. request `OWLFrontend.probeRequest O`: the class IRIs `O.classNames`
@@ -58,7 +72,8 @@ Exit codes: `0` publish, `2` usage or unreadable input file
 IO error (`io error: ...`). With `KM_REFERENCE_TIMING=1` every phase prints
 `KM_REFERENCE_TIMING phase=<name> ms=<ms>` on stderr: `read`, `parse`,
 `names`, `translate`, `closure` (EL), `transitivity` and `classify` (SHI and
-SHIQ) or `types` (ALC), `rows`, `readout`, `output`, `total`.
+SHIQ) or `types` (ALC), `hint` and `search` (`sriq-kb`), `type` (`--type`),
+`rows`, `readout`, `output`, `total`.
 
 Loops over input-sized lists are tail recursive (`foldl`, `filter`,
 `filterMap`, `map` and `append` compile to their tail-recursive twins), and
@@ -333,6 +348,142 @@ def runSRIQ (timing : Bool) (O : OWL.Ontology) (requested : List OWL.IRI) :
       | none =>
         return .declined s!"not SHIQ: property chain outside SHIQ: {firstOutsideSHI O}"
 
+/-- The SHIQ knowledge-base answer with its consistency verdict passed in
+(the body of `owlSHIQKBReference`). -/
+theorem owlSHIQKBReference_of_translate {O : OWL.Ontology} {requested : List OWL.IRI}
+    {hint : Option RawHint} {T : SRIQKBTranslation} (hT : translateSRIQKB O requested = some T)
+    (hS : kbOK T = true) :
+    owlSHIQKBReference O requested hint =
+      some (kbAnswerOf T (SRIQ.Proc.encTransQ T.ontology)
+        (SRIQ.Proc.consistentKBQ T.ontology T.abox (hint.bind fun h => h.toHint _ _ _))) := by
+  simp only [owlSHIQKBReference, hT, hS, if_true, kbHint]
+
+/-- The verdict of `owlTypeRow` once the translation is known. -/
+theorem owlTypeRow_of_translate {O : OWL.Ontology} {C a : OWL.IRI} {hint : Option RawHint}
+    {T : SRIQKBTranslation} (hT : translateSRIQKB O [C] [a] = some T) (hS : kbOK T = true)
+    (hC : 0 < T.named.length) (ha : T.inds.idxOf a < T.inds.length) :
+    owlTypeRow O C a hint =
+      some (!SRIQ.Proc.consistentKBQ
+        (SRIQ.Proc.complO T.ontology ⟨0, Nat.lt_of_lt_of_le hC T.hnamed⟩)
+        (SRIQ.Proc.complA T.abox ⟨_, ha⟩) (hint.bind fun h => h.toHint _ _ _)) := by
+  simp only [owlTypeRow, hT, hS, hC, ha, dif_pos, if_true, SRIQ.Proc.typeRow]
+
+/-- `consistentKBQ` with the hint check and the search timed apart; the
+stderr line reports what the hint did. -/
+def consistentTimed (timing : Bool) {n m k : Nat} (O : SRIQ.Ontology (Fin n) (Fin m))
+    (A : SRIQ.ABox (Fin n) (Fin m) (Fin k)) (hint : Option RawHint) :
+    IO { b : Bool // b = SRIQ.Proc.consistentKBQ O A (hint.bind fun h => h.toHint _ _ _) } := do
+  let ⟨ok, hok⟩ ← timedPhase timing "hint" (fun _ =>
+    (hint.bind fun h => h.toHint (n + (SRIQ.Proc.encTransQ O).1) m k).any
+      (SRIQ.Proc.checkRealisation (SRIQ.Proc.encTransQ O).2 (SRIQ.Proc.encABox O A)))
+  if hint.isSome then
+    if (hint.bind fun h => h.toHint (n + (SRIQ.Proc.encTransQ O).1) m k).isNone then
+      IO.eprintln "hint: does not fit the translation, searching"
+    else if ok then
+      IO.eprintln "hint: accepted"
+    else
+      IO.eprintln "hint: rejected, searching"
+  if hok' : ok = true then
+    return ⟨true, by
+      simp only [SRIQ.Proc.consistentKBQ, SRIQ.Proc.consistentKB, ← hok, hok', Bool.true_or]⟩
+  else
+    let ⟨s, hs⟩ ← timedPhase timing "search" (fun _ =>
+      SRIQ.Proc.searchKB (SRIQ.Proc.encTransQ O).2 (SRIQ.Proc.encABox O A))
+    return ⟨s, by
+      simp only [SRIQ.Proc.consistentKBQ, SRIQ.Proc.consistentKB, ← hok,
+        Bool.eq_false_iff.2 hok', Bool.false_or, hs]⟩
+
+/-- The first assertion with an anonymous individual, for the decline
+reason of `sriq-kb`. -/
+def firstAnonymous (O : OWL.Ontology) : Option String :=
+  let anon : OWL.Individual → Bool := fun | .anon _ => true | .named _ => false
+  (O.axioms.find? fun ax => match ax with
+    | .classAssertion _ a => anon a
+    | .objectPropertyAssertion _ a b | .negativeObjectPropertyAssertion _ a b => anon a || anon b
+    | .sameIndividual as | .differentIndividuals as => as.any anon
+    | .dataPropertyAssertion _ a _ | .negativeDataPropertyAssertion _ a _ => anon a
+    | _ => false).map axiomKind
+
+/-- The decline reason when the knowledge-base translation does not apply. -/
+def kbNotRecognised (O : OWL.Ontology) : String :=
+  match firstAnonymous O with
+  | some k => s!"not recognised: anonymous individuals are declined for now (first in: {k})"
+  | none =>
+    s!"not recognised: not an OWL SHIQ knowledge base ({firstFailing O OWL.Axiom.isSHIQKB})"
+
+/-- The first negative role assertion whose role has a transitive role
+below it or below its inverse. -/
+def nonSimpleNeg {n m k : Nat} (O : SRIQ.Ontology (Fin n) (Fin m))
+    (A : SRIQ.ABox (Fin n) (Fin m) (Fin k)) : Option (SRI.RoleT (Fin m) × SRI.RoleT (Fin m)) :=
+  (transRoles O).findSome? fun T =>
+    let up := SRI.Proc.roleUp (SRIQ.sriPart O) T
+    ((nroleRoles A).find? fun R => up.contains R || up.contains R.flip).map fun R => (T, R)
+
+/-- The IRI of role index `k` of the knowledge-base translation. -/
+def kbRoleText (O : OWL.Ontology) (requested : List OWL.IRI) {m : Nat} :
+    SRI.RoleT (Fin m) → String
+  | .pos k =>
+    s!"<{(((SRIQT.run (SRIQKB.kbTBox O (SRIQKB.defBase O requested)) requested).1.b.rdefs[k.val]?).bind List.head?).getD "?"}>"
+  | .inv k =>
+    s!"ObjectInverseOf(<{(((SRIQT.run (SRIQKB.kbTBox O (SRIQKB.defBase O requested)) requested).1.b.rdefs[k.val]?).bind List.head?).getD "?"}>)"
+
+/-- The decline reason of a translation that fails `kbOK`. -/
+def kbDecline (O : OWL.Ontology) (requested : List OWL.IRI) (T : SRIQKBTranslation) : String :=
+  match nonSimpleWitness T.ontology with
+  | some (tr, R) =>
+    s!"not SHIQ: non-simple role in a number restriction or functionality axiom: {kbRoleText O requested R} has the transitive role {kbRoleText O requested tr} below it or below its inverse"
+  | none =>
+    match nonSimpleNeg T.ontology T.abox with
+    | some (tr, R) =>
+      s!"not SHIQ: non-simple role in a negative property assertion: {kbRoleText O requested R} has the transitive role {kbRoleText O requested tr} below it or below its inverse"
+    | none => s!"not SHIQ: property chain outside SHIQ: {firstOutsideSHI O}"
+
+def runSRIQKB (timing : Bool) (O : OWL.Ontology) (requested : List OWL.IRI)
+    (hint : Option RawHint) :
+    IO (Run (fun a => owlSHIQKBReference O requested hint = some a) True) := do
+  let ⟨tOpt, ht⟩ ← timedPhase timing "translate" (fun _ => translateSRIQKB O requested)
+  match tOpt, ht with
+  | none, _ => return .notApplicable trivial
+  | some T, ht =>
+    if hS : kbOK T = true then
+      let ⟨c, hc⟩ ← consistentTimed timing T.ontology T.abox hint
+      let ⟨a, ha⟩ ← timedPhase timing "rows" (fun _ =>
+        kbAnswerOf T (SRIQ.Proc.encTransQ T.ontology) c)
+      return .published a (by rw [owlSHIQKBReference_of_translate ht.symm hS, ha, hc])
+    else
+      return .declined (kbDecline O requested T)
+
+/-- Decide one class assertion with `owlTypeRow`, timed. -/
+def runType (timing : Bool) (O : OWL.Ontology) (C a : OWL.IRI) (hint : Option RawHint) :
+    IO (Except String { v : Bool // owlTypeRow O C a hint = some v }) := do
+  let ⟨tOpt, ht⟩ ← timedPhase timing "translate" (fun _ => translateSRIQKB O [C] [a])
+  match tOpt, ht with
+  | none, _ =>
+    return .error (kbNotRecognised O)
+  | some T, ht =>
+    if hS : kbOK T = true then
+      if hC : 0 < T.named.length then
+        if ha : T.inds.idxOf a < T.inds.length then
+          let ⟨c, hc⟩ ← consistentTimed timing
+            (SRIQ.Proc.complO T.ontology ⟨0, Nat.lt_of_lt_of_le hC T.hnamed⟩)
+            (SRIQ.Proc.complA T.abox ⟨_, ha⟩) hint
+          return .ok ⟨!c, by rw [owlTypeRow_of_translate ht.symm hS hC ha, hc]⟩
+        else return .error "internal: individual without an index"
+      else return .error "internal: class without an index"
+    else return .error (kbDecline O [C] T)
+
+/-- Print the verdict of `owlTypeRow`. The proof argument records that the
+verdict is the one of `owlTypeRow`, so `owlTypeRow_sound` gives its
+meaning. -/
+def publishType (C a : OWL.IRI) (v : Bool) {O : OWL.Ontology} {hint : Option RawHint}
+    (_h : owlTypeRow O C a hint = some v) : IO UInt32 := do
+  let out ← IO.getStdout
+  let verdict := if v then "true" else "false"
+  out.putStrLn ("{\"format\":\"owl-type-v1\",\"class\":" ++ (Json.str C).compress ++
+    ",\"individual\":" ++ (Json.str a).compress ++ ",\"entailed\":" ++ verdict ++ "}")
+  out.flush
+  return 0
+
 /-! ### Output -/
 
 /-- Stream `items` as comma-separated JSON fragments, at most 4096 items per
@@ -356,6 +507,7 @@ def procedureName : OWLProcedure → String
   | .elThenSri => "el-then-sri"
   | .sriq => "sriq"
   | .elThenSriq => "el-then-sriq"
+  | .sriqKB => "sriq-kb"
 
 /-- Publish the readout of an answer to `probeRequest O`. The proof argument
 records in the type that the answer comes from the route's equation; with the
@@ -390,8 +542,13 @@ def decline (reason : String) : IO UInt32 := do
   IO.eprintln reason
   return 3
 
-def runOntology (timing : Bool) (p : OWLProcedure) (O : OWL.Ontology) : IO UInt32 := do
+def runOntology (timing : Bool) (p : OWLProcedure) (hint : Option RawHint)
+    (query : Option (OWL.IRI × OWL.IRI)) (O : OWL.Ontology) : IO UInt32 := do
   let t0 ← IO.monoNanosNow
+  if let some (C, a) := query then
+    match ← runType timing O C a hint with
+    | .ok ⟨v, hv⟩ => return ← publishType C a v hv
+    | .error reason => return ← decline reason
   let names := O.classNames
   if hA : probeA ∈ names then
     return ← decline s!"probe IRI mentioned: {probeA}"
@@ -463,6 +620,11 @@ def runOntology (timing : Bool) (p : OWLProcedure) (O : OWL.Ontology) : IO UInt3
           | .notApplicable _ =>
             decline s!"not recognised: neither OWL EL ({firstFailing O OWL.Axiom.isEL}) nor OWL SHIQ ({firstFailing O OWL.Axiom.isSHIQ})"
           | .declined reason => decline reason
+    | .sriqKB =>
+      match ← runSRIQKB timing O requested hint with
+      | .published a h => publish timing "sriq-kb" .sriqKB O a ⟨hint, h⟩ hA hB
+      | .notApplicable _ => decline (kbNotRecognised O)
+      | .declined reason => decline reason
     | .elThenAlc =>
       match ← runEL timing O requested with
       | .published a h =>
@@ -479,11 +641,12 @@ def runOntology (timing : Bool) (p : OWLProcedure) (O : OWL.Ontology) : IO UInt3
           decline s!"not recognised: neither OWL EL ({firstFailing O OWL.Axiom.isEL}) nor OWL ALC ({firstFailing O OWL.Axiom.isALC})"
         | .declined reason => decline reason
 
-def runText (timing : Bool) (p : OWLProcedure) (text : String) : IO UInt32 := do
+def runText (timing : Bool) (p : OWLProcedure) (hint : Option RawHint)
+    (query : Option (OWL.IRI × OWL.IRI)) (text : String) : IO UInt32 := do
   let ⟨parsed, _⟩ ← timedPhase timing "parse" (fun _ => OWL.parse text)
   match parsed with
   | .error reason => decline s!"parse rejected: {reason}"
-  | .ok O => runOntology timing p O
+  | .ok O => runOntology timing p hint query O
 
 def parseProcedure : String → Option OWLProcedure
   | "el" => some .el
@@ -493,37 +656,66 @@ def parseProcedure : String → Option OWLProcedure
   | "el-then-sri" => some .elThenSri
   | "sriq" => some .sriq
   | "el-then-sriq" => some .elThenSriq
+  | "sriq-kb" => some .sriqKB
   | _ => none
 
-def parseArgs (p : OWLProcedure) (path : Option String) :
-    List String → Option (OWLProcedure × String)
-  | [] => path.map fun f => (p, f)
+/-- The command line: procedure, input file, hint file, type query. -/
+structure Args where
+  procedure : OWLProcedure := .elThenSri
+  path : Option String := none
+  hint : Option String := none
+  query : Option (OWL.IRI × OWL.IRI) := none
+
+def parseArgs (acc : Args) : List String → Option Args
+  | [] => if acc.path.isSome then some acc else none
   | "--procedure" :: raw :: rest =>
     match parseProcedure raw with
-    | some p' => parseArgs p' path rest
+    | some p' => parseArgs { acc with procedure := p' } rest
     | none => none
+  | "--hint" :: f :: rest => parseArgs { acc with hint := some f } rest
+  | "--type" :: C :: a :: rest => parseArgs { acc with query := some (C, a) } rest
   | arg :: rest =>
     if arg.startsWith "--procedure=" then
       match parseProcedure (arg.drop "--procedure=".length).toString with
-      | some p' => parseArgs p' path rest
+      | some p' => parseArgs { acc with procedure := p' } rest
       | none => none
+    else if arg.startsWith "--hint=" then
+      parseArgs { acc with hint := some (arg.drop "--hint=".length).toString } rest
     else if arg.startsWith "-" then none
-    else match path with
-      | none => parseArgs p (some arg) rest
+    else match acc.path with
+      | none => parseArgs { acc with path := some arg } rest
       | some _ => none
 
-/-- Read the file, then run. Only a failed read reports `failed to read`
-(exit 2); an IO error afterwards reports `io error` (exit 4). -/
-def runFile (p : OWLProcedure) (path : String) : IO UInt32 := do
+/-- Read the hint file, if any. -/
+def readHint (path : Option String) : IO (Except String (Option RawHint)) := do
+  match path with
+  | none => return .ok none
+  | some f =>
+    match ← (IO.FS.readFile f).toBaseIO with
+    | .error err => return .error s!"failed to read hint {f}: {err}"
+    | .ok text =>
+      match RawHint.parseHint text with
+      | .ok h => return .ok (some h)
+      | .error reason => return .error s!"bad hint {f}: {reason}"
+
+/-- Read the hint file and the input file, then run. Only a failed read
+reports `failed to read` (exit 2, also for a malformed hint file); an IO
+error afterwards reports `io error` (exit 4). -/
+def runFile (args : Args) (path : String) : IO UInt32 := do
   let timing ← timingEnabled
   let t0 ← IO.monoNanosNow
+  match ← readHint args.hint with
+  | .error msg =>
+    IO.eprintln msg
+    return 2
+  | .ok hint =>
   match ← (IO.FS.readFile path).toBaseIO with
   | .error err =>
     IO.eprintln s!"failed to read {path}: {err}"
     return 2
   | .ok text =>
     reportPhase timing "read" t0
-    let code ← match ← (runText timing p text).toBaseIO with
+    let code ← match ← (runText timing args.procedure hint args.query text).toBaseIO with
       | .ok code => pure code
       | .error err =>
         IO.eprintln s!"io error: {err}"
@@ -534,8 +726,18 @@ def runFile (p : OWLProcedure) (path : String) : IO UInt32 := do
 end KMOWLReferenceCheck
 
 def main (args : List String) : IO UInt32 := do
-  match KMOWLReferenceCheck.parseArgs .elThenSri none args with
+  let usage := "usage: km-owl-reference [--procedure el|sri|el-then-sri|sriq|el-then-sriq|alc|el-then-alc|sriq-kb] [--hint FILE] [--type CLASS INDIVIDUAL] <file.ofn> (default el-then-sri; --hint and --type with sriq-kb only)"
+  match KMOWLReferenceCheck.parseArgs {} args with
+  | some a =>
+    match a.path with
+    | some path =>
+      if (a.hint.isSome || a.query.isSome) && a.procedure != .sriqKB then
+        IO.eprintln usage
+        return 2
+      else KMOWLReferenceCheck.runFile a path
+    | none =>
+      IO.eprintln usage
+      return 2
   | none =>
-    IO.eprintln "usage: km-owl-reference [--procedure el|sri|el-then-sri|sriq|el-then-sriq|alc|el-then-alc] <file.ofn> (default el-then-sri)"
+    IO.eprintln usage
     return 2
-  | some (p, path) => KMOWLReferenceCheck.runFile p path

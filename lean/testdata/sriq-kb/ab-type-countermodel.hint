@@ -1,0 +1,9 @@
+# Countermodel for ClassAssertion(:B :a) on ab-type.ofn: a realisation of
+# the translation with the complement nc of B at a.
+# Concepts: B = 0, A = 1, top = 2, bottom = 3, 4 = the definer of
+# ObjectAllValuesFrom(:r :B), nc = 5. Role :r = 0. Individuals: a = 0, b = 1.
+blocks 2
+blk 0 1
+ty 0 1 2 4 5     # a: A, top, the definer, not B
+ty 1 0 2         # b: B, top
+lab 0 1 +0       # r from a to b

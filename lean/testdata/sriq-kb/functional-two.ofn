@@ -1,0 +1,7 @@
+Prefix(:=<http://example.org/t#>)
+Ontology(<http://example.org/t>
+Declaration(ObjectProperty(:r))
+FunctionalObjectProperty(:r)
+ObjectPropertyAssertion(:r :a :a)
+ObjectPropertyAssertion(:r :a :b)
+)

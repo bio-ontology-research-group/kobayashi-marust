@@ -1,0 +1,10 @@
+# A hint for functional-two.ofn that fails the check: a and b in two blocks
+# give a two r-successors, against the functionality of r. The search then
+# finds the realisation with a and b in one block.
+# Concepts: probe-a = 0, probe-b = 1, top = 2, bottom = 3. Role :r = 0.
+blocks 2
+blk 0 1
+ty 0 2
+ty 1 2
+lab 0 0 +0
+lab 0 1 +0

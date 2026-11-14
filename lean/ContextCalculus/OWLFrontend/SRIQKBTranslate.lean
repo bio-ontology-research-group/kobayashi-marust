@@ -10,7 +10,7 @@ import ContextCalculus.SRIQ.ABox
 normalises an ontology of the SHIQ knowledge-base part
 (`OWL.Ontology.isSHIQKB`) into a `SRIQ` ontology over `Fin conceptCount`
 concepts and `Fin roleCount` roles, and an ABox over the individuals
-`inds = O.individualNames ++ extra` (individual `a` has index
+`inds = (O.individualNames ++ extra).eraseDups` (individual `a` has index
 `inds.idxOf a`).
 
 The TBox part goes through the SHIQ translation (`SRIQT.run`, the pipeline
@@ -157,7 +157,7 @@ def translateSRIQKB (O : OWL.Ontology) (requested : List OWL.IRI) (extra : List 
   if O.isSHIQKB then
     let base := defBase O requested
     let r := SRIQT.run (kbTBox O base) requested
-    let inds := O.individualNames ++ extra
+    let inds := (O.individualNames ++ extra).eraseDups
     if h : r.2.length ≤ r.1.b.cdefs.size then
       (collect (assertsOf r.1 base inds r.1.b.cdefs.size r.1.b.rdefs.size) O.axioms.zipIdx).map
         fun A =>

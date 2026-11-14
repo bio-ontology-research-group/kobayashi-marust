@@ -722,7 +722,7 @@ open ContextCalculus.OWL SRIQKB
 variable {O : OWL.Ontology} {requested extra : List OWL.IRI} {T : SRIQKBTranslation}
 
 theorem translateSRIQKB_spec (h : translateSRIQKB O requested extra = some T) :
-    O.isSHIQKB = true ∧ T.named = requested.eraseDups ∧ T.inds = O.individualNames ++ extra := by
+    O.isSHIQKB = true ∧ T.named = requested.eraseDups ∧ T.inds = (O.individualNames ++ extra).eraseDups := by
   simp only [translateSRIQKB] at h
   split at h
   case isFalse => exact absurd h (by simp)
@@ -891,8 +891,8 @@ theorem SRIQKB.indIx_isSome {inds : List IRI} {a : IRI} (h : a ∈ inds) :
   exact ⟨⟨_, this⟩, by simp [indIx, this]⟩
 
 theorem SRIQKB.mem_inds {O : Ontology} {extra : List IRI} {ax : Axiom} (hax : ax ∈ O.axioms)
-    {a : IRI} (ha : a ∈ ax.namedIndividuals) : a ∈ O.individualNames ++ extra :=
-  List.mem_append_left _ ((O.mem_namesBy _ a).2 ⟨ax, hax, ha⟩)
+    {a : IRI} (ha : a ∈ ax.namedIndividuals) : a ∈ (O.individualNames ++ extra).eraseDups :=
+  List.mem_eraseDups.2 (List.mem_append_left _ ((O.mem_namesBy _ a).2 ⟨ax, hax, ha⟩))
 
 /-- On the SHIQ knowledge-base part the translation succeeds. -/
 theorem translateSRIQKB_isSome (hO : O.isSHIQKB = true) :
@@ -915,7 +915,7 @@ theorem translateSRIQKB_isSome (hO : O.isSHIQKB = true) :
   have hO' : ∀ ax ∈ O.axioms, ax.isSHIQKB = true := by
     simpa [Ontology.isSHIQKB, List.all_eq_true] using hO
   have hcol : (collect (assertsOf (SRIQT.run (kbTBox O base) requested).1 base
-      (O.individualNames ++ extra) (SRIQT.run (kbTBox O base) requested).1.b.cdefs.size
+      (O.individualNames ++ extra).eraseDups (SRIQT.run (kbTBox O base) requested).1.b.cdefs.size
       (SRIQT.run (kbTBox O base) requested).1.b.rdefs.size) O.axioms.zipIdx).isSome = true := by
     refine collect_isSome fun ⟨ax, j⟩ hp => ?_
     have hax := mem_of_zipIdx hp
@@ -923,12 +923,12 @@ theorem translateSRIQKB_isSome (hO : O.isSHIQKB = true) :
     have hdef : ∀ ax' ∈ defAxioms base (ax, j), ax' ∈ (kbTBox O base).axioms :=
       fun ax' h' => mem_kbTBox.2 (Or.inr ⟨_, hp, h'⟩)
     have hpair : ∀ (as : List Individual), (∀ a ∈ as, a.isNamed = true) →
-        (∀ a' ∈ as.flatMap Individual.namedIRI, a' ∈ O.individualNames ++ extra) →
-        ∀ (mk : Fin (O.individualNames ++ extra).length → Fin (O.individualNames ++ extra).length →
+        (∀ a' ∈ as.flatMap Individual.namedIRI, a' ∈ (O.individualNames ++ extra).eraseDups) →
+        ∀ (mk : Fin (O.individualNames ++ extra).eraseDups.length → Fin (O.individualNames ++ extra).eraseDups.length →
           KA (SRIQT.run (kbTBox O base) requested).1.b.cdefs.size
-            (SRIQT.run (kbTBox O base) requested).1.b.rdefs.size (O.individualNames ++ extra).length)
+            (SRIQT.run (kbTBox O base) requested).1.b.rdefs.size (O.individualNames ++ extra).eraseDups.length)
           (p : Individual × Individual), p.1 ∈ as → p.2 ∈ as →
-          (pairAssert (O.individualNames ++ extra) mk p).isSome = true := by
+          (pairAssert (O.individualNames ++ extra).eraseDups mk p).isSome = true := by
       intro as hn hm mk p h1 h2
       have hn1 := hn _ h1
       have hn2 := hn _ h2

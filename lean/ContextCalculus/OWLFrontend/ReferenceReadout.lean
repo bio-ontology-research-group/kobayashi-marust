@@ -1,4 +1,5 @@
 import ContextCalculus.OWLFrontend.ReferenceSHIQ
+import ContextCalculus.OWLFrontend.SRIQKBReference
 import ContextCalculus.OWL.Names
 
 /-!
@@ -68,6 +69,8 @@ inductive OWLProcedure where
   | sriq
   /-- EL, then SHI, then SHIQ (`owlReferenceSHIQ`). -/
   | elThenSriq
+  /-- The SHIQ knowledge-base route (`owlSHIQKBReference`), with any hint. -/
+  | sriqKB
   deriving DecidableEq, Repr
 
 /-- The equation a published answer of a procedure comes with. -/
@@ -79,6 +82,7 @@ def RouteAnswer : OWLProcedure → OWL.Ontology → List OWL.IRI → OWLAnswer �
   | .elThenSri, O, requested, a => owlReferenceSHI O requested = some a
   | .sriq, O, requested, a => owlSHIQReference O requested = some a
   | .elThenSriq, O, requested, a => owlReferenceSHIQ O requested = some a
+  | .sriqKB, O, requested, a => ∃ hint, owlSHIQKBReference O requested hint = some a
 
 theorem routeAnswer_exact {p : OWLProcedure} {O : OWL.Ontology}
     {requested : List OWL.IRI} {a : OWLAnswer} (h : RouteAnswer p O requested a) :
@@ -91,6 +95,9 @@ theorem routeAnswer_exact {p : OWLProcedure} {O : OWL.Ontology}
   | elThenSri => exact owlReferenceSHI_sound h
   | sriq => exact owlSHIQReference_sound h
   | elThenSriq => exact owlReferenceSHIQ_sound h
+  | sriqKB =>
+    obtain ⟨_, h⟩ := h
+    exact owlSHIQKBReference_sound h
 
 /-! ### The readout -/
 
