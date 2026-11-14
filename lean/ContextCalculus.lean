@@ -64,6 +64,7 @@ import ContextCalculus.SRIQD.NormalForm
 import ContextCalculus.SRIQD.Stars
 import ContextCalculus.SRIQD.Procedure
 import ContextCalculus.SRIQD.Transitivity
+import ContextCalculus.SRIQD.ABox
 import ContextCalculus.OWLFrontend.Reference
 import ContextCalculus.OWLFrontend.ReferenceReadout
 import ContextCalculus.OWLFrontend.SRIReference
