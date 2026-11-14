@@ -395,7 +395,7 @@ public final class ParityRun {
             if (ha != null) j.add("hermit", ha);
             if (ka != null) j.add("km", ka);
             if (ha != null && ka != null) {
-                j.addProperty("verdict", c.info ? "info" : verdict(ha, ka));
+                j.addProperty("verdict", c.info ? "info" : verdict(c.method, ha, ka));
             }
             calls.add(j);
         }
@@ -472,9 +472,33 @@ public final class ParityRun {
      * both_error_same (counts as agreement), both_error_different, both_failed,
      * hermit_timeout (HermiT timed out or never reached the call: no comparison).
      */
-    static String verdict(JsonObject h, JsonObject k) {
+    static String verdict(JsonObject h, JsonObject k) { return verdict("", h, k); }
+
+    /**
+     * Two methods report what the reasoner can do, not a fact about the ontology. When KM says it cannot
+     * (isEntailmentCheckingSupported false where HermiT says true, or fewer precomputable inference types)
+     * the call counts as km_unsupported, the same column as a thrown UnsupportedOperationException.
+     */
+    static String verdict(String method, JsonObject h, JsonObject k) {
         boolean ho = ok(h), ko = ok(k);
-        if (ho && ko) return compare(h.getAsJsonObject("ans"), k.getAsJsonObject("ans"));
+        if (ho && ko) {
+            JsonObject ha = h.getAsJsonObject("ans"), ka = k.getAsJsonObject("ans");
+            String v = compare(ha, ka);
+            if (v.equals("agree")) return v;
+            if (method.equals("isEntailmentCheckingSupported")
+                    && ha.get("t").getAsString().equals("bool") && ka.get("t").getAsString().equals("bool")
+                    && ha.get("v").getAsBoolean() && !ka.get("v").getAsBoolean()) {
+                return "km_unsupported";
+            }
+            if (method.equals("getPrecomputableInferenceTypes") && ha.get("t").getAsString().equals("set")
+                    && ka.get("t").getAsString().equals("set")) {
+                Set<String> hs = new TreeSet<>(), ks = new TreeSet<>();
+                for (JsonElement e : ha.getAsJsonArray("items")) hs.add(e.getAsString());
+                for (JsonElement e : ka.getAsJsonArray("items")) ks.add(e.getAsString());
+                if (hs.containsAll(ks) && !ks.equals(hs)) return "km_unsupported";
+            }
+            return v;
+        }
         if (ho) {
             String ks = k.get("status").getAsString();
             return ks.equals("exception") ? "km_unsupported" : "km_timeout";

@@ -53,14 +53,17 @@ code remains BSD-3-Clause.
 | OWL API call | Answer |
 | --- | --- |
 | `isConsistent`, `isSatisfiable`, `getUnsatisfiableClasses` | for named classes |
-| `getTopClassNode`, `getBottomClassNode`, `getSuperClasses`, `getSubClasses`, `getEquivalentClasses` | the inferred named-class hierarchy |
+| `getTopClassNode`, `getBottomClassNode`, `getSuperClasses`, `getSubClasses`, `getEquivalentClasses` | the inferred named-class hierarchy, with HermiT's conventions for `owl:Thing` and `owl:Nothing` (below) |
+| `getDisjointClasses(C)` | for `owl:Thing` (only the bottom node), `owl:Nothing` or an unsatisfiable class (every node) and a class outside the signature (only the bottom node); other classes throw |
 | `getTypes(ind, direct)` | the named classes the individual belongs to, as class nodes, with `owl:Thing` as HermiT reports it; `direct` keeps the most specific nodes |
-| `getInstances(C, direct)` | for a named class `C`: the individuals that are instances of `C` (direct: those whose most specific types include `C` or a class equivalent to it), grouped into same-individual nodes; an anonymous class expression gives an empty set |
+| `getInstances(C, direct)` | for a named class `C`: the individuals that are instances of `C` (direct: those whose most specific types include `C` or a class equivalent to it), one node per individual under the default `BY_NAME` policy and one node per same-individual group under `BY_SAME_AS`; an anonymous class expression throws |
 | `getSameIndividuals(ind)` | the entailed equalities (`SameIndividual`, functional and inverse-functional roles, cardinality, nominals, any other entailment) |
 | `getSubObjectProperties`, `getSuperObjectProperties` (direct or not), `getEquivalentObjectProperties`, `getInverseObjectProperties`, `getTopObjectPropertyNode`, `getBottomObjectPropertyNode` | the inferred object property hierarchy, for named properties and `ObjectInverseOf` expressions. Equivalent expressions share a node as in HermiT (`r` and an equivalent `s⁻` in one node; empty properties in the bottom node, universal ones in the top node). |
 | `getObjectPropertyDomains`, `getObjectPropertyRanges` (direct or not) | the entailed named domains and ranges of a property or an inverse expression; an empty property has every class, direct answer `owl:Nothing` |
-| `isEntailed` | `SubClassOf` between named classes, `ClassAssertion` of a named class, `SameIndividual` of named individuals, `SubObjectPropertyOf` (no chains), `EquivalentObjectProperties`, `InverseObjectProperties`, `SymmetricObjectProperty`, `ObjectPropertyDomain` and `ObjectPropertyRange` with a named class |
-| `getPrecomputableInferenceTypes` | `CLASS_HIERARCHY`, `OBJECT_PROPERTY_HIERARCHY`, `CLASS_ASSERTIONS`, `SAME_INDIVIDUAL` |
+| `getDisjointObjectProperties(p)` | for `owl:topObjectProperty` and universal properties (the bottom node), `owl:bottomObjectProperty` and empty properties (every node) and properties outside the signature (the bottom node); other properties throw |
+| `getSubDataProperties`, `getSuperDataProperties`, `getEquivalentDataProperties`, `getTopDataPropertyNode`, `getBottomDataPropertyNode`, `getDataPropertyDomains`, `getDisjointDataProperties` | for an ontology whose data properties occur only in sub-property, equivalence, assertion, functionality, domain (named class) and range (built-in datatype) axioms: the data property hierarchy and the named domains, computed in Java from those axioms and the class hierarchy ([`DataPropertyModel`](src/main/java/org/bioontology/kobayashimarust/protege/DataPropertyModel.java) explains why that is complete). Any other ontology throws `UnsupportedOperationException`. `getDisjointDataProperties` is answered for `owl:topDataProperty`, `owl:bottomDataProperty`, empty properties and properties outside the signature only. |
+| `isEntailed` | declarations and annotation axioms (always true, as in HermiT); `SubClassOf` between named classes, `ClassAssertion` of a named class, `SameIndividual` of named individuals, `SubObjectPropertyOf` (no chains), `EquivalentObjectProperties`, `InverseObjectProperties`, `SymmetricObjectProperty`, `ObjectPropertyDomain` and `ObjectPropertyRange` with a named class |
+| `getPrecomputableInferenceTypes` | `CLASS_HIERARCHY`, `OBJECT_PROPERTY_HIERARCHY`, `CLASS_ASSERTIONS`, `SAME_INDIVIDUAL`, and `DATA_PROPERTY_HIERARCHY` when the ontology is inside the data property fragment. HermiT also lists `OBJECT_PROPERTY_ASSERTIONS`; KM does not compute it, so Protégé does not ask for it. |
 
 Classification costs the same as before. The individual queries use
 `km classify --realize` ([`docs/REALIZATION.md`](../docs/REALIZATION.md)). The
@@ -93,12 +96,18 @@ it.
 Behaviour as HermiT (Protégé integration):
 
 - The constructor does no native work. The first query or
-  `precomputeInferences` classifies the ontology as it is then; a failed first
-  run leaves the reasoner unclassified and the next use retries.
+  `precomputeInferences` classifies the ontology as it is then. A run that
+  fails (KM refuses the ontology, or the process fails) is remembered for that
+  version of the ontology: later calls rethrow the stored exception without a
+  new KM run, until the ontology changes or `flush()` runs. The same holds for
+  a failed realization or property run. An interrupt or a time out is not
+  remembered; the next call starts a new run.
 - Queries on an inconsistent ontology throw `InconsistentOntologyException`,
-  which Protégé catches to open its inconsistency explanation. `isConsistent`,
-  `getTopClassNode`, `getBottomClassNode` and `getUnsatisfiableClasses` do not
-  throw. `getInstances` throws only when the ontology has individuals.
+  which Protégé catches to open its inconsistency explanation. Only
+  `isConsistent` does not throw. `getTopClassNode`, `getBottomClassNode`,
+  `getUnsatisfiableClasses` and the top and bottom property nodes throw as
+  well: HermiT 1.4.3.456 does (parity baseline, ontology `ore_ont_5014`).
+  `getInstances` throws only when the ontology has individuals.
 - Native work reports to the progress monitor of the reasoner configuration
   (started, busy, stopped), ends with `TimeOutException` after `getTimeOut()`
   milliseconds, and ends with `ReasonerInterruptedException` when `interrupt()`
@@ -110,11 +119,30 @@ Behaviour as HermiT (Protégé integration):
   `ClassExpressionNotInProfileException` instead of answering `true`.
 - `isEntailed(Set)` ignores annotation and declaration axioms.
 - `isPrecomputed` is true only for the types the plugin holds now.
+- A query the plugin cannot answer soundly and completely throws; it never
+  returns an empty or partial answer. The exception is
+  `UnsupportedOperationException` (for `isEntailed`:
+  `UnsupportedEntailmentTypeException`, and `isEntailmentCheckingSupported`
+  agrees with it; for `isSatisfiable` of an expression:
+  `ClassExpressionNotInProfileException`). The list is under "Queries that
+  throw".
+- `owl:Nothing` and `owl:Thing` follow HermiT's hierarchy: the bottom node
+  holds `owl:Nothing` and the unsatisfiable classes and is a strict subclass
+  of every other node. A leaf class has the bottom node as its only direct
+  subclass, `getSubClasses(owl:Thing, true)` lists it only when no other class
+  exists, and `getSuperClasses(owl:Nothing, false)` is every other class
+  (direct: the leaves). Data and object property hierarchies use the same
+  shape with the top and bottom properties.
+- `getTimeOut`, `getIndividualNodeSetPolicy` and `getFreshEntityPolicy` return
+  what the configuration says (as HermiT does with an `OWLReasonerConfiguration`;
+  `Long.MAX_VALUE` when none was set).
 
 Differences from HermiT:
 
-- `getInstances` returns same-individual nodes as the OWL API specifies.
-  HermiT returns one node per individual; the individuals are the same.
+- The individual node set policy of the configuration decides the nodes of
+  `getInstances`: `BY_NAME` (the default, as in HermiT) gives one node per
+  individual, `BY_SAME_AS` one node per same-individual group.
+  `getSameIndividuals` always returns the whole group, as HermiT does.
 - A class declared equivalent to `owl:Thing` is a type of every individual,
   but KM's class hierarchy does not yet put it in the node of `owl:Thing`, so
   the node shapes (and the `direct` answers for such individuals) differ.
@@ -135,12 +163,39 @@ Differences from HermiT:
   an empty property; KM answers true. For a property outside the signature, KM
   finds only the trivial entailments; HermiT also finds `p ⊑ p⁻` when every
   model of the ontology has one individual.
+- `getDataPropertyDomains(owl:bottomDataProperty)`: HermiT answers
+  `owl:Thing`; the bottom property has no pair, so every class is a domain
+  (direct: `owl:Nothing`) and KM answers that, as for the bottom object
+  property.
+- `getDisjointObjectProperties` and `getDisjointDataProperties` of an empty
+  property other than the bottom property: HermiT leaves out the top property,
+  which is disjoint with an empty property. KM lists every node, as HermiT
+  does for the bottom property itself.
 - `ObjectPropertyDomain` and `ObjectPropertyRange` with a class expression are
   not answered by `isEntailed` (`UnsupportedEntailmentTypeException`).
-- `getDisjointObjectProperties`, `getDisjointClasses`, `getDifferentIndividuals`,
-  object and data property values, data property inferences, and class
-  expression queries (`getInstances` of an anonymous class) are not answered
-  yet.
+
+## Queries that throw
+
+These calls throw `UnsupportedOperationException` (the engine work items):
+
+- `getObjectPropertyValues`, `getDataPropertyValues`, `getDifferentIndividuals`;
+- `getDisjointClasses` of a satisfiable class other than `owl:Thing`,
+  `getDisjointObjectProperties` and `getDisjointDataProperties` of a
+  satisfiable property;
+- `getSuperClasses`, `getSubClasses`, `getEquivalentClasses`,
+  `getDisjointClasses` and `getInstances` with an anonymous class expression
+  (a conjunction, restriction, complement, enumeration, and so on);
+- the data property methods listed above, for an ontology outside their
+  fragment (a data property in a class axiom, a disjointness or key, a complex
+  range, domains or ranges that cannot be combined);
+- `isSatisfiable` of an anonymous class expression
+  (`ClassExpressionNotInProfileException`);
+- `isEntailed` of an axiom type outside the table above, or with a class
+  expression or an anonymous individual where the table says "named"
+  (`UnsupportedEntailmentTypeException`).
+
+`precomputeInferences` ignores a type it does not compute, as the OWL API
+specifies.
 
 ## Install in Protégé
 

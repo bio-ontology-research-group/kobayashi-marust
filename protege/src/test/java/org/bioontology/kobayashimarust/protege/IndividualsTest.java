@@ -111,10 +111,35 @@ public class IndividualsTest {
     }
 
     @Test
-    public void instancesAreGroupedIntoSameIndividualNodes() throws Exception {
+    public void instancesAreSingletonNodesUnderByName() throws Exception {
         OWLOntology o = parse(SMALL);
         OWLDataFactory df = o.getOWLOntologyManager().getOWLDataFactory();
         OWLReasoner r = km(o);
+        // The default policy is BY_NAME: one node per individual, as in HermiT.
+        assertEquals(org.semanticweb.owlapi.reasoner.IndividualNodeSetPolicy.BY_NAME, r.getIndividualNodeSetPolicy());
+        assertEquals(new TreeSet<>(Arrays.asList("[rex]", "[rexy]", "[tom]")),
+                names(r.getInstances(cls(df, "Mammal"), false)));
+        assertEquals(new TreeSet<>(Arrays.asList("[rex]", "[rexy]")), names(r.getInstances(cls(df, "Dog"), true)));
+        assertEquals(new TreeSet<>(Arrays.asList("[alice]", "[bob]", "[loner]", "[rex]", "[rexy]", "[robert]", "[tom]")),
+                names(r.getInstances(df.getOWLThing(), false)));
+        // getSameIndividuals still reports the whole group.
+        assertEquals(new TreeSet<>(Arrays.asList("rex", "rexy")), names(r.getSameIndividuals(ind(df, "rex"))));
+        OWLReasoner hermit = new org.semanticweb.HermiT.ReasonerFactory().createReasoner(o);
+        open.add(hermit);
+        assertEquals(names(hermit.getInstances(cls(df, "Dog"), true)), names(r.getInstances(cls(df, "Dog"), true)));
+        assertEquals(names(hermit.getInstances(df.getOWLThing(), false)),
+                names(r.getInstances(df.getOWLThing(), false)));
+    }
+
+    @Test
+    public void instancesAreGroupedIntoSameIndividualNodes() throws Exception {
+        OWLOntology o = parse(SMALL);
+        OWLDataFactory df = o.getOWLOntologyManager().getOWLDataFactory();
+        OWLReasoner r = new KMReasonerFactory().createReasoner(o, new org.semanticweb.owlapi.reasoner.SimpleConfiguration(
+                new org.semanticweb.owlapi.reasoner.NullReasonerProgressMonitor(),
+                org.semanticweb.owlapi.reasoner.FreshEntityPolicy.ALLOW, Long.MAX_VALUE,
+                org.semanticweb.owlapi.reasoner.IndividualNodeSetPolicy.BY_SAME_AS));
+        open.add(r);
         assertEquals(new TreeSet<>(Arrays.asList("[rex, rexy]", "[tom]")),
                 names(r.getInstances(cls(df, "Mammal"), false)));
         assertEquals(Collections.singleton("[rex, rexy]"), names(r.getInstances(cls(df, "Dog"), true)));

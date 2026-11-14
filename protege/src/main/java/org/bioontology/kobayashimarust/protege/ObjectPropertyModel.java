@@ -333,6 +333,13 @@ final class ObjectPropertyModel {
         return nodeOf[code];
     }
 
+    /** Every node, the top and the bottom node included. */
+    NodeSet<OWLObjectPropertyExpression> allNodes() {
+        BitSet all = new BitSet();
+        all.set(0, members.size());
+        return nodeSet(all);
+    }
+
     Node<OWLObjectPropertyExpression> topNode() { return node(TOP_NODE); }
 
     Node<OWLObjectPropertyExpression> bottomNode() { return node(BOTTOM_NODE); }
