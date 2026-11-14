@@ -69,6 +69,7 @@ import ContextCalculus.SRIQ.FastArr
 import ContextCalculus.SRIQ.FastCheckA
 import ContextCalculus.SRIQ.FastCheckAProof
 import ContextCalculus.SRIQ.FastElimA
+import ContextCalculus.SRIQ.FastElimAProof
 import ContextCalculus.SRIQD.NormalForm
 import ContextCalculus.SRIQD.Stars
 import ContextCalculus.SRIQD.OracleExamples

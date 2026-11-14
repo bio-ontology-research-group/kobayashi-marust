@@ -1,15 +1,17 @@
 import ContextCalculus.OWLFrontend.SRIQReference
 import ContextCalculus.SRIQ.FastCheck
+import ContextCalculus.SRIQ.FastElimAProof
 
 /-!
 # The checked fast SHIQ route (stage C1c)
 
 `owlSHIQFast gen` is `owlSHIQReference` with the star elimination replaced
-by the certificate check of `SRIQ/FastCheck.lean`: after `translateSRIQ`,
-`isSHIQB` and `encTransQ`, the generator `gen` proposes a candidate set,
-`closedB` checks it, and the route answers from its live nodes only when
-the check passes; otherwise it declines (`none`). `owlSHIQFast_sound`
-holds for every generator.
+by the certificate check: after `translateSRIQ`, `isSHIQB` and
+`encTransQ`, the generator `gen` proposes an array candidate set,
+`closedFastB` (`SRIQ/FastCheckA.lean`) checks it, and the route answers
+from its live nodes (`SRIQ/FastElimA.lean`) only when the check passes;
+otherwise it declines (`none`). `owlSHIQFast_sound` holds for every
+generator.
 -/
 
 namespace ContextCalculus.OWLFrontend
@@ -60,14 +62,14 @@ theorem sriq_bit_rows (T : SRIQTranslation) {k : Nat}
 
 /-- The checked fast SHIQ route with the candidate generator `gen`. -/
 def owlSHIQFast
-    (gen : ∀ {N M : Nat}, SRIQ.Ontology (Fin N) (Fin M) → List (Fin N) → SRIQ.Fast.Cand N M)
+    (gen : ∀ {N M : Nat}, SRIQ.Ontology (Fin N) (Fin M) → List (Fin N) → SRIQ.Fast.CandA)
     (O : OWL.Ontology) (requested : List OWL.IRI) : Option OWLAnswer :=
   match translateSRIQ O requested with
   | none => none
   | some T =>
       if isSHIQB T.ontology then
         let E := SRIQ.Proc.encTransQ T.ontology
-        match SRIQ.Fast.fastClassify E.2 (sriqRequest T E.1) (gen E.2 (sriqRequest T E.1)) with
+        match SRIQ.Fast.fastClassifyA E.2 (sriqRequest T E.1) (gen E.2 (sriqRequest T E.1)) with
         | some cls => some { named := T.named, rows := sriqRows T cls }
         | none => none
       else none
@@ -75,7 +77,7 @@ def owlSHIQFast
 /-- **Every answer of the checked route is exact** under the OWL 2 direct
 semantics, for every requested pair and every generator. -/
 theorem owlSHIQFast_sound
-    (gen : ∀ {N M : Nat}, SRIQ.Ontology (Fin N) (Fin M) → List (Fin N) → SRIQ.Fast.Cand N M)
+    (gen : ∀ {N M : Nat}, SRIQ.Ontology (Fin N) (Fin M) → List (Fin N) → SRIQ.Fast.CandA)
     {O : OWL.Ontology} {requested : List OWL.IRI} {a : OWLAnswer}
     (h : owlSHIQFast gen O requested = some a) :
     a.named = requested.eraseDups ∧
@@ -97,8 +99,8 @@ theorem owlSHIQFast_sound
         rw [translateSRIQ_correct hT i j hi hj,
           SRIQ.Proc.encTransQ_correct (isSHIQ_of_isSHIQB hS)]
         refine sriq_bit_rows T (fun i' hi' => ?_) i j hi hj
-        obtain ⟨p, hp, hp1⟩ := SRIQ.Fast.fastClassify_get hcls hi'
-        obtain ⟨-, hall⟩ := SRIQ.Fast.fastClassify_spec (SRIQ.Proc.encTransQ_isALCHIQ T.ontology) hcls
+        obtain ⟨p, hp, hp1⟩ := SRIQ.Fast.fastClassifyA_get hcls hi'
+        obtain ⟨-, hall⟩ := SRIQ.Fast.fastClassifyA_spec (SRIQ.Proc.encTransQ_isALCHIQ T.ontology) hcls
         obtain ⟨-, hn, hs⟩ := hall p (List.mem_of_getElem? hp)
         exact ⟨p, hp, hp1, hn.1, hs⟩
       · exact absurd h (by simp)

@@ -78,7 +78,7 @@ def sigA (needs lims : List ((RoleT (Fin m) × Fin n) × Nat)) (c : Array Nat ×
 def sigTwo (lp : List (((RoleT (Fin m) × Fin n) × Nat) × Nat)) (ty : Array Nat) : Array Nat :=
   ((lp.filter fun p => bsA ty p.1.1.2.val).map (·.2)).toArray
 
-def cntS (p : Nat) (s : Array Nat) : Bool := bsA s p
+def cntS (p : Nat) (s : Array Nat) : Bool := s.contains p
 
 section Defs
 
