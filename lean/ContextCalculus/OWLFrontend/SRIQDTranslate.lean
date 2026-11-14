@@ -322,14 +322,6 @@ def entryClauses {n m p q : Nat} (e : DExpr) (F W : Fin n) (u : Fin p) (j : Fin 
   | 2 => [.dAtLeast F e.n u [j] [], .dAtMost W (e.n - 1) u [j] []]
   | _ => [.dAtMost F e.n u [j] [], .dAtLeast W (e.n + 1) u [j] []]
 
-/-- `f x` for every `x`, concatenated; `none` if one is `none`. -/
-def collectO {α β : Type} (f : α → Option (List β)) : List α → Option (List β)
-  | [] => some []
-  | x :: xs =>
-    match f x, collectO f xs with
-    | some l, some l' => some (l ++ l')
-    | _, _ => none
-
 end SHIQD
 
 open SHIQD
@@ -355,14 +347,14 @@ def translateSRIQD (O : OWL.Ontology) (requested : List OWL.IRI) : Option SRIQDT
     match translateSRIQ (objOnt O base) (requested ++ freshNames base tab) with
     | none => none
     | some T =>
-      let dataCl := collectO (fun (jt : DExpr × Nat) =>
+      let dataCl := SRIQKB.collect (fun (jt : DExpr × Nat) =>
         match nameIx T (fName base tab jt.1), nameIx T (wName base tab jt.1),
           dpIx dps jt.1.p with
         | some F, some W, some u =>
           if h : jt.2 < tab.length then some (entryClauses (m := T.roleCount) jt.1 F W u ⟨jt.2, h⟩)
           else none
         | _, _, _ => none) tab.zipIdx
-      let subCl := collectO (fun (pq : IRI × IRI) =>
+      let subCl := SRIQKB.collect (fun (pq : IRI × IRI) =>
         match dpIx dps pq.1, dpIx dps pq.2 with
         | some u, some w => some [ContextCalculus.SRIQD.Clause.dSub u w]
         | _, _ => none) (O.axioms.flatMap subPairs)
