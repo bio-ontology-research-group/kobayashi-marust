@@ -395,27 +395,61 @@ theorem dfs_complete {cs : List (Lab m × Ty n)} : ∀ (f : Nat) (needs lims : L
 
 /-! ## Deduplication by key -/
 
-theorem dedupKey_subset {α β : Type} [DecidableEq β] (key : α → β) :
-    ∀ l : List α, ∀ x ∈ dedupKey key l, x ∈ l
-  | [], x, h => by simp [dedupKey] at h
-  | y :: l, x, h => by
-    simp only [dedupKey, List.mem_cons, List.mem_filter] at h
-    rcases h with rfl | ⟨h, _⟩
-    · exact List.mem_cons_self
-    · exact List.mem_cons_of_mem _ (dedupKey_subset key l x h)
+theorem dedupAux_subset {α β : Type} [DecidableEq β] [Hashable β] (key : α → β) :
+    ∀ (l acc : List α) (h : Std.HashSet β), ∀ x ∈ dedupAux key l acc h, x ∈ l ∨ x ∈ acc
+  | [], acc, h, x, hx => by simp [dedupAux] at hx; exact Or.inr hx
+  | y :: l, acc, h, x, hx => by
+    simp only [dedupAux] at hx
+    split at hx
+    · rcases dedupAux_subset key l acc h x hx with h1 | h1
+      · exact Or.inl (List.mem_cons_of_mem _ h1)
+      · exact Or.inr h1
+    · rcases dedupAux_subset key l _ _ x hx with h1 | h1
+      · exact Or.inl (List.mem_cons_of_mem _ h1)
+      · rcases List.mem_cons.1 h1 with rfl | h1
+        · exact Or.inl List.mem_cons_self
+        · exact Or.inr h1
 
-theorem exists_dedupKey {α β : Type} [DecidableEq β] (key : α → β) :
-    ∀ l : List α, ∀ x ∈ l, ∃ y ∈ dedupKey key l, key y = key x
-  | [], x, h => by simp at h
-  | y :: l, x, h => by
-    by_cases hk : key x = key y
-    · exact ⟨y, by simp [dedupKey], hk.symm⟩
-    · rcases List.mem_cons.1 h with rfl | h
-      · exact absurd rfl hk
-      · obtain ⟨z, hz, hzk⟩ := exists_dedupKey key l x h
-        refine ⟨z, ?_, hzk⟩
-        simp only [dedupKey, List.mem_cons, List.mem_filter, decide_eq_true_eq]
-        exact Or.inr ⟨hz, by rw [hzk]; exact hk⟩
+theorem dedupKey_subset {α β : Type} [DecidableEq β] [Hashable β] (key : α → β)
+    (l : List α) : ∀ x ∈ dedupKey key l, x ∈ l := by
+  intro x hx
+  rcases dedupAux_subset key l [] ∅ x hx with h | h
+  · exact h
+  · simp at h
+
+theorem dedupAux_spec {α β : Type} [DecidableEq β] [Hashable β] (key : α → β) :
+    ∀ (l acc : List α) (h : Std.HashSet β), (∀ b, h.contains b = true → ∃ y ∈ acc, key y = b) →
+      (∀ y ∈ acc, y ∈ dedupAux key l acc h) ∧
+      ∀ x ∈ l, ∃ y ∈ dedupAux key l acc h, key y = key x
+  | [], acc, h, _ => ⟨fun y hy => by simpa [dedupAux] using hy, fun x hx => by simp at hx⟩
+  | z :: l, acc, h, hinv => by
+    simp only [dedupAux]
+    split
+    · next hc =>
+      obtain ⟨h1, h2⟩ := dedupAux_spec key l acc h hinv
+      refine ⟨h1, fun x hx => ?_⟩
+      rcases List.mem_cons.1 hx with rfl | hx
+      · obtain ⟨y, hy, hk⟩ := hinv _ hc
+        exact ⟨y, h1 y hy, hk⟩
+      · exact h2 x hx
+    · next hc =>
+      have hinv' : ∀ b, (h.insert (key z)).contains b = true → ∃ y ∈ z :: acc, key y = b := by
+        intro b hb
+        rw [Std.HashSet.contains_insert] at hb
+        simp only [Bool.or_eq_true, beq_iff_eq] at hb
+        rcases hb with hb | hb
+        · exact ⟨z, List.mem_cons_self, hb⟩
+        · obtain ⟨y, hy, hk⟩ := hinv b hb
+          exact ⟨y, List.mem_cons_of_mem _ hy, hk⟩
+      obtain ⟨h1, h2⟩ := dedupAux_spec key l (z :: acc) _ hinv'
+      refine ⟨fun y hy => h1 y (List.mem_cons_of_mem _ hy), fun x hx => ?_⟩
+      rcases List.mem_cons.1 hx with rfl | hx
+      · exact ⟨x, h1 x List.mem_cons_self, rfl⟩
+      · exact h2 x hx
+
+theorem exists_dedupKey {α β : Type} [DecidableEq β] [Hashable β] (key : α → β)
+    (l : List α) : ∀ x ∈ l, ∃ y ∈ dedupKey key l, key y = key x :=
+  (dedupAux_spec key l [] ∅ fun b hb => by simp at hb).2
 
 /-- Replacing each entry by one with the same counts on `needs` and `lims`
 keeps a solution. -/

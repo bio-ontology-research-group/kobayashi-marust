@@ -1,5 +1,6 @@
 import ContextCalculus.SRIQ.Procedure
 import Mathlib.Data.Finset.Sort
+import Std.Data.HashSet.Lemmas
 
 /-!
 # Certificate check for the fast SHIQ procedure: definitions (stage C1c)
@@ -373,7 +374,16 @@ instance (κ : Key n m) (q : Fin n × Nat × RoleT (Fin m) × Fin n) : Decidable
 
 def inPool (i : Nat) (σ : Spec n m) : Prop := ∃ e ∈ (nd U i).pool, e.spec = σ
 
-instance (i : Nat) (σ : Spec n m) : Decidable (inPool U i σ) := by unfold inPool; infer_instance
+/-- Compare sizes before the sets. -/
+instance (i : Nat) (σ : Spec n m) : Decidable (inPool U i σ) :=
+  decidable_of_iff ((nd U i).pool.any fun e => e.spec.lab.card == σ.lab.card &&
+      e.spec.fill.card == σ.fill.card && decide (e.spec = σ)) (by
+    simp only [inPool, List.any_eq_true, Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq]
+    constructor
+    · rintro ⟨e, he, -, h⟩
+      exact ⟨e, he, h⟩
+    · rintro ⟨e, he, rfl⟩
+      exact ⟨e, he, ⟨rfl, rfl⟩, rfl⟩)
 
 /-- Every set computed by `br s` contains a node of context `k` that
 contains `s`. -/
@@ -562,9 +572,14 @@ def dfs (cs : List (Lab m × Ty n)) : Nat → List (RoleT (Fin m) × Fin n × Na
           dfs cs f (subC c needs) (subC c lims)
 
 /-- Keep the first element of each key. -/
-def dedupKey {α β : Type} [DecidableEq β] (key : α → β) : List α → List α
-  | [] => []
-  | x :: xs => x :: (dedupKey key xs).filter fun y => decide (key y ≠ key x)
+def dedupAux {α β : Type} [DecidableEq β] [Hashable β] (key : α → β) :
+    List α → List α → Std.HashSet β → List α
+  | [], acc, _ => acc
+  | x :: xs, acc, h =>
+    if h.contains (key x) then dedupAux key xs acc h else dedupAux key xs (x :: acc) (h.insert (key x))
+
+def dedupKey {α β : Type} [DecidableEq β] [Hashable β] (key : α → β) (l : List α) : List α :=
+  dedupAux key l [] ∅
 
 variable (ix : Ix n m) (U : Cand n m)
 
