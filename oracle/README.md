@@ -75,3 +75,13 @@ Then `python3 validate.py` compares this engine's verdicts against the oracle.
 
 Class names are reported as short fragments (after `#`, else after the last
 `/`). Within a single ontology these are unambiguous.
+
+## Object property hierarchy (`properties/`)
+
+`properties/run_hermit_props.sh <ontology>` prints HermiT's object property
+rows (`SUBPROP`, `TOPPROP`, `BOTPROP`, `DOMAIN`, `RANGE`) in the convention
+of `docs/PROPERTIES.md`; `--entail` decides `SUBPROP` by `isEntailed` for
+every pair instead of the hierarchy. Set `PROTEGE` to a Protege 5.6
+directory and `WORK` to a scratch directory. `properties/compare_properties.py
+<ontology> <km --lines --properties output> <hermit output>` lists the rows
+only one side reports.

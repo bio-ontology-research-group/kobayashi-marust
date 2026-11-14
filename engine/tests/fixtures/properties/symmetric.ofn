@@ -1,0 +1,7 @@
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://ex.org/t>
+Declaration(ObjectProperty(<urn:t#adj>)) Declaration(ObjectProperty(<urn:t#near>))
+SymmetricObjectProperty(<urn:t#adj>) SubObjectPropertyOf(<urn:t#adj> <urn:t#near>)
+Declaration(Class(<urn:t#A>))
+ObjectPropertyDomain(<urn:t#adj> <urn:t#A>)
+)

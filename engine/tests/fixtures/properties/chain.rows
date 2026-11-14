@@ -1,0 +1,5 @@
+# HermiT 1.4.3 through the OWL API, rows in the convention of docs/PROPERTIES.md
+DOMAIN	urn:t#t	urn:t#A
+RANGE	urn:t#t	urn:t#B
+RANGE	urn:t#u	urn:t#B
+SUBPROP	urn:t#t	urn:t#u

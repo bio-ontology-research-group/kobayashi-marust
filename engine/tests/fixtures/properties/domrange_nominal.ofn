@@ -1,0 +1,8 @@
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://ex.org/t>
+Declaration(ObjectProperty(<urn:t#r>)) Declaration(ObjectProperty(<urn:t#s>))
+Declaration(NamedIndividual(<urn:t#a>)) Declaration(NamedIndividual(<urn:t#b>))
+ObjectPropertyDomain(<urn:t#r> ObjectOneOf(<urn:t#a>))
+ObjectPropertyRange(<urn:t#r> ObjectOneOf(<urn:t#b>))
+ObjectPropertyAssertion(<urn:t#s> <urn:t#a> <urn:t#b>)
+)

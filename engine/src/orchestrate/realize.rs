@@ -166,7 +166,7 @@ fn individuals_in<'a>(node: &Node<'a>, out: &mut Vec<&'a str>) {
 }
 
 /// The `Prefix(p:=<ns>)` bindings of an OFN document.
-fn prefix_bindings(text: &str) -> Result<BTreeMap<String, String>, OrchestrateError> {
+pub(super) fn prefix_bindings(text: &str) -> Result<BTreeMap<String, String>, OrchestrateError> {
     let mut parser = sexpr::Parser::new(text);
     let mut prefixes = BTreeMap::new();
     while parser.peek() == Some("Prefix") {
@@ -194,10 +194,23 @@ fn prefix_bindings(text: &str) -> Result<BTreeMap<String, String>, OrchestrateEr
 /// check below declines, rather than report one individual under two
 /// names, should that invariant ever fail.
 fn canonical_individuals(text: &str) -> Result<(String, Vec<String>), OrchestrateError> {
-    let canonical = crate::frontend::builtin_aliases::canonicalize(text)
+    let canonical = canonical_source(text)?;
+    let individuals = source_individuals(&canonical)?;
+    check_one_spelling(&canonical, &individuals, "realization: individual")?;
+    Ok((canonical, individuals))
+}
+
+/// The source after `builtin_aliases::canonicalize`.
+pub(super) fn canonical_source(text: &str) -> Result<String, OrchestrateError> {
+    Ok(crate::frontend::builtin_aliases::canonicalize(text)
         .map_err(OrchestrateError::from_conformance)?
-        .into_owned();
-    let prefixes = prefix_bindings(&canonical)?;
+        .into_owned())
+}
+
+/// Decline, rather than report one entity under two names, if two tokens of
+/// the canonical source `canonical` expand to the same IRI.
+pub(super) fn check_one_spelling(canonical: &str, tokens: &[String], what: &str) -> Result<(), OrchestrateError> {
+    let prefixes = prefix_bindings(canonical)?;
     let expand = |token: &str| -> String {
         if let Some(iri) = token.strip_prefix('<').and_then(|t| t.strip_suffix('>')) {
             return iri.to_string();
@@ -207,22 +220,21 @@ fn canonical_individuals(text: &str) -> Result<(String, Vec<String>), Orchestrat
             .and_then(|(prefix, local)| prefixes.get(prefix).map(|ns| format!("{ns}{local}")))
             .unwrap_or_else(|| token.to_string())
     };
-    let individuals = source_individuals(&canonical)?;
     let mut spelling_of: BTreeMap<String, &str> = BTreeMap::new();
-    for token in &individuals {
+    for token in tokens {
         if let Some(other) = spelling_of.insert(expand(token), token) {
             return Err(OrchestrateError::OutOfFragment(format!(
-                "realization: individual {} is spelled both {other} and {token}",
+                "{what} {} is spelled both {other} and {token}",
                 expand(token)
             )));
         }
     }
-    Ok((canonical, individuals))
+    Ok(())
 }
 
 /// The public name of a source token, as the classification output spells
 /// class names: the IRI without its angle brackets, otherwise the token.
-fn public_name(token: &str) -> String {
+pub(super) fn public_name(token: &str) -> String {
     token
         .strip_prefix('<')
         .and_then(|inner| inner.strip_suffix('>'))
@@ -258,11 +270,16 @@ fn ontology_close_offset(text: &str) -> Option<usize> {
 
 /// A probe-class namespace whose IRIs do not occur in `text`.
 fn fresh_namespace(text: &str) -> String {
-    let mut namespace = "http://km.invalid/realize#".to_string();
+    fresh_namespace_for(text, "realize")
+}
+
+/// A namespace `http://km.invalid/<base>[N]#` whose IRIs do not occur in `text`.
+pub(super) fn fresh_namespace_for(text: &str, base: &str) -> String {
+    let mut namespace = format!("http://km.invalid/{base}#");
     let mut nonce = 0u64;
     while text.contains(namespace.trim_end_matches('#')) {
         nonce += 1;
-        namespace = format!("http://km.invalid/realize{nonce}#");
+        namespace = format!("http://km.invalid/{base}{nonce}#");
     }
     namespace
 }
@@ -270,10 +287,15 @@ fn fresh_namespace(text: &str) -> String {
 /// The source extended with one probe class `P ≡ {a}` per named individual,
 /// and the probe IRI (as the output spells it) for each individual's public
 /// name.
+#[cfg(test)]
 fn probe_source(text: &str, individuals: &[String]) -> Result<(String, Vec<(String, String)>), OrchestrateError> {
-    let close = ontology_close_offset(text).ok_or_else(|| {
-        OrchestrateError::InvalidOntology("realization: no complete Ontology(...) node".into())
-    })?;
+    let (extension, probes) = individual_extension(text, individuals);
+    Ok((insert_extension(text, &extension)?, probes))
+}
+
+/// The probe axioms `P ≡ {a}`, one per named individual, and the probe IRI
+/// (as the output spells it) for each individual's public name.
+fn individual_extension(text: &str, individuals: &[String]) -> (String, Vec<(String, String)>) {
     let namespace = fresh_namespace(text);
     let mut extension = String::with_capacity(individuals.len() * 128 + 2);
     let mut probes = Vec::with_capacity(individuals.len());
@@ -285,11 +307,20 @@ fn probe_source(text: &str, individuals: &[String]) -> Result<(String, Vec<(Stri
         ));
         probes.push((probe, public_name(token)));
     }
+    (extension, probes)
+}
+
+/// `text` with `extension` inserted before the `)` that closes its
+/// `Ontology(` node.
+pub(super) fn insert_extension(text: &str, extension: &str) -> Result<String, OrchestrateError> {
+    let close = ontology_close_offset(text).ok_or_else(|| {
+        OrchestrateError::InvalidOntology("probe extension: no complete Ontology(...) node".into())
+    })?;
     let mut extended = String::with_capacity(text.len() + extension.len());
     extended.push_str(&text[..close]);
-    extended.push_str(&extension);
+    extended.push_str(extension);
     extended.push_str(&text[close..]);
-    Ok((extended, probes))
+    Ok(extended)
 }
 
 /// Split the classification of the probe-extended ontology into the source
@@ -370,33 +401,92 @@ fn split(
 /// non-nominal routes are incomplete. `KM_REALIZE_ANY_ROUTE=1` lifts this check
 /// for route diagnostics only.
 pub fn realize(cfg: &Config, ont: &Path, mode: TypeMode) -> Result<Realization, OrchestrateError> {
+    Ok(classify_extended(cfg, ont, Some(mode), false)?.realization)
+}
+
+/// The classification of an ontology with the answers to the requested probe
+/// queries: realization (`--realize`) and the object property hierarchy
+/// (`--properties`, see [`super::properties`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Extended {
+    /// The classification and, if requested, the realization. Without
+    /// `--realize` its `types` and `same` are empty.
+    pub realization: Realization,
+    /// Present iff the property hierarchy was requested.
+    pub properties: Option<super::properties::PropertyHierarchy>,
+}
+
+/// Classify `ont` once, extended with the probe classes of every requested
+/// query, and split the answer (see [`realize`] for the route policy, which
+/// covers both queries: the property probes contain inverse roles and the
+/// universal role, which several non-nominal routes do not handle exactly).
+pub fn classify_extended(
+    cfg: &Config,
+    ont: &Path,
+    mode: Option<TypeMode>,
+    properties: bool,
+) -> Result<Extended, OrchestrateError> {
     let route = std::env::var("KM_ROUTE").unwrap_or_default();
     if route != crate::routing::Route::Auto.as_str()
         && std::env::var_os(ANY_ROUTE_ENV).is_none()
     {
+        let what = if mode.is_some() { "realization" } else { "property hierarchy" };
         return Err(OrchestrateError::OutOfFragment(format!(
-            "route {route:?} is not a realization-safe production oracle; use auto"
+            "route {route:?} is not a {what}-safe production oracle; use auto"
         )));
     }
     super::validate_user_input(ont)?;
     let prepared = super::input::prepare(ont)?;
     let text = std::fs::read_to_string(prepared.path())?;
-    let (text, individuals) = canonical_individuals(&text)?;
-    if individuals.is_empty() {
+    let (text, individuals) = if mode.is_some() {
+        canonical_individuals(&text)?
+    } else {
+        (canonical_source(&text)?, Vec::new())
+    };
+    let roles = if properties {
+        super::properties::canonical_properties(&text)?
+    } else {
+        Vec::new()
+    };
+    let empty_properties = properties.then(super::properties::PropertyHierarchy::default);
+    if individuals.is_empty() && roles.is_empty() {
         let classification = super::classify_with_evidence(cfg, ont)?.classification;
-        return Ok(Realization { classification, types: Vec::new(), same: Vec::new() });
+        let realization = Realization { classification, types: Vec::new(), same: Vec::new() };
+        return Ok(Extended { realization, properties: empty_properties });
     }
-    let (extended, probes) = probe_source(&text, &individuals)?;
+    let (mut extension, probes) = individual_extension(&text, &individuals);
+    let property_probes = if roles.is_empty() {
+        None
+    } else {
+        let (property_extension, property_probes) = super::properties::extension(&text, &roles);
+        extension.push_str(&property_extension);
+        Some(property_probes)
+    };
+    let extended = insert_extension(&text, &extension)?;
     if std::env::var_os("KM_TIMING").is_some() {
-        eprintln!("KM_TIMING realization: {} individual probe(s)", probes.len());
+        eprintln!(
+            "KM_TIMING probes: {} individual, {} object property",
+            probes.len(),
+            roles.len()
+        );
     }
-    let rewritten = tmpfile::TempPath::new("-realize.ofn");
+    let rewritten = tmpfile::TempPath::new("-probes.ofn");
     std::fs::write(rewritten.path(), extended)?;
     // The rewrite is the validated source plus declared probe classes whose
-    // definitions only name individuals of that source.
+    // definitions only name individuals and object properties of that source,
+    // `owl:Thing` and `owl:topObjectProperty`.
     let _trusted = TrustedRewrite::register(rewritten.path());
-    let classification = super::classify_with_evidence(cfg, rewritten.path())?.classification;
-    split(classification, &probes, mode)
+    let mut classification = super::classify_with_evidence(cfg, rewritten.path())?.classification;
+    let hierarchy = match property_probes {
+        Some(property_probes) => {
+            let individual_probes: HashSet<&str> = probes.iter().map(|(probe, _)| probe.as_str()).collect();
+            let foreign = |name: &str| individual_probes.contains(name);
+            Some(super::properties::split(&mut classification, &property_probes, &foreign)?)
+        }
+        None => empty_properties,
+    };
+    let realization = split(classification, &probes, mode.unwrap_or(TypeMode::All))?;
+    Ok(Extended { realization, properties: hierarchy })
 }
 
 impl Realization {

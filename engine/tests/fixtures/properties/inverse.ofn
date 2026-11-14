@@ -1,0 +1,9 @@
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://ex.org/t>
+Declaration(ObjectProperty(<urn:t#hasPart>)) Declaration(ObjectProperty(<urn:t#partOf>)) Declaration(ObjectProperty(<urn:t#hasComponent>)) Declaration(ObjectProperty(<urn:t#componentOf>))
+InverseObjectProperties(<urn:t#hasPart> <urn:t#partOf>)
+InverseObjectProperties(<urn:t#hasComponent> <urn:t#componentOf>)
+SubObjectPropertyOf(<urn:t#hasComponent> <urn:t#hasPart>)
+Declaration(Class(<urn:t#Whole>)) Declaration(Class(<urn:t#Part>))
+ObjectPropertyDomain(<urn:t#hasPart> <urn:t#Whole>) ObjectPropertyRange(<urn:t#hasPart> <urn:t#Part>)
+)

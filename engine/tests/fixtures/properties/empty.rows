@@ -1,0 +1,5 @@
+# HermiT 1.4.3 through the OWL API, rows in the convention of docs/PROPERTIES.md
+BOTPROP	urn:t#e1
+BOTPROP	urn:t#e2
+BOTPROP	urn:t#e3
+BOTPROP	urn:t#x

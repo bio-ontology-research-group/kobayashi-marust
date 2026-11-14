@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+### Engine
+
+- `km classify --properties` reports the inferred object property
+  hierarchy (`SUBPROP r f`, with `f` a named property or
+  `ObjectInverseOf(s)`), the properties equivalent to
+  `owl:topObjectProperty` (`TOPPROP`) and `owl:bottomObjectProperty`
+  (`BOTPROP`), and the entailed named domains and ranges (`DOMAIN`,
+  `RANGE`), after the class rows. JSON output carries them under
+  `subproperties`, `topproperties`, `bottomproperties`, `domains` and
+  `ranges`. It combines with `--lines` and `--realize` (one
+  classification answers both). The rows come from one classification of
+  the source extended with fresh classes `P_e ≡ ∃e.B` per property
+  expression, `P_⊤ ≡ ∃owl:topObjectProperty.B`, `Dom_r ≡ ∃r.⊤` and
+  `Ran_r ≡ ∃r⁻.⊤`, for a fresh class `B`, the same reduction as
+  `--realize`. Without the flag the output is unchanged. The rows agree
+  with HermiT 1.4.3 on 30 ORE 2015 inputs and on hand-written cases, except
+  where HermiT misses an entailment. Cost: on 32 ORE inputs the median time
+  rose from 0.10 s to 1.1 s; inverse-free, nominal-free inputs that plain
+  classification answers in under a second can take minutes (one exceeds
+  300 s), because the probes add inverse roles and the universal role. See
+  `docs/PROPERTIES.md`.
+
 ## [1.6.4] - 2026-11-14
 
 Fixes issue #5: FLOPO annotation classes with negated qualities, which
