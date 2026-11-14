@@ -368,3 +368,4 @@ import ContextCalculus.OWLFrontend.SHOIQNom
 import ContextCalculus.OWLFrontend.SHOIQC2aReference
 import ContextCalculus.OWLFrontend.SHOIQC2aTests
 import ContextCalculus.OWLFrontend.SHOIQDNom
+import ContextCalculus.OWLFrontend.SHOIQDC2aReference

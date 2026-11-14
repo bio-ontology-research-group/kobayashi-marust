@@ -4,7 +4,7 @@ import ContextCalculus.OWLFrontend.ReferenceReadout
 import ContextCalculus.OWLFrontend.ReadoutAt
 import ContextCalculus.OWLFrontend.SRIQDReference
 import ContextCalculus.OWLFrontend.SRIQDKBRows
-import ContextCalculus.OWLFrontend.SHOIQC2aReference
+import ContextCalculus.OWLFrontend.SHOIQDC2aReference
 
 /-!
 # Executable OWL reference procedure (`km-owl-reference`)
@@ -22,14 +22,16 @@ km-owl-reference --procedure sriqd-kb [--hint FILE] [--type CLASS INDIVIDUAL] <f
 km-owl-reference --procedure shoiq-c2a [--hint FILE] [--type CLASS INDIVIDUAL] <file.ofn>
 ```
 
-`shoiq-c2a` is `owlSHOIQC2aConsistent`, the v1.7.0 stage C2a route for
-SHOIQ knowledge bases with nominals (`docs/V1.7.0-C2-NOMINALS-DESIGN.md`).
-It prints the `owl-consistency-v1` line, exact for every hint
-(`owlSHOIQC2aConsistent_sound`); with `--type CLASS INDIVIDUAL` it decides
-the class assertion (`owlSHOIQC2aTypeRow`, `owlSHOIQC2aTypeRow_sound`) and
-prints the `owl-type-v1` line. It declines outside the SHOIQ
-knowledge-base part, on transitivity, and outside C2a. The hint is a core
-in the text format of `SHOIQC2aReference.lean`.
+`shoiq-c2a` is `owlSHOIQDC2aConsistent`, the v1.7.0 stage C2a route for
+SHOIQ(D) knowledge bases with nominals and datatypes
+(`docs/V1.7.0-C2-NOMINALS-DESIGN.md`). It prints the `owl-consistency-v1`
+line, exact at the OWL 2 datatype map for every hint
+(`owlSHOIQDC2aConsistent_sound`); with `--type CLASS INDIVIDUAL` it decides
+the class assertion (`owlSHOIQDTypeRow`, `owlSHOIQDTypeRow_sound`) and
+prints the `owl-type-v1` line. It declines outside the SHOIQ(D)
+knowledge-base part, on a non-simple role, outside C2a, and on data ranges
+outside the supported sub-theory. The hint is a core in the text format of
+`SHOIQC2aReference.lean`, over the names of the reduced ontology.
 
 `sriqd` is `owlSHIQDReference`, the v1.7.0 stage C4 route for SHIQ with
 data properties and datatypes. Its answers are exact under the OWL 2 direct
@@ -642,31 +644,33 @@ def publishTypeD (C a : OWL.IRI) (v : Bool) {O : OWL.Ontology} {hint : Option Ra
   out.flush
   return 0
 
-/-- Why the SHOIQ C2a route declines. -/
-def shoiqDecline (O : OWL.Ontology) (requested : List OWL.IRI) : String :=
-  if !O.isSHOIQKB then
-    s!"not recognised: not an OWL SHOIQ knowledge base ({firstFailing O OWL.Axiom.isSHOIQKB})"
-  else match translateSHOIQ O requested with
-    | none => "not recognised: the SHOIQ translation failed"
+/-- Why the SHOIQ(D) C2a route declines. -/
+def shoiqDecline (O : OWL.Ontology) : String :=
+  if !O.isSHOIQDKB then
+    s!"not recognised: not an OWL SHOIQ(D) knowledge base ({firstFailing O OWL.Axiom.isSHOIQDKB})"
+  else match translateSHOIQD O [] with
+    | none => "not recognised: the SHOIQ(D) translation failed"
     | some T =>
-      if !decide (SRIQN.IsALCHOIQ (osn T (OWLFrontend.SHOIQ.nomNames O requested))) then
-        "not ALCHOIQ: transitivity or a role chain"
-      else "not C2a: an existential or at-least restriction on a non-nominal subject has a " ++
-        "role below the inverse of the role of an at-most restriction"
+      if !isSHIQB (ContextCalculus.SRIQD.objPart T.ontology) then
+        "not SHIQ: non-simple role in a number restriction or functionality axiom"
+      else if !decide (SRIQN.IsC2aD (SRIQN.Proc.encTransDN (dosn T (OWLFrontend.SHOIQ.nomNames O []))))
+      then "not C2a: an existential or at-least restriction on a subject that is neither a " ++
+        "nominal nor nominal-only has a role below the inverse of the role of an at-most restriction"
+      else "datatypes: a data range outside the supported sub-theory of the OWL 2 datatype map"
 
-/-- Print the consistency verdict of `owlSHOIQC2aConsistent`
-(`owlSHOIQC2aConsistent_sound`). -/
+/-- Print the consistency verdict of `owlSHOIQDC2aConsistent`
+(`owlSHOIQDC2aConsistent_sound`). -/
 def publishConsistentN (v : Bool) {O : OWL.Ontology} {hint : Option RawHint}
-    (_h : owlSHOIQC2aConsistent O hint = some v) : IO UInt32 := do
+    (_h : owlSHOIQDC2aConsistent O hint = some v) : IO UInt32 := do
   let out ← IO.getStdout
   out.putStrLn ("{\"format\":\"owl-consistency-v1\",\"consistent\":" ++
     (if v then "true" else "false") ++ "}")
   out.flush
   return 0
 
-/-- Print the verdict of `owlSHOIQC2aTypeRow` (`owlSHOIQC2aTypeRow_sound`). -/
+/-- Print the verdict of `owlSHOIQDTypeRow` (`owlSHOIQDTypeRow_sound`). -/
 def publishTypeN (C a : OWL.IRI) (v : Bool) {O : OWL.Ontology} {hint : Option RawHint}
-    (_h : owlSHOIQC2aTypeRow O C a hint = some v) : IO UInt32 := do
+    (_h : owlSHOIQDTypeRow O C a hint = some v) : IO UInt32 := do
   let out ← IO.getStdout
   out.putStrLn ("{\"format\":\"owl-type-v1\",\"class\":" ++ (Json.str C).compress ++
     ",\"individual\":" ++ (Json.str a).compress ++ ",\"entailed\":" ++
@@ -674,23 +678,23 @@ def publishTypeN (C a : OWL.IRI) (v : Bool) {O : OWL.Ontology} {hint : Option Ra
   out.flush
   return 0
 
-/-- The SHOIQ C2a route on an ontology. -/
+/-- The SHOIQ(D) C2a route on an ontology. -/
 def runOntologyN (timing : Bool) (hint : Option RawHint) (query : Option (OWL.IRI × OWL.IRI))
     (O : OWL.Ontology) : IO UInt32 := do
   match query with
   | some (C, a) =>
-    let ⟨res, hres⟩ ← timedPhase timing "type" (fun _ => owlSHOIQC2aTypeRow O C a hint)
+    let ⟨res, hres⟩ ← timedPhase timing "type" (fun _ => owlSHOIQDTypeRow O C a hint)
     match res, hres with
     | some v, h => publishTypeN C a v h.symm
     | none, _ =>
-      IO.eprintln (shoiqDecline (withInds O [a]) [C])
+      IO.eprintln (shoiqDecline (addAxs O (typeAxs C a)))
       return 3
   | none =>
-    let ⟨res, hres⟩ ← timedPhase timing "consistency" (fun _ => owlSHOIQC2aConsistent O hint)
+    let ⟨res, hres⟩ ← timedPhase timing "consistency" (fun _ => owlSHOIQDC2aConsistent O hint)
     match res, hres with
     | some v, h => publishConsistentN v h.symm
     | none, _ =>
-      IO.eprintln (shoiqDecline O [])
+      IO.eprintln (shoiqDecline O)
       return 3
 
 /-- The SHIQ(D) knowledge-base route on an ontology. -/
