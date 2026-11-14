@@ -96,6 +96,38 @@ theorem kindSem_num_of {k : Kind} (hk : numKind k = true) {v : Val} (h : kindSem
   · obtain ⟨x, rfl, -⟩ := h; exact ⟨x, rfl⟩
   · obtain ⟨z, rfl, -⟩ := h; exact ⟨_, rfl⟩
 
+theorem boundI_iff (b : Bool × Bool) (x y : Int) : boundI b x y = true ↔ boundRel b x y := by
+  rcases b with ⟨_ | _, _ | _⟩ <;> simp [boundI, boundRel]
+
+theorem kindSem_dbl (k : Kind) (x : FloatV 11 52) : kindSem k (.dbl x) ↔ kindF k true = true := by
+  cases k <;> simp [kindSem, kindF, strSem]
+
+theorem kindSem_flt (k : Kind) (x : FloatV 8 23) : kindSem k (.flt x) ↔ kindF k false = true := by
+  cases k <;> simp [kindSem, kindF, strSem]
+
+theorem fltSem_dbl (b : Bool × Bool) (y : ValOf ℚ) (x : FloatV 11 52) :
+    fltSem b y (.dbl x) ↔ x ≠ .nan ∧ (fpOrd true y).any (fun w => boundI b x.ord w) = true := by
+  rcases y with q | y | y | ⟨s, _ | t⟩ | c | bs | bs | s | ⟨t, z⟩ | s | n <;>
+    simp only [fltSem, fpOrd, Option.any_none, Bool.false_eq_true, and_false, reduceCtorEq,
+      false_and, exists_false]
+  simp only [ValOf.dbl.injEq, exists_eq_left', FloatV.floatRel_iff (by norm_num : 1 ≤ 11)]
+  split_ifs with hy
+  · simp [hy]
+  · simp [hy, boundI_iff]
+
+theorem fltSem_flt (b : Bool × Bool) (y : ValOf ℚ) (x : FloatV 8 23) :
+    fltSem b y (.flt x) ↔ x ≠ .nan ∧ (fpOrd false y).any (fun w => boundI b x.ord w) = true := by
+  rcases y with q | y | y | ⟨s, _ | t⟩ | c | bs | bs | s | ⟨t, z⟩ | s | n <;>
+    simp only [fltSem, fpOrd, Option.any_none, Bool.false_eq_true, and_false, reduceCtorEq,
+      false_and, exists_false]
+  simp only [ValOf.flt.injEq, exists_eq_left', FloatV.floatRel_iff (by norm_num : 1 ≤ 8)]
+  split_ifs with hy
+  · simp [hy]
+  · simp [hy, boundI_iff]
+
+theorem kindF_num {k : Kind} (hk : fltKind k = true) (x : ℝ) : ¬ kindSem k (.num x) := by
+  cases k <;> simp [fltKind] at hk <;> simp [kindSem]
+
 /-- **Points.** A supported atom at a point. -/
 theorem evalPt_correct {a : BAtom} (hs : a.supported = true) (w : ValOf ℚ) :
     a.sem (toVal w) ↔ evalPt a w = true := by
@@ -122,6 +154,20 @@ theorem evalPt_correct {a : BAtom} (hs : a.supported = true) (w : ValOf ℚ) :
   | lit w' =>
     simp only [BAtom.sem, evalPt, beq_iff_eq]
     exact toVal_injective.eq_iff
+  | fltB k bs =>
+    simp only [BAtom.supported] at hs
+    simp only [BAtom.sem, evalPt, Bool.and_eq_true]
+    rw [kindPt_correct]
+    refine and_congr_right fun hk => ?_
+    rcases w with q | x | x | ⟨s, _ | t⟩ | c | bs' | bs' | s | ⟨t, z⟩ | s | n
+    · exact absurd ((kindPt_correct k (.num q)).2 hk) (kindF_num hs _)
+    · simp only [List.all_eq_true, Bool.and_eq_true, decide_eq_true_eq]
+      exact forall₂_congr fun b _ => fltSem_dbl b.1 b.2 x
+    · simp only [List.all_eq_true, Bool.and_eq_true, decide_eq_true_eq]
+      exact forall₂_congr fun b _ => fltSem_flt b.1 b.2 x
+    all_goals
+      exfalso
+      cases k <;> simp [fltKind] at hs <;> simp [kindPt] at hk
 
 /-! ## Gaps -/
 
@@ -240,26 +286,53 @@ end GapEval
 /-! ## The rest cells -/
 
 theorem kindRest_correct {k : Kind} (hk : supportedKind k = true) {v : Val}
-    (hn : ∀ x, v ≠ .num x) (hb : ∀ b, v ≠ .bool b) :
+    (hn : ∀ x, v ≠ .num x) (hb : ∀ b, v ≠ .bool b) (hf : ∀ x, v ≠ .dbl x) (hg : ∀ x, v ≠ .flt x) :
     kindSem k v ↔ kindRest k (restCell v) = true := by
   rcases v with x | x | x | ⟨s, _ | t⟩ | b | bs | bs | s | ⟨t, _ | z⟩ | s | n
   · exact absurd rfl (hn x)
+  · exact absurd rfl (hf x)
+  · exact absurd rfl (hg x)
   all_goals try exact absurd rfl (hb _)
   all_goals cases k <;> simp [supportedKind] at hk <;>
     simp only [kindSem, restCell, strSem] <;> (try split_ifs) <;>
     simp_all [kindRest, isDecimalQ_iff, offOK]
 
-theorem evalCell_restCell (a : BAtom) (v : Val) :
+theorem evalCell_restCell (a : BAtom) {v : Val} (hf : ∀ x, v ≠ .dbl x) (hg : ∀ x, v ≠ .flt x) :
     evalCell a (restCell v) = match a with
       | .kind k => kindRest k (restCell v)
       | _ => false := by
   have h1 := restCell_ne_pt v
   have h2 := restCell_ne_gap v
-  generalize restCell v = c at h1 h2 ⊢
+  have h3 := restCell_mem hf hg
+  generalize restCell v = c at h1 h2 h3 ⊢
   cases c with
   | pt w => exact absurd rfl (h1 w)
   | gap lo hi k => exact absurd rfl (h2 lo hi k)
+  | fN d => simp [restCells] at h3
+  | fA d p => simp [restCells] at h3
+  | fI d lo hi => simp [restCells] at h3
   | _ => cases a <;> rfl
+
+/-- A bound facet at an index off the points is a bound on its interval. -/
+theorem boundI_gap {P : List Int} {N y z : Int} (hy : y ∈ P) (hzP : z ∉ P) (hz : -N ≤ z ∧ z ≤ N)
+    (b : Bool × Bool) : boundI b z y = boundGapI b y (fBelow P N z) (fAbove P N z) := by
+  obtain ⟨-, b2, b3⟩ := fBelow_spec (P := P) (N := N) (z := z) (by omega)
+  obtain ⟨-, a2, a3⟩ := fAbove_spec (P := P) (N := N) (z := z) (by omega)
+  have hne : y ≠ z := fun h => hzP (h ▸ hy)
+  rcases b with ⟨_ | _, _ | _⟩ <;> simp only [boundI, boundGapI] <;> rw [Bool.eq_iff_iff] <;>
+    simp only [decide_eq_true_eq]
+  · constructor
+    · intro h; have := a3 y hy (lt_of_le_of_ne h (Ne.symm hne)); exact this
+    · intro h; omega
+  · constructor
+    · intro h; exact a3 y hy h
+    · intro h; omega
+  · constructor
+    · intro h; exact b3 y hy (lt_of_le_of_ne h hne)
+    · intro h; omega
+  · constructor
+    · intro h; exact b3 y hy h
+    · intro h; omega
 
 /-! ## The atoms of a list on the cells -/
 
@@ -315,11 +388,113 @@ theorem evalCell_correct {a : BAtom} (ha : a ∈ as) (hs : a.supported = true) (
         simp only [BAtom.sem, evalCell, Bool.false_eq_true, iff_false]
         intro he
         exact hv ⟨w, lit_pt ha, he.symm⟩
-    | _ =>
-      rw [cellOf_rest hv (by intro x h; cases h), evalCell_restCell]
+      | fltB k bs =>
+        simp only [BAtom.supported] at hs
+        simp only [BAtom.sem, evalCell, Bool.false_eq_true, iff_false]
+        rintro ⟨h1, -⟩
+        exact kindF_num hs x h1
+    | dbl x =>
+      rw [cellOf_dbl hv]
       cases a with
       | kind k =>
-        refine kindRest_correct hs (by intro x h; cases h) ?_
+        simp only [BAtom.sem]
+        rw [kindSem_dbl]
+        unfold fCell; split_ifs <;> rfl
+      | numR k bs =>
+        simp only [BAtom.supported] at hs
+        simp only [BAtom.sem]
+        unfold fCell; split_ifs <;> simp only [evalCell, Bool.false_eq_true, iff_false] <;>
+          exact fun h => by obtain ⟨y, hy⟩ := kindSem_num_of hs h.1; cases hy
+      | empty => unfold fCell; split_ifs <;> simp [BAtom.sem, evalCell]
+      | lit w =>
+        have hno : ¬ (ValOf.dbl x = toVal w) := fun he => hv ⟨w, lit_pt ha, he.symm⟩
+        simp only [BAtom.sem]
+        unfold fCell; split_ifs <;> simp only [evalCell, Bool.false_eq_true, iff_false] <;> exact hno
+      | fltB k bs =>
+        simp only [BAtom.sem, kindSem_dbl, fltSem_dbl]
+        unfold fCell
+        split_ifs with h1 h2
+        · have hx : x = .nan := of_decide_eq_true h1
+          simp only [evalCell, Bool.and_eq_true, List.isEmpty_iff]
+          refine and_congr_right fun _ => ?_
+          constructor
+          · intro h
+            rcases bs with _ | ⟨b, bs⟩
+            · rfl
+            · exact absurd hx (h b List.mem_cons_self).1
+          · rintro rfl b hb
+            cases hb
+        · have hx : x ≠ .nan := fun h => h1 (decide_eq_true h)
+          simp only [evalCell, Bool.and_eq_true, List.all_eq_true]
+          refine and_congr_right fun _ => forall₂_congr fun b _ => ?_
+          simp [hx]
+        · have hx : x ≠ .nan := fun h => h1 (decide_eq_true h)
+          simp only [evalCell, Bool.and_eq_true, List.all_eq_true]
+          refine and_congr_right fun _ => forall₂_congr fun b hb => ?_
+          rw [and_iff_right hx]
+          rcases hy : fpOrd true b.2 with _ | y
+          · simp
+          · simp only [Option.any_some]
+            have hmem : b.2 ∈ (BAtom.fltB k bs).others :=
+              List.mem_filter.2 ⟨List.mem_map_of_mem hb, by simp [hy]⟩
+            have hop : b.2 ∈ otherPts as :=
+              List.mem_dedup.2 (List.mem_append_left _ (List.mem_flatMap.2 ⟨_, ha, hmem⟩))
+            have hyP : y ∈ fOrds true as := List.mem_dedup.2 (List.mem_filterMap.2 ⟨b.2, hop, hy⟩)
+            rw [boundI_gap hyP h2 (fIdx_mem (d := true) (v := .dbl x) (by simp [fIdx, hx]))]
+    | flt x =>
+      rw [cellOf_flt hv]
+      cases a with
+      | kind k =>
+        simp only [BAtom.sem]
+        rw [kindSem_flt]
+        unfold fCell; split_ifs <;> rfl
+      | numR k bs =>
+        simp only [BAtom.supported] at hs
+        simp only [BAtom.sem]
+        unfold fCell; split_ifs <;> simp only [evalCell, Bool.false_eq_true, iff_false] <;>
+          exact fun h => by obtain ⟨y, hy⟩ := kindSem_num_of hs h.1; cases hy
+      | empty => unfold fCell; split_ifs <;> simp [BAtom.sem, evalCell]
+      | lit w =>
+        have hno : ¬ (ValOf.flt x = toVal w) := fun he => hv ⟨w, lit_pt ha, he.symm⟩
+        simp only [BAtom.sem]
+        unfold fCell; split_ifs <;> simp only [evalCell, Bool.false_eq_true, iff_false] <;> exact hno
+      | fltB k bs =>
+        simp only [BAtom.sem, kindSem_flt, fltSem_flt]
+        unfold fCell
+        split_ifs with h1 h2
+        · have hx : x = .nan := of_decide_eq_true h1
+          simp only [evalCell, Bool.and_eq_true, List.isEmpty_iff]
+          refine and_congr_right fun _ => ?_
+          constructor
+          · intro h
+            rcases bs with _ | ⟨b, bs⟩
+            · rfl
+            · exact absurd hx (h b List.mem_cons_self).1
+          · rintro rfl b hb
+            cases hb
+        · have hx : x ≠ .nan := fun h => h1 (decide_eq_true h)
+          simp only [evalCell, Bool.and_eq_true, List.all_eq_true]
+          refine and_congr_right fun _ => forall₂_congr fun b _ => ?_
+          simp [hx]
+        · have hx : x ≠ .nan := fun h => h1 (decide_eq_true h)
+          simp only [evalCell, Bool.and_eq_true, List.all_eq_true]
+          refine and_congr_right fun _ => forall₂_congr fun b hb => ?_
+          rw [and_iff_right hx]
+          rcases hy : fpOrd false b.2 with _ | y
+          · simp
+          · simp only [Option.any_some]
+            have hmem : b.2 ∈ (BAtom.fltB k bs).others :=
+              List.mem_filter.2 ⟨List.mem_map_of_mem hb, by simp [hy]⟩
+            have hop : b.2 ∈ otherPts as :=
+              List.mem_dedup.2 (List.mem_append_left _ (List.mem_flatMap.2 ⟨_, ha, hmem⟩))
+            have hyP : y ∈ fOrds false as := List.mem_dedup.2 (List.mem_filterMap.2 ⟨b.2, hop, hy⟩)
+            rw [boundI_gap hyP h2 (fIdx_mem (d := false) (v := .flt x) (by simp [fIdx, hx]))]
+    | _ =>
+      rw [cellOf_rest hv (by intro x h; cases h) (by intro x h; cases h) (by intro x h; cases h),
+        evalCell_restCell _ (by intro x h; cases h) (by intro x h; cases h)]
+      cases a with
+      | kind k =>
+        refine kindRest_correct hs (by intro x h; cases h) ?_ (by intro x h; cases h) (by intro x h; cases h)
         intro b hb
         exact hv ⟨.bool b, bool_pt b, by rw [hb]; rfl⟩
       | numR k bs =>
@@ -333,6 +508,11 @@ theorem evalCell_correct {a : BAtom} (ha : a ∈ as) (hs : a.supported = true) (
         simp only [BAtom.sem, Bool.false_eq_true, iff_false]
         intro he
         exact hv ⟨w, lit_pt ha, he.symm⟩
+      | fltB k bs =>
+        simp only [BAtom.sem, Bool.false_eq_true, iff_false]
+        rintro ⟨h1, -⟩
+        simp only [BAtom.supported] at hs
+        cases k <;> simp [fltKind] at hs <;> simp [kindSem] at h1
 
 end Main
 

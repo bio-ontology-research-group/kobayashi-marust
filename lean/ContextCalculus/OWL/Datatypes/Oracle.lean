@@ -14,11 +14,14 @@ combination of base atoms (`OWL/Datatypes/Cells.lean`) and free datatypes:
 `drEval` evaluates it from the base atoms and the free datatypes that
 hold (`ext_iff_drEval`). Declined (`drSupported` is `false`): the kinds
 that `supportedKind` declines (`xsd:normalizedString`,
-`xsd:token`, `xsd:language`, `xsd:Name`, `xsd:NCName`, `xsd:NMTOKEN`) and
-facet restrictions on non-numeric datatypes of the map. Restrictions on
-numeric types with facets other than the four bounds, or with facet
-values that are not numbers, are empty in the map, and are supported as
-such; restrictions on datatypes outside the map with at least one facet
+`xsd:token`, `xsd:Name`, `xsd:NCName`, `xsd:NMTOKEN`) and facet
+restrictions on the datatypes of the map other than the numeric ones and
+`xsd:double`, `xsd:float` (`xsd:string` length facets, `xsd:pattern`,
+`rdf:langRange`, `xsd:dateTime` bounds). Restrictions on numeric types
+with facets other than the four bounds, or with facet values that are not
+numbers, are empty in the map, and are supported as such; the same holds
+for `xsd:double` and `xsd:float` with facet values that are not floats of
+the same type (`floatBound`); restrictions on datatypes outside the map with at least one facet
 are empty as well.
 
 `owlCard spec` is the cell oracle (`SRIQD/CellOracle.lean`) over the base
@@ -44,6 +47,13 @@ def facetBound (f : IRI × Literal) : Option ((Bool × Bool) × ℚ) :=
   | some b, some (.num q) => some (b, q)
   | _, _ => none
 
+/-- A bound facet whose value is a float of the restricted float type `k`. -/
+def floatBound (k : Kind) (f : IRI × Literal) : Option ((Bool × Bool) × ValOf ℚ) :=
+  match boundFacet f.1, litVal f.2 with
+  | some b, some (.dbl y) => if k = .double then some (b, .dbl y) else none
+  | some b, some (.flt y) => if k = .float then some (b, .flt y) else none
+  | _, _ => none
+
 /-- Evaluate a data range from the base atoms `bv` and the free datatypes
 `fv` that hold at a value. -/
 def drEval (bv : BAtom → Bool) (fv : IRI → Bool) : DataRange → Bool
@@ -64,9 +74,17 @@ def drEval (bv : BAtom → Bool) (fv : IRI → Bool) : DataRange → Bool
       | some k => bv (.kind k)
       | none => fv t
     else
-      match kindOf t, fs.mapM facetBound with
-      | some k, some bs => bv (.numR k bs)
-      | _, _ => false
+      match kindOf t with
+      | some k =>
+        if fltKind k then
+          match fs.mapM (floatBound k) with
+          | some bs => bv (.fltB k bs)
+          | none => false
+        else
+          match fs.mapM facetBound with
+          | some bs => bv (.numR k bs)
+          | none => false
+      | none => false
 termination_by r => sizeOf r
 decreasing_by
   all_goals simp_wf
@@ -89,9 +107,17 @@ def drBases : DataRange → List BAtom
       | some k => [.kind k]
       | none => []
     else
-      match kindOf t, fs.mapM facetBound with
-      | some k, some bs => [.numR k bs]
-      | _, _ => []
+      match kindOf t with
+      | some k =>
+        if fltKind k then
+          match fs.mapM (floatBound k) with
+          | some bs => [.fltB k bs]
+          | none => []
+        else
+          match fs.mapM facetBound with
+          | some bs => [.numR k bs]
+          | none => []
+      | none => []
 termination_by r => sizeOf r
 decreasing_by
   all_goals simp_wf
@@ -137,7 +163,7 @@ def drSupported : DataRange → Bool
       | none => true
     else
       match kindOf t with
-      | some k => numKind k
+      | some k => numKind k || fltKind k
       | none => true
 termination_by r => sizeOf r
 decreasing_by
@@ -198,6 +224,19 @@ theorem facet_numeric {t : IRI} {k : Kind} (h : kindOf t = some k) (hk : numKind
     rcases hlf : lengthFacet f.1 with _ | L <;>
     (try rcases w with q | x | x | ⟨s, _ | t⟩ | b | bs | bs | s | ⟨t, z⟩ | s | n) <;> simp_all <;> rfl
 
+theorem facet_float {t : IRI} {k : Kind} (h : kindOf t = some k) (hk : fltKind k = true)
+    (f : IRI × Literal) :
+    (owl2MapP pat).facet t f.1 f.2 = (floatBound k f).map fun bq => fltSem bq.1 bq.2 := by
+  show (match kindOf t with
+    | some k => facetSem pat k f.1 (litVal f.2)
+    | none => none) = _
+  rw [h]
+  cases k <;> simp [fltKind] at hk <;> unfold facetSem floatBound <;>
+    rcases hbf : boundFacet f.1 with _ | b <;> rcases hl : litVal f.2 with _ | w <;>
+    rcases hlf : lengthFacet f.1 with _ | L <;>
+    (try rcases w with q | x | x | ⟨s, _ | t⟩ | b | bs | bs | s | ⟨t, z⟩ | s | n) <;>
+    simp_all [numeric, stringish] <;> rfl
+
 theorem facet_free {t : IRI} (h : kindOf t = none) (f : IRI) (l : Literal) :
     (owl2MapP pat).facet t f l = none := by
   show (match kindOf t with
@@ -238,6 +277,41 @@ theorem mapM_none {fs : List (IRI × Literal)} (h : fs.mapM facetBound = none) :
     · exact ⟨f, List.mem_cons_self, hf⟩
     · rw [hf] at h
       rcases hfs : fs.mapM facetBound with _ | bs'
+      · obtain ⟨f', hf', h'⟩ := ih hfs
+        exact ⟨f', List.mem_cons_of_mem _ hf', h'⟩
+      · rw [hfs] at h; simp at h
+
+theorem mapM_all {β : Type} {g : IRI × Literal → Option β} {fs : List (IRI × Literal)} {bs : List β}
+    (h : fs.mapM g = some bs) (P : β → Prop) :
+    (∀ f ∈ fs, ∃ bq, g f = some bq ∧ P bq) ↔ ∀ b ∈ bs, P b := by
+  induction fs generalizing bs with
+  | nil =>
+    simp only [List.mapM_nil, Option.pure_def, Option.some.injEq] at h
+    subst h
+    simp
+  | cons f fs ih =>
+    simp only [List.mapM_cons, Option.pure_def, Option.bind_eq_bind] at h
+    rcases hf : g f with _ | bq
+    · rw [hf] at h; simp at h
+    · rw [hf] at h
+      rcases hfs : fs.mapM g with _ | bs'
+      · rw [hfs] at h; simp at h
+      · rw [hfs] at h
+        simp only [Option.bind_some, Option.some.injEq] at h
+        subst h
+        simp only [List.mem_cons, forall_eq_or_imp, hf, Option.some.injEq, exists_eq_left']
+        rw [ih hfs]
+
+theorem mapM_none' {β : Type} {g : IRI × Literal → Option β} {fs : List (IRI × Literal)}
+    (h : fs.mapM g = none) : ∃ f ∈ fs, g f = none := by
+  induction fs with
+  | nil => simp at h
+  | cons f fs ih =>
+    simp only [List.mapM_cons, Option.pure_def, Option.bind_eq_bind] at h
+    rcases hf : g f with _ | bq
+    · exact ⟨f, List.mem_cons_self, hf⟩
+    · rw [hf] at h
+      rcases hfs : fs.mapM g with _ | bs'
       · obtain ⟨f', hf', h'⟩ := ih hfs
         exact ⟨f', List.mem_cons_of_mem _ hf', h'⟩
       · rw [hfs] at h; simp at h
@@ -335,6 +409,38 @@ theorem ext_iff_drEval : ∀ (dr : DataRange), drSupported dr = true →
         exact h f0 hf0
       · rw [drSupported, if_neg hfs, hk] at hs
         rw [dtExt_some pat hk]
+        dsimp only at hs ⊢
+        by_cases hfk : fltKind k = true
+        · rw [if_pos hfk]
+          have hfacet := facet_float pat hk hfk
+          rcases hm : fs.mapM (floatBound k) with _ | bs
+          · simp only [Bool.false_eq_true, iff_false]
+            rintro ⟨-, h⟩
+            obtain ⟨f, hf, hnone⟩ := mapM_none' hm
+            obtain ⟨p, hp, -⟩ := h f hf
+            rw [hfacet f, hnone] at hp
+            cases hp
+          · have hbm := hb (.fltB k bs) (by
+              rw [drBases, if_neg hfs, hk]; simp only [hfk, if_true, hm]; exact List.mem_singleton_self _)
+            simp only at hbm ⊢
+            rw [← hbm, BAtom.sem]
+            refine and_congr_right fun _ => ?_
+            rw [← mapM_all hm (fun bq => fltSem bq.1 bq.2 v)]
+            refine forall₂_congr fun f _ => ?_
+            rw [hfacet f]
+            constructor
+            · rintro ⟨p, hp, hpv⟩
+              rcases hfb : floatBound k f with _ | bq
+              · rw [hfb] at hp; cases hp
+              · rw [hfb] at hp
+                simp only [Option.map_some] at hp
+                have hp' := Option.some.inj hp
+                subst hp'
+                exact ⟨bq, rfl, hpv⟩
+            · rintro ⟨bq, hbq, hpv⟩
+              exact ⟨_, by rw [hbq]; rfl, hpv⟩
+        rw [if_neg hfk]
+        replace hs : numKind k = true := by simpa [hfk] using hs
         have hfacet := facet_numeric pat hk hs
         rcases hm : fs.mapM facetBound with _ | bs
         · simp only [Bool.false_eq_true, iff_false]
@@ -343,7 +449,9 @@ theorem ext_iff_drEval : ∀ (dr : DataRange), drSupported dr = true →
           obtain ⟨p, hp, -⟩ := h f hf
           rw [hfacet f, hnone] at hp
           cases hp
-        · have hbm := hb (.numR k bs) (by rw [drBases, if_neg hfs, hk, hm]; exact List.mem_singleton_self _)
+        · have hbm := hb (.numR k bs) (by
+            rw [drBases, if_neg hfs, hk]; simp only [hfk, if_false, Bool.false_eq_true, hm]
+            exact List.mem_singleton_self _)
           simp only at hbm ⊢
           rw [← hbm, BAtom.sem]
           refine and_congr_right fun _ => ?_
@@ -414,11 +522,20 @@ theorem supported_of_drBases : ∀ (dr : DataRange), drSupported dr = true →
     · rw [if_neg hfs] at ha hs
       rcases hk : kindOf t with _ | k <;> rw [hk] at ha hs
       · simp at ha
-      · rcases hm : fs.mapM facetBound with _ | bs <;> rw [hm] at ha
-        · simp at ha
-        · rw [List.mem_singleton] at ha
-          subst ha
-          exact hs
+      · dsimp only at ha hs
+        by_cases hfk : fltKind k = true
+        · rw [if_pos hfk] at ha
+          rcases hm : fs.mapM (floatBound k) with _ | bs <;> rw [hm] at ha
+          · simp at ha
+          · rw [List.mem_singleton] at ha
+            subst ha
+            exact hfk
+        · rw [if_neg hfk] at ha
+          rcases hm : fs.mapM facetBound with _ | bs <;> rw [hm] at ha
+          · simp at ha
+          · rw [List.mem_singleton] at ha
+            subst ha
+            simpa [hfk] using hs
 termination_by dr => sizeOf dr
 decreasing_by
   all_goals simp_wf

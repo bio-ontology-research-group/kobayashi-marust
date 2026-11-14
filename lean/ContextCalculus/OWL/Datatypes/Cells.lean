@@ -1,4 +1,4 @@
-import ContextCalculus.OWL.Datatypes.Map
+import ContextCalculus.OWL.Datatypes.FloatOrder
 import ContextCalculus.SRIQD.CellOracle
 import Mathlib.Data.Nat.Factorization.Basic
 import Mathlib.Data.Nat.Log
@@ -22,8 +22,8 @@ values of each cell (`OWL/Datatypes/CellsSpec.lean` proves the cells exact,
   derived from it, `xsd:double`, `xsd:float`, `xsd:string`,
   `rdf:PlainLiteral`, `xsd:boolean`, `xsd:hexBinary`, `xsd:base64Binary`,
   `xsd:anyURI`, `xsd:dateTime`, `xsd:dateTimeStamp`, `rdf:XMLLiteral`,
-  `rdfs:Literal`, `owl:rational`. Declined (`supportedKind`):
-  `xsd:normalizedString`, `xsd:token`, `xsd:language`, `xsd:Name`,
+  `rdfs:Literal`, `owl:rational`, `xsd:language`. Declined
+  (`supportedKind`): `xsd:normalizedString`, `xsd:token`, `xsd:Name`,
   `xsd:NCName`, `xsd:NMTOKEN`.
 * `numR k bs`: a numeric datatype (`owl:real`, `owl:rational`,
   `xsd:decimal`, an integer type) with bound facets `bs` (minimum or maximum, strict or not, a
@@ -31,6 +31,10 @@ values of each cell (`OWL/Datatypes/CellsSpec.lean` proves the cells exact,
 * `empty`: the empty set (an ill-typed literal, a facet that does not
   apply).
 * `lit w`: the value of a literal.
+* `fltB k bs`: `xsd:double` or `xsd:float` with bound facets `bs` whose
+  values are floats of the same type, compared in the facet order of the
+  floats (`floatRel`, through the integer index `FloatV.ord` of
+  `OWL/Datatypes/FloatOrder.lean`).
 
 ## Cells (`Cell`)
 
@@ -40,14 +44,19 @@ values of each cell (`OWL/Datatypes/CellsSpec.lean` proves the cells exact,
   points (`none`: unbounded), of class `cls`: integers (`0`), decimals
   that are not integers (`1`), rationals that are not decimals (`2`),
   irrationals (`3`).
-* the rest of each other value space (`dblR`, `fltR`, `strR` for strings
-  without a tag, `tagR` with a tag, `uriR`, `hexR`, `b64R`, `xmlR`,
+* for doubles (`d = true`) and floats (`d = false`), off the points: `fN d`
+  (NaN), `fA d p` (the floats of index `p`, an index of a point; only a
+  signed zero can be one), `fI d lo hi` (the floats with index strictly
+  between two neighbouring point indices, `∓(N + 1)` at the ends);
+* the rest of each other value space (`langR` for the
+  strings without a tag that are language tags (`xsd:language`), `strR` for
+  the other strings without a tag, `tagR` with a tag, `uriR`, `hexR`, `b64R`, `xmlR`,
   `timeTz`, `timeLoc`), and `other` for the values outside every value
   space of the supported datatypes.
 
 Sizes: a point has one value; integers between two bounds are counted;
-`xsd:double` and `xsd:float` have `2·(2^e - 1)·2^m + 3` values
-(`FloatV.card`) minus the points; every other cell is infinite.
+the float cells are counted through the index (`FloatV.encard_ord`: one
+float per index, two at `0`); every other cell is infinite.
 -/
 
 namespace ContextCalculus.OWL.Datatypes
@@ -139,7 +148,16 @@ inductive BAtom where
   | numR (k : Kind) (bs : List ((Bool × Bool) × ℚ))
   | empty
   | lit (w : ValOf ℚ)
+  /-- `xsd:double` or `xsd:float` with bound facets whose values are
+  floats of the same type. -/
+  | fltB (k : Kind) (bs : List ((Bool × Bool) × ValOf ℚ))
 deriving DecidableEq, Repr
+
+/-- A bound facet with a float value `y` on a value. -/
+def fltSem (b : Bool × Bool) : ValOf ℚ → Val → Prop
+  | .dbl y, v => ∃ x, v = .dbl x ∧ floatRel b x y
+  | .flt y, v => ∃ x, v = .flt x ∧ floatRel b x y
+  | _, _ => False
 
 /-- The meaning of a base atom in the map. -/
 def BAtom.sem : BAtom → Val → Prop
@@ -147,10 +165,11 @@ def BAtom.sem : BAtom → Val → Prop
   | .numR k bs => fun v => kindSem k v ∧ ∀ b ∈ bs, ∃ x, v = .num x ∧ boundRel b.1 x (b.2 : ℝ)
   | .empty => fun _ => False
   | .lit w => fun v => v = toVal w
+  | .fltB k bs => fun v => kindSem k v ∧ ∀ b ∈ bs, fltSem b.1 b.2 v
 
 /-- The kinds of the supported sub-theory. -/
 def supportedKind : Kind → Bool
-  | .normalizedString | .token | .language | .name | .ncName | .nmToken => false
+  | .normalizedString | .token | .name | .ncName | .nmToken => false
   | _ => true
 
 /-- The numeric kinds with bound facets in the sub-theory. -/
@@ -158,10 +177,16 @@ def numKind : Kind → Bool
   | .real | .rational | .decimal | .integer .. => true
   | _ => false
 
+/-- The float kinds. -/
+def fltKind : Kind → Bool
+  | .double | .float => true
+  | _ => false
+
 /-- The base atoms of the supported sub-theory. -/
 def BAtom.supported : BAtom → Bool
   | .kind k => supportedKind k
   | .numR k _ => numKind k
+  | .fltB k _ => fltKind k
   | _ => true
 
 /-! ## Points -/
@@ -170,6 +195,13 @@ def BAtom.supported : BAtom → Bool
 def intBounds : Kind → List ℚ
   | .integer lo hi => lo.toList.map (fun z : Int => (z : ℚ)) ++ hi.toList.map (fun z : Int => (z : ℚ))
   | _ => []
+
+/-- The index of a float value of type `d` (`true`: double), `none` for NaN
+and other values. -/
+def fpOrd : Bool → ValOf ℚ → Option Int
+  | true, .dbl x => if x = .nan then none else some x.ord
+  | false, .flt x => if x = .nan then none else some x.ord
+  | _, _ => none
 
 /-- The numbers an atom mentions. -/
 def BAtom.nums : BAtom → List ℚ
@@ -182,6 +214,7 @@ def BAtom.nums : BAtom → List ℚ
 def BAtom.others : BAtom → List (ValOf ℚ)
   | .lit (.num _) => []
   | .lit w => [w]
+  | .fltB _ bs => (bs.map Prod.snd).filter fun w => (fpOrd true w).isSome || (fpOrd false w).isSome
   | _ => []
 
 /-- The numeric points. -/
@@ -200,9 +233,14 @@ def allPts (as : List BAtom) : List (ValOf ℚ) := (numPts as).map .num ++ other
 inductive Cell where
   | pt (w : ValOf ℚ)
   | gap (lo hi : Option ℚ) (cls : Fin 4)
-  | dblR
-  | fltR
+  /-- The NaN of doubles (`d = true`) or floats, off the points. -/
+  | fN (d : Bool)
+  /-- The floats of index `p` off the points (only a signed zero can be one). -/
+  | fA (d : Bool) (p : Int)
+  /-- The floats with index strictly between `lo` and `hi`. -/
+  | fI (d : Bool) (lo hi : Int)
   | strR
+  | langR
   | tagR
   | uriR
   | hexR
@@ -238,13 +276,54 @@ def gapPairs (P : List ℚ) : List (Option ℚ × Option ℚ) :=
 
 /-- The rest cells. -/
 def restCells : List Cell :=
-  [.dblR, .fltR, .strR, .tagR, .uriR, .hexR, .b64R, .xmlR, .timeTz, .timeLoc, .other]
+  [.strR, .langR, .tagR, .uriR, .hexR, .b64R, .xmlR, .timeTz, .timeLoc, .other]
+
+/-! ### Float cells -/
+
+/-- The index of the infinities. -/
+def fTop : Bool → Int
+  | true => FloatV.top 11 52
+  | false => FloatV.top 8 23
+
+/-- NaN of type `d`. -/
+def nanOf : Bool → ValOf ℚ
+  | true => .dbl .nan
+  | false => .flt .nan
+
+/-- The indices of the float points of type `d`. -/
+def fOrds (d : Bool) (as : List BAtom) : List Int := ((otherPts as).filterMap (fpOrd d)).dedup
+
+/-- The largest index in `P` below `z` (`-N - 1` if none). -/
+def fBelow (P : List Int) (N z : Int) : Int := (P.filter (· < z)).foldl max (-N - 1)
+
+/-- The smallest index in `P` above `z` (`N + 1` if none). -/
+def fAbove (P : List Int) (N z : Int) : Int := (P.filter (z < ·)).foldl min (N + 1)
+
+/-- `(lo, hi)` holds no index of `P` strictly inside. -/
+def fGapOK (P : List Int) (lo hi : Int) : Bool :=
+  decide (lo < hi) && P.all fun p => !(decide (lo < p) && decide (p < hi))
+
+/-- The index intervals between neighbouring indices. -/
+def fPairs (P : List Int) (N : Int) : List (Int × Int) :=
+  (((-N - 1) :: P).flatMap fun lo => (P ++ [N + 1]).map fun hi => (lo, hi)).filter
+    fun x => fGapOK P x.1 x.2
+
+/-- The float cells of type `d`. -/
+def fCells (d : Bool) (as : List BAtom) : List Cell :=
+  .fN d :: ((fOrds d as).map (Cell.fA d) ++
+    (fPairs (fOrds d as) (fTop d)).map fun x => Cell.fI d x.1 x.2)
+
+/-- The cell of a float of type `d` off the points. -/
+def fCell (d : Bool) (as : List BAtom) (isNan : Bool) (z : Int) : Cell :=
+  if isNan then .fN d
+  else if z ∈ fOrds d as then .fA d z
+  else .fI d (fBelow (fOrds d as) (fTop d) z) (fAbove (fOrds d as) (fTop d) z)
 
 /-- The cells of a list of atoms. -/
 def cellsOf (as : List BAtom) : List Cell :=
   ((allPts as).map Cell.pt ++
     (gapPairs (numPts as)).flatMap (fun x : Option ℚ × Option ℚ => [0, 1, 2, 3].map (Cell.gap x.1 x.2)) ++
-    restCells).dedup
+    (restCells ++ fCells true as ++ fCells false as)).dedup
 
 def isDbl : ValOf ℚ → Bool
   | .dbl _ => true
@@ -259,8 +338,9 @@ def cellSize (as : List BAtom) : Cell → Option Nat
   | .pt _ => some 1
   | .gap (some a) (some b) 0 => some (⌈b⌉ - ⌊a⌋ - 1).toNat
   | .gap _ _ _ => none
-  | .dblR => some (FloatV.card 11 52 - ((otherPts as).filter isDbl).length)
-  | .fltR => some (FloatV.card 8 23 - ((otherPts as).filter isFlt).length)
+  | .fN d => some (1 - ((otherPts as).filter fun w => w == nanOf d).length)
+  | .fA d p => some ((if p = 0 then 2 else 1) - ((otherPts as).filter fun w => fpOrd d w == some p).length)
+  | .fI _ lo hi => some ((hi - lo - 1).toNat + if lo < 0 ∧ 0 < hi then 1 else 0)
   | _ => none
 
 /-! ## Evaluating atoms on cells -/
@@ -307,6 +387,27 @@ def boundB (b : Bool × Bool) (x y : ℚ) : Bool :=
   | (false, false) => decide (x ≤ y)
   | (false, true) => decide (x < y)
 
+/-- A kind on the floats of type `d`. -/
+def kindF : Kind → Bool → Bool
+  | .double, true => true
+  | .float, false => true
+  | .literal, _ => true
+  | _, _ => false
+
+/-- A bound facet on indices. -/
+def boundI (b : Bool × Bool) (x y : Int) : Bool :=
+  match b with
+  | (true, false) => decide (y ≤ x)
+  | (true, true) => decide (y < x)
+  | (false, false) => decide (x ≤ y)
+  | (false, true) => decide (x < y)
+
+/-- A bound facet with index `y` on the interval `(lo, hi)`. -/
+def boundGapI (b : Bool × Bool) (y lo hi : Int) : Bool :=
+  match b with
+  | (true, _) => decide (y ≤ lo)
+  | (false, _) => decide (hi ≤ y)
+
 /-- An atom at a point. -/
 def evalPt : BAtom → ValOf ℚ → Bool
   | .kind k, w => kindPt k w
@@ -315,6 +416,10 @@ def evalPt : BAtom → ValOf ℚ → Bool
       | _ => false)
   | .empty, _ => false
   | .lit w', w => w == w'
+  | .fltB k bs, w => kindPt k w && (match w with
+      | .dbl x => bs.all fun b => decide (x ≠ .nan) && (fpOrd true b.2).any fun y => boundI b.1 x.ord y
+      | .flt x => bs.all fun b => decide (x ≠ .nan) && (fpOrd false b.2).any fun y => boundI b.1 x.ord y
+      | _ => false)
 
 /-- The point `p` lies below the gap whose lower end is `lo`. -/
 def ptBelow (lo : Option ℚ) (p : ℚ) : Bool :=
@@ -346,10 +451,11 @@ def boundGap (b : Bool × Bool) (y : ℚ) (lo hi : Option ℚ) : Bool :=
 /-- A kind on one of the rest cells. -/
 def kindRest : Kind → Cell → Bool
   | .literal, _ => true
-  | .double, .dblR => true
-  | .float, .fltR => true
   | .string, .strR => true
+  | .string, .langR => true
+  | .language, .langR => true
   | .plainLiteral, .strR => true
+  | .plainLiteral, .langR => true
   | .plainLiteral, .tagR => true
   | .anyURI, .uriR => true
   | .hexBinary, .hexR => true
@@ -367,6 +473,21 @@ def evalCell (a : BAtom) : Cell → Bool
     match a with
     | .kind k => kindGap k lo hi c
     | .numR k bs => kindGap k lo hi c && bs.all fun b => boundGap b.1 b.2 lo hi
+    | _ => false
+  | .fN d =>
+    match a with
+    | .kind k => kindF k d
+    | .fltB k bs => kindF k d && bs.isEmpty
+    | _ => false
+  | .fA d p =>
+    match a with
+    | .kind k => kindF k d
+    | .fltB k bs => kindF k d && bs.all fun b => (fpOrd d b.2).any fun y => boundI b.1 p y
+    | _ => false
+  | .fI d lo hi =>
+    match a with
+    | .kind k => kindF k d
+    | .fltB k bs => kindF k d && bs.all fun b => (fpOrd d b.2).any fun y => boundGapI b.1 y lo hi
     | _ => false
   | c =>
     match a with
@@ -395,9 +516,10 @@ noncomputable def minAbove (P : List ℚ) (x : ℝ) : Option ℚ := by
 /-- The rest cell of a non-numeric value outside the points. -/
 def restCell : Val → Cell
   | .num _ => .other
-  | .dbl _ => .dblR
-  | .flt _ => .fltR
-  | .str s none => if xmlString s then .strR else .other
+  | .dbl _ => .fN true
+  | .flt _ => .fN false
+  | .str s none =>
+    if xmlString s then (if Parse.isLanguageTag s.toList then .langR else .strR) else .other
   | .str s (some t) => if xmlString s && langTagOK t.toList && lowerTag t == t then .tagR else .other
   | .bool _ => .other
   | .hex _ => .hexR
@@ -413,6 +535,8 @@ noncomputable def cellOf (as : List BAtom) (v : Val) : Cell := by
   exact if h : ∃ w ∈ allPts as, toVal w = v then .pt h.choose
   else match v with
     | .num x => .gap (maxBelow (numPts as) x) (minAbove (numPts as) x) (numClass x)
+    | .dbl x => fCell true as (decide (x = .nan)) x.ord
+    | .flt x => fCell false as (decide (x = .nan)) x.ord
     | v => restCell v
 
 end ContextCalculus.OWL.Datatypes
