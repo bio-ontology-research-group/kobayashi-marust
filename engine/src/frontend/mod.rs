@@ -1103,17 +1103,19 @@ fn ofn_to_clauses_representation(
     // source before the streaming parse lets the profile, the router, every
     // clause consumer and the incremental sessions see one ontology.
     // `KM_NO_UNIVERSAL_ROLE_HUB` keeps the source for differential tests.
+    // OWL 2 keys become the DL-safe rules they denote (see `has_key`), so the
+    // rule certificates, the router and the rule consumers handle, refuse or
+    // count a key exactly as that rule. Keys go first so that a key on
+    // `owl:topObjectProperty` reaches the universal-role rewrite as rule atoms,
+    // which it encodes exactly.
+    let key_source = has_key::encode(text).map_err(parse::OutOfFragment)?;
+    let text = key_source.as_ref();
     let universal_source = if std::env::var_os("KM_NO_UNIVERSAL_ROLE_HUB").is_none() {
         universal_role::encode(text).map_err(parse::OutOfFragment)?
     } else {
         std::borrow::Cow::Borrowed(text)
     };
     let text = universal_source.as_ref();
-    // OWL 2 keys become the DL-safe rules they denote (see `has_key`), so the
-    // rule certificates, the router and the rule consumers handle, refuse or
-    // count a key exactly as that rule.
-    let key_source = has_key::encode(text).map_err(parse::OutOfFragment)?;
-    let text = key_source.as_ref();
     let mut t = StageTimer::new();
     let mut reg = IriRegistry::new();
     // Pass 1: stream the document into SROIQ axioms. No token vector and no
@@ -2903,13 +2905,14 @@ mod separable_abox_elision_tests {
         // elided and the conservative occurrence flag stays authoritative.
         let text = VACUOUS_TOP_ROLE_OBJECT_ABOX.replace(
             "SubClassOf(ObjectSomeValuesFrom(<urn:r> owl:Thing) <urn:D>)",
-            // U as a sub-role is outside the universal-role hub rewrite, so the
-            // builtin stays in the retained ontology.
+            // U as a sub-role makes `s` universal; the universal-role rewrite
+            // encodes it through the nominal hub (`S ∘ S⁻ ⊑ s`).
             "SubObjectPropertyOf(owl:topObjectProperty <urn:s>)",
         );
         let result = with_ofn_to_clauses_requested_route(&text, Route::Auto, |result| result)
             .expect("read universal-role source");
-        assert!(result.profile.expressivity.universal_role);
+        assert!(!result.profile.expressivity.universal_role);
+        assert!(result.profile.expressivity.nominal);
         assert!(!result.profile.disjoint_union_abox_candidate);
         // Both automatic policies keep the input on a nominal-aware route: the
         // general policy's default is the certified nominal portfolio, whose

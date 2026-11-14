@@ -12,7 +12,7 @@ use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-const CASES: &[&str] = &["chain", "inverse", "symmetric", "empty", "nominal", "domrange_nominal", "inconsistent"];
+const CASES: &[&str] = &["chain", "inverse", "symmetric", "empty", "nominal", "domrange_nominal", "inconsistent", "inverse_free"];
 
 const PROPERTY_ROWS: &[&str] = &["SUBPROP\t", "TOPPROP\t", "BOTPROP\t", "DOMAIN\t", "RANGE\t"];
 
@@ -125,15 +125,25 @@ fn properties_options_are_validated() {
 }
 
 /// `ObjectPropertyDomain(e owl:Nothing)` and `ObjectPropertyRange(f owl:Nothing)`
-/// make `e` and `f` empty. The frontend drops both axioms without counting
-/// them (`rbox::plain_class` maps `owl:Nothing` to "complex domain", and the
-/// complex-domain clausification in `parse.rs` only takes a list operand), so
-/// plain classification already misses `UNSAT C` for `C ≡ ∃e.⊤`. This is a
-/// frontend bug outside the property reduction.
+/// make `e` and `f` empty (bug E7: the frontend used to drop both axioms).
 #[test]
-#[ignore = "frontend drops ObjectPropertyDomain/Range(r owl:Nothing); see docs/PROPERTIES.md"]
 fn domain_or_range_nothing_empties_the_property() {
     let source = fixture("domain_nothing.ofn");
     let extended = stdout(&km(&source, &["--lines", "--properties"]));
     assert_eq!(property_rows(&extended), expected("domain_nothing.rows"));
+}
+
+/// An inverse-free source takes its ranges from a second run with fresh
+/// asserted pairs (docs/PROPERTIES.md). Those individuals never reach the
+/// output: `--realize --properties` reports the source individuals only.
+#[test]
+fn range_run_individuals_stay_internal() {
+    let source = fixture("inverse_free.ofn");
+    let realized = stdout(&km(&source, &["--lines", "--realize"]));
+    let both = stdout(&km(&source, &["--lines", "--realize", "--properties"]));
+    assert!(both.starts_with(&realized[..realized.len() - 1]), "{both}");
+    assert_eq!(property_rows(&both), expected("inverse_free.rows"));
+    assert!(!both.contains("km.invalid"), "{both}");
+    let types: Vec<&str> = both.lines().filter(|line| line.starts_with("TYPE\t")).collect();
+    assert_eq!(types, ["TYPE\t:a\t:A", "TYPE\t:b\t:B", "TYPE\t:b\t:C"]);
 }

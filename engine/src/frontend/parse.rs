@@ -217,6 +217,22 @@ pub(super) fn chain_role(
     }
 }
 
+/// Operand of `ObjectPropertyDomain` / `ObjectPropertyRange` on a named role
+/// that the rbox path does not carry: a class expression, or `owl:Nothing`
+/// (the rbox records only named classes; `owl:Thing` constrains nothing).
+/// The test is syntactic so that it registers no name: the class names of the
+/// rbox path keep their registry order. Builtins arrive in one of their two
+/// canonical spellings (`builtin_aliases::canonicalize`).
+fn complex_domain_operand(node: Option<&Node>) -> bool {
+    match node {
+        Some(Node::List(..)) => true,
+        Some(Node::Atom(token)) => {
+            matches!(*token, "owl:Nothing" | "<http://www.w3.org/2002/07/owl#Nothing>")
+        }
+        None => false,
+    }
+}
+
 /// Port of `role_cls`: role expression for class constructs.
 fn role_cls(reg: &mut IriRegistry, node: &Node) -> Result<Role, OutOfFragment> {
     match node {
@@ -790,14 +806,16 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
         }
         "ObjectPropertyDomain"
             if matches!(args.first(), Some(Node::Atom(_)))
-                && matches!(args.get(1), Some(Node::List(..))) =>
+                && complex_domain_operand(args.get(1).copied()) =>
         {
             // domain(R) = C ≡ ∃R.⊤ ⊑ C. The simple (named-class) case stays on
             // the rbox path (byte-identical routing/clauses); only a COMPLEX
             // domain class on a NAMED role — previously dropped as
             // `complex-domain`, a real incompleteness (ore_ont_4827's
             // `domain(hasCase) = Adjective ⊔ ...`) — is clausified here through
-            // the normal subclass encoding.
+            // the normal subclass encoding. `owl:Nothing` takes this path too:
+            // the rbox path has no record for it, so `domain(R) = ⊥` used to
+            // produce no clause and `∃R.⊤` stayed satisfiable.
             o.add(Axiom::SubClassOf(
                 Concept::Exists(role_cls(reg, op(&args, 0)?)?, Box::new(Concept::Top)),
                 cls(reg, op(&args, 1)?)?,
@@ -805,9 +823,10 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
         }
         "ObjectPropertyRange"
             if matches!(args.first(), Some(Node::Atom(_)))
-                && matches!(args.get(1), Some(Node::List(..))) =>
+                && complex_domain_operand(args.get(1).copied()) =>
         {
-            // range(R) = C ≡ ⊤ ⊑ ∀R.C; complex-range case on a named role only.
+            // range(R) = C ≡ ⊤ ⊑ ∀R.C; complex-range case on a named role only,
+            // and `owl:Nothing` (see the domain arm above).
             o.add(Axiom::SubClassOf(
                 Concept::Top,
                 Concept::Forall(role_cls(reg, op(&args, 0)?)?, Box::new(cls(reg, op(&args, 1)?)?)),
@@ -1290,6 +1309,27 @@ mod axiom_drop_regression_tests {
         let mut registry = IriRegistry::new();
         let ontology = parse_axioms(&mut registry, "Ontology(SubClassOf(<A> DataMinCardinality(1 <p>)))").unwrap();
         assert_eq!(ontology.tbox().count(), 1);
+    }
+
+    #[test]
+    fn nothing_domain_and_range_make_the_property_empty() {
+        for nothing in ["owl:Nothing", "<http://www.w3.org/2002/07/owl#Nothing>"] {
+            let mut registry = IriRegistry::new();
+            let text = format!(
+                "Ontology(ObjectPropertyDomain(<e> {nothing}) ObjectPropertyRange(<f> {nothing}) \
+                 ObjectPropertyDomain(<g> owl:Thing) ObjectPropertyDomain(<h> <C>))"
+            );
+            let ontology = parse_axioms(&mut registry, &text).unwrap();
+            let axioms: Vec<&Axiom> = ontology.tbox().collect();
+            let e = Role::Name(registry.assigned("e").unwrap().to_string());
+            let f = Role::Name(registry.assigned("f").unwrap().to_string());
+            assert!(axioms.contains(&&Axiom::SubClassOf(
+                Concept::Exists(e, Box::new(Concept::Top)), Concept::Bottom)), "{axioms:?}");
+            assert!(axioms.contains(&&Axiom::SubClassOf(
+                Concept::Top, Concept::Forall(f, Box::new(Concept::Bottom)))), "{axioms:?}");
+            // `owl:Thing` and a named class stay on the rbox path.
+            assert_eq!(axioms.len(), 2, "{axioms:?}");
+        }
     }
 
     #[test]

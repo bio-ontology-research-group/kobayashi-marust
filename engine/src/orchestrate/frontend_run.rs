@@ -665,6 +665,9 @@ mod tests {
     /// serde's canonical encoding) for frontend inputs of that shape.
     #[test]
     fn positive_el_input_round_trips() {
+        // The handoff depends on KM_ROUTE and KM_NO_INPROC_ELC, which other
+        // tests set while they hold this lock.
+        let _environment_lock = crate::frontend::lock_test_environment();
         let sources = [
             "Prefix(:=<http://e/>)\nOntology(\nSubClassOf(:A ObjectSomeValuesFrom(:r :B))\n\
              SubClassOf(ObjectIntersectionOf(:B :C) :D)\nSubObjectPropertyOf(:r :s)\n\
