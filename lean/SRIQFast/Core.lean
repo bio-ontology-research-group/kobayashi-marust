@@ -305,6 +305,10 @@ structure Cfg where
   lazyEager : Bool := false
   /-- stop generation after this many nodes (0: no cap) -/
   maxNodes : Nat := 0
+  /-- the merge rule for at-most 1 that `closedB` checks (the earlier
+  rule, which merged default specs only, misses a merge of a merged spec
+  with a default: `lean/testdata/sriq-fast/funcmerge-cx.sriq`) -/
+  checkedMerge : Bool := true
   deriving Repr
 
 inductive Ev where
@@ -620,7 +624,36 @@ def triggerPlan (O : Onto) (cfg : Cfg) (s : St) (v : Nat) :
             pot := pot + k
       if pot ≤ n then continue
       if lazyA && cfg.lazyEager then lz := lz.push a
-      if cfg.funcMerge && n == 1 then
+      if cfg.funcMerge && n == 1 && cfg.checkedMerge then
+        -- the merge rule that `SRIQ/FastCheck.lean` checks: `M` is the
+        -- union of the definitely counted default specs (filler in the
+        -- child seed or in every type); add `σ ∪ M` for every spec `σ`
+        -- that may count, and `σ₁ ∪ σ₂` for every two of them that
+        -- contain `M`
+        let atomic : HashSet Spec := (defaultSpecs O cfg key t).foldl (·.insert ·) ∅
+        let always := O.gciTop.any fun g => (O.gcis[g]!).2 == #[e]
+        let mut defs : Array Spec := #[]
+        for i in cs do
+          let σ := nd.pool[i]!
+          if atomic.contains σ && (always || mem s.ctxs[nd.kids[i]!]!.key.seed e) then
+            defs := defs.push σ
+        if !defs.isEmpty then
+          let M : Spec := defs.foldl (fun m σ => { lab := union m.lab σ.lab, fill := union m.fill σ.fill }) defs[0]!
+          let sup : Array Spec := cs.filterMap fun i =>
+            let σ := nd.pool[i]!
+            if sub M.lab σ.lab && sub M.fill σ.fill then some σ else none
+          for i in cs do
+            let σ := nd.pool[i]!
+            adds := adds.push { lab := union σ.lab M.lab, fill := union σ.fill M.fill }
+          for x in [0:sup.size] do
+            for y in [x+1:sup.size] do
+              adds := adds.push { lab := union sup[x]!.lab sup[y]!.lab, fill := union sup[x]!.fill sup[y]!.fill }
+          if parentC then
+            for i in cs do
+              let σ := nd.pool[i]!
+              pws := pws.push (σ.fill, σ.lab)
+          continue
+      if cfg.funcMerge && n == 1 && !cfg.checkedMerge then
         -- at most one counted neighbour: the definitely counted default
         -- specs (filler in the child seed or in every type) all go into
         -- one child; the possibly counted ones join it in every combination

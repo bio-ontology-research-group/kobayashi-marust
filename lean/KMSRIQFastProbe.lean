@@ -2,6 +2,7 @@ import ContextCalculus.OWL.Parse
 import ContextCalculus.OWLFrontend.ReferenceReadout
 import SRIQFast.Core
 import SRIQFast.Brute
+import SRIQFast.ToCand
 
 /-! Development probe for stage C1c: the unproved demand-driven SHIQ
 prototype (`SRIQFast`). `km-sriq-fast-probe <file.ofn>` runs the parser,
@@ -78,21 +79,74 @@ def readCfg : IO Cfg := do
            lazyEager := ← envFlag "KM_SRIQF_LAZYEAGER" false
            funcMerge := ← envFlag "KM_SRIQF_FUNCMERGE" true
            piFull := ← envFlag "KM_SRIQF_PIFULL" false
+           checkedMerge := ← envFlag "KM_SRIQF_CHECKEDMERGE" true
            maxNodes }
 
 structure Result where
   rows : Array (Nat × Option Ty)
   aborted : Bool
+  /-- checked mode: `some true` when `closedB` accepted and the certified
+  rows were used, `some false` when it declined -/
+  checked : Option Bool := none
+
+/-- The certified rows as prototype rows. -/
+def certRows {n : Nat} (rs : List (Fin n × Option (List (Fin n)))) : Array (Nat × Option Ty) :=
+  (rs.map fun p => (p.1.val, p.2.map fun L => sortDedup (L.map (·.val)).toArray)).toArray
+
+/-- Compare rows on the names below `bound` (the requested names). -/
+def cmpRows (a b : Array (Nat × Option Ty)) (bound : Nat) : List String := Id.run do
+  let mut out := []
+  let cut : Option Ty → Option Ty := fun o => o.map fun t => t.filter (· < bound)
+  for (x, y) in a.zip b do
+    if x.1 != y.1 then out := s!"order {x.1} {y.1}" :: out
+    else if cut x.2 != cut y.2 then
+      out := s!"name {x.1}: fast={repr (cut x.2)} ref={repr (cut y.2)}" :: out
+  return out.reverse
+
+open ContextCalculus.SRIQ.Fast in
+/-- Diagnostic: time of each closure condition over all nodes. -/
+def checkProf {n m : Nat} (ix : Ix n m) (U : Cand n m) : IO Unit := do
+  let mut tms : Array Nat := #[0, 0, 0, 0, 0, 0, 0]
+  let p0 ← IO.monoNanosNow
+  let r2 ← IO.lazyPure fun _ => (List.range U.keys.size).all fun k => decide (BranchCov ix U k (keyOf U k).seed)
+  let p1 ← IO.monoNanosNow
+  tms := tms.set! 6 (p1 - p0)
+  let N := U.nodes.size
+  let tm (nm : String) (f : Unit → Bool) : IO Unit := do
+    let a ← IO.monoMsNow
+    let r ← IO.lazyPure f
+    let b ← IO.monoMsNow
+    IO.eprintln s!"checkprof {nm}: {r} {b - a}ms"
+  tm "wf" fun _ => decide (∀ i < N, nodeOK ix U i ∧ ∀ e ∈ (nd U i).pool, entryOK ix U (nd U i).ty e)
+  tm "r3" fun _ => decide (∀ i < N, ∀ q ∈ lowAt ix (nd U i).ty, 1 ≤ q.2.1 → ¬ skipQ (keyOf U (nd U i).ctx) q → inPool U i (dflt ix q))
+  tm "r4" fun _ => decide (∀ i < N, BackOK ix U i)
+  tm "r5" fun _ => decide (∀ i < N, ∀ u ∈ uppAt ix (nd U i).ty, u.2.1 < pot ix U i u.2.2.1 u.2.2.2 → MergeOK ix U i u.2.1 u.2.2.1 u.2.2.2)
+  tm "r6" fun _ => decide (∀ i < N, WitOK ix U i)
+  let Cc := mkCache ix U
+  let mut tot := 0
+  let mut mx := 0
+  let mut mxi := 0
+  let mut slow := 0
+  for i in [0:N] do
+    let a ← IO.monoNanosNow
+    let _ ← IO.lazyPure fun _ => suppB ix U Cc Cc.ok i
+    let b ← IO.monoNanosNow
+    tot := tot + (b - a)
+    if b - a > 1000000 then slow := slow + 1
+    if b - a > mx then mx := b - a; mxi := i
+  IO.eprintln s!"checkprof supp: total={tot/1000000}ms max={mx/1000000}ms at {mxi} slow(>1ms)={slow} cands={(candsA U Cc Cc.ok mxi).length} needs={(needsV ix U mxi).length}"
+  IO.eprintln s!"checkprof: r2ok={r2} ms: wf={tms[0]!/1000000} r3={tms[1]!/1000000} r4={tms[2]!/1000000} r5={tms[3]!/1000000} r6={tms[4]!/1000000} r2={tms[6]!/1000000}"
 
 /-- Run the prototype on an ALCHIQ ontology, printing statistics. -/
-def runFast {n m : Nat} (E : SRIQ.Ontology (Fin n) (Fin m)) (req : Array Nat) : IO (Option Result) := do
+def runFast {n m : Nat} (E : SRIQ.Ontology (Fin n) (Fin m)) (req : Array Nat)
+    (reqF : List (Fin n) := []) (checked : Bool := false) : IO (Option Result) := do
   let cfg ← readCfg
   match toQC E with
   | .error e => IO.eprintln s!"declined: {e}"; return none
   | .ok cls =>
     let t0 ← IO.monoMsNow
-    let fullRel ← envFlag "KM_SRIQF_FULLREL" false
-    let lazy ← envFlag "KM_SRIQF_LAZY" true
+    let fullRel ← envFlag "KM_SRIQF_FULLREL" true
+    let lazy ← envFlag "KM_SRIQF_LAZY" false
     let O ← IO.lazyPure fun _ => mkOnto n m cls fullRel lazy (req.foldl (fun a x => max a (x + 1)) 0)
     let t1 ← IO.monoMsNow
     let topDisj := O.gciTop.foldl (fun a i => if (O.gcis[i]!).2.size ≥ 2 then a + 1 else a) 0
@@ -133,23 +187,30 @@ def runFast {n m : Nat} (E : SRIQ.Ontology (Fin n) (Fin m)) (req : Array Nat) : 
     let rows ← IO.lazyPure fun _ => readout st alive roots req
     let t4 ← IO.monoMsNow
     IO.eprintln s!"readout_ms={t4-t3} fast_total_ms={t4-t0}"
-    return some { rows, aborted := false }
+    if !checked then return some { rows, aborted := false }
+    -- checked mode: the certified check, elimination and readout
+    let c0 ← IO.monoMsNow
+    let ix ← IO.lazyPure fun _ => ContextCalculus.SRIQ.Fast.mkIx E
+    IO.eprintln s!"checked: indexes ups={ix.upArr.size} ms={(← IO.monoMsNow) - c0}"
+    let U ← IO.lazyPure fun _ => toCand ix st roots
+    IO.eprintln s!"checked: converted nodes={U.nodes.size} ctxs={U.keys.size} ms={(← IO.monoMsNow) - c0}"
+    if (← IO.getEnv "KM_SRIQF_CHECKPROF") == some "1" then checkProf ix U
+    let c1 ← IO.monoMsNow
+    let ok ← IO.lazyPure fun _ => ContextCalculus.SRIQ.Fast.closedB ix U reqF
+    let c2 ← IO.monoMsNow
+    IO.eprintln s!"checked: closedB={ok} convert_ms={c1-c0} check_ms={c2-c1}"
+    if !ok then return some { rows, aborted := false, checked := some false }
+    let crows ← IO.lazyPure fun _ => certRows (ContextCalculus.SRIQ.Fast.fastRows ix U reqF)
+    let c3 ← IO.monoMsNow
+    let same := cmpRows crows rows reqF.length |>.isEmpty
+    IO.eprintln s!"checked: elim_readout_ms={c3-c2} same_as_prototype={same} checked_total_ms={c3-c0}"
+    return some { rows := crows, aborted := false, checked := some true }
 
 /-- The rows of `classifyQO` as `(name, none | subsumers)`. -/
 def refRows {n m : Nat} (E : SRIQ.Ontology (Fin n) (Fin m)) (req : List (Fin n)) :
     Array (Nat × Option Ty) :=
   ((QProc.classifyQO E req).map fun p =>
     (p.1.val, p.2.map fun L => sortDedup (L.map (·.val)).toArray)).toArray
-
-/-- Compare rows on the names below `bound` (the requested names). -/
-def cmpRows (a b : Array (Nat × Option Ty)) (bound : Nat) : List String := Id.run do
-  let mut out := []
-  let cut : Option Ty → Option Ty := fun o => o.map fun t => t.filter (· < bound)
-  for (x, y) in a.zip b do
-    if x.1 != y.1 then out := s!"order {x.1} {y.1}" :: out
-    else if cut x.2 != cut y.2 then
-      out := s!"name {x.1}: fast={repr (cut x.2)} ref={repr (cut y.2)}" :: out
-  return out.reverse
 
 /-! ## The `--sriq` text format -/
 
@@ -177,7 +238,7 @@ def parseLine (ws : List String) : Except String (Option (SRIQ.Clause Nat Nat)) 
   | ["trans", R] => let r ← rt R; return some (.chain [r, r] r)
   | w :: _ => if w.startsWith "#" then return none else .error s!"bad line {ws}"
 
-def mainSriq (path : String) : IO UInt32 := do
+def mainSriq (path : String) (checkedArg : Bool := false) : IO UInt32 := do
   let text ← IO.FS.readFile path
   let lines := text.splitOn "\n" |>.map fun l => (l.splitOn " ").filter (· != "")
   let some hdr := lines.head? | IO.eprintln "empty"; return 2
@@ -199,8 +260,10 @@ def mainSriq (path : String) : IO UInt32 := do
     IO.eprintln "declined: not SHIQ"; return 3
   let E := SRIQ.Proc.encTransQ O
   let req : List (Fin (n + E.1)) := ((List.finRange n).filter (·.val < nreq)).map (Fin.castAdd E.1)
-  let some res ← runFast E.2 (req.map (·.val)).toArray | return 3
+  let checked := checkedArg || (← envFlag "KM_SRIQF_CHECKED" false)
+  let some res ← runFast E.2 (req.map (·.val)).toArray req checked | return 3
   if res.aborted then IO.println "aborted"; return 4
+  if res.checked == some false then IO.println "declined: closedB"; return 3
   let showRows (rs : Array (Nat × Option Ty)) (tag : String) : IO Unit := do
     for (a, o) in rs do
       match o with
@@ -235,10 +298,7 @@ def mainSriq (path : String) : IO UInt32 := do
       return 1
   return status
 
-def main (args : List String) : IO UInt32 := do
-  match args with
-  | ["--sriq", p] => mainSriq p
-  | [path] =>
+def mainOfn (path : String) (checkedArg : Bool) : IO UInt32 := do
     let t0 ← IO.monoMsNow
     let text ← IO.FS.readFile path
     match OWL.parse text with
@@ -262,8 +322,10 @@ def main (args : List String) : IO UInt32 := do
         let t4 ← IO.monoMsNow
         IO.eprintln s!"fresh={E.1} enc_clauses={E.2.length} names={T.conceptCount + E.1} enc_ms={t4-t3}"
         let req := sriqRequest T E.1
-        let some res ← runFast E.2 (req.map (·.val)).toArray | return 3
+        let checked := checkedArg || (← envFlag "KM_SRIQF_CHECKED" false)
+        let some res ← runFast E.2 (req.map (·.val)).toArray req checked | return 3
         if res.aborted then IO.println "aborted"; return 4
+        if res.checked == some false then IO.println "declined: closedB"; return 3
         let named := T.named.length
         let sups := res.rows.foldl (fun s r => match r.2 with
           | some t => s + (t.filter (· < named)).size | none => s) 0
@@ -289,4 +351,11 @@ def main (args : List String) : IO UInt32 := do
         -- skip freeing the generated structures at exit (seconds on large inputs)
         (← IO.getStdout).flush
         IO.Process.exit 0
-  | _ => IO.eprintln "usage: km-sriq-fast-probe <file.ofn> | --sriq <file>"; return 2
+
+def main (args : List String) : IO UInt32 := do
+  match args with
+  | ["--sriq", p] => mainSriq p
+  | ["--checked", "--sriq", p] => mainSriq p true
+  | ["--checked", path] => mainOfn path true
+  | [path] => mainOfn path false
+  | _ => IO.eprintln "usage: km-sriq-fast-probe [--checked] <file.ofn> | [--checked] --sriq <file>"; return 2
