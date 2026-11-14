@@ -4,6 +4,31 @@
 
 ### Engine
 
+- Fixed (E12, wrong answers): the CB clause stream lost consequences of
+  role chains for every consumer of a chain-derived role other than a
+  plain existential over same-orientation roles: `∀r.C` and ranges of a
+  chain super-role, consumers of its inverse, negated existentials,
+  existentials without a filler, and longer chains through such roles.
+  Example: `s ∘ t ∘ t⁻ ⊑ r`, `⊤ ⊑ ∃t.{g}`, `A ⊑ ∃s.⊤`, `A ⊑ ∀r.C`
+  entails `A ⊑ C`, which km missed; so did `s ∘ t ∘ u ⊑ r`,
+  `A ⊑ ∃s.∃t.∃u.D`, `A ⊑ ∀r.C` for `A ⊑ ∃r.(C ⊓ D)`. Answers were wrong
+  whenever CB answered: every chain of three or more roles (the native
+  bridge fences them), every nominal input and every bridge deferral. The
+  frontend now adds a complete role-automaton encoding for these
+  consumers (`preprocess::chain_consumer_automaton_clauses`): forward
+  markers for consumers with a head on the role's target, backward
+  markers otherwise, over an automaton that unfolds sub-roles in both
+  orientations, chains and transitivity, determinized and minimized,
+  with one marker family per role and seed condition. Consumers that the
+  existing same-orientation encodings already cover (their language equals
+  the full one) keep their old clauses. The CB rules are unchanged.
+  Consumers outside the encodable shape are counted as dropped
+  (`RoleChainConsumer`); none occurs in the corpus. Of 1,708 pool inputs,
+  326 have a role chain; the clause stream changes on 87 of them, and no
+  completed answer changes. Ranges of chain super-roles cost memory on
+  some large OBO inputs (ore_ont_12208 about 1.4 to 2.5 times, 1028 about
+  1.8 times). Tests: `tests/role_chain_consumers.rs` (26 HermiT-checked
+  cases on the automatic, nominal-CB and plain-CB routes).
 - `km classify --properties` reports the inferred object property
   hierarchy (`SUBPROP r f`, with `f` a named property or
   `ObjectInverseOf(s)`), the properties equivalent to

@@ -1859,6 +1859,21 @@ fn ofn_to_clauses_representation(
             &domain_range,
         ));
     }
+    // Ranges and domains of roles whose language contains a chain word:
+    // the one-level recognitions above cover only a pure domain of a direct
+    // chain target over simple roles.
+    let (range_chain_consumers, unencoded) = preprocess::chain_consumer_automaton_clauses(
+        &domain_range,
+        &chain_info,
+        preprocess::ChainConsumerPass::DomainRange,
+    );
+    tbox.extend(range_chain_consumers);
+    let unencoded = unencoded + chain_info.unencoded_chain_consumers;
+    if unencoded > 0 {
+        // Fail closed: a consumer of a chain-derived role outside the
+        // encodable shape would otherwise be read without its chain edges.
+        *dropped_source_axioms.entry("RoleChainConsumer".to_string()).or_default() += unencoded;
+    }
     tbox.extend(domain_range);
     // All consumers are in place (augment encodings + domain/range), so dead
     // inverse bridges can be identified and dropped.
