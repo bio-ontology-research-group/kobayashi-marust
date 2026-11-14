@@ -22,11 +22,11 @@ values of each cell (`OWL/Datatypes/CellsSpec.lean` proves the cells exact,
   derived from it, `xsd:double`, `xsd:float`, `xsd:string`,
   `rdf:PlainLiteral`, `xsd:boolean`, `xsd:hexBinary`, `xsd:base64Binary`,
   `xsd:anyURI`, `xsd:dateTime`, `xsd:dateTimeStamp`, `rdf:XMLLiteral`,
-  `rdfs:Literal`. Declined (`supportedKind`): `owl:rational`,
+  `rdfs:Literal`, `owl:rational`. Declined (`supportedKind`):
   `xsd:normalizedString`, `xsd:token`, `xsd:language`, `xsd:Name`,
   `xsd:NCName`, `xsd:NMTOKEN`.
-* `numR k bs`: a numeric datatype (`owl:real`, `xsd:decimal`, an integer
-  type) with bound facets `bs` (minimum or maximum, strict or not, a
+* `numR k bs`: a numeric datatype (`owl:real`, `owl:rational`,
+  `xsd:decimal`, an integer type) with bound facets `bs` (minimum or maximum, strict or not, a
   rational bound).
 * `empty`: the empty set (an ill-typed literal, a facet that does not
   apply).
@@ -38,7 +38,8 @@ values of each cell (`OWL/Datatypes/CellsSpec.lean` proves the cells exact,
   boolean.
 * `gap lo hi cls`: the reals strictly between two neighbouring numeric
   points (`none`: unbounded), of class `cls`: integers (`0`), decimals
-  that are not integers (`1`), other reals (`2`).
+  that are not integers (`1`), rationals that are not decimals (`2`),
+  irrationals (`3`).
 * the rest of each other value space (`dblR`, `fltR`, `strR` for strings
   without a tag, `tagR` with a tag, `uriR`, `hexR`, `b64R`, `xmlR`,
   `timeTz`, `timeLoc`), and `other` for the values outside every value
@@ -149,12 +150,12 @@ def BAtom.sem : BAtom → Val → Prop
 
 /-- The kinds of the supported sub-theory. -/
 def supportedKind : Kind → Bool
-  | .rational | .normalizedString | .token | .language | .name | .ncName | .nmToken => false
+  | .normalizedString | .token | .language | .name | .ncName | .nmToken => false
   | _ => true
 
 /-- The numeric kinds with bound facets in the sub-theory. -/
 def numKind : Kind → Bool
-  | .real | .decimal | .integer .. => true
+  | .real | .rational | .decimal | .integer .. => true
   | _ => false
 
 /-- The base atoms of the supported sub-theory. -/
@@ -198,7 +199,7 @@ def allPts (as : List BAtom) : List (ValOf ℚ) := (numPts as).map .num ++ other
 /-- The cells (see the module docstring). -/
 inductive Cell where
   | pt (w : ValOf ℚ)
-  | gap (lo hi : Option ℚ) (cls : Fin 3)
+  | gap (lo hi : Option ℚ) (cls : Fin 4)
   | dblR
   | fltR
   | strR
@@ -242,7 +243,7 @@ def restCells : List Cell :=
 /-- The cells of a list of atoms. -/
 def cellsOf (as : List BAtom) : List Cell :=
   ((allPts as).map Cell.pt ++
-    (gapPairs (numPts as)).flatMap (fun x : Option ℚ × Option ℚ => [0, 1, 2].map (Cell.gap x.1 x.2)) ++
+    (gapPairs (numPts as)).flatMap (fun x : Option ℚ × Option ℚ => [0, 1, 2, 3].map (Cell.gap x.1 x.2)) ++
     restCells).dedup
 
 def isDbl : ValOf ℚ → Bool
@@ -328,9 +329,10 @@ def ptAbove (hi : Option ℚ) (p : ℚ) : Bool :=
   | some b => decide (b ≤ p)
 
 /-- A kind on a gap. -/
-def kindGap : Kind → Option ℚ → Option ℚ → Fin 3 → Bool
+def kindGap : Kind → Option ℚ → Option ℚ → Fin 4 → Bool
   | .real, _, _, _ => true
-  | .decimal, _, _, c => c != 2
+  | .rational, _, _, c => c != 3
+  | .decimal, _, _, c => c == 0 || c == 1
   | .integer l h, lo, hi, c => c == 0 && (l.all fun l => ptBelow lo l) && (h.all fun h => ptAbove hi h)
   | .literal, _, _, _ => true
   | _, _, _, _ => false
@@ -373,10 +375,12 @@ def evalCell (a : BAtom) : Cell → Bool
 
 /-! ## The cell of a value -/
 
-/-- The class of a real: integer `0`, other decimal `1`, other real `2`. -/
-noncomputable def numClass (x : ℝ) : Fin 3 := by
+/-- The class of a real: integer `0`, other decimal `1`, other rational
+`2`, irrational `3`. -/
+noncomputable def numClass (x : ℝ) : Fin 4 := by
   classical
-  exact if ∃ z : ℤ, x = z then 0 else if IsDecimalR x then 1 else 2
+  exact if ∃ z : ℤ, x = z then 0 else if IsDecimalR x then 1
+    else if ∃ q : ℚ, x = q then 2 else 3
 
 /-- The largest point below `x`. -/
 noncomputable def maxBelow (P : List ℚ) (x : ℝ) : Option ℚ := by

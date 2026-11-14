@@ -14,6 +14,14 @@ else `row <class IRI> <class superclass IRIs>`. Exit `0` when the route publishe
 
 open ContextCalculus ContextCalculus.OWLFrontend
 
+/-- The number of parts if every small cell were split (for comparison). -/
+def allSmallParts (T : SRIQDTranslation) : Nat :=
+  let sp := SHIQD.spec T.tab
+  let as := OWL.Datatypes.allBases sp
+  (SRIQD.partsOf (OWL.Datatypes.cellSize as) (OWL.Datatypes.allFrees sp).length
+    ((OWL.Datatypes.cellsOf as).filter fun c =>
+      SRIQD.small (OWL.Datatypes.cellSize as) (partBound T) c)).length
+
 def main (args : List String) : IO UInt32 := do
   let some path := args.head? | IO.eprintln "usage: km-sriqd-probe <file>"; return 2
   let text ← IO.FS.readFile path
@@ -26,7 +34,7 @@ def main (args : List String) : IO UInt32 := do
       IO.eprintln s!"declined: not SHIQ(D)"
       return 3
     | some T =>
-      IO.eprintln s!"named={T.named.length} concepts={T.obj.conceptCount} roles={T.obj.roleCount} dprops={T.dps.length} atoms={T.tab.length} clauses={T.ontology.length} supported={allSupported T} parts={(partAlive T).length}"
+      IO.eprintln s!"named={T.named.length} concepts={T.obj.conceptCount} roles={T.obj.roleCount} dprops={T.dps.length} atoms={T.tab.length} clauses={T.ontology.length} supported={allSupported T} parts={(partAlive T).length} parts_without_cover={allSmallParts T}"
       let t0 ← IO.monoMsNow
       match ← IO.lazyPure fun _ => owlSHIQDReference O req with
       | none =>

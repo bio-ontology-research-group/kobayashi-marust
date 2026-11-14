@@ -13,7 +13,7 @@ A data range of the supported sub-language (`drSupported`) is a Boolean
 combination of base atoms (`OWL/Datatypes/Cells.lean`) and free datatypes:
 `drEval` evaluates it from the base atoms and the free datatypes that
 hold (`ext_iff_drEval`). Declined (`drSupported` is `false`): the kinds
-that `supportedKind` declines (`owl:rational`, `xsd:normalizedString`,
+that `supportedKind` declines (`xsd:normalizedString`,
 `xsd:token`, `xsd:language`, `xsd:Name`, `xsd:NCName`, `xsd:NMTOKEN`) and
 facet restrictions on non-numeric datatypes of the map. Restrictions on
 numeric types with facets other than the four bounds, or with facet

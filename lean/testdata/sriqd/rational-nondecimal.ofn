@@ -1,0 +1,6 @@
+Prefix(:=<http://ex/>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://ex/rational-nondecimal>
+SubClassOf(:A DataSomeValuesFrom(:p DataIntersectionOf(owl:rational DataComplementOf(xsd:decimal))))
+)

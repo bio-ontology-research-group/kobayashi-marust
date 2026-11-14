@@ -144,39 +144,39 @@ def small (size : K → Option Nat) (L : Nat) (c : K) : Bool :=
 /-- The reading of the free atoms at a value. -/
 def readOf (fr : Fin s → Val → Bool) (v : Val) : Fin s → Bool := fun j => fr j v
 
-/-- `fr` gives the small cells the counts `n`. -/
-def InPart (key : Val → K) (cells : List K) (size : K → Option Nat) (L : Nat)
+/-- `fr` gives the cells selected by `sp` (the split cells) the counts `n`. -/
+def InPart (key : Val → K) (cells : List K) (sp : K → Bool)
     (n : K → (Fin s → Bool) → Nat) (fr : Fin s → Val → Bool) : Prop :=
-  ∀ c ∈ cells, small size L c = true → ∀ g,
+  ∀ c ∈ cells, sp c = true → ∀ g,
     {v | key v = c ∧ readOf fr v = g}.encard = n c g
 
-/-- The counts of a small cell add up to its size. -/
-def ValidPart (cells : List K) (size : K → Option Nat) (L : Nat) (n : K → (Fin s → Bool) → Nat) :
-    Prop :=
-  ∀ c ∈ cells, small size L c = true → size c = some (((allG s).map (n c)).sum)
+/-- The counts of a split cell add up to its size. -/
+def ValidPart (cells : List K) (size : K → Option Nat) (sp : K → Bool)
+    (n : K → (Fin s → Bool) → Nat) : Prop :=
+  ∀ c ∈ cells, sp c = true → size c = some (((allG s).map (n c)).sum)
 
 /-- The part `n` of the cell theory. -/
-def partTheory (key : Val → K) (cells : List K) (size : K → Option Nat) (L : Nat)
+def partTheory (key : Val → K) (cells : List K) (sp : K → Bool)
     (E : Fin q → K → (Fin s → Bool) → Bool) (n : K → (Fin s → Bool) → Nat) :
     DataTheory (Fin q) :=
-  fun V atom => ∃ (e : V ≃ Val) (fr : Fin s → Val → Bool), InPart key cells size L n fr ∧
+  fun V atom => ∃ (e : V ≃ Val) (fr : Fin s → Val → Bool), InPart key cells sp n fr ∧
     ∀ p v, atom p v ↔ E p (key (e v)) (readOf fr (e v)) = true
 
 /-- The pairs (cell, reading). -/
 def pairs (cells : List K) (s : Nat) : List (K × (Fin s → Bool)) :=
   cells.flatMap fun c => (allG s).map fun g => (c, g)
 
-/-- The bound of a pair: its count for a small cell, the cell size otherwise. -/
-def pairBound (size : K → Option Nat) (L : Nat) (n : K → (Fin s → Bool) → Nat)
+/-- The bound of a pair: its count for a split cell, the cell size otherwise. -/
+def pairBound (size : K → Option Nat) (sp : K → Bool) (n : K → (Fin s → Bool) → Nat)
     (cg : K × (Fin s → Bool)) : Option Nat :=
-  if small size L cg.1 then some (n cg.1 cg.2) else size cg.1
+  if sp cg.1 then some (n cg.1 cg.2) else size cg.1
 
 /-- **The oracle of a part.** -/
-def partCard (cells : List K) (size : K → Option Nat) (L : Nat)
+def partCard (cells : List K) (size : K → Option Nat) (sp : K → Bool)
     (E : Fin q → K → (Fin s → Bool) → Bool) (n : K → (Fin s → Bool) → Nat)
     (τ : Finset (Fin q)) : Option Nat :=
   osum ((pairs cells s).map fun cg =>
-    if vtc E cg.1 cg.2 = τ then pairBound size L n cg else some 0)
+    if vtc E cg.1 cg.2 = τ then pairBound size sp n cg else some 0)
 
 theorem mem_pairs {cg : K × (Fin s → Bool)} : cg ∈ pairs cells s ↔ cg.1 ∈ cells := by
   obtain ⟨c, g⟩ := cg
@@ -210,8 +210,8 @@ theorem not_small_size {L : Nat} {c : K} (h : small size L c = false) :
 
 /-! ## The cell theory is the union of its parts -/
 
-theorem cellTheory_of_part {L : Nat} {n : K → (Fin s → Bool) → Nat} {V : Type}
-    {atom : Fin q → V → Prop} (h : partTheory key cells size L E n V atom) :
+theorem cellTheory_of_part {sp : K → Bool} {n : K → (Fin s → Bool) → Nat} {V : Type}
+    {atom : Fin q → V → Prop} (h : partTheory key cells sp E n V atom) :
     cellTheory key E V atom := by
   obtain ⟨e, fr, -, hat⟩ := h
   exact ⟨e, fr, hat⟩
@@ -220,16 +220,17 @@ theorem cellTheory_of_part {L : Nat} {n : K → (Fin s → Bool) → Nat} {V : T
 noncomputable def countsOf (key : Val → K) (fr : Fin s → Val → Bool) (c : K) (g : Fin s → Bool) :
     Nat := ({v | key v = c ∧ readOf fr v = g}.encard).toNat
 
-theorem part_of_cellTheory (hc : CellSpec key cells size) (L : Nat) {V : Type}
+theorem part_of_cellTheory (hc : CellSpec key cells size) {sp : K → Bool}
+    (hsp : ∀ c ∈ cells, sp c = true → ∃ k, size c = some k) {V : Type}
     {atom : Fin q → V → Prop} (h : cellTheory key E V atom) :
-    ∃ fr : Fin s → Val → Bool, ValidPart cells size L (countsOf key fr) ∧
-      partTheory key cells size L E (countsOf key fr) V atom := by
+    ∃ fr : Fin s → Val → Bool, ValidPart cells size sp (countsOf key fr) ∧
+      partTheory key cells sp E (countsOf key fr) V atom := by
   classical
   obtain ⟨e, fr, hat⟩ := h
-  have hfib : ∀ c ∈ cells, small size L c = true → ∀ g,
+  have hfib : ∀ c ∈ cells, sp c = true → ∀ g,
       ({v | key v = c ∧ readOf fr v = g}.encard) = (countsOf key fr c g : ℕ∞) := by
     intro c hc' hs g
-    obtain ⟨k, hk, -⟩ := small_size hs
+    obtain ⟨k, hk⟩ := hsp c hc' hs
     have hfin : {v | key v = c}.Finite := by
       apply Set.finite_of_encard_eq_coe (k := k)
       rw [hc.size c hc', hk]; rfl
@@ -237,7 +238,7 @@ theorem part_of_cellTheory (hc : CellSpec key cells size) (L : Nat) {V : Type}
     unfold countsOf
     exact (ENat.coe_toNat this.encard_lt_top.ne).symm
   refine ⟨fr, fun c hc' hs => ?_, e, fr, fun c hc' hs g => hfib c hc' hs g, hat⟩
-  obtain ⟨k, hk, -⟩ := small_size hs
+  obtain ⟨k, hk⟩ := hsp c hc' hs
   have hsum := encard_sum_fibers (readOf fr) {v | key v = c} (allG_nodup s)
     (fun v _ => mem_allG _)
   rw [hc.size c hc', hk] at hsum
@@ -260,9 +261,9 @@ theorem sum_map_ite_filter' {β : Type} (L : List β) (P : β → Prop) [Decidab
   | nil => rfl
   | cons c L ih => by_cases h : P c <;> simp [h, ih]
 
-theorem toE_partCard {L : Nat} {n : K → (Fin s → Bool) → Nat} (τ : Finset (Fin q)) :
-    toE (partCard cells size L E n τ) = (((pairs cells s).filter fun cg =>
-      decide (vtc E cg.1 cg.2 = τ)).map fun cg => toE (pairBound size L n cg)).sum := by
+theorem toE_partCard {sp : K → Bool} {n : K → (Fin s → Bool) → Nat} (τ : Finset (Fin q)) :
+    toE (partCard cells size sp E n τ) = (((pairs cells s).filter fun cg =>
+      decide (vtc E cg.1 cg.2 = τ)).map fun cg => toE (pairBound size sp n cg)).sum := by
   rw [partCard, toE_osum, List.map_map, ← sum_map_ite_filter']
   congr 1
   refine List.map_congr_left fun cg _ => ?_
@@ -278,9 +279,12 @@ theorem vt_part {V : Type} {atom : Fin q → V → Prop} {e : V ≃ Val} {fr : F
 
 /-- **Each part has a bounded oracle.** -/
 theorem oracleSpecB_part (hc : CellSpec key cells size) {B L : Nat}
-    (hL : B * (allG s).length ≤ L) {n : K → (Fin s → Bool) → Nat}
-    (hv : ValidPart cells size L n) :
-    OracleSpecB (partTheory key cells size L E n) (partCard cells size L E n) B := by
+    (hL : B * (allG s).length ≤ L) {sp : K → Bool}
+    (hsp : ∀ c ∈ cells, sp c = true → small size L c = true)
+    (hcov : ∀ c ∈ cells, sp c = false → small size L c = true → ∀ g,
+      ∃ c' ∈ cells, ∃ g', small size L c' = false ∧ vtc E c' g' = vtc E c g)
+    {n : K → (Fin s → Bool) → Nat} (hv : ValidPart cells size sp n) :
+    OracleSpecB (partTheory key cells sp E n) (partCard cells size sp E n) B := by
   classical
   constructor
   · rintro V atom ⟨e, fr, hin, hat⟩ τ k hk l hl hvt
@@ -297,7 +301,7 @@ theorem oracleSpecB_part (hc : CellSpec key cells size) {B L : Nat}
       simp
     have hlen := length_eq_sum_count κ Lv hDn hcov
     have hcnt : ∀ cg ∈ D, ((Lv.countP fun w => κ w = cg : Nat) : ℕ∞) ≤
-        toE (pairBound size L n cg) := by
+        toE (pairBound size sp n cg) := by
       intro cg hcg
       have h1 : ((Lv.countP fun w => κ w = cg : Nat) : ℕ∞) ≤ {w | κ w = cg}.encard := by
         rw [List.countP_eq_length_filter]
@@ -314,7 +318,7 @@ theorem oracleSpecB_part (hc : CellSpec key cells size) {B L : Nat}
       · rw [← hc.size c hcc]
         exact Set.encard_le_encard fun w hw => by
           simp only [Set.mem_setOf_eq, κ, Prod.mk.injEq] at hw ⊢; exact hw.1
-    have hsum : ((l.length : Nat) : ℕ∞) ≤ toE (partCard cells size L E n τ) := by
+    have hsum : ((l.length : Nat) : ℕ∞) ≤ toE (partCard cells size sp E n τ) := by
       rw [show l.length = Lv.length from (List.length_map _).symm, hlen, Nat.cast_list_sum,
         List.map_map, toE_partCard]
       exact sum_map_mono fun cg hcg => by simpa using hcnt cg hcg
@@ -323,11 +327,17 @@ theorem oracleSpecB_part (hc : CellSpec key cells size) {B L : Nat}
   · intro need hB hneed
     -- a colouring of every cell
     have hcol : ∀ c : K, ∃ F : Val → (Fin s → Bool),
-        (c ∈ cells → small size L c = true → ∀ g, {v | key v = c ∧ F v = g}.encard = n c g) ∧
+        (c ∈ cells → sp c = true → ∀ g, {v | key v = c ∧ F v = g}.encard = n c g) ∧
         (c ∈ cells → small size L c = false → ∀ g, (B : ℕ∞) ≤ {v | key v = c ∧ F v = g}.encard) := by
       intro c
       by_cases hcc : c ∈ cells
-      · cases hs : small size L c
+      · by_cases hspc : sp c = true
+        · obtain ⟨k, hk, -⟩ := small_size (hsp c hcc hspc)
+          have hsum : {v | key v = c}.encard = (((allG s).map (n c)).sum : ℕ∞) := by
+            rw [hc.size c hcc, hv c hcc hspc]; rfl
+          obtain ⟨F, -, hF⟩ := exists_colouring (allG s) (allG_nodup s) (n c) _ hsum
+          exact ⟨F, fun _ _ g => hF g (mem_allG g), fun _ h => by rw [hsp c hcc hspc] at h; cases h⟩
+        cases hs : small size L c
         · -- a large or infinite cell: colour `B · |readings|` of its values
           have hbig : ((B * (allG s).length : Nat) : ℕ∞) ≤ {v | key v = c}.encard := by
             rw [hc.size c hcc]
@@ -338,14 +348,11 @@ theorem oracleSpecB_part (hc : CellSpec key cells size) {B L : Nat}
           have hsum : T.encard = (((allG s).map fun _ => B).sum : ℕ∞) := by
             rw [hTc]; simp [List.map_const', List.sum_replicate, mul_comm]
           obtain ⟨F, -, hF⟩ := exists_colouring (allG s) (allG_nodup s) (fun _ => B) T hsum
-          refine ⟨F, fun _ h => absurd h (by simp), fun _ _ g => ?_⟩
+          refine ⟨F, fun _ h => absurd h hspc, fun _ _ g => ?_⟩
           rw [← hF g (mem_allG g)]
           exact Set.encard_le_encard fun v hv => ⟨hT hv.1, hv.2⟩
-        · obtain ⟨k, hk, -⟩ := small_size hs
-          have hsum : {v | key v = c}.encard = (((allG s).map (n c)).sum : ℕ∞) := by
-            rw [hc.size c hcc, hv c hcc hs]; rfl
-          obtain ⟨F, -, hF⟩ := exists_colouring (allG s) (allG_nodup s) (n c) _ hsum
-          exact ⟨F, fun _ _ g => hF g (mem_allG g), fun _ h => absurd h (by simp)⟩
+        · -- a small cell that is not split: any colouring
+          exact ⟨fun _ _ => false, fun _ h => absurd h hspc, fun _ h => by cases h⟩
       · exact ⟨fun _ => fun _ => false, fun h => absurd h hcc, fun h => absurd h hcc⟩
     choose F hF using hcol
     let fr : Fin s → Val → Bool := fun j v => F (key v) v j
@@ -356,24 +363,24 @@ theorem oracleSpecB_part (hc : CellSpec key cells size) {B L : Nat}
       constructor
       · rintro ⟨rfl, h⟩; exact ⟨rfl, h⟩
       · rintro ⟨rfl, h⟩; exact ⟨rfl, h⟩
-    have hin : InPart key cells size L n fr := fun c hcc hs g => by
+    have hin : InPart key cells sp n fr := fun c hcc hs g => by
       rw [hfib]; exact (hF c).1 hcc hs g
     let atom : Fin q → Val → Prop := fun p v => E p (key v) (readOf fr v) = true
     refine ⟨Val, atom, ⟨Equiv.refl _, fr, hin, fun _ _ => Iff.rfl⟩, fun τ => ?_⟩
     have hvtv : ∀ v, vt atom v = vtc E (key v) (readOf fr v) := fun v =>
       vt_part (e := Equiv.refl Val) (fun _ _ => Iff.rfl) v
     let S := {v | vtc E (key v) (readOf fr v) = τ}
-    have hneedE : (need τ : ℕ∞) ≤ toE (partCard cells size L E n τ) := by
-      cases h : partCard cells size L E n τ with
+    have hneedE : (need τ : ℕ∞) ≤ toE (partCard cells size sp E n τ) := by
+      cases h : partCard cells size sp E n τ with
       | none => exact le_top
       | some k => simp only [toE]; exact_mod_cast hneed τ k h
     have hle : (need τ : ℕ∞) ≤ S.encard := by
       let D := (pairs cells s).filter fun cg => decide (vtc E cg.1 cg.2 = τ)
-      by_cases hall : ∀ cg ∈ D, small size L cg.1 = true
+      by_cases hall : ∀ cg ∈ D, sp cg.1 = true
       · have hS := encard_sum_fibers (fun v => (key v, readOf fr v)) S (D := D)
           ((pairs_nodup hc.nodup).filter _) (fun v hv =>
             List.mem_filter.2 ⟨mem_pairs.2 (hc.mem v), decide_eq_true hv⟩)
-        have hS' : S.encard = toE (partCard cells size L E n τ) := by
+        have hS' : S.encard = toE (partCard cells size sp E n τ) := by
           rw [hS, toE_partCard]
           congr 1
           refine List.map_congr_left fun cg hcg => ?_
@@ -394,11 +401,19 @@ theorem oracleSpecB_part (hc : CellSpec key cells size) {B L : Nat}
         obtain ⟨⟨c, g⟩, hcg, hs⟩ := hall
         have hcc : c ∈ cells := mem_pairs.1 (List.mem_filter.1 hcg).1
         have hτ : vtc E c g = τ := by simpa using (List.mem_filter.1 hcg).2
-        have h1 := (hF c).2 hcc (by simpa using hs) g
+        have hsf : sp c = false := by simpa using hs
+        -- a pair of a large or infinite cell with the value type `τ`
+        obtain ⟨c', hc', g', hs', hτ'⟩ : ∃ c' ∈ cells, ∃ g', small size L c' = false ∧
+            vtc E c' g' = τ := by
+          cases hsm : small size L c
+          · exact ⟨c, hcc, g, hsm, hτ⟩
+          · obtain ⟨c', hc', g', h1, h2⟩ := hcov c hcc hsf hsm g
+            exact ⟨c', hc', g', h1, h2.trans hτ⟩
+        have h1 := (hF c').2 hc' hs' g'
         refine le_trans (by exact_mod_cast hB τ) (h1.trans (Set.encard_le_encard ?_))
         rintro v ⟨hkv, hfv⟩
         show vtc E (key v) (readOf fr v) = τ
-        rw [hread, hkv, hfv, hτ]
+        rw [hread, hkv, hfv, hτ']
     obtain ⟨l, hl, hlen, hmem⟩ := exists_list_of_encard hle
     exact ⟨l, hl, hlen, fun v hv => by rw [hvtv]; exact hmem v hv⟩
 
