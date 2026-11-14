@@ -360,6 +360,8 @@ def outOfFragment {α : Type} (what : String) : ConvM α :=
 def invert : ObjProp → ObjProp
   | .named r => .inv r
   | .inv r => .named r
+  | .top => .top
+  | .bot => .bot
 
 /-- An object-property expression. -/
 def toRole (pfx : Prefixes) (n : Node) : ConvM ObjProp :=

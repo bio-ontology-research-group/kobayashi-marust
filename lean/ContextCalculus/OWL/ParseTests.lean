@@ -12,6 +12,8 @@ namespace ContextCalculus.OWL.ParseTests
 open ContextCalculus.OWL
 
 deriving instance BEq for ObjProp
+deriving instance BEq for DataProp
+deriving instance BEq for DataRange
 deriving instance BEq for ClassExpr
 deriving instance BEq for Axiom
 

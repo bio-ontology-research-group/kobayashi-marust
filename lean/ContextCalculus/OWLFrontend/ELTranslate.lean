@@ -105,6 +105,8 @@ OWL EL and never reach the translation). -/
 def propIRI : ObjProp → IRI
   | .named r => r
   | .inv r => r
+  | .top => "http://www.w3.org/2002/07/owl#topObjectProperty"
+  | .bot => "http://www.w3.org/2002/07/owl#bottomObjectProperty"
 
 mutual
 
@@ -132,6 +134,10 @@ def transExpr : ClassExpr → Bool → St → Nat × St
   | .or _, _, s => (s.top, s)
   | .not _, _, s => (s.top, s)
   | .all _ _, _, s => (s.top, s)
+  | .oneOf _, _, s | .hasValue .., _, s | .hasSelf _, _, s | .min .., _, s
+  | .max .., _, s | .exact .., _, s | .dataSome .., _, s | .dataAll .., _, s
+  | .dataHasValue .., _, s | .dataMin .., _, s | .dataMax .., _, s
+  | .dataExact .., _, s => (s.top, s)
 
 /-- Negative conjunction: a left-nested `nf2` chain. The accumulator holds
 the index and the expression of the conjunction of the conjuncts so far. -/
@@ -232,12 +238,23 @@ def transAxiom (s : St) : Axiom → St
       emit (.nf7 a.1 a.1 a.1) a.2
   | .range _ _ | .inverseObjectProperties _ _ | .symmetric _ => s
   | .declareClass _ | .declareObjectProperty _ => s
+  | .disjointUnion .. | .disjointObjectProperties _ | .functional _
+  | .inverseFunctional _ | .reflexive _ | .irreflexive _ | .asymmetric _
+  | .subDataPropertyOf .. | .equivalentDataProperties _ | .disjointDataProperties _
+  | .dataDomain .. | .dataRange .. | .functionalData _ | .datatypeDefinition ..
+  | .hasKey .. | .sameIndividual _ | .differentIndividuals _ | .classAssertion ..
+  | .objectPropertyAssertion .. | .negativeObjectPropertyAssertion ..
+  | .dataPropertyAssertion .. | .negativeDataPropertyAssertion ..
+  | .declareDataProperty _ | .declareNamedIndividual _ | .declareDatatype _
+  | .declareAnnotationProperty _ => s
 
 /-! ## Index layout prepass -/
 
 mutual
 
-/-- Intern the class and property IRIs of `E` in first-occurrence order. -/
+/-- Intern the class and property IRIs of `E` in first-occurrence order.
+Constructors outside the v1.6.3 fragment intern nothing (the translations
+decline every ontology that contains one). -/
 def scanExpr : ClassExpr → St → St
   | .cls a, s => (internC a s).2
   | .thing, s => s
@@ -247,6 +264,9 @@ def scanExpr : ClassExpr → St → St
   | .not c, s => scanExpr c s
   | .some r c, s => scanExpr c (internR (propIRI r) s).2
   | .all r c, s => scanExpr c (internR (propIRI r) s).2
+  | .oneOf _, s | .hasValue .., s | .hasSelf _, s | .min .., s | .max .., s
+  | .exact .., s | .dataSome .., s | .dataAll .., s | .dataHasValue .., s
+  | .dataMin .., s | .dataMax .., s | .dataExact .., s => s
 
 def scanList : List ClassExpr → St → St
   | [], s => s
@@ -267,6 +287,15 @@ def scanAxiom (s : St) : Axiom → St
   | .transitive r | .symmetric r => (internR (propIRI r) s).2
   | .declareClass a => (internC a s).2
   | .declareObjectProperty r => (internR r s).2
+  | .disjointUnion .. | .disjointObjectProperties _ | .functional _
+  | .inverseFunctional _ | .reflexive _ | .irreflexive _ | .asymmetric _
+  | .subDataPropertyOf .. | .equivalentDataProperties _ | .disjointDataProperties _
+  | .dataDomain .. | .dataRange .. | .functionalData _ | .datatypeDefinition ..
+  | .hasKey .. | .sameIndividual _ | .differentIndividuals _ | .classAssertion ..
+  | .objectPropertyAssertion .. | .negativeObjectPropertyAssertion ..
+  | .dataPropertyAssertion .. | .negativeDataPropertyAssertion ..
+  | .declareDataProperty _ | .declareNamedIndividual _ | .declareDatatype _
+  | .declareAnnotationProperty _ => s
 
 /-- Intern the requested IRIs in order; the second component lists the IRIs
 that received a new index, in order (the requested list without

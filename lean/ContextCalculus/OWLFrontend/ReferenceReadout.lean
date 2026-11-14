@@ -243,7 +243,7 @@ theorem owlReadout_exact {O : OWL.Ontology} {a : OWLAnswer}
   have hrow : ∀ i (hi : i < O.classNames.length), ∃ row : SparseRow, a.rows.toArray[i]? = some row := by
     intro i hi
     have hrefl : bitAt a.rows.toArray i i = true :=
-      (hsub i i hi hi).2 (fun _ _ _ _ _ hx => hx)
+      (hsub i i hi hi).2 (fun _ _ _ _ _ _ hx => hx)
     unfold bitAt at hrefl
     split at hrefl
     · next row hrow => exact ⟨row, hrow⟩

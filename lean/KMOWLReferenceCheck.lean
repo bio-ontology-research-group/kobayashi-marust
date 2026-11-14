@@ -103,6 +103,32 @@ def axiomKind : OWL.Axiom → String
   | .symmetric _ => "SymmetricObjectProperty"
   | .declareClass _ => "Declaration(Class)"
   | .declareObjectProperty _ => "Declaration(ObjectProperty)"
+  | .disjointUnion .. => "DisjointUnion"
+  | .disjointObjectProperties _ => "DisjointObjectProperties"
+  | .functional _ => "FunctionalObjectProperty"
+  | .inverseFunctional _ => "InverseFunctionalObjectProperty"
+  | .reflexive _ => "ReflexiveObjectProperty"
+  | .irreflexive _ => "IrreflexiveObjectProperty"
+  | .asymmetric _ => "AsymmetricObjectProperty"
+  | .subDataPropertyOf .. => "SubDataPropertyOf"
+  | .equivalentDataProperties _ => "EquivalentDataProperties"
+  | .disjointDataProperties _ => "DisjointDataProperties"
+  | .dataDomain .. => "DataPropertyDomain"
+  | .dataRange .. => "DataPropertyRange"
+  | .functionalData _ => "FunctionalDataProperty"
+  | .datatypeDefinition .. => "DatatypeDefinition"
+  | .hasKey .. => "HasKey"
+  | .sameIndividual _ => "SameIndividual"
+  | .differentIndividuals _ => "DifferentIndividuals"
+  | .classAssertion .. => "ClassAssertion"
+  | .objectPropertyAssertion .. => "ObjectPropertyAssertion"
+  | .negativeObjectPropertyAssertion .. => "NegativeObjectPropertyAssertion"
+  | .dataPropertyAssertion .. => "DataPropertyAssertion"
+  | .negativeDataPropertyAssertion .. => "NegativeDataPropertyAssertion"
+  | .declareDataProperty _ => "Declaration(DataProperty)"
+  | .declareNamedIndividual _ => "Declaration(NamedIndividual)"
+  | .declareDatatype _ => "Declaration(Datatype)"
+  | .declareAnnotationProperty _ => "Declaration(AnnotationProperty)"
 
 /-- The kind of the first axiom failing `p`, for a decline reason. -/
 def firstFailing (O : OWL.Ontology) (p : OWL.Axiom → Bool) : String :=
@@ -114,6 +140,8 @@ def firstFailing (O : OWL.Ontology) (p : OWL.Axiom → Bool) : String :=
 def propText : OWL.ObjProp → String
   | .named r => s!"<{r}>"
   | .inv r => s!"ObjectInverseOf(<{r}>)"
+  | .top => "owl:topObjectProperty"
+  | .bot => "owl:bottomObjectProperty"
 
 /-- The first axiom outside SHI, written out when it is a property chain. -/
 def firstOutsideSHI (O : OWL.Ontology) : String :=
