@@ -464,3 +464,7 @@ root = "KMOWLReferenceCheck"
 [[lean_exe]]
 name = "km-sri-probe"
 root = "KMSRIProbe"
+
+[[lean_exe]]
+name = "km-sriq-probe"
+root = "KMSRIQProbe"

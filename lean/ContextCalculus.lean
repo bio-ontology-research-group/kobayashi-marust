@@ -61,6 +61,13 @@ import ContextCalculus.OWLFrontend.ReferenceReadout
 import ContextCalculus.OWLFrontend.SRIReference
 import ContextCalculus.OWLFrontend.SRIComplete
 import ContextCalculus.OWLFrontend.ReferenceSHI
+import ContextCalculus.OWL.FragmentSHIQ
+import ContextCalculus.OWLFrontend.SRIQTranslate
+import ContextCalculus.OWLFrontend.SRIQTranslateCorrect
+import ContextCalculus.OWLFrontend.SRIQTranslateTests
+import ContextCalculus.OWLFrontend.SRIQReference
+import ContextCalculus.OWLFrontend.SRIQComplete
+import ContextCalculus.OWLFrontend.ReferenceSHIQ
 import ContextCalculus.ELResidualCertificate
 import ContextCalculus.ELResidualCompilation
 import ContextCalculus.ELResidualWitness
