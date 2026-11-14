@@ -1,0 +1,6 @@
+# Entailed rows. HermiT 1.4.3 reports no TYPE row for the rule head: its DL-safe
+# rule atoms miss that owl:topObjectProperty relates every pair of named individuals.
+CONSISTENT 1
+TYPE	:a	:A
+TYPE	:a	:B
+TYPE	:b	:B

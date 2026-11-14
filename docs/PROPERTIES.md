@@ -132,13 +132,6 @@ cost time; removing either alone is not enough.
 
 ## Known limitations
 
-- `ObjectPropertyDomain(r owl:Nothing)` and `ObjectPropertyRange(r owl:Nothing)`
-  are dropped by the frontend without being counted in `DROPPED`, so `r` is not
-  reported as `BOTPROP` (plain classification misses the same unsatisfiable
-  classes). The ignored test `domain_or_range_nothing_empties_the_property`
-  records it.
-- When the source uses `owl:topObjectProperty` in a position that the
-  universal-role rewrite does not cover (for example
-  `SubObjectPropertyOf(owl:topObjectProperty r)`), KM treats it as an ordinary
-  role, as plain classification does. The property rows are then sound but can
-  be incomplete.
+- `owl:topObjectProperty` in a `HasKey` axiom is rejected (exit code 3). Every
+  other position is encoded exactly (`frontend/universal_role.rs`), or is not
+  OWL 2 DL and fails the conformance check.

@@ -9,14 +9,17 @@
 //! existential spawned role edges and successor contexts that made several
 //! small inputs run for minutes.
 //!
-//! This pass rewrites the source, before profiling and routing, when every
-//! logical occurrence of `U` (or `U⁻ = U`) is the role of an
-//! `ObjectSomeValuesFrom`, `ObjectAllValuesFrom` or `ObjectHasValue`
-//! restriction, the property of an `ObjectPropertyDomain` or
-//! `ObjectPropertyRange` axiom, or the super-role of a (tautological)
-//! `SubObjectPropertyOf(R U)`. Any other occurrence (a sub-role or chain
-//! position, an assertion, a characteristic) leaves the source
-//! byte-identical. Cardinalities and self restrictions on `U` are not OWL 2 DL.
+//! This pass rewrites every logical occurrence of `U` (or `U⁻ = U`) in the
+//! source, before profiling and routing. A source whose only occurrences are
+//! super-roles of `SubObjectPropertyOf(R U)` stays byte-identical (those
+//! tautologies are removed later by `top_role`). Keys arrive here already
+//! rewritten to DL-safe rules (`has_key` runs first). An occurrence this pass
+//! cannot rewrite exactly rejects the input with an error; it is never read
+//! as an ordinary role, which used to lose consequences silently.
+//! Cardinalities, self restrictions, functionality, inverse functionality,
+//! irreflexivity, asymmetry and disjointness on `U` or on a superproperty of
+//! `U` are not OWL 2 DL (`U` is not simple) and the conformance check rejects
+//! them before this pass.
 //!
 //! ## Rewrites
 //!
@@ -25,13 +28,31 @@
 //! * `∃U.⊤ ≡ ⊤`, `∀U.⊤ ≡ ⊤`, `∃U.{a…} ≡ ⊤`, `U hasValue a ≡ ⊤`;
 //! * `∃U.⊥ ≡ ⊥`, `∀U.⊥ ≡ ⊥`;
 //! * `ObjectPropertyDomain(U C)` and `ObjectPropertyRange(U C)` are both
-//!   `⊤ ⊑ C` (every element is its own U-successor and U-predecessor).
+//!   `⊤ ⊑ C` (every element is its own U-successor and U-predecessor);
+//! * tautologies are removed: `SubObjectPropertyOf(X U)` when `X` mentions
+//!   `U`, `SubObjectPropertyOf(X ObjectInverseOf(U))`, transitivity, symmetry
+//!   and reflexivity of `U`, and an `EquivalentObjectProperties` or
+//!   `InverseObjectProperties` axiom whose members are all `U`;
+//! * `ObjectPropertyAssertion(U a b)` holds in every interpretation and
+//!   becomes `ClassAssertion(⊤ a) ClassAssertion(⊤ b)`, which keeps `a` and
+//!   `b` in the signature; `NegativeObjectPropertyAssertion(U a b)` is false
+//!   in every interpretation and becomes `ClassAssertion(⊥ a)`;
+//! * in a DL-safe rule, whose variables range over named individuals,
+//!   `ObjectPropertyAtom(U t1 t2)` holds exactly when both terms are named
+//!   individuals and becomes `ClassAtom(⊤ t1) ClassAtom(⊤ t2)`.
 //!
 //! General case, through a fresh hub individual `g` and a fresh role `S`
 //! with the added axiom `⊤ ⊑ ∃S.{g}`:
 //!
 //! * `∃U.C  ↦  ∃S.({g} ⊓ ∃S⁻.C)`
 //! * `∀U.C  ↦  ∀S.∀S⁻.C`
+//! * `U` as a sub-role, `SubObjectPropertyOf(U R)`, becomes the chain
+//!   `S ∘ S⁻`. Inside a chain `ObjectPropertyChain(… U …)`, `U` becomes a
+//!   fresh role `V` with the added axiom `S ∘ S⁻ ⊑ V` (so `V` is universal
+//!   too), which keeps every chain binary where the source chain is. An
+//!   `EquivalentObjectProperties` or `InverseObjectProperties` axiom with a
+//!   `U` member says that every other member `R` is universal and becomes
+//!   `SubObjectPropertyOf(ObjectPropertyChain(S S⁻) R)` per member.
 //!
 //! Soundness and completeness: let `O'` be the rewritten ontology.
 //!
@@ -39,12 +60,16 @@
 //!    `(∃S.({g} ⊓ ∃S⁻.C))^J = ΔJ` iff some element is in `C^J`, and `∅`
 //!    otherwise; that is exactly `(∃U.C)^J`. Likewise `(∀S.∀S⁻.C)^J` is `ΔJ`
 //!    iff every element is in `C^J` (each one is an `S⁻`-successor of the
-//!    `S`-successor `g`) and `∅` otherwise, i.e. `(∀U.C)^J`. By induction
-//!    over the expression, every rewritten class expression has the same
-//!    extension as its original, so `J` is a model of `O`.
+//!    `S`-successor `g`) and `∅` otherwise, i.e. `(∀U.C)^J`. The role
+//!    `(S ∘ S⁻)^J` relates every `x` to every `y` through `g`, so it is
+//!    `ΔJ × ΔJ = U^J`, and so is `V^J ⊇ (S ∘ S⁻)^J`; a chain or inclusion
+//!    with `S S⁻` or `V` in place of `U` holds in `J` exactly when the
+//!    original does. By induction over the
+//!    expression, every rewritten class expression has the same extension as
+//!    its original, so `J` is a model of `O`.
 //! 2. Every model `I` of `O` extends to a model of `O'` by choosing any
-//!    `g^I ∈ ΔI` and `S^I = ΔI × {g^I}`: the hub axiom holds and, by 1, every
-//!    rewritten expression keeps its extension.
+//!    `g^I ∈ ΔI`, `S^I = ΔI × {g^I}` and `V^I = ΔI × ΔI`: the hub axioms hold
+//!    and, by 1, every rewritten expression keeps its extension.
 //!
 //! `S` and `g` are fresh, so `O'` is a conservative extension of `O`: the
 //! two have the same consistency, the same entailed subsumptions and the
@@ -64,6 +89,8 @@ use super::sexpr::{tokens, Node, Parser};
 const HUB_NAMESPACE: &str = "urn:km:internal:universal-role";
 const HUB_ROLE: &str = "<urn:km:internal:universal-role#link>";
 const HUB_INDIVIDUAL: &str = "<urn:km:internal:universal-role#hub>";
+/// A role made universal by `S ∘ S⁻ ⊑ V`; it stands for `U` inside chains.
+const HUB_UNIVERSAL: &str = "<urn:km:internal:universal-role#all>";
 const THING: &str = "<http://www.w3.org/2002/07/owl#Thing>";
 const NOTHING: &str = "<http://www.w3.org/2002/07/owl#Nothing>";
 
@@ -85,6 +112,19 @@ fn is_universal_role_expression(node: &Node<'_>) -> bool {
     }
 }
 
+/// Does `node` mention `U` anywhere?
+fn mentions_universal_role(node: &Node<'_>) -> bool {
+    match node {
+        Node::Atom(token) => is_universal_role(token),
+        Node::List(_, args) => args.iter().any(mentions_universal_role),
+    }
+}
+
+/// `U = S ∘ S⁻` under the hub axiom: the chain operands that replace `U`.
+fn hub_chain_operands() -> String {
+    format!("{HUB_ROLE} ObjectInverseOf({HUB_ROLE})")
+}
+
 fn is_thing(token: &str) -> bool {
     matches!(token, "owl:Thing" | "<http://www.w3.org/2002/07/owl#Thing>")
 }
@@ -104,11 +144,15 @@ fn is_annotation_node(head: &str) -> bool {
     )
 }
 
+fn logical_args<'n, 'a>(args: &'n [Node<'a>]) -> Vec<&'n Node<'a>> {
+    args.iter().filter(|arg| arg.head() != Some("Annotation")).collect()
+}
+
 struct Rewriter<'a> {
     text: &'a str,
     edits: Vec<(usize, usize, Cow<'static, str>)>,
     needs_hub: bool,
-    blocked: bool,
+    needs_universal: bool,
 }
 
 impl<'a> Rewriter<'a> {
@@ -153,30 +197,112 @@ impl<'a> Rewriter<'a> {
     }
 
     fn visit(&mut self, node: &Node<'a>) -> Result<(), String> {
-        if self.blocked {
-            return Ok(());
-        }
         match node {
             Node::Atom(token) => {
                 if is_universal_role(token) {
-                    self.blocked = true;
+                    return Err(format!(
+                        "unsupported: owl:topObjectProperty in a position km cannot encode exactly ({})",
+                        self.context(token)
+                    ));
                 }
             }
             Node::List(head, _) if *head == "Declaration" || is_annotation_node(head) => {}
             Node::List("SubObjectPropertyOf", args) => {
-                let logical: Vec<&Node<'a>> = args
-                    .iter()
-                    .filter(|arg| arg.head() != Some("Annotation"))
-                    .collect();
+                let logical = logical_args(args);
                 match logical.as_slice() {
                     // `R ⊑ U` is a tautology; the top-role elision removes it.
-                    [sub, Node::Atom(sup)] if is_universal_role(sup) => self.visit(sub)?,
+                    [sub, Node::Atom(sup)] if is_universal_role(sup) && !mentions_universal_role(sub) => {}
+                    // `X ⊑ U` with `U` in `X`, and `X ⊑ U⁻`: tautologies.
+                    [_, sup] if is_universal_role_expression(sup) => self.delete(node)?,
+                    // `U ⊑ R`: `R` is universal.
+                    [sub, sup] if is_universal_role_expression(sub) => {
+                        let start = self.start(sub)?;
+                        let end = self.end(sub)?;
+                        self.edits.push((
+                            start,
+                            end,
+                            Cow::Owned(format!("ObjectPropertyChain({})", hub_chain_operands())),
+                        ));
+                        self.needs_hub = true;
+                        self.visit(sup)?;
+                    }
+                    [Node::List("ObjectPropertyChain", chain), sup] => {
+                        for operand in chain {
+                            if is_universal_role_expression(operand) {
+                                let start = self.start(operand)?;
+                                let end = self.end(operand)?;
+                                self.edits.push((start, end, Cow::Borrowed(HUB_UNIVERSAL)));
+                                self.needs_hub = true;
+                                self.needs_universal = true;
+                            } else {
+                                self.visit(operand)?;
+                            }
+                        }
+                        self.visit(sup)?;
+                    }
                     _ => {
                         for arg in logical {
                             self.visit(arg)?;
                         }
                     }
                 }
+            }
+            Node::List(head @ ("EquivalentObjectProperties" | "InverseObjectProperties"), args)
+                if logical_args(args).iter().any(|arg| is_universal_role_expression(arg)) =>
+            {
+                // Every member is equivalent to `U` (the inverse of `U` is
+                // `U`, and `R ≡ U⁻` gives `R⁻ ≡ U`, so `R ≡ U`).
+                let others: Vec<&Node<'a>> = logical_args(args)
+                    .into_iter()
+                    .filter(|arg| !is_universal_role_expression(arg))
+                    .collect();
+                let mut out = String::new();
+                for other in others {
+                    if mentions_universal_role(other) {
+                        return Err(format!("unsupported: malformed {head} with owl:topObjectProperty"));
+                    }
+                    let start = self.start(other)?;
+                    let end = self.end(other)?;
+                    if !out.is_empty() {
+                        out.push(' ');
+                    }
+                    out.push_str(&format!(
+                        "SubObjectPropertyOf(ObjectPropertyChain({}) {})",
+                        hub_chain_operands(),
+                        &self.text[start..end]
+                    ));
+                }
+                if !out.is_empty() {
+                    self.needs_hub = true;
+                }
+                self.replace_owned(node, out)?;
+            }
+            Node::List("TransitiveObjectProperty" | "SymmetricObjectProperty" | "ReflexiveObjectProperty", args)
+                if matches!(logical_args(args).as_slice(), [role] if is_universal_role_expression(role)) =>
+            {
+                self.delete(node)?;
+            }
+            Node::List(head @ ("ObjectPropertyAssertion" | "NegativeObjectPropertyAssertion"), args)
+                if matches!(logical_args(args).as_slice(), [role, _, _] if is_universal_role_expression(role)) =>
+            {
+                let logical = logical_args(args);
+                let (Node::Atom(a), Node::Atom(b)) = (logical[1], logical[2]) else {
+                    return Err(format!("unsupported: {head} on owl:topObjectProperty needs named individuals"));
+                };
+                let replacement = if *head == "ObjectPropertyAssertion" {
+                    format!("ClassAssertion({THING} {a}) ClassAssertion({THING} {b})")
+                } else {
+                    format!("ClassAssertion({NOTHING} {a}) ClassAssertion({THING} {b})")
+                };
+                self.replace_owned(node, replacement)?;
+            }
+            Node::List("ObjectPropertyAtom", args)
+                if matches!(args.as_slice(), [role, _, _] if is_universal_role_expression(role)) =>
+            {
+                let t1 = &self.text[self.start(&args[1])?..self.end(&args[1])?];
+                let t2 = &self.text[self.start(&args[2])?..self.end(&args[2])?];
+                let replacement = format!("ClassAtom({THING} {t1}) ClassAtom({THING} {t2})");
+                self.replace_owned(node, replacement)?;
             }
             Node::List(head @ ("ObjectSomeValuesFrom" | "ObjectAllValuesFrom"), args)
                 if matches!(args.as_slice(), [role, _] if is_universal_role_expression(role)) =>
@@ -219,6 +345,35 @@ impl<'a> Rewriter<'a> {
             }
         }
         Ok(())
+    }
+
+    /// Remove a whole axiom (a tautology).
+    fn delete(&mut self, node: &Node<'a>) -> Result<(), String> {
+        self.replace_owned(node, String::new())
+    }
+
+    fn replace_owned(&mut self, node: &Node<'a>, with: String) -> Result<(), String> {
+        let Node::List(head, _) = node else {
+            return Err("universal-role rewrite: replace expects a list".into());
+        };
+        let start = self.offset(head)?;
+        let end = self.close(node)? + 1;
+        self.edits.push((start, end, Cow::Owned(with)));
+        Ok(())
+    }
+
+    /// A short excerpt of the source around `token`, for error messages.
+    fn context(&self, token: &str) -> String {
+        let at = self.offset(token).unwrap_or(0);
+        let mut start = at.saturating_sub(60);
+        while !self.text.is_char_boundary(start) {
+            start -= 1;
+        }
+        let mut end = (at + token.len() + 20).min(self.text.len());
+        while !self.text.is_char_boundary(end) {
+            end += 1;
+        }
+        self.text[start..end].split_whitespace().collect::<Vec<_>>().join(" ")
     }
 
     fn replace(&mut self, node: &Node<'a>, with: &'static str) -> Result<(), String> {
@@ -274,9 +429,9 @@ impl<'a> Rewriter<'a> {
 
 /// Rewrite universal-role restrictions (see the module documentation).
 ///
-/// Returns the borrowed source when it has no rewritable restriction or when
-/// any occurrence of the builtin lies outside the admitted positions. The
-/// source must already be validated and have canonical builtin spellings
+/// Returns the borrowed source when it needs no rewrite, and an error when an
+/// occurrence of the builtin lies outside the positions this pass encodes.
+/// The source must already be validated and have canonical builtin spellings
 /// (`builtin_aliases::canonicalize`).
 pub fn encode(text: &str) -> Result<Cow<'_, str>, String> {
     if !text.contains("topObjectProperty") || text.contains(HUB_NAMESPACE) {
@@ -289,7 +444,7 @@ pub fn encode(text: &str) -> Result<Cow<'_, str>, String> {
     if parser.next_tok() != Some("Ontology") || parser.next_tok() != Some("(") {
         return Ok(Cow::Borrowed(text));
     }
-    let mut rewriter = Rewriter { text, edits: Vec::new(), needs_hub: false, blocked: false };
+    let mut rewriter = Rewriter { text, edits: Vec::new(), needs_hub: false, needs_universal: false };
     let close = loop {
         match parser.peek() {
             None => return Err("universal-role rewrite: unterminated Ontology".into()),
@@ -305,16 +460,25 @@ pub fn encode(text: &str) -> Result<Cow<'_, str>, String> {
             }
         }
     };
-    if rewriter.blocked || rewriter.edits.is_empty() {
+    if rewriter.edits.is_empty() {
         return Ok(Cow::Borrowed(text));
     }
     if rewriter.needs_hub {
+        let universal = if rewriter.needs_universal {
+            format!(
+                " Declaration(ObjectProperty({HUB_UNIVERSAL})) \
+                 SubObjectPropertyOf(ObjectPropertyChain({}) {HUB_UNIVERSAL})",
+                hub_chain_operands()
+            )
+        } else {
+            String::new()
+        };
         rewriter.edits.push((
             close,
             close,
             Cow::Owned(format!(
                 " Declaration(ObjectProperty({HUB_ROLE})) Declaration(NamedIndividual({HUB_INDIVIDUAL})) \
-                 SubClassOf({THING} ObjectHasValue({HUB_ROLE} {HUB_INDIVIDUAL}))\n"
+                 SubClassOf({THING} ObjectHasValue({HUB_ROLE} {HUB_INDIVIDUAL})){universal}\n"
             )),
         ));
     }
@@ -378,14 +542,91 @@ mod tests {
         assert!(matches!(encode(&out).unwrap(), Cow::Borrowed(_)));
     }
 
+    fn chain() -> String {
+        format!("ObjectPropertyChain({HUB_ROLE} ObjectInverseOf({HUB_ROLE}))")
+    }
+
+    fn hub_axiom() -> String {
+        format!("SubClassOf({THING} ObjectHasValue({HUB_ROLE} {HUB_INDIVIDUAL}))")
+    }
+
     #[test]
-    fn other_occurrences_leave_the_source_unchanged() {
+    fn universal_sub_role_becomes_the_hub_chain() {
+        for sub in ["owl:topObjectProperty", "ObjectInverseOf(owl:topObjectProperty)"] {
+            let out = rewritten(&format!("SubObjectPropertyOf({sub} :r) SubClassOf(owl:Thing ObjectAllValuesFrom(:r :C))"));
+            assert!(!out.contains("topObjectProperty"), "{out}");
+            assert!(out.contains(&format!("SubObjectPropertyOf({} :r)", chain())), "{out}");
+            assert!(out.contains(&hub_axiom()), "{out}");
+        }
+    }
+
+    #[test]
+    fn universal_chain_operands_become_the_hub_chain() {
+        let out = rewritten("SubObjectPropertyOf(ObjectPropertyChain(:s owl:topObjectProperty ObjectInverseOf(owl:topObjectProperty)) :r)");
+        assert!(out.contains(&format!("SubObjectPropertyOf(ObjectPropertyChain(:s {HUB_UNIVERSAL} {HUB_UNIVERSAL}) :r)")), "{out}");
+        assert!(out.contains(&format!("SubObjectPropertyOf({} {HUB_UNIVERSAL})", chain())), "{out}");
+        assert!(out.contains(&hub_axiom()), "{out}");
+    }
+
+    #[test]
+    fn equivalent_and_inverse_universal_members_make_the_others_universal() {
+        let out = rewritten("EquivalentObjectProperties(:s owl:topObjectProperty ObjectInverseOf(:r)) InverseObjectProperties(:t owl:topObjectProperty)");
+        assert!(!out.contains("topObjectProperty"), "{out}");
+        for member in [":s", "ObjectInverseOf(:r)", ":t"] {
+            assert!(out.contains(&format!("SubObjectPropertyOf({} {member})", chain())), "{out}");
+        }
+    }
+
+    #[test]
+    fn universal_tautologies_are_removed() {
         for body in [
-            "SubObjectPropertyOf(owl:topObjectProperty :r) SubClassOf(:A ObjectSomeValuesFrom(owl:topObjectProperty :B))",
-            "SubObjectPropertyOf(ObjectPropertyChain(:r owl:topObjectProperty) :s) SubClassOf(:A ObjectSomeValuesFrom(owl:topObjectProperty :B))",
+            "SubObjectPropertyOf(owl:topObjectProperty owl:topObjectProperty)",
+            "SubObjectPropertyOf(ObjectPropertyChain(:r owl:topObjectProperty) owl:topObjectProperty)",
+            "SubObjectPropertyOf(:r ObjectInverseOf(owl:topObjectProperty))",
+            "TransitiveObjectProperty(owl:topObjectProperty)",
+            "SymmetricObjectProperty(ObjectInverseOf(owl:topObjectProperty))",
+            "ReflexiveObjectProperty(owl:topObjectProperty)",
+            "EquivalentObjectProperties(owl:topObjectProperty ObjectInverseOf(owl:topObjectProperty))",
+            "InverseObjectProperties(owl:topObjectProperty owl:topObjectProperty)",
+        ] {
+            let out = rewritten(&format!("{body} SubClassOf(:A :B)"));
+            assert!(!out.contains("topObjectProperty"), "{body}: {out}");
+            assert!(!out.contains(HUB_NAMESPACE), "{body}: {out}");
+            assert!(out.contains("SubClassOf(:A :B)"), "{body}: {out}");
+        }
+    }
+
+    #[test]
+    fn universal_assertions_and_rule_atoms_are_constants() {
+        let out = rewritten("ObjectPropertyAssertion(owl:topObjectProperty :a :b) \
+            NegativeObjectPropertyAssertion(ObjectInverseOf(owl:topObjectProperty) :c :d) \
+            DLSafeRule(Body(ObjectPropertyAtom(owl:topObjectProperty Variable(<urn:x>) :e)) Head(ClassAtom(:B Variable(<urn:x>))))");
+        assert!(!out.contains("topObjectProperty"), "{out}");
+        assert!(out.contains(&format!("ClassAssertion({THING} :a) ClassAssertion({THING} :b)")), "{out}");
+        assert!(out.contains(&format!("ClassAssertion({NOTHING} :c) ClassAssertion({THING} :d)")), "{out}");
+        assert!(out.contains(&format!("Body(ClassAtom({THING} Variable(<urn:x>)) ClassAtom({THING} :e))")), "{out}");
+    }
+
+    /// Keys are DL-safe rules by the time this pass runs (`has_key` goes
+    /// first), and cardinalities on `U` are not OWL 2 DL; the pass still
+    /// rejects both rather than read `U` as an ordinary role.
+    #[test]
+    fn other_occurrences_are_rejected() {
+        for body in [
+            "HasKey(:A (owl:topObjectProperty) ()) SubClassOf(:A ObjectSomeValuesFrom(owl:topObjectProperty :B))",
             "SubClassOf(:A ObjectMinCardinality(2 owl:topObjectProperty :B))",
-            "TransitiveObjectProperty(owl:topObjectProperty) SubClassOf(:A ObjectSomeValuesFrom(owl:topObjectProperty :B))",
-            "ObjectPropertyAssertion(owl:topObjectProperty :a :b) SubClassOf(:A ObjectAllValuesFrom(owl:topObjectProperty :B))",
+        ] {
+            let source = format!("Prefix(:=<urn:t#>) Ontology({body})");
+            let error = encode(&source).unwrap_err();
+            assert!(error.starts_with("unsupported: owl:topObjectProperty"), "{body}: {error}");
+        }
+    }
+
+    #[test]
+    fn vacuous_super_role_alone_leaves_the_source_unchanged() {
+        for body in [
+            "SubObjectPropertyOf(:r owl:topObjectProperty)",
+            "SubObjectPropertyOf(ObjectPropertyChain(:r :s) owl:topObjectProperty)",
             "SubClassOf(:A ObjectSomeValuesFrom(:r :B))",
         ] {
             let source = format!("Prefix(:=<urn:t#>) Ontology({body})");

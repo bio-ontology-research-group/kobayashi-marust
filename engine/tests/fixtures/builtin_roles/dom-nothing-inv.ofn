@@ -1,0 +1,7 @@
+Prefix(:=<urn:t#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<urn:t>
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s)) Declaration(DataProperty(:p)) Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+ObjectPropertyDomain(ObjectInverseOf(:r) owl:Nothing) EquivalentClasses(:A ObjectSomeValuesFrom(:r owl:Thing))
+)

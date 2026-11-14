@@ -23,6 +23,18 @@
   classification answers in under a second can take minutes (one exceeds
   300 s), because the probes add inverse roles and the universal role. See
   `docs/PROPERTIES.md`.
+- Fixed (E7): `ObjectPropertyDomain(r owl:Nothing)` and
+  `ObjectPropertyRange(r owl:Nothing)` were dropped without being counted,
+  so classes that need an `r` edge were not reported unsatisfiable. They
+  are now clausified as `∃r.⊤ ⊑ ⊥` and `⊤ ⊑ ∀r.⊥`.
+- Fixed (E8): `owl:topObjectProperty` outside class restrictions and
+  domain and range axioms (as a sub-property, in a chain, in equivalent or
+  inverse property axioms, characteristics, assertions and rule atoms) was
+  read as an ordinary property, and its other occurrences were then not
+  rewritten either, which lost consequences. Every such position is now
+  encoded exactly through the nominal hub of the universal-role rewrite
+  (`U` becomes the chain `S ∘ S⁻`) or removed as a tautology; a key on
+  `owl:topObjectProperty` is rejected (exit code 3).
 
 ## [1.6.4] - 2026-11-14
 
