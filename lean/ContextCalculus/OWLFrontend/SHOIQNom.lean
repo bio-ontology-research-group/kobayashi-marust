@@ -740,3 +740,8 @@ theorem nomOnt_isSHIQ {O : Ontology} (hO : O.isSHOIQKB = true) (requested : List
     exact (rwAx_isSHIQ _ (hO' ax hax) ax' hax').2
 
 end ContextCalculus.OWLFrontend.SHOIQ
+
+#print axioms ContextCalculus.OWLFrontend.SHOIQ.rwC_ext
+#print axioms ContextCalculus.OWLFrontend.SHOIQ.sat_rwAx
+#print axioms ContextCalculus.OWLFrontend.SHOIQ.nomOnt_up
+#print axioms ContextCalculus.OWLFrontend.SHOIQ.nomOnt_down

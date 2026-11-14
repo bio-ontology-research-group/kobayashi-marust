@@ -206,3 +206,7 @@ def IsC2a (O : Ontology CName Role) : Prop :=
     ∀ q' ∈ SRIQ.upperL (basePart O), ¬ SRIQ.RoleLe (basePart O) q.2.2.1 q'.2.2.1.flip
 
 end ContextCalculus.SRIQN
+
+#print axioms ContextCalculus.SRIQN.models_iff
+#print axioms ContextCalculus.SRIQN.entailsSubN_ofSRIQ
+#print axioms ContextCalculus.SRIQN.satClause_mapN

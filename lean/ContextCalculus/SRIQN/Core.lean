@@ -215,3 +215,6 @@ theorem models_of_starLists' (hA : SRIQ.IsALCHIQ B) (I : Interp D CName Role)
 end StarLists
 
 end ContextCalculus.SRIQN
+
+#print axioms ContextCalculus.SRIQN.gSN
+#print axioms ContextCalculus.SRIQN.models_of_starLists'
