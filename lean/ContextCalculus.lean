@@ -66,6 +66,7 @@ import ContextCalculus.SRIQD.Procedure
 import ContextCalculus.SRIQD.Transitivity
 import ContextCalculus.SRIQD.ABox
 import ContextCalculus.SRIQD.ABoxProcedure
+import ContextCalculus.SRIQD.TestTheory
 import ContextCalculus.OWLFrontend.Reference
 import ContextCalculus.OWLFrontend.ReferenceReadout
 import ContextCalculus.OWLFrontend.SRIReference
