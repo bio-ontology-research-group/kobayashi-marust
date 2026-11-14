@@ -60,6 +60,8 @@ import ContextCalculus.SRIQ.ABox
 import ContextCalculus.SRIQ.ABoxProcedure
 import ContextCalculus.SRIQ.ABoxTests
 import ContextCalculus.SRIQ.Realization
+import ContextCalculus.SRIQD.NormalForm
+import ContextCalculus.SRIQD.Stars
 import ContextCalculus.OWLFrontend.Reference
 import ContextCalculus.OWLFrontend.ReferenceReadout
 import ContextCalculus.OWLFrontend.SRIReference
