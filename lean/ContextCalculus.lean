@@ -69,6 +69,7 @@ import ContextCalculus.SRIQD.ABox
 import ContextCalculus.SRIQD.ABoxProcedure
 import ContextCalculus.SRIQD.TestTheory
 import ContextCalculus.SRIQD.Tests
+import ContextCalculus.SRIQD.KBSub
 import ContextCalculus.OWLFrontend.Reference
 import ContextCalculus.OWLFrontend.ReferenceReadout
 import ContextCalculus.OWLFrontend.SRIReference
