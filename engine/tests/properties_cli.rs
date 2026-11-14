@@ -125,13 +125,8 @@ fn properties_options_are_validated() {
 }
 
 /// `ObjectPropertyDomain(e owl:Nothing)` and `ObjectPropertyRange(f owl:Nothing)`
-/// make `e` and `f` empty. The frontend drops both axioms without counting
-/// them (`rbox::plain_class` maps `owl:Nothing` to "complex domain", and the
-/// complex-domain clausification in `parse.rs` only takes a list operand), so
-/// plain classification already misses `UNSAT C` for `C ≡ ∃e.⊤`. This is a
-/// frontend bug outside the property reduction.
+/// make `e` and `f` empty (bug E7: the frontend used to drop both axioms).
 #[test]
-#[ignore = "frontend drops ObjectPropertyDomain/Range(r owl:Nothing); see docs/PROPERTIES.md"]
 fn domain_or_range_nothing_empties_the_property() {
     let source = fixture("domain_nothing.ofn");
     let extended = stdout(&km(&source, &["--lines", "--properties"]));
