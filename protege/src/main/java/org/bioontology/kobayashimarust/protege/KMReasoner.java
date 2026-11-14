@@ -592,7 +592,11 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     @Override public synchronized boolean isEntailed(Set<? extends OWLAxiom> axioms) {
-        for (OWLAxiom a : axioms) if (!isEntailed(a)) return false;
+        // HermiT's EntailmentChecker.entails(Set) skips non-logical axioms
+        // (annotations, declarations); they hold in every ontology.
+        for (OWLAxiom a : axioms) {
+            if (a.isLogicalAxiom() && !isEntailed(a)) return false;
+        }
         return true;
     }
 
