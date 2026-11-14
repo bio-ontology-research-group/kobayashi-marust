@@ -338,3 +338,5 @@ import ContextCalculus.OWLFrontend.SRIQDComplete
 import ContextCalculus.OWLFrontend.SRIQDTests
 import ContextCalculus.OWL.Datatypes.OracleObstacle
 import ContextCalculus.SRIQD.OracleB
+import ContextCalculus.SRIQD.CellParts
+import ContextCalculus.SRIQD.CellPartsProc
