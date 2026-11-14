@@ -103,4 +103,90 @@ public class PluginBehaviourTest {
         assertEquals(Collections.singleton(df.getOWLTopObjectProperty()),
                 r.getInverseObjectProperties(df.getOWLTopObjectProperty()).getEntities());
     }
+
+    // ---- item 3: inconsistent ontology --------------------------------
+
+    private interface Query { void run(OWLReasoner r) throws Exception; }
+
+    /** Every query HermiT guards with checkPreConditions, as (name, call). */
+    private static Map<String, Query> guardedQueries(OWLOntology o) {
+        OWLDataFactory df = dataFactory(o);
+        OWLClass dog = cls(df, "Dog");
+        OWLNamedIndividual rex = ind(df, "rex");
+        OWLObjectProperty owned = df.getOWLObjectProperty(IRI.create(NS + "ownedBy"));
+        OWLDataProperty data = df.getOWLDataProperty(IRI.create(NS + "age"));
+        Map<String, Query> q = new LinkedHashMap<>();
+        q.put("isSatisfiable", r -> r.isSatisfiable(dog));
+        q.put("getEquivalentClasses", r -> r.getEquivalentClasses(dog));
+        q.put("getSuperClasses", r -> r.getSuperClasses(dog, false));
+        q.put("getSubClasses", r -> r.getSubClasses(dog, true));
+        q.put("getDisjointClasses", r -> r.getDisjointClasses(dog));
+        q.put("getTypes", r -> r.getTypes(rex, false));
+        q.put("getInstances", r -> r.getInstances(dog, false));
+        q.put("getSameIndividuals", r -> r.getSameIndividuals(rex));
+        q.put("getDifferentIndividuals", r -> r.getDifferentIndividuals(rex));
+        q.put("getObjectPropertyValues", r -> r.getObjectPropertyValues(rex, owned));
+        q.put("getDataPropertyValues", r -> r.getDataPropertyValues(rex, data));
+        q.put("getSubObjectProperties", r -> r.getSubObjectProperties(owned, false));
+        q.put("getSuperObjectProperties", r -> r.getSuperObjectProperties(owned, false));
+        q.put("getEquivalentObjectProperties", r -> r.getEquivalentObjectProperties(owned));
+        q.put("getInverseObjectProperties", r -> r.getInverseObjectProperties(owned));
+        q.put("getDisjointObjectProperties", r -> r.getDisjointObjectProperties(owned));
+        q.put("getObjectPropertyDomains", r -> r.getObjectPropertyDomains(owned, false));
+        q.put("getObjectPropertyRanges", r -> r.getObjectPropertyRanges(owned, false));
+        q.put("getSubDataProperties", r -> r.getSubDataProperties(data, false));
+        q.put("getSuperDataProperties", r -> r.getSuperDataProperties(data, false));
+        q.put("getEquivalentDataProperties", r -> r.getEquivalentDataProperties(data));
+        q.put("getDisjointDataProperties", r -> r.getDisjointDataProperties(data));
+        q.put("getDataPropertyDomains", r -> r.getDataPropertyDomains(data, false));
+        q.put("isEntailed", r -> r.isEntailed(df.getOWLSubClassOfAxiom(dog, cls(df, "Animal"))));
+        q.put("isEntailedSet", r -> r.isEntailed(Collections.singleton(
+                df.getOWLSubClassOfAxiom(dog, cls(df, "Animal")))));
+        q.put("precomputeInferences", r -> r.precomputeInferences(InferenceType.CLASS_HIERARCHY));
+        return q;
+    }
+
+    private static boolean throwsInconsistent(Query query, OWLReasoner r) throws Exception {
+        try {
+            query.run(r);
+            return false;
+        } catch (InconsistentOntologyException e) {
+            return true;
+        }
+    }
+
+    @Test
+    public void everyGuardedQueryThrowsOnAnInconsistentOntologyLikeHermit() throws Exception {
+        OWLOntology o = IndividualsTest.parse(INCONSISTENT);
+        OWLReasoner hermit = new org.semanticweb.HermiT.ReasonerFactory().createReasoner(o);
+        open.add(hermit);
+        KMReasoner km = km(o);
+        assertFalse(km.isConsistent());
+        assertFalse(hermit.isConsistent());
+        for (Map.Entry<String, Query> e : guardedQueries(o).entrySet()) {
+            assertTrue("HermiT throws for " + e.getKey(), throwsInconsistent(e.getValue(), hermit));
+            assertTrue("KM throws for " + e.getKey(), throwsInconsistent(e.getValue(), km));
+        }
+    }
+
+    @Test
+    public void aConsistentOntologyThrowsNothingFromTheGuardedQueries() throws Exception {
+        OWLOntology o = IndividualsTest.parse(IndividualsTest.SMALL);
+        KMReasoner km = km(o);
+        for (Map.Entry<String, Query> e : guardedQueries(o).entrySet()) {
+            assertFalse(e.getKey(), throwsInconsistent(e.getValue(), km));
+        }
+    }
+
+    @Test
+    public void consistencyAndTheUnsatisfiableNodeDoNotThrowOnAnInconsistentOntology() throws Exception {
+        OWLOntology o = IndividualsTest.parse(INCONSISTENT);
+        KMReasoner km = km(o);
+        assertFalse(km.isConsistent());
+        assertNotNull(km.getUnsatisfiableClasses());
+        assertNotNull(km.getTopClassNode());
+        assertNotNull(km.getBottomClassNode());
+        // The explanation code reads the committed snapshot, not the reasoner's answers.
+        assertNotNull(km.getCommittedOntologySnapshot());
+    }
 }

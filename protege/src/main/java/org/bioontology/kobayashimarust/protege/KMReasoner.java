@@ -305,6 +305,17 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         return iri;
     }
 
+    /**
+     * HermiT's checkPreConditions: queries on an inconsistent ontology throw
+     * {@link InconsistentOntologyException} (Reasoner.throwInconsistentOntologyExceptionIfNecessary).
+     * Protege catches it around the classification run and opens its
+     * inconsistency explanation. isConsistent, getTopClassNode,
+     * getBottomClassNode and getUnsatisfiableClasses do not throw here.
+     */
+    private void checkPreConditions() {
+        if (!consistent) throw new InconsistentOntologyException();
+    }
+
     // ---- node helpers ---------------------------------------------------
 
     private OWLClassNode nodeOfId(int r) {
@@ -364,12 +375,14 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     @Override public synchronized Node<OWLClass> getEquivalentClasses(OWLClassExpression ce) {
+        checkPreConditions();
         if (isFresh(ce)) return new OWLClassNode(Collections.singleton(ce.asOWLClass()));
         int r = repIdOf(ce);
         return r >= 0 ? nodeOfId(r) : new OWLClassNode();
     }
 
     @Override public synchronized NodeSet<OWLClass> getSuperClasses(OWLClassExpression ce, boolean direct) {
+        checkPreConditions();
         int r = repIdOf(ce);
         OWLClassNodeSet ns = new OWLClassNodeSet();
         if (isFresh(ce)) {
@@ -388,6 +401,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     @Override public synchronized NodeSet<OWLClass> getSubClasses(OWLClassExpression ce, boolean direct) {
+        checkPreConditions();
         int r = repIdOf(ce);
         OWLClassNodeSet ns = new OWLClassNodeSet();
         if (isFresh(ce)) {
@@ -451,6 +465,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     @Override public synchronized boolean isConsistent() { return consistent; }
 
     @Override public synchronized boolean isSatisfiable(OWLClassExpression ce) {
+        checkPreConditions();
         if (ce.isAnonymous()) {
             // The taxonomy cannot decide an anonymous expression, and answering
             // "satisfiable" would be wrong for unsatisfiable ones. Protege's
@@ -460,7 +475,6 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
             // TODO W5: decide anonymous expressions with a fresh definition Q = CE.
             throw new ClassExpressionNotInProfileException(ce, NOT_DECIDED_PROFILE);
         }
-        if (!consistent) return false;
         if (ce.isOWLNothing()) return false;
         int r = repIdOf(ce);
         if (r < 0) return true; // a class outside the signature is satisfiable
@@ -516,6 +530,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     @Override public synchronized void precomputeInferences(InferenceType... types) {
+        checkPreConditions();
         // The class hierarchy is computed in the constructor and on flush.
         // Individual inferences cost one more native run, made on demand.
         for (InferenceType type : types) {
@@ -594,6 +609,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     // ---- entailment ----------------------------------------------------
 
     @Override public synchronized boolean isEntailed(OWLAxiom axiom) {
+        checkPreConditions();
         if (axiom instanceof OWLClassAssertionAxiom) return isEntailedClassAssertion((OWLClassAssertionAxiom) axiom);
         if (axiom instanceof OWLSameIndividualAxiom) return isEntailedSameIndividual((OWLSameIndividualAxiom) axiom);
         if (!(axiom instanceof OWLSubClassOfAxiom)) {
@@ -606,9 +622,8 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         }
         OWLClass sub = subClassOf.getSubClass().asOWLClass();
         OWLClass sup = subClassOf.getSuperClass().asOWLClass();
-        // Classical OWL semantics: inconsistency entails every supported
-        // query; bottom and an unsatisfiable named class entail every class.
-        if (!consistent || sub.isOWLNothing() || sup.isOWLThing() || sub.equals(sup)) {
+        // Bottom and an unsatisfiable named class entail every class.
+        if (sub.isOWLNothing() || sup.isOWLThing() || sub.equals(sup)) {
             return true;
         }
         int subRep = repIdOf(sub);
@@ -625,6 +640,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     @Override public synchronized boolean isEntailed(Set<? extends OWLAxiom> axioms) {
+        checkPreConditions();
         // HermiT's EntailmentChecker.entails(Set) skips non-logical axioms
         // (annotations, declarations); they hold in every ontology.
         for (OWLAxiom a : axioms) {
@@ -761,6 +777,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     @Override public synchronized NodeSet<OWLClass> getTypes(OWLNamedIndividual ind, boolean direct) {
+        checkPreConditions();
         OWLClassNodeSet ns = new OWLClassNodeSet();
         Realized data = ensureRealized();
         if (!consistent) return ns;
@@ -776,6 +793,10 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
     @Override public synchronized NodeSet<OWLNamedIndividual> getInstances(OWLClassExpression ce, boolean direct) {
         OWLNamedIndividualNodeSet ns = new OWLNamedIndividualNodeSet();
+        // HermiT checks the preconditions only when the ontology has individuals.
+        if (!consistent && !getRootOntology().getIndividualsInSignature(Imports.INCLUDED).isEmpty()) {
+            throw new InconsistentOntologyException();
+        }
         if (ce.isAnonymous()) {
             // TODO W5: class expression queries (DL Query) via a fresh definition Q = CE.
             return ns;
@@ -796,6 +817,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     @Override public synchronized Node<OWLNamedIndividual> getSameIndividuals(OWLNamedIndividual ind) {
+        checkPreConditions();
         Realized data = ensureRealized();
         Integer c = consistent ? data.componentOf.get(ind) : null;
         return c == null ? new OWLNamedIndividualNode(ind)
@@ -839,20 +861,44 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private static final NodeSet<OWLClass> EMPTY_C = new OWLClassNodeSet();
     private static final NodeSet<OWLNamedIndividual> EMPTY_I = new OWLNamedIndividualNodeSet();
 
-    @Override public NodeSet<OWLClass> getDisjointClasses(OWLClassExpression ce) { return EMPTY_C; }
-    @Override public NodeSet<OWLClass> getObjectPropertyDomains(OWLObjectPropertyExpression pe, boolean direct) { return EMPTY_C; }
-    @Override public NodeSet<OWLClass> getObjectPropertyRanges(OWLObjectPropertyExpression pe, boolean direct) { return EMPTY_C; }
-    @Override public NodeSet<OWLClass> getDataPropertyDomains(OWLDataProperty pe, boolean direct) { return EMPTY_C; }
+    @Override public synchronized NodeSet<OWLClass> getDisjointClasses(OWLClassExpression ce) {
+        checkPreConditions();
+        return EMPTY_C;
+    }
+    @Override public synchronized NodeSet<OWLClass> getObjectPropertyDomains(OWLObjectPropertyExpression pe, boolean direct) {
+        checkPreConditions();
+        return EMPTY_C;
+    }
+    @Override public synchronized NodeSet<OWLClass> getObjectPropertyRanges(OWLObjectPropertyExpression pe, boolean direct) {
+        checkPreConditions();
+        return EMPTY_C;
+    }
+    @Override public synchronized NodeSet<OWLClass> getDataPropertyDomains(OWLDataProperty pe, boolean direct) {
+        checkPreConditions();
+        return EMPTY_C;
+    }
 
     @Override public Node<OWLObjectPropertyExpression> getTopObjectPropertyNode() { return new OWLObjectPropertyNode(df.getOWLTopObjectProperty()); }
     @Override public Node<OWLObjectPropertyExpression> getBottomObjectPropertyNode() { return new OWLObjectPropertyNode(df.getOWLBottomObjectProperty()); }
     @Override public Node<OWLDataProperty> getTopDataPropertyNode() { return new OWLDataPropertyNode(df.getOWLTopDataProperty()); }
     @Override public Node<OWLDataProperty> getBottomDataPropertyNode() { return new OWLDataPropertyNode(df.getOWLBottomDataProperty()); }
 
-    @Override public NodeSet<OWLObjectPropertyExpression> getSubObjectProperties(OWLObjectPropertyExpression pe, boolean direct) { return new OWLObjectPropertyNodeSet(); }
-    @Override public NodeSet<OWLObjectPropertyExpression> getSuperObjectProperties(OWLObjectPropertyExpression pe, boolean direct) { return new OWLObjectPropertyNodeSet(); }
-    @Override public Node<OWLObjectPropertyExpression> getEquivalentObjectProperties(OWLObjectPropertyExpression pe) { return new OWLObjectPropertyNode(pe); }
-    @Override public NodeSet<OWLObjectPropertyExpression> getDisjointObjectProperties(OWLObjectPropertyExpression pe) { return new OWLObjectPropertyNodeSet(); }
+    @Override public synchronized NodeSet<OWLObjectPropertyExpression> getSubObjectProperties(OWLObjectPropertyExpression pe, boolean direct) {
+        checkPreConditions();
+        return new OWLObjectPropertyNodeSet();
+    }
+    @Override public synchronized NodeSet<OWLObjectPropertyExpression> getSuperObjectProperties(OWLObjectPropertyExpression pe, boolean direct) {
+        checkPreConditions();
+        return new OWLObjectPropertyNodeSet();
+    }
+    @Override public synchronized Node<OWLObjectPropertyExpression> getEquivalentObjectProperties(OWLObjectPropertyExpression pe) {
+        checkPreConditions();
+        return new OWLObjectPropertyNode(pe);
+    }
+    @Override public synchronized NodeSet<OWLObjectPropertyExpression> getDisjointObjectProperties(OWLObjectPropertyExpression pe) {
+        checkPreConditions();
+        return new OWLObjectPropertyNodeSet();
+    }
     /**
      * Without property inference the answer holds only the inverse expression
      * itself. HermiT answers {@code getEquivalentObjectProperties(pe^-)}
@@ -861,20 +907,42 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
      * bottom properties are their own inverses.
      * TODO W2-plugin: add the properties the engine reports as equivalent to pe^-.
      */
-    @Override public Node<OWLObjectPropertyExpression> getInverseObjectProperties(OWLObjectPropertyExpression pe) {
+    @Override public synchronized Node<OWLObjectPropertyExpression> getInverseObjectProperties(OWLObjectPropertyExpression pe) {
+        checkPreConditions();
         OWLObjectPropertyExpression simple = pe.getSimplified();
         if (simple.isOWLTopObjectProperty() || simple.isOWLBottomObjectProperty()) {
             return new OWLObjectPropertyNode(simple);
         }
         return new OWLObjectPropertyNode(simple.getInverseProperty().getSimplified());
     }
-    @Override public NodeSet<OWLNamedIndividual> getObjectPropertyValues(OWLNamedIndividual ind, OWLObjectPropertyExpression pe) { return EMPTY_I; }
+    @Override public synchronized NodeSet<OWLNamedIndividual> getObjectPropertyValues(OWLNamedIndividual ind, OWLObjectPropertyExpression pe) {
+        checkPreConditions();
+        return EMPTY_I;
+    }
 
-    @Override public NodeSet<OWLDataProperty> getSubDataProperties(OWLDataProperty pe, boolean direct) { return new OWLDataPropertyNodeSet(); }
-    @Override public NodeSet<OWLDataProperty> getSuperDataProperties(OWLDataProperty pe, boolean direct) { return new OWLDataPropertyNodeSet(); }
-    @Override public Node<OWLDataProperty> getEquivalentDataProperties(OWLDataProperty pe) { return new OWLDataPropertyNode(pe); }
-    @Override public NodeSet<OWLDataProperty> getDisjointDataProperties(OWLDataPropertyExpression pe) { return new OWLDataPropertyNodeSet(); }
-    @Override public Set<OWLLiteral> getDataPropertyValues(OWLNamedIndividual ind, OWLDataProperty pe) { return Collections.emptySet(); }
+    @Override public synchronized NodeSet<OWLDataProperty> getSubDataProperties(OWLDataProperty pe, boolean direct) {
+        checkPreConditions();
+        return new OWLDataPropertyNodeSet();
+    }
+    @Override public synchronized NodeSet<OWLDataProperty> getSuperDataProperties(OWLDataProperty pe, boolean direct) {
+        checkPreConditions();
+        return new OWLDataPropertyNodeSet();
+    }
+    @Override public synchronized Node<OWLDataProperty> getEquivalentDataProperties(OWLDataProperty pe) {
+        checkPreConditions();
+        return new OWLDataPropertyNode(pe);
+    }
+    @Override public synchronized NodeSet<OWLDataProperty> getDisjointDataProperties(OWLDataPropertyExpression pe) {
+        checkPreConditions();
+        return new OWLDataPropertyNodeSet();
+    }
+    @Override public synchronized Set<OWLLiteral> getDataPropertyValues(OWLNamedIndividual ind, OWLDataProperty pe) {
+        checkPreConditions();
+        return Collections.emptySet();
+    }
 
-    @Override public NodeSet<OWLNamedIndividual> getDifferentIndividuals(OWLNamedIndividual ind) { return EMPTY_I; }
+    @Override public synchronized NodeSet<OWLNamedIndividual> getDifferentIndividuals(OWLNamedIndividual ind) {
+        checkPreConditions();
+        return EMPTY_I;
+    }
 }

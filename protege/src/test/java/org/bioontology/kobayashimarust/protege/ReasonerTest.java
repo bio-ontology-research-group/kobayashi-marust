@@ -88,8 +88,13 @@ public class ReasonerTest {
         OWLReasoner inconsistentReasoner =
                 new KMReasonerFactory().createReasoner(inconsistent);
         assertFalse(inconsistentReasoner.isConsistent());
-        assertTrue(inconsistentReasoner.isEntailed(
-                dataFactory.getOWLSubClassOfAxiom(a, b)));
+        try {
+            // Like HermiT, an inconsistent ontology throws instead of entailing everything.
+            inconsistentReasoner.isEntailed(dataFactory.getOWLSubClassOfAxiom(a, b));
+            fail("inconsistent ontology should throw");
+        } catch (org.semanticweb.owlapi.reasoner.InconsistentOntologyException expected) {
+            // Protege opens its inconsistency explanation on this exception.
+        }
         inconsistentReasoner.dispose();
     }
 

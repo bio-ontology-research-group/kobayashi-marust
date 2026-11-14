@@ -198,7 +198,7 @@ public class HermitDifferentialTest {
     }
 
     @Test
-    public void inconsistentOntologyAnswersEmptyWhereHermitThrows() throws Exception {
+    public void inconsistentOntologyThrowsAsHermitDoes() throws Exception {
         String src = IndividualsTest.SMALL.replace("Declaration(NamedIndividual(:loner))",
                 "DisjointClasses(:Dog :Cat)\nClassAssertion(:Dog :tom)");
         OWLOntology o = IndividualsTest.parse(src);
@@ -211,12 +211,17 @@ public class HermitDifferentialTest {
             hermit.getTypes(rex, false);
             fail("HermiT is expected to throw on an inconsistent ontology");
         } catch (org.semanticweb.owlapi.reasoner.InconsistentOntologyException expected) {
-            // HermiT throws; KM answers with an empty set as its class queries do.
+            // HermiT throws, and so does KM.
         }
         OWLReasoner km = new KMReasonerFactory().createReasoner(o);
         open.add(km);
         assertFalse(km.isConsistent());
-        assertTrue(km.getTypes(rex, false).isEmpty());
+        try {
+            km.getTypes(rex, false);
+            fail("KM is expected to throw like HermiT");
+        } catch (org.semanticweb.owlapi.reasoner.InconsistentOntologyException expected) {
+            // same as HermiT
+        }
     }
 
     @Test

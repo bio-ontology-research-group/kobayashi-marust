@@ -224,17 +224,21 @@ public class IndividualsTest {
     }
 
     @Test
-    public void anInconsistentOntologyAnswersEmptyLikeTheClassQueries() throws Exception {
+    public void anInconsistentOntologyThrowsLikeHermit() throws Exception {
         String inconsistent = SMALL.replace("Declaration(NamedIndividual(:loner))",
                 "DisjointClasses(:Dog :Cat)\nClassAssertion(:Dog :tom)");
         OWLOntology o = parse(inconsistent);
         OWLDataFactory df = o.getOWLOntologyManager().getOWLDataFactory();
         OWLReasoner r = km(o);
         assertFalse(r.isConsistent());
-        assertTrue(r.getTypes(ind(df, "rex"), false).isEmpty());
-        assertTrue(r.getInstances(cls(df, "Dog"), false).isEmpty());
-        assertEquals(Collections.singleton("rex"), names(r.getSameIndividuals(ind(df, "rex"))));
-        assertTrue(r.isEntailed(df.getOWLClassAssertionAxiom(cls(df, "Cat"), ind(df, "rex"))));
+        try { r.getTypes(ind(df, "rex"), false); fail(); }
+        catch (org.semanticweb.owlapi.reasoner.InconsistentOntologyException expected) { }
+        try { r.getInstances(cls(df, "Dog"), false); fail(); }
+        catch (org.semanticweb.owlapi.reasoner.InconsistentOntologyException expected) { }
+        try { r.getSameIndividuals(ind(df, "rex")); fail(); }
+        catch (org.semanticweb.owlapi.reasoner.InconsistentOntologyException expected) { }
+        try { r.isEntailed(df.getOWLClassAssertionAxiom(cls(df, "Cat"), ind(df, "rex"))); fail(); }
+        catch (org.semanticweb.owlapi.reasoner.InconsistentOntologyException expected) { }
     }
 
     @Test
