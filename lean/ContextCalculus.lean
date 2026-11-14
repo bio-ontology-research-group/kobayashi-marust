@@ -51,6 +51,11 @@ import ContextCalculus.SRI.Transitivity
 import ContextCalculus.SRI.TransitivityTests
 import ContextCalculus.SRI.Fast
 import ContextCalculus.SRI.FastTests
+import ContextCalculus.SRIQ.NormalForm
+import ContextCalculus.SRIQ.Stars
+import ContextCalculus.SRIQ.Procedure
+import ContextCalculus.SRIQ.ProcedureTests
+import ContextCalculus.SRIQ.Transitivity
 import ContextCalculus.OWLFrontend.Reference
 import ContextCalculus.OWLFrontend.ReferenceReadout
 import ContextCalculus.OWLFrontend.SRIReference
