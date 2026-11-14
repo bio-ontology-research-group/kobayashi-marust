@@ -1,0 +1,5 @@
+# file	args	expected km-owl-reference --procedure sriqd-kb stdout (ws, 2026-11-14)
+kb-sat.ofn		{"format":"owl-consistency-v1","consistent":true}
+kb-range-clash.ofn		{"format":"owl-consistency-v1","consistent":false}
+kb-neg-eq.ofn		{"format":"owl-consistency-v1","consistent":false}
+kb-type.ofn		{"format":"owl-consistency-v1","consistent":true}

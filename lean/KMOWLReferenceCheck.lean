@@ -3,6 +3,7 @@ import ContextCalculus.OWL.Parse
 import ContextCalculus.OWLFrontend.ReferenceReadout
 import ContextCalculus.OWLFrontend.ReadoutAt
 import ContextCalculus.OWLFrontend.SRIQDReference
+import ContextCalculus.OWLFrontend.SRIQDKBRows
 
 /-!
 # Executable OWL reference procedure (`km-owl-reference`)
@@ -15,7 +16,8 @@ document:
 ```
 km-owl-reference [--procedure el|sri|el-then-sri|sriq|el-then-sriq|alc|el-then-alc] <file.ofn>
 km-owl-reference --procedure sriq-kb [--hint FILE] [--type CLASS INDIVIDUAL] <file.ofn>
-km-owl-reference --procedure sriqd|sriqd-kb <file.ofn>
+km-owl-reference --procedure sriqd <file.ofn>
+km-owl-reference --procedure sriqd-kb [--hint FILE] [--type CLASS INDIVIDUAL] <file.ofn>
 ```
 
 `sriqd` is `owlSHIQDReference`, the v1.7.0 stage C4 route for SHIQ with
@@ -25,8 +27,16 @@ semantics at the OWL 2 datatype map (`owlSHIQDReference_sound`, with
 `owlReadout_exact`) says what its readout means; `publishAt` takes its
 equation. It declines outside the SHIQ(D) part, on a non-simple role, and
 when a data atom is outside the supported sub-theory of the datatype map
-(`allSupported`). `sriqd-kb` (knowledge bases with data) is not implemented and
-declines.
+(`allSupported`).
+
+`sriqd-kb` is `owlSHIQDKBConsistent`, the route for SHIQ(D) knowledge bases
+with individuals and data property assertions. It prints
+`{"format":"owl-consistency-v1","consistent":true|false}`, exact at the OWL 2
+datatype map for every hint (`owlSHIQDKBConsistent_sound`). With
+`--type CLASS INDIVIDUAL` it decides the class assertion (`owlTypeRowD`,
+`owlTypeRowD_sound`) and prints the `owl-type-v1` line of `sriq-kb`. The
+hint of `--hint FILE` is handed to every part of the data theory; it never
+changes an answer.
 
 `sriq-kb` is `owlSHIQKBReference`, the v1.7.0 route for SHIQ knowledge
 bases with individuals (`docs/V1.7.0-C1B-ABOX-DESIGN.md`). It decides
@@ -39,7 +49,8 @@ theorems hold for every hint (`owlSHIQKBReference_sound`). With
 (`owlTypeRow`, `owlTypeRow_sound`; the hint is then a countermodel of the
 knowledge base with the complement of the class at the individual) and
 prints `{"format":"owl-type-v1","class":C,"individual":a,"entailed":true|false}`.
-`--hint` and `--type` are usage errors with any other procedure.
+`--hint` and `--type` are usage errors with any procedure but `sriq-kb` and
+`sriqd-kb`.
 
 1. read the file and run `OWL.parse` (a rejection declines);
 2. request `OWLFrontend.probeRequest O`: the class IRIs `O.classNames`
@@ -586,12 +597,65 @@ def sriqdDecline (O : OWL.Ontology) (requested : List OWL.IRI) : String :=
         "datatypes: a data range outside the supported sub-theory of the OWL 2 datatype map"
       else "not recognised"
 
+/-- Why the SHIQ(D) knowledge-base route declines. -/
+def sriqdKBDecline (O : OWL.Ontology) : String :=
+  if !O.isSHIQDKB then
+    s!"not recognised: not an OWL SHIQ(D) knowledge base ({firstFailing O OWL.Axiom.isSHIQDKB})"
+  else match translateSRIQDKB O [] [] with
+    | none => "not recognised: the SHIQ(D) knowledge-base translation failed"
+    | some T =>
+      if !isSHIQB (ContextCalculus.SRIQD.objPart T.ontology) then
+        "not SHIQ: non-simple role in a number restriction or functionality axiom"
+      else if !negSimpleB (ContextCalculus.SRIQD.objPart T.ontology)
+          (ContextCalculus.SRIQD.objABox T.abox) then
+        "not SHIQ: non-simple role in a negative property assertion"
+      else "datatypes: a data range outside the supported sub-theory of the OWL 2 datatype map"
+
+/-- Print the consistency verdict of `owlSHIQDKBConsistent`; the proof
+argument records where it came from (`owlSHIQDKBConsistent_sound`). -/
+def publishConsistent (v : Bool) {O : OWL.Ontology} {hint : Option RawHint}
+    (_h : owlSHIQDKBConsistent O hint = some v) : IO UInt32 := do
+  let out ← IO.getStdout
+  out.putStrLn ("{\"format\":\"owl-consistency-v1\",\"consistent\":" ++
+    (if v then "true" else "false") ++ "}")
+  out.flush
+  return 0
+
+/-- Print the verdict of `owlTypeRowD` (`owlTypeRowD_sound`). -/
+def publishTypeD (C a : OWL.IRI) (v : Bool) {O : OWL.Ontology} {hint : Option RawHint}
+    (_h : owlTypeRowD O C a hint = some v) : IO UInt32 := do
+  let out ← IO.getStdout
+  out.putStrLn ("{\"format\":\"owl-type-v1\",\"class\":" ++ (Json.str C).compress ++
+    ",\"individual\":" ++ (Json.str a).compress ++ ",\"entailed\":" ++
+    (if v then "true" else "false") ++ "}")
+  out.flush
+  return 0
+
+/-- The SHIQ(D) knowledge-base route on an ontology. -/
+def runOntologyDKB (timing : Bool) (hint : Option RawHint) (query : Option (OWL.IRI × OWL.IRI))
+    (O : OWL.Ontology) : IO UInt32 := do
+  match query with
+  | some (C, a) =>
+    let ⟨res, hres⟩ ← timedPhase timing "type" (fun _ => owlTypeRowD O C a hint)
+    match res, hres with
+    | some v, h => publishTypeD C a v h.symm
+    | none, _ =>
+      IO.eprintln (sriqdKBDecline (addAxs O (typeAxs C a)))
+      return 3
+  | none =>
+    let ⟨res, hres⟩ ← timedPhase timing "consistency" (fun _ => owlSHIQDKBConsistent O hint)
+    match res, hres with
+    | some v, h => publishConsistent v h.symm
+    | none, _ =>
+      IO.eprintln (sriqdKBDecline O)
+      return 3
+
 /-- The SHIQ(D) route on an ontology. -/
-def runOntologyD (timing : Bool) (route : String) (O : OWL.Ontology) : IO UInt32 := do
+def runOntologyD (timing : Bool) (route : String) (hint : Option RawHint)
+    (query : Option (OWL.IRI × OWL.IRI)) (O : OWL.Ontology) : IO UInt32 := do
   let t0 ← IO.monoNanosNow
   if route == "sriqd-kb" then
-    IO.eprintln "not implemented: sriqd-kb (knowledge bases with data assertions)"
-    return 3
+    return ← runOntologyDKB timing hint query O
   let names := O.classNames
   if hA : probeA ∈ names then
     IO.eprintln s!"probe IRI mentioned: {probeA}"
@@ -796,7 +860,7 @@ def runFile (args : Args) (path : String) : IO UInt32 := do
         let ⟨parsed, _⟩ ← timedPhase timing "parse" (fun _ => OWL.parse text)
         match parsed with
         | .error reason => decline s!"parse rejected: {reason}"
-        | .ok O => runOntologyD timing route O
+        | .ok O => runOntologyD timing route hint args.query O
       | none => runText timing args.procedure hint args.query text
     let code ← match ← run.toBaseIO with
       | .ok code => pure code
@@ -809,12 +873,13 @@ def runFile (args : Args) (path : String) : IO UInt32 := do
 end KMOWLReferenceCheck
 
 def main (args : List String) : IO UInt32 := do
-  let usage := "usage: km-owl-reference [--procedure el|sri|el-then-sri|sriq|el-then-sriq|alc|el-then-alc|sriq-kb|sriqd|sriqd-kb] [--hint FILE] [--type CLASS INDIVIDUAL] <file.ofn> (default el-then-sri; --hint and --type with sriq-kb only)"
+  let usage := "usage: km-owl-reference [--procedure el|sri|el-then-sri|sriq|el-then-sriq|alc|el-then-alc|sriq-kb|sriqd|sriqd-kb] [--hint FILE] [--type CLASS INDIVIDUAL] <file.ofn> (default el-then-sri; --hint and --type with sriq-kb and sriqd-kb only)"
   match KMOWLReferenceCheck.parseArgs {} args with
   | some a =>
     match a.path with
     | some path =>
-      if (a.hint.isSome || a.query.isSome) && (a.procedure != .sriqKB || a.dataRoute.isSome) then
+      if (a.hint.isSome || a.query.isSome) &&
+          !((a.procedure == .sriqKB && a.dataRoute.isNone) || a.dataRoute == some "sriqd-kb") then
         IO.eprintln usage
         return 2
       else KMOWLReferenceCheck.runFile a path
