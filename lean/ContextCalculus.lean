@@ -321,3 +321,6 @@ import ContextCalculus.PolarityDefiners
 import ContextCalculus.OWL.Datatypes.Lexical
 import ContextCalculus.OWL.Datatypes.Map
 import ContextCalculus.OWL.Datatypes.Tests
+import ContextCalculus.OWL.Datatypes.Cells
+import ContextCalculus.OWL.Datatypes.CellsSpec
+import ContextCalculus.OWL.Datatypes.CellsEval
