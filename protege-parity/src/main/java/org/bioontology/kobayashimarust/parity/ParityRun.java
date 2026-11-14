@@ -476,7 +476,8 @@ public final class ParityRun {
 
     /**
      * Two methods report what the reasoner can do, not a fact about the ontology. When KM says it cannot
-     * (isEntailmentCheckingSupported false where HermiT says true, or fewer precomputable inference types)
+     * (isEntailmentCheckingSupported false where HermiT says true, isPrecomputed false where HermiT says true,
+     * or fewer precomputable inference types)
      * the call counts as km_unsupported, the same column as a thrown UnsupportedOperationException.
      */
     static String verdict(String method, JsonObject h, JsonObject k) {
@@ -488,6 +489,13 @@ public final class ParityRun {
             if (method.equals("isEntailmentCheckingSupported")
                     && ha.get("t").getAsString().equals("bool") && ka.get("t").getAsString().equals("bool")
                     && ha.get("v").getAsBoolean() && !ka.get("v").getAsBoolean()) {
+                return "km_unsupported";
+            }
+            if (method.equals("isPrecomputed") && ha.get("t").getAsString().equals("bool")
+                    && ka.get("t").getAsString().equals("bool")
+                    && ha.get("v").getAsBoolean() && !ka.get("v").getAsBoolean()) {
+                // HermiT holds the type, KM does not compute it (object property assertions, or the data
+                // property hierarchy outside its fragment).
                 return "km_unsupported";
             }
             if (method.equals("getPrecomputableInferenceTypes") && ha.get("t").getAsString().equals("set")

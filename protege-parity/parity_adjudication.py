@@ -75,14 +75,23 @@ ENTRIES = [
      "`owl:Thing` is a domain of every data property, so HermiT's `{owl:Thing}` is right for `owl:topDataProperty`; KM answers the empty node set. 136 calls in 34 ontologies for the top and bottom data property."),
     # ------------------------------------------------------------- HermiT wrong
     ("H1", "HermiT wrong", "Direct types contain a class above another class of the same answer",
-     "food", "getTypes(http://www.w3.org/TR/2003/PR-owl-guide-20031209/wine#BancroftChardonnay,true)",
+     "wine", "getTypes(http://www.w3.org/TR/2003/PR-owl-guide-20031209/wine#BancroftChardonnay,true)",
      "A direct answer keeps only the most specific classes. HermiT returns `WhiteWine` next to `Chardonnay` and `DryWhiteWine`, although `Chardonnay` is below `WhiteWine` in the ontology (it is the quirk already recorded in `HermitDifferentialTest`). "
      "KM's answer is the set of most specific types. 16 calls in 2 ontologies (food, wine)."),
     ("H2", "HermiT wrong", "Domain and range of owl:bottomObjectProperty",
      "ore_ont_12007", "getObjectPropertyDomains(http://www.w3.org/2002/07/owl#bottomObjectProperty,false)",
      "The bottom property has no pairs, so every class is a domain and a range (`SubClassOf(ObjectSomeValuesFrom(bottom owl:Thing) C)` holds for all `C`); the direct domain is `owl:Nothing`. "
      "HermiT answers the empty set for the non-direct query and `{owl:Thing}` for the direct one. KM answers all classes and `{owl:Nothing}`. The same flaw is already recorded in `HermitDifferentialTest`. "
-     "`getObjectPropertyDomains` and `getObjectPropertyRanges` each differ on all 34 ontologies this way; HermiT shows the same flaw for `getDataPropertyDomains(owl:bottomDataProperty)` (KM answers the empty set there, so both are wrong; see K15)."),
+     "`getObjectPropertyDomains` and `getObjectPropertyRanges` each differ on every ontology this way (the bottom property is always queried). KM keeps its answer; the plugin README lists it as a deviation."),
+    ("H5", "HermiT wrong", "Domain of owl:bottomDataProperty",
+     "ore_ont_12007", "getDataPropertyDomains(http://www.w3.org/2002/07/owl#bottomDataProperty,false)",
+     "Same flaw as H2 for data properties. The bottom data property has no pair, so `ObjectSomeValuesFrom`-style reasoning gives every class as a domain, and the direct domain is `owl:Nothing`. "
+     "HermiT answers `{owl:Thing}` for both. KM answers all classes and `{owl:Nothing}`, as for the bottom object property."),
+    ("H6", "HermiT wrong", "Disjoint data properties of owl:bottomDataProperty",
+     "ore_ont_11536", "getDisjointDataProperties(http://www.w3.org/2002/07/owl#bottomDataProperty)",
+     "The bottom property is disjoint with every data property, itself included, because the intersection of two properties one of which is empty is empty. "
+     "In an ontology with no data property HermiT answers only `{owl:topDataProperty}`; it leaves out `owl:bottomDataProperty`. KM lists the top and the bottom node. "
+     "(With data properties HermiT lists both, as the unit test `ConventionsTest` records.)"),
     ("H3", "HermiT wrong", "isEntailed(DisjointDataProperties) throws",
      "ore_ont_11401", "isEntailed(DisjointDataProperties(<http://ontology.dumontierlab.com/ends> <http://ontology.dumontierlab.com/hasValue>))",
      "A valid axiom between two named data properties. HermiT answers `IllegalArgumentException: In OWL 2 DL, owl:topDataProperty is only allowed to occur in the super property position` (its own rewriting uses the top data property). "
@@ -93,19 +102,24 @@ ENTRIES = [
     # ----------------------------------------------------------- convention only
     ("C1", "convention only", "Same-individual nodes in getInstances",
      "food", "getInstances(http://www.w3.org/TR/2003/PR-owl-guide-20031209/wine#WineBody,true)",
-     "Both reasoners return the same six individuals. HermiT (policy `BY_NAME`, which both report) puts each in its own node; KM groups `food:Full` with `wine:Full` because the ontologies state them equal. "
-     "The OWL API allows grouping only under `BY_SAME_AS`, so KM deviates from the policy it reports; the content is the same. 39 calls in 5 ontologies."),
+     "Both reasoners return the same six individuals. HermiT (policy `BY_NAME`, which both report) puts each in its own node. KM grouped `food:Full` with `wine:Full` in the baseline, "
+     "which the OWL API allows only under `BY_SAME_AS`. KM now follows the policy it reports: one node per individual under `BY_NAME`, grouped nodes under `BY_SAME_AS`."),
     ("C2", "convention only", "getTimeOut",
      "ore_ont_12007", "getTimeOut()",
-     "HermiT with the configuration used here reports -1, KM reports `Long.MAX_VALUE`; both mean no limit."),
+     "HermiT created with its own `Configuration` (as the harness does, to set `ignoreUnsupportedDatatypes`) reports -1; given an `OWLReasonerConfiguration` it returns the configured value, as KM does "
+     "(`Long.MAX_VALUE` when none is set). The two answers in this run come from different configuration types, so the harness marks the call informational. `ConventionsTest` checks that KM and HermiT agree under one configuration."),
     ("C3", "convention only", "Precomputed state and precomputable types",
      "ore_ont_12007", "getPrecomputableInferenceTypes()",
-     "HermiT lists every type it can compute, including `DATA_PROPERTY_HIERARCHY` and `OBJECT_PROPERTY_ASSERTIONS`; KM lists four. The `isPrecomputed` differences follow from what each reasoner computes eagerly "
-     "(37 calls where KM is true and HermiT false, 59 the other way). The shorter list is a coverage gap (see K1 to K5), the flags are laziness."),
+     "HermiT lists six types, including `OBJECT_PROPERTY_ASSERTIONS`; KM lists the types it computes and says so (`DATA_PROPERTY_HIERARCHY` only inside its fragment), which the harness counts as KM unsupported. "
+     "The remaining `isPrecomputed` differences have KM true and HermiT false for `CLASS_ASSERTIONS` and `SAME_INDIVIDUAL`: the harness asks KM to precompute them first and KM holds them, while HermiT reports false after the same request. KM's flag is the accurate one."),
+    ("C5", "convention only", "isPrecomputed after precomputeInferences",
+     "ore_ont_11401", "isPrecomputed(CLASS_ASSERTIONS)",
+     "The harness calls `precomputeInferences` for every type and then `isPrecomputed`. KM holds the class assertions and says true; HermiT says false for `CLASS_ASSERTIONS` and `SAME_INDIVIDUAL` "
+     "(it realises lazily). Neither answer is a fact about the ontology; KM's flag follows the OWL API meaning (the inference is held)."),
     ("C4", "convention only", "Inconsistent ontology: top and bottom queries",
      "ore_ont_5014", "getTopClassNode()",
-     "On an inconsistent ontology HermiT throws `InconsistentOntologyException` from `getTopClassNode`, `getBottomClassNode`, `getUnsatisfiableClasses` and the data property top and bottom nodes. KM answers them. "
-     "`protege/README.md` lists this set as one that does not throw, as in HermiT; with HermiT 1.4.3.456 and its default configuration it does throw. One ontology."),
+     "On an inconsistent ontology HermiT throws `InconsistentOntologyException` from `getTopClassNode`, `getBottomClassNode`, `getUnsatisfiableClasses` and the data property top and bottom nodes. "
+     "KM answered them in the baseline and throws now. `protege/README.md` is corrected. One ontology."),
 ]
 
 
@@ -148,7 +162,14 @@ def main():
             continue
         state = c.get("verdict")
         now = "now agrees" if state in ("agree", "both_error_same") else f"verdict: {state}"
-        sections[verdict.split(" (")[0]].append(
+        section = verdict.split(" (")[0]
+        if section == "KM wrong":
+            # The entry was decided against KM in an earlier run; the current verdict says where it stands.
+            if state in ("agree", "both_error_same"):
+                section = "Fixed since the baseline"
+            elif state == "km_unsupported":
+                section = "KM unsupported (engine work)"
+        sections[section].append(
             f"- **{eid}. {title}** ({verdict}; {now}).\n"
             f"  - Ontology `{ont}`, call `{short(call)}`.\n"
             f"  - HermiT: `{render_answer(c['hermit'])[:300]}`\n"
@@ -160,7 +181,9 @@ def main():
            "(`v150-corpus/files/<ontology>.owl`) where the answer rests on an asserted axiom. Counts are over this run. "
            "A \"KM wrong\" entry means KM's answer is not what the semantics entails, whatever HermiT does. "
            "The entries are written by hand in `parity_adjudication.py`; a new difference shape needs a new entry.\n"]
-    for title, key in (("KM wrong", "KM wrong"), ("HermiT wrong", "HermiT wrong"), ("Convention only", "convention only")):
+    for title, key in (("KM wrong", "KM wrong"), ("KM unsupported (engine work)", "KM unsupported (engine work)"),
+                       ("Fixed since the baseline", "Fixed since the baseline"), ("HermiT wrong", "HermiT wrong"),
+                       ("Convention only", "convention only")):
         out.append(f"### {title}\n")
         out.extend(sections.get(key, ["None."]))
         out.append("")
