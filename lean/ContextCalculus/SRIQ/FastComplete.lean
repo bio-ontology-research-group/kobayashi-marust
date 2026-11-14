@@ -137,7 +137,24 @@ theorem sim_of_ctx {i j : Nat} {z : D} {py : Option D} (hc : (nd U j).ctx = (nd 
 
 theorem nodeClosed (hC : ClosedP (mkIx O) U req) {i k : Nat} (hi : i ∈ memb U k) :
     NodeClosed (mkIx O) U i :=
-  hC.2.2.2 i (mem_memb hi).1
+  hC.2.2.2.1 i (mem_memb hi).1
+
+theorem mem_uniOf (hC : ClosedP (mkIx O) U req) {k : Nat} (hk : k < U.keys.size) {j : Nat}
+    (hj : j ∈ memb U k) {x : Fin n} (hx : x ∈ (nd U j).ty) : x ∈ uniOf U k := by
+  rw [hC.2.2.2.2.2 k hk]
+  suffices ∀ l : List Nat, j ∈ l → x ∈ l.foldr (fun j acc => (nd U j).ty ∪ acc) ∅ from this _ hj
+  intro l hl
+  induction l with
+  | nil => simp at hl
+  | cons a l ih =>
+    rw [List.foldr_cons]
+    rcases List.mem_cons.1 hl with rfl | hl
+    · exact Finset.mem_union_left _ hx
+    · exact Finset.mem_union_right _ (ih hl)
+
+theorem bkOf_eq (hC : ClosedP (mkIx O) U req) {k j : Nat} (hj : j ∈ memb U k) :
+    bkOf U j = backOf (mkIx O) U j :=
+  hC.2.2.2.2.1 j (mem_memb hj).1
 
 /-- Every set of `br s` contains a node of `k`; one below a closed model type. -/
 theorem cover_real (hI : models I O) {k : Nat} {s : Ty n} (hb : BranchCov (mkIx O) U k s) {w : D}
@@ -594,7 +611,7 @@ theorem StarData.cset_mem (h : StarData O U req I i z py E) {p : D × Entry n m}
     p.2 ∈ cset U i S e := by
   simp only [cntP, entOf, decide_eq_true_eq] at hc
   simp only [cset, List.mem_filter, decide_eq_true_eq]
-  exact ⟨(h.hE p hp).1, hc.1, kidOf U I z p, h.kid_memb hp, hc.2⟩
+  exact ⟨(h.hE p hp).1, hc.1, mem_uniOf h.hC (h.ok hp).1 (h.kid_memb hp) hc.2⟩
 
 /-- **The trigger bound.** The parent entry and the entries of a least
 configuration that count for an upper clause are at most `pot`. -/
@@ -612,7 +629,7 @@ theorem StarData.count_le_pot (h : StarData O U req I i z py E) (S : RoleT (Fin 
     simp only [decide_eq_true_eq]
     have hc2 := h.cnt_of_covers hpE hcov
     simp only [cntP, entOf, decide_eq_true_eq] at hc2
-    exact ⟨p.2, h.cset_mem hpE hpc, hc2.1, kidOf U I z p, h.kid_memb hpE, hc2.2⟩
+    exact ⟨p.2, h.cset_mem hpE hpc, hc2.1, mem_uniOf h.hC (h.ok hpE).1 (h.kid_memb hpE) hc2.2⟩
   · intro q _
     by_cases hne : ((E.filter fun p => cntP S e (entOf U I z p) = true).filter fun p =>
         Covers q p.2.spec ∧ (coverSet U i py (E.erase p) q).card < q.2.1 ∧
@@ -867,12 +884,12 @@ theorem interL_sub {x : Ty n} : ∀ {l : List (Ty n)}, x ∈ l → interL l ⊆ 
     · exact hb.2 x h
 
 theorem forced_sub {i : Nat} {T : Ty n}
-    (h : ∀ q ∈ needsL (mkIx O) U i, ∃ c ∈ candsQ U i q, backOf (mkIx O) U c.2 ⊆ T) :
+    (h : ∀ q ∈ needsL (mkIx O) U i, ∃ c ∈ candsQ U i q, bkOf U c.2 ⊆ T) :
     forced (mkIx O) U i ⊆ T := by
   unfold forced forcedOf backLists
   rw [List.foldr_map]
   suffices ∀ l : List (Fin n × Nat × RoleT (Fin m) × Fin n), (∀ q ∈ l, q ∈ needsL (mkIx O) U i) →
-      l.foldr (fun q acc => acc ∪ interL ((candsQ U i q).map fun c => backOf (mkIx O) U c.2)) ∅
+      l.foldr (fun q acc => acc ∪ interL ((candsQ U i q).map fun c => bkOf U c.2)) ∅
         ⊆ T from this _ fun q hq => hq
   intro l
   induction l with
@@ -929,8 +946,9 @@ theorem StarData.back (h : StarData O U req I i z py E) {p : D × Entry n m} (hp
     obtain ⟨p', hp', hc'⟩ := h.need_covered hq
     exact List.ne_nil_of_mem (List.mem_map.2 ⟨_, h.cand_mem hp' hc', rfl⟩)
   obtain ⟨hF1, hF2⟩ := hBack hcands
-  have hbz : ∀ p' ∈ E, backOf (mkIx O) U (kidOf U I z p') ⊆ typeOf I z := fun p' hp' =>
-    back_model h.hI (h.kid hp').2.2.1
+  have hbz : ∀ p' ∈ E, bkOf U (kidOf U I z p') ⊆ typeOf I z := fun p' hp' => by
+    rw [bkOf_eq h.hC (h.kid_memb hp')]
+    exact back_model h.hI (h.kid hp').2.2.1
   have hFz : forced (mkIx O) U i ⊆ typeOf I z := by
     refine forced_sub fun q hq => ?_
     obtain ⟨p', hp', hc'⟩ := h.need_covered hq
@@ -955,7 +973,8 @@ theorem StarData.back (h : StarData O U req I i z py E) {p : D × Entry n m} (hp
   have h3 := hF2 hFt _ (List.mem_map.2 ⟨q, hneed, rfl⟩) _ (List.mem_map.2 ⟨_, hc2, rfl⟩)
   simp only at h3
   have hbzp := hbz p hp
-  rcases Classical.em (backOf (mkIx O) U (kidOf U I z p) ⊆ (nd U i).ty) with hb | hb
+  rw [← bkOf_eq h.hC (h.kid_memb hp)]
+  rcases Classical.em (bkOf U (kidOf U I z p) ⊆ (nd U i).ty) with hb | hb
   · exact hb
   · exact no_variant h.hI h.hm (h3 hb) hbzp
 

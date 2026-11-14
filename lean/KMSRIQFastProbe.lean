@@ -177,10 +177,10 @@ def runFast {n m : Nat} (E : SRIQ.Ontology (Fin n) (Fin m)) (req : Array Nat)
     if !checked then return some { rows, aborted := false }
     -- checked mode: the certified check, elimination and readout
     let c0 ← IO.monoMsNow
-    let U ← IO.lazyPure fun _ => toCand n m st roots
-    IO.eprintln s!"checked: converted nodes={U.nodes.size} ctxs={U.keys.size} ms={(← IO.monoMsNow) - c0}"
     let ix ← IO.lazyPure fun _ => ContextCalculus.SRIQ.Fast.mkIx E
     IO.eprintln s!"checked: indexes ups={ix.upArr.size} ms={(← IO.monoMsNow) - c0}"
+    let U ← IO.lazyPure fun _ => toCand ix st roots
+    IO.eprintln s!"checked: converted nodes={U.nodes.size} ctxs={U.keys.size} ms={(← IO.monoMsNow) - c0}"
     if (← IO.getEnv "KM_SRIQF_CHECKPROF") == some "1" then checkProf ix U
     let c1 ← IO.monoMsNow
     let ok ← IO.lazyPure fun _ => ContextCalculus.SRIQ.Fast.closedB ix U reqF

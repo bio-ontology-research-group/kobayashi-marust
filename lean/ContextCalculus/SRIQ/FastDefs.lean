@@ -316,6 +316,10 @@ structure Cand (n m : Nat) where
   nodes : Array (FNode n m)
   members : Array (Array Nat)
   roots : List Nat
+  /-- the back set of each node (checked by `CacheOK`) -/
+  bk : Array (Ty n) := #[]
+  /-- the union of the node types of each context (checked by `CacheOK`) -/
+  uni : Array (Ty n) := #[]
 
 section Cand
 
@@ -323,6 +327,8 @@ variable (ix : Ix n m) (U : Cand n m)
 
 def nd (i : Nat) : FNode n m := U.nodes[i]?.getD default
 def keyOf (k : Nat) : Key n m := U.keys[k]?.getD default
+def bkOf (j : Nat) : Ty n := U.bk[j]?.getD ∅
+def uniOf (k : Nat) : Ty n := U.uni[k]?.getD ∅
 
 /-- The nodes of context `k`. -/
 def memb (k : Nat) : List Nat :=
@@ -379,14 +385,14 @@ instance (k : Nat) (s : Ty n) : Decidable (BranchCov ix U k s) := by
 
 /-- The specs that may count for an upper clause with role `S` and filler `e`. -/
 def cset (i : Nat) (S : RoleT (Fin m)) (e : Fin n) : List (Entry n m) :=
-  (nd U i).pool.filter fun σ => decide (S ∈ σ.spec.lab ∧ ∃ j ∈ memb U σ.kid, e ∈ (nd U j).ty)
+  (nd U i).pool.filter fun σ => decide (S ∈ σ.spec.lab ∧ e ∈ uniOf U σ.kid)
 
 /-- The trigger of the merge rule, given the specs `C` that may count and
 the parent count `pc`: the parent entry plus the numbers of the lower
 clauses that some spec of `C` may serve. -/
 def potOf (i : Nat) (C : List (Entry n m)) (pc : Nat) : Nat :=
   pc + (((lowAt ix (nd U i).ty).filter fun q => decide (∃ σ ∈ C,
-      q.2.2.1 ∈ σ.spec.lab ∧ ∃ j ∈ memb U σ.kid, q.2.2.2 ∈ (nd U j).ty)).map (·.2.1)).sum
+      q.2.2.1 ∈ σ.spec.lab ∧ q.2.2.2 ∈ uniOf U σ.kid)).map (·.2.1)).sum
 
 /-- The trigger of the merge rule for an upper clause with role `S` and
 filler `e`. -/
@@ -443,7 +449,7 @@ def needsL (i : Nat) : List (Fin n × Nat × RoleT (Fin m) × Fin n) :=
 
 /-- For each need, the back sets of its candidate entries. -/
 def backLists (i : Nat) : List (List (Ty n)) :=
-  (needsL ix U i).map fun q => (candsQ U i q).map fun p => backOf ix U p.2
+  (needsL ix U i).map fun q => (candsQ U i q).map fun p => bkOf U p.2
 
 /-- The union over the needs of the back sets every candidate forces. -/
 def forcedOf (cl : List (List (Ty n))) : Ty n := cl.foldr (fun l acc => acc ∪ interL l) ∅
@@ -507,12 +513,19 @@ def RootOK (a : Fin n) (k : Nat) : Prop :=
 instance (a : Fin n) (k : Nat) : Decidable (RootOK ix U a k) := by
   unfold RootOK; infer_instance
 
+/-- The stored back sets and context unions are right. -/
+def CacheOK : Prop :=
+  (∀ j < U.nodes.size, bkOf U j = backOf ix U j) ∧
+  ∀ k < U.keys.size, uniOf U k = (memb U k).foldr (fun j acc => (nd U j).ty ∪ acc) ∅
+
+instance : Decidable (CacheOK ix U) := by unfold CacheOK; infer_instance
+
 /-- The closure conditions R1 to R6 on the whole candidate set. -/
 def ClosedP (req : List (Fin n)) : Prop :=
   U.roots.length = req.length ∧ (∀ p ∈ req.zip U.roots, RootOK ix U p.1 p.2) ∧
   -- R2 child: every context covers the branches of its seed
   (∀ k < U.keys.size, BranchCov ix U k (keyOf U k).seed) ∧
-  ∀ i < U.nodes.size, NodeClosed ix U i
+  (∀ i < U.nodes.size, NodeClosed ix U i) ∧ CacheOK ix U
 
 instance (req : List (Fin n)) : Decidable (ClosedP ix U req) := by
   unfold ClosedP; infer_instance
