@@ -22,10 +22,13 @@ the theory holds at a value as a function `E p c g` of the value's cell
 
 The oracle `cellCard` adds the sizes of the cells, once per reading of
 the free atoms that gives the value type `τ`. It satisfies `OracleSpec`
-(`oracleSpec_cell`) if there are no free atoms or if every cell is empty
-or infinite (`FreeOK`). Without that condition the lower half fails: a
-cell of one value read with and without a free atom `F` gives two value
-types of one value each, which no single reading realises together.
+(`oracleSpec_cell`) if there are no free atoms or if every value type
+with a finite count has count `0` (`FreeOK`; `freeCheck` decides a
+sufficient condition: every value type of a finite nonempty cell also
+comes from an infinite cell). Without that condition the lower half
+fails: a cell of one value read with and without a free atom `F` gives
+two value types of one value each, which no single reading realises
+together.
 -/
 
 namespace ContextCalculus.SRIQD
@@ -120,9 +123,19 @@ structure CellSpec (key : Val → K) (cells : List K) (size : K → Option Nat) 
   nodup : cells.Nodup
   size : ∀ c ∈ cells, {v | key v = c}.encard = toE (size c)
 
-/-- No free atoms, or every cell empty or infinite. -/
-def FreeOK (cells : List K) (size : K → Option Nat) (s : Nat) : Prop :=
-  s = 0 ∨ ∀ c ∈ cells, size c = none ∨ size c = some 0
+/-- No free atoms, or every value type with a finite count has count `0`. -/
+def FreeOK (cells : List K) (size : K → Option Nat) (E : Fin q → K → (Fin s → Bool) → Bool) : Prop :=
+  s = 0 ∨ ∀ τ k, cellCard cells size E τ = some k → k = 0
+
+/-- A decidable condition for `FreeOK`: no free atoms, or every value type
+of a finite nonempty cell also comes from an infinite cell. -/
+def freeCheck (cells : List K) (size : K → Option Nat) (E : Fin q → K → (Fin s → Bool) → Bool) :
+    Bool :=
+  s == 0 || cells.all fun c => (allG s).all fun g =>
+    match size c with
+    | some (_ + 1) => cells.any fun c' => (allG s).any fun g' =>
+        size c' == none && decide (vtc E c' g' = vtc E c g)
+    | _ => true
 
 section Proofs
 
@@ -408,9 +421,9 @@ theorem exists_inf_cell {τ : Finset (Fin q)} (h : cellCard cells size E τ = no
   split_ifs at hg with hτ
   · exact ⟨c, hc, g, hτ, hg⟩
 
-/-- **Lower half with every cell empty or infinite.** -/
+/-- **Lower half when finite counts are `0`.** -/
 theorem lower_cell_inf (hc : CellSpec key cells size)
-    (hinf : ∀ c ∈ cells, size c = none ∨ size c = some 0) :
+    (hz : ∀ τ k, cellCard cells size E τ = some k → k = 0) :
     ∀ need : Finset (Fin q) → Nat, (∀ τ k, cellCard cells size E τ = some k → need τ ≤ k) →
       ∃ (V : Type) (atom : Fin q → V → Prop), cellTheory key E V atom ∧
         ∀ τ, ∃ l : List V, l.Nodup ∧ l.length = need τ ∧ ∀ v ∈ l, vt atom v = τ := by
@@ -423,7 +436,7 @@ theorem lower_cell_inf (hc : CellSpec key cells size)
     | none => exact exists_inf_cell h
     | some k =>
       have := hneed τ k h
-      rw [cellCard_some_zero hinf h] at this
+      rw [hz τ k h] at this
       omega
   -- an injection of `ℕ` into each infinite cell
   have hInf : ∀ c ∈ cells, size c = none → {v | key v = c}.Infinite := by
@@ -493,12 +506,54 @@ theorem lower_cell_inf (hc : CellSpec key cells size)
   · exact ⟨[], List.nodup_nil, by simp at h ⊢; omega, by simp⟩
 
 /-- **The cell oracle.** -/
-theorem oracleSpec_cell (hc : CellSpec key cells size) (hf : FreeOK cells size s) :
+theorem oracleSpec_cell (hc : CellSpec key cells size) (hf : FreeOK cells size E) :
     OracleSpec (cellTheory key E) (cellCard cells size E) := by
   refine ⟨upper_cell hc, ?_⟩
-  rcases hf with rfl | hinf
+  rcases hf with rfl | hz
   · exact lower_cell_zero hc
-  · exact lower_cell_inf hc hinf
+  · exact lower_cell_inf hc hz
+
+/-- The decidable check gives `FreeOK`. -/
+theorem freeOK_of_check (h : freeCheck cells size E = true) : FreeOK cells size E := by
+  unfold freeCheck at h
+  rcases Bool.or_eq_true_iff.1 h with h | h
+  · exact Or.inl (by simpa using h)
+  · right
+    intro τ k hk
+    by_contra hk0
+    -- a positive finite term
+    have hnone : none ∉ cardTerms cells size E τ := fun hn => by
+      rw [cellCard, (osum_eq_none).2 hn] at hk
+      cases hk
+    have hpos : ∃ t ∈ cardTerms cells size E τ, t ≠ some 0 := by
+      by_contra hall
+      push Not at hall
+      have : toE (cellCard cells size E τ) = 0 := by
+        rw [cellCard, toE_osum]
+        refine List.sum_eq_zero fun x hx => ?_
+        obtain ⟨t, ht, rfl⟩ := List.mem_map.1 hx
+        rw [hall t ht]; rfl
+      rw [hk] at this
+      exact hk0 (by simpa [toE] using this)
+    obtain ⟨t, ht, ht0⟩ := hpos
+    obtain ⟨c, hcc, ht⟩ := List.mem_flatMap.1 ht
+    obtain ⟨g, -, rfl⟩ := List.mem_map.1 ht
+    split_ifs at ht0 with hτ
+    · cases hs : size c with
+      | none => exact hnone (List.mem_flatMap.2 ⟨c, hcc, List.mem_map.2 ⟨g, mem_allG g, by
+          rw [if_pos hτ, hs]⟩⟩)
+      | some j =>
+        cases j with
+        | zero => exact ht0 hs
+        | succ j =>
+          have := List.all_eq_true.1 (List.all_eq_true.1 h c hcc) g (mem_allG g)
+          rw [hs] at this
+          obtain ⟨c', hc', hg'⟩ := List.any_eq_true.1 this
+          obtain ⟨g', -, hg''⟩ := List.any_eq_true.1 hg'
+          simp only [Bool.and_eq_true, beq_iff_eq, decide_eq_true_eq] at hg''
+          exact hnone (List.mem_flatMap.2 ⟨c', hc', List.mem_map.2 ⟨g', mem_allG g', by
+            rw [if_pos (hg''.2.trans hτ), hg''.1]⟩⟩)
+    · exact ht0 rfl
 
 end Proofs
 
@@ -506,3 +561,4 @@ end ContextCalculus.SRIQD
 
 #print axioms ContextCalculus.SRIQD.upper_cell
 #print axioms ContextCalculus.SRIQD.oracleSpec_cell
+#print axioms ContextCalculus.SRIQD.freeOK_of_check
