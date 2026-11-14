@@ -1,0 +1,16 @@
+# file	args	expected km-owl-reference --procedure sroiq-c2a (ws, 2026-11-15); declines print to stderr, exit 3
+chain3-nominal.ofn	--check	accepted
+chain3-free.ofn	--check	accepted
+chain3-clash.ofn	--check	accepted
+left-right.ofn	--check	accepted
+reflexive.ofn	--check	accepted
+irregular.ofn		declined: not regular
+reflexive-count.ofn		declined: not simple or not closed (reflexive role in a number restriction)
+self.ofn		declined: not recognised (ObjectHasSelf, design section 5, open)
+disjoint.ofn		declined: not recognised (DisjointObjectProperties, design section 5, open)
+asymmetric.ofn		declined: not recognised (AsymmetricObjectProperty, design section 5, open)
+# Intended decisions (semantics): chain3-nominal --type C a: entailed true; chain3-free --type C a: false;
+# chain3-clash: consistent false; left-right --type C e: true, --type C b: false; reflexive --type C a: true,
+# --type D b: true. The unhinted exhaustive C2a search exceeds 120 s on each of them (as it does for the
+# SHOIQ route on plain.ofn-sized inputs, 9 concept indices); these rows need hints (no --print-index for
+# sroiq-c2a yet). The automaton and regularity cases are tested in ContextCalculus/SROIQ/Tests.lean.
