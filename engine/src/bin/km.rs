@@ -513,6 +513,10 @@ fn classify_help() {
 
 fn classify_cmd(rest: &[String]) {
     strip_worker_only_environment("classify");
+    // Run the configuration the release benchmarks measured
+    // (`routing::RELEASE_DEFAULTS`); set before any worker is spawned, so the
+    // workers inherit it.
+    kobayashi_marust::routing::apply_release_defaults();
     // Workers watch this pid and exit when the supervisor is gone
     // (`cli::die_with_supervisor`). Set before any thread is spawned.
     std::env::set_var(cli::SUPERVISOR_PID_ENV, std::process::id().to_string());

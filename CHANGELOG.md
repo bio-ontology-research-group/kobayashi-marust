@@ -1,5 +1,24 @@
 # Changelog
 
+## [Unreleased]
+
+### Engine
+
+- `km classify` sets the release flags (`KM_HT_DDB`, `KM_HT_NATIVE_FULL`,
+  `KM_CACHE_CONFORMANCE`, `KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE`,
+  `KM_FAST_IRI_GRAMMAR`) when the caller leaves them unset
+  (`routing::RELEASE_DEFAULTS`). Every release benchmark ran under them and
+  `km incremental` already set them; plain `km classify` did not. Without
+  `KM_HT_DDB` the konclude_ht bridge backtracks chronologically and the
+  FLOPO inputs of issue #5 did not finish in 300 s; with it, 17.5 s (136
+  negated definitions of one form and one of the other) and 133 s (the full
+  reproducer). `KM_NO_RELEASE_DEFAULTS=1` restores the old behaviour.
+- `KM_HT_EXPAND_LAST` (off by default): the hypertableau decides every open
+  disjunction before it expands existentials. On the issue #5 input under
+  `--route ht_general` each satisfiability test then ends (900 to 5,300
+  nodes) instead of growing one model without end; `KM_HT_BLOCKDIAG` (with
+  `KM_HT_STATS`) prints why nodes are not blocked.
+
 ## [1.6.3] - 2026-11-13
 
 The proved OWL reference procedure extends from OWL EL and OWL ALC to

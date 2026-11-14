@@ -3430,6 +3430,37 @@ pub fn strip_worker_only_environment() -> Vec<&'static str> {
     removed
 }
 
+/// The flags every release measurement since v1.5.3 ran under
+/// (docs/RELEASE-1.5.5-PROCEDURE.md): Konclude's dependency-directed
+/// backjumping in the konclude_ht bridge (`KM_HT_DDB`), the native
+/// cardinality schedule, the cache conformance check, the bridge subject
+/// worker override and the fast IRI grammar. `km incremental` sets them as its
+/// production defaults. `km classify` sets them too, so the shipped command
+/// runs the configuration the benchmarks measured: without `KM_HT_DDB` the
+/// bridge backtracks chronologically and issue #5 does not finish in 300 s.
+pub const RELEASE_DEFAULTS: &[(&str, &str)] = &[
+    ("KM_HT_DDB", "1"),
+    ("KM_HT_NATIVE_FULL", "1"),
+    ("KM_CACHE_CONFORMANCE", "1"),
+    ("KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE", "1"),
+    ("KM_FAST_IRI_GRAMMAR", "1"),
+];
+
+/// Set every [`RELEASE_DEFAULTS`] flag the caller left unset. A user value
+/// wins; `KM_NO_RELEASE_DEFAULTS` (any value) skips all of them, for A/B runs
+/// against the previous behaviour. Call it at a user-facing entry before any
+/// route or worker runs.
+pub fn apply_release_defaults() {
+    if std::env::var_os("KM_NO_RELEASE_DEFAULTS").is_some() {
+        return;
+    }
+    for (key, value) in RELEASE_DEFAULTS {
+        if std::env::var_os(key).is_none() {
+            std::env::set_var(key, value);
+        }
+    }
+}
+
 const ROUTE_KEYS: &[&str] = &[
     "KM_MECHANISM",
     "KM_THREADS",
