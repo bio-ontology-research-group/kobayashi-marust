@@ -25,7 +25,7 @@ semantics at the OWL 2 datatype map (`owlSHIQDReference_sound`, with
 `owlReadout_exact`) says what its readout means; `publishAt` takes its
 equation. It declines outside the SHIQ(D) part, on a non-simple role, and
 when a data atom is outside the supported sub-theory of the datatype map
-(`owlCheck`). `sriqd-kb` (knowledge bases with data) is not implemented and
+(`allSupported`). `sriqd-kb` (knowledge bases with data) is not implemented and
 declines.
 
 `sriq-kb` is `owlSHIQKBReference`, the v1.7.0 route for SHIQ knowledge
@@ -582,8 +582,8 @@ def sriqdDecline (O : OWL.Ontology) (requested : List OWL.IRI) : String :=
     | some T =>
       if !isSHIQB (ContextCalculus.SRIQD.objPart T.ontology) then
         "not SHIQ: non-simple role in a number restriction or functionality axiom"
-      else if !OWL.Datatypes.owlCheck (SHIQD.spec T.tab) then
-        "datatypes: a data range outside the supported sub-theory of the OWL 2 datatype map, or a datatype outside the map together with a finite value type"
+      else if !allSupported T then
+        "datatypes: a data range outside the supported sub-theory of the OWL 2 datatype map"
       else "not recognised"
 
 /-- The SHIQ(D) route on an ontology. -/

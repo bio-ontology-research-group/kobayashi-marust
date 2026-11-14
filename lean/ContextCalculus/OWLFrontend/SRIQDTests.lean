@@ -52,8 +52,9 @@ property. -/
 #guard (translateSRIQD ⟨[.datatypeDefinition "dt" (.datatype (xs "int"))]⟩ []).isNone
 #guard (translateSRIQD ⟨[.subClassOf A (.dataSome .top (.datatype (xs "int")))]⟩ ["A"]).isNone
 
-/- The oracle check declines string facets and a free datatype with a
-literal. -/
+/- `owlCheck` (the full oracle) declines string facets and a free datatype with
+a literal; the route splits the free datatype into parts instead
+(`allSupported` accepts it). -/
 #guard shape ⟨[.subClassOf A (.dataSome p
   (.restriction (xs "string") [(xs "maxLength", L "3" "integer")]))]⟩ ["A"] = some (1, 5, 6, false)
 #guard shape ⟨[.subClassOf A (.dataSome p

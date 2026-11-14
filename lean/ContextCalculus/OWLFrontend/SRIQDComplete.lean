@@ -7,7 +7,8 @@ import ContextCalculus.OWLFrontend.SRIQComplete
 `translateSRIQD_isSome`: the translation succeeds on the SHIQ(D) part.
 `owlSHIQDReference_isSome_iff`: the route publishes exactly on the SHIQ(D)
 part when the translated object part passes the simple-role check
-(`isSHIQB`) and the data atoms pass `owlCheck`.
+(`isSHIQB`) and the data atoms are in the supported sub-language
+(`allSupported`).
 -/
 
 namespace ContextCalculus.OWLFrontend
@@ -112,7 +113,7 @@ theorem translateSRIQD_named_le {O : Ontology} {requested : List IRI} {T : SRIQD
 /-- The checks of the SHIQ(D) route on the translation. -/
 def SHIQDChecks (O : OWL.Ontology) (requested : List OWL.IRI) : Prop :=
   ∀ T, translateSRIQD O requested = some T →
-    isSHIQB (ContextCalculus.SRIQD.objPart T.ontology) = true ∧ owlCheck (spec T.tab) = true
+    isSHIQB (ContextCalculus.SRIQD.objPart T.ontology) = true ∧ allSupported T = true
 
 /-- **When the SHIQ(D) route publishes.** Exactly on the SHIQ(D) part with
 the checks passed. -/

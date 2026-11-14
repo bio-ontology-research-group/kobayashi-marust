@@ -11,5 +11,5 @@ float-ne-int.ofn	row http://ex/A http://ex/A
 functional-two.ofn	row http://ex/A unsat
 sub-bounds.ofn	row http://ex/A http://ex/A http://ex/B | row http://ex/B http://ex/B
 decline-string-facet.ofn	declined
-decline-free-literal.ofn	declined
+free-literal.ofn	row http://ex/A http://ex/A
 datetime-offsets.ofn	row http://ex/A http://ex/A

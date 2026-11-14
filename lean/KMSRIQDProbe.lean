@@ -26,7 +26,7 @@ def main (args : List String) : IO UInt32 := do
       IO.eprintln s!"declined: not SHIQ(D)"
       return 3
     | some T =>
-      IO.eprintln s!"named={T.named.length} concepts={T.obj.conceptCount} roles={T.obj.roleCount} dprops={T.dps.length} atoms={T.tab.length} clauses={T.ontology.length} check={OWL.Datatypes.owlCheck (SHIQD.spec T.tab)}"
+      IO.eprintln s!"named={T.named.length} concepts={T.obj.conceptCount} roles={T.obj.roleCount} dprops={T.dps.length} atoms={T.tab.length} clauses={T.ontology.length} supported={allSupported T} parts={(partAlive T).length}"
       let t0 ← IO.monoMsNow
       match ← IO.lazyPure fun _ => owlSHIQDReference O req with
       | none =>
