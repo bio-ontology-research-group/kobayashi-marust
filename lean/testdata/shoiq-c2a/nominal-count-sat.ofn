@@ -1,0 +1,6 @@
+Prefix(:=<http://ex/>)
+Ontology(<http://ex/nominal-count-sat>
+ClassAssertion(ObjectSomeValuesFrom(:r ObjectOneOf(:o)) :a)
+ClassAssertion(ObjectSomeValuesFrom(:r ObjectOneOf(:o)) :b)
+SubClassOf(ObjectOneOf(:o) ObjectMaxCardinality(1 ObjectInverseOf(:r)))
+)

@@ -365,3 +365,4 @@ import ContextCalculus.SRIQN.Transitivity
 import ContextCalculus.SRIQN.Data
 import ContextCalculus.OWLFrontend.SHOIQNom
 import ContextCalculus.OWLFrontend.SHOIQC2aReference
+import ContextCalculus.OWLFrontend.SHOIQC2aTests
