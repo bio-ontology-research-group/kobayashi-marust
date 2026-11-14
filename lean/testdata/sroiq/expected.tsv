@@ -4,6 +4,8 @@ chain3-free.ofn	--check	accepted
 chain3-clash.ofn	--check	accepted
 left-right.ofn	--check	accepted
 reflexive.ofn	--check	accepted
+reflexive-sat.ofn	--hint reflexive-sat.hint	{"format":"owl-consistency-v1","consistent":true}
+reflexive-sat.ofn	--print-index	concepts 8 / roles 1 / concept 0 urn:km:owl-nom:########### / concept 1 http://ex/C / role 0 http://ex/r / nominal 0 http://ex/a (one line each)
 irregular.ofn		declined: not regular
 reflexive-count.ofn		declined: not simple or not closed (reflexive role in a number restriction)
 self.ofn		declined: not recognised (ObjectHasSelf, design section 5, open)
@@ -12,5 +14,5 @@ asymmetric.ofn		declined: not recognised (AsymmetricObjectProperty, design secti
 # Intended decisions (semantics): chain3-nominal --type C a: entailed true; chain3-free --type C a: false;
 # chain3-clash: consistent false; left-right --type C e: true, --type C b: false; reflexive --type C a: true,
 # --type D b: true. The unhinted exhaustive C2a search exceeds 120 s on each of them (as it does for the
-# SHOIQ route on plain.ofn-sized inputs, 9 concept indices); these rows need hints (no --print-index for
-# sroiq-c2a yet). The automaton and regularity cases are tested in ContextCalculus/SROIQ/Tests.lean.
+# SHOIQ route on plain.ofn-sized inputs, 9 concept indices); the unsatisfiable ones cannot be hinted (a hint
+# certifies a model); reflexive-sat (11 s with its hint) is the one hinted decision. The automaton and regularity cases are tested in ContextCalculus/SROIQ/Tests.lean.
