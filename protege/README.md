@@ -255,10 +255,10 @@ answer is the set of candidate literals whose value is entailed: the literals
 occurring in the ontology, plus `true` and `false` when `xsd:boolean` is used
 and the integers of every interval of at most 256 values that the integer
 datatypes in use cut out (so `0` is found for `xsd:nonNegativeInteger ⊓
-xsd:nonPositiveInteger`). It is complete when no other value can be entailed. That fails when
-data ranges have few elements: `xsd:nonNegativeInteger ⊓ xsd:nonPositiveInteger`
-is `{0}`, a facet restriction such as `xsd:integer[> 4, < 6]` holds one value,
-and `xsd:boolean` has two. The plugin answers only when the ontology's data
+xsd:nonPositiveInteger`). It is complete when no other value can be entailed.
+That fails for data ranges with few elements that the candidates do not
+cover, such as a facet restriction `xsd:integer[> 4, < 6]`, which holds one
+value. The plugin answers only when the ontology's data
 ranges use `rdfs:Literal`, `xsd:string`, `rdf:PlainLiteral`,
 `rdf:langString`, `xsd:integer`, `xsd:decimal`, `xsd:double`, `xsd:float`,
 `xsd:anyURI`, `xsd:dateTime`, the bounded and sign-restricted integer types
@@ -269,8 +269,8 @@ and `xsd:boolean` (also inside `DataOneOf`,
 `DataIntersectionOf`, `DataUnionOf` and `DataComplementOf`), with no facet,
 datatype definition, rule or axiom on `owl:topDataProperty`, and throws
 otherwise. The argument (in `DataValues.java`): values that no admitted
-datatype and no literal of the ontology tell apart form classes of at least
-2^31 elements; a model can be cut down to finitely many data values per
+datatype and no candidate tell apart form classes larger than the number of
+candidates plus the restriction numbers; a model can be cut down to finitely many data values per
 element without changing any class membership; swapping an unwritten value
 for an unused equivalent one then gives a model in which it is not a value.
 
