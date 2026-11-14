@@ -317,3 +317,6 @@ import ContextCalculus.RulesRouteCertificate
 import ContextCalculus.HypertableauSubsetUnravelling
 import ContextCalculus.ObjectGuardRestriction
 import ContextCalculus.PolarityDefiners
+import ContextCalculus.OWL.Datatypes.Lexical
+import ContextCalculus.OWL.Datatypes.Map
+import ContextCalculus.OWL.Datatypes.Tests
