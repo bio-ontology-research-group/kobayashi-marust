@@ -2409,7 +2409,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
      */
     private Set<OWLLiteral> computeDataPropertyValues(OWLNamedIndividual ind, OWLDataProperty p) {
         DataValues.Candidates candidates = reduce(Arrays.asList("literals"), COMPUTING_VALUES,
-                () -> DataValues.collect(querySnapshot()));
+                () -> DataValues.collect(querySnapshot(), df));
         if (p.isOWLBottomDataProperty()) return new HashSet<>();
         if (candidates.outside != null) {
             throw unsupported("getDataPropertyValues", "this ontology (" + candidates.outside

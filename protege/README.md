@@ -251,8 +251,11 @@ meaning (for example `FunctionalObjectProperty(owl:topObjectProperty)` holds
 iff every model has one element, decided as `UNSAT ¬{x}`).
 
 **Data property values.** Infinitely many literals denote each value, so the
-answer is the set of literals occurring in the ontology whose value is
-entailed. It is complete when no other value can be entailed. That fails when
+answer is the set of candidate literals whose value is entailed: the literals
+occurring in the ontology, plus `true` and `false` when `xsd:boolean` is used
+and the integers of every interval of at most 256 values that the integer
+datatypes in use cut out (so `0` is found for `xsd:nonNegativeInteger ⊓
+xsd:nonPositiveInteger`). It is complete when no other value can be entailed. That fails when
 data ranges have few elements: `xsd:nonNegativeInteger ⊓ xsd:nonPositiveInteger`
 is `{0}`, a facet restriction such as `xsd:integer[> 4, < 6]` holds one value,
 and `xsd:boolean` has two. The plugin answers only when the ontology's data
@@ -261,8 +264,8 @@ ranges use `rdfs:Literal`, `xsd:string`, `rdf:PlainLiteral`,
 `xsd:anyURI`, `xsd:dateTime`, the bounded and sign-restricted integer types
 (`xsd:int`, `xsd:positiveInteger` and the like, as long as every interval
 their bounds cut out of the integers is unbounded, covered by literals of the
-ontology, or larger than the data restrictions can count) and `xsd:boolean` (only with literals for both
-truth values) (also inside `DataOneOf`,
+ontology, larger than the data restrictions can count, or at most 256 long)
+and `xsd:boolean` (also inside `DataOneOf`,
 `DataIntersectionOf`, `DataUnionOf` and `DataComplementOf`), with no facet,
 datatype definition, rule or axiom on `owl:topDataProperty`, and throws
 otherwise. The argument (in `DataValues.java`): values that no admitted

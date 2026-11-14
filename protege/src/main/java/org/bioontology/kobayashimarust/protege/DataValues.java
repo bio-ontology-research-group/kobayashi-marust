@@ -42,7 +42,10 @@ import java.util.*;
  * values, against {@code N < 2^30}), the strings, the language-tagged
  * strings, the URIs, the date-times, the rest, and intervals of integers
  * between the bounds of the integer types in use, which are checked one by
- * one ({@code integerCellsSafe}). Suppose
+ * one ({@code integerCellsSafe}). The two booleans, and the integers of an
+ * interval of at most 256 that the literals do not cover, are added to the
+ * candidates (as {@code "true"^^xsd:boolean}, {@code "5"^^xsd:integer} and so
+ * on), so their classes are empty. Suppose
  * {@code O ⊨ p(a, v)} for a value {@code v} of no candidate, and take a model.
  * Restrict the data values of every element to a finite set {@code K} that
  * keeps the candidates and, for every data restriction of the ontology the
@@ -115,7 +118,7 @@ final class DataValues {
         boolean booleans;
     }
 
-    static Candidates collect(OWLOntology snapshot) {
+    static Candidates collect(OWLOntology snapshot, OWLDataFactory df) {
         Candidates out = new Candidates();
         for (OWLAxiom axiom : snapshot.getLogicalAxioms()) {
             for (OWLDataProperty p : axiom.getDataPropertiesInSignature()) {
@@ -150,13 +153,13 @@ final class DataValues {
                 }
             }
         }
-        // xsd:boolean has two values; with a literal for each, no unwritten
+        // xsd:boolean has two values: both become candidates, so no unwritten
         // boolean value is left.
-        if (out.outside == null && out.booleans && !(denotesBoolean(out.literals, true)
-                && denotesBoolean(out.literals, false))) {
-            out.outside = "xsd:boolean without literals for both truth values";
+        if (out.booleans) {
+            if (!denotesBoolean(out.literals, true)) out.literals.add(df.getOWLLiteral(true));
+            if (!denotesBoolean(out.literals, false)) out.literals.add(df.getOWLLiteral(false));
         }
-        if (out.outside == null && !integerCellsSafe(out)) {
+        if (out.outside == null && !integerCellsSafe(out, df)) {
             out.outside = "the integer datatypes " + out.integerTypes
                     + " cut out a small set of integers that no literal of the ontology covers";
         }
@@ -199,7 +202,10 @@ final class DataValues {
      * unbounded, or all its values are candidate values, or it keeps more than
      * the bound of the completeness argument outside the candidates.
      */
-    private static boolean integerCellsSafe(Candidates out) {
+    /** Intervals of at most this many integers are covered by adding their values as candidates. */
+    private static final int ENUMERATED_CELL = 256;
+
+    private static boolean integerCellsSafe(Candidates out, OWLDataFactory df) {
         if (out.integerTypes.isEmpty()) return true;
         TreeSet<java.math.BigInteger> cuts = new TreeSet<>();
         for (IRI t : out.integerTypes) {
@@ -208,7 +214,9 @@ final class DataValues {
             if (b[1] != null) cuts.add(b[1].add(java.math.BigInteger.ONE));
         }
         Set<java.math.BigInteger> values = integerValues(out.literals);
-        java.math.BigInteger need = java.math.BigInteger.valueOf(out.cardinalities + out.literals.size() + 1);
+        // Enumerated cells add at most ENUMERATED_CELL candidates per interval.
+        java.math.BigInteger need = java.math.BigInteger.valueOf(out.cardinalities + out.literals.size()
+                + (long) ENUMERATED_CELL * (cuts.size() + 1) + 1);
         java.math.BigInteger previous = null;
         for (java.math.BigInteger cut : cuts) {
             if (previous != null) {
@@ -219,7 +227,15 @@ final class DataValues {
                     if (v.compareTo(previous) >= 0 && v.compareTo(cut) < 0) covered = covered.add(java.math.BigInteger.ONE);
                 }
                 java.math.BigInteger left = size.subtract(covered);
-                if (left.signum() > 0 && left.compareTo(need) <= 0) return false;
+                if (left.signum() > 0 && left.compareTo(need) <= 0) {
+                    if (size.compareTo(java.math.BigInteger.valueOf(ENUMERATED_CELL)) > 0) return false;
+                    // A small interval: every value in it becomes a candidate.
+                    for (java.math.BigInteger v = previous; v.compareTo(cut) < 0; v = v.add(java.math.BigInteger.ONE)) {
+                        if (!values.contains(v)) {
+                            out.literals.add(df.getOWLLiteral(v.toString(), OWL2Datatype.XSD_INTEGER));
+                        }
+                    }
+                }
             }
             previous = cut;
         }
