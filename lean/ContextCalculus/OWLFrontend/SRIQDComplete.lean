@@ -20,13 +20,10 @@ theorem objOnt_isSHIQ {O : Ontology} (hO : O.isSHIQD = true) (base : String) :
     simpa [Ontology.isSHIQD, List.all_eq_true] using hO
   simp only [Ontology.isSHIQ, List.all_eq_true]
   intro ax hax
-  rcases List.mem_append.1 hax with h1 | h1
-  · obtain ⟨ax', hax', rfl⟩ := List.mem_map.1 h1
-    obtain ⟨ax0, h0, hax'0⟩ := List.mem_flatMap.1 hax'
-    have hrw := rw_isSHIQD (hO' ax0 h0) hax'0
-    exact isSHIQ_absAx _ hrw.1 hrw.2
-  · obtain ⟨e, -, rfl⟩ := List.mem_map.1 h1
-    simp [Axiom.isSHIQ, ClassExpr.isALCIQ]
+  obtain ⟨ax', hax', rfl⟩ := List.mem_map.1 hax
+  obtain ⟨ax0, h0, hax'0⟩ := List.mem_flatMap.1 hax'
+  have hrw := rw_isSHIQD (hO' ax0 h0) hax'0
+  exact isSHIQ_absAx _ hrw.1 hrw.2
 
 theorem nameIx_isSome {T : SRIQTranslation} {a : IRI} (ha : a ∈ T.named) :
     (nameIx T a).isSome = true := by

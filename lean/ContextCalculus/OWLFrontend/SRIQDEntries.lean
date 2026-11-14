@@ -44,7 +44,7 @@ theorem rngSem_neg (atom : DAtom → V → Prop) (j : DAtom) (v : V) :
 /-- The two data clauses of an entry, read at one element. -/
 theorem entry_dLocal (atom : DAtom → V → Prop) (c : CName → Prop) (d : DProp → V → Prop)
     (e : DExpr) (F W : CName) (u : DProp) (j : DAtom) :
-    (∀ cl ∈ ([] : List (ContextCalculus.SRIQD.Clause CName Role DProp DAtom)) ++
+    (∀ cl ∈ ([.obj (.gci [] [F, W])] : List (ContextCalculus.SRIQD.Clause CName Role DProp DAtom)) ++
         (match e.kind with
           | 0 => [.dEx F u [j] [], .dAll W u [(j, false)]]
           | 1 => [.dAll F u [(j, true)], .dEx W u [] [j]]
@@ -53,22 +53,22 @@ theorem entry_dLocal (atom : DAtom → V → Prop) (c : CName → Prop) (d : DPr
         dLocal atom c d cl) ↔
       (c F → posK e (d u) (atom j)) ∧ (c W → negK e (d u) (atom j)) := by
   rcases e with ⟨k, n, p, R⟩
-  simp only [List.nil_append]
+  simp only [List.singleton_append, List.forall_mem_cons, dLocal, true_and]
   match k with
   | 0 =>
-    simp only [List.mem_cons, List.not_mem_nil, or_false, forall_eq_or_imp, forall_eq, dLocal,
+    simp only [List.mem_cons, List.not_mem_nil, or_false, forall_eq_or_imp, forall_eq,
       posK, negK, rngSem_single, litSem]
     simp
   | 1 =>
-    simp only [List.mem_cons, List.not_mem_nil, or_false, forall_eq_or_imp, forall_eq, dLocal,
+    simp only [List.mem_cons, List.not_mem_nil, or_false, forall_eq_or_imp, forall_eq,
       posK, negK, rngSem_neg, litSem]
     simp
   | 2 =>
-    simp only [List.mem_cons, List.not_mem_nil, or_false, forall_eq_or_imp, forall_eq, dLocal,
+    simp only [List.mem_cons, List.not_mem_nil, or_false, forall_eq_or_imp, forall_eq,
       posK, negK, rngSem_single]
     rfl
   | 3 =>
-    simp only [List.mem_cons, List.not_mem_nil, or_false, forall_eq_or_imp, forall_eq, dLocal,
+    simp only [List.mem_cons, List.not_mem_nil, or_false, forall_eq_or_imp, forall_eq,
       posK, negK, rngSem_single]
     rfl
 
@@ -77,7 +77,6 @@ theorem entryClauses_dLocal {n m p q : Nat} (atom : Fin q → V → Prop) (c : F
     (∀ cl ∈ entryClauses (m := m) e F W u j, dLocal atom c d cl) ↔
       (c F → posK e (d u) (atom j)) ∧ (c W → negK e (d u) (atom j)) := by
   have := entry_dLocal (Role := Fin m) atom c d e F W u j
-  simp only [List.nil_append] at this
   rw [← this]
   rfl
 

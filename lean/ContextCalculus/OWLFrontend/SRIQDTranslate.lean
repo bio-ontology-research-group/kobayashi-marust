@@ -32,13 +32,14 @@ named data properties. Declined: `owl:topDataProperty`,
    complement name `W_e = defName base (2j+1)`. `DataHasValue(p l)` is
    `∃p.{l}`, `DataMinCardinality(0 ..)` is `owl:Thing`,
    `DataExactCardinality(n p R)` is `≥n p.R ⊓ ≤n p.R` (`≤0 p.R` for `n = 0`).
-   The object ontology (`objOnt`) is the abstracted axioms and
-   `SubClassOf(owl:Thing F_e ⊔ W_e)` for every `e`.
+   The object ontology (`objOnt`) is the abstracted axioms.
 3. The SHIQ translation of the object ontology, with the requested IRIs and
    all fresh names requested (so that each has a concept index).
-4. The data clauses on the indices of `F_e` and `W_e`: `F_e ⊑ e` and
-   `W_e ⊑ ¬e` (`dataClauses`). Data atom `j` is the data range of `tab[j]`
-   (`spec`), data property `u` is `dprops[u]`.
+4. The clauses on the indices of `F_e` and `W_e` (`entryClauses`): the
+   object clause `⊤ ⊑ F_e ⊔ W_e` and the data clauses `F_e ⊑ e` and
+   `W_e ⊑ ¬e`. Data atom `j` is the data range of `tab[j]` (`spec`), data
+   property `u` is `dprops[u]`. (The object clause is added here and not as
+   an OWL axiom, so that the SHIQ translation adds no definer for it.)
 
 In a model, `F_e ⊑ e`, `W_e ⊑ ¬e` and `⊤ ⊑ F_e ⊔ W_e` make `F_e` exactly
 `e`; conversely a model of `O` gives `F_e` the extension of `e` and `W_e`
@@ -290,9 +291,7 @@ def wName (base : String) (tab : List DExpr) (e : DExpr) : IRI :=
 
 /-- The object ontology. -/
 def objOnt (O : Ontology) (base : String) : Ontology :=
-  ⟨(rwAxioms O).map (absAx (fName base (table O))) ++
-    (table O).map fun e => .subClassOf .thing
-      (.or [.cls (fName base (table O) e), .cls (wName base (table O) e)])⟩
+  ⟨(rwAxioms O).map (absAx (fName base (table O)))⟩
 
 /-- The fresh names, requested so that each has a concept index. -/
 def freshNames (base : String) (tab : List DExpr) : List IRI :=
@@ -313,10 +312,11 @@ def dpIx (dps : List IRI) (p : IRI) : Option (Fin dps.length) :=
 
 abbrev DClause (n m p q : Nat) := ContextCalculus.SRIQD.Clause (Fin n) (Fin m) (Fin p) (Fin q)
 
-/-- The two data clauses of table entry `j` on the indices `F`, `W`, `u`. -/
+/-- The clauses of table entry `j` on the indices `F`, `W`, `u`:
+`⊤ ⊑ F ⊔ W`, `F ⊑ e`, `W ⊑ ¬e`. -/
 def entryClauses {n m p q : Nat} (e : DExpr) (F W : Fin n) (u : Fin p) (j : Fin q) :
     List (DClause n m p q) :=
-  match e.kind with
+  .obj (.gci [] [F, W]) :: match e.kind with
   | 0 => [.dEx F u [j] [], .dAll W u [(j, false)]]
   | 1 => [.dAll F u [(j, true)], .dEx W u [] [j]]
   | 2 => [.dAtLeast F e.n u [j] [], .dAtMost W (e.n - 1) u [j] []]

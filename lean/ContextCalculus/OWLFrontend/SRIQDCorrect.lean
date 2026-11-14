@@ -216,26 +216,34 @@ theorem translateSRIQD_correct (pat : String → String → Prop) {O : Ontology}
       exact ⟨u, w, hdp_of_ix _ _ hu, hdp_of_ix _ _ hw, hl _ (List.mem_singleton_self _)⟩
     · cases hf
   -- the object part
-  have hentry_nobj : ∀ (e : DExpr) (F W : Fin Tobj.conceptCount) (u : Fin (dprops O).length)
-      (jj : Fin (table O).length), ∀ cl ∈ entryClauses (m := Tobj.roleCount) e F W u jj,
-      ContextCalculus.SRIQD.toObj cl = none := by
-    intro e F W u jj cl hcl
-    unfold entryClauses at hcl
-    split at hcl <;> simp only [List.mem_cons, List.not_mem_nil, or_false] at hcl <;>
-      rcases hcl with rfl | rfl <;> rfl
-  have hobjPart : ContextCalculus.SRIQD.objPart (Tobj.ontology.map ContextCalculus.SRIQD.Clause.obj
-      ++ dc ++ sc) = Tobj.ontology := by
-    have h1 : dc.filterMap ContextCalculus.SRIQD.toObj = [] := List.filterMap_eq_nil_iff.2
-      fun cl hcl => by
-        obtain ⟨e, -, F, W, u, jj, -, -, -, -, hcl'⟩ := hdc_mem cl hcl
-        exact hentry_nobj e F W u jj cl hcl'
-    have h2 : sc.filterMap ContextCalculus.SRIQD.toObj = [] := List.filterMap_eq_nil_iff.2
-      fun cl hcl => by
-        obtain ⟨-, -, u, w, -, -, rfl⟩ := hsc_mem cl hcl
-        rfl
-    unfold ContextCalculus.SRIQD.objPart
-    rw [List.filterMap_append, List.filterMap_append, List.filterMap_map, h1, h2]
-    simp [ContextCalculus.SRIQD.toObj]
+  have hobj_sub : ∀ c ∈ Tobj.ontology, c ∈ ContextCalculus.SRIQD.objPart
+      (Tobj.ontology.map ContextCalculus.SRIQD.Clause.obj ++ dc ++ sc) := fun c hc =>
+    ContextCalculus.SRIQD.mem_objPart.2
+      (List.mem_append_left _ (List.mem_append_left _ (List.mem_map_of_mem hc)))
+  have hobj_dc : ∀ c, ContextCalculus.SRIQD.Clause.obj c ∈ dc → c ∈ ContextCalculus.SRIQD.objPart
+      (Tobj.ontology.map ContextCalculus.SRIQD.Clause.obj ++ dc ++ sc) := fun c hc =>
+    ContextCalculus.SRIQD.mem_objPart.2 (List.mem_append_left _ (List.mem_append_right _ hc))
+  have hobj_char : ∀ c ∈ ContextCalculus.SRIQD.objPart
+      (Tobj.ontology.map ContextCalculus.SRIQD.Clause.obj ++ dc ++ sc),
+      c ∈ Tobj.ontology ∨ ∃ e ∈ table O, ∃ F W : Fin Tobj.conceptCount,
+        nameIx Tobj (fName (SRIQKB.defBase O requested) (table O) e) = some F ∧
+        nameIx Tobj (wName (SRIQKB.defBase O requested) (table O) e) = some W ∧ c = .gci [] [F, W] := by
+    intro c hc
+    rcases List.mem_append.1 (ContextCalculus.SRIQD.mem_objPart.1 hc) with h | h
+    · rcases List.mem_append.1 h with h | h
+      · obtain ⟨c', hc', he⟩ := List.mem_map.1 h
+        cases he
+        exact Or.inl hc'
+      · obtain ⟨e, he, F, W, u, jj, -, hF, hW, -, hcl⟩ := hdc_mem _ h
+        right
+        refine ⟨e, he, F, W, hF, hW, ?_⟩
+        unfold entryClauses at hcl
+        rcases List.mem_cons.1 hcl with he' | hcl
+        · cases he'; rfl
+        · split at hcl <;> simp only [List.mem_cons, List.not_mem_nil, or_false] at hcl <;>
+            rcases hcl with he' | he' <;> cases he'
+    · obtain ⟨-, -, u, w, -, -, he⟩ := hsc_mem _ h
+      cases he
   have hobjSHIQ : (objOnt O (SRIQKB.defBase O requested)).isSHIQ = true :=
     translateSRIQ_isSHIQ hTobj
   have hO' : ∀ ax ∈ O.axioms, ax.isSHIQD = true := by
@@ -243,12 +251,7 @@ theorem translateSRIQD_correct (pat : String → String → Prop) {O : Ontology}
   have hmem_rw : ∀ ax0 ∈ O.axioms, ∀ ax ∈ rwAxiom ax0,
       absAx (fName (SRIQKB.defBase O requested) (table O)) ax ∈
         (objOnt O (SRIQKB.defBase O requested)).axioms := fun ax0 h0 ax hax =>
-    List.mem_append_left _ (List.mem_map_of_mem (List.mem_flatMap.2 ⟨ax0, h0, hax⟩))
-  have hmem_or : ∀ e ∈ table O, Axiom.subClassOf .thing
-      (.or [.cls (fName (SRIQKB.defBase O requested) (table O) e),
-        .cls (wName (SRIQKB.defBase O requested) (table O) e)]) ∈
-        (objOnt O (SRIQKB.defBase O requested)).axioms := fun e he =>
-    List.mem_append_right _ (List.mem_map_of_mem he)
+    List.mem_map_of_mem (List.mem_flatMap.2 ⟨ax0, h0, hax⟩)
   have hdex_tab : ∀ ax0 ∈ O.axioms, ∀ ax ∈ rwAxiom ax0, ∀ e ∈ axDexprs ax, e ∈ table O :=
     fun ax0 h0 ax hax e he => mem_table.2 ⟨ax, List.mem_flatMap.2 ⟨ax0, h0, hax⟩, he⟩
   have hfresh_ax : ∀ ax ∈ O.axioms, ∀ a ∈ ax.classNames, ∀ n,
@@ -269,8 +272,8 @@ theorem translateSRIQD_correct (pat : String → String → Prop) {O : Ontology}
   · intro hE Dom V _ atom hΘ K hK x hx
     obtain ⟨eqv, dtype, hatom⟩ := hΘ
     have hKm := ContextCalculus.SRIQD.models_iff.1 hK
-    rw [hobjPart] at hKm
-    obtain ⟨R, hR, hRc⟩ := (translateSRIQ_models hTobj).1 Dom K.toInterp hKm.1
+    obtain ⟨R, hR, hRc⟩ := (translateSRIQ_models hTobj).1 Dom K.toInterp
+      (fun c hc => hKm.1 c (hobj_sub c hc))
     let I : Interp (owl2MapP pat) Dom :=
       { cls := R.cls, role := R.role, ind := R.ind,
         dprop := fun p y w => ∃ u : Fin (dprops O).length, (dprops O)[u] = p ∧ K.d u y (eqv.symm w),
@@ -314,13 +317,15 @@ theorem translateSRIQD_correct (pat : String → String → Prop) {O : Ontology}
         rw [← hWn]; exact hIc W hWl y
       have hor : I.cls (fName (SRIQKB.defBase O requested) (table O) e) y ∨
           I.cls (wName (SRIQKB.defBase O requested) (table O) e) y := by
-        have := hIobj _ (hmem_or e he) y (by rw [Interp.ext]; trivial)
-        rw [Interp.ext] at this
-        obtain ⟨c, hc, hcy⟩ := this
-        simp only [List.mem_cons, List.not_mem_nil, or_false] at hc
-        rcases hc with rfl | rfl
-        · left; rw [Interp.ext] at hcy; exact hcy
-        · right; rw [Interp.ext] at hcy; exact hcy
+        have hg0 := hKm.1 (.gci [] [F, W])
+          (hobj_dc _ (hcl _ (by unfold entryClauses; exact List.mem_cons_self)))
+        simp only [SRIQ.satClause, List.not_mem_nil, false_implies, implies_true,
+          forall_const] at hg0
+        obtain ⟨b, hb, hby⟩ := hg0 y
+        simp only [List.mem_cons, List.not_mem_nil, or_false] at hb
+        rcases hb with rfl | rfl
+        · exact Or.inl (hFc.2 hby)
+        · exact Or.inr (hWc.2 hby)
       constructor
       · intro h; exact hpos.1 (hloc.1 (hFc.1 h))
       · intro h
@@ -384,20 +389,12 @@ theorem translateSRIQD_correct (pat : String → String → Prop) {O : Ontology}
         (fun a ha => (hI'old a (hfresh_ax ax hax a ha)).symm) _ _).1 (hI ax hax)
     have hI'obj : OWL.Model (objOnt O (SRIQKB.defBase O requested)) I' := by
       intro ax hax
-      rcases List.mem_append.1 hax with h1 | h1
-      · obtain ⟨ax', hax', rfl⟩ := List.mem_map.1 h1
-        obtain ⟨ax0, h0, hax'0⟩ := List.mem_flatMap.1 hax'
-        have hrw := rw_isSHIQD (hO' ax0 h0) hax'0
-        refine (sat_absAx hrw.1 (fun e he y => ?_) _).2 ?_
-        · rw [hI'F e (hdex_tab ax0 h0 ax' hax'0 e he) y, hI'ext]
-        · exact (hNsw I' hrw.1 _ _).1 (((sat_rwAxiom I' (hO' ax0 h0) _).1 (hI'O ax0 h0)).1 ax' hax'0)
-      · obtain ⟨e, he, rfl⟩ := List.mem_map.1 h1
-        intro y _
-        rw [Interp.ext]
-        by_cases hy : I.ext e.toCE y
-        · exact ⟨_, List.mem_cons_self, by rw [Interp.ext]; exact (hI'F e he y).2 hy⟩
-        · exact ⟨_, List.mem_cons_of_mem _ List.mem_cons_self, by
-            rw [Interp.ext]; exact (hI'W e he y).2 hy⟩
+      obtain ⟨ax', hax', rfl⟩ := List.mem_map.1 hax
+      obtain ⟨ax0, h0, hax'0⟩ := List.mem_flatMap.1 hax'
+      have hrw := rw_isSHIQD (hO' ax0 h0) hax'0
+      refine (sat_absAx hrw.1 (fun e he y => ?_) _).2 ?_
+      · rw [hI'F e (hdex_tab ax0 h0 ax' hax'0 e he) y, hI'ext]
+      · exact (hNsw I' hrw.1 _ _).1 (((sat_rwAxiom I' (hO' ax0 h0) _).1 (hI'O ax0 h0)).1 ax' hax'0)
     obtain ⟨J, hJ, hJc⟩ := (translateSRIQ_models hTobj).2 _ Dom I' hI'obj
     let K : ContextCalculus.SRIQD.DInterp Dom Val (Fin Tobj.conceptCount) (Fin Tobj.roleCount)
         (Fin (dprops O).length) :=
@@ -409,7 +406,17 @@ theorem translateSRIQD_correct (pat : String → String → Prop) {O : Ontology}
         K.c F y ↔ I'.cls Tobj.named[F.val] y := fun F hF y => hJc F.val hF y
     have hK : ContextCalculus.SRIQD.models atom K
         (Tobj.ontology.map ContextCalculus.SRIQD.Clause.obj ++ dc ++ sc) := by
-      refine ContextCalculus.SRIQD.models_iff.2 ⟨by rw [hobjPart]; exact hJ, fun cl hcl y => ?_⟩
+      refine ContextCalculus.SRIQD.models_iff.2 ⟨fun c hc => ?_, fun cl hcl y => ?_⟩
+      · rcases hobj_char c hc with h | ⟨e, he, F, W, hF, hW, rfl⟩
+        · exact hJ c h
+        · intro y _
+          obtain ⟨hFl, hFn⟩ := hnamed_of_ix _ F hF
+          obtain ⟨hWl, hWn⟩ := hnamed_of_ix _ W hW
+          by_cases hy : I.ext e.toCE y
+          · refine ⟨F, List.mem_cons_self, (hKc F hFl y).2 ?_⟩
+            rw [hFn]; exact (hI'F e he y).2 hy
+          · refine ⟨W, List.mem_cons_of_mem _ List.mem_cons_self, (hKc W hWl y).2 ?_⟩
+            rw [hWn]; exact (hI'W e he y).2 hy
       rcases List.mem_append.1 hcl with hcl | hcl
       · rcases List.mem_append.1 hcl with hcl | hcl
         · obtain ⟨c, -, rfl⟩ := List.mem_map.1 hcl
