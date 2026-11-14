@@ -44,7 +44,8 @@ open Std
 abbrev Ty := Array Nat
 
 def sortDedup (a : Array Nat) : Ty :=
-  let s := a.qsort (· < ·)
+  -- merge sort: `Array.qsort` is slow on the nearly sorted arrays met here
+  let s := a.toList.mergeSort (fun x y => decide (x ≤ y))
   s.foldl (fun acc x => if acc.size > 0 && acc.back! == x then acc else acc.push x) #[]
 
 partial def memAux (t : Ty) (x lo hi : Nat) : Bool :=
@@ -228,7 +229,10 @@ head). Every closed superset `T` of `seed` contains some branch. -/
 partial def branches (O : Onto) (seed : Ty) (closedPart : Option Ty := none) : Array Ty := Id.run do
   let rec go (cur : HashSet Nat) (acc : Array Nat) (queue : List Nat) (out : Array Ty) : Array Ty :=
     match queue with
-    | [] => out.push (sortDedup acc)
+    | [] =>
+      -- `acc` is the sorted seed followed by the added names: sort only these
+      out.push (if acc.size == seed.size then seed
+        else union seed (sortDedup (acc.extract seed.size acc.size)))
     | i :: rest =>
       let (b, h) := O.gcis[i]!
       if b.all (cur.contains ·) then
