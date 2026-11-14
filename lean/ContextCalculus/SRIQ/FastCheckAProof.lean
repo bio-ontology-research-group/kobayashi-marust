@@ -898,4 +898,9 @@ end Main
 
 end ContextCalculus.SRIQ.Fast
 
+#print axioms ContextCalculus.SRIQ.Fast.wfB_sound
+#print axioms ContextCalculus.SRIQ.Fast.brCovA_sound
+#print axioms ContextCalculus.SRIQ.Fast.backOKA_sound
+#print axioms ContextCalculus.SRIQ.Fast.r5A_sound
+#print axioms ContextCalculus.SRIQ.Fast.witOKA_sound
 #print axioms ContextCalculus.SRIQ.Fast.closedFastB_sound

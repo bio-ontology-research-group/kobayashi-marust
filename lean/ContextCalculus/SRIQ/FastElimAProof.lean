@@ -842,6 +842,11 @@ end Route
 
 end ContextCalculus.SRIQ.Fast
 
+#print axioms ContextCalculus.SRIQ.Fast.dfsG_sound
+#print axioms ContextCalculus.SRIQ.Fast.dfsG_complete
+#print axioms ContextCalculus.SRIQ.Fast.suppF_iff
+#print axioms ContextCalculus.SRIQ.Fast.elimW_spec
 #print axioms ContextCalculus.SRIQ.Fast.aliveFast_iff
+#print axioms ContextCalculus.SRIQ.Fast.fastRowsA_eq
 #print axioms ContextCalculus.SRIQ.Fast.fastClassifyA_spec
 #print axioms ContextCalculus.SRIQ.Fast.fastClassifyA_get

@@ -180,3 +180,5 @@ def fastClassifyA (O : Ontology (Fin n) (Fin m)) (req : List (Fin n)) (C : CandA
   if closedFastB ix (mkIxF O ix) C req then some (fastRowsA ix C req) else none
 
 end ContextCalculus.SRIQ.Fast
+
+#print axioms ContextCalculus.SRIQ.Fast.trues_set_lt

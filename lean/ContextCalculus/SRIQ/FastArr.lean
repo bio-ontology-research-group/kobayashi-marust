@@ -558,3 +558,10 @@ theorem relHitA_iff {O : Ontology (Fin n) (Fin m)} {L : Array Nat} (hL : SortedA
     exact ⟨rc S, (mem_buildIdx a.isLt).2 ⟨(rc S, a), hx, rfl⟩, hS⟩
 
 end ContextCalculus.SRIQ.Fast
+
+#print axioms ContextCalculus.SRIQ.Fast.bsA_iff
+#print axioms ContextCalculus.SRIQ.Fast.absTy_inj
+#print axioms ContextCalculus.SRIQ.Fast.sort_absTy
+#print axioms ContextCalculus.SRIQ.Fast.nd_view
+#print axioms ContextCalculus.SRIQ.Fast.absLab_upSA
+#print axioms ContextCalculus.SRIQ.Fast.relHitA_iff
