@@ -142,7 +142,12 @@ final class Plan {
         info(META, "getReasonerName", "", r -> r.getReasonerName());
         info(META, "getReasonerVersion", "", r -> r.getReasonerVersion().toString());
         add(META, "getBufferingMode", "", r -> r.getBufferingMode().toString());
-        add(META, "getTimeOut", "", r -> r.getTimeOut());
+        // getTimeOut returns the timeout of the configuration the reasoner was created with. HermiT gets its
+        // own Configuration here (to set ignoreUnsupportedDatatypes), which reports -1, while KM gets a
+        // SimpleConfiguration (Long.MAX_VALUE); both mean "no limit". The two answers are not comparable, so
+        // the call is informational. PluginBehaviourTest and ConventionsTest check that KM, like HermiT,
+        // returns the configured value.
+        info(META, "getTimeOut", "", r -> r.getTimeOut());
         add(META, "getFreshEntityPolicy", "", r -> r.getFreshEntityPolicy().toString());
         add(META, "getIndividualNodeSetPolicy", "", r -> r.getIndividualNodeSetPolicy().toString());
         add(META, "getRootOntology", "", r -> String.valueOf(r.getRootOntology().getOntologyID()));

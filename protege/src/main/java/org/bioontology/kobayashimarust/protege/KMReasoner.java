@@ -25,8 +25,17 @@ import java.util.*;
  * answers the object property queries (hierarchy, equivalents, inverses,
  * domains, ranges) from {@code km classify --properties}, likewise run once
  * per revision, only when a property query or a precompute of
- * {@code OBJECT_PROPERTY_HIERARCHY} needs it. Data property inferences are
- * not provided (empty results).
+ * {@code OBJECT_PROPERTY_HIERARCHY} needs it.
+ *
+ * <p>A query the plugin cannot answer soundly and completely throws
+ * {@link UnsupportedOperationException} (or {@link UnsupportedEntailmentTypeException}
+ * for {@code isEntailed}); it never returns an empty or guessed answer. The
+ * class hierarchy follows HermiT's conventions: owl:Nothing is a strict
+ * subclass of every satisfiable class, the bottom node holds owl:Nothing and
+ * the unsatisfiable classes, and a leaf class has the bottom node as its
+ * direct subclass. The data property hierarchy and the data property domains
+ * come from {@link DataPropertyModel} for the ontologies inside its fragment
+ * and throw outside it.
  */
 public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasonerBase {
 
@@ -71,6 +80,18 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private volatile Realized realized;
     /** Object property hierarchy of the committed revision; null until first needed. */
     private volatile ObjectPropertyModel propertyModel;
+    /** Data property hierarchy of the committed revision; null until first needed. */
+    private volatile DataPropertyModel dataModel;
+    /**
+     * The failure of the last native run of each kind on the current ontology
+     * version. A later call rethrows it without a new run, until the ontology
+     * changes or flush() runs (or, for realization, properties and the data
+     * model, the next classification commits).
+     */
+    private volatile RuntimeException classificationFailure;
+    private volatile RuntimeException realizeFailure;
+    private volatile RuntimeException propertiesFailure;
+    private volatile RuntimeException dataFailure;
     /** The one-shot native process of a running realization or property run. */
     private volatile Process realizeProcess;
     /** True while a monitored task runs; interrupt() acts only then. */
@@ -195,7 +216,29 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private synchronized void ensureClassified() {
         if (classified) return;
         if (!getPendingChanges().isEmpty()) flush();
-        runTask(ReasonerProgressMonitor.CLASSIFYING, this::classify);
+        if (classificationFailure != null) throw classificationFailure;
+        try {
+            runTask(ReasonerProgressMonitor.CLASSIFYING, this::classify);
+        } catch (RuntimeException failure) {
+            if (cacheable(failure)) classificationFailure = failure;
+            throw failure;
+        }
+    }
+
+    /**
+     * Whether a failed run is remembered for the current ontology version. An
+     * interrupt or a time out comes from the caller, not from the ontology, so
+     * the next call starts a new run.
+     */
+    private static boolean cacheable(RuntimeException failure) {
+        return !(failure instanceof ReasonerInterruptedException || failure instanceof TimeOutException);
+    }
+
+    private void forgetFailures() {
+        classificationFailure = null;
+        realizeFailure = null;
+        propertiesFailure = null;
+        dataFailure = null;
     }
 
     private void classify(Set<OWLAxiom> added, Set<OWLAxiom> removed) {
@@ -255,6 +298,10 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         // realization of the previous revision no longer applies.
         realized = null;
         propertyModel = null;
+        dataModel = null;
+        realizeFailure = null;
+        propertiesFailure = null;
+        dataFailure = null;
         // Commit the Java-side hierarchy only after the native transaction has
         // succeeded. A declined update therefore leaves the preceding answers
         // intact, matching the native session's atomic revision contract.
@@ -395,7 +442,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
             int count = 0;
             for (int d : s) {
                 int rd = repId[d];
-                if (rc != rd) buf[count++] = rd;
+                if (rc != rd && rd != repId[nothingId]) buf[count++] = rd;
             }
             Arrays.sort(buf, 0, count);
             int u = 0;
@@ -404,6 +451,9 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
             }
             supersByRep[rc] = u == 0 ? EMPTY_INTS : (u == buf.length ? buf : Arrays.copyOf(buf, u));
         }
+        // The bottom node sits below every other node. The queries add that edge
+        // themselves (bottomSupers, bottom as a sub class), so no array holds it.
+        supersByRep[repId[nothingId]] = EMPTY_INTS;
     }
 
     private int findId(int c) {
@@ -435,8 +485,9 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
      * HermiT's checkPreConditions: queries on an inconsistent ontology throw
      * {@link InconsistentOntologyException} (Reasoner.throwInconsistentOntologyExceptionIfNecessary).
      * Protege catches it around the classification run and opens its
-     * inconsistency explanation. isConsistent, getTopClassNode,
-     * getBottomClassNode and getUnsatisfiableClasses do not throw here.
+     * inconsistency explanation. isConsistent does not throw here;
+     * getTopClassNode, getBottomClassNode and getUnsatisfiableClasses do, as
+     * in HermiT 1.4.3 (parity run of 2026-11-14, ore_ont_5014).
      */
     private void checkPreConditions() {
         ensureClassified();
@@ -489,11 +540,11 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     // ---- class hierarchy queries ---------------------------------------
 
     @Override public synchronized Node<OWLClass> getTopClassNode() {
-        ensureClassified();
+        checkPreConditions();
         return nodeOfId(repId[thingId]);
     }
     @Override public synchronized Node<OWLClass> getBottomClassNode() {
-        ensureClassified();
+        checkPreConditions();
         return nodeOfId(repId[nothingId]);
     }
 
@@ -507,22 +558,58 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                 && !idByClass.containsKey((OWLClass) ce);
     }
 
+    private static UnsupportedOperationException unsupported(String query, String argument) {
+        return new UnsupportedOperationException("Kobayashi-MaRust does not answer " + query
+                + " for " + argument + " yet: the answer needs reasoning the plugin does not run");
+    }
+
+    /**
+     * The taxonomy holds named classes only. A class expression argument needs
+     * the engine (a fresh class defined as the expression, then a new
+     * classification), so it throws instead of returning an empty or partial
+     * answer.
+     */
+    private static void requireNamed(OWLClassExpression ce, String query) {
+        if (ce.isAnonymous()) throw unsupported(query, "the class expression " + ce);
+    }
+
     @Override public synchronized Node<OWLClass> getEquivalentClasses(OWLClassExpression ce) {
         checkPreConditions();
+        requireNamed(ce, "getEquivalentClasses");
         if (isFresh(ce)) return new OWLClassNode(Collections.singleton(ce.asOWLClass()));
         int r = repIdOf(ce);
-        return r >= 0 ? nodeOfId(r) : new OWLClassNode();
+        if (r < 0) throw new IllegalStateException("a class of the signature has no node: " + ce);
+        return nodeOfId(r);
+    }
+
+    /** The representatives of every node (one per equivalence class), the bottom node excluded. */
+    private int[] nonBottomReps() {
+        int bottom = repId[nothingId];
+        int[] buf = new int[repId.length];
+        int count = 0;
+        for (int c = 0; c < repId.length; c++) {
+            if (repId[c] == c && c != bottom) buf[count++] = c;
+        }
+        return Arrays.copyOf(buf, count);
     }
 
     @Override public synchronized NodeSet<OWLClass> getSuperClasses(OWLClassExpression ce, boolean direct) {
         checkPreConditions();
-        int r = repIdOf(ce);
+        requireNamed(ce, "getSuperClasses");
         OWLClassNodeSet ns = new OWLClassNodeSet();
         if (isFresh(ce)) {
             ns.addNode(nodeOfId(repId[thingId]));
             return ns;
         }
-        if (r < 0) return ns;
+        int r = repIdOf(ce);
+        if (r == repId[nothingId]) {
+            // Every other node is above the bottom node; the direct ones are the leaves.
+            int[][] subs = ensureSubsByRep();
+            for (int s : nonBottomReps()) {
+                if (!direct || subs[s].length == 0) ns.addNode(nodeOfId(s));
+            }
+            return ns;
+        }
         int[] all = supersByRep[r];
         if (all == null || all.length == 0) return ns;
         if (!direct) {
@@ -535,18 +622,25 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
     @Override public synchronized NodeSet<OWLClass> getSubClasses(OWLClassExpression ce, boolean direct) {
         checkPreConditions();
-        int r = repIdOf(ce);
+        requireNamed(ce, "getSubClasses");
         OWLClassNodeSet ns = new OWLClassNodeSet();
+        Node<OWLClass> bottom = nodeOfId(repId[nothingId]);
         if (isFresh(ce)) {
-            ns.addNode(nodeOfId(repId[nothingId]));
+            ns.addNode(bottom);
             return ns;
         }
-        if (r < 0) return ns;
+        int r = repIdOf(ce);
+        if (r == repId[nothingId]) return ns;
         int[][] subs = ensureSubsByRep();
         int[] all = subs[r];
-        if (all == null || all.length == 0) return ns;
+        if (all == null || all.length == 0) {
+            // A leaf: the bottom node is its only sub node.
+            ns.addNode(bottom);
+            return ns;
+        }
         if (!direct) {
             for (int s : all) ns.addNode(nodeOfId(s));
+            ns.addNode(bottom);
         } else {
             for (int s : maximalIds(all, subs)) ns.addNode(nodeOfId(s));
         }
@@ -594,7 +688,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     @Override public synchronized Node<OWLClass> getUnsatisfiableClasses() {
-        ensureClassified();
+        checkPreConditions();
         return nodeOfId(repId[nothingId]);
     }
 
@@ -681,7 +775,18 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                 ensureRealized();
             } else if (type == InferenceType.OBJECT_PROPERTY_HIERARCHY) {
                 ensureProperties();
+            } else if (type == InferenceType.DATA_PROPERTY_HIERARCHY && dataHierarchyInFragment()) {
+                try {
+                    ensureDataProperties();
+                } catch (UnsupportedOperationException outsideFragment) {
+                    // The taxonomy does not decide this ontology's data property
+                    // hierarchy; the query throws the same exception. A request
+                    // to precompute a type the reasoner cannot compute is ignored.
+                }
             }
+            // The remaining types (object property assertions, data property
+            // assertions, different individuals, disjoint classes, ...) are
+            // not computed; their queries throw.
         }
     }
     /**
@@ -700,15 +805,36 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         if (inferenceType == InferenceType.OBJECT_PROPERTY_HIERARCHY) {
             return propertyModel != null;
         }
+        if (inferenceType == InferenceType.DATA_PROPERTY_HIERARCHY) {
+            return dataModel != null;
+        }
         return false;
     }
+    /**
+     * The types this reasoner computes. HermiT lists six; KM lists the class
+     * hierarchy, the object property hierarchy, the individual types and
+     * equalities, and the data property hierarchy for an ontology inside the
+     * fragment of {@link DataPropertyModel}. Object and data property
+     * assertions are not computed, so they are not listed (Protege
+     * precomputes only the types a reasoner lists).
+     */
     @Override public Set<InferenceType> getPrecomputableInferenceTypes() {
-        return new HashSet<>(Arrays.asList(InferenceType.CLASS_HIERARCHY,
+        Set<InferenceType> types = new HashSet<>(Arrays.asList(InferenceType.CLASS_HIERARCHY,
                 InferenceType.OBJECT_PROPERTY_HIERARCHY,
                 InferenceType.CLASS_ASSERTIONS, InferenceType.SAME_INDIVIDUAL));
+        if (dataHierarchyInFragment()) types.add(InferenceType.DATA_PROPERTY_HIERARCHY);
+        return types;
+    }
+
+    /** Syntactic test on the ontology as the reasoner will read it (pending edits included). */
+    private boolean dataHierarchyInFragment() {
+        return DataPropertyModel.outsideFragment(getRootOntology()) == null;
     }
 
     @Override public synchronized void flush() {
+        // A flush is the caller's request to look at the ontology again, so a
+        // remembered failure no longer applies.
+        forgetFailures();
         if (!classified) {
             // Nothing is committed yet, so there is nothing to update: drop the
             // pending list (handleChanges ignores it) and let the first
@@ -787,6 +913,9 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
     @Override public synchronized boolean isEntailed(OWLAxiom axiom) {
         checkPreConditions();
+        // Declarations and annotation axioms have no model-theoretic content, so
+        // every ontology entails them (HermiT answers true for them too).
+        if (!axiom.isLogicalAxiom()) return true;
         if (axiom instanceof OWLClassAssertionAxiom) return isEntailedClassAssertion((OWLClassAssertionAxiom) axiom);
         if (axiom instanceof OWLSameIndividualAxiom) return isEntailedSameIndividual((OWLSameIndividualAxiom) axiom);
         if (axiom instanceof OWLSubObjectPropertyOfAxiom
@@ -835,6 +964,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     @Override public boolean isEntailmentCheckingSupported(AxiomType<?> axiomType) {
+        if (!axiomType.isLogical()) return true;
         return AxiomType.SUBCLASS_OF.equals(axiomType)
                 || AxiomType.CLASS_ASSERTION.equals(axiomType)
                 || AxiomType.SAME_INDIVIDUAL.equals(axiomType)
@@ -865,8 +995,14 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private Realized ensureRealized() {
         ensureClassified();
         if (realized != null) return realized;
+        if (realizeFailure != null) throw realizeFailure;
         Realized[] out = new Realized[1];
-        runTask(ReasonerProgressMonitor.REALIZING, () -> out[0] = realizeNow());
+        try {
+            runTask(ReasonerProgressMonitor.REALIZING, () -> out[0] = realizeNow());
+        } catch (RuntimeException failure) {
+            if (cacheable(failure)) realizeFailure = failure;
+            throw failure;
+        }
         return out[0];
     }
 
@@ -996,22 +1132,32 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
     @Override public synchronized NodeSet<OWLNamedIndividual> getInstances(OWLClassExpression ce, boolean direct) {
         OWLNamedIndividualNodeSet ns = new OWLNamedIndividualNodeSet();
+        ensureClassified();
         // HermiT checks the preconditions only when the ontology has individuals.
         if (!consistent && !getRootOntology().getIndividualsInSignature(Imports.INCLUDED).isEmpty()) {
             throw new InconsistentOntologyException();
         }
         if (ce.isAnonymous()) {
             // TODO W5: class expression queries (DL Query) via a fresh definition Q = CE.
-            return ns;
+            throw unsupported("getInstances", "the class expression " + ce);
         }
         Realized data = ensureRealized();
         if (!consistent) return ns;
         int r = repIdOf(ce);
         if (r < 0 || r == repId[nothingId]) return ns;
+        // The policy decides the nodes: BY_NAME gives one node per individual,
+        // BY_SAME_AS one node per group of individuals entailed to be the same.
+        boolean grouped = getIndividualNodeSetPolicy() == IndividualNodeSetPolicy.BY_SAME_AS;
         for (int c = 0; c < data.members.size(); c++) {
             for (int t : (direct ? data.directTypes : data.allTypes).get(c)) {
                 if (t == r) {
-                    ns.addNode(new OWLNamedIndividualNode(data.members.get(c)));
+                    if (grouped) {
+                        ns.addNode(new OWLNamedIndividualNode(data.members.get(c)));
+                    } else {
+                        for (OWLNamedIndividual member : data.members.get(c)) {
+                            ns.addNode(new OWLNamedIndividualNode(member));
+                        }
+                    }
                     break;
                 }
             }
@@ -1067,8 +1213,14 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         ensureClassified();
         ObjectPropertyModel model = propertyModel;
         if (model != null) return model;
+        if (propertiesFailure != null) throw propertiesFailure;
         ObjectPropertyModel[] out = new ObjectPropertyModel[1];
-        runTask(CLASSIFYING_OBJECT_PROPERTIES, () -> out[0] = propertiesNow());
+        try {
+            runTask(CLASSIFYING_OBJECT_PROPERTIES, () -> out[0] = propertiesNow());
+        } catch (RuntimeException failure) {
+            if (cacheable(failure)) propertiesFailure = failure;
+            throw failure;
+        }
         return out[0];
     }
 
@@ -1182,18 +1334,60 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         return classNodeSet(domainReps(model, code), direct, model.isEmpty(code));
     }
 
-    // ---- unsupported (no inference yet): empty / trivial results ---
-
-    private static final NodeSet<OWLClass> EMPTY_C = new OWLClassNodeSet();
-    private static final NodeSet<OWLNamedIndividual> EMPTY_I = new OWLNamedIndividualNodeSet();
+    // ---- queries the taxonomy and the property models cannot answer in general ---
+    //
+    // A query either follows from data the plugin holds (the class taxonomy, the
+    // object property hierarchy, the data property model, the realization) or
+    // it throws UnsupportedOperationException. The cases that do follow:
+    //  - a class that is disjoint with nothing but the unsatisfiable classes
+    //    (owl:Thing, a class outside the signature) or with everything (an
+    //    unsatisfiable class);
+    //  - the same for properties: the top and the universal properties, the fresh
+    //    ones and the empty ones.
+    // Disjointness of two satisfiable named entities depends on domains, ranges,
+    // disjointness axioms and the whole TBox, so it needs the engine.
 
     @Override public synchronized NodeSet<OWLClass> getDisjointClasses(OWLClassExpression ce) {
         checkPreConditions();
-        return EMPTY_C;
+        requireNamed(ce, "getDisjointClasses");
+        OWLClassNodeSet ns = new OWLClassNodeSet();
+        Node<OWLClass> bottom = nodeOfId(repId[nothingId]);
+        if (isFresh(ce) || (!ce.isOWLNothing() && repIdOf(ce) == repId[thingId])) {
+            // D is disjoint with a class that has no constraints only when D is empty.
+            ns.addNode(bottom);
+            return ns;
+        }
+        if (repIdOf(ce) == repId[nothingId]) {
+            // An empty class is disjoint with every class, itself included.
+            for (int s : nonBottomReps()) ns.addNode(nodeOfId(s));
+            ns.addNode(bottom);
+            return ns;
+        }
+        throw unsupported("getDisjointClasses", "the satisfiable class " + ce);
     }
+
     @Override public synchronized NodeSet<OWLClass> getDataPropertyDomains(OWLDataProperty pe, boolean direct) {
         checkPreConditions();
-        return EMPTY_C;
+        DataPropertyModel model = ensureDataProperties();
+        if (model.isEmpty(pe)) {
+            // No pair: every class is a domain, and the direct domain is the bottom node.
+            int[] all = new int[repId.length];
+            int count = 0;
+            for (int c = 0; c < repId.length; c++) if (repId[c] == c) all[count++] = c;
+            return classNodeSet(Arrays.copyOf(all, count), direct, true);
+        }
+        Set<Integer> reps = new TreeSet<>();
+        reps.add(repId[thingId]);
+        int lowest = model.domainRep(pe);
+        if (lowest >= 0) {
+            reps.add(lowest);
+            int[] sups = supersByRep[lowest];
+            if (sups != null) for (int sup : sups) reps.add(sup);
+        }
+        int[] out = new int[reps.size()];
+        int k = 0;
+        for (int r : reps) out[k++] = r;
+        return classNodeSet(out, direct, false);
     }
 
     @Override public synchronized Node<OWLObjectPropertyExpression> getTopObjectPropertyNode() {
@@ -1204,8 +1398,14 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         checkPreConditions();
         return ensureProperties().bottomNode();
     }
-    @Override public Node<OWLDataProperty> getTopDataPropertyNode() { return new OWLDataPropertyNode(df.getOWLTopDataProperty()); }
-    @Override public Node<OWLDataProperty> getBottomDataPropertyNode() { return new OWLDataPropertyNode(df.getOWLBottomDataProperty()); }
+    @Override public synchronized Node<OWLDataProperty> getTopDataPropertyNode() {
+        checkPreConditions();
+        return ensureDataProperties().topNode();
+    }
+    @Override public synchronized Node<OWLDataProperty> getBottomDataPropertyNode() {
+        checkPreConditions();
+        return ensureDataProperties().bottomNode();
+    }
 
     @Override public synchronized NodeSet<OWLObjectPropertyExpression> getSubObjectProperties(OWLObjectPropertyExpression pe, boolean direct) {
         checkPreConditions();
@@ -1221,7 +1421,15 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
     @Override public synchronized NodeSet<OWLObjectPropertyExpression> getDisjointObjectProperties(OWLObjectPropertyExpression pe) {
         checkPreConditions();
-        return new OWLObjectPropertyNodeSet();
+        ObjectPropertyModel model = ensureProperties();
+        int code = model.code(pe);
+        if (model.isEmpty(code)) return model.allNodes();
+        if (code == ObjectPropertyModel.FRESH || model.isUniversal(code)) {
+            OWLObjectPropertyNodeSet ns = new OWLObjectPropertyNodeSet();
+            ns.addNode(model.bottomNode());
+            return ns;
+        }
+        throw unsupported("getDisjointObjectProperties", "the satisfiable object property " + pe);
     }
     /** HermiT answers {@code getEquivalentObjectProperties(pe^-)} (Reasoner.getInverseObjectProperties). */
     @Override public synchronized Node<OWLObjectPropertyExpression> getInverseObjectProperties(OWLObjectPropertyExpression pe) {
@@ -1286,32 +1494,64 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
     @Override public synchronized NodeSet<OWLNamedIndividual> getObjectPropertyValues(OWLNamedIndividual ind, OWLObjectPropertyExpression pe) {
         checkPreConditions();
-        return EMPTY_I;
+        throw unsupported("getObjectPropertyValues", "the individual " + ind + " and the property " + pe);
     }
 
     @Override public synchronized NodeSet<OWLDataProperty> getSubDataProperties(OWLDataProperty pe, boolean direct) {
         checkPreConditions();
-        return new OWLDataPropertyNodeSet();
+        return ensureDataProperties().subs(pe, direct);
     }
     @Override public synchronized NodeSet<OWLDataProperty> getSuperDataProperties(OWLDataProperty pe, boolean direct) {
         checkPreConditions();
-        return new OWLDataPropertyNodeSet();
+        return ensureDataProperties().supers(pe, direct);
     }
     @Override public synchronized Node<OWLDataProperty> getEquivalentDataProperties(OWLDataProperty pe) {
         checkPreConditions();
-        return new OWLDataPropertyNode(pe);
+        return ensureDataProperties().equivalents(pe);
     }
     @Override public synchronized NodeSet<OWLDataProperty> getDisjointDataProperties(OWLDataPropertyExpression pe) {
         checkPreConditions();
-        return new OWLDataPropertyNodeSet();
+        DataPropertyModel model = ensureDataProperties();
+        OWLDataProperty named = pe.asOWLDataProperty();
+        if (model.isEmpty(named)) return model.allNodes();
+        if (model.isFresh(named) || model.isUniversal(named)) return model.bottomOnly();
+        throw unsupported("getDisjointDataProperties", "the satisfiable data property " + pe);
     }
     @Override public synchronized Set<OWLLiteral> getDataPropertyValues(OWLNamedIndividual ind, OWLDataProperty pe) {
         checkPreConditions();
-        return Collections.emptySet();
+        throw unsupported("getDataPropertyValues", "the individual " + ind + " and the property " + pe);
     }
 
     @Override public synchronized NodeSet<OWLNamedIndividual> getDifferentIndividuals(OWLNamedIndividual ind) {
         checkPreConditions();
-        return EMPTY_I;
+        throw unsupported("getDifferentIndividuals", "the individual " + ind);
+    }
+
+    // ---- data properties (from the stated axioms and the taxonomy) -----------
+
+    private final DataPropertyModel.Taxonomy taxonomy = new DataPropertyModel.Taxonomy() {
+        @Override public int rep(OWLClass c) { return repIdOf(c); }
+        @Override public boolean isUnsatisfiable(int rep) { return rep == repId[nothingId]; }
+        @Override public boolean below(int sub, int sup) {
+            if (sub == sup) return true;
+            int[] sups = supersByRep[sub];
+            return sups != null && Arrays.binarySearch(sups, sup) >= 0;
+        }
+    };
+
+    /** The data property model of the committed revision, or UnsupportedOperationException outside its fragment. */
+    private DataPropertyModel ensureDataProperties() {
+        ensureClassified();
+        DataPropertyModel model = dataModel;
+        if (model != null) return model;
+        if (dataFailure != null) throw dataFailure;
+        try {
+            model = DataPropertyModel.build(df, getCommittedOntologySnapshot(), taxonomy);
+        } catch (RuntimeException failure) {
+            if (cacheable(failure)) dataFailure = failure;
+            throw failure;
+        }
+        dataModel = model;
+        return model;
     }
 }

@@ -117,6 +117,11 @@ public class PluginBehaviourTest {
         OWLDataProperty data = df.getOWLDataProperty(IRI.create(NS + "age"));
         Map<String, Query> q = new LinkedHashMap<>();
         q.put("isSatisfiable", r -> r.isSatisfiable(dog));
+        q.put("getTopClassNode", r -> r.getTopClassNode());
+        q.put("getBottomClassNode", r -> r.getBottomClassNode());
+        q.put("getUnsatisfiableClasses", r -> r.getUnsatisfiableClasses());
+        q.put("getTopDataPropertyNode", r -> r.getTopDataPropertyNode());
+        q.put("getBottomDataPropertyNode", r -> r.getBottomDataPropertyNode());
         q.put("getEquivalentClasses", r -> r.getEquivalentClasses(dog));
         q.put("getSuperClasses", r -> r.getSuperClasses(dog, false));
         q.put("getSubClasses", r -> r.getSubClasses(dog, true));
@@ -152,6 +157,9 @@ public class PluginBehaviourTest {
             return false;
         } catch (InconsistentOntologyException e) {
             return true;
+        } catch (UnsupportedOperationException e) {
+            // Not an inconsistency: the query is one the plugin does not answer.
+            return false;
         }
     }
 
@@ -179,13 +187,21 @@ public class PluginBehaviourTest {
     }
 
     @Test
-    public void consistencyAndTheUnsatisfiableNodeDoNotThrowOnAnInconsistentOntology() throws Exception {
+    public void onlyConsistencyAndTheSnapshotAnswerOnAnInconsistentOntology() throws Exception {
         OWLOntology o = IndividualsTest.parse(INCONSISTENT);
+        OWLReasoner hermit = new org.semanticweb.HermiT.ReasonerFactory().createReasoner(o);
+        open.add(hermit);
         KMReasoner km = km(o);
         assertFalse(km.isConsistent());
-        assertNotNull(km.getUnsatisfiableClasses());
-        assertNotNull(km.getTopClassNode());
-        assertNotNull(km.getBottomClassNode());
+        // HermiT 1.4.3 throws InconsistentOntologyException from the top and bottom
+        // class nodes and from getUnsatisfiableClasses (parity baseline, ore_ont_5014).
+        for (Query query : Arrays.<Query>asList(r -> r.getTopClassNode(), r -> r.getBottomClassNode(),
+                r -> r.getUnsatisfiableClasses(), r -> r.getTopDataPropertyNode(),
+                r -> r.getBottomDataPropertyNode(), r -> r.getTopObjectPropertyNode(),
+                r -> r.getBottomObjectPropertyNode())) {
+            assertTrue(throwsInconsistent(query, hermit));
+            assertTrue(throwsInconsistent(query, km));
+        }
         // The explanation code reads the committed snapshot, not the reasoner's answers.
         assertNotNull(km.getCommittedOntologySnapshot());
     }

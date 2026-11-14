@@ -50,7 +50,11 @@ by content (the flat entity set) and by structure (the grouping), and the verdic
 Per call: `agree`, `differ_content`, `differ_structure`, `km_unsupported` (KM threw, HermiT answered),
 `km_timeout` (KM timed out or was not reached), `hermit_error` (HermiT threw, KM answered),
 `both_error_same` (counts as agreement), `both_error_different`, `both_failed`, `hermit_timeout`
-(left out of the score). A cell is one method on one ontology. The parity score is the share of cells
+(left out of the score). `km_unsupported` also covers the three calls that report what KM can do: `isEntailmentCheckingSupported`
+or `isPrecomputed` false where HermiT says true, and a `getPrecomputableInferenceTypes` that is a strict
+subset of HermiT's. `getTimeOut` is informational (HermiT gets its own `Configuration` here and reports -1).
+`parity_reverdict.py <out dir>` applies these rules to result files written before a rule existed.
+A cell is one method on one ontology. The parity score is the share of cells
 where KM agrees on every call, or HermiT fails on the whole cell and KM answers. The report also gives
 a lenient score (grouping-only differences agree) and an adjusted score (also ignoring differences that
 consist only of `owl:Thing`, `owl:Nothing` or the top and bottom properties).
