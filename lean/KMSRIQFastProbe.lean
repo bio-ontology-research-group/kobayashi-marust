@@ -122,6 +122,19 @@ def checkProf {n m : Nat} (ix : Ix n m) (U : Cand n m) : IO Unit := do
   tm "r4" fun _ => decide (∀ i < N, BackOK ix U i)
   tm "r5" fun _ => decide (∀ i < N, ∀ u ∈ uppAt ix (nd U i).ty, u.2.1 < pot ix U i u.2.2.1 u.2.2.2 → MergeOK ix U i u.2.1 u.2.2.1 u.2.2.2)
   tm "r6" fun _ => decide (∀ i < N, WitOK ix U i)
+  let Cc := mkCache ix U
+  let mut tot := 0
+  let mut mx := 0
+  let mut mxi := 0
+  let mut slow := 0
+  for i in [0:N] do
+    let a ← IO.monoNanosNow
+    let _ ← IO.lazyPure fun _ => suppB ix U Cc Cc.ok i
+    let b ← IO.monoNanosNow
+    tot := tot + (b - a)
+    if b - a > 1000000 then slow := slow + 1
+    if b - a > mx then mx := b - a; mxi := i
+  IO.eprintln s!"checkprof supp: total={tot/1000000}ms max={mx/1000000}ms at {mxi} slow(>1ms)={slow} cands={(candsA U Cc Cc.ok mxi).length} needs={(needsV ix U mxi).length}"
   IO.eprintln s!"checkprof: r2ok={r2} ms: wf={tms[0]!/1000000} r3={tms[1]!/1000000} r4={tms[2]!/1000000} r5={tms[3]!/1000000} r6={tms[4]!/1000000} r2={tms[6]!/1000000}"
 
 /-- Run the prototype on an ALCHIQ ontology, printing statistics. -/
