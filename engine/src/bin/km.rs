@@ -5,6 +5,8 @@
 //!   `km classify --realize[=all|direct] ...`  also report the entailed types
 //!                                      (`TYPE a C`) and equalities (`SAME a b`)
 //!                                      of named individuals; see docs/REALIZATION.md
+//!   `km classify --properties ...`     also report the inferred object property
+//!                                      hierarchy, domains and ranges; see docs/PROPERTIES.md
 //!   `km explain <ont.ofn> ...`          one source-axiom justification
 //!   `km ofn|elc|engine|tableau`        the worker reasoners
 //!   `km incremental`                   stateful exact EL++/CB/direct-HT session
@@ -59,7 +61,7 @@ fn main() {
         // Phase-2 byte-identity gate vs engine/py/cb_to_ht.py)
         Some("cb_to_ht") => cb_to_ht_cmd(),
         _ => {
-            eprintln!("usage: km classify [--lines | --json-edges] [--realize[=all|direct]] [--route ROUTE] [--format FORMAT] <ontology>");
+            eprintln!("usage: km classify [--lines | --json-edges] [--realize[=all|direct]] [--properties] [--route ROUTE] [--format FORMAT] <ontology>");
             eprintln!("       km explain [OPTIONS] <ontology.ofn> subclass <SUB> <SUPER>");
             eprintln!("       km explain [OPTIONS] <ontology.ofn> unsatisfiable <CLASS>");
             eprintln!("       km explain [OPTIONS] <ontology.ofn> inconsistent");
@@ -488,12 +490,13 @@ fn cb_to_ht_cmd() {
 }
 
 fn classify_help() {
-    println!("usage: km classify [--lines | --json-edges] [--realize[=all|direct]] [--route ROUTE] [--format FORMAT] <ontology>");
+    println!("usage: km classify [--lines | --json-edges] [--realize[=all|direct]] [--properties] [--route ROUTE] [--format FORMAT] <ontology>");
     println!();
     println!("  --lines             tab-separated line output (default: JSON)");
     println!("  --json-edges        JSON whose subsumptions are graph edges (take their transitive closure)");
     println!("  --realize[=all]     also report every entailed named type of each named individual");
     println!("  --realize=direct    also report only the most specific entailed named types");
+    println!("  --properties        also report the inferred object property hierarchy, domains and ranges");
     println!("  --route ROUTE       force a reasoning route (see `km routes --help`); a forced");
     println!("                      route that cannot represent the input exits 3 unless");
     println!("                      KM_ALLOW_APPROXIMATE=1, which publishes an APPROXIMATE answer");
@@ -507,8 +510,17 @@ fn classify_help() {
     println!("  UNSAT<TAB>C         C is unsatisfiable");
     println!("  TYPE<TAB>a<TAB>C    (--realize) O entails C(a); owl:Thing is never listed");
     println!("  SAME<TAB>a<TAB>b    (--realize) O entails a = b, once per pair with a < b");
-    println!("With --realize the JSON object carries the same rows under \"types\" and \"same\".");
-    println!("An inconsistent ontology reports CONSISTENT 0 and no TYPE or SAME rows.");
+    println!("  SUBPROP<TAB>r<TAB>f (--properties) O entails r SubPropertyOf f; r named and not empty,");
+    println!("                      f named or ObjectInverseOf(s); owl:topObjectProperty is never listed");
+    println!("  TOPPROP<TAB>r       (--properties) r is equivalent to owl:topObjectProperty");
+    println!("  BOTPROP<TAB>r       (--properties) r is equivalent to owl:bottomObjectProperty;");
+    println!("                      an empty property has no SUBPROP, DOMAIN or RANGE rows");
+    println!("  DOMAIN<TAB>r<TAB>C  (--properties) O entails ObjectPropertyDomain(r C); owl:Thing is never listed");
+    println!("  RANGE<TAB>r<TAB>C   (--properties) O entails ObjectPropertyRange(r C); owl:Thing is never listed");
+    println!("With --realize the JSON object carries the same rows under \"types\" and \"same\";");
+    println!("with --properties under \"subproperties\", \"topproperties\", \"bottomproperties\",");
+    println!("\"domains\" and \"ranges\" (see docs/PROPERTIES.md).");
+    println!("An inconsistent ontology reports CONSISTENT 0 and no TYPE, SAME or property rows.");
 }
 
 fn classify_cmd(rest: &[String]) {
@@ -525,6 +537,7 @@ fn classify_cmd(rest: &[String]) {
     let mut route: Option<&str> = None;
     let mut ontology: Option<&str> = None;
     let mut realize: Option<orchestrate::realize::TypeMode> = None;
+    let mut properties = false;
     let mut index = 0;
     while index < rest.len() {
         match rest[index].as_str() {
@@ -539,6 +552,7 @@ fn classify_cmd(rest: &[String]) {
                 eprintln!("--realize takes all or direct, got {:?}", value.trim_start_matches("--realize="));
                 exit(2);
             }
+            "--properties" => properties = true,
             "--json-edges" => graph_edges = true,
             "--route" => {
                 index += 1;
@@ -579,7 +593,7 @@ fn classify_cmd(rest: &[String]) {
         exit(2);
     }
     let Some(ontology) = ontology else {
-        eprintln!("usage: km classify [--lines | --json-edges] [--realize[=all|direct]] [--route ROUTE] [--format FORMAT] <ontology>");
+        eprintln!("usage: km classify [--lines | --json-edges] [--realize[=all|direct]] [--properties] [--route ROUTE] [--format FORMAT] <ontology>");
         exit(2);
     };
     if let Some(requested) = route {
@@ -621,12 +635,13 @@ fn classify_cmd(rest: &[String]) {
         }
     };
     let cfg = Config::from_env();
-    if let Some(mode) = realize {
+    if realize.is_some() || properties {
         if graph_edges {
-            eprintln!("--realize cannot be combined with --json-edges or KM_JSON_GRAPH_EDGES=1");
+            eprintln!("--realize and --properties cannot be combined with --json-edges or KM_JSON_GRAPH_EDGES=1");
             exit(2);
         }
-        let realized = orchestrate::realize::realize(&cfg, Path::new(ontology), mode);
+        let realized =
+            orchestrate::realize::classify_extended(&cfg, Path::new(ontology), realize, properties);
         lean_gate(lean_run);
         match realized {
             Ok(res) => {
@@ -636,7 +651,7 @@ fn classify_cmd(rest: &[String]) {
                 if lines {
                     let _ = writeln!(w, "{}", res.to_lines());
                 } else {
-                    if let Err(error) = res.write_json(&mut w) {
+                    if let Err(error) = res.write_json(&mut w, realize.is_some()) {
                         eprintln!("classification serialise error: {error}");
                         exit(1);
                     }

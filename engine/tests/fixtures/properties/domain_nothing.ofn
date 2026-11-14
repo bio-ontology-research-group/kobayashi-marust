@@ -1,0 +1,6 @@
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://ex.org/t>
+Declaration(ObjectProperty(<urn:t#e>)) Declaration(ObjectProperty(<urn:t#f>)) Declaration(ObjectProperty(<urn:t#s>))
+ObjectPropertyDomain(<urn:t#e> owl:Nothing)
+ObjectPropertyRange(<urn:t#f> owl:Nothing)
+)

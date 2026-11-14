@@ -1,0 +1,6 @@
+# HermiT 1.4.3 through the OWL API, rows in the convention of docs/PROPERTIES.md
+DOMAIN	urn:t#adj	urn:t#A
+RANGE	urn:t#adj	urn:t#A
+SUBPROP	urn:t#adj	ObjectInverseOf(urn:t#adj)
+SUBPROP	urn:t#adj	ObjectInverseOf(urn:t#near)
+SUBPROP	urn:t#adj	urn:t#near

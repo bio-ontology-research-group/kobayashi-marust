@@ -1,0 +1,9 @@
+# HermiT 1.4.3 through the OWL API, rows in the convention of docs/PROPERTIES.md
+DOMAIN	urn:t#r	urn:t#A
+SUBPROP	urn:t#r	urn:t#s
+TOPPROP	urn:t#s
+# HermiT misses the next two rows. owl:Thing = {a, b} and s holds on all four
+# pairs, so s is the universal relation and so is its inverse: every
+# property, s itself included, is below ObjectInverseOf(s).
+SUBPROP	urn:t#r	ObjectInverseOf(urn:t#s)
+SUBPROP	urn:t#s	ObjectInverseOf(urn:t#s)
