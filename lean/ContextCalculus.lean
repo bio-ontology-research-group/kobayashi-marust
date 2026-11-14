@@ -342,3 +342,4 @@ import ContextCalculus.SRIQD.CellParts
 import ContextCalculus.SRIQD.CellPartsProc
 import ContextCalculus.SRIQD.KBB
 import ContextCalculus.SRIQD.KBParts
+import ContextCalculus.OWLFrontend.SRIQDKBTranslate
