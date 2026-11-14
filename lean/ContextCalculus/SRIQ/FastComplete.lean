@@ -489,7 +489,7 @@ noncomputable def entOf (z : D) (p : D × Entry n m) : Lab m × Ty n :=
 
 variable {U I}
 
-theorem sum_toFinset_le {α : Type} (l : List α) (f : α → Nat) :
+theorem sum_toFinset_le {α : Type} [DecidableEq α] (l : List α) (f : α → Nat) :
     l.toFinset.sum f ≤ (l.map f).sum := by
   rw [Finset.sum_list_map_count]
   refine Finset.sum_le_sum fun x hx => ?_
@@ -577,6 +577,443 @@ theorem StarData.lower (h : StarData O U req I i z py E) {q : Fin n × Nat × Ro
     exact Finset.mem_filter.2 ⟨hpE, h.cnt_of_covers hpE hpc⟩
   omega
 
+theorem card_le_sum_of {α Q : Type} [DecidableEq α] [DecidableEq Q] (C : Finset α) (L : List Q)
+    (k : Q → Nat) (crit : Q → α → Prop) [∀ q, DecidablePred (crit q)]
+    (hL : ∀ p ∈ C, ∃ q ∈ L, crit q p) (hk : ∀ q ∈ L, (C.filter (crit q)).card ≤ k q) :
+    C.card ≤ (L.map k).sum := by
+  have hsub : C ⊆ L.toFinset.biUnion fun q => C.filter (crit q) := by
+    intro p hp
+    obtain ⟨q, hq, hc⟩ := hL p hp
+    exact Finset.mem_biUnion.2 ⟨q, List.mem_toFinset.2 hq, Finset.mem_filter.2 ⟨hp, hc⟩⟩
+  refine (Finset.card_le_card hsub).trans (Finset.card_biUnion_le.trans ?_)
+  refine le_trans (Finset.sum_le_sum fun q hq => hk q (List.mem_toFinset.1 hq)) ?_
+  exact sum_toFinset_le L k
+
+theorem StarData.cset_mem (h : StarData O U req I i z py E) {p : D × Entry n m} (hp : p ∈ E)
+    {S : RoleT (Fin m)} {e : Fin n} (hc : cntP S e (entOf U I z p) = true) :
+    p.2 ∈ cset U i S e := by
+  simp only [cntP, entOf, decide_eq_true_eq] at hc
+  simp only [cset, List.mem_filter, decide_eq_true_eq]
+  exact ⟨(h.hE p hp).1, hc.1, kidOf U I z p, h.kid_memb hp, hc.2⟩
+
+/-- **The trigger bound.** The parent entry and the entries of a least
+configuration that count for an upper clause are at most `pot`. -/
+theorem StarData.count_le_pot (h : StarData O U req I i z py E) (S : RoleT (Fin m)) (e : Fin n) :
+    pcB (keyOf U (nd U i).ctx) S e + (E.filter fun p => cntP S e (entOf U I z p) = true).card ≤
+      pot (mkIx O) U i S e := by
+  unfold pot
+  refine Nat.add_le_add_left (card_le_sum_of _ _ (·.2.1)
+    (fun q p => Covers q p.2.spec ∧ (coverSet U i py (E.erase p) q).card < q.2.1 ∧
+      p.1 ∉ coverSet U i py (E.erase p) q) ?_ ?_) _
+  · intro p hp
+    obtain ⟨hpE, hpc⟩ := Finset.mem_filter.1 hp
+    obtain ⟨q, hq, hcov, hlt, hnin⟩ := crit_exists h.hE h.hcv h.hmin hpE
+    refine ⟨q, List.mem_filter.2 ⟨hq, ?_⟩, hcov, hlt, hnin⟩
+    simp only [decide_eq_true_eq]
+    have hc2 := h.cnt_of_covers hpE hcov
+    simp only [cntP, entOf, decide_eq_true_eq] at hc2
+    exact ⟨p.2, h.cset_mem hpE hpc, hc2.1, kidOf U I z p, h.kid_memb hpE, hc2.2⟩
+  · intro q _
+    by_cases hne : ((E.filter fun p => cntP S e (entOf U I z p) = true).filter fun p =>
+        Covers q p.2.spec ∧ (coverSet U i py (E.erase p) q).card < q.2.1 ∧
+        p.1 ∉ coverSet U i py (E.erase p) q).Nonempty
+    · obtain ⟨p0, hp0⟩ := hne
+      obtain ⟨hp0E, -, hlt0, -⟩ := Finset.mem_filter.1 hp0
+      have hp0E' := (Finset.mem_filter.1 hp0E).1
+      have hcard : (coverSet U i py E q).card ≤ q.2.1 := by
+        have := Finset.card_le_card (coverSet_erase (U := U) (i := i) (py := py) (E := E) p0 q)
+        have := Finset.card_insert_le p0.1 (coverSet U i py (E.erase p0) q)
+        omega
+      refine le_trans (Finset.card_le_card_of_injOn Prod.fst ?_ ?_) hcard
+      · intro p hp
+        obtain ⟨hpE, hcov, -, -⟩ := Finset.mem_filter.1 (Finset.mem_coe.1 hp)
+        refine Finset.mem_coe.2 (Finset.mem_union_left _ (Finset.mem_image.2 ⟨p, ?_, rfl⟩))
+        exact Finset.mem_filter.2 ⟨(Finset.mem_filter.1 hpE).1, hcov⟩
+      · intro p hp p' hp' hpp
+        by_contra hne
+        obtain ⟨hpE, -, -, hnin⟩ := Finset.mem_filter.1 (Finset.mem_coe.1 hp)
+        obtain ⟨hp'E, hcov', -, -⟩ := Finset.mem_filter.1 (Finset.mem_coe.1 hp')
+        apply hnin
+        rw [hpp]
+        refine Finset.mem_union_left _ (Finset.mem_image.2 ⟨p', Finset.mem_filter.2
+          ⟨Finset.mem_erase.2 ⟨Ne.symm hne, (Finset.mem_filter.1 hp'E).1⟩, hcov'⟩, rfl⟩)
+    · rw [Finset.not_nonempty_iff_eq_empty.1 hne]
+      simp
+
+theorem specUnion_valid {z w : D} : ∀ l : List (Spec n m), (∀ σ ∈ l, Valid I z w σ) →
+    Valid I z w (specUnion l)
+  | [], _ => ⟨by simp [specUnion], by simp [specUnion]⟩
+  | σ :: l, h => by
+    simp only [specUnion, List.foldr_cons]
+    exact valid_union (h σ List.mem_cons_self)
+      (specUnion_valid l fun τ hτ => h τ (List.mem_cons_of_mem _ hτ))
+
+/-- The definitely counted default specs are valid for the one neighbour an
+at-most-1 clause allows. -/
+theorem StarData.ddef_valid (h : StarData O U req I i z py E)
+    {u : Fin n × Nat × RoleT (Fin m) × Fin n} (hu : u ∈ uppAt (mkIx O) (nd U i).ty)
+    (hk : u.2.1 = 1) {w : D} (hwS : I.rt u.2.2.1 z w) (hwe : I.c u.2.2.2 w) {σ : Spec n m}
+    (hσ : σ ∈ ddef (mkIx O) U i u.2.2.1 u.2.2.2) : Valid I z w σ := by
+  rw [ddef, List.mem_map] at hσ
+  obtain ⟨e, he, rfl⟩ := hσ
+  rw [List.mem_filter] at he
+  obtain ⟨hecs, hdec⟩ := he
+  obtain ⟨⟨q, hq, hk1, -, hspec⟩, hdef⟩ := of_decide_eq_true hdec
+  rw [cset, List.mem_filter] at hecs
+  obtain ⟨hep, hdec2⟩ := hecs
+  have hS := of_decide_eq_true hdec2
+  obtain ⟨hql, hqa⟩ := mem_lowAt.1 hq
+  have hz : typeOf I z ⊇ (nd U i).ty := h.hm.2.1.1
+  obtain ⟨l, hnd, hlen, hl⟩ := lower_wit h.hI hql ((mem_typeOf I).1 (hz hqa))
+  obtain ⟨v, hv⟩ : ∃ v, v ∈ l := by
+    cases l with
+    | nil => simp at hlen; omega
+    | cons v _ => exact ⟨v, List.mem_cons_self⟩
+  obtain ⟨hvR, hvb⟩ := hl v hv
+  rw [hspec] at hS
+  have hvS : I.rt u.2.2.1 z v := roleLe_sound h.hI (upS_sound hS.1) z v hvR
+  have hve : I.c u.2.2.2 v := by
+    rcases hdef with hseed | htop
+    · rw [(h.nc.2.1 e hep).2.1, hspec] at hseed
+      rcases Finset.mem_union.1 hseed with hb | hb
+      · simp only [dflt, Finset.mem_singleton] at hb
+        rw [hb]; exact hvb
+      · exact (mem_typeOf I).1 (fwdI_model h.hI hz (upS_sub_label h.hI hvR) hb)
+    · obtain ⟨head, hcl, hne, hall⟩ := mem_tops htop
+      obtain ⟨b, hb, hbv⟩ := h.hI _ hcl v (by simp)
+      rw [hall b hb] at hbv
+      exact hbv
+  have hvw : v = w := by
+    by_contra hne
+    have := upper_bound h.hI (mem_uppAt.1 hu).1 ((mem_typeOf I).1 (hz (mem_uppAt.1 hu).2))
+      (l := [v, w]) (by simp [hne]) (fun x hx => by
+        simp only [List.mem_cons, List.not_mem_nil, or_false] at hx
+        rcases hx with rfl | rfl
+        · exact ⟨hvS, hve⟩
+        · exact ⟨hwS, hwe⟩)
+    simp at this
+    omega
+  subst hvw
+  rw [hspec]
+  exact ⟨upS_sub_label h.hI hvR, by simpa [dflt] using (mem_typeOf I).2 hvb⟩
+
+/-- **No two entries for one neighbour count for one at-most clause** in a
+least configuration (R5). -/
+theorem StarData.no_merge (h : StarData O U req I i z py E)
+    {u : Fin n × Nat × RoleT (Fin m) × Fin n} (hu : u ∈ uppAt (mkIx O) (nd U i).ty)
+    (hpot : u.2.1 < pot (mkIx O) U i u.2.2.1 u.2.2.2) {p p' : D × Entry n m} (hp : p ∈ E)
+    (hp' : p' ∈ E) (hne : p ≠ p') (hw : p.1 = p'.1)
+    (hc : cntP u.2.2.1 u.2.2.2 (entOf U I z p) = true)
+    (hc' : cntP u.2.2.1 u.2.2.2 (entOf U I z p') = true) : False := by
+  have hcs := h.cset_mem hp hc
+  have hcs' := h.cset_mem hp' hc'
+  have hmv := (h.hE p hp).2
+  have hmv' := (h.hE p' hp').2
+  rw [← hw] at hmv'
+  have hMerge := h.nc.2.2.2.2.1 u hu hpot
+  have hun : inPool U i (p.2.spec.union p'.2.spec) := by
+    unfold MergeOK at hMerge
+    split at hMerge
+    · next hcase =>
+      have hw1 : I.rt u.2.2.1 z p.1 ∧ I.c u.2.2.2 p.1 := by
+        simp only [cntP, entOf, decide_eq_true_eq] at hc
+        exact ⟨(mem_labelOf I).1 (hmv.1.1 hc.1),
+          (mem_typeOf I).1 ((h.kid hp).2.2.1.1 hc.2)⟩
+      have hM := specUnion_valid _ fun σ hσ => h.ddef_valid hu hcase.1 hw1.1 hw1.2 hσ
+      have hMle : ∀ (q : D × Entry n m), q.2 ∈ cset U i u.2.2.1 u.2.2.2 →
+          MaxValid U I i z p.1 q.2.spec →
+          (specUnion (ddef (mkIx O) U i u.2.2.1 u.2.2.2)).le q.2.spec := by
+        intro q hq hmq
+        obtain ⟨e1, he1, hs1⟩ := hMerge.1 q.2 hq
+        have hv1 : Valid I z p.1 e1.spec := by rw [hs1]; exact valid_union hmq.1 hM
+        have := hmq.2 e1 he1 hv1 (by rw [hs1]; exact le_union_left _ _)
+        rw [hs1] at this
+        exact ⟨(le_union_right _ _).1.trans this.1, (le_union_right _ _).2.trans this.2⟩
+      exact hMerge.2 p.2 hcs p'.2 hcs' (hMle p hcs hmv) (hMle p' hcs' hmv')
+    · exact hMerge p.2 hcs p'.2 hcs'
+  obtain ⟨e1, he1, hs1⟩ := hun
+  have hv1 : Valid I z p.1 e1.spec := by rw [hs1]; exact valid_union hmv.1 hmv'.1
+  obtain ⟨e2, he2, hle2, hmv2⟩ := maxValid_above he1 hv1
+  rw [hs1] at hle2
+  let E' := insert (p.1, e2) ((E.erase p).erase p')
+  have hok : CfgOK U I i z E' := by
+    intro q hq
+    rcases Finset.mem_insert.1 hq with rfl | hq
+    · exact ⟨he2, hmv2⟩
+    · exact h.hE q (Finset.mem_of_mem_erase (Finset.mem_of_mem_erase hq))
+  have hcov : Cover O U i py E' := by
+    intro q hq
+    refine (h.hcv q hq).trans (Finset.card_le_card fun x hx => ?_)
+    unfold coverSet at hx ⊢
+    rcases Finset.mem_union.1 hx with hx | hx
+    · obtain ⟨p'', hp'', rfl⟩ := Finset.mem_image.1 hx
+      obtain ⟨hp''E, hp''c⟩ := Finset.mem_filter.1 hp''
+      by_cases h1 : p'' = p ∨ p'' = p'
+      · refine Finset.mem_union_left _ (Finset.mem_image.2 ⟨(p.1, e2), Finset.mem_filter.2
+          ⟨Finset.mem_insert_self _ _, ?_⟩, ?_⟩)
+        · rcases h1 with rfl | rfl
+          · exact covers_le hp''c ⟨(le_union_left p''.2.spec p'.2.spec).1.trans hle2.1,
+               (le_union_left p''.2.spec p'.2.spec).2.trans hle2.2⟩
+          · exact covers_le hp''c ⟨(le_union_right p.2.spec p''.2.spec).1.trans hle2.1,
+              (le_union_right p.2.spec p''.2.spec).2.trans hle2.2⟩
+        · rcases h1 with rfl | rfl
+          · rfl
+          · exact hw
+      · push Not at h1
+        refine Finset.mem_union_left _ (Finset.mem_image.2 ⟨p'', Finset.mem_filter.2
+          ⟨Finset.mem_insert_of_mem (Finset.mem_erase.2 ⟨h1.2, Finset.mem_erase.2 ⟨h1.1, hp''E⟩⟩),
+            hp''c⟩, rfl⟩)
+    · exact Finset.mem_union_right _ hx
+  have hcard : E'.card < E.card := by
+    have h1 : ((E.erase p).erase p').card = E.card - 2 := by
+      rw [Finset.card_erase_of_mem (Finset.mem_erase.2 ⟨Ne.symm hne, hp'⟩),
+        Finset.card_erase_of_mem hp]
+      omega
+    have h2 : E'.card ≤ ((E.erase p).erase p').card + 1 := Finset.card_insert_le _ _
+    have h3 : 2 ≤ E.card := by
+      have := Finset.card_le_card (Finset.insert_subset hp (Finset.singleton_subset_iff.2 hp'))
+      rw [Finset.card_insert_of_notMem (by simpa using hne), Finset.card_singleton] at this
+      exact this
+    omega
+  have := h.hmin E' hok hcov
+  omega
+
+/-- **No entry for the parent element counts together with the parent entry**
+in a least configuration (`PG`). -/
+theorem StarData.no_drop (h : StarData O U req I i z py E)
+    {u : Fin n × Nat × RoleT (Fin m) × Fin n} (hu : u ∈ uppAt (mkIx O) (nd U i).ty)
+    (hpot : u.2.1 < pot (mkIx O) U i u.2.2.1 u.2.2.2)
+    (hpc : pcB (keyOf U (nd U i).ctx) u.2.2.1 u.2.2.2 = 1) {p : D × Entry n m} (hp : p ∈ E)
+    (hy : py = some p.1) (hc : cntP u.2.2.1 u.2.2.2 (entOf U I z p) = true) : False := by
+  obtain ⟨hlab, hpi⟩ := h.hpg p.1 hy u hu hpc hpot p.2 (h.cset_mem hp hc) (h.hE p hp).2.1
+  have hok : CfgOK U I i z (E.erase p) := fun q hq => h.hE q (Finset.mem_of_mem_erase hq)
+  have hcov : Cover O U i py (E.erase p) := by
+    intro q hq
+    by_cases hk : q.2.1 = 0
+    · omega
+    refine (h.hcv q hq).trans (Finset.card_le_card fun x hx => ?_)
+    unfold coverSet at hx ⊢
+    rcases Finset.mem_union.1 hx with hx | hx
+    · obtain ⟨p'', hp'', rfl⟩ := Finset.mem_image.1 hx
+      obtain ⟨hp''E, hp''c⟩ := Finset.mem_filter.1 hp''
+      by_cases h1 : p'' = p
+      · subst h1
+        refine Finset.mem_union_right _ ?_
+        have hR := hlab hp''c.1
+        have hb : q.2.2.2 ∈ (keyOf U (nd U i).ctx).pi :=
+          hpi (Finset.mem_inter.2 ⟨hp''c.2, mem_relI_lower (mem_lowAt.1 hq).1 (by omega) hR⟩)
+        rw [hy]
+        simp [pcB, hR, hb]
+      · exact Finset.mem_union_left _ (Finset.mem_image.2 ⟨p'', Finset.mem_filter.2
+          ⟨Finset.mem_erase.2 ⟨h1, hp''E⟩, hp''c⟩, rfl⟩)
+    · exact Finset.mem_union_right _ hx
+  have := h.hmin _ hok hcov
+  have := Finset.card_erase_lt_of_mem hp
+  omega
+
+/-- **Upper bounds.** -/
+theorem StarData.upper (h : StarData O U req I i z py E)
+    {u : Fin n × Nat × RoleT (Fin m) × Fin n} (hu : u ∈ uppAt (mkIx O) (nd U i).ty) :
+    pcB (keyOf U (nd U i).ctx) u.2.2.1 u.2.2.2 +
+      (E.toList.map (entOf U I z)).countP (cntP u.2.2.1 u.2.2.2) ≤ u.2.1 := by
+  rw [countP_toList]
+  by_contra hlt
+  push Not at hlt
+  have hpot : u.2.1 < pot (mkIx O) U i u.2.2.1 u.2.2.2 :=
+    lt_of_lt_of_le hlt (h.count_le_pot _ _)
+  set C := E.filter fun p => cntP u.2.2.1 u.2.2.2 (entOf U I z p) = true with hCdef
+  have hsucc : ∀ p ∈ C, I.rt u.2.2.1 z p.1 ∧ I.c u.2.2.2 p.1 := by
+    intro p hp
+    obtain ⟨hpE, hpc⟩ := Finset.mem_filter.1 hp
+    simp only [cntP, entOf, decide_eq_true_eq] at hpc
+    exact ⟨(mem_labelOf I).1 ((h.hE p hpE).2.1.1 hpc.1),
+      (mem_typeOf I).1 ((h.kid hpE).2.2.1.1 hpc.2)⟩
+  set W := C.image Prod.fst
+  by_cases hW : W.card < C.card
+  · obtain ⟨p, hp, p', hp', hne, hpp⟩ := Finset.exists_ne_map_eq_of_card_lt_of_maps_to hW
+      (f := Prod.fst) (fun p hp => Finset.mem_coe.2 (Finset.mem_image_of_mem _ (Finset.mem_coe.1 hp)))
+    exact h.no_merge hu hpot (Finset.mem_filter.1 hp).1 (Finset.mem_filter.1 hp').1 hne hpp
+      (Finset.mem_filter.1 hp).2 (Finset.mem_filter.1 hp').2
+  have hWC : W.card = C.card := le_antisymm Finset.card_image_le (by omega)
+  have hza : I.c u.1 z := (mem_typeOf I).1 (h.hm.2.1.1 (mem_uppAt.1 hu).2)
+  have hWs : ∀ x ∈ W.toList, I.rt u.2.2.1 z x ∧ I.c u.2.2.2 x := by
+    intro x hx
+    obtain ⟨p, hp, rfl⟩ := Finset.mem_image.1 (Finset.mem_toList.1 hx)
+    exact hsucc p hp
+  rcases pcB_cases (keyOf U (nd U i).ctx) u.2.2.1 u.2.2.2 with hpc | hpc
+  · have := upper_bound h.hI (mem_uppAt.1 hu).1 hza (Finset.nodup_toList W) hWs
+    rw [Finset.length_toList] at this
+    omega
+  · obtain ⟨y, hy, hyS, hye⟩ := pc_some h.hm.2.1 hpc
+    by_cases hyW : y ∈ W
+    · obtain ⟨p, hp, rfl⟩ := Finset.mem_image.1 hyW
+      exact h.no_drop hu hpot hpc (Finset.mem_filter.1 hp).1 hy (Finset.mem_filter.1 hp).2
+    · have := upper_bound h.hI (mem_uppAt.1 hu).1 hza (l := y :: W.toList)
+        (List.nodup_cons.2 ⟨by simpa using hyW, Finset.nodup_toList W⟩) (fun x hx => by
+          rcases List.mem_cons.1 hx with rfl | hx
+          · exact ⟨hyS, hye⟩
+          · exact hWs x hx)
+      rw [List.length_cons, Finset.length_toList] at this
+      omega
+
+theorem interL_sub {x : Ty n} : ∀ {l : List (Ty n)}, x ∈ l → interL l ⊆ x
+  | [], h => by simp at h
+  | y :: l, h => by
+    intro b hb
+    simp only [interL] at hb
+    rw [mem_foldl_inter] at hb
+    rcases List.mem_cons.1 h with rfl | h
+    · exact hb.1
+    · exact hb.2 x h
+
+theorem forced_sub {i : Nat} {T : Ty n}
+    (h : ∀ q ∈ needsL (mkIx O) U i, ∃ c ∈ candsQ U i q, backOf (mkIx O) U c.2 ⊆ T) :
+    forced (mkIx O) U i ⊆ T := by
+  unfold forced
+  suffices ∀ l : List (Fin n × Nat × RoleT (Fin m) × Fin n), (∀ q ∈ l, q ∈ needsL (mkIx O) U i) →
+      l.foldr (fun q acc => acc ∪ interL ((candsQ U i q).map fun c => backOf (mkIx O) U c.2)) ∅
+        ⊆ T from this _ fun q hq => hq
+  intro l
+  induction l with
+  | nil => intro _; simp
+  | cons q l ih =>
+    intro hl
+    rw [List.foldr_cons]
+    refine Finset.union_subset (ih fun q' h' => hl q' (List.mem_cons_of_mem _ h')) ?_
+    obtain ⟨c, hc, hcT⟩ := h q (hl q List.mem_cons_self)
+    exact (interL_sub (List.mem_map.2 ⟨c, hc, rfl⟩)).trans hcT
+
+theorem needsL_iff {i : Nat} {q : Fin n × Nat × RoleT (Fin m) × Fin n} :
+    q ∈ needsL (mkIx O) U i ↔ q ∈ lowAt (mkIx O) (nd U i).ty ∧
+      pcB (keyOf U (nd U i).ctx) q.2.2.1 q.2.2.2 < q.2.1 := by
+  unfold needsL
+  rw [List.mem_filter]
+  exact and_congr_right fun _ => decide_eq_true_iff
+
+theorem StarData.cand_mem (h : StarData O U req I i z py E) {p : D × Entry n m} (hp : p ∈ E)
+    {q : Fin n × Nat × RoleT (Fin m) × Fin n} (hc : Covers q p.2.spec) :
+    (p.2, kidOf U I z p) ∈ candsQ U i q := by
+  simp only [candsQ, List.mem_flatMap]
+  refine ⟨p.2, (h.hE p hp).1, ?_⟩
+  rw [if_pos hc.1]
+  exact List.mem_map.2 ⟨kidOf U I z p, List.mem_filter.2 ⟨h.kid_memb hp, by
+    simpa using h.fill_sub hp hc.2⟩, rfl⟩
+
+theorem StarData.need_covered (h : StarData O U req I i z py E)
+    {q : Fin n × Nat × RoleT (Fin m) × Fin n} (hq : q ∈ needsL (mkIx O) U i) :
+    ∃ p ∈ E, Covers q p.2.spec := by
+  rw [needsL_iff] at hq
+  by_contra hno
+  push Not at hno
+  have h1 := h.hcv q hq.1
+  have : (coverSet U i py E q).card ≤ pcB (keyOf U (nd U i).ctx) q.2.2.1 q.2.2.2 := by
+    unfold coverSet
+    have he : (E.filter fun p => Covers q p.2.spec) = ∅ :=
+      Finset.filter_eq_empty_iff.2 fun p hp => hno p hp
+    rw [he, Finset.image_empty, Finset.empty_union]
+    split
+    · next hh => rw [hh]; exact card_py_le
+    · simp
+  omega
+
+/-- **Back sets.** The child of every entry of a least configuration pushes
+nothing new to the node (R4). -/
+theorem StarData.back (h : StarData O U req I i z py E) {p : D × Entry n m} (hp : p ∈ E) :
+    backOf (mkIx O) U (kidOf U I z p) ⊆ (nd U i).ty := by
+  have hBack : BackOK (mkIx O) U i := h.nc.2.2.2.1
+  unfold BackOK at hBack
+  have hcands : ∀ q ∈ needsL (mkIx O) U i, candsQ U i q ≠ [] := by
+    intro q hq
+    obtain ⟨p', hp', hc'⟩ := h.need_covered hq
+    exact List.ne_nil_of_mem (h.cand_mem hp' hc')
+  obtain ⟨hF1, hF2⟩ := hBack hcands
+  have hbz : ∀ p' ∈ E, backOf (mkIx O) U (kidOf U I z p') ⊆ typeOf I z := fun p' hp' =>
+    back_model h.hI (h.kid hp').2.2.1
+  have hFz : forced (mkIx O) U i ⊆ typeOf I z := by
+    refine forced_sub fun q hq => ?_
+    obtain ⟨p', hp', hc'⟩ := h.need_covered hq
+    exact ⟨_, h.cand_mem hp' hc', hbz p' hp'⟩
+  have hFt : forced (mkIx O) U i ⊆ (nd U i).ty := by
+    by_contra hn
+    exact hn (no_variant h.hI h.hm (hF1 hn) hFz)
+  obtain ⟨q, hq, hcov, hlt, -⟩ := crit_exists h.hE h.hcv h.hmin hp
+  have hneed : q ∈ needsL (mkIx O) U i := by
+    refine needsL_iff.2 ⟨hq, ?_⟩
+    rcases pcB_cases (keyOf U (nd U i).ctx) q.2.2.1 q.2.2.2 with hpc | hpc
+    · omega
+    · obtain ⟨y, hy, -, -⟩ := pc_some h.hm.2.1 hpc
+      have hy' : y ∈ coverSet U i py (E.erase p) q := by
+        unfold coverSet
+        refine Finset.mem_union_right _ ?_
+        rw [if_pos hpc, hy]
+        exact Option.mem_toFinset.2 rfl
+      have := Finset.card_pos.2 ⟨y, hy'⟩
+      omega
+  have hc2 := h.cand_mem hp hcov
+  have h3 := hF2 hFt q hneed _ hc2
+  simp only at h3
+  have hbzp := hbz p hp
+  rcases Classical.em (backOf (mkIx O) U (kidOf U I z p) ⊆ (nd U i).ty) with hb | hb
+  · exact hb
+  · exact no_variant h.hI h.hm (h3 hb) hbzp
+
 end Star
 
+/-! ## Completeness -/
+
+section Main
+
+open Classical
+
+/-- **The kept nodes support themselves.** -/
+theorem ss_supp (hI : models I O) (hC : ClosedP (mkIx O) U req) {i : Nat} (hi : SS O U I i) :
+    SuppP O U (SS O U I) i := by
+  obtain ⟨z, py, hm, hpg⟩ := hi
+  obtain ⟨E, hE, hcv, hmin⟩ := cfg_min hI hC hm
+  have h : StarData O U req I i z py E := ⟨hI, hC, hm, hpg, hE, hcv, hmin⟩
+  refine ⟨h.nc.1, fun u hu => ?_, E.toList.map (entOf U I z), fun c hc => ?_,
+    fun q hq => h.lower hq, fun u hu => h.upper hu⟩
+  · rcases pcB_cases (keyOf U (nd U i).ctx) u.2.2.1 u.2.2.2 with hpc | hpc
+    · omega
+    · obtain ⟨y, -, hyS, hye⟩ := pc_some hm.2.1 hpc
+      have := upper_bound hI (mem_uppAt.1 hu).1 ((mem_typeOf I).1 (hm.2.1.1 (mem_uppAt.1 hu).2))
+        (l := [y]) (List.nodup_singleton y) (fun x hx => by
+          rw [List.mem_singleton.1 hx]; exact ⟨hyS, hye⟩)
+      simp at this
+      omega
+  · obtain ⟨p, hp, rfl⟩ := List.mem_map.1 hc
+    have hpE := Finset.mem_toList.1 hp
+    refine ⟨p.2, (h.hE p hpE).1, h.ok hpE, kidOf U I z p, h.kid_memb hpE, ?_, h.back hpE, rfl⟩
+    exact ⟨p.1, some z, (h.kid hpE).2,
+      child_pg hI hC hm (h.hE p hpE).1 (h.hE p hpE).2 (h.kid hpE).1 (h.kid hpE).2⟩
+
+/-- **Completeness.** Every model element of a requested name has a live
+root node below its type in the name's root context. -/
+theorem complete (hI : models I O) (hC : ClosedP (mkIx O) U req) {a : Fin n} {k : Nat}
+    (hak : (a, k) ∈ req.zip U.roots) {x : D} (hx : I.c a x) :
+    ∃ i, RootWith O U k a i ∧ (nd U i).ty ⊆ typeOf I x := by
+  obtain ⟨hk, hkey, hcov⟩ := hC.2.1 _ hak
+  have ha : ({a} : Ty n) ⊆ typeOf I x := by simpa using (mem_typeOf I).2 hx
+  obtain ⟨j, hj, -, hjx⟩ := cover_real hI hcov ha
+  have hsj : Sim U I j x none := by
+    refine ⟨hjx, ?_⟩
+    show (keyOf U (nd U j).ctx).lab = ∅
+    rw [(mem_memb hj).2, hkey]
+  obtain ⟨j', hj'c, hm⟩ := typeMax_exists hj hsj
+  have hSS : SS O U I j' := ⟨x, none, hm, fun y hy => by simp at hy⟩
+  have hal : Al O U j' := subset_al (fun i hi => by
+      obtain ⟨_, _, hm', _⟩ := hi
+      exact (nodeClosed hC hm'.1).1)
+    (fun i hi => ss_supp hI hC hi) hSS
+  have hseed := (nodeClosed hC hm.1).1.2.2.2
+  rw [hj'c, hkey] at hseed
+  have hmem : j' ∈ memb U k := by have := hm.1; rw [hj'c] at this; exact this
+  refine ⟨j', ⟨hmem, hal, by rw [hkey], hseed (Finset.mem_singleton_self a)⟩, hm.2.1.1⟩
+
+end Main
+
 end ContextCalculus.SRIQ.Fast
+
+#print axioms ContextCalculus.SRIQ.Fast.child_pg
+#print axioms ContextCalculus.SRIQ.Fast.ss_supp
+#print axioms ContextCalculus.SRIQ.Fast.complete
