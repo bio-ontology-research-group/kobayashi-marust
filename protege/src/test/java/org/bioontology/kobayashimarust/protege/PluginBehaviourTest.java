@@ -189,4 +189,76 @@ public class PluginBehaviourTest {
         // The explanation code reads the committed snapshot, not the reasoner's answers.
         assertNotNull(km.getCommittedOntologySnapshot());
     }
+
+    // ---- item 5: classification outside the constructor ---------------
+
+    @Test
+    public void theConstructorDoesNoNativeWork() throws Exception {
+        OWLOntology o = IndividualsTest.parse(IndividualsTest.SMALL);
+        KMReasoner r = km(o);
+        assertNull("no native session before the first use", r.getLastIncrementalReceipt());
+        assertFalse(r.isPrecomputed(InferenceType.CLASS_HIERARCHY));
+        r.flush();
+        assertNull("flush on an unclassified reasoner starts nothing", r.getLastIncrementalReceipt());
+        assertFalse(r.isPrecomputed(InferenceType.CLASS_HIERARCHY));
+        r.precomputeInferences(InferenceType.CLASS_HIERARCHY);
+        assertTrue(r.isPrecomputed(InferenceType.CLASS_HIERARCHY));
+        assertEquals(1L, r.getLastIncrementalReceipt().revision);
+    }
+
+    @Test
+    public void theFirstQueryClassifiesAndAnswersCorrectly() throws Exception {
+        OWLOntology o = IndividualsTest.parse(IndividualsTest.SMALL);
+        OWLDataFactory df = dataFactory(o);
+        KMReasoner r = km(o);
+        assertTrue(r.getSuperClasses(cls(df, "Dog"), false).containsEntity(cls(df, "Animal")));
+        assertTrue(r.isPrecomputed(InferenceType.CLASS_HIERARCHY));
+        assertFalse("only computed types are precomputed", r.isPrecomputed(InferenceType.OBJECT_PROPERTY_HIERARCHY));
+        assertFalse(r.isPrecomputed(InferenceType.DATA_PROPERTY_HIERARCHY));
+        assertFalse(r.isPrecomputed(InferenceType.CLASS_ASSERTIONS));
+    }
+
+    @Test
+    public void changesBufferedBeforeTheFirstUseAreFoldedIntoTheFirstClassification() throws Exception {
+        OWLOntology o = IndividualsTest.parse(IndividualsTest.SMALL);
+        OWLOntologyManager m = o.getOWLOntologyManager();
+        OWLDataFactory df = dataFactory(o);
+        KMReasoner r = km(o);
+        OWLClass puppy = cls(df, "Puppy");
+        m.addAxiom(o, df.getOWLSubClassOfAxiom(puppy, cls(df, "Dog")));
+        assertFalse(r.getPendingChanges().isEmpty());
+        assertTrue(r.getSuperClasses(puppy, false).containsEntity(cls(df, "Animal")));
+        assertTrue("the first run read the changed ontology", r.getPendingChanges().isEmpty());
+        assertEquals(1L, r.getLastIncrementalReceipt().revision);
+        // Afterwards buffering works as before: invisible until flush, then a delta.
+        OWLClass pup = cls(df, "Pup");
+        m.addAxiom(o, df.getOWLSubClassOfAxiom(pup, puppy));
+        assertFalse(r.getSuperClasses(pup, false).containsEntity(puppy));
+        r.flush();
+        assertTrue(r.getSuperClasses(pup, false).containsEntity(puppy));
+        assertEquals(2L, r.getLastIncrementalReceipt().revision);
+    }
+
+    @Test
+    public void aFailedFirstClassificationIsRetriedOnTheNextUse() throws Exception {
+        OWLOntologyManager m = org.semanticweb.owlapi.apibinding.OWLManager.createOWLOntologyManager();
+        OWLDataFactory df = m.getOWLDataFactory();
+        OWLOntology root = m.createOntology(IRI.create(NS + "retry"));
+        OWLClass a = cls(df, "RetryA"), b = cls(df, "RetryB");
+        m.addAxiom(root, df.getOWLSubClassOfAxiom(a, b));
+        IRI missing = IRI.create(NS + "missingImport");
+        m.applyChange(new AddImport(root, df.getOWLImportsDeclaration(missing)));
+        KMReasoner r = km(root);
+        try {
+            r.isConsistent();
+            fail("the unresolved import must fail the first classification");
+        } catch (ReasonerInternalException expected) {
+            // as before, now at first use instead of in the constructor
+        }
+        assertFalse(r.isPrecomputed(InferenceType.CLASS_HIERARCHY));
+        m.applyChange(new RemoveImport(root, df.getOWLImportsDeclaration(missing)));
+        r.flush();
+        assertTrue(r.getSuperClasses(a, false).containsEntity(b));
+        assertTrue(r.isPrecomputed(InferenceType.CLASS_HIERARCHY));
+    }
 }

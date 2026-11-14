@@ -167,8 +167,10 @@ public class ReasonerTest {
         m.applyChange(new AddImport(root, m.getOWLDataFactory()
                 .getOWLImportsDeclaration(IRI.create(NS + "missing"))));
 
+        // The constructor does no native work; the first query classifies.
+        OWLReasoner reasoner = new KMReasonerFactory().createReasoner(root);
         try {
-            new KMReasonerFactory().createReasoner(root);
+            reasoner.isConsistent();
             fail("unresolved import should fail");
         } catch (org.semanticweb.owlapi.reasoner.ReasonerInternalException expected) {
             assertTrue(expected.getCause().getMessage().contains("has not loaded"));

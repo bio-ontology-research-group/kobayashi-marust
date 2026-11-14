@@ -174,6 +174,8 @@ public class IndividualsTest {
         assertTrue(types.contains(InferenceType.CLASS_HIERARCHY));
         assertTrue(types.contains(InferenceType.CLASS_ASSERTIONS));
         assertTrue(types.contains(InferenceType.SAME_INDIVIDUAL));
+        assertFalse("the constructor does not classify", r.isPrecomputed(InferenceType.CLASS_HIERARCHY));
+        r.precomputeInferences(InferenceType.CLASS_HIERARCHY);
         assertTrue(r.isPrecomputed(InferenceType.CLASS_HIERARCHY));
         assertFalse("realization is lazy", r.isPrecomputed(InferenceType.CLASS_ASSERTIONS));
         assertFalse(r.isPrecomputed(InferenceType.SAME_INDIVIDUAL));

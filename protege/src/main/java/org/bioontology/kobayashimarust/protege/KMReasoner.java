@@ -49,6 +49,14 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private volatile Classifier.Session incrementalSession;
     private final RetainedFunctionalSyntax serialized = new RetainedFunctionalSyntax();
     private boolean sourceSynchronized;
+    /**
+     * True once one classification has committed an answer. It never goes back
+     * to false: a later failed transaction keeps the previous answers. Before
+     * it is true the reasoner holds no native session and no taxonomy; the
+     * first query or precomputeInferences classifies the ontology as it is
+     * then.
+     */
+    private volatile boolean classified;
     private Set<OWLOntology> committedImports = Collections.emptySet();
     private boolean lastPreparationUsedDelta;
     private boolean hierarchyBuilt;
@@ -56,7 +64,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private Set<OWLClass> lastClasses;
     private FlushContext flushContext;
     /** Individual realization of the committed revision; null until first needed. */
-    private Realized realized;
+    private volatile Realized realized;
     private volatile Process realizeProcess;
 
     private static final class FlushContext {
@@ -73,17 +81,32 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         this.df = rootOntology.getOWLOntologyManager().getOWLDataFactory();
         this.owlThing = df.getOWLThing();
         this.owlNothing = df.getOWLNothing();
-        classify();
+        // No native work here. Protege stores the reasoner only after this
+        // constructor returns, and interrupt() can reach it only then. The
+        // first query or precomputeInferences classifies (as HermiT does).
     }
 
     // ---- classification -------------------------------------------------
 
     private synchronized void classify() { classify(null, null); }
 
+    /**
+     * Run the first classification if it has not happened. The ontology
+     * changes buffered since construction are folded into this run: they are
+     * dropped from the pending list first, because the run reads the ontology
+     * as it is now.
+     */
+    private synchronized void ensureClassified() {
+        if (classified) return;
+        if (!getPendingChanges().isEmpty()) flush();
+        classify();
+    }
+
     private void classify(Set<OWLAxiom> added, Set<OWLAxiom> removed) {
         try {
             classifySource(added, removed);
             sourceSynchronized = true;
+            classified = true;
         } catch (RuntimeException | Error failure) {
             sourceSynchronized = false;
             throw failure;
@@ -313,6 +336,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
      * getBottomClassNode and getUnsatisfiableClasses do not throw here.
      */
     private void checkPreConditions() {
+        ensureClassified();
         if (!consistent) throw new InconsistentOntologyException();
     }
 
@@ -361,8 +385,14 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
     // ---- class hierarchy queries ---------------------------------------
 
-    @Override public synchronized Node<OWLClass> getTopClassNode() { return nodeOfId(repId[thingId]); }
-    @Override public synchronized Node<OWLClass> getBottomClassNode() { return nodeOfId(repId[nothingId]); }
+    @Override public synchronized Node<OWLClass> getTopClassNode() {
+        ensureClassified();
+        return nodeOfId(repId[thingId]);
+    }
+    @Override public synchronized Node<OWLClass> getBottomClassNode() {
+        ensureClassified();
+        return nodeOfId(repId[nothingId]);
+    }
 
     /**
      * A named class outside the signature. HermiT's default FreshEntityPolicy
@@ -460,9 +490,15 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         return count == buf.length ? buf : Arrays.copyOf(buf, count);
     }
 
-    @Override public synchronized Node<OWLClass> getUnsatisfiableClasses() { return nodeOfId(repId[nothingId]); }
+    @Override public synchronized Node<OWLClass> getUnsatisfiableClasses() {
+        ensureClassified();
+        return nodeOfId(repId[nothingId]);
+    }
 
-    @Override public synchronized boolean isConsistent() { return consistent; }
+    @Override public synchronized boolean isConsistent() {
+        ensureClassified();
+        return consistent;
+    }
 
     @Override public synchronized boolean isSatisfiable(OWLClassExpression ce) {
         checkPreConditions();
@@ -482,7 +518,10 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     /** convenience for tests: dropped-clause count from the last classification. */
-    public synchronized int getDroppedClauseCount() { return dropped; }
+    public synchronized int getDroppedClauseCount() {
+        ensureClassified();
+        return dropped;
+    }
 
     /** Last native transaction receipt; null for the initial revision. */
     public synchronized Classifier.IncrementalReceipt getLastIncrementalReceipt() {
@@ -491,6 +530,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
     /** A detached copy of the source snapshot backing the current answers. */
     public synchronized OWLOntology getCommittedOntologySnapshot() {
+        ensureClassified();
         if (!serialized.hasCommittedRevision()) {
             throw new ReasonerInternalException("KM has no committed ontology revision");
         }
@@ -531,20 +571,27 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
     @Override public synchronized void precomputeInferences(InferenceType... types) {
         checkPreConditions();
-        // The class hierarchy is computed in the constructor and on flush.
-        // Individual inferences cost one more native run, made on demand.
+        // checkPreConditions has classified. Individual inferences cost one
+        // more native run, made on demand.
         for (InferenceType type : types) {
             if (type == InferenceType.CLASS_ASSERTIONS || type == InferenceType.SAME_INDIVIDUAL) {
                 ensureRealized();
             }
         }
     }
-    @Override public synchronized boolean isPrecomputed(InferenceType inferenceType) {
+    /**
+     * True only for a type whose answer is held now: the class hierarchy once
+     * classified, the individual types once realized. Every other type is
+     * not computed at all. Not synchronized: Protege may ask while a
+     * classification runs on another thread.
+     */
+    @Override public boolean isPrecomputed(InferenceType inferenceType) {
+        if (inferenceType == InferenceType.CLASS_HIERARCHY) return classified;
         if (inferenceType == InferenceType.CLASS_ASSERTIONS
                 || inferenceType == InferenceType.SAME_INDIVIDUAL) {
             return realized != null;
         }
-        return true;
+        return false;
     }
     @Override public Set<InferenceType> getPrecomputableInferenceTypes() {
         return new HashSet<>(Arrays.asList(InferenceType.CLASS_HIERARCHY,
@@ -552,6 +599,13 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     @Override public synchronized void flush() {
+        if (!classified) {
+            // Nothing is committed yet, so there is nothing to update: drop the
+            // pending list (handleChanges ignores it) and let the first
+            // classification read the ontology as it is.
+            super.flush();
+            return;
+        }
         // OWLReasonerBase advances its private bookkeeping before handleChanges
         // succeeds. Its effective delta is usable only while both revisions agree.
         Set<OWLOntology> closure = RetainedFunctionalSyntax.importsView(getRootOntology());
@@ -584,6 +638,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     @Override protected void handleChanges(Set<OWLAxiom> addAxioms, Set<OWLAxiom> removeAxioms) {
         FlushContext context = flushContext;
         if (context != null) context.handled = true;
+        if (!classified) return;
         if (context != null && context.allowDelta) classify(addAxioms, removeAxioms);
         else classify();
     }
@@ -672,6 +727,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     private Realized ensureRealized() {
+        ensureClassified();
         if (realized != null) return realized;
         Realized built = new Realized();
         if (!consistent) {
