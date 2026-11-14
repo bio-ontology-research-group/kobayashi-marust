@@ -23,6 +23,13 @@ def km(path):
         elif p[0] == "UNSAT" and p[1] not in SKIP: uns.add(p[1])
     return subs, uns
 ps, pu, names = proto(sys.argv[1]); ks, ku = km(sys.argv[2])
+# km abbreviates the default prefix as ":X"; expand it with the prototype's IRIs
+full = {}
+for n in names:
+    for sep in ("#", "/"):
+        if sep in n: full[":" + n.rsplit(sep, 1)[1]] = n; break
+fx = lambda x: full.get(x, x) if x.startswith(":") else x
+ks = {(fx(a), fx(b)) for (a, b) in ks}; ku = {fx(a) for a in ku}
 ks = {(a, b) for (a, b) in ks if a not in ku}
 ps = {(a, b) for (a, b) in ps if a not in pu}
 d1, d2, u1, u2 = ps - ks, ks - ps, pu - ku, ku - pu
