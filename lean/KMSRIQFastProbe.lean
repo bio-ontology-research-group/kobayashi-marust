@@ -3,6 +3,7 @@ import ContextCalculus.OWLFrontend.ReferenceReadout
 import SRIQFast.Core
 import SRIQFast.Brute
 import SRIQFast.ToCand
+import ContextCalculus.OWLFrontend.SRIQFastRoute
 
 /-! Development probe for stage C1c: the unproved demand-driven SHIQ
 prototype (`SRIQFast`). `km-sriq-fast-probe <file.ofn>` runs the parser,
@@ -20,6 +21,11 @@ Environment:
 - `KM_SRIQF_REF=1`: also run the proved `classifyQO` and compare.
 - `KM_SRIQF_CLASSES=1`: request the class IRIs only (as
   `KM_SRIQ_PROBE_CLASSES`).
+- `--checked`: answer through the certified route `fastClassifyA`
+  (`closedFastB`, then the worklist elimination and readout);
+  `KM_SRIQF_OLDCHECK=1` uses the finset check `closedB` and `fastRows`.
+- `KM_SRIQF_SHIQ=slow` (`isSHIQB`) or `unproved` (`isSHIQFast`): the
+  simple-role check; the default is the proved `isSHIQFastB`.
 - `KM_SRIQF_INHERIT=0`, `KM_SRIQF_SKIPCOVERED=0`, `KM_SRIQF_MAXNODES=k`:
   variants of the procedure. -/
 
@@ -221,20 +227,20 @@ def runFast {n m : Nat} (E : SRIQ.Ontology (Fin n) (Fin m)) (req : Array Nat)
     IO.eprintln s!"readout_ms={t4-t3} fast_total_ms={t4-t0}"
     if !checked then return some { rows, aborted := false }
     -- checked mode: the certified check, elimination and readout
-    if (← IO.getEnv "KM_SRIQF_FAST") == some "1" then
+    if (← IO.getEnv "KM_SRIQF_OLDCHECK") != some "1" then
       let c0 ← IO.monoMsNow
       let ix ← IO.lazyPure fun _ => ContextCalculus.SRIQ.Fast.mkIx E
       let ixf ← IO.lazyPure fun _ => ContextCalculus.SRIQ.Fast.mkIxF E ix
       let CA ← IO.lazyPure fun _ => toCandA st roots
       let c1 ← IO.monoMsNow
-      IO.eprintln s!"fast: indexes+convert nodes={CA.nodes.size} ms={c1 - c0} ups={ixf.upA.size}"
+      IO.eprintln s!"checked: indexes+convert nodes={CA.nodes.size} ms={c1 - c0}"
       let rep := ((← IO.getEnv "KM_SRIQF_REPEAT").bind String.toNat?).getD 0
       for r in [0:rep] do
         let ok' ← IO.lazyPure fun _ => ContextCalculus.SRIQ.Fast.closedFastB ix ixf (if r > 1000000 then toCandA st roots else CA) reqF
         if !ok' then IO.eprintln "repeat: declined"
       let ok ← IO.lazyPure fun _ => ContextCalculus.SRIQ.Fast.closedFastB ix ixf CA reqF
       let c2 ← IO.monoMsNow
-      IO.eprintln s!"fast: closedFastB={ok} check_ms={c2 - c1}"
+      IO.eprintln s!"checked: closedB={ok} convert_ms={c1 - c0} check_ms={c2 - c1}"
       if !ok then return some { rows, aborted := false, checked := some false }
       if (← IO.getEnv "KM_SRIQF_ELIMPROF") == some "1" then
         let e0 ← IO.monoMsNow
@@ -252,7 +258,7 @@ def runFast {n m : Nat} (E : SRIQ.Ontology (Fin n) (Fin m)) (req : Array Nat)
       let crows ← IO.lazyPure fun _ => certRows (ContextCalculus.SRIQ.Fast.fastRowsA ix CA reqF)
       let c3 ← IO.monoMsNow
       let same := cmpRows crows rows reqF.length |>.isEmpty
-      IO.eprintln s!"fast: elim_readout_ms={c3 - c2} same_as_prototype={same} checked_total_ms={c3 - c0}"
+      IO.eprintln s!"checked: elim_readout_ms={c3 - c2} same_as_prototype={same} checked_total_ms={c3 - c0}"
       return some { rows := crows, aborted := false, checked := some true }
     let c0 ← IO.monoMsNow
     let ix ← IO.lazyPure fun _ => ContextCalculus.SRIQ.Fast.mkIx E
@@ -376,9 +382,12 @@ def mainOfn (path : String) (checkedArg : Bool) : IO UInt32 := do
       | none => IO.eprintln "declined: not SHIQ"; return 3
       | some T =>
         let t2 ← IO.monoMsNow
-        let ok := if (← IO.getEnv "KM_SRIQF_PROVEDSHIQ") == some "1" then isSHIQB T.ontology
-          else isSHIQFast T.ontology
-        IO.eprintln s!"named={T.named.length} concepts={T.conceptCount} roles={T.roleCount} clauses={T.ontology.length} shiq={ok} parse_ms={t1-t0} translate_ms={t2-t1}"
+        let shiqMode := (← IO.getEnv "KM_SRIQF_SHIQ").getD "proved"
+        let ok ← IO.lazyPure fun _ => if shiqMode == "slow" then isSHIQB T.ontology
+          else if shiqMode == "unproved" then isSHIQFast T.ontology
+          else isSHIQFastB T.ontology
+        let t2b ← IO.monoMsNow
+        IO.eprintln s!"named={T.named.length} concepts={T.conceptCount} roles={T.roleCount} clauses={T.ontology.length} shiq={ok} parse_ms={t1-t0} translate_ms={t2-t1} shiq_ms={t2b-t2}"
         if !ok then
           IO.eprintln "declined: non-simple role in a number restriction or functionality axiom"
           return 3

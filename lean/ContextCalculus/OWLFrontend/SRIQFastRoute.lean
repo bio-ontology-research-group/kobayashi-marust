@@ -6,8 +6,8 @@ import ContextCalculus.SRIQ.FastElimAProof
 # The checked fast SHIQ route (stage C1c)
 
 `owlSHIQFast gen` is `owlSHIQReference` with the star elimination replaced
-by the certificate check: after `translateSRIQ`, `isSHIQB` and
-`encTransQ`, the generator `gen` proposes an array candidate set,
+by the certificate check: after `translateSRIQ`, `isSHIQFastB` (equal to
+`isSHIQB`) and `encTransQ`, the generator `gen` proposes an array candidate set,
 `closedFastB` (`SRIQ/FastCheckA.lean`) checks it, and the route answers
 from its live nodes (`SRIQ/FastElimA.lean`) only when the check passes;
 otherwise it declines (`none`). `owlSHIQFast_sound` holds for every
@@ -20,6 +20,58 @@ open ContextCalculus
 open ContextCalculus.SparseTaxonomy
 open ContextCalculus.SRI (RoleT Interp)
 open ContextCalculus.SRIQ
+
+/-! ## A fast simple-role check
+
+`isSHIQB` computes the super-roles of each transitive role with `2 m + 1`
+rounds of `upStep` (seconds on inputs with hundreds of roles).
+`isSHIQFastB` takes them from the breadth-first search of `mkIx` (`upS`)
+and checks that the result is closed under the one-step super-roles; a
+closed set that contains the role holds every super-role, and `upS`
+holds super-roles only, so the answer is the same (`isSHIQFastB_eq`).
+When the closure check fails, it falls back to `roleUp`. -/
+
+/-- The simple-role condition for one transitive role `T`. -/
+def simpleT {n m : Nat} (O : SRIQ.Ontology (Fin n) (Fin m)) (ix : SRIQ.Fast.Ix n m)
+    (T : RoleT (Fin m)) : Bool :=
+  let U := SRIQ.Fast.upS ix T
+  if SRIQ.Fast.upClosedB ix U then
+    (countRoles O).all fun R => !(decide (R ∈ U)) && !(decide (R.flip ∈ U))
+  else
+    let up := SRI.Proc.roleUp (sriPart O) T
+    (countRoles O).all fun R => !(up.contains R) && !(up.contains R.flip)
+
+/-- `isSHIQB` with the super-roles from `mkIx`. -/
+def isSHIQFastB {n m : Nat} (O : SRIQ.Ontology (Fin n) (Fin m)) : Bool :=
+  O.all chainOKQ && (let ix := SRIQ.Fast.mkIx O; (transRoles O).all (simpleT O ix))
+
+theorem simpleT_eq {n m : Nat} (O : SRIQ.Ontology (Fin n) (Fin m)) (T : RoleT (Fin m)) :
+    simpleT O (SRIQ.Fast.mkIx O) T =
+      (let up := SRI.Proc.roleUp (sriPart O) T
+       (countRoles O).all fun R => !(up.contains R) && !(up.contains R.flip)) := by
+  unfold simpleT
+  dsimp only
+  split
+  · next hc =>
+    have hU : ∀ R, R ∈ SRIQ.Fast.upS (SRIQ.Fast.mkIx O) T ↔ (SRI.Proc.roleUp (sriPart O) T).contains R = true := by
+      intro R
+      rw [List.contains_iff_mem, SRI.Proc.mem_roleUp]
+      constructor
+      · exact SRIQ.Fast.upS_sound
+      · intro h
+        exact SRIQ.Fast.upClosedB_sound hc T (SRIQ.Fast.upS_self T) R h
+    congr 1
+    funext R
+    rw [SRIQ.Fast.decide_eq_of_iff (hU R), SRIQ.Fast.decide_eq_of_iff (hU R.flip)]
+  · rfl
+
+theorem isSHIQFastB_eq {n m : Nat} (O : SRIQ.Ontology (Fin n) (Fin m)) : isSHIQFastB O = isSHIQB O := by
+  unfold isSHIQFastB isSHIQB simpleB
+  dsimp only
+  congr 1
+  congr 1
+  funext T
+  exact simpleT_eq O T
 
 /-- Rows that are exact one by one, in request order, give exact bits. -/
 theorem sriq_bit_rows (T : SRIQTranslation) {k : Nat}
@@ -67,7 +119,7 @@ def owlSHIQFast
   match translateSRIQ O requested with
   | none => none
   | some T =>
-      if isSHIQB T.ontology then
+      if isSHIQFastB T.ontology then
         let E := SRIQ.Proc.encTransQ T.ontology
         match SRIQ.Fast.fastClassifyA E.2 (sriqRequest T E.1) (gen E.2 (sriqRequest T E.1)) with
         | some cls => some { named := T.named, rows := sriqRows T cls }
@@ -97,7 +149,7 @@ theorem owlSHIQFast_sound
         refine ⟨translateSRIQ_named hT, ?_⟩
         intro i j hi hj
         rw [translateSRIQ_correct hT i j hi hj,
-          SRIQ.Proc.encTransQ_correct (isSHIQ_of_isSHIQB hS)]
+          SRIQ.Proc.encTransQ_correct (isSHIQ_of_isSHIQB ((isSHIQFastB_eq _) ▸ hS))]
         refine sriq_bit_rows T (fun i' hi' => ?_) i j hi hj
         obtain ⟨p, hp, hp1⟩ := SRIQ.Fast.fastClassifyA_get hcls hi'
         obtain ⟨-, hall⟩ := SRIQ.Fast.fastClassifyA_spec (SRIQ.Proc.encTransQ_isALCHIQ T.ontology) hcls
@@ -108,5 +160,6 @@ theorem owlSHIQFast_sound
 
 end ContextCalculus.OWLFrontend
 
+#print axioms ContextCalculus.OWLFrontend.isSHIQFastB_eq
 #print axioms ContextCalculus.OWLFrontend.sriq_bit_rows
 #print axioms ContextCalculus.OWLFrontend.owlSHIQFast_sound
