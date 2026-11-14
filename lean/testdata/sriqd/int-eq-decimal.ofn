@@ -1,0 +1,5 @@
+Prefix(:=<http://ex/>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://ex/int-eq-decimal>
+SubClassOf(:A DataMinCardinality(2 :p DataOneOf("1"^^xsd:integer "1.0"^^xsd:decimal)))
+)

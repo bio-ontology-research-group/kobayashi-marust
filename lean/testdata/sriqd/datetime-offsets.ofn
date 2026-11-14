@@ -1,0 +1,5 @@
+Prefix(:=<http://ex/>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://ex/datetime-offsets>
+SubClassOf(:A DataMinCardinality(2 :p DataOneOf("2008-07-08T20:44:11.656+01:00"^^xsd:dateTime "2008-07-08T19:44:11.656Z"^^xsd:dateTime)))
+)

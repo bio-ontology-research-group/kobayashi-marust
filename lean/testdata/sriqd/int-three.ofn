@@ -1,0 +1,5 @@
+Prefix(:=<http://ex/>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://ex/int-three>
+SubClassOf(:A DataMinCardinality(3 :p DatatypeRestriction(xsd:int xsd:minInclusive "1"^^xsd:integer xsd:maxInclusive "2"^^xsd:integer)))
+)

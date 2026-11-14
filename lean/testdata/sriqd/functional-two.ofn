@@ -1,0 +1,6 @@
+Prefix(:=<http://ex/>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://ex/functional-two>
+FunctionalDataProperty(:p)
+SubClassOf(:A DataMinCardinality(2 :p DataOneOf("1"^^xsd:int "2"^^xsd:int)))
+)

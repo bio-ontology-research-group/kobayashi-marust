@@ -468,3 +468,7 @@ root = "KMSRIProbe"
 [[lean_exe]]
 name = "km-sriq-probe"
 root = "KMSRIQProbe"
+
+[[lean_exe]]
+name = "km-sriqd-probe"
+root = "KMSRIQDProbe"
