@@ -66,6 +66,19 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     /** Individual realization of the committed revision; null until first needed. */
     private volatile Realized realized;
     private volatile Process realizeProcess;
+    /** True while a monitored task runs; interrupt() acts only then. */
+    private volatile boolean taskRunning;
+    private volatile boolean interruptRequested;
+    private volatile boolean timedOut;
+    /** Identifies the running task so a late timer cannot hit the next one. */
+    private volatile long taskGeneration;
+    private int taskDepth;
+    private static final java.util.concurrent.ScheduledExecutorService TIMER =
+            java.util.concurrent.Executors.newSingleThreadScheduledExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "km-reasoner-timeout");
+                thread.setDaemon(true);
+                return thread;
+            });
 
     private static final class FlushContext {
         final boolean allowDelta;
@@ -91,6 +104,82 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private synchronized void classify() { classify(null, null); }
 
     /**
+     * Run native work the way HermiT runs a task: report to the progress
+     * monitor of the configuration (started, busy, stopped), end it with
+     * {@link TimeOutException} once {@code getTimeOut()} milliseconds have
+     * passed, and end it with {@link ReasonerInterruptedException} when
+     * {@link #interrupt()} was called. Protege catches only the latter, so a
+     * killed native process must not surface as a plain failure. Callers hold
+     * the reasoner monitor; nested calls join the outer task.
+     */
+    private void runTask(String title, Runnable work) {
+        if (taskDepth > 0) {
+            work.run();
+            return;
+        }
+        ReasonerProgressMonitor monitor = getReasonerConfiguration().getProgressMonitor();
+        long limit = getTimeOut();
+        long generation = ++taskGeneration;
+        interruptRequested = false;
+        timedOut = false;
+        taskDepth++;
+        taskRunning = true;
+        java.util.concurrent.ScheduledFuture<?> timer = null;
+        if (monitor != null) {
+            monitor.reasonerTaskStarted(title);
+            monitor.reasonerTaskBusy();
+        }
+        try {
+            if (limit > 0 && limit < Long.MAX_VALUE) {
+                timer = TIMER.schedule(() -> {
+                    if (taskGeneration == generation) {
+                        timedOut = true;
+                        killNative();
+                    }
+                }, limit, java.util.concurrent.TimeUnit.MILLISECONDS);
+            }
+            try {
+                work.run();
+            } catch (RuntimeException failure) {
+                throw translate(failure);
+            }
+        } finally {
+            if (timer != null) timer.cancel(false);
+            taskRunning = false;
+            taskDepth--;
+            taskGeneration++;
+            if (monitor != null) monitor.reasonerTaskStopped();
+            interruptRequested = false;
+            timedOut = false;
+        }
+    }
+
+    private RuntimeException translate(RuntimeException failure) {
+        if (failure instanceof ReasonerInterruptedException || failure instanceof TimeOutException) {
+            return failure;
+        }
+        if (timedOut) {
+            return new TimeOutException("Kobayashi-MaRust exceeded the time out of "
+                    + getTimeOut() + " ms");
+        }
+        if (interruptRequested || Thread.interrupted()) {
+            return new ReasonerInterruptedException(failure);
+        }
+        return failure;
+    }
+
+    /** Stop the native work of the running task. Does not wait for the reasoner monitor. */
+    private void killNative() {
+        Process realizing = realizeProcess;
+        if (realizing != null) NativeProcessTree.terminateAndWait(realizing);
+        Classifier.Session session = incrementalSession;
+        if (session != null) {
+            session.interrupt();
+            if (incrementalSession == session) incrementalSession = null;
+        }
+    }
+
+    /**
      * Run the first classification if it has not happened. The ontology
      * changes buffered since construction are folded into this run: they are
      * dropped from the pending list first, because the run reads the ontology
@@ -99,7 +188,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private synchronized void ensureClassified() {
         if (classified) return;
         if (!getPendingChanges().isEmpty()) flush();
-        classify();
+        runTask(ReasonerProgressMonitor.CLASSIFYING, this::classify);
     }
 
     private void classify(Set<OWLAxiom> added, Set<OWLAxiom> removed) {
@@ -129,7 +218,13 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         Classifier.Session session;
         try {
             if (incrementalSession == null) {
-                incrementalSession = new Classifier.Session(candidateSource);
+                // Register the session as soon as its process runs, so interrupt()
+                // reaches the first (longest) transaction too.
+                incrementalSession = new Classifier.Session(candidateSource, s -> {
+                    incrementalSession = s;
+                    // An interrupt or time out that came before the process existed.
+                    if (interruptRequested || timedOut) s.interrupt();
+                });
                 answerChanged = true;
             } else {
                 answerChanged = incrementalSession.replaceRows(candidateSource);
@@ -606,6 +701,16 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
             super.flush();
             return;
         }
+        // Nothing pending and in step with the native session: nothing to do,
+        // so no progress report either.
+        if (getPendingChanges().isEmpty() && sourceSynchronized
+                && RetainedFunctionalSyntax.importsView(getRootOntology()).equals(committedImports)) {
+            return;
+        }
+        runTask(ReasonerProgressMonitor.CLASSIFYING, this::flushClassified);
+    }
+
+    private void flushClassified() {
         // OWLReasonerBase advances its private bookkeeping before handleChanges
         // succeeds. Its effective delta is usable only while both revisions agree.
         Set<OWLOntology> closure = RetainedFunctionalSyntax.importsView(getRootOntology());
@@ -643,14 +748,16 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         else classify();
     }
 
+    /**
+     * Cancel the running classification or realization. Like HermiT's
+     * interrupt flag it has no effect when nothing runs, and the thread that
+     * computes then fails with {@link ReasonerInterruptedException}. Not
+     * synchronized: the computing thread holds the reasoner monitor.
+     */
     @Override public void interrupt() {
-        Process realizing = realizeProcess;
-        if (realizing != null) NativeProcessTree.terminateAndWait(realizing);
-        Classifier.Session session = incrementalSession;
-        if (session != null) {
-            session.interrupt();
-            if (incrementalSession == session) incrementalSession = null;
-        }
+        if (!taskRunning) return;
+        interruptRequested = true;
+        killNative();
     }
 
     @Override public synchronized void dispose() {
@@ -729,6 +836,12 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private Realized ensureRealized() {
         ensureClassified();
         if (realized != null) return realized;
+        Realized[] out = new Realized[1];
+        runTask(ReasonerProgressMonitor.REALIZING, () -> out[0] = realizeNow());
+        return out[0];
+    }
+
+    private Realized realizeNow() {
         Realized built = new Realized();
         if (!consistent) {
             // Like the class queries, answer an inconsistent ontology with empty sets.
@@ -744,7 +857,12 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                 result = new Classifier.Realization();
             } else {
                 result = Classifier.realize(FlattenedOntology.functionalSyntaxOfSnapshot(snapshot),
-                        process -> realizeProcess = process);
+                        process -> {
+                            realizeProcess = process;
+                            if (process != null && (interruptRequested || timedOut)) {
+                                NativeProcessTree.terminateAndWait(process);
+                            }
+                        });
             }
             if (!result.consistent) {
                 realized = built;

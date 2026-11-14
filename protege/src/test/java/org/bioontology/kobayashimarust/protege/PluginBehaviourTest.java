@@ -261,4 +261,151 @@ public class PluginBehaviourTest {
         assertTrue(r.getSuperClasses(a, false).containsEntity(b));
         assertTrue(r.isPrecomputed(InferenceType.CLASS_HIERARCHY));
     }
+
+    // ---- item 1: time out, progress monitor, interrupt ----------------
+
+    /** Records the monitor protocol. */
+    private static final class RecordingMonitor implements ReasonerProgressMonitor {
+        final List<String> events = Collections.synchronizedList(new ArrayList<>());
+        @Override public void reasonerTaskStarted(String taskName) { events.add("started:" + taskName); }
+        @Override public void reasonerTaskStopped() { events.add("stopped"); }
+        @Override public void reasonerTaskProgressChanged(int value, int max) { events.add("progress"); }
+        @Override public void reasonerTaskBusy() { events.add("busy"); }
+    }
+
+    /** A km stand-in that never answers, so a request lasts until it is cancelled. */
+    private static final class SilentKm implements AutoCloseable {
+        final String previous = System.getProperty("km.bin");
+        SilentKm() throws Exception {
+            java.nio.file.Path dir = java.nio.file.Files.createTempDirectory(
+                    java.nio.file.Paths.get("target"), "silent-km");
+            java.nio.file.Path script = dir.resolve("km");
+            java.nio.file.Files.write(script, "#!/bin/sh\nexec sleep 120\n".getBytes("UTF-8"));
+            assertTrue(script.toFile().setExecutable(true));
+            System.setProperty("km.bin", script.toAbsolutePath().toString());
+        }
+        @Override public void close() {
+            System.setProperty("km.bin", previous);
+        }
+    }
+
+    @Test
+    public void classificationReportsToTheProgressMonitorOnce() throws Exception {
+        OWLOntology o = IndividualsTest.parse(IndividualsTest.SMALL);
+        RecordingMonitor monitor = new RecordingMonitor();
+        KMReasoner r = km(o, new SimpleConfiguration(monitor));
+        assertTrue("nothing is reported before the first use", monitor.events.isEmpty());
+        r.isConsistent();
+        assertEquals(Arrays.asList("started:" + ReasonerProgressMonitor.CLASSIFYING, "busy", "stopped"),
+                monitor.events);
+        r.getSuperClasses(cls(dataFactory(o), "Dog"), false);
+        assertEquals("answering from the taxonomy reports nothing", 3, monitor.events.size());
+        r.flush();
+        assertEquals("a flush with nothing pending reports nothing", 3, monitor.events.size());
+        // A realization is a second task.
+        r.getTypes(ind(dataFactory(o), "rex"), false);
+        assertEquals(Arrays.asList("started:" + ReasonerProgressMonitor.REALIZING, "busy", "stopped"),
+                monitor.events.subList(3, 6));
+        // A flush with a change is a task again.
+        o.getOWLOntologyManager().addAxiom(o, dataFactory(o).getOWLSubClassOfAxiom(
+                cls(dataFactory(o), "Puppy"), cls(dataFactory(o), "Dog")));
+        r.flush();
+        assertEquals(Arrays.asList("started:" + ReasonerProgressMonitor.CLASSIFYING, "busy", "stopped"),
+                monitor.events.subList(6, 9));
+    }
+
+    @Test
+    public void theMonitorIsStoppedWhenClassificationFails() throws Exception {
+        OWLOntologyManager m = org.semanticweb.owlapi.apibinding.OWLManager.createOWLOntologyManager();
+        OWLDataFactory df = m.getOWLDataFactory();
+        OWLOntology root = m.createOntology(IRI.create(NS + "failing"));
+        m.applyChange(new AddImport(root, df.getOWLImportsDeclaration(IRI.create(NS + "gone"))));
+        RecordingMonitor monitor = new RecordingMonitor();
+        KMReasoner r = km(root, new SimpleConfiguration(monitor));
+        try {
+            r.isConsistent();
+            fail();
+        } catch (ReasonerInternalException expected) {
+            // not an interrupt and not a time out
+        }
+        assertEquals("stopped", monitor.events.get(monitor.events.size() - 1));
+    }
+
+    @Test
+    public void getTimeOutIsHonouredAsTimeOutException() throws Exception {
+        try (SilentKm silent = new SilentKm()) {
+            OWLOntology o = IndividualsTest.parse(IndividualsTest.SMALL);
+            RecordingMonitor monitor = new RecordingMonitor();
+            KMReasoner r = km(o, new SimpleConfiguration(monitor, FreshEntityPolicy.ALLOW, 400L,
+                    IndividualNodeSetPolicy.BY_NAME));
+            assertEquals(400L, r.getTimeOut());
+            long start = System.nanoTime();
+            try {
+                r.isConsistent();
+                fail("a silent engine must hit the time out");
+            } catch (TimeOutException expected) {
+                // as HermiT's InterruptFlag throws
+            }
+            long millis = (System.nanoTime() - start) / 1_000_000;
+            assertTrue("took " + millis + " ms", millis < 20_000);
+            assertEquals("stopped", monitor.events.get(monitor.events.size() - 1));
+            assertFalse(r.isPrecomputed(InferenceType.CLASS_HIERARCHY));
+        }
+    }
+
+    @Test
+    public void interruptSurfacesAsReasonerInterruptedExceptionInTheComputingThread() throws Exception {
+        try (SilentKm silent = new SilentKm()) {
+            OWLOntology o = IndividualsTest.parse(IndividualsTest.SMALL);
+            KMReasoner r = km(o);
+            // Protege stores the reasoner after construction, then asks it to precompute.
+            final Throwable[] thrown = new Throwable[1];
+            Thread worker = new Thread(() -> {
+                try {
+                    r.precomputeInferences(InferenceType.CLASS_HIERARCHY);
+                } catch (Throwable t) {
+                    thrown[0] = t;
+                }
+            }, "classification");
+            worker.start();
+            Thread.sleep(1500);
+            assertTrue("the classification is still running", worker.isAlive());
+            r.interrupt();
+            worker.join(20_000);
+            assertFalse("interrupt must end the classification", worker.isAlive());
+            assertTrue("got " + thrown[0], thrown[0] instanceof ReasonerInterruptedException);
+            assertFalse(r.isPrecomputed(InferenceType.CLASS_HIERARCHY));
+        }
+    }
+
+    @Test
+    public void interruptWhileIdleDoesNothing() throws Exception {
+        OWLOntology o = IndividualsTest.parse(IndividualsTest.SMALL);
+        KMReasoner r = km(o);
+        r.interrupt();
+        assertTrue(r.isConsistent());
+        r.interrupt();
+        assertTrue(r.getSuperClasses(cls(dataFactory(o), "Dog"), false)
+                .containsEntity(cls(dataFactory(o), "Animal")));
+    }
+
+    @Test
+    public void aReasonerIsUsableAfterAnInterruptedFirstClassification() throws Exception {
+        OWLOntology o = IndividualsTest.parse(IndividualsTest.SMALL);
+        KMReasoner r;
+        try (SilentKm silent = new SilentKm()) {
+            r = km(o);
+            Thread worker = new Thread(() -> {
+                try { r.isConsistent(); } catch (RuntimeException ignored) { }
+            });
+            worker.start();
+            Thread.sleep(1000);
+            r.interrupt();
+            worker.join(20_000);
+            assertFalse(worker.isAlive());
+        }
+        // The real km is back: the next use classifies from scratch.
+        assertTrue(r.isConsistent());
+        assertTrue(r.isPrecomputed(InferenceType.CLASS_HIERARCHY));
+    }
 }
