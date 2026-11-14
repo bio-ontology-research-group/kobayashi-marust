@@ -13,11 +13,6 @@
   FLOPO inputs of issue #5 did not finish in 300 s; with it, 17.5 s (136
   negated definitions of one form and one of the other) and 133 s (the full
   reproducer). `KM_NO_RELEASE_DEFAULTS=1` restores the old behaviour.
-- `KM_HT_EXPAND_LAST` (off by default): the hypertableau decides every open
-  disjunction before it expands existentials. On the issue #5 input under
-  `--route ht_general` each satisfiability test then ends (900 to 5,300
-  nodes) instead of growing one model without end; `KM_HT_BLOCKDIAG` (with
-  `KM_HT_STATS`) prints why nodes are not blocked.
 
 ## [1.6.3] - 2026-11-13
 
@@ -10687,7 +10682,6 @@ firing fragment grows from {Class, Role} to {Class, Role, SameIndividual}; the
 `DifferentIndividuals` and datatype/built-in shapes remain out of the sound
 fragment and are handled by explicit deferral (Diff) or honest decline (built-in).
 ORE 10860 is not closed (its built-in date/subclass rules need a concrete domain).
-
 
 
 ### Incremental CB indexes and interning hot paths (2026-07-17)
