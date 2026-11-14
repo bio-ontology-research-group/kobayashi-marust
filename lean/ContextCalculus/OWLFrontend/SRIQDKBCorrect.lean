@@ -42,12 +42,28 @@ namespace ContextCalculus.OWLFrontend
 
 open ContextCalculus.OWL ContextCalculus.OWL.Datatypes SHIQD
 
-/-- **Consistency through the SHIQ(D) knowledge-base translation.** -/
-theorem translateSRIQDKB_consistent (pat : String → String → Prop) {O : Ontology}
+/-- **The model maps of the SHIQ(D) knowledge-base translation**, with each
+requested IRI standing for its index. -/
+theorem translateSRIQDKB_maps (pat : String → String → Prop) {O : Ontology}
     {requested extra : List IRI} {T : SRIQDKBTranslation}
     (h : translateSRIQDKB O requested extra = some T) :
-    (∃ (Dom : Type) (_ : Nonempty Dom) (I : Interp (owl2MapP pat) Dom), OWL.Model O I) ↔
-      ContextCalculus.SRIQD.ConsistentKB (owlTheory pat (spec T.tab)) T.ontology T.abox := by
+    (∀ (Dom : Type) [Nonempty Dom] (I : Interp (owl2MapP pat) Dom), OWL.Model O I →
+      ∃ (V : Type) (atom : Fin T.tab.length → V → Prop), owlTheory pat (spec T.tab) V atom ∧
+        ∃ (K : ContextCalculus.SRIQD.DInterp Dom V (Fin T.obj.conceptCount) (Fin T.obj.roleCount)
+            (Fin T.dps.length)) (ind : Fin T.obj.inds.length → Dom),
+          ContextCalculus.SRIQD.models atom K T.ontology ∧
+          ContextCalculus.SRIQD.satABox atom K ind T.abox ∧
+          ∀ (i : Nat) (hi : i < T.obj.named.length), T.obj.named[i] ∈ requested → ∀ y,
+            K.c ⟨i, Nat.lt_of_lt_of_le hi T.obj.hnamed⟩ y ↔ I.cls T.obj.named[i] y) ∧
+    (∀ (Dom V : Type) [Nonempty Dom] (atom : Fin T.tab.length → V → Prop),
+      owlTheory pat (spec T.tab) V atom →
+      ∀ (K : ContextCalculus.SRIQD.DInterp Dom V (Fin T.obj.conceptCount) (Fin T.obj.roleCount)
+          (Fin T.dps.length)) (ind : Fin T.obj.inds.length → Dom),
+        ContextCalculus.SRIQD.models atom K T.ontology →
+        ContextCalculus.SRIQD.satABox atom K ind T.abox →
+        ∃ I : Interp (owl2MapP pat) Dom, OWL.Model O I ∧
+          ∀ (i : Nat) (hi : i < T.obj.named.length), T.obj.named[i] ∈ requested → ∀ y,
+            I.cls T.obj.named[i] y ↔ K.c ⟨i, Nat.lt_of_lt_of_le hi T.obj.hnamed⟩ y) := by
   classical
   unfold translateSRIQDKB at h
   split_ifs at h with hO
@@ -176,12 +192,8 @@ theorem translateSRIQDKB_consistent (pat : String → String → Prop) {O : Onto
       ax.isSHIQDKB = true → ∀ N N' : List IRI, I.sat N ax ↔ I.sat N' ax := by
     intro DM Dom I ax hax N N'
     exact sat_congr_clsK rfl rfl rfl rfl hax (fun _ _ => rfl) N N'
-  show (∃ (Dom : Type) (_ : Nonempty Dom) (I : Interp (owl2MapP pat) Dom), OWL.Model O I) ↔
-    ContextCalculus.SRIQD.ConsistentKB (owlTheory pat (spec (tableK O)))
-      (Tobj.ontology.map ContextCalculus.SRIQD.Clause.obj ++ dc ++ sc)
-      (Tobj.abox.map ContextCalculus.SRIQD.Assertion.obj)
-  constructor
-  · rintro ⟨Dom, hD, I, hI⟩
+  refine ⟨?_, ?_⟩
+  · intro Dom hD I hI
     let isF : IRI → Prop := fun a => ∃ e ∈ tableK O, fName (SRIQKB.defBase O requested) (tableK O) e = a
     let isW : IRI → Prop := fun a => ∃ e ∈ tableK O, wName (SRIQKB.defBase O requested) (tableK O) e = a
     let I' : Interp (owl2MapP pat) Dom :=
@@ -278,8 +290,10 @@ theorem translateSRIQDKB_consistent (pat : String → String → Prop) {O : Onto
         show I.dprop (dpropsK O)[w] y v
         rw [hw]
         exact this (by rw [← hu]; exact hv)
-    exact ⟨Dom, Val, hD, atom, hΘ, K, _, hK, ContextCalculus.SRIQD.satABox_map_obj.2 hA⟩
-  · rintro ⟨Dom, V, hD, atom, hΘ, K, ind, hK, hA⟩
+    refine ⟨Val, atom, hΘ, K, _, hK, ContextCalculus.SRIQD.satABox_map_obj.2 hA,
+      fun i hi hreq y => (hKc ⟨i, _⟩ hi y).trans ?_⟩
+    rw [hI'old _ fun n => SRIQKB.fresh_req hreq n]
+  · intro Dom V hD atom hΘ K ind hK hA
     obtain ⟨eqv, dtype, hatom⟩ := hΘ
     have hKm := ContextCalculus.SRIQD.models_iff.1 hK
     obtain ⟨R, hR, -, hRc⟩ := translateSRIQKB_down hTobj K.toInterp ind
@@ -354,8 +368,24 @@ theorem translateSRIQDKB_consistent (pat : String → String → Prop) {O : Onto
         have h1 := (hdpK u y (eqv.symm v)).1 (by simpa using hv)
         have h2 := hloc (eqv.symm v) h1
         simpa using (hdpK w y (eqv.symm v)).2 h2
-    exact ⟨Dom, hD, I, hIO⟩
+    exact ⟨I, hIO, fun i hi _ y => hIc ⟨i, _⟩ hi y⟩
+
+/-- **Consistency through the SHIQ(D) knowledge-base translation.** -/
+theorem translateSRIQDKB_consistent (pat : String → String → Prop) {O : Ontology}
+    {requested extra : List IRI} {T : SRIQDKBTranslation}
+    (h : translateSRIQDKB O requested extra = some T) :
+    (∃ (Dom : Type) (_ : Nonempty Dom) (I : Interp (owl2MapP pat) Dom), OWL.Model O I) ↔
+      ContextCalculus.SRIQD.ConsistentKB (owlTheory pat (spec T.tab)) T.ontology T.abox := by
+  obtain ⟨hup, hdown⟩ := translateSRIQDKB_maps pat h
+  constructor
+  · rintro ⟨Dom, hD, I, hI⟩
+    obtain ⟨V, atom, hΘ, K, ind, hK, hA, -⟩ := hup Dom I hI
+    exact ⟨Dom, V, hD, atom, hΘ, K, ind, hK, hA⟩
+  · rintro ⟨Dom, V, hD, atom, hΘ, K, ind, hK, hA⟩
+    obtain ⟨I, hI, -⟩ := hdown Dom V atom hΘ K ind hK hA
+    exact ⟨Dom, hD, I, hI⟩
 
 end ContextCalculus.OWLFrontend
 
+#print axioms ContextCalculus.OWLFrontend.translateSRIQDKB_maps
 #print axioms ContextCalculus.OWLFrontend.translateSRIQDKB_consistent

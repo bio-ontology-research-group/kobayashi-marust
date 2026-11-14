@@ -367,3 +367,4 @@ import ContextCalculus.SRIQN.DataParts
 import ContextCalculus.OWLFrontend.SHOIQNom
 import ContextCalculus.OWLFrontend.SHOIQC2aReference
 import ContextCalculus.OWLFrontend.SHOIQC2aTests
+import ContextCalculus.OWLFrontend.SHOIQDNom
