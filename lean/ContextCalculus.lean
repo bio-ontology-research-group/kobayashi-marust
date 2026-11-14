@@ -332,3 +332,4 @@ import ContextCalculus.OWLFrontend.SRIQDTranslate
 import ContextCalculus.OWLFrontend.SRIQDTranslateCorrect
 import ContextCalculus.OWLFrontend.SRIQDEntries
 import ContextCalculus.OWLFrontend.SRIQDCorrect
+import ContextCalculus.OWLFrontend.SRIQDReference
