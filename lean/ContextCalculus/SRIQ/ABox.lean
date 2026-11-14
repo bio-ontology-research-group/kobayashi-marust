@@ -781,7 +781,127 @@ theorem consistentKB_iff_realisation [Fintype CName] [DecidableEq CName] [Fintyp
   · rintro ⟨B, _, ⟨b0⟩, ⟨ρ⟩⟩
     exact ⟨_, ⟨⟨.inl b0, trivial⟩⟩, forestI ρ, _, forestI_models ρ hA, forestI_satABox ρ⟩
 
+/-! ## Section 4: transitivity with an ABox -/
+
+namespace Proc
+
+variable {n m : Nat}
+
+/-- An assertion on the old names of the encoding. -/
+def liftAssert (k : Nat) : Assertion (Fin n) (Fin m) Ind → Assertion (Fin (n + k)) (Fin m) Ind
+  | .cls a X => .cls a (Fin.castAdd k X)
+  | .role a R b => .role a R b
+  | .nrole a R b => .nrole a R b
+  | .same a b => .same a b
+  | .diff a b => .diff a b
+
+/-- A SHIQ knowledge base: a SHIQ TBox, and simple roles in the negative
+role assertions. -/
+def IsSHIQKB (O : Ontology (Fin n) (Fin m)) (A : ABox (Fin n) (Fin m) Ind) : Prop :=
+  IsSHIQ O ∧ ∀ a R b, Assertion.nrole a R b ∈ A →
+    ∀ T, Clause.chain [T, T] T ∈ O → ¬ RoleLe O T R ∧ ¬ RoleLe O T R.flip
+
+/-- The ABox of the encoding. -/
+def encABox (O : Ontology (Fin n) (Fin m)) (A : ABox (Fin n) (Fin m) Ind) :
+    ABox (Fin (n + (encTransQ O).1)) (Fin m) Ind :=
+  A.map (liftAssert (encTransQ O).1)
+
+/-- The model map up: `upI` models the encoding. -/
+theorem models_upI {O : Ontology (Fin n) (Fin m)} {I : Interp D (Fin n) (Fin m)}
+    (hI : models I O) : models (SRI.Proc.upI (sriPart O) I) (encTransQ O).2 := by
+  intro cl hcl
+  rcases mem_encTransQ.1 hcl with h1 | h1
+  · obtain ⟨cl', hcl', rfl⟩ := List.mem_map.1 h1
+    exact (satClause_ofSRI _ cl').2 (SRI.Proc.upI_models (models_sriPart hI) _ hcl')
+  · obtain ⟨cl0, h0, hl⟩ := List.mem_filterMap.1 h1
+    have hs := hI _ h0
+    cases cl0 <;> simp only [liftCount, Option.some.injEq, reduceCtorEq] at hl <;> subst hl
+    · rename_i a' k R b'
+      exact ((satClause_count_congr (I := I) (J := SRI.Proc.upI (sriPart O) I)
+        (fun x y => by rw [SRI.Proc.upI_rt]) (fun y => (SRI.Proc.upI_old I a' y).symm)
+        (fun y => (SRI.Proc.upI_old I b' y).symm) k).1).1 hs
+    · rename_i a' k R b'
+      exact ((satClause_count_congr (I := I) (J := SRI.Proc.upI (sriPart O) I)
+        (fun x y => by rw [SRI.Proc.upI_rt]) (fun y => (SRI.Proc.upI_old I a' y).symm)
+        (fun y => (SRI.Proc.upI_old I b' y).symm) k).2).1 hs
+
+/-- The model map down: `downI` of a model of the encoding models `O`. -/
+theorem models_downI {O : Ontology (Fin n) (Fin m)} (h : IsSHIQ O)
+    {J : Interp D (Fin (n + (SRI.Proc.transPairs (sriPart O)).length)) (Fin m)}
+    (hJ : models J (encTransQ O).2) : models (SRI.Proc.downI (sriPart O) J) O := by
+  have hJs : SRI.models J (SRI.Proc.encTrans (sriPart O)).2 := by
+    intro cl hcl
+    rw [← satClause_ofSRI]
+    exact hJ _ (mem_encTransQ.2 (Or.inl (List.mem_map_of_mem hcl)))
+  intro cl hcl
+  cases cl with
+  | atLeast a' k R b' =>
+    have hJc := hJ _ (mem_encTransQ.2 (Or.inr (List.mem_filterMap.2 ⟨_, hcl, rfl⟩)))
+    exact ((satClause_count_congr (downI_rt_simple J (h.2 a' k R b' (Or.inl hcl)))
+      (fun _ => Iff.rfl) (fun _ => Iff.rfl) k).1).2 hJc
+  | atMost a' k R b' =>
+    have hJc := hJ _ (mem_encTransQ.2 (Or.inr (List.mem_filterMap.2 ⟨_, hcl, rfl⟩)))
+    exact ((satClause_count_congr (downI_rt_simple J (h.2 a' k R b' (Or.inr hcl)))
+      (fun _ => Iff.rfl) (fun _ => Iff.rfl) k).2).2 hJc
+  | gci body head =>
+    exact (satClause_ofSRI _ (.gci body head)).2
+      (SRI.Proc.downI_models (isSHI_sriPart h) hJs _ (mem_sriPart.2 hcl))
+  | exRight a' R b' =>
+    exact (satClause_ofSRI _ (.exRight a' R b')).2
+      (SRI.Proc.downI_models (isSHI_sriPart h) hJs _ (mem_sriPart.2 hcl))
+  | allRight a' R b' =>
+    exact (satClause_ofSRI _ (.allRight a' R b')).2
+      (SRI.Proc.downI_models (isSHI_sriPart h) hJs _ (mem_sriPart.2 hcl))
+  | chain body S =>
+    exact (satClause_ofSRI _ (.chain body S)).2
+      (SRI.Proc.downI_models (isSHI_sriPart h) hJs _ (mem_sriPart.2 hcl))
+
+/-- **Transitivity removal with an ABox.** For a SHIQ knowledge base, the
+encoding of the TBox, with the assertions on the old names, keeps
+consistency. -/
+theorem consistentKB_encTransQ {O : Ontology (Fin n) (Fin m)} {A : ABox (Fin n) (Fin m) Ind}
+    (h : IsSHIQKB O A) : ConsistentKB O A ↔ ConsistentKB (encTransQ O).2 (encABox O A) := by
+  constructor
+  · rintro ⟨D, hD, I, ind, hI, hA⟩
+    refine ⟨D, hD, SRI.Proc.upI (sriPart O) I, ind, models_upI hI, ?_⟩
+    intro as has
+    obtain ⟨as0, h0, rfl⟩ := List.mem_map.1 has
+    have hs := hA as0 h0
+    cases as0 with
+    | cls a X => exact (SRI.Proc.upI_old I X _).2 hs
+    | role a R b =>
+      show (SRI.Proc.upI (sriPart O) I).rt R _ _
+      rw [SRI.Proc.upI_rt]; exact hs
+    | nrole a R b =>
+      show ¬ (SRI.Proc.upI (sriPart O) I).rt R _ _
+      rw [SRI.Proc.upI_rt]; exact hs
+    | same a b => exact hs
+    | diff a b => exact hs
+  · rintro ⟨D, hD, J, ind, hJ, hA⟩
+    refine ⟨D, hD, SRI.Proc.downI (sriPart O) J, ind, models_downI h.1 hJ, ?_⟩
+    intro as has
+    have hs := hA _ (List.mem_map_of_mem (f := liftAssert (encTransQ O).1) has)
+    cases as with
+    | cls a X => exact hs
+    | role a R b => exact (SRI.Proc.downI_rt J R _ _).2 (Or.inl hs)
+    | nrole a R b =>
+      intro h'
+      exact hs ((downI_rt_simple J (h.2 a R b has) _ _).1 h')
+    | same a b => exact hs
+    | diff a b => exact hs
+
+/-- Subsumption with an ABox through the encoding. -/
+theorem entailsSubKB_encTransQ {O : Ontology (Fin n) (Fin m)} {A : ABox (Fin n) (Fin m) Ind}
+    (h : IsSHIQKB O A) (a b : Fin n) :
+    EntailsSubKB O A a b ↔
+      EntailsSubKB (encTransQ O).2 (encABox O A) (Fin.castAdd _ a) (Fin.castAdd _ b) := by
+  rw [entailsSubKB_iff, entailsSubKB_iff, consistentKB_encTransQ h, encTransQ_correct h.1]
+
+end Proc
+
 end ContextCalculus.SRIQ
 
 #print axioms ContextCalculus.SRIQ.entailsSubKB_iff
 #print axioms ContextCalculus.SRIQ.consistentKB_iff_realisation
+#print axioms ContextCalculus.SRIQ.Proc.consistentKB_encTransQ
+#print axioms ContextCalculus.SRIQ.Proc.entailsSubKB_encTransQ
