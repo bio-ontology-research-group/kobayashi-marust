@@ -50,6 +50,7 @@ def readCfg : IO Cfg := do
   let maxNodes := ((← IO.getEnv "KM_SRIQF_MAXNODES").bind String.toNat?).getD 0
   return { inherit := ← envFlag "KM_SRIQF_INHERIT" true
            skipCovered := ← envFlag "KM_SRIQF_SKIPCOVERED" true
+           forcedBack := ← envFlag "KM_SRIQF_FORCEDBACK" true
            maxNodes }
 
 structure Result where
@@ -63,15 +64,22 @@ def runFast {n m : Nat} (E : SRIQ.Ontology (Fin n) (Fin m)) (req : Array Nat) : 
   | .error e => IO.eprintln s!"declined: {e}"; return none
   | .ok cls =>
     let t0 ← IO.monoMsNow
-    let O ← IO.lazyPure fun _ => mkOnto n m cls
+    let fullRel ← envFlag "KM_SRIQF_FULLREL" false
+    let O ← IO.lazyPure fun _ => mkOnto n m cls fullRel
     let t1 ← IO.monoMsNow
     let topDisj := O.gciTop.foldl (fun a i => if (O.gcis[i]!).2.size ≥ 2 then a + 1 else a) 0
     IO.eprintln s!"onto: names={O.n} gcis={O.gcis.size} top_disjunctions={topDisj} lower={O.low.size} upper={O.upp.size}"
+    if (← IO.getEnv "KM_SRIQF_STATSONLY") == some "1" then return none
     let (st, roots) ← generate O cfg req
     let t2 ← IO.monoMsNow
     let specs := st.nodes.foldl (fun a nd => a + nd.pool.size) 0
     let multi := st.ctxs.foldl (fun a c => if c.nodes.size > 1 then a + 1 else a) 0
     let maxNodesCtx := st.ctxs.foldl (fun a c => max a c.nodes.size) 0
+    let seeds := (st.ctxs.foldl (fun (h : Std.HashSet (Array Nat × Array Nat)) c => h.insert (c.key.seed, c.key.lab)) ∅).size
+    let seedsOnly := (st.ctxs.foldl (fun (h : Std.HashSet (Array Nat)) c => h.insert c.key.seed) ∅).size
+    let avgSeed := (st.ctxs.foldl (fun a c => a + c.key.seed.size) 0) / max 1 st.ctxs.size
+    let avgTy := (st.nodes.foldl (fun a nd => a + nd.ty.size) 0) / max 1 st.nodes.size
+    IO.eprintln s!"ctx: seed_lab_pairs={seeds} seeds={seedsOnly} avg_seed={avgSeed} avg_type={avgTy}"
     IO.eprintln s!"gen: ctxs={st.ctxs.size} nodes={st.nodes.size} specs={specs} merges={st.nMerge} pw_requests={st.nPW} back_variants={st.nBackVar} pw_variants={st.nPWVar} branch_calls={st.nBranchCalls} branches={st.nBranches} max_branches={st.maxBranches} multi_node_ctxs={multi} max_nodes_per_ctx={maxNodesCtx} aborted={st.aborted} index_ms={t1-t0} gen_ms={t2-t1}"
     if st.aborted then
       return some { rows := #[], aborted := true }

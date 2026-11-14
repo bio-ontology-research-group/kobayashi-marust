@@ -135,7 +135,7 @@ partial def upClose (subs : Array (Array Nat)) (r : Nat) : Ty :=
       go (nxt ++ rest) (nxt.foldl (fun s y => s.insert y) seen)
   sortDedup (go [r] ((∅ : HashSet Nat).insert r)).toArray
 
-def mkOnto (n m : Nat) (cls : Array QC) : Onto := Id.run do
+def mkOnto (n m : Nat) (cls : Array QC) (fullRel : Bool := false) : Onto := Id.run do
   let nr := 2 * m
   let mut gcis : Array (Array Nat × Array Nat) := #[]
   let mut gciBy : Array (Array Nat) := Array.replicate n #[]
@@ -156,10 +156,10 @@ def mkOnto (n m : Nat) (cls : Array QC) : Onto := Id.run do
       if b'.isEmpty then gciTop := gciTop.push i
       for a in b' do gciBy := pushAt gciBy a i
     | .ex a R b =>
-      lowBy := pushAt lowBy a low.size; low := low.push (a, 1, R, b); rel := pushAt rel R b
+      lowBy := pushAt lowBy a low.size; low := low.push (a, 1, R, b)
     | .ge a k R b =>
       if k > 0 then
-        lowBy := pushAt lowBy a low.size; low := low.push (a, k, R, b); rel := pushAt rel R b
+        lowBy := pushAt lowBy a low.size; low := low.push (a, k, R, b)
     | .le a k S e =>
       uppBy := pushAt uppBy a upp.size; upp := upp.push (a, k, S, e); rel := pushAt rel S e
     | .all a S c => allBy := pushAt allBy a (S, c)
@@ -167,6 +167,12 @@ def mkOnto (n m : Nat) (cls : Array QC) : Onto := Id.run do
       subs := pushAt subs R S
       subs := pushAt subs (R ^^^ 1) (S ^^^ 1)
   let up := (Array.range nr).map fun r => upClose subs r
+  -- `Rel`: upper fillers by role; lower fillers by role only when some
+  -- upper clause has a role above it (otherwise the parent entry serving
+  -- that demand never matters for an at-most clause)
+  let uppRoles : HashSet Nat := upp.foldl (fun h q => h.insert q.2.2.1) ∅
+  for (_, _, R, b) in low do
+    if fullRel || (up[R]!).any (uppRoles.contains ·) then rel := pushAt rel R b
   return { n, nr, gcis, gciBy, gciTop, allBy, low, upp, lowBy, uppBy, up,
            relBy := rel.map sortDedup }
 
@@ -239,6 +245,8 @@ structure NodeD where
   ty : Ty
   pool : Array Spec := #[]
   poolSet : HashSet Spec := ∅
+  /-- seeds `t ∪ X` already expanded by the back rule -/
+  backDone : HashSet Ty := ∅
   kids : Array Nat := #[]
   back : Ty := #[]
   deriving Inhabited
@@ -248,6 +256,8 @@ structure Cfg where
   inherit : Bool := true
   /-- no default spec for a demand the parent entry already meets -/
   skipCovered : Bool := true
+  /-- back rule through forced sets (`backRule`) instead of every child back set -/
+  forcedBack : Bool := true
   /-- stop generation after this many nodes (0: no cap) -/
   maxNodes : Nat := 0
   deriving Repr
@@ -255,6 +265,7 @@ structure Cfg where
 inductive Ev where
   | init (v : Nat) (inh : Array Spec)
   | trig (v : Nat)
+  | back (v : Nat)
   deriving Inhabited
 
 structure St where
@@ -324,7 +335,8 @@ partial def addNode (k : Nat) (t : Ty) (inh : Array Spec) : M Unit := do
     enqueue (.init v inh)
     let parents := (← get).ctxs[k]!.parents
     for (μ, _) in parents do
-      if isNewBack then applyBack μ bk
+      if cfg.forcedBack then enqueue (.back μ)
+      else if isNewBack then applyBack μ bk
       enqueue (.trig μ)
 
 /-- The context with key `key`, made on first use with every branch of its seed. -/
@@ -350,7 +362,8 @@ partial def addSpec (v : Nat) (σ : Spec) : M Unit := do
     nodes := s.nodes.modify v (fun nd => { nd with kids := nd.kids.push k })
     ctxs := s.ctxs.modify k fun c => { c with parents := c.parents.push (v, i) } }
   let c := (← get).ctxs[k]!
-  for bk in c.backs.toArray do applyBack v bk
+  if (← getCfg).forcedBack then enqueue (.back v)
+  else for bk in c.backs.toArray do applyBack v bk
   for r in c.pw.toArray do applyPW v i r
   enqueue (.trig v)
 
@@ -387,6 +400,52 @@ partial def addPW (k : Nat) (r : Ty × Ty) : M Unit := do
   for (μ, i) in c.parents do applyPW μ i r
 
 end
+
+/-- Back rule through forced sets. For each need `q` of node `v` (a lower
+clause the parent entry does not meet), the candidate entries are the
+nodes of the child contexts of the pool specs that count for `q`; `F q` is
+the intersection of their back sets. If the union `F` of the `F q` is not
+in the type, every star of `v` fails, and only the variants of `t ∪ F` are
+made. Otherwise each candidate back set `X ⊄ t` gives the variants of
+`t ∪ X`. Back sets of entries that count for no need are not used. -/
+def backRule (v : Nat) : M Unit := do
+  let O ← getO
+  let s ← get
+  let nd := s.nodes[v]!
+  let key := s.ctxs[nd.ctx]!.key
+  let t := nd.ty
+  let mut F : Ty := #[]
+  let mut cands : Array Ty := #[]
+  let mut candSet : HashSet Ty := ∅
+  for a in t do
+    for qi in O.lowBy[a]! do
+      let (_, k, R, b) := O.low[qi]!
+      let pc := if mem key.lab R && mem key.pi b then 1 else 0
+      if k ≤ pc then continue
+      let mut inter? : Option Ty := none
+      for i in [0:nd.pool.size] do
+        if !mem nd.pool[i]!.lab R then continue
+        for w in s.ctxs[nd.kids[i]!]!.nodes do
+          let nw := s.nodes[w]!
+          if mem nw.ty b then
+            inter? := some (match inter? with | none => nw.back | some x => inter x nw.back)
+            if !candSet.contains nw.back then
+              candSet := candSet.insert nw.back
+              cands := cands.push nw.back
+      match inter? with
+      | none => return   -- no entry for this need yet: nothing to do
+      | some x => F := union F x
+  let cfg ← getCfg
+  let inh := if cfg.inherit then nd.pool else #[]
+  let seeds : Array Ty := if sub F t then
+      (cands.filter fun X => !sub X t).map (union t ·)
+    else #[union t F]
+  for sd in seeds do
+    if (← get).nodes[v]!.backDone.contains sd then continue
+    modify fun s => { s with nodes := s.nodes.modify v fun nd => { nd with backDone := nd.backDone.insert sd } }
+    for t' in ← branchesM sd do
+      modify fun s => { s with nBackVar := s.nBackVar + 1 }
+      addNode nd.ctx t' inh
 
 /-- Default specs of a node: one per lower clause at its type (unless the
 parent entry meets it). -/
@@ -448,6 +507,7 @@ def initNode (v : Nat) (inh : Array Spec) : M Unit := do
   for σ in defaultSpecs O cfg key nd.ty do addSpec v σ
   for σ in inh do addSpec v σ
   enqueue (.trig v)
+  if cfg.forcedBack then enqueue (.back v)
 
 def progressLine (s : St) : String :=
   let specs := s.nodes.foldl (fun a nd => a + nd.pool.size) 0
@@ -470,6 +530,7 @@ def step : M Bool := do
     match e with
     | .init v inh => initNode v inh
     | .trig v => trigger v
+    | .back v => backRule v
     let s ← get
     if s.qpos > 100000 then
       modify fun s => { s with queue := s.queue.extract s.qpos s.queue.size, qpos := 0 }
