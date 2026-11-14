@@ -182,11 +182,27 @@ end Rename
 
 /-! ## The C2a condition (design section 7) -/
 
-/-- **C2a.** No existential or at-least clause on a subject that is not
-a nominal name has a role below the inverse of the role of an at-most
-clause. -/
+/-- Every positive occurrence of `X` in the clause is a gci `[a] ⊑ [X]`
+with `a` a nominal name: `X` in a gci head, or as the filler of an
+existential, universal or at-least clause. -/
+def PosOK (N : List CName) (X : CName) : SRIQ.Clause CName Role → Prop
+  | .gci body head => X ∈ head → ∃ a ∈ N, body = [a] ∧ head = [X]
+  | .exRight _ _ b | .allRight _ _ b | .atLeast _ _ _ b => b ≠ X
+  | _ => True
+
+/-- A nominal-only name: not a nominal name, and implied only by nominal
+names. Every model shrinks to one in which a nominal-only name holds at
+nominal elements only (`shrinkI` in `C2a.lean`). The definition names
+that a normalisation introduces between a nominal name and its
+restrictions are nominal-only. -/
+def NomOnly (O : Ontology CName Role) (X : CName) : Prop :=
+  X ∉ noms O ∧ ∀ cl ∈ basePart O, PosOK (noms O) X cl
+
+/-- **C2a.** No existential or at-least clause on a subject that is
+neither a nominal name nor nominal-only has a role below the inverse of
+the role of an at-most clause. -/
 def IsC2a (O : Ontology CName Role) : Prop :=
-  ∀ q ∈ SRIQ.lowerL (basePart O), q.1 ∉ noms O →
+  ∀ q ∈ SRIQ.lowerL (basePart O), q.1 ∉ noms O → ¬ NomOnly O q.1 →
     ∀ q' ∈ SRIQ.upperL (basePart O), ¬ SRIQ.RoleLe (basePart O) q.2.2.1 q'.2.2.1.flip
 
 end ContextCalculus.SRIQN

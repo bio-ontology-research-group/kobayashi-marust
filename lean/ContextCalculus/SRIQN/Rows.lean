@@ -14,9 +14,10 @@ consistency.
   `b` the complement of `N_j`.
 
 Both reductions stay inside C2a and ALCHOIQ (`isC2a_subExt`,
-`isC2a_append_gci`, `isALCHOIQ_subExt`, `isALCHOIQ_append_gci`): they add
-gcis and a nominal, and a new nominal name only shrinks the set of subjects
-that `IsC2a` constrains. So the procedure rows (`subRowN`, `nomRowN`) are
+`isC2a_append_bot`, `isALCHOIQ_subExt`, `isALCHOIQ_append_gci`): they add
+a gci with an empty head, or a nominal `X` and the gcis `X ⊑ a`,
+`X ⊓ b ⊑ ⊥`; a new nominal name and new positive occurrences implied by a
+nominal only shrink the set of subjects that `IsC2a` constrains. So the procedure rows (`subRowN`, `nomRowN`) are
 exact on C2a for every hint.
 -/
 
@@ -161,15 +162,25 @@ theorem noms_gci (O : Ontology CName Role) (body head : List CName) :
     noms (O ++ [.base (.gci body head)]) = noms O := by
   simp [noms, List.filterMap_append]
 
-/-- Adding a gci keeps C2a. -/
-theorem isC2a_append_gci {O : Ontology CName Role} (h : IsC2a O) (body head : List CName) :
-    IsC2a (O ++ [.base (.gci body head)]) := by
-  intro q hq hqn q' hq' hle
+theorem nomOnly_append_bot {O : Ontology CName Role} {body : List CName} {X : CName}
+    (h : NomOnly O X) : NomOnly (O ++ [.base (.gci body [])]) X := by
+  refine ⟨by rw [noms_gci]; exact h.1, fun cl hcl => ?_⟩
+  rw [noms_gci]
+  rw [basePart_gci, List.mem_append, List.mem_singleton] at hcl
+  rcases hcl with hcl | rfl
+  · exact h.2 cl hcl
+  · intro hX
+    simp at hX
+
+/-- Adding a gci with an empty head keeps C2a. -/
+theorem isC2a_append_bot {O : Ontology CName Role} (h : IsC2a O) (body : List CName) :
+    IsC2a (O ++ [.base (.gci body [])]) := by
+  intro q hq hqn hqo q' hq' hle
   rw [basePart_gci, lowerL_append_gci] at hq
   rw [basePart_gci, upperL_append_gci] at hq'
   rw [noms_gci] at hqn
   rw [basePart_gci, roleLe_congr (fun _ _ => chain_mem_append_gci)] at hle
-  exact h q hq hqn q' hq' hle
+  exact h q hq hqn (fun ho => hqo (nomOnly_append_bot ho)) q' hq' hle
 
 theorem isALCHOIQ_append_gci {O : Ontology CName Role} (h : IsALCHOIQ O) (body head : List CName) :
     IsALCHOIQ (O ++ [.base (.gci body head)]) := by
@@ -234,17 +245,55 @@ theorem upperL_subExt (O : Ontology (Fin n) (Fin m)) (a b : Fin n) :
   funext cl
   cases cl <;> rfl
 
+theorem posOK_mapC {N : List (Fin n)} {X : Fin n} {cl : SRIQ.Clause (Fin n) (Fin m)}
+    (h : PosOK N X cl) : PosOK (N.map Fin.castSucc ++ [Fin.last n]) X.castSucc
+      (mapC Fin.castSucc cl) := by
+  cases cl with
+  | gci body head =>
+    intro hX
+    simp only [List.mem_map] at hX
+    obtain ⟨X', hX', he⟩ := hX
+    obtain rfl := Fin.castSucc_injective _ he
+    obtain ⟨a, ha, rfl, rfl⟩ := h hX'
+    exact ⟨a.castSucc, List.mem_append_left _ (List.mem_map_of_mem ha), rfl, rfl⟩
+  | exRight _ _ b => exact fun he => h (Fin.castSucc_injective _ he)
+  | allRight _ _ b => exact fun he => h (Fin.castSucc_injective _ he)
+  | atLeast _ _ _ b => exact fun he => h (Fin.castSucc_injective _ he)
+  | atMost _ _ _ _ => trivial
+  | chain _ _ => trivial
+
+theorem nomOnly_subExt {O : Ontology (Fin n) (Fin m)} {a b X : Fin n} (h : NomOnly O X) :
+    NomOnly (subExt O a b) X.castSucc := by
+  refine ⟨?_, fun cl hcl => ?_⟩
+  · rw [noms_subExt]
+    simp only [List.mem_append, List.mem_map, List.mem_singleton, not_or, not_exists, not_and]
+    exact ⟨fun c hc he => h.1 (Fin.castSucc_injective _ he ▸ hc),
+      Fin.castSucc_ne_last X⟩
+  · rw [noms_subExt]
+    rw [basePart_subExt, List.mem_append] at hcl
+    rcases hcl with hcl | hcl
+    · obtain ⟨cl0, hcl0, rfl⟩ := List.mem_map.1 hcl
+      exact posOK_mapC (h.2 cl0 hcl0)
+    · simp only [List.mem_cons, List.not_mem_nil, or_false] at hcl
+      rcases hcl with rfl | rfl
+      · intro hX
+        simp only [List.mem_singleton] at hX
+        exact ⟨Fin.last n, List.mem_append_right _ (List.mem_singleton_self _), rfl, by rw [hX]⟩
+      · intro hX
+        simp at hX
+
 /-- The subsumption row keeps C2a: the fresh nominal is a nominal name. -/
 theorem isC2a_subExt {O : Ontology (Fin n) (Fin m)} (h : IsC2a O) (a b : Fin n) :
     IsC2a (subExt O a b) := by
-  intro q hq hqn q' hq' hle
+  intro q hq hqn hqo q' hq' hle
   rw [lowerL_subExt] at hq
   rw [upperL_subExt] at hq'
   rw [noms_subExt] at hqn
   rw [roleLe_congr (B' := basePart O) (fun _ _ => chain_mem_subExt)] at hle
   obtain ⟨q0, hq0, rfl⟩ := List.mem_map.1 hq
   obtain ⟨q1, hq1, rfl⟩ := List.mem_map.1 hq'
-  refine h q0 hq0 (fun hn => hqn (List.mem_append_left _ (List.mem_map_of_mem hn))) q1 hq1 hle
+  exact h q0 hq0 (fun hn => hqn (List.mem_append_left _ (List.mem_map_of_mem hn)))
+    (fun ho => hqo (nomOnly_subExt ho)) q1 hq1 hle
 
 theorem isALCHOIQ_subExt {O : Ontology (Fin n) (Fin m)} (h : IsALCHOIQ O) (a b : Fin n) :
     IsALCHOIQ (subExt O a b) := by
@@ -283,7 +332,7 @@ theorem nomRowN_iff {O : Ontology (Fin n) (Fin m)} (hA : IsALCHOIQ O) (hC : IsC2
     (ha : a ∈ noms O) (b : Fin n) (hint : Option (HintN n m)) :
     nomRowN O a b hint = true ↔ EntailsSubN O a b := by
   rw [nomRowN, Bool.not_eq_true', entailsSubN_nom_iff O ha, ← consistentN_iff
-    (isALCHOIQ_append_gci hA _ _) (isC2a_append_gci hC _ _) hint]
+    (isALCHOIQ_append_gci hA _ _) (isC2a_append_bot hC _) hint]
   simp
 
 end Proc

@@ -3,7 +3,9 @@ import ContextCalculus.SRIQN.Forest
 /-!
 # Stage C2a: completeness without inverse-counted needs (design section 7)
 
-`docs/V1.7.0-C2-NOMINALS-DESIGN.md`. Under `IsC2a`, a model gives a
+`docs/V1.7.0-C2-NOMINALS-DESIGN.md`. Under `IsC2a`, a model, first
+shrunk so that nominal-only names hold at nominal elements only
+(`shrinkI`), gives a
 realisation whose core is the set of nominal elements (one arbitrary
 element when there is no nominal name). A non-core element `x` reached
 from a parent `y` becomes a record with
@@ -14,8 +16,8 @@ from a parent `y` becomes a record with
 
 A restricted core entry never counts at the core element: that would need
 a lower clause at `x` with a role below the inverse of an at-most role,
-and the subject of that clause is not a nominal name, since `x` is not a
-nominal element. `IsC2a` excludes it.
+and the subject of that clause is neither a nominal name nor nominal-only,
+since `x` is not a nominal element. `IsC2a` excludes it.
 
 `consistentN_iff_c2a`: for ALCHOIQ and C2a, consistency is the existence
 of a realisation over `Fin k` with `0 < k ≤ max 1 |Nom O|` whose core
@@ -114,6 +116,98 @@ theorem upClosed_inter {L L' : Finset (RoleT Role)} (h : UpClosed B L) (h' : UpC
 
 end Model
 
+/-! ## Shrinking nominal-only names -/
+
+section Shrink
+
+open Classical
+
+variable {O : Ontology CName Role} (I : Interp D CName Role)
+
+/-- `I` with every nominal-only name shrunk to the elements of the nominal
+names that imply it. -/
+noncomputable def shrinkI (O : Ontology CName Role) (I : Interp D CName Role) :
+    Interp D CName Role :=
+  ⟨fun X y => if NomOnly O X then ∃ a ∈ noms O, SRIQ.Clause.gci [a] [X] ∈ basePart O ∧ I.c a y
+    else I.c X y, I.r⟩
+
+theorem shrinkI_c_of_not {X : CName} (h : ¬ NomOnly O X) (y : D) :
+    (shrinkI O I).c X y ↔ I.c X y := by
+  simp only [shrinkI, if_neg h]
+
+theorem shrinkI_rt (R : RoleT Role) (x y : D) : (shrinkI O I).rt R x y ↔ I.rt R x y := by
+  cases R <;> exact Iff.rfl
+
+theorem shrinkI_path : ∀ (body : List (RoleT Role)) (x y : D),
+    (shrinkI O I).path body x y ↔ I.path body x y
+  | [], x, y => Iff.rfl
+  | R :: Rs, x, z => by
+    simp only [SRI.Interp.path, shrinkI_rt, shrinkI_path Rs]
+
+theorem nom_not_nomOnly {a : CName} (ha : a ∈ noms O) : ¬ NomOnly O a := fun h => h.1 ha
+
+variable {I}
+
+theorem shrinkI_sub (hI : SRIQ.models I (basePart O)) {X : CName} {y : D}
+    (h : (shrinkI O I).c X y) : I.c X y := by
+  by_cases hX : NomOnly O X
+  · simp only [shrinkI, if_pos hX] at h
+    obtain ⟨a, -, hg, hay⟩ := h
+    obtain ⟨b, hb, hby⟩ := hI _ hg y (by simpa using hay)
+    simp only [List.mem_singleton] at hb
+    exact hb ▸ hby
+  · exact (shrinkI_c_of_not I hX y).1 h
+
+theorem shrinkI_nomOnly {X : CName} (hX : NomOnly O X) {y : D} (h : (shrinkI O I).c X y) :
+    ∃ a ∈ noms O, I.c a y := by
+  simp only [shrinkI, if_pos hX] at h
+  obtain ⟨a, ha, -, hay⟩ := h
+  exact ⟨a, ha, hay⟩
+
+/-- **Shrinking keeps models.** -/
+theorem shrinkI_models (hI : models I O) : models (shrinkI O I) O := by
+  obtain ⟨hb, hn⟩ := models_iff.1 hI
+  have notb : ∀ {b : CName}, (∃ cl ∈ basePart O, ¬ PosOK (noms O) b cl) → ¬ NomOnly O b :=
+    fun ⟨cl, hcl, hp⟩ h => hp (h.2 cl hcl)
+  refine models_iff.2 ⟨fun cl hcl => ?_, fun a ha => ?_⟩
+  · cases cl with
+    | gci body head =>
+      intro x hbody
+      by_cases hX : ∃ X ∈ head, NomOnly O X
+      · obtain ⟨X, hXh, hX⟩ := hX
+        obtain ⟨a, ha, rfl, rfl⟩ := hX.2 _ hcl hXh
+        refine ⟨X, List.mem_singleton_self _, ?_⟩
+        simp only [shrinkI, if_pos hX]
+        exact ⟨a, ha, hcl, (shrinkI_c_of_not I (nom_not_nomOnly ha) x).1 (hbody a (by simp))⟩
+      · push Not at hX
+        obtain ⟨b, hb, hbx⟩ := hb _ hcl x fun a ha => shrinkI_sub hb (hbody a ha)
+        exact ⟨b, hb, (shrinkI_c_of_not I (hX b hb) x).2 hbx⟩
+    | exRight a R b =>
+      intro x hx
+      obtain ⟨y, hy, hby⟩ := hb _ hcl x (shrinkI_sub hb hx)
+      exact ⟨y, (shrinkI_rt I R x y).2 hy,
+        (shrinkI_c_of_not I (notb ⟨_, hcl, fun h => h rfl⟩) y).2 hby⟩
+    | allRight a R b =>
+      intro x hx y hy
+      exact (shrinkI_c_of_not I (notb ⟨_, hcl, fun h => h rfl⟩) y).2
+        (hb _ hcl x (shrinkI_sub hb hx) y ((shrinkI_rt I R x y).1 hy))
+    | atLeast a k R b =>
+      intro x hx
+      obtain ⟨l, hnd, hlen, hl⟩ := hb _ hcl x (shrinkI_sub hb hx)
+      exact ⟨l, hnd, hlen, fun y hy => ⟨(shrinkI_rt I R x y).2 (hl y hy).1,
+        (shrinkI_c_of_not I (notb ⟨_, hcl, fun h => h rfl⟩) y).2 (hl y hy).2⟩⟩
+    | atMost a k R b =>
+      intro x hx l hnd hl
+      exact hb _ hcl x (shrinkI_sub hb hx) l hnd fun y hy =>
+        ⟨(shrinkI_rt I R x y).1 (hl y hy).1, shrinkI_sub hb (hl y hy).2⟩
+    | chain body S =>
+      intro x y hp
+      exact (shrinkI_rt I S x y).2 (hb _ hcl x y ((shrinkI_path I body x y).1 hp))
+  · obtain ⟨x, hx⟩ := hn a ha
+    exact ⟨x, fun y => (shrinkI_c_of_not I (nom_not_nomOnly ha) y).trans (hx y)⟩
+
+end Shrink
+
 section Real
 
 set_option linter.unusedSectionVars false
@@ -166,8 +260,9 @@ theorem parentE_recM (x y : D) :
 
 variable (hI : models I O) (hC : IsC2a O)
   (hcov : ∀ a ∈ noms O, ∀ x, I.c a x → ∃ c, v c = x)
+  (hS : ∀ X, NomOnly O X → ∀ x, I.c X x → ∃ c, v c = x)
 
-include hv hI hC hcov in
+include hv hI hC hcov hS in
 theorem recsM_selfSupp :
     SelfSuppN (basePart O) (noms O) (fun c => typeOf I (v c)) (recsM I v) := by
   have hIB := (models_iff.1 hI).1
@@ -208,7 +303,8 @@ theorem recsM_selfSupp :
       exact Finset.notMem_empty _ hR
     simp only [ceM, if_neg (hcne d hne), Finset.mem_inter] at hR
     obtain ⟨q, hq, hqx, hle⟩ := (mem_UpX I).1 hR.2
-    exact hC q hq (fun hqn => hxnom _ hqn hqx) (a', k', R', b') (mem_upperL.2 hcl) hle
+    exact hC q hq (fun hqn => hxnom _ hqn hqx)
+      (fun hqo => hx (hS _ hqo x ((mem_typeOf I).1 hqx))) (a', k', R', b') (mem_upperL.2 hcl) hle
   · -- the star
     have hstar := starOK_of_sub I hIB x E ?_ lb ?_ ?_ ?_
     · have heq : E.map (fun z => (lb z, typeOf I z)) =
@@ -282,7 +378,7 @@ theorem recsM_selfSupp :
     rw [recM_tree I z x hx, childRecN]
     simp [entry, recM, flipL_labelOf]
 
-include hv hI hC hcov in
+include hv hI hC hcov hS in
 /-- **Model to realisation (C2a).** -/
 noncomputable def realOfModelN : RealisationN (basePart O) (noms O) K where
   ty c := typeOf I (v c)
@@ -322,7 +418,7 @@ noncomputable def realOfModelN : RealisationN (basePart O) (noms O) K where
         · exact List.mem_append_right _ (List.mem_filter.2 ⟨List.mem_dedup.2 hy, decide_eq_true hb⟩)
     · obtain ⟨z, hz, rfl⟩ := List.mem_map.1 he
       have hz' := of_decide_eq_true (List.mem_filter.1 hz).2
-      refine ⟨recsM I v, ⟨z, v c, hz', ?_⟩, recsM_selfSupp I hv hI hC hcov⟩
+      refine ⟨recsM I v, ⟨z, v c, hz', ?_⟩, recsM_selfSupp I hv hI hC hcov hS⟩
       rw [recM_core I hv z c]
       simp [anchorRec, entry, flipL_labelOf]
 
@@ -342,7 +438,9 @@ theorem c2a_complete {O : Ontology CName Role} (hC : IsC2a O) (hc : ConsistentN 
       ∃ r : RealisationN (basePart O) (noms O) (Fin k),
         noms O = [] ∨ ∀ c, ∃ a ∈ noms O, a ∈ r.ty c := by
   classical
-  obtain ⟨D, ⟨x0⟩, I, hI⟩ := hc
+  obtain ⟨D, ⟨x0⟩, I0, hI0⟩ := hc
+  let I := shrinkI O I0
+  have hI : models I O := shrinkI_models hI0
   have hnom := (models_iff.1 hI).2
   let e : CName → D := fun a => if h : NomAt I a then h.choose else x0
   have he : ∀ a ∈ noms O, ∀ x, I.c a x ↔ x = e a := by
@@ -372,7 +470,11 @@ theorem c2a_complete {O : Ontology CName Role} (hC : IsC2a O) (hc : ConsistentN 
       simp only [T, if_neg this]
       exact Finset.mem_image.2 ⟨a, List.mem_toFinset.2 ha, ((he a ha x).1 hx).symm⟩
     exact ⟨eq.symm ⟨x, hxT⟩, by simp [v]⟩
-  refine ⟨T.card, hTpos, hTle, realOfModelN I hv hI hC hcov, ?_⟩
+  have hS : ∀ X, NomOnly O X → ∀ x, I.c X x → ∃ c, v c = x := by
+    intro X hX x hx
+    obtain ⟨a, ha, hax⟩ := shrinkI_nomOnly hX hx
+    exact hcov a ha x ((shrinkI_c_of_not I0 (nom_not_nomOnly ha) x).2 hax)
+  refine ⟨T.card, hTpos, hTle, realOfModelN I hv hI hC hcov hS, ?_⟩
   by_cases hN : noms O = []
   · exact Or.inl hN
   · refine Or.inr fun c => ?_

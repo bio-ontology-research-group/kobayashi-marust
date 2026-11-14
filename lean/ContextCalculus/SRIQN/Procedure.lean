@@ -69,9 +69,17 @@ theorem nomOK_iff (N : List (Fin n)) (ty : Fin k → Finset (Fin n)) :
 instance (N : List (Fin n)) (ty : Fin k → Finset (Fin n)) : Decidable (NomOK N ty) :=
   decidable_of_iff _ (nomOK_iff N ty).symm
 
+instance (N : List (Fin n)) (X : Fin n) (cl : SRIQ.Clause (Fin n) (Fin m)) :
+    Decidable (PosOK N X cl) := by
+  cases cl <;> unfold PosOK <;> infer_instance
+
+instance (O : Ontology (Fin n) (Fin m)) (X : Fin n) : Decidable (NomOnly O X) := by
+  unfold NomOnly; infer_instance
+
 theorem isC2a_iff (O : Ontology (Fin n) (Fin m)) :
-    IsC2a O ↔ ∀ q ∈ lowerL (basePart O), q.1 ∉ noms O → ∀ q' ∈ upperL (basePart O),
-      q'.2.2.1.flip ∉ SRI.Proc.roleUp (SRIQ.sriPart (basePart O)) q.2.2.1 := by
+    IsC2a O ↔ ∀ q ∈ lowerL (basePart O), q.1 ∉ noms O → ¬ NomOnly O q.1 →
+      ∀ q' ∈ upperL (basePart O),
+        q'.2.2.1.flip ∉ SRI.Proc.roleUp (SRIQ.sriPart (basePart O)) q.2.2.1 := by
   unfold IsC2a
   simp only [SRI.Proc.mem_roleUp]
   rfl
