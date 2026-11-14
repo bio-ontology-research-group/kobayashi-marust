@@ -33,6 +33,11 @@ open ContextCalculus.SRIQ
 
 variable {n m : Nat}
 
+-- Decide bounded quantifiers through their lists and finsets, never by
+-- enumerating a finite type (`Finset (Fin n)` has `2 ^ n` elements, `Fin n` has `n`).
+attribute [-instance] Fintype.decidableForallFintype Fintype.decidableExistsFintype
+  Nat.decidableForallFin Nat.decidableExistsFin
+
 abbrev Ty (n : Nat) := Finset (Fin n)
 abbrev Lab (m : Nat) := Finset (RoleT (Fin m))
 
@@ -229,10 +234,13 @@ def upClosedB (L : Lab m) : Prop := ∀ R ∈ L, ∀ S ∈ getL ix.stepsBy (rc R
 
 instance (L : Lab m) : Decidable (upClosedB ix L) := by unfold upClosedB; infer_instance
 
+/-- The gci at an index (no clause outside). -/
+def gciAt (i : Nat) : List (Fin n) × List (Fin n) := ix.gciArr[i]?.getD ([], [])
+
 /-- Closedness through the indexes. -/
 def closedI (t : Ty n) : Prop :=
-  (∀ i ∈ ix.gciTop, ∀ g ∈ ix.gciArr[i]?, ∃ h ∈ g.2, h ∈ t) ∧
-  ∀ a ∈ t, ∀ i ∈ getL ix.gciBy a.val, ∀ g ∈ ix.gciArr[i]?, (∀ b ∈ g.1, b ∈ t) → ∃ h ∈ g.2, h ∈ t
+  (∀ i ∈ ix.gciTop, ∃ h ∈ (gciAt ix i).2, h ∈ t) ∧
+  ∀ a ∈ t, ∀ i ∈ getL ix.gciBy a.val, (∀ b ∈ (gciAt ix i).1, b ∈ t) → ∃ h ∈ (gciAt ix i).2, h ∈ t
 
 instance (t : Ty n) : Decidable (closedI ix t) := by unfold closedI; infer_instance
 

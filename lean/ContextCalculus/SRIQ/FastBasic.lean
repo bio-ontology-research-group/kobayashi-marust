@@ -161,13 +161,18 @@ theorem closedI_sound {t : Ty n} (h : closedI (mkIx O) t) : Closed O t := by
   rw [closed_iff]
   intro body head hcl hbody
   obtain ⟨i, hi, hz⟩ := exists_gciArr hcl
+  have hg : gciAt (mkIx O) i = (body, head) := by simp [gciAt, hi]
   cases body with
   | nil =>
-    refine h.1 i ?_ _ hi
-    simp only [mkIx, List.mem_map, List.mem_filter]
-    exact ⟨_, ⟨hz, rfl⟩, rfl⟩
+    have := h.1 i (by
+      simp only [mkIx, List.mem_map, List.mem_filter]
+      exact ⟨_, ⟨hz, rfl⟩, rfl⟩)
+    rw [hg] at this
+    exact this
   | cons a body =>
-    refine h.2 a (hbody a List.mem_cons_self) i ?_ _ hi hbody
+    have := h.2 a (hbody a List.mem_cons_self) i ?_ (by rw [hg]; exact hbody)
+    · rw [hg] at this
+      exact this
     simp only [mkIx]
     rw [mem_buildIdx a.isLt]
     refine ⟨(a.val, i), List.mem_flatMap.2 ⟨_, hz, ?_⟩, rfl⟩
