@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [1.6.4] - 2026-11-14
+
+Fixes issue #5: FLOPO annotation classes with negated qualities, which
+did not classify in 300 s, now classify in about 17 s. No proof changes.
+Notes: `docs/RELEASE-1.6.4.md`.
+
 ### Engine
 
 - `km classify` sets the release flags (`KM_HT_DDB`, `KM_HT_NATIVE_FULL`,
@@ -20,6 +26,18 @@
   batch is probed in chunks of at most 16 candidates
   (`KM_BRIDGE_BATCH_CHUNK`, 0 = one probe). Issue #5 reproducer: 132 s to
   17 s on one thread, same answer.
+
+### Tests and release tools
+
+- The `frontend_check` integration tests expect the v1.6.3 `el-then-sri`
+  route (`procedure=sri`, no ALC budget); the v1.6.3 routing gate rejected
+  the old expectations.
+- The Java release step finds the Protégé 5 jar at
+  `protege/target/protege5/kobayashi-marust-protege5-*.jar`.
+
+### Protégé plugin
+
+- Version 1.6.4; the plugin list descriptors point at the v1.6.4 jars.
 
 ## [1.6.3] - 2026-11-13
 
