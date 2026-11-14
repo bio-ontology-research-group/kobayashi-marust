@@ -56,6 +56,8 @@ import ContextCalculus.SRIQ.Stars
 import ContextCalculus.SRIQ.Procedure
 import ContextCalculus.SRIQ.ProcedureTests
 import ContextCalculus.SRIQ.Transitivity
+import ContextCalculus.SRIQ.ABox
+import ContextCalculus.SRIQ.ABoxProcedure
 import ContextCalculus.OWLFrontend.Reference
 import ContextCalculus.OWLFrontend.ReferenceReadout
 import ContextCalculus.OWLFrontend.SRIReference
