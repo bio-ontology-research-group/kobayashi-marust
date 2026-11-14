@@ -1,4 +1,5 @@
 # file	expected km-sriqd-probe stdout (one line per class), or "declined" (exit 3)
+# functional-two.ofn and sub-bounds.ofn (8 concept indices) did not finish within 16 minutes of km-sriqd-probe on ws (2026-11-14); their expected rows are by hand, not yet observed.
 bool-min3.ofn	row http://ex/A unsat
 bool-min2.ofn	row http://ex/A http://ex/A
 int-bounds.ofn	row http://ex/A unsat
