@@ -181,14 +181,13 @@ public class IndividualsTest {
         assertTrue(r.isEntailed(df.getOWLSameIndividualAxiom(ind(df, "bob"), ind(df, "robert"))));
         assertFalse(r.isEntailed(df.getOWLSameIndividualAxiom(ind(df, "bob"), ind(df, "alice"))));
         assertTrue(r.isEntailed(df.getOWLSameIndividualAxiom(ind(df, "alice"), ind(df, "alice"))));
-        try {
-            r.isEntailed(df.getOWLClassAssertionAxiom(
-                    df.getOWLObjectSomeValuesFrom(df.getOWLObjectProperty(IRI.create(NS + "ownedBy")), cls(df, "Person")),
-                    ind(df, "rex")));
-            fail("an anonymous class assertion is not supported yet");
-        } catch (UnsupportedEntailmentTypeException expected) {
-            // TODO W5: class expression entailment.
-        }
+        // An anonymous class assertion C(a) is refuted by O ∪ {¬C(a)}.
+        assertTrue(r.isEntailed(df.getOWLClassAssertionAxiom(
+                df.getOWLObjectSomeValuesFrom(df.getOWLObjectProperty(IRI.create(NS + "ownedBy")), cls(df, "Person")),
+                ind(df, "rex"))));
+        assertFalse(r.isEntailed(df.getOWLClassAssertionAxiom(
+                df.getOWLObjectSomeValuesFrom(df.getOWLObjectProperty(IRI.create(NS + "ownedBy")), cls(df, "Person")),
+                ind(df, "tom"))));
     }
 
     @Test

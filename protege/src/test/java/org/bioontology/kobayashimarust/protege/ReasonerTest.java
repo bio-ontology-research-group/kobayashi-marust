@@ -72,14 +72,11 @@ public class ReasonerTest {
                 dataFactory.getOWLNothing(), b)));
         assertTrue(reasoner.isEntailed(dataFactory.getOWLSubClassOfAxiom(
                 b, dataFactory.getOWLThing())));
-        try {
-            reasoner.isEntailed(dataFactory.getOWLSubClassOfAxiom(
-                    dataFactory.getOWLObjectIntersectionOf(a, b), b));
-            fail("anonymous subclass query should fail explicitly");
-        } catch (UnsupportedEntailmentTypeException expected) {
-            assertEquals(expected.getAxiom(), dataFactory.getOWLSubClassOfAxiom(
-                    dataFactory.getOWLObjectIntersectionOf(a, b), b));
-        }
+        // An anonymous subclass is reduced to unsatisfiability of C ⊓ ¬D.
+        assertTrue(reasoner.isEntailed(dataFactory.getOWLSubClassOfAxiom(
+                dataFactory.getOWLObjectIntersectionOf(a, b), b)));
+        assertFalse(reasoner.isEntailed(dataFactory.getOWLSubClassOfAxiom(
+                b, dataFactory.getOWLObjectIntersectionOf(a, b))));
         reasoner.dispose();
 
         OWLOntology inconsistent = manager.createOntology();

@@ -74,17 +74,14 @@ public class PluginBehaviourTest {
     // ---- item 2: no wrong answers ------------------------------------
 
     @Test
-    public void satisfiabilityOfAnAnonymousExpressionIsNotGuessed() throws Exception {
+    public void satisfiabilityOfAnAnonymousExpressionIsDecided() throws Exception {
         OWLOntology o = IndividualsTest.parse(IndividualsTest.SMALL);
         OWLDataFactory df = dataFactory(o);
         KMReasoner r = km(o);
-        OWLClassExpression anonymous = df.getOWLObjectIntersectionOf(cls(df, "Dog"), cls(df, "Cat"));
-        try {
-            r.isSatisfiable(anonymous);
-            fail("an anonymous expression must not get a guessed answer");
-        } catch (ClassExpressionNotInProfileException expected) {
-            assertEquals(anonymous, expected.getClassExpression());
-        }
+        // Decided by a km run with a fresh Q ≡ CE, not guessed.
+        assertTrue(r.isSatisfiable(df.getOWLObjectIntersectionOf(cls(df, "Dog"), cls(df, "Cat"))));
+        assertFalse(r.isSatisfiable(df.getOWLObjectIntersectionOf(cls(df, "Dog"),
+                df.getOWLObjectComplementOf(cls(df, "Animal")))));
         assertTrue(r.isSatisfiable(cls(df, "Dog")));
         assertTrue(r.isSatisfiable(df.getOWLThing()));
         assertFalse(r.isSatisfiable(df.getOWLNothing()));

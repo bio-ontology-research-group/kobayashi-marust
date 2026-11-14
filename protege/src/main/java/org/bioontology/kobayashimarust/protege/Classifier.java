@@ -631,7 +631,7 @@ public final class Classifier {
      * Fails on a non-zero exit, on a time out, and when the output has no
      * {@code CONSISTENT} row.
      */
-    private static List<String> oneShot(String functionalSyntax, String[] flags, String label,
+    static List<String> oneShot(String functionalSyntax, String[] flags, String label,
                                         java.util.function.Consumer<Process> onStart) throws Exception {
         String kmBin = KMExecutable.resolve();
         long timeout = parseTimeout();
@@ -683,7 +683,7 @@ public final class Classifier {
     }
 
     /** The one value of an {@code APPROXIMATE} row, or null. */
-    private static String approximate(List<String> lines) {
+    static String approximate(List<String> lines) {
         for (String line : lines) {
             String[] f = line.split("\t");
             if (f.length == 2 && f[0].equals("APPROXIMATE")) return f[1];
@@ -691,7 +691,7 @@ public final class Classifier {
         return null;
     }
 
-    private static boolean consistentRow(List<String> lines) {
+    static boolean consistentRow(List<String> lines) {
         boolean consistent = true;
         for (String line : lines) {
             if (line.startsWith("CONSISTENT ")) consistent = line.trim().endsWith("1");
@@ -699,7 +699,7 @@ public final class Classifier {
         return consistent;
     }
 
-    private static int droppedRow(List<String> lines) {
+    static int droppedRow(List<String> lines) {
         int dropped = 0;
         for (String line : lines) {
             if (line.startsWith("DROPPED ")) {

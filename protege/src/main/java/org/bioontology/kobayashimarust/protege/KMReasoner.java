@@ -27,6 +27,12 @@ import java.util.*;
  * per revision, only when a property query or a precompute of
  * {@code OBJECT_PROPERTY_HIERARCHY} needs it.
  *
+ * <p>Class expression queries, disjoint classes and object properties,
+ * property values, different individuals and most entailment checks are
+ * answered by reduction: one km run on the ontology extended with fresh
+ * definitions or with assertions about fresh individuals (see the section
+ * "fresh-definition reductions" and protege/README.md).
+ *
  * <p>A query the plugin cannot answer soundly and completely throws
  * {@link UnsupportedOperationException} (or {@link UnsupportedEntailmentTypeException}
  * for {@code isEntailed}); it never returns an empty or guessed answer. The
@@ -44,7 +50,6 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     private final OWLClass owlNothing;
 
     private static final int[] EMPTY_INTS = new int[0];
-    private static final IRI NOT_DECIDED_PROFILE = IRI.create("http://www.w3.org/ns/owl-profile/DL");
 
     private boolean consistent = true;
     private int dropped = 0;
@@ -239,6 +244,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         realizeFailure = null;
         propertiesFailure = null;
         dataFailure = null;
+        reductions.values().removeIf(held -> held instanceof RuntimeException);
     }
 
     private void classify(Set<OWLAxiom> added, Set<OWLAxiom> removed) {
@@ -302,6 +308,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         realizeFailure = null;
         propertiesFailure = null;
         dataFailure = null;
+        clearReductions();
         // Commit the Java-side hierarchy only after the native transaction has
         // succeeded. A declined update therefore leaves the preceding answers
         // intact, matching the native session's atomic revision contract.
@@ -563,19 +570,9 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                 + " for " + argument + " yet: the answer needs reasoning the plugin does not run");
     }
 
-    /**
-     * The taxonomy holds named classes only. A class expression argument needs
-     * the engine (a fresh class defined as the expression, then a new
-     * classification), so it throws instead of returning an empty or partial
-     * answer.
-     */
-    private static void requireNamed(OWLClassExpression ce, String query) {
-        if (ce.isAnonymous()) throw unsupported(query, "the class expression " + ce);
-    }
-
     @Override public synchronized Node<OWLClass> getEquivalentClasses(OWLClassExpression ce) {
         checkPreConditions();
-        requireNamed(ce, "getEquivalentClasses");
+        if (ce.isAnonymous()) return equivalentsOfExpression(ce);
         if (isFresh(ce)) return new OWLClassNode(Collections.singleton(ce.asOWLClass()));
         int r = repIdOf(ce);
         if (r < 0) throw new IllegalStateException("a class of the signature has no node: " + ce);
@@ -595,7 +592,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
     @Override public synchronized NodeSet<OWLClass> getSuperClasses(OWLClassExpression ce, boolean direct) {
         checkPreConditions();
-        requireNamed(ce, "getSuperClasses");
+        if (ce.isAnonymous()) return supersOfExpression(ce, direct);
         OWLClassNodeSet ns = new OWLClassNodeSet();
         if (isFresh(ce)) {
             ns.addNode(nodeOfId(repId[thingId]));
@@ -622,7 +619,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
     @Override public synchronized NodeSet<OWLClass> getSubClasses(OWLClassExpression ce, boolean direct) {
         checkPreConditions();
-        requireNamed(ce, "getSubClasses");
+        if (ce.isAnonymous()) return subsOfExpression(ce, direct);
         OWLClassNodeSet ns = new OWLClassNodeSet();
         Node<OWLClass> bottom = nodeOfId(repId[nothingId]);
         if (isFresh(ce)) {
@@ -699,15 +696,8 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
     @Override public synchronized boolean isSatisfiable(OWLClassExpression ce) {
         checkPreConditions();
-        if (ce.isAnonymous()) {
-            // The taxonomy cannot decide an anonymous expression, and answering
-            // "satisfiable" would be wrong for unsatisfiable ones. Protege's
-            // frame sections and DL Query catch exceptions from the reasoner;
-            // ClassExpressionNotInProfileException is the one the OWLReasoner
-            // interface declares for isSatisfiable.
-            // TODO W5: decide anonymous expressions with a fresh definition Q = CE.
-            throw new ClassExpressionNotInProfileException(ce, NOT_DECIDED_PROFILE);
-        }
+        // An anonymous expression: CE is unsatisfiable iff the fresh Q ≡ CE is.
+        if (ce.isAnonymous()) return !classAnswer(ce, false).unsat;
         if (ce.isOWLNothing()) return false;
         int r = repIdOf(ce);
         if (r < 0) return true; // a class outside the signature is satisfiable
@@ -775,6 +765,8 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                 ensureRealized();
             } else if (type == InferenceType.OBJECT_PROPERTY_HIERARCHY) {
                 ensureProperties();
+            } else if (type == InferenceType.OBJECT_PROPERTY_ASSERTIONS) {
+                precomputeObjectPropertyValues();
             } else if (type == InferenceType.DATA_PROPERTY_HIERARCHY && dataHierarchyInFragment()) {
                 try {
                     ensureDataProperties();
@@ -784,9 +776,9 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
                     // to precompute a type the reasoner cannot compute is ignored.
                 }
             }
-            // The remaining types (object property assertions, data property
-            // assertions, different individuals, disjoint classes, ...) are
-            // not computed; their queries throw.
+            // The remaining types (data property assertions, different
+            // individuals, disjoint classes, ...) are not precomputed; their
+            // queries run their reductions on demand.
         }
     }
     /**
@@ -808,19 +800,22 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         if (inferenceType == InferenceType.DATA_PROPERTY_HIERARCHY) {
             return dataModel != null;
         }
+        if (inferenceType == InferenceType.OBJECT_PROPERTY_ASSERTIONS) {
+            return objectValuesPrecomputed;
+        }
         return false;
     }
     /**
      * The types this reasoner computes. HermiT lists six; KM lists the class
-     * hierarchy, the object property hierarchy, the individual types and
-     * equalities, and the data property hierarchy for an ontology inside the
-     * fragment of {@link DataPropertyModel}. Object and data property
-     * assertions are not computed, so they are not listed (Protege
-     * precomputes only the types a reasoner lists).
+     * hierarchy, the object property hierarchy, the object property
+     * assertions, the individual types and equalities, and the data property
+     * hierarchy for an ontology inside the fragment of
+     * {@link DataPropertyModel}. Data property assertions are not an
+     * inference type of the OWL API.
      */
     @Override public Set<InferenceType> getPrecomputableInferenceTypes() {
         Set<InferenceType> types = new HashSet<>(Arrays.asList(InferenceType.CLASS_HIERARCHY,
-                InferenceType.OBJECT_PROPERTY_HIERARCHY,
+                InferenceType.OBJECT_PROPERTY_HIERARCHY, InferenceType.OBJECT_PROPERTY_ASSERTIONS,
                 InferenceType.CLASS_ASSERTIONS, InferenceType.SAME_INDIVIDUAL));
         if (dataHierarchyInFragment()) types.add(InferenceType.DATA_PROPERTY_HIERARCHY);
         return types;
@@ -916,26 +911,36 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         // Declarations and annotation axioms have no model-theoretic content, so
         // every ontology entails them (HermiT answers true for them too).
         if (!axiom.isLogicalAxiom()) return true;
-        if (axiom instanceof OWLClassAssertionAxiom) return isEntailedClassAssertion((OWLClassAssertionAxiom) axiom);
-        if (axiom instanceof OWLSameIndividualAxiom) return isEntailedSameIndividual((OWLSameIndividualAxiom) axiom);
-        if (axiom instanceof OWLSubObjectPropertyOfAxiom
-                || axiom instanceof OWLEquivalentObjectPropertiesAxiom
-                || axiom instanceof OWLInverseObjectPropertiesAxiom
-                || axiom instanceof OWLSymmetricObjectPropertyAxiom
-                || axiom instanceof OWLObjectPropertyDomainAxiom
-                || axiom instanceof OWLObjectPropertyRangeAxiom) {
-            return isEntailedObjectPropertyAxiom(axiom);
+        if (!entailmentSupported(axiom.getAxiomType())) throw new UnsupportedEntailmentTypeException(axiom);
+        OWLAxiom plain = axiom.getAxiomWithoutAnnotations();
+        // First the axioms that the held answers decide (taxonomy, realization,
+        // property hierarchy), then the reductions to a km run on an extension.
+        if (plain instanceof OWLClassAssertionAxiom
+                && !((OWLClassAssertionAxiom) plain).getClassExpression().isAnonymous()) {
+            return isEntailedClassAssertion((OWLClassAssertionAxiom) plain);
         }
-        if (!(axiom instanceof OWLSubClassOfAxiom)) {
-            throw new UnsupportedEntailmentTypeException(axiom);
+        if (plain instanceof OWLSameIndividualAxiom) return isEntailedSameIndividual((OWLSameIndividualAxiom) plain);
+        if (plain instanceof OWLSubObjectPropertyOfAxiom
+                || plain instanceof OWLEquivalentObjectPropertiesAxiom
+                || plain instanceof OWLInverseObjectPropertiesAxiom
+                || plain instanceof OWLSymmetricObjectPropertyAxiom
+                || (plain instanceof OWLObjectPropertyDomainAxiom
+                        && !((OWLObjectPropertyDomainAxiom) plain).getDomain().isAnonymous())
+                || (plain instanceof OWLObjectPropertyRangeAxiom
+                        && !((OWLObjectPropertyRangeAxiom) plain).getRange().isAnonymous())) {
+            return isEntailedObjectPropertyAxiom(plain);
         }
-        OWLSubClassOfAxiom subClassOf = (OWLSubClassOfAxiom) axiom;
-        if (subClassOf.getSubClass().isAnonymous()
-                || subClassOf.getSuperClass().isAnonymous()) {
-            throw new UnsupportedEntailmentTypeException(axiom);
+        if (plain instanceof OWLSubClassOfAxiom
+                && !((OWLSubClassOfAxiom) plain).getSubClass().isAnonymous()
+                && !((OWLSubClassOfAxiom) plain).getSuperClass().isAnonymous()) {
+            OWLSubClassOfAxiom subClassOf = (OWLSubClassOfAxiom) plain;
+            return namedSubsumption(subClassOf.getSubClass().asOWLClass(), subClassOf.getSuperClass().asOWLClass());
         }
-        OWLClass sub = subClassOf.getSubClass().asOWLClass();
-        OWLClass sup = subClassOf.getSuperClass().asOWLClass();
+        return this.<Boolean>reduce(Arrays.asList("entailed", plain), CHECKING_ENTAILMENT,
+                () -> entailedByReduction(plain));
+    }
+
+    private boolean namedSubsumption(OWLClass sub, OWLClass sup) {
         // Bottom and an unsatisfiable named class entail every class.
         if (sub.isOWLNothing() || sup.isOWLThing() || sub.equals(sup)) {
             return true;
@@ -964,18 +969,30 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
 
     @Override public boolean isEntailmentCheckingSupported(AxiomType<?> axiomType) {
-        if (!axiomType.isLogical()) return true;
-        return AxiomType.SUBCLASS_OF.equals(axiomType)
-                || AxiomType.CLASS_ASSERTION.equals(axiomType)
-                || AxiomType.SAME_INDIVIDUAL.equals(axiomType)
-                || AxiomType.SUB_OBJECT_PROPERTY.equals(axiomType)
-                || AxiomType.EQUIVALENT_OBJECT_PROPERTIES.equals(axiomType)
-                || AxiomType.INVERSE_OBJECT_PROPERTIES.equals(axiomType)
-                || AxiomType.SYMMETRIC_OBJECT_PROPERTY.equals(axiomType)
-                || AxiomType.OBJECT_PROPERTY_DOMAIN.equals(axiomType)
-                || AxiomType.OBJECT_PROPERTY_RANGE.equals(axiomType);
+        return entailmentSupported(axiomType);
     }
 
+    /**
+     * The axiom types {@link #isEntailed(OWLAxiom)} answers; it throws
+     * {@link UnsupportedEntailmentTypeException} for the others. Keys, rules,
+     * datatype definitions and data property disjointness have no exact
+     * reduction here (see protege/README.md, "isEntailed"); data
+     * sub-properties and equivalences are answered inside the fragment of
+     * {@link DataPropertyModel} only.
+     */
+    private boolean entailmentSupported(AxiomType<?> axiomType) {
+        if (!axiomType.isLogical()) return true;
+        if (AxiomType.HAS_KEY.equals(axiomType) || AxiomType.SWRL_RULE.equals(axiomType)
+                || AxiomType.DATATYPE_DEFINITION.equals(axiomType)
+                || AxiomType.DISJOINT_DATA_PROPERTIES.equals(axiomType)) {
+            return false;
+        }
+        if (AxiomType.SUB_DATA_PROPERTY.equals(axiomType)
+                || AxiomType.EQUIVALENT_DATA_PROPERTIES.equals(axiomType)) {
+            return dataHierarchyInFragment();
+        }
+        return true;
+    }
 
     // ---- individuals (from km classify --realize) -----------------------
 
@@ -1137,10 +1154,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         if (!consistent && !getRootOntology().getIndividualsInSignature(Imports.INCLUDED).isEmpty()) {
             throw new InconsistentOntologyException();
         }
-        if (ce.isAnonymous()) {
-            // TODO W5: class expression queries (DL Query) via a fresh definition Q = CE.
-            throw unsupported("getInstances", "the class expression " + ce);
-        }
+        if (ce.isAnonymous()) return instancesOfExpression(ce, direct);
         Realized data = ensureRealized();
         if (!consistent) return ns;
         int r = repIdOf(ce);
@@ -1349,7 +1363,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
     @Override public synchronized NodeSet<OWLClass> getDisjointClasses(OWLClassExpression ce) {
         checkPreConditions();
-        requireNamed(ce, "getDisjointClasses");
+        if (ce.isAnonymous()) return disjointByComplement(ce);
         OWLClassNodeSet ns = new OWLClassNodeSet();
         Node<OWLClass> bottom = nodeOfId(repId[nothingId]);
         if (isFresh(ce) || (!ce.isOWLNothing() && repIdOf(ce) == repId[thingId])) {
@@ -1363,12 +1377,17 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
             ns.addNode(bottom);
             return ns;
         }
-        throw unsupported("getDisjointClasses", "the satisfiable class " + ce);
+        return disjointByComplement(ce);
     }
 
     @Override public synchronized NodeSet<OWLClass> getDataPropertyDomains(OWLDataProperty pe, boolean direct) {
         checkPreConditions();
-        DataPropertyModel model = ensureDataProperties();
+        DataPropertyModel model;
+        try {
+            model = ensureDataProperties();
+        } catch (UnsupportedOperationException outsideFragment) {
+            return dataDomainsByReduction(pe, direct);
+        }
         if (model.isEmpty(pe)) {
             // No pair: every class is a domain, and the direct domain is the bottom node.
             int[] all = new int[repId.length];
@@ -1429,7 +1448,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
             ns.addNode(model.bottomNode());
             return ns;
         }
-        throw unsupported("getDisjointObjectProperties", "the satisfiable object property " + pe);
+        return disjointObjectProperties(model, pe);
     }
     /** HermiT answers {@code getEquivalentObjectProperties(pe^-)} (Reasoner.getInverseObjectProperties). */
     @Override public synchronized Node<OWLObjectPropertyExpression> getInverseObjectProperties(OWLObjectPropertyExpression pe) {
@@ -1494,7 +1513,7 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
 
     @Override public synchronized NodeSet<OWLNamedIndividual> getObjectPropertyValues(OWLNamedIndividual ind, OWLObjectPropertyExpression pe) {
         checkPreConditions();
-        throw unsupported("getObjectPropertyValues", "the individual " + ind + " and the property " + pe);
+        return computeObjectPropertyValues(ind, pe);
     }
 
     @Override public synchronized NodeSet<OWLDataProperty> getSubDataProperties(OWLDataProperty pe, boolean direct) {
@@ -1519,12 +1538,12 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
     }
     @Override public synchronized Set<OWLLiteral> getDataPropertyValues(OWLNamedIndividual ind, OWLDataProperty pe) {
         checkPreConditions();
-        throw unsupported("getDataPropertyValues", "the individual " + ind + " and the property " + pe);
+        return computeDataPropertyValues(ind, pe);
     }
 
     @Override public synchronized NodeSet<OWLNamedIndividual> getDifferentIndividuals(OWLNamedIndividual ind) {
         checkPreConditions();
-        throw unsupported("getDifferentIndividuals", "the individual " + ind);
+        return computeDifferentIndividuals(ind);
     }
 
     // ---- data properties (from the stated axioms and the taxonomy) -----------
@@ -1553,5 +1572,989 @@ public class KMReasoner extends org.semanticweb.owlapi.reasoner.impl.OWLReasoner
         }
         dataModel = model;
         return model;
+    }
+
+    // ---- fresh-definition reductions (W5a) -----------------------------------
+    //
+    // Each query below is an entailment question about the committed ontology O.
+    // It is answered by one km run on O extended with fresh axioms over fresh
+    // names (ExtendedRun), and the answer is read from that run's rows. Two kinds:
+    //  - definitional: Q ≡ CE for a fresh class Q. O ∪ {Q ≡ CE} is a conservative
+    //    extension of O (every model of O expands to one by setting Q to CE), so
+    //    the rows about O's own names are O's, and Q's rows answer CE.
+    //  - refutation: O ⊨ α iff O ∪ {¬α} is inconsistent, with ¬α written as
+    //    assertions about fresh individuals (the existential witnesses of ¬α).
+    //    These additions are not conservative on purpose; the run only reports
+    //    consistency.
+    // Answers and failures are cached per committed revision (cleared on commit,
+    // failures also on flush). A run that km declines throws; nothing is guessed.
+
+    private static final String CHECKING_ENTAILMENT = "Checking entailment";
+    private static final String CLASSIFYING_EXPRESSION = "Classifying a class expression";
+    private static final String COMPUTING_VALUES = "Computing property values";
+
+    /** Answers (or remembered failures) of reduction runs on the committed revision. */
+    private final Map<Object, Object> reductions = new HashMap<>();
+    private OWLOntology querySnapshot;
+    private String querySource;
+    private ExtendedRun.Fresh freshNames;
+    private boolean objectValuesPrecomputed;
+    private int reductionRuns;
+
+    /** Native reduction runs made so far (for tests). */
+    synchronized int reductionRunCount() { return reductionRuns; }
+
+    private void clearReductions() {
+        reductions.clear();
+        querySnapshot = null;
+        querySource = null;
+        freshNames = null;
+        objectValuesPrecomputed = false;
+    }
+
+    /**
+     * The committed revision as the reduction runs send it to km: the same
+     * axioms, except that every NegativeObjectPropertyAssertion(r a b) is
+     * written as the equivalent ClassAssertion(¬∃r.{b} a). The km build under
+     * test treats {r(a,b), ¬r(a,c)} as inconsistent (engine item); the class
+     * form is decided correctly.
+     */
+    private OWLOntology querySnapshot() {
+        if (querySnapshot == null) {
+            OWLOntology committed = getCommittedOntologySnapshot();
+            List<OWLAxiom> negatives = new ArrayList<>();
+            List<OWLAxiom> rewritten = new ArrayList<>();
+            for (OWLAxiom ax : committed.getAxioms()) {
+                if (ax instanceof OWLNegativeObjectPropertyAssertionAxiom) {
+                    OWLNegativeObjectPropertyAssertionAxiom n = (OWLNegativeObjectPropertyAssertionAxiom) ax;
+                    negatives.add(ax);
+                    rewritten.add(assertion(n.getProperty(), n.getSubject(), n.getObject(), true));
+                }
+            }
+            if (!negatives.isEmpty()) {
+                committed.getOWLOntologyManager().removeAxioms(committed, new HashSet<>(negatives));
+                committed.getOWLOntologyManager().addAxioms(committed, new HashSet<>(rewritten));
+            }
+            querySnapshot = committed;
+        }
+        return querySnapshot;
+    }
+
+    private String querySource() {
+        if (querySource == null) {
+            try {
+                querySource = FlattenedOntology.functionalSyntaxOfSnapshot(querySnapshot());
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new ReasonerInternalException(e);
+            }
+        }
+        return querySource;
+    }
+
+    private ExtendedRun.Fresh fresh() {
+        if (freshNames == null) freshNames = new ExtendedRun.Fresh(querySnapshot());
+        return freshNames;
+    }
+
+    private Object peek(Object key) {
+        Object held = reductions.get(key);
+        return held instanceof RuntimeException ? null : held;
+    }
+
+    /** The cached answer for {@code key}, or one computed now as a monitored task. */
+    @SuppressWarnings("unchecked")
+    private <T> T reduce(Object key, String title, java.util.function.Supplier<T> compute) {
+        Object held = reductions.get(key);
+        if (held instanceof RuntimeException) throw (RuntimeException) held;
+        if (held != null) return (T) held;
+        Object[] out = new Object[1];
+        try {
+            runTask(title, () -> out[0] = compute.get());
+        } catch (RuntimeException failure) {
+            if (cacheable(failure)) reductions.put(key, failure);
+            throw failure;
+        }
+        reductions.put(key, out[0]);
+        return (T) out[0];
+    }
+
+    /** One km run on the committed source plus {@code extra}. */
+    private ExtendedRun.Answer extendedRun(String label, Collection<? extends OWLAxiom> extra,
+                                           boolean realize, boolean top) {
+        reductionRuns++;
+        try {
+            return ExtendedRun.run(querySource(), df, extra, realize, top, label, process -> {
+                realizeProcess = process;
+                if (process != null && (interruptRequested || timedOut)) {
+                    NativeProcessTree.terminateAndWait(process);
+                }
+            });
+        } catch (RuntimeException error) {
+            throw error;
+        } catch (Exception error) {
+            throw new ReasonerInternalException(error);
+        }
+    }
+
+    /** A definitional extension is consistent whenever O is; anything else is an engine fault. */
+    private static void requireConsistent(ExtendedRun.Answer answer, String label) {
+        if (!answer.consistent) {
+            throw new ReasonerInternalException("Kobayashi-MaRust found the " + label
+                    + " extension inconsistent although the ontology is consistent and the"
+                    + " extension only defines fresh names; refusing the answer");
+        }
+    }
+
+    private Set<OWLNamedIndividual> signatureIndividuals() {
+        return new LinkedHashSet<>(querySnapshot().getIndividualsInSignature());
+    }
+
+    // ---- class expressions -------------------------------------------------------
+
+    /** What one run with {@code Q ≡ CE} says about Q, in representatives of O's taxonomy. */
+    private static final class ClassAnswer {
+        boolean unsat;
+        boolean top;
+        /** Reps of the named classes above Q (owl:Thing and Q's equivalents included). */
+        int[] supers = EMPTY_INTS;
+        /** Reps of the satisfiable named classes below Q (Q's equivalents included). */
+        int[] subs = EMPTY_INTS;
+        int[] equivalents = EMPTY_INTS;
+        /** Named individuals of the signature in Q; null when the run did not realize. */
+        Set<OWLNamedIndividual> instances;
+    }
+
+    /**
+     * The answer for a class expression. Exact: {@code Q ≡ CE} with fresh {@code Q}
+     * is a conservative extension, so {@code O ⊨ Q ⊑ D} iff {@code O ⊨ CE ⊑ D}, and
+     * likewise for subclasses, unsatisfiability and instances.
+     */
+    private ClassAnswer classAnswer(OWLClassExpression ce, boolean instances) {
+        Object realized = peek(Arrays.asList("class", ce, true));
+        if (realized != null) return (ClassAnswer) realized;
+        return reduce(Arrays.asList("class", ce, instances), CLASSIFYING_EXPRESSION, () -> {
+            OWLClass q = df.getOWLClass(fresh().next("Q"));
+            String label = instances ? "class expression query with instances" : "class expression query";
+            ExtendedRun.Answer answer = extendedRun(label,
+                    Collections.singletonList(df.getOWLEquivalentClassesAxiom(q, ce)), instances, true);
+            requireConsistent(answer, label);
+            return classAnswerOf(answer, q.getIRI().toString(), instances);
+        });
+    }
+
+    private ClassAnswer classAnswerOf(ExtendedRun.Answer answer, String q, boolean instances) {
+        ClassAnswer out = new ClassAnswer();
+        out.unsat = answer.unsat.contains(q);
+        int bottom = repId[nothingId];
+        if (!out.unsat) {
+            out.top = answer.top.contains(q);
+            Set<Integer> sup = new TreeSet<>();
+            sup.add(repId[thingId]);
+            List<String> above = new ArrayList<>(answer.supersOf(q));
+            above.addAll(answer.top);
+            for (String iri : above) {
+                Integer id = idByIri.get(iri);
+                if (id == null) continue;
+                int r = repId[id];
+                sup.add(r);
+                int[] sups = supersByRep[r];
+                if (sups != null) for (int s : sups) sup.add(s);
+            }
+            sup.remove(bottom);
+            Set<Integer> sub = new TreeSet<>();
+            if (out.top) {
+                for (int c = 0; c < repId.length; c++) if (repId[c] != bottom) sub.add(repId[c]);
+            } else {
+                for (Map.Entry<String, Set<String>> row : answer.supers.entrySet()) {
+                    if (!row.getValue().contains(q)) continue;
+                    Integer id = idByIri.get(row.getKey());
+                    if (id != null && repId[id] != bottom) sub.add(repId[id]);
+                }
+            }
+            Set<Integer> eq = new TreeSet<>(sup);
+            eq.retainAll(sub);
+            if (eq.size() > 1) {
+                throw new ReasonerInternalException("Kobayashi-MaRust put a class expression next to "
+                        + eq.size() + " different nodes of the class hierarchy; refusing the answer");
+            }
+            out.supers = toArray(sup);
+            out.subs = toArray(sub);
+            out.equivalents = toArray(eq);
+        }
+        if (instances) {
+            out.instances = new LinkedHashSet<>();
+            if (!out.unsat) {
+                for (OWLNamedIndividual ind : signatureIndividuals()) {
+                    if (out.top || answer.hasType(ind.getIRI().toString(), q)) out.instances.add(ind);
+                }
+            }
+        }
+        return out;
+    }
+
+    private static int[] toArray(Collection<Integer> set) {
+        int[] out = new int[set.size()];
+        int k = 0;
+        for (int v : set) out[k++] = v;
+        return out;
+    }
+
+    private static int[] minus(int[] set, int[] remove) {
+        int[] buf = new int[set.length];
+        int count = 0;
+        for (int v : set) {
+            boolean drop = false;
+            for (int w : remove) if (v == w) { drop = true; break; }
+            if (!drop) buf[count++] = v;
+        }
+        return Arrays.copyOf(buf, count);
+    }
+
+    private Node<OWLClass> equivalentsOfExpression(OWLClassExpression ce) {
+        ClassAnswer a = classAnswer(ce, false);
+        if (a.unsat) return nodeOfId(repId[nothingId]);
+        // HermiT answers an empty node when no named class is equivalent.
+        if (a.equivalents.length == 0) return new OWLClassNode();
+        return nodeOfId(a.equivalents[0]);
+    }
+
+    private NodeSet<OWLClass> supersOfExpression(OWLClassExpression ce, boolean direct) {
+        ClassAnswer a = classAnswer(ce, false);
+        // An unsatisfiable expression sits where owl:Nothing does.
+        if (a.unsat) return getSuperClasses(owlNothing, direct);
+        OWLClassNodeSet ns = new OWLClassNodeSet();
+        int[] strict = minus(a.supers, a.equivalents);
+        for (int r : direct ? minimalIds(strict) : strict) ns.addNode(nodeOfId(r));
+        return ns;
+    }
+
+    private NodeSet<OWLClass> subsOfExpression(OWLClassExpression ce, boolean direct) {
+        ClassAnswer a = classAnswer(ce, false);
+        OWLClassNodeSet ns = new OWLClassNodeSet();
+        if (a.unsat) return ns;
+        Node<OWLClass> bottom = nodeOfId(repId[nothingId]);
+        int[] strict = minus(a.subs, a.equivalents);
+        if (strict.length == 0) {
+            ns.addNode(bottom);
+        } else if (!direct) {
+            for (int r : strict) ns.addNode(nodeOfId(r));
+            ns.addNode(bottom);
+        } else {
+            for (int r : maximalIds(strict, ensureSubsByRep())) ns.addNode(nodeOfId(r));
+        }
+        return ns;
+    }
+
+    /**
+     * The instances of an anonymous expression. Direct instances are those with
+     * no type strictly below the expression (the OWL API definition; HermiT
+     * agrees on the test ontologies).
+     */
+    private NodeSet<OWLNamedIndividual> instancesOfExpression(OWLClassExpression ce, boolean direct) {
+        ClassAnswer a = classAnswer(ce, true);
+        List<OWLNamedIndividual> members = new ArrayList<>(a.instances);
+        if (direct && !members.isEmpty()) {
+            Realized data = ensureRealized();
+            int[] strict = minus(a.subs, a.equivalents);
+            Iterator<OWLNamedIndividual> it = members.iterator();
+            while (it.hasNext()) {
+                Integer c = data.componentOf.get(it.next());
+                if (c == null) continue;
+                boolean below = false;
+                for (int t : data.allTypes.get(c)) {
+                    for (int s : strict) if (s == t) { below = true; break; }
+                    if (below) break;
+                }
+                if (below) it.remove();
+            }
+        }
+        return individualNodes(members);
+    }
+
+    /** Nodes of individuals under the configured policy (as getInstances of a named class). */
+    private NodeSet<OWLNamedIndividual> individualNodes(Collection<OWLNamedIndividual> individuals) {
+        OWLNamedIndividualNodeSet ns = new OWLNamedIndividualNodeSet();
+        if (individuals.isEmpty()) return ns;
+        if (getIndividualNodeSetPolicy() == IndividualNodeSetPolicy.BY_SAME_AS) {
+            Realized data = ensureRealized();
+            Set<Integer> seen = new HashSet<>();
+            for (OWLNamedIndividual ind : individuals) {
+                Integer c = data.componentOf.get(ind);
+                if (c == null) {
+                    ns.addNode(new OWLNamedIndividualNode(ind));
+                } else if (seen.add(c)) {
+                    ns.addNode(new OWLNamedIndividualNode(data.members.get(c)));
+                }
+            }
+        } else {
+            for (OWLNamedIndividual ind : individuals) ns.addNode(new OWLNamedIndividualNode(ind));
+        }
+        return ns;
+    }
+
+    /**
+     * Classes disjoint with CE. Exact: {@code D ⊓ CE} is unsatisfiable iff
+     * {@code D ⊑ ¬CE}, so the answer is the classes below the fresh
+     * {@code N ≡ ¬CE} (its equivalents included) and the bottom node, as HermiT
+     * answers it.
+     */
+    private NodeSet<OWLClass> disjointByComplement(OWLClassExpression ce) {
+        ClassAnswer n = classAnswer(df.getOWLObjectComplementOf(ce), false);
+        OWLClassNodeSet ns = new OWLClassNodeSet();
+        Node<OWLClass> bottom = nodeOfId(repId[nothingId]);
+        if (!n.unsat) {
+            for (int r : n.subs) ns.addNode(nodeOfId(r));
+        }
+        ns.addNode(bottom);
+        return ns;
+    }
+
+    // ---- entailment ----------------------------------------------------------------
+
+    private OWLClassExpression not(OWLClassExpression ce) { return df.getOWLObjectComplementOf(ce); }
+
+    private OWLClassExpression and(OWLClassExpression a, OWLClassExpression b) {
+        return df.getOWLObjectIntersectionOf(a, b);
+    }
+
+    /**
+     * Whether every expression is unsatisfiable, from one run that defines a fresh
+     * {@code Q_i ≡ CE_i} for each expression not yet known. Exact for the reason
+     * given at {@link #classAnswer}.
+     */
+    private boolean allUnsatisfiable(List<OWLClassExpression> ces) {
+        List<OWLClassExpression> missing = new ArrayList<>();
+        for (OWLClassExpression ce : ces) {
+            Object known = peek(Arrays.asList("class", ce, true));
+            if (known == null) known = peek(Arrays.asList("class", ce, false));
+            if (known != null) {
+                if (!((ClassAnswer) known).unsat) return false;
+                continue;
+            }
+            Object held = reductions.get(Arrays.asList("unsat", ce));
+            if (held instanceof RuntimeException) throw (RuntimeException) held;
+            if (held != null) {
+                if (!(Boolean) held) return false;
+                continue;
+            }
+            if (!missing.contains(ce)) missing.add(ce);
+        }
+        if (missing.isEmpty()) return true;
+        try {
+            runTask(CHECKING_ENTAILMENT, () -> {
+                List<OWLAxiom> defs = new ArrayList<>();
+                List<String> names = new ArrayList<>();
+                for (OWLClassExpression ce : missing) {
+                    OWLClass q = df.getOWLClass(fresh().next("Q"));
+                    defs.add(df.getOWLEquivalentClassesAxiom(q, ce));
+                    names.add(q.getIRI().toString());
+                }
+                ExtendedRun.Answer answer = extendedRun("satisfiability check", defs, false, false);
+                requireConsistent(answer, "satisfiability check");
+                for (int i = 0; i < missing.size(); i++) {
+                    reductions.put(Arrays.asList("unsat", missing.get(i)), answer.unsat.contains(names.get(i)));
+                }
+            });
+        } catch (RuntimeException failure) {
+            if (cacheable(failure)) {
+                for (OWLClassExpression ce : missing) reductions.put(Arrays.asList("unsat", ce), failure);
+            }
+            throw failure;
+        }
+        for (OWLClassExpression ce : missing) {
+            if (!(Boolean) reductions.get(Arrays.asList("unsat", ce))) return false;
+        }
+        return true;
+    }
+
+    private boolean unsatisfiable(OWLClassExpression ce) {
+        return allUnsatisfiable(Collections.singletonList(ce));
+    }
+
+    /** Whether O ∪ {@code extra} is consistent (one run; the caller caches by axiom). */
+    private boolean consistentWith(List<OWLAxiom> extra) {
+        if (extra.isEmpty()) return true; // O itself is consistent (checked before)
+        return extendedRun("consistency check", extra, false, false).consistent;
+    }
+
+    private OWLNamedIndividual freshIndividual() {
+        return df.getOWLNamedIndividual(fresh().next("x"));
+    }
+
+    private static boolean isTop(OWLPropertyExpression pe) {
+        return pe.isOWLTopObjectProperty() || pe.isOWLTopDataProperty();
+    }
+
+    private static boolean isBottom(OWLPropertyExpression pe) {
+        return pe.isOWLBottomObjectProperty() || pe.isOWLBottomDataProperty();
+    }
+
+    /**
+     * {@code pe(s, o)} as an assertion on a named property (an inverse swaps the
+     * arguments). The negation is the class assertion {@code ¬∃pe.{o}(s)}, which
+     * means the same as a negative property assertion (see querySnapshot).
+     */
+    private OWLAxiom assertion(OWLObjectPropertyExpression pe, OWLIndividual s, OWLIndividual o, boolean negative) {
+        OWLObjectPropertyExpression simple = pe.getSimplified();
+        if (negative) {
+            return df.getOWLClassAssertionAxiom(not(df.getOWLObjectHasValue(simple, o)), s);
+        }
+        if (simple.isAnonymous()) {
+            OWLIndividual t = s; s = o; o = t;
+            simple = simple.getNamedProperty();
+        }
+        return df.getOWLObjectPropertyAssertionAxiom(simple, s, o);
+    }
+
+    private static void requireNamed(OWLIndividual ind, OWLAxiom axiom) {
+        if (ind.isAnonymous()) throw new UnsupportedEntailmentTypeException(axiom);
+    }
+
+    /**
+     * {@code r1 ∘ ... ∘ rn ⊑ s} iff {@code s(x0,xn)}, that is {@code x0 ∈ ∃s.{xn}},
+     * follows from O ∪ {r1(x0,x1), ..., rn(xn-1,xn)} for fresh x0..xn: a path
+     * that violates the inclusion interprets the fresh individuals, and an
+     * inconsistent extension (an empty chain) entails everything. The
+     * universal property holds between any two elements, so its assertion adds
+     * nothing and is left out; the empty one makes the chain empty. The
+     * positive form avoids negated nominals, which the km build under test
+     * decides incompletely next to transitive properties (engine item).
+     */
+    private boolean chainEntailed(List<OWLObjectPropertyExpression> chain, OWLObjectPropertyExpression sup) {
+        if (isTop(sup)) return true;
+        for (OWLObjectPropertyExpression r : chain) if (isBottom(r)) return true;
+        if (chain.size() == 1) return ensureProperties().entails(chain.get(0), sup);
+        List<OWLNamedIndividual> xs = new ArrayList<>();
+        for (int i = 0; i <= chain.size(); i++) xs.add(freshIndividual());
+        List<OWLAxiom> extra = new ArrayList<>();
+        for (int i = 0; i < chain.size(); i++) {
+            if (!isTop(chain.get(i))) extra.add(assertion(chain.get(i), xs.get(i), xs.get(i + 1), false));
+        }
+        if (isBottom(sup)) return !consistentWith(extra);
+        return typeEntailed(extra, xs.get(0), df.getOWLObjectHasValue(sup, xs.get(chain.size())));
+    }
+
+    /**
+     * Whether O ∪ {@code assertions} entails {@code ce(x)}: one realization with
+     * the fresh {@code V ≡ ce}. An inconsistent extension entails everything.
+     */
+    private boolean typeEntailed(List<OWLAxiom> assertions, OWLNamedIndividual x, OWLClassExpression ce) {
+        OWLClass v = df.getOWLClass(fresh().next("V"));
+        List<OWLAxiom> extra = new ArrayList<>(assertions);
+        extra.add(df.getOWLDeclarationAxiom(x));
+        extra.add(df.getOWLEquivalentClassesAxiom(v, ce));
+        ExtendedRun.Answer answer = extendedRun("entailment check", extra, true, false);
+        return !answer.consistent || answer.hasType(x.getIRI().toString(), v.getIRI().toString());
+    }
+
+    /**
+     * r and s are disjoint iff O ∪ {r(x,y), s(x,y)} is inconsistent for fresh x, y.
+     */
+    private boolean propertiesDisjoint(OWLObjectPropertyExpression r, OWLObjectPropertyExpression s) {
+        if (isBottom(r) || isBottom(s)) return true;
+        OWLNamedIndividual x = freshIndividual(), y = freshIndividual();
+        List<OWLAxiom> extra = new ArrayList<>();
+        if (!isTop(r)) extra.add(assertion(r, x, y, false));
+        if (!isTop(s)) extra.add(assertion(s, x, y, false));
+        return !consistentWith(extra);
+    }
+
+    /**
+     * The reduction of each logical axiom type (protege/README.md, table
+     * "isEntailed"). Unsatisfiability checks use fresh definitions; the
+     * assertion and property-characteristic checks refute the axiom with
+     * fresh individuals. Universal and empty properties are decided from their
+     * fixed semantics.
+     */
+    private boolean entailedByReduction(OWLAxiom ax) {
+        if (ax instanceof OWLSubClassOfAxiom) {
+            // C ⊑ D iff C ⊓ ¬D is unsatisfiable.
+            OWLSubClassOfAxiom a = (OWLSubClassOfAxiom) ax;
+            return unsatisfiable(and(a.getSubClass(), not(a.getSuperClass())));
+        }
+        if (ax instanceof OWLEquivalentClassesAxiom) {
+            // Every operand below and above the first one.
+            List<OWLClassExpression> ops = new ArrayList<>(((OWLEquivalentClassesAxiom) ax).getClassExpressions());
+            List<OWLClassExpression> checks = new ArrayList<>();
+            for (int i = 1; i < ops.size(); i++) {
+                checks.add(and(ops.get(0), not(ops.get(i))));
+                checks.add(and(ops.get(i), not(ops.get(0))));
+            }
+            return allUnsatisfiable(checks);
+        }
+        if (ax instanceof OWLDisjointClassesAxiom) {
+            // Pairwise: C ⊓ D is unsatisfiable.
+            return allUnsatisfiable(pairwiseIntersections(
+                    new ArrayList<>(((OWLDisjointClassesAxiom) ax).getClassExpressions())));
+        }
+        if (ax instanceof OWLDisjointUnionAxiom) {
+            OWLDisjointUnionAxiom a = (OWLDisjointUnionAxiom) ax;
+            return entailedByReduction(a.getOWLEquivalentClassesAxiom())
+                    && entailedByReduction(a.getOWLDisjointClassesAxiom());
+        }
+        if (ax instanceof OWLClassAssertionAxiom) {
+            // C(a) iff a is an instance of the fresh Q ≡ C (the class expression query).
+            OWLClassAssertionAxiom a = (OWLClassAssertionAxiom) ax;
+            requireNamed(a.getIndividual(), ax);
+            OWLNamedIndividual ind = a.getIndividual().asOWLNamedIndividual();
+            if (signatureIndividuals().contains(ind)) {
+                return classAnswer(a.getClassExpression(), true).instances.contains(ind);
+            }
+            return typeEntailed(Collections.<OWLAxiom>emptyList(), ind, a.getClassExpression());
+        }
+        if (ax instanceof OWLObjectPropertyAssertionAxiom || ax instanceof OWLNegativeObjectPropertyAssertionAxiom) {
+            // r(a,b) iff a is an instance of ∃r.{b} (the property value query);
+            // ¬r(a,b) iff O ∪ {r(a,b)} is inconsistent.
+            boolean negative = ax instanceof OWLNegativeObjectPropertyAssertionAxiom;
+            OWLPropertyAssertionAxiom<?, ?> a = (OWLPropertyAssertionAxiom<?, ?>) ax;
+            OWLObjectPropertyExpression r = (OWLObjectPropertyExpression) a.getProperty();
+            requireNamed(a.getSubject(), ax);
+            requireNamed((OWLIndividual) a.getObject(), ax);
+            if (isTop(r)) return !negative;
+            if (isBottom(r)) return negative;
+            OWLNamedIndividual s = a.getSubject().asOWLNamedIndividual();
+            OWLNamedIndividual o = ((OWLIndividual) a.getObject()).asOWLNamedIndividual();
+            if (negative) return !consistentWith(Collections.singletonList(assertion(r, s, o, false)));
+            Set<OWLNamedIndividual> inds = signatureIndividuals();
+            if (inds.contains(s) && inds.contains(o)
+                    && querySnapshot().containsObjectPropertyInSignature(r.getNamedProperty().getIRI())) {
+                return computeObjectPropertyValues(s, r).containsEntity(o);
+            }
+            return typeEntailed(Collections.<OWLAxiom>emptyList(), s, df.getOWLObjectHasValue(r, o));
+        }
+        if (ax instanceof OWLDataPropertyAssertionAxiom || ax instanceof OWLNegativeDataPropertyAssertionAxiom) {
+            boolean negative = ax instanceof OWLNegativeDataPropertyAssertionAxiom;
+            OWLPropertyAssertionAxiom<?, ?> a = (OWLPropertyAssertionAxiom<?, ?>) ax;
+            OWLDataPropertyExpression p = (OWLDataPropertyExpression) a.getProperty();
+            OWLLiteral value = (OWLLiteral) a.getObject();
+            requireNamed(a.getSubject(), ax);
+            if (isTop(p)) return !negative;
+            if (isBottom(p)) return negative;
+            // p(a,l) iff a is an instance of DataHasValue(p l); ¬p(a,l) iff
+            // O ∪ {p(a,l)} is inconsistent.
+            if (negative) {
+                return !consistentWith(Collections.<OWLAxiom>singletonList(
+                        df.getOWLDataPropertyAssertionAxiom(p, a.getSubject(), value)));
+            }
+            return typeEntailed(Collections.<OWLAxiom>emptyList(), a.getSubject().asOWLNamedIndividual(),
+                    df.getOWLDataHasValue(p, value));
+        }
+        if (ax instanceof OWLDifferentIndividualsAxiom) {
+            // a ≠ b iff O ∪ {a = b} is inconsistent, pairwise.
+            List<OWLIndividual> inds = new ArrayList<>(((OWLDifferentIndividualsAxiom) ax).getIndividuals());
+            for (OWLIndividual i : inds) requireNamed(i, ax);
+            for (int i = 0; i < inds.size(); i++) {
+                for (int j = i + 1; j < inds.size(); j++) {
+                    if (consistentWith(Collections.<OWLAxiom>singletonList(
+                            df.getOWLSameIndividualAxiom(inds.get(i), inds.get(j))))) return false;
+                }
+            }
+            return true;
+        }
+        if (ax instanceof OWLSubPropertyChainOfAxiom) {
+            OWLSubPropertyChainOfAxiom a = (OWLSubPropertyChainOfAxiom) ax;
+            return chainEntailed(new ArrayList<>(a.getPropertyChain()), a.getSuperProperty());
+        }
+        if (ax instanceof OWLTransitiveObjectPropertyAxiom) {
+            OWLObjectPropertyExpression r = ((OWLTransitiveObjectPropertyAxiom) ax).getProperty();
+            return chainEntailed(Arrays.asList(r, r), r);
+        }
+        if (ax instanceof OWLDisjointObjectPropertiesAxiom) {
+            List<OWLObjectPropertyExpression> ps = new ArrayList<>(((OWLDisjointObjectPropertiesAxiom) ax).getProperties());
+            for (int i = 0; i < ps.size(); i++) {
+                for (int j = i + 1; j < ps.size(); j++) {
+                    if (!propertiesDisjoint(ps.get(i), ps.get(j))) return false;
+                }
+            }
+            return true;
+        }
+        if (ax instanceof OWLObjectPropertyDomainAxiom) {
+            // Domain C iff ∃r.⊤ ⊓ ¬C is unsatisfiable (∃U.⊤ is ⊤).
+            OWLObjectPropertyDomainAxiom a = (OWLObjectPropertyDomainAxiom) ax;
+            if (isBottom(a.getProperty())) return true;
+            if (isTop(a.getProperty())) return unsatisfiable(not(a.getDomain()));
+            return unsatisfiable(and(df.getOWLObjectSomeValuesFrom(a.getProperty(), owlThing), not(a.getDomain())));
+        }
+        if (ax instanceof OWLObjectPropertyRangeAxiom) {
+            // Range C iff ∃r.¬C is unsatisfiable.
+            OWLObjectPropertyRangeAxiom a = (OWLObjectPropertyRangeAxiom) ax;
+            if (isBottom(a.getProperty())) return true;
+            if (isTop(a.getProperty())) return unsatisfiable(not(a.getRange()));
+            return unsatisfiable(df.getOWLObjectSomeValuesFrom(a.getProperty(), not(a.getRange())));
+        }
+        if (ax instanceof OWLFunctionalObjectPropertyAxiom || ax instanceof OWLInverseFunctionalObjectPropertyAxiom) {
+            // Functional iff ≥2 r.⊤ is unsatisfiable; inverse functional uses r⁻.
+            OWLObjectPropertyExpression r = ((OWLObjectPropertyCharacteristicAxiom) ax).getProperty();
+            if (isBottom(r)) return true;
+            if (isTop(r)) return universalFunctional();
+            if (ax instanceof OWLInverseFunctionalObjectPropertyAxiom) r = r.getInverseProperty().getSimplified();
+            return unsatisfiable(df.getOWLObjectMinCardinality(2, r, owlThing));
+        }
+        if (ax instanceof OWLAsymmetricObjectPropertyAxiom) {
+            // Asymmetric iff O ∪ {r(x,y), r(y,x)} is inconsistent (x = y covers r(x,x)).
+            OWLObjectPropertyExpression r = ((OWLAsymmetricObjectPropertyAxiom) ax).getProperty();
+            if (isBottom(r)) return true;
+            if (isTop(r)) return false;
+            OWLNamedIndividual x = freshIndividual(), y = freshIndividual();
+            return !consistentWith(Arrays.asList(assertion(r, x, y, false), assertion(r, y, x, false)));
+        }
+        if (ax instanceof OWLReflexiveObjectPropertyAxiom) {
+            // Reflexive iff r(x,x), that is x ∈ ∃r.{x}, follows for a fresh (so
+            // arbitrary) individual x.
+            OWLObjectPropertyExpression r = ((OWLReflexiveObjectPropertyAxiom) ax).getProperty();
+            if (isTop(r)) return true;
+            if (isBottom(r)) return false;
+            OWLNamedIndividual x = freshIndividual();
+            return typeEntailed(Collections.<OWLAxiom>emptyList(), x, df.getOWLObjectHasValue(r, x));
+        }
+        if (ax instanceof OWLIrreflexiveObjectPropertyAxiom) {
+            // Irreflexive iff O ∪ {r(x,x)} is inconsistent.
+            OWLObjectPropertyExpression r = ((OWLIrreflexiveObjectPropertyAxiom) ax).getProperty();
+            if (isBottom(r)) return true;
+            if (isTop(r)) return false;
+            OWLNamedIndividual x = freshIndividual();
+            return !consistentWith(Collections.singletonList(assertion(r, x, x, false)));
+        }
+        if (ax instanceof OWLSubDataPropertyOfAxiom) {
+            OWLSubDataPropertyOfAxiom a = (OWLSubDataPropertyOfAxiom) ax;
+            return dataSubProperty(a.getSubProperty(), a.getSuperProperty());
+        }
+        if (ax instanceof OWLEquivalentDataPropertiesAxiom) {
+            List<OWLDataPropertyExpression> ps = new ArrayList<>(((OWLEquivalentDataPropertiesAxiom) ax).getProperties());
+            for (int i = 1; i < ps.size(); i++) {
+                if (!dataSubProperty(ps.get(0), ps.get(i)) || !dataSubProperty(ps.get(i), ps.get(0))) return false;
+            }
+            return true;
+        }
+        if (ax instanceof OWLDataPropertyDomainAxiom) {
+            // Domain C iff ∃p.rdfs:Literal ⊓ ¬C is unsatisfiable.
+            OWLDataPropertyDomainAxiom a = (OWLDataPropertyDomainAxiom) ax;
+            if (isBottom(a.getProperty())) return true;
+            if (isTop(a.getProperty())) return unsatisfiable(not(a.getDomain()));
+            return unsatisfiable(and(df.getOWLDataSomeValuesFrom(a.getProperty(), df.getTopDatatype()),
+                    not(a.getDomain())));
+        }
+        if (ax instanceof OWLDataPropertyRangeAxiom) {
+            // Range D iff ∃p.¬D is unsatisfiable.
+            OWLDataPropertyRangeAxiom a = (OWLDataPropertyRangeAxiom) ax;
+            if (isBottom(a.getProperty())) return true;
+            if (isTop(a.getProperty())) {
+                if (a.getRange().isTopDatatype()) return true;
+                throw new UnsupportedEntailmentTypeException(ax);
+            }
+            return unsatisfiable(df.getOWLDataSomeValuesFrom(a.getProperty(), df.getOWLDataComplementOf(a.getRange())));
+        }
+        if (ax instanceof OWLFunctionalDataPropertyAxiom) {
+            // Functional iff ≥2 p.rdfs:Literal is unsatisfiable; the universal data
+            // property relates every individual to every one of infinitely many values.
+            OWLDataPropertyExpression p = ((OWLFunctionalDataPropertyAxiom) ax).getProperty();
+            if (isBottom(p)) return true;
+            if (isTop(p)) return false;
+            return unsatisfiable(df.getOWLDataMinCardinality(2, p, df.getTopDatatype()));
+        }
+        throw new UnsupportedEntailmentTypeException(ax);
+    }
+
+    private List<OWLClassExpression> pairwiseIntersections(List<OWLClassExpression> ops) {
+        List<OWLClassExpression> checks = new ArrayList<>();
+        for (int i = 0; i < ops.size(); i++) {
+            for (int j = i + 1; j < ops.size(); j++) checks.add(and(ops.get(i), ops.get(j)));
+        }
+        return checks;
+    }
+
+    /**
+     * The universal property is functional iff every model has one element:
+     * {@code ¬{x}} is unsatisfiable for a fresh individual x.
+     */
+    private boolean universalFunctional() {
+        return unsatisfiable(not(df.getOWLObjectOneOf(freshIndividual())));
+    }
+
+    /** Data sub-property inside the fragment of {@link DataPropertyModel} (the only place it is answered). */
+    private boolean dataSubProperty(OWLDataPropertyExpression subExpr, OWLDataPropertyExpression supExpr) {
+        OWLDataProperty sub = subExpr.asOWLDataProperty(), sup = supExpr.asOWLDataProperty();
+        if (sub.equals(sup) || sub.isOWLBottomDataProperty() || sup.isOWLTopDataProperty()) return true;
+        DataPropertyModel model = ensureDataProperties();
+        if (model.isEmpty(sub)) return true;
+        return model.equivalents(sub).contains(sup) || model.supers(sub, false).containsEntity(sup);
+    }
+
+    // ---- individuals: values and differences ----------------------------------------
+
+    /**
+     * Object property values of every individual for one named property r:
+     * {@code b ∈ values(a, r)} iff {@code a} is an instance of the fresh
+     * {@code V_b ≡ ObjectHasValue(r b)} (exact: {@code r(a,b)} holds in a model
+     * iff {@code a ∈ ∃r.{b}} there). One realization answers every subject and,
+     * read backwards, the inverse expression.
+     */
+    private Map<OWLNamedIndividual, Set<OWLNamedIndividual>> objectValues(OWLObjectProperty r) {
+        return reduce(Arrays.asList("values", r), COMPUTING_VALUES,
+                () -> objectValuesNow(Collections.singletonList(r)).get(r));
+    }
+
+    private Map<OWLObjectProperty, Map<OWLNamedIndividual, Set<OWLNamedIndividual>>> objectValuesNow(
+            List<OWLObjectProperty> properties) {
+        List<OWLNamedIndividual> individuals = new ArrayList<>(signatureIndividuals());
+        Map<OWLObjectProperty, Map<OWLNamedIndividual, Set<OWLNamedIndividual>>> out = new HashMap<>();
+        for (OWLObjectProperty r : properties) out.put(r, new HashMap<>());
+        if (individuals.isEmpty()) return out;
+        List<OWLAxiom> defs = new ArrayList<>();
+        Map<String, Object[]> meaning = new HashMap<>();
+        for (OWLObjectProperty r : properties) {
+            for (OWLNamedIndividual b : individuals) {
+                OWLClass v = df.getOWLClass(fresh().next("V"));
+                defs.add(df.getOWLEquivalentClassesAxiom(v, df.getOWLObjectHasValue(r, b)));
+                meaning.put(v.getIRI().toString(), new Object[]{r, b});
+            }
+        }
+        ExtendedRun.Answer answer = extendedRun("property value query", defs, true, false);
+        requireConsistent(answer, "property value query");
+        Map<String, OWLNamedIndividual> byIri = new HashMap<>();
+        for (OWLNamedIndividual a : individuals) byIri.put(a.getIRI().toString(), a);
+        for (Map.Entry<String, Set<String>> row : answer.types.entrySet()) {
+            OWLNamedIndividual a = byIri.get(row.getKey());
+            if (a == null) continue;
+            for (String cls : row.getValue()) {
+                Object[] m = meaning.get(cls);
+                if (m == null) continue;
+                out.get((OWLObjectProperty) m[0]).computeIfAbsent(a, k -> new LinkedHashSet<>())
+                        .add((OWLNamedIndividual) m[1]);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * Properties per value run when precomputing. One property per run: on the
+     * test ontologies km needs far longer for one run over 12 properties (54 s)
+     * than for 12 runs over one property each (0.3 to 0.5 s per run).
+     */
+    private static final int VALUE_PROPERTIES_PER_RUN = 1;
+
+    /** OBJECT_PROPERTY_ASSERTIONS: the values of every named property, in batches of runs. */
+    private void precomputeObjectPropertyValues() {
+        if (objectValuesPrecomputed) return;
+        List<OWLObjectProperty> pending = new ArrayList<>();
+        for (OWLObjectProperty r : querySnapshot().getObjectPropertiesInSignature()) {
+            if (r.isOWLTopObjectProperty() || r.isOWLBottomObjectProperty()) continue;
+            Object held = reductions.get(Arrays.asList("values", r));
+            if (held instanceof RuntimeException) throw (RuntimeException) held;
+            if (held == null) pending.add(r);
+        }
+        int perRun = VALUE_PROPERTIES_PER_RUN;
+        for (int from = 0; from < pending.size(); from += perRun) {
+            List<OWLObjectProperty> batch = pending.subList(from, Math.min(pending.size(), from + perRun));
+            try {
+                runTask(COMPUTING_VALUES, () -> reductions.putAll(keyed(objectValuesNow(batch))));
+            } catch (RuntimeException failure) {
+                if (cacheable(failure)) for (OWLObjectProperty r : batch) reductions.put(Arrays.asList("values", r), failure);
+                throw failure;
+            }
+        }
+        objectValuesPrecomputed = true;
+    }
+
+    private static Map<Object, Object> keyed(Map<OWLObjectProperty, Map<OWLNamedIndividual, Set<OWLNamedIndividual>>> in) {
+        Map<Object, Object> out = new HashMap<>();
+        for (Map.Entry<OWLObjectProperty, Map<OWLNamedIndividual, Set<OWLNamedIndividual>>> e : in.entrySet()) {
+            out.put(Arrays.asList("values", e.getKey()), e.getValue());
+        }
+        return out;
+    }
+
+    private NodeSet<OWLNamedIndividual> computeObjectPropertyValues(OWLNamedIndividual ind, OWLObjectPropertyExpression pe) {
+        OWLObjectPropertyExpression simple = pe.getSimplified();
+        Set<OWLNamedIndividual> individuals = signatureIndividuals();
+        if (isTop(simple)) return individualNodes(individuals); // U relates every pair
+        if (isBottom(simple)) return individualNodes(Collections.<OWLNamedIndividual>emptyList());
+        OWLObjectProperty r = simple.getNamedProperty();
+        // A property outside the signature is unconstrained: it can be empty.
+        if (!querySnapshot().containsObjectPropertyInSignature(r.getIRI())) {
+            return individualNodes(Collections.<OWLNamedIndividual>emptyList());
+        }
+        if (!individuals.contains(ind)) return freshSubjectValues(ind, simple);
+        Map<OWLNamedIndividual, Set<OWLNamedIndividual>> values = objectValues(r);
+        List<OWLNamedIndividual> out = new ArrayList<>();
+        if (simple.isAnonymous()) {
+            for (Map.Entry<OWLNamedIndividual, Set<OWLNamedIndividual>> e : values.entrySet()) {
+                if (e.getValue().contains(ind)) out.add(e.getKey());
+            }
+        } else {
+            Set<OWLNamedIndividual> v = values.get(ind);
+            if (v != null) out.addAll(v);
+        }
+        return individualNodes(out);
+    }
+
+    /**
+     * Values of an individual outside the signature. It is not the interpretation
+     * of any name of O, but an axiom such as {@code ⊤ ⊑ ∃r.{b}} still gives it
+     * values, so the same reduction runs with the individual declared.
+     */
+    private NodeSet<OWLNamedIndividual> freshSubjectValues(OWLNamedIndividual ind, OWLObjectPropertyExpression pe) {
+        List<OWLNamedIndividual> out = reduce(Arrays.asList("fresh-values", ind, pe), COMPUTING_VALUES, () -> {
+            List<OWLNamedIndividual> found = new ArrayList<>();
+            List<OWLAxiom> defs = new ArrayList<>();
+            Map<String, OWLNamedIndividual> meaning = new HashMap<>();
+            defs.add(df.getOWLDeclarationAxiom(ind));
+            for (OWLNamedIndividual b : signatureIndividuals()) {
+                OWLClass v = df.getOWLClass(fresh().next("V"));
+                defs.add(df.getOWLEquivalentClassesAxiom(v, df.getOWLObjectHasValue(pe, b)));
+                meaning.put(v.getIRI().toString(), b);
+            }
+            if (meaning.isEmpty()) return found;
+            ExtendedRun.Answer answer = extendedRun("property value query", defs, true, false);
+            requireConsistent(answer, "property value query");
+            Set<String> types = answer.types.get(ind.getIRI().toString());
+            if (types != null) {
+                for (String cls : types) {
+                    OWLNamedIndividual b = meaning.get(cls);
+                    if (b != null) found.add(b);
+                }
+            }
+            return found;
+        });
+        return individualNodes(out);
+    }
+
+    /**
+     * Data property values among the literals of the ontology: {@code l} is a
+     * value of {@code a} iff {@code a} is an instance of the fresh
+     * {@code V_l ≡ DataHasValue(p l)}. {@link DataValues} gives the fragment in
+     * which no value outside these literals can be entailed; outside it the
+     * query throws.
+     */
+    private Set<OWLLiteral> computeDataPropertyValues(OWLNamedIndividual ind, OWLDataProperty p) {
+        DataValues.Candidates candidates = reduce(Arrays.asList("literals"), COMPUTING_VALUES,
+                () -> DataValues.collect(querySnapshot()));
+        if (p.isOWLBottomDataProperty()) return new HashSet<>();
+        if (candidates.outside != null) {
+            throw unsupported("getDataPropertyValues", "this ontology (" + candidates.outside
+                    + "): a value no literal of the ontology denotes could be entailed");
+        }
+        if (p.isOWLTopDataProperty()) return new LinkedHashSet<>(candidates.literals);
+        if (!querySnapshot().containsDataPropertyInSignature(p.getIRI()) || candidates.literals.isEmpty()) {
+            return new HashSet<>();
+        }
+        boolean freshSubject = !signatureIndividuals().contains(ind);
+        Map<OWLNamedIndividual, Set<OWLLiteral>> values = reduce(
+                Arrays.asList("data-values", p, freshSubject ? ind : null), COMPUTING_VALUES, () -> {
+            List<OWLAxiom> defs = new ArrayList<>();
+            if (freshSubject) defs.add(df.getOWLDeclarationAxiom(ind));
+            Map<String, OWLLiteral> meaning = new HashMap<>();
+            for (OWLLiteral l : candidates.literals) {
+                OWLClass v = df.getOWLClass(fresh().next("V"));
+                defs.add(df.getOWLEquivalentClassesAxiom(v, df.getOWLDataHasValue(p, l)));
+                meaning.put(v.getIRI().toString(), l);
+            }
+            ExtendedRun.Answer answer = extendedRun("data property value query", defs, true, false);
+            requireConsistent(answer, "data property value query");
+            Map<OWLNamedIndividual, Set<OWLLiteral>> found = new HashMap<>();
+            for (Map.Entry<String, Set<String>> row : answer.types.entrySet()) {
+                if (fresh().isFresh(row.getKey()) ) continue;
+                OWLNamedIndividual a = df.getOWLNamedIndividual(IRI.create(row.getKey()));
+                for (String cls : row.getValue()) {
+                    OWLLiteral l = meaning.get(cls);
+                    if (l != null) found.computeIfAbsent(a, k -> new LinkedHashSet<>()).add(l);
+                }
+            }
+            return found;
+        });
+        Set<OWLLiteral> v = values.get(ind);
+        return v == null ? new HashSet<>() : new LinkedHashSet<>(v);
+    }
+
+    /**
+     * Individuals entailed to differ from {@code a}: those {@code b} for which the
+     * fresh {@code X_b ≡ {a} ⊓ {b}} is unsatisfiable, all in one classification
+     * run (exact: {@code {a} ⊓ {b}} is empty in a model iff {@code a ≠ b} there).
+     * The instance form {@code ¬{a}} needs a realization, which km finishes far
+     * more slowly on the same inputs.
+     */
+    private NodeSet<OWLNamedIndividual> computeDifferentIndividuals(OWLNamedIndividual ind) {
+        List<OWLNamedIndividual> different = reduce(Arrays.asList("different", ind), CHECKING_ENTAILMENT, () -> {
+            List<OWLAxiom> defs = new ArrayList<>();
+            Map<String, OWLNamedIndividual> meaning = new HashMap<>();
+            for (OWLNamedIndividual b : signatureIndividuals()) {
+                if (b.equals(ind)) continue;
+                OWLClass x = df.getOWLClass(fresh().next("X"));
+                defs.add(df.getOWLEquivalentClassesAxiom(x,
+                        and(df.getOWLObjectOneOf(ind), df.getOWLObjectOneOf(b))));
+                meaning.put(x.getIRI().toString(), b);
+            }
+            List<OWLNamedIndividual> found = new ArrayList<>();
+            if (defs.isEmpty()) return found;
+            ExtendedRun.Answer answer = extendedRun("different individuals query", defs, false, false);
+            requireConsistent(answer, "different individuals query");
+            for (Map.Entry<String, OWLNamedIndividual> e : meaning.entrySet()) {
+                if (answer.unsat.contains(e.getKey())) found.add(e.getValue());
+            }
+            return found;
+        });
+        return individualNodes(different);
+    }
+
+    /**
+     * Object properties disjoint with {@code pe}: for each node of the hierarchy
+     * other than top and bottom, with member s, the fresh
+     * {@code X_s ≡ ∃pe.{y} ⊓ ∃s.{y}} for one fresh individual y, all in one run.
+     * Exact: if some model has a pair in {@code pe ∩ s}, interpreting y as its
+     * second element puts the first in X_s; conversely an element of X_s has a
+     * pe- and an s-edge to y. Satisfiability is decided per class, so one y
+     * serves every candidate. The answer is the nodes with X_s unsatisfiable
+     * and the bottom node.
+     */
+    private NodeSet<OWLObjectPropertyExpression> disjointObjectProperties(ObjectPropertyModel model,
+                                                                          OWLObjectPropertyExpression pe) {
+        List<Integer> disjoint = reduce(Arrays.asList("disjoint-properties", pe.getSimplified()),
+                CHECKING_ENTAILMENT, () -> {
+            OWLNamedIndividual y = freshIndividual();
+            OWLClassExpression edge = df.getOWLObjectSomeValuesFrom(pe, df.getOWLObjectOneOf(y));
+            List<OWLAxiom> defs = new ArrayList<>();
+            Map<String, Integer> nodeOfClass = new HashMap<>();
+            for (int c = 2; c < model.nodeCount(); c++) {
+                OWLObjectPropertyExpression s = model.representative(c);
+                if (s == null) continue;
+                OWLClass x = df.getOWLClass(fresh().next("X"));
+                defs.add(df.getOWLEquivalentClassesAxiom(x,
+                        and(edge, df.getOWLObjectSomeValuesFrom(s, df.getOWLObjectOneOf(y)))));
+                nodeOfClass.put(x.getIRI().toString(), c);
+            }
+            List<Integer> found = new ArrayList<>();
+            if (defs.isEmpty()) return found;
+            ExtendedRun.Answer answer = extendedRun("disjoint property query", defs, false, false);
+            requireConsistent(answer, "disjoint property query");
+            for (Map.Entry<String, Integer> e : nodeOfClass.entrySet()) {
+                if (answer.unsat.contains(e.getKey())) found.add(e.getValue());
+            }
+            return found;
+        });
+        OWLObjectPropertyNodeSet ns = new OWLObjectPropertyNodeSet();
+        for (int c : disjoint) ns.addNode(model.nodeAt(c));
+        ns.addNode(model.bottomNode());
+        return ns;
+    }
+
+    /**
+     * Data property domains outside the fragment of {@link DataPropertyModel}:
+     * the named superclasses of the fresh {@code Q ≡ ∃p.rdfs:Literal} (exact:
+     * {@code C} is a domain iff {@code ∃p.rdfs:Literal ⊑ C}).
+     */
+    private NodeSet<OWLClass> dataDomainsByReduction(OWLDataProperty p, boolean direct) {
+        int[] all = nonBottomRepsWithBottom();
+        if (p.isOWLBottomDataProperty()) return classNodeSet(all, direct, true);
+        ClassAnswer a = classAnswer(df.getOWLDataSomeValuesFrom(p, df.getTopDatatype()), false);
+        if (a.unsat) return classNodeSet(all, direct, true);
+        return classNodeSet(a.supers, direct, false);
+    }
+
+    private int[] nonBottomRepsWithBottom() {
+        Set<Integer> reps = new TreeSet<>();
+        for (int c = 0; c < repId.length; c++) reps.add(repId[c]);
+        return toArray(reps);
     }
 }

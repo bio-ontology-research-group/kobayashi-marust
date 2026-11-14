@@ -126,6 +126,12 @@ public class ConventionsTest {
         return out;
     }
 
+    static Set<String> flat(NodeSet<? extends OWLEntity> ns) {
+        Set<String> out = new TreeSet<>();
+        for (OWLEntity e : ns.getFlattened()) out.add(name(e));
+        return out;
+    }
+
     static String node(Node<? extends OWLObject> n) {
         List<String> one = new ArrayList<>();
         for (OWLObject e : n.getEntities()) {
@@ -200,7 +206,7 @@ public class ConventionsTest {
     }
 
     @Test
-    public void disjointClassesOfThingAndNothingAreDecidedAndTheRestRefuses() throws Exception {
+    public void disjointClassesAgreeWithHermit() throws Exception {
         OWLOntology o = IndividualsTest.parse(CLASSES);
         OWLDataFactory df = df(o);
         OWLReasoner h = hermit(o);
@@ -208,14 +214,11 @@ public class ConventionsTest {
         for (OWLClass c : new OWLClass[]{df.getOWLThing(), df.getOWLNothing(), cls(df, "U"), cls(df, "NotInTheSignature")}) {
             assertEquals("getDisjointClasses(" + c + ")", nodes(h.getDisjointClasses(c)), nodes(k.getDisjointClasses(c)));
         }
-        // B and C are disjoint, but the taxonomy does not hold that: no answer rather than a wrong one.
+        // B and C are disjoint, which the taxonomy does not hold: the reduction to the
+        // subclasses of a fresh N ≡ ¬C finds it.
         for (String n : new String[]{"A", "B", "C", "D"}) {
-            try {
-                k.getDisjointClasses(cls(df, n));
-                fail("getDisjointClasses(" + n + ") must not answer");
-            } catch (UnsupportedOperationException expected) {
-                assertTrue(expected.getMessage(), expected.getMessage().contains("getDisjointClasses"));
-            }
+            assertEquals("getDisjointClasses(" + n + ")", nodes(h.getDisjointClasses(cls(df, n))),
+                    nodes(k.getDisjointClasses(cls(df, n))));
         }
     }
 
@@ -252,12 +255,8 @@ public class ConventionsTest {
         assertEquals(nodes(k.getDisjointObjectProperties(df.getOWLBottomObjectProperty())),
                 nodes(k.getDisjointObjectProperties(op(df, "e"))));
         for (String n : new String[]{"p", "q"}) {
-            try {
-                k.getDisjointObjectProperties(op(df, n));
-                fail("getDisjointObjectProperties(" + n + ") must not answer");
-            } catch (UnsupportedOperationException refused) {
-                // the answer needs the domains, ranges and disjointness axioms
-            }
+            assertEquals("disjoint " + n, nodes(h.getDisjointObjectProperties(op(df, n))),
+                    nodes(k.getDisjointObjectProperties(op(df, n))));
         }
     }
 
@@ -349,7 +348,7 @@ public class ConventionsTest {
             OWLDataProperty p = dp(df, "p");
             List<Query> queries = Arrays.<Query>asList(
                     r -> r.getSubDataProperties(p, true), r -> r.getSuperDataProperties(p, false),
-                    r -> r.getEquivalentDataProperties(p), r -> r.getDataPropertyDomains(p, true),
+                    r -> r.getEquivalentDataProperties(p),
                     r -> r.getTopDataPropertyNode(), r -> r.getBottomDataPropertyNode(),
                     r -> r.getDisjointDataProperties(p));
             for (Query q : queries) {
@@ -375,12 +374,13 @@ public class ConventionsTest {
         assertFalse(k.isPrecomputed(InferenceType.DATA_PROPERTY_HIERARCHY));
         k.precomputeInferences(InferenceType.DATA_PROPERTY_HIERARCHY);
         assertTrue(k.isPrecomputed(InferenceType.DATA_PROPERTY_HIERARCHY));
-        // Property assertions are not computed, so they are not offered.
-        assertFalse(k.getPrecomputableInferenceTypes().contains(InferenceType.OBJECT_PROPERTY_ASSERTIONS));
+        // Object property assertions are computed by reduction; data property
+        // assertions are not offered (HermiT does not list them either).
+        assertTrue(k.getPrecomputableInferenceTypes().contains(InferenceType.OBJECT_PROPERTY_ASSERTIONS));
         assertFalse(k.getPrecomputableInferenceTypes().contains(InferenceType.DATA_PROPERTY_ASSERTIONS));
         assertFalse(k.isPrecomputed(InferenceType.OBJECT_PROPERTY_ASSERTIONS));
-        k.precomputeInferences(InferenceType.OBJECT_PROPERTY_ASSERTIONS); // ignored
-        assertFalse(k.isPrecomputed(InferenceType.OBJECT_PROPERTY_ASSERTIONS));
+        k.precomputeInferences(InferenceType.OBJECT_PROPERTY_ASSERTIONS);
+        assertTrue(k.isPrecomputed(InferenceType.OBJECT_PROPERTY_ASSERTIONS));
     }
 
     @Test
@@ -432,7 +432,7 @@ public class ConventionsTest {
         KMReasoner k = km(o);
         assertFalse(k.getPrecomputableInferenceTypes().contains(InferenceType.DATA_PROPERTY_HIERARCHY));
         for (Query q : Arrays.<Query>asList(r -> r.getEquivalentDataProperties(dp(df, "p")),
-                r -> r.getSuperDataProperties(dp(df, "q"), true), r -> r.getDataPropertyDomains(dp(df, "p"), true),
+                r -> r.getSuperDataProperties(dp(df, "q"), true),
                 r -> r.getTopDataPropertyNode())) {
             try {
                 q.run(k);
@@ -481,7 +481,7 @@ public class ConventionsTest {
     private interface Query { void run(OWLReasoner r) throws Exception; }
 
     @Test
-    public void queriesThePluginDoesNotAnswerThrowInsteadOfReturningEmptyAnswers() throws Exception {
+    public void reducedQueriesAnswerAndTheRestThrows() throws Exception {
         String source = IndividualsTest.SMALL.replace("Declaration(NamedIndividual(:loner))",
                 "Declaration(NamedIndividual(:loner)) Declaration(DataProperty(:age))"
                 + " DataPropertyAssertion(:age :rex \"3\"^^xsd:integer)").replace("Prefix(owl:",
@@ -495,35 +495,21 @@ public class ConventionsTest {
         OWLNamedIndividual rex = df.getOWLNamedIndividual(IRI.create(IndividualsTest.NS + "rex"));
         OWLObjectProperty owned = df.getOWLObjectProperty(IRI.create(IndividualsTest.NS + "ownedBy"));
         OWLDataProperty age = df.getOWLDataProperty(IRI.create(IndividualsTest.NS + "age"));
-        Map<String, Query> refused = new LinkedHashMap<>();
-        refused.put("getObjectPropertyValues", r -> r.getObjectPropertyValues(rex, owned));
-        refused.put("getObjectPropertyValues(inverse)", r -> r.getObjectPropertyValues(rex, owned.getInverseProperty()));
-        refused.put("getDataPropertyValues", r -> r.getDataPropertyValues(rex, age));
-        refused.put("getDifferentIndividuals", r -> r.getDifferentIndividuals(rex));
-        refused.put("getDisjointClasses(Dog)", r -> r.getDisjointClasses(dog));
-        refused.put("getDisjointClasses(anon)", r -> r.getDisjointClasses(anonymous));
-        refused.put("getSuperClasses(anon,true)", r -> r.getSuperClasses(anonymous, true));
-        refused.put("getSuperClasses(anon,false)", r -> r.getSuperClasses(anonymous, false));
-        refused.put("getSubClasses(anon,true)", r -> r.getSubClasses(anonymous, true));
-        refused.put("getSubClasses(anon,false)", r -> r.getSubClasses(anonymous, false));
-        refused.put("getEquivalentClasses(anon)", r -> r.getEquivalentClasses(anonymous));
-        refused.put("getInstances(anon)", r -> r.getInstances(anonymous, false));
-        refused.put("getDisjointObjectProperties(ownedBy)", r -> r.getDisjointObjectProperties(owned));
-        refused.put("getDisjointDataProperties(age)", r -> r.getDisjointDataProperties(age));
-        for (Map.Entry<String, Query> e : refused.entrySet()) {
-            try {
-                e.getValue().run(k);
-                fail(e.getKey() + " must throw, not answer");
-            } catch (UnsupportedOperationException expected) {
-                assertNotNull(e.getKey(), expected.getMessage());
-            }
-        }
-        // isSatisfiable of an expression keeps the OWL API exception the interface declares.
+        // These are answered by reduction to a km run on an extended ontology
+        // (ReductionsTest compares them with HermiT); none returns a guess.
+        assertEquals("[alice]", flat(k.getObjectPropertyValues(rex, owned)).toString());
+        assertTrue(k.getObjectPropertyValues(rex, owned.getInverseProperty()).isEmpty());
+        assertEquals(Collections.singleton(df.getOWLLiteral("3", df.getIntegerOWLDatatype())),
+                k.getDataPropertyValues(rex, age));
+        assertTrue(flat(k.getDifferentIndividuals(rex)).isEmpty());
+        assertTrue(k.isSatisfiable(anonymous));
+        assertTrue(k.getSubClasses(anonymous, false).isBottomSingleton());
+        // Disjointness of a satisfiable data property has no reduction yet.
         try {
-            k.isSatisfiable(anonymous);
-            fail();
-        } catch (ClassExpressionNotInProfileException expected) {
-            // refused
+            k.getDisjointDataProperties(age);
+            fail("getDisjointDataProperties(age) must throw, not answer");
+        } catch (UnsupportedOperationException expected) {
+            assertNotNull(expected.getMessage());
         }
         // What the taxonomy answers is still answered.
         assertTrue(k.getSuperClasses(dog, false).containsEntity(
@@ -547,7 +533,8 @@ public class ConventionsTest {
             assertTrue(a.getAxiomType().toString(), k.isEntailmentCheckingSupported(a.getAxiomType()));
         }
         // A logical type the plugin cannot check says so, and isEntailed agrees.
-        OWLAxiom disjoint = df.getOWLDisjointClassesAxiom(cls(df, "B"), cls(df, "C"));
+        OWLAxiom disjoint = df.getOWLHasKeyAxiom(cls(df, "B"),
+                Collections.singleton(df.getOWLObjectProperty(IRI.create(NS + "keyProperty"))));
         assertFalse(k.isEntailmentCheckingSupported(disjoint.getAxiomType()));
         try {
             k.isEntailed(disjoint);
@@ -709,7 +696,6 @@ public class ConventionsTest {
         Set<InferenceType> km = k.getPrecomputableInferenceTypes();
         assertTrue("KM lists only types HermiT lists", hermit.containsAll(km));
         assertTrue(km.contains(InferenceType.CLASS_HIERARCHY));
-        assertFalse(km.contains(InferenceType.OBJECT_PROPERTY_ASSERTIONS));
         for (InferenceType t : InferenceType.values()) assertFalse("not yet computed: " + t, k.isPrecomputed(t));
         k.precomputeInferences(km.toArray(new InferenceType[0]));
         for (InferenceType t : km) assertTrue("computed: " + t, k.isPrecomputed(t));
