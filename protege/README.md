@@ -236,7 +236,7 @@ classification and realization still send them unchanged (engine items).
 | `TransitiveObjectProperty(r)` | the chain `r r ⊑ r` | as above | as above |
 | `DisjointObjectProperties(r s ...)` | `r(x,y)`, `s(x,y)` per pair | inconsistent | refutation |
 | `ObjectPropertyDomain(r C)`, `ObjectPropertyRange(r C)` with an expression | `Q ≡ ∃r.⊤ ⊓ ¬C`, `Q ≡ ∃r.¬C` | `UNSAT Q` | definition |
-| `FunctionalObjectProperty(r)`, `InverseFunctionalObjectProperty(r)` | `Q ≡ ≥2 r.⊤`, `Q ≡ ≥2 r⁻.⊤` | `UNSAT Q` | definition |
+| `FunctionalObjectProperty(r)`, `InverseFunctionalObjectProperty(r)` | `r(x,y1)`, `r(x,y2)`, `y1 ≠ y2` (with `r⁻` for the inverse) | inconsistent | refutation (`≥2 r.⊤` is not OWL 2 DL for a non-simple `r`) |
 | `AsymmetricObjectProperty(r)` | `r(x,y)`, `r(y,x)` | inconsistent | `x = y` covers a loop |
 | `ReflexiveObjectProperty(r)` | `V ≡ ∃r.{x}` for a fresh `x`, realized | `TYPE x V` | witness: `x` is an arbitrary element |
 | `IrreflexiveObjectProperty(r)` | `r(x,x)` | inconsistent | refutation |
@@ -258,7 +258,9 @@ is `{0}`, a facet restriction such as `xsd:integer[> 4, < 6]` holds one value,
 and `xsd:boolean` has two. The plugin answers only when the ontology's data
 ranges use `rdfs:Literal`, `xsd:string`, `rdf:PlainLiteral`,
 `rdf:langString`, `xsd:integer`, `xsd:decimal`, `xsd:double`, `xsd:float`,
-`xsd:anyURI` and `xsd:dateTime` (also inside `DataOneOf`,
+`xsd:anyURI`, `xsd:dateTime` and one of the sign-restricted integer types
+(`xsd:positiveInteger` and the like; two or more only when a literal of the
+ontology denotes 0) (also inside `DataOneOf`,
 `DataIntersectionOf`, `DataUnionOf` and `DataComplementOf`), with no facet,
 datatype definition, rule or axiom on `owl:topDataProperty`, and throws
 otherwise. The argument (in `DataValues.java`): values that no admitted
