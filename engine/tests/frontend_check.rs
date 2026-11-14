@@ -131,12 +131,14 @@ fn frontend_check_agrees_on_full_iris_and_owl_thing() {
 
 #[test]
 fn frontend_check_agrees_on_alc_disjunction() {
-    assert_agrees("alc_disjunction.ofn", "alc");
+    // Since v1.6.3 the check runs `el-then-sri`: ALC inputs outside EL get
+    // the SHI route.
+    assert_agrees("alc_disjunction.ofn", "sri");
 }
 
 #[test]
 fn frontend_check_agrees_on_alc_unsatisfiable_class() {
-    assert_agrees("alc_unsat.ofn", "alc");
+    assert_agrees("alc_unsat.ofn", "sri");
 }
 
 /// The check declines with `reason` and the answer is published unchanged.
@@ -174,12 +176,11 @@ fn frontend_check_declines_outside_the_fragment() {
     );
 }
 
+/// The v1.6.2 ALC route declined this input over its budget of 16 concept
+/// names; the SHI route of v1.6.3 has no budget and checks it.
 #[test]
-fn frontend_check_declines_over_the_alc_budget() {
-    let Some(checker_path) = checker() else {
-        return;
-    };
-    assert_declines(&fixture("alc_budget.ofn"), &checker_path, &[], "alc budget:");
+fn frontend_check_agrees_beyond_the_old_alc_budget() {
+    assert_agrees("alc_budget.ofn", "sri");
 }
 
 /// A stand-in checker: a POSIX shell script with `body`.
