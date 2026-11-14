@@ -142,15 +142,15 @@ theorem map_getD_idxOf {ns : List Nat} (hl : ns.length = (allG s).length) :
     List.getElem?_eq_getElem h2, Option.getD_some]
 
 /-- Every listed part is valid. -/
-theorem validPart_of_mem {L : Nat} {a : List (K × List Nat)}
-    (ha : a ∈ partsOf size s (cells.filter fun c => small size L c)) :
-    ValidPart cells size L (toPart s a) := by
+theorem validPart_of_mem {sp : K → Bool} (hsp : ∀ c ∈ cells, sp c = true → ∃ k, size c = some k)
+    {a : List (K × List Nat)} (ha : a ∈ partsOf size s (cells.filter sp)) :
+    ValidPart cells size sp (toPart s a) := by
   intro c hc hs
   obtain ⟨h1, h2⟩ := mem_partsOf.1 ha
   have hca : c ∈ a.map Prod.fst := by rw [h1]; exact List.mem_filter.2 ⟨hc, hs⟩
   obtain ⟨x, hx⟩ := lookup_isSome hca
   have hxc := mem_comps.1 (h2 _ (lookup_mem hx))
-  obtain ⟨k, hk, -⟩ := small_size hs
+  obtain ⟨k, hk⟩ := hsp c hc hs
   simp only [hk, Option.getD_some] at hxc
   rw [hk]
   congr 1
@@ -160,29 +160,67 @@ theorem validPart_of_mem {L : Nat} {a : List (K × List Nat)}
     exact map_getD_idxOf hxc.1
   rw [this, hxc.2]
 
+/-! ## Which cells to split -/
+
+/-- Every reading of the cell `c` gives a value type that a cell with more
+than `L` values (or infinitely many) also gives, with some reading. -/
+def covered (cells : List K) (size : K → Option Nat) (L : Nat)
+    (E : Fin q → K → (Fin s → Bool) → Bool) (c : K) : Bool :=
+  (allG s).all fun g => cells.any fun c' => !small size L c' &&
+    (allG s).any fun g' => decide (vtc E c' g' = vtc E c g)
+
+/-- The cells to split: small and not covered. -/
+def splitCell (cells : List K) (size : K → Option Nat) (L : Nat)
+    (E : Fin q → K → (Fin s → Bool) → Bool) (c : K) : Bool :=
+  small size L c && !covered cells size L E c
+
+theorem splitCell_small {L : Nat} {c : K} (h : splitCell cells size L E c = true) :
+    small size L c = true := by
+  unfold splitCell at h
+  rw [Bool.and_eq_true] at h
+  exact h.1
+
+theorem splitCell_cov {L : Nat} {c : K} (h : splitCell cells size L E c = false)
+    (hs : small size L c = true) (g : Fin s → Bool) :
+    ∃ c' ∈ cells, ∃ g', small size L c' = false ∧ vtc E c' g' = vtc E c g := by
+  unfold splitCell at h
+  rw [hs, Bool.true_and, Bool.not_eq_false'] at h
+  unfold covered at h
+  obtain ⟨c', hc', h'⟩ := List.any_eq_true.1 (List.all_eq_true.1 h g (mem_allG g))
+  rw [Bool.and_eq_true, Bool.not_eq_true'] at h'
+  obtain ⟨g', -, hg'⟩ := List.any_eq_true.1 h'.2
+  exact ⟨c', hc', g', h'.1, of_decide_eq_true hg'⟩
+
 /-! ## The procedure -/
 
 variable {n m p : Nat}
 
 /-- Every subsumer accepted by every part. -/
 def entailsParts (O : Ontology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
-    (size : K → Option Nat) (L : Nat) (E : Fin q → K → (Fin s → Bool) → Bool) (a b : Fin n) :
-    Bool :=
-  (partsOf size s (cells.filter fun c => small size L c)).all fun x =>
-    Proc.entailsQD O (partCard cells size L E (toPart s x)) a b
+    (size : K → Option Nat) (sp : K → Bool) (E : Fin q → K → (Fin s → Bool) → Bool)
+    (a b : Fin n) : Bool :=
+  (partsOf size s (cells.filter sp)).all fun x =>
+    Proc.entailsQD O (partCard cells size sp E (toPart s x)) a b
 
-/-- **Exactness over the parts.** -/
+/-- **Exactness over the parts**, for any choice `sp` of split cells that
+splits only small cells and leaves only covered small cells unsplit. -/
 theorem entailsParts_iff (hc : CellSpec key cells size) {B L : Nat}
-    (hL : B * (allG s).length ≤ L) {O : Ontology (Fin n) (Fin m) (Fin p) (Fin q)}
+    (hL : B * (allG s).length ≤ L) {sp : K → Bool}
+    (hsp : ∀ c ∈ cells, sp c = true → small size L c = true)
+    (hcov : ∀ c ∈ cells, sp c = false → small size L c = true → ∀ g,
+      ∃ c' ∈ cells, ∃ g', small size L c' = false ∧ vtc E c' g' = vtc E c g)
+    {O : Ontology (Fin n) (Fin m) (Fin p) (Fin q)}
     (hB : dbnd O ≤ B) (hA : IsALCHIQ O) (a b : Fin n) :
-    entailsParts O cells size L E a b = true ↔ EntailsSub (cellTheory key E) O a b := by
+    entailsParts O cells size sp E a b = true ↔ EntailsSub (cellTheory key E) O a b := by
   classical
+  have hfin : ∀ c ∈ cells, sp c = true → ∃ k, size c = some k := fun c hc hs => by
+    obtain ⟨k, hk, -⟩ := small_size (hsp c hc hs); exact ⟨k, hk⟩
   unfold entailsParts
   rw [List.all_eq_true]
   constructor
   · intro h D V _ atom hΘ I hI x hx
-    obtain ⟨fr, hval, hpart⟩ := part_of_cellTheory (L := L) hc hΘ
-    let sc := cells.filter fun c => small size L c
+    obtain ⟨fr, hval, hpart⟩ := part_of_cellTheory hc hfin hΘ
+    let sc := cells.filter sp
     let xa : List (K × List Nat) := sc.map fun c => (c, (allG s).map (countsOf key fr c))
     have hxa : xa ∈ partsOf size s sc := by
       refine mem_partsOf.2 ⟨by simp [xa, Function.comp_def], fun pr hpr => ?_⟩
@@ -191,22 +229,29 @@ theorem entailsParts_iff (hc : CellSpec key cells size) {B L : Nat}
       refine mem_comps.2 ⟨by simp, ?_⟩
       have := hval c hcc hs
       simp [this]
-    have hagree : ∀ c ∈ cells, small size L c = true → ∀ g,
-        toPart s xa c g = countsOf key fr c g := by
+    have hagree : ∀ c ∈ cells, sp c = true → ∀ g, toPart s xa c g = countsOf key fr c g := by
       intro c hcc hs g
       unfold toPart
       rw [lookup_map sc _ (List.mem_filter.2 ⟨hcc, hs⟩), Option.getD_some, getD_idxOf_map]
-    have hpart' : partTheory key cells size L E (toPart s xa) V atom := by
+    have hpart' : partTheory key cells sp E (toPart s xa) V atom := by
       obtain ⟨e, fr', hin, hat⟩ := hpart
       refine ⟨e, fr', fun c hcc hs g => ?_, hat⟩
       rw [hin c hcc hs g, hagree c hcc hs g]
-    have hent := (Proc.entailsQD_iffB (oracleSpecB_part hc hL (validPart_of_mem hxa)) hB hA a b).1
-      (h xa hxa)
+    have hent := (Proc.entailsQD_iffB
+      (oracleSpecB_part hc hL hsp hcov (validPart_of_mem hfin hxa)) hB hA a b).1 (h xa hxa)
     exact hent D V atom hpart' I hI x hx
   · intro h xa hxa
-    refine (Proc.entailsQD_iffB (oracleSpecB_part hc hL (validPart_of_mem hxa)) hB hA a b).2 ?_
+    refine (Proc.entailsQD_iffB
+      (oracleSpecB_part hc hL hsp hcov (validPart_of_mem hfin hxa)) hB hA a b).2 ?_
     intro D V _ atom hΘ I hI x hx
     exact h D V atom (cellTheory_of_part hΘ) I hI x hx
+
+/-- The choice `splitCell` meets the conditions of `entailsParts_iff`. -/
+theorem splitCell_ok {L : Nat} :
+    (∀ c ∈ cells, splitCell cells size L E c = true → small size L c = true) ∧
+    (∀ c ∈ cells, splitCell cells size L E c = false → small size L c = true → ∀ g,
+      ∃ c' ∈ cells, ∃ g', small size L c' = false ∧ vtc E c' g' = vtc E c g) :=
+  ⟨fun _ _ h => splitCell_small h, fun _ _ h hs g => splitCell_cov h hs g⟩
 
 end ContextCalculus.SRIQD
 

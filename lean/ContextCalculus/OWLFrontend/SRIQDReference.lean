@@ -10,7 +10,8 @@ simple-role restriction on the object part (`isSHIQB`), check that the
 data atoms are in the supported sub-language (`allSupported`), remove
 transitivity (`encTransQD`), split the data theory of the map into parts by
 the readings of the datatypes outside the map on the small finite value
-types (`SRIQD/CellParts*.lean`), and publish a subsumption when every part
+types that no large or infinite value type already covers (`splitCell`,
+`SRIQD/CellParts*.lean`), and publish a subsumption when every part
 entails it (`aliveD` per part, `entailsParts_iff`). Without datatypes
 outside the map there is one part. The answer rows are read as in the SHIQ
 route.
@@ -59,10 +60,10 @@ def partAlive (T : SRIQDTranslation) :
   let as := allBases sp
   let cs := cellsOf as
   let L := partBound T
-  (ContextCalculus.SRIQD.partsOf (cellSize as) (allFrees sp).length
-      (cs.filter fun c => ContextCalculus.SRIQD.small (cellSize as) L c)).map fun x =>
+  let split := ContextCalculus.SRIQD.splitCell cs (cellSize as) L (owlE sp)
+  (ContextCalculus.SRIQD.partsOf (cellSize as) (allFrees sp).length (cs.filter split)).map fun x =>
     ContextCalculus.SRIQD.Proc.aliveD (ContextCalculus.SRIQD.Proc.encTransQD T.ontology).2
-      (ContextCalculus.SRIQD.partCard cs (cellSize as) L (owlE sp)
+      (ContextCalculus.SRIQD.partCard cs (cellSize as) split (owlE sp)
         (ContextCalculus.SRIQD.toPart (allFrees sp).length x))
 
 /-- **The SHIQ(D) route.** The data theory of the OWL 2 map is split into
@@ -145,7 +146,8 @@ theorem owlSHIQDReference_sound (pat : String → String → Prop) {O : OWL.Onto
       change _ ↔ EntailsSubAt (owl2MapP pat) O T.named[i] T.named[j]
       rw [translateSRIQD_correct pat hT hi hj (Nat.lt_of_lt_of_le hi hle) (Nat.lt_of_lt_of_le hj hle),
         ContextCalculus.SRIQD.Proc.encTransQD_correct hS, heq,
-        ← ContextCalculus.SRIQD.entailsParts_iff (cellSpec _) (le_refl _) (le_refl _)
+        ← ContextCalculus.SRIQD.entailsParts_iff (cellSpec _) (le_refl _)
+          ContextCalculus.SRIQD.splitCell_ok.1 ContextCalculus.SRIQD.splitCell_ok.2 (le_refl _)
           (ContextCalculus.SRIQD.Proc.encTransQD_isALCHIQ T.ontology)]
       simp only [ContextCalculus.SRIQD.entailsParts, List.all_eq_true,
         ContextCalculus.SRIQD.Proc.entailsQD, decide_eq_true_eq]
