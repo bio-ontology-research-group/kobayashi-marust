@@ -515,4 +515,309 @@ theorem other_witness {c d : ℚ} (hcd : c < d) :
 
 end Witness
 
+/-! ## Sizes -/
+
+section Sizes
+
+variable {as : List BAtom}
+
+theorem encard_pt {w : ValOf ℚ} (hw : w ∈ allPts as) : {v | cellOf as v = .pt w}.encard = 1 := by
+  have : {v | cellOf as v = .pt w} = {toVal w} := by
+    ext v
+    simp only [Set.mem_setOf_eq, cellOf_eq_pt_iff, Set.mem_singleton_iff]
+    exact ⟨fun h => h.2.symm, fun h => ⟨hw, h.symm⟩⟩
+  rw [this, Set.encard_singleton]
+
+/-- A cell with infinitely many values off the points is infinite. -/
+theorem encard_top_of_inj {c : Cell} (f : ℕ → Val) (hf : Function.Injective f)
+    (hc : ∀ n, (¬ ∃ w ∈ allPts as, toVal w = f n) → cellOf as (f n) = c) :
+    {v | cellOf as v = c}.encard = ⊤ := by
+  rw [Set.encard_eq_top_iff]
+  have hB : (toVal '' {w | w ∈ allPts as}).Finite := (List.finite_toSet _).image _
+  refine ((Set.infinite_range_of_injective hf).diff hB).mono ?_
+  rintro v ⟨⟨n, rfl⟩, hn⟩
+  refine hc n fun ⟨w, hw, he⟩ => hn ⟨w, hw, he⟩
+
+theorem gapPairs_lt {P : List ℚ} {lo hi : Option ℚ} (hg : (lo, hi) ∈ gapPairs P) :
+    ∀ a ∈ lo, ∀ b ∈ hi, a < b := by
+  intro a ha b hb
+  cases ha
+  cases hb
+  have := (List.mem_filter.1 hg).2
+  simp only [gapOK, Bool.and_eq_true, decide_eq_true_eq] at this
+  exact this.1
+
+/-- The lower end of a rational interval inside a gap. -/
+def gc : Option ℚ → Option ℚ → ℚ
+  | some a, _ => a
+  | none, some b => b - 1
+  | none, none => 0
+
+/-- The upper end of a rational interval inside a gap. -/
+def gd : Option ℚ → Option ℚ → ℚ
+  | _, some b => b
+  | some a, none => a + 1
+  | none, none => 1
+
+theorem gc_lt_gd {lo hi : Option ℚ} (h : ∀ a ∈ lo, ∀ b ∈ hi, a < b) : gc lo hi < gd lo hi := by
+  rcases lo with _ | a <;> rcases hi with _ | b <;> simp only [gc, gd]
+  · norm_num
+  · linarith
+  · linarith
+  · exact h a rfl b rfl
+
+theorem inGap_mk {lo hi : Option ℚ} {x : ℝ} (h1 : ∀ a, lo = some a → (a : ℝ) < x)
+    (h2 : ∀ b, hi = some b → x < (b : ℝ)) : InGap lo hi x :=
+  ⟨fun a ha => h1 a ha, fun b hb => h2 b hb⟩
+
+theorem inGap_of {lo hi : Option ℚ} {x : ℝ} (h1 : (gc lo hi : ℝ) < x) (h2 : x < gd lo hi) :
+    InGap lo hi x := by
+  rcases lo with _ | a <;> rcases hi with _ | b <;> simp only [gc, gd] at h1 h2 <;>
+    refine inGap_mk ?_ ?_ <;> intro c hc <;> simp only [reduceCtorEq, Option.some.injEq] at hc <;>
+    subst hc <;> assumption
+
+/-- Infinitely many values of a gap class from real witnesses. -/
+theorem encard_gap_inf {lo hi : Option ℚ} {c : Fin 3} (hg : (lo, hi) ∈ gapPairs (numPts as))
+    (f : ℕ → ℝ) (hf : Function.Injective f) (hin : ∀ n, InGap lo hi (f n) ∧ numClass (f n) = c) :
+    {v | cellOf as v = .gap lo hi c}.encard = ⊤ :=
+  encard_top_of_inj (fun n => .num (f n)) (fun n n' h => hf (by simpa using h))
+    fun n _ => (cellOf_eq_gap_iff hg).2 ⟨f n, rfl, (hin n).1, (hin n).2⟩
+
+theorem encard_gap (hg : (lo, hi) ∈ gapPairs (numPts as)) (c : Fin 3) :
+    {v | cellOf as v = .gap lo hi c}.encard = toE (cellSize as (.gap lo hi c)) := by
+  have hlt := gc_lt_gd (gapPairs_lt hg)
+  obtain rfl | rfl | rfl : c = 0 ∨ c = 1 ∨ c = 2 := by fin_cases c <;> simp
+  · -- integers
+    rcases lo with _ | a <;> rcases hi with _ | b
+    · refine (encard_gap_inf hg (fun n => ((n : ℤ) : ℝ)) ?_ fun n =>
+        ⟨inGap_mk (by simp) (by simp), numClass_zero.2 ⟨n, rfl⟩⟩).trans rfl
+      intro n n' h; simpa using h
+    · refine (encard_gap_inf hg (fun n => ((⌊b⌋ - 1 - n : ℤ) : ℝ)) ?_ fun n =>
+        ⟨inGap_mk (by simp) ?_, numClass_zero.2 ⟨_, rfl⟩⟩).trans rfl
+      · intro n n' h; simp at h; omega
+      · intro b' h
+        cases h
+        have h1 := Int.floor_le b
+        have h2 : ((⌊b⌋ - 1 - n : ℤ) : ℚ) < b := by push_cast; linarith [(Nat.cast_nonneg n : (0 : ℚ) ≤ n)]
+        beta_reduce
+        exact_mod_cast h2
+    · refine (encard_gap_inf hg (fun n => ((⌈a⌉ + 1 + n : ℤ) : ℝ)) ?_ fun n =>
+        ⟨inGap_mk ?_ (by simp), numClass_zero.2 ⟨_, rfl⟩⟩).trans rfl
+      · intro n n' h; simp at h; omega
+      · intro a' h
+        cases h
+        have h1 := Int.le_ceil a
+        have h2 : a < ((⌈a⌉ + 1 + n : ℤ) : ℚ) := by push_cast; linarith [(Nat.cast_nonneg n : (0 : ℚ) ≤ n)]
+        beta_reduce
+        exact_mod_cast h2
+    · -- integers strictly between `a` and `b`
+      have hset : {v | cellOf as v = .gap (some a) (some b) 0} =
+          (fun z : ℤ => (ValOf.num (z : ℝ) : Val)) '' ↑(Finset.Ioo ⌊a⌋ ⌈b⌉) := by
+        ext v
+        rw [Set.mem_setOf_eq, cellOf_eq_gap_iff hg]
+        constructor
+        · rintro ⟨x, rfl, ⟨h1, h2⟩, hc⟩
+          obtain ⟨z, rfl⟩ := numClass_zero.1 hc
+          refine ⟨z, ?_, rfl⟩
+          have ha : a < (z : ℚ) := by exact_mod_cast h1 a rfl
+          have hb : (z : ℚ) < b := by exact_mod_cast h2 b rfl
+          simp only [Finset.coe_Ioo, Set.mem_Ioo]
+          exact ⟨Int.floor_lt.2 ha, Int.lt_ceil.2 hb⟩
+        · rintro ⟨z, hz, rfl⟩
+          simp only [Finset.coe_Ioo, Set.mem_Ioo] at hz
+          have ha : a < (z : ℚ) := Int.floor_lt.1 hz.1
+          have hb : (z : ℚ) < b := Int.lt_ceil.1 hz.2
+          refine ⟨z, rfl, inGap_mk ?_ ?_, numClass_zero.2 ⟨z, rfl⟩⟩
+          · intro a' h; cases h; exact_mod_cast ha
+          · intro b' h; cases h; exact_mod_cast hb
+      rw [hset, Function.Injective.encard_image, Set.encard_coe_eq_coe_finsetCard, Int.card_Ioo]
+      · rfl
+      · intro z z' h; simpa using h
+  · obtain ⟨f, hf, hfin⟩ := dec_witness hlt
+    rw [encard_gap_inf hg f hf fun n => ⟨inGap_of (hfin n).1 (hfin n).2.1, (hfin n).2.2⟩]
+    rcases lo with _ | a <;> rcases hi with _ | b <;> rfl
+  · obtain ⟨f, hf, hfin⟩ := other_witness hlt
+    rw [encard_gap_inf hg f hf fun n => ⟨inGap_of (hfin n).1 (hfin n).2.1, (hfin n).2.2⟩]
+    rcases lo with _ | a <;> rcases hi with _ | b <;> rfl
+
+/-- `A \ B` has `N - L` elements if `A` has `N` and `A ∩ B` has `L`. -/
+theorem encard_diff_eq {α : Type} {A B : Set α} {N L : ℕ} (hA : A.encard = N)
+    (hB : (A ∩ B).encard = L) : (A \ B).encard = ((N - L : ℕ) : ℕ∞) := by
+  have h := Set.encard_diff_add_encard_of_subset (Set.inter_subset_left : A ∩ B ⊆ A)
+  rw [Set.diff_self_inter, hA, hB] at h
+  have hfin : (A \ B).encard ≠ ⊤ := by
+    intro ht
+    rw [ht, top_add] at h
+    exact ENat.coe_ne_top N h.symm
+  obtain ⟨x, hx⟩ := ENat.ne_top_iff_exists.1 hfin
+  rw [← hx] at h ⊢
+  have : x + L = N := by exact_mod_cast h
+  congr 1
+  omega
+
+theorem encard_list_image {L : List (ValOf ℚ)} (hL : L.Nodup) :
+    (toVal '' {w | w ∈ L}).encard = L.length := by
+  classical
+  rw [toVal_injective.encard_image]
+  have : {w | w ∈ L} = ((L.toFinset : Finset (ValOf ℚ)) : Set (ValOf ℚ)) := by ext; simp
+  rw [this, Set.encard_coe_eq_coe_finsetCard, List.toFinset_card_of_nodup hL]
+
+theorem encard_range_float {e m : Nat} (mk : FloatV e m → Val) (hmk : Function.Injective mk) :
+    (Set.range mk).encard = FloatV.card e m := by
+  rw [← Set.image_univ, hmk.encard_image, Set.encard_univ, ENat.card_eq_coe_fintype_card,
+    FloatV.card_eq]
+
+/-- The values of a rest cell `c` are the values off the points whose
+`restCell` is `c`. -/
+theorem cellOf_eq_rest_iff {v : Val} {c : Cell} (hc : c ∈ restCells) :
+    cellOf as v = c ↔ (¬ ∃ w ∈ allPts as, toVal w = v) ∧ restCell v = c ∧ ∀ x, v ≠ .num x := by
+  classical
+  constructor
+  · intro h
+    by_cases hv : ∃ w ∈ allPts as, toVal w = v
+    · obtain ⟨w, hw, rfl⟩ := hv
+      rw [cellOf_pt hw] at h
+      subst h
+      simp [restCells] at hc
+    · cases v with
+      | num x =>
+        have hx : ∀ q ∈ numPts as, (q : ℝ) ≠ x := fun q hq he => hv (num_pt_iff.2 ⟨q, hq, he⟩)
+        rw [cellOf_num_gap hx] at h
+        subst h
+        simp [restCells] at hc
+      | _ =>
+        rw [cellOf_rest hv (by intro x h; cases h)] at h
+        exact ⟨hv, h, by intro x h; cases h⟩
+  · rintro ⟨hv, hr, hn⟩
+    rw [cellOf_rest hv hn, hr]
+
+theorem dbl_pts : Set.range (ValOf.dbl : FloatV 11 52 → Val) ∩ toVal '' {w | w ∈ allPts as} =
+    toVal '' {w | w ∈ (otherPts as).filter isDbl} := by
+  ext v
+  simp only [Set.mem_inter_iff, Set.mem_range, Set.mem_image, Set.mem_setOf_eq, List.mem_filter]
+  constructor
+  · rintro ⟨⟨y, rfl⟩, w, hw, he⟩
+    have hw' : w = .dbl y := by cases w <;> simp_all [toVal, ValOf.map]
+    subst hw'
+    refine ⟨.dbl y, ⟨?_, rfl⟩, rfl⟩
+    rcases List.mem_append.1 hw with h | h
+    · obtain ⟨q, -, he⟩ := List.mem_map.1 h; cases he
+    · exact h
+  · rintro ⟨w, ⟨hw, hd⟩, rfl⟩
+    cases w <;> simp only [isDbl, reduceCtorEq] at hd
+    exact ⟨⟨_, rfl⟩, _, List.mem_append_right _ hw, rfl⟩
+
+theorem flt_pts : Set.range (ValOf.flt : FloatV 8 23 → Val) ∩ toVal '' {w | w ∈ allPts as} =
+    toVal '' {w | w ∈ (otherPts as).filter isFlt} := by
+  ext v
+  simp only [Set.mem_inter_iff, Set.mem_range, Set.mem_image, Set.mem_setOf_eq, List.mem_filter]
+  constructor
+  · rintro ⟨⟨y, rfl⟩, w, hw, he⟩
+    have hw' : w = .flt y := by cases w <;> simp_all [toVal, ValOf.map]
+    subst hw'
+    refine ⟨.flt y, ⟨?_, rfl⟩, rfl⟩
+    rcases List.mem_append.1 hw with h | h
+    · obtain ⟨q, -, he⟩ := List.mem_map.1 h; cases he
+    · exact h
+  · rintro ⟨w, ⟨hw, hd⟩, rfl⟩
+    cases w <;> simp only [isFlt, reduceCtorEq] at hd
+    exact ⟨⟨_, rfl⟩, _, List.mem_append_right _ hw, rfl⟩
+
+theorem otherPts_nodup : (otherPts as).Nodup := List.nodup_dedup _
+
+theorem xmlString_rep (n : Nat) : xmlString (String.ofList (List.replicate n 'a')) = true := by
+  unfold xmlString
+  rw [String.toList_ofList, List.all_replicate]
+  split_ifs <;> decide
+
+theorem rep_inj : Function.Injective fun n : Nat => String.ofList (List.replicate n 'a') := by
+  intro n n' h
+  have := congrArg List.length (String.ofList_injective h)
+  simpa using this
+
+theorem decQ_nat (n : Nat) : decQ (n : ℚ) = true := by
+  simp [decQ]
+
+/-- Every rest cell has its size. -/
+theorem encard_rest {c : Cell} (hc : c ∈ restCells) :
+    {v | cellOf as v = c}.encard = toE (cellSize as c) := by
+  have key : ∀ (f : ℕ → Val), Function.Injective f → (∀ n, restCell (f n) = c) →
+      (∀ n x, f n ≠ .num x) → {v | cellOf as v = c}.encard = ⊤ := fun f hf hr hn =>
+    encard_top_of_inj f hf fun n hp => (cellOf_eq_rest_iff hc).2 ⟨hp, hr n, hn n⟩
+  simp only [restCells, List.mem_cons, List.not_mem_nil, or_false] at hc
+  rcases hc with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl
+  · -- doubles
+    have hS : {v | cellOf as v = .dblR} = Set.range (ValOf.dbl : FloatV 11 52 → Val) \
+        toVal '' {w | w ∈ allPts as} := by
+      ext v
+      rw [Set.mem_setOf_eq, cellOf_eq_rest_iff (by simp [restCells])]
+      constructor
+      · rintro ⟨hp, hr, -⟩
+        refine ⟨?_, fun ⟨w, hw, he⟩ => hp ⟨w, hw, he⟩⟩
+        rcases v with x | x | x | ⟨s, _ | t⟩ | b | bs | bs | s | ⟨t, z⟩ | s | n <;>
+          simp only [restCell] at hr <;> (try split_ifs at hr) <;> simp_all
+      · rintro ⟨⟨y, rfl⟩, hp⟩
+        exact ⟨fun ⟨w, hw, he⟩ => hp ⟨w, hw, he⟩, rfl, by intro x h; cases h⟩
+    rw [hS, encard_diff_eq (encard_range_float _ (fun a b h => by cases h; rfl)) (by
+      rw [dbl_pts, encard_list_image (otherPts_nodup.filter _)])]
+    rfl
+  · -- floats
+    have hS : {v | cellOf as v = .fltR} = Set.range (ValOf.flt : FloatV 8 23 → Val) \
+        toVal '' {w | w ∈ allPts as} := by
+      ext v
+      rw [Set.mem_setOf_eq, cellOf_eq_rest_iff (by simp [restCells])]
+      constructor
+      · rintro ⟨hp, hr, -⟩
+        refine ⟨?_, fun ⟨w, hw, he⟩ => hp ⟨w, hw, he⟩⟩
+        rcases v with x | x | x | ⟨s, _ | t⟩ | b | bs | bs | s | ⟨t, z⟩ | s | n <;>
+          simp only [restCell] at hr <;> (try split_ifs at hr) <;> simp_all
+      · rintro ⟨⟨y, rfl⟩, hp⟩
+        exact ⟨fun ⟨w, hw, he⟩ => hp ⟨w, hw, he⟩, rfl, by intro x h; cases h⟩
+    rw [hS, encard_diff_eq (encard_range_float _ (fun a b h => by cases h; rfl)) (by
+      rw [flt_pts, encard_list_image (otherPts_nodup.filter _)])]
+    rfl
+  · exact key (fun n => .str (String.ofList (List.replicate n 'a')) none)
+      (fun n n' h => rep_inj (by simpa using h)) (fun n => by simp [restCell, xmlString_rep])
+      (by intro n x h; cases h)
+  · exact key (fun n => .str (String.ofList (List.replicate n 'a')) (some "en"))
+      (fun n n' h => rep_inj (by simpa using h))
+      (fun n => by
+        simp only [restCell, xmlString_rep, Bool.true_and]
+        rw [if_pos (by decide)])
+      (by intro n x h; cases h)
+  · exact key (fun n => .uri (String.ofList (List.replicate n 'a')))
+      (fun n n' h => rep_inj (by simpa using h)) (fun n => by simp [restCell, xmlString_rep])
+      (by intro n x h; cases h)
+  · exact key (fun n => .hex (List.replicate n 0)) (fun n n' h => by simpa using h)
+      (fun n => rfl) (by intro n x h; cases h)
+  · exact key (fun n => .b64 (List.replicate n 0)) (fun n n' h => by simpa using h)
+      (fun n => rfl) (by intro n x h; cases h)
+  · exact key (fun n => .xml (String.ofList (List.replicate n 'a')))
+      (fun n n' h => rep_inj (by simpa using h)) (fun n => by simp [restCell, xmlString_rep])
+      (by intro n x h; cases h)
+  · exact key (fun n => .time (n : ℚ) true) (fun n n' h => by simpa using h)
+      (fun n => by simp [restCell, decQ_nat]) (by intro n x h; cases h)
+  · exact key (fun n => .time (n : ℚ) false) (fun n n' h => by simpa using h)
+      (fun n => by simp [restCell, decQ_nat]) (by intro n x h; cases h)
+  · exact key (fun n => .extra n) (fun n n' h => by simpa using h) (fun n => rfl)
+      (by intro n x h; cases h)
+
+end Sizes
+
+/-- **The cells are exact.** -/
+theorem cellSpec (as : List BAtom) : CellSpec (cellOf as) (cellsOf as) (cellSize as) := by
+  refine ⟨cellOf_mem, List.nodup_dedup _, fun c hc => ?_⟩
+  unfold cellsOf at hc
+  rw [List.mem_dedup] at hc
+  rcases List.mem_append.1 hc with hc | hc
+  · rcases List.mem_append.1 hc with hc | hc
+    · obtain ⟨w, hw, rfl⟩ := List.mem_map.1 hc
+      exact encard_pt hw
+    · obtain ⟨⟨lo, hi⟩, hg, hc⟩ := List.mem_flatMap.1 hc
+      obtain ⟨k, -, rfl⟩ := List.mem_map.1 hc
+      exact encard_gap hg k
+  · exact encard_rest hc
+
 end ContextCalculus.OWL.Datatypes
+
+#print axioms ContextCalculus.OWL.Datatypes.cellSpec
