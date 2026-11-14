@@ -142,11 +142,62 @@ section Elim
 
 variable {U : Cand n m}
 
-theorem prune_get (A : Array Bool) (i : Nat) :
-    (prune (mkIx O) U (mkCache (mkIx O) U) A)[i]? =
-      A[i]?.map fun b => b && suppB (mkIx O) U (mkCache (mkIx O) U) A i := by
-  simp only [prune, List.getElem?_toArray, List.getElem?_map, List.getElem?_zipIdx,
-    Array.getElem?_toList, Option.map_map, Function.comp_def, zero_add]
+theorem leA_antisymm {A B : Array Bool} (h1 : LeA A B) (h2 : LeA B A) : A = B := by
+  refine Array.ext_getElem? fun j => ?_
+  by_cases hj : j < A.size
+  · have hjB : j < B.size := h1.1 ▸ hj
+    rw [Array.getElem?_eq_getElem hj, Array.getElem?_eq_getElem hjB]
+    have a1 := h1.2 j
+    have a2 := h2.2 j
+    rw [Array.getElem?_eq_getElem hj, Array.getElem?_eq_getElem hjB] at a1 a2
+    simp only [Option.some.injEq] at a1 a2 ⊢
+    cases hA : A[j] <;> cases hB : B[j] <;> simp_all
+  · rw [Array.getElem?_eq_none (by omega), Array.getElem?_eq_none (by have := h1.1; omega)]
+
+theorem prune_sub {A : Array Bool} {i : Nat}
+    (h : (prune (mkIx O) U (mkCache (mkIx O) U) A)[i]? = some true) : A[i]? = some true :=
+  (foldl_sweep_le (mkIx O) U _ _ A).2 i h
+
+theorem prune_fix_aux : ∀ (l : List Nat) (A : Array Bool),
+    l.foldl (sweepStep (mkIx O) U (mkCache (mkIx O) U)) A = A →
+    ∀ i ∈ l, A[i]? = some true → suppB (mkIx O) U (mkCache (mkIx O) U) A i = true
+  | [], _, _, i, hi, _ => by simp at hi
+  | j :: l, A, hfix, i, hi, hA => by
+    rw [List.foldl_cons] at hfix
+    have hle1 := sweepStep_le (mkIx O) U (mkCache (mkIx O) U) A j
+    have hle2 := foldl_sweep_le (mkIx O) U (mkCache (mkIx O) U) l
+      (sweepStep (mkIx O) U (mkCache (mkIx O) U) A j)
+    rw [hfix] at hle2
+    have heq := leA_antisymm hle1 hle2
+    rw [heq] at hfix
+    rcases List.mem_cons.1 hi with rfl | hi
+    · have hlt : i < A.size := by
+        by_contra hn; rw [Array.getElem?_eq_none (by omega)] at hA; simp at hA
+      have := congrArg (fun B : Array Bool => B[i]?) heq
+      simp only [sweepStep, hA, Option.getD_some, if_true, Array.set!,
+        Array.getElem?_setIfInBounds, hlt] at this
+      simpa [hA] using this
+    · exact prune_fix_aux l A hfix i hi hA
+
+theorem prune_keep {S : Nat → Prop} (hsup : ∀ i, S i → SuppP O U S i) :
+    ∀ (l : List Nat) (A : Array Bool), (∀ i : Nat, S i → A[i]? = some true) →
+    ∀ i : Nat, S i → (l.foldl (sweepStep (mkIx O) U (mkCache (mkIx O) U)) A)[i]? = some true
+  | [], A, hS => hS
+  | j :: l, A, hS => by
+    rw [List.foldl_cons]
+    refine prune_keep hsup l _ fun i hi => ?_
+    unfold sweepStep
+    split
+    · rw [Array.set!, Array.getElem?_setIfInBounds]
+      split
+      · next hij =>
+        subst hij
+        have hA := hS j hi
+        have hlt : j < A.size := by
+          by_contra hn; rw [Array.getElem?_eq_none (by omega)] at hA; simp at hA
+        rw [if_pos hlt, suppB_iff.2 (suppP_mono (fun k hk => hS k hk) (hsup j hi))]
+      · exact hS i hi
+    · exact hS i hi
 
 theorem elim_spec : ∀ A : Array Bool,
     (∀ i : Nat, (elim (mkIx O) U (mkCache (mkIx O) U) A)[i]? = some true → A[i]? = some true) ∧
@@ -161,24 +212,14 @@ theorem elim_spec : ∀ A : Array Bool,
     split
     · next hp =>
       refine ⟨fun i hi => hi, fun i hi => ?_, fun S hS _ i hi => hS i hi⟩
-      have := prune_get (U := U) (O := O) A i
-      rw [hp, hi] at this
-      simp only [Option.map_some, Option.some.injEq, Bool.true_and] at this
-      exact this.symm
+      have hlt : i < A.size := by
+        by_contra hn; rw [Array.getElem?_eq_none (by omega)] at hi; simp at hi
+      exact prune_fix_aux (O := O) (U := U) (List.range A.size) A hp i (List.mem_range.2 hlt) hi
     · next hp =>
-      obtain ⟨h1, h2, h3⟩ := ih _ (h ▸ trues_prune_lt (mkIx O) U hp) (prune (mkIx O) U (mkCache (mkIx O) U) A) rfl
-      refine ⟨fun i hi => ?_, h2, fun S hS hsup => h3 S (fun i hi => ?_) hsup⟩
-      · have := h1 i hi
-        rw [prune_get] at this
-        cases hA : A[i]? with
-        | none => simp [hA] at this
-        | some b =>
-          rw [hA] at this
-          simp only [Option.map_some, Option.some.injEq, Bool.and_eq_true] at this
-          rw [this.1]
-      · rw [prune_get, hS i hi]
-        simp only [Option.map_some, Bool.true_and]
-        rw [suppB_iff.2 (suppP_mono (fun j hj => hS j hj) (hsup i hi))]
+      obtain ⟨h1, h2, h3⟩ := ih _ (h ▸ trues_prune_lt (mkIx O) U hp)
+        (prune (mkIx O) U (mkCache (mkIx O) U) A) rfl
+      refine ⟨fun i hi => prune_sub (h1 i hi), h2, fun S hS hsup => h3 S (fun i hi => ?_) hsup⟩
+      exact prune_keep hsup _ A hS i hi
 
 variable (O U) in
 /-- The live nodes. -/

@@ -638,32 +638,67 @@ def suppB (C : ECache n m) (A : Array Bool) (i : Nat) : Bool :=
     dfs (dedupKey (sig ix U i) (candsA U C A i)) (((needsV ix U i).map (·.2.2)).sum + 1)
       (needsV ix U i) (limsV ix U i)
 
-/-- One round: keep the nodes that are supported among the live ones. -/
+/-- Check node `i` against the current live set and drop it if unsupported. -/
+def sweepStep (C : ECache n m) (A : Array Bool) (i : Nat) : Array Bool :=
+  if A[i]?.getD false then A.set! i (suppB ix U C A i) else A
+
+/-- One round: check every live node in order, against the live set as it
+shrinks during the round. -/
 def prune (C : ECache n m) (A : Array Bool) : Array Bool :=
-  (A.toList.zipIdx.map fun p => p.1 && suppB ix U C A p.2).toArray
+  (List.range A.size).foldl (sweepStep ix U C) A
 
 def trues (A : Array Bool) : Nat := A.toList.count true
 
-theorem count_map_and (f : Nat → Bool) : ∀ l : List (Bool × Nat),
-    (l.map fun p => p.1 && f p.2).count true ≤ (l.map Prod.fst).count true ∧
-    ((l.map fun p => p.1 && f p.2) ≠ l.map Prod.fst →
-      (l.map fun p => p.1 && f p.2).count true < (l.map Prod.fst).count true)
-  | [] => by simp
-  | p :: l => by
-    obtain ⟨h1, h2⟩ := count_map_and f l
-    obtain ⟨b, i⟩ := p
-    cases b <;> cases hf : f i <;> simp_all [List.count_cons] <;> omega
+/-- Pointwise order of live sets of one size. -/
+def LeA (A B : Array Bool) : Prop := A.size = B.size ∧ ∀ j : Nat, A[j]? = some true → B[j]? = some true
+
+theorem count_lt : ∀ (l1 l2 : List Bool), l1.length = l2.length →
+    (∀ j : Nat, l1[j]? = some true → l2[j]? = some true) →
+    l1.count true ≤ l2.count true ∧ (l1 ≠ l2 → l1.count true < l2.count true)
+  | [], [], _, _ => by simp
+  | [], _ :: _, h, _ => by simp at h
+  | _ :: _, [], h, _ => by simp at h
+  | a :: l1, b :: l2, hlen, h => by
+    have h' : ∀ j : Nat, l1[j]? = some true → l2[j]? = some true := fun j hj => by
+      simpa using h (j + 1) (by simpa using hj)
+    obtain ⟨ih1, ih2⟩ := count_lt l1 l2 (by simpa using hlen) h'
+    have hab : a = true → b = true := fun ha => by simpa [ha] using h 0 (by simp [ha])
+    cases a <;> cases b <;> simp_all [List.count_cons] <;> omega
+
+theorem trues_lt {A B : Array Bool} (hle : LeA A B) (hne : A ≠ B) : trues A < trues B := by
+  unfold trues
+  refine (count_lt A.toList B.toList (by simpa using hle.1) (fun j hj => ?_)).2 (fun he => hne ?_)
+  · simpa using hle.2 j (by simpa using hj)
+  · exact Array.ext_getElem? fun j => by rw [← Array.getElem?_toList, he, Array.getElem?_toList]
+
+theorem leA_refl (A : Array Bool) : LeA A A := ⟨rfl, fun _ h => h⟩
+
+theorem leA_trans {A B C : Array Bool} (h1 : LeA A B) (h2 : LeA B C) : LeA A C :=
+  ⟨h1.1.trans h2.1, fun j h => h2.2 j (h1.2 j h)⟩
+
+theorem sweepStep_le (C : ECache n m) (A : Array Bool) (i : Nat) :
+    LeA (sweepStep ix U C A i) A := by
+  unfold sweepStep
+  split
+  · refine ⟨Array.size_setIfInBounds, fun j hj => ?_⟩
+    rw [Array.set!, Array.getElem?_setIfInBounds] at hj
+    split at hj
+    · next hij =>
+      subst hij
+      split at hj
+      · next hlt => rw [Array.getElem?_eq_getElem hlt]; next hA => simpa [Array.getElem?_eq_getElem hlt] using hA
+      · simp at hj
+    · exact hj
+  · exact leA_refl A
+
+theorem foldl_sweep_le (C : ECache n m) : ∀ (l : List Nat) (A : Array Bool),
+    LeA (l.foldl (sweepStep ix U C) A) A
+  | [], A => leA_refl A
+  | i :: l, A => leA_trans (foldl_sweep_le C l _) (sweepStep_le ix U C A i)
 
 theorem trues_prune_lt {C : ECache n m} {A : Array Bool} (h : prune ix U C A ≠ A) :
-    trues (prune ix U C A) < trues A := by
-  unfold trues prune
-  rw [List.toList_toArray]
-  have hA : A.toList = A.toList.zipIdx.map Prod.fst := by simp
-  have := (count_map_and (fun i => suppB ix U C A i) A.toList.zipIdx).2
-  rw [← hA] at this
-  refine this fun he => h ?_
-  unfold prune
-  rw [he, Array.toArray_toList]
+    trues (prune ix U C A) < trues A :=
+  trues_lt (foldl_sweep_le ix U C _ A) h
 
 /-- Remove unsupported nodes until stable. -/
 def elim (C : ECache n m) (A : Array Bool) : Array Bool :=
