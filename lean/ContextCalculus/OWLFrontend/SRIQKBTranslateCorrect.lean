@@ -1,5 +1,7 @@
 import ContextCalculus.OWLFrontend.SRIQKBTranslate
 import ContextCalculus.OWLFrontend.SRIQTranslateCorrect
+import ContextCalculus.SRIQ.Realization
+import ContextCalculus.OWLFrontend.SRIQComplete
 
 /-!
 # Correctness of the OWL SHIQ knowledge-base translation
@@ -712,3 +714,326 @@ theorem core_down {O : Ontology} {requested inds : List IRI} (hO : O.isSHIQKB = 
     exact ⟨fun ⟨_, h⟩ => h, fun h => ⟨hi', h⟩⟩
 
 end ContextCalculus.OWLFrontend.SRIQKB
+
+namespace ContextCalculus.OWLFrontend
+
+open ContextCalculus.OWL SRIQKB
+
+variable {O : OWL.Ontology} {requested extra : List OWL.IRI} {T : SRIQKBTranslation}
+
+theorem translateSRIQKB_spec (h : translateSRIQKB O requested extra = some T) :
+    O.isSHIQKB = true ∧ T.named = requested.eraseDups ∧ T.inds = O.individualNames ++ extra := by
+  simp only [translateSRIQKB] at h
+  split at h
+  case isFalse => exact absurd h (by simp)
+  rename_i hO
+  split at h
+  case isFalse => exact absurd h (by simp)
+  obtain ⟨A, -, rfl⟩ := Option.map_eq_some_iff.1 h
+  exact ⟨hO, (SRIQT.run_spec (kbTBox O (defBase O requested)) requested).choose_spec.2.1, rfl⟩
+
+/-- **Up.** A model of `O` gives a model of the translated knowledge base,
+with the individual of index `j` at the value of `T.inds[j]` and each
+requested index standing for its IRI. -/
+theorem translateSRIQKB_up (h : translateSRIQKB O requested extra = some T)
+    {DM : DatatypeMap} {D : Type} [Nonempty D] (I : Interp DM D) (hI : OWL.Model O I) :
+    ∃ J : SRI.Interp D (Fin T.conceptCount) (Fin T.roleCount),
+      SRIQ.models J T.ontology ∧ SRIQ.satABox J (fun j => I.ind (.named T.inds[j])) T.abox ∧
+      ∀ (i : Nat) (hi : i < T.named.length) (x : D),
+        J.c ⟨i, Nat.lt_of_lt_of_le hi T.hnamed⟩ x ↔ I.cls T.named[i] x := by
+  simp only [translateSRIQKB] at h
+  split at h
+  case isFalse => exact absurd h (by simp)
+  rename_i hO
+  split at h
+  case isFalse => exact absurd h (by simp)
+  obtain ⟨A, hA, rfl⟩ := Option.map_eq_some_iff.1 h
+  obtain ⟨b, hb, hL, hidx, hF⟩ := SRIQT.run_spec (kbTBox O (defBase O requested)) requested
+  obtain ⟨J, h1, h2, h3⟩ := core_up hO hb hF hL hidx hA I hI
+  exact ⟨J, h1, h2, fun i hi x => h3 i hi _ x⟩
+
+/-- **Down.** A model of the translated knowledge base gives a model of
+`O`, with each individual `a` of `T.inds` at the value of its index and
+each requested IRI standing for its index. -/
+theorem translateSRIQKB_down (h : translateSRIQKB O requested extra = some T)
+    {D : Type} [Nonempty D] (J : SRI.Interp D (Fin T.conceptCount) (Fin T.roleCount))
+    (ind : Fin T.inds.length → D) (hJ : SRIQ.models J T.ontology)
+    (hA : SRIQ.satABox J ind T.abox) :
+    ∃ I : Interp DatatypeMap.trivial D, OWL.Model O I ∧
+      (∀ (a : IRI) (ha : T.inds.idxOf a < T.inds.length), I.ind (.named a) = ind ⟨_, ha⟩) ∧
+      ∀ (i : Nat) (hi : i < T.named.length) (x : D),
+        I.cls T.named[i] x ↔ J.c ⟨i, Nat.lt_of_lt_of_le hi T.hnamed⟩ x := by
+  simp only [translateSRIQKB] at h
+  split at h
+  case isFalse => exact absurd h (by simp)
+  rename_i hO
+  split at h
+  case isFalse => exact absurd h (by simp)
+  obtain ⟨A, hA', rfl⟩ := Option.map_eq_some_iff.1 h
+  obtain ⟨b, hb, -, hidx, hF⟩ := SRIQT.run_spec (kbTBox O (defBase O requested)) requested
+  obtain ⟨I, h1, h2, h3⟩ := core_down hO hb hF hidx hA' J ind hJ hA
+  exact ⟨I, h1, h2, fun i hi x => h3 i hi _ x⟩
+
+/-- Subsumption between requested IRIs is subsumption under the translated
+knowledge base. -/
+theorem translateSRIQKB_entailsSub (h : translateSRIQKB O requested extra = some T)
+    (i j : Nat) (hi : i < T.named.length) (hj : j < T.named.length) :
+    OWL.EntailsSub O T.named[i] T.named[j] ↔
+      SRIQ.EntailsSubKB T.ontology T.abox ⟨i, Nat.lt_of_lt_of_le hi T.hnamed⟩
+        ⟨j, Nat.lt_of_lt_of_le hj T.hnamed⟩ := by
+  constructor
+  · intro hs D _ J ind hJ hA x hx
+    obtain ⟨I, hI, -, hc⟩ := translateSRIQKB_down h J ind hJ hA
+    exact (hc j hj x).1 (hs DatatypeMap.trivial D I hI x ((hc i hi x).2 hx))
+  · intro hs DM D _ I hI x hx
+    obtain ⟨J, hJ, hA, hc⟩ := translateSRIQKB_up h I hI
+    exact (hc j hj x).1 (hs D J _ hJ hA x ((hc i hi x).2 hx))
+
+/-- `O` is inconsistent iff the translated knowledge base is. -/
+theorem translateSRIQKB_inconsistent (h : translateSRIQKB O requested extra = some T) :
+    OWL.Inconsistent O ↔ ¬ SRIQ.ConsistentKB T.ontology T.abox := by
+  constructor
+  · rintro hinc ⟨D, hD, J, ind, hJ, hA⟩
+    obtain ⟨I, hI, -⟩ := translateSRIQKB_down h J ind hJ hA
+    exact hinc DatatypeMap.trivial D I hI
+  · intro hn DM D _ I hI
+    obtain ⟨J, hJ, hA, -⟩ := translateSRIQKB_up h I hI
+    exact hn ⟨D, inferInstance, J, _, hJ, hA⟩
+
+/-- An entailed class assertion of a requested IRI about an individual of
+`T.inds` is an entailed type. -/
+theorem translateSRIQKB_entailsType (h : translateSRIQKB O requested extra = some T)
+    (i : Nat) (hi : i < T.named.length) (a : IRI) (ha : T.inds.idxOf a < T.inds.length) :
+    OWL.Entails O (.classAssertion (.cls T.named[i]) (.named a)) ↔
+      SRIQ.EntailsTypeKB T.ontology T.abox ⟨_, ha⟩ ⟨i, Nat.lt_of_lt_of_le hi T.hnamed⟩ := by
+  constructor
+  · intro he D _ J ind hJ hA
+    obtain ⟨I, hI, hind, hc⟩ := translateSRIQKB_down h J ind hJ hA
+    have := he DatatypeMap.trivial D I hI
+    simp only [Interp.sat, EL.ext_cls] at this
+    rw [hind a ha] at this
+    exact (hc i hi _).1 this
+  · intro he DM D _ I hI
+    obtain ⟨J, hJ, hA, hc⟩ := translateSRIQKB_up h I hI
+    have := (hc i hi _).1 (he D J _ hJ hA)
+    simp only [Interp.sat, EL.ext_cls]
+    simp only [Fin.getElem_fin, List.getElem_idxOf] at this
+    exact this
+
+/-- An entailed equality of two individuals of `T.inds` is an entailed
+equality of their indices. -/
+theorem translateSRIQKB_entailsSame (h : translateSRIQKB O requested extra = some T)
+    (a b : IRI) (ha : T.inds.idxOf a < T.inds.length) (hb : T.inds.idxOf b < T.inds.length) :
+    OWL.Entails O (.sameIndividual [.named a, .named b]) ↔
+      SRIQ.EntailsSameKB T.ontology T.abox ⟨_, ha⟩ ⟨_, hb⟩ := by
+  have hsat : ∀ {DM : DatatypeMap} {D : Type} (I : Interp DM D) (N : List IRI),
+      I.sat N (.sameIndividual [.named a, .named b]) ↔ I.ind (.named a) = I.ind (.named b) := by
+    intro DM D I N
+    simp only [Interp.sat]
+    constructor
+    · intro h; exact h _ (by simp) _ (by simp)
+    · intro h x hx y hy
+      simp only [List.mem_cons, List.not_mem_nil, or_false] at hx hy
+      rcases hx with rfl | rfl <;> rcases hy with rfl | rfl
+      · rfl
+      · exact h
+      · exact h.symm
+      · rfl
+  constructor
+  · intro he D _ J ind hJ hA
+    obtain ⟨I, hI, hind, -⟩ := translateSRIQKB_down h J ind hJ hA
+    have := (hsat I _).1 (he DatatypeMap.trivial D I hI)
+    rwa [hind a ha, hind b hb] at this
+  · intro he DM D _ I hI
+    obtain ⟨J, hJ, hA, -⟩ := translateSRIQKB_up h I hI
+    have := he D J _ hJ hA
+    simp only [Fin.getElem_fin, List.getElem_idxOf] at this
+    exact (hsat I _).2 this
+
+/-! ## The translation succeeds on the fragment -/
+
+open SRIQT in
+theorem SRIQKB.lookup_cls {O' : Ontology} {b : EL.St} {F : SRIQT.St}
+    (hb : EL.WF (EL.setTopBottom b)) (hF : O'.axioms.foldl transAxiom (start b) = F) {X : IRI}
+    {c : ClassExpr} (hm : Axiom.subClassOf (.cls X) c ∈ O'.axioms) :
+    ∃ x, clsIx F F.b.cdefs.size X = some x := by
+  have hS := start_wf hb
+  have hFwf : WF F := hF ▸ foldl_trans_wf _ (start b) hS
+  obtain ⟨s', _, hle⟩ := foldl_trans_mem _ (start b) hS _ hm
+  rw [hF] at hle
+  simp only [transAxiom, transExpr] at hle
+  have hle' : Le (internC X s').2 F := (transExpr_le c true _).trans ((emit_le _ _).trans hle)
+  have hk := hle'.b.cmap _ _ (internC_cmap X s')
+  have hlt : (internC X s').1 < F.b.cdefs.size := ALC.CIn.lt ⟨_, hFwf.b.cmap _ _ hk⟩
+  exact ⟨⟨_, hlt⟩, by simp [clsIx, hk, hlt]⟩
+
+open SRIQT in
+theorem SRIQKB.lookup_role {O' : Ontology} {b : EL.St} {F : SRIQT.St}
+    (hb : EL.WF (EL.setTopBottom b)) (hF : O'.axioms.foldl transAxiom (start b) = F) {r : ObjProp}
+    (hm : Axiom.subObjectPropertyOf [r] r ∈ O'.axioms) :
+    ∃ R, roleIx F F.b.rdefs.size r = some R := by
+  have hS := start_wf hb
+  have hFwf : WF F := hF ▸ foldl_trans_wf _ (start b) hS
+  obtain ⟨s', _, hle⟩ := foldl_trans_mem _ (start b) hS _ hm
+  rw [hF] at hle
+  simp only [transAxiom] at hle
+  have hle' := (emit_le _ _).trans hle
+  obtain ⟨k, hk, -⟩ := roleT_ok r (roleTs [r] s' []).2
+  have hk' := hle'.b.rmap _ _ hk
+  have hlt : k < F.b.rdefs.size := ALC.RIn.lt ⟨_, hFwf.b.rmap _ _ hk'⟩
+  obtain ⟨R, hR⟩ := SRIT.finRT_isSome F.b.rdefs.size (SRIT.mkRT r k) (by
+    rw [SRIT.rIx_mkRT]; exact hlt)
+  exact ⟨R, by simp [roleIx, hk', hR]⟩
+
+theorem SRIQKB.indIx_isSome {inds : List IRI} {a : IRI} (h : a ∈ inds) :
+    ∃ i, indIx inds (.named a) = some i := by
+  have := List.idxOf_lt_length_of_mem h
+  exact ⟨⟨_, this⟩, by simp [indIx, this]⟩
+
+theorem SRIQKB.mem_inds {O : Ontology} {extra : List IRI} {ax : Axiom} (hax : ax ∈ O.axioms)
+    {a : IRI} (ha : a ∈ ax.namedIndividuals) : a ∈ O.individualNames ++ extra :=
+  List.mem_append_left _ ((O.mem_namesBy _ a).2 ⟨ax, hax, ha⟩)
+
+/-- On the SHIQ knowledge-base part the translation succeeds. -/
+theorem translateSRIQKB_isSome (hO : O.isSHIQKB = true) :
+    (translateSRIQKB O requested extra).isSome = true := by
+  set base := defBase O requested
+  obtain ⟨b, hb, _, hidx, hF⟩ := SRIQT.run_spec (kbTBox O base) requested
+  have hS := SRIQT.start_wf hb
+  have hFwf : SRIQT.WF (SRIQT.run (kbTBox O base) requested).1 :=
+    hF ▸ SRIQT.foldl_trans_wf _ _ hS
+  have hLe : SRIQT.Le (SRIQT.start b) (SRIQT.run (kbTBox O base) requested).1 :=
+    hF ▸ SRIQT.foldl_trans_le _ _
+  have hlen : (SRIQT.run (kbTBox O base) requested).2.length ≤
+      (SRIQT.run (kbTBox O base) requested).1.b.cdefs.size := by
+    cases hn : (SRIQT.run (kbTBox O base) requested).2.length with
+    | zero => exact Nat.zero_le _
+    | succ k =>
+        have hk : k < (SRIQT.run (kbTBox O base) requested).2.length := by omega
+        have hc := hLe.b.cmap _ _ (hidx k hk)
+        exact (show ALC.CIn _ k from ⟨_, hFwf.b.cmap _ _ hc⟩).lt
+  have hO' : ∀ ax ∈ O.axioms, ax.isSHIQKB = true := by
+    simpa [Ontology.isSHIQKB, List.all_eq_true] using hO
+  have hcol : (collect (assertsOf (SRIQT.run (kbTBox O base) requested).1 base
+      (O.individualNames ++ extra) (SRIQT.run (kbTBox O base) requested).1.b.cdefs.size
+      (SRIQT.run (kbTBox O base) requested).1.b.rdefs.size) O.axioms.zipIdx).isSome = true := by
+    refine collect_isSome fun ⟨ax, j⟩ hp => ?_
+    have hax := mem_of_zipIdx hp
+    have hk := hO' ax hax
+    have hdef : ∀ ax' ∈ defAxioms base (ax, j), ax' ∈ (kbTBox O base).axioms :=
+      fun ax' h' => mem_kbTBox.2 (Or.inr ⟨_, hp, h'⟩)
+    have hpair : ∀ (as : List Individual), (∀ a ∈ as, a.isNamed = true) →
+        (∀ a' ∈ as.flatMap Individual.namedIRI, a' ∈ O.individualNames ++ extra) →
+        ∀ (mk : Fin (O.individualNames ++ extra).length → Fin (O.individualNames ++ extra).length →
+          KA (SRIQT.run (kbTBox O base) requested).1.b.cdefs.size
+            (SRIQT.run (kbTBox O base) requested).1.b.rdefs.size (O.individualNames ++ extra).length)
+          (p : Individual × Individual), p.1 ∈ as → p.2 ∈ as →
+          (pairAssert (O.individualNames ++ extra) mk p).isSome = true := by
+      intro as hn hm mk p h1 h2
+      have hn1 := hn _ h1
+      have hn2 := hn _ h2
+      obtain ⟨p1, p2⟩ := p
+      cases p1 with
+      | anon _ => simp [Individual.isNamed] at hn1
+      | named a1 =>
+        cases p2 with
+        | anon _ => simp [Individual.isNamed] at hn2
+        | named a2 =>
+          obtain ⟨i1, hi1⟩ := indIx_isSome (hm a1 (List.mem_flatMap.2 ⟨_, h1, by simp [Individual.namedIRI]⟩))
+          obtain ⟨i2, hi2⟩ := indIx_isSome (hm a2 (List.mem_flatMap.2 ⟨_, h2, by simp [Individual.namedIRI]⟩))
+          simp [pairAssert, hi1, hi2]
+    cases ax with
+    | classAssertion c a =>
+      simp only [Axiom.isSHIQKB, Bool.and_eq_true] at hk
+      cases a with
+      | anon _ => simp [Individual.isNamed] at hk
+      | named a =>
+        obtain ⟨i, hi⟩ := indIx_isSome (mem_inds (extra := extra) hax
+          (a := a) (by simp [Axiom.namedIndividuals, Individual.namedIRI]))
+        obtain ⟨x, hx⟩ := lookup_cls hb hF (hdef (.subClassOf (.cls (assertName base j c)) c)
+          (by simp [defAxioms]))
+        simp [assertsOf, hi, hx]
+    | objectPropertyAssertion r a a₂ =>
+      simp only [Axiom.isSHIQKB, Bool.and_eq_true] at hk
+      cases a with
+      | anon _ => simp [Individual.isNamed] at hk
+      | named a =>
+        cases a₂ with
+        | anon _ => simp [Individual.isNamed] at hk
+        | named a₂ =>
+          obtain ⟨i, hi⟩ := indIx_isSome (mem_inds (extra := extra) hax
+            (a := a) (by simp [Axiom.namedIndividuals, Individual.namedIRI]))
+          obtain ⟨i', hi'⟩ := indIx_isSome (mem_inds (extra := extra) hax
+            (a := a₂) (by simp [Axiom.namedIndividuals, Individual.namedIRI]))
+          obtain ⟨R, hR⟩ := lookup_role hb hF (hdef (.subObjectPropertyOf [r] r)
+            (by simp [defAxioms]))
+          simp [assertsOf, hi, hi', hR]
+    | negativeObjectPropertyAssertion r a a₂ =>
+      simp only [Axiom.isSHIQKB, Bool.and_eq_true] at hk
+      cases a with
+      | anon _ => simp [Individual.isNamed] at hk
+      | named a =>
+        cases a₂ with
+        | anon _ => simp [Individual.isNamed] at hk
+        | named a₂ =>
+          obtain ⟨i, hi⟩ := indIx_isSome (mem_inds (extra := extra) hax
+            (a := a) (by simp [Axiom.namedIndividuals, Individual.namedIRI]))
+          obtain ⟨i', hi'⟩ := indIx_isSome (mem_inds (extra := extra) hax
+            (a := a₂) (by simp [Axiom.namedIndividuals, Individual.namedIRI]))
+          obtain ⟨R, hR⟩ := lookup_role hb hF (hdef (.subObjectPropertyOf [r] r)
+            (by simp [defAxioms]))
+          simp [assertsOf, hi, hi', hR]
+    | sameIndividual as =>
+      simp only [Axiom.isSHIQKB, List.all_eq_true] at hk
+      simp only [assertsOf]
+      refine collect_isSome fun p hp' => ?_
+      have := mem_allPairs.1 hp'
+      exact hpair as hk (fun a' ha' => mem_inds hax (by simpa [Axiom.namedIndividuals] using ha'))
+        _ p this.1 this.2
+    | differentIndividuals as =>
+      simp only [Axiom.isSHIQKB, List.all_eq_true] at hk
+      simp only [assertsOf]
+      refine collect_isSome fun p hp' => ?_
+      have := mem_pairsOf hp'
+      exact hpair as hk (fun a' ha' => mem_inds hax (by simpa [Axiom.namedIndividuals] using ha'))
+        _ p this.1 this.2
+    | _ => simp [assertsOf]
+  simp only [translateSRIQKB, hO, if_true]
+  split
+  · simp only [Option.isSome_map]
+    exact hcol
+  · exact absurd hlen ‹_›
+
+open SRIQT in
+/-- On the SHIQ knowledge-base part every chain clause of the translation
+passes the route's chain check. -/
+theorem translateSRIQKB_chainsOK (h : translateSRIQKB O requested extra = some T) :
+    T.ontology.all chainOKQ = true := by
+  simp only [translateSRIQKB] at h
+  split at h
+  case isFalse => exact absurd h (by simp)
+  rename_i hO
+  split at h
+  case isFalse => exact absurd h (by simp)
+  obtain ⟨A, -, rfl⟩ := Option.map_eq_some_iff.1 h
+  obtain ⟨b, _, _, _, hF⟩ := SRIQT.run_spec (kbTBox O (defBase O requested)) requested
+  have hok : ChainsOK (SRIQT.run (kbTBox O (defBase O requested)) requested).1 := by
+    rw [← hF]
+    refine foldl_trans_chainsOK _ _ (start_chainsOK b) ?_
+    simpa [OWL.Ontology.isSHIQ, List.all_eq_true] using kbTBox_isSHIQ hO (defBase O requested)
+  simp only [List.all_eq_true, List.mem_filterMap]
+  rintro c' ⟨c, hc, hfin⟩
+  refine toFin_chainOK (fun body S hcs => ?_) hfin
+  subst hcs
+  exact hok body S (List.mem_reverse.1 hc)
+
+#print axioms translateSRIQKB_isSome
+#print axioms translateSRIQKB_chainsOK
+#print axioms translateSRIQKB_up
+#print axioms translateSRIQKB_down
+#print axioms translateSRIQKB_entailsSub
+#print axioms translateSRIQKB_inconsistent
+#print axioms translateSRIQKB_entailsType
+#print axioms translateSRIQKB_entailsSame
+
+end ContextCalculus.OWLFrontend
