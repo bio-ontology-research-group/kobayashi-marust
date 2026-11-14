@@ -233,6 +233,7 @@ public final class ParityRun {
             w.flush();
         }
         System.out.flush();
+        killChildren();
         Runtime.getRuntime().halt(0);
     }
 
@@ -242,7 +243,13 @@ public final class ParityRun {
         end.addProperty("why", why);
         w.println(GSON.toJson(end));
         w.flush();
+        killChildren();
         Runtime.getRuntime().halt(0);
+    }
+
+    /** The KM reasoner runs km as a child process; halt would leave it running. */
+    static void killChildren() {
+        ProcessHandle.current().descendants().forEach(ProcessHandle::destroyForcibly);
     }
 
     static long msSince(long nano) { return (System.nanoTime() - nano) / 1_000_000L; }
@@ -308,6 +315,7 @@ public final class ParityRun {
         boolean done = p.waitFor(timeout + 60L, TimeUnit.SECONDS);
         WorkerResult wr = new WorkerResult();
         if (!done) {
+            p.descendants().forEach(ProcessHandle::destroyForcibly);
             p.destroyForcibly();
             p.waitFor(10, TimeUnit.SECONDS);
             wr.end = "killed";

@@ -34,7 +34,7 @@ answers count as timeouts. `KM_THREADS=1` is set for the workers.
 Every method of `OWLReasoner` (OWL API 4.5.29) in these groups: metadata and lifecycle; `isConsistent`;
 `precomputeInferences` and `isPrecomputed` for every `InferenceType`; class hierarchy, equivalents,
 disjoint classes, satisfiability, instances for up to 200 classes (a seeded sample otherwise); the same
-for 20 generated anonymous class expressions (complement, conjunction, disjunction, some, all, inverse
+for 16 generated anonymous class expressions (complement, conjunction, disjunction, some, all, inverse
 some, min cardinality, has value, one-of, data some); object property hierarchy, inverses, disjoint,
 domains and ranges for named and inverse properties and the top and bottom property; data property
 hierarchy, domains and disjoint; types, same, different individuals; object and data property values;

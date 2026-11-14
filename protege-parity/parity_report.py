@@ -241,6 +241,14 @@ def main():
                 phase_ms[who][ph].append((name, ms))
     methods.sort()
     onts = [n for n, _ in runs]
+    # The same cells split by the kind of argument (named, anonymous expression, top/bottom, inverse).
+    cells2 = defaultdict(list)
+    for (m, n), lst in cells.items():
+        for c, v in lst:
+            tag = arg_tag(c["id"]) if m not in ("isEntailed", "isEntailmentCheckingSupported", "precomputeInferences",
+                                                 "isPrecomputed") and "(" in c["id"] else ""
+            cells2[(m + (" [" + tag.strip(" ()").replace(" argument", "") + "]" if tag else ""), n)].append((c, v))
+    methods2 = sorted({m for m, _ in cells2})
 
     def table_counts(mode):
         per_method = {m: Counter() for m in methods}
@@ -270,6 +278,21 @@ def main():
     gl, _ = score(allc_l)
     ga, _ = score(allc_a)
 
+    def table_counts2(mode):
+        per_method = {m: Counter() for m in methods2}
+        for (m, n), lst in cells2.items():
+            vs = [("differ_topbottom" if (v in DIFF and topbottom_only(c)) else v) for c, v in lst]
+            per_method[m][cell_kind(vs, mode)] += 1
+        return per_method
+
+    p2, p2a = table_counts2("strict"), table_counts2("adjusted")
+    t2c, t2a = Counter(), Counter()
+    for m in methods2:
+        t2c.update(p2[m])
+        t2a.update(p2a[m])
+    g2, tt2 = score(t2c)
+    g2a, _ = score(t2a)
+
     L = []
     L.append(f"# {a.title}\n")
     L.append(f"Ontologies: {len(onts)}. Method-ontology cells where HermiT answered or failed: {t}"
@@ -281,6 +304,8 @@ def main():
              f"Adjusted score, which also ignores differences that consist only of owl:Thing or owl:Nothing "
              f"(or the top and bottom properties) appearing in one answer and not the other: "
              f"{100.0 * ga / t:.1f}% ({ga} of {t}).\n")
+    L.append(f"Splitting each method by the kind of argument (named entity, anonymous class expression, top or bottom entity, inverse property expression) "
+             f"gives {tt2} cells and a strict score of **{100.0 * g2 / tt2:.1f}%** ({g2} cells), adjusted {100.0 * g2a / tt2:.1f}% ({g2a} cells).\n")
     L.append("A cell is one OWLReasoner method on one ontology; it counts for KM when KM agrees with HermiT on every "
              "call of that method (HermiT errors that KM answers are not held against KM), or when HermiT fails on "
              "the whole cell and KM answers. Settings: HermiT 1.4.3.456 with `ignoreUnsupportedDatatypes = true`, "
@@ -300,6 +325,23 @@ def main():
         L.append(f"| `{m}` | {c['agree']} | {c['differ']} | {c['differ'] - cl['differ']} | {cl['differ'] - ca['differ']} "
                  f"| {c['km_unsupported']} | {c['km_timeout']} | {c['hermit_failed_km_ok']} | {c['hermit_failed_km_fail']} "
                  f"| {c['hermit_timeout']} | {sc} |")
+    L.append("")
+
+    L.append("## Per method and argument kind\n")
+    L.append("Cells split by what the call was asked about, so that the answers for named entities are not hidden by the "
+             "anonymous expression or top and bottom queries of the same method. Only methods whose arguments vary are split.\n")
+    L.append("| Method [argument kind] | Agreed | Differed | of which only top/bottom | KM unsupported | KM timeout | HermiT failed (KM answers) | Both failed | HermiT timeout (excluded) | Score | Adjusted score |")
+    L.append("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+    for m in methods2:
+        c, ca = p2[m], p2a[m]
+        gd, tot = score(c)
+        gda, _ = score(ca)
+        if "[" not in m and not any(x.startswith(m + " [") for x in methods2):
+            continue
+        sc = f"{100.0 * gd / tot:.0f}%" if tot else "-"
+        sca = f"{100.0 * gda / tot:.0f}%" if tot else "-"
+        L.append(f"| `{m}` | {c['agree']} | {c['differ']} | {c['differ'] - ca['differ']} | {c['km_unsupported']} | {c['km_timeout']} "
+                 f"| {c['hermit_failed_km_ok']} | {c['hermit_failed_km_fail']} | {c['hermit_timeout']} | {sc} | {sca} |")
     L.append("")
 
     # Call-level table: the cell view hides how many single calls agree.
