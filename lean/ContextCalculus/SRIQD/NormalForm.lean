@@ -41,7 +41,8 @@ The design (section 3) asked for an exact count in every admissible
 pair; that fails for free datatypes outside the datatype map. The two
 directions above are what the characterisation (`SRIQD/Stars.lean`)
 uses: (upper) bounds the data neighbours read off a model, (lower)
-supplies values for the stars of a countermodel. Both are needed: with
+supplies values for the stars of a countermodel. Both are needed
+(`SRIQD/OracleExamples.lean` proves the two failures below): with
 a theory whose admissible pairs have three booleans but `card` says two,
 `A ⊑ ≥3 u.boolean` has a model while the stars say `A` is unsatisfiable;
 with a theory where one pair has two values of `τ₁` and none of `τ₂` and

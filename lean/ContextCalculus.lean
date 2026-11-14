@@ -62,6 +62,7 @@ import ContextCalculus.SRIQ.ABoxTests
 import ContextCalculus.SRIQ.Realization
 import ContextCalculus.SRIQD.NormalForm
 import ContextCalculus.SRIQD.Stars
+import ContextCalculus.SRIQD.OracleExamples
 import ContextCalculus.SRIQD.Procedure
 import ContextCalculus.SRIQD.Transitivity
 import ContextCalculus.SRIQD.ABox
