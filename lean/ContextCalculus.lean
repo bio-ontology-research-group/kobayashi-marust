@@ -324,3 +324,5 @@ import ContextCalculus.OWL.Datatypes.Tests
 import ContextCalculus.OWL.Datatypes.Cells
 import ContextCalculus.OWL.Datatypes.CellsSpec
 import ContextCalculus.OWL.Datatypes.CellsEval
+import ContextCalculus.OWL.Datatypes.Oracle
+import ContextCalculus.OWL.Datatypes.OracleTests
