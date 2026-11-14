@@ -320,6 +320,7 @@ import ContextCalculus.ObjectGuardRestriction
 import ContextCalculus.PolarityDefiners
 import ContextCalculus.OWL.Datatypes.Lexical
 import ContextCalculus.OWL.Datatypes.Map
+import ContextCalculus.OWL.Datatypes.FloatOrder
 import ContextCalculus.OWL.Datatypes.Tests
 import ContextCalculus.OWL.Datatypes.Cells
 import ContextCalculus.OWL.Datatypes.CellsSpec
