@@ -2015,7 +2015,13 @@ fn classify_with_evidence_inner(
             std::fs::write(rewritten.path(), rules)?;
             let _trusted = TrustedRewrite::register(rewritten.path());
             timing_mark("rule data variables rewritten as data restrictions");
-            return classify_with_evidence_mode(initial_cfg, rewritten.path(), retain_grouped_output);
+            let mut evidence = classify_with_evidence_mode(initial_cfg, rewritten.path(), retain_grouped_output)?;
+            let fresh = |name: &str| name.starts_with(crate::frontend::rule_data_atoms::NAMESPACE);
+            evidence.classification.subsumptions.retain(|[a, b]| !fresh(a) && !fresh(b));
+            evidence.classification.unsatisfiable.retain(|a| !fresh(a));
+            // The grouped form would still name the fresh classes.
+            evidence.grouped_subsumptions = None;
+            return Ok(evidence);
         }
     }
     timing_mark("second source check done");

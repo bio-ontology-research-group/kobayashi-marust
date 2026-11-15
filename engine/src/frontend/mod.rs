@@ -1119,9 +1119,6 @@ fn ofn_to_clauses_representation(
     // which it encodes exactly.
     let key_source = has_key::encode(text).map_err(parse::OutOfFragment)?;
     let text = key_source.as_ref();
-    // W8: a lone data variable of a rule body becomes a data restriction.
-    let rule_data_source = rule_data_atoms::encode(text).map_err(parse::OutOfFragment)?;
-    let text = rule_data_source.as_ref();
     let universal_source = if std::env::var_os("KM_NO_UNIVERSAL_ROLE_HUB").is_none() {
         universal_role::encode(text).map_err(parse::OutOfFragment)?
     } else {

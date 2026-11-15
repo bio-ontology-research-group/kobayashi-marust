@@ -7,9 +7,12 @@
 //! `DataPropertyAtom(p t ?v)`, with `p` a named data property, and otherwise
 //! only in `DataRangeAtom(Di ?v)` atoms of the body, is satisfied for a
 //! binding of `t` exactly when the value of `t` has some `p`-value in every
-//! `Di`, so those atoms are replaced by
-//! `ClassAtom(DataSomeValuesFrom(p D) t)` with `D` the intersection of the
-//! `Di` (`rdfs:Literal` when there is none). The rule is otherwise unchanged.
+//! `Di`, so those atoms are replaced by `ClassAtom(N t)` for a fresh class
+//! `N ≡ DataSomeValuesFrom(p D)`, with `D` the intersection of the `Di`
+//! (`rdfs:Literal` when there is none). The rule is otherwise unchanged.
+//! The fresh classes live in [`NAMESPACE`]; the classification removes
+//! every row that mentions one (`orchestrate`), so the extension is
+//! conservative and invisible.
 //! Any other occurrence of a data variable (in the head, a built-in, a second
 //! data property atom, a join) leaves the rule as it is, so it is handled or
 //! refused as before. Sources without such a variable are returned borrowed
@@ -19,6 +22,9 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 use super::sexpr::{tokens, Node, Parser};
+
+/// Namespace of the fresh classes. A source that mentions it is left as is.
+pub const NAMESPACE: &str = "urn:km:internal:rule-data#";
 
 struct Spans<'a> {
     text: &'a str,
@@ -91,7 +97,7 @@ fn variables_in<'a>(node: &Node<'a>, out: &mut Vec<&'a str>) {
 }
 
 /// The rewritten rule, or `None` when no data variable qualifies.
-fn rule<'a>(spans: &Spans<'a>, args: &[Node<'a>]) -> Result<Option<String>, String> {
+fn rule<'a>(spans: &Spans<'a>, args: &[Node<'a>], fresh: &mut usize) -> Result<Option<String>, String> {
     let annotations: Vec<&Node<'a>> = args.iter().filter(|a| a.head() == Some("Annotation")).collect();
     let logical: Vec<&Node<'a>> = args.iter().filter(|a| a.head() != Some("Annotation")).collect();
     let [Node::List("Body", body), Node::List("Head", head)] = logical.as_slice() else {
@@ -134,6 +140,7 @@ fn rule<'a>(spans: &Spans<'a>, args: &[Node<'a>]) -> Result<Option<String>, Stri
     }
     let mut replaced: BTreeMap<usize, String> = BTreeMap::new();
     let mut dropped: Vec<usize> = Vec::new();
+    let mut definitions: Vec<String> = Vec::new();
     for (v, atoms) in &property_atoms {
         if atoms.len() != 1 || other.get(v).copied().unwrap_or(0) != 0 {
             continue;
@@ -156,7 +163,12 @@ fn rule<'a>(spans: &Spans<'a>, args: &[Node<'a>]) -> Result<Option<String>, Stri
             [one] => one.to_string(),
             many => format!("DataIntersectionOf({})", many.join(" ")),
         };
-        replaced.insert(atoms[0], format!("ClassAtom(DataSomeValuesFrom({property} {range}) {subject})"));
+        let class = format!("<{NAMESPACE}c{}>", *fresh);
+        *fresh += 1;
+        definitions.push(format!(
+            "Declaration(Class({class})) EquivalentClasses({class} DataSomeValuesFrom({property} {range}))"
+        ));
+        replaced.insert(atoms[0], format!("ClassAtom({class} {subject})"));
         dropped.extend(range_atoms.get(v).into_iter().flatten().copied());
     }
     if replaced.is_empty() {
@@ -174,12 +186,17 @@ fn rule<'a>(spans: &Spans<'a>, args: &[Node<'a>]) -> Result<Option<String>, Stri
     let annotations: Vec<String> =
         annotations.iter().map(|a| spans.source(a).map(str::to_string)).collect::<Result<_, _>>()?;
     let prefix = if annotations.is_empty() { String::new() } else { format!("{} ", annotations.join(" ")) };
-    Ok(Some(format!("DLSafeRule({prefix}Body({}) Head({}))", atoms.join(" "), heads.join(" "))))
+    Ok(Some(format!(
+        "{} DLSafeRule({prefix}Body({}) Head({}))",
+        definitions.join(" "),
+        atoms.join(" "),
+        heads.join(" ")
+    )))
 }
 
 /// Rewrite every qualifying rule (see the module docs).
 pub fn encode(text: &str) -> Result<Cow<'_, str>, String> {
-    if !text.contains("DLSafeRule") || !text.contains("DataPropertyAtom")
+    if !text.contains("DLSafeRule") || !text.contains("DataPropertyAtom") || text.contains(NAMESPACE)
         || std::env::var_os("KM_NO_RULE_DATA_ATOMS").is_some()
     {
         return Ok(Cow::Borrowed(text));
@@ -193,13 +210,14 @@ pub fn encode(text: &str) -> Result<Cow<'_, str>, String> {
     }
     let spans = Spans { text };
     let mut edits: Vec<(usize, usize, String)> = Vec::new();
+    let mut fresh = 0usize;
     loop {
         match parser.peek() {
             None => return Err("rule data rewrite: unterminated Ontology".into()),
             Some(")") => break,
             Some(_) => {
                 if let Node::List(head @ "DLSafeRule", args) = parser.parse()? {
-                    if let Some(rewritten) = rule(&spans, &args)? {
+                    if let Some(rewritten) = rule(&spans, &args, &mut fresh)? {
                         let (start, end) = spans.list(head)?;
                         edits.push((start, end, rewritten));
                     }
@@ -233,7 +251,9 @@ mod tests {
     fn lone_data_variables_become_data_restrictions() {
         let out = rewritten("DLSafeRule(Body(DataPropertyAtom(:p Variable(<urn:x>) Variable(<urn:v>)) \
             DataRangeAtom(xsd:integer Variable(<urn:v>))) Head(ClassAtom(:C Variable(<urn:x>))))");
-        assert!(out.contains("DLSafeRule(Body(ClassAtom(DataSomeValuesFrom(:p xsd:integer) Variable(<urn:x>))) \
+        assert!(out.contains("Declaration(Class(<urn:km:internal:rule-data#c0>)) \
+            EquivalentClasses(<urn:km:internal:rule-data#c0> DataSomeValuesFrom(:p xsd:integer)) \
+            DLSafeRule(Body(ClassAtom(<urn:km:internal:rule-data#c0> Variable(<urn:x>))) \
             Head(ClassAtom(:C Variable(<urn:x>))))"), "{out}");
         let plain = rewritten("DLSafeRule(Body(DataPropertyAtom(:p Variable(<urn:x>) Variable(<urn:v>))) \
             Head(ClassAtom(:C Variable(<urn:x>))))");
