@@ -1,4 +1,5 @@
 import ContextCalculus.SRIQ.FastBasic
+import ContextCalculus.SRIQ.CBTypes
 
 /-!
 # Certificate check for the fast SHIQ procedure: array candidate sets (stage C1d)
@@ -401,6 +402,9 @@ structure CandA where
   /-- a hint for the branch covers: (context, type) ↦ (node, position of the
   node in the context's members); the check verifies every lookup -/
   idx : Std.HashMap (Nat × Array Nat) (Nat × Nat) := ∅
+  /-- a derivation for the two-sided route (`CBCert.lean`); empty for the
+  closure route -/
+  cert : Array CB.CStep := #[]
 
 def viewSpec (n m : Nat) (σ : Array Nat × Array Nat) : Spec n m := ⟨absLab m σ.1, absTy n σ.2⟩
 

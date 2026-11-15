@@ -3,6 +3,7 @@ import ContextCalculus.SRIQ.FastCheck
 import ContextCalculus.SRIQ.FastElimAProof
 import ContextCalculus.SRIQ.ElimMarkers
 import ContextCalculus.SRIQ.MergeNames
+import ContextCalculus.SRIQ.CBCert
 
 /-!
 # The checked fast SHIQ route (stage C1c)
@@ -87,7 +88,7 @@ theorem sriq_bit_rows (T : SRIQTranslation) {k : Nat}
       p.1 = (sriqRequest T k)[i] ∧
       (p.2 = none → ∀ (D : Type) [Nonempty D] (I : Interp D (Fin (T.conceptCount + k)) (Fin T.roleCount)),
         models I O' → ∀ x, ¬ I.c p.1 x) ∧
-      ∀ L, p.2 = some L → ∀ b, b ∈ L ↔ SRIQ.EntailsSub O' p.1 b)
+      ∀ L, p.2 = some L → ∀ b ∈ sriqRequest T k, (b ∈ L ↔ SRIQ.EntailsSub O' p.1 b))
     (i j : Nat) (hi : i < T.named.length) (hj : j < T.named.length) :
     OWLAnswer.bit { named := T.named, rows := sriqRows T cls } i j = true ↔
       SRIQ.EntailsSub O' (Fin.castAdd k ⟨i, Nat.lt_of_lt_of_le hi T.hnamed⟩)
@@ -110,7 +111,10 @@ theorem sriq_bit_rows (T : SRIQTranslation) {k : Nat}
   | some L =>
     simp only [sriRowN, hga, SparseRow.bit, Bool.false_or, List.contains_iff_mem, List.mem_filter,
       List.mem_map, decide_eq_true_eq]
-    rw [← hsome L hga]
+    have hjr : Fin.castAdd k ⟨j, hjC⟩ ∈ sriqRequest T k := by
+      simp only [sriqRequest, List.mem_ofFn]
+      exact ⟨⟨j, hj⟩, rfl⟩
+    rw [← hsome L hga _ hjr]
     constructor
     · rintro ⟨⟨b, hb, hbj⟩, -⟩
       have : Fin.castAdd k ⟨j, hjC⟩ = b := Fin.ext (by simp [hbj])
@@ -128,9 +132,13 @@ def owlSHIQFast
       if isSHIQFastB T.ontology then
         let E := SRIQ.Proc.encTransQ T.ontology
         let E2 := SRIQ.Merge.mergeChecked (SRIQ.Elim.elimChecked E.2 T.named.length) T.named.length
-        match SRIQ.Fast.fastClassifyA E2 (sriqRequest T E.1) (gen E2 (sriqRequest T E.1)) with
+        let C := gen E2 (sriqRequest T E.1)
+        match SRIQ.CB.cbClassify E2 (sriqRequest T E.1) C with
         | some cls => some { named := T.named, rows := sriqRows T cls }
-        | none => none
+        | none =>
+          match SRIQ.Fast.fastClassifyA E2 (sriqRequest T E.1) C with
+          | some cls => some { named := T.named, rows := sriqRows T cls }
+          | none => none
       else none
 
 /-- **Every answer of the checked route is exact** under the OWL 2 direct
@@ -149,8 +157,22 @@ theorem owlSHIQFast_sound
     split at h
     · next hS =>
       dsimp only at h
-      split at h
-      · next cls hcls =>
+      have hA : SRIQ.IsALCHIQ (SRIQ.Merge.mergeChecked (SRIQ.Elim.elimChecked
+          (SRIQ.Proc.encTransQ T.ontology).2 T.named.length) T.named.length) :=
+        SRIQ.Merge.isALCHIQ_mergeChecked
+          (SRIQ.Elim.isALCHIQ_elimChecked (SRIQ.Proc.encTransQ_isALCHIQ T.ontology))
+      have hfin : ∀ {cls}, (∀ i' (hi' : i' < (sriqRequest T (SRIQ.Proc.encTransQ T.ontology).1).length),
+          ∃ p, cls[i']? = some p ∧ p.1 = (sriqRequest T (SRIQ.Proc.encTransQ T.ontology).1)[i'] ∧
+            (p.2 = none → ∀ (D : Type) [Nonempty D] (I : Interp D _ (Fin T.roleCount)),
+              models I (SRIQ.Merge.mergeChecked (SRIQ.Elim.elimChecked (SRIQ.Proc.encTransQ T.ontology).2
+                T.named.length) T.named.length) → ∀ x, ¬ I.c p.1 x) ∧
+            ∀ L, p.2 = some L → ∀ b ∈ sriqRequest T (SRIQ.Proc.encTransQ T.ontology).1,
+              (b ∈ L ↔ SRIQ.EntailsSub (SRIQ.Merge.mergeChecked (SRIQ.Elim.elimChecked
+                (SRIQ.Proc.encTransQ T.ontology).2 T.named.length) T.named.length) p.1 b)) →
+          (some { named := T.named, rows := sriqRows T cls } = some a) →
+          a.named = requested.eraseDups ∧ ∀ i j (hi : i < a.named.length) (hj : j < a.named.length),
+            (a.bit i j = true ↔ OWL.EntailsSub O a.named[i] a.named[j]) := by
+        intro cls hrow h
         simp only [Option.some.injEq] at h
         subst h
         refine ⟨translateSRIQ_named hT, ?_⟩
@@ -161,14 +183,22 @@ theorem owlSHIQFast_sound
             (by simpa using hj),
           ← SRIQ.Merge.entailsSub_mergeChecked (bound := T.named.length) (by simpa using hi)
             (by simpa using hj)]
-        refine sriq_bit_rows T (fun i' hi' => ?_) i j hi hj
-        obtain ⟨p, hp, hp1⟩ := SRIQ.Fast.fastClassifyA_get hcls hi'
-        obtain ⟨-, hall⟩ := SRIQ.Fast.fastClassifyA_spec
-          (SRIQ.Merge.isALCHIQ_mergeChecked
-            (SRIQ.Elim.isALCHIQ_elimChecked (SRIQ.Proc.encTransQ_isALCHIQ T.ontology))) hcls
+        exact sriq_bit_rows T hrow i j hi hj
+      split at h
+      · next cls hcls =>
+        refine hfin (fun i' hi' => ?_) h
+        obtain ⟨hget, hall⟩ := SRIQ.CB.cbClassify_spec hA hcls
+        obtain ⟨p, hp, hp1⟩ := hget i' hi'
         obtain ⟨-, hn, hs⟩ := hall p (List.mem_of_getElem? hp)
         exact ⟨p, hp, hp1, hn.1, hs⟩
-      · exact absurd h (by simp)
+      · split at h
+        · next cls hcls =>
+          refine hfin (fun i' hi' => ?_) h
+          obtain ⟨p, hp, hp1⟩ := SRIQ.Fast.fastClassifyA_get hcls hi'
+          obtain ⟨-, hall⟩ := SRIQ.Fast.fastClassifyA_spec hA hcls
+          obtain ⟨-, hn, hs⟩ := hall p (List.mem_of_getElem? hp)
+          exact ⟨p, hp, hp1, hn.1, fun L hL b _ => hs L hL b⟩
+        · exact absurd h (by simp)
     · exact absurd h (by simp)
 
 end ContextCalculus.OWLFrontend

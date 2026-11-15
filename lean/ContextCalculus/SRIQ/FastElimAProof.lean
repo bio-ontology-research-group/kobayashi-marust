@@ -5,7 +5,7 @@ import ContextCalculus.SRIQ.FastCheck
 /-!
 # Certificate check for the fast SHIQ procedure: the worklist elimination is exact (stage C1d)
 
-On an array candidate set whose view satisfies `ClosedP`:
+On an array candidate set whose view satisfies `WitP` (implied by `ClosedP`):
 
 - `suppF_iff`: the support test on signatures (`suppF`) is the support
   condition `SuppP` of `FastSound.lean`;
@@ -522,10 +522,22 @@ theorem limOK_iff (hW : WF n m C) (i : Nat) :
   simp only [mkNodeE, List.all_eq_true, decide_eq_true_eq, limsOK, view_nd_ty, view_key_ctx,
     ← uppAtA_eq _ (hW.ty i), pcBA_eq (hW.lab _) (hW.pi _)]
 
-theorem bk_sub_iff (hC : ClosedP (mkIx O) (C.view n m) req) (hW : WF n m C) {i j : Nat}
+/-- The node, entry and back-set parts of the closure conditions: all that
+the worklist elimination needs (`aliveFast_iff`). A candidate set that is
+only a witness for the live types (stage C1f) satisfies these without the
+rules R1 to R6. -/
+def WitP (ix : Ix n m) (U : Cand n m) : Prop :=
+  (∀ i < U.nodes.size, nodeOK ix U i ∧ (∀ e ∈ (nd U i).pool, entryOK ix U (nd U i).ty e) ∧ True) ∧
+  ∀ j < U.nodes.size, bkOf U j = backOf ix U j
+
+theorem ClosedP.witP {ix : Ix n m} {U : Cand n m} {req : List (Fin n)} (h : ClosedP ix U req) :
+    WitP ix U :=
+  ⟨fun i hi => ⟨(h.2.2.2.1 i hi).1, (h.2.2.2.1 i hi).2.1, trivial⟩, h.2.2.2.2.1⟩
+
+theorem bk_sub_iff (hC : WitP (mkIx O) (C.view n m)) (hW : WF n m C) {i j : Nat}
     (hj : j < C.nodes.size) :
     (bkA C j).all (bsA (ndA C i).ty) = true ↔ backOf (mkIx O) (C.view n m) j ⊆ (nd (C.view n m) i).ty := by
-  rw [← hC.2.2.2.2.1 j (by simpa using hj), bkOf_view, view_nd_ty]
+  rw [← hC.2 j (by simpa using hj), bkOf_view, view_nd_ty]
   constructor
   · intro h y hy
     rw [mem_absTy] at hy ⊢
@@ -537,10 +549,10 @@ theorem bk_sub_iff (hC : ClosedP (mkIx O) (C.view n m) req) (hW : WF n m C) {i j
     exact (bsA_iff (hW.ty i)).2 (mem_absTy.1 this)
 
 /-- **The support test on signatures is exact.** -/
-theorem suppF_iff (hC : ClosedP (mkIx O) (C.view n m) req) (hW : WF n m C) {i : Nat}
+theorem suppF_iff (hC : WitP (mkIx O) (C.view n m)) (hW : WF n m C) {i : Nat}
     (hi : i < C.nodes.size) (A : Array Bool) :
     suppF (mkNodeE (mkIx O) C i) A = true ↔ SuppP O (C.view n m) (fun j => A[j]? = some true) i := by
-  have hNC : NodeClosed (mkIx O) (C.view n m) i := hC.2.2.2.1 i (by simpa using hi)
+  have hNC := hC.1 i (by simpa using hi)
   set E := mkNodeE (mkIx O) C i with hE
   set ss := dedupKey id ((E.cands.filter fun p => A[p.1]?.getD false).map (·.2.2)) with hss
   have hcount : ∀ c : Array Nat × Array Nat, (∃ e ∈ (ndA C i).pool, ∃ j, c = (e.lab, (ndA C j).ty)) →
@@ -732,9 +744,9 @@ theorem es_get (i : Nat) (hi : i < C.nodes.size) :
     (nodeEs (mkIx O) C)[i]?.getD default = mkNodeE (mkIx O) C i := by
   simp [nodeEs, hi]
 
-theorem mem_parentsOf (hC : ClosedP (mkIx O) (C.view n m) req) {j : Nat} (hj : j < C.nodes.size)
+theorem mem_parentsOf (hC : WitP (mkIx O) (C.view n m)) {j : Nat} (hj : j < C.nodes.size)
     {e : EntryA} (he : e ∈ (ndA C j).pool) : j ∈ getL (parentsOf C) e.kid := by
-  have hNC : NodeClosed (mkIx O) (C.view n m) j := hC.2.2.2.1 j (by simpa using hj)
+  have hNC := hC.1 j (by simpa using hj)
   have hk : e.kid < C.keys.size := by
     have := (hNC.2.1 (viewEntry n m e) (by rw [view_nd_pool]; exact List.mem_map.2 ⟨e, he, rfl⟩)).1
     simpa [viewEntry] using this
@@ -742,7 +754,7 @@ theorem mem_parentsOf (hC : ClosedP (mkIx O) (C.view n m) req) {j : Nat} (hj : j
   exact ⟨(e.kid, j), List.mem_flatMap.2 ⟨j, List.mem_range.2 hj, List.mem_map.2 ⟨e, he, rfl⟩⟩, rfl⟩
 
 /-- A node whose context is no child context of `j` does not support `j`. -/
-theorem supp_drop (hC : ClosedP (mkIx O) (C.view n m) req) {A : Array Bool} {i j : Nat}
+theorem supp_drop (hC : WitP (mkIx O) (C.view n m)) {A : Array Bool} {i j : Nat}
     (hs : SuppP O (C.view n m) (AP A) j) (hnot : j ∉ getL (parentsOf C) (ndA C i).ctx) :
     SuppP O (C.view n m) (AP (A.set! i false)) j := by
   obtain ⟨h1, h2, E, hE, h3, h4⟩ := hs
@@ -769,7 +781,7 @@ theorem ap_lt {A : Array Bool} {j : Nat} (h : AP A j) : j < A.size := by
   unfold AP at h
   by_contra hc; rw [Array.getElem?_eq_none (by omega)] at h; simp at h
 
-theorem elimW_spec (hC : ClosedP (mkIx O) (C.view n m) req) (hW : WF n m C) :
+theorem elimW_spec (hC : WitP (mkIx O) (C.view n m)) (hW : WF n m C) :
     ∀ (A Q : Array Bool) (q nxt : List Nat), WInv O C A Q q nxt →
       (∀ j, AP (elimW C (nodeEs (mkIx O) C) (parentsOf C) A Q q nxt) j →
         SuppP O (C.view n m) (AP (elimW C (nodeEs (mkIx O) C) (parentsOf C) A Q q nxt)) j) ∧
@@ -873,7 +885,7 @@ decreasing_by
     | (apply Prod.Lex.left; apply trues_set_lt; simp_all)
 
 /-- **The worklist elimination keeps exactly the live nodes of the view.** -/
-theorem aliveFast_iff (hC : ClosedP (mkIx O) (C.view n m) req) (hW : WF n m C) (i : Nat) :
+theorem aliveFast_iff (hC : WitP (mkIx O) (C.view n m)) (hW : WF n m C) (i : Nat) :
     (aliveFast (mkIx O) C)[i]? = some true ↔ Al O (C.view n m) i := by
   have hinit : WInv O C (Array.replicate C.nodes.size true) (Array.replicate C.nodes.size true)
       (List.range C.nodes.size).reverse [] := by
@@ -962,7 +974,7 @@ theorem rowOfA_eq (hW : WF n m C) {A A' : Array Bool} (hA : ∀ i : Nat, A'[i]?.
   · rw [if_neg hl, if_neg (fun h => hl (absLab_eq_empty.1 h))]
     rfl
 
-theorem fastRowsA_eq (hC : ClosedP (mkIx O) (C.view n m) req) (hW : WF n m C) :
+theorem fastRowsA_eq (hC : WitP (mkIx O) (C.view n m)) (hW : WF n m C) :
     fastRowsA (mkIx O) C req = fastRows (mkIx O) (C.view n m) req := by
   unfold fastRowsA fastRows
   rw [view_roots]
@@ -988,7 +1000,7 @@ theorem fastClassifyA_eq {rows : List (Fin n × Option (List (Fin n)))}
     unfold fastClassify
     dsimp only
     have hb : closedB (mkIx O) (C.view n m) req = true := decide_eq_true hC
-    rw [if_pos hb, fastRowsA_eq hC hW]
+    rw [if_pos hb, fastRowsA_eq hC.witP hW]
   · simp at h
 
 /-- **The fast checked route is exact.** -/

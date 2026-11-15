@@ -3,6 +3,7 @@ import ContextCalculus.OWLFrontend.ReferenceReadout
 import SRIQFast.Core
 import SRIQFast.Brute
 import SRIQFast.ToCand
+import SRIQFast.CB
 import ContextCalculus.OWLFrontend.SRIQFastRoute
 import ContextCalculus.SRIQ.ElimMarkers
 import ContextCalculus.SRIQ.MergeNames
@@ -346,6 +347,77 @@ def runFast {n m : Nat} (E : SRIQ.Ontology (Fin n) (Fin m)) (req : Array Nat)
     IO.eprintln s!"checked: elim_readout_ms={c3-c2} same_as_prototype={same} checked_total_ms={c3-c0}"
     return some { rows := crows, aborted := false, checked := some true }
 
+/-- The consequence-based saturation of stage C1f (unproved rows). -/
+def runCB {n m : Nat} (E : SRIQ.Ontology (Fin n) (Fin m)) (req : Array Nat) (reqF : List (Fin n)) (checked : Bool := false) : IO (Option Result) := do
+  match toQC E with
+  | .error e => IO.eprintln s!"declined: {e}"; return none
+  | .ok cls =>
+    let t0 ← IO.monoMsNow
+    let budget := ((← IO.getEnv "KM_SRIQF_CBMS").bind String.toNat?).getD 5000
+    let r ← CBGen.saturate n m cls req (deadline := (← IO.monoMsNow) + budget)
+    let t1 ← IO.monoMsNow
+    let nItems := r.st.ctxs.foldl (fun a c => a + c.itemLog.size) 0
+    IO.eprintln s!"cb: steps={r.steps.size} ctxs={r.st.ctxs.size} items={nItems} groups={r.st.groups.size} combcut={r.st.combCut} aborted={r.st.aborted} ms={t1-t0}"
+    if r.st.aborted then return (if checked then none else some { rows := #[], aborted := true })
+    if (← IO.getEnv "KM_SRIQF_CBDUMP") == some "1" then
+      for h : i in [0:r.steps.size] do
+        let st := r.steps[i]
+        IO.eprintln s!"step {i}: {repr st.rule} L={st.c.L} P={st.c.P} B={st.c.B} H={st.c.H} Q={st.c.Q}"
+    let cbRows := CBGen.rows r req
+    if (← IO.getEnv "KM_SRIQF_CBWIT") != some "0" then
+      let W := CBGen.mkWIx (CBGen.mkIx n m cls) r.st (req.foldl (fun a x => max a (x + 1)) 0)
+      let wmax := ((← IO.getEnv "KM_SRIQF_WITMAX").bind String.toNat?).getD 60000
+      let (C, cut) ← IO.lazyPure fun _ => CBGen.witness W r.st req wmax
+      let t2 ← IO.monoMsNow
+      IO.eprintln s!"cbwit: ctxs={C.keys.size} nodes={C.nodes.size} cut={cut} ms={t2-t1}"
+      if cut && checked then
+        IO.eprintln "cbroute: declined witness_cut"
+        return none
+      let ix ← IO.lazyPure fun _ => ContextCalculus.SRIQ.Fast.mkIx E
+      let wrows ← IO.lazyPure fun _ => certRows (ContextCalculus.SRIQ.Fast.fastRowsA ix C reqF)
+      let t3 ← IO.monoMsNow
+      -- the two sides meet on the requested names
+      let mut bad := 0
+      let mut badEx : List String := []
+      for i in [0:cbRows.size] do
+        let (a, d) := cbRows[i]!
+        match d, (wrows[i]?.map (·.2)).join with
+        | none, _ => pure ()
+        | some ds, some ws =>
+          let extra := ws.filter fun b => b < reqF.length && !mem ds b
+          if !extra.isEmpty then
+            bad := bad + 1
+            if badEx.length < 5 then badEx := s!"{a}: witness holds {extra.toList.take 5}" :: badEx
+        | some _, none =>
+          bad := bad + 1
+          if badEx.length < 5 then badEx := s!"{a}: no live witness root" :: badEx
+      let alive := (ContextCalculus.SRIQ.Fast.aliveFast ix C).toList.count true
+      IO.eprintln s!"cbwit: alive={alive} rows_ms={t3-t2} unmet_rows={bad} {badEx}"
+      if checked then
+        let c0 ← IO.monoMsNow
+        let C := { C with cert := r.steps }
+        let res ← IO.lazyPure fun _ => ContextCalculus.SRIQ.CB.cbClassify E reqF C
+        let c1 ← IO.monoMsNow
+        match res with
+        | some rs =>
+          IO.eprintln s!"cbroute: accepted ms={c1 - c0}"
+          return some { rows := certRows rs, aborted := false, checked := some true }
+        | none =>
+          let okc ← IO.lazyPure fun _ => ContextCalculus.SRIQ.CB.checkCert (ContextCalculus.SRIQ.Fast.mkIxF E ix) E.toArray r.steps
+          let okw ← IO.lazyPure fun _ => ContextCalculus.SRIQ.CB.witB ix (ContextCalculus.SRIQ.Fast.mkIxF E ix) C reqF
+          IO.eprintln s!"cbroute: declined cert={okc} wit={okw} ms={(← IO.monoMsNow) - c0}"
+          if !okc then
+            let ixf := ContextCalculus.SRIQ.Fast.mkIxF E ix
+            let OA := E.toArray
+            let mut shown := 0
+            for h : i in [0:r.steps.size] do
+              let st := r.steps[i]
+              if shown < 3 && !ContextCalculus.SRIQ.CB.ruleOK ixf OA r.steps i st.c st.rule then
+                shown := shown + 1
+                IO.eprintln s!"cbbad: step {i}: {repr st.rule} L={st.c.L} P={st.c.P} B={st.c.B} H={st.c.H} Q={st.c.Q}"
+          return none
+    return some { rows := cbRows, aborted := false }
+
 /-- The rows of `classifyQO` as `(name, none | subsumers)`. -/
 def refRows {n m : Nat} (E : SRIQ.Ontology (Fin n) (Fin m)) (req : List (Fin n)) :
     Array (Nat × Option Ty) :=
@@ -413,7 +485,11 @@ def mainSriq (path : String) (checkedArg : Bool := false) : IO UInt32 := do
   let E2 := if reqList.isNone && (← envFlag "KM_SRIQF_MERGE" true) then
     SRIQ.Merge.mergeChecked E2 nreq else E2
   if E2.length != E.2.length then IO.eprintln s!"elim: clauses={E.2.length}->{E2.length}"
-  let some res ← runFast E2 (req.map (·.val)).toArray req checked | return 3
+  let cb ← envFlag "KM_SRIQF_CB" false
+  let r0 ← if cb then runCB E2 (req.map (·.val)).toArray req checked else pure none
+  let some res ← (match r0 with
+    | some r => pure (some r)
+    | none => if cb && !checked then pure none else runFast E2 (req.map (·.val)).toArray req checked) | return 3
   if res.aborted then IO.println "aborted"; return 4
   if res.checked == some false then IO.println "declined: closedB"; return 3
   let showRows (rs : Array (Nat × Option Ty)) (tag : String) : IO Unit := do
@@ -523,7 +599,11 @@ def mainOfn (path : String) (checkedArg : Bool) : IO UInt32 := do
           dumpSriq dp (T.conceptCount + E.1) T.roleCount EO T.named.length
           IO.eprintln s!"dumped {dp}"
         let checked := checkedArg || (← envFlag "KM_SRIQF_CHECKED" false)
-        let some res ← runFast EO (req.map (·.val)).toArray req checked | return 3
+        let cb ← envFlag "KM_SRIQF_CB" false
+        let r0 ← if cb then runCB EO (req.map (·.val)).toArray req checked else pure none
+        let some res ← (match r0 with
+          | some r => pure (some r)
+          | none => if cb && !checked then pure none else runFast EO (req.map (·.val)).toArray req checked) | return 3
         if res.aborted then IO.println "aborted"; return 4
         if res.checked == some false then IO.println "declined: closedB"; return 3
         let named := T.named.length
