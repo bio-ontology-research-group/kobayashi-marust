@@ -240,18 +240,19 @@ end IdxG
 
 def encChainF (O : Ontology (Fin n) (Fin m)) : Ontology (Fin (n + kC O)) (Fin m) :=
   let P := pairsP O
+  let k := P.length
   let tab := mkTab O
   let rs := rules O
   let hm := Std.HashMap.ofList tab
   let sf := succsT rs (leH hm)
   let mp := idxMapG P
   let nm : Pair n m → Option (Fin (n + kC O)) := fun p =>
-    if h : (mp[p]?).getD P.length < P.length then some (Fin.natAdd n ⟨_, h⟩) else none
-  O.filterMap (liftC P.length) ++ P.zipIdx.flatMap fun pj =>
-    if h : pj.2 < P.length then
+    if h : (mp[p]?).getD k < k then some (Fin.natAdd n ⟨_, h⟩) else none
+  O.filterMap (liftC k) ++ P.zipIdx.flatMap fun pj =>
+    if h : pj.2 < k then
       let X : Fin (n + kC O) := Fin.natAdd n ⟨pj.2, h⟩
-      (if pj.1.2 = [(pj.1.1.2.1, false)] then [.gci [Fin.castAdd P.length pj.1.1.1] [X]] else []) ++
-      (if pj.1.2 = [] then [.gci [X] [Fin.castAdd P.length pj.1.1.2.2]] else []) ++
+      (if pj.1.2 = [(pj.1.1.2.1, false)] then [.gci [Fin.castAdd k pj.1.1.1] [X]] else []) ++
+      (if pj.1.2 = [] then [.gci [X] [Fin.castAdd k pj.1.1.2.2]] else []) ++
       (sf pj.1.2).filterMap (fun lp => (nm (pj.1.1, lp.2)).map fun Y =>
         match lp.1 with
         | some R => .allRight X R Y
