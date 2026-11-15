@@ -1,0 +1,342 @@
+ore_ont_10026	0	accepted 0.15 
+ore_ont_10080	3	not recognised: not an OWL SROIQ(D) knowledge base (first: IrreflexiveObjectProperty) Command exited with non-zero status 3 0.20 
+ore_ont_10320	0	accepted 0.15 
+ore_ont_10321	0	accepted 0.09 
+ore_ont_10242	0	accepted 5.72 
+ore_ont_10006	0	accepted 16.78 
+ore_ont_10391	0	accepted 20.46 
+ore_ont_10517	0	accepted 0.16 
+ore_ont_10571	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.54 
+ore_ont_10621	0	accepted 3.32 
+ore_ont_10702	134	libc++abi: terminating due to uncaught exception of type std::bad_alloc: std::bad_alloc Command terminated by signal 6 0.01 
+ore_ont_10749	0	accepted 1.80 
+ore_ont_10754	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 1.68 
+ore_ont_10838	124	Command exited with non-zero status 124 60.86 
+ore_ont_10860	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.10 
+ore_ont_10481	0	accepted 6.43 
+ore_ont_10908	3	not recognised: not an OWL SROIQ(D) knowledge base (first: SubClassOf) Command exited with non-zero status 3 0.08 
+ore_ont_10952	0	accepted 2.14 
+ore_ont_11016	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.10 
+ore_ont_10568	124	Command exited with non-zero status 124 60.65 
+ore_ont_11005	0	accepted 18.56 
+ore_ont_10929	124	Command exited with non-zero status 124 60.05 
+ore_ont_11203	0	accepted 0.26 
+ore_ont_11270	0	accepted 3.19 
+ore_ont_11305	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 10.24 
+ore_ont_10949	0	accepted 44.17 
+ore_ont_11477	0	accepted 0.12 
+ore_ont_11592	0	accepted 0.10 
+ore_ont_10926	124	Command exited with non-zero status 124 60.34 
+ore_ont_11647	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.82 
+ore_ont_11694	0	accepted 0.14 
+ore_ont_1123	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 52.19 
+ore_ont_11895	0	accepted 0.08 
+ore_ont_11378	124	Command exited with non-zero status 124 60.00 
+ore_ont_11457	124	Command exited with non-zero status 124 60.01 
+ore_ont_12084	0	accepted 0.29 
+ore_ont_12043	0	accepted 5.61 
+ore_ont_1199	124	Command exited with non-zero status 124 60.56 
+ore_ont_12253	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.47 
+ore_ont_12270	0	accepted 0.11 
+ore_ont_12152	0	accepted 6.02 
+ore_ont_12342	0	accepted 0.13 
+ore_ont_12219	0	accepted 5.85 
+ore_ont_12174	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 6.79 
+ore_ont_12325	0	accepted 1.27 
+ore_ont_12451	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.12 
+ore_ont_12566	0	accepted 0.11 
+ore_ont_12698	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 1.73 
+ore_ont_12925	0	accepted 0.23 
+ore_ont_12916	0	accepted 1.66 
+ore_ont_13035	0	accepted 2.60 
+ore_ont_13077	3	datatypes: a data range outside the supported sub-theory of the OWL 2 datatype map Command exited with non-zero status 3 0.24 
+ore_ont_13113	0	accepted 0.46 
+ore_ont_13132	0	accepted 0.11 
+ore_ont_12743	0	accepted 20.90 
+ore_ont_13153	0	accepted 1.22 
+ore_ont_13178	0	accepted 5.48 
+ore_ont_13052	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 25.19 
+ore_ont_12191	124	Command exited with non-zero status 124 60.01 
+ore_ont_13299	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 2.40 
+ore_ont_13230	0	accepted 18.87 
+ore_ont_13336	0	accepted 3.76 
+ore_ont_13383	0	accepted 0.16 
+ore_ont_13404	0	accepted 0.19 
+ore_ont_1342	0	accepted 0.10 
+ore_ont_13233	0	accepted 18.89 
+ore_ont_1340	0	accepted 3.81 
+ore_ont_13483	0	accepted 0.13 
+ore_ont_13545	3	not recognised: not an OWL SROIQ(D) knowledge base (first: IrreflexiveObjectProperty) Command exited with non-zero status 3 0.10 
+ore_ont_13584	0	accepted 1.26 
+ore_ont_13621	0	accepted 5.82 
+ore_ont_13646	0	accepted 0.30 
+ore_ont_13737	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.13 
+ore_ont_13762	3	not recognised: not an OWL SROIQ(D) knowledge base (first: IrreflexiveObjectProperty) Command exited with non-zero status 3 0.11 
+ore_ont_13799	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.12 
+ore_ont_13805	0	accepted 0.10 
+ore_ont_13837	0	accepted 0.34 
+ore_ont_13859	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.47 
+ore_ont_13872	0	accepted 0.77 
+ore_ont_13898	0	accepted 0.18 
+ore_ont_13928	0	accepted 17.91 
+ore_ont_13937	0	accepted 7.66 
+ore_ont_13954	0	accepted 0.10 
+ore_ont_1397	0	accepted 0.13 
+ore_ont_13991	0	accepted 3.10 
+ore_ont_14191	0	accepted 1.76 
+ore_ont_12898	124	Command exited with non-zero status 124 60.35 
+ore_ont_14194	0	accepted 5.69 
+ore_ont_14285	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.27 
+ore_ont_13526	0	accepted 28.57 
+ore_ont_14334	0	accepted 0.14 
+ore_ont_14348	0	accepted 0.11 
+ore_ont_14450	0	accepted 3.72 
+ore_ont_14551	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 3.22 
+ore_ont_1461	0	accepted 0.15 
+ore_ont_1481	0	accepted 1.11 
+ore_ont_14818	0	accepted 1.70 
+ore_ont_14883	0	accepted 0.17 
+ore_ont_14860	0	accepted 2.77 
+ore_ont_1469	0	accepted 5.56 
+ore_ont_14924	0	accepted 0.09 
+ore_ont_14931	0	accepted 0.08 
+ore_ont_14981	0	accepted 0.12 
+ore_ont_15030	0	accepted 0.37 
+ore_ont_15058	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.25 
+ore_ont_13708	124	Command exited with non-zero status 124 60.01 
+ore_ont_1478	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 19.55 
+ore_ont_15226	0	accepted 18.07 
+ore_ont_15291	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.53 
+ore_ont_15297	0	accepted 1.15 
+ore_ont_15413	0	accepted 0.24 
+ore_ont_155	0	accepted 0.15 
+ore_ont_15575	0	accepted 0.26 
+ore_ont_1533	0	accepted 5.75 
+ore_ont_15596	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.58 
+ore_ont_15475	0	accepted 5.42 
+ore_ont_15667	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.09 
+ore_ont_15672	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.13 
+ore_ont_15615	0	accepted 1.81 
+ore_ont_15680	0	accepted 2.33 
+ore_ont_15753	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.15 
+ore_ont_15687	0	accepted 11.65 
+ore_ont_15860	0	accepted 0.12 
+ore_ont_15871	0	accepted 0.77 
+ore_ont_15655	0	accepted 14.14 
+ore_ont_1509	124	Command exited with non-zero status 124 60.01 
+ore_ont_16115	0	accepted 0.10 
+ore_ont_16191	0	accepted 0.17 
+ore_ont_16197	0	accepted 0.10 
+ore_ont_15803	0	accepted 16.70 
+ore_ont_16255	0	accepted 0.27 
+ore_ont_16124	0	accepted 5.48 
+ore_ont_16303	0	accepted 0.77 
+ore_ont_16371	0	accepted 0.16 
+ore_ont_16372	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 3.42 
+ore_ont_16420	124	Command exited with non-zero status 124 60.01 
+ore_ont_16315	124	Command exited with non-zero status 124 60.46 
+ore_ont_16481	0	accepted 0.11 
+ore_ont_15846	124	Command exited with non-zero status 124 60.58 
+ore_ont_1579	124	Command exited with non-zero status 124 60.54 
+ore_ont_16535	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.15 
+ore_ont_16630	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.09 
+ore_ont_16666	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 11.01 
+ore_ont_16708	0	accepted 0.12 
+ore_ont_1672	0	accepted 1.05 
+ore_ont_16462	0	accepted 22.01 
+ore_ont_16759	0	accepted 5.73 
+ore_ont_1705	0	accepted 0.11 
+ore_ont_178	0	accepted 0.12 
+ore_ont_1784	0	accepted 0.18 
+ore_ont_1823	0	accepted 0.14 
+ore_ont_16184	124	Command exited with non-zero status 124 60.02 
+ore_ont_185	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.14 
+ore_ont_1853	0	accepted 0.31 
+ore_ont_1931	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.20 
+ore_ont_1886	124	Command exited with non-zero status 124 60.52 
+ore_ont_1958	0	accepted 0.12 
+ore_ont_2066	0	accepted 0.11 
+ore_ont_1965	0	accepted 5.54 
+ore_ont_2182	0	accepted 0.12 
+ore_ont_2142	0	accepted 4.24 
+ore_ont_1938	0	accepted 21.98 
+ore_ont_1673	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 59.68 
+ore_ont_2313	0	accepted 0.76 
+ore_ont_2318	0	accepted 1.89 
+ore_ont_2453	0	accepted 0.24 
+ore_ont_2488	0	accepted 0.15 
+ore_ont_2526	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.09 
+ore_ont_2604	0	accepted 1.48 
+ore_ont_2744	0	accepted 0.10 
+ore_ont_2703	0	accepted 1.53 
+ore_ont_2677	0	accepted 1.90 
+ore_ont_260	0	accepted 5.46 
+ore_ont_2826	0	accepted 0.14 
+ore_ont_3010	0	accepted 0.14 
+ore_ont_3053	0	accepted 0.11 
+ore_ont_304	0	accepted 0.18 
+ore_ont_3060	0	accepted 0.32 
+ore_ont_257	0	accepted 18.53 
+ore_ont_3156	0	accepted 0.12 
+ore_ont_2577	0	accepted 17.14 
+ore_ont_3080	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 3.81 
+ore_ont_2792	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 13.01 
+ore_ont_2632	0	accepted 16.74 
+ore_ont_3250	0	accepted 0.10 
+ore_ont_3301	0	accepted 0.27 
+ore_ont_3381	0	accepted 1.70 
+ore_ont_3411	0	accepted 0.10 
+ore_ont_3282	0	accepted 17.23 
+ore_ont_3503	0	accepted 0.58 
+ore_ont_3504	0	accepted 0.11 
+ore_ont_3262	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 20.16 
+ore_ont_3561	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 1.00 
+ore_ont_3377	0	accepted 23.67 
+ore_ont_2504	124	Command exited with non-zero status 124 60.26 
+ore_ont_3708	0	accepted 0.30 
+ore_ont_3726	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.09 
+ore_ont_3783	0	accepted 0.14 
+ore_ont_2574	124	Command exited with non-zero status 124 60.94 
+ore_ont_3806	0	accepted 0.09 
+ore_ont_3835	0	accepted 0.11 
+ore_ont_3843	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.63 
+ore_ont_385	0	accepted 0.51 
+ore_ont_3884	0	accepted 0.35 
+ore_ont_3905	0	accepted 3.41 
+ore_ont_3917	124	Command exited with non-zero status 124 60.00 
+ore_ont_394	0	accepted 0.17 
+ore_ont_4032	0	accepted 0.20 
+ore_ont_3077	124	Command exited with non-zero status 124 60.01 
+ore_ont_4133	0	accepted 0.08 
+ore_ont_399	0	accepted 1.75 
+ore_ont_3087	124	Command exited with non-zero status 124 60.82 
+ore_ont_4354	0	accepted 0.36 
+ore_ont_4363	0	accepted 5.79 
+ore_ont_4469	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 1.38 
+ore_ont_4141	124	Command exited with non-zero status 124 60.12 
+ore_ont_4609	0	accepted 2.26 
+ore_ont_4719	0	accepted 0.15 
+ore_ont_4780	0	accepted 1.78 
+ore_ont_4567	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 20.99 
+ore_ont_4903	0	accepted 0.63 
+ore_ont_4983	0	accepted 0.17 
+ore_ont_5033	0	accepted 0.38 
+ore_ont_5107	0	accepted 0.10 
+ore_ont_509	0	accepted 1.22 
+ore_ont_5184	0	accepted 0.18 
+ore_ont_5204	0	accepted 0.15 
+ore_ont_4796	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 15.09 
+ore_ont_5258	0	accepted 0.09 
+ore_ont_5295	124	Command exited with non-zero status 124 60.90 
+ore_ont_5359	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.14 
+ore_ont_5502	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 2.13 
+ore_ont_5289	0	accepted 18.15 
+ore_ont_5059	0	accepted 36.28 
+ore_ont_5564	0	accepted 0.16 
+ore_ont_5548	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 5.35 
+ore_ont_5544	0	accepted 13.50 
+ore_ont_5664	0	accepted 1.76 
+ore_ont_568	0	accepted 0.11 
+ore_ont_5688	0	accepted 0.29 
+ore_ont_5730	0	accepted 1.84 
+ore_ont_5774	0	accepted 0.12 
+ore_ont_5834	0	accepted 0.11 
+ore_ont_5932	0	accepted 0.11 
+ore_ont_5964	0	accepted 0.47 
+ore_ont_5894	0	accepted 1.19 
+ore_ont_6020	0	accepted 0.42 
+ore_ont_6226	0	accepted 0.25 
+ore_ont_5849	0	accepted 19.64 
+ore_ont_6258	0	accepted 0.22 
+ore_ont_6272	0	accepted 0.11 
+ore_ont_6278	0	accepted 0.31 
+ore_ont_6401	0	accepted 0.18 
+ore_ont_6446	0	accepted 0.31 
+ore_ont_6615	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.10 
+ore_ont_6443	0	accepted 2.00 
+ore_ont_6483	0	accepted 2.16 
+ore_ont_6354	0	accepted 3.14 
+ore_ont_668	3	not recognised: not an OWL SROIQ(D) knowledge base (first: DisjointObjectProperties) Command exited with non-zero status 3 0.27 
+ore_ont_6720	0	accepted 0.31 
+ore_ont_6727	0	accepted 1.22 
+ore_ont_6452	0	accepted 5.59 
+ore_ont_6822	0	accepted 0.21 
+ore_ont_6792	0	accepted 0.87 
+ore_ont_6857	0	accepted 0.19 
+ore_ont_6859	0	accepted 0.09 
+ore_ont_6722	0	accepted 8.18 
+ore_ont_6934	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 1.23 
+ore_ont_6951	0	accepted 0.23 
+ore_ont_6967	0	accepted 0.12 
+ore_ont_6983	0	accepted 0.19 
+ore_ont_6999	0	accepted 0.19 
+ore_ont_7011	0	accepted 0.11 
+ore_ont_7108	0	accepted 1.56 
+ore_ont_7179	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.21 
+ore_ont_7278	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.09 
+ore_ont_7339	0	accepted 0.18 
+ore_ont_7327	0	accepted 0.53 
+ore_ont_7342	0	accepted 0.15 
+ore_ont_7479	0	accepted 5.58 
+ore_ont_7517	0	accepted 0.56 
+ore_ont_7455	0	accepted 6.63 
+ore_ont_7532	3	not recognised: not an OWL SROIQ(D) knowledge base (first: SubClassOf) Command exited with non-zero status 3 0.10 
+ore_ont_7409	0	accepted 21.01 
+ore_ont_7192	124	Command exited with non-zero status 124 60.34 
+ore_ont_7557	124	Command exited with non-zero status 124 60.57 
+ore_ont_7668	0	accepted 0.10 
+ore_ont_7730	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.44 
+ore_ont_7775	0	accepted 0.50 
+ore_ont_778	0	accepted 0.10 
+ore_ont_7789	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.15 
+ore_ont_699	124	Command exited with non-zero status 124 60.01 
+ore_ont_7818	0	accepted 0.21 
+ore_ont_7820	0	accepted 0.28 
+ore_ont_7828	0	accepted 0.16 
+ore_ont_7817	0	accepted 1.29 
+ore_ont_8006	0	accepted 0.47 
+ore_ont_8019	0	accepted 0.52 
+ore_ont_8030	0	accepted 0.30 
+ore_ont_8042	0	accepted 0.11 
+ore_ont_802	0	accepted 0.74 
+ore_ont_8050	0	accepted 0.17 
+ore_ont_8141	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.15 
+ore_ont_8142	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 2.89 
+ore_ont_8250	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.11 
+ore_ont_7729	0	accepted 23.91 
+ore_ont_8294	0	accepted 1.22 
+ore_ont_8148	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 14.04 
+ore_ont_8387	0	accepted 0.19 
+ore_ont_8399	0	accepted 0.13 
+ore_ont_8460	0	accepted 0.16 
+ore_ont_850	0	accepted 0.13 
+ore_ont_8509	0	accepted 0.28 
+ore_ont_8578	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.54 
+ore_ont_8595	0	accepted 1.24 
+ore_ont_8631	3	not recognised: not an OWL SROIQ(D) knowledge base (first: IrreflexiveObjectProperty) Command exited with non-zero status 3 0.12 
+ore_ont_8627	0	accepted 0.72 
+ore_ont_8640	0	accepted 0.39 
+ore_ont_8475	0	accepted 8.24 
+ore_ont_8786	0	accepted 0.13 
+ore_ont_8844	0	accepted 1.72 
+ore_ont_8882	0	accepted 0.82 
+ore_ont_8902	0	accepted 1.84 
+ore_ont_8948	0	accepted 0.24 
+ore_ont_8975	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.53 
+ore_ont_8480	0	accepted 29.20 
+ore_ont_9096	0	accepted 0.28 
+ore_ont_9122	0	accepted 0.86 
+ore_ont_9248	0	accepted 1.21 
+ore_ont_934	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.18 
+ore_ont_9303	0	accepted 1.12 
+ore_ont_8723	124	Command exited with non-zero status 124 60.39 
+ore_ont_9540	0	accepted 0.22 
+ore_ont_9557	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.15 
+ore_ont_9429	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 3.67 
+ore_ont_8445	124	Command exited with non-zero status 124 60.24 
+ore_ont_9690	0	accepted 0.14 
+ore_ont_9783	0	accepted 0.15 
+ore_ont_8911	124	Command exited with non-zero status 124 60.00 
+ore_ont_9151	124	Command exited with non-zero status 124 60.02 
+ore_ont_9890	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 2.23 
+ore_ont_9577	124	Command exited with non-zero status 124 60.01 
