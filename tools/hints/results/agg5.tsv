@@ -1,0 +1,175 @@
+input	fragment	size	bytes	classes	individuals	status	rows	certified	km_s	nf_s	find_s	check_s	check_mb	calls	results	producer_fail	reason
+ore_ont_580	SHIQ+ABox	a<100K	14283	21	18	full	803	803	0.06	7.4	0.1	5.2	71	40	{"certified": 40}	{}	
+ore_ont_7839	SHIQ	a<100K	14677	20	0	none	402	0	0.03	4.2	0.0	231.7	9479	22	{"out of memory": 22}	{}	checker out of memory
+ore_ont_10309	EL	a<100K	14958	9	0	full	86	86	0.01	2.2	0.0	1.2	71	11	{"certified": 11}	{}	
+ore_ont_5107	SHOIQ	a<100K	17455	49	24	full	3448	3448	0.05	13.8	0.5	67.7	72	76	{"certified": 76}	{"no model: clash in a core type": 1}	
+ore_ont_9854	EL	a<100K	18992	60	0	full	3482	3482	0.03	10.9	0.1	6.8	72	62	{"certified": 62}	{}	
+ore_ont_13392	EL	a<100K	23084	124	0	full	15380	15380	0.03	22.1	0.2	25.5	71	126	{"certified": 126}	{}	
+ore_ont_12957	SHIQ	a<100K	24581	99	0	full	9813	9813	0.01	17.8	0.1	15.2	72	101	{"certified": 101}	{}	
+ore_ont_2038	SHIQ+ABox	a<100K	25563	51	0	full	2480	2480	0.01	10.6	1.3	358.7	71	53	{"certified": 53}	{}	
+ore_ont_10321	SHOIQ	a<100K	26630	12	5	none	218	0	0.04	3.3	0.7	139.0	7976	19	{"out of memory": 19}	{}	checker out of memory
+ore_ont_8128	ALC	a<100K	29271	43	0	full	1879	1879	0.02	12.8	0.1	20.7	72	45	{"certified": 45}	{}	
+ore_ont_16076	EL	a<100K	30312	189	0	full	35120	35120	0.01	35.3	0.4	89.7	72	191	{"certified": 191}	{}	
+ore_ont_7270	EL	a<100K	30608	83	0	full	6646	6646	0.01	15.1	0.1	12.7	72	85	{"certified": 85}	{}	
+ore_ont_13018	EL	a<100K	31753	176	0	full	30665	30665	0.03	31.6	0.3	71.2	72	178	{"certified": 178}	{}	
+ore_ont_6735	EL	a<100K	34731	214	0	full	44978	44978	0.01	39.1	0.4	137.3	72	216	{"certified": 216}	{}	
+ore_ont_15229	SHIQ	a<100K	34912	93	0	none	8542	0	0.11	16.8	0.2	292.5	72	95	{"rejected: hint: rejected (an index outside the translation, or the che": 95}	{}	checker rejected  hint: rejected (an index outside the tr
+ore_ont_12101	SHIQ+ABox	a<100K	35187	32	1	none	1024	0	0.05	6.4	2.6	319.1	9457	35	{"out of memory": 35}	{}	checker out of memory
+ore_ont_2652	SHI	a<100K	37980	92	0	partial	7498	4583	0.28	40.1	1.1	374.9	72	63	{"certified": 57, "timeout": 6}	{}	checker timeout
+ore_ont_8335	SHIQ+ABox	a<100K	38148	116	0	partial	13244	1	0.05	23.5	7.9	382.3	72	7	{"certified": 1, "timeout": 6}	{}	checker timeout
+ore_ont_10413	SHIQ+ABox	a<100K	40651	69	2	full	4970	4970	0.04	28.5	0.1	99.7	72	73	{"certified": 73}	{}	
+ore_ont_4223	SHI	a<100K	41120	75	0	full	5601	5601	0.02	13.8	0.1	20.7	72	77	{"certified": 77}	{}	
+ore_ont_420	SHIQ+ABox	a<100K	46187	170	5	full	29718	29718	0.04	37.1	0.5	249.1	72	177	{"certified": 177}	{}	
+ore_ont_8226	EL	a<100K	46647	105	0	full	10914	10914	0.01	21.1	0.2	49.3	72	107	{"certified": 107}	{}	
+ore_ont_6812	EL	a<100K	46941	88	0	full	7347	7347	0.01	15.4	0.1	11.7	71	90	{"certified": 90}	{}	
+ore_ont_11497	EL	a<100K	47901	105	0	partial	10924	5671	0.02	19.9	1.3	383.5	71	56	{"certified": 56}	{}	checker budget
+ore_ont_385	SHOIQ	a<100K	48019	45	8	none	2365	0	0.05	15.5	6.0	129.0	7966	3	{"out of memory": 3}	{"no model: clash in a core type": 1}	checker out of memory
+ore_ont_5258	SHOIQ	a<100K	49164	149	19	partial	24841	10137	0.15	34.0	0.7	363.9	72	70	{"certified": 70}	{}	checker budget
+ore_ont_3260	SHIQ+ABox	a<100K	49219	38	1	none	1455	0	0.05	8.1	4.6	38.2	7976	3	{"out of memory": 3}	{}	checker out of memory
+ore_ont_6617	SHIQ+ABox	a<100K	50815	30	47	none	2272	0	0.04	2.0	109.8				{}	{"no model: closure budget": 8}	producer wall budget
+ore_ont_14848	SHIQ+ABox	a<100K	50865	30	47	none	2272	0	0.04	1.6	86.5				{}	{"no model: closure budget": 6}	producer wall budget
+ore_ont_4936	SHIQ+ABox	a<100K	50871	30	47	none	2272	0	0.1	1.5	86.9				{}	{"no model: closure budget": 6}	producer wall budget
+ore_ont_3987	SHIQ+ABox	a<100K	50907	30	47	none	2272	0	0.05	1.6	86.6				{}	{"no model: closure budget": 6}	producer wall budget
+ore_ont_16274	SHIQ+ABox	a<100K	53740	98	115	none	20147	0	0.27	8.8	139.7	180.0	72	3	{"timeout": 3}	{}	checker timeout
+ore_ont_3205	SHIQ+ABox	a<100K	54042	59	60	none	6934	0	0.08	14.1	135.9	164.2	7969	3	{"timeout": 1, "out of memory": 2}	{}	checker out of memory
+ore_ont_16814	SHIQ+ABox	a<100K	55592	27	42	none	1657	0	1.3	19.5	24.1	136.2	9470	3	{"out of memory": 3}	{"no model: at-least: no further core element for a nominal su": 2, "no model: clash in a core type": 9, "no model: clash when growing a core type": 1, "no model: no core element can be the nominal successor": 5}	checker out of memory
+ore_ont_541	SHIQ	a<100K	57818	59	0	partial	3376	1534	0.09	28.9	3.6	305.7	72	29	{"timeout": 1, "certified": 28}	{"no model: clash in a core type": 11, "no model: clash when growing a core type": 1}	checker timeout
+ore_ont_12150	SHIQ+ABox	a<100K	57847	126	131	partial	32367	1	0.06	58.4	13.2	208.0	65	4	{"timeout": 3, "certified": 1}	{}	checker timeout
+ore_ont_7525	SHI	a<100K	61915	98	0	partial	9492	4037	0.29	146.6	0.4	150.5	74	43	{"certified": 43}	{"no model: clash in a core type": 10}	checker budget
+ore_ont_11010	EL	a<100K	66026	256	0	partial	64524	29635	0.01	48.2	0.9	244.6	72	119	{"certified": 119}	{}	checker budget
+ore_ont_13066	SHIQ+ABox	a<100K	70902	116	12	partial	14966	466	0.04	93.0	0.7	248.1	65	5	{"certified": 5}	{}	checker budget
+ore_ont_778	SHOIQ	a<100K	71556	122	10	none	15522	0	0.6	5.6	147.1				{}	{"no model: clash when growing a core type": 19, "no model: closure budget": 5, "no model: clash in a core type": 4}	producer wall budget
+ore_ont_5679	EL	a<100K	71658	129	0	full	16470	16470	0.01	23.4	0.2	31.1	72	131	{"certified": 131}	{}	
+ore_ont_14325	EL	a<100K	72878	136	0	partial	18303	9338	0.01	25.0	0.7	272.9	72	71	{"certified": 71}	{}	checker budget
+ore_ont_10833	SHIQ+ABox	a<100K	73327	112	18	none	14674	0	0.08	91.3	1.0	180.0	67	3	{"timeout": 3}	{}	checker timeout
+ore_ont_2662	EL	a<100K	74776	142	0	full	19990	19990	0.01	26.3	0.3	40.4	72	144	{"certified": 144}	{}	
+ore_ont_7890	EL	a<100K	77839	267	0	partial	69873	43537	0.01	51.4	0.8	241.8	73	168	{"certified": 168}	{}	checker budget
+ore_ont_13301	EL	a<100K	78888	437	0	partial	179591	17311	0.64	87.7	2.0	199.9	72	43	{"certified": 43}	{}	checker budget
+ore_ont_8119	SHIQ+ABox	a<100K	80116	85	1	none	7288	0	0.1	4.8	146.0	180.0	68	3	{"timeout": 3}	{}	checker timeout
+ore_ont_12323	SHIQ+ABox	a<100K	81600	82	56	none	11118	0	0.13	0.7	74.5	60.0	75	1	{"timeout": 1}	{"no model: closure budget": 2}	checker timeout
+ore_ont_5263	SHIQ+ABox	a<100K	81861	130	10	partial	18332	522	0.05	121.6	0.6	178.6	69	5	{"certified": 5}	{}	checker budget
+ore_ont_3418	EL	a<100K	82512	453	0	partial	204126	14405	0.01	90.5	2.2	198.8	72	33	{"certified": 33}	{}	checker budget
+ore_ont_1430	SHIQ+ABox	a<100K	82601	46	93	none	6278	0	0.37	6.3	145.4	180.0	70	3	{"timeout": 3}	{}	checker timeout
+ore_ont_3292	SHIQ+ABox	a<100K	83890	142	6	partial	21160	712	0.05	142.3	0.5	155.7	69	6	{"certified": 6}	{}	checker budget
+ore_ont_14341	SHIQ+ABox	a<100K	87012	177	42	none	37561	0	0.07	139.3	6.2	180.0	70	3	{"timeout": 3}	{}	checker timeout
+ore_ont_85	SHIQ+ABox	a<100K	89965	31	56	none	2629	0	0.21	0.3	510.5				{}	{"no model: clash when growing a core type": 1}	producer wall budget
+ore_ont_13234	EL	a<100K	90362	539	0	partial	288101	10144	0.03	106.6	3.0	184.4	73	20	{"certified": 20}	{}	checker budget
+ore_ont_6981	SHI	a<100K	91746	227	0	partial	51282	229	0.05	143.5	2.2	181.8	1233	4	{"timeout": 3, "certified": 1}	{}	checker timeout
+ore_ont_13584	SROIQ	a<100K	93640	117	117	none	25858	0	1.33	93.6	55.2	180.0	73	3	{"timeout": 3}	{}	checker timeout
+ore_ont_3832	EL	b<1M	101574	564	0	partial	315805	8421	0.03	112.9	3.3	171.4	72	16	{"certified": 16}	{}	checker budget
+ore_ont_14185	SHIQ+ABox	b<1M	109274	340	482	none	278378	0	0.14	49.5	97.4	180.0	69	3	{"timeout": 3}	{}	checker timeout
+ore_ont_7668	SHOIQ	b<1M	115177	73	161	none	16294	0	0.31	0.7	133.0				{}	{"no model: no core element can be the nominal successor": 2, "no model: clash when growing a core type": 1}	producer wall budget
+ore_ont_11978	SHIQ+ABox	b<1M	116178	67	118	none	12463	0	0.33	70.8	25.1	180.0	71	3	{"timeout": 3}	{}	checker timeout
+ore_ont_16054	SHIQ+ABox	b<1M	121243	274	0	none	74114	0	0.02	25.9	123.0	180.0	70	3	{"timeout": 3}	{}	checker timeout
+ore_ont_12721	SHIQ+ABox	b<1M	123871	61	172	none	14275	0	0.08	85.5	59.8	180.0	67	3	{"timeout": 3}	{}	checker timeout
+ore_ont_2456	SHIQ+ABox	b<1M	130946	464	0	none	215758	0	0.03	84.4	57.9	180.0	71	3	{"timeout": 3}	{}	checker timeout
+ore_ont_7339	SHOIQ	b<1M	133665	78	57	none	10462	0	0.23	2.3	97.4	180.0	75	3	{"timeout": 3}	{"no model: closure budget": 2}	checker timeout
+ore_ont_630	SHIQ+ABox	b<1M	136952	454	0	none	206197	0	0.21	74.5	68.9	180.0	71	3	{"timeout": 3}	{}	checker timeout
+ore_ont_9024	SHI	b<1M	139251	279	0	partial	77214	559	0.17	55.2	68.5	155.8	71	5	{"certified": 3, "timeout": 2}	{"no model: clash when growing a core type": 4, "no model: clash in a core type": 6, "no model: clash when growing a tree type": 2}	checker timeout
+ore_ont_12141	SHI	b<1M	139854	279	0	partial	77214	559	0.22	57.0	66.9	155.9	72	5	{"timeout": 2, "certified": 3}	{"no model: clash when growing a core type": 4, "no model: clash in a core type": 6, "no model: clash when growing a tree type": 2}	checker timeout
+ore_ont_5057	EL	b<1M	143118	554	0	partial	306857	3875	0.03	119.9	5.9	179.1	73	8	{"certified": 8}	{}	checker budget
+ore_ont_2556	SHIQ+ABox	b<1M	146857	181	92	none	49596	0	0.08	135.4	12.8	180.0	70	3	{"timeout": 3}	{}	checker timeout
+ore_ont_9054	SHIQ	b<1M	149229	280	0	none	78006	0	0.47	42.8	30.3	95.8	7969	3	{"out of memory": 3}	{"no model: clash when growing a core type": 10}	checker out of memory
+ore_ont_3685	SHIQ	b<1M	151855	284	0	none	80243	0	0.44	41.7	31.6	109.0	7968	3	{"out of memory": 3}	{"no model: clash when growing a core type": 10}	checker out of memory
+ore_ont_10320	SHOIQ	b<1M	153211	322	103	none	134556	0	0.27	21.3	126.8	180.0	73	3	{"timeout": 3}	{}	checker timeout
+ore_ont_155	SHOIQ	b<1M	168699	377	82	none	171291	0	0.22	130.5	11.8	180.0	69	3	{"timeout": 3}	{}	checker timeout
+ore_ont_6024	EL	b<1M	169055	82	0	full	6325	6325	0.06	54.4	0.2	159.1	73	84	{"certified": 84}	{}	
+ore_ont_3349	EL	b<1M	170464	746	0	partial	550874	2972	0.03	122.7	10.6	173.7	72	5	{"certified": 5}	{}	checker budget
+ore_ont_3352	EL	b<1M	187755	1292	0	partial	1667643	1	0.07	126.8	5.9	191.9	74	4	{"timeout": 3, "certified": 1}	{}	checker timeout
+ore_ont_15413	SHOIQ	b<1M	194061	462	103	none	257730	0	0.31	28.4	122.2	180.0	70	3	{"timeout": 3}	{}	checker timeout
+ore_ont_15575	SHOIQ	b<1M	198332	479	103	none	275678	0	0.32	21.5	127.3	180.0	75	3	{"timeout": 3}	{}	checker timeout
+ore_ont_10807	SHIQ+ABox	b<1M	198771	819	66	none	719824	0	0.42	1.0	95.4	120.0	73	2	{"timeout": 2}	{"no model: closure budget": 1}	checker timeout
+ore_ont_3156	SHOIQ	b<1M	203217	137	206	none	45442	0	0.86	1.2	26.5				{}	{"no model: closure budget": 3, "no model: clash in a core type": 1}	producer wall budget
+ore_ont_14334	SHOIQ	b<1M	203417	138	206	none	46109	0	0.9	0.9	83.9				{}	{"no model: closure budget": 2, "no model: clash in a core type": 1}	producer wall budget
+ore_ont_1406	EL	b<1M	203769	1192	0	partial	1417988	1	0.02	123.0	9.4	190.9	73	4	{"certified": 1, "timeout": 3}	{}	checker timeout
+ore_ont_12084	SHOIQ	b<1M	205277	483	103	none	279789	0	0.47	12.8	139.7	180.0	74	3	{"timeout": 3}	{}	checker timeout
+ore_ont_4261	EL	b<1M	221961	1070	0	partial	1140848	1	0.04	124.7	6.8	195.6	73	4	{"certified": 1, "timeout": 3}	{}	checker timeout
+ore_ont_10419	EL	b<1M	239944	1396	0	partial	1943836	1	0.05	125.0	6.8	195.4	75	4	{"timeout": 3, "certified": 1}	{}	checker timeout
+ore_ont_10517	SROIQ	b<1M	255099	904	153	none	942734	0	127.64	1.0	103.7	60.0	81	1	{"timeout": 1}	{"no model: closure budget": 1}	checker timeout
+ore_ont_8135	EL	b<1M	268512	709	0	partial	501943	1	0.04	126.9	6.2	195.4	74	4	{"certified": 1, "timeout": 3}	{}	checker timeout
+ore_ont_3835	SHOIQ	b<1M	280784	816	44	none	698450	0	0.16	127.1	8.0	180.0	71	3	{"timeout": 3}	{}	checker timeout
+ore_ont_12925	SHOIQ	b<1M	283347	659	103	none	497707	0	0.51	12.2	136.9	180.0	74	3	{"timeout": 3}	{}	checker timeout
+ore_ont_6939	EL	b<1M	306225	1831	0	partial	3345771	1	0.72	121.4	7.7	156.0	73	3	{"certified": 1, "timeout": 2}	{}	checker timeout
+ore_ont_10134	EL	b<1M	316480	1538	0	partial	2360190	1	0.68	121.4	10.0	159.9	72	3	{"certified": 1, "timeout": 2}	{}	checker timeout
+ore_ont_1346	SHIQ+ABox	b<1M	325613	837	0	none	697840	0	0.29	9.2	181.7	120.0	73	2	{"timeout": 2}	{}	checker timeout
+ore_ont_12892	SHIQ+ABox	b<1M	335170	637	1348	none	1262751	0	0.41	13.8	142.2	180.0	75	3	{"timeout": 3}	{}	checker timeout
+ore_ont_13298	EL	b<1M	339034	791	0	partial	625238	1	0.05	119.4	14.0	196.9	71	4	{"timeout": 3, "certified": 1}	{}	checker timeout
+ore_ont_15030	SHOIQ	b<1M	341802	145	240	none	55667	0	1.7	1.4	239.6				{}	{"no model: closure budget": 2}	producer wall budget
+ore_ont_725	EL	b<1M	350144	1743	0	partial	3031121	1	0.06	120.3	10.4	167.6	77	3	{"timeout": 2, "certified": 1}	{}	checker timeout
+ore_ont_3003	EL	b<1M	424250	2150	0	none	4620225	0	0.07	118.4	11.0	180.0	78	3	{"timeout": 3}	{}	checker timeout
+ore_ont_7610	SHIQ+ABox	b<1M	456453			km-failed	0	0	300.04	0	0				{}	{}	km-failed 
+ore_ont_2496	EL	b<1M	460448	1555	0	none	2411162	0	0.06	119.2	11.7	180.0	78	3	{"timeout": 3}	{}	checker timeout
+ore_ont_13219	SHIQ+ABox	b<1M	494467			no negative rows (km: inconsistent)	0	0	0.18	0	0				{}	{}	
+ore_ont_380	EL	b<1M	523670	1214	0	partial	1469706	1	0.06	125.3	5.7	200.1	76	4	{"certified": 1, "timeout": 3}	{}	checker timeout
+ore_ont_8290	EL	b<1M	568492	3087	0	none	9519323	0	0.12	125.4	3.7	180.0	76	3	{"timeout": 3}	{}	checker timeout
+ore_ont_524	SHIQ+ABox	b<1M	596376	1193	2385	none	4265508	0	0.74	9.8	203.7	120.0	77	2	{"timeout": 2}	{}	checker timeout
+ore_ont_3545	SHIQ+ABox	b<1M	619547	39	501	none	19432	0	0.55	2.2	123.4				{}	{"no model: closure budget": 2}	producer wall budget
+ore_ont_218	SROIQ	b<1M	634719	2338	0	none	5403615	0	1.65	120.5	12.2	180.0	78	3	{"timeout": 3}	{"no model: clash in a core type": 2}	checker timeout
+ore_ont_9435	EL	b<1M	696249	2982	0	none	8890292	0	1.16	113.4	11.5	180.0	77	3	{"timeout": 3}	{}	checker timeout
+ore_ont_6727	SHOIQ	b<1M	736601	2095	150	none	4689050	0	1.09	16.8	150.1	180.0	77	3	{"timeout": 3}	{}	checker timeout
+ore_ont_9673	EL	b<1M	752047	3100	0	none	9573663	0	0.11	122.3	4.3	180.0	72	3	{"timeout": 3}	{}	checker timeout
+ore_ont_15301	SHIQ+ABox	b<1M	758044	2236	8	none	5011384	0	0.65	7.5	215.2	60.0	78	1	{"timeout": 1}	{}	checker timeout
+ore_ont_2703	SHOIQ	b<1M	759287	2084	187	none	4718968	0	0.72	14.0	157.3	180.0	84	3	{"timeout": 3}	{}	checker timeout
+ore_ont_3550	EL	b<1M	774241	2977	0	none	8860508	0	0.61	114.0	11.1	180.0	77	3	{"timeout": 3}	{}	checker timeout
+ore_ont_14396	EL	b<1M	838648	3205	0	none	10269175	0	0.11	117.8	14.2	180.0	73	3	{"timeout": 3}	{}	checker timeout
+ore_ont_10781	SHIQ+ABox	b<1M	859750	293	590	none	255105	0	0.61	1.8	224.8				{}	{"no model: no core element can be the nominal successor": 2}	producer wall budget
+ore_ont_15108	ALC	b<1M	914741	1700	0	none	2889109	0	0.38	118.2	11.9	180.0	79	3	{"timeout": 3}	{}	checker timeout
+ore_ont_7680	SHIQ+ABox	b<1M	930616	3609	3608	none	26035042	0	1.43	7.9	230.4	60.0	79	1	{"timeout": 1}	{}	checker timeout
+ore_ont_6822	SHOIQ	b<1M	947689	748	570	none	982783	0	0.96	2.7	119.1				{}	{"no model: closure budget": 2}	producer wall budget
+ore_ont_1672	SHOIQ	b<1M	952614	107	1268	none	140508	0	0.9	5.2	225.5				{}	{"no model: closure budget": 1}	producer wall budget
+ore_ont_11623	SHIQ	c<10M	1021329	2748	0	none	7526257	0	1.0	52.3	0.1	60.0	80	1	{"timeout": 1}	{}	checker timeout
+ore_ont_9790	EL	c<10M	1058610	6253	0	none	39064793	0	0.23	42.4	3.5	60.0	75	1	{"timeout": 1}	{}	checker timeout
+ore_ont_14860	SHOIQ	c<10M	1059845			no negative rows (km: inconsistent)	0	0	0.71	0	0				{}	{}	
+ore_ont_7372	SHIQ+ABox	c<10M	1093337			signature-failed	0	0	2.55	0	0				{}	{}	signature-failed 
+ore_ont_1065	SHIQ+ABox	c<10M	1101533	2067	1	none	4262423	0	3.04	0.0	0.0				{}	{}	producer wall budget
+ore_ont_4737	SHIQ+ABox	c<10M	1216432	1665	1685	none	5570649	0	1.22	19.1	19.1				{}	{"no model: time budget": 1}	producer wall budget
+ore_ont_2548	SROIQ	c<10M	1307959			km-failed	0	0	300.01	0	0				{}	{}	km-failed 
+ore_ont_3177	EL	c<10M	1372471	7490	0	none	56049990	0	0.28	37.7	5.4	60.0	72	1	{"timeout": 1}	{}	checker timeout
+ore_ont_5792	EL	c<10M	1372487	7490	0	none	56049990	0	0.51	32.5	6.6	60.0	77	1	{"timeout": 1}	{}	checker timeout
+ore_ont_14191	SHOIQ	c<10M	1491332	4394	1306	none	25015651	0	1.23	15.7	32.9	60.0	75	1	{"timeout": 1}	{"no model: time budget": 1}	checker timeout
+ore_ont_7726	ALC	c<10M	1917015	7826	0	none	61202705	0	1.06	30.3	9.5	60.0	79	1	{"timeout": 1}	{}	checker timeout
+ore_ont_3712	EL	c<10M	1950760	9867	0	none	97267091	0	0.75	23.5	9.1	60.0	82	1	{"timeout": 1}	{}	checker timeout
+ore_ont_4609	SHOIQ	c<10M	1972968	205	4282	none	900953	0	155.12	0.0	0.0				{}	{}	producer wall budget
+ore_ont_33	ALC	c<10M	2024977	10330	0	none	106613757	0	1.12	18.5	4.4	60.0	79	1	{"timeout": 1}	{}	checker timeout
+ore_ont_15363	SHIQ+ABox	c<10M	2051213	2264	6868	none	20662408	0	2.8	39.2	0.0				{}	{"no model: time budget": 1}	producer wall budget
+ore_ont_3529	SHIQ+ABox	c<10M	2052412	5879	0	none	34565244	0	0.47	27.9	0.3				{}	{"no model: time budget": 1}	producer wall budget
+ore_ont_2578	SHIQ+ABox	c<10M	2209125	6326	5	none	40014015	0	2.38	26.7	0.0				{}	{"no model: time budget": 1}	producer wall budget
+ore_ont_13000	EL	c<10M	2219370	6785	0	none	46023254	0	0.53	28.7	16.3	60.0	81	1	{"timeout": 1}	{}	checker timeout
+ore_ont_802	SHOIQ	c<10M	2356472	1394	3764	none	7181358	0	3.7	15.4	24.7				{}	{"no model: time budget": 1}	producer wall budget
+ore_ont_205	SROIQ	c<10M	2415724			km-failed	0	0	300.01	0	0				{}	{}	km-failed 
+ore_ont_10992	SHIQ+ABox	c<10M	2554052			signature-failed	0	0	6.49	0	0				{}	{}	signature-failed 
+ore_ont_15288	SHIQ+ABox	c<10M	2568789			no negative rows (km: inconsistent)	0	0	2.15	0	0				{}	{}	
+ore_ont_4733	EL	c<10M	2636344	15359	0	none	235898893	0	1.86	0.0	0.0				{}	{}	producer wall budget
+ore_ont_10949	SHOIQ	c<10M	2782932			signature-failed	0	0	71.66	0	0				{}	{}	signature-failed 
+ore_ont_12410	EL	c<10M	2845918	18176	0	none	330374752	0	0.52	0.0	0.0				{}	{}	producer wall budget
+ore_ont_15260	EL	c<10M	3196281	7550	0	none	56932475	0	0.86	26.7	14.6	60.0	83	1	{"timeout": 1}	{}	checker timeout
+ore_ont_7234	EL	c<10M	3208995	7557	0	none	57038137	0	0.99	29.9	7.8	60.0	88	1	{"timeout": 1}	{}	checker timeout
+ore_ont_964	EL	c<10M	3515950	17942	0	none	321915374	0	1.04	0.0	0.0				{}	{}	producer wall budget
+ore_ont_6800	SHIQ	c<10M	3675829	14462	0	none	209078705	0	2.26	0.9	6.1	60.0	83	1	{"timeout": 1}	{}	checker timeout
+ore_ont_8792	SHIQ+ABox	c<10M	3676197			signature-failed	0	0	3.25	0	0				{}	{}	signature-failed 
+ore_ont_1508	SHI	c<10M	3884535	11659	0	none	135851020	0	3.63	11.1	0.3	60.0	112	1	{"timeout": 1}	{}	checker timeout
+ore_ont_11081	EL	c<10M	4545760	8728	0	none	76032604	0	1.49	27.0	8.4	60.0	93	1	{"timeout": 1}	{}	checker timeout
+ore_ont_8441	SHIQ+ABox	c<10M	5049791			km-failed	0	0	300.0	0	0				{}	{}	km-failed 
+ore_ont_12330	EL	c<10M	5191081	25511	0	none	650773469	0	1.32	2.2	5.8	60.0	124	1	{"timeout": 1}	{}	checker timeout
+ore_ont_5815	EL	c<10M	5738004	22258	0	none	495440824	0	1.17	0.0	0.0				{}	{}	producer wall budget
+ore_ont_12992	SHIQ+ABox	c<10M	6385596			signature-failed	0	0	21.94	0	0				{}	{}	signature-failed 
+ore_ont_7401	SHIQ+ABox	c<10M	7653819			signature-failed	0	0	15.76	0	0				{}	{}	signature-failed 
+ore_ont_1310	SHI	c<10M	8386703	41932	0	none	1758298848	0	5.52	0.0	0.0				{}	{}	producer wall budget
+ore_ont_1059	SHIQ	d>=10M	11895897	36494	0	none	1331442867	0	12.35	0.0	0.0				{}	{}	producer wall budget
+ore_ont_269	EL	d>=10M	12832724	19162	0	none	367201408	0	1.95	0.0	0.0				{}	{}	producer wall budget
+ore_ont_15372	SHIQ+ABox	d>=10M	17590854			signature-failed	0	0	27.82	0	0				{}	{}	signature-failed 
+ore_ont_15929	EL	d>=10M	18104594	44271	0	none	1958914874	0	3.57	0.0	0.0				{}	{}	producer wall budget
+ore_ont_15226	SHOIQ	d>=10M	18830962	53103	18	none	2820639281	0	20.61	0.0	0.0				{}	{}	producer wall budget
+ore_ont_6952	SHIQ	d>=10M	20734427	83036	0	none	6894688104	0	28.12	0.0	0.0				{}	{}	producer wall budget
+ore_ont_4744	SHIQ+ABox	d>=10M	22866569			signature-failed	0	0	4.73	0	0				{}	{}	signature-failed 
+ore_ont_3733	SHIQ+ABox	d>=10M	23462701			km-failed	0	0	69.96	0	0				{}	{}	km-failed worker engine terminated by signal 9: race won: skip spawn
+
+ore_ont_12208	SROIQ	d>=10M	23748459	37745	0	none	1424434279	0	27.48	0.0	0.0				{}	{}	producer wall budget
+ore_ont_12012	ALC	d>=10M	None			driver-timeout	0	0		0	0				{}	{}	
+ore_ont_7728	SHI	d>=10M	26975359	64498	0	none	4159840368	0	3.42	0.0	0.0				{}	{}	producer wall budget
+ore_ont_1938	SHOIQ	d>=10M	None			driver-timeout	0	0		0	0				{}	{}	
+ore_ont_2082	SHI	d>=10M	None			driver-timeout	0	0		0	0				{}	{}	
+ore_ont_12387	EL	d>=10M	None			driver-timeout	0	0		0	0				{}	{}	
+ore_ont_5596	SHIQ+ABox	d>=10M	56191053			signature-failed	0	0	109.13	0	0				{}	{}	signature-failed 
+ore_ont_5475	SHIQ+ABox	d>=10M	65455412			km-failed	0	0	300.44	0	0				{}	{}	km-failed 
+ore_ont_7246	SROIQ	d>=10M	None			driver-timeout	0	0		0	0				{}	{}	

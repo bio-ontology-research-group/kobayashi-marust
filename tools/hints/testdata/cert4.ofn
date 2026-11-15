@@ -1,0 +1,9 @@
+Prefix(:=<http://ex/>)
+Ontology(<http://ex/c4>
+ClassAssertion(:A :a)
+SubClassOf(:A ObjectSomeValuesFrom(:r :B))
+SubClassOf(:B :C1)
+SubClassOf(:B :C2)
+SubClassOf(:B :C3)
+SubClassOf(:B :C4)
+)
