@@ -47,6 +47,14 @@ def toCandA (st : St) (roots : Array Nat) : CandA :=
     members := st.ctxs.map (·.nodes)
     roots := roots.toList
     bk := st.nodes.map (·.back)
-    uni := st.ctxs.map fun c => sortDedup c.uni.toArray }
+    uni := st.ctxs.map fun c => sortDedup c.uni.toArray
+    idx := Id.run do
+      let mut h : Std.HashMap (Nat × Array Nat) (Nat × Nat) := ∅
+      for k in [0:st.ctxs.size] do
+        let ms := st.ctxs[k]!.nodes
+        for p in [0:ms.size] do
+          let j := ms[p]!
+          h := h.insert (k, st.nodes[j]!.ty) (j, p)
+      return h }
 
 end SRIQFast

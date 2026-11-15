@@ -344,8 +344,22 @@ theorem brCovA_sound {C : CandA} {k : Nat} {s : Array Nat} (hs : SortedA s)
   simp only [br, sort_absTy hs] at hb
   obtain ⟨H, hH, hrel⟩ := brAuxA_cover _ _ _ (Std.HashSet.ofList s.toList) (fun y => by
     rw [Std.HashSet.contains_ofList, List.contains_iff_mem, mem_absTy, Array.mem_def]) b hb
-  simp only [brCovA, List.all_eq_true, List.any_eq_true, List.mem_filter] at h
-  obtain ⟨j, ⟨hj, hsj⟩, hjH⟩ := h H hH
+  simp only [brCovA, List.all_eq_true] at h
+  have hH' := h H hH
+  have hfound : ∃ j ∈ membA C k, s.all (bsA (ndA C j).ty) = true ∧ (ndA C j).ty.all (H.contains ·) = true := by
+    rcases Bool.or_eq_true _ _ ▸ hH' with h1 | h1
+    · split at h1
+      · next j p hget =>
+        simp only [Bool.and_eq_true, decide_eq_true_eq] at h1
+        obtain ⟨⟨⟨⟨hp, hjl⟩, hjc⟩, hsj⟩, hjH⟩ := h1
+        refine ⟨j, ?_, hsj, hjH⟩
+        simp only [membA, List.mem_filter, decide_eq_true_eq]
+        exact ⟨Array.mem_toList_iff.2 (Array.mem_of_getElem? hp), hjl, hjc⟩
+      · exact absurd h1 (by simp)
+    · obtain ⟨j, hj, hjj⟩ := List.any_eq_true.1 h1
+      simp only [Bool.and_eq_true] at hjj
+      exact ⟨j, hj, hjj.1, hjj.2⟩
+  obtain ⟨j, hj, hsj, hjH⟩ := hfound
   refine ⟨j, by rw [memb_view]; exact hj, ?_, ?_⟩
   · intro y hy
     rw [view_nd_ty, mem_absTy]

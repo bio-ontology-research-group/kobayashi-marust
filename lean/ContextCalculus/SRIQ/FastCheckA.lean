@@ -113,10 +113,16 @@ def brA (s : Array Nat) : List (Std.HashSet Nat) :=
     (ix.gciTop ++ (finL n s.toList).flatMap fun a => getL ix.gciBy a.val)
 
 /-- Every branch of the sorted array `s` contains the type of a node of
-context `k` that contains `s`. -/
+context `k` that contains `s`. The node is first looked up in the hint
+`C.idx` under the branch itself; the lookup is verified, and the members
+of the context are searched when it fails. -/
 def brCovA (k : Nat) (s : Array Nat) : Bool :=
-  let js := (membA C k).filter fun j => s.all (bsA (ndA C j).ty)
-  (brA ix s).all fun H => js.any fun j => (ndA C j).ty.all (H.contains ·)
+  (brA ix s).all fun H =>
+    (match C.idx.get? (k, canon H.toList) with
+     | some (j, p) => decide ((C.members[k]?.getD #[])[p]? = some j) && decide (j < C.nodes.size) &&
+        decide ((ndA C j).ctx = k) && s.all (bsA (ndA C j).ty) && (ndA C j).ty.all (H.contains ·)
+     | none => false) ||
+    (membA C k).any fun j => s.all (bsA (ndA C j).ty) && (ndA C j).ty.all (H.contains ·)
 
 def candsQA (v : NodeA) (q : Fin n × Nat × RoleT (Fin m) × Fin n) : List (EntryA × Nat) :=
   v.pool.flatMap fun e =>

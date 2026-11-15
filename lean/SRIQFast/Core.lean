@@ -130,6 +130,10 @@ structure Onto where
   lazyDef : HashMap Nat Nat := ∅
   /-- the lazy disjunction of a default name -/
   lazyOf : HashMap Nat Nat := ∅
+  /-- for a name in the bodies of many gcis (a hub): the gcis whose body is
+  the hub alone, and by every other body name the gcis with both -/
+  hubSingle : HashMap Nat (Array Nat) := ∅
+  hubIdx : HashMap Nat (HashMap Nat (Array Nat)) := ∅
 
 def pushAt (a : Array (Array α)) (i : Nat) (x : α) : Array (Array α) :=
   a.modify i (·.push x)
@@ -204,8 +208,30 @@ def mkOnto (n m : Nat) (cls : Array QC) (fullRel : Bool := false) (lazy : Bool :
       if h : 0 < pure.size then
         lazyDef := lazyDef.insert i pure[0]
         lazyOf := lazyOf.insert pure[0] i
+  -- hubs
+  let mut hubSingle : HashMap Nat (Array Nat) := ∅
+  let mut hubIdx : HashMap Nat (HashMap Nat (Array Nat)) := ∅
+  for y in [0:n] do
+    if (gciBy[y]!).size ≥ 256 then
+      let mut sg : Array Nat := #[]
+      let mut ix : HashMap Nat (Array Nat) := ∅
+      for g in gciBy[y]! do
+        let (b, _) := gcis[g]!
+        let others := b.filter (· != y)
+        if others.isEmpty then sg := sg.push g
+        for x in others do ix := ix.insert x ((ix.getD x #[]).push g)
+      hubSingle := hubSingle.insert y sg
+      hubIdx := hubIdx.insert y ix
   return { n, nr, gcis, gciBy, gciTop, allBy, low, upp, lowBy, uppBy, up,
-           relBy := rel.map sortDedup, lazyDef, lazyOf }
+           relBy := rel.map sortDedup, lazyDef, lazyOf, hubSingle, hubIdx }
+
+/-- The gcis to look at when `y` joins the set `cur` (which holds `y`): its
+gcis, or for a hub only those whose other body names meet `cur`. -/
+def trigOf (O : Onto) (cur : HashSet Nat) (y : Nat) : List Nat :=
+  match O.hubIdx.get? y with
+  | none => (O.gciBy[y]!).toList
+  | some ix =>
+    (O.hubSingle.getD y #[]).toList ++ cur.toList.flatMap fun x => (ix.getD x #[]).toList
 
 /-- Names a neighbour across label `L` (from `t`) must hold. -/
 def fwd (O : Onto) (t : Ty) (L : Ty) : Ty := Id.run do
@@ -243,14 +269,16 @@ partial def branches (O : Onto) (seed : Ty) (closedPart : Option Ty := none) : A
           if h.size == 1 then
             -- one head name: no copy of `cur` and `acc` (they are not shared)
             let y := h[0]!
-            go (cur.insert y) (acc.push y) (O.gciBy[y]!.toList ++ rest) out
+            let cur := cur.insert y
+            go cur (acc.push y) (trigOf O cur y ++ rest) out
           else h.foldl (fun out y =>
-            go (cur.insert y) (acc.push y) (O.gciBy[y]!.toList ++ rest) out) out
+            let cur := cur.insert y
+            go cur (acc.push y) (trigOf O cur y ++ rest) out) out
       else go cur acc rest out
   let cur : HashSet Nat := seed.foldl (fun s x => s.insert x) ∅
   let q := match closedPart with
-    | none => O.gciTop.toList ++ (seed.toList.flatMap fun a => (O.gciBy[a]!).toList)
-    | some t => (seed.toList.filter (!mem t ·)).flatMap fun a => (O.gciBy[a]!).toList
+    | none => O.gciTop.toList ++ (seed.toList.flatMap fun a => trigOf O cur a)
+    | some t => (seed.toList.filter (!mem t ·)).flatMap fun a => trigOf O cur a
   let res := go cur seed q #[]
   -- remove duplicates
   let mut seen : HashSet Ty := ∅
