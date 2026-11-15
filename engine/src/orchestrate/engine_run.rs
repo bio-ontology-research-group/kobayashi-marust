@@ -351,7 +351,7 @@ pub fn run_engine(
     // resident pages over the whole process tree. Freed frontend and
     // conversion garbage left here would otherwise stay resident beside the
     // worker's own peak for its entire lifetime (see `crate::mem`).
-    crate::mem::release_transient_heap();
+    crate::mem::release_before_worker_wait();
 
     let cap_bytes = rss_cap_gb.map(|g| (g * (1u64 << 30) as f64) as u64);
     let deadline = time_cap_s.map(|s| Instant::now() + Duration::from_secs_f64(s));

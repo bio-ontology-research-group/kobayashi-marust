@@ -28,6 +28,8 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 use kobayashi_marust::orchestrate::{self, Config, OrchestrateError};
 
 fn main() {
+    // E4: before any allocation of note and before any worker starts.
+    kobayashi_marust::mem::disable_transparent_huge_pages();
     #[cfg(feature = "sample-profiler")]
     kobayashi_marust::sample_prof::install();
     // Before any route bundle rewrites KM_THREADS (`routing::apply_environment`).
