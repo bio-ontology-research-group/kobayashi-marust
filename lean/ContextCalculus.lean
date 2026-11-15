@@ -399,4 +399,5 @@ import ContextCalculus.SRIQN.ZeroAtMost
 import ContextCalculus.OWLFrontend.ZeroRoute
 import ContextCalculus.OWLFrontend.RowsG
 import ContextCalculus.OWLFrontend.HasSelfClass
+import ContextCalculus.OWLFrontend.DatatypeDef
 import ContextCalculus.OWLFrontend.SHOIQFast

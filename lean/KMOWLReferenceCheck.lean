@@ -8,6 +8,7 @@ import ContextCalculus.OWLFrontend.SHOIQDC2aReference
 import ContextCalculus.OWLFrontend.SROIQAnon
 import ContextCalculus.OWLFrontend.ZeroRoute
 import ContextCalculus.OWLFrontend.HasSelfClass
+import ContextCalculus.OWLFrontend.DatatypeDef
 
 /-!
 # Executable OWL reference procedure (`km-owl-reference`)
@@ -796,10 +797,22 @@ def sroiqDeclineS (O : OWL.Ontology) : String :=
   if !(selfPairs O).isEmpty then hsDecline O
   else if O.isSROIQDKB then sroiqDecline O else selfDecline O
 
+/-- The ontology with its datatype definitions unfolded (`dtLoop`); `none`
+when a definition cannot be unfolded. -/
+def dtUnfold (O : OWL.Ontology) : Option OWL.Ontology :=
+  if (splitDef O.axioms).isSome then dtLoop O.axioms.length O else some O
+
+/-- The decline of `sroiq-c2a` after the unfolding of datatype definitions. -/
+def sroiqDeclineD (O : OWL.Ontology) (prep : OWL.Ontology → OWL.Ontology) : String :=
+  match dtUnfold O with
+  | some O' => sroiqDeclineS (prep O')
+  | none => "not recognised: a DatatypeDefinition of a datatype of the map, a recursive " ++
+      "definition, two definitions of one datatype, or HasKey"
+
 /-- Print the consistency verdict of `owlSROIQDC2aConsistent`
 (`owlSROIQDAConsistent_sound`). -/
 def publishConsistentS (v : Bool) {O : OWL.Ontology} {hint : Option RawHint}
-    (_h : owlC3HConsistent O hint = some v) : IO UInt32 := do
+    (_h : owlC3DConsistent O hint = some v) : IO UInt32 := do
   let out ← IO.getStdout
   out.putStrLn ("{\"format\":\"owl-consistency-v1\",\"consistent\":" ++
     (if v then "true" else "false") ++ "}")
@@ -808,7 +821,7 @@ def publishConsistentS (v : Bool) {O : OWL.Ontology} {hint : Option RawHint}
 
 /-- Print the verdict of `owlSROIQDTypeRow` (`owlSROIQDATypeRow_sound`). -/
 def publishTypeS (C a : OWL.IRI) (v : Bool) {O : OWL.Ontology} {hint : Option RawHint}
-    (_h : owlC3HTypeRow O C a hint = some v) : IO UInt32 := do
+    (_h : owlC3DTypeRow O C a hint = some v) : IO UInt32 := do
   let out ← IO.getStdout
   out.putStrLn ("{\"format\":\"owl-type-v1\",\"class\":" ++ (Json.str C).compress ++
     ",\"individual\":" ++ (Json.str a).compress ++ ",\"entailed\":" ++
@@ -821,18 +834,18 @@ def runOntologyS (timing : Bool) (hint : Option RawHint) (query : Option (OWL.IR
     (O : OWL.Ontology) : IO UInt32 := do
   match query with
   | some (C, a) =>
-    let ⟨res, hres⟩ ← timedPhase timing "type" (fun _ => owlC3HTypeRow O C a hint)
+    let ⟨res, hres⟩ ← timedPhase timing "type" (fun _ => owlC3DTypeRow O C a hint)
     match res, hres with
     | some v, h => publishTypeS C a v h.symm
     | none, _ =>
-      IO.eprintln (sroiqDeclineS (addAxs (anonOff [a] (duOff O)) (typeAxs C a)))
+      IO.eprintln (sroiqDeclineD O (fun O => addAxs (anonOff [a] (duOff O)) (typeAxs C a)))
       return 3
   | none =>
-    let ⟨res, hres⟩ ← timedPhase timing "consistency" (fun _ => owlC3HConsistent O hint)
+    let ⟨res, hres⟩ ← timedPhase timing "consistency" (fun _ => owlC3DConsistent O hint)
     match res, hres with
     | some v, h => publishConsistentS v h.symm
     | none, _ =>
-      IO.eprintln (sroiqDeclineS (anonOff [] (duOff O)))
+      IO.eprintln (sroiqDeclineD O (fun O => anonOff [] (duOff O)))
       return 3
 
 /-- The fragment checks of `sroiq-c2a`, without the decision (phases timed
@@ -1200,7 +1213,7 @@ and of the transitivity encoding. -/
 def printIndex (route : String) (O : OWL.Ontology) : IO UInt32 := do
   let out ← IO.getStdout
   let emit (ls : List String) : IO Unit := do for l in ls do out.putStrLn l
-  let O := if route == "sroiq-c2a" then duOff O else O
+  let O := if route == "sroiq-c2a" then duOff ((dtUnfold O).getD O) else O
   if route == "sroiq-c2a" && !(selfPairs (anonOff [] O)).isEmpty &&
       !(anonOff [] O).isSROIQDSKB then
     let O0 := anonOff [] O
@@ -1357,7 +1370,7 @@ def runFile (args : Args) (path : String) : IO UInt32 := do
         | .error reason => decline s!"parse rejected: {reason}"
         | .ok O =>
           if args.dataRoute == some "sroiq-c2a" then
-            let O := duOff O
+            let O := duOff ((dtUnfold O).getD O)
             if ← checkS (← timingEnabled) (anonOff [] O) then do
               IO.println "accepted"
               return 0

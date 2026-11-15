@@ -30,3 +30,5 @@ zero.ofn	--check	accepted (C2a only after the at-most-zero rewriting; --print-in
 self.ofn	--check	accepted
 self.ofn	--print-index	concepts 39 / roles 1 / concept 0 urn:km:owl-self:###########+http://ex/r / concept 1 urn:km:owl-nom:#...# / concept 2 http://ex/A / concept 3 http://ex/C / role 0 http://ex/r / nominal 1 http://ex/a / hasself 0 http://ex/r / loops 7 / splits 9 / guards 30 / fresh-nominal 38
 self.ofn		(intended: consistent true; the unhinted search runs out of memory, 50 GB after 63 s)
+datatype-def.ofn	--check	accepted (DatatypeDefinition unfolded, deviation D22)
+datatype-def.ofn	--print-index	concepts 5 / roles 0 / concept 0 urn:km:owl-kb:def:########### / concept 1 urn:km:owl-kb:def:############ / concept 2 http://ex/C (the tables of the unfolded ontology)
