@@ -1436,6 +1436,44 @@ concepts and every data-side clause keep their meaning. `DataComplementOf`
 inside a data range is not affected: the data vocabulary emits its own
 complement clauses, without a `Q_` definer.
 
+### Unknown datatypes: `--unknown-datatypes=free` (W7, 2026-11-15)
+
+By default (`strict`) km rejects a datatype outside the OWL 2 datatype map
+that has no `DatatypeDefinition` (for example `xsd:date`, `xsd:gYear` or an
+undeclared user IRI), and every literal of such a datatype, as OWL 2 DL
+requires. `km classify --unknown-datatypes=free` (environment
+`KM_UNKNOWN_DATATYPES=free`) reads such input instead:
+
+- the datatype is a fresh datatype: an arbitrary set of data values, with
+  no relation to any other datatype (no partition, no lexical space; this
+  includes the XSD datatypes outside the map, `date`, `time`, `gYear`,
+  `gMonth`, `gDay`, `gYearMonth`, `gMonthDay` and `duration`), and it
+  needs no declaration;
+- a literal `"l"^^D` of such a datatype denotes one fixed data value (all
+  occurrences of the same literal denote the same value), about which
+  nothing else is known: it need not lie in `D`, and it may or may not be
+  equal to any other literal or value.
+
+In the clause stream such a literal is an opaque value concept: it keeps its
+singleton clause (value identity) and the oracle decides none of its
+relations, which is the encoding km already used for literals it cannot
+decide. Literals of datatypes in the map keep their exact reading, and
+malformed literals of map datatypes are still rejected.
+
+Comparison with HermiT 1.4.3 (`ignoreUnsupportedDatatypes = true`) on 30
+inputs (`scratch/engine3/p2/dt/d1` to `d30`: ranges, complements,
+intersections, enumerations, cardinalities, functional properties and
+assertions over `xsd:date`, `xsd:gYear` and a user IRI): 27 agree. On
+`d10` and `d21` (`A ≡ ∃p.{l}`, `p(a, l)` with `l = "2020-01-01"^^xsd:date`)
+km entails `a : A` (and `d21`, which adds `¬A(a)`, is inconsistent); HermiT
+does not, although both occurrences are the same literal: HermiT reads an
+unsupported literal in a class expression and in an assertion as unrelated
+values. On `d20` (a `xsd:dateTimeStamp` literal without a time zone, a map
+datatype) both refuse the literal. HermiT's reading is otherwise the one
+above: distinct literals are not known to be distinct (two values of a
+functional property stay consistent), a literal is not known to lie in its
+datatype, and the datatypes are unrelated.
+
 ## Open corners (status 2026-10-30, after `data-values-3`; dateTime and XMLLiteral rows 2026-11-01)
 
 Every corner now has one of two behaviours: an exact answer, or an input

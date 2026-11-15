@@ -217,6 +217,49 @@ pub(super) fn chain_role(
     }
 }
 
+/// An object property expression of a property axiom: the named property
+/// and whether it is inverted (`ObjectInverseOf(r)` gives `(r, true)`).
+fn role_expression(reg: &mut IriRegistry, node: &Node) -> Result<(String, bool), OutOfFragment> {
+    match node {
+        Node::List("ObjectInverseOf", args) => match args.as_slice() {
+            [Node::Atom(base)] => Ok((reg.short(base), true)),
+            _ => Err(OutOfFragment("ObjectInverseOf requires exactly one named role".into())),
+        },
+        _ => Ok((role_str(reg, node)?, false)),
+    }
+}
+
+/// Role names for the operands of one property axiom (E9). When every
+/// operand is inverted the axiom is stated over the base roles (`r⁻ ⊑ s⁻`
+/// iff `r ⊑ s`, the same for equivalence and disjointness); otherwise an
+/// inverted operand is replaced by its converse proxy `__inv__r` with
+/// `InverseRoles(r, __inv__r)`, as for chains.
+fn property_axiom_roles(
+    reg: &mut IriRegistry,
+    nodes: &[&Node],
+    o: &mut Ontology,
+) -> Result<Vec<String>, OutOfFragment> {
+    let mut operands = Vec::new();
+    for node in nodes {
+        operands.push(role_expression(reg, node)?);
+    }
+    if operands.iter().all(|(_, inverse)| *inverse) {
+        return Ok(operands.into_iter().map(|(role, _)| role).collect());
+    }
+    Ok(operands
+        .into_iter()
+        .map(|(role, inverse)| {
+            if inverse {
+                let proxy = format!("__inv__{role}");
+                o.add(Axiom::InverseRoles(role, proxy.clone()));
+                proxy
+            } else {
+                role
+            }
+        })
+        .collect())
+}
+
 /// Operand of `ObjectPropertyDomain` / `ObjectPropertyRange` on a named role
 /// that the rbox path does not carry: a class expression, or `owl:Nothing`
 /// (the rbox records only named classes; `owl:Thing` constrains nothing).
@@ -534,11 +577,12 @@ pub(crate) fn parse_rule_atoms(reg: &mut IriRegistry, node: &Node) -> Option<Vec
                 cls(reg, aa.first()?).ok()?,
                 parse_rule_term(reg, aa.get(1)?)?,
             )),
-            "ObjectPropertyAtom" => out.push(RuleAtom::Role(
-                role_str(reg, aa.first()?).ok()?,
-                parse_rule_term(reg, aa.get(1)?)?,
-                parse_rule_term(reg, aa.get(2)?)?,
-            )),
+            // `ObjectInverseOf(r)(x, y)` is `r(y, x)`.
+            "ObjectPropertyAtom" => {
+                let (role, inverse) = role_expression(reg, aa.first()?).ok()?;
+                let (x, y) = (parse_rule_term(reg, aa.get(1)?)?, parse_rule_term(reg, aa.get(2)?)?);
+                out.push(if inverse { RuleAtom::Role(role, y, x) } else { RuleAtom::Role(role, x, y) });
+            }
             "DifferentIndividualsAtom" => out.push(RuleAtom::Diff(
                 parse_rule_term(reg, aa.first()?)?,
                 parse_rule_term(reg, aa.get(1)?)?,
@@ -642,18 +686,14 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
                     return Ok(());
                 }
             }
-            o.add(Axiom::RoleInclusion(
-                role_str(reg, sub)?,
-                role_str(reg, op(&args, 1)?)?,
-            ));
+            let roles = property_axiom_roles(reg, &[sub, op(&args, 1)?], o)?;
+            o.add(Axiom::RoleInclusion(roles[0].clone(), roles[1].clone()));
         }
         "EquivalentObjectProperties" => {
-            // R1 ≡ ... ≡ Rn  ⟹  pairwise Ri ⊑ Rj and Rj ⊑ Ri. Mirrors the
-            // SubObjectPropertyOf convention (role_str handles inverses).
-            let mut rs = Vec::new();
-            for a in &args {
-                rs.push(role_str(reg, a)?);
-            }
+            // R1 ≡ ... ≡ Rn  ⟹  pairwise Ri ⊑ Rj and Rj ⊑ Ri, with inverted
+            // operands as in SubObjectPropertyOf.
+            let operands: Vec<&Node> = args.iter().copied().collect();
+            let rs = property_axiom_roles(reg, &operands, o)?;
             for k in 0..rs.len() {
                 for l in (k + 1)..rs.len() {
                     o.add(Axiom::RoleInclusion(rs[k].clone(), rs[l].clone()));
@@ -662,20 +702,32 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
             }
         }
         "InverseObjectProperties" => {
-            o.add(Axiom::InverseRoles(
-                role_str(reg, op(&args, 0)?)?,
-                role_str(reg, op(&args, 1)?)?,
-            ));
+            // `InverseObjectProperties(P Q)` is `P ≡ Q⁻`: with exactly one
+            // operand inverted it equates the two base roles.
+            let (left, left_inverse) = role_expression(reg, op(&args, 0)?)?;
+            let (right, right_inverse) = role_expression(reg, op(&args, 1)?)?;
+            if left_inverse == right_inverse {
+                o.add(Axiom::InverseRoles(left, right));
+            } else {
+                o.add(Axiom::RoleInclusion(left.clone(), right.clone()));
+                o.add(Axiom::RoleInclusion(right, left));
+            }
         }
-        "TransitiveObjectProperty" => o.add(Axiom::TransitiveRole(role_str(reg, op(&args, 0)?)?)),
-        "SymmetricObjectProperty" => o.add(Axiom::SymmetricRole(role_str(reg, op(&args, 0)?)?)),
-        "ReflexiveObjectProperty" => o.add(Axiom::ReflexiveRole(role_str(reg, op(&args, 0)?)?)),
-        "FunctionalObjectProperty" => o.add(Axiom::FunctionalRole(role_str(reg, op(&args, 0)?)?)),
-        "InverseFunctionalObjectProperty" => {
-            o.add(Axiom::InverseFunctionalRole(role_str(reg, op(&args, 0)?)?))
-        }
-        "AsymmetricObjectProperty" => o.add(Axiom::AsymmetricRole(role_str(reg, op(&args, 0)?)?)),
-        "IrreflexiveObjectProperty" => o.add(Axiom::IrreflexiveRole(role_str(reg, op(&args, 0)?)?)),
+        // A characteristic of `r⁻` is the same characteristic of `r`, except
+        // that functionality and inverse functionality swap (E9).
+        "TransitiveObjectProperty" => o.add(Axiom::TransitiveRole(role_expression(reg, op(&args, 0)?)?.0)),
+        "SymmetricObjectProperty" => o.add(Axiom::SymmetricRole(role_expression(reg, op(&args, 0)?)?.0)),
+        "ReflexiveObjectProperty" => o.add(Axiom::ReflexiveRole(role_expression(reg, op(&args, 0)?)?.0)),
+        "FunctionalObjectProperty" => match role_expression(reg, op(&args, 0)?)? {
+            (role, false) => o.add(Axiom::FunctionalRole(role)),
+            (role, true) => o.add(Axiom::InverseFunctionalRole(role)),
+        },
+        "InverseFunctionalObjectProperty" => match role_expression(reg, op(&args, 0)?)? {
+            (role, false) => o.add(Axiom::InverseFunctionalRole(role)),
+            (role, true) => o.add(Axiom::FunctionalRole(role)),
+        },
+        "AsymmetricObjectProperty" => o.add(Axiom::AsymmetricRole(role_expression(reg, op(&args, 0)?)?.0)),
+        "IrreflexiveObjectProperty" => o.add(Axiom::IrreflexiveRole(role_expression(reg, op(&args, 0)?)?.0)),
         "ClassAssertion" => {
             o.add(Axiom::ConceptAssertion(
                 cls(reg, op(&args, 0)?)?,
@@ -877,10 +929,9 @@ fn add_axiom(reg: &mut IriRegistry, o: &mut Ontology, node: &Node) -> Result<(),
             ));
         }
         "DisjointObjectProperties" => {
-            let roles: Vec<String> = args
-                .iter()
-                .map(|role| reg.short(role.as_atom().unwrap_or("")))
-                .collect();
+            // An inverted operand used to become the empty role name.
+            let operands: Vec<&Node> = args.iter().copied().collect();
+            let roles = property_axiom_roles(reg, &operands, o)?;
             for left in 0..roles.len() {
                 for right in (left + 1)..roles.len() {
                     o.add(Axiom::DisjointRoles(

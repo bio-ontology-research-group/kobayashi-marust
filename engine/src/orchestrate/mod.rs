@@ -2006,6 +2006,17 @@ fn classify_with_evidence_inner(
             timing_mark("keys rewritten as DL-safe rules");
             return classify_with_evidence_mode(initial_cfg, rewritten.path(), retain_grouped_output);
         }
+        // W8: a lone data variable of a rule body is a data restriction
+        // (`frontend::rule_data_atoms`), rewritten before the rule gates too.
+        if let std::borrow::Cow::Owned(rules) = crate::frontend::rule_data_atoms::encode(&source)
+            .map_err(OrchestrateError::OutOfFragment)?
+        {
+            let rewritten = tmpfile::TempPath::new("-rule-data-atoms.ofn");
+            std::fs::write(rewritten.path(), rules)?;
+            let _trusted = TrustedRewrite::register(rewritten.path());
+            timing_mark("rule data variables rewritten as data restrictions");
+            return classify_with_evidence_mode(initial_cfg, rewritten.path(), retain_grouped_output);
+        }
     }
     timing_mark("second source check done");
     let automatic_requested = std::env::var("KM_ROUTE")

@@ -508,6 +508,10 @@ fn classify_help() {
     println!("                      route that cannot represent the input exits 3 unless");
     println!("                      KM_ALLOW_APPROXIMATE=1, which publishes an APPROXIMATE answer");
     println!("  --format FORMAT     auto, functional, owlxml, rdfxml or turtle");
+    println!("  --unknown-datatypes=strict|free");
+    println!("                      strict (default): reject a datatype outside the OWL 2 datatype map;");
+    println!("                      free: read it as a fresh datatype and its literals as opaque values");
+    println!("                      (see docs/DATATYPES.md, \"Unknown datatypes\")");
     println!();
     println!("line output (--lines):");
     println!("  CONSISTENT 0|1      ontology consistency");
@@ -587,6 +591,14 @@ fn classify_cmd(rest: &[String]) {
             }
             value if value.starts_with("--format=") => {
                 std::env::set_var("KM_INPUT_FORMAT", value.trim_start_matches("--format="));
+            }
+            // W7: datatypes outside the OWL 2 datatype map (see
+            // `frontend::conformance::unknown_datatypes_free`).
+            "--unknown-datatypes=strict" => std::env::remove_var("KM_UNKNOWN_DATATYPES"),
+            "--unknown-datatypes=free" => std::env::set_var("KM_UNKNOWN_DATATYPES", "free"),
+            value if value.starts_with("--unknown-datatypes") => {
+                eprintln!("--unknown-datatypes takes strict or free, got {value:?}");
+                exit(2);
             }
             value if value.starts_with('-') => {
                 eprintln!("unknown classify option: {value}");

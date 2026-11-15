@@ -4,6 +4,31 @@
 
 ### Engine
 
+- Inverse property operands (E9): `SubObjectPropertyOf` with
+  `ObjectInverseOf` on either side or both, `EquivalentObjectProperties`
+  and `DisjointObjectProperties` with inverse members, and the
+  characteristics of an inverse (`Functional(r⁻)` is `InverseFunctional(r)`
+  and the converse; the others are those of `r`) are read in
+  `km classify` and `km incremental-source`. `r⁻ ⊑ s⁻` is `r ⊑ s`; a mixed
+  pair uses the converse proxy `__inv__r` of the chain encoding. Before,
+  km refused them ("named role expected"), and `DisjointObjectProperties`
+  with an inverse member became a disjointness with the empty role name.
+  `InverseObjectProperties(ObjectInverseOf(r) s)` is still rejected by the
+  vendored functional-syntax grammar. `ObjectPropertyAtom` of an inverse in
+  a rule swaps its arguments. Tests: `tests/inverse_property_axioms.rs`
+  (HermiT rows).
+- `--unknown-datatypes=free` (W7): datatypes outside the OWL 2 datatype map
+  are read as fresh datatypes and their literals as opaque values instead
+  of being rejected; default `strict`. Semantics and the HermiT comparison:
+  `docs/DATATYPES.md`, "Unknown datatypes".
+- DL-safe rules (W8): a data variable that occurs in a rule body only in
+  one `DataPropertyAtom(p t ?v)` and in `DataRangeAtom`s becomes the class
+  atom `DataSomeValuesFrom(p D)(t)` (`frontend::rule_data_atoms`), so such
+  rules are no longer refused. Joins on a data variable, data variables in
+  heads and built-ins stay unsupported.
+- The `symbolic_source_classification` decline test uses a data
+  restriction in a nominal assertion: the universal role as a sub-role is
+  now encoded (E8) and the symbolic bridge accepts it.
 - Temporary files (E11): every temporary file of a run lives in one
   per-run directory `$TMPDIR/km-run-<pid>-<nonce>/` that the supervisor
   creates and exports to its workers (`KM_RUN_TMPDIR`) and removes on
