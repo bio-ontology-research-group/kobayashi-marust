@@ -35,7 +35,7 @@ import hintcheck
 from finder import Finder, Fail, solve, flat_hint
 
 SCR = '/mnt/data1/leechuck/km-work/v170/scratch/h1'
-KM = os.environ.get('H1_KM', '/mnt/data1/leechuck/km-work/v170/scratch/engine2/bin/km-1b7')
+KM = os.environ.get('H1_KM', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-06f5b9b4')
 REF = os.environ.get('H1_REF', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-owl-reference-c3c')
 LEAN = os.path.expanduser('~/.elan/toolchains/leanprover--lean4---v4.30.0-rc2/bin/lean')
 LEANPATH = open(os.environ.get('H1_LEANPATH', '/mnt/data1/leechuck/km-work/v170/scratch/h1/leanpath.txt')).read().strip()
@@ -334,7 +334,7 @@ def main():
     max_pairs = int(a[a.index('--max-pairs') + 1]) if '--max-pairs' in a else 40000
     os.makedirs(outdir, exist_ok=True)
     name = os.path.basename(src).rsplit('.', 1)[0]
-    R = {'input': name, 'bytes': os.path.getsize(src)}
+    R = {'input': name, 'bytes': os.path.getsize(src), 'km_bin': os.path.basename(KM)}
     t0 = time.time()
     kr, ans = km_answers(src, outdir, 300)
     R['km'] = kr
