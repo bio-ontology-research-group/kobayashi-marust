@@ -1,0 +1,8 @@
+Ontology(<http://example.org/red>
+Declaration(ObjectProperty(<http://x/p>))
+Declaration(NamedIndividual(<http://x/a>)) Declaration(NamedIndividual(<http://x/b>)) Declaration(NamedIndividual(<http://x/c>))
+TransitiveObjectProperty(<http://x/p>)
+ObjectPropertyAssertion(<http://x/p> <http://x/a> <http://x/b>)
+ObjectPropertyAssertion(<http://x/p> <http://x/b> <http://x/c>)
+ClassAssertion(ObjectComplementOf(ObjectHasValue(<http://x/p> <http://x/c>)) <http://x/a>)
+)

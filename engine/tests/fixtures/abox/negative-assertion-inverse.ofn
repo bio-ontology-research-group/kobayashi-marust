@@ -1,0 +1,8 @@
+Prefix(:=<http://x/>)
+Ontology(<http://x/o>
+Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:ri)) Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) Declaration(NamedIndividual(:c))
+InverseObjectProperties(:r :ri)
+ObjectPropertyAssertion(:ri :b :a)
+NegativeObjectPropertyAssertion(:r :a :c)
+NegativeObjectPropertyAssertion(:r :c :a)
+)

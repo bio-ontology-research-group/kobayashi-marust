@@ -4,6 +4,25 @@
 
 ### Engine
 
+- Fixed (wrong answer, since v1.4.4): `{r(a,b), ¬r(a,c)}` was reported
+  inconsistent. The CB worker read the ground negative assertion as
+  `r(x,c) → x ≉ a`, and Hyper binds the non-central individual `c` like a
+  variable, so any `r(a,·)` edge refuted it. The nominal clause stream now
+  carries the guarded form `{a}(x) ∧ r(x,y) ∧ {c}(y) → ⊥` over exact
+  nominal proxies (the form the native bridge already used), and the CB
+  translation drops and counts any remaining ground form.
+- Fixed (wrong answer, since v1.4.4): over ground role assertions a `∀`
+  consumer of a transitive role depended on the order of the assertions
+  (`Transitive(p)`, `p(a,b)`, `p(b,c)`, `a : ¬∃p.{c}` was consistent in
+  one order). In the nominal clause stream with an ABox, transitive roles
+  now get the forward role-automaton markers of the chain encoding.
+- A repeated ABox axiom (for example `SameIndividual(a b)` twice) made
+  the native bridge's ABox coverage check decline, and the answer of the
+  fallback route was published with the declined attempt's `DROPPED`
+  count. Repeats are counted as covered.
+- `km classify --realize` and `--properties` ran their workers with
+  `KM_THREADS=16` (the route bundle's value) when the caller set a
+  smaller `KM_THREADS`. Route bundles now never exceed the caller's value.
 - Fixed (E12, wrong answers): the CB clause stream lost consequences of
   role chains for every consumer of a chain-derived role other than a
   plain existential over same-orientation roles: `∀r.C` and ranges of a
