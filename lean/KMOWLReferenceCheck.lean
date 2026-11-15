@@ -16,6 +16,7 @@ import ContextCalculus.OWLFrontend.EdgeStrengthen
 import ContextCalculus.SRIQN.HintExplain
 import ContextCalculus.OWLFrontend.HintWitnessA
 import ContextCalculus.OWLFrontend.HintRows
+import ContextCalculus.OWLFrontend.HintRowsD
 
 /-!
 # Executable OWL reference procedure (`km-owl-reference`)
@@ -1219,6 +1220,8 @@ structure Args where
   axioms : Option String := none
   /-- `sroiq-hint --witness`: print only the counts of the class and individual rows. -/
   countsOnly : Bool := false
+  /-- `sroiq-hint --witness`: print the data property rows (stage H5). -/
+  dataPropertyRows : Bool := false
   /-- `sroiq-hint --witness`: classes by position in a `class_index` line. -/
   compact : Bool := false
 
@@ -1244,6 +1247,7 @@ def parseArgs (acc : Args) : List String → Option Args
   | "--property-rows" :: rest => parseArgs { acc with propertyRows := true } rest
   | "--axioms" :: f :: rest => parseArgs { acc with axioms := some f } rest
   | "--counts-only" :: rest => parseArgs { acc with countsOnly := true } rest
+  | "--data-property-rows" :: rest => parseArgs { acc with dataPropertyRows := true } rest
   | "--compact" :: rest => parseArgs { acc with compact := true } rest
   | "--procedure" :: raw :: rest =>
     match parseProcedure raw with
@@ -1930,13 +1934,72 @@ def axKind : OWL.Axiom → String
   | .classAssertion .. => "ClassAssertion"
   | .objectPropertyAssertion .. => "ObjectPropertyAssertion"
   | .negativeObjectPropertyAssertion .. => "NegativeObjectPropertyAssertion"
+  | .subDataPropertyOf .. => "SubDataPropertyOf"
+  | .equivalentDataProperties .. => "EquivalentDataProperties"
+  | .disjointDataProperties .. => "DisjointDataProperties"
+  | .dataDomain .. => "DataPropertyDomain"
+  | .dataRange .. => "DataPropertyRange"
+  | .functionalData .. => "FunctionalDataProperty"
+  | .dataPropertyAssertion .. => "DataPropertyAssertion"
+  | .negativeDataPropertyAssertion .. => "NegativeDataPropertyAssertion"
   | _ => "other"
+
+/-- The IRIs of a list without repetitions, in first-occurrence order. -/
+def dedupS (l : List OWL.IRI) : List OWL.IRI :=
+  (l.foldl (fun (acc : Std.HashSet OWL.IRI × Array OWL.IRI) a =>
+    if acc.1.contains a then acc else (acc.1.insert a, acc.2.push a)) ({}, #[])).2.toList
+
+/-- The data rows of stage H5 (`hintRefuteDMM_sound`): every printed
+non-entailment is `refuteD KD ax = true` for the axiom `ax` named by the
+line, with `KD = ckxMemo (ckOfDM W ckFuel (splitDef O.axioms).isNone props) dps`. -/
+def publishData (out : IO.FS.Stream) (W : OWLFrontend.WTab) (KD : OWLFrontend.CKX W.k)
+    (elems : List (Fin W.k)) (dps : List OWL.IRI) (dOn : Bool) : IO Unit := do
+  let given := (List.finRange W.k).filter fun w => (W.dst w).isSome
+  out.putStrLn ("{\"data_rows\":{\"data\":" ++ toString dOn ++
+    ",\"properties\":" ++ toString dps.length ++ ",\"given\":" ++ toString given.length ++ "}}")
+  -- the values of the individuals' elements: one entry per value, its atoms
+  let mut vals : Array String := #[]
+  for w in elems do
+    match W.dst w with
+    | none => pure ()
+    | some S =>
+      for P in dps do
+        let s := KD.dv (.named P) w
+        if !s.1.isEmpty then
+          let cells := s.1.map fun i => match S[i]? with
+            | some e => "[" ++ ",".intercalate (((List.finRange W.q).filter (· ∈ e.2)).map (toString ·.val)) ++ "]"
+            | none => "[]"
+          vals := vals.push ("[" ++ toString w.val ++ "," ++ (Json.str P).compress ++ ",[" ++
+            ",".intercalate cells ++ "]," ++ toString s.2 ++ "]")
+  out.putStrLn ("{\"individual_values\":[" ++ ",".intercalate vals.toList ++ "]}")
+  let clsI := dedupS (W.cls.map (·.1))
+  for P in dps do
+    let p := OWL.DataProp.named P
+    let others := (dps.filter (· != P)).map OWL.DataProp.named
+    let dname : OWL.DataProp → String := fun q => match q with
+      | .named i => i
+      | .top => OWL.Parse.owlNs ++ "topDataProperty"
+      | .bot => OWL.Parse.owlNs ++ "bottomDataProperty"
+    let nonsub := others.filter fun t => OWLFrontend.refuteD KD (.subDataPropertyOf p t)
+    let noneq := others.filter fun t => OWLFrontend.refuteD KD (.equivalentDataProperties [p, t])
+    let nondis := others.filter fun t => OWLFrontend.refuteD KD (.disjointDataProperties [p, t])
+    let nonempty := OWLFrontend.refuteD KD (.subDataPropertyOf p .bot)
+    let notE := if OWLFrontend.refuteD KD (.functionalData p) then ["functional"] else []
+    let domNot := clsI.filter fun C => OWLFrontend.refuteD KD (.dataDomain p (.cls C))
+    let ranNot := (List.finRange W.q).filter fun j => OWLFrontend.refuteD KD (.dataRange p (W.dsp j))
+    out.putStrLn ("{\"data_property\":" ++ (Json.str P).compress ++ ",\"nonempty\":" ++
+      toString nonempty ++ ",\"nonsub\":" ++ jsonList (nonsub.map dname) ++
+      ",\"nonequiv\":" ++ jsonList (noneq.map dname) ++
+      ",\"nondisjoint\":" ++ jsonList (nondis.map dname) ++
+      ",\"not_entailed\":" ++ jsonList notE ++ ",\"domain_not\":" ++ jsonList domNot ++
+      ",\"range_not_atoms\":[" ++ ",".intercalate (ranNot.map (toString ·.val)) ++ "]}")
 
 /-- The role rows of stage H4 (`hintRefuteM_sound`, `hintRefuteMR_sound`):
 every printed non-entailment is `refute K ax = true` for the axiom `ax`
 named by the line, with `K = ckMemo (ckOf W ckFuel) props`. -/
 def publishRoles (out : IO.FS.Stream) (W : OWLFrontend.WTab) (showInd : OWL.IRI → Bool)
-    (propRows : Bool) (axs : List OWL.Axiom) : IO Unit := do
+    (propRows : Bool) (axs : List OWL.Axiom) (KD : Option (OWLFrontend.CKX W.k) := none)
+    (dataRows : Bool := false) (dOn : Bool := false) : IO Unit := do
   let props := W.rprops.map (·.1)
   let K := OWLFrontend.ckMemo (OWLFrontend.ckOf W OWLFrontend.ckFuel) props
   let rtStr : SRI.RoleT (Fin W.M) → String := fun R => match R with
@@ -1986,10 +2049,19 @@ def publishRoles (out : IO.FS.Stream) (W : OWLFrontend.WTab) (showInd : OWL.IRI 
         ",\"nondisjoint\":" ++ jsonList (nondis.map propName) ++
         ",\"not_entailed\":" ++ jsonList notE ++ ",\"domain_not\":" ++ jsonList domNot ++
         ",\"range_not\":" ++ jsonList ranNot ++ "}")
+  if dataRows then
+    match KD with
+    | some KD => publishData out W KD elems (dedupS W.dpsA.toList) dOn
+    | none => out.putStrLn "{\"data_rows\":{\"data\":false,\"properties\":0,\"given\":0}}"
+  -- with the data table (an ontology), `refuteD` (`hintRefuteDMM_sound`);
+  -- with keys and rules, `refute` (`hintRefuteMR_sound`)
   let mut i := 0
   for ax in axs do
+    let r := match KD with
+      | some KD => OWLFrontend.refuteD KD ax
+      | none => OWLFrontend.refute K ax
     out.putStrLn ("{\"axiom\":" ++ toString i ++ ",\"kind\":" ++ (Json.str (axKind ax)).compress ++
-      ",\"refuted\":" ++ toString (OWLFrontend.refute K ax) ++ "}")
+      ",\"refuted\":" ++ toString r ++ "}")
     i := i + 1
 
 /-- Print the rows the witness hint certifies (`hintWitnessC_sound`: rows
@@ -2001,7 +2073,8 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingRe
     {req : List OWL.IRI} {hint : RawHint} (W : OWLFrontend.WTab)
     (_h : OWLFrontend.wTabA O req hint = some W ∨ OWLFrontend.wTabR R req hint = some W)
     (propRows : Bool := false) (axs : List OWL.Axiom := []) (countsOnly compact : Bool := false)
-    (parseMs : Nat := 0) :
+    (parseMs : Nat := 0) (KD : Option (OWLFrontend.CKX W.k) := none) (dataRows : Bool := false)
+    (dOn : Bool := false) :
     IO UInt32 := do
   let thingI := OWL.Parse.owlThing
   let nothingI := OWL.Parse.owlNothing
@@ -2135,7 +2208,7 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingRe
   out.putStrLn ("{\"counts\":{\"nonsub\":" ++ toString nNon ++ ",\"nontype\":" ++ toString nType ++
     ",\"table_errors\":" ++ toString nBad ++ ",\"element_groups\":" ++ toString gs.length ++
     (if parseMs > 0 then ",\"hint_parse_ms\":" ++ toString parseMs else "") ++ "}}")
-  publishRoles out W (fun a => showInd a) propRows axs
+  publishRoles out W (fun a => showInd a) propRows axs KD dataRows dOn
   out.flush
   return 0
 
@@ -2264,8 +2337,13 @@ def runWitness (timing : Bool) (args : Args) (O : OWL.Ontology) (R? : Option OWL
     | none =>
       let ⟨res, hres⟩ ← timedPhase timing "witness" (fun _ => OWLFrontend.wTabA O req hint)
       match res, hres with
-      | some W, h => some <$> (publishWitness (O := O) (R := ⟨O, []⟩) (showInd := fun _ => true) outS table thingReq nothingReq W
-          (Or.inl h.symm) args.propertyRows axs args.countsOnly args.compact (if args.out.isSome then parseMs else 0))
+      | some W, h =>
+        -- the data table of `hintRefuteDMM_sound`
+        let KD := OWLFrontend.ckxMemo (OWLFrontend.ckOfDM W OWLFrontend.ckFuel (splitDef O.axioms).isNone
+          (W.rprops.map (·.1))) ((dedupS W.dpsA.toList).map OWL.DataProp.named)
+        some <$> (publishWitness (O := O) (R := ⟨O, []⟩) (showInd := fun _ => true) outS table thingReq nothingReq W
+          (Or.inl h.symm) args.propertyRows axs args.countsOnly args.compact (if args.out.isSome then parseMs else 0)
+          (some KD) args.dataPropertyRows (W.chainR && (splitDef O.axioms).isNone))
       | none, _ => pure none
     | some R =>
       let ⟨res, hres⟩ ← timedPhase timing "witness" (fun _ => OWLFrontend.wTabR R req hint)
@@ -2274,7 +2352,8 @@ def runWitness (timing : Bool) (args : Args) (O : OWL.Ontology) (R? : Option OWL
         -- the individuals of the input: not the fresh individual of the grounding
         let names := Std.HashSet.ofList R.named
         some <$> (publishWitness (O := O) (R := R) (showInd := names.contains) outS table thingReq
-          nothingReq W (Or.inr h.symm) args.propertyRows axs args.countsOnly args.compact (if args.out.isSome then parseMs else 0))
+          nothingReq W (Or.inr h.symm) args.propertyRows axs args.countsOnly args.compact (if args.out.isSome then parseMs else 0)
+          none args.dataPropertyRows)
       | none, _ => pure none
   match done with
   | some c => return c

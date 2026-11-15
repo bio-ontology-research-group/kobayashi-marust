@@ -585,6 +585,56 @@ theorem hintRefuteDM_sound (pat : String → String → Prop) {O : Ontology} {re
   rw [ckOfDM_eq] at h
   exact hintRefuteD_sound pat hw fuel ax h
 
+/-- A hash for data property expressions. -/
+instance instHashableDataProp : Hashable DataProp where
+  hash
+    | .named r => mixHash 1 (hash r)
+    | .top => 3
+    | .bot => 4
+
+/-- `K` with the value lists of the data properties `ps` computed once. -/
+def ckxMemo {k : Nat} (K : CKX k) (ps : List DataProp) : CKX k :=
+  let arr := ps.toArray.map fun p => (p, Array.ofFn fun w => Thunk.mk fun _ => K.dv p w)
+  let idx : Std.HashMap DataProp Nat := ps.zipIdx.foldl (fun mp e => mp.insertIfNew e.1 e.2) {}
+  { K with dv := fun p w =>
+      match idx[p]? with
+      | some i =>
+        match arr[i]? with
+        | some e => if e.1 == p then ((e.2[w.val]?).map Thunk.get).getD (K.dv p w) else K.dv p w
+        | none => K.dv p w
+      | none => K.dv p w }
+
+/-- **The tables change nothing.** -/
+theorem ckxMemo_eq {k : Nat} (K : CKX k) (ps : List DataProp) : ckxMemo K ps = K := by
+  cases K with
+  | mk toCK dv dr =>
+  simp only [ckxMemo, CKX.mk.injEq, and_true, true_and]
+  funext p w
+  split
+  · split
+    next e he =>
+      split_ifs with hp
+      · rw [Array.getElem?_map] at he
+        obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.1 he
+        rw [beq_iff_eq] at hp
+        dsimp only at hp ⊢
+        subst hp
+        simp
+        rfl
+      · rfl
+    · rfl
+  · rfl
+
+/-- **A refuted axiom is not entailed** (with the tables of `ckMemo` and
+`ckxMemo`, as the command line computes them). -/
+theorem hintRefuteDMM_sound (pat : String → String → Prop) {O : Ontology} {req : List IRI}
+    {hint : RawHint} {W : WTab} (hw : wTabA O req hint = some W) (fuel : Nat) (ps : List ObjProp)
+    (ds : List DataProp) (ax : Axiom)
+    (h : refuteD (ckxMemo (ckOfDM W fuel (splitDef O.axioms).isNone ps) ds) ax = true) :
+    ¬ EntailsAt (owl2MapP pat) O ax := by
+  rw [ckxMemo_eq] at h
+  exact hintRefuteDM_sound pat hw fuel ps ax h
+
 end ContextCalculus.OWLFrontend
 
 #print axioms ContextCalculus.OWLFrontend.evR_sound
@@ -592,3 +642,5 @@ end ContextCalculus.OWLFrontend
 #print axioms ContextCalculus.OWLFrontend.hintRefuteD_sound
 #print axioms ContextCalculus.OWLFrontend.hintRefuteSubD_sound
 #print axioms ContextCalculus.OWLFrontend.hintRefuteDM_sound
+#print axioms ContextCalculus.OWLFrontend.ckxMemo_eq
+#print axioms ContextCalculus.OWLFrontend.hintRefuteDMM_sound
