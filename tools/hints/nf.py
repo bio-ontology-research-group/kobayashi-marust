@@ -142,3 +142,49 @@ class Index:
         for R in L:
             out |= self.up[R]
         return frozenset(out)
+
+
+def from_route(index_text, clauses_text):
+    """The normal form of `sroiq-hint` from `--print-index` and
+    `--print-clauses` (the same row)."""
+    nf = NF()
+    nf.route = 'sroiq-hint'
+    p = Part()
+    nf.parts.append(p)
+    for line in index_text.split('\n'):
+        w = line.split(' ', 2)
+        if w[0] == 'concepts':
+            nf.n = int(w[1])
+        elif w[0] == 'roles':
+            nf.m = int(w[1])
+        elif w[0] == 'concept' and len(w) == 3:
+            nf.cname[w[2]] = int(w[1])
+        elif w[0] == 'role' and len(w) == 3:
+            nf.rname[w[2]] = int(w[1])
+        elif w[0] == 'nominal' and len(w) == 3:
+            nf.nominal[w[2]] = int(w[1])
+    nf.data_clauses = 0
+    for line in clauses_text.split('\n'):
+        w = line.split()
+        if not w:
+            continue
+        d = w[0]
+        if d == 'gci':
+            i = w.index('->')
+            p.gci.append((tuple(int(x) for x in w[1:i]), tuple(int(x) for x in w[i + 1:])))
+        elif d == 'some':
+            p.ex.append((int(w[1]), rt(w[2]), int(w[3])))
+        elif d == 'all':
+            p.all.append((int(w[1]), rt(w[2]), int(w[3])))
+        elif d == 'atleast':
+            p.ge.append((int(w[1]), int(w[2]), rt(w[3]), int(w[4])))
+        elif d == 'atmost':
+            p.le.append((int(w[1]), int(w[2]), rt(w[3]), int(w[4])))
+        elif d == 'chain':
+            toks = [x for x in w[1:] if x not in ('->', '|')]
+            p.chain.append((tuple(rt(x) for x in toks[:-1]), rt(toks[-1])))
+        elif d == 'nom':
+            p.noms.append(int(w[1]))
+        elif d == 'data-clauses':
+            nf.data_clauses = int(w[1])
+    return nf
