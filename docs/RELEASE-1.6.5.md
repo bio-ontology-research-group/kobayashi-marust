@@ -75,8 +75,9 @@ correctness runs.
 Workstation checks (2026-11-15, binary built from `development/v1.6.5`,
 compared with a build of `v1.6.4-rc1`, `KM_THREADS=1`):
 
-- `cargo test --release --lib`: the 27 failures of the v1.6.4 list
-  (Lean checker binaries absent); one more in one run,
+- `cargo test --release --lib`, two runs: 28 and 21 failures, all in the
+  list of 27 that v1.6.4-rc1 fails without the Lean checker binaries,
+  except, in the first run,
   `elcomplete::tests::positive_abox_completion_respects_identity_and_conjunction_clashes`,
   which passes alone, in its module and in a second full run (the
   environment race fixed on the v1.7.0 line by the test lock, not
