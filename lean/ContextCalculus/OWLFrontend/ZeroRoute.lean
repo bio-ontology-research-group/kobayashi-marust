@@ -1,5 +1,6 @@
 import ContextCalculus.OWLFrontend.DisjointUnion
 import ContextCalculus.SRIQN.ZeroAtMost
+import ContextCalculus.OWLFrontend.RowsG
 
 /-!
 # The chain route with at-most-zero restrictions as universals (stage C3d)
@@ -14,6 +15,9 @@ and their hint indices.
   the checks `sroiqZOK`.
 * `owlC3ZConsistent_sound`, `owlC3ZConsistent_isSome_iff`, and the type row
   `owlC3ZTypeRow_sound`.
+* The five other rows (same, subsumption, different, role, negative role,
+  stage C3e): the rows of `owlC3Consistent` first, then the generic rows of
+  `RowsG.lean` over `zeroP` (`owlC3ZSameRow_sound` and the others).
 -/
 
 namespace ContextCalculus.OWLFrontend
@@ -213,9 +217,98 @@ theorem owlC3ZTypeRow_sound (pat : String → String → Prop) {O : Ontology} {C
       simp only [typeAxs, List.mem_singleton, forall_eq, Interp.sat, Interp.ext] at hs this
       exact hs this
 
+/-! ## The five other rows (stage C3e) -/
+
+/-- The at-most-zero route as a consistency procedure on any ontology. -/
+def zeroP (O : Ontology) (hint : Option RawHint) : Option Bool :=
+  owlZeroCore (anonOff [] (duOff O)) hint
+
+theorem zeroP_sound : ConsSound zeroP := by
+  intro pat O hint v h
+  have hk : (duOff O).noKey = true := noKey_of_anonOff
+    ((owlZeroCore_isSome_iff _ hint).1 (by unfold zeroP at h; rw [h]; rfl)).1
+  rw [owlZeroCore_sound pat h, consistentAt_anonOff hk, consistentAt_duOff]
+
+/-- **Same row** (stage C3e). -/
+def owlC3ZSameRow (O : Ontology) (a b : IRI) (hint : Option RawHint) : Option Bool :=
+  match owlC3SameRow O a b hint with
+  | some v => some v
+  | none => rowGSame zeroP O a b hint
+
+/-- **Subsumption row** (stage C3e). -/
+def owlC3ZSubRow (O : Ontology) (A B : IRI) (hint : Option RawHint) : Option Bool :=
+  match owlC3SubRow O A B hint with
+  | some v => some v
+  | none => rowGSub zeroP O A B hint
+
+/-- **Different row** (stage C3e). -/
+def owlC3ZDiffRow (O : Ontology) (a b : IRI) (hint : Option RawHint) : Option Bool :=
+  match owlC3DiffRow O a b hint with
+  | some v => some v
+  | none => rowGDiff zeroP O a b hint
+
+/-- **Role row** (stage C3e). -/
+def owlC3ZRoleRow (O : Ontology) (r : ObjProp) (a b : IRI) (hint : Option RawHint) : Option Bool :=
+  match owlC3RoleRow O r a b hint with
+  | some v => some v
+  | none => rowGRole zeroP O r a b hint
+
+/-- **Negative role row** (stage C3e). -/
+def owlC3ZNRoleRow (O : Ontology) (r : ObjProp) (a b : IRI) (hint : Option RawHint) : Option Bool :=
+  match owlC3NRoleRow O r a b hint with
+  | some v => some v
+  | none => rowGNRole zeroP O r a b hint
+
+theorem owlC3ZSameRow_sound (pat : String → String → Prop) {O : Ontology} {a b : IRI}
+    {hint : Option RawHint} {v : Bool} (h : owlC3ZSameRow O a b hint = some v) :
+    v = true ↔ EntailsAt (owl2MapP pat) O (.sameIndividual [.named a, .named b]) := by
+  unfold owlC3ZSameRow at h
+  split at h
+  next v' hv => simp only [Option.some.injEq] at h; subst h; exact owlC3SameRow_sound pat hv
+  next => exact rowGSame_sound zeroP_sound pat h
+
+theorem owlC3ZSubRow_sound (pat : String → String → Prop) {O : Ontology} {A B : IRI}
+    {hint : Option RawHint} {v : Bool} (h : owlC3ZSubRow O A B hint = some v) :
+    v = true ↔ EntailsSubAt (owl2MapP pat) O A B := by
+  unfold owlC3ZSubRow at h
+  split at h
+  next v' hv => simp only [Option.some.injEq] at h; subst h; exact owlC3SubRow_sound pat hv
+  next => exact rowGSub_sound zeroP_sound pat h
+
+theorem owlC3ZDiffRow_sound (pat : String → String → Prop) {O : Ontology} {a b : IRI}
+    {hint : Option RawHint} {v : Bool} (h : owlC3ZDiffRow O a b hint = some v) :
+    v = true ↔ EntailsAt (owl2MapP pat) O (.differentIndividuals [.named a, .named b]) := by
+  unfold owlC3ZDiffRow at h
+  split at h
+  next v' hv => simp only [Option.some.injEq] at h; subst h; exact owlC3DiffRow_sound pat hv
+  next => exact rowGDiff_sound zeroP_sound pat h
+
+theorem owlC3ZRoleRow_sound (pat : String → String → Prop) {O : Ontology} {r : ObjProp}
+    {a b : IRI} {hint : Option RawHint} {v : Bool} (h : owlC3ZRoleRow O r a b hint = some v) :
+    v = true ↔ EntailsAt (owl2MapP pat) O (.objectPropertyAssertion r (.named a) (.named b)) := by
+  unfold owlC3ZRoleRow at h
+  split at h
+  next v' hv => simp only [Option.some.injEq] at h; subst h; exact owlC3RoleRow_sound pat hv
+  next => exact rowGRole_sound zeroP_sound pat h
+
+theorem owlC3ZNRoleRow_sound (pat : String → String → Prop) {O : Ontology} {r : ObjProp}
+    {a b : IRI} {hint : Option RawHint} {v : Bool} (h : owlC3ZNRoleRow O r a b hint = some v) :
+    v = true ↔
+      EntailsAt (owl2MapP pat) O (.negativeObjectPropertyAssertion r (.named a) (.named b)) := by
+  unfold owlC3ZNRoleRow at h
+  split at h
+  next v' hv => simp only [Option.some.injEq] at h; subst h; exact owlC3NRoleRow_sound pat hv
+  next => exact rowGNRole_sound zeroP_sound pat h
+
 end ContextCalculus.OWLFrontend
 
 #print axioms ContextCalculus.OWLFrontend.sroiqZParts_iff
 #print axioms ContextCalculus.OWLFrontend.owlC3ZConsistent_sound
 #print axioms ContextCalculus.OWLFrontend.owlC3ZConsistent_isSome_iff
 #print axioms ContextCalculus.OWLFrontend.owlC3ZTypeRow_sound
+#print axioms ContextCalculus.OWLFrontend.zeroP_sound
+#print axioms ContextCalculus.OWLFrontend.owlC3ZSameRow_sound
+#print axioms ContextCalculus.OWLFrontend.owlC3ZSubRow_sound
+#print axioms ContextCalculus.OWLFrontend.owlC3ZDiffRow_sound
+#print axioms ContextCalculus.OWLFrontend.owlC3ZRoleRow_sound
+#print axioms ContextCalculus.OWLFrontend.owlC3ZNRoleRow_sound

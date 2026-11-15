@@ -7,6 +7,7 @@ import ContextCalculus.OWLFrontend.SRIQDKBRows
 import ContextCalculus.OWLFrontend.SHOIQDC2aReference
 import ContextCalculus.OWLFrontend.SROIQAnon
 import ContextCalculus.OWLFrontend.ZeroRoute
+import ContextCalculus.OWLFrontend.HasSelfClass
 
 /-!
 # Executable OWL reference procedure (`km-owl-reference`)
@@ -733,21 +734,10 @@ def sroiqDecline (O : OWL.Ontology) : String :=
           "nominal nor nominal-only has a role below the inverse of the role of an at-most restriction"
         else "datatypes: a data range outside the supported sub-theory of the OWL 2 datatype map"
 
-/-- Why the route with irreflexive and reflexive properties declines (its
-input already renamed by `anonOff`). -/
-def selfDecline (O : OWL.Ontology) : String :=
-  if !O.isSROIQDSKB then
-    s!"not recognised: not an OWL SROIQ(D) knowledge base ({firstFailing O OWL.Axiom.isSROIQDSKB})"
-  else match translateSHOIQD (roleOff (selfOff O)) [] with
-    | none => "not recognised: the SHOIQ(D) translation failed"
-    | some T =>
-      match roleCls T (selfOff O) with
-      | none => "not recognised: a property of a role chain has no role index"
-      | some E =>
-        match selfCls T O with
-        | none => "not recognised: a property of a self axiom has no role index"
-        | some SC =>
-          let L := OWLFrontend.SHOIQ.nomNames (roleOff (selfOff O)) []
+/-- Why the Self checks fail on a translation. -/
+def selfReason (T : SRIQDKBTranslation) (L : List OWL.IRI)
+    (E : List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount)))
+    (SC : List (SRIQN.SClause (Fin T.obj.conceptCount) (Fin T.obj.roleCount))) : String :=
           if !SROIQ.Proc.regularB (objC T L E) then
             "not regular: the role hierarchy violates the OWL 2 regularity condition"
           else if !SROIQ.Proc.condB (objC T L E) then
@@ -765,15 +755,51 @@ def selfDecline (O : OWL.Ontology) : String :=
             "restriction (after the Self encoding)"
           else "datatypes: a data range outside the supported sub-theory of the OWL 2 datatype map"
 
+/-- Why the route with irreflexive and reflexive properties declines (its
+input already renamed by `anonOff`). -/
+def selfDecline (O : OWL.Ontology) : String :=
+  if !O.isSROIQDSKB then
+    s!"not recognised: not an OWL SROIQ(D) knowledge base ({firstFailing O OWL.Axiom.isSROIQDSKB})"
+  else match translateSHOIQD (roleOff (selfOff O)) [] with
+    | none => "not recognised: the SHOIQ(D) translation failed"
+    | some T =>
+      match roleCls T (selfOff O) with
+      | none => "not recognised: a property of a role chain has no role index"
+      | some E =>
+        match selfCls T O with
+        | none => "not recognised: a property of a self axiom has no role index"
+        | some SC =>
+          let L := OWLFrontend.SHOIQ.nomNames (roleOff (selfOff O)) []
+          selfReason T L E SC
+
+/-- Why the route with `ObjectHasSelf` in class expressions declines (its
+input already renamed by `anonOff`). -/
+def hsDecline (O0 : OWL.Ontology) : String :=
+  let O := hsOff O0
+  let P := selfPairs O0
+  if !O.isSROIQDSKB then
+    s!"not recognised: not an OWL SROIQ(D) knowledge base ({firstFailing O OWL.Axiom.isSROIQDSKB})"
+  else match translateSHOIQD (roleOff (selfOff O)) (pairNames P) with
+    | none => "not recognised: the SHOIQ(D) translation failed"
+    | some T =>
+      match roleCls T (selfOff O) with
+      | none => "not recognised: a property of a role chain has no role index"
+      | some E =>
+        match selfCls T O, pairCls T P with
+        | some SC, some PC =>
+          selfReason T (OWLFrontend.SHOIQ.nomNames (roleOff (selfOff O)) (pairNames P)) E (SC ++ PC)
+        | _, _ => "not recognised: a property of a self axiom or of ObjectHasSelf has no role index"
+
 /-- The decline of `sroiq-c2a`: the Self route's reason when the input uses
 irreflexive properties, the chain route's reason otherwise. -/
 def sroiqDeclineS (O : OWL.Ontology) : String :=
-  if O.isSROIQDKB then sroiqDecline O else selfDecline O
+  if !(selfPairs O).isEmpty then hsDecline O
+  else if O.isSROIQDKB then sroiqDecline O else selfDecline O
 
 /-- Print the consistency verdict of `owlSROIQDC2aConsistent`
 (`owlSROIQDAConsistent_sound`). -/
 def publishConsistentS (v : Bool) {O : OWL.Ontology} {hint : Option RawHint}
-    (_h : owlC3ZConsistent O hint = some v) : IO UInt32 := do
+    (_h : owlC3HConsistent O hint = some v) : IO UInt32 := do
   let out ← IO.getStdout
   out.putStrLn ("{\"format\":\"owl-consistency-v1\",\"consistent\":" ++
     (if v then "true" else "false") ++ "}")
@@ -782,7 +808,7 @@ def publishConsistentS (v : Bool) {O : OWL.Ontology} {hint : Option RawHint}
 
 /-- Print the verdict of `owlSROIQDTypeRow` (`owlSROIQDATypeRow_sound`). -/
 def publishTypeS (C a : OWL.IRI) (v : Bool) {O : OWL.Ontology} {hint : Option RawHint}
-    (_h : owlC3ZTypeRow O C a hint = some v) : IO UInt32 := do
+    (_h : owlC3HTypeRow O C a hint = some v) : IO UInt32 := do
   let out ← IO.getStdout
   out.putStrLn ("{\"format\":\"owl-type-v1\",\"class\":" ++ (Json.str C).compress ++
     ",\"individual\":" ++ (Json.str a).compress ++ ",\"entailed\":" ++
@@ -795,14 +821,14 @@ def runOntologyS (timing : Bool) (hint : Option RawHint) (query : Option (OWL.IR
     (O : OWL.Ontology) : IO UInt32 := do
   match query with
   | some (C, a) =>
-    let ⟨res, hres⟩ ← timedPhase timing "type" (fun _ => owlC3ZTypeRow O C a hint)
+    let ⟨res, hres⟩ ← timedPhase timing "type" (fun _ => owlC3HTypeRow O C a hint)
     match res, hres with
     | some v, h => publishTypeS C a v h.symm
     | none, _ =>
       IO.eprintln (sroiqDeclineS (addAxs (anonOff [a] (duOff O)) (typeAxs C a)))
       return 3
   | none =>
-    let ⟨res, hres⟩ ← timedPhase timing "consistency" (fun _ => owlC3ZConsistent O hint)
+    let ⟨res, hres⟩ ← timedPhase timing "consistency" (fun _ => owlC3HConsistent O hint)
     match res, hres with
     | some v, h => publishConsistentS v h.symm
     | none, _ =>
@@ -915,6 +941,25 @@ def checkZero (timing : Bool) (O : OWL.Ontology) : IO Bool := do
       let ⟨r, _⟩ ← timedPhase timing "zero-checks"
         (fun _ => sroiqZOK T (OWLFrontend.SHOIQ.nomNames (roleOff O) []) E)
       return r
+
+/-- The fragment checks of the route with `ObjectHasSelf` in class
+expressions (`owlHSCore`), without the decision. -/
+def checkHS (timing : Bool) (O0 : OWL.Ontology) : IO Bool := do
+  let P := selfPairs O0
+  if P.isEmpty then return false
+  let ⟨O, _⟩ ← timedPhase timing "hasself" (fun _ => hsOff O0)
+  if !O.isSROIQDSKB then return false
+  let ⟨tr, _⟩ ← timedPhase timing "translate"
+    (fun _ => translateSHOIQD (roleOff (selfOff O)) (pairNames P))
+  match tr with
+  | none => return false
+  | some T =>
+    match roleCls T (selfOff O), selfCls T O, pairCls T P with
+    | some E, some SC, some PC =>
+      let L := OWLFrontend.SHOIQ.nomNames (roleOff (selfOff O)) (pairNames P)
+      let ⟨r, _⟩ ← timedPhase timing "self-checks" (fun _ => sroiqSOK T L E (SC ++ PC))
+      return r
+    | _, _, _ => return false
 
 /-- The SHIQ(D) knowledge-base route on an ontology. -/
 def runOntologyDKB (timing : Bool) (hint : Option RawHint) (query : Option (OWL.IRI × OWL.IRI))
@@ -1144,7 +1189,38 @@ def printIndex (route : String) (O : OWL.Ontology) : IO UInt32 := do
   let out ← IO.getStdout
   let emit (ls : List String) : IO Unit := do for l in ls do out.putStrLn l
   let O := if route == "sroiq-c2a" then duOff O else O
-  if route == "sroiq-c2a" && !(← checkS false (anonOff [] O)) && (anonOff [] O).isSROIQDSKB &&
+  if route == "sroiq-c2a" && !(selfPairs (anonOff [] O)).isEmpty &&
+      !(anonOff [] O).isSROIQDSKB then
+    let O0 := anonOff [] O
+    let P := selfPairs O0
+    let O := hsOff O0
+    match translateSHOIQD (roleOff (selfOff O)) (pairNames P) with
+    | none => decline (hsDecline O0)
+    | some T =>
+      match roleCls T (selfOff O), selfCls T O, pairCls T P with
+      | some E, some SC, some PC =>
+        let L := OWLFrontend.SHOIQ.nomNames (roleOff (selfOff O)) (pairNames P)
+        let SC := SC ++ PC
+        let n1 := T.obj.conceptCount + SROIQ.Proc.kCD (dosnC T L E)
+        let nc := (SRIQD.objPart (SRIQN.dbase (chC T L E))).length
+        let m := T.obj.roleCount
+        emit [s!"concepts {SRIQN.SelfE.ncOf (SRIQN.Proc.encTransDN (encS T L E SC))}", s!"roles {m}"]
+        emit (indexLines T.obj)
+        emit ((roleOff (selfOff O)).individualNames.filterMap fun a =>
+          (nameIx T.obj (OWLFrontend.SHOIQ.nmOf (roleOff (selfOff O)) (pairNames P) a)).map fun i =>
+            s!"nominal {i.val} {a}")
+        -- the class of `ObjectHasSelf(r)`: `hasself I IRI` or `hasself I inv IRI`
+        emit (P.filterMap fun p =>
+          (nameIx T.obj p.1).map fun i =>
+            match p.2 with
+            | .inv r => s!"hasself {i.val} inv {r}"
+            | r => s!"hasself {i.val} {r.name}")
+        emit [s!"loops {n1}", s!"splits {n1 + 2 * m}", s!"guards {n1 + 2 * m + 3 * nc}",
+          s!"fresh-nominal {n1 + 2 * m + 3 * nc + n1 + 1}"]
+        out.flush
+        return 0
+      | _, _, _ => decline (hsDecline O0)
+  else if route == "sroiq-c2a" && !(← checkS false (anonOff [] O)) && (anonOff [] O).isSROIQDSKB &&
       !(selfAxs (anonOff [] O)).isEmpty then
     let O := anonOff [] O
     match translateSHOIQD (roleOff (selfOff O)) [] with
@@ -1277,6 +1353,9 @@ def runFile (args : Args) (path : String) : IO UInt32 := do
               IO.println "accepted"
               return 0
             else if ← checkZero (← timingEnabled) (anonOff [] O) then do
+              IO.println "accepted"
+              return 0
+            else if ← checkHS (← timingEnabled) (anonOff [] O) then do
               IO.println "accepted"
               return 0
             else do
