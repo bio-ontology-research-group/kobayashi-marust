@@ -58,31 +58,18 @@ def sroiqHOK (T : SRIQDKBTranslation) (L : List IRI)
   SROIQ.Proc.regularB (objC T L E) && SROIQ.Proc.condB (objC T L E) &&
     (List.finRange T.tab.length).all fun p => drSupported (spec T.tab p)
 
-/-- Some part of the data theory accepts the hint. -/
+/-- The data part the hint names accepts it, or, when it names none, some
+part of the data theory does (stage H2: the hint is read as a sparse hint,
+`HF.hintPartsP`; `HF.hintPartsP_imp` reduces it to `hintPartsN` on the
+denoted hint). -/
 def sroiqHParts (T : SRIQDKBTranslation) (L : List IRI)
     (E : List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount)))
     (hint : RawHint) : Bool :=
   let sp := spec T.tab
   let as := allBases sp
   let cs := cellsOf as
-  (hint.toHintN _ _).any fun h => SRIQN.hintPartsN (encC T L E) cs (cellSize as)
+  (hint.toHintS _ _).any fun h => SRIQN.HF.hintPartsP (encC T L E) cs (cellSize as)
     (ContextCalculus.SRIQD.splitCell cs (cellSize as) (sroiqBound T L E) (owlE sp)) (owlE sp) h
-
-/-- `sroiqHParts` over the sparse form of the hint (stage H2, `HF.hintPartsS`). -/
-def sroiqHPartsF (T : SRIQDKBTranslation) (L : List IRI)
-    (E : List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount)))
-    (hint : RawHint) : Bool :=
-  let sp := spec T.tab
-  let as := allBases sp
-  let cs := cellsOf as
-  (hint.toHintS _ _).any fun h => SRIQN.HF.hintPartsS (encC T L E) cs (cellSize as)
-    (ContextCalculus.SRIQD.splitCell cs (cellSize as) (sroiqBound T L E) (owlE sp)) (owlE sp) h
-
-@[csimp] theorem sroiqHParts_eq_F : @sroiqHParts = @sroiqHPartsF := by
-  funext T L E hint
-  unfold sroiqHParts sroiqHPartsF
-  rw [← toHintS_map, Option.any_map]
-  simp only [Function.comp_def, SRIQN.HF.hintPartsS_eq]
 
 theorem owlTheory_eq (pat : String → String → Prop) {T : SRIQDKBTranslation}
     (h : (List.finRange T.tab.length).all (fun p => drSupported (spec T.tab p)) = true) :
@@ -103,7 +90,7 @@ theorem sroiqHParts_sound (pat : String → String → Prop) {T : SRIQDKBTransla
   obtain ⟨h, -, hh⟩ := (Option.any_eq_true _ _).1 hh
   exact SRIQN.hintPartsN_sound (cellSpec _) (le_refl (sroiqBound T L E))
     ContextCalculus.SRIQD.splitCell_ok.1 ContextCalculus.SRIQD.splitCell_ok.2
-    (SROIQ.Proc.isSHIQD_encChainDN _) (le_refl _) hh
+    (SROIQ.Proc.isSHIQD_encChainDN _) (le_refl _) (SRIQN.HF.hintPartsP_imp _ _ _ _ _ h hh)
 
 /-- The chain route on an ontology without anonymous individuals: `none`
 outside the fragment, otherwise whether the hint checks. -/
@@ -175,8 +162,7 @@ def sroiqSHOKF (T : SRIQDKBTranslation) (L : List IRI)
   funext T L E SC
   rfl
 
-/-- Some part of the data theory accepts the hint, with loops at nominal
-core elements. -/
+/-- `sroiqHParts` with loops at nominal core elements. -/
 def sroiqSHParts (T : SRIQDKBTranslation) (L : List IRI)
     (E : List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount)))
     (SC : List (SRIQN.SClause (Fin T.obj.conceptCount) (Fin T.obj.roleCount)))
@@ -184,25 +170,8 @@ def sroiqSHParts (T : SRIQDKBTranslation) (L : List IRI)
   let sp := spec T.tab
   let as := allBases sp
   let cs := cellsOf as
-  (hint.toHintN _ _).any fun h => SRIQN.hintPartsNL (encS T L E SC) cs (cellSize as)
+  (hint.toHintS _ _).any fun h => SRIQN.HF.hintPartsNLP (encS T L E SC) cs (cellSize as)
     (ContextCalculus.SRIQD.splitCell cs (cellSize as) (sroiqSBound T L E SC) (owlE sp)) (owlE sp) h
-
-/-- `sroiqSHParts` over the sparse form of the hint (stage H2). -/
-def sroiqSHPartsF (T : SRIQDKBTranslation) (L : List IRI)
-    (E : List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount)))
-    (SC : List (SRIQN.SClause (Fin T.obj.conceptCount) (Fin T.obj.roleCount)))
-    (hint : RawHint) : Bool :=
-  let sp := spec T.tab
-  let as := allBases sp
-  let cs := cellsOf as
-  (hint.toHintS _ _).any fun h => SRIQN.HF.hintPartsNLS (encS T L E SC) cs (cellSize as)
-    (ContextCalculus.SRIQD.splitCell cs (cellSize as) (sroiqSBound T L E SC) (owlE sp)) (owlE sp) h
-
-@[csimp] theorem sroiqSHParts_eq_F : @sroiqSHParts = @sroiqSHPartsF := by
-  funext T L E SC hint
-  unfold sroiqSHParts sroiqSHPartsF
-  rw [← toHintS_map, Option.any_map]
-  simp only [Function.comp_def, SRIQN.HF.hintPartsNLS_eq]
 
 theorem sroiqSHParts_sound (pat : String → String → Prop) {T : SRIQDKBTranslation} {L : List IRI}
     {E : List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount))}
@@ -220,7 +189,7 @@ theorem sroiqSHParts_sound (pat : String → String → Prop) {T : SRIQDKBTransl
   exact SRIQN.encSelf_down (SROIQ.Proc.lamOK_of_lamOKB h3) hA1
     (SRIQN.hintPartsNL_sound (cellSpec _) (le_refl (sroiqSBound T L E SC))
       ContextCalculus.SRIQD.splitCell_ok.1 ContextCalculus.SRIQD.splitCell_ok.2
-      (SRIQN.isALCHIQ_encSelfD hA1) (le_refl _) hh)
+      (SRIQN.isALCHIQ_encSelfD hA1) (le_refl _) (SRIQN.HF.hintPartsNLP_imp _ _ _ _ _ h hh))
 
 /-- The Self route on an ontology without anonymous individuals. -/
 def owlSelfHint (O : OWL.Ontology) (hint : RawHint) : Option Bool :=
@@ -544,8 +513,8 @@ theorem hintNonTypes_sound (pat : String → String → Prop) {O : Ontology} {a 
 end ContextCalculus.OWLFrontend
 
 #print axioms ContextCalculus.OWLFrontend.owlHintConsistent_sound
-#print axioms ContextCalculus.OWLFrontend.sroiqHParts_eq_F
-#print axioms ContextCalculus.OWLFrontend.sroiqSHParts_eq_F
+#print axioms ContextCalculus.OWLFrontend.sroiqHParts_sound
+#print axioms ContextCalculus.OWLFrontend.sroiqSHParts_sound
 #print axioms ContextCalculus.OWLFrontend.hintNonType_sound
 #print axioms ContextCalculus.OWLFrontend.hintNonSame_sound
 #print axioms ContextCalculus.OWLFrontend.hintNonSub_sound

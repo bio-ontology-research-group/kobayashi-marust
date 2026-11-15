@@ -31,15 +31,15 @@ def roleTs (m : Nat) : List (RoleT (Fin m)) :=
 /-- The first failing condition of the star of a centre of type `t`; the
 neighbours carry a description. -/
 def starWhy (ix : SIx n m) (t : Finset (Fin n)) (N : List (String × QNbr n m)) : Option String :=
-  let M := mask t
+  let M := memT t
   let tl := t.sort (· ≤ ·)
   let N' := N.map (·.2)
-  let gTop := ix.gTop.find? fun h => !(h.any (memM M))
+  let gTop := ix.gTop.find? fun h => !(h.any (M))
   match gTop with
   | some h => some s!"gci  -> {namesS h} (empty body) has no head name in the type"
   | none =>
   let gbad := tl.findSome? fun a => ((getL ix.gBy a.val).find? fun g =>
-    g.1.all (memM M) && !(g.2.any (memM M)))
+    g.1.all (M) && !(g.2.any (M)))
   match gbad with
   | some g => some s!"gci {namesS g.1} -> {namesS g.2}: the body holds and no head name does"
   | none =>
@@ -55,7 +55,7 @@ def starWhy (ix : SIx n m) (t : Finset (Fin n)) (N : List (String × QNbr n m)) 
       match f1 with
       | some w => some w
       | none => ((e.2.sort (· ≤ ·)).findSome? fun a => ((getL ix.allBy a.val).find? fun p =>
-          decide (p.1.flip ∈ e.1) && !memM M p.2).map
+          decide (p.1.flip ∈ e.1) && !M p.2).map
         fun p => s!"{d}: all {a.val} {rtS p.1} {p.2.val} at the neighbour needs {p.2.val} here")
   match ebad with
   | some w => some w
