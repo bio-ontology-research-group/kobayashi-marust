@@ -15,3 +15,9 @@ share.ofn	--batch share.batch	{"format":"owl-hint-batch-v1","pair":0,"row":"cons
 # share.ofn is not C2a (sroiq-c2a --check: not C2a); its model needs core 3, an anonymous C element shared by the two B nodes.
 # clash.ofn is inconsistent; both hints are rejected (two s-predecessors of c; one element in two disjoint classes).
 # In rows, '#' stands for a space of the --row argument.
+# Stage C5 item 3: DL-safe rules by grounding (rules-safe: the rule fires only on named individuals, so the anonymous C successor of a is not B)
+rules-safe.ofn	--hint rules-safe.hint	{"format":"owl-hint-v1","row":"consistent","certified":true} 
+rules.ofn	--check	accepted 
+rules-clash.ofn	--check	accepted 
+rules-safe.ofn	(sroiq-c2a) --hint rules-safe.hint	{"format":"owl-consistency-v1","consistent":true}
+# rules-clash.ofn is inconsistent (the rule puts b in B, disjoint from C); no hint certifies it; the unhinted sroiq-c2a search runs out of memory on these inputs.

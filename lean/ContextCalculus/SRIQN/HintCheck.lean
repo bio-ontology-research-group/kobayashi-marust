@@ -235,9 +235,79 @@ theorem hintPartsNL_sound (hc : CellSpec key cells size) {B L : Nat}
 
 end Parts
 
+/-! ## The part loop with the part-independent checks done once
+
+`checkRedN` reads the part only through the data-star test `ok`; the core
+conditions and the certificate check are the same for every part. The
+`@[csimp]` equalities below check them once and then loop over the parts
+with the data-star tests only. -/
+
+section Fast
+
+open ContextCalculus.SRIQD (partsOf toPart partCard)
+
+variable {Val K : Type} [DecidableEq K] {q s : Nat}
+variable {n m p : Nat}
+
+theorem bool_split (a t k r c : Bool) :
+    (a && t && (k || (r && c))) = ((a && (k || c)) && (t && (k || r))) := by
+  cases a <;> cases t <;> cases k <;> cases r <;> cases c <;> rfl
+
+theorem checkRedN_split (A : SRIQ.Ontology (Fin n) (Fin m)) (ok : Finset (Fin n) → Bool)
+    (N : List (Fin n)) (h : Proc.HintN n m) :
+    Proc.checkRedN A ok N h =
+      ((decide (0 < h.k ∧ Proc.coreOKN N h.ty h.lab ∧
+          ∀ b, SRIQ.StarOK A (h.ty b) (SRIQ.Proc.nbrsL h.ty h.lab b ++ h.kids b)) &&
+        ((List.finRange h.k).all (fun b => (h.kids b).isEmpty) || decide (Proc.CertOK A N h))) &&
+      ((List.finRange h.k).all (fun b => ok (h.ty b)) &&
+        ((List.finRange h.k).all (fun b => (h.kids b).isEmpty) || h.recs.all (fun e => ok e.1.1)))) := by
+  unfold Proc.checkRedN
+  exact bool_split _ _ _ _ _
+
+theorem any_and_const {α : Type} (l : List α) (c : Bool) (f : α → Bool) :
+    l.any (fun x => c && f x) = (c && l.any f) := by
+  cases c <;> simp
+
+/-- `hintPartsN` with the core and certificate checks done once. -/
+def hintPartsNF (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
+    (size : K → Option Nat) (sp : K → Bool) (E : Fin q → K → (Fin s → Bool) → Bool)
+    (h : Proc.HintN (n + Proc.encKD O) m) : Bool :=
+  let D := Proc.encTransDN O
+  let Db := dbase D
+  let A := SRIQD.objPart Db
+  let N := dnoms D
+  let noKids := (List.finRange h.k).all (fun b => (h.kids b).isEmpty)
+  (decide (0 < h.k ∧ Proc.coreOKN N h.ty h.lab ∧
+      ∀ b, SRIQ.StarOK A (h.ty b) (SRIQ.Proc.nbrsL h.ty h.lab b ++ h.kids b)) &&
+    (noKids || decide (Proc.CertOK A N h))) &&
+  (partsOf size s (cells.filter sp)).any fun x =>
+    let ok := SRIQD.Proc.dataSatB Db (partCard cells size sp E (toPart s x))
+    (List.finRange h.k).all (fun b => ok (h.ty b)) && (noKids || h.recs.all (fun e => ok e.1.1))
+
+@[csimp] theorem hintPartsN_eq_F : @hintPartsN = @hintPartsNF := by
+  funext K _ q s n m p O cells size sp E h
+  simp only [hintPartsN, hintPartsNF, Proc.hintDNS, checkRedN_split, any_and_const]
+
+/-- `hintPartsNL` with the core, certificate and loop checks done once. -/
+def hintPartsNLF (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
+    (size : K → Option Nat) (sp : K → Bool) (E : Fin q → K → (Fin s → Bool) → Bool)
+    (h : Proc.HintN (n + Proc.encKD O) m) : Bool :=
+  Proc.loopOKH (dnoms (Proc.encTransDN O)) h && hintPartsNF O cells size sp E h
+
+@[csimp] theorem hintPartsNL_eq_F : @hintPartsNL = @hintPartsNLF := by
+  funext K _ q s n m p O cells size sp E h
+  have : ∀ (a b : Bool), (a && b) = (b && a) := fun a b => by cases a <;> cases b <;> rfl
+  simp only [hintPartsNL, hintPartsNLF, Proc.hintDNSL, this _ (Proc.loopOKH _ _), any_and_const]
+  rw [← hintPartsN_eq_F]
+  rfl
+
+end Fast
+
 end ContextCalculus.SRIQN
 
 #print axioms ContextCalculus.SRIQN.Proc.hintDNS_sound
 #print axioms ContextCalculus.SRIQN.Proc.hintDNSL_sound
 #print axioms ContextCalculus.SRIQN.hintPartsN_sound
 #print axioms ContextCalculus.SRIQN.hintPartsNL_sound
+#print axioms ContextCalculus.SRIQN.hintPartsN_eq_F
+#print axioms ContextCalculus.SRIQN.hintPartsNL_eq_F

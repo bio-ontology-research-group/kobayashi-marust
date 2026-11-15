@@ -39,14 +39,20 @@ def hintPartsNB (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
   let A := SRIQD.objPart Db
   let N := dnoms D
   let xs := (partsOf size s (cells.filter sp)).map fun x => toPart s x
-  hs.map fun h => h.any fun h => xs.any fun x =>
-    Proc.checkRedN A (SRIQD.Proc.dataSatB Db (partCard cells size sp E x)) N h
+  hs.map fun h => h.any fun h =>
+    let noKids := (List.finRange h.k).all (fun b => (h.kids b).isEmpty)
+    (decide (0 < h.k ∧ Proc.coreOKN N h.ty h.lab ∧
+        ∀ b, SRIQ.StarOK A (h.ty b) (SRIQ.Proc.nbrsL h.ty h.lab b ++ h.kids b)) &&
+      (noKids || decide (Proc.CertOK A N h))) &&
+    xs.any fun x =>
+      let ok := SRIQD.Proc.dataSatB Db (partCard cells size sp E x)
+      (List.finRange h.k).all (fun b => ok (h.ty b)) && (noKids || h.recs.all (fun e => ok e.1.1))
 
 theorem hintPartsNB_eq (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
     (size : K → Option Nat) (sp : K → Bool) (E : Fin q → K → (Fin s → Bool) → Bool)
     (hs : List (Option (Proc.HintN (n + Proc.encKD O) m))) :
     hintPartsNB O cells size sp E hs = hs.map fun h => h.any (hintPartsN O cells size sp E) := by
-  simp only [hintPartsNB, List.any_map, Function.comp_def]
+  simp only [hintPartsNB, List.any_map, Function.comp_def, hintPartsN_eq_F]
   rfl
 
 /-- `hintPartsNL` over a list of hints, the encodings computed once. -/
@@ -58,15 +64,21 @@ def hintPartsNLB (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K
   let A := SRIQD.objPart Db
   let N := dnoms D
   let xs := (partsOf size s (cells.filter sp)).map fun x => toPart s x
-  hs.map fun h => h.any fun h => xs.any fun x =>
-    Proc.checkRedN A (SRIQD.Proc.dataSatB Db (partCard cells size sp E x)) N h &&
-      Proc.loopOKH N h
+  hs.map fun h => h.any fun h =>
+    let noKids := (List.finRange h.k).all (fun b => (h.kids b).isEmpty)
+    Proc.loopOKH N h &&
+    ((decide (0 < h.k ∧ Proc.coreOKN N h.ty h.lab ∧
+        ∀ b, SRIQ.StarOK A (h.ty b) (SRIQ.Proc.nbrsL h.ty h.lab b ++ h.kids b)) &&
+      (noKids || decide (Proc.CertOK A N h))) &&
+    xs.any fun x =>
+      let ok := SRIQD.Proc.dataSatB Db (partCard cells size sp E x)
+      (List.finRange h.k).all (fun b => ok (h.ty b)) && (noKids || h.recs.all (fun e => ok e.1.1)))
 
 theorem hintPartsNLB_eq (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
     (size : K → Option Nat) (sp : K → Bool) (E : Fin q → K → (Fin s → Bool) → Bool)
     (hs : List (Option (Proc.HintN (n + Proc.encKD O) m))) :
     hintPartsNLB O cells size sp E hs = hs.map fun h => h.any (hintPartsNL O cells size sp E) := by
-  simp only [hintPartsNLB, List.any_map, Function.comp_def]
+  simp only [hintPartsNLB, List.any_map, Function.comp_def, hintPartsNL_eq_F]
   rfl
 
 end ContextCalculus.SRIQN
@@ -316,6 +328,136 @@ theorem hintPB_eq (O : Ontology) (hs : List RawHint) : hintPB O hs = hs.map (hin
       simp only [hintP, h1, if_true, hO']
   · rw [hintCoreB_eq]; simp [hintP, h1, hintP0]
 
+
+/-! ## The fragment check without a hint -/
+
+def owlChainFrag (O : OWL.Ontology) : Bool :=
+  if O.isSROIQDKB then
+    match translateSHOIQD (roleOff O) [] with
+    | none => false
+    | some T =>
+      match roleCls T O with
+      | none => false
+      | some E => sroiqHOK T (nomNames (roleOff O) []) E
+  else false
+
+theorem owlChainFrag_eq (O : OWL.Ontology) (h : RawHint) :
+    owlChainFrag O = (owlChainHint O h).isSome := by
+  unfold owlChainFrag owlChainHint
+  by_cases hO : O.isSROIQDKB = true
+  · simp only [hO, if_true]
+    cases translateSHOIQD (roleOff O) [] with
+    | none => rfl
+    | some T =>
+      simp only
+      cases roleCls T O with
+      | none => rfl
+      | some E =>
+        simp only
+        by_cases hok : sroiqHOK T (nomNames (roleOff O) []) E = true <;> simp [hok]
+  · simp [hO]
+
+def owlSelfFrag (O : OWL.Ontology) : Bool :=
+  if O.isSROIQDSKB && !(selfAxs O).isEmpty then
+    match translateSHOIQD (roleOff (selfOff O)) [] with
+    | none => false
+    | some T =>
+      match roleCls T (selfOff O) with
+      | none => false
+      | some E =>
+        match selfCls T O with
+        | none => false
+        | some SC => sroiqSHOK T (nomNames (roleOff (selfOff O)) []) E SC
+  else false
+
+theorem owlSelfFrag_eq (O : OWL.Ontology) (h : RawHint) :
+    owlSelfFrag O = (owlSelfHint O h).isSome := by
+  unfold owlSelfFrag owlSelfHint
+  by_cases hO : (O.isSROIQDSKB && !(selfAxs O).isEmpty) = true
+  · simp only [hO, if_true]
+    cases translateSHOIQD (roleOff (selfOff O)) [] with
+    | none => rfl
+    | some T =>
+      simp only
+      cases roleCls T (selfOff O) with
+      | none => rfl
+      | some E =>
+        simp only
+        cases selfCls T O with
+        | none => rfl
+        | some SC =>
+          simp only
+          by_cases hok : sroiqSHOK T (nomNames (roleOff (selfOff O)) []) E SC = true <;> simp [hok]
+  · simp only [hO]; simp
+
+def owlHSFragOn (O : Ontology) (P : List (IRI × ObjProp)) : Bool :=
+  if O.isSROIQDSKB && !P.isEmpty then
+    match translateSHOIQD (roleOff (selfOff O)) (pairNames P) with
+    | none => false
+    | some T =>
+      match roleCls T (selfOff O) with
+      | none => false
+      | some E =>
+        match selfCls T O with
+        | none => false
+        | some SC =>
+          match pairCls T P with
+          | none => false
+          | some PC => sroiqSHOK T (nomNames (roleOff (selfOff O)) (pairNames P)) E (SC ++ PC)
+  else false
+
+theorem owlHSFragOn_eq (O : Ontology) (P : List (IRI × ObjProp)) (h : RawHint) :
+    owlHSFragOn O P = (owlHSHintOn O P h).isSome := by
+  unfold owlHSFragOn owlHSHintOn
+  by_cases hO : (O.isSROIQDSKB && !P.isEmpty) = true
+  · simp only [hO, if_true]
+    cases translateSHOIQD (roleOff (selfOff O)) (pairNames P) with
+    | none => rfl
+    | some T =>
+      simp only
+      cases roleCls T (selfOff O) with
+      | none => rfl
+      | some E =>
+        simp only
+        cases selfCls T O with
+        | none => rfl
+        | some SC =>
+          simp only
+          cases pairCls T P with
+          | none => rfl
+          | some PC =>
+            simp only
+            by_cases hok : sroiqSHOK T (nomNames (roleOff (selfOff O)) (pairNames P)) E (SC ++ PC) = true <;>
+              simp [hok]
+  · simp only [hO]; simp
+
+def hintCoreFrag (O : Ontology) : Bool :=
+  if !(selfPairs O).isEmpty then owlHSFragOn (hsOff O) (selfPairs O)
+  else owlChainFrag O || owlSelfFrag O
+
+theorem hintCoreFrag_eq (O : Ontology) (h : RawHint) : hintCoreFrag O = (hintCore O h).isSome := by
+  unfold hintCoreFrag hintCore
+  split_ifs
+  · exact owlHSFragOn_eq _ _ h
+  · rw [owlChainFrag_eq O h, owlSelfFrag_eq O h]
+    cases owlChainHint O h <;> simp
+
+/-- **The fragment of the hint route**, decided without a hint. -/
+def hintPFrag (O : Ontology) : Bool :=
+  if (splitDef O.axioms).isSome then
+    match dtLoop O.axioms.length O with
+    | some O' => hintCoreFrag (anonOff [] (duOff O'))
+    | none => false
+  else hintCoreFrag (anonOff [] (duOff O))
+
+theorem hintPFrag_eq (O : Ontology) (h : RawHint) : hintPFrag O = (hintP O h).isSome := by
+  unfold hintPFrag hintP hintP0
+  split_ifs
+  · cases dtLoop O.axioms.length O with
+    | some O' => exact hintCoreFrag_eq _ h
+    | none => rfl
+  · exact hintCoreFrag_eq _ h
+
 /-! ## Rows -/
 
 /-- A row of the hint route. -/
@@ -405,5 +547,6 @@ theorem hintRowsB_eq (O : Ontology) (r : HintRowSpec) (hs : List RawHint) :
 end ContextCalculus.OWLFrontend
 
 #print axioms ContextCalculus.OWLFrontend.hintPB_eq
+#print axioms ContextCalculus.OWLFrontend.hintPFrag_eq
 #print axioms ContextCalculus.OWLFrontend.hintRowsB_eq
 #print axioms ContextCalculus.OWLFrontend.hintRowAns_sound

@@ -403,4 +403,6 @@ import ContextCalculus.OWLFrontend.DatatypeDef
 import ContextCalculus.SRIQN.HintCheck
 import ContextCalculus.OWLFrontend.HintRoute
 import ContextCalculus.OWLFrontend.HintBatch
+import ContextCalculus.OWL.Rules
+import ContextCalculus.OWLFrontend.RuleGround
 import ContextCalculus.OWLFrontend.SHOIQFast
