@@ -543,6 +543,12 @@ impl super::realize::Extended {
         if let Some(data) = &self.data_properties {
             out.push_str(&data.to_lines());
         }
+        for [r, a, b] in self.abox.values.iter().flatten() {
+            out.push_str(&format!("\nVALUE\t{r}\t{a}\t{b}"));
+        }
+        for [a, b] in self.abox.different.iter().flatten() {
+            out.push_str(&format!("\nDIFFERENT\t{a}\t{b}"));
+        }
         out
     }
 
@@ -584,6 +590,10 @@ impl super::realize::Extended {
             datadomains: Option<&'a [[String; 2]]>,
             #[serde(skip_serializing_if = "Option::is_none")]
             disjointdataproperties: Option<&'a [[String; 2]]>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            values: Option<&'a [[String; 3]]>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            different: Option<&'a [[String; 2]]>,
         }
         let c = &self.realization.classification;
         let p = self.properties.as_ref();
@@ -606,6 +616,8 @@ impl super::realize::Extended {
             bottomdataproperties: self.data_properties.as_ref().map(|d| d.bottom.as_slice()),
             datadomains: self.data_properties.as_ref().map(|d| d.domains.as_slice()),
             disjointdataproperties: self.data_properties.as_ref().map(|d| d.disjoint.as_slice()),
+            values: self.abox.values.as_deref(),
+            different: self.abox.different.as_deref(),
         };
         let mut ser = serde_json::Serializer::with_formatter(writer, super::PyFmt);
         serde::Serialize::serialize(&encoded, &mut ser)

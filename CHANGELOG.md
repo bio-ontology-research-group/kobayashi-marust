@@ -4,6 +4,18 @@
 
 ### Engine
 
+- `km classify --values` reports every entailed object property assertion
+  between named individuals (`VALUE r a b`) and `--different` every
+  entailed pair of different named individuals (`DIFFERENT a b`, `a < b`),
+  from the one classification that realization already runs: fresh classes
+  `∃r.{b}` and `¬{b}` next to the individual probes `{a}` (W5b,
+  `orchestrate::abox_rows`). JSON keys `values`, `different`.
+- Fixed: a speculative bridge attempt that declined left the frontend
+  counters of its own run behind, and the answer of the route that
+  published carried them (`{¬h(c,1), SameIndividual(d,c)}` was published
+  with `DROPPED 1`, the `SameIndividual` the object-guard attempt does not
+  represent). The counters are saved before each attempt and restored when
+  it declines.
 - `km classify --data-properties` reports the data property hierarchy
   (`SUBDATAPROP`), empty data properties (`BOTDATAPROP`), data property
   domains (`DATADOMAIN`) and disjoint data properties (`DISJOINTDATAPROP`)
@@ -18,8 +30,8 @@
   pair uses the converse proxy `__inv__r` of the chain encoding. Before,
   km refused them ("named role expected"), and `DisjointObjectProperties`
   with an inverse member became a disjointness with the empty role name.
-  `InverseObjectProperties(ObjectInverseOf(r) s)` is still rejected by the
-  vendored functional-syntax grammar. `ObjectPropertyAtom` of an inverse in
+  `InverseObjectProperties` takes object property expressions (the vendored
+  functional-syntax grammar accepted only names). `ObjectPropertyAtom` of an inverse in
   a rule swaps its arguments. Tests: `tests/inverse_property_axioms.rs`
   (HermiT rows).
 - `--unknown-datatypes=free` (W7): datatypes outside the OWL 2 datatype map

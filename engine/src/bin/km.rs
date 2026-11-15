@@ -503,6 +503,8 @@ fn classify_help() {
     println!("  --realize[=all]     also report every entailed named type of each named individual");
     println!("  --realize=direct    also report only the most specific entailed named types");
     println!("  --properties        also report the inferred object property hierarchy, domains and ranges");
+    println!("  --values            also report every entailed object property assertion between named individuals");
+    println!("  --different         also report every entailed pair of different named individuals");
     println!("  --data-properties   also report the data property hierarchy, empty data properties,");
     println!("                      domains and disjoint data properties (docs/PROPERTIES.md)");
     println!("  --top               also report the named classes equivalent to owl:Thing");
@@ -531,6 +533,8 @@ fn classify_help() {
     println!("                      an empty property has no SUBPROP, DOMAIN or RANGE rows");
     println!("  DOMAIN<TAB>r<TAB>C  (--properties) O entails ObjectPropertyDomain(r C); owl:Thing is never listed");
     println!("  RANGE<TAB>r<TAB>C   (--properties) O entails ObjectPropertyRange(r C); owl:Thing is never listed");
+    println!("  VALUE<TAB>r<TAB>a<TAB>b (--values) O entails r(a, b), r a named object property");
+    println!("  DIFFERENT<TAB>a<TAB>b (--different) O entails a != b, once per pair with a < b");
     println!("  SUBDATAPROP<TAB>p<TAB>q (--data-properties) O entails p SubDataPropertyOf q; p not empty");
     println!("  BOTDATAPROP<TAB>p   (--data-properties) data property p is empty");
     println!("  DATADOMAIN<TAB>p<TAB>C (--data-properties) O entails DataPropertyDomain(p C)");
@@ -560,6 +564,8 @@ fn classify_cmd(rest: &[String]) {
     let mut realize: Option<orchestrate::realize::TypeMode> = None;
     let mut properties = false;
     let mut data_properties = false;
+    let mut values = false;
+    let mut different = false;
     let mut top = false;
     let mut index = 0;
     while index < rest.len() {
@@ -577,6 +583,8 @@ fn classify_cmd(rest: &[String]) {
             }
             "--properties" => properties = true,
             "--data-properties" => data_properties = true,
+            "--values" => values = true,
+            "--different" => different = true,
             "--top" => top = true,
             "--json-edges" => graph_edges = true,
             "--route" => {
@@ -668,7 +676,7 @@ fn classify_cmd(rest: &[String]) {
         }
     };
     let cfg = Config::from_env();
-    if realize.is_some() || properties || top || data_properties {
+    if realize.is_some() || properties || top || data_properties || values || different {
         if graph_edges {
             eprintln!("--realize, --properties and --top cannot be combined with --json-edges or KM_JSON_GRAPH_EDGES=1");
             exit(2);
@@ -680,6 +688,8 @@ fn classify_cmd(rest: &[String]) {
             properties,
             top,
             data_properties,
+            values,
+            different,
         );
         lean_gate(lean_run);
         match realized {
