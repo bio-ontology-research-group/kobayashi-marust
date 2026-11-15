@@ -60,8 +60,10 @@ theorem hintDNS_model {Θ : DataTheory (Fin q)} {card : Finset (Fin q) → Optio
     ∃ (D V : Type) (_ : Nonempty D) (atom : Fin q → V → Prop), Θ V atom ∧
       ∃ (J : DInterp D V (Fin n) (Fin m) (Fin p)) (f : Fin h.k → D),
         SRIQD.models atom J (dbase O) ∧ (∀ a ∈ dnoms O, NomAt J.toInterp a) ∧
-        Function.Injective f ∧ ∀ (a : Fin n) b, J.c a (f b) ↔ Fin.castAdd _ a ∈ h.ty b := by
-  obtain ⟨D, hD, F, f, hF, hinj, hty, -⟩ := forest_of_check (isALCHOIQ_reduceS O card) h
+        Function.Injective f ∧ (∀ (a : Fin n) b, J.c a (f b) ↔ Fin.castAdd _ a ∈ h.ty b) ∧
+        (SRI.IsALCHI (SRIQ.sriPart (SRIQD.objPart (dbase O))) →
+          ∀ R b c, J.rt R (f b) (f c) ↔ R ∈ h.lab b c) := by
+  obtain ⟨D, hD, F, f, hF, hinj, hty, hlab⟩ := forest_of_check (isALCHOIQ_reduceS O card) h
     (checkRealisationN_of_hintDNS hc)
   rw [reduceS, reduceNQ] at hF
   obtain ⟨hb, hnF⟩ := models_iff.1 hF
@@ -76,7 +78,7 @@ theorem hintDNS_model {Θ : DataTheory (Fin q)} {card : Finset (Fin q) → Optio
       (SRIQD.Proc.encTransQD (dbase O)).2 := by
     rw [← dbase_encTransDN]; exact hmd
   refine ⟨D, V, hD, atom, hΘ, _, f, SRIQD.Proc.models_downD hS hJ', fun a ha => ?_, hinj,
-    fun a b => hty _ b⟩
+    fun a b => hty _ b, fun hAs R b c => (downI_rt_of_alchi hAs F R (f b) (f c)).trans (hlab R b c)⟩
   exact hnF (Fin.castAdd _ a) (by rw [dnoms_encTransDN]; exact List.mem_map_of_mem ha)
 
 end Proc
@@ -104,14 +106,16 @@ theorem hintPartsN_model (hc : CellSpec key cells size) {B L : Nat}
     ∃ (D V : Type) (_ : Nonempty D) (atom : Fin q → V → Prop), cellTheory key E V atom ∧
       ∃ (J : DInterp D V (Fin n) (Fin m) (Fin p)) (f : Fin h.k → D),
         SRIQD.models atom J (dbase O) ∧ (∀ a ∈ dnoms O, NomAt J.toInterp a) ∧
-        Function.Injective f ∧ ∀ (a : Fin n) b, J.c a (f b) ↔ Fin.castAdd _ a ∈ h.ty b := by
+        Function.Injective f ∧ (∀ (a : Fin n) b, J.c a (f b) ↔ Fin.castAdd _ a ∈ h.ty b) ∧
+        (SRI.IsALCHI (SRIQ.sriPart (SRIQD.objPart (dbase O))) →
+          ∀ R b c, J.rt R (f b) (f c) ↔ R ∈ h.lab b c) := by
   classical
   have hfin : ∀ c ∈ cells, sp c = true → ∃ k, size c = some k := fun c hc hs => by
     obtain ⟨k, hk, -⟩ := small_size (hsp c hc hs); exact ⟨k, hk⟩
   obtain ⟨xa, hxa, hx⟩ := List.any_eq_true.1 hh
-  obtain ⟨D, V, hD, atom, hΘ, J, f, hJ, hn, hinj, hty⟩ := Proc.hintDNS_model
+  obtain ⟨D, V, hD, atom, hΘ, J, f, hJ, hn, hinj, hty, hlab⟩ := Proc.hintDNS_model
     (oracleSpecB_part hc hL hsp hcov (validPart_of_mem hfin hxa)) hS hB hx
-  exact ⟨D, V, hD, atom, cellTheory_of_part hΘ, J, f, hJ, hn, hinj, hty⟩
+  exact ⟨D, V, hD, atom, cellTheory_of_part hΘ, J, f, hJ, hn, hinj, hty, hlab⟩
 
 /-- **The model of an accepted sparse hint.** -/
 theorem hintPartsS_model (hc : CellSpec key cells size) {B L : Nat}
@@ -125,7 +129,9 @@ theorem hintPartsS_model (hc : CellSpec key cells size) {B L : Nat}
     ∃ (D V : Type) (_ : Nonempty D) (atom : Fin q → V → Prop), cellTheory key E V atom ∧
       ∃ (J : DInterp D V (Fin n) (Fin m) (Fin p)) (f : Fin h.k → D),
         SRIQD.models atom J (dbase O) ∧ (∀ a ∈ dnoms O, NomAt J.toInterp a) ∧
-        Function.Injective f ∧ ∀ (a : Fin n) b, J.c a (f b) ↔ Fin.castAdd _ a ∈ h.tyF b := by
+        Function.Injective f ∧ (∀ (a : Fin n) b, J.c a (f b) ↔ Fin.castAdd _ a ∈ h.tyF b) ∧
+        (SRI.IsALCHI (SRIQ.sriPart (SRIQD.objPart (dbase O))) →
+          ∀ R b c, J.rt R (f b) (f c) ↔ R ∈ h.toN.lab b c) := by
   rw [HF.hintPartsS_eq] at hh
   exact hintPartsN_model hc hL hsp hcov hS hB hh
 
@@ -142,7 +148,9 @@ theorem hintPartsP_model (hc : CellSpec key cells size) {B L : Nat}
     ∃ (D V : Type) (_ : Nonempty D) (atom : Fin q → V → Prop), cellTheory key E V atom ∧
       ∃ (J : DInterp D V (Fin n) (Fin m) (Fin p)) (f : Fin h.k → D),
         SRIQD.models atom J (dbase O) ∧ (∀ a ∈ dnoms O, NomAt J.toInterp a) ∧
-        Function.Injective f ∧ ∀ (a : Fin n) b, J.c a (f b) ↔ Fin.castAdd _ a ∈ h.tyF b :=
+        Function.Injective f ∧ (∀ (a : Fin n) b, J.c a (f b) ↔ Fin.castAdd _ a ∈ h.tyF b) ∧
+        (SRI.IsALCHI (SRIQ.sriPart (SRIQD.objPart (dbase O))) →
+          ∀ R b c, J.rt R (f b) (f c) ↔ R ∈ h.toN.lab b c) :=
   hintPartsN_model hc hL hsp hcov hS hB (HF.hintPartsP_imp _ _ _ _ _ h hh)
 
 end Parts
