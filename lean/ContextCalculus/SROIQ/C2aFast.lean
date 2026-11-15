@@ -120,7 +120,8 @@ def c2aB (O : SRIQN.Ontology (Fin n) (Fin m)) : Bool :=
   let Ns := Std.HashSet.ofList N
   let badS := Std.HashSet.ofList (B.flatMap (badPosB fun a => Ns.contains a))
   let tab := mkTab B
-  let le := leF tab
+  let hm := Std.HashMap.ofList tab
+  let le := leH hm
   let invs := (upperL B).map fun q' => q'.2.2.1.flip
   let okT := (allRT m).map fun R => (R, invs.all fun R' => !le R R')
   (lowerL B).all fun q =>
@@ -132,7 +133,7 @@ theorem c2aB_eq (O : SRIQN.Ontology (Fin n) (Fin m)) : c2aB O =
         ((upperL (basePart O)).map fun q' => q'.2.2.1.flip).all fun R' =>
           !leB (basePart O) q.2.2.1 R' := by
   unfold c2aB
-  simp only [contains_ofList_fin, badPosB_eq, leF_mkTab]
+  simp only [contains_ofList_fin, badPosB_eq, leH_mkTab]
   congr 1
   funext q
   rw [lookup_map_gen _ _ _ (mem_allRT _), Option.getD_some]

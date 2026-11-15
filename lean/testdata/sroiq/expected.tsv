@@ -9,7 +9,6 @@ reflexive-sat.ofn	--print-index	concepts 8 / roles 1 / concept 0 urn:km:owl-nom:
 irregular.ofn		declined: not regular
 reflexive-count.ofn	--check	accepted (Self route: reflexivity as a self clause, the counted role stays simple)
 reflexive-count.ofn	--hint reflexive-count.hint	{"format":"owl-consistency-v1","consistent":true} (0.1 s)
-self.ofn		declined: not recognised (ObjectHasSelf in a class expression, open, deviation D12)
 disjoint.ofn		declined: not recognised (DisjointObjectProperties, open, deviation D12)
 asymmetric.ofn		declined: not recognised (AsymmetricObjectProperty, open, deviation D12)
 # Intended decisions (semantics): chain3-nominal --type C a: entailed true; chain3-free --type C a: false;
@@ -26,3 +25,10 @@ irreflexive-sat.ofn	--print-index	concepts 29 / roles 1 / ... / loops 5 / splits
 irreflexive-clash.ofn	--check	accepted (intended: consistent false; no hint can certify it, the unhinted search runs out of memory)
 reflexive-count-clash.ofn	--check	accepted (intended: consistent false; as above)
 disjoint-union.ofn	--check	accepted (intended: consistent false; as above)
+zero.ofn	--check	accepted (C2a only after the at-most-zero rewriting; --print-index adds a line "zeros N")
+# Stage C3e (2026-11-15): ObjectHasSelf in class expressions as fresh classes tied to loop names.
+self.ofn	--check	accepted
+self.ofn	--print-index	concepts 39 / roles 1 / concept 0 urn:km:owl-self:###########+http://ex/r / concept 1 urn:km:owl-nom:#...# / concept 2 http://ex/A / concept 3 http://ex/C / role 0 http://ex/r / nominal 1 http://ex/a / hasself 0 http://ex/r / loops 7 / splits 9 / guards 30 / fresh-nominal 38
+self.ofn		(intended: consistent true; the unhinted search runs out of memory, 50 GB after 63 s)
+datatype-def.ofn	--check	accepted (DatatypeDefinition unfolded, deviation D22)
+datatype-def.ofn	--print-index	concepts 5 / roles 0 / concept 0 urn:km:owl-kb:def:########### / concept 1 urn:km:owl-kb:def:############ / concept 2 http://ex/C (the tables of the unfolded ontology)

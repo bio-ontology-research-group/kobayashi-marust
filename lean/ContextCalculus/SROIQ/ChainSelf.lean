@@ -30,6 +30,17 @@ def liftSC (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (SC : List (SClause (
     List (SClause (Fin (n + kCD O)) (Fin m)) :=
   SC.map (SClause.mapC (Fin.castAdd _))
 
+/-- `liftSC` without evaluating the number of fresh names (stage C3e: as an
+argument of `Fin.castAdd` it was computed again wherever the lifted
+clauses were used). -/
+def liftSCF (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (SC : List (SClause (Fin n) (Fin m))) :
+    List (SClause (Fin (n + kCD O)) (Fin m)) :=
+  SC.map (SClause.mapC fun a => ⟨a.val, Nat.lt_of_lt_of_le a.2 (Nat.le_add_right _ _)⟩)
+
+@[csimp] theorem liftSC_eq_F : @liftSC = @liftSCF := by
+  funext n m p q O SC
+  rfl
+
 /-- The negative self clauses are on simple roles. -/
 def SelfSimple (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (SC : List (SClause (Fin n) (Fin m))) :
     Prop :=

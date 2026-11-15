@@ -12138,7 +12138,30 @@ fn configure_production_completion_saturation_coupling(algo: &mut CompletionTask
     // other writer exists, so the port ran every blocking test with the retest
     // suppressed; this restores the upstream default.
     algo.conf_saturation_caching_testing_during_blocking_tests = true;
+    // KM-SOUNDNESS-GATE[singleton-satexp], successor half (E19): a consumed
+    // value singleton `v(y1) ∧ v(y2) → y1 = y2` makes a data successor's
+    // label depend on its siblings, which is the locality the saturation
+    // coupling assumes. A data successor expanded from the saturated label of
+    // its value class is cached against that saturation node, and the merge
+    // of two value nodes under a functional data property (or a nominal merge
+    // of their owners) never meets the clash of two different values: with
+    // `g` functional, `g(a,0)`, `g(b,255)`, `h(a,255)`, the probe `{a} ⊓ {b}`
+    // came out satisfiable (HermiT: unsatisfiable). As for the satisfiable
+    // expander cache (`singleton-satexp`), inputs with a consumed singleton
+    // expand every node themselves (unlike that cache, this half does not
+    // use the label-reach inertness proof, which is not available where the
+    // probes are configured); both switches go off together, for the reason given for
+    // the self case (a cached successor propagates nothing back without the
+    // copied label). Removes an optimisation only.
+    if !algo.singleton_concepts.is_empty()
+        && std::env::var_os("KM_BRIDGE_SINGLETON_SATEXP_NO_GATE").is_none()
+    {
+        algo.conf_expand_created_successors_from_saturation = false;
+        algo.conf_caching_blocking_from_saturation = false;
+    }
 }
+
+
 
 /// The native-nominal variant of the completion-side coupling: the same
 /// Konclude flags, plus the fail-closed nominal-connection decline.
