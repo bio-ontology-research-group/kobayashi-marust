@@ -1,0 +1,9 @@
+# rules.ofn (a DL-safe rule, grounded) on the witness route: a (core 0), the fresh individual
+# h0 of the grounding (core 1) with its u-edge to a, and an anonymous C witness (core 2), the
+# r-successor of a: the rule fires only on named individuals, so core 2 is not in B
+blocks 3
+ty 0 3 0 5 7 9
+ty 1 4 5 8 10
+ty 2 1 5
+lab 1 0 +1
+lab 0 2 +0

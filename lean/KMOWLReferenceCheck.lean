@@ -14,7 +14,7 @@ import ContextCalculus.OWLFrontend.RuleGround
 import ContextCalculus.OWLFrontend.KeyRules
 import ContextCalculus.OWLFrontend.EdgeStrengthen
 import ContextCalculus.SRIQN.HintExplain
-import ContextCalculus.OWLFrontend.HintBuiltin
+import ContextCalculus.OWLFrontend.HintWitnessA
 
 /-!
 # Executable OWL reference procedure (`km-owl-reference`)
@@ -1854,8 +1854,10 @@ between the class expressions of the requested IRIs; `owl:Thing` and
 `owl:Nothing`, when requested, with their OWL meaning:
 `not_entails_nothing_of_consistent`, `not_thing_sub_nothing_of_consistent`). -/
 def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingReq nothingReq : Bool)
-    {O : OWL.Ontology} {req : List OWL.IRI} {hint : RawHint} (W : OWLFrontend.WTab)
-    (_h : OWLFrontend.wTab O req hint = some W) : IO UInt32 := do
+    {O : OWL.Ontology} {R : OWL.OntologyR} (showInd : OWL.IRI → Bool := fun _ => true)
+    {req : List OWL.IRI} {hint : RawHint} (W : OWLFrontend.WTab)
+    (_h : OWLFrontend.wTabA O req hint = some W ∨ OWLFrontend.wTabR R req hint = some W) :
+    IO UInt32 := do
   let thingI := OWL.Parse.owlThing
   let nothingI := OWL.Parse.owlNothing
   let cix : Std.HashMap OWL.IRI (Fin W.N) := W.cls.foldl (fun mp p => mp.insertIfNew p.1 p.2) {}
@@ -1872,7 +1874,7 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingRe
   let mut nBad := 0
   let mut nType := 0
   out.putStrLn ("{\"format\":\"owl-witness-v1\",\"consistent\":true,\"classes\":" ++ toString nreq ++
-    ",\"individuals\":" ++ toString W.inds.length ++ ",\"core\":" ++ toString W.k ++ "}")
+    ",\"individuals\":" ++ toString (W.inds.filter (showInd ·.1)).length ++ ",\"core\":" ++ toString W.k ++ "}")
   -- owl:Thing as subject: every requested B some core element lacks
   if thingReq then
     let cnt : Std.HashMap Nat Nat := (List.finRange W.k).foldl (fun mp w =>
@@ -1920,7 +1922,7 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingRe
   let inom : Std.HashSet Nat := W.inds.foldl (fun st p => st.insert p.2.val) {}
   let owner : Std.HashMap Nat (Fin W.k) := (List.finRange W.k).foldl (fun mp w =>
     ((W.ty w).sort (· ≤ ·)).foldl (fun mp x => if inom.contains x.val then mp.insertIfNew x.val w else mp) mp) {}
-  for (a, ia) in W.inds do
+  for (a, ia) in W.inds.filter (showInd ·.1) do
     match owner.get? ia.val with
     | none => pure ()
     | some w =>
@@ -1942,18 +1944,52 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingRe
   out.flush
   return 0
 
-/-- The witness route's translation of the prepared ontology `X` with the
-requested classes `req`, handed to `k` (index lines, clauses, reasons). -/
-def withWitnessRoute (X : OWL.Ontology) (req : List OWL.IRI)
-    (k : (T : SRIQDKBTranslation) → (L : List OWL.IRI) →
-      List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount)) → IO UInt32) : IO UInt32 := do
-  if !X.isSROIQDKB then decline (hintDecline X) else
-  match translateSHOIQD (roleOff X) req with
-  | none => decline (hintDecline X)
-  | some T =>
-    match roleCls T X with
-    | none => decline (hintDecline X)
-    | some E => k T (OWLFrontend.SHOIQ.nomNames (roleOff X) req) E
+/-- The witness route's target (`OWLFrontend.wCoreA`): datatype definitions
+unfolded, the strengthening, disjoint unions, anonymous individuals
+renamed; then the route with `ObjectHasSelf`, the chain route, or the Self
+route. `kC` gets the chain route's translation, `kS` the Self route's
+(the ontology `Y` it translates and the requested names `rq`). -/
+def withWitnessTarget (O : OWL.Ontology) (req : List OWL.IRI)
+    (kC : (T : SRIQDKBTranslation) → (L : List OWL.IRI) →
+      List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount)) → OWL.Ontology → IO UInt32)
+    (kS : (T : SRIQDKBTranslation) → (L : List OWL.IRI) →
+      List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount)) →
+      List (SRIQN.SClause (Fin T.obj.conceptCount) (Fin T.obj.roleCount)) →
+      OWL.Ontology → List OWL.IRI → IO UInt32) : IO UInt32 := do
+  match OWLFrontend.wDT O with
+  | none => decline "witness route: a DatatypeDefinition of a datatype of the map, a recursive definition, or two definitions of one datatype"
+  | some O1 =>
+  let Pre := duOff (OWLFrontend.edgeP O1)
+  if !(Pre.noKey && (anonOff [] Pre).noKey) then
+    return ← decline "witness route: HasKey (keys and rules take the rules path)"
+  let X := anonOff [] Pre
+  let selfRoute (Y : OWL.Ontology) (P : List (OWL.IRI × OWL.ObjProp)) : IO UInt32 :=
+    if !Y.isSROIQDSKB then decline ("witness route: " ++ hintDecline X) else
+    let rq := req ++ pairNames P
+    match translateSHOIQD (roleOff (selfOff Y)) rq with
+    | none => decline ("witness route: " ++ hintDecline X)
+    | some T =>
+      match roleCls T (selfOff Y), selfCls T Y, pairCls T P with
+      | some E, some SC, some PC =>
+        let L := OWLFrontend.SHOIQ.nomNames (roleOff (selfOff Y)) rq
+        if sroiqSHOK T L E (SC ++ PC) then kS T L E (SC ++ PC) Y rq
+        else decline ("witness route: " ++ hintDecline X)
+      | _, _, _ => decline ("witness route: " ++ hintDecline X)
+  if !(selfPairs X).isEmpty then return ← selfRoute (hsOff X) (selfPairs X)
+  let chain : Option (IO UInt32) :=
+    if X.isSROIQDKB then
+      match translateSHOIQD (roleOff X) req with
+      | none => none
+      | some T =>
+        match roleCls T X with
+        | none => none
+        | some E =>
+          let L := OWLFrontend.SHOIQ.nomNames (roleOff X) req
+          if sroiqHOK T L E then some (kC T L E X) else none
+    else none
+  match chain with
+  | some act => act
+  | none => selfRoute X []
 
 /-- The requested classes: `--classes FILE`, or every class of the ontology. -/
 def witnessReq (args : Args) (O : OWL.Ontology) : IO (List OWL.IRI) := do
@@ -1961,38 +1997,39 @@ def witnessReq (args : Args) (O : OWL.Ontology) : IO (List OWL.IRI) := do
   | some f => pure (wordsOf (← IO.FS.readFile f))
   | none => pure O.classNames
 
+/-- The index of the hint space of an encoded ontology. -/
+def conceptsOf {n m p q : Nat} (D : SRIQN.DOntology (Fin n) (Fin m) (Fin p) (Fin q)) : Nat :=
+  n + SRIQN.Proc.encKD D
+
 /-- `--print-index --witness-route`: the index of the witness route. -/
 def printIndexW (O : OWL.Ontology) (req : List OWL.IRI) : IO UInt32 := do
-  let X := OWLFrontend.wPrep O
-  withWitnessRoute X req fun T L E => do
-    let out ← IO.getStdout
-    out.putStrLn s!"concepts {T.obj.conceptCount + SROIQ.Proc.kCD (dosnC T L E) + SRIQN.Proc.encKD (encC T L E)}"
+  let out ← IO.getStdout
+  let emitT (T : SRIQDKBTranslation) (N : Nat) (Y : OWL.Ontology) (rq : List OWL.IRI) : IO UInt32 := do
+    out.putStrLn s!"concepts {N}"
     out.putStrLn s!"roles {T.obj.roleCount}"
     for l in indexLines T.obj do out.putStrLn l
     let nmap := nameIxMap T.obj.named
-    for l in nomLines nmap (roleOff X) req do out.putStrLn l
+    for l in nomLines nmap Y rq do out.putStrLn l
     out.flush
     return 0
+  withWitnessTarget O req
+    (fun T L E X => emitT T (conceptsOf (encC T L E)) (roleOff X) req)
+    (fun T L E SC Y rq => emitT T (conceptsOf (encS T L E SC)) (roleOff (selfOff Y)) rq)
 
 /-- `--check --witness-route`: the scope of the witness route without a
-hint (diagnostic: the conditions `wTab` checks before the hint). -/
-def checkW (O : OWL.Ontology) (req : List OWL.IRI) : IO UInt32 := do
-  let X := OWLFrontend.wPrep O
-  if !(OWLFrontend.wPre O).noKey then return ← decline "witness route: HasKey or DL-safe rules"
-  if !(splitDef O.axioms).isNone then return ← decline "witness route: DatatypeDefinition"
-  if !(selfPairs X).isEmpty then return ← decline "witness route: ObjectHasSelf"
-  withWitnessRoute X req fun T L E => do
-    if sroiqHOK T L E then
-      IO.println "accepted"
-      return 0
-    else decline ("witness route: " ++ hintDecline X)
+hint (diagnostic: the conditions `wTabA` checks before the hint). -/
+def checkW (O : OWL.Ontology) (req : List OWL.IRI) : IO UInt32 :=
+  withWitnessTarget O req (fun _ _ _ _ => do IO.println "accepted chain"; return 0)
+    (fun _ _ _ _ _ _ => do IO.println "accepted self"; return 0)
 
 /-- `--print-clauses --witness-route`. -/
 def printClausesW (O : OWL.Ontology) (req : List OWL.IRI) : IO UInt32 :=
-  withWitnessRoute (OWLFrontend.wPrep O) req fun T L E => do
-    let c ← emitClauses (encC T L E)
-    emitData T L E
-    return c
+  withWitnessTarget O req
+    (fun T L E _ => do
+      let c ← emitClauses (encC T L E)
+      emitData T L E
+      return c)
+    (fun T L E SC _ _ => emitClauses (encS T L E SC))
 
 /-- The list without repeated entries, first occurrences kept. -/
 def dedupH (l : List OWL.IRI) : List OWL.IRI :=
@@ -2000,7 +2037,8 @@ def dedupH (l : List OWL.IRI) : List OWL.IRI :=
     if acc.1.contains a then acc else (acc.1.insert a, acc.2.push a)) ({}, #[])).2.toList
 
 /-- `--procedure sroiq-hint --witness TABLE --hint FILE [--out FILE] [--classes FILE]`. -/
-def runWitness (timing : Bool) (args : Args) (O : OWL.Ontology) : IO UInt32 := do
+def runWitness (timing : Bool) (args : Args) (O : OWL.Ontology) (R? : Option OWL.OntologyR := none) :
+    IO UInt32 := do
   let some tf := args.witness | return 2
   let some hf := args.hint
     | IO.eprintln "sroiq-hint: --witness needs --hint FILE"; return 2
@@ -2015,20 +2053,38 @@ def runWitness (timing : Bool) (args : Args) (O : OWL.Ontology) : IO UInt32 := d
   let nothingReq := req0.contains OWL.Parse.owlNothing
   -- owl:Thing and owl:Nothing are not class names of the translation (`wReq`)
   let req := OWLFrontend.wReq req0
-  let ⟨res, hres⟩ ← timedPhase timing "witness" (fun _ => OWLFrontend.wTab O req hint)
-  match res, hres with
-  | some W, h =>
-    match args.out with
-    | some f =>
-      let hdl ← IO.FS.Handle.mk f .write
-      publishWitness (IO.FS.Stream.ofHandle hdl) table thingReq nothingReq W h.symm
-    | none => publishWitness (← IO.getStdout) table thingReq nothingReq W h.symm
-  | none, _ =>
+  -- `hintWitnessA_sound` (an ontology) or `hintWitnessR_sound` (keys and rules)
+  let outS ← match args.out with
+    | some f => do let hdl ← IO.FS.Handle.mk f .write; pure (IO.FS.Stream.ofHandle hdl)
+    | none => IO.getStdout
+  let done : Option UInt32 ← match R? with
+    | none =>
+      let ⟨res, hres⟩ ← timedPhase timing "witness" (fun _ => OWLFrontend.wTabA O req hint)
+      match res, hres with
+      | some W, h => some <$> (publishWitness (O := O) (R := ⟨O, []⟩) (showInd := fun _ => true) outS table thingReq nothingReq W
+          (Or.inl h.symm))
+      | none, _ => pure none
+    | some R =>
+      let ⟨res, hres⟩ ← timedPhase timing "witness" (fun _ => OWLFrontend.wTabR R req hint)
+      match res, hres with
+      | some W, h =>
+        -- the individuals of the input: not the fresh individual of the grounding
+        let names := Std.HashSet.ofList R.named
+        some <$> (publishWitness (O := O) (R := R) (showInd := names.contains) outS table thingReq
+          nothingReq W (Or.inr h.symm))
+      | none, _ => pure none
+  match done with
+  | some c => return c
+  | none =>
     if args.explain then
-      let _ ← withWitnessRoute (OWLFrontend.wPrep O) req fun T L E => do
-        let (sz, G) := splitSizes T L E (sroiqBound T L E)
-        IO.eprintln s!"hint: reason: {explainOn (encC T L E) hint false (partWhy hint sz G)}"
-        return 0
+      let _ ← withWitnessTarget O req
+        (fun T L E _ => do
+          let (sz, G) := splitSizes T L E (sroiqBound T L E)
+          IO.eprintln s!"hint: reason: {explainOn (encC T L E) hint false (partWhy hint sz G)}"
+          return 0)
+        (fun T L E SC _ _ => do
+          IO.eprintln s!"hint: reason: {explainOn (encS T L E SC) hint true}"
+          return 0)
     decline ("witness: not certified (outside the chain route, keys, datatype definitions, " ++
       "ObjectHasSelf, or the hint does not check)")
 
@@ -2125,6 +2181,15 @@ def publishHintRules {O : OWL.OntologyR} {hint : RawHint}
 /-- The hint route on an ontology with rules: the consistency row only; the
 indices and checks are those of the encoding (`rulesOnto`). -/
 def runHintRules (timing : Bool) (args : Args) (R : OWL.OntologyR) : IO UInt32 := do
+  if args.witness.isSome || args.witnessRoute then
+    match rulesOntoK R with
+    | none => return ← decline (rulesDeclineR R)
+    | some O' =>
+      if args.witness.isSome then return ← runWitness timing args O' (some R)
+      let req := OWLFrontend.wReq (dedupH (← witnessReq args R.onto))
+      if args.printIndex then return ← printIndexW O' req
+      if args.printClauses then return ← printClausesW O' req
+      if args.checkOnly then return ← checkW O' req
   let rowWs := (args.row.map wordsOf).getD []
   if !(rowWs.isEmpty || rowWs == ["consistent"]) then
     return ← decline "rules: rows over an ontology with rules or keys are not done"
