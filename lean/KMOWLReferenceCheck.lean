@@ -14,7 +14,7 @@ import ContextCalculus.OWLFrontend.RuleGround
 import ContextCalculus.OWLFrontend.KeyRules
 import ContextCalculus.OWLFrontend.EdgeStrengthen
 import ContextCalculus.SRIQN.HintExplain
-import ContextCalculus.OWLFrontend.HintWitness
+import ContextCalculus.OWLFrontend.HintBuiltin
 
 /-!
 # Executable OWL reference procedure (`km-owl-reference`)
@@ -1439,7 +1439,7 @@ def parseProp (w : String) : OWL.ObjProp :=
 /-- A row in words: `consistent`, `nontype C a`, `nonsame a b`, `nonsub A B`,
 `nondiff a b`, `nonrole r a b`, `nonnrole r a b`, `nonsubs A B1 B2 ...`,
 `nontypes a C1 C2 ...` (a property `r` is `IRI` or `^IRI`). -/
-def parseRow (ws : List String) : Except String HintRowSpec :=
+def parseRow0 (ws : List String) : Except String HintRowSpec :=
   match ws with
   | [] | ["consistent"] => .ok .consistent
   | ["nontype", C, a] => .ok (.nontype C a)
@@ -1451,6 +1451,38 @@ def parseRow (ws : List String) : Except String HintRowSpec :=
   | "nonsubs" :: A :: Bs => .ok (.nonsubs A Bs)
   | "nontypes" :: a :: Cs => .ok (.nontypes a Cs)
   | _ => .error s!"bad row: {" ".intercalate ws}"
+
+
+/-- A row with a built-in IRI where its OWL meaning differs from the free
+name the row axioms would read (`HintBuiltin.lean`): `owl:Thing` as the
+object of a subsumption or type, `owl:Nothing` as the subject of a
+subsumption, `owl:topObjectProperty` and `owl:bottomObjectProperty` as
+properties. Such a row would certify a statement about a free name, so it
+is refused. `owl:Nothing` as object and `owl:Thing` as subject keep their
+meaning (`hintNonSubC_sound`, `hintNonTypeC_sound`). -/
+def rowBuiltin (r : HintRowSpec) : Option String :=
+  let T := OWL.Parse.owlThing
+  let N := OWL.Parse.owlNothing
+  let msgT := "owl:Thing as object: every subsumption and type with owl:Thing holds; the row is refused"
+  let msgN := "owl:Nothing as subject: owl:Nothing is below every class; the row is refused"
+  let topP (p : OWL.ObjProp) : Bool := match p with
+    | .named w | .inv w => w == OWL.Parse.owlTopObjectProperty || w == OWL.Parse.owlBottomObjectProperty
+    | _ => true
+  match r with
+  | .nontype C _ => if C == T then some msgT else none
+  | .nonsub A B => if A == N then some msgN else if B == T then some msgT else none
+  | .nonsubs A Bs => if A == N then some msgN else if Bs.contains T then some msgT else none
+  | .nontypes _ Cs => if Cs.contains T then some msgT else none
+  | .nonrole p _ _ | .nonnrole p _ _ =>
+    if topP p then some "owl:topObjectProperty or owl:bottomObjectProperty as a row property is refused" else none
+  | _ => none
+
+def parseRow (ws : List String) : Except String HintRowSpec :=
+  match parseRow0 ws with
+  | .ok r => match rowBuiltin r with
+    | some e => .error e
+    | none => .ok r
+  | .error e => .error e
 
 def wordsOf (line : String) : List String :=
   ((line.split fun c => c == ' ' || c == '\t' || c == '\r' || c == '\n').toList.map (·.toString)).filter (· ≠ "")
@@ -1788,22 +1820,45 @@ def parseWitness (text : String) : Except String (List (OWL.IRI × Nat)) := do
 
 def jsonList (l : List String) : String := "[" ++ ",".intercalate (l.map fun x => (Json.str x).compress) ++ "]"
 
-/-- Print the rows the witness hint certifies (`hintWitness_sound`). -/
-def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) {O : OWL.Ontology}
-    {req : List OWL.IRI} {hint : RawHint} (W : OWLFrontend.WTab)
+/-- Print the rows the witness hint certifies (`hintWitnessC_sound`: rows
+between the class expressions of the requested IRIs; `owl:Thing` and
+`owl:Nothing`, when requested, with their OWL meaning:
+`not_entails_nothing_of_consistent`, `not_thing_sub_nothing_of_consistent`). -/
+def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingReq nothingReq : Bool)
+    {O : OWL.Ontology} {req : List OWL.IRI} {hint : RawHint} (W : OWLFrontend.WTab)
     (_h : OWLFrontend.wTab O req hint = some W) : IO UInt32 := do
+  let thingI := OWL.Parse.owlThing
+  let nothingI := OWL.Parse.owlNothing
   let cix : Std.HashMap OWL.IRI (Fin W.N) := W.cls.foldl (fun mp p => mp.insertIfNew p.1 p.2) {}
-  let nreq := W.cls.length
+  let nreq := W.cls.length + (if thingReq then 1 else 0) + (if nothingReq then 1 else 0)
   -- the requested classes by concept index (a type is short, the class list long)
   let byIx : Std.HashMap Nat (List OWL.IRI) := W.cls.foldl (fun mp p => mp.insert p.2.val (p.1 :: mp.getD p.2.val [])) {}
+  -- the requested classes an element is in: those in its type, and owl:Thing
   let insideOf := fun (t : Finset (Fin W.N)) =>
-    (t.sort (· ≤ ·)).flatMap fun x => byIx.getD x.val []
+    (if thingReq then [thingI] else []) ++ (t.sort (· ≤ ·)).flatMap fun x => byIx.getD x.val []
+  -- the requested classes an element is not in: those outside its type, and owl:Nothing
+  let outsideOf := fun (M : Fin W.N → Bool) =>
+    (W.cls.filter fun p => !M p.2).map (·.1) ++ (if nothingReq then [nothingI] else [])
   let mut nNon := 0
   let mut nBad := 0
   let mut nType := 0
   out.putStrLn ("{\"format\":\"owl-witness-v1\",\"consistent\":true,\"classes\":" ++ toString nreq ++
     ",\"individuals\":" ++ toString W.inds.length ++ ",\"core\":" ++ toString W.k ++ "}")
+  -- owl:Thing as subject: every requested B some core element lacks
+  if thingReq then
+    let cnt : Std.HashMap Nat Nat := (List.finRange W.k).foldl (fun mp w =>
+      ((W.ty w).sort (· ≤ ·)).foldl (fun mp x => mp.insert x.val (mp.getD x.val 0 + 1)) mp) {}
+    let outside := (W.cls.filter fun p => cnt.getD p.2.val 0 < W.k).map (·.1) ++
+      (if nothingReq then [nothingI] else [])
+    nNon := nNon + outside.length
+    out.putStrLn ("{\"class\":" ++ (Json.str thingI).compress ++ ",\"nonsub\":" ++ jsonList outside ++ "}")
   for (A, w) in table do
+    if A == thingI then pure () else
+    if A == nothingI then
+      nBad := nBad + 1
+      out.putStrLn ("{\"class\":" ++ (Json.str A).compress ++ ",\"witness\":" ++ toString w ++
+        ",\"error\":\"owl:Nothing has no witness\"}")
+    else
     match cix.get? A with
     | none =>
       nBad := nBad + 1
@@ -1814,14 +1869,12 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) {O : OWL
         let t := W.ty ⟨w, hw⟩
         let M := SRIQN.HF.memT t
         if M iA then
-          -- `hintWitness_sound`, second part: every requested B outside the type
           let inside := insideOf t
           let nout := nreq - inside.length
           nNon := nNon + nout
           if nout * 2 ≤ nreq then
-            let outside := (W.cls.filter fun p => !M p.2).map (·.1)
             out.putStrLn ("{\"class\":" ++ (Json.str A).compress ++ ",\"witness\":" ++ toString w ++
-              ",\"nonsub\":" ++ jsonList outside ++ "}")
+              ",\"nonsub\":" ++ jsonList (outsideOf M) ++ "}")
           else
             out.putStrLn ("{\"class\":" ++ (Json.str A).compress ++ ",\"witness\":" ++ toString w ++
               ",\"nonsub_except\":" ++ jsonList inside ++ "}")
@@ -1833,9 +1886,8 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) {O : OWL
         nBad := nBad + 1
         out.putStrLn ("{\"class\":" ++ (Json.str A).compress ++ ",\"witness\":" ++ toString w ++
           ",\"error\":\"no such core element\"}")
-  -- individuals: the core element holding the nominal index (third and fourth parts)
+  -- individuals: the core element holding the nominal index
   let mut groups : Std.HashMap Nat (List OWL.IRI) := {}
-  -- the core element of each nominal index, from one pass over the types
   let inom : Std.HashSet Nat := W.inds.foldl (fun st p => st.insert p.2.val) {}
   let owner : Std.HashMap Nat (Fin W.k) := (List.finRange W.k).foldl (fun mp w =>
     ((W.ty w).sort (· ≤ ·)).foldl (fun mp x => if inom.contains x.val then mp.insertIfNew x.val w else mp) mp) {}
@@ -1849,9 +1901,8 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) {O : OWL
       let nout := nreq - inside.length
       nType := nType + nout
       if nout * 2 ≤ nreq then
-        let outside := (W.cls.filter fun p => !M p.2).map (·.1)
         out.putStrLn ("{\"individual\":" ++ (Json.str a).compress ++ ",\"element\":" ++ toString w.val ++
-          ",\"nontype\":" ++ jsonList outside ++ "}")
+          ",\"nontype\":" ++ jsonList (outsideOf M) ++ "}")
       else
         out.putStrLn ("{\"individual\":" ++ (Json.str a).compress ++ ",\"element\":" ++ toString w.val ++
           ",\"nontype_except\":" ++ jsonList inside ++ "}")
@@ -1917,15 +1968,19 @@ def runWitness (timing : Bool) (args : Args) (O : OWL.Ontology) : IO UInt32 := d
   let table ← match parseWitness (← IO.FS.readFile tf) with
     | .ok t => pure t
     | .error e => IO.eprintln e; return 2
-  let req := dedupH (← witnessReq args O)
+  let req0 := dedupH (← witnessReq args O)
+  let thingReq := req0.contains OWL.Parse.owlThing
+  let nothingReq := req0.contains OWL.Parse.owlNothing
+  -- owl:Thing and owl:Nothing are not class names of the translation (`wReq`)
+  let req := OWLFrontend.wReq req0
   let ⟨res, hres⟩ ← timedPhase timing "witness" (fun _ => OWLFrontend.wTab O req hint)
   match res, hres with
   | some W, h =>
     match args.out with
     | some f =>
       let hdl ← IO.FS.Handle.mk f .write
-      publishWitness (IO.FS.Stream.ofHandle hdl) table W h.symm
-    | none => publishWitness (← IO.getStdout) table W h.symm
+      publishWitness (IO.FS.Stream.ofHandle hdl) table thingReq nothingReq W h.symm
+    | none => publishWitness (← IO.getStdout) table thingReq nothingReq W h.symm
   | none, _ =>
     if args.explain then
       let _ ← withWitnessRoute (OWLFrontend.wPrep O) req fun T L E => do
@@ -1938,7 +1993,7 @@ def runWitness (timing : Bool) (args : Args) (O : OWL.Ontology) : IO UInt32 := d
 def runHint (timing : Bool) (args : Args) (O : OWL.Ontology) : IO UInt32 := do
   if args.witness.isSome then return ← runWitness timing args O
   if args.witnessRoute then
-    let req := dedupH (← witnessReq args O)
+    let req := OWLFrontend.wReq (dedupH (← witnessReq args O))
     if args.printIndex then return ← printIndexW O req
     if args.printClauses then return ← printClausesW O req
   -- asymmetric and disjoint properties: the hint is checked against the
@@ -2095,6 +2150,13 @@ def readHint (path : Option String) : IO (Except String (Option RawHint)) := do
 reports `failed to read` (exit 2, also for a malformed hint file); an IO
 error afterwards reports `io error` (exit 4). -/
 def runFile (args : Args) (path : String) : IO UInt32 := do
+  -- `--type owl:Thing a`: the type routes read the class IRI as a free name,
+  -- while owl:Thing(a) always holds; refused (owl:Nothing keeps its meaning:
+  -- a free name holds at a exactly when the ontology is inconsistent)
+  if let some (C, _) := args.query then
+    if C == OWL.Parse.owlThing then
+      IO.eprintln "--type: owl:Thing(a) is entailed by every ontology; the query is refused"
+      return 2
   let timing ← timingEnabled
   let t0 ← IO.monoNanosNow
   match ← readHint args.hint with
