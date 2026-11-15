@@ -166,7 +166,7 @@ def wTabCore (X : Ontology) (req : List IRI) (hint : RawHint) : Option WTab :=
           match hint.toHintS _ _ with
           | none => none
           | some h =>
-            if SRIQN.HF.hintPartsS D cs (cellSize as)
+            if SRIQN.HF.hintPartsP D cs (cellSize as)
                 (ContextCalculus.SRIQD.splitCell cs (cellSize as) (sroiqBound T L E) (owlE sp))
                 (owlE sp) h then
               let mp := namedMap T.obj.named
@@ -226,7 +226,7 @@ theorem wTabCore_facts (pat : String → String → Prop) {X : Ontology} {req : 
         subst hw
         simp only [sroiqHOK, Bool.and_eq_true] at hok
         obtain ⟨⟨-, h1⟩, h3⟩ := hok
-        obtain ⟨Dom, V, hD, atom, hΘ, J, f, hJ, hn, hinj, hty⟩ := SRIQN.hintPartsS_model
+        obtain ⟨Dom, V, hD, atom, hΘ, J, f, hJ, hn, hinj, hty⟩ := SRIQN.hintPartsP_model
           (cellSpec _) (le_refl _) ContextCalculus.SRIQD.splitCell_ok.1
           ContextCalculus.SRIQD.splitCell_ok.2 (SROIQ.Proc.isSHIQD_encChainDN _) (le_refl _) hp
         rw [← owlTheory_eq pat h3] at hΘ

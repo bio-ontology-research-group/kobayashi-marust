@@ -130,6 +130,10 @@ structure RawHint where
   kids : List (Nat × List (RoleT Nat) × List Nat) := []
   /-- Certificate records by id (route `shoiq-c2a` only). -/
   recs : List (Nat × RawRec) := []
+  /-- The data part the hint is checked against (route `sroiq-hint`, stage
+  H2): `(cell, group, count)` lines; `partNamed` when there is one. -/
+  part : List (Nat × Nat × Nat) := []
+  partNamed : Bool := false
 deriving Repr, Inhabited
 
 namespace RawHint
@@ -138,7 +142,7 @@ namespace RawHint
 def updRec (h : RawHint) (r : Nat) (f : RawRec → RawRec) : RawHint :=
   if h.recs.any (·.1 == r) then
     { h with recs := h.recs.map fun p => if p.1 == r then (p.1, f p.2) else p }
-  else { h with recs := h.recs ++ [(r, f {})] }
+  else { h with recs := (r, f {}) :: h.recs }
 
 def finOf (n x : Nat) : Option (Fin n) := if h : x < n then some ⟨x, h⟩ else none
 
@@ -191,7 +195,9 @@ def parseRTs (ws : List String) : Except String (List (RoleT Nat)) :=
     | some R => .ok R
     | none => .error s!"not a role (+k or -k): {w}"
 
-/-- One line of the text format. -/
+/-- One line of the text format. The `ty`, `lab`, `kid`, `part` and record
+lists are built in reverse (one cons per line) and put in file order by
+`parseHint`. -/
 def parseLine (h : RawHint) (ws : List String) : Except String RawHint :=
   match ws with
   | [] => .ok h
@@ -204,18 +210,18 @@ def parseLine (h : RawHint) (ws : List String) : Except String RawHint :=
   | "ty" :: b :: rest => do
     let b' ← parseNats [b]
     let cs ← parseNats rest
-    .ok { h with ty := h.ty ++ [(b'.headD 0, cs)] }
+    .ok { h with ty := (b'.headD 0, cs) :: h.ty }
   | "lab" :: b :: c :: rest => do
     let bc ← parseNats [b, c]
     let Rs ← parseRTs rest
-    .ok { h with lab := h.lab ++ [(bc.headD 0, bc.getD 1 0, Rs)] }
+    .ok { h with lab := (bc.headD 0, bc.getD 1 0, Rs) :: h.lab }
   | "kid" :: b :: rest => do
     let b' ← parseNats [b]
     match rest.splitOn "/" with
     | [rs, cs] =>
       let Rs ← parseRTs rs
       let cs' ← parseNats cs
-      .ok { h with kids := h.kids ++ [(b'.headD 0, Rs, cs')] }
+      .ok { h with kids := (b'.headD 0, Rs, cs') :: h.kids }
     | _ => .error "kid: expected `kid B R ... / C ...`"
   | "rec" :: r :: rest => do
     let r' ← parseNats [r]
@@ -245,15 +251,25 @@ def parseLine (h : RawHint) (ws : List String) : Except String RawHint :=
       let cs' ← parseNats cs
       .ok (h.updRec (r'.headD 0) fun x => { x with kids := x.kids ++ [(Rs, cs')] })
     | _ => .error "rkid: expected `rkid R R1 ... / C ...`"
+  | ["part", i, g, k] => do
+    let xs ← parseNats [i, g, k]
+    .ok { h with part := (xs.getD 0 0, xs.getD 1 0, xs.getD 2 0) :: h.part, partNamed := true }
+  | ["part"] => .ok { h with partNamed := true }
   | w :: _ => .error s!"unknown directive: {w}"
 
+/-- The lists of `parseLine` in file order. -/
+def inOrder (h : RawHint) : RawHint :=
+  { h with ty := h.ty.reverse, lab := h.lab.reverse, kids := h.kids.reverse,
+           part := h.part.reverse, recs := h.recs.reverse }
+
 /-- Parse the text format. -/
-def parseHint (text : String) : Except String RawHint :=
-  (text.splitOn "\n").foldlM (init := {}) fun h line =>
+def parseHint (text : String) : Except String RawHint := do
+  let h ← (text.splitOn "\n").foldlM (init := {}) fun h line =>
     let body := (line.splitOn "#").headD ""
     let ws := ((body.split fun c => c == ' ' || c == '\t' || c == '\r').toList.map
       (·.toString)).filter (· ≠ "")
     parseLine h ws
+  pure (RawHint.inOrder h)
 
 end RawHint
 
