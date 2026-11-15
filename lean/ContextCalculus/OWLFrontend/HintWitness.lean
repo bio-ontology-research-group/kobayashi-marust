@@ -1,5 +1,6 @@
 import ContextCalculus.OWLFrontend.EdgeStrengthen
 import ContextCalculus.SRIQN.HintModel
+import ContextCalculus.SRIQN.HintModelD
 
 /-!
 # The global witness row (stage H2, item 5)
@@ -143,6 +144,15 @@ structure WTab where
   flat : Bool := false
   /-- the tables come from the chain route -/
   chainR : Bool := false
+  /-- stage H5, data: the number of data properties and of data atoms of
+  the translation, the data property IRIs (`dpsA[u]`), the data range of
+  each atom (`dspA[j]`) and the data stars the hint gives, by core element
+  (`HF.starsOf`) -/
+  p : Nat := 0
+  q : Nat := 0
+  dpsA : Array IRI := #[]
+  dspA : Array DataRange := #[]
+  dsA : Array (Option (List (Option (ContextCalculus.SRIQD.DNbr (Fin p) (Fin q))))) := #[]
 
 /-- The first index of each name (a table for the lookups below; every
 entry is validated against `T.obj.named`). -/
@@ -279,7 +289,10 @@ def wTabCore (X : Ontology) (req : List IRI) (hint : RawHint) : Option WTab :=
                        SROIQ.Proc.selfSimpleB (objC T L E) [.selfL R []]
                      n2 := T.obj.conceptCount, ob := objC T L E
                      adj := fun b => ContextCalculus.SRIQ.Fast.getL h.adj b.val
-                     rprops := rpropsOf T, flat := h.kids.isEmpty, chainR := true }
+                     rprops := rpropsOf T, flat := h.kids.isEmpty, chainR := true
+                     p := T.dps.length, q := T.tab.length, dpsA := T.dps.toArray
+                     dspA := (T.tab.map (·.R)).toArray
+                     dsA := SRIQN.HF.starsOf (p := T.dps.length) (q := T.tab.length) h }
             else none
         else none
   else none

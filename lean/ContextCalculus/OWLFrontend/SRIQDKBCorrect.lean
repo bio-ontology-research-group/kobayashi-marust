@@ -43,8 +43,10 @@ namespace ContextCalculus.OWLFrontend
 open ContextCalculus.OWL ContextCalculus.OWL.Datatypes SHIQD
 
 /-- **The model maps of the SHIQ(D) knowledge-base translation**, with each
-requested IRI standing for its index. -/
-theorem translateSRIQDKB_mapsR (pat : String → String → Prop) {O : Ontology}
+requested IRI standing for its index, and (stage H5) the data of the model
+built from a data model: its data properties read through the value
+bijection `eqv` of the theory, its atoms the data ranges of the table. -/
+theorem translateSRIQDKB_mapsRD (pat : String → String → Prop) {O : Ontology}
     {requested extra : List IRI} {T : SRIQDKBTranslation}
     (h : translateSRIQDKB O requested extra = some T) :
     (∀ (Dom : Type) [Nonempty Dom] (I : Interp (owl2MapP pat) Dom), OWL.Model O I →
@@ -67,9 +69,12 @@ theorem translateSRIQDKB_mapsR (pat : String → String → Prop) {O : Ontology}
         ∃ I : Interp (owl2MapP pat) Dom, OWL.Model O I ∧
           (∀ (i : Nat) (hi : i < T.obj.named.length), T.obj.named[i] ∈ requested → ∀ y,
             I.cls T.obj.named[i] y ↔ K.c ⟨i, Nat.lt_of_lt_of_le hi T.obj.hnamed⟩ y) ∧
-          ∀ (r : ObjProp), r.isBasic = true → ∀ k, (EL.propIRI r, k) ∈ T.obj.rnames →
+          (∀ (r : ObjProp), r.isBasic = true → ∀ k, (EL.propIRI r, k) ∈ T.obj.rnames →
             ∀ R, SRIT.finRT T.obj.roleCount (SRIT.mkRT r k) = some R →
-            ∀ x y, I.prop r x y ↔ K.rt R x y) := by
+            ∀ x y, I.prop r x y ↔ K.rt R x y) ∧
+          ∃ eqv : V ≃ Val, (∀ j v, atom j v ↔ (spec T.tab j).ext (owl2MapP pat) I.dtype (eqv v)) ∧
+            ∀ (name : IRI) (y : Dom) (w : Val), I.dprop name y w ↔
+              ∃ u : Fin T.dps.length, T.dps[u] = name ∧ K.d u y (eqv.symm w)) := by
   classical
   unfold translateSRIQDKB at h
   split_ifs at h with hO
@@ -376,9 +381,43 @@ theorem translateSRIQDKB_mapsR (pat : String → String → Prop) {O : Ontology}
         have h1 := (hdpK u y (eqv.symm v)).1 (by simpa using hv)
         have h2 := hloc (eqv.symm v) h1
         simpa using (hdpK w y (eqv.symm v)).2 h2
-    refine ⟨I, hIO, fun i hi _ y => hIc ⟨i, _⟩ hi y, fun r hr k hk R' hfin x y => ?_⟩
+    refine ⟨I, hIO, fun i hi _ y => hIc ⟨i, _⟩ hi y, fun r hr k hk R' hfin x y => ?_,
+      eqv, hatom, fun _ _ _ => Iff.rfl⟩
     have h := hRr r hr k hk R' hfin x y
     cases r <;> exact h
+
+/-- **The model maps of the SHIQ(D) knowledge-base translation**, with each
+requested IRI standing for its index. -/
+theorem translateSRIQDKB_mapsR (pat : String → String → Prop) {O : Ontology}
+    {requested extra : List IRI} {T : SRIQDKBTranslation}
+    (h : translateSRIQDKB O requested extra = some T) :
+    (∀ (Dom : Type) [Nonempty Dom] (I : Interp (owl2MapP pat) Dom), OWL.Model O I →
+      ∃ (V : Type) (atom : Fin T.tab.length → V → Prop), owlTheory pat (spec T.tab) V atom ∧
+        ∃ (K : ContextCalculus.SRIQD.DInterp Dom V (Fin T.obj.conceptCount) (Fin T.obj.roleCount)
+            (Fin T.dps.length)) (ind : Fin T.obj.inds.length → Dom),
+          ContextCalculus.SRIQD.models atom K T.ontology ∧
+          ContextCalculus.SRIQD.satABox atom K ind T.abox ∧
+          (∀ (i : Nat) (hi : i < T.obj.named.length), T.obj.named[i] ∈ requested → ∀ y,
+            K.c ⟨i, Nat.lt_of_lt_of_le hi T.obj.hnamed⟩ y ↔ I.cls T.obj.named[i] y) ∧
+          ∀ (r : ObjProp), r.isBasic = true → ∀ k, (EL.propIRI r, k) ∈ T.obj.rnames →
+            ∀ R, SRIT.finRT T.obj.roleCount (SRIT.mkRT r k) = some R →
+            ∀ x y, K.rt R x y ↔ I.prop r x y) ∧
+    (∀ (Dom V : Type) [Nonempty Dom] (atom : Fin T.tab.length → V → Prop),
+      owlTheory pat (spec T.tab) V atom →
+      ∀ (K : ContextCalculus.SRIQD.DInterp Dom V (Fin T.obj.conceptCount) (Fin T.obj.roleCount)
+          (Fin T.dps.length)) (ind : Fin T.obj.inds.length → Dom),
+        ContextCalculus.SRIQD.models atom K T.ontology →
+        ContextCalculus.SRIQD.satABox atom K ind T.abox →
+        ∃ I : Interp (owl2MapP pat) Dom, OWL.Model O I ∧
+          (∀ (i : Nat) (hi : i < T.obj.named.length), T.obj.named[i] ∈ requested → ∀ y,
+            I.cls T.obj.named[i] y ↔ K.c ⟨i, Nat.lt_of_lt_of_le hi T.obj.hnamed⟩ y) ∧
+          ∀ (r : ObjProp), r.isBasic = true → ∀ k, (EL.propIRI r, k) ∈ T.obj.rnames →
+            ∀ R, SRIT.finRT T.obj.roleCount (SRIT.mkRT r k) = some R →
+            ∀ x y, I.prop r x y ↔ K.rt R x y) := by
+  obtain ⟨h1, h2⟩ := translateSRIQDKB_mapsRD pat h
+  refine ⟨h1, fun Dom V _ atom hΘ K ind hK hA => ?_⟩
+  obtain ⟨I, hI, hc, hr, -⟩ := h2 Dom V atom hΘ K ind hK hA
+  exact ⟨I, hI, hc, hr⟩
 
 theorem translateSRIQDKB_maps (pat : String → String → Prop) {O : Ontology}
     {requested extra : List IRI} {T : SRIQDKBTranslation}
@@ -426,4 +465,5 @@ end ContextCalculus.OWLFrontend
 
 #print axioms ContextCalculus.OWLFrontend.translateSRIQDKB_maps
 #print axioms ContextCalculus.OWLFrontend.translateSRIQDKB_mapsR
+#print axioms ContextCalculus.OWLFrontend.translateSRIQDKB_mapsRD
 #print axioms ContextCalculus.OWLFrontend.translateSRIQDKB_consistent
