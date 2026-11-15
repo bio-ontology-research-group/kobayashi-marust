@@ -353,7 +353,7 @@ def runCB {n m : Nat} (E : SRIQ.Ontology (Fin n) (Fin m)) (req : Array Nat) (req
   | .error e => IO.eprintln s!"declined: {e}"; return none
   | .ok cls =>
     let t0 ← IO.monoMsNow
-    let budget := ((← IO.getEnv "KM_SRIQF_CBMS").bind String.toNat?).getD 120000
+    let budget := ((← IO.getEnv "KM_SRIQF_CBMS").bind String.toNat?).getD 30000
     let r ← CBGen.saturate n m cls req (deadline := (← IO.monoMsNow) + budget)
     let t1 ← IO.monoMsNow
     let nItems := r.st.ctxs.foldl (fun a c => a + c.itemLog.size) 0
@@ -366,9 +366,13 @@ def runCB {n m : Nat} (E : SRIQ.Ontology (Fin n) (Fin m)) (req : Array Nat) (req
     let cbRows := CBGen.rows r req
     if (← IO.getEnv "KM_SRIQF_CBWIT") != some "0" then
       let W := CBGen.mkWIx (CBGen.mkIx n m cls) r.st (req.foldl (fun a x => max a (x + 1)) 0)
-      let (C, cut) ← IO.lazyPure fun _ => CBGen.witness W r.st req
+      let wmax := ((← IO.getEnv "KM_SRIQF_WITMAX").bind String.toNat?).getD 400000
+      let (C, cut) ← IO.lazyPure fun _ => CBGen.witness W r.st req wmax
       let t2 ← IO.monoMsNow
       IO.eprintln s!"cbwit: ctxs={C.keys.size} nodes={C.nodes.size} cut={cut} ms={t2-t1}"
+      if cut && checked then
+        IO.eprintln "cbroute: declined witness_cut"
+        return none
       let ix ← IO.lazyPure fun _ => ContextCalculus.SRIQ.Fast.mkIx E
       let wrows ← IO.lazyPure fun _ => certRows (ContextCalculus.SRIQ.Fast.fastRowsA ix C reqF)
       let t3 ← IO.monoMsNow

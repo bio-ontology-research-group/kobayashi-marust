@@ -32,6 +32,10 @@ abbrev Kind := Nat
 def kX : Kind := 0
 def kY : Kind := 1
 def kBot : Kind := 2
+/-- a clash clause with one more name at `x` (`⟨Lc, P, {core, h}, ∅, ∅⟩`) -/
+def kNeg : Kind := 3
+/-- a disjunction of names at `x` -/
+def kDisj : Kind := 4
 
 structure Ix where
   n : Nat
@@ -49,6 +53,8 @@ structure Ix where
   up : Array Ty
   /-- the at-most clauses with number 0: `(a, S, e, pos)` -/
   upp0 : Array (Nat × Nat × Nat × Nat)
+  /-- heads of gcis with several heads -/
+  dh : HashSet Nat
 
 def mkIx (n m : Nat) (cls : Array QC) : Ix := Id.run do
   let nr := 2 * m
@@ -59,10 +65,12 @@ def mkIx (n m : Nat) (cls : Array QC) : Ix := Id.run do
   let mut uppBy : Array (Array (Nat × Nat × Nat × Nat)) := Array.replicate n #[]
   let mut subs : Array (Array Nat) := Array.replicate nr #[]
   let mut upp0 : Array (Nat × Nat × Nat × Nat) := #[]
+  let mut dh : HashSet Nat := ∅
   for h : i in [0:cls.size] do
     match cls[i] with
-    | .gci b _ =>
+    | .gci b hd =>
       let b' := sortDedup b
+      if hd.size ≥ 2 then dh := hd.foldl (·.insert ·) dh
       if b'.isEmpty then gciTop := gciTop.push i
       for a in b' do gciBy := pushAt gciBy a i
     | .ex a R b => lowBy := pushAt lowBy a (1, R, b, i)
@@ -75,7 +83,7 @@ def mkIx (n m : Nat) (cls : Array QC) : Ix := Id.run do
       subs := pushAt subs R S
       subs := pushAt subs (R ^^^ 1) (S ^^^ 1)
   let up := (Array.range nr).map fun r => upClose subs r
-  return { n, nr, cls, gciBy, gciTop, allBy, lowBy, uppBy, up, upp0 }
+  return { n, nr, cls, gciBy, gciTop, allBy, lowBy, uppBy, up, upp0, dh }
 
 /-- A learned rule in a context: body names at `x`, conditions at `y`, a
 head of a kind, the role set of its clause, its clause. -/
@@ -124,6 +132,10 @@ structure Ctx where
   /-- static clause cache: (tag, ontology position) ↦ clause -/
   stat : HashMap (Nat × Nat) Nat := ∅
   ruleSet : HashSet (Ty × Ty × Nat × Nat) := ∅
+  negs : HashMap Nat (Array (Ty × Nat)) := ∅
+  disj : Array (Array Nat × Ty × Nat) := #[]
+  disjBy : HashMap Nat (Array Nat) := ∅
+  disjDone : HashSet Nat := ∅
 deriving Inhabited
 
 inductive Ev where
@@ -131,6 +143,8 @@ inductive Ev where
   | hyp (c : Nat) (a : Nat)
   | kid (p : Nat) (q : Nat) (c : Nat)
   | rule (c : Nat) (r : Nat)
+  /-- children for the lower clauses of a disjunction head -/
+  | links (c : Nat) (h : Nat)
 deriving Inhabited
 
 structure St where
@@ -176,6 +190,41 @@ def addItem (c : Nat) (kind : Kind) (h : Nat) (cond : Ty) (cid : Nat) : M Unit :
     itemLog := cx.itemLog.push (kind, h, cond, cid) }
   enq (.item c kind h cond cid)
 
+/-- Resolve the heads of disjunction `di` of `c` with the clash clauses
+that hold one of them. -/
+partial def reduceDisj (c : Nat) (di : Nat) : M Unit := do
+  let cx ← ctxAt c
+  if cx.disjDone.contains di then return
+  let (hs, _, cid) := cx.disj[di]!
+  let mut cur := cid
+  let mut curC ← clOf cid
+  for h in hs do
+    match ((← ctxAt c).negs.getD h #[])[0]? with
+    | some (_, ni) =>
+      let ncl ← clOf ni
+      let r : CCl := { L := union curC.L ncl.L, P := union curC.P ncl.P,
+                       B := union curC.B (ncl.B.filter (· != h)),
+                       H := union (curC.H.filter (· != h)) ncl.H, Q := union curC.Q ncl.Q }
+      cur ← emit (.resX cur ni h) r
+      curC := r
+    | none => pure ()
+  if curC.H.size == hs.size then return
+  if curC.H.size ≤ 1 then
+    modCtx c fun cx => { cx with disjDone := cx.disjDone.insert di }
+    if curC.H.size == 1 then addItem c kX curC.H[0]! curC.P cur
+    else addItem c kBot 0 curC.P cur
+  else
+    modCtx c fun cx => { cx with disj := cx.disj.set! di (curC.H, curC.P, cur) }
+
+/-- Record a clash clause with the extra name `o`. -/
+partial def addNeg (c : Nat) (o : Nat) (cond : Ty) (cid : Nat) : M Unit := do
+  let cx ← ctxAt c
+  let old := cx.negs.getD o #[]
+  if old.any (fun p => sub p.1 cond) then return
+  modCtx c fun cx => { cx with negs := cx.negs.insert o (old.push (cond, cid)) }
+  for di in (← ctxAt c).disjBy.getD o #[] do reduceDisj c di
+
+mutual
 /-- Derive an item by resolving the body of the clause `rid` (whose body
 names are at `x`) with facts of context `c`; `fixed` gives the fact to
 use for one body name. -/
@@ -185,16 +234,19 @@ partial def fire (c : Nat) (rid : Nat) (body : Ty) (kind : Kind) (h : Nat)
     let cx ← ctxAt c
     let mut choices : Array (Nat × Array (Ty × Nat)) := #[]
     let mut ok := true
+    let mut opn : Option Nat := none
     for d in body do
       match fixed with
       | some (fd, fc, fi) =>
         if fd == d then choices := choices.push (d, #[(fc, fi)]); continue
       | none => pure ()
       let fs := cx.items.getD (kX, d) #[]
-      if fs.isEmpty then ok := false; break
+      if fs.isEmpty then
+        if kind == kBot && opn.isNone && d != cx.core && (← getIx).dh.contains d then opn := some d; continue
+        ok := false; break
       choices := choices.push (d, fs)
-    pure (cx.core, cx.lab, if ok then some choices else none)
-  let some choices := choicesO | return
+    pure (cx.core, cx.lab, if ok then some (choices, opn) else none)
+  let some (choices, opn) := choicesO | return
   -- enumerate up to a cap
   let cap := 64
   let mut combos : Array (Array (Ty × Nat)) := #[#[]]
@@ -215,7 +267,26 @@ partial def fire (c : Nat) (rid : Nat) (body : Ty) (kind : Kind) (h : Nat)
       let nc : CCl := { L := union lab curC.L, P := union fc curC.P, B := nb, H := curC.H, Q := curC.Q }
       cur ← emit (.resX fi cur d) nc
       curC := nc
-    addItem c kind h curC.P cur
+    match opn with
+    | some o => addNeg c o curC.P cur
+    | none =>
+      if kind == kDisj then addDisj c curC.H curC.P cur
+      else addItem c kind h curC.P cur
+
+/-- Record a disjunction; its heads get their children (for the clash
+clauses that resolve them). -/
+partial def addDisj (c : Nat) (hs : Array Nat) (cond : Ty) (cid : Nat) : M Unit := do
+  let cx ← ctxAt c
+  if hs.any (fun h => (cx.items.getD (kX, h) #[]).any (fun p => sub p.1 cond)) then return
+  let di := cx.disj.size
+  let upd (cx : Ctx) : Ctx :=
+    let db := hs.foldl (fun m h => m.alter h (fun o => some ((o.getD #[]).push di))) cx.disjBy
+    { cx with disj := cx.disj.push (hs, cond, cid), disjBy := db }
+  modCtx c upd
+  for h in hs do enq (.links c h)
+  reduceDisj c di
+
+end
 
 /-- The clause of a static rule at context `c`, emitted once. -/
 def statCl (_c : Nat) (tag pos : Nat) (r : CRule) (cl : CCl) : M Nat := do
@@ -372,6 +443,13 @@ def sendHyp (c a : Nat) : M Unit := do
 partial def step (e : Ev) : M Unit := do
   let ix ← getIx
   match e with
+  | .links c h =>
+    for (_, R, b, pos) in ix.lowBy[h]! do
+      if (← ctxAt c).kidSet.contains pos then continue
+      let c2 ← succCtx (ix.up[R]!) b
+      modCtx c fun cx => { cx with kids := cx.kids.push (pos, c2), kidSet := cx.kidSet.insert pos }
+      modCtx c2 fun cx => { cx with parents := cx.parents.push (c, pos) }
+      enq (.kid c pos c2)
   | .rule c ri =>
     let cx ← ctxAt c
     let r := cx.rules[ri]!
@@ -423,10 +501,9 @@ partial def step (e : Ev) : M Unit := do
     for gi in ix.gciBy[h]! do
       match ix.cls[gi]! with
       | .gci b hd =>
-        if hd.size ≤ 1 then
-          let b' := sortDedup b
-          let gid ← statCl c 0 gi (.gci gi) { L := #[], P := #[], B := b', H := sortDedup hd, Q := #[] }
-          fire c gid b' (if hd.size == 1 then kX else kBot) (hd[0]?.getD 0) (some (h, cond, cid))
+        let b' := sortDedup b
+        let gid ← statCl c 0 gi (.gci gi) { L := #[], P := #[], B := b', H := sortDedup hd, Q := #[] }
+        fire c gid b' (if hd.size == 1 then kX else if hd.size == 0 then kBot else kDisj) (hd[0]?.getD 0) (some (h, cond, cid))
       | _ => pure ()
     for ri in rlist do
       let r := (← ctxAt c).rules[ri]!
@@ -471,9 +548,9 @@ def initRules (c : Nat) : M Unit := do
   for gi in ix.gciTop do
     match ix.cls[gi]! with
     | .gci _ hd =>
-      if hd.size ≤ 1 then
-        let i ← emit (.gci gi) { L := cx.lab, P := #[], B := #[cx.core], H := sortDedup hd, Q := #[] }
-        addItem c (if hd.size == 1 then kX else kBot) (hd[0]?.getD 0) #[] i
+      let i ← emit (.gci gi) { L := cx.lab, P := #[], B := #[cx.core], H := sortDedup hd, Q := #[] }
+      if hd.size ≤ 1 then addItem c (if hd.size == 1 then kX else kBot) (hd[0]?.getD 0) #[] i
+      else addDisj c (sortDedup hd) #[] i
     | _ => pure ()
   if cx.root then return
   for (a, S, e, pos) in ix.upp0 do
@@ -503,7 +580,7 @@ partial def run (maxSteps : Nat) (deadline : Nat) : M Unit := do
       let ev := s.queue.extract s.qhead s.queue.size
       let cnt := ev.foldl (fun (a : Nat × Nat × Nat × Nat) e => match e with
         | .item .. => (a.1 + 1, a.2) | .hyp .. => (a.1, a.2.1 + 1, a.2.2) | .kid .. => (a.1, a.2.1, a.2.2.1 + 1, a.2.2.2)
-        | .rule .. => (a.1, a.2.1, a.2.2.1, a.2.2.2 + 1)) (0, 0, 0, 0)
+        | .rule .. => (a.1, a.2.1, a.2.2.1, a.2.2.2 + 1) | .links .. => a) (0, 0, 0, 0)
       if nev % 5000000 == 0 then
         let mut tags : Array Nat := Array.replicate 13 0
         for st in s.steps do
@@ -569,6 +646,8 @@ structure WIx where
   relBy : Array Ty
   /-- contexts of the saturation by core -/
   byCore : HashMap Nat (Array Nat)
+  /-- the facts `(name, condition)` of each saturation context -/
+  facts : Array (Array (Nat × Ty))
   nreq : Nat
 
 def mkWIx (ix : Ix) (st : St) (nreq : Nat) : WIx := Id.run do
@@ -583,7 +662,8 @@ def mkWIx (ix : Ix) (st : St) (nreq : Nat) : WIx := Id.run do
   for h : i in [0:st.ctxs.size] do
     let c := st.ctxs[i]
     byCore := byCore.insert c.core ((byCore.getD c.core #[]).push i)
-  return { ix, relBy := rel.map sortDedup, byCore, nreq }
+  let facts := st.ctxs.map fun c => c.itemLog.filterMap fun (k, h, cond, _) => if k == kX then some (h, cond) else none
+  return { ix, relBy := rel.map sortDedup, byCore, nreq, facts }
 
 def wfwd (ix : Ix) (t : Ty) (L : Ty) : Ty := Id.run do
   if L.isEmpty then return #[]
@@ -594,6 +674,31 @@ def wfwd (ix : Ix) (t : Ty) (L : Ty) : Ty := Id.run do
   return sortDedup acc
 
 def wrel (W : WIx) (L : Ty) : Ty := L.foldl (fun acc R => union acc (W.relBy[R]!)) #[]
+
+/-- Does the saturation context `(up R, b)` derive `e` under conditions in `t`? -/
+def derivesE (st : St) (ix : Ix) (R b e : Nat) (t : Ty) : Bool :=
+  if b == e then true else
+  match st.succIdx.get? (ix.up[R]!, b) with
+  | none => false
+  | some c => ((st.ctxs[c]!).items.getD (kX, e) #[]).any (fun p => sub p.1 t)
+
+/-- A head of a disjunction for the witness: an at-most definer whose bound
+already holds for the demands of `cur` (and the parent edge) first, then a
+fresh name, then the first head. -/
+def chooseHead (W : WIx) (st : St) (cur : HashSet Nat) (lab tp : Ty) (hd : Array Nat) : Nat := Id.run do
+  let ix := W.ix
+  let fl := flipL lab
+  for h in hd do
+    if h < W.nreq then continue
+    if (ix.lowBy[h]!).size + (ix.allBy[h]!).size + (ix.gciBy[h]!).size != 0 then continue
+    for (k, S, e, _) in ix.uppBy[h]! do
+      let mut pot := if mem fl S && mem tp e then 1 else 0
+      for a in cur.toArray do
+        for (kk, R, b, _) in ix.lowBy[a]! do
+          if mem (ix.up[R]!) S && derivesE st ix R b e (sortDedup cur.toArray) then pot := pot + kk
+      if pot ≤ k then return h
+  let fresh := hd.filter (· ≥ W.nreq)
+  return if fresh.isEmpty then hd[0]! else fresh[0]!
 
 /-- The type of a node with seed `seed`, label `lab` from the parent, parent
 type `tp` (empty for a root): the closure of the seed under the gcis and
@@ -621,8 +726,8 @@ partial def wtype (W : WIx) (st : St) (seed lab tp : Ty) (isRoot : Bool) : Optio
         if cx.root || (!isRoot && sub cx.lab lab) then
           if (cx.items.getD (kBot, 0) #[]).any (fun p => sub p.1 tp && (!isRoot || p.1.isEmpty)) then
             return none
-          for (kind, h, cond, _) in cx.itemLog do
-            if kind == kX && !cur.contains h && sub cond tp && (!isRoot || cond.isEmpty) then
+          for (h, cond) in W.facts[c]! do
+            if !cur.contains h && sub cond tp && (!isRoot || cond.isEmpty) then
               cur := cur.insert h; todo := todo.push h
       -- Horn gcis
       for g in ix.gciBy[x]! do
@@ -643,8 +748,7 @@ partial def wtype (W : WIx) (st : St) (seed lab tp : Ty) (isRoot : Bool) : Optio
           if hd.size ≥ 2 && b.all (cur.contains ·) then
             done := done.insert g
             if !hd.any (cur.contains ·) then
-              let fresh := hd.filter (· ≥ W.nreq)
-              pick := some (if fresh.isEmpty then hd[0]! else fresh[0]!)
+              pick := some (chooseHead W st cur lab tp hd)
               break
         | _ => pure ()
     if pick.isNone then
@@ -653,20 +757,12 @@ partial def wtype (W : WIx) (st : St) (seed lab tp : Ty) (isRoot : Bool) : Optio
         match ix.cls[g]! with
         | .gci _ hd =>
           if hd.size ≥ 2 && !hd.any (cur.contains ·) then
-            let fresh := hd.filter (· ≥ W.nreq)
-            pick := some (if fresh.isEmpty then hd[0]! else fresh[0]!)
+            pick := some (chooseHead W st cur lab tp hd)
         | _ => pure ()
     match pick with
     | none => break
     | some h => cur := cur.insert h; todo := todo.push h
   return some (sortDedup cur.toArray)
-
-/-- Does the saturation context `(up R, b)` derive `e` under conditions in `t`? -/
-def derivesE (st : St) (ix : Ix) (R b e : Nat) (t : Ty) : Bool :=
-  if b == e then true else
-  match st.succIdx.get? (ix.up[R]!, b) with
-  | none => false
-  | some c => ((st.ctxs[c]!).items.getD (kX, e) #[]).any (fun p => sub p.1 t)
 
 structure WSt where
   keys : Array KeyA := #[]
@@ -676,6 +772,9 @@ structure WSt where
   nodeIdx : HashMap (Nat × Ty) Nat := ∅
   /-- nodes whose pools are still to be made: (node, label from parent, parent type) -/
   todo : Array (Nat × Ty × Ty) := #[]
+  /-- node types by (label, fill) of the spec that made them -/
+  fam : HashMap (Ty × Ty) (Array Ty) := ∅
+  reused : Nat := 0
 
 def getKey (k : KeyA) : StateM WSt Nat := do
   match (← get).keyIdx.get? (k.seed, k.lab, k.pi) with
@@ -744,8 +843,23 @@ partial def wpool (W : WIx) (st : St) (t : Ty) (κ : KeyA) : StateM WSt (List En
     match res with
     | none => pure ()
     | some (key, tc) =>
+      let fl0 := flipL L
       let k ← getKey key
-      let _ ← getNode k tc L t
+      -- reuse a larger type made for the same spec when its back set fits
+      let cands := ((← get).fam.getD (L, F) #[])
+      let mut ty := tc
+      let mut i := cands.size
+      let mut tries := 0
+      while i > 0 && tries < 64 do
+        i := i - 1
+        tries := tries + 1
+        let t' := cands[i]!
+        if t' != tc && sub tc t' && sub (wfwd ix t' fl0) t && sub key.seed t' then
+          ty := t'
+          break
+      if ty != tc then modify fun s => { s with reused := s.reused + 1 }
+      else modify fun s => { s with fam := s.fam.insert (L, F) (cands.push tc) }
+      let _ ← getNode k ty L t
       pool := ⟨L, F, k⟩ :: pool
   return pool.reverse
 
