@@ -128,12 +128,53 @@ def kCF (O : Ontology (Fin n) (Fin m)) : Nat := (pairsPF O).length
 
 /-! ## The encoding -/
 
+/-- A hash for role terms. -/
+instance : Hashable (RoleT (Fin m)) where
+  hash | .pos r => mixHash 1 (hash r) | .inv r => mixHash 2 (hash r)
+
+section IdxG
+
+variable {α : Type} [BEq α] [LawfulBEq α] [Hashable α]
+
+/-- The first position of every member, as a hash map. -/
+def idxMapG (l : List α) : Std.HashMap α Nat :=
+  (l.zipIdx.foldr fun p m => m.insert p.1 p.2) ∅
+
+theorem idxMapG_go (a : α) : ∀ (l : List α) (k : Nat),
+    ((l.zipIdx k).foldr (fun p m => m.insert p.1 p.2) (∅ : Std.HashMap α Nat))[a]? =
+      if a ∈ l then some (k + l.idxOf a) else none
+  | [], k => by simp
+  | x :: l, k => by
+    simp only [List.zipIdx_cons, List.foldr_cons]
+    rw [Std.HashMap.getElem?_insert, idxMapG_go a l (k + 1)]
+    by_cases hx : x = a
+    · subst hx; simp
+    · have : (x == a) = false := by simp [hx]
+      rw [this]
+      simp only [Bool.false_eq_true, ite_false, List.mem_cons]
+      have hi : List.idxOf a (x :: l) = List.idxOf a l + 1 := by
+        simp [List.idxOf_cons, hx]
+      rw [hi]
+      by_cases ha : a ∈ l
+      · simp [ha]; omega
+      · simp [ha, Ne.symm hx]
+
+theorem idxMapG_getD (l : List α) (a : α) : ((idxMapG l)[a]?).getD l.length = l.idxOf a := by
+  unfold idxMapG
+  rw [idxMapG_go a l 0]
+  split_ifs with h
+  · simp
+  · simp [List.idxOf_eq_length h]
+
+end IdxG
+
 def encChainF (O : Ontology (Fin n) (Fin m)) : Ontology (Fin (n + kC O)) (Fin m) :=
   let P := pairsP O
   let tab := mkTab O
   let sf := succsT (rules O) (leF tab)
+  let mp := idxMapG P
   let nm : Pair n m → Option (Fin (n + kC O)) := fun p =>
-    if h : P.idxOf p < P.length then some (Fin.natAdd n ⟨_, h⟩) else none
+    if h : (mp[p]?).getD P.length < P.length then some (Fin.natAdd n ⟨_, h⟩) else none
   O.filterMap (liftC P.length) ++ P.zipIdx.flatMap fun pj =>
     if h : pj.2 < P.length then
       let X : Fin (n + kC O) := Fin.natAdd n ⟨pj.2, h⟩
@@ -147,7 +188,7 @@ def encChainF (O : Ontology (Fin n) (Fin m)) : Ontology (Fin (n + kC O)) (Fin m)
 
 @[csimp] theorem encChain_eq_F : @encChain = @encChainF := by
   funext n m O
-  simp only [encChainF, leF_mkTab, succsT_eq]
+  simp only [encChainF, leF_mkTab, succsT_eq, idxMapG_getD]
   rfl
 
 /-! ## The regularity check -/

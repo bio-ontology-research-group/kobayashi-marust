@@ -1,0 +1,7 @@
+Prefix(:=<http://ex/>)
+Ontology(<http://ex/disjoint-union>
+DisjointUnion(:A :B :C)
+ClassAssertion(:A :a)
+ClassAssertion(:B :a)
+ClassAssertion(:C :a)
+)

@@ -5,12 +5,13 @@ chain3-clash.ofn	--check	accepted
 left-right.ofn	--check	accepted
 reflexive.ofn	--check	accepted
 reflexive-sat.ofn	--hint reflexive-sat.hint	{"format":"owl-consistency-v1","consistent":true}
-reflexive-sat.ofn	--print-index	concepts 8 / roles 1 / concept 0 urn:km:owl-nom:########### / concept 1 http://ex/C / role 0 http://ex/r / nominal 0 http://ex/a (one line each)
+reflexive-sat.ofn	--print-index	concepts 8 / roles 1 / concept 0 urn:km:owl-nom:############ / concept 1 http://ex/C / role 0 http://ex/r / nominal 0 http://ex/a (one line each)
 irregular.ofn		declined: not regular
-reflexive-count.ofn		declined: not simple or not closed (reflexive role in a number restriction)
-self.ofn		declined: not recognised (ObjectHasSelf, design section 5, open)
-disjoint.ofn		declined: not recognised (DisjointObjectProperties, design section 5, open)
-asymmetric.ofn		declined: not recognised (AsymmetricObjectProperty, design section 5, open)
+reflexive-count.ofn	--check	accepted (Self route: reflexivity as a self clause, the counted role stays simple)
+reflexive-count.ofn	--hint reflexive-count.hint	{"format":"owl-consistency-v1","consistent":true} (0.1 s)
+self.ofn		declined: not recognised (ObjectHasSelf in a class expression, open, deviation D12)
+disjoint.ofn		declined: not recognised (DisjointObjectProperties, open, deviation D12)
+asymmetric.ofn		declined: not recognised (AsymmetricObjectProperty, open, deviation D12)
 # Intended decisions (semantics): chain3-nominal --type C a: entailed true; chain3-free --type C a: false;
 # chain3-clash: consistent false; left-right --type C e: true, --type C b: false; reflexive --type C a: true,
 # --type D b: true. The unhinted exhaustive C2a search exceeds 120 s on each of them (as it does for the
@@ -18,3 +19,10 @@ asymmetric.ofn		declined: not recognised (AsymmetricObjectProperty, design secti
 # certifies a model); reflexive-sat (11 s with its hint) is the one hinted decision. The automaton and regularity cases are tested in ContextCalculus/SROIQ/Tests.lean.
 anon.ofn	--check	accepted
 anon.ofn		{"format":"owl-consistency-v1","consistent":true} (93 s, unhinted)
+# Stage C3c (2026-11-15): irreflexive and reflexive properties by the Self encoding, DisjointUnion rewritten.
+irreflexive-sat.ofn	--check	accepted
+irreflexive-sat.ofn	--hint irreflexive-sat.hint	{"format":"owl-consistency-v1","consistent":true} (0.07 s)
+irreflexive-sat.ofn	--print-index	concepts 29 / roles 1 / ... / loops 5 / splits 7 / guards 22 / fresh-nominal 28
+irreflexive-clash.ofn	--check	accepted (intended: consistent false; no hint can certify it, the unhinted search runs out of memory)
+reflexive-count-clash.ofn	--check	accepted (intended: consistent false; as above)
+disjoint-union.ofn	--check	accepted (intended: consistent false; as above)

@@ -64,7 +64,7 @@ def nomOntDF (O : Ontology) (requested : List IRI) : Ontology :=
   let inds := O.individualNames
   let m := idxMap inds
   let len := inds.length
-  ⟨O.axioms.flatMap (rwAxD fun a => SRIQKB.defName base ((m[a]?).getD len))⟩
+  ⟨O.axioms.flatMap (rwAxD fun a => nomName base ((m[a]?).getD len))⟩
 
 @[csimp] theorem nomOntD_eq_F : @nomOntD = @nomOntDF := by
   funext O requested
@@ -76,7 +76,7 @@ def nomNamesF (O : Ontology) (requested : List IRI) : List IRI :=
   let inds := O.individualNames
   let m := idxMap inds
   let len := inds.length
-  inds.map fun a => SRIQKB.defName base ((m[a]?).getD len)
+  inds.map fun a => nomName base ((m[a]?).getD len)
 
 @[csimp] theorem nomNames_eq_F : @nomNames = @nomNamesF := by
   funext O requested

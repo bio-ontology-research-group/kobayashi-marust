@@ -16,7 +16,7 @@ data-nom-sat.ofn	--type http://ex/C http://ex/a	{"format":"owl-type-v1","class":
 kid.ofn		{"format":"owl-consistency-v1","consistent":true}
 kid.ofn	--hint kid.cert	{"format":"owl-consistency-v1","consistent":true}
 kid.ofn	--hint kid-bad.cert	{"format":"owl-consistency-v1","consistent":true}
-kid.ofn	--print-index	concepts 6 / roles 1 / concept 0 urn:km:owl-nom:########### / concept 1 http://ex/A / concept 2 http://ex/B / role 0 http://ex/r / nominal 0 http://ex/a (one line each)
+kid.ofn	--print-index	concepts 6 / roles 1 / concept 0 urn:km:owl-nom:############ / concept 1 http://ex/A / concept 2 http://ex/B / role 0 http://ex/r / nominal 0 http://ex/a (one line each)
 # Since 2026-11-15 the route is the data route (owlSHOIQDC2aConsistent); the rows above were rerun with it.
 # kid.cert is checked locally (0.08 s); kid-bad.cert does not check and the route searches (1.3 s).
 # Each line above runs in under 1 s (most under 0.1 s); all rechecked after 22:55 (disk incident).

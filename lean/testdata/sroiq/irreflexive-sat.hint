@@ -1,0 +1,5 @@
+# core for irreflexive-sat.ofn: a and b with the r-edge; guard names 22 (at b) and 23, 27 (at a)
+blocks 2
+ty 0 0 2 4 23 27
+ty 1 1 2 22 28
+lab 0 1 +0
