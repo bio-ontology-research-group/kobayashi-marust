@@ -1,24 +1,22 @@
 #!/usr/bin/env python3
 """Stage H3 driver: km answers -> checker normal form -> one global model
-(the Rust producer `tools/hints-rs`) -> proved checker.
+(the Rust producer `tools/hints-rs`) -> proved checker (H2 witness row).
 
-    driver_h3.py ONTOLOGY OUTDIR [--ptime S] [--checks N] [--check-timeout S]
-                 [--check-budget S] [--max-concepts N]
+    driver_h3.py ONTOLOGY OUTDIR [--ptime S] [--check-timeout S] [--no-check]
 
 Steps, each timed with /usr/bin/time:
   1. km classify --lines --realize --top (KM_THREADS=1, 300 s)
-  2. km-owl-reference --procedure sroiq-hint --print-index / --print-clauses
+  2. km-owl-reference --procedure sroiq-hint --witness-route --print-index /
+     --print-clauses (the classes of the ontology requested)
   3. km-hints produce (self-checks every model; its counts are "unchecked")
-  4. the proved checker on the producer's models, with the per-row routes of
-     today's binary (until the H2 witness row exists): row `consistent` with
-     model 0 as the hint, then up to N `nonsubs A owl:Nothing B1 ... Bk`
-     rows (the B's the witness of A leaves out) and `nontypes a C1 ...`
-     rows, each through `km-hints rowhint` (the model renamed to the row's
-     normal form). A row counts as certified only when the checker printed
-     `"certified":true` for it in this run.
-
-With H3_WITNESS=1 and a checker that supports `--witness TABLE`, step 4
-uses the global witness row instead (format to follow H2).
+  4. per model k: --witness model<k>.wit --hint model<k>.hint --out
+     check<k>.jsonl. A row counts as certified only when the checker printed
+     it in this run: consistency, sat(A) for every class line without an
+     error, each km non-subsumption (A, B) with B outside A's witness type,
+     each km non-type (a, C) with C outside a's element type (union over the
+     models). A proved row that km answers positively is a disagreement.
+  `km-hints rowhint` (rowmap.rs) still maps a model to a per-row normal form
+  of the plain route, for the per-row checks of earlier binaries.
 """
 import json
 import os
@@ -30,7 +28,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCR = os.environ.get('H3_SCR', '/mnt/data1/leechuck/km-work/v170/scratch/h3')
 KM = os.environ.get('H3_KM', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-6f2c0a8e')
-REF = os.environ.get('H3_REF', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-owl-reference-c5')
+REF = os.environ.get('H3_REF', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-owl-reference-h2-4565e072')
 PROD = os.environ.get('H3_PROD', os.path.join(SCR, 'target/release/km-hints'))
 THING = 'http://www.w3.org/2002/07/owl#Thing'
 NOTHING = 'http://www.w3.org/2002/07/owl#Nothing'
@@ -127,7 +125,7 @@ def main():
         return type(d)(a[a.index(k) + 1]) if k in a else d
     ptime = opt('--ptime', 300)
     nchecks = opt('--checks', 20)
-    ctime = opt('--check-timeout', 60)
+    ctime = opt('--check-timeout', 600)
     cbudget = opt('--check-budget', 300)
     maxc = opt('--max-concepts', 5000)
     os.makedirs(outdir, exist_ok=True)
@@ -149,11 +147,25 @@ def main():
         R['status'] = 'km-inconsistent'
         return finish(R, outdir, t0)
     bi, bc = os.path.join(outdir, 'base.idx'), os.path.join(outdir, 'base.cl')
-    rc1, s1, m1, _, e1 = ref(['--print-index'], src, 300, out=bi)
+    cf = os.path.join(outdir, 'classes.txt')
+    # the witness route's translation, all classes and owl:Thing requested
+    rc1, s1, m1, _, e1 = ref(['--witness-route', '--print-index'], src, 300, out=bi)
     rc2, s2, m2, _, e2 = (None, None, None, None, None)
+    s0 = 0
     if rc1 == 0:
-        rc2, s2, m2, _, e2 = ref(['--print-clauses'], src, 300, out=bc)
-    R['dump'] = {'rc': rc2 if rc1 == 0 else rc1, 'secs': round((s1 or 0) + (s2 or 0), 2), 'rss_mb': max(m1 or 0, m2 or 0)}
+        names = [l.split(' ', 2)[2].rstrip('\n') for l in open(bi) if l.startswith('concept ') and
+                 len(l.split(' ', 2)) == 3 and not l.split(' ', 2)[2].startswith('urn:km:')]
+        # requesting owl:Thing makes it an unconstrained name (it then shows up as
+        # a proved non-superclass of every class); off until H2 ties it to the top
+        if THING not in names and os.environ.get('H3_REQUEST_THING') == '1':
+            with open(cf, 'w') as f:
+                f.write('\n'.join(names + [THING]) + '\n')
+            s0 = s1 or 0
+            rc1, s1, m1, _, e1 = ref(['--witness-route', '--classes', cf, '--print-index'], src, 300, out=bi)
+    if rc1 == 0:
+        extra = ['--classes', cf] if os.path.exists(cf) else []
+        rc2, s2, m2, _, e2 = ref(['--witness-route'] + extra + ['--print-clauses'], src, 300, out=bc)
+    R['dump'] = {'rc': rc2 if rc1 == 0 else rc1, 'secs': round(s0 + (s1 or 0) + (s2 or 0), 2), 'rss_mb': max(m1 or 0, m2 or 0)}
     if rc1 != 0 or rc2 != 0:
         R['status'] = 'dump-failed'
         R['dump']['err'] = ((e1 or '') + (e2 or ''))[-200:]
@@ -174,118 +186,108 @@ def main():
     R['rows_unchecked'] = unc['consistency'] + unc['sat'] + unc['nonsub'] + unc['nontype']
     R['status'] = ('model-full' if R['rows_unchecked'] == R['rows_total'] else
                    'model-partial' if R['rows_unchecked'] else 'model-none')
-    # ---- the proved checker ----
-    C = {'calls': 0, 'secs': 0.0, 'results': {}, 'certified': {'consistency': 0, 'sat': 0, 'nonsub': 0, 'nontype': 0},
-         'rows_tried': {'consistency': 0, 'sat': 0, 'nonsub': 0, 'nontype': 0}}
+    # ---- the proved checker: the global witness row (H2), one call per model ----
+    C = {'calls': 0, 'secs': 0.0, 'results': {}, 'certified': {'consistency': 0, 'sat': 0, 'nonsub': 0, 'nontype': 0}}
     R['checker'] = C
-    h0 = os.path.join(outdir, 'model0.hint')
-    if not P['base']['ok'] or not os.path.exists(h0) or P['models'][0]['violations'] != 0:
-        C['skipped'] = 'no self-checked model 0'
-        return finish(R, outdir, t0)
     if '--no-check' in a:
         C['skipped'] = 'not requested'
         return finish(R, outdir, t0)
-    if P['nf']['concepts'] > maxc:
-        C['skipped'] = 'over %d concepts (checker time grows with the names, R1)' % maxc
+    if not P['base']['ok'] or not P['models']:
+        C['skipped'] = 'no model'
         return finish(R, outdir, t0)
-    tc = time.time()
-    bad = [0]
-
-    def check(row, hint):
-        if bad[0] >= 3 or time.time() - tc > cbudget:
-            return 'skipped'
-        args = (['--row', row] if row != 'consistent' else []) + ['--hint', hint]
-        rc, s, m, out, err = ref(args, src, ctime)
-        C['calls'] += 1
-        C['secs'] += s or 0
-        C['rss_mb'] = max(C.get('rss_mb', 0), m or 0)
-        if rc == 0 and '"certified":true' in (out or ''):
-            res = 'certified'
-            bad[0] = 0
-        elif rc == 124:
-            res = 'timeout'
-            bad[0] += 1
-        elif 'out of memory' in (err or '') or rc in (134, 137, 139) or 'memory' in (err or ''):
-            res = 'out of memory'
-            bad[0] += 1
-        else:
-            res = 'rejected'
-            C.setdefault('reject_examples', []).append((row[:120], (err or '').strip()[-160:]))
-        C['results'][res] = C['results'].get(res, 0) + 1
-        return res
-    C['rows_tried']['consistency'] = 1
-    if check('consistent', h0) == 'certified':
-        C['certified']['consistency'] = 1
-    # rows from the witnesses: per class, the non-subsumers its first witness leaves out
     sup, unsat, types, top, cname, cls, inds = km_rows(kl, bi)
-    tabs, tys = [], []
+    clsset = set(cls)
+    extra = ['--classes', cf] if os.path.exists(cf) else []
+    unc = {}      # class -> uncovered km-negative B's (None: all still uncovered)
+    satok = set()
+    indunc = {}
+    disagree = []
     k = 0
     while os.path.exists(os.path.join(outdir, 'model%d.hint' % k)):
-        tabs.append(read_table(os.path.join(outdir, 'model%d.wit' % k)))
-        tys.append(read_hint_types(os.path.join(outdir, 'model%d.hint' % k)))
-        k += 1
-    first = {}
-    for mk, tab in enumerate(tabs):
-        for kind, iri, e in tab:
-            if kind == 'class' and iri not in first and P['models'][mk]['violations'] == 0:
-                first[iri] = (mk, e)
-    ind_el = {iri: e for kind, iri, e in tabs[0] if kind == 'individual'} if tabs else {}
-    jobs = []
-    for A in [THING] + cls:
-        if A in unsat or A not in first:
+        if P['models'][k]['violations'] != 0:
+            k += 1
             continue
-        mk, e = first[A]
-        t = tys[mk].get(e, set())
-        s = sup.get(A, set())
-        Bs = [B for B in cls if B != A and B not in s and B not in top and cname[B] not in t]
-        jobs.append(('nonsubs', A, Bs[:300]))
-    for x in inds:
-        if x not in ind_el:
-            continue
-        t = tys[0].get(ind_el[x], set())
-        ty = types.get(x, set())
-        Cs = [c for c in cls if c not in ty and c not in top and cname[c] not in t]
-        if Cs:
-            jobs.append(('nontypes', x, Cs[:300]))
-    # spread the sample over classes and individuals
-    step = max(1, len(jobs) // max(1, nchecks))
-    sample = jobs[::step][:nchecks]
-    for i, (kind, key, Ls) in enumerate(sample):
-        if bad[0] >= 3 or time.time() - tc > cbudget:
-            C['stopped'] = 'check budget or three timeouts after %d of %d sampled rows' % (i, len(sample))
-            break
-        if kind == 'nonsubs':
-            row = ' '.join(['nonsubs', key, NOTHING] + Ls)
+        hp, wp = os.path.join(outdir, 'model%d.hint' % k), os.path.join(outdir, 'model%d.wit' % k)
+        op = os.path.join(outdir, 'check%d.jsonl' % k)
+        rc, sec, mem, out, err = ref(['--witness', wp, '--hint', hp, '--out', op] + extra, src, ctime)
+        C['calls'] += 1
+        C['secs'] += sec or 0
+        C['rss_mb'] = max(C.get('rss_mb', 0), mem or 0)
+        if rc == 124:
+            res = 'timeout'
+        elif rc != 0 and ('memory' in (err or '') or rc in (134, 137, 139)):
+            res = 'out of memory'
+        elif rc != 0:
+            res = 'rejected'
+            # the first failing element, for the report
+            rc3, _, _, out3, err3 = ref(['--witness', wp, '--hint', hp, '--explain'] + extra, src, ctime)
+            C.setdefault('reject_examples', []).append((k, ((err or '') + ' | ' + (err3 or '') + (out3 or '')).strip()[-400:]))
         else:
-            row = ' '.join(['nontypes', key] + Ls)
-        ri, rcl, rh = (os.path.join(outdir, 'row.idx'), os.path.join(outdir, 'row.cl'), os.path.join(outdir, 'row.hint'))
-        rc1, _, _, _, _ = ref(['--print-index', '--row', row], src, ctime, out=ri)
-        rc2, _, _, _, _ = ref(['--print-clauses', '--row', row], src, ctime, out=rcl) if rc1 == 0 else (1, 0, 0, 0, 0)
-        if rc1 != 0 or rc2 != 0:
-            C['results']['row dump failed'] = C['results'].get('row dump failed', 0) + 1
+            res = 'certified'
+        C['results'][res] = C['results'].get(res, 0) + 1
+        if res == 'certified' and os.path.exists(op):
+            for line in open(op):
+                try:
+                    J = json.loads(line)
+                except Exception:
+                    continue
+                if J.get('consistent') is True:
+                    C['certified']['consistency'] = 1
+                if 'class' in J and 'error' not in J:
+                    A = J['class']
+                    satok.add(A)
+                    sA = sup.get(A, set())
+                    if 'nonsub_except' in J:
+                        inside = set(J['nonsub_except'])
+                        bad = [B for B in sA if B in clsset and B not in inside]
+                        cur = {B for B in inside if B in clsset and B != A and B not in sA and B not in top}
+                        unc[A] = cur if unc.get(A) is None else (unc[A] & cur)
+                    else:
+                        outside = set(J.get('nonsub', []))
+                        bad = [B for B in sA if B in outside]
+                        if unc.get(A) is None:
+                            unc[A] = {B for B in cls if B != A and B not in sA and B not in top and B not in outside}
+                        else:
+                            unc[A] -= outside
+                    for B in bad[:3]:
+                        disagree.append('proved %s not under %s; km lists the subsumption' % (A, B))
+                elif 'class' in J:
+                    C.setdefault('table_errors', []).append(J)
+                if 'individual' in J:
+                    x = J['individual']
+                    tx = types.get(x, set())
+                    if 'nontype_except' in J:
+                        inside = set(J['nontype_except'])
+                        bad = [c for c in tx if c in clsset and c not in inside]
+                        cur = {c for c in inside if c in clsset and c not in tx and c not in top}
+                    else:
+                        outside = set(J.get('nontype', []))
+                        bad = [c for c in tx if c in outside]
+                        cur = {c for c in cls if c not in tx and c not in top and c not in outside}
+                    indunc[x] = cur if x not in indunc else (indunc[x] & cur)
+                    for c in bad[:3]:
+                        disagree.append('proved %s not in %s; km lists the type' % (x, c))
+        k += 1
+    nc = len(cls)
+    for A in [THING] + cls:
+        if A in unsat:
             continue
-        sel = ['--class', key] if kind == 'nonsubs' else ['--individual', key]
-        rc, s, m, out, err = run([PROD, 'rowhint', '--index', bi, '--clauses', bc, '--km', kl, '--row-index', ri,
-                                  '--row-clauses', rcl, '--out', rh, '--time', str(ptime)] + sel, ptime + 60)
-        if rc != 0:
-            why = (out or err or '').strip()[-120:]
-            C['results']['rowhint failed'] = C['results'].get('rowhint failed', 0) + 1
-            C.setdefault('rowhint_fail', []).append((key[:100], why))
-            continue
-        res = check(row, rh)
-        kk = 'nonsub' if kind == 'nonsubs' else 'nontype'
-        C['rows_tried'][kk] += len(Ls)
-        if kind == 'nonsubs':
-            C['rows_tried']['sat'] += 1
-        if res == 'certified':
-            C['certified'][kk] += len(Ls)
-            if kind == 'nonsubs':
-                C['certified']['sat'] += 1
+        if A in satok or (A == THING and C['certified']['consistency']):
+            C['certified']['sat'] += 1
+        if A in satok:
+            sA = sup.get(A, set())
+            nonsub = nc - len([B for B in (sA | top | {A}) if B in clsset])
+            C['certified']['nonsub'] += nonsub - len(unc.get(A) or ())
+    for x in inds:
+        if x in indunc:
+            tx = types.get(x, set())
+            nontype = nc - len([c for c in (tx | top) if c in clsset])
+            C['certified']['nontype'] += nontype - len(indunc[x])
     C['secs'] = round(C['secs'], 2)
-    for f in ('row.idx', 'row.cl', 'row.hint'):
-        p = os.path.join(outdir, f)
-        if os.path.exists(p):
-            os.remove(p)
+    C['disagreements'] = disagree[:30]
+    C['certified_rows'] = sum(C['certified'].values())
+    R['status_checked'] = ('certified-full' if C['certified_rows'] == R['rows_total'] else
+                           'certified-partial' if C['certified_rows'] else 'certified-none')
     return finish(R, outdir, t0)
 
 
@@ -293,7 +295,7 @@ def finish(R, outdir, t0):
     R['wall'] = round(time.time() - t0, 1)
     with open(os.path.join(outdir, 'result.json'), 'w') as f:
         json.dump(R, f)
-    print(json.dumps({k: R.get(k) for k in ('input', 'status', 'rows_total', 'rows_unchecked', 'wall')}))
+    print(json.dumps({k: R.get(k) for k in ('input', 'status', 'status_checked', 'rows_total', 'rows_unchecked', 'wall')} | {'certified': (R.get('checker') or {}).get('certified_rows')}))
 
 
 if __name__ == '__main__':

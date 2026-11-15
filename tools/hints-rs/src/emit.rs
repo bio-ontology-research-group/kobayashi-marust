@@ -89,7 +89,8 @@ pub fn write_hint(en: &Engine, m: &Model, keep: &[Id], path: &str, comment: &str
     Ok(Written { index, elements: keep.len(), edges: ne, type_entries: tyn, bytes })
 }
 
-/// The witness table: `class IRI ELEMENT` and `individual IRI ELEMENT` lines.
+/// The witness table of the H2 witness row: `witness CLASS ELEMENT` lines
+/// (individuals are found by their nominal names).
 pub fn write_table(rows: &[(&str, String, u32)], path: &str) -> std::io::Result<()> {
     let f = std::fs::File::create(path)?;
     let mut w = BufWriter::new(f);

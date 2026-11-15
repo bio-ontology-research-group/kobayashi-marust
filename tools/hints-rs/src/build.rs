@@ -593,8 +593,7 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
         }
         rows_sat += 1;
         let sup = &sup_of[&a];
-        let nonsub: u64 = nclasses
-            - classes.iter().filter(|&&b| sup.binary_search(&b).is_ok()).count() as u64;
+        let nonsub: u64 = nclasses - sup.iter().filter(|&&b| rowclass[b as usize]).count() as u64;
         rows_nonsub += nonsub;
         let places: Vec<&Place> =
             wit_ok.get(&a).map(|v| v.iter().filter(|p| ok_model(p.model)).collect()).unwrap_or_default();
@@ -671,7 +670,7 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
             v.dedup();
             v
         };
-        let nontype = nclasses - classes.iter().filter(|&&b| own.binary_search(&b).is_ok()).count() as u64;
+        let nontype = nclasses - own.iter().filter(|&&b| rowclass[b as usize]).count() as u64;
         rows_nontype += nontype;
         if !ok_model(0) {
             continue;
@@ -719,19 +718,17 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
             match emit::write_hint(&en, &s.m, &keep, &hp, &format!("km-hints global model {}", k)) {
                 Ok(w) => {
                     let mut rows: Vec<(&str, String, u32)> = Vec::new();
+                    // the H2 witness table: `witness CLASS W`; owl:Thing only when the
+                    // translation requested it (it is then a listed concept)
                     for (a, e) in &s.wits {
                         let e = s.m.find(*e);
+                        let iri = match a {
+                            Some(c) => nf.cname_of(*c),
+                            None if thing_c.is_some() => THING,
+                            None => continue,
+                        };
                         if let Some(&i) = w.index.get(&e) {
-                            rows.push(("class", a.map(|c| nf.cname_of(c)).unwrap_or(THING).to_string(), i));
-                        }
-                    }
-                    if k == 0 {
-                        for (iri, c) in &inds {
-                            if let Some(&e) = s.m.nom_elem.get(c) {
-                                if let Some(&i) = w.index.get(&s.m.find(e)) {
-                                    rows.push(("individual", iri.clone(), i));
-                                }
-                            }
+                            rows.push(("witness", iri.to_string(), i));
                         }
                     }
                     let _ = emit::write_table(&rows, &format!("{}/model{}.wit", outdir, k));
