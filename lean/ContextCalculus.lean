@@ -411,5 +411,6 @@ import ContextCalculus.OWLFrontend.KeyRules
 import ContextCalculus.OWLFrontend.EdgeStrengthen
 import ContextCalculus.OWLFrontend.HintWitness
 import ContextCalculus.OWLFrontend.HintBuiltin
+import ContextCalculus.OWLFrontend.HintWitnessA
 import ContextCalculus.SRIQN.HintExplain
 import ContextCalculus.OWLFrontend.SHOIQFast
