@@ -229,8 +229,69 @@ theorem hintRefuteSubR_sound (pat : String → String → Prop) (bi : BuiltIns (
   haveI := hD
   exact fun he => refute_sound hK [] _ h (he Dom I (modelR_of_rulesOntoK bi hO' I hM))
 
+/-! ## Successor tables computed once (for the command line) -/
+
+/-- A hash for object property expressions. -/
+instance instHashableObjProp : Hashable ObjProp where
+  hash
+    | .named r => mixHash 1 (hash r)
+    | .inv r => mixHash 2 (hash r)
+    | .top => 3
+    | .bot => 4
+
+/-- `K` with the successors of the properties `ps` computed once. -/
+def ckMemo {k : Nat} (K : CK k) (ps : List ObjProp) : CK k :=
+  let arr := ps.toArray.map fun p => (p, Array.ofFn (K.succ p))
+  let idx : Std.HashMap ObjProp Nat := ps.zipIdx.foldl (fun mp e => mp.insertIfNew e.1 e.2) {}
+  { K with succ := fun p w =>
+      match idx[p]? with
+      | some i =>
+        match arr[i]? with
+        | some e => if e.1 == p then (e.2[w.val]?).getD (K.succ p w) else K.succ p w
+        | none => K.succ p w
+      | none => K.succ p w }
+
+/-- **The tables change nothing.** -/
+theorem ckMemo_eq {k : Nat} (K : CK k) (ps : List ObjProp) : ckMemo K ps = K := by
+  cases K with
+  | mk succ cls ind surj =>
+  simp only [ckMemo, CK.mk.injEq, and_true]
+  funext p w
+  split
+  · split
+    next e he =>
+      split_ifs with hp
+      · rw [Array.getElem?_map] at he
+        obtain ⟨q, hq, rfl⟩ := Option.map_eq_some_iff.1 he
+        rw [beq_iff_eq] at hp
+        dsimp only at hp ⊢
+        subst hp
+        simp
+      · rfl
+    · rfl
+  · rfl
+
+/-- **A refuted axiom is not entailed** (with the tables of `ckMemo`). -/
+theorem hintRefuteM_sound (pat : String → String → Prop) {O : Ontology} {req : List IRI}
+    {hint : RawHint} {W : WTab} (hw : wTabA O req hint = some W) (fuel : Nat) (ps : List ObjProp)
+    (ax : Axiom) (h : refute (ckMemo (ckOf W fuel) ps) ax = true) : ¬ EntailsAt (owl2MapP pat) O ax := by
+  rw [ckMemo_eq] at h
+  exact hintRefute_sound pat hw fuel ax h
+
+/-- **A refuted axiom is not entailed, with keys and rules** (with the
+tables of `ckMemo`). -/
+theorem hintRefuteMR_sound (pat : String → String → Prop) (bi : BuiltIns (owl2MapP pat))
+    {R : OntologyR} {req : List IRI} {hint : RawHint} {W : WTab} (hw : wTabR R req hint = some W)
+    (fuel : Nat) (ps : List ObjProp) (ax : Axiom) (h : refute (ckMemo (ckOf W fuel) ps) ax = true) :
+    ¬ EntailsAtR (owl2MapP pat) bi R ax := by
+  rw [ckMemo_eq] at h
+  exact hintRefuteR_sound pat bi hw fuel ax h
+
 end ContextCalculus.OWLFrontend
 
+#print axioms ContextCalculus.OWLFrontend.ckMemo_eq
+#print axioms ContextCalculus.OWLFrontend.hintRefuteM_sound
+#print axioms ContextCalculus.OWLFrontend.hintRefuteMR_sound
 #print axioms ContextCalculus.OWLFrontend.ev_sound
 #print axioms ContextCalculus.OWLFrontend.refute_sound
 #print axioms ContextCalculus.OWLFrontend.ckOf_spec
