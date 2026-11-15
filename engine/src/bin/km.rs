@@ -529,6 +529,11 @@ fn classify_help() {
     println!("                      an empty property has no SUBPROP, DOMAIN or RANGE rows");
     println!("  DOMAIN<TAB>r<TAB>C  (--properties) O entails ObjectPropertyDomain(r C); owl:Thing is never listed");
     println!("  RANGE<TAB>r<TAB>C   (--properties) O entails ObjectPropertyRange(r C); owl:Thing is never listed");
+    println!("  SUBDATAPROP<TAB>p<TAB>q (--properties) O entails p SubDataPropertyOf q; p not empty");
+    println!("  BOTDATAPROP<TAB>p   (--properties) data property p is empty");
+    println!("  DATADOMAIN<TAB>p<TAB>C (--properties) O entails DataPropertyDomain(p C)");
+    println!("  DISJOINTDATAPROP<TAB>p<TAB>q (--properties) O entails DisjointDataProperties(p q)");
+    println!("  NODATADISJOINT      (--properties) over 64 data properties: no DISJOINTDATAPROP rows computed");
     println!("With --realize the JSON object carries the same rows under \"types\" and \"same\";");
     println!("with --properties under \"subproperties\", \"topproperties\", \"bottomproperties\",");
     println!("\"domains\" and \"ranges\" (see docs/PROPERTIES.md); with --top under \"top\".");

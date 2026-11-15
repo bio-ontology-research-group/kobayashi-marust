@@ -1,0 +1,6 @@
+Prefix(:=<http://x/>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://x/o>
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(DataProperty(:p)) Declaration(DataProperty(:q)) Declaration(DataProperty(:s)) Declaration(NamedIndividual(:a))
+DataPropertyRange(:p DataComplementOf(rdfs:Literal))
+)
