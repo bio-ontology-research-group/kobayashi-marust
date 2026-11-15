@@ -5,6 +5,7 @@ import SRIQFast.Brute
 import SRIQFast.ToCand
 import ContextCalculus.OWLFrontend.SRIQFastRoute
 import ContextCalculus.SRIQ.ElimMarkers
+import ContextCalculus.SRIQ.MergeNames
 
 /-! Development probe for stage C1c: the unproved demand-driven SHIQ
 prototype (`SRIQFast`). `km-sriq-fast-probe <file.ofn>` runs the parser,
@@ -92,6 +93,7 @@ def readCfg : IO Cfg := do
            piFull := ← envFlag "KM_SRIQF_PIFULL" false
            checkedMerge := ← envFlag "KM_SRIQF_CHECKEDMERGE" true
            staticBack := ← envFlag "KM_SRIQF_STATICBACK" false
+           lazyBackTrig := ← envFlag "KM_SRIQF_LAZYTRIG" true
            maxNodes }
 
 structure Result where
@@ -202,13 +204,35 @@ def genDiag (st : St) : IO Unit := do
     ph := ph.modify (min 15 (Nat.log2 (c.parents.size + 1))) (· + 1)
   IO.eprintln s!"diag: parents-per-ctx log2 histogram {ph}"
   -- the largest contexts
-  let order := (Array.range st.ctxs.size).qsort fun a b => st.ctxs[a]!.nodes.size > st.ctxs[b]!.nodes.size
-  for k in order.extract 0 3 do
+  let top3 (N : Nat) (f : Nat → Nat) : Array Nat := Id.run do
+    let mut best : Array Nat := #[]
+    for _ in [0:3] do
+      let mut bi := N
+      let mut bv := 0
+      for i in [0:N] do
+        if !best.contains i && (bi == N || f i > bv) then bi := i; bv := f i
+      if bi < N then best := best.push bi
+    return best
+  let ctxs := st.ctxs
+  let nodes := st.nodes
+  let order := top3 ctxs.size fun k => ctxs[k]!.nodes.size
+  for k in order do
     let c := st.ctxs[k]!
     IO.eprintln s!"diag: ctx {k} nodes={c.nodes.size} parents={c.parents.size} seed={c.key.seed} lab={c.key.lab} pi={c.key.pi}"
     for v in c.nodes.extract 0 12 do
       let nd := st.nodes[v]!
       IO.eprintln s!"diag:   node {v} |ty|={nd.ty.size} extra={(nd.ty.filter fun x => !mem c.key.seed x).toList.take 40} pool={nd.pool.size} back={nd.back}"
+  for k in top3 ctxs.size (fun k => if ctxs[k]!.nodes.size > 1 then ctxs[k]!.parents.size else 0) do
+    let c := ctxs[k]!
+    IO.eprintln s!"diag: multi-node ctx {k} nodes={c.nodes.size} parents={c.parents.size} seed={c.key.seed.toList.take 10} lab={c.key.lab} pi={c.key.pi}"
+    for v in c.nodes.extract 0 6 do
+      let nd := nodes[v]!
+      IO.eprintln s!"diag:   mnode {v} extra={(nd.ty.filter fun x => !mem c.key.seed x).toList.take 30} back={nd.back} sup={nd.sup}"
+  let byPool := top3 nodes.size fun v => nodes[v]!.pool.size
+  for v in byPool do
+    let nd := st.nodes[v]!
+    let c := st.ctxs[nd.ctx]!
+    IO.eprintln s!"diag: big pool node {v} ctx={nd.ctx} pool={nd.pool.size} |ty|={nd.ty.size} ctx_nodes={c.nodes.size} seed={c.key.seed.toList.take 10} lab={c.key.lab} backDone={nd.backDone.size}"
   -- seeds: how many contexts per fill-only part? (seed minus names that are universal fillers)
   let mut seedSz : Array Nat := Array.replicate 16 0
   for c in st.ctxs do
@@ -386,6 +410,8 @@ def mainSriq (path : String) (checkedArg : Bool := false) : IO UInt32 := do
   -- the elimination of body markers, as the certified route (names below `nreq` kept)
   let E2 := if reqList.isNone && (← envFlag "KM_SRIQF_ELIM" true) then
     SRIQ.Elim.elimChecked E.2 nreq else E.2
+  let E2 := if reqList.isNone && (← envFlag "KM_SRIQF_MERGE" true) then
+    SRIQ.Merge.mergeChecked E2 nreq else E2
   if E2.length != E.2.length then IO.eprintln s!"elim: clauses={E.2.length}->{E2.length}"
   let some res ← runFast E2 (req.map (·.val)).toArray req checked | return 3
   if res.aborted then IO.println "aborted"; return 4
@@ -484,6 +510,15 @@ def mainOfn (path : String) (checkedArg : Bool) : IO UInt32 := do
             IO.eprintln s!"elim: names={nS} hint_ok={ok} clauses={E.2.length}->{E2.length} ms={(← IO.monoMsNow) - e0}"
             pure E2
           else pure E.2
+        let EO ← if (← envFlag "KM_SRIQF_MERGE" true) then do
+            let e0 ← IO.monoMsNow
+            let h := SRIQ.Merge.mergeHint EO T.named.length
+            let ok := SRIQ.Merge.mergeOK EO T.named.length h.1 h.2
+            let nM := (List.range h.1.size).foldl (fun a i => if h.1[i]! != i then a + 1 else a) 0
+            let E3 := SRIQ.Merge.mergeChecked EO T.named.length
+            IO.eprintln s!"merge: names={nM} hint_ok={ok} ms={(← IO.monoMsNow) - e0}"
+            pure E3
+          else pure EO
         if let some dp := ← IO.getEnv "KM_SRIQF_DUMP" then
           dumpSriq dp (T.conceptCount + E.1) T.roleCount EO T.named.length
           IO.eprintln s!"dumped {dp}"

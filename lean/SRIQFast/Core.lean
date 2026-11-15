@@ -331,6 +331,10 @@ structure NodeD where
   back : Ty := #[]
   /-- superseded by a static back set: no pool, not a candidate -/
   sup : Bool := false
+  /-- the last back plan had a candidate for every need and a forced set
+  inside the type: a new child node whose back set the type holds changes
+  nothing -/
+  backSettled : Bool := false
   deriving Inhabited
 
 structure Cfg where
@@ -359,12 +363,17 @@ structure Cfg where
   ontology alone) is superseded: it gets the variant with that set and no
   pool of its own -/
   staticBack : Bool := false
+  /-- re-run the back rule of a parent only when a new child node can change
+  its plan, and its merge trigger only when the context's union grows -/
+  lazyBackTrig : Bool := true
   deriving Repr
 
 inductive Ev where
   | init (v : Nat) (inh : Array Spec)
   | trig (v : Nat)
   | back (v : Nat)
+  /-- new nodes in a context: wake its parents (batched per context) -/
+  | ctx (k : Nat)
   deriving Inhabited
 
 structure St where
@@ -380,6 +389,15 @@ structure St where
   nPWVar : Nat := 0
   nLazyVar : Nat := 0
   nSup : Nat := 0
+  nBackCalls : Nat := 0
+  nSeeds : Nat := 0
+  nsAdd : Nat := 0
+  nsPlan : Nat := 0
+  nsW : Nat := 0
+  /-- nodes whose last back plan was settled -/
+  settled : HashSet Nat := ∅
+  /-- context ↦ (union of the back sets of its new nodes, whether its union grew) -/
+  pendCtx : HashMap Nat (Ty × Bool) := ∅
   nBranchCalls : Nat := 0
   maxBranches : Nat := 0
   nBranches : Nat := 0
@@ -389,6 +407,8 @@ structure St where
   pendBack : HashSet Nat := ∅
   nRounds : Nat := 0
   relCache : HashMap Ty Ty := ∅
+  /-- (node, seed) pairs already expanded by the back rule -/
+  backSeen : HashSet (Nat × Ty) := ∅
   nsInit : Nat := 0
   nsTrig : Nat := 0
   nsBack : Nat := 0
@@ -410,13 +430,18 @@ def enqueue (e : Ev) : M Unit := do
     if (← get).pendBack.contains v then return
     modify fun s => { s with pendBack := s.pendBack.insert v }
   | .init .. => pure ()
+  | .ctx .. => pure ()
   modify fun s => { s with queue := s.queue.push e }
 
 def branchesM (t : Ty) (closedPart : Option Ty := none) : M (Array Ty) := do
   let O ← getO
   let t0 ← IO.monoNanosNow
-  let bs := branches O t closedPart
+  let bs ← IO.lazyPure fun _ => branches O t closedPart
   let t1 ← IO.monoNanosNow
+  if t1 - t0 > 10000000 then
+    let newN := match closedPart with | some c => t.filter (!mem c ·) | none => t
+    let ql := newN.foldl (fun a x => a + (O.gciBy[x]!).size) 0
+    IO.eprintln s!"slow branches: ms={(t1 - t0) / 1000000} |seed|={t.size} new={newN.size} q0={ql} out={bs.size} newnames={newN.toList.take 8}"
   modify fun s => { s with nsBranch := s.nsBranch + (t1 - t0) }
   modify fun s => { s with nBranchCalls := s.nBranchCalls + 1 }
   modify fun s => { s with nBranches := s.nBranches + bs.size }
@@ -461,6 +486,7 @@ partial def addNode (k : Nat) (t : Ty) (inh : Array Spec) : M Unit := do
     let isSup := cfg.staticBack && !sub sb t
     let nd : NodeD := { ctx := k, ty := t, back := bk, sup := isSup }
     let isNewBack ← (fun s => !s.ctxs[k]!.backs.contains bk) <$> get
+    let newUni ← (fun s => let u := s.ctxs[k]!.uni; t.any (!u.contains ·)) <$> get
     -- one field per update: a multi-field update copies the later fields
     modify fun s => { s with nodes := s.nodes.push nd }
     modify fun s => { s with ctxs := s.ctxs.modify k fun c =>
@@ -474,11 +500,21 @@ partial def addNode (k : Nat) (t : Ty) (inh : Array Spec) : M Unit := do
       for t' in ← branchesM (union t sb) (some t) do addNode k t' #[]
       return
     enqueue (.init v inh)
-    let parents ← (fun s => s.ctxs[k]!.parents) <$> get
-    for (μ, _) in parents do
-      if cfg.forcedBack then enqueue (.back μ)
-      else if isNewBack then applyBack μ bk
-      enqueue (.trig μ)
+    if cfg.forcedBack && cfg.lazyBackTrig then
+      -- batched: one event per context wakes the parents for all new nodes
+      let pend ← (fun s => s.pendCtx.get? k) <$> get
+      match pend with
+      | some (b, u) =>
+        modify fun s => { s with pendCtx := s.pendCtx.insert k (union b bk, u || newUni) }
+      | none =>
+        modify fun s => { s with pendCtx := s.pendCtx.insert k (bk, newUni) }
+        enqueue (.ctx k)
+    else
+      let parents ← (fun s => s.ctxs[k]!.parents) <$> get
+      for (μ, _) in parents do
+        if cfg.forcedBack then enqueue (.back μ)
+        else if isNewBack then applyBack μ bk
+        enqueue (.trig μ)
 
 /-- The context with key `key`, made on first use with every branch of its seed. -/
 partial def getCtx (key : CtxKey) : M Nat := do
@@ -550,7 +586,7 @@ the intersection of their back sets. If the union `F` of the `F q` is not
 in the type, every star of `v` fails, and only the variants of `t ∪ F` are
 made. Otherwise each candidate back set `X ⊄ t` gives the variants of
 `t ∪ X`. Back sets of entries that count for no need are not used. -/
-def backPlan (O : Onto) (s : St) (v : Nat) : Array Ty := Id.run do
+def backPlan (O : Onto) (s : St) (v : Nat) : Array Ty × Bool := Id.run do
   let nd := s.nodes[v]!
   let key := s.ctxs[nd.ctx]!.key
   let t := nd.ty
@@ -573,24 +609,37 @@ def backPlan (O : Onto) (s : St) (v : Nat) : Array Ty := Id.run do
               candSet := candSet.insert nw.back
               cands := cands.push nw.back
       match inter? with
-      | none => return #[]   -- no entry for this need yet: nothing to do
+      | none => return (#[], false)   -- no entry for this need yet: nothing to do
       | some x => F := union F x
   if sub F t then
-    return (cands.filter fun X => !sub X t).map (union t ·)
-  else return #[union t F]
+    return ((cands.filter fun X => !sub X t).map (union t ·), true)
+  else return (#[union t F], false)
 
 def backRule (v : Nat) : M Unit := do
   let O ← getO
-  let seeds ← (backPlan O · v) <$> get
+  let p0 ← IO.monoNanosNow
+  let st ← get
+  let (seeds, settled) ← IO.lazyPure fun _ => backPlan O st v
+  let p1 ← IO.monoNanosNow
+  modify fun s => { s with nSeeds := s.nSeeds + seeds.size }
+  modify fun s => { s with nsPlan := s.nsPlan + (p1 - p0) }
   let (ty, k, pool) ← (fun s => let nd := s.nodes[v]!; (nd.ty, nd.ctx, nd.pool)) <$> get
+  let w0 ← IO.monoNanosNow
+  modify fun s => { s with settled := if settled then s.settled.insert v else s.settled.erase v }
+  let w1 ← IO.monoNanosNow
+  modify fun s => { s with nsW := s.nsW + (w1 - w0) }
   let cfg ← getCfg
   let inh := if cfg.inherit then pool else #[]
   for sd in seeds do
-    if (← (fun s => s.nodes[v]!.backDone.contains sd) <$> get) then continue
-    modify fun s => { s with nodes := s.nodes.modify v fun nd => { nd with backDone := nd.backDone.insert sd } }
-    for t' in ← branchesM sd (some ty) do
+    if (← (fun s => s.backSeen.contains (v, sd)) <$> get) then continue
+    modify fun s => { s with backSeen := s.backSeen.insert (v, sd) }
+    let tb ← branchesM sd (some ty)
+    for t' in tb do
       modify fun s => { s with nBackVar := s.nBackVar + 1 }
+      let a0 ← IO.monoNanosNow
       addNode k t' inh
+      let a1 ← IO.monoNanosNow
+      modify fun s => { s with nsAdd := s.nsAdd + (a1 - a0) }
 
 /-- Default specs of a node: one per lower clause at its type (unless the
 parent entry meets it). -/
@@ -772,7 +821,7 @@ def initNode (v : Nat) (inh : Array Spec) : M Unit := do
 
 def progressLine (s : St) : String :=
   let specs := s.nodes.foldl (fun a nd => a + nd.pool.size) 0
-  s!"progress: events={s.nEvents} queue={s.queue.size - s.qpos} ctxs={s.ctxs.size} nodes={s.nodes.size} specs={specs} merges={s.nMerge} pw_requests={s.nPW} back_variants={s.nBackVar} pw_variants={s.nPWVar} lazy_variants={s.nLazyVar} superseded={s.nSup} rounds={s.nRounds} ms_init={s.nsInit/1000000} ms_trig={s.nsTrig/1000000} ms_back={s.nsBack/1000000} ms_branch={s.nsBranch/1000000} branch_calls={s.nBranchCalls} branches={s.nBranches} max_branches={s.maxBranches}"
+  s!"progress: events={s.nEvents} queue={s.queue.size - s.qpos} ctxs={s.ctxs.size} nodes={s.nodes.size} specs={specs} merges={s.nMerge} pw_requests={s.nPW} back_variants={s.nBackVar} pw_variants={s.nPWVar} lazy_variants={s.nLazyVar} superseded={s.nSup} back_calls={s.nBackCalls} seeds={s.nSeeds} back_seen={s.backSeen.size} ms_backadd={s.nsAdd / 1000000} ms_plan={s.nsPlan / 1000000} ms_w={s.nsW / 1000000} rounds={s.nRounds} ms_init={s.nsInit/1000000} ms_trig={s.nsTrig/1000000} ms_back={s.nsBack/1000000} ms_branch={s.nsBranch/1000000} branch_calls={s.nBranchCalls} branches={s.nBranches} max_branches={s.maxBranches}"
 
 /-- One step of the event loop; `false` when nothing is left. -/
 def step : M Bool := do
@@ -794,6 +843,16 @@ def step : M Bool := do
       initNode v inh
       let t1 ← IO.monoNanosNow
       modify fun s => { s with nsInit := s.nsInit + (t1 - t0) }
+    | .ctx k =>
+      let (b, u) ← (fun s => (s.pendCtx.get? k).getD (#[], false)) <$> get
+      modify fun s => { s with pendCtx := s.pendCtx.erase k }
+      let parents ← (fun s => s.ctxs[k]!.parents) <$> get
+      for (μ, _) in parents do
+        -- the back plan of `μ` changes only if `μ` is not settled or a new
+        -- node pushes a name `μ` lacks; its merge trigger reads the union
+        let (st, ty) ← (fun s => (s.settled.contains μ, s.nodes[μ]!.ty)) <$> get
+        if !st || !sub b ty then enqueue (.back μ)
+        if u then enqueue (.trig μ)
     | .trig v =>
       modify fun s => { s with pendTrig := s.pendTrig.erase v }
       trigger v
@@ -801,9 +860,14 @@ def step : M Bool := do
       modify fun s => { s with nsTrig := s.nsTrig + (t1 - t0) }
     | .back v =>
       modify fun s => { s with pendBack := s.pendBack.erase v }
+      let n0 ← (fun s => s.nodes.size) <$> get
+      modify fun s => { s with nBackCalls := s.nBackCalls + 1 }
       backRule v
       let t1 ← IO.monoNanosNow
       modify fun s => { s with nsBack := s.nsBack + (t1 - t0) }
+      if t1 - t0 > 5000000 then
+        let (ty, pl) ← (fun s => (s.nodes[v]!.ty.size, s.nodes[v]!.pool.size)) <$> get
+        IO.eprintln s!"slow back: node {v} |ty|={ty} pool={pl} ms={(t1 - t0) / 1000000} new_nodes={(← get).nodes.size - n0}"
     if (← (fun s => s.qpos) <$> get) > 100000 then
       modify fun s => { s with queue := s.queue.extract s.qpos s.queue.size }
       modify fun s => { s with qpos := 0 }

@@ -71,6 +71,7 @@ import ContextCalculus.SRIQ.FastCheckAProof
 import ContextCalculus.SRIQ.FastElimA
 import ContextCalculus.SRIQ.FastElimAProof
 import ContextCalculus.SRIQ.ElimMarkers
+import ContextCalculus.SRIQ.MergeNames
 import ContextCalculus.SRIQD.NormalForm
 import ContextCalculus.SRIQD.Stars
 import ContextCalculus.SRIQD.OracleExamples
