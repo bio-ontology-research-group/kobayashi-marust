@@ -284,6 +284,8 @@ def main():
             nontype = nc - len([c for c in (tx | top) if c in clsset])
             C['certified']['nontype'] += nontype - len(indunc[x])
     C['secs'] = round(C['secs'], 2)
+    # owl:Thing's own non-subsumption rows (Thing is not a requested class of the route)
+    C['thing_nonsub'] = 0 if THING in unsat else nc - len([B for B in top if B in clsset])
     C['disagreements'] = disagree[:30]
     C['certified_rows'] = sum(C['certified'].values())
     R['status_checked'] = ('certified-full' if C['certified_rows'] == R['rows_total'] else

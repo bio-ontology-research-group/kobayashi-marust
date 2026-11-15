@@ -26,7 +26,7 @@ def sbin(b):
 cols = ['input', 'fragment', 'size', 'bytes', 'status', 'classes', 'individuals', 'concepts', 'gci', 'data_clauses',
         'km_s', 'km_mb', 'dump_s', 'dump_mb', 'prod_s', 'prod_mb', 'models', 'elements', 'edges', 'violations',
         'general', 'split', 'partial', 'none', 'split_wit', 'polluted', 'rows', 'unchecked', 'unc_nonsub', 'unc_nontype',
-        'chk_calls', 'chk_s', 'chk_results', 'cert_rows', 'tried_rows', 'cert_consistency', 'reason']
+        'chk_calls', 'chk_s', 'chk_rss', 'chk_results', 'status_checked', 'cert_rows', 'thing_rows', 'cert_consistency', 'disagree', 'reason']
 print('\t'.join(cols))
 S = defaultdict(Counter)
 allr = []
@@ -77,7 +77,16 @@ for d in sorted(os.listdir(run)):
         cert = C.get('certified', {})
         tried = C.get('rows_tried', {})
         row.update(chk_calls=C.get('calls'), chk_s=C.get('secs'), chk_results=json.dumps(C.get('results', {})),
-                   cert_rows=sum(cert.values()), tried_rows=sum(tried.values()), cert_consistency=cert.get('consistency'))
+                   cert_rows=sum(cert.values()), cert_consistency=cert.get('consistency'), chk_rss=C.get('rss_mb'))
+        tn = C.get('thing_nonsub')
+        if tn is None and P and C.get('calls'):
+            tn = 0
+        row['thing_rows'] = tn
+        row['status_checked'] = R.get('status_checked')
+        if R.get('status_checked') and R.get('rows_total') is not None and tn is not None and \
+                row['cert_rows'] + tn == R['rows_total'] and row['cert_rows'] < R['rows_total']:
+            row['status_checked'] = 'certified-full-but-thing'
+        row['disagree'] = len(C.get('disagreements') or [])
         if C.get('skipped'):
             row['chk_results'] = C['skipped']
     if not reason and R.get('status') not in ('model-full',):
@@ -98,25 +107,26 @@ for d in sorted(os.listdir(run)):
             s['partial'] += row['partial']
             s['none'] += row['none']
             s['classes'] += P['classes'] + 1
-        if C and not C.get('skipped'):
+        if C and not C.get('skipped') and C.get('calls'):
             s['checked_inputs'] += 1
             if C.get('certified', {}).get('consistency'):
                 s['consistency_certified'] += 1
             s['cert_rows'] += row.get('cert_rows') or 0
-            s['tried_rows'] += row.get('tried_rows') or 0
-            if row.get('tried_rows') and row.get('cert_rows') == row.get('tried_rows'):
-                s['all_tried_certified'] += 1
-        if R.get('status') == 'model-full' and C and C.get('certified', {}).get('consistency') and \
-                row.get('cert_rows') == row.get('tried_rows'):
-            s['full_and_confirmed'] += 1
+            sc = row.get('status_checked') or ''
+            s[sc] += 1
+            s['thing_rows'] += row.get('thing_rows') or 0
+            s['disagree'] += row.get('disagree') or 0
+            for kk, vv in (C.get('results') or {}).items():
+                s['chk:' + kk] += vv
 out = sys.stderr
 for key in sorted(S, key=lambda k: (k != 'all', k)):
     s = S[key]
-    print('%-16s inputs %4d  model-full %4d  partial %3d  none %3d  other %3d | classes %7d general %7d split %5d partial %5d none %5d | rows %d unchecked %d | checked %d consistency-cert %d all-tried-cert %d full+confirmed %d (cert rows %d of %d tried)' % (
+    print('%-14s inputs %4d | producer: model-full %4d partial %3d none %3d other %3d | classes %7d general %7d split %5d partial %4d none %4d | rows %d unchecked %d | checker: inputs %d consistency %d full %d full-but-Thing %d partial %d none %d | certified rows %d (+ Thing rows %d) | calls %s | disagreements %d' % (
         key, s['inputs'], s['model-full'], s['model-partial'], s['model-none'],
         s['inputs'] - s['model-full'] - s['model-partial'] - s['model-none'],
         s['classes'], s['general'], s['split'], s['partial'], s['none'], s['rows'], s['unchecked'],
-        s['checked_inputs'], s['consistency_certified'], s['all_tried_certified'], s['full_and_confirmed'],
-        s['cert_rows'], s['tried_rows']), file=out)
+        s['checked_inputs'], s['consistency_certified'], s['certified-full'], s['certified-full-but-thing'],
+        s['certified-partial'], s['certified-none'], s['cert_rows'], s['thing_rows'],
+        {k[4:]: v for k, v in s.items() if k.startswith('chk:')}, s['disagree']), file=out)
 reasons = Counter((r['reason'] or '').split(':')[0] for r in allr if r['reason'])
 print('reasons:', dict(reasons), file=out)

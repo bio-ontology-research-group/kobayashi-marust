@@ -453,6 +453,8 @@ pub struct Engine<'a> {
     cur_nomok: bool,
     pub opt: Opts,
     pub stats: Stats,
+    pub debug: bool,
+    dbg_created: FxMap<u32, u64>,
 }
 
 impl<'a> Engine<'a> {
@@ -480,6 +482,8 @@ impl<'a> Engine<'a> {
             cur_nomok: false,
             opt,
             stats: Stats::default(),
+            debug: std::env::var("KM_HINTS_DEBUG").is_ok(),
+            dbg_created: FxMap::default(),
         }
     }
 
@@ -810,8 +814,8 @@ impl<'a> Engine<'a> {
                 }
             }
         }
-        m.enqueue(x);
-        m.enqueue(y);
+        // no requeue here: a reused neighbour changes neither type (`compatible`);
+        // callers requeue where a type or a count can change
     }
 
     pub fn remove_edge(&mut self, m: &mut Model, x: Id, y: Id) {
@@ -854,6 +858,7 @@ impl<'a> Engine<'a> {
         for &(z, l) in &ea.edges {
             let z2 = if z == a { b } else { z };
             self.add_edge(m, b, z2, l);
+            m.enqueue(z2);
         }
         {
             let e = m.em(a);
@@ -939,6 +944,41 @@ impl<'a> Engine<'a> {
         true
     }
 
+    /// Like `compatible`, but the universals of `y` may push names back into
+    /// `x` (returned) as long as x's type still closes.
+    fn compatible_push(&mut self, m: &Model, x: Id, y: Id, l: u32) -> Option<Vec<u32>> {
+        let tx = m.elems[x as usize].ty;
+        let ty = m.elems[y as usize].ty;
+        if !m.elems[y as usize].pending.is_empty() {
+            return None;
+        }
+        let f = self.fwd(tx, l);
+        if !self.sets.subset(f, ty) {
+            return None;
+        }
+        let fl = self.flip(l);
+        let b = self.fwd(ty, fl);
+        let back = minus_sorted(&self.sets.get(b), &self.sets.get(tx));
+        if back.is_empty() {
+            return if self.compatible(m, x, y, l) { Some(back) } else { None };
+        }
+        let nf = self.nf;
+        if back.iter().any(|&a| nf.is_nom[a as usize] || nf.has_le[a as usize]) {
+            return None;
+        }
+        if nf.le.len() > 0 {
+            // keep it simple where counting is involved
+            return None;
+        }
+        let e = &m.elems[x as usize];
+        let (fb, tg, nm) = (e.forbid, e.target, e.nom);
+        let s1 = self.sets.union_vec(tx, &back);
+        match self.close(s1, fb, tg, nm) {
+            CloseRes::Ok(_) => Some(back),
+            _ => None,
+        }
+    }
+
     fn first_nom(&self, t: u32) -> Option<u32> {
         self.sets.get(t).iter().copied().find(|&a| self.nf.is_nom[a as usize])
     }
@@ -983,6 +1023,8 @@ impl<'a> Engine<'a> {
             let ss = self.sets.get(seed);
             m.em(y).pending.extend_from_slice(&ss);
             self.add_edge(m, x, y, l);
+            m.enqueue(y);
+            m.enqueue(x);
             return Ok(());
         }
         let mut got = 0;
@@ -1020,6 +1062,63 @@ impl<'a> Engine<'a> {
                 }
             }
         }
+        // second pass: an element created for the same seed, even if it pushes
+        // names back into x (a fresh element for this seed would end up pushing
+        // them too: without this, a chain of fresh elements never closes)
+        if got < need {
+            if let Some(v) = m.typemap.get(&(seed | SEED_KEY)) {
+                let cands: Vec<Id> = v.iter().rev().take(self.opt.reuse_scan).copied().collect();
+                for y in cands {
+                    if got == need {
+                        break;
+                    }
+                    let y = m.find(y);
+                    if y == x || !m.elems[y as usize].alive || (need > 1 && m.edge_label(x, y).is_some()) {
+                        continue;
+                    }
+                    if let Some(back) = self.compatible_push(m, x, y, l) {
+                        self.add_edge(m, x, y, l);
+                        if !back.is_empty() {
+                            m.em(x).pending.extend_from_slice(&back);
+                            m.enqueue(x);
+                        }
+                        self.stats.reused += 1;
+                        got += 1;
+                    }
+                }
+            }
+        }
+        if self.debug && got < need {
+            let c = self.dbg_created.entry(seed).or_insert(0);
+            *c += 1;
+            if *c == 1000 {
+                // why did no candidate fit?
+                let mut why = Vec::new();
+                for key in [t, seed | SEED_KEY] {
+                    if let Some(v) = m.typemap.get(&key) {
+                        for &y in v.iter().rev().take(4) {
+                            let y = m.find(y);
+                            let ey = &m.elems[y as usize];
+                            let tx = m.elems[x as usize].ty;
+                            let f = self.fwd(tx, l);
+                            let fl = self.flip(l);
+                            let bk = self.fwd(ey.ty, fl);
+                            let ok = self.compatible(m, x, y, l);
+                            let ex = m.edge_label(x, y).map(|q| self.labs.get(q).to_vec());
+                            let ey = &m.elems[y as usize];
+                            why.push(format!(
+                                "cand {} compat {} edge {:?} alive {} seed-in {} pend {} fwd-in {} back-in {} back {:?} tx-len {}",
+                                y, ok, ex, ey.alive, self.sets.subset(seed, ey.ty), ey.pending.len(),
+                                self.sets.subset(f, ey.ty), self.sets.subset(bk, tx),
+                                minus_sorted(&self.sets.get(bk), &self.sets.get(tx)), self.sets.get(tx).len()
+                            ));
+                        }
+                    }
+                }
+                eprintln!("debug: seed {:?} (role {}) created 1000 times; x {} type len {}; {:?}",
+                    self.sets.get(seed), r, x, self.sets.get(m.elems[x as usize].ty).len(), why);
+            }
+        }
         while got < need {
             let y = m.push_elem(Elem {
                 ty: t,
@@ -1036,6 +1135,7 @@ impl<'a> Engine<'a> {
             self.stats.created += 1;
             m.tm_push(seed | SEED_KEY, y);
             self.add_edge(m, x, y, l);
+            m.enqueue(y);
             got += 1;
         }
         Ok(())
@@ -1070,6 +1170,7 @@ impl<'a> Engine<'a> {
                 self.stats.folds += 1;
                 self.remove_edge(m, x, y1);
                 self.add_edge(m, x, y2, l1);
+                m.enqueue(x);
                 let ts = self.sets.get(t1);
                 m.em(y2).pending.extend_from_slice(&ts);
                 m.enqueue(y2);
