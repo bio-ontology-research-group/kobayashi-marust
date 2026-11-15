@@ -1694,6 +1694,43 @@ def emitClauses {n m p q : Nat} (D : SRIQN.DOntology (Fin n) (Fin m) (Fin p) (Fi
   out.flush
   return 0
 
+/-- A data clause, for `--print-clauses` (diagnostic). `p` data property,
+atoms by their index in the `atom` lines; `(j, false)` is the complement. -/
+def dclauseText {n m p q : Nat} : SRIQD.Clause (Fin n) (Fin m) (Fin p) (Fin q) → Option String
+  | .obj _ => none
+  | .dEx a u pos neg => some s!"dsome {a.val} {u.val} {" ".intercalate (pos.map (toString ·.val))} / {" ".intercalate (neg.map (toString ·.val))}"
+  | .dAll a u hd => some s!"dall {a.val} {u.val} {" ".intercalate (hd.map fun e => (if e.2 then "" else "~") ++ toString e.1.val)}"
+  | .dAtLeast a k u pos neg => some s!"datleast {a.val} {k} {u.val} {" ".intercalate (pos.map (toString ·.val))} / {" ".intercalate (neg.map (toString ·.val))}"
+  | .dAtMost a k u pos neg => some s!"datmost {a.val} {k} {u.val} {" ".intercalate (pos.map (toString ·.val))} / {" ".intercalate (neg.map (toString ·.val))}"
+  | .dSub u v => some s!"dsub {u.val} {v.val}"
+
+/-- The data clauses, the data atoms, the free datatypes, the groups and
+the split cells of the data part a hint names (`part I G N`: count `N` of
+group `G` in split cell `I`). -/
+def emitData (T : SRIQDKBTranslation) (L : List OWL.IRI)
+    (E : List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount))) : IO Unit := do
+  let out ← IO.getStdout
+  let D := encC T L E
+  for cl in SRIQN.dbase (SRIQN.Proc.encTransDN D) do
+    match dclauseText cl with
+    | some t => out.putStrLn t
+    | none => pure ()
+  let sp := SHIQD.spec T.tab
+  for j in List.finRange T.tab.length do out.putStrLn s!"atom {j.val} {(reprStr (sp j)).replace "\n" " "}"
+  let fr := OWL.Datatypes.allFrees sp
+  for (f, i) in fr.zipIdx do out.putStrLn s!"free {i} {f}"
+  let gs := ContextCalculus.SRIQD.allG fr.length
+  out.putStrLn s!"groups {gs.length}"
+  if gs.length ≤ 4096 then
+    for (g, i) in gs.zipIdx do
+      out.putStrLn s!"group {i} {String.join ((List.finRange fr.length).map fun j => if g j then "1" else "0")}"
+  let as := OWL.Datatypes.allBases sp
+  let cs := OWL.Datatypes.cellsOf as
+  let sc := cs.filter (ContextCalculus.SRIQD.splitCell cs (OWL.Datatypes.cellSize as) (sroiqBound T L E) (OWL.Datatypes.owlE sp))
+  for (c, i) in sc.zipIdx do
+    out.putStrLn s!"cell {i} {((OWL.Datatypes.cellSize as c).map toString).getD "inf"} {(reprStr c).replace "\n" " "}"
+  out.flush
+
 /-- `--procedure sroiq-hint --print-clauses [--row ROW]`. -/
 def printClausesHint (O : OWL.Ontology) (rowWs : List String) : IO UInt32 := do
   match parseRow rowWs with
@@ -1727,7 +1764,10 @@ def printClausesHint (O : OWL.Ontology) (rowWs : List String) : IO UInt32 := do
         | none => decline "not recognised"
         | some T =>
           match roleCls T O with
-          | some E => emitClauses (encC T (OWLFrontend.SHOIQ.nomNames (roleOff O) []) E)
+          | some E =>
+            let c ← emitClauses (encC T (OWLFrontend.SHOIQ.nomNames (roleOff O) []) E)
+            emitData T (OWLFrontend.SHOIQ.nomNames (roleOff O) []) E
+            return c
           | none => decline "not recognised"
 
 /-! ### The global witness row (stage H2, item 5) -/
@@ -1754,6 +1794,10 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) {O : OWL
     (_h : OWLFrontend.wTab O req hint = some W) : IO UInt32 := do
   let cix : Std.HashMap OWL.IRI (Fin W.N) := W.cls.foldl (fun mp p => mp.insertIfNew p.1 p.2) {}
   let nreq := W.cls.length
+  -- the requested classes by concept index (a type is short, the class list long)
+  let byIx : Std.HashMap Nat (List OWL.IRI) := W.cls.foldl (fun mp p => mp.insert p.2.val (p.1 :: mp.getD p.2.val [])) {}
+  let insideOf := fun (t : Finset (Fin W.N)) =>
+    (t.sort (· ≤ ·)).flatMap fun x => byIx.getD x.val []
   let mut nNon := 0
   let mut nBad := 0
   let mut nType := 0
@@ -1768,16 +1812,17 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) {O : OWL
     | some iA =>
       if hw : w < W.k then
         let t := W.ty ⟨w, hw⟩
-        let M := SRIQN.HF.mask t
-        if SRIQN.HF.memM M iA then
+        let M := SRIQN.HF.memT t
+        if M iA then
           -- `hintWitness_sound`, second part: every requested B outside the type
-          let outside := (W.cls.filter fun p => !SRIQN.HF.memM M p.2).map (·.1)
-          nNon := nNon + outside.length
-          if outside.length * 2 ≤ nreq then
+          let inside := insideOf t
+          let nout := nreq - inside.length
+          nNon := nNon + nout
+          if nout * 2 ≤ nreq then
+            let outside := (W.cls.filter fun p => !M p.2).map (·.1)
             out.putStrLn ("{\"class\":" ++ (Json.str A).compress ++ ",\"witness\":" ++ toString w ++
               ",\"nonsub\":" ++ jsonList outside ++ "}")
           else
-            let inside := (W.cls.filter fun p => SRIQN.HF.memM M p.2).map (·.1)
             out.putStrLn ("{\"class\":" ++ (Json.str A).compress ++ ",\"witness\":" ++ toString w ++
               ",\"nonsub_except\":" ++ jsonList inside ++ "}")
         else
@@ -1790,19 +1835,24 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) {O : OWL
           ",\"error\":\"no such core element\"}")
   -- individuals: the core element holding the nominal index (third and fourth parts)
   let mut groups : Std.HashMap Nat (List OWL.IRI) := {}
+  -- the core element of each nominal index, from one pass over the types
+  let inom : Std.HashSet Nat := W.inds.foldl (fun st p => st.insert p.2.val) {}
+  let owner : Std.HashMap Nat (Fin W.k) := (List.finRange W.k).foldl (fun mp w =>
+    ((W.ty w).sort (· ≤ ·)).foldl (fun mp x => if inom.contains x.val then mp.insertIfNew x.val w else mp) mp) {}
   for (a, ia) in W.inds do
-    match (List.finRange W.k).find? fun w => decide (ia ∈ W.ty w) with
+    match owner.get? ia.val with
     | none => pure ()
     | some w =>
       groups := groups.insert w.val (a :: groups.getD w.val [])
-      let M := SRIQN.HF.mask (W.ty w)
-      let outside := (W.cls.filter fun p => !SRIQN.HF.memM M p.2).map (·.1)
-      nType := nType + outside.length
-      if outside.length * 2 ≤ nreq then
+      let M := SRIQN.HF.memT (W.ty w)
+      let inside := insideOf (W.ty w)
+      let nout := nreq - inside.length
+      nType := nType + nout
+      if nout * 2 ≤ nreq then
+        let outside := (W.cls.filter fun p => !M p.2).map (·.1)
         out.putStrLn ("{\"individual\":" ++ (Json.str a).compress ++ ",\"element\":" ++ toString w.val ++
           ",\"nontype\":" ++ jsonList outside ++ "}")
       else
-        let inside := (W.cls.filter fun p => SRIQN.HF.memM M p.2).map (·.1)
         out.putStrLn ("{\"individual\":" ++ (Json.str a).compress ++ ",\"element\":" ++ toString w.val ++
           ",\"nontype_except\":" ++ jsonList inside ++ "}")
   let gs := groups.toList.map (·.2.reverse)
@@ -1846,7 +1896,15 @@ def printIndexW (O : OWL.Ontology) (req : List OWL.IRI) : IO UInt32 := do
 
 /-- `--print-clauses --witness-route`. -/
 def printClausesW (O : OWL.Ontology) (req : List OWL.IRI) : IO UInt32 :=
-  withWitnessRoute (OWLFrontend.wPrep O) req fun T L E => emitClauses (encC T L E)
+  withWitnessRoute (OWLFrontend.wPrep O) req fun T L E => do
+    let c ← emitClauses (encC T L E)
+    emitData T L E
+    return c
+
+/-- The list without repeated entries, first occurrences kept. -/
+def dedupH (l : List OWL.IRI) : List OWL.IRI :=
+  (l.foldl (fun (acc : Std.HashSet OWL.IRI × Array OWL.IRI) a =>
+    if acc.1.contains a then acc else (acc.1.insert a, acc.2.push a)) ({}, #[])).2.toList
 
 /-- `--procedure sroiq-hint --witness TABLE --hint FILE [--out FILE] [--classes FILE]`. -/
 def runWitness (timing : Bool) (args : Args) (O : OWL.Ontology) : IO UInt32 := do
@@ -1859,7 +1917,7 @@ def runWitness (timing : Bool) (args : Args) (O : OWL.Ontology) : IO UInt32 := d
   let table ← match parseWitness (← IO.FS.readFile tf) with
     | .ok t => pure t
     | .error e => IO.eprintln e; return 2
-  let req ← witnessReq args O
+  let req := dedupH (← witnessReq args O)
   let ⟨res, hres⟩ ← timedPhase timing "witness" (fun _ => OWLFrontend.wTab O req hint)
   match res, hres with
   | some W, h =>
@@ -1880,7 +1938,7 @@ def runWitness (timing : Bool) (args : Args) (O : OWL.Ontology) : IO UInt32 := d
 def runHint (timing : Bool) (args : Args) (O : OWL.Ontology) : IO UInt32 := do
   if args.witness.isSome then return ← runWitness timing args O
   if args.witnessRoute then
-    let req ← witnessReq args O
+    let req := dedupH (← witnessReq args O)
     if args.printIndex then return ← printIndexW O req
     if args.printClauses then return ← printClausesW O req
   -- asymmetric and disjoint properties: the hint is checked against the

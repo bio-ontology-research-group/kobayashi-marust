@@ -1,0 +1,10 @@
+Prefix(:=<http://ex#x>)
+Ontology(<http://ex#xshare>
+ClassAssertion(:A :a)
+ClassAssertion(:A :b)
+SubClassOf(:A ObjectSomeValuesFrom(:r :B))
+SubClassOf(:B ObjectSomeValuesFrom(:r :C))
+SubClassOf(:C ObjectSomeValuesFrom(:s ObjectOneOf(:c)))
+InverseFunctionalObjectProperty(:s)
+DifferentIndividuals(:a :b :c)
+)

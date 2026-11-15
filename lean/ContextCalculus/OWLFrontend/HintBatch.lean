@@ -96,36 +96,16 @@ def sroiqHPartsB (T : SRIQDKBTranslation) (L : List IRI)
   let as := allBases sp
   let cs := cellsOf as
   let D := encC T L E
-  SRIQN.hintPartsNB D cs (cellSize as)
-    (ContextCalculus.SRIQD.splitCell cs (cellSize as) (sroiqBound T L E) (owlE sp)) (owlE sp)
-    (hs.map fun h => h.toHintN _ _)
+  SRIQN.HF.hintPartsPB D cs (cellSize as)
+    (ContextCalculus.SRIQD.splitCell cs (cellSize as) (sroiqBound T L E) (owlE sp)) (owlE sp) false
+    (hs.map fun h => h.toHintS _ _)
 
 theorem sroiqHPartsB_eq (T : SRIQDKBTranslation) (L : List IRI)
     (E : List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount))) (hs : List RawHint) :
     sroiqHPartsB T L E hs = hs.map (sroiqHParts T L E) := by
-  simp only [sroiqHPartsB, SRIQN.hintPartsNB_eq, List.map_map, Function.comp_def]
+  simp only [sroiqHPartsB, (SRIQN.HF.hintPartsPB_eq _ _ _ _ _ _).1, List.map_map, Function.comp_def]
   rfl
 
-/-- `sroiqHPartsB` over the sparse forms of the hints (stage H2). -/
-def sroiqHPartsBF (T : SRIQDKBTranslation) (L : List IRI)
-    (E : List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount)))
-    (hs : List RawHint) : List Bool :=
-  let sp := spec T.tab
-  let as := allBases sp
-  let cs := cellsOf as
-  let D := encC T L E
-  SRIQN.HF.hintPartsSB D cs (cellSize as)
-    (ContextCalculus.SRIQD.splitCell cs (cellSize as) (sroiqBound T L E) (owlE sp)) (owlE sp) false
-    (hs.map fun h => h.toHintS _ _)
-
-@[csimp] theorem sroiqHPartsB_eq_F : @sroiqHPartsB = @sroiqHPartsBF := by
-  funext T L E hs
-  rw [sroiqHPartsB_eq]
-  unfold sroiqHPartsBF
-  rw [(SRIQN.HF.hintPartsSB_eq _ _ _ _ _ _).1, List.map_map]
-  refine List.map_congr_left fun h _ => ?_
-  rw [sroiqHParts_eq_F]
-  rfl
 
 def sroiqSHPartsB (T : SRIQDKBTranslation) (L : List IRI)
     (E : List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount)))
@@ -135,39 +115,18 @@ def sroiqSHPartsB (T : SRIQDKBTranslation) (L : List IRI)
   let as := allBases sp
   let cs := cellsOf as
   let D := encS T L E SC
-  SRIQN.hintPartsNLB D cs (cellSize as)
-    (ContextCalculus.SRIQD.splitCell cs (cellSize as) (sroiqSBound T L E SC) (owlE sp)) (owlE sp)
-    (hs.map fun h => h.toHintN _ _)
+  SRIQN.HF.hintPartsPB D cs (cellSize as)
+    (ContextCalculus.SRIQD.splitCell cs (cellSize as) (sroiqSBound T L E SC) (owlE sp)) (owlE sp) true
+    (hs.map fun h => h.toHintS _ _)
 
 theorem sroiqSHPartsB_eq (T : SRIQDKBTranslation) (L : List IRI)
     (E : List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount)))
     (SC : List (SRIQN.SClause (Fin T.obj.conceptCount) (Fin T.obj.roleCount)))
     (hs : List RawHint) :
     sroiqSHPartsB T L E SC hs = hs.map (sroiqSHParts T L E SC) := by
-  simp only [sroiqSHPartsB, SRIQN.hintPartsNLB_eq, List.map_map, Function.comp_def]
+  simp only [sroiqSHPartsB, (SRIQN.HF.hintPartsPB_eq _ _ _ _ _ _).2, List.map_map, Function.comp_def]
   rfl
 
-/-- `sroiqSHPartsB` over the sparse forms of the hints (stage H2). -/
-def sroiqSHPartsBF (T : SRIQDKBTranslation) (L : List IRI)
-    (E : List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount)))
-    (SC : List (SRIQN.SClause (Fin T.obj.conceptCount) (Fin T.obj.roleCount)))
-    (hs : List RawHint) : List Bool :=
-  let sp := spec T.tab
-  let as := allBases sp
-  let cs := cellsOf as
-  let D := encS T L E SC
-  SRIQN.HF.hintPartsSB D cs (cellSize as)
-    (ContextCalculus.SRIQD.splitCell cs (cellSize as) (sroiqSBound T L E SC) (owlE sp)) (owlE sp) true
-    (hs.map fun h => h.toHintS _ _)
-
-@[csimp] theorem sroiqSHPartsB_eq_F : @sroiqSHPartsB = @sroiqSHPartsBF := by
-  funext T L E SC hs
-  rw [sroiqSHPartsB_eq]
-  unfold sroiqSHPartsBF
-  rw [(SRIQN.HF.hintPartsSB_eq _ _ _ _ _ _).2, List.map_map]
-  refine List.map_congr_left fun h _ => ?_
-  rw [sroiqSHParts_eq_F]
-  rfl
 
 def owlChainHintB (O : OWL.Ontology) (hs : List RawHint) : List (Option Bool) :=
   if O.isSROIQDKB then

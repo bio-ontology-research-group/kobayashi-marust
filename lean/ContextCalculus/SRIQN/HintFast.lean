@@ -118,6 +118,19 @@ theorem memM_mask (t : Finset (Fin n)) (a : Fin n) : memM (mask t) a = decide (a
 theorem memM_mask_iff (t : Finset (Fin n)) (a : Fin n) : memM (mask t) a = true ↔ a ∈ t := by
   rw [memM_mask, decide_eq_true_iff]
 
+/-- Membership in a type: a scan for a small type, a bit mask (built once)
+for a large one. -/
+def memT (t : Finset (Fin n)) : Fin n → Bool :=
+  if t.card ≤ 32 then fun a => decide (a ∈ t) else
+    let M := mask t
+    fun a => memM M a
+
+theorem memT_iff (t : Finset (Fin n)) (a : Fin n) : memT t a = true ↔ a ∈ t := by
+  unfold memT
+  split_ifs
+  · exact decide_eq_true_iff
+  · exact memM_mask_iff t a
+
 /-! ## The index of an ontology -/
 
 /-- The clauses of an ontology, indexed. -/
@@ -250,18 +263,18 @@ def upB (ix : SIx n m) (L : Finset (RoleT (Fin m))) : Bool :=
   fAll L fun R => (getL ix.stepsBy (rc R)).all fun S => decide (S ∈ L)
 
 /-- Universals across the edge `e` from a centre of type `t` with mask `M`. -/
-def edgeB (ix : SIx n m) (M : Array Bool) (t : Finset (Fin n)) (e : QNbr n m) : Bool :=
+def edgeB (ix : SIx n m) (M : Fin n → Bool) (t : Finset (Fin n)) (e : QNbr n m) : Bool :=
   fAll t (fun a => (getL ix.allBy a.val).all fun p => !decide (p.1 ∈ e.1) || decide (p.2 ∈ e.2)) &&
-  fAll e.2 (fun a => (getL ix.allBy a.val).all fun p => !decide (p.1.flip ∈ e.1) || memM M p.2)
+  fAll e.2 (fun a => (getL ix.allBy a.val).all fun p => !decide (p.1.flip ∈ e.1) || M p.2)
 
 /-- The gcis at a type with mask `M`. -/
-def closedB (ix : SIx n m) (M : Array Bool) (t : Finset (Fin n)) : Bool :=
-  ix.gTop.all (fun h => h.any (memM M)) &&
-  fAll t (fun a => (getL ix.gBy a.val).all fun g => !(g.1.all (memM M)) || g.2.any (memM M))
+def closedB (ix : SIx n m) (M : Fin n → Bool) (t : Finset (Fin n)) : Bool :=
+  ix.gTop.all (fun h => h.any M) &&
+  fAll t (fun a => (getL ix.gBy a.val).all fun g => !(g.1.all M) || g.2.any M)
 
 /-- **The star condition through the index.** -/
 def starF (ix : SIx n m) (t : Finset (Fin n)) (N : List (QNbr n m)) : Bool :=
-  let M := mask t
+  let M := memT t
   closedB ix M t &&
   N.all (fun e => upB ix e.1 && edgeB ix M t e) &&
   fAll t (fun a => (getL ix.lowBy a.val).all fun q => decide (q.1 ≤ cnt N q.2.1 q.2.2)) &&
@@ -284,10 +297,10 @@ theorem upB_iff (L : Finset (RoleT (Fin m))) : upB (mkSIx O) L = true ↔ UpClos
     exact h R hR S (Relation.ReflTransGen.single (mem_stepsBy.1 hS))
 
 theorem edgeB_iff (t : Finset (Fin n)) (e : QNbr n m) :
-    edgeB (mkSIx O) (mask t) t e = true ↔ EdgeOK O t e := by
+    edgeB (mkSIx O) (memT t) t e = true ↔ EdgeOK O t e := by
   unfold edgeB EdgeOK
   simp only [Bool.and_eq_true, fAll_iff, List.all_eq_true, Bool.or_eq_true, Bool.not_eq_true',
-    decide_eq_false_iff_not, decide_eq_true_eq, memM_mask_iff]
+    decide_eq_false_iff_not, decide_eq_true_eq, memT_iff]
   constructor
   · rintro ⟨h1, h2⟩ a S c hcl
     refine ⟨fun hS ha => ?_, fun hS ha => ?_⟩
@@ -304,11 +317,11 @@ theorem edgeB_iff (t : Finset (Fin n)) (e : QNbr n m) :
       · exact Or.inr (this.2 hS ha)
       · exact Or.inl hS
 
-theorem closedB_iff (t : Finset (Fin n)) : closedB (mkSIx O) (mask t) t = true ↔ Closed O t := by
+theorem closedB_iff (t : Finset (Fin n)) : closedB (mkSIx O) (memT t) t = true ↔ Closed O t := by
   unfold closedB
   rw [SRIQ.closed_iff]
   simp only [Bool.and_eq_true, List.all_eq_true, List.any_eq_true, fAll_iff, Bool.or_eq_true,
-    Bool.not_eq_true', memM_mask_iff]
+    Bool.not_eq_true', memT_iff]
   constructor
   · rintro ⟨h1, h2⟩ body head hcl hb
     cases body with
@@ -319,15 +332,15 @@ theorem closedB_iff (t : Finset (Fin n)) : closedB (mkSIx O) (mask t) t = true �
       · exfalso
         rw [List.all_eq_false] at h
         obtain ⟨x, hx, hxn⟩ := h
-        simp only [memM_mask_iff] at hxn
+        simp only [memT_iff] at hxn
         exact hxn (hb x hx)
       · exact h
   · intro h
     refine ⟨fun hd hh => h [] hd (mem_gTop.1 hh) (by simp), fun a _ g hg => ?_⟩
-    by_cases hb : g.1.all (memM (mask t)) = true
+    by_cases hb : g.1.all (memT t) = true
     · right
       rw [List.all_eq_true] at hb
-      exact h g.1 g.2 (mem_gBy.1 hg).2 fun x hx => (memM_mask_iff t x).1 (hb x hx)
+      exact h g.1 g.2 (mem_gBy.1 hg).2 fun x hx => (memT_iff t x).1 (hb x hx)
     · left
       simpa using hb
 
@@ -572,6 +585,10 @@ structure HintS (n m : Nat) where
   lab : List (Fin k × Fin k × Finset (RoleT (Fin m)))
   kids : List (Fin k × QNbr n m)
   recs : List (RecS n m k)
+  /-- The data part the hint names (`(cell, group, count)` lines), when
+  `partNamed`; the denoted hint does not depend on it. -/
+  part : List (Nat × Nat × Nat) := []
+  partNamed : Bool := false
 
 namespace HintS
 
@@ -686,6 +703,48 @@ theorem kidIdx_perm (b : Fin h.k) : (getL h.kidIdx b.val).Perm (h.toN.kids b) :=
 
 end HintSLemmas
 
+
+/-! ## The data-star test over the data clauses only -/
+
+/-- A data clause (not an object clause). -/
+def isDataC {n m p q : Nat} : SRIQD.Clause (Fin n) (Fin m) (Fin p) (Fin q) → Bool
+  | .obj _ => false
+  | _ => true
+
+/-- The data clauses of an ontology: the data-star test reads nothing else. -/
+def dataOnly {n m p q : Nat} (O : SRIQD.Ontology (Fin n) (Fin m) (Fin p) (Fin q)) :
+    SRIQD.Ontology (Fin n) (Fin m) (Fin p) (Fin q) :=
+  O.filter isDataC
+
+theorem filterMap_filter_of {α β : Type} (f : α → Option β) (pr : α → Bool)
+    (h : ∀ x, pr x = false → f x = none) : ∀ l : List α, (l.filter pr).filterMap f = l.filterMap f
+  | [] => rfl
+  | x :: l => by
+    by_cases hx : pr x = true
+    · simp [List.filter_cons, hx, List.filterMap_cons, filterMap_filter_of f pr h l]
+    · have hn := h x (by simpa using hx)
+      simp [List.filter_cons, hx, List.filterMap_cons, hn, filterMap_filter_of f pr h l]
+
+theorem dataSatB_dataOnly {n m p q : Nat} (O : SRIQD.Ontology (Fin n) (Fin m) (Fin p) (Fin q))
+    (card : Finset (Fin q) → Option Nat) :
+    SRIQD.Proc.dataSatB (dataOnly O) card = SRIQD.Proc.dataSatB O card := by
+  have hL : SRIQD.dLowerL (dataOnly O) = SRIQD.dLowerL O :=
+    filterMap_filter_of _ _ (fun x hx => by cases x <;> simp_all [isDataC]) O
+  have hU : SRIQD.dUpperL (dataOnly O) = SRIQD.dUpperL O :=
+    filterMap_filter_of _ _ (fun x hx => by cases x <;> simp_all [isDataC]) O
+  have hA : SRIQD.dAllL (dataOnly O) = SRIQD.dAllL O :=
+    filterMap_filter_of _ _ (fun x hx => by cases x <;> simp_all [isDataC]) O
+  have hS : SRIQD.dSubL (dataOnly O) = SRIQD.dSubL O :=
+    filterMap_filter_of _ _ (fun x hx => by cases x <;> simp_all [isDataC]) O
+  have hc : ∀ t, SRIQD.Proc.dcands (dataOnly O) card t = SRIQD.Proc.dcands O card t := by
+    intro t
+    ext e
+    simp only [SRIQD.Proc.dcands, Finset.mem_filter, Finset.mem_univ, true_and,
+      SRIQD.Proc.dcandOK, SRIQD.DDown, SRIQD.dcontrib, hL, hU, hA, hS]
+  funext t
+  apply Bool.eq_iff_iff.2
+  simp only [SRIQD.Proc.dataSatB, decide_eq_true_eq, SRIQD.Proc.DataSatS, SRIQD.dok_iff, hc,
+    SRIQD.dbnd, SRIQD.DDown, SRIQD.DLower, hL, hU, hA, hS]
 
 /-! ## The checks over a sparse hint -/
 
@@ -942,7 +1001,7 @@ def hintPartsS (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
   let noKids := h.kids.isEmpty
   (coreB h ix N && (noKids || certB h ix N)) &&
   (partsOf size s (cells.filter sp)).any fun x =>
-    let ok := SRIQD.Proc.dataSatB Db (partCard cells size sp E (toPart s x))
+    let ok := SRIQD.Proc.dataSatB (dataOnly Db) (partCard cells size sp E (toPart s x))
     (List.finRange h.k).all (fun b => ok (h.tyF b)) && (noKids || h.recs.all (fun e => ok e.ty))
 
 theorem hintPartsS_eq (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
@@ -952,7 +1011,7 @@ theorem hintPartsS_eq (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : L
   rw [hintPartsN_eq_F]
   unfold hintPartsS hintPartsNF
   dsimp only
-  simp only [coreB_eq, certB_eq, ← noKids_eq h]
+  simp only [coreB_eq, certB_eq, ← noKids_eq h, dataSatB_dataOnly]
   have : ∀ ok : Finset (Fin (n + Proc.encKD O)) → Bool,
       (h.toN.recs.all fun e => ok e.1.1) = h.recs.all fun e => ok e.ty := fun ok => by
     simp [HintS.toN, RecS.toN, List.all_map, Function.comp_def]
@@ -973,6 +1032,137 @@ theorem hintPartsNLS_eq (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells :
   unfold hintPartsNLS hintPartsNLF
   rw [loopOKS_eq, hintPartsS_eq, hintPartsN_eq_F]
 
+/-! ## A data part named by the hint (stage H2, R6) -/
+
+/-- The part a hint names: the count of each group in each split cell
+(the cells by their position in `sc`, the groups by their position in
+`allG s`); absent lines count zero. -/
+def namedPart (sc : List K) (G : Nat) (l : List (Nat × Nat × Nat)) : List (K × List Nat) :=
+  sc.zipIdx.map fun p => (p.1, (List.range G).map fun g =>
+    ((l.filter fun e => e.1 == p.2 && e.2.1 == g).map (·.2.2)).sum)
+
+/-- The named part is a part: one count list per split cell, of the right
+length and sum. -/
+def validPartB (size : K → Option Nat) (s : Nat) (sc : List K) (x : List (K × List Nat)) : Bool :=
+  decide (x.map Prod.fst = sc) &&
+    x.all fun p => p.2.length == (ContextCalculus.SRIQD.allG s).length && p.2.sum == (size p.1).getD 0
+
+theorem mem_of_validPartB {size : K → Option Nat} {sc : List K} {x : List (K × List Nat)}
+    (h : validPartB size s sc x = true) : x ∈ partsOf size s sc := by
+  unfold validPartB at h
+  simp only [Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true, beq_iff_eq] at h
+  exact ContextCalculus.SRIQD.mem_partsOf.2 ⟨h.1, fun p hp =>
+    ContextCalculus.SRIQD.mem_comps.2 ⟨(h.2 p hp).1, (h.2 p hp).2⟩⟩
+
+/-- **`hintPartsS` with the named part**: a hint that names a part is
+checked on that part only; otherwise every part is tried. -/
+def hintPartsP (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
+    (size : K → Option Nat) (sp : K → Bool) (E : Fin q → K → (Fin s → Bool) → Bool)
+    (h : HintS (n + Proc.encKD O) m) : Bool :=
+  if h.partNamed then
+    let D := Proc.encTransDN O
+    let Db := dbase D
+    let A := SRIQD.objPart Db
+    let N := dnoms D
+    let ix := mkSIx A
+    let noKids := h.kids.isEmpty
+    let sc := cells.filter sp
+    let x := namedPart sc (ContextCalculus.SRIQD.allG s).length h.part
+    (coreB h ix N && (noKids || certB h ix N)) && validPartB size s sc x &&
+      (let ok := SRIQD.Proc.dataSatB (dataOnly Db) (partCard cells size sp E (toPart s x))
+       (List.finRange h.k).all (fun b => ok (h.tyF b)) && (noKids || h.recs.all (fun e => ok e.ty)))
+  else hintPartsS O cells size sp E h
+
+theorem hintPartsP_imp (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
+    (size : K → Option Nat) (sp : K → Bool) (E : Fin q → K → (Fin s → Bool) → Bool)
+    (h : HintS (n + Proc.encKD O) m) (hh : hintPartsP O cells size sp E h = true) :
+    hintPartsN O cells size sp E h.toN = true := by
+  unfold hintPartsP at hh
+  split_ifs at hh
+  · rw [hintPartsN_eq_F]
+    unfold hintPartsNF
+    dsimp only at hh ⊢
+    have hk : ((List.finRange h.toN.k).all fun b => (h.toN.kids b).isEmpty) = h.kids.isEmpty :=
+      noKids_eq h
+    rw [← coreB_eq, ← certB_eq, hk]
+    simp only [Bool.and_eq_true, dataSatB_dataOnly] at hh
+    obtain ⟨⟨h1, h2⟩, h3⟩ := hh
+    simp only [Bool.and_eq_true, List.any_eq_true]
+    refine ⟨h1, _, mem_of_validPartB h2, ?_⟩
+    have : ∀ ok : Finset (Fin (n + Proc.encKD O)) → Bool,
+        (h.toN.recs.all fun e => ok e.1.1) = h.recs.all fun e => ok e.ty := fun ok => by
+      simp [HintS.toN, RecS.toN, List.all_map, Function.comp_def]
+    rw [this]
+    simpa only [Bool.and_eq_true] using h3
+  · rwa [← hintPartsS_eq]
+
+/-- `hintPartsP` with loops at nominal elements. -/
+def hintPartsNLP (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
+    (size : K → Option Nat) (sp : K → Bool) (E : Fin q → K → (Fin s → Bool) → Bool)
+    (h : HintS (n + Proc.encKD O) m) : Bool :=
+  loopOKS h (dnoms (Proc.encTransDN O)) && hintPartsP O cells size sp E h
+
+theorem hintPartsNLP_imp (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
+    (size : K → Option Nat) (sp : K → Bool) (E : Fin q → K → (Fin s → Bool) → Bool)
+    (h : HintS (n + Proc.encKD O) m) (hh : hintPartsNLP O cells size sp E h = true) :
+    hintPartsNL O cells size sp E h.toN = true := by
+  unfold hintPartsNLP at hh
+  rw [Bool.and_eq_true] at hh
+  rw [hintPartsNL_eq_F]
+  unfold hintPartsNLF
+  rw [← loopOKS_eq, hh.1, ← hintPartsN_eq_F, hintPartsP_imp O cells size sp E h hh.2]
+  rfl
+
+/-- `hintPartsP` (or `hintPartsNLP`) over a list of hints. The tables
+inside `hintPartsP` depend only on the ontology; the compiler shares them
+through the closure `f` built once. -/
+def hintPartsPB (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
+    (size : K → Option Nat) (sp : K → Bool) (E : Fin q → K → (Fin s → Bool) → Bool)
+    (loops : Bool) (hs : List (Option (HintS (n + Proc.encKD O) m))) : List Bool :=
+  let D := Proc.encTransDN O
+  let Db := dbase D
+  let A := SRIQD.objPart Db
+  let N := dnoms D
+  let ix := mkSIx A
+  let sc := cells.filter sp
+  let xs := (partsOf size s sc).map fun x => toPart s x
+  hs.map fun h => h.any fun h =>
+    let noKids := h.kids.isEmpty
+    (!loops || loopOKS h N) &&
+    if h.partNamed then
+      let x := namedPart sc (ContextCalculus.SRIQD.allG s).length h.part
+      (coreB h ix N && (noKids || certB h ix N)) && validPartB size s sc x &&
+        (let ok := SRIQD.Proc.dataSatB (dataOnly Db) (partCard cells size sp E (toPart s x))
+         (List.finRange h.k).all (fun b => ok (h.tyF b)) && (noKids || h.recs.all (fun e => ok e.ty)))
+    else
+      ((coreB h ix N && (noKids || certB h ix N)) &&
+      xs.any fun x =>
+        let ok := SRIQD.Proc.dataSatB (dataOnly Db) (partCard cells size sp E x)
+        (List.finRange h.k).all (fun b => ok (h.tyF b)) && (noKids || h.recs.all (fun e => ok e.ty)))
+
+theorem hintPartsPB_eq (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
+    (size : K → Option Nat) (sp : K → Bool) (E : Fin q → K → (Fin s → Bool) → Bool)
+    (hs : List (Option (HintS (n + Proc.encKD O) m))) :
+    hintPartsPB O cells size sp E false hs = hs.map (fun h => h.any (hintPartsP O cells size sp E)) ∧
+    hintPartsPB O cells size sp E true hs = hs.map (fun h => h.any (hintPartsNLP O cells size sp E)) := by
+  constructor
+  · unfold hintPartsPB
+    refine List.map_congr_left fun h _ => ?_
+    cases h with
+    | none => rfl
+    | some h =>
+      simp only [Option.any_some, Bool.not_false, Bool.true_or, Bool.true_and]
+      unfold hintPartsP hintPartsS
+      split_ifs <;> simp [List.any_map, Function.comp_def]
+  · unfold hintPartsPB
+    refine List.map_congr_left fun h _ => ?_
+    cases h with
+    | none => rfl
+    | some h =>
+      simp only [Option.any_some, Bool.not_true, Bool.false_or]
+      unfold hintPartsNLP hintPartsP hintPartsS
+      split_ifs <;> simp [List.any_map, Function.comp_def]
+
 /-- `hintPartsS` over a list of hints, the encodings and the index computed once. -/
 def hintPartsSB (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
     (size : K → Option Nat) (sp : K → Bool) (E : Fin q → K → (Fin s → Bool) → Bool)
@@ -988,7 +1178,7 @@ def hintPartsSB (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
     (!loops || loopOKS h N) &&
     ((coreB h ix N && (noKids || certB h ix N)) &&
     xs.any fun x =>
-      let ok := SRIQD.Proc.dataSatB Db (partCard cells size sp E x)
+      let ok := SRIQD.Proc.dataSatB (dataOnly Db) (partCard cells size sp E x)
       (List.finRange h.k).all (fun b => ok (h.tyF b)) && (noKids || h.recs.all (fun e => ok e.ty)))
 
 theorem hintPartsSB_eq (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
@@ -1013,3 +1203,6 @@ end ContextCalculus.SRIQN.HF
 #print axioms ContextCalculus.SRIQN.HF.hintPartsS_eq
 #print axioms ContextCalculus.SRIQN.HF.hintPartsNLS_eq
 #print axioms ContextCalculus.SRIQN.HF.hintPartsSB_eq
+#print axioms ContextCalculus.SRIQN.HF.hintPartsP_imp
+#print axioms ContextCalculus.SRIQN.HF.hintPartsNLP_imp
+#print axioms ContextCalculus.SRIQN.HF.hintPartsPB_eq

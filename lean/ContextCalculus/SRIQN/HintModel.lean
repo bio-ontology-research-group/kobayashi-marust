@@ -129,6 +129,22 @@ theorem hintPartsS_model (hc : CellSpec key cells size) {B L : Nat}
   rw [HF.hintPartsS_eq] at hh
   exact hintPartsN_model hc hL hsp hcov hS hB hh
 
+/-- **The model of a sparse hint accepted on its named part** (or on some
+part when it names none). -/
+theorem hintPartsP_model (hc : CellSpec key cells size) {B L : Nat}
+    (hL : B * (allG s).length ≤ L) {sp : K → Bool}
+    (hsp : ∀ c ∈ cells, sp c = true → small size L c = true)
+    (hcov : ∀ c ∈ cells, sp c = false → small size L c = true → ∀ g,
+      ∃ c' ∈ cells, ∃ g', small size L c' = false ∧ vtc E c' g' = vtc E c g)
+    {O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)} (hS : SRIQD.Proc.IsSHIQD (dbase O))
+    (hB : dbnd (dbase (Proc.encTransDN O)) ≤ B) {h : HF.HintS (n + Proc.encKD O) m}
+    (hh : HF.hintPartsP O cells size sp E h = true) :
+    ∃ (D V : Type) (_ : Nonempty D) (atom : Fin q → V → Prop), cellTheory key E V atom ∧
+      ∃ (J : DInterp D V (Fin n) (Fin m) (Fin p)) (f : Fin h.k → D),
+        SRIQD.models atom J (dbase O) ∧ (∀ a ∈ dnoms O, NomAt J.toInterp a) ∧
+        Function.Injective f ∧ ∀ (a : Fin n) b, J.c a (f b) ↔ Fin.castAdd _ a ∈ h.tyF b :=
+  hintPartsN_model hc hL hsp hcov hS hB (HF.hintPartsP_imp _ _ _ _ _ h hh)
+
 end Parts
 
 end ContextCalculus.SRIQN
@@ -136,3 +152,4 @@ end ContextCalculus.SRIQN
 #print axioms ContextCalculus.SRIQN.forest_of_check
 #print axioms ContextCalculus.SRIQN.Proc.hintDNS_model
 #print axioms ContextCalculus.SRIQN.hintPartsS_model
+#print axioms ContextCalculus.SRIQN.hintPartsP_model
