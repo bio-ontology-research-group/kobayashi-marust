@@ -1,0 +1,5 @@
+# asym-sat.ofn on the strengthening: a (core 0) has an r-successor, b (core 1) an r-predecessor
+blocks 2
+ty 0 0 2 4 7
+ty 1 1 2 5
+lab 0 1 +0

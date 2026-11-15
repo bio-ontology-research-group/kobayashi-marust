@@ -26,3 +26,7 @@ key-one.ofn	--hint key-one.hint	{"format":"owl-hint-v1","row":"consistent","cert
 key.ofn	--check	accepted 
 key-sat.ofn	--check	accepted 
 key-one.ofn	(sroiq-c2a) --hint key-one.hint	{"format":"owl-consistency-v1","consistent":true}
+# Stage C5 item 5: asymmetric and disjoint properties by a stronger ontology (edgeOff); sound only
+asym-sat.ofn	--hint asym-sat.hint	{"format":"owl-hint-v1","row":"consistent","certified":true}
+../sroiq/asymmetric.ofn	--check	accepted
+../sroiq/disjoint.ofn	--check	accepted

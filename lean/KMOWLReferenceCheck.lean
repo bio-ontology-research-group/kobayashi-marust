@@ -12,6 +12,7 @@ import ContextCalculus.OWLFrontend.DatatypeDef
 import ContextCalculus.OWLFrontend.HintBatch
 import ContextCalculus.OWLFrontend.RuleGround
 import ContextCalculus.OWLFrontend.KeyRules
+import ContextCalculus.OWLFrontend.EdgeStrengthen
 
 /-!
 # Executable OWL reference procedure (`km-owl-reference`)
@@ -1644,6 +1645,10 @@ def printClausesHint (O : OWL.Ontology) (rowWs : List String) : IO UInt32 := do
 
 /-- The hint route on a parsed ontology. -/
 def runHint (timing : Bool) (args : Args) (O : OWL.Ontology) : IO UInt32 := do
+  -- asymmetric and disjoint properties: the hint is checked against the
+  -- strengthening `edgeOff O`, whose certified rows are rows of `O`
+  -- (`model_of_edgeOff`, `holds_of_models`, `hintRowAnsE_sound`)
+  let O := if hasEdgeAx O then edgeOff O else O
   let rowWs := (args.row.map wordsOf).getD []
   if args.printIndex then return ← printIndexHint O rowWs
   if args.printClauses then return ← printClausesHint O rowWs
@@ -1729,6 +1734,9 @@ def runHintRules (timing : Bool) (args : Args) (R : OWL.OntologyR) : IO UInt32 :
   match rulesOntoK R with
   | none => decline (rulesDeclineR R)
   | some O' =>
+    -- `owlKeysHint R h` is `owlHintConsistent O' h`; with asymmetric or disjoint
+    -- properties the strengthening `edgeOff O'` (`model_of_edgeOff`)
+    let O' := if hasEdgeAx O' then edgeOff O' else O'
     if args.printIndex then return ← printIndexHint O' []
     if args.printClauses then return ← printClausesHint O' []
     if args.checkOnly then return ← checkHint O' []
@@ -1765,7 +1773,13 @@ def runHintRules (timing : Bool) (args : Args) (R : OWL.OntologyR) : IO UInt32 :
           let ⟨res, hres⟩ ← timedPhase timing "hint" (fun _ => owlKeysHint R hint)
           match res, hres with
           | some true, h => publishHintRules h.symm
-          | _, _ => decline "hint: rejected (an index outside the translation, or the check fails)"
+          | _, _ =>
+            -- with asymmetric or disjoint properties: `owlHintConsistent_sound` on
+            -- `edgeOff O'`, then `model_of_edgeOff` and `consistentAtR_rulesOntoK`
+            if owlHintConsistent O' hint == some true then do
+              IO.println "{\"format\":\"owl-hint-v1\",\"row\":\"consistent\",\"certified\":true}"
+              return 0
+            else decline "hint: rejected (an index outside the translation, or the check fails)"
 
 /-- Read the hint file, if any. -/
 def readHint (path : Option String) : IO (Except String (Option RawHint)) := do

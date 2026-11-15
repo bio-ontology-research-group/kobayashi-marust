@@ -406,4 +406,5 @@ import ContextCalculus.OWLFrontend.HintBatch
 import ContextCalculus.OWL.Rules
 import ContextCalculus.OWLFrontend.RuleGround
 import ContextCalculus.OWLFrontend.KeyRules
+import ContextCalculus.OWLFrontend.EdgeStrengthen
 import ContextCalculus.OWLFrontend.SHOIQFast
