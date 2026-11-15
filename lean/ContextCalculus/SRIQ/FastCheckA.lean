@@ -75,8 +75,9 @@ def childKeyA (T : Array Nat) (am : Std.HashMap Nat (List Nat)) (e : EntryA) : K
   ⟨canon (e.fill.toList ++ fwdM am e.lab), fl, T.filter fun a => relHitA ixf a fl⟩
 
 def closedIA (T : Array Nat) (tf : List (Fin n)) : Bool :=
+  let tl := T.toList
   ix.gciTop.all (fun g => (gciAt ix g).2.any fun h => bsA T h.val) &&
-  tf.all fun a => (trigL ix a T.toList).all fun g =>
+  tf.all fun a => (trigL ix a tl).all fun g =>
     !((gciAt ix g).1.all fun b => bsA T b.val) || (gciAt ix g).2.any fun h => bsA T h.val
 
 def upClosedA (L : Array Nat) : Bool :=
