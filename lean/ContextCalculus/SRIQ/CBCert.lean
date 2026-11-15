@@ -427,7 +427,236 @@ theorem checkCert_sound (hI : models I O) {S : Array CStep}
 
 end Sound
 
+/-! ## The derived rows -/
+
+/-- `(a, 0)` for a clause `a ⊑ ⊥`, `(a, b + 1)` for `a ⊑ b`. -/
+def rootKey (c : CCl) : Option (Nat × Nat) :=
+  if c.L.isEmpty && c.P.isEmpty && c.Q.isEmpty then
+    match c.B.toList, c.H.toList with
+    | [a], [] => some (a, 0)
+    | [a], [b] => some (a, b + 1)
+    | _, _ => none
+  else none
+
+def derivSet (S : Array CStep) : Std.HashSet (Nat × Nat) :=
+  S.foldl (fun h st => match rootKey st.c with
+    | some k => h.insert k
+    | none => h) ∅
+
+theorem mem_derivSet_aux (k : Nat × Nat) : ∀ (l : List CStep) (h : Std.HashSet (Nat × Nat)),
+    (l.foldl (fun h st => match rootKey st.c with
+      | some k => h.insert k
+      | none => h) h).contains k = true → h.contains k = true ∨ ∃ st ∈ l, rootKey st.c = some k
+  | [], h, hk => Or.inl hk
+  | st :: l, h, hk => by
+    rw [List.foldl_cons] at hk
+    rcases mem_derivSet_aux k l _ hk with h' | ⟨st', hst', h'⟩
+    · split at h'
+      · next k' hk' =>
+        rw [Std.HashSet.contains_insert] at h'
+        simp only [Bool.or_eq_true, beq_iff_eq] at h'
+        rcases h' with rfl | h'
+        · exact Or.inr ⟨st, List.mem_cons_self, hk'⟩
+        · exact Or.inl h'
+      · exact Or.inl h'
+    · exact Or.inr ⟨st', List.mem_cons_of_mem _ hst', h'⟩
+
+theorem mem_derivSet {S : Array CStep} {k : Nat × Nat} (h : (derivSet S).contains k = true) :
+    ∃ i, i < S.size ∧ rootKey (prem S i) = some k := by
+  unfold derivSet at h
+  rw [← Array.foldl_toList] at h
+  rcases mem_derivSet_aux k S.toList ∅ h with h' | ⟨st, hst, h'⟩
+  · simp at h'
+  · obtain ⟨i, hi, rfl⟩ := List.mem_iff_getElem.1 hst
+    refine ⟨i, by simpa using hi, ?_⟩
+    simp only [prem, Array.getElem?_eq_getElem (by simpa using hi : i < S.size), Option.getD_some]
+    simpa using h'
+
+theorem rootKey_spec {I : Interp D (Fin n) (Fin m)} {c : CCl} {a : Fin n} {k : Nat}
+    (h : rootKey c = some (a.val, k)) (hs : c.Sat I) (x : D) (hx : I.c a x) :
+    ∃ b : Fin n, k = b.val + 1 ∧ I.c b x := by
+  unfold rootKey at h
+  split at h
+  · next hE =>
+    simp only [Bool.and_eq_true, Array.isEmpty_iff] at hE
+    obtain ⟨⟨hL, hP⟩, hQ⟩ := hE
+    have hB : ∀ a' : Fin n, a'.val ∈ c.B → I.c a' x := by
+      intro a' ha'
+      rw [Array.mem_def] at ha'
+      split at h
+      · next a0 hb hh =>
+        rw [hb] at ha'
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        simp only [List.mem_singleton] at ha'
+        rw [fin_eq_of_val (ha'.trans h.1)]; exact hx
+      · next a0 b0 hb hh =>
+        rw [hb] at ha'
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        simp only [List.mem_singleton] at ha'
+        rw [fin_eq_of_val (ha'.trans h.1)]; exact hx
+      · simp at h
+    rcases hs x x (by simp [hL]) (by simp [hP]) hB with ⟨g, hg, hgx⟩ | ⟨g, hg, -⟩
+    · rw [Array.mem_def] at hg
+      split at h
+      · next a0 hb hh => rw [hh] at hg; simp at hg
+      · next a0 b0 hb hh =>
+        rw [hh] at hg
+        simp only [Option.some.injEq, Prod.mk.injEq] at h
+        simp only [List.mem_singleton] at hg
+        exact ⟨g, by rw [← h.2, hg], hgx⟩
+      · simp at h
+    · simp [hQ] at hg
+  · simp at h
+
+/-! ## The witness check -/
+
+/-- The node, entry and back-set checks of `closedFastB` (`WitP`). -/
+def witB (ix : Ix n m) (ixf : IxF) (C : CandA) (req : List (Fin n)) : Bool :=
+  wfB n m C && decide (C.roots.length = req.length) &&
+    (List.range C.nodes.size).all (fun i =>
+      nodeOKA ix C i (finL n (ndA C i).ty.toList) &&
+        (ndA C i).pool.all (entryOKA ix ixf C (ndA C i).ty (abMap (abOf ix (finL n (ndA C i).ty.toList))))) &&
+    (List.range C.nodes.size).all (fun j =>
+      decide (bkA C j = canon (fwdL (abOf ix (finL n (ndA C j).ty.toList)) (keyA C (ndA C j).ctx).lab)))
+
+theorem witB_sound {O : Ontology (Fin n) (Fin m)} {C : CandA} {req : List (Fin n)}
+    (h : witB (mkIx O) (mkIxF O (mkIx O)) C req = true) :
+    WF n m C ∧ C.roots.length = req.length ∧ WitP (mkIx O) (C.view n m) := by
+  simp only [witB, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true, List.mem_range] at h
+  obtain ⟨⟨⟨hw, hlen⟩, hn⟩, hb⟩ := h
+  have hW := wfB_sound hw
+  refine ⟨hW, hlen, fun i hi => ?_, fun j hj => ?_⟩
+  · rw [view_nodes_size] at hi
+    obtain ⟨h1, h2⟩ := hn i hi
+    refine ⟨nodeOKA_sound hW h1, fun e he => ?_, trivial⟩
+    rw [view_nd_pool] at he
+    obtain ⟨e', he', rfl⟩ := List.mem_map.1 he
+    exact entryOKA_sound hW he' (h2 e' he')
+  · rw [view_nodes_size] at hj
+    rw [bkOf_view, hb j hj, absTy_canon_fwd' _ (hW.lab _), backOf, view_nd_ty, view_key_ctx]
+    rfl
+
+/-! ## The route -/
+
+/-- The row of one witness row: `none` if `a ⊑ ⊥` is derived; the
+requested names of the witness row if each is derived; else nothing. -/
+def rowCB (ds : Std.HashSet (Nat × Nat)) (req : List (Fin n)) (w : Fin n × Option (List (Fin n))) :
+    Option (Fin n × Option (List (Fin n))) :=
+  if ds.contains (w.1.val, 0) then some (w.1, none)
+  else match w.2 with
+    | none => none
+    | some L =>
+      if L.all (fun b => !(req.contains b) || ds.contains (w.1.val, b.val + 1)) then
+        some (w.1, some (L.filter (req.contains ·)))
+      else none
+
+/-- **The two-sided route.** The derivation of `C` gives the "yes" answers,
+the live root types of `C` the "no" answers; it declines unless they meet
+on every requested name. -/
+def cbClassify (O : Ontology (Fin n) (Fin m)) (req : List (Fin n)) (C : CandA) :
+    Option (List (Fin n × Option (List (Fin n)))) :=
+  let ix := mkIx O
+  let ixf := mkIxF O ix
+  if checkCert ixf O.toArray C.cert && witB ix ixf C req then
+    let ds := derivSet C.cert
+    let W := fastRowsA ix C req
+    if W.all (fun w => (rowCB ds req w).isSome) then some (W.map fun w => (rowCB ds req w).getD (w.1, none))
+    else none
+  else none
+
+theorem rowCB_fst {ds : Std.HashSet (Nat × Nat)} {req : List (Fin n)} {w : Fin n × Option (List (Fin n))}
+    {p : Fin n × Option (List (Fin n))} (h : rowCB ds req w = some p) : p.1 = w.1 := by
+  unfold rowCB at h
+  split at h
+  · simp only [Option.some.injEq] at h; rw [← h]
+  · split at h
+    · simp at h
+    · split at h
+      · simp only [Option.some.injEq] at h; rw [← h]
+      · simp at h
+
+/-- **The two-sided route is exact on the requested names.** -/
+theorem cbClassify_spec {O : Ontology (Fin n) (Fin m)} {req : List (Fin n)} {C : CandA}
+    (hA : IsALCHIQ O) {rows : List (Fin n × Option (List (Fin n)))}
+    (h : cbClassify O req C = some rows) :
+    (∀ i (hi : i < req.length), ∃ p, rows[i]? = some p ∧ p.1 = req[i]) ∧
+    ∀ p ∈ rows, p.1 ∈ req ∧
+      (p.2 = none ↔
+        ∀ (D : Type) [Nonempty D] (I : Interp D (Fin n) (Fin m)), models I O → ∀ x, ¬ I.c p.1 x) ∧
+      ∀ L, p.2 = some L → ∀ b ∈ req, (b ∈ L ↔ EntailsSub O p.1 b) := by
+  unfold cbClassify at h
+  dsimp only at h
+  split at h
+  · next hc =>
+    simp only [Bool.and_eq_true] at hc
+    obtain ⟨hcert, hwit⟩ := hc
+    obtain ⟨hW, hlen, hP⟩ := witB_sound hwit
+    split at h
+    · next hall =>
+      simp only [Option.some.injEq] at h
+      subst h
+      have hrows : fastRowsA (mkIx O) C req = fastRows (mkIx O) (C.view n m) req :=
+        fastRowsA_eq hP hW
+      have hsome : ∀ w ∈ fastRowsA (mkIx O) C req, ∃ p, rowCB (derivSet C.cert) req w = some p := by
+        intro w hw
+        have := List.all_eq_true.1 hall w hw
+        exact Option.isSome_iff_exists.1 this
+      refine ⟨fun i hi => ?_, fun p hp => ?_⟩
+      · have hi' : i < (fastRowsA (mkIx O) C req).length := by
+          simp [fastRowsA, List.length_zip, hlen, hi]
+        refine ⟨_, by rw [List.getElem?_map, List.getElem?_eq_getElem hi']; rfl, ?_⟩
+        obtain ⟨p, hp⟩ := hsome _ (List.getElem_mem hi')
+        simp only [hp, Option.getD_some]
+        rw [rowCB_fst hp]
+        simp [fastRowsA]
+      · obtain ⟨w, hw, rfl⟩ := List.mem_map.1 hp
+        obtain ⟨p, hpw⟩ := hsome w hw
+        rw [hpw, Option.getD_some]
+        have hws := fastRows_sound hA (hrows ▸ hw : w ∈ fastRows (mkIx O) (C.view n m) req)
+        rw [rowCB_fst hpw]
+        refine ⟨hws.1, ?_⟩
+        unfold rowCB at hpw
+        split at hpw
+        · next hbot =>
+          simp only [Option.some.injEq] at hpw
+          subst hpw
+          obtain ⟨i, hi, hk⟩ := mem_derivSet hbot
+          refine ⟨⟨fun _ D _ I hI x hx => ?_, fun _ => rfl⟩, fun L hL => by simp at hL⟩
+          obtain ⟨b, hb, -⟩ := rootKey_spec hk (checkCert_sound hI hcert i hi) x hx
+          omega
+        · next hnb =>
+          split at hpw
+          · simp at hpw
+          · next L hL =>
+            split at hpw
+            · next hLall =>
+              simp only [Option.some.injEq] at hpw
+              subst hpw
+              obtain ⟨hent, hsat⟩ := hws.2 L hL
+              refine ⟨⟨fun h' => by simp at h', fun h' => absurd h' hsat⟩, fun L' hL' b hb => ?_⟩
+              simp only [Option.some.injEq] at hL'
+              subst hL'
+              rw [List.mem_filter]
+              constructor
+              · rintro ⟨hbL, -⟩
+                have := List.all_eq_true.1 hLall b hbL
+                simp only [Bool.or_eq_true, Bool.not_eq_true'] at this
+                rcases this with hn | hd
+                · simp [hb] at hn
+                · obtain ⟨i, hi, hk⟩ := mem_derivSet hd
+                  intro D _ I hI x hx
+                  obtain ⟨b', hb', hb'x⟩ := rootKey_spec hk (checkCert_sound hI hcert i hi) x hx
+                  rw [fin_eq_of_val (by omega : b.val = b'.val)]
+                  exact hb'x
+              · intro hbe
+                exact ⟨hent b hbe, by simpa [List.contains_iff_mem] using hb⟩
+            · simp at hpw
+    · simp at h
+  · simp at h
+
 end ContextCalculus.SRIQ.CB
 
 #print axioms ContextCalculus.SRIQ.CB.ruleOK_sound
 #print axioms ContextCalculus.SRIQ.CB.checkCert_sound
+#print axioms ContextCalculus.SRIQ.CB.witB_sound
+#print axioms ContextCalculus.SRIQ.CB.cbClassify_spec

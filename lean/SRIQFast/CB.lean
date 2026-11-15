@@ -123,6 +123,7 @@ structure Ctx where
   memb : Array Nat := #[]
   /-- static clause cache: (tag, ontology position) ↦ clause -/
   stat : HashMap (Nat × Nat) Nat := ∅
+  ruleSet : HashSet (Ty × Ty × Nat × Nat) := ∅
 deriving Inhabited
 
 inductive Ev where
@@ -147,10 +148,8 @@ abbrev M := ReaderT (Ix × Nat) (StateT St IO)
 
 def getIx : M Ix := return (← read).1
 
-def emit (r : CRule) (c : CCl) : M Nat := do
-  let s ← get
-  set { s with steps := s.steps.push ⟨r, c⟩ }
-  return s.steps.size
+def emit (r : CRule) (c : CCl) : M Nat :=
+  modifyGet fun s => (s.steps.size, { s with steps := s.steps.push ⟨r, c⟩ })
 
 def enq (e : Ev) : M Unit := modify fun s => { s with queue := s.queue.push e }
 
@@ -229,29 +228,35 @@ def statCl (c : Nat) (tag pos : Nat) (r : CRule) (cl : CCl) : M Nat := do
 
 /-- Install a learned rule at context `c` and fire it on the facts present. -/
 def addRule (c : Nat) (r : LRule) : M Unit := do
-  let cx ← ctxAt c
-  let ri := cx.rules.size
-  let byBody := r.body.foldl (fun m d => m.insert d ((m.getD d #[]).push ri)) cx.rulesBy
-  modCtx c fun cx => { cx with rules := cx.rules.push r, rulesBy := byBody }
+  let ri ← modifyGet fun s => ((s.ctxs[c]!).rules.size, s)
+  let upd (cx : Ctx) : Ctx :=
+    let rb := r.body.foldl (fun m d => m.insert d ((m.getD d #[]).push ri)) cx.rulesBy
+    { cx with rules := cx.rules.push r, rulesBy := rb, ruleSet := cx.ruleSet.insert (r.body, r.py, r.kind, r.head) }
+  modCtx c upd
   enq (.rule c ri)
+
+/-- A rule is worth adding at `c`: not there yet, and its head is not
+already an item under a condition inside `py`. -/
+def wantRule (c : Nat) (body py : Ty) (kind : Kind) (h : Nat) : M Bool := do
+  let cx ← ctxAt c
+  if cx.ruleSet.contains (body, py, kind, h) then return false
+  let k := if kind == kBot then (kBot, 0) else (kind, h)
+  return !((cx.items.getD k #[]).any fun p => sub p.1 py)
 
 /-- The successor context of label `Lc` and core `b`. -/
 def succCtx (Lc : Ty) (b : Nat) : M Nat := do
-  let s ← get
-  match s.succIdx.get? (Lc, b) with
+  match (← get).succIdx.get? (Lc, b) with
   | some i => return i
   | none =>
-    let i := s.ctxs.size
-    set { s with ctxs := s.ctxs.push { core := b, lab := Lc, root := false },
-                 succIdx := s.succIdx.insert (Lc, b) i }
+    let i := (← get).ctxs.size
+    let cx0 : Ctx := { core := b, lab := Lc, root := false }
+    modify fun s => { s with ctxs := s.ctxs.push cx0, succIdx := s.succIdx.insert (Lc, b) i }
     let t ← emit (.taut b) { L := Lc, P := #[], B := #[b], H := #[b], Q := #[] }
     addItem i kX b #[] t
     return i
 
 def newRoot (a : Nat) : M Nat := do
-  let s ← get
-  let i := s.ctxs.size
-  set { s with ctxs := s.ctxs.push { core := a, lab := #[], root := true } }
+  let i ← modifyGet fun s => (s.ctxs.size, { s with ctxs := s.ctxs.push { core := a, lab := #[], root := true } })
   let t ← emit (.taut a) { L := #[], P := #[], B := #[a], H := #[a], Q := #[] }
   addItem i kX a #[] t
   return i
@@ -279,16 +284,21 @@ def streamItem (g : Nat) (c2 : Nat) (pe : Ty) (ide : Nat) (kind : Kind) (h : Nat
     let nkind := if kind == kX then kY else if kind == kY then kX else kBot
     let ncl : CCl := { L := #[G.S ^^^ 1], P := union #[G.e] rB, B := body,
                        H := if kind == kY then #[h] else #[], Q := if kind == kX then #[h] else #[] }
-    let rid ← emit (.par G.upos q2 ide cid) ncl
-    addRule G.ctx { body, py := ncl.P, kind := nkind, head := h, cid := rid }
+    if ← wantRule G.ctx body ncl.P nkind h then
+      let rid ← emit (.par G.upos q2 ide cid) ncl
+      addRule G.ctx { body, py := ncl.P, kind := nkind, head := h, cid := rid }
   else
     if G.k > 1 then return
     let py := union (sortDedup #[G.a, a2]) (union pe cond)
     let ncl : CCl := { L := #[G.S], P := py, B := union #[G.e] rB,
                        H := if kind == kX then #[h] else #[], Q := if kind == kY then #[h] else #[] }
-    let rid ← emit (.sib G.upos q2 ide cid) ncl
+    let mut tg : Array Nat := #[]
     for (_, c3) in G.members do
       if c3 == c2 then continue
+      if ← wantRule c3 ncl.B py kind h then tg := tg.push c3
+    if tg.isEmpty then return
+    let rid ← emit (.sib G.upos q2 ide cid) ncl
+    for c3 in tg do
       addRule c3 { body := ncl.B, py, kind, head := h, cid := rid }
 
 /-- Member `c2` of group `g` holds `e` under `(pe, ide)`. -/
@@ -303,8 +313,9 @@ def eHolds (g : Nat) (c2 : Nat) (pe : Ty) (ide : Nat) : M Unit := do
   -- clash: more witnesses than allowed
   if k2 > G.k && !G.par then
     let ncl : CCl := { L := #[], P := #[], B := union (sortDedup #[G.a, a2]) pe, H := #[], Q := #[] }
-    let rid ← emit (.clash G.upos q2 ide) ncl
-    addRule G.ctx { body := ncl.B, py := #[], kind := kBot, head := 0, cid := rid }
+    if ← wantRule G.ctx ncl.B #[] kBot 0 then
+     let rid ← emit (.clash G.upos q2 ide) ncl
+     addRule G.ctx { body := ncl.B, py := #[], kind := kBot, head := 0, cid := rid }
   if G.k ≤ 1 then
     let cx ← ctxAt c2
     for (kind, h, cond, cid) in cx.itemLog do
@@ -338,8 +349,9 @@ def joinGroup (g : Nat) (q : Nat) (c : Nat) : M Unit := do
           let py := union (sortDedup #[G.a, a2]) (union pe cond)
           let ncl : CCl := { L := #[G.S], P := py, B := union #[G.e] rB,
                              H := if kind == kX then #[h] else #[], Q := if kind == kY then #[h] else #[] }
-          let rid ← emit (.sib G.upos q2 ide cid) ncl
-          addRule c { body := ncl.B, py, kind, head := h, cid := rid }
+          if ← wantRule c ncl.B py kind h then
+            let rid ← emit (.sib G.upos q2 ide cid) ncl
+            addRule c { body := ncl.B, py, kind, head := h, cid := rid }
 
 def newGroup (c : Nat) (upos a k S e : Nat) (par : Bool) : M Unit := do
   let cx ← ctxAt c
@@ -375,9 +387,10 @@ partial def step (e : Ev) : M Unit := do
     for (kind, h, cond, cid) in cc.itemLog do
       if kind == kY || kind == kBot then
         let body := union cond #[a]
-        let rid ← emit (.pred q cid) { L := #[], P := #[], B := body,
-                                       H := if kind == kY then #[h] else #[], Q := #[] }
-        addRule p { body, py := #[], kind := if kind == kY then kX else kBot, head := h, cid := rid }
+        if ← wantRule p body #[] (if kind == kY then kX else kBot) h then
+          let rid ← emit (.pred q cid) { L := #[], P := #[], B := body,
+                                         H := if kind == kY then #[h] else #[], Q := #[] }
+          addRule p { body, py := #[], kind := if kind == kY then kX else kBot, head := h, cid := rid }
     -- hypotheses
     for ((kind, h), _) in cp.items.toList do
       if kind == kX && (ix.allBy[h]!).any (fun (S, _, _) => mem cc.lab S) then enq (.hyp c h)
@@ -391,9 +404,10 @@ partial def step (e : Ev) : M Unit := do
       for (p, q) in parents do
         let (a, _, _, _) := lowAt ix q
         let body := union cond #[a]
-        let rid ← emit (.pred q cid) { L := #[], P := #[], B := body,
-                                       H := if kind == kY then #[h] else #[], Q := #[] }
-        addRule p { body, py := #[], kind := if kind == kY then kX else kBot, head := h, cid := rid }
+        if ← wantRule p body #[] (if kind == kY then kX else kBot) h then
+          let rid ← emit (.pred q cid) { L := #[], P := #[], B := body,
+                                         H := if kind == kY then #[h] else #[], Q := #[] }
+          addRule p { body, py := #[], kind := if kind == kY then kX else kBot, head := h, cid := rid }
     -- 2. groups this context is in
     for g in memb do
       let G := (← get).groups[g]!
@@ -478,9 +492,10 @@ partial def run (maxSteps : Nat) : M Unit := do
     if s.steps.size > maxSteps then
       set { s with aborted := true }; break
     let e := s.queue[s.qhead]!
+    let _ := s
     let nev := (← get).nEv + 1
     modify fun s => { s with nEv := nev }
-    if nev % 200000 == 0 then
+    if nev % (if nev < 100000 then 5000 else 200000) == 0 then
       let s ← get
       let nIt := s.ctxs.foldl (fun a c => a + c.itemLog.size) 0
       let nRu := s.ctxs.foldl (fun a c => a + c.rules.size) 0
@@ -489,10 +504,9 @@ partial def run (maxSteps : Nat) : M Unit := do
         | .item .. => (a.1 + 1, a.2) | .hyp .. => (a.1, a.2.1 + 1, a.2.2) | .kid .. => (a.1, a.2.1, a.2.2.1 + 1, a.2.2.2)
         | .rule .. => (a.1, a.2.1, a.2.2.1, a.2.2.2 + 1)) (0, 0, 0, 0)
       IO.eprintln s!"cbprog: ev={nev} steps={s.steps.size} ctxs={s.ctxs.size} items={nIt} rules={nRu} groups={s.groups.size} queue={ev.size} q(item,hyp,kid,rule)={cnt} combcut={s.combCut}"
-    let s ← get
-    if s.qhead > 1000000 then
-      set { s with queue := s.queue.extract (s.qhead + 1) s.queue.size, qhead := 0 }
-    else set { s with qhead := s.qhead + 1 }
+    modify fun s => if s.qhead > 1000000 then
+        { s with queue := s.queue.extract (s.qhead + 1) s.queue.size, qhead := 0 }
+      else { s with qhead := s.qhead + 1 }
     step e
 
 /-- The result: steps, for each requested name its root context, the
@@ -647,22 +661,19 @@ structure WSt where
   todo : Array (Nat × Ty × Ty) := #[]
 
 def getKey (k : KeyA) : StateM WSt Nat := do
-  let s ← get
-  match s.keyIdx.get? (k.seed, k.lab, k.pi) with
+  match (← get).keyIdx.get? (k.seed, k.lab, k.pi) with
   | some i => return i
   | none =>
-    set { s with keys := s.keys.push k, keyIdx := s.keyIdx.insert (k.seed, k.lab, k.pi) s.keys.size,
-                 members := s.members.push #[] }
-    return s.keys.size
+    let i := (← get).keys.size
+    modify fun s => { s with keys := s.keys.push k, keyIdx := s.keyIdx.insert (k.seed, k.lab, k.pi) i, members := s.members.push #[] }
+    return i
 
 def getNode (k : Nat) (t : Ty) (lab tp : Ty) : StateM WSt Nat := do
-  let s ← get
-  match s.nodeIdx.get? (k, t) with
+  match (← get).nodeIdx.get? (k, t) with
   | some i => return i
   | none =>
-    let i := s.nodes.size
-    set { s with nodes := s.nodes.push ⟨k, t, []⟩, nodeIdx := s.nodeIdx.insert (k, t) i,
-                 members := s.members.modify k (·.push i), todo := s.todo.push (i, lab, tp) }
+    let i := (← get).nodes.size
+    modify fun s => { s with nodes := s.nodes.push ⟨k, t, []⟩, nodeIdx := s.nodeIdx.insert (k, t) i, members := s.members.modify k (·.push i), todo := s.todo.push (i, lab, tp) }
     return i
 
 /-- The pool of a node of type `t` in a context with key `κ`. -/
@@ -724,13 +735,11 @@ partial def wpool (W : WIx) (st : St) (t : Ty) (κ : KeyA) : StateM WSt (List En
 partial def wloop (W : WIx) (st : St) (fuel : Nat) : StateM WSt Unit := do
   let mut f := fuel
   repeat
-    let s ← get
-    if s.todo.isEmpty || f == 0 then break
+    if (← get).todo.isEmpty || f == 0 then break
     f := f - 1
-    let (i, _, _) := s.todo.back!
-    set { s with todo := s.todo.pop }
-    let v := s.nodes[i]!
-    let κ := s.keys[v.ctx]!
+    let (i, _, _) ← modifyGet fun s => (s.todo.back!, { s with todo := s.todo.pop })
+    let v := (← get).nodes[i]!
+    let κ := (← get).keys[v.ctx]!
     let pool ← wpool W st v.ty κ
     modify fun s => { s with nodes := s.nodes.modify i fun v => { v with pool } }
 

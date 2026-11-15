@@ -5,7 +5,7 @@ import ContextCalculus.SRIQ.FastCheck
 /-!
 # Certificate check for the fast SHIQ procedure: the worklist elimination is exact (stage C1d)
 
-On an array candidate set whose view satisfies `ClosedP`:
+On an array candidate set whose view satisfies `WitP` (implied by `ClosedP`):
 
 - `suppF_iff`: the support test on signatures (`suppF`) is the support
   condition `SuppP` of `FastSound.lean`;
