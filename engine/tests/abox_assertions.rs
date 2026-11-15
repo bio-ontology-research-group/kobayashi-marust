@@ -72,3 +72,27 @@ fn consistency_and_types_match_hermit() {
         }
     }
 }
+
+/// E19: a functional data property separates `a` from `b`, and a data value
+/// is asserted for both individuals; `{a} ⊓ {b}` is unsatisfiable (HermiT).
+/// The native bridge answered it satisfiable; such sources are kept off the
+/// bridge (`orchestrate::data_source::shared_data_value_hazard`).
+#[test]
+fn shared_data_values_keep_nominal_intersections_unsatisfiable() {
+    for case in ["e19-data-assertions", "e19-data-has-value", "e19-one-shared-value", "e19-swapped-values"] {
+        let output = km(&fixture(&format!("{case}.ofn")), &[]);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert!(output.status.success(), "{case}: {}", String::from_utf8_lossy(&output.stderr));
+        let got: BTreeSet<String> = stdout
+            .lines()
+            .filter(|line| line.starts_with("CONSISTENT ") || line.starts_with("UNSAT\t") || line.starts_with("SUB\t"))
+            .map(str::to_string)
+            .collect();
+        let expected: BTreeSet<String> = std::fs::read_to_string(fixture(&format!("{case}.classes")))
+            .unwrap()
+            .lines()
+            .map(str::to_string)
+            .collect();
+        assert_eq!(got, expected, "{case}");
+    }
+}

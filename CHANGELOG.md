@@ -4,6 +4,27 @@
 
 ### Engine
 
+- Fixed (E19, wrong answer): the native bridge reported `{a} ⊓ {b}`
+  satisfiable when a functional data property separates `a` from `b` and
+  a data value is asserted for both individuals (`g(a,0)`, `g(b,255)`,
+  `h(b,0)`, `g` functional; ore_ont_15667's `ColorBlue`, `ColorCyan`).
+  Stopgap: such sources (a `FunctionalDataProperty` or data cardinality,
+  and a literal asserted about two individuals) do not reach the bridge
+  (`orchestrate::data_source::shared_data_value_hazard`); the nominal CB
+  route answers them. Separately, the bridge's saturation coupling
+  (successor expansion and caching-blocking from saturation) is off on
+  inputs with a consumed value singleton, which fixed one of the two
+  shapes inside the bridge; the other shape is not located yet.
+- The chain-consumer encoding emits fewer clauses: consumers with an empty
+  seed are skipped when the last (first) letters already carry an equal
+  plain consumer, letters of roles that nothing creates edges for are
+  dropped, symmetric roles are their own converse, and letters with equal
+  transitions share one internal super-role.
+- Fixed a regression of the repeated-ABox-axiom count: repeats produced
+  by the data-assertion conversion were counted as source repeats, so the
+  native ABox coverage check declined on data ABoxes.
+- The CB translation drops and counts a body equality between an
+  individual and a non-central variable.
 - Fixed (wrong answer, since v1.4.4): `{r(a,b), ¬r(a,c)}` was reported
   inconsistent. The CB worker read the ground negative assertion as
   `r(x,c) → x ≉ a`, and Hyper binds the non-central individual `c` like a
