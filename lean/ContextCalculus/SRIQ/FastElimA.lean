@@ -48,6 +48,50 @@ def dfsG (cs : List α) : Nat → List (κ × Nat) → List (κ × Nat) → Bool
 
 end DfsG
 
+/-! ## The search with a memo
+
+`dfsM` is `dfsG` for positions as keys, with a memo of the states (the
+remaining needs and limits) that have no solution; with enough fuel it
+gives the same answer (`dfsM_iff`). -/
+
+section DfsM
+
+variable {α : Type} (cnt : Nat → α → Bool) (cs : List α)
+
+abbrev MSt := List (Nat × Nat) × List (Nat × Nat)
+
+/-- The entries an entry `c` may extend: it counts for the need `x` and
+stays within the limits. -/
+def okC (x : Nat × Nat) (lims : List (Nat × Nat)) (c : α) : Bool :=
+  cnt x.1 c && lims.all (fun y => !cnt y.1 c || decide (0 < y.2))
+
+mutual
+def dfsM : Nat → List (Nat × Nat) → List (Nat × Nat) → Std.HashSet MSt → Bool × Std.HashSet MSt
+  | fuel, needs, lims, memo =>
+    match needs.find? (fun x => decide (0 < x.2)) with
+    | none => (true, memo)
+    | some x =>
+      match fuel with
+      | 0 => (false, memo)
+      | f + 1 =>
+        if memo.contains (needs, lims) then (false, memo) else
+        let r := tryM f x needs lims cs memo
+        if r.1 then r else (false, r.2.insert (needs, lims))
+termination_by fuel _ _ _ => (fuel, 0)
+
+def tryM : Nat → Nat × Nat → List (Nat × Nat) → List (Nat × Nat) → List α → Std.HashSet MSt →
+    Bool × Std.HashSet MSt
+  | _, _, _, _, [], memo => (false, memo)
+  | f, x, needs, lims, c :: rest, memo =>
+    if okC cnt x lims c then
+      let r := dfsM f (subG cnt c needs) (subG cnt c lims) memo
+      if r.1 then r else tryM f x needs lims rest r.2
+    else tryM f x needs lims rest memo
+termination_by f _ _ _ l _ => (f, l.length + 1)
+end
+
+end DfsM
+
 /-! ## Per-node data -/
 
 /-- An entry counts for `(R, b)`: its label has `R`, its child type has `b`. -/
@@ -111,7 +155,7 @@ signatures of its live entries meet every need and stay within every limit. -/
 def suppF (E : NodeE n m) (A : Array Bool) : Bool :=
   let ss := dedupKey id ((E.cands.filter fun p => A[p.1]?.getD false).map (·.2.2))
   E.limOK && E.nS.all (fun x => ss.any (cntS x.1)) &&
-    dfsG cntS ss ((E.nS.map (·.2)).sum + 1) E.nS E.lS
+    (dfsM cntS ss ((E.nS.map (·.2)).sum + 1) E.nS E.lS ∅).1
 
 /-- The nodes with a pool entry into each context. -/
 def parentsOf : Array (List Nat) :=

@@ -248,29 +248,29 @@ theorem mem_tops {e : Fin n} (h : e ∈ (mkIx O).tops) :
 /-! ## Branches -/
 
 theorem brAux_guided {T : Ty n} (hT : Closed O T) :
-    ∀ (f : Nat) (cur : Ty n) (q : List Nat), cur ⊆ T → ∃ b ∈ brAux (mkIx O) f cur q, b ⊆ T := by
-  intro f cur q hcur
-  induction f, cur, q using brAux.induct (ix := mkIx O) with
-  | case1 cur q => exact ⟨cur, by simp [brAux], hcur⟩
-  | case2 f cur => exact ⟨cur, by simp [brAux], hcur⟩
-  | case3 f cur i rest hg ih =>
+    ∀ (f : Nat) (cur : Ty n) (acc q : List Nat), cur ⊆ T → ∃ b ∈ brAux (mkIx O) f cur acc q, b ⊆ T := by
+  intro f cur acc q hcur
+  induction f, cur, acc, q using brAux.induct (ix := mkIx O) with
+  | case1 cur acc q => exact ⟨cur, by simp [brAux], hcur⟩
+  | case2 f cur acc => exact ⟨cur, by simp [brAux], hcur⟩
+  | case3 f cur acc i rest hg ih =>
     rw [brAux, hg]
     exact ih hcur
-  | case4 f cur i rest g hg hfire ih =>
+  | case4 f cur acc i rest g hg hfire ih =>
     simp only [brAux, hg]
     rw [if_pos hfire]
     obtain ⟨b, hb, hbT⟩ := closed_iff.1 hT g.1 g.2 (gciArr_mem hg)
       fun a ha => hcur (hfire.1 a ha)
     obtain ⟨b', hb', hb'T⟩ := ih b (Finset.insert_subset hbT hcur)
     exact ⟨b', List.mem_flatMap.2 ⟨b, hb, hb'⟩, hb'T⟩
-  | case5 f cur i rest g hg hfire ih =>
+  | case5 f cur acc i rest g hg hfire ih =>
     simp only [brAux, hg]
     rw [if_neg hfire]
     exact ih hcur
 
 theorem br_guided {T s : Ty n} (hT : Closed O T) (hs : s ⊆ T) :
     ∃ b ∈ br (mkIx O) s, b ⊆ T :=
-  brAux_guided hT _ _ _ hs
+  brAux_guided hT _ _ _ _ hs
 
 /-! ## The search -/
 

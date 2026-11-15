@@ -1,13 +1,19 @@
 import ContextCalculus.OWLFrontend.SRIQReference
 import ContextCalculus.SRIQ.FastCheck
 import ContextCalculus.SRIQ.FastElimAProof
+import ContextCalculus.SRIQ.ElimMarkers
+import ContextCalculus.SRIQ.MergeNames
 
 /-!
 # The checked fast SHIQ route (stage C1c)
 
 `owlSHIQFast gen` is `owlSHIQReference` with the star elimination replaced
 by the certificate check: after `translateSRIQ`, `isSHIQFastB` (equal to
-`isSHIQB`) and `encTransQ`, the generator `gen` proposes an array candidate set,
+`isSHIQB`), `encTransQ`, the elimination of body markers
+(`SRIQ/ElimMarkers.lean`) and the merging of fresh names with equal
+universal clauses (`SRIQ/MergeNames.lean`; both keep the subsumptions
+between the requested names), the generator `gen` proposes an array
+candidate set,
 `closedFastB` (`SRIQ/FastCheckA.lean`) checks it, and the route answers
 from its live nodes (`SRIQ/FastElimA.lean`) only when the check passes;
 otherwise it declines (`none`). `owlSHIQFast_sound` holds for every
@@ -121,7 +127,8 @@ def owlSHIQFast
   | some T =>
       if isSHIQFastB T.ontology then
         let E := SRIQ.Proc.encTransQ T.ontology
-        match SRIQ.Fast.fastClassifyA E.2 (sriqRequest T E.1) (gen E.2 (sriqRequest T E.1)) with
+        let E2 := SRIQ.Merge.mergeChecked (SRIQ.Elim.elimChecked E.2 T.named.length) T.named.length
+        match SRIQ.Fast.fastClassifyA E2 (sriqRequest T E.1) (gen E2 (sriqRequest T E.1)) with
         | some cls => some { named := T.named, rows := sriqRows T cls }
         | none => none
       else none
@@ -149,10 +156,16 @@ theorem owlSHIQFast_sound
         refine ⟨translateSRIQ_named hT, ?_⟩
         intro i j hi hj
         rw [translateSRIQ_correct hT i j hi hj,
-          SRIQ.Proc.encTransQ_correct (isSHIQ_of_isSHIQB ((isSHIQFastB_eq _) ▸ hS))]
+          SRIQ.Proc.encTransQ_correct (isSHIQ_of_isSHIQB ((isSHIQFastB_eq _) ▸ hS)),
+          ← SRIQ.Elim.entailsSub_elimChecked (bound := T.named.length) (by simpa using hi)
+            (by simpa using hj),
+          ← SRIQ.Merge.entailsSub_mergeChecked (bound := T.named.length) (by simpa using hi)
+            (by simpa using hj)]
         refine sriq_bit_rows T (fun i' hi' => ?_) i j hi hj
         obtain ⟨p, hp, hp1⟩ := SRIQ.Fast.fastClassifyA_get hcls hi'
-        obtain ⟨-, hall⟩ := SRIQ.Fast.fastClassifyA_spec (SRIQ.Proc.encTransQ_isALCHIQ T.ontology) hcls
+        obtain ⟨-, hall⟩ := SRIQ.Fast.fastClassifyA_spec
+          (SRIQ.Merge.isALCHIQ_mergeChecked
+            (SRIQ.Elim.isALCHIQ_elimChecked (SRIQ.Proc.encTransQ_isALCHIQ T.ontology))) hcls
         obtain ⟨-, hn, hs⟩ := hall p (List.mem_of_getElem? hp)
         exact ⟨p, hp, hp1, hn.1, hs⟩
       · exact absurd h (by simp)

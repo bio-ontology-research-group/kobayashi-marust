@@ -130,6 +130,10 @@ structure Onto where
   lazyDef : HashMap Nat Nat := ∅
   /-- the lazy disjunction of a default name -/
   lazyOf : HashMap Nat Nat := ∅
+  /-- for a name in the bodies of many gcis (a hub): the gcis whose body is
+  the hub alone, and by every other body name the gcis with both -/
+  hubSingle : HashMap Nat (Array Nat) := ∅
+  hubIdx : HashMap Nat (HashMap Nat (Array Nat)) := ∅
 
 def pushAt (a : Array (Array α)) (i : Nat) (x : α) : Array (Array α) :=
   a.modify i (·.push x)
@@ -204,8 +208,31 @@ def mkOnto (n m : Nat) (cls : Array QC) (fullRel : Bool := false) (lazy : Bool :
       if h : 0 < pure.size then
         lazyDef := lazyDef.insert i pure[0]
         lazyOf := lazyOf.insert pure[0] i
+  -- hubs
+  let mut hubSingle : HashMap Nat (Array Nat) := ∅
+  let mut hubIdx : HashMap Nat (HashMap Nat (Array Nat)) := ∅
+  for y in [0:n] do
+    if (gciBy[y]!).size ≥ 64 then
+      let mut sg : Array Nat := #[]
+      let mut ix : HashMap Nat (Array Nat) := ∅
+      for g in gciBy[y]! do
+        let (b, _) := gcis[g]!
+        let others := b.filter (· != y)
+        if others.isEmpty then sg := sg.push g
+        for x in others do ix := ix.insert x ((ix.getD x #[]).push g)
+      hubSingle := hubSingle.insert y sg
+      hubIdx := hubIdx.insert y ix
   return { n, nr, gcis, gciBy, gciTop, allBy, low, upp, lowBy, uppBy, up,
-           relBy := rel.map sortDedup, lazyDef, lazyOf }
+           relBy := rel.map sortDedup, lazyDef, lazyOf, hubSingle, hubIdx }
+
+/-- The gcis to look at when `y` joins a set whose names `accL` lists (as
+`trigL` of the check: the added names last first, then the seed): its
+gcis, or for a hub only those whose other body names are listed. -/
+def trigOf (O : Onto) (accL : Unit → List Nat) (y : Nat) : List Nat :=
+  match O.hubIdx.get? y with
+  | none => (O.gciBy[y]!).toList
+  | some ix =>
+    (O.hubSingle.getD y #[]).toList ++ (accL ()).flatMap fun x => (ix.getD x #[]).toList
 
 /-- Names a neighbour across label `L` (from `t`) must hold. -/
 def fwd (O : Onto) (t : Ty) (L : Ty) : Ty := Id.run do
@@ -227,6 +254,9 @@ closed, so only the gcis triggered by names outside `t` are queued): fire gcis w
 no present name, adding one head name each time (a clash for an empty
 head). Every closed superset `T` of `seed` contains some branch. -/
 partial def branches (O : Onto) (seed : Ty) (closedPart : Option Ty := none) : Array Ty := Id.run do
+  -- the names of `acc` in the order of the check's `trigL`: added names last first, then the seed
+  let accList (acc : Array Nat) : List Nat :=
+    (acc.extract seed.size acc.size).toList.reverse ++ seed.toList
   let rec go (cur : HashSet Nat) (acc : Array Nat) (queue : List Nat) (out : Array Ty) : Array Ty :=
     match queue with
     | [] =>
@@ -243,14 +273,16 @@ partial def branches (O : Onto) (seed : Ty) (closedPart : Option Ty := none) : A
           if h.size == 1 then
             -- one head name: no copy of `cur` and `acc` (they are not shared)
             let y := h[0]!
-            go (cur.insert y) (acc.push y) (O.gciBy[y]!.toList ++ rest) out
+            let acc := acc.push y
+            go (cur.insert y) acc (trigOf O (fun _ => accList acc) y ++ rest) out
           else h.foldl (fun out y =>
-            go (cur.insert y) (acc.push y) (O.gciBy[y]!.toList ++ rest) out) out
+            let acc := acc.push y
+            go (cur.insert y) acc (trigOf O (fun _ => accList acc) y ++ rest) out) out
       else go cur acc rest out
   let cur : HashSet Nat := seed.foldl (fun s x => s.insert x) ∅
   let q := match closedPart with
-    | none => O.gciTop.toList ++ (seed.toList.flatMap fun a => (O.gciBy[a]!).toList)
-    | some t => (seed.toList.filter (!mem t ·)).flatMap fun a => (O.gciBy[a]!).toList
+    | none => O.gciTop.toList ++ (seed.toList.flatMap fun a => trigOf O (fun _ => seed.toList) a)
+    | some t => (seed.toList.filter (!mem t ·)).flatMap fun a => trigOf O (fun _ => seed.toList) a
   let res := go cur seed q #[]
   -- remove duplicates
   let mut seen : HashSet Ty := ∅
@@ -260,6 +292,40 @@ partial def branches (O : Onto) (seed : Ty) (closedPart : Option Ty := none) : A
       seen := seen.insert t
       out := out.push t
   return out
+
+/-- Horn closure: add the head of every gci with one head name whose body
+holds (and of every top gci with one head name). -/
+partial def hornClose (O : Onto) (s : Ty) : Ty := Id.run do
+  let mut cur : HashSet Nat := s.foldl (fun h x => h.insert x) ∅
+  let mut acc : Array Nat := #[]
+  let mut todo : Array Nat := s
+  for g in O.gciTop do
+    let (_, h) := O.gcis[g]!
+    if h.size == 1 && !cur.contains h[0]! then
+      cur := cur.insert h[0]!; acc := acc.push h[0]!; todo := todo.push h[0]!
+  let mut i := 0
+  while i < todo.size do
+    let x := todo[i]!
+    i := i + 1
+    for g in O.gciBy[x]! do
+      let (b, h) := O.gcis[g]!
+      if h.size == 1 && !cur.contains h[0]! && b.all (cur.contains ·) then
+        cur := cur.insert h[0]!; acc := acc.push h[0]!; todo := todo.push h[0]!
+  return if acc.isEmpty then s else union s (sortDedup acc)
+
+/-- The static back set of a type: for every lower clause `(a, k, R, b)`
+with `a ∈ t`, the names that every witness (holding `b` and the names
+`t` pushes across `up R`, and their Horn closure) pushes back across the
+flipped label. Every model element with type above `t` holds them. -/
+def staticBack (O : Onto) (t : Ty) : Ty := Id.run do
+  let mut acc : Ty := #[]
+  for a in t do
+    for qi in O.lowBy[a]! do
+      let (_, _, R, b) := O.low[qi]!
+      let L := O.up[R]!
+      let w := hornClose O (union #[b] (fwd O t L))
+      acc := union acc (fwd O w (flipL L))
+  return acc
 
 /-! ## Contexts, nodes, the generation state -/
 
@@ -295,6 +361,12 @@ structure NodeD where
   backDone : HashSet Ty := ∅
   kids : Array Nat := #[]
   back : Ty := #[]
+  /-- superseded by a static back set: no pool, not a candidate -/
+  sup : Bool := false
+  /-- the last back plan had a candidate for every need and a forced set
+  inside the type: a new child node whose back set the type holds changes
+  nothing -/
+  backSettled : Bool := false
   deriving Inhabited
 
 structure Cfg where
@@ -318,12 +390,22 @@ structure Cfg where
   rule, which merged default specs only, misses a merge of a merged spec
   with a default: `lean/testdata/sriq-fast/funcmerge-cx.sriq`) -/
   checkedMerge : Bool := true
+  /-- static back sets: a node whose type misses the back set that the
+  witness of one of its lower clauses must push (computed from the
+  ontology alone) is superseded: it gets the variant with that set and no
+  pool of its own -/
+  staticBack : Bool := false
+  /-- re-run the back rule of a parent only when a new child node can change
+  its plan, and its merge trigger only when the context's union grows -/
+  lazyBackTrig : Bool := true
   deriving Repr
 
 inductive Ev where
   | init (v : Nat) (inh : Array Spec)
   | trig (v : Nat)
   | back (v : Nat)
+  /-- new nodes in a context: wake its parents (batched per context) -/
+  | ctx (k : Nat)
   deriving Inhabited
 
 structure St where
@@ -338,6 +420,16 @@ structure St where
   nBackVar : Nat := 0
   nPWVar : Nat := 0
   nLazyVar : Nat := 0
+  nSup : Nat := 0
+  nBackCalls : Nat := 0
+  nSeeds : Nat := 0
+  nsAdd : Nat := 0
+  nsPlan : Nat := 0
+  nsW : Nat := 0
+  /-- nodes whose last back plan was settled -/
+  settled : HashSet Nat := ∅
+  /-- context ↦ (union of the back sets of its new nodes, whether its union grew) -/
+  pendCtx : HashMap Nat (Ty × Bool) := ∅
   nBranchCalls : Nat := 0
   maxBranches : Nat := 0
   nBranches : Nat := 0
@@ -347,6 +439,8 @@ structure St where
   pendBack : HashSet Nat := ∅
   nRounds : Nat := 0
   relCache : HashMap Ty Ty := ∅
+  /-- (node, seed) pairs already expanded by the back rule -/
+  backSeen : HashSet (Nat × Ty) := ∅
   nsInit : Nat := 0
   nsTrig : Nat := 0
   nsBack : Nat := 0
@@ -368,12 +462,13 @@ def enqueue (e : Ev) : M Unit := do
     if (← get).pendBack.contains v then return
     modify fun s => { s with pendBack := s.pendBack.insert v }
   | .init .. => pure ()
+  | .ctx .. => pure ()
   modify fun s => { s with queue := s.queue.push e }
 
 def branchesM (t : Ty) (closedPart : Option Ty := none) : M (Array Ty) := do
   let O ← getO
   let t0 ← IO.monoNanosNow
-  let bs := branches O t closedPart
+  let bs ← IO.lazyPure fun _ => branches O t closedPart
   let t1 ← IO.monoNanosNow
   modify fun s => { s with nsBranch := s.nsBranch + (t1 - t0) }
   modify fun s => { s with nBranchCalls := s.nBranchCalls + 1 }
@@ -403,7 +498,8 @@ partial def addNode (k : Nat) (t : Ty) (inh : Array Spec) : M Unit := do
   let existing ← (fun s => (s.ctxs[k]!.byTy.get? t)) <$> get
   match existing with
   | some v =>
-    for σ in inh do addSpec v σ
+    if !(← (fun s => s.nodes[v]!.sup) <$> get) then
+      for σ in inh do addSpec v σ
   | none =>
     let cfg ← getCfg
     let size ← (fun s => s.nodes.size) <$> get
@@ -414,22 +510,39 @@ partial def addNode (k : Nat) (t : Ty) (inh : Array Spec) : M Unit := do
     let v := size
     let lab ← (fun s => s.ctxs[k]!.key.lab) <$> get
     let bk := fwd O t lab
-    let nd : NodeD := { ctx := k, ty := t, back := bk }
+    let sb := if cfg.staticBack then staticBack O t else #[]
+    let isSup := cfg.staticBack && !sub sb t
+    let nd : NodeD := { ctx := k, ty := t, back := bk, sup := isSup }
     let isNewBack ← (fun s => !s.ctxs[k]!.backs.contains bk) <$> get
+    let newUni ← (fun s => let u := s.ctxs[k]!.uni; t.any (!u.contains ·)) <$> get
     -- one field per update: a multi-field update copies the later fields
     modify fun s => { s with nodes := s.nodes.push nd }
     modify fun s => { s with ctxs := s.ctxs.modify k fun c =>
       let c := { c with nodes := c.nodes.push v }
       let c := { c with byTy := c.byTy.insert t v }
       let c := { c with uni := t.foldl (fun u x => u.insert x) c.uni }
-      let c := { c with byName := t.foldl (fun m x => m.insert x ((m.getD x #[]).push v)) c.byName }
-      { c with backs := c.backs.insert bk } }
+      let c := if isSup then c else { c with byName := t.foldl (fun m x => m.insert x ((m.getD x #[]).push v)) c.byName }
+      if isSup then c else { c with backs := c.backs.insert bk } }
+    if isSup then
+      modify fun s => { s with nSup := s.nSup + 1 }
+      for t' in ← branchesM (union t sb) (some t) do addNode k t' #[]
+      return
     enqueue (.init v inh)
-    let parents ← (fun s => s.ctxs[k]!.parents) <$> get
-    for (μ, _) in parents do
-      if cfg.forcedBack then enqueue (.back μ)
-      else if isNewBack then applyBack μ bk
-      enqueue (.trig μ)
+    if cfg.forcedBack && cfg.lazyBackTrig then
+      -- batched: one event per context wakes the parents for all new nodes
+      let pend ← (fun s => s.pendCtx.get? k) <$> get
+      match pend with
+      | some (b, u) =>
+        modify fun s => { s with pendCtx := s.pendCtx.insert k (union b bk, u || newUni) }
+      | none =>
+        modify fun s => { s with pendCtx := s.pendCtx.insert k (bk, newUni) }
+        enqueue (.ctx k)
+    else
+      let parents ← (fun s => s.ctxs[k]!.parents) <$> get
+      for (μ, _) in parents do
+        if cfg.forcedBack then enqueue (.back μ)
+        else if isNewBack then applyBack μ bk
+        enqueue (.trig μ)
 
 /-- The context with key `key`, made on first use with every branch of its seed. -/
 partial def getCtx (key : CtxKey) : M Nat := do
@@ -501,7 +614,7 @@ the intersection of their back sets. If the union `F` of the `F q` is not
 in the type, every star of `v` fails, and only the variants of `t ∪ F` are
 made. Otherwise each candidate back set `X ⊄ t` gives the variants of
 `t ∪ X`. Back sets of entries that count for no need are not used. -/
-def backPlan (O : Onto) (s : St) (v : Nat) : Array Ty := Id.run do
+def backPlan (O : Onto) (s : St) (v : Nat) : Array Ty × Bool := Id.run do
   let nd := s.nodes[v]!
   let key := s.ctxs[nd.ctx]!.key
   let t := nd.ty
@@ -524,24 +637,37 @@ def backPlan (O : Onto) (s : St) (v : Nat) : Array Ty := Id.run do
               candSet := candSet.insert nw.back
               cands := cands.push nw.back
       match inter? with
-      | none => return #[]   -- no entry for this need yet: nothing to do
+      | none => return (#[], false)   -- no entry for this need yet: nothing to do
       | some x => F := union F x
   if sub F t then
-    return (cands.filter fun X => !sub X t).map (union t ·)
-  else return #[union t F]
+    return ((cands.filter fun X => !sub X t).map (union t ·), true)
+  else return (#[union t F], false)
 
 def backRule (v : Nat) : M Unit := do
   let O ← getO
-  let seeds ← (backPlan O · v) <$> get
+  let p0 ← IO.monoNanosNow
+  let st ← get
+  let (seeds, settled) ← IO.lazyPure fun _ => backPlan O st v
+  let p1 ← IO.monoNanosNow
+  modify fun s => { s with nSeeds := s.nSeeds + seeds.size }
+  modify fun s => { s with nsPlan := s.nsPlan + (p1 - p0) }
   let (ty, k, pool) ← (fun s => let nd := s.nodes[v]!; (nd.ty, nd.ctx, nd.pool)) <$> get
+  let w0 ← IO.monoNanosNow
+  modify fun s => { s with settled := if settled then s.settled.insert v else s.settled.erase v }
+  let w1 ← IO.monoNanosNow
+  modify fun s => { s with nsW := s.nsW + (w1 - w0) }
   let cfg ← getCfg
   let inh := if cfg.inherit then pool else #[]
   for sd in seeds do
-    if (← (fun s => s.nodes[v]!.backDone.contains sd) <$> get) then continue
-    modify fun s => { s with nodes := s.nodes.modify v fun nd => { nd with backDone := nd.backDone.insert sd } }
-    for t' in ← branchesM sd (some ty) do
+    if (← (fun s => s.backSeen.contains (v, sd)) <$> get) then continue
+    modify fun s => { s with backSeen := s.backSeen.insert (v, sd) }
+    let tb ← branchesM sd (some ty)
+    for t' in tb do
       modify fun s => { s with nBackVar := s.nBackVar + 1 }
+      let a0 ← IO.monoNanosNow
       addNode k t' inh
+      let a1 ← IO.monoNanosNow
+      modify fun s => { s with nsAdd := s.nsAdd + (a1 - a0) }
 
 /-- Default specs of a node: one per lower clause at its type (unless the
 parent entry meets it). -/
@@ -723,7 +849,7 @@ def initNode (v : Nat) (inh : Array Spec) : M Unit := do
 
 def progressLine (s : St) : String :=
   let specs := s.nodes.foldl (fun a nd => a + nd.pool.size) 0
-  s!"progress: events={s.nEvents} queue={s.queue.size - s.qpos} ctxs={s.ctxs.size} nodes={s.nodes.size} specs={specs} merges={s.nMerge} pw_requests={s.nPW} back_variants={s.nBackVar} pw_variants={s.nPWVar} lazy_variants={s.nLazyVar} rounds={s.nRounds} ms_init={s.nsInit/1000000} ms_trig={s.nsTrig/1000000} ms_back={s.nsBack/1000000} ms_branch={s.nsBranch/1000000} branch_calls={s.nBranchCalls} branches={s.nBranches} max_branches={s.maxBranches}"
+  s!"progress: events={s.nEvents} queue={s.queue.size - s.qpos} ctxs={s.ctxs.size} nodes={s.nodes.size} specs={specs} merges={s.nMerge} pw_requests={s.nPW} back_variants={s.nBackVar} pw_variants={s.nPWVar} lazy_variants={s.nLazyVar} superseded={s.nSup} back_calls={s.nBackCalls} seeds={s.nSeeds} back_seen={s.backSeen.size} ms_backadd={s.nsAdd / 1000000} ms_plan={s.nsPlan / 1000000} ms_w={s.nsW / 1000000} rounds={s.nRounds} ms_init={s.nsInit/1000000} ms_trig={s.nsTrig/1000000} ms_back={s.nsBack/1000000} ms_branch={s.nsBranch/1000000} branch_calls={s.nBranchCalls} branches={s.nBranches} max_branches={s.maxBranches}"
 
 /-- One step of the event loop; `false` when nothing is left. -/
 def step : M Bool := do
@@ -745,6 +871,16 @@ def step : M Bool := do
       initNode v inh
       let t1 ← IO.monoNanosNow
       modify fun s => { s with nsInit := s.nsInit + (t1 - t0) }
+    | .ctx k =>
+      let (b, u) ← (fun s => (s.pendCtx.get? k).getD (#[], false)) <$> get
+      modify fun s => { s with pendCtx := s.pendCtx.erase k }
+      let parents ← (fun s => s.ctxs[k]!.parents) <$> get
+      for (μ, _) in parents do
+        -- the back plan of `μ` changes only if `μ` is not settled or a new
+        -- node pushes a name `μ` lacks; its merge trigger reads the union
+        let (st, ty) ← (fun s => (s.settled.contains μ, s.nodes[μ]!.ty)) <$> get
+        if !st || !sub b ty then enqueue (.back μ)
+        if u then enqueue (.trig μ)
     | .trig v =>
       modify fun s => { s with pendTrig := s.pendTrig.erase v }
       trigger v
@@ -752,9 +888,14 @@ def step : M Bool := do
       modify fun s => { s with nsTrig := s.nsTrig + (t1 - t0) }
     | .back v =>
       modify fun s => { s with pendBack := s.pendBack.erase v }
+      let n0 ← (fun s => s.nodes.size) <$> get
+      modify fun s => { s with nBackCalls := s.nBackCalls + 1 }
       backRule v
       let t1 ← IO.monoNanosNow
       modify fun s => { s with nsBack := s.nsBack + (t1 - t0) }
+      if t1 - t0 > 5000000000 then
+        let (ty, pl) ← (fun s => (s.nodes[v]!.ty.size, s.nodes[v]!.pool.size)) <$> get
+        IO.eprintln s!"slow back: node {v} |ty|={ty} pool={pl} ms={(t1 - t0) / 1000000} new_nodes={(← get).nodes.size - n0}"
     if (← (fun s => s.qpos) <$> get) > 100000 then
       modify fun s => { s with queue := s.queue.extract s.qpos s.queue.size }
       modify fun s => { s with qpos := 0 }

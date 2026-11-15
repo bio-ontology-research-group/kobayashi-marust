@@ -75,8 +75,9 @@ def childKeyA (T : Array Nat) (am : Std.HashMap Nat (List Nat)) (e : EntryA) : K
   ⟨canon (e.fill.toList ++ fwdM am e.lab), fl, T.filter fun a => relHitA ixf a fl⟩
 
 def closedIA (T : Array Nat) (tf : List (Fin n)) : Bool :=
+  let tl := T.toList
   ix.gciTop.all (fun g => (gciAt ix g).2.any fun h => bsA T h.val) &&
-  tf.all fun a => (getL ix.gciBy a.val).all fun g =>
+  tf.all fun a => (trigL ix a tl).all fun g =>
     !((gciAt ix g).1.all fun b => bsA T b.val) || (gciAt ix g).2.any fun h => bsA T h.val
 
 def upClosedA (L : Array Nat) : Bool :=
@@ -94,29 +95,37 @@ def poolSet (v : NodeA) : Std.HashSet (Array Nat × Array Nat) :=
   Std.HashSet.ofList (v.pool.map fun e => (e.lab, e.fill))
 
 /-- Branches with one head name per fired gci, as `brAux`, on hash sets. -/
-def brAuxA : Nat → Std.HashSet Nat → List Nat → List (Std.HashSet Nat)
-  | 0, cur, _ => [cur]
-  | _ + 1, cur, [] => [cur]
-  | f + 1, cur, i :: rest =>
+def brAuxA : Nat → Std.HashSet Nat → List Nat → List Nat → List (Std.HashSet Nat)
+  | 0, cur, _, _ => [cur]
+  | _ + 1, cur, _, [] => [cur]
+  | f + 1, cur, acc, i :: rest =>
     match ix.gciArr[i]? with
-    | none => brAuxA (f + 1) cur rest
+    | none => brAuxA (f + 1) cur acc rest
     | some g =>
       if (g.1.all fun b => cur.contains b.val) && (g.2.all fun h => !cur.contains h.val) then
         match g.2 with
-        | [h] => brAuxA f (cur.insert h.val) (getL ix.gciBy h.val ++ rest)
-        | hs => hs.flatMap fun h => brAuxA f (cur.insert h.val) (getL ix.gciBy h.val ++ rest)
-      else brAuxA (f + 1) cur rest
-termination_by f cur q => (f, q.length)
+        | [h] => brAuxA f (cur.insert h.val) (h.val :: acc) (trigL ix h (h.val :: acc) ++ rest)
+        | hs => hs.flatMap fun h =>
+            brAuxA f (cur.insert h.val) (h.val :: acc) (trigL ix h (h.val :: acc) ++ rest)
+      else brAuxA (f + 1) cur acc rest
+termination_by f cur acc q => (f, q.length)
 
 def brA (s : Array Nat) : List (Std.HashSet Nat) :=
-  brAuxA ix (n + 1) (Std.HashSet.ofList s.toList)
-    (ix.gciTop ++ (finL n s.toList).flatMap fun a => getL ix.gciBy a.val)
+  let acc := (finL n s.toList).map (·.val)
+  brAuxA ix (n + 1) (Std.HashSet.ofList s.toList) acc
+    (ix.gciTop ++ (finL n s.toList).flatMap fun a => trigL ix a acc)
 
 /-- Every branch of the sorted array `s` contains the type of a node of
-context `k` that contains `s`. -/
+context `k` that contains `s`. The node is first looked up in the hint
+`C.idx` under the branch itself; the lookup is verified, and the members
+of the context are searched when it fails. -/
 def brCovA (k : Nat) (s : Array Nat) : Bool :=
-  let js := (membA C k).filter fun j => s.all (bsA (ndA C j).ty)
-  (brA ix s).all fun H => js.any fun j => (ndA C j).ty.all (H.contains ·)
+  (brA ix s).all fun H =>
+    (match C.idx.get? (k, canon H.toList) with
+     | some (j, p) => decide ((C.members[k]?.getD #[])[p]? = some j) && decide (j < C.nodes.size) &&
+        decide ((ndA C j).ctx = k) && s.all (bsA (ndA C j).ty) && (ndA C j).ty.all (H.contains ·)
+     | none => false) ||
+    (membA C k).any fun j => s.all (bsA (ndA C j).ty) && (ndA C j).ty.all (H.contains ·)
 
 def candsQA (v : NodeA) (q : Fin n × Nat × RoleT (Fin m) × Fin n) : List (EntryA × Nat) :=
   v.pool.flatMap fun e =>
@@ -208,9 +217,17 @@ def witA (j : Nat) : List (Array Nat × Array Nat) :=
 def witArr : Array (List (Array Nat × Array Nat)) :=
   Array.ofFn fun j : Fin C.nodes.size => witA ix C j.val
 
+/-- The specs the nodes of each context ask their parents to grow for (the
+union of `witA` over the members, without repetitions). -/
+def witCtx : Array (List (Array Nat × Array Nat)) :=
+  let W := witArr ix C
+  Array.ofFn fun k : Fin C.members.size =>
+    dedupKey id ((membA C k.val).flatMap fun j => W[j]?.getD [])
+
+/-- Rule R6 at node `v`; `W` is `witCtx`. -/
 def witOKA (W : Array (List (Array Nat × Array Nat))) (v : NodeA)
     (ps : Std.HashSet (Array Nat × Array Nat)) : Bool :=
-  let reqs := v.pool.flatMap fun e => (membA C e.kid).flatMap fun j => (W[j]?.getD []).map fun σ => (e, σ)
+  let reqs := v.pool.flatMap fun e => (W[e.kid]?.getD []).map fun σ => (e, σ)
   (dedupKey id ((reqs.filter fun r => r.2.2.all (bsA v.ty)).map fun r =>
       (unionA r.1.lab (flipA r.2.1), r.1.fill))).all (ps.contains ·) &&
     (dedupKey id ((reqs.filter fun r => !r.2.2.all (bsA v.ty)).map (·.2.2))).all fun f =>
@@ -244,7 +261,7 @@ def closedFastB (req : List (Fin n)) : Bool :=
   wfB n m C && decide (C.roots.length = req.length) &&
     (req.zip C.roots).all (fun p => rootOKA ix C p.1 p.2) &&
     (List.range C.keys.size).all (fun k => brCovA ix C k (keyA C k).seed) &&
-    (let W := witArr ix C
+    (let W := witCtx ix C
      (List.range C.nodes.size).all (nodeClosedA ix ixf C W)) &&
     cacheOKA ix C
 

@@ -149,6 +149,175 @@ theorem dfsG_complete [DecidableEq α] {cs : List α} : ∀ (f : Nat) (needs lim
 
 end DfsG
 
+/-! ## The search with a memo -/
+
+section DfsMP
+
+variable {α : Type} {cnt : Nat → α → Bool} {cs : List α}
+
+/-- A solution from the entries of `cs`. -/
+def HasSol (cnt : Nat → α → Bool) (cs : List α) (needs lims : List (Nat × Nat)) : Prop :=
+  ∃ E, (∀ c ∈ E, c ∈ cs) ∧ SolG cnt E needs lims
+
+/-- Every state of the memo has no solution. -/
+def MemoOK (cnt : Nat → α → Bool) (cs : List α) (memo : Std.HashSet MSt) : Prop :=
+  ∀ st : MSt, memo.contains st = true → ¬ HasSol cnt cs st.1 st.2
+
+theorem memoOK_insert {memo : Std.HashSet MSt} (h : MemoOK cnt cs memo) {st : MSt}
+    (hst : ¬ HasSol cnt cs st.1 st.2) : MemoOK cnt cs (memo.insert st) := by
+  intro st' hc
+  rw [Std.HashSet.contains_insert, Bool.or_eq_true, beq_iff_eq] at hc
+  rcases hc with rfl | hc
+  · exact hst
+  · exact h st' hc
+
+theorem sol_nil {needs lims : List (Nat × Nat)} (hn : needs.find? (fun x => decide (0 < x.2)) = none) :
+    SolG cnt [] needs lims := by
+  refine ⟨fun x hx => ?_, fun y _ => by simp⟩
+  have := List.find?_eq_none.1 hn x hx
+  simp only [decide_eq_true_eq, not_lt] at this
+  simp [this]
+
+theorem sol_cons {needs lims : List (Nat × Nat)} {c : α} {E : List α}
+    (hlim : ∀ y ∈ lims, cnt y.1 c = false ∨ 0 < y.2)
+    (h : SolG cnt E (subG cnt c needs) (subG cnt c lims)) : SolG cnt (c :: E) needs lims := by
+  refine ⟨fun x hx => ?_, fun y hy => ?_⟩
+  · have := h.1 _ (mem_subG (c := c) hx)
+    simp only [List.countP_cons]
+    split at this <;> simp_all <;> omega
+  · have := h.2 _ (mem_subG (c := c) hy)
+    simp only [List.countP_cons]
+    rcases hlim y hy with h0 | h0
+    · simp only [h0, Bool.false_eq_true, ↓reduceIte, add_zero] at this ⊢
+      exact this
+    · split at this <;> simp_all <;> omega
+
+theorem sol_erase [DecidableEq α] {needs lims : List (Nat × Nat)} {c : α} {E : List α}
+    (hS : SolG cnt E needs lims) (hcE : c ∈ E) :
+    (∀ y ∈ lims, cnt y.1 c = false ∨ 0 < y.2) ∧ SolG cnt (E.erase c) (subG cnt c needs) (subG cnt c lims) := by
+  refine ⟨fun y hy => ?_, ?_, ?_⟩
+  · by_cases hy0 : cnt y.1 c = true
+    · right
+      have h1 := hS.2 y hy
+      have h2 : 0 < E.countP (cnt y.1) := List.countP_pos_iff.2 ⟨c, hcE, hy0⟩
+      omega
+    · left; simpa using hy0
+  · intro x' hx'
+    obtain ⟨z, hz, rfl⟩ := List.mem_map.1 hx'
+    have h1 := hS.1 z hz
+    rw [List.countP_erase]
+    by_cases hzc : cnt z.1 c = true
+    · simp only [hcE, hzc, and_self, if_true]; omega
+    · simp only [hzc, and_false, if_false, Bool.false_eq_true]; omega
+  · intro y' hy'
+    obtain ⟨z, hz, rfl⟩ := List.mem_map.1 hy'
+    have h1 := hS.2 z hz
+    rw [List.countP_erase]
+    by_cases hzc : cnt z.1 c = true
+    · simp only [hcE, hzc, and_self, if_true]; omega
+    · simp only [hzc, and_false, if_false, Bool.false_eq_true]; omega
+
+theorem okC_iff {x : Nat × Nat} {lims : List (Nat × Nat)} {c : α} :
+    okC cnt x lims c = true ↔ cnt x.1 c = true ∧ ∀ y ∈ lims, cnt y.1 c = false ∨ 0 < y.2 := by
+  simp only [okC, Bool.and_eq_true, List.all_eq_true, Bool.or_eq_true, Bool.not_eq_true',
+    decide_eq_true_eq]
+
+/-- A solution exists iff some entry that counts for the first unmet need
+leads to a solution of the rest. -/
+theorem hasSol_step [DecidableEq α] {needs lims : List (Nat × Nat)} {x : Nat × Nat}
+    (hx : needs.find? (fun x => decide (0 < x.2)) = some x) :
+    HasSol cnt cs needs lims ↔
+      ∃ c ∈ cs, okC cnt x lims c = true ∧ HasSol cnt cs (subG cnt c needs) (subG cnt c lims) := by
+  constructor
+  · rintro ⟨E, hE, hS⟩
+    have hxm := List.mem_of_find?_eq_some hx
+    have hxp : 0 < x.2 := by simpa using List.find?_some hx
+    obtain ⟨c, hcE, hcx⟩ := List.countP_pos_iff.1 (lt_of_lt_of_le hxp (hS.1 x hxm))
+    obtain ⟨hl, hS'⟩ := sol_erase hS hcE
+    exact ⟨c, hE c hcE, okC_iff.2 ⟨hcx, hl⟩,
+      ⟨E.erase c, fun c' hc' => hE c' (List.mem_of_mem_erase hc'), hS'⟩⟩
+  · rintro ⟨c, hc, hok, E, hE, hS⟩
+    refine ⟨c :: E, fun c' hc' => ?_, sol_cons (okC_iff.1 hok).2 hS⟩
+    rcases List.mem_cons.1 hc' with rfl | h'
+    · exact hc
+    · exact hE c' h'
+
+theorem dfsM_spec [DecidableEq α] : ∀ (f : Nat) (needs lims : List (Nat × Nat)) (memo : Std.HashSet MSt),
+    MemoOK cnt cs memo → (needs.map (·.2)).sum < f →
+      ((dfsM cnt cs f needs lims memo).1 = true ↔ HasSol cnt cs needs lims) ∧
+        MemoOK cnt cs (dfsM cnt cs f needs lims memo).2 := by
+  intro f
+  induction f with
+  | zero => intro _ _ _ _ h; omega
+  | succ f ih =>
+    intro needs lims memo hM hf
+    -- the candidates of one need, as a statement on `tryM` by induction on the list
+    have hT : ∀ (x : Nat × Nat), needs.find? (fun x => decide (0 < x.2)) = some x →
+        ∀ (l : List α) (memo : Std.HashSet MSt), MemoOK cnt cs memo →
+          ((tryM cnt cs f x needs lims l memo).1 = true ↔
+            ∃ c ∈ l, okC cnt x lims c = true ∧ HasSol cnt cs (subG cnt c needs) (subG cnt c lims)) ∧
+          MemoOK cnt cs (tryM cnt cs f x needs lims l memo).2 := by
+      intro x hx l
+      induction l with
+      | nil => intro memo hM; simp [tryM, hM]
+      | cons c rest ihl =>
+        intro memo hM
+        rw [tryM]
+        split
+        · next hok =>
+          have hsub : ((subG cnt c needs).map (·.2)).sum < f := by
+            have hxm := List.mem_of_find?_eq_some hx
+            have hxp : 0 < x.2 := by simpa using List.find?_some hx
+            have := sum_subG_lt needs x hxm (okC_iff.1 hok).1 hxp
+            omega
+          obtain ⟨h1, h2⟩ := ih (subG cnt c needs) (subG cnt c lims) memo hM hsub
+          dsimp only
+          split
+          · next hr =>
+            refine ⟨⟨fun _ => ⟨c, List.mem_cons_self, hok, h1.1 hr⟩, fun _ => hr⟩, h2⟩
+          · next hr =>
+            obtain ⟨h3, h4⟩ := ihl _ h2
+            refine ⟨?_, h4⟩
+            rw [h3]
+            constructor
+            · rintro ⟨c', hc', hok', hs'⟩; exact ⟨c', List.mem_cons_of_mem _ hc', hok', hs'⟩
+            · rintro ⟨c', hc', hok', hs'⟩
+              rcases List.mem_cons.1 hc' with rfl | hc'
+              · exact absurd (h1.2 hs') (by simpa using hr)
+              · exact ⟨c', hc', hok', hs'⟩
+        · next hok =>
+          obtain ⟨h3, h4⟩ := ihl memo hM
+          refine ⟨?_, h4⟩
+          rw [h3]
+          constructor
+          · rintro ⟨c', hc', hok', hs'⟩; exact ⟨c', List.mem_cons_of_mem _ hc', hok', hs'⟩
+          · rintro ⟨c', hc', hok', hs'⟩
+            rcases List.mem_cons.1 hc' with rfl | hc'
+            · exact absurd hok' (by simpa using hok)
+            · exact ⟨c', hc', hok', hs'⟩
+    rw [dfsM]
+    split
+    · next hn => exact ⟨⟨fun _ => ⟨[], by simp, sol_nil hn⟩, fun _ => rfl⟩, hM⟩
+    · next x hx =>
+      dsimp only
+      split
+      · next hc =>
+        exact ⟨⟨fun h => absurd h (by simp), fun h => absurd h (hM _ hc)⟩, hM⟩
+      · next hc =>
+        obtain ⟨h1, h2⟩ := hT x hx cs memo hM
+        split
+        · next hr => exact ⟨⟨fun _ => (hasSol_step hx).2 (h1.1 hr), fun _ => hr⟩, h2⟩
+        · next hr =>
+          have hno : ¬ HasSol cnt cs needs lims := fun hs => hr (h1.2 ((hasSol_step hx).1 hs))
+          exact ⟨⟨fun h => absurd h (by simp), fun h => absurd h hno⟩, memoOK_insert h2 hno⟩
+
+/-- **The memo search decides the search problem.** -/
+theorem dfsM_iff [DecidableEq α] {needs lims : List (Nat × Nat)} :
+    (dfsM cnt cs ((needs.map (·.2)).sum + 1) needs lims ∅).1 = true ↔ HasSol cnt cs needs lims :=
+  (dfsM_spec _ needs lims ∅ (fun st h => by simp at h) (Nat.lt_succ_self _)).1
+
+end DfsMP
+
 /-! ## Signatures -/
 
 section Sig
@@ -382,7 +551,7 @@ theorem suppF_iff (hC : ClosedP (mkIx O) (C.view n m) req) (hW : WF n m C) {i : 
   · intro h
     simp only [suppF, ← hss, Bool.and_eq_true] at h
     obtain ⟨⟨hlim, -⟩, hd⟩ := h
-    obtain ⟨Es, hEs, hsol⟩ := dfsG_sound _ _ _ hd
+    obtain ⟨Es, hEs, hsol⟩ := dfsM_iff.1 hd
     have hlive : ∀ s ∈ Es, ∃ p ∈ E.cands, A[p.1]?.getD false = true ∧ p.2.2 = s := by
       intro s hs
       have := dedupKey_subset id _ s (hEs s hs)
@@ -517,7 +686,7 @@ theorem suppF_iff (hC : ClosedP (mkIx O) (C.view n m) req) (hW : WF n m C) {i : 
       obtain ⟨s, hs, hsc⟩ := List.countP_pos_iff.1 (lt_of_lt_of_le hpos h1)
       obtain ⟨sc, hsc', rfl⟩ := List.mem_map.1 hs
       exact ⟨sc.1, (hLmem sc hsc').1, hsc⟩
-    · refine dfsG_complete _ _ _ (L.map (·.1)) (fun s hs => ?_) hsolS (Nat.lt_succ_self _)
+    · refine dfsM_iff.2 ⟨L.map (·.1), fun s hs => ?_, hsolS⟩
       obtain ⟨sc, hsc, rfl⟩ := List.mem_map.1 hs
       exact (hLmem sc hsc).1
 
@@ -843,6 +1012,7 @@ end Route
 end ContextCalculus.SRIQ.Fast
 
 #print axioms ContextCalculus.SRIQ.Fast.dfsG_sound
+#print axioms ContextCalculus.SRIQ.Fast.dfsM_iff
 #print axioms ContextCalculus.SRIQ.Fast.dfsG_complete
 #print axioms ContextCalculus.SRIQ.Fast.suppF_iff
 #print axioms ContextCalculus.SRIQ.Fast.elimW_spec

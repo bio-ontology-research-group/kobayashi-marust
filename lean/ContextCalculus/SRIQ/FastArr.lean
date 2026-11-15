@@ -398,6 +398,9 @@ structure CandA where
   roots : List Nat
   bk : Array (Array Nat)
   uni : Array (Array Nat)
+  /-- a hint for the branch covers: (context, type) ↦ (node, position of the
+  node in the context's members); the check verifies every lookup -/
+  idx : Std.HashMap (Nat × Array Nat) (Nat × Nat) := ∅
 
 def viewSpec (n m : Nat) (σ : Array Nat × Array Nat) : Spec n m := ⟨absLab m σ.1, absTy n σ.2⟩
 
