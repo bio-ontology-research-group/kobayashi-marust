@@ -88,8 +88,9 @@
   at 300 s) is back to 13 s, ore_ont_934 (timed out) to 1.0 s, 15680 and
   4609 from 77 s to 23 s, 7610 from 42 s to 4 s, all with the answers of
   the release before the stopgap (15063 agrees with HermiT). The bridge's
-  saturation-coupling gate on inputs with a consumed value singleton
-  stays; the fixtures `e19-*` are now also right with it turned off.
+  saturation-coupling gate on inputs with a consumed value singleton is
+  removed too (it cost ore_ont_15623 its 0.8 s, and 15074 and 15687;
+  `KM_BRIDGE_SINGLETON_SATEXP_GATE=1` restores it for diagnosis).
 - Fixed (wrong answer, found by the E19 differential): `{Functional(k),
   {c} ⊑ ¬C, C ≡ =1 k.xsd:integer, k(c,2)}` was reported consistent (the
   ground-rule data source and the native bridge). The bridge encoded
