@@ -29,13 +29,25 @@
   satisfiable when a functional data property separates `a` from `b` and
   a data value is asserted for both individuals (`g(a,0)`, `g(b,255)`,
   `h(b,0)`, `g` functional; ore_ont_15667's `ColorBlue`, `ColorCyan`).
-  Stopgap: such sources (a `FunctionalDataProperty` or data cardinality,
-  and a literal asserted about two individuals) do not reach the bridge
-  (`orchestrate::data_source::shared_data_value_hazard`); the nominal CB
-  route answers them. Separately, the bridge's saturation coupling
-  (successor expansion and caching-blocking from saturation) is off on
-  inputs with a consumed value singleton, which fixed one of the two
-  shapes inside the bridge; the other shape is not located yet.
+  Root cause: the bridge realises a value singleton `v(y₁) ∧ v(y₂) → y₁ ≈ y₂`
+  by merging the two carriers and moving the incoming links of one to the
+  other, so `a`'s `g`-successor with value 0 became one node with `b`'s
+  `h`-successor, a child of `b`. The nominal merge of `b` into `a` then
+  pruned that child (and its link from `a`), but `a`'s `∃g.{0}` had already
+  been processed and was never queued again; `a` ended with one live
+  `g`-successor (255) and no clash. The hypertableau rules apply whenever
+  their premise holds and to unpruned nodes only, so the bridge now (1)
+  skips pruned nodes when it looks for singleton carriers, and (2) after a
+  merge prunes nodes on an input with value singletons, queues the
+  generating concepts (`∃`, `≥`, `¬∀`, `¬≤`) of every live neighbour of a
+  pruned node again (the some and at-least rules create a successor only
+  when no live witness exists). The stopgap that kept such sources off the
+  bridge (`shared_data_value_hazard`) is removed: ore_ont_15063 (timed out
+  at 300 s) is back to 13 s, ore_ont_934 (timed out) to 1.0 s, 15680 and
+  4609 from 77 s to 23 s, 7610 from 42 s to 4 s, all with the answers of
+  the release before the stopgap (15063 agrees with HermiT). The bridge's
+  saturation-coupling gate on inputs with a consumed value singleton
+  stays; the fixtures `e19-*` are now also right with it turned off.
 - The chain-consumer encoding emits fewer clauses: consumers with an empty
   seed are skipped when the last (first) letters already carry an equal
   plain consumer, letters of roles that nothing creates edges for are

@@ -32,6 +32,10 @@ fn fixture(name: &str) -> PathBuf {
 }
 
 fn km(path: &Path, options: &[&str]) -> Output {
+    km_env(path, options, &[])
+}
+
+fn km_env(path: &Path, options: &[&str], env: &[(&str, &str)]) -> Output {
     let mut command = Command::new(env!("CARGO_BIN_EXE_km"));
     for (key, _) in std::env::vars() {
         if key.starts_with("KM_") {
@@ -39,6 +43,9 @@ fn km(path: &Path, options: &[&str]) -> Output {
         }
     }
     command.env("KM_THREADS", "1");
+    for (key, value) in env {
+        command.env(key, value);
+    }
     command.arg("classify").arg("--lines").args(options).arg(path);
     command.output().unwrap()
 }
@@ -75,12 +82,18 @@ fn consistency_and_types_match_hermit() {
 
 /// E19: a functional data property separates `a` from `b`, and a data value
 /// is asserted for both individuals; `{a} ⊓ {b}` is unsatisfiable (HermiT).
-/// The native bridge answered it satisfiable; such sources are kept off the
-/// bridge (`orchestrate::data_source::shared_data_value_hazard`).
+/// The native bridge answered it satisfiable: a value-singleton merge made a
+/// child of `b` the witness of `a`'s `∃g.{0}`, the nominal merge of `b` into
+/// `a` pruned that child, and nothing queued `a`'s `∃` again. These inputs
+/// reach the bridge again; the second run turns off the bridge's
+/// saturation-coupling gate, which is not needed for the answer.
 #[test]
 fn shared_data_values_keep_nominal_intersections_unsatisfiable() {
-    for case in ["e19-data-assertions", "e19-data-has-value", "e19-one-shared-value", "e19-swapped-values"] {
-        let output = km(&fixture(&format!("{case}.ofn")), &[]);
+    for (case, env) in ["e19-data-assertions", "e19-data-has-value", "e19-one-shared-value", "e19-swapped-values"]
+        .into_iter()
+        .flat_map(|case| [(case, None), (case, Some(("KM_BRIDGE_SINGLETON_SATEXP_NO_GATE", "1")))])
+    {
+        let output = km_env(&fixture(&format!("{case}.ofn")), &[], env.as_slice());
         let stdout = String::from_utf8_lossy(&output.stdout);
         assert!(output.status.success(), "{case}: {}", String::from_utf8_lossy(&output.stderr));
         let got: BTreeSet<String> = stdout
@@ -93,6 +106,6 @@ fn shared_data_values_keep_nominal_intersections_unsatisfiable() {
             .lines()
             .map(str::to_string)
             .collect();
-        assert_eq!(got, expected, "{case}");
+        assert_eq!(got, expected, "{case} {env:?}");
     }
 }

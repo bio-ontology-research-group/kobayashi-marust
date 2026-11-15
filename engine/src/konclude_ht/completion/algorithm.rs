@@ -1092,6 +1092,11 @@ pub struct CompletionTaskHandleAlgorithm {
     /// empty on ontologies without such clauses — the rule is then inert.
     pub singleton_concepts: Vec<ConceptId>,
     pub applied_singleton_merge_count: Cint64,
+    /// Live neighbours of nodes pruned during the current merge, collected by
+    /// `prune_successors` when value singletons are in use (E19): their
+    /// generating concepts are queued again after the prune
+    /// (`ht_requeue_generating_concepts_of_pruned_neighbours`).
+    pub pruned_neighbours: Vec<NodeId>,
     /// Optional early preparation has run for this calculation job.
     /// Final-fixpoint singleton processing is independent of this flag.
     pub singleton_base_prepared: bool,
@@ -1737,6 +1742,7 @@ impl CompletionTaskHandleAlgorithm {
 
             singleton_concepts: Vec::new(),
             applied_singleton_merge_count: 0,
+            pruned_neighbours: Vec::new(),
             singleton_base_prepared: false,
             phantom_node_intervals: Vec::new(),
 
