@@ -49,14 +49,14 @@ def row_nf(path, row, timeout):
                                       'rss_mb': max(m1 or 0, m2 or 0)}
 
 
-def build(N, part=None):
+def build(N, part=None, deadline=None):
     """A hint for the normal form, or (None, reason)."""
     p = part if part is not None else N.parts[0]
     ix = nfm.Index(N, p)
     if ix.long_chains:
         return None, 'chain of length > 1', None
     try:
-        F = solve(ix, **BUDGET)
+        F = solve(ix, deadline=deadline, **BUDGET)
     except Fail as e:
         return None, 'no model: ' + str(e), None
     h = F.hint()
@@ -104,7 +104,7 @@ def localize(N, nu, Bs, deadline):
         p2 = copy.copy(N.parts[0])
         p2.gci = base + [gm[B] for B in sel]
         try:
-            solve(nfm.Index(N, p2), restarts=10, **BUDGET)
+            solve(nfm.Index(N, p2), restarts=10, deadline=deadline, **BUDGET)
             return True
         except Fail:
             return False
@@ -162,8 +162,14 @@ def main():
                  'nontype': sum(map(len, nontype.values()))}
     # the queue of rows: (kind, key, list)
     queue = [('consistent', None, [])]
-    queue += [('nonsubs', A, Bs) for A, Bs in nonsub.items()]
-    queue += [('nontypes', x, Cs) for x, Cs in nontype.items() if Cs]
+    # a row is one command-line argument: split long lists (argv limit, request R9)
+    G = 300
+    for A, Bs in nonsub.items():
+        for i in range(0, max(1, len(Bs)), G):
+            queue.append(('nonsubs', A, Bs[i:i + G]))
+    for x, Cs in nontype.items():
+        for i in range(0, len(Cs), G):
+            queue.append(('nontypes', x, Cs[i:i + G]))
     pairs, meta = [], []
     R['producer'] = {'rows': 0, 'hints': 0, 'nf_secs': 0.0, 'find_secs': 0.0, 'forms': {}, 'fail': {}}
     P = R['producer']
@@ -189,7 +195,7 @@ def main():
                 P['fail'].get('row index: ' + (st.get('err') or 'rc %s' % st.get('rc')).strip()[:60], 0) + 1
             continue
         t1 = time.time()
-        h, form, stats = build(N)
+        h, form, stats = build(N, deadline=min(t0 + wall, time.time() + T))
         P['find_secs'] += time.time() - t1
         if h is None:
             r = form.split(':')[0] + ': ' + form.split(':', 1)[1].strip()[:50] if ':' in form else form
@@ -219,7 +225,11 @@ def main():
         res = {}
         tchk, mchk, ncall = 0.0, 0, 0
         deadline = t0 + 2 * wall
+        badrun = 0
         for i, (row, hp) in enumerate(pairs):
+            if badrun >= 3:
+                R['checker']['stopped'] = 'three timeouts or memory failures in a row after %d of %d pairs' % (i, len(pairs))
+                break
             if time.time() > deadline:
                 R['checker']['stopped'] = 'check budget after %d of %d pairs' % (i, len(pairs))
                 break
@@ -229,6 +239,7 @@ def main():
             ncall += 1
             tchk += secs or 0
             mchk = max(mchk, rss or 0)
+            badrun = badrun + 1 if (rc == 124 or 'out of memory' in (err or '')) else 0
             if rc == 0 and '"certified":true' in (out or ''):
                 res[i] = 'certified'
             elif rc == 124:

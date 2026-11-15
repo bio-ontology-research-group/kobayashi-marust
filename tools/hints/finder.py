@@ -9,6 +9,7 @@ clauses are met by merging successors. The proved checker judges every
 hint; `hintcheck.check` mirrors it to explain rejections.
 """
 
+import time
 from collections import deque
 
 from hintcheck import Hint, flip
@@ -36,8 +37,9 @@ class Node:
 
 
 class Finder:
-    def __init__(self, ix, max_nodes=200000, max_close=200000, prefer=None, bad=None):
+    def __init__(self, ix, max_nodes=200000, max_close=200000, prefer=None, bad=None, deadline=None):
         self.ix = ix
+        self.deadline = deadline
         self.bad = bad if bad is not None else set()
         self.cur = None
         self.cache = {}
@@ -94,6 +96,8 @@ class Finder:
         self.close_calls += 1
         if self.close_calls > self.max_close:
             raise Fail('closure budget')
+        if self.deadline and self.close_calls % 64 == 0 and time.time() > self.deadline:
+            raise Fail('time budget')
         ix = self.ix
         T = set()
         cnt = {}
@@ -543,6 +547,8 @@ class Finder:
                         e.blame = [self.cur.ty]
                     raise
                 steps += 1
+                if self.deadline and steps % 256 == 0 and time.time() > self.deadline:
+                    raise Fail('time budget')
                 if steps > max_steps:
                     raise Fail('step budget')
             # recheck blocked nodes whose blocker changed
@@ -603,7 +609,7 @@ def solve(ix, restarts=40, **kw):
         except Fail as e:
             last = e
             new = [t for t in e.blame if t not in bad]
-            if not new or str(e) in ('node budget', 'step budget', 'closure budget'):
+            if not new or str(e) in ('node budget', 'step budget', 'closure budget', 'time budget'):
                 break
             bad.update(new)
     raise last
