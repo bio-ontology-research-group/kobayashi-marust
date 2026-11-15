@@ -639,6 +639,8 @@ impl<'a> DataAbox<'a> {
                 let args = strip_annotations(args);
                 if let Some(p) = args.first().and_then(|n| n.as_atom()) {
                     self.symmetric.insert(p);
+                } else {
+                    self.global_omission_unsafe = true;
                 }
             }
             "InverseObjectProperties" => {
@@ -648,6 +650,8 @@ impl<'a> DataAbox<'a> {
                     args.get(1).map(|n| n.as_atom()),
                 ) {
                     self.inverses.push((p, q));
+                } else {
+                    self.global_omission_unsafe = true;
                 }
             }
             "SubObjectPropertyOf" => {
@@ -657,6 +661,9 @@ impl<'a> DataAbox<'a> {
                     args.get(1).map(|n| n.as_atom()),
                 ) {
                     self.osupers.entry(s).or_default().push(t);
+                } else if !matches!(args.first(), Some(Node::List("ObjectPropertyChain", _))) {
+                    // An inverted operand (E9) is not represented here.
+                    self.global_omission_unsafe = true;
                 }
             }
             "FunctionalObjectProperty" => {

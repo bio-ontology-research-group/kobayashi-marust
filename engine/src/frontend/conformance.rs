@@ -371,6 +371,20 @@ fn check_source_uncached(text: &str) -> Result<(), String> {
     datatypes::check(text, &prefixes)
 }
 
+/// `--unknown-datatypes=free` (W7, `KM_UNKNOWN_DATATYPES=free`): a datatype
+/// outside the OWL 2 datatype map that has no `DatatypeDefinition` is read as
+/// a fresh datatype, and each of its literals as an opaque data value. Exact
+/// semantics: the datatype denotes an arbitrary subset of the data domain;
+/// a literal `"l"^^D` denotes one fixed data value (every occurrence of the
+/// same literal the same value) about which nothing else is known: it need
+/// not lie in `D`, and it may or may not equal any other literal or value.
+/// This is the reading HermiT's `ignoreUnsupportedDatatypes` gives on the
+/// inputs compared in `docs/DATATYPES.md`. Default `strict` rejects such
+/// input as OWL 2 DL requires.
+pub fn unknown_datatypes_free() -> bool {
+    std::env::var("KM_UNKNOWN_DATATYPES").is_ok_and(|mode| mode == "free")
+}
+
 /// Reject use of the top data range as a literal datatype. OWL 2 Direct
 /// Semantics excludes rdfs:Literal from the lexical datatype map. Its use as
 /// a range is legal; assigning it a lexical-to-value map would invent semantics.
@@ -398,6 +412,10 @@ pub fn check_literal_datatypes(text: &str) -> Result<(), String> {
             let offset = literal.as_ptr() as usize - text.as_ptr() as usize;
             let line = text[..offset].bytes().filter(|b| *b == b'\n').count() + 1;
             return Err(format!("invalid OWL 2 DL input at line {line}: literal {literal}^^{datatype} uses rdfs:Literal, which has no lexical space or lexical-to-value mapping. rdfs:Literal is allowed as a data range, not as a literal datatype. Use the intended concrete datatype (for text, xsd:string); KM will not rewrite this automatically."));
+        }
+        if !datatypes::builtin(&expanded) && expanded != "http://www.w3.org/2002/07/owl#real" && unknown_datatypes_free() {
+            // W7: an opaque value of a fresh datatype; no lexical space to check.
+            continue;
         }
         if !datatypes::builtin(&expanded) || expanded == "http://www.w3.org/2002/07/owl#real" {
             return Err(format!("invalid OWL 2 DL input: literal {literal}^^{datatype} has no lexical interpretation in the OWL 2 datatype map; custom datatype definitions specify data ranges, not new literal lexical mappings"));

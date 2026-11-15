@@ -172,7 +172,9 @@ impl Types {
                     Class => matches!(name.as_str(), "http://www.w3.org/2002/07/owl#Thing" | "http://www.w3.org/2002/07/owl#Nothing"),
                     ObjectProperty => matches!(name.as_str(), "http://www.w3.org/2002/07/owl#topObjectProperty" | "http://www.w3.org/2002/07/owl#bottomObjectProperty"),
                     DataProperty => matches!(name.as_str(), "http://www.w3.org/2002/07/owl#topDataProperty" | "http://www.w3.org/2002/07/owl#bottomDataProperty"),
-                    Datatype => super::datatypes::builtin(&name),
+                    // W7: under `--unknown-datatypes=free` a reserved datatype IRI
+                    // outside the map (`xsd:date`) is a fresh datatype.
+                    Datatype => super::datatypes::builtin(&name) || super::unknown_datatypes_free(),
                     AnnotationProperty => matches!(name.as_str(), "http://www.w3.org/2000/01/rdf-schema#label"
                         | "http://www.w3.org/2000/01/rdf-schema#comment" | "http://www.w3.org/2000/01/rdf-schema#seeAlso"
                         | "http://www.w3.org/2000/01/rdf-schema#isDefinedBy" | "http://www.w3.org/2002/07/owl#deprecated"
@@ -204,7 +206,10 @@ impl Types {
             "http://www.w3.org/2000/01/rdf-schema#", "http://www.w3.org/2001/XMLSchema#"]
             .iter().any(|ns|name.starts_with(ns));
         for kind in kinds {
-            if kind != Kind::Individual && !builtin && self.declared[id] & bit(kind) == 0 {
+            // W7: an undeclared datatype is a fresh datatype under
+            // `--unknown-datatypes=free`, as HermiT reads it.
+            let free_datatype = kind == Kind::Datatype && super::unknown_datatypes_free();
+            if kind != Kind::Individual && !builtin && !free_datatype && self.declared[id] & bit(kind) == 0 {
                 return Some(format!("invalid OWL 2 DL input: <{name}> is used as {kind:?} but has no matching declaration"));
             }
         }

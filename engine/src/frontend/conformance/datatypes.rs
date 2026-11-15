@@ -106,7 +106,7 @@ impl Definitions {
             }
         }
         for name in &self.used {
-            if !builtin(name) && !self.definitions.contains_key(name) {
+            if !builtin(name) && !self.definitions.contains_key(name) && !super::unknown_datatypes_free() {
                 return Err(format!("invalid OWL 2 DL input: data range <{name}> is outside the OWL 2 datatype map and has no datatype definition"));
             }
         }

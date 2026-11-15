@@ -417,6 +417,15 @@ fn builtin_datatype_key(name: &str) -> Option<&str> {
         .strip_prefix("xsd:")
         .or_else(|| raw.strip_prefix(XSD_NS));
     if let Some(local) = xsd_local {
+        // W7: under `--unknown-datatypes=free` the XSD datatypes outside the
+        // OWL 2 datatype map are fresh datatypes like any user IRI: no
+        // partition, no lexical space, opaque literals.
+        if matches!(local, "date" | "time" | "gYear" | "gMonth" | "gDay" | "gYearMonth"
+            | "gMonthDay" | "duration")
+            && super::conformance::unknown_datatypes_free()
+        {
+            return None;
+        }
         return matches!(
             local,
             "decimal"

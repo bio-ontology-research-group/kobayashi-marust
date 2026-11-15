@@ -1,0 +1,6 @@
+Prefix(:=<http://x/>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://x/o>
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(DataProperty(:p)) Declaration(DataProperty(:q)) Declaration(DataProperty(:s)) Declaration(NamedIndividual(:a))
+FunctionalDataProperty(:q) SubClassOf(owl:Thing DataHasValue(:q "1"^^xsd:integer)) DataPropertyRange(:p DataOneOf("1"^^xsd:integer)) SubClassOf(DataSomeValuesFrom(:p rdfs:Literal) DataSomeValuesFrom(:q rdfs:Literal))
+)
