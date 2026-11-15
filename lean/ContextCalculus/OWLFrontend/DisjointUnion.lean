@@ -140,7 +140,8 @@ theorem owlC3Consistent_sound (pat : String → String → Prop) {O : Ontology}
 theorem owlC3Consistent_isSome_iff (O : Ontology) (hint : Option RawHint) :
     (owlC3Consistent O hint).isSome = true ↔
       ((anonOff [] (duOff O)).isSROIQDKB = true ∧ SROIQDC2aChecks (anonOff [] (duOff O))) ∨
-        ((anonOff [] (duOff O)).isSROIQDSKB = true ∧ SelfChecks (anonOff [] (duOff O))) :=
+        (((anonOff [] (duOff O)).isSROIQDSKB && !(selfAxs (anonOff [] (duOff O))).isEmpty) = true ∧
+          SelfChecks (anonOff [] (duOff O))) :=
   owlSROIQDSConsistent_isSome_iff _ hint
 
 /-- **Type row** (stage C3c). -/

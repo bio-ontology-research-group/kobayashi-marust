@@ -75,19 +75,20 @@ theorem rowSS_of {O : Ontology} {L : List Axiom} {hint : Option RawHint} {v : Bo
       (v = true ↔ ¬ ConsistentAt (owl2MapP pat) (addAxs O L)) := by
   obtain ⟨w, hw, rfl⟩ := Option.map_eq_some_iff.1 h
   have hk : (addAxs O L).isSROIQDSKB = true :=
-    ((owlSelfCore_isSome_iff (addAxs O L) hint).1 (by rw [hw]; rfl)).1
+    (Bool.and_eq_true _ _ ▸ ((owlSelfCore_isSome_iff (addAxs O L) hint).1 (by rw [hw]; rfl)).1).1
   rw [isSROIQDSKB_addAxs, Bool.and_eq_true, List.all_eq_true] at hk
   refine ⟨hk.1, hk.2, ?_⟩
   rw [← owlSelfCore_sound pat hw]
   cases w <;> simp
 
 theorem rowSS_complete {O : Ontology} {L : List Axiom} (hO : O.isSROIQDSKB = true)
-    (hL : ∀ ax ∈ L, ax.isSROIQDSKB = true) (hc : SelfChecks (addAxs O L))
+    (hL : ∀ ax ∈ L, ax.isSROIQDSKB = true) (hS : (selfAxs (addAxs O L)).isEmpty = false)
+    (hc : SelfChecks (addAxs O L))
     (hint : Option RawHint) : (rowSS O L hint).isSome = true := by
   unfold rowSS
   rw [Option.isSome_map]
   exact (owlSelfCore_isSome_iff _ hint).2
-    ⟨by rw [isSROIQDSKB_addAxs, hO, List.all_eq_true.2 hL]; rfl, hc⟩
+    ⟨by rw [isSROIQDSKB_addAxs, hO, List.all_eq_true.2 hL, hS]; rfl, hc⟩
 
 /-- **Type row**: decides `O ⊨ ClassAssertion(C a)`. -/
 def owlSelfTypeRow (O : OWL.Ontology) (C a : IRI) (hint : Option RawHint) : Option Bool :=
@@ -239,40 +240,46 @@ theorem diffAxs_okSS (a b : IRI) : ∀ ax ∈ diffAxs a b, ax.isSROIQDSKB = true
   fun ax hax => isSROIQDSKB_ax_of_isSHOIQDKB (diffAxs_ok a b ax hax)
 
 theorem owlSelfTypeRow_complete {O : OWL.Ontology} (C a : IRI) (hO : O.isSROIQDSKB = true)
+    (hS : (selfAxs (addAxs O (typeAxs C a))).isEmpty = false)
     (hc : SelfChecks (addAxs O (typeAxs C a))) (hint : Option RawHint) :
     (owlSelfTypeRow O C a hint).isSome = true :=
-  rowSS_complete hO (typeAxs_okSS C a) hc hint
+  rowSS_complete hO (typeAxs_okSS C a) hS hc hint
 
 theorem owlSelfSameRow_complete {O : OWL.Ontology} (a b : IRI) (hO : O.isSROIQDSKB = true)
+    (hS : (selfAxs (addAxs O (sameAxs a b))).isEmpty = false)
     (hc : SelfChecks (addAxs O (sameAxs a b))) (hint : Option RawHint) :
     (owlSelfSameRow O a b hint).isSome = true :=
-  rowSS_complete hO (sameAxs_okSS a b) hc hint
+  rowSS_complete hO (sameAxs_okSS a b) hS hc hint
 
 theorem owlSelfSubRow_complete {O : OWL.Ontology} (A B : IRI) (hO : O.isSROIQDSKB = true)
+    (hS : (selfAxs (addAxs O (subAxs O A B))).isEmpty = false)
     (hc : SelfChecks (addAxs O (subAxs O A B))) (hint : Option RawHint) :
     (owlSelfSubRow O A B hint).isSome = true :=
-  rowSS_complete hO (subAxs_okSS O A B) hc hint
+  rowSS_complete hO (subAxs_okSS O A B) hS hc hint
 
 theorem owlSelfDiffRow_complete {O : OWL.Ontology} (a b : IRI) (hO : O.isSROIQDSKB = true)
+    (hS : (selfAxs (addAxs O (diffAxs a b))).isEmpty = false)
     (hc : SelfChecks (addAxs O (diffAxs a b))) (hint : Option RawHint) :
     (owlSelfDiffRow O a b hint).isSome = true :=
-  rowSS_complete hO (diffAxs_okSS a b) hc hint
+  rowSS_complete hO (diffAxs_okSS a b) hS hc hint
 
 theorem owlSelfRoleRow_complete {O : OWL.Ontology} {r : ObjProp} (hr : r.isBasic = true)
-    (a b : IRI) (hO : O.isSROIQDSKB = true) (hc : SelfChecks (addAxs O (roleAxs r a b)))
+    (a b : IRI) (hO : O.isSROIQDSKB = true) (hS : (selfAxs (addAxs O (roleAxs r a b))).isEmpty = false)
+    (hc : SelfChecks (addAxs O (roleAxs r a b)))
     (hint : Option RawHint) : (owlSelfRoleRow O r a b hint).isSome = true := by
   unfold owlSelfRoleRow
   rw [if_pos hr]
   exact rowSS_complete hO (fun ax hax => isSROIQDSKB_ax_of_isSHOIQDKB (roleAxs_ok hr a b ax hax))
-    hc hint
+    hS hc hint
 
 theorem owlSelfNRoleRow_complete {O : OWL.Ontology} {r : ObjProp} (hr : r.isBasic = true)
-    (a b : IRI) (hO : O.isSROIQDSKB = true) (hc : SelfChecks (addAxs O (nroleAxs r a b)))
+    (a b : IRI) (hO : O.isSROIQDSKB = true) (hS : (selfAxs (addAxs O (nroleAxs r a b))).isEmpty = false)
+    (hc : SelfChecks (addAxs O (nroleAxs r a b)))
     (hint : Option RawHint) : (owlSelfNRoleRow O r a b hint).isSome = true := by
   unfold owlSelfNRoleRow
   rw [if_pos hr]
   exact rowSS_complete hO (fun ax hax => isSROIQDSKB_ax_of_isSHOIQDKB (nroleAxs_ok hr a b ax hax))
-    hc hint
+    hS hc hint
 
 
 /-! ## With anonymous individuals, the previous route first -/
@@ -318,7 +325,8 @@ def owlSROIQDSNRoleRow (O : Ontology) (r : ObjProp) (a b : IRI) (hint : Option R
 theorem rowSS_isSome {O : Ontology} {L : List Axiom} {hint : Option RawHint} {v : Bool}
     (h : rowSS O L hint = some v) : O.isSROIQDSKB = true := by
   obtain ⟨w, hw, -⟩ := Option.map_eq_some_iff.1 h
-  have hk := ((owlSelfCore_isSome_iff (addAxs O L) hint).1 (by rw [hw]; rfl)).1
+  have hk := (Bool.and_eq_true _ _ ▸ ((owlSelfCore_isSome_iff (addAxs O L) hint).1
+    (by rw [hw]; rfl)).1).1
   rw [isSROIQDSKB_addAxs, Bool.and_eq_true] at hk
   exact hk.1
 
@@ -417,12 +425,13 @@ theorem owlSROIQDSNRoleRow_sound (pat : String → String → Prop) {O : Ontolog
 /-- The type row answers when the previous route or this one does. -/
 theorem owlSROIQDSTypeRow_complete {O : Ontology} (C a : IRI)
     (hO : (anonOff [a] O).isSROIQDSKB = true)
+    (hS : (selfAxs (addAxs (anonOff [a] O) (typeAxs C a))).isEmpty = false)
     (hc : SelfChecks (addAxs (anonOff [a] O) (typeAxs C a))) (hint : Option RawHint) :
     (owlSROIQDSTypeRow O C a hint).isSome = true := by
   unfold owlSROIQDSTypeRow
   split
   · rfl
-  · exact owlSelfTypeRow_complete C a hO hc hint
+  · exact owlSelfTypeRow_complete C a hO hS hc hint
 
 end ContextCalculus.OWLFrontend
 

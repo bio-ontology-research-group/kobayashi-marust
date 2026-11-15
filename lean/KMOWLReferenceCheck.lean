@@ -836,7 +836,7 @@ def checkS (timing : Bool) (O : OWL.Ontology) : IO Bool := do
 /-- The fragment checks of the Self route (`owlSelfCore`), without the
 decision. -/
 def checkSelf (timing : Bool) (O : OWL.Ontology) : IO Bool := do
-  if !O.isSROIQDSKB then return false
+  if !O.isSROIQDSKB || (selfAxs O).isEmpty then return false
   let ⟨tr, _⟩ ← timedPhase timing "translate" (fun _ => translateSHOIQD (roleOff (selfOff O)) [])
   match tr with
   | none => return false
@@ -848,9 +848,25 @@ def checkSelf (timing : Bool) (O : OWL.Ontology) : IO Bool := do
       match selfCls T O with
       | none => return false
       | some SC =>
-        let ⟨r, _⟩ ← timedPhase timing "self-checks"
-          (fun _ => sroiqSOK T (OWLFrontend.SHOIQ.nomNames (roleOff (selfOff O)) []) E SC)
-        return r
+        let L := OWLFrontend.SHOIQ.nomNames (roleOff (selfOff O)) []
+        let ⟨r1, _⟩ ← timedPhase timing "regular" (fun _ => SROIQ.Proc.regularB (objC T L E))
+        if !r1 then return false
+        let ⟨r2, _⟩ ← timedPhase timing "automata" (fun _ => SROIQ.Proc.condB (objC T L E))
+        if !r2 then return false
+        let ⟨r3, _⟩ ← timedPhase timing "self-simple" (fun _ => SROIQ.Proc.selfSimpleB (objC T L E) SC)
+        if !r3 then return false
+        let ⟨r4, _⟩ ← timedPhase timing "loop-roles" (fun _ => SROIQ.Proc.lamOKB
+          (SRIQD.objPart (SRIQN.dbase (chC T L E))) (scC T L E SC) (lamC T L E SC) (irrC T L E SC))
+        if !r4 then return false
+        let ⟨D, _⟩ ← timedPhase timing "encode" (fun _ => encS T L E SC)
+        let ⟨r5, _⟩ ← timedPhase timing "c2a" (fun _ => decide (SRIQN.IsC2aD D))
+        if !r5 then return false
+        let ⟨r6, _⟩ ← timedPhase timing "c2a-trans"
+          (fun _ => decide (SRIQN.IsC2aD (SRIQN.Proc.encTransDN D)))
+        if !r6 then return false
+        let ⟨r7, _⟩ ← timedPhase timing "data"
+          (fun _ => (List.finRange T.tab.length).all fun p => OWL.Datatypes.drSupported (OWLFrontend.SHIQD.spec T.tab p))
+        return r7
 
 /-- The SHIQ(D) knowledge-base route on an ontology. -/
 def runOntologyDKB (timing : Bool) (hint : Option RawHint) (query : Option (OWL.IRI × OWL.IRI))
@@ -1080,7 +1096,8 @@ def printIndex (route : String) (O : OWL.Ontology) : IO UInt32 := do
   let out ← IO.getStdout
   let emit (ls : List String) : IO Unit := do for l in ls do out.putStrLn l
   let O := if route == "sroiq-c2a" then duOff O else O
-  if route == "sroiq-c2a" && !(← checkS false (anonOff [] O)) && (anonOff [] O).isSROIQDSKB then
+  if route == "sroiq-c2a" && !(← checkS false (anonOff [] O)) && (anonOff [] O).isSROIQDSKB &&
+      !(selfAxs (anonOff [] O)).isEmpty then
     let O := anonOff [] O
     match translateSHOIQD (roleOff (selfOff O)) [] with
     | none => decline (selfDecline O)

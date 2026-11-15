@@ -227,7 +227,12 @@ def lamStep (tab : List (RT m × List (RT m))) (B : SRIQ.Ontology (Fin n) (Fin m
 `lamOKB` checks the result. -/
 def lamOf (B : SRIQ.Ontology (Fin n) (Fin m)) (SC : List (SClause (Fin n) (Fin m))) : List (RT m) :=
   let tab := mkTab B
-  (lamStep tab B SC)^[2 * m + 2] []
+  lamIter (lamStep tab B SC) (2 * m + 2) []
+where
+  /-- Iterate until nothing changes (at most `k` rounds). -/
+  lamIter (f : List (RT m) → List (RT m)) : Nat → List (RT m) → List (RT m)
+    | 0, L => L
+    | k + 1, L => let L' := f L; if L'.length = L.length then L' else lamIter f k L'
 
 /-- A self clause `selfL R []` (irreflexivity). -/
 def isIrrOf (le : RT m → RT m → Bool) (T : RT m) : SClause (Fin n) (Fin m) → Bool
@@ -346,6 +351,26 @@ def sroiqSOK (T : SRIQDKBTranslation) (L : List IRI)
     decide (SRIQN.IsC2aD (SRIQN.Proc.encTransDN (encS T L E SC))) &&
     (List.finRange T.tab.length).all fun p => drSupported (spec T.tab p)
 
+/-- `sroiqSOK` with the loop roles and the encoding computed once. -/
+def sroiqSOKF (T : SRIQDKBTranslation) (L : List IRI)
+    (E : List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount)))
+    (SC : List (SRIQN.SClause (Fin T.obj.conceptCount) (Fin T.obj.roleCount))) : Bool :=
+  let B0 := objC T L E
+  let D1 := chC T L E
+  let B1 := SRIQD.objPart (SRIQN.dbase D1)
+  let sc1 := scC T L E SC
+  let lam := lamOf B1 sc1
+  let irr := irrOf B1 sc1
+  let D := SRIQN.encSelfD D1 sc1 lam irr
+  SROIQ.Proc.regularB B0 && SROIQ.Proc.condB B0 && selfSimpleB B0 SC &&
+    lamOKB B1 sc1 lam irr && decide (SRIQN.IsC2aD D) &&
+    decide (SRIQN.IsC2aD (SRIQN.Proc.encTransDN D)) &&
+    (List.finRange T.tab.length).all fun p => drSupported (spec T.tab p)
+
+@[csimp] theorem sroiqSOK_eq_F : @sroiqSOK = @sroiqSOKF := by
+  funext T L E SC
+  rfl
+
 /-- The small-cell threshold. -/
 def sroiqSBound (T : SRIQDKBTranslation) (L : List IRI)
     (E : List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount)))
@@ -397,7 +422,7 @@ theorem sroiqSParts_iff (pat : String → String → Prop) {T : SRIQDKBTranslati
 
 /-- The route on an ontology without anonymous individuals. -/
 def owlSelfCore (O : OWL.Ontology) (hint : Option RawHint) : Option Bool :=
-  if O.isSROIQDSKB then
+  if O.isSROIQDSKB && !(selfAxs O).isEmpty then
     match translateSHOIQD (roleOff (selfOff O)) [] with
     | none => none
     | some T =>
@@ -416,7 +441,8 @@ theorem owlSelfCore_sound (pat : String → String → Prop) {O : OWL.Ontology}
     {hint : Option RawHint} {v : Bool} (h : owlSelfCore O hint = some v) :
     v = true ↔ ConsistentAt (owl2MapP pat) O := by
   unfold owlSelfCore at h
-  split_ifs at h with hO
+  split_ifs at h with hO'
+  have hO : O.isSROIQDSKB = true := (Bool.and_eq_true _ _ ▸ hO').1
   split at h
   · cases h
   next T hT =>
@@ -438,7 +464,8 @@ def SelfChecks (O : OWL.Ontology) : Prop :=
       sroiqSOK T (nomNames (roleOff (selfOff O)) []) E SC = true
 
 theorem owlSelfCore_isSome_iff (O : OWL.Ontology) (hint : Option RawHint) :
-    (owlSelfCore O hint).isSome = true ↔ O.isSROIQDSKB = true ∧ SelfChecks O := by
+    (owlSelfCore O hint).isSome = true ↔
+      (O.isSROIQDSKB && !(selfAxs O).isEmpty) = true ∧ SelfChecks O := by
   constructor
   · intro h
     unfold owlSelfCore at h
@@ -460,7 +487,8 @@ theorem owlSelfCore_isSome_iff (O : OWL.Ontology) (hint : Option RawHint) :
     · simp at h
   · rintro ⟨hO, hc⟩
     obtain ⟨T, hT⟩ := Option.isSome_iff_exists.1
-      (translateSHOIQD_isSome (roleOff_isSHOIQDKB (selfOff_isSROIQDKB hO)) [])
+      (translateSHOIQD_isSome (roleOff_isSHOIQDKB (selfOff_isSROIQDKB
+        (Bool.and_eq_true _ _ ▸ hO).1)) [])
     obtain ⟨E, hE, SC, hS, hok⟩ := hc T hT
     unfold owlSelfCore
     rw [if_pos hO, hT]
@@ -505,7 +533,7 @@ theorem owlSROIQDSConsistent_sound (pat : String → String → Prop) {O : Ontol
     exact owlSROIQDAConsistent_sound pat hv
   next hv =>
     have hk : O.noKey = true := noKey_of_anonOffS
-      ((owlSelfCore_isSome_iff _ hint).1 (by rw [h]; rfl)).1
+      (Bool.and_eq_true _ _ ▸ ((owlSelfCore_isSome_iff _ hint).1 (by rw [h]; rfl)).1).1
     rw [owlSelfCore_sound pat h, consistentAt_anonOff hk]
 
 /-- **Completeness.** The route answers exactly when one of the two routes
@@ -513,7 +541,8 @@ does. -/
 theorem owlSROIQDSConsistent_isSome_iff (O : Ontology) (hint : Option RawHint) :
     (owlSROIQDSConsistent O hint).isSome = true ↔
       ((anonOff [] O).isSROIQDKB = true ∧ SROIQDC2aChecks (anonOff [] O)) ∨
-        ((anonOff [] O).isSROIQDSKB = true ∧ SelfChecks (anonOff [] O)) := by
+        (((anonOff [] O).isSROIQDSKB && !(selfAxs (anonOff [] O)).isEmpty) = true ∧
+          SelfChecks (anonOff [] O)) := by
   rw [← owlSROIQDAConsistent_isSome_iff O hint, ← owlSelfCore_isSome_iff _ hint]
   unfold owlSROIQDSConsistent
   cases h : owlSROIQDAConsistent O hint <;> simp
