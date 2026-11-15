@@ -276,3 +276,5 @@ def RAtom.kind : RAtom → String
   | .builtin .. => "BuiltInAtom"
 
 end ContextCalculus.OWL
+
+#print axioms ContextCalculus.OWL.modelR_nil
