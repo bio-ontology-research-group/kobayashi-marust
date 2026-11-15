@@ -141,6 +141,7 @@ structure St where
   queue : Array Ev := #[]
   qhead : Nat := 0
   combCut : Nat := 0
+  stat : HashMap (Nat × Nat) Nat := ∅
   nEv : Nat := 0
   aborted : Bool := false
 
@@ -217,20 +218,19 @@ partial def fire (c : Nat) (rid : Nat) (body : Ty) (kind : Kind) (h : Nat)
     addItem c kind h curC.P cur
 
 /-- The clause of a static rule at context `c`, emitted once. -/
-def statCl (c : Nat) (tag pos : Nat) (r : CRule) (cl : CCl) : M Nat := do
-  let cx ← ctxAt c
-  match cx.stat.get? (tag, pos) with
+def statCl (_c : Nat) (tag pos : Nat) (r : CRule) (cl : CCl) : M Nat := do
+  match (← get).stat.get? (tag, pos) with
   | some i => return i
   | none =>
     let i ← emit r cl
-    modCtx c fun cx => { cx with stat := cx.stat.insert (tag, pos) i }
+    modify fun s => { s with stat := s.stat.insert (tag, pos) i }
     return i
 
 /-- Install a learned rule at context `c` and fire it on the facts present. -/
 def addRule (c : Nat) (r : LRule) : M Unit := do
   let ri ← modifyGet fun s => ((s.ctxs[c]!).rules.size, s)
   let upd (cx : Ctx) : Ctx :=
-    let rb := r.body.foldl (fun m d => m.insert d ((m.getD d #[]).push ri)) cx.rulesBy
+    let rb := r.body.foldl (fun m d => m.alter d (fun o => some ((o.getD #[]).push ri))) cx.rulesBy
     { cx with rules := cx.rules.push r, rulesBy := rb, ruleSet := cx.ruleSet.insert (r.body, r.py, r.kind, r.head) }
   modCtx c upd
   enq (.rule c ri)
@@ -362,6 +362,12 @@ def newGroup (c : Nat) (upos a k S e : Nat) (par : Bool) : M Unit := do
   modCtx c fun cx => { cx with groupsAt := cx.groupsAt.insert key g }
   for (q, c2) in cx.kids do joinGroup g q c2
 
+/-- Send a hypothesis once. -/
+def sendHyp (c a : Nat) : M Unit := do
+  if (← ctxAt c).hyps.contains a then return
+  modCtx c fun cx => { cx with hyps := cx.hyps.insert a }
+  enq (.hyp c a)
+
 /-- Process one event. -/
 partial def step (e : Ev) : M Unit := do
   let ix ← getIx
@@ -373,8 +379,6 @@ partial def step (e : Ev) : M Unit := do
     fire c r.cid r.body r.kind r.head none
   | .hyp c a =>
     let cx ← ctxAt c
-    if cx.hyps.contains a then return
-    modCtx c fun cx => { cx with hyps := cx.hyps.insert a }
     for (S, c', pos) in ix.allBy[a]! do
       if mem cx.lab S then
         let i ← emit (.fwd pos) { L := cx.lab, P := #[a], B := #[cx.core], H := #[c'], Q := #[] }
@@ -393,12 +397,12 @@ partial def step (e : Ev) : M Unit := do
           addRule p { body, py := #[], kind := if kind == kY then kX else kBot, head := h, cid := rid }
     -- hypotheses
     for ((kind, h), _) in cp.items.toList do
-      if kind == kX && (ix.allBy[h]!).any (fun (S, _, _) => mem cc.lab S) then enq (.hyp c h)
+      if kind == kX && (ix.allBy[h]!).any (fun (S, _, _) => mem cc.lab S) then sendHyp c h
     for g in cp.groupsAt.toList do joinGroup g.2 q c
   | .item c kind h cond cid =>
-    let (lab, root, parents, memb, rlist, rules) ← do
+    let (lab, root, parents, memb, rlist) ← do
       let cx ← ctxAt c
-      pure (cx.lab, cx.root, cx.parents, cx.memb, cx.rulesBy.getD h #[], cx.rules)
+      pure (cx.lab, cx.root, cx.parents, cx.memb, cx.rulesBy.getD h #[])
     -- 1. parents: a back name or a clash becomes a rule at each parent
     if kind == kY || kind == kBot then
       for (p, q) in parents do
@@ -425,7 +429,7 @@ partial def step (e : Ev) : M Unit := do
           fire c gid b' (if hd.size == 1 then kX else kBot) (hd[0]?.getD 0) (some (h, cond, cid))
       | _ => pure ()
     for ri in rlist do
-      let r := rules[ri]!
+      let r := (← ctxAt c).rules[ri]!
       if !r.py.isEmpty && root then continue
       fire c r.cid r.body r.kind r.head (some (h, cond, cid))
     -- 4. universals back to the predecessor
@@ -456,7 +460,7 @@ partial def step (e : Ev) : M Unit := do
     -- 7. hypotheses for the children
     for (_, c2) in (← ctxAt c).kids do
       let cc ← ctxAt c2
-      if (ix.allBy[h]!).any (fun (S, _, _) => mem cc.lab S) then enq (.hyp c2 h)
+      if (ix.allBy[h]!).any (fun (S, _, _) => mem cc.lab S) then sendHyp c2 h
 
 /-- At-most 0 toward `x`: in a successor context with `S ∈ Lc`, `e(x)` and
 `a(y)` clash. Installed at context creation as rules. -/
@@ -468,10 +472,7 @@ def initRules (c : Nat) : M Unit := do
     match ix.cls[gi]! with
     | .gci _ hd =>
       if hd.size ≤ 1 then
-        let rid ← emit (.gci gi) { L := #[], P := #[], B := #[], H := sortDedup hd, Q := #[] }
-        let t ← emit (.taut cx.core) { L := #[], P := #[], B := #[cx.core], H := #[cx.core], Q := #[] }
-        let cl : CCl := { L := cx.lab, P := #[], B := #[cx.core], H := sortDedup hd, Q := #[] }
-        let i ← emit (.resX t rid cx.core) cl
+        let i ← emit (.gci gi) { L := cx.lab, P := #[], B := #[cx.core], H := sortDedup hd, Q := #[] }
         addItem c (if hd.size == 1 then kX else kBot) (hd[0]?.getD 0) #[] i
     | _ => pure ()
   if cx.root then return
@@ -480,7 +481,7 @@ def initRules (c : Nat) : M Unit := do
       let rid ← emit (.amo0a pos) { L := #[S], P := #[a], B := #[e], H := #[], Q := #[] }
       addRule c { body := #[e], py := #[a], kind := kBot, head := 0, cid := rid }
 
-partial def run (maxSteps : Nat) : M Unit := do
+partial def run (maxSteps : Nat) (deadline : Nat) : M Unit := do
   let mut seenCtx := 0
   repeat
     -- rules for new contexts
@@ -489,13 +490,13 @@ partial def run (maxSteps : Nat) : M Unit := do
       seenCtx := seenCtx + 1
     let s ← get
     if s.qhead ≥ s.queue.size then break
-    if s.steps.size > maxSteps then
+    if s.steps.size > maxSteps || (s.nEv % 4096 == 0 && (← IO.monoMsNow) > deadline) then
       set { s with aborted := true }; break
     let e := s.queue[s.qhead]!
     let _ := s
     let nev := (← get).nEv + 1
     modify fun s => { s with nEv := nev }
-    if nev % (if nev < 100000 then 5000 else 200000) == 0 then
+    if nev % (if nev < 100000 then 5000 else 1000000) == 0 then
       let s ← get
       let nIt := s.ctxs.foldl (fun a c => a + c.itemLog.size) 0
       let nRu := s.ctxs.foldl (fun a c => a + c.rules.size) 0
@@ -503,6 +504,22 @@ partial def run (maxSteps : Nat) : M Unit := do
       let cnt := ev.foldl (fun (a : Nat × Nat × Nat × Nat) e => match e with
         | .item .. => (a.1 + 1, a.2) | .hyp .. => (a.1, a.2.1 + 1, a.2.2) | .kid .. => (a.1, a.2.1, a.2.2.1 + 1, a.2.2.2)
         | .rule .. => (a.1, a.2.1, a.2.2.1, a.2.2.2 + 1)) (0, 0, 0, 0)
+      if nev % 5000000 == 0 then
+        let mut tags : Array Nat := Array.replicate 13 0
+        for st in s.steps do
+          let t := match st.rule with
+            | .gci .. => 0 | .taut .. => 1 | .fwd .. => 2 | .bwd .. => 3 | .up .. => 4 | .resX .. => 5
+            | .resY .. => 6 | .pred .. => 7 | .amo0a .. => 8 | .amo0b .. => 9 | .clash .. => 10
+            | .sib .. => 11 | .par .. => 12
+          tags := tags.modify t (· + 1)
+        let mut condItems := 0
+        let mut kinds : Array Nat := #[0, 0, 0]
+        for c in s.ctxs do
+          for (k, _, cond, _) in c.itemLog do
+            if !cond.isEmpty then condItems := condItems + 1
+            kinds := kinds.modify k (· + 1)
+        let roots := s.ctxs.foldl (fun a c => if c.root then a + 1 else a) 0
+        IO.eprintln s!"cbtags: gci,taut,fwd,bwd,up,resX,resY,pred,amo0a,amo0b,clash,sib,par={tags} cond_items={condItems} kinds(x,y,bot)={kinds} roots={roots}"
       IO.eprintln s!"cbprog: ev={nev} steps={s.steps.size} ctxs={s.ctxs.size} items={nIt} rules={nRu} groups={s.groups.size} queue={ev.size} q(item,hyp,kid,rule)={cnt} combcut={s.combCut}"
     modify fun s => if s.qhead > 1000000 then
         { s with queue := s.queue.extract (s.qhead + 1) s.queue.size, qhead := 0 }
@@ -516,13 +533,13 @@ structure Res where
   st : St
   roots : Array Nat
 
-def saturate (n m : Nat) (cls : Array QC) (req : Array Nat) (maxSteps : Nat := 50000000) :
+def saturate (n m : Nat) (cls : Array QC) (req : Array Nat) (maxSteps : Nat := 50000000) (deadline : Nat := 0) :
     IO Res := do
   let ix := mkIx n m cls
   let act : M (Array Nat) := do
     let mut roots := #[]
     for a in req do roots := roots.push (← newRoot a)
-    run maxSteps
+    run maxSteps (if deadline == 0 then (1 <<< 62) else deadline)
     return roots
   let (roots, st) ← (act.run (ix, 0)).run {}
   return { steps := st.steps, st, roots }
