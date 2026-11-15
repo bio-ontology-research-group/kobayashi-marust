@@ -966,17 +966,46 @@ impl<'a> Engine<'a> {
         if back.iter().any(|&a| nf.is_nom[a as usize] || nf.has_le[a as usize]) {
             return None;
         }
-        if nf.le.len() > 0 {
-            // keep it simple where counting is involved
-            return None;
-        }
         let e = &m.elems[x as usize];
         let (fb, tg, nm) = (e.forbid, e.target, e.nom);
         let s1 = self.sets.union_vec(tx, &back);
-        match self.close(s1, fb, tg, nm) {
-            CloseRes::Ok(_) => Some(back),
-            _ => None,
+        let tx2 = match self.close(s1, fb, tg, nm) {
+            CloseRes::Ok(t) => t,
+            _ => return None,
+        };
+        if !nf.le.is_empty() && !self.atmost_ok(m, x, tx2, y, ty, l) {
+            return None;
         }
+        Some(back)
+    }
+
+    /// Adding the edge x -l-> y (types tx, ty) exceeds no at-most clause at either end.
+    fn atmost_ok(&mut self, m: &Model, x: Id, tx: u32, y: Id, ty: u32, l: u32) -> bool {
+        let nf = self.nf;
+        let fl = self.flip(l);
+        let tys = self.sets.get(ty);
+        for &a in tys.iter() {
+            if !nf.has_le[a as usize] {
+                continue;
+            }
+            for &(k, r, c) in nf.le_by.get(a) {
+                if self.labs.has(fl, r) && self.sets.has(tx, c) && self.count(m, y, r, c, x) + 1 > k as usize {
+                    return false;
+                }
+            }
+        }
+        let txs = self.sets.get(tx);
+        for &a in txs.iter() {
+            if !nf.has_le[a as usize] {
+                continue;
+            }
+            for &(k, r, c) in nf.le_by.get(a) {
+                if self.labs.has(l, r) && self.sets.has(ty, c) && self.count(m, x, r, c, y) + 1 > k as usize {
+                    return false;
+                }
+            }
+        }
+        true
     }
 
     fn first_nom(&self, t: u32) -> Option<u32> {
