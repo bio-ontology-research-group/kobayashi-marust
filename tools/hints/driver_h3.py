@@ -28,7 +28,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCR = os.environ.get('H3_SCR', '/mnt/data1/leechuck/km-work/v170/scratch/h3')
 KM = os.environ.get('H3_KM', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-6f2c0a8e')
-REF = os.environ.get('H3_REF', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-owl-reference-h4-faa12e12')
+REF = os.environ.get('H3_REF', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-owl-reference-h5-0cb85570')
 PROD = os.environ.get('H3_PROD', os.path.join(SCR, 'target/release/km-hints'))
 THING = 'http://www.w3.org/2002/07/owl#Thing'
 NOTHING = 'http://www.w3.org/2002/07/owl#Nothing'
