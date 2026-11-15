@@ -34,3 +34,7 @@ asym-sat.ofn	--hint asym-sat.hint	{"format":"owl-hint-v1","row":"consistent","ce
 share.ofn	--explain --hint share-bad.hint	hint: reason: core element 2: atmost 6 1 -1 6: 2 neighbours hint: rejected (an index outside the translation, or the check fails)
 share.ofn	--row-file share-nontype.row --hint share-nontype.hint	{"format":"owl-hint-v1","row":"nontype http://ex/B http://ex/a","certified":true}
 share-hash.ofn	--explain --batch share-hash.batch	{"format":"owl-hint-batch-v1","pair":0,"row":"nontype http://ex#xB http://ex#xa","result":"certified"} {"format":"owl-hint-batch-v1","pair":1,"row":"nontype http://ex#xA http://ex#xa","result":"rejected","reason":"core element 0: gci 0 -> 11: the body holds and no head name does"}
+# Built-in IRIs (H2 item 0): owl:Thing as object and owl:Nothing as subject are refused (exit 2); owl:Nothing as object keeps its meaning (hintNonSubsC_sound)
+share.ofn	--row-file builtin-sub-thing.row --hint share.hint	owl:Thing as object: every subsumption and type with owl:Thing holds; the row is refused
+share.ofn	--row-file builtin-sub-nothing.row --hint share.hint	owl:Nothing as subject: owl:Nothing is below every class; the row is refused
+share.ofn	--row-file builtin-subs-nothing.row --hint share-nonsubs.hint	hint: rejected (an index outside the translation, or the check fails)

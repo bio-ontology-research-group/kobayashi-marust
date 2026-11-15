@@ -302,6 +302,39 @@ theorem named_prep (O : Ontology) (a : IRI) :
   unfold wPre
   rw [mem_namedIndividuals_duOff, named_edgeP]
 
+/-- **The model of an accepted witness hint**: a model of `O` with the core
+inside it, the requested classes and the named individuals read off the
+core types. -/
+theorem wTab_model (pat : String → String → Prop) {O : Ontology} {req : List IRI}
+    {hint : RawHint} {W : WTab} (hw : wTab O req hint = some W) :
+    ∃ (Dom : Type) (_ : Nonempty Dom) (I : Interp (owl2MapP pat) Dom) (f : Fin W.k → Dom),
+      OWL.Model O I ∧ Function.Injective f ∧
+      (∀ s x, (s, x) ∈ W.cls → ∀ w, I.cls s (f w) ↔ x ∈ W.ty w) ∧
+      (∀ a x, (a, x) ∈ W.inds → ∀ w, f w = I.ind (.named a) ↔ x ∈ W.ty w) := by
+  unfold wTab at hw
+  split_ifs at hw with hs
+  simp only [Bool.and_eq_true] at hs
+  obtain ⟨⟨hk, -⟩, -⟩ := hs
+  obtain ⟨W0, hW0, rfl⟩ := Option.map_eq_some_iff.1 hw
+  obtain ⟨Dom, hD, J, f, hJ, hinj, hcls, hind⟩ := (wTabCore_facts pat hW0).model
+  haveI := hD
+  set g := anonG [] (wPre O)
+  have hM : OWL.Model O (J.indMap g) := model_of_prep hk hJ
+  have hgcls : (J.indMap g).cls = J.cls := by cases J; rfl
+  have hgind : ∀ a ∈ O.namedIndividuals, (J.indMap g).ind (.named a) = J.ind (.named a) := by
+    intro a ha
+    have hfix : g (.named a) = .named a := anonF_short (anonBase_long (by
+      simp only [List.nil_append]; exact (named_prep O a).2 ha))
+    cases J
+    simp only [Interp.indMap, hfix]
+  refine ⟨Dom, hD, J.indMap g, f, hM, hinj, fun s x hs w => ?_, fun a x hax w => ?_⟩
+  · rw [hgcls]; exact hcls s x hs w
+  · obtain ⟨hax, hc⟩ := List.mem_filter.1 hax
+    have ha : a ∈ O.namedIndividuals := by
+      simpa [Std.HashSet.contains_ofList] using hc
+    rw [hgind a ha]
+    exact (hind a x hax).2 w
+
 /-- **Soundness of the global witness row.** -/
 theorem hintWitness_sound (pat : String → String → Prop) {O : Ontology} {req : List IRI}
     {hint : RawHint} {W : WTab} (hw : wTab O req hint = some W) :
@@ -359,3 +392,4 @@ end ContextCalculus.OWLFrontend
 #print axioms ContextCalculus.OWLFrontend.downW
 #print axioms ContextCalculus.OWLFrontend.wTabCore_facts
 #print axioms ContextCalculus.OWLFrontend.hintWitness_sound
+#print axioms ContextCalculus.OWLFrontend.wTab_model
