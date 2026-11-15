@@ -1,0 +1,18 @@
+[package]
+name = "km-hints"
+version = "0.1.0"
+edition = "2021"
+description = "Untrusted global-model producer for km's negative answers (stage H3)"
+license = "BSD-3-Clause"
+publish = false
+
+[[bin]]
+name = "km-hints"
+path = "src/main.rs"
+
+[dependencies]
+
+[profile.release]
+opt-level = 3
+debug = 1
+codegen-units = 16
