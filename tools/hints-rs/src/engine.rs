@@ -455,6 +455,9 @@ pub struct Engine<'a> {
     pub stats: Stats,
     pub debug: bool,
     dbg_created: FxMap<u32, u64>,
+    /// data clauses: a closed type without a data star is a clash
+    pub data: Option<(crate::data::DataNf, crate::data::Values)>,
+    data_ok: FxMap<u32, bool>,
 }
 
 impl<'a> Engine<'a> {
@@ -484,6 +487,8 @@ impl<'a> Engine<'a> {
             stats: Stats::default(),
             debug: std::env::var("KM_HINTS_DEBUG").is_ok(),
             dbg_created: FxMap::default(),
+            data: None,
+            data_ok: FxMap::default(),
         }
     }
 
@@ -666,6 +671,16 @@ impl<'a> Engine<'a> {
                 }
             }
         }
+        // data requirements only grow with the type: prune a partial type without a data star
+        if let Some((d, v)) = &self.data {
+            if !pend.is_empty() {
+                let mut ts = t.clone();
+                ts.sort_unstable();
+                if crate::data::star(d, v, &ts).is_none() {
+                    return CloseRes::Clash;
+                }
+            }
+        }
         // the first disjunctive gci whose head is not yet met
         let mut open: Option<u32> = None;
         for &g in &pend {
@@ -708,6 +723,19 @@ impl<'a> Engine<'a> {
         let id = self.sets.intern(t);
         if !self.bad.is_empty() && self.bad.contains(&id) {
             return CloseRes::Clash;
+        }
+        if let Some((d, v)) = &self.data {
+            let ok = match self.data_ok.get(&id) {
+                Some(&b) => b,
+                None => {
+                    let b = crate::data::star(d, v, &self.sets.v[id as usize]).is_some();
+                    self.data_ok.insert(id, b);
+                    b
+                }
+            };
+            if !ok {
+                return CloseRes::Clash;
+            }
         }
         CloseRes::Ok(id)
     }

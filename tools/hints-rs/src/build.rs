@@ -25,6 +25,8 @@ pub struct Config {
     pub time_limit: f64,
     pub loops: bool,
     pub write: bool,
+    /// the data clauses, for data stars (None: no `dstar` lines)
+    pub data: Option<crate::data::DataNf>,
 }
 
 pub struct Slot {
@@ -293,6 +295,13 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
     let node_budget = 100_000 + 40 * (nf.n + nf.noms.len());
     let opt = Opts { loops: cfg.loops, deadline: Some(deadline), node_budget, ..Opts::default() };
     let mut en = Engine::new(nf, opt);
+    if let Some(d) = cfg.data.as_ref().filter(|d| !d.is_empty()) {
+        let v = crate::data::Values::new(d);
+        // only a fully understood data part can declare a type data-unsatisfiable
+        if v.complete() {
+            en.data = Some((d.clone(), v));
+        }
+    }
     let mut j = String::new();
     let mut disagree: Vec<String> = Vec::new();
     let mut notes: Vec<String> = Vec::new();
@@ -704,6 +713,8 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
         h(&mut en, &slots, &verified);
     }
     // ---- emit ----
+    let dvals = cfg.data.as_ref().filter(|d| !d.is_empty()).map(crate::data::Values::new);
+    let (mut dstar_with, mut dstar_without) = (0usize, 0usize);
     let mut models_json = Vec::new();
     for (k, s) in slots.iter().enumerate() {
         let mut roots: Vec<Id> = s.wits.iter().map(|w| w.1).collect();
@@ -715,8 +726,11 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
         let mut written = None;
         if cfg.write {
             let hp = format!("{}/model{}.hint", outdir, k);
-            match emit::write_hint(&en, &s.m, &keep, &hp, &format!("km-hints global model {}", k)) {
-                Ok(w) => {
+            let dc = dvals.as_ref().map(|v| (cfg.data.as_ref().unwrap(), v));
+            match emit::write_hint_d(&en, &s.m, &keep, &hp, &format!("km-hints global model {}", k), dc) {
+                Ok((w, dw, dwo)) => {
+                    dstar_with += dw;
+                    dstar_without += dwo;
                     let mut rows: Vec<(&str, String, u32)> = Vec::new();
                     // the H2 witness table: `witness CLASS W`; owl:Thing only when the
                     // translation requested it (it is then a listed concept)
@@ -764,6 +778,7 @@ pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>)
         nf.n, nf.m, nf.gci.len(), nf.ex.len(), nf.all.len(), nf.ge.len(), nf.le.len(), nf.chains.len(), nf.long_chains, nf.noms.len(), nf.data_clauses);
     let _ = write!(j, ",\"classes\":{},\"individuals\":{},\"km_unsat\":{},\"km_consistent\":{}", nclasses, inds.len(), unsat.len(),
         match km.consistent { Some(true) => "true", Some(false) => "false", None => "null" });
+    let _ = write!(j, ",\"dstars\":{{\"with\":{},\"without\":{}}}", dstar_with, dstar_without);
     let _ = write!(j, ",\"base\":{{\"ok\":{},\"why\":{},\"secs\":{:.3}}}", base_ok, json_str(&base_why), base_secs);
     let _ = write!(j, ",\"models\":[{}]", models_json.join(","));
     let _ = write!(j, ",\"witness\":{{\"general\":{},\"split\":{},\"partial\":{},\"none\":{},\"split_witnesses\":{},\"polluted_moves\":{},\"fail\":{{{}}}}}",

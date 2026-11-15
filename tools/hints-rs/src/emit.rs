@@ -41,7 +41,23 @@ pub struct Written {
     pub bytes: u64,
 }
 
+/// Data stars: the data part of the normal form and the candidate values.
+pub type DataCtx<'d> = Option<(&'d crate::data::DataNf, &'d crate::data::Values)>;
+
 pub fn write_hint(en: &Engine, m: &Model, keep: &[Id], path: &str, comment: &str) -> std::io::Result<Written> {
+    write_hint_d(en, m, keep, path, comment, None).map(|x| x.0)
+}
+
+/// As `write_hint`, with a `dstar` star per element where one is found;
+/// returns also (elements with a star, elements without).
+pub fn write_hint_d(
+    en: &Engine,
+    m: &Model,
+    keep: &[Id],
+    path: &str,
+    comment: &str,
+    dc: DataCtx,
+) -> std::io::Result<(Written, usize, usize)> {
     let mut index: FxMap<Id, u32> = FxMap::default();
     for (i, &x) in keep.iter().enumerate() {
         index.insert(x, i as u32);
@@ -84,9 +100,35 @@ pub fn write_hint(en: &Engine, m: &Model, keep: &[Id], path: &str, comment: &str
             writeln!(w)?;
         }
     }
+    let (mut with, mut without) = (0, 0);
+    if let Some((d, vals)) = dc {
+        let mut cache: FxMap<u32, Option<Vec<crate::data::Entry>>> = FxMap::default();
+        for (i, &x) in keep.iter().enumerate() {
+            let t = m.elems[x as usize].ty;
+            let st = cache.entry(t).or_insert_with(|| crate::data::star(d, vals, &en.sets.get(t)));
+            match st {
+                Some(ents) => {
+                    with += 1;
+                    writeln!(w, "dstar {}", i)?;
+                    for e in ents.iter() {
+                        write!(w, "dstar {}", i)?;
+                        for p in &e.label {
+                            write!(w, " {}", p)?;
+                        }
+                        write!(w, " /")?;
+                        for a in &e.ty {
+                            write!(w, " {}", a)?;
+                        }
+                        writeln!(w)?;
+                    }
+                }
+                None => without += 1,
+            }
+        }
+    }
     w.flush()?;
     let bytes = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
-    Ok(Written { index, elements: keep.len(), edges: ne, type_entries: tyn, bytes })
+    Ok((Written { index, elements: keep.len(), edges: ne, type_entries: tyn, bytes }, with, without))
 }
 
 /// The witness table of the H2 witness row: `witness CLASS ELEMENT` lines

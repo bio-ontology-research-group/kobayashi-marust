@@ -11,6 +11,7 @@
 
 mod build;
 mod check;
+mod data;
 mod emit;
 mod engine;
 mod km;
@@ -64,12 +65,20 @@ fn main() {
         time_limit: time,
         loops: !a.iter().any(|x| x == "--no-loops"),
         write: !a.iter().any(|x| x == "--no-write"),
+        data: None,
     };
     match a[1].as_str() {
         "produce" => {
             let t0 = std::time::Instant::now();
             let nf = load_nf(&need("--index"), &need("--clauses"));
             let km = km::Km::parse(&read(&need("--km")));
+            let mut cfg = cfg;
+            if !a.iter().any(|x| x == "--no-dstar") {
+                let d = data::DataNf::parse(&read(&need("--clauses")));
+                if !d.is_empty() {
+                    cfg.data = Some(d);
+                }
+            }
             let parse = t0.elapsed().as_secs_f64();
             let out = need("--out");
             let _ = std::fs::create_dir_all(&out);
@@ -93,6 +102,23 @@ fn main() {
                     println!("{{\"ok\":false,\"why\":\"{}\"}}", e.replace('"', "'"));
                     exit(3)
                 }
+            }
+        }
+        "startype" => {
+            // debug: the data star of one type (names on the command line after --type)
+            let d = data::DataNf::parse(&read(&need("--clauses")));
+            let v = data::Values::new(&d);
+            let i = a.iter().position(|x| x == "--type").map(|i| i + 1).unwrap_or(a.len());
+            let mut t: Vec<u32> = a[i..].iter().filter_map(|x| x.parse().ok()).collect();
+            t.sort_unstable();
+            std::env::set_var("KM_HINTS_DEBUG", "1");
+            match data::star(&d, &v, &t) {
+                Some(es) => {
+                    for e in es {
+                        println!("entry {:?} / {:?}", e.label, e.ty);
+                    }
+                }
+                None => println!("no star"),
             }
         }
         _ => {
