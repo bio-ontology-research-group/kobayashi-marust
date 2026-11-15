@@ -1,0 +1,8 @@
+# chain.ofn on the witness route: d (core 0), an anonymous A witness (core 1,
+# the r-successor of d), and isolated B and C witnesses (cores 2, 3)
+blocks 4
+ty 0 3 4 5 7
+ty 1 0 1 2 5
+ty 2 1 2 5
+ty 3 2 5
+lab 0 1 +0

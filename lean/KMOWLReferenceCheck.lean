@@ -14,6 +14,7 @@ import ContextCalculus.OWLFrontend.RuleGround
 import ContextCalculus.OWLFrontend.KeyRules
 import ContextCalculus.OWLFrontend.EdgeStrengthen
 import ContextCalculus.SRIQN.HintExplain
+import ContextCalculus.OWLFrontend.HintWitness
 
 /-!
 # Executable OWL reference procedure (`km-owl-reference`)
@@ -1203,6 +1204,14 @@ structure Args where
   rowFile : Option String := none
   /-- `sroiq-hint`: print the reason of a rejection on stderr. -/
   explain : Bool := false
+  /-- `sroiq-hint`: the witness table of the global witness row. -/
+  witness : Option String := none
+  /-- `sroiq-hint`: the output file of the witness row. -/
+  out : Option String := none
+  /-- `sroiq-hint`: the requested classes of the witness row (default: all). -/
+  classes : Option String := none
+  /-- `sroiq-hint`: `--print-index`, `--print-clauses` of the witness route. -/
+  witnessRoute : Bool := false
 
 def parseArgs (acc : Args) : List String → Option Args
   | [] => if acc.path.isSome then some acc else none
@@ -1219,6 +1228,10 @@ def parseArgs (acc : Args) : List String → Option Args
   | "--batch" :: f :: rest => parseArgs { acc with batch := some f } rest
   | "--row-file" :: f :: rest => parseArgs { acc with rowFile := some f } rest
   | "--explain" :: rest => parseArgs { acc with explain := true } rest
+  | "--witness" :: f :: rest => parseArgs { acc with witness := some f } rest
+  | "--out" :: f :: rest => parseArgs { acc with out := some f } rest
+  | "--classes" :: f :: rest => parseArgs { acc with classes := some f } rest
+  | "--witness-route" :: rest => parseArgs { acc with witnessRoute := true } rest
   | "--procedure" :: raw :: rest =>
     match parseProcedure raw with
     | some p' => parseArgs { acc with procedure := p' } rest
@@ -1717,8 +1730,159 @@ def printClausesHint (O : OWL.Ontology) (rowWs : List String) : IO UInt32 := do
           | some E => emitClauses (encC T (OWLFrontend.SHOIQ.nomNames (roleOff O) []) E)
           | none => decline "not recognised"
 
+/-! ### The global witness row (stage H2, item 5) -/
+
+/-- The witness table: `witness CLASS W` lines (`#` words start comments). -/
+def parseWitness (text : String) : Except String (List (OWL.IRI × Nat)) := do
+  let mut acc : Array (OWL.IRI × Nat) := #[]
+  for line in text.splitOn "\n" do
+    match batchWords line with
+    | [] => pure ()
+    | ["witness", A, w] =>
+      match w.toNat? with
+      | some k => acc := acc.push (A, k)
+      | none => throw s!"witness: not a number: {w}"
+    | ["ind", _, _] => pure ()
+    | _ => throw s!"witness: expected `witness CLASS W`, got: {line}"
+  return acc.toList
+
+def jsonList (l : List String) : String := "[" ++ ",".intercalate (l.map fun x => (Json.str x).compress) ++ "]"
+
+/-- Print the rows the witness hint certifies (`hintWitness_sound`). -/
+def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) {O : OWL.Ontology}
+    {req : List OWL.IRI} {hint : RawHint} (W : OWLFrontend.WTab)
+    (_h : OWLFrontend.wTab O req hint = some W) : IO UInt32 := do
+  let cix : Std.HashMap OWL.IRI (Fin W.N) := W.cls.foldl (fun mp p => mp.insertIfNew p.1 p.2) {}
+  let nreq := W.cls.length
+  let mut nNon := 0
+  let mut nBad := 0
+  let mut nType := 0
+  out.putStrLn ("{\"format\":\"owl-witness-v1\",\"consistent\":true,\"classes\":" ++ toString nreq ++
+    ",\"individuals\":" ++ toString W.inds.length ++ ",\"core\":" ++ toString W.k ++ "}")
+  for (A, w) in table do
+    match cix.get? A with
+    | none =>
+      nBad := nBad + 1
+      out.putStrLn ("{\"class\":" ++ (Json.str A).compress ++ ",\"witness\":" ++ toString w ++
+        ",\"error\":\"not a requested class of the translation\"}")
+    | some iA =>
+      if hw : w < W.k then
+        let t := W.ty ⟨w, hw⟩
+        let M := SRIQN.HF.mask t
+        if SRIQN.HF.memM M iA then
+          -- `hintWitness_sound`, second part: every requested B outside the type
+          let outside := (W.cls.filter fun p => !SRIQN.HF.memM M p.2).map (·.1)
+          nNon := nNon + outside.length
+          if outside.length * 2 ≤ nreq then
+            out.putStrLn ("{\"class\":" ++ (Json.str A).compress ++ ",\"witness\":" ++ toString w ++
+              ",\"nonsub\":" ++ jsonList outside ++ "}")
+          else
+            let inside := (W.cls.filter fun p => SRIQN.HF.memM M p.2).map (·.1)
+            out.putStrLn ("{\"class\":" ++ (Json.str A).compress ++ ",\"witness\":" ++ toString w ++
+              ",\"nonsub_except\":" ++ jsonList inside ++ "}")
+        else
+          nBad := nBad + 1
+          out.putStrLn ("{\"class\":" ++ (Json.str A).compress ++ ",\"witness\":" ++ toString w ++
+            ",\"error\":\"the class is not in the type of the witness\"}")
+      else
+        nBad := nBad + 1
+        out.putStrLn ("{\"class\":" ++ (Json.str A).compress ++ ",\"witness\":" ++ toString w ++
+          ",\"error\":\"no such core element\"}")
+  -- individuals: the core element holding the nominal index (third and fourth parts)
+  let mut groups : Std.HashMap Nat (List OWL.IRI) := {}
+  for (a, ia) in W.inds do
+    match (List.finRange W.k).find? fun w => decide (ia ∈ W.ty w) with
+    | none => pure ()
+    | some w =>
+      groups := groups.insert w.val (a :: groups.getD w.val [])
+      let M := SRIQN.HF.mask (W.ty w)
+      let outside := (W.cls.filter fun p => !SRIQN.HF.memM M p.2).map (·.1)
+      nType := nType + outside.length
+      if outside.length * 2 ≤ nreq then
+        out.putStrLn ("{\"individual\":" ++ (Json.str a).compress ++ ",\"element\":" ++ toString w.val ++
+          ",\"nontype\":" ++ jsonList outside ++ "}")
+      else
+        let inside := (W.cls.filter fun p => SRIQN.HF.memM M p.2).map (·.1)
+        out.putStrLn ("{\"individual\":" ++ (Json.str a).compress ++ ",\"element\":" ++ toString w.val ++
+          ",\"nontype_except\":" ++ jsonList inside ++ "}")
+  let gs := groups.toList.map (·.2.reverse)
+  out.putStrLn ("{\"nonsame_groups\":[" ++ ",".intercalate (gs.map jsonList) ++ "]}")
+  out.putStrLn ("{\"counts\":{\"nonsub\":" ++ toString nNon ++ ",\"nontype\":" ++ toString nType ++
+    ",\"table_errors\":" ++ toString nBad ++ ",\"element_groups\":" ++ toString gs.length ++ "}}")
+  out.flush
+  return 0
+
+/-- The witness route's translation of the prepared ontology `X` with the
+requested classes `req`, handed to `k` (index lines, clauses, reasons). -/
+def withWitnessRoute (X : OWL.Ontology) (req : List OWL.IRI)
+    (k : (T : SRIQDKBTranslation) → (L : List OWL.IRI) →
+      List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount)) → IO UInt32) : IO UInt32 := do
+  if !X.isSROIQDKB then decline (hintDecline X) else
+  match translateSHOIQD (roleOff X) req with
+  | none => decline (hintDecline X)
+  | some T =>
+    match roleCls T X with
+    | none => decline (hintDecline X)
+    | some E => k T (OWLFrontend.SHOIQ.nomNames (roleOff X) req) E
+
+/-- The requested classes: `--classes FILE`, or every class of the ontology. -/
+def witnessReq (args : Args) (O : OWL.Ontology) : IO (List OWL.IRI) := do
+  match args.classes with
+  | some f => pure (wordsOf (← IO.FS.readFile f))
+  | none => pure O.classNames
+
+/-- `--print-index --witness-route`: the index of the witness route. -/
+def printIndexW (O : OWL.Ontology) (req : List OWL.IRI) : IO UInt32 := do
+  let X := OWLFrontend.wPrep O
+  withWitnessRoute X req fun T L E => do
+    let out ← IO.getStdout
+    out.putStrLn s!"concepts {T.obj.conceptCount + SROIQ.Proc.kCD (dosnC T L E) + SRIQN.Proc.encKD (encC T L E)}"
+    out.putStrLn s!"roles {T.obj.roleCount}"
+    for l in indexLines T.obj do out.putStrLn l
+    let nmap := nameIxMap T.obj.named
+    for l in nomLines nmap (roleOff X) req do out.putStrLn l
+    out.flush
+    return 0
+
+/-- `--print-clauses --witness-route`. -/
+def printClausesW (O : OWL.Ontology) (req : List OWL.IRI) : IO UInt32 :=
+  withWitnessRoute (OWLFrontend.wPrep O) req fun T L E => emitClauses (encC T L E)
+
+/-- `--procedure sroiq-hint --witness TABLE --hint FILE [--out FILE] [--classes FILE]`. -/
+def runWitness (timing : Bool) (args : Args) (O : OWL.Ontology) : IO UInt32 := do
+  let some tf := args.witness | return 2
+  let some hf := args.hint
+    | IO.eprintln "sroiq-hint: --witness needs --hint FILE"; return 2
+  let hint ← match RawHint.parseHint (← IO.FS.readFile hf) with
+    | .ok h => pure h
+    | .error e => IO.eprintln s!"bad hint {hf}: {e}"; return 2
+  let table ← match parseWitness (← IO.FS.readFile tf) with
+    | .ok t => pure t
+    | .error e => IO.eprintln e; return 2
+  let req ← witnessReq args O
+  let ⟨res, hres⟩ ← timedPhase timing "witness" (fun _ => OWLFrontend.wTab O req hint)
+  match res, hres with
+  | some W, h =>
+    match args.out with
+    | some f =>
+      let hdl ← IO.FS.Handle.mk f .write
+      publishWitness (IO.FS.Stream.ofHandle hdl) table W h.symm
+    | none => publishWitness (← IO.getStdout) table W h.symm
+  | none, _ =>
+    if args.explain then
+      let _ ← withWitnessRoute (OWLFrontend.wPrep O) req fun T L E => do
+        IO.eprintln s!"hint: reason: {explainOn (encC T L E) hint false}"
+        return 0
+    decline ("witness: not certified (outside the chain route, keys, datatype definitions, " ++
+      "ObjectHasSelf, or the hint does not check)")
+
 /-- The hint route on a parsed ontology. -/
 def runHint (timing : Bool) (args : Args) (O : OWL.Ontology) : IO UInt32 := do
+  if args.witness.isSome then return ← runWitness timing args O
+  if args.witnessRoute then
+    let req ← witnessReq args O
+    if args.printIndex then return ← printIndexW O req
+    if args.printClauses then return ← printClausesW O req
   -- asymmetric and disjoint properties: the hint is checked against the
   -- strengthening `edgeOff O`, whose certified rows are rows of `O`
   -- (`model_of_edgeOff`, `holds_of_models`, `hintRowAnsE_sound`)
@@ -1968,7 +2132,7 @@ def main (args : List String) : IO UInt32 := do
     match a.path with
     | some path =>
       if (a.hint.isSome || a.query.isSome || a.printIndex || a.checkOnly || a.row.isSome ||
-          a.batch.isSome || a.rowFile.isSome || a.explain) &&
+          a.batch.isSome || a.rowFile.isSome || a.explain || a.witness.isSome || a.witnessRoute) &&
           !((a.procedure == .sriqKB && a.dataRoute.isNone) || a.dataRoute == some "sriqd-kb" ||
             a.dataRoute == some "shoiq-c2a" || a.dataRoute == some "sroiq-c2a" ||
             a.dataRoute == some "sroiq-hint") then
