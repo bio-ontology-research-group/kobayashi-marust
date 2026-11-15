@@ -48,6 +48,15 @@
   the release before the stopgap (15063 agrees with HermiT). The bridge's
   saturation-coupling gate on inputs with a consumed value singleton
   stays; the fixtures `e19-*` are now also right with it turned off.
+- Fixed (wrong answer, found by the E19 differential): `{Functional(k),
+  {c} ⊑ ¬C, C ≡ =1 k.xsd:integer, k(c,2)}` was reported consistent (the
+  ground-rule data source and the native bridge). The bridge encoded
+  `{c} ⊑ ¬C` as an inclusion absorbed onto the trigger `C` and then made
+  `C` a lazily unfolded definition (`C → D`, `¬C → ¬D`) because `D` is not
+  fully triggerable; a node in `D` never receives `C`, so the inclusion
+  never fired. A name in a trigger position of an absorbed inclusion is no
+  longer a lazy definition unless its definition is fully triggerable; its
+  equivalence becomes the two inclusions.
 - The chain-consumer encoding emits fewer clauses: consumers with an empty
   seed are skipped when the last (first) letters already carry an equal
   plain consumer, letters of roles that nothing creates edges for are

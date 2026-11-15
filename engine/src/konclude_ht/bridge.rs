@@ -6626,6 +6626,89 @@ fn bridge_tinput_with_trigger_absorption(
                 forced_subclass_names.extend(cyclic);
             }
         }
+        // Names in a trigger position of an absorbed inclusion: positive in
+        // the left side or negative in the right side of `L ⊑ R` (through
+        // conjunctions, disjunctions and the fillers of restrictions), and
+        // every name of an equivalence or disjointness that is encoded as two
+        // inclusions. Such an inclusion fires only when the name is in a
+        // label. A CCEQ host `A ≡ D` whose definition is not fully
+        // triggerable is unfolded lazily (`A -> D`, `not A -> not D`): a node
+        // in `D` never receives `A`, so an inclusion triggered by `A` is
+        // missed (`{c} ⊑ ¬C`, `C ≡ =1 k.integer`, `k(c, 2)` came out
+        // consistent). Such a name is not made a lazy CCEQ host; its
+        // equivalence is encoded as the two inclusions instead.
+        let trigger_names: crate::fxhash::FxHashSet<&str> = {
+            fn walk<'a>(concept: &'a SourceConcept, positive: bool, out: &mut crate::fxhash::FxHashSet<&'a str>) {
+                match concept {
+                    SourceConcept::Name(name) => {
+                        if positive {
+                            out.insert(name.as_str());
+                        }
+                    }
+                    SourceConcept::Not(operand) => walk(operand, !positive, out),
+                    SourceConcept::And(operands) | SourceConcept::Or(operands) => {
+                        for operand in operands {
+                            walk(operand, positive, out);
+                        }
+                    }
+                    SourceConcept::Exists(_, filler)
+                    | SourceConcept::Forall(_, filler)
+                    | SourceConcept::AtLeast(_, _, filler) => walk(filler, positive, out),
+                    // `≤ n r.C` holds when few successors carry C: C occurs
+                    // negatively; count both polarities to stay on the safe side.
+                    SourceConcept::AtMost(_, _, filler) => {
+                        walk(filler, positive, out);
+                        walk(filler, !positive, out);
+                    }
+                    _ => {}
+                }
+            }
+            let mut out = crate::fxhash::FxHashSet::default();
+            for axiom in &tin.source_axioms {
+                match axiom.kind {
+                    crate::json_io::SourceAxiomKind::SubClass => {
+                        walk(&axiom.left, true, &mut out);
+                        walk(&axiom.right, false, &mut out);
+                    }
+                    crate::json_io::SourceAxiomKind::Disjoint => {
+                        walk(&axiom.left, true, &mut out);
+                        walk(&axiom.right, true, &mut out);
+                    }
+                    crate::json_io::SourceAxiomKind::Equivalent => {}
+                }
+            }
+            // An equivalence without a lazy host is encoded as two
+            // inclusions, so every name in it is in a trigger position. A
+            // host that is itself a trigger name may lose its definition
+            // (above), so iterate to a fixpoint.
+            loop {
+                let before = out.len();
+                for axiom in &tin.source_axioms {
+                    if axiom.kind != crate::json_io::SourceAxiomKind::Equivalent {
+                        continue;
+                    }
+                    let host = [&axiom.left, &axiom.right].into_iter().find_map(|side| match side {
+                        SourceConcept::Name(name)
+                            if !forced_subclass_names.contains(name.as_str())
+                                && equivalence_name_counts.get(name.as_str()) == Some(&1) =>
+                        {
+                            Some(name.as_str())
+                        }
+                        _ => None,
+                    });
+                    if host.is_none_or(|name| out.contains(name)) {
+                        for side in [&axiom.left, &axiom.right] {
+                            walk(side, true, &mut out);
+                            walk(side, false, &mut out);
+                        }
+                    }
+                }
+                if out.len() == before {
+                    break;
+                }
+            }
+            out
+        };
         bridge_phase!("source-prescan");
         macro_rules! encode {
             ($left:expr, $right:expr $(,)?) => {{
@@ -6703,6 +6786,17 @@ fn bridge_tinput_with_trigger_absorption(
                         ) else {
                             return false;
                         };
+                        if trigger_names.contains(name)
+                            && full_absorption_trigger(
+                                &mut b,
+                                built,
+                                &role_inverses,
+                                &mut trigger_caches,
+                            )
+                            .is_none()
+                        {
+                            return false;
+                        }
                         equivalent_definition_names.push(name.to_string());
                         // Port of the absorber's equivalence pre-pass. A fully
                         // triggerable definition is changed CCEQ -> CCSUB and
