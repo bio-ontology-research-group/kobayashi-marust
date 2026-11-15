@@ -24,7 +24,8 @@ def WF (pat : String → String → Prop) (X : Ontology) (Q : ∀ {Dom : Type}, 
   ∃ (Dom : Type) (_ : Nonempty Dom) (I : Interp (owl2MapP pat) Dom) (f : Fin W.k → Dom),
     OWL.Model X I ∧ Q I ∧ Function.Injective f ∧
     (∀ s x, (s, x) ∈ W.cls → ∀ w, I.cls s (f w) ↔ x ∈ W.ty w) ∧
-    (∀ a x, (a, x) ∈ W.inds → ∀ w, f w = I.ind (.named a) ↔ x ∈ W.ty w)
+    (∀ a x, (a, x) ∈ W.inds → ∀ w, f w = I.ind (.named a) ↔ x ∈ W.ty w) ∧
+    (∀ r R, (r, R) ∈ W.props → ∀ w v, w ≠ v → (I.prop r (f w) (f v) ↔ R ∈ W.lab w v))
 
 /-- The Self route with the pairs `P` (`P = []`: the Self route; otherwise
 the route with `ObjectHasSelf` on the rewritten ontology). -/
@@ -57,7 +58,10 @@ def wTabSCore (X : Ontology) (P : List (IRI × ObjProp)) (req : List IRI) (hint 
               some { N := _, k := h.k, ty := h.tyF
                      cls := req.filterMap fun s => (ixOf T arr mp s).map fun x => (s, emb x)
                      inds := (roleOff (selfOff X)).individualNames.zipIdx.filterMap fun p =>
-                       (ixOf T arr mp (nomName base p.2)).map fun x => (p.1, emb x) }
+                       (ixOf T arr mp (nomName base p.2)).map fun x => (p.1, emb x)
+                     M := T.obj.roleCount, lab := h.toN.lab
+                     props := propsOf T fun R =>
+                       SROIQ.Proc.selfSimpleB (objC T L E) [.selfL R []] }
             else none
         else none
       | _, _, _ => none
@@ -99,14 +103,14 @@ theorem wTabSCore_facts (pat : String → String → Prop) {X : Ontology} {P : L
         have hA1 : SRIQ.IsALCHIQ (SRIQD.objPart (SRIQN.dbase (chC T (nomNames (roleOff (selfOff X)) (req ++ pairNames P)) E))) := by
           rw [SROIQ.Proc.dbase_encChainDN, SROIQ.Proc.objPart_encChainQD]
           exact SROIQ.Proc.encChain_isALCHIQ _
-        obtain ⟨Dom, V, hD, atom, hΘ, J, f, hJ, hn, hL, hinj, hty⟩ := SRIQN.hintPartsNL_model
+        obtain ⟨Dom, V, hD, atom, hΘ, J, f, hJ, hn, hL, hinj, hty, hlab⟩ := SRIQN.hintPartsNL_model
           (cellSpec _) (le_refl _) ContextCalculus.SRIQD.splitCell_ok.1
           ContextCalculus.SRIQD.splitCell_ok.2 (SRIQN.isALCHIQ_encSelfD hA1) (le_refl _)
           (SRIQN.HF.hintPartsNLP_imp _ _ _ _ _ h hp)
         rw [← owlTheory_eq pat h6] at hΘ
-        obtain ⟨J2, hJ2, hn2, hs2, hc2⟩ := SRIQN.encSelf_core (SROIQ.Proc.lamOK_of_lamOKB h3) hA1
+        obtain ⟨J2, hJ2, hn2, hs2, hc2, hr2⟩ := SRIQN.encSelf_core (SROIQ.Proc.lamOK_of_lamOKB h3) hA1
           hJ hn hL
-        obtain ⟨K, hK, hKn, hKs, hKc⟩ := SROIQ.Proc.chainSelf_core (SROIQ.Proc.condC_of_condB h1)
+        obtain ⟨K, hK, hKn, hKs, hKc, hKr⟩ := SROIQ.Proc.chainSelf_core (SROIQ.Proc.condC_of_condB h1)
           (selfSimple_of h2) hJ2 hn2 hs2
         rw [dbase_dosnC, models_append_obj] at hK
         rw [dnoms_dosnC] at hKn
@@ -118,7 +122,8 @@ theorem wTabSCore_facts (pat : String → String → Prop) {X : Ontology} {P : L
           ⟨(model_roleOff hX' I).2 ⟨hI, (sat_roleCls hC hE).1 hK.2⟩,
             (sat_selfCls hC hS).1 fun sc h => hKs sc (List.mem_append_left _ h)⟩
         have hPH : PairsHold P I := (sat_pairCls hC hCC hP).1 fun sc h => hKs sc (List.mem_append_right _ h)
-        refine ⟨Dom, hD, I, f, hM, hPH, hinj, fun s x hs w => ?_, fun a x ha w => ?_⟩
+        refine ⟨Dom, hD, I, f, hM, hPH, hinj, fun s x hs w => ?_, fun a x ha w => ?_,
+          fun r R hr w v hwv => ?_⟩
         · obtain ⟨s', hs', hsx⟩ := List.mem_filterMap.1 hs
           obtain ⟨y, hy, hyx⟩ := Option.map_eq_some_iff.1 hsx
           simp only [Prod.mk.injEq] at hyx
@@ -136,6 +141,12 @@ theorem wTabSCore_facts (pat : String → String → Prop) {X : Ontology} {P : L
           have := hind _ hmem y.val hi (hnm.trans hnmOf.symm) (f w)
           rw [← hyv] at this
           exact this.symm.trans ((hKc _ _).trans ((hc2 _ _).trans (hty _ w)))
+        · obtain ⟨hb, hs, k, hk, hR⟩ := mem_propsOf hr
+          have hsim : SROIQ.SimpleC (ContextCalculus.SRIQD.objPart (dbase (dosnC T
+              (nomNames (roleOff (selfOff X)) (req ++ pairNames P)) E))) R :=
+            selfSimple_of (SC := [.selfL R []]) hs R [] List.mem_cons_self
+          exact ((hC r hb k hk R hR (f w) (f v)).symm.trans (hKr R _ _ hsim)).trans
+            ((hr2 R _ _ fun he => hwv (hinj he)).trans (hlab R w v))
     next => cases hw
 
 end ContextCalculus.OWLFrontend

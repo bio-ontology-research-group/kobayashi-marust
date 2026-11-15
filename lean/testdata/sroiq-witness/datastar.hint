@@ -1,0 +1,16 @@
+# datastar.ofn: a with twelve string values, one per data property (each value is in all
+# twelve atoms, which are xsd:string); the data star of a is given
+blocks 1
+ty 0 0 1 26 2 4 6 8 10 12 14 16 18 20 22 24
+dstar 0 0 / 0 1 2 3 4 5 6 7 8 9 10 11
+dstar 0 1 / 0 1 2 3 4 5 6 7 8 9 10 11
+dstar 0 2 / 0 1 2 3 4 5 6 7 8 9 10 11
+dstar 0 3 / 0 1 2 3 4 5 6 7 8 9 10 11
+dstar 0 4 / 0 1 2 3 4 5 6 7 8 9 10 11
+dstar 0 5 / 0 1 2 3 4 5 6 7 8 9 10 11
+dstar 0 6 / 0 1 2 3 4 5 6 7 8 9 10 11
+dstar 0 7 / 0 1 2 3 4 5 6 7 8 9 10 11
+dstar 0 8 / 0 1 2 3 4 5 6 7 8 9 10 11
+dstar 0 9 / 0 1 2 3 4 5 6 7 8 9 10 11
+dstar 0 10 / 0 1 2 3 4 5 6 7 8 9 10 11
+dstar 0 11 / 0 1 2 3 4 5 6 7 8 9 10 11

@@ -1903,9 +1903,11 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingRe
           let inside := insideOf t
           let nout := nreq - inside.length
           nNon := nNon + nout
+          -- the requested classes A shares the witness with: A ⊓ B satisfiable
+          let satW := jsonList ((inside.filter fun B => B != A && B != thingI))
           if nout * 2 ≤ nreq then
             out.putStrLn ("{\"class\":" ++ (Json.str A).compress ++ ",\"witness\":" ++ toString w ++
-              ",\"nonsub\":" ++ jsonList (outsideOf M) ++ "}")
+              ",\"nonsub\":" ++ jsonList (outsideOf M) ++ ",\"sat_with\":" ++ satW ++ "}")
           else
             out.putStrLn ("{\"class\":" ++ (Json.str A).compress ++ ",\"witness\":" ++ toString w ++
               ",\"nonsub_except\":" ++ jsonList inside ++ "}")
@@ -1939,6 +1941,28 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingRe
           ",\"nontype_except\":" ++ jsonList inside ++ "}")
   let gs := groups.toList.map (·.2.reverse)
   out.putStrLn ("{\"nonsame_groups\":[" ++ ",".intercalate (gs.map jsonList) ++ "]}")
+  -- `hintWitnessMore_sound`: individuals in one group are not entailed
+  -- different; for a listed simple property r and individuals a, b on
+  -- different elements, r(a, b) is not entailed unless r is in the label
+  -- between their elements (the labels between individual elements follow)
+  let rtStr : SRI.RoleT (Fin W.M) → String := fun R => match R with
+    | .pos r => s!"+{r.val}"
+    | .inv r => s!"-{r.val}"
+  let propStr : OWL.ObjProp → String := fun r => match r with
+    | .named i => i
+    | .inv i => "^" ++ i
+    | _ => ""
+  out.putStrLn ("{\"simple_properties\":[" ++ ",".intercalate (W.props.map fun (r, R) =>
+    "[" ++ (Json.str (propStr r)).compress ++ "," ++ (Json.str (rtStr R)).compress ++ "]") ++ "]}")
+  let elems := (groups.toList.map (·.1)).filterMap fun i => if h : i < W.k then some (⟨i, h⟩ : Fin W.k) else none
+  let edges := elems.flatMap fun w => elems.filterMap fun v =>
+    if w.val ≠ v.val then
+      let L := W.lab w v
+      if L = ∅ then none else
+        some ("[" ++ toString w.val ++ "," ++ toString v.val ++ "," ++
+          jsonList ((W.props.filter fun p => decide (p.2 ∈ L)).map fun p => propStr p.1) ++ "]")
+    else none
+  out.putStrLn ("{\"individual_edges\":[" ++ ",".intercalate edges ++ "]}")
   out.putStrLn ("{\"counts\":{\"nonsub\":" ++ toString nNon ++ ",\"nontype\":" ++ toString nType ++
     ",\"table_errors\":" ++ toString nBad ++ ",\"element_groups\":" ++ toString gs.length ++ "}}")
   out.flush

@@ -1,0 +1,7 @@
+# roles.ofn on the witness route: a, b, c on cores 0, 1, 2; r and t from a to b, t from b to c
+blocks 3
+ty 0 0 1 4 6 7
+ty 1 2 4 8
+ty 2 3 4
+lab 0 1 +0 +1
+lab 1 2 +1

@@ -55,9 +55,15 @@ theorem chainDown {n m p q : Nat} {Dom V : Type}
     (hn : ∀ a ∈ dnoms (SROIQ.Proc.encChainDN X), NomAt J.toInterp a) :
     ∃ J' : ContextCalculus.SRIQD.DInterp Dom V (Fin n) (Fin m) (Fin p),
       ContextCalculus.SRIQD.models atom J' (dbase X) ∧ (∀ a ∈ dnoms X, NomAt J'.toInterp a) ∧
-      ∀ a y, J'.c a y ↔ J.c (Fin.castAdd _ a) y := by
+      (∀ a y, J'.c a y ↔ J.c (Fin.castAdd _ a) y) ∧
+      ∀ R x y, SROIQ.SimpleC (ContextCalculus.SRIQD.objPart (dbase X)) R →
+        (J'.rt R x y ↔ J.rt R x y) := by
   rw [SROIQ.Proc.dbase_encChainDN] at hJ
-  refine ⟨_, SROIQ.Proc.models_encChainQD_down hC hJ, fun a ha => ?_, fun a y => Iff.rfl⟩
+  have hJo : SRIQ.models J.toInterp (SROIQ.Proc.encChain (ContextCalculus.SRIQD.objPart (dbase X))) := by
+    have := (ContextCalculus.SRIQD.models_iff.1 hJ).1
+    rwa [SROIQ.Proc.objPart_encChainQD] at this
+  refine ⟨_, SROIQ.Proc.models_encChainQD_down hC hJ, fun a ha => ?_, fun a y => Iff.rfl,
+    fun R x y hs => SROIQ.Proc.downC_rt_simple hJo hs x y⟩
   exact hn (Fin.castAdd _ a) (by rw [SROIQ.Proc.dnoms_encChainDN]; exact List.mem_map_of_mem ha)
 
 /-! ## The translation down, with classes and individuals -/
@@ -119,6 +125,11 @@ structure WTab where
   ty : Fin k → Finset (Fin N)
   cls : List (IRI × Fin N)
   inds : List (IRI × Fin N)
+  /-- the role terms and the labels of the core (stage H2, role rows) -/
+  M : Nat := 0
+  lab : Fin k → Fin k → Finset (SRI.RoleT (Fin M)) := fun _ _ => ∅
+  /-- named properties with their role term, each a simple role of the normal form -/
+  props : List (ObjProp × SRI.RoleT (Fin M)) := []
 
 /-- The first index of each name (a table for the lookups below; every
 entry is validated against `T.obj.named`). -/
@@ -145,6 +156,28 @@ theorem ixOf_spec {T : SRIQDKBTranslation} {arr : Array IRI} {mp : Std.HashMap I
   · split_ifs at h with h1 h2
     cases h
     exact ⟨h1, h2, rfl⟩
+
+/-- The named properties of a translation whose role term is simple in the
+normal form `B` (checked by `simpleB`). -/
+def propsOf (T : SRIQDKBTranslation) (simpleB : SRI.RoleT (Fin T.obj.roleCount) → Bool) :
+    List (ObjProp × SRI.RoleT (Fin T.obj.roleCount)) :=
+  T.obj.rnames.filterMap fun e =>
+    match SRIT.finRT T.obj.roleCount (SRIT.mkRT (.named e.1) e.2) with
+    | some R => if simpleB R then some (.named e.1, R) else none
+    | none => none
+
+theorem mem_propsOf {T : SRIQDKBTranslation} {simpleB : SRI.RoleT (Fin T.obj.roleCount) → Bool}
+    {r : ObjProp} {R : SRI.RoleT (Fin T.obj.roleCount)} (h : (r, R) ∈ propsOf T simpleB) :
+    r.isBasic = true ∧ simpleB R = true ∧ ∃ k, (EL.propIRI r, k) ∈ T.obj.rnames ∧
+      SRIT.finRT T.obj.roleCount (SRIT.mkRT r k) = some R := by
+  obtain ⟨e, he, hf⟩ := List.mem_filterMap.1 h
+  split at hf
+  next R' hR' =>
+    split_ifs at hf with hs
+    simp only [Option.some.injEq, Prod.mk.injEq] at hf
+    obtain ⟨rfl, rfl⟩ := hf
+    exact ⟨rfl, hs, e.2, he, hR'⟩
+  next => cases hf
 
 /-- The chain route with the requested classes `req`, on an ontology
 without datatype definitions, keys or anonymous individuals: `some W`
@@ -177,7 +210,10 @@ def wTabCore (X : Ontology) (req : List IRI) (hint : RawHint) : Option WTab :=
               some { N := _, k := h.k, ty := h.tyF
                      cls := req.filterMap fun s => (ixOf T arr mp s).map fun x => (s, emb x)
                      inds := (roleOff X).individualNames.zipIdx.filterMap fun p =>
-                       (ixOf T arr mp (nomName base p.2)).map fun x => (p.1, emb x) }
+                       (ixOf T arr mp (nomName base p.2)).map fun x => (p.1, emb x)
+                     M := T.obj.roleCount, lab := h.toN.lab
+                     props := propsOf T fun R =>
+                       SROIQ.Proc.selfSimpleB (objC T L E) [.selfL R []] }
             else none
         else none
   else none
@@ -187,7 +223,8 @@ structure WFacts (pat : String → String → Prop) (X : Ontology) (W : WTab) : 
   model : ∃ (Dom : Type) (_ : Nonempty Dom) (I : Interp (owl2MapP pat) Dom) (f : Fin W.k → Dom),
     OWL.Model X I ∧ Function.Injective f ∧
     (∀ s x, (s, x) ∈ W.cls → ∀ w, I.cls s (f w) ↔ x ∈ W.ty w) ∧
-    (∀ a x, (a, x) ∈ W.inds → a ∈ (roleOff X).individualNames ∧ ∀ w, f w = I.ind (.named a) ↔ x ∈ W.ty w)
+    (∀ a x, (a, x) ∈ W.inds → a ∈ (roleOff X).individualNames ∧ ∀ w, f w = I.ind (.named a) ↔ x ∈ W.ty w) ∧
+    (∀ r R, (r, R) ∈ W.props → ∀ w v, (I.prop r (f w) (f v) ↔ R ∈ W.lab w v))
 
 theorem nmOf_eq {X : Ontology} {req : List IRI} {a : IRI} {j : Nat}
     (h : (a, j) ∈ X.individualNames.zipIdx) :
@@ -226,17 +263,21 @@ theorem wTabCore_facts (pat : String → String → Prop) {X : Ontology} {req : 
         subst hw
         simp only [sroiqHOK, Bool.and_eq_true] at hok
         obtain ⟨⟨-, h1⟩, h3⟩ := hok
-        obtain ⟨Dom, V, hD, atom, hΘ, J, f, hJ, hn, hinj, hty⟩ := SRIQN.hintPartsP_model
+        obtain ⟨Dom, V, hD, atom, hΘ, J, f, hJ, hn, hinj, hty, hlab⟩ := SRIQN.hintPartsP_model
           (cellSpec _) (le_refl _) ContextCalculus.SRIQD.splitCell_ok.1
           ContextCalculus.SRIQD.splitCell_ok.2 (SROIQ.Proc.isSHIQD_encChainDN _) (le_refl _) hp
+        have hAs : SRI.IsALCHI (SRIQ.sriPart (ContextCalculus.SRIQD.objPart (dbase (encC T (nomNames (roleOff X) req) E)))) := by
+          refine SRIQ.isALCHI_sriPart ?_
+          rw [SROIQ.Proc.dbase_encChainDN, SROIQ.Proc.objPart_encChainQD]
+          exact SROIQ.Proc.encChain_isALCHIQ _
         rw [← owlTheory_eq pat h3] at hΘ
-        obtain ⟨K, hK, hKn, hKc⟩ := chainDown (SROIQ.Proc.condC_of_condB h1) hJ hn
+        obtain ⟨K, hK, hKn, hKc, hKr⟩ := chainDown (SROIQ.Proc.condC_of_condB h1) hJ hn
         rw [dbase_dosnC, models_append_obj] at hK
         rw [dnoms_dosnC] at hKn
         haveI := hD
         obtain ⟨I, hI, hC, hcl, hind⟩ := downW pat hT hΘ K (by rw [dbase_dosn]; exact hK.1) hKn
         have hM : OWL.Model X I := (model_roleOff hX I).2 ⟨hI, (sat_roleCls hC hE).1 hK.2⟩
-        refine ⟨⟨Dom, hD, I, f, hM, hinj, fun s x hs w => ?_, fun a x ha => ?_⟩⟩
+        refine ⟨⟨Dom, hD, I, f, hM, hinj, fun s x hs w => ?_, fun a x ha => ?_, fun r R hr w v => ?_⟩⟩
         · obtain ⟨s', hs', hsx⟩ := List.mem_filterMap.1 hs
           obtain ⟨y, hy, hyx⟩ := Option.map_eq_some_iff.1 hsx
           simp only [Prod.mk.injEq] at hyx
@@ -255,6 +296,10 @@ theorem wTabCore_facts (pat : String → String → Prop) {X : Ontology} {req : 
           refine ⟨hmem, fun w => ?_⟩
           rw [← hty, ← hKc, hyv]
           exact (hind _ hmem y.val hi (hnm.trans hnmOf.symm) (f w)).symm
+        · obtain ⟨hb, hs, k, hk, hR⟩ := mem_propsOf hr
+          have hsim : SROIQ.SimpleC (ContextCalculus.SRIQD.objPart (dbase (dosnC T (nomNames (roleOff X) req) E))) R :=
+            selfSimple_of (SC := [.selfL R []]) hs R [] List.mem_cons_self
+          exact ((hC r hb k hk R hR (f w) (f v)).symm.trans (hKr R _ _ hsim)).trans (hlab hAs R w v)
 
 /-! ## The prepared ontology -/
 
@@ -316,7 +361,7 @@ theorem wTab_model (pat : String → String → Prop) {O : Ontology} {req : List
   simp only [Bool.and_eq_true] at hs
   obtain ⟨⟨hk, -⟩, -⟩ := hs
   obtain ⟨W0, hW0, rfl⟩ := Option.map_eq_some_iff.1 hw
-  obtain ⟨Dom, hD, J, f, hJ, hinj, hcls, hind⟩ := (wTabCore_facts pat hW0).model
+  obtain ⟨Dom, hD, J, f, hJ, hinj, hcls, hind, -⟩ := (wTabCore_facts pat hW0).model
   haveI := hD
   set g := anonG [] (wPre O)
   have hM : OWL.Model O (J.indMap g) := model_of_prep hk hJ
@@ -352,7 +397,7 @@ theorem hintWitness_sound (pat : String → String → Prop) {O : Ontology} {req
   simp only [Bool.and_eq_true] at hs
   obtain ⟨⟨hk, -⟩, -⟩ := hs
   obtain ⟨W0, hW0, rfl⟩ := Option.map_eq_some_iff.1 hw
-  obtain ⟨Dom, hD, J, f, hJ, hinj, hcls, hind⟩ := (wTabCore_facts pat hW0).model
+  obtain ⟨Dom, hD, J, f, hJ, hinj, hcls, hind, -⟩ := (wTabCore_facts pat hW0).model
   haveI := hD
   set g := anonG [] (wPre O)
   have hM : OWL.Model O (J.indMap g) := model_of_prep hk hJ
