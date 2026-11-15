@@ -418,4 +418,5 @@ import ContextCalculus.SROIQ.CoreReach
 import ContextCalculus.OWLFrontend.HintRoles
 import ContextCalculus.OWLFrontend.HintEval
 import ContextCalculus.OWLFrontend.HintRows
+import ContextCalculus.OWLFrontend.FreshDef
 import ContextCalculus.OWLFrontend.SHOIQFast
