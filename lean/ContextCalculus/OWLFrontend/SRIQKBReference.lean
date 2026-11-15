@@ -134,6 +134,10 @@ structure RawHint where
   H2): `(cell, group, count)` lines; `partNamed` when there is one. -/
   part : List (Nat × Nat × Nat) := []
   partNamed : Bool := false
+  /-- Data stars given per core element (stage H2): `(element, data
+  properties, data atoms)` entries, and the elements whose star is given. -/
+  dstar : List (Nat × List Nat × List Nat) := []
+  dgiven : List Nat := []
 deriving Repr, Inhabited
 
 namespace RawHint
@@ -255,12 +259,23 @@ def parseLine (h : RawHint) (ws : List String) : Except String RawHint :=
     let xs ← parseNats [i, g, k]
     .ok { h with part := (xs.getD 0 0, xs.getD 1 0, xs.getD 2 0) :: h.part, partNamed := true }
   | ["part"] => .ok { h with partNamed := true }
+  | ["dstar", b] => do
+    let b' ← parseNats [b]
+    .ok { h with dgiven := b'.headD 0 :: h.dgiven }
+  | "dstar" :: b :: rest => do
+    let b' ← parseNats [b]
+    match rest.splitOn "/" with
+    | [ps, as] =>
+      let ps' ← parseNats ps
+      let as' ← parseNats as
+      .ok { h with dstar := (b'.headD 0, ps', as') :: h.dstar, dgiven := b'.headD 0 :: h.dgiven }
+    | _ => .error "dstar: expected `dstar B P ... / A ...`"
   | w :: _ => .error s!"unknown directive: {w}"
 
 /-- The lists of `parseLine` in file order. -/
 def inOrder (h : RawHint) : RawHint :=
   { h with ty := h.ty.reverse, lab := h.lab.reverse, kids := h.kids.reverse,
-           part := h.part.reverse, recs := h.recs.reverse }
+           part := h.part.reverse, recs := h.recs.reverse, dstar := h.dstar.reverse }
 
 /-- Parse the text format. -/
 def parseHint (text : String) : Except String RawHint := do

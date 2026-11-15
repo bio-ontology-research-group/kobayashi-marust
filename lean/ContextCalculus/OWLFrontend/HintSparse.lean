@@ -106,7 +106,8 @@ def RawHint.toHintS (h : RawHint) (n m : Nat) : Option (HintS n m) :=
   with
   | some ty, some lab, some kids, some recs =>
     some { k := h.nb, ty := tyArr h.nb ty, lab := labIn h.nb lab, kids := kidsIn h.nb kids,
-           recs := recs, part := h.part, partNamed := h.partNamed }
+           recs := recs, part := h.part, partNamed := h.partNamed, dstar := h.dstar,
+           dgiven := h.dgiven }
   | _, _, _, _ => none
 
 theorem half_labIn {m nb : Nat} (lab : List (Nat × Nat × Finset (RoleT (Fin m)))) (b c : Fin nb) :
