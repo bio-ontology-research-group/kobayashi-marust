@@ -278,21 +278,18 @@ impl Builder {
     /// Parse a JClause to an OntologyClause; None if unsupported / non-normal.
     fn clause(&mut self, c: &JClause) -> Option<OntologyClause> {
         let mut varmap: HashMap<String, Term> = HashMap::new();
-        // A ground negative role assertion is equivalently
-        // forall x, R(x,b) -> x != a. The central-variable guard puts the
-        // constraint in the normal form consumed by nominal Hyper without
-        // discarding it. Keep the source JSON intact for typed certificates.
+        // A ground negative role assertion `R(a,b) → ⊥` has no normal form
+        // here: the former rewrite `R(x,b) → x ≉ a` was refuted by any
+        // `R(a,c)`, because Hyper binds the non-central individual `b` like a
+        // variable (`{r(a,b), ¬r(a,c)}` came out inconsistent). The frontend
+        // emits the exact guarded form `{a}(x) ∧ R(x,y) ∧ {b}(y) → ⊥`
+        // (`preprocess::guarded_negative_role_assertions`); any other producer
+        // of the ground form gets it dropped and counted.
         if self.nominals && c.head.is_empty() {
-            if let [JAtom::Role { role, source: JTerm::Ind { name: source },
-                target: JTerm::Ind { name: target } }] = c.body.as_slice()
+            if let [JAtom::Role { source: JTerm::Ind { .. }, target: JTerm::Ind { .. }, .. }] =
+                c.body.as_slice()
             {
-                let source = ind_term(self.individual(source));
-                let target = ind_term(self.individual(target));
-                let iri = self.sig.role(role);
-                return Some(OntologyClause::new(
-                    vec![Pred::Role { iri, s: X, t: target }],
-                    vec![Lit::ineq(X, source)],
-                ));
+                return None;
             }
         }
         if self.nominals {

@@ -28,6 +28,8 @@ use kobayashi_marust::orchestrate::{self, Config, OrchestrateError};
 fn main() {
     #[cfg(feature = "sample-profiler")]
     kobayashi_marust::sample_prof::install();
+    // Before any route bundle rewrites KM_THREADS (`routing::apply_environment`).
+    kobayashi_marust::routing::capture_caller_thread_budget();
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
         Some("classify") => classify_cmd(&args[2..]),

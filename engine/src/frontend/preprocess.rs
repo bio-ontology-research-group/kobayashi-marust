@@ -125,6 +125,10 @@ pub struct ChainInfo {
     /// Chain-affected consumers that [`chain_consumer_automaton_clauses`]
     /// could not encode (set by `augment`).
     pub unencoded_chain_consumers: u64,
+    /// The clause stream carries ground role assertions (nominal mode with an
+    /// ABox): their edges are not created by existentials, so the existential
+    /// recognitions of transitive roles do not stand in for `∀` propagation.
+    pub ground_edges: bool,
 }
 
 /// The `R(x,y) ∧ S(y,z) → T(x,z)` shape: exactly two body atoms, both roles,
@@ -210,7 +214,7 @@ fn detect_role_chains(tbox: &[DLClause]) -> ChainInfo {
     sub_same.dedup();
     sub_inv.sort();
     sub_inv.dedup();
-    ChainInfo { trans, chains, sub_same, sub_inv, unencoded_chain_consumers: 0 }
+    ChainInfo { trans, chains, sub_same, sub_inv, unencoded_chain_consumers: 0, ground_edges: false }
 }
 
 fn role_parts(a: &Atom) -> (&str, &Term, &Term) {
@@ -975,6 +979,8 @@ pub enum ChainConsumerPass {
     Tbox,
     /// The `domain_range_clauses` added after `augment` (prefix `d`).
     DomainRange,
+    /// Ground negative role assertions in guarded form (prefix `n`).
+    Abox,
 }
 
 /// Complete role-automaton encoding for every consumer of a role whose
@@ -1039,7 +1045,7 @@ pub fn chain_consumer_automaton_clauses(
     info: &ChainInfo,
     pass: ChainConsumerPass,
 ) -> (Vec<DLClause>, u64) {
-    if info.chains.is_empty() {
+    if info.chains.is_empty() && !(info.ground_edges && !info.trans.is_empty()) {
         return (Vec::new(), 0);
     }
     let trans: HashSet<&str> = info.trans.iter().map(String::as_str).collect();
@@ -1092,7 +1098,17 @@ pub fn chain_consumer_automaton_clauses(
         out
     }
     // Roles whose language contains a chain word.
-    let affected = close_up(chains_into.keys().copied().collect(), &same_up, &inv_up);
+    // Over ground role assertions a transitive role's closure is not created
+    // by existentials either, so its consumers need the automaton as well.
+    let affected = close_up(
+        chains_into
+            .keys()
+            .copied()
+            .chain(trans.iter().copied().filter(|_| info.ground_edges))
+            .collect(),
+        &same_up,
+        &inv_up,
+    );
     if affected.is_empty() {
         return (Vec::new(), 0);
     }
@@ -1228,6 +1244,7 @@ pub fn chain_consumer_automaton_clauses(
     let tag = match pass {
         ChainConsumerPass::Tbox => "c",
         ChainConsumerPass::DomainRange => "d",
+        ChainConsumerPass::Abox => "n",
     };
     let x = var_x();
     let y = var_y();
@@ -1307,16 +1324,20 @@ pub fn chain_consumer_automaton_clauses(
             // language of the same-orientation unfolding, so they are
             // complete when that language equals `L(p)`.
             let one_level = chains_into.contains_key(p) && !existing_automaton(p);
+            // `transitivity_clauses` and `domain_consumer_chain_clauses`
+            // recognize `p⁺` for a transitive role without chains.
+            let transitive_only = trans.contains(p) && !chains_into.contains_key(p);
             let shape = match pass {
                 ChainConsumerPass::Tbox => {
                     *a == x
                         && !gamma_b.is_empty()
                         && !c.head.is_empty()
-                        && (one_level || existing_automaton(p))
+                        && (one_level || existing_automaton(p) || transitive_only)
                 }
                 ChainConsumerPass::DomainRange => {
-                    *a == x && gamma_b.is_empty() && !c.head.is_empty() && one_level
+                    *a == x && gamma_b.is_empty() && !c.head.is_empty() && (one_level || transitive_only)
                 }
+                ChainConsumerPass::Abox => false,
             };
             let covered = shape
                 && *same_language.entry(p).or_insert_with(|| {
@@ -1334,6 +1355,16 @@ pub fn chain_consumer_automaton_clauses(
             if covered {
                 continue;
             }
+        }
+        // A range-like consumer (empty seed) of `p⁺` holds at the target of
+        // the last `p` edge of every path: the original clause covers it.
+        if forward
+            && gamma_a.is_empty()
+            && delta_a.is_empty()
+            && *automaton
+                == MarkerAutomaton::new(2, &[(0, (p.to_string(), false), 1)], &[(1, 0)], true)
+        {
+            continue;
         }
         let seed_key = if forward { (gamma_a.clone(), delta_a.clone()) } else { (gamma_b.clone(), Vec::new()) };
         let next = families.len();
@@ -2104,7 +2135,9 @@ pub(super) fn augment_with_chains_retaining_role_axioms(
     // the clone this path removes on transitivity-heavy ontologies.
     // One chain/transitivity detection pass serves both derived families and
     // the returned `ChainInfo`; each used to rescan the whole clause set.
+    let nominal_mode = std::env::var_os("KM_NOMINALS").is_some();
     let mut chain_info = detect_role_chains(&tbox);
+    chain_info.ground_edges = nominal_mode && !abox.is_empty();
     let mut derived = transitivity_clauses_with(&tbox, &chain_info);
     derived.extend(chain_clauses_with(&tbox, &chain_info));
     derived.extend(regular_role_automaton_clauses(&tbox, &chain_info));
@@ -2112,6 +2145,18 @@ pub(super) fn augment_with_chains_retaining_role_axioms(
         chain_consumer_automaton_clauses(&tbox, &chain_info, ChainConsumerPass::Tbox);
     derived.extend(chain_consumers);
     chain_info.unencoded_chain_consumers = unencoded;
+    // Ground negative role assertions in the nominal clause stream.
+    let (abox_rest, negative_guards, negative_defining) = if nominal_mode {
+        guarded_negative_role_assertions(abox, hooks)
+    } else {
+        (Vec::new(), Vec::new(), Vec::new())
+    };
+    if !negative_guards.is_empty() {
+        let (guard_consumers, unencoded) =
+            chain_consumer_automaton_clauses(&negative_guards, &chain_info, ChainConsumerPass::Abox);
+        derived.extend(guard_consumers);
+        chain_info.unencoded_chain_consumers += unencoded;
+    }
     derived.extend(transitive_chain_compose_clauses(&tbox));
     derived.extend(role_automaton_reachability_clauses(&tbox));
     // Do not use `filter().collect()` here. `Vec`'s in-place collection may
@@ -2132,9 +2177,15 @@ pub(super) fn augment_with_chains_retaining_role_axioms(
             }),
     );
     base.extend(nominal_clauses(abox, hooks));
-    if std::env::var_os("KM_NOMINALS").is_some() {
-        base.extend(abox.iter().cloned());
+    if nominal_mode {
+        if negative_guards.is_empty() {
+            base.extend(abox.iter().cloned());
+        } else {
+            base.extend(abox_rest);
+        }
         base.extend(nominal_defining_clauses(hooks));
+        base.extend(negative_defining);
+        base.extend(negative_guards);
     }
     base.extend(derived);
     (base, chain_info)
@@ -2241,6 +2292,57 @@ pub fn domain_consumer_chain_clauses(info: &ChainInfo, domain_range: &[DLClause]
         }
     }
     extra
+}
+
+/// Rewrite each ground negative role assertion `R(a,b) → ⊥` of the nominal
+/// clause stream into the guarded clash clause
+/// `{a}(x) ∧ R(x,y) ∧ {b}(y) → ⊥` over the individuals' nominal proxies, the
+/// form the native bridge already uses (`cb_to_ht::install_nominal_abox`).
+///
+/// The CB worker read the ground form as `R(x,b) → x ≉ a` and its Hyper rule
+/// binds the non-central individual `b` like a variable, so `R(a,c)` together
+/// with `¬R(a,b)` was refuted: `{r(a,b), ¬r(a,c)}` was reported inconsistent.
+/// The guarded form has only variables in the body, applies to derived edges
+/// (sub-roles, inverses, chains, transitivity) like every other consumer, and
+/// is exact: each proxy is made the singleton by its defining clauses, which
+/// are returned for proxies that ordinary nominal preprocessing does not
+/// define. Returns the other ABox clauses, the guards, and those definitions.
+fn guarded_negative_role_assertions(
+    abox: &[DLClause],
+    hooks: &GroundHooks,
+) -> (Vec<DLClause>, Vec<DLClause>, Vec<DLClause>) {
+    let x = var_x();
+    let y = var_y();
+    let mut rest = Vec::new();
+    let mut guards = Vec::new();
+    let mut proxies: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+    for c in abox {
+        if let ([Atom::Role(role, Term::Ind(a), Term::Ind(b))], []) = (c.body.as_slice(), c.head.as_slice()) {
+            let pa = format!("__nom__{a}");
+            let pb = format!("__nom__{b}");
+            guards.push(clause(
+                [
+                    Atom::Concept(pa.clone(), x.clone()),
+                    Atom::Role(role.clone(), x.clone(), y.clone()),
+                    Atom::Concept(pb.clone(), y.clone()),
+                ],
+                [],
+            ));
+            for (proxy, individual) in [(pa, a), (pb, b)] {
+                if !hooks.nominal_to_individual.contains_key(&proxy) {
+                    proxies.insert(proxy, individual.clone());
+                }
+            }
+        } else {
+            rest.push(c.clone());
+        }
+    }
+    let mut defining = Vec::new();
+    for (proxy, individual) in proxies {
+        defining.push(clause([], [Atom::Concept(proxy.clone(), Term::Ind(individual.clone()))]));
+        defining.push(clause([Atom::Concept(proxy, x.clone())], [Atom::Eq(x.clone(), Term::Ind(individual))]));
+    }
+    (rest, guards, defining)
 }
 
 /// DL7/DL8 defining clauses that make each nominal proxy concept exact
@@ -2350,6 +2452,7 @@ mod tests {
             sub_same: vec![],
             sub_inv: vec![],
             unencoded_chain_consumers: 0,
+            ground_edges: false,
         };
         let dr = vec![clause(
             [Atom::Role("t".into(), var_x(), var_y())],
@@ -2383,6 +2486,7 @@ mod tests {
             sub_same: vec![],
             sub_inv: vec![],
             unencoded_chain_consumers: 0,
+            ground_edges: false,
         };
         let dr = vec![clause(
             [Atom::Role("t".into(), var_x(), var_y())],
@@ -2720,7 +2824,7 @@ mod chain_detection_tests {
                 }
             }
         }
-        ChainInfo { trans, chains, sub_same: vec![], sub_inv: vec![], unencoded_chain_consumers: 0 }
+        ChainInfo { trans, chains, sub_same: vec![], sub_inv: vec![], unencoded_chain_consumers: 0, ground_edges: false }
     }
 
     fn is_chain_axiom_reference(c: &DLClause) -> bool {

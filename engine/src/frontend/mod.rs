@@ -373,6 +373,13 @@ fn collect_nominal_abox(
         }
     }
 
+    // A repeated source axiom is one parsed axiom (`Ontology::add` keeps a
+    // set); count its repetitions as covered.
+    parsed_class += ontology.duplicate_abox_axioms("ClassAssertion");
+    parsed_role += ontology.duplicate_abox_axioms("ObjectPropertyAssertion");
+    parsed_negative_role += ontology.duplicate_abox_axioms("NegativeObjectPropertyAssertion");
+    parsed_same_pairs += ontology.duplicate_abox_axioms("SameIndividual");
+    parsed_different_pairs += ontology.duplicate_abox_axioms("DifferentIndividuals");
     let source_count = |kind: &str| source.axiom_types.get(kind).copied().unwrap_or(0);
     let source_object_role = source_count("ObjectPropertyAssertion");
     let source_negative_object_role = source_count("NegativeObjectPropertyAssertion");
