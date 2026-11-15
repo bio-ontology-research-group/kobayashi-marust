@@ -9,6 +9,10 @@ pub(super) fn automatic_candidate(path: &Path) -> Result<Option<&'static str>, O
 }
 
 fn plan(text: &str) -> Option<&'static str> {
+    // Every reduction below ends in the native bridge (E19 stopgap).
+    if shared_data_value_hazard(text) {
+        return None;
+    }
     // This is a cost bound, not semantic admission. The reducers below and
     // native bridge independently check complete source coverage.
     // User-input validation already profiled exactly this text in its shared
@@ -106,11 +110,16 @@ mod tests {
     #[test]
     fn dense_functional_data_abox_requires_bounded_complete_compilation() {
         let assertions = (0..513).map(|i|
-            format!("DataPropertyAssertion(:p :a{i} \"red\"^^xsd:string) "))
+            format!("DataPropertyAssertion(:p :a{i} \"red{i}\"^^xsd:string) "))
             .collect::<String>();
         let source = format!("Prefix(:=<urn:test:>) Ontology(Declaration(Class(:C)) \
             FunctionalDataProperty(:p) {assertions})");
         assert_eq!(plan(&source), Some("KM_GROUND_RULE_SOURCE"));
+        // E19 stopgap: a value shared by two individuals keeps the source off
+        // the bridge reductions.
+        let shared = source.replace("\"red1\"", "\"red0\"");
+        assert!(shared_data_value_hazard(&shared));
+        assert_eq!(plan(&shared), None);
         assert_eq!(plan(&source.replace("FunctionalDataProperty(:p)", "")), None);
         assert_eq!(plan(&source.replace("xsd:string", "<urn:unknown>")), None);
         assert_eq!(plan(&source.replace("Ontology(", "Ontology(Import(<urn:missing>)")), None);
@@ -221,4 +230,92 @@ fn tests_source() -> String {
     r#"Prefix(:=<urn:test:>) Ontology(Declaration(Class(:Author)) Declaration(DataProperty(:name))
         DataPropertyDomain(:name :Author) DataPropertyRange(:name xsd:string)
         DataPropertyAssertion(:name :document "first"))"#.to_owned()
+}
+
+/// E19 stopgap: the native bridge answers `{a} ⊓ {b}` satisfiable when a
+/// functional data property separates `a` from `b` and some data value is
+/// asserted for both individuals (under any properties), for example
+/// `g(a,0)`, `g(b,255)`, `h(a,255)` with `g` functional (HermiT and the
+/// nominal CB route: unsatisfiable). The bridge's data-value nodes appear to
+/// be shared across individuals and lose the clash on a nominal merge.
+///
+/// The exact syntactic condition: the source has a `FunctionalDataProperty`
+/// or a data cardinality restriction, and some literal (compared by lexical
+/// value, ignoring the datatype, numeric values by their integer reading,
+/// so every value-equal spelling also matches) is the value of ABox data
+/// assertions (`DataPropertyAssertion`, `NegativeDataPropertyAssertion`, or
+/// a `DataHasValue` in a `ClassAssertion`) about two different individuals.
+/// Such sources must not reach the native bridge with their data values;
+/// the exact nominal CB route answers them.
+pub(crate) fn shared_data_value_hazard(text: &str) -> bool {
+    // Diagnostic: measure the bridge without the stopgap.
+    if std::env::var_os("KM_NO_DATA_VALUE_GATE").is_some() {
+        return false;
+    }
+    use crate::frontend::sexpr::Node;
+    use std::collections::{HashMap, HashSet};
+    fn key(literal: &str) -> String {
+        let lexical = literal.strip_prefix('"').and_then(|rest| rest.rsplit_once('"')).map_or(literal, |(v, _)| v);
+        let trimmed = lexical.trim();
+        match trimmed.parse::<i128>() {
+            Ok(n) => n.to_string(),
+            Err(_) => trimmed.to_string(),
+        }
+    }
+    let mut functional = false;
+    let mut owners: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut note = |literal: String, individual: &str| {
+        owners.entry(key(&literal)).or_default().insert(individual.to_string());
+    };
+    fn has_values<'a>(node: &Node<'a>, out: &mut Vec<String>) {
+        if let Node::List(head, args) = node {
+            if *head == "DataHasValue" {
+                let logical = crate::frontend::parse::strip_annotations(args);
+                if let Some((literal, _)) = crate::frontend::parse::glue_literal(&logical, 1) {
+                    out.push(literal);
+                }
+                return;
+            }
+            for arg in args {
+                has_values(arg, out);
+            }
+        }
+    }
+    let scanned = crate::frontend::parse::for_each_ontology_child(text, |node| {
+        let Node::List(head, args) = node else { return Ok(()) };
+        let logical = crate::frontend::parse::strip_annotations(args);
+        match *head {
+            "FunctionalDataProperty" => functional = true,
+            "DataPropertyAssertion" | "NegativeDataPropertyAssertion" => {
+                if let (Some(individual), Some((literal, _))) = (
+                    logical.get(1).and_then(|n| n.as_atom()),
+                    crate::frontend::parse::glue_literal(&logical, 2),
+                ) {
+                    note(literal, individual);
+                }
+            }
+            "ClassAssertion" => {
+                if let (Some(class), Some(individual)) =
+                    (logical.first(), logical.get(1).and_then(|n| n.as_atom()))
+                {
+                    let mut values = Vec::new();
+                    has_values(class, &mut values);
+                    for literal in values {
+                        note(literal, individual);
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    });
+    if scanned.is_err() {
+        return true;
+    }
+    if !functional {
+        functional = crate::frontend::sexpr::tokens(text).any(|token| {
+            matches!(token, "DataMaxCardinality" | "DataExactCardinality")
+        });
+    }
+    functional && owners.values().any(|individuals| individuals.len() >= 2)
 }
