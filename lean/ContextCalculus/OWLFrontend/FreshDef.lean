@@ -154,9 +154,30 @@ theorem entailsAt_addDef_type (hO : ∀ ax ∈ O.axioms, Q ∉ ax.classIRIs) (hC
     simp only [Interp.sat] at this ⊢
     exact hdef CE (by simp) (.cls Q) (by simp) _ this
 
+/-! ## Data property domains as subsumptions -/
+
+/-- **A data property domain is a subsumption** of `DataSomeValuesFrom(p
+rdfs:Literal)`: with `addDef`, `DataPropertyDomain(p C)` is not entailed
+when the witness row certifies `Q ⋢ C` for `Q ≡ DataSomeValuesFrom(p
+rdfs:Literal)`. -/
+theorem entailsAt_dataDomain_iff (O : Ontology) (p : DataProp) (C : ClassExpr) :
+    EntailsAt DM O (.dataDomain p C) ↔
+      EntailsSubCE DM O (.dataSome p (.datatype rdfsLiteral)) C := by
+  have hlit : ∀ {Dom : Type} (I : Interp DM Dom) (v : DM.Val), I.drExt (.datatype rdfsLiteral) v := by
+    intro Dom I v
+    simp [Interp.drExt, DataRange.ext, DatatypeMap.dtExt]
+  constructor
+  · intro h Dom _ I hI x hx
+    rw [Interp.ext] at hx
+    obtain ⟨v, hv, -⟩ := hx
+    exact h Dom I hI x v hv
+  · intro h Dom _ I hI x v hv
+    exact h Dom I hI x (by rw [Interp.ext]; exact ⟨v, hv, hlit I v⟩)
+
 end ContextCalculus.OWLFrontend
 
 #print axioms ContextCalculus.OWLFrontend.entailsAt_addDef
 #print axioms ContextCalculus.OWLFrontend.entailsSubCE_addDef_left
 #print axioms ContextCalculus.OWLFrontend.entailsSubCE_addDef_right
 #print axioms ContextCalculus.OWLFrontend.entailsAt_addDef_type
+#print axioms ContextCalculus.OWLFrontend.entailsAt_dataDomain_iff
