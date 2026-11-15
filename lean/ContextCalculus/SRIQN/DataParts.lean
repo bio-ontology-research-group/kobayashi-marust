@@ -1,5 +1,6 @@
 import ContextCalculus.SRIQN.Data
 import ContextCalculus.SRIQD.KBParts
+import ContextCalculus.SRIQN.CheckFast
 
 /-!
 # Data with nominals: bounded oracles, transitivity and parts (stage C2a)
@@ -247,6 +248,149 @@ theorem consistentDNS_iffB {Θ : DataTheory (Fin q)} {card : Finset (Fin q) → 
     consistentN_reduceNB hspec hB SRIQD.Proc.mem_toLFin SRIQD.Proc.mem_badQ,
     ← consistentDN_encTransDN h]
 
+/-! ### The hint check without the forbidden types (stage C3e, item 5)
+
+`consistentDNS` checks a hint against the reduced ontology, whose
+forbidding gcis are computed by enumerating all `2ⁿ` types (`badQ`).
+A star satisfies those gcis iff its type has a data star, so the hint can
+be checked against the object part with one data-star test per type of the
+hint (`checkRedN`). `consistentDNSF` tries this check first and falls back
+to `consistentDNS`; it is the same Boolean (`consistentDNS_eq_F`,
+registered with `@[csimp]`), so no theorem changes. -/
+
+section RedCheck
+
+open ContextCalculus.SRIQ (StarOK UpClosed EdgeOK)
+
+/-- Only gcis. -/
+def AllGci (F : SRIQ.Ontology (Fin n) (Fin m)) : Prop := ∀ cl ∈ F, ∃ b h, cl = SRIQ.Clause.gci b h
+
+variable {A F : SRIQ.Ontology (Fin n) (Fin m)}
+
+theorem mem_append_gci (hF : AllGci F) {cl : SRIQ.Clause (Fin n) (Fin m)}
+    (hcl : ∀ b h, cl ≠ .gci b h) : cl ∈ A ++ F ↔ cl ∈ A := by
+  rw [List.mem_append]
+  refine ⟨fun hm => hm.elim id fun h' => ?_, Or.inl⟩
+  obtain ⟨b, hd, rfl⟩ := hF _ h'
+  exact absurd rfl (hcl b hd)
+
+theorem sri_mem_append_gci (hF : AllGci F) {cl : SRI.Clause (Fin n) (Fin m)}
+    (hcl : ∀ b h, cl ≠ .gci b h) : cl ∈ SRIQ.sriPart (A ++ F) ↔ cl ∈ SRIQ.sriPart A := by
+  simp only [SRIQ.sriPart, List.filterMap_append, List.mem_append]
+  refine ⟨fun hm => hm.elim id fun h' => ?_, Or.inl⟩
+  obtain ⟨c, hc, he⟩ := List.mem_filterMap.1 h'
+  obtain ⟨b, hd, rfl⟩ := hF _ hc
+  simp only [SRIQ.toSRI, Option.some.injEq] at he
+  exact absurd he.symm (hcl b hd)
+
+theorem roleLe_append_gci (hF : AllGci F) : SRIQ.RoleLe (A ++ F) = SRIQ.RoleLe A := by
+  have hs : SRI.RoleStep (SRIQ.sriPart (A ++ F)) = SRI.RoleStep (SRIQ.sriPart A) := by
+    funext R S
+    simp only [SRI.RoleStep]
+    rw [sri_mem_append_gci hF (by simp), sri_mem_append_gci hF (by simp)]
+  unfold SRIQ.RoleLe SRI.RoleLe
+  rw [hs]
+
+theorem starOK_append_gci (hF : AllGci F) {t : Finset (Fin n)} {L : List (SRIQ.Proc.QNbr n m)}
+    (h : StarOK A t L) (hc : SRIQ.Closed F t) : StarOK (A ++ F) t L := by
+  have hup : ∀ L', UpClosed (A ++ F) L' ↔ UpClosed A L' := fun L' => by
+    unfold UpClosed; rw [roleLe_append_gci hF]
+  have hed : ∀ e, EdgeOK (A ++ F) t e ↔ EdgeOK A t e := fun e => by
+    unfold EdgeOK
+    exact forall_congr' fun a => forall_congr' fun S => forall_congr' fun c =>
+      imp_congr_left (mem_append_gci hF (by simp))
+  refine ⟨?_, fun e he => ⟨(hup _).2 (h.edge e he).1, (hed e).2 (h.edge e he).2⟩,
+    fun a R b hcl ha => h.ex a R b ((mem_append_gci hF (by simp)).1 hcl) ha,
+    fun a k R b hcl ha => h.atLeast a k R b ((mem_append_gci hF (by simp)).1 hcl) ha,
+    fun a k R b hcl ha => h.atMost a k R b ((mem_append_gci hF (by simp)).1 hcl) ha⟩
+  intro body head hcl hb
+  simp only [SRIQ.sriPart, List.filterMap_append, List.mem_append] at hcl
+  rcases hcl with hcl | hcl
+  · exact h.closed body head hcl hb
+  · exact hc body head hcl hb
+
+theorem counted_append_gci (hF : AllGci F) {u t : Finset (Fin n)} {L : Finset (RoleT (Fin m))} :
+    Counted (A ++ F) u L t ↔ Counted A u L t := by
+  unfold Counted
+  constructor
+  · rintro ⟨a, k, R, b, h1, h2⟩; exact ⟨a, k, R, b, (mem_append_gci hF (by simp)).1 h1, h2⟩
+  · rintro ⟨a, k, R, b, h1, h2⟩; exact ⟨a, k, R, b, (mem_append_gci hF (by simp)).2 h1, h2⟩
+
+/-- The forbidding gcis hold in a type outside the list. -/
+theorem closed_forbidWith {bad : List (Finset (Fin n))} {t : Finset (Fin n)} (ht : t ∉ bad) :
+    SRIQ.Closed (SRIQD.forbidWith (Role := Fin m) SRIQD.Proc.toLFin bad) t := by
+  intro body head hcl hb
+  obtain ⟨c, hc, he⟩ := List.mem_filterMap.1 hcl
+  obtain ⟨b, hb', rfl⟩ := List.mem_map.1 hc
+  simp only [SRIQ.toSRI, Option.some.injEq, SRI.Clause.gci.injEq] at he
+  obtain ⟨rfl, rfl⟩ := he
+  have hsub : b ⊆ t := fun a ha => hb a ((SRIQD.Proc.mem_toLFin b a).2 ha)
+  have hne : t ≠ b := fun h => ht (h ▸ hb')
+  obtain ⟨a, hat, hab⟩ : ∃ a ∈ t, a ∉ b := by
+    by_contra hcon
+    exact hne (Finset.Subset.antisymm (fun a ha => by_contra fun hn => hcon ⟨a, ha, hn⟩) hsub)
+  exact ⟨a, (SRIQD.Proc.mem_toLFin _ a).2 (Finset.mem_sdiff.2 ⟨Finset.mem_univ _, hab⟩), hat⟩
+
+theorem allGci_forbidWith (bad : List (Finset (Fin n))) :
+    AllGci (SRIQD.forbidWith (Role := Fin m) SRIQD.Proc.toLFin bad) := by
+  intro cl hcl
+  obtain ⟨b, -, rfl⟩ := List.mem_map.1 hcl
+  exact ⟨_, _, rfl⟩
+
+/-- **The hint check over the object part**, with a data-star test per
+type of the hint (core types and, for a certificate, the types of its rows). -/
+def checkRedN (A : SRIQ.Ontology (Fin n) (Fin m)) (ok : Finset (Fin n) → Bool) (N : List (Fin n))
+    (h : HintN n m) : Bool :=
+  decide (0 < h.k ∧ coreOKN N h.ty h.lab ∧
+      ∀ b, StarOK A (h.ty b) (SRIQ.Proc.nbrsL h.ty h.lab b ++ h.kids b)) &&
+    (List.finRange h.k).all (fun b => ok (h.ty b)) &&
+    ((List.finRange h.k).all (fun b => (h.kids b).isEmpty) ||
+      (h.recs.all (fun e => ok e.1.1) && decide (CertOK A N h)))
+
+theorem checkRealisationN_of_red (hF : AllGci F) {ok : Finset (Fin n) → Bool}
+    (hok : ∀ t, ok t = true → SRIQ.Closed F t) {N : List (Fin n)} {h : HintN n m}
+    (hc : checkRedN A ok N h = true) : checkRealisationN (A ++ F) N h = true := by
+  simp only [checkRedN, Bool.and_eq_true, decide_eq_true_eq, Bool.or_eq_true,
+    List.all_eq_true] at hc
+  obtain ⟨⟨⟨hk, hco, hst⟩, hty⟩, hkids⟩ := hc
+  have hst' : ∀ b, StarOK (A ++ F) (h.ty b) (SRIQ.Proc.nbrsL h.ty h.lab b ++ h.kids b) :=
+    fun b => starOK_append_gci hF (hst b) (hok _ (hty b (List.mem_finRange b)))
+  unfold checkRealisationN
+  simp only [Bool.and_eq_true, decide_eq_true_eq, Bool.or_eq_true]
+  refine ⟨⟨hk, hco, hst'⟩, ?_⟩
+  rcases hkids with hkids | ⟨hrec, hcert⟩
+  · exact Or.inl (Or.inl (List.all_eq_true.2 hkids))
+  · refine Or.inl (Or.inr ⟨hcert.1, fun e he => ?_⟩)
+    obtain ⟨h1, h2, h3, h4⟩ := hcert.2 e he
+    exact ⟨h1, ⟨h2.1, fun d => by rw [counted_append_gci hF]; exact h2.2 d⟩,
+      starOK_append_gci hF h3 (hok _ (hrec e he)), h4⟩
+
+variable {p q : Nat}
+
+/-- `consistentDNS` with the hint checked over the object part first. -/
+def consistentDNSF (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q))
+    (card : Finset (Fin q) → Option Nat) (hint : Option (HintN (n + encKD O) m)) : Bool :=
+  hint.any (fun h => checkRedN (SRIQD.objPart (dbase (encTransDN O)))
+      (SRIQD.Proc.dataSatB (dbase (encTransDN O)) card) (dnoms (encTransDN O)) h) ||
+    consistentN (basePart (reduceS O card)) (noms (reduceS O card)) hint
+
+@[csimp] theorem consistentDNS_eq_F : @consistentDNS = @consistentDNSF := by
+  funext n m p q O card hint
+  unfold consistentDNSF
+  cases hint with
+  | none => simp [consistentDNS]
+  | some h =>
+    by_cases hc : checkRedN (SRIQD.objPart (dbase (encTransDN O)))
+        (SRIQD.Proc.dataSatB (dbase (encTransDN O)) card) (dnoms (encTransDN O)) h = true
+    · have hr : checkRealisationN (basePart (reduceS O card)) (noms (reduceS O card)) h = true := by
+        rw [reduceS, reduceNQ, basePart_reduceN, noms_reduceN]
+        exact checkRealisationN_of_red (allGci_forbidWith _) (fun t ht => closed_forbidWith
+          (fun hb => (SRIQD.Proc.mem_badQ t).1 hb ((SRIQD.Proc.dataSatB_iff t).1 ht))) hc
+      simp [consistentDNS, consistentN, hc, hr]
+    · simp [consistentDNS, hc]
+
+end RedCheck
+
 end Proc
 
 /-! ## Parts of a cell theory -/
@@ -323,3 +467,4 @@ end ContextCalculus.SRIQN
 #print axioms ContextCalculus.SRIQN.Proc.consistentDN_encTransDN
 #print axioms ContextCalculus.SRIQN.Proc.consistentDNS_iffB
 #print axioms ContextCalculus.SRIQN.consistentPartsN_iff
+#print axioms ContextCalculus.SRIQN.Proc.consistentDNS_eq_F

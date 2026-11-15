@@ -56,16 +56,27 @@ theorem condC_of_condB {O : Ontology (Fin n) (Fin m)} (h : condB O = true) : Con
 def condBF (O : Ontology (Fin n) (Fin m)) : Bool :=
   let rs := rules O
   let tab := mkTab O
-  let le := leF tab
+  let hm := Std.HashMap.ofList tab
+  let le := leH hm
   let sf := succsT rs le
-  (allsQT rs le O).all (fun q => closedT sf (reachItT sf 4096 64 [[(q.2.1, false)]])) &&
+  ((allsQT rs le O).map (·.2.1)).dedup.all (fun S => closedT sf (reachItT sf 4096 64 [[(S, false)]])) &&
   O.all fun
     | .atLeast _ _ R _ | .atMost _ _ R _ => rs.all fun p => !le p.1 R
     | _ => true
 
+theorem all_map_dedup {α β : Type} [DecidableEq β] (l : List α) (g : α → β) (f : β → Bool) :
+    (l.map g).dedup.all f = l.all (fun x => f (g x)) := by
+  rw [Bool.eq_iff_iff, List.all_eq_true, List.all_eq_true]
+  constructor
+  · exact fun h x hx => h _ (List.mem_dedup.2 (List.mem_map_of_mem hx))
+  · intro h y hy
+    obtain ⟨x, hx, rfl⟩ := List.mem_map.1 (List.mem_dedup.1 hy)
+    exact h x hx
+
 @[csimp] theorem condB_eq_F : @condB = @condBF := by
   funext n m O
-  simp only [condBF, leF_mkTab, succsT_eq, condB, reachL, reachIt_eq, closedB_eq]
+  simp only [condBF, all_map_dedup]
+  simp only [leH_mkTab, succsT_eq, condB, reachL, reachIt_eq, closedB_eq]
   rfl
 
 end ContextCalculus.SROIQ.Proc

@@ -265,14 +265,15 @@ def objClsF (SC : List (SClause (Fin n) (Fin m))) (N : List (Fin n)) :
     List (SRIQ.Clause (NC B) (Fin m)) :=
   let A := B.toArray
   let tab := SROIQ.Proc.mkTab B
+  let hm := Std.HashMap.ofList tab
   (List.finRange B.length).flatMap (fun i =>
-      encObjT B lam irr (SROIQ.Proc.leF tab) i (A[i.val]'(by rw [List.size_toArray]; exact i.2))) ++
+      encObjT B lam irr (SROIQ.Proc.leH hm) i (A[i.val]'(by rw [List.size_toArray]; exact i.2))) ++
     sClose B lam ++
     SC.map (selfCl B) ++ forbidCls B lam N
 
 @[csimp] theorem objCls_eq_F : @objCls = @objClsF := by
   funext n m B lam irr SC N
-  simp only [objCls, objClsF, List.getElem_toArray, SROIQ.Proc.leF_mkTab, encObj_eq_T]
+  simp only [objCls, objClsF, List.getElem_toArray, SROIQ.Proc.leH_mkTab, encObj_eq_T]
   rfl
 
 end SelfE

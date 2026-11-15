@@ -216,18 +216,19 @@ variable {n m : Nat}
 
 /-- One closure step of the loop roles: below a role of a self clause, or
 below an at-most role above a loop role, up to inverses. -/
-def lamStep (tab : List (RT m × List (RT m))) (B : SRIQ.Ontology (Fin n) (Fin m))
+def lamStep (le : RT m → RT m → Bool) (B : SRIQ.Ontology (Fin n) (Fin m))
     (SC : List (SClause (Fin n) (Fin m))) (L : List (RT m)) : List (RT m) :=
-  let gens := SC.map SClause.role ++ B.filterMap fun
-    | .atMost _ _ T _ => if L.any (fun R => leF tab R T) then some T else none
-    | _ => none
-  (allRT m).filter fun R => gens.any fun T => leF tab R T || leF tab R.flip T
+  let gens := (SC.map SClause.role ++ B.filterMap fun
+    | .atMost _ _ T _ => if L.any (fun R => le R T) then some T else none
+    | _ => none).dedup
+  (allRT m).filter fun R => gens.any fun T => le R T || le R.flip T
 
 /-- The loop roles (`lam` of `SRIQN.encSelfD`), iterated to a fixpoint;
 `lamOKB` checks the result. -/
 def lamOf (B : SRIQ.Ontology (Fin n) (Fin m)) (SC : List (SClause (Fin n) (Fin m))) : List (RT m) :=
-  let tab := mkTab B
-  lamIter (lamStep tab B SC) (2 * m + 2) []
+  let hm := Std.HashMap.ofList (mkTab B)
+  let le := leH hm
+  lamIter (lamStep le B SC) (2 * m + 2) []
 where
   /-- Iterate until nothing changes (at most `k` rounds). -/
   lamIter (f : List (RT m) → List (RT m)) : Nat → List (RT m) → List (RT m)
@@ -241,8 +242,9 @@ def isIrrOf (le : RT m → RT m → Bool) (T : RT m) : SClause (Fin n) (Fin m) �
 
 /-- The roles below an irreflexive role. -/
 def irrOf (B : SRIQ.Ontology (Fin n) (Fin m)) (SC : List (SClause (Fin n) (Fin m))) : List (RT m) :=
-  let tab := mkTab B
-  (allRT m).filter fun T => SC.any (isIrrOf (leF tab) T)
+  let hm := Std.HashMap.ofList (mkTab B)
+  let le := leH hm
+  (allRT m).filter fun T => SC.any (isIrrOf le T)
 
 /-- The at-most condition of one clause. -/
 def atMostOK (le : RT m → RT m → Bool) (lam : List (RT m)) : SRIQ.Clause (Fin n) (Fin m) → Bool
@@ -252,17 +254,18 @@ def atMostOK (le : RT m → RT m → Bool) (lam : List (RT m)) : SRIQ.Clause (Fi
 /-- **The check of `LamOK`.** -/
 def lamOKB (B : SRIQ.Ontology (Fin n) (Fin m)) (SC : List (SClause (Fin n) (Fin m)))
     (lam irr : List (RT m)) : Bool :=
-  let tab := mkTab B
+  let hm := Std.HashMap.ofList (mkTab B)
+  let le := leH hm
   lam.all (fun R => decide (R.flip ∈ lam)) &&
-  (allRT m).all (fun R => decide (R ∈ lam) || lam.all fun T => !leF tab R T) &&
+  (allRT m).all (fun R => decide (R ∈ lam) || lam.all fun T => !le R T) &&
   SC.all (fun sc => decide (sc.role ∈ lam)) &&
-  B.all (atMostOK (leF tab) lam) &&
+  B.all (atMostOK le lam) &&
   irr.all (fun T => decide (T ∈ lam)) &&
-  irr.all (fun T => SC.any (isIrrOf (leF tab) T))
+  irr.all (fun T => SC.any (isIrrOf le T))
 
 theorem lamOK_of_lamOKB {B : SRIQ.Ontology (Fin n) (Fin m)} {SC : List (SClause (Fin n) (Fin m))}
     {lam irr : List (RT m)} (h : lamOKB B SC lam irr = true) : LamOK B SC lam irr := by
-  simp only [lamOKB, leF_mkTab, Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq,
+  simp only [lamOKB, leH_mkTab, Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq,
     Bool.or_eq_true, Bool.not_eq_eq_eq_not, Bool.not_true] at h
   obtain ⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩, h6⟩ := h
   refine ⟨h1, fun R T hle hT => ?_, h3, fun a k T b hcl hT R hR hle => ?_, h5, fun T hT => ?_⟩
@@ -272,7 +275,7 @@ theorem lamOK_of_lamOKB {B : SRIQ.Ontology (Fin n) (Fin m)} {SC : List (SClause 
       rw [leB_iff.2 hle] at this
       cases this
   · have := h4 _ hcl
-    simp only [atMostOK, leF_mkTab, Bool.or_eq_true, decide_eq_true_eq, List.all_eq_true,
+    simp only [atMostOK, Bool.or_eq_true, decide_eq_true_eq, List.all_eq_true,
       Bool.not_eq_eq_eq_not, Bool.not_true] at this
     rcases this with h | h
     · exact hT h
@@ -282,15 +285,16 @@ theorem lamOK_of_lamOKB {B : SRIQ.Ontology (Fin n) (Fin m)} {SC : List (SClause 
   · obtain ⟨sc, hsc, hi⟩ := List.any_eq_true.1 (h6 T hT)
     match sc, hsc, hi with
     | .selfL R [], hsc, hi =>
-      simp only [isIrrOf, leF_mkTab, Bool.or_eq_true] at hi
+      simp only [isIrrOf, Bool.or_eq_true] at hi
       exact ⟨R, hi.imp leB_iff.1 leB_iff.1, hsc⟩
 
 /-- The negative self clauses are on simple roles, computed. -/
 def selfSimpleB (B : SRIQ.Ontology (Fin n) (Fin m)) (SC : List (SClause (Fin n) (Fin m))) : Bool :=
-  let tab := mkTab B
+  let hm := Std.HashMap.ofList (mkTab B)
+  let le := leH hm
   let rs := rules B
   SC.all fun
-    | .selfL R _ => !rs.any fun p => leF tab p.1 R
+    | .selfL R _ => !rs.any fun p => le p.1 R
     | _ => true
 
 end ContextCalculus.SROIQ.Proc
@@ -307,7 +311,7 @@ theorem selfSimple_of {T : SRIQDKBTranslation} {L : List IRI}
   intro R head hsc
   simp only [selfSimpleB, List.all_eq_true] at h
   have := h _ hsc
-  simp only [SROIQ.Proc.leF_mkTab, Bool.not_eq_eq_eq_not, Bool.not_true] at this
+  simp only [SROIQ.Proc.leH_mkTab, Bool.not_eq_eq_eq_not, Bool.not_true] at this
   exact SROIQ.Proc.simpleC_of_not_any (by rw [this]; simp)
 
 /-- The data ontology after chain elimination. -/

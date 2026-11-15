@@ -881,10 +881,22 @@ def checkSelf (timing : Bool) (O : OWL.Ontology) : IO Bool := do
         if !r2 then return false
         let ⟨r3, _⟩ ← timedPhase timing "self-simple" (fun _ => SROIQ.Proc.selfSimpleB (objC T L E) SC)
         if !r3 then return false
-        let ⟨r4, _⟩ ← timedPhase timing "loop-roles" (fun _ => SROIQ.Proc.lamOKB
-          (SRIQD.objPart (SRIQN.dbase (chC T L E))) (scC T L E SC) (lamC T L E SC) (irrC T L E SC))
+        if (← IO.getEnv "KM_CHAIN_STATS") == some "1" then
+          let B0 := objC T L E
+          let rs := SROIQ.rules B0
+          let tab := SROIQ.Proc.mkTab B0
+          let le := SROIQ.Proc.leF tab
+          let qs := SROIQ.Proc.allsQT rs le B0
+          let tb := SROIQ.Proc.reachTab (SROIQ.Proc.succsT rs le) qs
+          IO.eprintln s!"chain-stats n {T.obj.conceptCount} m {T.obj.roleCount} clauses {B0.length} rules {rs.length} alls {qs.length} roles {tb.length} stacks {(tb.map (·.2.length)).sum} pairs {(SROIQ.Proc.pairsPF B0).length}"
+        let ⟨D1, _⟩ ← timedPhase timing "chain-encode" (fun _ => chC T L E)
+        let ⟨B1, _⟩ ← timedPhase timing "chain-obj" (fun _ => SRIQD.objPart (SRIQN.dbase D1))
+        let sc1 := scC T L E SC
+        let ⟨lam, _⟩ ← timedPhase timing "loop-set" (fun _ => SROIQ.Proc.lamOf B1 sc1)
+        let ⟨irr, _⟩ ← timedPhase timing "irr-set" (fun _ => SROIQ.Proc.irrOf B1 sc1)
+        let ⟨r4, _⟩ ← timedPhase timing "loop-roles" (fun _ => SROIQ.Proc.lamOKB B1 sc1 lam irr)
         if !r4 then return false
-        let ⟨D, _⟩ ← timedPhase timing "encode" (fun _ => encS T L E SC)
+        let ⟨D, _⟩ ← timedPhase timing "encode" (fun _ => SRIQN.encSelfD D1 sc1 lam irr)
         let ⟨r5, _⟩ ← timedPhase timing "c2a" (fun _ => decide (SRIQN.IsC2aD D))
         if !r5 then return false
         let ⟨r6, _⟩ ← timedPhase timing "c2a-trans"

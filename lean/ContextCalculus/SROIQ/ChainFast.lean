@@ -70,6 +70,42 @@ theorem leF_mkTab (O : Ontology (Fin n) (Fin m)) : leF (mkTab O) = leB O := by
   unfold leF mkTab leB
   rw [lookup_map_self _ _ R (mem_allRT R)]
 
+/-- A hash for role terms. -/
+instance instHashableRT : Hashable (RoleT (Fin m)) where
+  hash | .pos r => mixHash 1 (hash r) | .inv r => mixHash 2 (hash r)
+
+/-- `leF` over a hash map of the table (stage C3e: `List.lookup` made every
+hierarchy test linear in the number of role terms). -/
+def leH (hm : Std.HashMap (RT m) (List (RT m))) (R S : RT m) : Bool :=
+  match hm[R]? with
+  | some L => decide (S ∈ L)
+  | none => false
+
+theorem nodup_allRT (m : Nat) : (allRT m).Nodup := by
+  unfold allRT
+  rw [List.nodup_flatMap]
+  refine ⟨fun r _ => by simp, ?_⟩
+  refine (List.nodup_finRange m).pairwise_of_forall_ne fun a _ b _ hab => ?_
+  simp only [Function.onFun, List.disjoint_cons_left, List.mem_cons, List.mem_singleton,
+    List.not_mem_nil, or_false, reduceCtorEq, false_or, RoleT.pos.injEq, RoleT.inv.injEq,
+    List.disjoint_nil_left, and_true]
+  exact ⟨hab, hab⟩
+
+theorem leH_mkTab (O : Ontology (Fin n) (Fin m)) :
+    leH (Std.HashMap.ofList (mkTab O)) = leB O := by
+  rw [← leF_mkTab]
+  funext R S
+  have hp : (mkTab O).Pairwise fun a b => (a.1 == b.1) = false := by
+    unfold mkTab
+    rw [List.pairwise_map]
+    exact (nodup_allRT m).imp fun h => by simpa using h
+  have hm : (R, SRI.Proc.upFix (SRIQ.sriPart (chainsOnly O)) R (2 * m + 2) [R]) ∈ mkTab O :=
+    List.mem_map.2 ⟨R, mem_allRT R, rfl⟩
+  unfold leH leF
+  rw [Std.HashMap.getElem?_ofList_of_mem (beq_self_eq_true R) hp hm]
+  unfold mkTab
+  rw [lookup_map_self _ _ R (mem_allRT R)]
+
 /-! ## Listing -/
 
 def expandLT (sf : Stack (Fin m) → List (Option (RT m) × Stack (Fin m)))
@@ -99,6 +135,17 @@ def closedT (sf : Stack (Fin m) → List (Option (RT m) × Stack (Fin m)))
 
 theorem closedB_eq (O : Ontology (Fin n) (Fin m)) : closedB O = closedT (succs O) := rfl
 
+/-- `closedT` with the listed stacks in a hash set (stage C3e: the list
+membership test made the closure check quadratic in the listing). -/
+def closedTH (sf : Stack (Fin m) → List (Option (RT m) × Stack (Fin m)))
+    (L : List (Stack (Fin m))) : Bool :=
+  let S := Std.HashSet.ofList L
+  L.all fun st => (sf st).all fun p => S.contains p.2
+
+@[csimp] theorem closedT_eq_H : @closedT = @closedTH := by
+  funext m sf L
+  simp only [closedT, closedTH, Std.HashSet.contains_ofList, List.elem_eq_mem]
+
 /-! ## The pairs -/
 
 def allsQT (rs : List (RT m × List (RT m))) (le : RT m → RT m → Bool)
@@ -107,16 +154,43 @@ def allsQT (rs : List (RT m × List (RT m))) (le : RT m → RT m → Bool)
     | .allRight a S c => if rs.any (fun p => le p.1 S) then some (a, S, c) else none
     | _ => none
 
+/-- The listing of each distinct role of `qs`, computed once per role
+(stage C3e: the listing was recomputed for every universal clause). -/
+def reachTab (sf : Stack (Fin m) → List (Option (RT m) × Stack (Fin m)))
+    (qs : List (Fin n × RT m × Fin n)) : List (RT m × List (Stack (Fin m))) :=
+  (qs.map (·.2.1)).dedup.map fun S => (S, reachItT sf 4096 64 [[(S, false)]])
+
+theorem lookup_map_selfG {α β : Type} [DecidableEq α] (f : α → β) {x : α} :
+    ∀ {l : List α}, x ∈ l → (l.map fun s => (s, f s)).lookup x = some (f x)
+  | [], h => by simp at h
+  | a :: l, h => by
+    by_cases hx : x = a
+    · subst hx; simp
+    · have hb : (x == a) = false := by simpa using hx
+      simp only [List.map_cons, List.lookup, hb]
+      exact lookup_map_selfG f (by simpa [hx] using h)
+
+theorem reachTab_lookup (sf : Stack (Fin m) → List (Option (RT m) × Stack (Fin m)))
+    {qs : List (Fin n × RT m × Fin n)} {q : Fin n × RT m × Fin n} (hq : q ∈ qs) :
+    (reachTab sf qs).lookup q.2.1 = some (reachItT sf 4096 64 [[(q.2.1, false)]]) :=
+  lookup_map_selfG (fun S => reachItT sf 4096 64 [[(S, false)]])
+    (List.mem_dedup.2 (List.mem_map_of_mem (f := fun q : Fin n × RT m × Fin n => q.2.1) hq))
+
 def pairsPF (O : Ontology (Fin n) (Fin m)) : List (Pair n m) :=
   let rs := rules O
   let tab := mkTab O
-  let le := leF tab
+  let hm := Std.HashMap.ofList tab
+  let le := leH hm
   let sf := succsT rs le
-  (allsQT rs le O).flatMap fun q => (reachItT sf 4096 64 [[(q.2.1, false)]]).map (q, ·)
+  let qs := allsQT rs le O
+  let tbl := reachTab sf qs
+  qs.flatMap fun q => ((tbl.lookup q.2.1).getD []).map (q, ·)
 
 @[csimp] theorem pairsP_eq_F : @pairsP = @pairsPF := by
   funext n m O
-  simp only [pairsPF, leF_mkTab, succsT_eq, pairsP, reachL, reachIt_eq]
+  simp only [pairsPF]
+  rw [List.flatMap_congr fun q hq => by rw [reachTab_lookup _ hq, Option.getD_some]]
+  simp only [leH_mkTab, succsT_eq, pairsP, reachL, reachIt_eq]
   rfl
 
 /-- The number of fresh names, through `pairsPF`. -/
@@ -127,10 +201,6 @@ def kCF (O : Ontology (Fin n) (Fin m)) : Nat := (pairsPF O).length
   simp only [kCF, kC, ← pairsP_eq_F]
 
 /-! ## The encoding -/
-
-/-- A hash for role terms. -/
-instance : Hashable (RoleT (Fin m)) where
-  hash | .pos r => mixHash 1 (hash r) | .inv r => mixHash 2 (hash r)
 
 section IdxG
 
@@ -171,7 +241,9 @@ end IdxG
 def encChainF (O : Ontology (Fin n) (Fin m)) : Ontology (Fin (n + kC O)) (Fin m) :=
   let P := pairsP O
   let tab := mkTab O
-  let sf := succsT (rules O) (leF tab)
+  let rs := rules O
+  let hm := Std.HashMap.ofList tab
+  let sf := succsT rs (leH hm)
   let mp := idxMapG P
   let nm : Pair n m → Option (Fin (n + kC O)) := fun p =>
     if h : (mp[p]?).getD P.length < P.length then some (Fin.natAdd n ⟨_, h⟩) else none
@@ -188,7 +260,7 @@ def encChainF (O : Ontology (Fin n) (Fin m)) : Ontology (Fin (n + kC O)) (Fin m)
 
 @[csimp] theorem encChain_eq_F : @encChain = @encChainF := by
   funext n m O
-  simp only [encChainF, leF_mkTab, succsT_eq, idxMapG_getD]
+  simp only [encChainF, leH_mkTab, succsT_eq, idxMapG_getD]
   rfl
 
 /-! ## The regularity check -/
