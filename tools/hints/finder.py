@@ -607,3 +607,71 @@ def solve(ix, restarts=40, **kw):
                 break
             bad.update(new)
     raise last
+
+
+def flat_hint(F):
+    """A hint without tree children: every live core element and unblocked
+    tree node is a core element; an edge to a blocked node goes to its
+    blocker (folding), and identical siblings get copies of their target.
+    Valid only when the folded stars still hold, which the caller checks;
+    needed because the checker decides certificates in exponential time
+    today (see the design note)."""
+    live = sorted(F.cores)
+    ids = [F.core_node[b] for b in live]
+    tree = [v.id for v in F.nodes if v.alive and v.core is None and not v.blocked
+            and F.nodes[v.parent].alive and not F.nodes[v.parent].blocked]
+    num = {}
+    for i in ids + tree:
+        num[i] = len(num)
+    coreidx = {b: num[F.core_node[b]] for b in live}
+    tys = [F.nodes[i].ty for i in ids + tree]
+
+    def target(i):
+        v = F.nodes[i]
+        if v.blocked:
+            return num.get(F.rep.get(F.key(v)))
+        return num.get(i)
+    down = {}      # element -> list of (target element, label)
+    for i in ids + tree:
+        v = F.nodes[i]
+        lst = []
+        for k in v.kids:
+            w = F.nodes[k]
+            if not w.alive:
+                continue
+            t = target(k)
+            if t is None:
+                return None
+            lst.append((t, w.plab))
+        down[num[i]] = lst
+    side = []
+    for i in ids + tree:
+        for d, L in F.nodes[i].ce.items():
+            if L:
+                side.append((num[i], coreidx[d], L))
+    # copies for repeated targets of one element
+    edges = []
+    for e, lst in list(down.items()):
+        seen = {}
+        for (t, L) in lst:
+            if t in seen or t == e:
+                c = len(tys)
+                tys.append(tys[t])
+                edges.append((e, c, L))
+                for (t2, L2) in down.get(t, []):
+                    edges.append((c, t2, L2))
+                for (a, d, L3) in side:
+                    if a == t:
+                        edges.append((c, d, L3))
+            else:
+                seen[t] = 1
+                edges.append((e, t, L))
+    h = Hint(len(tys))
+    h.ty = tys
+    for (b, c), L in F.lab.items():
+        if L and b in coreidx and c in coreidx:
+            h.lab[(coreidx[b], coreidx[c])] = L
+    for (a, b, L) in edges + side:
+        h.add_lab(a, b, L)
+    h.kids = [[] for _ in range(len(tys))]
+    return h

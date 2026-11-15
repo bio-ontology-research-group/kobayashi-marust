@@ -32,13 +32,13 @@ sys.setrecursionlimit(100000)
 
 import nf as nfm
 import hintcheck
-from finder import Finder, Fail, solve
+from finder import Finder, Fail, solve, flat_hint
 
 SCR = '/mnt/data1/leechuck/km-work/v170/scratch/h1'
 KM = os.environ.get('H1_KM', '/mnt/data1/leechuck/km-work/v170/scratch/engine2/bin/km-1b7')
 REF = os.environ.get('H1_REF', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-owl-reference-c3c')
 LEAN = os.path.expanduser('~/.elan/toolchains/leanprover--lean4---v4.30.0-rc2/bin/lean')
-LEANPATH = open('/mnt/data1/leechuck/km-work/v170/scratch/c2a/leanpath.txt').read().strip()
+LEANPATH = open(os.environ.get('H1_LEANPATH', '/mnt/data1/leechuck/km-work/v170/scratch/h1/leanpath.txt')).read().strip()
 THING = 'http://www.w3.org/2002/07/owl#Thing'
 NOTHING = 'http://www.w3.org/2002/07/owl#Nothing'
 NBP = 'urn:km:h1:nb:'
@@ -143,29 +143,49 @@ def rows_of(classes, inds, ans):
     return nonsub, nontype
 
 
-def witness_text(src, groups, nontype, nbidx):
-    """groups: list of (A, [B...]) -> one fresh individual each."""
+def neg(Bs):
+    if len(Bs) == 1:
+        return 'ObjectComplementOf(<%s>)' % Bs[0]
+    return 'ObjectComplementOf(ObjectUnionOf(%s))' % ' '.join('<%s>' % B for B in Bs)
+
+
+def witness_text(src, groups, nontype, nbidx=None):
+    """groups: list of (A, [B...]) -> one fresh individual x_j each with
+    ClassAssertion(A x_j) and ClassAssertion(not(B1 or ... or Bk) x_j);
+    nontype: {a: [C...]} -> ClassAssertion(not(C1 or ...) a)."""
     ax = []
-    used = set()
-    for (A, Bs) in groups:
-        used.update(Bs)
-    for Cs in nontype.values():
-        used.update(Cs)
-    for B in sorted(used, key=lambda b: nbidx[b]):
-        nb = NBP + str(nbidx[B])
-        ax.append('Declaration(Class(<%s>))' % nb)
-        ax.append('DisjointClasses(<%s> <%s>)' % (B, nb))
     for j, (A, Bs) in enumerate(groups):
         x = XP + str(j)
         ax.append('Declaration(NamedIndividual(<%s>))' % x)
         ax.append('ClassAssertion(<%s> <%s>)' % (A, x))
-        for B in Bs:
-            ax.append('ClassAssertion(<%s> <%s>)' % (NBP + str(nbidx[B]), x))
+        if Bs:
+            ax.append('ClassAssertion(%s <%s>)' % (neg(Bs), x))
     for a, Cs in nontype.items():
-        for C in Cs:
-            ax.append('ClassAssertion(<%s> <%s>)' % (NBP + str(nbidx[C]), a))
+        if Cs:
+            ax.append('ClassAssertion(%s <%s>)' % (neg(Cs), a))
     i = src.rindex(')')
     return src[:i] + '\n# stage H1 witness axioms\n' + '\n'.join(ax) + '\n' + src[i:]
+
+
+def neg_gcis(N, part, nu, Bs):
+    """The gcis of ClassAssertion(not(B1 or ...) u) for the individual with
+    nominal name nu: {B: gci} whose removal drops B from the union."""
+    named = set(N.cname.values())
+    heads = [g[1][0] for g in part.gci if g[0] == (nu,) and len(g[1]) == 1 and g[1][0] not in named]
+    bi = {N.cname[B]: B for B in Bs if B in N.cname}
+    for D in heads:
+        for g in part.gci:
+            if not g[1] and len(set(g[0])) == 2 and D in g[0]:
+                U = [x for x in g[0] if x != D][0]
+                if len(Bs) == 1 and U in bi:
+                    return {bi[U]: g}
+                out = {}
+                for g2 in part.gci:
+                    if g2[1] == (U,) and len(g2[0]) == 1 and g2[0][0] in bi:
+                        out[bi[g2[0][0]]] = g2
+                if len(out) == len(bi):
+                    return out
+    return None
 
 
 def dump_nf(wpath, nfpath, timeout):
@@ -195,6 +215,16 @@ def find_hint(nfpath, hpath, budget):
     r.update(F.stats)
     r['core'], r['recs'] = h.k, len(h.recs)
     why = hintcheck.check(ix, h)
+    r['form'] = 'certificate'
+    if not why and h.recs:
+        # the checker decides certificates in exponential time today: prefer a flat core
+        hf = flat_hint(F)
+        whyf = hintcheck.check(ix, hf) if hf is not None else 'folding failed'
+        r['flat'] = whyf or 'ok'
+        if not whyf:
+            h = hf
+            r['form'] = 'flat'
+            r['core'] = h.k
     r['secs'] = round(time.time() - t0, 2)
     hintcheck.write(h, hpath)
     r['hint_bytes'] = os.path.getsize(hpath)
@@ -210,14 +240,21 @@ def localize(N, groups, nt, nbidx, budget, deadline):
     first, then halves), leave the rest for the next round."""
     import copy
     part = N.parts[0]
-    nbname = {B: N.cname.get(NBP + str(nbidx[B])) for B in nbidx}
     units = []   # (kind, key, B, gci)
     for j, (A, Bs) in enumerate(groups):
-        nu = N.nominal.get(XP + str(j))
-        units.append([('x', j, B, ((nu,), (nbname[B],))) for B in Bs])
+        if not Bs:
+            continue
+        m = neg_gcis(N, part, N.nominal.get(XP + str(j)), Bs)
+        if m is None:
+            return {'status': 'witness gcis not found', 'runs': 0}
+        units.append([('x', j, B, m[B]) for B in Bs])
     for a, Cs in nt.items():
-        nu = N.nominal.get(a)
-        units.append([('i', a, C, ((nu,), (nbname[C],))) for C in Cs])
+        if not Cs:
+            continue
+        m = neg_gcis(N, part, N.nominal.get(a), Cs)
+        if m is None:
+            return {'status': 'witness gcis not found', 'runs': 0}
+        units.append([('i', a, C, m[C]) for C in Cs])
     allg = set(u[3] for us in units for u in us)
     base = [g for g in part.gci if g not in allg]
     runs = [0]
@@ -266,15 +303,17 @@ def localize(N, groups, nt, nbidx, budget, deadline):
             'left_groups': leftG, 'left_nt': leftN}
 
 
-def check(wpath, hpath, timeout):
-    rc, secs, rss, out, err = run([REF, '--procedure', 'sroiq-c2a', '--hint', hpath, wpath], timeout)
+def check(wpath, hpath, timeout, memkb=12000000):
+    cmd = ['bash', '-c', 'ulimit -v %d; exec "$@"' % memkb, 'chk',
+           REF, '--procedure', 'sroiq-c2a', '--hint', hpath, wpath]
+    rc, secs, rss, out, err = run(cmd, timeout)
     ok = rc == 0 and '"consistent":true' in (out or '')
     return {'rc': rc, 'secs': secs, 'rss_mb': rss, 'accepted': ok,
             'out': (out or '').strip()[-200:], 'err': (err or '').strip()[-300:]}
 
 
 def main():
-    a = sys.argv[1:]
+    a = a_ = sys.argv[1:]
     src, outdir = a[0], a[1]
     chunk = int(a[a.index('--chunk') + 1]) if '--chunk' in a else 0
     T = int(a[a.index('--timeout') + 1]) if '--timeout' in a else 300
@@ -308,18 +347,8 @@ def main():
     nbidx = {}
     for B in classes:
         nbidx.setdefault(B, len(nbidx))
-    # chunks of classes, bounded by the number of (A, B) pairs per witness
     As = list(nonsub)
-    chunks, cur, pairs = [], [], 0
-    for A in As:
-        if cur and (pairs + len(nonsub[A]) > max_pairs or (chunk and len(cur) >= chunk)):
-            chunks.append(cur)
-            cur, pairs = [], 0
-        cur.append(A)
-        pairs += len(nonsub[A])
-    if cur or not chunks:
-        chunks.append(cur)
-    R['chunks'] = len(chunks)
+    wall = int(a_[a_.index('--wall') + 1]) if '--wall' in a_ else 1200
     text = open(src).read()
     cert = {'consistency': 0, 'sat': 0, 'nonsub': 0, 'nontype': 0}
     R['stages'] = []
@@ -342,7 +371,8 @@ def main():
         st['producer'] = fr
         if fr['status'] != 'hint':
             return fr['status'], N
-        st['checker'] = check(wpath, hpath, T)
+        form = fr.get('form')
+        st['checker'] = check(wpath, hpath, T if form != 'certificate' or not fr.get('recs') else 60)
         return ('certified' if st['checker']['accepted'] else 'checker-rejected-or-slow'), N
 
     def credit(groups, nt):
@@ -355,7 +385,17 @@ def main():
         cert['nontype'] += sum(len(v) for v in nt.values())
     credited_sat = set()
 
-    for ci, ch in enumerate(chunks):
+    # chunks of classes; the size adapts to keep the flat core near 300 elements
+    cs = chunk or 40
+    pos, ci = 0, 0
+    R['chunk_sizes'] = []
+    while pos < len(As) or ci == 0:
+        if time.time() - t0 > wall:
+            R['stopped'] = 'wall budget after %d of %d classes' % (pos, len(As))
+            break
+        ch = As[pos:pos + cs]
+        pos += len(ch)
+        R['chunk_sizes'].append(len(ch))
         groups = [(A, nonsub[A]) for A in ch]
         nt = dict(nontype) if ci == 0 else {}
         for rnd in range(4):
@@ -391,6 +431,12 @@ def main():
             groups, nt = leftG, leftN
         else:
             pass
+        cores = [x.get('producer', {}).get('core') for x in R['stages'] if x.get('chunk') == ci]
+        cores = [c for c in cores if c]
+        if cores and not chunk:
+            per = max(cores) / max(1, len(ch))
+            cs = max(5, min(400, int(300 / max(per, 0.5))))
+        ci += 1
         if groups and status != 'certified':
             R['unresolved'].append({'chunk': ci, 'groups': [[A, len(B)] for A, B in groups][:20],
                                     'nontype': {a: len(c) for a, c in list(nt.items())[:20]}})
