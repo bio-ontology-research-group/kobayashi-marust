@@ -26,3 +26,4 @@ irreflexive-sat.ofn	--print-index	concepts 29 / roles 1 / ... / loops 5 / splits
 irreflexive-clash.ofn	--check	accepted (intended: consistent false; no hint can certify it, the unhinted search runs out of memory)
 reflexive-count-clash.ofn	--check	accepted (intended: consistent false; as above)
 disjoint-union.ofn	--check	accepted (intended: consistent false; as above)
+zero.ofn	--check	accepted (C2a only after the at-most-zero rewriting; --print-index adds a line "zeros N")

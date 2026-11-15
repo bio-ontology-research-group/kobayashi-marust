@@ -395,4 +395,6 @@ import ContextCalculus.SROIQ.ChainSelf
 import ContextCalculus.OWLFrontend.SROIQDSelf
 import ContextCalculus.OWLFrontend.SROIQDSelfRows
 import ContextCalculus.OWLFrontend.DisjointUnion
+import ContextCalculus.SRIQN.ZeroAtMost
+import ContextCalculus.OWLFrontend.ZeroRoute
 import ContextCalculus.OWLFrontend.SHOIQFast

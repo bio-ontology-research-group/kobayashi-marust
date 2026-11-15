@@ -6,7 +6,7 @@ import ContextCalculus.OWLFrontend.SRIQDReference
 import ContextCalculus.OWLFrontend.SRIQDKBRows
 import ContextCalculus.OWLFrontend.SHOIQDC2aReference
 import ContextCalculus.OWLFrontend.SROIQAnon
-import ContextCalculus.OWLFrontend.DisjointUnion
+import ContextCalculus.OWLFrontend.ZeroRoute
 
 /-!
 # Executable OWL reference procedure (`km-owl-reference`)
@@ -773,7 +773,7 @@ def sroiqDeclineS (O : OWL.Ontology) : String :=
 /-- Print the consistency verdict of `owlSROIQDC2aConsistent`
 (`owlSROIQDAConsistent_sound`). -/
 def publishConsistentS (v : Bool) {O : OWL.Ontology} {hint : Option RawHint}
-    (_h : owlC3Consistent O hint = some v) : IO UInt32 := do
+    (_h : owlC3ZConsistent O hint = some v) : IO UInt32 := do
   let out ← IO.getStdout
   out.putStrLn ("{\"format\":\"owl-consistency-v1\",\"consistent\":" ++
     (if v then "true" else "false") ++ "}")
@@ -782,7 +782,7 @@ def publishConsistentS (v : Bool) {O : OWL.Ontology} {hint : Option RawHint}
 
 /-- Print the verdict of `owlSROIQDTypeRow` (`owlSROIQDATypeRow_sound`). -/
 def publishTypeS (C a : OWL.IRI) (v : Bool) {O : OWL.Ontology} {hint : Option RawHint}
-    (_h : owlC3TypeRow O C a hint = some v) : IO UInt32 := do
+    (_h : owlC3ZTypeRow O C a hint = some v) : IO UInt32 := do
   let out ← IO.getStdout
   out.putStrLn ("{\"format\":\"owl-type-v1\",\"class\":" ++ (Json.str C).compress ++
     ",\"individual\":" ++ (Json.str a).compress ++ ",\"entailed\":" ++
@@ -795,14 +795,14 @@ def runOntologyS (timing : Bool) (hint : Option RawHint) (query : Option (OWL.IR
     (O : OWL.Ontology) : IO UInt32 := do
   match query with
   | some (C, a) =>
-    let ⟨res, hres⟩ ← timedPhase timing "type" (fun _ => owlC3TypeRow O C a hint)
+    let ⟨res, hres⟩ ← timedPhase timing "type" (fun _ => owlC3ZTypeRow O C a hint)
     match res, hres with
     | some v, h => publishTypeS C a v h.symm
     | none, _ =>
       IO.eprintln (sroiqDeclineS (addAxs (anonOff [a] (duOff O)) (typeAxs C a)))
       return 3
   | none =>
-    let ⟨res, hres⟩ ← timedPhase timing "consistency" (fun _ => owlC3Consistent O hint)
+    let ⟨res, hres⟩ ← timedPhase timing "consistency" (fun _ => owlC3ZConsistent O hint)
     match res, hres with
     | some v, h => publishConsistentS v h.symm
     | none, _ =>
@@ -897,9 +897,24 @@ def whyC2a (O : OWL.Ontology) : List String :=
       (SRIQ.lowerL B).filterMap fun q =>
         if q.1 ∈ N || decide (SRIQN.NomOnly D q.1) then none else
         let up := SRI.Proc.roleUp C q.2.2.1
-        match ups.find? (fun q' => q'.2.2.1.flip ∈ up) with
+        match (ups.find? (fun q' => q'.2.1 != 0 && q'.2.2.1.flip ∈ up)).orElse
+            (fun _ => ups.find? (fun q' => q'.2.2.1.flip ∈ up)) with
         | none => none
         | some q' => some s!"lower {cn q.1.val} >= {q.2.1} {rn q.2.2.1} {cn q.2.2.2.val} | upper {cn q'.1.val} <= {q'.2.1} {rn q'.2.2.1} {cn q'.2.2.2.val}"
+
+/-- The fragment checks of the route with at-most-zero clauses rewritten
+(`owlZeroCore`). -/
+def checkZero (timing : Bool) (O : OWL.Ontology) : IO Bool := do
+  if !O.isSROIQDKB then return false
+  match translateSHOIQD (roleOff O) [] with
+  | none => return false
+  | some T =>
+    match roleCls T O with
+    | none => return false
+    | some E =>
+      let ⟨r, _⟩ ← timedPhase timing "zero-checks"
+        (fun _ => sroiqZOK T (OWLFrontend.SHOIQ.nomNames (roleOff O) []) E)
+      return r
 
 /-- The SHIQ(D) knowledge-base route on an ontology. -/
 def runOntologyDKB (timing : Bool) (hint : Option RawHint) (query : Option (OWL.IRI × OWL.IRI))
@@ -1153,6 +1168,25 @@ def printIndex (route : String) (O : OWL.Ontology) : IO UInt32 := do
         out.flush
         return 0
       | _, _ => decline (selfDecline O)
+  else if route == "sroiq-c2a" && !(← checkS false (anonOff [] O)) && (← checkZero false (anonOff [] O)) then
+    let O := anonOff [] O
+    match translateSHOIQD (roleOff O) [] with
+    | none => decline (sroiqDecline O)
+    | some T =>
+      match roleCls T O with
+      | none => decline (sroiqDecline O)
+      | some E =>
+        let L := OWLFrontend.SHOIQ.nomNames (roleOff O) []
+        let n1 := T.obj.conceptCount + SROIQ.Proc.kCD (dosnC T L E)
+        emit [s!"concepts {SRIQN.SelfE.ncOf (SRIQN.Proc.encTransDN (encZ T L E))}",
+          s!"roles {T.obj.roleCount}"]
+        emit (indexLines T.obj)
+        emit ((roleOff O).individualNames.filterMap fun a =>
+          (nameIx T.obj (OWLFrontend.SHOIQ.nmOf (roleOff O) [] a)).map fun i => s!"nominal {i.val} {a}")
+        -- the at-most-zero rewriting: one name per object clause from n1
+        emit [s!"zeros {n1}"]
+        out.flush
+        return 0
   else if route == "sroiq-c2a" then
     let O := anonOff [] O
     match translateSHOIQD (roleOff O) [] with
@@ -1240,6 +1274,9 @@ def runFile (args : Args) (path : String) : IO UInt32 := do
               IO.println "accepted"
               return 0
             else if ← checkSelf (← timingEnabled) (anonOff [] O) then do
+              IO.println "accepted"
+              return 0
+            else if ← checkZero (← timingEnabled) (anonOff [] O) then do
               IO.println "accepted"
               return 0
             else do
