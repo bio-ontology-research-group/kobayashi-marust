@@ -28,7 +28,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCR = os.environ.get('H3_SCR', '/mnt/data1/leechuck/km-work/v170/scratch/h3')
 KM = os.environ.get('H3_KM', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-6f2c0a8e')
-REF = os.environ.get('H3_REF', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-owl-reference-h2-4565e072')
+REF = os.environ.get('H3_REF', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-owl-reference-h2-4bc900f0')
 PROD = os.environ.get('H3_PROD', os.path.join(SCR, 'target/release/km-hints'))
 THING = 'http://www.w3.org/2002/07/owl#Thing'
 NOTHING = 'http://www.w3.org/2002/07/owl#Nothing'
@@ -157,9 +157,12 @@ def main():
                  len(l.split(' ', 2)) == 3 and not l.split(' ', 2)[2].startswith('urn:km:')]
         # requesting owl:Thing makes it an unconstrained name (it then shows up as
         # a proved non-superclass of every class); off until H2 ties it to the top
-        if THING not in names and os.environ.get('H3_REQUEST_THING') == '1':
+        # owl:Nothing requested: A outside it is the proved row sat(A)
+        want = [NOTHING] + ([THING] if os.environ.get('H3_REQUEST_THING') == '1' else [])
+        add = [x for x in want if x not in names]
+        if add:
             with open(cf, 'w') as f:
-                f.write('\n'.join(names + [THING]) + '\n')
+                f.write('\n'.join(names + add) + '\n')
             s0 = s1 or 0
             rc1, s1, m1, _, e1 = ref(['--witness-route', '--classes', cf, '--print-index'], src, 300, out=bi)
     if rc1 == 0:
@@ -241,7 +244,8 @@ def main():
                     C['certified']['consistency'] = 1
                 if 'class' in J and 'error' not in J:
                     A = J['class']
-                    satok.add(A)
+                    if NOTHING not in J.get('nonsub_except', [NOTHING]) or NOTHING in J.get('nonsub', []):
+                        satok.add(A)
                     sA = sup.get(A, set())
                     if 'nonsub_except' in J:
                         inside = set(J['nonsub_except'])
