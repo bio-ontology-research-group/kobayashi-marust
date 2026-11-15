@@ -212,7 +212,7 @@ def mkOnto (n m : Nat) (cls : Array QC) (fullRel : Bool := false) (lazy : Bool :
   let mut hubSingle : HashMap Nat (Array Nat) := ∅
   let mut hubIdx : HashMap Nat (HashMap Nat (Array Nat)) := ∅
   for y in [0:n] do
-    if (gciBy[y]!).size ≥ 256 then
+    if (gciBy[y]!).size ≥ 64 then
       let mut sg : Array Nat := #[]
       let mut ix : HashMap Nat (Array Nat) := ∅
       for g in gciBy[y]! do
@@ -225,13 +225,14 @@ def mkOnto (n m : Nat) (cls : Array QC) (fullRel : Bool := false) (lazy : Bool :
   return { n, nr, gcis, gciBy, gciTop, allBy, low, upp, lowBy, uppBy, up,
            relBy := rel.map sortDedup, lazyDef, lazyOf, hubSingle, hubIdx }
 
-/-- The gcis to look at when `y` joins the set `cur` (which holds `y`): its
-gcis, or for a hub only those whose other body names meet `cur`. -/
-def trigOf (O : Onto) (cur : HashSet Nat) (y : Nat) : List Nat :=
+/-- The gcis to look at when `y` joins a set whose names `accL` lists (as
+`trigL` of the check: the added names last first, then the seed): its
+gcis, or for a hub only those whose other body names are listed. -/
+def trigOf (O : Onto) (accL : Unit → List Nat) (y : Nat) : List Nat :=
   match O.hubIdx.get? y with
   | none => (O.gciBy[y]!).toList
   | some ix =>
-    (O.hubSingle.getD y #[]).toList ++ cur.toList.flatMap fun x => (ix.getD x #[]).toList
+    (O.hubSingle.getD y #[]).toList ++ (accL ()).flatMap fun x => (ix.getD x #[]).toList
 
 /-- Names a neighbour across label `L` (from `t`) must hold. -/
 def fwd (O : Onto) (t : Ty) (L : Ty) : Ty := Id.run do
@@ -253,6 +254,9 @@ closed, so only the gcis triggered by names outside `t` are queued): fire gcis w
 no present name, adding one head name each time (a clash for an empty
 head). Every closed superset `T` of `seed` contains some branch. -/
 partial def branches (O : Onto) (seed : Ty) (closedPart : Option Ty := none) : Array Ty := Id.run do
+  -- the names of `acc` in the order of the check's `trigL`: added names last first, then the seed
+  let accList (acc : Array Nat) : List Nat :=
+    (acc.extract seed.size acc.size).toList.reverse ++ seed.toList
   let rec go (cur : HashSet Nat) (acc : Array Nat) (queue : List Nat) (out : Array Ty) : Array Ty :=
     match queue with
     | [] =>
@@ -269,16 +273,16 @@ partial def branches (O : Onto) (seed : Ty) (closedPart : Option Ty := none) : A
           if h.size == 1 then
             -- one head name: no copy of `cur` and `acc` (they are not shared)
             let y := h[0]!
-            let cur := cur.insert y
-            go cur (acc.push y) (trigOf O cur y ++ rest) out
+            let acc := acc.push y
+            go (cur.insert y) acc (trigOf O (fun _ => accList acc) y ++ rest) out
           else h.foldl (fun out y =>
-            let cur := cur.insert y
-            go cur (acc.push y) (trigOf O cur y ++ rest) out) out
+            let acc := acc.push y
+            go (cur.insert y) acc (trigOf O (fun _ => accList acc) y ++ rest) out) out
       else go cur acc rest out
   let cur : HashSet Nat := seed.foldl (fun s x => s.insert x) ∅
   let q := match closedPart with
-    | none => O.gciTop.toList ++ (seed.toList.flatMap fun a => trigOf O cur a)
-    | some t => (seed.toList.filter (!mem t ·)).flatMap fun a => trigOf O cur a
+    | none => O.gciTop.toList ++ (seed.toList.flatMap fun a => trigOf O (fun _ => seed.toList) a)
+    | some t => (seed.toList.filter (!mem t ·)).flatMap fun a => trigOf O (fun _ => seed.toList) a
   let res := go cur seed q #[]
   -- remove duplicates
   let mut seen : HashSet Ty := ∅

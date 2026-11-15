@@ -76,7 +76,7 @@ def childKeyA (T : Array Nat) (am : Std.HashMap Nat (List Nat)) (e : EntryA) : K
 
 def closedIA (T : Array Nat) (tf : List (Fin n)) : Bool :=
   ix.gciTop.all (fun g => (gciAt ix g).2.any fun h => bsA T h.val) &&
-  tf.all fun a => (getL ix.gciBy a.val).all fun g =>
+  tf.all fun a => (trigL ix a T.toList).all fun g =>
     !((gciAt ix g).1.all fun b => bsA T b.val) || (gciAt ix g).2.any fun h => bsA T h.val
 
 def upClosedA (L : Array Nat) : Bool :=
@@ -94,23 +94,25 @@ def poolSet (v : NodeA) : Std.HashSet (Array Nat × Array Nat) :=
   Std.HashSet.ofList (v.pool.map fun e => (e.lab, e.fill))
 
 /-- Branches with one head name per fired gci, as `brAux`, on hash sets. -/
-def brAuxA : Nat → Std.HashSet Nat → List Nat → List (Std.HashSet Nat)
-  | 0, cur, _ => [cur]
-  | _ + 1, cur, [] => [cur]
-  | f + 1, cur, i :: rest =>
+def brAuxA : Nat → Std.HashSet Nat → List Nat → List Nat → List (Std.HashSet Nat)
+  | 0, cur, _, _ => [cur]
+  | _ + 1, cur, _, [] => [cur]
+  | f + 1, cur, acc, i :: rest =>
     match ix.gciArr[i]? with
-    | none => brAuxA (f + 1) cur rest
+    | none => brAuxA (f + 1) cur acc rest
     | some g =>
       if (g.1.all fun b => cur.contains b.val) && (g.2.all fun h => !cur.contains h.val) then
         match g.2 with
-        | [h] => brAuxA f (cur.insert h.val) (getL ix.gciBy h.val ++ rest)
-        | hs => hs.flatMap fun h => brAuxA f (cur.insert h.val) (getL ix.gciBy h.val ++ rest)
-      else brAuxA (f + 1) cur rest
-termination_by f cur q => (f, q.length)
+        | [h] => brAuxA f (cur.insert h.val) (h.val :: acc) (trigL ix h (h.val :: acc) ++ rest)
+        | hs => hs.flatMap fun h =>
+            brAuxA f (cur.insert h.val) (h.val :: acc) (trigL ix h (h.val :: acc) ++ rest)
+      else brAuxA (f + 1) cur acc rest
+termination_by f cur acc q => (f, q.length)
 
 def brA (s : Array Nat) : List (Std.HashSet Nat) :=
-  brAuxA ix (n + 1) (Std.HashSet.ofList s.toList)
-    (ix.gciTop ++ (finL n s.toList).flatMap fun a => getL ix.gciBy a.val)
+  let acc := (finL n s.toList).map (·.val)
+  brAuxA ix (n + 1) (Std.HashSet.ofList s.toList) acc
+    (ix.gciTop ++ (finL n s.toList).flatMap fun a => trigL ix a acc)
 
 /-- Every branch of the sorted array `s` contains the type of a node of
 context `k` that contains `s`. The node is first looked up in the hint

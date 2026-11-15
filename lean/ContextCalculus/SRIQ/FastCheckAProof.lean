@@ -65,6 +65,86 @@ theorem wfB_sound {C : CandA} (h : wfB n m C = true) : WF n m C := by
     exact ⟨sortedB_sound h1, fun x hx => by simpa using all_mem h2 hx, sortedB_sound h3,
       fun x hx => by simpa using all_mem h4 hx⟩
 
+/-! ## The hub index -/
+
+section Hub
+
+theorem mem_foldIns (g' : Nat) : ∀ (l : List (Fin n)) (mp : Std.HashMap Nat (List Nat)) (a g : Nat),
+    g ∈ mp.getD a [] →
+      g ∈ (l.foldl (fun mp x => mp.insert x.val (g' :: mp.getD x.val [])) mp).getD a []
+  | [], _, _, _, h => h
+  | z :: l, mp, a, g, h => by
+    rw [List.foldl_cons]
+    refine mem_foldIns g' l _ a g ?_
+    rw [Std.HashMap.getD_insert]
+    split
+    · next he => rw [beq_iff_eq] at he; subst he; exact List.mem_cons_of_mem _ h
+    · exact h
+
+theorem mem_foldIns_self (g' : Nat) : ∀ (l : List (Fin n)) (mp : Std.HashMap Nat (List Nat)) (x : Fin n),
+    x ∈ l → g' ∈ (l.foldl (fun mp x => mp.insert x.val (g' :: mp.getD x.val [])) mp).getD x.val []
+  | [], _, _, h => by simp at h
+  | z :: l, mp, x, h => by
+    rw [List.foldl_cons]
+    rcases List.mem_cons.1 h with rfl | h
+    · exact mem_foldIns g' l _ _ _ (by rw [Std.HashMap.getD_insert]; simp)
+    · exact mem_foldIns_self g' l _ x h
+
+theorem mem_hubMap_mono {ga : Array (List (Fin n) × List (Fin n))} {y : Fin n} :
+    ∀ (gs : List Nat) (mp : Std.HashMap Nat (List Nat)) (x g : Nat), g ∈ mp.getD x [] →
+      g ∈ (gs.foldl (fun mp g => ((ga[g]?.getD ([], [])).1.filter (· ≠ y)).foldl
+        (fun mp x => mp.insert x.val (g :: mp.getD x.val [])) mp) mp).getD x []
+  | [], _, _, _, h => h
+  | g' :: gs, mp, x, g, h => by
+    rw [List.foldl_cons]
+    exact mem_hubMap_mono gs _ x g (mem_foldIns g' _ mp x g h)
+
+theorem mem_hubMap {ga : Array (List (Fin n) × List (Fin n))} {y : Fin n} :
+    ∀ (gs : List Nat) (mp : Std.HashMap Nat (List Nat)) (g : Nat) (x : Fin n), g ∈ gs →
+      x ∈ (ga[g]?.getD ([], [])).1 → x ≠ y →
+      g ∈ (gs.foldl (fun mp g => ((ga[g]?.getD ([], [])).1.filter (· ≠ y)).foldl
+        (fun mp x => mp.insert x.val (g :: mp.getD x.val [])) mp) mp).getD x.val []
+  | [], _, _, _, h, _, _ => by simp at h
+  | g' :: gs, mp, g, x, h, hx, hxy => by
+    rw [List.foldl_cons]
+    rcases List.mem_cons.1 h with rfl | h
+    · exact mem_hubMap_mono gs _ _ _ (mem_foldIns_self _ _ mp x
+        (List.mem_filter.2 ⟨hx, by simpa using hxy⟩))
+    · exact mem_hubMap gs _ g x h hx hxy
+
+variable {O : Ontology (Fin n) (Fin m)}
+
+/-- **The hub index is complete**: a gci with `y` in its body, whose other
+body names are listed in `acc`, is among the gcis `trigL` looks at. -/
+theorem mem_trigL {y : Fin n} {g : Nat} (hg : g ∈ getL (mkIx O).gciBy y.val) {acc : List Nat}
+    (hacc : ∀ b ∈ (gciAt (mkIx O) g).1, b ≠ y → b.val ∈ acc) : g ∈ trigL (mkIx O) y acc := by
+  have hb : (mkIx O).hubBy = Array.ofFn fun y : Fin n =>
+      if hubMin ≤ (getL (mkIx O).gciBy y.val).length then
+        some (hubMap (mkIx O).gciArr y (getL (mkIx O).gciBy y.val)) else none := rfl
+  have ho : (mkIx O).hubOne = Array.ofFn fun y : Fin n =>
+      if hubMin ≤ (getL (mkIx O).gciBy y.val).length then
+        (getL (mkIx O).gciBy y.val).filter (fun g => ((mkIx O).gciArr[g]?.getD ([], [])).1.all (· = y))
+      else [] := rfl
+  unfold trigL
+  rw [hb, Array.getElem?_ofFn]
+  simp only [y.isLt, dite_true, Option.getD_some]
+  by_cases hhub : hubMin ≤ (getL (mkIx O).gciBy y.val).length
+  · simp only [hhub, if_true]
+    by_cases hall : ((mkIx O).gciArr[g]?.getD ([], [])).1.all (· = y) = true
+    · refine List.mem_append_left _ ?_
+      unfold getL
+      rw [ho, Array.getElem?_ofFn]
+      simp only [y.isLt, dite_true, Option.getD_some, hhub, if_true]
+      exact List.mem_filter.2 ⟨hg, hall⟩
+    · simp only [List.all_eq_true, decide_eq_true_eq, not_forall] at hall
+      obtain ⟨x, hx, hxy⟩ := hall
+      refine List.mem_append_right _ (List.mem_flatMap.2 ⟨x.val, hacc x hx hxy, ?_⟩)
+      exact mem_hubMap _ _ g x hg hx hxy
+  · simp only [hhub, if_false]
+    exact hg
+
+end Hub
+
 /-! ## Basic computations -/
 
 section Basic
@@ -154,8 +234,9 @@ theorem absTy_canon_fwd' {T L : Array Nat} (hL : SortedA L) :
   refine absTy_canon fun y => ?_
   rw [← mem_fwdL ix hL]
 
-theorem closedIA_sound {T : Array Nat} (hT : SortedA T) (h : closedIA ix T (finL n T.toList) = true) :
-    closedI ix (absTy n T) := by
+theorem closedIA_sound {O : Ontology (Fin n) (Fin m)} {T : Array Nat} (hT : SortedA T)
+    (h : closedIA (mkIx O) T (finL n T.toList) = true) :
+    closedI (mkIx O) (absTy n T) := by
   simp only [closedIA, Bool.and_eq_true, List.all_eq_true, List.any_eq_true, Bool.or_eq_true,
     Bool.not_eq_true', bsA_iff hT] at h
   obtain ⟨h1, h2⟩ := h
@@ -163,7 +244,9 @@ theorem closedIA_sound {T : Array Nat} (hT : SortedA T) (h : closedIA ix T (finL
   · obtain ⟨x, hx, hxT⟩ := h1 g hg
     exact ⟨x, hx, mem_absTy.2 hxT⟩
   · have ha' : a ∈ finL n T.toList := by rw [mem_finL]; exact Array.mem_def.1 (mem_absTy.1 ha)
-    rcases h2 a ha' g hg with h | ⟨x, hx, hxT⟩
+    have hgt : g ∈ trigL (mkIx O) a T.toList :=
+      mem_trigL hg fun b hb' _ => Array.mem_def.1 (mem_absTy.1 (hb b hb'))
+    rcases h2 a ha' g hgt with h | ⟨x, hx, hxT⟩
     · exfalso
       rw [Bool.eq_false_iff] at h
       apply h
@@ -205,7 +288,7 @@ theorem nodeOKA_sound (hW : WF n m C) {i : Nat}
   simp only [nodeOKA, Bool.and_eq_true, decide_eq_true_eq] at h
   obtain ⟨⟨⟨h1, h2⟩, h3⟩, h4⟩ := h
   refine ⟨by simpa using h1, by rw [view_nd_ctx]; simpa using h2, ?_, ?_⟩
-  · rw [view_nd_ty]; exact closedIA_sound _ (hW.ty i) h3
+  · rw [view_nd_ty]; exact closedIA_sound (hW.ty i) h3
   · intro y hy
     rw [view_key_ctx] at hy
     rw [view_nd_ty, mem_absTy]
@@ -269,29 +352,30 @@ section Branch
 
 variable {ix : Ix n m}
 
-theorem brAuxA_cover : ∀ (f : Nat) (cur : Ty n) (q : List Nat) (H : Std.HashSet Nat),
+theorem brAuxA_cover : ∀ (f : Nat) (cur : Ty n) (acc q : List Nat) (H : Std.HashSet Nat),
     (∀ y : Fin n, y ∈ cur ↔ H.contains y.val = true) →
-    ∀ b ∈ brAux ix f cur q, ∃ H' ∈ brAuxA ix f H q, ∀ y : Fin n, y ∈ b ↔ H'.contains y.val = true := by
-  intro f cur q
-  induction f, cur, q using brAux.induct (ix := ix) with
-  | case1 cur q =>
+    ∀ b ∈ brAux ix f cur acc q, ∃ H' ∈ brAuxA ix f H acc q,
+      ∀ y : Fin n, y ∈ b ↔ H'.contains y.val = true := by
+  intro f cur acc q
+  induction f, cur, acc, q using brAux.induct (ix := ix) with
+  | case1 cur acc q =>
     intro H hH b hb
     simp only [brAux, List.mem_singleton] at hb
     subst hb
     exact ⟨H, by simp [brAuxA], hH⟩
-  | case2 f cur =>
+  | case2 f cur acc =>
     intro H hH b hb
     simp only [brAux, List.mem_singleton] at hb
     subst hb
     exact ⟨H, by simp [brAuxA], hH⟩
-  | case3 f cur i rest hg ih =>
+  | case3 f cur acc i rest hg ih =>
     intro H hH b hb
     rw [brAux, hg] at hb
     obtain ⟨H', hH', h'⟩ := ih H hH b hb
     refine ⟨H', ?_, h'⟩
     rw [brAuxA, hg]
     exact hH'
-  | case4 f cur i rest g hg hfire ih =>
+  | case4 f cur acc i rest g hg hfire ih =>
     intro H hH b hb
     simp only [brAux, hg] at hb
     rw [if_pos hfire] at hb
@@ -310,7 +394,8 @@ theorem brAuxA_cover : ∀ (f : Nat) (cur : Ty n) (q : List Nat) (H : Std.HashSe
       rw [Bool.eq_false_iff]
       exact fun hc => hfire.2 h hh ((hH h).2 hc)
     rw [if_pos hc]
-    have hmem : H' ∈ g.2.flatMap fun h => brAuxA ix f (H.insert h.val) (getL ix.gciBy h.val ++ rest) :=
+    have hmem : H' ∈ g.2.flatMap fun h =>
+        brAuxA ix f (H.insert h.val) (h.val :: acc) (trigL ix h (h.val :: acc) ++ rest) :=
       List.mem_flatMap.2 ⟨h, hh, hH'⟩
     revert hmem
     generalize g.2 = l
@@ -319,7 +404,7 @@ theorem brAuxA_cover : ∀ (f : Nat) (cur : Ty n) (q : List Nat) (H : Std.HashSe
     | [], hmem => simp at hmem
     | [h0], hmem => simpa using hmem
     | _ :: _ :: _, hmem => exact hmem
-  | case5 f cur i rest g hg hfire ih =>
+  | case5 f cur acc i rest g hg hfire ih =>
     intro H hH b hb
     simp only [brAux, hg] at hb
     rw [if_neg hfire] at hb
@@ -342,7 +427,7 @@ theorem brCovA_sound {C : CandA} {k : Nat} {s : Array Nat} (hs : SortedA s)
     (h : brCovA ix C k s = true) : BranchCov ix (C.view n m) k (absTy n s) := by
   intro b hb
   simp only [br, sort_absTy hs] at hb
-  obtain ⟨H, hH, hrel⟩ := brAuxA_cover _ _ _ (Std.HashSet.ofList s.toList) (fun y => by
+  obtain ⟨H, hH, hrel⟩ := brAuxA_cover _ _ _ _ (Std.HashSet.ofList s.toList) (fun y => by
     rw [Std.HashSet.contains_ofList, List.contains_iff_mem, mem_absTy, Array.mem_def]) b hb
   simp only [brCovA, List.all_eq_true] at h
   have hH' := h H hH

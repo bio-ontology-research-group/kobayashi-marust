@@ -179,6 +179,20 @@ structure Ix (n m : Nat) where
   tops : Ty n
   /-- role code `↦` super-roles found by search -/
   upArr : Array (Lab m)
+  /-- for a name in the bodies of at least `hubMin` gcis (a hub): the gcis
+  whose body holds no other name -/
+  hubOne : Array (List Nat) := #[]
+  /-- for a hub: by every other body name, the gcis with both (`trigL`) -/
+  hubBy : Array (Option (Std.HashMap Nat (List Nat))) := #[]
+
+/-- Names in at least this many gci bodies are hubs. -/
+def hubMin : Nat := 64
+
+/-- The gcis of `gs` (all with `y` in the body) by their other body names. -/
+def hubMap (ga : Array (List (Fin n) × List (Fin n))) (y : Fin n) (gs : List Nat) :
+    Std.HashMap Nat (List Nat) :=
+  gs.foldl (fun mp g => ((ga[g]?.getD ([], [])).1.filter (· ≠ y)).foldl
+    (fun mp x => mp.insert x.val (g :: mp.getD x.val [])) mp) ∅
 
 /-- Fillers by role code: the lower clauses with a positive number and the
 upper clauses. -/
@@ -198,6 +212,8 @@ def upAux (stepsBy : Array (List (RoleT (Fin m)))) :
 def mkIx (O : Ontology (Fin n) (Fin m)) : Ix n m :=
   let stepsBy := buildIdx (2 * m) (fun p => some (rc p.1, p.2)) (steps O)
   let gl := gciL O
+  let ga := gl.toArray
+  let gby := buildIdx n some (gl.zipIdx.flatMap fun p => p.1.1.map fun a => (a.val, p.2))
   { allBy := buildIdx n (fun cl => match cl with
         | .allRight a S c => some (a.val, (S, c))
         | _ => none) O
@@ -205,8 +221,12 @@ def mkIx (O : Ontology (Fin n) (Fin m)) : Ix n m :=
     stepsBy
     lowBy := buildIdx n (fun q => some (q.1.val, q.2)) (lowerL O)
     uppBy := buildIdx n (fun q => some (q.1.val, q.2)) (upperL O)
-    gciArr := gl.toArray
-    gciBy := buildIdx n some (gl.zipIdx.flatMap fun p => p.1.1.map fun a => (a.val, p.2))
+    gciArr := ga
+    gciBy := gby
+    hubOne := Array.ofFn fun y : Fin n => if hubMin ≤ (getL gby y.val).length then
+      (getL gby y.val).filter fun g => (ga[g]?.getD ([], [])).1.all (· = y) else []
+    hubBy := Array.ofFn fun y : Fin n => if hubMin ≤ (getL gby y.val).length then
+      some (hubMap ga y (getL gby y.val)) else none
     gciTop := (gl.zipIdx.filter fun p => p.1.1.isEmpty).map (·.2)
     tops := (gl.filterMap topName).toFinset
     upArr := Array.ofFn fun c : Fin (2 * m) =>
@@ -253,22 +273,32 @@ def lowAt (t : Ty n) : List (Fin n × Nat × RoleT (Fin m) × Fin n) :=
 def uppAt (t : Ty n) : List (Fin n × Nat × RoleT (Fin m) × Fin n) :=
   (t.sort (· ≤ ·)).flatMap fun a => (getL ix.uppBy a.val).map fun q => (a, q)
 
+/-- The gcis to look at when `y` joins a set whose names are listed in
+`acc`: the gcis with `y` in the body, or for a hub those whose body holds
+no other name or another name of `acc`. -/
+def trigL (y : Fin n) (acc : List Nat) : List Nat :=
+  match ix.hubBy[y.val]?.getD none with
+  | none => getL ix.gciBy y.val
+  | some mp => getL ix.hubOne y.val ++ acc.flatMap fun x => mp.getD x []
+
 /-- Branches with one head name per fired gci. `queue` holds gci indices
-to look at; a gci fires when its body holds and no head name does. -/
-def brAux : Nat → Ty n → List Nat → List (Ty n)
-  | 0, cur, _ => [cur]
-  | _ + 1, cur, [] => [cur]
-  | f + 1, cur, i :: rest =>
+to look at; a gci fires when its body holds and no head name does. `acc`
+lists the names of the set (for `trigL`). -/
+def brAux : Nat → Ty n → List Nat → List Nat → List (Ty n)
+  | 0, cur, _, _ => [cur]
+  | _ + 1, cur, _, [] => [cur]
+  | f + 1, cur, acc, i :: rest =>
     match ix.gciArr[i]? with
-    | none => brAux (f + 1) cur rest
+    | none => brAux (f + 1) cur acc rest
     | some g =>
       if (∀ b ∈ g.1, b ∈ cur) ∧ ∀ h ∈ g.2, h ∉ cur then
-        g.2.flatMap fun h => brAux f (insert h cur) (getL ix.gciBy h.val ++ rest)
-      else brAux (f + 1) cur rest
-termination_by f cur q => (f, q.length)
+        g.2.flatMap fun h => brAux f (insert h cur) (h.val :: acc) (trigL ix h (h.val :: acc) ++ rest)
+      else brAux (f + 1) cur acc rest
+termination_by f cur acc q => (f, q.length)
 
 def br (s : Ty n) : List (Ty n) :=
-  brAux ix (n + 1) s (ix.gciTop ++ (s.sort (· ≤ ·)).flatMap fun a => getL ix.gciBy a.val)
+  let acc := (s.sort (· ≤ ·)).map (·.val)
+  brAux ix (n + 1) s acc (ix.gciTop ++ (s.sort (· ≤ ·)).flatMap fun a => trigL ix a acc)
 
 end Comp
 
