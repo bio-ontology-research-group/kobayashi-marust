@@ -9,6 +9,10 @@ import ContextCalculus.OWLFrontend.SROIQAnon
 import ContextCalculus.OWLFrontend.ZeroRoute
 import ContextCalculus.OWLFrontend.HasSelfClass
 import ContextCalculus.OWLFrontend.DatatypeDef
+import ContextCalculus.OWLFrontend.HintBatch
+import ContextCalculus.OWLFrontend.RuleGround
+import ContextCalculus.OWLFrontend.KeyRules
+import ContextCalculus.OWLFrontend.EdgeStrengthen
 
 /-!
 # Executable OWL reference procedure (`km-owl-reference`)
@@ -26,7 +30,26 @@ km-owl-reference --procedure sriqd-kb [--hint FILE] [--type CLASS INDIVIDUAL] <f
 km-owl-reference --procedure shoiq-c2a [--hint FILE] [--type CLASS INDIVIDUAL] <file.ofn>
 km-owl-reference --procedure sroiq-c2a [--hint FILE] [--type CLASS INDIVIDUAL] [--check] <file.ofn>
 km-owl-reference --procedure sriq-kb|sriqd-kb|shoiq-c2a|sroiq-c2a --print-index <file.ofn>
+km-owl-reference --procedure sroiq-hint --hint FILE [--row ROW] <file.ofn>
+km-owl-reference --procedure sroiq-hint --batch FILE|- <file.ofn>
+km-owl-reference --procedure sroiq-hint --check|--print-index|--print-clauses [--row ROW] <file.ofn>
 ```
+
+`sroiq-hint` is the hint-only route of stage C5 (`OWLFrontend/HintRoute.lean`,
+`docs/V1.7.0-C5-HINT-ROUTE.md`): the translations of `sroiq-c2a` without the
+C2a check, answering only when the hint checks. A certified row prints
+`{"format":"owl-hint-v1","row":ROW,"certified":true}` (exit 0;
+`hintRowAns_sound`); otherwise the reason goes to stderr (exit 3). `ROW` is
+one argument: `consistent` (default), `nontype C a`, `nonsame a b`,
+`nonsub A B`, `nondiff a b`, `nonrole r a b`, `nonnrole r a b`,
+`nonsubs A B1 B2 ...`, `nontypes a C1 C2 ...` (full IRIs; `^IRI` is the
+inverse of a property). `--batch` reads pairs `row ...` / hint lines / `end`
+and prints one `owl-hint-batch-v1` line per pair (`certified`, `rejected`:
+the hint does not check, `declined`: outside the route); pairs with the same
+row share one translation (`hintRowsB_eq`, `hintPB_eq`). `--print-index`
+prints the tables of the core the route uses on the (row-extended)
+ontology; `--print-clauses` prints the object clauses and nominal names the
+hint is checked against (a diagnostic).
 
 `--print-index` prints the index tables a hint refers to (`printIndex`).
 `--check` (with `shoiq-c2a` or `sroiq-c2a`) runs the fragment checks only
@@ -1169,6 +1192,12 @@ structure Args where
   printIndex : Bool := false
   /-- Run the fragment checks of `shoiq-c2a` only (no decision). -/
   checkOnly : Bool := false
+  /-- `sroiq-hint`: print the clauses a hint is checked against. -/
+  printClauses : Bool := false
+  /-- `sroiq-hint`: the row, in words (`parseRow`). -/
+  row : Option String := none
+  /-- `sroiq-hint`: a batch file of (row, hint) pairs, `-` for stdin. -/
+  batch : Option String := none
 
 def parseArgs (acc : Args) : List String → Option Args
   | [] => if acc.path.isSome then some acc else none
@@ -1178,6 +1207,11 @@ def parseArgs (acc : Args) : List String → Option Args
     parseArgs { acc with dataRoute := some "shoiq-c2a" } rest
   | "--procedure" :: "sroiq-c2a" :: rest =>
     parseArgs { acc with dataRoute := some "sroiq-c2a" } rest
+  | "--procedure" :: "sroiq-hint" :: rest =>
+    parseArgs { acc with dataRoute := some "sroiq-hint" } rest
+  | "--print-clauses" :: rest => parseArgs { acc with printClauses := true } rest
+  | "--row" :: r :: rest => parseArgs { acc with row := some r } rest
+  | "--batch" :: f :: rest => parseArgs { acc with batch := some f } rest
   | "--procedure" :: raw :: rest =>
     match parseProcedure raw with
     | some p' => parseArgs { acc with procedure := p' } rest
@@ -1205,6 +1239,107 @@ def indexLines (T : SRIQKBTranslation) : List String :=
   let rs := (T.rnames.toArray.qsort (fun a b => a.2 < b.2)).toList
   (cs.map fun p => s!"concept {p.2} {p.1}") ++ (rs.map fun p => s!"role {p.2} {p.1}")
 
+/-- The index lines of the route with `ObjectHasSelf` (input renamed by `anonOff`). -/
+def printIndexHS (O : OWL.Ontology) : IO UInt32 := do
+  let out ← IO.getStdout
+  let emit (ls : List String) : IO Unit := do for l in ls do out.putStrLn l
+  let O0 := O
+  let P := selfPairs O0
+  let O := hsOff O0
+  match translateSHOIQD (roleOff (selfOff O)) (pairNames P) with
+  | none => decline (hsDecline O0)
+  | some T =>
+    match roleCls T (selfOff O), selfCls T O, pairCls T P with
+    | some E, some SC, some PC =>
+      let L := OWLFrontend.SHOIQ.nomNames (roleOff (selfOff O)) (pairNames P)
+      let SC := SC ++ PC
+      let n1 := T.obj.conceptCount + SROIQ.Proc.kCD (dosnC T L E)
+      let nc := (SRIQD.objPart (SRIQN.dbase (chC T L E))).length
+      let m := T.obj.roleCount
+      emit [s!"concepts {SRIQN.SelfE.ncOf (SRIQN.Proc.encTransDN (encS T L E SC))}", s!"roles {m}"]
+      emit (indexLines T.obj)
+      emit ((roleOff (selfOff O)).individualNames.filterMap fun a =>
+        (nameIx T.obj (OWLFrontend.SHOIQ.nmOf (roleOff (selfOff O)) (pairNames P) a)).map fun i =>
+          s!"nominal {i.val} {a}")
+      -- the class of `ObjectHasSelf(r)`: `hasself I IRI` or `hasself I inv IRI`
+      emit (P.filterMap fun p =>
+        (nameIx T.obj p.1).map fun i =>
+          match p.2 with
+          | .inv r => s!"hasself {i.val} inv {r}"
+          | r => s!"hasself {i.val} {r.name}")
+      emit [s!"loops {n1}", s!"splits {n1 + 2 * m}", s!"guards {n1 + 2 * m + 3 * nc}",
+        s!"fresh-nominal {n1 + 2 * m + 3 * nc + n1 + 1}"]
+      out.flush
+      return 0
+    | _, _, _ => decline (hsDecline O0)
+
+/-- The index lines of the Self route (input renamed by `anonOff`). -/
+def printIndexSelf (O : OWL.Ontology) : IO UInt32 := do
+  let out ← IO.getStdout
+  let emit (ls : List String) : IO Unit := do for l in ls do out.putStrLn l
+  match translateSHOIQD (roleOff (selfOff O)) [] with
+  | none => decline (selfDecline O)
+  | some T =>
+    match roleCls T (selfOff O), selfCls T O with
+    | some E, some SC =>
+      let L := OWLFrontend.SHOIQ.nomNames (roleOff (selfOff O)) []
+      let n1 := T.obj.conceptCount + SROIQ.Proc.kCD (dosnC T L E)
+      let nc := (SRIQD.objPart (SRIQN.dbase (chC T L E))).length
+      let m := T.obj.roleCount
+      emit [s!"concepts {SRIQN.SelfE.ncOf (SRIQN.Proc.encTransDN (encS T L E SC))}", s!"roles {m}"]
+      emit (indexLines T.obj)
+      emit ((roleOff (selfOff O)).individualNames.filterMap fun a =>
+        (nameIx T.obj (OWLFrontend.SHOIQ.nmOf (roleOff (selfOff O)) [] a)).map fun i =>
+          s!"nominal {i.val} {a}")
+      -- the Self encoding: loop names from n1 (role j: n1 + j, its inverse n1 + m + j),
+      -- split names, nominal guards, the fresh nominal
+      emit [s!"loops {n1}", s!"splits {n1 + 2 * m}", s!"guards {n1 + 2 * m + 3 * nc}",
+        s!"fresh-nominal {n1 + 2 * m + 3 * nc + n1 + 1}"]
+      out.flush
+      return 0
+    | _, _ => decline (selfDecline O)
+
+/-- The index lines of the at-most-zero route (input renamed by `anonOff`). -/
+def printIndexZero (O : OWL.Ontology) : IO UInt32 := do
+  let out ← IO.getStdout
+  let emit (ls : List String) : IO Unit := do for l in ls do out.putStrLn l
+  match translateSHOIQD (roleOff O) [] with
+  | none => decline (sroiqDecline O)
+  | some T =>
+    match roleCls T O with
+    | none => decline (sroiqDecline O)
+    | some E =>
+      let L := OWLFrontend.SHOIQ.nomNames (roleOff O) []
+      let n1 := T.obj.conceptCount + SROIQ.Proc.kCD (dosnC T L E)
+      emit [s!"concepts {SRIQN.SelfE.ncOf (SRIQN.Proc.encTransDN (encZ T L E))}",
+        s!"roles {T.obj.roleCount}"]
+      emit (indexLines T.obj)
+      emit ((roleOff O).individualNames.filterMap fun a =>
+        (nameIx T.obj (OWLFrontend.SHOIQ.nmOf (roleOff O) [] a)).map fun i => s!"nominal {i.val} {a}")
+      -- the at-most-zero rewriting: one name per object clause from n1
+      emit [s!"zeros {n1}"]
+      out.flush
+      return 0
+
+/-- The index lines of the chain route (input renamed by `anonOff`). -/
+def printIndexChain (O : OWL.Ontology) : IO UInt32 := do
+  let out ← IO.getStdout
+  let emit (ls : List String) : IO Unit := do for l in ls do out.putStrLn l
+  match translateSHOIQD (roleOff O) [] with
+  | none => decline (sroiqDecline O)
+  | some T =>
+    match roleCls T O with
+    | none => decline (sroiqDecline O)
+    | some E =>
+      let L := OWLFrontend.SHOIQ.nomNames (roleOff O) []
+      emit [s!"concepts {T.obj.conceptCount + SROIQ.Proc.kCD (dosnC T L E) + SRIQN.Proc.encKD (encC T L E)}",
+        s!"roles {T.obj.roleCount}"]
+      emit (indexLines T.obj)
+      emit ((roleOff O).individualNames.filterMap fun a =>
+        (nameIx T.obj (OWLFrontend.SHOIQ.nmOf (roleOff O) [] a)).map fun i => s!"nominal {i.val} {a}")
+      out.flush
+      return 0
+
 /-- **Index printer** (`--print-index`): the concept, role and individual
 indices a hint for the route refers to. Lines: `concepts N` (the number of
 concept indices of the ontology the hint is checked against, encoding
@@ -1219,94 +1354,14 @@ def printIndex (route : String) (O : OWL.Ontology) : IO UInt32 := do
   let O := if route == "sroiq-c2a" then duOff ((dtUnfold O).getD O) else O
   if route == "sroiq-c2a" && !(selfPairs (anonOff [] O)).isEmpty &&
       !(anonOff [] O).isSROIQDSKB then
-    let O0 := anonOff [] O
-    let P := selfPairs O0
-    let O := hsOff O0
-    match translateSHOIQD (roleOff (selfOff O)) (pairNames P) with
-    | none => decline (hsDecline O0)
-    | some T =>
-      match roleCls T (selfOff O), selfCls T O, pairCls T P with
-      | some E, some SC, some PC =>
-        let L := OWLFrontend.SHOIQ.nomNames (roleOff (selfOff O)) (pairNames P)
-        let SC := SC ++ PC
-        let n1 := T.obj.conceptCount + SROIQ.Proc.kCD (dosnC T L E)
-        let nc := (SRIQD.objPart (SRIQN.dbase (chC T L E))).length
-        let m := T.obj.roleCount
-        emit [s!"concepts {SRIQN.SelfE.ncOf (SRIQN.Proc.encTransDN (encS T L E SC))}", s!"roles {m}"]
-        emit (indexLines T.obj)
-        emit ((roleOff (selfOff O)).individualNames.filterMap fun a =>
-          (nameIx T.obj (OWLFrontend.SHOIQ.nmOf (roleOff (selfOff O)) (pairNames P) a)).map fun i =>
-            s!"nominal {i.val} {a}")
-        -- the class of `ObjectHasSelf(r)`: `hasself I IRI` or `hasself I inv IRI`
-        emit (P.filterMap fun p =>
-          (nameIx T.obj p.1).map fun i =>
-            match p.2 with
-            | .inv r => s!"hasself {i.val} inv {r}"
-            | r => s!"hasself {i.val} {r.name}")
-        emit [s!"loops {n1}", s!"splits {n1 + 2 * m}", s!"guards {n1 + 2 * m + 3 * nc}",
-          s!"fresh-nominal {n1 + 2 * m + 3 * nc + n1 + 1}"]
-        out.flush
-        return 0
-      | _, _, _ => decline (hsDecline O0)
+    printIndexHS (anonOff [] O)
   else if route == "sroiq-c2a" && !(← checkS false (anonOff [] O)) && (anonOff [] O).isSROIQDSKB &&
       !(selfAxs (anonOff [] O)).isEmpty then
-    let O := anonOff [] O
-    match translateSHOIQD (roleOff (selfOff O)) [] with
-    | none => decline (selfDecline O)
-    | some T =>
-      match roleCls T (selfOff O), selfCls T O with
-      | some E, some SC =>
-        let L := OWLFrontend.SHOIQ.nomNames (roleOff (selfOff O)) []
-        let n1 := T.obj.conceptCount + SROIQ.Proc.kCD (dosnC T L E)
-        let nc := (SRIQD.objPart (SRIQN.dbase (chC T L E))).length
-        let m := T.obj.roleCount
-        emit [s!"concepts {SRIQN.SelfE.ncOf (SRIQN.Proc.encTransDN (encS T L E SC))}", s!"roles {m}"]
-        emit (indexLines T.obj)
-        emit ((roleOff (selfOff O)).individualNames.filterMap fun a =>
-          (nameIx T.obj (OWLFrontend.SHOIQ.nmOf (roleOff (selfOff O)) [] a)).map fun i =>
-            s!"nominal {i.val} {a}")
-        -- the Self encoding: loop names from n1 (role j: n1 + j, its inverse n1 + m + j),
-        -- split names, nominal guards, the fresh nominal
-        emit [s!"loops {n1}", s!"splits {n1 + 2 * m}", s!"guards {n1 + 2 * m + 3 * nc}",
-          s!"fresh-nominal {n1 + 2 * m + 3 * nc + n1 + 1}"]
-        out.flush
-        return 0
-      | _, _ => decline (selfDecline O)
+    printIndexSelf (anonOff [] O)
   else if route == "sroiq-c2a" && !(← checkS false (anonOff [] O)) && (← checkZero false (anonOff [] O)) then
-    let O := anonOff [] O
-    match translateSHOIQD (roleOff O) [] with
-    | none => decline (sroiqDecline O)
-    | some T =>
-      match roleCls T O with
-      | none => decline (sroiqDecline O)
-      | some E =>
-        let L := OWLFrontend.SHOIQ.nomNames (roleOff O) []
-        let n1 := T.obj.conceptCount + SROIQ.Proc.kCD (dosnC T L E)
-        emit [s!"concepts {SRIQN.SelfE.ncOf (SRIQN.Proc.encTransDN (encZ T L E))}",
-          s!"roles {T.obj.roleCount}"]
-        emit (indexLines T.obj)
-        emit ((roleOff O).individualNames.filterMap fun a =>
-          (nameIx T.obj (OWLFrontend.SHOIQ.nmOf (roleOff O) [] a)).map fun i => s!"nominal {i.val} {a}")
-        -- the at-most-zero rewriting: one name per object clause from n1
-        emit [s!"zeros {n1}"]
-        out.flush
-        return 0
+    printIndexZero (anonOff [] O)
   else if route == "sroiq-c2a" then
-    let O := anonOff [] O
-    match translateSHOIQD (roleOff O) [] with
-    | none => decline (sroiqDecline O)
-    | some T =>
-      match roleCls T O with
-      | none => decline (sroiqDecline O)
-      | some E =>
-        let L := OWLFrontend.SHOIQ.nomNames (roleOff O) []
-        emit [s!"concepts {T.obj.conceptCount + SROIQ.Proc.kCD (dosnC T L E) + SRIQN.Proc.encKD (encC T L E)}",
-          s!"roles {T.obj.roleCount}"]
-        emit (indexLines T.obj)
-        emit ((roleOff O).individualNames.filterMap fun a =>
-          (nameIx T.obj (OWLFrontend.SHOIQ.nmOf (roleOff O) [] a)).map fun i => s!"nominal {i.val} {a}")
-        out.flush
-        return 0
+    printIndexChain (anonOff [] O)
   else if route == "shoiq-c2a" then
     match translateSHOIQD O [] with
     | none => decline (shoiqDecline O)
@@ -1339,6 +1394,393 @@ def printIndex (route : String) (O : OWL.Ontology) : IO UInt32 := do
       out.flush
       return 0
 
+
+/-! ### The hint-only route (`--procedure sroiq-hint`, stage C5) -/
+
+/-- An object property in a row: `IRI` or `^IRI` (its inverse). -/
+def parseProp (w : String) : OWL.ObjProp :=
+  if w.startsWith "^" then .inv (w.drop 1).toString else .named w
+
+/-- A row in words: `consistent`, `nontype C a`, `nonsame a b`, `nonsub A B`,
+`nondiff a b`, `nonrole r a b`, `nonnrole r a b`, `nonsubs A B1 B2 ...`,
+`nontypes a C1 C2 ...` (a property `r` is `IRI` or `^IRI`). -/
+def parseRow (ws : List String) : Except String HintRowSpec :=
+  match ws with
+  | [] | ["consistent"] => .ok .consistent
+  | ["nontype", C, a] => .ok (.nontype C a)
+  | ["nonsame", a, b] => .ok (.nonsame a b)
+  | ["nonsub", A, B] => .ok (.nonsub A B)
+  | ["nondiff", a, b] => .ok (.nondiff a b)
+  | ["nonrole", r, a, b] => .ok (.nonrole (parseProp r) a b)
+  | ["nonnrole", r, a, b] => .ok (.nonnrole (parseProp r) a b)
+  | "nonsubs" :: A :: Bs => .ok (.nonsubs A Bs)
+  | "nontypes" :: a :: Cs => .ok (.nontypes a Cs)
+  | _ => .error s!"bad row: {" ".intercalate ws}"
+
+def wordsOf (line : String) : List String :=
+  ((line.split fun c => c == ' ' || c == '\t' || c == '\r').toList.map (·.toString)).filter (· ≠ "")
+
+/-- The ontology a row's hint is checked against (`none`: an axiom of the
+extension is a `HasKey`). -/
+def rowOntology (O : OWL.Ontology) (r : HintRowSpec) : Option OWL.Ontology :=
+  match r.axs O with
+  | none => some O
+  | some L => if (addAxs O L).noKey then some (addAxs O L) else none
+
+/-- The hint route's fragment on an ontology, as the route sees it after
+unfolding, the disjoint-union rewriting and the renaming of anonymous
+individuals: `none` when datatype definitions cannot be unfolded. -/
+def hintPrep (O : OWL.Ontology) : Option OWL.Ontology :=
+  (dtUnfold O).map fun O' => anonOff [] (duOff O')
+
+/-- Why the hint route declines a prepared ontology. -/
+def hintDecline (X : OWL.Ontology) : String :=
+  let base (O : OWL.Ontology) (requested : List OWL.IRI) (sc : Bool) : String :=
+    if !O.isSROIQDSKB then
+      s!"not recognised: not an OWL SROIQ(D) knowledge base ({firstFailing O OWL.Axiom.isSROIQDSKB})"
+    else match translateSHOIQD (roleOff (if sc then selfOff O else O)) requested with
+      | none => "not recognised: the SHOIQ(D) translation failed"
+      | some _ =>
+        "checks failed: role regularity, chain elimination (closed automata, simple counting " ++
+        "roles), the Self conditions, a role index, or a data range outside the supported sub-theory"
+  if !(selfPairs X).isEmpty then base (hsOff X) (pairNames (selfPairs X)) true
+  else if !(selfAxs X).isEmpty then base X [] true
+  else if !X.isSROIQDKB then
+    s!"not recognised: not an OWL SROIQ(D) knowledge base ({firstFailing X OWL.Axiom.isSROIQDKB})"
+  else base X [] false
+
+/-- The text of a row in the output. -/
+def rowText (ws : List String) : String := if ws.isEmpty then "consistent" else " ".intercalate ws
+
+/-- Print a certified row (`hintRowAns_sound`: the row holds at the OWL 2
+datatype map, for every reading of `xsd:pattern`). -/
+def publishHintRow (row : String) {O : OWL.Ontology} {r : HintRowSpec} {hint : RawHint}
+    (_h : hintRowAns O r hint = some true) : IO UInt32 := do
+  let out ← IO.getStdout
+  out.putStrLn ("{\"format\":\"owl-hint-v1\",\"row\":" ++ (Json.str row).compress ++
+    ",\"certified\":true}")
+  out.flush
+  return 0
+
+/-- `--procedure sroiq-hint --hint FILE [--row ROW]`: one hint, one row. -/
+def runHintOne (timing : Bool) (O : OWL.Ontology) (rowWs : List String) (hint : RawHint) :
+    IO UInt32 := do
+  match parseRow rowWs with
+  | .error e =>
+    IO.eprintln e
+    return 2
+  | .ok r =>
+    let ⟨res, hres⟩ ← timedPhase timing "hint-row" (fun _ => hintRowAns O r hint)
+    match res, hres with
+    | some true, h => publishHintRow (rowText rowWs) h.symm
+    | _, _ =>
+      match rowOntology O r with
+      | none => decline "not recognised: HasKey in the ontology or the row"
+      | some X =>
+        match hintPrep X with
+        | none => decline ("not recognised: a DatatypeDefinition of a datatype of the map, a " ++
+            "recursive definition, or two definitions of one datatype")
+        | some X' =>
+          match hintP X hint with
+          | some false =>
+            decline "hint: rejected (an index outside the translation, or the check fails)"
+          | _ => decline (hintDecline X')
+
+/-- A batch file: pairs `row ...` / hint lines / `end`. -/
+def parseBatch (text : String) : Except String (List (List String × RawHint)) := do
+  let mut acc : Array (List String × RawHint) := #[]
+  let mut cur : Option (List String × Array String) := none
+  for line in text.splitOn "\n" do
+    let body := (line.splitOn "#").headD ""
+    let ws := wordsOf body
+    match cur, ws with
+    | none, [] => pure ()
+    | none, "row" :: rw => cur := some (rw, #[])
+    | none, _ => throw s!"batch: expected `row ...`, got: {line}"
+    | some (rw, ls), ["end"] =>
+      match RawHint.parseHint ("\n".intercalate ls.toList) with
+      | .ok h => acc := acc.push (rw, h)
+      | .error e => throw s!"batch: bad hint for row {rowText rw}: {e}"
+      cur := none
+    | some (rw, ls), _ => cur := some (rw, ls.push body)
+  if cur.isSome then throw "batch: missing `end`"
+  return acc.toList
+
+/-- `--procedure sroiq-hint --batch FILE`: every pair, one result line each,
+in input order. Pairs with the same row share one translation of the
+extended ontology and all its tables (`hintRowsB`, `hintRowsB_eq`). -/
+def runHintBatch (timing : Bool) (O : OWL.Ontology) (pairs : List (List String × RawHint)) :
+    IO UInt32 := do
+  let out ← IO.getStdout
+  -- the distinct rows, in order of first occurrence
+  let rows := (pairs.map (·.1)).eraseDups
+  let mut results : Std.HashMap Nat String := {}
+  let idx := (List.range pairs.length).zip pairs
+  for rw in rows do
+    let mine := idx.filter (·.2.1 == rw)
+    match parseRow rw with
+    | .error e =>
+      for (i, _) in mine do results := results.insert i s!"\"declined\",\"reason\":{(Json.str e).compress}"
+    | .ok r =>
+      let hs := mine.map (·.2.2)
+      match rowOntology O r with
+      | none =>
+        for (i, _) in mine do
+          results := results.insert i "\"declined\",\"reason\":\"HasKey\""
+      | some X =>
+        -- `hintPB X hs = hs.map (hintP X)` (`hintPB_eq`); a `some true` is the
+        -- certified answer of `hintRowAns O r` (`hintRowsB_eq`, `hintRowAns_sound`)
+        let ⟨rs, _⟩ ← timedPhase timing "hint-batch" (fun _ => hintPB X hs)
+        for ((i, _), v) in mine.zip rs do
+          let t := match v with
+            | some true => "\"certified\""
+            | some false => "\"rejected\""
+            | none => "\"declined\""
+          results := results.insert i t
+  for (i, (rw, _)) in idx do
+    let t := results.getD i "\"declined\""
+    out.putStrLn ("{\"format\":\"owl-hint-batch-v1\",\"pair\":" ++ toString i ++ ",\"row\":" ++
+      (Json.str (rowText rw)).compress ++ ",\"result\":" ++ t ++ "}")
+  out.flush
+  return 0
+
+/-- `--procedure sroiq-hint --check [--row ROW]`: the fragment checks of the
+hint route (an empty hint is checked, so the answer is `none` or `some false`). -/
+def checkHint (O : OWL.Ontology) (rowWs : List String) : IO UInt32 := do
+  match parseRow rowWs with
+  | .error e => IO.eprintln e; return 2
+  | .ok r =>
+    match rowOntology O r with
+    | none => decline "not recognised: HasKey in the ontology or the row"
+    | some X =>
+      match hintPrep X with
+      | none => decline ("not recognised: a DatatypeDefinition of a datatype of the map, a " ++
+          "recursive definition, or two definitions of one datatype")
+      | some X' =>
+        -- `hintPFrag_eq`: the fragment check is `(hintP X h).isSome` for every hint
+        if hintPFrag X then
+          IO.println "accepted"
+          return 0
+        else decline (hintDecline X')
+
+/-- `--procedure sroiq-hint --print-index [--row ROW]`: the index tables of
+the core the hint route uses on the (extended) ontology. -/
+def printIndexHint (O : OWL.Ontology) (rowWs : List String) : IO UInt32 := do
+  match parseRow rowWs with
+  | .error e => IO.eprintln e; return 2
+  | .ok r =>
+    let X := match r.axs O with
+      | none => O
+      | some L => addAxs O L
+    match hintPrep X with
+    | none => decline ("not recognised: a DatatypeDefinition of a datatype of the map, a " ++
+        "recursive definition, or two definitions of one datatype")
+    | some X' =>
+      if !(selfPairs X').isEmpty then printIndexHS X'
+      else if (owlChainHint X' {}).isSome then printIndexChain X'
+      else printIndexSelf X'
+
+
+/-- A role in the hint text format. -/
+def rtText {m : Nat} : SRI.RoleT (Fin m) → String
+  | .pos r => s!"+{r.val}"
+  | .inv r => s!"-{r.val}"
+
+/-- A normalised clause, for `--print-clauses` (diagnostic, not part of any
+proved statement). -/
+def clauseText {n m : Nat} : SRIQ.Clause (Fin n) (Fin m) → String
+  | .gci b h => s!"gci {" ".intercalate (b.map (toString ·.val))} -> {" ".intercalate (h.map (toString ·.val))}"
+  | .exRight a R b => s!"some {a.val} {rtText R} {b.val}"
+  | .allRight a R b => s!"all {a.val} {rtText R} {b.val}"
+  | .atLeast a k R b => s!"atleast {a.val} {k} {rtText R} {b.val}"
+  | .atMost a k R b => s!"atmost {a.val} {k} {rtText R} {b.val}"
+  | .chain body S => s!"chain {" ".intercalate (body.map rtText)} {rtText S}"
+
+/-- Print the object clauses and nominal names a hint is checked against
+(`checkRedN`), and the number of data clauses. -/
+def emitClauses {n m p q : Nat} (D : SRIQN.DOntology (Fin n) (Fin m) (Fin p) (Fin q)) : IO UInt32 := do
+  let out ← IO.getStdout
+  let E := SRIQN.Proc.encTransDN D
+  for cl in SRIQD.objPart (SRIQN.dbase E) do out.putStrLn (clauseText cl)
+  for a in SRIQN.dnoms E do out.putStrLn s!"nom {a.val}"
+  out.putStrLn s!"data-clauses {(SRIQN.dbase E).length - (SRIQD.objPart (SRIQN.dbase E)).length}"
+  out.flush
+  return 0
+
+/-- `--procedure sroiq-hint --print-clauses [--row ROW]`. -/
+def printClausesHint (O : OWL.Ontology) (rowWs : List String) : IO UInt32 := do
+  match parseRow rowWs with
+  | .error e => IO.eprintln e; return 2
+  | .ok r =>
+    let X := match r.axs O with
+      | none => O
+      | some L => addAxs O L
+    match hintPrep X with
+    | none => decline "not recognised: DatatypeDefinition"
+    | some O =>
+      if !(selfPairs O).isEmpty then
+        let P := selfPairs O
+        let O1 := hsOff O
+        match translateSHOIQD (roleOff (selfOff O1)) (pairNames P) with
+        | none => decline "not recognised"
+        | some T =>
+          match roleCls T (selfOff O1), selfCls T O1, pairCls T P with
+          | some E, some SC, some PC =>
+            emitClauses (encS T (OWLFrontend.SHOIQ.nomNames (roleOff (selfOff O1)) (pairNames P)) E (SC ++ PC))
+          | _, _, _ => decline "not recognised"
+      else if !(owlChainHint O {}).isSome then
+        match translateSHOIQD (roleOff (selfOff O)) [] with
+        | none => decline "not recognised"
+        | some T =>
+          match roleCls T (selfOff O), selfCls T O with
+          | some E, some SC => emitClauses (encS T (OWLFrontend.SHOIQ.nomNames (roleOff (selfOff O)) []) E SC)
+          | _, _ => decline "not recognised"
+      else
+        match translateSHOIQD (roleOff O) [] with
+        | none => decline "not recognised"
+        | some T =>
+          match roleCls T O with
+          | some E => emitClauses (encC T (OWLFrontend.SHOIQ.nomNames (roleOff O) []) E)
+          | none => decline "not recognised"
+
+/-- The hint route on a parsed ontology. -/
+def runHint (timing : Bool) (args : Args) (O : OWL.Ontology) : IO UInt32 := do
+  -- asymmetric and disjoint properties: the hint is checked against the
+  -- strengthening `edgeOff O`, whose certified rows are rows of `O`
+  -- (`model_of_edgeOff`, `holds_of_models`, `hintRowAnsE_sound`)
+  let O := if hasEdgeAx O then edgeOff O else O
+  let rowWs := (args.row.map wordsOf).getD []
+  if args.printIndex then return ← printIndexHint O rowWs
+  if args.printClauses then return ← printClausesHint O rowWs
+  if args.checkOnly then return ← checkHint O rowWs
+  match args.batch with
+  | some f =>
+    let text ← if f == "-" then (do let stdin ← IO.getStdin; stdin.readToEnd) else IO.FS.readFile f
+    match parseBatch text with
+    | .error e => IO.eprintln e; return 2
+    | .ok pairs => runHintBatch timing O pairs
+  | none =>
+    match args.hint with
+    | none => IO.eprintln "sroiq-hint: --hint FILE or --batch FILE is required"; return 2
+    | some f =>
+      match RawHint.parseHint (← IO.FS.readFile f) with
+      | .error e => IO.eprintln s!"bad hint {f}: {e}"; return 2
+      | .ok hint => runHintOne timing O rowWs hint
+
+
+/-! ### DL-safe rules (stage C5, item 3) -/
+
+/-- The text with its rules, when `OWL.parse` rejected it for a rule. -/
+def parseRules? (text reason : String) : Option (Except String OWL.OntologyR) :=
+  if (reason.splitOn "DLSafeRule").length > 1 then some (OWL.parseR text) else none
+
+def rulesDeclineR (R0 : OWL.OntologyR) : String :=
+  match (if R0.onto.noKey then some R0 else keyOff R0) with
+  | none => "keys: a HasKey with data properties"
+  | some R =>
+  let N := R.named.eraseDups
+  let k := (R.rules.map fun ρ => N.length ^ ρ.ivars.eraseDups.length).sum
+  if k > ruleCap then s!"rules: {k} ground instances over {N.length} named individuals (more than {ruleCap})"
+  else "rules: an instance with a data variable, a data range atom, a built-in atom or an " ++
+    "anonymous individual"
+
+/-- Print the verdict of `owlKeysC2a` (`owlKeysC2a_sound`: consistency of
+the ontology with its DL-safe rules, for every reading of the built-ins). -/
+def publishConsistentR (v : Bool) {O : OWL.OntologyR} {hint : Option RawHint}
+    (_h : owlKeysC2a O hint = some v) : IO UInt32 := do
+  let out ← IO.getStdout
+  out.putStrLn ("{\"format\":\"owl-consistency-v1\",\"consistent\":" ++
+    (if v then "true" else "false") ++ "}")
+  out.flush
+  return 0
+
+/-- The fragment checks of `sroiq-c2a` on an ontology. -/
+def checkC2a (O : OWL.Ontology) : IO UInt32 := do
+  let O := duOff ((dtUnfold O).getD O)
+  if ← checkS (← timingEnabled) (anonOff [] O) then do
+    IO.println "accepted"
+    return 0
+  else if ← checkSelf (← timingEnabled) (anonOff [] O) then do
+    IO.println "accepted"
+    return 0
+  else if ← checkZero (← timingEnabled) (anonOff [] O) then do
+    IO.println "accepted"
+    return 0
+  else if ← checkHS (← timingEnabled) (anonOff [] O) then do
+    IO.println "accepted"
+    return 0
+  else do
+    if (← IO.getEnv "KM_C2A_WHY") == some "1" then
+      let ws := whyC2a (anonOff [] O)
+      IO.eprintln s!"why-summary pairs {ws.length} k-positive {(ws.filter fun l => !(l.splitOn "<= 0 ").length > 1).length}"
+      for l in ws.take 20 do IO.eprintln s!"why: {l}"
+    decline (sroiqDeclineS (anonOff [] O))
+
+/-- Print a certified consistency of an ontology with rules
+(`owlKeysHint_sound`). -/
+def publishHintRules {O : OWL.OntologyR} {hint : RawHint}
+    (_h : owlKeysHint O hint = some true) : IO UInt32 := do
+  let out ← IO.getStdout
+  out.putStrLn "{\"format\":\"owl-hint-v1\",\"row\":\"consistent\",\"certified\":true}"
+  out.flush
+  return 0
+
+/-- The hint route on an ontology with rules: the consistency row only; the
+indices and checks are those of the encoding (`rulesOnto`). -/
+def runHintRules (timing : Bool) (args : Args) (R : OWL.OntologyR) : IO UInt32 := do
+  let rowWs := (args.row.map wordsOf).getD []
+  if !(rowWs.isEmpty || rowWs == ["consistent"]) then
+    return ← decline "rules: rows over an ontology with rules or keys are not done"
+  match rulesOntoK R with
+  | none => decline (rulesDeclineR R)
+  | some O' =>
+    -- `owlKeysHint R h` is `owlHintConsistent O' h`; with asymmetric or disjoint
+    -- properties the strengthening `edgeOff O'` (`model_of_edgeOff`)
+    let O' := if hasEdgeAx O' then edgeOff O' else O'
+    if args.printIndex then return ← printIndexHint O' []
+    if args.printClauses then return ← printClausesHint O' []
+    if args.checkOnly then return ← checkHint O' []
+    match args.batch with
+    | some f =>
+      let text ← if f == "-" then (do let stdin ← IO.getStdin; stdin.readToEnd) else IO.FS.readFile f
+      match parseBatch text with
+      | .error e => IO.eprintln e; return 2
+      | .ok pairs =>
+        let out ← IO.getStdout
+        let idx := (List.range pairs.length).zip pairs
+        let mine := idx.filter fun p => p.2.1.isEmpty || p.2.1 == ["consistent"]
+        -- `owlKeysHint R h = (rulesOntoK R).bind (owlHintConsistent · h)`, and
+        -- `hintPB O' hs = hs.map (hintP O')` (`hintPB_eq`)
+        let ⟨rs, _⟩ ← timedPhase timing "hint-batch" (fun _ => hintPB O' (mine.map (·.2.2)))
+        let res : Std.HashMap Nat String := (mine.zip rs).foldl (fun m (p, v) =>
+          m.insert p.1 (match v with
+            | some true => "\"certified\""
+            | some false => "\"rejected\""
+            | none => "\"declined\"")) {}
+        for (i, (rw, _)) in idx do
+          let t := res.getD i "\"declined\",\"reason\":\"rows over an ontology with rules are not done\""
+          out.putStrLn ("{\"format\":\"owl-hint-batch-v1\",\"pair\":" ++ toString i ++ ",\"row\":" ++
+            (Json.str (rowText rw)).compress ++ ",\"result\":" ++ t ++ "}")
+        out.flush
+        return 0
+    | none =>
+      match args.hint with
+      | none => IO.eprintln "sroiq-hint: --hint FILE or --batch FILE is required"; return 2
+      | some f =>
+        match RawHint.parseHint (← IO.FS.readFile f) with
+        | .error e => IO.eprintln s!"bad hint {f}: {e}"; return 2
+        | .ok hint =>
+          let ⟨res, hres⟩ ← timedPhase timing "hint" (fun _ => owlKeysHint R hint)
+          match res, hres with
+          | some true, h => publishHintRules h.symm
+          | _, _ =>
+            -- with asymmetric or disjoint properties: `owlHintConsistent_sound` on
+            -- `edgeOff O'`, then `model_of_edgeOff` and `consistentAtR_rulesOntoK`
+            if owlHintConsistent O' hint == some true then do
+              IO.println "{\"format\":\"owl-hint-v1\",\"row\":\"consistent\",\"certified\":true}"
+              return 0
+            else decline "hint: rejected (an index outside the translation, or the check fails)"
+
 /-- Read the hint file, if any. -/
 def readHint (path : Option String) : IO (Except String (Option RawHint)) := do
   match path with
@@ -1368,30 +1810,35 @@ def runFile (args : Args) (path : String) : IO UInt32 := do
     return 2
   | .ok text =>
     reportPhase timing "read" t0
-    let run : IO UInt32 := if args.checkOnly then do
+    let run : IO UInt32 := if args.dataRoute == some "sroiq-hint" then do
+        let ⟨parsed, _⟩ ← timedPhase timing "parse" (fun _ => OWL.parse text)
+        match parsed with
+        | .error reason =>
+          match parseRules? text reason with
+          | none => decline s!"parse rejected: {reason}"
+          | some (.error e) => decline s!"parse rejected: {e}"
+          | some (.ok R) => runHintRules timing args R
+        | .ok O => if O.noKey then runHint timing args O else runHintRules timing args ⟨O, []⟩
+      else if args.checkOnly then do
         match OWL.parse text with
-        | .error reason => decline s!"parse rejected: {reason}"
+        | .error reason =>
+          if args.dataRoute == some "sroiq-c2a" then
+            match parseRules? text reason with
+            | none => decline s!"parse rejected: {reason}"
+            | some (.error e) => decline s!"parse rejected: {e}"
+            | some (.ok R) =>
+              match rulesOntoK R with
+              | none => decline (rulesDeclineR R)
+              | some O' => checkC2a O'
+          else decline s!"parse rejected: {reason}"
         | .ok O =>
           if args.dataRoute == some "sroiq-c2a" then
-            let O := duOff ((dtUnfold O).getD O)
-            if ← checkS (← timingEnabled) (anonOff [] O) then do
-              IO.println "accepted"
-              return 0
-            else if ← checkSelf (← timingEnabled) (anonOff [] O) then do
-              IO.println "accepted"
-              return 0
-            else if ← checkZero (← timingEnabled) (anonOff [] O) then do
-              IO.println "accepted"
-              return 0
-            else if ← checkHS (← timingEnabled) (anonOff [] O) then do
-              IO.println "accepted"
-              return 0
-            else do
-              if (← IO.getEnv "KM_C2A_WHY") == some "1" then
-                let ws := whyC2a (anonOff [] O)
-                IO.eprintln s!"why-summary pairs {ws.length} k-positive {(ws.filter fun l => !(l.splitOn "<= 0 ").length > 1).length}"
-                for l in ws.take 20 do IO.eprintln s!"why: {l}"
-              decline (sroiqDeclineS (anonOff [] O))
+            if O.noKey then checkC2a O
+            else
+              let R : OWL.OntologyR := ⟨O, []⟩
+              match rulesOntoK R with
+              | none => decline (rulesDeclineR R)
+              | some O' => checkC2a O'
           else
           match translateSHOIQD O [] with
           | some T =>
@@ -1408,8 +1855,25 @@ def runFile (args : Args) (path : String) : IO UInt32 := do
       | some route => do
         let ⟨parsed, _⟩ ← timedPhase timing "parse" (fun _ => OWL.parse text)
         match parsed with
-        | .error reason => decline s!"parse rejected: {reason}"
-        | .ok O => runOntologyD timing route hint args.query O
+        | .error reason =>
+          match route == "sroiq-c2a", parseRules? text reason with
+          | true, some (.ok R) =>
+            if args.query.isSome then decline "rules: rows over an ontology with rules or keys are not done"
+            else
+              let ⟨res, hres⟩ ← timedPhase timing "consistency" (fun _ => owlKeysC2a R hint)
+              match res, hres with
+              | some v, h => publishConsistentR v h.symm
+              | none, _ => decline (rulesDeclineR R)
+          | true, some (.error e) => decline s!"parse rejected: {e}"
+          | _, _ => decline s!"parse rejected: {reason}"
+        | .ok O =>
+          if route == "sroiq-c2a" && !O.noKey && args.query.isNone then
+            let R : OWL.OntologyR := ⟨O, []⟩
+            let ⟨res, hres⟩ ← timedPhase timing "consistency" (fun _ => owlKeysC2a R hint)
+            match res, hres with
+            | some v, h => publishConsistentR v h.symm
+            | none, _ => decline (rulesDeclineR R)
+          else runOntologyD timing route hint args.query O
       | none => runText timing args.procedure hint args.query text
     let code ← match ← run.toBaseIO with
       | .ok code => pure code
@@ -1422,14 +1886,16 @@ def runFile (args : Args) (path : String) : IO UInt32 := do
 end KMOWLReferenceCheck
 
 def main (args : List String) : IO UInt32 := do
-  let usage := "usage: km-owl-reference [--procedure el|sri|el-then-sri|sriq|el-then-sriq|alc|el-then-alc|sriq-kb|sriqd|sriqd-kb|shoiq-c2a|sroiq-c2a] [--hint FILE] [--check] [--type CLASS INDIVIDUAL] [--print-index] <file.ofn> (default el-then-sri; --hint, --type and --print-index with sriq-kb, sriqd-kb and shoiq-c2a only)"
+  let usage := "usage: km-owl-reference [--procedure el|sri|el-then-sri|sriq|el-then-sriq|alc|el-then-alc|sriq-kb|sriqd|sriqd-kb|shoiq-c2a|sroiq-c2a|sroiq-hint] [--hint FILE] [--batch FILE] [--row ROW] [--check] [--type CLASS INDIVIDUAL] [--print-index] <file.ofn> (default el-then-sri; --hint, --type and --print-index with sriq-kb, sriqd-kb and shoiq-c2a only)"
   match KMOWLReferenceCheck.parseArgs {} args with
   | some a =>
     match a.path with
     | some path =>
-      if (a.hint.isSome || a.query.isSome || a.printIndex || a.checkOnly) &&
+      if (a.hint.isSome || a.query.isSome || a.printIndex || a.checkOnly || a.row.isSome ||
+          a.batch.isSome) &&
           !((a.procedure == .sriqKB && a.dataRoute.isNone) || a.dataRoute == some "sriqd-kb" ||
-            a.dataRoute == some "shoiq-c2a" || a.dataRoute == some "sroiq-c2a") then
+            a.dataRoute == some "shoiq-c2a" || a.dataRoute == some "sroiq-c2a" ||
+            a.dataRoute == some "sroiq-hint") then
         IO.eprintln usage
         return 2
       else KMOWLReferenceCheck.runFile a path

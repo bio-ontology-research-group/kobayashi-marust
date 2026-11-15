@@ -1,0 +1,10 @@
+# rules-safe.ofn with its rule grounded: a (core 0, nominal 0), the fresh individual h0 of the
+# encoding (core 1, nominal 1) with its u-edge to a; the r-successor of a in C is an anonymous
+# tree node, so the DL-safe rule does not fire on it.
+blocks 2
+ty 0 0 2 5 7 9
+ty 1 1 5 8 10
+lab 1 0 +1
+kid 0 +0 / 3 5
+rec 0 3 5
+ranc 0 0 -0
