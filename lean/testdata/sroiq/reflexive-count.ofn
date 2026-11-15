@@ -1,0 +1,6 @@
+Prefix(:=<http://ex/>)
+Ontology(<http://ex/reflexive-count>
+ReflexiveObjectProperty(:r)
+SubClassOf(:A ObjectMaxCardinality(1 :r))
+ClassAssertion(:A :a)
+)

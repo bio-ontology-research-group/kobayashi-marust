@@ -374,3 +374,12 @@ import ContextCalculus.OWLFrontend.SHOIQC2aReference
 import ContextCalculus.OWLFrontend.SHOIQC2aTests
 import ContextCalculus.OWLFrontend.SHOIQDNom
 import ContextCalculus.OWLFrontend.SHOIQDC2aReference
+import ContextCalculus.SROIQ.Regular
+import ContextCalculus.SROIQ.RegularCheck
+import ContextCalculus.SROIQ.Automaton
+import ContextCalculus.SROIQ.AutomatonFin
+import ContextCalculus.SROIQ.ChainEnc
+import ContextCalculus.SROIQ.ChainEncN
+import ContextCalculus.OWLFrontend.SROIQDNom
+import ContextCalculus.OWLFrontend.SROIQDC2aReference
+import ContextCalculus.SROIQ.Tests

@@ -1,0 +1,11 @@
+Prefix(:=<http://ex/>)
+Ontology(<http://ex/left-right>
+TransitiveObjectProperty(:partOf)
+SubObjectPropertyOf(ObjectPropertyChain(:locatedIn :partOf) :locatedIn)
+SubObjectPropertyOf(ObjectPropertyChain(:partOf :locatedIn) :locatedIn)
+ObjectPropertyAssertion(:partOf :a :b)
+ObjectPropertyAssertion(:locatedIn :b :c)
+ObjectPropertyAssertion(:partOf :c :d)
+ObjectPropertyAssertion(:partOf :d :e)
+ClassAssertion(ObjectAllValuesFrom(:locatedIn :C) :a)
+)

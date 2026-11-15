@@ -1,0 +1,6 @@
+Prefix(:=<http://ex/>)
+Ontology(<http://ex/disjoint>
+DisjointObjectProperties(:r :s)
+ObjectPropertyAssertion(:r :a :b)
+ObjectPropertyAssertion(:s :a :b)
+)

@@ -5,6 +5,7 @@ import ContextCalculus.OWLFrontend.ReadoutAt
 import ContextCalculus.OWLFrontend.SRIQDReference
 import ContextCalculus.OWLFrontend.SRIQDKBRows
 import ContextCalculus.OWLFrontend.SHOIQDC2aReference
+import ContextCalculus.OWLFrontend.SROIQDC2aReference
 
 /-!
 # Executable OWL reference procedure (`km-owl-reference`)
@@ -20,12 +21,20 @@ km-owl-reference --procedure sriq-kb [--hint FILE] [--type CLASS INDIVIDUAL] <fi
 km-owl-reference --procedure sriqd <file.ofn>
 km-owl-reference --procedure sriqd-kb [--hint FILE] [--type CLASS INDIVIDUAL] <file.ofn>
 km-owl-reference --procedure shoiq-c2a [--hint FILE] [--type CLASS INDIVIDUAL] <file.ofn>
-km-owl-reference --procedure sriq-kb|sriqd-kb|shoiq-c2a --print-index <file.ofn>
+km-owl-reference --procedure sroiq-c2a [--hint FILE] [--type CLASS INDIVIDUAL] [--check] <file.ofn>
+km-owl-reference --procedure sriq-kb|sriqd-kb|shoiq-c2a|sroiq-c2a --print-index <file.ofn>
 ```
 
 `--print-index` prints the index tables a hint refers to (`printIndex`).
-`--check` (with `shoiq-c2a`) runs the fragment checks only and prints
-`accepted` or the decline reason.
+`--check` (with `shoiq-c2a` or `sroiq-c2a`) runs the fragment checks only
+and prints `accepted` or the decline reason.
+
+`sroiq-c2a` is `owlSROIQDC2aConsistent`, the v1.7.0 stage C3 route: the
+SHOIQ(D) route with general regular role chains and reflexive properties
+(`docs/V1.7.0-C3-ROLES-DESIGN.md`), exact for every hint
+(`owlSROIQDC2aConsistent_sound`; type row `owlSROIQDTypeRow_sound`). It
+also declines irregular role hierarchies, role automata that do not close,
+and number restrictions over a role with a chain or reflexive role below it.
 
 `shoiq-c2a` is `owlSHOIQDC2aConsistent`, the v1.7.0 stage C2a route for
 SHOIQ(D) knowledge bases with nominals and datatypes
@@ -702,6 +711,90 @@ def runOntologyN (timing : Bool) (hint : Option RawHint) (query : Option (OWL.IR
       IO.eprintln (shoiqDecline O)
       return 3
 
+/-- Why the SROIQ(D) C2a route declines. -/
+def sroiqDecline (O : OWL.Ontology) : String :=
+  if !O.isSROIQDKB then
+    s!"not recognised: not an OWL SROIQ(D) knowledge base ({firstFailing O OWL.Axiom.isSROIQDKB})"
+  else match translateSHOIQD (roleOff O) [] with
+    | none => "not recognised: the SHOIQ(D) translation failed"
+    | some T =>
+      match roleCls T O with
+      | none => "not recognised: a property of a role chain has no role index"
+      | some E =>
+        let L := OWLFrontend.SHOIQ.nomNames (roleOff O) []
+        if !SROIQ.Proc.regularB (objC T L E) then
+          "not regular: the role hierarchy violates the OWL 2 regularity condition"
+        else if !SROIQ.Proc.condB (objC T L E) then
+          "not simple or not closed: a number restriction over a role with a chain or " ++
+          "reflexive role below it, or a role automaton that does not close"
+        else if !decide (SRIQN.IsC2aD (SRIQN.Proc.encTransDN (encC T L E))) then
+          "not C2a: an existential or at-least restriction on a subject that is neither a " ++
+          "nominal nor nominal-only has a role below the inverse of the role of an at-most restriction"
+        else "datatypes: a data range outside the supported sub-theory of the OWL 2 datatype map"
+
+/-- Print the consistency verdict of `owlSROIQDC2aConsistent`
+(`owlSROIQDC2aConsistent_sound`). -/
+def publishConsistentS (v : Bool) {O : OWL.Ontology} {hint : Option RawHint}
+    (_h : owlSROIQDC2aConsistent O hint = some v) : IO UInt32 := do
+  let out ← IO.getStdout
+  out.putStrLn ("{\"format\":\"owl-consistency-v1\",\"consistent\":" ++
+    (if v then "true" else "false") ++ "}")
+  out.flush
+  return 0
+
+/-- Print the verdict of `owlSROIQDTypeRow` (`owlSROIQDTypeRow_sound`). -/
+def publishTypeS (C a : OWL.IRI) (v : Bool) {O : OWL.Ontology} {hint : Option RawHint}
+    (_h : owlSROIQDTypeRow O C a hint = some v) : IO UInt32 := do
+  let out ← IO.getStdout
+  out.putStrLn ("{\"format\":\"owl-type-v1\",\"class\":" ++ (Json.str C).compress ++
+    ",\"individual\":" ++ (Json.str a).compress ++ ",\"entailed\":" ++
+    (if v then "true" else "false") ++ "}")
+  out.flush
+  return 0
+
+/-- The SROIQ(D) C2a route on an ontology. -/
+def runOntologyS (timing : Bool) (hint : Option RawHint) (query : Option (OWL.IRI × OWL.IRI))
+    (O : OWL.Ontology) : IO UInt32 := do
+  match query with
+  | some (C, a) =>
+    let ⟨res, hres⟩ ← timedPhase timing "type" (fun _ => owlSROIQDTypeRow O C a hint)
+    match res, hres with
+    | some v, h => publishTypeS C a v h.symm
+    | none, _ =>
+      IO.eprintln (sroiqDecline (addAxs O (typeAxs C a)))
+      return 3
+  | none =>
+    let ⟨res, hres⟩ ← timedPhase timing "consistency" (fun _ => owlSROIQDC2aConsistent O hint)
+    match res, hres with
+    | some v, h => publishConsistentS v h.symm
+    | none, _ =>
+      IO.eprintln (sroiqDecline O)
+      return 3
+
+/-- The fragment checks of `sroiq-c2a`, without the decision (phases timed
+with `KM_REFERENCE_TIMING=1`). -/
+def checkS (timing : Bool) (O : OWL.Ontology) : IO Bool := do
+  if !O.isSROIQDKB then return false
+  let ⟨tr, _⟩ ← timedPhase timing "translate" (fun _ => translateSHOIQD (roleOff O) [])
+  match tr with
+  | none => return false
+  | some T =>
+    let ⟨rc, _⟩ ← timedPhase timing "roles" (fun _ => roleCls T O)
+    match rc with
+    | none => return false
+    | some E =>
+      let L := OWLFrontend.SHOIQ.nomNames (roleOff O) []
+      let ⟨r1, _⟩ ← timedPhase timing "regular" (fun _ => SROIQ.Proc.regularB (objC T L E))
+      if !r1 then return false
+      let ⟨r2, _⟩ ← timedPhase timing "automata" (fun _ => SROIQ.Proc.condB (objC T L E))
+      if !r2 then return false
+      let ⟨r3, _⟩ ← timedPhase timing "c2a"
+        (fun _ => decide (SRIQN.IsC2aD (SRIQN.Proc.encTransDN (encC T L E))))
+      if !r3 then return false
+      let ⟨r4, _⟩ ← timedPhase timing "data"
+        (fun _ => (List.finRange T.tab.length).all fun p => OWL.Datatypes.drSupported (OWLFrontend.SHIQD.spec T.tab p))
+      return r4
+
 /-- The SHIQ(D) knowledge-base route on an ontology. -/
 def runOntologyDKB (timing : Bool) (hint : Option RawHint) (query : Option (OWL.IRI × OWL.IRI))
     (O : OWL.Ontology) : IO UInt32 := do
@@ -729,6 +822,8 @@ def runOntologyD (timing : Bool) (route : String) (hint : Option RawHint)
     return ← runOntologyDKB timing hint query O
   if route == "shoiq-c2a" then
     return ← runOntologyN timing hint query O
+  if route == "sroiq-c2a" then
+    return ← runOntologyS timing hint query O
   let names := O.classNames
   if hA : probeA ∈ names then
     IO.eprintln s!"probe IRI mentioned: {probeA}"
@@ -887,6 +982,8 @@ def parseArgs (acc : Args) : List String → Option Args
   | "--procedure" :: "sriqd-kb" :: rest => parseArgs { acc with dataRoute := some "sriqd-kb" } rest
   | "--procedure" :: "shoiq-c2a" :: rest =>
     parseArgs { acc with dataRoute := some "shoiq-c2a" } rest
+  | "--procedure" :: "sroiq-c2a" :: rest =>
+    parseArgs { acc with dataRoute := some "sroiq-c2a" } rest
   | "--procedure" :: raw :: rest =>
     match parseProcedure raw with
     | some p' => parseArgs { acc with procedure := p' } rest
@@ -925,7 +1022,22 @@ and of the transitivity encoding. -/
 def printIndex (route : String) (O : OWL.Ontology) : IO UInt32 := do
   let out ← IO.getStdout
   let emit (ls : List String) : IO Unit := do for l in ls do out.putStrLn l
-  if route == "shoiq-c2a" then
+  if route == "sroiq-c2a" then
+    match translateSHOIQD (roleOff O) [] with
+    | none => decline (sroiqDecline O)
+    | some T =>
+      match roleCls T O with
+      | none => decline (sroiqDecline O)
+      | some E =>
+        let L := OWLFrontend.SHOIQ.nomNames (roleOff O) []
+        emit [s!"concepts {T.obj.conceptCount + SROIQ.Proc.kCD (dosnC T L E) + SRIQN.Proc.encKD (encC T L E)}",
+          s!"roles {T.obj.roleCount}"]
+        emit (indexLines T.obj)
+        emit ((roleOff O).individualNames.filterMap fun a =>
+          (nameIx T.obj (OWLFrontend.SHOIQ.nmOf (roleOff O) [] a)).map fun i => s!"nominal {i.val} {a}")
+        out.flush
+        return 0
+  else if route == "shoiq-c2a" then
     match translateSHOIQD O [] with
     | none => decline (shoiqDecline O)
     | some T =>
@@ -990,6 +1102,12 @@ def runFile (args : Args) (path : String) : IO UInt32 := do
         match OWL.parse text with
         | .error reason => decline s!"parse rejected: {reason}"
         | .ok O =>
+          if args.dataRoute == some "sroiq-c2a" then
+            if ← checkS (← timingEnabled) O then do
+              IO.println "accepted"
+              return 0
+            else decline (sroiqDecline O)
+          else
           match translateSHOIQD O [] with
           | some T =>
             if kbdnOK T (OWLFrontend.SHOIQ.nomNames O []) then do
@@ -1019,14 +1137,14 @@ def runFile (args : Args) (path : String) : IO UInt32 := do
 end KMOWLReferenceCheck
 
 def main (args : List String) : IO UInt32 := do
-  let usage := "usage: km-owl-reference [--procedure el|sri|el-then-sri|sriq|el-then-sriq|alc|el-then-alc|sriq-kb|sriqd|sriqd-kb|shoiq-c2a] [--hint FILE] [--type CLASS INDIVIDUAL] [--print-index] <file.ofn> (default el-then-sri; --hint, --type and --print-index with sriq-kb, sriqd-kb and shoiq-c2a only)"
+  let usage := "usage: km-owl-reference [--procedure el|sri|el-then-sri|sriq|el-then-sriq|alc|el-then-alc|sriq-kb|sriqd|sriqd-kb|shoiq-c2a|sroiq-c2a] [--hint FILE] [--check] [--type CLASS INDIVIDUAL] [--print-index] <file.ofn> (default el-then-sri; --hint, --type and --print-index with sriq-kb, sriqd-kb and shoiq-c2a only)"
   match KMOWLReferenceCheck.parseArgs {} args with
   | some a =>
     match a.path with
     | some path =>
       if (a.hint.isSome || a.query.isSome || a.printIndex || a.checkOnly) &&
           !((a.procedure == .sriqKB && a.dataRoute.isNone) || a.dataRoute == some "sriqd-kb" ||
-            a.dataRoute == some "shoiq-c2a") then
+            a.dataRoute == some "shoiq-c2a" || a.dataRoute == some "sroiq-c2a") then
         IO.eprintln usage
         return 2
       else KMOWLReferenceCheck.runFile a path

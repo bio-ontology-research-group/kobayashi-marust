@@ -1,0 +1,342 @@
+ore_ont_10321	0	accepted 0.08 
+ore_ont_10080	3	not recognised: not an OWL SROIQ(D) knowledge base (first: IrreflexiveObjectProperty) Command exited with non-zero status 3 0.18 
+ore_ont_10320	0	accepted 1.29 
+ore_ont_10517	0	accepted 2.65 
+ore_ont_10571	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 1.92 
+ore_ont_10026	0	accepted 20.90 
+ore_ont_10702	0	accepted 9.39 
+ore_ont_10006	124	Command exited with non-zero status 124 60.01 
+ore_ont_10242	124	Command exited with non-zero status 124 60.01 
+ore_ont_10391	124	Command exited with non-zero status 124 60.00 
+ore_ont_10860	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.11 
+ore_ont_10908	3	not recognised: not an OWL SROIQ(D) knowledge base (first: SubClassOf) Command exited with non-zero status 3 0.08 
+ore_ont_10568	124	Command exited with non-zero status 124 60.03 
+ore_ont_10481	124	Command exited with non-zero status 124 60.01 
+ore_ont_10621	124	Command exited with non-zero status 124 60.02 
+ore_ont_10749	124	Command exited with non-zero status 124 60.00 
+ore_ont_10838	124	Command exited with non-zero status 124 60.01 
+ore_ont_10754	124	Command exited with non-zero status 124 60.01 
+ore_ont_11016	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.41 
+ore_ont_11203	0	accepted 0.25 
+ore_ont_1123	3	not recognised: not an OWL SROIQ(D) knowledge base (first: ClassAssertion) Command exited with non-zero status 3 0.56 
+ore_ont_10926	124	Command exited with non-zero status 124 60.23 
+ore_ont_10929	124	Command exited with non-zero status 124 60.03 
+ore_ont_10949	124	Command exited with non-zero status 124 60.01 
+ore_ont_10952	0	accepted 35.93 
+ore_ont_11592	0	accepted 0.27 
+ore_ont_11647	3	not recognised: not an OWL SROIQ(D) knowledge base (first: SubDataPropertyOf) Command exited with non-zero status 3 0.11 
+ore_ont_11694	0	accepted 2.76 
+ore_ont_11895	0	accepted 0.10 
+ore_ont_11005	124	Command exited with non-zero status 124 60.03 
+ore_ont_11270	124	Command exited with non-zero status 124 60.01 
+ore_ont_11305	124	Command exited with non-zero status 124 60.00 
+ore_ont_12084	0	accepted 3.55 
+ore_ont_11378	124	Command exited with non-zero status 124 60.01 
+ore_ont_11477	0	accepted 21.24 
+ore_ont_11457	124	Command exited with non-zero status 124 60.02 
+ore_ont_12253	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 4.21 
+ore_ont_12270	0	accepted 2.48 
+ore_ont_1199	124	Command exited with non-zero status 124 60.03 
+ore_ont_12342	3	not recognised: not an OWL SROIQ(D) knowledge base (first: ClassAssertion) Command exited with non-zero status 3 0.10 
+ore_ont_12451	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.14 
+ore_ont_12566	0	accepted 0.40 
+ore_ont_12043	124	Command exited with non-zero status 124 60.00 
+ore_ont_12152	124	Command exited with non-zero status 124 60.01 
+ore_ont_12174	124	Command exited with non-zero status 124 60.02 
+ore_ont_12325	0	accepted 39.50 
+ore_ont_12925	0	accepted 4.01 
+ore_ont_12191	124	Command exited with non-zero status 124 60.01 
+ore_ont_12698	124	Command exited with non-zero status 124 60.01 
+ore_ont_13077	3	datatypes: a data range outside the supported sub-theory of the OWL 2 datatype map Command exited with non-zero status 3 0.26 
+ore_ont_13035	0	accepted 28.15 
+ore_ont_13132	3	not recognised: not an OWL SROIQ(D) knowledge base (first: ObjectPropertyAssertion) Command exited with non-zero status 3 0.09 
+ore_ont_13113	0	accepted 8.36 
+ore_ont_12743	124	Command exited with non-zero status 124 60.04 
+ore_ont_12898	124	Command exited with non-zero status 124 60.20 
+ore_ont_12219	124	Command exited with non-zero status 124 60.01 
+ore_ont_12916	0	accepted 57.30 
+ore_ont_13153	0	accepted 32.32 
+ore_ont_13383	0	accepted 1.95 
+ore_ont_13052	124	Command exited with non-zero status 124 60.01 
+ore_ont_13404	0	accepted 1.27 
+ore_ont_1342	0	accepted 0.88 
+ore_ont_13483	0	accepted 0.09 
+ore_ont_13178	124	Command exited with non-zero status 124 60.01 
+ore_ont_13545	3	not recognised: not an OWL SROIQ(D) knowledge base (first: IrreflexiveObjectProperty) Command exited with non-zero status 3 0.09 
+ore_ont_13233	124	Command exited with non-zero status 124 60.00 
+ore_ont_13299	124	Command exited with non-zero status 124 60.00 
+ore_ont_13646	0	accepted 2.17 
+ore_ont_13230	124	Command exited with non-zero status 124 60.01 
+ore_ont_13737	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.37 
+ore_ont_13762	3	not recognised: not an OWL SROIQ(D) knowledge base (first: IrreflexiveObjectProperty) Command exited with non-zero status 3 0.10 
+ore_ont_13799	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.13 
+ore_ont_13805	0	accepted 1.87 
+ore_ont_13336	124	Command exited with non-zero status 124 60.00 
+ore_ont_13584	0	accepted 32.81 
+ore_ont_13872	0	accepted 2.32 
+ore_ont_13898	0	accepted 1.57 
+ore_ont_1340	124	Command exited with non-zero status 124 60.01 
+ore_ont_13526	124	Command exited with non-zero status 124 60.01 
+ore_ont_13621	124	Command exited with non-zero status 124 60.01 
+ore_ont_13954	0	accepted 8.10 
+ore_ont_13708	124	Command exited with non-zero status 124 60.01 
+ore_ont_13837	124	Command exited with non-zero status 124 60.01 
+ore_ont_1397	0	accepted 9.29 
+ore_ont_14285	3	not recognised: not an OWL SROIQ(D) knowledge base (first: SubDataPropertyOf) Command exited with non-zero status 3 0.10 
+ore_ont_14334	0	accepted 10.68 
+ore_ont_14348	3	not recognised: not an OWL SROIQ(D) knowledge base (first: ClassAssertion) Command exited with non-zero status 3 0.11 
+ore_ont_13928	124	Command exited with non-zero status 124 60.02 
+ore_ont_14551	3	not recognised: not an OWL SROIQ(D) knowledge base (first: ClassAssertion) Command exited with non-zero status 3 0.14 
+ore_ont_1461	0	accepted 9.95 
+ore_ont_13937	124	Command exited with non-zero status 124 60.02 
+ore_ont_13859	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 52.74 
+ore_ont_13991	124	Command exited with non-zero status 124 60.01 
+ore_ont_14191	124	Command exited with non-zero status 124 60.00 
+ore_ont_14194	124	Command exited with non-zero status 124 60.01 
+ore_ont_14883	0	accepted 1.31 
+ore_ont_14924	0	accepted 0.93 
+ore_ont_14931	0	accepted 0.10 
+ore_ont_14981	0	accepted 8.46 
+ore_ont_14450	124	Command exited with non-zero status 124 60.01 
+ore_ont_15058	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 2.03 
+ore_ont_1478	124	Command exited with non-zero status 124 60.01 
+ore_ont_1469	124	Command exited with non-zero status 124 60.01 
+ore_ont_15291	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 1.81 
+ore_ont_14818	124	Command exited with non-zero status 124 60.01 
+ore_ont_1481	124	Command exited with non-zero status 124 60.01 
+ore_ont_15413	0	accepted 2.56 
+ore_ont_15030	0	accepted 31.96 
+ore_ont_155	0	accepted 0.35 
+ore_ont_15575	0	accepted 2.81 
+ore_ont_15596	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 2.07 
+ore_ont_14860	124	Command exited with non-zero status 124 60.01 
+ore_ont_1509	124	Command exited with non-zero status 124 60.01 
+ore_ont_15667	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.13 
+ore_ont_15672	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.73 
+ore_ont_15226	124	Command exited with non-zero status 124 60.02 
+ore_ont_15297	0	accepted 33.38 
+ore_ont_15753	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.09 
+ore_ont_1533	124	Command exited with non-zero status 124 60.01 
+ore_ont_15475	124	Command exited with non-zero status 124 60.01 
+ore_ont_15615	124	Command exited with non-zero status 124 60.01 
+ore_ont_15655	124	Command exited with non-zero status 124 60.01 
+ore_ont_15680	124	Command exited with non-zero status 124 60.01 
+ore_ont_16115	0	accepted 0.18 
+ore_ont_15860	0	accepted 0.91 
+ore_ont_1579	124	Command exited with non-zero status 124 60.01 
+ore_ont_16191	0	accepted 1.33 
+ore_ont_16197	0	accepted 0.12 
+ore_ont_16255	0	accepted 2.88 
+ore_ont_15687	124	Command exited with non-zero status 124 60.01 
+ore_ont_15803	124	Command exited with non-zero status 124 60.11 
+ore_ont_16371	0	accepted 1.36 
+ore_ont_16372	3	not recognised: not an OWL SROIQ(D) knowledge base (first: ClassAssertion) Command exited with non-zero status 3 0.14 
+ore_ont_16420	3	not recognised: not an OWL SROIQ(D) knowledge base (first: ObjectPropertyAssertion) Command exited with non-zero status 3 0.30 
+ore_ont_15846	124	Command exited with non-zero status 124 60.02 
+ore_ont_16481	0	accepted 4.69 
+ore_ont_15871	124	Command exited with non-zero status 124 60.02 
+ore_ont_16535	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.86 
+ore_ont_16630	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.11 
+ore_ont_16708	3	not recognised: not an OWL SROIQ(D) knowledge base (first: SubDataPropertyOf) Command exited with non-zero status 3 0.10 
+ore_ont_16124	124	Command exited with non-zero status 124 60.01 
+ore_ont_16303	124	Command exited with non-zero status 124 60.01 
+ore_ont_16315	124	Command exited with non-zero status 124 60.00 
+ore_ont_1705	0	accepted 2.10 
+ore_ont_178	0	accepted 0.89 
+ore_ont_1784	0	accepted 0.95 
+ore_ont_1823	3	not recognised: not an OWL SROIQ(D) knowledge base (first: ClassAssertion) Command exited with non-zero status 3 0.10 
+ore_ont_185	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.50 
+ore_ont_1853	0	accepted 3.49 
+ore_ont_16462	124	Command exited with non-zero status 124 60.04 
+ore_ont_1931	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.41 
+ore_ont_16184	124	Command exited with non-zero status 124 60.01 
+ore_ont_16666	124	Command exited with non-zero status 124 60.01 
+ore_ont_1673	124	Command exited with non-zero status 124 60.10 
+ore_ont_2066	0	accepted 0.15 
+ore_ont_1672	124	Command exited with non-zero status 124 60.01 
+ore_ont_1958	0	accepted 9.58 
+ore_ont_2182	0	accepted 7.44 
+ore_ont_16759	124	Command exited with non-zero status 124 60.01 
+ore_ont_1938	124	Command exited with non-zero status 124 60.04 
+ore_ont_2488	0	accepted 1.40 
+ore_ont_2453	0	accepted 8.36 
+ore_ont_2526	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.09 
+ore_ont_1886	124	Command exited with non-zero status 124 60.01 
+ore_ont_2142	124	Command exited with non-zero status 124 60.01 
+ore_ont_2313	0	accepted 49.20 
+ore_ont_1965	124	Command exited with non-zero status 124 60.01 
+ore_ont_2318	124	Command exited with non-zero status 124 60.01 
+ore_ont_2504	124	Command exited with non-zero status 124 60.02 
+ore_ont_2574	124	Command exited with non-zero status 124 60.05 
+ore_ont_2577	124	Command exited with non-zero status 124 60.02 
+ore_ont_2744	0	accepted 0.83 
+ore_ont_257	124	Command exited with non-zero status 124 60.01 
+ore_ont_2604	124	Command exited with non-zero status 124 60.01 
+ore_ont_2826	0	accepted 9.97 
+ore_ont_304	0	accepted 0.13 
+ore_ont_3053	0	accepted 0.17 
+ore_ont_3060	0	accepted 3.12 
+ore_ont_3010	0	accepted 11.33 
+ore_ont_2632	124	Command exited with non-zero status 124 60.01 
+ore_ont_260	124	Command exited with non-zero status 124 60.01 
+ore_ont_2703	0	accepted 54.13 
+ore_ont_3250	0	accepted 0.51 
+ore_ont_2677	124	Command exited with non-zero status 124 60.01 
+ore_ont_3156	0	accepted 10.97 
+ore_ont_3301	0	accepted 3.74 
+ore_ont_2792	124	Command exited with non-zero status 124 60.01 
+ore_ont_3080	124	Command exited with non-zero status 124 60.00 
+ore_ont_3411	0	accepted 1.58 
+ore_ont_3503	0	accepted 14.29 
+ore_ont_3504	0	accepted 0.39 
+ore_ont_3087	124	Command exited with non-zero status 124 60.01 
+ore_ont_3708	0	accepted 5.72 
+ore_ont_3726	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.14 
+ore_ont_3783	0	accepted 0.64 
+ore_ont_3806	0	accepted 0.12 
+ore_ont_3835	0	accepted 0.15 
+ore_ont_3262	124	Command exited with non-zero status 124 60.00 
+ore_ont_385	0	accepted 0.61 
+ore_ont_3884	0	accepted 0.30 
+ore_ont_3282	124	Command exited with non-zero status 124 60.02 
+ore_ont_3843	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 9.80 
+ore_ont_3377	124	Command exited with non-zero status 124 60.10 
+ore_ont_394	0	accepted 0.59 
+ore_ont_4032	0	accepted 3.51 
+ore_ont_4133	0	accepted 0.22 
+ore_ont_3077	124	Command exited with non-zero status 124 60.01 
+ore_ont_4354	0	accepted 7.47 
+ore_ont_3381	124	Command exited with non-zero status 124 60.01 
+ore_ont_3561	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 53.44 
+ore_ont_3905	124	Command exited with non-zero status 124 60.00 
+ore_ont_3917	124	Command exited with non-zero status 124 60.01 
+ore_ont_4719	3	not recognised: not an OWL SROIQ(D) knowledge base (first: ClassAssertion) Command exited with non-zero status 3 0.07 
+ore_ont_399	124	Command exited with non-zero status 124 60.00 
+ore_ont_4141	124	Command exited with non-zero status 124 60.00 
+ore_ont_4469	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 38.76 
+ore_ont_4983	0	accepted 1.82 
+ore_ont_5033	0	accepted 3.14 
+ore_ont_4363	124	Command exited with non-zero status 124 60.00 
+ore_ont_4567	124	Command exited with non-zero status 124 60.01 
+ore_ont_5107	0	accepted 0.09 
+ore_ont_5184	0	accepted 0.75 
+ore_ont_5204	0	accepted 1.03 
+ore_ont_5258	0	accepted 0.14 
+ore_ont_4609	124	Command exited with non-zero status 124 60.01 
+ore_ont_4780	124	Command exited with non-zero status 124 60.01 
+ore_ont_5359	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 2.06 
+ore_ont_4796	124	Command exited with non-zero status 124 60.01 
+ore_ont_4903	124	Command exited with non-zero status 124 60.01 
+ore_ont_5059	124	Command exited with non-zero status 124 60.01 
+ore_ont_5564	0	accepted 1.90 
+ore_ont_509	0	accepted 35.13 
+ore_ont_568	0	accepted 0.46 
+ore_ont_5289	124	Command exited with non-zero status 124 60.01 
+ore_ont_5295	124	Command exited with non-zero status 124 60.01 
+ore_ont_5688	0	accepted 5.95 
+ore_ont_5774	0	accepted 1.30 
+ore_ont_5502	124	Command exited with non-zero status 124 60.01 
+ore_ont_5834	0	accepted 9.60 
+ore_ont_5932	0	accepted 0.34 
+ore_ont_5548	124	Command exited with non-zero status 124 60.01 
+ore_ont_5544	124	Command exited with non-zero status 124 60.01 
+ore_ont_6020	0	accepted 6.78 
+ore_ont_6258	0	accepted 2.02 
+ore_ont_6272	0	accepted 6.36 
+ore_ont_6278	0	accepted 3.64 
+ore_ont_5894	0	accepted 33.49 
+ore_ont_6401	0	accepted 6.64 
+ore_ont_5664	124	Command exited with non-zero status 124 60.00 
+ore_ont_5730	124	Command exited with non-zero status 124 60.01 
+ore_ont_5849	124	Command exited with non-zero status 124 60.02 
+ore_ont_6446	0	accepted 12.68 
+ore_ont_6615	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.11 
+ore_ont_668	3	not recognised: not an OWL SROIQ(D) knowledge base (first: DisjointObjectProperties) Command exited with non-zero status 3 0.24 
+ore_ont_6720	0	accepted 1.51 
+ore_ont_5964	124	Command exited with non-zero status 124 60.00 
+ore_ont_6226	124	Command exited with non-zero status 124 60.01 
+ore_ont_6354	124	Command exited with non-zero status 124 60.00 
+ore_ont_6443	124	Command exited with non-zero status 124 60.01 
+ore_ont_6452	124	Command exited with non-zero status 124 60.01 
+ore_ont_6859	0	accepted 0.26 
+ore_ont_6934	3	not recognised: not an OWL SROIQ(D) knowledge base (first: SubDataPropertyOf) Command exited with non-zero status 3 0.11 
+ore_ont_6857	0	accepted 1.82 
+ore_ont_6967	3	not recognised: not an OWL SROIQ(D) knowledge base (first: SubDataPropertyOf) Command exited with non-zero status 3 0.09 
+ore_ont_6951	0	accepted 1.69 
+ore_ont_6983	0	accepted 1.33 
+ore_ont_6722	124	Command exited with non-zero status 124 60.02 
+ore_ont_6822	0	accepted 17.16 
+ore_ont_6999	0	accepted 9.87 
+ore_ont_7179	3	not recognised: not an OWL SROIQ(D) knowledge base (first: SubDataPropertyOf) Command exited with non-zero status 3 0.10 
+ore_ont_7011	0	accepted 3.89 
+ore_ont_7278	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.11 
+ore_ont_7327	0	accepted 8.56 
+ore_ont_6727	0	accepted 38.38 
+ore_ont_7342	0	accepted 0.65 
+ore_ont_7339	0	accepted 0.93 
+ore_ont_6483	124	Command exited with non-zero status 124 60.01 
+ore_ont_6792	124	Command exited with non-zero status 124 60.01 
+ore_ont_7517	0	accepted 0.10 
+ore_ont_7532	3	not recognised: not an OWL SROIQ(D) knowledge base (first: SubClassOf) Command exited with non-zero status 3 0.10 
+ore_ont_7108	0	accepted 55.43 
+ore_ont_699	124	Command exited with non-zero status 124 60.02 
+ore_ont_7668	0	accepted 4.27 
+ore_ont_7730	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 5.26 
+ore_ont_7192	124	Command exited with non-zero status 124 60.14 
+ore_ont_778	0	accepted 0.46 
+ore_ont_7789	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.48 
+ore_ont_7455	124	Command exited with non-zero status 124 60.03 
+ore_ont_7818	0	accepted 2.37 
+ore_ont_7820	0	accepted 3.19 
+ore_ont_7409	124	Command exited with non-zero status 124 60.04 
+ore_ont_7828	0	accepted 1.18 
+ore_ont_8006	0	accepted 7.13 
+ore_ont_8019	0	accepted 9.78 
+ore_ont_8030	0	accepted 4.25 
+ore_ont_7557	124	Command exited with non-zero status 124 60.01 
+ore_ont_8050	0	accepted 1.63 
+ore_ont_8042	0	accepted 11.84 
+ore_ont_8141	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 2.27 
+ore_ont_7729	124	Command exited with non-zero status 124 60.06 
+ore_ont_8250	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.11 
+ore_ont_7817	0	accepted 42.14 
+ore_ont_7479	124	Command exited with non-zero status 124 60.01 
+ore_ont_8399	0	accepted 0.63 
+ore_ont_7775	124	Command exited with non-zero status 124 60.01 
+ore_ont_8460	0	accepted 1.21 
+ore_ont_8387	0	accepted 10.93 
+ore_ont_8142	124	Command exited with non-zero status 124 60.00 
+ore_ont_802	124	Command exited with non-zero status 124 60.01 
+ore_ont_8294	124	Command exited with non-zero status 124 60.01 
+ore_ont_8578	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 2.03 
+ore_ont_8509	0	accepted 8.29 
+ore_ont_850	0	accepted 9.40 
+ore_ont_8631	3	not recognised: not an OWL SROIQ(D) knowledge base (first: IrreflexiveObjectProperty) Command exited with non-zero status 3 0.09 
+ore_ont_8148	124	Command exited with non-zero status 124 60.01 
+ore_ont_8640	0	accepted 9.59 
+ore_ont_8445	124	Command exited with non-zero status 124 60.01 
+ore_ont_8480	124	Command exited with non-zero status 124 60.01 
+ore_ont_8786	0	accepted 9.64 
+ore_ont_8595	0	accepted 32.97 
+ore_ont_8475	124	Command exited with non-zero status 124 60.05 
+ore_ont_8948	0	accepted 2.14 
+ore_ont_8723	124	Command exited with non-zero status 124 60.01 
+ore_ont_8975	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 1.96 
+ore_ont_9096	0	accepted 4.75 
+ore_ont_9151	3	not recognised: not an OWL SROIQ(D) knowledge base (first: ObjectPropertyAssertion) Command exited with non-zero status 3 0.23 
+ore_ont_8627	124	Command exited with non-zero status 124 60.02 
+ore_ont_8844	124	Command exited with non-zero status 124 60.01 
+ore_ont_934	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 4.55 
+ore_ont_9429	3	not recognised: not an OWL SROIQ(D) knowledge base (first: ClassAssertion) Command exited with non-zero status 3 0.18 
+ore_ont_8902	124	Command exited with non-zero status 124 60.02 
+ore_ont_9557	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 2.39 
+ore_ont_9577	3	not recognised: not an OWL SROIQ(D) knowledge base (first: ObjectPropertyAssertion) Command exited with non-zero status 3 0.20 
+ore_ont_9690	0	accepted 0.27 
+ore_ont_9783	0	accepted 0.77 
+ore_ont_9890	3	not recognised: not an OWL SROIQ(D) knowledge base (first: ClassAssertion) Command exited with non-zero status 3 0.08 
+ore_ont_8882	124	Command exited with non-zero status 124 60.02 
+ore_ont_9540	0	accepted 26.10 
+ore_ont_9248	0	accepted 36.97 
+ore_ont_9122	124	Command exited with non-zero status 124 60.01 
+ore_ont_8911	124	Command exited with non-zero status 124 60.01 
+ore_ont_9303	124	Command exited with non-zero status 124 60.01 
