@@ -15,14 +15,37 @@ them. Every replacement is a proved equality (`pairsP_eq_F`,
 namespace ContextCalculus.SROIQ.Proc
 
 open ContextCalculus.SRI (RoleT)
-open ContextCalculus.SRIQ (Clause Ontology)
+open ContextCalculus.SRIQ (Clause Ontology RoleLe)
 open ContextCalculus.SROIQ (Stack rules)
 
 variable {n m : Nat}
 
-/-- The super-roles of every role term. -/
+/-- The chain clauses (the role hierarchy depends on them only). -/
+def chainsOnly (O : Ontology (Fin n) (Fin m)) : Ontology (Fin n) (Fin m) :=
+  O.filter fun
+    | .chain .. => true
+    | _ => false
+
+theorem mem_chainsOnly {O : Ontology (Fin n) (Fin m)} {body : List (RT m)} {S : RT m} :
+    Clause.chain body S ∈ chainsOnly O ↔ Clause.chain body S ∈ O := by
+  simp [chainsOnly, List.mem_filter]
+
+theorem roleLe_chainsOnly (O : Ontology (Fin n) (Fin m)) (R S : RT m) :
+    RoleLe (chainsOnly O) R S ↔ RoleLe O R S := by
+  have hs : SRI.RoleStep (SRIQ.sriPart (chainsOnly O)) = SRI.RoleStep (SRIQ.sriPart O) := by
+    funext R S
+    simp only [SRI.RoleStep, SRIQ.mem_sriPart, SRIQ.ofSRI, mem_chainsOnly]
+  unfold SRIQ.RoleLe SRI.RoleLe
+  rw [hs]
+
+theorem leB_chainsOnly (O : Ontology (Fin n) (Fin m)) : leB (chainsOnly O) = leB O := by
+  funext R S
+  rw [Bool.eq_iff_iff, leB_iff, leB_iff, roleLe_chainsOnly]
+
+/-- The super-roles of every role term, from the chain clauses. -/
 def mkTab (O : Ontology (Fin n) (Fin m)) : List (RT m × List (RT m)) :=
-  (allRT m).map fun R => (R, SRI.Proc.upFix (SRIQ.sriPart O) R (2 * m + 2) [R])
+  let C := SRIQ.sriPart (chainsOnly O)
+  (allRT m).map fun R => (R, SRI.Proc.upFix C R (2 * m + 2) [R])
 
 /-- `R ⊑₁* S` read from a table. -/
 def leF (tab : List (RT m × List (RT m))) (R S : RT m) : Bool :=
@@ -42,6 +65,7 @@ theorem lookup_map_self (f : RT m → List (RT m)) :
       exact lookup_map_self f l R ((List.mem_cons.1 h).resolve_left hx)
 
 theorem leF_mkTab (O : Ontology (Fin n) (Fin m)) : leF (mkTab O) = leB O := by
+  rw [← leB_chainsOnly]
   funext R S
   unfold leF mkTab leB
   rw [lookup_map_self _ _ R (mem_allRT R)]
@@ -85,7 +109,8 @@ def allsQT (rs : List (RT m × List (RT m))) (le : RT m → RT m → Bool)
 
 def pairsPF (O : Ontology (Fin n) (Fin m)) : List (Pair n m) :=
   let rs := rules O
-  let le := leF (mkTab O)
+  let tab := mkTab O
+  let le := leF tab
   let sf := succsT rs le
   (allsQT rs le O).flatMap fun q => (reachItT sf 4096 64 [[(q.2.1, false)]]).map (q, ·)
 
@@ -94,11 +119,19 @@ def pairsPF (O : Ontology (Fin n) (Fin m)) : List (Pair n m) :=
   simp only [pairsPF, leF_mkTab, succsT_eq, pairsP, reachL, reachIt_eq]
   rfl
 
+/-- The number of fresh names, through `pairsPF`. -/
+def kCF (O : Ontology (Fin n) (Fin m)) : Nat := (pairsPF O).length
+
+@[csimp] theorem kC_eq_F : @kC = @kCF := by
+  funext n m O
+  simp only [kCF, kC, ← pairsP_eq_F]
+
 /-! ## The encoding -/
 
 def encChainF (O : Ontology (Fin n) (Fin m)) : Ontology (Fin (n + kC O)) (Fin m) :=
   let P := pairsP O
-  let sf := succsT (rules O) (leF (mkTab O))
+  let tab := mkTab O
+  let sf := succsT (rules O) (leF tab)
   let nm : Pair n m → Option (Fin (n + kC O)) := fun p =>
     if h : P.idxOf p < P.length then some (Fin.natAdd n ⟨_, h⟩) else none
   O.filterMap (liftC P.length) ++ P.zipIdx.flatMap fun pj =>
@@ -157,12 +190,13 @@ def regularBF (O : Ontology (Fin n) (Fin m)) : Bool :=
   let sc : RT m → Finset (RT m) := fun R =>
     (nl.filterMap fun p => if p.1 = R then some p.2 else none).toFinset
   let N := Fintype.card (RT m) + 1
+  let C := chainsOnly O
   decide (∀ R : RT m,
-    (fun A => R ∉ A ∧ ∀ S ∈ A, leB O S R = false) (closeS sc N (sc R)))
+    (fun A => R ∉ A ∧ ∀ S ∈ A, leB C S R = false) (closeS sc N (sc R)))
 
 @[csimp] theorem regularB_eq_F : @regularB = @regularBF := by
   funext n m O
-  simp only [regularBF, closeS_closeF]
+  simp only [regularBF, closeS_closeF, leB_chainsOnly]
   rfl
 
 end ContextCalculus.SROIQ.Proc

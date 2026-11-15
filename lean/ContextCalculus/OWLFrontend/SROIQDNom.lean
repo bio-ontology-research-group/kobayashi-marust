@@ -1,4 +1,5 @@
 import ContextCalculus.OWLFrontend.SHOIQDC2aReference
+import ContextCalculus.OWLFrontend.SHOIQFast
 import ContextCalculus.SROIQ.ChainEncN
 
 /-!

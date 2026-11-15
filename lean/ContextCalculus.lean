@@ -384,3 +384,5 @@ import ContextCalculus.OWLFrontend.SROIQDNom
 import ContextCalculus.OWLFrontend.SROIQDC2aReference
 import ContextCalculus.SROIQ.Tests
 import ContextCalculus.OWLFrontend.SROIQAnon
+import ContextCalculus.SROIQ.C2aFast
+import ContextCalculus.OWLFrontend.SHOIQFast

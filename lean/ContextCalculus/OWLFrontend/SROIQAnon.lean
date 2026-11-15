@@ -299,7 +299,9 @@ abbrev anonG (W : List IRI) (O : Ontology) : Individual → Individual :=
   anonF (anonBase W O)
 
 /-- **Anonymous individuals as fresh named individuals.** -/
-def anonOff (W : List IRI) (O : Ontology) : Ontology := ⟨O.axioms.map (Axiom.mapI (anonG W O))⟩
+def anonOff (W : List IRI) (O : Ontology) : Ontology :=
+  let base := anonBase W O
+  ⟨O.axioms.map (Axiom.mapI (anonF base))⟩
 
 theorem anonG_inv (W : List IRI) (O : Ontology) (i : Individual) : anonG W O (anonG W O i) = i :=
   anonF_anonF _ i
