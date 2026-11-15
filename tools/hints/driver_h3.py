@@ -28,7 +28,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCR = os.environ.get('H3_SCR', '/mnt/data1/leechuck/km-work/v170/scratch/h3')
 KM = os.environ.get('H3_KM', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-6f2c0a8e')
-REF = os.environ.get('H3_REF', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-owl-reference-h2-4f45169a')
+REF = os.environ.get('H3_REF', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-owl-reference-h2-89daa614')
 PROD = os.environ.get('H3_PROD', os.path.join(SCR, 'target/release/km-hints'))
 THING = 'http://www.w3.org/2002/07/owl#Thing'
 NOTHING = 'http://www.w3.org/2002/07/owl#Nothing'
@@ -171,7 +171,11 @@ def main():
         R['dump']['err'] = ((e1 or '') + (e2 or ''))[-200:]
         return finish(R, outdir, t0)
     R['dump']['bytes'] = os.path.getsize(bi) + os.path.getsize(bc)
-    rc, s, m, out, err = run([PROD, 'produce', '--index', bi, '--clauses', bc, '--km', kl, '--out', outdir,
+    # the Self routes allow a loop only at a nominal element: no loops then
+    rc0, _, _, o0, _ = ref(['--witness-route', '--classes', cf, '--check'], src, 300)
+    R['route'] = (o0 or '').strip()[-40:]
+    loops = [] if 'self' not in (o0 or '') else ['--no-loops']
+    rc, s, m, out, err = run([PROD, 'produce'] + loops + ['--index', bi, '--clauses', bc, '--km', kl, '--out', outdir,
                               '--time', str(ptime)], ptime + 120, mem_kb=24000000)
     R['producer_run'] = {'rc': rc, 'secs': s, 'rss_mb': m}
     if rc != 0 or not out:
@@ -195,10 +199,10 @@ def main():
     if not P['base']['ok'] or not P['models']:
         C['skipped'] = 'no model'
         return finish(R, outdir, t0)
-    # today's witness check costs about elements x gcis (ore_ont_33: 1.4e8 in 14 s)
+    # a guard on the check cost (elements x gcis); the 4bc900f0 check took 14 s at 1.4e8 on ore_ont_33, later binaries are faster
     est = max(m['elements'] for m in P['models']) * max(1, P['nf']['gci'])
     C['cost_estimate'] = est
-    if est > float(os.environ.get('H3_MAX_CHECK_COST', '6e9')):
+    if est > float(os.environ.get('H3_MAX_CHECK_COST', '1e13')):
         C['skipped'] = 'over the checker budget (elements x gcis = %.1e)' % est
         return finish(R, outdir, t0)
     sup, unsat, types, top, cname, cls, inds = km_rows(kl, bi)
