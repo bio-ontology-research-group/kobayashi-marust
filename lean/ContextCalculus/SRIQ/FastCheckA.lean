@@ -216,9 +216,17 @@ def witA (j : Nat) : List (Array Nat × Array Nat) :=
 def witArr : Array (List (Array Nat × Array Nat)) :=
   Array.ofFn fun j : Fin C.nodes.size => witA ix C j.val
 
+/-- The specs the nodes of each context ask their parents to grow for (the
+union of `witA` over the members, without repetitions). -/
+def witCtx : Array (List (Array Nat × Array Nat)) :=
+  let W := witArr ix C
+  Array.ofFn fun k : Fin C.members.size =>
+    dedupKey id ((membA C k.val).flatMap fun j => W[j]?.getD [])
+
+/-- Rule R6 at node `v`; `W` is `witCtx`. -/
 def witOKA (W : Array (List (Array Nat × Array Nat))) (v : NodeA)
     (ps : Std.HashSet (Array Nat × Array Nat)) : Bool :=
-  let reqs := v.pool.flatMap fun e => (membA C e.kid).flatMap fun j => (W[j]?.getD []).map fun σ => (e, σ)
+  let reqs := v.pool.flatMap fun e => (W[e.kid]?.getD []).map fun σ => (e, σ)
   (dedupKey id ((reqs.filter fun r => r.2.2.all (bsA v.ty)).map fun r =>
       (unionA r.1.lab (flipA r.2.1), r.1.fill))).all (ps.contains ·) &&
     (dedupKey id ((reqs.filter fun r => !r.2.2.all (bsA v.ty)).map (·.2.2))).all fun f =>
@@ -252,7 +260,7 @@ def closedFastB (req : List (Fin n)) : Bool :=
   wfB n m C && decide (C.roots.length = req.length) &&
     (req.zip C.roots).all (fun p => rootOKA ix C p.1 p.2) &&
     (List.range C.keys.size).all (fun k => brCovA ix C k (keyA C k).seed) &&
-    (let W := witArr ix C
+    (let W := witCtx ix C
      (List.range C.nodes.size).all (nodeClosedA ix ixf C W)) &&
     cacheOKA ix C
 

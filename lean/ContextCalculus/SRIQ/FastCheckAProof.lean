@@ -862,8 +862,19 @@ theorem mem_witA (hW : WF n m C) {j : Nat} {u : Fin n × Nat × RoleT (Fin m) ×
   rw [if_pos ⟨hpc, hk⟩]
   exact List.mem_map.2 ⟨σA, hσA, rfl⟩
 
+theorem mem_witCtx {ix : Ix n m} {k j : Nat} (hj : j ∈ membA C k) {σ : Array Nat × Array Nat}
+    (hσ : σ ∈ (witArr ix C)[j]?.getD []) : σ ∈ (witCtx ix C)[k]?.getD [] := by
+  have hk : k < C.members.size := by
+    by_contra hk
+    simp [membA, Array.getElem?_eq_none (by omega : C.members.size ≤ k)] at hj
+  simp only [witCtx, Array.getElem?_ofFn, hk, dite_true, Option.getD_some]
+  have hm : σ ∈ (membA C k).flatMap fun j => (witArr ix C)[j]?.getD [] := List.mem_flatMap.2 ⟨j, hj, hσ⟩
+  obtain ⟨y, hy, hyx⟩ := exists_dedupKey id _ σ hm
+  simp only [id] at hyx
+  exact hyx ▸ hy
+
 theorem witOKA_sound (hW : WF n m C) {i : Nat}
-    (h : witOKA (mkIx O) C (witArr (mkIx O) C) (ndA C i) (poolSet (ndA C i)) = true) :
+    (h : witOKA (mkIx O) C (witCtx (mkIx O) C) (ndA C i) (poolSet (ndA C i)) = true) :
     WitOK (mkIx O) (C.view n m) i := by
   intro e he j hj u hu hpc hk σ hσ
   rw [view_nd_pool] at he
@@ -878,8 +889,8 @@ theorem witOKA_sound (hW : WF n m C) {i : Nat}
   have hWj : (witArr (mkIx O) C)[j]?.getD [] = witA (mkIx O) C j := by
     simp [witArr, Array.getElem?_ofFn, hjn]
   have hr : (eA, (σA.lab, σA.fill)) ∈ (ndA C i).pool.flatMap fun e =>
-      (membA C e.kid).flatMap fun j => ((witArr (mkIx O) C)[j]?.getD []).map fun σ => (e, σ) :=
-    List.mem_flatMap.2 ⟨eA, heA, List.mem_flatMap.2 ⟨j, hj, by rw [hWj]; exact List.mem_map.2 ⟨_, hw, rfl⟩⟩⟩
+      ((witCtx (mkIx O) C)[e.kid]?.getD []).map fun σ => (e, σ) :=
+    List.mem_flatMap.2 ⟨eA, heA, List.mem_map.2 ⟨_, mem_witCtx hj (by rw [hWj]; exact hw), rfl⟩⟩
   simp only [witOKA, Bool.and_eq_true, List.all_eq_true] at h
   obtain ⟨h1, h2⟩ := h
   rw [view_nd_ty, view_nd_ctx]
@@ -896,8 +907,8 @@ theorem witOKA_sound (hW : WF n m C) {i : Nat}
       exact bsA_sound (all_mem hall hy)
   refine ⟨fun hsub => ?_, fun hns => ?_⟩
   · have hm : (unionA eA.lab (flipA σA.lab), eA.fill) ∈ (List.filter (fun r => r.2.2.all (bsA (ndA C i).ty))
-        ((ndA C i).pool.flatMap fun e => (membA C e.kid).flatMap fun j =>
-          ((witArr (mkIx O) C)[j]?.getD []).map fun σ => (e, σ))).map fun r =>
+        ((ndA C i).pool.flatMap fun e =>
+          ((witCtx (mkIx O) C)[e.kid]?.getD []).map fun σ => (e, σ))).map fun r =>
             (unionA r.1.lab (flipA r.2.1), r.1.fill) :=
       List.mem_map.2 ⟨_, List.mem_filter.2 ⟨hr, (hiff.1 hsub)⟩, rfl⟩
     obtain ⟨y, hy, hyx⟩ := exists_dedupKey id _ _ hm
@@ -907,8 +918,8 @@ theorem witOKA_sound (hW : WF n m C) {i : Nat}
     simp only [viewEntry, grown, absLab_unionA, absLab_flipA] at this ⊢
     exact this
   · have hm : σA.fill ∈ (List.filter (fun r => !r.2.2.all (bsA (ndA C i).ty))
-        ((ndA C i).pool.flatMap fun e => (membA C e.kid).flatMap fun j =>
-          ((witArr (mkIx O) C)[j]?.getD []).map fun σ => (e, σ))).map (·.2.2) :=
+        ((ndA C i).pool.flatMap fun e =>
+          ((witCtx (mkIx O) C)[e.kid]?.getD []).map fun σ => (e, σ))).map (·.2.2) :=
       List.mem_map.2 ⟨_, List.mem_filter.2 ⟨hr, by
         rw [Bool.not_eq_true']; rw [Bool.eq_false_iff]; exact fun hc => hns (hiff.2 hc)⟩, rfl⟩
     obtain ⟨y, hy, hyx⟩ := exists_dedupKey id _ _ hm
@@ -927,7 +938,7 @@ section Main
 variable {O : Ontology (Fin n) (Fin m)} {C : CandA}
 
 theorem nodeClosedA_sound (hW : WF n m C) {i : Nat}
-    (h : nodeClosedA (mkIx O) (mkIxF O (mkIx O)) C (witArr (mkIx O) C) i = true) :
+    (h : nodeClosedA (mkIx O) (mkIxF O (mkIx O)) C (witCtx (mkIx O) C) i = true) :
     NodeClosed (mkIx O) (C.view n m) i := by
   simp only [nodeClosedA, Bool.and_eq_true] at h
   obtain ⟨⟨⟨⟨⟨h1, h2⟩, h3⟩, h4⟩, h5⟩, h6⟩ := h
