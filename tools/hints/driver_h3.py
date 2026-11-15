@@ -195,6 +195,12 @@ def main():
     if not P['base']['ok'] or not P['models']:
         C['skipped'] = 'no model'
         return finish(R, outdir, t0)
+    # today's witness check costs about elements x gcis (ore_ont_33: 1.4e8 in 14 s)
+    est = max(m['elements'] for m in P['models']) * max(1, P['nf']['gci'])
+    C['cost_estimate'] = est
+    if est > float(os.environ.get('H3_MAX_CHECK_COST', '6e9')):
+        C['skipped'] = 'over the checker budget (elements x gcis = %.1e)' % est
+        return finish(R, outdir, t0)
     sup, unsat, types, top, cname, cls, inds = km_rows(kl, bi)
     clsset = set(cls)
     extra = ['--classes', cf] if os.path.exists(cf) else []
