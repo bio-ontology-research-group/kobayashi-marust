@@ -129,6 +129,9 @@ pub struct ChainInfo {
     /// ABox): their edges are not created by existentials, so the existential
     /// recognitions of transitive roles do not stand in for `∀` propagation.
     pub ground_edges: bool,
+    /// Roles with an edge-creating clause in the stream (set by `augment`);
+    /// `None` means every role. A letter of another role never fires.
+    pub generated_roles: Option<HashSet<String>>,
 }
 
 /// The `R(x,y) ∧ S(y,z) → T(x,z)` shape: exactly two body atoms, both roles,
@@ -214,7 +217,7 @@ fn detect_role_chains(tbox: &[DLClause]) -> ChainInfo {
     sub_same.dedup();
     sub_inv.sort();
     sub_inv.dedup();
-    ChainInfo { trans, chains, sub_same, sub_inv, unencoded_chain_consumers: 0, ground_edges: false }
+    ChainInfo { trans, chains, sub_same, sub_inv, unencoded_chain_consumers: 0, ground_edges: false, generated_roles: None }
 }
 
 fn role_parts(a: &Atom) -> (&str, &Term, &Term) {
@@ -1065,6 +1068,10 @@ pub fn chain_consumer_automaton_clauses(
     }
     // A converse proxy: `R(x,y) → S(y,x)` and `S(x,y) → R(y,x)` both present.
     let converse = |r: &str| -> Option<&str> {
+        // A symmetric role (`R(x,y) → R(y,x)`) is its own converse.
+        if let Some(&own) = inv_up.get(r).and_then(|ups| ups.iter().find(|&&s| s == r)) {
+            return Some(own);
+        }
         let mut best: Option<&str> = None;
         for &s in inv_up.get(r).map(Vec::as_slice).unwrap_or(&[]) {
             if s != r && inv_pairs.contains(&(s, r)) && best.is_none_or(|b| s < b) {
@@ -1230,8 +1237,12 @@ pub fn chain_consumer_automaton_clauses(
         non_simple: &non_simple,
         trans: &trans,
     };
+    // A letter of a role that no clause of the stream ever creates an edge
+    // for can never fire; dropping it removes only unrealizable words.
+    let generated = |role: &str| info.generated_roles.as_ref().is_none_or(|set| set.contains(role));
     let mut nfas: HashMap<&str, Nfa<'_>> = HashMap::default();
     let mut dfas: HashMap<(&str, bool), MarkerAutomaton> = HashMap::default();
+    let mut grouped: HashMap<(&str, bool), Vec<(usize, (String, bool), usize)>> = HashMap::default();
     let mut same_language: HashMap<&str, bool> = HashMap::default();
     let no_inverse: HashMap<&str, Vec<&str>> = HashMap::default();
     let same_graph = Graph {
@@ -1254,6 +1265,55 @@ pub fn chain_consumer_automaton_clauses(
     // A marker family is shared by every consumer with the same role,
     // direction and seed condition: `Γa ∧ ¬Δa` forward, `Γb` backward.
     let mut families: HashMap<(bool, &str, Vec<String>, Vec<String>), usize> = HashMap::default();
+    // Plain consumers with an empty seed side on any role: `q(x,y) ∧ Γ(y) →
+    // Δ(y)` (forward) and `q(x,y) ∧ Γ(x) → Δ(x)` (backward).
+    type Plain<'c> = HashMap<&'c str, Vec<(Vec<String>, Vec<String>)>>;
+    let mut plain_forward: Plain<'_> = HashMap::default();
+    let mut plain_backward: Plain<'_> = HashMap::default();
+    for c in consumers {
+        let Some(Atom::Role(q, Term::Var(a), Term::Var(b))) = single_body_role(c) else { continue };
+        if a == b {
+            continue;
+        }
+        let on = |atoms: &[Atom], v: &str| -> Option<Vec<String>> {
+            let mut out = Vec::new();
+            for atom in atoms {
+                match atom {
+                    Atom::Role(..) => {}
+                    Atom::Concept(name, Term::Var(t)) if t == v => out.push(name.clone()),
+                    Atom::Concept(_, Term::Var(t)) if t == a || t == b => {}
+                    _ => return None,
+                }
+            }
+            Some(out)
+        };
+        let (Some(ba), Some(bb), Some(ha), Some(hb)) = (on(&c.body, a), on(&c.body, b), on(&c.head, a), on(&c.head, b))
+        else {
+            continue;
+        };
+        if c.head.iter().any(|atom| !matches!(atom, Atom::Concept(..))) {
+            continue;
+        }
+        if ba.is_empty() && ha.is_empty() && !hb.is_empty() {
+            plain_forward.entry(q.as_str()).or_default().push((bb, hb));
+        } else if bb.is_empty() && hb.is_empty() {
+            plain_backward.entry(q.as_str()).or_default().push((ba, ha));
+        }
+    }
+    let up_same = |role: &str| -> Vec<String> {
+        let mut out = vec![role.to_string()];
+        let mut i = 0;
+        while i < out.len() {
+            let current = out[i].clone();
+            for &sup in same_up.get(current.as_str()).map(Vec::as_slice).unwrap_or(&[]) {
+                if !out.iter().any(|r| r == sup) {
+                    out.push(sup.to_string());
+                }
+            }
+            i += 1;
+        }
+        out
+    };
     for c in consumers {
         let Some(role_atom) = single_body_role(c) else { continue };
         let (p, a, b) = role_parts(role_atom);
@@ -1315,6 +1375,7 @@ pub fn chain_consumer_automaton_clauses(
                     };
                     (q, letter, q2)
                 })
+                .filter(|(_, (role, _), _)| generated(role))
                 .collect();
             MarkerAutomaton::new(nfa.states, &moves, &nfa.epsilon, forward)
         });
@@ -1348,6 +1409,7 @@ pub fn chain_consumer_automaton_clauses(
                         .moves
                         .iter()
                         .map(|&(q, (r, _), q2)| (q, (r.to_string(), false), q2))
+                        .filter(|(_, (role, _), _)| generated(role))
                         .collect();
                     !same.inverted
                         && MarkerAutomaton::new(same.states, &same_moves, &same.epsilon, false) == *automaton
@@ -1356,15 +1418,41 @@ pub fn chain_consumer_automaton_clauses(
                 continue;
             }
         }
-        // A range-like consumer (empty seed) of `p⁺` holds at the target of
-        // the last `p` edge of every path: the original clause covers it.
-        if forward
-            && gamma_a.is_empty()
-            && delta_a.is_empty()
-            && *automaton
-                == MarkerAutomaton::new(2, &[(0, (p.to_string(), false), 1)], &[(1, 0)], true)
-        {
-            continue;
+        // A consumer with an empty seed condition (a range `p(x,y) → C(y)`,
+        // a domain `p(x,y) → D(x)`, or the like) needs only the last letter
+        // of an accepted word (forward), respectively its first letter
+        // (backward; the reversed automaton's last letter): the word's edge
+        // for that letter exists in the clause stream, as an edge of every
+        // role above it in the same orientation. If each such letter has a
+        // plain consumer of at least the same strength on one of those
+        // roles, that consumer already fires wherever the markers would
+        // (the EL-style range condition `range(p) ⊆ range(last letter)`,
+        // which OBO ontologies satisfy), and the family is redundant.
+        let seed_empty = if forward {
+            gamma_a.is_empty() && delta_a.is_empty()
+        } else {
+            gamma_b.is_empty()
+        };
+        if seed_empty {
+            let (need_body, need_head) = if forward { (&gamma_b, &delta_b) } else { (&gamma_a, &delta_a) };
+            let plain = if forward { &plain_forward } else { &plain_backward };
+            let covered_by_letters = automaton.moves.iter().all(|(_, (letter, reversed), q2)| {
+                if !automaton.finals.contains(q2) {
+                    return true;
+                }
+                !*reversed
+                    && up_same(letter).iter().any(|role| {
+                        plain.get(role.as_str()).is_some_and(|list| {
+                            list.iter().any(|(body, head)| {
+                                body.iter().all(|c| need_body.contains(c))
+                                    && head.iter().all(|c| need_head.contains(c))
+                            })
+                        })
+                    })
+            });
+            if covered_by_letters {
+                continue;
+            }
         }
         let seed_key = if forward { (gamma_a.clone(), delta_a.clone()) } else { (gamma_b.clone(), Vec::new()) };
         let next = families.len();
@@ -1387,8 +1475,52 @@ pub fn chain_consumer_automaton_clauses(
                 extra.push(clause);
             }
         };
+        if fresh && !grouped.contains_key(&(p, forward)) {
+            // Letters with the same transitions everywhere in this automaton
+            // are merged into one fresh super-role, materialized once per
+            // automaton, so each marker family pays one move per group
+            // instead of one per letter (OBO roles have dozens of letters
+            // that only loop on one state).
+            let mut profile: std::collections::BTreeMap<(String, bool), Vec<(usize, usize)>> =
+                std::collections::BTreeMap::new();
+            for (q, letter, q2) in &automaton.moves {
+                profile.entry(letter.clone()).or_default().push((*q, *q2));
+            }
+            let mut by_profile: std::collections::BTreeMap<Vec<(usize, usize)>, Vec<(String, bool)>> =
+                std::collections::BTreeMap::new();
+            for (letter, mut pairs) in profile {
+                pairs.sort_unstable();
+                by_profile.entry(pairs).or_default().push(letter);
+            }
+            let dir = if forward { "f" } else { "b" };
+            let mut moves = Vec::new();
+            let mut defs = Vec::new();
+            for (index, (pairs, letters)) in by_profile.into_iter().enumerate() {
+                let letter = if letters.len() >= 2 {
+                    let group = format!("__riaz__{p}__{tag}{dir}{index}");
+                    for (role, reversed) in &letters {
+                        let (s0, t0) = if *reversed { (y.clone(), x.clone()) } else { (x.clone(), y.clone()) };
+                        defs.push(clause(
+                            [Atom::Role(role.clone(), x.clone(), y.clone())],
+                            [Atom::Role(group.clone(), s0, t0)],
+                        ));
+                    }
+                    (group, false)
+                } else {
+                    letters.into_iter().next().expect("a profile has a letter")
+                };
+                for (q, q2) in pairs {
+                    moves.push((q, letter.clone(), q2));
+                }
+            }
+            moves.sort();
+            for def in defs {
+                push(def, &mut extra);
+            }
+            grouped.insert((p, forward), moves);
+        }
         if fresh {
-            for (q, (role, reversed), q2) in &automaton.moves {
+            for (q, (role, reversed), q2) in &grouped[&(p, forward)] {
                 // Every transition clause uses the role atom `role(x,y)`. A
                 // reversed letter moves a marker against the edge, which is
                 // the same clause read with the two variables swapped.
@@ -2138,6 +2270,9 @@ pub(super) fn augment_with_chains_retaining_role_axioms(
     let nominal_mode = std::env::var_os("KM_NOMINALS").is_some();
     let mut chain_info = detect_role_chains(&tbox);
     chain_info.ground_edges = nominal_mode && !abox.is_empty();
+    // ABox role facts count in every mode: outside nominal clausification
+    // `nominal_clauses` turns them into existentials on the proxies.
+    chain_info.generated_roles = Some(generated_roles(tbox.iter().chain(abox.iter())));
     let mut derived = transitivity_clauses_with(&tbox, &chain_info);
     derived.extend(chain_clauses_with(&tbox, &chain_info));
     derived.extend(regular_role_automaton_clauses(&tbox, &chain_info));
@@ -2292,6 +2427,36 @@ pub fn domain_consumer_chain_clauses(info: &ChainInfo, domain_range: &[DLClause]
         }
     }
     extra
+}
+
+/// Roles that some derivation over `clauses` can create an edge for: the
+/// least set closed under clauses whose head has a role atom and whose body
+/// roles are all in the set (existentials and ground facts have none). The
+/// raw chain compositions count too, which only enlarges the set.
+fn generated_roles<'c>(clauses: impl Iterator<Item = &'c DLClause> + Clone) -> HashSet<String> {
+    let mut generated: HashSet<String> = HashSet::default();
+    loop {
+        let before = generated.len();
+        for c in clauses.clone() {
+            let ready = c.body.iter().all(|atom| match atom {
+                Atom::Role(role, _, _) => generated.contains(role),
+                _ => true,
+            });
+            if !ready {
+                continue;
+            }
+            for atom in &c.head {
+                if let Atom::Role(role, _, _) = atom {
+                    if !generated.contains(role) {
+                        generated.insert(role.clone());
+                    }
+                }
+            }
+        }
+        if generated.len() == before {
+            return generated;
+        }
+    }
 }
 
 /// Rewrite each ground negative role assertion `R(a,b) → ⊥` of the nominal
@@ -2453,6 +2618,7 @@ mod tests {
             sub_inv: vec![],
             unencoded_chain_consumers: 0,
             ground_edges: false,
+            generated_roles: None,
         };
         let dr = vec![clause(
             [Atom::Role("t".into(), var_x(), var_y())],
@@ -2487,6 +2653,7 @@ mod tests {
             sub_inv: vec![],
             unencoded_chain_consumers: 0,
             ground_edges: false,
+            generated_roles: None,
         };
         let dr = vec![clause(
             [Atom::Role("t".into(), var_x(), var_y())],
@@ -2824,7 +2991,7 @@ mod chain_detection_tests {
                 }
             }
         }
-        ChainInfo { trans, chains, sub_same: vec![], sub_inv: vec![], unencoded_chain_consumers: 0, ground_edges: false }
+        ChainInfo { trans, chains, sub_same: vec![], sub_inv: vec![], unencoded_chain_consumers: 0, ground_edges: false, generated_roles: None }
     }
 
     fn is_chain_axiom_reference(c: &DLClause) -> bool {

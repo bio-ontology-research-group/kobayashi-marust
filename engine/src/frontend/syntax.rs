@@ -423,7 +423,7 @@ impl Ontology {
                 Axiom::ConceptAssertion(a, individual) => Axiom::ConceptAssertion(rewrite(a, &defs), individual.clone()),
                 other => other.clone(),
             };
-            self.add(rewritten);
+            self.add_new(rewritten);
         }
     }
 
@@ -434,7 +434,21 @@ impl Ontology {
 
     /// Mirror `Ontology.add` over a `set`: ignore duplicate axioms.
     pub fn add(&mut self, ax: Axiom) {
-        self.add_new(ax);
+        let head = match &ax {
+            Axiom::ConceptAssertion(..) => Some("ClassAssertion"),
+            Axiom::RoleAssertion(..) => Some("ObjectPropertyAssertion"),
+            Axiom::NegativeRoleAssertion(..) => Some("NegativeObjectPropertyAssertion"),
+            Axiom::SameIndividual(..) => Some("SameIndividual"),
+            Axiom::DifferentIndividuals(..) => Some("DifferentIndividuals"),
+            _ => None,
+        };
+        // Only source axioms come through `add`; the data-assertion
+        // conversions use `add_new` and keep their own counts.
+        if !self.add_new(ax) {
+            if let Some(head) = head {
+                *self.duplicate_abox_axioms.entry(head).or_default() += 1;
+            }
+        }
     }
 
     /// `add`, reporting whether the axiom was not already present.
@@ -445,17 +459,6 @@ impl Ontology {
             self.axioms.push(ax);
             true
         } else {
-            let head = match ax.as_ref() {
-                Axiom::ConceptAssertion(..) => Some("ClassAssertion"),
-                Axiom::RoleAssertion(..) => Some("ObjectPropertyAssertion"),
-                Axiom::NegativeRoleAssertion(..) => Some("NegativeObjectPropertyAssertion"),
-                Axiom::SameIndividual(..) => Some("SameIndividual"),
-                Axiom::DifferentIndividuals(..) => Some("DifferentIndividuals"),
-                _ => None,
-            };
-            if let Some(head) = head {
-                *self.duplicate_abox_axioms.entry(head).or_default() += 1;
-            }
             false
         }
     }
