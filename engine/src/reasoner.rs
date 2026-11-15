@@ -317,6 +317,15 @@ impl Builder {
         for a in &c.body {
             match a {
                 JAtom::Eq { left, right } => {
+                    // `y ≈ a` with a non-central variable `y` would become the
+                    // head literal `y ≉ a` on a neighbour; that shape is not
+                    // treated exactly (an individual is matched like a
+                    // variable off the central position). Drop and count it.
+                    let off_center = |t: &JTerm| matches!(t, JTerm::Var { name } if name != "x");
+                    let ind = |t: &JTerm| matches!(t, JTerm::Ind { .. });
+                    if (ind(left) && off_center(right)) || (ind(right) && off_center(left)) {
+                        return None;
+                    }
                     let l = self.term(left, &mut varmap)?;
                     let r = self.term(right, &mut varmap)?;
                     body_ineqs.push(Lit::ineq(l, r));
