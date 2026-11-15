@@ -423,4 +423,5 @@ import ContextCalculus.SRIQN.HintModelD
 import ContextCalculus.OWLFrontend.HintData
 import ContextCalculus.OWLFrontend.HintEvalD
 import ContextCalculus.OWLFrontend.HintRowsD
+import ContextCalculus.OWLFrontend.FreshDefR
 import ContextCalculus.OWLFrontend.SHOIQFast
