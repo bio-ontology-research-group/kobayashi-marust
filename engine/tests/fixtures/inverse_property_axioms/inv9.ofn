@@ -1,0 +1,5 @@
+Prefix(:=<http://x/>)
+Ontology(<http://x/o>
+Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C)) Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s))
+ObjectPropertyDomain(ObjectInverseOf(:r) :A) EquivalentClasses(:B ObjectSomeValuesFrom(ObjectInverseOf(:r) owl:Thing))
+)

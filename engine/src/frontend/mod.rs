@@ -42,6 +42,7 @@ pub mod syntax;
 pub mod top_role;
 pub mod universal_role;
 pub(crate) mod has_key;
+pub(crate) mod rule_data_atoms;
 
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 
@@ -1421,15 +1422,6 @@ fn ofn_to_clauses_representation(
     } else {
         requested
     };
-    // E19 stopgap: keep sources with a shared asserted data value and a
-    // functional data property off the native bridge
-    // (`orchestrate::data_source::shared_data_value_hazard`).
-    if automatic
-        && route == crate::routing::Route::HtBridge
-        && crate::orchestrate::data_source::shared_data_value_hazard(text)
-    {
-        route = crate::routing::Route::Nominals;
-    }
     // Named bundles control clausification as well as the later worker. This
     // call occurs before normalisation and before any reasoner thread starts.
     route.apply_environment();

@@ -4,6 +4,36 @@
 
 ### Engine
 
+- `km classify --data-properties` reports the data property hierarchy
+  (`SUBDATAPROP`), empty data properties (`BOTDATAPROP`), data property
+  domains (`DATADOMAIN`) and disjoint data properties (`DISJOINTDATAPROP`)
+  (W6), by fresh classes `∃p.{v}` over an opaque fresh literal `v`; see
+  `docs/PROPERTIES.md`.
+- Inverse property operands (E9): `SubObjectPropertyOf` with
+  `ObjectInverseOf` on either side or both, `EquivalentObjectProperties`
+  and `DisjointObjectProperties` with inverse members, and the
+  characteristics of an inverse (`Functional(r⁻)` is `InverseFunctional(r)`
+  and the converse; the others are those of `r`) are read in
+  `km classify` and `km incremental-source`. `r⁻ ⊑ s⁻` is `r ⊑ s`; a mixed
+  pair uses the converse proxy `__inv__r` of the chain encoding. Before,
+  km refused them ("named role expected"), and `DisjointObjectProperties`
+  with an inverse member became a disjointness with the empty role name.
+  `InverseObjectProperties(ObjectInverseOf(r) s)` is still rejected by the
+  vendored functional-syntax grammar. `ObjectPropertyAtom` of an inverse in
+  a rule swaps its arguments. Tests: `tests/inverse_property_axioms.rs`
+  (HermiT rows).
+- `--unknown-datatypes=free` (W7): datatypes outside the OWL 2 datatype map
+  are read as fresh datatypes and their literals as opaque values instead
+  of being rejected; default `strict`. Semantics and the HermiT comparison:
+  `docs/DATATYPES.md`, "Unknown datatypes".
+- DL-safe rules (W8): a data variable that occurs in a rule body only in
+  one `DataPropertyAtom(p t ?v)` and in `DataRangeAtom`s becomes the class
+  atom `DataSomeValuesFrom(p D)(t)` (`frontend::rule_data_atoms`), so such
+  rules are no longer refused. Joins on a data variable, data variables in
+  heads and built-ins stay unsupported.
+- The `symbolic_source_classification` decline test uses a data
+  restriction in a nominal assertion: the universal role as a sub-role is
+  now encoded (E8) and the symbolic bridge accepts it.
 - Temporary files (E11): every temporary file of a run lives in one
   per-run directory `$TMPDIR/km-run-<pid>-<nonce>/` that the supervisor
   creates and exports to its workers (`KM_RUN_TMPDIR`) and removes on
@@ -29,13 +59,34 @@
   satisfiable when a functional data property separates `a` from `b` and
   a data value is asserted for both individuals (`g(a,0)`, `g(b,255)`,
   `h(b,0)`, `g` functional; ore_ont_15667's `ColorBlue`, `ColorCyan`).
-  Stopgap: such sources (a `FunctionalDataProperty` or data cardinality,
-  and a literal asserted about two individuals) do not reach the bridge
-  (`orchestrate::data_source::shared_data_value_hazard`); the nominal CB
-  route answers them. Separately, the bridge's saturation coupling
-  (successor expansion and caching-blocking from saturation) is off on
-  inputs with a consumed value singleton, which fixed one of the two
-  shapes inside the bridge; the other shape is not located yet.
+  Root cause: the bridge realises a value singleton `v(y₁) ∧ v(y₂) → y₁ ≈ y₂`
+  by merging the two carriers and moving the incoming links of one to the
+  other, so `a`'s `g`-successor with value 0 became one node with `b`'s
+  `h`-successor, a child of `b`. The nominal merge of `b` into `a` then
+  pruned that child (and its link from `a`), but `a`'s `∃g.{0}` had already
+  been processed and was never queued again; `a` ended with one live
+  `g`-successor (255) and no clash. The hypertableau rules apply whenever
+  their premise holds and to unpruned nodes only, so the bridge now (1)
+  skips pruned nodes when it looks for singleton carriers, and (2) after a
+  merge prunes nodes on an input with value singletons, queues the
+  generating concepts (`∃`, `≥`, `¬∀`, `¬≤`) of every live neighbour of a
+  pruned node again (the some and at-least rules create a successor only
+  when no live witness exists). The stopgap that kept such sources off the
+  bridge (`shared_data_value_hazard`) is removed: ore_ont_15063 (timed out
+  at 300 s) is back to 13 s, ore_ont_934 (timed out) to 1.0 s, 15680 and
+  4609 from 77 s to 23 s, 7610 from 42 s to 4 s, all with the answers of
+  the release before the stopgap (15063 agrees with HermiT). The bridge's
+  saturation-coupling gate on inputs with a consumed value singleton
+  stays; the fixtures `e19-*` are now also right with it turned off.
+- Fixed (wrong answer, found by the E19 differential): `{Functional(k),
+  {c} ⊑ ¬C, C ≡ =1 k.xsd:integer, k(c,2)}` was reported consistent (the
+  ground-rule data source and the native bridge). The bridge encoded
+  `{c} ⊑ ¬C` as an inclusion absorbed onto the trigger `C` and then made
+  `C` a lazily unfolded definition (`C → D`, `¬C → ¬D`) because `D` is not
+  fully triggerable; a node in `D` never receives `C`, so the inclusion
+  never fired. A name in a trigger position of an absorbed inclusion is no
+  longer a lazy definition unless its definition is fully triggerable; its
+  equivalence becomes the two inclusions.
 - The chain-consumer encoding emits fewer clauses: consumers with an empty
   seed are skipped when the last (first) letters already carry an equal
   plain consumer, letters of roles that nothing creates edges for are
