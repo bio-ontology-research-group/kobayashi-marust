@@ -270,6 +270,7 @@ mod tests {
     /// the order of first use (the order the former sorted scan produced).
     #[test]
     fn first_failing_entity_in_name_order_is_reported() {
+        let _test_env = crate::test_env::read();
         let incompatible = "Ontology(Declaration(Class(<urn:z>)) Declaration(Datatype(<urn:z>)) \
             Declaration(Class(<urn:m>)) Declaration(Datatype(<urn:m>)) \
             Declaration(ObjectProperty(<urn:b>)) Declaration(DataProperty(<urn:b>)))";
@@ -282,6 +283,7 @@ mod tests {
     }
     #[test]
     fn keys_require_properties_and_preserve_entity_types() {
+        let _test_env = crate::test_env::read();
         for key in ["HasKey(:A () ())", "HasKey(Annotation(rdfs:comment \"empty\") :A () ())"] {
             assert!(check_source(&format!("Ontology({key})")).unwrap_err().contains("at least one"));
         }
@@ -297,6 +299,7 @@ mod tests {
     }
     #[test]
     fn incompatible_property_kinds_are_rejected_with_or_without_declarations() {
+        let _test_env = crate::test_env::read();
         for axioms in ["Declaration(ObjectProperty(:p)) Declaration(DataProperty(:p))",
             "ObjectPropertyAssertion(:p :a :b) DataPropertyAssertion(:p :a \"value\")",
             "Declaration(AnnotationProperty(:p)) SubClassOf(:A ObjectSomeValuesFrom(:p :B))"] {
@@ -305,12 +308,14 @@ mod tests {
     }
     #[test]
     fn class_datatype_punning_is_rejected_but_class_individual_punning_is_legal() {
+        let _test_env = crate::test_env::read();
         assert!(check_source("Ontology(Declaration(Class(:A)) Declaration(Datatype(:A)))").unwrap_err().contains("incompatible entity types"));
         assert!(check_source("Ontology(Declaration(Class(:A)) Declaration(NamedIndividual(:A)) ClassAssertion(:A :A))").is_ok());
         assert!(check_source("Ontology(Declaration(Class(:p)) Declaration(ObjectProperty(:p)))").is_ok());
     }
     #[test]
     fn reserved_names_are_allowed_only_for_their_builtin_entity_kinds() {
+        let _test_env = crate::test_env::read();
         for axiom in ["Declaration(Class(owl:Class))", "Declaration(ObjectProperty(rdf:type))",
             "Declaration(NamedIndividual(owl:Thing))", "Declaration(AnnotationProperty(owl:Thing))"] {
             assert!(check_source(&format!("Ontology({axiom})")).unwrap_err().contains("reserved IRI"));
@@ -319,6 +324,7 @@ mod tests {
     }
     #[test]
     fn required_entity_declarations_do_not_require_named_individual_declarations() {
+        let _test_env = crate::test_env::read();
         let check = super::super::check_declarations;
         assert!(check("Ontology(Declaration(Class(:A)) ClassAssertion(:A :a))").is_ok());
         assert!(check("Ontology(SubClassOf(:A owl:Thing))").unwrap_err().contains("no matching declaration"));

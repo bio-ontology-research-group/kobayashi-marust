@@ -433,6 +433,7 @@ mod tests {
 
     #[test]
     fn db6_backend_hash_getters_localize_once() {
+        let _test_env = crate::test_env::read();
         let mut data_box = ProcessingDataBox::new();
 
         assert!(data_box
@@ -457,6 +458,7 @@ mod tests {
 
     #[test]
     fn db6_backend_queues_create_from_previous_and_clear() {
+        let _test_env = crate::test_env::read();
         let mut data_box = ProcessingDataBox::new();
         data_box.prev_delayed_backend_init_proc_queue = Id::new(7);
         data_box.prev_backend_neighbour_expansion = Id::new(11);
@@ -488,6 +490,7 @@ mod tests {
 
     #[test]
     fn db6_remaining_successor_link_data_linker_uses_intrusive_next_chain() {
+        let _test_env = crate::test_env::read();
         let mut data_box = ProcessingDataBox::new();
         let mut ctx = ProcessContext::new();
 

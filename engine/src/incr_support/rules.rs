@@ -377,6 +377,7 @@ mod tests {
 
     #[test]
     fn renamed_rule_role_conflict_collects_exact_disjointness_support() {
+        let _test_env = crate::test_env::read();
         let text = fixture("DifferentIndividuals(:first :second)", true, false);
         let hashes = candidate(&text).expect("bounded explicit join");
         let scanned = scan(&text).unwrap();
@@ -390,6 +391,7 @@ mod tests {
 
     #[test]
     fn explicit_body_difference_and_functionality_are_supported() {
+        let _test_env = crate::test_env::read();
         let text = fixture("DifferentIndividuals(:a :b)\nDifferentIndividuals(:first :second)", true, true)
             .replace("DisjointClasses(:Left :Right)", "");
         assert!(candidate(&text).is_some());
@@ -397,6 +399,7 @@ mod tests {
 
     #[test]
     fn absent_premise_and_no_unique_name_assumption_decline() {
+        let _test_env = crate::test_env::read();
         let text = fixture("DifferentIndividuals(:first :second)", true, false);
         assert!(candidate(&text.replace("ObjectPropertyAssertion(:other :s :b)", "")).is_none());
         assert!(candidate(&fixture("", true, false)).is_none());
@@ -405,6 +408,7 @@ mod tests {
 
     #[test]
     fn unsupported_qualified_cardinality_atoms_and_unbound_head_decline() {
+        let _test_env = crate::test_env::read();
         let text = fixture("DifferentIndividuals(:first :second)", false, false);
         assert!(candidate(&text.replace("ObjectExactCardinality(1 :result)", "ObjectExactCardinality(1 :result :Type)")).is_none());
         assert!(candidate(&text.replace("ObjectPropertyAtom(:other Variable(:s) Variable(:y))", "BuiltInAtom(:unknown Variable(:s))")).is_none());

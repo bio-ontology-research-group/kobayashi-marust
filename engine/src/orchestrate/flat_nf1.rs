@@ -1941,6 +1941,7 @@ mod tests {
 
     #[test]
     fn parses_sparse_horn_left_sides() {
+        let _test_env = crate::test_env::write();
         assert_eq!(
             conjunction_lhs_iris(
                 "SubClassOf(ObjectIntersectionOf(<http://e/A> <http://e/B>) <http://e/C>)"
@@ -1963,6 +1964,7 @@ mod tests {
 
     #[test]
     fn sparse_horn_saturates_conjunction_and_existential_left_rules() {
+        let _test_env = crate::test_env::write();
         let text = "Ontology(\n\
 Declaration(Class(<http://e/A>))\n\
 Declaration(Class(<http://e/B>))\n\
@@ -2004,6 +2006,7 @@ DifferentIndividuals(<http://e/i> <http://e/j>)\n\
 
     #[test]
     fn sparse_horn_saturates_named_union_and_mixed_equivalence() {
+        let _test_env = crate::test_env::write();
         let text = r#"Ontology(
 Declaration(Class(<http://e/A>))
 Declaration(Class(<http://e/B>))
@@ -2043,6 +2046,7 @@ EquivalentClasses(<http://e/A> ObjectIntersectionOf(<http://e/C> ObjectSomeValue
 
     #[test]
     fn sparse_horn_accepts_only_redundantly_witnessed_nominals() {
+        let _test_env = crate::test_env::write();
         let witnessed = r#"Ontology(
 Declaration(Class(<http://e/A>))
 Declaration(Class(<http://e/B>))
@@ -2070,6 +2074,7 @@ SubClassOf(<http://e/A> <http://e/B>)
 
     #[test]
     fn sparse_horn_declines_a_joint_abox_disjointness_clash() {
+        let _test_env = crate::test_env::write();
         let text = "Ontology(\n\
 Declaration(Class(<http://e/A>))\n\
 Declaration(Class(<http://e/B>))\n\
@@ -2111,6 +2116,7 @@ ClassAssertion(<http://e/B> <http://e/i>)\n\
 
     #[test]
     fn sparse_horn_accepts_inert_simple_existential_abox_only_without_nf4_feedback() {
+        let _test_env = crate::test_env::write();
         let inert = "Ontology(\n\
 Declaration(Class(<http://e/A>))\n\
 Declaration(Class(<http://e/B>))\n\
@@ -2154,6 +2160,7 @@ ClassAssertion(",
 
     #[test]
     fn sparse_horn_profitability_screen_detects_only_class_assertions() {
+        let _test_env = crate::test_env::write();
         let no_abox = "Ontology(\nSubClassOf(<http://e/A> <http://e/B>)\n)\n";
         assert!(!source_has_class_assertion(std::io::Cursor::new(no_abox)).unwrap());
         let abox = "Ontology(\n  ClassAssertion(<http://e/A> _:i)\n)\n";
@@ -2162,6 +2169,7 @@ ClassAssertion(",
 
     #[test]
     fn sparse_horn_elides_complex_rbox_only_without_nf4_feedback() {
+        let _test_env = crate::test_env::write();
         let inert = "Ontology(\n\
 Declaration(Class(<http://e/A>))\n\
 Declaration(Class(<http://e/B>))\n\
@@ -2193,6 +2201,7 @@ SubObjectPropertyOf(<http://e/r> <http://e/s>)",
 
     #[test]
     fn sparse_horn_does_not_confuse_symmetry_with_transitivity() {
+        let _test_env = crate::test_env::write();
         let text = "Ontology(\n\
 Declaration(Class(<http://e/A>))\n\
 Declaration(Class(<http://e/B>))\n\
@@ -2209,6 +2218,7 @@ SymmetricObjectProperty(<http://e/r>)\n\
 
     #[test]
     fn exact_line_parser_and_closure() {
+        let _test_env = crate::test_env::write();
         let text = source(
             3,
             "SubClassOf(<http://e/C0000> <http://e/C0001>)\n\
@@ -2238,6 +2248,7 @@ SymmetricObjectProperty(<http://e/r>)\n\
 
     #[test]
     fn cyclic_named_edges_emit_equivalent_peers_without_reflexive_pairs() {
+        let _test_env = crate::test_env::write();
         let text = source(
             3,
             "SubClassOf(<http://e/C0000> <http://e/C0001>)\n\
@@ -2254,6 +2265,7 @@ SymmetricObjectProperty(<http://e/r>)\n\
 
     #[test]
     fn universal_builtin_edges_are_ignored_without_changing_named_closure() {
+        let _test_env = crate::test_env::write();
         let text = source(
             3,
             "SubClassOf(<http://e/C0000> <http://e/C0001>)\n\
@@ -2275,6 +2287,7 @@ SymmetricObjectProperty(<http://e/r>)\n\
 
     #[test]
     fn semantically_active_builtin_edges_still_decline() {
+        let _test_env = crate::test_env::write();
         for axiom in [
             "SubClassOf(owl:Thing <http://e/C0000>)",
             "SubClassOf(<http://e/C0000> owl:Nothing)",
@@ -2289,6 +2302,7 @@ SymmetricObjectProperty(<http://e/r>)\n\
 
     #[test]
     fn allocation_free_screen_is_necessary_but_not_sufficient() {
+        let _test_env = crate::test_env::write();
         let flat = "Ontology(\n\
 Declaration(Class(<http://e/A>))\n\
 Declaration(Class(<http://e/B>))\n\
@@ -2322,6 +2336,7 @@ SubClassOf(<http://e/A> <http://e/A>)\n)\n";
 
     #[test]
     fn pure_leaf_screen_proves_empty_taxonomy_without_a_graph() {
+        let _test_env = crate::test_env::write();
         let leaf = "Prefix(:=<http://e/>)\n\
 Ontology(<http://e/o>\n\
 Declaration(Class(<http://e/A>))\n\
@@ -2352,6 +2367,7 @@ SubClassOf(<http://e/A> ObjectSomeValuesFrom(<http://e/r> <http://www.w3.org/200
 
     #[test]
     fn canonicalizes_declarations_and_rejects_compound_axioms() {
+        let _test_env = crate::test_env::write();
         let mut ids = HashMap::new();
         let mut names = Vec::new();
         let mut outgoing = Vec::new();
@@ -2384,6 +2400,7 @@ SubClassOf(<http://e/A> ObjectSomeValuesFrom(<http://e/r> <http://www.w3.org/200
 
     #[test]
     fn unsorted_source_is_canonicalized_before_closure() {
+        let _test_env = crate::test_env::write();
         let text = "Ontology(\n\
 Declaration(Class(<http://e/C>))\n\
 Declaration(Class(<http://e/A>))\n\
@@ -2402,6 +2419,7 @@ SubClassOf(<http://e/B> <http://e/C>)\n)\n";
 
     #[test]
     fn existential_leaves_and_positive_rbox_do_not_change_named_closure() {
+        let _test_env = crate::test_env::write();
         let text = "Ontology(\n\
 Declaration(Class(<http://e/C>))\n\
 Declaration(Class(<http://e/A>))\n\
@@ -2441,6 +2459,7 @@ TransitiveObjectProperty(<http://e/r>)\n\
 
     #[test]
     fn inert_disjointness_preserves_closure_and_common_descendant_declines() {
+        let _test_env = crate::test_env::write();
         let inert = "Ontology(\n\
 Declaration(Class(<http://e/A>))\n\
 Declaration(Class(<http://e/B>))\n\
@@ -2497,6 +2516,7 @@ SubClassOf(ObjectIntersectionOf(<http://e/B> <http://e/C>) owl:Nothing)\n\
 
     #[test]
     fn reflexive_roles_are_inert_in_the_existential_leaf_fragment() {
+        let _test_env = crate::test_env::write();
         let text = "Ontology(\n\
 Declaration(Class(<http://e/A>))\n\
 Declaration(Class(<http://e/B>))\n\
@@ -2518,6 +2538,7 @@ ReflexiveObjectProperty(<http://e/r>)\n\
 
     #[test]
     fn existential_leaf_fragment_declines_reverse_restrictions_and_domains() {
+        let _test_env = crate::test_env::write();
         let cases = [
             "Ontology(\nDeclaration(Class(<http://e/A>))\nDeclaration(Class(<http://e/B>))\nDeclaration(ObjectProperty(<http://e/r>))\nSubClassOf(ObjectSomeValuesFrom(<http://e/r> <http://e/A>) <http://e/B>)\n)\n",
             "Ontology(\nDeclaration(Class(<http://e/A>))\nDeclaration(ObjectProperty(<http://e/r>))\nObjectPropertyDomain(<http://e/r> <http://e/A>)\n)\n",
@@ -2531,6 +2552,7 @@ ReflexiveObjectProperty(<http://e/r>)\n\
 
     #[test]
     fn declarations_are_order_independent_and_optional() {
+        let _test_env = crate::test_env::write();
         let text = "Ontology(\n\
 SubClassOf(<http://e/A> ObjectSomeValuesFrom(<http://e/r> <http://e/B>))\n\
 Declaration(Class(<http://e/A>))\n\
@@ -2549,6 +2571,7 @@ Declaration(ObjectProperty(<http://e/r>))\n\
 
     #[test]
     fn positive_nested_leaf_abox_source_has_an_empty_taxonomy_shape() {
+        let _test_env = crate::test_env::write();
         let text = "Prefix(:=<http://e/>)\n\
 Ontology(<http://e/o>\n\
 Declaration(Class(<http://e/A>))\n\
@@ -2569,6 +2592,7 @@ ObjectSomeValuesFrom(<http://e/s> <http://e/C>)))"
 
     #[test]
     fn positive_empty_taxonomy_screen_rejects_named_heads_and_negative_shapes() {
+        let _test_env = crate::test_env::write();
         let cases = [
             "Ontology(\nSubClassOf(<http://e/A> <http://e/B>)\n\
 ClassAssertion(<http://e/A> <http://e/a>)\n)\n",
@@ -2599,6 +2623,7 @@ ClassAssertion(<http://e/A> <http://e/a>)\n)\n",
 
     #[test]
     fn declines_every_semantically_unsafe_shape() {
+        let _test_env = crate::test_env::write();
         let cases = [
             // Bottom has semantic force beyond graph reachability.
             "Ontology(\nDeclaration(Class(<http://e/A>))\nSubClassOf(<http://e/A> <http://www.w3.org/2002/07/owl#Nothing>)\n)\n",
@@ -2656,6 +2681,7 @@ mod certain_decline_tests {
 
     #[test]
     fn prescan_never_declines_a_source_some_screen_accepts() {
+        let _test_env = crate::test_env::write();
         let accepted = source("");
         assert!(!source_certainly_declines(accepted.as_bytes(), false).unwrap());
         assert!(classify_sparse_horn_reader(accepted.as_bytes(), 1, false)
@@ -2691,6 +2717,7 @@ mod certain_decline_tests {
 
     #[test]
     fn prescan_verdicts_are_confirmed_by_every_screen() {
+        let _test_env = crate::test_env::write();
         let certain = [
             // 2. equivalences below the mixed-definition size, in every form
             "EquivalentClasses(<http://e/C0001> ObjectIntersectionOf(<http://e/C0002> <http://e/C0003>))\n",
@@ -2747,6 +2774,7 @@ mod certain_decline_tests {
 
     #[test]
     fn prescan_reports_invalid_utf8_like_the_screens() {
+        let _test_env = crate::test_env::write();
         let mut bytes = source("").into_bytes();
         bytes.extend_from_slice(b"SubClassOf(<http://e/C\xff> <http://e/C0002>)\n");
         let prescan = source_certainly_declines(bytes.as_slice(), false).unwrap_err();

@@ -1230,6 +1230,7 @@ mod axiom_drop_regression_tests {
 
     #[test]
     fn data_assertions_stay_unconverted_unless_requested() {
+        let _test_env = crate::test_env::read();
         let text = "Ontology(DataPropertyAssertion(<p> <a> \"1\"^^xsd:integer))";
         let ontology = parse_with_data_assertion_conversion(false, text);
         assert_eq!(ontology.data_assertions_as_class(), 0);
@@ -1238,6 +1239,7 @@ mod axiom_drop_regression_tests {
 
     #[test]
     fn literal_existential_is_the_unqualified_min_cardinality() {
+        let _test_env = crate::test_env::read();
         for literal in ["rdfs:Literal", "<http://www.w3.org/2000/01/rdf-schema#Literal>"] {
             let mut registry = IriRegistry::new();
             let text = format!(
@@ -1263,6 +1265,7 @@ mod axiom_drop_regression_tests {
 
     #[test]
     fn empty_and_universal_data_ranges_simplify_their_restrictions() {
+        let _test_env = crate::test_env::read();
         let sup = |body: &str| {
             let mut registry = IriRegistry::new();
             let ontology = parse_axioms(&mut registry, &format!("Ontology(SubClassOf(<A> {body}))")).unwrap();
@@ -1300,6 +1303,7 @@ mod axiom_drop_regression_tests {
 
     #[test]
     fn bottom_data_property_has_no_values() {
+        let _test_env = crate::test_env::read();
         let mut registry = IriRegistry::new();
         let ontology = parse_axioms(&mut registry,
             "Ontology(SubDataPropertyOf(<p> owl:bottomDataProperty))").unwrap();
@@ -1313,6 +1317,7 @@ mod axiom_drop_regression_tests {
 
     #[test]
     fn nothing_domain_and_range_make_the_property_empty() {
+        let _test_env = crate::test_env::read();
         for nothing in ["owl:Nothing", "<http://www.w3.org/2002/07/owl#Nothing>"] {
             let mut registry = IriRegistry::new();
             let text = format!(
@@ -1334,6 +1339,7 @@ mod axiom_drop_regression_tests {
 
     #[test]
     fn bottom_object_property_has_no_fillers() {
+        let _test_env = crate::test_env::read();
         let mut registry = IriRegistry::new();
         let ontology = parse_axioms(&mut registry,
             "Ontology(SubObjectPropertyOf(<r> owl:bottomObjectProperty))").unwrap();
@@ -1349,6 +1355,7 @@ mod axiom_drop_regression_tests {
 
     #[test]
     fn requested_data_assertion_becomes_its_has_value_class_assertion() {
+        let _test_env = crate::test_env::read();
         // The existential use of `p` keeps it out of the object-level
         // projection (`value_projection`), which would carry these
         // assertions without class assertions.
@@ -1367,6 +1374,7 @@ mod axiom_drop_regression_tests {
 
     #[test]
     fn repeated_data_assertion_counts_every_source_occurrence() {
+        let _test_env = crate::test_env::read();
         // The uncarried count subtracts this from the source occurrence
         // count, so a repeated assertion must not read as dropped (fr217).
         let text = "Ontology(DataPropertyAssertion(<p> <a> \"1\"^^xsd:integer) \
@@ -1386,6 +1394,7 @@ mod axiom_drop_regression_tests {
 
     #[test]
     fn data_assertion_literal_cap_never_declines() {
+        let _test_env = crate::test_env::read();
         let mut ontology = Ontology::new();
         // An existential use of `p` keeps it out of the object-level
         // projection, so the assertions are carried as class assertions.
@@ -1413,6 +1422,7 @@ mod axiom_drop_regression_tests {
 
     #[test]
     fn unconstrained_data_properties_are_projected_away() {
+        let _test_env = crate::test_env::read();
         let mut ontology = Ontology::new();
         ontology.add(Axiom::SubClassOf(
             Concept::Exists(Role::Name("p".into()), Box::new(Concept::Top)),
@@ -1432,6 +1442,7 @@ mod axiom_drop_regression_tests {
 
     #[test]
     fn data_assertions_above_the_cap_are_carried_by_profile() {
+        let _test_env = crate::test_env::read();
         let value = |v: &str| Concept::Name(format!("__dt__val__\"{v}\"^^xsd:integer"));
         let assertion = |individual: &str, v: &str| Axiom::ConceptAssertion(
             Concept::Exists(Role::Name("p".into()), Box::new(value(v))), individual.into());
@@ -1469,6 +1480,7 @@ mod axiom_drop_regression_tests {
 
     #[test]
     fn positive_inverse_assertion_matches_swapped_named_assertion() {
+        let _test_env = crate::test_env::read();
         let mut registry = IriRegistry::new();
         let inverse = parse_axioms(&mut registry,
             "Ontology(ObjectPropertyAssertion(ObjectInverseOf(<r>) <a> <b>))").unwrap();
@@ -1481,6 +1493,7 @@ mod axiom_drop_regression_tests {
 
     #[test]
     fn filtered_parser_observes_but_does_not_materialize_abox_nodes() {
+        let _test_env = crate::test_env::read();
         let text = "Ontology(SubClassOf(<A> <B>) ClassAssertion(<A> <a>) \
                     ObjectPropertyAssertion(<r> <a> <b>))";
         let mut reg = IriRegistry::new();
@@ -1501,6 +1514,7 @@ mod axiom_drop_regression_tests {
 
     #[test]
     fn appending_omitted_abox_matches_complete_recovery_parse() {
+        let _test_env = crate::test_env::read();
         let text = "Ontology(\
             ClassAssertion(ObjectSomeValuesFrom(<r> <C>) <a>) \
             SubClassOf(<C> <D>) \
@@ -1542,6 +1556,7 @@ mod axiom_drop_regression_tests {
     /// a missed unsatisfiability).
     #[test]
     fn disjoint_union_desugars_to_equivalence_and_disjointness() {
+        let _test_env = crate::test_env::read();
         let axs = axioms("Ontology(DisjointUnion(<http://e#A> <http://e#B> <http://e#C>))");
         let union = mk_or([Concept::Name("B".into()), Concept::Name("C".into())]);
         assert!(
@@ -1564,6 +1579,7 @@ mod axiom_drop_regression_tests {
     /// direct-role axioms: domain(R⁻)=C ≡ range(R)=C, range(R⁻)=C ≡ domain(R)=C.
     #[test]
     fn inverse_domain_and_range_desugar_to_direct_role_axioms() {
+        let _test_env = crate::test_env::read();
         let axs = axioms(
             "Ontology(\
 ObjectPropertyDomain(ObjectInverseOf(<http://e#r>) <http://e#C>) \
@@ -1592,6 +1608,7 @@ ObjectPropertyRange(ObjectInverseOf(<http://e#r>) <http://e#D>))",
     /// (inverse spelling argument-swapped) for the ABox precheck.
     #[test]
     fn negative_object_property_assertion_is_recorded() {
+        let _test_env = crate::test_env::read();
         let axs = axioms(
             "Ontology(\
 NegativeObjectPropertyAssertion(<http://e#r> <http://e#a> <http://e#b>) \
@@ -1617,6 +1634,7 @@ NegativeObjectPropertyAssertion(ObjectInverseOf(<http://e#s>) <http://e#a> <http
 
     #[test]
     fn user_classes_named_thing_and_nothing_are_not_builtins() {
+        let _test_env = crate::test_env::read();
         let axs = axioms(
             "Ontology(\
 SubClassOf(<http://example.org#Thing> <http://example.org#B>) \
@@ -1634,6 +1652,7 @@ SubClassOf(<http://example.org#A> <http://example.org#Nothing>))",
 
     #[test]
     fn full_owl_top_and_bottom_iris_remain_builtins() {
+        let _test_env = crate::test_env::read();
         let axs = axioms(
             "Ontology(\
 SubClassOf(<http://www.w3.org/2002/07/owl#Thing> <http://example.org#B>) \
@@ -1648,6 +1667,7 @@ SubClassOf(<http://example.org#A> <http://www.w3.org/2002/07/owl#Nothing>))",
 
     #[test]
     fn named_datatypes_keep_namespace_identity() {
+        let _test_env = crate::test_env::read();
         let axs = axioms(
             "Ontology(\
 DatatypeDefinition(ex:boolean xsd:string) \
@@ -1683,6 +1703,7 @@ mod rule_tests {
 
     #[test]
     fn empty_rule_head_is_a_constraint_but_observer_head_is_not() {
+        let _test_env = crate::test_env::read();
         let empty = parse_axioms(&mut IriRegistry::new(),
             "Ontology(DLSafeRule(Body(ClassAtom(<A> Variable(<x>))) Head()))").unwrap();
         assert!(matches!(empty.rules().next(), Some(Axiom::Rule(body, head))
@@ -1695,6 +1716,7 @@ mod rule_tests {
 
     #[test]
     fn dlsafe_star_rule_parses() {
+        let _test_env = crate::test_env::read();
         // the ore_ont_2669 shape: br has two predecessors op1,op2 (not tree-shaped)
         let txt = "Ontology(\
 DLSafeRule(Body(\
@@ -1728,6 +1750,7 @@ Head(ObjectPropertyAtom(<http://e#inv> Variable(<http://e#op1>) Variable(<http:/
 
     #[test]
     fn dlsafe_rule_with_builtin_atom_retains_concrete_obligation() {
+        let _test_env = crate::test_env::read();
         let txt = "Ontology(\
 DLSafeRule(Body(\
 ClassAtom(<http://e#C> Variable(<http://e#x>)) \
@@ -1741,6 +1764,7 @@ Head(ClassAtom(<http://e#D> Variable(<http://e#x>)))))";
 
     #[test]
     fn dlsafe_rule_with_data_atoms_retains_concrete_obligation() {
+        let _test_env = crate::test_env::read();
         for data_atom in [
             "DataPropertyAtom(<http://e#p> Variable(<http://e#x>) Variable(<http://e#v>))",
             "DataRangeAtom(<http://www.w3.org/2001/XMLSchema#integer> Variable(<http://e#v>))",
@@ -1759,6 +1783,7 @@ Head(ClassAtom(<http://e#D> Variable(<http://e#x>)))))"
 
     #[test]
     fn dlsafe_rule_with_same_individual_atom_parses() {
+        let _test_env = crate::test_env::read();
         // SameIndividualAtom is inside the fired fragment: the parser keeps it as
         // a RuleAtom::Same (a body guard here) alongside the class/role atoms.
         let txt = "Ontology(\
@@ -1782,6 +1807,7 @@ Head(ClassAtom(<http://e#D> Variable(<http://e#x>)))))";
 
     #[test]
     fn datatype_rule_retains_typed_values_and_arithmetic_operands() {
+        let _test_env = crate::test_env::read();
         let text = "Ontology(DLSafeRule(Body(DataPropertyAtom(<age> Variable(<x>) Variable(<v>)) BuiltInAtom(<http://www.w3.org/2003/11/swrlb#add> Variable(<sum>) Variable(<v>) \"1\"^^xsd:integer)) Head(DataPropertyAtom(<nextAge> Variable(<x>) Variable(<sum>)))))";
         let ontology = parse_axioms(&mut IriRegistry::new(), text).unwrap();
         assert_eq!(ontology.rules().count(), 0, "not an object-only rule");
@@ -1799,6 +1825,7 @@ Head(ClassAtom(<http://e#D> Variable(<http://e#x>)))))";
 
     #[test]
     fn data_rule_literal_is_never_an_object_individual() {
+        let _test_env = crate::test_env::read();
         let ontology = parse_axioms(&mut IriRegistry::new(), "Ontology(DLSafeRule(Body(ClassAtom(<A> \"literal\")) Head(ClassAtom(<B> Variable(<x>)))))").unwrap();
         assert_eq!(ontology.rules().count(), 0);
         assert_eq!(ontology.datatype_rules().count(), 0);
@@ -1845,6 +1872,7 @@ mod deviation_probe_tests {
     /// are one entity, as are `ex:B` and its full IRI.
     #[test]
     fn probe_1_two_spellings_are_one_entity() {
+        let _test_env = crate::test_env::read();
         let text = "Prefix(ex:=<http://e.org/#>)\nOntology(SubClassOf(ex:A <http://e.org/#B>) SubClassOf(<http://e.org/#A> ex:B))\n";
         let (ontology, reg, iris) = frontend(text);
         assert_eq!(iris, BTreeSet::from(["http://e.org/#A".to_string(), "http://e.org/#B".to_string()]));
@@ -1857,6 +1885,7 @@ mod deviation_probe_tests {
     /// `ex:A`. Two entities.
     #[test]
     fn probe_10_full_iri_that_reads_like_an_abbreviation_is_another_entity() {
+        let _test_env = crate::test_env::read();
         let text = "Prefix(ex:=<http://e.org/#>)\nOntology(SubClassOf(<ex:A> ex:A))\n";
         let (ontology, reg, iris) = frontend(text);
         assert_eq!(iris, BTreeSet::from(["ex:A".to_string(), "http://e.org/#A".to_string()]));
@@ -1873,6 +1902,7 @@ mod deviation_probe_tests {
     /// expansion, whatever prefix spells them.
     #[test]
     fn probe_2_builtins_by_expansion() {
+        let _test_env = crate::test_env::read();
         let text = "Prefix(o:=<http://www.w3.org/2002/07/owl#>)\nOntology(SubClassOf(<http://e#A> o:Thing) SubClassOf(o:Nothing <http://e#A>))\n";
         let (ontology, reg, iris) = frontend(text);
         assert_eq!(iris, BTreeSet::from(["http://e#A".to_string()]));
@@ -1901,6 +1931,7 @@ mod deviation_probe_tests {
     /// property inside `ObjectInverseOf`; the nested form is an error.
     #[test]
     fn probe_3_double_inverse_is_an_error() {
+        let _test_env = crate::test_env::read();
         rejects("Ontology(SubClassOf(<http://e#A> ObjectSomeValuesFrom(ObjectInverseOf(ObjectInverseOf(<http://e#r>)) <http://e#B>)))\n",
             "ObjectInverseOf");
         let mut reg = IriRegistry::new();
@@ -1912,6 +1943,7 @@ mod deviation_probe_tests {
     /// parses (it used to panic in the tokenizer).
     #[test]
     fn probe_4_non_ascii_bare_word() {
+        let _test_env = crate::test_env::read();
         let text = "Prefix(ex:=<http://e.org/#>)\nOntology(SubClassOf(ex:\u{e0} ex:B))\n";
         let (ontology, reg, iris) = frontend(text);
         assert_eq!(iris, BTreeSet::from(["ex:\u{e0}".to_string(), "ex:B".to_string()]));
@@ -1922,6 +1954,7 @@ mod deviation_probe_tests {
     /// Probe `9-cr-comment.ofn` (deviation 7): a comment ends at CR.
     #[test]
     fn probe_9_cr_ends_a_comment() {
+        let _test_env = crate::test_env::read();
         let mut reg = IriRegistry::new();
         let ontology = parse_axioms(&mut reg, "Ontology(# comment\rSubClassOf(<http://e#A> <http://e#B>))\n").unwrap();
         assert_eq!(ontology.axioms_iter().count(), 1);
@@ -1931,6 +1964,7 @@ mod deviation_probe_tests {
     /// axiom that takes at least two is an error.
     #[test]
     fn probe_8_wrong_arities_are_errors() {
+        let _test_env = crate::test_env::read();
         rejects("Ontology(SubClassOf(<http://e#A> ObjectIntersectionOf(<http://e#B>)))", "ObjectIntersectionOf");
         rejects("Ontology(EquivalentClasses(<http://e#C>))", "EquivalentClasses");
         rejects("Ontology(SubClassOf(<http://e#A> <http://e#B> <http://e#C>))", "SubClassOf");
@@ -1947,6 +1981,7 @@ mod deviation_probe_tests {
     /// axiom or constructor without operands is an error, not a panic.
     #[test]
     fn probe_14_missing_operands_are_errors() {
+        let _test_env = crate::test_env::read();
         rejects("Ontology(SubClassOf())\n", "SubClassOf takes 2 operand(s), found 0");
         const AXIOMS: &[&str] = &[
             "SubClassOf", "EquivalentClasses", "DisjointClasses", "DisjointUnion",

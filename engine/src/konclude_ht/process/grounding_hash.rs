@@ -173,6 +173,7 @@ mod tests {
 
     #[test]
     fn concept_nominal_schema_grounding_data_hashes_by_grounding_and_bound_list() {
+        let _test_env = crate::test_env::read();
         let grounding = ConceptId::new(1);
         let bound_a = ConceptId::new(2);
         let bound_b = ConceptId::new(3);
@@ -210,6 +211,7 @@ mod tests {
 
     #[test]
     fn concept_nominal_schema_grounding_hash_init_copies_previous_entries() {
+        let _test_env = crate::test_env::read();
         let mut data = ConceptNominalSchemaGroundingData::new();
         data.set_grounding_concept(ConceptId::new(10))
             .set_grounded_concept(ConceptId::new(11))

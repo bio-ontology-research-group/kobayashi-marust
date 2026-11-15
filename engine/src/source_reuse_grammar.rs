@@ -49,6 +49,7 @@ mod tests {
     use crate::source_locality::scan;
     #[test]
     fn exact_vendor_spaces_comments_and_phase() {
+        let _test_env = crate::test_env::read();
         for gap in [" ", "\t\n\r", "# comment\n", "# comment\r\n", "# comment\r"] {
             let text=format!("Ontology(Declaration(Class(<urn:A>)){gap}SubClassOf(<urn:A> <urn:A>)) # tail\r\n");
             // The locality scanner treats CR-only comments differently; it may
@@ -64,12 +65,14 @@ mod tests {
     }
     #[test]
     fn unicode_inside_validated_spans_keeps_outer_reuse() {
+        let _test_env = crate::test_env::read();
         let text="Ontology(Annotation(rdfs:label \"Καλημέρα\") Declaration(Class(<urn:é>)))";
         assert!(outer_grammar(text,&scan(text).unwrap()));
     }
 
     #[test]
     fn unicode_byte_class_split_is_a_fallible_scan() {
+        let _test_env = crate::test_env::read();
         for gap in ["\u{0085}","\u{00a0}"] {
             let text=format!("Ontology({gap}Declaration(Class(<urn:A>)))");
             assert!(scan(&text).is_err());
@@ -78,6 +81,7 @@ mod tests {
 
     #[test]
     fn unsupported_or_hidden_gap_tokens_decline() {
+        let _test_env = crate::test_env::read();
         for gap in ["\x0b", "\x0c", "# hidden\rUnknown()\n"] {
             let text=format!("Ontology(Declaration(Class(<urn:A>)){gap}Declaration(Class(<urn:B>)))");
             assert!(!outer_grammar(&text,&scan(&text).unwrap()));

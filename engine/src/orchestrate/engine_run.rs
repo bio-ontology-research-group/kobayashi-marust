@@ -499,6 +499,7 @@ mod tests {
 
     #[test]
     fn exit_notification_preserves_normal_completion() {
+        let _test_env = crate::test_env::write();
         let input = empty_input();
         let result = run_engine(
             Path::new("/bin/sh"),
@@ -518,6 +519,7 @@ mod tests {
 
     #[test]
     fn exit_notification_preserves_timeout_kill() {
+        let _test_env = crate::test_env::write();
         let input = empty_input();
         let result = run_engine(
             Path::new("/bin/sh"),
@@ -540,6 +542,7 @@ mod tests {
 
     #[test]
     fn signal_death_is_not_reported_as_a_timeout() {
+        let _test_env = crate::test_env::write();
         let input = empty_input();
         let result = run_engine(
             Path::new("/bin/sh"),
@@ -561,6 +564,7 @@ mod tests {
 
     #[test]
     fn arm_event_wakes_waiter_before_its_timeout() {
+        let _test_env = crate::test_env::write();
         let event = ArmEvent::new();
         let seen = event.epoch();
         let notifier = event.clone();
@@ -577,6 +581,7 @@ mod tests {
 
     #[test]
     fn arm_event_does_not_sleep_through_an_earlier_notification() {
+        let _test_env = crate::test_env::write();
         let event = ArmEvent::new();
         let seen = event.epoch();
         event.notify();
@@ -587,6 +592,7 @@ mod tests {
 
     #[test]
     fn arm_event_times_out_without_a_notification() {
+        let _test_env = crate::test_env::write();
         let event = ArmEvent::new();
         let seen = event.epoch();
         let started = Instant::now();
@@ -598,6 +604,7 @@ mod tests {
     #[cfg(target_os = "linux")]
     #[test]
     fn exit_notifier_wakes_on_child_exit() {
+        let _test_env = crate::test_env::write();
         let mut child = std::process::Command::new("/bin/sh")
             .arg("-c")
             .arg("sleep 0.05")
@@ -615,6 +622,7 @@ mod tests {
 
     #[test]
     fn exit_notification_preserves_rss_kill() {
+        let _test_env = crate::test_env::write();
         let input = empty_input();
         let result = run_engine(
             Path::new("/bin/sh"),

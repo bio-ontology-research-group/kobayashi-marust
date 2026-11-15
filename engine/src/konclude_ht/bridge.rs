@@ -18210,6 +18210,7 @@ mod tests {
 
     #[test]
     fn bridge_model_positive_tags_reads_cow_additional_alias_with_local_shadowing() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut previous = super::super::process::satellites::ReapplyConceptLabelSet::new(INVALID);
         for tag in 2000..2050 {
@@ -18301,6 +18302,7 @@ mod tests {
 
     #[test]
     fn query_root_reservation_preserves_retained_witnesses() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut witnesses = Vec::new();
         for id in [1000, 1001] {
@@ -18325,6 +18327,7 @@ mod tests {
 
     #[test]
     fn saturation_outcome_fingerprint_is_stable_and_semantically_sensitive() {
+        let _test_env = crate::test_env::read();
         let baseline = SaturationOutcome {
             sat_verdict: vec![Some(false), None, Some(true)],
             certain_subsumers: vec![Some(vec![1, 2]), None, None],
@@ -18493,6 +18496,7 @@ mod tests {
     /// value implying `H` is itself disjoint from `G` by an input clause.
     #[test]
     fn value_helper_disjoint_from_a_folded_sort_needs_every_value_disjoint() {
+        let _test_env = crate::test_env::read();
         let concept = |c: usize| HAtom::Concept { neg: false, c, t: 0 };
         let clause = |body: Vec<HAtom>, head: Vec<HAtom>| HtClause { body, head };
         // 0, 1: values; 2, 3: digit helpers of one position; 4: profile; 5: G.
@@ -18593,6 +18597,7 @@ mod tests {
 
     #[test]
     fn parallel_subject_partition_matches_single_worker() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         let tin = TInput {
@@ -18619,6 +18624,7 @@ mod tests {
 
     #[test]
     fn semantic_number_flag_selects_native_abox_profile_without_card_defs() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let mut meta = native_nominal_meta(
@@ -18664,6 +18670,7 @@ mod tests {
 
     #[test]
     fn non_number_conditional_full_profile_is_opt_in_and_bounded() {
+        let _test_env = crate::test_env::read();
         let mut tin = cached_native_role_input();
         tin.number = false;
         assert!(!native_conditional_full_abox_profile(&tin, true, false));
@@ -18676,6 +18683,7 @@ mod tests {
 
     #[test]
     fn conditional_full_nominal_filler_preserves_asserted_type_subsumption() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
         let tin = TInput {
             concepts: vec!["A".into(), "B".into(), "C".into(), "__nom__a".into()],
@@ -18701,6 +18709,7 @@ mod tests {
 
     #[test]
     fn conditional_full_profile_rejects_konclude_threshold_sized_abox() {
+        let _test_env = crate::test_env::read();
         let mut tin = cached_native_role_input();
         // 1,000 concepts: 9,999 individuals satisfy the 10,000-individual
         // suggestion; 10,000 individuals give a ratio of 10, which satisfies
@@ -18718,6 +18727,7 @@ mod tests {
 
     #[test]
     fn konclude_full_completion_graph_decision_matches_its_conditions() {
+        let _test_env = crate::test_env::read();
         // suggestion by size, unless excluded by ratio
         assert!(konclude_full_completion_graph_suggested(9_999, 1_000));
         assert!(!konclude_full_completion_graph_suggested(9_999, 100));
@@ -18732,6 +18742,7 @@ mod tests {
 
     #[test]
     fn independent_component_abox_profile_rejects_every_coupling_fence() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let mut clean = cached_native_role_input();
@@ -18802,6 +18813,7 @@ mod tests {
 
     #[test]
     fn independent_abox_representatives_canonicalize_assertion_sets() {
+        let _test_env = crate::test_env::read();
         let tin = cached_native_role_input();
         let (_algo, _ctx, mut bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         let first = bridged.nominal_seeds[0].clone();
@@ -19029,6 +19041,7 @@ mod tests {
 
     #[test]
     fn source_mode_retains_exact_unit_bottom_certificates() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         // The source side channel activates native source reconstruction but
@@ -19061,6 +19074,7 @@ mod tests {
 
     #[test]
     fn source_mode_does_not_promote_conjunctive_bottom_to_unit_bottom() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         let tin = TInput {
@@ -19091,6 +19105,7 @@ mod tests {
 
     #[test]
     fn non_source_unit_bottom_keeps_the_legacy_encoder_path() {
+        let _test_env = crate::test_env::read();
         let tin = TInput {
             concepts: vec!["A".into()],
             queries: vec![0],
@@ -19115,6 +19130,7 @@ mod tests {
 
     #[test]
     fn exact_atomic_datatype_fragment_retains_relation_and_mixed_clauses() {
+        let _test_env = crate::test_env::read();
         let tin = exact_atomic_datatype_input();
         assert!(exact_atomic_datatype_bridge_fragment(&tin, true));
 
@@ -19130,6 +19146,7 @@ mod tests {
 
     #[test]
     fn exact_atomic_datatype_local_universal_requires_the_identical_global_range() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
         let mut tin = exact_atomic_datatype_input();
         let baseline = bridged_classify_opts_with_trigger_absorption(&tin, false, false, true)
@@ -19157,6 +19174,7 @@ mod tests {
 
     #[test]
     fn exact_atomic_datatype_disjunction_collects_every_branch_without_weakening_guards() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
         let mut tin = exact_atomic_datatype_input();
         let branch = |name: &str| C::Exists(R::Name("integer_value".into()),
@@ -19180,6 +19198,7 @@ mod tests {
 
     #[test]
     fn exact_atomic_datatype_subroles_close_types_and_preserve_guards() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
         let mut tin = exact_atomic_datatype_input();
         let parent = tin.roles.len(); tin.roles.push("data_parent".into());
@@ -19208,6 +19227,7 @@ mod tests {
 
     #[test]
     fn exact_atomic_boolean_cover_counts_values_not_literal_names() {
+        let _test_env = crate::test_env::read();
         let mut tin = exact_atomic_datatype_input();
         let alias = tin.concepts.len();
         tin.concepts.push("__dt__val__\"true\"^^<http://www.w3.org/2001/XMLSchema#boolean>".into());
@@ -19238,6 +19258,7 @@ mod tests {
 
     #[test]
     fn datatype_relation_index_matches_clause_scans() {
+        let _test_env = crate::test_env::read();
         let mut input = exact_atomic_datatype_input();
         input.clauses.push(HtClause {
             body: vec![HAtom::Concept { neg: false, c: 0, t: 0 }],
@@ -19263,6 +19284,7 @@ mod tests {
 
     #[test]
     fn full_symbolic_source_bounds_execute_with_float_data() {
+        let _test_env = crate::test_env::read();
         let frontend = crate::frontend::ofn_to_symbolic_frontend(r#"
             Prefix(:=<http://x#>) Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
             Ontology(
@@ -19291,6 +19313,7 @@ mod tests {
 
     #[test]
     fn functional_float_value_has_exact_bridge_relation_evidence() {
+        let _test_env = crate::test_env::read();
         let env = bridge_ofn(r#"Prefix(:=<http://x#>)
             Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
             Ontology(
@@ -19318,6 +19341,7 @@ mod tests {
 
     #[test]
     fn functional_float_values_execute_exactly() {
+        let _test_env = crate::test_env::read();
         for (left, right, unsatisfiable) in [
             ("1.0", "1.0", false),
             ("1.0", "2.0", true),
@@ -19358,6 +19382,7 @@ mod tests {
 
     #[test]
     fn nested_object_fillers_retain_atomic_data_role_checks() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
         let filler = C::And([
             C::Exists(R::Name("object_role".into()), Box::new(C::Name("A".into()))),
@@ -19377,6 +19402,7 @@ mod tests {
 
     #[test]
     fn exact_numeric_tower_cardinality_fragment_is_certified() {
+        let _test_env = crate::test_env::read();
         let env = bridge_ofn(
             r#"Prefix(:=<http://x#>)
                Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
@@ -19430,6 +19456,7 @@ mod tests {
 
     #[test]
     fn exact_atomic_datatype_fragment_checks_blank_data_node_axioms() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         // A forced label that the isolated element cannot satisfy (it needs a
@@ -19518,6 +19545,7 @@ mod tests {
 
     #[test]
     fn exact_atomic_datatype_fragment_accepts_complex_object_domains() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let domain_left = C::Exists(R::Name("bool_value".into()), Box::new(C::Top));
@@ -19547,6 +19575,7 @@ mod tests {
 
     #[test]
     fn exact_atomic_datatype_fragment_accepts_only_safe_data_cardinalities() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let safe_bound = C::AtMost(1, R::Name("integer_value".into()), Box::new(C::Top));
@@ -19610,6 +19639,7 @@ mod tests {
 
     #[test]
     fn data_domain_zero_cardinality_forces_empty_property() {
+        let _test_env = crate::test_env::read();
         let source = r#"Prefix(:=<http://example.org/>)
             Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>) Ontology(
             Declaration(Class(:A)) Declaration(Class(:B)) Declaration(DataProperty(:value))
@@ -19657,6 +19687,7 @@ mod tests {
     /// blank data node; without them it admits the input.
     #[test]
     fn data_roles_without_datatypes_enter_the_datatype_gate() {
+        let _test_env = crate::test_env::write();
         let source = r#"Prefix(:=<http://x#>)
             Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
             Ontology(Declaration(DataProperty(:u)) Declaration(NamedIndividual(:a))
@@ -19694,6 +19725,7 @@ mod tests {
 
     #[test]
     fn bridge_tbox_datatype_extension_decimal_cells_decide_or_defer() {
+        let _test_env = crate::test_env::write();
         // Only 0 is a non-negative integer that is not positive: two distinct
         // successors are impossible. The bridge must not report A satisfiable.
         let gap = r#"Declaration(Class(<http://x#A>))
@@ -19735,6 +19767,7 @@ mod tests {
 
     #[test]
     fn bridge_tbox_datatype_extension_union_range_needs_its_member_cover() {
+        let _test_env = crate::test_env::read();
         let ontology = r#"Declaration(Class(<http://x#X>)) Declaration(Class(<http://x#Y>))
             Declaration(Class(<http://x#W>)) Declaration(Class(<http://x#Z>))
             EquivalentClasses(<http://x#X> DataSomeValuesFrom(<http://x#p> xsd:integer))
@@ -19754,6 +19787,7 @@ mod tests {
 
     #[test]
     fn bridge_tbox_datatype_extension_local_forall_without_global_range() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ∀p.integer with p functional: an integer value excludes a double
         // and a boolean value; a decimal-family existential stays possible.
         let (input, evidence, result) = tbox_extension_classify(r#"
@@ -19774,6 +19808,7 @@ mod tests {
 
     #[test]
     fn bridge_tbox_datatype_extension_datatype_definitions_are_inlined() {
+        let _test_env = crate::test_env::read();
         let ontology = r#"Declaration(Datatype(<http://x#Small>))
             Declaration(Class(<http://x#A>)) Declaration(Class(<http://x#B>)) Declaration(Class(<http://x#C>))
             Declaration(Class(<http://x#W>))
@@ -19793,6 +19828,7 @@ mod tests {
 
     #[test]
     fn bridge_tbox_datatype_extension_disjoint_data_roles() {
+        let _test_env = crate::test_env::read();
         let ontology = r#"Declaration(DataProperty(<http://x#q>))
             Declaration(Class(<http://x#Same>)) Declaration(Class(<http://x#Other>)) Declaration(Class(<http://x#Zero>))
             Declaration(Class(<http://x#Free>))
@@ -19816,6 +19852,7 @@ mod tests {
 
     #[test]
     fn bridge_tbox_datatype_extension_any_uri_is_disjoint_from_string() {
+        let _test_env = crate::test_env::read();
         let (input, evidence, result) = tbox_extension_classify(r#"
             Declaration(Class(<http://x#A>)) Declaration(Class(<http://x#U>)) Declaration(Class(<http://x#S>))
             SubClassOf(<http://x#A> DataSomeValuesFrom(<http://x#p> xsd:anyURI))
@@ -19836,6 +19873,7 @@ mod tests {
 
     #[test]
     fn bridge_tbox_datatype_extension_double_values_use_owl_identity() {
+        let _test_env = crate::test_env::read();
         let axioms = |a: &str, b: &str| format!(r#"
             Declaration(Class(<http://x#A>)) Declaration(Class(<http://x#B>)) FunctionalDataProperty(<http://x#p>)
             SubClassOf(<http://x#A> DataHasValue(<http://x#p> "{a}"^^xsd:double))
@@ -19861,6 +19899,7 @@ mod tests {
 
     #[test]
     fn bridge_tbox_datatype_extension_double_facets_and_signed_zero() {
+        let _test_env = crate::test_env::read();
         let pos = r#"DatatypeRestriction(xsd:double xsd:minExclusive "0.0"^^xsd:double)"#;
         let nonneg = r#"DatatypeRestriction(xsd:double xsd:minInclusive "0.0"^^xsd:double)"#;
         let (input, evidence, result) = tbox_extension_classify(&format!(r#"
@@ -19906,6 +19945,7 @@ mod tests {
 
     #[test]
     fn bridge_tbox_datatype_extension_literal_is_head_only() {
+        let _test_env = crate::test_env::read();
         let (input, evidence, result) = tbox_extension_classify(r#"
             Declaration(Class(<http://x#A>)) Declaration(Class(<http://x#B>))
             SubClassOf(<http://x#A> DataAllValuesFrom(<http://x#p> rdfs:Literal))
@@ -19937,6 +19977,7 @@ mod tests {
 
     #[test]
     fn finite_datatype_cover_controls_cardinality_and_missing_evidence_defers() {
+        let _test_env = crate::test_env::read();
         for (values, unsat) in [("\"red\"^^xsd:string", true),
             ("\"red\"^^xsd:string \"blue\"^^xsd:string", false)] {
             let source = format!(r#"Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
@@ -19969,6 +20010,7 @@ mod tests {
 
     #[test]
     fn atomic_data_restrictions_in_object_property_ranges_preserve_role_separation() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
         let mut input = exact_atomic_datatype_input();
         let restriction = C::Exists(R::Name("integer_value".into()),
@@ -19984,6 +20026,7 @@ mod tests {
 
     #[test]
     fn singleton_value_identity_rejects_distinct_successors() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
         let value = "__dt__val__\"red\"^^xsd:string";
         for (cardinality, unsat) in [(2, true), (1, false)] {
@@ -20009,6 +20052,7 @@ mod tests {
 
     #[test]
     fn exact_atomic_datatype_fragment_recognises_boolean_two_value_range() {
+        let _test_env = crate::test_env::read();
         let mut tin = exact_atomic_datatype_input();
         tin.concepts[2] = "__dt__c__DataOneOf(\"false\"^^xsd:boolean \"true\"^^xsd:boolean)".into();
         assert!(
@@ -20019,6 +20063,7 @@ mod tests {
 
     #[test]
     fn exact_atomic_datatype_fragment_accepts_bare_datetime_range() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let mut tin = exact_atomic_datatype_input();
@@ -20058,6 +20103,7 @@ mod tests {
 
     #[test]
     fn exact_atomic_datatype_fragment_requires_relation_evidence() {
+        let _test_env = crate::test_env::read();
         let mut tin = exact_atomic_datatype_input();
         tin.clauses
             .retain(|clause| !datatype_singleton_clause(clause, 3));
@@ -20102,6 +20148,7 @@ mod tests {
 
     #[test]
     fn datatype_boolean_min_three_defers_outside_the_atomic_fragment() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let mut tin = exact_atomic_datatype_input();
@@ -20122,6 +20169,7 @@ mod tests {
 
     #[test]
     fn opaque_or_complex_datatype_defers_the_route() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         for datatype in [
@@ -20148,6 +20196,7 @@ mod tests {
 
     #[test]
     fn empty_role_nominal_model_is_an_exact_positive_certificate() {
+        let _test_env = crate::test_env::read();
         let tin = empty_role_model_input();
         let (_algo, _ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         assert!(bridged.has_native_nominals());
@@ -20156,6 +20205,7 @@ mod tests {
 
     #[test]
     fn empty_role_nominal_model_checks_every_source_axiom_kind() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         let base = empty_role_model_input();
@@ -20181,6 +20231,7 @@ mod tests {
 
     #[test]
     fn empty_role_nominal_model_checks_assertions_and_inequalities() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         let base = empty_role_model_input();
@@ -20206,6 +20257,7 @@ mod tests {
 
     #[test]
     fn empty_role_nominal_model_rejects_edge_forcing_and_top_roles() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let base = empty_role_model_input();
@@ -20254,6 +20306,7 @@ mod tests {
 
     #[test]
     fn empty_role_nominal_model_rejects_fixed_datatype_roots() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let base = empty_role_model_input();
@@ -20292,6 +20345,7 @@ mod tests {
 
     #[test]
     fn native_same_individual_preserves_equality_clashes_and_role_assertions() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
         for (saturation, cache) in [(false, false), (true, true)] {
             let mut tin = TInput {
@@ -20340,6 +20394,7 @@ mod tests {
 
     #[test]
     fn native_nominals_merge_without_una_and_clash_with_explicit_different() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         let mut tin = TInput {
@@ -20440,6 +20495,7 @@ mod tests {
     /// no saturation arena at all, so the gate must refuse.
     #[test]
     fn native_saturation_coupling_gate_refuses_without_a_saturation_wave() {
+        let _test_env = crate::test_env::read();
         let tin = native_saturation_coupling_input();
         let (_algo, ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         assert!(bridged.has_native_nominals());
@@ -20453,6 +20509,7 @@ mod tests {
     /// `build_native_abox_saturation_seeds` installs no concept linkings.
     #[test]
     fn native_saturation_coupling_gate_opens_on_the_concept_wave_only() {
+        let _test_env = crate::test_env::read();
         let tin = native_saturation_coupling_input();
         let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         build_saturation_seeds(&mut ctx, &bridged);
@@ -20500,6 +20557,7 @@ mod tests {
     /// cache-independent re-confirmation and no cross-probe expansion replay.
     #[test]
     fn native_saturation_coupling_installs_an_empty_expansion_cache_handler() {
+        let _test_env = crate::test_env::read();
         let tin = native_saturation_coupling_input();
         let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         build_saturation_seeds(&mut ctx, &bridged);
@@ -20548,6 +20606,7 @@ mod tests {
     /// unrelated successor.
     #[test]
     fn native_saturation_coupling_gate_refuses_an_abox_representation_node() {
+        let _test_env = crate::test_env::read();
         let tin = native_saturation_coupling_input();
         let (_algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         build_saturation_seeds(&mut ctx, &bridged);
@@ -20563,6 +20622,7 @@ mod tests {
 
     #[test]
     fn native_different_individuals_are_negative_nominal_assertions() {
+        let _test_env = crate::test_env::read();
         let tin = TInput {
             concepts: vec!["__nom__a".into(), "__nom__b".into()],
             source_axioms: vec![source_subclass(
@@ -20600,6 +20660,7 @@ mod tests {
 
     #[test]
     fn native_representative_scheduler_selects_seven_incomplete_entries() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept as C;
         use crate::json_io::{NominalAboxMeta, NominalIndividualMeta};
         use crate::orchestrate::cb_to_ht::CardDefJson;
@@ -20693,6 +20754,7 @@ mod tests {
 
     #[test]
     fn positive_and_negative_singletons_drive_exact_taxonomy() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         let tin = TInput {
@@ -20731,6 +20793,7 @@ mod tests {
 
     #[test]
     fn native_abox_consistency_is_global_and_incomplete_metadata_defers() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         let mut tin = TInput {
@@ -20764,6 +20827,7 @@ mod tests {
 
     #[test]
     fn unsupported_abox_metadata_without_proxy_entries_defers() {
+        let _test_env = crate::test_env::read();
         let tin = TInput {
             concepts: vec!["A".into()],
             queries: vec![0],
@@ -20782,6 +20846,7 @@ mod tests {
 
     #[test]
     fn native_nominal_inverse_fence_is_complete_or_defer() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let tin = TInput {
@@ -20813,6 +20878,7 @@ mod tests {
 
     #[test]
     fn production_verifies_disjunctive_domain_subsumption_with_pair_probe() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
         use crate::json_io::{SourceAxiomKind, SourceAxiomMeta};
 
@@ -20857,6 +20923,7 @@ mod tests {
 
     #[test]
     fn native_abox_role_metadata_is_fail_closed() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
         use crate::json_io::NominalRoleAssertionMeta;
 
@@ -20971,6 +21038,7 @@ mod tests {
 
     #[test]
     fn native_abox_representative_cache_carries_and_replays_full_labels() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept as C;
         use crate::orchestrate::cb_to_ht::CardDefJson;
 
@@ -21199,6 +21267,7 @@ mod tests {
 
     #[test]
     fn conditional_full_class_probe_restores_all_root_consistency_base() {
+        let _test_env = crate::test_env::read();
         for share_replay in [false, true] {
             conditional_full_class_probe_case(share_replay);
         }
@@ -21438,6 +21507,7 @@ mod tests {
     /// what defeated cheap ABox reuse on the 9540 conditional-full profile.
     #[test]
     fn retained_base_reset_rolls_back_every_leftover_alternative_epoch() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         let mut mixed = cached_native_role_input();
@@ -21562,6 +21632,7 @@ mod tests {
 
     #[test]
     fn native_representative_batch_replays_incoming_assertion_vector() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept as C;
         use crate::orchestrate::cb_to_ht::CardDefJson;
 
@@ -21641,6 +21712,7 @@ mod tests {
 
     #[test]
     fn native_abox_named_assertion_resolve_copy_discharges_satisfied_disjunction() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         // Konclude does not seed a named individual's raw assertions directly
@@ -21704,6 +21776,7 @@ mod tests {
 
     #[test]
     fn native_abox_representative_cache_records_cardinality_and_indirect_nominals() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let meta = native_nominal_meta(
@@ -21751,6 +21824,7 @@ mod tests {
 
     #[test]
     fn native_abox_association_status_matches_konclude_writer_predicate() {
+        let _test_env = crate::test_env::read();
         use super::super::process::sat_node::IndividualSaturationProcessNodeStatusFlags as F;
 
         let completed = F::INDSATFLAGCOMPLETED;
@@ -21788,6 +21862,7 @@ mod tests {
 
     #[test]
     fn native_precomputation_phase_order_is_strict() {
+        let _test_env = crate::test_env::read();
         let mut phase = NativePrecomputationPhase::Start;
         assert!(advance_native_precomputation_phase(
             &mut phase,
@@ -21827,6 +21902,7 @@ mod tests {
 
     #[test]
     fn native_representative_coordination_requires_clean_quiescence() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept as C;
         use crate::orchestrate::cb_to_ht::CardDefJson;
 
@@ -21892,6 +21968,7 @@ mod tests {
 
     #[test]
     fn native_representative_writeback_rejects_stale_batch_atomically() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept as C;
         use crate::orchestrate::cb_to_ht::CardDefJson;
 
@@ -21962,6 +22039,7 @@ mod tests {
 
     #[test]
     fn native_abox_representative_reuse_gate_has_every_backend_conjunct() {
+        let _test_env = crate::test_env::read();
         let mut entry = NativeAboxRepresentativeEntry {
             individual_tag: 1,
             concept_values: Some(Vec::new()),
@@ -22015,6 +22093,7 @@ mod tests {
     /// predicate above, so this pins the four reads separately.
     #[test]
     fn association_reusable_elements_read_the_four_nondeterministic_slots() {
+        let _test_env = crate::test_env::read();
         let base = NativeAboxRepresentativeEntry {
             individual_tag: 1,
             concept_values: Some(vec![NativeAboxConceptValue {
@@ -22122,6 +22201,7 @@ mod tests {
     /// a branch alternative, never as base facts.
     #[test]
     fn replay_record_carries_nondeterministic_values_but_the_replay_list_drops_them() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept as C;
         use crate::orchestrate::cb_to_ht::CardDefJson;
 
@@ -22200,6 +22280,7 @@ mod tests {
 
     #[test]
     fn incomplete_native_neighbour_stays_blocked_with_both_linkers_retained() {
+        let _test_env = crate::test_env::read();
         let tin = cached_native_role_input();
         let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         assert!(run_bridged_saturation(&mut ctx, &bridged));
@@ -22239,6 +22320,7 @@ mod tests {
 
     #[test]
     fn native_critical_concept_unblocks_only_the_influenced_neighbour() {
+        let _test_env = crate::test_env::read();
         let tin = cached_native_role_input();
         let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         assert!(run_bridged_saturation(&mut ctx, &bridged));
@@ -22293,6 +22375,7 @@ mod tests {
 
     #[test]
     fn native_cardinality_criticality_releases_neighbour_only_block() {
+        let _test_env = crate::test_env::read();
         let tin = cached_native_role_input();
         let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         assert!(run_bridged_saturation(&mut ctx, &bridged));
@@ -22408,6 +22491,7 @@ mod tests {
     /// changes is only WHEN the route declines.
     #[test]
     fn raw_assertion_replay_runs_only_when_selective_cache_expansion_declines() {
+        let _test_env = crate::test_env::read();
         let tin = cached_native_role_input();
         let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         assert!(run_bridged_saturation(&mut ctx, &bridged));
@@ -22509,6 +22593,7 @@ mod tests {
     /// ABox with all named edges installed and no blocking left to re-establish.
     #[test]
     fn asserted_edge_survives_nondeterministic_cache_marking() {
+        let _test_env = crate::test_env::read();
         let tin = cached_native_role_input();
         let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         assert!(run_bridged_saturation(&mut ctx, &bridged));
@@ -22594,6 +22679,7 @@ mod tests {
     /// The node keeps its association block and its other neighbours stay cached.
     #[test]
     fn derived_nondeterministic_cached_neighbour_is_skipped_without_losing_the_node_cache() {
+        let _test_env = crate::test_env::read();
         let tin = cached_native_role_input();
         let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         assert!(run_bridged_saturation(&mut ctx, &bridged));
@@ -22698,6 +22784,7 @@ mod tests {
     /// cache-backed root route this change touches.
     #[test]
     fn minimized_9540_nominal_class_pair_stays_satisfiable() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let mut meta = native_nominal_meta(
@@ -22876,6 +22963,7 @@ mod tests {
 
     #[test]
     fn bridge_candidate_marker_is_built_for_a_partially_triggerable_definition() {
+        let _test_env = crate::test_env::read();
         let tin = bridge_candidate_marker_input();
         let (_algo, ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         let def = 2usize;
@@ -22910,6 +22998,7 @@ mod tests {
 
     #[test]
     fn bridge_candidate_marker_refutation_preserves_the_taxonomy() {
+        let _test_env = crate::test_env::read();
         let tin = bridge_candidate_marker_input();
         let (ww, def, sub, red_sub, red, either, wine) = (0, 2, 3, 4, 5, 6, 7);
         let (def2, x, y, z) = (9, 10, 11, 12);
@@ -22935,6 +23024,7 @@ mod tests {
 
     #[test]
     fn source_closure_derives_definition_containment_transitively_without_the_converse() {
+        let _test_env = crate::test_env::read();
         let tin = definition_containment_input();
         let closure = source_named_subsumer_closure(&tin);
         let (a, upper, lower, chain) = (0usize, 4usize, 5usize, 6usize);
@@ -22964,6 +23054,7 @@ mod tests {
 
     #[test]
     fn hierarchy_countermodels_order_specific_classes_first_and_propagate_upward() {
+        let _test_env = crate::test_env::read();
         let known = HashSet::from_iter([(0usize, 1usize), (0, 2), (1, 2), (3, 2)]);
         let mut subjects = vec![2, 1, 3, 0, 4];
         hierarchy_countermodel_subject_order(&mut subjects, &known);
@@ -22984,6 +23075,7 @@ mod tests {
 
     #[test]
     fn source_post_closure_uses_semantic_pairs_to_discharge_a_definition() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         let tin = TInput {
@@ -23023,6 +23115,7 @@ mod tests {
 
     #[test]
     fn definition_containment_subsumers_reach_the_classification_output() {
+        let _test_env = crate::test_env::read();
         let tin = definition_containment_input();
         let (a, upper, lower, chain) = (0usize, 4usize, 5usize, 6usize);
         let entailed = [
@@ -23077,6 +23170,7 @@ mod tests {
 
     #[test]
     fn native_abox_replay_blocks_then_invalidates_on_new_concept() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept as C;
         use crate::orchestrate::cb_to_ht::CardDefJson;
 
@@ -23198,6 +23292,7 @@ mod tests {
 
     #[test]
     fn successful_completion_writeback_is_transactional_and_enables_next_replay() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept as C;
         use crate::orchestrate::cb_to_ht::CardDefJson;
 
@@ -23370,6 +23465,7 @@ mod tests {
 
     #[test]
     fn selective_writeback_preserves_untouched_neighbour_labels_and_versions() {
+        let _test_env = crate::test_env::read();
         let tin = cached_native_role_input();
         let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(&tin, true);
         assert!(run_bridged_saturation(&mut ctx, &bridged));
@@ -23444,6 +23540,7 @@ mod tests {
 
     #[test]
     fn sparse_writeback_ignores_unselected_tag_zero_alias_but_rejects_selected_mismatch() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept as C;
         use crate::orchestrate::cb_to_ht::CardDefJson;
 
@@ -23577,6 +23674,7 @@ mod tests {
 
     #[test]
     fn native_abox_positive_role_assertion_is_exact_existential() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::{Concept as C, Role as R};
         use crate::json_io::NominalRoleAssertionMeta;
         use crate::orchestrate::cb_to_ht::CardDefJson;
@@ -23674,6 +23772,7 @@ mod tests {
 
     #[test]
     fn native_direct_role_assertion_follows_multihop_target_merge() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept as C;
         use crate::orchestrate::cb_to_ht::CardDefJson;
 
@@ -23761,6 +23860,7 @@ mod tests {
 
     #[test]
     fn native_abox_role_handshake_does_not_propagate_late_peer_status() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         let mut meta = native_nominal_meta(
@@ -23814,6 +23914,7 @@ mod tests {
 
     #[test]
     fn native_abox_negative_role_assertion_is_exact_universal() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
         use crate::json_io::NominalRoleAssertionMeta;
 
@@ -23855,6 +23956,7 @@ mod tests {
 
     #[test]
     fn native_abox_same_positive_and_negative_role_fact_clashes() {
+        let _test_env = crate::test_env::read();
         let mut meta = native_nominal_meta(
             vec![("a", "__nom__a", vec![]), ("b", "__nom__b", vec![])],
             vec![],
@@ -23873,6 +23975,7 @@ mod tests {
 
     #[test]
     fn native_abox_negative_role_fact_alone_has_empty_role_model() {
+        let _test_env = crate::test_env::read();
         let mut meta = native_nominal_meta(
             vec![("a", "__nom__a", vec![]), ("b", "__nom__b", vec![])],
             vec![],
@@ -23892,6 +23995,7 @@ mod tests {
 
     #[test]
     fn native_abox_positive_self_edge_is_not_dropped() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let mut meta = native_nominal_meta(
@@ -23917,6 +24021,7 @@ mod tests {
 
     #[test]
     fn native_abox_role_assertion_respects_inverse_roles() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
         use crate::json_io::NominalRoleAssertionMeta;
 
@@ -23958,6 +24063,7 @@ mod tests {
 
     #[test]
     fn native_abox_role_assertion_respects_role_supers() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
         use crate::json_io::NominalRoleAssertionMeta;
 
@@ -23998,6 +24104,7 @@ mod tests {
 
     #[test]
     fn native_abox_role_assertion_respects_domain_and_range() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::Concept as C;
 
         let make = |domain: bool| {
@@ -24051,6 +24158,7 @@ mod tests {
 
     #[test]
     fn native_abox_role_assertion_respects_role_chains() {
+        let _test_env = crate::test_env::read();
         let mut meta = native_nominal_meta(
             vec![
                 ("a", "__nom__a", vec![]),
@@ -24075,6 +24183,7 @@ mod tests {
 
     #[test]
     fn native_abox_role_assertion_respects_transitivity() {
+        let _test_env = crate::test_env::read();
         let mut meta = native_nominal_meta(
             vec![
                 ("a", "__nom__a", vec![]),
@@ -24099,6 +24208,7 @@ mod tests {
 
     #[test]
     fn native_abox_nondeterministic_atmost_merge_completes_without_direct_blocking() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let mut meta = native_nominal_meta(
@@ -24214,6 +24324,7 @@ mod tests {
 
     #[test]
     fn native_abox_inferred_live_successor_is_serialized_separately_from_assertion_journal() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let meta = native_nominal_meta(
@@ -24277,6 +24388,7 @@ mod tests {
 
     #[test]
     fn native_abox_atmost_respects_different_and_no_una() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept as C, Role as R};
 
         let make = |different: bool, reverse: bool| {
@@ -24343,6 +24455,7 @@ mod tests {
 
     #[test]
     fn inverse_negative_existential_mirrors_defer_before_bridge_search() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::syntax::{Concept, Role};
 
         let mirror_name = Concept::Name("N".into());
@@ -24447,6 +24560,7 @@ mod tests {
 
     #[test]
     fn saturation_extractor_reports_only_valid_intermediate_substitute_concepts() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut b = Builder {
             ctx: &mut ctx,
@@ -24514,6 +24628,7 @@ mod tests {
 
     #[test]
     fn binary_absorber_combines_triggers_like_konclude() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut b = Builder {
             ctx: &mut ctx,
@@ -24561,6 +24676,7 @@ mod tests {
 
     #[test]
     fn nominal_absorption_trigger_is_asserted_on_named_individual() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut b = Builder {
             ctx: &mut ctx,
@@ -24622,6 +24738,7 @@ mod tests {
 
     #[test]
     fn existential_trigger_uses_inverse_implall_propagation() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut b = Builder {
             ctx: &mut ctx,
@@ -24658,6 +24775,7 @@ mod tests {
 
     #[test]
     fn full_gci_keeps_named_condition_on_final_implication() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut b = Builder {
             ctx: &mut ctx,
@@ -24711,6 +24829,7 @@ mod tests {
 
     #[test]
     fn full_or_trigger_uses_konclude_rounded_average_complexity() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut b = Builder {
             ctx: &mut ctx,
@@ -24733,6 +24852,7 @@ mod tests {
 
     #[test]
     fn ore_3215_common_condition_does_not_host_reverse_definitions() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut b = Builder {
             ctx: &mut ctx,
@@ -24762,6 +24882,7 @@ mod tests {
 
     #[test]
     fn branch_trigger_preprocess_installs_role_domain_marker() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut b = Builder {
             ctx: &mut ctx,
@@ -24783,6 +24904,7 @@ mod tests {
 
     #[test]
     fn higher_cardinality_uses_partial_not_full_trigger() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut b = Builder {
             ctx: &mut ctx,
@@ -24819,6 +24941,7 @@ mod tests {
 
     #[test]
     fn common_disjunct_preprocess_materializes_replacement_data() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut b = Builder {
             ctx: &mut ctx,
@@ -24853,6 +24976,7 @@ mod tests {
 
     #[test]
     fn common_disjunct_preprocess_reuses_nested_disjunction_cache_exactly() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut b = Builder {
             ctx: &mut ctx,
@@ -25010,6 +25134,7 @@ mod tests {
 
     #[test]
     fn incremental_blank_witness_search_matches_full_reevaluation() {
+        let _test_env = crate::test_env::read();
         use crate::json_io::{SourceAxiomKind, SourceAxiomMeta};
         let mut state: u64 = 0x9E37_79B9_7F4A_7C15;
         let mut next = move |bound: u64| {
@@ -25057,6 +25182,7 @@ mod tests {
 
     #[test]
     fn production_subject_subset_matches_full_taxonomy_projection() {
+        let _test_env = crate::test_env::read();
         let env = bridge_ofn(
             "Prefix(:=<http://example.org/>)\n\
              Ontology(\n\
@@ -25098,6 +25224,7 @@ mod tests {
 
     #[test]
     fn reflexivity_global_self_encoding_preserves_root_and_successor_consequences() {
+        let _test_env = crate::test_env::read();
       for (use_saturation, use_satcache) in [(false, false), (true, false), (true, true)] {
         let mut tin = TInput {
             concepts: vec!["A".into(), "B".into(), "C".into()],
@@ -25128,6 +25255,7 @@ mod tests {
 
     #[test]
     fn saturation_self_rule_decides_reflexive_terminology() {
+        let _test_env = crate::test_env::read();
         // docs/HYBRID-CB-HT.md section 20: the saturation SELF rule installs
         // a self-connected backward link, so the pass no longer refuses a
         // SELF terminology and decides its classes itself.
@@ -25158,6 +25286,7 @@ mod tests {
 
     #[test]
     fn production_rbox_compiles_symmetric_role_as_self_inverse() {
+        let _test_env = crate::test_env::read();
         let env = bridge_ofn(
             "Prefix(:=<http://example.org/>)\n\
              Ontology(\n\
@@ -25171,6 +25300,7 @@ mod tests {
 
     #[test]
     fn production_rbox_marks_functional_role_for_successor_extension() {
+        let _test_env = crate::test_env::read();
         let env = bridge_ofn(
             "Prefix(:=<http://example.org/>)\n\
              Ontology(\n\
@@ -25184,6 +25314,7 @@ mod tests {
 
     #[test]
     fn saturation_construction_ports_special_reference_and_exist_flags() {
+        let _test_env = crate::test_env::read();
         use super::super::model::concept_process::SATURATION_SUBSTITUTE_MODE;
 
         let env = bridge_ofn(
@@ -25339,6 +25470,7 @@ mod tests {
 
     #[test]
     fn ddb_preserves_satisfiable_disjoint_cardinality_partition() {
+        let _test_env = crate::test_env::read();
         // Four r-successors can consist of three C nodes and one D node.
         // B is the disjoint union of C, D and E; no E node is required.
         let tin: TInput = serde_json::from_str(include_str!(
@@ -25365,6 +25497,7 @@ mod tests {
 
     #[test]
     fn equivalent_wine_definitions_preserve_nominal_universal_subsumption() {
+        let _test_env = crate::test_env::read();
         let mut env = bridge_ofn(include_str!("../../tests/fixtures/nominal_wine_absorption.ofn"));
         if let Some(path) = std::env::var_os("KM_WINE_PROBE_TIN") {
             env.tin = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
@@ -25398,6 +25531,7 @@ mod tests {
 
     #[test]
     fn bridge_subsumption_chain() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))\n\
@@ -25413,6 +25547,7 @@ mod tests {
 
     #[test]
     fn source_absorber_registers_unabsorbed_equivalent_non_candidate() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:H)) Declaration(Class(:M)) Declaration(Class(:C))\n\
@@ -25471,6 +25606,7 @@ mod tests {
 
     #[test]
     fn terminal_separator_individual_retains_native_abox_coverage() {
+        let _test_env = crate::test_env::write();
         let ofn = format!("{PREFIX} Declaration(Class(:A)) Declaration(Class(:B)) \
             Declaration(NamedIndividual(<http://example.org/individual/>)) \
             ClassAssertion(:A <http://example.org/individual/>) SubClassOf(:A :B))");
@@ -25487,6 +25623,7 @@ mod tests {
 
     #[test]
     fn unfinished_saturation_seeds_cannot_publish_a_taxonomy() {
+        let _test_env = crate::test_env::read();
         let ofn = format!("{PREFIX} Declaration(Class(:A)) Declaration(Class(:B)) \
             Declaration(Class(:C)) SubClassOf(:A :B) SubClassOf(:B :C))");
         let env = bridge_ofn(&ofn);
@@ -25503,6 +25640,7 @@ mod tests {
 
     #[test]
     fn source_tbox_retains_rbox_domain_for_existential_saturation() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
         let c = |cc: usize, t: usize| HAtom::Concept {
             neg: false,
@@ -25607,6 +25745,7 @@ mod tests {
     /// remain consumable.
     #[test]
     fn saturation_label_certification_gates_unconditional_edges() {
+        let _test_env = crate::test_env::read();
         let outcome = SaturationOutcome {
             sat_verdict: vec![None, Some(false), Some(false), Some(true)],
             certain_subsumers: vec![None, Some(vec![2]), None, None],
@@ -25628,6 +25767,7 @@ mod tests {
 
     #[test]
     fn source_tbox_propagates_complex_role_domain_back_through_chain() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
         let c = |cc: usize, t: usize| HAtom::Concept {
             neg: false,
@@ -25704,6 +25844,7 @@ mod tests {
 
     #[test]
     fn bridge_materializes_transitive_role_for_automata_preprocessing() {
+        let _test_env = crate::test_env::read();
         let mut tin = TInput {
             concepts: vec!["A".to_string()],
             roles: vec!["r".to_string()],
@@ -25738,6 +25879,7 @@ mod tests {
 
     #[test]
     fn structural_markers_are_not_classification_or_saturation_items() {
+        let _test_env = crate::test_env::read();
         let tin = TInput {
             concepts: vec!["A".to_string(), "Q_1".to_string()],
             queries: vec![0],
@@ -25784,6 +25926,7 @@ mod tests {
 
     #[test]
     fn production_role_automata_solves_mini7914_unsat() {
+        let _test_env = crate::test_env::read();
         let mut env = bridge_ofn(include_str!(
             "../../../tests/completeness-gaps/mini7914_unsat.ofn"
         ));
@@ -25818,6 +25961,7 @@ mod tests {
 
     #[test]
     fn production_inverse_chain_automata_solves_7914_recognition_core() {
+        let _test_env = crate::test_env::read();
         let mut env = bridge_ofn(include_str!(
             "../../../tests/completeness-gaps/mini7914_chain_recognition.ofn"
         ));
@@ -25864,6 +26008,7 @@ mod tests {
 
     #[test]
     fn production_read_off_populates_persistent_kpset_messages() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:A)) Declaration(Class(:B))\n\
@@ -25900,6 +26045,7 @@ mod tests {
 
     #[test]
     fn production_read_off_keeps_open_or_disjuncts_nondeterministic() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))\n\
@@ -25958,6 +26104,7 @@ mod tests {
 
     #[test]
     fn production_read_off_populates_other_node_possible_subsumptions() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))\n\
@@ -26009,6 +26156,7 @@ mod tests {
     /// label that genuinely contains it).
     #[test]
     fn unsat_cache_warm_probes_keep_verdicts() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:X)) Declaration(Class(:Y))\n\
@@ -26086,6 +26234,7 @@ mod tests {
 
     #[test]
     fn probe_reset_reuses_process_capacity_and_matches_a_fresh_probe() {
+        let _test_env = crate::test_env::read();
         let env = bridge_ofn(
             "Prefix(:=<http://example.org/>)\n\
              Ontology(Declaration(Class(:A)) Declaration(Class(:B))\n\
@@ -26162,6 +26311,7 @@ mod tests {
     #[test]
     #[ignore]
     fn covering_atmost_cross_merge_sat() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:E))\n\
@@ -26206,6 +26356,7 @@ mod tests {
     /// regression proof.
     #[test]
     fn unrestored_advance_leftover_no_root_cancel() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:AlternativePath)) Declaration(Class(:Path))\n\
@@ -26235,6 +26386,7 @@ mod tests {
 
     #[test]
     fn bridge_disjunction_by_cases() {
+        let _test_env = crate::test_env::read();
         // A ⊑ B ⊔ C, B ⊑ D, C ⊑ D ⇒ A ⊑ D — exercises the OR rule + the
         // sound same-node backtrack through the BRIDGED encoding.
         let ofn = format!(
@@ -26252,6 +26404,7 @@ mod tests {
 
     #[test]
     fn bridge_disjunction_open_branch() {
+        let _test_env = crate::test_env::read();
         // Drop C ⊑ D: the C branch stays open ⇒ A ⊑ D must NOT hold (the
         // negative control that pinned the chronological-backtrack bug).
         let ofn = format!(
@@ -26292,6 +26445,7 @@ mod tests {
 
     #[test]
     fn bridge_exists_forall_clash() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ∃R.B, A ⊑ ∀R.C, B ⊓ C ⊑ ⊥(via D/¬D)  ⇒ A unsatisfiable ⇒ A ⊑ E
         // for the probe; simpler direct check: A ⊑ ∃R.B and ∀R.¬B ⇒ A ⊓ that
         // ∀ is unsat. Encode as: A ⊑ ∃R.B, F ⊑ ∀R.C with B ⊓ C contradictory.
@@ -26342,6 +26496,7 @@ mod tests {
 
     #[test]
     fn bridge_role_hierarchy_forall() {
+        let _test_env = crate::test_env::read();
         // R ⊑ S: A ⊑ ∃R.D, A ⊑ ∀S.C, D ⊑ ¬C — the ∀S restriction must reach
         // the R-successor via the hierarchy ⇒ A unsatisfiable. The bridged
         // counterpart of the `role_hierarchy_forall` selftest, driven from
@@ -26370,6 +26525,7 @@ mod tests {
     /// The 9635 shape adds exact cardinality; test both.
     #[test]
     fn bridge_domain_via_forced_successor() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:A)) Declaration(Class(:D)) Declaration(Class(:T))\n\
@@ -26407,6 +26563,7 @@ mod tests {
     /// model: pairwise=false while readoff_has=true).
     #[test]
     fn bridge_domain_survives_datatype_singletons() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:A)) Declaration(Class(:D)) Declaration(Class(:I))\n\
@@ -26479,6 +26636,7 @@ mod tests {
 
     #[test]
     fn bridge_exists_recognition_inverse() {
+        let _test_env = crate::test_env::read();
         // ∃R.B ⊑ Q (the definer-recognition / absorption shape, frontend-
         // clausified to `B(y) ∧ R(x,y) → Q(x)`, bridged as `B ⊑ ∀R⁻.Q`):
         // A ⊑ ∃R.B and Q ⊑ E ⊢ A ⊑ E — the Q lands on A through the
@@ -26513,6 +26671,7 @@ mod tests {
     #[test]
     #[ignore]
     fn bridge_scale_probe() {
+        let _test_env = crate::test_env::write();
         let path = std::env::var("KM_BRIDGE_ONT").expect("set KM_BRIDGE_ONT=<ont path>");
         let n_probes: usize = std::env::var("KM_BRIDGE_PROBES")
             .ok()
@@ -26592,6 +26751,7 @@ mod tests {
     #[test]
     #[ignore]
     fn bridge_correctness_sample() {
+        let _test_env = crate::test_env::read();
         let path = std::env::var("KM_BRIDGE_ONT").expect("set KM_BRIDGE_ONT=<ont path>");
         let gold_path = std::env::var("KM_BRIDGE_GOLD").expect("set KM_BRIDGE_GOLD=<json>");
         let n_probes: usize = std::env::var("KM_BRIDGE_PROBES")
@@ -26705,6 +26865,7 @@ mod tests {
     #[test]
     #[ignore]
     fn bridge_probe_pair() {
+        let _test_env = crate::test_env::write();
         let path = std::env::var("KM_BRIDGE_ONT").expect("set KM_BRIDGE_ONT=<ont path>");
         let pair = std::env::var("KM_BRIDGE_PAIR").expect("set KM_BRIDGE_PAIR=Sub,Sup");
         let (sub, sup) = pair.split_once(',').expect("Sub,Sup");
@@ -26981,6 +27142,7 @@ mod tests {
     #[test]
     #[ignore]
     fn bridge_classify_full() {
+        let _test_env = crate::test_env::write();
         let path = std::env::var("KM_BRIDGE_ONT").expect("set KM_BRIDGE_ONT=<ont path>");
         let gold_path = std::env::var("KM_BRIDGE_GOLD").expect("set KM_BRIDGE_GOLD=<json>");
         let gold_text = std::fs::read_to_string(&gold_path).expect("readable gold");
@@ -27221,6 +27383,7 @@ mod tests {
     #[test]
     #[ignore]
     fn bridge_classify_prod() {
+        let _test_env = crate::test_env::write();
         let path = std::env::var("KM_BRIDGE_ONT").expect("set KM_BRIDGE_ONT=<ont path>");
         let gold_path = std::env::var("KM_BRIDGE_GOLD").expect("set KM_BRIDGE_GOLD=<json>");
         let gold_text = std::fs::read_to_string(&gold_path).expect("readable gold");
@@ -27332,6 +27495,7 @@ mod tests {
     /// no defer) and that a singleton-free sibling Y stays satisfiable.
     #[test]
     fn singleton_concept_merge_value_identity_unsat() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
         let c = |neg: bool, c: usize, t: usize| HAtom::Concept { neg, c, t };
         // concepts: 0=X 1=V 2=A 3=VA1 4=VA2 5=Y
@@ -27410,6 +27574,7 @@ mod tests {
     #[test]
     #[ignore]
     fn bridge_coverage_report() {
+        let _test_env = crate::test_env::write();
         let path = std::env::var("KM_BRIDGE_ONT").expect("set KM_BRIDGE_ONT=<ont path>");
         let text = std::fs::read_to_string(&path).expect("readable ontology");
         let fr = crate::frontend::ofn_to_clauses(&text).expect("in fragment");
@@ -27464,6 +27629,7 @@ mod tests {
 
     #[test]
     fn saturation_answers_simple_taxonomy() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
         let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
         // A ⊑ B, B ⊑ C — the pure-Horn case saturation must fully answer.
@@ -27500,6 +27666,7 @@ mod tests {
 
     #[test]
     fn saturation_existential_applies_role_domain_before_certifying() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
         let c = |cc: usize, t: usize| HAtom::Concept {
             neg: false,
@@ -27547,6 +27714,7 @@ mod tests {
 
     #[test]
     fn saturation_detects_unsat_concept() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
         let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
         // A ⊑ B and A ⊓ B ⊑ ⊥ — the deterministic clash must surface as
@@ -27576,6 +27744,7 @@ mod tests {
 
     #[test]
     fn probe_oracle_alone_detects_unsat_concept() {
+        let _test_env = crate::test_env::write();
         // DIAGNOSTIC twin of `saturation_detects_unsat_concept` WITHOUT the
         // saturation pre-pass: isolates whether the probe path alone answers
         // the tiny A ⊑ B, A ⊓ B ⊑ ⊥ input (checks the oracle, not saturation).
@@ -27606,6 +27775,7 @@ mod tests {
 
     #[test]
     fn saturation_defers_disjunction_subjects() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
         let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
         // A ⊑ B ⊔ C — branching: the non-branching saturation must NOT claim
@@ -27641,6 +27811,7 @@ mod tests {
 
     #[test]
     fn saturation_never_sat_certain_on_forall_exists_clash() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
         let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
         // A ⊑ ∃r.B and A ⊑ ∀r.¬B ⇒ A unsatisfiable. The cheap saturation
@@ -27695,6 +27866,7 @@ mod tests {
     /// deferred EVERY critical ≤n).
     #[test]
     fn saturation_answers_atmost_within_bound() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{CardDefJson, HAtom, HtClause, TInput};
         let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
         let tin = TInput {
@@ -27737,6 +27909,7 @@ mod tests {
     /// SAT-certain with the precise qualified counting.
     #[test]
     fn saturation_atmost_qualified_counting_sat() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{CardDefJson, HAtom, HtClause, TInput};
         let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
         let ex = |r: usize, cc: usize| HAtom::Exist {
@@ -27785,6 +27958,7 @@ mod tests {
     /// brings the residual cardinality back to the bound ⇒ SAT-certain.
     #[test]
     fn saturation_atmost_merging_discount_sat() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{CardDefJson, HAtom, HtClause, TInput};
         let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
         let ex = |r: usize, cc: usize| HAtom::Exist {
@@ -27841,6 +28015,7 @@ mod tests {
     /// claim SAT-certain (label-merging-problematic must veto the discount).
     #[test]
     fn saturation_atmost_disjoint_successors_not_sat_certain() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{CardDefJson, HAtom, HtClause, TInput};
         let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
         let ex = |r: usize, cc: usize| HAtom::Exist {
@@ -27904,6 +28079,7 @@ mod tests {
     /// distinct-successor block already exceeds the allowance).
     #[test]
     fn saturation_atleast_over_atmost_not_sat_certain() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{CardDefJson, HAtom, HtClause, TInput};
         let tin = TInput {
             concepts: vec!["A".into(), "B".into()],
@@ -27959,6 +28135,7 @@ mod tests {
     /// reference linkings survive the reset).
     #[test]
     fn satcache_expansion_and_blocking_fire_in_probe() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:A)) Declaration(Class(:B))\n\
@@ -28034,6 +28211,7 @@ mod tests {
 
     #[test]
     fn satcache_successful_root_writes_and_preserves_associated_expansion() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))\n\
@@ -28089,6 +28267,7 @@ mod tests {
     /// clash arm — and agree with the plain (uncoupled) probe.
     #[test]
     fn satcache_clash_replay_probe_unsat() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:A)) Declaration(Class(:B)) Declaration(Class(:C))\n\
@@ -28132,6 +28311,7 @@ mod tests {
     /// disjunction forces a probe residue (the coupling actually runs).
     #[test]
     fn satcache_classification_matches_plain() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:X)) Declaration(Class(:Y)) Declaration(Class(:Z))\n\
@@ -28171,6 +28351,7 @@ mod tests {
     /// poison-defer noise in either arm.
     #[test]
     fn satcache_absorption_terminates_exists_cycle() {
+        let _test_env = crate::test_env::read();
         let ofn = format!(
             "{PREFIX}\
              Declaration(Class(:X)) Declaration(Class(:Y))\n\
@@ -28209,6 +28390,7 @@ mod tests {
     /// must match the oracle exactly; unknowns are free.
     #[test]
     fn saturation_certainties_agree_with_probe_classification() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
         let c = |neg: bool, cc: usize, t: usize| HAtom::Concept { neg, c: cc, t };
         // 0=A 1=B 2=C 3=D 4=E; r
@@ -28333,6 +28515,7 @@ mod bridge_role_disjointness_tests {
 
     #[test]
     fn bridge_role_disjointness_asymmetric_clause_shape() {
+        let _test_env = crate::test_env::read();
         let role = |r, s, t| HAtom::Role { r, s, t };
         let clause = |body: Vec<HAtom>| HtClause { body, head: vec![] };
         assert_eq!(asymmetric_role_clause(&clause(vec![role(3, 0, 1), role(3, 1, 0)])), Some(3));
@@ -28347,6 +28530,7 @@ mod bridge_role_disjointness_tests {
 
     #[test]
     fn bridge_role_disjointness_asymmetry_excludes_self_loops() {
+        let _test_env = crate::test_env::read();
         // Asymmetry implies irreflexivity: F ⊑ ∃t.Self with t ⊑ r forces r(x,x).
         let (result, names) = classify(&ontology(
             "AsymmetricObjectProperty(:r) SubObjectPropertyOf(:t :r) \
@@ -28359,6 +28543,7 @@ mod bridge_role_disjointness_tests {
 
     #[test]
     fn bridge_role_disjointness_symmetric_and_asymmetric_role_is_empty() {
+        let _test_env = crate::test_env::read();
         let (result, names) = classify(&ontology(
             "AsymmetricObjectProperty(:r) SymmetricObjectProperty(:r) \
              SubClassOf(:A ObjectSomeValuesFrom(:r :B)) SubClassOf(:C ObjectAllValuesFrom(:r :D))"));
@@ -28370,6 +28555,7 @@ mod bridge_role_disjointness_tests {
 
     #[test]
     fn bridge_role_disjointness_inverse_hierarchy_forces_empty_role() {
+        let _test_env = crate::test_env::read();
         // s ⊑ r, r ⊑ t, t ≡ s⁻: s(x,y) gives s(y,x), so Asymmetric(s) empties s and r.
         let (result, names) = classify(&ontology(
             "AsymmetricObjectProperty(:s) SubObjectPropertyOf(:s :r) SubObjectPropertyOf(:r :t) \
@@ -28382,6 +28568,7 @@ mod bridge_role_disjointness_tests {
 
     #[test]
     fn bridge_role_disjointness_functional_merge_into_predecessor_clashes() {
+        let _test_env = crate::test_env::read();
         // x r y, y r z, q ⊒ r, q ⊒ r⁻ functional: z merges into x, so r(y,x)
         // and r(x,y) violate asymmetry. B alone (no predecessor) is fine.
         let (result, names) = classify(&ontology(
@@ -28396,6 +28583,7 @@ mod bridge_role_disjointness_tests {
 
     #[test]
     fn bridge_role_disjointness_reflexive_and_irreflexive_role_is_inconsistent() {
+        let _test_env = crate::test_env::read();
         // A reflexivity fact forces the role nonempty, so the irreflexivity
         // axiom must not be dropped as redundant.
         // The ontology is inconsistent: the bridge must not publish a
@@ -28413,6 +28601,7 @@ mod bridge_role_disjointness_tests {
 
     #[test]
     fn bridge_role_disjointness_irreflexive_self_loop_from_merge_into_predecessor() {
+        let _test_env = crate::test_env::read();
         // C ⊑ ∃s⁻.H, H ⊑ ∃u.Self, s,u ⊑ t functional: the s-predecessor y
         // has t(y,y) and t(y,x), so x merges into y and s(y,y) violates
         // Irreflexive(s). C is unsatisfiable.
@@ -28430,6 +28619,7 @@ mod bridge_role_disjointness_tests {
 
     #[test]
     fn bridge_role_disjointness_two_reflexive_roles_reach_universal_restriction() {
+        let _test_env = crate::test_env::read();
         // The self link of `t` must not hide the self link of the transitive
         // super-role `s` from the universal restriction (first-link scan).
         let (result, names) = classify(&ontology(
@@ -28474,6 +28664,7 @@ mod bridge_equivalent_non_candidate_tests {
     /// list invalidates the subsumption before it is tested.
     #[test]
     fn bridge_equivalent_non_candidate_definition_is_tested() {
+        let _test_env = crate::test_env::read();
         for (axioms, sub, sup) in [
             ("EquivalentClasses(:B ObjectAllValuesFrom(ObjectInverseOf(:s) ObjectSomeValuesFrom(:s :H)))", "H", "B"),
             ("SubObjectPropertyOf(:s :u) EquivalentClasses(:B ObjectAllValuesFrom(ObjectInverseOf(:s) ObjectSomeValuesFrom(:u :H)))", "H", "B"),

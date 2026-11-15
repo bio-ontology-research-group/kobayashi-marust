@@ -2885,6 +2885,7 @@ mod tests {
 
     #[test]
     fn s08_create_ancestor_successor_merging_extension_forwards_label_and_inverse_link() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = make_role(&mut ctx, 7101);
@@ -3016,6 +3017,7 @@ mod tests {
 
     #[test]
     fn s08_atmost_merging_driver_drains_empty_queued_node() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -3042,6 +3044,7 @@ mod tests {
 
     #[test]
     fn s08_atmost_merging_driver_materializes_concept_data_and_takes_concepts() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -3080,6 +3083,7 @@ mod tests {
 
     #[test]
     fn s08_collect_atmost_trivial_missing_operand_skips_successor_without_label_set() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -3150,6 +3154,7 @@ mod tests {
 
     #[test]
     fn s08_collect_atmost_positive_operand_prepends_countable_successor() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -3252,6 +3257,7 @@ mod tests {
 
     #[test]
     fn s08_collect_atmost_operand_representative_updates_min_without_linking() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -3333,6 +3339,7 @@ mod tests {
 
     #[test]
     fn s08_collect_atmost_no_operand_existing_label_set_counts_successor() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -3402,6 +3409,7 @@ mod tests {
 
     #[test]
     fn s08_collect_atmost_top_representative_updates_min_without_linking() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -3482,6 +3490,7 @@ mod tests {
 
     #[test]
     fn s08_successor_creation_role_subset_uses_non_negated_roles() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role_a = RoleId::new(7);
@@ -3509,6 +3518,7 @@ mod tests {
 
     #[test]
     fn s08_label_merging_subset_checks_polarity_and_ignores_and_when_requested() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -3590,6 +3600,7 @@ mod tests {
 
     #[test]
     fn s08_cardinality_mergeable_uses_successor_data_and_node_guards() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -3643,6 +3654,7 @@ mod tests {
 
     #[test]
     fn s08_extended_cardinality_mergeable_requires_symmetric_role_sets() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -3713,6 +3725,7 @@ mod tests {
 
     #[test]
     fn s08_qualified_successor_count_checks_label_polarity_and_value_nominals() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -3828,6 +3841,7 @@ mod tests {
 
     #[test]
     fn s08_qualified_successor_count_preserves_null_and_nontrivial_branches() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -3898,6 +3912,7 @@ mod tests {
 
     #[test]
     fn s08_label_merging_problematic_detects_opposite_polarity() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -3966,6 +3981,7 @@ mod tests {
 
     #[test]
     fn s08_label_merging_problematic_accepts_same_polarity_prefix() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -4027,6 +4043,7 @@ mod tests {
 
     #[test]
     fn s08_label_merging_problematic_detects_missing_implication_operand() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 

@@ -294,6 +294,7 @@ mod tests {
 
     #[test]
     fn forced_distinctness_is_polarity_aware() {
+        let _test_env = crate::test_env::read();
         let at_most = Concept::AtMost(1, role("u"), Box::new(Concept::Top));
         let at_least = Concept::AtLeast(2, role("u"), Box::new(Concept::Top));
         let sub = |a: Concept, b: Concept| Axiom::SubClassOf(a, b);
@@ -317,6 +318,7 @@ mod tests {
 
     #[test]
     fn count_bound_is_the_largest_forced_count() {
+        let _test_env = crate::test_env::read();
         let sub = |a: Concept, b: Concept| Axiom::SubClassOf(a, b);
         let at_least = |n| Concept::AtLeast(n, role("u"), Box::new(Concept::Top));
         let axioms = [sub(name("A"), at_least(10)), sub(name("B"), at_least(3)),
@@ -330,6 +332,7 @@ mod tests {
 
     #[test]
     fn negative_value_fillers_mark_data_roles() {
+        let _test_env = crate::test_env::read();
         // `a : ∀u.¬{1}` (a negative data assertion) does not make `u` an
         // object property, so a later `≥ 2 u` still counts.
         let negative = Axiom::ConceptAssertion(Concept::Forall(role("u"),
@@ -344,6 +347,7 @@ mod tests {
 
     #[test]
     fn profiles_follow_observed_ranges_and_tokens() {
+        let _test_env = crate::test_env::read();
         let o = observed(&["__dt__integer", "__dt__string", "__dt__val__\"1\"^^xsd:integer"]);
         assert_eq!(profile("\"2\"^^xsd:integer", &o), Some(vec![true, false, false]));
         assert_eq!(profile("\"7\"^^xsd:integer", &o), Some(vec![true, false, false]));
@@ -359,6 +363,7 @@ mod tests {
 
     #[test]
     fn facet_and_complement_ranges_split_profiles() {
+        let _test_env = crate::test_env::read();
         let o = observed(&[
             "__dt__c__DatatypeRestriction(xsd:integer xsd:minInclusive \"18\"^^xsd:integer)",
             "__dt__c__DataComplementOf(xsd:integer)",
@@ -370,12 +375,14 @@ mod tests {
 
     #[test]
     fn unknown_ranges_keep_identity() {
+        let _test_env = crate::test_env::read();
         let o = observed(&["__dt__iri__4_74657374"]);
         assert_eq!(profile("\"2\"^^xsd:integer", &o), None);
     }
 
     #[test]
     fn representatives_are_the_first_literal_of_each_profile() {
+        let _test_env = crate::test_env::read();
         let o = observed(&["__dt__integer", "__dt__val__\"1\"^^xsd:integer"]);
         let literals: Vec<String> = ["\"5\"^^xsd:integer", "\"x\"", "\"6\"^^xsd:integer",
             "\"1\"^^xsd:integer", "\"y\"", "\"abc\"^^xsd:integer"]
@@ -395,6 +402,7 @@ mod tests {
 
     #[test]
     fn counting_on_data_properties_blocks_the_abstraction() {
+        let _test_env = crate::test_env::read();
         let dt = || Box::new(name("__dt__integer"));
         let functional = Axiom::FunctionalRole("u".into());
         assert!(blocking_construct(&[&functional]).is_some());

@@ -887,6 +887,7 @@ mod tests {
 
     #[test]
     fn s04_apply_atleast_rule_updates_max_candidate() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -915,6 +916,7 @@ mod tests {
 
     #[test]
     fn s04_apply_atleast_rule_negated_increments_cardinality() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -937,6 +939,7 @@ mod tests {
 
     #[test]
     fn s04_apply_atmost_rule_sets_restricted_and_max_candidate() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -960,6 +963,7 @@ mod tests {
 
     #[test]
     fn s04_apply_atmost_rule_negative_cardinality_clashes() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 

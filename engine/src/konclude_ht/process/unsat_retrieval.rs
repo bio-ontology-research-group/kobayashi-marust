@@ -83,6 +83,7 @@ mod tests {
 
     #[test]
     fn unsat_occurrence_retrieval_data_init_and_accessors_match_konclude() {
+        let _test_env = crate::test_env::read();
         let mut prev = IndividualNodeUnsatisfiableOccurenceCacheRetrievalData::new();
         let con_des = ConDescId::new(7);
         prev.set_last_retrieval_caching_tag(13)
@@ -103,6 +104,7 @@ mod tests {
 
     #[test]
     fn node_unsat_retrieval_data_points_to_real_process_context_arena() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let con_des = ctx.alloc_con_desc(ConceptDescriptor::new());
         let mut data = IndividualNodeUnsatisfiableOccurenceCacheRetrievalData::new();

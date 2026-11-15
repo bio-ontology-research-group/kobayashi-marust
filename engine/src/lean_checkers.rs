@@ -1032,6 +1032,7 @@ mod tests {
 
     #[test]
     fn checker_tables_name_distinct_variables() {
+        let _test_env = crate::test_env::write();
         let mut names: Vec<&str> = ELC_CHECKERS.iter().map(|(v, _)| *v).collect();
         names.extend(CB_CHECKERS.iter().map(|(v, ..)| *v));
         names.extend(HT_CHECKERS.iter().map(|(v, _)| *v));
@@ -1043,6 +1044,7 @@ mod tests {
 
     #[test]
     fn only_the_legacy_live_wires_need_a_global_model_certificate() {
+        let _test_env = crate::test_env::write();
         let legacy: Vec<&str> = CB_CHECKERS
             .iter()
             .filter(|(.., member)| *member == CheckerSet::GlobalModel)
@@ -1060,6 +1062,7 @@ mod tests {
 
     #[test]
     fn ht_table_covers_every_certification_variable() {
+        let _test_env = crate::test_env::write();
         for variable in crate::tableau::HT_LEAN_CERTIFICATION_ENV {
             if variable.ends_with("_OUT") {
                 continue;
@@ -1073,6 +1076,7 @@ mod tests {
 
     #[test]
     fn run_records_acceptance_rejection_and_no_verdict() {
+        let _test_env = crate::test_env::write();
         let dir =
             std::env::temp_dir().join(format!("km-lean-checkers-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -1106,6 +1110,7 @@ mod checker_start_tests {
 
     #[test]
     fn a_start_up_thread_failure_is_recognised_and_other_aborts_are_not() {
+        let _test_env = crate::test_env::write();
         use std::os::unix::process::ExitStatusExt;
         use std::process::Output;
         let abort = |stderr: &str| Output {
@@ -1127,6 +1132,7 @@ mod checker_start_tests {
 
     #[test]
     fn a_checker_over_its_time_limit_is_killed_and_gives_no_success() {
+        let _test_env = crate::test_env::write();
         let mut command = std::process::Command::new("/bin/sleep");
         command.arg("30").stdout(std::process::Stdio::null());
         let start = std::time::Instant::now();
@@ -1140,6 +1146,7 @@ mod checker_start_tests {
 
     #[test]
     fn a_checker_command_keeps_exit_codes_and_sets_the_main_stack() {
+        let _test_env = crate::test_env::write();
         let mut command = CheckerCommand::new("/bin/sh");
         let output = command
             .arg("-c")

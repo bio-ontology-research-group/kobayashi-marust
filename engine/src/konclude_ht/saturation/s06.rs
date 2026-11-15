@@ -1638,6 +1638,7 @@ mod tests {
 
     #[test]
     fn s06_install_functionality_extension_creates_backward_prop_requirement() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 601);
@@ -1667,6 +1668,7 @@ mod tests {
 
     #[test]
     fn s06_install_functionality_extension_updates_existing_linked_successor_bucket() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 611);
@@ -1705,6 +1707,7 @@ mod tests {
 
     #[test]
     fn s06_install_functionality_extension_is_idempotent() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 621);
@@ -1728,6 +1731,7 @@ mod tests {
 
     #[test]
     fn s06_update_functional_extensions_without_linked_hash_returns_false() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 631);
@@ -1742,6 +1746,7 @@ mod tests {
 
     #[test]
     fn s06_update_functional_extensions_without_role_bucket_returns_false() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 641);
@@ -1758,6 +1763,7 @@ mod tests {
 
     #[test]
     fn s06_update_functional_extensions_clears_processing_flag_for_single_successor() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 651);
@@ -1791,6 +1797,7 @@ mod tests {
 
     #[test]
     fn s06_update_qualified_functional_extensions_without_linked_hash_returns_false() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 652);
@@ -1807,6 +1814,7 @@ mod tests {
 
     #[test]
     fn s06_update_qualified_functional_extensions_without_role_bucket_returns_false() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 656);
@@ -1825,6 +1833,7 @@ mod tests {
 
     #[test]
     fn s06_update_qualified_functional_extensions_ignores_single_successor() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 660);
@@ -1856,6 +1865,7 @@ mod tests {
 
     #[test]
     fn s06_update_qualified_functional_extensions_delegates_multi_successor_boundary() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 664);
@@ -1887,6 +1897,7 @@ mod tests {
 
     #[test]
     fn s06_update_all_worker_adds_required_cardinality_and_all_operands() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let base_role = role(&mut ctx, 654);
@@ -1986,6 +1997,7 @@ mod tests {
 
     #[test]
     fn s06_update_all_dispatcher_clears_role_processing_flags() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 659);
@@ -2068,6 +2080,7 @@ mod tests {
 
     #[test]
     fn s06_update_all_extensions_rewires_positive_super_role() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 663);
@@ -2146,6 +2159,7 @@ mod tests {
 
     #[test]
     fn s06_update_all_extensions_installs_backward_link_for_negated_super_role() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role_id = role(&mut ctx, 667);
@@ -2215,6 +2229,7 @@ mod tests {
 
     #[test]
     fn s06_update_functional_worker_ignores_only_value_nominal_successors() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 661);
@@ -2250,6 +2265,7 @@ mod tests {
 
     #[test]
     fn s06_update_functional_worker_stops_when_max_cardinality_exceeds_one() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 671);
@@ -2279,6 +2295,7 @@ mod tests {
 
     #[test]
     fn s06_update_functional_worker_obeys_last_examined_cursor() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 681);
@@ -2319,6 +2336,7 @@ mod tests {
 
     #[test]
     fn s06_install_backward_propagation_link_prepends_and_deduplicates_head_source() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 685);
@@ -2378,6 +2396,7 @@ mod tests {
 
     #[test]
     fn s06_install_backward_propagation_link_queues_functional_predecessor_role() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 688);
@@ -2431,6 +2450,7 @@ mod tests {
 
     #[test]
     fn s06_install_backward_propagation_link_replays_reapply_descriptor_operands() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 692);
@@ -2491,6 +2511,7 @@ mod tests {
 
     #[test]
     fn s06_update_predecessor_functional_clears_processing_flag_and_dispatches_to_boundary() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 711);
@@ -2556,6 +2577,7 @@ mod tests {
 
     #[test]
     fn s06_update_functional_worker_builds_and_releases_merge_linker_head() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = role(&mut ctx, 691);
@@ -2676,6 +2698,7 @@ mod tests {
 
     #[test]
     fn s06_update_functional_worker_installs_backward_link_for_negated_creation_super_role() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role_id = role(&mut ctx, 701);

@@ -1675,6 +1675,7 @@ mod tests {
 
     #[test]
     fn has_remaining_extension_processing_nodes_reads_successor_extension_queue() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let node = ctx
@@ -1693,6 +1694,7 @@ mod tests {
 
     #[test]
     fn orphaned_concept_work_is_reconnected_to_the_global_queue() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let node = ctx
@@ -1731,6 +1733,7 @@ mod tests {
 
     #[test]
     fn orphaned_successor_work_is_reconnected_to_the_global_queue() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let node = ctx

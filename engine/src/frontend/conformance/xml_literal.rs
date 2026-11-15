@@ -66,6 +66,7 @@ mod tests {
     use super::check;
     #[test]
     fn accepts_xml_content_and_rejects_unbound_or_malformed_markup() {
+        let _test_env = crate::test_env::read();
         for value in ["", "text &amp; more", "<a></a><b></b>", "<p:a xmlns:p='urn:p' p:x='1'/>", "<!--ok--><?target data?>",
             "\n  <i>g<sub>n</sub>\n  </i>\n", "wèi le", "a &lt; b &gt; c"] {
             assert!(check(value).is_ok(), "{value}");
@@ -76,6 +77,7 @@ mod tests {
     }
     #[test]
     fn rejects_well_formed_non_canonical_forms() {
+        let _test_env = crate::test_env::read();
         for value in ["<a/>", "a > b", "&#65;", "&quot;", "<![CDATA[x]]>", "<a >x</a>", "<a>x</a >", "a\rb"] {
             assert!(check(value).is_err(), "{value}");
         }

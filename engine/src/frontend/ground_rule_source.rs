@@ -196,6 +196,7 @@ mod tests {
         Head(ClassAtom(<http://km.test/Bad> Variable(<http://km.test/y>)))))"#;
     #[test]
     fn source_translation_retains_non_rule_axioms_and_concrete_values() {
+        let _test_env = crate::test_env::read();
         let compiled=compile(SOURCE,4).unwrap();
         assert_eq!(compiled.source_rules,1); assert_eq!(compiled.instances,2);
         assert!(!compiled.text.contains("DLSafeRule("));
@@ -213,6 +214,7 @@ mod tests {
     }
     #[test]
     fn source_translation_rejects_missing_coverage_and_nonexact_literals() {
+        let _test_env = crate::test_env::read();
         assert!(compile(SOURCE,1).is_err());
         assert!(compile(&SOURCE.replace("^^xsd:string","^^rdfs:Literal"),4).is_err());
         assert!(compile(&SOURCE.replace("ObjectPropertyAtom(","UnknownAtom("),4).is_err());
@@ -220,6 +222,7 @@ mod tests {
     }
     #[test]
     fn fresh_anchor_does_not_capture_source_names() {
+        let _test_env = crate::test_env::read();
         let source=SOURCE.replace("Ontology(","Ontology(Declaration(NamedIndividual(<urn:km:ground-rule#__ground_rule_0>))");
         let compiled=compile(&source,9).unwrap();
         assert_eq!(compiled.instances,3);
@@ -227,6 +230,7 @@ mod tests {
     }
     #[test]
     fn negative_data_assertion_keeps_polarity_and_annotation() {
+        let _test_env = crate::test_env::read();
         let text=r#"NegativeDataPropertyAssertion(Annotation(<http://km.test/note> "retained") <http://km.test/p> <http://km.test/a> "NULL"^^xsd:string)"#;
         let node=Parser::new(text).parse().unwrap();
         let mut definitions=BTreeMap::new(); let mut occupied=BTreeSet::new();
@@ -239,6 +243,7 @@ mod tests {
 
     #[test]
     fn assertion_aliases_keep_lowest_free_names_and_reuse_duplicates() {
+        let _test_env = crate::test_env::read();
         let mut definitions = BTreeMap::new();
         let mut occupied = [0, 2, 5].into_iter()
             .map(|i| format!("__ground_assertion_{i}")).collect();

@@ -212,6 +212,7 @@ mod tests {
     }
     #[test]
     fn integer_cells_cover_all_small_models_and_preserve_literal_exclusions() {
+        let _test_env = crate::test_env::read();
         for lo in -4..=4 {for hi in lo..=4 {
             let ranges=vec![restriction("integer","minExclusive",&format!("\"{lo}\"^^xsd:integer")),
                 restriction("integer","maxInclusive",&format!("\"{hi}\"^^xsd:integer"))];
@@ -226,6 +227,7 @@ mod tests {
     }
     #[test]
     fn float_cells_cover_adjacent_values_nan_and_signed_zero_identity() {
+        let _test_env = crate::test_env::read();
         let ranges=vec![restriction("float","minExclusive","\"0.5\"^^xsd:float"),
             restriction("float","maxInclusive","\"0.5\"^^xsd:float")];
         let literals=vec!["\"0\"^^xsd:float".into(),"\"-0\"^^xsd:float".into(),"\"NaN\"^^xsd:float".into()];
@@ -241,6 +243,7 @@ mod tests {
     }
     #[test]
     fn full_domain_partition_retains_outside_numeric_complements() {
+        let _test_env = crate::test_env::read();
         let ranges=vec!["xsd:integer".into(),"DataComplementOf(xsd:integer)".into(),
             "DatatypeRestriction(xsd:integer xsd:minExclusive \"3\"^^xsd:integer)".into()];
         let result=partition(Kind::Integer,&ranges,&["\"4\"^^xsd:integer".into()],16).unwrap();
@@ -261,6 +264,7 @@ mod tests {
     }
     #[test]
     fn unknown_facets_types_trailing_tokens_and_overflow_decline() {
+        let _test_env = crate::test_env::read();
         for range in ["ex:float","xsd:double","DatatypeRestriction(xsd:float xsd:pattern \"x\")",
             "DatatypeRestriction(xsd:float xsd:minInclusive \"NaN\"^^xsd:float)","xsd:float xsd:float"] {
             assert!(representatives(Kind::Float,&[range.into()],&[],32).is_none());

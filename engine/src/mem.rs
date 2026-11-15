@@ -50,6 +50,7 @@ mod tests {
 
     #[test]
     fn heap_trim_requires_an_explicit_nonzero_switch() {
+        let _test_env = crate::test_env::write();
         assert!(!switched_on(None));
         assert!(!switched_on(Some(OsStr::new(""))));
         assert!(!switched_on(Some(OsStr::new("0"))));
@@ -59,6 +60,7 @@ mod tests {
 
     #[test]
     fn releasing_the_heap_preserves_live_allocations() {
+        let _test_env = crate::test_env::write();
         // A trim must only affect freed pages: live data survives byte for byte.
         let live: Vec<Vec<u8>> = (0..64u8).map(|i| vec![i; 64 << 10]).collect();
         let garbage: Vec<Vec<u8>> = (0..64u8).map(|i| vec![i; 256 << 10]).collect();

@@ -131,6 +131,7 @@ mod tests {
     use super::super::check_source;
     #[test]
     fn anonymous_individuals_are_rejected_in_forbidden_logical_positions() {
+        let _test_env = crate::test_env::read();
         for axiom in [
             "SameIndividual(_:a :b)", "DifferentIndividuals(:b _:a)",
             "NegativeObjectPropertyAssertion(:r :b _:a)",
@@ -145,6 +146,7 @@ mod tests {
     }
     #[test]
     fn anonymous_object_graphs_reject_cycles_parallel_edges_and_self_loops() {
+        let _test_env = crate::test_env::read();
         for axioms in [
             "ObjectPropertyAssertion(:r _:a _:a)",
             "ObjectPropertyAssertion(:r _:a _:b) ObjectPropertyAssertion(:s _:a _:b)",
@@ -156,6 +158,7 @@ mod tests {
     }
     #[test]
     fn forests_duplicates_and_isolated_anonymous_individuals_remain_valid() {
+        let _test_env = crate::test_env::read();
         for axioms in [
             "ObjectPropertyAssertion(:r _:a _:b) ObjectPropertyAssertion(:r _:a _:b)",
             "ObjectPropertyAssertion(:r _:a _:b) ObjectPropertyAssertion(ObjectInverseOf(:s) _:c _:b)",
@@ -166,6 +169,7 @@ mod tests {
 
     #[test]
     fn each_anonymous_tree_needs_one_node_with_at_most_one_named_assertion() {
+        let _test_env = crate::test_env::read();
         for axioms in [
             // Follow the formal condition, not the contradictory named-star example.
             "ObjectPropertyAssertion(:r :francis _:a) ObjectPropertyAssertion(:r _:a :meg) ObjectPropertyAssertion(:r _:a :chris)",

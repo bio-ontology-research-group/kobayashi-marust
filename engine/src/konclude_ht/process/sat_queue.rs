@@ -500,6 +500,7 @@ mod tests {
 
     #[test]
     fn saturation_individual_node_queue_orders_by_negative_individual_id() {
+        let _test_env = crate::test_env::read();
         let mut queue = SaturationIndividualNodeProcessingQueue::new(INVALID);
         let n7 = SatNodeId::new(7);
         let n3 = SatNodeId::new(3);
@@ -521,6 +522,7 @@ mod tests {
 
     #[test]
     fn critical_individual_node_queue_copies_base_state() {
+        let _test_env = crate::test_env::read();
         let mut source = CriticalIndividualNodeProcessingQueue::new(INVALID);
         source
             .insert_process_individual(SatNodeId::new(1), 1)
@@ -537,6 +539,7 @@ mod tests {
 
     #[test]
     fn critical_individual_node_concept_test_set_copies_and_tests_pairs() {
+        let _test_env = crate::test_env::read();
         let mut source = CriticalIndividualNodeConceptTestSet::new(INVALID);
         let node = SatNodeId::new(5);
         let concept = ConceptId::new(7);
@@ -557,6 +560,7 @@ mod tests {
 
     #[test]
     fn saturation_successor_extension_queue_orders_by_negative_individual_id() {
+        let _test_env = crate::test_env::read();
         let mut queue = SaturationSuccessorExtensionIndividualNodeProcessingQueue::new(INVALID);
         let n7 = SatNodeId::new(7);
         let n3 = SatNodeId::new(3);
@@ -584,6 +588,7 @@ mod tests {
 
     #[test]
     fn saturation_successor_extension_queue_copies_current_and_pending_state() {
+        let _test_env = crate::test_env::read();
         let mut source = SaturationSuccessorExtensionIndividualNodeProcessingQueue::new(INVALID);
         let current = SatNodeId::new(4);
         let pending = SatNodeId::new(5);
@@ -604,6 +609,7 @@ mod tests {
 
     #[test]
     fn critical_saturation_concept_queue_prepends_and_takes_head() {
+        let _test_env = crate::test_env::read();
         let mut ctx = super::super::context::ProcessContext::new();
         let first = ctx.alloc_con_sat_proc_linker(Default::default());
         let second = ctx.alloc_con_sat_proc_linker(Default::default());
@@ -648,6 +654,7 @@ mod tests {
 
     #[test]
     fn critical_saturation_type_queues_create_per_type_and_scan_has() {
+        let _test_env = crate::test_env::read();
         let mut ctx = super::super::context::ProcessContext::new();
         let node = SatNodeId::new(11);
         let type_queues = ctx.alloc_critical_sat_concept_type_queues(
@@ -692,6 +699,7 @@ mod tests {
 
     #[test]
     fn critical_saturation_type_queues_init_clears_queues_and_queued_flag() {
+        let _test_env = crate::test_env::read();
         let mut queues = CriticalSaturationConceptTypeQueues::new(INVALID);
         queues.queue_vec[CriticalSaturationConceptQueueType::Nominal.as_index()] =
             CriticalSaturationConceptQueueId::new(3);

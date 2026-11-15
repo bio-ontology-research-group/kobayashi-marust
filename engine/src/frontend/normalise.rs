@@ -1307,6 +1307,7 @@ mod tests {
     /// (the ore_ont_16461 incompleteness).
     #[test]
     fn atleast_two_recognition_clause() {
+        let _test_env = crate::test_env::read();
         let mut cf = Clausifier::new();
         let c = Concept::AtLeast(
             2,
@@ -1344,6 +1345,7 @@ mod tests {
     /// recognition clause; a negative (or unseen) occurrence emits it.
     #[test]
     fn atleast_recognition_polarity_gated() {
+        let _test_env = crate::test_env::read();
         let mk = || {
             Concept::AtLeast(
                 2,
@@ -1374,6 +1376,7 @@ mod tests {
 
     #[test]
     fn native_cardinality_omits_only_the_positive_expansion() {
+        let _test_env = crate::test_env::read();
         let restriction = Concept::AtLeast(
             128,
             Role::Name("r".to_string()),
@@ -1401,6 +1404,7 @@ mod tests {
 
     #[test]
     fn native_handoff_without_metadata_preserves_ordinary_obligations() {
+        let _test_env = crate::test_env::read();
         for restriction in [
             Concept::AtLeast(3, Role::Name("r".to_string()), Box::new(Concept::Name("J".to_string()))),
             Concept::AtMost(2, Role::Name("r".to_string()), Box::new(Concept::Name("J".to_string()))),
@@ -1421,6 +1425,7 @@ mod tests {
 
     #[test]
     fn role_colors_avoid_quadratic_lower_and_upper_expansions() {
+        let _test_env = crate::test_env::read();
         for restriction in [
             Concept::AtLeast(1024, Role::Name("r".into()), Box::new(Concept::Name("J".into()))),
             Concept::AtMost(1024, Role::Name("r".into()), Box::new(Concept::Name("J".into()))),
@@ -1439,6 +1444,7 @@ mod tests {
 
     #[test]
     fn checked_symbolic_normalization_preserves_large_source_bounds() {
+        let _test_env = crate::test_env::read();
         let mut ontology = Ontology::new();
         ontology.add(Axiom::SubClassOf(Concept::Name("A".into()), Concept::AtLeast(
             1_000_000, Role::Name("r".into()), Box::new(Concept::Name("F".into())))));
@@ -1452,6 +1458,7 @@ mod tests {
 
     #[test]
     fn native_cardinality_provenance_rejects_corrupted_bounds() {
+        let _test_env = crate::test_env::read();
         let restriction = Concept::AtLeast(3, Role::Name("r".into()), Box::new(Concept::Name("F".into())));
         let mut native = Clausifier::new_with_native_cardinality_only(true);
         native.card = true;
@@ -1489,6 +1496,7 @@ mod tests {
 
     #[test]
     fn native_cardinality_keeps_source_tbox_provenance() {
+        let _test_env = crate::test_env::read();
         let mut ontology = Ontology::new();
         let a = Concept::Name("A".into());
         let b = Concept::Name("B".into());
@@ -1509,6 +1517,7 @@ mod tests {
 
     #[test]
     fn native_qualified_million_bounds_keep_fillers_and_recognition() {
+        let _test_env = crate::test_env::read();
         let filler = mk_and(vec![Concept::Name("F".into()), Concept::Name("G".into())]);
         for restriction in [
             Concept::AtLeast(1_000_000, Role::Name("r".into()), Box::new(filler.clone())),
@@ -1547,6 +1556,7 @@ mod tests {
 
     #[test]
     fn native_negative_minimum_uses_constant_size_complement() {
+        let _test_env = crate::test_env::read();
         let restriction = Concept::AtLeast(
             1_000_000,
             Role::Name("r".to_string()),
@@ -1576,6 +1586,7 @@ mod tests {
     /// proven positive-only ones.
     #[test]
     fn atmost_recognition_polarity_gated() {
+        let _test_env = crate::test_env::read();
         let mk = || {
             Concept::AtMost(
                 1,
@@ -1619,6 +1630,7 @@ mod tests {
     /// With sharing off the clause set is the unshared one.
     #[test]
     fn equal_restrictions_keep_separate_definers_when_sharing_is_off() {
+        let _test_env = crate::test_env::read();
         let r = || Role::Name("r".to_string());
         let f = || Box::new(Concept::Name("F".to_string()));
         let mut cf = Clausifier::new();
@@ -1635,6 +1647,7 @@ mod tests {
     /// (docs/NOMINALS-CB.md section 8).
     #[test]
     fn equal_restrictions_share_one_definer() {
+        let _test_env = crate::test_env::read();
         let r = || Role::Name("r".to_string());
         let f = || Box::new(Concept::Name("F".to_string()));
         let at_most = |n| Concept::AtMost(n, r(), f());
@@ -1681,6 +1694,7 @@ mod tests {
     /// re-enables the recognition clause.
     #[test]
     fn absorb_drops_positive_only_excluded_middle() {
+        let _test_env = crate::test_env::read();
         let not_a = || Concept::Not(Box::new(Concept::Name("A".to_string())));
         let excluded_middle = |cf: &Clausifier| {
             cf.clauses.iter().any(|cl| {
@@ -1722,6 +1736,7 @@ mod tests {
 
     #[test]
     fn trigger_absorb_compiles_and_exists_antecedent() {
+        let _test_env = crate::test_env::read();
         let mut cf = Clausifier::new();
         cf.trigger_absorb = true;
         let sub = mk_and([
@@ -1773,6 +1788,7 @@ mod tests {
     /// context-calculus trigger even though it is first-order equivalent.
     #[test]
     fn trigger_absorb_localises_multiple_existential_antecedents() {
+        let _test_env = crate::test_env::read();
         let mut cf = Clausifier::new();
         cf.trigger_absorb = true;
         let sub = mk_and([
@@ -1816,6 +1832,7 @@ mod tests {
 
     #[test]
     fn trigger_absorb_distributes_union_antecedent() {
+        let _test_env = crate::test_env::read();
         let mut cf = Clausifier::new();
         cf.trigger_absorb = true;
         let sub = mk_or([Concept::Name("A".into()), Concept::Name("B".into())]);
@@ -1833,6 +1850,7 @@ mod tests {
 
     #[test]
     fn trigger_absorb_moves_negative_rhs_disjunct_into_body() {
+        let _test_env = crate::test_env::read();
         let mut cf = Clausifier::new();
         cf.trigger_absorb = true;
         let sup = mk_or([
@@ -1854,6 +1872,7 @@ mod tests {
 
     #[test]
     fn trigger_absorb_retains_definer_provenance() {
+        let _test_env = crate::test_env::read();
         let mut cf = Clausifier::new();
         cf.trigger_absorb = true;
         let c = Concept::Exists(Role::Name("r".into()), Box::new(Concept::Name("B".into())));
@@ -2365,6 +2384,7 @@ mod chain_compilation_tests {
 
     #[test]
     fn long_role_chain_is_compiled_right_associatively() {
+        let _test_env = crate::test_env::read();
         let mut ontology = Ontology::new();
         ontology.add(Axiom::RoleChain(
             vec!["r".into(), "s".into(), "t".into(), "u".into()],
@@ -2507,6 +2527,7 @@ mod nnf_cow_tests {
 
     #[test]
     fn nnf_cow_is_nnf_on_every_family_member() {
+        let _test_env = crate::test_env::read();
         for c in family() {
             let cow = nnf_cow(&c);
             assert_eq!(*cow, nnf(&c), "{c:?}");
@@ -2518,6 +2539,7 @@ mod nnf_cow_tests {
 
     #[test]
     fn a_negation_normal_form_is_always_its_own_fixpoint() {
+        let _test_env = crate::test_env::read();
         // Structural induction witness: the output of `nnf` never needs a copy.
         for c in family() {
             let normal = nnf(&c);
@@ -2531,6 +2553,7 @@ mod nnf_cow_tests {
 
     #[test]
     fn transformed_shapes_are_owned() {
+        let _test_env = crate::test_env::read();
         let a = || name("A");
         for c in [
             not(not(a())),
@@ -2549,6 +2572,7 @@ mod nnf_cow_tests {
 
     #[test]
     fn parser_built_el_axioms_take_the_borrowed_path() {
+        let _test_env = crate::test_env::read();
         let text = "Ontology(\
             SubClassOf(<http://e#A> ObjectSomeValuesFrom(<http://e#r> <http://e#B>)) \
             SubClassOf(ObjectIntersectionOf(<http://e#A> <http://e#B>) <http://e#C>) \
@@ -2580,6 +2604,7 @@ mod nnf_cow_tests {
 
     #[test]
     fn normalisation_output_is_unchanged_by_the_shared_path() {
+        let _test_env = crate::test_env::read();
         // The driver must emit the same clause set whether or not its inputs
         // are shared: compare against a run over pre-normalised (owned) copies.
         let text = "Ontology(\
@@ -2810,6 +2835,7 @@ mod polarity_definer_tests {
     /// gate, on the concatenation of its TBox and ABox parts.
     #[test]
     fn production_pass_matches_the_lean_definition() {
+        let _test_env = crate::test_env::read();
         let mut rng = Lcg(0x5eed_1234);
         let mut accepted_total = 0;
         let mut rejected_total = 0;
@@ -2853,6 +2879,7 @@ mod polarity_definer_tests {
 
     #[test]
     fn forall_of_a_negated_nominal_loses_its_excluded_middle() {
+        let _test_env = crate::test_env::read();
         let (tbox, _, _) = normalise(&not_value_forall_case());
         assert!(!tbox.iter().any(is_em_of_nominal), "{tbox:?}");
         // `Q_3 ∧ Q_1 → ⊥` became `Q_3 → nom_e`.
@@ -2871,6 +2898,7 @@ mod polarity_definer_tests {
 
     #[test]
     fn a_negative_occurrence_keeps_the_excluded_middle() {
+        let _test_env = crate::test_env::read();
         // ¬{e} ⊑ B puts the definer of ¬{e} into a body: both polarities.
         let mut ontology = not_value_forall_case();
         ontology.add(Axiom::SubClassOf(
@@ -2883,6 +2911,7 @@ mod polarity_definer_tests {
 
     #[test]
     fn positive_only_negation_loses_its_excluded_middle() {
+        let _test_env = crate::test_env::read();
         // X ⊑ ¬A: Q ≡ ¬A occurs in a head only.
         let mut ontology = Ontology::new();
         ontology.add(Axiom::SubClassOf(

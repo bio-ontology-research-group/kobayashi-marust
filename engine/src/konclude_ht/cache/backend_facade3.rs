@@ -748,6 +748,7 @@ mod tests {
 
     #[test]
     fn backend_role_neighbour_link_label_compatibility_matches_konclude() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let cache = BackendRepresentativeMemoryCache::default();
 
@@ -822,6 +823,7 @@ mod tests {
 
     #[test]
     fn backend_check_requires_deterministic_same_update_matches_konclude() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let cache = BackendRepresentativeMemoryCache::default();
         let label = ctx.alloc_label_cache_item(LabelCacheItem::default());
@@ -904,6 +906,7 @@ mod tests {
 
     #[test]
     fn backend_update_indexed_association_count_moves_between_labels() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let prev_label = ctx.alloc_label_cache_item(LabelCacheItem::default());
         let new_label = ctx.alloc_label_cache_item(LabelCacheItem::default());
@@ -970,6 +973,7 @@ mod tests {
 
     #[test]
     fn backend_update_indexed_association_count_for_association_data_retracks_same_merge_change() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let label = ctx.alloc_label_cache_item(LabelCacheItem::default());
         ctx.label_cache_item_mut(label)
@@ -1022,6 +1026,7 @@ mod tests {
 
     #[test]
     fn backend_minimum_slot_referring_recomputation_id_returns_empty_max() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let ontology = cached_ontology(&mut ctx, OntologyData::new());
         let cache = BackendRepresentativeMemoryCache::default();
@@ -1041,6 +1046,7 @@ mod tests {
 
     #[test]
     fn backend_minimum_slot_referring_recomputation_id_scans_slot_chain() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut query_ontology = OntologyData::new();
         query_ontology.init_ontology_data(55, false);
@@ -1088,6 +1094,7 @@ mod tests {
 
     #[test]
     fn backend_create_cache_reader_allocates_and_prepends_reader() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut cache = BackendRepresentativeMemoryCache::default();
 
@@ -1107,6 +1114,7 @@ mod tests {
 
     #[test]
     fn backend_create_ontology_fixed_cache_reader_pins_fixed_ontology_data() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let ontology = cached_ontology(&mut ctx, OntologyData::new());
         let mut cache = BackendRepresentativeMemoryCache::default();
@@ -1128,6 +1136,7 @@ mod tests {
 
     #[test]
     fn backend_create_ontology_fixed_cache_reader_allows_missing_ontology() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut cache = BackendRepresentativeMemoryCache::default();
 
@@ -1143,6 +1152,7 @@ mod tests {
 
     #[test]
     fn backend_basic_precomputation_activation_matches_ratio_guard() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut ontology = OntologyData::new();
         ontology
@@ -1157,6 +1167,7 @@ mod tests {
 
     #[test]
     fn backend_basic_precomputation_activation_rejects_below_threshold() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut ontology = OntologyData::new();
         ontology
@@ -1171,6 +1182,7 @@ mod tests {
 
     #[test]
     fn backend_basic_precomputation_activation_honors_outer_guards() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut ontology = OntologyData::new();
         ontology
@@ -1187,6 +1199,7 @@ mod tests {
 
     #[test]
     fn backend_activate_basic_precomputation_mode_snapshots_association_vector() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let first = ctx.alloc_individual_assoc_data(IndividualAssociationData::default());
         let second = ctx.alloc_individual_assoc_data(IndividualAssociationData::default());
@@ -1218,6 +1231,7 @@ mod tests {
 
     #[test]
     fn backend_activate_basic_precomputation_mode_rejects_repeated_activation() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut ontology = OntologyData::new();
         ontology.set_basic_precomputation_mode_activation(true);
@@ -1243,6 +1257,7 @@ mod tests {
 
     #[test]
     fn backend_get_individual_associations_extension_data_lazily_installs_map() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let label = ctx.alloc_label_cache_item(LabelCacheItem::default());
         let ontology = cached_ontology(&mut ctx, OntologyData::new());
@@ -1265,6 +1280,7 @@ mod tests {
 
     #[test]
     fn backend_index_individual_label_associations_populates_required_label_maps() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let tracked_label = ctx.alloc_label_cache_item(LabelCacheItem::default());
         let untracked_label = ctx.alloc_label_cache_item(LabelCacheItem::default());
@@ -1324,6 +1340,7 @@ mod tests {
 
     #[test]
     fn backend_get_individual_neighbour_array_index_extension_data_lazily_installs_index() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let label = ctx.alloc_label_cache_item(LabelCacheItem::default());
         let ontology = cached_ontology(&mut ctx, OntologyData::new());
@@ -1354,6 +1371,7 @@ mod tests {
 
     #[test]
     fn backend_get_individual_neighbour_array_index_extension_data_reuses_existing_index() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let label = ctx.alloc_label_cache_item(LabelCacheItem::default());
         let existing =
@@ -1417,6 +1435,7 @@ mod tests {
 
     #[test]
     fn backend_neighbour_array_index_initializer_builds_array_and_hash() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let first_label = ctx.alloc_label_cache_item(LabelCacheItem::default());
         let second_label = ctx.alloc_label_cache_item(LabelCacheItem::default());
@@ -1445,6 +1464,7 @@ mod tests {
 
     #[test]
     fn backend_get_neighbour_array_role_tag_resolving_extension_populates_from_index() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let det_label =
             role_label_with_cache_value(&mut ctx, 101, CacheValueIdentifier::CacheValTagAndRole);
@@ -1526,6 +1546,7 @@ mod tests {
 
     #[test]
     fn backend_get_neighbour_array_role_tag_resolving_extension_builds_missing_index() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let det_label =
             role_label_with_cache_value(&mut ctx, 301, CacheValueIdentifier::CacheValTagAndRole);
@@ -1611,6 +1632,7 @@ mod tests {
 
     #[test]
     fn backend_debug_neighbour_count_accepts_matching_linker_count() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let association = neighbour_count_fixture(&mut ctx, 2, 2);
         let cache = BackendRepresentativeMemoryCache::default();
@@ -1624,6 +1646,7 @@ mod tests {
 
     #[test]
     fn backend_debug_neighbour_count_rejects_mismatch() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let association = neighbour_count_fixture(&mut ctx, 2, 1);
         let cache = BackendRepresentativeMemoryCache::default();
@@ -1637,6 +1660,7 @@ mod tests {
 
     #[test]
     fn backend_debug_neighbour_count_accepts_missing_association() {
+        let _test_env = crate::test_env::read();
         let ctx = CacheContext::new();
         let cache = BackendRepresentativeMemoryCache::default();
 
@@ -1649,6 +1673,7 @@ mod tests {
 
     #[test]
     fn backend_check_association_complete_marks_and_publishes_ontology() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut ontology = OntologyData::new();
         ontology
@@ -1670,6 +1695,7 @@ mod tests {
 
     #[test]
     fn backend_check_association_complete_honors_retrieved_guard() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut ontology = OntologyData::new();
         ontology.init_ontology_data(43, false);
@@ -1684,6 +1710,7 @@ mod tests {
 
     #[test]
     fn backend_check_association_complete_force_overrides_remaining_count() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut ontology = OntologyData::new();
         ontology
@@ -1739,6 +1766,7 @@ mod tests {
 
     #[test]
     fn backend_debug_prioritized_duplicate_walks_indexed_neighbour_ids() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let (testing_array, prop_mark_label) = prioritized_duplicate_fixture(&mut ctx, &[7, 8, 7]);
         let cache = BackendRepresentativeMemoryCache::default();
@@ -1752,6 +1780,7 @@ mod tests {
 
     #[test]
     fn backend_debug_prioritized_duplicate_accepts_missing_index() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let (testing_array, _) = prioritized_duplicate_fixture(&mut ctx, &[1, 2]);
         let other_label = ctx.alloc_label_cache_item(LabelCacheItem::default());
@@ -1780,6 +1809,7 @@ mod tests {
 
     #[test]
     fn backend_copy_neighbour_individual_id_linkers_preserves_order_and_payloads() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let source = neighbour_linker_chain(&mut ctx, &[4, 5, 6]);
         let mut cache = BackendRepresentativeMemoryCache::default();
@@ -1811,6 +1841,7 @@ mod tests {
 
     #[test]
     fn backend_copy_neighbour_individual_id_linkers_accepts_empty_chain() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut cache = BackendRepresentativeMemoryCache::default();
 

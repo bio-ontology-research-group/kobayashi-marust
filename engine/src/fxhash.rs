@@ -150,6 +150,7 @@ mod tests {
 
     #[test]
     fn hash_is_a_function_of_the_bytes_only() {
+        let _test_env = crate::test_env::read();
         let owned = String::from("http://purl.obolibrary.org/obo/NCBIGene_10000");
         assert_eq!(hash_of(owned.as_str()), hash_of(&owned));
         assert_ne!(hash_of("NCBIGene_10000"), hash_of("NCBIGene_10001"));
@@ -158,6 +159,7 @@ mod tests {
 
     #[test]
     fn trailing_character_differences_reach_the_low_bits() {
+        let _test_env = crate::test_env::read();
         // Bucket indexes are the low bits of the hash. Keys that differ only
         // in their last character must not share them.
         let keys: Vec<String> = (0..64)
@@ -174,6 +176,7 @@ mod tests {
 
     #[test]
     fn membership_matches_the_standard_table() {
+        let _test_env = crate::test_env::read();
         let keys: Vec<String> = (0..5_000)
             .map(|i| format!("http://e/x{i}#c{}", i % 97))
             .collect();
@@ -188,6 +191,7 @@ mod tests {
 
     #[test]
     fn one_builder_reproduces_hashes_for_table_lookup() {
+        let _test_env = crate::test_env::read();
         let build = FxBuild::default();
         let mut left = build.build_hasher();
         let mut right = build.build_hasher();

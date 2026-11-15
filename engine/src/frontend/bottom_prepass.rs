@@ -1330,6 +1330,7 @@ mod tests {
 
     #[test]
     fn functional_boolean_clash_propagates_through_subclass_and_exists() {
+        let _test_env = crate::test_env::read();
         let result = run(r#"
             FunctionalDataProperty(<http://x/p>)
             SubClassOf(<http://x/True> DataHasValue(<http://x/p> "true"^^xsd:boolean))
@@ -1354,6 +1355,7 @@ mod tests {
 
     #[test]
     fn equal_boolean_lexical_forms_and_nonfunctional_values_do_not_clash() {
+        let _test_env = crate::test_env::read();
         let equal = run(r#"
             FunctionalDataProperty(<http://x/p>)
             SubClassOf(<http://x/A> DataHasValue(<http://x/p> "true"^^xsd:boolean))
@@ -1370,6 +1372,7 @@ mod tests {
 
     #[test]
     fn lossy_datatype_lexicals_do_not_create_bottom_certificates() {
+        let _test_env = crate::test_env::read();
         let token = run(r#"
             FunctionalDataProperty(<http://x/p>)
             SubClassOf(<http://x/A> DataHasValue(<http://x/p> "a  b"^^xsd:token))
@@ -1393,6 +1396,7 @@ mod tests {
 
     #[test]
     fn exact_integer_and_string_values_still_seed_bottom() {
+        let _test_env = crate::test_env::read();
         let result = run(r#"
             FunctionalDataProperty(<http://x/integerProperty>)
             FunctionalDataProperty(<http://x/stringProperty>)
@@ -1409,6 +1413,7 @@ mod tests {
 
     #[test]
     fn inverse_domain_can_make_a_required_successor_impossible() {
+        let _test_env = crate::test_env::read();
         let (prepass, mut registry) = parse_prepass(
             r#"
             FunctionalObjectProperty(<http://x/dimension>)
@@ -1432,6 +1437,7 @@ mod tests {
 
     #[test]
     fn union_range_requires_every_alternative_to_clash() {
+        let _test_env = crate::test_env::read();
         let ontology = |include_point: bool| {
             let (prepass, mut registry) = parse_prepass(
                 r#"
@@ -1456,6 +1462,7 @@ mod tests {
 
     #[test]
     fn inherited_universal_participates_in_successor_clash() {
+        let _test_env = crate::test_env::read();
         let (prepass, mut registry) = parse_prepass(
             r#"
             FunctionalDataProperty(<http://x/mass>)
@@ -1478,6 +1485,7 @@ mod tests {
 
     #[test]
     fn inverse_range_alternatives_force_the_only_viable_owner_type() {
+        let _test_env = crate::test_env::read();
         let (prepass, mut registry) = parse_prepass(
             r#"
             FunctionalDataProperty(<http://x/has_mass>)
@@ -1508,6 +1516,7 @@ mod tests {
 
     #[test]
     fn functional_values_are_materialized_as_disjoint_horn_markers() {
+        let _test_env = crate::test_env::read();
         let result = run(r#"
             FunctionalDataProperty(<http://x/mass>)
             SubClassOf(<http://x/TrueCarrier> DataHasValue(<http://x/mass> "true"^^xsd:boolean))

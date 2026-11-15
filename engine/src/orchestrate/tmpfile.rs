@@ -52,6 +52,7 @@ mod tests {
 
     #[test]
     fn paths_are_unique_and_reuse_the_process_directory() {
+        let _test_env = crate::test_env::write();
         let first = TempPath::new(".json");
         let second = TempPath::new(".json");
         assert_ne!(first.path(), second.path());

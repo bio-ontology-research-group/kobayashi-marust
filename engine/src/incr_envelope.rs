@@ -275,6 +275,7 @@ mod tests {
     }
     #[test]
     fn exact_allowed_data_owners_are_returned_and_assertions_stay_on_right() {
+        let _test_env = crate::test_env::read();
         let axioms=["DataPropertyDomain(:p ObjectUnionOf(:A :B))", "DataPropertyRange(:p xsd:string)",
             "FunctionalDataProperty(:p)", "SubDataPropertyOf(:p :q)", "DisjointDataProperties(:p :q)"];
         let text=source(&format!("{} DataPropertyAssertion(:p :a \"x\"^^xsd:string) NegativeDataPropertyAssertion(:q :a \"x\") ClassAssertion(ObjectHasValue(:r :a) :b)",axioms.join(" ")));
@@ -286,6 +287,7 @@ mod tests {
     }
     #[test]
     fn unsupported_data_class_positions_and_constructors_decline() {
+        let _test_env = crate::test_env::read();
         for class in ["DataSomeValuesFrom(:p xsd:string)","DataAllValuesFrom(:p xsd:string)",
             "DataHasValue(:p \"x\")","DataMinCardinality(1 :p)","DataMaxCardinality(1 :p)","DataExactCardinality(1 :p)"] {
             if !class.starts_with("DataMinCardinality(1 ") && !class.starts_with("DataExactCardinality(1 ") {
@@ -303,6 +305,7 @@ mod tests {
     }
     #[test]
     fn named_has_value_and_binary_equivalence_mark_exact_original_owners() {
+        let _test_env = crate::test_env::read();
         let axioms = ["SubClassOf(:A DataHasValue(:p \"01\"^^xsd:integer))",
             "SubClassOf(:B DataHasValue(:q \"1\"^^<http://www.w3.org/2001/XMLSchema#int>))",
             "SubClassOf(:C DataHasValue(:p \"è \\\"quoted\\\"\"@en))",
@@ -328,6 +331,7 @@ mod tests {
     }
     #[test]
     fn has_value_and_equivalent_data_respect_resolved_builtin_aliases() {
+        let _test_env = crate::test_env::read();
         for class in ["owl:Thing", "owl:Nothing", "<http://www.w3.org/2002/07/owl#Thing>"] {
             assert!(check(&format!("SubClassOf({class} DataHasValue(:p \"x\"))")).is_none());
         }
@@ -342,6 +346,7 @@ mod tests {
     }
     #[test]
     fn cardinality_one_is_top_level_named_and_marks_exact_owner_hashes() {
+        let _test_env = crate::test_env::read();
         let cards=["SubClassOf(:A DataMinCardinality(1 :p))",
             "SubClassOf(:B DataExactCardinality(1 :q))"];
         let text=source(&format!("{} SubClassOf(:E :F)",cards.join(" ")));
@@ -365,6 +370,7 @@ mod tests {
     }
     #[test]
     fn cardinality_builtin_aliases_decline_and_last_prefix_binding_wins() {
+        let _test_env = crate::test_env::read();
         for local in ["Thing","Nothing"] {
             let iri=format!("http://www.w3.org/2002/07/owl#{local}");
             for token in [format!("owl:{local}"),format!("<{iri}>")] {
@@ -394,6 +400,7 @@ mod tests {
     }
     #[test]
     fn resolved_universal_roles_decline_including_assertions_and_partial_aliases() {
+        let _test_env = crate::test_env::read();
         for role in ["topObjectProperty","topDataProperty","bottomDataProperty"] {
             let full=format!("http://www.w3.org/2002/07/owl#{role}");
             for spelling in [format!("owl:{role}"),format!("<{full}>")] {
@@ -419,6 +426,7 @@ mod tests {
     }
     #[test]
     fn vacuous_top_object_super_role_is_skipped_only_in_that_slot() {
+        let _test_env = crate::test_env::read();
         // The tautology R <= U (role or chain on the left) does not decline.
         for axiom in [
             "SubObjectPropertyOf(:r owl:topObjectProperty)",
@@ -467,6 +475,7 @@ mod tests {
     }
     #[test]
     fn unicode_literals_preserve_safe_token_boundaries_only() {
+        let _test_env = crate::test_env::read();
         // These code points have UTF-8 continuation bytes 0x85 or 0xA0,
         // which the legacy tokenizer mistakes for whitespace in bare atoms.
         let literal = "è l’altra \u{85}\u{a0}\u{105}\u{120}";
@@ -491,6 +500,7 @@ mod tests {
 
     #[test]
     fn optional_parser_bounds_decline_without_rejecting_source_globally() {
+        let _test_env = crate::test_env::read();
         assert!(check("DataPropertyAssertion(:p :a \"\u{120}\")").is_some());
         let nested=format!("SubClassOf(:A {}:B{})","ObjectComplementOf(".repeat(257),")".repeat(257));
         assert!(check(&nested).is_none());

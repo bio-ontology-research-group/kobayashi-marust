@@ -2033,6 +2033,7 @@ mod tests {
 
     #[test]
     fn native_nominal_prefix_equal_is_sufficient() {
+        let _test_env = crate::test_env::read();
         let (prefixes, saturated) = nominal_prefix_fixture();
         assert!(!native_nominal_prefix_is_insufficient(
             Some(&prefixes),
@@ -2043,6 +2044,7 @@ mod tests {
 
     #[test]
     fn native_nominal_prefix_missing_snapshot_fails_closed() {
+        let _test_env = crate::test_env::read();
         let (_, saturated) = nominal_prefix_fixture();
         assert!(native_nominal_prefix_is_insufficient(
             None,
@@ -2053,6 +2055,7 @@ mod tests {
 
     #[test]
     fn native_nominal_prefix_missing_literal_is_insufficient() {
+        let _test_env = crate::test_env::read();
         let (prefixes, _) = nominal_prefix_fixture();
         assert!(native_nominal_prefix_is_insufficient(
             Some(&prefixes),
@@ -2063,6 +2066,7 @@ mod tests {
 
     #[test]
     fn native_nominal_prefix_polarity_mismatch_is_insufficient() {
+        let _test_env = crate::test_env::read();
         let (prefixes, _) = nominal_prefix_fixture();
         let saturated = HashSet::from_iter([(ConceptId::new(17), true)]);
         assert!(native_nominal_prefix_is_insufficient(
@@ -2074,6 +2078,7 @@ mod tests {
 
     #[test]
     fn s09_disjunct_common_extraction_adds_only_common_label() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let make_concept = |ctx: &mut CalculationAlgorithmContextBase, tag| {
@@ -2178,6 +2183,7 @@ mod tests {
 
     #[test]
     fn s09_has_next_critical_concepts_reads_critical_queue() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let node = ctx
@@ -2196,6 +2202,7 @@ mod tests {
 
     #[test]
     fn s09_add_critical_concept_descriptor_enqueues_typed_queue_and_node_once() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         algo.conf_add_critical_concepts_to_queues = true;
         let mut ctx = CalculationAlgorithmContextBase::new();
@@ -2275,6 +2282,7 @@ mod tests {
 
     #[test]
     fn s09_add_critical_concept_descriptor_directly_marks_insufficient() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         algo.conf_directly_critical_to_insufficient = true;
         let mut ctx = CalculationAlgorithmContextBase::new();
@@ -2305,6 +2313,7 @@ mod tests {
 
     #[test]
     fn s09_critical_or_fanout_retests_only_negated_copy_dependents() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let make_atom = |ctx: &mut CalculationAlgorithmContextBase, tag| {
@@ -2391,6 +2400,7 @@ mod tests {
 
     #[test]
     fn s09_add_critical_concept_for_dependent_nodes_enqueues_all_without_flag_check() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         algo.conf_add_critical_concepts_to_queues = true;
         let mut ctx = CalculationAlgorithmContextBase::new();
@@ -2449,6 +2459,7 @@ mod tests {
 
     #[test]
     fn s09_add_critical_concept_for_dependent_nodes_respects_direct_or_indirect_flags() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         algo.conf_add_critical_concepts_to_queues = true;
         let mut ctx = CalculationAlgorithmContextBase::new();

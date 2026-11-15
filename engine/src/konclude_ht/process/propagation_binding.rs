@@ -1609,6 +1609,7 @@ mod tests {
 
     #[test]
     fn propagation_binding_reapply_hash_add_take_and_iterate() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let concept = ConceptId::new(17);
         let pair = (41, concept);
@@ -1680,6 +1681,7 @@ mod tests {
 
     #[test]
     fn propagation_binding_set_reapply_descriptor_updates_hash_and_map() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let concept = ConceptId::new(23);
         let node = ctx.alloc_node(IndividualProcessNode::default());
@@ -1767,6 +1769,7 @@ mod tests {
 
     #[test]
     fn representative_transition_extension_copies_cursors_and_maps() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let source_set = ctx.alloc_prop_binding_set(PropagationBindingSet::new(INVALID));
         let source_ext = PropagationBindingSet::get_propagation_representative_transition_extension(

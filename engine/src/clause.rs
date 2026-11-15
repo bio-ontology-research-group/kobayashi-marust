@@ -441,6 +441,7 @@ mod strengthens_tests {
     /// derived antichain, so this is the fixpoint-preservation contract.
     #[test]
     fn strengthens_matches_test_strengthening_and_subset_oracle() {
+        let _test_env = crate::test_env::read();
         let (a, b, c) = (cpt(1, X), cpt(2, X), cpt(3, X));
         let (ha, hb, hc) = (Lit::P(cpt(10, X)), Lit::P(cpt(11, X)), Lit::P(cpt(12, X)));
         let bodies = vec![
@@ -489,6 +490,7 @@ mod strengthens_tests {
     /// unchanged, now expressed through `strengthens` on both directions.
     #[test]
     fn test_strengthening_three_way_still_consistent() {
+        let _test_env = crate::test_env::read();
         let (a, b) = (cpt(1, X), cpt(2, X));
         let x = cc(vec![a], vec![]); // body {a}
         let y = cc(vec![a, b], vec![]); // body {a,b} ⊋ {a}
@@ -530,6 +532,7 @@ mod maximal_head_tests {
 
     #[test]
     fn incomparable_same_term_concepts_are_both_maximal() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let left = sig.concept("Left");
         let right = sig.concept("Right");
@@ -593,6 +596,7 @@ mod maximal_head_tests {
 
     #[test]
     fn max_head_bits_matches_linear_lengths_masks_and_combinators() {
+        let _test_env = crate::test_env::read();
         let mut masks = vec![0, u64::MAX, 0xaaaa_aaaa_aaaa_aaaa,
                              0x5555_5555_5555_5555, 0b10101, 1 | (1 << 63)];
         masks.extend((0..64).map(|bit| 1u64 << bit));
@@ -619,6 +623,7 @@ mod maximal_head_tests {
 
     #[test]
     fn max_head_bits_preserves_independent_public_field_mutations() {
+        let _test_env = crate::test_env::read();
         let mut clause = ContextClause {
             body: Vec::new(), head: public_head(70), max_head_mask: 1 << 63,
         };
@@ -637,6 +642,7 @@ mod maximal_head_tests {
 
     #[test]
     fn max_head_bits_matches_normalized_root_and_nonroot_clauses() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         for i in 0..9 { sig.concept(&format!("C{i}")); }
         for i in 0..5 { sig.role(&format!("R{i}")); }

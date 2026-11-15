@@ -1293,6 +1293,7 @@ mod tests {
 
     #[test]
     fn store_individual_incompletely_marked_marks_and_clears_problematic_entries() {
+        let _test_env = crate::test_env::read();
         let mut cache = BackendRepresentativeMemoryCache::new(0, "test", 0);
         let mut cache_context = CacheContext::new();
         let mut ontology = OntologyData::new();
@@ -1364,6 +1365,7 @@ mod tests {
 
     #[test]
     fn set_updated_individual_association_data_grows_vector_and_counts_first_store() {
+        let _test_env = crate::test_env::read();
         let mut cache = BackendRepresentativeMemoryCache::new(0, "test", 0);
         let mut cache_context = CacheContext::new();
         let ontology = cache_context.alloc_ontology_data(OntologyData::new());

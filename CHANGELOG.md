@@ -4,6 +4,14 @@
 
 ### Engine
 
+- Library tests no longer race on the process environment (E13). One
+  crate-wide read/write lock (`src/test_env.rs`) replaces the four
+  per-module locks that did not exclude each other; every library test
+  takes it, exclusively when it changes the environment or drives code
+  that does (824 tests), shared otherwise (2,356 tests). Three consecutive
+  full `cargo test --release --lib` runs now fail the same 21 tests, all of
+  which need the Lean checker binaries. The suite takes about 25 s
+  instead of 5 s.
 - Fixed (E19, wrong answer): the native bridge reported `{a} ⊓ {b}`
   satisfiable when a functional data property separates `a` from `b` and
   a data value is asserted for both individuals (`g(a,0)`, `g(b,255)`,

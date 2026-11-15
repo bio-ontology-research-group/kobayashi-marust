@@ -264,6 +264,7 @@ mod tests {
 
     #[test]
     fn influenced_nominal_set_reports_first_insert_only() {
+        let _test_env = crate::test_env::read();
         let mut set = SaturationInfluencedNominalSet::new(INVALID);
 
         assert!(!set.is_nominal_influenced(7));
@@ -274,6 +275,7 @@ mod tests {
 
     #[test]
     fn influenced_nominal_set_copies_membership() {
+        let _test_env = crate::test_env::read();
         let mut source = SaturationInfluencedNominalSet::new(INVALID);
         source.set_nominal_influenced(3);
 
@@ -287,6 +289,7 @@ mod tests {
 
     #[test]
     fn nominal_dependent_hash_prepends_linker_heads() {
+        let _test_env = crate::test_env::read();
         let mut hash = SaturationNominalDependentNodeHash::new(INVALID);
         let first = SaturationNominalDependentNodeDataId::new(1);
         let second = SaturationNominalDependentNodeDataId::new(2);
@@ -305,6 +308,7 @@ mod tests {
 
     #[test]
     fn nominal_dependent_data_stores_node_type_and_next() {
+        let _test_env = crate::test_env::read();
         let mut data = SaturationNominalDependentNodeData::new(INVALID);
         let next = SaturationNominalDependentNodeDataId::new(4);
 

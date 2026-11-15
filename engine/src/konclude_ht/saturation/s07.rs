@@ -2166,6 +2166,7 @@ mod tests {
 
     #[test]
     fn s07_process_next_successor_extensions_missing_queue_returns_false() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -2177,6 +2178,7 @@ mod tests {
 
     #[test]
     fn s07_successor_deadline_interrupts_cyclic_qualified_notifications() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         algo.conf_functional_concepts_extension_processing = true;
         let mut ctx = CalculationAlgorithmContextBase::new();
@@ -2214,6 +2216,7 @@ mod tests {
 
     #[test]
     fn s07_successor_work_budget_preserves_pending_work_and_allows_a_finite_drain() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let node = make_sat_node_with_individual(&mut ctx, 71);
@@ -2239,6 +2242,7 @@ mod tests {
 
     #[test]
     fn s07_expired_successor_deadline_preserves_pending_work() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let node = make_sat_node_with_individual(&mut ctx, 71);
@@ -2258,6 +2262,7 @@ mod tests {
 
     #[test]
     fn s07_process_next_successor_extensions_clears_unprocessed_node() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let node = ctx
@@ -2277,6 +2282,7 @@ mod tests {
 
     #[test]
     fn s07_process_next_successor_extensions_retains_current_node_with_appended_work() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         algo.conf_requeue_orphaned_saturation_work = true;
         // Isolate the queue-driver invariant: a callback has appended ALL-role
@@ -2323,6 +2329,7 @@ mod tests {
 
     #[test]
     fn s07_legacy_schedule_does_not_retain_disabled_extension_work() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         algo.conf_requeue_orphaned_saturation_work = false;
         algo.conf_all_concepts_extension_processing = false;
@@ -2358,6 +2365,7 @@ mod tests {
 
     #[test]
     fn s07_process_next_successor_extensions_skips_separated_node() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let node = ctx
@@ -2382,6 +2390,7 @@ mod tests {
 
     #[test]
     fn s07_add_successor_extensions_all_concept_adds_all_operands() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = make_role(&mut ctx, 7991);
@@ -2445,6 +2454,7 @@ mod tests {
 
     #[test]
     fn s07_add_successor_extensions_all_concept_negated_some_flips_operands() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = make_role(&mut ctx, 8001);
@@ -2493,6 +2503,7 @@ mod tests {
 
     #[test]
     fn s07_all_successor_extension_data_promotes_only_role_to_hash() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role_a = make_role(&mut ctx, 8011);
         let role_b = make_role(&mut ctx, 8013);
@@ -2548,6 +2559,7 @@ mod tests {
 
     #[test]
     fn s07_process_successor_all_initializes_clears_flags_and_fans_out() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut source = make_sat_node_with_individual(&mut ctx, 8001);
@@ -2598,6 +2610,7 @@ mod tests {
 
     #[test]
     fn s07_process_successor_all_drains_role_process_linkers() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role_a = make_role(&mut ctx, 8005);
@@ -2666,6 +2679,7 @@ mod tests {
 
     #[test]
     fn s07_process_successor_functional_initializes_and_clears_successor_queue() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut source = make_sat_node_with_individual(&mut ctx, 8011);
@@ -2693,6 +2707,7 @@ mod tests {
 
     #[test]
     fn s07_process_successor_functional_drains_role_linkers() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role_a = make_role(&mut ctx, 8013);
@@ -2757,6 +2772,7 @@ mod tests {
 
     #[test]
     fn s07_process_successor_functional_drains_qualified_atmost_and_fans_out() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         algo.conf_functional_concepts_extension_processing = true;
@@ -2836,6 +2852,7 @@ mod tests {
 
     #[test]
     fn s07_add_successor_extension_to_processing_queue_creates_all_face_and_queues_once() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut node = ctx
@@ -2886,6 +2903,7 @@ mod tests {
 
     #[test]
     fn s07_add_new_linked_extension_processing_role_queues_all_extension_from_backward_reapply() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         algo.conf_concepts_extension_processing = true;
         let mut ctx = CalculationAlgorithmContextBase::new();
@@ -2950,6 +2968,7 @@ mod tests {
 
     #[test]
     fn s07_add_new_linked_extension_processing_role_queues_functional_extension() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         algo.conf_concepts_extension_processing = true;
         let mut ctx = CalculationAlgorithmContextBase::new();
@@ -3009,6 +3028,7 @@ mod tests {
 
     #[test]
     fn s07_all_process_role_extension_fans_out_to_initialized_dependents() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = make_role(&mut ctx, 3031);
@@ -3066,6 +3086,7 @@ mod tests {
 
     #[test]
     fn s07_functional_linked_successor_fanout_queues_all_and_registers_initialized() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = make_role(&mut ctx, 3041);
@@ -3120,6 +3141,7 @@ mod tests {
 
     #[test]
     fn s07_functional_linked_predecessor_fanout_queues_only_initialized_dependents() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = make_role(&mut ctx, 3051);
@@ -3174,6 +3196,7 @@ mod tests {
 
     #[test]
     fn s07_functionality_added_fanout_queues_and_registers_without_initialized_guard() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = make_role(&mut ctx, 3061);
@@ -3215,6 +3238,7 @@ mod tests {
 
     #[test]
     fn s07_all_concept_extension_processing_role_queues_flags_and_deduplicates() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = make_role(&mut ctx, 3067);
@@ -3284,6 +3308,7 @@ mod tests {
 
     #[test]
     fn s07_functional_concept_extension_processing_role_queues_and_deduplicates() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = make_role(&mut ctx, 3071);
@@ -3332,6 +3357,7 @@ mod tests {
 
     #[test]
     fn s07_qualified_functional_atmost_extension_processing_queues_and_deduplicates() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = make_role(&mut ctx, 3081);
@@ -3394,6 +3420,7 @@ mod tests {
 
     #[test]
     fn s07_add_linked_successor_node_for_role_assertion_adds_positive_super_roles() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = make_role(&mut ctx, 1001);
@@ -3457,6 +3484,7 @@ mod tests {
 
     #[test]
     fn s07_add_linked_successor_node_for_role_assertion_inversion_selects_negated_supers() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = make_role(&mut ctx, 1011);
@@ -3513,6 +3541,7 @@ mod tests {
 
     #[test]
     fn s07_add_linked_successor_node_for_concept_uses_existential_reference_first() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = make_role(&mut ctx, 2011);
@@ -3565,6 +3594,7 @@ mod tests {
 
     #[test]
     fn s07_add_linked_successor_node_for_concept_uses_operand_reference_when_no_special_node() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = make_role(&mut ctx, 2021);
@@ -3607,6 +3637,7 @@ mod tests {
 
     #[test]
     fn s07_add_linked_successor_node_for_concept_uses_top_only_without_operands() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = make_role(&mut ctx, 2031);
@@ -3674,6 +3705,7 @@ mod tests {
 
     #[test]
     fn s07_add_linked_successor_node_for_concept_adds_value_nominal_successor() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = make_role(&mut ctx, 2041);
@@ -3725,6 +3757,7 @@ mod tests {
 
     #[test]
     fn s07_collect_linked_successor_nodes_collects_concepts_and_sets_watermark() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = make_role(&mut ctx, 2051);
@@ -3778,6 +3811,7 @@ mod tests {
 
     #[test]
     fn s07_collect_linked_successor_nodes_collects_only_new_role_assertions() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let role = make_role(&mut ctx, 2061);

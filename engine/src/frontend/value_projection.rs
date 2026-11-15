@@ -308,6 +308,7 @@ mod tests {
 
     #[test]
     fn functional_values_become_disjoint_digits() {
+        let _test_env = crate::test_env::read();
         let tbox = functional_tbox();
         let axioms: Vec<&Axiom> = tbox.iter().collect();
         let data = [assertion("u", "a", "\"1\"^^xsd:integer"), assertion("v", "b", "\"2\"^^xsd:integer"),
@@ -333,6 +334,7 @@ mod tests {
 
     #[test]
     fn any_other_use_or_undecided_literal_keeps_the_group() {
+        let _test_env = crate::test_env::read();
         let mut tbox = functional_tbox();
         tbox.push(Axiom::SubClassOf(name("A"), Concept::Exists(role("u"), Box::new(name("__dt__xsd:integer")))));
         let axioms: Vec<&Axiom> = tbox.iter().collect();
@@ -352,6 +354,7 @@ mod tests {
 
     #[test]
     fn class_conditional_bounds_guard_their_clash() {
+        let _test_env = crate::test_env::read();
         let tbox = vec![Axiom::SubClassOf(name("C"), Concept::AtMost(1, role("u"), Box::new(Concept::Top)))];
         let axioms: Vec<&Axiom> = tbox.iter().collect();
         let data = [assertion("u", "a", "\"p\""), assertion("u", "a", "\"q\"")];

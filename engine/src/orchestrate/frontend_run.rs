@@ -665,6 +665,7 @@ mod tests {
     /// serde's canonical encoding) for frontend inputs of that shape.
     #[test]
     fn positive_el_input_round_trips() {
+        let _test_env = crate::test_env::write();
         // The handoff depends on KM_ROUTE and KM_NO_INPROC_ELC, which other
         // tests set while they hold this lock.
         let _environment_lock = crate::frontend::lock_test_environment();
@@ -701,6 +702,7 @@ mod tests {
 
     #[test]
     fn general_ht_typed_handoff_is_bounded_but_shoq_is_not() {
+        let _test_env = crate::test_env::write();
         use crate::routing::Route;
 
         assert!(ht_typed_handoff_candidate(
@@ -728,6 +730,7 @@ mod tests {
 
     #[test]
     fn exact_el_screen_admits_inverse_rich_el_and_rejects_non_el_constructors() {
+        let _test_env = crate::test_env::write();
         assert!(source_looks_exact_el(
             "Ontology(SubClassOf(<A> ObjectSomeValuesFrom(<r> <B>)) \
              SubClassOf(ObjectIntersectionOf(<A> <B>) <C>) \
@@ -764,6 +767,7 @@ mod tests {
 
     #[test]
     fn in_process_el_band_sits_between_the_small_and_giant_bounds() {
+        let _test_env = crate::test_env::write();
         assert!(!in_process_el_band(IN_PROCESS_OFN_MAX - 1));
         assert!(in_process_el_band(IN_PROCESS_OFN_MAX));
         assert!(in_process_el_band(MEASURED_IN_PROCESS_EL_OFN_MAX - 1));
@@ -780,6 +784,7 @@ mod tests {
 
     #[test]
     fn in_process_frontend_retains_flat_el_with_unused_punned_properties() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = crate::frontend::lock_test_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();
         struct RestoreInprocElc(Option<std::ffi::OsString>);
@@ -833,6 +838,7 @@ mod tests {
 
     #[test]
     fn in_process_frontend_writes_the_el_binary_sidecar_for_an_uncached_el_route() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = crate::frontend::lock_test_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();
         std::env::set_var("KM_ROUTE", "elc");
@@ -863,6 +869,7 @@ mod tests {
 
     #[test]
     fn in_process_frontend_retains_the_selected_shoq_input() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = crate::frontend::lock_test_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();
         // Route selection itself has a separate profile regression test. This
@@ -882,6 +889,7 @@ mod tests {
 
     #[test]
     fn in_process_frontend_retains_the_selected_general_ht_input() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = crate::frontend::lock_test_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();
         std::env::set_var("KM_ROUTE", "ht_general");
@@ -899,6 +907,7 @@ mod tests {
 
     #[test]
     fn in_process_frontend_retains_the_selected_bridge_input() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = crate::frontend::lock_test_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();
         std::env::set_var("KM_ROUTE", "ht_bridge");
@@ -916,6 +925,7 @@ mod tests {
 
     #[test]
     fn giant_rbox_scan_detects_tokens_across_chunk_boundaries() {
+        let _test_env = crate::test_env::write();
         let path = TempPath::new(".ofn");
         let token = b"TransitiveObjectProperty(";
         let mut input = vec![b'x'; (64 << 10) - token.len() / 2];
@@ -927,6 +937,7 @@ mod tests {
 
     #[test]
     fn giant_rbox_scan_accepts_plain_el_source() {
+        let _test_env = crate::test_env::write();
         let path = TempPath::new(".ofn");
         std::fs::write(
             path.path(),
@@ -938,6 +949,7 @@ mod tests {
 
     #[test]
     fn giant_rbox_scan_checks_tail_then_full_source() {
+        let _test_env = crate::test_env::write();
         let tail_path = TempPath::new(".ofn");
         let mut tail_input = vec![b'x'; (1 << 20) + 4096];
         tail_input.extend_from_slice(b"InverseObjectProperties(<urn:r> <urn:s>)");

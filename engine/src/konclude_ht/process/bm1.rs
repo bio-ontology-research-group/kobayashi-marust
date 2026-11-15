@@ -670,6 +670,7 @@ mod tests {
 
     #[test]
     fn bm_candidate_linkers_split_nominal_and_take_in_konclude_order() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let blockable_node = alloc_node(&mut ctx, IndividualType::Blockable);
         let nominal_node = alloc_node(&mut ctx, IndividualType::Nominal);
@@ -736,6 +737,7 @@ mod tests {
 
     #[test]
     fn bm_qualify_candidate_linkers_append_chain_to_existing_head() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = alloc_node(&mut ctx, IndividualType::Blockable);
         let edge = alloc_edge(&mut ctx, node, TrackPointId::new(81));
@@ -761,6 +763,7 @@ mod tests {
 
     #[test]
     fn bm_init_processing_restriction_copies_and_resets_priority_offset() {
+        let _test_env = crate::test_env::read();
         let mut prev = BranchingMergingProcessingRestrictionSpecification::default();
         prev.set_priority_offset(12.5);
         prev.next_restriction = crate::konclude_ht::process::RestrictionSpecId::new(99);

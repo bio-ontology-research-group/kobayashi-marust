@@ -1208,6 +1208,7 @@ mod tests {
 
     #[test]
     fn s03_apply_and_does_not_replay_operands_into_copy_dependents() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -1268,6 +1269,7 @@ mod tests {
 
     #[test]
     fn s03_apply_implication_rule_executes_single_operand() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -1311,6 +1313,7 @@ mod tests {
 
     #[test]
     fn s03_apply_implication_rule_queues_next_trigger() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -1358,6 +1361,7 @@ mod tests {
 
     #[test]
     fn s03_tableau_dispatch_positive_bottom_flags_clash() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -1382,6 +1386,7 @@ mod tests {
 
     #[test]
     fn s03_tableau_dispatch_unknown_operator_uses_else_rule() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -1407,6 +1412,7 @@ mod tests {
 
     #[test]
     fn s03_tableau_dispatch_positive_implication_executes_rule() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -1450,6 +1456,7 @@ mod tests {
 
     #[test]
     fn s03_test_automate_transition_operands_addable_missing_aqall_operand() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -1478,6 +1485,7 @@ mod tests {
 
     #[test]
     fn s03_test_automate_transition_operands_addable_existing_operand_not_addable() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -1509,6 +1517,7 @@ mod tests {
 
     #[test]
     fn s03_test_automate_transition_operands_addable_role_mismatch_is_false() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 
@@ -1543,6 +1552,7 @@ mod tests {
 
     #[test]
     fn s03_test_automate_transition_operands_addable_recurses_through_aqand() {
+        let _test_env = crate::test_env::read();
         let mut algo = SaturationTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
 

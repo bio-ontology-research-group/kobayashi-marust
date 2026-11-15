@@ -412,6 +412,7 @@ mod tests {
 
     #[test]
     fn arena_clear_preserves_storage_but_invalidates_objects_and_epochs() {
+        let _test_env = crate::test_env::read();
         let mut arena = Arena::new();
         for value in 0..32 {
             arena.push(value);
@@ -439,6 +440,7 @@ mod tests {
 
     #[test]
     fn arena_releasing_clear_drops_storage_and_preserves_growth_policy() {
+        let _test_env = crate::test_env::read();
         let mut arena = Arena::new_tight();
         for value in 0..32_768 {
             arena.push(value);
@@ -459,6 +461,7 @@ mod tests {
 
     #[test]
     fn tight_arena_bounds_capacity_without_changing_ids_or_epoch_rollback() {
+        let _test_env = crate::test_env::read();
         let mut arena = Arena::new_tight();
         for value in 0..10_000 {
             let id = arena.push(value);
@@ -483,6 +486,7 @@ mod tests {
     /// stack of (length, full snapshot) per open epoch.
     #[test]
     fn lazy_epoch_frames_match_eager_snapshots_under_random_operations() {
+        let _test_env = crate::test_env::read();
         let mut seed: u64 = 0x9e37_79b9_7f4a_7c15;
         let mut next = move |bound: u64| {
             seed ^= seed << 13;

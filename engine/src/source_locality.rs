@@ -2038,6 +2038,7 @@ mod tests {
 
     #[test]
     fn scan_splits_statements_and_header() {
+        let _test_env = crate::test_env::read();
         let s = scan(SRC).unwrap();
         assert_eq!(s.statements.len(), 6);
         assert_eq!(s.statements[0].kind, StmtKind::Declaration);
@@ -2047,6 +2048,7 @@ mod tests {
 
     #[test]
     fn modules_follow_bottom_locality() {
+        let _test_env = crate::test_env::read();
         let (_, ix) = index(SRC);
         let a = ix.symbol("http://e/A").unwrap();
         let none = vec![false; ix.axiom_count()];
@@ -2088,6 +2090,7 @@ mod tests {
 
     #[test]
     fn depth_first_affected_matches_per_class_modules() {
+        let _test_env = crate::test_env::read();
         let src = "Prefix(:=<http://e/>)\nOntology(<http://e/o>\n\
             SubClassOf(:A :B)\nSubClassOf(:B :C)\nSubClassOf(:C :A)\n\
             EquivalentClasses(:D ObjectIntersectionOf(:B ObjectSomeValuesFrom(:r :E)))\n\
@@ -2200,6 +2203,7 @@ mod tests {
 
     #[test]
     fn masked_affected_forest_ignores_deleted_parent_owners() {
+        let _test_env = crate::test_env::read();
         let src = masked_fixture(&["SubClassOf(:A :B)", "SubClassOf(:B :C)", "SubClassOf(:D :E)"]);
         let (_, ix) = index(&src);
         let mut disabled = vec![false; ix.axiom_count()];
@@ -2214,6 +2218,7 @@ mod tests {
 
     #[test]
     fn masked_modules_match_fresh_across_successive_deletion_subsets() {
+        let _test_env = crate::test_env::read();
         let src = masked_fixture(&[
             "SubClassOf(:A :B)", "SubClassOf(:B :C)", "SubClassOf(:C :A)",
             "SubClassOf(:D :E)", "SubClassOf(:E :F)",
@@ -2231,6 +2236,7 @@ mod tests {
 
     #[test]
     fn masked_global_and_nominal_axioms_match_fresh_reduced_sources() {
+        let _test_env = crate::test_env::read();
         let global = masked_fixture(&[
             "SubClassOf(owl:Thing :G)", "SubClassOf(:G :H)",
             "ReflexiveObjectProperty(:r)", "ObjectPropertyDomain(:r :D)",
@@ -2257,6 +2263,7 @@ mod tests {
 
     #[test]
     fn told_proofs_follow_inclusions_conjunctions_and_definitions() {
+        let _test_env = crate::test_env::read();
         let src = "Prefix(:=<http://e/>)\nOntology(<http://e/o>\n\
             SubClassOf(:A :B)\nSubClassOf(:B ObjectIntersectionOf(:C :D))\n\
             EquivalentClasses(:E ObjectIntersectionOf(:C ObjectUnionOf(:A :F)))\n\
@@ -2278,6 +2285,7 @@ mod tests {
 
     #[test]
     fn told_queries_traverse_thing_and_query_local_global_seeds() {
+        let _test_env = crate::test_env::read();
         let text="Prefix(:=<urn:global#>) Ontology(SubClassOf(:A :B) SubClassOf(owl:Thing :G) SubClassOf(:G :H) SubClassOf(:Seed :Tail))";
         let scanned=scan(text).unwrap(); let proofs=ToldProofs::build(text,&scanned);
         let none=crate::fxhash::FxHashSet::default();
@@ -2293,6 +2301,7 @@ mod tests {
 
     #[test]
     fn told_global_role_seeds_come_only_from_actual_new_source() {
+        let _test_env = crate::test_env::read();
         let old="Prefix(:=<urn:global#>) Ontology(SubClassOf(:A :B) SubClassOf(:G :H) ReflexiveObjectProperty(:r) SubObjectPropertyOf(:r :s) ObjectPropertyRange(:s :G))";
         let old_scan=scan(old).unwrap(); let proofs=ToldProofs::build(old,&old_scan);
         let none=crate::fxhash::FxHashSet::default();
@@ -2307,6 +2316,7 @@ mod tests {
 
     #[test]
     fn told_global_resolved_iris_do_not_use_colliding_source_spellings() {
+        let _test_env = crate::test_env::read();
         let text="Prefix(:=<urn:base#>) Prefix(urn:=<urn:other#>) Ontology(SubClassOf(:S :T) SubClassOf(urn:A :Wrong) SubClassOf(<urn:A> :Right) SubClassOf(urn:Missing :Wrong))";
         let scanned=scan(text).unwrap(); let proofs=ToldProofs::build(text,&scanned);
         let none=crate::fxhash::FxHashSet::default();
@@ -2320,6 +2330,7 @@ mod tests {
 
     #[test]
     fn typed_data_has_value_keeps_tbox_mode() {
+        let _test_env = crate::test_env::read();
         let src = "Prefix(:=<http://e/>)\nPrefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)\nOntology(<http://e/o>\n\
             SubClassOf(:A DataHasValue(:p \"1.0\"^^xsd:float))\nSubClassOf(:B :A)\nClassAssertion(:B :a)\n)\n";
         let s = scan(src).unwrap();
@@ -2330,6 +2341,7 @@ mod tests {
 
     #[test]
     fn tbox_mode_requires_universal_role_free_axioms() {
+        let _test_env = crate::test_env::read();
         let plain = "Prefix(:=<http://e/>)\nOntology(<http://e/o>\nSubClassOf(:A :B)\n\
             ClassAssertion(:A :a)\nObjectPropertyAssertion(:r :a :b)\n)\n";
         let s = scan(plain).unwrap();
@@ -2418,6 +2430,7 @@ mod tests {
 
     #[test]
     fn precise_signature_keeps_selected_individual_declarations_without_locality_feedback() {
+        let _test_env = crate::test_env::read();
         let text = "Prefix(:=<urn:precise#>) Ontology(Declaration(Class(:A)) Declaration(Class(:B)) \
             Declaration(Class(:Meta)) Declaration(NamedIndividual(:A)) \
             ClassAssertion(:Meta :A) SubClassOf(:A :B))";
@@ -2446,6 +2459,7 @@ mod tests {
 
     #[test]
     fn precise_nominal_assertion_and_fixed_literal_positions_preserve_unknown_fallback() {
+        let _test_env = crate::test_env::read();
         let header = "Prefix(:=<urn:precise#>) Ontology(";
         for body in ["ClassAssertion(:Meta :A)", "ObjectPropertyAssertion(:r :A :Z)",
             "NegativeObjectPropertyAssertion(:r :A :Z)", "DataPropertyAssertion(:p :A \"v\"^^<urn:fixed>)",
@@ -2473,6 +2487,7 @@ mod tests {
 
     #[test]
     fn precise_occurrence_and_locality_records_survive_exact_donor_replay() {
+        let _test_env = crate::test_env::read();
         let header = "Prefix(:=<urn:precise#>) Prefix(o:=<http://www.w3.org/2002/07/owl#>) Ontology(";
         let body = "Declaration(Class(:A)) Declaration(NamedIndividual(:A)) Declaration(NamedIndividual(o:Thing)) \
             ClassAssertion(:Meta :A) ClassAssertion(:Meta o:Thing) ObjectPropertyAssertion(:r :A :Z) \
@@ -2495,6 +2510,7 @@ mod tests {
 
     #[test]
     fn compiled_full_reuse_matches_fresh_across_all_64_subsets() {
+        let _test_env = crate::test_env::read();
         let axioms = ["SubClassOf(:A :B)", "SubClassOf(:B ObjectSomeValuesFrom(:r :C))",
             "ClassAssertion(:A :a)", "EquivalentClasses(:D ObjectIntersectionOf(:B :E))",
             "SubObjectPropertyOf(:r :s)", "DisjointClasses(:B :F)"];
@@ -2524,6 +2540,7 @@ mod tests {
 
     #[test]
     fn compiled_full_reuse_recomputes_class_kinds_and_local_flags() {
+        let _test_env = crate::test_env::read();
         let header = "Prefix(:=<http://e/>) Ontology(<http://e/o>\n";
         let old_text = format!("{header}Declaration(Class(:A)) Declaration(ObjectProperty(:A))\nSubObjectPropertyOf(:A :r)\nSubClassOf(:B ObjectUnionOf(:C :D))\nSubClassOf(:E ObjectOneOf(:a))\nClassAssertion(:E :a)\n)");
         let old = LocalityIndex::build(&old_text, &scan(&old_text).unwrap(), false).unwrap();
@@ -2538,6 +2555,7 @@ mod tests {
 
     #[test]
     fn tbox_assertion_guard_recognizes_resolved_universal_role_aliases() {
+        let _test_env = crate::test_env::read();
         for (prefixes, role, universal) in [
             ("", "owl:topObjectProperty", true),
             ("", "<http://www.w3.org/2002/07/owl#topObjectProperty>", true),
@@ -2569,6 +2587,7 @@ mod tests {
 
     #[test]
     fn compiled_full_reuse_requires_actual_full_provenance() {
+        let _test_env = crate::test_env::read();
         let text = "Prefix(:=<http://e/>) Ontology(<http://e/o> SubClassOf(:A :B) ClassAssertion(ObjectAllValuesFrom(owl:topObjectProperty :B) :a))";
         let scanned = scan(text).unwrap();
         let refused = LocalityIndex::build_mode(text, &scanned, true).unwrap();
@@ -2589,6 +2608,7 @@ mod tests {
 
     #[test]
     fn compiled_full_reuse_checks_headers_text_and_spelling_conflicts() {
+        let _test_env = crate::test_env::read();
         let old_text = "Prefix(:=<http://e/>) Ontology(<http://e/o> SubClassOf(:A :B))";
         let old_scan = scan(old_text).unwrap();
         let old = LocalityIndex::build(old_text, &old_scan, false).unwrap();
@@ -3197,6 +3217,7 @@ mod positive_object_tests {
     }
     #[test]
     fn resolved_positive_fragment_and_aliases() {
+        let _test_env = crate::test_env::read();
         assert!(index("SubClassOf(:A ObjectAllValuesFrom(ObjectInverseOf(:r) ObjectUnionOf(:B owl:Thing))) ClassAssertion(:A :a) ObjectPropertyAssertion(:r :a :b) SameIndividual(:a <urn:test#a>) ClassAssertion(:A _:x) SameIndividual(_:x _:y)").positive_object_source);
         for bad in ["SubClassOf(:A o:Nothing)", "SubClassOf(:A ObjectSomeValuesFrom(o:topObjectProperty :B))", "ObjectPropertyAssertion(ObjectInverseOf(o:bottomObjectProperty) :a :b)", "DifferentIndividuals(:a :b)", "DifferentIndividuals(:a <urn:test#a>)", "SubClassOf(:A ObjectComplementOf(:B))", "ClassAssertion(ObjectOneOf(:a) :b)", "SubClassOf(:A ObjectMinCardinality(1 :r :B))", "DataPropertyAssertion(:d :a \"x\")", "DisjointClasses(:A :B)", "Unknown(:A)", "SubClassOf(:A)", "ObjectPropertyAssertion(:r :a)"] {
             assert!(!index(bad).positive_object_source, "{bad}");
@@ -3204,6 +3225,7 @@ mod positive_object_tests {
     }
     #[test]
     fn tbox_outside_positive_witness_implies_full_refusal() {
+        let _test_env = crate::test_env::read();
         let head = "Prefix(:=<urn:test#>) Prefix(o:=<http://www.w3.org/2002/07/owl#>) Ontology(";
         let positive = "SubClassOf(:A :B) ClassAssertion(:A :a) ObjectPropertyAssertion(:r :a :b) SameIndividual(:a :c)";
         let cases = [
@@ -3226,6 +3248,7 @@ mod positive_object_tests {
     }
     #[test]
     fn all_supported_axiom_expansions_and_tbox_refusal() {
+        let _test_env = crate::test_env::read();
         let body = "EquivalentClasses(:A :B :C) SubObjectPropertyOf(ObjectPropertyChain(:r ObjectInverseOf(:s)) :t) EquivalentObjectProperties(:r :s) InverseObjectProperties(:r :s) ObjectPropertyDomain(:r :A) ObjectPropertyRange(:r :B) TransitiveObjectProperty(:r) FunctionalObjectProperty(:r) InverseFunctionalObjectProperty(:r) SymmetricObjectProperty(:r) ReflexiveObjectProperty(:r) ClassAssertion(ObjectHasSelf(:r) :a)";
         assert!(index(body).positive_object_source);
         let text = format!("Prefix(:=<urn:test#>) Ontology({body})");
@@ -3236,6 +3259,7 @@ mod positive_object_tests {
     }
     #[test]
     fn exact_donor_flags_recompute_complete_source() {
+        let _test_env = crate::test_env::read();
         let old = "Prefix(:=<urn:test#>) Ontology(SubClassOf(:A :B) ClassAssertion(:A :a))";
         let scan_old = scan(old).unwrap();
         let donor = LocalityIndex::build(old, &scan_old, false).unwrap();
@@ -3257,6 +3281,7 @@ mod live_class_domain_tests {
     use std::collections::{BTreeSet, HashSet};
     #[test]
     fn retained_class_kind_equals_fresh_index_for_every_statement_subset() {
+        let _test_env = crate::test_env::read();
         let head="Prefix(:=<urn:view#>) Ontology(";
         let statements=["Declaration(Class(:P))", "Declaration(ObjectProperty(:P))",
             "Declaration(NamedIndividual(:P))", "SubClassOf(:A :B)",
@@ -3277,6 +3302,7 @@ mod live_class_domain_tests {
     }
     #[test]
     fn tbox_provenance_cannot_publish_a_full_source_domain_view() {
+        let _test_env = crate::test_env::read();
         let text="Prefix(:=<urn:view#>) Ontology(ClassAssertion(:A :a))";
         let sc=scan(text).unwrap();let ix=LocalityIndex::build(text,&sc,true).unwrap();
         assert!(!ix.full_mode);
@@ -3284,6 +3310,7 @@ mod live_class_domain_tests {
     }
     #[test]
     fn replayed_compilation_keeps_exact_live_class_contributions() {
+        let _test_env = crate::test_env::read();
         let before="Prefix(:=<urn:view#>) Ontology(Declaration(Class(:P)) Declaration(ObjectProperty(:P)) SubClassOf(:A :B))";
         let old_scan=scan(before).unwrap();let old=LocalityIndex::build(before,&old_scan,false).unwrap();
         let union="Prefix(:=<urn:view#>) Ontology(Declaration(ObjectProperty(:P)) SubClassOf(:A :B) Declaration(Class(:P)) SubClassOf(:B :C))";
@@ -3312,6 +3339,7 @@ mod live_public_class_domain_tests {
     }
     #[test]
     fn masked_public_domain_matches_fresh_builtin_alias_and_punning_subsets() {
+        let _test_env = crate::test_env::read();
         let header = "Prefix(:=<urn:public#>) Prefix(o:=<http://www.w3.org/2002/07/owl#>) Ontology(";
         let statements = ["Declaration(Class(:P))", "Declaration(ObjectProperty(:P))",
             "Declaration(NamedIndividual(o:Thing))", "Declaration(NamedIndividual(o:Nothing))",
@@ -3338,6 +3366,7 @@ mod live_public_class_domain_tests {
     }
     #[test]
     fn public_domain_builtin_reference_replay_and_tbox_refusal() {
+        let _test_env = crate::test_env::read();
         let before = "Prefix(:=<urn:public#>) Prefix(o:=<http://www.w3.org/2002/07/owl#>) Ontology(Declaration(Class(:P)) Declaration(NamedIndividual(o:Thing)) ClassAssertion(:P o:Thing))";
         let old_scan = scan(before).unwrap(); let old = LocalityIndex::build(before, &old_scan, false).unwrap();
         let (union, stats) = LocalityIndex::build_reusing_full(before, &old_scan, &old,
@@ -3400,6 +3429,7 @@ mod told_reuse_tests {
     }
     #[test]
     fn told_reuse_matches_fresh_add_delete_mixed_and_annotations() {
+        let _test_env = crate::test_env::read();
         let revisions = [
             ontology("SubClassOf(:A :B) EquivalentClasses(:C ObjectIntersectionOf(:A :B))"),
             ontology("SubClassOf(:A :B) EquivalentClasses(:C ObjectIntersectionOf(:A :B)) SubClassOf(:B :D)"),
@@ -3418,6 +3448,7 @@ mod told_reuse_tests {
     }
     #[test]
     fn told_reuse_replays_spelling_names_and_duplicate_supports_in_new_order() {
+        let _test_env = crate::test_env::read();
         let old = ontology("SubClassOf(:A :B) EquivalentClasses(ObjectIntersectionOf(:A :B) :C) SubClassOf(q:A :D)");
         let graph = ToldProofs::build(&old, &scan(&old).unwrap());
         let new = ontology("SubClassOf(q:A :D) EquivalentClasses(ObjectIntersectionOf(:A :B) :C) SubClassOf(:A :B) SubClassOf(:A :B)");
@@ -3433,6 +3464,7 @@ mod told_reuse_tests {
     }
     #[test]
     fn told_reuse_historical_supports_header_and_collision_checks() {
+        let _test_env = crate::test_env::read();
         let old = ontology("SubClassOf(:A :B) SubClassOf(:B :C)");
         let original = ToldProofs::build(&old,&scan(&old).unwrap());
         let deleted = ontology("SubClassOf(:B :C)");
@@ -3455,6 +3487,7 @@ mod told_reuse_tests {
     }
     #[test]
     fn told_reuse_cow_preserves_older_graph_and_unchanged_owner_rows() {
+        let _test_env = crate::test_env::read();
         let old=ontology("SubClassOf(:A :B) SubClassOf(:X :Y)");
         let graph=ToldProofs::build(&old,&scan(&old).unwrap());
         let snapshot=graph.clone();
@@ -3473,6 +3506,7 @@ mod told_reuse_tests {
     }
     #[test]
     fn told_reuse_ambiguous_published_spellings_rebuild_in_new_order() {
+        let _test_env = crate::test_env::read();
         let old=ontology("SubClassOf(q:A :B)");
         let graph=ToldProofs::build(&old,&scan(&old).unwrap());
         let new=ontology("SubClassOf(<q:A> :C) SubClassOf(q:A :B)");
@@ -3488,6 +3522,7 @@ mod told_reuse_tests {
     }
     #[test]
     fn told_reuse_large_shrink_compacts_live_graph_without_changing_donor() {
+        let _test_env = crate::test_env::read();
         let old=ontology(&(0..100).map(|i|format!("SubClassOf(:X{i} :Y{i})")).collect::<String>());
         let graph=ToldProofs::build(&old,&scan(&old).unwrap());
         let new=ontology("SubClassOf(:X0 :Y0)");
@@ -3498,6 +3533,7 @@ mod told_reuse_tests {
     }
     #[test]
     fn told_reuse_shrinks_removed_duplicate_rule_buffers() {
+        let _test_env = crate::test_env::read();
         let support="EquivalentClasses(:A ObjectIntersectionOf(:B :C))";
         let old=ontology(&support.repeat(200));
         let graph=ToldProofs::build(&old,&scan(&old).unwrap());
@@ -3512,6 +3548,7 @@ mod told_reuse_tests {
     }
     #[test]
     fn told_reuse_many_aliases_shrink_spelling_and_support_buffers() {
+        let _test_env = crate::test_env::read();
         let prefixes=(0..200).map(|i|format!("Prefix(p{i}:=<http://e/>) ")).collect::<String>();
         let header=format!("{prefixes} Prefix(:=<http://e/>) Ontology(<http://e/o> ");
         let old=format!("{header}{})",(0..200).map(|i|format!("SubClassOf(p{i}:A :B) ")).collect::<String>());
@@ -3527,6 +3564,7 @@ mod told_reuse_tests {
     }
     #[test]
     fn told_reuse_long_replacements_drop_obsolete_names_and_share_supports() {
+        let _test_env = crate::test_env::read();
         let mut text=ontology("SubClassOf(:A :B) SubClassOf(:X0 :Y0)");
         let mut graph=ToldProofs::build(&text,&scan(&text).unwrap());
         for i in 1..100 {

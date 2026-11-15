@@ -1765,6 +1765,7 @@ mod tests {
 
     #[test]
     fn occurrence_unsat_write_cache_tags_allocates_and_updates_concept_process_tags() {
+        let _test_env = crate::test_env::read();
         let mut ontology = OntologyArenas::new();
         let con_proc = ontology.alloc_concept_process_data(ConceptProcessData::new());
 
@@ -1846,6 +1847,7 @@ mod tests {
 
     #[test]
     fn occurrence_unsat_write_cache_tags_lazy_allocates_concept_process_data() {
+        let _test_env = crate::test_env::read();
         // KONCLUDE-PORT-NOTE[lazy-alloc]: bridged concepts carry no
         // ConceptProcessData; the stamp path allocates it on first write so
         // the unsat cache is not silently inert on bridged ontologies.

@@ -782,6 +782,7 @@ mod tests {
 
     #[test]
     fn computed_consequences_create_cache_reader_prepends_reader_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut cache = ComputedConsequencesCache::new();
 
@@ -796,6 +797,7 @@ mod tests {
 
     #[test]
     fn computed_consequences_writer_forwards_write_data_to_cache() {
+        let _test_env = crate::test_env::read();
         let mut cache = ComputedConsequencesCache::new();
         let mut writer = cache.create_cache_writer();
 
@@ -812,6 +814,7 @@ mod tests {
 
     #[test]
     fn computed_consequences_install_write_data_walks_next_chain_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut first_base = ComputedConsequencesCacheWriteData::new();
         let second_base = ComputedConsequencesCacheWriteData::new();
@@ -847,6 +850,7 @@ mod tests {
 
     #[test]
     fn computed_consequences_reader_get_types_cache_entry_returns_bound_entry() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let individual = IndividualId::new(3);
         let mut entry = ComputedConsequencesTypesCacheEntry::new(INVALID);
@@ -869,6 +873,7 @@ mod tests {
 
     #[test]
     fn computed_consequences_get_computed_types_cache_entry_for_node_creates_once() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut cache = ComputedConsequencesCache::new();
         let mut local_context = ComputedConsequencesCacheContext::new();
@@ -916,6 +921,7 @@ mod tests {
 
     #[test]
     fn computed_consequences_add_types_expansion_data_creates_entry_and_prepends_concept() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let individual = IndividualId::new(21);
         let first_concept = ConceptId::new(31);
@@ -964,6 +970,7 @@ mod tests {
 
     #[test]
     fn computed_consequences_processes_typed_write_event_payload() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let types = ctx.alloc_consequences_cache_write_types_data(
             ComputedConsequencesCacheWriteTypesData::new(),

@@ -175,6 +175,7 @@ mod tests {
     use super::super::check_source;
     #[test]
     fn non_simple_roles_propagate_through_inverses_and_superproperties() {
+        let _test_env = crate::test_env::read();
         for restriction in ["ObjectMinCardinality(1 :s)", "ObjectMaxCardinality(2 ObjectInverseOf(:s))", "ObjectExactCardinality(0 :s)", "ObjectHasSelf(:s)"] {
             let source = format!("Prefix(:=<urn:test:>) Ontology(TransitiveObjectProperty(:r) InverseObjectProperties(:r :i) SubObjectPropertyOf(:i :s) SubClassOf(:A {restriction}))");
             assert!(check_source(&source).unwrap_err().contains("non-simple"));
@@ -182,18 +183,21 @@ mod tests {
     }
     #[test]
     fn chain_targets_are_non_simple_but_operands_can_be_simple() {
+        let _test_env = crate::test_env::read();
         let base = "Prefix(:=<urn:test:>) Ontology(SubObjectPropertyOf(ObjectPropertyChain(ObjectInverseOf(:p) :q) :r) ";
         assert!(check_source(&format!("{base} FunctionalObjectProperty(:r))")).is_err());
         assert!(check_source(&format!("{base} FunctionalObjectProperty(:p) FunctionalObjectProperty(:q))")).is_ok());
     }
     #[test]
     fn equivalent_roles_and_builtin_top_are_checked() {
+        let _test_env = crate::test_env::read();
         assert!(check_source("Ontology(TransitiveObjectProperty(:r) EquivalentObjectProperties(:r :s :t) DisjointObjectProperties(:t :p))").is_err());
         assert!(check_source("Ontology(SubClassOf(:A ObjectHasSelf(owl:topObjectProperty)))").is_err());
         assert!(check_source("Ontology(TransitiveObjectProperty(:r) SubClassOf(:A ObjectSomeValuesFrom(:r :B)))").is_ok());
     }
     #[test]
     fn regular_chains_allow_transitivity_and_end_recursion() {
+        let _test_env = crate::test_env::read();
         for chain in [":r :r", ":r :p", ":p :r", "ObjectInverseOf(:p) :q", ":p :q :r"] {
             assert!(check_source(&format!("Ontology(SubObjectPropertyOf(ObjectPropertyChain({chain}) :r))")).is_ok(), "{chain}");
         }
@@ -201,6 +205,7 @@ mod tests {
     }
     #[test]
     fn irregular_chains_reject_middle_recursion_and_dependency_cycles() {
+        let _test_env = crate::test_env::read();
         for axioms in [
             "SubObjectPropertyOf(ObjectPropertyChain(:p :r :q) :r)",
             "SubObjectPropertyOf(ObjectPropertyChain(:r :p :r) :r)",

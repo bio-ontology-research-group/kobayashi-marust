@@ -568,6 +568,7 @@ mod tests {
 
     #[test]
     fn blank_values_follow_the_empty_element() {
+        let _test_env = crate::test_env::read();
         let u = Role::Name("u".into());
         assert_eq!(holds_at_blank(&Concept::AtMost(1, u.clone(), Box::new(Concept::Top))), Some(true));
         assert_eq!(holds_at_blank(&Concept::AtLeast(1, u.clone(), Box::new(Concept::Top))), Some(false));
@@ -579,6 +580,7 @@ mod tests {
 
     #[test]
     fn guards_only_axioms_that_fail_on_a_blank_element() {
+        let _test_env = crate::test_env::read();
         let mut ontology = Ontology::new();
         let u = Role::Name("u".into());
         let at_most = Concept::AtMost(1, u.clone(), Box::new(Concept::Top));
@@ -612,6 +614,7 @@ mod tests {
 
     #[test]
     fn leaves_the_ontology_alone_without_individuals_or_failing_axioms() {
+        let _test_env = crate::test_env::read();
         let data: BTreeSet<String> = ["u".to_string()].into();
         let mut no_individual = Ontology::new();
         no_individual.add(Axiom::SubClassOf(Concept::Not(Box::new(name("A"))), name("B")));
@@ -629,6 +632,7 @@ mod tests {
 
     #[test]
     fn datatype_assertion_moves_to_a_nominal_inclusion_and_data_exists_is_normalised() {
+        let _test_env = crate::test_env::read();
         let data: BTreeSet<String> = ["u".to_string()].into();
         let u = Role::Name("u".into());
         let value = Concept::Exists(u.clone(), Box::new(name("__dt__integer")));
@@ -650,6 +654,7 @@ mod tests {
 
     #[test]
     fn a_nested_self_restriction_or_universal_role_refuses() {
+        let _test_env = crate::test_env::read();
         let data: BTreeSet<String> = ["u".to_string()].into();
         let failing = Axiom::SubClassOf(Concept::Not(Box::new(name("A"))), Concept::Nominal("a".into()));
         for nested in [

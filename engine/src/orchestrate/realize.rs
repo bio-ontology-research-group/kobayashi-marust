@@ -685,6 +685,7 @@ mod tests {
 
     #[test]
     fn collects_individuals_in_every_individual_position() {
+        let _test_env = crate::test_env::write();
         let text = "Prefix(:=<urn:t#>)\nOntology(<urn:o>\n\
             Declaration(NamedIndividual(:d))\n\
             Declaration(Class(:C))\n\
@@ -705,6 +706,7 @@ mod tests {
 
     #[test]
     fn probes_are_inserted_inside_the_ontology_node() {
+        let _test_env = crate::test_env::write();
         let text = "Ontology(<urn:o> ClassAssertion(<urn:C> <urn:a>)) # trailing ) comment\n";
         let individuals = source_individuals(text).unwrap();
         let (extended, probes) = probe_source(text, &individuals).unwrap();
@@ -716,6 +718,7 @@ mod tests {
 
     #[test]
     fn mixed_spellings_of_one_individual_yield_one_canonical_individual() {
+        let _test_env = crate::test_env::write();
         let text = "Prefix(:=<http://x/o#>)\nOntology(<http://x/o>\n\
             Declaration(Class(:C)) Declaration(NamedIndividual(:a))\n\
             ClassAssertion(:C <http://x/o#a>)\nClassAssertion(:C :a)\n\
@@ -731,6 +734,7 @@ mod tests {
 
     #[test]
     fn two_prefixed_spellings_of_one_individual_are_one_individual() {
+        let _test_env = crate::test_env::write();
         let text = "Prefix(p:=<http://x/o#>)\nPrefix(q:=<http://x/o#>)\nOntology(ClassAssertion(p:C p:a) ClassAssertion(p:C q:a))";
         let (_, individuals) = canonical_individuals(text).unwrap();
         assert_eq!(individuals, ["<http://x/o#a>"]);
@@ -738,6 +742,7 @@ mod tests {
 
     #[test]
     fn probe_namespace_avoids_source_iris() {
+        let _test_env = crate::test_env::write();
         assert_eq!(fresh_namespace("<http://km.invalid/realize#x>"), "http://km.invalid/realize1#");
     }
 
@@ -747,6 +752,7 @@ mod tests {
 
     #[test]
     fn split_separates_types_same_and_source_rows() {
+        let _test_env = crate::test_env::write();
         let probes = vec![("P0".to_string(), "a".to_string()), ("P1".to_string(), "b".to_string())];
         let extended = Classification {
             approximate: None,
@@ -770,6 +776,7 @@ mod tests {
 
     #[test]
     fn direct_types_keep_every_member_of_a_minimal_equivalence_class() {
+        let _test_env = crate::test_env::write();
         let probes = vec![("P0".to_string(), "a".to_string())];
         let extended = Classification {
             approximate: None,
@@ -787,6 +794,7 @@ mod tests {
 
     #[test]
     fn split_top_reads_classes_below_the_thing_probe() {
+        let _test_env = crate::test_env::write();
         let text = "Ontology(<urn:o> EquivalentClasses(<urn:E> owl:Thing))";
         let (axioms, probe) = top_extension(text);
         assert!(axioms.contains(&format!("EquivalentClasses(<{probe}> owl:Thing)")), "{axioms}");
@@ -817,6 +825,7 @@ mod tests {
 
     #[test]
     fn inconsistent_classification_has_no_realization_rows() {
+        let _test_env = crate::test_env::write();
         let probes = vec![("P0".to_string(), "a".to_string())];
         let extended = Classification {
             approximate: None,

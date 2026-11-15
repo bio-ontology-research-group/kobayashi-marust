@@ -4238,6 +4238,7 @@ mod cb_live_snapshot_tests {
 
     #[test]
     fn optional_hyper_evidence_preserves_terminal_state() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -4283,6 +4284,7 @@ mod cb_live_snapshot_tests {
 
     #[test]
     fn successor_edge_without_reach_leaves_no_pending_rsucc_sweep() {
+        let _test_env = crate::test_env::read();
         // D ⊑ ∃r.A: context D gains an r-successor edge but never an r-Succ
         // pool entry, so the terminal snapshot must not report a pending
         // `successors × reach` sweep (checkers-on defect B2).
@@ -4317,6 +4319,7 @@ mod cb_live_snapshot_tests {
 
     #[test]
     fn terminal_snapshot_is_exact_stable_and_complete() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let query = sig.concept("A");
         let reach = sig.concept("__trans__r__A");
@@ -10621,11 +10624,13 @@ mod tests {
 
     #[test]
     fn minimal_core_retains_cycle_generator_and_unproved_constraints() {
+        let _test_env = crate::test_env::read();
         Engine::check_minimal_core_example();
     }
 
     #[test]
     fn inter_context_message_uses_compact_context_endpoints() {
+        let _test_env = crate::test_env::read();
         assert_eq!(std::mem::size_of::<MsgContext>(), 4);
         assert_eq!(std::mem::size_of::<Msg>(), 28);
         assert_eq!(pack_msg_context(u32::MAX as usize), u32::MAX);
@@ -10633,6 +10638,7 @@ mod tests {
 
     #[test]
     fn compact_posting_preserves_order_across_inline_and_spill() {
+        let _test_env = crate::test_env::read();
         assert_eq!(std::mem::size_of::<Posting>(), 16);
         let mut posting = Posting::default();
         assert!(posting.is_empty());
@@ -10660,6 +10666,7 @@ mod tests {
 
     #[test]
     fn compact_trigger_set_is_sorted_and_unique() {
+        let _test_env = crate::test_env::read();
         let mut set = Vec::new();
         let predicates = [cx(3, X), cx(1, X), cx(2, X), cx(1, X)];
         assert!(sorted_pred_insert(&mut set, predicates[0]));
@@ -10691,6 +10698,7 @@ mod tests {
     /// a function (which is all Hyper's resolvents depend on) fails the test.
     #[test]
     fn central_subst_matches_hashmap_oracle() {
+        let _test_env = crate::test_env::read();
         use std::collections::HashMap;
 
         // Reference: what the old HashMap-backed `add` would store/decide.
@@ -10797,6 +10805,7 @@ mod tests {
     /// ungrounded central binding never accepts an individual image.
     #[test]
     fn central_subst_identity_and_ground_gate() {
+        let _test_env = crate::test_env::read();
         let mut subst = CentralSubst::new(false);
         for &t in &[X, Y, zvar(1), ind_term(1), fterm(1)] {
             assert_eq!(subst.apply(t), t);
@@ -10820,6 +10829,7 @@ mod tests {
 
     #[test]
     fn nominal_blocks_reuse_only_the_exact_firing() {
+        let _test_env = crate::test_env::read();
         let mut engine = Engine::new(Sig::default(), Vec::new(), 0);
         engine.nom_budget = 4;
         let key = NomFiringKey {
@@ -10852,6 +10862,7 @@ mod tests {
 
     #[test]
     fn nominal_covers_share_block_when_body_and_kept_head_are_strengthened() {
+        let _test_env = crate::test_env::read();
         let mut engine = Engine::new(Sig::default(), Vec::new(), 0);
         engine.nom_budget = 2;
         let key1 = NomFiringKey {
@@ -10923,6 +10934,7 @@ mod tests {
     /// in-place join derive the same resolvents the clone-per-candidate join did.
     #[test]
     fn central_subst_mark_rollback_restores_like_clone() {
+        let _test_env = crate::test_env::read();
         let probes = [
             X,
             Y,
@@ -10979,6 +10991,7 @@ mod tests {
     /// determines every resolvent `build_hyper_resolvent` emits.
     #[test]
     fn hyper_join_trail_matches_clone_join() {
+        let _test_env = crate::test_env::read();
         // Leaf record: the substitution as a function over a fixed probe set.
         fn leaf(sigma: &CentralSubst) -> Vec<Term> {
             [X, Y, zvar(1), zvar(2), zvar(3), ind_term(1), fterm(1)]
@@ -11270,6 +11283,7 @@ mod tests {
     /// the genuine witnesses.
     #[test]
     fn hyper_narrowing_matches_generic_join_on_qualified_at_most() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let g = sig.concept("G");
         let c = sig.concept("C");
@@ -11350,6 +11364,7 @@ mod tests {
     /// differential tests alone would happily accept).
     #[test]
     fn reduce_hyper_candidates_keeps_exactly_the_witnesses() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let c = sig.concept("C");
         let r = sig.role("r");
@@ -11394,6 +11409,7 @@ mod tests {
     /// walk the product.
     #[test]
     fn reduce_hyper_candidates_detects_the_empty_join() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let c = sig.concept("C");
         let r = sig.role("r");
@@ -11420,6 +11436,7 @@ mod tests {
     /// the cardinality test above is the shape that motivated it.
     #[test]
     fn hyper_narrowing_matches_generic_join_property() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         for name in ["C0", "C1", "C2"] {
             sig.concept(name);
@@ -11542,6 +11559,7 @@ mod tests {
     /// narrowing on and off.
     #[test]
     fn hyper_narrowing_preserves_saturation_output() {
+        let _test_env = crate::test_env::read();
         let build = || {
             let mut sig = Sig::default();
             let a = sig.concept("A");
@@ -11592,6 +11610,7 @@ mod tests {
     /// as candidates and so silently alter derivability.
     #[test]
     fn back_subsume_incremental_unindex_matches_rebuild() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -11652,6 +11671,7 @@ mod tests {
     /// strengthened away; the incremental index must again match the rebuild.
     #[test]
     fn back_subsume_incremental_unindex_matches_rebuild_roles() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -11707,6 +11727,7 @@ mod tests {
     /// derived subsumption must be unchanged.
     #[test]
     fn disjunct_strengthening_backsubsumes_and_derives() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -11733,6 +11754,7 @@ mod tests {
     /// which is then B1 ⊓ B2, so A ⊑ C.
     #[test]
     fn nom_rule_oiq_example3() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b1 = sig.concept("B1");
@@ -11783,6 +11805,7 @@ mod tests {
     /// invariant: the duplicate `Vec<Pred>` key is gone, dedup is unchanged.
     #[test]
     fn context_core_interning_dedup() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -11826,6 +11849,7 @@ mod tests {
     /// successors need not merge, so A ⊑ C must NOT be derived.
     #[test]
     fn nom_rule_no_counting_no_merge() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b1 = sig.concept("B1");
@@ -11865,6 +11889,7 @@ mod tests {
     /// the filler definers imply x ≈ o).
     #[test]
     fn nominal_filler_merge() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -11911,6 +11936,7 @@ mod tests {
     /// a role without the self loop must stay unaffected.
     #[test]
     fn hyper_pairs_a_self_loop_head_with_itself() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -11947,6 +11973,7 @@ mod tests {
     /// never derived `s(a,c)`, `s(b,c)` (fuzz case mm_21_138_4).
     #[test]
     fn ground_context_grounds_top_facts_at_individuals() {
+        let _test_env = crate::test_env::read();
         fn run(top_fact: bool) -> bool {
             let mut sig = Sig::default();
             let q = sig.concept("Q0");
@@ -11982,6 +12009,7 @@ mod tests {
     /// resolves to `→ E(x)`.
     #[test]
     fn class_trigger_subsumption_drops_inverse_hypothesis_exactly() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let c = sig.concept("C");
@@ -12018,6 +12046,7 @@ mod tests {
     /// Eq turns it into `A1 ⊑ A5`.
     #[test]
     fn merge_tied_context_receives_ground_facts_of_its_individual() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a1 = sig.concept("A1");
         let a5 = sig.concept("A5");
@@ -12044,6 +12073,7 @@ mod tests {
 
     #[test]
     fn central_core_excludes_conditional_triggers() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let e = sig.concept("E");
@@ -12091,6 +12121,7 @@ mod tests {
 
     #[test]
     fn guarded_role_hyper_index_preserves_absorbed_existential() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let c = sig.concept("C");
@@ -12126,6 +12157,7 @@ mod tests {
     /// is both B and C — A is unsatisfiable.
     #[test]
     fn nominal_ground_clash() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -12152,6 +12184,7 @@ mod tests {
 
     #[test]
     fn asserted_ground_equality_merge_transfers_labels_and_links() {
+        let _test_env = crate::test_env::read();
         let a = ind_term(1);
         let alias = ind_term(2);
         let other = ind_term(3);
@@ -12198,6 +12231,7 @@ mod tests {
 
     #[test]
     fn asserted_same_and_different_individuals_collapse_to_clash() {
+        let _test_env = crate::test_env::read();
         let a = ind_term(1);
         let alias = ind_term(2);
         let clauses = vec![
@@ -12212,6 +12246,7 @@ mod tests {
 
     #[test]
     fn disjunctive_ground_equality_is_not_an_asserted_merge() {
+        let _test_env = crate::test_env::read();
         let a = ind_term(1);
         let b = ind_term(2);
         let clauses = vec![OntologyClause::new(
@@ -12226,6 +12261,7 @@ mod tests {
 
     #[test]
     fn ground_hyper_uses_bound_role_endpoints_without_order_dependence() {
+        let _test_env = crate::test_env::read();
         fn run(facts_reversed: bool) {
             let mut sig = Sig::default();
             let c = sig.concept("C");
@@ -12285,6 +12321,7 @@ mod tests {
 
     #[test]
     fn resource_backstops_mark_the_engine_incomplete() {
+        let _test_env = crate::test_env::read();
         let mut e = Engine::new(Sig::default(), Vec::new(), 0);
         assert!(!e.incomplete());
         e.message_truncated = true;
@@ -12296,6 +12333,7 @@ mod tests {
 
     #[test]
     fn exact_max_head_pred_index_separates_terms() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let p1 = cx(7, fterm(1));
         let p2 = cx(7, fterm(2));
@@ -12325,6 +12363,7 @@ mod tests {
 
     #[test]
     fn max_head_term_index_matches_sequoia_eq_lookup() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let f1 = fterm(1);
         let f2 = fterm(2);
@@ -12359,6 +12398,7 @@ mod tests {
 
     #[test]
     fn sequoia_active_redundancy_index_matches_linear_subsumption() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let o = ind_term(1);
         let p1 = cx(1, o);
@@ -12475,6 +12515,7 @@ mod tests {
     /// screen fixpoint-preserving rather than merely fast.
     #[test]
     fn clause_sig_screen_never_rejects_a_genuine_subsumer() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         for &root in &[false, true] {
             let pop = screen_population(&sig, root, 400);
@@ -12505,6 +12546,7 @@ mod tests {
     /// majority of candidates without consulting the clause.
     #[test]
     fn clause_sig_screen_rejects_most_non_subsumers() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let pop = screen_population(&sig, false, 200);
         let sigs = sigs_of(&pop);
@@ -12533,6 +12575,7 @@ mod tests {
     /// included.
     #[test]
     fn screened_fwd_subsumed_matches_unscreened_linear_scan() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let arena = screen_population(&sig, false, 240);
         let sigs = sigs_of(&arena);
@@ -12582,6 +12625,7 @@ mod tests {
     /// removal sets are compared for equality, not inclusion.
     #[test]
     fn screened_back_subsume_removes_the_same_clauses() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let arena = screen_population(&sig, false, 200);
         let sigs = sigs_of(&arena);
@@ -12624,6 +12668,7 @@ mod tests {
     /// so a drift here would mis-screen (or panic) rather than fail loudly.
     #[test]
     fn clause_sig_array_mirrors_the_clause_arena() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             OntologyClause::new(vec![cx(1, X)], vec![Lit::P(cx(2, X))]),
             OntologyClause::new(vec![cx(2, X)], vec![Lit::P(cx(3, X)), Lit::P(cx(4, X))]),
@@ -12659,6 +12704,7 @@ mod tests {
 
     #[test]
     fn sequoia_redundancy_trie_removes_exact_supersets() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let a = cx(1, X);
         let b = cx(2, X);
@@ -12686,6 +12732,7 @@ mod tests {
 
     #[test]
     fn local_pred_pins_triggering_clause_like_sequoia() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -12755,6 +12802,7 @@ mod tests {
 
     #[test]
     fn incremental_pred_join_matches_sequoia_cartesian_antichain() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let p1 = cx(sig.concept("P1"), X);
         let p2 = cx(sig.concept("P2"), X);
@@ -12823,6 +12871,7 @@ mod tests {
     /// on ORE 1194: several premises each with many incomparable providers.
     #[test]
     fn local_pred_left_deep_join_matches_full_product_antichain() {
+        let _test_env = crate::test_env::read();
         let canonical = |clauses: Vec<ContextClause>| {
             clauses
                 .into_iter()
@@ -12928,6 +12977,7 @@ mod tests {
     /// wildly different amounts of work and must still agree.
     #[test]
     fn local_pred_join_matches_product_on_a_wide_premise_set() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let premises: Vec<Pred> = (0..3)
             .map(|i| cx(sig.concept(&format!("P{i}")), X))
@@ -12997,6 +13047,7 @@ mod tests {
 
     #[test]
     fn pred_payload_normalizes_substitution_collisions() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -13024,6 +13075,7 @@ mod tests {
     /// atom that is already ground (`L(o')`) is a label `C_i` and is copied.
     #[test]
     fn composite_edge_pred_resolves_premises_and_copies_labels() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -13074,6 +13126,7 @@ mod tests {
     /// scan over every active clause, under insertions and removals.
     #[test]
     fn forward_subsumption_postings_match_a_full_scan() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let mut state: u64 = 0x9e37_79b9_7f4a_7c15;
         let mut next = |n: u64| {
@@ -13115,6 +13168,7 @@ mod tests {
 
     #[test]
     fn pred_result_buffer_keeps_a_strengthening_antichain() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let a = Lit::P(cx(1, X));
         let b = cx(2, X);
@@ -13151,6 +13205,7 @@ mod tests {
 
     #[test]
     fn pred_result_buffer_reuses_slots_and_preserves_survivor_order() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let a = Lit::P(cx(1, X));
         let c = Lit::P(cx(3, X));
@@ -13176,6 +13231,7 @@ mod tests {
 
     #[test]
     fn nominal_enumeration_reuses_complete_ground_labels() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -13220,6 +13276,7 @@ mod tests {
 
     #[test]
     fn nominal_enumeration_requires_the_reverse_union_proof() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let q = sig.concept("Q_0");
@@ -13243,6 +13300,7 @@ mod tests {
 
     #[test]
     fn back_subsumption_deactivates_pending_pred_push() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let a = Lit::P(cx(1, X));
         let b = cx(2, X);
@@ -13299,6 +13357,7 @@ mod rsucc_rolechain_tests {
     // ---- Test 1 (crux): delta reach extraction == full rescan, every split. ----
     #[test]
     fn rsucc_reach_delta_equals_full_rescan() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let t1 = sig.concept("__trans__R__A"); // reach
         let t2 = sig.concept("__trans__R__B"); // reach
@@ -13395,6 +13454,7 @@ mod rsucc_rolechain_tests {
     // ---- Test 2: transitive witness. ∃R.C ⊑ D over transitive R, two R-hops. --
     #[test]
     fn transitive_witness_answer_invariant() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -13426,6 +13486,7 @@ mod rsucc_rolechain_tests {
     // ---- Test 3: chain witness. R∘S ⊑ T, consumer ∃T.C ⊑ D. ----
     #[test]
     fn chain_witness_answer_invariant() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -13456,6 +13517,7 @@ mod rsucc_rolechain_tests {
     //      the delta scan runs over an ontology carrying inverse back-edges. ----
     #[test]
     fn inverse_witness_answer_invariant() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -13491,6 +13553,7 @@ mod rsucc_rolechain_tests {
     //      existential ⇒ the subject is unsatisfiable. ----
     #[test]
     fn domain_range_witness_answer_invariant() {
+        let _test_env = crate::test_env::read();
         // domain: A ⊑ ∃R.B, domain(R)=D  ⟹  A ⊑ D
         let mut sig = Sig::default();
         let a = sig.concept("A");
@@ -13564,6 +13627,7 @@ mod rsucc_rolechain_tests {
     //      ⇒ identical emitted messages ⇒ identical fixpoint. ----
     #[test]
     fn rsucc_cross_delta_equals_full_rescan() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let r0 = cx(sig.concept("__trans__R__A"), X);
         let r1 = cx(sig.concept("__trans__R__B"), X);
@@ -13734,6 +13798,7 @@ mod rsucc_rolechain_tests {
     //      sequences ⇒ identical `Msg::Succ` emission ⇒ identical fixpoint. ----
     #[test]
     fn rsucc_driver_gate_equals_unconditional() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let r0 = cx(sig.concept("__trans__R__A"), X);
         let r1 = cx(sig.concept("__trans__R__B"), X);
@@ -13786,6 +13851,7 @@ mod rsucc_rolechain_tests {
     #[test]
     #[ignore]
     fn rsucc_driver_gate_microbench() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let reach_preds: Vec<Pred> = (0..8)
             .map(|i| cx(sig.concept(&format!("__trans__R__C{i}")), X))
@@ -14049,6 +14115,7 @@ mod base_delta_tests {
 
     #[test]
     fn shared_seed_preserves_nominal_pred_equalities() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let nominal = ind_term(1);
         let arena = vec![ContextClause::new(
@@ -14099,6 +14166,7 @@ mod base_delta_tests {
     /// pending deactivations, must agree on every observable after every step.
     #[test]
     fn base_layer_matches_flat_representation() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let arena = population(&sig, 220, 0x2545_f491_4f6c_dd1d);
         let sigs = sigs_of(&arena);
@@ -14305,6 +14373,7 @@ mod base_delta_tests {
     /// so the representation is checked directly.
     #[test]
     fn a_masked_base_clause_reenters_at_the_end_like_the_flat_representation() {
+        let _test_env = crate::test_env::read();
         let mut sig = Sig::default();
         let a = sig.concept("A");
         let b = sig.concept("B");
@@ -14354,6 +14423,7 @@ mod base_delta_tests {
     /// the base's Pred/Succ pools deliberately retain back-subsumed entries.
     #[test]
     fn subset_seed_materialization_reproduces_the_flat_seed_sequence() {
+        let _test_env = crate::test_env::read();
         let sig = Sig::default();
         let arena = population(&sig, 90, 0x9e37_79b9_7f4a_7c15);
         let sigs = sigs_of(&arena);
@@ -14447,6 +14517,7 @@ mod base_delta_tests {
     /// attached, not re-derived, so context creation is unchanged too).
     #[test]
     fn shared_base_classification_matches_flat() {
+        let _test_env = crate::test_env::read();
         let (sig, clauses) = sample_ontology();
         let run = |base_layer: bool, seed_from_subset: bool| {
             let mut e = Engine::new(sig.clone(), clauses.clone(), 0);

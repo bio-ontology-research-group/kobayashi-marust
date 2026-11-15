@@ -280,6 +280,7 @@ mod tests {
 
     #[test]
     fn init_blocking_exploration_data_copies_previous_or_nulls() {
+        let _test_env = crate::test_env::read();
         let mut prev = IndividualNodeAnalizedConceptExpansionData::new();
         let rev_linker = AnalizedConceptExpansionLinkerId::new(3);
         let last_con = ConDescId::new(11);
@@ -324,6 +325,7 @@ mod tests {
 
     #[test]
     fn add_analized_concept_expansion_linker_prepends_chain_and_counts_it() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut first = AnalizedConceptExpansionLinker::new();
         first.init_analized_concept_expansion(vec![ConDescId::new(1)], ConDescId::new(10));

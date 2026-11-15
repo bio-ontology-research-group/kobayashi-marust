@@ -1462,6 +1462,7 @@ mod tests {
 
     #[test]
     fn add_concept_expansion_linker_prepends_counts_and_indexes_by_cache_value() {
+        let _test_env = crate::test_env::read();
         let mut context = CacheContext::new();
         let cache_value_1 =
             CacheValue::new_value(11, 101, CacheValueIdentifier::CacheValTagAndConcept);

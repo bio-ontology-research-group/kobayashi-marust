@@ -202,6 +202,7 @@ mod tests {
 
     #[test]
     fn terminal_separator_iris_keep_nonempty_collision_safe_owned_names() {
+        let _test_env = crate::test_env::read();
         let sources = [
             "http://first.example/", "http://second.example#",
             "http://third.example/#", "http://fourth.example#km_src_empty_iri",
@@ -223,6 +224,7 @@ mod tests {
 
     #[test]
     fn source_names_that_look_generated_are_typed_as_named() {
+        let _test_env = crate::test_env::read();
         let mut reg = IriRegistry::new();
         for local in ["__A", "Q_7", "_auxA", "aux_A", "def_A"] {
             let full = format!("http://example.org#{local}");
@@ -236,6 +238,7 @@ mod tests {
 
     #[test]
     fn escaped_source_name_remains_collision_safe() {
+        let _test_env = crate::test_env::read();
         let mut reg = IriRegistry::new();
         let ordinary = reg.short("<http://first.example#km_src___A>");
         let escaped = reg.short("<http://second.example#__A>");
@@ -247,6 +250,7 @@ mod tests {
 
     #[test]
     fn only_actual_owl_thing_and_nothing_are_builtins() {
+        let _test_env = crate::test_env::read();
         let mut reg = IriRegistry::new();
         for (source, canonical) in [
             ("owl:Thing", "owl:Thing"),
@@ -262,6 +266,7 @@ mod tests {
 
     #[test]
     fn non_owl_thing_and_nothing_local_names_remain_named() {
+        let _test_env = crate::test_env::read();
         let mut reg = IriRegistry::new();
         for source in [
             "<http://example.org#Thing>",
@@ -351,6 +356,7 @@ mod borrowed_lookup_tests {
 
     #[test]
     fn borrowed_probe_matches_the_owned_reference_on_unchanged_spellings() {
+        let _test_env = crate::test_env::read();
         let spellings = [
             "<http://a.example/onto#Cell>",
             "<http://b.example/onto#Cell>",

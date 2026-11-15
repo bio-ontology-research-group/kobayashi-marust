@@ -299,6 +299,7 @@ impl NamedSubclassCertificate {
     // changing parent environment or racing other unit tests' validators.
     #[test]
     fn public_validator_differential_in_isolated_process() {
+        let _test_env = crate::test_env::read();
         const CHILD: &str = "KM_NAMED_SUBCLASS_VALIDATION_TEST_CHILD";
         if std::env::var(CHILD).as_deref() != Ok("1") {
             let mut command = std::process::Command::new(std::env::current_exe().unwrap());

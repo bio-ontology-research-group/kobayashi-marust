@@ -378,6 +378,7 @@ mod tests {
 
     #[test]
     fn arbitrary_named_chain_is_retained_without_changing_binary_rows() {
+        let _test_env = crate::test_env::read();
         let text = "Ontology(\
             SubObjectPropertyOf(ObjectPropertyChain(<r> <s>) <t>) \
             SubObjectPropertyOf(ObjectPropertyChain(<r> <s> <u>) <v>))";
@@ -396,6 +397,7 @@ mod tests {
 
     #[test]
     fn retained_rbox_replay_matches_full_second_parse_bytes() {
+        let _test_env = crate::test_env::read();
         let text = "Ontology(\
             Declaration(Class(<http://decl.example#A>)) \
             SubObjectPropertyOf(<http://one.example#r> <http://one.example#s>) \

@@ -292,6 +292,7 @@ mod tests {
 
     #[test]
     fn rewrites_nested_class_and_named_role_assertions() {
+        let _test_env = crate::test_env::write();
         assert_eq!(
             rewrite_class_assertion("ClassAssertion(ObjectSomeValuesFrom(<r> ObjectIntersectionOf(<A> <B>)) <i>)").as_deref(),
             Some("ClassAssertion(ObjectSomeValuesFrom(<r> ObjectIntersectionOf(<A> <B>)) <urn:km:positive-abox-quotient>)")
@@ -304,6 +305,7 @@ mod tests {
 
     #[test]
     fn identity_union_detects_nary_difference_clash() {
+        let _test_env = crate::test_env::write();
         let mut ids = Identities::default();
         let a = ids.id("<a>");
         let b = ids.id("<b>");
@@ -315,6 +317,7 @@ mod tests {
 
     #[test]
     fn malformed_or_inverse_role_assertions_decline() {
+        let _test_env = crate::test_env::write();
         assert!(
             rewrite_role_assertion("ObjectPropertyAssertion(ObjectInverseOf(<r>) <a> <b>)")
                 .is_none()
@@ -324,6 +327,7 @@ mod tests {
 
     #[test]
     fn dense_abox_sample_gate_separates_tbox_text() {
+        let _test_env = crate::test_env::write();
         let dense = TempPath::new(".dense.ofn");
         let tbox = TempPath::new(".tbox.ofn");
         fs::write(dense.path(), "ClassAssertion(<A> <a>)\n".repeat(300)).unwrap();
@@ -338,6 +342,7 @@ mod tests {
 
     #[test]
     fn source_precheck_rejects_expressive_and_data_axioms() {
+        let _test_env = crate::test_env::write();
         for axiom in [
             "SubClassOf(<A> ObjectAllValuesFrom(<r> <B>))",
             "EquivalentClasses(<A> <B>)",
@@ -355,6 +360,7 @@ mod tests {
 
     #[test]
     fn complete_source_is_deduplicated_and_quotiented() {
+        let _test_env = crate::test_env::write();
         let source = TempPath::new(".source.ofn");
         fs::write(
             source.path(),
@@ -379,6 +385,7 @@ mod tests {
 
     #[test]
     fn contradictory_identity_source_declines() {
+        let _test_env = crate::test_env::write();
         let source = TempPath::new(".source.ofn");
         fs::write(
             source.path(),
@@ -398,6 +405,7 @@ mod tests {
     /// valid source is ever rejected by `check_source`.
     #[test]
     fn quotients_of_valid_sources_pass_conformance() {
+        let _test_env = crate::test_env::write();
         // The rewrite admits only full-IRI roles and full-IRI or blank-node
         // individuals.
         let sources = [

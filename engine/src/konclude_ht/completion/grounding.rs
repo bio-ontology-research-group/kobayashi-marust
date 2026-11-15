@@ -796,6 +796,7 @@ mod tests {
 
     #[test]
     fn collect_all_nominal_concepts_matches_abox_nominal_assertions() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_context();
         let mut nominal = Concept::new();
         nominal.set_operator_code(CCNOMINAL);
@@ -828,6 +829,7 @@ mod tests {
 
     #[test]
     fn get_nominal_concept_respects_purged_blocked_force_guard() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_context();
         let mut nominal = Concept::new();
         nominal.set_operator_code(CCNOMINAL);
@@ -860,6 +862,7 @@ mod tests {
 
     #[test]
     fn grounding_handler_constructor_matches_konclude_defaults() {
+        let _test_env = crate::test_env::read();
         let handler = ConceptNominalSchemaGroundingHandler::new();
         assert!(!handler.localized_extensions);
         assert!(handler.conf_reuse_grounded_nominal_schema_concepts);
@@ -867,6 +870,7 @@ mod tests {
 
     #[test]
     fn create_nominal_schema_concept_copy_resets_operands_and_assigns_extended_tag() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_context();
         let operand = ctx.ontology_arenas_mut().alloc_concept(Concept::new());
         let mut source = Concept::new();
@@ -888,6 +892,7 @@ mod tests {
 
     #[test]
     fn add_concept_operand_appends_and_increments_count() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_context();
         let concept = ctx.ontology_arenas_mut().alloc_concept(Concept::new());
         let operand = ctx.ontology_arenas_mut().alloc_concept(Concept::new());
@@ -908,6 +913,7 @@ mod tests {
 
     #[test]
     fn create_grounded_nominal_schema_concept_replaces_nominal_variable() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_context();
         let mut nom_var = Concept::new();
         nom_var.set_operator_code(CCNOMVAR);
@@ -951,6 +957,7 @@ mod tests {
 
     #[test]
     fn create_grounded_nominal_schema_concept_copies_and_reuses_structural_grounding() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_context();
         let mut nom_var = Concept::new();
         nom_var.set_operator_code(CCNOMVAR);
@@ -1019,6 +1026,7 @@ mod tests {
 
     #[test]
     fn create_grounded_nominal_schema_concept_linker_flattens_positive_and() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_context();
         let mut nom_var_a = Concept::new();
         nom_var_a.set_operator_code(CCNOMVAR);
@@ -1100,6 +1108,7 @@ mod tests {
 
     #[test]
     fn get_grounding_concept_linker_for_varbind_path_set_grounds_bound_nominal_variable() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_context();
         let mut nom_var_concept = Concept::new();
         nom_var_concept.set_operator_code(CCNOMVAR);
@@ -1193,6 +1202,7 @@ mod tests {
 
     #[test]
     fn get_grounding_concept_linker_for_representative_map_records_selected_path() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_context();
         let mut nom_var_concept = Concept::new();
         nom_var_concept.set_operator_code(CCNOMVAR);
@@ -1284,6 +1294,7 @@ mod tests {
 
     #[test]
     fn apply_varbind_propagate_grounding_rule_adds_grounded_concept_from_path_set() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_base_context();
         let mut nom_var_concept = Concept::new();
         nom_var_concept.set_operator_code(CCNOMVAR);
@@ -1407,6 +1418,7 @@ mod tests {
 
     #[test]
     fn create_representative_grounding_dependency_records_selected_path() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_base_context();
         let mut algo = CompletionTaskHandleAlgorithm::new();
         algo.conf_build_dependencies = true;
@@ -1464,6 +1476,7 @@ mod tests {
 
     #[test]
     fn create_representative_and_dependency_materializes_continuation() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_base_context();
         let mut algo = CompletionTaskHandleAlgorithm::new();
         algo.conf_build_dependencies = true;
@@ -1515,6 +1528,7 @@ mod tests {
 
     #[test]
     fn create_representative_all_dependency_records_link_dependency() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_base_context();
         let mut algo = CompletionTaskHandleAlgorithm::new();
         algo.conf_build_dependencies = true;
@@ -1589,6 +1603,7 @@ mod tests {
 
     #[test]
     fn create_representative_join_dependency_records_other_dependency() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_base_context();
         let mut algo = CompletionTaskHandleAlgorithm::new();
         algo.conf_build_dependencies = true;
@@ -1662,6 +1677,7 @@ mod tests {
 
     #[test]
     fn create_resolve_representative_dependency_records_maps_and_additional_dependency() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_base_context();
         let mut algo = CompletionTaskHandleAlgorithm::new();
         algo.conf_build_dependencies = true;
@@ -1758,6 +1774,7 @@ mod tests {
 
     #[test]
     fn create_resolve_representative_dependency_omits_null_additional_dependency() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_base_context();
         let mut algo = CompletionTaskHandleAlgorithm::new();
         algo.conf_build_dependencies = true;
@@ -1804,6 +1821,7 @@ mod tests {
 
     #[test]
     fn propagate_representative_adds_incoming_descriptor_to_set() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_base_context();
         let mut algo = CompletionTaskHandleAlgorithm::new();
 
@@ -1880,6 +1898,7 @@ mod tests {
 
     #[test]
     fn update_representative_propagation_set_folds_new_incoming_into_previous_outgoing() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_base_context();
         let mut algo = CompletionTaskHandleAlgorithm::new();
         algo.conf_build_dependencies = true;
@@ -2245,6 +2264,7 @@ mod tests {
 
     #[test]
     fn requires_representative_propagation_rejects_known_representative_id() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_base_context();
         let mut algo = CompletionTaskHandleAlgorithm::new();
         let (avail_rep_data, avail_des) =
@@ -2261,6 +2281,7 @@ mod tests {
 
     #[test]
     fn requires_representative_propagation_rejects_contained_representative() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_base_context();
         let mut algo = CompletionTaskHandleAlgorithm::new();
         let (avail_rep_data, avail_des) =
@@ -2291,6 +2312,7 @@ mod tests {
 
     #[test]
     fn requires_representative_propagation_direct_lookup_detects_missing_path() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_base_context();
         let mut algo = CompletionTaskHandleAlgorithm::new();
         let avail_paths: Vec<i64> = (1..=40).collect();
@@ -2322,6 +2344,7 @@ mod tests {
 
     #[test]
     fn requires_representative_propagation_merge_walk_detects_missing_path() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_base_context();
         let mut algo = CompletionTaskHandleAlgorithm::new();
         let (_avail_rep_data, avail_des) =
@@ -2357,6 +2380,7 @@ mod tests {
 
     #[test]
     fn apply_representative_and_rule_adds_missing_trigger_and_propagates_representative() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_base_context();
         let mut trigger = Concept::new();
         trigger.set_operator_code(CCATOM);
@@ -2467,6 +2491,7 @@ mod tests {
 
     #[test]
     fn apply_representative_and_rule_refreshes_existing_trigger_propagation() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_base_context();
         let mut trigger = Concept::new();
         trigger.set_operator_code(CCATOM);
@@ -2568,6 +2593,7 @@ mod tests {
 
     #[test]
     fn propagate_representative_to_successor_adds_operand_and_propagates() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_base_context();
         let mut operand = Concept::new();
         operand.set_operator_code(CCATOM);
@@ -2714,6 +2740,7 @@ mod tests {
 
     #[test]
     fn apply_representative_all_rule_fans_out_over_role_successors() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_base_context();
         let mut role = Role::new();
         role.set_role_tag(616);
@@ -2838,6 +2865,7 @@ mod tests {
 
     #[test]
     fn apply_representative_implication_rule_adds_binding_trigger_and_propagates() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_base_context();
         let mut binding_trigger = Concept::new();
         binding_trigger.set_operator_code(CCATOM);
@@ -2975,6 +3003,7 @@ mod tests {
 
     #[test]
     fn apply_representative_join_rule_creates_joined_representative() {
+        let _test_env = crate::test_env::write();
         let mut ctx = test_base_context();
         let join_variable = ctx.ontology_arenas_mut().alloc_variable(Variable::new());
         let side_variable = ctx.ontology_arenas_mut().alloc_variable(Variable::new());
@@ -3174,6 +3203,7 @@ mod tests {
 
     #[test]
     fn apply_representative_bind_variable_rule_creates_representative_path() {
+        let _test_env = crate::test_env::write();
         let mut ctx = test_base_context();
         let variable = ctx.ontology_arenas_mut().alloc_variable(Variable::new());
 
@@ -3333,6 +3363,7 @@ mod tests {
 
     #[test]
     fn apply_representative_grounding_rule_adds_grounded_concept_from_representative_map() {
+        let _test_env = crate::test_env::read();
         let mut ctx = test_base_context();
         let mut nom_var_concept = Concept::new();
         nom_var_concept.set_operator_code(CCNOMVAR);

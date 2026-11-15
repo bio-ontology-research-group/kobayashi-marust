@@ -533,6 +533,7 @@ mod tests {
 
     #[test]
     fn pn5_reset_last_processing_priority_delegates_to_priority_null_reset() {
+        let _test_env = crate::test_env::read();
         let mut node = IndividualProcessNode::new(ProcessContextId::NONE);
         node.set_last_processing_priority(IndividualProcessNodePriority {
             priority_con: 3.0,
@@ -550,6 +551,7 @@ mod tests {
 
     #[test]
     fn pn5_context_concept_process_linker_add_appends_old_head_to_tail_and_take_advances() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_node(IndividualProcessNode::new(ProcessContextId::NONE));
         let first = ctx.alloc_concept_process_linker(ConceptProcessLinker::new());
@@ -573,6 +575,7 @@ mod tests {
 
     #[test]
     fn pn5_context_role_backward_propagation_hash_lazy_allocates() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_node(IndividualProcessNode::new(ProcessContextId::NONE));
 
@@ -591,6 +594,7 @@ mod tests {
 
     #[test]
     fn pn5_role_backward_hash_preserves_konclude_prepend_and_return_values() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_node(IndividualProcessNode::new(ProcessContextId::NONE));
         let source_a = ctx.alloc_node(IndividualProcessNode::new(ProcessContextId::NONE));
@@ -643,6 +647,7 @@ mod tests {
 
     #[test]
     fn pn5_role_backward_hash_duplicate_source_guard_checks_existing_head() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_node(IndividualProcessNode::new(ProcessContextId::NONE));
         let source = ctx.alloc_node(IndividualProcessNode::new(ProcessContextId::NONE));

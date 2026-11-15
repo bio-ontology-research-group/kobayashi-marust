@@ -337,6 +337,7 @@ mod tests {
 
     #[test]
     fn pn6_nominal_connection_set_allocates_adds_and_reuses() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut node = IndividualProcessNode::new(ProcessContextId::NONE);
 
@@ -356,6 +357,7 @@ mod tests {
 
     #[test]
     fn pn6_reactivation_data_initializes_from_node_id_and_previous_data() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut node = IndividualProcessNode::new(ProcessContextId::NONE);
         node.set_individual_node_id(91);
@@ -380,6 +382,7 @@ mod tests {
 
     #[test]
     fn pn6_incremental_expansion_data_and_merging_hash_copy_previous_generation() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut node = IndividualProcessNode::new(ProcessContextId::NONE);
 
@@ -415,6 +418,7 @@ mod tests {
 
     #[test]
     fn pn6_remaining_satellite_getters_allocate_and_reuse() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut node = IndividualProcessNode::new(ProcessContextId::NONE);
 

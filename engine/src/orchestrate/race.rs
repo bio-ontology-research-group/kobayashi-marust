@@ -4091,6 +4091,7 @@ mod tests {
 
     #[test]
     fn cb_first_source_requires_enabled_present_nonempty_metadata() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept;
         let axioms = [cb_first_source_axiom(Concept::Top, Concept::Name("A".into()))];
         for trigger in [false, true] {
@@ -4106,6 +4107,7 @@ mod tests {
 
     #[test]
     fn cb_first_source_checks_every_concept_constructor_and_both_axiom_sides() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::{Concept, Role};
         fn wrappers(child: Concept) -> Vec<Concept> {
             let role = Role::Name("r".into());
@@ -4144,6 +4146,7 @@ mod tests {
 
     #[test]
     fn cb_first_source_uses_exact_raw_datatype_marker_in_body_and_head() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept;
         use crate::json_io::{JAtom, JClause, JTerm};
         let source = [cb_first_source_axiom(Concept::Top, Concept::Name("A".into()))];
@@ -4160,6 +4163,7 @@ mod tests {
 
     #[test]
     fn cb_first_duration_defaults_off_and_rejects_invalid_values() {
+        let _test_env = crate::test_env::write();
         assert_eq!(cb_first_duration(None), None);
         for value in ["", "0", "-1", "NaN", "inf", "-inf", "1e300", "1e-100"] {
             assert_eq!(cb_first_duration(Some(value)), None, "{value}");
@@ -4169,6 +4173,7 @@ mod tests {
 
     #[test]
     fn cb_first_eligibility_requires_fallback_explicit_serial_and_typed() {
+        let _test_env = crate::test_env::write();
         for mode in ["fallback", "race", "other"] {
             for threads in [None, Some(1), Some(2)] {
                 for typed in [false, true] {
@@ -4183,6 +4188,7 @@ mod tests {
 
     #[test]
     fn cb_first_success_never_consumes_worker_launch_closure() {
+        let _test_env = crate::test_env::write();
         let prepared = prepared_ht_test_command("/this/worker/must/not/launch");
         let output = prepared.out_path.path().to_owned();
         let slot: Mutex<Option<Result<u32, ()>>> = Mutex::new(Some(Ok(7)));
@@ -4198,6 +4204,7 @@ mod tests {
 
     #[test]
     fn cb_first_error_launches_once_without_consuming_cb_error() {
+        let _test_env = crate::test_env::write();
         let slot = Mutex::new(Some(Err::<u32, _>("CB error")));
         let event = engine_run::ArmEvent::new();
         let launches = std::cell::Cell::new(0);
@@ -4216,6 +4223,7 @@ mod tests {
 
     #[test]
     fn cb_first_deadline_launch_failure_returns_without_waiting_for_cb() {
+        let _test_env = crate::test_env::write();
         let slot: Mutex<Option<Result<u32, ()>>> = Mutex::new(None);
         let event = engine_run::ArmEvent::new();
         let launches = std::cell::Cell::new(0);
@@ -4230,6 +4238,7 @@ mod tests {
 
     #[test]
     fn cb_first_prepare_failure_resolves_budget_and_retains_cb_only_fallback() {
+        let _test_env = crate::test_env::write();
         let mut cfg = Config::from_env();
         cfg.threads = Some(1);
         let out = race_cb_vs_ht(
@@ -4247,6 +4256,7 @@ mod tests {
 
     #[test]
     fn cb_first_observes_notified_success_during_grace_without_launch() {
+        let _test_env = crate::test_env::write();
         let slot: Arc<Mutex<Option<Result<u32, ()>>>> = Arc::new(Mutex::new(None));
         let event = engine_run::ArmEvent::new();
         let producer_slot = slot.clone();
@@ -4289,6 +4299,7 @@ mod tests {
 
     #[test]
     fn prepared_ht_drop_cleans_output_and_marker_without_launch() {
+        let _test_env = crate::test_env::write();
         let prepared = prepared_ht_test_command("/this/path/must/not/be/executed");
         let output = prepared.out_path.path().to_owned();
         let marker = prepared.bridge_answer_marker.as_ref().unwrap().path().to_owned();
@@ -4301,6 +4312,7 @@ mod tests {
 
     #[test]
     fn prepared_ht_launch_failure_cleans_owned_paths() {
+        let _test_env = crate::test_env::write();
         let prepared = prepared_ht_test_command("/this/path/does/not/exist/km-worker");
         let output = prepared.out_path.path().to_owned();
         let marker = prepared.bridge_answer_marker.as_ref().unwrap().path().to_owned();
@@ -4312,6 +4324,7 @@ mod tests {
 
     #[test]
     fn prepared_ht_launch_preserves_serialized_input_and_metadata() {
+        let _test_env = crate::test_env::write();
         let prepared = prepared_ht_test_command("/bin/cat");
         let expected_bytes = serde_json::to_vec(&prepared.tin).unwrap();
         let expected_typed = typed_nominal_bridge_exclusive(&prepared.tin, true);
@@ -4335,6 +4348,7 @@ mod tests {
 
     #[test]
     fn prepared_ht_immediate_worker_error_keeps_existing_launch_contract() {
+        let _test_env = crate::test_env::write();
         let prepared = prepared_ht_test_command("/bin/false");
         let (mut child, out_path, _, _, _, _, _, marker) = prepared.launch().unwrap();
         // As before, a broken stdin write is ignored by the detached writer;
@@ -4345,6 +4359,7 @@ mod tests {
 
     #[test]
     fn ready_thread_budget_answers_without_blocking() {
+        let _test_env = crate::test_env::write();
         assert_eq!(ThreadBudget::ready(Some(8)).get(), Some(8));
         assert_eq!(ThreadBudget::ready(None).get(), None);
         assert!(ThreadBudget::ready(None).is_resolved());
@@ -4353,6 +4368,7 @@ mod tests {
 
     #[test]
     fn pending_thread_budget_blocks_a_racer_until_the_ht_input_resolves_it() {
+        let _test_env = crate::test_env::write();
         // A CB stack that reaches its first engine spawn before the HT input
         // is converted must wait for the reservation, not guess one.
         let budget = ThreadBudget::pending();
@@ -4367,6 +4383,7 @@ mod tests {
 
     #[test]
     fn first_thread_budget_resolution_wins() {
+        let _test_env = crate::test_env::write();
         let budget = ThreadBudget::pending();
         budget.resolve(Some(15));
         budget.resolve(Some(1));
@@ -4376,6 +4393,7 @@ mod tests {
 
     #[test]
     fn thread_budget_guard_resolves_the_fallback_only_when_still_pending() {
+        let _test_env = crate::test_env::write();
         // The main thread failing between starting the CB stack and
         // resolving the count must not leave the stack blocked forever.
         let budget = ThreadBudget::pending();
@@ -4406,6 +4424,7 @@ mod tests {
 
     #[test]
     fn very_large_ht_inputs_cap_replication_at_eight_workers() {
+        let _test_env = crate::test_env::write();
         assert_eq!(ordinary_ht_workers(199_999, 16), 16);
         assert_eq!(ordinary_ht_workers(200_000, 16), 8);
         assert_eq!(ordinary_ht_workers(283_229, 16), 8);
@@ -4423,6 +4442,7 @@ mod tests {
 
     #[test]
     fn native_nominal_projection_preserves_assertion_only_query_classes() {
+        let _test_env = crate::test_env::write();
         use crate::json_io::{JAtom, JClause, NominalAboxMeta, NominalIndividualMeta};
         use crate::frontend::syntax::Concept;
         let clauses = vec![
@@ -4455,6 +4475,7 @@ mod tests {
 
     #[test]
     fn native_nominal_view_filters_only_exact_typed_shapes_and_preserves_cb_input() {
+        let _test_env = crate::test_env::write();
         use crate::json_io::{
             JAtom, JClause, NominalAboxMeta, NominalIndividualMeta, NominalRoleAssertionMeta,
         };
@@ -4575,6 +4596,7 @@ mod tests {
 
     #[test]
     fn source_auto_route_serializes_and_consumes_the_complete_native_card_abox() {
+        let _test_env = crate::test_env::write();
         // Reduced 9540 shape: first-class has_point cardinality plus a direct
         // positive/negative has_point clash on named roots; a separate active
         // inverse role pair; and DifferentIndividuals. The test crosses every
@@ -4666,6 +4688,7 @@ mod tests {
 
     #[test]
     fn original_data_assertions_preserve_value_identity_and_functional_clashes() {
+        let _test_env = crate::test_env::write();
         for (other, consistent) in [("\"01\"^^xsd:int", true), ("\"2\"^^xsd:integer", false)] {
             let source = format!(r#"Prefix(:=<http://example.org/>)
                 Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>) Ontology(
@@ -4701,6 +4724,7 @@ mod tests {
 
     #[test]
     fn native_same_individual_source_projection_preserves_alias_clash() {
+        let _test_env = crate::test_env::write();
         for same in [false, true] {
             let equality = if same { "SameIndividual(:a :b)" } else { "" };
             let source = format!(r#"Prefix(:=<http://example.org/>) Ontology(
@@ -4738,6 +4762,7 @@ mod tests {
 
     #[test]
     fn native_nominal_bridge_view_preserves_the_exact_cb_clause_file() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept;
         use crate::json_io::{JAtom, JTerm, NominalAboxMeta, NominalIndividualMeta};
 
@@ -4880,6 +4905,7 @@ mod tests {
 
     #[test]
     fn production_top_assertions_require_typed_definer_provenance() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept;
         use crate::json_io::{
             DefinerKind, DefinerMeta, JAtom, JTerm, NominalAboxMeta, NominalIndividualMeta,
@@ -5023,6 +5049,7 @@ mod tests {
 
     #[test]
     fn certified_nominal_object_one_of_and_has_value_convert_losslessly() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::{Concept, Role};
         use crate::json_io::{
             JAtom, JTerm, NominalAboxMeta, NominalIndividualMeta, SourceAxiomKind, SourceAxiomMeta,
@@ -5204,6 +5231,7 @@ mod tests {
 
     #[test]
     fn konclude_bridge_accepts_only_legacy_fast_tableau_fences() {
+        let _test_env = crate::test_env::write();
         let mut tin = cb_to_ht::TInput::default();
         assert!(bridge_fences_supported(&tin, false));
         tin.fenced.push(cb_to_ht::Fenced {
@@ -5249,6 +5277,7 @@ mod tests {
 
     #[test]
     fn number_feature_does_not_bypass_bridge_lossless_input_gate() {
+        let _test_env = crate::test_env::write();
         let mut tin = cb_to_ht::TInput {
             number: true,
             dropped: 1,
@@ -5272,6 +5301,7 @@ mod tests {
 
     #[test]
     fn explicit_general_route_does_not_activate_specialist_state() {
+        let _test_env = crate::test_env::write();
         assert!(general_only_route(Some("general")));
         for route in [None, Some("certified"), Some("shoq"), Some("card")] {
             assert!(!general_only_route(route));
@@ -5284,6 +5314,7 @@ mod tests {
 
     #[test]
     fn named_ht_specialists_never_fall_through_to_general_ht() {
+        let _test_env = crate::test_env::write();
         assert!(specialist_route_allows(None, false, false, false, false));
         assert!(specialist_route_allows(
             Some("general"),
@@ -5413,6 +5444,7 @@ mod tests {
 
     #[test]
     fn inverse_functional_fence_requires_exact_equality_clause() {
+        let _test_env = crate::test_env::write();
         let mut tin = cb_to_ht::TInput {
             roles: vec!["r".into()],
             ..cb_to_ht::TInput::default()
@@ -5431,6 +5463,7 @@ mod tests {
 
     #[test]
     fn card_arm_is_a_candidate_and_certified_admits_it() {
+        let _test_env = crate::test_env::write();
         // A reduced cardinality probe: a datatype/inverse-free TInput with a
         // single `≥2 R.C` restriction is a card candidate, and the production
         // portfolio's `certified` mode admits it as the CB-guarded fallback arm
@@ -5487,6 +5520,7 @@ mod tests {
 
     #[test]
     fn proxy_abox_certificate_is_fail_closed_and_taxonomy_checked() {
+        let _test_env = crate::test_env::write();
         use cb_to_ht::HAtom;
 
         let safe = safe_proxy_abox_tin();
@@ -5589,6 +5623,7 @@ mod tests {
 
     #[test]
     fn atomic_component_abox_certificate_projects_only_exact_large_shape() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept;
         use crate::json_io::{NominalAboxMeta, NominalIndividualMeta};
 
@@ -5627,6 +5662,7 @@ mod tests {
 
     #[test]
     fn tableau_output_requires_exact_pairs_and_moves_them_into_rows() {
+        let _test_env = crate::test_env::write();
         assert!(serde_json::from_str::<TOutput>(
             r#"{"consistent":true,"subsumptions":[["A","B","C"]],"unsatisfiable":[]}"#,
         )
@@ -5643,6 +5679,7 @@ mod tests {
 
     #[test]
     fn card_arm_respects_its_fences() {
+        let _test_env = crate::test_env::write();
         let tin = card_def_tin();
         // KM_NO_HT_CARD (ht_card=false) disables the arm entirely.
         assert!(!card_candidate_from(&tin, false, true, false));
@@ -5682,6 +5719,7 @@ mod tests {
 
     #[test]
     fn clause_retained_fences_keep_the_card_arm() {
+        let _test_env = crate::test_env::write();
         // `rbox.rs` records a row for role constraints the first-class RBox
         // channel cannot express while the frontend still clausifies them
         // exactly. Those markers must not cost the arm (ore_ont_7499 carries an
@@ -5737,6 +5775,7 @@ mod tests {
 
     #[test]
     fn negative_native_roles_must_be_separate_from_chain_and_transitive_components() {
+        let _test_env = crate::test_env::write();
         let mut chained = card_def_tin();
         chained.roles = vec!["left".into(), "right".into(), "target".into()];
         chained.native_abox.complete = true;
@@ -5796,6 +5835,7 @@ mod tests {
 
     #[test]
     fn convert_emits_card_defs_for_a_faithful_ge_n_restriction() {
+        let _test_env = crate::test_env::write();
         // End-to-end reduced cardinality probe through cb_to_ht::convert: a
         // single `≥2 R.C` CardMeta on a datatype-free, inverse-free clause set
         // produces exactly one first-class card_def, which is what makes the
@@ -5822,6 +5862,7 @@ mod tests {
 
     #[test]
     fn bridge_only_worker_keeps_card_fallback_under_certified() {
+        let _test_env = crate::test_env::write();
         // Isolated bridge route: always bridge-only.
         assert!(bridge_only_worker(
             Some("bridge"),
@@ -5863,6 +5904,7 @@ mod tests {
 
     #[test]
     fn bridge_answers_are_harvested_immediately_under_trigger_absorption() {
+        let _test_env = crate::test_env::write();
         // The proven 3215 closure depends on taking the bridge's finished
         // exact answer without waiting out CB's 225 s fallback budget — but
         // ONLY when the worker is bridge-exclusive (KM_HT_BRIDGE_ONLY), i.e.
@@ -5892,6 +5934,7 @@ mod tests {
     /// of only ever replacing a CB timeout.
     #[test]
     fn non_bridge_exclusive_workers_keep_their_budgets_under_trigger_absorption() {
+        let _test_env = crate::test_env::write();
         // bridge+card certified worker: fast-certify short budget, not 0.
         assert_eq!(ht_acceptance_budget(true, false, true, 20.0, 225.0), 20.0);
         // manual trigger-absorb worker with a legacy arm: full fallback budget.
@@ -5900,6 +5943,7 @@ mod tests {
 
     #[test]
     fn large_synchronous_bridge_limits_speculative_cb_to_one_thread() {
+        let _test_env = crate::test_env::write();
         assert_eq!(
             limit_synchronous_bridge_competitor(Some(15), Some(54_974), false),
             Some(1)
@@ -5916,6 +5960,7 @@ mod tests {
 
     #[test]
     fn typed_nominal_bridge_limits_speculative_cb_below_large_threshold() {
+        let _test_env = crate::test_env::write();
         // ORE 10621 has 41,647 active classes, below the legacy 50k cutoff,
         // but its typed nominal bridge is serial and exact. One speculative CB
         // thread preserves the honest fallback while avoiding the measured
@@ -5940,6 +5985,7 @@ mod tests {
 
     #[test]
     fn typed_nominal_competitor_gate_requires_complete_exclusive_payload() {
+        let _test_env = crate::test_env::write();
         use crate::json_io::NominalIndividualMeta;
 
         let mut tin = cb_to_ht::TInput::default();

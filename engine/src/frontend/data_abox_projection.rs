@@ -149,6 +149,7 @@ mod tests {
     use super::*;
     #[test]
     fn inherited_domains_and_functional_owner_inequalities() {
+        let _test_env = crate::test_env::read();
         let result = project(r#"Ontology(
             SubDataPropertyOf(<urn:p> <urn:q>) SubDataPropertyOf(<urn:q> <urn:p>)
             FunctionalDataProperty(<urn:q>) DataPropertyDomain(<urn:q> <urn:C>)
@@ -164,6 +165,7 @@ mod tests {
     }
     #[test]
     fn inherited_assertions_do_not_duplicate_retained_source_facts() {
+        let _test_env = crate::test_env::read();
         let result = project(r#"Ontology(
             ClassAssertion(Annotation(<urn:note> "retained") <urn:C> <urn:a>)
             DifferentIndividuals(<urn:b> <urn:a>)
@@ -176,12 +178,14 @@ mod tests {
     }
     #[test]
     fn range_violation_is_retained_as_contradiction() {
+        let _test_env = crate::test_env::read();
         let result = project(r#"Ontology(DataPropertyRange(<urn:p> DataOneOf("red"^^xsd:string))
             DataPropertyAssertion(<urn:p> <urn:a> "blue"^^xsd:string))"#).unwrap();
         assert!(result.contains("ClassAssertion(<http://www.w3.org/2002/07/owl#Nothing> <urn:a>)"));
     }
     #[test]
     fn coupled_or_unknown_data_semantics_defer() {
+        let _test_env = crate::test_env::read();
         let assertion = r#"DataPropertyAssertion(<urn:p> <urn:a> "1"^^xsd:int)"#;
         for axiom in ["SubClassOf(<urn:C> DataMinCardinality(1 <urn:p>))",
             "HasKey(<urn:C> () (<urn:p>))", "Import(<urn:other>)",

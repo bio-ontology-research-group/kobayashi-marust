@@ -1266,6 +1266,7 @@ mod tests {
 
     #[test]
     fn occurrence_statistics_reader_accumulates_concept_vectors() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let cache_data = ctx.alloc_occ_stat_cache_data(OccurrenceStatisticsCacheData::new());
         let mut writer_a = OccurrenceStatisticsCacheWriter::with_cache_data(0, cache_data);
@@ -1286,6 +1287,7 @@ mod tests {
 
     #[test]
     fn occurrence_statistics_reader_accumulates_role_vectors() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let cache_data = ctx.alloc_occ_stat_cache_data(OccurrenceStatisticsCacheData::new());
         let mut writer_a = OccurrenceStatisticsCacheWriter::with_cache_data(0, cache_data);

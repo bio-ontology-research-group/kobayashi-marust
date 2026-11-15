@@ -641,6 +641,7 @@ mod tests {
 
     #[test]
     fn backend_sync_data_init_copies_konclude_state_fields() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let node = ctx.alloc_node(IndividualProcessNode::new(Id::NONE));
         let con_des = ctx.alloc_con_desc(Default::default());
@@ -672,6 +673,7 @@ mod tests {
 
     #[test]
     fn backend_sync_context_alloc_from_prev_preserves_previous_snapshot() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut data = IndividualNodeBackendCacheSynchronisationData::new();
         data.set_all_neighbour_forced_expansion(true)

@@ -1904,6 +1904,7 @@ mod typed_tests {
 
     #[test]
     fn compact_side_fingerprint_is_byte_identical_for_all_retained_fields() {
+        let _test_env = crate::test_env::write();
         let populated = serde_json::json!({
             "rule_data_roles": [true,false],
             "rule_source_classes": {"source":"Ontology()","concept_iris":["urn:A",null]},
@@ -1937,6 +1938,7 @@ mod typed_tests {
 
     #[test]
     fn compact_side_fingerprint_optional_frozen_input_probe() {
+        let _test_env = crate::test_env::write();
         let Some(path)=std::env::var_os("KM_SIDE_KEY_INPUT") else { return; };
         let input:TInput=serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         let mut rows=Vec::new();
@@ -1956,6 +1958,7 @@ mod typed_tests {
 
     #[test]
     fn source_side_key_ignores_reindexing_but_retains_constraint_meaning() {
+        let _test_env = crate::test_env::write();
         let old=TInput { concepts: vec!["A".into(),"B".into(),"Q_old".into()],
             roles: vec!["r".into(),"s".into()], queries: vec![0,1], inverse:true,
             chains:vec![(0,1,0)], transitive:vec![0], role_domains:vec![(0,0)],
@@ -1990,6 +1993,7 @@ mod typed_tests {
 
     #[test]
     fn source_side_key_optional_frozen_input_probe() {
+        let _test_env = crate::test_env::write();
         let Some(old_path)=std::env::var_os("KM_SOURCE_ACTIVATION_OLD") else { return; };
         let new_path=std::env::var_os("KM_SOURCE_ACTIVATION_NEW").expect("paired source probe");
         let read=|path| serde_json::from_slice::<TInput>(&std::fs::read(path).unwrap()).unwrap();
@@ -2052,6 +2056,7 @@ mod typed_tests {
 
     #[test]
     fn concept_delta_does_not_join_fillers_through_a_shared_role() {
+        let _test_env = crate::test_env::write();
         let restrictions = vec![
             restriction_clause("r", "F", "PF"),
             restriction_clause("r", "G", "PG"),
@@ -2182,6 +2187,7 @@ mod typed_tests {
 
     #[test]
     fn typed_native_abox_is_installed_and_classified() {
+        let _test_env = crate::test_env::write();
         let classifier =
             IncrementalHtClassifier::new_typed(&[source_clause("A", "B")], native_input(false))
                 .unwrap();
@@ -2195,6 +2201,7 @@ mod typed_tests {
 
     #[test]
     fn typed_disconnected_addition_reuses_existing_probes() {
+        let _test_env = crate::test_env::write();
         let before = vec![source_clause("A", "B")];
         let classifier = IncrementalHtClassifier::new_typed(&before, native_input(false)).unwrap();
         let added = source_clause("X", "Y");
@@ -2208,6 +2215,7 @@ mod typed_tests {
 
     #[test]
     fn typed_side_state_change_rebuilds_clause_independent_probes() {
+        let _test_env = crate::test_env::write();
         let clauses = vec![source_clause("A", "B")];
         let classifier = IncrementalHtClassifier::new_typed(&clauses, native_input(false)).unwrap();
         let mut changed = native_input(false);
@@ -2223,6 +2231,7 @@ mod typed_tests {
 
     #[test]
     fn typed_cardinality_state_reasons_and_reuses_disconnected_probes() {
+        let _test_env = crate::test_env::write();
         let before = vec![source_clause("A", "Min2"), source_clause("A", "Max1")];
         let classifier =
             IncrementalHtClassifier::new_typed(&before, cardinality_input(false)).unwrap();
@@ -2270,6 +2279,7 @@ mod typed_tests {
 
     #[test]
     fn qo_disconnected_addition_reuses_unaffected_taxonomy_queries() {
+        let _test_env = crate::test_env::write();
         let before = vec![source_clause("A", "B")];
         let classifier = IncrementalQoClassifier::new_typed(&before, qo_input(false)).unwrap();
         let added = source_clause("X", "Y");
@@ -2305,6 +2315,7 @@ mod typed_tests {
 
     #[test]
     fn bridge_disconnected_changes_reuse_unaffected_subject_rows() {
+        let _test_env = crate::test_env::write();
         let before = vec![source_clause("A", "B"), source_clause("X", "Y")];
         let classifier =
             IncrementalBridgeClassifier::new_typed(&before, bridge_input(false)).unwrap();
@@ -2345,6 +2356,7 @@ mod typed_tests {
 
     #[test]
     fn bridge_concept_replacement_reuses_a_disconnected_subject_component() {
+        let _test_env = crate::test_env::write();
         let before = vec![source_clause("A", "B"), source_clause("X", "Y")];
         let classifier =
             IncrementalBridgeClassifier::new_typed(&before, bridge_input(false)).unwrap();
@@ -2371,6 +2383,7 @@ mod typed_tests {
 
     #[test]
     fn exact_bridge_seed_preserves_rows_and_supports_subject_delta() {
+        let _test_env = crate::test_env::write();
         let before = vec![source_clause("A", "B"), source_clause("X", "Y")];
         let exact = IncrementalBridgeClassifier::new_typed(&before, bridge_input(false)).unwrap();
         let seeded = IncrementalBridgeClassifier::from_exact_result(
@@ -2395,6 +2408,7 @@ mod typed_tests {
 
     #[test]
     fn incomplete_or_negative_native_abox_fails_closed() {
+        let _test_env = crate::test_env::write();
         let clauses = [source_clause("A", "B")];
         let mut incomplete = native_input(false);
         incomplete.native_abox.complete = false;

@@ -973,6 +973,7 @@ mod tests {
 
     #[test]
     fn recognizes_every_direct_normalized_role_axiom() {
+        let _test_env = crate::test_env::read();
         let cases = [
             (
                 JClause {
@@ -1024,6 +1025,7 @@ mod tests {
 
     #[test]
     fn rejects_near_misses_instead_of_approximating() {
+        let _test_env = crate::test_env::read();
         let cases = [
             JClause {
                 body: vec![r("R", "x", "y")],
@@ -1049,6 +1051,7 @@ mod tests {
 
     #[test]
     fn recognizes_the_actual_normalizer_output() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::{clauses::clause_to_json, iri::IriRegistry, normalise, parse};
 
         let cases: [(&str, fn(&NamedRoleAxiom) -> bool); 6] = [
@@ -1088,6 +1091,7 @@ mod tests {
 
     #[test]
     fn nary_disjoint_object_properties_expands_to_every_pair() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::{clauses::clause_to_json, iri::IriRegistry, normalise, parse};
 
         let mut registry = IriRegistry::new();
@@ -1110,6 +1114,7 @@ mod tests {
 
     #[test]
     fn recognizes_role_chain_and_transitivity_normalizer_output() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::{clauses::clause_to_json, iri::IriRegistry, normalise, parse};
 
         for (source_axiom, expected_chains) in [
@@ -1136,6 +1141,7 @@ mod tests {
 
     #[test]
     fn role_chain_rejects_broken_paths_and_non_role_atoms() {
+        let _test_env = crate::test_env::read();
         let concept = JAtom::Concept {
             concept: "C".into(),
             term: var("x"),
@@ -1169,6 +1175,7 @@ mod tests {
 
     #[test]
     fn role_chain_follows_edges_independently_of_atom_order() {
+        let _test_env = crate::test_env::read();
         let edges = [r("R", "y", "x"), r("S", "x", "z"), r("R", "z", "w")];
         for order in [[0,1,2], [0,2,1], [1,0,2], [1,2,0], [2,0,1], [2,1,0]] {
             let clause = JClause {
@@ -1183,6 +1190,7 @@ mod tests {
 
     #[test]
     fn recognizes_actual_single_clause_source_constructors() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::{clauses::clause_to_json, iri::IriRegistry, normalise, parse};
 
         let cases: [(&str, fn(&NamedSourceClause) -> bool); 5] = [
@@ -1224,6 +1232,7 @@ mod tests {
 
     #[test]
     fn recognizes_actual_guarded_max_cardinality_clause() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::{clauses::clause_to_json, iri::IriRegistry, normalise, parse};
 
         let mut registry = IriRegistry::new();
@@ -1251,6 +1260,7 @@ mod tests {
 
     #[test]
     fn groups_actual_min_cardinality_witness_family_atomically() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::{clauses::clause_to_json, iri::IriRegistry, normalise, parse};
 
         let mut registry = IriRegistry::new();
@@ -1279,6 +1289,7 @@ mod tests {
 
     #[test]
     fn minimum_cardinality_rejects_a_missing_distinctness_clause() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::{clauses::clause_to_json, iri::IriRegistry, normalise, parse};
 
         let mut registry = IriRegistry::new();
@@ -1297,6 +1308,7 @@ mod tests {
 
     #[test]
     fn guarded_max_cardinality_rejects_incomplete_or_repeated_witness_sets() {
+        let _test_env = crate::test_env::read();
         let body = vec![
             c("A", "x"),
             r("R", "x", "y0"),
@@ -1326,6 +1338,7 @@ mod tests {
 
     #[test]
     fn single_clause_recovery_rejects_variable_and_role_mismatches() {
+        let _test_env = crate::test_env::read();
         let cases = [
             JClause {
                 body: vec![JAtom::Concept {
@@ -1362,6 +1375,7 @@ mod tests {
 
     #[test]
     fn recognizes_actual_paired_source_constructors() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::{clauses::clause_to_json, iri::IriRegistry, normalise, parse};
 
         for (source_axiom, expected) in [
@@ -1391,6 +1405,7 @@ mod tests {
 
     #[test]
     fn paired_source_rejects_crossed_existential_witnesses() {
+        let _test_env = crate::test_env::read();
         let trigger = JAtom::Concept {
             concept: "A".into(),
             term: var("x"),
@@ -1419,6 +1434,7 @@ mod tests {
 
     #[test]
     fn recovers_a_complete_mixed_normalizer_stream() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::{clauses::clause_to_json, iri::IriRegistry, normalise, parse};
 
         let mut registry = IriRegistry::new();
@@ -1454,6 +1470,7 @@ mod tests {
 
     #[test]
     fn recovers_production_order_nominal_pair() {
+        let _test_env = crate::test_env::read();
         let individual = JTerm::Ind { name: "i".into() };
         let clauses = vec![
             JClause {
@@ -1485,6 +1502,7 @@ mod tests {
 
     #[test]
     fn complete_recovery_reports_first_uncovered_clause() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             JClause {
                 body: vec![JAtom::Concept {

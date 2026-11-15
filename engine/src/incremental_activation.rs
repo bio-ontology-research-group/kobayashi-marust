@@ -400,6 +400,7 @@ mod tests {
 
     #[test]
     fn source_locality_preserves_finite_relational_models() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept;
         use crate::json_io::{SourceAxiomMeta, SourceAxiomKind::*};
         let name = |n| Concept::Name(format!("C{n}"));
@@ -467,6 +468,7 @@ mod tests {
 
     #[test]
     fn source_locality_keeps_structural_rules_out_of_the_edit_and_rejects_negation() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept;
         use crate::json_io::{SourceAxiomMeta, SourceAxiomKind};
         let ax = SourceAxiomMeta { kind: SourceAxiomKind::SubClass,
@@ -484,6 +486,7 @@ mod tests {
 
     #[test]
     fn numeric_source_activation_matches_clause_oracle_with_globals_and_word_boundaries() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::{Concept, Role};
         use crate::json_io::{SourceAxiomMeta, SourceAxiomKind::*};
         let name = |n| Concept::Name(format!("C{n}"));
@@ -512,6 +515,7 @@ mod tests {
 
     #[test]
     fn source_activation_optional_differential_timing() {
+        let _test_env = crate::test_env::write();
         let Some(output) = std::env::var_os("KM_SOURCE_ACTIVATION_COMPARE") else { return; };
         let read = |key| serde_json::from_slice::<crate::orchestrate::cb_to_ht::TInput>(
             &std::fs::read(std::env::var_os(key).expect("paired input")).unwrap()).unwrap();
@@ -537,6 +541,7 @@ mod tests {
 
     #[test]
     fn source_locality_optional_frozen_input_probe() {
+        let _test_env = crate::test_env::write();
         let Some(old_path) = std::env::var_os("KM_SOURCE_ACTIVATION_OLD") else { return; };
         let new_path = std::env::var_os("KM_SOURCE_ACTIVATION_NEW").expect("paired source probe");
         let read = |path| serde_json::from_slice::<crate::orchestrate::cb_to_ht::TInput>(
@@ -557,6 +562,7 @@ mod tests {
 
     #[test]
     fn source_module_keeps_queries_separate_and_handles_global_and_top_seeds() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::syntax::Concept;
         use crate::json_io::{SourceAxiomMeta, SourceAxiomKind};
         let name = |s: &str| Concept::Name(s.into());
@@ -580,6 +586,7 @@ mod tests {
 
     #[test]
     fn source_module_optional_frozen_input_probe() {
+        let _test_env = crate::test_env::write();
         let Some(path) = std::env::var_os("KM_SOURCE_MODULE_INPUT") else { return; };
         let input: crate::orchestrate::cb_to_ht::TInput = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         let focus = std::env::var_os("KM_SOURCE_MODULE_FOCUS").expect("module focus file");
@@ -616,6 +623,7 @@ mod tests {
     }
     #[test]
     fn unchanged_queries_preserve_all_entailments_in_exhaustive_horn_models() {
+        let _test_env = crate::test_env::write();
         let palette = [clause(&[], &[0]), clause(&[0], &[1]), clause(&[1], &[2]),
             clause(&[0, 2], &[3]), clause(&[3], &[0]), clause(&[1, 3], &[]),
             clause(&[2], &[1]), clause(&[2, 3], &[0])];
@@ -638,6 +646,7 @@ mod tests {
     }
     #[test]
     fn activation_crosses_word_boundaries_without_marking_other_queries() {
+        let _test_env = crate::test_env::write();
         let queries: Vec<_> = (0..130).map(|i| format!("C{i}")).collect();
         let old = vec![clause(&[63], &[64]), clause(&[64], &[129])];
         let delta = clause(&[129], &[]);
@@ -648,6 +657,7 @@ mod tests {
 
     #[test]
     fn conjunction_does_not_connect_unrelated_queries_and_global_seeds_are_respected() {
+        let _test_env = crate::test_env::write();
         let old = vec![clause(&[0], &[1]), clause(&[1, 2], &[3])];
         let delta = clause(&[3], &[]); let mut new = old.clone(); new.push(delta.clone());
         let queries = vec!["C0".into(), "C3".into()];

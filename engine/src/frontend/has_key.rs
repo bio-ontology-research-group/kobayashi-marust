@@ -185,6 +185,7 @@ mod tests {
 
     #[test]
     fn object_inverse_and_data_keys_become_one_rule_each() {
+        let _test_env = crate::test_env::read();
         let out = rewritten("Declaration(Class(:A)) HasKey(Annotation(rdfs:comment \"k\") \
             ObjectIntersectionOf(:A :B) (:r ObjectInverseOf(:s)) (:d)) SubClassOf(:A :B)");
         let x = variable("x");
@@ -202,6 +203,7 @@ mod tests {
 
     #[test]
     fn sources_without_a_standard_key_stay_borrowed() {
+        let _test_env = crate::test_env::read();
         for source in [
             "Prefix(:=<urn:t#>) Ontology(SubClassOf(:A :B))",
             "Prefix(:=<urn:t#>) Ontology(HasKey(:A :r :d))",

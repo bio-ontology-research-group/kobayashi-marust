@@ -80,6 +80,7 @@ mod tests {
     fn edge(r:&str,a:&str,b:&str)->RuleAtom {RuleAtom::Role(r.into(),v(a),v(b))}
     #[test]
     fn paths_match_all_two_element_models_including_aliases_and_unnamed_objects() {
+        let _test_env = crate::test_env::read();
         let named=BTreeSet::from(["a".into(),"b".into()]);
         for reverse in [false,true] {
             let rule=Axiom::Rule(vec![edge("r","x","y"), if reverse {edge("s","z","y")} else {edge("s","y","z")}],vec![edge("t","x","z")]);
@@ -113,6 +114,7 @@ mod tests {
     }
     #[test]
     fn cyclic_parallel_and_disconnected_rules_keep_general_grounding() {
+        let _test_env = crate::test_env::read();
         for body in [vec![edge("r","x","y"),edge("s","y","x")],
             vec![edge("r","x","y"),edge("s","x","y")],
             vec![edge("r","x","y"),edge("s","z","w")]] {

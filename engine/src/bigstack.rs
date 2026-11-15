@@ -254,6 +254,7 @@ mod tests {
 
     #[test]
     fn spawned_thread_records_its_budget_and_nested_requests_run_inline() {
+        let _test_env = crate::test_env::write();
         let outer = std::thread::current().id();
         let (inner_thread, nested_thread, budget) = run("bigstack-test", 64 << 20, || {
             let here = std::thread::current().id();
@@ -270,6 +271,7 @@ mod tests {
 
     #[test]
     fn deep_recursion_uses_the_requested_stack() {
+        let _test_env = crate::test_env::write();
         fn depth(n: usize) -> usize {
             let pad = std::hint::black_box([0u8; 1024]);
             if n == 0 { pad[0] as usize } else { 1 + depth(n - 1) + pad[0] as usize }
@@ -280,6 +282,7 @@ mod tests {
 
     #[test]
     fn pool_spawn_runs_the_work_and_reports_a_failure() {
+        let _test_env = crate::test_env::write();
         let results: Vec<usize> = std::thread::scope(|scope| {
             let handles: Vec<_> = (0..4)
                 .map(|i| spawn_scoped_retrying(8 << 20, scope, move || i * 2).unwrap())
@@ -294,6 +297,7 @@ mod tests {
 
     #[test]
     fn spawn_failure_reports_the_reason() {
+        let _test_env = crate::test_env::write();
         // An absurd request fails on every host; the error must name it.
         let error = run("bigstack-absurd", usize::MAX >> 2, || ()).unwrap_err();
         assert!(error.contains("bigstack-absurd") && error.contains("MiB stack"), "{error}");

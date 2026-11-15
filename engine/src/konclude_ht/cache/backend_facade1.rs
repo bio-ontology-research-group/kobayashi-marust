@@ -1282,6 +1282,7 @@ mod tests {
 
     #[test]
     fn add_created_label_statistics_uses_label_cache_value_count() {
+        let _test_env = crate::test_env::read();
         let mut cache = BackendRepresentativeMemoryCache::new(INVALID, "test", INVALID);
         let mut cache_context = CacheContext::new();
         let label_type = LabelCacheItemType::FullConceptSetLabel as Cint64;
@@ -1306,6 +1307,7 @@ mod tests {
 
     #[test]
     fn queue_individual_association_memory_context_deletion_prepends_to_ontology_queue() {
+        let _test_env = crate::test_env::read();
         let mut cache = BackendRepresentativeMemoryCache::new(INVALID, "test", INVALID);
         let mut cache_context = CacheContext::new();
         let ontology_data = cache_context.alloc_ontology_data(OntologyData::new());
@@ -1343,6 +1345,7 @@ mod tests {
 
     #[test]
     fn individual_association_data_memory_context_falls_back_to_ontology_context() {
+        let _test_env = crate::test_env::read();
         let cache = BackendRepresentativeMemoryCache::new(INVALID, "test", INVALID);
         let mut cache_context = CacheContext::new();
         let ontology_context = cache_context.alloc_backend_ontology_context(
@@ -1368,6 +1371,7 @@ mod tests {
 
     #[test]
     fn individual_association_data_memory_context_flags_copying_for_last_previous_context() {
+        let _test_env = crate::test_env::read();
         let cache = BackendRepresentativeMemoryCache::new(INVALID, "test", INVALID);
         let mut cache_context = CacheContext::new();
         let ontology_context = cache_context.alloc_backend_ontology_context(
