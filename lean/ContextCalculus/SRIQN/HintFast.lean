@@ -128,13 +128,17 @@ the size of the name table and was rebuilt at every test. -/
 def memTS (t : Finset (Fin n)) : MemS n :=
   if t.card ≤ 32 then ⟨fun a => decide (a ∈ t)⟩ else
     -- a hash set of the type's list (no sort; the test does not depend on the order)
-    Quot.liftOn t.val (fun l => let H := Std.HashSet.ofList l; (⟨fun a => H.contains a⟩ : MemS n))
+    -- (stage H5: the set is made with the capacity of the list, so it never grows)
+    Quot.liftOn t.val (fun l => let H := (Std.HashSet.emptyWithCapacity l.length).insertMany l;
+        (⟨fun a => H.contains a⟩ : MemS n))
       (fun l l' (h : l.Perm l') => by
         show (MemS.mk _ = MemS.mk _)
         rw [MemS.mk.injEq]
         funext a
         rw [Bool.eq_iff_iff, Std.HashSet.contains_iff_mem, Std.HashSet.contains_iff_mem,
-          Std.HashSet.mem_ofList, Std.HashSet.mem_ofList, List.contains_iff_mem, List.contains_iff_mem]
+          Std.HashSet.mem_insertMany_list, Std.HashSet.mem_insertMany_list, List.contains_iff_mem,
+          List.contains_iff_mem]
+        simp only [Std.HashSet.not_mem_emptyWithCapacity, false_or]
         exact h.mem_iff)
 
 /-- Membership in a type. -/
@@ -145,8 +149,10 @@ theorem memT_iff (t : Finset (Fin n)) (a : Fin n) : memT t a = true ↔ a ∈ t 
   split_ifs
   · exact decide_eq_true_iff
   · obtain ⟨⟨l⟩, hl⟩ := t
-    show (Std.HashSet.ofList l).contains a = true ↔ a ∈ (⟨Quot.mk _ l, hl⟩ : Finset (Fin n))
-    rw [Std.HashSet.contains_iff_mem, Std.HashSet.mem_ofList, List.contains_iff_mem]
+    show ((Std.HashSet.emptyWithCapacity l.length).insertMany l).contains a = true ↔
+      a ∈ (⟨Quot.mk _ l, hl⟩ : Finset (Fin n))
+    rw [Std.HashSet.contains_iff_mem, Std.HashSet.mem_insertMany_list, List.contains_iff_mem]
+    simp only [Std.HashSet.not_mem_emptyWithCapacity, false_or]
     rfl
 
 /-! ## The index of an ontology -/
