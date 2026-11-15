@@ -2,14 +2,76 @@
 
 ## [Unreleased]
 
-## [1.6.4] - 2026-11-14
+## [1.6.5] - unreleased
 
-Fixes issue #5: FLOPO annotation classes with negated qualities, which
-did not classify in 300 s, now classify in about 17 s. No proof changes.
-Notes: `docs/RELEASE-1.6.4.md`.
+Wrong-answer fixes backported from the v1.7.0 line, plus the changes of
+the untagged v1.6.4 candidate (issue #5: FLOPO annotation classes with
+negated qualities, which did not classify in 300 s, now classify in about
+17 s). No proof changes. Notes: `docs/RELEASE-1.6.5.md`.
 
 ### Engine
 
+- Fixed (E7, wrong answer): `ObjectPropertyDomain(r owl:Nothing)` and
+  `ObjectPropertyRange(r owl:Nothing)` were dropped without being counted,
+  so classes that need an `r` edge were not reported unsatisfiable. They
+  are now clausified as `∃r.⊤ ⊑ ⊥` and `⊤ ⊑ ∀r.⊥`.
+- Fixed (E8, wrong answers): `owl:topObjectProperty` outside class
+  restrictions and domain and range axioms (as a sub-property, in a chain,
+  in equivalent or inverse property axioms, characteristics, assertions
+  and rule atoms) was read as an ordinary property, and its other
+  occurrences were then not rewritten either, which lost consequences.
+  Every such position is now encoded exactly through the nominal hub of
+  the universal-role rewrite (`U` becomes the chain `S ∘ S⁻`) or removed
+  as a tautology. Keys are rewritten to rules first, so a key on
+  `owl:topObjectProperty` is encoded too.
+- Fixed (E12, wrong answers): the CB clause stream lost consequences of
+  role chains for every consumer of a chain-derived role other than a
+  plain existential over same-orientation roles: `∀r.C` and ranges of a
+  chain super-role, consumers of its inverse, negated existentials,
+  existentials without a filler, and longer chains through such roles.
+  Example: `s ∘ t ∘ t⁻ ⊑ r`, `⊤ ⊑ ∃t.{g}`, `A ⊑ ∃s.⊤`, `A ⊑ ∀r.C`
+  entails `A ⊑ C`, which km missed. The frontend adds a complete
+  role-automaton encoding for these consumers
+  (`preprocess::chain_consumer_automaton_clauses`); the CB rules are
+  unchanged. Consumers outside the encodable shape are counted as dropped
+  (`RoleChainConsumer`). Tests: `tests/role_chain_consumers.rs`.
+- Fixed (E17, wrong answer, since v1.4.4): `{r(a,b), ¬r(a,c)}` was
+  reported inconsistent. The CB worker read the ground negative assertion
+  as `r(x,c) → x ≉ a`, and Hyper binds the non-central individual `c`
+  like a variable. The nominal clause stream now carries the guarded form
+  `{a}(x) ∧ r(x,y) ∧ {c}(y) → ⊥`, and the CB translation drops and counts
+  any remaining ground form.
+- Fixed (E18, wrong answer, since v1.4.4): over ground role assertions a
+  `∀` consumer of a transitive role depended on the order of the
+  assertions (`Transitive(p)`, `p(a,b)`, `p(b,c)`, `a : ¬∃p.{c}` was
+  consistent in one order). Transitive roles in the nominal clause stream
+  with an ABox now get the forward role-automaton markers of the chain
+  encoding.
+- Fixed (E19, wrong answer): the native bridge reported `{a} ⊓ {b}`
+  satisfiable when a functional data property separates `a` from `b` and
+  a data value is shared (`g(a,0)`, `g(b,255)`, `h(b,0)`, `g` functional).
+  A value-singleton merge made a child of `b` the witness of `a`'s
+  `∃g.{0}`; the nominal merge of `b` into `a` pruned that child, and `a`'s
+  `∃` was never queued again. The bridge now skips pruned nodes when it
+  looks for singleton carriers and, after a merge prunes nodes on an input
+  with value singletons, queues the generating concepts of every live
+  neighbour of a pruned node again. The saturation coupling is off on
+  inputs with a consumed value singleton.
+- Fixed (wrong answer): `{Functional(k), {c} ⊑ ¬C, C ≡ =1 k.xsd:integer,
+  k(c,2)}` was reported consistent. The bridge absorbed `{c} ⊑ ¬C` onto
+  the trigger `C` and made `C` a lazily unfolded definition, which a node
+  in its definition never receives. A name in a trigger position of an
+  absorbed inclusion is no longer a lazy definition unless its definition
+  is fully triggerable.
+- The CB translation drops and counts a body equality between an
+  individual and a non-central variable.
+- A repeated ABox axiom (for example `SameIndividual(a b)` twice) made
+  the native bridge's ABox coverage check decline, and the fallback
+  answer was published with the declined attempt's `DROPPED` count.
+  Repeats are counted as covered.
+- `km classify --realize` ran its workers with `KM_THREADS=16` (the route
+  bundle's value) when the caller set a smaller `KM_THREADS` (E20). Route
+  bundles now never exceed the caller's value.
 - `km classify` sets the release flags (`KM_HT_DDB`, `KM_HT_NATIVE_FULL`,
   `KM_CACHE_CONFORMANCE`, `KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE`,
   `KM_FAST_IRI_GRAMMAR`) when the caller leaves them unset
@@ -37,7 +99,7 @@ Notes: `docs/RELEASE-1.6.4.md`.
 
 ### Protégé plugin
 
-- Version 1.6.4; the plugin list descriptors point at the v1.6.4 jars.
+- Version 1.6.5; the plugin list descriptors point at the v1.6.5 jars.
 
 ## [1.6.3] - 2026-11-13
 
