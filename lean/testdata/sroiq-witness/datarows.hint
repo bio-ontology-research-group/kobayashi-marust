@@ -1,0 +1,10 @@
+# data.ofn with the data stars given (stage H5): p (core 0) has one age value, in atoms
+# 0 (rdfs:Literal), 1 (xsd:integer) and 3 ({42}); the Named witness (core 1) one name value
+# in atoms 0 and 2 (xsd:string); the Person witness (core 2) no data value
+blocks 3
+ty 0 0 1 3 4 6 9 10 12
+ty 1 0 2 4 7 8 11 12
+ty 2 0 4 7 9 11 12
+dstar 0 1 / 0 1 3
+dstar 1 0 / 0 2
+dstar 2

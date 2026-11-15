@@ -81,14 +81,40 @@ theorem dedupH_spec {α : Type} [DecidableEq α] [Hashable α] (l : List α) :
     (fun y => by simp)
   exact ⟨g1, fun y => by rw [dedupH, g3 y]; simp⟩
 
-/-- `List.toFinset` through the hash set. -/
+/-- The list is strictly increasing (stage H5: a sorted `ty` line needs no
+hash set to drop repetitions). -/
+def incL {n : Nat} : List (Fin n) → Bool
+  | a :: b :: l => decide (a < b) && incL (b :: l)
+  | _ => true
+
+theorem incL_lt {n : Nat} : ∀ {a : Fin n} {l : List (Fin n)}, incL (a :: l) = true → ∀ x ∈ l, a < x
+  | _, [], _, x, hx => absurd hx List.not_mem_nil
+  | a, b :: l, h, x, hx => by
+    simp only [incL, Bool.and_eq_true, decide_eq_true_eq] at h
+    rcases List.mem_cons.1 hx with rfl | hx
+    · exact h.1
+    · exact lt_trans h.1 (incL_lt h.2 x hx)
+
+theorem incL_nodup {n : Nat} : ∀ {l : List (Fin n)}, incL l = true → l.Nodup
+  | [], _ => List.nodup_nil
+  | [_], _ => List.nodup_singleton _
+  | a :: b :: l, h => by
+    refine List.nodup_cons.2 ⟨fun hm => lt_irrefl a (incL_lt h a hm), incL_nodup ?_⟩
+    simp only [incL, Bool.and_eq_true] at h
+    exact h.2
+
+/-- `List.toFinset` through the hash set, or directly for a strictly
+increasing list. -/
 def toFinsetH {n : Nat} (l : List (Fin n)) : Finset (Fin n) :=
-  ⟨dedupH l, (dedupH_spec l).1⟩
+  if h : incL l = true then ⟨l, incL_nodup h⟩ else ⟨dedupH l, (dedupH_spec l).1⟩
 
 theorem toFinsetH_eq {n : Nat} (l : List (Fin n)) : toFinsetH l = l.toFinset := by
   ext y
-  simp only [toFinsetH, Finset.mem_mk, Multiset.mem_coe, List.mem_toFinset]
-  exact (dedupH_spec l).2 y
+  unfold toFinsetH
+  split_ifs
+  · simp
+  · simp only [Finset.mem_mk, Multiset.mem_coe, List.mem_toFinset]
+    exact (dedupH_spec l).2 y
 
 def finsOfF (n : Nat) (xs : List Nat) : Option (Finset (Fin n)) :=
   (xs.mapM (RawHint.finOf n)).map toFinsetH
