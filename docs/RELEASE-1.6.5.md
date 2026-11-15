@@ -72,8 +72,37 @@ PENDING (maintainer): Ibex certification from the tag (PGO build, five
 Lean gates, Rust suite, Java and checkers) and the S1/C1 speed and
 correctness runs.
 
-Workstation checks before the tag: see the interim report; to be filled
-in here.
+Workstation checks (2026-11-15, binary built from `development/v1.6.5`,
+compared with a build of `v1.6.4-rc1`, `KM_THREADS=1`):
+
+- `cargo test --release --lib`: the 27 failures of the v1.6.4 list
+  (Lean checker binaries absent); one more in one run,
+  `elcomplete::tests::positive_abox_completion_respects_identity_and_conjunction_clashes`,
+  which passes alone, in its module and in a second full run (the
+  environment race fixed on the v1.7.0 line by the test lock, not
+  backported). Integration suites, including the new `role_chain_consumers`,
+  `abox_assertions` and `builtin_roles_cli`: all pass after one test
+  update (`symbolic_source_classification`: the universal role as a
+  sub-role is now encoded, E8, so the decline test uses another construct).
+- `km ofn --meta` on 839 corpus inputs (300+ sampled plus every input of
+  the affected sets): 764 byte-identical, 74 changed, one (ore_ont_15687)
+  aborts on both binaries. Every changed input is in an expected set: 72
+  have role chains (E12), 38 the universal role or an empty domain or
+  range (E7/E8), 16 negative or transitive ABox assertions (E17/E18).
+- Classification answers, before and after, on the 532 inputs of the
+  affected sets (60 s per run): 498 identical, 31 without an answer on
+  both, 2 answered only after (ore_ont_12743, ore_ont_9151: about 60 s on
+  both binaries), and one changed answer: ore_ont_7203 gains 12
+  subsumptions `X ⊑ CL_0000520`; HermiT confirms them (one is asserted;
+  the source has `SubObjectPropertyOf(hasDisease owl:topObjectProperty)`,
+  E8), so v1.6.4 was wrong there.
+- Random differential sets against HermiT, 10,000 knowledge bases (five
+  sets of 2,000): no km wrong answer. Every difference is a HermiT error
+  confirmed by HermiT's own consistency check (type rows HermiT reports
+  but refutes when the negation is added, `DifferentIndividuals(a a)`
+  treated as vacuous, `"1"^^xsd:int` and `"1"^^xsd:integer` treated as
+  different values) or a km timeout at 30 s.
+- Issue #5 reproducer: 18.2 s (v1.6.4-rc1: 18.5 s), same answer.
 
 ## Known issues
 
