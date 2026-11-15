@@ -227,8 +227,42 @@ def encObjT (le : RoleT (Fin m) → RoleT (Fin m) → Bool) (i : Fin B.length) :
       lam.filterMap fun R =>
         if le R T then some (.gci [oldN _ a, sN _ R] [oldN _ c]) else none
 
+/-- `encObjT` over a number `nc` of object clauses given as a value (the
+name constructors read it; with `B.length` they recomputed the length for
+every clause). -/
+def encObjK (nc : Nat) (le : RoleT (Fin m) → RoleT (Fin m) → Bool) (i : Fin nc) :
+    SRIQ.Clause (Fin n) (Fin m) → List (SRIQ.Clause (Fin (n + kF n m nc)) (Fin m))
+  | .gci body head => [.gci (body.map (oldN _)) (head.map (oldN _))]
+  | .chain body S => [.chain body S]
+  | .exRight a T b =>
+    if splitB lam irr T then
+      [.gci [oldN _ a] [zN _ i, wN _ i], .exRight (zN _ i) T (oldN _ b),
+        .gci [wN _ i] [sN _ T], .gci [wN _ i] [oldN _ b]]
+    else [.exRight (oldN _ a) T (oldN _ b)]
+  | .atLeast a k T b =>
+    if splitB lam irr T then
+      [.gci [oldN _ a] [zN _ i, wN _ i], .atLeast (zN _ i) k T (oldN _ b),
+        .gci [wN _ i] [sN _ T], .gci [wN _ i] [oldN _ b],
+        .atLeast (wN _ i) (k - 1) T (oldN _ b)]
+    else [.atLeast (oldN _ a) k T (oldN _ b)]
+  | .atMost a k T b =>
+    .atMost (oldN _ a) k T (oldN _ b) ::
+      (if T ∈ lam then
+        (if k = 0 then [.gci [oldN _ a, sN _ T, oldN _ b] []]
+        else [.gci [oldN _ a, sN _ T, oldN _ b] [yN _ i], .atMost (yN _ i) (k - 1) T (oldN _ b)])
+      else [])
+  | .allRight a T c =>
+    .allRight (oldN _ a) T (oldN _ c) ::
+      lam.filterMap fun R =>
+        if le R T then some (.gci [oldN _ a, sN _ R] [oldN _ c]) else none
+
 theorem encObj_eq_T (i : Fin B.length) (cl : SRIQ.Clause (Fin n) (Fin m)) :
     encObj B lam irr i cl = encObjT B lam irr (SROIQ.Proc.leB B) i cl := by
+  cases cl <;> rfl
+
+theorem encObjT_eq_K (le : RoleT (Fin m) → RoleT (Fin m) → Bool) (i : Fin B.length)
+    (cl : SRIQ.Clause (Fin n) (Fin m)) :
+    encObjT B lam irr le i cl = encObjK lam irr B.length le i cl := by
   cases cl <;> rfl
 
 /-- The closure of the loop names. -/
@@ -265,14 +299,17 @@ def objClsF (SC : List (SClause (Fin n) (Fin m))) (N : List (Fin n)) :
     List (SRIQ.Clause (NC B) (Fin m)) :=
   let A := B.toArray
   let tab := SROIQ.Proc.mkTab B
-  (List.finRange B.length).flatMap (fun i =>
-      encObjT B lam irr (SROIQ.Proc.leF tab) i (A[i.val]'(by rw [List.size_toArray]; exact i.2))) ++
+  let hm := Std.HashMap.ofList tab
+  let k := B.length
+  (List.finRange k).flatMap (fun i =>
+      encObjK lam irr k (SROIQ.Proc.leH hm) i (A[i.val]'(by rw [List.size_toArray]; exact i.2))) ++
     sClose B lam ++
     SC.map (selfCl B) ++ forbidCls B lam N
 
 @[csimp] theorem objCls_eq_F : @objCls = @objClsF := by
   funext n m B lam irr SC N
-  simp only [objCls, objClsF, List.getElem_toArray, SROIQ.Proc.leF_mkTab, encObj_eq_T]
+  simp only [objCls, objClsF, List.getElem_toArray, SROIQ.Proc.leH_mkTab, encObj_eq_T,
+    encObjT_eq_K]
   rfl
 
 end SelfE
