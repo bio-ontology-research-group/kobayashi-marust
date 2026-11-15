@@ -1,0 +1,3 @@
+witness http://ex/A 0
+witness http://ex/B 3
+witness http://ex/C 4
