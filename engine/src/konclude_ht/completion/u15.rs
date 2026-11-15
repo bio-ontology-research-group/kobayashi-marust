@@ -988,6 +988,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
         // pruneSuccessors(individual, nullptr, false, calcAlgContext)
         let mut individual_mut = individual;
         self.prune_successors(&mut individual_mut, NodeId::NONE, false, calc_alg_context);
+        if !self.singleton_concepts.is_empty() {
+            self.ht_requeue_generating_concepts_of_pruned_neighbours(calc_alg_context);
+        }
         // propagate PRFINVALIDBLOCKINGORCACHING
         let indi_has_invalid_blocking = calc_alg_context
             .process_context()

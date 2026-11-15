@@ -874,6 +874,19 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             .node_mut(*indi)
             .add_processing_restriction_flags(IndividualProcessNode::PRF_PURGEDBLOCKED);
         self.eliminiate_blocked_individuals(*indi, calc_alg_context);
+        // E19: a value-singleton merge can make a blockable node the witness
+        // of a generating concept of a node outside its own tree (the merge
+        // relocates the other carrier's incoming links). Pruning the node
+        // removes that witness; remember its neighbours so that the merge
+        // queues their generating concepts again.
+        if !self.singleton_concepts.is_empty() {
+            for link in self.snapshot_successor_links(*indi, calc_alg_context) {
+                let neighbour = self.get_successor_individual(indi, link, calc_alg_context);
+                if neighbour.is_some() && neighbour != *indi {
+                    self.pruned_neighbours.push(neighbour);
+                }
+            }
+        }
 
         if remove_nominal_links && ancestor_indi.is_some() {
             let ancestor_indi_id = calc_alg_context
@@ -989,6 +1002,112 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                 }
             }
         }
+    }
+
+    /// E19: queue the generating concepts (`∃`, `≥`, `¬∀`, `¬≤`) of every
+    /// live neighbour of the nodes the last prune removed, and the neighbour
+    /// itself. A rule of the hypertableau calculus applies whenever its
+    /// premise holds; the port re-tests a generating concept only when it is
+    /// queued. Without value singletons a pruned node's neighbours are its
+    /// own tree (pruned with it), its merged parent (whose label moves to the
+    /// merge target and is processed there) and nominals linked to it, which
+    /// never rely on it as a witness. A value-singleton merge relocates the
+    /// incoming links of one carrier to the other, so a node of a different
+    /// tree can rely on the pruned node as the witness of its `∃`; the some
+    /// and at-least rules check for a live witness before they create one,
+    /// so the extra queueing only re-tests satisfied concepts.
+    pub(crate) fn ht_requeue_generating_concepts_of_pruned_neighbours(
+        &mut self,
+        calc_alg_context: &mut CalculationAlgorithmContextBase,
+    ) {
+        use crate::konclude_ht::model::op;
+        let mut neighbours = std::mem::take(&mut self.pruned_neighbours);
+        if neighbours.is_empty() || calc_alg_context.has_pending_signal() {
+            neighbours.clear();
+            self.pruned_neighbours = neighbours;
+            return;
+        }
+        let mut seen = crate::fxhash::FxHashSet::default();
+        for mut node in neighbours.drain(..) {
+            let index = node.index();
+            if self.phantom_node_intervals.iter().any(|&(a, b)| index >= a && index < b) {
+                continue;
+            }
+            // Follow merges to the node that now stands for the neighbour.
+            let mut guard = 0;
+            while calc_alg_context.process_context().node(node).has_merged_into_individual_node_id() && guard < 1_000_000 {
+                guard += 1;
+                let id = calc_alg_context.process_context().node(node).merged_into_individual_node_id();
+                let next = calc_alg_context
+                    .processing_data_box()
+                    .individual_process_node_vector()
+                    .get_data(id);
+                if next.is_none() || next == node {
+                    break;
+                }
+                node = next;
+            }
+            {
+                let n = calc_alg_context.process_context().node(node);
+                if n.has_merged_into_individual_node_id()
+                    || n.has_purged_blocked_processing_restriction_flags()
+                    || n.has_indirect_blocked_processing_restriction_flags()
+                {
+                    continue;
+                }
+            }
+            let id = calc_alg_context.process_context().node(node).individual_node_id();
+            if !seen.insert(id) {
+                continue;
+            }
+            let node = self.get_localized_individual(node, false, calc_alg_context);
+            let label = calc_alg_context.process_context().node(node).use_reapply_con_label_set;
+            if label.is_none() {
+                continue;
+            }
+            let generating: Vec<(ConDescId, TrackPointId)> = {
+                let pc = calc_alg_context.process_context();
+                let onto = calc_alg_context.ontology_arenas();
+                let ls = pc.label_set(label);
+                let mut it = ls.get_concept_label_set_iterator(true, true, false);
+                let mut v = Vec::new();
+                while it.has_next() {
+                    let cd = it.get_concept_descriptor();
+                    if cd.is_some() {
+                        let negated = pc.con_desc(cd).is_negated();
+                        let code = onto.concept(pc.con_desc(cd).get_concept()).get_operator_code();
+                        let generating = match (code, negated) {
+                            (op::CCSOME, false) | (op::CCATLEAST, false) => true,
+                            (op::CCALL, true) | (op::CCATMOST, true) => true,
+                            _ => false,
+                        };
+                        if generating {
+                            v.push((cd, it.get_dependency_track_point(pc)));
+                        }
+                    }
+                    it.move_next(pc);
+                }
+                v
+            };
+            if generating.is_empty() {
+                continue;
+            }
+            let queue = calc_alg_context
+                .process_context_mut()
+                .node_concept_processing_queue(node, true);
+            for (con_des, dep_track_point) in generating {
+                self.add_concept_to_processing_queue(
+                    con_des,
+                    dep_track_point,
+                    queue,
+                    node,
+                    false,
+                    calc_alg_context,
+                );
+            }
+            self.add_individual_to_processing_queue(node, calc_alg_context);
+        }
+        self.pruned_neighbours = neighbours;
     }
 
     fn snapshot_successor_links(

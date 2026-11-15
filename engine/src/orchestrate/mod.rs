@@ -24,7 +24,7 @@ pub mod mirror;
 mod abox_quotient;
 mod positive_abox_quotient;
 mod symbolic_source;
-pub(crate) mod data_source;
+mod data_source;
 pub(crate) mod public_subjects;
 pub mod race;
 pub mod realize;
@@ -2523,7 +2523,6 @@ fn classify_with_evidence_inner(
         && !reference_force_enabled()
         && !meta.profile.atomic_class_abox_candidate
         && crate::routing::bounded_bridge_first_candidate(selected_route, &meta.profile)
-        && !std::fs::read_to_string(ont).map_or(true, |text| data_source::shared_data_value_hazard(&text))
     {
         // The historical attempt runs first and unchanged. Only when it
         // declines on a source with data-property assertions does a second,
