@@ -470,10 +470,6 @@ def branchesM (t : Ty) (closedPart : Option Ty := none) : M (Array Ty) := do
   let t0 ← IO.monoNanosNow
   let bs ← IO.lazyPure fun _ => branches O t closedPart
   let t1 ← IO.monoNanosNow
-  if t1 - t0 > 10000000 then
-    let newN := match closedPart with | some c => t.filter (!mem c ·) | none => t
-    let ql := newN.foldl (fun a x => a + (O.gciBy[x]!).size) 0
-    IO.eprintln s!"slow branches: ms={(t1 - t0) / 1000000} |seed|={t.size} new={newN.size} q0={ql} out={bs.size} newnames={newN.toList.take 8}"
   modify fun s => { s with nsBranch := s.nsBranch + (t1 - t0) }
   modify fun s => { s with nBranchCalls := s.nBranchCalls + 1 }
   modify fun s => { s with nBranches := s.nBranches + bs.size }
@@ -897,7 +893,7 @@ def step : M Bool := do
       backRule v
       let t1 ← IO.monoNanosNow
       modify fun s => { s with nsBack := s.nsBack + (t1 - t0) }
-      if t1 - t0 > 5000000 then
+      if t1 - t0 > 5000000000 then
         let (ty, pl) ← (fun s => (s.nodes[v]!.ty.size, s.nodes[v]!.pool.size)) <$> get
         IO.eprintln s!"slow back: node {v} |ty|={ty} pool={pl} ms={(t1 - t0) / 1000000} new_nodes={(← get).nodes.size - n0}"
     if (← (fun s => s.qpos) <$> get) > 100000 then
