@@ -55,8 +55,9 @@ negated qualities, which did not classify in 300 s, now classify in about
   `∃` was never queued again. The bridge now skips pruned nodes when it
   looks for singleton carriers and, after a merge prunes nodes on an input
   with value singletons, queues the generating concepts of every live
-  neighbour of a pruned node again. The saturation coupling is off on
-  inputs with a consumed value singleton.
+  neighbour of a pruned node again. (An earlier stopgap that switched the
+  saturation coupling off on every input with a value singleton is not
+  kept: it cost ore_ont_15623, 15074 and 15687 their v1.6.4 times.)
 - Fixed (wrong answer): `{Functional(k), {c} ⊑ ¬C, C ≡ =1 k.xsd:integer,
   k(c,2)}` was reported consistent. The bridge absorbed `{c} ⊑ ¬C` onto
   the trigger `C` and made `C` a lazily unfolded definition, which a node
