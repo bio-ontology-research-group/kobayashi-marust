@@ -868,6 +868,39 @@ def checkSelf (timing : Bool) (O : OWL.Ontology) : IO Bool := do
           (fun _ => (List.finRange T.tab.length).all fun p => OWL.Datatypes.drSupported (OWLFrontend.SHIQD.spec T.tab p))
         return r7
 
+/-- Diagnostic for a C2a decline of the chain route (`KM_C2A_WHY=1` with
+`--check`): every pair of a lower clause on a non-exempt subject and an
+at-most clause whose inverted role lies above the lower role. Not part of
+any proved statement. -/
+def whyC2a (O : OWL.Ontology) : List String :=
+  match translateSHOIQD (roleOff O) [] with
+  | none => []
+  | some T =>
+    match roleCls T O with
+    | none => []
+    | some E =>
+      let L := OWLFrontend.SHOIQ.nomNames (roleOff O) []
+      let D := SRIQN.objN (SRIQN.Proc.encTransDN (encC T L E))
+      let B := SRIQN.basePart D
+      let N := SRIQN.noms D
+      let cn : Nat → String := fun i =>
+        match T.obj.cnames.find? (fun p => p.2 == i) with
+        | some p => p.1
+        | none => s!"#{i}"
+      let rn : SRI.RoleT (Fin T.obj.roleCount) → String := fun R =>
+        let (sgn, k) := match R with | .pos r => ("", r.val) | .inv r => ("inv ", r.val)
+        match T.obj.rnames.find? (fun p => p.2 == k) with
+        | some p => sgn ++ p.1
+        | none => sgn ++ s!"r{k}"
+      let ups := SRIQ.upperL B
+      let C := SRIQ.sriPart B
+      (SRIQ.lowerL B).filterMap fun q =>
+        if q.1 ∈ N || decide (SRIQN.NomOnly D q.1) then none else
+        let up := SRI.Proc.roleUp C q.2.2.1
+        match ups.find? (fun q' => q'.2.2.1.flip ∈ up) with
+        | none => none
+        | some q' => some s!"lower {cn q.1.val} >= {q.2.1} {rn q.2.2.1} {cn q.2.2.2.val} | upper {cn q'.1.val} <= {q'.2.1} {rn q'.2.2.1} {cn q'.2.2.2.val}"
+
 /-- The SHIQ(D) knowledge-base route on an ontology. -/
 def runOntologyDKB (timing : Bool) (hint : Option RawHint) (query : Option (OWL.IRI × OWL.IRI))
     (O : OWL.Ontology) : IO UInt32 := do
@@ -1209,7 +1242,12 @@ def runFile (args : Args) (path : String) : IO UInt32 := do
             else if ← checkSelf (← timingEnabled) (anonOff [] O) then do
               IO.println "accepted"
               return 0
-            else decline (sroiqDeclineS (anonOff [] O))
+            else do
+              if (← IO.getEnv "KM_C2A_WHY") == some "1" then
+                let ws := whyC2a (anonOff [] O)
+                IO.eprintln s!"why-summary pairs {ws.length} k-positive {(ws.filter fun l => !(l.splitOn "<= 0 ").length > 1).length}"
+                for l in ws.take 20 do IO.eprintln s!"why: {l}"
+              decline (sroiqDeclineS (anonOff [] O))
           else
           match translateSHOIQD O [] with
           | some T =>
