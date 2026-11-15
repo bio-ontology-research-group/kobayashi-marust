@@ -5,7 +5,7 @@ import ContextCalculus.OWLFrontend.ReadoutAt
 import ContextCalculus.OWLFrontend.SRIQDReference
 import ContextCalculus.OWLFrontend.SRIQDKBRows
 import ContextCalculus.OWLFrontend.SHOIQDC2aReference
-import ContextCalculus.OWLFrontend.SROIQDC2aReference
+import ContextCalculus.OWLFrontend.SROIQAnon
 
 /-!
 # Executable OWL reference procedure (`km-owl-reference`)
@@ -733,18 +733,18 @@ def sroiqDecline (O : OWL.Ontology) : String :=
         else "datatypes: a data range outside the supported sub-theory of the OWL 2 datatype map"
 
 /-- Print the consistency verdict of `owlSROIQDC2aConsistent`
-(`owlSROIQDC2aConsistent_sound`). -/
+(`owlSROIQDAConsistent_sound`). -/
 def publishConsistentS (v : Bool) {O : OWL.Ontology} {hint : Option RawHint}
-    (_h : owlSROIQDC2aConsistent O hint = some v) : IO UInt32 := do
+    (_h : owlSROIQDAConsistent O hint = some v) : IO UInt32 := do
   let out ← IO.getStdout
   out.putStrLn ("{\"format\":\"owl-consistency-v1\",\"consistent\":" ++
     (if v then "true" else "false") ++ "}")
   out.flush
   return 0
 
-/-- Print the verdict of `owlSROIQDTypeRow` (`owlSROIQDTypeRow_sound`). -/
+/-- Print the verdict of `owlSROIQDTypeRow` (`owlSROIQDATypeRow_sound`). -/
 def publishTypeS (C a : OWL.IRI) (v : Bool) {O : OWL.Ontology} {hint : Option RawHint}
-    (_h : owlSROIQDTypeRow O C a hint = some v) : IO UInt32 := do
+    (_h : owlSROIQDATypeRow O C a hint = some v) : IO UInt32 := do
   let out ← IO.getStdout
   out.putStrLn ("{\"format\":\"owl-type-v1\",\"class\":" ++ (Json.str C).compress ++
     ",\"individual\":" ++ (Json.str a).compress ++ ",\"entailed\":" ++
@@ -757,18 +757,18 @@ def runOntologyS (timing : Bool) (hint : Option RawHint) (query : Option (OWL.IR
     (O : OWL.Ontology) : IO UInt32 := do
   match query with
   | some (C, a) =>
-    let ⟨res, hres⟩ ← timedPhase timing "type" (fun _ => owlSROIQDTypeRow O C a hint)
+    let ⟨res, hres⟩ ← timedPhase timing "type" (fun _ => owlSROIQDATypeRow O C a hint)
     match res, hres with
     | some v, h => publishTypeS C a v h.symm
     | none, _ =>
-      IO.eprintln (sroiqDecline (addAxs O (typeAxs C a)))
+      IO.eprintln (sroiqDecline (addAxs (anonOff [a] O) (typeAxs C a)))
       return 3
   | none =>
-    let ⟨res, hres⟩ ← timedPhase timing "consistency" (fun _ => owlSROIQDC2aConsistent O hint)
+    let ⟨res, hres⟩ ← timedPhase timing "consistency" (fun _ => owlSROIQDAConsistent O hint)
     match res, hres with
     | some v, h => publishConsistentS v h.symm
     | none, _ =>
-      IO.eprintln (sroiqDecline O)
+      IO.eprintln (sroiqDecline (anonOff [] O))
       return 3
 
 /-- The fragment checks of `sroiq-c2a`, without the decision (phases timed
@@ -1023,6 +1023,7 @@ def printIndex (route : String) (O : OWL.Ontology) : IO UInt32 := do
   let out ← IO.getStdout
   let emit (ls : List String) : IO Unit := do for l in ls do out.putStrLn l
   if route == "sroiq-c2a" then
+    let O := anonOff [] O
     match translateSHOIQD (roleOff O) [] with
     | none => decline (sroiqDecline O)
     | some T =>
@@ -1103,10 +1104,10 @@ def runFile (args : Args) (path : String) : IO UInt32 := do
         | .error reason => decline s!"parse rejected: {reason}"
         | .ok O =>
           if args.dataRoute == some "sroiq-c2a" then
-            if ← checkS (← timingEnabled) O then do
+            if ← checkS (← timingEnabled) (anonOff [] O) then do
               IO.println "accepted"
               return 0
-            else decline (sroiqDecline O)
+            else decline (sroiqDecline (anonOff [] O))
           else
           match translateSHOIQD O [] with
           | some T =>

@@ -1,4 +1,5 @@
 import ContextCalculus.OWLFrontend.SHOIQDC2aReference
+import ContextCalculus.OWLFrontend.SHOIQFast
 import ContextCalculus.SROIQ.ChainEncN
 
 /-!
@@ -30,14 +31,16 @@ for its property (`translateSRIQDKB_mapsR`), which `shoiqd_upR` and
 
 namespace ContextCalculus.OWL
 
-/-- The object property axioms the C3 route reads as role chains: a
+/-- The property axioms the C3 route moves out of the SHOIQ(D) part: a
 `SubObjectPropertyOf` outside the SHI part (a chain of length at least two
-that is not transitivity) and reflexivity, over basic properties. -/
+that is not transitivity) and reflexivity, over basic properties, and the
+vacuous `SubDataPropertyOf(p owl:topDataProperty)`. -/
 def Axiom.isRoleC3 : Axiom → Bool
   | .subObjectPropertyOf rs .top => !rs.isEmpty && rs.all ObjProp.isBasic
   | .subObjectPropertyOf rs r =>
       !(rs.length == 1 || rs == [r, r]) && !rs.isEmpty && rs.all ObjProp.isBasic && r.isBasic
   | .reflexive r => r.isBasic
+  | .subDataPropertyOf p .top => p.isNamed
   | _ => false
 
 /-- An axiom of the SROIQ(D) knowledge-base part. -/
@@ -100,7 +103,7 @@ theorem offProps_basic {ax : Axiom} (h : ax.isRoleC3 = true) : ∀ p ∈ offProp
     intro p hp
     simp only [offProps, List.mem_singleton] at hp
     subst hp; exact h
-  | _ => simp [Axiom.isRoleC3] at h
+  | _ => intro p hp; simp [offProps] at hp
 
 theorem roleOff_isSHOIQDKB {O : Ontology} (h : O.isSROIQDKB = true) : (roleOff O).isSHOIQDKB = true := by
   simp only [Ontology.isSROIQDKB, List.all_eq_true] at h
@@ -279,6 +282,13 @@ theorem sat_roleClause {K : SRI.Interp Dom (Fin T.obj.conceptCount) (Fin T.obj.r
     constructor
     · intro h' x; exact (roleCorr_of hC hax hS x x).1 (h' x x rfl)
     · rintro h' x y rfl; exact (roleCorr_of hC hax hS x x).2 (h' x)
+  | subDataPropertyOf p q =>
+    cases q with
+    | top =>
+      simp only [roleClause, Option.some.injEq] at h; subst h
+      simp only [List.not_mem_nil, false_implies, implies_true, true_iff]
+      intro x v _; trivial
+    | _ => simp [Axiom.isRoleC3] at hax
   | _ => simp [Axiom.isRoleC3] at hax
 
 /-- The chains of all role axioms hold iff the role axioms do. -/

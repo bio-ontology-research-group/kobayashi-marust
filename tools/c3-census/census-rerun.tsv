@@ -1,0 +1,202 @@
+ore_ont_1059	3	not recognised: not an OWL SROIQ(D) knowledge base (first: DisjointUnion) Command exited with non-zero status 3 0.51 
+ore_ont_10608	0	accepted 1.24 
+ore_ont_1066	3	not recognised: not an OWL SROIQ(D) knowledge base (first: IrreflexiveObjectProperty) Command exited with non-zero status 3 0.33 
+ore_ont_1065	0	accepted 1.15 
+ore_ont_10681	0	accepted 0.12 
+ore_ont_10742	0	accepted 0.18 
+ore_ont_10621	0	accepted 3.32 
+ore_ont_10749	0	accepted 1.80 
+ore_ont_10752	0	accepted 0.13 
+ore_ont_10754	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 1.68 
+ore_ont_10769	0	accepted 0.18 
+ore_ont_10774	0	accepted 0.26 
+ore_ont_10776	0	accepted 0.13 
+ore_ont_10778	0	accepted 1.46 
+ore_ont_10781	0	accepted 0.17 
+ore_ont_10805	0	accepted 0.22 
+ore_ont_10806	0	accepted 0.28 
+ore_ont_10807	0	accepted 0.15 
+ore_ont_1082	0	accepted 5.31 
+ore_ont_10823	0	accepted 0.16 
+ore_ont_10833	0	accepted 0.23 
+ore_ont_10689	0	accepted 22.44 
+ore_ont_10860	3	parse rejected: out of fragment: DLSafeRule (rule) Command exited with non-zero status 3 0.10 
+ore_ont_10750	124	Command exited with non-zero status 124 60.80 
+ore_ont_10838	124	Command exited with non-zero status 124 60.86 
+ore_ont_10380	124	Command exited with non-zero status 124 60.91 
+ore_ont_1012	124	Command exited with non-zero status 124 60.63 
+ore_ont_1043	124	Command exited with non-zero status 124 60.90 
+ore_ont_10965	124	Command exited with non-zero status 124 60.67 
+ore_ont_10568	124	Command exited with non-zero status 124 60.65 
+ore_ont_10068	124	Command exited with non-zero status 124 60.73 
+ore_ont_10136	124	Command exited with non-zero status 124 60.78 
+ore_ont_1115	124	Command exited with non-zero status 124 60.36 
+ore_ont_11110	124	Command exited with non-zero status 124 60.72 
+ore_ont_11037	124	Command exited with non-zero status 124 60.72 
+ore_ont_10929	124	Command exited with non-zero status 124 60.05 
+ore_ont_10125	124	Command exited with non-zero status 124 60.52 
+ore_ont_1212	0	accepted 14.81 
+ore_ont_10073	124	Command exited with non-zero status 124 60.72 
+ore_ont_1199	124	Command exited with non-zero status 124 60.56 
+ore_ont_1194	124	Command exited with non-zero status 124 60.05 
+ore_ont_11899	124	Command exited with non-zero status 124 60.73 
+ore_ont_11827	124	Command exited with non-zero status 124 60.54 
+ore_ont_11745	124	Command exited with non-zero status 124 60.47 
+ore_ont_12792	0	accepted 9.55 
+ore_ont_11464	124	Command exited with non-zero status 124 60.71 
+ore_ont_12528	124	Command exited with non-zero status 124 60.56 
+ore_ont_12567	124	Command exited with non-zero status 124 60.55 
+ore_ont_12414	124	Command exited with non-zero status 124 60.51 
+ore_ont_13621	0	accepted 5.82 
+ore_ont_13643	0	accepted 0.08 
+ore_ont_13646	0	accepted 0.30 
+ore_ont_13657	0	accepted 0.14 
+ore_ont_13664	0	accepted 0.63 
+ore_ont_13665	0	accepted 0.55 
+ore_ont_13680	0	accepted 0.13 
+ore_ont_13684	0	accepted 9.15 
+ore_ont_13690	0	accepted 1.84 
+ore_ont_12448	124	Command exited with non-zero status 124 60.70 
+ore_ont_12128	124	Command exited with non-zero status 124 60.44 
+ore_ont_1370	124	Command exited with non-zero status 124 60.54 
+ore_ont_13872	0	accepted 0.77 
+ore_ont_13885	0	accepted 0.16 
+ore_ont_13887	0	accepted 0.09 
+ore_ont_13897	0	accepted 0.15 
+ore_ont_13898	0	accepted 0.18 
+ore_ont_13423	0	accepted 29.03 
+ore_ont_13912	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.29 
+ore_ont_13902	0	accepted 1.68 
+ore_ont_13919	0	accepted 2.94 
+ore_ont_13937	0	accepted 7.66 
+ore_ont_13949	0	accepted 2.08 
+ore_ont_13928	0	accepted 17.91 
+ore_ont_13359	124	Command exited with non-zero status 124 60.20 
+ore_ont_1397	0	accepted 0.13 
+ore_ont_13991	0	accepted 3.10 
+ore_ont_13969	0	accepted 29.95 
+ore_ont_14025	0	accepted 2.28 
+ore_ont_14031	0	accepted 0.15 
+ore_ont_13591	124	Command exited with non-zero status 124 60.66 
+ore_ont_14459	0	accepted 19.80 
+ore_ont_14012	124	Command exited with non-zero status 124 60.28 
+ore_ont_13136	124	Command exited with non-zero status 124 60.58 
+ore_ont_14543	124	Command exited with non-zero status 124 60.62 
+ore_ont_14355	124	Command exited with non-zero status 124 60.54 
+ore_ont_14308	124	Command exited with non-zero status 124 60.66 
+ore_ont_13846	124	Command exited with non-zero status 124 60.55 
+ore_ont_15203	0	accepted 46.87 
+ore_ont_13482	124	Command exited with non-zero status 124 60.58 
+ore_ont_15280	124	Command exited with non-zero status 124 60.52 
+ore_ont_15172	124	Command exited with non-zero status 124 60.73 
+ore_ont_15133	124	Command exited with non-zero status 124 60.44 
+ore_ont_16372	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 3.42 
+ore_ont_16425	0	accepted 0.18 
+ore_ont_16428	0	accepted 5.10 
+ore_ont_16444	0	accepted 2.73 
+ore_ont_14861	124	Command exited with non-zero status 124 60.63 
+ore_ont_16420	124	Command exited with non-zero status 124 60.01 
+ore_ont_1634	124	Command exited with non-zero status 124 60.21 
+ore_ont_16235	124	Command exited with non-zero status 124 60.63 
+ore_ont_16315	124	Command exited with non-zero status 124 60.46 
+ore_ont_15846	124	Command exited with non-zero status 124 60.58 
+ore_ont_1579	124	Command exited with non-zero status 124 60.54 
+ore_ont_15635	124	Command exited with non-zero status 124 60.63 
+ore_ont_15557	124	Command exited with non-zero status 124 60.65 
+ore_ont_191	124	Command exited with non-zero status 124 60.45 
+ore_ont_1886	124	Command exited with non-zero status 124 60.52 
+ore_ont_1833	124	Command exited with non-zero status 124 60.03 
+ore_ont_1840	124	Command exited with non-zero status 124 60.73 
+ore_ont_1821	124	Command exited with non-zero status 124 60.53 
+ore_ont_16701	124	Command exited with non-zero status 124 60.54 
+ore_ont_2486	124	Command exited with non-zero status 124 60.65 
+ore_ont_2253	124	Command exited with non-zero status 124 60.19 
+ore_ont_2291	124	Command exited with non-zero status 124 60.68 
+ore_ont_2415	124	Command exited with non-zero status 124 60.71 
+ore_ont_2361	124	Command exited with non-zero status 124 60.55 
+ore_ont_3685	0	accepted 1.63 
+ore_ont_2111	124	Command exited with non-zero status 124 60.55 
+ore_ont_3843	3	not C2a: an existential or at-least restriction on a subject that is neither a nominal nor nominal-only has a role below the inverse of the role of an at-most restriction Command exited with non-zero status 3 0.63 
+ore_ont_385	0	accepted 0.51 
+ore_ont_3852	0	accepted 0.13 
+ore_ont_1966	124	Command exited with non-zero status 124 60.57 
+ore_ont_3884	0	accepted 0.35 
+ore_ont_3892	0	accepted 0.19 
+ore_ont_3905	0	accepted 3.41 
+ore_ont_3909	0	accepted 0.11 
+ore_ont_3910	0	accepted 0.13 
+ore_ont_3696	124	Command exited with non-zero status 124 60.57 
+ore_ont_3916	0	accepted 0.60 
+ore_ont_3873	124	Command exited with non-zero status 124 60.60 
+ore_ont_3919	0	accepted 1.69 
+ore_ont_3931	0	accepted 0.28 
+ore_ont_3936	0	accepted 0.74 
+ore_ont_394	0	accepted 0.17 
+ore_ont_3914	124	Command exited with non-zero status 124 60.72 
+ore_ont_3966	0	accepted 0.38 
+ore_ont_3968	0	accepted 0.20 
+ore_ont_3978	0	accepted 0.19 
+ore_ont_3917	124	Command exited with non-zero status 124 60.00 
+ore_ont_3954	124	Command exited with non-zero status 124 60.45 
+ore_ont_3575	124	Command exited with non-zero status 124 60.68 
+ore_ont_3737	124	Command exited with non-zero status 124 60.56 
+ore_ont_3560	124	Command exited with non-zero status 124 60.49 
+ore_ont_318	124	Command exited with non-zero status 124 60.77 
+ore_ont_4141	124	Command exited with non-zero status 124 60.12 
+ore_ont_4572	124	Command exited with non-zero status 124 60.39 
+ore_ont_4412	124	Command exited with non-zero status 124 60.91 
+ore_ont_4557	0	accepted 58.50 
+ore_ont_4233	124	Command exited with non-zero status 124 60.69 
+ore_ont_4054	124	Command exited with non-zero status 124 60.81 
+ore_ont_4166	124	Command exited with non-zero status 124 60.81 
+ore_ont_5295	124	Command exited with non-zero status 124 60.90 
+ore_ont_5193	124	Command exited with non-zero status 124 60.32 
+ore_ont_5218	124	Command exited with non-zero status 124 60.74 
+ore_ont_5253	124	Command exited with non-zero status 124 60.80 
+ore_ont_4755	124	Command exited with non-zero status 124 60.74 
+ore_ont_4598	124	Command exited with non-zero status 124 60.75 
+ore_ont_4577	124	Command exited with non-zero status 124 60.78 
+ore_ont_5602	0	accepted 55.24 
+ore_ont_5755	124	Command exited with non-zero status 124 60.66 
+ore_ont_5549	124	Command exited with non-zero status 124 60.70 
+ore_ont_5519	124	Command exited with non-zero status 124 60.67 
+ore_ont_5596	124	Command exited with non-zero status 124 60.80 
+ore_ont_5418	124	Command exited with non-zero status 124 60.73 
+ore_ont_5475	124	Command exited with non-zero status 124 60.69 
+ore_ont_5358	124	Command exited with non-zero status 124 60.90 
+ore_ont_5481	124	Command exited with non-zero status 124 60.57 
+ore_ont_6233	124	Command exited with non-zero status 124 60.53 
+ore_ont_6120	124	Command exited with non-zero status 124 60.53 
+ore_ont_6223	124	Command exited with non-zero status 124 60.52 
+ore_ont_5857	124	Command exited with non-zero status 124 60.46 
+ore_ont_6108	124	Command exited with non-zero status 124 60.60 
+ore_ont_5769	124	Command exited with non-zero status 124 60.67 
+ore_ont_5781	124	Command exited with non-zero status 124 60.58 
+ore_ont_6833	0	accepted 42.32 
+ore_ont_6816	124	Command exited with non-zero status 124 60.56 
+ore_ont_6835	124	Command exited with non-zero status 124 60.60 
+ore_ont_6478	124	Command exited with non-zero status 124 60.45 
+ore_ont_6477	0	accepted 57.47 
+ore_ont_7607	124	Command exited with non-zero status 124 60.26 
+ore_ont_7578	124	Command exited with non-zero status 124 60.52 
+ore_ont_7192	124	Command exited with non-zero status 124 60.34 
+ore_ont_7557	124	Command exited with non-zero status 124 60.57 
+ore_ont_751	124	Command exited with non-zero status 124 60.54 
+ore_ont_7496	124	Command exited with non-zero status 124 60.64 
+ore_ont_7416	124	Command exited with non-zero status 124 60.40 
+ore_ont_6948	124	Command exited with non-zero status 124 60.54 
+ore_ont_8432	124	Command exited with non-zero status 124 60.44 
+ore_ont_8194	124	Command exited with non-zero status 124 60.50 
+ore_ont_8068	124	Command exited with non-zero status 124 60.50 
+ore_ont_7993	124	Command exited with non-zero status 124 60.41 
+ore_ont_9046	1	INTERNAL PANIC: out of memory Command exited with non-zero status 1 53.70 
+ore_ont_773	1	INTERNAL PANIC: out of memory Command exited with non-zero status 1 56.30 
+ore_ont_7803	124	Command exited with non-zero status 124 60.51 
+ore_ont_9400	124	Command exited with non-zero status 124 60.77 
+ore_ont_8858	124	Command exited with non-zero status 124 60.75 
+ore_ont_8723	124	Command exited with non-zero status 124 60.39 
+ore_ont_9794	0	accepted 11.04 
+ore_ont_8787	124	Command exited with non-zero status 124 60.50 
+ore_ont_9768	0	accepted 56.46 
+ore_ont_9767	124	Command exited with non-zero status 124 60.63 
+ore_ont_9567	124	Command exited with non-zero status 124 60.58 

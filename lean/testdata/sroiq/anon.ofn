@@ -1,0 +1,8 @@
+Prefix(:=<http://ex/>)
+Ontology(<http://ex/anon>
+ClassAssertion(:A _:x)
+ObjectPropertyAssertion(:r _:x :a)
+DataPropertyAssertion(:p _:x "1"^^<http://www.w3.org/2001/XMLSchema#integer>)
+SubDataPropertyOf(:p owl:topDataProperty)
+SubObjectPropertyOf(:r owl:topObjectProperty)
+)

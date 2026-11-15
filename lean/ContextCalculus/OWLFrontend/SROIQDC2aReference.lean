@@ -1,4 +1,5 @@
 import ContextCalculus.OWLFrontend.SROIQDNom
+import ContextCalculus.SROIQ.C2aFast
 
 /-!
 # The OWL route for SROIQ(D) knowledge bases in C2a (stage C3, design section 6)
@@ -54,7 +55,8 @@ theorem condC_of_condB {O : Ontology (Fin n) (Fin m)} (h : condB O = true) : Con
 /-- `condB` with the table of super-roles computed once. -/
 def condBF (O : Ontology (Fin n) (Fin m)) : Bool :=
   let rs := rules O
-  let le := leF (mkTab O)
+  let tab := mkTab O
+  let le := leF tab
   let sf := succsT rs le
   (allsQT rs le O).all (fun q => closedT sf (reachItT sf 4096 64 [[(q.2.1, false)]])) &&
   O.all fun
@@ -84,9 +86,10 @@ abbrev objC (T : SRIQDKBTranslation) (L : List IRI)
     (E : List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount))) :=
   ContextCalculus.SRIQD.objPart (SRIQN.dbase (dosnC T L E))
 
-instance {n m p q : Nat} (O : SRIQN.DOntology (Fin n) (Fin m) (Fin p) (Fin q)) :
-    Decidable (SRIQN.IsC2aD O) := by
-  unfold SRIQN.IsC2aD; infer_instance
+/-- C2a is decided with the shared tables of `SROIQ.Proc.c2aB`. -/
+instance (priority := high) {n m p q : Nat} (O : SRIQN.DOntology (Fin n) (Fin m) (Fin p) (Fin q)) :
+    Decidable (SRIQN.IsC2aD O) :=
+  SROIQ.Proc.fastDecC2a (SRIQN.objN O)
 
 /-- **The checks**: regularity, the conditions of chain elimination, C2a of
 the encoding, and supported data atoms. -/
@@ -239,6 +242,7 @@ theorem model_updS {O : Ontology} (hO : O.isSROIQDKB = true) {I : Interp DM D} {
     | subObjectPropertyOf rs r =>
       simp only [Interp.sat, Interp.chain_congr hrole, Interp.prop_congr hrole]
     | reflexive r => simp only [Interp.sat, Interp.prop_congr hrole]
+    | subDataPropertyOf p q => rfl
     | _ => simp [Axiom.isRoleC3] at hr
   · exact sat_updN (by simpa [Axiom.isSROIQDKB, hr] using hO' a ha) (hfa a ha) _
 
