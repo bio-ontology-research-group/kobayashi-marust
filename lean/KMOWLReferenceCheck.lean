@@ -1534,16 +1534,42 @@ def publishHintRow (row : String) {O : OWL.Ontology} {r : HintRowSpec} {hint : R
   out.flush
   return 0
 
-/-- Why a hint is rejected on an encoded ontology (diagnostic, `--explain`). -/
+/-- Why a named data part is not a part (diagnostic, `--explain`): `ncell`
+split cells of the given sizes, `G` groups. -/
+def partWhy (hint : RawHint) (sizes : List (Option Nat)) (G : Nat) : Option String :=
+  if !hint.partNamed then none else
+  let ncell := sizes.length
+  match hint.part.find? fun e => e.1 ≥ ncell || e.2.1 ≥ G with
+  | some e => some s!"named part: line `part {e.1} {e.2.1} {e.2.2}` is outside the {ncell} split cells and {G} groups"
+  | none =>
+    (sizes.zipIdx.findSome? fun (sz, i) =>
+      let tot := ((hint.part.filter fun e => e.1 == i).map (·.2.2)).sum
+      if tot == sz.getD 0 then none
+      else some s!"named part: the counts of split cell {i} add up to {tot}, its size is {sz.getD 0}")
+
+/-- Why a hint is rejected on an encoded ontology (diagnostic, `--explain`);
+`dataWhy` is the reason when the object part checks. -/
 def explainOn {n m p q : Nat} (D : SRIQN.DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (hint : RawHint)
-    (loops : Bool) : String :=
+    (loops : Bool) (dataWhy : Option String := none) : String :=
   let E := SRIQN.Proc.encTransDN D
   match hint.toHintS (n + SRIQN.Proc.encKD D) m with
   | none => "an index outside the translation (a concept, role or record index out of range)"
   | some h =>
     match SRIQN.HF.explainS (SRIQD.objPart (SRIQN.dbase E)) (SRIQN.dnoms E) h loops with
     | some w => w
-    | none => "the object part checks; the data-star test fails on every data part"
+    | none => dataWhy.getD (if hint.partNamed then
+        "the object part checks; the data-star test fails on the named data part"
+      else "the object part checks; the data-star test fails on every data part")
+
+/-- The split cells (their sizes) and the number of groups of a translation. -/
+def splitSizes (T : SRIQDKBTranslation) (L : List OWL.IRI)
+    (E : List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount))) (bound : Nat) :
+    List (Option Nat) × Nat :=
+  let sp := SHIQD.spec T.tab
+  let as := OWL.Datatypes.allBases sp
+  let cs := OWL.Datatypes.cellsOf as
+  let sc := cs.filter (ContextCalculus.SRIQD.splitCell cs (OWL.Datatypes.cellSize as) bound (OWL.Datatypes.owlE sp))
+  (sc.map (OWL.Datatypes.cellSize as), (ContextCalculus.SRIQD.allG (OWL.Datatypes.allFrees sp).length).length)
 
 /-- Why a hint is rejected on a prepared ontology (`hintPrep`), along the
 core the route uses (diagnostic, `--explain`). -/
@@ -1571,7 +1597,10 @@ def explainHint (O : OWL.Ontology) (hint : RawHint) : String :=
     | none => "not recognised"
     | some T =>
       match roleCls T O with
-      | some E => explainOn (encC T (OWLFrontend.SHOIQ.nomNames (roleOff O) []) E) hint false
+      | some E =>
+        let L := OWLFrontend.SHOIQ.nomNames (roleOff O) []
+        let (sz, G) := splitSizes T L E (sroiqBound T L E)
+        explainOn (encC T L E) hint false (partWhy hint sz G)
       | none => "not recognised"
 
 /-- `--procedure sroiq-hint --hint FILE [--row ROW]`: one hint, one row. -/
@@ -1945,6 +1974,19 @@ def printIndexW (O : OWL.Ontology) (req : List OWL.IRI) : IO UInt32 := do
     out.flush
     return 0
 
+/-- `--check --witness-route`: the scope of the witness route without a
+hint (diagnostic: the conditions `wTab` checks before the hint). -/
+def checkW (O : OWL.Ontology) (req : List OWL.IRI) : IO UInt32 := do
+  let X := OWLFrontend.wPrep O
+  if !(OWLFrontend.wPre O).noKey then return ← decline "witness route: HasKey or DL-safe rules"
+  if !(splitDef O.axioms).isNone then return ← decline "witness route: DatatypeDefinition"
+  if !(selfPairs X).isEmpty then return ← decline "witness route: ObjectHasSelf"
+  withWitnessRoute X req fun T L E => do
+    if sroiqHOK T L E then
+      IO.println "accepted"
+      return 0
+    else decline ("witness route: " ++ hintDecline X)
+
 /-- `--print-clauses --witness-route`. -/
 def printClausesW (O : OWL.Ontology) (req : List OWL.IRI) : IO UInt32 :=
   withWitnessRoute (OWLFrontend.wPrep O) req fun T L E => do
@@ -1984,7 +2026,8 @@ def runWitness (timing : Bool) (args : Args) (O : OWL.Ontology) : IO UInt32 := d
   | none, _ =>
     if args.explain then
       let _ ← withWitnessRoute (OWLFrontend.wPrep O) req fun T L E => do
-        IO.eprintln s!"hint: reason: {explainOn (encC T L E) hint false}"
+        let (sz, G) := splitSizes T L E (sroiqBound T L E)
+        IO.eprintln s!"hint: reason: {explainOn (encC T L E) hint false (partWhy hint sz G)}"
         return 0
     decline ("witness: not certified (outside the chain route, keys, datatype definitions, " ++
       "ObjectHasSelf, or the hint does not check)")
@@ -1996,6 +2039,7 @@ def runHint (timing : Bool) (args : Args) (O : OWL.Ontology) : IO UInt32 := do
     let req := OWLFrontend.wReq (dedupH (← witnessReq args O))
     if args.printIndex then return ← printIndexW O req
     if args.printClauses then return ← printClausesW O req
+    if args.checkOnly then return ← checkW O req
   -- asymmetric and disjoint properties: the hint is checked against the
   -- strengthening `edgeOff O`, whose certified rows are rows of `O`
   -- (`model_of_edgeOff`, `holds_of_models`, `hintRowAnsE_sound`)
