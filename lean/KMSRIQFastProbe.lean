@@ -366,7 +366,7 @@ def runCB {n m : Nat} (E : SRIQ.Ontology (Fin n) (Fin m)) (req : Array Nat) (req
     let cbRows := CBGen.rows r req
     if (← IO.getEnv "KM_SRIQF_CBWIT") != some "0" then
       let W := CBGen.mkWIx (CBGen.mkIx n m cls) r.st (req.foldl (fun a x => max a (x + 1)) 0)
-      let wmax := ((← IO.getEnv "KM_SRIQF_WITMAX").bind String.toNat?).getD 400000
+      let wmax := ((← IO.getEnv "KM_SRIQF_WITMAX").bind String.toNat?).getD 60000
       let (C, cut) ← IO.lazyPure fun _ => CBGen.witness W r.st req wmax
       let t2 ← IO.monoMsNow
       IO.eprintln s!"cbwit: ctxs={C.keys.size} nodes={C.nodes.size} cut={cut} ms={t2-t1}"
