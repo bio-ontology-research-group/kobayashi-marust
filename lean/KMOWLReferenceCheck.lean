@@ -2064,6 +2064,13 @@ def publishRoles (out : IO.FS.Stream) (W : OWLFrontend.WTab) (showInd : OWL.IRI 
       ",\"refuted\":" ++ toString r ++ "}")
     i := i + 1
 
+/-- The array is strictly increasing. -/
+def incA (a : Array Nat) : Bool := Id.run do
+  let mut ok := true
+  for i in [1:a.size] do
+    if a[i-1]! ≥ a[i]! then ok := false
+  return ok
+
 /-- Print the rows the witness hint certifies (`hintWitnessC_sound`: rows
 between the class expressions of the requested IRIs; `owl:Thing` and
 `owl:Nothing`, when requested, with their OWL meaning:
@@ -2088,7 +2095,9 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingRe
   let tyRaw : Array (List Nat) := hint.ty.foldl (fun A e =>
     if e.1 < W.k then A.modify e.1 (e.2 ++ ·) else A) (Array.replicate W.k [])
   let tyL : Array (List (Fin W.N)) := tyRaw.map fun l =>
-    let a := l.toArray.qsort (· < ·)
+    -- a strictly increasing `ty` line needs no sort (the producers write them so)
+    let a0 := l.toArray
+    let a := if incA a0 then a0 else a0.qsort (· < ·)
     let d := a.toList.foldr (fun x acc => match acc with
       | y :: _ => if x == y then acc else x :: acc
       | [] => [x]) []
@@ -2106,7 +2115,7 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingRe
     ",\"individuals\":" ++ toString (W.inds.filter (showInd ·.1)).length ++ ",\"core\":" ++ toString W.k ++ "}")
   -- `--counts-only`: no class or individual lines; `--compact`: classes by
   -- their position in the `class_index` line (stage H4)
-  let emit : String → IO Unit := fun l => if countsOnly then pure () else out.putStrLn l
+  let emit : (Unit → String) → IO Unit := fun l => if countsOnly then pure () else out.putStrLn (l ())
   let cnames : List OWL.IRI := (if thingReq then [thingI] else []) ++ (OWLFrontend.dedupH (W.cls.map (·.1))).reverse ++
     (if nothingReq then [nothingI] else [])
   let cpos : Std.HashMap OWL.IRI Nat := cnames.zipIdx.foldl (fun mp e => mp.insertIfNew e.1 e.2) {}
@@ -2117,53 +2126,52 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingRe
   if compact && !countsOnly then out.putStrLn ("{\"class_index\":" ++ jsonList cnames ++ "}")
   -- owl:Thing as subject: every requested B some core element lacks
   if thingReq then
-    let cnt : Std.HashMap Nat Nat := (List.finRange W.k).foldl (fun mp w =>
-      (sortedTy w).foldl (fun mp x => mp.insert x.val (mp.getD x.val 0 + 1)) mp) {}
-    let outside := (W.cls.filter fun p => cnt.getD p.2.val 0 < W.k).map (·.1) ++
+    let cnt : Array Nat := (List.finRange W.k).foldl (fun A w =>
+      (sortedTy w).foldl (fun A x => A.modify x.val (· + 1)) A) (Array.replicate W.N 0)
+    let outside := (W.cls.filter fun p => cnt[p.2.val]! < W.k).map (·.1) ++
       (if nothingReq then [nothingI] else [])
     nNon := nNon + outside.length
-    emit ("{\"class\":" ++ nm thingI ++ ",\"nonsub\":" ++ jl outside ++ "}")
+    emit fun _ => ("{\"class\":" ++ nm thingI ++ ",\"nonsub\":" ++ jl outside ++ "}")
   for (A, w) in table do
     if A == thingI then pure () else
     if A == nothingI then
       nBad := nBad + 1
-      emit ("{\"class\":" ++ nm A ++ ",\"witness\":" ++ toString w ++
+      emit fun _ => ("{\"class\":" ++ nm A ++ ",\"witness\":" ++ toString w ++
         ",\"error\":\"owl:Nothing has no witness\"}")
     else
     match cix.get? A with
     | none =>
       nBad := nBad + 1
-      emit ("{\"class\":" ++ nm A ++ ",\"witness\":" ++ toString w ++
+      emit fun _ => ("{\"class\":" ++ nm A ++ ",\"witness\":" ++ toString w ++
         ",\"error\":\"not a requested class of the translation\"}")
     | some iA =>
       if hw : w < W.k then
         let t := W.ty ⟨w, hw⟩
-        let MS := SRIQN.HF.memTS t
-        let M := MS.f
-        if M iA then
+        -- one membership test: a scan of the type (stage H5: no hash set per witness)
+        if decide (iA ∈ t) then
           let inside := insideOfL (sortedTy ⟨w, hw⟩)
           let nout := nreq - inside.length
           nNon := nNon + nout
-          -- the requested classes A shares the witness with: A ⊓ B satisfiable
-          let satW := jl ((inside.filter fun B => B != A && B != thingI))
           if nout * 2 ≤ nreq then
-            emit ("{\"class\":" ++ nm A ++ ",\"witness\":" ++ toString w ++
-              ",\"nonsub\":" ++ jl (outsideOf M) ++ ",\"sat_with\":" ++ satW ++ "}")
+            -- the requested classes A shares the witness with: A ⊓ B satisfiable
+            emit fun _ => ("{\"class\":" ++ nm A ++ ",\"witness\":" ++ toString w ++
+              ",\"nonsub\":" ++ jl (outsideOf (SRIQN.HF.memTS t).f) ++ ",\"sat_with\":" ++
+              jl ((inside.filter fun B => B != A && B != thingI)) ++ "}")
           else
-            emit ("{\"class\":" ++ nm A ++ ",\"witness\":" ++ toString w ++
+            emit fun _ => ("{\"class\":" ++ nm A ++ ",\"witness\":" ++ toString w ++
               ",\"nonsub_except\":" ++ jl inside ++ "}")
         else
           nBad := nBad + 1
-          emit ("{\"class\":" ++ nm A ++ ",\"witness\":" ++ toString w ++
+          emit fun _ => ("{\"class\":" ++ nm A ++ ",\"witness\":" ++ toString w ++
             ",\"error\":\"the class is not in the type of the witness\"}")
       else
         nBad := nBad + 1
-        emit ("{\"class\":" ++ nm A ++ ",\"witness\":" ++ toString w ++
+        emit fun _ => ("{\"class\":" ++ nm A ++ ",\"witness\":" ++ toString w ++
           ",\"error\":\"no such core element\"}")
   -- individuals: the core element holding the nominal index
   let mut groups : Std.HashMap Nat (List OWL.IRI) := {}
   let inom : Std.HashSet Nat := W.inds.foldl (fun st p => st.insert p.2.val) {}
-  let owner : Std.HashMap Nat (Fin W.k) := (List.finRange W.k).foldl (fun mp w =>
+  let owner : Std.HashMap Nat (Fin W.k) := if W.inds.isEmpty then {} else (List.finRange W.k).foldl (fun mp w =>
     (sortedTy w).foldl (fun mp x => if inom.contains x.val then mp.insertIfNew x.val w else mp) mp) {}
   for (a, ia) in W.inds.filter (showInd ·.1) do
     match owner.get? ia.val with
@@ -2176,10 +2184,10 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingRe
       let nout := nreq - inside.length
       nType := nType + nout
       if nout * 2 ≤ nreq then
-        emit ("{\"individual\":" ++ (Json.str a).compress ++ ",\"element\":" ++ toString w.val ++
+        emit fun _ => ("{\"individual\":" ++ (Json.str a).compress ++ ",\"element\":" ++ toString w.val ++
           ",\"nontype\":" ++ jl (outsideOf M) ++ "}")
       else
-        emit ("{\"individual\":" ++ (Json.str a).compress ++ ",\"element\":" ++ toString w.val ++
+        emit fun _ => ("{\"individual\":" ++ (Json.str a).compress ++ ",\"element\":" ++ toString w.val ++
           ",\"nontype_except\":" ++ jl inside ++ "}")
   let gs := groups.toList.map (·.2.reverse)
   out.putStrLn ("{\"nonsame_groups\":[" ++ ",".intercalate (gs.map jsonList) ++ "]}")
@@ -2304,6 +2312,65 @@ def dedupH (l : List OWL.IRI) : List OWL.IRI :=
   (l.foldl (fun (acc : Std.HashSet OWL.IRI × Array OWL.IRI) a =>
     if acc.1.contains a then acc else (acc.1.insert a, acc.2.push a)) ({}, #[])).2.toList
 
+/-- The numbers of `[i, e)`: decimal digits separated by blanks, tabs and
+carriage returns, up to a `#`; `none` at any other byte. Tail recursive. -/
+def numsB (bs : ByteArray) (e : Nat) (i cur : Nat) (inNum : Bool) (acc : Array Nat) :
+    Option (Array Nat) :=
+  if h : i < e then
+    let c := bs[i]!
+    if 48 ≤ c && c ≤ 57 then numsB bs e (i + 1) (cur * 10 + (c - 48).toNat) true acc
+    else if c == 32 || c == 9 || c == 13 then
+      numsB bs e (i + 1) 0 false (if inNum then acc.push cur else acc)
+    else if c == 35 then some (if inNum then acc.push cur else acc)
+    else none
+  else some (if inNum then acc.push cur else acc)
+termination_by e - i
+
+/-- A `ty B C ...` line read from the bytes `[s, e)` without building
+strings (stage H5): `some (B, [C ...])` when the line is `ty` followed by
+decimal numbers (blanks, tabs and carriage returns between them, an
+optional `#` comment); `none` otherwise (the line then goes through
+`RawHint.parseLine`, with the same result as before). -/
+def tyLineB (bs : ByteArray) (s e : Nat) : Option (Nat × List Nat) :=
+  if s + 2 < e && bs[s]! == 116 && bs[s+1]! == 121 && (bs[s+2]! == 32 || bs[s+2]! == 9) then
+    match numsB bs e (s + 2) 0 false #[] with
+    | some nums => if h : 0 < nums.size then some (nums[0], (nums.extract 1 nums.size).toList) else none
+    | none => none
+  else none
+
+/-- The end of the line starting at `i`. -/
+def lineEnd (bs : ByteArray) (i : Nat) : Nat :=
+  if h : i < bs.size then (if bs[i]! == 10 then i else lineEnd bs (i + 1)) else i
+termination_by bs.size - i
+
+/-- The lines from `s` on. -/
+def linesB (bs : ByteArray) (s : Nat) (h : RawHint) : Except String RawHint :=
+  if hs : s < bs.size then
+    let e := lineEnd bs s
+    let h' : Except String RawHint :=
+      if s < e then
+        match tyLineB bs s e with
+        | some (b, cs) => .ok { h with ty := (b, cs) :: h.ty }
+        | none =>
+          let line := String.fromUTF8! (bs.extract s e)
+          let body := (line.splitOn "#").headD ""
+          let ws := ((body.split fun c => c == ' ' || c == '\t' || c == '\r').toList.map
+            (·.toString)).filter (· ≠ "")
+          RawHint.parseLine h ws
+      else .ok h
+    match h' with
+    | .ok h' => if e + 1 > s then linesB bs (e + 1) h' else .ok h'
+    | .error err => .error err
+  else .ok h
+termination_by bs.size - s
+decreasing_by all_goals omega
+
+/-- The text format read from bytes (stage H5): `ty` lines by `tyLineB`,
+every other line by `RawHint.parseLine`, as `RawHint.parseHint` reads the
+text. -/
+def parseHintBytes (bs : ByteArray) : Except String RawHint :=
+  (linesB bs 0 {}).map RawHint.inOrder
+
 /-- `--procedure sroiq-hint --witness TABLE --hint FILE [--out FILE] [--classes FILE]`. -/
 def runWitness (timing : Bool) (args : Args) (O : OWL.Ontology) (R? : Option OWL.OntologyR := none) :
     IO UInt32 := do
@@ -2311,7 +2378,7 @@ def runWitness (timing : Bool) (args : Args) (O : OWL.Ontology) (R? : Option OWL
   let some hf := args.hint
     | IO.eprintln "sroiq-hint: --witness needs --hint FILE"; return 2
   let tP ← IO.monoNanosNow
-  let hint ← match RawHint.parseHint (← IO.FS.readFile hf) with
+  let hint ← match parseHintBytes (← IO.FS.readBinFile hf) with
     | .ok h => pure h
     | .error e => IO.eprintln s!"bad hint {hf}: {e}"; return 2
   let parseMs := ((← IO.monoNanosNow) - tP) / 1000000 + 1
