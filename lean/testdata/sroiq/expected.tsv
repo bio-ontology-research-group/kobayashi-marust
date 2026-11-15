@@ -16,3 +16,5 @@ asymmetric.ofn		declined: not recognised (AsymmetricObjectProperty, design secti
 # --type D b: true. The unhinted exhaustive C2a search exceeds 120 s on each of them (as it does for the
 # SHOIQ route on plain.ofn-sized inputs, 9 concept indices); the unsatisfiable ones cannot be hinted (a hint
 # certifies a model); reflexive-sat (11 s with its hint) is the one hinted decision. The automaton and regularity cases are tested in ContextCalculus/SROIQ/Tests.lean.
+anon.ofn	--check	accepted
+anon.ofn		{"format":"owl-consistency-v1","consistent":true} (93 s, unhinted)

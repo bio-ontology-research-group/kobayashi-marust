@@ -383,3 +383,4 @@ import ContextCalculus.SROIQ.ChainEncN
 import ContextCalculus.OWLFrontend.SROIQDNom
 import ContextCalculus.OWLFrontend.SROIQDC2aReference
 import ContextCalculus.SROIQ.Tests
+import ContextCalculus.OWLFrontend.SROIQAnon

@@ -239,6 +239,7 @@ theorem model_updS {O : Ontology} (hO : O.isSROIQDKB = true) {I : Interp DM D} {
     | subObjectPropertyOf rs r =>
       simp only [Interp.sat, Interp.chain_congr hrole, Interp.prop_congr hrole]
     | reflexive r => simp only [Interp.sat, Interp.prop_congr hrole]
+    | subDataPropertyOf p q => rfl
     | _ => simp [Axiom.isRoleC3] at hr
   · exact sat_updN (by simpa [Axiom.isSROIQDKB, hr] using hO' a ha) (hfa a ha) _
 
