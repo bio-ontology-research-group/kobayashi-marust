@@ -11,6 +11,7 @@ import ContextCalculus.OWLFrontend.HasSelfClass
 import ContextCalculus.OWLFrontend.DatatypeDef
 import ContextCalculus.OWLFrontend.HintBatch
 import ContextCalculus.OWLFrontend.RuleGround
+import ContextCalculus.OWLFrontend.KeyRules
 
 /-!
 # Executable OWL reference procedure (`km-owl-reference`)
@@ -1668,18 +1669,20 @@ def runHint (timing : Bool) (args : Args) (O : OWL.Ontology) : IO UInt32 := do
 def parseRules? (text reason : String) : Option (Except String OWL.OntologyR) :=
   if (reason.splitOn "DLSafeRule").length > 1 then some (OWL.parseR text) else none
 
-def rulesDeclineR (R : OWL.OntologyR) : String :=
+def rulesDeclineR (R0 : OWL.OntologyR) : String :=
+  match (if R0.onto.noKey then some R0 else keyOff R0) with
+  | none => "keys: a HasKey with data properties"
+  | some R =>
   let N := R.named.eraseDups
   let k := (R.rules.map fun ρ => N.length ^ ρ.ivars.eraseDups.length).sum
-  if !R.onto.noKey then "rules: HasKey with rules"
-  else if k > ruleCap then s!"rules: {k} ground instances over {N.length} named individuals (more than {ruleCap})"
+  if k > ruleCap then s!"rules: {k} ground instances over {N.length} named individuals (more than {ruleCap})"
   else "rules: an instance with a data variable, a data range atom, a built-in atom or an " ++
     "anonymous individual"
 
-/-- Print the verdict of `owlRulesC2a` (`owlRulesC2a_sound`: consistency of
+/-- Print the verdict of `owlKeysC2a` (`owlKeysC2a_sound`: consistency of
 the ontology with its DL-safe rules, for every reading of the built-ins). -/
 def publishConsistentR (v : Bool) {O : OWL.OntologyR} {hint : Option RawHint}
-    (_h : owlRulesC2a O hint = some v) : IO UInt32 := do
+    (_h : owlKeysC2a O hint = some v) : IO UInt32 := do
   let out ← IO.getStdout
   out.putStrLn ("{\"format\":\"owl-consistency-v1\",\"consistent\":" ++
     (if v then "true" else "false") ++ "}")
@@ -1709,9 +1712,9 @@ def checkC2a (O : OWL.Ontology) : IO UInt32 := do
     decline (sroiqDeclineS (anonOff [] O))
 
 /-- Print a certified consistency of an ontology with rules
-(`owlRulesHint_sound`). -/
+(`owlKeysHint_sound`). -/
 def publishHintRules {O : OWL.OntologyR} {hint : RawHint}
-    (_h : owlRulesHint O hint = some true) : IO UInt32 := do
+    (_h : owlKeysHint O hint = some true) : IO UInt32 := do
   let out ← IO.getStdout
   out.putStrLn "{\"format\":\"owl-hint-v1\",\"row\":\"consistent\",\"certified\":true}"
   out.flush
@@ -1722,8 +1725,8 @@ indices and checks are those of the encoding (`rulesOnto`). -/
 def runHintRules (timing : Bool) (args : Args) (R : OWL.OntologyR) : IO UInt32 := do
   let rowWs := (args.row.map wordsOf).getD []
   if !(rowWs.isEmpty || rowWs == ["consistent"]) then
-    return ← decline "rules: rows over an ontology with rules are not done"
-  match rulesOnto R with
+    return ← decline "rules: rows over an ontology with rules or keys are not done"
+  match rulesOntoK R with
   | none => decline (rulesDeclineR R)
   | some O' =>
     if args.printIndex then return ← printIndexHint O' []
@@ -1738,7 +1741,7 @@ def runHintRules (timing : Bool) (args : Args) (R : OWL.OntologyR) : IO UInt32 :
         let out ← IO.getStdout
         let idx := (List.range pairs.length).zip pairs
         let mine := idx.filter fun p => p.2.1.isEmpty || p.2.1 == ["consistent"]
-        -- `owlRulesHint R h = (rulesOnto R).bind (owlHintConsistent · h)`, and
+        -- `owlKeysHint R h = (rulesOntoK R).bind (owlHintConsistent · h)`, and
         -- `hintPB O' hs = hs.map (hintP O')` (`hintPB_eq`)
         let ⟨rs, _⟩ ← timedPhase timing "hint-batch" (fun _ => hintPB O' (mine.map (·.2.2)))
         let res : Std.HashMap Nat String := (mine.zip rs).foldl (fun m (p, v) =>
@@ -1759,7 +1762,7 @@ def runHintRules (timing : Bool) (args : Args) (R : OWL.OntologyR) : IO UInt32 :
         match RawHint.parseHint (← IO.FS.readFile f) with
         | .error e => IO.eprintln s!"bad hint {f}: {e}"; return 2
         | .ok hint =>
-          let ⟨res, hres⟩ ← timedPhase timing "hint" (fun _ => owlRulesHint R hint)
+          let ⟨res, hres⟩ ← timedPhase timing "hint" (fun _ => owlKeysHint R hint)
           match res, hres with
           | some true, h => publishHintRules h.symm
           | _, _ => decline "hint: rejected (an index outside the translation, or the check fails)"
@@ -1801,7 +1804,7 @@ def runFile (args : Args) (path : String) : IO UInt32 := do
           | none => decline s!"parse rejected: {reason}"
           | some (.error e) => decline s!"parse rejected: {e}"
           | some (.ok R) => runHintRules timing args R
-        | .ok O => runHint timing args O
+        | .ok O => if O.noKey then runHint timing args O else runHintRules timing args ⟨O, []⟩
       else if args.checkOnly then do
         match OWL.parse text with
         | .error reason =>
@@ -1810,12 +1813,18 @@ def runFile (args : Args) (path : String) : IO UInt32 := do
             | none => decline s!"parse rejected: {reason}"
             | some (.error e) => decline s!"parse rejected: {e}"
             | some (.ok R) =>
-              match rulesOnto R with
+              match rulesOntoK R with
               | none => decline (rulesDeclineR R)
               | some O' => checkC2a O'
           else decline s!"parse rejected: {reason}"
         | .ok O =>
-          if args.dataRoute == some "sroiq-c2a" then checkC2a O
+          if args.dataRoute == some "sroiq-c2a" then
+            if O.noKey then checkC2a O
+            else
+              let R : OWL.OntologyR := ⟨O, []⟩
+              match rulesOntoK R with
+              | none => decline (rulesDeclineR R)
+              | some O' => checkC2a O'
           else
           match translateSHOIQD O [] with
           | some T =>
@@ -1835,15 +1844,22 @@ def runFile (args : Args) (path : String) : IO UInt32 := do
         | .error reason =>
           match route == "sroiq-c2a", parseRules? text reason with
           | true, some (.ok R) =>
-            if args.query.isSome then decline "rules: rows over an ontology with rules are not done"
+            if args.query.isSome then decline "rules: rows over an ontology with rules or keys are not done"
             else
-              let ⟨res, hres⟩ ← timedPhase timing "consistency" (fun _ => owlRulesC2a R hint)
+              let ⟨res, hres⟩ ← timedPhase timing "consistency" (fun _ => owlKeysC2a R hint)
               match res, hres with
               | some v, h => publishConsistentR v h.symm
               | none, _ => decline (rulesDeclineR R)
           | true, some (.error e) => decline s!"parse rejected: {e}"
           | _, _ => decline s!"parse rejected: {reason}"
-        | .ok O => runOntologyD timing route hint args.query O
+        | .ok O =>
+          if route == "sroiq-c2a" && !O.noKey && args.query.isNone then
+            let R : OWL.OntologyR := ⟨O, []⟩
+            let ⟨res, hres⟩ ← timedPhase timing "consistency" (fun _ => owlKeysC2a R hint)
+            match res, hres with
+            | some v, h => publishConsistentR v h.symm
+            | none, _ => decline (rulesDeclineR R)
+          else runOntologyD timing route hint args.query O
       | none => runText timing args.procedure hint args.query text
     let code ← match ← run.toBaseIO with
       | .ok code => pure code

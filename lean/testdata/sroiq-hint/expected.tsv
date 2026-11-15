@@ -21,3 +21,8 @@ rules.ofn	--check	accepted
 rules-clash.ofn	--check	accepted 
 rules-safe.ofn	(sroiq-c2a) --hint rules-safe.hint	{"format":"owl-consistency-v1","consistent":true}
 # rules-clash.ofn is inconsistent (the rule puts b in B, disjoint from C); no hint certifies it; the unhinted sroiq-c2a search runs out of memory on these inputs.
+# Stage C5 item 4: HasKey as DL-safe rules, then grounded (key: a, b share the id-filler k and differ: inconsistent; key-sat: consistent; neither has a hint here, the encodings have 64 and 125 instances)
+key-one.ofn	--hint key-one.hint	{"format":"owl-hint-v1","row":"consistent","certified":true} 
+key.ofn	--check	accepted 
+key-sat.ofn	--check	accepted 
+key-one.ofn	(sroiq-c2a) --hint key-one.hint	{"format":"owl-consistency-v1","consistent":true}

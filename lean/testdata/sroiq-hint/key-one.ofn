@@ -1,0 +1,6 @@
+Prefix(:=<http://ex/>)
+Ontology(<http://ex/key-one>
+HasKey(:P (:id) ())
+ClassAssertion(:P :a)
+ObjectPropertyAssertion(:id :a :a)
+)
