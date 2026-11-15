@@ -28,7 +28,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCR = os.environ.get('H3_SCR', '/mnt/data1/leechuck/km-work/v170/scratch/h3')
 KM = os.environ.get('H3_KM', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-6f2c0a8e')
-REF = os.environ.get('H3_REF', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-owl-reference-h2-4bc900f0')
+REF = os.environ.get('H3_REF', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-owl-reference-h2-4f45169a')
 PROD = os.environ.get('H3_PROD', os.path.join(SCR, 'target/release/km-hints'))
 THING = 'http://www.w3.org/2002/07/owl#Thing'
 NOTHING = 'http://www.w3.org/2002/07/owl#Nothing'
@@ -148,23 +148,20 @@ def main():
         return finish(R, outdir, t0)
     bi, bc = os.path.join(outdir, 'base.idx'), os.path.join(outdir, 'base.cl')
     cf = os.path.join(outdir, 'classes.txt')
-    # the witness route's translation, all classes and owl:Thing requested
+    # the witness route's translation, every class of the ontology requested
     rc1, s1, m1, _, e1 = ref(['--witness-route', '--print-index'], src, 300, out=bi)
     rc2, s2, m2, _, e2 = (None, None, None, None, None)
     s0 = 0
     if rc1 == 0:
         names = [l.split(' ', 2)[2].rstrip('\n') for l in open(bi) if l.startswith('concept ') and
                  len(l.split(' ', 2)) == 3 and not l.split(' ', 2)[2].startswith('urn:km:')]
-        # requesting owl:Thing makes it an unconstrained name (it then shows up as
-        # a proved non-superclass of every class); off until H2 ties it to the top
-        # owl:Nothing requested: A outside it is the proved row sat(A)
-        want = [NOTHING] + ([THING] if os.environ.get('H3_REQUEST_THING') == '1' else [])
-        add = [x for x in want if x not in names]
-        if add:
-            with open(cf, 'w') as f:
-                f.write('\n'.join(names + add) + '\n')
-            s0 = s1 or 0
-            rc1, s1, m1, _, e1 = ref(['--witness-route', '--classes', cf, '--print-index'], src, 300, out=bi)
+        # owl:Thing and owl:Nothing listed: the route prints the owl:Thing row and
+        # owl:Nothing in every list (satisfiability); they do not shift the indices
+        add = [x for x in (THING, NOTHING) if x not in names]
+        with open(cf, 'w') as f:
+            f.write('\n'.join(names + add) + '\n')
+        s0 = s1 or 0
+        rc1, s1, m1, _, e1 = ref(['--witness-route', '--classes', cf, '--print-index'], src, 300, out=bi)
     if rc1 == 0:
         extra = ['--classes', cf] if os.path.exists(cf) else []
         rc2, s2, m2, _, e2 = ref(['--witness-route'] + extra + ['--print-clauses'], src, 300, out=bc)
