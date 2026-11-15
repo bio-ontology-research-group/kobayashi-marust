@@ -289,7 +289,9 @@ pub type Hook<'h> = &'h mut dyn FnMut(&mut Engine, &[Slot], &[(u64, Option<Strin
 pub fn produce(nf: &Nf, km: &Km, cfg: &Config, outdir: &str, hook: Option<Hook>) -> String {
     let t0 = Instant::now();
     let deadline = t0 + std::time::Duration::from_secs_f64(cfg.time_limit);
-    let opt = Opts { loops: cfg.loops, deadline: Some(deadline), ..Opts::default() };
+    // a divergence (an infinite or very large model) should fail fast
+    let node_budget = 100_000 + 40 * (nf.n + nf.noms.len());
+    let opt = Opts { loops: cfg.loops, deadline: Some(deadline), node_budget, ..Opts::default() };
     let mut en = Engine::new(nf, opt);
     let mut j = String::new();
     let mut disagree: Vec<String> = Vec::new();

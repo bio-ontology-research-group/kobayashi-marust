@@ -175,8 +175,12 @@ pub fn row_hint(
             None => return,
         };
         let s = &slots[k];
-        let mut roots: Vec<Id> = s.wits.iter().map(|x| x.1).collect();
+        // the row needs only the witness, the individuals, and what they reach
+        let mut roots: Vec<Id> = if w != NONE { vec![w] } else { Vec::new() };
         roots.extend(s.m.nom_elem.values().copied());
+        if roots.is_empty() {
+            roots.extend(s.wits.iter().map(|x| x.1).take(1));
+        }
         let keep = emit::reachable(&s.m, &roots);
         let mut ren = Engine::new(rnf, Opts { loops: cfg.loops, ..Opts::default() });
         let mut rm = Model::new();

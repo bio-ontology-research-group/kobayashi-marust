@@ -50,6 +50,8 @@ pub type FxSet<K> = HashSet<K, FxB>;
 
 pub type Id = u32;
 pub const NONE: u32 = u32::MAX;
+/// typemap keys for "created for this seed" (set ids stay below 2^31)
+pub const SEED_KEY: u32 = 1 << 31;
 
 /// Interned sorted sets of u32 (concept sets and role labels).
 pub struct Sets {
@@ -984,14 +986,22 @@ impl<'a> Engine<'a> {
             return Ok(());
         }
         let mut got = 0;
-        if let Some(cands) = m.typemap.get(&t) {
-            let cands: Vec<Id> = cands.iter().rev().take(self.opt.reuse_scan).copied().collect();
+        // candidates: elements of type exactly t, and elements created for the
+        // same seed (their type may have grown past t through their own successors)
+        let mut cands: Vec<Id> = Vec::new();
+        for key in [t, seed | SEED_KEY] {
+            if let Some(v) = m.typemap.get(&key) {
+                cands.extend(v.iter().rev().take(self.opt.reuse_scan).copied());
+            }
+        }
+        if !cands.is_empty() {
             for y in cands {
                 if got == need {
                     break;
                 }
+                let y = m.find(y);
                 let ey = &m.elems[y as usize];
-                if !ey.alive || m.uf[y as usize] != y || ey.ty != t {
+                if !ey.alive || !self.sets.subset(seed, ey.ty) || !ey.pending.is_empty() {
                     continue;
                 }
                 if need > 1 && m.edge_label(x, y).is_some() {
@@ -1024,6 +1034,7 @@ impl<'a> Engine<'a> {
                 alive: true,
             });
             self.stats.created += 1;
+            m.tm_push(seed | SEED_KEY, y);
             self.add_edge(m, x, y, l);
             got += 1;
         }

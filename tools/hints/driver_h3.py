@@ -182,6 +182,9 @@ def main():
     if not P['base']['ok'] or not os.path.exists(h0) or P['models'][0]['violations'] != 0:
         C['skipped'] = 'no self-checked model 0'
         return finish(R, outdir, t0)
+    if '--no-check' in a:
+        C['skipped'] = 'not requested'
+        return finish(R, outdir, t0)
     if P['nf']['concepts'] > maxc:
         C['skipped'] = 'over %d concepts (checker time grows with the names, R1)' % maxc
         return finish(R, outdir, t0)
