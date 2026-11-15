@@ -130,6 +130,19 @@ structure WTab where
   lab : Fin k → Fin k → Finset (SRI.RoleT (Fin M)) := fun _ _ => ∅
   /-- named properties with their role term, each a simple role of the normal form -/
   props : List (ObjProp × SRI.RoleT (Fin M)) := []
+  /-- stage H4, the role rows over the core: `ob` the object part of the
+  chain route before chain elimination (its role inclusions give the
+  languages of the roles) -/
+  n2 : Nat := 0
+  ob : SRIQ.Ontology (Fin n2) (Fin M) := []
+  /-- the edges of each core element (both directions, as `HintS.adj`) -/
+  adj : Fin k → List (Fin k × Finset (SRI.RoleT (Fin M))) := fun _ => []
+  /-- every named property and its inverse, with their role terms -/
+  rprops : List (ObjProp × SRI.RoleT (Fin M)) := []
+  /-- the hint has no `kid` lines: every element of the model is a core element -/
+  flat : Bool := false
+  /-- the tables come from the chain route -/
+  chainR : Bool := false
 
 /-- The first index of each name (a table for the lookups below; every
 entry is validated against `T.obj.named`). -/
@@ -179,6 +192,26 @@ theorem mem_propsOf {T : SRIQDKBTranslation} {simpleB : SRI.RoleT (Fin T.obj.rol
     exact ⟨rfl, hs, e.2, he, hR'⟩
   next => cases hf
 
+/-- Every named property of a translation and its inverse, with their
+role terms (stage H4). -/
+def rpropsOf (T : SRIQDKBTranslation) : List (ObjProp × SRI.RoleT (Fin T.obj.roleCount)) :=
+  T.obj.rnames.flatMap fun e => [ObjProp.named e.1, ObjProp.inv e.1].filterMap fun r =>
+    (SRIT.finRT T.obj.roleCount (SRIT.mkRT r e.2)).map fun R => (r, R)
+
+theorem mem_rpropsOf {T : SRIQDKBTranslation} {r : ObjProp} {R : SRI.RoleT (Fin T.obj.roleCount)}
+    (h : (r, R) ∈ rpropsOf T) :
+    r.isBasic = true ∧ ∃ k, (EL.propIRI r, k) ∈ T.obj.rnames ∧
+      SRIT.finRT T.obj.roleCount (SRIT.mkRT r k) = some R := by
+  obtain ⟨e, he, hm⟩ := List.mem_flatMap.1 h
+  obtain ⟨r', hr', hf⟩ := List.mem_filterMap.1 hm
+  obtain ⟨R', hR', hp⟩ := Option.map_eq_some_iff.1 hf
+  simp only [Prod.mk.injEq] at hp
+  obtain ⟨rfl, rfl⟩ := hp
+  simp only [List.mem_cons, List.not_mem_nil, or_false] at hr'
+  rcases hr' with rfl | rfl
+  · exact ⟨rfl, e.2, he, hR'⟩
+  · exact ⟨rfl, e.2, he, hR'⟩
+
 /-- The chain route with the requested classes `req`, on an ontology
 without datatype definitions, keys or anonymous individuals: `some W`
 when the hint checks. -/
@@ -213,7 +246,10 @@ def wTabCore (X : Ontology) (req : List IRI) (hint : RawHint) : Option WTab :=
                        (ixOf T arr mp (nomName base p.2)).map fun x => (p.1, emb x)
                      M := T.obj.roleCount, lab := h.toN.lab
                      props := propsOf T fun R =>
-                       SROIQ.Proc.selfSimpleB (objC T L E) [.selfL R []] }
+                       SROIQ.Proc.selfSimpleB (objC T L E) [.selfL R []]
+                     n2 := T.obj.conceptCount, ob := objC T L E
+                     adj := fun b => ContextCalculus.SRIQ.Fast.getL h.adj b.val
+                     rprops := rpropsOf T, flat := h.kids.isEmpty, chainR := true }
             else none
         else none
   else none
