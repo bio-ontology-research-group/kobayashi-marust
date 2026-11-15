@@ -1,4 +1,4 @@
-//! W6: data property rows of `km classify --properties`. `SUBDATAPROP`,
+//! W6: data property rows of `km classify --data-properties`. `SUBDATAPROP`,
 //! `BOTDATAPROP` and `DATADOMAIN` rows were produced by HermiT 1.4.3
 //! (`isEntailed(SubDataPropertyOf)`, satisfiability of `∃p.rdfs:Literal`
 //! and of `∃p.rdfs:Literal ⊓ ¬C`); HermiT cannot decide
@@ -28,7 +28,7 @@ fn data_property_rows_match_hermit() {
         }
         let output = command
             .env("KM_THREADS", "1")
-            .args(["classify", "--lines", "--properties"])
+            .args(["classify", "--lines", "--data-properties"])
             .arg(fixture(&format!("{case}.ofn")))
             .output()
             .unwrap();

@@ -89,10 +89,6 @@ fn json_properties_add_only_the_property_keys() {
     let bottom = object.remove("bottomproperties").unwrap();
     let domains = object.remove("domains").unwrap();
     let ranges = object.remove("ranges").unwrap();
-    // The data property keys (W6); the fixture has no data property.
-    for key in ["subdataproperties", "topdataproperties", "bottomdataproperties", "datadomains", "disjointdataproperties"] {
-        assert_eq!(object.remove(key).unwrap(), serde_json::json!([]), "{key}");
-    }
     assert_eq!(extended, plain);
     assert!(sub.as_array().unwrap().contains(&serde_json::json!(["urn:t#hasComponent", "ObjectInverseOf(urn:t#partOf)"])));
     assert_eq!(top, serde_json::json!([]));

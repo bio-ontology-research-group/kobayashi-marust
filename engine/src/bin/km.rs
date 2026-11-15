@@ -503,6 +503,8 @@ fn classify_help() {
     println!("  --realize[=all]     also report every entailed named type of each named individual");
     println!("  --realize=direct    also report only the most specific entailed named types");
     println!("  --properties        also report the inferred object property hierarchy, domains and ranges");
+    println!("  --data-properties   also report the data property hierarchy, empty data properties,");
+    println!("                      domains and disjoint data properties (docs/PROPERTIES.md)");
     println!("  --top               also report the named classes equivalent to owl:Thing");
     println!("  --route ROUTE       force a reasoning route (see `km routes --help`); a forced");
     println!("                      route that cannot represent the input exits 3 unless");
@@ -529,11 +531,11 @@ fn classify_help() {
     println!("                      an empty property has no SUBPROP, DOMAIN or RANGE rows");
     println!("  DOMAIN<TAB>r<TAB>C  (--properties) O entails ObjectPropertyDomain(r C); owl:Thing is never listed");
     println!("  RANGE<TAB>r<TAB>C   (--properties) O entails ObjectPropertyRange(r C); owl:Thing is never listed");
-    println!("  SUBDATAPROP<TAB>p<TAB>q (--properties) O entails p SubDataPropertyOf q; p not empty");
-    println!("  BOTDATAPROP<TAB>p   (--properties) data property p is empty");
-    println!("  DATADOMAIN<TAB>p<TAB>C (--properties) O entails DataPropertyDomain(p C)");
-    println!("  DISJOINTDATAPROP<TAB>p<TAB>q (--properties) O entails DisjointDataProperties(p q)");
-    println!("  NODATADISJOINT      (--properties) over 64 data properties: no DISJOINTDATAPROP rows computed");
+    println!("  SUBDATAPROP<TAB>p<TAB>q (--data-properties) O entails p SubDataPropertyOf q; p not empty");
+    println!("  BOTDATAPROP<TAB>p   (--data-properties) data property p is empty");
+    println!("  DATADOMAIN<TAB>p<TAB>C (--data-properties) O entails DataPropertyDomain(p C)");
+    println!("  DISJOINTDATAPROP<TAB>p<TAB>q (--data-properties) O entails DisjointDataProperties(p q)");
+    println!("  NODATADISJOINT      (--data-properties) over 64 data properties: no DISJOINTDATAPROP rows computed");
     println!("With --realize the JSON object carries the same rows under \"types\" and \"same\";");
     println!("with --properties under \"subproperties\", \"topproperties\", \"bottomproperties\",");
     println!("\"domains\" and \"ranges\" (see docs/PROPERTIES.md); with --top under \"top\".");
@@ -557,6 +559,7 @@ fn classify_cmd(rest: &[String]) {
     let mut ontology: Option<&str> = None;
     let mut realize: Option<orchestrate::realize::TypeMode> = None;
     let mut properties = false;
+    let mut data_properties = false;
     let mut top = false;
     let mut index = 0;
     while index < rest.len() {
@@ -573,6 +576,7 @@ fn classify_cmd(rest: &[String]) {
                 exit(2);
             }
             "--properties" => properties = true,
+            "--data-properties" => data_properties = true,
             "--top" => top = true,
             "--json-edges" => graph_edges = true,
             "--route" => {
@@ -664,7 +668,7 @@ fn classify_cmd(rest: &[String]) {
         }
     };
     let cfg = Config::from_env();
-    if realize.is_some() || properties || top {
+    if realize.is_some() || properties || top || data_properties {
         if graph_edges {
             eprintln!("--realize, --properties and --top cannot be combined with --json-edges or KM_JSON_GRAPH_EDGES=1");
             exit(2);
@@ -675,6 +679,7 @@ fn classify_cmd(rest: &[String]) {
             realize,
             properties,
             top,
+            data_properties,
         );
         lean_gate(lean_run);
         match realized {

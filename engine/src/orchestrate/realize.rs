@@ -401,7 +401,7 @@ fn split(
 /// non-nominal routes are incomplete. `KM_REALIZE_ANY_ROUTE=1` lifts this check
 /// for route diagnostics only.
 pub fn realize(cfg: &Config, ont: &Path, mode: TypeMode) -> Result<Realization, OrchestrateError> {
-    Ok(classify_extended(cfg, ont, Some(mode), false, false)?.realization)
+    Ok(classify_extended(cfg, ont, Some(mode), false, false, false)?.realization)
 }
 
 /// The classification of an ontology with the answers to the requested probe
@@ -414,8 +414,8 @@ pub struct Extended {
     pub realization: Realization,
     /// Present iff the property hierarchy was requested.
     pub properties: Option<super::properties::PropertyHierarchy>,
-    /// Present iff the property hierarchy was requested: the data property
-    /// rows (see [`super::data_properties`]).
+    /// Present iff `--data-properties` was requested: the data property rows
+    /// (see [`super::data_properties`]).
     pub data_properties: Option<super::data_properties::DataPropertyHierarchy>,
     /// Present iff `--top` was requested: the named classes equivalent to
     /// `owl:Thing`, sorted.
@@ -471,6 +471,7 @@ pub fn classify_extended(
     mode: Option<TypeMode>,
     properties: bool,
     top: bool,
+    data_properties: bool,
 ) -> Result<Extended, OrchestrateError> {
     let route = std::env::var("KM_ROUTE").unwrap_or_default();
     if route != crate::routing::Route::Auto.as_str()
@@ -506,12 +507,12 @@ pub fn classify_extended(
         super::properties::source_shape(&text)?
     };
     let empty_properties = properties.then(super::properties::PropertyHierarchy::default);
-    let data_roles = if properties {
+    let data_roles = if data_properties {
         super::data_properties::canonical_data_properties(&text)?
     } else {
         Vec::new()
     };
-    let empty_data = properties.then(super::data_properties::DataPropertyHierarchy::default);
+    let empty_data = data_properties.then(super::data_properties::DataPropertyHierarchy::default);
     if individuals.is_empty() && roles.is_empty() && data_roles.is_empty() && !top {
         let classification = super::classify_with_evidence(cfg, ont)?.classification;
         let realization = Realization { classification, types: Vec::new(), same: Vec::new() };

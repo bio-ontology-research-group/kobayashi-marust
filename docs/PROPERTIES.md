@@ -196,7 +196,9 @@ there.
 
 ## Data properties (W6, 2026-11-15)
 
-With `--properties` km also reports, after the object property rows:
+`km classify --data-properties` (combinable with `--properties`,
+`--realize` and `--top`, in one classification) reports, after the object
+property rows:
 
 | Row | Meaning |
 |---|---|
@@ -221,3 +223,20 @@ and `T ≡ owl:Thing`. Since `v` can be interpreted as any data value,
 `W_p ⊑ C` iff `C` is a domain of `p`, and `p`, `q` are disjoint iff `X_pq` is
 unsatisfiable. The data ranges of data properties are not reported (HermiT's
 `OWLReasoner` has no such query).
+
+Why a separate flag: the opaque literal is outside the native bridge's
+datatype certificate, so the probe run cannot use the bridge and falls to
+the CB route. On 7 of 61 checked inputs that route does not finish in 300 s
+where `--properties` alone takes under 5 s (ore_ont_11401, 12824, 13545,
+14412, 1823, 2703, 5033). Admitting opaque values in the bridge certificate
+would remove the cost; until then the data rows are opt-in.
+
+Checked against HermiT 1.4.3 (`isEntailed(SubDataPropertyOf)`,
+satisfiability of `∃p.rdfs:Literal` and of `∃p.rdfs:Literal ⊓ ¬C`) on the 31
+parity ontologies with data properties and 30 more pool inputs: 35 agree row
+for row, 10 have no km answer in 300 s (the 7 above, and ore_ont_13700,
+1509, which also time out with `--properties` alone, and 2526, which km
+refuses), 1 HermiT error (built-in rule atoms); the rest have no HermiT
+answer within 2 h. HermiT throws on `DisjointDataProperties` entailment, so
+the disjointness rows are checked on hand-made cases only
+(`tests/data_properties_cli.rs`).

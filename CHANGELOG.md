@@ -4,7 +4,7 @@
 
 ### Engine
 
-- `km classify --properties` also reports the data property hierarchy
+- `km classify --data-properties` reports the data property hierarchy
   (`SUBDATAPROP`), empty data properties (`BOTDATAPROP`), data property
   domains (`DATADOMAIN`) and disjoint data properties (`DISJOINTDATAPROP`)
   (W6), by fresh classes `∃p.{v}` over an opaque fresh literal `v`; see
