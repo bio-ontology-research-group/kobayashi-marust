@@ -188,9 +188,22 @@ fn in_dt(v: &Val, dt: &str) -> Option<bool> {
     if dt.ends_with("rdf-syntax-ns#PlainLiteral") {
         return Some(matches!(v, Val::Str(_)));
     }
+    // other built-in datatypes (anyURI, dateTime, XMLLiteral, binary, ...): a value
+    // space of their own; dateTimeStamp values are dateTime values
+    let own_space = |v: &Val| -> Option<bool> {
+        Some(match v {
+            Val::Other(d, _) => d == dt || (dt.ends_with("#dateTime") && d.ends_with("#dateTimeStamp")),
+            _ => false,
+        })
+    };
     let l = match dt.strip_prefix(XSD) {
         Some(l) => l,
-        None => return None,
+        None => {
+            if dt.starts_with("http://www.w3.org/1999/02/22-rdf-syntax-ns#") {
+                return own_space(v);
+            }
+            return None;
+        }
     };
     let int = |x: f64| x.fract() == 0.0;
     Some(match (l, v) {
@@ -221,6 +234,10 @@ fn in_dt(v: &Val, dt: &str) -> Option<bool> {
             int(*x) && *x >= 0.0 && *x <= hi
         }
         ("language", _) => return None,
+        ("anyURI" | "dateTime" | "dateTimeStamp" | "date" | "time" | "duration" | "hexBinary"
+        | "base64Binary" | "gYear" | "gYearMonth" | "gMonth" | "gMonthDay" | "gDay" | "QName", _) => {
+            return own_space(v)
+        }
         (_, Val::Other(d, _)) => d == dt,
         (
             "string" | "normalizedString" | "token" | "Name" | "NCName" | "NMTOKEN" | "boolean" | "float"
@@ -339,7 +356,15 @@ impl Values {
                     let m = ((bounds[0] + bounds[1]) / 2.0).floor();
                     push(Val::Num(k, m), &mut cands);
                 }
-            } else if !dt.is_empty() && !dt.ends_with("Literal") && in_dt(&Val::Str("a".into()), &dt).is_none() {
+            } else if !dt.is_empty()
+                && !dt.ends_with("Literal")
+                && a.trim_start().starts_with("ContextCalculus.OWL.DataRange.datatype")
+                && in_dt(&Val::Str("a".into()), &dt) != Some(true)
+                && in_dt(&Val::Num(Kind::Dec, 0.0), &dt) != Some(true)
+                && in_dt(&Val::Bool(true), &dt) != Some(true)
+                && in_dt(&Val::Num(Kind::Float, 0.5), &dt) != Some(true)
+                && in_dt(&Val::Num(Kind::Double, 0.5), &dt) != Some(true)
+            {
                 push(Val::Other(dt.clone(), "x".into()), &mut cands);
             }
         }
