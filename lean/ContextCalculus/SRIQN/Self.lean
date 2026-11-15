@@ -82,6 +82,9 @@ variable {n m p q : Nat}
 
 /-! ## Names -/
 
+/-- The number of concept names of a data ontology over `Fin n`. -/
+def ncOf {n m p q : Nat} (_ : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) : Nat := n
+
 /-- The number of fresh names over `nc` object clauses. -/
 abbrev kF (n m nc : Nat) : Nat := (m + m) + ((nc + (nc + nc)) + ((n + 1) + 1))
 
@@ -248,7 +251,7 @@ structure LamOK (B : SRIQ.Ontology (Fin n) (Fin m)) (SC : List (SClause (Fin n) 
   self : ∀ sc ∈ SC, sc.role ∈ lam
   atMost : ∀ a k T b, SRIQ.Clause.atMost a k T b ∈ B → T ∉ lam → ∀ R ∈ lam, ¬ SRIQ.RoleLe B R T
   irrIn : ∀ T ∈ irr, T ∈ lam
-  irrB : ∀ T ∈ irr, ∃ R, SRIQ.RoleLe B T R ∧ SClause.selfL R [] ∈ SC
+  irrB : ∀ T ∈ irr, ∃ R, (SRIQ.RoleLe B T R ∨ SRIQ.RoleLe B T.flip R) ∧ SClause.selfL R [] ∈ SC
 
 section Facts
 
@@ -648,7 +651,11 @@ theorem rl_of_not_split {T : RoleT (Fin m)} (hs : splitB lam irr T = false) {x y
   have hirr : T ∈ irr := by simp [splitB, hT] at hs; exact hs
   obtain ⟨R, hle, hR⟩ := hok.irrB T hirr
   have hIB : SRIQ.models I.toInterp (SRIQD.objPart (dbase O)) := (SRIQD.models_iff.1 hI).1
-  obtain ⟨b, hb, -⟩ := hS _ hR x (SRIQ.roleLe_sound hIB hle x x h)
+  have hRx : I.rt R x x := by
+    rcases hle with hle | hle
+    · exact SRIQ.roleLe_sound hIB hle x x h
+    · exact SRIQ.roleLe_sound hIB hle x x ((SRI.Interp.rt_flip _ _ _ _).2 h)
+  obtain ⟨b, hb, -⟩ := hS _ hR x hRx
   simp at hb
 
 @[simp] theorem upS_old (B : SRIQ.Ontology (Fin n) (Fin m)) (a : Fin n) (x : D) :

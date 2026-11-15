@@ -137,9 +137,51 @@ def rwAx (nm : IRI → IRI) : Axiom → List Axiom
 def nomBase (O : Ontology) (requested : List IRI) : String :=
   "urn:km:owl-nom:".pushn '#' (SRIQKB.maxLen (O.axioms.flatMap Axiom.classNames ++ requested))
 
+/-- Binary digits, least significant first (`[]` for zero): a compact
+injective suffix. -/
+def binS (j : Nat) : List Char :=
+  if h : j = 0 then [] else (if j % 2 = 0 then '0' else '1') :: binS (j / 2)
+termination_by j
+decreasing_by omega
+
+/-- The number of a digit list. -/
+def binD : List Char → Nat
+  | [] => 0
+  | c :: cs => (if c = '1' then 1 else 0) + 2 * binD cs
+
+theorem binD_binS (j : Nat) : binD (binS j) = j := by
+  induction j using Nat.strong_induction_on with
+  | _ j ih =>
+    rw [binS]
+    split_ifs with h0 h2
+    · simp [binD, h0]
+    · simp only [binD, ih (j / 2) (by omega)]
+      simp
+      omega
+    · simp only [binD, ih (j / 2) (by omega), if_true]
+      omega
+
+/-- The name of number `j` under `base`: the base, `#`, the binary digits of
+`j`. Its length is logarithmic in `j` (the earlier `base.pushn '#' j` made
+the total length of the nominal classes quadratic). -/
+def nomName (base : String) (j : Nat) : IRI := String.ofList (base.toList ++ '#' :: binS j)
+
+theorem nomName_length (base : String) (j : Nat) : base.length < (nomName base j).length := by
+  unfold nomName
+  rw [← String.length_toList, ← String.length_toList, String.toList_ofList]
+  simp
+
+theorem nomName_inj {base : String} {j j' : Nat} (h : nomName base j = nomName base j') : j = j' := by
+  have h1 := congrArg String.toList h
+  unfold nomName at h1
+  rw [String.toList_ofList, String.toList_ofList] at h1
+  have h2 := List.append_cancel_left h1
+  simp only [List.cons.injEq, true_and] at h2
+  rw [← binD_binS j, ← binD_binS j', h2]
+
 /-- The nominal class of the named individual `a`. -/
 def nmOf (O : Ontology) (requested : List IRI) (a : IRI) : IRI :=
-  SRIQKB.defName (nomBase O requested) (O.individualNames.idxOf a)
+  nomName (nomBase O requested) (O.individualNames.idxOf a)
 
 /-- The rewritten ontology. -/
 def nomOnt (O : Ontology) (requested : List IRI) : Ontology :=
@@ -154,15 +196,15 @@ theorem ne_nmOf {O : Ontology} {requested : List IRI} {b : IRI}
     b ≠ nmOf O requested a := by
   intro he
   have h1 := SRIQKB.length_le_maxLen h
-  have h2 := congrArg String.length he
-  rw [nmOf, SRIQKB.defName_length] at h2
+  have h2 := nomName_length (nomBase O requested) (O.individualNames.idxOf a)
+  rw [← nmOf, ← he] at h2
   simp only [nomBase, String.length_pushn] at h2
   have : "urn:km:owl-nom:".length = 15 := by decide
   omega
 
 theorem nmOf_inj {O : Ontology} {requested : List IRI} {a b : IRI}
     (ha : a ∈ O.individualNames) (h : nmOf O requested a = nmOf O requested b) : a = b := by
-  have := SRIQKB.defName_inj h
+  have := nomName_inj h
   exact (List.idxOf_inj ha).1 this
 
 theorem mem_individualNames {O : Ontology} {ax : Axiom} (hax : ax ∈ O.axioms) {a : IRI}

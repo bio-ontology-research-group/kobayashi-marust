@@ -1,4 +1,5 @@
 import ContextCalculus.SRIQN.Procedure
+import ContextCalculus.SRIQN.CheckFast
 
 /-!
 # Rows by reduction to consistency (stage C2, design section 5)

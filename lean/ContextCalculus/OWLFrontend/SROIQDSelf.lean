@@ -231,7 +231,7 @@ def lamOf (B : SRIQ.Ontology (Fin n) (Fin m)) (SC : List (SClause (Fin n) (Fin m
 
 /-- A self clause `selfL R []` (irreflexivity). -/
 def isIrrOf (le : RT m → RT m → Bool) (T : RT m) : SClause (Fin n) (Fin m) → Bool
-  | .selfL R [] => le T R
+  | .selfL R [] => le T R || le T.flip R
   | _ => false
 
 /-- The roles below an irreflexive role. -/
@@ -277,8 +277,8 @@ theorem lamOK_of_lamOKB {B : SRIQ.Ontology (Fin n) (Fin m)} {SC : List (SClause 
   · obtain ⟨sc, hsc, hi⟩ := List.any_eq_true.1 (h6 T hT)
     match sc, hsc, hi with
     | .selfL R [], hsc, hi =>
-      simp only [isIrrOf, leF_mkTab] at hi
-      exact ⟨R, leB_iff.1 hi, hsc⟩
+      simp only [isIrrOf, leF_mkTab, Bool.or_eq_true] at hi
+      exact ⟨R, hi.imp leB_iff.1 leB_iff.1, hsc⟩
 
 /-- The negative self clauses are on simple roles, computed. -/
 def selfSimpleB (B : SRIQ.Ontology (Fin n) (Fin m)) (SC : List (SClause (Fin n) (Fin m))) : Bool :=

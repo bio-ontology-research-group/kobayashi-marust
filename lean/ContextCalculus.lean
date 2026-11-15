@@ -369,6 +369,8 @@ import ContextCalculus.SRIQN.Rows
 import ContextCalculus.SRIQN.Transitivity
 import ContextCalculus.SRIQN.Data
 import ContextCalculus.SRIQN.DataParts
+import ContextCalculus.SRIQN.CheckFast
+import ContextCalculus.SRIQD.BadFast
 import ContextCalculus.SRIQN.SelfLoop
 import ContextCalculus.SRIQN.Self
 import ContextCalculus.OWLFrontend.SHOIQNom
@@ -387,4 +389,8 @@ import ContextCalculus.OWLFrontend.SROIQDC2aReference
 import ContextCalculus.SROIQ.Tests
 import ContextCalculus.OWLFrontend.SROIQAnon
 import ContextCalculus.SROIQ.C2aFast
+import ContextCalculus.SROIQ.ChainSelf
+import ContextCalculus.OWLFrontend.SROIQDSelf
+import ContextCalculus.OWLFrontend.SROIQDSelfRows
+import ContextCalculus.OWLFrontend.DisjointUnion
 import ContextCalculus.OWLFrontend.SHOIQFast

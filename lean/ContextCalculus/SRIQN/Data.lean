@@ -1,5 +1,6 @@
 import ContextCalculus.SRIQN.Transitivity
 import ContextCalculus.SRIQD.ABoxProcedure
+import ContextCalculus.SRIQD.BadFast
 
 /-!
 # Data with nominals (stage C2, design section 6)
