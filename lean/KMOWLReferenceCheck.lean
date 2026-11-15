@@ -905,9 +905,12 @@ def checkSelf (timing : Bool) (O : OWL.Ontology) : IO Bool := do
         let ⟨D1, _⟩ ← timedPhase timing "chain-encode" (fun _ => chC T L E)
         let ⟨B1, _⟩ ← timedPhase timing "chain-obj" (fun _ => SRIQD.objPart (SRIQN.dbase D1))
         let sc1 := scC T L E SC
-        let ⟨lam, _⟩ ← timedPhase timing "loop-set" (fun _ => SROIQ.Proc.lamOf B1 sc1)
-        let ⟨irr, _⟩ ← timedPhase timing "irr-set" (fun _ => SROIQ.Proc.irrOf B1 sc1)
-        let ⟨r4, _⟩ ← timedPhase timing "loop-roles" (fun _ => SROIQ.Proc.lamOKB B1 sc1 lam irr)
+        let ⟨hm1, _⟩ ← timedPhase timing "role-table"
+          (fun _ => Std.HashMap.ofList (SROIQ.Proc.mkTab B1))
+        let le1 := SROIQ.Proc.leH hm1
+        let ⟨lam, _⟩ ← timedPhase timing "loop-set" (fun _ => SROIQ.Proc.lamOfL le1 B1 sc1)
+        let ⟨irr, _⟩ ← timedPhase timing "irr-set" (fun _ => SROIQ.Proc.irrOfL le1 sc1)
+        let ⟨r4, _⟩ ← timedPhase timing "loop-roles" (fun _ => SROIQ.Proc.lamOKBL le1 B1 sc1 lam irr)
         if !r4 then return false
         let ⟨D, _⟩ ← timedPhase timing "encode" (fun _ => SRIQN.encSelfD D1 sc1 lam irr)
         let ⟨r5, _⟩ ← timedPhase timing "c2a" (fun _ => decide (SRIQN.IsC2aD D))

@@ -223,17 +223,22 @@ def lamStep (le : RT m → RT m → Bool) (B : SRIQ.Ontology (Fin n) (Fin m))
     | _ => none).dedup
   (allRT m).filter fun R => gens.any fun T => le R T || le R.flip T
 
+/-- Iterate until nothing changes (at most `k` rounds). -/
+def lamIter (f : List (RT m) → List (RT m)) : Nat → List (RT m) → List (RT m)
+  | 0, L => L
+  | k + 1, L => let L' := f L; if L'.length = L.length then L' else lamIter f k L'
+
+/-- The loop roles for a given hierarchy test. -/
+def lamOfL (le : RT m → RT m → Bool) (B : SRIQ.Ontology (Fin n) (Fin m))
+    (SC : List (SClause (Fin n) (Fin m))) : List (RT m) :=
+  lamIter (lamStep le B SC) (2 * m + 2) []
+
 /-- The loop roles (`lam` of `SRIQN.encSelfD`), iterated to a fixpoint;
 `lamOKB` checks the result. -/
 def lamOf (B : SRIQ.Ontology (Fin n) (Fin m)) (SC : List (SClause (Fin n) (Fin m))) : List (RT m) :=
   let hm := Std.HashMap.ofList (mkTab B)
   let le := leH hm
-  lamIter (lamStep le B SC) (2 * m + 2) []
-where
-  /-- Iterate until nothing changes (at most `k` rounds). -/
-  lamIter (f : List (RT m) → List (RT m)) : Nat → List (RT m) → List (RT m)
-    | 0, L => L
-    | k + 1, L => let L' := f L; if L'.length = L.length then L' else lamIter f k L'
+  lamOfL le B SC
 
 /-- A self clause `selfL R []` (irreflexivity). -/
 def isIrrOf (le : RT m → RT m → Bool) (T : RT m) : SClause (Fin n) (Fin m) → Bool
@@ -241,10 +246,13 @@ def isIrrOf (le : RT m → RT m → Bool) (T : RT m) : SClause (Fin n) (Fin m) �
   | _ => false
 
 /-- The roles below an irreflexive role. -/
+def irrOfL (le : RT m → RT m → Bool) (SC : List (SClause (Fin n) (Fin m))) : List (RT m) :=
+  (allRT m).filter fun T => SC.any (isIrrOf le T)
+
 def irrOf (B : SRIQ.Ontology (Fin n) (Fin m)) (SC : List (SClause (Fin n) (Fin m))) : List (RT m) :=
   let hm := Std.HashMap.ofList (mkTab B)
   let le := leH hm
-  (allRT m).filter fun T => SC.any (isIrrOf le T)
+  irrOfL le SC
 
 /-- The at-most condition of one clause. -/
 def atMostOK (le : RT m → RT m → Bool) (lam : List (RT m)) : SRIQ.Clause (Fin n) (Fin m) → Bool
@@ -252,6 +260,15 @@ def atMostOK (le : RT m → RT m → Bool) (lam : List (RT m)) : SRIQ.Clause (Fi
   | _ => true
 
 /-- **The check of `LamOK`.** -/
+def lamOKBL (le : RT m → RT m → Bool) (B : SRIQ.Ontology (Fin n) (Fin m))
+    (SC : List (SClause (Fin n) (Fin m))) (lam irr : List (RT m)) : Bool :=
+  lam.all (fun R => decide (R.flip ∈ lam)) &&
+  (allRT m).all (fun R => decide (R ∈ lam) || lam.all fun T => !le R T) &&
+  SC.all (fun sc => decide (sc.role ∈ lam)) &&
+  B.all (atMostOK le lam) &&
+  irr.all (fun T => decide (T ∈ lam)) &&
+  irr.all (fun T => SC.any (isIrrOf le T))
+
 def lamOKB (B : SRIQ.Ontology (Fin n) (Fin m)) (SC : List (SClause (Fin n) (Fin m)))
     (lam irr : List (RT m)) : Bool :=
   let hm := Std.HashMap.ofList (mkTab B)
@@ -302,7 +319,8 @@ end ContextCalculus.SROIQ.Proc
 namespace ContextCalculus.OWLFrontend
 
 open ContextCalculus.OWL ContextCalculus.OWL.Datatypes SHIQD SHOIQ
-open ContextCalculus.SROIQ.Proc (encChainDN liftSC lamOf irrOf lamOKB selfSimpleB)
+open ContextCalculus.SROIQ.Proc (encChainDN liftSC lamOf irrOf lamOKB selfSimpleB lamOfL irrOfL
+  lamOKBL)
 
 theorem selfSimple_of {T : SRIQDKBTranslation} {L : List IRI}
     {E : List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount))}
@@ -363,11 +381,13 @@ def sroiqSOKF (T : SRIQDKBTranslation) (L : List IRI)
   let D1 := chC T L E
   let B1 := SRIQD.objPart (SRIQN.dbase D1)
   let sc1 := scC T L E SC
-  let lam := lamOf B1 sc1
-  let irr := irrOf B1 sc1
+  let hm1 := Std.HashMap.ofList (SROIQ.Proc.mkTab B1)
+  let le1 := SROIQ.Proc.leH hm1
+  let lam := SROIQ.Proc.lamOfL le1 B1 sc1
+  let irr := SROIQ.Proc.irrOfL le1 sc1
   let D := SRIQN.encSelfD D1 sc1 lam irr
   SROIQ.Proc.regularB B0 && SROIQ.Proc.condB B0 && selfSimpleB B0 SC &&
-    lamOKB B1 sc1 lam irr && decide (SRIQN.IsC2aD D) &&
+    SROIQ.Proc.lamOKBL le1 B1 sc1 lam irr && decide (SRIQN.IsC2aD D) &&
     decide (SRIQN.IsC2aD (SRIQN.Proc.encTransDN D)) &&
     (List.finRange T.tab.length).all fun p => drSupported (spec T.tab p)
 

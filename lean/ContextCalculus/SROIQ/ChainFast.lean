@@ -64,6 +64,18 @@ theorem lookup_map_self (f : RT m → List (RT m)) :
       rw [this]
       exact lookup_map_self f l R ((List.mem_cons.1 h).resolve_left hx)
 
+/-- The table over a given clause list (the list is an argument, so it is
+computed once, not once per role term). -/
+def mkTabC (C : SRI.Ontology (Fin n) (Fin m)) : List (RT m × List (RT m)) :=
+  (allRT m).map fun R => (R, SRI.Proc.upFix C R (2 * m + 2) [R])
+
+def mkTabF (O : Ontology (Fin n) (Fin m)) : List (RT m × List (RT m)) :=
+  mkTabC (SRIQ.sriPart (chainsOnly O))
+
+@[csimp] theorem mkTab_eq_F : @mkTab = @mkTabF := by
+  funext n m O
+  rfl
+
 theorem leF_mkTab (O : Ontology (Fin n) (Fin m)) : leF (mkTab O) = leB O := by
   rw [← leB_chainsOnly]
   funext R S
@@ -202,6 +214,85 @@ def kCF (O : Ontology (Fin n) (Fin m)) : Nat := (pairsPF O).length
 
 /-! ## The encoding -/
 
+/-! ### The moves of a stack from a table of the top items (stage C3e)
+
+The moves of a stack depend on its top item only, the rest is appended
+(`succsT_top`), so the encoding reads them from a table over the `4m` top
+items (`succsM`, `succsT_eq_M`) instead of recomputing them per pair. -/
+
+theorem succsIT_top (rs : List (RT m × List (RT m))) (le : RT m → RT m → Bool) (S : RT m)
+    (rest : Stack (Fin m)) :
+    succsIT rs le S rest = (succsIT rs le S []).map fun p => (p.1, p.2 ++ rest) := by
+  unfold succsIT
+  simp only [List.map_append, List.map_filterMap]
+  congr 1
+  · congr 1
+    · congr 1; funext R; split_ifs <;> simp
+    · congr 1; funext p; split_ifs <;> simp
+  · congr 1; funext p; split <;> (try split_ifs) <;> simp
+
+theorem succsFT_top (rs : List (RT m × List (RT m))) (le : RT m → RT m → Bool) (S : RT m)
+    (rest : Stack (Fin m)) :
+    succsFT rs le S rest = (succsFT rs le S []).map fun p => (p.1, p.2 ++ rest) := by
+  unfold succsFT
+  simp only [List.map_cons, List.map_filterMap, List.nil_append]
+  congr 1
+  congr 1; funext p; split <;> (try split_ifs) <;> simp
+
+theorem succsT_top (rs : List (RT m × List (RT m))) (le : RT m → RT m → Bool)
+    (it : RT m × Bool) (rest : Stack (Fin m)) :
+    succsT rs le (it :: rest) = (succsT rs le [it]).map fun p => (p.1, p.2 ++ rest) := by
+  obtain ⟨S, b⟩ := it
+  cases b
+  · exact succsIT_top rs le S rest
+  · exact succsFT_top rs le S rest
+
+/-- The top items. -/
+def topItems (m : Nat) : List (RT m × Bool) := (allRT m).flatMap fun S => [(S, false), (S, true)]
+
+theorem mem_topItems (it : RT m × Bool) : it ∈ topItems m := by
+  obtain ⟨S, b⟩ := it
+  refine List.mem_flatMap.2 ⟨S, mem_allRT S, ?_⟩
+  cases b <;> simp
+
+theorem nodup_topItems (m : Nat) : (topItems m).Nodup := by
+  unfold topItems
+  rw [List.nodup_flatMap]
+  refine ⟨fun S _ => by simp, ?_⟩
+  refine (nodup_allRT m).imp fun {a b} hab => ?_
+  intro x hx hy
+  simp only [List.mem_cons, List.not_mem_nil, or_false] at hx hy
+  rcases hx with rfl | rfl <;> rcases hy with h | h <;> simp_all
+
+/-- The table of the moves of the top items. -/
+def movesTab (rs : List (RT m × List (RT m))) (le : RT m → RT m → Bool) :
+    Std.HashMap (RT m × Bool) (List (Option (RT m) × Stack (Fin m))) :=
+  Std.HashMap.ofList ((topItems m).map fun it => (it, succsT rs le [it]))
+
+/-- The moves of a stack read from the table. -/
+def succsM (tb : Std.HashMap (RT m × Bool) (List (Option (RT m) × Stack (Fin m))))
+    (rs : List (RT m × List (RT m))) (le : RT m → RT m → Bool) :
+    Stack (Fin m) → List (Option (RT m) × Stack (Fin m))
+  | [] => []
+  | it :: rest => ((tb[it]?).getD (succsT rs le [it])).map fun p => (p.1, p.2 ++ rest)
+
+theorem movesTab_get (rs : List (RT m × List (RT m))) (le : RT m → RT m → Bool) (it : RT m × Bool) :
+    (movesTab rs le)[it]? = some (succsT rs le [it]) := by
+  unfold movesTab
+  refine Std.HashMap.getElem?_ofList_of_mem (beq_self_eq_true it) ?_
+    (List.mem_map.2 ⟨it, mem_topItems it, rfl⟩)
+  rw [List.pairwise_map]
+  exact (nodup_topItems m).imp fun h => by simpa using h
+
+theorem succsT_eq_M (rs : List (RT m × List (RT m))) (le : RT m → RT m → Bool) :
+    succsM (movesTab rs le) rs le = succsT rs le := by
+  funext st
+  cases st with
+  | nil => rfl
+  | cons it rest =>
+    rw [succsM, movesTab_get, Option.getD_some]
+    exact (succsT_top rs le it rest).symm
+
 section IdxG
 
 variable {α : Type} [BEq α] [LawfulBEq α] [Hashable α]
@@ -244,7 +335,9 @@ def encChainF (O : Ontology (Fin n) (Fin m)) : Ontology (Fin (n + kC O)) (Fin m)
   let tab := mkTab O
   let rs := rules O
   let hm := Std.HashMap.ofList tab
-  let sf := succsT rs (leH hm)
+  let le := leH hm
+  let tb := movesTab rs le
+  let sf := succsM tb rs le
   let mp := idxMapG P
   let nm : Pair n m → Option (Fin (n + kC O)) := fun p =>
     if h : (mp[p]?).getD k < k then some (Fin.natAdd n ⟨_, h⟩) else none
@@ -261,7 +354,7 @@ def encChainF (O : Ontology (Fin n) (Fin m)) : Ontology (Fin (n + kC O)) (Fin m)
 
 @[csimp] theorem encChain_eq_F : @encChain = @encChainF := by
   funext n m O
-  simp only [encChainF, leH_mkTab, succsT_eq, idxMapG_getD]
+  simp only [encChainF, succsT_eq_M, leH_mkTab, succsT_eq, idxMapG_getD]
   rfl
 
 /-! ## The regularity check -/
