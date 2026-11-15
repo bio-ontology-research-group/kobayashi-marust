@@ -206,6 +206,7 @@ mod tests {
 
     #[test]
     fn registered_functional_input_keeps_format_when_validation_bypass_is_disabled() {
+        let _test_env = crate::test_env::write();
         const CHILD: &str = "KM_TEST_REGISTERED_FUNCTIONAL_INPUT_CHILD";
         if std::env::var_os(CHILD).is_some() {
             let source = "Ontology(Declaration(Class(<urn:A>)) Declaration(Class(<urn:B>)) SubClassOf(<urn:A> <urn:B>))";
@@ -258,6 +259,7 @@ mod tests {
 
     #[test]
     fn format_aliases_are_explicit() {
+        let _test_env = crate::test_env::write();
         assert_eq!(InputFormat::parse("ofn").unwrap(), InputFormat::Functional);
         assert_eq!(InputFormat::parse("OWL-XML").unwrap(), InputFormat::OwlXml);
         assert_eq!(InputFormat::parse("rdfxml").unwrap(), InputFormat::RdfXml);
@@ -267,6 +269,7 @@ mod tests {
 
     #[test]
     fn owlxml_rdfxml_and_turtle_share_the_functional_frontend() {
+        let _test_env = crate::test_env::write();
         let owlxml = r#"<?xml version="1.0"?>
 <Ontology xmlns="http://www.w3.org/2002/07/owl#"
  ontologyIRI="http://example.org/test">

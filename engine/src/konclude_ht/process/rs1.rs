@@ -851,6 +851,7 @@ mod tests {
 
     #[test]
     fn rs1_role_successor_iterator_overloads_write_count_and_last_link() {
+        let _test_env = crate::test_env::read();
         let mut nodes = Arena::new();
         let mut src = IndividualProcessNode::new(ProcessContextId::NONE);
         src.set_individual_node_id(10);

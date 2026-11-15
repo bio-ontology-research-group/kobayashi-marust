@@ -255,6 +255,7 @@ mod tests {
     fn var(n: &str) -> RuleTerm { RuleTerm::Var(n.into()) }
     #[test]
     fn source_coverage_and_budget_failures_leave_original_ontology_intact() {
+        let _test_env = crate::test_env::read();
         let names = BTreeSet::from(["a".into(), "b".into()]);
         let source = Axiom::SubClassOf(Concept::Name("C".into()),Concept::Nominal("b".into()));
         let rule = Axiom::Rule(vec![RuleAtom::Class(Concept::Name("C".into()),var("x"))],
@@ -273,6 +274,7 @@ mod tests {
     }
     #[test]
     fn grounding_preserves_all_bindings_and_fresh_symbols() {
+        let _test_env = crate::test_env::read();
         let names = BTreeSet::from(["a".into(), "b".into()]);
         let occupied = BTreeSet::from(["__ground_rule_0".into()]);
         let rule = Axiom::Rule(vec![RuleAtom::Role("r".into(),var("x"),var("y"))],
@@ -286,6 +288,7 @@ mod tests {
     }
     #[test]
     fn empty_named_domain_and_ground_rules_are_distinguished() {
+        let _test_env = crate::test_env::read();
         let names = BTreeSet::new();
         let vacuous = Axiom::Rule(vec![RuleAtom::Class(Concept::Top,var("x"))],vec![]);
         assert_eq!(plan(&[vacuous],&names,&names,0).unwrap().instances,0);
@@ -295,6 +298,7 @@ mod tests {
     }
     #[test]
     fn cyclic_template_rule_needs_only_head_assignments() {
+        let _test_env = crate::test_env::read();
         let names=(0..16).map(|i|format!("i{i}")).collect::<BTreeSet<_>>();
         let edge=|r:&str,a:&str,b:&str|RuleAtom::Role(r.into(),var(a),var(b));
         let rule=Axiom::Rule(vec![
@@ -312,6 +316,7 @@ mod tests {
 
     #[test]
     fn ground_implications_match_two_element_models_without_unique_names() {
+        let _test_env = crate::test_env::read();
         let names = BTreeSet::from(["a".into(), "b".into()]);
         let class = |name: &str, v: &str| RuleAtom::Class(Concept::Name(name.into()),var(v));
         let candidates = vec![

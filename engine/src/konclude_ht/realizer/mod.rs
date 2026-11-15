@@ -469,6 +469,7 @@ mod tests {
 
     #[test]
     fn realizing_item_carries_individual_dependence_tracking_required_flag() {
+        let _test_env = crate::test_env::read();
         let mut item = OptimizedRepresentativeKPSetOntologyRealizingItem::new();
 
         assert!(!item.requires_individual_dependence_tracking());
@@ -480,6 +481,7 @@ mod tests {
 
     #[test]
     fn kpset_individual_item_carries_collector_facet() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContext::new();
         let collector = ctx.alloc_individual_dependence_tracking_collector(
             IndividualDependenceTrackingCollector::new(),
@@ -502,6 +504,7 @@ mod tests {
 
     #[test]
     fn realizer_possible_concept_instance_test_installs_observer_only_adapter() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContext::new();
         let mut req_item = OptimizedRepresentativeKPSetOntologyRealizingItem::new();
         req_item.set_individual_dependence_tracking_required(true);
@@ -523,6 +526,7 @@ mod tests {
 
     #[test]
     fn realizer_role_instance_pair_test_reuses_existing_observer_only_adapter_collector() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContext::new();
         let collector = ctx.alloc_individual_dependence_tracking_collector(
             IndividualDependenceTrackingCollector::new(),
@@ -551,6 +555,7 @@ mod tests {
 
     #[test]
     fn realizer_same_individual_test_attaches_preexisting_collector_even_when_flag_disabled() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContext::new();
         let collector = ctx.alloc_individual_dependence_tracking_collector(
             IndividualDependenceTrackingCollector::new(),
@@ -574,6 +579,7 @@ mod tests {
 
     #[test]
     fn realizer_leaves_job_without_adapter_when_tracking_not_required_and_no_collector_exists() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContext::new();
         let req_item = OptimizedRepresentativeKPSetOntologyRealizingItem::new();
         let mut individual_item = OptimizedKPSetIndividualItem::new();
@@ -597,6 +603,7 @@ mod tests {
 
     #[test]
     fn realizing_testing_item_base_stores_ontology_item_and_non_null_processing_data() {
+        let _test_env = crate::test_env::read();
         let ontology_item = OptimizedRepresentativeKPSetOntologyRealizingItemId::new(2);
         let proc_data = OntologyRealizingDynamicRequirmentProcessingDataId::new(5);
         let mut item = RealizingTestingItem::new(
@@ -617,6 +624,7 @@ mod tests {
 
     #[test]
     fn concept_instance_testing_item_carries_type_and_constructor_fields() {
+        let _test_env = crate::test_env::read();
         let prepro_item = OptimizedRepresentativeKPSetOntologyRealizingItemId::new(11);
         let instances_item = OptimizedKPSetConceptInstancesItemId::new(13);
         let instantiated_item = OptimizedKPSetIndividualItemId::new(17);
@@ -647,6 +655,7 @@ mod tests {
 
     #[test]
     fn pair_role_instance_testing_item_carries_type_and_constructor_fields() {
+        let _test_env = crate::test_env::read();
         let prepro_item = OptimizedRepresentativeKPSetOntologyRealizingItemId::new(29);
         let instances_item = OptimizedKPSetRoleInstancesItemId::new(31);
         let individual_item_pair = (
@@ -674,6 +683,7 @@ mod tests {
 
     #[test]
     fn same_individual_testing_item_carries_type_and_constructor_fields() {
+        let _test_env = crate::test_env::read();
         let prepro_item = OptimizedRepresentativeKPSetOntologyRealizingItemId::new(47);
         let instantiated_item1 = OptimizedKPSetIndividualItemId::new(53);
         let instantiated_item2 = OptimizedKPSetIndividualItemId::new(59);

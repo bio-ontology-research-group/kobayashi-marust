@@ -185,6 +185,7 @@ mod tests {
 
     #[test]
     fn only_super_role_occurrences_are_eliminable() {
+        let _test_env = crate::test_env::read();
         for text in [
             "Ontology(SubObjectPropertyOf(<http://e#r> owl:topObjectProperty))",
             "Ontology(SubObjectPropertyOf(<http://e#r> \
@@ -205,6 +206,7 @@ mod tests {
 
     #[test]
     fn any_other_occurrence_blocks_elimination() {
+        let _test_env = crate::test_env::read();
         for text in [
             // sub-role position: a real universal-role axiom
             "Ontology(SubObjectPropertyOf(owl:topObjectProperty <http://e#r>) \
@@ -235,11 +237,13 @@ mod tests {
 
     #[test]
     fn nothing_to_eliminate_without_the_builtin() {
+        let _test_env = crate::test_env::read();
         assert!(!scan("Ontology(SubObjectPropertyOf(<http://e#r> <http://e#s>))").eliminable());
     }
 
     #[test]
     fn vacuous_inclusion_leaves_no_builtin_role_behind() {
+        let _test_env = crate::test_env::read();
         let ontology = "Ontology(\
              Declaration(Class(<http://e#A>))\
              SubObjectPropertyOf(<http://e#r> owl:topObjectProperty)\
@@ -270,6 +274,7 @@ mod tests {
 
     #[test]
     fn vacuous_inclusion_clears_the_source_profile_flag() {
+        let _test_env = crate::test_env::read();
         let ontology = "Ontology(\
              SubObjectPropertyOf(<http://e#r> owl:topObjectProperty)\
              SubClassOf(<http://e#A> ObjectSomeValuesFrom(<http://e#r> <http://e#B>)))";
@@ -311,6 +316,7 @@ mod tests {
 
     #[test]
     fn a_universal_sub_role_leaves_no_builtin_in_the_clauses() {
+        let _test_env = crate::test_env::read();
         // `U ⊑ s` becomes `S ∘ S⁻ ⊑ s` (see `universal_role`), after which the
         // vacuous `r ⊑ U` is elided: no clause reads or writes the builtin.
         let ontology = "Ontology(\

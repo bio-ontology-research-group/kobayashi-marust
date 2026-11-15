@@ -9433,6 +9433,7 @@ mod tests {
 
     #[test]
     fn selective_join_matches_complete_substitution_sets_and_seeds() {
+        let _test_env = crate::test_env::read();
         let mut graph = Graph::new();
         for _ in 0..6 { graph.new_node(None, false); }
         for node in 0..6 { graph.add_concept(node, CLit::pos(0)); }
@@ -9478,16 +9479,14 @@ mod tests {
     // Several worker-contract tests below temporarily alter process-wide
     // routing variables.  Serialize those tests so a parallel test cannot
     // observe another test's intermediate environment.
-    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-    fn lock_environment() -> std::sync::MutexGuard<'static, ()> {
-        ENV_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    fn lock_environment() -> crate::test_env::EnvGuard {
+        crate::test_env::write()
     }
 
     #[test]
     fn compact_bridge_transport_preserves_pairs_unsat_and_consistency() {
+        let _test_env = crate::test_env::read();
         let compact = compact_bridge_classification(
             vec!["A".into(), "B".into(), "owl:Nothing".into()],
             crate::konclude_ht::bridge::BridgedClassification {
@@ -9513,6 +9512,7 @@ mod tests {
 
     #[test]
     fn compact_bridge_transport_adds_bottom_once_and_rejects_bad_ids() {
+        let _test_env = crate::test_env::read();
         let compact = compact_bridge_classification(
             vec!["A".into()],
             crate::konclude_ht::bridge::BridgedClassification {
@@ -9554,6 +9554,7 @@ mod tests {
 
     #[test]
     fn compact_bridge_entry_requires_the_exclusive_contract() {
+        let _test_env = crate::test_env::write();
         let _environment = lock_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();
         std::env::remove_var("KM_HT_BRIDGE");
@@ -9565,6 +9566,7 @@ mod tests {
 
     #[test]
     fn compact_bridge_entry_matches_the_legacy_json_worker() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause, TInput};
 
         let _environment = lock_environment();
@@ -9619,6 +9621,7 @@ mod tests {
 
     #[test]
     fn typed_producer_handoff_matches_the_json_worker_contract() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause};
 
         // Hold the module's environment lock: these keys are shared with the
@@ -9652,6 +9655,7 @@ mod tests {
 
     #[test]
     fn owned_wire_entry_matches_the_borrowed_worker_contract() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{HAtom, HtClause};
 
         // Hold the module's environment lock: these keys are shared with the
@@ -9718,6 +9722,7 @@ mod tests {
 
     #[test]
     fn certified_global_verdict_is_derived_from_the_checked_evidence_shape() {
+        let _test_env = crate::test_env::read();
         let plain_sat = serde_json::json!({"version": 1, "evidence": "sat"});
         let equality_unsat = serde_json::json!({"version": 2, "evidence": {"unsat": {}}});
         let cardinality_sat = serde_json::json!({
@@ -9769,6 +9774,7 @@ mod tests {
 
     #[test]
     fn certified_input_coverage_rejects_converter_omissions_and_unsafe_combinations() {
+        let _test_env = crate::test_env::write();
         let mut producer = crate::orchestrate::cb_to_ht::TInput::default();
         let complete = consumer_input(&producer);
         assert!(check_certified_ht_input_coverage(&complete, false).is_ok());
@@ -9807,6 +9813,7 @@ mod tests {
 
     #[test]
     fn certified_input_coverage_matches_the_lean_truth_table() {
+        let _test_env = crate::test_env::write();
         for dropped in [0, 1] {
             for fenced in [false, true] {
                 for inverse in [false, true] {
@@ -9857,6 +9864,7 @@ mod tests {
 
     #[test]
     fn every_ht_lean_interface_enters_the_fail_closed_certification_boundary() {
+        let _test_env = crate::test_env::read();
         for required in [
             "KM_HT_LEAN_CERT_OUT",
             "KM_HT_LEAN_CERT_CHECKER",
@@ -10067,6 +10075,7 @@ mod tests {
 
     #[test]
     fn mixed_skolem_projection_passes_the_real_lean_checker_and_rejects_omission() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PROJECTION_CHECKER") else {
             return;
         };
@@ -10172,6 +10181,7 @@ mod tests {
 
     #[test]
     fn cardinality_projection_passes_the_real_lean_checker_and_rejects_false_exactness() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PROJECTION_CHECKER") else {
             return;
         };
@@ -10252,6 +10262,7 @@ mod tests {
 
     #[test]
     fn multi_filler_bundle_projection_passes_the_real_lean_checker_and_rejects_omission() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PROJECTION_CHECKER") else {
             return;
         };
@@ -10411,6 +10422,7 @@ mod tests {
 
     #[test]
     fn native_abox_wire_contract_rejects_empty_duplicate_or_unowned_nominal_proxies() {
+        let _test_env = crate::test_env::read();
         let mut empty = native_wire_input();
         empty.native_abox.individuals[0].proxies.clear();
         assert!(validate_native_abox(&consumer_input(&empty))
@@ -10438,6 +10450,7 @@ mod tests {
 
     #[test]
     fn native_abox_projection_passes_real_lean_checker_and_rejects_forgery() {
+        let _test_env = crate::test_env::read();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PROJECTION_CHECKER") else {
             return;
         };
@@ -10466,6 +10479,7 @@ mod tests {
 
     #[test]
     fn direct_native_abox_refutation_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PROJECTION_CHECKER") else {
             return;
         };
@@ -10548,6 +10562,7 @@ mod tests {
 
     #[test]
     fn direct_native_abox_sat_source_decision_passes_real_lean_checker() {
+        let _test_env = crate::test_env::read();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER")
         else {
             return;
@@ -10593,6 +10608,7 @@ mod tests {
 
     #[test]
     fn every_cardinality_taxonomy_projection_passes_the_common_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_CARDINALITY_COMMON_TAXONOMY_CHECKER")
         else {
             return;
@@ -10751,6 +10767,7 @@ mod tests {
 
     #[test]
     fn direct_native_abox_taxonomy_source_matrix_passes_real_lean_checker() {
+        let _test_env = crate::test_env::read();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER")
         else {
             return;
@@ -10818,6 +10835,7 @@ mod tests {
 
     #[test]
     fn joint_native_abox_classification_carries_one_source_and_abox() {
+        let _test_env = crate::test_env::read();
         let mut producer = native_wire_input();
         producer.direct_projection_source = Some(Vec::new());
         let inp = consumer_input(&producer);
@@ -10859,6 +10877,7 @@ mod tests {
 
     #[test]
     fn joint_native_abox_source_matrix_passes_real_lean_checker_on_all_six_routes() {
+        let _test_env = crate::test_env::write();
         use crate::orchestrate::cb_to_ht::{
             BundleProjectionLit, BundleProjectionSource, CardDefJson, DirectProjectionAtom,
             DirectProjectionClause, MixedProjectionSource, NativeAboxJson, NativeIndividualJson,
@@ -11059,6 +11078,7 @@ mod tests {
 
     #[test]
     fn direct_native_abox_cardinality_taxonomy_source_matrix_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) =
             std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_SOURCE_CHECKER")
         else {
@@ -11123,6 +11143,7 @@ mod tests {
 
     #[test]
     fn mixed_native_abox_cardinality_taxonomy_source_matrix_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) =
             std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_SOURCE_CHECKER")
         else {
@@ -11204,6 +11225,7 @@ mod tests {
 
     #[test]
     fn bundle_native_abox_cardinality_taxonomy_source_matrix_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) =
             std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_CARDINALITY_TAXONOMY_SOURCE_CHECKER")
         else {
@@ -11293,6 +11315,7 @@ mod tests {
 
     #[test]
     fn mixed_native_abox_taxonomy_source_matrix_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER")
         else {
             return;
@@ -11362,6 +11385,7 @@ mod tests {
 
     #[test]
     fn bundle_native_abox_taxonomy_source_matrix_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_TAXONOMY_SOURCE_CHECKER")
         else {
             return;
@@ -11437,6 +11461,7 @@ mod tests {
 
     #[test]
     fn direct_native_abox_cardinality_refutation_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PROJECTION_CHECKER") else {
             return;
         };
@@ -11545,6 +11570,7 @@ mod tests {
 
     #[test]
     fn direct_native_abox_cardinality_sat_source_decision_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_NATIVE_ABOX_SOURCE_DECISION_CHECKER")
         else {
             return;
@@ -11609,6 +11635,7 @@ mod tests {
 
     #[test]
     fn mixed_native_abox_refutation_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PROJECTION_CHECKER") else {
             return;
         };
@@ -11700,6 +11727,7 @@ mod tests {
 
     #[test]
     fn mixed_native_abox_cardinality_refutation_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PROJECTION_CHECKER") else {
             return;
         };
@@ -11835,6 +11863,7 @@ mod tests {
 
     #[test]
     fn bundle_native_abox_refutation_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PROJECTION_CHECKER") else {
             return;
         };
@@ -11932,6 +11961,7 @@ mod tests {
 
     #[test]
     fn bundle_native_abox_cardinality_refutation_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_HT_TEST_LEAN_PROJECTION_CHECKER") else {
             return;
         };
@@ -12074,6 +12104,7 @@ mod tests {
 
     #[test]
     fn native_negative_role_wire_fact_reconstructs_a_missing_exact_clash_clause() {
+        let _test_env = crate::test_env::write();
         let mut producer = native_wire_input();
         producer
             .native_abox
@@ -12108,6 +12139,7 @@ mod tests {
 
     #[test]
     fn native_abox_never_falls_through_to_legacy_tableau_without_ht() {
+        let _test_env = crate::test_env::read();
         let input = serde_json::to_string(&native_wire_input()).unwrap();
         let error = run_json_inner(&input, Some(false)).unwrap_err();
         assert!(error.contains("requires the hypertableau mechanism"));
@@ -12115,6 +12147,7 @@ mod tests {
 
     #[test]
     fn certified_role_chain_side_data_reconstructs_exact_source_clauses() {
+        let _test_env = crate::test_env::read();
         let clauses = certified_role_chain_clauses(&[(R0, R1, 2)], &[3]);
         assert_eq!(clauses.len(), 2);
         assert!(matches!(
@@ -12143,6 +12176,7 @@ mod tests {
 
     #[test]
     fn certified_raw_role_chain_participates_in_ht_refutation() {
+        let _test_env = crate::test_env::read();
         let mut clauses = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
             Clause::new(vec![con(false, B, X)], vec![exists(R1, false, D, X)]),
@@ -12181,6 +12215,7 @@ mod tests {
 
     #[test]
     fn clash_a_and_not_a() {
+        let _test_env = crate::test_env::read();
         // {A, ¬A} on the root is inconsistent.
         let t = Tableau::new(vec![]);
         assert!(!t.consistent(&[CLit::pos(A), CLit::neg(A)]));
@@ -12188,6 +12223,7 @@ mod tests {
 
     #[test]
     fn simple_sat() {
+        let _test_env = crate::test_env::read();
         // A alone is satisfiable.
         let t = Tableau::new(vec![]);
         assert!(t.consistent(&[CLit::pos(A)]));
@@ -12195,6 +12231,7 @@ mod tests {
 
     #[test]
     fn existential_then_universal_clash() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ∃r.B,  A ⊑ ∀r.¬B  ⇒ A unsatisfiable.
         // clauses: A(x) → ∃r.B(x) ;  A(x) ∧ r(x,y) → ¬B(y)  ... but ¬B(y) head clashes with B(y).
         let cls = vec![
@@ -12210,6 +12247,7 @@ mod tests {
 
     #[test]
     fn existential_universal_consistent() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ∃r.B, A ⊑ ∀r.D  is satisfiable (successor gets B and D, no clash).
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, B, X)]),
@@ -12224,6 +12262,7 @@ mod tests {
 
     #[test]
     fn disjunction_branch() {
+        let _test_env = crate::test_env::read();
         // A ⊑ B ⊔ D, A ⊑ ¬B, A ⊑ ¬D ⇒ A unsat (both branches clash).
         let cls = vec![
             Clause::new(
@@ -12239,6 +12278,7 @@ mod tests {
 
     #[test]
     fn disjunction_one_branch_open() {
+        let _test_env = crate::test_env::read();
         // A ⊑ B ⊔ D, A ⊑ ¬B ⇒ A still satisfiable (via the D branch).
         let cls = vec![
             Clause::new(
@@ -12276,6 +12316,7 @@ mod tests {
 
     #[test]
     fn careful_backjumping_skips_choices_the_refutation_does_not_use() {
+        let _test_env = crate::test_env::write();
         let _environment = lock_environment();
         let mut t = Tableau::new(irrelevant_choice_clauses(8));
         t.set_number(true); // the careful path
@@ -12301,6 +12342,7 @@ mod tests {
 
     #[test]
     fn backjumped_refutation_resolves_to_a_checkable_proof() {
+        let _test_env = crate::test_env::write();
         let _environment = lock_environment();
         std::env::remove_var("KM_TAB_CAREFUL_NOBJ");
         let mut t = Tableau::new(irrelevant_choice_clauses(4));
@@ -12366,6 +12408,7 @@ mod tests {
 
     #[test]
     fn careful_delta_closure_propagates_and_falls_back_on_merge() {
+        let _test_env = crate::test_env::read();
         // A branch fact drives a concept rule, a role rule, and a second concept
         // rule without rescanning unrelated clauses.
         let mut t = Tableau::new(vec![
@@ -12416,6 +12459,7 @@ mod tests {
 
     #[test]
     fn careful_delta_closure_detects_a_new_clash() {
+        let _test_env = crate::test_env::read();
         let mut t = Tableau::new(vec![
             Clause::new(vec![con(false, B, X)], vec![con(false, E, X)]),
             Clause::new(vec![con(false, B, X)], vec![con(true, E, X)]),
@@ -12432,6 +12476,7 @@ mod tests {
 
     #[test]
     fn careful_branch_cost_prefers_the_non_generative_alternative() {
+        let _test_env = crate::test_env::read();
         let t = Tableau::new(vec![
             Clause::new(vec![con(false, B, X)], vec![exists(R0, false, E, X)]),
             Clause::new(vec![con(false, B, X)], vec![exists(R0, false, F, X)]),
@@ -12453,6 +12498,7 @@ mod tests {
 
     #[test]
     fn careful_lazy_choice_requires_every_use_to_be_role_blocked() {
+        let _test_env = crate::test_env::read();
         let mut subst = Subst::new();
         subst.insert(X, 0);
         let choice = con(false, B, X);
@@ -12511,6 +12557,7 @@ mod tests {
 
     #[test]
     fn infinite_chain_blocks_and_terminates() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ∃r.A : an infinite r-chain of A's; blocking must make this terminate
         // and report satisfiable.
         let cls = vec![Clause::new(
@@ -12536,6 +12583,7 @@ mod tests {
 
     #[test]
     fn at_most_one_merge_clash_unsat() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ∃r.(B⊓E), A ⊑ ∃r.(B⊓F), E⊓F ⊑ ⊥, A ⊑ ≤1 r.B  ⇒  A unsat:
         // the two r-successors are both B, so ≤1 merges them, and the merged node
         // carries E and F at once — a clash.
@@ -12566,6 +12614,7 @@ mod tests {
 
     #[test]
     fn at_most_one_merge_consistent() {
+        let _test_env = crate::test_env::read();
         // Same minus the E⊓F clash: the merge is harmless, so A is satisfiable.
         let cls = vec![
             Clause::new(vec![con(false, A, X)], vec![exists(R0, false, P, X)]),
@@ -12592,6 +12641,7 @@ mod tests {
 
     #[test]
     fn ge2_with_le1_unsat_via_slots() {
+        let _test_env = crate::test_env::read();
         // ExactCardinality-style: ≥2 r.C ⊓ ≤1 r.C ⇒ unsat. ≥2 is two existentials
         // with disjoint slots S0,S1; ≤1 tries to merge the two C-successors but
         // their disjoint slots clash, so no branch survives.
@@ -12621,6 +12671,7 @@ mod tests {
 
     #[test]
     fn ge2_alone_consistent_and_terminates() {
+        let _test_env = crate::test_env::read();
         // ≥2 r.C alone (two disjoint-slot successors, no at-most) is satisfiable
         // and must terminate.
         let cls = vec![
@@ -12637,6 +12688,7 @@ mod tests {
 
     #[test]
     fn le2_three_successors_merges_consistent() {
+        let _test_env = crate::test_env::read();
         // ≤2 r.C with three C-successors (no forced distinctness) is satisfiable:
         // the ≤2 branch merges one pair, leaving two, no clash.
         let cls = vec![
@@ -12671,6 +12723,7 @@ mod tests {
 
     #[test]
     fn nominal_singleton_merge_unsat() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ∃s.{a}, A ⊑ ∃t.{a}, A ⊑ ∀s.C, A ⊑ ∀t.¬C ⇒ A unsat: the s- and
         // t-successors are both the singleton {a}, so the o-rule merges them and
         // the merged node carries C and ¬C — a clash. WITHOUT the singleton
@@ -12696,6 +12749,7 @@ mod tests {
 
     #[test]
     fn nominal_singleton_merge_consistent() {
+        let _test_env = crate::test_env::read();
         // Same minus the conflict (∀t.C instead of ∀t.¬C): merging the two
         // {a}-successors is harmless, so A is satisfiable.
         let cls = vec![
@@ -12717,6 +12771,7 @@ mod tests {
 
     #[test]
     fn nominal_abox_subsumption() {
+        let _test_env = crate::test_env::read();
         // Q ≡ {a}, {a} ⊑ C  (the ABox fact C(a) lifted). Then Q ⊑ C: testing
         // {Q, ¬C} must be unsat (Q forces __nom__a, which merges into the seeded
         // nominal root and inherits C, clashing with ¬C). But C ⊑ Q is false:
@@ -12734,6 +12789,7 @@ mod tests {
 
     #[test]
     fn nominal_abox_global_inconsistency() {
+        let _test_env = crate::test_env::read();
         // {a} ⊑ C and {a} ⊑ ¬C make the named individual a contradictory, so the
         // whole KB is inconsistent — every concept (even one unrelated to a) is
         // unsatisfiable. Caught only because find_model seeds the nominal root.
@@ -12754,6 +12810,7 @@ mod finite_rule_model_tests {
 
     #[test]
     fn indexed_role_domains_match_scan_for_every_three_node_relation() {
+        let _test_env = crate::test_env::read();
         for mask in 0..512usize {
             let edges: Vec<_> = (0..3).flat_map(|a| (0..3).map(move |b| (a, b)))
                 .filter(|&(a, b)| mask & (1 << (a * 3 + b)) != 0).collect();
@@ -12779,6 +12836,7 @@ mod finite_rule_model_tests {
     fn concept(c: C, t: Var, neg: bool) -> Atom { Atom::Concept { lit: CLit { c, neg }, t } }
     #[test]
     fn pruned_source_rule_join_matches_exhaustive_two_object_models() {
+        let _test_env = crate::test_env::read();
         let source = "Ontology(DLSafeRule(Body(ClassAtom(<A> Variable(<x>)) ObjectPropertyAtom(<r> Variable(<x>) Variable(<y>))) Head(ClassAtom(<B> Variable(<y>)))))";
         let classes = HashMap::from_iter([("A".into(),0), ("B".into(),1)]);
         let roles = HashMap::from_iter([("r".into(),0)]);
@@ -12800,6 +12858,7 @@ mod finite_rule_model_tests {
 
     #[test]
     fn original_rules_check_concrete_guards_and_named_head_obligations() {
+        let _test_env = crate::test_env::read();
         let mut graph = Graph::new(); let a = graph.new_node(None,false); let b = graph.new_node(None,false);
         let data = graph.new_node(None,false); graph.add_edge(0,a,data);
         let classes = HashMap::from_iter([("Bad".into(),0)]); let roles = HashMap::from_iter([("p".into(),0)]);
@@ -12821,6 +12880,7 @@ mod finite_rule_model_tests {
 
     #[test]
     fn original_data_axioms_use_concrete_values_and_object_domains() {
+        let _test_env = crate::test_env::read();
         let mut graph = Graph::new(); let a = graph.new_node(None, false);
         let value = graph.new_node(None, false); let other = graph.new_node(None, false);
         graph.add_concept(a, CLit::pos(0)); graph.add_edge(0,a,value);
@@ -12848,6 +12908,7 @@ mod finite_rule_model_tests {
 
     #[test]
     fn original_property_axioms_check_chain_orientation_and_constraints() {
+        let _test_env = crate::test_env::read();
         let mut graph = Graph::new();
         let a = graph.new_node(None, false); let b = graph.new_node(None, false); let c = graph.new_node(None, false);
         graph.add_concept(a, CLit::pos(0)); graph.add_concept(c, CLit::pos(1));
@@ -12887,6 +12948,7 @@ mod finite_rule_model_tests {
 
     #[test]
     fn original_abox_checks_aliases_inverse_edges_and_negative_assertions() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::profile::RuleSourceAbox;
         let mut graph = Graph::new(); let a = graph.new_node(None, false); let b = graph.new_node(None, false);
         for class in [0, 1, 3] { graph.add_concept(a, CLit::pos(class)); }
@@ -12912,6 +12974,7 @@ mod finite_rule_model_tests {
 
     #[test]
     fn source_boolean_model_uses_constants_complements_and_full_iris() {
+        let _test_env = crate::test_env::read();
         use crate::frontend::profile::RuleSourceClasses;
         let mut graph = Graph::new(); let object = graph.new_node(None, false);
         graph.add_concept(object, CLit::pos(0));
@@ -12934,6 +12997,7 @@ mod finite_rule_model_tests {
 
     #[test]
     fn source_model_check_rejects_converter_omissions_before_search() {
+        let _test_env = crate::test_env::read();
         for (dropped, fenced) in [(1, serde_json::json!([])),
             (0, serde_json::json!([{"kind": "unsupported"}]))] {
             let input: TInput = serde_json::from_value(serde_json::json!({
@@ -12947,6 +13011,7 @@ mod finite_rule_model_tests {
 
     #[test]
     fn source_role_sorts_check_edges_and_named_individuals() {
+        let _test_env = crate::test_env::read();
         let mut g = Graph::new();
         let a = g.new_node(None, false); let b = g.new_node(None, false);
         let value = g.new_node(None, false);
@@ -12965,6 +13030,7 @@ mod finite_rule_model_tests {
     }
     #[test]
     fn datatype_realization_checks_absence_and_preserves_distinct_nodes() {
+        let _test_env = crate::test_env::read();
         let names = vec!["__dt__val__\"x\"^^xsd:string".into(), "__dt__string".into()];
         let mut g = Graph::new(); let a = g.new_node(None, false);
         g.add_concept(a, CLit::pos(0));
@@ -12979,6 +13045,7 @@ mod finite_rule_model_tests {
     }
     #[test]
     fn pruned_verification_matches_exhaustive_two_object_interpretations() {
+        let _test_env = crate::test_env::read();
         let atoms = vec![concept(1, 0, false), concept(1, 0, true),
             concept(2, 1, false), concept(2, 1, true),
             Atom::Role { r: 3, s: 0, t: 1 }, Atom::Eq { s: 0, t: 1 },
@@ -13013,6 +13080,7 @@ mod finite_rule_model_tests {
     }
     #[test]
     fn negative_atoms_use_complements_without_negative_labels() {
+        let _test_env = crate::test_env::read();
         let mut g = Graph::new(); let a = g.new_node(None, false);
         let c = Clause::new(vec![concept(1, 0, true)], vec![concept(2, 0, false)]);
         assert!(verify_finite_rule_model(&g, &[c.clone()], &[], 100).is_err());
@@ -13021,6 +13089,7 @@ mod finite_rule_model_tests {
     }
     #[test]
     fn checks_all_bindings_and_actual_existential_edges() {
+        let _test_env = crate::test_env::read();
         let mut g = Graph::new(); let a = g.new_node(None, false); let b = g.new_node(None, false);
         g.add_concept(a, CLit::pos(1)); g.add_concept(b, CLit::pos(2));
         let c = Clause::new(vec![concept(1, 0, false)], vec![Atom::Exists { r: 3, fil: CLit::pos(2), t: 0 }]);
@@ -13034,6 +13103,7 @@ mod finite_rule_model_tests {
     }
     #[test]
     fn rejects_nonsingleton_nominals_and_exhausted_budget() {
+        let _test_env = crate::test_env::read();
         let mut g = Graph::new(); let a = g.new_node(None, false); let b = g.new_node(None, false);
         g.add_concept(a, CLit::pos(7));
         assert!(verify_finite_rule_model(&g, &[], &[7], 100).is_ok());
@@ -13043,6 +13113,7 @@ mod finite_rule_model_tests {
     }
     #[test]
     fn equality_respects_shared_denotations() {
+        let _test_env = crate::test_env::read();
         let mut g = Graph::new(); let a = g.new_node(None, false);
         g.add_concept(a, CLit::pos(7)); g.add_concept(a, CLit::pos(8));
         let c = Clause::new(vec![concept(7, 0, false), concept(8, 1, false)], vec![Atom::Eq { s: 0, t: 1 }]);

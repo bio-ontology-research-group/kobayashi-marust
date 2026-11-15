@@ -3062,6 +3062,7 @@ mod tests {
 
     #[test]
     fn representative_path_set_hash_insert_and_data_lookup_follow_rep_id() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let hash = ctx.alloc_rep_var_bind_path_set_hash(
             RepresentativeVariableBindingPathSetHash::new(INVALID),
@@ -3092,6 +3093,7 @@ mod tests {
 
     #[test]
     fn representative_path_set_hash_init_copies_use_and_clears_local_linker() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let source_hash = ctx.alloc_rep_var_bind_path_set_hash(
             RepresentativeVariableBindingPathSetHash::new(INVALID),
@@ -3129,6 +3131,7 @@ mod tests {
 
     #[test]
     fn representative_path_hash_uses_variable_binding_path_propagation_id() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let hash =
             ctx.alloc_rep_var_bind_path_hash(RepresentativeVariableBindingPathHash::new(INVALID));
@@ -3171,6 +3174,7 @@ mod tests {
 
     #[test]
     fn representative_path_hash_init_copies_use_and_clears_local_linker() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let source_hash =
             ctx.alloc_rep_var_bind_path_hash(RepresentativeVariableBindingPathHash::new(INVALID));
@@ -3207,6 +3211,7 @@ mod tests {
 
     #[test]
     fn representative_path_set_hash_compares_ordered_key_sets_only() {
+        let _test_env = crate::test_env::read();
         let mut prop_map = RepresentativePropagationMap::new(INVALID);
         prop_map.entry_mut(3);
         prop_map.entry_mut(9);
@@ -3228,6 +3233,7 @@ mod tests {
 
     #[test]
     fn representative_path_set_hash_propagation_lookup_requires_matching_migrate_map() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let hash = ctx.alloc_rep_var_bind_path_set_hash(
             RepresentativeVariableBindingPathSetHash::new(INVALID),
@@ -3260,6 +3266,7 @@ mod tests {
 
     #[test]
     fn representative_joining_key_map_lazily_creates_and_copies_data_maps() {
+        let _test_env = crate::test_env::read();
         let mut joining_key_map = RepresentativeVariableBindingPathSetJoiningKeyMap::new(17);
         assert!(joining_key_map
             .get_joining_key_data_map_existing(5)
@@ -3302,6 +3309,7 @@ mod tests {
 
     #[test]
     fn representative_common_key_data_reports_left_and_right_counts() {
+        let _test_env = crate::test_env::read();
         let mut left = RepresentativeVariableBindingPathSetJoiningKeyDataMap::new(0);
         left.insert(1, VarBindingPathId::new(11));
         left.insert(2, VarBindingPathId::new(12));
@@ -3334,6 +3342,7 @@ mod tests {
 
     #[test]
     fn representative_joining_all_data_extension_lazily_creates_resolve_maps() {
+        let _test_env = crate::test_env::read();
         let mut ext = RepresentativeJoiningAllDataExtension::new(23);
         assert!(ext
             .get_left_resolve_variable_binding_path_map(false)
@@ -3376,6 +3385,7 @@ mod tests {
 
     #[test]
     fn representative_path_set_joining_hash_lazily_creates_joining_data() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let hash = ctx.alloc_rep_var_bind_path_set_joining_hash(
             RepresentativeVariableBindingPathSetJoiningHash::new(31),
@@ -3444,6 +3454,7 @@ mod tests {
 
     #[test]
     fn representative_path_set_data_lazily_creates_joining_hash() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let data = rep_data(&mut ctx, 30, 4);
         let join_concept = ConceptId::new(19);
@@ -3488,6 +3499,7 @@ mod tests {
 
     #[test]
     fn representative_joining_hash_uses_ordered_representative_pair() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let hash = ctx.alloc_rep_joining_hash(RepresentativeJoiningHash::new(41));
         let left = rep_data(&mut ctx, 10, 1);
@@ -3552,6 +3564,7 @@ mod tests {
 
     #[test]
     fn representative_joining_key_hash_extracts_key_descriptors() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let b1 = var_binding(&mut ctx, 1, 101);
         let b2 = var_binding(&mut ctx, 2, 102);
@@ -3572,6 +3585,7 @@ mod tests {
 
     #[test]
     fn representative_joining_key_hash_interns_by_selected_binding_identity() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let hash = ctx.alloc_rep_var_bind_path_joining_key_hash(
             RepresentativeVariableBindingPathJoiningKeyHash::new(51),

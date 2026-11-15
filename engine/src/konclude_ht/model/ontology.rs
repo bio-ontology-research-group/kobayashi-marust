@@ -560,6 +560,7 @@ mod tests {
 
     #[test]
     fn ontology_individual_count_tracks_abox_individual_arena_size() {
+        let _test_env = crate::test_env::read();
         let mut arenas = OntologyArenas::new();
         assert_eq!(arenas.individual_count(), 0);
         arenas.alloc_individual(Individual::new(0));
@@ -569,6 +570,7 @@ mod tests {
 
     #[test]
     fn nominal_schema_template_init_and_accessors_match_konclude_fields() {
+        let _test_env = crate::test_env::read();
         let mut arenas = OntologyArenas::new();
         let template_concept = arenas.alloc_concept(Concept::new());
         let reference_concept = arenas.alloc_concept(Concept::new());
@@ -617,6 +619,7 @@ mod tests {
 
     #[test]
     fn nominal_schema_template_preserves_multi_values_for_template_concepts() {
+        let _test_env = crate::test_env::read();
         let mut arenas = OntologyArenas::new();
         let template_concept = arenas.alloc_concept(Concept::new());
         let nominal_schema_concept_a = arenas.alloc_concept(Concept::new());
@@ -639,6 +642,7 @@ mod tests {
 
     #[test]
     fn nominal_schema_template_vector_parameter_maps_to_arena_id() {
+        let _test_env = crate::test_env::read();
         let mut arenas = OntologyArenas::new();
         let template_concept = arenas.alloc_concept(Concept::new());
         let mut templ = NominalSchemaTemplate::new();
@@ -666,6 +670,7 @@ mod tests {
 
     #[test]
     fn ontology_equivalent_concept_non_candidate_set_matches_tbox_lazy_create() {
+        let _test_env = crate::test_env::read();
         let mut arenas = OntologyArenas::new();
         let concept = arenas.alloc_concept(Concept::new());
 
@@ -691,6 +696,7 @@ mod tests {
 
     #[test]
     fn ontology_value_spaces_triggers_match_mbox_lazy_create() {
+        let _test_env = crate::test_env::read();
         let mut arenas = OntologyArenas::new();
 
         assert!(arenas.get_value_spaces_triggers().is_none());

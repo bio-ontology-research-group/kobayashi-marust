@@ -578,6 +578,7 @@ mod tests {
 
     #[test]
     fn classification_message_adapter_tracks_testing_concept_and_flags() {
+        let _test_env = crate::test_env::read();
         let concept = Id::<concept::Concept>::new(3);
         let mut adapter = SatisfiableTaskClassificationMessageAdapter::default();
 
@@ -601,6 +602,7 @@ mod tests {
 
     #[test]
     fn classification_message_adapter_ports_full_constructor_and_any_flag_test() {
+        let _test_env = crate::test_env::read();
         let concept = Id::<concept::Concept>::new(5);
         let linked_concept = Id::<concept::Concept>::new(7);
         let mut con_ref_hash = HashMap::default();
@@ -648,6 +650,7 @@ mod tests {
 
     #[test]
     fn classification_message_adapter_shares_immutable_reference_table() {
+        let _test_env = crate::test_env::read();
         let concept = Id::<concept::Concept>::new(5);
         let linked_concept = Id::<concept::Concept>::new(7);
         let shared = Arc::new(HashMap::from_iter([(linked_concept, 97)]));
@@ -677,6 +680,7 @@ mod tests {
 
     #[test]
     fn role_marked_classification_message_adapter_tracks_constructor_payload() {
+        let _test_env = crate::test_env::read();
         let role = RoleId::new(7);
         let propagation_individual = IndividualId::new(11);
         let marker_individual = IndividualId::new(13);

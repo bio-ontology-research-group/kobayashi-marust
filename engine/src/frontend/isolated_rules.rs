@@ -157,12 +157,14 @@ mod tests {
     }
     #[test]
     fn checks_actual_714_isolated_name_extension_obligations() {
+        let _test_env = crate::test_env::read();
         let text = include_str!("../../tests/fixtures/isolated_list_rules.ofn");
         assert!(candidate(text));
         assert!(!candidate(&text.replace("owl:=<http://www.w3.org/2002/07/owl#>", "owl:=<http://example.org/alias#>")));
     }
     #[test]
     fn source_constraints_prevent_unsafe_isolated_extensions() {
+        let _test_env = crate::test_env::read();
         let rule = "DLSafeRule(Body(ObjectPropertyAtom(<http://example.org/r> Variable(<http://example.org/x>) Variable(<http://example.org/y>))) Head(DataPropertyAtom(<http://example.org/error> Variable(<http://example.org/x>) \"error\")))";
         assert!(candidate(&format!("Ontology(DataPropertyAssertion(<http://example.org/author> <http://example.org/a> \"author\") {rule})")));
         for extra in [

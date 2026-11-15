@@ -1428,6 +1428,7 @@ mod tests {
 
     #[test]
     fn s10_collect_resolve_extendable_concept_map_diffs_extension_label_set() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let base_node = ctx
             .process_context_mut()
@@ -1476,6 +1477,7 @@ mod tests {
 
     #[test]
     fn s10_concept_leaf_resolve_allocates_caches_and_short_circuits_existing_label() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let base_node = ctx
             .process_context_mut()
@@ -1530,6 +1532,7 @@ mod tests {
 
     #[test]
     fn s10_extension_node_resolve_uses_individual_hash_cache() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let base_node = ctx
             .process_context_mut()
@@ -1603,6 +1606,7 @@ mod tests {
 
     #[test]
     fn s10_successor_concept_extension_map_tracks_polarity_by_concept_tag() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let concept = atom(&mut ctx, 9401);
         let other = atom(&mut ctx, 9403);
@@ -1628,6 +1632,7 @@ mod tests {
 
     #[test]
     fn s10_successor_extension_resolver_walks_positive_and_negative_entries() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let base_node = ctx
             .process_context_mut()
@@ -1665,6 +1670,7 @@ mod tests {
 
     #[test]
     fn s10_successor_extension_resolver_reuses_cache_for_equal_maps() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let base_node = ctx
             .process_context_mut()

@@ -1215,6 +1215,7 @@ mod tests {
 
     #[test]
     fn write_expand_cache_data_materializes_entry_and_hash() {
+        let _test_env = crate::test_env::read();
         let mut cache_context = CacheContext::new();
         let mut cache = ReuseCompletionGraphCache::new();
         let cache_values = vec![11, 17];
@@ -1250,6 +1251,7 @@ mod tests {
 
     #[test]
     fn reuse_cache_create_reader_prepends_reader_linker_with_context() {
+        let _test_env = crate::test_env::read();
         let mut cache_context = CacheContext::new();
         let mut cache = ReuseCompletionGraphCache::new();
 
@@ -1262,6 +1264,7 @@ mod tests {
 
     #[test]
     fn reuse_cache_create_reader_slot_update_publishes_snapshot_to_readers() {
+        let _test_env = crate::test_env::read();
         let mut cache_context = CacheContext::new();
         let mut cache = ReuseCompletionGraphCache::new();
         let first = cache.create_cache_reader(&mut cache_context);
@@ -1285,6 +1288,7 @@ mod tests {
 
     #[test]
     fn reuse_cache_reader_switches_updated_slot_and_decrements_previous_current_slot() {
+        let _test_env = crate::test_env::read();
         let mut cache_context = CacheContext::new();
         let mut old_slot = ReuseCompletionGraphCacheSlotItem::new();
         old_slot.inc_reader();
@@ -1310,6 +1314,7 @@ mod tests {
 
     #[test]
     fn reuse_cache_clean_unused_slots_removes_zero_reader_slots() {
+        let _test_env = crate::test_env::read();
         let mut cache_context = CacheContext::new();
         let unused_head =
             cache_context.alloc_reuse_cache_slot_item(ReuseCompletionGraphCacheSlotItem::new());
@@ -1328,6 +1333,7 @@ mod tests {
 
     #[test]
     fn reuse_cache_process_customs_events_writes_and_publishes_slot() {
+        let _test_env = crate::test_env::read();
         let mut cache_context = CacheContext::new();
         let mut cache = ReuseCompletionGraphCache::new();
         let reader = cache.create_cache_reader(&mut cache_context);

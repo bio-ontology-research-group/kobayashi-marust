@@ -4975,6 +4975,7 @@ mod tests {
 
     #[test]
     fn tag_label_resolving_extension_append_relinks_existing_head() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let first = tag_label_linker(&mut ctx, LabelCacheItemId::new(11), 1, true);
         let second = tag_label_linker(&mut ctx, LabelCacheItemId::new(22), 2, false);
@@ -5007,6 +5008,7 @@ mod tests {
 
     #[test]
     fn tag_label_resolving_extension_init_resets_inline_hash() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let first = tag_label_linker(&mut ctx, LabelCacheItemId::new(11), 1, true);
         let second = tag_label_linker(&mut ctx, LabelCacheItemId::new(22), 2, false);
@@ -5031,6 +5033,7 @@ mod tests {
 
     #[test]
     fn cardinality_extension_init_resets_inline_hash() {
+        let _test_env = crate::test_env::read();
         let mut extension = LabelCacheItemExtensionData::Cardinality {
             context: INVALID,
             role_cardinality_data_hash: HashMap::default(),
@@ -5064,6 +5067,7 @@ mod tests {
 
     #[test]
     fn neighbour_array_init_from_array_copies_data_entries() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let first = neighbour_data_with_ids(&mut ctx, &[10, 11]);
         let second = neighbour_data_with_ids(&mut ctx, &[20]);
@@ -5098,6 +5102,7 @@ mod tests {
 
     #[test]
     fn ontology_data_recomputation_reference_linker_prepends_and_finds_last_active() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let first = recomputation_linker(&mut ctx, 1, false);
         let second = recomputation_linker(&mut ctx, 2, false);
@@ -5139,6 +5144,7 @@ mod tests {
 
     #[test]
     fn ontology_data_recomputation_reference_linker_falls_back_to_last_inactive() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let first = recomputation_linker(&mut ctx, 1, false);
         let second = recomputation_linker(&mut ctx, 2, false);
@@ -5159,6 +5165,7 @@ mod tests {
 
     #[test]
     fn individual_association_map_iterator_merges_ascending_with_same_merged_tie_first() {
+        let _test_env = crate::test_env::read();
         let data = association_map();
         let values = collect_iterator(data.get_iterator(true, true, true));
 
@@ -5170,6 +5177,7 @@ mod tests {
 
     #[test]
     fn individual_association_map_iterator_merges_descending_with_base_tie_first() {
+        let _test_env = crate::test_env::read();
         let data = association_map();
         let values = collect_iterator(data.get_iterator(false, true, true));
 
@@ -5181,6 +5189,7 @@ mod tests {
 
     #[test]
     fn individual_association_map_iterator_respects_map_filters() {
+        let _test_env = crate::test_env::read();
         let data = association_map();
 
         assert_eq!(
@@ -5195,6 +5204,7 @@ mod tests {
 
     #[test]
     fn individual_association_map_iterator_applies_cursor_bounds() {
+        let _test_env = crate::test_env::read();
         let data = association_map();
 
         assert_eq!(

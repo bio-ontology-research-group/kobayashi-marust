@@ -4335,6 +4335,7 @@ mod reference_stage_tests {
 
     #[test]
     fn sparse_satisfiable_rows_match_dense_derivation() {
+        let _test_env = crate::test_env::write();
         let got = check_against_dense(
             &["A", "B", "C"],
             &[
@@ -4351,6 +4352,7 @@ mod reference_stage_tests {
 
     #[test]
     fn sparse_unsatisfiable_class_matches_dense_derivation() {
+        let _test_env = crate::test_env::write();
         let got = check_against_dense(
             &["A", "B", "U"],
             &[
@@ -4366,6 +4368,7 @@ mod reference_stage_tests {
 
     #[test]
     fn sparse_inconsistent_ontology_matches_dense_derivation() {
+        let _test_env = crate::test_env::write();
         let got = check_against_dense(
             &["A", "B"],
             &[
@@ -4381,6 +4384,7 @@ mod reference_stage_tests {
 
     #[test]
     fn sparse_rejects_unknown_format() {
+        let _test_env = crate::test_env::write();
         let (real, full) = names(&["A"]);
         let mut v: serde_json::Value =
             serde_json::from_slice(&sparse_json(&full, &[("A", false, &[]), (PA, false, &[]), (PB, true, &[])]))
@@ -4400,6 +4404,7 @@ mod reference_stage_tests {
 
     #[test]
     fn sparse_rejects_rows_out_of_order() {
+        let _test_env = crate::test_env::write();
         let (real, full) = names(&["A", "B"]);
         let out = sparse_json(
             &full,
@@ -4411,6 +4416,7 @@ mod reference_stage_tests {
 
     #[test]
     fn sparse_rejects_missing_row_and_named_mismatch() {
+        let _test_env = crate::test_env::write();
         let (real, full) = names(&["A", "B"]);
         let out = sparse_json(&full, &[("A", false, &[]), ("B", false, &[]), (PA, false, &[])]);
         let err = interpret_reference_stage_output(&out, &full, &real, PA, PB).unwrap_err();
@@ -4424,6 +4430,7 @@ mod reference_stage_tests {
 
     #[test]
     fn sparse_rejects_unknown_sup() {
+        let _test_env = crate::test_env::write();
         let (real, full) = names(&["A"]);
         let out = sparse_json(
             &full,
@@ -4435,6 +4442,7 @@ mod reference_stage_tests {
 
     #[test]
     fn checker_failure_reason_prefers_stderr() {
+        let _test_env = crate::test_env::write();
         let reason = reference_checker_failure_reason(
             b"{\"format\":\"sparse-v1\"}\n",
             b"\nio error: broken pipe\n",
@@ -5390,6 +5398,7 @@ impl Classification {
 mod tests {
     #[test]
     fn coverage_guard_declines_an_answer_without_a_declared_class() {
+        let _test_env = crate::test_env::write();
         // s1966: the elc partial answer had no row for C. Removing a declared
         // class from an otherwise complete worker answer must decline.
         let declared: Vec<String> = ["A", "B", "C"].iter().map(|s| s.to_string()).collect();
@@ -5422,6 +5431,7 @@ mod tests {
 
     #[test]
     fn only_registered_rewrites_skip_revalidation_and_only_while_registered() {
+        let _test_env = crate::test_env::write();
         let user = super::tmpfile::TempPath::new("-user.ofn");
         let rewrite = super::tmpfile::TempPath::new("-rewrite.ofn");
         assert!(!super::is_trusted_rewrite(user.path()));
@@ -5435,6 +5445,7 @@ mod tests {
 
     #[test]
     fn builtin_alias_trusted_input_is_normalized_before_classification_probes() {
+        let _test_env = crate::test_env::write();
         let source = "Prefix(o:=<http://www.w3.org/2002/07/owl#>) Ontology(Declaration(Class(<urn:A>)) Declaration(NamedIndividual(<urn:a>)) SubClassOf(<urn:A> o:Nothing) ClassAssertion(<urn:A> <urn:a>))";
         // Establish the original-source proof before registering the rewrite;
         // no environment marker or user-controlled filename authorizes trust.
@@ -5459,6 +5470,7 @@ mod tests {
 
     #[test]
     fn invalid_user_input_is_still_rejected() {
+        let _test_env = crate::test_env::write();
         let file = super::tmpfile::TempPath::new("-invalid-user.ofn");
         std::fs::write(file.path(), "Ontology(SubClassOf(<urn:A> ObjectMinCardinality(-1 <urn:r>)))").unwrap();
         let cfg = super::Config::from_env();
@@ -5467,6 +5479,7 @@ mod tests {
 
     #[test]
     fn unvalidated_facet_extension_is_refused_before_classification() {
+        let _test_env = crate::test_env::write();
         let file = super::tmpfile::TempPath::new("-facet-extension.ofn");
         std::fs::write(file.path(), r#"Ontology(Declaration(DataProperty(<urn:p>))
             DataPropertyRange(<urn:p> DatatypeRestriction(xsd:decimal xsd:totalDigits "2"^^xsd:integer)))"#).unwrap();
@@ -5482,6 +5495,7 @@ mod tests {
 
     #[test]
     fn conformance_pattern_capacity_refusal_is_not_an_invalid_ontology_verdict() {
+        let _test_env = crate::test_env::write();
         let file = super::tmpfile::TempPath::new("-pattern-capacity.ofn");
         let pattern = format!("{}a{}", "(".repeat(201), ")".repeat(201));
         std::fs::write(file.path(), format!("Ontology(Declaration(DataProperty(<urn:p>)) DataPropertyRange(<urn:p> DatatypeRestriction(xsd:string xsd:pattern \"{pattern}\")))")).unwrap();
@@ -5493,6 +5507,7 @@ mod tests {
 
     #[test]
     fn public_classification_requires_entity_declarations_before_workers() {
+        let _test_env = crate::test_env::write();
         let file = super::tmpfile::TempPath::new("-missing-declarations.ofn");
         std::fs::write(file.path(), "Prefix(:=<urn:test:>) Ontology(SubClassOf(:A :B))").unwrap();
         let cfg = super::Config::from_env();
@@ -5510,6 +5525,7 @@ mod tests {
 
     #[test]
     fn conformance_unresolved_imports_are_a_loading_limitation() {
+        let _test_env = crate::test_env::write();
         let file = super::tmpfile::TempPath::new("-unresolved-import.ofn");
         std::fs::write(file.path(), "Ontology(Import(<urn:missing:ontology>))").unwrap();
         let error = match super::classify(&super::Config::from_env(), file.path()) {
@@ -5522,6 +5538,7 @@ mod tests {
 
     #[test]
     fn conformance_rejection_precedes_workers_and_has_distinct_exit_code() {
+        let _test_env = crate::test_env::write();
         let file = super::tmpfile::TempPath::new("-invalid-literal.ofn");
         std::fs::write(file.path(), include_str!("../../../tests/conformance/invalid-top-literal.ofn")).unwrap();
         let error = match super::classify(&super::Config::from_env(), file.path()) {
@@ -5535,6 +5552,7 @@ mod tests {
 
     #[test]
     fn conformance_rejects_anonymous_tree_without_a_permitted_root() {
+        let _test_env = crate::test_env::write();
         let file = super::tmpfile::TempPath::new("-invalid-anonymous-tree.ofn");
         let source = "Ontology(Declaration(ObjectProperty(<urn:r>)) ObjectPropertyAssertion(<urn:r> _:a <urn:one>) ObjectPropertyAssertion(<urn:r> _:a <urn:two>))";
         std::fs::write(file.path(), source).unwrap();
@@ -5550,6 +5568,7 @@ mod tests {
 
     #[test]
     fn finite_rule_taxonomy_requires_complete_consistent_projection() {
+        let _test_env = crate::test_env::write();
         for (consistent, dropped, accepted) in [(true, 0, true), (true, 1, false), (false, 0, false)] {
             let evidence = super::ClassificationEvidence {
                 classification: super::Classification { approximate: None, consistent, dropped,
@@ -5596,6 +5615,7 @@ mod tests {
 
     #[test]
     fn context_parallel_schedule_is_armed_only_on_the_bare_el_route() {
+        let _test_env = crate::test_env::write();
         let profile = context_parallel_panel_profile();
         assert_eq!(
             elc_context_parallel_setting(crate::routing::Route::Elc, &profile, None, 16).as_deref(),
@@ -5632,6 +5652,7 @@ mod tests {
 
     #[test]
     fn an_explicit_context_parallel_request_survives_route_selection() {
+        let _test_env = crate::test_env::write();
         let profile = context_parallel_panel_profile();
         for (route, requested) in [
             (crate::routing::Route::Elc, "0"),
@@ -5655,6 +5676,7 @@ mod tests {
 
     #[test]
     fn context_parallel_schedule_follows_the_available_parallelism() {
+        let _test_env = crate::test_env::write();
         let profile = context_parallel_panel_profile();
         let workers = |available| {
             elc_context_parallel_setting(crate::routing::Route::Elc, &profile, None, available)
@@ -5668,6 +5690,7 @@ mod tests {
 
     #[test]
     fn streamed_classification_json_matches_allocating_api() {
+        let _test_env = crate::test_env::write();
         let classification = super::Classification {
             approximate: None,
             consistent: true,
@@ -5683,6 +5706,7 @@ mod tests {
 
     #[test]
     fn grouped_json_classification_matches_flat_bytes() {
+        let _test_env = crate::test_env::write();
         let grouped = std::collections::BTreeMap::from([
             (
                 "http://a.example/A".to_string(),
@@ -5730,6 +5754,7 @@ mod tests {
 
     #[test]
     fn graph_json_preserves_closure_for_all_three_node_graphs_and_name_aliases() {
+        let _test_env = crate::test_env::write();
         fn closure(value: &serde_json::Value, names: &[&str]) -> std::collections::BTreeSet<(String, String)> {
             let mut edges: std::collections::BTreeSet<_> = value["subsumptions"].as_array().unwrap()
                 .iter().map(|p| (p[0].as_str().unwrap().to_owned(), p[1].as_str().unwrap().to_owned())).collect();
@@ -5776,6 +5801,7 @@ mod tests {
 
     #[test]
     fn graph_json_preserves_materialized_fallbacks() {
+        let _test_env = crate::test_env::write();
         for grouped in [false, true] {
             let result = super::JsonClassification {
                 classification: super::Classification {
@@ -5801,6 +5827,7 @@ mod tests {
 
     #[test]
     fn graph_json_keeps_long_chain_output_linear() {
+        let _test_env = crate::test_env::write();
         let n = 128;
         let result = super::JsonClassification {
             classification: super::Classification { approximate: None, consistent: true, subsumptions: vec![], unsatisfiable: vec![], dropped: 0 },
@@ -5823,6 +5850,7 @@ mod tests {
 
     #[test]
     fn reachability_graph_json_matches_materialized_closure() {
+        let _test_env = crate::test_env::write();
         let iris = vec![
             std::sync::Arc::from("A"),
             std::sync::Arc::from("B"),
@@ -5861,6 +5889,7 @@ mod tests {
 
     #[test]
     fn reachability_graph_json_handles_cycles_without_reflexive_pairs() {
+        let _test_env = crate::test_env::write();
         let graph = super::GroupedJsonTaxonomy {
             iris: vec![
                 std::sync::Arc::from("A"),
@@ -5899,6 +5928,7 @@ mod tests {
 
     #[test]
     fn json_iri_ids_share_repeated_values_and_reorder_fallbacks() {
+        let _test_env = crate::test_env::write();
         let map = std::collections::BTreeMap::from([
             ("local:a".to_string(), "http://z.example/Z".to_string()),
             ("local:b".to_string(), "http://z.example/Z".to_string()),
@@ -5927,6 +5957,7 @@ mod tests {
     /// that state with exit 4, and the fast path must decline it too.
     #[test]
     fn inproc_engine_declines_an_incomplete_reasoner() {
+        let _test_env = crate::test_env::write();
         let mut r = Reasoner::new(&[]);
         r.saturate();
         assert!(
@@ -5945,6 +5976,7 @@ mod tests {
     /// reasoner's unsupported-clause count from the output contract.
     #[test]
     fn inproc_engine_reports_the_real_dropped_count() {
+        let _test_env = crate::test_env::write();
         use crate::json_io::{JAtom, JClause, JTerm};
         // An `aux` term is unsupported by the CB reasoner: the clause is
         // dropped and counted.
@@ -5966,6 +5998,7 @@ mod tests {
 
     #[test]
     fn explicit_tableau_race_is_not_shadowed_by_elc_portfolio() {
+        let _test_env = crate::test_env::write();
         assert!(use_elc_portfolio(true, true, false, false));
         assert!(!use_elc_portfolio(true, true, false, true));
         assert!(!use_elc_portfolio(true, true, true, false));
@@ -5974,6 +6007,7 @@ mod tests {
 
     #[test]
     fn atomic_inproc_elc_admits_structured_and_small_flat_exact_el() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::profile::OntologyProfile;
         use crate::routing::Route;
         let mut profile = OntologyProfile::default();
@@ -6010,6 +6044,7 @@ mod tests {
 
     #[test]
     fn bottom_recognition_is_namespace_exact() {
+        let _test_env = crate::test_env::write();
         assert!(is_bottom("owl:Nothing"));
         assert!(is_bottom("http://www.w3.org/2002/07/owl#Nothing"));
         assert!(is_bottom("\u{22A5}"));
@@ -6019,6 +6054,7 @@ mod tests {
 
     #[test]
     fn grouped_subsumption_order_matches_global_pair_sort() {
+        let _test_env = crate::test_env::write();
         use std::collections::BTreeMap;
 
         // One row represents aliases that mapped to the same full subject;
@@ -6048,6 +6084,7 @@ mod tests {
 
     #[test]
     fn composite_layout_uses_source_individuals_before_nominal_clause_augmentation() {
+        let _test_env = crate::test_env::write();
         let mut profile = crate::frontend::profile::OntologyProfile::default();
         profile.clauses.individual_term_symbols = 0;
         profile.source.distinct_individuals = 18_055;
@@ -6069,6 +6106,7 @@ mod tests {
 
     #[test]
     fn production_saturation_rss_override_only_tightens_the_default() {
+        let _test_env = crate::test_env::write();
         assert_eq!(
             production_saturation_rss_override(Some("13.5")),
             Some("13.5")

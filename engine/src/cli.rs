@@ -5565,6 +5565,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn production_trace_extraction_requires_exact_live_context_identity() {
+        let _test_env = crate::test_env::write();
         let document = serde_json::json!({
             "decoy": {
                 "source": {}, "individual_count": 0,
@@ -5595,6 +5596,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn terminal_state_candidate_uses_receiver_and_successor_watermarks() {
+        let _test_env = crate::test_env::write();
         let send_coverage = serde_json::json!({
             "version": 2,
             "inter_context": {"production": {"marker": "production"}},
@@ -5651,6 +5653,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn terminal_state_candidate_requires_certified_send_coverage() {
+        let _test_env = crate::test_env::write();
         let error =
             cb_terminal_state_candidate(&serde_json::json!({"version": 1}), &live_snapshot())
                 .unwrap_err();
@@ -5659,6 +5662,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn pred_send_candidate_reconstructs_actual_clause_major_transfer() {
+        let _test_env = crate::test_env::write();
         let x = crate::calc::X;
         let function = crate::calc::FTERM_BASE;
         let a = crate::engine::CbLivePred {
@@ -5740,6 +5744,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn native_pred_send_candidate_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_CB_TEST_PRED_SEND_COVERAGE_CHECKER") else {
             return;
         };
@@ -5825,6 +5830,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn native_root_pred_send_candidate_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_CB_TEST_PRED_SEND_COVERAGE_CHECKER") else {
             return;
         };
@@ -6020,6 +6026,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn live_publication_rows_cover_the_exact_grouped_answer() {
+        let _test_env = crate::test_env::write();
         let mut live = live_snapshot();
         live.concept_count = 2;
         live.concept_names = vec!["A".to_string(), "B".to_string()];
@@ -6086,6 +6093,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn exact_taxonomy_candidate_reuses_live_evidence_and_marks_only_negatives() {
+        let _test_env = crate::test_env::write();
         let live = serde_json::json!({
             "version": 1,
             "derivation": {"production_bound": {"live_state": {
@@ -6144,6 +6152,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn canonical_binary_role_chains_allocate_finite_fresh_roles() {
+        let _test_env = crate::test_env::write();
         let (target_roles, rules, derivations) =
             cb_canonical_binary_role_chains(5, &[(vec![0, 1], 2), (vec![0, 1, 2, 3], 4)]).unwrap();
         assert_eq!(target_roles, 7);
@@ -6171,6 +6180,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn canonical_binary_role_chains_reject_malformed_sources() {
+        let _test_env = crate::test_env::write();
         assert!(cb_canonical_binary_role_chains(2, &[(vec![0], 1)])
             .unwrap_err()
             .contains("fewer than two"));
@@ -6184,6 +6194,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn certified_typed_source_maps_exactly_to_arbitrary_chain_safe_wire() {
+        let _test_env = crate::test_env::write();
         let source = serde_json::json!({
             "version": 1,
             "concept_count": 4,
@@ -6254,6 +6265,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn source_exact_taxonomy_uses_real_production_traces_and_models() {
+        let _test_env = crate::test_env::write();
         let checker = std::env::var_os("KM_CB_TEST_SOURCE_EXACT_TAXONOMY_CHECKER")
             .expect("the source-exact taxonomy test requires the real Lean checker");
         let context_checker = std::env::var_os("KM_CB_TEST_STANDALONE_CONTEXT_PROOF_CHECKER")
@@ -6454,6 +6466,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn certified_typed_source_rejects_disagreeing_embedded_runs() {
+        let _test_env = crate::test_env::write();
         let source = |concept_count| {
             serde_json::json!({
                 "version": 1,
@@ -6478,6 +6491,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn native_regular_countermodel_passes_the_exact_lean_wire_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_CB_TEST_REGULAR_ARBITRARY_CHAIN_CHECKER") else {
             return;
         };
@@ -6760,6 +6774,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn typed_regular_cardinality_countermodel_respects_function_allocation() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_CB_TEST_TYPED_REGULAR_ARBITRARY_CHAIN_CHECKER")
         else {
             return;
@@ -6845,6 +6860,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn one_element_countermodel_respects_equality_and_inequality_truth() {
+        let _test_env = crate::test_env::write();
         let state = serde_json::json!({
             "concept_count": 2,
             "role_count": 1,
@@ -6891,6 +6907,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn two_element_countermodel_closes_a_genuine_inequality_model() {
+        let _test_env = crate::test_env::write();
         let first = crate::calc::X + 1;
         let second = crate::calc::X + 2;
         let state = serde_json::json!({
@@ -6916,6 +6933,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn two_element_countermodel_grounds_functions_over_every_value() {
+        let _test_env = crate::test_env::write();
         let state = serde_json::json!({
             "concept_count": 2,
             "role_count": 0,
@@ -6937,6 +6955,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn blocked_taxonomy_countermodel_builds_a_closed_resolution_trace() {
+        let _test_env = crate::test_env::write();
         let publication = serde_json::json!({
             "derivation": {"production_bound": {
                 "live_state": {"concept_count": 3, "role_count": 0},
@@ -6967,6 +6986,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn blocked_taxonomy_countermodel_rejects_a_refuted_query() {
+        let _test_env = crate::test_env::write();
         let publication = serde_json::json!({
             "derivation": {"production_bound": {
                 "live_state": {"concept_count": 2, "role_count": 0},
@@ -6983,6 +7003,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn factor_metadata_builds_a_chronological_checked_trace() {
+        let _test_env = crate::test_env::write();
         let equality = |left, right| crate::engine::CbLiveLit {
             kind: "equality",
             iri: None,
@@ -7033,6 +7054,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn paramodulation_metadata_builds_a_chronological_checked_trace() {
+        let _test_env = crate::test_env::write();
         let equality = |left, right| crate::engine::CbLiveLit {
             kind: "equality",
             iri: None,
@@ -7090,6 +7112,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn paramodulation_trace_exposes_folded_reflexive_inequality_deletion() {
+        let _test_env = crate::test_env::write();
         let binary = |kind, left, right| crate::engine::CbLiveLit {
             kind,
             iri: None,
@@ -7139,6 +7162,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn join_resolution_metadata_builds_a_checked_trace() {
+        let _test_env = crate::test_env::write();
         let individual = crate::calc::X + 1;
         let predicate = crate::engine::CbLivePred {
             kind: "concept",
@@ -7185,6 +7209,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn join3_metadata_builds_a_checked_three_premise_trace() {
+        let _test_env = crate::test_env::write();
         let individual = crate::calc::X + 1;
         let predicate = |iri, term| crate::engine::CbLivePred {
             kind: "concept",
@@ -7252,6 +7277,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn pred_metadata_cites_exact_sender_and_provider_events() {
+        let _test_env = crate::test_env::write();
         let predicate = |iri| crate::engine::CbLivePred {
             kind: "concept",
             iri,
@@ -7304,6 +7330,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn native_source_live_pred_candidate_passes_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_CB_TEST_SOURCE_LIVE_DERIVATION_CHECKER") else {
             return;
         };
@@ -7547,6 +7574,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn pred_standalone_dag_passes_the_real_lean_checker() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_CB_TEST_STANDALONE_CONTEXT_PROOF_CHECKER") else {
             return;
         };
@@ -7666,6 +7694,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn filtered_fact_seed_builds_source_resolution_and_inequality_trace() {
+        let _test_env = crate::test_env::write();
         let concept = |iri| crate::engine::CbLiveLit {
             kind: "concept",
             iri: Some(iri),
@@ -7714,6 +7743,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn filtered_core_bottom_seed_starts_from_exact_core_assumption() {
+        let _test_env = crate::test_env::write();
         let predicate = crate::engine::CbLivePred {
             kind: "concept",
             iri: 0,
@@ -7751,6 +7781,7 @@ mod cb_derivation_candidate_tests {
 
     #[test]
     fn standalone_local_trace_ends_in_the_claimed_literal_order() {
+        let _test_env = crate::test_env::write();
         // Checkers-on defect C2: a resolvent with head [C2, C1] proves the
         // arena clause [C1, C2]; the standalone node needs it verbatim.
         let concept = |id: u64| {

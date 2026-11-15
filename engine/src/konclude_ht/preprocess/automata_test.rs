@@ -208,6 +208,7 @@ fn run_preprocess(arenas: &mut OntologyArenas) -> RoleChainAutomataTransformatio
 /// operand `begin` (the `R ∘ R ⊑ R` chain reduces to end → begin).
 #[test]
 fn transitive_forall_builds_epsilon_loop() {
+    let _test_env = crate::test_env::read();
     let mut arenas = OntologyArenas::new();
     seed_arenas(&mut arenas);
     let r = mk_role(&mut arenas);
@@ -255,6 +256,7 @@ fn transitive_forall_builds_epsilon_loop() {
 /// beginT → subBeginR --R--> subEndR → subBeginS --S--> subEndS → endT.
 #[test]
 fn chain_forall_builds_linear_sub_automaton() {
+    let _test_env = crate::test_env::read();
     let mut arenas = OntologyArenas::new();
     seed_arenas(&mut arenas);
     let r = mk_role(&mut arenas);
@@ -311,6 +313,7 @@ fn chain_forall_builds_linear_sub_automaton() {
 /// chain THROUGH the begin state — begin += subBeginS and subEndS += begin.
 #[test]
 fn trans_end_chain_loops_through_begin() {
+    let _test_env = crate::test_env::read();
     let mut arenas = OntologyArenas::new();
     seed_arenas(&mut arenas);
     let r = mk_role(&mut arenas);
@@ -339,6 +342,7 @@ fn trans_end_chain_loops_through_begin() {
 /// chain off the END state — end += subBeginS and subEndS += end.
 #[test]
 fn trans_start_chain_loops_through_end() {
+    let _test_env = crate::test_env::read();
     let mut arenas = OntologyArenas::new();
     seed_arenas(&mut arenas);
     let r = mk_role(&mut arenas);
@@ -376,6 +380,7 @@ fn trans_start_chain_loops_through_end() {
 /// begin state NEGATED; end-state fillers flip polarity.
 #[test]
 fn exists_on_complex_role_uses_dual_polarity() {
+    let _test_env = crate::test_env::read();
     let mut arenas = OntologyArenas::new();
     seed_arenas(&mut arenas);
     let r = mk_role(&mut arenas);
@@ -403,6 +408,7 @@ fn exists_on_complex_role_uses_dual_polarity() {
 /// converted by the ∀/∃ pass like any other `CCSOME`.
 #[test]
 fn has_value_on_complex_role_rewritten_to_nominal_exists() {
+    let _test_env = crate::test_env::read();
     let mut arenas = OntologyArenas::new();
     seed_arenas(&mut arenas);
     let r = mk_role(&mut arenas);
@@ -439,6 +445,7 @@ fn has_value_on_complex_role_rewritten_to_nominal_exists() {
 /// only become T-edges through the chain.
 #[test]
 fn range_on_chain_super_role_creates_domain_propagation() {
+    let _test_env = crate::test_env::read();
     let mut arenas = OntologyArenas::new();
     seed_arenas(&mut arenas);
     let r = mk_role(&mut arenas);
@@ -485,6 +492,7 @@ fn range_on_chain_super_role_creates_domain_propagation() {
 /// path, exactly as Konclude's `createDomainRangePropagations` does.
 #[test]
 fn domain_on_chain_super_role_creates_range_propagation() {
+    let _test_env = crate::test_env::read();
     let mut arenas = OntologyArenas::new();
     seed_arenas(&mut arenas);
     let r = mk_role(&mut arenas);
@@ -533,6 +541,7 @@ fn domain_on_chain_super_role_creates_range_propagation() {
 /// concept — Konclude's `hasPropagatedConcept` dedup guard skips it.
 #[test]
 fn range_on_transitive_role_propagation_correctly_skipped() {
+    let _test_env = crate::test_env::read();
     let mut arenas = OntologyArenas::new();
     seed_arenas(&mut arenas);
     let r = mk_role(&mut arenas);
@@ -656,6 +665,7 @@ impl Env {
 /// R-successor).
 #[test]
 fn e2e_transitive_forall_two_hop_clash() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let r = mk_role(env.arenas());
     make_transitive(env.arenas(), r);
@@ -682,6 +692,7 @@ fn e2e_transitive_forall_two_hop_clash() {
 /// automaton's reach — consistent.
 #[test]
 fn e2e_transitive_forall_unrelated_role_consistent() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let r = mk_role(env.arenas());
     let s = mk_role(env.arenas());
@@ -710,6 +721,7 @@ fn e2e_transitive_forall_unrelated_role_consistent() {
 /// reapply is on the critical path here.
 #[test]
 fn e2e_subrole_edges_feed_transitive_automaton() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let r = mk_role(env.arenas());
     let s = mk_role(env.arenas());
@@ -740,6 +752,7 @@ fn e2e_subrole_edges_feed_transitive_automaton() {
 /// role-hierarchy hack.
 #[test]
 fn e2e_role_chain_order_sensitive_clash() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let r = mk_role(env.arenas());
     let s = mk_role(env.arenas());
@@ -768,6 +781,7 @@ fn e2e_role_chain_order_sensitive_clash() {
 /// compose to a T-edge — must stay consistent.
 #[test]
 fn e2e_role_chain_wrong_order_consistent() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let r = mk_role(env.arenas());
     let s = mk_role(env.arenas());
@@ -797,6 +811,7 @@ fn e2e_role_chain_wrong_order_consistent() {
 /// followed by a partOf hop IS a partOf path).
 #[test]
 fn e2e_part_of_shape_14817() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let part_of = mk_role(env.arenas());
     let regional_part_of = mk_role(env.arenas());
@@ -827,6 +842,7 @@ fn e2e_part_of_shape_14817() {
 /// already there.
 #[test]
 fn e2e_automaton_over_preexisting_successors() {
+    let _test_env = crate::test_env::read();
     let mut env = build_env();
     let r = mk_role(env.arenas());
     make_transitive(env.arenas(), r);

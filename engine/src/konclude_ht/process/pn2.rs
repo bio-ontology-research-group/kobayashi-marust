@@ -601,6 +601,7 @@ mod tests {
 
     #[test]
     fn process_assertion_linker_asserted_data_literal_prepends_and_preserves_payload() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut node = IndividualProcessNode::new(ProcessContextId::NONE);
         let dep = TrackPointId::new(9);
@@ -638,6 +639,7 @@ mod tests {
 
     #[test]
     fn process_assertion_linker_additional_role_prepends_and_preserves_payload() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut node = IndividualProcessNode::new(ProcessContextId::NONE);
         let dep = TrackPointId::new(13);
@@ -685,6 +687,7 @@ mod tests {
 
     #[test]
     fn process_assertion_linker_additional_data_prepends_and_preserves_payload() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut node = IndividualProcessNode::new(ProcessContextId::NONE);
         let dep = TrackPointId::new(17);

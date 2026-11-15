@@ -2068,6 +2068,7 @@ mod tests {
 
     #[test]
     fn plain_insert_get_clash_updates_signature_only_for_new_descriptor() {
+        let _test_env = crate::test_env::read();
         let mut set = ReapplyConceptLabelSet::new(INVALID);
         let con_des = ConDescId::new(17);
 
@@ -2083,6 +2084,7 @@ mod tests {
 
     #[test]
     fn plain_insert_ignore_clash_updates_signature_on_every_insert() {
+        let _test_env = crate::test_env::read();
         let mut set = ReapplyConceptLabelSet::new(INVALID);
         let con_des = ConDescId::new(19);
 
@@ -2116,6 +2118,7 @@ mod tests {
 
     #[test]
     fn context_insert_uses_real_concept_tag_and_dependency_track_point() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut onto = OntologyArenas::new();
         let concept = alloc_concept_with_tag(&mut onto, 7001);
@@ -2148,6 +2151,7 @@ mod tests {
 
     #[test]
     fn context_insert_get_clash_reports_opposite_descriptor_and_dep_point() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut onto = OntologyArenas::new();
         let concept = alloc_concept_with_tag(&mut onto, 7101);
@@ -2177,6 +2181,7 @@ mod tests {
 
     #[test]
     fn context_reapply_queue_state_returns_descriptor_dependency() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut onto = OntologyArenas::new();
         let concept = alloc_concept_with_tag(&mut onto, 7201);
@@ -2207,6 +2212,7 @@ mod tests {
 
     #[test]
     fn init_in_context_uses_shared_additional_size_for_share_decision() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut target = ReapplyConceptLabelSet::new(INVALID);
         let mut target_additional = HashMap::default();
@@ -2242,6 +2248,7 @@ mod tests {
 
     #[test]
     fn init_in_context_clones_shared_additional_contents_for_rebuild() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut target = ReapplyConceptLabelSet::new(INVALID);
         let mut target_additional = HashMap::default();
@@ -2283,6 +2290,7 @@ mod tests {
 
     #[test]
     fn iterator_in_context_snapshots_shared_additional_alias() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut target = ReapplyConceptLabelSet::new(INVALID);
         let mut target_additional = HashMap::default();
@@ -2306,6 +2314,7 @@ mod tests {
 
     #[test]
     fn reapply_iterator_in_context_reads_and_clears_shared_additional_entry() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let reapply_head = ctx.alloc_cond_reapply_con_desc(CondensedReapplyConceptDescriptor::new(
             ConDescId::new(400),

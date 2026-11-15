@@ -2217,6 +2217,7 @@ mod tests {
 
     #[test]
     fn representative_common_joining_key_map_preserves_left_orientation_after_swap() {
+        let _test_env = crate::test_env::read();
         let mut algo = CompletionTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let first = key_map(0, &[(1, 11, 111), (2, 22, 222), (3, 33, 333)]);
@@ -2249,6 +2250,7 @@ mod tests {
 
     #[test]
     fn representatives_joinable_quick_fails_single_binding_disjoint_maps() {
+        let _test_env = crate::test_env::read();
         let mut algo = CompletionTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut node = NodeId::NONE;
@@ -2274,6 +2276,7 @@ mod tests {
 
     #[test]
     fn representatives_joinable_accepts_single_binding_shared_map_key() {
+        let _test_env = crate::test_env::read();
         let mut algo = CompletionTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let mut node = NodeId::NONE;
@@ -2299,6 +2302,7 @@ mod tests {
 
     #[test]
     fn representative_common_joining_all_creates_joined_rep_and_resolve_maps() {
+        let _test_env = crate::test_env::read();
         let mut algo = CompletionTaskHandleAlgorithm::new();
         let mut ctx = CalculationAlgorithmContextBase::new();
         let left_rep = rep_data(&mut ctx, 10);

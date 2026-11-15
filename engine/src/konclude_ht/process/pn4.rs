@@ -593,6 +593,7 @@ mod tests {
 
     #[test]
     fn pn4_blocking_follow_set_allocates_and_checks_empty_state() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut node = IndividualProcessNode::new(ProcessContextId::NONE);
 
@@ -610,6 +611,7 @@ mod tests {
 
     #[test]
     fn pn4_blocking_follow_set_copies_previous_generation() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut node = IndividualProcessNode::new(ProcessContextId::NONE);
 
@@ -630,6 +632,7 @@ mod tests {
 
     #[test]
     fn pn4_analized_concept_expansion_data_read_does_not_allocate() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut node = IndividualProcessNode::new(ProcessContextId::NONE);
 
@@ -643,6 +646,7 @@ mod tests {
 
     #[test]
     fn pn4_analized_concept_expansion_data_allocates_and_copies_previous_generation() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut prev_data = IndividualNodeAnalizedConceptExpansionData::new();
         prev_data

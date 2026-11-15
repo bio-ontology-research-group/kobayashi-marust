@@ -9013,6 +9013,7 @@ mod tests {
     /// and nested journals unwind independently.
     #[test]
     fn spine_journal_epoch_restores_marks_and_drops_new_entries() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let base = ctx.alloc_track_point(DependencyTrackPoint::new(DependencyId::NONE));
         ctx.push_spine_journal_epoch();
@@ -9058,6 +9059,7 @@ mod tests {
 
     #[test]
     fn backward_saturation_sources_are_canonical_across_insertion_orders() {
+        let _test_env = crate::test_env::read();
         let (forward, forward_target) = backward_source_context(false);
         let (reverse, reverse_target) = backward_source_context(true);
 
@@ -9076,6 +9078,7 @@ mod tests {
 
     #[test]
     fn successor_concept_map_dedup_sample_is_order_independent() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         for reverse in [false, true] {
             let mut map = SaturationSuccessorConceptExtensionMap::new();
@@ -9106,6 +9109,7 @@ mod tests {
 
     #[test]
     fn successor_concept_map_interning_shares_equal_snapshots_and_detaches_on_write() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut first = SaturationSuccessorConceptExtensionMap::new();
         first.add_extension_concept(ConceptId::new(21), false, 201);
@@ -9154,6 +9158,7 @@ mod tests {
 
     #[test]
     fn probe_reset_reuses_transient_capacity_with_fresh_logical_state() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         for _ in 0..32 {
             ctx.alloc_node(IndividualProcessNode::default());
@@ -9186,6 +9191,7 @@ mod tests {
 
     #[test]
     fn probe_reset_preserves_only_requested_saturation_state() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut saturation_node = IndividualSaturationProcessNode::default();
         saturation_node.set_individual_id(41);
@@ -9225,6 +9231,7 @@ mod tests {
 
     #[test]
     fn processing_data_box_grounding_hash_localizes_and_copies_previous_entries() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut data_box = ProcessingDataBox::new();
         let mut data = ConceptNominalSchemaGroundingData::new();
@@ -9266,6 +9273,7 @@ mod tests {
 
     #[test]
     fn processing_data_box_marker_individual_node_hash_localizes_and_copies_previous_entries() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut data_box = ProcessingDataBox::new();
         let marker_concept = ConceptId::new(23);
@@ -9315,6 +9323,7 @@ mod tests {
     #[test]
     fn processing_data_box_representative_variable_binding_path_set_hash_localizes_and_copies_previous_entries(
     ) {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut data_box = ProcessingDataBox::new();
         let tag = ctx.used_process_tagger().get_current_localization_tag();
@@ -9374,6 +9383,7 @@ mod tests {
     #[test]
     fn processing_data_box_representative_variable_binding_path_hash_localizes_and_copies_previous_entries(
     ) {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut data_box = ProcessingDataBox::new();
         let path = ctx.alloc_vbpath(VariableBindingPath::new());
@@ -9425,6 +9435,7 @@ mod tests {
 
     #[test]
     fn pn3_context_role_successor_wrappers_read_installed_links() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let role = RoleId::new(17);
         let source = ctx.alloc_node(IndividualProcessNode::default());
@@ -9527,6 +9538,7 @@ mod tests {
 
     #[test]
     fn pn3_context_disjoint_successor_wrappers_install_read_iterate_and_remove() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let role = RoleId::new(23);
         let source = ctx.alloc_node(IndividualProcessNode::default());
@@ -9570,6 +9582,7 @@ mod tests {
     #[test]
     fn processing_data_box_representative_variable_binding_path_joining_key_hash_localizes_and_copies_previous_entries(
     ) {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut data_box = ProcessingDataBox::new();
         let bucket_key = 19;
@@ -9628,6 +9641,7 @@ mod tests {
 
     #[test]
     fn processing_data_box_representative_joining_hash_localizes_and_copies_previous_entries() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut data_box = ProcessingDataBox::new();
         let key = (3, 5);
@@ -9666,6 +9680,7 @@ mod tests {
     #[test]
     fn processing_data_box_variable_binding_path_merging_hash_localizes_and_copies_previous_entries(
     ) {
+        let _test_env = crate::test_env::write();
         let mut ctx = ProcessContext::new();
         let mut data_box = ProcessingDataBox::new();
         let key = (7, 11);
@@ -9716,6 +9731,7 @@ mod tests {
 
     #[test]
     fn processing_data_box_signature_blocking_candidate_hash_creates_from_previous_hash() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut data_box = ProcessingDataBox::new();
         let mut prev_hash = SignatureBlockingCandidateHash::new(INVALID);
@@ -9751,6 +9767,7 @@ mod tests {
 
     #[test]
     fn processing_data_box_signature_nominal_delaying_candidate_hash_creates_from_previous_hash() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut data_box = ProcessingDataBox::new();
         let mut prev_hash = SignatureBlockingCandidateHash::new(INVALID);
@@ -9792,6 +9809,7 @@ mod tests {
 
     #[test]
     fn processing_data_box_signature_blocking_review_set_creates_from_previous_and_clears() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut data_box = ProcessingDataBox::new();
         assert!(data_box
@@ -9838,6 +9856,7 @@ mod tests {
 
     #[test]
     fn processing_data_box_reactivation_queues_create_from_previous_and_clear() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut data_box = ProcessingDataBox::new();
         let early_node = ctx.alloc_node(IndividualProcessNode::new(
@@ -9904,6 +9923,7 @@ mod tests {
 
     #[test]
     fn processing_data_box_db4_linkers_preserve_konclude_head_order_and_counts() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut data_box = ProcessingDataBox::new();
         let n1 = NodeId::new(1);
@@ -10021,6 +10041,7 @@ mod tests {
 
     #[test]
     fn processing_data_box_blocking_individual_node_candidate_hash_creates_from_previous_hash() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut data_box = ProcessingDataBox::new();
         let key = (ConceptId::new(17), true);
@@ -10073,6 +10094,7 @@ mod tests {
 
     #[test]
     fn blocking_candidate_data_materializes_tags_and_candidate_iterator() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut data_box = ProcessingDataBox::new();
         let hash_id =
@@ -10131,6 +10153,7 @@ mod tests {
 
     #[test]
     fn linked_blocking_candidate_hash_copies_and_prepends_candidate_linkers() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut data_box = ProcessingDataBox::new();
         let hash_id = ctx.processing_data_box_blocking_individual_node_linked_candidate_hash(
@@ -10228,6 +10251,7 @@ mod tests {
 
     #[test]
     fn blocking_data_tag_protocol_updates_node_switch_and_label_modification_tags() {
+        let _test_env = crate::test_env::read();
         let mut block_data = IndividualNodeBlockingTestData::new();
         assert_eq!(block_data.get_node_switch_tag(), 0);
         assert!(block_data.update_node_switch_tag(5));
@@ -10255,6 +10279,7 @@ mod tests {
 
     #[test]
     fn blocking_test_data_copies_blocking_fields_but_keeps_fresh_tags() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let blocker = ctx.alloc_node(IndividualProcessNode::default());
         ctx.node_mut(blocker).set_individual_node_id(19);
@@ -10293,6 +10318,7 @@ mod tests {
 
     #[test]
     fn linked_candidate_blocking_bookkeeping_uses_core_linker_and_block_data_cursors() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let con_desc = ConDescId::new(31);
         let label_set = ctx.alloc_label_set(ReapplyConceptLabelSet::new(INVALID));
@@ -10332,6 +10358,7 @@ mod tests {
 
     #[test]
     fn node_switch_history_tracks_newer_min_bounds_and_updates_latest_switch() {
+        let _test_env = crate::test_env::read();
         let mut history = NodeSwitchHistory::new(INVALID);
         history
             .add_individual_process_node_switch(5, 50, 1)
@@ -10362,6 +10389,7 @@ mod tests {
 
     #[test]
     fn processing_data_box_node_switch_history_creates_from_previous_history() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut data_box = ProcessingDataBox::new();
         let mut prev_history = NodeSwitchHistory::new(INVALID);
@@ -10399,6 +10427,7 @@ mod tests {
 
     #[test]
     fn branching_tree_lifecycle_matches_konclude_task_copy_and_force_child() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let tree_id = ctx.alloc_branching_tree(BranchingTree::new(INVALID));
 
@@ -10445,6 +10474,7 @@ mod tests {
 
     #[test]
     fn processing_data_box_branching_tree_creates_from_previous_tree() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut parent_box = ProcessingDataBox::new();
         let parent_tree = parent_box.branching_tree_with_context(&mut ctx, true);

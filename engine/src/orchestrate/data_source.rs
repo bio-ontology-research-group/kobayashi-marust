@@ -109,6 +109,7 @@ mod tests {
         DataPropertyAssertion(<urn:p> <urn:a> "red"^^xsd:string))"#;
     #[test]
     fn dense_functional_data_abox_requires_bounded_complete_compilation() {
+        let _test_env = crate::test_env::write();
         let assertions = (0..513).map(|i|
             format!("DataPropertyAssertion(:p :a{i} \"red{i}\"^^xsd:string) "))
             .collect::<String>();
@@ -133,6 +134,7 @@ mod tests {
     }
     #[test]
     fn scheduling_requires_complete_reduction_and_preserves_rule_fences() {
+        let _test_env = crate::test_env::write();
         assert_eq!(plan(SOURCE), Some("KM_DATA_ABOX_PROJECT"));
         let coupled = SOURCE.replacen("Ontology(",
             "Ontology(SubClassOf(<urn:C> DataSomeValuesFrom(<urn:p> xsd:string)) ", 1);
@@ -146,6 +148,7 @@ mod tests {
     }
     #[test]
     fn nonfunctional_string_abox_schedules_only_after_complete_compilation() {
+        let _test_env = crate::test_env::write();
         let source = r#"Prefix(:=<urn:test:>) Ontology(
             Declaration(Class(:Author)) Declaration(DataProperty(:name))
             DataPropertyDomain(:name :Author) DataPropertyRange(:name xsd:string)
@@ -168,6 +171,7 @@ mod tests {
 
     #[test]
     fn automatic_rules_require_exact_complete_source_compilation() {
+        let _test_env = crate::test_env::write();
         let source = r#"Ontology(Declaration(NamedIndividual(<urn:a>))
             DLSafeRule(Body(ClassAtom(<urn:A> Variable(<urn:x>)))
                 Head(ClassAtom(<urn:B> Variable(<urn:x>)))))"#;
@@ -179,6 +183,7 @@ mod tests {
 
     #[test]
     fn numeric_profiles_schedule_without_inverse_functional_object_roles() {
+        let _test_env = crate::test_env::write();
         let source = r#"Prefix(:=<urn:test:>) Ontology(
             FunctionalDataProperty(:p)
             EquivalentClasses(:A DataSomeValuesFrom(:p
@@ -199,6 +204,7 @@ mod facts_tests {
     /// in the shared conformance traversal equal the scheduling scan's own.
     #[test]
     fn cached_source_statistics_equal_the_scheduling_scan() {
+        let _test_env = crate::test_env::write();
         let mut docs = vec![super::tests_source()];
         if let Some(dir) = std::env::var_os("KM_CORPUS_DIR") {
             for entry in std::fs::read_dir(dir).unwrap() {

@@ -386,6 +386,7 @@ mod tests {
 
     #[test]
     fn generator_transfers_individual_dependence_adapter_and_requires_tracking() {
+        let _test_env = crate::test_env::read();
         let adapter = Id::<SatisfiableTaskIndividualDependenceTrackingAdapter>::new(5);
         let mut job = SatisfiableCalculationJob::new();
         job.set_satisfiable_task_individual_dependence_tracking_adapter(adapter);
@@ -404,6 +405,7 @@ mod tests {
 
     #[test]
     fn generator_leaves_tracking_unrequired_without_adapter() {
+        let _test_env = crate::test_env::read();
         let job = SatisfiableCalculationJob::new();
         let mut task = SatisfiableCalculationTask::new();
         let mut data_box = ProcessingDataBox::new();
@@ -419,6 +421,7 @@ mod tests {
 
     #[test]
     fn generator_transfers_classification_message_adapters() {
+        let _test_env = crate::test_env::read();
         use super::super::task::adapters::{
             SatisfiableTaskClassificationMessageAdapter,
             SatisfiableTaskClassificationRoleMarkedMessageAdapter,
@@ -443,6 +446,7 @@ mod tests {
 
     #[test]
     fn generator_transfers_ordered_concept_assertions() {
+        let _test_env = crate::test_env::read();
         use super::super::model::{ConceptId, IndividualId};
 
         let concept_a = ConceptId::new(17);
@@ -469,6 +473,7 @@ mod tests {
 
     #[test]
     fn generator_materializes_concept_assertions_to_processing_data_box() {
+        let _test_env = crate::test_env::read();
         use super::super::model::{ConceptId, IndividualId};
 
         let concept_a = ConceptId::new(31);
@@ -538,6 +543,7 @@ mod tests {
 
     #[test]
     fn generator_expands_databox_initializing_concepts_to_nominal_process_nodes() {
+        let _test_env = crate::test_env::read();
         use super::super::model::individual::{
             ConceptAssertion, DataAssertion, Individual, ReverseRoleAssertion, RoleAssertion,
         };
@@ -659,6 +665,7 @@ mod tests {
 
     #[test]
     fn generator_expands_fixed_and_relative_targets_and_updates_next_node_id() {
+        let _test_env = crate::test_env::read();
         use super::super::model::ConceptId;
         use super::super::process::NodeId;
 
@@ -763,6 +770,7 @@ mod tests {
 
     #[test]
     fn generator_base_task_localizes_existing_ref_node_and_clears_queue_cached_flag() {
+        let _test_env = crate::test_env::read();
         use super::super::model::ConceptId;
 
         let ontology = OntologyArenas::new();
@@ -850,6 +858,7 @@ mod tests {
 
     #[test]
     fn generator_recreates_active_and_triples_indexed_nominal_nodes() {
+        let _test_env = crate::test_env::read();
         use super::super::model::individual::{ConceptAssertion, Individual};
         use super::super::model::ConceptId;
 

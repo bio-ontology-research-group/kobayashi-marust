@@ -403,6 +403,7 @@ mod tests {
 
     #[test]
     fn owned_json_conversion_matches_borrowed_conversion_for_every_term_shape() {
+        let _test_env = crate::test_env::read();
         let clause = clause(
             [
                 Atom::Concept("A".into(), Term::Var("x".into())),
@@ -422,6 +423,7 @@ mod tests {
 
     #[test]
     fn hoist_extracts_common_super_of_every_disjunct() {
+        let _test_env = crate::test_env::read();
         // ⊤ ⊑ A ∨ B ;  A ⊑ X ;  B ⊑ X   ⟹   ⊤ ⊑ X  (sound: A⊔B ⊑ X)
         let tbox = vec![
             fact([conc("A"), conc("B")]),
@@ -438,6 +440,7 @@ mod tests {
 
     #[test]
     fn hoist_skips_when_no_common_super() {
+        let _test_env = crate::test_env::read();
         // ⊤ ⊑ A ∨ B ;  A ⊑ X ;  B ⊑ Y   ⟹   nothing common, no addition.
         let tbox = vec![
             fact([conc("A"), conc("B")]),
@@ -451,6 +454,7 @@ mod tests {
 
     #[test]
     fn hoist_is_sound_self_cover() {
+        let _test_env = crate::test_env::read();
         // ⊤ ⊑ A ∨ B with no told supers: A and B each cover themselves, but the
         // intersection {A}∩{B} is empty ⇒ no spurious ⊤⊑A or ⊤⊑B.
         let tbox = vec![fact([conc("A"), conc("B")])];

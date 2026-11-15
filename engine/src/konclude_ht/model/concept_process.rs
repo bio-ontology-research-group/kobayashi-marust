@@ -420,6 +420,7 @@ mod tests {
 
     #[test]
     fn caching_tags_defaults_match_konclude() {
+        let _test_env = crate::test_env::read();
         let tags = UnsatisfiableCachingTags::new();
         assert_eq!(tags.get_last_caching_tag(), 0);
         assert_eq!(tags.get_min_cached_tag(), Cint64::MAX);
@@ -429,6 +430,7 @@ mod tests {
 
     #[test]
     fn unsat_caching_tags_update_matches_konclude() {
+        let _test_env = crate::test_env::read();
         let mut tags = UnsatisfiableCachingTags::new();
         assert!(tags.update_caching_tags(7, 3, 2));
         assert_eq!(tags.get_min_cached_tag(), 7);
@@ -445,6 +447,7 @@ mod tests {
 
     #[test]
     fn candidate_tags_respects_required_last_caching_tag() {
+        let _test_env = crate::test_env::read();
         let mut tags = UnsatisfiableCachingTags::new();
         tags.update_caching_tags(7, 3, 2);
 
@@ -482,6 +485,7 @@ mod tests {
 
     #[test]
     fn concept_process_data_unsat_tag_slots_are_polarity_specific() {
+        let _test_env = crate::test_env::read();
         let mut data = ConceptProcessData::new();
         let pos = UnsatisfiableCachingTagsId::new(3);
         let neg = UnsatisfiableCachingTagsId::new(5);
@@ -506,6 +510,7 @@ mod tests {
 
     #[test]
     fn concept_process_data_core_blocking_flags_are_polarity_specific() {
+        let _test_env = crate::test_env::read();
         let mut data = ConceptProcessData::new();
         assert!(!data.is_core_blocking_concept(false));
         assert!(!data.is_core_blocking_concept(true));

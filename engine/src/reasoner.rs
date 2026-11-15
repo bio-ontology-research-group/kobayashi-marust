@@ -1584,6 +1584,7 @@ mod tests {
 
     #[test]
     fn ground_concept_body_becomes_a_central_guard() {
+        let _test_env = crate::test_env::read();
         // D(a) -> ⊥   ==>   D(x) ∧ x≈a -> ⊥   (x ≉ a in the head)
         let GroundBody::Guard(guarded) = ground_concept_body(&cl(vec![c("D", ind("a"))], vec![]))
             else { panic!("expected a guard") };
@@ -1618,6 +1619,7 @@ mod tests {
 
     #[test]
     fn normalized_variables_use_the_calculus_reserved_namespace() {
+        let _test_env = crate::test_env::read();
         let mut builder = Builder::new();
         let mut variables = HashMap::new();
         assert_eq!(builder.term(&vn("x"), &mut variables), Some(X));
@@ -1629,6 +1631,7 @@ mod tests {
 
     #[test]
     fn one_shot_saturation_releases_converted_input_after_preparation() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             cl(vec![c("A", vx())], vec![c("B", vx())]),
             cl(vec![c("B", vx())], vec![c("C", vx())]),
@@ -1649,6 +1652,7 @@ mod tests {
 
     #[test]
     fn concept_hierarchy() {
+        let _test_env = crate::test_env::read();
         // A ⊑ B, B ⊑ C  ⟹  A ⊑ B, A ⊑ C
         let rr = run(vec![
             cl(vec![c("A", vx())], vec![c("B", vx())]),
@@ -1660,6 +1664,7 @@ mod tests {
 
     #[test]
     fn private_query_prefix_filter_retains_predicates_as_conclusions() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             cl(vec![c("A", vx())], vec![c("urn:km:private:P", vx())]),
             cl(vec![c("urn:km:private:P", vx())], vec![c("B", vx())]),
@@ -1689,6 +1694,7 @@ mod tests {
 
     #[test]
     fn private_query_prefix_filter_can_retain_selected_roots() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![cl(vec![c("urn:km:private:P", vx())], vec![c("B", vx())])];
         let reasoner = Reasoner::new(&clauses);
         let prepared = reasoner.prepare();
@@ -1702,6 +1708,7 @@ mod tests {
 
     #[test]
     fn mutual_unit_queries_share_one_representative_and_restore_rows() {
+        let _test_env = crate::test_env::read();
         // A ≡ B, B ≡ C and C ⊑ D. The unit SCC forms one equivalence group.
         // Classification runs one root for the
         // group, then restores the exact non-reflexive row for every alias.
@@ -1736,6 +1743,7 @@ mod tests {
 
     #[test]
     fn cyclic_unit_paths_collapse_without_direct_opposite_edges() {
+        let _test_env = crate::test_env::read();
         // No edge has its direct opposite, but A -> B -> C -> A proves all
         // three concepts equivalent. The SCC scheduler must see that proof.
         let clauses = vec![
@@ -1768,6 +1776,7 @@ mod tests {
 
     #[test]
     fn one_way_unit_implications_do_not_collapse_queries() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             cl(vec![c("A", vx())], vec![c("B", vx())]),
             cl(vec![c("B", vx())], vec![c("C", vx())]),
@@ -1781,6 +1790,7 @@ mod tests {
 
     #[test]
     fn repeated_run_for_batches_match_one_shot_fixpoint() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             cl(vec![c("A", vx())], vec![r("R", vx(), fx("f"))]),
             cl(vec![c("A", vx())], vec![c("B", fx("f"))]),
@@ -1809,6 +1819,7 @@ mod tests {
 
     #[test]
     fn disjointness_unsat() {
+        let _test_env = crate::test_env::read();
         // A ⊑ B, A ⊑ C, B ⊓ C ⊑ ⊥  ⟹  A unsatisfiable
         let rr = run(vec![
             cl(vec![c("A", vx())], vec![c("B", vx())]),
@@ -1820,6 +1831,7 @@ mod tests {
 
     #[test]
     fn direct_bottom_class_reported_unsat() {
+        let _test_env = crate::test_env::read();
         let rr = run(vec![
             cl(vec![c("C", vx())], vec![]),
             cl(vec![c("D", vx())], vec![c("C", vx())]),
@@ -1834,6 +1846,7 @@ mod tests {
 
     #[test]
     fn user_class_named_nothing_is_not_bottom() {
+        let _test_env = crate::test_env::read();
         let rr = run(vec![
             cl(vec![c("A", vx())], vec![c("Nothing", vx())]),
             cl(vec![c("B", vx())], vec![c("A", vx())]),
@@ -1847,6 +1860,7 @@ mod tests {
 
     #[test]
     fn disjunction_no_spurious_subsumption() {
+        let _test_env = crate::test_env::read();
         // A ⊑ B ⊔ C must NOT yield A ⊑ B or A ⊑ C (this was the soundness bug).
         let rr = run(vec![cl(
             vec![c("A", vx())],
@@ -1859,6 +1873,7 @@ mod tests {
 
     #[test]
     fn existential_subsumption() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ∃R.B, B ⊑ C, ∃R.C ⊑ D  ⟹  A ⊑ D  (exercises Succ + Pred).
         let rr = run(vec![
             cl(vec![c("A", vx())], vec![r("R", vx(), fx("f"))]),
@@ -1878,6 +1893,7 @@ mod tests {
 
     #[test]
     fn take_subsumptions_moves_the_final_map_once() {
+        let _test_env = crate::test_env::read();
         // The moving accessor must return exactly the map the cloning accessor
         // returns (end-of-run extraction paths use it to avoid doubling the
         // answer at peak RSS), and it can only be taken once.
@@ -1913,6 +1929,7 @@ mod tests {
     /// residue readout must recover it in both modes.
     #[test]
     fn root_ordered_recovers_trapped_named_unit() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             cl(vec![c("A", vx())], vec![c("X", vx()), c("B", vx())]),
             cl(vec![c("X", vx())], vec![c("B", vx())]),
@@ -1940,6 +1957,7 @@ mod tests {
     /// directly and the unit surfaces without repair. Result must be identical.
     #[test]
     fn root_ordered_trap_other_interning_order() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             cl(vec![c("A", vx())], vec![c("B", vx()), c("X", vx())]),
             cl(vec![c("X", vx())], vec![c("B", vx())]),
@@ -1956,6 +1974,7 @@ mod tests {
     /// (C maximal-unresolvable in ⊤ → X ∨ C) and both must be recovered.
     #[test]
     fn root_ordered_recovers_chained_trapped_units() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             cl(vec![c("A", vx())], vec![c("X", vx()), c("B", vx())]),
             cl(vec![c("X", vx())], vec![c("B", vx())]),
@@ -1974,6 +1993,7 @@ mod tests {
     /// entailed must fail their refutation).
     #[test]
     fn root_ordered_no_spurious_subsumption() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![cl(vec![c("A", vx())], vec![c("B", vx()), c("C", vx())])];
         for mode in [1u8, 2u8] {
             let rr = run_root_ordered(clauses.clone(), mode);
@@ -1988,6 +2008,7 @@ mod tests {
     /// inconsistency, in both modes.
     #[test]
     fn root_ordered_exclusive_global_disjunction() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             cl(vec![], vec![c("P", vx()), c("N", vx())]),
             cl(vec![c("P", vx()), c("N", vx())], vec![]),
@@ -2005,6 +2026,7 @@ mod tests {
     /// Unsat query under the ordered regime: the ⊥ readout is order-robust.
     #[test]
     fn root_ordered_unsat_query() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             cl(vec![c("A", vx())], vec![c("B", vx())]),
             cl(vec![c("A", vx())], vec![c("C", vx())]),
@@ -2024,6 +2046,7 @@ mod tests {
     /// of the order).
     #[test]
     fn root_ordered_disjunction_over_successor() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             cl(vec![c("A", vx())], vec![r("R", vx(), fx("f"))]),
             cl(vec![c("A", vx())], vec![c("Q", fx("f"))]),
@@ -2051,6 +2074,7 @@ mod tests {
     /// default engine's subsumption map.
     #[test]
     fn root_ordered_matches_default_engine() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![
             cl(vec![c("A", vx())], vec![c("X", vx()), c("B", vx())]),
             cl(vec![c("X", vx())], vec![c("B", vx())]),
@@ -2084,6 +2108,7 @@ mod tests {
 
     #[test]
     fn factor_number_restriction_clash() {
+        let _test_env = crate::test_env::read();
         // Three pairwise-distinct witnesses f,g,h (head inequalities, encoded as
         // body equalities) together with the ≤2 conclusion "at least two of the
         // three coincide" (a head disjunction of equalities) is unsatisfiable.
@@ -2113,6 +2138,7 @@ mod tests {
 
     #[test]
     fn min_cardinality_recognition() {
+        let _test_env = crate::test_env::read();
         // P ⊑ ∃r.J1, P ⊑ ∃r.J2, J1 ⊑ J, J2 ⊑ J, J1 ⊓ J2 ⊑ ⊥, ≥2 r.J ⊑ G
         // (recognition clause: r(x,y1) ∧ J(y1) ∧ r(x,y2) ∧ J(y2) → G(x) ∨ y1≈y2)
         // ⟹ P ⊑ G: the merged-witness disjunct dies via disjointness.
@@ -2144,6 +2170,7 @@ mod tests {
 
     #[test]
     fn min_cardinality_recognition_three_witnesses() {
+        let _test_env = crate::test_env::read();
         // Same as min_cardinality_recognition but with three pairwise-disjoint
         // witnesses and a ≥3 recognition clause (3 equality disjuncts in the
         // head).  Pins the central-strategy fact-core fix: refuting the
@@ -2191,6 +2218,7 @@ mod tests {
 
     #[test]
     fn role_hierarchy_and_domain() {
+        let _test_env = crate::test_env::read();
         // R ⊑ S, ∃S.⊤ ⊑ A, and B ⊑ ∃R.⊤  ⟹  B ⊑ A
         let rr = run(vec![
             cl(vec![r("R", vx(), vn("y"))], vec![r("S", vx(), vn("y"))]),
@@ -2206,6 +2234,7 @@ mod tests {
 
     #[test]
     fn incomplete_worker_state_is_sticky() {
+        let _test_env = crate::test_env::read();
         let mut rr = Reasoner::new(&[]);
         assert!(!rr.incomplete());
         rr.absorb(Vec::new(), false, true, 0);

@@ -40,3 +40,5 @@ mod incr_support;
 mod incr_envelope;
 mod incr_global;
 pub mod tableau;
+#[cfg(test)]
+pub(crate) mod test_env;

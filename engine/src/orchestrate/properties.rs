@@ -600,6 +600,7 @@ mod tests {
 
     #[test]
     fn collects_object_properties_in_every_position() {
+        let _test_env = crate::test_env::write();
         let text = "Prefix(:=<urn:t#>)\nOntology(<urn:o>\n\
             Declaration(ObjectProperty(:d))\n\
             Declaration(DataProperty(:dp))\n\
@@ -624,6 +625,7 @@ mod tests {
 
     #[test]
     fn extension_defines_every_probe() {
+        let _test_env = crate::test_env::write();
         let text = "Ontology(<urn:o> SubObjectPropertyOf(<urn:r> <urn:s>))";
         let roles = source_object_properties(text).unwrap();
         let (extension, probes) = extension(text, &roles, GENERAL);
@@ -648,6 +650,7 @@ mod tests {
 
     #[test]
     fn source_shape_follows_the_plan() {
+        let _test_env = crate::test_env::write();
         let shape = |body: &str| source_shape(&format!("Prefix(:=<urn:t#>) Ontology({body})")).unwrap();
         let free = shape("SubObjectPropertyOf(:r :s) ObjectPropertyRange(:r :A) \
             SubObjectPropertyOf(:s owl:topObjectProperty) TransitiveObjectProperty(:r) \
@@ -682,6 +685,7 @@ mod tests {
 
     #[test]
     fn split_reads_property_rows_and_keeps_source_rows() {
+        let _test_env = crate::test_env::write();
         let ns = "http://km.invalid/properties#";
         let p = |name: &str| format!("{ns}{name}");
         // r = 0 (some0, some1), s = 1 (some2, some3), e = 2 (some4, some5).
@@ -723,6 +727,7 @@ mod tests {
 
     #[test]
     fn range_run_asserts_one_pair_per_nonempty_property() {
+        let _test_env = crate::test_env::write();
         let text = "Ontology(<urn:o> SubObjectPropertyOf(<urn:r> <urn:s>) ObjectPropertyDomain(<urn:e> owl:Nothing))";
         let roles = source_object_properties(text).unwrap();
         let (_, probes) = extension(text, &roles, INVERSE_FREE);
@@ -744,6 +749,7 @@ mod tests {
 
     #[test]
     fn inconsistent_classification_has_no_property_rows() {
+        let _test_env = crate::test_env::write();
         let ns = "http://km.invalid/properties#";
         let mut extended = Classification {
             approximate: None,
@@ -759,6 +765,7 @@ mod tests {
 
     #[test]
     fn disagreeing_emptiness_probes_are_refused() {
+        let _test_env = crate::test_env::write();
         let ns = "http://km.invalid/properties#";
         let mut extended = Classification {
             approximate: None,

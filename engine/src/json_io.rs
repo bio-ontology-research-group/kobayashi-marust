@@ -853,6 +853,7 @@ mod elc_binary_tests {
 
     #[test]
     fn compact_elc_handoff_round_trips_every_atom_and_term_shape() {
+        let _test_env = crate::test_env::read();
         let clauses = vec![JClause {
             body: vec![
                 JAtom::Concept {
@@ -888,6 +889,7 @@ mod elc_binary_tests {
 
     #[test]
     fn compact_elc_handoff_rejects_truncation_and_trailing_bytes() {
+        let _test_env = crate::test_env::read();
         let mut bytes = Vec::new();
         write_elc_binary(&mut bytes, &[]).unwrap();
         assert!(decode_elc_binary(&bytes[..bytes.len() - 1]).is_err());
@@ -897,6 +899,7 @@ mod elc_binary_tests {
 
     #[test]
     fn compact_elc_output_shares_names_and_round_trips_rows() {
+        let _test_env = crate::test_env::read();
         let subsumptions = BTreeMap::from([
             ("A".to_string(), vec!["A".to_string(), "Top".to_string()]),
             ("B".to_string(), vec!["Top".to_string()]),
@@ -918,6 +921,7 @@ mod elc_binary_tests {
 
     #[test]
     fn preinterned_elc_output_round_trips_without_reindexing() {
+        let _test_env = crate::test_env::read();
         let compact = CompactElcOutput {
             names: vec!["Top".into(), "Bottom".into(), "A".into(), "B".into()],
             rows: vec![(2, vec![3]), (3, vec![0])],
@@ -939,6 +943,7 @@ mod elc_binary_tests {
 
     #[test]
     fn compact_elc_output_rejects_bad_ids_and_truncation() {
+        let _test_env = crate::test_env::read();
         let subsumptions = BTreeMap::from([("A".to_string(), vec!["A".to_string()])]);
         let mut bytes = Vec::new();
         write_elc_output_binary(&mut bytes, &subsumptions, false, 0).unwrap();
@@ -990,6 +995,7 @@ mod fast_clause_json_tests {
     #[test]
     #[ignore]
     fn fast_jinput_writer_bench() {
+        let _test_env = crate::test_env::read();
         let path = std::env::var("KM_JSON_BENCH").expect("KM_JSON_BENCH");
         let input: JInput = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
         for _ in 0..3 {
@@ -1015,6 +1021,7 @@ mod fast_clause_json_tests {
 
     #[test]
     fn fast_jinput_writer_is_byte_identical_to_serde() {
+        let _test_env = crate::test_env::read();
         let mut input = JInput {
             clauses: clauses(),
             cb_typed_source: None,

@@ -477,6 +477,7 @@ mod tests {
 
     #[test]
     fn pn1_constructed_node_uses_current_process_localization_tag() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         ctx.used_process_tagger_mut()
             .set_current_localization_tag(17);

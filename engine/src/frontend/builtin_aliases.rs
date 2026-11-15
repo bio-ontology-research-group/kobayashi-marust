@@ -314,6 +314,7 @@ mod tests {
     use super::*;
     #[test]
     fn all_six_resolved_aliases_and_idempotence() {
+        let _test_env = crate::test_env::read();
         for &(full, _canonical, replacement) in &BUILTINS {
             let local = full.strip_prefix(OWL).unwrap();
             let source = format!("Prefix(o:=<{OWL}>) Ontology(Declaration(Class(o:{local})))");
@@ -324,6 +325,7 @@ mod tests {
     }
     #[test]
     fn canonical_and_unrelated_inputs_borrow_original() {
+        let _test_env = crate::test_env::read();
         for source in ["Ontology(SubClassOf(owl:Thing owl:Nothing))", "Ontology(SubClassOf(<http://www.w3.org/2002/07/owl#Thing> <http://www.w3.org/2002/07/owl#Nothing>))", "Prefix(o:=<urn:unrelated#>) Ontology(SubClassOf(o:Thing o:Nothing))"] {
             let result=canonicalize(source).unwrap();assert!(matches!(result,Cow::Borrowed(_)));assert_eq!(result.as_ptr(),source.as_ptr());
         }
@@ -334,6 +336,7 @@ mod tests {
     }
     #[test]
     fn preserves_comments_literal_escapes_annotation_bytes_and_headers() {
+        let _test_env = crate::test_env::read();
         let source = r###"Prefix(o:=<http://www.w3.org/2002/07/owl#>)
 Ontology(o:Nothing o:Thing
 # o:Nothing comment
@@ -348,12 +351,14 @@ DataPropertyAssertion(<urn:d> <urn:i> "escaped \"o:Nothing\"")
     }
     #[test]
     fn partial_namespace_default_prefix_and_exact_token_matching() {
+        let _test_env = crate::test_env::read();
         let source="Prefix(:=<http://www.w3.org/2002/07/owl#Noth>) Prefix(x:=<http://www.w3.org/2002/07/owl#Th>) Ontology(SubClassOf(:ing x:ing) SubClassOf(:ingElse <urn:Nothing>))";
         assert_eq!(canonicalize(source).unwrap(),source.replace("(:ing x:ing)","(<http://www.w3.org/2002/07/owl#Nothing> <http://www.w3.org/2002/07/owl#Thing>)")
             .replace("(:ingElse", "(owl:NothingElse"));
     }
     #[test]
     fn literal_unicode_prefix_is_resolved_without_decoding_escape_like_names() {
+        let _test_env = crate::test_env::read();
         let source="Prefix(Ω:=<http://www.w3.org/2002/07/owl#>) Ontology(SubClassOf(<urn:A> Ω:Nothing))";
         assert_eq!(canonicalize(source).unwrap(), source.replace("Ω:Nothing", "<http://www.w3.org/2002/07/owl#Nothing>"));
         // Such escaped local tokens are not accepted by the source grammar;
@@ -368,6 +373,7 @@ DataPropertyAssertion(<urn:d> <urn:i> "escaped \"o:Nothing\"")
 
     #[test]
     fn anonymous_ids_are_never_prefix_expanded() {
+        let _test_env = crate::test_env::read();
         let source="Prefix(_:=<http://www.w3.org/2002/07/owl#>) Ontology(ClassAssertion(<urn:A> _:Nothing) SameIndividual(_:Thing _:Nothing))";
         assert!(matches!(canonicalize(source).unwrap(), Cow::Borrowed(_)));
         let mixed="Prefix(_:=<http://www.w3.org/2002/07/owl#>) Prefix(o:=<http://www.w3.org/2002/07/owl#>) Ontology(ClassAssertion(o:Thing _:Nothing))";
@@ -375,6 +381,7 @@ DataPropertyAssertion(<urn:d> <urn:i> "escaped \"o:Nothing\"")
     }
     #[test]
     fn annotation_only_alias_borrows_and_invalid_binding_refuses() {
+        let _test_env = crate::test_env::read();
         let source=r###"Prefix(o:=<http://www.w3.org/2002/07/owl#>) Ontology(AnnotationAssertion(o:Nothing o:Thing "o:Nothing"))"###;
         assert!(matches!(canonicalize(&source).unwrap(),Cow::Borrowed(_)));
         assert!(canonicalize("Prefix(owl:=<urn:evil#>) Ontology()").is_err());
@@ -383,6 +390,7 @@ DataPropertyAssertion(<urn:d> <urn:i> "escaped \"o:Nothing\"")
 
     #[test]
     fn mixed_entity_spellings_are_unified() {
+        let _test_env = crate::test_env::read();
         let source = "Prefix(:=<urn:t#>)\nOntology(<urn:t>\nSubObjectPropertyOf(:r :s)\nSubClassOf(:A ObjectSomeValuesFrom(<urn:t#r> :B))\nAnnotationAssertion(:p :A \"x:y\")\n)";
         let out = canonicalize(source).unwrap();
         assert!(out.contains("SubObjectPropertyOf(<urn:t#r> :s)"), "{out}");

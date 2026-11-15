@@ -465,6 +465,7 @@ mod walker_tests {
     /// back to begin after each hop, so the chase is unbounded).
     #[test]
     fn transitive_walk_2hop() {
+        let _test_env = crate::test_env::read();
         let rb = RoleBox {
             transitive: [1].into_iter().collect(),
             ..Default::default()
@@ -481,6 +482,7 @@ mod walker_tests {
     /// Chain ∀R.C (R1∘R2⊑R): forces C only after BOTH hops in order.
     #[test]
     fn chain_walk_order() {
+        let _test_env = crate::test_env::read();
         let rb = RoleBox {
             chains: vec![(1, 2, 3)],
             ..Default::default()
@@ -497,6 +499,7 @@ mod walker_tests {
     /// forces C; a grandchild along R∘R (transitive) also forces C.
     #[test]
     fn all_walker_transitive_threading() {
+        let _test_env = crate::test_env::read();
         let rb = RoleBox {
             transitive: [1].into_iter().collect(),
             ..Default::default()
@@ -513,6 +516,7 @@ mod walker_tests {
     /// AllWalker on a chain: root.child(R1) does NOT force C; its child(R2) does.
     #[test]
     fn all_walker_chain_threading() {
+        let _test_env = crate::test_env::read();
         let rb = RoleBox {
             chains: vec![(1, 2, 3)],
             ..Default::default()
@@ -530,6 +534,7 @@ mod walker_tests {
     /// a path [dev, part] forces C (chain), and [dev, dev] forces C (self-loop).
     #[test]
     fn all_walker_14817_pattern() {
+        let _test_env = crate::test_env::read();
         let rb = RoleBox {
             transitive: [1].into_iter().collect(), // dev transitive
             chains: vec![(1, 2, 1)],               // dev∘part ⊑ dev
@@ -562,6 +567,7 @@ mod tests {
     /// end --ε--> begin (the mechanism that makes ∀R.C chase all successors).
     #[test]
     fn transitive_self_loop() {
+        let _test_env = crate::test_env::read();
         let mut b = AutomatonBuilder::new(rb_transitive(1));
         let a = b.build(1).clone();
         assert!(a
@@ -578,6 +584,7 @@ mod tests {
     /// plain ∀R.C rule.  (Sanity: is_complex false.)
     #[test]
     fn plain_role_not_complex() {
+        let _test_env = crate::test_env::read();
         let rb = RoleBox::default();
         assert!(!rb.is_complex(7));
     }
@@ -586,6 +593,7 @@ mod tests {
     /// path, so ∀R.C propagates across an R1-edge then an R2-edge.
     #[test]
     fn chain_unfolding() {
+        let _test_env = crate::test_env::read();
         let rb = RoleBox {
             chains: vec![(1, 2, 3)], // R1∘R2 ⊑ R3
             ..Default::default()
@@ -614,6 +622,7 @@ mod tests {
     /// so ∀R.C fires across S-edges (S⊑R ⟹ ∀R.C ⊑ ∀S.C).
     #[test]
     fn sub_role_transition() {
+        let _test_env = crate::test_env::read();
         let rb = RoleBox {
             sub_role: vec![(2, 1)], // S=2 ⊑ R=1
             ..Default::default()
@@ -633,6 +642,7 @@ mod tests {
     /// part_of∘develops_from⊑develops_from).
     #[test]
     fn transitive_plus_chain() {
+        let _test_env = crate::test_env::read();
         let rb = RoleBox {
             transitive: [1].into_iter().collect(),
             chains: vec![(2, 1, 1)], // part ∘ dev ⊑ dev
@@ -660,6 +670,7 @@ mod tests {
     /// The ∀-walker: seeding begin, advancing along R reaches end (plain).
     #[test]
     fn walk_plain_reaches_end() {
+        let _test_env = crate::test_env::read();
         let rb = RoleBox {
             transitive: [1].into_iter().collect(),
             ..Default::default()
@@ -675,6 +686,7 @@ mod tests {
     /// (R1 then R2) reach end; one step (R1 only) does not.
     #[test]
     fn walk_chain_two_steps() {
+        let _test_env = crate::test_env::read();
         let rb = RoleBox {
             chains: vec![(1, 2, 3)],
             ..Default::default()
@@ -693,6 +705,7 @@ mod tests {
     /// second R-step again reaches end — the transitive chase.
     #[test]
     fn walk_transitive_chase() {
+        let _test_env = crate::test_env::read();
         let rb = RoleBox {
             transitive: [1].into_iter().collect(),
             ..Default::default()
@@ -711,6 +724,7 @@ mod tests {
     /// though KM's current path routes inverse via bridge clauses).
     #[test]
     fn inverse_transition_present() {
+        let _test_env = crate::test_env::read();
         let rb = RoleBox {
             inverse: vec![(1, 2)],
             sub_role: vec![(1, 1)], // make 1 complex so an automaton is built
@@ -727,6 +741,7 @@ mod tests {
     /// Sub-role closure: super_close(r) is reflexive + transitive.
     #[test]
     fn super_close_transitive() {
+        let _test_env = crate::test_env::read();
         let rb = RoleBox {
             sub_role: vec![(1, 2), (2, 3)], // 1 ⊑ 2 ⊑ 3
             ..Default::default()
@@ -739,6 +754,7 @@ mod tests {
     /// build_all produces automata for every complex role (no duplicates).
     #[test]
     fn build_all_covers_complex() {
+        let _test_env = crate::test_env::read();
         let rb = RoleBox {
             transitive: [1].into_iter().collect(),
             chains: vec![(2, 3, 4)],

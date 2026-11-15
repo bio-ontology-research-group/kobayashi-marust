@@ -2553,6 +2553,7 @@ mod tests {
 
     #[test]
     fn trans_chain_compose_feeds_reachability() {
+        let _test_env = crate::test_env::read();
         // T transitive, R∘S⊑U, U⊑T, consumer T(x,y)∧H(y)→D(x) (so D ⊒ ∃T.H,
         // reachability P=__trans__T__H). The composition must let a node reach H
         // via the chain R∘S: emit R(x,y)∧__cmpp__S__P(y)→P(x) and the __cmpp def
@@ -2608,6 +2609,7 @@ mod tests {
 
     #[test]
     fn domain_consumer_chain_recognition() {
+        let _test_env = crate::test_env::read();
         // chain r∘s⊑t with a pure-domain consumer t(x,y)→D(x): expect a
         // recognition __chain__s__ (any s-edge) and a consumer
         // r(x,y) ∧ __chain__s__(y) → D(x).
@@ -2644,6 +2646,7 @@ mod tests {
 
     #[test]
     fn domain_consumer_transitive_chain_recognition() {
+        let _test_env = crate::test_env::read();
         // transitive r, chain r∘s⊑t, domain(t)=D: the consumer must be the
         // transitive recognition (P-concept up-propagation), not a plain edge.
         let info = ChainInfo {
@@ -2673,6 +2676,7 @@ mod tests {
 
     #[test]
     fn nominal_defining_clauses_dl7_dl8() {
+        let _test_env = crate::test_env::read();
         let mut hooks = GroundHooks::default();
         hooks
             .nominal_to_individual
@@ -2702,6 +2706,7 @@ mod tests {
 
     #[test]
     fn prunes_both_directions_when_pair_unconsumed() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ∃R.B yields only a head occurrence of R; nothing consumes R or S.
         let producer = clause(
             [Atom::Concept("A".to_string(), var_x())],
@@ -2718,6 +2723,7 @@ mod tests {
 
     #[test]
     fn keeps_only_consumed_direction() {
+        let _test_env = crate::test_env::read();
         // S(x,y) ∧ B(y) → Q(x): S is consumed, R is not.
         let consumer = clause(
             [
@@ -2734,6 +2740,7 @@ mod tests {
 
     #[test]
     fn keeps_bridge_with_onward_partner() {
+        let _test_env = crate::test_env::read();
         // Pairs (R,S) and (S,T); only T is consumed. R→S must survive because
         // S bridges onward to T; S→R is the pure round trip and goes away.
         let consumer = clause(
@@ -2761,6 +2768,7 @@ mod tests {
 
     #[test]
     fn same_orientation_subrole_clause_is_not_a_bridge() {
+        let _test_env = crate::test_env::read();
         // R(x,y) → S(x,y) is a role-hierarchy clause: never pruned, and its
         // body occurrence of R keeps nothing alive for the R→S bridge (S is
         // still unconsumed).
@@ -2773,6 +2781,7 @@ mod tests {
 
     #[test]
     fn noop_without_pairs() {
+        let _test_env = crate::test_env::read();
         let sub = clause([role("R", var_x(), var_y())], [role("S", var_y(), var_x())]);
         let mut tbox = vec![sub.clone()];
         prune_dead_inverse_bridges(&mut tbox, &[]);
@@ -2785,6 +2794,7 @@ mod tests {
 
     #[test]
     fn relevance_skips_existential_only_role() {
+        let _test_env = crate::test_env::read();
         // A ⊑ ∃R.B (head occurrence of R + concept B on the successor) and the
         // transitivity/self-bridge of R. R never sits in a body that yields a
         // concept, so it is inert.
@@ -2816,6 +2826,7 @@ mod tests {
 
     #[test]
     fn relevance_excludes_role_feeding_only_a_synthetic_definer() {
+        let _test_env = crate::test_env::read();
         // The ORE-giant pattern: `A ⊑ ∃R.C` names the existential as a synthetic
         // definer Q_0, emitting the recognizer `R(x,y) ∧ C(y) → Q_0(x)` and
         // `A(x) → Q_0(x)`. Q_0 is never consumed to derive a NAMED concept, so R
@@ -2836,6 +2847,7 @@ mod tests {
 
     #[test]
     fn relevance_includes_role_when_definer_reaches_a_named_concept() {
+        let _test_env = crate::test_env::read();
         // Same recognizer, but now Q_0 ⊑ D (named): Q_0 becomes a goal, the
         // recognizer activates, and R is needed.
         let recognizer = clause(
@@ -2854,6 +2866,7 @@ mod tests {
 
     #[test]
     fn indexed_relevance_matches_the_large_clause_shape() {
+        let _test_env = crate::test_env::read();
         let recognizer = clause(
             [
                 role("R", var_x(), var_y()),
@@ -2876,6 +2889,7 @@ mod tests {
 
     #[test]
     fn relevance_marks_role_feeding_a_constraint() {
+        let _test_env = crate::test_env::read();
         // P(x,y) → ⊥ (empty head, e.g. the 7901 empty-data-range constraint) is a
         // goal: P is needed (it matters for unsatisfiability).
         let constraint_cl = constraint([role("P", var_x(), var_y())]);
@@ -2884,6 +2898,7 @@ mod tests {
 
     #[test]
     fn relevance_marks_domain_and_propagates_through_subrole() {
+        let _test_env = crate::test_env::read();
         // S(x,y) → D(x) is a domain clause: S is relevant. R ⊑ S makes R relevant.
         let domain = clause(
             [role("S", var_x(), var_y())],
@@ -2896,6 +2911,7 @@ mod tests {
 
     #[test]
     fn relevance_propagates_back_through_inverse_bridge() {
+        let _test_env = crate::test_env::read();
         // Range on S (S(x,y) → D(y)) makes S relevant; the inverse bridge
         // R(x,y) → S(y,x) then makes R relevant — the SWEET inverse-feeds-range
         // case that must stay on the CB engine.
@@ -2909,6 +2925,7 @@ mod tests {
 
     #[test]
     fn prunes_inert_symmetric_self_bridge() {
+        let _test_env = crate::test_env::read();
         let producer = clause(
             [Atom::Concept("A".to_string(), var_x())],
             [role(
@@ -2925,6 +2942,7 @@ mod tests {
 
     #[test]
     fn keeps_relevant_symmetric_self_bridge() {
+        let _test_env = crate::test_env::read();
         let consumer = clause(
             [role("R", var_x(), var_y())],
             [Atom::Concept("D".to_string(), var_x())],
@@ -2938,6 +2956,7 @@ mod tests {
 
     #[test]
     fn prunes_inert_inverse_pair_both_directions() {
+        let _test_env = crate::test_env::read();
         let producer = clause(
             [Atom::Concept("A".to_string(), var_x())],
             [role(
@@ -3101,6 +3120,7 @@ mod chain_detection_tests {
 
     #[test]
     fn allocation_free_detection_matches_the_reference() {
+        let _test_env = crate::test_env::read();
         let tbox = shapes();
         let detected = detect_role_chains(&tbox);
         let reference = detect_role_chains_reference(&tbox);
@@ -3148,6 +3168,7 @@ mod chain_detection_tests {
 
     #[test]
     fn shared_detection_reproduces_the_independent_derivations() {
+        let _test_env = crate::test_env::read();
         let mut tbox = shapes();
         // Consumers that the transitivity/chain recognitions rewrite.
         tbox.push(clause(
@@ -3185,6 +3206,7 @@ mod endpoint_transitivity_tests {
     }
     #[test]
     fn endpoint_transitivity_accepts_only_model_extendible_consumers() {
+        let _test_env = crate::test_env::read();
         let source = fixture();
         assert!(endpoint_only_transitive_roles(&source, &[]).contains("r"));
         let edge = Atom::Role("r".into(), var_x(), var_y());
@@ -3207,6 +3229,7 @@ mod endpoint_transitivity_tests {
 
     #[test]
     fn endpoint_transitivity_closes_inclusion_cycles_and_propagates_obstructions() {
+        let _test_env = crate::test_env::read();
         let mut source = fixture();
         source.push(clause([Atom::Role("r".into(), var_x(), var_y())],
             [Atom::Role("s".into(), var_y(), var_x())]));
@@ -3235,6 +3258,7 @@ mod inverse_transitivity_probe_tests {
     }
     #[test]
     fn converse_transitivity_requires_equivalence_and_closes_aliases() {
+        let _test_env = crate::test_env::read();
         let mut axioms=vec![transitive(),bridge("R","S")];
         assert_eq!(detect_role_chains(&axioms).trans,vec!["R"]);
         axioms.extend([bridge("S","R"),bridge("S","T"),bridge("T","S")]);
@@ -3242,6 +3266,7 @@ mod inverse_transitivity_probe_tests {
     }
     #[test]
     fn guarded_and_ground_bridges_do_not_establish_converse_equivalence() {
+        let _test_env = crate::test_env::read();
         let mut guarded=bridge("S","R");
         guarded.body.push(Atom::Concept("Guard".into(),var_x()));
         let axioms=vec![transitive(),bridge("R","S"),guarded];
@@ -3282,6 +3307,7 @@ mod chain_consumer_automaton_tests {
 
     #[test]
     fn forall_consumer_of_a_chain_target_gets_forward_markers() {
+        let _test_env = crate::test_env::read();
         let tbox = forall_over_chain();
         let info = detect_role_chains(&tbox);
         let (out, unencoded) =
@@ -3305,6 +3331,7 @@ mod chain_consumer_automaton_tests {
 
     #[test]
     fn no_chain_means_no_clauses() {
+        let _test_env = crate::test_env::read();
         let tbox = vec![clause(
             [concept("Q", v("x")), role("r", v("x"), v("y"))],
             [concept("C", v("y"))],
@@ -3318,6 +3345,7 @@ mod chain_consumer_automaton_tests {
 
     #[test]
     fn covered_existential_consumer_keeps_the_existing_encoding() {
+        let _test_env = crate::test_env::read();
         // `∃r.D ⊑ E` over a one-level chain of simple roles: chain_clauses
         // already encodes it completely.
         let mut tbox = forall_over_chain();
@@ -3332,6 +3360,7 @@ mod chain_consumer_automaton_tests {
 
     #[test]
     fn consumer_of_the_converse_of_a_chain_target_gets_backward_markers() {
+        let _test_env = crate::test_env::read();
         // `r⁻` proxy `p` and `∃p.D ⊑ E`: the same-orientation encodings do
         // not see `p` as chain-derived.
         let mut tbox = forall_over_chain();

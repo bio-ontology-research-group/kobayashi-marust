@@ -4149,6 +4149,7 @@ mod layered_label_tests {
 
     #[test]
     fn saturation_layers_checkpoint_and_preserve_newest_entry_lookup() {
+        let _test_env = crate::test_env::read();
         let mut layers = SaturationConceptTagLayers::default();
         let checkpoint_layers = saturation_label_checkpoint_layers();
         for tag in 0..checkpoint_layers as Cint64 {
@@ -4195,6 +4196,7 @@ mod layered_label_tests {
 
     #[test]
     fn saturation_layers_preserve_independently_populated_components() {
+        let _test_env = crate::test_env::read();
         let mut layers = SaturationConceptTagLayers::default();
         let tag = 17;
         let mut concept_layer = SaturationConceptTagMap::default();
@@ -4219,6 +4221,7 @@ mod layered_label_tests {
 
     #[test]
     fn successor_creation_roles_store_one_inline_and_clone_by_value() {
+        let _test_env = crate::test_env::read();
         let role_a = RoleId::new(11);
         let role_b = RoleId::new(13);
         let mut original = CompactCreationRoleLinks::from(vec![NegLink {

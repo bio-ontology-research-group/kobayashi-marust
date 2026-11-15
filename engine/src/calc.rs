@@ -1163,6 +1163,7 @@ mod term_encoding_tests {
 
     #[test]
     fn unsigned_layout_preserves_sequoia_order_and_ore_15846_capacity() {
+        let _test_env = crate::test_env::read();
         assert_eq!(std::mem::size_of::<Term>(), 4);
         assert!(zvar(2) < zvar(1));
         assert!(zvar(1) < Y && Y < X);
@@ -1181,6 +1182,7 @@ mod term_encoding_tests {
 
     #[test]
     fn adaptive_composite_layout_covers_both_ore_extremes() {
+        let _test_env = crate::test_env::read();
         assert_eq!(choose_comp_ind_bits(20_932, 129_647), Some(17));
         assert_eq!(choose_comp_ind_bits(130_303, 18_055), Some(15));
         assert_eq!(choose_comp_ind_bits(1 << 20, 1 << 20), None);

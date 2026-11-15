@@ -412,6 +412,7 @@ mod tests {
     use super::*;
     #[test]
     fn exact_validation_cache_preserves_rejections_after_valid_input() {
+        let _test_env = crate::test_env::read();
         let valid = "Ontology(Declaration(Class(<urn:A>)))";
         let mut cache = None;
         check_source_cached(valid, &mut cache, VALIDATED_SOURCE_CACHE_LIMIT).unwrap();
@@ -434,6 +435,7 @@ mod tests {
 
     #[test]
     fn exact_validation_cache_does_not_retain_oversized_sources() {
+        let _test_env = crate::test_env::read();
         // The production bound is 1 GiB; the same rule is exercised at 1 KiB.
         let limit = 1024;
         let source = format!("Ontology(){}", " ".repeat(limit));
@@ -447,6 +449,7 @@ mod tests {
 
     #[test]
     fn public_prefix_declarations_are_unique_and_cannot_rebind_standard_names() {
+        let _test_env = crate::test_env::read();
         for source in [
             "Prefix(:=<urn:a:>) Prefix(:=<urn:b:>) Ontology()",
             "Prefix(p:=<urn:a:>) Prefix(p:=<urn:a:>) Ontology()",
@@ -463,6 +466,7 @@ mod tests {
 
     #[test]
     fn user_prefix_checks_cover_entity_and_rule_iris_without_scanning_literal_contents() {
+        let _test_env = crate::test_env::read();
         for source in [
             "Ontology(Declaration(Class(missing:A)))",
             "Ontology(Declaration(Class(:A)))",
@@ -484,6 +488,7 @@ mod tests {
 
     #[test]
     fn grammar_rejects_wrong_arity_without_numeric_model_limits() {
+        let _test_env = crate::test_env::read();
         for source in ["Ontology(SubClassOf(:A))", "Ontology(ObjectPropertyAssertion(:p :a))",
             "Ontology(SubClassOf(:A ObjectComplementOf(:B :C)))"] {
             assert!(check_source(source).is_err(), "accepted {source}");
@@ -494,6 +499,7 @@ mod tests {
     }
     #[test]
     fn document_boundaries_cannot_silently_drop_input() {
+        let _test_env = crate::test_env::read();
         for text in ["", "garbage", "Ontology() garbage", "Ontology() Ontology()",
             "Ontology(", "Ontology(bare)", "Ontology(Ontology())", "Prefix Ontology()",
             "Ontology(Declaration(Class(:A)) <urn:late>)"] {
@@ -507,6 +513,7 @@ mod tests {
     }
     #[test]
     fn source_validation_preserves_dl_safe_rules_and_top_data_ranges() {
+        let _test_env = crate::test_env::read();
         let source = r#"Prefix(:=<urn:conformance:>)
 Ontology(
  Declaration(Class(:Patient))
@@ -524,6 +531,7 @@ Ontology(
     }
     #[test]
     fn rejects_top_typed_literals_in_assertions_and_rules() {
+        let _test_env = crate::test_env::read();
         for datatype in ["rdfs:Literal", "<http://www.w3.org/2000/01/rdf-schema#Literal>", "top:Literal"] {
             for separator in ["^^", "^^ ", " ^^ "] {
                 for axiom in [format!("DataPropertyAssertion(:p :a \"Diabetes\"{separator}{datatype})"),
@@ -538,6 +546,7 @@ Ontology(
     }
     #[test]
     fn allows_ranges_strings_rules_and_nonstandard_prefix_binding() {
+        let _test_env = crate::test_env::read();
         for text in [
             "Ontology(DataPropertyRange(:p rdfs:Literal) DataPropertyAssertion(:p :a \"Diabetes\"^^xsd:string))",
             "Ontology(DLSafeRule(Body(DataPropertyAtom(:p Variable(:x) \"Diabetes\"^^xsd:string)) Head(ClassAtom(:A Variable(:x)))))",
@@ -547,6 +556,7 @@ Ontology(
     }
     #[test]
     fn custom_and_real_datatypes_cannot_supply_literal_lexical_forms() {
+        let _test_env = crate::test_env::read();
         for datatype in ["owl:real", "custom:Literal", "xsd:date"] {
             assert!(check_literal_datatypes(&format!("Ontology(DataPropertyAssertion(:p :a \"1\"^^{datatype}))")).unwrap_err().contains("no lexical interpretation"));
         }
@@ -556,6 +566,7 @@ Ontology(
     }
     #[test]
     fn untyped_language_tagged_and_plain_literals_are_validated() {
+        let _test_env = crate::test_env::read();
         for literal in ["\"hello\"@en-GB", "\"hello@en-GB\"^^rdf:PlainLiteral", "\"hello@\"^^rdf:PlainLiteral", "\"hello\"@i-klingon"] {
             assert!(check_literal_datatypes(&format!("Ontology(Annotation(rdfs:label {literal}))")).is_ok(), "{literal}");
         }
@@ -565,6 +576,7 @@ Ontology(
     }
     #[test]
     fn rejects_13129_literal_pattern_without_rewriting() {
+        let _test_env = crate::test_env::read();
         let text = include_str!("../../../tests/conformance/invalid-top-literal.ofn");
         assert!(check_literal_datatypes(text).unwrap_err().contains("invalid OWL 2 DL input"));
     }

@@ -98,6 +98,7 @@ mod tests {
 
     #[test]
     fn automatic_hint_uses_constructor_tokens_and_excludes_rule_sources() {
+        let _test_env = crate::test_env::write();
         for construct in ["ObjectMinCardinality", "ObjectMaxCardinality", "ObjectExactCardinality"] {
             assert!(high_object_cardinality_without_rules(&format!("{construct} ( # bound\n128 :r :F)")));
             assert!(!high_object_cardinality_without_rules(&format!("{construct}(127 :r :F)")));
@@ -114,6 +115,7 @@ mod tests {
 
     #[test]
     fn symbolic_publication_retains_public_iris_and_global_clashes() {
+        let _test_env = crate::test_env::write();
         let names = HashSet::from(["Q_public".into(), "B".into()]);
         let iris = BTreeMap::from([("Q_public".into(), "urn:A".into()), ("B".into(), "urn:B".into())]);
         let output = || crate::tableau::TOutput { consistent: true,
@@ -136,6 +138,7 @@ mod facts_tests {
     /// the shared conformance traversal equals the token scan it replaces.
     #[test]
     fn cached_cardinality_fact_equals_the_token_scan() {
+        let _test_env = crate::test_env::write();
         let decl = "Declaration(Class(<urn:A>)) Declaration(Class(<urn:B>)) \
             Declaration(ObjectProperty(<urn:r>)) Declaration(ObjectProperty(<urn:s>))";
         let mut docs = [

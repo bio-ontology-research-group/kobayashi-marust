@@ -1018,6 +1018,7 @@ mod tests {
 
     #[test]
     fn infers_sorts_from_the_clause_set() {
+        let _test_env = crate::test_env::read();
         let tbox = fixture();
         let sorts = infer_by_name(&tbox, &BTreeSet::from(["u".to_string()]));
         assert_eq!(sorts.concept("B"), Sort::Object);
@@ -1038,6 +1039,7 @@ mod tests {
     /// as a merge candidate (differential seeds 1, 78, 148).
     #[test]
     fn complement_range_concepts_are_data_and_their_excluded_middle_is_guarded() {
+        let _test_env = crate::test_env::read();
         const NOT_INT: &str = "__dt__c__DataComplementOf(xsd:integer)";
         const INT: &str = "__dt__integer";
         let mut tbox = vec![
@@ -1059,6 +1061,7 @@ mod tests {
 
     #[test]
     fn relativizes_class_level_facts_only_and_adds_sort_clauses() {
+        let _test_env = crate::test_env::read();
         let mut tbox = fixture();
         let before = tbox.len();
         let count = encode(&mut tbox, &BTreeSet::from(["u".to_string()]));
@@ -1086,6 +1089,7 @@ mod tests {
 
     #[test]
     fn a_concept_used_in_both_sorts_keeps_its_fact_and_gets_no_sort_clause() {
+        let _test_env = crate::test_env::read();
         // Q_t is the ⊤ definer, the filler of both `≥1 u` and `≥1 r`.
         let mut tbox = vec![
             fact([c("Q_t", x())]),
@@ -1109,6 +1113,7 @@ mod tests {
     /// `Q_97 ⊑ ¬D`, making `URLLink ⊑ ≥1 linkURI` unsatisfiable.
     #[test]
     fn a_top_definer_implication_with_an_object_head_is_relativized() {
+        let _test_env = crate::test_env::read();
         let mut tbox = vec![
             fact([c("Q_t", x())]),
             clause([c("Document", x())], [c("Q_t", x())]),
@@ -1137,6 +1142,7 @@ mod tests {
     /// the closure leaves `Q_1` alone (its fact holds on both sorts).
     #[test]
     fn a_data_sorted_top_definer_implication_is_relativized_and_the_range_definer_keeps_its_sort() {
+        let _test_env = crate::test_env::read();
         let mut tbox = vec![
             fact([c("Q_1", x())]),
             clause([c("Q_0", x())], [r("d", x(), fx("f"))]),
@@ -1166,6 +1172,7 @@ mod tests {
     /// body), which is its two-sorted reading (`¬R` is `Δ_D \ R`).
     #[test]
     fn admissibility_closure_removes_clauses_instead_of_guessing() {
+        let _test_env = crate::test_env::read();
         let comp = "__dt__c__DataComplementOf(xsd:string)";
         let mut tbox = vec![
             fact([c("Q_t", x())]),
@@ -1197,6 +1204,7 @@ mod tests {
     /// represents), and through the fresh marker `O` otherwise.
     #[test]
     fn unpinned_individuals_are_pinned_by_proxy_or_marker() {
+        let _test_env = crate::test_env::read();
         let a = || Term::Ind("a".into());
         let b = || Term::Ind("b".into());
         let mut tbox = vec![
@@ -1216,6 +1224,7 @@ mod tests {
 
     #[test]
     fn gate_needs_a_data_value_range_or_data_property() {
+        let _test_env = crate::test_env::read();
         let none = BTreeSet::new();
         assert!(has_data_values(&fixture()));
         assert!(applies(&fixture(), &none));
@@ -1237,6 +1246,7 @@ mod tests {
     /// objects, and the `u` range puts both successors in `D`.
     #[test]
     fn top_nominal_with_unvalued_data_cardinality_is_relativized() {
+        let _test_env = crate::test_env::read();
         let a = || Term::Ind("a".into());
         let f0 = || fx("f_Q_1_0");
         let f1 = || fx("f_Q_1_1");
@@ -1272,6 +1282,7 @@ mod tests {
     /// set, in the same order, and the same count.
     #[test]
     fn indexed_encoding_matches_the_reference() {
+        let _test_env = crate::test_env::read();
         let concepts = ["A", "B", "C", "Q_0", "Q_1", "Q_2", "Q_3", "__dt__integer", "__dt__boolean",
             VAL, "__dt__val__\"true\"^^xsd:boolean", "__nom__o", "__nom__p", "Thing", "__top__"];
         let roles = ["u", "w", "r", "s", "__inv__r", "__chain__0"];
@@ -1316,6 +1327,7 @@ mod tests {
 
     #[test]
     fn indexed_encoding_matches_the_reference_on_the_fixtures() {
+        let _test_env = crate::test_env::read();
         let u = BTreeSet::from(["u".to_string()]);
         for tbox in [fixture()] {
             let mut expected = tbox.clone();

@@ -295,6 +295,7 @@ mod tests {
 
     #[test]
     fn db2_context_threaded_hash_wrappers_allocate_and_reuse() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut data_box = ProcessingDataBox::new();
 
@@ -359,6 +360,7 @@ mod tests {
 
     #[test]
     fn nominal_caching_loss_reactivation_hash_localizes_and_creates_data_from_previous() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut data_box = ProcessingDataBox::new();
 
@@ -401,6 +403,7 @@ mod tests {
 
     #[test]
     fn db2_individual_processing_queue_localizes_once_and_clear_resets() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut data_box = ProcessingDataBox::new();
 
@@ -419,6 +422,7 @@ mod tests {
 
     #[test]
     fn db2_individual_processing_queue_localization_copies_previous_queue_payload() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut data_box = ProcessingDataBox::new();
         let prev_queue = ctx.alloc_individual_processing_queue_from_prev(Id::NONE);
@@ -460,6 +464,7 @@ mod tests {
 
     #[test]
     fn db2_id_getters_return_current_value_and_increment_only_when_requested() {
+        let _test_env = crate::test_env::read();
         let mut data_box = ProcessingDataBox::new();
 
         data_box.set_first_possible_individual_node_id(41);
@@ -494,6 +499,7 @@ mod tests {
 
     #[test]
     fn db2_resolved_saturation_successor_extension_id_initializes_from_vector_abox_and_triples() {
+        let _test_env = crate::test_env::read();
         let mut data_box = ProcessingDataBox::new();
         data_box.next_sat_res_succ_ext_individual_node_id = -1;
         data_box

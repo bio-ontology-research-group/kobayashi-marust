@@ -122,6 +122,7 @@ mod tests {
 
     #[test]
     fn functional_clash_uses_existing_value_semantics_and_original_hashes() {
+        let _test_env = crate::test_env::read();
         let statements = ["FunctionalDataProperty(:p)", "DataPropertyAssertion(:p :a \"one\")",
             "DataPropertyAssertion(:p :a \"two\")"];
         let hashes = proposal(&statements.join(" ")).unwrap();
@@ -137,6 +138,7 @@ mod tests {
 
     #[test]
     fn range_clash_preserves_exact_source_support() {
+        let _test_env = crate::test_env::read();
         let statements = ["DataPropertyAssertion(:p :a \"mail\"@en)", "DataPropertyRange(:p xsd:string)"];
         assert_eq!(proposal(&statements.join(" ")).unwrap(), statements.iter().map(|s| fingerprint(s.as_bytes())).collect::<Vec<_>>());
         assert!(proposal("DataPropertyRange(:p xsd:string) DataPropertyAssertion(:p :a \"mail\")").is_none());
@@ -146,6 +148,7 @@ mod tests {
 
     #[test]
     fn aliases_conservatively_miss_and_rebound_datatype_prefixes_decline() {
+        let _test_env = crate::test_env::read();
         let text = "Prefix(:=<urn:x#>) Ontology(DataPropertyRange(:p xsd:string) DataPropertyAssertion(<urn:x#p> :a \"x\"@en))";
         assert!(propose(text, &scan(text).unwrap()).is_none());
         let text = "Prefix(xsd:=<urn:custom#>) Ontology(DataPropertyRange(<urn:p> xsd:string) DataPropertyAssertion(<urn:p> <urn:a> \"x\"@en))";
@@ -156,6 +159,7 @@ mod tests {
 
     #[test]
     fn unsupported_unicode_and_oversized_nested_nodes_decline_before_parsing() {
+        let _test_env = crate::test_env::read();
         assert!(proposal("FunctionalDataProperty(:p) DataPropertyAssertion(:p :a \"Ġ\") DataPropertyAssertion(:p :a \"other\")").is_none());
         let range = format!("DataPropertyRange(:p {}xsd:string{})", "DataComplementOf(".repeat(MAX_LISTS + 1), ")".repeat(MAX_LISTS + 1));
         assert!(proposal(&format!("{range} DataPropertyAssertion(:p :a \"x\"@en)")).is_none());
@@ -164,6 +168,7 @@ mod tests {
 
     #[test]
     fn unsupported_annotated_and_compound_forms_do_not_contribute_support() {
+        let _test_env = crate::test_env::read();
         assert!(proposal("FunctionalDataProperty(Annotation(<urn:note> \"n\") :p) DataPropertyAssertion(:p :a \"x\") DataPropertyAssertion(:p :a \"y\")").is_none());
         assert!(proposal("DataPropertyRange(:p DataOneOf(\"x\")) DataPropertyAssertion(:p :a \"y\")").is_none());
     }

@@ -95,6 +95,7 @@ mod tests {
     }
     #[test]
     fn xml_regex_syntax_preserves_large_quantities_and_xml_specific_constructs() {
+        let _test_env = crate::test_env::read();
         for pattern in ["", "a{0}", "a{0002,003}", "a{2,}", "[a-z-[aeiou]]+",
             "\\i\\c*", "\\p{Lu}+", "\\p{IsBasicLatin}", "a|", "^literal$",
             "a{999999999999999999999999999999999999}",
@@ -105,6 +106,7 @@ mod tests {
     }
     #[test]
     fn xml_regex_syntax_rejects_invalid_counts_classes_and_xpath_extensions() {
+        let _test_env = crate::test_env::read();
         for pattern in ["[", "(", "(?=a)", "a*?", "a{3,2}",
             "a{999999999999999999999999999999999999,999999999999999999999999999999999998}",
             "a{,2}", "a{1,2,3}", "a{1", "{1}a", "a*{1}", "[z-a]", "\\1", "\\p{NotACategory}"] {
@@ -114,6 +116,7 @@ mod tests {
     }
     #[test]
     fn decimal_bound_comparison_matches_machine_oracle_in_its_range() {
+        let _test_env = crate::test_env::read();
         for lower in 0..100 {
             for upper in 0..100 {
                 assert_eq!(super::quantity_order(&format!("{lower:04}"), &upper.to_string()), lower <= upper);

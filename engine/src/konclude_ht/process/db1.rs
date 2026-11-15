@@ -571,6 +571,7 @@ mod tests {
 
     #[test]
     fn db1_parent_init_references_parent_individual_process_vector() {
+        let _test_env = crate::test_env::read();
         let mut parent = ProcessingDataBox::new();
         let pos_node = NodeId::new(11);
         let neg_node = NodeId::new(12);
@@ -603,6 +604,7 @@ mod tests {
 
     #[test]
     fn db1_parent_init_references_parent_individual_saturation_vector() {
+        let _test_env = crate::test_env::read();
         let mut parent = ProcessingDataBox::new();
         let parent_node = SatNodeId::new(17);
         parent
@@ -643,6 +645,7 @@ mod tests {
 
     #[test]
     fn db1_parent_init_with_context_copies_real_saturation_satellites() {
+        let _test_env = crate::test_env::read();
         let mut context = ProcessContext::new();
         let mut parent = ProcessingDataBox::new();
 
@@ -750,6 +753,7 @@ mod tests {
 
     #[test]
     fn db1_parent_init_with_context_leaves_absent_parent_satellites_absent() {
+        let _test_env = crate::test_env::read();
         let mut context = ProcessContext::new();
         let parent = ProcessingDataBox::new();
         let mut child = ProcessingDataBox::new();
@@ -778,6 +782,7 @@ mod tests {
 
     #[test]
     fn db1_constructor_initializes_individual_process_vector() {
+        let _test_env = crate::test_env::read();
         let data_box = ProcessingDataBox::with_process_context(42);
 
         assert_eq!(data_box.process_context, 42);
@@ -789,6 +794,7 @@ mod tests {
 
     #[test]
     fn db1_resolved_ontology_init_assigns_available_getter_results() {
+        let _test_env = crate::test_env::read();
         let mut data_box = ProcessingDataBox::new();
         let top_concept = ConceptId::new(17);
         let top_data_range_concept = ConceptId::new(23);
@@ -813,6 +819,7 @@ mod tests {
 
     #[test]
     fn db1_parent_init_without_parent_resets_individual_process_vector() {
+        let _test_env = crate::test_env::read();
         let mut data_box = ProcessingDataBox::new();
         data_box
             .individual_process_node_vector_mut()

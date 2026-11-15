@@ -454,6 +454,7 @@ mod tests {
 
     #[test]
     fn dependency_factory_creates_merged_link_and_same_individual_nodes() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let merge_tp = tagged_track_point(&mut ctx, 3);
         let other_tp = tagged_track_point(&mut ctx, 7);
@@ -494,6 +495,7 @@ mod tests {
 
     #[test]
     fn dependency_factory_creates_merged_individual_and_merge_nodes() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let merge_tp = tagged_track_point(&mut ctx, 5);
         let individual_tp = tagged_track_point(&mut ctx, 11);

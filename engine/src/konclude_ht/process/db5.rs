@@ -666,6 +666,7 @@ mod tests {
 
     #[test]
     fn db5_process_linker_chain_uses_linker_ids_in_head_order() {
+        let _test_env = crate::test_env::read();
         let mut data_box = ProcessingDataBox::default();
         let first = IndividualSaturationProcessNodeLinkerId::new(11);
         let second = IndividualSaturationProcessNodeLinkerId::new(12);
@@ -689,6 +690,7 @@ mod tests {
 
     #[test]
     fn db5_disjunct_extract_linker_chain_uses_linker_ids_in_head_order() {
+        let _test_env = crate::test_env::read();
         let mut data_box = ProcessingDataBox::default();
         let first = IndividualSaturationProcessNodeLinkerId::new(21);
         let second = IndividualSaturationProcessNodeLinkerId::new(22);
@@ -712,6 +714,7 @@ mod tests {
 
     #[test]
     fn db5_concept_saturation_process_free_list_is_lifo() {
+        let _test_env = crate::test_env::read();
         let mut data_box = ProcessingDataBox::default();
         let first = Id::<ConceptSaturationProcess>::new(41);
         let second = Id::<ConceptSaturationProcess>::new(42);
@@ -734,6 +737,7 @@ mod tests {
 
     #[test]
     fn db5_nominal_delayed_linker_chain_uses_linker_ids_in_head_order() {
+        let _test_env = crate::test_env::read();
         let mut data_box = ProcessingDataBox::default();
         let first = IndividualSaturationProcessNodeLinkerId::new(31);
         let second = IndividualSaturationProcessNodeLinkerId::new(32);
@@ -757,6 +761,7 @@ mod tests {
 
     #[test]
     fn db5_saturation_atmost_merging_process_linker_uses_intrusive_next_chain() {
+        let _test_env = crate::test_env::read();
         let mut ctx = ProcessContext::new();
         let mut data_box = ProcessingDataBox::default();
         let node_a = SatNodeId::new(101);
@@ -806,6 +811,7 @@ mod tests {
 
     #[test]
     fn db5_completion_linker_chain_uses_linker_ids_in_head_order() {
+        let _test_env = crate::test_env::read();
         let mut data_box = ProcessingDataBox::default();
         let first = IndividualSaturationProcessNodeLinkerId::new(1);
         let second = IndividualSaturationProcessNodeLinkerId::new(2);
@@ -833,6 +839,7 @@ mod tests {
 
     #[test]
     fn db5_completed_linker_chain_uses_linker_ids_in_head_order() {
+        let _test_env = crate::test_env::read();
         let mut data_box = ProcessingDataBox::default();
         let first = IndividualSaturationProcessNodeLinkerId::new(3);
         let second = IndividualSaturationProcessNodeLinkerId::new(4);

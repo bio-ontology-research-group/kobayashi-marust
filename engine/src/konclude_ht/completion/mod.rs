@@ -286,6 +286,7 @@ mod cached_gate_test {
     /// path at every gate the rule bodies now consult.
     #[test]
     fn cached_gates_are_off_without_the_environment() {
+        let _test_env = crate::test_env::read();
         assert!(!super::bridge_progress_enabled());
         assert!(!super::bridge_search_log_enabled());
         assert!(!super::bridge_dump_clash_enabled());

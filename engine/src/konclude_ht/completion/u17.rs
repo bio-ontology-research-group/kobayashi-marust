@@ -1680,6 +1680,7 @@ mod tests {
 
     #[test]
     fn representative_joining_key_data_builds_cached_key_map() {
+        let _test_env = crate::test_env::read();
         let mut algo = CompletionTaskHandleAlgorithm::new();
         let mut calc_ctx = CalculationAlgorithmContextBase::new();
         let join_concept = {
@@ -1765,6 +1766,7 @@ mod tests {
 
     #[test]
     fn visit_relevant_backend_sync_individuals_uses_merging_hash_dependency_track_point() {
+        let _test_env = crate::test_env::read();
         let mut algo = CompletionTaskHandleAlgorithm::new();
         let mut calc_ctx = CalculationAlgorithmContextBase::new();
 

@@ -184,6 +184,7 @@ mod tests {
     }
     #[test]
     fn integer_validation_preserves_arbitrary_precision_and_derived_bounds() {
+        let _test_env = crate::test_env::read();
         assert!(valid(&"9".repeat(200), "integer"));
         for (kind, good, bad) in [("byte", "-128", "128"), ("int", "2147483647", "2147483648"),
             ("unsignedLong", "18446744073709551615", "18446744073709551616"),
@@ -195,6 +196,7 @@ mod tests {
     }
     #[test]
     fn boolean_decimal_float_and_hex_lexical_spaces_are_checked() {
+        let _test_env = crate::test_env::read();
         assert!(valid(" true ", "boolean")); assert!(!valid("TRUE", "boolean"));
         assert!(valid("+.5", "decimal")); assert!(!valid("1e2", "decimal"));
         assert!(valid("1e999999999999999999999", "float"));
@@ -204,6 +206,7 @@ mod tests {
     }
     #[test]
     fn binary_padding_and_datetime_lexical_bounds() {
+        let _test_env = crate::test_env::read();
         for good in ["", "TQ==", "TWE=", "T W F u", " TQ==\n"] { assert!(valid(good,"base64Binary")); }
         for bad in ["TQ=", "TR==", "TWF=", "====", "AA=A", "TQ==\u{a0}"] { assert!(!valid(bad,"base64Binary")); }
         for good in ["2000-02-29T24:00:00Z", "0000-01-01T00:00:00+14:00", "123456789123456789123456789-01-01T00:00:00Z"] { assert!(valid(good,"dateTimeStamp"),"{good}"); }
@@ -212,6 +215,7 @@ mod tests {
     }
     #[test]
     fn derived_strings_and_arbitrary_rationals() {
+        let _test_env = crate::test_env::read();
         for (text,kind) in [("en-GB","language"),("a:b","Name"),("éclair","NCName"),("9a:b","NMTOKEN")] { assert!(valid(text,kind)); }
         for (text,kind) in [("en--GB","language"),("9name","Name"),("a:b","NCName"),("a b","NMTOKEN")] { assert!(!valid(text,kind)); }
         let rational = |s: &str| check(&format!("\"{s}\""),"http://www.w3.org/2002/07/owl#rational").is_ok();

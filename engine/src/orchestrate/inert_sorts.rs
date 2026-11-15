@@ -1017,6 +1017,7 @@ mod tests {
 
     #[test]
     fn range_definer_read_only_through_its_data_property_is_released() {
+        let _test_env = crate::test_env::write();
         let mut i = input(range_clauses());
         let report = release_inert_object_sorts(&mut i, |_| false);
         assert_eq!(report, Released { concepts: vec!["Q_1".into()], facts: 1, sort_clauses: 1 });
@@ -1030,6 +1031,7 @@ mod tests {
 
     #[test]
     fn ground_fact_on_a_pinned_individual_needs_no_guard() {
+        let _test_env = crate::test_env::write();
         // The normaliser also writes the range definer as ground facts on
         // the individuals it applies to (ore_ont_7278: `→ Q_14(goodsSales)`).
         let mut clauses = range_clauses();
@@ -1047,6 +1049,7 @@ mod tests {
 
     #[test]
     fn unguarded_body_occurrence_keeps_the_sort() {
+        let _test_env = crate::test_env::write();
         // `Q_1(x) → A(x)` would force the source class `A` on every data
         // element once `Q_1` held there.
         let mut clauses = range_clauses();
@@ -1059,6 +1062,7 @@ mod tests {
 
     #[test]
     fn unguarded_head_occurrence_keeps_the_sort() {
+        let _test_env = crate::test_env::write();
         // `B(x) → Q_1(x)` with a polymorphic `B`: under the sort clause it
         // keeps `B` off data elements, which nothing else does.
         let mut clauses = range_clauses();
@@ -1070,6 +1074,7 @@ mod tests {
 
     #[test]
     fn candidates_do_not_guard_each_other() {
+        let _test_env = crate::test_env::write();
         // `Q_2(x) ∧ Q_1(x) → A(x)`: each would be the other's only guard,
         // and a released concept is no guard, so neither is released.
         let mut clauses = range_clauses();
@@ -1083,6 +1088,7 @@ mod tests {
 
     #[test]
     fn source_and_reserved_names_keep_their_sort() {
+        let _test_env = crate::test_env::write();
         let mut i = input(range_clauses());
         assert_eq!(release_inert_object_sorts(&mut i, |name| name == "Q_1"), Released::default());
         let mut i = input(range_clauses());
@@ -1302,6 +1308,7 @@ mod tests {
 
     #[test]
     fn release_preserves_satisfiability_and_its_conditions_are_needed() {
+        let _test_env = crate::test_env::write();
         let mut rng = Lcg(20261030);
         let (mut released, mut released_satisfiable, mut differs_unchecked) = (0, 0, 0);
         for _ in 0..3000 {
@@ -1333,6 +1340,7 @@ mod tests {
 
     #[test]
     fn unchecked_release_turns_a_consistent_input_inconsistent() {
+        let _test_env = crate::test_env::write();
         // `Q_1(x) → A(x)` reads the definer on the data value `v`: released
         // without (B), `Q_0(v) → Q_1(v) → A(v)` clashes with `A ⊓ D ⊑ ⊥`.
         let mut clauses = range_clauses();
@@ -1374,6 +1382,7 @@ mod tests {
 
     #[test]
     fn lean_checker_accepts_the_release_and_rejects_unchecked_ones() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = lean_checker() else { return };
         let mut rng = Lcg(20261030);
         let (mut accepted, mut rejected) = (0, 0);
@@ -1404,6 +1413,7 @@ mod tests {
 
     #[test]
     fn lean_checker_rejects_a_tampered_or_reserved_release() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = lean_checker() else { return };
         let clauses = range_clauses();
         let mut i = input(clauses.clone());
@@ -1425,6 +1435,7 @@ mod tests {
 
     #[test]
     fn input_without_relativized_facts_is_unchanged() {
+        let _test_env = crate::test_env::write();
         let clauses = vec![
             cl(vec![], vec![c("Q_0", var("x"))]),
             cl(vec![c("Q_0", var("x"))], vec![c("Q_1", var("x"))]),
@@ -1464,6 +1475,7 @@ mod tests {
 
     #[test]
     fn cb_release_frees_a_maximum_marker_kept_by_its_record_in_the_rule_checker() {
+        let _test_env = crate::test_env::write();
         let clauses = complementary_marker_clauses();
         // The rule checker reads the records: `Q_3` stays reserved.
         let mut i = with_cardinality_records(input(clauses.clone()));
@@ -1484,6 +1496,7 @@ mod tests {
 
     #[test]
     fn cb_release_keeps_exactly_one_of_two_mutual_guards() {
+        let _test_env = crate::test_env::write();
         // The clauses of `candidates_do_not_guard_each_other`: the rule
         // checker's pass keeps both sorts; the CB variant keeps the greatest
         // (`Q_2`), which then guards `Q_1`.
@@ -1537,6 +1550,7 @@ mod tests {
 
     #[test]
     fn cb_release_keeps_a_disjunctive_data_guard_sorted_on_equated_generated_values() {
+        let _test_env = crate::test_env::write();
         // Without an equation between generated values `Q_4` is released.
         let mut i = input(excluded_middle_with_a_value());
         assert_eq!(release_inert_object_sorts_for_cb(&mut i, |_| false).concepts, vec!["Q_4".to_string()]);
@@ -1569,6 +1583,7 @@ mod tests {
 
     #[test]
     fn cb_release_keeps_other_releases_on_equated_generated_values() {
+        let _test_env = crate::test_env::write();
         // A range definer's unit fact `→ Q_1(x) ∨ D(x)` and a disjunctive
         // fact on a definer that reads no data role (`→ A(x) ∨ Q_2(x) ∨ D(x)`,
         // the complement of a source class, seed m2047) are released as
@@ -1591,6 +1606,7 @@ mod tests {
 
     #[test]
     fn data_guards_sorted_release_preserves_source_answers_on_random_inputs() {
+        let _test_env = crate::test_env::write();
         // The DPLL oracle has no equality, so this runs the restricted pass
         // directly instead of through an identity clause.
         let mut rng = Lcg(20261101);
@@ -1627,6 +1643,7 @@ mod tests {
 
     #[test]
     fn cb_release_reserves_the_nominal_abox_markers() {
+        let _test_env = crate::test_env::write();
         let mut i = input(range_clauses());
         i.nominal_abox = serde_json::from_value(serde_json::json!({
             "complete": true,
@@ -1655,6 +1672,7 @@ mod tests {
 
     #[test]
     fn cb_release_preserves_source_answers_on_random_inputs() {
+        let _test_env = crate::test_env::write();
         let mut rng = Lcg(20261031);
         let (mut released, mut more_than_rules, mut eliminated) = (0, 0, 0);
         for _ in 0..2000 {
@@ -1693,6 +1711,7 @@ mod tests {
 
     #[test]
     fn universal_definer_is_eliminated_from_bodies_and_heads() {
+        let _test_env = crate::test_env::write();
         // `→ Q_1(x)` (the `⊤` definer of an unqualified cardinality, or a
         // released range definer): its body atoms are true, and clauses with
         // it in the head are true.
@@ -1716,6 +1735,7 @@ mod tests {
 
     #[test]
     fn universal_definer_guarding_an_existential_is_kept() {
+        let _test_env = crate::test_env::write();
         // Dropping `Q_1(x)` from `Q_1(x) → p(x, f(x))` would leave an
         // unconditional Skolem head, a shape the frontend never emits.
         let f = JTerm::Fun { function: "f".into(), arg: Box::new(var("x")) };
@@ -1731,6 +1751,7 @@ mod tests {
 
     #[test]
     fn source_and_abox_names_are_never_eliminated() {
+        let _test_env = crate::test_env::write();
         let clauses = vec![
             cl(vec![], vec![c("Q_1", var("x"))]),
             cl(vec![c("Q_1", var("x"))], vec![c("B", var("x"))]),
@@ -1749,6 +1770,7 @@ mod tests {
 
     #[test]
     fn universal_filler_of_an_asserted_at_most_is_kept() {
+        let _test_env = crate::test_env::write();
         let at_most = |subject: &str| {
             cl(
                 vec![c("Q_1", var("y0")), c("Q_1", var("y1")), c(subject, var("x")),
@@ -1781,6 +1803,7 @@ mod tests {
 
     #[test]
     fn universal_definers_stay_beside_inverse_roles() {
+        let _test_env = crate::test_env::write();
         let clauses = vec![
             cl(vec![], vec![c("Q_1", var("x"))]),
             cl(
@@ -1798,6 +1821,7 @@ mod tests {
 
     #[test]
     fn builtin_vocabulary_is_never_eliminated() {
+        let _test_env = crate::test_env::write();
         // `owl:Thing` is internal (`cb_to_ht::is_internal`) but not a
         // frontend definer, so `reserved_concepts_for_cb` reserves it and the
         // Lean check of the nominal CB input would reject its elimination.
@@ -1845,6 +1869,7 @@ mod tests {
 
     #[test]
     fn eliminated_definers_are_unreserved_and_universal() {
+        let _test_env = crate::test_env::write();
         // The two hypotheses of `elimConditions` (Lean): every eliminated
         // definer is outside `reserved_concepts_for_cb` and has a unit fact
         // `→ Q(x)` in the clause set the elimination reads.
@@ -1877,6 +1902,7 @@ mod tests {
 
     #[test]
     fn lean_checker_accepts_the_nominal_cb_input_and_rejects_unchecked_ones() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = nominal_cb_input_checker() else { return };
         let mut rng = Lcg(20261031);
         let source = |name: &str| name == "A" || name == "B";
@@ -1919,6 +1945,7 @@ mod tests {
 
     #[test]
     fn lean_checker_rejects_a_tampered_nominal_cb_input() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = nominal_cb_input_checker() else { return };
         let clauses = vec![
             cl(vec![], vec![c("Q_1", var("x"))]),

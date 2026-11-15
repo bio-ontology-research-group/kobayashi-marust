@@ -245,6 +245,7 @@ mod tests {
 
     #[test]
     fn satisfiable_calculation_job_stores_individual_dependence_adapter() {
+        let _test_env = crate::test_env::read();
         let mut job = SatisfiableCalculationJob::new();
         assert!(job
             .get_satisfiable_task_individual_dependence_tracking_adapter()
@@ -260,6 +261,7 @@ mod tests {
 
     #[test]
     fn satisfiable_calculation_job_stores_ordered_concept_assertions() {
+        let _test_env = crate::test_env::read();
         let mut job = SatisfiableCalculationJob::new();
         assert!(job
             .get_satisfiable_calculation_job_concept_assertions()
@@ -284,6 +286,7 @@ mod tests {
 
     #[test]
     fn satisfiable_calculation_job_stores_classification_message_adapters() {
+        let _test_env = crate::test_env::read();
         use super::super::adapters::{
             SatisfiableTaskClassificationMessageAdapter,
             SatisfiableTaskClassificationRoleMarkedMessageAdapter,

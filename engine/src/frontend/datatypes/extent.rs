@@ -268,6 +268,7 @@ mod tests {
 
     #[test]
     fn empty_ranges_are_decided() {
+        let _test_env = crate::test_env::read();
         for text in [
             "DataComplementOf(rdfs:Literal)",
             "DataIntersectionOf(xsd:integer xsd:string)",
@@ -290,6 +291,7 @@ mod tests {
 
     #[test]
     fn universal_ranges_are_decided() {
+        let _test_env = crate::test_env::read();
         for text in [
             "rdfs:Literal",
             "<http://www.w3.org/2000/01/rdf-schema#Literal>",
@@ -305,6 +307,7 @@ mod tests {
 
     #[test]
     fn ordinary_and_undecided_ranges_are_left_alone() {
+        let _test_env = crate::test_env::read();
         for text in [
             "xsd:integer",
             "xsd:string",
@@ -331,6 +334,7 @@ mod tests {
 
     #[test]
     fn internal_concept_names_are_decided() {
+        let _test_env = crate::test_env::read();
         assert_eq!(data_concept_extent("__dt__Literal"), Some(DataExtent::Universal));
         assert_eq!(data_concept_extent("__dt__c__DataComplementOf(rdfs:Literal)"), Some(DataExtent::Empty));
         assert_eq!(data_concept_extent("__dt__integer"), None);

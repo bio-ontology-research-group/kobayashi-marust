@@ -282,6 +282,7 @@ mod tests {
 
     #[test]
     fn lexical_round_trips() {
+        let _test_env = crate::test_env::read();
         for text in ["2004-12-27T06:00:00", "0000-01-01T00:00:00", "-0044-03-15T12:30:00.25", "1999-12-31T23:59:59.999",
             "2000-02-29T00:00:00", "123456-07-08T09:10:11"] {
             let (zoned, p) = timeline(&v(text)).unwrap();
@@ -294,6 +295,7 @@ mod tests {
 
     #[test]
     fn fourteen_hour_rule() {
+        let _test_env = crate::test_env::read();
         // An untimezoned lower bound: timezoned values count only beyond 14 hours.
         let r = range(&[("minExclusive", "2004-12-27T06:00:00")]);
         assert_eq!(r.contains(&v("2004-12-27T07:45:00")), Some(true));
@@ -321,6 +323,7 @@ mod tests {
 
     #[test]
     fn points_between_are_strict() {
+        let _test_env = crate::test_env::read();
         let p = |secs, frac: &str| TimePoint { secs, frac: frac.to_string() };
         for (a, b) in [(p(0, ""), p(1, "")), (p(0, "5"), p(0, "51")), (p(0, "5"), p(0, "5001")), (p(0, "999"), p(1, "")),
             (p(-3, "25"), p(7, ""))] {

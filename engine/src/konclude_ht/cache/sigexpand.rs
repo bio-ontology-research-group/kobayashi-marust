@@ -2760,6 +2760,7 @@ mod tests {
 
     #[test]
     fn sig_expander_entry_appends_cache_value_linker_chain_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let second = alloc_value_linker(&mut ctx, 20, ExpanderCacheValueLinkerId::NONE);
         let first = alloc_value_linker(&mut ctx, 10, second);
@@ -2783,6 +2784,7 @@ mod tests {
 
     #[test]
     fn sig_expander_entry_prepends_branched_linker_chain_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let old_tail = alloc_branched_linker(&mut ctx, &[30], ExpanderBranchedLinkerId::NONE);
         let old_head = alloc_branched_linker(&mut ctx, &[20, 21], old_tail);
@@ -2810,6 +2812,7 @@ mod tests {
 
     #[test]
     fn sig_expander_reader_update_slot_releases_previous_pending_slot_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let previous = alloc_slot_with_readers(&mut ctx, 2);
         let replacement = alloc_slot_with_readers(&mut ctx, 1);
@@ -2829,6 +2832,7 @@ mod tests {
 
     #[test]
     fn sig_expander_reader_switches_to_updated_slot_and_releases_current_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let current = alloc_slot_with_readers(&mut ctx, 1);
         let updated = alloc_slot_with_readers(&mut ctx, 1);
@@ -2847,6 +2851,7 @@ mod tests {
 
     #[test]
     fn sig_expander_reader_finds_signature_entry_through_slot_hash_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let entry =
             ctx.alloc_sig_expander_cache_entry(SignatureSatisfiableExpanderCacheEntry::new());
@@ -2865,6 +2870,7 @@ mod tests {
 
     #[test]
     fn sig_expander_reader_signature_lookup_switches_to_updated_slot_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let old_entry =
             ctx.alloc_sig_expander_cache_entry(SignatureSatisfiableExpanderCacheEntry::new());
@@ -2890,6 +2896,7 @@ mod tests {
 
     #[test]
     fn sig_expander_reader_value_set_lookup_uses_typed_hasher_hash_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let entry =
             ctx.alloc_sig_expander_cache_entry(SignatureSatisfiableExpanderCacheEntry::new());
@@ -2905,6 +2912,7 @@ mod tests {
 
     #[test]
     fn sig_expander_cache_create_reader_prepends_reader_linker_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut cache = SignatureSatisfiableExpanderCache::new();
 
@@ -2921,6 +2929,7 @@ mod tests {
 
     #[test]
     fn sig_expander_cache_clean_unused_slots_unlinks_unread_slots_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let unused_tail = alloc_slot_with_readers(&mut ctx, 0);
         let used_tail = alloc_slot_with_readers(&mut ctx, 1);
@@ -2950,6 +2959,7 @@ mod tests {
 
     #[test]
     fn sig_expander_cache_clean_unused_slots_clears_all_unused_slots_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let tail = alloc_slot_with_readers(&mut ctx, 0);
         let head = alloc_slot_with_readers(&mut ctx, 0);
@@ -2980,6 +2990,7 @@ mod tests {
 
     #[test]
     fn sig_expander_cache_create_reader_slot_update_publishes_snapshot_to_readers_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let entry =
             ctx.alloc_sig_expander_cache_entry(SignatureSatisfiableExpanderCacheEntry::new());
@@ -3014,6 +3025,7 @@ mod tests {
 
     #[test]
     fn sig_expander_cache_create_reader_slot_update_appends_after_existing_slot_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let existing = alloc_slot_with_readers(&mut ctx, 1);
         let mut cache = SignatureSatisfiableExpanderCache::new();
@@ -3034,6 +3046,7 @@ mod tests {
 
     #[test]
     fn sig_expander_write_expander_caching_data_inserts_new_signature_redirection_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut cache = SignatureSatisfiableExpanderCache::new();
 
@@ -3059,6 +3072,7 @@ mod tests {
 
     #[test]
     fn sig_expander_write_expander_caching_data_reuses_previous_entry_and_marks_multiple() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut cache = SignatureSatisfiableExpanderCache::new();
         assert!(cache.write_expander_caching_data_sig(
@@ -3093,6 +3107,7 @@ mod tests {
 
     #[test]
     fn sig_expander_write_expander_caching_data_duplicate_marks_incompatible() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut cache = SignatureSatisfiableExpanderCache::new();
         assert!(cache.write_expander_caching_data_sig(
@@ -3116,6 +3131,7 @@ mod tests {
 
     #[test]
     fn sig_expander_write_expander_caching_data_installs_cache_value_linkers_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let cache_values = alloc_cache_value_list(&mut ctx, &[10, 20]);
         let mut cache = SignatureSatisfiableExpanderCache::new();
@@ -3159,6 +3175,7 @@ mod tests {
 
     #[test]
     fn sig_expander_write_expander_caching_data_wires_forward_dependency_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let cache_values = alloc_cache_value_list(&mut ctx, &[10, 20]);
         let dep_hash = alloc_dep_hash(&mut ctx, &[(10, 20)]);
@@ -3193,6 +3210,7 @@ mod tests {
 
     #[test]
     fn sig_expander_is_caching_data_expandable_uses_incompatible_signature_set_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut cache = SignatureSatisfiableExpanderCache::new();
         cache.incompatible_sig_set.insert(12);
@@ -3207,6 +3225,7 @@ mod tests {
 
     #[test]
     fn sig_expander_is_caching_data_expandable_uses_entry_multiple_expanded_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut entry = SignatureSatisfiableExpanderCacheEntry::new();
         entry.set_multiple_expanded(true);
@@ -3223,6 +3242,7 @@ mod tests {
 
     #[test]
     fn sig_expander_is_caching_data_expandable_drains_previous_count_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let initial_values = alloc_cache_value_list(&mut ctx, &[10, 20]);
         let mut cache = SignatureSatisfiableExpanderCache::new();
@@ -3248,6 +3268,7 @@ mod tests {
 
     #[test]
     fn sig_expander_is_caching_data_expandable_rejects_incompatible_mismatch_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let initial_values = alloc_cache_value_list(&mut ctx, &[10]);
         let mut cache = SignatureSatisfiableExpanderCache::new();
@@ -3269,6 +3290,7 @@ mod tests {
 
     #[test]
     fn sig_expander_write_satisfiable_branch_empty_marks_entry_satisfiable_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut cache = SignatureSatisfiableExpanderCache::new();
         assert!(cache.write_expander_caching_data_sig(
@@ -3296,6 +3318,7 @@ mod tests {
 
     #[test]
     fn sig_expander_write_satisfiable_branch_nonempty_appends_branch_linker_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut cache = SignatureSatisfiableExpanderCache::new();
         assert!(cache.write_expander_caching_data_sig(
@@ -3330,6 +3353,7 @@ mod tests {
 
     #[test]
     fn sig_expander_write_satisfiable_branch_missing_signature_returns_false() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut cache = SignatureSatisfiableExpanderCache::new();
 
@@ -3343,6 +3367,7 @@ mod tests {
 
     #[test]
     fn sig_expander_create_cache_writer_returns_forwarding_writer() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut cache = SignatureSatisfiableExpanderCache::new();
         let reader = cache.create_cache_reader(&mut ctx);
@@ -3372,6 +3397,7 @@ mod tests {
 
     #[test]
     fn sig_expander_writer_forwards_write_data_chain_to_cache() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut expand = SignatureSatisfiableExpanderCacheEntryWriteData::new();
         expand.init_expand_write_data(
@@ -3391,6 +3417,7 @@ mod tests {
 
     #[test]
     fn sig_expander_process_custom_events_drains_collected_write_data_chain_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut expand = SignatureSatisfiableExpanderCacheEntryWriteData::new();
         expand.init_expand_write_data(
@@ -3418,6 +3445,7 @@ mod tests {
 
     #[test]
     fn sig_expander_typed_expand_event_uses_event_payload_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let cache_values = alloc_cache_value_list(&mut ctx, &[21, 22]);
         let dep_hash = alloc_dep_hash(&mut ctx, &[(21, 210), (22, 220)]);
@@ -3439,6 +3467,7 @@ mod tests {
 
     #[test]
     fn sig_expander_typed_satisfiable_branch_event_uses_event_payload_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut cache = SignatureSatisfiableExpanderCache::new();
         assert!(cache.write_expander_caching_data_sig(
@@ -3473,6 +3502,7 @@ mod tests {
 
     #[test]
     fn sig_expander_typed_write_cached_data_event_collects_and_drains_payload() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let mut expand = SignatureSatisfiableExpanderCacheEntryWriteData::new();
         expand.init_expand_write_data(
@@ -3496,6 +3526,7 @@ mod tests {
 
     #[test]
     fn sig_expander_write_data_get_count_walks_arena_chain_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let third = alloc_write_data(&mut ctx, SigExpanderEntryWriteDataId::NONE);
         let second = alloc_write_data(&mut ctx, third);
@@ -3508,6 +3539,7 @@ mod tests {
 
     #[test]
     fn sig_expander_signature_ref_gate_counts_signatures_independently() {
+        let _test_env = crate::test_env::read();
         let mut cache = SignatureSatisfiableExpanderCache::new();
         cache.next_cache_entry_required_signature_ref_count = 2;
 
@@ -3521,6 +3553,7 @@ mod tests {
 
     #[test]
     fn sig_expander_signature_ref_gate_uses_konclude_defaults_and_one_step_memory_bump() {
+        let _test_env = crate::test_env::read();
         let mut cache = SignatureSatisfiableExpanderCache::new();
         assert_eq!(
             cache.next_memory_level_required_signature_ref_count,
@@ -3556,6 +3589,7 @@ mod tests {
 
     #[test]
     fn sig_expander_hasher_hashes_linker_values_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let third = alloc_value_linker(&mut ctx, -9, ExpanderCacheValueLinkerId::NONE);
         let second = alloc_value_linker(&mut ctx, 7, third);
@@ -3570,6 +3604,7 @@ mod tests {
 
     #[test]
     fn sig_expander_hasher_compares_linker_values_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let left_second = alloc_value_linker(&mut ctx, 12, ExpanderCacheValueLinkerId::NONE);
         let left_first = alloc_value_linker(&mut ctx, 11, left_second);
@@ -3585,6 +3620,7 @@ mod tests {
 
     #[test]
     fn sig_expander_hasher_hashes_cache_value_set_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let set = alloc_cache_value_set(&mut ctx, &[5, 7, 5, -9]);
 
@@ -3596,6 +3632,7 @@ mod tests {
 
     #[test]
     fn sig_expander_hasher_compares_cache_value_sets_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let left = alloc_cache_value_set(&mut ctx, &[1, 2, 3]);
         let same = alloc_cache_value_set(&mut ctx, &[1, 2, 3]);
@@ -3610,6 +3647,7 @@ mod tests {
 
     #[test]
     fn sig_expander_hasher_compares_linker_values_against_set_with_context() {
+        let _test_env = crate::test_env::read();
         let mut ctx = CacheContext::new();
         let second = alloc_value_linker(&mut ctx, 12, ExpanderCacheValueLinkerId::NONE);
         let first = alloc_value_linker(&mut ctx, 11, second);

@@ -1339,6 +1339,7 @@ mod tests {
 
     #[test]
     fn finite_range_detects_empty_string_outside_enumeration() {
+        let _test_env = crate::test_env::read();
         let axioms = [
             r#"DataPropertyRange(<p> DataOneOf("driver"^^xsd:string "all"^^xsd:string))"#,
             r#"DataPropertyAssertion(<p> <a> ""^^xsd:string)"#,
@@ -1352,6 +1353,7 @@ mod tests {
 
     #[test]
     fn empty_complex_range_rejects_every_assertion() {
+        let _test_env = crate::test_env::read();
         for range in ["DataComplementOf(rdfs:Literal)", "DataIntersectionOf(xsd:integer xsd:string)"] {
             let range_axiom = format!("DataPropertyRange(<p> {range})");
             let axioms = [range_axiom.as_str(), r#"DataPropertyAssertion(<p> <a> "1"^^xsd:integer)"#];
@@ -1373,6 +1375,7 @@ mod tests {
 
     #[test]
     fn finite_range_checks_inherited_and_multiple_ranges() {
+        let _test_env = crate::test_env::read();
         let axioms = [
             "SubDataPropertyOf(<p> <q>)", "SubDataPropertyOf(<q> <r>)",
             r#"DataPropertyRange(<r> DataOneOf("red" "blue"))"#,
@@ -1387,6 +1390,7 @@ mod tests {
 
     #[test]
     fn finite_range_uses_value_equality_and_defers_unknown_values() {
+        let _test_env = crate::test_env::read();
         for (range, assertion) in [
             (r#"DataPropertyRange(<p> DataOneOf("01"^^xsd:integer))"#,
              r#"DataPropertyAssertion(<p> <a> "1"^^xsd:int)"#),
@@ -1404,6 +1408,7 @@ mod tests {
 
     #[test]
     fn inverse_object_assertions_preserve_functional_merge_data_clash() {
+        let _test_env = crate::test_env::read();
         for edges in [
             ["ObjectPropertyAssertion(ObjectInverseOf(<r>) <a> <c>)",
              "ObjectPropertyAssertion(ObjectInverseOf(<r>) <b> <c>)"],
@@ -1424,6 +1429,7 @@ mod tests {
 
     #[test]
     fn functional_strings_preserve_owner_inequalities_and_equal_values() {
+        let _test_env = crate::test_env::read();
         let da = build(&[
             "FunctionalDataProperty(<http://x#p>)",
             "DataPropertyRange(<http://x#p> xsd:string)",
@@ -1443,6 +1449,7 @@ mod tests {
 
     #[test]
     fn functional_strings_accept_inherited_domains_without_assuming_membership() {
+        let _test_env = crate::test_env::read();
         let facts = [
             "FunctionalDataProperty(<p>)",
             "DataPropertyDomain(<p> <D>)",
@@ -1460,6 +1467,7 @@ mod tests {
 
     #[test]
     fn functional_string_projection_declines_unrepresented_interactions() {
+        let _test_env = crate::test_env::read();
         for extra in [
             "DataPropertyDomain(<http://x#p> <http://x#Unasserted>)",
             "SubClassOf(<http://x#C> DataHasValue(<http://x#p> \"x\"))",
@@ -1483,6 +1491,7 @@ mod tests {
 
     #[test]
     fn langtag_literal_violates_string_range() {
+        let _test_env = crate::test_env::read();
         // the ore_ont_8941 witness: range xsd:string, assertion "x"@de
         let da = build(&[
             "DataPropertyRange(<http://x#p> xsd:string)",
@@ -1493,6 +1502,7 @@ mod tests {
 
     #[test]
     fn matching_string_assertion_is_fine() {
+        let _test_env = crate::test_env::read();
         let da = build(&[
             "DataPropertyRange(<http://x#p> xsd:string)",
             "DataPropertyAssertion(<http://x#p> <http://x#a> \"x\"^^xsd:string)",
@@ -1503,6 +1513,7 @@ mod tests {
 
     #[test]
     fn positive_integer_with_redundant_named_domain_is_omittable() {
+        let _test_env = crate::test_env::read();
         let da = build(&[
             "DataPropertyDomain(<http://x#year> <http://x#VintageYear>)",
             "DataPropertyRange(<http://x#year> xsd:positiveInteger)",
@@ -1514,6 +1525,7 @@ mod tests {
 
     #[test]
     fn every_well_formed_literal_is_in_rdfs_literal() {
+        let _test_env = crate::test_env::read();
         let da = build(&[
             "DataPropertyRange(<http://x#p> rdfs:Literal)",
             "DataPropertyAssertion(<http://x#p> <http://x#a> \"plain\")",
@@ -1525,6 +1537,7 @@ mod tests {
 
     #[test]
     fn omission_certificate_rejects_missing_domain_and_data_interactions() {
+        let _test_env = crate::test_env::read();
         let missing_domain = build(&[
             "DataPropertyDomain(<http://x#p> <http://x#C>)",
             "DataPropertyAssertion(<http://x#p> <http://x#a> \"1\"^^xsd:positiveInteger)",
@@ -1546,6 +1559,7 @@ mod tests {
 
     #[test]
     fn omission_certificate_accepts_safe_subproperty_and_at_most_one() {
+        let _test_env = crate::test_env::read();
         let da = build(&[
             "SubDataPropertyOf(<http://x#p> <http://x#q>)",
             "DataPropertyRange(<http://x#q> xsd:integer)",
@@ -1558,6 +1572,7 @@ mod tests {
 
     #[test]
     fn omission_certificate_rejects_two_values_under_inherited_at_most_one() {
+        let _test_env = crate::test_env::read();
         let da = build(&[
             "SubDataPropertyOf(<http://x#p> <http://x#q>)",
             "SubClassOf(<http://x#C> DataExactCardinality(1 <http://x#q>))",
@@ -1570,6 +1585,7 @@ mod tests {
 
     #[test]
     fn omission_certificate_rejects_two_values_whose_owners_may_merge() {
+        let _test_env = crate::test_env::read();
         // `a = b` follows from the inverse-functional `s`, which the merge
         // closure does not model; two values of a `≤ 1` property on two
         // individuals must therefore never be declared redundant.
@@ -1606,6 +1622,7 @@ mod tests {
 
     #[test]
     fn unrelated_data_restriction_does_not_poison_safe_assertions() {
+        let _test_env = crate::test_env::read();
         let da = build(&[
             "SubClassOf(<http://x#C> DataSomeValuesFrom(<http://x#other> xsd:string))",
             "DataPropertyAssertion(<http://x#p> <http://x#a> \"1\"^^xsd:integer)",
@@ -1615,6 +1632,7 @@ mod tests {
 
     #[test]
     fn omission_certificate_rejects_data_constraints_in_abox_and_subclass_lhs() {
+        let _test_env = crate::test_env::read();
         let lhs = build(&[
             "SubClassOf(DataSomeValuesFrom(<http://x#p> xsd:string) <http://x#C>)",
             "DataPropertyAssertion(<http://x#p> <http://x#a> \"x\")",
@@ -1630,6 +1648,7 @@ mod tests {
 
     #[test]
     fn top_data_property_constraint_applies_without_explicit_subproperty_axiom() {
+        let _test_env = crate::test_env::read();
         let da = build(&[
             "SubClassOf(<http://x#C> DataSomeValuesFrom(owl:topDataProperty xsd:string))",
             "DataPropertyAssertion(<http://x#p> <http://x#a> \"x\")",
@@ -1639,6 +1658,7 @@ mod tests {
 
     #[test]
     fn unknown_datatype_never_clashes() {
+        let _test_env = crate::test_env::read();
         let da = build(&[
             "DataPropertyRange(<http://x#p> <http://x#mytype>)",
             "DataPropertyAssertion(<http://x#p> <http://x#a> \"x\"@de)",
@@ -1650,6 +1670,7 @@ mod tests {
 
     #[test]
     fn string_literal_violates_int_range() {
+        let _test_env = crate::test_env::read();
         let da = build(&[
             "DataPropertyRange(<http://x#p> xsd:int)",
             "DataPropertyAssertion(<http://x#p> <http://x#a> \"abc\"^^xsd:string)",
@@ -1659,6 +1680,7 @@ mod tests {
 
     #[test]
     fn range_inherited_through_subproperty() {
+        let _test_env = crate::test_env::read();
         let da = build(&[
             "SubDataPropertyOf(<http://x#p> <http://x#q>)",
             "DataPropertyRange(<http://x#q> xsd:string)",
@@ -1669,6 +1691,7 @@ mod tests {
 
     #[test]
     fn functional_distinct_strings_clash() {
+        let _test_env = crate::test_env::read();
         let da = build(&[
             "FunctionalDataProperty(<http://x#p>)",
             "DataPropertyAssertion(<http://x#p> <http://x#a> \"x\")",
@@ -1679,6 +1702,7 @@ mod tests {
 
     #[test]
     fn functional_same_value_no_clash() {
+        let _test_env = crate::test_env::read();
         let da = build(&[
             "FunctionalDataProperty(<http://x#p>)",
             "DataPropertyAssertion(<http://x#p> <http://x#a> \"5\"^^xsd:int)",
@@ -1690,6 +1714,7 @@ mod tests {
 
     #[test]
     fn functional_distinct_integers_clash() {
+        let _test_env = crate::test_env::read();
         let da = build(&[
             "FunctionalDataProperty(<http://x#p>)",
             "DataPropertyAssertion(<http://x#p> <http://x#a> \"5\"^^xsd:int)",
@@ -1700,6 +1725,7 @@ mod tests {
 
     #[test]
     fn functional_token_vs_string_lexical_not_compared() {
+        let _test_env = crate::test_env::read();
         // xsd:token whitespace-collapses; "a b" token could equal "a  b"
         // string-wise post-normalisation, so no lexical comparison is made.
         let da = build(&[
@@ -1712,6 +1738,7 @@ mod tests {
 
     #[test]
     fn merge_via_symmetric_domain_exact1_then_data_max1_clash() {
+        let _test_env = crate::test_env::read();
         // the ore_ont_13912 witness: Owner is symmetric with domain Photo, so
         // the shared owner is a Photo with two Owner-successors; Photo ⊑ =1
         // Owner merges them; the merged photo has two distinct url strings
@@ -1731,6 +1758,7 @@ mod tests {
 
     #[test]
     fn no_merge_with_distinct_owners() {
+        let _test_env = crate::test_env::read();
         let da = build(&[
             "SubClassOf(<http://f#Photo> ObjectExactCardinality(1 <http://f#Owner>))",
             "SubClassOf(<http://f#Photo> DataMaxCardinality(1 <http://f#url>))",
@@ -1746,6 +1774,7 @@ mod tests {
 
     #[test]
     fn functional_role_merge_clashes_with_different_individuals() {
+        let _test_env = crate::test_env::read();
         let da = build(&[
             "FunctionalObjectProperty(<http://f#r>)",
             "ObjectPropertyAssertion(<http://f#r> <http://f#a> <http://f#b>)",
@@ -1763,6 +1792,7 @@ mod tests {
 
     #[test]
     fn same_individual_violates_different_individuals() {
+        let _test_env = crate::test_env::read();
         let da = build(&[
             "SameIndividual(<http://f#a> <http://f#b>)",
             "DifferentIndividuals(<http://f#a> <http://f#b>)",
@@ -1772,6 +1802,7 @@ mod tests {
 
     #[test]
     fn functional_lang_pairs() {
+        let _test_env = crate::test_env::read();
         let same = build(&[
             "FunctionalDataProperty(<http://x#p>)",
             "DataPropertyAssertion(<http://x#p> <http://x#a> \"x\"@en)",

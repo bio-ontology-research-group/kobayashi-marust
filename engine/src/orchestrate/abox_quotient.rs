@@ -1848,6 +1848,7 @@ mod tests {
 
     #[test]
     fn source_subset_flag_is_exact() {
+        let _test_env = crate::test_env::write();
         // Equal-key individuals merge onto the first one; every emitted
         // assertion is then a source assertion of that representative.
         let subset = format!("{HEAD}SubClassOf(:A :B)\n{}\n)\n", many("ClassAssertion(:A :a{i})", 20));
@@ -1865,6 +1866,7 @@ mod tests {
 
     #[test]
     fn merges_individuals_with_equal_keys_and_expands_prefixes() {
+        let _test_env = crate::test_env::write();
         let text = format!(
             "{HEAD}SubClassOf(:A :B)\n{}\n{}\n)\n",
             many("ClassAssertion(:A :a{i})", 20),
@@ -1877,6 +1879,7 @@ mod tests {
 
     #[test]
     fn declines_nominals_keys_rules_universal_role_and_comments() {
+        let _test_env = crate::test_env::write();
         for axiom in [
             "HasKey(:A () (:p))",
             "SubObjectPropertyOf(:r owl:topObjectProperty)",
@@ -1899,6 +1902,7 @@ mod tests {
 
     #[test]
     fn tbox_nominals_pin_their_individuals_and_request_the_sandwich() {
+        let _test_env = crate::test_env::write();
         let text = format!(
             "{HEAD}EquivalentClasses(:C ObjectSomeValuesFrom(:r ObjectOneOf(:a0 :a1)))\n{}\n)\n",
             many("ClassAssertion(:A :a{i})", 20)
@@ -1920,6 +1924,7 @@ mod tests {
     #[test]
     #[ignore]
     fn abox_quotient_survey() {
+        let _test_env = crate::test_env::write();
         let Some(list) = std::env::var_os("KM_ABOX_QUOTIENT_SURVEY") else { return };
         for path in std::fs::read_to_string(list).unwrap().lines() {
             let started = std::time::Instant::now();
@@ -1941,6 +1946,7 @@ mod tests {
 
     #[test]
     fn taxonomy_comparison_ignores_representation_only() {
+        let _test_env = crate::test_env::write();
         let c = |rows: &[(&str, &str)], unsat: &[&str]| super::super::Classification {
             approximate: None,
             consistent: true,
@@ -1961,6 +1967,7 @@ mod tests {
 
     #[test]
     fn single_class_abox_becomes_a_tbox_with_asserted_class_checks() {
+        let _test_env = crate::test_env::write();
         let text = format!(
             "{HEAD}SubClassOf(:A :B)\n{}\n{}\nClassAssertion(owl:Thing :t)\n)\n",
             many("ClassAssertion(:A :a{i})", 20),
@@ -1981,6 +1988,7 @@ mod tests {
 
     #[test]
     fn multiline_literals_and_annotations_are_read() {
+        let _test_env = crate::test_env::write();
         let text = format!(
             "{HEAD}{}\nDataPropertyAssertion(Annotation(:c \"x\") :p :a0 \"line one\nline two\"^^xsd:string)\n)\n",
             many("ClassAssertion(:A :a{i})", 20)
@@ -1991,6 +1999,7 @@ mod tests {
 
     #[test]
     fn functional_data_values_keep_individuals_apart() {
+        let _test_env = crate::test_env::write();
         let text = format!(
             "{HEAD}FunctionalDataProperty(:f)\nSubDataPropertyOf(:g :f)\n{}\n{}\n)\n",
             many("ClassAssertion(:A :a{i})", 20),
@@ -2004,6 +2013,7 @@ mod tests {
 
     #[test]
     fn isolated_functional_values_are_abstracted_to_their_class() {
+        let _test_env = crate::test_env::write();
         let base = |extra: &str| format!(
             "{HEAD}FunctionalDataProperty(:f)\nDataPropertyRange(:f xsd:integer)\n{extra}{}\n{}\n)\n",
             many("ClassAssertion(:A :a{i})", 20),
@@ -2028,6 +2038,7 @@ mod tests {
 
     #[test]
     fn unrestricted_string_values_are_thinned() {
+        let _test_env = crate::test_env::write();
         let text = format!(
             "{HEAD}DataPropertyRange(:p xsd:string)\n{}\n{}\n)\n",
             many("ClassAssertion(:A :a{i})", 20),
@@ -2039,6 +2050,7 @@ mod tests {
 
     #[test]
     fn isomorphic_components_with_renamed_strings_collapse() {
+        let _test_env = crate::test_env::write();
         let text = format!(
             "{HEAD}FunctionalDataProperty(:id)\nDataPropertyRange(:kind DataOneOf(\"x\" \"y\"))\n{}\n{}\n{}\n{}\n)\n",
             many("ClassAssertion(:A :a{i})", 20),
@@ -2055,6 +2067,7 @@ mod tests {
 
     #[test]
     fn facet_restrictions_disable_string_renaming() {
+        let _test_env = crate::test_env::write();
         let text = format!(
             "{HEAD}FunctionalDataProperty(:id)\nDataPropertyRange(:id DatatypeRestriction(xsd:string xsd:maxLength \"3\"^^xsd:integer))\n{}\n{}\n)\n",
             many("ClassAssertion(:A :a{i})", 20),
@@ -2067,6 +2080,7 @@ mod tests {
 
     #[test]
     fn identity_participants_are_never_merged() {
+        let _test_env = crate::test_env::write();
         let text = format!(
             "{HEAD}{}\nDifferentIndividuals(:a0 :a1)\n)\n",
             many("ClassAssertion(:A :a{i})", 20)
@@ -2084,6 +2098,7 @@ mod tests {
     /// fails if a rewrite ever emits a document `check_source` rejects.
     #[test]
     fn quotients_of_valid_sources_pass_conformance() {
+        let _test_env = crate::test_env::write();
         let sources = [
             // class + role assertions, merged blocks, expanded prefixes
             format!(
@@ -2236,6 +2251,7 @@ mod data_free_subset_tests {
 
     #[test]
     fn data_axioms_are_removed_and_object_axioms_kept() {
+        let _test_env = crate::test_env::write();
         let text = "Prefix(:=<http://f/>)\nPrefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)\n\
             Ontology(<http://f/o>\n\
             Declaration(Class(:A)) Declaration(Class(:B)) Declaration(DataProperty(:p))\n\
@@ -2258,6 +2274,7 @@ mod data_free_subset_tests {
 
     #[test]
     fn data_free_input_has_no_subset() {
+        let _test_env = crate::test_env::write();
         let text = "Prefix(:=<http://f/>)\nOntology(<http://f/o>\nDeclaration(Class(:A))\nSubClassOf(:A :A)\n)\n";
         assert!(subset(text).is_none());
     }

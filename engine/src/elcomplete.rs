@@ -13464,7 +13464,6 @@ fn classify_inner_mode(
 mod tests {
     use super::*;
 
-    static ROOTED_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     struct EnvRestore(&'static str, Option<std::ffi::OsString>);
 
@@ -13493,6 +13492,7 @@ mod tests {
 
     #[test]
     fn repair_violation_cap_override_is_bounded_and_fail_safe() {
+        let _test_env = crate::test_env::read();
         assert_eq!(repair_viol_cap_from(None), REPAIR_VIOL_CAP);
         assert_eq!(repair_viol_cap_from(Some("invalid")), REPAIR_VIOL_CAP);
         assert_eq!(repair_viol_cap_from(Some("0")), 1);
@@ -13502,6 +13502,7 @@ mod tests {
 
     #[test]
     fn repair_choice_mixer_gives_binary_heads_distinct_seed_assignments() {
+        let _test_env = crate::test_env::read();
         let assignments: HashSet<Vec<usize>> = (0..8)
             .map(|pass| {
                 (100_000..100_064)
@@ -13514,6 +13515,7 @@ mod tests {
 
     #[test]
     fn lean_certificate_reconstructs_and_audits_the_production_fixpoint() {
+        let _test_env = crate::test_env::write();
         let mut concepts = HashSet::default();
         concepts.extend([TOP, BOTTOM, 2, 3]);
         let mut roles = HashSet::default();
@@ -13610,6 +13612,7 @@ mod tests {
 
     #[test]
     fn compact_fixpoint_output_matches_the_string_map() {
+        let _test_env = crate::test_env::write();
         use std::collections::{BTreeMap, BTreeSet};
         // NF1, NF2, NF3 (existential pair), NF4, and a bottom conjunction, so
         // the general fixpoint runs (the acyclic NF1 shortcut declines).
@@ -13679,6 +13682,7 @@ mod tests {
 
     #[test]
     fn positive_abox_completion_respects_identity_and_conjunction_clashes() {
+        let _test_env = crate::test_env::write();
         let consistent = r#"Ontology(
             SubClassOf(ObjectIntersectionOf(<urn:A> <urn:B>) owl:Nothing)
             ClassAssertion(<urn:A> <urn:a>)
@@ -13698,6 +13702,7 @@ mod tests {
 
     #[test]
     fn positive_abox_completion_materializes_ground_role_edges() {
+        let _test_env = crate::test_env::write();
         let inconsistent = r#"Ontology(
             SubClassOf(ObjectSomeValuesFrom(<urn:r> <urn:B>) owl:Nothing)
             ObjectPropertyAssertion(<urn:r> <urn:a> <urn:b>)
@@ -13708,6 +13713,7 @@ mod tests {
 
     #[test]
     fn positive_abox_completion_retains_the_exact_named_taxonomy() {
+        let _test_env = crate::test_env::write();
         let ofn = r#"Ontology(
             Declaration(Class(<urn:A>))
             Declaration(Class(<urn:B>))
@@ -13742,6 +13748,7 @@ mod tests {
 
     #[test]
     fn compact_positive_abox_completion_matches_string_result() {
+        let _test_env = crate::test_env::write();
         let ofn = r#"Ontology(
             Declaration(Class(<urn:A>))
             Declaration(Class(<urn:B>))
@@ -13793,6 +13800,7 @@ mod tests {
 
     #[test]
     fn merged_positive_abox_proves_safe_separated_individuals() {
+        let _test_env = crate::test_env::write();
         let ofn = r#"Ontology(
             SubClassOf(ObjectIntersectionOf(<urn:A> <urn:B>) owl:Nothing)
             ClassAssertion(<urn:A> <urn:a>)
@@ -13821,6 +13829,7 @@ mod tests {
 
     #[test]
     fn merged_positive_abox_declines_a_spurious_cross_individual_clash() {
+        let _test_env = crate::test_env::write();
         let ofn = r#"Ontology(
             SubClassOf(ObjectIntersectionOf(<urn:A> <urn:B>) owl:Nothing)
             ClassAssertion(<urn:A> <urn:a>)
@@ -13848,6 +13857,7 @@ mod tests {
 
     #[test]
     fn compact_positive_abox_detects_node_local_bottom() {
+        let _test_env = crate::test_env::write();
         let ofn = r#"Ontology(
             SubClassOf(ObjectIntersectionOf(<urn:A> <urn:B>) owl:Nothing)
             ClassAssertion(<urn:A> <urn:a>)
@@ -13896,6 +13906,7 @@ mod tests {
 
     #[test]
     fn lean_v5_certificate_checks_source_partition_and_rejects_tampering() {
+        let _test_env = crate::test_env::write();
         let Some(checker) = std::env::var_os("KM_ELC_TEST_LEAN_CHECKER") else {
             return;
         };
@@ -14036,6 +14047,7 @@ mod tests {
 
     #[test]
     fn acyclic_nf1_fast_path_is_exact_on_chain_and_diamond() {
+        let _test_env = crate::test_env::write();
         let cs = clauses(&format!(
             "[{},{},{},{}]",
             cl(&[c("A", "x")], &[c("B", "x")]),
@@ -14058,6 +14070,7 @@ mod tests {
 
     #[test]
     fn acyclic_nf1_fast_path_declines_cycles_and_bottom() {
+        let _test_env = crate::test_env::write();
         for cs in [
             clauses(&format!(
                 "[{},{}]",
@@ -14083,6 +14096,7 @@ mod tests {
 
     #[test]
     fn acyclic_nf1_worker_keeps_dictionary_coded_rows() {
+        let _test_env = crate::test_env::write();
         let mut interner = Interner::new();
         let mut concepts = HashSet::default();
         concepts.insert(TOP);
@@ -14119,6 +14133,7 @@ mod tests {
 
     #[test]
     fn pure_el_screen_matches_all_cert_off_normal_forms() {
+        let _test_env = crate::test_env::write();
         let cs = clauses(&format!(
             "[{},{},{},{},{},{},{},{}]",
             cl(&[c("A", "x")], &[c("B", "x")]),
@@ -14140,6 +14155,7 @@ mod tests {
 
     #[test]
     fn pure_el_screen_rejects_every_cert_off_residual_and_orphan() {
+        let _test_env = crate::test_env::write();
         let disjunction = clauses(&format!(
             "[{}]",
             cl(&[c("A", "x")], &[c("B", "x"), c("C", "x")])
@@ -14180,6 +14196,7 @@ mod tests {
     /// the canonical role, with no mirror edge materialised.
     #[test]
     fn exact_inverse_substitution_removes_bridges_and_keeps_the_constraint() {
+        let _test_env = crate::test_env::write();
         // A ⊑ ∃R.F, ∃R.F ⊑ D, S = R⁻, and the residual ⊥-clause
         // `S(x,y) ∧ G(y) → ⊥` (an empty head keeps it out of the normal forms).
         // `S` occurs only there and in the bridges.
@@ -14214,6 +14231,7 @@ mod tests {
     /// and NF4 axioms).
     #[test]
     fn inverse_pair_with_el_rules_on_both_sides_is_left_alone() {
+        let _test_env = crate::test_env::write();
         let mut cs = clauses(&format!(
             "[{},{},{},{},{},{},{}]",
             cl(&[r("R", "x", "y")], &[r("S", "y", "x")]),
@@ -14239,6 +14257,7 @@ mod tests {
     /// vacuous-role argument.
     #[test]
     fn one_way_bridge_is_never_substituted_but_may_be_vacuous() {
+        let _test_env = crate::test_env::write();
         let one_way = clauses(&format!(
             "[{},{},{}]",
             cl(&[r("R", "x", "y")], &[r("S", "y", "x")]),
@@ -14269,6 +14288,7 @@ mod tests {
     /// roles) is skipped rather than quotiented.
     #[test]
     fn ambiguous_inverse_graph_is_refused() {
+        let _test_env = crate::test_env::write();
         let cs = clauses(&format!(
             "[{},{},{},{}]",
             cl(&[r("R", "x", "y")], &[r("S", "y", "x")]),
@@ -14298,6 +14318,7 @@ mod tests {
     /// completion has no normal form for.
     #[test]
     fn orientation_sensitive_role_inclusions_and_chains_block_substitution() {
+        let _test_env = crate::test_env::read();
         let inclusion = clauses(&format!(
             "[{},{},{}]",
             cl(&[r("R", "x", "y")], &[r("S", "y", "x")]),
@@ -14321,6 +14342,7 @@ mod tests {
     /// role.
     #[test]
     fn substitution_rewrites_fun_term_residuals() {
+        let _test_env = crate::test_env::write();
         let mut cs = clauses(&format!(
             "[{},{},{},{},{}]",
             cl(&[r("R", "x", "y")], &[r("S", "y", "x")]),
@@ -14360,6 +14382,7 @@ mod tests {
     /// further role head-free.
     #[test]
     fn vacuous_role_pruning_reaches_a_fixpoint() {
+        let _test_env = crate::test_env::read();
         let mut cs = clauses(&format!(
             "[{},{},{}]",
             // U is head-free; deleting `U ⊑ T` makes T head-free; then `T ⊑ S`.
@@ -14378,6 +14401,7 @@ mod tests {
     /// role explicitly emptied.
     #[test]
     fn vacuous_prune_preserves_the_certified_classification() {
+        let _test_env = crate::test_env::write();
         let base = format!(
             "{},{},{}",
             cl(&[c("A", "x")], &[rf("R", "x", "f")]),
@@ -14425,6 +14449,7 @@ mod tests {
     /// calculus — the CB engine — not single-name EL completion.
     #[test]
     fn reverse_oriented_inverse_nf4_would_be_unsound() {
+        let _test_env = crate::test_env::write();
         let cs = clauses(&format!(
             "[{},{},{},{},{}]",
             cl(&[r("R", "x", "y")], &[r("S", "y", "x")]),
@@ -14457,6 +14482,7 @@ mod tests {
     /// declines (exit-3 defer to the CB engine) and the pure-EL screen rejects.
     #[test]
     fn adversarial_variable_wiring_is_rejected_to_residual() {
+        let _test_env = crate::test_env::write();
         // R(x,y) ∧ A(y) → B(y) is A ⊓ ∃R⁻.⊤ ⊑ B, not ∃R.A ⊑ B.
         let head_on_target = clauses(&format!(
             "[{}]",
@@ -14532,6 +14558,7 @@ mod tests {
 
     #[test]
     fn output_tail_semantics_preserved() {
+        let _test_env = crate::test_env::write();
         // Pins the exact semantics of classify_inner's output loop, which now
         // frees the saturation state before (and while) materialising the
         // string map: an unsatisfiable subject reports owl:Nothing; ⊤/⊥ never
@@ -14558,6 +14585,7 @@ mod tests {
 
     #[test]
     fn reflexive_role_fires_nf4_elimination() {
+        let _test_env = crate::test_env::write();
         // A ⊑ B, ∃R.B ⊑ C, Reflexive(R) ⟹ A ⊑ C (the reflexive self-edge at A,
         // whose target A is ⊑ B, satisfies ∃R.B at A). Without reflexivity there
         // is no edge and A ⋢ C.
@@ -14579,6 +14607,7 @@ mod tests {
 
     #[test]
     fn nf4_backward_join_selects_only_the_exact_role_bucket() {
+        let _test_env = crate::test_env::write();
         // Both NF4 axioms share filler B. An R backward link must select every
         // R conclusion and no S conclusion; an S link must do the converse.
         // This pins the role-range index used by the Sub side of the join.
@@ -14604,6 +14633,7 @@ mod tests {
 
     #[test]
     fn reflexive_role_composes_with_chain() {
+        let _test_env = crate::test_env::write();
         // Reflexive(R), R∘S ⊑ T, A ⊑ ∃S.B, ∃T.B ⊑ D ⟹ A ⊑ D.
         // The self-edge (A,R,A) composes with the S-edge (A,S,B) via R∘S⊑T to a
         // T-edge (A,T,B), which fires the NF4 ∃T.B⊑D. This is the reflexive-role-
@@ -14627,6 +14657,7 @@ mod tests {
 
     #[test]
     fn cert_passes_when_disjunction_already_decided() {
+        let _test_env = crate::test_env::write();
         // EL: A ⊑ B. Residual: A → B ∨ D (every A-node has B). Must classify
         // and keep the EL answer.
         let cs = clauses(&format!(
@@ -14641,6 +14672,7 @@ mod tests {
 
     #[test]
     fn cert_fails_on_live_disjunction() {
+        let _test_env = crate::test_env::write();
         // Residual: A → D ∨ E with neither derivable: the canonical model
         // violates it, so elc must hand off to the context engine.
         let cs = clauses(&format!(
@@ -14653,6 +14685,7 @@ mod tests {
 
     #[test]
     fn elc_hoist_recovers_common_disjunct_super() {
+        let _test_env = crate::test_env::write();
         // Completed EL relation: A⊑X, B⊑X. Parked residual: D ⊑ A ∨ B.
         // ⊔-distribution ⟹ D ⊑ X (a subsumption hidden in the parked disjunction).
         let mut it = Interner::new();
@@ -14676,6 +14709,7 @@ mod tests {
 
     #[test]
     fn elc_hoist_skips_when_no_common_super() {
+        let _test_env = crate::test_env::write();
         // A⊑X, B⊑Y. D ⊑ A ∨ B has no common super ⟹ nothing recovered.
         let mut it = Interner::new();
         let (a, b, x, y, _d) = (
@@ -14697,6 +14731,7 @@ mod tests {
 
     #[test]
     fn cert_checks_range_clause_over_edges() {
+        let _test_env = crate::test_env::write();
         // EL: A ⊑ ∃R.B (pair of half-clauses). Residual range: R(x,y) → C(y).
         // Fails without B ⊑ C, passes with it.
         let base = format!(
@@ -14720,6 +14755,7 @@ mod tests {
 
     #[test]
     fn cert_checks_cardinality_eq_head() {
+        let _test_env = crate::test_env::write();
         // EL: A ⊑ ∃R.B and A ⊑ ∃R.C. Residual (≤1 R): R(x,y) ∧ R(x,z) → y = z.
         // Two distinct successors violate it.
         let cs = clauses(&format!(
@@ -14757,6 +14793,7 @@ mod tests {
 
     #[test]
     fn cert_keeps_distinct_skolem_witnesses_with_the_same_filler() {
+        let _test_env = crate::test_env::write();
         // A ≥2 R.B normalises to two R/B witness pairs plus a constraint that
         // rejects interpretations where the two skolem functions coincide.
         // Their common filler concept B must not collapse the two witnesses.
@@ -14829,6 +14866,7 @@ mod tests {
 
     #[test]
     fn pure_el_existential_gets_an_identity_witness_record() {
+        let _test_env = crate::test_env::write();
         // `D ⊑ ∃r.A` with no residual: before v1.5.5 the Skolem pair stayed in
         // the direct partition, which the Lean v5 checker cannot normalize,
         // so every certificate with an existential was rejected (E1).
@@ -14867,6 +14905,7 @@ mod tests {
 
     #[test]
     fn lean_checker_accepts_an_existential_with_an_unsatisfiable_filler() {
+        let _test_env = crate::test_env::write();
         // `D ⊑ ∃r.A`, `A ⊑ ⊥`: the identity witness A is dead, so no alive
         // element is below D and the Skolem pair holds vacuously.
         let cs = clauses(&format!(
@@ -14891,6 +14930,7 @@ mod tests {
 
     #[test]
     fn lean_checker_accepts_a_bottom_head_normal_form() {
+        let _test_env = crate::test_env::write();
         // `C ⊑ A`, `A ⊓ B ⊑ ⊥` normalizes to `nf2 A B ⊥`; the checker used to
         // demand that ⊥ be both active and inactive (E2).
         let cs = clauses(&format!(
@@ -14911,6 +14951,7 @@ mod tests {
 
     #[test]
     fn residual_source_variables_cannot_alias_function_pin_slots() {
+        let _test_env = crate::test_env::write();
         // The source variable is deliberately named exactly like the Skolem
         // function. They inhabit different namespaces: pinning x(·) must not
         // pin the universally quantified source variable `x`.
@@ -14940,6 +14981,7 @@ mod tests {
 
     #[test]
     fn lean_residual_compilation_payload_accepts_and_tampering_fails() {
+        let _test_env = crate::test_env::write();
         let cs = clauses(&format!(
             "[{},{},{},{}]",
             cl(&[c("A", "u")], &[rf("R", "u", "x")]),
@@ -15049,6 +15091,7 @@ mod tests {
 
     #[test]
     fn cert_bails_on_nominal_terms_before_saturation() {
+        let _test_env = crate::test_env::write();
         // ind terms are not modelled: classify must return None (context engine).
         let cs = clauses(
             "[{\"body\":[],\"head\":[{\"kind\":\"concept\",\"concept\":\"A\",\
@@ -15059,6 +15102,7 @@ mod tests {
 
     #[test]
     fn pure_el_unchanged() {
+        let _test_env = crate::test_env::write();
         // No residual: behaves exactly as before.
         let cs = clauses(&format!(
             "[{},{}]",
@@ -15072,6 +15116,7 @@ mod tests {
 
     #[test]
     fn cert_handles_empty_head_constraint_over_edges() {
+        let _test_env = crate::test_env::write();
         // Residual constraint: A(x) ∧ R(x,y) ∧ D(y) → ⊥ (no head). Satisfied
         // when no A-node has an R-successor in D; violated when one exists.
         let base = format!(
@@ -15106,6 +15151,7 @@ mod tests {
 
     #[test]
     fn repair_passes_on_inert_covering_disjunction() {
+        let _test_env = crate::test_env::write();
         // ⊤ → A ∨ B (covering), A and B otherwise unconstrained, EL: C ⊑ D.
         // The plain check fails (live disjunction); repair builds the
         // choose-A and choose-B models, whose intersection adds nothing, so
@@ -15144,6 +15190,7 @@ mod tests {
 
     #[test]
     fn repair_fails_when_disjunction_forces_subsumption() {
+        let _test_env = crate::test_env::write();
         // ⊤ → A ∨ B with A ⊑ D and B ⊑ D entails C ⊑ D for every class C,
         // which EL completion cannot derive: D survives in the intersection at
         // the C node, so C must NOT be answered by the certificate — it is
@@ -15174,6 +15221,7 @@ mod tests {
 
     #[test]
     fn repair_fails_when_both_choices_force_bottom() {
+        let _test_env = crate::test_env::write();
         // ⊤ → A ∨ B with both disjuncts unsatisfiable: the ontology is
         // inconsistent but EL completion does not see it. Every repair choice
         // kills every node, so no pass model can witness C's satisfiability:
@@ -15204,6 +15252,7 @@ mod tests {
 
     #[test]
     fn repair_handles_inert_inverse_bridge_via_edge_addition() {
+        let _test_env = crate::test_env::write();
         // EL: A ⊑ ∃R.B. Residual inverse bridge R(x,y) → S(y,x) with S unused:
         // repair adds the S-edge, nothing else fires, both pass models agree
         // with the base, certificate passes with the EL answer.
@@ -15222,6 +15271,7 @@ mod tests {
 
     #[test]
     fn repair_shortcuts_when_base_model_already_complete() {
+        let _test_env = crate::test_env::write();
         // Residual already satisfied by the canonical model: repair mode must
         // pass without needing a second pass (adds == 0 shortcut).
         let cs = clauses(&format!(
@@ -15235,6 +15285,7 @@ mod tests {
 
     #[test]
     fn repair_after_failed_base_check_uses_handed_off_index() {
+        let _test_env = crate::test_env::write();
         // The base check rejects the live cover. Its prebuilt enumeration
         // index is then reused by the first repair pass, which must still
         // produce the same exact range consequence without leaking a choice.
@@ -15316,6 +15367,7 @@ mod tests {
 
     #[test]
     fn repair_assigns_cardinality_partitions_without_merging_pinned_witnesses() {
+        let _test_env = crate::test_env::write();
         // Two independent partitions with opposite cover orientations, so
         // neither polarity seed can reach a model by trying the other side
         // first. Each partition has more subjects than the restart budget, so a
@@ -15354,6 +15406,7 @@ mod tests {
 
     #[test]
     fn repair_still_merges_at_most_successors_that_are_not_pinned_apart() {
+        let _test_env = crate::test_env::write();
         // The same `≤1 R.C` bound, but with no `≥2` clause pinning the two
         // witnesses apart. Identifying them is legal and is the only way to
         // satisfy the bound, so the search must still do it. This is the
@@ -15387,6 +15440,7 @@ mod tests {
 
     #[test]
     fn repair_fails_closed_when_both_partition_sides_are_impossible() {
+        let _test_env = crate::test_env::write();
         // The at-most side is locally unsatisfiable at `A` (two pinned-apart
         // successors against a bound of one) and the other side is
         // unsatisfiable outright. No pass model can witness `A`, so the
@@ -15468,6 +15522,7 @@ mod tests {
 
     #[test]
     fn residual_pin_must_name_an_alive_canonical_domain_element() {
+        let _test_env = crate::test_env::write();
         let clause = rc(
             1,
             vec![RAtom::C { cid: 2, v: 0 }],
@@ -15492,6 +15547,7 @@ mod tests {
 
     #[test]
     fn residual_pin_is_vacuous_when_its_exact_source_guard_is_empty() {
+        let _test_env = crate::test_env::write();
         let mut clause = rc(
             2,
             vec![RAtom::C { cid: 2, v: 0 }],
@@ -15509,6 +15565,7 @@ mod tests {
 
     #[test]
     fn rooted_pin_guard_activation_uses_domain_members_not_canonical_node() {
+        let _test_env = crate::test_env::write();
         let mut clause = rc(
             2,
             vec![RAtom::C { cid: 2, v: 0 }],
@@ -15550,6 +15607,7 @@ mod tests {
 
     #[test]
     fn rooted_domain_expands_edges_and_only_active_guarded_witnesses() {
+        let _test_env = crate::test_env::write();
         let mut guarded = rc(
             2,
             vec![RAtom::C { cid: 7, v: 0 }],
@@ -15579,6 +15637,7 @@ mod tests {
 
     #[test]
     fn inverse_functional_existentials_get_source_specific_fresh_targets() {
+        let _test_env = crate::test_env::write();
         let ifun = rc(
             3,
             vec![
@@ -15619,6 +15678,7 @@ mod tests {
 
     #[test]
     fn rooted_existing_inverse_existential_edge_is_redirected() {
+        let _test_env = crate::test_env::write();
         let mut st = state_of(16, &[], &[(1, 8, 9)]);
         let mut fresh = FreshInverseWitnesses {
             roles: HashSet::from_iter([8]),
@@ -15671,6 +15731,7 @@ mod tests {
 
     #[test]
     fn rooted_fresh_pair_is_limited_to_active_sources_and_exact_fillers() {
+        let _test_env = crate::test_env::write();
         let mut st = state_of(16, &[], &[]);
         let mut fresh = FreshInverseWitnesses {
             roles: HashSet::from_iter([8]),
@@ -15695,6 +15756,7 @@ mod tests {
 
     #[test]
     fn rooted_fresh_depth_reuses_canonical_filler_at_cutoff() {
+        let _test_env = crate::test_env::write();
         let mut st = state_of(16, &[], &[]);
         let mut fresh = FreshInverseWitnesses {
             roles: HashSet::from_iter([8]),
@@ -15721,6 +15783,7 @@ mod tests {
 
     #[test]
     fn rooted_fresh_deep_frontier_can_differ_from_first_layer() {
+        let _test_env = crate::test_env::write();
         let mut st = state_of(16, &[], &[]);
         let mut fresh = FreshInverseWitnesses {
             roles: HashSet::from_iter([8, 11]),
@@ -15746,6 +15809,7 @@ mod tests {
 
     #[test]
     fn rooted_fresh_bottom_sources_do_not_consume_live_witness_budget() {
+        let _test_env = crate::test_env::write();
         // A doomed source has two existential obligations, with room for only
         // one fresh witness. Its obligations must not prevent the unrelated
         // live source from getting that witness and deriving its NF4 result.
@@ -15810,6 +15874,7 @@ mod tests {
 
     #[test]
     fn rooted_trace_blames_existential_source_before_successor_choice() {
+        let _test_env = crate::test_env::write();
         // Root 1 reaches bottom because its R-successor 2 is dead. Both nodes
         // carry direct repair choices, but banning the target-local choice can
         // repeat once per generated successor. The source choice that enabled
@@ -15913,7 +15978,7 @@ mod tests {
 
     #[test]
     fn rooted_publication_emits_only_the_checked_subject() {
-        let _lock = ROOTED_ENV_LOCK.lock().expect("rooted environment lock");
+        let _lock = crate::test_env::write();
         let _cert = EnvRestore::set("KM_ELC_CERT", "2");
         let _domain = EnvRestore::set("KM_ELC_REPAIR_ROOT_DOMAIN", "1");
         let _publish = EnvRestore::set("KM_ELC_REPAIR_ROOT_PUBLISH", "1");
@@ -15962,7 +16027,7 @@ mod tests {
 
     #[test]
     fn rooted_batch_reuses_one_fixpoint_but_certifies_each_subject() {
-        let _lock = ROOTED_ENV_LOCK.lock().expect("rooted environment lock");
+        let _lock = crate::test_env::write();
         let preserve_file = std::env::temp_dir().join(format!(
             "km-root-batch-{}-{}.txt",
             std::process::id(),
@@ -16078,6 +16143,7 @@ mod tests {
 
     #[test]
     fn card_guide_reads_bounds_and_pins_off_clause_wiring() {
+        let _test_env = crate::test_env::write();
         let guide = CardGuide::new(&[at_most_one(7, 3, 9), pin_apart(7, 11, 12)]);
         assert_eq!(guide.bounds.len(), 1);
         assert_eq!(guide.bounds[0].bound, 1);
@@ -16118,6 +16184,7 @@ mod tests {
 
     #[test]
     fn recognize_at_most_rejects_near_miss_shapes() {
+        let _test_env = crate::test_env::write();
         // `≤2 R.C`: three successors, all three unordered pairs in the head
         let three = |pairs: Vec<RAtom>| {
             rc(
@@ -16188,6 +16255,7 @@ mod tests {
 
     #[test]
     fn recognize_distinct_pins_rejects_near_miss_shapes() {
+        let _test_env = crate::test_env::write();
         assert_eq!(
             recognize_distinct_pins(&pin_apart(7, 11, 12)),
             Some((11, 12))
@@ -16211,6 +16279,7 @@ mod tests {
 
     #[test]
     fn card_guide_refuses_pinned_merges_modulo_the_quotient() {
+        let _test_env = crate::test_env::write();
         let guide = CardGuide::new(&[pin_apart(7, 11, 12)]);
         let mut repr: Vec<u32> = (0..16).collect();
         let mut round = CardRound::default();
@@ -16231,6 +16300,7 @@ mod tests {
 
     #[test]
     fn rooted_card_guide_enforces_only_nonempty_guarded_pins() {
+        let _test_env = crate::test_env::write();
         let mut clause = pin_apart(7, 11, 12);
         clause.pin_guards.push((0, 7, 0));
         let guide = CardGuide::new(&[clause]);
@@ -16250,6 +16320,7 @@ mod tests {
 
     #[test]
     fn card_guide_demotes_only_over_full_all_pinned_choices() {
+        let _test_env = crate::test_env::write();
         // node 0 --R--> {1, 2}, both in filler 9; bound is ≤1 R.9 guarded by 7
         let guide = CardGuide::new(&[at_most_one(7, 3, 9), pin_apart(7, 1, 2)]);
         let st = state_of(
@@ -16310,6 +16381,7 @@ mod tests {
 
     #[test]
     fn card_guide_counts_merged_successors_once() {
+        let _test_env = crate::test_env::write();
         // the two successors are pinned apart, but a merge has already folded
         // one into the other: the node is back inside its bound and the choice
         // must not be demoted
@@ -16327,6 +16399,7 @@ mod tests {
 
     #[test]
     fn repair_rechecks_stale_cover_after_forced_residual() {
+        let _test_env = crate::test_env::write();
         // The inverse-position singleton is residual: every R-target must be A.
         // The same target also has the residual cover A ∨ B and A/B are
         // disjoint. A repair round can collect both violations at once. It must
@@ -16350,6 +16423,7 @@ mod tests {
 
     #[test]
     fn domain_axiom_is_decided_without_a_certificate() {
+        let _test_env = crate::test_env::write();
         // `∃R.⊤ ⊑ D` together with `A ⊑ ∃R.B` entails `A ⊑ D`. The clause set
         // must screen as pure EL and the cert-off worker must answer it: this
         // is the shape ObjectPropertyDomain normalises to, and parking it in
@@ -16371,6 +16445,7 @@ mod tests {
 
     #[test]
     fn role_body_with_head_off_the_source_is_not_a_domain_axiom() {
+        let _test_env = crate::test_env::write();
         // `R(x,y) → D(y)` is `∃R⁻.⊤ ⊑ D` and `R(x,x) → D(x)` is a self
         // restriction. Reading either as `∃R.⊤ ⊑ D` would be unsound, so both
         // must stay in the residual and the cert-off worker must decline.
@@ -16491,6 +16566,7 @@ mod tests {
 
     #[test]
     fn lazy_complement_recognizer_accepts_only_the_regular_fragment() {
+        let _test_env = crate::test_env::write();
         let (rcs, mut nfs, known_bottom, it, positive, negative, role) = lazy_complement_fixture();
         // An unrelated conjunction must not reject the candidate. This pins
         // the boolean grouping in the NF2 occurrence check.
@@ -16603,6 +16679,7 @@ mod tests {
 
     #[test]
     fn lazy_complement_fires_only_observable_rooted_consumers() {
+        let _test_env = crate::test_env::write();
         let (rcs, mut nfs, known_bottom, mut it, positive, negative, role) =
             lazy_complement_fixture();
         // Isolate implicit-target firing here. The recognizer test separately
@@ -16700,6 +16777,7 @@ mod tests {
 
     #[test]
     fn lazy_complement_prefers_exact_positive_cover_before_known_bottom() {
+        let _test_env = crate::test_env::write();
         let (rcs, mut nfs, known_bottom, mut it, positive, _negative, role) =
             lazy_complement_fixture();
         let source = it.id("Source").unwrap();
@@ -16746,6 +16824,7 @@ mod tests {
 
     #[test]
     fn lazy_local_complement_consumer_is_deferred_before_known_bottom() {
+        let _test_env = crate::test_env::write();
         let (rcs, mut nfs, known_bottom, mut it, positive, negative, _role) =
             lazy_complement_fixture();
         let source = it.id("Source").unwrap();
@@ -16813,6 +16892,7 @@ mod tests {
 
     #[test]
     fn shared_nf1_nf2_bucket_preserves_the_serial_horn_closure() {
+        let _test_env = crate::test_env::write();
         const ROOT: u32 = 2;
         const A: u32 = 3;
         const B: u32 = 4;
@@ -16872,6 +16952,7 @@ mod tests {
 
     #[test]
     fn nf2_join_fires_in_both_arrival_orders_from_either_side() {
+        let _test_env = crate::test_env::write();
         // One ordinary conjunction A ⊓ B ⊑ E, plus a hub H that is an operand
         // of 64 conjunctions H ⊓ X_i ⊑ E_i. The hub's candidate list is far
         // longer than any label here, so a Sub(_, H) item takes the
@@ -17033,6 +17114,7 @@ mod tests {
 
     #[test]
     fn pooled_rule_index_matches_a_direct_per_trigger_construction() {
+        let _test_env = crate::test_env::write();
         for seed in 0..32 {
             let (nfs, n) = random_terminology(seed);
             assert_pool_matches_direct(&nfs, n);
@@ -17050,6 +17132,7 @@ mod tests {
 
     #[test]
     fn pooled_rule_index_keeps_flag_only_and_duplicate_records() {
+        let _test_env = crate::test_env::write();
         const A: u32 = 2;
         const B: u32 = 3;
         const E: u32 = 4;
@@ -17097,6 +17180,7 @@ mod tests {
 
     #[test]
     fn interner_distinguishes_long_names_at_every_chunk_boundary() {
+        let _test_env = crate::test_env::write();
         // The hasher folds 8-byte words, then a 4-byte half, then single
         // bytes. Names differing inside each of those regions, and names of
         // lengths 8k, 8k+1..3, 8k+4, 8k+5.., must stay distinct symbols while
@@ -17127,6 +17211,7 @@ mod tests {
 
     #[test]
     fn interner_shares_symbol_storage_and_preserves_external_names() {
+        let _test_env = crate::test_env::write();
         let mut it = Interner::new();
         let iri = "http://example.org/a/deliberately/long/concept/name";
         let id = it.intern(iri);
@@ -17335,6 +17420,7 @@ mod tests {
 
     #[test]
     fn saturation_matches_the_naive_fixpoint_on_random_terminologies() {
+        let _test_env = crate::test_env::write();
         // Differential oracle for the indexed completion (`build_idx`, the
         // dense rule records, the min-side NF2 join, the backward-link guard
         // of the sub-side NF4 join, and `run`'s scheduling): 32 random
@@ -17376,6 +17462,7 @@ mod tests {
 
     #[test]
     fn edge_nf4_fires_when_edge_arrives_after_propagation() {
+        let _test_env = crate::test_env::write();
         // ∃R.B ⊑ E. A ⊑ B is completed FIRST, registering prop[(A,R)] = [E]
         // with no edge present; the later edge (X,R,A) must fire the stored
         // propagation edge-side.
@@ -17400,6 +17487,7 @@ mod tests {
 
     #[test]
     fn edge_nf4_fires_when_propagation_arrives_after_edge() {
+        let _test_env = crate::test_env::write();
         // Same axioms, opposite creation order: the edge (X,R,A) is completed
         // first (nothing fires), then A ⊑ B arrives and the Sub-side backward
         // join over the backward links of A must produce X ⊑ E.
@@ -17423,6 +17511,7 @@ mod tests {
 
     #[test]
     fn edge_nf4_self_edge_fires_bucket_that_grows_after_the_edge() {
+        let _test_env = crate::test_env::write();
         // Self-edge (A,R,A) processed while prop[(A,R)] = [E1]: the in-place
         // edge-side iteration yields A ⊑ E1, whose Sub item then grows the
         // SAME bucket (∃R.E1 ⊑ E2) and must still reach A ⊑ E2 sub-side.
@@ -17444,6 +17533,7 @@ mod tests {
 
     #[test]
     fn edge_nf4_self_edge_cascade_from_a_single_run() {
+        let _test_env = crate::test_env::write();
         // Everything seeded before one `run`: the self-edge and the cascade
         // ∃R.A ⊑ E1, ∃R.E1 ⊑ E2, ∃R.E2 ⊑ E3 interleave edge-side and
         // sub-side firings on the growing prop[(A,R)] bucket at c == d.
@@ -17465,6 +17555,7 @@ mod tests {
 
     #[test]
     fn parallel_nf4_frontier_deduplicates_parent_conclusions_exactly() {
+        let _test_env = crate::test_env::write();
         const R: u32 = 0;
         const PARENT: u32 = 2;
         const E1: u32 = 3;
@@ -17506,6 +17597,7 @@ mod tests {
 
     #[test]
     fn sparse_nf4_frontier_declines_once_and_keeps_the_serial_join() {
+        let _test_env = crate::test_env::write();
         const R: u32 = 0;
         const PARENT: u32 = 2;
         const SUP: u32 = 3;
@@ -17533,6 +17625,7 @@ mod tests {
 
     #[test]
     fn frontier_batch_keeps_the_serial_join_on_the_contextual_worklist() {
+        let _test_env = crate::test_env::write();
         // The parallel frontier batch is defined over the global FIFO. On the
         // context-local worklist it declines without touching the queue, and
         // the ordinary edge-side join reaches the same closure in one
@@ -17566,6 +17659,7 @@ mod tests {
 
     #[test]
     fn contextual_worklist_drains_one_activated_context_at_a_time() {
+        let _test_env = crate::test_env::write();
         let mut wl = Worklist::contextual(8);
         assert!(wl.is_empty());
         assert_eq!(wl.pop(), None);
@@ -17633,6 +17727,7 @@ mod tests {
 
     #[test]
     fn contextual_scheduling_reaches_the_fifo_closure_on_random_terminologies() {
+        let _test_env = crate::test_env::write();
         // The two disciplines process the same items with the same rule
         // code: the closure, the item counts and the per-item scan counters
         // must agree, and only the contextual queue activates contexts.
@@ -17682,6 +17777,7 @@ mod tests {
 
     #[test]
     fn edge_nf4_closure_is_input_order_invariant() {
+        let _test_env = crate::test_env::write();
         // NF1 + NF3 + NF4 + a role inclusion + a genuine self-edge (C ⊑ ∃T.C):
         // permuting the input clauses flips which of {edge, propagation} is
         // created first at each context, and the closure must not change.
@@ -17743,6 +17839,7 @@ mod tests {
 
     #[test]
     fn sub_nf4_joins_only_the_exact_role_backlinks() {
+        let _test_env = crate::test_env::write();
         // Four backward links into A over three roles; NF4 axioms exist for R
         // and S but not Q. When A ⊑ B arrives, the sub-side join must fire each
         // axiom into exactly the parents whose edge role matches it.
@@ -17787,6 +17884,7 @@ mod tests {
 
     #[test]
     fn sub_nf4_self_edge_backlink_joins_repeatedly() {
+        let _test_env = crate::test_env::write();
         // A self-edge (A,R,A) is a backward link of A along R whose parent is A
         // itself. Each new subsumer of A that is an NF4 filler must join over
         // that same in-place parent slice: A ⊑ B gives A ⊑ E, whose Sub item
@@ -17810,6 +17908,7 @@ mod tests {
 
     #[test]
     fn bottom_backpropagates_across_every_incoming_role() {
+        let _test_env = crate::test_env::write();
         // The ⊥ back-propagation is an all-edge consumer: once A ⊑ ⊥ is
         // processed, every parent of A must go to ⊥ regardless of edge role,
         // via the `in_roles` walk over the role-keyed index.
@@ -17858,6 +17957,7 @@ mod tests {
 
     #[test]
     fn role_chain_symmetric_join_reads_role_keyed_backlinks() {
+        let _test_env = crate::test_env::write();
         // The symmetric NF7 join consumes the backward links of the new edge's
         // SOURCE: with r1 ∘ r2 ⊑ s, the existing link (P, r1, C) plus the new
         // edge (C, r2, D) must yield (P, s, D), while the non-composing
@@ -17888,6 +17988,7 @@ mod tests {
 
     #[test]
     fn merge_redirects_backlinks_per_role_and_clears_merged_node() {
+        let _test_env = crate::test_env::write();
         // The repair merge is an all-edge consumer: merging B into A must
         // redirect every backward link of B (over all roles) onto A, empty B's
         // index entries, and leave the redirected links joinable by NF4.
@@ -17927,6 +18028,7 @@ mod tests {
 
     #[test]
     fn multi_role_backlinks_are_input_order_invariant() {
+        let _test_env = crate::test_env::write();
         // Three roles into the same filler target, NF4 axioms on two of them:
         // every rotation of the input clauses must reach the same closure, with
         // each axiom fired only into its exact-role parents.
@@ -17982,6 +18084,7 @@ mod tests {
 
     #[test]
     fn incremental_reuse_extends_backlink_index_for_new_roles() {
+        let _test_env = crate::test_env::write();
         // Retained-fixpoint additions: first a subsumption that makes an old
         // backlink joinable (A ⊑ B activates ∃R.B ⊑ ER over the retained edge
         // (X, R, A)), then a whole new role S into the same retained target.
@@ -18022,6 +18125,7 @@ mod tests {
 
     #[test]
     fn incremental_restart_rebuilds_backlink_index() {
+        let _test_env = crate::test_env::write();
         // Completing a one-sided existential (X ⊑ ∃R.⊤ gains its filler half)
         // rewrites an NF3, so the session must restart from Init; the rebuilt
         // backlink index must serve the NF4 join in the fresh completion.
@@ -18114,6 +18218,7 @@ mod tests {
 
     #[test]
     fn cert_index_reuse_matches_a_rebuild_after_new_labels() {
+        let _test_env = crate::test_env::write();
         // The repair's own additions are the common case: labels grow, the
         // domain and the edges do not. The delta-merged `members` must be the
         // list a rebuild produces, in `nodes` order and without duplicates —
@@ -18151,6 +18256,7 @@ mod tests {
 
     #[test]
     fn cert_index_reuse_rebuilds_the_edge_half_when_an_edge_arrives() {
+        let _test_env = crate::test_env::write();
         // A new edge can permute `edges[c]`'s iteration order, so the role
         // index cannot be patched — the epoch must force it to be rebuilt.
         const R: u32 = 1;
@@ -18180,6 +18286,7 @@ mod tests {
 
     #[test]
     fn cert_index_reuse_rebuilds_both_halves_when_a_node_dies() {
+        let _test_env = crate::test_env::write();
         // A node driven to ⊥ leaves the domain, so it has to leave every
         // `members` bucket and every edge pair that mentions it. That is not a
         // delta the merge can express: the refresh must fall back to a rebuild.
@@ -18210,6 +18317,7 @@ mod tests {
 
     #[test]
     fn cert_index_reuse_tracks_a_witness_mirror_resync() {
+        let _test_env = crate::test_env::write();
         // The repair's merge re-syncs a merged-away node as a mirror of its
         // representative by wholesale assignment, which bypasses `add_sub` and
         // `add_edge`. The pass records that itself; here we check the two
@@ -18266,6 +18374,7 @@ mod tests {
 
     #[test]
     fn base_check_index_refreshed_over_fork_matches_fresh_build() {
+        let _test_env = crate::test_env::write();
         let (rcs, names, mut st) = idx_fixture();
         const A: u32 = 2;
         const P: u32 = 4;
@@ -18291,6 +18400,7 @@ mod tests {
 
     #[test]
     fn cert_index_invalidation_discards_a_stale_delta() {
+        let _test_env = crate::test_env::write();
         // The escape hatch the mirror re-sync uses when it would DELETE from a
         // label: after `invalidate` the next refresh must ignore whatever delta
         // it is handed and rebuild from the structure.
@@ -18318,6 +18428,7 @@ mod tests {
 
     #[test]
     fn cert_index_reuse_keeps_the_multi_round_repair_verdict() {
+        let _test_env = crate::test_env::write();
         // End to end over a repair that needs more than one round: the same
         // clause set the stale-cover test uses, which forces a residual, then
         // re-checks the cover against the incrementally repaired state. The
@@ -18351,6 +18462,7 @@ mod tests {
 
     #[test]
     fn reciprocal_bridge_rewrite_is_conservative_when_the_dropped_role_is_idle() {
+        let _test_env = crate::test_env::write();
         // `S` occurs only in the two bridges, so rewriting `S(x,y) := R(y,x)`
         // deletes both clauses and leaves a pure-EL set. The rewritten set must
         // answer exactly what the certified original answers -- the rewrite
@@ -18381,6 +18493,7 @@ mod tests {
 
     #[test]
     fn a_bridge_whose_body_role_is_never_derived_is_discharged_by_the_base_model() {
+        let _test_env = crate::test_env::write();
         // ORE 1194 carries two bridges of this shape (`has_distal_part` and
         // `has_proximal_part` occur in no other clause). Nothing ever adds an
         // edge to the body role, so the clause is satisfied by the base model
@@ -18400,6 +18513,7 @@ mod tests {
 
     #[test]
     fn a_reverse_rule_at_a_shared_witness_would_assert_a_named_subsumption() {
+        let _test_env = crate::test_env::write();
         // The completion gives every filler concept ONE node, so the node for
         // `B` is at once the witness of `A ⊑ ∃R.B` for every context that
         // inherits `A`, and the named class `B` itself. Canonicalising
@@ -18450,6 +18564,7 @@ mod tests {
 
     #[test]
     fn a_one_way_bridge_is_not_a_role_definition() {
+        let _test_env = crate::test_env::write();
         // `R(x,y) → S(y,x)` alone says `R⁻ ⊑ S`, not `S ≡ R⁻`: `S` may hold
         // where the transpose of `R` does not. Reading it as a definition adds
         // the converse, and the converse changes the taxonomy -- here a
@@ -18494,6 +18609,7 @@ mod tests {
 
     #[test]
     fn conjunction_aux_names_are_component_boundary_injective() {
+        let _test_env = crate::test_env::read();
         let left = vec!["a/b".to_string(), "c".to_string()];
         let right = vec!["a".to_string(), "b/c".to_string()];
         assert_eq!(
@@ -18510,6 +18626,7 @@ mod tests {
 
     #[test]
     fn conjunction_origins_record_exact_sorted_source_prefix_ids() {
+        let _test_env = crate::test_env::write();
         let input = clauses(&format!(
             "[{}]",
             cl(&[c("C", "x"), c("A", "x"), c("B", "x")], &[c("D", "x")])
@@ -18528,6 +18645,7 @@ mod tests {
 
     #[test]
     fn the_canonicalised_reverse_forms_are_outside_to_nf() {
+        let _test_env = crate::test_env::write();
         // Rewriting `S := R⁻` deletes the bridge clauses but does not delete
         // the work: `∃S.C ⊑ D` becomes `R(y,x) ∧ C(y) → D(x)`, whose head sits
         // on the role TARGET, and `P ⊑ ∃S.C` becomes `P(x) → R(f(x),x)`, whose
@@ -18695,6 +18813,7 @@ mod tests {
 
     #[test]
     fn context_parallel_saturation_matches_the_serial_fixpoint() {
+        let _test_env = crate::test_env::write();
         // The sharded engine against the serial one (itself pinned to the
         // naive rule-by-rule fixpoint by
         // `saturation_matches_the_naive_fixpoint_on_random_terminologies`) on
@@ -18752,6 +18871,7 @@ mod tests {
 
     #[test]
     fn context_parallel_labels_iterate_identically_for_every_worker_count() {
+        let _test_env = crate::test_env::write();
         // Byte-level determinism of the state the output is written from: the
         // label of a context iterates in the same order whatever the worker
         // count and whatever the interleaving, so the classification bytes do
@@ -18791,6 +18911,7 @@ mod tests {
 
     #[test]
     fn context_parallel_stress_matches_the_serial_fixpoint_over_repeated_runs() {
+        let _test_env = crate::test_env::write();
         // Volume plus repetition: four terminologies of a few hundred contexts
         // with every normal form live, each run four times at four workers
         // against the serial engine.
@@ -18830,6 +18951,7 @@ mod tests {
 
     #[test]
     fn context_parallel_classification_is_byte_identical_across_worker_counts() {
+        let _test_env = crate::test_env::write();
         // End to end through `classify`: NF1 chains, a conjunction, an
         // existential pair, an NF4 axiom, a role inclusion, a role chain and
         // an unsatisfiable conjunction, classified serially and at one, two
@@ -18916,6 +19038,7 @@ mod tests {
 
     #[test]
     fn context_parallel_plan_keeps_the_order_sensitive_modes_serial() {
+        let _test_env = crate::test_env::read();
         // The policy, without the environment: the parallel engine is opt-in
         // and declines wherever the serial construction ORDER is load-bearing.
         let plan = |requested, par_nf4, fifo, cert, lean, symbols, available| {
@@ -18951,6 +19074,7 @@ mod tests {
 
     #[test]
     fn shard_queue_drains_one_activated_context_at_a_time() {
+        let _test_env = crate::test_env::write();
         // The shard-local counterpart of
         // `contextual_worklist_drains_one_activated_context_at_a_time`, over
         // owner slots instead of context ids.
@@ -18978,6 +19102,7 @@ mod tests {
 
     #[test]
     fn context_parallel_propagates_bottom_and_chains_across_shards() {
+        let _test_env = crate::test_env::write();
         // A targeted cross-shard case: consecutive concept ids land on
         // different workers under `c % W`, so this chain of edges forces the
         // ⊥ back-propagation, the NF4 join and the role composition to travel

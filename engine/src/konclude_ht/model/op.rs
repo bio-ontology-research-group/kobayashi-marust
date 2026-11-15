@@ -757,6 +757,7 @@ mod tests {
 
     #[test]
     fn flag_mapping_matches_codes() {
+        let _test_env = crate::test_env::read();
         assert_eq!(ConceptOperator::new(CCAND).get_operator_flag(), CCF_AND);
         assert_eq!(ConceptOperator::new(CCOR).get_operator_flag(), CCF_OR);
         assert_eq!(ConceptOperator::new(CCSOME).get_operator_flag(), CCF_SOME);
@@ -774,6 +775,7 @@ mod tests {
 
     #[test]
     fn group_predicates() {
+        let _test_env = crate::test_env::read();
         // ALL is in both ALL_TYPE and the combined ALL_AQALL_TYPE.
         let all = ConceptOperator::new(CCALL);
         assert!(all.is_all_type());
@@ -796,6 +798,7 @@ mod tests {
 
     #[test]
     fn special_sign_bit_pattern() {
+        let _test_env = crate::test_env::read();
         // CCF_SPECIAL is exactly the i64 sign bit.
         assert_eq!(CCF_SPECIAL, i64::MIN);
     }

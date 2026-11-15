@@ -616,6 +616,7 @@ pub fn ofn_to_symbolic_frontend(text: &str) -> Result<SymbolicFrontendResult, pa
 mod symbolic_frontend_tests {
     #[test]
     fn full_symbolic_frontend_retains_data_and_large_bound_evidence() {
+        let _test_env = crate::test_env::write();
         let mut result = super::ofn_to_symbolic_frontend(r#"Prefix(:=<http://x#>)
             Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
             Ontology(
@@ -2307,16 +2308,14 @@ mod separable_abox_elision_tests {
     };
     use crate::routing::Route;
 
-    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-    pub(super) fn lock_environment() -> std::sync::MutexGuard<'static, ()> {
-        ENV_LOCK
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    pub(super) fn lock_environment() -> crate::test_env::EnvGuard {
+        crate::test_env::write()
     }
 
     #[test]
     fn optimistic_parse_screen_admits_only_likely_positive_abox_sources() {
+        let _test_env = crate::test_env::write();
         assert!(likely_separable_positive_abox(
             "Ontology(SubClassOf(<urn:A> <urn:B>) ClassAssertion(<urn:A> <urn:a>))"
         ));
@@ -2334,6 +2333,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn atomic_parse_screen_rejects_every_other_abox_constructor() {
+        let _test_env = crate::test_env::write();
         assert!(likely_atomic_class_only_abox(
             "Ontology(DisjointClasses(<urn:A> <urn:B>) ClassAssertion(<urn:A> <urn:a>))"
         ));
@@ -2351,6 +2351,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn inert_role_abox_is_replaced_by_internal_type_probes() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let result = with_ofn_to_clauses_requested_route(
             "Ontology(\
@@ -2376,6 +2377,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn role_readers_and_equality_generators_reject_inert_projection() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         for source in [
             "Ontology(ObjectPropertyDomain(<urn:q> <urn:A>) ClassAssertion(<urn:A> <urn:a>) ObjectPropertyAssertion(<urn:q> <urn:a> <urn:b>))",
@@ -2395,6 +2397,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn extended_atomic_abox_admits_non_el_object_tboxes() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         for axiom in [
             "SubClassOf(<urn:A> ObjectUnionOf(<urn:B> <urn:C>))",
@@ -2416,6 +2419,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn extended_atomic_abox_rejects_non_el_source_constraints() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         for extra in [
             "SubClassOf(<urn:B> ObjectOneOf(<urn:a>))",
@@ -2438,6 +2442,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn extended_atomic_abox_observer_preserves_joint_membership_and_alias_rejection() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         for (second, accepted) in [("<http://example.org/a>", false), (":a", false), ("<http://example.org/b>", true), ("_:bnode1", true)] {
             let source = format!("Prefix(:=<http://example.org/>) Ontology(SubClassOf(<http://example.org/C> ObjectUnionOf(<http://example.org/D> <http://example.org/E>)) DisjointClasses(<http://example.org/A> <http://example.org/B>) ClassAssertion(<http://example.org/A> <http://example.org/a>) ClassAssertion(<http://example.org/B> {second}))");
@@ -2451,6 +2456,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn extended_atomic_abox_source_whitelist_fails_closed_and_retains_el_arm() {
+        let _test_env = crate::test_env::write();
         use crate::frontend::profile::{atomic_class_abox_source_admissible, OntologyProfile};
         let mut profile = OntologyProfile::default();
         profile.disjoint_union_abox_candidate = true;
@@ -2475,6 +2481,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn certified_positive_abox_is_removed_before_clausification() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let result = with_ofn_to_clauses_requested_route(
             "Ontology(SubClassOf(<urn:A> <urn:B>) \
@@ -2499,6 +2506,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn atomic_class_abox_is_projected_but_retains_consistency_queries() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let result = with_ofn_to_clauses_requested_route(
             "Ontology(\
@@ -2537,6 +2545,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn atomic_abox_projection_preserves_joint_membership() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         for (second_individual, expect_projection, expect_clash) in [
             ("<http://example.org/a>", false, true),
@@ -2565,6 +2574,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn bottom_constrained_atomic_abox_is_projected_for_taxonomy_check() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let result = with_ofn_to_clauses_requested_route(
             "Ontology(SubClassOf(<urn:A> owl:Nothing) ClassAssertion(<urn:A> <urn:a>))",
@@ -2581,6 +2591,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn direct_bottom_assertion_stays_on_full_abox_path() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let result = with_ofn_to_clauses_requested_route(
             "Ontology(ClassAssertion(owl:Nothing <urn:a>))",
@@ -2595,6 +2606,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn complex_class_assertion_stays_on_full_abox_path() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let result = with_ofn_to_clauses_requested_route(
             "Ontology(\
@@ -2612,6 +2624,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn exact_disjoint_union_consistency_verdict_authorizes_elision() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();
         std::env::set_var("KM_DISJOINT_UNION_ABOX_CONSISTENT", "1");
@@ -2633,6 +2646,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn isolated_existential_witness_abox_is_projected_to_production() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let result = with_ofn_to_clauses_requested_route(
             "Ontology(\
@@ -2676,6 +2690,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn existential_witness_projection_preserves_tbox_bottom_prepass() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let projected = with_ofn_to_clauses_requested_route(
             "Ontology(\
@@ -2717,6 +2732,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn existential_witness_projection_rejects_every_role_coupling() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         for rejected in [
             "Ontology(SubClassOf(<urn:X> owl:Nothing) \
@@ -2744,6 +2760,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn disjoint_union_public_signature_excludes_native_abox_private_concepts() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let result = with_ofn_to_clauses_requested_route(
             "Ontology(DisjointClasses(<urn:A> <urn:B>) ClassAssertion(<urn:C> <urn:a>))",
@@ -2772,6 +2789,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn atomic_abox_supersedes_disjoint_union_precheck() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         use crate::json_io::{JAtom, JTerm};
 
@@ -2825,6 +2843,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn subthreshold_atomic_abox_uses_exact_el_projection() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let _guard = crate::routing::EnvironmentGuard::capture();
         std::env::set_var("KM_ABOX_DISJOINT_UNION_CHECK", "1");
@@ -2844,6 +2863,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn automatic_route_omits_a_separable_abox_before_worker_selection() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let result = with_ofn_to_clauses_requested_route(
             "Ontology(SubClassOf(<urn:A> <urn:B>) ClassAssertion(<urn:A> <urn:a>))",
@@ -2860,6 +2880,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn omitted_abox_only_class_keeps_a_context_for_global_tbox_axioms() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let result = with_ofn_to_clauses_requested_route(
             "Ontology(SubClassOf(owl:Thing <urn:D>) ClassAssertion(<urn:C> <urn:a>))",
@@ -2896,6 +2917,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn vacuous_top_role_object_abox_selects_the_certified_typed_bridge() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         let result = with_ofn_to_clauses_requested_route(
             VACUOUS_TOP_ROLE_OBJECT_ABOX,
@@ -2931,6 +2953,7 @@ mod separable_abox_elision_tests {
 
     #[test]
     fn a_read_universal_role_keeps_the_exact_nominal_fence() {
+        let _test_env = crate::test_env::write();
         let _environment_lock = lock_environment();
         // The builtin now also occurs in a class expression, so nothing is
         // elided and the conservative occurrence flag stays authoritative.
@@ -2959,7 +2982,7 @@ mod separable_abox_elision_tests {
 
 /// Serialize tests that select routes through process-wide environment flags.
 #[cfg(test)]
-pub(crate) fn lock_test_environment() -> std::sync::MutexGuard<'static, ()> {
+pub(crate) fn lock_test_environment() -> crate::test_env::EnvGuard {
     separable_abox_elision_tests::lock_environment()
 }
 
@@ -3041,6 +3064,7 @@ mod bottom_prepass_route_tests {
 
     #[test]
     fn el_completion_does_not_build_the_general_bottom_certificate() {
+        let _test_env = crate::test_env::write();
         assert!(!route_needs_bottom_prepass(Route::Elc));
         assert!(!route_needs_bottom_prepass(Route::ElcCert));
         assert!(route_needs_bottom_prepass(Route::ProductionAll));
@@ -3049,6 +3073,7 @@ mod bottom_prepass_route_tests {
 
     #[test]
     fn absent_declarations_are_seeded_once_in_source_order() {
+        let _test_env = crate::test_env::write();
         let mut clauses = Vec::new();
         let declared = vec!["Z".to_string(), "A".to_string(), "Z".to_string()];
         seed_missing_declarations(&mut clauses, &declared);
@@ -3067,6 +3092,7 @@ mod bottom_prepass_route_tests {
 
     #[test]
     fn retained_side_observers_match_v025_second_pass_bytes() {
+        let _test_env = crate::test_env::write();
         let text = "Ontology(\
             Declaration(Class(<http://decl.example#A>)) \
             Declaration(Class(<http://other.example#A>)) \
@@ -3231,6 +3257,7 @@ mod rule_contract_tests {
 
     #[test]
     fn named_dl_safe_rule_is_fully_representable() {
+        let _test_env = crate::test_env::write();
         let parsed = ontology(
             "Ontology(DLSafeRule(Body(ClassAtom(<A> Variable(<x>))) Head(ClassAtom(<B> Variable(<x>)))))",
         );
@@ -3242,6 +3269,7 @@ mod rule_contract_tests {
 
     #[test]
     fn rule_contract_rejects_dropped_and_complex_atoms() {
+        let _test_env = crate::test_env::write();
         let dropped = ontology(
             "Ontology(DLSafeRule(Body(BuiltInAtom(<p> Variable(<x>))) Head(ClassAtom(<B> Variable(<x>)))))",
         );
@@ -3255,6 +3283,7 @@ mod rule_contract_tests {
 
     #[test]
     fn same_individual_rule_is_representable() {
+        let _test_env = crate::test_env::write();
         // SameIndividual is in the FIRED tier: the contract accepts it (it fires
         // downstream via variable identification / a derived equality).
         let parsed = ontology(
@@ -3266,6 +3295,7 @@ mod rule_contract_tests {
 
     #[test]
     fn different_individuals_rule_does_not_decline_the_route() {
+        let _test_env = crate::test_env::write();
         // DEFERRED tier: a Diff-bearing rule is carried through the contract (it
         // must NOT decline the route — that would forfeit the fired rules that
         // detect the 2669/15516 clash). It is dropped at firing time instead.
@@ -3293,6 +3323,7 @@ DLSafeRule(Body(ObjectPropertyAtom(<r> Variable(<x>) Variable(<y>)) DifferentInd
 
     #[test]
     fn builtin_bearing_corpus_declines_even_with_representable_rules() {
+        let _test_env = crate::test_env::write();
         // Negative contract: one built-in rule beside representable rules still
         // declines the whole route. The retained datatype obligation is outside
         // the object-only partition, so uncovered source (2) still refuses.
@@ -3316,6 +3347,7 @@ mod nominal_abox_contract_tests {
 
     #[test]
     fn functional_data_projection_keeps_entailed_different_individuals() {
+        let _test_env = crate::test_env::write();
         let result = ofn_to_clauses(
             "Ontology(Declaration(Class(<http://e#A>))
              ClassAssertion(<http://e#A> <http://e#a>)
@@ -3339,6 +3371,7 @@ mod nominal_abox_contract_tests {
 
     #[test]
     fn nary_different_individuals_is_certified_as_exact_pairs() {
+        let _test_env = crate::test_env::write();
         let result = ofn_to_clauses(&format!(
             "{PREFIX}\
              Declaration(Class(:A))\
@@ -3374,6 +3407,7 @@ mod nominal_abox_contract_tests {
 
     #[test]
     fn object_abox_and_assertion_only_individuals_are_certified() {
+        let _test_env = crate::test_env::write();
         let result = ofn_to_clauses(&format!(
             "{PREFIX}\
              Declaration(ObjectProperty(:r))\
@@ -3410,6 +3444,7 @@ mod nominal_abox_contract_tests {
 
     #[test]
     fn identity_is_retained_while_data_fails_and_negative_object_roles_are_retained() {
+        let _test_env = crate::test_env::write();
         let result = ofn_to_clauses(&format!(
             "{PREFIX}\
              Declaration(Class(:OnlyA)) Declaration(Class(:OnlyB))\
@@ -3434,6 +3469,7 @@ mod nominal_abox_contract_tests {
 
     #[test]
     fn typed_abox_preserves_class_roles_negatives_and_different() {
+        let _test_env = crate::test_env::write();
         let result = ofn_to_clauses(&format!(
             "{PREFIX}\
              Declaration(Class(:A)) Declaration(Class(:B))\
@@ -3463,6 +3499,7 @@ mod nominal_abox_contract_tests {
 
     #[test]
     fn assertion_only_proxy_uses_normalizer_mapping_without_default_clause_injection() {
+        let _test_env = crate::test_env::write();
         let mut registry = IriRegistry::new();
         let ontology = parse::parse_axioms(
             &mut registry,
@@ -3495,6 +3532,7 @@ mod nominal_abox_contract_tests {
 
     #[test]
     fn identity_and_redundant_positive_data_are_complete_while_unsupported_abox_fails_closed() {
+        let _test_env = crate::test_env::write();
         let identity = ofn_to_clauses(&format!(
             "{PREFIX} Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b)) SameIndividual(:a :b))"
         ))

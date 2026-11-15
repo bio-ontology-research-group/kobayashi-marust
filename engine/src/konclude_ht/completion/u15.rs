@@ -1738,6 +1738,7 @@ mod tests {
 
     #[test]
     fn merge_individual_node_into_propagates_invalid_blocking_flag() {
+        let _test_env = crate::test_env::read();
         let mut algo = CompletionTaskHandleAlgorithm::new();
         let mut calc_ctx = CalculationAlgorithmContextBase::new();
 
@@ -1771,11 +1772,13 @@ mod tests {
 
     #[test]
     fn merge_individual_node_into_relocates_distinct_edges() {
+        let _test_env = crate::test_env::read();
         check_merge_distinct_edge_relocation(false);
     }
 
     #[test]
     fn merge_individual_node_into_relocates_compressed_distinct_groups() {
+        let _test_env = crate::test_env::read();
         check_merge_distinct_edge_relocation(true);
     }
 
@@ -1873,6 +1876,7 @@ mod tests {
 
     #[test]
     fn merge_individual_node_into_copies_exact_nominal_connections() {
+        let _test_env = crate::test_env::read();
         let mut algo = CompletionTaskHandleAlgorithm::new();
         algo.conf_exact_nominal_dependency_tracking = true;
         let mut calc_ctx = CalculationAlgorithmContextBase::new();
@@ -1921,6 +1925,7 @@ mod tests {
 
     #[test]
     fn merge_individual_node_into_relocates_assertion_linkers() {
+        let _test_env = crate::test_env::read();
         let mut algo = CompletionTaskHandleAlgorithm::new();
         let mut calc_ctx = CalculationAlgorithmContextBase::new();
 
@@ -2067,6 +2072,7 @@ mod tests {
     /// `source_live -r-> merge_into`) instead of stopping.
     #[test]
     fn merge_individual_node_into_relocates_assertions_through_merge_chains() {
+        let _test_env = crate::test_env::read();
         let mut algo = CompletionTaskHandleAlgorithm::new();
         let mut calc_ctx = CalculationAlgorithmContextBase::new();
         let role = calc_ctx.ontology_arenas_mut().alloc_role(Role::new());
@@ -2140,6 +2146,7 @@ mod tests {
 
     #[test]
     fn merge_individual_node_into_transfers_value_backed_role_assertions() {
+        let _test_env = crate::test_env::read();
         let mut algo = CompletionTaskHandleAlgorithm::new();
         let mut calc_ctx = CalculationAlgorithmContextBase::new();
         let role = calc_ctx.ontology_arenas_mut().alloc_role(Role::new());
