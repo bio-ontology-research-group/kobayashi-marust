@@ -189,11 +189,15 @@ def neg_gcis(N, part, nu, Bs):
 
 
 def dump_nf(wpath, nfpath, timeout):
-    env = {'LEAN_PATH': LEANPATH}
-    cmd = ['bash', '-c', 'ulimit -s unlimited; exec "$0" --tstack=4000000 --run "$1" "$2"',
+    env = {'LEAN_PATH': LEANPATH, 'LEAN_NUM_THREADS': '1'}
+    cmd = ['bash', '-c', 'ulimit -s 1048576; exec "$0" --tstack=4000000 --run "$1" "$2"',
            LEAN, os.path.join(HERE, 'NFDump.lean'), wpath]
-    rc, secs, rss, _, err = run(cmd, timeout, out=nfpath, env=env)
-    return {'rc': rc, 'secs': secs, 'rss_mb': rss, 'err': (err or '')[-300:] if rc else ''}
+    for attempt in range(3):
+        rc, secs, rss, _, err = run(cmd, timeout, out=nfpath, env=env)
+        if 'failed to create thread' not in (err or ''):
+            break
+        time.sleep(5)
+    return {'rc': rc, 'secs': secs, 'rss_mb': rss, 'err': (err or '')[-300:] if rc else '', 'tries': attempt + 1}
 
 
 def find_hint(nfpath, hpath, budget):
@@ -227,6 +231,7 @@ def find_hint(nfpath, hpath, budget):
             r['core'] = h.k
     r['secs'] = round(time.time() - t0, 2)
     hintcheck.write(h, hpath)
+    r['_types'] = h.ty
     r['hint_bytes'] = os.path.getsize(hpath)
     r['status'] = 'selfcheck-reject' if why else 'hint'
     if why:
@@ -368,9 +373,25 @@ def main():
             return 'dump-failed', None
         hpath = os.path.join(outdir, 'w%d.hint' % i)
         fr, N, ix = find_hint(nfpath, hpath, budget)
+        types = fr.pop('_types', None)
         st['producer'] = fr
         if fr['status'] != 'hint':
             return fr['status'], N
+        # readout: named classes outside the type of each x_j and named individual
+        ro = 0
+        if types is not None:
+            for j, (A, Bs) in enumerate(groups):
+                nu = N.nominal.get(XP + str(j))
+                t = next((t for t in types if nu in t), None)
+                if t is not None:
+                    ro += sum(1 for B in nonsub[A] if N.cname.get(B) not in t)
+            if cur_ci[0] == 0:
+                for a, Cs in nontype.items():
+                    nu = N.nominal.get(a)
+                    t = next((t for t in types if nu in t), None)
+                    if t is not None:
+                        ro += sum(1 for C in Cs if N.cname.get(C) not in t)
+        st['readout_rows'] = ro
         form = fr.get('form')
         st['checker'] = check(wpath, hpath, T if form != 'certificate' or not fr.get('recs') else 60)
         return ('certified' if st['checker']['accepted'] else 'checker-rejected-or-slow'), N
@@ -384,8 +405,14 @@ def main():
             cert['nonsub'] += len(Bs)
         cert['nontype'] += sum(len(v) for v in nt.values())
     credited_sat = set()
+    mirror = {'rows': 0, 'readout': 0}
+    R['mirror_only'] = mirror
 
     # chunks of classes; the size adapts to keep the flat core near 300 elements
+    rowcap = int(a_[a_.index('--row-cap') + 1]) if '--row-cap' in a_ else 30000
+    readout = nrows_sub + nrows_type > rowcap
+    R['mode'] = 'readout' if readout else 'witness'
+    cur_ci = [0]
     cs = chunk or 40
     pos, ci = 0, 0
     R['chunk_sizes'] = []
@@ -396,16 +423,28 @@ def main():
         ch = As[pos:pos + cs]
         pos += len(ch)
         R['chunk_sizes'].append(len(ch))
-        groups = [(A, nonsub[A]) for A in ch]
-        nt = dict(nontype) if ci == 0 else {}
+        cur_ci[0] = ci
+        if readout:
+            groups = [(A, []) for A in ch]
+            nt = {}
+        else:
+            groups = [(A, nonsub[A]) for A in ch]
+            nt = dict(nontype) if ci == 0 else {}
         for rnd in range(4):
             st = {'chunk': ci, 'round': rnd, 'xs': len(groups),
                   'pairs': sum(len(b) for _, b in groups) + sum(len(v) for v in nt.values())}
             status, N = attempt(groups, nt, st)
             st['status'] = status
             R['stages'].append(st)
+            if status == 'checker-rejected-or-slow':
+                mirror['rows'] += sum(len(b) for _, b in groups) + sum(len(v) for v in nt.values()) + \
+                    len([A for A, _ in groups if A not in credited_sat])
+                mirror['readout'] += st.get('readout_rows', 0)
+                break
             if status == 'certified':
                 credit(groups, nt)
+                if readout:
+                    R['readout_rows'] = R.get('readout_rows', 0) + st.get('readout_rows', 0)
                 break
             if status != 'no-model' or N is None:
                 break
@@ -436,6 +475,8 @@ def main():
         if cores and not chunk:
             per = max(cores) / max(1, len(ch))
             cs = max(5, min(400, int(300 / max(per, 0.5))))
+            if any(x.get('checker', {}).get('rc') == 124 for x in R['stages'] if x.get('chunk') == ci):
+                cs = max(2, len(ch) // 4)
         ci += 1
         if groups and status != 'certified':
             R['unresolved'].append({'chunk': ci, 'groups': [[A, len(B)] for A, B in groups][:20],

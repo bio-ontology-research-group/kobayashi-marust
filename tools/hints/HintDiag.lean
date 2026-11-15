@@ -24,6 +24,23 @@ def diag {n m : Nat} (out : IO.FS.Stream) (B : SRIQ.Ontology (Fin n) (Fin m)) (N
       out.putStrLn s!"symm {decide (∀ b c, h.lab c b = SRIQ.flipL (h.lab b c))}"; out.flush; return
     if sel == "nomok" then
       out.putStrLn s!"nomOK {decide (SRIQN.NomOK N h.ty)}"; out.flush; return
+    if sel.startsWith "piece" then
+     if hk : 0 < h.k then
+      let b0 : Fin h.k := ⟨0, hk⟩
+      let t := h.ty b0
+      let Nb := SRIQ.Proc.nbrsL h.ty h.lab b0 ++ h.kids b0
+      let t0 ← IO.monoMsNow
+      if sel == "piece-closed" then out.putStrLn s!"closed {decide (SRIQ.Closed B t)}"
+      if sel == "piece-closedlist" then out.putStrLn s!"closedlist {(SRI.Proc.gcis (SRIQ.sriPart B)).all (fun q => !(q.1.all (fun a => decide (a ∈ t))) || q.2.any (fun b => decide (b ∈ t)))}"
+      if sel == "piece-closediff" then out.putStrLn s!"closediff {decide (∀ q ∈ SRI.Proc.gcis (SRIQ.sriPart B), (∀ a ∈ q.1, a ∈ t) → ∃ b ∈ q.2, b ∈ t)}"
+      if sel == "piece-gcis" then out.putStrLn s!"gcis {(SRI.Proc.gcis (SRIQ.sriPart B)).length}"
+      if sel == "piece-edge" then out.putStrLn s!"edge {Nb.all (fun e => decide (SRIQ.UpClosed B e.1) && decide (SRIQ.EdgeOK B t e))}"
+      if sel == "piece-lower" then out.putStrLn s!"lower {(SRIQ.lowerL B).all (fun q => !decide (q.1 ∈ t) || decide (q.2.1 ≤ SRIQ.cnt Nb q.2.2.1 q.2.2.2))}"
+      if sel == "piece-upper" then out.putStrLn s!"upper {(SRIQ.upperL B).all (fun q => !decide (q.1 ∈ t) || decide (SRIQ.cnt Nb q.2.2.1 q.2.2.2 ≤ q.2.1))}"
+      let t1 ← IO.monoMsNow
+      out.putStrLn s!"ms {t1 - t0}"; out.flush
+      return
+     else return
     if sel == "star" then
       for b in List.finRange h.k do
         out.putStrLn s!"core {b.val} {SRIQ.Proc.starOKB B (h.ty b) (SRIQ.Proc.nbrsL h.ty h.lab b ++ h.kids b)}"; out.flush
