@@ -4,6 +4,11 @@
 
 ### Engine
 
+- `km classify --properties` also reports the data property hierarchy
+  (`SUBDATAPROP`), empty data properties (`BOTDATAPROP`), data property
+  domains (`DATADOMAIN`) and disjoint data properties (`DISJOINTDATAPROP`)
+  (W6), by fresh classes `∃p.{v}` over an opaque fresh literal `v`; see
+  `docs/PROPERTIES.md`.
 - Inverse property operands (E9): `SubObjectPropertyOf` with
   `ObjectInverseOf` on either side or both, `EquivalentObjectProperties`
   and `DisjointObjectProperties` with inverse members, and the

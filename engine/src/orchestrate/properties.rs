@@ -540,6 +540,9 @@ impl super::realize::Extended {
         if let Some(properties) = &self.properties {
             out.push_str(&properties.to_lines());
         }
+        if let Some(data) = &self.data_properties {
+            out.push_str(&data.to_lines());
+        }
         out
     }
 
@@ -571,6 +574,16 @@ impl super::realize::Extended {
             domains: Option<&'a [[String; 2]]>,
             #[serde(skip_serializing_if = "Option::is_none")]
             ranges: Option<&'a [[String; 2]]>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            subdataproperties: Option<&'a [[String; 2]]>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            topdataproperties: Option<&'a [String]>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            bottomdataproperties: Option<&'a [String]>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            datadomains: Option<&'a [[String; 2]]>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            disjointdataproperties: Option<&'a [[String; 2]]>,
         }
         let c = &self.realization.classification;
         let p = self.properties.as_ref();
@@ -588,6 +601,11 @@ impl super::realize::Extended {
             bottomproperties: p.map(|p| p.bottom.as_slice()),
             domains: p.map(|p| p.domains.as_slice()),
             ranges: p.map(|p| p.ranges.as_slice()),
+            subdataproperties: self.data_properties.as_ref().map(|d| d.sub.as_slice()),
+            topdataproperties: self.data_properties.as_ref().map(|d| d.top.as_slice()),
+            bottomdataproperties: self.data_properties.as_ref().map(|d| d.bottom.as_slice()),
+            datadomains: self.data_properties.as_ref().map(|d| d.domains.as_slice()),
+            disjointdataproperties: self.data_properties.as_ref().map(|d| d.disjoint.as_slice()),
         };
         let mut ser = serde_json::Serializer::with_formatter(writer, super::PyFmt);
         serde::Serialize::serialize(&encoded, &mut ser)

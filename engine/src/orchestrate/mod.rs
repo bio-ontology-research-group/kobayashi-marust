@@ -28,6 +28,7 @@ mod data_source;
 pub(crate) mod public_subjects;
 pub mod race;
 pub mod properties;
+pub mod data_properties;
 pub mod realize;
 pub mod tmpfile;
 

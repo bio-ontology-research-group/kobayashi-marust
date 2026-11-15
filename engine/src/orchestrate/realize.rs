@@ -414,6 +414,9 @@ pub struct Extended {
     pub realization: Realization,
     /// Present iff the property hierarchy was requested.
     pub properties: Option<super::properties::PropertyHierarchy>,
+    /// Present iff the property hierarchy was requested: the data property
+    /// rows (see [`super::data_properties`]).
+    pub data_properties: Option<super::data_properties::DataPropertyHierarchy>,
     /// Present iff `--top` was requested: the named classes equivalent to
     /// `owl:Thing`, sorted.
     pub top: Option<Vec<String>>,
@@ -503,10 +506,16 @@ pub fn classify_extended(
         super::properties::source_shape(&text)?
     };
     let empty_properties = properties.then(super::properties::PropertyHierarchy::default);
-    if individuals.is_empty() && roles.is_empty() && !top {
+    let data_roles = if properties {
+        super::data_properties::canonical_data_properties(&text)?
+    } else {
+        Vec::new()
+    };
+    let empty_data = properties.then(super::data_properties::DataPropertyHierarchy::default);
+    if individuals.is_empty() && roles.is_empty() && data_roles.is_empty() && !top {
         let classification = super::classify_with_evidence(cfg, ont)?.classification;
         let realization = Realization { classification, types: Vec::new(), same: Vec::new() };
-        return Ok(Extended { realization, properties: empty_properties, top: None });
+        return Ok(Extended { realization, properties: empty_properties, data_properties: empty_data, top: None });
     }
     let (mut extension, probes) = individual_extension(&text, &individuals);
     let top_probe = if top {
@@ -523,27 +532,51 @@ pub fn classify_extended(
         extension.push_str(&property_extension);
         Some(property_probes)
     };
+    let data_probes = if data_roles.is_empty() {
+        None
+    } else {
+        let (data_extension, data_probes) = super::data_properties::extension(&text, &data_roles);
+        extension.push_str(&data_extension);
+        Some(data_probes)
+    };
     if std::env::var_os("KM_TIMING").is_some() {
         eprintln!(
-            "KM_TIMING probes: {} individual, {} object property",
+            "KM_TIMING probes: {} individual, {} object property, {} data property",
             probes.len(),
-            roles.len()
+            roles.len(),
+            data_roles.len()
         );
     }
     // The rewrite is the validated source plus declared probe classes whose
     // definitions only name individuals and object properties of that source,
     // `owl:Thing` and `owl:topObjectProperty`.
+    // The data property probes use a literal of a fresh datatype, read as an
+    // opaque value (`--unknown-datatypes=free`). The source itself was
+    // validated above in the caller's mode.
+    let _free = data_probes.as_ref().map(|_| FreeDatatypes::enable());
     let mut classification = classify_probe_source(cfg, &text, &extension, "-probes.ofn")?;
+    drop(_free);
     let individual_probes: HashSet<&str> = probes.iter().map(|(probe, _)| probe.as_str()).collect();
     let top_classes = match &top_probe {
         Some(top_probe) => {
             let foreign = |name: &str| {
                 individual_probes.contains(name)
                     || property_probes.as_ref().is_some_and(|p| p.is_probe(name))
+                    || data_probes.as_ref().is_some_and(|p| p.is_probe(name))
             };
             Some(split_top(&mut classification, top_probe, &foreign)?)
         }
         None => None,
+    };
+    let data_hierarchy = match &data_probes {
+        Some(data_probes) => {
+            let foreign = |name: &str| {
+                individual_probes.contains(name)
+                    || property_probes.as_ref().is_some_and(|p| p.is_probe(name))
+            };
+            Some(super::data_properties::split(&mut classification, data_probes, &foreign)?)
+        }
+        None => empty_data,
     };
     let hierarchy = match property_probes {
         Some(property_probes) => {
@@ -558,7 +591,28 @@ pub fn classify_extended(
         None => empty_properties,
     };
     let realization = split(classification, &probes, mode.unwrap_or(TypeMode::All))?;
-    Ok(Extended { realization, properties: hierarchy, top: top_classes })
+    Ok(Extended { realization, properties: hierarchy, data_properties: data_hierarchy, top: top_classes })
+}
+
+/// Sets `KM_UNKNOWN_DATATYPES=free` for the probe run of the data property
+/// probes and restores the caller's value when dropped.
+struct FreeDatatypes(Option<std::ffi::OsString>);
+
+impl FreeDatatypes {
+    fn enable() -> Self {
+        let previous = std::env::var_os("KM_UNKNOWN_DATATYPES");
+        std::env::set_var("KM_UNKNOWN_DATATYPES", "free");
+        FreeDatatypes(previous)
+    }
+}
+
+impl Drop for FreeDatatypes {
+    fn drop(&mut self) {
+        match self.0.take() {
+            Some(value) => std::env::set_var("KM_UNKNOWN_DATATYPES", value),
+            None => std::env::remove_var("KM_UNKNOWN_DATATYPES"),
+        }
+    }
 }
 
 /// The message of the positive-EL ABox consistency certificate when it

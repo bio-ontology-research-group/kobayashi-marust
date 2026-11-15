@@ -193,3 +193,31 @@ there.
   7 GB for plain classification and does not finish `--properties` in 300 s
   (the old reduction also gave no answer: exit 3 after 255 s). HermiT
   answers in 16 s.
+
+## Data properties (W6, 2026-11-15)
+
+With `--properties` km also reports, after the object property rows:
+
+| Row | Meaning |
+|---|---|
+| `SUBDATAPROP<TAB>p<TAB>q` | `O ⊨ p ⊑ q`, `p ≠ q`, `p` not empty |
+| `TOPDATAPROP<TAB>p` | `O ⊨ owl:topDataProperty ⊑ p` (never in OWL 2 DL, which admits `owl:topDataProperty` only as a super-property) |
+| `BOTDATAPROP<TAB>p` | `p` is empty; it has no other rows |
+| `DATADOMAIN<TAB>p<TAB>C` | `O ⊨ DataPropertyDomain(p C)`, `C` named, not `owl:Thing` |
+| `DISJOINTDATAPROP<TAB>p<TAB>q` | `O ⊨ DisjointDataProperties(p q)`, `p ≠ q`, both not empty, both orders |
+| `NODATADISJOINT` | more than 64 data properties: the disjointness rows were not computed |
+
+JSON keys: `subdataproperties`, `topdataproperties`, `bottomdataproperties`,
+`datadomains`, `disjointdataproperties`. The data properties are those in
+data property position anywhere in the source, other than the top and bottom
+data properties.
+
+Mechanism (`orchestrate::data_properties`): one classification of the source
+extended with `W_p ≡ ∃p.{v}` for every data property `p`, where `v` is a
+literal of a fresh datatype read under `--unknown-datatypes=free` (an opaque
+value about which the source says nothing), `X_pq ≡ W_p ⊓ W_q` for each pair,
+and `T ≡ owl:Thing`. Since `v` can be interpreted as any data value,
+`O ⊨ p ⊑ q` iff `W_p ⊑ W_q`, `p` is empty iff `W_p` is unsatisfiable,
+`W_p ⊑ C` iff `C` is a domain of `p`, and `p`, `q` are disjoint iff `X_pq` is
+unsatisfiable. The data ranges of data properties are not reported (HermiT's
+`OWLReasoner` has no such query).
