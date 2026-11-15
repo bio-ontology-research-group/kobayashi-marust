@@ -353,7 +353,7 @@ def runCB {n m : Nat} (E : SRIQ.Ontology (Fin n) (Fin m)) (req : Array Nat) (req
   | .error e => IO.eprintln s!"declined: {e}"; return none
   | .ok cls =>
     let t0 ← IO.monoMsNow
-    let budget := ((← IO.getEnv "KM_SRIQF_CBMS").bind String.toNat?).getD 30000
+    let budget := ((← IO.getEnv "KM_SRIQF_CBMS").bind String.toNat?).getD 5000
     let r ← CBGen.saturate n m cls req (deadline := (← IO.monoMsNow) + budget)
     let t1 ← IO.monoMsNow
     let nItems := r.st.ctxs.foldl (fun a c => a + c.itemLog.size) 0
