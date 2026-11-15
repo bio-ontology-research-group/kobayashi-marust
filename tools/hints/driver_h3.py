@@ -196,7 +196,7 @@ def main():
     if '--no-check' in a:
         C['skipped'] = 'not requested'
         return finish(R, outdir, t0)
-    if not P['base']['ok'] or not P['models']:
+    if not P['base']['ok'] or not P['models'] or max(m['elements'] for m in P['models']) == 0:
         C['skipped'] = 'no model'
         return finish(R, outdir, t0)
     # a guard on the check cost (elements x gcis); the 4bc900f0 check took 14 s at 1.4e8 on ore_ont_33, later binaries are faster
@@ -219,7 +219,12 @@ def main():
             continue
         hp, wp = os.path.join(outdir, 'model%d.hint' % k), os.path.join(outdir, 'model%d.wit' % k)
         op = os.path.join(outdir, 'check%d.jsonl' % k)
-        rc, sec, mem, out, err = ref(['--witness', wp, '--hint', hp, '--out', op] + extra, src, ctime)
+        for _ in range(3):
+            rc, sec, mem, out, err = ref(['--witness', wp, '--hint', hp, '--out', op] + extra, src, ctime)
+            # the host sometimes refuses new threads under load
+            if 'failed to create thread' not in (err or ''):
+                break
+            time.sleep(20)
         C['calls'] += 1
         C['secs'] += sec or 0
         C['rss_mb'] = max(C.get('rss_mb', 0), mem or 0)

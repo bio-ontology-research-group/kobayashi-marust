@@ -458,6 +458,10 @@ pub struct Engine<'a> {
     /// data clauses: a closed type without a data star is a clash
     pub data: Option<(crate::data::DataNf, crate::data::Values)>,
     data_ok: FxMap<u32, bool>,
+    /// one-step lookahead on successors: closed type -> its successor seeds close
+    succ_ok: FxMap<u32, bool>,
+    nest: u32,
+    cur_forbid: u32,
 }
 
 impl<'a> Engine<'a> {
@@ -489,6 +493,9 @@ impl<'a> Engine<'a> {
             dbg_created: FxMap::default(),
             data: None,
             data_ok: FxMap::default(),
+            succ_ok: FxMap::default(),
+            nest: 0,
+            cur_forbid: 0,
         }
     }
 
@@ -566,6 +573,7 @@ impl<'a> Engine<'a> {
     // ---------- closure ----------
     pub fn clear_memo(&mut self) {
         self.memo.clear();
+        self.succ_ok.clear();
     }
 
     /// A closed type containing `seed`, avoiding `forbid` and the nogoods,
@@ -573,7 +581,16 @@ impl<'a> Engine<'a> {
     pub fn close(&mut self, seed: u32, forbid: u32, target: u32, nomok: bool) -> CloseRes {
         let key = (seed, forbid, target, nomok);
         if let Some(&r) = self.memo.get(&key) {
-            return r;
+            // an entry made inside a cut-off lookahead may not have been checked
+            if let CloseRes::Ok(t) = r {
+                if self.nest < 2 && !self.succ_check(t) {
+                    self.memo.remove(&key);
+                } else {
+                    return r;
+                }
+            } else {
+                return r;
+            }
         }
         self.stats.closures += 1;
         self.fstamp += 1;
@@ -583,11 +600,84 @@ impl<'a> Engine<'a> {
         }
         self.cur_target = self.sets.get(target);
         self.cur_nomok = nomok;
+        self.cur_forbid = forbid;
         self.runs = 0;
         let s = self.sets.get(seed);
         let r = self.close_from(&s, 0);
-        self.memo.insert(key, r);
+        if self.nest < 2 {
+            self.memo.insert(key, r);
+        }
         r
+    }
+
+    /// Every existential of the closed type `t` has a successor seed that
+    /// closes (one step; nested closures save and restore the outer state).
+    fn succ_check(&mut self, t: u32) -> bool {
+        if let Some(&b) = self.succ_ok.get(&t) {
+            return b;
+        }
+        if self.nest >= 2 {
+            return true;
+        }
+        let nf = self.nf;
+        let ts = self.sets.get(t);
+        let mut reqs: Vec<(u32, u32)> = Vec::new();
+        for &a in ts.iter() {
+            for &(r, b) in nf.ex_by.get(a) {
+                reqs.push((r, b));
+            }
+            for &(_, r, b) in nf.ge_by.get(a) {
+                reqs.push((r, b));
+            }
+        }
+        if reqs.is_empty() {
+            self.succ_ok.insert(t, true);
+            return true;
+        }
+        // save the outer closure's state
+        let (ft, tg, nk, runs, fst) = (self.cur_forbid, self.cur_target.clone(), self.cur_nomok, self.runs, self.fstamp);
+        self.nest += 1;
+        let mut ok = true;
+        for (r, b) in reqs {
+            let l = self.lab_of_role(r);
+            let f = self.fwd(t, l);
+            let seed = self.sets.union_vec(f, &[b]);
+            if self.sets.get(seed).iter().any(|&o| nf.is_nom[o as usize]) {
+                continue;
+            }
+            match self.close(seed, 0, 0, false) {
+                CloseRes::Clash => {
+                    ok = false;
+                    break;
+                }
+                CloseRes::Ok(ts2) => {
+                    // the successor's universals back into t must close with t
+                    let fl = self.flip(l);
+                    let bk = self.fwd(ts2, fl);
+                    if !self.sets.subset(bk, t) {
+                        let u = self.sets.union(t, bk);
+                        if let CloseRes::Clash = self.close(u, ft, 0, nk) {
+                            ok = false;
+                            break;
+                        }
+                    }
+                }
+                CloseRes::Budget => {}
+            }
+        }
+        self.nest -= 1;
+        // restore: forbid marks, target, budget counter
+        self.fstamp = fst.max(self.fstamp) + 1;
+        let fs = self.sets.get(ft);
+        for &a in fs.iter() {
+            self.fmark[a as usize] = self.fstamp;
+        }
+        self.cur_forbid = ft;
+        self.cur_target = tg;
+        self.cur_nomok = nk;
+        self.runs = runs;
+        self.succ_ok.insert(t, ok);
+        ok
     }
 
     fn rank(&self, h: u32) -> u32 {
@@ -722,6 +812,9 @@ impl<'a> Engine<'a> {
         t.sort_unstable();
         let id = self.sets.intern(t);
         if !self.bad.is_empty() && self.bad.contains(&id) {
+            return CloseRes::Clash;
+        }
+        if !self.succ_check(id) {
             return CloseRes::Clash;
         }
         if let Some((d, v)) = &self.data {
@@ -1052,7 +1145,13 @@ impl<'a> Engine<'a> {
         } else {
             match self.close(seed, 0, 0, false) {
                 CloseRes::Ok(t) => t,
-                CloseRes::Clash => return Err(Fail::new("no type for a successor", vec![tx])),
+                CloseRes::Clash => {
+                    if self.debug {
+                        eprintln!("debug: no successor type: x {} tx {} succ_ok {:?} r {} b {} seed {:?}",
+                            x, tx, self.succ_ok.get(&tx), r, b, self.sets.get(seed));
+                    }
+                    return Err(Fail::new("no type for a successor", vec![tx]));
+                }
                 CloseRes::Budget => return Err(Fail::new("closure budget", vec![tx])),
             }
         };

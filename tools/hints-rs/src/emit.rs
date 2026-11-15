@@ -102,6 +102,11 @@ pub fn write_hint_d(
     }
     let (mut with, mut without) = (0, 0);
     if let Some((d, vals)) = dc {
+        if let Some(pl) = d.part_lines() {
+            for l in pl {
+                writeln!(w, "{}", l)?;
+            }
+        }
         let mut cache: FxMap<u32, Option<Vec<crate::data::Entry>>> = FxMap::default();
         for (i, &x) in keep.iter().enumerate() {
             let t = m.elems[x as usize].ty;

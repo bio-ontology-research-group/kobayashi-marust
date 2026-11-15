@@ -25,6 +25,9 @@ pub struct DataNf {
     pub dsub: Vec<(u32, u32)>,
     pub atoms: HashMap<u32, String>,
     pub ndprops: u32,
+    pub groups: u32,
+    /// split cells: (index, size)
+    pub cells: Vec<(u32, u32)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -89,6 +92,8 @@ impl DataNf {
                     }
                 }
                 "dsub" if w.len() >= 3 => d.dsub.push((num(1), num(2))),
+                "groups" if w.len() >= 2 => d.groups = num(1),
+                "cell" if w.len() >= 3 => d.cells.push((num(1), num(2))),
                 "atom" if w.len() >= 3 => {
                     let rest = line.splitn(3, ' ').nth(2).unwrap_or("").to_string();
                     d.atoms.insert(num(1), rest);
@@ -97,6 +102,18 @@ impl DataNf {
             }
         }
         d
+    }
+
+    /// `part` lines naming the data part, when it is determined: with one
+    /// group every split cell puts its whole size in group 0.
+    pub fn part_lines(&self) -> Option<Vec<String>> {
+        if self.cells.is_empty() {
+            return Some(vec!["part".to_string()]);
+        }
+        if self.groups == 1 {
+            return Some(self.cells.iter().map(|(i, n)| format!("part {} 0 {}", i, n)).collect());
+        }
+        None
     }
 
     pub fn is_empty(&self) -> bool {
