@@ -109,3 +109,16 @@ fn shared_data_values_keep_nominal_intersections_unsatisfiable() {
         assert_eq!(got, expected, "{case} {env:?}");
     }
 }
+
+/// `c` has the `k`-value 2 and `k` is functional, so `c` is in
+/// `=1 k.xsd:integer`, hence in `C`, against `{c} ⊑ ¬C`: inconsistent
+/// (HermiT). The native bridge made `C` a lazily unfolded definition
+/// (`C -> D`, `¬C -> ¬D`) although the absorbed `{c} ⊑ ¬C` fires only on a
+/// positive `C`, which a node in `D` never receives.
+#[test]
+fn nominal_excluded_from_untriggerable_definition_is_inconsistent() {
+    let output = km(&fixture("nominal-not-cardinality-equivalence.ofn"), &[]);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(stdout.lines().next(), Some("CONSISTENT 0"), "{stdout}");
+}
