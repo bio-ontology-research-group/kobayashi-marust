@@ -413,4 +413,10 @@ import ContextCalculus.OWLFrontend.HintWitness
 import ContextCalculus.OWLFrontend.HintBuiltin
 import ContextCalculus.OWLFrontend.HintWitnessA
 import ContextCalculus.SRIQN.HintExplain
+import ContextCalculus.SRIQN.HintModelFlat
+import ContextCalculus.SROIQ.CoreReach
+import ContextCalculus.OWLFrontend.HintRoles
+import ContextCalculus.OWLFrontend.HintEval
+import ContextCalculus.OWLFrontend.HintRows
+import ContextCalculus.OWLFrontend.FreshDef
 import ContextCalculus.OWLFrontend.SHOIQFast
