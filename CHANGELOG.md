@@ -4,6 +4,71 @@
 
 ### Engine
 
+- Fixed (E19, wrong answer): the native bridge reported `{a} ⊓ {b}`
+  satisfiable when a functional data property separates `a` from `b` and
+  a data value is asserted for both individuals (`g(a,0)`, `g(b,255)`,
+  `h(b,0)`, `g` functional; ore_ont_15667's `ColorBlue`, `ColorCyan`).
+  Stopgap: such sources (a `FunctionalDataProperty` or data cardinality,
+  and a literal asserted about two individuals) do not reach the bridge
+  (`orchestrate::data_source::shared_data_value_hazard`); the nominal CB
+  route answers them. Separately, the bridge's saturation coupling
+  (successor expansion and caching-blocking from saturation) is off on
+  inputs with a consumed value singleton, which fixed one of the two
+  shapes inside the bridge; the other shape is not located yet.
+- The chain-consumer encoding emits fewer clauses: consumers with an empty
+  seed are skipped when the last (first) letters already carry an equal
+  plain consumer, letters of roles that nothing creates edges for are
+  dropped, symmetric roles are their own converse, and letters with equal
+  transitions share one internal super-role.
+- Fixed a regression of the repeated-ABox-axiom count: repeats produced
+  by the data-assertion conversion were counted as source repeats, so the
+  native ABox coverage check declined on data ABoxes.
+- The CB translation drops and counts a body equality between an
+  individual and a non-central variable.
+- Fixed (wrong answer, since v1.4.4): `{r(a,b), ¬r(a,c)}` was reported
+  inconsistent. The CB worker read the ground negative assertion as
+  `r(x,c) → x ≉ a`, and Hyper binds the non-central individual `c` like a
+  variable, so any `r(a,·)` edge refuted it. The nominal clause stream now
+  carries the guarded form `{a}(x) ∧ r(x,y) ∧ {c}(y) → ⊥` over exact
+  nominal proxies (the form the native bridge already used), and the CB
+  translation drops and counts any remaining ground form.
+- Fixed (wrong answer, since v1.4.4): over ground role assertions a `∀`
+  consumer of a transitive role depended on the order of the assertions
+  (`Transitive(p)`, `p(a,b)`, `p(b,c)`, `a : ¬∃p.{c}` was consistent in
+  one order). In the nominal clause stream with an ABox, transitive roles
+  now get the forward role-automaton markers of the chain encoding.
+- A repeated ABox axiom (for example `SameIndividual(a b)` twice) made
+  the native bridge's ABox coverage check decline, and the answer of the
+  fallback route was published with the declined attempt's `DROPPED`
+  count. Repeats are counted as covered.
+- `km classify --realize` and `--properties` ran their workers with
+  `KM_THREADS=16` (the route bundle's value) when the caller set a
+  smaller `KM_THREADS`. Route bundles now never exceed the caller's value.
+- Fixed (E12, wrong answers): the CB clause stream lost consequences of
+  role chains for every consumer of a chain-derived role other than a
+  plain existential over same-orientation roles: `∀r.C` and ranges of a
+  chain super-role, consumers of its inverse, negated existentials,
+  existentials without a filler, and longer chains through such roles.
+  Example: `s ∘ t ∘ t⁻ ⊑ r`, `⊤ ⊑ ∃t.{g}`, `A ⊑ ∃s.⊤`, `A ⊑ ∀r.C`
+  entails `A ⊑ C`, which km missed; so did `s ∘ t ∘ u ⊑ r`,
+  `A ⊑ ∃s.∃t.∃u.D`, `A ⊑ ∀r.C` for `A ⊑ ∃r.(C ⊓ D)`. Answers were wrong
+  whenever CB answered: every chain of three or more roles (the native
+  bridge fences them), every nominal input and every bridge deferral. The
+  frontend now adds a complete role-automaton encoding for these
+  consumers (`preprocess::chain_consumer_automaton_clauses`): forward
+  markers for consumers with a head on the role's target, backward
+  markers otherwise, over an automaton that unfolds sub-roles in both
+  orientations, chains and transitivity, determinized and minimized,
+  with one marker family per role and seed condition. Consumers that the
+  existing same-orientation encodings already cover (their language equals
+  the full one) keep their old clauses. The CB rules are unchanged.
+  Consumers outside the encodable shape are counted as dropped
+  (`RoleChainConsumer`); none occurs in the corpus. Of 1,708 pool inputs,
+  326 have a role chain; the clause stream changes on 87 of them, and no
+  completed answer changes. Ranges of chain super-roles cost memory on
+  some large OBO inputs (ore_ont_12208 about 1.4 to 2.5 times, 1028 about
+  1.8 times). Tests: `tests/role_chain_consumers.rs` (26 HermiT-checked
+  cases on the automatic, nominal-CB and plain-CB routes).
 - `km classify --properties` reports the inferred object property
   hierarchy (`SUBPROP r f`, with `f` a named property or
   `ObjectInverseOf(s)`), the properties equivalent to

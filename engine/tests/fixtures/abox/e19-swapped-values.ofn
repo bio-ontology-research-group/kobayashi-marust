@@ -1,0 +1,10 @@
+Prefix(:=<http://x/>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://x/o>
+Declaration(Class(:Q)) Declaration(DataProperty(:g)) Declaration(DataProperty(:h)) Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))
+FunctionalDataProperty(:g)
+DataPropertyAssertion(:g :a "0"^^xsd:int)
+DataPropertyAssertion(:g :b "255"^^xsd:int)
+DataPropertyAssertion(:h :b "0"^^xsd:int)
+EquivalentClasses(:Q ObjectIntersectionOf(ObjectOneOf(:a) ObjectOneOf(:b)))
+)

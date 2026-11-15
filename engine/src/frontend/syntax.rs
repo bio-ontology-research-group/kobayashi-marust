@@ -327,6 +327,10 @@ pub struct Ontology {
     /// The source has a construct the literal-profile abstraction cannot see
     /// in the parsed axioms (a key, which the parser drops).
     literal_abstraction_blocked: bool,
+    /// Repeated ABox axioms that `add` ignored, by source head. The typed
+    /// ABox coverage check (`frontend::nominal_abox_meta`) counts them as
+    /// covered: a repeated axiom adds nothing.
+    duplicate_abox_axioms: std::collections::BTreeMap<&'static str, u64>,
 }
 
 impl Ontology {
@@ -419,7 +423,7 @@ impl Ontology {
                 Axiom::ConceptAssertion(a, individual) => Axiom::ConceptAssertion(rewrite(a, &defs), individual.clone()),
                 other => other.clone(),
             };
-            self.add(rewritten);
+            self.add_new(rewritten);
         }
     }
 
@@ -430,7 +434,21 @@ impl Ontology {
 
     /// Mirror `Ontology.add` over a `set`: ignore duplicate axioms.
     pub fn add(&mut self, ax: Axiom) {
-        self.add_new(ax);
+        let head = match &ax {
+            Axiom::ConceptAssertion(..) => Some("ClassAssertion"),
+            Axiom::RoleAssertion(..) => Some("ObjectPropertyAssertion"),
+            Axiom::NegativeRoleAssertion(..) => Some("NegativeObjectPropertyAssertion"),
+            Axiom::SameIndividual(..) => Some("SameIndividual"),
+            Axiom::DifferentIndividuals(..) => Some("DifferentIndividuals"),
+            _ => None,
+        };
+        // Only source axioms come through `add`; the data-assertion
+        // conversions use `add_new` and keep their own counts.
+        if !self.add_new(ax) {
+            if let Some(head) = head {
+                *self.duplicate_abox_axioms.entry(head).or_default() += 1;
+            }
+        }
     }
 
     /// `add`, reporting whether the axiom was not already present.
@@ -633,6 +651,11 @@ impl Ontology {
     }
 
     /// Dropped non-neutral source axioms by functional-syntax head.
+    /// Repeated ABox axioms ignored by `add`, for the ABox coverage check.
+    pub fn duplicate_abox_axioms(&self, head: &str) -> u64 {
+        self.duplicate_abox_axioms.get(head).copied().unwrap_or(0)
+    }
+
     pub fn dropped_source_axioms(&self) -> &std::collections::BTreeMap<String, u64> {
         &self.dropped_source_axioms
     }

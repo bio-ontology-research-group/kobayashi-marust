@@ -373,6 +373,13 @@ fn collect_nominal_abox(
         }
     }
 
+    // A repeated source axiom is one parsed axiom (`Ontology::add` keeps a
+    // set); count its repetitions as covered.
+    parsed_class += ontology.duplicate_abox_axioms("ClassAssertion");
+    parsed_role += ontology.duplicate_abox_axioms("ObjectPropertyAssertion");
+    parsed_negative_role += ontology.duplicate_abox_axioms("NegativeObjectPropertyAssertion");
+    parsed_same_pairs += ontology.duplicate_abox_axioms("SameIndividual");
+    parsed_different_pairs += ontology.duplicate_abox_axioms("DifferentIndividuals");
     let source_count = |kind: &str| source.axiom_types.get(kind).copied().unwrap_or(0);
     let source_object_role = source_count("ObjectPropertyAssertion");
     let source_negative_object_role = source_count("NegativeObjectPropertyAssertion");
@@ -1413,6 +1420,15 @@ fn ofn_to_clauses_representation(
     } else {
         requested
     };
+    // E19 stopgap: keep sources with a shared asserted data value and a
+    // functional data property off the native bridge
+    // (`orchestrate::data_source::shared_data_value_hazard`).
+    if automatic
+        && route == crate::routing::Route::HtBridge
+        && crate::orchestrate::data_source::shared_data_value_hazard(text)
+    {
+        route = crate::routing::Route::Nominals;
+    }
     // Named bundles control clausification as well as the later worker. This
     // call occurs before normalisation and before any reasoner thread starts.
     route.apply_environment();
@@ -1858,6 +1874,21 @@ fn ofn_to_clauses_representation(
             &chain_info,
             &domain_range,
         ));
+    }
+    // Ranges and domains of roles whose language contains a chain word:
+    // the one-level recognitions above cover only a pure domain of a direct
+    // chain target over simple roles.
+    let (range_chain_consumers, unencoded) = preprocess::chain_consumer_automaton_clauses(
+        &domain_range,
+        &chain_info,
+        preprocess::ChainConsumerPass::DomainRange,
+    );
+    tbox.extend(range_chain_consumers);
+    let unencoded = unencoded + chain_info.unencoded_chain_consumers;
+    if unencoded > 0 {
+        // Fail closed: a consumer of a chain-derived role outside the
+        // encodable shape would otherwise be read without its chain edges.
+        *dropped_source_axioms.entry("RoleChainConsumer".to_string()).or_default() += unencoded;
     }
     tbox.extend(domain_range);
     // All consumers are in place (augment encodings + domain/range), so dead
