@@ -57,10 +57,15 @@ def run(cmd, timeout, out=None, env=None):
     if env:
         e.update(env)
     full = ['/usr/bin/time', '-f', '%e %M', '-o', tf, 'timeout', str(timeout)] + cmd
-    fo = open(out, 'w') if out else subprocess.PIPE
-    p = subprocess.run(full, stdout=fo, stderr=subprocess.PIPE, env=e, text=True)
-    if out:
-        fo.close()
+    for attempt in range(4):
+        fo = open(out, 'w') if out else subprocess.PIPE
+        p = subprocess.run(full, stdout=fo, stderr=subprocess.PIPE, env=e, text=True)
+        if out:
+            fo.close()
+        # the host sometimes refuses new threads under load: retry
+        if 'failed to create thread' not in p.stderr and 'Resource temporarily unavailable' not in p.stderr:
+            break
+        time.sleep(15)
     try:
         w = open(tf).read().split('\n')
         last = [l for l in w if re.match(r'^[0-9.]+ [0-9]+$', l)][-1].split()
@@ -189,12 +194,16 @@ def neg_gcis(N, part, nu, Bs):
 
 
 def dump_nf(wpath, nfpath, timeout):
+    err = ''
     env = {'LEAN_PATH': LEANPATH, 'LEAN_NUM_THREADS': '1'}
-    cmd = ['bash', '-c', 'ulimit -s 1048576; exec "$0" --tstack=4000000 --run "$1" "$2"',
-           LEAN, os.path.join(HERE, 'NFDump.lean'), wpath]
     for attempt in range(3):
+        # the default stack first; a larger one when the interpreter recurses deeply
+        # (a large stack limit makes thread creation fail under load)
+        st = 'ulimit -s 1048576; ' if attempt and 'recursion' in (err or '') else ''
+        cmd = ['bash', '-c', st + 'exec "$0" --tstack=4000000 --run "$1" "$2"',
+               LEAN, os.path.join(HERE, 'NFDump.lean'), wpath]
         rc, secs, rss, _, err = run(cmd, timeout, out=nfpath, env=env)
-        if 'failed to create thread' not in (err or ''):
+        if 'failed to create thread' not in (err or '') and 'recursion' not in (err or ''):
             break
         time.sleep(5)
     return {'rc': rc, 'secs': secs, 'rss_mb': rss, 'err': (err or '')[-300:] if rc else '', 'tries': attempt + 1}
@@ -327,7 +336,7 @@ def main():
     name = os.path.basename(src).rsplit('.', 1)[0]
     R = {'input': name, 'bytes': os.path.getsize(src)}
     t0 = time.time()
-    kr, ans = km_answers(src, outdir, T)
+    kr, ans = km_answers(src, outdir, 300)
     R['km'] = kr
     if ans is None:
         R['status'] = 'km-failed'
