@@ -402,4 +402,5 @@ import ContextCalculus.OWLFrontend.HasSelfClass
 import ContextCalculus.OWLFrontend.DatatypeDef
 import ContextCalculus.SRIQN.HintCheck
 import ContextCalculus.OWLFrontend.HintRoute
+import ContextCalculus.OWLFrontend.HintBatch
 import ContextCalculus.OWLFrontend.SHOIQFast

@@ -1,0 +1,21 @@
+# share.ofn, row "nonsubs A B C": the fresh individual (nominal 3) is a fourth A element,
+# in neither B nor C (guards 12, 13); all C elements are core 4
+blocks 5
+ty 0 0 4 7 9
+ty 1 1 4 7 9
+ty 2 2 7
+ty 3 3 4 7 9 12 13
+ty 4 6 7 11
+lab 4 2 +1
+kid 0 +0 / 5 7 10
+kid 1 +0 / 5 7 10
+kid 3 +0 / 5 7 10
+rec 0 5 7 10
+ranc 0 0 -0
+rce 0 4 +0
+rec 1 5 7 10
+ranc 1 1 -0
+rce 1 4 +0
+rec 2 5 7 10
+ranc 2 3 -0
+rce 2 4 +0

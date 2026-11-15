@@ -1,0 +1,17 @@
+# file	args	expected km-owl-reference --procedure sroiq-hint (ws, 2026-11-15); exit 0 when certified, 3 otherwise
+share.ofn	--check	accepted
+share.ofn	--hint share.hint	{"format":"owl-hint-v1","row":"consistent","certified":true}
+share.ofn	--hint share-bad.hint	hint: rejected (an index outside the translation, or the check fails)
+share.ofn	--row nontype#http://ex/B#http://ex/a --hint share-nontype.hint	{"format":"owl-hint-v1","row":"nontype http://ex/B http://ex/a","certified":true}
+share.ofn	--row nontype#http://ex/A#http://ex/a --hint share.hint	hint: rejected (an index outside the translation, or the check fails)
+share.ofn	--row nonsubs#http://ex/A#http://ex/B#http://ex/C --hint share-nonsubs.hint	{"format":"owl-hint-v1","row":"nonsubs http://ex/A http://ex/B http://ex/C","certified":true}
+clash.ofn	--hint clash-two.hint	hint: rejected (an index outside the translation, or the check fails)
+clash.ofn	--hint clash-one.hint	hint: rejected (an index outside the translation, or the check fails)
+../sroiq/reflexive-sat.ofn	--hint reflexive-sat.hint	{"format":"owl-hint-v1","row":"consistent","certified":true}
+../sroiq/irreflexive-sat.ofn	--hint ../sroiq/irreflexive-sat.hint	{"format":"owl-hint-v1","row":"consistent","certified":true}
+../sroiq/reflexive-count.ofn	--hint ../sroiq/reflexive-count.hint	{"format":"owl-hint-v1","row":"consistent","certified":true}
+../sroiq/asymmetric.ofn	--check	not recognised: not an OWL SROIQ(D) knowledge base (first: AsymmetricObjectProperty)
+share.ofn	--batch share.batch	{"format":"owl-hint-batch-v1","pair":0,"row":"consistent","result":"certified"} {"format":"owl-hint-batch-v1","pair":1,"row":"nontype http://ex/B http://ex/a","result":"certified"} {"format":"owl-hint-batch-v1","pair":2,"row":"consistent","result":"rejected"} {"format":"owl-hint-batch-v1","pair":3,"row":"nontype http://ex/A http://ex/a","result":"rejected"} {"format":"owl-hint-batch-v1","pair":4,"
+# share.ofn is not C2a (sroiq-c2a --check: not C2a); its model needs core 3, an anonymous C element shared by the two B nodes.
+# clash.ofn is inconsistent; both hints are rejected (two s-predecessors of c; one element in two disjoint classes).
+# In rows, '#' stands for a space of the --row argument.
