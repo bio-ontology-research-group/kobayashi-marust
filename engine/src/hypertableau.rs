@@ -10992,7 +10992,7 @@ impl Ht {
     ) -> Result<bool, String> {
         static CANDIDATE_NONCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let nonce = CANDIDATE_NONCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let path = std::env::temp_dir().join(format!(
+        let path = crate::orchestrate::tmpfile::run_dir().join(format!(
             "km-ht-decision-candidate-{}-{nonce}.json",
             std::process::id()
         ));

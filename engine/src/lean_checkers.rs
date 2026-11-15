@@ -930,7 +930,13 @@ pub fn start_classify() -> Option<Run> {
         );
         std::process::exit(2);
     }
-    let base = std::env::temp_dir();
+    // A kept check directory outlives the run; every other one lives in the
+    // run directory that the supervisor removes on exit (E11).
+    let base = if std::env::var_os(KEEP_ENV).is_some() {
+        std::env::temp_dir()
+    } else {
+        crate::orchestrate::tmpfile::run_dir().to_path_buf()
+    };
     let run_dir = base.join(format!(
         "km-lean-check-{}-{}",
         std::process::id(),

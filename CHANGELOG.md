@@ -4,6 +4,19 @@
 
 ### Engine
 
+- Temporary files (E11): every temporary file of a run lives in one
+  per-run directory `$TMPDIR/km-run-<pid>-<nonce>/` that the supervisor
+  creates and exports to its workers (`KM_RUN_TMPDIR`) and removes on
+  normal exit, error exit (`atexit`) and SIGTERM, SIGINT and SIGHUP (a
+  handler using raw system calls that then re-raises the signal). At start a
+  supervisor removes run directories and legacy `km-<pid>-*` files of dead
+  processes. On 22 runs with a fresh `TMPDIR` (16 normal, 4 killed by
+  `timeout 5`, one SIGTERM and one SIGINT to the supervisor alone, one error
+  exit) nothing is left; v1.7.0 development left 6 files.
+- Memory (E4, E5): km turns transparent huge pages off for its process tree
+  at start (`PR_SET_THP_DISABLE`; `KM_KEEP_THP=1` keeps the system
+  setting), and the supervisor returns freed heap pages before it waits on a
+  worker.
 - Library tests no longer race on the process environment (E13). One
   crate-wide read/write lock (`src/test_env.rs`) replaces the four
   per-module locks that did not exclude each other; every library test

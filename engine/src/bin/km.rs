@@ -85,6 +85,8 @@ fn explain_cmd(rest: &[String]) {
     // Workers watch this pid and exit when the supervisor is gone
     // (`cli::die_with_supervisor`). Set before any thread is spawned.
     std::env::set_var(cli::SUPERVISOR_PID_ENV, std::process::id().to_string());
+    // E11: one run directory for every temporary file, removed on exit.
+    kobayashi_marust::orchestrate::tmpfile::install_supervisor_run_dir();
     use kobayashi_marust::orchestrate::explain::{self, ExplainError, Options, Query};
 
     let usage = || {
@@ -538,6 +540,8 @@ fn classify_cmd(rest: &[String]) {
     // Workers watch this pid and exit when the supervisor is gone
     // (`cli::die_with_supervisor`). Set before any thread is spawned.
     std::env::set_var(cli::SUPERVISOR_PID_ENV, std::process::id().to_string());
+    // E11: one run directory for every temporary file, removed on exit.
+    kobayashi_marust::orchestrate::tmpfile::install_supervisor_run_dir();
     let mut lines = false;
     let mut graph_edges = std::env::var("KM_JSON_GRAPH_EDGES").is_ok_and(|v| v == "1");
     let mut route: Option<&str> = None;
