@@ -83,8 +83,11 @@ def ckInd (W : WTab) (a : IRI) : Option (Fin W.k) :=
 
 /-- **The core knowledge of a witness table.** -/
 def ckOf (W : WTab) (fuel : Nat) : CK W.k :=
-  let sc := scOf W.ob
-  { succ := ckSucc W sc fuel, cls := ckCls W, ind := ckInd W, surj := W.chainR && W.flat }
+  -- the rules and the hierarchy table as data, computed once
+  let rs := SROIQ.rules W.ob
+  let hm := Std.HashMap.ofList (SROIQ.Proc.mkTab W.ob)
+  { succ := ckSucc W (SROIQ.Proc.succsT rs (SROIQ.Proc.leH hm)) fuel, cls := ckCls W, ind := ckInd W,
+    surj := W.chainR && W.flat }
 
 /-- The fuel of the command line (product states listed per start). -/
 def ckFuel : Nat := 4000000
@@ -122,6 +125,9 @@ theorem ckOf_spec (pat : String → String → Prop) {O : Ontology} {req : List 
   · obtain ⟨Dom, hD, I, f, hM, hinj, hcls, hind, hrole, hadj, hpos, hneg, hsur⟩ := wTabA_rfacts pat hw hc
     have hsc : ∀ st l st', (l, st') ∈ scOf W.ob st ↔ SROIQ.Move W.ob st l st' := by
       intro st l st'; rw [scOf_eq]; exact SROIQ.Proc.mem_succs
+    have hck : ckOf W fuel = CK.mk (ckSucc W (scOf W.ob) fuel) (ckCls W) (ckInd W)
+        (W.chainR && W.flat) := rfl
+    rw [hck]
     have hB : ∀ (p : ObjProp) (w v : Fin W.k),
         (v ∈ (ckSuccB W (scOf W.ob) fuel p w).1 → I.prop p (f w) (f v)) ∧
         ((ckSuccB W (scOf W.ob) fuel p w).2 = true → I.prop p (f w) (f v) →
@@ -170,19 +176,22 @@ theorem ckOf_spec (pat : String → String → Prop) {O : Ontology} {req : List 
   · obtain ⟨Dom, hD, I, f, hM, hinj, hcls, hind, -⟩ := wTabA_model pat hw
     have hB : ∀ (p : ObjProp) (w : Fin W.k), ckSuccB W (scOf W.ob) fuel p w = ([], false) := by
       intro p w; unfold ckSuccB; rw [if_neg hc]
+    have hck : ckOf W fuel = CK.mk (ckSucc W (scOf W.ob) fuel) (ckCls W) (ckInd W)
+        (W.chainR && W.flat) := rfl
+    rw [hck]
     refine ⟨Dom, hD, I, f, hM, ⟨hinj, fun p w v h => ?_, fun p w v hex h => ?_,
       fun A w => (ckCls_spec hcls A w).1, fun A w => (ckCls_spec hcls A w).2,
       fun a w h => ckInd_spec hind a w h, fun h => ?_⟩⟩
     · cases p with
       | top => trivial
       | bot => exact absurd h List.not_mem_nil
-      | named e => simp [ckOf, ckSucc, hB] at h
-      | inv e => simp [ckOf, ckSucc, hB] at h
+      | named e => simp [ckSucc, hB] at h
+      | inv e => simp [ckSucc, hB] at h
     · cases p with
       | top => exact List.mem_finRange _
       | bot => exact h.elim
-      | named e => simp [ckOf, ckSucc, hB] at hex
-      | inv e => simp [ckOf, ckSucc, hB] at hex
+      | named e => simp [ckSucc, hB] at hex
+      | inv e => simp [ckSucc, hB] at hex
     · simp only [ckOf, Bool.and_eq_true] at h
       exact absurd h.1 hc
 
@@ -241,13 +250,13 @@ instance instHashableObjProp : Hashable ObjProp where
 
 /-- `K` with the successors of the properties `ps` computed once. -/
 def ckMemo {k : Nat} (K : CK k) (ps : List ObjProp) : CK k :=
-  let arr := ps.toArray.map fun p => (p, Array.ofFn (K.succ p))
+  let arr := ps.toArray.map fun p => (p, Array.ofFn fun w => Thunk.mk fun _ => K.succ p w)
   let idx : Std.HashMap ObjProp Nat := ps.zipIdx.foldl (fun mp e => mp.insertIfNew e.1 e.2) {}
   { K with succ := fun p w =>
       match idx[p]? with
       | some i =>
         match arr[i]? with
-        | some e => if e.1 == p then (e.2[w.val]?).getD (K.succ p w) else K.succ p w
+        | some e => if e.1 == p then ((e.2[w.val]?).map Thunk.get).getD (K.succ p w) else K.succ p w
         | none => K.succ p w
       | none => K.succ p w }
 
@@ -267,6 +276,7 @@ theorem ckMemo_eq {k : Nat} (K : CK k) (ps : List ObjProp) : ckMemo K ps = K := 
         dsimp only at hp ⊢
         subst hp
         simp
+        rfl
       · rfl
     · rfl
   · rfl

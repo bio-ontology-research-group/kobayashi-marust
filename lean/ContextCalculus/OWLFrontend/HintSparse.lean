@@ -25,6 +25,81 @@ open ContextCalculus.SRI (RoleT)
 open ContextCalculus.SRIQ (flipL)
 open ContextCalculus.SRIQN.HF (HintS RecS labOf mem_foldl_union)
 
+/-! ## Types read in linear time (stage H4)
+
+`List.toFinset` removes duplicates by a quadratic scan; a type of a
+hint lists hundreds of names. `dedupH` removes them with a hash set, and
+`finsOf_eq_F` registers the equal definition for compiled code. -/
+
+/-- One step of the hash-set deduplication. -/
+def dedupStep {α : Type} [BEq α] [Hashable α] (a : Std.HashSet α × List α) (x : α) :
+    Std.HashSet α × List α :=
+  if a.1.contains x then a else (a.1.insert x, x :: a.2)
+
+theorem dedupStep_inv {α : Type} [DecidableEq α] [Hashable α] :
+    ∀ (l : List α) (a : Std.HashSet α × List α), a.2.Nodup → (∀ y, y ∈ a.1 ↔ y ∈ a.2) →
+      (l.foldl dedupStep a).2.Nodup ∧
+        (∀ y, y ∈ (l.foldl dedupStep a).1 ↔ y ∈ (l.foldl dedupStep a).2) ∧
+        ∀ y, y ∈ (l.foldl dedupStep a).2 ↔ y ∈ a.2 ∨ y ∈ l
+  | [], a, h1, h2 => ⟨h1, h2, fun y => by simp⟩
+  | x :: l, a, h1, h2 => by
+    rw [List.foldl_cons]
+    by_cases hx : a.1.contains x = true
+    · have hs : dedupStep a x = a := by simp [dedupStep, hx]
+      rw [hs]
+      obtain ⟨g1, g2, g3⟩ := dedupStep_inv l a h1 h2
+      refine ⟨g1, g2, fun y => ?_⟩
+      rw [g3 y, List.mem_cons]
+      have hxa : x ∈ a.2 := (h2 x).1 (Std.HashSet.contains_iff_mem.1 hx)
+      constructor
+      · rintro (h | h)
+        · exact Or.inl h
+        · exact Or.inr (Or.inr h)
+      · rintro (h | rfl | h)
+        · exact Or.inl h
+        · exact Or.inl hxa
+        · exact Or.inr h
+    · have hs : dedupStep a x = (a.1.insert x, x :: a.2) := by simp [dedupStep, hx]
+      rw [hs]
+      have hxa : x ∉ a.2 := fun h => hx (Std.HashSet.contains_iff_mem.2 ((h2 x).2 h))
+      obtain ⟨g1, g2, g3⟩ := dedupStep_inv l (a.1.insert x, x :: a.2) (List.nodup_cons.2 ⟨hxa, h1⟩)
+        (fun y => by
+          rw [Std.HashSet.mem_insert, List.mem_cons, h2 y, beq_iff_eq]
+          exact or_congr eq_comm Iff.rfl)
+      refine ⟨g1, g2, fun y => ?_⟩
+      rw [g3 y]
+      simp only [List.mem_cons]
+      tauto
+
+/-- The elements of a list without duplicates, through a hash set. -/
+def dedupH {α : Type} [BEq α] [Hashable α] (l : List α) : List α :=
+  (l.foldl dedupStep ({}, [])).2
+
+theorem dedupH_spec {α : Type} [DecidableEq α] [Hashable α] (l : List α) :
+    (dedupH l).Nodup ∧ ∀ y, y ∈ dedupH l ↔ y ∈ l := by
+  obtain ⟨g1, -, g3⟩ := dedupStep_inv l (({} : Std.HashSet α), []) List.nodup_nil
+    (fun y => by simp)
+  exact ⟨g1, fun y => by rw [dedupH, g3 y]; simp⟩
+
+/-- `List.toFinset` through the hash set. -/
+def toFinsetH {n : Nat} (l : List (Fin n)) : Finset (Fin n) :=
+  ⟨dedupH l, (dedupH_spec l).1⟩
+
+theorem toFinsetH_eq {n : Nat} (l : List (Fin n)) : toFinsetH l = l.toFinset := by
+  ext y
+  simp only [toFinsetH, Finset.mem_mk, Multiset.mem_coe, List.mem_toFinset]
+  exact (dedupH_spec l).2 y
+
+def finsOfF (n : Nat) (xs : List Nat) : Option (Finset (Fin n)) :=
+  (xs.mapM (RawHint.finOf n)).map toFinsetH
+
+@[csimp] theorem finsOf_eq_F : @RawHint.finsOf = @finsOfF := by
+  funext n xs
+  simp only [RawHint.finsOf, finsOfF]
+  congr 1
+  funext l
+  exact (toFinsetH_eq l).symm
+
 /-- A certificate record as a sparse row (its core entries as a list). -/
 def RawRec.toRecS (n m k : Nat) (x : RawRec) : Option (RecS n m k) :=
   match RawHint.finsOf n x.ty, RawHint.rtsOf m x.plab,

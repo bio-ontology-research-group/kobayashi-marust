@@ -118,18 +118,36 @@ theorem memM_mask (t : Finset (Fin n)) (a : Fin n) : memM (mask t) a = decide (a
 theorem memM_mask_iff (t : Finset (Fin n)) (a : Fin n) : memM (mask t) a = true ↔ a ∈ t := by
   rw [memM_mask, decide_eq_true_iff]
 
-/-- Membership in a type: a scan for a small type, a bit mask (built once)
-for a large one. -/
-def memT (t : Finset (Fin n)) : Fin n → Bool :=
-  if t.card ≤ 32 then fun a => decide (a ∈ t) else
-    let M := mask t
-    fun a => memM M a
+/-- A membership test, as a structure so that it is built once. -/
+structure MemS (n : Nat) where
+  f : Fin n → Bool
+
+/-- Membership in a type: a scan for a small type, a hash set (built once,
+linear in the type) for a large one. Stage H4: the earlier bit mask had
+the size of the name table and was rebuilt at every test. -/
+def memTS (t : Finset (Fin n)) : MemS n :=
+  if t.card ≤ 32 then ⟨fun a => decide (a ∈ t)⟩ else
+    -- a hash set of the type's list (no sort; the test does not depend on the order)
+    Quot.liftOn t.val (fun l => let H := Std.HashSet.ofList l; (⟨fun a => H.contains a⟩ : MemS n))
+      (fun l l' (h : l.Perm l') => by
+        show (MemS.mk _ = MemS.mk _)
+        rw [MemS.mk.injEq]
+        funext a
+        rw [Bool.eq_iff_iff, Std.HashSet.contains_iff_mem, Std.HashSet.contains_iff_mem,
+          Std.HashSet.mem_ofList, Std.HashSet.mem_ofList, List.contains_iff_mem, List.contains_iff_mem]
+        exact h.mem_iff)
+
+/-- Membership in a type. -/
+@[inline] def memT (t : Finset (Fin n)) : Fin n → Bool := (memTS t).f
 
 theorem memT_iff (t : Finset (Fin n)) (a : Fin n) : memT t a = true ↔ a ∈ t := by
-  unfold memT
+  unfold memT memTS
   split_ifs
   · exact decide_eq_true_iff
-  · exact memM_mask_iff t a
+  · obtain ⟨⟨l⟩, hl⟩ := t
+    show (Std.HashSet.ofList l).contains a = true ↔ a ∈ (⟨Quot.mk _ l, hl⟩ : Finset (Fin n))
+    rw [Std.HashSet.contains_iff_mem, Std.HashSet.mem_ofList, List.contains_iff_mem]
+    rfl
 
 /-! ## The index of an ontology -/
 
@@ -262,19 +280,27 @@ end IxLemmas
 def upB (ix : SIx n m) (L : Finset (RoleT (Fin m))) : Bool :=
   fAll L fun R => (getL ix.stepsBy (rc R)).all fun S => decide (S ∈ L)
 
-/-- Universals across the edge `e` from a centre of type `t` with mask `M`. -/
-def edgeB (ix : SIx n m) (M : Fin n → Bool) (t : Finset (Fin n)) (e : QNbr n m) : Bool :=
-  fAll t (fun a => (getL ix.allBy a.val).all fun p => !decide (p.1 ∈ e.1) || decide (p.2 ∈ e.2)) &&
+/-- The universals of the centre across an edge, with a membership test of
+the neighbour's type (stage H4: an argument, so that it is built once per
+edge). -/
+@[noinline] def edgeAll (ix : SIx n m) (M2 : MemS n) (t : Finset (Fin n)) (e : QNbr n m) : Bool :=
+  fAll t (fun a => (getL ix.allBy a.val).all fun p => !decide (p.1 ∈ e.1) || M2.f p.2)
+
+/-- Universals across the edge `e` from a centre of type `t` with membership test `M`. -/
+@[nospecialize] def edgeB (ix : SIx n m) (M : Fin n → Bool) (t : Finset (Fin n)) (e : QNbr n m) : Bool :=
+  edgeAll ix (memTS e.2) t e &&
   fAll e.2 (fun a => (getL ix.allBy a.val).all fun p => !decide (p.1.flip ∈ e.1) || M p.2)
 
 /-- The gcis at a type with mask `M`. -/
-def closedB (ix : SIx n m) (M : Fin n → Bool) (t : Finset (Fin n)) : Bool :=
+@[nospecialize] def closedB (ix : SIx n m) (M : Fin n → Bool) (t : Finset (Fin n)) : Bool :=
   ix.gTop.all (fun h => h.any M) &&
   fAll t (fun a => (getL ix.gBy a.val).all fun g => !(g.1.all M) || g.2.any M)
 
 /-- **The star condition through the index.** -/
 def starF (ix : SIx n m) (t : Finset (Fin n)) (N : List (QNbr n m)) : Bool :=
-  let M := memT t
+  -- the membership structure is bound first, so that the test is built once
+  let MS := memTS t
+  let M := MS.f
   closedB ix M t &&
   N.all (fun e => upB ix e.1 && edgeB ix M t e) &&
   fAll t (fun a => (getL ix.lowBy a.val).all fun q => decide (q.1 ≤ cnt N q.2.1 q.2.2)) &&
@@ -298,7 +324,9 @@ theorem upB_iff (L : Finset (RoleT (Fin m))) : upB (mkSIx O) L = true ↔ UpClos
 
 theorem edgeB_iff (t : Finset (Fin n)) (e : QNbr n m) :
     edgeB (mkSIx O) (memT t) t e = true ↔ EdgeOK O t e := by
-  unfold edgeB EdgeOK
+  unfold edgeB edgeAll EdgeOK
+  change (fAll t (fun a => (getL (mkSIx O).allBy a.val).all fun p => !decide (p.1 ∈ e.1) ||
+    memT e.2 p.2) && _) = true ↔ _
   simp only [Bool.and_eq_true, fAll_iff, List.all_eq_true, Bool.or_eq_true, Bool.not_eq_true',
     decide_eq_false_iff_not, decide_eq_true_eq, memT_iff]
   constructor
@@ -349,6 +377,7 @@ theorem starF_iff (t : Finset (Fin n)) (N : List (QNbr n m)) :
     starF (mkSIx O) t N = true ↔ StarOK O t N := by
   rw [SRIQ.Proc.starOK_iff]
   unfold starF
+  change (closedB (mkSIx O) (memT t) t && N.all (fun e => upB (mkSIx O) e.1 && edgeB (mkSIx O) (memT t) t e) && _ && _) = true ↔ _
   simp only [Bool.and_eq_true, List.all_eq_true, fAll_iff, decide_eq_true_eq, closedB_iff,
     upB_iff, edgeB_iff]
   constructor
@@ -768,7 +797,7 @@ variable (h : HintS n m)
 
 /-- Each nominal name of `N` at exactly one core element: the owners of
 each name, from one pass over the core types. -/
-def nomOKS (N : List (Fin n)) : Bool :=
+def nomOKS0 (N : List (Fin n)) : Bool :=
   let nm := maskL n N
   let own := buildIdx n some ((List.finRange h.k).flatMap fun b =>
     ((h.tyF b).sort (· ≤ ·)).filterMap fun a => if memM nm a then some (a.val, b) else none)
@@ -776,8 +805,8 @@ def nomOKS (N : List (Fin n)) : Bool :=
     | [] => false
     | b :: rest => rest.all (· = b)
 
-theorem nomOKS_iff (N : List (Fin n)) : nomOKS h N = true ↔ NomOK N h.toN.ty := by
-  unfold nomOKS NomOK
+theorem nomOKS0_iff (N : List (Fin n)) : nomOKS0 h N = true ↔ NomOK N h.toN.ty := by
+  unfold nomOKS0 NomOK
   simp only [List.all_eq_true]
   have hown : ∀ a ∈ N, ∀ b, b ∈ getL (buildIdx n some ((List.finRange h.k).flatMap fun b =>
       ((h.tyF b).sort (· ≤ ·)).filterMap fun a =>
@@ -815,6 +844,19 @@ theorem nomOKS_iff (N : List (Fin n)) : nomOKS h N = true ↔ NomOK N h.toN.ty :
     · rintro ⟨c, hc, hu⟩ x hx
       rw [hu x ((hm x).1 (List.mem_cons_of_mem _ hx)), hu b ((hm b).1 List.mem_cons_self)]
 
+
+/-- Each nominal name at exactly one core element (no pass over the types
+when there are no nominals; stage H4). -/
+def nomOKS (N : List (Fin n)) : Bool := N.isEmpty || nomOKS0 h N
+
+theorem nomOKS_iff (N : List (Fin n)) : nomOKS h N = true ↔ NomOK N h.toN.ty := by
+  unfold nomOKS
+  rw [Bool.or_eq_true, nomOKS0_iff]
+  constructor
+  · rintro (hN | hN)
+    · rw [List.isEmpty_iff.1 hN]; intro a ha; cases ha
+    · exact hN
+  · exact Or.inr
 /-- The core conditions and the stars of the core elements. -/
 def coreB (ix : SIx n m) (N : List (Fin n)) : Bool :=
   let A := h.adj
@@ -1108,6 +1150,123 @@ theorem okOf_imp {p q : Nat} {Db : SRIQD.Ontology (Fin n) (Fin m) (Fin p) (Fin q
     exact dataSatB_of_starGivenB hb
   · exact hb
 
+/-- The values of `card` on `L` (stage H4: the oracle of a part is a sum
+over the split cells, and the star tests ask it once per entry). -/
+def memoTab {q : Nat} (card : Finset (Fin q) → Option Nat) (L : List (Finset (Fin q))) :
+    List (Finset (Fin q) × Option Nat) :=
+  L.map fun τ => (τ, card τ)
+
+/-- `card` read from a table first. -/
+def lookCard {q : Nat} (card : Finset (Fin q) → Option Nat) (tab : List (Finset (Fin q) × Option Nat))
+    (τ : Finset (Fin q)) : Option Nat :=
+  match tab.lookup τ with
+  | some v => v
+  | none => card τ
+
+/-- `card` with its values on `L` computed once. -/
+def memoCard {q : Nat} (card : Finset (Fin q) → Option Nat) (L : List (Finset (Fin q))) :
+    Finset (Fin q) → Option Nat :=
+  lookCard card (memoTab card L)
+
+theorem lookup_map_self' {α β : Type} [DecidableEq α] (g : α → β) :
+    ∀ (L : List α) (a : α) (v : β), (L.map fun x => (x, g x)).lookup a = some v → v = g a
+  | [], _, _, h => by simp at h
+  | x :: L, a, v, h => by
+    simp only [List.map_cons, List.lookup_cons] at h
+    split at h
+    next he =>
+      cases h
+      rw [beq_iff_eq] at he
+      rw [he]
+    next => exact lookup_map_self' g L a v h
+
+@[simp] theorem memoCard_eq {q : Nat} (card : Finset (Fin q) → Option Nat) (L : List (Finset (Fin q))) :
+    memoCard card L = card := by
+  funext τ
+  unfold memoCard lookCard memoTab
+  split
+  next v hv => exact lookup_map_self' card L τ v hv
+  next => rfl
+
+/-- The cells to split, as a table (stage H4: `splitCell` recomputes the
+value types of every pair for every cell it is asked about). -/
+def splitTab {K : Type} [DecidableEq K] {q s : Nat} (cells : List K) (size : K → Option Nat)
+    (L : Nat) (E : Fin q → K → (Fin s → Bool) → Bool) : List (K × Bool) :=
+  let big := ((SRIQD.pairs cells s).filter fun cg => !SRIQD.small size L cg.1).map fun cg =>
+    SRIQD.vtc E cg.1 cg.2
+  cells.map fun c => (c, SRIQD.small size L c &&
+    !((SRIQD.allG s).all fun g => decide (SRIQD.vtc E c g ∈ big)))
+
+/-- A predicate read from a table first. -/
+def lookSplit {K : Type} [DecidableEq K] (tab : List (K × Bool)) (sp : K → Bool) (c : K) : Bool :=
+  match tab.lookup c with
+  | some b => b
+  | none => sp c
+
+theorem splitTab_lookup {K : Type} [DecidableEq K] {q s : Nat} (cells : List K) (size : K → Option Nat)
+    (L : Nat) (E : Fin q → K → (Fin s → Bool) → Bool) (c : K) (b : Bool)
+    (h : (splitTab cells size L E).lookup c = some b) : b = SRIQD.splitCell cells size L E c := by
+  have key : ∀ (l : List K), (l.map fun c => (c, SRIQD.small size L c &&
+      !((SRIQD.allG s).all fun g => decide (SRIQD.vtc E c g ∈ ((SRIQD.pairs cells s).filter
+        fun cg => !SRIQD.small size L cg.1).map fun cg => SRIQD.vtc E cg.1 cg.2)))).lookup c = some b →
+      b = (SRIQD.small size L c && !((SRIQD.allG s).all fun g => decide (SRIQD.vtc E c g ∈
+        ((SRIQD.pairs cells s).filter fun cg => !SRIQD.small size L cg.1).map fun cg =>
+          SRIQD.vtc E cg.1 cg.2))) := by
+    intro l hl
+    induction l with
+    | nil => simp at hl
+    | cons x l ih =>
+      simp only [List.map_cons, List.lookup_cons] at hl
+      split at hl
+      next he => cases hl; rw [beq_iff_eq] at he; rw [he]
+      next => exact ih hl
+  rw [key cells h]
+  unfold SRIQD.splitCell SRIQD.covered
+  congr 2
+  apply congrArg
+  funext g
+  apply Bool.eq_iff_iff.2
+  simp only [decide_eq_true_eq, List.mem_map, List.mem_filter, SRIQD.mem_pairs, List.any_eq_true,
+    Bool.and_eq_true, Bool.not_eq_true']
+  constructor
+  · rintro ⟨⟨c', g'⟩, ⟨hc, hs⟩, he⟩
+    exact ⟨c', hc, by simpa using hs, g', SRIQD.mem_allG g', he⟩
+  · rintro ⟨c', hc, hs, g', -, he⟩
+    exact ⟨(c', g'), ⟨hc, by simpa using hs⟩, he⟩
+
+/-- **The table changes nothing.** -/
+theorem lookSplit_eq {K : Type} [DecidableEq K] {q s : Nat} (cells : List K) (size : K → Option Nat)
+    (L : Nat) (E : Fin q → K → (Fin s → Bool) → Bool) :
+    lookSplit (splitTab cells size L E) (SRIQD.splitCell cells size L E) =
+      SRIQD.splitCell cells size L E := by
+  funext c
+  unfold lookSplit
+  split
+  next b hb => exact splitTab_lookup cells size L E c b hb
+  next => rfl
+
+/-- The value type and the bound of every pair of a part (stage H4: the
+oracle `partCard` recomputes them for every value type it is asked). -/
+def partTab {K : Type} {q s : Nat} (cells : List K) (size : K → Option Nat) (sp : K → Bool)
+    (E : Fin q → K → (Fin s → Bool) → Bool) (n : K → (Fin s → Bool) → Nat) :
+    List (Finset (Fin q) × Option Nat) :=
+  (SRIQD.pairs cells s).map fun cg => (SRIQD.vtc E cg.1 cg.2, SRIQD.pairBound size sp n cg)
+
+/-- The oracle of a part read from its table. -/
+def partCardT {q : Nat} (tab : List (Finset (Fin q) × Option Nat)) (τ : Finset (Fin q)) : Option Nat :=
+  SRIQD.osum (tab.map fun e => if e.1 = τ then e.2 else some 0)
+
+theorem partCardT_eq {K : Type} [DecidableEq K] {q s : Nat} (cells : List K) (size : K → Option Nat)
+    (sp : K → Bool) (E : Fin q → K → (Fin s → Bool) → Bool) (n : K → (Fin s → Bool) → Nat) :
+    partCardT (partTab cells size sp E n) = SRIQD.partCard cells size sp E n := by
+  funext τ
+  simp only [partCardT, partTab, SRIQD.partCard, List.map_map, Function.comp_def]
+
+/-- The value types of the given data stars. -/
+def starTaus {p q : Nat} (stars : Array (Option (List (Option (ContextCalculus.SRIQD.DNbr (Fin p) (Fin q)))))) :
+    List (Finset (Fin q)) :=
+  (stars.toList.flatMap fun o => (o.getD []).filterMap fun e => e.map Prod.snd).eraseDups
+
 /-- **`hintPartsS` with the named part and the given data stars**: a hint
 that names a part is checked on that part only, otherwise on every part;
 a core element with a given data star is checked on that star (no search). -/
@@ -1123,14 +1282,17 @@ def hintPartsP (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
   let noKids := h.kids.isEmpty
   let sc := cells.filter sp
   let stars := starsOf (p := p) (q := q) h
-  let okAll := fun (card : Finset (Fin q) → Option Nat) =>
+  let taus := starTaus stars
+  let okAll := fun (card0 : Finset (Fin q) → Option Nat) =>
+    let tab := memoTab card0 taus
+    let card := lookCard card0 tab
     (List.finRange h.k).all (fun b => okOf Dd card h stars b) &&
       (noKids || h.recs.all (fun e => SRIQD.Proc.dataSatB Dd card e.ty))
   (coreB h ix N && (noKids || certB h ix N)) &&
   if h.partNamed then
     let x := namedPart sc (ContextCalculus.SRIQD.allG s).length h.part
-    validPartB size s sc x && okAll (partCard cells size sp E (toPart s x))
-  else (partsOf size s sc).any fun x => okAll (partCard cells size sp E (toPart s x))
+    validPartB size s sc x && okAll (partCardT (partTab cells size sp E (toPart s x)))
+  else (partsOf size s sc).any fun x => okAll (partCardT (partTab cells size sp E (toPart s x)))
 
 theorem hintPartsP_imp (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : List K)
     (size : K → Option Nat) (sp : K → Bool) (E : Fin q → K → (Fin s → Bool) → Bool)
@@ -1139,6 +1301,9 @@ theorem hintPartsP_imp (O : DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (cells : 
   rw [hintPartsN_eq_F]
   unfold hintPartsP at hh
   unfold hintPartsNF
+  have hmc : ∀ (c : Finset (Fin q) → Option Nat) (L : List (Finset (Fin q))),
+      lookCard c (memoTab c L) = c := memoCard_eq
+  simp only [hmc, partCardT_eq] at hh
   dsimp only at hh ⊢
   have hk : ((List.finRange h.toN.k).all fun b => (h.toN.kids b).isEmpty) = h.kids.isEmpty :=
     noKids_eq h

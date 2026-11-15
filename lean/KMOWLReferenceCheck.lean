@@ -1554,6 +1554,44 @@ def partWhy (hint : RawHint) (sizes : List (Option Nat)) (G : Nat) : Option Stri
       if tot == sz.getD 0 then none
       else some s!"named part: the counts of split cell {i} add up to {tot}, its size is {sz.getD 0}")
 
+/-- The first core element whose given data star fails, on the named part
+(diagnostic, `--explain`; stage H4): the test of `hintPartsP` element by
+element, with no search. -/
+def starWhyD {n m p q s : Nat} {K : Type} [DecidableEq K] (O : SRIQN.DOntology (Fin n) (Fin m) (Fin p) (Fin q))
+    (cells : List K) (size : K → Option Nat) (sp : K → Bool) (E : Fin q → K → (Fin s → Bool) → Bool)
+    (hint : RawHint) : Option String :=
+  match hint.toHintS (n + SRIQN.Proc.encKD O) m with
+  | none => none
+  | some h =>
+    let Dd := SRIQN.HF.dataOnly (SRIQN.dbase (SRIQN.Proc.encTransDN O))
+    let sc := cells.filter sp
+    -- the named part, or the first part (the reason is then for that part)
+    let x? := if h.partNamed then some (SRIQN.HF.namedPart sc (ContextCalculus.SRIQD.allG s).length h.part)
+      else (ContextCalculus.SRIQD.partsOf size s sc).head?
+    match x? with
+    | none => none
+    | some x =>
+    let card := SRIQN.HF.partCardT (SRIQN.HF.partTab cells size sp E (ContextCalculus.SRIQD.toPart s x))
+    let stars := SRIQN.HF.starsOf (p := p) (q := q) h
+    let show_ := fun (e : ContextCalculus.SRIQD.DNbr (Fin p) (Fin q)) =>
+      s!"{(e.1.sort (· ≤ ·)).map (·.val)} / {(e.2.sort (· ≤ ·)).map (·.val)}"
+    (List.finRange h.k).findSome? fun b =>
+      match (stars[b.val]?).getD none with
+      | none => none
+      | some l =>
+        if !(l.all Option.isSome) then
+          some s!"core element {b.val}: a dstar entry names a data property or an atom out of range"
+        else
+          let Dn := l.filterMap id
+          let t := h.tyF b
+          if Dn.length > ContextCalculus.SRIQD.dbnd Dd then
+            some s!"core element {b.val}: {Dn.length} dstar entries, more than the bound {ContextCalculus.SRIQD.dbnd Dd}"
+          else match Dn.find? (fun e => !decide (ContextCalculus.SRIQD.Proc.dcandOK Dd card t e)) with
+            | some e => some s!"core element {b.val}: the dstar entry {show_ e} is not a possible entry (a data sub-property, a value-type count, a universal or an upper bound fails for it alone, or it serves no data clause of the type)"
+            | none =>
+              if decide (ContextCalculus.SRIQD.DOK Dd card t Dn) then none
+              else some s!"core element {b.val}: the dstar entries together fail the star conditions (a lower bound is not met, or counts exceed an upper bound or a value-type count)"
+
 /-- Why a hint is rejected on an encoded ontology (diagnostic, `--explain`);
 `dataWhy` is the reason when the object part checks. -/
 def explainOn {n m p q : Nat} (D : SRIQN.DOntology (Fin n) (Fin m) (Fin p) (Fin q)) (hint : RawHint)
@@ -1965,8 +2003,19 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingRe
   -- the requested classes by concept index (a type is short, the class list long)
   let byIx : Std.HashMap Nat (List OWL.IRI) := W.cls.foldl (fun mp p => mp.insert p.2.val (p.1 :: mp.getD p.2.val [])) {}
   -- the requested classes an element is in: those in its type, and owl:Thing
-  let insideOf := fun (t : Finset (Fin W.N)) =>
-    (if thingReq then [thingI] else []) ++ (t.sort (· ≤ ·)).flatMap fun x => byIx.getD x.val []
+  -- the sorted type of each core element, from the hint's `ty` lines (printing
+  -- only: `W.ty w` is the set of these indices; stage H4, no sort per query)
+  let tyRaw : Array (List Nat) := hint.ty.foldl (fun A e =>
+    if e.1 < W.k then A.modify e.1 (e.2 ++ ·) else A) (Array.replicate W.k [])
+  let tyL : Array (List (Fin W.N)) := tyRaw.map fun l =>
+    let a := l.toArray.qsort (· < ·)
+    let d := a.toList.foldr (fun x acc => match acc with
+      | y :: _ => if x == y then acc else x :: acc
+      | [] => [x]) []
+    d.filterMap fun x => if h : x < W.N then some ⟨x, h⟩ else none
+  let sortedTy := fun (w : Fin W.k) => tyL[w.val]?.getD []
+  let insideOfL := fun (l : List (Fin W.N)) =>
+    (if thingReq then [thingI] else []) ++ l.flatMap fun x => byIx.getD x.val []
   -- the requested classes an element is not in: those outside its type, and owl:Nothing
   let outsideOf := fun (M : Fin W.N → Bool) =>
     (W.cls.filter fun p => !M p.2).map (·.1) ++ (if nothingReq then [nothingI] else [])
@@ -1978,7 +2027,7 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingRe
   -- owl:Thing as subject: every requested B some core element lacks
   if thingReq then
     let cnt : Std.HashMap Nat Nat := (List.finRange W.k).foldl (fun mp w =>
-      ((W.ty w).sort (· ≤ ·)).foldl (fun mp x => mp.insert x.val (mp.getD x.val 0 + 1)) mp) {}
+      (sortedTy w).foldl (fun mp x => mp.insert x.val (mp.getD x.val 0 + 1)) mp) {}
     let outside := (W.cls.filter fun p => cnt.getD p.2.val 0 < W.k).map (·.1) ++
       (if nothingReq then [nothingI] else [])
     nNon := nNon + outside.length
@@ -1998,9 +2047,10 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingRe
     | some iA =>
       if hw : w < W.k then
         let t := W.ty ⟨w, hw⟩
-        let M := SRIQN.HF.memT t
+        let MS := SRIQN.HF.memTS t
+        let M := MS.f
         if M iA then
-          let inside := insideOf t
+          let inside := insideOfL (sortedTy ⟨w, hw⟩)
           let nout := nreq - inside.length
           nNon := nNon + nout
           -- the requested classes A shares the witness with: A ⊓ B satisfiable
@@ -2023,14 +2073,15 @@ def publishWitness (out : IO.FS.Stream) (table : List (OWL.IRI × Nat)) (thingRe
   let mut groups : Std.HashMap Nat (List OWL.IRI) := {}
   let inom : Std.HashSet Nat := W.inds.foldl (fun st p => st.insert p.2.val) {}
   let owner : Std.HashMap Nat (Fin W.k) := (List.finRange W.k).foldl (fun mp w =>
-    ((W.ty w).sort (· ≤ ·)).foldl (fun mp x => if inom.contains x.val then mp.insertIfNew x.val w else mp) mp) {}
+    (sortedTy w).foldl (fun mp x => if inom.contains x.val then mp.insertIfNew x.val w else mp) mp) {}
   for (a, ia) in W.inds.filter (showInd ·.1) do
     match owner.get? ia.val with
     | none => pure ()
     | some w =>
       groups := groups.insert w.val (a :: groups.getD w.val [])
-      let M := SRIQN.HF.memT (W.ty w)
-      let inside := insideOf (W.ty w)
+      let MS := SRIQN.HF.memTS (W.ty w)
+      let M := MS.f
+      let inside := insideOfL (sortedTy w)
       let nout := nreq - inside.length
       nType := nType + nout
       if nout * 2 ≤ nreq then
@@ -2211,7 +2262,13 @@ def runWitness (timing : Bool) (args : Args) (O : OWL.Ontology) (R? : Option OWL
       let _ ← withWitnessTarget O req
         (fun T L E _ => do
           let (sz, G) := splitSizes T L E (sroiqBound T L E)
-          IO.eprintln s!"hint: reason: {explainOn (encC T L E) hint false (partWhy hint sz G)}"
+          let sp := SHIQD.spec T.tab
+          let as := OWL.Datatypes.allBases sp
+          let cs := OWL.Datatypes.cellsOf as
+          let why := (partWhy hint sz G).orElse fun _ => starWhyD (encC T L E) cs (OWL.Datatypes.cellSize as)
+            (ContextCalculus.SRIQD.splitCell cs (OWL.Datatypes.cellSize as) (sroiqBound T L E) (OWL.Datatypes.owlE sp))
+            (OWL.Datatypes.owlE sp) hint
+          IO.eprintln s!"hint: reason: {explainOn (encC T L E) hint false why}"
           return 0)
         (fun T L E SC _ _ => do
           IO.eprintln s!"hint: reason: {explainOn (encS T L E SC) hint true}"
@@ -2399,7 +2456,8 @@ def runFile (args : Args) (path : String) : IO UInt32 := do
       return 2
   let timing ← timingEnabled
   let t0 ← IO.monoNanosNow
-  match ← readHint args.hint with
+  -- the witness row reads its hint itself (`runWitness`), so it is not parsed twice
+  match ← readHint (if args.witness.isSome then none else args.hint) with
   | .error msg =>
     IO.eprintln msg
     return 2

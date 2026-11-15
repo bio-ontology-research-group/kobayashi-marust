@@ -170,6 +170,33 @@ theorem ixOf_spec {T : SRIQDKBTranslation} {arr : Array IRI} {mp : Std.HashMap I
     cases h
     exact ⟨h1, h2, rfl⟩
 
+/-- `ixOf` through the array of the names (stage H4: `ixOf` indexes the
+list of names, linear in the index). -/
+def ixOfA (T : SRIQDKBTranslation) (arr : Array IRI) (harr : arr = T.obj.named.toArray)
+    (mp : Std.HashMap IRI Nat) (s : IRI) : Option (Fin T.obj.conceptCount) :=
+  match mp.get? s with
+  | none => none
+  | some i =>
+    if h : i < arr.size then
+      if arr[i] = s then
+        some ⟨i, Nat.lt_of_lt_of_le (by rw [harr, List.size_toArray] at h; exact h) T.obj.hnamed⟩
+      else none
+    else none
+
+theorem ixOfA_spec {T : SRIQDKBTranslation} {arr : Array IRI} {harr : arr = T.obj.named.toArray}
+    {mp : Std.HashMap IRI Nat} {s : IRI} {x : Fin T.obj.conceptCount}
+    (h : ixOfA T arr harr mp s = some x) :
+    ∃ hi : x.val < T.obj.named.length, T.obj.named[x.val] = s ∧
+      x = ⟨x.val, Nat.lt_of_lt_of_le hi T.obj.hnamed⟩ := by
+  subst harr
+  unfold ixOfA at h
+  split at h
+  · cases h
+  · split_ifs at h with h1 h2
+    cases h
+    rw [List.size_toArray] at h1
+    exact ⟨h1, by simpa using h2, rfl⟩
+
 /-- The named properties of a translation whose role term is simple in the
 normal form `B` (checked by `simpleB`). -/
 def propsOf (T : SRIQDKBTranslation) (simpleB : SRI.RoleT (Fin T.obj.roleCount) → Bool) :
@@ -229,11 +256,14 @@ def wTabCore (X : Ontology) (req : List IRI) (hint : RawHint) : Option WTab :=
           let as := allBases sp
           let cs := cellsOf as
           let D := encC T L E
+          -- the cells to split as a table (`lookSplit_eq`)
+          let spT := SRIQN.HF.splitTab cs (cellSize as) (sroiqBound T L E) (owlE sp)
           match hint.toHintS _ _ with
           | none => none
           | some h =>
             if SRIQN.HF.hintPartsP D cs (cellSize as)
-                (ContextCalculus.SRIQD.splitCell cs (cellSize as) (sroiqBound T L E) (owlE sp))
+                (SRIQN.HF.lookSplit spT
+                  (ContextCalculus.SRIQD.splitCell cs (cellSize as) (sroiqBound T L E) (owlE sp)))
                 (owlE sp) h then
               let mp := namedMap T.obj.named
               let arr := T.obj.named.toArray
@@ -241,9 +271,9 @@ def wTabCore (X : Ontology) (req : List IRI) (hint : RawHint) : Option WTab :=
                 Fin.castAdd (SRIQN.Proc.encKD D) (Fin.castAdd (SROIQ.Proc.kCD (dosnC T L E)) x)
               let base := nomBase (roleOff X) req
               some { N := _, k := h.k, ty := h.tyF
-                     cls := req.filterMap fun s => (ixOf T arr mp s).map fun x => (s, emb x)
+                     cls := req.filterMap fun s => (ixOfA T arr rfl mp s).map fun x => (s, emb x)
                      inds := (roleOff X).individualNames.zipIdx.filterMap fun p =>
-                       (ixOf T arr mp (nomName base p.2)).map fun x => (p.1, emb x)
+                       (ixOfA T arr rfl mp (nomName base p.2)).map fun x => (p.1, emb x)
                      M := T.obj.roleCount, lab := h.toN.lab
                      props := propsOf T fun R =>
                        SROIQ.Proc.selfSimpleB (objC T L E) [.selfL R []]
@@ -295,6 +325,7 @@ theorem wTabCore_facts (pat : String → String → Prop) {X : Ontology} {req : 
       · cases hw
       next h hh =>
         split_ifs at hw with hp
+        rw [SRIQN.HF.lookSplit_eq] at hp
         simp only [Option.some.injEq] at hw
         subst hw
         simp only [sroiqHOK, Bool.and_eq_true] at hok
@@ -318,7 +349,7 @@ theorem wTabCore_facts (pat : String → String → Prop) {X : Ontology} {req : 
           obtain ⟨y, hy, hyx⟩ := Option.map_eq_some_iff.1 hsx
           simp only [Prod.mk.injEq] at hyx
           obtain ⟨rfl, rfl⟩ := hyx
-          obtain ⟨hi, hnm, hyv⟩ := ixOf_spec hy
+          obtain ⟨hi, hnm, hyv⟩ := ixOfA_spec hy
           rw [← hty, ← hKc, hyv]
           have := hcl y.val hi (hnm ▸ hs') (f w)
           rw [hnm] at this
@@ -327,7 +358,7 @@ theorem wTabCore_facts (pat : String → String → Prop) {X : Ontology} {req : 
           obtain ⟨y, hy, hyx⟩ := Option.map_eq_some_iff.1 hax
           simp only [Prod.mk.injEq] at hyx
           obtain ⟨rfl, rfl⟩ := hyx
-          obtain ⟨hi, hnm, hyv⟩ := ixOf_spec hy
+          obtain ⟨hi, hnm, hyv⟩ := ixOfA_spec hy
           obtain ⟨hmem, hnmOf⟩ := nmOf_eq (req := req) hp'
           refine ⟨hmem, fun w => ?_⟩
           rw [← hty, ← hKc, hyv]

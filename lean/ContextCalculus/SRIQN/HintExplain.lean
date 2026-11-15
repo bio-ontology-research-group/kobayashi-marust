@@ -31,7 +31,8 @@ def roleTs (m : Nat) : List (RoleT (Fin m)) :=
 /-- The first failing condition of the star of a centre of type `t`; the
 neighbours carry a description. -/
 def starWhy (ix : SIx n m) (t : Finset (Fin n)) (N : List (String × QNbr n m)) : Option String :=
-  let M := memT t
+  let MS := memTS t
+  let M := MS.f
   let tl := t.sort (· ≤ ·)
   let N' := N.map (·.2)
   let gTop := ix.gTop.find? fun h => !(h.any (M))

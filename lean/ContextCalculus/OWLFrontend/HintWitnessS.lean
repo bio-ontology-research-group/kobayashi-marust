@@ -44,11 +44,13 @@ def wTabSCore (X : Ontology) (P : List (IRI × ObjProp)) (req : List IRI) (hint 
           let as := allBases sp
           let cs := cellsOf as
           let D := encS T L E (SC ++ PC)
+          let spT := SRIQN.HF.splitTab cs (cellSize as) (sroiqSBound T L E (SC ++ PC)) (owlE sp)
           match hint.toHintS _ _ with
           | none => none
           | some h =>
             if SRIQN.HF.hintPartsNLP D cs (cellSize as)
-                (ContextCalculus.SRIQD.splitCell cs (cellSize as) (sroiqSBound T L E (SC ++ PC)) (owlE sp))
+                (SRIQN.HF.lookSplit spT
+                  (ContextCalculus.SRIQD.splitCell cs (cellSize as) (sroiqSBound T L E (SC ++ PC)) (owlE sp)))
                 (owlE sp) h then
               let mp := namedMap T.obj.named
               let arr := T.obj.named.toArray
@@ -56,9 +58,9 @@ def wTabSCore (X : Ontology) (P : List (IRI × ObjProp)) (req : List IRI) (hint 
                 Fin.castAdd (SRIQN.Proc.encKD D) (Fin.castAdd _ (Fin.castAdd (SROIQ.Proc.kCD (dosnC T L E)) x))
               let base := nomBase (roleOff (selfOff X)) rq
               some { N := _, k := h.k, ty := h.tyF
-                     cls := req.filterMap fun s => (ixOf T arr mp s).map fun x => (s, emb x)
+                     cls := req.filterMap fun s => (ixOfA T arr rfl mp s).map fun x => (s, emb x)
                      inds := (roleOff (selfOff X)).individualNames.zipIdx.filterMap fun p =>
-                       (ixOf T arr mp (nomName base p.2)).map fun x => (p.1, emb x)
+                       (ixOfA T arr rfl mp (nomName base p.2)).map fun x => (p.1, emb x)
                      M := T.obj.roleCount, lab := h.toN.lab
                      props := propsOf T fun R =>
                        SROIQ.Proc.selfSimpleB (objC T L E) [.selfL R []] }
@@ -95,6 +97,7 @@ theorem wTabSCore_facts (pat : String → String → Prop) {X : Ontology} {P : L
       · cases hw
       next h hh =>
         split_ifs at hw with hp
+        rw [SRIQN.HF.lookSplit_eq] at hp
         simp only [Option.some.injEq] at hw
         subst hw
         have hX' := selfOff_isSROIQDKB hX
@@ -128,7 +131,7 @@ theorem wTabSCore_facts (pat : String → String → Prop) {X : Ontology} {P : L
           obtain ⟨y, hy, hyx⟩ := Option.map_eq_some_iff.1 hsx
           simp only [Prod.mk.injEq] at hyx
           obtain ⟨rfl, rfl⟩ := hyx
-          obtain ⟨hi, hnm, hyv⟩ := ixOf_spec hy
+          obtain ⟨hi, hnm, hyv⟩ := ixOfA_spec hy
           have := hcl y.val hi (hnm ▸ List.mem_append_left _ hs') (f w)
           rw [hnm, ← hyv] at this
           exact this.symm.trans ((hKc _ _).trans ((hc2 _ _).trans (hty _ w)))
@@ -136,7 +139,7 @@ theorem wTabSCore_facts (pat : String → String → Prop) {X : Ontology} {P : L
           obtain ⟨y, hy, hyx⟩ := Option.map_eq_some_iff.1 hax
           simp only [Prod.mk.injEq] at hyx
           obtain ⟨rfl, rfl⟩ := hyx
-          obtain ⟨hi, hnm, hyv⟩ := ixOf_spec hy
+          obtain ⟨hi, hnm, hyv⟩ := ixOfA_spec hy
           obtain ⟨hmem, hnmOf⟩ := nmOf_eq (req := req ++ pairNames P) hp'
           have := hind _ hmem y.val hi (hnm.trans hnmOf.symm) (f w)
           rw [← hyv] at this

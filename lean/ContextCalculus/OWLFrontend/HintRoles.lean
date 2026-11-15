@@ -126,6 +126,7 @@ theorem wTabCore_rfacts (pat : String → String → Prop) {X : Ontology} {req :
       · cases hw
       next h hh =>
         split_ifs at hw with hp
+        rw [SRIQN.HF.lookSplit_eq] at hp
         simp only [Option.some.injEq] at hw
         subst hw
         simp only [sroiqHOK, Bool.and_eq_true] at hok
@@ -152,7 +153,7 @@ theorem wTabCore_rfacts (pat : String → String → Prop) {X : Ontology} {req :
           obtain ⟨y, hy, hyx⟩ := Option.map_eq_some_iff.1 hsx
           simp only [Prod.mk.injEq] at hyx
           obtain ⟨rfl, rfl⟩ := hyx
-          obtain ⟨hi, hnm, hyv⟩ := ixOf_spec hy
+          obtain ⟨hi, hnm, hyv⟩ := ixOfA_spec hy
           rw [← hty, ← hKc, hyv]
           have := hcl y.val hi (hnm ▸ hs') (f w)
           rw [hnm] at this
@@ -161,7 +162,7 @@ theorem wTabCore_rfacts (pat : String → String → Prop) {X : Ontology} {req :
           obtain ⟨y, hy, hyx⟩ := Option.map_eq_some_iff.1 hax
           simp only [Prod.mk.injEq] at hyx
           obtain ⟨rfl, rfl⟩ := hyx
-          obtain ⟨hi, hnm, hyv⟩ := ixOf_spec hy
+          obtain ⟨hi, hnm, hyv⟩ := ixOfA_spec hy
           obtain ⟨hmem, hnmOf⟩ := nmOf_eq (req := req) hp'
           rw [← hty, ← hKc, hyv]
           exact (hind _ hmem y.val hi (hnm.trans hnmOf.symm) (f w)).symm

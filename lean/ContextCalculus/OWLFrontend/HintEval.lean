@@ -317,13 +317,18 @@ end Sound
 /-! ## Refuting axioms on the core -/
 
 /-- A table of `g` over the core, read back as a function (computed once). -/
-def memo {α : Type} (g : Fin k → α) : Fin k → α :=
+structure MemoS (k : Nat) (α : Type) where
+  f : Fin k → α
+
+def memoS {α : Type} (g : Fin k → α) : MemoS k α :=
   let t := Array.ofFn g
-  fun w => t[w.val]'(by simp [t])
+  ⟨fun w => t[w.val]'(by simp [t])⟩
+
+@[inline] def memo {α : Type} (g : Fin k → α) : Fin k → α := (memoS g).f
 
 @[simp] theorem memo_eq {α : Type} (g : Fin k → α) : memo g = g := by
   funext w
-  simp [memo]
+  simp [memo, memoS]
 
 /-- The core elements reached from `L` along the chain `rs`. -/
 def chainF (K : CK k) (L : List (Fin k)) : List ObjProp → List (Fin k)
