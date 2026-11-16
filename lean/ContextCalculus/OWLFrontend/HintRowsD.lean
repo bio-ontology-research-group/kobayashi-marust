@@ -585,13 +585,6 @@ theorem hintRefuteDM_sound (pat : String → String → Prop) {O : Ontology} {re
   rw [ckOfDM_eq] at h
   exact hintRefuteD_sound pat hw fuel ax h
 
-/-- A hash for data property expressions. -/
-instance instHashableDataProp : Hashable DataProp where
-  hash
-    | .named r => mixHash 1 (hash r)
-    | .top => 3
-    | .bot => 4
-
 /-- `K` with the value lists of the data properties `ps` computed once. -/
 def ckxMemo {k : Nat} (K : CKX k) (ps : List DataProp) : CKX k :=
   let arr := ps.toArray.map fun p => (p, Array.ofFn fun w => Thunk.mk fun _ => K.dv p w)

@@ -242,9 +242,31 @@ theorem succOf_complete (hsc : ∀ st l st', Move O st l st' → (l, st') ∈ sc
     [(x, [(R, false)])] (x, [(R, false)]) (Std.HashSet.mem_insert_self)
   exact closedP_run hsc hadj hc (acc_iff_gen.2 hg) x y hst hp
 
+/-- `succOf` avoiding the `Fin k` scan when no accepting state is reached. -/
+def succOfF (sc : Stack (Fin m) → List (Option (RT m) × Stack (Fin m)))
+    (adj : Fin k → List (Fin k × Finset (RT m))) (fuel : Nat) (R : RT m) (x : Fin k) :
+    List (Fin k) × Bool :=
+  let r := reachP sc adj fuel R x
+  (if r.1.toList.any (fun s => s.2.isEmpty) then
+    (List.finRange k).filter fun y => r.1.contains (y, [])
+   else [], r.2)
+
+@[csimp] theorem succOf_eq_F : @succOf = @succOfF := by
+  funext m k sc adj fuel R x
+  simp only [succOf, succOfF, Prod.mk.injEq, and_true]
+  split_ifs with h
+  · rfl
+  · rw [List.filter_eq_nil_iff]
+    intro y _
+    rw [Bool.not_eq_true, Bool.eq_false_iff]
+    intro hc
+    apply h
+    exact List.any_eq_true.2 ⟨(y, []), Std.HashSet.mem_toList.2 (Std.HashSet.contains_iff_mem.1 hc), rfl⟩
+
 end Proofs
 
 end ContextCalculus.SROIQ.Proc
 
 #print axioms ContextCalculus.SROIQ.Proc.succOf_sound
 #print axioms ContextCalculus.SROIQ.Proc.succOf_complete
+#print axioms ContextCalculus.SROIQ.Proc.succOf_eq_F
