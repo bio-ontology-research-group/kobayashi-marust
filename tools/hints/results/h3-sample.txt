@@ -1,13 +1,20 @@
-all            inputs  174 | producer: model-full  116 partial  31 none   8 other  19 | classes 1502417 general 1313124 split  1086 partial 1906 none 186296 | rows 166955217675 unchecked 148266608178 | checker: inputs 147 consistency 137 full 111 full-but-Thing 0 partial 26 none 10 | certified rows 140079498050 (+ Thing rows 1414809) | calls {'certified': 143, 'timeout': 9, 'out of memory': 2} | disagreements 0
-frag:ALC       inputs    6 | producer: model-full    6 partial   0 none   0 other   0 | classes  362521 general  362521 split     0 partial    0 none    0 | rows 92450984354 unchecked 92450984354 | checker: inputs 6 consistency 6 full 6 full-but-Thing 0 partial 0 none 0 | certified rows 92450984354 (+ Thing rows 362515) | calls {'certified': 6} | disagreements 0
-frag:EL        inputs   55 | producer: model-full   55 partial   0 none   0 other   0 | classes  399078 general  399078 split     0 partial    0 none    0 | rows 23779250327 unchecked 23779250327 | checker: inputs 55 consistency 55 full 55 full-but-Thing 0 partial 0 none 0 | certified rows 23779250327 (+ Thing rows 399021) | calls {'certified': 55} | disagreements 0
-frag:SHI       inputs   10 | producer: model-full    7 partial   3 none   0 other   0 | classes  210623 general  209955 split   332 partial  314 none   22 | rows 14421552151 unchecked 14421544700 | checker: inputs 10 consistency 10 full 7 full-but-Thing 0 partial 3 none 0 | certified rows 14421544700 (+ Thing rows 210603) | calls {'certified': 10} | disagreements 0
-frag:SHIQ      inputs   10 | producer: model-full    4 partial   5 none   1 other   0 | classes  137585 general   51613 split   104 partial   64 none 85804 | rows 8442916315 unchecked 1540699558 | checker: inputs 9 consistency 8 full 4 full-but-Thing 0 partial 4 none 1 | certified rows 1540696808 (+ Thing rows 54539) | calls {'certified': 11, 'timeout': 1} | disagreements 0
-frag:SHIQ+ABox inputs   58 | producer: model-full   38 partial  11 none   0 other   9 | classes  167215 general  166517 split   445 partial  234 none   16 | rows 8486443982 unchecked 8486440988 | checker: inputs 49 consistency 42 full 33 full-but-Thing 0 partial 9 none 7 | certified rows 6452702687 (+ Thing rows 167161) | calls {'certified': 42, 'timeout': 5, 'out of memory': 2} | disagreements 0
-frag:SHOIQ     inputs   28 | producer: model-full    4 partial  10 none   7 other   7 | classes  184287 general   83281 split    59 partial  906 none 100041 | rows 17943264060 unchecked 6157250907 | checker: inputs 14 consistency 12 full 4 full-but-Thing 0 partial 8 none 2 | certified rows 3881829 (+ Thing rows 179878) | calls {'certified': 15, 'timeout': 3} | disagreements 0
-frag:SROIQ     inputs    7 | producer: model-full    2 partial   2 none   0 other   3 | classes   41108 general   40159 split   146 partial  388 none  413 | rows 1430806486 unchecked 1430437344 | checker: inputs 4 consistency 4 full 2 full-but-Thing 0 partial 2 none 0 | certified rows 1430437345 (+ Thing rows 41092) | calls {'certified': 4} | disagreements 0
-size:a<100K    inputs   57 | producer: model-full   42 partial  14 none   1 other   0 | classes    6594 general    6007 split   329 partial  236 none   21 | rows 1454550 unchecked 1435532 | checker: inputs 56 consistency 54 full 42 full-but-Thing 0 partial 12 none 2 | certified rows 1422443 (+ Thing rows 6520) | calls {'certified': 55, 'out of memory': 2} | disagreements 0
-size:b<1M      inputs   61 | producer: model-full   38 partial  12 none   4 other   7 | classes   55100 general   52556 split   737 partial 1352 none  453 | rows 123964038 unchecked 123451439 | checker: inputs 50 consistency 49 full 38 full-but-Thing 0 partial 11 none 1 | certified rows 123406154 (+ Thing rows 55040) | calls {'certified': 51, 'timeout': 1} | disagreements 0
-size:c<10M     inputs   38 | producer: model-full   26 partial   2 none   2 other   8 | classes  329162 general  321729 split     4 partial  284 none 7143 | rows 7045771633 unchecked 6993876619 | checker: inputs 28 consistency 23 full 22 full-but-Thing 0 partial 1 none 5 | certified rows 4966348368 (+ Thing rows 324739) | calls {'certified': 23, 'timeout': 5} | disagreements 0
-size:d>=10M    inputs   18 | producer: model-full   10 partial   3 none   1 other   4 | classes 1111561 general  932832 split    16 partial   34 none 178679 | rows 159784027454 unchecked 141147844588 | checker: inputs 13 consistency 11 full 9 full-but-Thing 0 partial 2 none 2 | certified rows 134988321085 (+ Thing rows 1028510) | calls {'certified': 14, 'timeout': 3} | disagreements 0
-reasons: {'individual types not general': 11, 'time budget after 492 of 905 witnesses': 1, 'split witnesses incomplete': 2, 'no base model': 6, 'time budget after 3 of 2749 witnesses': 1, 'time budget in the split witnesses': 4, 'witness': 11, 'km-inconsistent': 4, 'self-check': 2, 'dump-failed': 8, 'time budget after 27144 of 122778 witnesses': 1, 'km-failed': 5, 'producer-failed': 2}
+|  | inputs | no rows / failed | model full | confirmed full | model full, checker too slow | rows | unchecked | certified |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| all | 174 | 17 | 144 | 143 | 1 | 171,893,167,188 | 147,089,672,393 | 145,151,670,368 |
+
+| size | inputs | no rows / failed | model full | confirmed full | model full, checker too slow | rows | unchecked | certified |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| a<100K | 57 | 0 | 55 | 55 | 0 | 1,454,550 | 1,436,399 | 1,436,399 |
+| b<1M | 61 | 7 | 51 | 51 | 0 | 123,964,038 | 123,933,150 | 123,933,296 |
+| c<10M | 38 | 7 | 29 | 28 | 1 | 7,052,952,991 | 7,033,597,155 | 7,008,581,504 |
+| d>=10M | 18 | 3 | 9 | 9 | 0 | 164,714,795,609 | 139,930,705,689 | 138,017,719,169 |
+
+| fragment | inputs | no rows / failed | model full | confirmed full | model full, checker too slow | rows | unchecked | certified |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| ALC | 6 | 0 | 6 | 6 | 0 | 92,450,984,354 | 92,450,984,354 | 92,450,984,354 |
+| EL | 55 | 0 | 55 | 55 | 0 | 23,779,250,327 | 23,779,250,327 | 23,779,250,327 |
+| SHI | 10 | 0 | 9 | 9 | 0 | 14,421,552,151 | 14,421,550,812 | 14,421,550,812 |
+| SHIQ | 10 | 0 | 6 | 6 | 0 | 8,442,916,315 | 4,569,818,174 | 4,569,818,174 |
+| SHIQ+ABox | 58 | 9 | 47 | 47 | 0 | 8,486,443,982 | 8,486,438,265 | 8,480,241,642 |
+| SHOIQ | 28 | 6 | 17 | 16 | 1 | 17,950,445,418 | 1,941,485,847 | 9,680,445 |
+| SROIQ | 7 | 2 | 4 | 4 | 0 | 6,361,574,641 | 1,440,144,614 | 1,440,144,614 |

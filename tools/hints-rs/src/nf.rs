@@ -85,6 +85,7 @@ pub struct Nf {
     pub body_len: Vec<u32>,
     pub ex_by: Csr<(u32, u32)>,
     pub all_by: Csr<(u32, u32)>,
+    pub all_by_role: Csr<(u32, u32)>,
     pub ge_by: Csr<(u32, u32, u32)>,
     pub le_by: Csr<(u32, u32, u32)>,
     /// role -> its up-closure under the role inclusions (sorted)
@@ -228,7 +229,7 @@ impl Nf {
             self.is_nom[o as usize] = true;
         }
         self.named = (0..n)
-            .map(|i| matches!(&self.cname[i], Some(s) if !s.starts_with("urn:km:")))
+            .map(|i| matches!(&self.cname[i], Some(s) if !s.starts_with("urn:km:") && !s.starts_with('%')))
             .collect();
         let gci = &self.gci;
         self.gci_by_body =
@@ -236,14 +237,15 @@ impl Nf {
         self.gci_empty = gci.iter().enumerate().filter(|(_, (b, _))| b.is_empty()).map(|(g, _)| g as u32).collect();
         self.body_len = gci.iter().map(|(b, _)| b.len() as u32).collect();
         self.ex_by = Csr::build(n, self.ex.iter().map(|&(a, r, b)| (a, (r, b))));
+        let nr = 2 * self.m;
         self.all_by = Csr::build(n, self.all.iter().map(|&(a, r, b)| (a, (r, b))));
+        self.all_by_role = Csr::build(nr, self.all.iter().filter(|&&(_, r, _)| (r as usize) < nr).map(|&(a, r, b)| (r, (a, b))));
         self.ge_by = Csr::build(n, self.ge.iter().map(|&(a, k, r, b)| (a, (k, r, b))));
         self.le_by = Csr::build(n, self.le.iter().map(|&(a, k, r, b)| (a, (k, r, b))));
         self.has_le = vec![false; n];
         for &(a, _, _, _) in &self.le {
             self.has_le[a as usize] = true;
         }
-        let nr = 2 * self.m;
         let mut step: Vec<Vec<u32>> = vec![Vec::new(); nr];
         for (body, s) in &self.chains {
             if body.len() == 1 {

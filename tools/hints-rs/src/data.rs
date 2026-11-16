@@ -170,6 +170,94 @@ fn first_quoted(s: &str) -> Option<String> {
     Some(r[..r.find('"')?].to_string())
 }
 
+fn all_quoted_dts(s: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for pat in ["DataRange.datatype \"", "DataRange.restriction \""] {
+        let mut rest = s;
+        while let Some(i) = rest.find(pat) {
+            let r = &rest[i + pat.len()..];
+            if let Some(j) = r.find('"') {
+                out.push(r[..j].to_string());
+                rest = &r[j + 1..];
+            } else {
+                break;
+            }
+        }
+    }
+    out
+}
+
+fn is_lang_tag(s: &str) -> bool {
+    !s.is_empty()
+        && s.split('-').enumerate().all(|(i, p)| {
+            !p.is_empty()
+                && p.len() <= 8
+                && p.chars().all(|c| if i == 0 { c.is_ascii_alphabetic() } else { c.is_ascii_alphanumeric() })
+        })
+}
+
+fn strip_outer_parens(mut s: &str) -> &str {
+    loop {
+        s = s.trim();
+        if !(s.starts_with('(') && s.ends_with(')')) {
+            return s;
+        }
+        let mut depth = 0i32;
+        let mut in_str = false;
+        let mut ok = true;
+        for (i, c) in s.char_indices() {
+            if c == '"' {
+                in_str = !in_str;
+            } else if !in_str {
+                if c == '(' {
+                    depth += 1;
+                } else if c == ')' {
+                    depth -= 1;
+                    if depth == 0 && i + c.len_utf8() < s.len() {
+                        ok = false;
+                        break;
+                    }
+                }
+            }
+        }
+        if ok && depth == 0 {
+            s = &s[1..s.len() - 1];
+        } else {
+            return s;
+        }
+    }
+}
+
+fn split_top_list(s: &str) -> Option<Vec<&str>> {
+    let s = s.trim();
+    let i = s.find('[')?;
+    let s = s[i + 1..].strip_suffix(']')?;
+    let mut out = Vec::new();
+    let mut depth = 0i32;
+    let mut in_str = false;
+    let mut start = 0usize;
+    for (idx, c) in s.char_indices() {
+        if c == '"' {
+            in_str = !in_str;
+        } else if !in_str {
+            match c {
+                '[' | '(' | '{' => depth += 1,
+                ']' | ')' | '}' => depth -= 1,
+                ',' if depth == 0 => {
+                    out.push(s[start..idx].trim());
+                    start = idx + 1;
+                }
+                _ => {}
+            }
+        }
+    }
+    let tail = s[start..].trim();
+    if !tail.is_empty() {
+        out.push(tail);
+    }
+    Some(out)
+}
+
 fn num_kind(dt: &str) -> Option<Kind> {
     let l = dt.strip_prefix(XSD)?;
     match l {
@@ -265,15 +353,15 @@ fn in_dt(v: &Val, dt: &str) -> Option<bool> {
             };
             int(*x) && *x >= 0.0 && *x <= hi
         }
-        ("language", _) => return None,
+        ("language", Val::Str(s)) => is_lang_tag(s),
         ("anyURI" | "dateTime" | "dateTimeStamp" | "date" | "time" | "duration" | "hexBinary"
         | "base64Binary" | "gYear" | "gYearMonth" | "gMonth" | "gMonthDay" | "gDay" | "QName", _) => {
             return own_space(v)
         }
         (_, Val::Other(d, _)) => d == dt,
         (
-            "string" | "normalizedString" | "token" | "Name" | "NCName" | "NMTOKEN" | "boolean" | "float"
-            | "double" | "decimal" | "integer" | "nonNegativeInteger" | "positiveInteger"
+            "string" | "normalizedString" | "token" | "language" | "Name" | "NCName" | "NMTOKEN" | "boolean"
+            | "float" | "double" | "decimal" | "integer" | "nonNegativeInteger" | "positiveInteger"
             | "nonPositiveInteger" | "negativeInteger" | "long" | "int" | "short" | "byte" | "unsignedLong"
             | "unsignedInt" | "unsignedShort" | "unsignedByte",
             _,
@@ -291,7 +379,34 @@ fn num_of(v: &Val) -> Option<(Kind, f64)> {
 
 /// Membership of a value in an atom; None: not understood.
 fn member(v: &Val, atom: &str) -> Option<bool> {
-    let a = atom.trim();
+    let a = strip_outer_parens(atom);
+    if let Some(rest) = a.strip_prefix("ContextCalculus.OWL.DataRange.and") {
+        let items = split_top_list(rest)?;
+        let mut all_true = true;
+        for item in items {
+            match member(v, item) {
+                Some(true) => {}
+                Some(false) => return Some(false),
+                None => all_true = false,
+            }
+        }
+        return if all_true { Some(true) } else { None };
+    }
+    if let Some(rest) = a.strip_prefix("ContextCalculus.OWL.DataRange.or") {
+        let items = split_top_list(rest)?;
+        let mut all_false = true;
+        for item in items {
+            match member(v, item) {
+                Some(true) => return Some(true),
+                Some(false) => {}
+                None => all_false = false,
+            }
+        }
+        return if all_false { Some(false) } else { None };
+    }
+    if let Some(rest) = a.strip_prefix("ContextCalculus.OWL.DataRange.complement") {
+        return member(v, rest).map(|b| !b);
+    }
     if a.starts_with("ContextCalculus.OWL.DataRange.datatype") {
         return in_dt(v, &first_quoted(a)?);
     }
@@ -380,47 +495,64 @@ impl Values {
 
     pub fn new(d: &DataNf) -> Values {
         let mut cands: Vec<Val> = Vec::new();
-        let mut push = |v: Val, c: &mut Vec<Val>| {
+        let push = |v: Val, c: &mut Vec<Val>| {
             if !c.contains(&v) {
                 c.push(v)
             }
         };
         let mut keys: Vec<&u32> = d.atoms.keys().collect();
         keys.sort();
+        let mut all_bounds: Vec<(Kind, f64)> = Vec::new();
         for k in &keys {
             let a = &d.atoms[k];
             let lits = literals(a);
-            let dt = first_quoted(a).unwrap_or_default();
-            let kind = num_kind(&dt);
+            let dts = all_quoted_dts(a);
+            let kind = dts.iter().find_map(|dt| num_kind(dt));
             let mut bounds: Vec<f64> = Vec::new();
             for (lex, ldt) in &lits {
                 if let Some(v) = lit_val(lex, ldt) {
-                    if let Val::Num(_, x) = v {
+                    if let Val::Num(vk, x) = v {
                         bounds.push(x);
+                        all_bounds.push((vk, x));
                     }
                     push(v, &mut cands);
                 }
             }
             if let Some(k) = kind {
                 for &b in &bounds {
-                    for x in [b - 1.0, b + 1.0, b - 0.5, b + 0.5] {
+                    all_bounds.push((k, b));
+                    for x in [b - 1.0, b + 1.0, b - 0.5, b + 0.5, b / 2.0] {
                         push(Val::Num(k, x), &mut cands);
                     }
                 }
                 if bounds.len() >= 2 {
-                    let m = ((bounds[0] + bounds[1]) / 2.0).floor();
+                    let m = (bounds[0] + bounds[1]) / 2.0;
                     push(Val::Num(k, m), &mut cands);
+                    push(Val::Num(k, m.floor()), &mut cands);
                 }
-            } else if !dt.is_empty()
-                && !dt.ends_with("Literal")
-                && a.trim_start().starts_with("ContextCalculus.OWL.DataRange.datatype")
-                && in_dt(&Val::Str("a".into()), &dt) != Some(true)
-                && in_dt(&Val::Num(Kind::Dec, 0.0), &dt) != Some(true)
-                && in_dt(&Val::Bool(true), &dt) != Some(true)
-                && in_dt(&Val::Num(Kind::Float, 0.5), &dt) != Some(true)
-                && in_dt(&Val::Num(Kind::Double, 0.5), &dt) != Some(true)
-            {
-                push(Val::Other(dt.clone(), "x".into()), &mut cands);
+            }
+            for dt in dts {
+                if !dt.is_empty()
+                    && in_dt(&Val::Str("a".into()), &dt) != Some(true)
+                    && in_dt(&Val::Num(Kind::Dec, 0.0), &dt) != Some(true)
+                    && in_dt(&Val::Num(Kind::Dec, 1.0), &dt) != Some(true)
+                    && in_dt(&Val::Num(Kind::Dec, -1.0), &dt) != Some(true)
+                    && in_dt(&Val::Bool(true), &dt) != Some(true)
+                    && in_dt(&Val::Num(Kind::Float, 0.5), &dt) != Some(true)
+                    && in_dt(&Val::Num(Kind::Double, 0.5), &dt) != Some(true)
+                {
+                    push(Val::Other(dt, "x".into()), &mut cands);
+                }
+            }
+        }
+        for i in 0..all_bounds.len().min(32) {
+            for j in (i + 1)..all_bounds.len().min(32) {
+                if all_bounds[i].0 == all_bounds[j].0 && all_bounds[i].1 != all_bounds[j].1 {
+                    let k = all_bounds[i].0;
+                    let m = (all_bounds[i].1 + all_bounds[j].1) / 2.0;
+                    push(Val::Num(k, m), &mut cands);
+                    push(Val::Num(k, m.floor()), &mut cands);
+                }
             }
         }
         for v in [
@@ -470,6 +602,8 @@ impl Values {
 pub struct Entry {
     pub label: Vec<u32>,
     pub ty: Vec<u32>,
+    pos: Vec<u32>,
+    neg: Vec<u32>,
 }
 
 fn has(v: &[u32], x: u32) -> bool {
@@ -543,6 +677,13 @@ fn star_with(d: &DataNf, vals: &Values, t: &[u32], share: bool) -> Option<Vec<En
             reqs.push((c.1, c.2, c.3.clone(), c.4.clone()));
         }
     }
+    if reqs.len() > 1 {
+        reqs.sort_by_key(|(n, u, pos, neg)| {
+            let lu = up(*u);
+            let m = vals.types.iter().flatten().filter(|ty| fits(&lu, ty, pos, neg)).count();
+            (m, *n)
+        });
+    }
     let cnt = |ents: &[Entry], u: u32, pos: &[u32], neg: &[u32]| -> u32 {
         ents.iter()
             .filter(|e| has(&e.label, u) && pos.iter().all(|p| has(&e.ty, *p)) && !neg.iter().any(|n| has(&e.ty, *n)))
@@ -551,16 +692,40 @@ fn star_with(d: &DataNf, vals: &Values, t: &[u32], share: bool) -> Option<Vec<En
     for (n, u, pos, neg) in &reqs {
         while cnt(&ents, *u, pos, neg) < *n {
             let lu = up(*u);
-            // extend an existing entry whose value already fits
+            // extend an existing entry whose value already fits or can be refined
             let mut done = false;
             if *n == 1 && share {
-                for e in ents.iter_mut() {
-                    let mut l2 = e.label.clone();
+                for idx in 0..ents.len() {
+                    let mut l2 = ents[idx].label.clone();
                     l2.extend_from_slice(&lu);
                     l2.sort_unstable();
                     l2.dedup();
-                    if fits(&l2, &e.ty, pos, neg) && fits(&l2, &e.ty, &[], &[]) {
-                        e.label = l2;
+                    if fits(&l2, &ents[idx].ty, pos, neg) && fits(&l2, &ents[idx].ty, &ents[idx].pos, &ents[idx].neg) {
+                        ents[idx].label = l2;
+                        ents[idx].pos.extend_from_slice(pos);
+                        ents[idx].neg.extend_from_slice(neg);
+                        done = true;
+                        break;
+                    }
+                    let mut p2 = ents[idx].pos.clone();
+                    p2.extend_from_slice(pos);
+                    let mut n2 = ents[idx].neg.clone();
+                    n2.extend_from_slice(neg);
+                    let avoid: Vec<Vec<u32>> = ents
+                        .iter()
+                        .enumerate()
+                        .filter(|&(j, e)| {
+                            j != idx && e.ty.iter().any(|k| d.atoms.get(k).map(|a| a.contains("oneOf")).unwrap_or(false))
+                        })
+                        .map(|(_, e)| e.ty.clone())
+                        .collect();
+                    let used: Vec<Vec<u32>> =
+                        ents.iter().enumerate().filter(|&(j, _)| j != idx).map(|(_, e)| e.ty.clone()).collect();
+                    if let Some(ty2) = pick(&l2, &p2, &n2, &avoid, &used) {
+                        ents[idx].label = l2;
+                        ents[idx].ty = ty2;
+                        ents[idx].pos = p2;
+                        ents[idx].neg = n2;
                         done = true;
                         break;
                     }
@@ -586,7 +751,7 @@ fn star_with(d: &DataNf, vals: &Values, t: &[u32], share: bool) -> Option<Vec<En
                     return None;
                 }
             };
-            ents.push(Entry { label: lu, ty });
+            ents.push(Entry { label: lu, ty, pos: pos.clone(), neg: neg.clone() });
         }
     }
     // finite value types (only booleans or oneOf literals have them among the

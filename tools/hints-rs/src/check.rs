@@ -16,7 +16,7 @@ pub struct Report {
 pub fn verify(en: &mut Engine, m: &Model) -> Report {
     let nf = en.nf;
     let mut rep = Report { violations: 0, first: None, bad: Vec::new() };
-    let mut note = |rep: &mut Report, x: Id, msg: String| {
+    let note = |rep: &mut Report, x: Id, msg: String| {
         rep.violations += 1;
         if rep.first.is_none() {
             rep.first = Some(format!("element {}: {}", x, msg));
@@ -27,6 +27,12 @@ pub fn verify(en: &mut Engine, m: &Model) -> Report {
     };
     let mut nom_at: HashMap<u32, Vec<Id>> = HashMap::new();
     let ids: Vec<Id> = m.canonical().collect();
+    let mut edge_map: crate::engine::FxMap<(Id, Id), u32> = crate::engine::FxMap::default();
+    for &x in &ids {
+        for &(y, l) in &m.elems[x as usize].edges {
+            edge_map.insert((x, y), l);
+        }
+    }
     for &x in &ids {
         let e = &m.elems[x as usize];
         let ts = en.sets.get(e.ty);
@@ -74,7 +80,7 @@ pub fn verify(en: &mut Engine, m: &Model) -> Report {
                 }
             }
             // symmetry
-            let back = m.elems[y as usize].edges.iter().find(|p| p.0 == x).map(|p| p.1);
+            let back = edge_map.get(&(y, x)).copied();
             let want: Vec<u32> = {
                 let mut v: Vec<u32> = ls.iter().map(|r| r ^ 1).collect();
                 v.sort_unstable();

@@ -27,7 +27,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCR = os.environ.get('H3_SCR', '/mnt/data1/leechuck/km-work/v170/scratch/h3')
-KM = os.environ.get('H3_KM', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-6f2c0a8e')
+KM = os.environ.get('H3_KM', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-8dc6c4a7')
 REF = os.environ.get('H3_REF', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-owl-reference-h5-0cb85570')
 PROD = os.environ.get('H3_PROD', os.path.join(SCR, 'target/release/km-hints'))
 THING = 'http://www.w3.org/2002/07/owl#Thing'
@@ -136,13 +136,25 @@ def main():
     t0 = time.time()
     R = {'input': os.path.basename(src).rsplit('.', 1)[0], 'bytes': os.path.getsize(src)}
     kl = os.path.join(outdir, 'km.lines')
-    rc, s, m, _, err = run([KM, 'classify', '--lines', '--realize', '--top', src], 300, out=kl)
-    clean_km_tmp()
-    R['km'] = {'rc': rc, 'secs': s, 'rss_mb': m}
-    if rc != 0:
-        R['status'] = 'km-failed'
-        R['km']['err'] = (err or '')[-200:]
-        return finish(R, outdir, t0)
+    bi, bc = os.path.join(outdir, 'base.idx'), os.path.join(outdir, 'base.cl')
+    cf = os.path.join(outdir, 'classes.txt')
+    old_res_path = os.path.join(outdir, 'result.json')
+    old_R = {}
+    if '--fresh' not in a and os.path.exists(old_res_path):
+        try:
+            old_R = json.load(open(old_res_path))
+        except Exception:
+            old_R = {}
+    if (old_R.get('km', {}).get('rc') == 0 and os.path.exists(kl) and os.path.getsize(kl) > 0):
+        R['km'] = old_R['km']
+    else:
+        rc, s, m, _, err = run([KM, 'classify', '--lines', '--realize', '--top', src], 300, out=kl)
+        clean_km_tmp()
+        R['km'] = {'rc': rc, 'secs': s, 'rss_mb': m}
+        if rc != 0:
+            R['status'] = 'km-failed'
+            R['km']['err'] = (err or '')[-200:]
+            return finish(R, outdir, t0)
     cons = None
     for line in open(kl):
         if line.startswith('CONSISTENT'):
@@ -150,35 +162,46 @@ def main():
     if cons is False:
         R['status'] = 'km-inconsistent'
         return finish(R, outdir, t0)
-    bi, bc = os.path.join(outdir, 'base.idx'), os.path.join(outdir, 'base.cl')
-    cf = os.path.join(outdir, 'classes.txt')
-    # the witness route's translation, every class of the ontology requested
-    rc1, s1, m1, _, e1 = ref(['--witness-route', '--print-index'], src, 300, out=bi)
-    rc2, s2, m2, _, e2 = (None, None, None, None, None)
-    s0 = 0
-    if rc1 == 0:
-        names = [l.split(' ', 2)[2].rstrip('\n') for l in open(bi) if l.startswith('concept ') and
-                 len(l.split(' ', 2)) == 3 and not l.split(' ', 2)[2].startswith('urn:km:')]
-        # owl:Thing and owl:Nothing listed: the route prints the owl:Thing row and
-        # owl:Nothing in every list (satisfiability); they do not shift the indices
-        add = [x for x in (THING, NOTHING) if x not in names]
-        with open(cf, 'w') as f:
-            f.write('\n'.join(names + add) + '\n')
-        s0 = s1 or 0
-        rc1, s1, m1, _, e1 = ref(['--witness-route', '--classes', cf, '--print-index'], src, 300, out=bi)
-    if rc1 == 0:
-        extra = ['--classes', cf] if os.path.exists(cf) else []
-        rc2, s2, m2, _, e2 = ref(['--witness-route'] + extra + ['--print-clauses'], src, 300, out=bc)
-    R['dump'] = {'rc': rc2 if rc1 == 0 else rc1, 'secs': round(s0 + (s1 or 0) + (s2 or 0), 2), 'rss_mb': max(m1 or 0, m2 or 0)}
-    if rc1 != 0 or rc2 != 0:
-        R['status'] = 'dump-failed'
-        R['dump']['err'] = ((e1 or '') + (e2 or ''))[-200:]
-        return finish(R, outdir, t0)
-    R['dump']['bytes'] = os.path.getsize(bi) + os.path.getsize(bc)
-    # the Self routes allow a loop only at a nominal element: no loops then
-    rc0, _, _, o0, _ = ref(['--witness-route', '--classes', cf, '--check'], src, 300)
-    R['route'] = (o0 or '').strip()[-40:]
+    if (old_R.get('dump', {}).get('rc') == 0 and os.path.exists(bi) and os.path.getsize(bi) > 0
+            and os.path.exists(bc) and os.path.getsize(bc) > 0 and os.path.exists(cf)
+            and 'route' in old_R):
+        R['dump'] = old_R['dump']
+        R['route'] = old_R['route']
+        o0 = R['route']
+    else:
+        # the witness route's translation, every class of the ontology requested
+        rc1, s1, m1, _, e1 = ref(['--witness-route', '--print-index'], src, 300, out=bi)
+        rc2, s2, m2, _, e2 = (None, None, None, None, None)
+        s0 = 0
+        if rc1 == 0:
+            names = [l.split(' ', 2)[2].rstrip('\n') for l in open(bi) if l.startswith('concept ') and
+                     len(l.split(' ', 2)) == 3 and not l.split(' ', 2)[2].startswith('urn:km:')]
+            # owl:Thing and owl:Nothing listed: the route prints the owl:Thing row and
+            # owl:Nothing in every list (satisfiability); they do not shift the indices
+            add = [x for x in (THING, NOTHING) if x not in names]
+            with open(cf, 'w') as f:
+                f.write('\n'.join(names + add) + '\n')
+            s0 = s1 or 0
+            rc1, s1, m1, _, e1 = ref(['--witness-route', '--classes', cf, '--print-index'], src, 300, out=bi)
+        if rc1 == 0:
+            extra = ['--classes', cf] if os.path.exists(cf) else []
+            rc2, s2, m2, _, e2 = ref(['--witness-route'] + extra + ['--print-clauses'], src, 300, out=bc)
+        R['dump'] = {'rc': rc2 if rc1 == 0 else rc1, 'secs': round(s0 + (s1 or 0) + (s2 or 0), 2), 'rss_mb': max(m1 or 0, m2 or 0)}
+        if rc1 != 0 or rc2 != 0:
+            R['status'] = 'dump-failed'
+            R['dump']['err'] = ((e1 or '') + (e2 or ''))[-200:]
+            return finish(R, outdir, t0)
+        R['dump']['bytes'] = os.path.getsize(bi) + os.path.getsize(bc)
+        # the Self routes allow a loop only at a nominal element: no loops then
+        rc0, _, _, o0, _ = ref(['--witness-route', '--classes', cf, '--check'], src, 300)
+        R['route'] = (o0 or '').strip()[-40:]
     loops = [] if 'self' not in (o0 or '') else ['--no-loops']
+    for fn in os.listdir(outdir):
+        if re.match(r'^(?:model\d+\.(?:hint|wit)|check\d+\.jsonl)$', fn):
+            try:
+                os.remove(os.path.join(outdir, fn))
+            except OSError:
+                pass
     rc, s, m, out, err = run([PROD, 'produce'] + loops + ['--index', bi, '--clauses', bc, '--km', kl, '--out', outdir,
                               '--time', str(ptime)], ptime + 120, mem_kb=24000000)
     R['producer_run'] = {'rc': rc, 'secs': s, 'rss_mb': m}

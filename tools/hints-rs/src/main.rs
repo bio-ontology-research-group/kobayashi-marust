@@ -14,6 +14,7 @@ mod check;
 mod data;
 mod emit;
 mod engine;
+mod export;
 mod km;
 mod nf;
 mod rowmap;
@@ -85,6 +86,23 @@ fn main() {
             let j = build::produce(&nf, &km, &cfg, &out, None);
             let j = format!("{{\"parse_secs\":{:.3},{}", parse, &j[1..]);
             let _ = std::fs::write(format!("{}/producer.json", out), &j);
+            println!("{}", j);
+        }
+        "from-export" => {
+            let nf = load_nf(&need("--index"), &need("--clauses"));
+            let km = arg(&a, "--km").map(|p| km::Km::parse(&read(&p)));
+            let exp_text = read(&need("--export"));
+            let mut cfg = cfg;
+            if !a.iter().any(|x| x == "--no-dstar") {
+                let d = data::DataNf::parse(&read(&need("--clauses")));
+                if !d.is_empty() {
+                    cfg.data = Some(d);
+                }
+            }
+            let out = need("--out");
+            let _ = std::fs::create_dir_all(&out);
+            let j = export::from_export(&nf, km.as_ref(), &cfg, &exp_text, &out);
+            let _ = std::fs::write(format!("{}/export_producer.json", out), &j);
             println!("{}", j);
         }
         "rowhint" => {

@@ -29,7 +29,14 @@ pub fn reachable(m: &Model, roots: &[Id]) -> Vec<Id> {
             }
         }
     }
-    out.sort_unstable();
+    let mut nom_cnt: FxMap<Id, usize> = FxMap::default();
+    for &e in m.nom_elem.values() {
+        *nom_cnt.entry(m.find(e)).or_default() += 1;
+    }
+    out.sort_unstable_by_key(|&x| {
+        let c = nom_cnt.get(&x).copied().unwrap_or(0);
+        (c == 0 && !m.elems[x as usize].nom, std::cmp::Reverse(c), x)
+    });
     out
 }
 
