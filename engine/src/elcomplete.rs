@@ -12400,6 +12400,76 @@ pub(crate) fn classify_compact(clauses: Vec<JClause>) -> Option<ElResult> {
     classify_inner_mode(clauses, cert, debug, true, true)
 }
 
+/// The canonical model of an EL clause set, read off a plain serial
+/// completion (`km classify --export-model`, `docs/MODEL-EXPORT.md`).
+///
+/// One element per satisfiable concept context (every concept name of the
+/// normal form, `⊤` included), labelled with its saturated superconcepts;
+/// one edge `(c, r, d)` per derived link. The completion lifts every link to
+/// the told super-roles and composes the chains (`R ∘ S ⊑ T`, transitivity),
+/// so the edges of a role are its full extension in the model. This is the
+/// standard EL canonical model: a model of the clause set when `⊤` is
+/// satisfiable, and the element of a concept `A` satisfies exactly the
+/// concepts the clause set entails for `A`.
+pub(crate) struct ElModel {
+    /// Internal name of each element's context (`⊤` for the top context).
+    pub contexts: Vec<String>,
+    /// Saturated superconcepts of each element (internal names, `⊤` omitted).
+    pub labels: Vec<Vec<String>>,
+    /// `(from, role, to)` over element indices.
+    pub edges: Vec<(usize, String, usize)>,
+    pub inconsistent: bool,
+}
+
+/// [`ElModel`] of `clauses`, or `None` when the clause set has a non-EL
+/// residual (the canonical model of the EL part is then not a model).
+pub(crate) fn el_model(clauses: &[JClause]) -> Option<ElModel> {
+    let mut it = Interner::new();
+    let (mut nfs, residual, _skolem) = to_nf(clauses, &mut it)?;
+    if !residual.is_empty() {
+        return None;
+    }
+    nfs.concept_names.insert(TOP);
+    let n = it.len();
+    let idx = build_idx(&nfs, n);
+    let mut st = init_state(&nfs, n);
+    seed_reflexive_edges(&nfs, &idx, &mut st);
+    let mut prof = Prof::default();
+    run(&idx, &mut st, &mut prof);
+    let inconsistent = st.sub_super[TOP as usize].contains(&BOTTOM);
+    let mut element_of: HashMap<u32, usize> = HashMap::default();
+    let mut model = ElModel { contexts: Vec::new(), labels: Vec::new(), edges: Vec::new(), inconsistent };
+    if inconsistent {
+        return Some(model);
+    }
+    let name = |id: u32| it.debug_name(id);
+    let mut contexts: Vec<u32> = (0..st.sub_super.len() as u32)
+        .filter(|&c| c != BOTTOM && !st.sub_super[c as usize].is_empty() && !st.sub_super[c as usize].contains(&BOTTOM))
+        .collect();
+    contexts.sort_by_key(|&c| (c != TOP, name(c)));
+    for &c in &contexts {
+        element_of.insert(c, model.contexts.len());
+        model.contexts.push(name(c));
+        let mut label: Vec<String> = st.sub_super[c as usize]
+            .iter()
+            .filter(|&&d| d != TOP)
+            .map(|&d| name(d))
+            .collect();
+        label.sort();
+        model.labels.push(label);
+    }
+    for &c in &contexts {
+        let from = element_of[&c];
+        let mut out: Vec<(usize, String, usize)> = st.edges[c as usize]
+            .iter()
+            .filter_map(|&(r, d)| element_of.get(&d).map(|&to| (from, name(r), to)))
+            .collect();
+        out.sort();
+        model.edges.extend(out);
+    }
+    Some(model)
+}
+
 /// `KM_ELC_TIMING` phase laps inside the completion itself (the worker's
 /// `classify=` line only brackets the whole call). Off by default.
 fn elc_timing_lap(on: bool, last: &mut std::time::Instant, label: &str) {

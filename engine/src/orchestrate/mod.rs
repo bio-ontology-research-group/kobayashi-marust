@@ -21,6 +21,7 @@ pub mod frontend_run;
 pub(crate) mod inert_sorts;
 pub mod input;
 pub mod mirror;
+pub mod model_export;
 mod abox_quotient;
 mod positive_abox_quotient;
 mod symbolic_source;
