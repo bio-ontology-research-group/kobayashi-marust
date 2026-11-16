@@ -349,11 +349,30 @@ fn member(v: &Val, atom: &str) -> Option<bool> {
 #[derive(Clone)]
 pub struct Values {
     cands: Vec<Val>,
+    /// the values named by oneOf literals
+    lits: Vec<Val>,
     /// candidate -> its atom type (sorted), None when some atom is not understood
     types: Vec<Option<Vec<u32>>>,
 }
 
 impl Values {
+    /// The number of values of type `ty` when every candidate of that type is
+    /// a boolean or a oneOf literal (a finite space), else None.
+    pub fn finite_card(&self, ty: &[u32]) -> Option<usize> {
+        let mut n = 0;
+        for (v, t) in self.cands.iter().zip(&self.types) {
+            if t.as_deref() != Some(ty) {
+                continue;
+            }
+            match v {
+                Val::Bool(_) => n += 1,
+                _ if self.lits.contains(v) => n += 1,
+                _ => return None,
+            }
+        }
+        Some(n)
+    }
+
     /// Every candidate value was evaluated on every atom.
     pub fn complete(&self) -> bool {
         self.types.iter().all(|t| t.is_some())
@@ -419,6 +438,17 @@ impl Values {
         ] {
             push(v, &mut cands);
         }
+        let mut lits: Vec<Val> = Vec::new();
+        for k in &keys {
+            let a = &d.atoms[k];
+            if a.contains("DataRange.oneOf") {
+                for (lex, ldt) in literals(a) {
+                    if let Some(v) = lit_val(&lex, &ldt) {
+                        lits.push(v);
+                    }
+                }
+            }
+        }
         let types = cands
             .iter()
             .map(|v| {
@@ -433,7 +463,7 @@ impl Values {
                 Some(t)
             })
             .collect();
-        Values { cands, types }
+        Values { cands, lits, types }
     }
 }
 
@@ -446,8 +476,14 @@ fn has(v: &[u32], x: u32) -> bool {
     v.binary_search(&x).is_ok()
 }
 
-/// The data star of an element of type `t` (sorted names), or None.
+/// The data star of an element of type `t` (sorted names), or None: first
+/// one entry per requirement, then, if an at-most bound is exceeded, with
+/// values shared between requirements.
 pub fn star(d: &DataNf, vals: &Values, t: &[u32]) -> Option<Vec<Entry>> {
+    star_with(d, vals, t, false).or_else(|| star_with(d, vals, t, true))
+}
+
+fn star_with(d: &DataNf, vals: &Values, t: &[u32], share: bool) -> Option<Vec<Entry>> {
     let up = |u: u32| -> Vec<u32> {
         let mut out = vec![u];
         let mut i = 0;
@@ -476,16 +512,24 @@ pub fn star(d: &DataNf, vals: &Values, t: &[u32]) -> Option<Vec<Entry>> {
                     })
             })
     };
-    let pick = |label: &[u32], pos: &[u32], neg: &[u32], avoid: &[Vec<u32>]| -> Option<Vec<u32>> {
+    // a value type already taken by an entry is used again only when no other
+    // fits (a type can have few values: the checker bounds the entries per type)
+    let pick = |label: &[u32], pos: &[u32], neg: &[u32], avoid: &[Vec<u32>], used: &[Vec<u32>]| -> Option<Vec<u32>> {
+        let mut again: Option<Vec<u32>> = None;
         for ty in vals.types.iter().flatten() {
             if avoid.contains(ty) {
                 continue;
             }
             if fits(label, ty, pos, neg) {
-                return Some(ty.clone());
+                if !used.contains(ty) {
+                    return Some(ty.clone());
+                }
+                if again.is_none() {
+                    again = Some(ty.clone());
+                }
             }
         }
-        None
+        again
     };
     let mut ents: Vec<Entry> = Vec::new();
     let mut reqs: Vec<(u32, u32, Vec<u32>, Vec<u32>)> = Vec::new();
@@ -509,8 +553,7 @@ pub fn star(d: &DataNf, vals: &Values, t: &[u32]) -> Option<Vec<Entry>> {
             let lu = up(*u);
             // extend an existing entry whose value already fits
             let mut done = false;
-            // sharing one value between properties only when KM_HINTS_DSHARE is set
-            if *n == 1 && std::env::var("KM_HINTS_DSHARE").is_ok() {
+            if *n == 1 && share {
                 for e in ents.iter_mut() {
                     let mut l2 = e.label.clone();
                     l2.extend_from_slice(&lu);
@@ -532,7 +575,8 @@ pub fn star(d: &DataNf, vals: &Values, t: &[u32]) -> Option<Vec<Entry>> {
                 .filter(|e| e.ty.iter().any(|j| d.atoms.get(j).map(|a| a.contains("oneOf")).unwrap_or(false)))
                 .map(|e| e.ty.clone())
                 .collect();
-            let ty = match pick(&lu, pos, neg, &avoid) {
+            let used: Vec<Vec<u32>> = ents.iter().map(|e| e.ty.clone()).collect();
+            let ty = match pick(&lu, pos, neg, &avoid, &used) {
                 Some(t) => t,
                 None => {
                     if std::env::var("KM_HINTS_DEBUG").is_ok() {
@@ -543,6 +587,22 @@ pub fn star(d: &DataNf, vals: &Values, t: &[u32]) -> Option<Vec<Entry>> {
                 }
             };
             ents.push(Entry { label: lu, ty });
+        }
+    }
+    // finite value types (only booleans or oneOf literals have them among the
+    // candidates): at most as many entries as values
+    let mut per: HashMap<Vec<u32>, usize> = HashMap::new();
+    for e in &ents {
+        *per.entry(e.ty.clone()).or_default() += 1;
+    }
+    for (ty, n) in &per {
+        if let Some(k) = vals.finite_card(ty) {
+            if *n > k {
+                if std::env::var("KM_HINTS_DEBUG").is_ok() {
+                    eprintln!("dstar: {} entries of a value type with {} values", n, k);
+                }
+                return None;
+            }
         }
     }
     for c in &d.datmost {
