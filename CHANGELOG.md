@@ -4,6 +4,23 @@
 
 ### Engine
 
+- Cheaper chain-consumer markers (E12 cost): a letter of a marker automaton
+  whose every edge the clause stream already carries as an edge of another
+  letter with the same moves (a reversed sub-role of an inverse, such as
+  `starts⁻` beside `has_part` when `starts ⊑ part_of ≡ has_part⁻`, or a
+  told sub-role beside its super-role) is dropped before the automaton is
+  compared with the existing encodings and before its clauses are emitted.
+  Consumers whose language then equals the same-orientation one keep their
+  old clauses, and the remaining families no longer copy every edge of such
+  letters into a group role. Paths over the stream's edges are the same, so
+  answers are unchanged. Measured on one core against v1.6.4:
+  `ore_ont_13242` 3.79 GB, 28.4 s → 2.38 GB, 25.5 s (v1.6.4 2.39 GB,
+  23.5 s); `ore_ont_11695` 1.99 GB, 53.8 s → 1.61 GB, 48.6 s (1.63 GB,
+  46.0 s); `ore_ont_10838` 2.76 GB, 118 s → 2.61 GB, 113 s (2.49 GB,
+  110 s). The `ore_ont_9540` growth (0.75 → 10.7 GB) does not come from the
+  chain encoding (it is unchanged with the encoding switched off); it starts
+  with the bridge commit `6f2c0a8e` (no lazy definition for an absorption
+  trigger name).
 - `km classify --values` reports every entailed object property assertion
   between named individuals (`VALUE r a b`) and `--different` every
   entailed pair of different named individuals (`DIFFERENT a b`, `a < b`),
