@@ -2094,7 +2094,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             if self.phantom_node_intervals.iter().any(|&(a, b)| i >= a && i < b) { continue; }
             let node_id = NodeId::new(i as Cint64);
             let node = ctx.node(node_id);
-            if node.has_merged_into_individual_node_id() { continue; }
+            if node.has_merged_into_individual_node_id() || node.has_purged_blocked_processing_restriction_flags() { continue; }
             let label = node.reapply_con_label_set;
             if label.is_none() { continue; }
             // Label order cannot change the first two nodes for any tag:
@@ -2181,7 +2181,7 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
             if merged_phantoms.get(phantom_cursor).is_some_and(|&(a, _)| a <= i) { continue; }
             let node_id = NodeId::new(i as Cint64);
             let node = ctx.node(node_id);
-            if node.has_merged_into_individual_node_id() { continue; }
+            if node.has_merged_into_individual_node_id() || node.has_purged_blocked_processing_restriction_flags() { continue; }
             let label = node.reapply_con_label_set;
             if label.is_none() { continue; }
             // Label order cannot change the first two nodes for any tag:
@@ -2297,7 +2297,9 @@ impl super::algorithm::CompletionTaskHandleAlgorithm {
                         let node_id: NodeId = Id::new(i as Cint64);
                         let node = ctx.node(node_id);
                         // skip nodes already merged away
-                        if node.has_merged_into_individual_node_id() {
+                        if node.has_merged_into_individual_node_id()
+                            || node.has_purged_blocked_processing_restriction_flags()
+                        {
                             continue;
                         }
                         let label = node.reapply_con_label_set;

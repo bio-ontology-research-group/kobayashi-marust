@@ -106,11 +106,16 @@ mod tests {
     #[test]
     fn dense_functional_data_abox_requires_bounded_complete_compilation() {
         let assertions = (0..513).map(|i|
-            format!("DataPropertyAssertion(:p :a{i} \"red\"^^xsd:string) "))
+            format!("DataPropertyAssertion(:p :a{i} \"red{i}\"^^xsd:string) "))
             .collect::<String>();
         let source = format!("Prefix(:=<urn:test:>) Ontology(Declaration(Class(:C)) \
             FunctionalDataProperty(:p) {assertions})");
         assert_eq!(plan(&source), Some("KM_GROUND_RULE_SOURCE"));
+        // E19: a value shared by two individuals no longer keeps the source
+        // off the bridge reductions (the bridge requeues the witnesses a
+        // prune removes).
+        let shared = source.replace("\"red1\"", "\"red0\"");
+        assert_eq!(plan(&shared), Some("KM_GROUND_RULE_SOURCE"));
         assert_eq!(plan(&source.replace("FunctionalDataProperty(:p)", "")), None);
         assert_eq!(plan(&source.replace("xsd:string", "<urn:unknown>")), None);
         assert_eq!(plan(&source.replace("Ontology(", "Ontology(Import(<urn:missing>)")), None);

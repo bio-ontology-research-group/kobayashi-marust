@@ -28,6 +28,8 @@ use kobayashi_marust::orchestrate::{self, Config, OrchestrateError};
 fn main() {
     #[cfg(feature = "sample-profiler")]
     kobayashi_marust::sample_prof::install();
+    // Before any route bundle rewrites KM_THREADS (`routing::apply_environment`).
+    kobayashi_marust::routing::capture_caller_thread_budget();
     let args: Vec<String> = std::env::args().collect();
     match args.get(1).map(String::as_str) {
         Some("classify") => classify_cmd(&args[2..]),
@@ -513,6 +515,10 @@ fn classify_help() {
 
 fn classify_cmd(rest: &[String]) {
     strip_worker_only_environment("classify");
+    // Run the configuration the release benchmarks measured
+    // (`routing::RELEASE_DEFAULTS`); set before any worker is spawned, so the
+    // workers inherit it.
+    kobayashi_marust::routing::apply_release_defaults();
     // Workers watch this pid and exit when the supervisor is gone
     // (`cli::die_with_supervisor`). Set before any thread is spawned.
     std::env::set_var(cli::SUPERVISOR_PID_ENV, std::process::id().to_string());

@@ -270,6 +270,7 @@ impl Route {
             std::env::set_var(key, value);
         }
         cap_worker_threads_to_available_cpus();
+        cap_worker_threads_to_caller_budget();
     }
 
     /// The user's diagnostic overrides that this route's bundle keeps: all of
@@ -2915,6 +2916,35 @@ pub(crate) fn cap_worker_threads_to_available_cpus() {
     }
 }
 
+/// The thread budget the caller gave the process (`KM_THREADS` at start),
+/// captured once, before any route bundle rewrites the variable.
+fn caller_thread_budget() -> Option<usize> {
+    static BUDGET: std::sync::OnceLock<Option<usize>> = std::sync::OnceLock::new();
+    *BUDGET.get_or_init(|| {
+        std::env::var("KM_THREADS").ok().and_then(|v| v.parse::<usize>().ok()).filter(|&n| n > 0)
+    })
+}
+
+/// Record the caller's `KM_THREADS` before anything changes it. Called at
+/// the user-facing entries (`apply_release_defaults`).
+pub fn capture_caller_thread_budget() {
+    let _ = caller_thread_budget();
+}
+
+/// A route bundle sets its own worker thread count (`COMMON_SETTINGS` asks
+/// for 16), which used to override a caller's smaller `KM_THREADS`, so e.g.
+/// `KM_THREADS=1 km classify --realize` ran a 16-thread engine worker. Never
+/// exceed the caller's budget. Scheduling only (see
+/// [`cap_worker_threads_to_available_cpus`]).
+pub(crate) fn cap_worker_threads_to_caller_budget() {
+    let Some(budget) = caller_thread_budget() else { return };
+    if let Some(requested) = std::env::var("KM_THREADS").ok().and_then(|v| v.parse::<usize>().ok()) {
+        if requested > budget {
+            std::env::set_var("KM_THREADS", budget.to_string());
+        }
+    }
+}
+
 const COMMON_SETTINGS: &[(&str, &str)] = &[
     ("KM_THREADS", "16"),
     ("KM_PAR_MEM_GB", "18"),
@@ -3428,6 +3458,38 @@ pub fn strip_worker_only_environment() -> Vec<&'static str> {
         }
     }
     removed
+}
+
+/// The flags every release measurement since v1.5.3 ran under
+/// (docs/RELEASE-1.5.5-PROCEDURE.md): Konclude's dependency-directed
+/// backjumping in the konclude_ht bridge (`KM_HT_DDB`), the native
+/// cardinality schedule, the cache conformance check, the bridge subject
+/// worker override and the fast IRI grammar. `km incremental` sets them as its
+/// production defaults. `km classify` sets them too, so the shipped command
+/// runs the configuration the benchmarks measured: without `KM_HT_DDB` the
+/// bridge backtracks chronologically and issue #5 does not finish in 300 s.
+pub const RELEASE_DEFAULTS: &[(&str, &str)] = &[
+    ("KM_HT_DDB", "1"),
+    ("KM_HT_NATIVE_FULL", "1"),
+    ("KM_CACHE_CONFORMANCE", "1"),
+    ("KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE", "1"),
+    ("KM_FAST_IRI_GRAMMAR", "1"),
+];
+
+/// Set every [`RELEASE_DEFAULTS`] flag the caller left unset. A user value
+/// wins; `KM_NO_RELEASE_DEFAULTS` (any value) skips all of them, for A/B runs
+/// against the previous behaviour. Call it at a user-facing entry before any
+/// route or worker runs.
+pub fn apply_release_defaults() {
+    capture_caller_thread_budget();
+    if std::env::var_os("KM_NO_RELEASE_DEFAULTS").is_some() {
+        return;
+    }
+    for (key, value) in RELEASE_DEFAULTS {
+        if std::env::var_os(key).is_none() {
+            std::env::set_var(key, value);
+        }
+    }
 }
 
 const ROUTE_KEYS: &[&str] = &[

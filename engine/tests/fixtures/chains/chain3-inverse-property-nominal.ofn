@@ -1,0 +1,6 @@
+Prefix(:=<urn:t#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<urn:t>
+Declaration(Class(:A)) Declaration(Class(:C)) Declaration(Class(:D)) Declaration(Class(:E)) Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s)) Declaration(ObjectProperty(:t)) Declaration(ObjectProperty(:u)) Declaration(NamedIndividual(:g))
+SubObjectPropertyOf(ObjectPropertyChain(:s :t :u) :r) InverseObjectProperties(:u :t) SubClassOf(owl:Thing ObjectHasValue(:t :g)) SubClassOf(:A ObjectSomeValuesFrom(:s owl:Thing)) SubClassOf(:A ObjectAllValuesFrom(:r :C))
+)

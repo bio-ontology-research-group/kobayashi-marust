@@ -48,15 +48,9 @@ use crate::fxhash::{FxHashMap, FxHashSet};
 use crate::orchestrate::{Config, OrchestrateError, TaxonomyRows};
 use crate::source_locality::{fingerprint, scan, LocalityIndex, Scan, StmtKind};
 
-/// The production flags of `km classify`; set only when the caller left them unset.
-const PRODUCTION_DEFAULTS: &[(&str, &str)] = &[
-    ("KM_ROUTE", "auto"),
-    ("KM_HT_DDB", "1"),
-    ("KM_HT_NATIVE_FULL", "1"),
-    ("KM_CACHE_CONFORMANCE", "1"),
-    ("KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE", "1"),
-    ("KM_FAST_IRI_GRAMMAR", "1"),
-];
+/// The production flags of `km classify` (`routing::RELEASE_DEFAULTS`) plus
+/// the automatic route; set only when the caller left them unset.
+const PRODUCTION_DEFAULTS: &[(&str, &str)] = &[("KM_ROUTE", "auto")];
 
 const MEMO_LIMIT: usize = 6;
 /// Modules below this many axioms are classified without subject restriction.
@@ -1230,7 +1224,7 @@ fn stage(label: &str, started: Instant) {
 }
 
 fn apply_production_defaults() {
-    for (key, value) in PRODUCTION_DEFAULTS {
+    for (key, value) in PRODUCTION_DEFAULTS.iter().chain(crate::routing::RELEASE_DEFAULTS) {
         if std::env::var_os(key).is_none() {
             std::env::set_var(key, value);
         }
