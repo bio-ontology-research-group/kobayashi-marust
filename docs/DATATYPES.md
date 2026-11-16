@@ -1469,8 +1469,9 @@ km entails `a : A` (and `d21`, which adds `¬A(a)`, is inconsistent); HermiT
 does not, although both occurrences are the same literal: HermiT reads an
 unsupported literal in a class expression and in an assertion as unrelated
 values. On `d20` (a `xsd:dateTimeStamp` literal without a time zone, a map
-datatype) both refuse the literal. HermiT's reading is otherwise the one
-above: distinct literals are not known to be distinct (two values of a
+datatype) both refuse the literal. These two differences are deliberate: two occurrences of
+one literal denote one value (the OWL 2 reading of a literal), so km keeps
+its answer. HermiT's reading is otherwise the one above: distinct literals are not known to be distinct (two values of a
 functional property stay consistent), a literal is not known to lie in its
 datatype, and the datatypes are unrelated.
 
