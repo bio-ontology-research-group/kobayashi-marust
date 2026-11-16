@@ -123,7 +123,16 @@ impl DataNf {
 
 /// `{ lexical := "...", datatype := "...", lang := ... }` literals in an atom text.
 fn literals(s: &str) -> Vec<(String, String)> {
-    let mut out = Vec::new();
+    literals_l(s).into_iter().map(|(l, d, g)| match g {
+        // a language tag makes the value a language-tagged string
+        Some(g) => (format!("{}@{}", l, g), "http://www.w3.org/1999/02/22-rdf-syntax-ns#PlainLiteral".to_string()),
+        None => (l, d),
+    }).collect()
+}
+
+/// (lexical, datatype, language tag) of each literal.
+fn literals_l(s: &str) -> Vec<(String, String, Option<String>)> {
+    let mut out: Vec<(String, String, Option<String>)> = Vec::new();
     let mut rest = s;
     while let Some(i) = rest.find("lexical := \"") {
         let r = &rest[i + 12..];
@@ -140,7 +149,16 @@ fn literals(s: &str) -> Vec<(String, String)> {
             }
             None => String::new(),
         };
-        out.push((lex, dt));
+        let lang = r2.find("lang := ").and_then(|k| {
+            let r3 = &r2[k + 8..];
+            if r3.starts_with("some \"") {
+                let r4 = &r3[6..];
+                r4.find('"').map(|e| r4[..e].to_string())
+            } else {
+                None
+            }
+        });
+        out.push((lex, dt, lang));
         rest = &r[j..];
     }
     out
@@ -168,7 +186,17 @@ fn lit_val(lex: &str, dt: &str) -> Option<Val> {
     if let Some(k) = num_kind(dt) {
         return lex.trim().parse::<f64>().ok().map(|x| Val::Num(k, x));
     }
-    if dt == format!("{}string", XSD) || dt.ends_with("PlainLiteral") || dt.is_empty() {
+    if dt.ends_with("PlainLiteral") {
+        // rdf:PlainLiteral lexical forms are "text@lang"; "text@" is the string "text";
+        // a form without '@' is ill-formed and denotes no value
+        let i = lex.rfind('@')?;
+        let (text, lang) = (&lex[..i], &lex[i + 1..]);
+        if lang.is_empty() {
+            return Some(Val::Str(text.to_string()));
+        }
+        return Some(Val::Other(format!("@{}", lang.to_ascii_lowercase()), text.to_string()));
+    }
+    if dt == format!("{}string", XSD) || dt.is_empty() {
         return Some(Val::Str(lex.to_string()));
     }
     if dt == format!("{}boolean", XSD) {
@@ -186,7 +214,11 @@ fn in_dt(v: &Val, dt: &str) -> Option<bool> {
         return Some(matches!(v, Val::Num(Kind::Dec, _)));
     }
     if dt.ends_with("rdf-syntax-ns#PlainLiteral") {
-        return Some(matches!(v, Val::Str(_)));
+        return Some(match v {
+            Val::Str(_) => true,
+            Val::Other(d, _) => d.starts_with('@'),
+            _ => false,
+        });
     }
     // other built-in datatypes (anyURI, dateTime, XMLLiteral, binary, ...): a value
     // space of their own; dateTimeStamp values are dateTime values
@@ -265,7 +297,11 @@ fn member(v: &Val, atom: &str) -> Option<bool> {
     }
     if a.starts_with("ContextCalculus.OWL.DataRange.oneOf") {
         for (lex, dt) in literals(a) {
-            let w = lit_val(&lex, &dt)?;
+            // an ill-formed literal denotes no value
+            let w = match lit_val(&lex, &dt) {
+                Some(w) => w,
+                None => continue,
+            };
             let eq = match (&w, v) {
                 (Val::Num(k1, x1), Val::Num(k2, x2)) => k1 == k2 && x1 == x2,
                 _ => &w == v,
@@ -473,7 +509,8 @@ pub fn star(d: &DataNf, vals: &Values, t: &[u32]) -> Option<Vec<Entry>> {
             let lu = up(*u);
             // extend an existing entry whose value already fits
             let mut done = false;
-            if *n == 1 {
+            // sharing one value between properties only when KM_HINTS_DSHARE is set
+            if *n == 1 && std::env::var("KM_HINTS_DSHARE").is_ok() {
                 for e in ents.iter_mut() {
                     let mut l2 = e.label.clone();
                     l2.extend_from_slice(&lu);
