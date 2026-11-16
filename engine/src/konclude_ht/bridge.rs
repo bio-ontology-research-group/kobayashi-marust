@@ -18289,6 +18289,939 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     Some(out)
 }
 
+/// Exported completion model from the native bridge (`km classify --export-model`,
+/// `docs/MODEL-EXPORT.md`).
+pub(crate) struct BridgeExportModel {
+    pub contexts: Vec<String>,
+    pub labels: Vec<Vec<String>>,
+    pub edges: Vec<(usize, String, usize)>,
+    pub blocked: Vec<(usize, usize)>,
+    pub class_witnesses: Vec<(String, usize, bool)>,
+    pub inconsistent: bool,
+}
+
+#[derive(Clone)]
+struct BridgeExtractedComponent {
+    rep_ids: Vec<Cint64>,
+    contexts: Vec<String>,
+    labels: Vec<HashSet<String>>,
+    negated_named: Vec<HashSet<usize>>,
+    edges: HashSet<(usize, String, usize)>,
+    blocked: Vec<(usize, usize)>,
+    root_local: Option<usize>,
+}
+
+fn eval_source_concept_on_component(
+    concept: &SourceConcept,
+    u: usize,
+    n_elems: usize,
+    labels: &[HashSet<String>],
+    edges: &HashSet<(usize, String, usize)>,
+    blocked_map: &HashMap<usize, usize>,
+) -> bool {
+    use crate::frontend::syntax::Role as SynRole;
+    let eff = blocked_map.get(&u).copied().unwrap_or(u);
+    let succs = |from: usize, role: &SynRole| -> Vec<usize> {
+        let mut out = Vec::new();
+        match role {
+            SynRole::Name(r) => {
+                if let Some(base) = r.strip_prefix("__inv__") {
+                    for v in 0..n_elems {
+                        if edges.contains(&(v, base.to_string(), from)) {
+                            out.push(v);
+                        }
+                    }
+                } else {
+                    for v in 0..n_elems {
+                        if edges.contains(&(from, r.clone(), v)) {
+                            out.push(v);
+                        }
+                    }
+                }
+            }
+            SynRole::Inverse(r) => {
+                if let Some(base) = r.strip_prefix("__inv__") {
+                    for v in 0..n_elems {
+                        if edges.contains(&(from, base.to_string(), v)) {
+                            out.push(v);
+                        }
+                    }
+                } else {
+                    for v in 0..n_elems {
+                        if edges.contains(&(v, r.clone(), from)) {
+                            out.push(v);
+                        }
+                    }
+                }
+            }
+            SynRole::Universal => {
+                out.extend(0..n_elems);
+            }
+        }
+        out
+    };
+    match concept {
+        SourceConcept::Top => true,
+        SourceConcept::Bottom => false,
+        SourceConcept::Name(name) => {
+            if matches!(name.as_str(), "owl:Thing" | "Thing" | "⊤") {
+                true
+            } else if matches!(name.as_str(), "owl:Nothing" | "Nothing" | "⊥") {
+                false
+            } else {
+                labels[u].contains(name.as_str())
+            }
+        }
+        SourceConcept::Nominal(ind) => labels[u].contains(&format!("__nom__{ind}")),
+        SourceConcept::HasSelf(role) => match role {
+            SynRole::Name(r) | SynRole::Inverse(r) => {
+                let base = r.strip_prefix("__inv__").unwrap_or(r.as_str());
+                edges.contains(&(u, base.to_string(), u))
+                    || edges.contains(&(eff, base.to_string(), eff))
+            }
+            SynRole::Universal => true,
+        },
+        SourceConcept::Not(inner) => {
+            !eval_source_concept_on_component(inner, u, n_elems, labels, edges, blocked_map)
+        }
+        SourceConcept::And(ops) => ops.iter().all(|op| {
+            eval_source_concept_on_component(op, u, n_elems, labels, edges, blocked_map)
+        }),
+        SourceConcept::Or(ops) => ops.iter().any(|op| {
+            eval_source_concept_on_component(op, u, n_elems, labels, edges, blocked_map)
+        }),
+        SourceConcept::Exists(role, filler) => succs(u, role).into_iter().any(|v| {
+            eval_source_concept_on_component(filler, v, n_elems, labels, edges, blocked_map)
+        }),
+        SourceConcept::Forall(role, filler) => succs(u, role).into_iter().all(|v| {
+            eval_source_concept_on_component(filler, v, n_elems, labels, edges, blocked_map)
+        }),
+        SourceConcept::AtLeast(n, role, filler) => {
+            succs(u, role)
+                .into_iter()
+                .filter(|&v| {
+                    eval_source_concept_on_component(filler, v, n_elems, labels, edges, blocked_map)
+                })
+                .count()
+                >= (*n).max(0) as usize
+        }
+        SourceConcept::AtMost(n, role, filler) => {
+            succs(u, role)
+                .into_iter()
+                .filter(|&v| {
+                    eval_source_concept_on_component(filler, v, n_elems, labels, edges, blocked_map)
+                })
+                .count()
+                <= (*n).max(0) as usize
+        }
+    }
+}
+
+fn extract_bridge_component(
+    ctx: &mut CalculationAlgorithmContextBase,
+    bridged: &Bridged,
+    tin: &TInput,
+    rbox: &[Vec<String>],
+    lazy_cceq_defs: &[(usize, SourceConcept)],
+    root_node: Option<NodeId>,
+    root_context_name: Option<&str>,
+) -> Option<BridgeExtractedComponent> {
+    let n_named = tin.concepts.len();
+    let n_roles = tin.roles.len() as Cint64;
+    let root_rep = match root_node {
+        Some(r) => Some(native_completion_merge_target(ctx, r, false)?),
+        None => None,
+    };
+    let root_rep_id = root_rep.map(|r| ctx.process_context().node(r).individual_node_id());
+
+    let (lo, hi) = {
+        let v = ctx.processing_data_box().individual_process_node_vector();
+        (v.get_item_min_index(), v.get_item_max_index())
+    };
+    let mut raw_ids: Vec<Cint64> = (lo..=hi).collect();
+    for seed in &bridged.nominal_seeds {
+        raw_ids.push(-seed.individual_tag);
+    }
+    raw_ids.sort_unstable();
+    raw_ids.dedup();
+
+    let skip_flags =
+        IndividualProcessNode::PRF_PURGEDBLOCKED | IndividualProcessNode::PRF_INDIRECTBLOCKED;
+    let mut reps: Vec<(Cint64, NodeId)> = Vec::new();
+    let mut seen_rep_ids: HashSet<Cint64> = HashSet::default();
+    for id in raw_ids {
+        let raw_node = ctx
+            .processing_data_box()
+            .individual_process_node_vector()
+            .get_data(id);
+        if raw_node.is_none() {
+            continue;
+        }
+        let Some(rep) = native_completion_merge_target(ctx, raw_node, false) else {
+            continue;
+        };
+        let flags = ctx.process_context().node(rep).processing_restriction_flags;
+        if flags & skip_flags != 0 {
+            continue;
+        }
+        let rep_id = ctx.process_context().node(rep).individual_node_id();
+        if seen_rep_ids.insert(rep_id) {
+            reps.push((rep_id, rep));
+        }
+    }
+    reps.sort_by_key(|&(rep_id, _)| (Some(rep_id) != root_rep_id, rep_id != 0, rep_id));
+
+    let mut rep_id_to_local: HashMap<Cint64, usize> = HashMap::default();
+    for (idx, &(rep_id, _)) in reps.iter().enumerate() {
+        rep_id_to_local.insert(rep_id, idx);
+    }
+
+    let n_elems = reps.len();
+    let mut contexts: Vec<String> = Vec::with_capacity(n_elems);
+    let mut labels: Vec<HashSet<String>> = vec![HashSet::default(); n_elems];
+    let mut negated_named: Vec<HashSet<usize>> = vec![HashSet::default(); n_elems];
+    let mut edges: HashSet<(usize, String, usize)> = HashSet::default();
+    let mut blocked: Vec<(usize, usize)> = Vec::new();
+
+    const ROLE_TAG_BASE: Cint64 = 100;
+    let decode_role = |r_tag: Cint64, src: usize, dst: usize| -> Option<(usize, String, usize)> {
+        if r_tag >= ROLE_TAG_BASE && r_tag < ROLE_TAG_BASE + n_roles {
+            let r_name = &tin.roles[(r_tag - ROLE_TAG_BASE) as usize];
+            if let Some(base) = r_name.strip_prefix("__inv__") {
+                Some((dst, base.to_string(), src))
+            } else {
+                Some((src, r_name.clone(), dst))
+            }
+        } else if r_tag >= ROLE_TAG_BASE + n_roles && r_tag < ROLE_TAG_BASE + 2 * n_roles {
+            let r_name = &tin.roles[(r_tag - ROLE_TAG_BASE - n_roles) as usize];
+            if let Some(base) = r_name.strip_prefix("__inv__") {
+                Some((src, base.to_string(), dst))
+            } else {
+                Some((dst, r_name.clone(), src))
+            }
+        } else {
+            None
+        }
+    };
+
+    for (local_idx, &(_rep_id, rep_node)) in reps.iter().enumerate() {
+        let ls = ctx
+            .process_context_mut()
+            .node_reapply_concept_label_set(rep_node);
+        if ls.is_some() {
+            let pc = ctx.process_context();
+            let onto = ctx.ontology_arenas();
+            let mut it = pc.label_set_concept_label_set_iterator(ls, true, false, true);
+            while it.has_value() {
+                let tag = it.get_data_tag(pc, onto);
+                let cd = it.get_concept_descriptor();
+                if cd.is_some() {
+                    let des = pc.con_desc(cd);
+                    if !des.is_negated() {
+                        if tag >= TAG_BASE && tag < TAG_BASE + n_named as Cint64 {
+                            labels[local_idx]
+                                .insert(tin.concepts[(tag - TAG_BASE) as usize].clone());
+                        }
+                        let con = des.get_concept();
+                        if con.is_some() && onto.concept(con).get_operator_code() == op::CCSELF {
+                            let role_id = onto.concept(con).get_role();
+                            if role_id.is_some() {
+                                let r_tag = onto.role(role_id).get_role_tag();
+                                if let Some(edge) = decode_role(r_tag, local_idx, local_idx) {
+                                    edges.insert(edge);
+                                }
+                            }
+                        }
+                    } else if tag >= TAG_BASE && tag < TAG_BASE + n_named as Cint64 {
+                        negated_named[local_idx].insert((tag - TAG_BASE) as usize);
+                    }
+                }
+                it.next_pp(pc);
+            }
+        }
+    }
+
+    for seed in &bridged.nominal_seeds {
+        let raw_node = ctx
+            .processing_data_box()
+            .individual_process_node_vector()
+            .get_data(-seed.individual_tag);
+        if raw_node.is_none() {
+            continue;
+        }
+        let Some(rep) = native_completion_merge_target(ctx, raw_node, false) else {
+            continue;
+        };
+        let rep_id = ctx.process_context().node(rep).individual_node_id();
+        let Some(&src_local) = rep_id_to_local.get(&rep_id) else {
+            continue;
+        };
+        let c_tag = ctx
+            .ontology_arenas()
+            .concept(seed.nominal_concept)
+            .get_concept_tag();
+        if c_tag >= TAG_BASE && c_tag < TAG_BASE + n_named as Cint64 {
+            labels[src_local].insert(tin.concepts[(c_tag - TAG_BASE) as usize].clone());
+        }
+        for &(role_id, target_tag) in &seed.role_assertions {
+            let t_raw = ctx
+                .processing_data_box()
+                .individual_process_node_vector()
+                .get_data(-target_tag);
+            if t_raw.is_none() {
+                continue;
+            }
+            let Some(t_rep) = native_completion_merge_target(ctx, t_raw, false) else {
+                continue;
+            };
+            let t_rep_id = ctx.process_context().node(t_rep).individual_node_id();
+            let Some(&dst_local) = rep_id_to_local.get(&t_rep_id) else {
+                continue;
+            };
+            if role_id.is_some() {
+                let r_tag = ctx.ontology_arenas().role(role_id).get_role_tag();
+                if let Some(edge) = decode_role(r_tag, src_local, dst_local) {
+                    edges.insert(edge);
+                }
+            }
+        }
+    }
+
+    for (local_idx, &(rep_id, rep_node)) in reps.iter().enumerate() {
+        let ctx_name = if Some(rep_id) == root_rep_id {
+            root_context_name
+                .map(str::to_string)
+                .unwrap_or_else(|| "⊤".to_string())
+        } else if let Some(nom) = labels[local_idx]
+            .iter()
+            .filter(|c| c.starts_with("__nom__"))
+            .min()
+        {
+            nom.clone()
+        } else if rep_id == 0 {
+            "⊤".to_string()
+        } else {
+            format!("__ht_node_{rep_id}")
+        };
+        contexts.push(ctx_name);
+
+        let flags = ctx.process_context().node(rep_node).processing_restriction_flags;
+        if flags & IndividualProcessNode::PRF_DIRECTBLOCKED != 0 {
+            let blocker_raw = ctx.process_context().node(rep_node).blocker_individual_node();
+            if blocker_raw.is_some() {
+                let b_id = ctx
+                    .process_context()
+                    .node(blocker_raw)
+                    .individual_node_id();
+                let cur = ctx
+                    .processing_data_box()
+                    .individual_process_node_vector()
+                    .get_data(b_id);
+                let b_node = if cur.is_some() { cur } else { blocker_raw };
+                if let Some(b_rep) = native_completion_merge_target(ctx, b_node, false) {
+                    let b_rep_id = ctx.process_context().node(b_rep).individual_node_id();
+                    if let Some(&b_local) = rep_id_to_local.get(&b_rep_id) {
+                        if b_local != local_idx {
+                            blocked.push((local_idx, b_local));
+                        }
+                    }
+                }
+            }
+        } else if flags & IndividualProcessNode::PRF_SIGNATUREBLOCKINGCACHED != 0 {
+            let sig_data = ctx
+                .process_context()
+                .node(rep_node)
+                .signature_blocking_individual_node_concept_expansion_data(false);
+            if sig_data.is_some() {
+                let blocker_raw = ctx
+                    .process_context()
+                    .sig_block_con_exp_data(sig_data)
+                    .get_blocker_individual_node();
+                if blocker_raw.is_some() {
+                    if let Some(b_rep) = native_completion_merge_target(ctx, blocker_raw, false) {
+                        let b_rep_id = ctx.process_context().node(b_rep).individual_node_id();
+                        if let Some(&b_local) = rep_id_to_local.get(&b_rep_id) {
+                            if b_local != local_idx {
+                                blocked.push((local_idx, b_local));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut keys: Vec<Cint64> = Vec::new();
+        {
+            let pc = ctx.process_context();
+            let mut it = pc.node_successor_iterator(rep_node);
+            while it.has_next() {
+                let link = it.next_link(false);
+                let other = it.next_individual_id(true);
+                if link.is_some() {
+                    keys.push(other);
+                }
+            }
+        }
+        keys.sort_unstable();
+        keys.dedup();
+        let mut raw_links: Vec<(RoleId, NodeId, NodeId)> = Vec::new();
+        {
+            let pc = ctx.process_context();
+            for other in keys {
+                let mut rit = pc.node_successor_role_iterator(rep_node, other);
+                while rit.has_next() {
+                    let link = rit.next(true);
+                    if link.is_some() {
+                        let e = pc.edge(link);
+                        raw_links.push((
+                            e.get_link_role(),
+                            e.get_source_individual(),
+                            e.get_destination_individual(),
+                        ));
+                    }
+                }
+            }
+        }
+        for (role_id, src_node, dst_node) in raw_links {
+            if !role_id.is_some() || !src_node.is_some() || !dst_node.is_some() {
+                continue;
+            }
+            let Some(src_rep) = native_completion_merge_target(ctx, src_node, false) else {
+                continue;
+            };
+            let Some(dst_rep) = native_completion_merge_target(ctx, dst_node, false) else {
+                continue;
+            };
+            let src_id = ctx.process_context().node(src_rep).individual_node_id();
+            let dst_id = ctx.process_context().node(dst_rep).individual_node_id();
+            let (Some(&src_local), Some(&dst_local)) =
+                (rep_id_to_local.get(&src_id), rep_id_to_local.get(&dst_id))
+            else {
+                continue;
+            };
+            let r_tag = ctx.ontology_arenas().role(role_id).get_role_tag();
+            if let Some(edge) = decode_role(r_tag, src_local, dst_local) {
+                edges.insert(edge);
+            }
+        }
+    }
+
+    for entry in &tin.nominal_abox.individuals {
+        let mut all_noms = vec![format!("__nom__{}", entry.individual)];
+        for p in &entry.proxies {
+            if !all_noms.contains(p) {
+                all_noms.push(p.clone());
+            }
+        }
+        for u in 0..n_elems {
+            if all_noms.iter().any(|n| labels[u].contains(n)) {
+                for n in &all_noms {
+                    labels[u].insert(n.clone());
+                }
+            }
+        }
+    }
+
+    crate::engine::close_edges_under_rbox_rows(rbox, n_elems, &mut edges);
+
+    if !blocked.is_empty() {
+        let blocked_map: HashMap<usize, usize> = blocked.iter().copied().collect();
+        let resolve_b = |start: usize| -> usize {
+            let mut cur = start;
+            let mut hops = 0;
+            while let Some(&nxt) = blocked_map.get(&cur) {
+                if nxt == cur || hops > n_elems {
+                    break;
+                }
+                cur = nxt;
+                hops += 1;
+            }
+            cur
+        };
+        let snapshot: Vec<(usize, String, usize)> = edges.iter().cloned().collect();
+        for &(u, _) in &blocked {
+            let b = resolve_b(u);
+            let b_rep_id = reps[b].0;
+            for &(src, ref r, dst) in &snapshot {
+                if src == b && dst == b {
+                    edges.insert((u, r.clone(), u));
+                } else if src == b && reps[dst].0 > b_rep_id {
+                    edges.insert((u, r.clone(), dst));
+                } else if dst == b && reps[src].0 > b_rep_id {
+                    edges.insert((src, r.clone(), u));
+                }
+            }
+        }
+        crate::engine::close_edges_under_rbox_rows(rbox, n_elems, &mut edges);
+    }
+
+    if !lazy_cceq_defs.is_empty() {
+        let blocked_map: HashMap<usize, usize> = blocked.iter().copied().collect();
+        for _ in 0..lazy_cceq_defs.len() + 1 {
+            let mut changed = false;
+            for (c_idx, def) in lazy_cceq_defs {
+                let c_name = &tin.concepts[*c_idx];
+                for u in 0..n_elems {
+                    if labels[u].contains(c_name.as_str()) || negated_named[u].contains(c_idx) {
+                        continue;
+                    }
+                    if eval_source_concept_on_component(
+                        def,
+                        u,
+                        n_elems,
+                        &labels,
+                        &edges,
+                        &blocked_map,
+                    ) {
+                        labels[u].insert(c_name.clone());
+                        changed = true;
+                    }
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+    }
+
+    let root_local = root_rep_id.and_then(|id| rep_id_to_local.get(&id).copied());
+    Some(BridgeExtractedComponent {
+        rep_ids: reps.into_iter().map(|(id, _)| id).collect(),
+        contexts,
+        labels,
+        negated_named,
+        edges,
+        blocked,
+        root_local,
+    })
+}
+
+pub(crate) fn bridge_model(
+    tin: &TInput,
+    rbox: &[Vec<String>],
+) -> Result<BridgeExportModel, String> {
+    let classified =
+        bridged_classify(tin).ok_or_else(|| "bridge deferred classification".to_string())?;
+    if !classified.consistent {
+        return Ok(BridgeExportModel {
+            contexts: Vec::new(),
+            labels: Vec::new(),
+            edges: Vec::new(),
+            blocked: Vec::new(),
+            class_witnesses: Vec::new(),
+            inconsistent: true,
+        });
+    }
+
+    let n_named = tin.concepts.len();
+    let mut active_class = vec![tin.queries.is_empty(); n_named];
+    for &q in &tin.queries {
+        if let Some(slot) = active_class.get_mut(q) {
+            *slot = true;
+        }
+    }
+    let active_name_to_idx: HashMap<&str, usize> = (0..n_named)
+        .filter(|&c| active_class[c] && !crate::calc::is_internal_concept(&tin.concepts[c]))
+        .map(|c| (tin.concepts[c].as_str(), c))
+        .collect();
+    let unsat_set: HashSet<usize> = classified.unsatisfiable.iter().copied().collect();
+    let satisfiable_subjects: Vec<usize> = (0..n_named)
+        .filter(|&c| {
+            active_class[c]
+                && !unsat_set.contains(&c)
+                && !crate::calc::is_internal_concept(&tin.concepts[c])
+        })
+        .collect();
+    let mut entailed_supers: HashMap<usize, HashSet<usize>> = HashMap::default();
+    for &s in &satisfiable_subjects {
+        let mut set = HashSet::default();
+        set.insert(s);
+        entailed_supers.insert(s, set);
+    }
+    for &(sub, sup) in &classified.subsumptions {
+        if active_name_to_idx.contains_key(tin.concepts[sup].as_str()) {
+            if let Some(set) = entailed_supers.get_mut(&sub) {
+                set.insert(sup);
+            }
+        }
+    }
+
+    let trigger_absorb =
+        std::env::var_os("KM_TRIGGER_ABSORB").is_some() || !tin.source_axioms.is_empty();
+    let (mut algo, mut ctx, bridged) = fresh_bridge_env_with_trigger_absorption(tin, trigger_absorb);
+    let base_budget: u64 = std::env::var("KM_BRIDGE_PROBE_BUDGET_S")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(5);
+    algo.probe_budget = Some(std::time::Duration::from_secs(base_budget));
+    configure_production_search(&mut algo);
+    algo.conf_optimized_sub_set_blocking = false;
+    algo.conf_sub_set_blocking = false;
+    algo.conf_equal_set_blocking = true;
+
+    let mut lazy_cceq_defs: Vec<(usize, SourceConcept)> = Vec::new();
+    for c in 0..n_named {
+        if ctx
+            .ontology_arenas()
+            .concept(bridged.named[c])
+            .get_operator_code()
+            == op::CCEQ
+        {
+            let name = &tin.concepts[c];
+            if let Some(def) = tin.source_axioms.iter().find_map(|ax| {
+                if ax.kind != crate::json_io::SourceAxiomKind::Equivalent {
+                    return None;
+                }
+                match (&ax.left, &ax.right) {
+                    (SourceConcept::Name(n), rhs) if n == name => Some(rhs.clone()),
+                    (lhs, SourceConcept::Name(n)) if n == name => Some(lhs.clone()),
+                    _ => None,
+                }
+            }) {
+                lazy_cceq_defs.push((c, def));
+            }
+        }
+    }
+
+    let independent_abox_elided = independent_component_abox_profile(
+        tin,
+        bridged.has_native_nominals(),
+        std::env::var_os("KM_HT_COMPONENT_ABOX").is_some(),
+    );
+    if bridged.has_native_nominals()
+        && ctx
+            .processing_data_box()
+            .individual_process_node_vector()
+            .get_item_min_index()
+            >= 0
+    {
+        algo.conf_inprocess_cow = true;
+        if !initialize_native_nominal_state(&mut algo, &mut ctx, &bridged) {
+            return Err("bridge failed to initialize native nominal state".to_string());
+        }
+    }
+
+    let mut next_id = 1_000i64;
+    if bridged.has_native_nominals() {
+        match native_nominal_consistency(&mut algo, &mut ctx, &bridged) {
+            Some(true) => {}
+            Some(false) => {
+                return Ok(BridgeExportModel {
+                    contexts: Vec::new(),
+                    labels: Vec::new(),
+                    edges: Vec::new(),
+                    blocked: Vec::new(),
+                    class_witnesses: Vec::new(),
+                    inconsistent: true,
+                });
+            }
+            None => return Err("bridge native nominal consistency undecided".to_string()),
+        }
+    } else {
+        match bridged_top_satisfiable(&mut algo, &mut ctx, &bridged, &mut next_id) {
+            Some(true) => {}
+            Some(false) => {
+                return Ok(BridgeExportModel {
+                    contexts: Vec::new(),
+                    labels: Vec::new(),
+                    edges: Vec::new(),
+                    blocked: Vec::new(),
+                    class_witnesses: Vec::new(),
+                    inconsistent: true,
+                });
+            }
+            None => return Err("bridge owl:Thing satisfiability undecided".to_string()),
+        }
+    }
+
+    let base_comp = extract_bridge_component(
+        &mut ctx,
+        &bridged,
+        tin,
+        rbox,
+        &lazy_cceq_defs,
+        None,
+        Some("⊤"),
+    )
+    .ok_or_else(|| "failed to extract consistency completion graph".to_string())?;
+
+    let mut model = BridgeExportModel {
+        contexts: Vec::new(),
+        labels: Vec::new(),
+        edges: Vec::new(),
+        blocked: Vec::new(),
+        class_witnesses: Vec::new(),
+        inconsistent: false,
+    };
+    let mut global_nominal_elem: HashMap<Cint64, usize> = HashMap::default();
+    let mut global_nominal_by_name: HashMap<String, usize> = HashMap::default();
+    let mut global_edges: HashSet<(usize, String, usize)> = HashSet::default();
+
+    let append_component = |comp: BridgeExtractedComponent,
+                            only_root_connected: bool,
+                            model: &mut BridgeExportModel,
+                            global_nominal_elem: &mut HashMap<Cint64, usize>,
+                            global_nominal_by_name: &mut HashMap<String, usize>,
+                            global_edges: &mut HashSet<(usize, String, usize)>|
+     -> Option<usize> {
+        let keep_local: HashSet<usize> = if only_root_connected {
+            if let Some(root_local) = comp.root_local {
+                let mut adj: Vec<Vec<usize>> = vec![Vec::new(); comp.contexts.len()];
+                for &(u, _, v) in &comp.edges {
+                    adj[u].push(v);
+                    adj[v].push(u);
+                }
+                for &(u, b) in &comp.blocked {
+                    adj[u].push(b);
+                    adj[b].push(u);
+                }
+                let mut seen: HashSet<usize> = HashSet::default();
+                let mut stack = vec![root_local];
+                while let Some(u) = stack.pop() {
+                    if seen.insert(u) {
+                        if comp.rep_ids[u] >= 0 || u == root_local {
+                            for &nxt in &adj[u] {
+                                stack.push(nxt);
+                            }
+                        }
+                    }
+                }
+                seen
+            } else {
+                (0..comp.contexts.len()).collect()
+            }
+        } else {
+            (0..comp.contexts.len()).collect()
+        };
+
+        let mut local_to_global: HashMap<usize, usize> = HashMap::default();
+        for u in 0..comp.contexts.len() {
+            if !keep_local.contains(&u) {
+                continue;
+            }
+            let rep_id = comp.rep_ids[u];
+            let existing_by_nom = comp.labels[u]
+                .iter()
+                .filter(|c| c.starts_with("__nom__"))
+                .find_map(|c| global_nominal_by_name.get(c).copied());
+            let existing_elem = if rep_id < 0 {
+                global_nominal_elem.get(&rep_id).copied().or(existing_by_nom)
+            } else {
+                existing_by_nom
+            };
+            if let Some(existing) = existing_elem {
+                local_to_global.insert(u, existing);
+                let is_exact_witness = model
+                    .class_witnesses
+                    .iter()
+                    .any(|(_, idx, ex)| *idx == existing && *ex);
+                if !is_exact_witness {
+                    let lbl = &mut model.labels[existing];
+                    for item in &comp.labels[u] {
+                        if !item.starts_with("__nom__") && !lbl.contains(item) {
+                            lbl.push(item.clone());
+                        }
+                    }
+                    lbl.sort();
+                }
+                for item in &comp.labels[u] {
+                    if item.starts_with("__nom__") {
+                        global_nominal_by_name.entry(item.clone()).or_insert(existing);
+                    }
+                }
+                continue;
+            }
+            let g_idx = model.contexts.len();
+            local_to_global.insert(u, g_idx);
+            if rep_id < 0 {
+                global_nominal_elem.insert(rep_id, g_idx);
+            }
+            for item in &comp.labels[u] {
+                if item.starts_with("__nom__") {
+                    global_nominal_by_name.insert(item.clone(), g_idx);
+                }
+            }
+            model.contexts.push(comp.contexts[u].clone());
+            let mut lbl: Vec<String> = comp.labels[u].iter().cloned().collect();
+            lbl.sort();
+            model.labels.push(lbl);
+        }
+        for &(u, ref r, v) in &comp.edges {
+            if let (Some(&gu), Some(&gv)) = (local_to_global.get(&u), local_to_global.get(&v)) {
+                global_edges.insert((gu, r.clone(), gv));
+            }
+        }
+        for &(u, b) in &comp.blocked {
+            if let (Some(&gu), Some(&gb)) = (local_to_global.get(&u), local_to_global.get(&b)) {
+                if gu != gb && !model.blocked.contains(&(gu, gb)) {
+                    model.blocked.push((gu, gb));
+                }
+            }
+        }
+        comp.root_local
+            .and_then(|rl| local_to_global.get(&rl).copied())
+    };
+
+    append_component(
+        base_comp,
+        false,
+        &mut model,
+        &mut global_nominal_elem,
+        &mut global_nominal_by_name,
+        &mut global_edges,
+    );
+
+    let elem_active_classes = |labels: &[String]| -> HashSet<usize> {
+        labels
+            .iter()
+            .filter_map(|name| active_name_to_idx.get(name.as_str()).copied())
+            .collect()
+    };
+
+    let mut witnessed: HashSet<usize> = HashSet::default();
+    for &s in &satisfiable_subjects {
+        let want = &entailed_supers[&s];
+        if let Some(elem_idx) = (0..model.labels.len()).find(|&i| {
+            model.labels[i].iter().any(|c| c == &tin.concepts[s])
+                && &elem_active_classes(&model.labels[i]) == want
+        }) {
+            model
+                .class_witnesses
+                .push((tin.concepts[s].clone(), elem_idx, true));
+            witnessed.insert(s);
+        }
+    }
+
+    let initialize_nominals_in_probes = bridged.has_native_nominals() && !independent_abox_elided;
+
+    for &s in &satisfiable_subjects {
+        if witnessed.contains(&s) {
+            continue;
+        }
+        let want = &entailed_supers[&s];
+        if let Some(elem_idx) = (0..model.labels.len()).find(|&i| {
+            model.labels[i].iter().any(|c| c == &tin.concepts[s])
+                && &elem_active_classes(&model.labels[i]) == want
+        }) {
+            model
+                .class_witnesses
+                .push((tin.concepts[s].clone(), elem_idx, true));
+            witnessed.insert(s);
+            continue;
+        }
+
+        let mut negated: Vec<usize> = Vec::new();
+        let mut best_comp: Option<(BridgeExtractedComponent, bool)> = None;
+
+        for _round in 0..6 {
+            reset_probe_env_impl(
+                &mut algo,
+                &mut ctx,
+                &bridged,
+                false,
+                initialize_nominals_in_probes,
+            );
+            configure_production_search(&mut algo);
+            algo.conf_optimized_sub_set_blocking = false;
+            algo.conf_sub_set_blocking = false;
+            algo.conf_equal_set_blocking = true;
+            next_id = 1_000;
+            let mut seeds: Vec<(ConceptId, bool)> = Vec::with_capacity(1 + negated.len());
+            seeds.push((bridged.named[s], false));
+            for &c in &negated {
+                seeds.push((bridged.named[c], true));
+            }
+            let mut model_root = None;
+            match bridged_unsat_rooted(
+                &mut algo,
+                &mut ctx,
+                &bridged,
+                &mut next_id,
+                &seeds,
+                &mut model_root,
+            ) {
+                Some(false) => {
+                    let Some(root) = model_root else {
+                        break;
+                    };
+                    let Some(comp) = extract_bridge_component(
+                        &mut ctx,
+                        &bridged,
+                        tin,
+                        rbox,
+                        &lazy_cceq_defs,
+                        Some(root),
+                        Some(&tin.concepts[s]),
+                    ) else {
+                        break;
+                    };
+                    let Some(rl) = comp.root_local else {
+                        break;
+                    };
+                    let mut spurious: Vec<usize> = comp.labels[rl]
+                        .iter()
+                        .filter_map(|name| active_name_to_idx.get(name.as_str()).copied())
+                        .filter(|c| !want.contains(c))
+                        .collect();
+                    spurious.sort_unstable();
+                    if spurious.is_empty() {
+                        best_comp = Some((comp, true));
+                        break;
+                    }
+                    let prev_len = negated.len();
+                    best_comp = Some((comp, false));
+                    for c in spurious {
+                        if !negated.contains(&c) {
+                            negated.push(c);
+                        }
+                    }
+                    if negated.len() == prev_len {
+                        break;
+                    }
+                }
+                _ => {
+                    break;
+                }
+            }
+        }
+
+        let Some((comp, exact)) = best_comp else {
+            return Err(format!(
+                "bridge failed to build witness completion graph for {}",
+                tin.concepts[s]
+            ));
+        };
+        let Some(root_elem) = append_component(
+            comp,
+            true,
+            &mut model,
+            &mut global_nominal_elem,
+            &mut global_nominal_by_name,
+            &mut global_edges,
+        ) else {
+            return Err(format!(
+                "bridge failed to map witness root for {}",
+                tin.concepts[s]
+            ));
+        };
+        model
+            .class_witnesses
+            .push((tin.concepts[s].clone(), root_elem, exact));
+        witnessed.insert(s);
+    }
+
+    if model.contexts.is_empty() {
+        model.contexts.push("⊤".to_string());
+        model.labels.push(Vec::new());
+    }
+    let mut sorted_edges: Vec<(usize, String, usize)> = global_edges.into_iter().collect();
+    sorted_edges.sort();
+    model.edges = sorted_edges;
+    model.blocked.sort_unstable();
+    model.blocked.dedup();
+    Ok(model)
+}
+
 // ---------------------------------------------------------------------------
 // Tests: ofn text → frontend → cb_to_ht::convert → bridge → verdicts.
 // ---------------------------------------------------------------------------

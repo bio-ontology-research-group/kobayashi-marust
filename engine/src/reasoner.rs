@@ -88,6 +88,18 @@ pub(crate) fn cb_production_input(input: &[JClause]) -> CbProductionInput {
     }
 }
 
+pub(crate) fn load_clauses_for_cb_model(
+    input: &[JClause],
+) -> Result<(Sig, Vec<OntologyClause>, usize), String> {
+    let mut builder = Builder::new();
+    let clauses = builder.clauses(input);
+    if builder.dropped > 0 {
+        return Err(format!("cb-horn builder dropped {} clause(s)", builder.dropped));
+    }
+    let nf = builder.fn_id.len();
+    Ok((builder.sig, clauses, nf))
+}
+
 /// Number of individuals from which the data-sort marker is ordered last
 /// (`Builder::intern_data_sort_last`).
 const DATA_SORT_LAST_MIN_INDIVIDUALS: usize = 64;

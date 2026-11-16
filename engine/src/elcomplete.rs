@@ -12421,41 +12421,272 @@ pub(crate) struct ElModel {
     pub inconsistent: bool,
 }
 
-/// [`ElModel`] of `clauses`, or `None` when the clause set has a non-EL
-/// residual (the canonical model of the EL part is then not a model).
-pub(crate) fn el_model(clauses: &[JClause]) -> Option<ElModel> {
-    let mut it = Interner::new();
-    let (mut nfs, residual, _skolem) = to_nf(clauses, &mut it)?;
-    if !residual.is_empty() {
+/// [`ElModel`] of `input`, or `None` when the ontology lies outside EL++ (plus
+/// positive ABox and residual clauses certified by [`check_certificate`]).
+pub(crate) fn el_model(
+    input: &crate::json_io::JInput,
+    el_rbox_safe: bool,
+    abox_inconsistent: bool,
+) -> Option<ElModel> {
+    if !el_rbox_safe || !input.rules.is_empty() {
         return None;
     }
+    if abox_inconsistent {
+        return Some(ElModel {
+            contexts: Vec::new(),
+            labels: Vec::new(),
+            edges: Vec::new(),
+            inconsistent: true,
+        });
+    }
+    let meta = &input.nominal_abox;
+    let mut clauses = input.clauses.clone();
+    let mut ids: HashMap<&str, usize> = HashMap::default();
+    let mut parent: Vec<usize> = Vec::new();
+    let mut root_noms: HashSet<String> = HashSet::default();
+    let mut extra_noms_for_root: HashMap<String, Vec<String>> = HashMap::default();
+
+    fn find(parent: &mut [usize], mut node: usize) -> usize {
+        let mut root = node;
+        while parent[root] != root {
+            root = parent[root];
+        }
+        while parent[node] != node {
+            let next = parent[node];
+            parent[node] = root;
+            node = next;
+        }
+        root
+    }
+
+    if !meta.is_empty() {
+        if !meta.complete || !meta.unsupported.is_empty() {
+            return None;
+        }
+        ids = meta
+            .individuals
+            .iter()
+            .enumerate()
+            .map(|(i, entry)| (entry.individual.as_str(), i))
+            .collect();
+        for (left, right) in meta.same.iter().chain(meta.different.iter()) {
+            if !ids.contains_key(left.as_str()) || !ids.contains_key(right.as_str()) {
+                return None;
+            }
+        }
+        for edge in meta
+            .role_assertions
+            .iter()
+            .chain(meta.negative_role_assertions.iter())
+        {
+            if !ids.contains_key(edge.source.as_str()) || !ids.contains_key(edge.target.as_str()) {
+                return None;
+            }
+        }
+        parent = (0..ids.len()).collect();
+        for (left, right) in &meta.same {
+            let l = find(&mut parent, ids[left.as_str()]);
+            let r = find(&mut parent, ids[right.as_str()]);
+            if l != r {
+                parent[r] = l;
+            }
+        }
+        for (left, right) in &meta.different {
+            let l = find(&mut parent, ids[left.as_str()]);
+            let r = find(&mut parent, ids[right.as_str()]);
+            if l == r {
+                return Some(ElModel {
+                    contexts: Vec::new(),
+                    labels: Vec::new(),
+                    edges: Vec::new(),
+                    inconsistent: true,
+                });
+            }
+        }
+
+        let mut nom_alias: HashMap<String, String> = HashMap::default();
+        for (index, entry) in meta.individuals.iter().enumerate() {
+            if entry.assertions.len() != entry.assertion_markers.len() {
+                return None;
+            }
+            let root = find(&mut parent, index);
+            let root_nom = format!("__nom__{}", meta.individuals[root].individual);
+            let self_nom = format!("__nom__{}", entry.individual);
+            root_noms.insert(root_nom.clone());
+            extra_noms_for_root
+                .entry(root_nom.clone())
+                .or_default()
+                .push(self_nom.clone());
+            if self_nom != root_nom {
+                nom_alias.insert(self_nom, root_nom.clone());
+            }
+            for proxy in &entry.proxies {
+                if proxy != &root_nom {
+                    nom_alias.insert(proxy.clone(), root_nom.clone());
+                }
+            }
+        }
+        if !nom_alias.is_empty() {
+            for clause in &mut clauses {
+                for atom in clause.body.iter_mut().chain(clause.head.iter_mut()) {
+                    if let JAtom::Concept { concept, .. } = atom {
+                        if let Some(target) = nom_alias.get(concept.as_str()) {
+                            *concept = target.clone();
+                        }
+                    }
+                }
+            }
+        }
+        let var = || JTerm::Var {
+            name: "x".to_string(),
+        };
+        let concept = |name: String, term: JTerm| JAtom::Concept {
+            concept: name,
+            term,
+        };
+        for (index, entry) in meta.individuals.iter().enumerate() {
+            let root = find(&mut parent, index);
+            let root_nom = format!("__nom__{}", meta.individuals[root].individual);
+            for marker in &entry.assertion_markers {
+                clauses.push(JClause {
+                    body: vec![concept(root_nom.clone(), var())],
+                    head: vec![concept(marker.clone(), var())],
+                });
+            }
+        }
+        for (edge_index, edge) in meta.role_assertions.iter().enumerate() {
+            let source = find(&mut parent, ids[edge.source.as_str()]);
+            let target = find(&mut parent, ids[edge.target.as_str()]);
+            let source_nom = format!("__nom__{}", meta.individuals[source].individual);
+            let target_nom = format!("__nom__{}", meta.individuals[target].individual);
+            let fun = JTerm::Fun {
+                function: format!("__km_abox_edge_{edge_index}"),
+                arg: Box::new(var()),
+            };
+            clauses.push(JClause {
+                body: vec![concept(source_nom.clone(), var())],
+                head: vec![JAtom::Role {
+                    role: edge.role.clone(),
+                    source: var(),
+                    target: fun.clone(),
+                }],
+            });
+            clauses.push(JClause {
+                body: vec![concept(source_nom, var())],
+                head: vec![concept(target_nom, fun)],
+            });
+        }
+        for root_nom in &root_noms {
+            clauses.push(JClause {
+                body: vec![concept(root_nom.clone(), var())],
+                head: vec![concept(root_nom.clone(), var())],
+            });
+        }
+    }
+
+    if std::env::var_os("KM_ELC_NO_BRIDGE_PREP").is_none() {
+        prepare_inverse_bridges(&mut clauses, false);
+    }
+    let mut it = Interner::new();
+    let (mut nfs, residual, skolem_target) = to_nf(&clauses, &mut it)?;
     nfs.concept_names.insert(TOP);
+    let rcs = if residual.is_empty() {
+        Vec::new()
+    } else {
+        compile_residual(&residual, &mut it, &mut nfs, &skolem_target)?.clauses
+    };
     let n = it.len();
     let idx = build_idx(&nfs, n);
     let mut st = init_state(&nfs, n);
     seed_reflexive_edges(&nfs, &idx, &mut st);
     let mut prof = Prof::default();
     run(&idx, &mut st, &mut prof);
-    let inconsistent = st.sub_super[TOP as usize].contains(&BOTTOM);
+    let mut inconsistent = st.sub_super[TOP as usize].contains(&BOTTOM);
+    if !inconsistent {
+        for rnom in &root_noms {
+            if let Some(id) = it.id(rnom) {
+                if st.sub_super[id as usize].contains(&BOTTOM) {
+                    inconsistent = true;
+                    break;
+                }
+            }
+        }
+    }
     let mut element_of: HashMap<u32, usize> = HashMap::default();
-    let mut model = ElModel { contexts: Vec::new(), labels: Vec::new(), edges: Vec::new(), inconsistent };
+    let mut model = ElModel {
+        contexts: Vec::new(),
+        labels: Vec::new(),
+        edges: Vec::new(),
+        inconsistent,
+    };
     if inconsistent {
         return Some(model);
     }
+    if !rcs.is_empty() && !check_certificate(&rcs, &nfs, &st, false) {
+        return None;
+    }
+    for (left, right) in &meta.different {
+        let l_root = find(&mut parent, ids[left.as_str()]);
+        let r_root = find(&mut parent, ids[right.as_str()]);
+        let l_nom = format!("__nom__{}", meta.individuals[l_root].individual);
+        let r_nom = format!("__nom__{}", meta.individuals[r_root].individual);
+        if let (Some(l_id), Some(r_id)) = (it.id(&l_nom), it.id(&r_nom)) {
+            if st.sub_super[l_id as usize].contains(&r_id)
+                || st.sub_super[r_id as usize].contains(&l_id)
+            {
+                return None;
+            }
+        }
+    }
+    for neg in &meta.negative_role_assertions {
+        let s_root = find(&mut parent, ids[neg.source.as_str()]);
+        let t_root = find(&mut parent, ids[neg.target.as_str()]);
+        let s_nom = format!("__nom__{}", meta.individuals[s_root].individual);
+        let t_nom = format!("__nom__{}", meta.individuals[t_root].individual);
+        if let (Some(s_id), Some(r_id), Some(t_id)) =
+            (it.id(&s_nom), it.id(&neg.role), it.id(&t_nom))
+        {
+            if st.edges[s_id as usize].contains(&(r_id, t_id)) {
+                if rcs.is_empty() {
+                    model.inconsistent = true;
+                    return Some(model);
+                }
+                return None;
+            }
+        }
+    }
     let name = |id: u32| it.debug_name(id);
     let mut contexts: Vec<u32> = (0..st.sub_super.len() as u32)
-        .filter(|&c| c != BOTTOM && !st.sub_super[c as usize].is_empty() && !st.sub_super[c as usize].contains(&BOTTOM))
+        .filter(|&c| {
+            c != BOTTOM
+                && !st.sub_super[c as usize].is_empty()
+                && !st.sub_super[c as usize].contains(&BOTTOM)
+        })
         .collect();
     contexts.sort_by_key(|&c| (c != TOP, name(c)));
     for &c in &contexts {
+        let ctx_name = name(c);
         element_of.insert(c, model.contexts.len());
-        model.contexts.push(name(c));
         let mut label: Vec<String> = st.sub_super[c as usize]
             .iter()
             .filter(|&&d| d != TOP)
             .map(|&d| name(d))
             .collect();
+        for item in &label {
+            if item.starts_with("__nom__") && item != &ctx_name {
+                return None;
+            }
+        }
+        if let Some(extras) = extra_noms_for_root.get(&ctx_name) {
+            for extra in extras {
+                if !label.contains(extra) {
+                    label.push(extra.clone());
+                }
+            }
+        }
         label.sort();
+        label.dedup();
+        model.contexts.push(ctx_name);
         model.labels.push(label);
     }
     for &c in &contexts {

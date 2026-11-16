@@ -10618,6 +10618,984 @@ impl Engine {
     }
 }
 
+pub(crate) struct CbExportModel {
+    pub contexts: Vec<String>,
+    pub labels: Vec<Vec<String>>,
+    pub edges: Vec<(usize, String, usize)>,
+    pub inconsistent: bool,
+}
+
+pub(crate) fn close_edges_under_rbox_rows<S: std::hash::BuildHasher + Default>(
+    rbox: &[Vec<String>],
+    n_elems: usize,
+    edges: &mut std::collections::HashSet<(usize, String, usize), S>,
+) {
+    let mut normalized: std::collections::HashSet<(usize, String, usize), S> =
+        std::collections::HashSet::default();
+    for (u, r, v) in edges.drain() {
+        if let Some(base) = r.strip_prefix("__inv__") {
+            normalized.insert((v, base.to_string(), u));
+        } else {
+            normalized.insert((u, r, v));
+        }
+    }
+    *edges = normalized;
+
+    for row in rbox {
+        let refl = if row.len() >= 2 && row[0] == "reflexivity" {
+            Some(&row[1])
+        } else if row.len() >= 3 && row[0] == "fenced" && row[1] == "reflexivity" {
+            Some(&row[2])
+        } else {
+            None
+        };
+        if let Some(r) = refl {
+            let base = r.strip_prefix("__inv__").unwrap_or(r.as_str());
+            for u in 0..n_elems {
+                edges.insert((u, base.to_string(), u));
+            }
+        }
+    }
+
+    let has_role = |edges: &std::collections::HashSet<(usize, String, usize), S>,
+                    u: usize,
+                    r: &str,
+                    v: usize|
+     -> bool {
+        if let Some(base) = r.strip_prefix("__inv__") {
+            edges.contains(&(v, base.to_string(), u))
+        } else {
+            edges.contains(&(u, r.to_string(), v))
+        }
+    };
+    let insert_role = |edges: &mut std::collections::HashSet<(usize, String, usize), S>,
+                       u: usize,
+                       r: &str,
+                       v: usize| {
+        if let Some(base) = r.strip_prefix("__inv__") {
+            edges.insert((v, base.to_string(), u));
+        } else {
+            edges.insert((u, r.to_string(), v));
+        }
+    };
+
+    loop {
+        let before = edges.len();
+        for row in rbox {
+            match row.first().map(String::as_str) {
+                Some("subrole") if row.len() >= 3 => {
+                    let (sub, sup) = (&row[1], &row[2]);
+                    let mut to_add = Vec::new();
+                    for u in 0..n_elems {
+                        for v in 0..n_elems {
+                            if has_role(edges, u, sub, v) {
+                                to_add.push((u, v));
+                            }
+                        }
+                    }
+                    for (u, v) in to_add {
+                        insert_role(edges, u, sup, v);
+                    }
+                }
+                Some("inverse") if row.len() >= 3 => {
+                    let (r1, r2) = (&row[1], &row[2]);
+                    let mut to_add = Vec::new();
+                    for u in 0..n_elems {
+                        for v in 0..n_elems {
+                            if has_role(edges, u, r1, v) {
+                                to_add.push((v, r2.as_str(), u));
+                            }
+                            if has_role(edges, u, r2, v) {
+                                to_add.push((v, r1.as_str(), u));
+                            }
+                        }
+                    }
+                    for (u, r, v) in to_add {
+                        insert_role(edges, u, r, v);
+                    }
+                }
+                Some("symmetric-role") if row.len() >= 2 => {
+                    let r = &row[1];
+                    let mut to_add = Vec::new();
+                    for u in 0..n_elems {
+                        for v in 0..n_elems {
+                            if has_role(edges, u, r, v) {
+                                to_add.push((v, u));
+                            }
+                        }
+                    }
+                    for (u, v) in to_add {
+                        insert_role(edges, u, r, v);
+                    }
+                }
+                Some("fenced") if row.len() >= 3 && row[1] == "symmetric-role" => {
+                    let r = &row[2];
+                    let mut to_add = Vec::new();
+                    for u in 0..n_elems {
+                        for v in 0..n_elems {
+                            if has_role(edges, u, r, v) {
+                                to_add.push((v, u));
+                            }
+                        }
+                    }
+                    for (u, v) in to_add {
+                        insert_role(edges, u, r, v);
+                    }
+                }
+                Some("transitive") if row.len() >= 2 => {
+                    let r = &row[1];
+                    let mut pairs = Vec::new();
+                    for u in 0..n_elems {
+                        for v in 0..n_elems {
+                            if has_role(edges, u, r, v) {
+                                pairs.push((u, v));
+                            }
+                        }
+                    }
+                    for &(u, mid) in &pairs {
+                        for &(m2, w) in &pairs {
+                            if mid == m2 {
+                                insert_role(edges, u, r, w);
+                            }
+                        }
+                    }
+                }
+                Some("chain") if row.len() >= 4 => {
+                    let (r1, r2, sup) = (&row[1], &row[2], &row[3]);
+                    let mut to_add = Vec::new();
+                    for u in 0..n_elems {
+                        for mid in 0..n_elems {
+                            if has_role(edges, u, r1, mid) {
+                                for w in 0..n_elems {
+                                    if has_role(edges, mid, r2, w) {
+                                        to_add.push((u, w));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    for (u, w) in to_add {
+                        insert_role(edges, u, sup, w);
+                    }
+                }
+                Some("chain-n") if row.len() >= 4 => {
+                    let sup = &row[1];
+                    let chain = &row[2..];
+                    let mut reach: HashSet<(usize, usize)> = HashSet::default();
+                    for u in 0..n_elems {
+                        for v in 0..n_elems {
+                            if has_role(edges, u, &chain[0], v) {
+                                reach.insert((u, v));
+                            }
+                        }
+                    }
+                    for step in &chain[1..] {
+                        let mut next_reach: HashSet<(usize, usize)> = HashSet::default();
+                        for &(u, mid) in &reach {
+                            for w in 0..n_elems {
+                                if has_role(edges, mid, step, w) {
+                                    next_reach.insert((u, w));
+                                }
+                            }
+                        }
+                        reach = next_reach;
+                        if reach.is_empty() {
+                            break;
+                        }
+                    }
+                    for (u, w) in reach {
+                        insert_role(edges, u, sup, w);
+                    }
+                }
+                _ => {}
+            }
+        }
+        if edges.len() == before {
+            break;
+        }
+    }
+}
+
+fn verify_clauses_on_cb_structure(
+    clauses: &[crate::json_io::JClause],
+    n_elems: usize,
+    labels: &[HashSet<String>],
+    edges: &HashSet<(usize, String, usize)>,
+) -> Result<(), String> {
+    use crate::json_io::{JAtom, JTerm};
+
+    let has_concept = |u: usize, c: &str| -> bool {
+        if matches!(c, "owl:Thing" | "Thing" | "⊤") {
+            true
+        } else if matches!(c, "owl:Nothing" | "Nothing" | "⊥") {
+            false
+        } else {
+            labels[u].contains(c)
+        }
+    };
+    let has_role = |u: usize, r: &str, v: usize| -> bool {
+        if let Some(base) = r.strip_prefix("__inv__") {
+            edges.contains(&(v, base.to_string(), u))
+        } else {
+            edges.contains(&(u, r.to_string(), v))
+        }
+    };
+
+    let mut outgoing: HashMap<(usize, String), Vec<usize>> = HashMap::default();
+    let mut incoming: HashMap<(usize, String), Vec<usize>> = HashMap::default();
+    for &(u, ref r, v) in edges {
+        outgoing.entry((u, r.clone())).or_default().push(v);
+        incoming.entry((v, r.clone())).or_default().push(u);
+    }
+
+    let mut fun_groups: HashMap<(String, String), Vec<&crate::json_io::JClause>> =
+        HashMap::default();
+    let mut universal_clauses: Vec<&crate::json_io::JClause> = Vec::new();
+
+    fn extract_fun(term: &JTerm) -> Option<(&str, &str)> {
+        match term {
+            JTerm::Fun { function, arg } => match arg.as_ref() {
+                JTerm::Var { name } => Some((function.as_str(), name.as_str())),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    for clause in clauses {
+        let body_has_non_var = clause.body.iter().any(|atom| match atom {
+            JAtom::Concept { term, .. } => !matches!(term, JTerm::Var { .. }),
+            JAtom::Role { source, target, .. } => {
+                !matches!(source, JTerm::Var { .. }) || !matches!(target, JTerm::Var { .. })
+            }
+            JAtom::Eq { left, right } => {
+                !matches!(left, JTerm::Var { .. }) || !matches!(right, JTerm::Var { .. })
+            }
+        });
+        if body_has_non_var {
+            return Err("cb-horn declines non-variable body term".to_string());
+        }
+        let mut head_fun: Option<(&str, &str)> = None;
+        let mut head_non_var = false;
+        for atom in &clause.head {
+            match atom {
+                JAtom::Concept { term, .. } => {
+                    if !matches!(term, JTerm::Var { .. }) {
+                        head_non_var = true;
+                        head_fun = extract_fun(term);
+                    }
+                }
+                JAtom::Role { source, target, .. } => {
+                    if !matches!(source, JTerm::Var { .. }) {
+                        head_non_var = true;
+                        head_fun = extract_fun(source);
+                    }
+                    if !matches!(target, JTerm::Var { .. }) {
+                        head_non_var = true;
+                        head_fun = extract_fun(target);
+                    }
+                }
+                JAtom::Eq { left, right } => {
+                    if !matches!(left, JTerm::Var { .. }) || !matches!(right, JTerm::Var { .. }) {
+                        head_non_var = true;
+                    }
+                }
+            }
+        }
+        if head_non_var {
+            if clause.head.len() == 1 {
+                if let Some((f, v)) = head_fun {
+                    fun_groups
+                        .entry((f.to_string(), v.to_string()))
+                        .or_default()
+                        .push(clause);
+                    continue;
+                }
+            }
+            return Err("cb-horn declines complex Skolem or nominal head".to_string());
+        }
+        universal_clauses.push(clause);
+    }
+
+    let eval_body_with_seed = |body: &[JAtom],
+                               seed_var: Option<(&str, usize)>|
+     -> Vec<HashMap<String, usize>> {
+        let mut envs: Vec<HashMap<String, usize>> = Vec::new();
+        if let Some((vname, u)) = seed_var {
+            let mut m = HashMap::default();
+            m.insert(vname.to_string(), u);
+            envs.push(m);
+        } else {
+            envs.push(HashMap::default());
+        }
+        for atom in body {
+            let mut next_envs: Vec<HashMap<String, usize>> = Vec::new();
+            for env in envs {
+                match atom {
+                    JAtom::Concept {
+                        concept,
+                        term: JTerm::Var { name },
+                    } => {
+                        if let Some(&u) = env.get(name.as_str()) {
+                            if has_concept(u, concept) {
+                                next_envs.push(env);
+                            }
+                        } else {
+                            for u in 0..n_elems {
+                                if has_concept(u, concept) {
+                                    let mut env2 = env.clone();
+                                    env2.insert(name.clone(), u);
+                                    next_envs.push(env2);
+                                }
+                            }
+                        }
+                    }
+                    JAtom::Role {
+                        role,
+                        source: JTerm::Var { name: s_name },
+                        target: JTerm::Var { name: t_name },
+                    } => {
+                        let base_role = role.strip_prefix("__inv__");
+                        match (env.get(s_name.as_str()).copied(), env.get(t_name.as_str()).copied())
+                        {
+                            (Some(su), Some(tu)) => {
+                                if has_role(su, role, tu) {
+                                    next_envs.push(env);
+                                }
+                            }
+                            (Some(su), None) => {
+                                let list = if let Some(base) = base_role {
+                                    incoming.get(&(su, base.to_string()))
+                                } else {
+                                    outgoing.get(&(su, role.clone()))
+                                };
+                                if let Some(targets) = list {
+                                    for &tu in targets {
+                                        let mut env2 = env.clone();
+                                        env2.insert(t_name.clone(), tu);
+                                        next_envs.push(env2);
+                                    }
+                                }
+                            }
+                            (None, Some(tu)) => {
+                                let list = if let Some(base) = base_role {
+                                    outgoing.get(&(tu, base.to_string()))
+                                } else {
+                                    incoming.get(&(tu, role.clone()))
+                                };
+                                if let Some(sources) = list {
+                                    for &su in sources {
+                                        let mut env2 = env.clone();
+                                        env2.insert(s_name.clone(), su);
+                                        next_envs.push(env2);
+                                    }
+                                }
+                            }
+                            (None, None) => {
+                                for &(u, ref r, v) in edges {
+                                    if let Some(base) = base_role {
+                                        if r == base {
+                                            if s_name == t_name {
+                                                if u == v {
+                                                    let mut env2 = env.clone();
+                                                    env2.insert(s_name.clone(), u);
+                                                    next_envs.push(env2);
+                                                }
+                                            } else {
+                                                let mut env2 = env.clone();
+                                                env2.insert(s_name.clone(), v);
+                                                env2.insert(t_name.clone(), u);
+                                                next_envs.push(env2);
+                                            }
+                                        }
+                                    } else if r == role {
+                                        if s_name == t_name {
+                                            if u == v {
+                                                let mut env2 = env.clone();
+                                                    env2.insert(s_name.clone(), u);
+                                                next_envs.push(env2);
+                                            }
+                                        } else {
+                                            let mut env2 = env.clone();
+                                            env2.insert(s_name.clone(), u);
+                                            env2.insert(t_name.clone(), v);
+                                            next_envs.push(env2);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    JAtom::Eq {
+                        left: JTerm::Var { name: l_name },
+                        right: JTerm::Var { name: r_name },
+                    } => match (env.get(l_name.as_str()).copied(), env.get(r_name.as_str()).copied())
+                    {
+                        (Some(lu), Some(ru)) => {
+                            if lu == ru {
+                                next_envs.push(env);
+                            }
+                        }
+                        (Some(lu), None) => {
+                            let mut env2 = env.clone();
+                            env2.insert(r_name.clone(), lu);
+                            next_envs.push(env2);
+                        }
+                        (None, Some(ru)) => {
+                            let mut env2 = env.clone();
+                            env2.insert(l_name.clone(), ru);
+                            next_envs.push(env2);
+                        }
+                        (None, None) => {
+                            for u in 0..n_elems {
+                                let mut env2 = env.clone();
+                                env2.insert(l_name.clone(), u);
+                                env2.insert(r_name.clone(), u);
+                                next_envs.push(env2);
+                            }
+                        }
+                    },
+                    _ => {}
+                }
+                if next_envs.is_empty() {
+                    break;
+                }
+            }
+            envs = next_envs;
+            if envs.is_empty() {
+                break;
+            }
+        }
+        envs
+    };
+
+    for ((func_name, var_name), group) in &fun_groups {
+        for u in 0..n_elems {
+            let mut active_heads: Vec<&JAtom> = Vec::new();
+            for clause in group {
+                let envs = eval_body_with_seed(&clause.body, Some((var_name.as_str(), u)));
+                if !envs.is_empty() {
+                    active_heads.push(&clause.head[0]);
+                }
+            }
+            if active_heads.is_empty() {
+                continue;
+            }
+            let witness_ok = (0..n_elems).any(|w| {
+                active_heads.iter().all(|atom| match atom {
+                    JAtom::Concept { concept, .. } => has_concept(w, concept),
+                    JAtom::Role {
+                        role,
+                        source,
+                        target,
+                    } => match (source, target) {
+                        (JTerm::Var { .. }, JTerm::Fun { .. }) => has_role(u, role, w),
+                        (JTerm::Fun { .. }, JTerm::Var { .. }) => has_role(w, role, u),
+                        (JTerm::Fun { .. }, JTerm::Fun { .. }) => has_role(w, role, w),
+                        _ => false,
+                    },
+                    _ => false,
+                })
+            });
+            if !witness_ok {
+                return Err(format!(
+                    "cb-horn structure lacks existential witness for {func_name} at element {u}"
+                ));
+            }
+        }
+    }
+
+    for clause in universal_clauses {
+        let mut head_vars: Vec<String> = Vec::new();
+        for atom in &clause.head {
+            match atom {
+                JAtom::Concept {
+                    term: JTerm::Var { name },
+                    ..
+                } => {
+                    if !head_vars.contains(name) {
+                        head_vars.push(name.clone());
+                    }
+                }
+                JAtom::Role {
+                    source: JTerm::Var { name: s },
+                    target: JTerm::Var { name: t },
+                    ..
+                } => {
+                    if !head_vars.contains(s) {
+                        head_vars.push(s.clone());
+                    }
+                    if !head_vars.contains(t) {
+                        head_vars.push(t.clone());
+                    }
+                }
+                JAtom::Eq {
+                    left: JTerm::Var { name: l },
+                    right: JTerm::Var { name: r },
+                } => {
+                    if !head_vars.contains(l) {
+                        head_vars.push(l.clone());
+                    }
+                    if !head_vars.contains(r) {
+                        head_vars.push(r.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut envs = eval_body_with_seed(&clause.body, None);
+        for hv in &head_vars {
+            let mut next_envs = Vec::new();
+            for env in envs {
+                if env.contains_key(hv.as_str()) {
+                    next_envs.push(env);
+                } else {
+                    for u in 0..n_elems {
+                        let mut env2 = env.clone();
+                        env2.insert(hv.clone(), u);
+                        next_envs.push(env2);
+                    }
+                }
+            }
+            envs = next_envs;
+        }
+        for env in envs {
+            let head_ok = clause.head.iter().any(|atom| match atom {
+                JAtom::Concept {
+                    concept,
+                    term: JTerm::Var { name },
+                } => env
+                    .get(name.as_str())
+                    .is_some_and(|&u| has_concept(u, concept)),
+                JAtom::Role {
+                    role,
+                    source: JTerm::Var { name: s },
+                    target: JTerm::Var { name: t },
+                } => match (env.get(s.as_str()), env.get(t.as_str())) {
+                    (Some(&su), Some(&tu)) => has_role(su, role, tu),
+                    _ => false,
+                },
+                JAtom::Eq {
+                    left: JTerm::Var { name: l },
+                    right: JTerm::Var { name: r },
+                } => match (env.get(l.as_str()), env.get(r.as_str())) {
+                    (Some(&lu), Some(&ru)) => lu == ru,
+                    _ => false,
+                },
+                _ => false,
+            });
+            if !head_ok {
+                return Err(
+                    "cb-horn unit-fact structure does not satisfy non-Horn clause".to_string(),
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub(crate) fn cb_model(
+    input: &crate::json_io::JInput,
+    abox_inconsistent: bool,
+) -> Result<CbExportModel, String> {
+    use crate::json_io::{JAtom, JClause, JTerm};
+
+    if !input.rules.is_empty() || !input.cardinalities.is_empty() {
+        return Err("cb-horn declines SWRL rules and cardinality restrictions".to_string());
+    }
+    if abox_inconsistent {
+        return Ok(CbExportModel {
+            contexts: Vec::new(),
+            labels: Vec::new(),
+            edges: Vec::new(),
+            inconsistent: true,
+        });
+    }
+
+    let meta = &input.nominal_abox;
+    let mut clauses = input.clauses.clone();
+    let mut ids: HashMap<&str, usize> = HashMap::default();
+    let mut parent: Vec<usize> = Vec::new();
+    let mut root_noms: HashSet<String> = HashSet::default();
+    let mut extra_noms_for_root: HashMap<String, Vec<String>> = HashMap::default();
+
+    fn find(parent: &mut [usize], mut node: usize) -> usize {
+        let mut root = node;
+        while parent[root] != root {
+            root = parent[root];
+        }
+        while parent[node] != node {
+            let next = parent[node];
+            parent[node] = root;
+            node = next;
+        }
+        root
+    }
+
+    if !meta.is_empty() {
+        if !meta.complete || !meta.unsupported.is_empty() {
+            return Err("cb-horn declines incomplete or unsupported ABox".to_string());
+        }
+        ids = meta
+            .individuals
+            .iter()
+            .enumerate()
+            .map(|(i, entry)| (entry.individual.as_str(), i))
+            .collect();
+        for (left, right) in meta.same.iter().chain(meta.different.iter()) {
+            if !ids.contains_key(left.as_str()) || !ids.contains_key(right.as_str()) {
+                return Err("cb-horn ABox identity endpoint missing".to_string());
+            }
+        }
+        for edge in meta
+            .role_assertions
+            .iter()
+            .chain(meta.negative_role_assertions.iter())
+        {
+            if !ids.contains_key(edge.source.as_str()) || !ids.contains_key(edge.target.as_str()) {
+                return Err("cb-horn ABox role endpoint missing".to_string());
+            }
+        }
+        parent = (0..ids.len()).collect();
+        for (left, right) in &meta.same {
+            let l = find(&mut parent, ids[left.as_str()]);
+            let r = find(&mut parent, ids[right.as_str()]);
+            if l != r {
+                parent[r] = l;
+            }
+        }
+        for (left, right) in &meta.different {
+            let l = find(&mut parent, ids[left.as_str()]);
+            let r = find(&mut parent, ids[right.as_str()]);
+            if l == r {
+                return Ok(CbExportModel {
+                    contexts: Vec::new(),
+                    labels: Vec::new(),
+                    edges: Vec::new(),
+                    inconsistent: true,
+                });
+            }
+        }
+        let mut nom_alias: HashMap<String, String> = HashMap::default();
+        for (index, entry) in meta.individuals.iter().enumerate() {
+            if entry.assertions.len() != entry.assertion_markers.len() {
+                return Err("cb-horn ABox assertion marker mismatch".to_string());
+            }
+            let root = find(&mut parent, index);
+            let root_nom = format!("__nom__{}", meta.individuals[root].individual);
+            let self_nom = format!("__nom__{}", entry.individual);
+            root_noms.insert(root_nom.clone());
+            extra_noms_for_root
+                .entry(root_nom.clone())
+                .or_default()
+                .push(self_nom.clone());
+            if self_nom != root_nom {
+                nom_alias.insert(self_nom, root_nom.clone());
+            }
+            for proxy in &entry.proxies {
+                if proxy != &root_nom {
+                    nom_alias.insert(proxy.clone(), root_nom.clone());
+                }
+            }
+        }
+        if !nom_alias.is_empty() {
+            for clause in &mut clauses {
+                for atom in clause.body.iter_mut().chain(clause.head.iter_mut()) {
+                    if let JAtom::Concept { concept, .. } = atom {
+                        if let Some(target) = nom_alias.get(concept.as_str()) {
+                            *concept = target.clone();
+                        }
+                    }
+                }
+            }
+        }
+        let var = || JTerm::Var {
+            name: "x".to_string(),
+        };
+        let concept = |name: String, term: JTerm| JAtom::Concept {
+            concept: name,
+            term,
+        };
+        for (index, entry) in meta.individuals.iter().enumerate() {
+            let root = find(&mut parent, index);
+            let root_nom = format!("__nom__{}", meta.individuals[root].individual);
+            for marker in &entry.assertion_markers {
+                clauses.push(JClause {
+                    body: vec![concept(root_nom.clone(), var())],
+                    head: vec![concept(marker.clone(), var())],
+                });
+            }
+        }
+        for (edge_index, edge) in meta.role_assertions.iter().enumerate() {
+            let source = find(&mut parent, ids[edge.source.as_str()]);
+            let target = find(&mut parent, ids[edge.target.as_str()]);
+            let source_nom = format!("__nom__{}", meta.individuals[source].individual);
+            let target_nom = format!("__nom__{}", meta.individuals[target].individual);
+            let fun = JTerm::Fun {
+                function: format!("__km_abox_edge_{edge_index}"),
+                arg: Box::new(var()),
+            };
+            clauses.push(JClause {
+                body: vec![concept(source_nom.clone(), var())],
+                head: vec![JAtom::Role {
+                    role: edge.role.clone(),
+                    source: var(),
+                    target: fun.clone(),
+                }],
+            });
+            clauses.push(JClause {
+                body: vec![concept(source_nom, var())],
+                head: vec![concept(target_nom, fun)],
+            });
+        }
+        for root_nom in &root_noms {
+            clauses.push(JClause {
+                body: vec![concept(root_nom.clone(), var())],
+                head: vec![concept(root_nom.clone(), var())],
+            });
+        }
+    }
+
+    let (mut sig, ont_clauses, max_z) = crate::reasoner::load_clauses_for_cb_model(&clauses)?;
+    sig.concept_succ_trigger.fill(true);
+    sig.forward_role_succ_trigger.fill(true);
+    sig.backward_role_succ_trigger.fill(true);
+    let mut engine = Engine::new(sig, ont_clauses, max_z);
+    let mut queries = engine.named_queries();
+    for rnom in &root_noms {
+        if let Some(pos) = engine.sig.concept_names.iter().position(|n| n == rnom) {
+            let iri = pos as Iri;
+            if !engine.sig.is_nothing_concept(iri) && !queries.contains(&iri) {
+                queries.push(iri);
+            }
+        }
+    }
+    queries.sort_unstable();
+    queries.dedup();
+    engine.run_for(&queries);
+
+    if engine.incomplete() {
+        return Err("cb-horn saturation truncated by message cap".to_string());
+    }
+
+    let is_ctx_unsat = |ctx: &Context| -> bool {
+        let arena = &engine.cc_arena[ctx.root as usize];
+        ctx.worked_off().iter().any(|ci| {
+            let c = &arena[ci as usize];
+            c.body.is_empty() && c.head.is_empty()
+        })
+    };
+
+    let mut inconsistent = engine.inconsistent();
+    if !inconsistent {
+        for rnom in &root_noms {
+            if let Some(pos) = engine.sig.concept_names.iter().position(|n| n == rnom) {
+                let iri = pos as Iri;
+                if engine.sig.is_nothing_concept(iri) {
+                    inconsistent = true;
+                    break;
+                }
+                if let Some(ctx) = engine
+                    .contexts
+                    .iter()
+                    .find(|c| c.root && c.query == Some(iri))
+                {
+                    if is_ctx_unsat(ctx) {
+                        inconsistent = true;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    if inconsistent {
+        return Ok(CbExportModel {
+            contexts: Vec::new(),
+            labels: Vec::new(),
+            edges: Vec::new(),
+            inconsistent: true,
+        });
+    }
+
+    let mut reachable: HashSet<usize> = HashSet::default();
+    let mut queue: VecDeque<usize> = VecDeque::new();
+    for ctx in &engine.contexts {
+        if Some(ctx.id) == engine.ground_ctx {
+            continue;
+        }
+        if ctx.root && (ctx.core.is_empty() || ctx.query.is_some()) && !is_ctx_unsat(ctx) {
+            if reachable.insert(ctx.id) {
+                queue.push_back(ctx.id);
+            }
+        }
+    }
+    while let Some(cid) = queue.pop_front() {
+        let ctx = &engine.contexts[cid];
+        for &succ_id in ctx.successors.values() {
+            let sctx = &engine.contexts[succ_id];
+            if !is_ctx_unsat(sctx) && reachable.insert(succ_id) {
+                queue.push_back(succ_id);
+            }
+        }
+    }
+
+    let mut ordered_ctx_ids: Vec<usize> = reachable.into_iter().collect();
+    ordered_ctx_ids.sort_by_key(|&cid| {
+        let ctx = &engine.contexts[cid];
+        let is_top = ctx.root && ctx.core.is_empty();
+        let query_name = ctx
+            .query
+            .map(|q| engine.sig.concept_names[q as usize].as_str())
+            .unwrap_or("");
+        (!is_top, !ctx.root, query_name, cid)
+    });
+
+    let mut ctx_to_elem: HashMap<usize, usize> = HashMap::default();
+    for (idx, &cid) in ordered_ctx_ids.iter().enumerate() {
+        ctx_to_elem.insert(cid, idx);
+    }
+
+    let n_elems = ordered_ctx_ids.len();
+    let mut model_contexts: Vec<String> = Vec::with_capacity(n_elems);
+    let mut label_sets: Vec<HashSet<String>> = vec![HashSet::default(); n_elems];
+    let mut edge_set: HashSet<(usize, String, usize)> = HashSet::default();
+
+    for (u, &cid) in ordered_ctx_ids.iter().enumerate() {
+        let ctx = &engine.contexts[cid];
+        let ctx_name = if ctx.root && ctx.core.is_empty() {
+            "⊤".to_string()
+        } else if let Some(q) = ctx.query {
+            engine.sig.concept_names[q as usize].clone()
+        } else {
+            format!("__cb_ctx_{cid}")
+        };
+        for p in &ctx.core {
+            match *p {
+                Pred::Concept { iri, t } if is_central(t) => {
+                    let cname = &engine.sig.concept_names[iri as usize];
+                    if !matches!(cname.as_str(), "owl:Thing" | "Thing" | "⊤") {
+                        label_sets[u].insert(cname.clone());
+                    }
+                }
+                Pred::Role { iri, s, t } if is_central(s) && is_central(t) => {
+                    edge_set.insert((u, engine.sig.role_names[iri as usize].clone(), u));
+                }
+                _ => {}
+            }
+        }
+        let arena = &engine.cc_arena[ctx.root as usize];
+        for ci in ctx.worked_off().iter() {
+            let c = &arena[ci as usize];
+            if c.body.is_empty() && c.head.len() == 1 {
+                match c.head[0] {
+                    Lit::P(Pred::Concept { iri, t }) if is_central(t) => {
+                        let cname = &engine.sig.concept_names[iri as usize];
+                        if !matches!(cname.as_str(), "owl:Thing" | "Thing" | "⊤") {
+                            label_sets[u].insert(cname.clone());
+                        }
+                    }
+                    Lit::P(Pred::Role { iri, s, t }) if is_central(s) && is_central(t) => {
+                        edge_set.insert((u, engine.sig.role_names[iri as usize].clone(), u));
+                    }
+                    Lit::P(Pred::Role { iri, s, t }) if is_central(s) && is_function(t) => {
+                        if let Some(&succ_cid) = ctx.successors.get(&t) {
+                            if let Some(&v) = ctx_to_elem.get(&succ_cid) {
+                                edge_set.insert((
+                                    u,
+                                    engine.sig.role_names[iri as usize].clone(),
+                                    v,
+                                ));
+                            }
+                        }
+                    }
+                    Lit::P(Pred::Role { iri, s, t }) if is_function(s) && is_central(t) => {
+                        if let Some(&succ_cid) = ctx.successors.get(&s) {
+                            if let Some(&v) = ctx_to_elem.get(&succ_cid) {
+                                edge_set.insert((
+                                    v,
+                                    engine.sig.role_names[iri as usize].clone(),
+                                    u,
+                                ));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        for item in &label_sets[u] {
+            if item.starts_with("__nom__") && item != &ctx_name {
+                return Err(
+                    "cb-horn declines nominal appearing in non-nominal context label".to_string(),
+                );
+            }
+        }
+        if let Some(extras) = extra_noms_for_root.get(&ctx_name) {
+            for extra in extras {
+                label_sets[u].insert(extra.clone());
+            }
+        }
+        model_contexts.push(ctx_name);
+    }
+
+    close_edges_under_rbox_rows(&input.rbox, n_elems, &mut edge_set);
+
+    let elem_of_ctx_name: HashMap<&str, usize> = model_contexts
+        .iter()
+        .enumerate()
+        .map(|(i, s)| (s.as_str(), i))
+        .collect();
+    for (left, right) in &meta.different {
+        let l_root = find(&mut parent, ids[left.as_str()]);
+        let r_root = find(&mut parent, ids[right.as_str()]);
+        let l_nom = format!("__nom__{}", meta.individuals[l_root].individual);
+        let r_nom = format!("__nom__{}", meta.individuals[r_root].individual);
+        if let (Some(&lu), Some(&ru)) = (
+            elem_of_ctx_name.get(l_nom.as_str()),
+            elem_of_ctx_name.get(r_nom.as_str()),
+        ) {
+            if lu == ru || label_sets[lu].contains(&r_nom) || label_sets[ru].contains(&l_nom) {
+                return Err("cb-horn DifferentIndividuals violated".to_string());
+            }
+        }
+    }
+    for neg in &meta.negative_role_assertions {
+        let s_root = find(&mut parent, ids[neg.source.as_str()]);
+        let t_root = find(&mut parent, ids[neg.target.as_str()]);
+        let s_nom = format!("__nom__{}", meta.individuals[s_root].individual);
+        let t_nom = format!("__nom__{}", meta.individuals[t_root].individual);
+        if let (Some(&su), Some(&tu)) = (
+            elem_of_ctx_name.get(s_nom.as_str()),
+            elem_of_ctx_name.get(t_nom.as_str()),
+        ) {
+            if edge_set.contains(&(su, neg.role.clone(), tu)) {
+                return Err("cb-horn NegativeObjectPropertyAssertion violated".to_string());
+            }
+        }
+    }
+
+    verify_clauses_on_cb_structure(&clauses, n_elems, &label_sets, &edge_set)?;
+
+    let labels: Vec<Vec<String>> = label_sets
+        .into_iter()
+        .map(|set| {
+            let mut v: Vec<String> = set.into_iter().collect();
+            v.sort();
+            v
+        })
+        .collect();
+    let mut edges: Vec<(usize, String, usize)> = edge_set.into_iter().collect();
+    edges.sort();
+
+    Ok(CbExportModel {
+        contexts: model_contexts,
+        labels,
+        edges,
+        inconsistent: false,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
