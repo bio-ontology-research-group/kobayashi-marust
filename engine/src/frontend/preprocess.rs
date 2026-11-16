@@ -973,6 +973,57 @@ impl MarkerAutomaton {
         finals.dedup();
         MarkerAutomaton { start: 0, finals, moves: out_moves }
     }
+
+    /// The automaton without the letters that another letter stands in for:
+    /// `l1` is dropped when some kept letter `l2` has every move of `l1` and
+    /// every `l1` edge of the clause stream is also an `l2` edge
+    /// (`implies(l1, l2)`). Over the stream's edges the two automata accept
+    /// the same paths: a path through an `l1` edge runs through the `l2` edge
+    /// beside it with the same states, and the reduced automaton's paths are
+    /// paths of this one. Re-minimized, so it compares with `==`.
+    fn without_implied_letters(&self, implies: &impl Fn(&(String, bool), &(String, bool)) -> bool) -> Self {
+        let mut profile: std::collections::BTreeMap<&(String, bool), Vec<(usize, usize)>> =
+            std::collections::BTreeMap::new();
+        for (q, letter, q2) in &self.moves {
+            profile.entry(letter).or_default().push((*q, *q2));
+        }
+        let letters: Vec<&(String, bool)> = profile.keys().copied().collect();
+        let mut dropped: HashSet<&(String, bool)> = HashSet::default();
+        // A stand-in stays: its role must keep occurring in the bodies of the
+        // emitted clauses, which keeps the inclusions into it alive.
+        let mut stand_ins: HashSet<&(String, bool)> = HashSet::default();
+        for &l1 in &letters {
+            if stand_ins.contains(l1) {
+                continue;
+            }
+            let moves1 = &profile[l1];
+            let stand_in = letters.iter().copied().find(|&l2| {
+                l2 != l1
+                    && !dropped.contains(l2)
+                    && moves1.iter().all(|pair| profile[l2].binary_search(pair).is_ok())
+                    && implies(l1, l2)
+            });
+            if let Some(l2) = stand_in {
+                dropped.insert(l1);
+                stand_ins.insert(l2);
+            }
+        }
+        if dropped.is_empty() {
+            return MarkerAutomaton { start: self.start, finals: self.finals.clone(), moves: self.moves.clone() };
+        }
+        // Re-minimize: state q becomes q + 2, a fresh start 0 enters the
+        // start by ε and every final leaves to the fresh final 1 by ε.
+        let states = self.moves.iter().flat_map(|(q, _, q2)| [*q, *q2]).chain([self.start]).max().unwrap_or(0) + 3;
+        let moves: Vec<(usize, (String, bool), usize)> = self
+            .moves
+            .iter()
+            .filter(|(_, letter, _)| !dropped.contains(letter))
+            .map(|(q, letter, q2)| (q + 2, letter.clone(), q2 + 2))
+            .collect();
+        let mut epsilon = vec![(0, self.start + 2)];
+        epsilon.extend(self.finals.iter().map(|f| (f + 2, 1)));
+        MarkerAutomaton::new(states, &moves, &epsilon, true)
+    }
 }
 
 /// Which consumer family a [`chain_consumer_automaton_clauses`] call scans.
@@ -1237,6 +1288,29 @@ pub fn chain_consumer_automaton_clauses(
         non_simple: &non_simple,
         trans: &trans,
     };
+    // `edge_implies(l1, l2)`: every edge of letter `l1` (a role read forward
+    // or reversed) is an edge of letter `l2` through role inclusion clauses
+    // of the stream: same-orientation inclusions, then at most one inverted
+    // inclusion whose head is `l2`'s role. That head occurs in the bodies of
+    // the encodings `l2` belongs to, so neither bridge pruning pass removes
+    // the inverted inclusion; same-orientation inclusions are never pruned.
+    let edge_implies = |l1: &(String, bool), l2: &(String, bool)| -> bool {
+        let mut seen: HashSet<&str> = HashSet::default();
+        let mut stack = vec![l1.0.as_str()];
+        while let Some(u) = stack.pop() {
+            if !seen.insert(u) {
+                continue;
+            }
+            if l1.1 == l2.1 && u == l2.0 {
+                return true;
+            }
+            if l1.1 != l2.1 && inv_pairs.contains(&(u, l2.0.as_str())) {
+                return true;
+            }
+            stack.extend(same_up.get(u).map(Vec::as_slice).unwrap_or(&[]).iter().copied());
+        }
+        false
+    };
     // A letter of a role that no clause of the stream ever creates an edge
     // for can never fire; dropping it removes only unrealizable words.
     let generated = |role: &str| info.generated_roles.as_ref().is_none_or(|set| set.contains(role));
@@ -1377,7 +1451,10 @@ pub fn chain_consumer_automaton_clauses(
                 })
                 .filter(|(_, (role, _), _)| generated(role))
                 .collect();
-            MarkerAutomaton::new(nfa.states, &moves, &nfa.epsilon, forward)
+            // Letters whose edges another letter with the same moves already
+            // carries add no path (and would each need a copy of their edges
+            // in a group role).
+            MarkerAutomaton::new(nfa.states, &moves, &nfa.epsilon, forward).without_implied_letters(&edge_implies)
         });
         if !forward {
             // Leave consumers that the same-orientation encodings already
@@ -1411,8 +1488,16 @@ pub fn chain_consumer_automaton_clauses(
                         .map(|&(q, (r, _), q2)| (q, (r.to_string(), false), q2))
                         .filter(|(_, (role, _), _)| generated(role))
                         .collect();
-                    !same.inverted
-                        && MarkerAutomaton::new(same.states, &same_moves, &same.epsilon, false) == *automaton
+                    if same.inverted {
+                        return false;
+                    }
+                    let same_automaton = MarkerAutomaton::new(same.states, &same_moves, &same.epsilon, false);
+                    // A letter whose every edge the stream also materializes as
+                    // an edge of another letter with the same moves adds no
+                    // path (a reversed sub-role of an inverse, say `starts⁻`
+                    // beside `has_part` when `starts ⊑ part_of`); compare
+                    // without such letters.
+                    same_automaton == *automaton || same_automaton.without_implied_letters(&edge_implies) == *automaton
                 });
             if covered {
                 continue;
@@ -3376,5 +3461,47 @@ mod chain_consumer_automaton_tests {
         assert!(out.iter().any(|c| matches!(c.body.as_slice(),
             [Atom::Concept(m, t)] if m.starts_with("__riab__p__c0__q") && *t == var_x())
             && c.head == vec![concept("E", var_x())]));
+    }
+
+    /// `part_of` and `has_part` inverse and transitive, `starts ⊑ part_of`
+    /// with `starts` a chain target (`u ∘ w ⊑ starts`), `∃has_part.D ⊑ E`.
+    fn partonomy(generated: &[&str]) -> (Vec<DLClause>, ChainInfo) {
+        let trans = |r: &str| {
+            clause([role(r, v("x"), v("y")), role(r, v("y"), v("z"))], [role(r, v("x"), v("z"))])
+        };
+        let tbox = vec![
+            trans("part_of"),
+            trans("has_part"),
+            clause([role("part_of", v("x"), v("y"))], [role("has_part", v("y"), v("x"))]),
+            clause([role("has_part", v("x"), v("y"))], [role("part_of", v("y"), v("x"))]),
+            clause([role("starts", v("x"), v("y"))], [role("part_of", v("x"), v("y"))]),
+            clause([role("u", v("x"), v("y")), role("w", v("y"), v("z"))], [role("starts", v("x"), v("z"))]),
+            clause([concept("D", v("y")), role("has_part", v("x"), v("y"))], [concept("E", v("x"))]),
+        ];
+        let mut info = detect_role_chains(&tbox);
+        info.generated_roles = Some(generated.iter().map(|r| r.to_string()).collect());
+        (tbox, info)
+    }
+
+    #[test]
+    fn a_reversed_sub_role_of_an_inverse_adds_no_path() {
+        let _test_env = crate::test_env::read();
+        // `w` never gets an edge, so `L(has_part)` over the stream's edges is
+        // `(has_part | starts⁻)⁺`, and every `starts` edge is a `has_part`
+        // edge read backwards (`starts ⊑ part_of`, `part_of ⊑ has_part⁻`):
+        // the transitivity encoding already covers the consumer.
+        let (tbox, info) = partonomy(&["part_of", "has_part", "starts", "u"]);
+        assert_eq!(chain_consumer_automaton_clauses(&tbox, &info, ChainConsumerPass::Tbox), (Vec::new(), 0));
+    }
+
+    #[test]
+    fn a_realizable_chain_below_an_inverse_keeps_its_markers() {
+        let _test_env = crate::test_env::read();
+        // With `w` edges, `w⁻ u⁻` is a word of `L(has_part)` that no
+        // same-orientation encoding produces.
+        let (tbox, info) = partonomy(&["part_of", "has_part", "starts", "u", "w"]);
+        let (out, unencoded) = chain_consumer_automaton_clauses(&tbox, &info, ChainConsumerPass::Tbox);
+        assert_eq!(unencoded, 0);
+        assert!(out.contains(&clause([concept("D", var_x())], [concept("__riab__has_part__c0__q0", var_x())])));
     }
 }
