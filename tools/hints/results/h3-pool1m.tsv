@@ -1,0 +1,893 @@
+input	fragment	size	bytes	status	classes	individuals	concepts	gci	data_clauses	km_s	km_mb	dump_s	dump_mb	prod_s	prod_mb	models	elements	edges	violations	general	split	partial	none	split_wit	polluted	rows	unchecked	unc_nonsub	unc_nontype	chk_calls	chk_s	chk_rss	chk_results	status_checked	cert_rows	thing_rows	cert_consistency	disagree	reason
+ore_ont_10004	?	b<1M	479749	model-full	2529	0	2541	3080	0	0.05	16	0.35	77	0.03	8	1	2530	14	0	2530	0	0	0	0	0	6380333	6380333	0	0	1	0.18	76	{"certified": 1}	certified-full	6380333	2529	1	0	
+ore_ont_10009	?	a<100K	95858	model-none	35	56	735	757	477	0.43	41	101.47	74	38.68	6	0	0	0	0	0	0	0	36	0	0	3090	0	1181	1872	0	0.0		no model		0		0	0	no base model: closure budget
+ore_ont_10019	?	a<100K	28871	model-partial	47	0	293	367	0	0.09	12	0.23	72	3.75	22	1	23	9	0	22	2	0	24	2	0	2096	1078	994	0	1	0.11	67	{"certified": 1}	certified-partial	1078	47	1	0	witness: at-most: no fold possible 17, closure budget 7
+ore_ont_10026	?	b<1M	425393	model-full	349	398	2062	8763	0	0.33	32	0.49	79	0.02	5	1	757	1644	0	350	0	0	0	0	0	257428	257428	0	0	1	34.79	86	{"certified": 1}	certified-full	257428	349	1	0	
+ore_ont_10056	?	a<100K	82533	model-full	430	0	465	469	0	0.03	9	0.24	73	0.0	3	1	431	35	0	431	0	0	0	0	0	184265	184265	0	0	1	0.09	74	{"certified": 1}	certified-full	184265	430	1	0	
+ore_ont_10088	?	a<100K	47582	model-full	60	0	135	223	0	0.01	9	0.29	73	0.0	2	1	69	30	0	61	0	0	0	0	0	3488	3488	0	0	1	0.2	74	{"certified": 1}	certified-full	3488	60	1	0	
+ore_ont_10109	?	b<1M	134711	model-partial	182	16	648	752	166	0.14	16	1.36	73	2.73	7	1	189	151	0	175	2	0	6	2	0	35681	34614	1061	0	1	1.46	77	{"certified": 1}	certified-partial	34614	182	1	0	witness: closure budget 4, seed type clash 2
+ore_ont_10133	?	b<1M	217461	model-full	634	0	1299	953	0	0.03	10	0.26	74	0.0	3	1	635	726	0	635	0	0	0	0	0	401607	401607	0	0	1	0.1	74	{"certified": 1}	certified-full	401607	634	1	0	
+ore_ont_10134	?	b<1M	316480	model-full	1538	0	1922	2077	0	0.03	13	0.3	75	0.02	5	1	1562	661	0	1539	0	0	0	0	0	2360190	2360190	0	0	1	0.14	79	{"certified": 1}	certified-full	2360190	1538	1	0	
+ore_ont_10146	?	b<1M	526074	model-full	2291	0	3698	4538	0	0.14	21	0.38	75	0.07	9	1	2296	314	0	2292	0	0	0	0	0	5242161	5242161	0	0	1	0.28	88	{"certified": 1}	certified-full	5242161	2291	1	0	
+ore_ont_10160	?	b<1M	398026	model-full	1263	0	2478	2788	0	0.05	14	0.33	76	0.05	6	1	1437	3163	0	1264	0	0	0	0	0	1589327	1589327	0	0	1	0.18	80	{"certified": 1}	certified-full	1589327	1263	1	0	
+ore_ont_10162	?	b<1M	151458	model-full	584	0	782	1009	0	0.03	10	0.24	74	0.01	4	1	585	815	0	585	0	0	0	0	0	336168	336168	0	0	1	0.11	75	{"certified": 1}	certified-full	336168	584	1	0	
+ore_ont_1017	?	b<1M	382942	model-full	1184	0	2367	1689	0	0.03	12	0.31	75	0.01	4	1	1185	1757	0	1185	0	0	0	0	0	1401190	1401190	0	0	1	0.13	77	{"certified": 1}	certified-full	1401190	1184	1	0	
+ore_ont_10174	?	a<100K	22985	model-full	133	0	135	135	0	0.02	9	0.22	72	0.0	2	1	134	0	0	134	0	0	0	0	0	17387	17387	0	0	1	0.08	72	{"certified": 1}	certified-full	17387	133	1	0	
+ore_ont_10176	?	a<100K	34764	model-full	171	0	589	626	0	0.01	9	0.23	72	0.0	2	1	234	104	0	172	0	0	0	0	0	29308	29308	0	0	1	0.08	74	{"certified": 1}	certified-full	29308	171	1	0	
+ore_ont_10199	?	a<100K	65582	model-full	36	84	350	230	0	0.06	12	0.32	73	0.0	2	1	126	274	0	37	0	0	0	0	0	4357	4357	0	0	1	2.36	75	{"certified": 1}	certified-full	4357	36	1	0	
+ore_ont_10230	?	b<1M	178756	dump-failed						1.65	144	300.28	76																										dump-failed
+ore_ont_10254	?	b<1M	902201	model-full	2860	0	5334	5395	0	0.23	27	0.44	80	0.05	9	1	2861	6725	0	2861	0	0	0	0	0	8167210	8167210	0	0	1	0.26	86	{"certified": 1}	certified-full	8167210	2860	1	0	
+ore_ont_10264	?	a<100K	36455	model-full	63	0	65	2	0	0.01	10	0.4	72	0.0	2	1	64	0	0	64	0	0	0	0	0	4034	4034	0	0	1	0.54	74	{"certified": 1}	certified-full	4034	63	1	0	
+ore_ont_10283	?	b<1M	234210	model-full	1470	0	1472	1461	0	0.05	12	0.28	74	0.01	4	1	1471	0	0	1471	0	0	0	0	0	2158554	2158554	0	0	1	0.12	76	{"certified": 1}	certified-full	2158554	1470	1	0	
+ore_ont_10285	?	a<100K	66259	model-full	134	30	347	383	42	0.07	14	1.04	73	0.15	3	1	181	87	0	134	1	0	0	1	0	21887	21887	0	0	1	10.08	78	{"certified": 1}	certified-full	21887	134	1	0	
+ore_ont_10309	?	a<100K	14958	model-full	9	0	60	57	0	0.0	8	0.27	72	0.0	2	1	10	0	0	10	0	0	0	0	0	86	86	0	0	1	0.09	73	{"certified": 1}	certified-full	86	9	1	0	
+ore_ont_10314	?	b<1M	134959	model-full	98	478	578	579	0	0.11	17	0.57	73	0.0	3	1	577	0	0	99	0	0	0	0	0	55604	55604	0	0	1	15.09	116	{"certified": 1}	certified-full	55604	98	1	0	
+ore_ont_10320	?	b<1M	153211	model-full	322	103	826	939	171	0.25	21	8.26	74	0.57	4	2	312	80	0	322	1	0	0	1	0	134556	134556	0	0	2	1.55	74	{"certified": 2}	certified-full	134556	322	1	0	
+ore_ont_10321	?	a<100K	26630	model-full	12	5	145	139	118	0.02	11	0.4	73	0.01	3	1	14	6	0	13	0	0	0	0	0	218	218	0	0	1	0.16	69	{"certified": 1}	certified-full	218	12	1	0	
+ore_ont_10326	?	b<1M	747915	model-full	2785	0	5143	3897	0	0.1	19	0.4	75	0.03	7	1	2786	4165	0	2786	0	0	0	0	0	7755506	7755506	0	0	1	0.23	82	{"certified": 1}	certified-full	7755506	2785	1	0	
+ore_ont_1034	?	a<100K	90783	model-full	138	28	196	30	0	0.04	11	0.91	72	0.0	2	1	167	28	0	139	0	0	0	0	0	23048	23048	0	0	1	4.7	81	{"certified": 1}	certified-full	23048	138	1	0	
+ore_ont_10340	?	a<100K	62638	model-full	105	2	110	3	0	0.02	11	0.66	73	0.0	2	1	108	1	0	106	0	0	0	0	0	11342	11342	0	0	1	1.91	77	{"certified": 1}	certified-full	11342	105	1	0	
+ore_ont_10350	?	b<1M	544466	model-full	2314	0	4651	2337	0	0.07	14	0.36	74	0.02	6	1	2315	2335	0	2315	0	0	0	0	0	5356912	5356912	0	0	1	0.17	77	{"certified": 1}	certified-full	5356912	2314	1	0	
+ore_ont_10355	?	a<100K	73220	model-full	7	30	220	187	0	0.03	12	1.04	73	0.0	2	1	38	29	0	8	0	0	0	0	0	264	264	0	0	1	6.24	76	{"certified": 1}	certified-full	264	7	1	0	
+ore_ont_10362	?	a<100K	59624	model-full	110	2	184	262	0	0.04	11	0.41	73	0.0	2	1	124	162	0	111	0	0	0	0	0	12173	12173	0	0	1	0.6	75	{"certified": 1}	certified-full	12173	110	1	0	
+ore_ont_10366	?	b<1M	417899	model-full	1582	0	6682	6316	0	0.16	17	0.54	79	0.24	9	1	1962	1661	0	1583	0	0	0	0	0	2503055	2503055	0	0	1	0.53	92	{"certified": 1}	certified-full	2503055	1582	1	0	
+ore_ont_10388	?	a<100K	55450	model-full	98	1	145	199	18	0.05	11	0.46	72	0.0	2	1	107	31	0	91	8	0	0	9	0	9618	9618	0	0	1	0.77	75	{"certified": 1}	certified-full	9618	98	1	0	
+ore_ont_10407	?	a<100K	45083	model-full	50	0	220	286	94	1.36	108	0.26	72	0.1	3	1	35	99	0	51	0	0	0	0	0	1644	1644	0	0	1	0.18	74	{"certified": 1}	certified-full	1644	32	1	0	
+ore_ont_10413	?	a<100K	40651	model-full	69	2	74	3	0	0.02	10	0.43	72	0.0	2	1	72	1	0	70	0	0	0	0	0	4970	4970	0	0	1	0.69	75	{"certified": 1}	certified-full	4970	69	1	0	
+ore_ont_10419	?	b<1M	239944	model-full	1396	0	1398	1472	0	0.04	12	0.29	75	0.01	5	1	1397	0	0	1397	0	0	0	0	0	1943836	1943836	0	0	1	0.12	76	{"certified": 1}	certified-full	1943836	1396	1	0	
+ore_ont_10431	?	b<1M	104369	model-full	361	0	365	387	0	0.02	9	0.24	73	0.0	3	1	362	2	0	362	0	0	0	0	0	129171	129171	0	0	1	0.09	74	{"certified": 1}	certified-full	129171	361	1	0	
+ore_ont_10460	?	b<1M	141422	model-partial	601	0	974	1062	0	3.64	56	0.28	74	0.62	4	1	582	702	0	549	4	0	49	4	0	358945	329814	29082	0	1	0.19	71	{"certified": 1}	certified-partial	329814	601	1	0	witness: at-most: no fold possible 49
+ore_ont_105	?	a<100K	55930	model-full	295	0	297	349	0	0.01	10	0.22	72	0.0	2	1	296	0	0	296	0	0	0	0	0	86120	86120	0	0	1	0.08	72	{"certified": 1}	certified-full	86120	295	1	0	
+ore_ont_10503	?	b<1M	267210	km-inconsistent						0.14	26																												km-inconsistent
+ore_ont_10516	?	a<100K	75105	model-full	294	0	380	452	0	0.01	9	0.24	73	0.0	3	1	295	190	0	295	0	0	0	0	0	85425	85425	0	0	1	0.09	74	{"certified": 1}	certified-full	85425	294	1	0	
+ore_ont_10517	?	b<1M	255099	model-full	904	153	1567	1845	314	117.42	329	16.79	75	8.3	11	2	1719	254	0	163	742	0	0	742	0	942734	942734	0	0	2	19.92	115	{"certified": 2}	certified-full	942734	894	1	0	
+ore_ont_10536	?	a<100K	43048	model-full	7	10	116	103	0	0.03	10	0.57	73	0.0	2	1	18	7	0	8	0	0	0	0	0	124	124	0	0	1	1.41	73	{"certified": 1}	certified-full	124	7	1	0	
+ore_ont_10537	?	a<100K	50808	model-full	30	47	283	387	146	0.04	12	0.46	73	0.08	2	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.3	67	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_10571	?	b<1M	109117	model-full	223	82	599	718	58	0.13	17	1.25	73	0.36	4	1	323	221	0	223	1	0	0	1	0	67619	67619	0	0	1	98.27	84	{"certified": 1}	certified-full	67619	223	1	0	
+ore_ont_10580	?	a<100K	73369	model-full	133	0	778	889	0	0.03	13	0.28	73	0.0	3	1	423	151	0	134	0	0	0	0	0	17582	17582	0	0	1	0.14	77	{"certified": 1}	certified-full	17582	133	1	0	
+ore_ont_10681	?	a<100K	80905	model-full	35	56	630	624	427	0.27	38	79.03	73	1.76	4	1	42	31	0	36	0	0	0	0	0	3092	3092	0	0	1	4.51	74	{"certified": 1}	certified-full	3092	35	1	0	
+ore_ont_10702	?	b<1M	203217	model-full	137	206	1353	2347	6	0.98	43	0.33	75	3.15	12	2	1018	2057	0	95	43	0	0	44	0	45442	45442	0	0	2	14.15	79	{"certified": 2}	certified-full	45442	137	1	0	
+ore_ont_10742	?	b<1M	875432	model-full	1315	0	5142	5156	0	0.1	18	0.4	79	0.06	6	1	1316	10321	0	1316	0	0	0	0	0	1725467	1725467	0	0	1	0.24	87	{"certified": 1}	certified-full	1725467	1315	1	0	
+ore_ont_10752	?	a<100K	58702	model-full	99	0	101	140	0	0.02	10	0.24	72	0.0	2	1	100	0	0	100	0	0	0	0	0	8633	8633	0	0	1	0.08	73	{"certified": 1}	certified-full	8633	99	1	0	
+ore_ont_10769	?	a<100K	65753	model-full	91	0	93	2	0	0.02	10	0.57	73	0.0	2	1	92	0	0	92	0	0	0	0	0	8374	8374	0	0	1	1.32	76	{"certified": 1}	certified-full	8374	91	1	0	
+ore_ont_10776	?	b<1M	221843	model-full	583	0	1976	1787	0	0.03	11	0.33	75	0.01	4	1	1567	744	0	584	0	0	0	0	0	339834	339834	0	0	1	0.13	77	{"certified": 1}	certified-full	339834	583	1	0	
+ore_ont_10781	?	b<1M	859750	model-full	293	590	2294	4629	42	0.51	47	0.57	74	0.21	6	1	894	3781	0	294	0	0	0	0	0	255105	255105	0	0	1	59.66	82	{"certified": 1}	certified-full	255105	293	1	0	
+ore_ont_10805	?	a<100K	71874	model-full	122	9	138	7	0	0.03	11	0.79	73	0.0	2	1	132	5	0	123	0	0	0	0	0	16106	16106	0	0	1	3.1	79	{"certified": 1}	certified-full	16106	122	1	0	
+ore_ont_10807	?	b<1M	198771	model-full	819	66	1137	1332	144	0.43	25	1.3	74	1.15	5	2	958	57	0	765	55	0	0	55	0	719824	719824	0	0	2	2.01	89	{"certified": 2}	certified-full	719824	819	1	0	
+ore_ont_10823	?	a<100K	46034	model-full	74	5	84	5	0	0.03	11	0.44	72	0.0	2	1	80	3	0	75	0	0	0	0	0	5922	5922	0	0	1	0.94	75	{"certified": 1}	certified-full	5922	74	1	0	
+ore_ont_10833	?	a<100K	73327	model-full	112	18	147	17	0	0.03	11	0.72	73	0.0	2	1	131	15	0	113	0	0	0	0	0	14674	14674	0	0	1	2.65	79	{"certified": 1}	certified-full	14674	112	1	0	
+ore_ont_10860	?	b<1M	365694	km-inconsistent						0.07	18																												km-inconsistent
+ore_ont_10874	?	b<1M	478092	dump-failed						0.96	94	300.53	76																										dump-failed
+ore_ont_10888	?	a<100K	50815	model-full	30	47	283	387	146	0.04	12	0.49	72	0.12	2	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.32	68	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_10894	?	a<100K	57859	model-full	147	109	514	525	234	0.4	30	5.93	73	32.15	6	1	257	17	0	147	1	0	0	1	0	36653	36653	0	0	1	9.68	89	{"certified": 1}	certified-full	36653	147	1	0	
+ore_ont_10908	?	b<1M	180058	model-full	692	18	21921	3400	0	0.51	31	2.23	76	0.36	13	2	775	2315	0	693	0	0	0	0	2	485923	485923	0	0	2	7.38	90	{"certified": 2}	certified-full	485923	692	1	0	
+ore_ont_10952	?	b<1M	723227	dump-failed						0.52	33	300.9	75																										dump-failed
+ore_ont_10968	?	b<1M	964211	model-full	4001	0	5925	4832	0	0.12	19	0.45	80	0.04	10	1	4002	6639	0	4002	0	0	0	0	0	16005123	16005123	0	0	1	0.23	85	{"certified": 1}	certified-full	16005123	4001	1	0	
+ore_ont_11003	?	a<100K	55248	model-full	129	0	187	254	8	0.03	11	0.23	73	0.0	2	1	132	40	0	123	7	0	0	7	0	16505	16505	0	0	1	0.09	74	{"certified": 1}	certified-full	16505	129	1	0	
+ore_ont_11004	?	a<100K	62226	model-full	29	54	337	448	174	0.06	14	2.08	72	0.16	3	1	34	16	0	30	0	0	0	0	0	2352	2352	0	0	1	0.54	68	{"certified": 1}	certified-full	2352	29	1	0	
+ore_ont_11009	?	b<1M	220149	model-full	889	0	3327	3628	0	0.04	13	0.32	76	0.02	4	1	1109	831	0	890	0	0	0	0	0	790391	790391	0	0	1	0.15	86	{"certified": 1}	certified-full	790391	889	1	0	
+ore_ont_11010	?	a<100K	66026	model-full	256	0	359	374	0	0.01	9	0.24	73	0.0	2	1	257	117	0	257	0	0	0	0	0	64524	64524	0	0	1	0.09	74	{"certified": 1}	certified-full	64524	256	1	0	
+ore_ont_11014	?	b<1M	291981	model-full	1444	0	1703	1817	0	0.03	12	0.3	75	0.01	5	1	1445	1694	0	1445	0	0	0	0	0	2083689	2083689	0	0	1	0.13	77	{"certified": 1}	certified-full	2083689	1444	1	0	
+ore_ont_11016	?	b<1M	154806	model-full	66	109	718	889	156	0.22	23	1.55	74	0.56	4	1	150	273	0	66	1	0	0	1	0	10737	10737	0	0	1	1.8	69	{"certified": 1}	certified-full	10737	66	1	0	
+ore_ont_11064	?	b<1M	139435	model-partial	225	0	739	1425	24	0.71	62	0.29	74	0.02	2	1	34	0	0	34	0	0	192	0	0	50286	7594	42500	0	1	0.24	69	{"certified": 1}	certified-partial	7594	225	1	0	witness: seed type clash 192
+ore_ont_11115	?	b<1M	299488	model-full	922	629	2155	1832	0	0.27	29	0.48	75	0.02	6	1	1572	634	0	923	0	0	0	0	0	1423263	1423263	0	0	1	67.18	112	{"certified": 1}	certified-full	1423263	922	1	0	
+ore_ont_11125	?	a<100K	63965	model-full	58	0	351	339	276	0.06	12	0.94	73	0.36	3	1	65	26	0	59	0	0	0	0	0	3369	3369	0	0	1	0.44	68	{"certified": 1}	certified-full	3369	58	1	0	
+ore_ont_11133	?	a<100K	44397	model-full	167	0	257	249	0	0.01	9	0.24	72	0.0	2	1	168	257	0	168	0	0	0	0	0	27716	27716	0	0	1	0.09	72	{"certified": 1}	certified-full	27716	167	1	0	
+ore_ont_11149	?	a<100K	81094	model-full	104	0	422	595	302	0.15	13	11.88	73	1.01	4	1	103	128	0	103	0	0	0	0	0	10334	10334	0	0	1	1.23	73	{"certified": 1}	certified-full	10334	104	1	0	
+ore_ont_11157	?	b<1M	315249	model-full	509	4	1082	2417	92	0.24	27	0.36	76	0.99	5	1	730	479	0	510	0	0	0	0	0	259375	259375	0	0	1	0.86	94	{"certified": 1}	certified-full	259375	509	1	0	
+ore_ont_1117	?	b<1M	603300	model-full	776	772	3797	3876	0	0.46	47	0.68	77	0.03	9	1	3780	1442	0	777	0	0	0	0	0	1196392	1196392	0	0	1	18.99	79	{"certified": 1}	certified-full	1196392	776	1	0	
+ore_ont_11203	?	a<100K	67788	model-full	58	48	217	208	0	0.04	12	1.04	73	0.0	2	1	101	33	0	59	0	0	0	0	0	6081	6081	0	0	1	6.86	79	{"certified": 1}	certified-full	6081	58	1	0	
+ore_ont_11274	?	b<1M	269790	model-full	451	0	505	1617	0	0.02	11	0.26	74	0.01	3	1	475	85	0	452	0	0	0	0	0	199351	199351	0	0	1	0.1	76	{"certified": 1}	certified-full	199351	451	1	0	
+ore_ont_11291	?	a<100K	48735	model-full	54	0	200	265	4	0.03	11	0.25	73	0.03	3	1	83	343	0	53	2	0	0	2	0	2752	2752	0	0	1	0.11	74	{"certified": 1}	certified-full	2752	54	1	0	
+ore_ont_11296	?	a<100K	55494	model-full	27	42	204	232	42	0.06	15	0.3	73	0.0	2	1	71	39	0	28	0	0	0	0	0	1808	1808	0	0	1	0.38	74	{"certified": 1}	certified-full	1808	27	1	0	
+ore_ont_11298	?	b<1M	882052	model-full	4001	0	5925	4832	0	0.11	19	0.42	79	0.04	10	1	4002	6639	0	4002	0	0	0	0	0	16005123	16005123	0	0	1	0.26	85	{"certified": 1}	certified-full	16005123	4001	1	0	
+ore_ont_11316	?	b<1M	420226	model-full	1821	11	3095	3594	0	0.65	24	0.59	77	0.06	7	1	1920	2153	0	1822	0	0	0	0	0	3327427	3327427	0	0	1	2.9	90	{"certified": 1}	certified-full	3327427	1821	1	0	
+ore_ont_11349	?	b<1M	707481	model-full	1835	1	5502	5596	0	0.42	41	0.63	77	0.04	11	1	5386	356	0	1836	0	0	0	0	0	3360010	3360010	0	0	1	0.29	81	{"certified": 1}	certified-full	3360010	1835	1	0	
+ore_ont_11357	?	a<100K	33180	model-full	44	0	235	245	150	0.04	14	0.44	72	0.06	3	1	45	52	0	45	0	0	0	0	0	1757	1757	0	0	1	0.3	68	{"certified": 1}	certified-full	1757	44	1	0	
+ore_ont_11362	?	b<1M	399791	model-full	873	7	3692	3533	0	0.28	30	0.46	78	0.02	6	1	3072	1197	0	874	0	0	0	0	0	766826	766826	0	0	1	0.22	82	{"certified": 1}	certified-full	766826	873	1	0	
+ore_ont_11371	?	a<100K	99267	model-full	117	0	217	220	14	0.06	16	0.64	73	0.01	2	1	263	315	0	3	115	0	0	115	0	13678	13678	0	0	1	1.74	83	{"certified": 1}	certified-full	13678	117	1	0	
+ore_ont_11380	?	a<100K	39884	model-full	128	0	182	175	0	0.01	8	0.41	72	0.0	2	1	131	112	0	129	0	0	0	0	0	16308	16308	0	0	1	0.47	74	{"certified": 1}	certified-full	16308	128	1	0	
+ore_ont_11392	?	a<100K	84074	model-full	121	123	357	502	0	0.06	12	0.23	73	0.0	2	1	244	108	0	122	0	0	0	0	0	28676	28676	0	0	1	0.16	73	{"certified": 1}	certified-full	28676	120	1	0	
+ore_ont_11401	?	a<100K	70144	model-full	145	0	591	1089	6	0.3	13	1.28	74	0.01	2	1	133	1	0	132	14	0	0	14	0	20839	20839	0	0	1	1.79	76	{"certified": 1}	certified-full	20839	145	1	0	
+ore_ont_11416	?	b<1M	120276	model-full	65	193	1059	1136	560	0.14	21	10.78	74	3.0	5	1	63	3	0	66	0	0	0	0	0	16526	16526	0	0	1	3.25	71	{"certified": 1}	certified-full	16526	65	1	0	
+ore_ont_11477	?	b<1M	246602	model-none	201	263	1752	2763	6	1.08	46	0.34	75	4.49	5	0	0	0	0	0	0	0	202	0	0	91456	0	39577	51676	0	0.0		no model		0		0	0	no base model: closure budget
+ore_ont_11497	?	a<100K	47901	model-full	105	0	280	278	0	0.01	9	0.22	72	0.0	2	1	106	196	0	106	0	0	0	0	0	10924	10924	0	0	1	0.08	74	{"certified": 1}	certified-full	10924	105	1	0	
+ore_ont_11504	?	b<1M	117564	model-full	406	0	408	403	0	0.01	10	0.22	73	0.0	3	1	407	0	0	407	0	0	0	0	0	164169	164169	0	0	1	0.08	74	{"certified": 1}	certified-full	164169	406	1	0	
+ore_ont_11522	?	a<100K	45649	model-full	122	0	218	244	0	0.01	10	0.33	72	0.0	2	1	118	16	0	123	0	0	0	0	0	13510	13510	0	0	1	0.3	76	{"certified": 1}	certified-full	13510	114	1	0	
+ore_ont_11523	?	a<100K	50808	model-full	30	47	283	387	146	0.04	12	0.49	72	0.05	3	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.29	71	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_11526	?	a<100K	83347	model-full	137	19	179	23	0	0.04	11	0.94	73	0.0	2	1	157	21	0	138	0	0	0	0	0	21511	21511	0	0	1	4.32	81	{"certified": 1}	certified-full	21511	137	1	0	
+ore_ont_11533	?	a<100K	71655	model-none	34	25	519	514	293	0.28	22	12.12	72	19.73	4	0	0	0	0	0	0	0	35	0	0	1978	0	1141	801	0	0.0		no model		0		0	0	no base model: at-most: no fold possible
+ore_ont_11554	?	b<1M	168239	model-partial	95	0	719	1075	0	0.14	16	6.93	74	4.89	4	1	50	73	0	41	2	2	51	2	0	8574	4125	4398	0	1	62.79	71	{"certified": 1}	certified-partial	4125	95	1	0	witness: no type for a successor 1, seed type clash 50
+ore_ont_11572	?	b<1M	328454	model-full	861	772	1635	1709	0	0.26	26	0.35	75	0.01	5	1	1634	0	0	862	0	0	0	0	0	1404234	1404234	0	0	1	0.31	76	{"certified": 1}	certified-full	1404234	861	1	0	
+ore_ont_11577	?	b<1M	158383	model-full	268	197	467	300	0	0.09	15	0.35	74	0.0	3	1	466	0	0	269	0	0	0	0	0	124592	124592	0	0	1	1.78	87	{"certified": 1}	certified-full	124592	268	1	0	
+ore_ont_11592	?	a<100K	72499	model-full	169	81	448	722	50	0.09	15	0.54	73	0.19	3	1	251	130	0	170	0	0	0	0	0	42035	42035	0	0	1	1.32	76	{"certified": 1}	certified-full	42035	169	1	0	
+ore_ont_11619	?	b<1M	742525	model-full	3619	0	3628	5102	0	0.09	19	0.42	78	0.05	11	1	3620	30	0	3620	0	0	0	0	0	13081054	13081054	0	0	1	0.22	83	{"certified": 1}	certified-full	13081054	3619	1	0	
+ore_ont_11635	?	b<1M	833540	model-full	1669	2	8364	8818	0	0.95	56	0.82	79	0.06	14	1	7138	1839	0	1670	0	0	0	0	0	2781789	2781789	0	0	1	0.6	127	{"certified": 1}	certified-full	2781789	1669	1	0	
+ore_ont_11639	?	a<100K	54307	model-full	284	0	286	285	0	0.01	9	0.21	72	0.0	2	1	285	0	0	285	0	0	0	0	0	79856	79856	0	0	1	0.07	73	{"certified": 1}	certified-full	79856	284	1	0	
+ore_ont_11647	?	b<1M	423957	dump-failed						5.08	275	300.79	99																										dump-failed
+ore_ont_11676	?	a<100K	48310	model-full	80	6	93	7	0	0.02	10	0.52	73	0.0	2	1	87	5	0	81	0	0	0	0	0	6962	6962	0	0	1	0.98	76	{"certified": 1}	certified-full	6962	80	1	0	
+ore_ont_11685	?	b<1M	698983	model-full	472	0	478	1001	4	0.08	16	1.5	72	0.01	4	1	473	0	0	473	0	0	0	0	0	221763	221763	0	0	1	0.88	134	{"certified": 1}	certified-full	221763	472	1	0	
+ore_ont_11694	?	b<1M	168692	model-full	201	282	967	3007	0	0.15	20	0.38	76	0.01	3	1	482	437	0	202	0	0	0	0	0	95581	95581	0	0	1	17.35	83	{"certified": 1}	certified-full	95581	199	1	0	
+ore_ont_11703	?	b<1M	714780	model-full	2222	8	5929	5973	0	0.48	43	0.65	77	0.05	11	1	5717	281	0	2223	0	0	0	0	0	4948621	4948621	0	0	1	0.52	109	{"certified": 1}	certified-full	4948621	2222	1	0	
+ore_ont_11719	?	b<1M	220746	model-full	1070	0	1380	1590	0	0.03	11	0.27	74	0.01	4	1	1108	242	0	1071	0	0	0	0	0	1140848	1140848	0	0	1	0.12	76	{"certified": 1}	certified-full	1140848	1070	1	0	
+ore_ont_1172	?	b<1M	116178	model-full	67	118	604	419	0	0.06	14	0.42	73	0.0	2	1	206	533	0	68	0	0	0	0	0	12463	12463	0	0	1	10.02	80	{"certified": 1}	certified-full	12463	67	1	0	
+ore_ont_11792	?	b<1M	126641	model-full	601	0	736	733	0	0.02	10	0.24	73	0.01	3	1	602	728	0	602	0	0	0	0	0	358945	358945	0	0	1	0.1	76	{"certified": 1}	certified-full	358945	601	1	0	
+ore_ont_11834	?	a<100K	32281	model-full	36	0	394	797	0	0.28	12	1.1	73	0.0	2	1	25	0	0	25	12	0	0	12	0	1232	1232	0	0	1	1.16	74	{"certified": 1}	certified-full	1232	36	1	0	
+ore_ont_11866	?	a<100K	43661	model-full	69	2	74	3	0	0.02	10	0.41	73	0.0	2	1	72	1	0	70	0	0	0	0	0	4970	4970	0	0	1	0.67	74	{"certified": 1}	certified-full	4970	69	1	0	
+ore_ont_11889	?	b<1M	134867	model-full	580	18	600	617	0	0.09	14	0.24	74	0.01	4	1	599	0	0	581	0	0	0	0	0	340500	340500	0	0	1	0.11	76	{"certified": 1}	certified-full	340500	580	1	0	
+ore_ont_11895	?	a<100K	42547	model-full	122	13	200	198	38	0.04	12	0.26	72	0.04	2	1	136	42	0	123	0	0	0	0	0	16312	16312	0	0	1	0.2	71	{"certified": 1}	certified-full	16312	122	1	0	
+ore_ont_11901	?	a<100K	50853	model-full	30	47	283	387	146	0.04	12	0.49	73	0.06	3	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.28	68	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_11929	?	a<100K	50871	model-full	30	47	283	387	146	0.04	12	0.5	72	0.05	3	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.88	70	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_11949	?	a<100K	11920	model-full	56	0	84	85	26	0.01	10	0.28	72	0.0	2	1	57	0	0	57	0	0	0	0	0	3062	3062	0	0	1	0.09	72	{"certified": 1}	certified-full	3062	56	1	0	
+ore_ont_11972	?	a<100K	50853	model-full	30	47	283	387	146	0.04	11	0.48	73	0.09	2	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.28	73	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_11978	?	b<1M	116178	model-full	67	118	604	419	0	0.06	12	0.4	73	0.0	2	1	206	533	0	68	0	0	0	0	0	12463	12463	0	0	1	10.05	80	{"certified": 1}	certified-full	12463	67	1	0	
+ore_ont_12007	?	a<100K	62736	model-full	294	0	296	328	0	0.01	10	0.24	73	0.0	2	1	295	0	0	295	0	0	0	0	0	85369	85369	0	0	1	0.08	73	{"certified": 1}	certified-full	85369	294	1	0	
+ore_ont_12009	?	b<1M	261102	model-full	1153	0	1155	1155	0	0.05	14	0.28	74	0.02	5	1	1154	0	0	1154	0	0	0	0	0	1320055	1320055	0	0	1	0.14	79	{"certified": 1}	certified-full	1320055	1153	1	0	
+ore_ont_12061	?	b<1M	114757	model-full	213	0	215	234	0	0.01	10	0.23	72	0.0	2	1	214	0	0	214	0	0	0	0	0	44612	44612	0	0	1	0.09	74	{"certified": 1}	certified-full	44612	213	1	0	
+ore_ont_12084	?	b<1M	205277	model-full	483	103	1175	1368	319	0.45	31	190.22	74	2.17	5	2	428	80	0	483	1	0	0	1	0	279789	279789	0	0	2	7.96	84	{"certified": 2}	certified-full	279789	483	1	0	
+ore_ont_12097	?	b<1M	357834	model-full	1171	1028	2281	2718	0	0.39	35	0.38	75	0.03	7	1	2200	1372	0	1172	0	0	0	0	0	2561102	2561102	0	0	1	19.18	79	{"certified": 1}	certified-full	2561102	1171	1	0	
+ore_ont_12101	?	a<100K	35187	model-full	32	1	218	217	156	0.03	11	0.29	73	0.05	2	1	33	9	0	33	0	0	0	0	0	1024	1024	0	0	1	0.19	72	{"certified": 1}	certified-full	1024	32	1	0	
+ore_ont_12107	?	a<100K	56080	model-full	35	0	17648	2520	0	0.05	12	1.87	74	0.01	4	1	47	87	0	36	0	0	0	0	0	1146	1146	0	0	1	2.47	76	{"certified": 1}	certified-full	1146	35	1	0	
+ore_ont_1211	?	b<1M	323130	model-full	1165	0	2275	2714	0	0.04	14	0.36	77	0.03	7	1	2194	1372	0	1166	0	0	0	0	0	1344324	1344324	0	0	1	0.18	78	{"certified": 1}	certified-full	1344324	1165	1	0	
+ore_ont_12112	?	b<1M	102221	model-full	49	62	445	444	219	0.23	17	1.47	73	0.28	3	1	49	35	0	50	0	0	0	0	0	5389	5389	0	0	1	0.39	73	{"certified": 1}	certified-full	5389	49	1	0	
+ore_ont_12118	?	a<100K	42023	model-full	7	8	113	102	0	0.02	10	0.54	73	0.0	2	1	16	6	0	8	0	0	0	0	0	110	110	0	0	1	1.4	73	{"certified": 1}	certified-full	110	7	1	0	
+ore_ont_12141	?	b<1M	139854	model-full	279	0	918	1393	0	0.17	15	0.48	74	1.26	3	1	361	1034	0	264	16	0	0	16	0	77214	77214	0	0	1	0.49	78	{"certified": 1}	certified-full	77214	279	1	0	
+ore_ont_12150	?	a<100K	57847	model-full	126	131	399	274	0	0.05	12	0.27	73	0.0	2	1	258	119	0	127	0	0	0	0	0	32367	32367	0	0	1	0.88	75	{"certified": 1}	certified-full	32367	126	1	0	
+ore_ont_1222	?	a<100K	32585	model-full	41	0	153	243	46	0.03	11	0.26	73	0.16	2	1	96	177	0	0	42	0	0	42	0	1682	1682	0	0	1	0.11	74	{"certified": 1}	certified-full	1682	41	1	0	
+ore_ont_12253	?	a<100K	96131	model-full	74	15	236	292	4	0.06	13	0.59	72	0.0	2	1	101	148	0	75	0	0	0	0	0	6457	6457	0	0	1	2.16	76	{"certified": 1}	certified-full	6457	74	1	0	
+ore_ont_12270	?	b<1M	285243	model-full	679	206	1285	2374	0	0.23	22	0.35	75	0.03	5	1	831	931	0	676	0	0	0	0	0	589315	589315	0	0	1	22.57	83	{"certified": 1}	certified-full	589315	673	1	0	
+ore_ont_12281	?	b<1M	461744	model-full	1555	0	2858	3181	0	0.05	15	0.35	73	0.06	7	1	1751	3910	0	1556	0	0	0	0	0	2411162	2411162	0	0	1	0.21	79	{"certified": 1}	certified-full	2411162	1555	1	0	
+ore_ont_12323	?	a<100K	81600	model-full	82	56	590	597	327	0.26	21	15.15	74	0.99	4	1	83	96	0	83	0	0	0	0	0	11118	11118	0	0	1	1.59	74	{"certified": 1}	certified-full	11118	82	1	0	
+ore_ont_12325	?	b<1M	749913	dump-failed						0.53	34	300.89	75																										dump-failed
+ore_ont_12342	?	b<1M	125868	model-full	354	22	618	4045	32	0.29	20	0.42	76	0.1	4	2	496	447	0	245	110	0	0	110	0	131273	131273	0	0	2	3.57	79	{"certified": 2}	certified-full	131273	354	1	0	
+ore_ont_12360	?	a<100K	26857	model-full	27	8	131	158	85	0.03	10	0.41	73	0.03	3	1	27	0	0	28	0	0	0	0	0	951	951	0	0	1	0.41	71	{"certified": 1}	certified-full	951	27	1	0	
+ore_ont_12369	?	a<100K	96379	model-none	35	56	735	757	477	0.42	41	101.35	74	38.59	6	0	0	0	0	0	0	0	36	0	0	3087	0	1178	1872	0	0.0		no model		0		0	0	no base model: closure budget
+ore_ont_12372	?	b<1M	325656	model-full	837	0	2993	3139	0	0.03	12	0.42	77	0.02	6	1	2917	131	0	838	0	0	0	0	0	697840	697840	0	0	1	0.17	78	{"certified": 1}	certified-full	697840	837	1	0	
+ore_ont_12379	?	a<100K	97267	model-full	193	0	551	550	0	0.01	9	0.23	73	0.0	2	1	194	355	0	194	0	0	0	0	0	37252	37252	0	0	1	0.08	73	{"certified": 1}	certified-full	37252	193	1	0	
+ore_ont_12382	?	b<1M	123023	model-full	457	0	660	803	0	0.3	37	0.26	73	0.0	3	1	459	337	0	458	0	0	0	0	0	207729	207729	0	0	1	0.1	74	{"certified": 1}	certified-full	207729	457	1	0	
+ore_ont_12397	?	b<1M	420935	model-full	2258	0	2266	2677	0	0.05	16	0.33	77	0.02	7	1	2259	12	0	2259	0	0	0	0	0	5085619	5085619	0	0	1	0.17	79	{"certified": 1}	certified-full	5085619	2258	1	0	
+ore_ont_12415	?	a<100K	88753	model-full	7	71	320	246	0	0.05	12	1.29	73	0.0	2	1	79	64	0	8	0	0	0	0	0	551	551	0	0	1	11.52	79	{"certified": 1}	certified-full	551	7	1	0	
+ore_ont_12433	?	b<1M	215020	model-full	280	0	886	1363	0	0.2	15	0.47	74	1.08	4	1	366	1060	0	266	15	0	0	15	0	77492	77492	0	0	1	0.6	75	{"certified": 1}	certified-full	77492	280	1	0	
+ore_ont_12566	?	b<1M	110681	model-full	169	75	455	500	104	0.12	16	0.74	73	0.19	3	2	220	107	0	97	73	0	0	73	0	40248	40248	0	0	2	1.59	78	{"certified": 2}	certified-full	40248	168	1	0	
+ore_ont_12584	?	a<100K	49038	model-full	76	8	90	6	0	0.02	10	0.5	73	0.0	2	1	85	4	0	77	0	0	0	0	0	6462	6462	0	0	1	0.89	75	{"certified": 1}	certified-full	6462	76	1	0	
+ore_ont_12635	?	b<1M	994680	model-full	1315	0	5142	5157	0	0.11	18	0.43	79	0.04	6	1	1316	10321	0	1316	0	0	0	0	0	1725467	1725467	0	0	1	0.27	85	{"certified": 1}	certified-full	1725467	1315	1	0	
+ore_ont_12653	?	a<100K	46250	model-full	21	0	310	304	124	0.09	14	0.81	73	0.04	3	1	34	62	0	17	5	0	0	5	0	454	454	0	0	1	0.32	67	{"certified": 1}	certified-full	454	21	1	0	
+ore_ont_12721	?	b<1M	123871	model-full	61	172	683	450	0	0.07	13	0.43	73	0.0	2	1	243	507	0	62	0	0	0	0	0	14275	14275	0	0	1	12.98	80	{"certified": 1}	certified-full	14275	61	1	0	
+ore_ont_12723	?	b<1M	412959	model-partial	1405	0	16270	3286	34	2.39	96	20.75	76	176.56	259	1	1401	2687	0	1078	86	3	239	86	0	1966182	1632233	333710	0	1	13.5	107	{"rejected": 1}	certified-none	0	1405	0	0	witness: closure budget 150, no type for a successor 9, seed type clash 80
+ore_ont_12764	?	b<1M	223544	model-full	809	0	1430	1276	0	0.02	10	0.27	74	0.01	4	1	810	1197	0	810	0	0	0	0	0	653069	653069	0	0	1	0.11	76	{"certified": 1}	certified-full	653069	809	1	0	
+ore_ont_12801	?	b<1M	785324	model-full	1703	2	7291	7657	0	0.68	57	0.93	79	0.13	15	1	5952	1832	0	1704	0	0	0	0	0	2894943	2894943	0	0	1	1.64	178	{"certified": 1}	certified-full	2894943	1703	1	0	
+ore_ont_12824	?	a<100K	75792	model-full	15	0	509	614	432	0.07	14	5.81	73	0.33	5	1	16	18	0	16	0	0	0	0	0	242	242	0	0	1	2.24	68	{"certified": 1}	certified-full	242	15	1	0	
+ore_ont_12831	?	b<1M	184324	model-full	808	0	810	1029	0	0.04	12	0.24	73	0.01	4	1	809	0	0	809	0	0	0	0	0	646092	646092	0	0	1	0.11	74	{"certified": 1}	certified-full	646092	808	1	0	
+ore_ont_12892	?	b<1M	335170	model-full	637	1348	2650	2301	0	0.36	33	0.38	76	0.01	6	1	1986	726	0	638	0	0	0	0	0	1262751	1262751	0	0	1	16.83	78	{"certified": 1}	certified-full	1262751	637	1	0	
+ore_ont_12906	?	a<100K	41202	model-full	80	0	82	90	0	0.0	9	0.23	73	0.0	2	1	81	0	0	81	0	0	0	0	0	6157	6157	0	0	1	0.08	72	{"certified": 1}	certified-full	6157	80	1	0	
+ore_ont_12914	?	b<1M	619177	model-full	1666	0	7360	8274	0	0.09	20	0.45	78	2.1	50	1	1832	7411	0	1667	0	0	0	0	0	2767233	2767233	0	0	1	0.66	105	{"certified": 1}	certified-full	2767233	1666	1	0	
+ore_ont_12916	?	b<1M	860504	dump-failed						0.65	38	301.05	78																										dump-failed
+ore_ont_12925	?	b<1M	283347	model-full	659	103	1538	1824	339	0.52	34	211.65	75	2.84	6	2	536	80	0	659	1	0	0	1	0	497707	497707	0	0	2	9.25	86	{"certified": 2}	certified-full	497707	659	1	0	
+ore_ont_12931	?	b<1M	280090	model-full	1269	0	1271	1987	0	0.06	15	0.3	75	0.02	6	1	1270	0	0	1270	0	0	0	0	0	1598400	1598400	0	0	1	0.13	77	{"certified": 1}	certified-full	1598400	1269	1	0	
+ore_ont_12932	?	b<1M	183985	model-full	270	1224	1496	1477	0	0.28	31	0.36	75	0.01	5	1	1495	0	0	271	0	0	0	0	0	399806	399806	0	0	1	0.5	75	{"certified": 1}	certified-full	399806	270	1	0	
+ore_ont_12948	?	a<100K	42170	model-full	33	32	306	308	232	0.21	20	10.22	73	0.25	3	1	49	0	0	34	0	0	0	0	0	1963	1963	0	0	1	0.77	67	{"certified": 1}	certified-full	1963	33	1	0	
+ore_ont_12957	?	a<100K	24581	model-full	99	0	101	91	0	0.01	9	0.22	72	0.0	2	1	100	0	0	100	0	0	0	0	0	9813	9813	0	0	1	0.08	72	{"certified": 1}	certified-full	9813	99	1	0	
+ore_ont_12965	?	b<1M	399841	model-full	873	7	3692	3533	0	0.28	30	0.45	78	0.02	6	1	3072	1197	0	874	0	0	0	0	0	766826	766826	0	0	1	0.23	81	{"certified": 1}	certified-full	766826	873	1	0	
+ore_ont_12987	?	b<1M	199095	model-full	828	0	1032	1248	0	0.03	12	0.27	74	0.01	4	1	829	761	0	829	0	0	0	0	0	678699	678699	0	0	1	0.12	75	{"certified": 1}	certified-full	678699	828	1	0	
+ore_ont_13018	?	a<100K	31753	model-full	176	0	178	177	0	0.01	9	0.24	73	0.0	2	1	177	0	0	177	0	0	0	0	0	30665	30665	0	0	1	0.08	73	{"certified": 1}	certified-full	30665	176	1	0	
+ore_ont_13035	?	b<1M	122819	model-full	220	146	608	689	0	0.12	18	6.08	74	0.05	3	1	281	221	0	221	0	0	0	0	0	76509	76509	0	0	1	180.0	92	{"timeout": 1}	certified-none	0	212	0	0	
+ore_ont_13053	?	a<100K	65938	model-full	394	0	400	401	0	0.01	8	0.24	73	0.0	3	1	395	8	0	395	0	0	0	0	0	153885	153885	0	0	1	0.08	73	{"certified": 1}	certified-full	153885	394	1	0	
+ore_ont_13064	?	a<100K	60337	model-full	40	0	325	420	216	0.06	13	4.49	72	0.1	3	1	44	21	0	41	0	0	0	0	0	1561	1561	0	0	1	0.6	67	{"certified": 1}	certified-full	1561	40	1	0	
+ore_ont_13066	?	a<100K	70902	model-full	116	12	140	12	0	0.03	11	0.82	72	0.0	2	1	129	10	0	117	0	0	0	0	0	14966	14966	0	0	1	2.69	79	{"certified": 1}	certified-full	14966	116	1	0	
+ore_ont_13077	?	a<100K	66100	dump-failed						0.38	27	0.23	73																										dump-failed
+ore_ont_13097	?	a<100K	94555	model-full	159	6	171	6	0	0.04	12	1.07	72	0.0	2	1	166	4	0	160	0	0	0	0	0	26396	26396	0	0	1	5.99	84	{"certified": 1}	certified-full	26396	159	1	0	
+ore_ont_13100	?	b<1M	104157	model-full	591	0	593	643	0	0.02	11	0.24	74	0.01	3	1	592	0	0	592	0	0	0	0	0	346752	346752	0	0	1	0.09	74	{"certified": 1}	certified-full	346752	591	1	0	
+ore_ont_13112	?	b<1M	256987	model-full	818	809	1629	1630	0	0.25	26	0.35	75	0.01	5	1	1628	0	0	819	0	0	0	0	0	1328581	1328581	0	0	1	0.32	76	{"certified": 1}	certified-full	1328581	818	1	0	
+ore_ont_13113	?	b<1M	412646	model-full	1269	210	2024	2120	0	0.28	22	1.04	76	0.02	6	1	1394	575	0	1270	0	0	0	0	0	1869834	1869834	0	0	1	70.61	146	{"certified": 1}	certified-full	1869834	1269	1	0	
+ore_ont_13132	?	a<100K	51606	model-full	63	98	301	471	105	0.11	16	0.67	73	2.71	3	1	126	50	0	64	0	0	0	0	0	9595	9595	0	0	1	0.64	70	{"certified": 1}	certified-full	9595	63	1	0	
+ore_ont_13153	?	b<1M	680943	dump-failed						0.47	32	300.97	75																										dump-failed
+ore_ont_13204	?	a<100K	26469	model-full	35	0	37	182	0	0.01	9	0.24	72	0.0	2	1	36	0	0	36	0	0	0	0	0	1244	1244	0	0	1	0.07	73	{"certified": 1}	certified-full	1244	35	1	0	
+ore_ont_13219	?	b<1M	494467	km-inconsistent						3.49	555																												km-inconsistent
+ore_ont_13234	?	a<100K	90362	model-full	539	0	541	557	0	0.01	10	0.24	73	0.0	3	1	540	0	0	540	0	0	0	0	0	288101	288101	0	0	1	0.09	74	{"certified": 1}	certified-full	288101	539	1	0	
+ore_ont_1325	?	b<1M	130083	model-full	423	27	452	405	0	0.06	12	0.24	73	0.0	3	1	438	0	0	411	0	0	0	0	0	184648	184648	0	0	1	0.08	73	{"certified": 1}	certified-full	184648	423	1	0	
+ore_ont_13277	?	a<100K	27341	model-full	71	0	100	88	0	0.01	10	0.24	73	0.0	2	1	72	6	0	72	0	0	0	0	0	4815	4815	0	0	1	0.08	74	{"certified": 1}	certified-full	4815	69	1	0	
+ore_ont_13298	?	b<1M	339034	model-full	791	0	1875	1559	0	0.03	12	0.3	74	0.01	4	1	792	2302	0	792	0	0	0	0	0	625238	625238	0	0	1	0.13	76	{"certified": 1}	certified-full	625238	791	1	0	
+ore_ont_13299	?	b<1M	819866	model-full	3906	22	5086	5628	223	1.53	115	1.04	78	11.75	63	1	6803	4829	0	919	2988	0	0	2988	0	15317166	15317166	0	0	1	48.81	399	{"certified": 1}	certified-full	15317166	3906	1	0	
+ore_ont_13301	?	a<100K	78888	model-full	437	0	439	438	0	0.02	13	0.24	73	0.02	4	1	438	0	0	438	0	0	0	0	0	179591	179591	0	0	1	0.1	74	{"certified": 1}	certified-full	179591	437	1	0	
+ore_ont_13306	?	a<100K	20168	model-full	39	0	89	76	24	0.02	10	0.24	73	0.01	2	1	71	47	0	1	39	0	0	39	0	1534	1534	0	0	1	0.11	74	{"certified": 1}	certified-full	1534	39	1	0	
+ore_ont_13383	?	b<1M	165797	model-full	368	103	900	1030	171	0.27	22	8.02	74	0.71	4	2	355	81	0	368	1	0	0	1	0	170824	170824	0	0	2	1.62	76	{"certified": 2}	certified-full	170824	368	1	0	
+ore_ont_13392	?	a<100K	23084	model-full	124	0	126	124	0	0.01	9	0.21	72	0.0	2	1	125	0	0	125	0	0	0	0	0	15380	15380	0	0	1	0.08	73	{"certified": 1}	certified-full	15380	124	1	0	
+ore_ont_13398	?	b<1M	103077	model-full	136	0	812	807	0	0.01	9	0.26	74	0.0	3	1	529	282	0	137	0	0	0	0	0	18354	18354	0	0	1	0.1	74	{"certified": 1}	certified-full	18354	136	1	0	
+ore_ont_13404	?	b<1M	260672	model-full	237	114	462	482	0	0.12	17	0.53	74	0.01	3	1	350	313	0	238	0	0	0	0	0	81105	81105	0	0	1	9.13	94	{"certified": 1}	certified-full	81105	237	1	0	
+ore_ont_13405	?	b<1M	437485	km-inconsistent						0.11	19																												km-inconsistent
+ore_ont_13413	?	b<1M	356548	model-full	761	4	2970	2660	0	0.22	22	0.37	76	0.02	5	1	1915	2139	0	762	0	0	0	0	0	581808	581808	0	0	1	0.23	80	{"certified": 1}	certified-full	581808	761	1	0	
+ore_ont_1342	?	a<100K	58368	model-none	57	12	227	236	91	0.06	13	0.36	73	0.55	4	0	0	0	0	0	0	0	58	0	0	3904	0	3176	669	0	0.0		no model		0		0	0	no base model: closure budget
+ore_ont_13429	?	a<100K	18591	model-full	88	0	90	100	0	0.0	9	0.22	72	0.0	2	1	89	0	0	89	0	0	0	0	0	7347	7347	0	0	1	0.08	73	{"certified": 1}	certified-full	7347	88	1	0	
+ore_ont_13444	?	b<1M	496062	model-full	2095	0	2511	3321	0	0.52	80	0.36	76	0.05	8	1	2096	3312	0	2096	0	0	0	0	0	4367193	4367193	0	0	1	0.23	84	{"certified": 1}	certified-full	4367193	2095	1	0	
+ore_ont_1346	?	b<1M	325613	model-full	837	0	2993	3139	0	0.03	12	0.4	78	0.02	6	1	2917	131	0	838	0	0	0	0	0	697840	697840	0	0	1	0.18	78	{"certified": 1}	certified-full	697840	837	1	0	
+ore_ont_13474	?	b<1M	522246	model-full	859	855	3138	3383	0	0.54	53	0.51	78	0.04	9	1	2930	1636	0	860	0	0	0	0	0	1456534	1456534	0	0	1	23.25	81	{"certified": 1}	certified-full	1456534	859	1	0	
+ore_ont_13483	?	a<100K	33210	model-full	47	4	152	171	89	0.02	11	0.27	73	0.07	2	1	41	0	0	41	1	0	0	1	0	2116	2116	0	0	1	0.16	68	{"certified": 1}	certified-full	2116	47	1	0	
+ore_ont_13503	?	a<100K	16129	model-full	42	11	67	56	0	0.02	10	0.24	73	0.0	2	1	53	0	0	42	0	0	0	0	0	2104	2104	0	0	1	0.1	73	{"certified": 1}	certified-full	2104	42	1	0	
+ore_ont_13524	?	a<100K	46076	model-full	77	2	82	3	0	0.02	10	0.49	73	0.0	2	1	80	1	0	78	0	0	0	0	0	6162	6162	0	0	1	0.85	75	{"certified": 1}	certified-full	6162	77	1	0	
+ore_ont_13530	?	a<100K	40118	model-full	234	0	240	237	0	0.01	9	0.22	72	0.0	2	1	235	6	0	235	0	0	0	0	0	54211	54211	0	0	1	0.08	73	{"certified": 1}	certified-full	54211	234	1	0	
+ore_ont_13545	?	b<1M	429310	model-full	1654	179	18828	4435	4	0.69	41	1.21	78	10.88	70	2	1968	556	0	1608	47	0	0	47	94	3010521	3010521	0	0	2	3.92	82	{"certified": 2}	certified-full	3010521	1654	1	0	
+ore_ont_13578	?	b<1M	335311	model-full	1191	0	2373	1693	0	0.04	12	0.31	74	0.01	4	1	1192	1759	0	1192	0	0	0	0	0	1417817	1417817	0	0	1	0.13	77	{"certified": 1}	certified-full	1417817	1191	1	0	
+ore_ont_13581	?	b<1M	150643	model-full	86	0	215	252	0	0.15	23	4.66	74	0.01	2	1	96	338	0	87	0	0	0	0	0	6972	6972	0	0	1	54.82	82	{"certified": 1}	certified-full	6972	86	1	0	
+ore_ont_13584	?	a<100K	93640	model-full	117	117	524	915	137	1.06	74	3.74	73	3.39	4	1	203	84	0	118	0	0	0	0	0	25858	25858	0	0	1	110.54	77	{"certified": 1}	certified-full	25858	115	1	0	
+ore_ont_13643	?	a<100K	32966	model-full	176	0	178	183	0	0.01	9	0.23	72	0.0	2	1	177	0	0	177	0	0	0	0	0	30456	30456	0	0	1	0.08	73	{"certified": 1}	certified-full	30456	176	1	0	
+ore_ont_13646	?	b<1M	244993	model-full	749	154	1173	1188	0	0.16	18	0.74	74	0.01	4	1	832	279	0	750	0	0	0	0	0	671823	671823	0	0	1	21.17	111	{"certified": 1}	certified-full	671823	749	1	0	
+ore_ont_13657	?	b<1M	154402	model-full	751	0	804	885	0	0.02	10	0.27	73	0.01	4	1	752	82	0	752	0	0	0	0	0	560749	560749	0	0	1	0.13	79	{"certified": 1}	certified-full	560749	751	1	0	
+ore_ont_13680	?	a<100K	50847	model-full	30	47	283	387	146	0.04	12	0.48	73	0.08	3	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.29	70	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_13704	?	a<100K	92030	model-full	16	46	321	317	150	0.08	17	3.24	73	0.17	3	2	99	166	0	17	0	0	0	0	0	950	950	0	0	2	1.04	68	{"certified": 2}	certified-full	950	16	1	0	
+ore_ont_13737	?	a<100K	36683	model-partial	68	58	267	335	16	0.06	12	0.27	73	0.12	3	1	93	100	0	36	24	0	9	24	0	8406	7827	570	0	1	0.35	68	{"certified": 1}	certified-partial	7827	68	1	0	witness: at-most: no fold possible 9
+ore_ont_13740	?	a<100K	79689	model-full	186	0	367	627	0	0.02	12	0.35	73	0.0	2	1	191	11	0	187	0	0	0	0	0	34257	34257	0	0	1	0.2	74	{"certified": 1}	certified-full	34257	186	1	0	
+ore_ont_13755	?	b<1M	990486	model-full	4361	0	8911	4719	0	0.13	20	0.47	79	0.03	9	1	4677	4246	0	4362	0	0	0	0	0	19022283	19022283	0	0	1	0.27	86	{"certified": 1}	certified-full	19022283	4361	1	0	
+ore_ont_13759	?	a<100K	39925	model-full	140	0	156	149	14	0.01	11	0.21	73	0.0	2	1	141	0	0	141	0	0	0	0	0	19458	19458	0	0	1	0.09	73	{"certified": 1}	certified-full	19458	140	1	0	
+ore_ont_13762	?	b<1M	149239	model-full	11	115	3201	633	0	0.06	13	0.73	74	0.0	3	1	128	163	0	12	0	0	0	0	0	1129	1129	0	0	1	0.99	75	{"certified": 1}	certified-full	1129	11	1	0	
+ore_ont_13772	?	b<1M	103480	model-full	159	40	245	46	0	0.04	12	1.09	73	0.0	2	1	200	44	0	160	0	0	0	0	0	31802	31802	0	0	1	7.48	85	{"certified": 1}	certified-full	31802	159	1	0	
+ore_ont_13799	?	a<100K	80814	model-full	45	45	250	365	38	0.11	18	0.45	73	0.03	3	1	85	168	0	46	0	0	0	0	0	3869	3869	0	0	1	0.26	67	{"certified": 1}	certified-full	3869	45	1	0	
+ore_ont_13805	?	b<1M	111691	model-full	74	161	827	1753	6	0.15	21	0.28	74	0.01	3	1	235	651	0	74	1	0	0	1	0	16609	16609	0	0	1	3.09	76	{"certified": 1}	certified-full	16609	74	1	0	
+ore_ont_13833	?	a<100K	92659	model-full	311	0	761	759	0	0.01	9	0.27	73	0.01	3	1	722	351	0	312	0	0	0	0	0	95190	95190	0	0	1	0.1	75	{"certified": 1}	certified-full	95190	311	1	0	
+ore_ont_13837	?	b<1M	900046	model-full	223	1739	5483	4606	0	0.71	66	0.71	78	0.09	11	1	241	153	0	224	0	0	0	0	0	420643	420643	0	0	1	0.8	77	{"certified": 1}	certified-full	420643	223	1	0	
+ore_ont_13859	?	b<1M	462252	model-partial	949	161	2313	4996	294	1.27	57	24.13	74	35.28	18	2	1201	1158	0	904	0	45	1	0	63	1047820	1046826	993	0	2	51.5	100	{"certified": 2}	certified-partial	1046826	949	1	0	time budget in the split witnesses
+ore_ont_13872	?	a<100K	89061	model-full	158	48	353	509	0	0.06	13	2.22	73	0.0	2	1	233	153	0	159	0	0	0	0	0	32259	32259	0	0	1	55.94	84	{"certified": 1}	certified-full	32259	158	1	0	
+ore_ont_13885	?	a<100K	52451	model-full	36	14	277	306	16	0.03	12	0.47	73	0.01	2	1	206	8	0	33	4	0	0	4	0	1771	1771	0	0	1	0.77	76	{"certified": 1}	certified-full	1771	36	1	0	
+ore_ont_13887	?	b<1M	142189	model-full	598	18	618	635	0	0.09	14	0.25	73	0.01	4	1	617	0	0	599	0	0	0	0	0	363045	363045	0	0	1	0.1	75	{"certified": 1}	certified-full	363045	598	1	0	
+ore_ont_13897	?	b<1M	135853	model-full	577	0	2197	2295	0	0.03	11	0.31	74	0.01	4	1	790	566	0	578	0	0	0	0	0	333103	333103	0	0	1	0.16	82	{"certified": 1}	certified-full	333103	577	1	0	
+ore_ont_13898	?	b<1M	181353	model-full	433	103	939	1106	171	0.27	23	8.08	74	0.77	4	2	383	81	0	433	1	0	0	1	0	228759	228759	0	0	2	1.63	81	{"certified": 2}	certified-full	228759	433	1	0	
+ore_ont_13912	?	b<1M	254843	km-inconsistent						0.17	38																												km-inconsistent
+ore_ont_13954	?	b<1M	187630	model-full	137	206	1219	2190	6	0.9	41	0.32	75	3.63	18	2	997	1845	0	95	43	0	0	44	0	45527	45527	0	0	2	11.4	79	{"certified": 2}	certified-full	45527	137	1	0	
+ore_ont_1397	?	b<1M	215516	model-full	136	206	1352	2346	6	0.85	42	0.32	74	3.77	7	2	1021	2084	0	94	43	0	0	43	0	44964	44964	0	0	2	12.78	80	{"certified": 2}	certified-full	44964	136	1	0	
+ore_ont_14031	?	b<1M	449513	model-full	1926	0	2319	2969	0	0.07	19	0.35	77	0.04	8	1	1927	2966	0	1927	0	0	0	0	0	3684744	3684744	0	0	1	0.22	83	{"certified": 1}	certified-full	3684744	1926	1	0	
+ore_ont_14040	?	b<1M	820780	model-full	1624	0	2701	3210	0	0.21	24	0.37	73	0.03	7	1	1766	745	0	1625	0	0	0	0	0	2626089	2626089	0	0	1	0.2	78	{"certified": 1}	certified-full	2626089	1624	1	0	
+ore_ont_1406	?	b<1M	203769	model-full	1192	0	1227	1341	0	0.02	11	0.27	74	0.01	4	1	1193	1210	0	1193	0	0	0	0	0	1417988	1417988	0	0	1	0.11	76	{"certified": 1}	certified-full	1417988	1192	1	0	
+ore_ont_14123	?	b<1M	311517	model-full	1248	0	1835	1995	0	0.04	13	0.31	75	0.03	5	1	1391	1000	0	1249	0	0	0	0	0	1552588	1552588	0	0	1	0.15	79	{"certified": 1}	certified-full	1552588	1248	1	0	
+ore_ont_14128	?	a<100K	29162	model-full	80	0	117	98	0	0.0	9	0.22	72	0.0	2	1	81	6	0	81	0	0	0	0	0	6165	6165	0	0	1	0.08	73	{"certified": 1}	certified-full	6165	78	1	0	
+ore_ont_14153	?	b<1M	397195	model-full	1555	0	3205	4079	0	0.11	18	0.34	77	0.08	7	1	1560	325	0	1556	0	0	0	0	0	2410908	2410908	0	0	1	0.27	88	{"certified": 1}	certified-full	2410908	1555	1	0	
+ore_ont_14175	?	a<100K	84686	model-full	98	190	494	455	0	0.07	13	0.36	72	0.0	3	1	287	23	0	99	0	0	0	0	0	27472	27472	0	0	1	2.75	83	{"certified": 1}	certified-full	27472	96	1	0	
+ore_ont_14185	?	b<1M	109274	model-full	340	482	824	814	0	0.13	18	0.27	73	0.0	4	1	823	0	0	341	0	0	0	0	0	278378	278378	0	0	1	0.17	73	{"certified": 1}	certified-full	278378	340	1	0	
+ore_ont_1420	?	a<100K	16681	model-full	41	0	85	79	0	0.0	8	0.25	69	0.0	2	1	33	10	0	42	0	0	0	0	0	1597	1597	0	0	1	0.09	69	{"certified": 1}	certified-full	1597	39	1	0	
+ore_ont_14272	?	b<1M	161322	model-full	761	0	869	963	8	0.08	13	0.34	73	0.03	4	1	816	43	0	718	44	0	0	44	0	575747	575747	0	0	1	0.28	87	{"certified": 1}	certified-full	575747	761	1	0	
+ore_ont_14273	?	a<100K	45485	model-full	72	10	91	9	0	0.02	10	0.43	73	0.0	2	1	83	7	0	73	0	0	0	0	0	5978	5978	0	0	1	0.88	75	{"certified": 1}	certified-full	5978	72	1	0	
+ore_ont_14285	?	b<1M	539888	km-inconsistent						0.09	21																												km-inconsistent
+ore_ont_1430	?	a<100K	82601	model-full	46	93	547	646	328	0.32	38	23.62	74	82.33	6	1	140	59	0	47	0	0	0	0	0	6278	6278	0	0	1	20.51	106	{"certified": 1}	certified-full	6278	46	1	0	
+ore_ont_14321	?	b<1M	159568	model-full	179	3	666	730	403	0.12	15	4.58	74	0.56	4	1	180	7	0	180	0	0	0	0	0	32379	32379	0	0	1	20.26	87	{"certified": 1}	certified-full	32379	179	1	0	
+ore_ont_14325	?	a<100K	72878	model-full	136	0	359	352	0	0.01	9	0.23	72	0.0	2	1	137	229	0	137	0	0	0	0	0	18303	18303	0	0	1	0.08	74	{"certified": 1}	certified-full	18303	136	1	0	
+ore_ont_14327	?	a<100K	56355	model-full	364	0	366	371	0	0.01	9	0.24	72	0.0	2	1	182	0	0	365	0	0	0	0	0	132474	132474	0	0	1	0.08	72	{"certified": 1}	certified-full	132474	364	1	0	
+ore_ont_14328	?	a<100K	30729	model-full	77	0	153	126	0	0.01	9	0.28	73	0.0	2	1	84	86	0	78	0	0	0	0	0	5916	5916	0	0	1	0.15	73	{"certified": 1}	certified-full	5916	77	1	0	
+ore_ont_14334	?	b<1M	203417	model-full	138	206	1354	2347	6	1.0	43	0.33	75	5.84	6	2	1073	2468	0	61	78	0	0	78	0	46109	46109	0	0	2	18.03	81	{"certified": 2}	certified-full	46109	138	1	0	
+ore_ont_14341	?	a<100K	87012	model-full	177	42	353	361	0	0.05	12	0.72	73	0.0	2	1	234	71	0	178	0	0	0	0	0	37561	37561	0	0	1	3.56	78	{"certified": 1}	certified-full	37561	173	1	0	
+ore_ont_14348	?	a<100K	75927	model-full	197	49	361	422	0	0.06	12	0.32	72	0.0	3	1	292	273	0	198	0	0	0	0	0	47726	47726	0	0	1	2.17	77	{"certified": 1}	certified-full	47726	197	1	0	
+ore_ont_14353	?	b<1M	429137	model-full	122	456	2355	1777	0	0.22	22	0.96	76	0.06	4	1	124	145	0	123	0	0	0	0	0	70639	70639	0	0	1	3.39	79	{"certified": 1}	certified-full	70639	122	1	0	
+ore_ont_14370	?	b<1M	391199	model-full	320	185	1937	2089	0	0.22	23	0.47	75	0.04	5	1	468	1784	0	321	0	0	0	0	0	154865	154865	0	0	1	63.81	87	{"certified": 1}	certified-full	154865	310	1	0	
+ore_ont_14379	?	a<100K	67963	model-partial	79	45	697	996	252	0.2	20	32.65	73	4.2	11	1	103	79	0	77	1	1	1	1	0	9730	9652	77	0	1	1.74	73	{"certified": 1}	certified-partial	9652	79	1	0	witness: closure budget 1
+ore_ont_14381	?	b<1M	145450	model-full	838	0	843	942	0	0.02	10	0.26	74	0.01	4	1	839	3	0	839	0	0	0	0	0	698962	698962	0	0	1	0.1	75	{"certified": 1}	certified-full	698962	838	1	0	
+ore_ont_14388	?	b<1M	120649	model-full	215	138	483	555	0	0.11	17	16.66	75	0.04	4	1	292	187	0	216	0	0	0	0	0	71973	71973	0	0	1	180.0	75	{"timeout": 1}	certified-none	0	207	0	0	
+ore_ont_14396	?	b<1M	838648	model-full	3205	0	5160	4085	0	0.08	17	0.43	75	0.03	8	1	3206	6083	0	3206	0	0	0	0	0	10269175	10269175	0	0	1	0.22	80	{"certified": 1}	certified-full	10269175	3205	1	0	
+ore_ont_14412	?	a<100K	42861	model-full	36	0	472	939	6	0.28	11	1.33	74	0.0	2	1	25	0	0	25	12	0	0	12	0	1232	1232	0	0	1	1.76	74	{"certified": 1}	certified-full	1232	36	1	0	
+ore_ont_1445	?	b<1M	298250	model-full	86	0	242	278	26	0.17	25	4.55	74	0.06	3	1	184	663	0	0	87	0	0	87	0	6972	6972	0	0	1	57.68	91	{"certified": 1}	certified-full	6972	86	1	0	
+ore_ont_14486	?	a<100K	35248	model-full	117	0	119	130	0	0.0	9	0.22	72	0.0	2	1	118	0	0	118	0	0	0	0	0	12683	12683	0	0	1	0.08	72	{"certified": 1}	certified-full	12683	117	1	0	
+ore_ont_14517	?	a<100K	67833	model-full	107	18	145	20	0	0.03	11	0.68	72	0.0	2	1	126	18	0	108	0	0	0	0	0	13484	13484	0	0	1	2.49	78	{"certified": 1}	certified-full	13484	107	1	0	
+ore_ont_14518	?	a<100K	73802	model-full	130	0	353	348	0	0.01	9	0.22	72	0.0	2	1	131	229	0	131	0	0	0	0	0	16705	16705	0	0	1	0.08	72	{"certified": 1}	certified-full	16705	130	1	0	
+ore_ont_14588	?	a<100K	41244	model-full	25	47	285	297	190	0.2	19	7.17	72	0.28	3	1	44	16	0	26	0	0	0	0	0	1607	1607	0	0	1	0.56	71	{"certified": 1}	certified-full	1607	25	1	0	
+ore_ont_1461	?	b<1M	154251	model-full	174	23	678	821	330	0.25	23	4.4	74	3.58	4	2	189	117	0	175	0	0	0	0	17	34007	34007	0	0	2	1.97	74	{"certified": 2}	certified-full	34007	174	1	0	
+ore_ont_14667	?	b<1M	593958	model-full	1046	4	5072	5001	0	0.45	35	0.55	75	0.03	8	1	3780	4280	0	1047	0	0	0	0	0	1095791	1095791	0	0	1	0.4	81	{"certified": 1}	certified-full	1095791	1046	1	0	
+ore_ont_14684	?	b<1M	298300	model-full	86	0	242	278	26	0.18	25	4.7	74	0.06	3	1	184	663	0	0	87	0	0	87	0	6972	6972	0	0	1	57.22	90	{"certified": 1}	certified-full	6972	86	1	0	
+ore_ont_1473	?	b<1M	248987	model-full	1415	0	1417	1678	0	0.05	14	0.29	74	0.02	5	1	1416	0	0	1416	0	0	0	0	0	1991987	1991987	0	0	1	0.13	76	{"certified": 1}	certified-full	1991987	1415	1	0	
+ore_ont_14746	?	a<100K	16263	model-full	16	0	86	87	69	0.01	10	0.26	68	0.0	2	1	16	0	0	17	0	0	0	0	0	259	259	0	0	1	0.12	69	{"certified": 1}	certified-full	259	16	1	0	
+ore_ont_1475	?	b<1M	747381	model-full	2785	0	5143	3897	0	0.23	26	0.43	74	0.03	7	1	2786	4165	0	2786	0	0	0	0	0	7755506	7755506	0	0	1	0.23	81	{"certified": 1}	certified-full	7755506	2785	1	0	
+ore_ont_1478	?	b<1M	236669	model-none	120	12	928	1364	4	0.21	20	11.93	75	0.28	3	0	0	0	0	0	0	0	121	0	0	15080	0	13644	1314	0	0.0		no model		0		0	0	no base model: closure budget
+ore_ont_14800	?	a<100K	82446	model-full	82	56	590	597	327	0.26	22	15.06	73	0.91	4	1	83	96	0	83	0	0	0	0	0	11118	11118	0	0	1	1.59	72	{"certified": 1}	certified-full	11118	82	1	0	
+ore_ont_1481	?	b<1M	450097	model-full	305	1063	2643	267928	0	5.93	413	2.57	214	3.09	105	1	981	934	0	306	0	0	0	0	0	368236	368236	0	0	1	129.82	261	{"certified": 1}	certified-full	368236	270	1	0	
+ore_ont_14816	?	a<100K	65456	model-full	111	6	124	7	0	0.03	10	0.72	73	0.0	2	1	118	5	0	112	0	0	0	0	0	13100	13100	0	0	1	2.31	77	{"certified": 1}	certified-full	13100	111	1	0	
+ore_ont_14826	?	a<100K	47333	model-full	91	0	181	158	0	0.01	9	0.29	73	0.0	2	1	73	2	0	92	0	0	0	0	0	6599	6599	0	0	1	0.18	74	{"certified": 1}	certified-full	6599	72	1	0	
+ore_ont_14831	?	a<100K	46284	model-full	7	2	116	111	0	0.02	10	0.66	72	0.0	2	1	10	1	0	8	0	0	0	0	0	68	68	0	0	1	1.97	72	{"certified": 1}	certified-full	68	7	1	0	
+ore_ont_14840	?	b<1M	350507	model-full	1555	0	1782	2053	0	0.05	13	0.31	75	0.02	6	1	1556	323	0	1556	0	0	0	0	0	2410908	2410908	0	0	1	0.15	80	{"certified": 1}	certified-full	2410908	1555	1	0	
+ore_ont_14848	?	a<100K	50865	model-full	30	47	283	387	146	0.04	12	0.5	72	0.04	2	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.28	72	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_14883	?	b<1M	129924	model-full	124	23	536	747	0	0.12	16	0.43	73	0.07	3	1	218	532	0	123	2	0	0	2	0	17996	17996	0	0	1	3.04	72	{"certified": 1}	certified-full	17996	124	1	0	
+ore_ont_14901	?	b<1M	145222	model-full	838	0	843	942	0	0.02	10	0.26	74	0.01	4	1	839	3	0	839	0	0	0	0	0	698962	698962	0	0	1	0.1	75	{"certified": 1}	certified-full	698962	838	1	0	
+ore_ont_14912	?	b<1M	666208	model-full	1155	7	6627	6671	0	0.51	56	0.71	80	0.03	11	1	5999	1209	0	1156	0	0	0	0	0	1338755	1338755	0	0	1	2.85	131	{"certified": 1}	certified-full	1338755	1155	1	0	
+ore_ont_14924	?	b<1M	114739	model-full	143	189	661	782	0	0.14	15	0.26	74	0.0	3	1	334	665	0	144	0	0	0	0	0	46427	46427	0	0	1	3.34	74	{"certified": 1}	certified-full	46427	143	1	0	
+ore_ont_14926	?	a<100K	44988	model-full	240	0	242	241	0	0.01	9	0.22	73	0.0	2	1	241	0	0	241	0	0	0	0	0	56603	56603	0	0	1	0.08	73	{"certified": 1}	certified-full	56603	240	1	0	
+ore_ont_14931	?	a<100K	28503	model-full	103	17	196	221	32	0.04	11	0.24	72	0.02	2	1	114	141	0	104	0	0	0	0	0	12160	12160	0	0	1	0.16	70	{"certified": 1}	certified-full	12160	103	1	0	
+ore_ont_14936	?	b<1M	137173	model-full	281	0	889	1356	0	0.18	16	0.42	73	1.11	4	1	370	1066	0	260	22	0	0	22	0	78056	78056	0	0	1	0.55	73	{"certified": 1}	certified-full	78056	281	1	0	
+ore_ont_1494	?	b<1M	111799	model-full	644	0	648	660	0	0.02	9	0.25	73	0.01	3	1	645	4	0	645	0	0	0	0	0	412456	412456	0	0	1	0.09	74	{"certified": 1}	certified-full	412456	644	1	0	
+ore_ont_14981	?	b<1M	202538	model-full	47	651	1391	1488	116	0.24	29	1.32	74	4.25	7	1	681	381	0	48	0	0	0	0	0	29488	29488	0	0	1	16.58	99	{"certified": 1}	certified-full	29488	47	1	0	
+ore_ont_15010	?	b<1M	101688	model-full	178	0	999	894	0	0.05	12	0.27	73	0.03	4	1	370	861	0	175	4	0	0	4	0	31580	31580	0	0	1	0.11	75	{"certified": 1}	certified-full	31580	178	1	0	
+ore_ont_15030	?	b<1M	341802	model-partial	145	240	1560	2101	978	1.47	104	20.81	78	44.31	6	1	27	0	0	0	0	0	146	0	0	55667	34561	20960	0	1	8.46	73	{"certified": 1}	certified-partial	34707	145	1	0	time budget after 0 of 146 witnesses
+ore_ont_15058	?	a<100K	96097	model-full	26	48	395	658	233	0.06	14	0.62	73	0.13	4	1	54	7	0	27	0	0	0	0	0	1831	1831	0	0	1	0.98	72	{"certified": 1}	certified-full	1831	26	1	0	
+ore_ont_15068	?	a<100K	79093	model-full	213	166	381	379	0	0.06	13	0.24	73	0.0	3	1	380	0	0	214	0	0	0	0	0	79183	79183	0	0	1	0.1	74	{"certified": 1}	certified-full	79183	213	1	0	
+ore_ont_1509	?	b<1M	361678	model-partial	255	30	1882	2855	16	1.28	37	22.8	77	6.0	7	1	364	1790	0	247	8	0	1	8	0	70529	70281	247	0	1	180.0	84	{"timeout": 1}	certified-none	0	255	0	0	witness: closure budget 1
+ore_ont_15103	?	a<100K	91399	model-none	33	56	731	729	475	0.44	41	100.26	75	39.7	4	0	0	0	0	0	0	0	34	0	0	2877	0	1074	1768	0	0.0		no model		0		0	0	no base model: closure budget
+ore_ont_15108	?	b<1M	914741	model-full	1700	0	4103	4200	0	0.31	32	0.4	78	0.02	6	1	2256	2686	0	1701	0	0	0	0	0	2889109	2889109	0	0	1	0.2	82	{"certified": 1}	certified-full	2889109	1700	1	0	
+ore_ont_15145	?	a<100K	43564	model-full	88	0	90	100	0	0.01	9	0.21	72	0.0	2	1	89	0	0	89	0	0	0	0	0	7347	7347	0	0	1	0.08	72	{"certified": 1}	certified-full	7347	88	1	0	
+ore_ont_15160	?	a<100K	44454	model-full	73	0	75	2	0	0.02	10	0.46	73	0.0	2	1	74	0	0	74	0	0	0	0	0	5404	5404	0	0	1	0.74	75	{"certified": 1}	certified-full	5404	73	1	0	
+ore_ont_15167	?	a<100K	19335	model-full	51	0	149	302	36	0.05	12	0.32	73	0.0	2	1	36	6	0	35	17	0	0	18	0	2439	2439	0	0	1	0.37	73	{"certified": 1}	certified-full	2439	51	1	0	
+ore_ont_15210	?	a<100K	33037	model-full	30	7	517	444	22	0.03	12	2.1	73	0.01	2	1	38	5	0	31	0	0	0	0	0	1090	1090	0	0	1	3.44	73	{"certified": 1}	certified-full	1090	30	1	0	
+ore_ont_15217	?	b<1M	115527	model-full	219	0	221	238	0	0.01	10	0.24	73	0.0	2	1	220	0	0	220	0	0	0	0	0	47206	47206	0	0	1	0.09	73	{"certified": 1}	certified-full	47206	219	1	0	
+ore_ont_15222	?	b<1M	765264	model-full	4317	0	4412	4411	0	0.15	27	0.41	75	0.07	14	1	4318	322	0	4318	0	0	0	0	0	18596226	18596226	0	0	1	0.24	89	{"certified": 1}	certified-full	18596226	4317	1	0	
+ore_ont_15229	?	a<100K	34912	model-full	93	0	176	308	10	0.02	10	0.21	73	0.0	2	1	154	35	0	35	59	0	0	59	0	8542	8542	0	0	1	0.08	72	{"certified": 1}	certified-full	8542	93	1	0	
+ore_ont_15231	?	b<1M	110230	model-full	142	0	919	914	0	0.01	9	0.26	74	0.0	3	1	680	255	0	143	0	0	0	0	0	19950	19950	0	0	1	0.1	74	{"certified": 1}	certified-full	19950	142	1	0	
+ore_ont_1524	?	a<100K	43428	model-full	105	100	421	422	208	0.18	23	4.02	73	0.36	4	1	106	1	0	106	0	0	0	0	0	20672	20672	0	0	1	0.57	71	{"certified": 1}	certified-full	20672	105	1	0	
+ore_ont_1526	?	a<100K	16778	model-full	40	8	62	43	2	0.02	10	0.24	69	0.0	2	1	48	0	0	40	0	0	0	0	0	1881	1881	0	0	1	0.1	69	{"certified": 1}	certified-full	1881	40	1	0	
+ore_ont_15273	?	b<1M	379884	model-full	820	0	1411	3140	248	0.28	30	9.54	77	1.54	6	1	850	579	0	809	12	0	0	12	0	668401	668401	0	0	1	1.54	88	{"certified": 1}	certified-full	668401	820	1	0	
+ore_ont_15291	?	a<100K	94601	model-full	223	66	520	626	38	0.1	16	1.05	74	0.08	3	1	306	147	0	223	1	0	0	1	0	64150	64150	0	0	1	53.06	81	{"certified": 1}	certified-full	64150	223	1	0	
+ore_ont_15292	?	b<1M	464843	model-full	1864	0	1974	3458	0	0.05	15	0.36	73	0.02	6	1	1865	145	0	1865	0	0	0	0	0	3463319	3463319	0	0	1	0.17	76	{"certified": 1}	certified-full	3463319	1864	1	0	
+ore_ont_15297	?	b<1M	684718	dump-failed						0.48	32	300.9	74																										dump-failed
+ore_ont_15301	?	b<1M	758044	model-full	2236	8	7120	7929	0	0.5	45	0.69	82	0.08	12	1	5761	304	0	2237	0	0	0	0	0	5011384	5011384	0	0	1	0.57	110	{"certified": 1}	certified-full	5011384	2236	1	0	
+ore_ont_15318	?	a<100K	24636	model-full	59	0	117	152	116	0.02	10	0.24	72	0.01	2	1	22	0	0	60	0	0	0	0	0	3052	3052	0	0	1	0.1	73	{"certified": 1}	certified-full	3052	59	1	0	
+ore_ont_15331	?	a<100K	16678	model-full	19	0	89	94	69	0.01	9	0.28	69	0.0	2	1	15	0	0	20	0	0	0	0	0	348	348	0	0	1	0.12	69	{"certified": 1}	certified-full	348	19	1	0	
+ore_ont_1537	?	b<1M	139479	model-full	642	194	887	881	0	0.11	15	0.28	73	0.01	4	1	844	120	0	643	0	0	0	0	0	533972	533972	0	0	1	0.2	75	{"certified": 1}	certified-full	533972	642	1	0	
+ore_ont_15397	?	b<1M	213781	model-full	607	0	614	1395	0	0.02	11	0.27	74	0.01	4	1	609	3	0	608	0	0	0	0	0	363482	363482	0	0	1	0.1	75	{"certified": 1}	certified-full	363482	607	1	0	
+ore_ont_15399	?	a<100K	22671	model-full	58	0	104	99	0	0.01	9	0.25	72	0.0	2	1	59	0	0	59	0	0	0	0	0	3334	3334	0	0	1	0.09	74	{"certified": 1}	certified-full	3334	58	1	0	
+ore_ont_15407	?	b<1M	226542	model-full	891	0	1709	1996	0	0.03	11	0.28	75	0.02	4	1	996	839	0	892	0	0	0	0	0	791030	791030	0	0	1	0.13	77	{"certified": 1}	certified-full	791030	891	1	0	
+ore_ont_15413	?	b<1M	194061	model-full	462	103	1002	1136	195	0.31	23	11.49	74	0.88	4	2	436	86	0	462	1	0	0	1	0	257730	257730	0	0	2	4.07	83	{"certified": 2}	certified-full	257730	462	1	0	
+ore_ont_15421	?	a<100K	44765	model-full	74	72	311	300	74	0.09	15	0.44	72	0.52	3	1	147	90	0	75	0	0	0	0	0	10520	10520	0	0	1	0.43	74	{"certified": 1}	certified-full	10520	74	1	0	
+ore_ont_15461	?	a<100K	48959	model-full	39	1	267	265	184	0.04	12	0.33	72	0.11	3	1	40	14	0	40	0	0	0	0	0	1529	1529	0	0	1	0.29	71	{"certified": 1}	certified-full	1529	39	1	0	
+ore_ont_155	?	b<1M	168699	model-full	377	82	734	717	0	0.09	14	0.49	74	0.01	3	1	476	145	0	378	0	0	0	0	0	171291	171291	0	0	1	4.14	95	{"certified": 1}	certified-full	171291	377	1	0	
+ore_ont_15514	?	a<100K	93097	model-full	194	50	450	656	0	0.09	15	0.26	73	0.17	5	1	239	395	0	195	0	0	0	0	0	46678	46678	0	0	1	0.71	70	{"certified": 1}	certified-full	46678	194	1	0	
+ore_ont_15526	?	b<1M	420753	model-partial	1428	0	16567	3339	34	4.98	97	22.48	77	220.81	257	1	1425	2724	0	1094	87	3	245	87	0	2031217	1683254	347718	0	1	13.92	106	{"rejected": 1}	certified-none	0	1428	0	0	witness: closure budget 152, no type for a successor 13, seed type clash 80
+ore_ont_15575	?	b<1M	198332	model-full	479	103	1077	1240	195	0.3	23	11.21	74	0.92	4	2	456	98	0	479	1	0	0	1	0	275678	275678	0	0	2	2.44	81	{"certified": 2}	certified-full	275678	479	1	0	
+ore_ont_15576	?	a<100K	44990	model-full	269	0	271	268	0	0.01	9	0.23	72	0.0	2	1	270	0	0	270	0	0	0	0	0	71784	71784	0	0	1	0.08	73	{"certified": 1}	certified-full	71784	269	1	0	
+ore_ont_15583	?	b<1M	518381	model-full	1847	0	8047	7798	0	0.1	20	0.42	80	0.21	11	1	2333	2107	0	1848	0	0	0	0	0	3411727	3411727	0	0	1	0.43	102	{"certified": 1}	certified-full	3411727	1847	1	0	
+ore_ont_15596	?	b<1M	108119	model-full	223	82	599	718	58	0.13	17	1.24	74	0.34	4	1	323	221	0	223	1	0	0	1	0	67619	67619	0	0	1	98.37	84	{"certified": 1}	certified-full	67619	223	1	0	
+ore_ont_15652	?	b<1M	144668	model-full	62	197	527	829	212	0.11	21	0.53	74	0.22	4	1	63	4	0	63	0	0	0	0	0	15684	15684	0	0	1	0.29	68	{"certified": 1}	certified-full	15684	62	1	0	
+ore_ont_15667	?	a<100K	30038	model-full	24	24	175	208	116	0.04	13	0.91	73	0.18	3	1	46	6	0	25	0	0	0	0	0	1112	1112	0	0	1	0.26	68	{"certified": 1}	certified-full	1112	24	1	0	
+ore_ont_15672	?	a<100K	70141	model-partial	82	16	382	557	0	0.07	12	0.3	73	0.49	3	1	119	134	0	75	2	0	6	2	0	7955	7479	470	0	1	0.66	68	{"certified": 1}	certified-partial	7479	82	1	0	witness: at-most: no fold possible 5, closure budget 1
+ore_ont_15682	?	b<1M	156703	model-none	177	138	1000	1146	220	1.03	37	46.34	74	42.93	4	0	0	0	0	0	0	0	178	0	0	54739	0	30804	23756	0	0.0		no model		0		0	0	no base model: closure budget
+ore_ont_15685	?	b<1M	214762	model-full	759	18	779	796	0	0.12	14	0.26	74	0.01	4	1	778	0	0	760	0	0	0	0	0	584604	584604	0	0	1	0.12	76	{"certified": 1}	certified-full	584604	759	1	0	
+ore_ont_15737	?	a<100K	69284	model-full	111	4	119	4	0	0.03	11	0.71	73	0.0	2	1	116	2	0	112	0	0	0	0	0	12878	12878	0	0	1	2.18	78	{"certified": 1}	certified-full	12878	111	1	0	
+ore_ont_15741	?	b<1M	518358	model-full	1187	0	4755	4074	0	0.05	14	0.5	75	0.02	7	1	3573	1757	0	1188	0	0	0	0	0	1408306	1408306	0	0	1	0.22	83	{"certified": 1}	certified-full	1408306	1187	1	0	
+ore_ont_15753	?	b<1M	178957	dump-failed						0.27	31	0.08	72																										dump-failed
+ore_ont_15800	?	a<100K	31492	model-full	192	0	194	195	0	0.01	9	0.24	73	0.0	2	1	193	0	0	193	0	0	0	0	0	35845	35845	0	0	1	0.08	73	{"certified": 1}	certified-full	35845	192	1	0	
+ore_ont_15860	?	b<1M	544026	model-full	1699	260	1964	4690	0	0.44	33	0.38	75	0.04	10	1	1927	3	0	1700	0	0	0	0	0	3305201	3305201	0	0	1	0.25	77	{"certified": 1}	certified-full	3305201	1699	1	0	
+ore_ont_15882	?	a<100K	72039	model-full	334	0	336	335	0	0.01	10	0.24	72	0.0	3	1	335	0	0	335	0	0	0	0	0	110532	110532	0	0	1	0.08	73	{"certified": 1}	certified-full	110532	334	1	0	
+ore_ont_15933	?	b<1M	186378	model-full	814	0	3020	3284	0	0.04	12	0.31	76	0.02	4	1	1023	759	0	815	0	0	0	0	0	662662	662662	0	0	1	0.15	85	{"certified": 1}	certified-full	662662	814	1	0	
+ore_ont_15950	?	b<1M	394841	model-full	1880	0	1996	2112	0	0.04	14	0.31	76	0.02	6	1	1881	369	0	1881	0	0	0	0	0	3524960	3524960	0	0	1	0.14	78	{"certified": 1}	certified-full	3524960	1880	1	0	
+ore_ont_15968	?	b<1M	943232	model-full	2167	0	5297	5016	0	0.1	21	0.42	78	0.04	7	1	2546	1663	0	2168	0	0	0	0	0	4695098	4695098	0	0	1	0.23	85	{"certified": 1}	certified-full	4695098	2167	1	0	
+ore_ont_15971	?	a<100K	13757	model-full	17	10	39	35	0	0.02	10	0.25	72	0.0	2	1	28	4	0	18	0	0	0	0	0	447	447	0	0	1	0.11	72	{"certified": 1}	certified-full	447	17	1	0	
+ore_ont_15985	?	b<1M	216653	model-full	1188	0	1229	1376	0	0.03	11	0.28	75	0.01	4	1	1189	50	0	1189	0	0	0	0	0	1406040	1406040	0	0	1	0.11	76	{"certified": 1}	certified-full	1406040	1188	1	0	
+ore_ont_15993	?	a<100K	41428	model-full	25	0	289	347	24	0.07	13	0.71	74	0.06	2	1	117	379	0	11	15	0	0	15	0	608	608	0	0	1	1.38	75	{"certified": 1}	certified-full	608	25	1	0	
+ore_ont_16010	?	a<100K	61533	model-full	214	0	216	219	0	0.01	9	0.23	73	0.0	2	1	215	0	0	215	0	0	0	0	0	45110	45110	0	0	1	0.07	73	{"certified": 1}	certified-full	45110	214	1	0	
+ore_ont_1603	?	b<1M	443258	model-full	349	0	1253	1451	0	0.55	47	8.02	75	0.18	4	1	455	937	0	346	4	0	0	4	0	119387	119387	0	0	1	89.52	106	{"certified": 1}	certified-full	119387	349	1	0	
+ore_ont_16033	?	a<100K	80716	model-full	156	269	427	376	0	0.07	14	0.26	73	0.0	3	1	426	0	0	157	0	0	0	0	0	66021	66021	0	0	1	0.12	73	{"certified": 1}	certified-full	66021	156	1	0	
+ore_ont_16039	?	b<1M	757499	model-full	4301	0	4396	4353	0	0.12	19	0.4	75	0.04	11	1	4302	322	0	4302	0	0	0	0	0	18479767	18479767	0	0	1	0.24	85	{"certified": 1}	certified-full	18479767	4301	1	0	
+ore_ont_16054	?	b<1M	121243	model-full	274	0	1298	1440	0	0.01	10	0.3	74	0.01	4	1	1022	71	0	275	0	0	0	0	0	74114	74114	0	0	1	0.11	76	{"certified": 1}	certified-full	74114	274	1	0	
+ore_ont_16056	?	b<1M	435403	model-full	309	213	1952	2830	0	19.31	1136	0.33	76	0.36	6	1	497	1213	0	310	0	0	0	0	0	157193	157193	0	0	1	2.05	73	{"certified": 1}	certified-full	157193	303	1	0	
+ore_ont_16076	?	a<100K	30312	model-full	189	0	192	188	0	0.01	8	0.23	73	0.0	2	1	190	1	0	190	0	0	0	0	0	35120	35120	0	0	1	0.08	72	{"certified": 1}	certified-full	35120	189	1	0	
+ore_ont_16115	?	b<1M	166262	model-full	677	157	836	833	0	0.11	15	0.26	73	0.01	4	1	834	0	0	678	0	0	0	0	0	563260	563260	0	0	1	0.11	74	{"certified": 1}	certified-full	563260	677	1	0	
+ore_ont_16157	?	b<1M	237456	model-full	1134	0	1313	1312	0	0.03	11	0.28	74	0.01	4	1	1135	248	0	1135	0	0	0	0	0	1280788	1280788	0	0	1	0.13	78	{"certified": 1}	certified-full	1280788	1134	1	0	
+ore_ont_16166	?	b<1M	106639	model-full	501	0	535	531	0	0.02	10	0.36	73	0.0	3	1	502	0	0	502	0	0	0	0	0	249418	249418	0	0	1	0.41	84	{"certified": 1}	certified-full	249418	501	1	0	
+ore_ont_16167	?	a<100K	31789	model-full	39	0	141	130	86	0.02	10	0.28	72	0.02	2	1	73	0	0	4	36	0	0	36	0	1523	1523	0	0	1	0.12	73	{"certified": 1}	certified-full	1523	39	1	0	
+ore_ont_1618	?	a<100K	34364	model-full	35	0	176	198	118	0.03	13	0.3	73	4.61	2	1	10	8	0	10	0	0	0	0	0	347	347	0	0	1	0.28	67	{"certified": 1}	certified-full	347	35	1	0	
+ore_ont_16188	?	b<1M	102260	model-full	166	41	243	36	0	0.05	12	1.18	73	0.0	2	1	208	34	0	167	0	0	0	0	0	34530	34530	0	0	1	8.55	87	{"certified": 1}	certified-full	34530	166	1	0	
+ore_ont_16191	?	b<1M	162775	model-full	361	103	867	981	171	0.25	22	7.91	74	0.62	4	2	349	81	0	361	1	0	0	1	0	165112	165112	0	0	2	1.63	74	{"certified": 2}	certified-full	165112	361	1	0	
+ore_ont_16197	?	a<100K	57518	model-full	64	58	201	213	36	0.04	11	0.27	72	0.02	3	2	105	67	0	65	0	0	0	0	2	7530	7530	0	0	2	0.41	69	{"certified": 2}	certified-full	7530	64	1	0	
+ore_ont_16255	?	b<1M	259974	model-full	729	159	1252	1264	0	0.17	18	0.84	74	0.02	4	1	818	367	0	730	0	0	0	0	0	642917	642917	0	0	1	26.85	110	{"certified": 1}	certified-full	642917	729	1	0	
+ore_ont_16267	?	a<100K	55099	model-full	119	163	470	423	0	0.07	13	0.37	73	0.0	3	1	283	106	0	120	0	0	0	0	0	32519	32519	0	0	1	3.98	79	{"certified": 1}	certified-full	32519	119	1	0	
+ore_ont_16268	?	a<100K	74911	model-full	411	0	1215	1199	0	0.02	9	0.24	73	0.0	3	1	578	202	0	412	0	0	0	0	0	169135	169135	0	0	1	0.09	74	{"certified": 1}	certified-full	169135	411	1	0	
+ore_ont_16274	?	a<100K	53740	model-full	98	115	459	458	238	0.21	28	6.18	74	0.61	3	1	99	1	0	99	0	0	0	0	0	20147	20147	0	0	1	0.85	69	{"certified": 1}	certified-full	20147	98	1	0	
+ore_ont_16289	?	a<100K	50907	model-full	30	47	283	387	146	0.04	12	0.5	73	0.06	2	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.38	73	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_16312	?	b<1M	203646	model-full	1192	0	1227	1341	0	0.02	10	0.27	74	0.01	4	1	1193	1210	0	1193	0	0	0	0	0	1417988	1417988	0	0	1	0.12	77	{"certified": 1}	certified-full	1417988	1192	1	0	
+ore_ont_16321	?	a<100K	98585	km-inconsistent						0.18	27																												km-inconsistent
+ore_ont_16351	?	a<100K	24445	model-full	70	0	98	100	0	0.0	8	0.22	73	0.0	2	1	70	0	0	71	0	0	0	0	0	4743	4743	0	0	1	0.09	73	{"certified": 1}	certified-full	4743	69	1	0	
+ore_ont_16359	?	a<100K	50808	model-full	30	47	283	387	146	0.04	12	0.48	73	0.06	2	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.28	68	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_16371	?	b<1M	229621	model-full	804	83	1464	1676	424	2.84	71	49.89	75	19.74	8	2	987	83	0	753	52	0	0	52	0	708554	708554	0	0	2	12.75	92	{"certified": 2}	certified-full	708554	804	1	0	
+ore_ont_16372	?	b<1M	283119	km-inconsistent						0.18	23																												km-inconsistent
+ore_ont_16425	?	b<1M	208119	model-full	368	245	943	938	0	0.11	17	0.34	75	0.01	4	1	942	0	0	369	0	0	0	0	0	224376	224376	0	0	1	0.14	74	{"certified": 1}	certified-full	224376	368	1	0	
+ore_ont_1646	?	b<1M	305062	model-partial	99	0	824	1241	0	0.15	16	11.74	75	1.02	5	1	50	73	0	41	2	2	55	2	0	9317	4305	4957	0	1	130.8	72	{"certified": 1}	certified-partial	4305	99	1	0	witness: no type for a successor 1, seed type clash 54
+ore_ont_16461	?	a<100K	31090	model-full	91	0	155	769	0	0.03	11	0.25	73	0.0	2	1	115	44	0	92	0	0	0	0	0	8218	8218	0	0	1	0.1	73	{"certified": 1}	certified-full	8218	91	1	0	
+ore_ont_16481	?	b<1M	127666	model-full	76	161	969	1931	6	0.74	37	0.29	74	3.22	13	2	379	1322	0	46	31	0	0	32	0	17059	17059	0	0	2	7.83	70	{"certified": 2}	certified-full	17059	76	1	0	
+ore_ont_165	?	a<100K	97677	model-full	176	0	405	485	0	0.02	11	0.36	72	0.0	2	1	177	122	0	177	0	0	0	0	0	30983	30983	0	0	1	0.2	75	{"certified": 1}	certified-full	30983	176	1	0	
+ore_ont_16501	?	a<100K	96842	model-full	193	0	551	550	0	0.01	9	0.24	72	0.0	2	1	194	355	0	194	0	0	0	0	0	37252	37252	0	0	1	0.08	73	{"certified": 1}	certified-full	37252	193	1	0	
+ore_ont_16535	?	a<100K	83521	model-partial	92	25	444	632	0	0.15	17	0.29	73	0.3	4	1	141	270	0	85	2	0	6	2	0	10585	10049	530	0	1	1.03	68	{"certified": 1}	certified-partial	10049	92	1	0	witness: at-most: no fold possible 1, closure budget 5
+ore_ont_16594	?	a<100K	46363	model-full	167	0	257	249	0	0.01	9	0.24	73	0.0	2	1	168	257	0	168	0	0	0	0	0	27716	27716	0	0	1	0.08	72	{"certified": 1}	certified-full	27716	167	1	0	
+ore_ont_1662	?	a<100K	45211	model-full	74	2	79	3	0	0.02	10	0.42	73	0.0	2	1	77	1	0	75	0	0	0	0	0	5700	5700	0	0	1	0.78	75	{"certified": 1}	certified-full	5700	74	1	0	
+ore_ont_16626	?	a<100K	52265	model-full	290	0	310	312	0	0.01	8	0.24	72	0.0	3	1	291	238	0	291	0	0	0	0	0	83086	83086	0	0	1	0.08	74	{"certified": 1}	certified-full	83086	290	1	0	
+ore_ont_16630	?	a<100K	55446	model-full	29	152	1691	1376	78	0.2	26	0.87	74	0.07	3	1	38	27	0	30	0	0	0	0	0	4974	4974	0	0	1	0.2	70	{"certified": 1}	certified-full	4974	29	1	0	
+ore_ont_16670	?	a<100K	72933	model-full	48	56	557	565	329	0.27	22	15.54	74	0.81	4	1	49	38	0	49	0	0	0	0	0	4943	4943	0	0	1	1.62	69	{"certified": 1}	certified-full	4943	48	1	0	
+ore_ont_16708	?	b<1M	151562	model-partial	282	1	709	1239	161	0.44	24	12.28	74	35.14	3	1	270	205	0	260	0	4	19	0	0	79408	74098	5291	0	1	1.72	72	{"certified": 1}	certified-partial	74098	282	1	0	time budget after 264 of 283 witnesses
+ore_ont_1672	?	b<1M	952614	dump-failed						0.59	48	301.84	94																										dump-failed
+ore_ont_16723	?	a<100K	51071	model-full	42	45	249	242	103	0.06	15	0.64	73	0.75	2	1	90	32	0	43	0	0	0	0	0	3543	3543	0	0	1	1.01	71	{"certified": 1}	certified-full	3543	42	1	0	
+ore_ont_16730	?	a<100K	91481	model-full	512	0	514	569	0	0.02	10	0.22	73	0.0	3	1	513	0	0	513	0	0	0	0	0	260153	260153	0	0	1	0.09	74	{"certified": 1}	certified-full	260153	512	1	0	
+ore_ont_16777	?	a<100K	80170	model-full	134	4	143	5	0	0.03	11	0.88	72	0.0	2	1	139	3	0	135	0	0	0	0	0	18628	18628	0	0	1	3.81	79	{"certified": 1}	certified-full	18628	134	1	0	
+ore_ont_16806	?	b<1M	764676	model-full	4317	0	4412	4410	0	0.17	27	0.43	76	0.07	14	1	4318	322	0	4318	0	0	0	0	0	18596247	18596247	0	0	1	0.27	85	{"certified": 1}	certified-full	18596247	4317	1	0	
+ore_ont_16814	?	a<100K	55592	model-full	27	42	258	322	42	0.26	16	0.32	73	0.03	3	7	127	98	0	28	0	0	0	0	0	1657	1657	0	0	7	1.8	72	{"certified": 7}	certified-full	1657	27	1	0	
+ore_ont_16821	?	b<1M	191627	model-full	457	0	460	1012	0	0.02	10	0.29	73	0.01	3	1	458	0	0	458	0	0	0	0	0	206621	206621	0	0	1	0.13	79	{"certified": 1}	certified-full	206621	457	1	0	
+ore_ont_16827	?	a<100K	39439	model-full	80	99	181	166	0	0.04	11	0.32	73	0.0	2	1	180	0	0	81	0	0	0	0	0	14080	14080	0	0	1	0.9	78	{"certified": 1}	certified-full	14080	80	1	0	
+ore_ont_16847	?	b<1M	129169	model-partial	282	0	930	1403	0	0.17	16	0.48	73	2.22	4	1	346	957	0	260	17	0	6	17	0	78889	77232	1651	0	1	0.79	76	{"certified": 1}	certified-partial	77232	282	1	0	witness: closure budget 6
+ore_ont_16850	?	a<100K	24814	model-full	36	0	130	130	86	0.01	10	0.26	73	0.03	2	1	70	0	0	1	36	0	0	36	0	1297	1297	0	0	1	0.14	73	{"certified": 1}	certified-full	1297	36	1	0	
+ore_ont_16855	?	a<100K	50815	model-full	30	47	283	387	146	0.04	12	0.5	72	0.04	3	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.26	67	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_1705	?	b<1M	148797	model-full	38	297	799	902	0	0.1	19	0.26	74	0.0	3	1	336	456	0	39	0	0	0	0	0	12114	12114	0	0	1	1.54	74	{"certified": 1}	certified-full	12114	38	1	0	
+ore_ont_1707	?	b<1M	373592	model-partial	1040	0	2709	5644	76	0.44	29	3.23	78	35.85	17	1	29	24	0	16	0	3	1022	0	0	1074292	19626	1053644	0	1	4.63	74	{"certified": 1}	certified-partial	19626	1040	1	0	time budget after 21 of 1041 witnesses
+ore_ont_1728	?	b<1M	165506	model-full	819	0	896	1044	0	0.02	10	0.26	73	0.01	4	1	820	131	0	820	0	0	0	0	0	668033	668033	0	0	1	0.1	74	{"certified": 1}	certified-full	668033	819	1	0	
+ore_ont_1746	?	a<100K	44849	model-full	151	0	153	152	0	0.01	9	0.23	72	0.0	2	1	152	0	0	152	0	0	0	0	0	22523	22523	0	0	1	0.08	72	{"certified": 1}	certified-full	22523	151	1	0	
+ore_ont_1756	?	b<1M	175308	model-full	606	0	1066	845	0	0.02	10	0.26	74	0.0	3	1	607	803	0	607	0	0	0	0	0	367151	367151	0	0	1	0.1	75	{"certified": 1}	certified-full	367151	606	1	0	
+ore_ont_178	?	a<100K	56088	model-full	48	8	227	231	114	0.06	12	0.42	73	0.07	3	1	48	25	0	48	1	0	0	1	0	2670	2670	0	0	1	1.46	67	{"certified": 1}	certified-full	2670	48	1	0	
+ore_ont_1784	?	b<1M	130976	model-full	193	23	507	595	0	0.11	14	0.46	74	0.04	3	1	259	513	0	194	0	0	0	0	0	41334	41334	0	0	1	3.66	74	{"certified": 1}	certified-full	41334	193	1	0	
+ore_ont_1793	?	b<1M	108630	model-full	496	0	502	502	7	0.04	11	0.34	73	0.01	3	1	497	0	0	497	0	0	0	0	0	244432	244432	0	0	1	0.33	84	{"certified": 1}	certified-full	244432	496	1	0	
+ore_ont_1823	?	a<100K	93592	model-full	54	157	449	876	170	0.09	14	0.43	73	0.02	3	1	173	0	0	52	3	0	0	3	0	11035	11035	0	0	1	1.03	79	{"certified": 1}	certified-full	11035	54	1	0	
+ore_ont_1834	?	b<1M	152173	model-full	82	0	353	488	14	0.16	23	5.47	74	0.02	3	1	102	377	0	83	0	0	0	0	0	6325	6325	0	0	1	59.99	83	{"certified": 1}	certified-full	6325	82	1	0	
+ore_ont_185	?	a<100K	70714	model-partial	82	14	375	538	0	0.08	13	0.3	74	0.39	4	1	110	113	0	72	2	0	9	2	0	7793	7083	701	0	1	0.57	71	{"certified": 1}	certified-partial	7083	82	1	0	witness: at-most: no fold possible 2, closure budget 7
+ore_ont_1853	?	b<1M	120320	model-full	56	16	362	652	28	0.06	13	0.59	73	0.04	3	1	69	7	0	57	0	0	0	0	0	3953	3953	0	0	1	1.82	68	{"certified": 1}	certified-full	3953	56	1	0	
+ore_ont_1866	?	a<100K	73530	model-full	48	56	555	563	327	0.23	22	14.96	73	0.75	4	1	49	38	0	49	0	0	0	0	0	4943	4943	0	0	1	1.51	71	{"certified": 1}	certified-full	4943	48	1	0	
+ore_ont_1869	?	b<1M	124924	model-full	380	373	756	747	0	0.13	17	0.28	74	0.0	3	1	754	0	0	381	0	0	0	0	0	284837	284837	0	0	1	0.15	74	{"certified": 1}	certified-full	284837	380	1	0	
+ore_ont_1898	?	a<100K	86363	model-none	33	56	751	758	495	0.48	44	121.8	74	39.17	5	0	0	0	0	0	0	0	34	0	0	2876	0	1073	1768	0	0.0		no model		0		0	0	no base model: closure budget
+ore_ont_1902	?	a<100K	50847	model-full	30	47	283	387	146	0.04	12	0.51	72	0.05	3	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.24	67	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_1931	?	b<1M	190442	model-full	123	78	669	845	234	0.32	33	22.96	74	6.77	4	1	189	213	0	122	2	0	0	2	0	24507	24507	0	0	1	3.58	74	{"certified": 1}	certified-full	24507	123	1	0	
+ore_ont_1944	?	a<100K	50853	model-full	30	47	283	387	146	0.04	11	0.49	72	0.07	2	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.27	67	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_1958	?	b<1M	176507	model-full	651	179	1377	2455	4	0.38	25	0.29	75	10.83	65	2	1023	609	0	447	205	0	0	205	94	537768	537768	0	0	2	4.79	74	{"certified": 2}	certified-full	537768	651	1	0	
+ore_ont_1967	?	a<100K	22671	model-full	58	0	104	99	0	0.0	9	0.24	72	0.0	2	1	59	0	0	59	0	0	0	0	0	3334	3334	0	0	1	0.09	74	{"certified": 1}	certified-full	3334	58	1	0	
+ore_ont_1988	?	a<100K	60590	model-full	115	94	373	314	0	0.05	11	0.25	72	0.0	2	1	296	102	0	116	0	0	0	0	0	23884	23884	0	0	1	0.14	73	{"certified": 1}	certified-full	23884	115	1	0	
+ore_ont_1997	?	a<100K	44340	model-partial	93	0	406	516	0	0.15	13	0.2	73	2.87	15	1	139	387	0	51	32	5	6	32	0	8507	7962	539	0	1	0.1	71	{"certified": 1}	certified-partial	7962	93	1	0	witness: closure budget 3, no type for a successor 3
+ore_ont_2011	?	b<1M	239160	model-full	1390	0	1392	1468	0	0.04	13	0.27	75	0.01	5	1	1391	0	0	1391	0	0	0	0	0	1927118	1927118	0	0	1	0.12	75	{"certified": 1}	certified-full	1927118	1390	1	0	
+ore_ont_2012	?	a<100K	40101	model-full	71	0	168	219	6	0.03	11	1.04	73	0.0	2	1	88	40	0	71	1	0	0	1	0	4988	4988	0	0	1	3.11	75	{"certified": 1}	certified-full	4988	71	1	0	
+ore_ont_2017	?	b<1M	144079	model-full	552	0	960	775	0	0.02	10	0.25	74	0.0	3	1	553	740	0	553	0	0	0	0	0	304645	304645	0	0	1	0.1	75	{"certified": 1}	certified-full	304645	552	1	0	
+ore_ont_202	?	a<100K	50828	model-full	30	47	283	387	146	0.04	12	0.49	73	0.08	3	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.26	68	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_2022	?	b<1M	463935	model-full	1861	0	1969	3454	0	0.05	15	0.36	73	0.02	6	1	1862	145	0	1862	0	0	0	0	0	3452141	3452141	0	0	1	0.16	77	{"certified": 1}	certified-full	3452141	1861	1	0	
+ore_ont_2036	?	a<100K	23727	model-full	63	5	114	96	0	0.03	10	0.24	72	0.0	2	1	54	0	0	64	0	0	0	0	0	3244	3244	0	0	1	0.1	74	{"certified": 1}	certified-full	3244	48	1	0	
+ore_ont_2038	?	a<100K	25563	model-full	51	0	158	233	0	0.01	9	0.25	72	0.0	2	1	155	2	0	52	0	0	0	0	0	2480	2480	0	0	1	0.08	72	{"certified": 1}	certified-full	2480	51	1	0	
+ore_ont_2063	?	b<1M	149720	model-full	710	0	712	924	0	0.03	11	0.26	74	0.01	4	1	711	0	0	711	0	0	0	0	0	498915	498915	0	0	1	0.11	74	{"certified": 1}	certified-full	498915	710	1	0	
+ore_ont_2066	?	a<100K	93226	model-full	339	49	463	509	0	0.06	12	0.26	73	0.0	3	1	386	251	0	340	0	0	0	0	0	130652	130652	0	0	1	0.33	75	{"certified": 1}	certified-full	130652	339	1	0	
+ore_ont_218	?	b<1M	634719	model-full	2338	0	3605	4671	0	1.5	67	0.54	78	0.55	23	1	2469	5328	0	2293	44	0	0	44	0	5403615	5403615	0	0	1	0.63	133	{"certified": 1}	certified-full	5403615	2338	1	0	
+ore_ont_2182	?	b<1M	125163	model-full	74	161	967	1929	6	0.7	37	0.28	75	2.99	12	2	377	1322	0	44	31	0	0	32	0	16568	16568	0	0	2	6.82	70	{"certified": 2}	certified-full	16568	74	1	0	
+ore_ont_2195	?	b<1M	186295	model-full	19	0	547	699	526	0.06	13	1.36	74	0.25	4	1	20	0	0	20	0	0	0	0	0	382	382	0	0	1	1.71	77	{"certified": 1}	certified-full	382	19	1	0	
+ore_ont_2228	?	a<100K	74815	model-full	82	0	98	110	14	0.02	10	0.8	73	0.0	2	1	83	0	0	83	0	0	0	0	0	6325	6325	0	0	1	0.39	80	{"certified": 1}	certified-full	6325	82	1	0	
+ore_ont_2229	?	a<100K	71344	model-full	128	0	130	321	0	0.01	10	0.22	73	0.0	2	1	129	0	0	129	0	0	0	0	0	16235	16235	0	0	1	0.08	74	{"certified": 1}	certified-full	16235	128	1	0	
+ore_ont_2237	?	a<100K	88817	model-full	131	31	192	30	0	0.04	11	0.84	73	0.0	2	1	163	28	0	132	0	0	0	0	0	21355	21355	0	0	1	4.3	82	{"certified": 1}	certified-full	21355	131	1	0	
+ore_ont_2266	?	b<1M	394038	model-full	843	2079	2999	3143	0	0.56	47	0.44	77	0.02	8	1	2923	131	0	844	0	0	0	0	0	2458440	2458440	0	0	1	6.89	79	{"certified": 1}	certified-full	2458440	843	1	0	
+ore_ont_2303	?	b<1M	110924	model-full	142	0	923	918	0	0.01	10	0.27	73	0.0	3	1	680	262	0	143	0	0	0	0	0	19950	19950	0	0	1	0.1	74	{"certified": 1}	certified-full	19950	142	1	0	
+ore_ont_231	?	b<1M	108947	model-full	168	32	225	25	0	0.04	12	1.19	73	0.0	2	1	201	23	0	169	0	0	0	0	0	33770	33770	0	0	1	8.18	86	{"certified": 1}	certified-full	33770	168	1	0	
+ore_ont_2313	?	b<1M	423717	model-full	1688	363	2387	128596	0	1.48	131	1.18	141	0.17	21	1	1841	718	0	1688	1	0	0	1	0	3444680	3444680	0	0	1	17.92	162	{"certified": 1}	certified-full	3444680	1688	1	0	
+ore_ont_2338	?	b<1M	206875	model-full	385	0	398	873	0	0.02	11	0.24	74	0.0	3	1	387	16	0	386	0	0	0	0	0	147327	147327	0	0	1	0.09	73	{"certified": 1}	certified-full	147327	385	1	0	
+ore_ont_2377	?	b<1M	621355	model-full	1663	0	7341	8255	0	0.08	20	0.46	79	2.13	50	1	1829	7387	0	1664	0	0	0	0	0	2757286	2757286	0	0	1	0.67	107	{"certified": 1}	certified-full	2757286	1663	1	0	
+ore_ont_2378	?	b<1M	256450	model-full	1163	0	1245	1686	0	0.05	13	0.28	75	0.02	5	1	1164	1372	0	1164	0	0	0	0	0	1339666	1339666	0	0	1	0.15	77	{"certified": 1}	certified-full	1339666	1163	1	0	
+ore_ont_2440	?	b<1M	546343	model-full	1864	0	3818	2734	0	0.06	15	0.34	77	0.02	5	1	1865	2528	0	1865	0	0	0	0	0	3473808	3473808	0	0	1	0.17	81	{"certified": 1}	certified-full	3473808	1864	1	0	
+ore_ont_2453	?	b<1M	198438	model-full	128	414	1125	38477	0	0.65	78	0.57	93	0.07	10	1	544	779	0	129	0	0	0	0	0	68186	68186	0	0	1	27.97	101	{"certified": 1}	certified-full	68186	128	1	0	
+ore_ont_2456	?	b<1M	130946	model-full	464	0	1247	787	0	0.01	10	0.26	74	0.0	3	1	744	504	0	465	0	0	0	0	0	215758	215758	0	0	1	0.1	74	{"certified": 1}	certified-full	215758	464	1	0	
+ore_ont_2485	?	a<100K	17016	model-full	4	3	223	220	214	0.02	11	0.32	69	0.0	2	1	8	0	0	5	0	0	0	0	0	32	32	0	0	1	0.32	69	{"certified": 1}	certified-full	32	4	1	0	
+ore_ont_2488	?	b<1M	174292	model-full	432	159	920	876	0	0.12	16	0.44	74	0.01	3	1	587	289	0	433	0	0	0	0	0	252721	252721	0	0	1	9.44	88	{"certified": 1}	certified-full	252721	432	1	0	
+ore_ont_2496	?	b<1M	460448	model-full	1555	0	2858	3181	0	0.05	15	0.35	77	0.05	7	1	1751	3910	0	1556	0	0	0	0	0	2411162	2411162	0	0	1	0.2	79	{"certified": 1}	certified-full	2411162	1555	1	0	
+ore_ont_2526	?	b<1M	123300	model-full	64	16	209275	119448	20	0.12	20	12.37	203	0.23	46	1	83	27	0	65	0	0	0	0	0	5065	5065	0	0	1	6.43	259	{"certified": 1}	certified-full	5065	64	1	0	
+ore_ont_2556	?	b<1M	146857	model-full	181	92	438	165	0	0.06	13	1.4	73	0.0	2	1	274	163	0	182	0	0	0	0	0	49596	49596	0	0	1	17.56	93	{"certified": 1}	certified-full	49596	181	1	0	
+ore_ont_2557	?	a<100K	49629	model-full	85	2	90	3	0	0.02	11	0.47	73	0.0	2	1	88	1	0	86	0	0	0	0	0	7482	7482	0	0	1	1.07	75	{"certified": 1}	certified-full	7482	85	1	0	
+ore_ont_2569	?	b<1M	672378	model-full	3399	0	3577	3993	0	0.08	19	0.4	74	0.04	9	1	3400	560	0	3400	0	0	0	0	0	11534475	11534475	0	0	1	0.2	79	{"certified": 1}	certified-full	11534475	3399	1	0	
+ore_ont_258	?	a<100K	49878	model-full	275	0	277	273	0	0.01	9	0.22	72	0.0	2	1	276	0	0	276	0	0	0	0	0	75028	75028	0	0	1	0.09	74	{"certified": 1}	certified-full	75028	275	1	0	
+ore_ont_2604	?	b<1M	942754	dump-failed						0.69	47	301.0	80																										dump-failed
+ore_ont_2608	?	b<1M	127300	model-full	453	212	935	1214	0	0.1	17	0.26	74	0.01	4	1	666	134	0	454	0	0	0	0	0	299464	299464	0	0	1	0.25	74	{"certified": 1}	certified-full	299464	453	1	0	
+ore_ont_2612	?	b<1M	641378	model-full	2022	0	2024	4056	0	0.1	19	0.37	74	0.03	7	1	942	0	0	2023	0	0	0	0	0	4077941	4077941	0	0	1	0.16	75	{"certified": 1}	certified-full	4077941	2022	1	0	
+ore_ont_2646	?	b<1M	382899	model-full	1185	0	2367	1689	0	0.03	12	0.32	75	0.01	4	1	1186	1759	0	1186	0	0	0	0	0	1403559	1403559	0	0	1	0.13	78	{"certified": 1}	certified-full	1403559	1185	1	0	
+ore_ont_2652	?	a<100K	37980	model-full	92	0	160	145	0	0.28	37	0.43	73	0.0	2	1	123	198	0	93	0	0	0	0	0	7498	7498	0	0	1	0.63	75	{"certified": 1}	certified-full	7498	82	1	0	
+ore_ont_2654	?	a<100K	38039	model-full	172	1	175	218	0	0.03	10	0.21	73	0.0	2	1	174	0	0	173	0	0	0	0	0	29506	29506	0	0	1	0.08	72	{"certified": 1}	certified-full	29506	172	1	0	
+ore_ont_2662	?	a<100K	74776	model-full	142	0	144	333	0	0.01	10	0.24	73	0.0	2	1	143	0	0	143	0	0	0	0	0	19990	19990	0	0	1	0.08	73	{"certified": 1}	certified-full	19990	142	1	0	
+ore_ont_2672	?	b<1M	144582	model-full	813	0	829	878	0	0.02	9	0.26	74	0.01	4	1	814	14	0	814	0	0	0	0	0	658238	658238	0	0	1	0.1	74	{"certified": 1}	certified-full	658238	813	1	0	
+ore_ont_2678	?	a<100K	96360	model-none	35	56	736	758	477	0.46	42	101.77	73	38.15	6	0	0	0	0	0	0	0	36	0	0	3092	0	1181	1874	0	0.0		no model		0		0	0	no base model: closure budget
+ore_ont_2697	?	a<100K	43564	model-full	88	0	90	100	0	0.01	10	0.22	72	0.0	2	1	89	0	0	89	0	0	0	0	0	7347	7347	0	0	1	0.07	72	{"certified": 1}	certified-full	7347	88	1	0	
+ore_ont_2703	?	b<1M	759287	dump-failed						0.61	34	301.04	75																										dump-failed
+ore_ont_2713	?	b<1M	126969	model-full	323	0	423	320	0	0.02	10	0.33	73	0.0	3	1	324	98	0	324	0	0	0	0	0	103050	103050	0	0	1	0.13	83	{"certified": 1}	certified-full	103050	323	1	0	
+ore_ont_2720	?	b<1M	183363	model-full	901	0	903	1051	0	0.03	12	0.26	74	0.01	4	1	902	0	0	902	0	0	0	0	0	806800	806800	0	0	1	0.11	75	{"certified": 1}	certified-full	806800	901	1	0	
+ore_ont_2744	?	b<1M	130970	model-full	288	29	728	827	274	0.21	22	12.89	74	2.58	4	1	315	116	0	289	0	0	0	0	0	90899	90899	0	0	1	1.67	77	{"certified": 1}	certified-full	90899	288	1	0	
+ore_ont_2749	?	b<1M	771428	km-inconsistent						0.38	68																												km-inconsistent
+ore_ont_2753	?	a<100K	64993	model-full	249	0	352	368	0	0.01	9	0.24	73	0.0	2	1	250	117	0	250	0	0	0	0	0	60994	60994	0	0	1	0.08	73	{"certified": 1}	certified-full	60994	249	1	0	
+ore_ont_2775	?	a<100K	38189	model-full	116	0	324	300	0	0.05	13	0.23	72	0.0	2	1	283	48	0	117	0	0	0	0	0	13244	13244	0	0	1	0.08	72	{"certified": 1}	certified-full	13244	116	1	0	
+ore_ont_2826	?	b<1M	203210	model-full	137	206	1353	2347	6	0.9	43	0.31	75	3.07	13	2	1018	2057	0	95	43	0	0	44	0	45442	45442	0	0	2	14.11	82	{"certified": 2}	certified-full	45442	137	1	0	
+ore_ont_2837	?	a<100K	47411	model-full	29	24	151	143	8	0.04	12	0.32	73	0.01	2	1	54	82	0	30	0	0	0	0	0	1496	1496	0	0	1	0.52	70	{"certified": 1}	certified-full	1496	29	1	0	
+ore_ont_2860	?	b<1M	147634	model-full	112	72	596	669	230	0.32	32	18.44	73	6.87	4	1	176	169	0	113	0	0	0	0	0	20447	20447	0	0	1	2.95	77	{"certified": 1}	certified-full	20447	112	1	0	
+ore_ont_2876	?	a<100K	43421	model-full	81	0	88	95	0	0.01	9	0.22	73	0.0	2	1	82	0	0	82	0	0	0	0	0	6319	6319	0	0	1	0.08	73	{"certified": 1}	certified-full	6319	81	1	0	
+ore_ont_2901	?	b<1M	168971	model-partial	700	2	1253	1460	0	2.84	121	0.28	74	1.3	6	1	777	1172	0	674	6	0	21	6	0	486821	472334	14466	0	1	0.29	76	{"certified": 1}	certified-partial	472334	700	1	0	witness: at-most: no fold possible 21
+ore_ont_2936	?	a<100K	11729	model-full	9	0	172	175	136	0.03	10	0.37	72	0.02	3	1	10	3	0	10	0	0	0	0	0	92	92	0	0	1	0.17	67	{"certified": 1}	certified-full	92	9	1	0	
+ore_ont_2950	?	b<1M	389213	model-full	820	0	1490	3261	292	0.32	34	23.03	76	2.65	6	1	862	628	0	809	12	0	0	12	0	668401	668401	0	0	1	2.24	92	{"certified": 1}	certified-full	668401	820	1	0	
+ore_ont_2989	?	a<100K	50808	model-full	30	47	283	387	146	0.04	12	0.52	73	0.08	3	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.32	69	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_3003	?	b<1M	424250	model-full	2150	0	2472	2610	0	0.05	13	0.33	76	0.02	6	1	2151	2369	0	2151	0	0	0	0	0	4620225	4620225	0	0	1	0.19	79	{"certified": 1}	certified-full	4620225	2150	1	0	
+ore_ont_3010	?	b<1M	188672	model-full	137	206	1353	2323	6	0.96	43	0.3	75	2.98	12	3	1202	2489	0	95	43	0	0	44	24	45475	45475	0	0	3	16.18	74	{"certified": 3}	certified-full	45475	137	1	0	
+ore_ont_3022	?	a<100K	96240	model-none	35	56	735	757	477	0.45	41	105.7	74	38.05	6	0	0	0	0	0	0	0	36	0	0	3090	0	1181	1872	0	0.0		no model		0		0	0	no base model: closure budget
+ore_ont_304	?	a<100K	55856	model-full	135	1	294	312	0	0.04	12	0.31	73	0.0	2	1	132	17	0	136	0	0	0	0	0	16779	16779	0	0	1	0.29	75	{"certified": 1}	certified-full	16779	127	1	0	
+ore_ont_3053	?	a<100K	65774	km-inconsistent						0.12	22																												km-inconsistent
+ore_ont_3060	?	b<1M	114646	model-full	61	16	359	645	20	0.06	13	0.57	73	0.07	3	1	74	7	0	62	0	0	0	0	0	4644	4644	0	0	1	1.09	68	{"certified": 1}	certified-full	4644	61	1	0	
+ore_ont_3082	?	a<100K	38279	model-full	121	0	123	122	0	0.01	9	0.22	72	0.0	2	1	122	0	0	122	0	0	0	0	0	14403	14403	0	0	1	0.08	72	{"certified": 1}	certified-full	14403	121	1	0	
+ore_ont_3102	?	b<1M	549919	model-full	2849	0	3401	3666	0	0.07	18	0.37	77	0.04	9	1	2896	677	0	2850	0	0	0	0	0	8103066	8103066	0	0	1	0.22	92	{"certified": 1}	certified-full	8103066	2849	1	0	
+ore_ont_3128	?	a<100K	51475	model-full	232	0	778	818	0	0.01	9	0.21	73	0.0	2	1	233	141	0	233	0	0	0	0	0	53917	53917	0	0	1	0.08	74	{"certified": 1}	certified-full	53917	232	1	0	
+ore_ont_3156	?	b<1M	203217	model-full	137	206	1353	2347	6	0.97	43	0.3	75	3.05	12	2	1018	2057	0	95	43	0	0	44	0	45442	45442	0	0	2	13.62	76	{"certified": 2}	certified-full	45442	137	1	0	
+ore_ont_316	?	b<1M	412249	model-full	1351	0	2400	2608	0	0.05	15	0.32	76	0.06	7	1	1525	3163	0	1352	0	0	0	0	0	1812601	1812601	0	0	1	0.19	80	{"certified": 1}	certified-full	1812601	1351	1	0	
+ore_ont_3205	?	a<100K	54042	model-full	59	60	405	426	284	0.07	13	14.17	73	0.56	3	1	120	0	0	60	0	0	0	0	0	6934	6934	0	0	1	1.36	74	{"certified": 1}	certified-full	6934	59	1	0	
+ore_ont_3231	?	b<1M	307074	model-full	84	0	281	330	16	0.25	29	4.82	74	0.05	3	1	215	909	0	2	83	0	0	83	0	6712	6712	0	0	1	56.96	93	{"certified": 1}	certified-full	6712	84	1	0	
+ore_ont_3250	?	a<100K	38102	model-none	86	3	337	374	0	0.05	11	0.23	72	0.04	2	0	0	0	0	0	0	0	87	0	0	7624	0	7283	253	0	0.0		no model		0		0	0	no base model: at-most: no fold possible
+ore_ont_3258	?	a<100K	63711	model-full	324	0	384	435	0	0.14	23	0.29	73	0.01	3	1	423	590	0	323	2	0	0	2	0	102203	102203	0	0	1	0.18	76	{"certified": 1}	certified-full	102203	324	1	0	
+ore_ont_3259	?	b<1M	146380	model-full	180	119	521	222	0	0.07	13	1.33	73	0.0	2	1	300	220	0	181	0	0	0	0	0	54002	54002	0	0	1	22.5	96	{"certified": 1}	certified-full	54002	180	1	0	
+ore_ont_3260	?	a<100K	49219	model-full	38	1	281	274	202	0.05	12	0.32	73	0.12	3	1	39	13	0	39	0	0	0	0	0	1455	1455	0	0	1	0.34	69	{"certified": 1}	certified-full	1455	38	1	0	
+ore_ont_3262	?	b<1M	256401	model-none	155	12	1122	1565	4	0.32	22	11.87	76	0.32	4	0	0	0	0	0	0	0	156	0	0	24811	0	22920	1734	0	0.0		no model		0		0	0	no base model: closure budget
+ore_ont_3263	?	a<100K	75745	model-full	170	0	506	672	0	0.01	11	0.24	73	0.08	7	1	220	780	0	171	0	0	0	0	0	23220	23220	0	0	1	0.12	74	{"certified": 1}	certified-full	23220	170	1	0	
+ore_ont_3270	?	a<100K	50815	model-full	30	47	283	387	146	0.04	12	0.5	73	0.08	2	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.27	67	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_3281	?	a<100K	61627	model-full	126	83	455	529	206	0.3	24	3.8	73	1.71	3	2	199	47	0	127	0	0	0	0	0	24887	24887	0	0	2	1.17	68	{"certified": 2}	certified-full	24887	126	1	0	
+ore_ont_3292	?	a<100K	83890	model-full	142	6	153	5	0	0.03	11	0.98	73	0.0	2	1	149	3	0	143	0	0	0	0	0	21160	21160	0	0	1	4.29	80	{"certified": 1}	certified-full	21160	142	1	0	
+ore_ont_3301	?	b<1M	196454	model-full	423	124	1054	1207	203	0.36	25	18.04	74	1.07	4	2	404	119	0	423	1	0	0	1	0	228151	228151	0	0	2	4.67	80	{"certified": 2}	certified-full	228151	423	1	0	
+ore_ont_3313	?	b<1M	676348	model-full	865	2070	3144	3355	0	0.67	61	0.55	75	0.09	13	1	1108	751	0	866	0	0	0	0	0	2521770	2521770	0	0	1	7.86	77	{"certified": 1}	certified-full	2521770	865	1	0	
+ore_ont_3330	?	a<100K	22125	model-full	49	0	117	116	44	0.03	12	0.24	72	0.01	2	1	57	78	0	50	0	0	0	0	0	2391	2391	0	0	1	0.1	73	{"certified": 1}	certified-full	2391	49	1	0	
+ore_ont_3341	?	a<100K	28259	model-full	15	0	197	228	184	0.02	10	0.27	73	0.08	3	1	15	0	0	16	0	0	0	0	0	226	226	0	0	1	0.24	67	{"certified": 1}	certified-full	226	15	1	0	
+ore_ont_3344	?	b<1M	290408	model-full	631	0	2644	2297	0	0.03	11	0.39	76	0.01	5	1	1980	726	0	632	0	0	0	0	0	397813	397813	0	0	1	0.14	77	{"certified": 1}	certified-full	397813	631	1	0	
+ore_ont_3349	?	b<1M	170464	model-full	746	0	1062	1075	0	0.03	11	0.27	74	0.02	4	1	826	991	0	747	0	0	0	0	0	550874	550874	0	0	1	0.14	78	{"certified": 1}	certified-full	550874	746	1	0	
+ore_ont_3352	?	b<1M	187755	model-full	1292	0	1294	1297	0	0.04	11	0.28	75	0.01	4	1	1293	0	0	1293	0	0	0	0	0	1667643	1667643	0	0	1	0.11	76	{"certified": 1}	certified-full	1667643	1292	1	0	
+ore_ont_338	?	a<100K	77553	model-full	78	0	84	62	4	0.02	11	0.41	73	0.0	2	1	79	0	0	79	0	0	0	0	0	6076	6076	0	0	1	0.17	76	{"certified": 1}	certified-full	6076	78	1	0	
+ore_ont_3411	?	b<1M	124385	model-full	127	244	764	1064	24	0.15	22	0.27	74	0.05	3	1	245	139	0	111	17	0	0	17	0	46043	46043	0	0	1	0.4	69	{"certified": 1}	certified-full	46043	127	1	0	
+ore_ont_3418	?	a<100K	82512	model-full	453	0	480	529	0	0.01	9	0.24	73	0.0	3	1	454	25	0	454	0	0	0	0	0	204126	204126	0	0	1	0.1	74	{"certified": 1}	certified-full	204126	453	1	0	
+ore_ont_3455	?	a<100K	52347	model-full	64	0	108	164	0	0.04	12	0.29	73	0.0	2	1	76	44	0	65	0	0	0	0	0	4077	4077	0	0	1	0.19	73	{"certified": 1}	certified-full	4077	64	1	0	
+ore_ont_3463	?	a<100K	41645	model-full	123	0	125	124	0	0.01	9	0.2	72	0.0	2	1	124	0	0	124	0	0	0	0	0	14940	14940	0	0	1	0.08	73	{"certified": 1}	certified-full	14940	123	1	0	
+ore_ont_3484	?	b<1M	928674	model-full	4908	0	4910	4910	0	0.18	21	0.45	80	0.03	10	1	2455	0	0	4909	0	0	0	0	0	24088466	24088466	0	0	1	0.22	82	{"certified": 1}	certified-full	24088466	4908	1	0	
+ore_ont_3503	?	b<1M	412443	dump-failed						0.31	24	300.52	76																										dump-failed
+ore_ont_3504	?	a<100K	37143	model-full	52	2	139	152	22	0.03	11	0.28	73	0.0	2	2	74	42	0	49	4	0	0	4	5	2771	2771	0	0	2	0.38	74	{"certified": 2}	certified-full	2771	52	1	0	
+ore_ont_3515	?	b<1M	334199	model-full	1395	0	2775	3606	0	0.04	13	0.31	76	0.06	6	1	1398	313	0	1396	0	0	0	0	0	1939583	1939583	0	0	1	0.23	84	{"certified": 1}	certified-full	1939583	1395	1	0	
+ore_ont_3545	?	b<1M	619547	dump-failed						0.39	35	300.55	74																										dump-failed
+ore_ont_3550	?	b<1M	774241	model-full	2977	0	4771	3772	0	0.07	17	0.42	75	0.03	7	1	2978	5504	0	2978	0	0	0	0	0	8860508	8860508	0	0	1	0.23	80	{"certified": 1}	certified-full	8860508	2977	1	0	
+ore_ont_3566	?	b<1M	176213	model-full	170	185	736	766	100	0.17	20	0.83	74	0.23	3	1	235	117	0	170	1	0	0	1	0	59441	59441	0	0	1	77.44	72	{"certified": 1}	certified-full	59441	170	1	0	
+ore_ont_3592	?	a<100K	46391	model-full	44	1	289	286	196	0.06	12	0.49	73	0.12	3	1	45	22	0	45	0	0	0	0	0	1950	1950	0	0	1	0.29	67	{"certified": 1}	certified-full	1950	44	1	0	
+ore_ont_3635	?	b<1M	339710	model-full	1093	0	1997	2003	0	0.04	12	0.3	76	0.01	4	1	1094	1658	0	1094	0	0	0	0	0	1190135	1190135	0	0	1	0.13	78	{"certified": 1}	certified-full	1190135	1093	1	0	
+ore_ont_3639	?	a<100K	47676	model-full	70	0	166	159	16	0.02	10	0.26	73	0.0	2	1	71	388	0	71	0	0	0	0	0	4918	4918	0	0	1	0.15	74	{"certified": 1}	certified-full	4918	70	1	0	
+ore_ont_3671	?	a<100K	23373	model-full	16	1	107	130	79	0.02	11	0.38	73	0.0	2	1	17	0	0	17	0	0	0	0	0	281	281	0	0	1	0.46	73	{"certified": 1}	certified-full	281	16	1	0	
+ore_ont_3685	?	b<1M	151855	model-partial	284	0	709	1243	163	0.48	21	12.7	74	35.19	3	1	272	207	0	261	0	5	19	0	0	80243	74904	5320	0	1	0.79	73	{"certified": 1}	certified-partial	74904	284	1	0	time budget after 266 of 285 witnesses
+ore_ont_3708	?	b<1M	117330	model-full	55	16	353	639	20	0.06	13	0.54	73	0.03	2	1	68	7	0	56	0	0	0	0	0	3850	3850	0	0	1	1.02	68	{"certified": 1}	certified-full	3850	55	1	0	
+ore_ont_3726	?	b<1M	169763	km-failed						3.4	62																												km-failed
+ore_ont_3770	?	a<100K	77186	model-full	112	36	186	38	0	0.03	11	0.71	73	0.0	2	1	149	36	0	113	0	0	0	0	0	16690	16690	0	0	1	3.14	79	{"certified": 1}	certified-full	16690	112	1	0	
+ore_ont_3775	?	a<100K	43839	model-full	66	0	403	398	334	0.02	12	0.52	73	3.27	4	1	68	1	0	67	0	0	0	0	0	4264	4264	0	0	1	1.61	85	{"certified": 1}	certified-full	4264	66	1	0	
+ore_ont_3780	?	a<100K	94143	model-full	648	0	651	661	0	0.02	10	0.24	73	0.01	3	1	649	50	0	649	0	0	0	0	0	416591	416591	0	0	1	0.09	74	{"certified": 1}	certified-full	416591	648	1	0	
+ore_ont_3783	?	b<1M	392037	model-full	767	260	1101	3860	0	0.28	26	0.34	76	0.02	7	1	993	3	0	766	2	0	0	2	0	773580	773580	0	0	1	0.19	78	{"certified": 1}	certified-full	773580	767	1	0	
+ore_ont_3789	?	a<100K	50883	model-full	30	47	283	387	146	0.04	12	0.5	72	0.04	3	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.25	70	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_380	?	b<1M	523670	model-full	1214	0	1216	2409	0	0.06	15	0.32	75	0.01	5	1	1215	0	0	1215	0	0	0	0	0	1469706	1469706	0	0	1	0.13	73	{"certified": 1}	certified-full	1469706	1214	1	0	
+ore_ont_3806	?	a<100K	37066	model-full	116	19	207	386	0	0.04	12	0.22	73	0.03	2	1	123	33	0	98	19	0	0	19	0	14582	14582	0	0	1	0.13	67	{"certified": 1}	certified-full	14582	116	1	0	
+ore_ont_3832	?	b<1M	101574	model-full	564	0	566	635	0	0.02	11	0.25	73	0.01	3	1	565	0	0	565	0	0	0	0	0	315805	315805	0	0	1	0.09	73	{"certified": 1}	certified-full	315805	564	1	0	
+ore_ont_3835	?	b<1M	280784	model-full	816	44	872	1284	0	0.13	15	0.26	74	0.01	4	1	858	7	0	817	0	0	0	0	0	698450	698450	0	0	1	0.1	75	{"certified": 1}	certified-full	698450	816	1	0	
+ore_ont_3842	?	a<100K	25739	model-full	98	0	100	88	0	0.01	9	0.21	72	0.0	2	1	99	0	0	99	0	0	0	0	0	9618	9618	0	0	1	0.08	73	{"certified": 1}	certified-full	9618	98	1	0	
+ore_ont_3843	?	b<1M	114735	model-full	91	18	360	483	38	0.09	15	0.64	73	0.03	3	1	101	182	0	91	1	0	0	1	0	9615	9615	0	0	1	1.62	70	{"certified": 1}	certified-full	9615	91	1	0	
+ore_ont_385	?	a<100K	48019	model-full	45	8	160	166	58	0.05	12	0.33	73	0.04	2	1	45	24	0	45	1	0	0	1	0	2365	2365	0	0	1	0.25	68	{"certified": 1}	certified-full	2365	45	1	0	
+ore_ont_3852	?	a<100K	50889	model-full	30	47	283	387	146	0.04	12	0.5	73	0.08	3	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.29	67	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_3884	?	a<100K	91638	model-full	181	91	470	599	0	0.07	13	0.25	73	0.0	3	1	257	128	0	182	0	0	0	0	0	46648	46648	0	0	1	1.01	77	{"certified": 1}	certified-full	46648	173	1	0	
+ore_ont_3892	?	b<1M	153995	model-full	169	89	727	912	239	0.31	25	7.28	74	0.49	4	1	173	6	0	170	0	0	0	0	0	43210	43210	0	0	1	1.22	72	{"certified": 1}	certified-full	43210	169	1	0	
+ore_ont_3909	?	a<100K	23523	model-full	75	0	79	64	0	0.01	8	0.22	73	0.0	2	1	76	0	0	76	0	0	0	0	0	5610	5610	0	0	1	0.07	73	{"certified": 1}	certified-full	5610	75	1	0	
+ore_ont_3910	?	b<1M	234788	model-full	481	214	1301	1256	0	0.17	21	0.31	75	0.15	10	1	698	1458	0	482	0	0	0	0	0	328789	328789	0	0	1	19.07	82	{"certified": 1}	certified-full	328789	476	1	0	
+ore_ont_3916	?	b<1M	850805	km-inconsistent						0.4	71																												km-inconsistent
+ore_ont_3931	?	b<1M	451537	model-full	2306	0	3718	4562	0	0.17	32	0.41	78	0.07	8	1	2311	313	0	2307	0	0	0	0	0	5311960	5311960	0	0	1	0.32	97	{"certified": 1}	certified-full	5311960	2306	1	0	
+ore_ont_3936	?	a<100K	49101	model-full	121	200	430	330	0	0.06	13	0.22	73	0.0	3	1	323	103	0	122	0	0	0	0	0	37981	37981	0	0	1	0.5	73	{"certified": 1}	certified-full	37981	121	1	0	
+ore_ont_394	?	b<1M	122116	model-full	234	16	501	669	0	0.07	13	0.45	73	0.01	3	1	284	261	0	235	0	0	0	0	0	57119	57119	0	0	1	1.79	79	{"certified": 1}	certified-full	57119	234	1	0	
+ore_ont_3966	?	b<1M	124397	model-full	589	0	1055	1134	0	0.05	11	0.27	74	0.01	4	1	803	103	0	590	0	0	0	0	0	344539	344539	0	0	1	0.11	75	{"certified": 1}	certified-full	344539	589	1	0	
+ore_ont_3968	?	b<1M	620675	model-full	1864	0	3818	2734	0	0.04	15	0.37	73	0.02	5	1	1865	2528	0	1865	0	0	0	0	0	3473808	3473808	0	0	1	0.18	76	{"certified": 1}	certified-full	3473808	1864	1	0	
+ore_ont_3978	?	b<1M	215817	model-full	962	0	3751	4061	0	0.05	14	0.34	76	0.02	5	1	1199	965	0	963	0	0	0	0	0	925584	925584	0	0	1	0.19	87	{"certified": 1}	certified-full	925584	962	1	0	
+ore_ont_3987	?	a<100K	50907	model-full	30	47	283	387	146	0.04	12	0.52	72	0.06	2	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.3	69	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_4032	?	b<1M	175366	model-full	400	103	951	1096	171	0.29	22	8.1	74	0.87	4	2	388	87	0	400	1	0	0	1	0	198578	198578	0	0	2	1.87	75	{"certified": 2}	certified-full	198578	400	1	0	
+ore_ont_4035	?	a<100K	79770	model-full	131	0	744	619	0	0.02	9	0.27	74	0.0	3	1	514	229	0	132	0	0	0	0	0	17288	17288	0	0	1	0.09	74	{"certified": 1}	certified-full	17288	131	1	0	
+ore_ont_4074	?	b<1M	194811	model-full	369	0	377	773	0	0.02	11	0.26	73	0.0	3	1	356	3	0	355	0	0	0	0	0	129932	129932	0	0	1	0.09	74	{"certified": 1}	certified-full	129932	369	1	0	
+ore_ont_4106	?	a<100K	25344	model-full	55	0	125	119	0	0.01	10	0.27	72	0.0	2	1	55	0	0	56	0	0	0	0	0	3000	3000	0	0	1	0.13	73	{"certified": 1}	certified-full	3000	55	1	0	
+ore_ont_412	?	b<1M	422569	model-full	1165	0	2200	2975	0	0.16	30	2.47	76	0.26	15	1	1305	2110	0	1166	0	0	0	0	0	1337590	1337590	0	0	1	12.98	134	{"certified": 1}	certified-full	1337590	1165	1	0	
+ore_ont_4133	?	a<100K	89031	model-full	289	50	420	521	0	0.06	12	0.24	74	0.0	3	1	336	251	0	290	0	0	0	0	0	97137	97137	0	0	1	0.29	74	{"certified": 1}	certified-full	97137	289	1	0	
+ore_ont_4193	?	a<100K	50836	model-full	30	47	283	387	146	0.04	12	0.49	72	0.05	3	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.3	68	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_4198	?	b<1M	483795	km-inconsistent						0.29	54																												km-inconsistent
+ore_ont_420	?	a<100K	46187	model-full	170	5	185	157	8	0.03	11	0.25	72	0.0	2	1	176	0	0	171	0	0	0	0	0	29718	29718	0	0	1	0.11	75	{"certified": 1}	certified-full	29718	170	1	0	
+ore_ont_4223	?	a<100K	41120	model-full	75	0	178	175	0	0.02	11	0.24	73	0.0	2	1	76	65	0	76	0	0	0	0	0	5601	5601	0	0	1	0.09	73	{"certified": 1}	certified-full	5601	75	1	0	
+ore_ont_4261	?	b<1M	221961	model-full	1070	0	1380	1590	0	0.03	11	0.28	74	0.01	4	1	1108	242	0	1071	0	0	0	0	0	1140848	1140848	0	0	1	0.12	76	{"certified": 1}	certified-full	1140848	1070	1	0	
+ore_ont_4279	?	b<1M	440532	model-full	1555	0	2554	2725	0	0.06	15	0.33	76	0.02	6	1	1556	3445	0	1556	0	0	0	0	0	2411162	2411162	0	0	1	0.17	80	{"certified": 1}	certified-full	2411162	1555	1	0	
+ore_ont_430	?	a<100K	84593	model-full	124	48	225	53	0	0.04	12	0.78	73	0.0	2	1	173	51	0	125	0	0	0	0	0	21454	21454	0	0	1	4.44	82	{"certified": 1}	certified-full	21454	124	1	0	
+ore_ont_4313	?	b<1M	328447	model-full	629	0	631	698	0	0.04	13	0.27	74	0.01	4	1	630	0	0	630	0	0	0	0	0	392114	392114	0	0	1	0.1	74	{"certified": 1}	certified-full	392114	629	1	0	
+ore_ont_4315	?	b<1M	132725	model-full	162	98	425	165	0	0.06	13	1.15	74	0.0	2	1	261	163	0	163	0	0	0	0	0	42284	42284	0	0	1	15.52	90	{"certified": 1}	certified-full	42284	162	1	0	
+ore_ont_4354	?	b<1M	197862	model-full	451	103	996	1141	195	0.3	23	11.64	74	0.93	5	2	416	81	0	451	1	0	0	1	0	246389	246389	0	0	2	5.47	85	{"certified": 2}	certified-full	246389	451	1	0	
+ore_ont_4382	?	a<100K	85616	model-full	358	0	527	432	0	0.01	9	0.23	73	0.0	3	1	359	385	0	359	0	0	0	0	0	128047	128047	0	0	1	0.09	74	{"certified": 1}	certified-full	128047	358	1	0	
+ore_ont_4383	?	b<1M	445965	model-full	1997	0	7643	7626	0	0.09	19	0.39	79	0.09	8	1	2531	1690	0	1998	0	0	0	0	0	3988680	3988680	0	0	1	0.27	88	{"certified": 1}	certified-full	3988680	1997	1	0	
+ore_ont_4388	?	b<1M	112868	model-full	562	0	763	784	0	0.01	10	0.24	74	0.01	4	1	570	120	0	563	0	0	0	0	0	313197	313197	0	0	1	0.08	73	{"certified": 1}	certified-full	313197	562	1	0	
+ore_ont_4400	?	b<1M	210392	model-full	575	602	1179	1336	0	0.2	22	0.3	74	0.01	5	1	1178	0	0	576	0	0	0	0	0	672540	672540	0	0	1	0.22	76	{"certified": 1}	certified-full	672540	575	1	0	
+ore_ont_4428	?	a<100K	50847	model-full	30	47	283	387	146	0.04	12	0.51	73	0.05	3	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.29	67	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_4469	?	b<1M	203996	model-full	130	89	723	929	174	0.23	25	1.32	74	0.5	4	1	145	265	0	131	0	0	0	0	0	27896	27896	0	0	1	8.45	75	{"certified": 1}	certified-full	27896	130	1	0	
+ore_ont_4516	?	b<1M	141045	model-full	509	217	1084	1315	0	0.11	18	0.27	74	0.01	4	1	727	134	0	510	0	0	0	0	0	367759	367759	0	0	1	0.27	75	{"certified": 1}	certified-full	367759	509	1	0	
+ore_ont_4527	?	b<1M	521596	model-full	2101	0	4121	4069	0	0.06	15	0.46	78	0.03	9	1	3928	1297	0	2102	0	0	0	0	0	4408701	4408701	0	0	1	0.22	82	{"certified": 1}	certified-full	4408701	2101	1	0	
+ore_ont_457	?	b<1M	221104	model-full	889	0	3331	3635	0	0.05	13	0.31	76	0.02	4	1	1109	832	0	890	0	0	0	0	0	790389	790389	0	0	1	0.15	86	{"certified": 1}	certified-full	790389	889	1	0	
+ore_ont_4652	?	b<1M	449413	model-full	2000	0	7162	7698	0	0.09	19	0.41	79	0.05	8	1	2005	1693	0	2001	0	0	0	0	0	4000446	4000446	0	0	1	0.22	94	{"certified": 1}	certified-full	4000446	2000	1	0	
+ore_ont_4668	?	b<1M	112075	model-partial	260	0	968	756	0	0.05	13	0.24	74	0.0	3	1	456	359	0	260	0	1	0	0	0	67849	67848	1	0	1	0.09	68	{"certified": 1}	certified-partial	67848	260	1	0	split witnesses incomplete
+ore_ont_4671	?	b<1M	178187	model-full	600	0	1060	844	0	0.02	10	0.26	73	0.01	3	1	601	803	0	601	0	0	0	0	0	359913	359913	0	0	1	0.1	75	{"certified": 1}	certified-full	359913	600	1	0	
+ore_ont_4719	?	a<100K	96141	model-full	103	160	605	725	280	0.11	17	3.68	73	0.6	4	1	96	6	0	92	12	0	0	12	0	26830	26830	0	0	1	1.06	71	{"certified": 1}	certified-full	26830	103	1	0	
+ore_ont_4724	?	a<100K	40691	model-full	67	0	69	2	0	0.02	10	0.43	72	0.0	2	1	68	0	0	68	0	0	0	0	0	4558	4558	0	0	1	0.65	74	{"certified": 1}	certified-full	4558	67	1	0	
+ore_ont_4767	?	a<100K	64747	model-full	335	0	403	346	0	0.01	9	0.24	73	0.0	3	1	336	338	0	336	0	0	0	0	0	111680	111680	0	0	1	0.09	73	{"certified": 1}	certified-full	111680	335	1	0	
+ore_ont_4796	?	b<1M	303903	model-none	199	39	1166	1335	8	0.87	41	16.55	76	36.79	5	0	0	0	0	0	0	0	198	0	0	45528	0	37990	7339	0	0.0		no model		0		0	0	no base model: closure budget
+ore_ont_4798	?	b<1M	765264	model-full	4317	0	4412	4411	0	0.34	28	0.43	75	0.07	14	1	4318	322	0	4318	0	0	0	0	0	18596226	18596226	0	0	1	0.27	86	{"certified": 1}	certified-full	18596226	4317	1	0	
+ore_ont_480	?	a<100K	16163	model-full	66	4	109	91	0	0.02	10	0.24	72	0.0	2	1	71	0	0	67	0	0	0	0	0	4610	4610	0	0	1	0.08	73	{"certified": 1}	certified-full	4610	66	1	0	
+ore_ont_4827	?	b<1M	191942	model-full	865	0	6460	1581	8	0.13	18	0.55	75	0.06	4	1	1032	56	0	697	169	0	0	169	0	743629	743629	0	0	1	1.32	75	{"certified": 1}	certified-full	743629	865	1	0	
+ore_ont_4855	?	a<100K	30123	model-full	127	0	129	126	0	0.0	9	0.23	72	0.0	2	1	128	0	0	128	0	0	0	0	0	16134	16134	0	0	1	0.08	72	{"certified": 1}	certified-full	16134	127	1	0	
+ore_ont_4856	?	a<100K	16983	model-full	59	1	116	79	0	0.02	10	0.25	69	0.0	2	1	43	0	0	60	0	0	0	0	0	2516	2516	0	0	1	0.09	69	{"certified": 1}	certified-full	2516	41	1	0	
+ore_ont_4875	?	b<1M	130881	model-full	464	0	1247	787	0	0.01	10	0.25	73	0.0	3	1	744	504	0	465	0	0	0	0	0	215758	215758	0	0	1	0.1	74	{"certified": 1}	certified-full	215758	464	1	0	
+ore_ont_4897	?	a<100K	44345	model-full	143	0	190	293	0	0.03	11	0.26	72	0.0	2	1	134	152	0	128	16	0	0	16	0	19814	19814	0	0	1	0.14	74	{"certified": 1}	certified-full	19814	143	1	0	
+ore_ont_4898	?	b<1M	172078	model-full	750	0	2778	3019	0	0.06	12	0.31	76	0.01	4	1	954	559	0	751	0	0	0	0	0	562702	562702	0	0	1	0.14	83	{"certified": 1}	certified-full	562702	750	1	0	
+ore_ont_4903	?	b<1M	860208	model-partial	1875	280	6937	7709	100	3.77	190	7.78	77	35.19	14	1	1909	2794	0	1193	0	25	658	0	0	4029516	2799962	1228896	0	1	180.0	150	{"timeout": 1}	certified-none	0	1875	0	0	time budget after 1218 of 1876 witnesses
+ore_ont_4918	?	b<1M	105464	model-full	594	0	599	690	0	0.01	10	0.23	73	0.0	3	1	595	3	0	595	0	0	0	0	0	350652	350652	0	0	1	0.09	73	{"certified": 1}	certified-full	350652	594	1	0	
+ore_ont_4936	?	a<100K	50871	model-full	30	47	283	387	146	0.04	12	0.51	74	0.07	2	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.29	69	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_4961	?	b<1M	294901	model-full	18	185	1460	1463	0	0.23	29	0.39	75	0.02	4	1	192	870	0	19	0	0	0	0	0	3266	3266	0	0	1	7.8	71	{"certified": 1}	certified-full	3266	18	1	0	
+ore_ont_4983	?	b<1M	186541	model-full	483	159	999	957	0	0.14	16	0.45	73	0.01	4	1	637	296	0	484	0	0	0	0	0	307298	307298	0	0	1	10.02	90	{"certified": 1}	certified-full	307298	483	1	0	
+ore_ont_5014	?	b<1M	148011	km-inconsistent						0.32	54																												km-inconsistent
+ore_ont_5033	?	b<1M	119215	model-full	61	16	359	645	20	0.06	13	0.57	73	0.04	3	1	74	7	0	62	0	0	0	0	0	4644	4644	0	0	1	1.14	69	{"certified": 1}	certified-full	4644	61	1	0	
+ore_ont_5057	?	b<1M	143118	model-full	554	0	964	779	0	0.02	10	0.27	74	0.0	3	1	555	744	0	555	0	0	0	0	0	306857	306857	0	0	1	0.1	74	{"certified": 1}	certified-full	306857	554	1	0	
+ore_ont_507	?	b<1M	657079	model-full	1607	0	5449	5458	0	0.06	16	0.54	80	0.03	9	1	4389	1537	0	1608	0	0	0	0	0	2578458	2578458	0	0	1	0.27	89	{"certified": 1}	certified-full	2578458	1607	1	0	
+ore_ont_5074	?	a<100K	80716	model-full	156	269	427	376	0	0.07	14	0.25	74	0.0	3	1	426	0	0	157	0	0	0	0	0	66021	66021	0	0	1	0.11	73	{"certified": 1}	certified-full	66021	156	1	0	
+ore_ont_5078	?	b<1M	399791	model-full	873	7	3692	3533	0	0.26	29	0.47	78	0.02	6	1	3072	1197	0	874	0	0	0	0	0	766826	766826	0	0	1	0.22	81	{"certified": 1}	certified-full	766826	873	1	0	
+ore_ont_508	?	a<100K	23948	model-full	64	5	116	97	0	0.02	10	0.24	73	0.0	2	1	55	0	0	65	0	0	0	0	0	3362	3362	0	0	1	0.1	74	{"certified": 1}	certified-full	3362	49	1	0	
+ore_ont_5080	?	b<1M	468740	model-full	1648	0	2775	2900	0	0.06	16	0.36	73	0.06	8	1	1827	3758	0	1649	0	0	0	0	0	2702371	2702371	0	0	1	0.22	79	{"certified": 1}	certified-full	2702371	1648	1	0	
+ore_ont_5089	?	a<100K	47130	model-full	109	0	184	168	0	0.01	9	0.42	72	0.0	2	1	117	99	0	110	0	0	0	0	0	11510	11510	0	0	1	0.5	74	{"certified": 1}	certified-full	11510	109	1	0	
+ore_ont_509	?	b<1M	690087	dump-failed						0.49	32	300.92	74																										dump-failed
+ore_ont_5090	?	a<100K	42971	model-full	144	0	242	239	0	0.0	8	0.23	73	0.0	2	1	145	330	0	145	0	0	0	0	0	20400	20400	0	0	1	0.09	73	{"certified": 1}	certified-full	20400	144	1	0	
+ore_ont_5107	?	a<100K	17455	model-full	49	24	130	207	0	0.05	20	0.24	68	0.0	2	2	400	359	0	49	1	0	0	1	1	3448	3448	0	0	2	0.25	69	{"certified": 2}	certified-full	3448	49	1	0	
+ore_ont_5149	?	b<1M	759888	model-full	699	2907	5726	5699	0	0.84	66	0.66	76	0.17	17	1	1388	1	0	700	0	0	0	0	0	2515846	2515846	0	0	1	0.91	80	{"certified": 1}	certified-full	2515846	699	1	0	
+ore_ont_5159	?	a<100K	50847	model-full	30	47	283	387	146	0.03	11	0.5	73	0.05	3	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.26	71	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_5164	?	b<1M	115562	model-full	177	58	295	60	0	0.05	12	1.28	73	0.0	2	1	236	58	0	178	0	0	0	0	0	41774	41774	0	0	1	11.18	89	{"certified": 1}	certified-full	41774	177	1	0	
+ore_ont_5184	?	b<1M	100622	model-full	161	15	366	448	0	0.06	12	0.43	72	0.01	2	1	199	305	0	162	0	0	0	0	0	28083	28083	0	0	1	1.59	77	{"certified": 1}	certified-full	28083	161	1	0	
+ore_ont_5197	?	b<1M	753434	model-full	3112	0	3659	4893	0	0.11	25	0.41	75	0.08	12	1	3113	5557	0	3113	0	0	0	0	0	9647958	9647958	0	0	1	0.32	89	{"certified": 1}	certified-full	9647958	3112	1	0	
+ore_ont_5204	?	a<100K	95095	model-full	71	88	394	470	12	0.06	13	0.37	73	0.02	2	1	175	91	0	67	5	0	0	5	0	10934	10934	0	0	1	1.71	75	{"certified": 1}	certified-full	10934	71	1	0	
+ore_ont_5205	?	b<1M	124151	model-full	374	373	753	746	4	0.13	18	0.27	74	0.0	4	1	748	0	0	375	0	0	0	0	0	278073	278073	0	0	1	0.15	74	{"certified": 1}	certified-full	278073	374	1	0	
+ore_ont_5213	?	b<1M	485942	model-full	1925	0	2036	3579	0	0.05	15	0.34	76	0.03	7	1	1926	150	0	1926	0	0	0	0	0	3693917	3693917	0	0	1	0.16	80	{"certified": 1}	certified-full	3693917	1925	1	0	
+ore_ont_5216	?	b<1M	148271	model-full	718	1	1071	1073	0	0.1	15	0.27	74	0.01	4	1	1065	30	0	719	0	0	0	0	0	513822	513822	0	0	1	0.11	75	{"certified": 1}	certified-full	513822	718	1	0	
+ore_ont_5220	?	b<1M	196578	model-full	504	0	1934	1946	0	0.02	10	0.33	75	0.01	5	1	1933	0	0	505	0	0	0	0	0	252208	252208	0	0	1	0.14	77	{"certified": 1}	certified-full	252208	504	1	0	
+ore_ont_524	?	b<1M	596376	model-full	1193	2385	4761	4078	0	0.65	54	0.52	75	0.17	17	1	1627	1592	0	1194	0	0	0	0	0	4265508	4265508	0	0	1	0.46	76	{"certified": 1}	certified-full	4265508	1193	1	0	
+ore_ont_5241	?	b<1M	755346	model-full	1230	1	7770	7762	0	1.29	58	0.86	80	0.04	14	1	7649	585	0	1231	0	0	0	0	0	1510816	1510816	0	0	1	0.36	85	{"certified": 1}	certified-full	1510816	1230	1	0	
+ore_ont_5255	?	a<100K	20845	model-full	89	0	116	114	0	0.0	8	0.21	72	0.0	2	1	90	46	0	90	0	0	0	0	0	7753	7753	0	0	1	0.08	73	{"certified": 1}	certified-full	7753	89	1	0	
+ore_ont_5258	?	a<100K	49164	model-full	149	19	253	303	0	0.08	13	0.25	73	0.0	2	1	166	0	0	150	0	0	0	0	0	24841	24841	0	0	1	0.15	75	{"certified": 1}	certified-full	24841	149	1	0	
+ore_ont_5263	?	a<100K	81861	model-full	130	10	147	7	0	0.03	11	0.87	73	0.0	2	1	141	5	0	131	0	0	0	0	0	18332	18332	0	0	1	3.64	81	{"certified": 1}	certified-full	18332	130	1	0	
+ore_ont_5266	?	b<1M	365420	model-full	1555	0	2978	3845	0	0.04	15	0.34	77	0.06	6	1	1558	325	0	1556	0	0	0	0	0	2410908	2410908	0	0	1	0.24	85	{"certified": 1}	certified-full	2410908	1555	1	0	
+ore_ont_5292	?	a<100K	20746	model-full	69	18	100	56	6	0.02	10	0.25	73	0.0	2	1	88	0	0	70	0	0	0	0	0	6036	6036	0	0	1	0.15	74	{"certified": 1}	certified-full	6036	69	1	0	
+ore_ont_5303	?	a<100K	41889	model-partial	94	0	407	517	0	0.15	13	0.24	73	2.96	15	1	141	393	0	51	33	5	6	33	0	8694	8143	545	0	1	0.14	67	{"certified": 1}	certified-partial	8143	94	1	0	witness: closure budget 3, no type for a successor 3
+ore_ont_5324	?	b<1M	196620	model-full	504	0	1934	1946	0	0.02	10	0.35	75	0.02	5	1	1933	0	0	505	0	0	0	0	0	252208	252208	0	0	1	0.13	76	{"certified": 1}	certified-full	252208	504	1	0	
+ore_ont_5359	?	b<1M	155371	model-partial	359	18	1383	1918	0	0.35	23	0.28	74	4.32	20	1	1668	2930	0	47	312	1	0	313	0	133140	133138	2	0	1	1.69	87	{"certified": 1}	certified-partial	133138	359	1	0	split witnesses incomplete
+ore_ont_5376	?	b<1M	368791	model-full	1176	0	2370	1600	0	0.03	12	0.3	75	0.01	4	1	1177	1775	0	1177	0	0	0	0	0	1383522	1383522	0	0	1	0.13	78	{"certified": 1}	certified-full	1383522	1176	1	0	
+ore_ont_5404	?	a<100K	66463	model-full	132	0	208	198	0	0.22	26	2.66	73	0.0	2	1	148	83	0	132	0	0	0	0	0	16171	16171	0	0	1	17.63	80	{"certified": 1}	certified-full	16171	125	1	0	
+ore_ont_541	?	a<100K	57818	model-full	59	0	462	709	0	0.08	14	0.42	73	0.02	2	1	92	215	0	48	12	0	0	12	0	3376	3376	0	0	1	0.4	73	{"certified": 1}	certified-full	3376	59	1	0	
+ore_ont_544	?	b<1M	485666	model-full	2287	0	8337	9074	0	0.09	19	0.41	80	0.04	8	1	2288	1616	0	2288	0	0	0	0	0	5230996	5230996	0	0	1	0.23	83	{"certified": 1}	certified-full	5230996	2287	1	0	
+ore_ont_5485	?	b<1M	397702	model-full	1263	0	2478	2788	0	0.05	14	0.33	75	0.05	6	1	1437	3163	0	1264	0	0	0	0	0	1589327	1589327	0	0	1	0.19	81	{"certified": 1}	certified-full	1589327	1263	1	0	
+ore_ont_5502	?	b<1M	551667	model-full	2397	22	3534	4076	219	1.19	96	0.95	79	7.18	33	1	4552	4552	0	222	2176	0	0	2176	0	5783296	5783296	0	0	1	41.08	278	{"certified": 1}	certified-full	5783296	2397	1	0	
+ore_ont_5509	?	a<100K	97086	model-full	311	417	730	720	0	0.11	17	0.27	73	0.0	3	1	729	0	0	312	0	0	0	0	0	225421	225421	0	0	1	0.15	73	{"certified": 1}	certified-full	225421	311	1	0	
+ore_ont_5564	?	b<1M	166613	model-full	370	103	917	1056	171	0.27	22	8.09	73	0.73	4	2	357	80	0	370	1	0	0	1	0	172481	172481	0	0	2	1.56	75	{"certified": 2}	certified-full	172481	370	1	0	
+ore_ont_5572	?	a<100K	50801	model-full	30	47	283	387	146	0.04	12	0.53	73	0.06	3	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.27	67	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_5604	?	a<100K	93396	model-full	322	0	498	511	14	0.1	17	0.23	74	0.02	3	1	331	786	0	323	0	0	0	0	0	102639	102639	0	0	1	0.12	76	{"certified": 1}	certified-full	102639	322	1	0	
+ore_ont_5646	?	a<100K	27126	model-full	113	0	155	134	0	0.0	8	0.19	72	0.0	2	1	114	48	0	114	0	0	0	0	0	12554	12554	0	0	1	0.08	72	{"certified": 1}	certified-full	12554	113	1	0	
+ore_ont_566	?	b<1M	524454	model-full	1220	0	1222	2413	0	0.06	15	0.32	72	0.01	5	1	1221	0	0	1221	0	0	0	0	0	1484312	1484312	0	0	1	0.15	73	{"certified": 1}	certified-full	1484312	1220	1	0	
+ore_ont_5665	?	a<100K	81041	model-full	417	0	621	406	0	0.01	9	0.24	74	0.0	3	1	418	202	0	418	0	0	0	0	0	174106	174106	0	0	1	0.09	73	{"certified": 1}	certified-full	174106	417	1	0	
+ore_ont_5679	?	a<100K	71658	model-full	129	0	131	322	0	0.01	10	0.22	73	0.0	2	1	130	0	0	130	0	0	0	0	0	16470	16470	0	0	1	0.07	74	{"certified": 1}	certified-full	16470	129	1	0	
+ore_ont_568	?	a<100K	95887	model-full	252	158	658	544	0	0.09	16	0.27	73	0.01	3	1	404	153	0	253	0	0	0	0	0	97381	97381	0	0	1	1.55	79	{"certified": 1}	certified-full	97381	239	1	0	
+ore_ont_5688	?	b<1M	347689	model-full	974	204	1798	1822	0	0.23	21	0.54	75	0.02	5	1	1107	528	0	975	0	0	0	0	0	1142219	1142219	0	0	1	29.21	114	{"certified": 1}	certified-full	1142219	974	1	0	
+ore_ont_5696	?	a<100K	36710	model-full	124	0	126	260	0	0.01	9	0.2	73	0.0	2	1	125	0	0	125	0	0	0	0	0	15160	15160	0	0	1	0.08	72	{"certified": 1}	certified-full	15160	124	1	0	
+ore_ont_5707	?	b<1M	432821	model-full	540	0	846	1587	0	0.69	77	1.84	75	0.05	4	2	945	3701	0	541	0	0	0	0	7	287454	287454	0	0	2	25.3	136	{"certified": 2}	certified-full	287454	540	1	0	
+ore_ont_572	?	b<1M	839418	km-inconsistent						0.67	46																												km-inconsistent
+ore_ont_5742	?	a<100K	46941	model-full	88	0	90	100	0	0.01	9	0.21	72	0.0	2	1	89	0	0	89	0	0	0	0	0	7347	7347	0	0	1	0.08	73	{"certified": 1}	certified-full	7347	88	1	0	
+ore_ont_5764	?	b<1M	264066	model-partial	896	155	1546	1899	354	1.61	59	25.85	74	55.4	8	2	1145	77	0	741	0	156	0	0	0	935050	934646	404	0	2	10.6	95	{"certified": 2}	certified-partial	934646	896	1	0	time budget in the split witnesses
+ore_ont_5774	?	b<1M	152540	model-full	98	206	740	740	16	0.12	18	0.29	74	0.06	3	1	146	90	0	99	0	0	0	0	0	29013	29013	0	0	1	0.67	68	{"certified": 1}	certified-full	29013	98	1	0	
+ore_ont_580	?	a<100K	14283	model-full	21	18	46	32	0	0.03	9	0.25	73	0.0	2	1	42	0	0	21	0	0	0	0	0	803	803	0	0	1	0.13	73	{"certified": 1}	certified-full	803	21	1	0	
+ore_ont_5834	?	b<1M	203210	model-full	137	206	1353	2347	6	0.89	43	0.33	75	3.04	12	2	1018	2057	0	95	43	0	0	44	0	45442	45442	0	0	2	14.42	76	{"certified": 2}	certified-full	45442	137	1	0	
+ore_ont_5852	?	a<100K	22764	model-full	74	0	76	62	0	0.0	9	0.23	72	0.0	2	1	75	0	0	75	0	0	0	0	0	5460	5460	0	0	1	0.08	72	{"certified": 1}	certified-full	5460	74	1	0	
+ore_ont_586	?	b<1M	150603	dump-failed						1.16	106	300.25	75																										dump-failed
+ore_ont_5894	?	b<1M	688726	dump-failed						0.49	32	300.92	75																										dump-failed
+ore_ont_5932	?	a<100K	88124	model-full	198	105	479	999	0	0.07	13	0.29	73	0.0	3	1	304	154	0	199	0	0	0	0	0	59634	59634	0	0	1	2.26	76	{"certified": 1}	certified-full	59634	198	1	0	
+ore_ont_5940	?	b<1M	265820	model-full	695	0	1622	1622	0	0.08	15	0.29	74	0.01	4	1	694	912	0	694	2	0	0	2	0	482287	482287	0	0	1	0.12	76	{"certified": 1}	certified-full	482287	695	1	0	
+ore_ont_5964	?	b<1M	257475	model-partial	658	193	1823	2996	59	0.87	43	0.65	74	37.93	24	2	866	1325	0	546	56	1	0	57	92	518973	518972	1	0	2	68.74	89	{"certified": 2}	certified-partial	518972	658	1	0	split witnesses incomplete
+ore_ont_5966	?	b<1M	106931	model-full	270	44	373	371	0	0.06	12	0.25	73	0.0	3	1	307	116	0	271	0	0	0	0	0	83971	83971	0	0	1	0.15	74	{"certified": 1}	certified-full	83971	270	1	0	
+ore_ont_5978	?	a<100K	58166	model-full	167	0	575	501	0	0.01	9	0.25	73	0.0	3	1	501	168	0	168	0	0	0	0	0	27923	27923	0	0	1	0.09	74	{"certified": 1}	certified-full	27923	167	1	0	
+ore_ont_5983	?	b<1M	545275	model-full	1861	0	3813	2727	0	0.06	15	0.37	77	0.02	5	1	1862	2526	0	1862	0	0	0	0	0	3462657	3462657	0	0	1	0.17	80	{"certified": 1}	certified-full	3462657	1861	1	0	
+ore_ont_6020	?	b<1M	254572	model-full	226	603	1144	1264	92	0.48	58	0.97	74	0.69	5	1	308	567	0	227	0	0	0	0	0	183235	183235	0	0	1	12.38	81	{"certified": 1}	certified-full	183235	226	1	0	
+ore_ont_6024	?	b<1M	169055	model-full	82	0	98	110	14	0.03	11	0.79	73	0.0	2	1	83	0	0	83	0	0	0	0	0	6325	6325	0	0	1	0.36	81	{"certified": 1}	certified-full	6325	82	1	0	
+ore_ont_6067	?	b<1M	132032	model-full	628	0	1108	1185	0	0.05	11	0.27	74	0.01	4	1	856	127	0	629	0	0	0	0	0	391839	391839	0	0	1	0.11	75	{"certified": 1}	certified-full	391839	628	1	0	
+ore_ont_6146	?	b<1M	952275	model-full	1931	2	9974	10250	0	0.85	64	0.85	85	0.06	16	1	8821	2075	0	1932	0	0	0	0	0	3724406	3724406	0	0	1	0.68	144	{"certified": 1}	certified-full	3724406	1931	1	0	
+ore_ont_6149	?	b<1M	284695	model-full	1121	0	1213	1832	0	0.05	14	0.48	75	0.01	5	1	1160	73	0	1122	0	0	0	0	0	1250365	1250365	0	0	1	0.67	102	{"certified": 1}	certified-full	1250365	1121	1	0	
+ore_ont_6207	?	a<100K	46987	model-full	264	0	274	279	0	0.01	8	0.24	72	0.0	2	1	265	52	0	265	0	0	0	0	0	68810	68810	0	0	1	0.09	73	{"certified": 1}	certified-full	68810	264	1	0	
+ore_ont_6226	?	b<1M	566584	model-full	278	963	3776	3237	0	0.39	35	0.53	74	0.02	6	1	1240	2404	0	279	0	0	0	0	0	341678	341678	0	0	1	113.44	85	{"certified": 1}	certified-full	341678	277	1	0	
+ore_ont_6246	?	a<100K	74081	model-full	76	0	249	271	0	0.04	11	1.09	73	0.01	2	1	117	235	0	77	0	0	0	0	0	5532	5532	0	0	1	3.24	75	{"certified": 1}	certified-full	5532	76	1	0	
+ore_ont_6258	?	b<1M	146607	model-full	214	23	557	663	0	0.13	15	0.5	74	0.03	3	1	284	580	0	213	0	0	0	0	0	49888	49888	0	0	1	3.34	74	{"certified": 1}	certified-full	49888	214	1	0	
+ore_ont_6260	?	a<100K	50787	model-full	30	47	283	387	146	0.04	12	0.5	73	0.08	3	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.3	73	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_6272	?	b<1M	148708	model-full	76	161	969	1931	6	0.74	37	0.32	74	3.13	12	2	379	1322	0	46	31	0	0	32	0	17059	17059	0	0	2	7.78	72	{"certified": 2}	certified-full	17059	76	1	0	
+ore_ont_6278	?	b<1M	197411	model-full	450	103	996	1141	195	0.31	24	11.42	75	0.91	5	2	415	82	0	450	1	0	0	1	0	245385	245385	0	0	2	5.11	83	{"certified": 2}	certified-full	245385	450	1	0	
+ore_ont_6298	?	b<1M	205364	model-full	120	0	427	577	18	0.38	40	11.83	75	0.18	3	1	157	602	0	121	0	0	0	0	0	13627	13627	0	0	1	180.0	69	{"timeout": 1}	certified-none	0	120	0	0	
+ore_ont_630	?	b<1M	136952	model-full	454	0	1139	939	0	0.01	9	0.27	74	0.0	3	1	785	530	0	455	0	0	0	0	0	206197	206197	0	0	1	0.1	75	{"certified": 1}	certified-full	206197	454	1	0	
+ore_ont_6333	?	a<100K	47204	model-partial	80	0	568	675	0	0.43	23	0.23	72	35.11	40	1	300	591	0	32	11	37	1	16	0	6130	5995	134	0	1	0.16	69	{"certified": 1}	certified-partial	5995	80	1	0	time budget in the split witnesses
+ore_ont_6338	?	a<100K	59186	model-full	99	9	115	7	0	0.03	10	0.62	73	0.0	2	1	109	5	0	100	0	0	0	0	0	10793	10793	0	0	1	1.79	77	{"certified": 1}	certified-full	10793	99	1	0	
+ore_ont_6368	?	a<100K	90580	model-full	370	0	372	371	0	0.01	10	0.23	72	0.0	3	1	371	0	0	371	0	0	0	0	0	135902	135902	0	0	1	0.08	73	{"certified": 1}	certified-full	135902	370	1	0	
+ore_ont_637	?	b<1M	125075	model-full	464	0	660	797	0	0.01	10	0.25	73	0.0	3	1	466	336	0	465	0	0	0	0	0	214174	214174	0	0	1	0.1	74	{"certified": 1}	certified-full	214174	464	1	0	
+ore_ont_6378	?	a<100K	55114	model-full	329	0	331	339	0	0.01	10	0.24	72	0.0	2	1	330	0	0	330	0	0	0	0	0	107845	107845	0	0	1	0.08	73	{"certified": 1}	certified-full	107845	329	1	0	
+ore_ont_6401	?	b<1M	353193	model-full	345	153	1667	1729	0	0.19	22	0.61	75	0.1	6	1	517	999	0	346	0	0	0	0	0	168405	168405	0	0	1	56.86	99	{"certified": 1}	certified-full	168405	345	1	0	
+ore_ont_6409	?	b<1M	365420	model-full	1555	0	2978	3845	0	0.04	15	0.34	76	0.06	6	1	1558	325	0	1556	0	0	0	0	0	2410908	2410908	0	0	1	0.24	85	{"certified": 1}	certified-full	2410908	1555	1	0	
+ore_ont_6417	?	b<1M	104123	model-full	149	46	250	55	0	0.04	12	1.01	73	0.0	2	1	196	53	0	150	0	0	0	0	0	29206	29206	0	0	1	6.98	85	{"certified": 1}	certified-full	29206	149	1	0	
+ore_ont_6423	?	b<1M	845587	model-full	2792	0	5034	5822	0	0.36	31	0.68	76	0.14	11	1	2972	7758	0	2784	9	0	0	9	0	7777624	7777624	0	0	1	1.04	165	{"certified": 1}	certified-full	7777624	2792	1	0	
+ore_ont_6437	?	b<1M	336113	model-full	776	0	1367	2786	248	0.27	29	9.19	75	1.46	5	1	806	403	0	765	12	0	0	12	0	598471	598471	0	0	1	1.58	85	{"certified": 1}	certified-full	598471	776	1	0	
+ore_ont_6446	?	b<1M	363870	km-inconsistent						0.45	111																												km-inconsistent
+ore_ont_6461	?	a<100K	28523	model-full	53	0	187	265	0	0.0	9	0.24	73	0.0	2	1	182	4	0	54	0	0	0	0	0	2682	2682	0	0	1	0.08	72	{"certified": 1}	certified-full	2682	53	1	0	
+ore_ont_6470	?	a<100K	50794	model-full	30	47	283	387	146	0.04	12	0.49	73	0.05	2	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.3	68	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_6485	?	a<100K	46696	model-partial	119	0	465	535	0	0.09	13	0.23	73	3.84	23	1	118	32	0	94	2	0	24	2	0	14042	11296	2722	0	1	0.11	67	{"certified": 1}	certified-partial	11296	119	1	0	witness: at-most: no fold possible 17, closure budget 7
+ore_ont_6495	?	a<100K	66818	model-full	37	0	327	547	0	0.03	11	1.37	74	0.01	2	1	52	71	0	37	1	0	0	1	0	1292	1292	0	0	1	4.1	74	{"certified": 1}	certified-full	1292	37	1	0	
+ore_ont_6542	?	b<1M	145899	model-full	838	0	843	947	0	0.02	11	0.27	73	0.01	4	1	839	3	0	839	0	0	0	0	0	698962	698962	0	0	1	0.1	75	{"certified": 1}	certified-full	698962	838	1	0	
+ore_ont_6566	?	b<1M	693438	model-full	1617	0	2813	3308	0	0.09	17	0.37	73	0.02	6	1	1618	1484	0	1618	0	0	0	0	0	2608716	2608716	0	0	1	0.17	77	{"certified": 1}	certified-full	2608716	1617	1	0	
+ore_ont_6589	?	a<100K	77626	model-full	72	61	147	141	12	0.04	11	0.77	74	0.0	2	1	132	0	0	73	0	0	0	0	0	9418	9418	0	0	1	3.32	78	{"certified": 1}	certified-full	9418	72	1	0	
+ore_ont_6615	?	b<1M	126128	dump-failed						6.04	518	0.07	72																										dump-failed
+ore_ont_6617	?	a<100K	50815	model-full	30	47	283	387	146	0.04	12	0.5	73	0.08	2	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.27	72	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_6696	?	b<1M	153674	model-full	881	8	2659	2662	0	0.14	17	0.29	74	0.01	4	1	1006	454	0	882	0	0	0	0	0	783633	783633	0	0	1	0.13	77	{"certified": 1}	certified-full	783633	881	1	0	
+ore_ont_670	?	b<1M	423629	model-full	2038	0	2040	2327	0	0.07	16	0.33	75	0.02	7	1	2039	0	0	2039	0	0	0	0	0	4141307	4141307	0	0	1	0.16	78	{"certified": 1}	certified-full	4141307	2038	1	0	
+ore_ont_6720	?	b<1M	151311	km-inconsistent						0.06	17																												km-inconsistent
+ore_ont_6727	?	b<1M	736601	dump-failed						0.54	33	300.96	75																										dump-failed
+ore_ont_6735	?	a<100K	34731	model-full	214	0	216	215	0	0.01	9	0.22	73	0.0	2	1	215	0	0	215	0	0	0	0	0	44978	44978	0	0	1	0.08	73	{"certified": 1}	certified-full	44978	214	1	0	
+ore_ont_6796	?	a<100K	72393	model-full	252	0	254	277	0	0.01	10	0.23	72	0.0	2	1	253	0	0	253	0	0	0	0	0	62606	62606	0	0	1	0.08	72	{"certified": 1}	certified-full	62606	252	1	0	
+ore_ont_6812	?	a<100K	46941	model-full	88	0	90	100	0	0.01	10	0.23	73	0.0	2	1	89	0	0	89	0	0	0	0	0	7347	7347	0	0	1	0.08	73	{"certified": 1}	certified-full	7347	88	1	0	
+ore_ont_6817	?	b<1M	664478	model-full	776	772	4481	4560	0	0.5	56	0.79	80	0.03	11	1	4464	1442	0	777	0	0	0	0	0	1196392	1196392	0	0	1	16.32	80	{"certified": 1}	certified-full	1196392	776	1	0	
+ore_ont_6822	?	b<1M	947689	dump-failed						0.62	63	300.41	79																										dump-failed
+ore_ont_6855	?	a<100K	47492	model-full	12	33	282	288	182	0.05	13	4.17	72	0.44	3	1	35	33	0	13	0	0	0	0	0	509	509	0	0	1	0.54	69	{"certified": 1}	certified-full	509	12	1	0	
+ore_ont_6857	?	b<1M	181433	model-full	421	103	954	1080	195	0.29	23	11.48	74	0.84	4	2	403	98	0	421	1	0	0	1	0	217784	217784	0	0	2	2.31	80	{"certified": 2}	certified-full	217784	421	1	0	
+ore_ont_6859	?	a<100K	73464	model-full	169	81	448	722	50	0.09	14	0.55	74	0.19	3	1	251	130	0	170	0	0	0	0	0	42035	42035	0	0	1	1.32	77	{"certified": 1}	certified-full	42035	169	1	0	
+ore_ont_6889	?	a<100K	98116	model-full	500	0	502	501	0	0.01	10	0.24	73	0.0	3	1	501	0	0	501	0	0	0	0	0	250003	250003	0	0	1	0.09	74	{"certified": 1}	certified-full	250003	500	1	0	
+ore_ont_6905	?	b<1M	752151	model-full	3100	0	3647	4875	0	0.12	24	0.45	75	0.08	12	1	3101	5533	0	3101	0	0	0	0	0	9573585	9573585	0	0	1	0.31	91	{"certified": 1}	certified-full	9573585	3100	1	0	
+ore_ont_6923	?	b<1M	376857	dump-failed						0.33	30	300.44	78																										dump-failed
+ore_ont_6934	?	b<1M	758659	model-full	144	538	2463	3438	276	0.51	50	11.88	77	7.67	9	1	553	1303	0	142	3	0	0	3	0	94732	94732	0	0	1	180.0	96	{"timeout": 1}	certified-none	0	144	0	0	
+ore_ont_6939	?	b<1M	306225	model-full	1831	0	1833	1834	0	0.05	14	0.3	75	0.02	6	1	1832	0	0	1832	0	0	0	0	0	3345771	3345771	0	0	1	0.14	77	{"certified": 1}	certified-full	3345771	1831	1	0	
+ore_ont_6951	?	b<1M	277602	dump-failed						2.95	414	300.45	78																										dump-failed
+ore_ont_6967	?	b<1M	176616	model-partial	288	1	844	1374	223	0.63	29	75.73	74	36.13	4	1	63	55	0	26	0	0	263	0	0	82808	7702	74843	0	1	1.72	69	{"certified": 1}	certified-partial	7702	288	1	0	time budget after 29 of 289 witnesses
+ore_ont_6981	?	a<100K	91746	model-full	227	0	371	374	14	0.03	11	0.76	73	0.01	2	1	225	479	0	228	0	0	0	0	0	51282	51282	0	0	1	2.04	79	{"certified": 1}	certified-full	51282	227	1	0	
+ore_ont_6983	?	b<1M	153341	model-full	322	103	826	939	171	0.25	22	7.98	73	0.68	4	2	312	80	0	322	1	0	0	1	0	134556	134556	0	0	2	1.5	73	{"certified": 2}	certified-full	134556	322	1	0	
+ore_ont_6999	?	b<1M	176451	model-partial	85	158	909	1005	514	0.5	50	1.85	74	23.22	6	4	94	14	0	57	1	3	24	1	103	20544	18498	2022	0	4	6.5	74	{"certified": 4}	certified-partial	18498	85	1	0	witness: pollution in every model 23, seed type clash 1
+ore_ont_7003	?	a<100K	53897	model-full	84	0	86	2	0	0.02	10	0.5	72	0.0	2	1	85	0	0	85	0	0	0	0	0	7142	7142	0	0	1	1.06	76	{"certified": 1}	certified-full	7142	84	1	0	
+ore_ont_7007	?	b<1M	389922	dump-failed						0.81	84	300.38	77																										dump-failed
+ore_ont_7011	?	b<1M	103335	model-full	243	180	938	2013	4	0.27	21	0.29	74	10.69	63	2	505	547	0	164	80	0	0	80	94	101416	101416	0	0	2	3.37	69	{"certified": 2}	certified-full	101416	243	1	0	
+ore_ont_703	?	a<100K	97078	model-full	505	0	779	856	0	0.02	10	0.24	73	0.01	3	1	510	107	0	506	0	0	0	0	0	252539	252539	0	0	1	0.08	75	{"certified": 1}	certified-full	252539	505	1	0	
+ore_ont_7052	?	b<1M	871389	km-inconsistent						0.44	75																												km-inconsistent
+ore_ont_7073	?	a<100K	59193	model-full	97	0	99	2	0	0.02	10	0.62	72	0.0	2	1	98	0	0	98	0	0	0	0	0	9508	9508	0	0	1	1.73	75	{"certified": 1}	certified-full	9508	97	1	0	
+ore_ont_7108	?	b<1M	785453	dump-failed						0.72	35	301.01	76																										dump-failed
+ore_ont_7120	?	b<1M	541204	model-full	3039	0	3041	3040	0	0.09	17	0.35	75	0.02	7	1	3040	0	0	3040	0	0	0	0	0	9235524	9235524	0	0	1	0.16	78	{"certified": 1}	certified-full	9235524	3039	1	0	
+ore_ont_714	?	a<100K	36287	km-failed						0.01	9																												km-failed
+ore_ont_7169	?	b<1M	353712	model-full	1268	0	1270	1269	0	0.04	13	0.27	74	0.02	5	1	1269	0	0	1269	0	0	0	0	0	1602933	1602933	0	0	1	0.12	76	{"certified": 1}	certified-full	1602933	1268	1	0	
+ore_ont_7179	?	b<1M	104542	km-inconsistent						0.1	16																												km-inconsistent
+ore_ont_7216	?	b<1M	386729	model-full	631	0	1893	2514	0	0.15	61	0.28	76	0.5	28	1	754	2535	0	632	0	0	0	0	0	324420	324420	0	0	1	0.61	92	{"certified": 1}	certified-full	324420	631	1	0	
+ore_ont_7220	?	b<1M	186638	model-full	1000	0	1042	1177	0	0.02	10	0.27	74	0.01	4	1	1001	119	0	1001	0	0	0	0	0	996178	996178	0	0	1	0.11	75	{"certified": 1}	certified-full	996178	1000	1	0	
+ore_ont_725	?	b<1M	350144	model-full	1743	0	1814	2435	0	0.04	14	0.32	75	0.03	5	1	1744	2342	0	1744	0	0	0	0	0	3031121	3031121	0	0	1	0.16	79	{"certified": 1}	certified-full	3031121	1743	1	0	
+ore_ont_727	?	b<1M	323169	model-full	1165	0	2275	2714	0	0.04	14	0.37	76	0.03	7	1	2194	1372	0	1166	0	0	0	0	0	1344324	1344324	0	0	1	0.18	79	{"certified": 1}	certified-full	1344324	1165	1	0	
+ore_ont_7270	?	a<100K	30608	model-full	83	0	125	105	0	0.0	9	0.24	71	0.0	2	1	84	7	0	84	0	0	0	0	0	6646	6646	0	0	1	0.08	72	{"certified": 1}	certified-full	6646	81	1	0	
+ore_ont_7278	?	b<1M	169883	km-failed						3.49	61																												km-failed
+ore_ont_7327	?	b<1M	324492	model-full	893	124	1722	2034	351	0.71	38	297.86	76	4.05	7	2	773	122	0	893	1	0	0	1	0	902195	902195	0	0	2	14.52	104	{"certified": 2}	certified-full	902195	893	1	0	
+ore_ont_7339	?	b<1M	133665	model-full	78	57	577	620	340	0.19	24	13.98	73	0.49	4	1	86	14	0	73	6	0	0	6	0	10462	10462	0	0	1	2.07	74	{"certified": 1}	certified-full	10462	78	1	0	
+ore_ont_7342	?	b<1M	144686	model-full	87	88	650	828	76	0.12	18	1.3	74	0.17	3	1	185	226	0	88	0	0	0	0	0	14652	14652	0	0	1	0.25	69	{"certified": 1}	certified-full	14652	87	1	0	
+ore_ont_7364	?	b<1M	418511	model-full	1072	0	2489	2488	0	0.08	15	0.47	77	0.04	5	1	1073	1702	0	1073	0	0	0	0	0	1140667	1140667	0	0	1	0.25	78	{"certified": 1}	certified-full	1140667	1072	1	0	
+ore_ont_7373	?	a<100K	82674	model-full	433	0	445	523	0	0.01	9	0.23	73	0.0	3	1	434	10	0	434	0	0	0	0	0	185980	185980	0	0	1	0.09	73	{"certified": 1}	certified-full	185980	433	1	0	
+ore_ont_7394	?	a<100K	57443	model-full	437	0	439	251	0	0.01	9	0.24	72	0.0	2	1	438	0	0	438	0	0	0	0	0	191408	191408	0	0	1	0.07	72	{"certified": 1}	certified-full	191408	437	1	0	
+ore_ont_7417	?	a<100K	46211	model-full	116	63	334	328	98	0.05	12	0.47	72	1.13	4	1	188	54	0	117	0	0	0	0	0	20531	20531	0	0	1	1.15	82	{"certified": 1}	certified-full	20531	116	1	0	
+ore_ont_7418	?	b<1M	127336	model-full	183	46	265	36	0	0.05	12	1.32	73	0.0	2	1	230	34	0	184	0	0	0	0	0	42092	42092	0	0	1	11.09	90	{"certified": 1}	certified-full	42092	183	1	0	
+ore_ont_7464	?	a<100K	34648	model-full	31	1	217	216	156	0.03	11	0.28	72	0.08	3	1	32	9	0	32	0	0	0	0	0	961	961	0	0	1	0.2	67	{"certified": 1}	certified-full	961	31	1	0	
+ore_ont_7482	?	a<100K	30229	model-full	63	0	65	117	0	0.01	9	0.23	72	0.0	2	1	64	0	0	64	0	0	0	0	0	3949	3949	0	0	1	0.08	72	{"certified": 1}	certified-full	3949	63	1	0	
+ore_ont_7483	?	b<1M	404617	model-full	2256	530	2788	3288	0	0.34	30	0.38	77	0.02	8	1	2787	0	0	2257	0	0	0	0	0	6280856	6280856	0	0	1	1.2	87	{"certified": 1}	certified-full	6280856	2256	1	0	
+ore_ont_7517	?	a<100K	40109	model-full	77	41	259	303	52	0.06	13	0.32	72	1.82	3	2	211	126	0	34	44	0	0	44	1	8847	8847	0	0	2	0.41	74	{"certified": 2}	certified-full	8847	77	1	0	
+ore_ont_7525	?	a<100K	61915	model-full	98	0	545	1027	6	0.28	12	1.43	74	0.01	2	1	87	3	0	87	12	0	0	12	0	9492	9492	0	0	1	2.13	76	{"certified": 1}	certified-full	9492	98	1	0	
+ore_ont_7532	?	b<1M	559353	km-failed						300.0	2415																												km-failed
+ore_ont_7576	?	a<100K	70512	model-full	389	0	419	424	0	0.01	8	0.24	73	0.0	3	1	390	250	0	390	0	0	0	0	0	150675	150675	0	0	1	0.08	73	{"certified": 1}	certified-full	150675	389	1	0	
+ore_ont_7584	?	b<1M	303738	model-full	86	0	300	352	28	0.24	28	4.87	73	0.13	3	1	220	708	0	0	87	0	0	87	0	6998	6998	0	0	1	57.93	93	{"certified": 1}	certified-full	6998	86	1	0	
+ore_ont_7610	?	b<1M	456453	km-inconsistent						2.87	170																												km-inconsistent
+ore_ont_7639	?	a<100K	18502	model-full	14	0	91	109	59	0.01	10	0.24	72	0.0	2	1	21	6	0	8	7	0	0	7	0	207	207	0	0	1	0.12	72	{"certified": 1}	certified-full	207	14	1	0	
+ore_ont_766	?	b<1M	200749	model-full	734	18	754	771	0	0.1	14	0.27	74	0.01	4	1	753	0	0	735	0	0	0	0	0	546983	546983	0	0	1	0.12	76	{"certified": 1}	certified-full	546983	734	1	0	
+ore_ont_7663	?	a<100K	82874	model-full	305	3	724	716	0	0.06	13	0.28	74	0.0	3	1	723	0	0	306	0	0	0	0	0	93365	93365	0	0	1	0.09	74	{"certified": 1}	certified-full	93365	305	1	0	
+ore_ont_7668	?	b<1M	115177	model-full	73	161	888	1801	6	0.32	29	0.28	75	0.15	4	1	211	788	0	73	1	0	0	1	0	16294	16294	0	0	1	3.94	71	{"certified": 1}	certified-full	16294	73	1	0	
+ore_ont_7680	?	b<1M	930616	model-full	3609	3608	7219	7282	0	1.08	87	0.66	81	0.05	17	1	7218	0	0	3610	0	0	0	0	0	26035042	26035042	0	0	1	3.61	87	{"certified": 1}	certified-full	26035042	3609	1	0	
+ore_ont_7730	?	b<1M	110177	model-full	89	75	332	385	28	0.08	15	0.62	74	0.02	3	1	175	227	0	90	0	0	0	0	0	14202	14202	0	0	1	6.64	79	{"certified": 1}	certified-full	14202	89	1	0	
+ore_ont_7743	?	b<1M	896837	model-full	2568	8	8446	9287	0	0.77	56	0.78	83	0.1	15	1	6978	641	0	2569	0	0	0	0	0	6608035	6608035	0	0	1	0.77	126	{"certified": 1}	certified-full	6608035	2568	1	0	
+ore_ont_7776	?	b<1M	446219	model-full	2147	0	2149	2451	0	0.07	17	0.32	77	0.03	7	1	2148	0	0	2148	0	0	0	0	0	4596608	4596608	0	0	1	0.16	78	{"certified": 1}	certified-full	4596608	2147	1	0	
+ore_ont_7778	?	b<1M	622439	model-full	2016	6	5093	5087	0	0.47	38	0.58	77	0.03	10	1	4917	246	0	2017	0	0	0	0	0	4071068	4071068	0	0	1	0.31	94	{"certified": 1}	certified-full	4071068	2016	1	0	
+ore_ont_778	?	a<100K	71556	model-none	122	10	628	768	0	0.48	18	0.24	74	0.08	3	0	0	0	0	0	0	0	123	0	0	15522	0	14254	1144	0	0.0		no model		0		0	0	no base model: clash in a seed type
+ore_ont_7789	?	a<100K	59909	model-full	48	122	407	1181	114	0.07	14	0.69	74	1.96	4	1	176	107	0	49	0	0	0	0	0	7588	7588	0	0	1	2.71	84	{"certified": 1}	certified-full	7588	48	1	0	
+ore_ont_7800	?	a<100K	65582	model-full	36	84	350	230	0	0.04	12	0.32	72	0.0	2	1	126	274	0	37	0	0	0	0	0	4357	4357	0	0	1	2.35	76	{"certified": 1}	certified-full	4357	36	1	0	
+ore_ont_7817	?	b<1M	721049	dump-failed						0.56	33	300.9	75																										dump-failed
+ore_ont_7818	?	b<1M	329082	dump-failed						0.85	83	300.35	77																										dump-failed
+ore_ont_7820	?	b<1M	112821	model-full	55	16	353	639	20	0.06	13	0.56	72	0.07	3	1	68	7	0	56	0	0	0	0	0	3850	3850	0	0	1	1.06	68	{"certified": 1}	certified-full	3850	55	1	0	
+ore_ont_7828	?	b<1M	201553	model-full	831	96	1243	1385	180	0.58	29	2.54	75	1.79	6	2	955	85	0	777	55	0	0	55	0	765377	765377	0	0	2	2.6	88	{"certified": 2}	certified-full	765377	831	1	0	
+ore_ont_7833	?	b<1M	421857	model-full	1583	0	6689	6318	0	0.08	17	0.38	79	0.16	9	1	1963	1602	0	1584	0	0	0	0	0	2506280	2506280	0	0	1	0.27	92	{"certified": 1}	certified-full	2506280	1583	1	0	
+ore_ont_7839	?	a<100K	14677	model-full	20	0	64	67	42	0.01	9	0.26	72	0.0	2	1	21	0	0	21	0	0	0	0	0	402	402	0	0	1	0.11	73	{"certified": 1}	certified-full	402	20	1	0	
+ore_ont_7877	?	b<1M	265970	model-partial	272	0	1920	2427	0	0.22	21	0.28	74	17.78	23	1	247	227	0	220	48	0	5	48	0	73565	72233	1327	0	1	0.2	77	{"certified": 1}	certified-partial	72233	272	1	0	witness: closure budget 5
+ore_ont_7890	?	a<100K	77839	model-full	267	0	269	566	0	0.01	10	0.24	73	0.0	3	1	268	0	0	268	0	0	0	0	0	69873	69873	0	0	1	0.09	72	{"certified": 1}	certified-full	69873	267	1	0	
+ore_ont_7893	?	b<1M	458210	model-partial	345	0	5076	4850	4	0.4	27	0.34	78	35.8	32	1	1	0	0	1	0	0	345	0	0	118404	347	117712	0	1	0.15	75	{"certified": 1}	certified-partial	347	345	1	0	time budget after 27 of 346 witnesses
+ore_ont_7894	?	b<1M	108571	model-full	253	0	975	989	0	0.01	9	0.26	74	0.0	3	1	873	117	0	254	0	0	0	0	0	62998	62998	0	0	1	0.1	74	{"certified": 1}	certified-full	62998	253	1	0	
+ore_ont_7901	?	a<100K	81109	model-full	104	0	422	595	302	0.14	15	12.47	73	1.01	3	1	103	128	0	103	0	0	0	0	0	10334	10334	0	0	1	1.24	69	{"certified": 1}	certified-full	10334	104	1	0	
+ore_ont_7938	?	b<1M	334094	model-full	1665	0	1724	2323	0	0.04	13	0.31	75	0.02	5	1	1666	2245	0	1666	0	0	0	0	0	2765539	2765539	0	0	1	0.16	79	{"certified": 1}	certified-full	2765539	1665	1	0	
+ore_ont_7962	?	a<100K	43984	model-full	33	2	329	324	254	0.08	13	0.88	73	0.12	4	1	35	33	0	34	0	0	0	0	0	1106	1106	0	0	1	0.48	67	{"certified": 1}	certified-full	1106	33	1	0	
+ore_ont_7969	?	a<100K	43294	model-full	88	0	90	100	0	0.01	9	0.21	72	0.0	2	1	89	0	0	89	0	0	0	0	0	7347	7347	0	0	1	0.07	73	{"certified": 1}	certified-full	7347	88	1	0	
+ore_ont_7988	?	b<1M	101448	model-full	40	49	566	710	366	0.28	28	45.31	73	3.47	5	1	80	63	0	41	0	0	0	0	0	3344	3344	0	0	1	2.72	69	{"certified": 1}	certified-full	3344	40	1	0	
+ore_ont_7995	?	b<1M	113387	model-full	459	0	963	506	0	0.02	9	0.24	73	0.0	3	1	460	504	0	460	0	0	0	0	0	211140	211140	0	0	1	0.1	74	{"certified": 1}	certified-full	211140	459	1	0	
+ore_ont_8006	?	b<1M	305987	model-full	823	124	1626	1916	351	0.69	38	291.74	76	3.82	7	2	711	120	0	823	1	0	0	1	0	773819	773819	0	0	2	14.42	105	{"certified": 2}	certified-full	773819	823	1	0	
+ore_ont_8019	?	b<1M	315343	model-full	842	124	1570	1832	239	0.51	29	27.61	75	1.92	6	2	771	222	0	842	1	0	0	1	0	807633	807633	0	0	2	9.24	113	{"certified": 2}	certified-full	807633	842	1	0	
+ore_ont_8021	?	b<1M	156979	model-full	606	0	1066	848	0	0.02	10	0.25	73	0.0	3	1	607	803	0	607	0	0	0	0	0	367151	367151	0	0	1	0.1	75	{"certified": 1}	certified-full	367151	606	1	0	
+ore_ont_8030	?	b<1M	240298	model-full	634	103	1176	1370	195	0.35	25	11.39	74	1.01	5	2	572	118	0	634	1	0	0	1	0	463016	463016	0	0	2	5.3	90	{"certified": 2}	certified-full	463016	634	1	0	
+ore_ont_8042	?	b<1M	203254	model-full	137	206	1353	2347	6	0.9	43	0.32	76	3.02	13	2	1018	2057	0	95	43	0	0	44	0	45442	45442	0	0	2	14.09	77	{"certified": 2}	certified-full	45442	137	1	0	
+ore_ont_8047	?	a<100K	33370	model-full	14	2	157	263	98	0.03	11	0.24	73	0.02	2	1	16	1	0	15	0	0	0	0	0	240	240	0	0	1	0.11	70	{"certified": 1}	certified-full	240	14	1	0	
+ore_ont_8050	?	b<1M	273030	model-full	248	116	483	509	0	0.13	17	0.56	74	0.01	3	2	487	474	0	249	0	0	0	0	2	88034	88034	0	0	2	16.24	96	{"certified": 2}	certified-full	88034	248	1	0	
+ore_ont_8090	?	b<1M	765158	model-full	4317	0	4412	4410	0	0.23	27	0.44	78	0.07	14	1	4318	322	0	4318	0	0	0	0	0	18596247	18596247	0	0	1	0.25	85	{"certified": 1}	certified-full	18596247	4317	1	0	
+ore_ont_8094	?	a<100K	35856	model-full	44	0	112	165	0	0.16	15	0.4	72	0.0	2	2	59	32	0	44	1	0	0	1	1	1820	1820	0	0	2	0.84	73	{"certified": 2}	certified-full	1820	43	1	0	
+ore_ont_8119	?	a<100K	80116	model-full	85	1	411	398	238	0.09	15	1.0	74	0.2	3	1	86	66	0	86	0	0	0	0	0	7288	7288	0	0	1	0.47	74	{"certified": 1}	certified-full	7288	85	1	0	
+ore_ont_8128	?	a<100K	29271	model-full	43	0	65	38	0	0.02	10	0.34	73	0.0	2	1	44	32	0	44	0	0	0	0	0	1879	1879	0	0	1	0.14	74	{"certified": 1}	certified-full	1879	43	1	0	
+ore_ont_8135	?	b<1M	268512	model-full	709	0	1632	1628	0	0.02	11	0.27	74	0.01	4	1	710	912	0	710	0	0	0	0	0	501943	501943	0	0	1	0.11	76	{"certified": 1}	certified-full	501943	709	1	0	
+ore_ont_8141	?	b<1M	155373	model-partial	359	18	1383	1918	0	0.35	23	0.26	74	4.32	19	1	1668	2930	0	47	312	1	0	313	0	133140	133138	2	0	1	1.7	86	{"certified": 1}	certified-partial	133138	359	1	0	split witnesses incomplete
+ore_ont_8142	?	b<1M	550577	km-inconsistent						0.11	22																												km-inconsistent
+ore_ont_8166	?	a<100K	66340	model-full	45	0	199	304	107	0.05	15	0.35	72	0.05	2	1	49	42	0	46	0	0	0	0	0	2027	2027	0	0	1	0.53	72	{"certified": 1}	certified-full	2027	45	1	0	
+ore_ont_8169	?	a<100K	28340	model-full	133	0	168	156	0	0.0	8	0.22	72	0.0	2	1	134	41	0	134	0	0	0	0	0	17574	17574	0	0	1	0.07	73	{"certified": 1}	certified-full	17574	133	1	0	
+ore_ont_8175	?	b<1M	518399	model-full	1187	0	4755	4074	0	0.06	14	0.51	77	0.02	7	1	3573	1757	0	1188	0	0	0	0	0	1408306	1408306	0	0	1	0.21	82	{"certified": 1}	certified-full	1408306	1187	1	0	
+ore_ont_8187	?	b<1M	236558	model-full	1314	0	1358	1490	0	0.03	12	0.29	74	0.02	5	1	1315	98	0	1315	0	0	0	0	0	1719530	1719530	0	0	1	0.12	76	{"certified": 1}	certified-full	1719530	1314	1	0	
+ore_ont_8189	?	b<1M	107927	model-full	627	0	629	637	0	0.02	11	0.24	73	0.01	3	1	628	0	0	628	0	0	0	0	0	390927	390927	0	0	1	0.1	73	{"certified": 1}	certified-full	390927	627	1	0	
+ore_ont_8203	?	b<1M	683082	model-full	2983	0	5281	4279	0	0.09	17	0.44	75	0.03	8	1	3486	5509	0	2984	0	0	0	0	0	8896258	8896258	0	0	1	0.24	81	{"certified": 1}	certified-full	8896258	2983	1	0	
+ore_ont_8226	?	a<100K	46647	model-full	105	0	146	140	0	0.0	8	0.24	73	0.0	2	1	109	100	0	106	0	0	0	0	0	10914	10914	0	0	1	0.09	73	{"certified": 1}	certified-full	10914	105	1	0	
+ore_ont_8250	?	b<1M	233527	km-failed						0.22	24																												km-failed
+ore_ont_8273	?	b<1M	359194	model-partial	316	0	1188	1697	32	0.62	29	13.17	76	35.16	6	1	408	1524	0	187	74	40	16	75	0	98249	93243	4990	0	1	180.0	76	{"timeout": 1}	certified-none	0	316	0	0	time budget in the split witnesses
+ore_ont_8290	?	b<1M	568492	model-full	3087	0	3089	3450	0	0.09	18	0.37	74	0.03	8	1	3088	0	0	3088	0	0	0	0	0	9519323	9519323	0	0	1	0.19	77	{"certified": 1}	certified-full	9519323	3087	1	0	
+ore_ont_8294	?	b<1M	721416	model-full	2768	102	4354	6018	0	0.59	38	0.66	75	0.12	10	1	3200	316	0	2408	361	0	0	361	0	7927967	7927967	0	0	1	13.87	154	{"certified": 1}	certified-full	7927967	2768	1	0	
+ore_ont_8298	?	b<1M	581235	model-full	2339	0	3159	3060	0	0.06	15	0.36	73	0.03	7	1	2340	1745	0	2340	0	0	0	0	0	5461062	5461062	0	0	1	0.19	80	{"certified": 1}	certified-full	5461062	2339	1	0	
+ore_ont_8327	?	b<1M	120734	model-full	694	0	701	714	0	0.02	9	0.26	73	0.01	3	1	695	30	0	695	0	0	0	0	0	479171	479171	0	0	1	0.1	74	{"certified": 1}	certified-full	479171	694	1	0	
+ore_ont_8335	?	a<100K	38148	model-full	116	0	324	300	0	0.05	13	0.23	72	0.0	2	1	283	48	0	117	0	0	0	0	0	13244	13244	0	0	1	0.08	73	{"certified": 1}	certified-full	13244	116	1	0	
+ore_ont_8355	?	b<1M	167423	model-full	68	189	919	662	0	0.09	14	0.5	73	0.0	2	1	263	757	0	69	0	0	0	0	0	17545	17545	0	0	1	22.87	82	{"certified": 1}	certified-full	17545	68	1	0	
+ore_ont_8362	?	b<1M	110521	km-inconsistent						0.05	13																												km-inconsistent
+ore_ont_8369	?	a<100K	83370	model-full	127	21	165	17	0	0.03	11	0.83	72	0.0	2	1	149	15	0	128	0	0	0	0	0	18925	18925	0	0	1	3.66	81	{"certified": 1}	certified-full	18925	127	1	0	
+ore_ont_8387	?	b<1M	261935	model-full	127	515	1561	1861	24	0.3	39	0.36	75	0.12	4	1	553	694	0	111	17	0	0	17	0	78979	78979	0	0	1	6.65	74	{"certified": 1}	certified-full	78979	127	1	0	
+ore_ont_8396	?	b<1M	223755	model-full	1025	0	3411	3519	0	0.04	13	0.31	76	0.02	5	1	1201	744	0	1026	0	0	0	0	0	1050932	1050932	0	0	1	0.15	84	{"certified": 1}	certified-full	1050932	1025	1	0	
+ore_ont_8399	?	b<1M	266580	model-full	767	260	1101	3860	0	0.27	26	0.32	76	0.02	6	1	993	3	0	766	2	0	0	2	0	773580	773580	0	0	1	0.2	78	{"certified": 1}	certified-full	773580	767	1	0	
+ore_ont_8429	?	b<1M	203675	model-full	851	67	1167	1339	148	0.42	25	1.4	74	1.14	5	2	958	37	0	806	46	0	0	46	0	776234	776234	0	0	2	1.8	86	{"certified": 2}	certified-full	776234	851	1	0	
+ore_ont_8460	?	b<1M	130891	model-full	127	23	509	696	0	0.14	16	0.43	73	0.04	3	1	212	520	0	126	2	0	0	2	0	18812	18812	0	0	1	2.94	72	{"certified": 1}	certified-full	18812	127	1	0	
+ore_ont_8462	?	a<100K	95153	model-full	140	12	162	10	0	0.04	11	0.93	73	0.0	2	1	153	8	0	141	0	0	0	0	0	21422	21422	0	0	1	4.56	81	{"certified": 1}	certified-full	21422	140	1	0	
+ore_ont_85	?	a<100K	89965	model-none	31	56	749	793	475	0.46	41	99.95	74	97.42	6	0	0	0	0	0	0	0	32	0	0	2629	0	935	1661	0	0.0		no model		0		0	0	no base model: at-most: no fold possible
+ore_ont_850	?	b<1M	203210	model-full	137	206	1353	2347	6	0.9	43	0.32	75	3.11	12	2	1018	2057	0	95	43	0	0	44	0	45442	45442	0	0	2	14.15	79	{"certified": 2}	certified-full	45442	137	1	0	
+ore_ont_8502	?	b<1M	116276	model-full	142	392	818	811	0	0.11	16	0.27	74	0.0	3	1	535	282	0	143	0	0	0	0	0	75296	75296	0	0	1	1.19	74	{"certified": 1}	certified-full	75296	142	1	0	
+ore_ont_8509	?	b<1M	632034	dump-failed						0.9	46	300.4	74																										dump-failed
+ore_ont_8563	?	b<1M	391152	model-full	1621	0	2161	2030	0	0.04	12	0.31	76	0.02	5	1	1622	1159	0	1622	0	0	0	0	0	2622484	2622484	0	0	1	0.15	79	{"certified": 1}	certified-full	2622484	1621	1	0	
+ore_ont_8578	?	a<100K	95133	model-full	223	66	520	626	38	0.1	15	1.05	74	0.08	3	1	306	147	0	223	1	0	0	1	0	64150	64150	0	0	1	52.38	82	{"certified": 1}	certified-full	64150	223	1	0	
+ore_ont_8595	?	b<1M	678309	dump-failed						0.5	32	300.95	75																										dump-failed
+ore_ont_8631	?	b<1M	189816	model-full	880	18	8189	1499	0	0.19	18	1.23	74	0.04	5	1	906	1435	0	881	0	0	0	0	0	784650	784650	0	0	1	1.27	79	{"certified": 1}	certified-full	784650	880	1	0	
+ore_ont_8640	?	b<1M	474174	model-full	801	329	1847	16542	0	0.62	52	1.56	79	0.05	11	1	1097	445	0	801	0	0	0	0	0	872849	872849	0	0	1	105.88	180	{"certified": 1}	certified-full	872849	777	1	0	
+ore_ont_8662	?	a<100K	11950	model-full	37	0	73	53	0	0.01	9	0.27	72	0.0	2	1	27	0	0	38	0	0	0	0	0	995	995	0	0	1	0.15	72	{"certified": 1}	certified-full	995	26	1	0	
+ore_ont_8665	?	a<100K	39358	model-full	148	0	243	249	0	0.04	13	0.24	72	0.0	2	1	149	91	0	149	0	0	0	0	0	21860	21860	0	0	1	0.08	73	{"certified": 1}	certified-full	21860	148	1	0	
+ore_ont_8666	?	a<100K	43941	model-none	81	125	306	310	18	0.09	16	0.24	73	0.6	3	0	0	0	0	0	0	0	82	0	0	16432	0	6430	9919	0	0.0		no model		0		0	0	no base model: at-most: no fold possible
+ore_ont_8667	?	a<100K	20926	model-full	87	0	89	80	0	0.0	9	0.22	73	0.0	2	1	88	0	0	88	0	0	0	0	0	7580	7580	0	0	1	0.08	72	{"certified": 1}	certified-full	7580	87	1	0	
+ore_ont_869	?	b<1M	580958	model-full	2347	0	3160	3060	0	0.05	15	0.35	74	0.03	7	1	2348	1738	0	2348	0	0	0	0	0	5498534	5498534	0	0	1	0.19	80	{"certified": 1}	certified-full	5498534	2347	1	0	
+ore_ont_8730	?	b<1M	410866	model-full	82	469	2431	1880	0	0.21	22	0.74	75	0.06	4	1	84	79	0	83	0	0	0	0	0	45265	45265	0	0	1	1.27	71	{"certified": 1}	certified-full	45265	82	1	0	
+ore_ont_8744	?	b<1M	602483	model-full	1836	0	5251	5326	0	0.06	15	0.55	76	0.03	9	1	4913	2171	0	1837	0	0	0	0	0	3368871	3368871	0	0	1	0.26	85	{"certified": 1}	certified-full	3368871	1836	1	0	
+ore_ont_8781	?	b<1M	102274	model-full	150	10	278	281	68	0.08	15	0.42	73	0.46	3	1	151	8	0	151	0	0	0	0	0	23765	23765	0	0	1	0.38	76	{"certified": 1}	certified-full	23765	150	1	0	
+ore_ont_8786	?	b<1M	215788	model-full	136	206	1352	2346	6	0.93	43	0.34	76	3.76	7	2	1021	2084	0	94	43	0	0	43	0	44964	44964	0	0	2	14.61	76	{"certified": 2}	certified-full	44964	136	1	0	
+ore_ont_8806	?	a<100K	46938	model-full	166	0	273	270	0	0.01	9	0.24	73	0.0	2	1	167	110	0	167	0	0	0	0	0	27543	27543	0	0	1	0.08	73	{"certified": 1}	certified-full	27543	166	1	0	
+ore_ont_8911	?	b<1M	359868	model-partial	250	41	2036	3227	12	0.73	46	22.36	77	9.66	14	1	433	2309	0	239	9	2	1	9	0	70426	70181	244	0	1	180.0	84	{"timeout": 1}	certified-none	0	250	0	0	witness: closure budget 1
+ore_ont_8916	?	b<1M	310411	model-full	2078	0	2080	2155	0	0.06	15	0.31	75	0.02	6	1	2079	0	0	2079	0	0	0	0	0	4306744	4306744	0	0	1	0.14	77	{"certified": 1}	certified-full	4306744	2078	1	0	
+ore_ont_8937	?	a<100K	13865	model-full	37	0	94	74	0	0.0	8	0.25	73	0.0	2	1	27	0	0	38	0	0	0	0	0	995	995	0	0	1	0.11	72	{"certified": 1}	certified-full	995	26	1	0	
+ore_ont_894	?	b<1M	376153	model-full	1873	0	2183	2350	0	0.04	13	0.31	75	0.02	6	1	1874	2180	0	1874	0	0	0	0	0	3506156	3506156	0	0	1	0.15	79	{"certified": 1}	certified-full	3506156	1873	1	0	
+ore_ont_8940	?	b<1M	785333	model-full	1669	2	8181	8422	0	1.06	56	0.76	79	0.05	14	1	7138	1828	0	1670	0	0	0	0	0	2781789	2781789	0	0	1	0.6	127	{"certified": 1}	certified-full	2781789	1669	1	0	
+ore_ont_8941	?	b<1M	748339	km-inconsistent						0.17	24																												km-inconsistent
+ore_ont_8948	?	b<1M	162201	model-full	341	103	846	965	171	0.23	22	8.2	74	0.67	4	2	326	85	0	341	1	0	0	1	0	148961	148961	0	0	2	3.17	78	{"certified": 2}	certified-full	148961	341	1	0	
+ore_ont_8949	?	a<100K	71359	model-full	113	0	115	2	0	0.02	10	0.69	73	0.0	2	1	114	0	0	114	0	0	0	0	0	12884	12884	0	0	1	2.25	78	{"certified": 1}	certified-full	12884	113	1	0	
+ore_ont_8951	?	a<100K	50859	model-full	30	47	283	387	146	0.04	11	0.47	73	0.06	3	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.28	73	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_8974	?	a<100K	21399	model-full	13	0	104	97	0	0.0	9	0.24	73	0.0	2	1	14	0	0	14	0	0	0	0	0	178	178	0	0	1	0.09	72	{"certified": 1}	certified-full	178	13	1	0	
+ore_ont_8975	?	b<1M	109111	model-full	223	82	599	718	58	0.13	18	1.24	74	0.35	4	1	323	221	0	223	1	0	0	1	0	67619	67619	0	0	1	96.9	84	{"certified": 1}	certified-full	67619	223	1	0	
+ore_ont_9002	?	a<100K	50815	model-full	30	47	283	387	146	0.03	12	0.51	72	0.05	2	1	33	3	0	31	0	0	0	0	0	2272	2272	0	0	1	0.28	68	{"certified": 1}	certified-full	2272	30	1	0	
+ore_ont_9012	?	b<1M	113607	model-full	295	0	847	2229	0	0.24	21	0.27	74	4.8	12	1	434	911	0	274	22	0	0	22	0	86483	86483	0	0	1	0.19	74	{"certified": 1}	certified-full	86483	295	1	0	
+ore_ont_9024	?	b<1M	139251	model-full	279	0	917	1383	0	0.17	15	0.48	74	1.3	3	1	361	1034	0	264	16	0	0	16	0	77214	77214	0	0	1	0.54	77	{"certified": 1}	certified-full	77214	279	1	0	
+ore_ont_9031	?	a<100K	38349	model-full	197	0	225	218	0	0.01	8	0.21	73	0.0	2	1	198	305	0	198	0	0	0	0	0	38508	38508	0	0	1	0.09	73	{"certified": 1}	certified-full	38508	197	1	0	
+ore_ont_9054	?	b<1M	149229	model-partial	280	0	695	1226	153	0.41	21	9.17	73	35.41	3	1	271	206	0	260	0	5	16	0	0	78006	73563	4427	0	1	0.63	72	{"certified": 1}	certified-partial	73563	280	1	0	time budget after 265 of 281 witnesses
+ore_ont_9096	?	b<1M	335239	model-full	840	103	1756	2119	339	0.57	35	212.21	76	3.31	7	2	660	81	0	839	2	0	0	2	0	786123	786123	0	0	2	9.62	89	{"certified": 2}	certified-full	786123	840	1	0	
+ore_ont_9122	?	b<1M	325709	model-full	231	780	1935	142592	0	2.66	245	1.32	150	0.08	22	1	967	1024	0	232	0	0	0	0	0	205373	205373	0	0	1	87.74	177	{"certified": 1}	certified-full	205373	204	1	0	
+ore_ont_9154	?	b<1M	140057	model-full	574	0	657	656	0	0.01	9	0.24	73	0.0	3	1	575	99	0	575	0	0	0	0	0	328721	328721	0	0	1	0.09	74	{"certified": 1}	certified-full	328721	574	1	0	
+ore_ont_9204	?	a<100K	78850	model-full	128	21	170	21	0	0.04	12	0.82	73	0.0	2	1	150	19	0	129	0	0	0	0	0	19202	19202	0	0	1	4.38	81	{"certified": 1}	certified-full	19202	128	1	0	
+ore_ont_9240	?	b<1M	192569	model-full	903	0	1185	1179	29	52.68	2176	0.27	74	0.45	6	1	908	4681	0	904	0	0	0	0	0	813276	813276	0	0	1	0.42	85	{"certified": 1}	certified-full	813276	903	1	0	
+ore_ont_9248	?	b<1M	710155	dump-failed						0.53	33	300.91	75																										dump-failed
+ore_ont_9251	?	b<1M	335042	model-full	637	1348	2650	2301	0	0.36	32	0.35	76	0.01	6	1	1986	726	0	638	0	0	0	0	0	1262751	1262751	0	0	1	16.99	77	{"certified": 1}	certified-full	1262751	637	1	0	
+ore_ont_928	?	b<1M	961450	model-full	1825	5473	8173	8320	0	1.46	105	0.92	82	0.34	57	1	1915	1370	0	1826	0	0	0	0	0	13304346	13304346	0	0	1	5.31	114	{"certified": 1}	certified-full	13304346	1825	1	0	
+ore_ont_934	?	b<1M	150512	model-partial	108	147	810	999	213	0.93	183	9.37	74	5.26	8	1	202	1606	0	100	6	0	3	6	0	26664	26352	309	0	1	34.26	75	{"certified": 1}	certified-partial	26352	108	1	0	witness: closure budget 3
+ore_ont_9402	?	b<1M	413395	model-full	1453	0	2803	3067	0	0.1	15	0.49	77	0.09	7	1	1690	3403	0	1454	0	0	0	0	0	2105302	2105302	0	0	1	0.31	82	{"certified": 1}	certified-full	2105302	1453	1	0	
+ore_ont_9422	?	a<100K	32288	model-full	49	0	1053	152	8	0.03	11	0.33	72	0.0	2	1	72	85	0	50	0	0	0	0	0	2270	2270	0	0	1	0.23	73	{"certified": 1}	certified-full	2270	49	1	0	
+ore_ont_9435	?	b<1M	696249	model-full	2982	0	4778	3777	0	0.12	17	0.4	74	0.03	7	1	2983	5509	0	2983	0	0	0	0	0	8890292	8890292	0	0	1	0.22	80	{"certified": 1}	certified-full	8890292	2982	1	0	
+ore_ont_9462	?	a<100K	43895	model-full	104	128	238	351	0	0.05	12	0.24	73	0.0	2	1	233	4	0	105	0	0	0	0	0	23366	23366	0	0	1	0.08	72	{"certified": 1}	certified-full	23366	104	1	0	
+ore_ont_9509	?	a<100K	14285	model-full	78	5	95	88	0	0.02	10	0.24	73	0.0	2	1	84	0	0	79	0	0	0	0	0	6468	6468	0	0	1	0.08	73	{"certified": 1}	certified-full	6468	78	1	0	
+ore_ont_9540	?	b<1M	728884	km-failed						300.07	27																												km-failed
+ore_ont_9557	?	a<100K	71866	model-full	27	53	302	297	86	0.1	16	0.52	73	0.32	3	1	86	150	0	28	0	0	0	0	0	2087	2087	0	0	1	1.18	68	{"certified": 1}	certified-full	2087	27	1	0	
+ore_ont_9598	?	b<1M	493034	model-full	1601	0	2662	2675	0	0.05	14	0.34	76	0.02	5	1	1602	1537	0	1602	0	0	0	0	0	2559206	2559206	0	0	1	0.16	79	{"certified": 1}	certified-full	2559206	1601	1	0	
+ore_ont_9617	?	b<1M	452944	model-full	1601	0	2662	2675	0	0.05	13	0.34	72	0.02	5	1	1602	1537	0	1602	0	0	0	0	0	2559206	2559206	0	0	1	0.14	76	{"certified": 1}	certified-full	2559206	1601	1	0	
+ore_ont_9635	?	a<100K	31711	model-full	96	3	227	227	44	0.04	11	0.25	72	0.06	3	1	98	33	0	96	0	0	0	0	0	9340	9340	0	0	1	0.16	67	{"certified": 1}	certified-full	9340	96	1	0	
+ore_ont_9646	?	b<1M	834238	model-full	3205	0	5160	4080	0	0.53	17	0.42	74	0.03	8	1	3206	6083	0	3206	0	0	0	0	0	10269175	10269175	0	0	1	0.19	81	{"certified": 1}	certified-full	10269175	3205	1	0	
+ore_ont_9662	?	b<1M	444508	km-failed						300.0	1359																												km-failed
+ore_ont_9666	?	a<100K	49937	model-full	20	1	94	120	8	0.03	11	0.47	73	0.0	2	1	20	14	0	21	0	0	0	0	0	413	413	0	0	1	0.68	72	{"certified": 1}	certified-full	413	20	1	0	
+ore_ont_9673	?	b<1M	752047	model-full	3100	0	3647	4874	0	0.11	24	0.42	75	0.09	12	1	3101	5533	0	3101	0	0	0	0	0	9573663	9573663	0	0	1	0.28	90	{"certified": 1}	certified-full	9573663	3100	1	0	
+ore_ont_9689	?	a<100K	74967	model-full	68	0	457	497	246	0.07	13	4.1	73	0.43	3	1	70	7	0	69	0	0	0	0	0	4569	4569	0	0	1	0.66	74	{"certified": 1}	certified-full	4569	68	1	0	
+ore_ont_9690	?	b<1M	110277	model-full	84	204	360	980	76	0.11	17	0.36	73	0.23	4	1	284	0	0	85	0	0	0	0	0	23587	23587	0	0	1	1.6	88	{"certified": 1}	certified-full	23587	84	1	0	
+ore_ont_9695	?	a<100K	93276	model-full	418	0	1428	1482	0	0.02	9	0.25	74	0.0	3	1	422	258	0	419	0	0	0	0	0	174879	174879	0	0	1	0.1	75	{"certified": 1}	certified-full	174879	418	1	0	
+ore_ont_9709	?	a<100K	26237	model-full	23	13	172	180	155	0.03	11	0.53	73	0.07	2	1	28	0	0	24	0	0	0	0	0	808	808	0	0	1	0.17	66	{"certified": 1}	certified-full	808	23	1	0	
+ore_ont_9736	?	a<100K	47000	model-full	137	0	139	139	4	0.01	10	0.24	73	0.0	2	1	138	0	0	138	0	0	0	0	0	18625	18625	0	0	1	0.08	73	{"certified": 1}	certified-full	18625	137	1	0	
+ore_ont_9772	?	b<1M	973811	model-full	4361	0	8912	4720	0	0.17	20	0.48	80	0.03	9	1	4678	4246	0	4362	0	0	0	0	0	19022283	19022283	0	0	1	0.22	87	{"certified": 1}	certified-full	19022283	4361	1	0	
+ore_ont_9783	?	b<1M	118671	model-full	177	15	458	546	0	0.09	13	0.44	73	0.03	2	1	231	422	0	178	0	0	0	0	0	33692	33692	0	0	1	1.93	73	{"certified": 1}	certified-full	33692	177	1	0	
+ore_ont_9786	?	b<1M	379212	model-partial	1287	0	15208	3547	30	2.62	94	19.0	76	126.86	234	1	1282	3142	0	950	134	5	199	134	0	1649104	1394551	254354	0	1	10.38	83	{"rejected": 1}	certified-none	0	1287	0	0	witness: closure budget 135, no type for a successor 3, seed type clash 61
+ore_ont_9805	?	a<100K	10439	model-full	43	0	77	64	0	0.0	8	0.24	73	0.0	2	1	39	0	0	44	0	0	0	0	0	1654	1654	0	0	1	0.08	73	{"certified": 1}	certified-full	1654	38	1	0	
+ore_ont_9854	?	a<100K	18992	model-full	60	0	76	98	0	0.0	8	0.22	72	0.0	2	1	61	0	0	61	0	0	0	0	0	3482	3482	0	0	1	0.08	73	{"certified": 1}	certified-full	3482	60	1	0	
+ore_ont_9857	?	b<1M	264635	model-full	1494	0	4600	4658	0	0.05	14	0.33	77	0.01	5	1	1760	797	0	1495	0	0	0	0	0	2232742	2232742	0	0	1	0.16	81	{"certified": 1}	certified-full	2232742	1494	1	0	
+ore_ont_9864	?	b<1M	181999	model-full	804	42	1052	1173	94	0.28	20	0.59	74	0.57	5	2	885	33	0	753	52	0	0	52	0	676204	676204	0	0	2	1.16	85	{"certified": 2}	certified-full	676204	804	1	0	
+ore_ont_9867	?	a<100K	24321	model-full	94	0	141	136	0	0.0	8	0.23	72	0.0	2	1	95	52	0	95	0	0	0	0	0	8824	8824	0	0	1	0.08	72	{"certified": 1}	certified-full	8824	94	1	0	
+ore_ont_9890	?	b<1M	270008	model-partial	627	180	2898	5169	4	0.61	36	0.6	77	35.1	27	1	901	524	0	376	58	127	67	66	0	503538	462013	41458	0	1	29.83	90	{"certified": 1}	certified-partial	462013	627	1	0	time budget in the split witnesses
+ore_ont_9904	?	a<100K	57923	model-full	46	1	143	189	4	0.04	12	0.39	73	0.0	2	1	54	62	0	47	0	0	0	0	0	2134	2134	0	0	1	0.46	74	{"certified": 1}	certified-full	2134	46	1	0	
+ore_ont_9928	?	a<100K	58125	model-full	167	0	575	501	0	0.01	9	0.24	73	0.0	3	1	501	168	0	168	0	0	0	0	0	27923	27923	0	0	1	0.09	74	{"certified": 1}	certified-full	27923	167	1	0	
+ore_ont_9941	?	a<100K	45083	model-full	50	0	220	286	94	1.37	107	0.23	73	0.1	2	1	35	99	0	51	0	0	0	0	0	1644	1644	0	0	1	0.2	73	{"certified": 1}	certified-full	1644	32	1	0	
+ore_ont_9943	?	b<1M	620514	model-full	5104	0	5106	5100	0	0.13	21	0.43	79	0.04	12	1	5105	0	0	5105	0	0	0	0	0	26041015	26041015	0	0	1	0.22	83	{"certified": 1}	certified-full	26041015	5104	1	0	
+ore_ont_9947	?	b<1M	615801	model-full	2411	2410	4823	4886	0	0.67	61	0.54	76	0.03	10	1	4822	0	0	2412	0	0	0	0	0	11615914	11615914	0	0	1	1.6	80	{"certified": 1}	certified-full	11615914	2411	1	0	
+ore_ont_9957	?	b<1M	276517	model-full	1261	1	1488	1609	22	0.23	21	0.42	75	0.1	6	1	1322	566	0	1235	0	0	0	0	0	1549372	1549372	0	0	1	0.68	99	{"certified": 1}	certified-full	1549372	1261	1	0	
+ore_ont_9994	?	a<100K	34339	model-full	28	43	257	252	172	0.05	13	0.76	73	0.09	3	1	39	6	0	29	0	0	0	0	0	1852	1852	0	0	1	0.26	67	{"certified": 1}	certified-full	1852	28	1	0	
+ore_ont_9998	?	b<1M	508537	model-full	2314	0	8248	8856	0	0.09	21	0.41	77	0.07	8	1	2320	1944	0	2315	0	0	0	0	0	5355118	5355118	0	0	1	0.25	101	{"certified": 1}	certified-full	5355118	2314	1	0	

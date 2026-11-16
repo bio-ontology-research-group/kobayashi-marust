@@ -1,0 +1,12 @@
+|  | inputs | no rows / failed | model full | confirmed full | model full, checker too slow | rows | unchecked | certified |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| all | 892 | 59 | 775 | 771 | 4 | 896,308,212 | 892,402,364 | 884,401,964 |
+
+| size | inputs | no rows / failed | model full | confirmed full | model full, checker too slow | rows | unchecked | certified |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| a<100K | 382 | 4 | 356 | 356 | 0 | 9,693,557 | 9,619,982 | 9,619,982 |
+| b<1M | 510 | 55 | 419 | 415 | 4 | 886,614,655 | 882,782,382 | 874,781,982 |
+
+| fragment | inputs | no rows / failed | model full | confirmed full | model full, checker too slow | rows | unchecked | certified |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| ? | 892 | 59 | 775 | 771 | 4 | 896,308,212 | 892,402,364 | 884,401,964 |
