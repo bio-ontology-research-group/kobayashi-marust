@@ -4,6 +4,18 @@
 
 ### Engine
 
+- `km classify --values` reports every entailed object property assertion
+  between named individuals (`VALUE r a b`) and `--different` every
+  entailed pair of different named individuals (`DIFFERENT a b`, `a < b`),
+  from the one classification that realization already runs: fresh classes
+  `∃r.{b}` and `¬{b}` next to the individual probes `{a}` (W5b,
+  `orchestrate::abox_rows`). JSON keys `values`, `different`.
+- Fixed: a speculative bridge attempt that declined left the frontend
+  counters of its own run behind, and the answer of the route that
+  published carried them (`{¬h(c,1), SameIndividual(d,c)}` was published
+  with `DROPPED 1`, the `SameIndividual` the object-guard attempt does not
+  represent). The counters are saved before each attempt and restored when
+  it declines.
 - `km classify --data-properties` reports the data property hierarchy
   (`SUBDATAPROP`), empty data properties (`BOTDATAPROP`), data property
   domains (`DATADOMAIN`) and disjoint data properties (`DISJOINTDATAPROP`)
@@ -18,8 +30,8 @@
   pair uses the converse proxy `__inv__r` of the chain encoding. Before,
   km refused them ("named role expected"), and `DisjointObjectProperties`
   with an inverse member became a disjointness with the empty role name.
-  `InverseObjectProperties(ObjectInverseOf(r) s)` is still rejected by the
-  vendored functional-syntax grammar. `ObjectPropertyAtom` of an inverse in
+  `InverseObjectProperties` takes object property expressions (the vendored
+  functional-syntax grammar accepted only names). `ObjectPropertyAtom` of an inverse in
   a rule swaps its arguments. Tests: `tests/inverse_property_axioms.rs`
   (HermiT rows).
 - `--unknown-datatypes=free` (W7): datatypes outside the OWL 2 datatype map
@@ -76,8 +88,9 @@
   at 300 s) is back to 13 s, ore_ont_934 (timed out) to 1.0 s, 15680 and
   4609 from 77 s to 23 s, 7610 from 42 s to 4 s, all with the answers of
   the release before the stopgap (15063 agrees with HermiT). The bridge's
-  saturation-coupling gate on inputs with a consumed value singleton
-  stays; the fixtures `e19-*` are now also right with it turned off.
+  saturation-coupling gate on inputs with a consumed value singleton is
+  removed too (it cost ore_ont_15623 its 0.8 s, and 15074 and 15687;
+  `KM_BRIDGE_SINGLETON_SATEXP_GATE=1` restores it for diagnosis).
 - Fixed (wrong answer, found by the E19 differential): `{Functional(k),
   {c} ⊑ ¬C, C ≡ =1 k.xsd:integer, k(c,2)}` was reported consistent (the
   ground-rule data source and the native bridge). The bridge encoded

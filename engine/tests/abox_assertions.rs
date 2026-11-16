@@ -85,13 +85,13 @@ fn consistency_and_types_match_hermit() {
 /// The native bridge answered it satisfiable: a value-singleton merge made a
 /// child of `b` the witness of `a`'s `∃g.{0}`, the nominal merge of `b` into
 /// `a` pruned that child, and nothing queued `a`'s `∃` again. These inputs
-/// reach the bridge again; the second run turns off the bridge's
-/// saturation-coupling gate, which is not needed for the answer.
+/// reach the bridge again with the saturation coupling on; the second run
+/// turns it off (the old E19 stopgap), which must not change the answer.
 #[test]
 fn shared_data_values_keep_nominal_intersections_unsatisfiable() {
     for (case, env) in ["e19-data-assertions", "e19-data-has-value", "e19-one-shared-value", "e19-swapped-values"]
         .into_iter()
-        .flat_map(|case| [(case, None), (case, Some(("KM_BRIDGE_SINGLETON_SATEXP_NO_GATE", "1")))])
+        .flat_map(|case| [(case, None), (case, Some(("KM_BRIDGE_SINGLETON_SATEXP_GATE", "1")))])
     {
         let output = km_env(&fixture(&format!("{case}.ofn")), &[], env.as_slice());
         let stdout = String::from_utf8_lossy(&output.stdout);

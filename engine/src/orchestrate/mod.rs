@@ -29,6 +29,7 @@ pub(crate) mod public_subjects;
 pub mod race;
 pub mod properties;
 pub mod data_properties;
+pub mod abox_rows;
 pub mod realize;
 pub mod tmpfile;
 
@@ -1855,6 +1856,39 @@ fn approximation_reason(
     format!("route `{route}` drops {list}")
 }
 
+/// The publication counters of the last frontend run (the thread-locals
+/// above), saved before a speculative attempt and restored when it declines,
+/// so that an abandoned attempt's frontend run (for example the object guard
+/// rewrite, which does not represent a `SameIndividual`) never counts against
+/// the answer of the route that publishes.
+struct PublicationCounters {
+    uncarried: u64,
+    dropped: u64,
+    detail: BTreeMap<String, u64>,
+    approximations: BTreeMap<String, u64>,
+    rules: u64,
+}
+
+impl PublicationCounters {
+    fn capture() -> Self {
+        PublicationCounters {
+            uncarried: UNCARRIED_DATA_ASSERTIONS.with(|u| u.get()),
+            dropped: DROPPED_SOURCE_AXIOMS.with(|u| u.get()),
+            detail: DROPPED_SOURCE_DETAIL.with(|d| d.borrow().clone()),
+            approximations: ROUTE_APPROXIMATIONS.with(|d| d.borrow().clone()),
+            rules: RULES_OUTSIDE_TAXONOMY.with(|u| u.get()),
+        }
+    }
+
+    fn restore(self) {
+        UNCARRIED_DATA_ASSERTIONS.with(|u| u.set(self.uncarried));
+        DROPPED_SOURCE_AXIOMS.with(|u| u.set(self.dropped));
+        DROPPED_SOURCE_DETAIL.with(|d| *d.borrow_mut() = self.detail);
+        ROUTE_APPROXIMATIONS.with(|d| *d.borrow_mut() = self.approximations);
+        RULES_OUTSIDE_TAXONOMY.with(|u| u.set(self.rules));
+    }
+}
+
 fn classify_with_evidence_mode(
     initial_cfg: &Config,
     ont: &Path,
@@ -2103,6 +2137,7 @@ fn classify_with_evidence_inner(
             if std::env::var_os("KM_TIMING").is_some() {
                 eprintln!("KM_TIMING automatic data source attempt: {mode}");
             }
+            let counters = PublicationCounters::capture();
             let attempt = {
                 let _probe_environment = crate::routing::EnvironmentGuard::capture();
                 if mode == "native" {
@@ -2122,6 +2157,7 @@ fn classify_with_evidence_inner(
                     return Ok(evidence);
                 }
                 Err(error) => {
+                    counters.restore();
                     if std::env::var_os("KM_TIMING").is_some() {
                         eprintln!("KM_TIMING automatic data source declined ({mode}): {error}");
                     }
@@ -2599,6 +2635,7 @@ fn classify_with_evidence_inner(
         for (convert_data_assertions, object_guard, budget) in attempts {
             let Some(budget) = budget else { continue };
             let attempt_t0 = std::time::Instant::now();
+            let counters = PublicationCounters::capture();
             let bridge_attempt = {
                 let _probe_environment = crate::routing::EnvironmentGuard::capture();
                 let _deadline = BridgeAttemptDeadline::install(budget);
@@ -2629,6 +2666,7 @@ fn classify_with_evidence_inner(
                     return Ok(evidence);
                 }
                 Err(error) => {
+                    counters.restore();
                     if timing {
                         eprintln!(
                             "KM_TIMING bounded bridge-first{label} declined @ {:.2}s: {error}",
@@ -2757,6 +2795,7 @@ fn classify_with_evidence_inner(
         )
         && crate::routing::certified_nominal_general_ht_probe_candidate(&meta.profile)
     {
+        let counters = PublicationCounters::capture();
         let ht_attempt = {
             let _probe_environment = crate::routing::EnvironmentGuard::capture();
             crate::routing::Route::HtGeneral.apply_environment();
@@ -2781,6 +2820,7 @@ fn classify_with_evidence_inner(
                 return Ok(evidence);
             }
             Err(error) => {
+                counters.restore();
                 if std::env::var_os("KM_NOMINAL_HT_PROBE_TRACE").is_some() {
                     eprintln!("KM_NOMINAL_HT_PROBE result=declined error={error}");
                 }

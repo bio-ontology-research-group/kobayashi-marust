@@ -21,7 +21,7 @@ fn rows(text: &str) -> BTreeSet<String> {
 
 #[test]
 fn inverse_operands_match_hermit() {
-    for case in ["inv1", "inv2", "inv3", "inv4", "inv6", "inv7", "inv9", "inv10", "inv11"] {
+    for case in ["inv1", "inv2", "inv3", "inv4", "inv5", "inv6", "inv7", "inv9", "inv10", "inv11", "inv12"] {
         let mut command = Command::new(env!("CARGO_BIN_EXE_km"));
         for (key, _) in std::env::vars() {
             if key.starts_with("KM_") {

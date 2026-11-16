@@ -401,7 +401,7 @@ fn split(
 /// non-nominal routes are incomplete. `KM_REALIZE_ANY_ROUTE=1` lifts this check
 /// for route diagnostics only.
 pub fn realize(cfg: &Config, ont: &Path, mode: TypeMode) -> Result<Realization, OrchestrateError> {
-    Ok(classify_extended(cfg, ont, Some(mode), false, false, false)?.realization)
+    Ok(classify_extended(cfg, ont, Some(mode), false, false, false, false, false)?.realization)
 }
 
 /// The classification of an ontology with the answers to the requested probe
@@ -417,6 +417,8 @@ pub struct Extended {
     /// Present iff `--data-properties` was requested: the data property rows
     /// (see [`super::data_properties`]).
     pub data_properties: Option<super::data_properties::DataPropertyHierarchy>,
+    /// `--values` and `--different` rows (see [`super::abox_rows`]).
+    pub abox: super::abox_rows::AboxRows,
     /// Present iff `--top` was requested: the named classes equivalent to
     /// `owl:Thing`, sorted.
     pub top: Option<Vec<String>>,
@@ -472,6 +474,8 @@ pub fn classify_extended(
     properties: bool,
     top: bool,
     data_properties: bool,
+    values: bool,
+    different: bool,
 ) -> Result<Extended, OrchestrateError> {
     let route = std::env::var("KM_ROUTE").unwrap_or_default();
     if route != crate::routing::Route::Auto.as_str()
@@ -491,12 +495,12 @@ pub fn classify_extended(
     super::validate_user_input(ont)?;
     let prepared = super::input::prepare(ont)?;
     let text = std::fs::read_to_string(prepared.path())?;
-    let (text, individuals) = if mode.is_some() {
+    let (text, individuals) = if mode.is_some() || values || different {
         canonical_individuals(&text)?
     } else {
         (canonical_source(&text)?, Vec::new())
     };
-    let roles = if properties {
+    let roles = if properties || values {
         super::properties::canonical_properties(&text)?
     } else {
         Vec::new()
@@ -513,10 +517,14 @@ pub fn classify_extended(
         Vec::new()
     };
     let empty_data = data_properties.then(super::data_properties::DataPropertyHierarchy::default);
-    if individuals.is_empty() && roles.is_empty() && data_roles.is_empty() && !top {
+    let empty_abox = super::abox_rows::AboxRows {
+        values: values.then(Vec::new),
+        different: different.then(Vec::new),
+    };
+    if individuals.is_empty() && (roles.is_empty() || !properties) && data_roles.is_empty() && !top {
         let classification = super::classify_with_evidence(cfg, ont)?.classification;
         let realization = Realization { classification, types: Vec::new(), same: Vec::new() };
-        return Ok(Extended { realization, properties: empty_properties, data_properties: empty_data, top: None });
+        return Ok(Extended { realization, properties: empty_properties, data_properties: empty_data, abox: empty_abox, top: None });
     }
     let (mut extension, probes) = individual_extension(&text, &individuals);
     let top_probe = if top {
@@ -526,12 +534,20 @@ pub fn classify_extended(
     } else {
         None
     };
-    let property_probes = if roles.is_empty() {
+    let property_probes = if roles.is_empty() || !properties {
         None
     } else {
         let (property_extension, property_probes) = super::properties::extension(&text, &roles, shape);
         extension.push_str(&property_extension);
         Some(property_probes)
+    };
+    let abox_probes = if values || different {
+        let (abox_extension, abox_probes) =
+            super::abox_rows::extension(&text, &roles, &individuals, values, different);
+        extension.push_str(&abox_extension);
+        Some(abox_probes)
+    } else {
+        None
     };
     let data_probes = if data_roles.is_empty() {
         None
@@ -564,10 +580,19 @@ pub fn classify_extended(
                 individual_probes.contains(name)
                     || property_probes.as_ref().is_some_and(|p| p.is_probe(name))
                     || data_probes.as_ref().is_some_and(|p| p.is_probe(name))
+                    || abox_probes.as_ref().is_some_and(|p| p.is_probe(name))
             };
             Some(split_top(&mut classification, top_probe, &foreign)?)
         }
         None => None,
+    };
+    let abox = match &abox_probes {
+        Some(abox_probes) => {
+            let individual_of: BTreeMap<String, String> = probes.iter().cloned().collect();
+            let rows = super::abox_rows::split(&mut classification, abox_probes, &individual_of)?;
+            if classification.consistent { rows } else { empty_abox.clone() }
+        }
+        None => empty_abox.clone(),
     };
     let data_hierarchy = match &data_probes {
         Some(data_probes) => {
@@ -592,7 +617,13 @@ pub fn classify_extended(
         None => empty_properties,
     };
     let realization = split(classification, &probes, mode.unwrap_or(TypeMode::All))?;
-    Ok(Extended { realization, properties: hierarchy, data_properties: data_hierarchy, top: top_classes })
+    let mut realization = realization;
+    if mode.is_none() {
+        // The individual probes were added only for --values or --different.
+        realization.types.clear();
+        realization.same.clear();
+    }
+    Ok(Extended { realization, properties: hierarchy, data_properties: data_hierarchy, abox, top: top_classes })
 }
 
 /// Sets `KM_UNKNOWN_DATATYPES=free` for the probe run of the data property
