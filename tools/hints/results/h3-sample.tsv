@@ -1,0 +1,175 @@
+input	fragment	size	bytes	status	classes	individuals	concepts	gci	data_clauses	km_s	km_mb	dump_s	dump_mb	prod_s	prod_mb	models	elements	edges	violations	general	split	partial	none	split_wit	polluted	rows	unchecked	unc_nonsub	unc_nontype	chk_calls	chk_s	chk_rss	chk_results	status_checked	cert_rows	thing_rows	cert_consistency	disagree	reason
+ore_ont_10134	EL	b<1M	316480	model-full	1538	0	1922	2077	0	0.05	13	0.31	75	0.02	5	1	1562	661	0	1539	0	0	0	0	0	2360190	2360190	0	0	1	0.14	79	{"certified": 1}	certified-full	2360190	1538	1	0	
+ore_ont_10309	EL	a<100K	14958	model-full	9	0	60	57	0	0.01	8	0.25	72	0.0	2	1	10	0	0	10	0	0	0	0	0	86	86	0	0	1	0.09	72	{"certified": 1}	certified-full	86	9	1	0	
+ore_ont_10320	SHOIQ	b<1M	153211	model-partial	322	103	826	939	171	0.25	21	8.26	74	6.9	6	1	396	172	0	322	1	0	0	1	0	134556	134551	0	5	1	8.05	96	{"certified": 1}	certified-partial	134551	322	1	0	individual types not general
+ore_ont_10321	SHOIQ	a<100K	26630	model-partial	12	5	145	139	118	0.02	11	0.4	73	0.02	2	1	24	18	0	0	13	0	0	13	0	218	198	0	20	1	0.15	73	{"certified": 1}	certified-partial	198	12	1	0	individual types not general
+ore_ont_10413	SHIQ+ABox	a<100K	40651	model-full	69	2	74	3	0	0.02	10	0.41	72	0.0	2	1	72	1	0	70	0	0	0	0	0	4970	4970	0	0	1	0.72	74	{"certified": 1}	certified-full	4970	69	1	0	
+ore_ont_10419	EL	b<1M	239944	model-full	1396	0	1398	1472	0	0.05	13	0.3	74	0.01	5	1	1397	0	0	1397	0	0	0	0	0	1943836	1943836	0	0	1	0.12	75	{"certified": 1}	certified-full	1943836	1396	1	0	
+ore_ont_10517	SROIQ	b<1M	255099	model-partial	904	153	1567	1845	314	117.42	329	16.79	75	303.59	19	1	647	130	0	104	0	388	413	0	0	942734	573847	368359	115	1	67.13	141	{"certified": 1}	certified-partial	573848	894	1	0	time budget after 492 of 905 witnesses
+ore_ont_1059	SHIQ	d>=10M	11895897	model-partial	36494	0	133610	169961	0	7.69	570	4.09	202	211.15	2047	2	41044	99936	0	36445	16	34	0	16	24	1331442867	1331442811	56	0	2	10.67	481	{"certified": 2}	certified-partial	1331442811	36494	1	0	split witnesses incomplete
+ore_ont_1065	SHIQ+ABox	c<10M	1101533	model-full	2067	1	9755	10037	0	1.33	79	0.86	86	0.06	18	1	9754	0	0	2068	0	0	0	0	0	4262423	4262423	0	0	1	0.38	92	{"certified": 1}	certified-full	4262423	2067	1	0	
+ore_ont_10781	SHIQ+ABox	b<1M	859750	model-full	293	590	2294	4629	42	0.52	48	0.54	78	0.19	6	1	894	3781	0	294	0	0	0	0	0	255105	255105	0	0	1	58.2	86	{"certified": 1}	certified-full	255105	293	1	0	
+ore_ont_10807	SHIQ+ABox	b<1M	198771	model-partial	819	66	1137	1332	144	0.43	25	1.3	74	31.65	14	1	1257	64	0	456	364	0	0	364	0	719824	719799	0	25	1	10.64	129	{"certified": 1}	certified-partial	719799	819	1	0	individual types not general
+ore_ont_10833	SHIQ+ABox	a<100K	73327	model-full	112	18	147	17	0	0.03	11	0.71	73	0.0	2	1	131	15	0	113	0	0	0	0	0	14674	14674	0	0	1	2.66	78	{"certified": 1}	certified-full	14674	112	1	0	
+ore_ont_10949	SHOIQ	c<10M	2782932	model-none	1727	9486	14146	23677	2274	44.56	11224	49.25	104	334.22	153	0	0	0	0	0	0	0	1728	0	0	19354497	0	2979932	16372836	0	0.0		no model		0		0	0	no base model: time budget
+ore_ont_10992	SHIQ+ABox	c<10M	2554052	model-full	3835	12278	19280	19561	0	4.16	236	1.41	96	0.14	35	1	16114	5215	0	3836	0	0	0	0	0	61757294	61757294	0	0	1	300.0	113	{"timeout": 1}	certified-none	0	3835	0	0	
+ore_ont_11010	EL	a<100K	66026	model-full	256	0	359	374	0	0.01	9	0.25	72	0.0	2	1	257	117	0	257	0	0	0	0	0	64524	64524	0	0	1	0.08	72	{"certified": 1}	certified-full	64524	256	1	0	
+ore_ont_11081	EL	c<10M	4545760	model-full	8728	0	22400	30630	0	0.66	93	1.22	103	18.02	296	1	9470	32560	0	8729	0	0	0	0	0	76032604	76032604	0	0	1	2.13	235	{"certified": 1}	certified-full	76032604	8728	1	0	
+ore_ont_11497	EL	a<100K	47901	model-full	105	0	280	278	0	0.01	9	0.21	73	0.0	2	1	106	196	0	106	0	0	0	0	0	10924	10924	0	0	1	0.08	73	{"certified": 1}	certified-full	10924	105	1	0	
+ore_ont_11623	SHIQ	c<10M	1021329	model-partial	2748	0	10872	10632	0	0.83	130	21.4	82	306.2	98	1	1	0	0	1	0	0	2748	0	0	7526257	2750	7520759	0	1	300.0	86	{"timeout": 1}	certified-none	0	2748	0	0	time budget after 3 of 2749 witnesses
+ore_ont_11978	SHIQ+ABox	b<1M	116178	model-full	67	118	604	419	0	0.06	12	0.41	73	0.0	2	1	206	533	0	68	0	0	0	0	0	12463	12463	0	0	1	10.28	80	{"certified": 1}	certified-full	12463	67	1	0	
+ore_ont_12012	ALC	d>=10M	25098610	model-full	41717	0	88925	95502	0	5.42	392	3.78	182	1.07	139	1	41734	76671	0	41718	0	0	0	0	0	1740011765	1740011765	0	0	1	9.09	1616	{"certified": 1}	certified-full	1740011765	41717	1	0	
+ore_ont_12084	SHOIQ	b<1M	205277	model-partial	483	103	1175	1368	319	0.45	31	190.22	74	302.0	11	1	510	172	0	105	0	379	0	0	0	279789	277862	1510	417	1	42.15	149	{"certified": 1}	certified-partial	277862	483	1	0	time budget in the split witnesses
+ore_ont_12101	SHIQ+ABox	a<100K	35187	model-partial	32	1	218	217	156	0.03	11	0.29	73	102.8	2	1	34	63	0	0	0	33	0	7	0	1024	845	172	7	1	0.2	73	{"certified": 1}	certified-partial	846	32	1	0	individual types not general
+ore_ont_12141	SHI	b<1M	139854	model-partial	279	0	918	1393	0	0.17	15	0.48	74	13.67	341	1	650	3204	0	96	158	15	11	160	0	77214	74168	3035	0	1	0.95	85	{"certified": 1}	certified-partial	74168	279	1	0	witness: clash when growing a type 2, closure budget 9
+ore_ont_12150	SHIQ+ABox	a<100K	57847	model-full	126	131	399	274	0	0.05	12	0.25	72	0.0	2	1	258	119	0	127	0	0	0	0	0	32367	32367	0	0	1	0.92	75	{"certified": 1}	certified-full	32367	126	1	0	
+ore_ont_12208	SROIQ	d>=10M	23748459	model-full	37745	0	137317	139238	0	17.19	1117	15.5	227	4.76	170	1	37767	97408	0	37746	0	0	0	0	0	1424434279	1424434279	0	0	1	58.24	1516	{"certified": 1}	certified-full	1424434279	37745	1	0	
+ore_ont_12323	SHIQ+ABox	a<100K	81600	model-partial	82	56	590	597	327	0.26	21	15.15	74	14.31	4	1	356	964	0	0	43	40	0	150	0	11118	10611	115	392	1	10.53	12341	{"out of memory": 1}	certified-none	0	82	0	0	individual types not general
+ore_ont_12330	EL	c<10M	5191081	model-full	25511	0	58624	67695	0	0.99	86	1.98	127	14.65	204	1	26268	5507	0	25512	0	0	0	0	0	650773469	650773469	0	0	1	13.61	1349	{"certified": 1}	certified-full	650773469	25511	1	0	
+ore_ont_12387	EL	d>=10M	50592310	model-full	137334	0	245487	296481	0	5.53	520	13.15	389	5.41	291	1	103775	107911	0	137335	0	0	0	0	0	18860417386	18860417386	0	0	1	8.27	650	{"certified": 1}	certified-full	18860417386	137334	1	0	
+ore_ont_12410	EL	c<10M	2845918	model-full	18176	0	18180	10408	0	0.31	42	0.83	90	0.1	32	1	18177	0	0	18177	0	0	0	0	0	330374752	330374752	0	0	1	0.48	100	{"certified": 1}	certified-full	330374752	18176	1	0	
+ore_ont_12721	SHIQ+ABox	b<1M	123871	model-full	61	172	683	450	0	0.07	13	0.44	73	0.0	2	1	243	507	0	62	0	0	0	0	0	14275	14275	0	0	1	13.37	81	{"certified": 1}	certified-full	14275	61	1	0	
+ore_ont_12892	SHIQ+ABox	b<1M	335170	model-full	637	1348	2650	2301	0	0.34	33	0.37	76	0.01	6	1	1986	726	0	638	0	0	0	0	0	1262751	1262751	0	0	1	16.71	78	{"certified": 1}	certified-full	1262751	637	1	0	
+ore_ont_12925	SHOIQ	b<1M	283347	model-partial	659	103	1538	1824	339	0.52	34	211.65	75	302.04	14	1	617	172	0	279	0	381	0	0	0	497707	495776	1514	417	1	53.98	164	{"certified": 1}	certified-partial	495776	659	1	0	time budget in the split witnesses
+ore_ont_12957	SHIQ	a<100K	24581	model-full	99	0	101	91	0	0.02	9	0.24	72	0.0	2	1	100	0	0	100	0	0	0	0	0	9813	9813	0	0	1	0.08	72	{"certified": 1}	certified-full	9813	99	1	0	
+ore_ont_12992	SHIQ+ABox	c<10M	6385596	model-full	11706	27127	46629	45891	0	14.66	719	2.98	128	0.45	77	1	38837	10920	0	11705	0	0	0	0	0	454495255	454495255	0	0	1	300.01	318	{"timeout": 1}	certified-none	0	11706	0	0	
+ore_ont_13000	EL	c<10M	2219370	model-full	6785	0	13797	12367	0	0.19	39	0.67	87	0.07	16	1	6786	10378	0	6786	0	0	0	0	0	46023254	46023254	0	0	1	0.43	99	{"certified": 1}	certified-full	46023254	6785	1	0	
+ore_ont_13018	EL	a<100K	31753	model-full	176	0	178	177	0	0.01	9	0.24	73	0.0	2	1	177	0	0	177	0	0	0	0	0	30665	30665	0	0	1	0.08	73	{"certified": 1}	certified-full	30665	176	1	0	
+ore_ont_13066	SHIQ+ABox	a<100K	70902	model-full	116	12	140	12	0	0.03	11	0.73	73	0.0	2	1	129	10	0	117	0	0	0	0	0	14966	14966	0	0	1	2.69	79	{"certified": 1}	certified-full	14966	116	1	0	
+ore_ont_1310	SHI	c<10M	8386703	model-full	41932	0	57193	39138	0	2.81	230	2.26	126	0.34	72	1	42004	15188	0	41933	0	0	0	0	0	1758298848	1758298848	0	0	1	1.42	232	{"certified": 1}	certified-full	1758298848	41932	1	0	
+ore_ont_13219	SHIQ+ABox	b<1M	494467	km-inconsistent						3.38	555																												km-inconsistent
+ore_ont_13234	EL	a<100K	90362	model-full	539	0	541	557	0	0.03	10	0.23	73	0.0	3	1	540	0	0	540	0	0	0	0	0	288101	288101	0	0	1	0.08	74	{"certified": 1}	certified-full	288101	539	1	0	
+ore_ont_13298	EL	b<1M	339034	model-full	791	0	1875	1559	0	0.03	12	0.3	75	0.01	4	1	792	2302	0	792	0	0	0	0	0	625238	625238	0	0	1	0.13	77	{"certified": 1}	certified-full	625238	791	1	0	
+ore_ont_13301	EL	a<100K	78888	model-full	437	0	439	438	0	0.02	13	0.24	73	0.01	4	1	438	0	0	438	0	0	0	0	0	179591	179591	0	0	1	0.1	73	{"certified": 1}	certified-full	179591	437	1	0	
+ore_ont_13392	EL	a<100K	23084	model-full	124	0	126	124	0	0.01	9	0.22	72	0.0	2	1	125	0	0	125	0	0	0	0	0	15380	15380	0	0	1	0.08	73	{"certified": 1}	certified-full	15380	124	1	0	
+ore_ont_1346	SHIQ+ABox	b<1M	325613	model-full	837	0	2993	3139	0	0.03	12	0.4	77	0.02	6	1	2917	131	0	838	0	0	0	0	0	697840	697840	0	0	1	0.14	79	{"certified": 1}	certified-full	697840	837	1	0	
+ore_ont_13584	SROIQ	a<100K	93640	model-partial	117	117	524	915	137	1.06	74	3.74	73	1.23	4	1	330	136	0	16	102	0	0	102	0	25858	25603	0	255	1	168.57	96	{"certified": 1}	certified-partial	25603	115	1	0	individual types not general
+ore_ont_1406	EL	b<1M	203769	model-full	1192	0	1227	1341	0	0.02	10	0.28	74	0.01	4	1	1193	1210	0	1193	0	0	0	0	0	1417988	1417988	0	0	1	0.14	75	{"certified": 1}	certified-full	1417988	1192	1	0	
+ore_ont_14185	SHIQ+ABox	b<1M	109274	model-full	340	482	824	814	0	0.14	18	0.27	74	0.0	4	1	823	0	0	341	0	0	0	0	0	278378	278378	0	0	1	0.17	74	{"certified": 1}	certified-full	278378	340	1	0	
+ore_ont_14191	SHOIQ	c<10M	1491332	model-none	4394	1306	6985	7703	0	1.02	72	4.38	82	0.1	17	1	5268	3866	4	0	0	0	4395	0	0	25015651	0	19282161	5729094	0	0.0		{}	certified-none	0	4394	0	0	self-check: element 1139: gci 0 (empty body) not met
+ore_ont_1430	SHIQ+ABox	a<100K	82601	model-full	46	93	547	646	328	0.29	39	23.29	73	90.42	7	1	140	59	0	47	0	0	0	0	0	6278	6278	0	0	1	20.83	104	{"certified": 1}	certified-full	6278	46	1	0	
+ore_ont_14325	EL	a<100K	72878	model-full	136	0	359	352	0	0.01	9	0.24	72	0.0	2	1	137	229	0	137	0	0	0	0	0	18303	18303	0	0	1	0.09	73	{"certified": 1}	certified-full	18303	136	1	0	
+ore_ont_14334	SHOIQ	b<1M	203417	model-none	138	206	1354	2347	6	1.0	43	0.33	75	1.19	4	0	0	0	0	0	0	0	139	0	0	46109	0	18459	27510	0	0.0		no model		0		0	0	no base model: at-most: no fold possible
+ore_ont_14341	SHIQ+ABox	a<100K	87012	model-full	177	42	353	361	0	0.05	12	0.77	73	0.0	2	1	234	71	0	178	0	0	0	0	0	37561	37561	0	0	1	3.61	78	{"certified": 1}	certified-full	37561	173	1	0	
+ore_ont_14396	EL	b<1M	838648	model-full	3205	0	5160	4085	0	0.07	17	0.41	78	0.04	8	1	3206	6083	0	3206	0	0	0	0	0	10269175	10269175	0	0	1	0.24	84	{"certified": 1}	certified-full	10269175	3205	1	0	
+ore_ont_14848	SHIQ+ABox	a<100K	50865	model-partial	30	47	283	387	146	0.04	12	0.5	72	4.07	2	1	79	7	0	16	5	6	4	7	0	2272	2144	120	4	1	0.42	74	{"certified": 1}	certified-partial	2145	30	1	0	witness: closure budget 4
+ore_ont_14860	SHOIQ	c<10M	1059845	km-inconsistent						0.67	97																												km-inconsistent
+ore_ont_15030	SHOIQ	b<1M	341802	model-partial	145	240	1560	2101	978	1.47	104	20.81	78	300.68	12	1	339	5972	0	0	0	146	0	0	0	55667	45286	3901	6480	1	300.01	142	{"timeout": 1}	certified-none	0	145	0	0	time budget in the split witnesses
+ore_ont_1508	SHI	c<10M	3884535	model-partial	11659	0	49333	56478	0	2.58	156	1.76	121	260.61	2174	1	13893	56516	0	11372	4	284	0	4	0	135851020	135849661	1359	0	1	27.81	1783	{"certified": 1}	certified-partial	135849661	11659	1	0	split witnesses incomplete
+ore_ont_15108	ALC	b<1M	914741	model-full	1700	0	4103	4200	0	0.37	32	0.4	78	0.02	6	1	2256	2686	0	1701	0	0	0	0	0	2889109	2889109	0	0	1	0.21	82	{"certified": 1}	certified-full	2889109	1700	1	0	
+ore_ont_15226	SHOIQ	d>=10M	18830962	model-partial	53103	18	91812	119124	0	15.71	1572	13.32	195	230.38	517	4	53381	130097	0	53096	0	0	8	0	51	2820639281	2820214497	424776	0	4	340.38	2738	{"timeout": 1, "certified": 3}	certified-partial	1539845	53103	1	0	witness: pollution in every model 8
+ore_ont_15229	SHIQ	a<100K	34912	model-full	93	0	176	308	10	0.02	10	0.24	73	0.0	2	1	154	35	0	35	59	0	0	59	0	8542	8542	0	0	1	0.08	71	{"certified": 1}	certified-full	8542	93	1	0	
+ore_ont_15260	EL	c<10M	3196281	model-full	7550	0	16314	18927	0	0.34	61	0.91	91	0.18	27	1	7551	29139	0	7551	0	0	0	0	0	56932475	56932475	0	0	1	0.79	159	{"certified": 1}	certified-full	56932475	7550	1	0	
+ore_ont_15288	SHIQ+ABox	c<10M	2568789	km-inconsistent						1.88	325																												km-inconsistent
+ore_ont_15301	SHIQ+ABox	b<1M	758044	model-full	2236	8	7120	7929	0	0.54	45	0.63	82	0.08	12	1	5761	304	0	2237	0	0	0	0	0	5011384	5011384	0	0	1	0.55	115	{"certified": 1}	certified-full	5011384	2236	1	0	
+ore_ont_15363	SHIQ+ABox	c<10M	2051213	model-full	2264	6868	15343	14705	0	1.92	133	1.01	91	0.1	20	1	9133	11784	0	2265	0	0	0	0	0	20662408	20662408	0	0	1	300.0	104	{"timeout": 1}	certified-none	0	2264	0	0	
+ore_ont_15372	SHIQ+ABox	d>=10M	17590854	dump-failed						22.53	950	334.76	415																										dump-failed
+ore_ont_15413	SHOIQ	b<1M	194061	model-partial	462	103	1002	1136	195	0.31	23	11.49	74	11.87	7	1	520	178	0	462	1	0	0	1	0	257730	257725	0	5	1	17.44	120	{"certified": 1}	certified-partial	257725	462	1	0	individual types not general
+ore_ont_155	SHOIQ	b<1M	168699	model-full	377	82	734	717	0	0.09	14	0.47	74	0.0	3	1	476	145	0	378	0	0	0	0	0	171291	171291	0	0	1	4.22	94	{"certified": 1}	certified-full	171291	377	1	0	
+ore_ont_15575	SHOIQ	b<1M	198332	model-partial	479	103	1077	1240	195	0.3	23	11.21	74	12.08	8	1	540	190	0	479	1	0	0	1	0	275678	275673	0	5	1	12.55	119	{"certified": 1}	certified-partial	275673	479	1	0	individual types not general
+ore_ont_15929	EL	d>=10M	18104594	model-full	44271	0	90274	115746	0	3.35	505	4.34	192	7.01	231	1	44272	325426	0	44272	0	0	0	0	0	1958914874	1958914874	0	0	1	7.0	489	{"certified": 1}	certified-full	1958914874	44271	1	0	
+ore_ont_16054	SHIQ+ABox	b<1M	121243	model-full	274	0	1298	1440	0	0.01	10	0.3	75	0.01	4	1	1022	71	0	275	0	0	0	0	0	74114	74114	0	0	1	0.12	75	{"certified": 1}	certified-full	74114	274	1	0	
+ore_ont_16076	EL	a<100K	30312	model-full	189	0	192	188	0	0.01	8	0.22	72	0.0	2	1	190	1	0	190	0	0	0	0	0	35120	35120	0	0	1	0.07	72	{"certified": 1}	certified-full	35120	189	1	0	
+ore_ont_16274	SHIQ+ABox	a<100K	53740	model-full	98	115	459	458	238	0.23	28	6.5	73	30.67	6	1	214	1	0	99	0	0	0	0	0	20147	20147	0	0	1	8.51	89	{"certified": 1}	certified-full	20147	98	1	0	
+ore_ont_1672	SHOIQ	b<1M	952614	dump-failed						0.57	47	301.82	94																										dump-failed
+ore_ont_16814	SHIQ+ABox	a<100K	55592	model-partial	27	42	258	322	42	0.26	16	0.32	73	0.01	2	1	71	39	0	28	0	0	0	0	0	1657	1641	0	16	1	0.54	72	{"certified": 1}	certified-partial	1641	27	1	0	individual types not general
+ore_ont_1938	SHOIQ	d>=10M	35947963	model-partial	122777	18	218103	251539	0	43.61	3832	18.34	335	303.78	1103	1	46941	122009	0	27144	0	0	95634	0	0	15075719062	3334649140	11740974288	0	1	300.03	2574	{"timeout": 1}	certified-none	0	122777	0	0	time budget after 27144 of 122778 witnesses
+ore_ont_2038	SHIQ+ABox	a<100K	25563	model-full	51	0	158	233	0	0.01	9	0.23	73	0.0	2	1	155	2	0	52	0	0	0	0	0	2480	2480	0	0	1	0.08	72	{"certified": 1}	certified-full	2480	51	1	0	
+ore_ont_205	SROIQ	c<10M	2415724	km-failed						300.0	3160																												km-failed
+ore_ont_2082	SHI	d>=10M	39351983	model-full	91474	0	225483	197536	0	4.96	469	9.28	323	19.22	232	1	91607	205852	0	91475	0	0	0	0	0	8367333614	8367333614	0	0	1	11.66	3253	{"certified": 1}	certified-full	8367333614	91474	1	0	
+ore_ont_218	SROIQ	b<1M	634719	model-full	2338	0	3605	4671	0	1.46	68	0.53	78	0.51	23	1	2469	5328	0	2293	44	0	0	44	0	5403615	5403615	0	0	1	0.68	140	{"certified": 1}	certified-full	5403615	2338	1	0	
+ore_ont_2456	SHIQ+ABox	b<1M	130946	model-full	464	0	1247	787	0	0.01	10	0.27	73	0.0	3	1	744	504	0	465	0	0	0	0	0	215758	215758	0	0	1	0.1	74	{"certified": 1}	certified-full	215758	464	1	0	
+ore_ont_2496	EL	b<1M	460448	model-full	1555	0	2858	3181	0	0.05	15	0.32	77	0.05	7	1	1751	3910	0	1556	0	0	0	0	0	2411162	2411162	0	0	1	0.2	82	{"certified": 1}	certified-full	2411162	1555	1	0	
+ore_ont_2548	SROIQ	c<10M	1307959	km-failed						300.0	185																												km-failed
+ore_ont_2556	SHIQ+ABox	b<1M	146857	model-full	181	92	438	165	0	0.08	13	1.35	74	0.0	2	1	274	163	0	182	0	0	0	0	0	49596	49596	0	0	1	17.41	93	{"certified": 1}	certified-full	49596	181	1	0	
+ore_ont_2578	SHIQ+ABox	c<10M	2209125	model-full	6326	5	15471	16055	0	1.83	91	1.0	91	0.31	28	1	12218	19843	0	6327	0	0	0	0	0	40014015	40014015	0	0	1	1.19	116	{"certified": 1}	certified-full	40014015	6326	1	0	
+ore_ont_2652	SHI	a<100K	37980	model-full	92	0	160	145	0	0.28	37	0.48	73	0.0	2	1	123	198	0	93	0	0	0	0	0	7498	7498	0	0	1	0.65	74	{"certified": 1}	certified-full	7498	82	1	0	
+ore_ont_2662	EL	a<100K	74776	model-full	142	0	144	333	0	0.01	10	0.24	73	0.0	2	1	143	0	0	143	0	0	0	0	0	19990	19990	0	0	1	0.08	73	{"certified": 1}	certified-full	19990	142	1	0	
+ore_ont_269	EL	d>=10M	12832724	model-full	19162	0	85090	65928	0	0.86	128	2.93	155	0.32	42	1	19163	65926	0	19163	0	0	0	0	0	367201408	367201408	0	0	1	1.83	214	{"certified": 1}	certified-full	367201408	19162	1	0	
+ore_ont_2703	SHOIQ	b<1M	759287	dump-failed						0.58	33	300.97	78																										dump-failed
+ore_ont_3003	EL	b<1M	424250	model-full	2150	0	2472	2610	0	0.05	13	0.34	77	0.02	6	1	2151	2369	0	2151	0	0	0	0	0	4620225	4620225	0	0	1	0.15	79	{"certified": 1}	certified-full	4620225	2150	1	0	
+ore_ont_3156	SHOIQ	b<1M	203217	model-none	137	206	1353	2347	6	0.97	43	0.3	75	1.17	4	0	0	0	0	0	0	0	138	0	0	45442	0	18116	27187	0	0.0		no model		0		0	0	no base model: at-most: no fold possible
+ore_ont_3177	EL	c<10M	1372471	model-full	7490	0	7492	8928	0	0.28	35	0.59	82	0.12	22	1	7491	0	0	7491	0	0	0	0	0	56049990	56049990	0	0	1	0.36	92	{"certified": 1}	certified-full	56049990	7490	1	0	
+ore_ont_3205	SHIQ+ABox	a<100K	54042	model-full	59	60	405	426	284	0.07	14	14.16	73	0.54	3	1	120	0	0	60	0	0	0	0	0	6934	6934	0	0	1	1.44	74	{"certified": 1}	certified-full	6934	59	1	0	
+ore_ont_3260	SHIQ+ABox	a<100K	49219	model-partial	38	1	281	274	202	0.05	12	0.32	73	242.06	3	1	31	67	0	0	0	39	0	0	0	1455	1149	297	9	1	0.3	73	{"certified": 1}	certified-partial	1149	38	1	0	individual types not general
+ore_ont_3292	SHIQ+ABox	a<100K	83890	model-full	142	6	153	5	0	0.04	11	0.94	72	0.0	2	1	149	3	0	143	0	0	0	0	0	21160	21160	0	0	1	4.39	80	{"certified": 1}	certified-full	21160	142	1	0	
+ore_ont_33	ALC	c<10M	2024977	model-full	10330	0	10336	13640	0	0.39	56	0.78	87	0.2	32	1	10331	0	0	10331	0	0	0	0	0	106613757	106613757	0	0	1	0.43	101	{"certified": 1}	certified-full	106613757	10330	1	0	
+ore_ont_3349	EL	b<1M	170464	model-full	746	0	1062	1075	0	0.06	11	0.28	74	0.03	4	1	826	991	0	747	0	0	0	0	0	550874	550874	0	0	1	0.12	78	{"certified": 1}	certified-full	550874	746	1	0	
+ore_ont_3352	EL	b<1M	187755	model-full	1292	0	1294	1297	0	0.04	12	0.27	74	0.01	4	1	1293	0	0	1293	0	0	0	0	0	1667643	1667643	0	0	1	0.11	75	{"certified": 1}	certified-full	1667643	1292	1	0	
+ore_ont_3418	EL	a<100K	82512	model-full	453	0	480	529	0	0.01	9	0.24	73	0.0	3	1	454	25	0	454	0	0	0	0	0	204126	204126	0	0	1	0.09	73	{"certified": 1}	certified-full	204126	453	1	0	
+ore_ont_3529	SHIQ+ABox	c<10M	2052412	model-full	5879	0	33449	28486	0	0.33	52	1.08	103	2.01	42	1	12832	8625	0	5880	0	0	0	0	0	34565244	34565244	0	0	1	1.51	152	{"certified": 1}	certified-full	34565244	5879	1	0	
+ore_ont_3545	SHIQ+ABox	b<1M	619547	dump-failed						0.42	35	300.54	78																										dump-failed
+ore_ont_3550	EL	b<1M	774241	model-full	2977	0	4771	3772	0	0.09	16	0.4	78	0.03	7	1	2978	5504	0	2978	0	0	0	0	0	8860508	8860508	0	0	1	0.23	82	{"certified": 1}	certified-full	8860508	2977	1	0	
+ore_ont_3685	SHIQ	b<1M	151855	model-partial	284	0	709	1243	163	0.48	21	12.7	74	51.07	92	2	345	595	0	256	5	14	10	5	3	80243	77433	2800	0	2	3.17	92	{"certified": 2}	certified-partial	77433	284	1	0	witness: at-most: no fold possible 1, closure budget 7, seed type clash 2
+ore_ont_3712	EL	c<10M	1950760	model-full	9867	0	9869	13191	0	0.38	52	0.71	86	0.16	30	1	9868	0	0	9868	0	0	0	0	0	97267091	97267091	0	0	1	0.47	100	{"certified": 1}	certified-full	97267091	9867	1	0	
+ore_ont_3733	SHIQ+ABox	d>=10M	23462701	km-failed						52.09	1323																												km-failed
+ore_ont_380	EL	b<1M	523670	model-full	1214	0	1216	2409	0	0.05	15	0.3	76	0.01	5	1	1215	0	0	1215	0	0	0	0	0	1469706	1469706	0	0	1	0.13	76	{"certified": 1}	certified-full	1469706	1214	1	0	
+ore_ont_3832	EL	b<1M	101574	model-full	564	0	566	635	0	0.03	10	0.25	74	0.01	3	1	565	0	0	565	0	0	0	0	0	315805	315805	0	0	1	0.1	74	{"certified": 1}	certified-full	315805	564	1	0	
+ore_ont_3835	SHOIQ	b<1M	280784	model-full	816	44	872	1284	0	0.13	15	0.27	74	0.01	4	1	858	7	0	817	0	0	0	0	0	698450	698450	0	0	1	0.11	75	{"certified": 1}	certified-full	698450	816	1	0	
+ore_ont_385	SHOIQ	a<100K	48019	model-partial	45	8	160	166	58	0.05	12	0.33	73	0.12	2	1	85	85	0	0	42	0	4	42	0	2365	2169	168	24	1	0.33	74	{"certified": 1}	certified-partial	2169	45	1	0	witness: seed type clash 4
+ore_ont_3987	SHIQ+ABox	a<100K	50907	model-partial	30	47	283	387	146	0.04	12	0.52	72	4.17	2	1	79	7	0	16	5	6	4	7	0	2272	2144	120	4	1	0.38	74	{"certified": 1}	certified-partial	2145	30	1	0	witness: closure budget 4
+ore_ont_420	SHIQ+ABox	a<100K	46187	model-full	170	5	185	157	8	0.05	11	0.24	72	0.0	2	1	176	0	0	171	0	0	0	0	0	29718	29718	0	0	1	0.1	75	{"certified": 1}	certified-full	29718	170	1	0	
+ore_ont_4223	SHI	a<100K	41120	model-full	75	0	178	175	0	0.03	11	0.24	73	0.0	2	1	76	65	0	76	0	0	0	0	0	5601	5601	0	0	1	0.09	73	{"certified": 1}	certified-full	5601	75	1	0	
+ore_ont_4261	EL	b<1M	221961	model-full	1070	0	1380	1590	0	0.03	11	0.28	74	0.01	4	1	1108	242	0	1071	0	0	0	0	0	1140848	1140848	0	0	1	0.12	75	{"certified": 1}	certified-full	1140848	1070	1	0	
+ore_ont_4609	SHOIQ	c<10M	1972968	dump-failed						108.88	382	302.14	93																										dump-failed
+ore_ont_4733	EL	c<10M	2636344	model-full	15359	0	16461	16451	0	0.38	41	0.9	91	0.14	31	1	15361	275	0	15360	0	0	0	0	0	235898893	235898893	0	0	1	0.48	108	{"certified": 1}	certified-full	235898893	15359	1	0	
+ore_ont_4737	SHIQ+ABox	c<10M	1216432	dump-failed						0.87	70	300.9	87																										dump-failed
+ore_ont_4744	SHIQ+ABox	d>=10M	22866569	model-full	78979	0	168829	168824	0	3.44	398	8.09	268	1.78	286	1	126094	101955	0	78980	0	0	0	0	0	6236919596	6236919596	0	0	1	6.35	493	{"certified": 1}	certified-full	6236919596	78979	1	0	
+ore_ont_4936	SHIQ+ABox	a<100K	50871	model-partial	30	47	283	387	146	0.04	12	0.51	74	4.13	2	1	79	7	0	16	5	6	4	7	0	2272	2144	120	4	1	0.39	74	{"certified": 1}	certified-partial	2145	30	1	0	witness: closure budget 4
+ore_ont_5057	EL	b<1M	143118	model-full	554	0	964	779	0	0.02	10	0.26	73	0.0	3	1	555	744	0	555	0	0	0	0	0	306857	306857	0	0	1	0.1	74	{"certified": 1}	certified-full	306857	554	1	0	
+ore_ont_5107	SHOIQ	a<100K	17455	model-full	49	24	130	207	0	0.06	20	0.22	72	0.0	2	2	400	359	0	49	1	0	0	1	1	3448	3448	0	0	2	0.24	74	{"certified": 2}	certified-full	3448	49	1	0	
+ore_ont_524	SHIQ+ABox	b<1M	596376	model-full	1193	2385	4761	4078	0	0.68	53	0.49	78	0.02	9	1	3579	1757	0	1194	0	0	0	0	0	4265508	4265508	0	0	1	158.3	82	{"certified": 1}	certified-full	4265508	1193	1	0	
+ore_ont_5258	SHOIQ	a<100K	49164	model-full	149	19	253	303	0	0.09	14	0.26	72	0.0	2	1	166	0	0	150	0	0	0	0	0	24841	24841	0	0	1	0.16	75	{"certified": 1}	certified-full	24841	149	1	0	
+ore_ont_5263	SHIQ+ABox	a<100K	81861	model-full	130	10	147	7	0	0.05	11	0.86	73	0.0	2	1	141	5	0	131	0	0	0	0	0	18332	18332	0	0	1	3.86	80	{"certified": 1}	certified-full	18332	130	1	0	
+ore_ont_541	SHIQ	a<100K	57818	model-partial	59	0	462	709	0	0.08	14	0.42	73	0.06	4	1	120	326	0	38	19	2	1	19	0	3376	3320	55	0	1	0.39	74	{"certified": 1}	certified-partial	3320	59	1	0	witness: seed type clash 1
+ore_ont_5475	SHIQ+ABox	d>=10M	65455412	km-failed						300.12	5911																												km-failed
+ore_ont_5596	SHIQ+ABox	d>=10M	56191053	model-full	58	112320	302593	223406	0	110.32	3669	28.68	369	2.39	377	1	112378	188045	0	59	0	0	0	0	0	6199711	6199711	0	0	1	300.02	924	{"timeout": 1}	certified-none	0	57	0	0	
+ore_ont_5679	EL	a<100K	71658	model-full	129	0	131	322	0	0.02	10	0.22	72	0.0	2	1	130	0	0	130	0	0	0	0	0	16470	16470	0	0	1	0.08	73	{"certified": 1}	certified-full	16470	129	1	0	
+ore_ont_5792	EL	c<10M	1372487	model-full	7490	0	7492	8928	0	0.31	35	0.55	84	0.1	21	1	7491	0	0	7491	0	0	0	0	0	56049990	56049990	0	0	1	0.37	92	{"certified": 1}	certified-full	56049990	7490	1	0	
+ore_ont_580	SHIQ+ABox	a<100K	14283	model-full	21	18	46	32	0	0.03	10	0.24	72	0.0	2	1	42	0	0	21	0	0	0	0	0	803	803	0	0	1	0.13	73	{"certified": 1}	certified-full	803	21	1	0	
+ore_ont_5815	EL	c<10M	5738004	model-full	22258	0	42144	19886	0	0.63	62	1.26	105	0.15	36	1	22259	19884	0	22259	0	0	0	0	0	495440824	495440824	0	0	1	0.85	132	{"certified": 1}	certified-full	495440824	22258	1	0	
+ore_ont_6024	EL	b<1M	169055	model-full	82	0	98	110	14	0.03	11	0.8	73	0.0	2	1	83	0	0	83	0	0	0	0	0	6325	6325	0	0	1	0.37	80	{"certified": 1}	certified-full	6325	82	1	0	
+ore_ont_6212	ALC	d>=10M	137004898	model-full	300899	0	829080	772148	0	32.64	1680	35.49	1361	186.77	800	1	300900	6074317	0	300900	0	0	0	0	0	90540265139	90540265139	0	0	1	119.64	5396	{"certified": 1}	certified-full	90540265139	300899	1	0	
+ore_ont_630	SHIQ+ABox	b<1M	136952	model-full	454	0	1139	939	0	0.01	9	0.26	74	0.0	3	1	785	530	0	455	0	0	0	0	0	206197	206197	0	0	1	0.1	75	{"certified": 1}	certified-full	206197	454	1	0	
+ore_ont_6617	SHIQ+ABox	a<100K	50815	model-partial	30	47	283	387	146	0.04	12	0.5	73	4.09	2	1	79	7	0	16	5	6	4	7	0	2272	2144	120	4	1	0.38	74	{"certified": 1}	certified-partial	2145	30	1	0	witness: closure budget 4
+ore_ont_6727	SHOIQ	b<1M	736601	dump-failed						0.59	33	300.94	78																										dump-failed
+ore_ont_6735	EL	a<100K	34731	model-full	214	0	216	215	0	0.01	9	0.23	72	0.0	2	1	215	0	0	215	0	0	0	0	0	44978	44978	0	0	1	0.08	72	{"certified": 1}	certified-full	44978	214	1	0	
+ore_ont_6800	SHIQ	c<10M	3675829	model-full	14462	0	14464	15354	0	0.84	74	0.9	91	0.17	40	1	14463	0	0	14463	0	0	0	0	0	209078705	209078705	0	0	1	0.56	109	{"certified": 1}	certified-full	209078705	14462	1	0	
+ore_ont_6812	EL	a<100K	46941	model-full	88	0	90	100	0	0.02	10	0.21	73	0.0	2	1	89	0	0	89	0	0	0	0	0	7347	7347	0	0	1	0.08	72	{"certified": 1}	certified-full	7347	88	1	0	
+ore_ont_6822	SHOIQ	b<1M	947689	dump-failed						0.58	63	300.38	80																										dump-failed
+ore_ont_6939	EL	b<1M	306225	model-full	1831	0	1833	1834	0	0.05	14	0.3	75	0.02	6	1	1832	0	0	1832	0	0	0	0	0	3345771	3345771	0	0	1	0.14	76	{"certified": 1}	certified-full	3345771	1831	1	0	
+ore_ont_6952	SHIQ	d>=10M	20734427	model-none	83036	0	237248	245554	0	20.09	1027	7.27	294	309.4	271	1	50190	5980	5	0	0	0	83037	0	0	6894688104	0	6894605066	0	0	0.0		{}	certified-none	0	83036	0	0	self-check: element 49232: at-least 100146 3 2 23731 unmet
+ore_ont_6981	SHI	a<100K	91746	model-full	227	0	371	374	14	0.04	11	0.79	74	0.01	2	1	225	479	0	228	0	0	0	0	0	51282	51282	0	0	1	2.04	79	{"certified": 1}	certified-full	51282	227	1	0	
+ore_ont_7234	EL	c<10M	3208995	model-full	7557	0	16582	19200	0	0.37	60	0.89	93	0.2	27	1	7558	29424	0	7558	0	0	0	0	0	57038137	57038137	0	0	1	0.79	159	{"certified": 1}	certified-full	57038137	7557	1	0	
+ore_ont_7246	SROIQ	d>=10M	87473279	producer-failed						43.36	4610	16.71	789	420.02	374																								producer-failed
+ore_ont_725	EL	b<1M	350144	model-full	1743	0	1814	2435	0	0.06	14	0.32	75	0.02	5	1	1744	2342	0	1744	0	0	0	0	0	3031121	3031121	0	0	1	0.15	79	{"certified": 1}	certified-full	3031121	1743	1	0	
+ore_ont_7270	EL	a<100K	30608	model-full	83	0	125	105	0	0.01	9	0.23	72	0.0	2	1	84	7	0	84	0	0	0	0	0	6646	6646	0	0	1	0.07	72	{"certified": 1}	certified-full	6646	81	1	0	
+ore_ont_7339	SHOIQ	b<1M	133665	model-none	78	57	577	620	340	0.19	24	13.98	73	1.0	4	0	0	0	0	0	0	0	79	0	0	10462	0	6050	4332	0	0.0		no model		0		0	0	no base model: closure budget
+ore_ont_7372	SHIQ+ABox	c<10M	1093337	model-full	1275	15	11572	11862	0	1.04	88	0.99	87	0.07	18	1	10609	2064	0	1276	0	0	0	0	0	1639833	1639833	0	0	1	0.7	96	{"certified": 1}	certified-full	1639833	1275	1	0	
+ore_ont_7401	SHIQ+ABox	c<10M	7653819	model-full	31664	15412	62778	39497	0	11.27	636	2.72	129	0.36	90	1	47124	15603	0	31665	0	0	0	0	0	1490610544	1490610544	0	0	1	300.01	202	{"timeout": 1}	certified-none	0	31664	0	0	
+ore_ont_7525	SHI	a<100K	61915	model-full	98	0	545	1027	6	0.29	11	1.42	73	0.01	2	1	87	3	0	87	12	0	0	12	0	9492	9492	0	0	1	2.49	75	{"certified": 1}	certified-full	9492	98	1	0	
+ore_ont_7610	SHIQ+ABox	b<1M	456453	km-inconsistent						2.62	170																												km-inconsistent
+ore_ont_7668	SHOIQ	b<1M	115177	model-none	73	161	888	1801	6	0.32	29	0.28	75	0.23	3	0	0	0	0	0	0	0	74	0	0	16294	0	5057	11162	0	0.0		no model		0		0	0	no base model: at-most: no fold possible
+ore_ont_7680	SHIQ+ABox	b<1M	930616	model-full	3609	3608	7219	7282	0	1.07	86	0.63	82	0.05	17	1	7218	0	0	3610	0	0	0	0	0	26035042	26035042	0	0	1	3.4	88	{"certified": 1}	certified-full	26035042	3609	1	0	
+ore_ont_7726	ALC	c<10M	1917015	model-full	7826	0	11164	13500	0	0.52	53	0.72	88	0.1	22	1	7827	11307	0	7827	0	0	0	0	0	61202705	61202705	0	0	1	0.46	104	{"certified": 1}	certified-full	61202705	7826	1	0	
+ore_ont_7728	SHI	d>=10M	26975359	model-full	64498	0	131909	143072	0	2.92	323	6.17	231	15.94	167	1	64583	129936	0	64499	0	0	0	0	0	4159840368	4159840368	0	0	1	4.87	800	{"certified": 1}	certified-full	4159840368	64498	1	0	
+ore_ont_778	SHOIQ	a<100K	71556	model-none	122	10	628	768	0	0.48	18	0.24	74	64.22	17	0	0	0	0	0	0	0	123	0	0	15522	0	14254	1144	0	0.0		no model		0		0	0	no base model: closure budget
+ore_ont_7839	SHIQ	a<100K	14677	model-full	20	0	64	67	42	0.01	10	0.25	71	0.0	2	1	21	0	0	21	0	0	0	0	0	402	402	0	0	1	0.11	72	{"certified": 1}	certified-full	402	20	1	0	
+ore_ont_7890	EL	a<100K	77839	model-full	267	0	269	566	0	0.01	10	0.23	73	0.0	2	1	268	0	0	268	0	0	0	0	0	69873	69873	0	0	1	0.08	74	{"certified": 1}	certified-full	69873	267	1	0	
+ore_ont_802	SHOIQ	c<10M	2356472	producer-failed						1.92	163	89.61	87	420.0	26																								producer-failed
+ore_ont_8119	SHIQ+ABox	a<100K	80116	model-partial	85	1	411	398	238	0.09	15	1.0	74	300.14	3	1	116	977	0	0	0	86	0	0	0	7288	5985	1287	16	1	0.9	80	{"certified": 1}	certified-partial	5985	85	1	0	time budget in the split witnesses
+ore_ont_8128	ALC	a<100K	29271	model-full	43	0	65	38	0	0.05	10	0.36	73	0.0	2	1	44	32	0	44	0	0	0	0	0	1879	1879	0	0	1	0.13	74	{"certified": 1}	certified-full	1879	43	1	0	
+ore_ont_8135	EL	b<1M	268512	model-full	709	0	1632	1628	0	0.02	10	0.31	74	0.0	4	1	710	912	0	710	0	0	0	0	0	501943	501943	0	0	1	0.12	77	{"certified": 1}	certified-full	501943	709	1	0	
+ore_ont_8226	EL	a<100K	46647	model-full	105	0	146	140	0	0.01	8	0.24	73	0.0	2	1	109	100	0	106	0	0	0	0	0	10914	10914	0	0	1	0.1	73	{"certified": 1}	certified-full	10914	105	1	0	
+ore_ont_8290	EL	b<1M	568492	model-full	3087	0	3089	3450	0	0.08	18	0.38	78	0.03	8	1	3088	0	0	3088	0	0	0	0	0	9519323	9519323	0	0	1	0.19	81	{"certified": 1}	certified-full	9519323	3087	1	0	
+ore_ont_8335	SHIQ+ABox	a<100K	38148	model-full	116	0	324	300	0	0.06	13	0.23	73	0.0	2	1	283	48	0	117	0	0	0	0	0	13244	13244	0	0	1	0.09	73	{"certified": 1}	certified-full	13244	116	1	0	
+ore_ont_8441	SHIQ+ABox	c<10M	5049791	km-failed						250.63	4356																												km-failed
+ore_ont_85	SHIQ+ABox	a<100K	89965	model-partial	31	56	749	793	475	0.46	41	99.95	74	2.57	4	1	183	124	0	2	18	12	0	41	0	2629	2483	12	134	1	13.97	12339	{"out of memory": 1}	certified-none	0	31	0	0	individual types not general
+ore_ont_8792	SHIQ+ABox	c<10M	3676197	model-full	9800	1	32307	35551	0	1.44	193	2.41	117	0.25	59	1	32306	0	0	9801	0	0	0	0	0	95961531	95961531	0	0	1	1.18	144	{"certified": 1}	certified-full	95961531	9800	1	0	
+ore_ont_9024	SHI	b<1M	139251	model-partial	279	0	917	1383	0	0.17	15	0.48	74	13.18	341	1	650	3204	0	96	158	15	11	160	0	77214	74168	3035	0	1	0.94	85	{"certified": 1}	certified-partial	74168	279	1	0	witness: clash when growing a type 2, closure budget 9
+ore_ont_9054	SHIQ	b<1M	149229	model-partial	280	0	695	1226	153	0.41	21	9.17	73	33.14	91	2	343	591	0	254	5	14	8	5	3	78006	75782	2216	0	2	2.51	89	{"certified": 2}	certified-partial	75782	280	1	0	witness: at-most: no fold possible 1, closure budget 5, seed type clash 2
+ore_ont_9435	EL	b<1M	696249	model-full	2982	0	4778	3777	0	0.1	17	0.4	78	0.03	7	1	2983	5509	0	2983	0	0	0	0	0	8890292	8890292	0	0	1	0.22	84	{"certified": 1}	certified-full	8890292	2982	1	0	
+ore_ont_964	EL	c<10M	3515950	model-full	17942	0	17944	17936	0	0.57	60	1.0	94	0.11	35	1	17943	0	0	17943	0	0	0	0	0	321915374	321915374	0	0	1	0.53	109	{"certified": 1}	certified-full	321915374	17942	1	0	
+ore_ont_9673	EL	b<1M	752047	model-full	3100	0	3647	4874	0	0.12	24	0.43	78	0.09	12	1	3101	5533	0	3101	0	0	0	0	0	9573663	9573663	0	0	1	0.29	94	{"certified": 1}	certified-full	9573663	3100	1	0	
+ore_ont_9790	EL	c<10M	1058610	model-full	6253	0	6255	6712	0	0.17	30	0.53	81	0.08	16	1	6254	0	0	6254	0	0	0	0	0	39064793	39064793	0	0	1	0.29	87	{"certified": 1}	certified-full	39064793	6253	1	0	
+ore_ont_9854	EL	a<100K	18992	model-full	60	0	76	98	0	0.01	9	0.21	72	0.0	2	1	61	0	0	61	0	0	0	0	0	3482	3482	0	0	1	0.08	72	{"certified": 1}	certified-full	3482	60	1	0	
