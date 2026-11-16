@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 
-## [1.6.5] - unreleased
+## [1.6.5] - 2026-11-16
 
 Wrong-answer fixes backported from the v1.7.0 line, plus the changes of
 the untagged v1.6.4 candidate (issue #5: FLOPO annotation classes with

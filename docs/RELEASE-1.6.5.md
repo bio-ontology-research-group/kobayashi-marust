@@ -1,7 +1,7 @@
 # KM 1.6.5 release notes
 
-Not yet released (no tag). v1.6.4 was not tagged; its changes (issue #5)
-ship in 1.6.5.
+Released 2026-11-16 from commit `55117da2`. v1.6.4 was not tagged; its changes
+(issue #5) ship in 1.6.5.
 
 ## What changes
 
@@ -68,9 +68,44 @@ features this branch does not carry (`docs/PROPERTIES.md`,
 
 ## Checks
 
-PENDING (maintainer): Ibex certification from the tag (PGO build, five
-Lean gates, Rust suite, Java and checkers) and the S1/C1 speed and
-correctness runs.
+Ibex certification and measurement from commit `55117da246937d9a1b3cf76613d24fbf954027d0`
+(tag `v1.6.5`), 2026-11-16:
+
+- PGO build: completed; binary sha256 `e5a9242274ac97ad849b1aad7b4e12b77978cdc6c767c1e3234a2a18bee6e416`.
+- Lean gates (CB, ELC, HT, routing, rules, and the overall gate): passed.
+- Rust suite with the Lean checker binaries (`full-rust.json`): passed.
+- Java plugin and checkers: passed (86 tests, no failure).
+- C1, wrong answers: none in the full regression pool (1,708 admitted inputs
+  measured, 1,684 verified).
+- S1, held-out half against the same-day v1.5.3 protocol run, two paired runs:
+
+  | Run | Verified | Mean ratio | Median ratio | Konclude (same day) |
+  |---|---:|---:|---:|---|
+  | pair 55632919 | 576 | 0.904 | 1.110 | 576 against 575 |
+  | pair 55633977 (repeat) | 577 | 0.909 | 1.078 | 577 against 575 |
+
+  The first run misses the median bound of 1.1 by 0.010; the repeat meets
+  every clause. On that day the unchanged v1.5.3 reference measured 29%
+  slower than on 2026-11-14 (median 0.201 s against 0.156 s), and v1.6.4-rc1
+  scored 1.094 on the same clause, so the two runs bracket the bound within
+  node noise. The repeat is the run of record.
+- Against the v1.6.4-rc1 measurement of 2026-11-14, input by input: no
+  changed answer; `ore_ont_10838` (96 to 108 s before) times out at 240 s in
+  the pool run and the first paired run and is verified in neither;
+  `ore_ont_15846` (202 s) and `ore_ont_3087` (123 s) time out in the pool run
+  only. Two inputs cost more memory: `ore_ont_9540` (1.05 GB to 11.0 GB,
+  8.6 s to about 40 s), from the definition fix in the native bridge
+  ("Negated definitions over data counts"), and `ore_ont_13242` (3.0 GB to
+  4.8 GB), from the complete role-chain encoding (E12).
+- An earlier candidate (`60383939`) passed the same certification but lost
+  three inputs to a leftover diagnostic gate in the native bridge (about
+  100 inputs were two to five times slower); `55117da2` removes the gate.
+- Full-pool comparison on the workstation, v1.6.4-rc1 against `55117da2`
+  under the release flags (1,708 inputs, 240 s): no status change, no
+  changed answer; time or memory growth above 1.5x only on `ore_ont_9540`
+  and `ore_ont_13242`. Under the release flags the answer on `ore_ont_7203`
+  is identical in both builds (the 12 extra subsumptions listed below show
+  only without them).
 
 Workstation checks (2026-11-15, binary built from `development/v1.6.5`,
 compared with a build of `v1.6.4-rc1`, `KM_THREADS=1`):
@@ -107,7 +142,13 @@ compared with a build of `v1.6.4-rc1`, `KM_THREADS=1`):
 
 ## Known issues
 
-As in `docs/RELEASE-1.6.4.md`.
+As in `docs/RELEASE-1.6.4.md`, plus:
+
+- `ore_ont_9540` needs about 11 GB (1 GB in v1.6.4) and `ore_ont_13242`
+  4.8 GB (3.0 GB); the first is a cost of the bridge definition fix, the
+  second of the complete role-chain encoding (already removed on the v1.7.0
+  line). Both are planned for the next release.
+- `ore_ont_10838` no longer finishes inside 240 s on Ibex.
 
 ## Assets
 
