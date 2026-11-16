@@ -57,13 +57,17 @@ def wTabSCore (X : Ontology) (P : List (IRI × ObjProp)) (req : List IRI) (hint 
               let emb := fun x : Fin T.obj.conceptCount =>
                 Fin.castAdd (SRIQN.Proc.encKD D) (Fin.castAdd _ (Fin.castAdd (SROIQ.Proc.kCD (dosnC T L E)) x))
               let base := nomBase (roleOff (selfOff X)) rq
+              let ob := objC T L E
+              let hm := Std.HashMap.ofList (SROIQ.Proc.mkTab ob)
+              let le := SROIQ.Proc.leH hm
+              let rs := SROIQ.rules ob
               some { N := _, k := h.k, ty := h.tyF
                      cls := req.filterMap fun s => (ixOfA T arr rfl mp s).map fun x => (s, emb x)
                      inds := (roleOff (selfOff X)).individualNames.zipIdx.filterMap fun p =>
                        (ixOfA T arr rfl mp (nomName base p.2)).map fun x => (p.1, emb x)
                      M := T.obj.roleCount, lab := h.toN.lab
                      props := propsOf T fun R =>
-                       SROIQ.Proc.selfSimpleB (objC T L E) [.selfL R []] }
+                       SROIQ.Proc.selfSimpleBL (n := T.obj.conceptCount) le rs [.selfL R []] }
             else none
         else none
       | _, _, _ => none

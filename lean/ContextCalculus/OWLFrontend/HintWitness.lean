@@ -292,7 +292,7 @@ def wTabCore (X : Ontology) (req : List IRI) (hint : RawHint) : Option WTab :=
                      props := propsOf T fun R =>
                        SROIQ.Proc.selfSimpleBL (n := T.obj.conceptCount) le rs [.selfL R []]
                      n2 := T.obj.conceptCount, ob := ob
-                     adj := fun b => ContextCalculus.SRIQ.Fast.getL h.adj b.val
+                     adj := SRIQN.HF.adjFrom h.adj
                      rprops := rpropsOf T, flat := h.kids.isEmpty, chainR := true
                      p := T.dps.length, q := T.tab.length, dpsA := T.dps.toArray
                      dspA := (T.tab.map (·.R)).toArray

@@ -742,6 +742,31 @@ theorem kidIdx_perm (b : Fin h.k) : (getL h.kidIdx b.val).Perm (h.toN.kids b) :=
 
 end HintSLemmas
 
+/-- Adjacency list lookup from a precomputed array. -/
+def adjFrom {k m : Nat} (A : Array (List (Fin k × Finset (RoleT (Fin m))))) (b : Fin k) :
+    List (Fin k × Finset (RoleT (Fin m))) :=
+  getL A b.val
+
+/-- Edge label lookup from a precomputed adjacency array. -/
+def labFrom {k m : Nat} (A : Array (List (Fin k × Finset (RoleT (Fin m))))) (b c : Fin k) :
+    Finset (RoleT (Fin m)) :=
+  labOf (getL A b.val) c
+
+/-- `HintS.toN` with `lab` backed by the precomputed adjacency array `h.adj`. -/
+def HintS.toNF (h : HintS n m) : Proc.HintN n m where
+  k := h.k
+  ty := h.tyF
+  lab := labFrom h.adj
+  kids := fun b => (h.kids.filter fun e => e.1 = b).map (·.2)
+  recs := h.recs.map RecS.toN
+
+@[csimp] theorem toN_eq_F : @HintS.toN = @HintS.toNF := by
+  funext n m h
+  unfold HintS.toN HintS.toNF
+  congr 1
+  funext b c
+  exact (labOf_adj h b c).symm
+
 
 /-! ## The data-star test over the data clauses only -/
 
@@ -1418,3 +1443,4 @@ end ContextCalculus.SRIQN.HF
 #print axioms ContextCalculus.SRIQN.HF.hintPartsNLP_imp
 #print axioms ContextCalculus.SRIQN.HF.hintPartsPB_eq
 #print axioms ContextCalculus.SRIQN.HF.lookSplit_eq
+#print axioms ContextCalculus.SRIQN.HF.toN_eq_F
