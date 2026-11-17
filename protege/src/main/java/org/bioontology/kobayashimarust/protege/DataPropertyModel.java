@@ -140,10 +140,17 @@ final class DataPropertyModel {
     static String outsideFragment(OWLOntology ontology) {
         String nominal = functionalWithNominals(ontology);
         if (nominal != null) return nominal;
+        boolean hasFunctional = false;
+        for (OWLOntology o : ontology.getImportsClosure()) {
+            if (!o.getAxioms(AxiomType.FUNCTIONAL_DATA_PROPERTY).isEmpty()) {
+                hasFunctional = true;
+                break;
+            }
+        }
         for (OWLDataProperty p : ontology.getDataPropertiesInSignature(Imports.INCLUDED)) {
             boolean special = p.isOWLTopDataProperty() || p.isOWLBottomDataProperty();
             for (OWLAxiom axiom : ontology.getReferencingAxioms(p, Imports.INCLUDED)) {
-                String why = whyOutside(axiom, special);
+                String why = whyOutside(axiom, special, hasFunctional);
                 if (why != null) return why;
             }
         }
@@ -173,7 +180,7 @@ final class DataPropertyModel {
         return null;
     }
 
-    private static String whyOutside(OWLAxiom axiom, boolean special) {
+    private static String whyOutside(OWLAxiom axiom, boolean special, boolean hasFunctional) {
         if (!axiom.isLogicalAxiom()) return null;
         if (axiom instanceof OWLSubDataPropertyOfAxiom || axiom instanceof OWLEquivalentDataPropertiesAxiom
                 || axiom instanceof OWLDataPropertyAssertionAxiom) {
@@ -186,6 +193,12 @@ final class DataPropertyModel {
             } else if (axiom instanceof OWLDataPropertyRangeAxiom) {
                 OWLDataRange range = ((OWLDataPropertyRangeAxiom) axiom).getRange();
                 if (range instanceof OWLDatatype && OWL2Datatype.isBuiltIn(((OWLDatatype) range).getIRI())) return null;
+            } else if (!hasFunctional && axiom instanceof OWLSubClassOfAxiom) {
+                OWLSubClassOfAxiom sub = (OWLSubClassOfAxiom) axiom;
+                if (!sub.getSubClass().isAnonymous() && sub.getSuperClass() instanceof OWLDataHasValue) {
+                    OWLLiteral lit = ((OWLDataHasValue) sub.getSuperClass()).getFiller();
+                    if (OWL2Datatype.isBuiltIn(lit.getDatatype().getIRI())) return null;
+                }
             }
         }
         return "the axiom " + axiom + " mentions a data property";
@@ -215,7 +228,9 @@ final class DataPropertyModel {
         for (int i = 0; i < n; i++) {
             edge[i] = new BitSet(n);
             edge[i].set(i);
+            edge[i].set(TOP_ID);
         }
+        edge[BOTTOM_ID].set(0, n);
         List<List<OWLClass>> domains = new ArrayList<>();
         List<Set<IRI>> ranges = new ArrayList<>();
         for (int i = 0; i < n; i++) {
@@ -241,6 +256,18 @@ final class DataPropertyModel {
                 OWLDataPropertyRangeAxiom a = (OWLDataPropertyRangeAxiom) axiom;
                 IRI datatype = ((OWLDatatype) a.getRange()).getIRI();
                 if (!datatype.equals(OWL2Datatype.RDFS_LITERAL.getIRI())) ranges.get(m.id(a.getProperty())).add(datatype);
+            } else if (axiom instanceof OWLSubClassOfAxiom) {
+                OWLSubClassOfAxiom a = (OWLSubClassOfAxiom) axiom;
+                if (!a.getSubClass().isAnonymous() && a.getSuperClass() instanceof OWLDataHasValue) {
+                    int subRep = taxonomy.rep(a.getSubClass().asOWLClass());
+                    if (subRep >= 0 && !taxonomy.isUnsatisfiable(subRep)) {
+                        OWLDataHasValue dhv = (OWLDataHasValue) a.getSuperClass();
+                        IRI dt = dhv.getFiller().getDatatype().getIRI();
+                        if (!dt.equals(OWL2Datatype.RDFS_LITERAL.getIRI())) {
+                            ranges.get(m.id(dhv.getProperty())).add(dt);
+                        }
+                    }
+                }
             }
         }
         m.statedDomains = domains;
