@@ -6098,6 +6098,11 @@ pub fn elim_complements(ht: Vec<HtClause>, con_names: &[String]) -> (Vec<HtClaus
     let mut used: HashSet<usize> = HashSet::new();
     for p in pairs {
         let (a, b) = p; // canonical a<=b == Python sorted(p) -> (a,b)
+        if con_names.get(a).is_some_and(|n| n == crate::frontend::sorts::DATA_SORT)
+            || con_names.get(b).is_some_and(|n| n == crate::frontend::sorts::DATA_SORT)
+        {
+            continue;
+        }
                         // Completeness: keep the excluded-middle ⊤⊑A∨B unfolded if a side both
                         // drives a consequence and is NOT independently (Horn) derivable — then
                         // dropping the disjunction would silence that consequence. A consequence

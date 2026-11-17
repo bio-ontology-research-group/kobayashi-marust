@@ -1011,10 +1011,40 @@ fn bridge_fences_supported(tin: &cb_to_ht::TInput, source_tbox: bool) -> bool {
                 ([cb_to_ht::HAtom::Role { r, s, t }, cb_to_ht::HAtom::Role { r: r2, s: s2, t: t2 }], [])
                     if r != r2 && s != t && s == s2 && t == t2
             ))) || (fence.reason == "reflexivity" && tin.roles.iter().position(|r| r == &fence.detail).is_some_and(|role| {
-            tin.clauses.iter().any(|clause| matches!(
-                (clause.body.as_slice(), clause.head.as_slice()),
-                ([], [cb_to_ht::HAtom::Role { r, s, t }]) if *r == role && s == t
-            ))
+            tin.clauses.iter().any(|clause| match (clause.body.as_slice(), clause.head.as_slice()) {
+                ([], [cb_to_ht::HAtom::Role { r, s, t }]) => *r == role && s == t,
+                (
+                    [],
+                    [
+                        cb_to_ht::HAtom::Concept {
+                            neg: false,
+                            c,
+                            t: s2,
+                        },
+                        cb_to_ht::HAtom::Role { r, s, t },
+                    ],
+                )
+                | (
+                    [],
+                    [
+                        cb_to_ht::HAtom::Role { r, s, t },
+                        cb_to_ht::HAtom::Concept {
+                            neg: false,
+                            c,
+                            t: s2,
+                        },
+                    ],
+                ) => {
+                    *r == role
+                        && s == t
+                        && s == s2
+                        && tin
+                            .concepts
+                            .get(*c)
+                            .is_some_and(|name| name == crate::frontend::sorts::DATA_SORT)
+                }
+                _ => false,
+            })
         })) || (source_tbox && matches!(fence.reason.as_str(), "complex-domain" | "complex-range"))
             || (source_tbox
                 && tin.nominal_abox.complete

@@ -1672,7 +1672,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         .enumerate()
         .map(|(index, name)| (name.as_str(), index))
         .collect();
-    let mut role_ranges: HashMap<usize, &str> = HashMap::default();
+    let mut role_ranges: HashMap<usize, Vec<&str>> = HashMap::default();
     let mut role_existentials: Vec<(usize, &str)> = Vec::new();
     // Collect before walking local restrictions: source order is irrelevant.
     // A matching global range entails each local universal restriction. Keep
@@ -1877,11 +1877,22 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                 defer!("a datatype source role is absent from TInput roles");
             };
             if is_range {
-                if role_ranges
-                    .insert(role, datatype)
-                    .is_some_and(|old| old != datatype)
-                {
-                    defer!("one data role has multiple atomic ranges");
+                let ranges_for_role = role_ranges.entry(role).or_default();
+                if !ranges_for_role.contains(&datatype) {
+                    for &old in ranges_for_role.iter() {
+                        let separated = crate::frontend::datatypes::bridge_exact_atomic_disjoint(old, datatype)
+                            == Some(true)
+                            && tin
+                                .concepts
+                                .iter()
+                                .position(|c| c == old)
+                                .zip(tin.concepts.iter().position(|c| c == datatype))
+                                .is_some_and(|(a, b)| DatatypeRelationIndex::for_input(tin).separated(a, b));
+                        if !separated {
+                            defer!("one data role has multiple atomic ranges");
+                        }
+                    }
+                    ranges_for_role.push(datatype);
                 }
             } else {
                 role_existentials.push((role, datatype));
@@ -1939,28 +1950,30 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         }
     }
     for &(role, datatype) in &role_existentials {
-        let Some(&range) = role_ranges.get(&role) else {
+        let Some(ranges_for_role) = role_ranges.get(&role) else {
             continue;
         };
-        if crate::frontend::datatypes::bridge_exact_atomic_subsumed(datatype, range) != Some(true)
-            && crate::frontend::datatypes::bridge_exact_atomic_subsumed(range, datatype)
-                != Some(true)
-            && !(crate::frontend::datatypes::bridge_exact_atomic_disjoint(datatype, range)
-                == Some(true)
-                && tin
-                    .concepts
-                    .iter()
-                    .position(|c| c == datatype)
-                    .zip(tin.concepts.iter().position(|c| c == range))
-                    .is_some_and(|(a, b)| DatatypeRelationIndex::for_input(tin).separated(a, b)))
-        {
-            if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
-                eprintln!(
-                    "BRIDGE-DATATYPE-DEFER: role={} filler={} range={}",
-                    tin.roles[role], datatype, range
-                );
+        for &range in ranges_for_role {
+            if crate::frontend::datatypes::bridge_exact_atomic_subsumed(datatype, range) != Some(true)
+                && crate::frontend::datatypes::bridge_exact_atomic_subsumed(range, datatype)
+                    != Some(true)
+                && !(crate::frontend::datatypes::bridge_exact_atomic_disjoint(datatype, range)
+                    == Some(true)
+                    && tin
+                        .concepts
+                        .iter()
+                        .position(|c| c == datatype)
+                        .zip(tin.concepts.iter().position(|c| c == range))
+                        .is_some_and(|(a, b)| DatatypeRelationIndex::for_input(tin).separated(a, b)))
+            {
+                if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
+                    eprintln!(
+                        "BRIDGE-DATATYPE-DEFER: role={} filler={} range={}",
+                        tin.roles[role], datatype, range
+                    );
+                }
+                defer!("a datatype existential conflicts with its role range");
             }
-            defer!("a datatype existential conflicts with its role range");
         }
     }
 
@@ -2203,11 +2216,13 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         if !crate::frontend::datatypes::bridge_tbox_atomic_name(name) {
             defer!("a data-role range has no exact atomic family");
         }
-        if role_ranges.get(&role).is_none_or(|source_range| {
-            crate::frontend::datatypes::bridge_exact_atomic_subsumed(name, source_range)
-                != Some(true)
-                || crate::frontend::datatypes::bridge_exact_atomic_subsumed(source_range, name)
-                    != Some(true)
+        if role_ranges.get(&role).is_none_or(|ranges_for_role| {
+            !ranges_for_role.iter().any(|&source_range| {
+                crate::frontend::datatypes::bridge_exact_atomic_subsumed(name, source_range)
+                    == Some(true)
+                    && crate::frontend::datatypes::bridge_exact_atomic_subsumed(source_range, name)
+                        == Some(true)
+            })
         }) {
             defer!("source and side-channel data-role ranges disagree");
         }
@@ -2265,7 +2280,14 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         // `cell_literals_and_requirement`).
         let disjoint_data = disjoint_role_pair_clause(clause).is_some_and(|(left, right)|
             datatype_roles.contains(&left) && datatype_roles.contains(&right));
-        if !functional && !domain && !inclusion && !disjoint_data {
+        let empty_range = matches!(
+            (clause.body.as_slice(), clause.head.as_slice()),
+            ([HAtom::Role { r, s, t }], [])
+                if datatype_roles.contains(r)
+                    && s != t
+                    && role_ranges.get(r).is_some_and(|ranges| ranges.len() >= 2)
+        );
+        if !functional && !domain && !inclusion && !disjoint_data && !empty_range {
             note_bridge_defer(format!(
                 "datatype gate: a data role occurs in an unsupported non-datatype clause \
                  (clause {clause_index}: {})",
@@ -7403,16 +7425,49 @@ fn bridge_tinput_with_trigger_absorption(
             }
         }
         // Reflexivity is the universal fact R(x,x), equivalently
-        // owl:Thing <= ObjectHasSelf(R). Install it on every completion node
-        // through the existing global self-restriction machinery.
-        if let ([], [HAtom::Role { r, s, t }]) = (cl.body.as_slice(), cl.head.as_slice()) {
-            if s == t {
-                if let Some(&role) = roles.get(*r) {
-                    let self_concept = b.self_restriction(role);
-                    tbox.push(self_concept);
-                    top_gcis.push(self_concept);
-                    continue;
-                }
+        // owl:Thing <= ObjectHasSelf(R). Under nominal sort relativization it
+        // is emitted as `__data__(x) v R(x,x)`. Install it on every completion
+        // node through the existing global self-restriction machinery.
+        let reflexive_role = match (cl.body.as_slice(), cl.head.as_slice()) {
+            ([], [HAtom::Role { r, s, t }]) if s == t => Some(*r),
+            (
+                [],
+                [
+                    HAtom::Concept {
+                        neg: false,
+                        c,
+                        t: s2,
+                    },
+                    HAtom::Role { r, s, t },
+                ],
+            )
+            | (
+                [],
+                [
+                    HAtom::Role { r, s, t },
+                    HAtom::Concept {
+                        neg: false,
+                        c,
+                        t: s2,
+                    },
+                ],
+            ) if s == t
+                && s == s2
+                && tin
+                    .concepts
+                    .get(*c)
+                    .is_some_and(|name| name == crate::frontend::sorts::DATA_SORT) =>
+            {
+                Some(*r)
+            }
+            _ => None,
+        };
+        if let Some(r) = reflexive_role {
+            if let Some(&role) = roles.get(r) {
+                let self_concept = b.self_restriction(role);
+                tbox.push(self_concept);
+                top_gcis.push(self_concept);
+                continue;
             }
         }
         // hierarchy clauses (plain + inverse) were consumed by pass 1

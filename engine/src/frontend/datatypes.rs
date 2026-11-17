@@ -2641,6 +2641,7 @@ pub(crate) fn bridge_tbox_atomic_family(name: &str) -> Option<&'static str> {
         return match (value, datatype.as_deref().and_then(builtin_datatype_key)) {
             (Val::Float64(_), Some("double")) => Some("double"),
             (Val::Uri(_), Some("anyURI")) => Some("anyURI"),
+            (Val::Xml(_), Some("XMLLiteral")) => Some("XMLLiteral"),
             // xsd:decimal values are exact rationals; the decimal lexical space
             // has no exponent (XSD 1.1 decimalLexicalRep), so require it.
             (Val::Num(_), Some("decimal")) if exact_decimal_lexical(literal) => Some("decimal"),
@@ -3380,8 +3381,8 @@ pub(crate) fn bridge_exact_value_equal(left: &str, right: &str) -> Option<bool> 
     // IEEE values compare by identity of the parsed binary32/binary64 datum
     // (OWL 2 section 4.2: +0 and -0 are distinct data values, NaN is one
     // value identical to itself); the two widths are disjoint value spaces.
-    if matches!(left_value, Val::Float32(_) | Val::Float64(_) | Val::Num(_) | Val::DateTime(_) | Val::Uri(_))
-        || matches!(right_value, Val::Float32(_) | Val::Float64(_) | Val::Num(_) | Val::DateTime(_) | Val::Uri(_)) {
+    if matches!(left_value, Val::Float32(_) | Val::Float64(_) | Val::Num(_) | Val::DateTime(_) | Val::Uri(_) | Val::Xml(_))
+        || matches!(right_value, Val::Float32(_) | Val::Float64(_) | Val::Num(_) | Val::DateTime(_) | Val::Uri(_) | Val::Xml(_)) {
         return val_eq(&left_value, &right_value);
     }
     exact_literal_value_equal(left, right)
@@ -3908,7 +3909,7 @@ pub(crate) fn bridge_value_identity_key(name: &str) -> Option<String> {
     let (value, datatype) = parse_literal(literal)?;
     let builtin = datatype.as_deref().and_then(builtin_datatype_key);
     let decided = match (&value, builtin) {
-        (Val::Float32(_) | Val::Float64(_) | Val::Num(_) | Val::DateTime(_) | Val::Uri(_), _) => true,
+        (Val::Float32(_) | Val::Float64(_) | Val::Num(_) | Val::DateTime(_) | Val::Uri(_) | Val::Xml(_), _) => true,
         (Val::Bool(_), Some("boolean")) => true,
         (Val::Str(_, None), Some("string" | "normalizedString" | "token" | "language" | "Name" | "NCName" | "NMTOKEN")) => true,
         (Val::Str(_, None), None) => datatype.is_none(),
@@ -5400,6 +5401,15 @@ mod tests {
             assert_eq!(bridge_exact_atomic_disjoint("__dt__XMLLiteral", other), Some(true), "{other}");
         }
         assert_eq!(bridge_exact_atomic_subsumed("__dt__XMLLiteral", "__dt__Literal"), Some(true));
+        assert_eq!(bridge_tbox_atomic_family("__dt__val__\"be\"^^rdf:XMLLiteral"), Some("XMLLiteral"));
+        assert!(bridge_value_identity_key("__dt__val__\"be\"^^rdf:XMLLiteral").is_some());
+        assert_eq!(
+            bridge_exact_value_equal(
+                "__dt__val__\"be\"^^rdf:XMLLiteral",
+                "__dt__val__\"for\"^^rdf:XMLLiteral"
+            ),
+            Some(false)
+        );
         assert!(!bridge_tbox_atomic_name("__dt__val__\"<a/>\"^^rdf:XMLLiteral"), "XML values stay opaque");
         let dec = |text: &str| format!("__dt__val__\"{text}\"^^xsd:decimal");
         assert_eq!(bridge_tbox_atomic_family(&dec("1.50")), Some("decimal"));
