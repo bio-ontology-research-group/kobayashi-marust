@@ -74,7 +74,8 @@ final class DataValues {
             OWL2Datatype.XSD_DOUBLE.getIRI(),
             OWL2Datatype.XSD_FLOAT.getIRI(),
             OWL2Datatype.XSD_ANY_URI.getIRI(),
-            OWL2Datatype.XSD_DATE_TIME.getIRI()));
+            OWL2Datatype.XSD_DATE_TIME.getIRI(),
+            OWL2Datatype.RDF_XML_LITERAL.getIRI()));
 
     /**
      * The integer datatypes as intervals of integers (null: unbounded). Used
@@ -119,6 +120,30 @@ final class DataValues {
         long cardinalities;
         final Set<IRI> integerTypes = new HashSet<>();
         boolean booleans;
+        boolean hasDataOneOf;
+        boolean hasRuleData;
+        final Set<OWLDataProperty> hasValueProperties = new HashSet<>();
+        final Set<OWLDataProperty> positiveProperties = new HashSet<>();
+        final List<Double> floatCuts = new ArrayList<>();
+
+        boolean isPurelyAsserted(Set<OWLDataProperty> subPropertiesAndSelf) {
+            if (hasRuleData) return false;
+            for (OWLDataProperty q : subPropertiesAndSelf) {
+                if (positiveProperties.contains(q)) return false;
+            }
+            return true;
+        }
+
+        boolean canUseAssertedValuesOnly(Set<OWLDataProperty> subPropertiesAndSelf) {
+            if (isPurelyAsserted(subPropertiesAndSelf)) return true;
+            if (outside != null || booleans || hasDataOneOf || hasRuleData || !integerTypes.isEmpty()) {
+                return false;
+            }
+            for (OWLDataProperty q : subPropertiesAndSelf) {
+                if (hasValueProperties.contains(q)) return false;
+            }
+            return true;
+        }
 
         void addLiteral(OWLLiteral l) {
             Object k = valueKey(l);
@@ -168,6 +193,16 @@ final class DataValues {
 
     static Candidates collect(OWLOntology snapshot, OWLDataFactory df) {
         Candidates out = new Candidates();
+        Map<IRI, OWLDataRange> defs = new HashMap<>();
+        for (OWLAxiom axiom : snapshot.getLogicalAxioms()) {
+            if (axiom instanceof OWLDatatypeDefinitionAxiom) {
+                OWLDatatypeDefinitionAxiom dtd = (OWLDatatypeDefinitionAxiom) axiom;
+                IRI dtIri = dtd.getDatatype().getIRI();
+                if (OWL2Datatype.isBuiltIn(dtIri) || defs.put(dtIri, dtd.getDataRange()) != null) {
+                    out.outside = "a datatype definition";
+                }
+            }
+        }
         for (OWLAxiom axiom : snapshot.getLogicalAxioms()) {
             for (OWLDataProperty p : axiom.getDataPropertiesInSignature()) {
                 // The universal data property relates every element to every value,
@@ -178,9 +213,10 @@ final class DataValues {
                 SWRLRule rule = (SWRLRule) axiom;
                 if (ruleTouchesData(rule.getBody()) || ruleTouchesData(rule.getHead())) {
                     out.outside = "a rule";
+                    out.hasRuleData = true;
                 }
             } else if (axiom instanceof OWLDatatypeDefinitionAxiom) {
-                out.outside = "a datatype definition";
+                range(((OWLDatatypeDefinitionAxiom) axiom).getDataRange(), out, defs, 0);
             } else if (axiom instanceof OWLDataPropertyAssertionAxiom) {
                 OWLDataPropertyAssertionAxiom dpa = (OWLDataPropertyAssertionAxiom) axiom;
                 OWLLiteral lit = dpa.getObject();
@@ -195,20 +231,40 @@ final class DataValues {
             } else if (axiom instanceof OWLNegativeDataPropertyAssertionAxiom) {
                 out.addLiteral(((OWLNegativeDataPropertyAssertionAxiom) axiom).getObject());
             } else if (axiom instanceof OWLDataPropertyRangeAxiom) {
-                range(((OWLDataPropertyRangeAxiom) axiom).getRange(), out);
+                range(((OWLDataPropertyRangeAxiom) axiom).getRange(), out, defs, 0);
+            } else if (axiom instanceof OWLHasKeyAxiom) {
+                for (OWLDataPropertyExpression dpe : ((OWLHasKeyAxiom) axiom).getDataPropertyExpressions()) {
+                    if (!dpe.isAnonymous()) {
+                        out.hasValueProperties.add(dpe.asOWLDataProperty());
+                        out.positiveProperties.add(dpe.asOWLDataProperty());
+                    }
+                }
             }
             for (OWLClassExpression ce : axiom.getNestedClassExpressions()) {
                 if (ce instanceof OWLDataHasValue) {
-                    out.addLiteral(((OWLDataHasValue) ce).getFiller());
+                    OWLDataHasValue dhv = (OWLDataHasValue) ce;
+                    out.addLiteral(dhv.getFiller());
+                    if (!dhv.getProperty().isAnonymous()) {
+                        out.hasValueProperties.add(dhv.getProperty().asOWLDataProperty());
+                        out.positiveProperties.add(dhv.getProperty().asOWLDataProperty());
+                    }
                 } else if (ce instanceof OWLDataSomeValuesFrom) {
-                    range(((OWLDataSomeValuesFrom) ce).getFiller(), out);
+                    OWLDataSomeValuesFrom dsv = (OWLDataSomeValuesFrom) ce;
+                    if (!dsv.getProperty().isAnonymous()) {
+                        out.positiveProperties.add(dsv.getProperty().asOWLDataProperty());
+                    }
+                    range(dsv.getFiller(), out, defs, 0);
                     out.cardinalities += 1;
                 } else if (ce instanceof OWLDataAllValuesFrom) {
-                    range(((OWLDataAllValuesFrom) ce).getFiller(), out);
+                    range(((OWLDataAllValuesFrom) ce).getFiller(), out, defs, 0);
                     out.cardinalities += 1; // a witness of the negation
                 } else if (ce instanceof OWLDataCardinalityRestriction) {
                     OWLDataCardinalityRestriction r = (OWLDataCardinalityRestriction) ce;
-                    range(r.getFiller(), out);
+                    if ((ce instanceof OWLDataMinCardinality || ce instanceof OWLDataExactCardinality)
+                            && r.getCardinality() > 0 && !r.getProperty().isAnonymous()) {
+                        out.positiveProperties.add(r.getProperty().asOWLDataProperty());
+                    }
+                    range(r.getFiller(), out, defs, 0);
                     out.cardinalities += r.getCardinality() + 1L;
                 }
             }
@@ -222,6 +278,9 @@ final class DataValues {
         if (out.outside == null && !integerCellsSafe(out, df)) {
             out.outside = "the integer datatypes " + out.integerTypes
                     + " cut out a small set of integers that no literal of the ontology covers";
+        }
+        if (out.outside == null && !floatCellsSafe(out)) {
+            out.outside = "a floating-point facet restriction cuts out a small interval";
         }
         if (out.outside == null && out.cardinalities + out.literals.size() >= CARDINALITY_BOUND) {
             out.outside = "data cardinalities too large for the completeness argument";
@@ -316,27 +375,74 @@ final class DataValues {
         return true;
     }
 
-    private static void range(OWLDataRange range, Candidates out) {
+    private static boolean floatCellsSafe(Candidates out) {
+        if (out.floatCuts.isEmpty()) return true;
+        TreeSet<Double> sorted = new TreeSet<>(out.floatCuts);
+        Double prev = null;
+        for (Double d : sorted) {
+            if (prev != null && (d - prev) < 1e-3) {
+                return false;
+            }
+            prev = d;
+        }
+        return true;
+    }
+
+    private static void range(OWLDataRange range, Candidates out, Map<IRI, OWLDataRange> defs, int depth) {
+        if (depth > 32) {
+            out.outside = "a cyclic datatype definition";
+            return;
+        }
         if (range instanceof OWLDatatype) {
             OWLDatatype dt = (OWLDatatype) range;
-            if (INTEGER_TYPES.containsKey(dt.getIRI())) out.integerTypes.add(dt.getIRI());
-            else if (dt.getIRI().equals(OWL2Datatype.XSD_BOOLEAN.getIRI())) out.booleans = true;
-            else if (!ADMITTED.contains(dt.getIRI())) out.outside = "the datatype " + dt.getIRI();
+            if (defs.containsKey(dt.getIRI())) {
+                range(defs.get(dt.getIRI()), out, defs, depth + 1);
+            } else if (INTEGER_TYPES.containsKey(dt.getIRI())) {
+                out.integerTypes.add(dt.getIRI());
+            } else if (dt.getIRI().equals(OWL2Datatype.XSD_BOOLEAN.getIRI())) {
+                out.booleans = true;
+            } else if (!ADMITTED.contains(dt.getIRI())) {
+                out.outside = "the datatype " + dt.getIRI();
+            }
         } else if (range instanceof OWLDataOneOf) {
+            out.hasDataOneOf = true;
             for (OWLLiteral l : ((OWLDataOneOf) range).getValues()) out.addLiteral(l);
         } else if (range instanceof OWLDataIntersectionOf) {
-            for (OWLDataRange r : ((OWLDataIntersectionOf) range).getOperands()) range(r, out);
+            for (OWLDataRange r : ((OWLDataIntersectionOf) range).getOperands()) range(r, out, defs, depth + 1);
         } else if (range instanceof OWLDataUnionOf) {
-            for (OWLDataRange r : ((OWLDataUnionOf) range).getOperands()) range(r, out);
+            for (OWLDataRange r : ((OWLDataUnionOf) range).getOperands()) range(r, out, defs, depth + 1);
         } else if (range instanceof OWLDataComplementOf) {
-            range(((OWLDataComplementOf) range).getDataRange(), out);
-        } else {
-            out.outside = "the data range " + range;
-            if (range instanceof OWLDatatypeRestriction) {
-                for (OWLFacetRestriction f : ((OWLDatatypeRestriction) range).getFacetRestrictions()) {
-                    out.addLiteral(f.getFacetValue());
+            range(((OWLDataComplementOf) range).getDataRange(), out, defs, depth + 1);
+        } else if (range instanceof OWLDatatypeRestriction) {
+            OWLDatatypeRestriction r = (OWLDatatypeRestriction) range;
+            IRI base = r.getDatatype().getIRI();
+            boolean denseFloat = base.equals(OWL2Datatype.XSD_DOUBLE.getIRI())
+                    || base.equals(OWL2Datatype.XSD_FLOAT.getIRI())
+                    || base.equals(OWL2Datatype.XSD_DECIMAL.getIRI());
+            boolean ok = denseFloat;
+            for (OWLFacetRestriction f : r.getFacetRestrictions()) {
+                out.addLiteral(f.getFacetValue());
+                org.semanticweb.owlapi.vocab.OWLFacet facet = f.getFacet();
+                if (facet != org.semanticweb.owlapi.vocab.OWLFacet.MIN_INCLUSIVE
+                        && facet != org.semanticweb.owlapi.vocab.OWLFacet.MAX_INCLUSIVE
+                        && facet != org.semanticweb.owlapi.vocab.OWLFacet.MIN_EXCLUSIVE
+                        && facet != org.semanticweb.owlapi.vocab.OWLFacet.MAX_EXCLUSIVE) {
+                    ok = false;
+                } else if (denseFloat) {
+                    try {
+                        double val = Double.parseDouble(f.getFacetValue().getLiteral().trim());
+                        if (Double.isFinite(val)) out.floatCuts.add(val);
+                        else ok = false;
+                    } catch (NumberFormatException e) {
+                        ok = false;
+                    }
                 }
             }
+            if (!ok) {
+                out.outside = "the data range " + range;
+            }
+        } else {
+            out.outside = "the data range " + range;
         }
     }
 

@@ -515,19 +515,9 @@ public class ConventionsTest {
             assertTrue(a.toString(), k.isEntailed(a));
             assertTrue(a.getAxiomType().toString(), k.isEntailmentCheckingSupported(a.getAxiomType()));
         }
-        // A logical type the plugin cannot check says so, and isEntailed agrees.
-        OWLAxiom disjoint = df.getOWLHasKeyAxiom(cls(df, "B"),
-                Collections.singleton(df.getOWLObjectProperty(IRI.create(NS + "keyProperty"))));
-        assertFalse(k.isEntailmentCheckingSupported(disjoint.getAxiomType()));
-        try {
-            k.isEntailed(disjoint);
-            fail();
-        } catch (UnsupportedEntailmentTypeException expected) {
-            // matches isEntailmentCheckingSupported
-        }
         for (AxiomType<?> type : AxiomType.AXIOM_TYPES) {
-            if (k.isEntailmentCheckingSupported(type)) continue;
-            assertTrue(type.toString(), type.isLogical());
+            assertEquals(type.toString(), h.isEntailmentCheckingSupported(type), k.isEntailmentCheckingSupported(type));
+            assertTrue(type.toString(), k.isEntailmentCheckingSupported(type));
         }
     }
 
@@ -684,5 +674,73 @@ public class ConventionsTest {
                 assertEquals(src + " " + t, h.isPrecomputed(t), k.isPrecomputed(t));
             }
         }
+    }
+
+    @Test
+    public void classesAndPropertiesEquivalentToTopAgreeWithHermit() throws Exception {
+        String src = HEAD + "Ontology(<http://example.org/conv-top-eq>\n"
+                + "Declaration(Class(:ToldTop)) Declaration(Class(:SuperOfToldTop))\n"
+                + "Declaration(Class(:ReflexiveDom)) Declaration(Class(:UnionTop))\n"
+                + "Declaration(Class(:Left)) Declaration(Class(:Right)) Declaration(Class(:Child))\n"
+                + "Declaration(ObjectProperty(:refl)) Declaration(ObjectProperty(:topOp)) Declaration(ObjectProperty(:subOp))\n"
+                + "Declaration(DataProperty(:topDp)) Declaration(DataProperty(:subDp))\n"
+                + "Declaration(NamedIndividual(:a)) Declaration(NamedIndividual(:b))\n"
+                + "SubClassOf(owl:Thing :ToldTop)\n"
+                + "SubClassOf(:ToldTop :SuperOfToldTop)\n"
+                + "ReflexiveObjectProperty(:refl)\n"
+                + "ObjectPropertyDomain(:refl :ReflexiveDom)\n"
+                + "SubClassOf(owl:Thing ObjectUnionOf(:Left :Right))\n"
+                + "SubClassOf(:Left :UnionTop) SubClassOf(:Right :UnionTop)\n"
+                + "SubClassOf(:Child :Left)\n"
+                + "SubObjectPropertyOf(:subOp :topOp)\n"
+                + "SubDataPropertyOf(:subDp :topDp)\n"
+                + "ClassAssertion(:Child :a)\n"
+                + "DataPropertyAssertion(:subDp :a \"hello\")\n"
+                + ")\n";
+        OWLOntology o = IndividualsTest.parse(src);
+        OWLDataFactory df = df(o);
+        OWLReasoner h = hermit(o);
+        KMReasoner k = km(o);
+
+        assertEquals(node(h.getTopClassNode()), node(k.getTopClassNode()));
+        for (String cn : Arrays.asList("ToldTop", "SuperOfToldTop", "ReflexiveDom", "UnionTop", "Left", "Right", "Child")) {
+            OWLClass c = cls(df, cn);
+            assertEquals("eq " + cn, node(h.getEquivalentClasses(c)), node(k.getEquivalentClasses(c)));
+            assertEquals("sup direct " + cn, nodes(h.getSuperClasses(c, true)), nodes(k.getSuperClasses(c, true)));
+            assertEquals("sup all " + cn, nodes(h.getSuperClasses(c, false)), nodes(k.getSuperClasses(c, false)));
+            assertEquals("sub direct " + cn, nodes(h.getSubClasses(c, true)), nodes(k.getSubClasses(c, true)));
+            assertEquals("sub all " + cn, nodes(h.getSubClasses(c, false)), nodes(k.getSubClasses(c, false)));
+        }
+        OWLNamedIndividual indA = df.getOWLNamedIndividual(IRI.create(NS + "a"));
+        OWLNamedIndividual indB = df.getOWLNamedIndividual(IRI.create(NS + "b"));
+        assertEquals(nodes(h.getTypes(indA, true)), nodes(k.getTypes(indA, true)));
+        assertEquals(nodes(h.getTypes(indA, false)), nodes(k.getTypes(indA, false)));
+        assertEquals(nodes(h.getTypes(indB, true)), nodes(k.getTypes(indB, true)));
+        assertEquals(nodes(h.getTypes(indB, false)), nodes(k.getTypes(indB, false)));
+
+        // Top-property equivalence in KM (HermiT and OWL 2 DL restrict owl:top*Property in Sub*PropertyOf).
+        OWLObjectProperty topOp = op(df, "topOp"), subOp = op(df, "subOp");
+        OWLDataProperty topDp = dp(df, "topDp"), subDp = dp(df, "subDp");
+        o.getOWLOntologyManager().addAxiom(o, df.getOWLSubObjectPropertyOfAxiom(df.getOWLTopObjectProperty(), topOp));
+        k.flush();
+
+        assertEquals("[owl:topObjectProperty, topOp]", node(k.getTopObjectPropertyNode()));
+        assertEquals("[owl:topObjectProperty, topOp]", node(k.getEquivalentObjectProperties(topOp)));
+        assertTrue(k.getSuperObjectProperties(topOp, true).isEmpty());
+        assertEquals(Collections.singleton("[owl:topObjectProperty, topOp]"),
+                nodes(k.getSuperObjectProperties(subOp, true)));
+        assertEquals(new HashSet<>(Arrays.asList(indA, indB)),
+                k.getObjectPropertyValues(indA, topOp).getFlattened());
+
+        Classifier.DataProperties dpRows = new Classifier.DataProperties();
+        dpRows.consistent = true;
+        dpRows.top.add(topDp.getIRI().toString());
+        dpRows.subproperties.add(new String[]{subDp.getIRI().toString(), topDp.getIRI().toString()});
+        DataPropertyModel dm = DataPropertyModel.fromRows(df, new LinkedHashSet<>(Arrays.asList(topDp, subDp)), dpRows);
+        assertEquals("[owl:topDataProperty, topDp]", node(dm.topNode()));
+        assertEquals("[owl:topDataProperty, topDp]", node(dm.equivalents(topDp)));
+        assertTrue(dm.supers(topDp, true).isEmpty());
+        assertEquals(Collections.singleton("[owl:topDataProperty, topDp]"),
+                nodes(dm.supers(subDp, true)));
     }
 }

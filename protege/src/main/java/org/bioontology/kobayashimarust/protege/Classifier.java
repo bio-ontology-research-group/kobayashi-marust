@@ -880,6 +880,33 @@ public final class Classifier {
         return v;
     }
 
+    /**
+     * Run {@code km classify --lines --top} once on the given functional
+     * syntax and return the IRIs of named classes entailed equivalent to
+     * {@code owl:Thing}. An approximate answer or a dropped clause is refused.
+     */
+    public static List<String> topClasses(String functionalSyntax,
+                                          java.util.function.Consumer<Process> onStart) throws Exception {
+        List<String> lines = oneShot(functionalSyntax, new String[]{"--top"},
+                "top class check", onStart);
+        String approximate = approximate(lines);
+        if (approximate != null) {
+            throw new RuntimeException("Kobayashi-MaRust declined a complete top class check: "
+                    + "the answer is approximate (" + approximate + ")");
+        }
+        int dropped = droppedRow(lines);
+        if (dropped != 0) {
+            throw new RuntimeException("Kobayashi-MaRust declined a complete top class check: "
+                    + dropped + " clause(s) were dropped");
+        }
+        List<String> top = new ArrayList<>();
+        for (String line : lines) {
+            String[] f = line.split("\t");
+            if (f.length == 2 && f[0].equals("TOP")) top.add(f[1]);
+        }
+        return top;
+    }
+
     public static Result classify(OWLOntology ontology) throws Exception {
         String kmBin = KMExecutable.resolve();
         long timeout = parseTimeout();
