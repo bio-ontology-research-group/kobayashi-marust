@@ -43,7 +43,7 @@ public final class ParityRun {
         }
         int timeout = 120, callTimeout = 20, sample = 200;
         long seed = 1;
-        String xmx = "6g", only = null;
+        String xmx = "6g", only = null, hermitFrom = null;
         List<String> pos = new ArrayList<>();
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
@@ -53,17 +53,18 @@ public final class ParityRun {
                 case "--sample": sample = Integer.parseInt(args[++i]); break;
                 case "--xmx": xmx = args[++i]; break;
                 case "--only": only = args[++i]; break;
+                case "--hermit-from": hermitFrom = args[++i]; break;
                 default: pos.add(args[i]);
             }
         }
         if (pos.size() != 2) {
             System.err.println("usage: ParityRun [--timeout S] [--call-timeout S] [--seed N] [--sample N] [--xmx 6g]"
-                    + " [--only hermit|km] <ontology file> <out.json>");
+                    + " [--only hermit|km] [--hermit-from DIR] <ontology file> <out.json>");
             System.exit(2);
         }
         File ontFile = new File(pos.get(0)).getAbsoluteFile();
         File out = new File(pos.get(1)).getAbsoluteFile();
-        parent(ontFile, out, timeout, callTimeout, seed, sample, xmx, only);
+        parent(ontFile, out, timeout, callTimeout, seed, sample, xmx, only, hermitFrom);
     }
 
     // ------------------------------------------------------------------ loading
@@ -352,8 +353,41 @@ public final class ParityRun {
         return wr;
     }
 
+    static WorkerResult loadCachedWorker(String which, File fromDir, String baseName, File workDir) throws Exception {
+        File wdir = new File(fromDir, baseName + ".workers");
+        File res = new File(wdir, which + ".jsonl");
+        File err = new File(wdir, which + ".err");
+        File parentJson = new File(fromDir, baseName + ".json");
+        if (!res.isFile() || !parentJson.isFile()) return null;
+        Files.copy(res.toPath(), new File(workDir, which + ".jsonl").toPath(), StandardCopyOption.REPLACE_EXISTING);
+        if (err.isFile()) {
+            Files.copy(err.toPath(), new File(workDir, which + ".err").toPath(), StandardCopyOption.REPLACE_EXISTING);
+        }
+        WorkerResult wr = new WorkerResult();
+        for (String line : Files.readAllLines(res.toPath(), StandardCharsets.UTF_8)) {
+            if (line.isBlank()) continue;
+            JsonObject j = JsonParser.parseString(line).getAsJsonObject();
+            if (j.has("end")) {
+                if (wr.end.equals("none")) wr.end = j.get("end").getAsString();
+                if (j.has("why")) wr.detail = j.get("why").getAsString();
+                if (j.has("error")) wr.detail = j.get("error").getAsString();
+            } else {
+                wr.byId.put(j.get("id").getAsString(), j);
+            }
+        }
+        JsonObject pj = JsonParser.parseString(Files.readString(parentJson.toPath(), StandardCharsets.UTF_8)).getAsJsonObject();
+        if (pj.has("reasoners") && pj.getAsJsonObject("reasoners").has(which)) {
+            JsonObject rj = pj.getAsJsonObject("reasoners").getAsJsonObject(which);
+            if (rj.has("wall_ms")) wr.wallMs = rj.get("wall_ms").getAsLong();
+            if (wr.end.equals("none") && rj.has("end")) wr.end = rj.get("end").getAsString();
+            if (wr.detail.isEmpty() && rj.has("detail")) wr.detail = rj.get("detail").getAsString();
+            if (rj.has("stderr_tail")) wr.stderrTail = rj.get("stderr_tail").getAsString();
+        }
+        return wr;
+    }
+
     static void parent(File ontFile, File out, int timeout, int callTimeout, long seed, int sample, String xmx,
-                       String only) throws Exception {
+                       String only, String hermitFrom) throws Exception {
         long t0 = System.nanoTime();
         OWLOntology ont = load(ontFile);
         long loadMs = msSince(t0);
@@ -361,8 +395,16 @@ public final class ParityRun {
         Path work = Files.createTempDirectory(
                 out.getParentFile() == null ? Paths.get(".") : out.getParentFile().toPath(), ".parity-work-");
         WorkerResult h = null, k = null;
+        String baseName = out.getName().replaceAll("\\.json$", "");
         try {
-            if (only == null || only.equals("hermit")) h = runWorker("hermit", ontFile, work.toFile(), timeout, callTimeout, seed, sample, xmx);
+            if (only == null || only.equals("hermit")) {
+                if (hermitFrom != null) {
+                    h = loadCachedWorker("hermit", new File(hermitFrom), baseName, work.toFile());
+                }
+                if (h == null) {
+                    h = runWorker("hermit", ontFile, work.toFile(), timeout, callTimeout, seed, sample, xmx);
+                }
+            }
             if (only == null || only.equals("km")) k = runWorker("km", ontFile, work.toFile(), timeout, callTimeout, seed, sample, xmx);
         } finally {
             // keep the raw worker output next to the result for debugging
@@ -443,9 +485,25 @@ public final class ParityRun {
         return j;
     }
 
+    private static String normalizeCallId(String id) {
+        if (id == null || !id.contains("Generated by the OWL API")) {
+            return id;
+        }
+        return id.replaceAll("(Generated by the OWL API [^\\\"]*? on )[^\\\"]+", "$1<DATE>");
+    }
+
     /** The recorded call, or a "missing" record when the worker never reached it. */
     static JsonObject answer(WorkerResult w, String id) {
         JsonObject c = w.byId.get(id);
+        if (c == null && id.contains("Generated by the OWL API")) {
+            String nid = normalizeCallId(id);
+            for (Map.Entry<String, JsonObject> e : w.byId.entrySet()) {
+                if (e.getKey().contains("Generated by the OWL API") && normalizeCallId(e.getKey()).equals(nid)) {
+                    c = e.getValue();
+                    break;
+                }
+            }
+        }
         JsonObject j = new JsonObject();
         if (c == null) {
             j.addProperty("status", "missing");
