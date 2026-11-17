@@ -4246,15 +4246,20 @@ fn collect_full_absorption_triggers(
         )
     };
     if (!negated && matches!(op_code, op::CCAND | op::CCEQ)) || (negated && op_code == op::CCOR) {
-        return operands.into_iter().all(|operand| {
-            collect_full_absorption_triggers(
+        let saved_len = triggers.len();
+        for operand in operands {
+            if !collect_full_absorption_triggers(
                 b,
                 (operand.target, operand.negated ^ negated),
                 role_inverses,
                 caches,
                 triggers,
-            )
-        });
+            ) {
+                triggers.truncate(saved_len);
+                return false;
+            }
+        }
+        return true;
     }
     if let Some(trigger) = full_absorption_trigger(b, literal, role_inverses, caches) {
         triggers.push(trigger);
@@ -4305,7 +4310,9 @@ fn partial_absorption_trigger(
             c.get_operand_list().to_vec(),
         )
     };
-    let result = if (!negated && op_code == op::CCAND) || (negated && op_code == op::CCOR) {
+    let result = if (!negated && matches!(op_code, op::CCAND | op::CCEQ))
+        || (negated && op_code == op::CCOR)
+    {
         let triggers: Vec<_> = operands
             .into_iter()
             .filter_map(|operand| {
@@ -6553,6 +6560,22 @@ fn bridge_tinput_with_trigger_absorption(
                 }
             }
         }
+        fn collect_source_names<'a>(concept: &'a SourceConcept, out: &mut Vec<&'a str>) {
+            match concept {
+                SourceConcept::Name(name) => out.push(name.as_str()),
+                SourceConcept::Not(operand) => collect_source_names(operand, out),
+                SourceConcept::And(operands) | SourceConcept::Or(operands) => {
+                    for operand in operands {
+                        collect_source_names(operand, out);
+                    }
+                }
+                SourceConcept::Exists(_, filler)
+                | SourceConcept::Forall(_, filler)
+                | SourceConcept::AtLeast(_, _, filler)
+                | SourceConcept::AtMost(_, _, filler) => collect_source_names(filler, out),
+                _ => {}
+            }
+        }
         // Lazy unfolding of a CCEQ definition (`A -> D`, `not A -> not D`, no
         // reverse TOP GCI) is complete only for definitions that do not reach
         // their own name: for `A == not A` a node carrying neither A nor
@@ -6560,22 +6583,6 @@ fn bridge_tinput_with_trigger_absorption(
         // (fuzz s1798). A name whose definition reaches itself through other
         // single-equivalence definitions keeps both inclusions instead.
         {
-            fn collect_names<'a>(concept: &'a SourceConcept, out: &mut Vec<&'a str>) {
-                match concept {
-                    SourceConcept::Name(name) => out.push(name.as_str()),
-                    SourceConcept::Not(operand) => collect_names(operand, out),
-                    SourceConcept::And(operands) | SourceConcept::Or(operands) => {
-                        for operand in operands {
-                            collect_names(operand, out);
-                        }
-                    }
-                    SourceConcept::Exists(_, filler)
-                    | SourceConcept::Forall(_, filler)
-                    | SourceConcept::AtLeast(_, _, filler)
-                    | SourceConcept::AtMost(_, _, filler) => collect_names(filler, out),
-                    _ => {}
-                }
-            }
             // Edges only from the side the equivalence pass below would make
             // the CCEQ host (the first named side that is not forced and has
             // a single equivalence); the other names of the axiom are atoms of
@@ -6600,7 +6607,7 @@ fn bridge_tinput_with_trigger_absorption(
                         });
                     if let Some((name, definition)) = host {
                         let mut names = Vec::new();
-                        collect_names(definition, &mut names);
+                        collect_source_names(definition, &mut names);
                         definition_edges.entry(name).or_default().extend(names);
                     }
                 }
@@ -6626,89 +6633,6 @@ fn bridge_tinput_with_trigger_absorption(
                 forced_subclass_names.extend(cyclic);
             }
         }
-        // Names in a trigger position of an absorbed inclusion: positive in
-        // the left side or negative in the right side of `L ⊑ R` (through
-        // conjunctions, disjunctions and the fillers of restrictions), and
-        // every name of an equivalence or disjointness that is encoded as two
-        // inclusions. Such an inclusion fires only when the name is in a
-        // label. A CCEQ host `A ≡ D` whose definition is not fully
-        // triggerable is unfolded lazily (`A -> D`, `not A -> not D`): a node
-        // in `D` never receives `A`, so an inclusion triggered by `A` is
-        // missed (`{c} ⊑ ¬C`, `C ≡ =1 k.integer`, `k(c, 2)` came out
-        // consistent). Such a name is not made a lazy CCEQ host; its
-        // equivalence is encoded as the two inclusions instead.
-        let trigger_names: crate::fxhash::FxHashSet<&str> = {
-            fn walk<'a>(concept: &'a SourceConcept, positive: bool, out: &mut crate::fxhash::FxHashSet<&'a str>) {
-                match concept {
-                    SourceConcept::Name(name) => {
-                        if positive {
-                            out.insert(name.as_str());
-                        }
-                    }
-                    SourceConcept::Not(operand) => walk(operand, !positive, out),
-                    SourceConcept::And(operands) | SourceConcept::Or(operands) => {
-                        for operand in operands {
-                            walk(operand, positive, out);
-                        }
-                    }
-                    SourceConcept::Exists(_, filler)
-                    | SourceConcept::Forall(_, filler)
-                    | SourceConcept::AtLeast(_, _, filler) => walk(filler, positive, out),
-                    // `≤ n r.C` holds when few successors carry C: C occurs
-                    // negatively; count both polarities to stay on the safe side.
-                    SourceConcept::AtMost(_, _, filler) => {
-                        walk(filler, positive, out);
-                        walk(filler, !positive, out);
-                    }
-                    _ => {}
-                }
-            }
-            let mut out = crate::fxhash::FxHashSet::default();
-            for axiom in &tin.source_axioms {
-                match axiom.kind {
-                    crate::json_io::SourceAxiomKind::SubClass => {
-                        walk(&axiom.left, true, &mut out);
-                        walk(&axiom.right, false, &mut out);
-                    }
-                    crate::json_io::SourceAxiomKind::Disjoint => {
-                        walk(&axiom.left, true, &mut out);
-                        walk(&axiom.right, true, &mut out);
-                    }
-                    crate::json_io::SourceAxiomKind::Equivalent => {}
-                }
-            }
-            // An equivalence without a lazy host is encoded as two
-            // inclusions, so every name in it is in a trigger position. A
-            // host that is itself a trigger name may lose its definition
-            // (above), so iterate to a fixpoint.
-            loop {
-                let before = out.len();
-                for axiom in &tin.source_axioms {
-                    if axiom.kind != crate::json_io::SourceAxiomKind::Equivalent {
-                        continue;
-                    }
-                    let host = [&axiom.left, &axiom.right].into_iter().find_map(|side| match side {
-                        SourceConcept::Name(name)
-                            if !forced_subclass_names.contains(name.as_str())
-                                && equivalence_name_counts.get(name.as_str()) == Some(&1) =>
-                        {
-                            Some(name.as_str())
-                        }
-                        _ => None,
-                    });
-                    if host.is_none_or(|name| out.contains(name)) {
-                        for side in [&axiom.left, &axiom.right] {
-                            walk(side, true, &mut out);
-                            walk(side, false, &mut out);
-                        }
-                    }
-                }
-                if out.len() == before {
-                    break;
-                }
-            }
-            out
-        };
         bridge_phase!("source-prescan");
         macro_rules! encode {
             ($left:expr, $right:expr $(,)?) => {{
@@ -6745,33 +6669,175 @@ fn bridge_tinput_with_trigger_absorption(
                 }
             }};
         }
+        // Pre-install a non-triggerable CCEQ definition only when an earlier
+        // source axiom (`first_mention < axiom_index`) references its host
+        // name before its `EquivalentClasses` axiom (for example,
+        // `SubClassOf({c}, ¬C)` preceding `EquivalentClasses(C, =1 k.int)`).
+        // Checking triggerability syntactically first avoids touching `b`,
+        // `concept_cache`, or `trigger_caches` on triggerable definitions, so
+        // ConceptId allocation and trigger pairing stay identical to the
+        // single-pass source order.
+        fn syntactically_triggerable(
+            concept: &SourceConcept,
+            positive: bool,
+            non_triggerable_hosts: &crate::fxhash::FxHashSet<&str>,
+        ) -> bool {
+            match concept {
+                SourceConcept::Name(name) => {
+                    positive && !non_triggerable_hosts.contains(name.as_str())
+                }
+                SourceConcept::Top | SourceConcept::Nominal(_) => positive,
+                SourceConcept::Bottom | SourceConcept::HasSelf(_) => false,
+                SourceConcept::Not(operand) => {
+                    syntactically_triggerable(operand, !positive, non_triggerable_hosts)
+                }
+                SourceConcept::And(operands) | SourceConcept::Or(operands) => {
+                    !operands.is_empty()
+                        && operands.iter().all(|op| {
+                            syntactically_triggerable(op, positive, non_triggerable_hosts)
+                        })
+                }
+                SourceConcept::Exists(_, filler) => {
+                    positive && syntactically_triggerable(filler, true, non_triggerable_hosts)
+                }
+                SourceConcept::Forall(_, filler) => {
+                    !positive && syntactically_triggerable(filler, false, non_triggerable_hosts)
+                }
+                SourceConcept::AtLeast(n, _, filler) => {
+                    positive
+                        && *n <= 1
+                        && syntactically_triggerable(filler, true, non_triggerable_hosts)
+                }
+                SourceConcept::AtMost(n, _, filler) => {
+                    !positive
+                        && *n == 0
+                        && syntactically_triggerable(filler, false, non_triggerable_hosts)
+                }
+            }
+        }
+        let mut non_triggerable_hosts: crate::fxhash::FxHashSet<&str> = Default::default();
+        loop {
+            let before = non_triggerable_hosts.len();
+            for axiom in &tin.source_axioms {
+                if axiom.kind != crate::json_io::SourceAxiomKind::Equivalent {
+                    continue;
+                }
+                if let Some((name, definition)) =
+                    [(&axiom.left, &axiom.right), (&axiom.right, &axiom.left)]
+                        .into_iter()
+                        .find_map(|(named_side, definition)| match named_side {
+                            SourceConcept::Name(name)
+                                if !forced_subclass_names.contains(name.as_str())
+                                    && equivalence_name_counts.get(name.as_str()) == Some(&1) =>
+                            {
+                                Some((name.as_str(), definition))
+                            }
+                            _ => None,
+                        })
+                {
+                    if !syntactically_triggerable(definition, true, &non_triggerable_hosts) {
+                        non_triggerable_hosts.insert(name);
+                    }
+                }
+            }
+            if non_triggerable_hosts.len() == before {
+                break;
+            }
+        }
+        let mut first_mention: HashMap<&str, usize> = HashMap::default();
+        if !non_triggerable_hosts.is_empty() {
+            for (axiom_index, axiom) in tin.source_axioms.iter().enumerate() {
+                let mut names = Vec::new();
+                collect_source_names(&axiom.left, &mut names);
+                collect_source_names(&axiom.right, &mut names);
+                for name in names {
+                    first_mention.entry(name).or_insert(axiom_index);
+                }
+            }
+        }
+        let mut preinstalled_cceq: HashMap<usize, (ConceptId, &SourceConcept, &str)> =
+            HashMap::default();
+        if !non_triggerable_hosts.is_empty() {
+            for (axiom_index, axiom) in tin.source_axioms.iter().enumerate() {
+                if axiom.kind != crate::json_io::SourceAxiomKind::Equivalent {
+                    continue;
+                }
+                let candidate = [(&axiom.left, &axiom.right), (&axiom.right, &axiom.left)]
+                    .into_iter()
+                    .find_map(|(named_side, definition)| {
+                        let SourceConcept::Name(name) = named_side else {
+                            return None;
+                        };
+                        if !non_triggerable_hosts.contains(name.as_str())
+                            || !first_mention
+                                .get(name.as_str())
+                                .is_some_and(|&first| first < axiom_index)
+                        {
+                            return None;
+                        }
+                        let &index = concept_index.get(name.as_str())?;
+                        (b.ctx
+                            .ontology_arenas()
+                            .concept(named[index])
+                            .get_operator_code()
+                            == op::CCATOM)
+                            .then_some((named[index], definition, name.as_str()))
+                    });
+                if let Some((host, definition, name)) = candidate {
+                    if let Some(built) = build_source_concept(
+                        &mut b,
+                        definition,
+                        &concept_index,
+                        &role_index,
+                        &named,
+                        &roles,
+                        &inv_roles,
+                        &nominal_by_name,
+                        &mut concept_cache,
+                    ) {
+                        if full_absorption_trigger(
+                            &mut b,
+                            built,
+                            &role_inverses,
+                            &mut trigger_caches,
+                        )
+                        .is_none()
+                            && b.add_equivalent_definition(host, built.0, built.1)
+                        {
+                            preinstalled_cceq.insert(axiom_index, (host, definition, name));
+                        }
+                    }
+                }
+            }
+        }
         for (axiom_index, axiom) in tin.source_axioms.iter().enumerate() {
             match axiom.kind {
                 crate::json_io::SourceAxiomKind::SubClass => {
                     encode!(&axiom.left, &axiom.right);
                 }
                 crate::json_io::SourceAxiomKind::Equivalent => {
-                    // `buildPermutableConceptEquivalentClass` chooses a still
-                    // undefined named side for a direct CCEQ definition.
-                    let candidate = [(&axiom.left, &axiom.right), (&axiom.right, &axiom.left)]
-                        .into_iter()
-                        .find_map(|(named_side, definition)| {
-                            let SourceConcept::Name(name) = named_side else {
-                                return None;
-                            };
-                            if forced_subclass_names.contains(name.as_str())
-                                || equivalence_name_counts.get(name.as_str()) != Some(&1)
-                            {
-                                return None;
-                            }
-                            let &index = concept_index.get(name.as_str())?;
-                            (b.ctx
-                                .ontology_arenas()
-                                .concept(named[index])
-                                .get_operator_code()
-                                == op::CCATOM)
-                                .then_some((named[index], definition, name.as_str()))
-                        });
+                    let preinstalled = preinstalled_cceq.get(&axiom_index).copied();
+                    let candidate = preinstalled.or_else(|| {
+                        [(&axiom.left, &axiom.right), (&axiom.right, &axiom.left)]
+                            .into_iter()
+                            .find_map(|(named_side, definition)| {
+                                let SourceConcept::Name(name) = named_side else {
+                                    return None;
+                                };
+                                if forced_subclass_names.contains(name.as_str())
+                                    || equivalence_name_counts.get(name.as_str()) != Some(&1)
+                                {
+                                    return None;
+                                }
+                                let &index = concept_index.get(name.as_str())?;
+                                (b.ctx
+                                    .ontology_arenas()
+                                    .concept(named[index])
+                                    .get_operator_code()
+                                    == op::CCATOM)
+                                    .then_some((named[index], definition, name.as_str()))
+                            })
+                    });
                     let defined = candidate.is_some_and(|(host, definition, name)| {
                         let Some(built) = build_source_concept(
                             &mut b,
@@ -6786,28 +6852,15 @@ fn bridge_tinput_with_trigger_absorption(
                         ) else {
                             return false;
                         };
-                        if trigger_names.contains(name)
+                        equivalent_definition_names.push(name.to_string());
+                        let triggerable = preinstalled.is_none()
                             && full_absorption_trigger(
                                 &mut b,
                                 built,
                                 &role_inverses,
                                 &mut trigger_caches,
                             )
-                            .is_none()
-                        {
-                            return false;
-                        }
-                        equivalent_definition_names.push(name.to_string());
-                        // Port of the absorber's equivalence pre-pass. A fully
-                        // triggerable definition is changed CCEQ -> CCSUB and
-                        // gets the reverse direction as a binary implication.
-                        let triggerable = full_absorption_trigger(
-                            &mut b,
-                            built,
-                            &role_inverses,
-                            &mut trigger_caches,
-                        )
-                        .is_some();
+                            .is_some();
                         if triggerable {
                             let forward = b.add_unfolding(host, built.0, built.1);
                             let reverse = absorb_concept_disjunction(
@@ -6824,23 +6877,9 @@ fn bridge_tinput_with_trigger_absorption(
                                 false
                             }
                         } else {
-                            let defined = b.add_equivalent_definition(host, built.0, built.1);
+                            let defined = preinstalled.is_some()
+                                || b.add_equivalent_definition(host, built.0, built.1);
                             if defined && build_eq_candidates {
-                                // Port of the partial-equivalence candidate
-                                // (`PartialEquivalentDefinitionToCandidates-
-                                // Absorption`, default on in Konclude,
-                                // cpp 207-212): the fully triggerable
-                                // conjuncts T of the definition imply a fresh
-                                // marker. `A == D` and `D <= T` give
-                                // `A <= T`, so a complete model whose node
-                                // lacks the marker is not in T, hence not in
-                                // A. The marker has no rule and no class name
-                                // (Konclude's CCEQCAND is likewise rule-free
-                                // in completion); it only adds labels, so all
-                                // verdicts are unchanged. The host stays in
-                                // the non-candidate set below: the marker is
-                                // consumed only by the bridge's own
-                                // countermodel test for pair candidates.
                                 let parts: Vec<&SourceConcept> = match definition {
                                     SourceConcept::And(parts) => parts.iter().collect(),
                                     other => vec![other],
@@ -6893,14 +6932,6 @@ fn bridge_tinput_with_trigger_absorption(
                                 }
                             }
                             if defined {
-                                // Exact non-candidate branch of
-                                // `CTriggeredImplicationBinaryAbsorberPreProcess`
-                                // (cpp 203-215). Konclude either builds the
-                                // optional partial-equivalence candidate or
-                                // inserts the still-CCEQ host into
-                                // `mEquivConNonCandidateSet`. The bridge does
-                                // not materialise that optional optimization,
-                                // so it takes Konclude's non-candidate branch.
                                 b.ctx
                                     .ontology_arenas_mut()
                                     .insert_equivalent_concept_non_candidate(host);
