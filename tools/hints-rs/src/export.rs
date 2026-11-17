@@ -284,6 +284,7 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
     };
 
     let mut route = String::from("export");
+    let mut exp_status = String::from("ok");
     let mut exp_elems: Vec<ExportElem> = Vec::new();
     let mut id_to_idx: HashMap<String, usize> = HashMap::new();
     let mut exp_edges: Vec<(String, String, String)> = Vec::new();
@@ -314,7 +315,8 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
                     route = r.to_string();
                 }
                 if let Some(st) = val.str_field("status") {
-                    if st != "ok" {
+                    exp_status = st.to_string();
+                    if st != "ok" && st != "partial" {
                         let why = val.str_field("reason").unwrap_or(st);
                         return format!(
                             "{{\"ok\":false,\"status\":{},\"route\":{},\"why\":{},\"reason\":{}}}",
@@ -1104,28 +1106,34 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
     // Build witness table (`wits`)
     let mut wits: Vec<(Option<u32>, Id)> = Vec::new();
     let mut wit_covered: BTreeSet<Option<u32>> = BTreeSet::new();
+    let mut wit_pairs: BTreeSet<(Option<u32>, Id)> = BTreeSet::new();
     let canon_0 = m.canonical().next().unwrap_or(0);
     wits.push((None, canon_0));
     wit_covered.insert(None);
+    wit_pairs.insert((None, canon_0));
 
     for (cls_iri, el_id, _) in &exp_witnesses {
         if cls_iri == THING {
             if let Some(&idx) = id_to_idx.get(el_id) {
-                wits[0] = (None, m.find(idx as Id));
+                let w = m.find(idx as Id);
+                wits[0] = (None, w);
+                wit_pairs.insert((None, w));
             }
             continue;
         }
         if let (Some(&c), Some(&idx)) = (nf.cidx.get(cls_iri.as_str()), id_to_idx.get(el_id)) {
             if rowclass[c as usize] {
                 let w = m.find(idx as Id);
-                if en.sets.has(m.elems[w as usize].ty, c) && wit_covered.insert(Some(c)) {
+                if en.sets.has(m.elems[w as usize].ty, c) && wit_pairs.insert((Some(c), w)) {
+                    wit_covered.insert(Some(c));
                     wits.push((Some(c), w));
                 }
             }
         }
     }
     let mut first_witness: Vec<Id> = vec![NONE; n];
-    for x in m.canonical() {
+    let canon_all: Vec<Id> = m.canonical().collect();
+    for &x in &canon_all {
         for &a in en.sets.get(m.elems[x as usize].ty).iter() {
             if first_witness[a as usize] == NONE {
                 first_witness[a as usize] = x;
@@ -1142,10 +1150,186 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
             }
         }
         let w = first_witness[c as usize];
-        if w != NONE {
+        if w != NONE && wit_pairs.insert((Some(c), w)) {
             wit_covered.insert(Some(c));
             wits.push((Some(c), w));
         }
+    }
+
+    // If `km` is provided, check if any exported witness for `c` has dirty rowclasses
+    // that another existing element in `m` already separates, or (when not `--export-only`)
+    // search only for what the export lacks.
+    let mut searched_wits = 0usize;
+    let mut export_only_full = false;
+    let mut plus_search_full = false;
+    if let Some(km_ref) = km {
+        let ci = |iri: &str| nf.cidx.get(iri).copied().filter(|&c| nf.named[c as usize]);
+        let mut top: Vec<u32> = km_ref.top.iter().filter_map(|s| ci(s)).collect();
+        if let Some(t) = thing_c {
+            top.push(t);
+        }
+        top.sort_unstable();
+        top.dedup();
+        let mut sup_of: HashMap<u32, Vec<u32>> = HashMap::new();
+        for &c in &classes {
+            let mut v: Vec<u32> = km_ref
+                .sup
+                .get(nf.cname_of(c))
+                .map(|s| s.iter().filter_map(|x| ci(x)).collect())
+                .unwrap_or_default();
+            v.push(c);
+            v.extend_from_slice(&top);
+            v.sort_unstable();
+            v.dedup();
+            sup_of.insert(c, v);
+        }
+        // Pass 1: use existing elements in `m` to separate any dirty rowclasses
+        let mut dirty_of: HashMap<u32, Vec<u32>> = HashMap::new();
+        let mut missing_exp = 0usize;
+        for &c in &classes {
+            if km_ref.unsat.contains(nf.cname_of(c)) {
+                continue;
+            }
+            if !wit_covered.contains(&Some(c)) {
+                missing_exp += 1;
+                continue;
+            }
+            let sup = &sup_of[&c];
+            let mut left: Option<Vec<u32>> = None;
+            for &(wc, w) in &wits {
+                if wc == Some(c) {
+                    let ts = en.sets.get(m.elems[m.find(w) as usize].ty);
+                    let d: Vec<u32> = ts
+                        .iter()
+                        .copied()
+                        .filter(|&b| rowclass[b as usize] && sup.binary_search(&b).is_err())
+                        .collect();
+                    left = Some(match left {
+                        None => d,
+                        Some(l) => l.into_iter().filter(|b| d.binary_search(b).is_ok()).collect(),
+                    });
+                }
+            }
+            if let Some(mut d) = left {
+                if !d.is_empty() {
+                    for &x in &canon_all {
+                        if d.is_empty() {
+                            break;
+                        }
+                        let ts = en.sets.get(m.elems[x as usize].ty);
+                        if ts.binary_search(&c).is_ok()
+                            && d.iter().any(|b| ts.binary_search(b).is_err())
+                            && sup.iter().all(|b| !rowclass[*b as usize] || ts.binary_search(b).is_ok())
+                        {
+                            if wit_pairs.insert((Some(c), x)) {
+                                wits.push((Some(c), x));
+                            }
+                            d.retain(|b| ts.binary_search(b).is_ok());
+                        }
+                    }
+                    if !d.is_empty() {
+                        dirty_of.insert(c, d);
+                    }
+                }
+            }
+        }
+        export_only_full = rep.violations == 0 && missing_exp == 0 && dirty_of.is_empty();
+        // Pass 2: if not `--export-only` and `rep.violations == 0`, search for missing/dirty witnesses
+        let export_only = std::env::args().any(|a| a == "--export-only");
+        if !export_only && rep.violations == 0 && !export_only_full {
+            let try_add_clean_wit = |en: &mut Engine, m: &mut Model, c: u32, fb: u32, tgt: u32| -> Option<Id> {
+                let seed = en.sets.intern(vec![c]);
+                let CloseRes::Ok(t) = en.close_clean(seed, fb, tgt, true) else { return None };
+                if en.sets.get(t).iter().any(|&o| en.nf.is_nom[o as usize]) {
+                    return None;
+                }
+                m.begin();
+                let w = en.new_elem_closed(m, seed, t, fb, tgt, false);
+                if en.saturate(m).is_ok() {
+                    let w = m.find(w);
+                    let polluted = m.saved_iter().any(|(&i, old)| {
+                        let cur = m.find(i);
+                        m.elems[cur as usize].ty != old.ty
+                    });
+                    if !polluted
+                        && en.sets.has(m.elems[w as usize].ty, c)
+                        && (fb == 0 || !en.sets.get(fb).iter().any(|&b| en.sets.has(m.elems[w as usize].ty, b)))
+                    {
+                        m.em(w).pinned = true;
+                        m.commit();
+                        return Some(w);
+                    }
+                }
+                m.rollback();
+                None
+            };
+            for &c in &classes {
+                if Instant::now() > deadline || en.mem_exceeded() {
+                    break;
+                }
+                if km_ref.unsat.contains(nf.cname_of(c)) {
+                    continue;
+                }
+                let sup = &sup_of[&c];
+                let tgt = en.sets.intern(sup.clone());
+                if !wit_covered.contains(&Some(c)) {
+                    if let Some(w) = try_add_clean_wit(&mut en, &mut m, c, 0, tgt) {
+                        wit_covered.insert(Some(c));
+                        wit_pairs.insert((Some(c), w));
+                        wits.push((Some(c), w));
+                        searched_wits += 1;
+                        let ts = en.sets.get(m.elems[w as usize].ty);
+                        let d: Vec<u32> = ts
+                            .iter()
+                            .copied()
+                            .filter(|&b| rowclass[b as usize] && sup.binary_search(&b).is_err())
+                            .collect();
+                        if !d.is_empty() {
+                            dirty_of.insert(c, d);
+                        }
+                    }
+                }
+                if let Some(d) = dirty_of.get(&c).cloned() {
+                    let fb_all = en.sets.intern(d.clone());
+                    if let Some(w) = try_add_clean_wit(&mut en, &mut m, c, fb_all, tgt) {
+                        if wit_pairs.insert((Some(c), w)) {
+                            wits.push((Some(c), w));
+                            searched_wits += 1;
+                        }
+                        dirty_of.remove(&c);
+                    } else {
+                        let mut rem_d = Vec::new();
+                        for b in d {
+                            if Instant::now() > deadline || en.mem_exceeded() {
+                                rem_d.push(b);
+                                continue;
+                            }
+                            let fb1 = en.sets.intern(vec![b]);
+                            if let Some(w) = try_add_clean_wit(&mut en, &mut m, c, fb1, tgt) {
+                                if wit_pairs.insert((Some(c), w)) {
+                                    wits.push((Some(c), w));
+                                    searched_wits += 1;
+                                }
+                            } else {
+                                rem_d.push(b);
+                            }
+                        }
+                        if rem_d.is_empty() {
+                            dirty_of.remove(&c);
+                        } else {
+                            dirty_of.insert(c, rem_d);
+                        }
+                    }
+                }
+            }
+            if searched_wits > 0 {
+                rep = check::verify(&mut en, &m);
+            }
+        }
+        let all_sat_cov = classes
+            .iter()
+            .all(|&c| km_ref.unsat.contains(nf.cname_of(c)) || wit_covered.contains(&Some(c)));
+        plus_search_full = rep.violations == 0 && all_sat_cov && dirty_of.is_empty();
     }
 
     let mut roots: Vec<Id> = wits.iter().map(|x| x.1).collect();
@@ -1181,13 +1365,17 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
         None => "null".into(),
     };
     format!(
-        "{{\"ok\":{},\"route\":{},\"elements\":{},\"edges\":{},\"bytes\":{},\"witnesses\":{},\"violations\":{},\"first_violation\":{},\"why\":{},\"reason\":{},\"secs\":{:.3}}}",
+        "{{\"ok\":{},\"status\":{},\"route\":{},\"elements\":{},\"edges\":{},\"bytes\":{},\"witnesses\":{},\"witnesses_searched\":{},\"export_only_full\":{},\"plus_search_full\":{},\"violations\":{},\"first_violation\":{},\"why\":{},\"reason\":{},\"secs\":{:.3}}}",
         rep.violations == 0,
+        json_str(&exp_status),
         json_str(&route),
         keep.len(),
         edges_cnt,
         bytes,
         wits.len(),
+        searched_wits,
+        export_only_full,
+        plus_search_full,
         rep.violations,
         why_json,
         why_json,

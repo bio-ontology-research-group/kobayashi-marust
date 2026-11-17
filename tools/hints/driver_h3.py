@@ -334,7 +334,7 @@ def main():
         try:
             if os.path.exists(hp) and os.path.getsize(hp) > 50 * 1024 * 1024:
                 os.remove(hp)
-            if os.path.exists(op) and os.path.getsize(op) > 50 * 1024 * 1024:
+            if os.path.exists(op) and os.path.getsize(op) > 1 * 1024 * 1024:
                 os.remove(op)
         except OSError:
             pass
