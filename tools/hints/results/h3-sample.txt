@@ -1,20 +1,13 @@
-|  | inputs | no rows / failed | model full | confirmed full | model full, checker too slow | rows | unchecked | certified |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| all | 174 | 17 | 144 | 143 | 1 | 171,893,167,188 | 147,089,672,393 | 145,151,670,368 |
-
-| size | inputs | no rows / failed | model full | confirmed full | model full, checker too slow | rows | unchecked | certified |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| a<100K | 57 | 0 | 55 | 55 | 0 | 1,454,550 | 1,436,399 | 1,436,399 |
-| b<1M | 61 | 7 | 51 | 51 | 0 | 123,964,038 | 123,933,150 | 123,933,296 |
-| c<10M | 38 | 7 | 29 | 28 | 1 | 7,052,952,991 | 7,033,597,155 | 7,008,581,504 |
-| d>=10M | 18 | 3 | 9 | 9 | 0 | 164,714,795,609 | 139,930,705,689 | 138,017,719,169 |
-
-| fragment | inputs | no rows / failed | model full | confirmed full | model full, checker too slow | rows | unchecked | certified |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| ALC | 6 | 0 | 6 | 6 | 0 | 92,450,984,354 | 92,450,984,354 | 92,450,984,354 |
-| EL | 55 | 0 | 55 | 55 | 0 | 23,779,250,327 | 23,779,250,327 | 23,779,250,327 |
-| SHI | 10 | 0 | 9 | 9 | 0 | 14,421,552,151 | 14,421,550,812 | 14,421,550,812 |
-| SHIQ | 10 | 0 | 6 | 6 | 0 | 8,442,916,315 | 4,569,818,174 | 4,569,818,174 |
-| SHIQ+ABox | 58 | 9 | 47 | 47 | 0 | 8,486,443,982 | 8,486,438,265 | 8,480,241,642 |
-| SHOIQ | 28 | 6 | 17 | 16 | 1 | 17,950,445,418 | 1,941,485,847 | 9,680,445 |
-| SROIQ | 7 | 2 | 4 | 4 | 0 | 6,361,574,641 | 1,440,144,614 | 1,440,144,614 |
+all            inputs  174 | producer: model-full  162 partial   2 none   1 other   9 | classes 1583353 general 1562789 split  1664 partial   28 none 18867 | rows 171916531574 unchecked 170349884068 | checker: inputs 164 consistency 161 full 159 full-but-Thing 0 partial 2 none 3 | certified rows 165393419373 (+ Thing rows 1583160) | calls {'certified': 185, 'timeout': 3} | disagreements 0
+frag:ALC       inputs    6 | producer: model-full    6 partial   0 none   0 other   0 | classes  362521 general  362521 split     0 partial    0 none    0 | rows 92450984354 unchecked 92450984354 | checker: inputs 6 consistency 6 full 6 full-but-Thing 0 partial 0 none 0 | certified rows 92450984354 (+ Thing rows 362515) | calls {'certified': 6} | disagreements 0
+frag:EL        inputs   55 | producer: model-full   55 partial   0 none   0 other   0 | classes  399078 general  399078 split     0 partial    0 none    0 | rows 23779250327 unchecked 23779250327 | checker: inputs 55 consistency 55 full 55 full-but-Thing 0 partial 0 none 0 | certified rows 23779250327 (+ Thing rows 399021) | calls {'certified': 55} | disagreements 0
+frag:SHI       inputs   10 | producer: model-full   10 partial   0 none   0 other   0 | classes  210623 general  210295 split   328 partial    0 none    0 | rows 14421552151 unchecked 14421552151 | checker: inputs 10 consistency 10 full 10 full-but-Thing 0 partial 0 none 0 | certified rows 14421552151 (+ Thing rows 210603) | calls {'certified': 10} | disagreements 0
+frag:SHIQ      inputs   10 | producer: model-full    9 partial   1 none   0 other   0 | classes  137585 general  118577 split   113 partial   28 none 18867 | rows 8442916315 unchecked 6876409318 | checker: inputs 10 consistency 10 full 9 full-but-Thing 0 partial 1 none 0 | certified rows 6876409318 (+ Thing rows 137575) | calls {'certified': 10} | disagreements 0
+frag:SHIQ+ABox inputs   58 | producer: model-full   52 partial   0 none   0 other   6 | classes  169116 general  169058 split    55 partial    0 none    0 | rows 8498376106 unchecked 8498376106 | checker: inputs 52 consistency 51 full 51 full-but-Thing 0 partial 0 none 1 | certified rows 8492034063 (+ Thing rows 169059) | calls {'certified': 59, 'timeout': 1} | disagreements 0
+frag:SHOIQ     inputs   28 | producer: model-full   25 partial   1 none   1 other   1 | classes  193099 general  192717 split   382 partial    0 none    0 | rows 17961877680 unchecked 17961737171 | checker: inputs 26 consistency 25 full 24 full-but-Thing 0 partial 1 none 1 | certified rows 17942382674 (+ Thing rows 193073) | calls {'certified': 40, 'timeout': 1} | disagreements 0
+frag:SROIQ     inputs    7 | producer: model-full    5 partial   0 none   0 other   2 | classes  111331 general  110543 split   786 partial    0 none    0 | rows 6361574641 unchecked 6361574641 | checker: inputs 5 consistency 4 full 4 full-but-Thing 0 partial 0 none 1 | certified rows 1430806486 (+ Thing rows 111314) | calls {'certified': 5, 'timeout': 1} | disagreements 0
+size:a<100K    inputs   57 | producer: model-full   57 partial   0 none   0 other   0 | classes    6717 general    6586 split   130 partial    0 none    0 | rows 1454550 unchecked 1454550 | checker: inputs 57 consistency 57 full 57 full-but-Thing 0 partial 0 none 0 | certified rows 1454550 (+ Thing rows 6642) | calls {'certified': 65} | disagreements 0
+size:b<1M      inputs   61 | producer: model-full   57 partial   1 none   1 other   2 | classes   60500 general   59294 split  1204 partial    0 none    0 | rows 134514779 unchecked 134374270 | checker: inputs 58 consistency 58 full 57 full-but-Thing 0 partial 1 none 0 | certified rows 134374270 (+ Thing rows 60432) | calls {'certified': 72} | disagreements 0
+size:c<10M     inputs   38 | producer: model-full   33 partial   0 none   0 other   5 | classes  334157 general  333859 split   296 partial    0 none    0 | rows 7059424593 unchecked 7059424593 | checker: inputs 33 consistency 32 full 32 full-but-Thing 0 partial 0 none 1 | certified rows 7040070096 (+ Thing rows 334124) | calls {'certified': 33, 'timeout': 1} | disagreements 0
+size:d>=10M    inputs   18 | producer: model-full   15 partial   1 none   0 other   2 | classes 1181979 general 1163050 split    34 partial   28 none 18867 | rows 164721137652 unchecked 163154630655 | checker: inputs 16 consistency 14 full 13 full-but-Thing 0 partial 1 none 2 | certified rows 158217520457 (+ Thing rows 1181962) | calls {'certified': 15, 'timeout': 2} | disagreements 0
+reasons: {'km-inconsistent': 4, 'no base model': 1, 'km-failed': 5, 'individual types not general': 1, 'time budget after 64170 of 83037 witnesses': 1}

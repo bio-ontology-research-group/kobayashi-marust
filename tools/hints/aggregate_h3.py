@@ -10,18 +10,30 @@ import os
 import sys
 from collections import Counter, defaultdict
 
-run = sys.argv[1]
+run_dirs = sys.argv[1].split(',')
 meta = {}
-if len(sys.argv) > 2:
-    for line in open(sys.argv[2]):
-        w = line.rstrip('\n').split('\t')
-        if len(w) >= 3:
-            meta[w[0]] = (w[1], w[2])
 
 
 def sbin(b):
     return 'a<100K' if b < 100000 else 'b<1M' if b < 1000000 else 'c<10M' if b < 10000000 else 'd>=10M'
 
+
+cpath = '/mnt/data1/leechuck/km-work/v170/reports/census-per-input.tsv'
+if os.path.exists(cpath):
+    with open(cpath) as f:
+        hdr = f.readline().rstrip('\n').split('\t')
+        bi = hdr.index('bytes')
+        fi = hdr.index('fragment')
+        for line in f:
+            w = line.rstrip('\n').split('\t')
+            if w[0].startswith('ore_ont_'):
+                meta[w[0]] = (w[fi], sbin(int(w[bi])))
+
+if len(sys.argv) > 2:
+    for line in open(sys.argv[2]):
+        w = line.rstrip('\n').split('\t')
+        if len(w) >= 3 and w[1] != '?' and w[2] in ('a<100K', 'b<1M', 'c<10M', 'd>=10M'):
+            meta[w[0]] = (w[1], w[2])
 
 cols = ['input', 'fragment', 'size', 'bytes', 'status', 'classes', 'individuals', 'concepts', 'gci', 'data_clauses',
         'km_s', 'km_mb', 'dump_s', 'dump_mb', 'prod_s', 'prod_mb', 'models', 'elements', 'edges', 'violations',
@@ -30,10 +42,16 @@ cols = ['input', 'fragment', 'size', 'bytes', 'status', 'classes', 'individuals'
 print('\t'.join(cols))
 S = defaultdict(Counter)
 allr = []
-for d in sorted(os.listdir(run)):
-    p = os.path.join(run, d, 'result.json')
-    if not os.path.exists(p):
+entries = []
+seen_d = set()
+for rdir in run_dirs:
+    if not os.path.exists(rdir):
         continue
+    for d in os.listdir(rdir):
+        if d not in seen_d and os.path.exists(os.path.join(rdir, d, 'result.json')):
+            seen_d.add(d)
+            entries.append((d, os.path.join(rdir, d, 'result.json')))
+for d, p in sorted(entries):
     try:
         R = json.load(open(p))
     except Exception:
@@ -71,8 +89,9 @@ for d in sorted(os.listdir(run)):
             reason = 'individual types not general'
         elif row['unc_nonsub']:
             reason = 'split witnesses incomplete'
-        if row['violations']:
-            reason = 'self-check: ' + str(ms[0].get('first_violation'))[:80]
+        if ms and all(m['violations'] > 0 for m in ms):
+            fv = next((m.get('first_violation') for m in ms if m.get('first_violation')), None)
+            reason = 'self-check: ' + str(fv)[:80]
     if C:
         cert = C.get('certified', {})
         tried = C.get('rows_tried', {})
@@ -90,7 +109,7 @@ for d in sorted(os.listdir(run)):
         if C.get('skipped'):
             row['chk_results'] = C['skipped']
     if not reason and R.get('status') not in ('model-full',):
-        reason = R.get('status')
+        reason = 'memory cap (8 GB)' if R.get('status') == 'producer-memout' else R.get('status')
     row['reason'] = reason
     print('\t'.join('' if row.get(c) is None else str(row.get(c)) for c in cols))
     allr.append(row)
