@@ -440,6 +440,27 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
             ind_elem.insert(iri.clone(), idx);
         }
     }
+    let has_unnamed_self_nom = nf.noms.iter().any(|&c| nf.cname[c as usize].is_none());
+    if has_unnamed_self_nom {
+        en.opt.loops = false;
+    }
+    let mut unnamed_nom_map: Vec<(String, u32)> = Vec::new();
+    for &c in &nf.noms {
+        if !placed_noms.contains(&c) {
+            placed_noms.insert(c);
+            let idx = exp_elems.len();
+            let id = format!("__ind_{}", idx);
+            let syn_iri = format!("__unnamed_nom_{}", c);
+            id_to_idx.insert(id.clone(), idx);
+            exp_elems.push(ExportElem {
+                id,
+                classes: Vec::new(),
+                individuals: vec![syn_iri.clone()],
+            });
+            ind_elem.insert(syn_iri.clone(), idx);
+            unnamed_nom_map.push((syn_iri, c));
+        }
+    }
 
     // Resolve `blocked` pairs by copying blocker classes and outgoing edges to the blocked element
     if !exp_blocked.is_empty() {
@@ -452,9 +473,26 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
                 exp_elems[ei].classes.extend(blk_classes);
                 exp_elems[ei].classes.sort_unstable();
                 exp_elems[ei].classes.dedup();
+                let el_roles: std::collections::HashSet<String> = exp_edges
+                    .iter()
+                    .filter(|(f, _, _)| f == el_id)
+                    .map(|(_, r, _)| r.clone())
+                    .collect();
                 let blk_out: Vec<(String, String)> = exp_edges
                     .iter()
-                    .filter(|(f, _, _)| f == blk_id)
+                    .filter(|(f, r, t)| {
+                        if f != blk_id {
+                            return false;
+                        }
+                        if el_roles.contains(r) {
+                            if let Some(&ti) = id_to_idx.get(t) {
+                                if ti < bi && exp_elems[ti].individuals.is_empty() {
+                                    return false;
+                                }
+                            }
+                        }
+                        true
+                    })
                     .map(|(_, r, t)| (r.clone(), t.clone()))
                     .collect();
                 for (r, t) in blk_out {
@@ -482,7 +520,10 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
     }
     en.rowclasses = en.sets.intern(classes.clone());
     en.is_rowclass = rowclass.clone();
-    let nom_map: HashMap<&str, u32> = nf.nominal.iter().map(|(i, c)| (i.as_str(), *c)).collect();
+    let mut nom_map: HashMap<&str, u32> = nf.nominal.iter().map(|(i, c)| (i.as_str(), *c)).collect();
+    for (syn_iri, c) in &unnamed_nom_map {
+        nom_map.insert(syn_iri.as_str(), *c);
+    }
 
     let mut m = Model::new();
     let k_elems = exp_elems.len();
@@ -527,10 +568,11 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
         }
     }
 
+    let allow_loops = cfg.loops && !has_unnamed_self_nom;
     // Add exported edges
     for (from_id, role_iri, to_id) in &exp_edges {
         let (Some(&u), Some(&v)) = (id_to_idx.get(from_id), id_to_idx.get(to_id)) else { continue };
-        if u == v && !cfg.loops && !m.elems[u].nom {
+        if u == v && !allow_loops && !m.elems[u].nom {
             continue;
         }
         let r_opt = if let Some(stripped) = role_iri.strip_prefix('^') {
@@ -573,7 +615,7 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
                         }
                     }
                     for v in reach {
-                        if u == v && !cfg.loops && !m.elems[u as usize].nom {
+                        if u == v && !allow_loops && !m.elems[u as usize].nom {
                             continue;
                         }
                         let already = m.edge_label(u, v).map(|l0| en.labs.has(l0, *s)).unwrap_or(false);
@@ -736,6 +778,12 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
         }
     };
 
+    let data_rel_concepts: Vec<u32> = if en.data.is_some() {
+        (0..n as u32).filter(|&a| en.has_data[a as usize]).collect()
+    } else {
+        Vec::new()
+    };
+
     // Incremental forward (`pos`) + backward (`neg`) fixpoint starting from dirty elements / literals
     let propagate_incremental = |dirty_seed: &[usize],
                                  seed_lits: &[(usize, u32, bool)],
@@ -766,6 +814,18 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
                     return;
                 }
                 if is_pos {
+                    if !data_rel_concepts.is_empty() && data_rel_concepts.binary_search(&a).is_ok() {
+                        for &peer in &data_rel_concepts {
+                            if peer != a
+                                && !neg[x][peer as usize]
+                                && !pos[x][peer as usize]
+                                && en.has_conflict_peer(a, peer)
+                            {
+                                neg[x][peer as usize] = true;
+                                q_lit.push((x, peer, false));
+                            }
+                        }
+                    }
                     for &gi in nf.gci_by_body.get(a) {
                         check_gci_unit(gi, x, pos, neg, &mut q_lit);
                     }
@@ -952,10 +1012,129 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
 
     // Step 3: Close any remaining open disjunctive GCIs or existentials on each element
     // avoiding `neg[x]` (and preferring 0-requirement fresh concepts such as `dall`)
-    let data_rel_concepts: Vec<u32> = if en.data.is_some() {
-        (0..n as u32).filter(|&a| en.has_data[a as usize]).collect()
-    } else {
-        Vec::new()
+    let test_candidate_on_elem = |x: usize,
+                                  cand_lit: u32,
+                                  pos: &[Vec<bool>],
+                                  neg: &[Vec<bool>],
+                                  en: &mut Engine|
+     -> bool {
+        if neg[x][cand_lit as usize] {
+            return false;
+        }
+        let mut px = pos[x].clone();
+        let mut nx = neg[x].clone();
+        px[cand_lit as usize] = true;
+        let mut q: Vec<(u32, bool)> = vec![(cand_lit, true)];
+        while let Some((a, is_p)) = q.pop() {
+            if is_p {
+                if !data_rel_concepts.is_empty() && data_rel_concepts.binary_search(&a).is_ok() {
+                    for &peer in &data_rel_concepts {
+                        if peer != a && en.has_conflict_peer(a, peer) {
+                            if px[peer as usize] {
+                                return false;
+                            }
+                            if !nx[peer as usize] {
+                                nx[peer as usize] = true;
+                                q.push((peer, false));
+                            }
+                        }
+                    }
+                }
+                for &g in nf.gci_by_body.get(a) {
+                    let (b_g, h_g) = &nf.gci[g as usize];
+                    if b_g.iter().all(|&b| px[b as usize]) {
+                        if h_g.iter().any(|&h| px[h as usize]) {
+                            continue;
+                        }
+                        let mut open_h = NONE;
+                        let mut cnt = 0usize;
+                        for &h in h_g {
+                            if !nx[h as usize] {
+                                open_h = h;
+                                cnt += 1;
+                                if cnt > 1 {
+                                    break;
+                                }
+                            }
+                        }
+                        if cnt == 0 {
+                            return false;
+                        }
+                        if cnt == 1 && !px[open_h as usize] {
+                            px[open_h as usize] = true;
+                            q.push((open_h, true));
+                        }
+                    }
+                }
+            } else {
+                for &g in &head_by[a as usize] {
+                    let (b_g, h_g) = &nf.gci[g as usize];
+                    if b_g.iter().all(|&b| px[b as usize]) {
+                        if h_g.iter().any(|&h| px[h as usize]) {
+                            continue;
+                        }
+                        let mut open_h = NONE;
+                        let mut cnt = 0usize;
+                        for &h in h_g {
+                            if !nx[h as usize] {
+                                open_h = h;
+                                cnt += 1;
+                                if cnt > 1 {
+                                    break;
+                                }
+                            }
+                        }
+                        if cnt == 0 {
+                            return false;
+                        }
+                        if cnt == 1 && !px[open_h as usize] {
+                            px[open_h as usize] = true;
+                            q.push((open_h, true));
+                        }
+                    } else if h_g.iter().all(|&h| nx[h as usize]) {
+                        if b_g.iter().any(|&b| nx[b as usize]) {
+                            continue;
+                        }
+                        let mut open_b = NONE;
+                        let mut cnt = 0usize;
+                        for &b in b_g {
+                            if !px[b as usize] {
+                                open_b = b;
+                                cnt += 1;
+                                if cnt > 1 {
+                                    break;
+                                }
+                            }
+                        }
+                        if cnt == 0 {
+                            return false;
+                        }
+                        if cnt == 1 && !nx[open_b as usize] {
+                            nx[open_b as usize] = true;
+                            q.push((open_b, false));
+                        }
+                    }
+                }
+            }
+        }
+        if !data_rel_concepts.is_empty() {
+            let active_d: Vec<u32> = data_rel_concepts
+                .iter()
+                .copied()
+                .filter(|&a| px[a as usize])
+                .collect();
+            for i in 0..active_d.len() {
+                for j in (i + 1)..active_d.len() {
+                    if en.has_conflict_peer(active_d[i], active_d[j]) {
+                        return false;
+                    }
+                }
+            }
+            if !active_d.is_empty() && !en.has_data_star(active_d) {
+                return false;
+            }
+        }
+        true
     };
     for x in 0..k_elems {
         if Instant::now() > deadline || en.mem_exceeded() {
@@ -980,26 +1159,10 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
                     if neg[x][h as usize] {
                         continue;
                     }
-                    if !data_rel_concepts.is_empty() && data_rel_concepts.binary_search(&h).is_ok() {
-                        let has_peer = data_rel_concepts
-                            .iter()
-                            .any(|&a| pos[x][a as usize] && en.has_conflict_peer(h, a));
-                        if has_peer {
-                            neg[x][h as usize] = true;
-                            newly_neg.push((x, h, false));
-                            continue;
-                        }
-                        let mut cand: Vec<u32> = data_rel_concepts
-                            .iter()
-                            .copied()
-                            .filter(|&a| pos[x][a as usize] || a == h)
-                            .collect();
-                        cand.sort_unstable();
-                        if !en.has_data_star(cand) {
-                            neg[x][h as usize] = true;
-                            newly_neg.push((x, h, false));
-                            continue;
-                        }
+                    if !test_candidate_on_elem(x, h, &pos, &neg, &mut en) {
+                        neg[x][h as usize] = true;
+                        newly_neg.push((x, h, false));
+                        continue;
                     }
                     let is_src = nf.named[h as usize] || nf.is_nom[h as usize];
                     let reqs = nf.ex_by.get(h).len()
@@ -1049,11 +1212,21 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
                     .iter()
                     .any(|&(y, l)| en.labs.has(l, r) && pos[y as usize][b as usize]);
                 if !met {
-                    if let Some(&(y, _)) = m.elems[x]
+                    let chosen_y = m.elems[x]
                         .edges
                         .iter()
-                        .find(|&&(y, l)| en.labs.has(l, r) && !neg[y as usize][b as usize])
-                    {
+                        .find(|&&(y, l)| {
+                            en.labs.has(l, r)
+                                && !neg[y as usize][b as usize]
+                                && test_candidate_on_elem(y as usize, b, &pos, &neg, &mut en)
+                        })
+                        .or_else(|| {
+                            m.elems[x]
+                                .edges
+                                .iter()
+                                .find(|&&(y, l)| en.labs.has(l, r) && !neg[y as usize][b as usize])
+                        });
+                    if let Some(&(y, _)) = chosen_y {
                         pos[y as usize][b as usize] = true;
                         propagate_incremental(&[], &[(y as usize, b, true)], false, &mut pos, &mut neg, &m, &en);
                     }
@@ -1104,21 +1277,27 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
     // Build witness table (`wits`)
     let mut wits: Vec<(Option<u32>, Id)> = Vec::new();
     let mut wit_covered: BTreeSet<Option<u32>> = BTreeSet::new();
+    let mut wit_pairs: BTreeSet<(Option<u32>, Id)> = BTreeSet::new();
     let canon_0 = m.canonical().next().unwrap_or(0);
     wits.push((None, canon_0));
     wit_covered.insert(None);
+    wit_pairs.insert((None, canon_0));
 
     for (cls_iri, el_id, _) in &exp_witnesses {
         if cls_iri == THING {
             if let Some(&idx) = id_to_idx.get(el_id) {
-                wits[0] = (None, m.find(idx as Id));
+                let w = m.find(idx as Id);
+                if wit_pairs.insert((None, w)) {
+                    wits.push((None, w));
+                }
             }
             continue;
         }
         if let (Some(&c), Some(&idx)) = (nf.cidx.get(cls_iri.as_str()), id_to_idx.get(el_id)) {
             if rowclass[c as usize] {
                 let w = m.find(idx as Id);
-                if en.sets.has(m.elems[w as usize].ty, c) && wit_covered.insert(Some(c)) {
+                if en.sets.has(m.elems[w as usize].ty, c) && wit_pairs.insert((Some(c), w)) {
+                    wit_covered.insert(Some(c));
                     wits.push((Some(c), w));
                 }
             }
@@ -1142,9 +1321,60 @@ pub fn from_export(nf: &Nf, km: Option<&Km>, cfg: &Config, export_text: &str, ou
             }
         }
         let w = first_witness[c as usize];
-        if w != NONE {
+        if w != NONE && wit_pairs.insert((Some(c), w)) {
             wit_covered.insert(Some(c));
             wits.push((Some(c), w));
+        }
+    }
+
+    // Pass 1: if `km` classification is provided and a class `c` still has unseparated
+    // non-superclasses across its current witnesses in `wits`, check if any other
+    // existing canonical element in `m` separates them.
+    if let Some(km_ref) = km {
+        let canon_elems: Vec<Id> = m.canonical().collect();
+        for &c in &classes {
+            let c_iri = nf.cname_of(c);
+            if km_ref.unsat.contains(c_iri) {
+                continue;
+            }
+            let cur_wits: Vec<Id> = wits
+                .iter()
+                .filter_map(|&(wc, w)| if wc == Some(c) { Some(m.find(w)) } else { None })
+                .collect();
+            if cur_wits.is_empty() {
+                continue;
+            }
+            let sup_set = km_ref.sup.get(c_iri);
+            let mut unsep: Vec<u32> = classes
+                .iter()
+                .copied()
+                .filter(|&b| {
+                    b != c
+                        && !km_ref.top.contains(nf.cname_of(b))
+                        && !sup_set.map(|s| s.contains(nf.cname_of(b))).unwrap_or(false)
+                        && cur_wits
+                            .iter()
+                            .all(|&w| en.sets.has(m.elems[w as usize].ty, b))
+                })
+                .collect();
+            if unsep.is_empty() {
+                continue;
+            }
+            for &x in &canon_elems {
+                let ty = m.elems[x as usize].ty;
+                if !en.sets.has(ty, c) {
+                    continue;
+                }
+                if unsep.iter().any(|&b| !en.sets.has(ty, b)) {
+                    if wit_pairs.insert((Some(c), x)) {
+                        wits.push((Some(c), x));
+                    }
+                    unsep.retain(|&b| en.sets.has(ty, b));
+                    if unsep.is_empty() {
+                        break;
+                    }
+                }
+            }
         }
     }
 

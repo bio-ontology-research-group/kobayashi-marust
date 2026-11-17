@@ -18558,7 +18558,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                         let _ = drop_retained_consistency_leaf(algo, ctx, &leaf);
                     }
                 }
-                if retained_consistency_base && !force_reset_base {
+                let restored = if retained_consistency_base && !force_reset_base {
                     bridged.precomputation_replay_disabled.set(false);
                     restore_retained_classification_base_with(
                         algo,
@@ -18569,8 +18569,11 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                         retained_consistency_next_id,
                         retained_replay_snapshot.as_ref(),
                         false,
-                    )?;
+                    )
                 } else {
+                    None
+                };
+                if restored.is_none() {
                     bridged
                         .precomputation_replay_disabled
                         .set(force_reset_base || base_abbreviated);
@@ -19027,12 +19030,11 @@ fn extract_bridge_component(
                             let b_cand = if cur.is_some() { cur } else { blocker_raw };
                             if let Some(b_rep) = native_completion_merge_target(ctx, b_cand, false)
                             {
-                                let al = pc.node(b_rep).ancestor_link;
-                                let nom_parent = al.is_some() && {
-                                    let src = pc.edge(al).get_source_individual();
-                                    src.is_some() && pc.node(src).individual_node_id() < 0
-                                };
-                                if !nom_parent {
+                                let in_root_tree = b_rep == r_rep
+                                    || IndividualProcessNode::is_individual_ancestor_in_context(
+                                        pc, b_rep, r_rep,
+                                    );
+                                if in_root_tree {
                                     neighbor_nodes.push(b_cand);
                                 }
                             }
@@ -19282,6 +19284,29 @@ fn extract_bridge_component(
                             blocked.push((local_idx, b_local));
                         }
                     } else {
+                        let b_ls = ctx
+                            .process_context_mut()
+                            .node_reapply_concept_label_set(b_rep);
+                        if b_ls.is_some() {
+                            let pc = ctx.process_context();
+                            let onto = ctx.ontology_arenas();
+                            let mut it = pc.label_set_concept_label_set_iterator(
+                                b_ls, true, false, true,
+                            );
+                            while it.has_value() {
+                                let tag = it.get_data_tag(pc, onto);
+                                let cd = it.get_concept_descriptor();
+                                if cd.is_some() && !pc.con_desc(cd).is_negated() {
+                                    if tag >= TAG_BASE && tag < TAG_BASE + n_named as Cint64 {
+                                        labels[local_idx].insert(
+                                            tin.concepts[(tag - TAG_BASE) as usize].clone(),
+                                        );
+                                    }
+                                }
+                                it.next_pp(pc);
+                            }
+                        }
+                        external_blocked.push(local_idx);
                         let nom_parent = {
                             let pc = ctx.process_context();
                             let al = pc.node(b_rep).ancestor_link;
@@ -19290,31 +19315,7 @@ fn extract_bridge_component(
                                 src.is_some() && pc.node(src).individual_node_id() < 0
                             }
                         };
-                        if nom_parent {
-                            let b_ls = ctx
-                                .process_context_mut()
-                                .node_reapply_concept_label_set(b_rep);
-                            if b_ls.is_some() {
-                                let pc = ctx.process_context();
-                                let onto = ctx.ontology_arenas();
-                                let mut it = pc.label_set_concept_label_set_iterator(
-                                    b_ls, true, false, true,
-                                );
-                                while it.has_value() {
-                                    let tag = it.get_data_tag(pc, onto);
-                                    let cd = it.get_concept_descriptor();
-                                    if cd.is_some() && !pc.con_desc(cd).is_negated() {
-                                        if tag >= TAG_BASE && tag < TAG_BASE + n_named as Cint64 {
-                                            labels[local_idx].insert(
-                                                tin.concepts[(tag - TAG_BASE) as usize].clone(),
-                                            );
-                                        }
-                                    }
-                                    it.next_pp(pc);
-                                }
-                            }
-                            external_blocked.push(local_idx);
-                        } else {
+                        if !nom_parent {
                             abbreviated_by_cache = true;
                         }
                     }
@@ -19966,8 +19967,9 @@ fn extract_bridge_component(
         }
         let empty_blocked: HashMap<usize, usize> = HashMap::default();
         for &(u, b) in &blocked {
-            let mut_adj = edges.iter().any(|(x, _, y)| *x == u && *y == b)
-                && edges.iter().any(|(x, _, y)| *x == b && *y == u);
+            let mut_adj = edges
+                .iter()
+                .any(|(x, r, y)| *x == u && *y == b && edges.contains(&(*y, r.clone(), *x)));
             if !mut_adj || contexts[u].starts_with("__dt__") {
                 continue;
             }
@@ -19999,8 +20001,9 @@ fn extract_bridge_component(
             }
         }
         blocked.retain(|&(u, b)| {
-            let mut_adj = edges.iter().any(|(x, _, y)| *x == u && *y == b)
-                && edges.iter().any(|(x, _, y)| *x == b && *y == u);
+            let mut_adj = edges
+                .iter()
+                .any(|(x, r, y)| *x == u && *y == b && edges.contains(&(*y, r.clone(), *x)));
             if !mut_adj {
                 return true;
             }
@@ -20889,7 +20892,7 @@ fn finish_bridge_export_model_from_live_state(
     };
 
     let mut base_fallback_comp: Option<BridgeExtractedComponent> = None;
-    let base_comp = match harvested_base_comp {
+    let mut base_comp = match harvested_base_comp {
         Some(comp) if !comp.abbreviated_by_cache => comp,
         other => {
             base_fallback_comp = other;
@@ -20926,6 +20929,111 @@ fn finish_bridge_export_model_from_live_state(
             }
         }
     };
+
+    let mut confirmed_nom_diff: Vec<(Cint64, ConceptId)> = Vec::new();
+    if bridged.has_native_nominals() && std::time::Instant::now() < export_deadline {
+        const TAG_BASE: Cint64 = 10;
+        let n_named = tin.concepts.len();
+        let mut nom_str_to_seed: HashMap<String, (Cint64, ConceptId)> = HashMap::default();
+        for seed in &bridged.nominal_seeds {
+            let c_tag = ctx
+                .ontology_arenas()
+                .concept(seed.nominal_concept)
+                .get_concept_tag();
+            if c_tag >= TAG_BASE && c_tag < TAG_BASE + n_named as Cint64 {
+                nom_str_to_seed.insert(
+                    tin.concepts[(c_tag - TAG_BASE) as usize].clone(),
+                    (seed.individual_tag, seed.nominal_concept),
+                );
+            }
+        }
+        let mut same_adj: HashMap<String, Vec<String>> = HashMap::default();
+        for entry in &tin.nominal_abox.individuals {
+            let primary = format!("__nom__{}", entry.individual);
+            for p in &entry.proxies {
+                same_adj.entry(primary.clone()).or_default().push(p.clone());
+                same_adj.entry(p.clone()).or_default().push(primary.clone());
+            }
+        }
+        for (l, r) in &tin.nominal_abox.same {
+            let nl = format!("__nom__{l}");
+            let nr = format!("__nom__{r}");
+            same_adj.entry(nl.clone()).or_default().push(nr.clone());
+            same_adj.entry(nr).or_default().push(nl);
+        }
+        let are_asserted_same = |a: &str, b: &str| -> bool {
+            if a == b {
+                return true;
+            }
+            let mut visited: HashSet<&str> = HashSet::default();
+            let mut st = vec![a];
+            while let Some(cur) = st.pop() {
+                if cur == b {
+                    return true;
+                }
+                if visited.insert(cur) {
+                    if let Some(nbrs) = same_adj.get(cur) {
+                        for nxt in nbrs {
+                            st.push(nxt.as_str());
+                        }
+                    }
+                }
+            }
+            false
+        };
+        let mut extra_diff: Vec<(Cint64, ConceptId)> = Vec::new();
+        for u in 0..base_comp.labels.len() {
+            let noms: Vec<&String> = base_comp.labels[u]
+                .iter()
+                .filter(|c| c.starts_with("__nom__") && nom_str_to_seed.contains_key(*c))
+                .collect();
+            if noms.len() > 1 {
+                for i in 0..noms.len() {
+                    for j in (i + 1)..noms.len() {
+                        if !are_asserted_same(noms[i], noms[j]) {
+                            let (t1, c1) = nom_str_to_seed[noms[i]];
+                            let (t2, c2) = nom_str_to_seed[noms[j]];
+                            if t1 != t2 && c1 != c2 {
+                                extra_diff.push((t1, c2));
+                                extra_diff.push((t2, c1));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if !extra_diff.is_empty() && renew_env(algo, ctx, false).is_some() {
+            let base_tp = ctx.get_or_create_base_dependency_track_point();
+            for &(ind_tag, neg_con) in &extra_diff {
+                let mut node = algo.get_up_to_date_individual_by_id(-ind_tag, ctx);
+                if node.is_some() {
+                    algo.add_concept_to_individual(
+                        neg_con, true, &mut node, base_tp, false, true, ctx,
+                    );
+                }
+            }
+            algo.probe_budget = Some(
+                export_deadline
+                    .saturating_duration_since(std::time::Instant::now())
+                    .min(std::time::Duration::from_secs(2)),
+            );
+            if native_nominal_consistency(algo, ctx, bridged) == Some(true) {
+                if let Some(disamb_comp) = extract_bridge_component(
+                    ctx,
+                    bridged,
+                    tin,
+                    rbox,
+                    lazy_cceq_defs,
+                    None,
+                    Some("⊤"),
+                    false,
+                ) {
+                    base_comp = disamb_comp;
+                    confirmed_nom_diff = extra_diff;
+                }
+            }
+        }
+    }
 
     let mut model = BridgeExportModel {
         contexts: Vec::new(),
@@ -21045,11 +21153,38 @@ fn finish_bridge_export_model_from_live_state(
                         nslot.extend(comp.negated_named[u].iter().copied());
                     }
                 }
-                if !only_root_connected || (share_sat_nodes && rep_id >= SAT_REP_ID_BASE) {
+                let root_cceq_override = Some(u) == comp.root_local && {
+                    let cceq_vec = global_cceq_added.borrow();
+                    cceq_vec.get(existing).is_some_and(|slot| {
+                        comp.negated_named[u].iter().any(|c_idx| slot.contains(c_idx))
+                    })
+                };
+                if root_cceq_override {
+                    let mut cceq_vec = global_cceq_added.borrow_mut();
+                    if let Some(slot) = cceq_vec.get_mut(existing) {
+                        for &c_idx in &comp.negated_named[u] {
+                            if slot.remove(&c_idx) {
+                                let c_name = &tin.concepts[c_idx];
+                                model.labels[existing].retain(|x| x != c_name);
+                            }
+                        }
+                    }
+                }
+                if !only_root_connected
+                    || (share_sat_nodes && rep_id >= SAT_REP_ID_BASE)
+                    || root_cceq_override
+                {
                     let lbl = &mut model.labels[existing];
-                    let mut changed = false;
+                    let mut changed = root_cceq_override;
                     for item in &comp.labels[u] {
                         if !item.starts_with("__nom__") && !lbl.contains(item) {
+                            if root_cceq_override {
+                                if let Some(&c_idx) = concept_name_to_idx.get(item.as_str()) {
+                                    if comp.cceq_added[u].contains(&c_idx) {
+                                        continue;
+                                    }
+                                }
+                            }
                             lbl.push(item.clone());
                             changed = true;
                         }
@@ -21381,6 +21516,22 @@ fn finish_bridge_export_model_from_live_state(
             break;
         }
 
+        let apply_confirmed_nom_diff =
+            |algo: &mut CompletionTaskHandleAlgorithm,
+             ctx: &mut CalculationAlgorithmContextBase| {
+                if !confirmed_nom_diff.is_empty() {
+                    let base_tp = ctx.get_or_create_base_dependency_track_point();
+                    for &(ind_tag, neg_con) in &confirmed_nom_diff {
+                        let mut node = algo.get_up_to_date_individual_by_id(-ind_tag, ctx);
+                        if node.is_some() {
+                            algo.add_concept_to_individual(
+                                neg_con, true, &mut node, base_tp, false, true, ctx,
+                            );
+                        }
+                    }
+                }
+            };
+
         for _round in 0..2 {
             let now = std::time::Instant::now();
             if now >= export_deadline {
@@ -21389,6 +21540,7 @@ fn finish_bridge_export_model_from_live_state(
             if renew_env(algo, ctx, false).is_none() {
                 break;
             }
+            apply_confirmed_nom_diff(algo, ctx);
             algo.probe_budget = Some(
                 export_deadline
                     .saturating_duration_since(now)
@@ -21401,12 +21553,14 @@ fn finish_bridge_export_model_from_live_state(
                 seeds.push((bridged.named[c], true));
             }
             let mut model_root = None;
-            match bridged_unsat_rooted(algo, ctx, bridged, &mut next_id, &seeds, &mut model_root) {
+            let res =
+                bridged_unsat_rooted(algo, ctx, bridged, &mut next_id, &seeds, &mut model_root);
+            match res {
                 Some(false) => {
                     let Some(root) = model_root else {
                         break;
                     };
-                    let Some(comp) = extract_bridge_component(
+                    let Some(mut comp) = extract_bridge_component(
                         ctx,
                         bridged,
                         tin,
@@ -21418,6 +21572,47 @@ fn finish_bridge_export_model_from_live_state(
                     ) else {
                         break;
                     };
+                    if comp.abbreviated_by_cache
+                        && !bridged.has_native_nominals()
+                        && std::time::Instant::now() < export_deadline
+                        && renew_env(algo, ctx, true).is_some()
+                    {
+                        algo.conf_caching_blocking_from_saturation = false;
+                        algo.conf_expand_created_successors_from_saturation = false;
+                        algo.conf_sat_exp_cache_retrieval = false;
+                        algo.conf_sat_exp_cache_concept_expansion = false;
+                        algo.probe_budget = Some(
+                            export_deadline
+                                .saturating_duration_since(std::time::Instant::now())
+                                .min(std::time::Duration::from_millis(250)),
+                        );
+                        let mut retry_id = probe_start_id;
+                        let mut retry_root = None;
+                        if bridged_unsat_rooted(
+                            algo,
+                            ctx,
+                            bridged,
+                            &mut retry_id,
+                            &seeds,
+                            &mut retry_root,
+                        ) == Some(false)
+                        {
+                            if let Some(r2) = retry_root {
+                                if let Some(comp2) = extract_bridge_component(
+                                    ctx,
+                                    bridged,
+                                    tin,
+                                    rbox,
+                                    lazy_cceq_defs,
+                                    Some(r2),
+                                    Some(&tin.concepts[s]),
+                                    true,
+                                ) {
+                                    comp = comp2;
+                                }
+                            }
+                        }
+                    }
                     if let Some(re) = append_component(
                         comp,
                         true,
@@ -21767,10 +21962,18 @@ fn finish_bridge_export_model_from_live_state(
         for &gu in &ext_blocked_vec {
             blocked_sources.insert(gu);
         }
-        let mut unblocked_classes: Vec<(usize, HashSet<usize>)> = Vec::new();
+        let mut out_roles_by_elem: Vec<HashSet<&str>> = vec![HashSet::default(); model.labels.len()];
+        for (f, r, _) in &global_edges {
+            if *f < out_roles_by_elem.len() {
+                out_roles_by_elem[*f].insert(r.as_str());
+            }
+        }
+        let mut unblocked_classes: Vec<(usize, bool, usize, HashSet<usize>)> = Vec::new();
         for u in 0..model.labels.len() {
             if !is_cell_elem[u] && !blocked_sources.contains(&u) {
-                unblocked_classes.push((u, elem_active_classes(&model.labels[u])));
+                let is_nom = model.labels[u].iter().any(|c| c.starts_with("__nom__"));
+                let out_cnt = out_roles_by_elem[u].len();
+                unblocked_classes.push((u, is_nom, out_cnt, elem_active_classes(&model.labels[u])));
             }
         }
         for gu in ext_blocked_vec {
@@ -21780,9 +21983,11 @@ fn finish_bridge_export_model_from_live_state(
             let want_b = elem_active_classes(&model.labels[gu]);
             let best_b = unblocked_classes
                 .iter()
-                .filter(|(u, cls)| *u != gu && want_b.is_subset(cls))
-                .min_by_key(|&(u, cls)| (cls.len(), *u))
-                .map(|&(u, _)| u);
+                .filter(|(u, _, _, cls)| *u != gu && want_b.is_subset(cls))
+                .min_by_key(|&(u, is_nom, out_cnt, ref cls)| {
+                    (is_nom, cls.len(), std::cmp::Reverse(out_cnt), u)
+                })
+                .map(|&(u, _, _, _)| u);
             if let Some(gb) = best_b {
                 model.blocked.push((gu, gb));
             }

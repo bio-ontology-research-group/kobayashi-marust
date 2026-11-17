@@ -1075,6 +1075,80 @@ fn apply_post_hooks(
                 raw.labels[u].dedup();
             }
         }
+    } else if !meta.nominal_abox.individuals.is_empty()
+        && raw.route != "ht-bridge"
+        && !raw
+            .labels
+            .iter()
+            .any(|lbl| lbl.iter().any(|c| c.starts_with(NOMINAL_PREFIX)))
+    {
+        let mut ctx_idx: HashMap<String, usize> = HashMap::default();
+        for (i, c) in raw.contexts.iter().enumerate() {
+            ctx_idx.entry(c.clone()).or_insert(i);
+        }
+        let mut touched_elems: Vec<usize> = Vec::new();
+        for entry in &meta.nominal_abox.individuals {
+            if entry.assertion_markers.len() <= 1
+                && meta.nominal_abox.role_assertions.is_empty()
+                && meta.nominal_abox.different.is_empty()
+            {
+                let elem = entry
+                    .assertion_markers
+                    .first()
+                    .and_then(|c| {
+                        raw.witnesses
+                            .get(c.as_str())
+                            .copied()
+                            .or_else(|| ctx_idx.get(c.as_str()).copied())
+                            .or_else(|| {
+                                raw.labels
+                                    .iter()
+                                    .position(|lbl| lbl.binary_search(c).is_ok())
+                            })
+                    })
+                    .unwrap_or(0);
+                raw.labels[elem].push(format!("{NOMINAL_PREFIX}{}", entry.individual));
+                touched_elems.push(elem);
+            } else {
+                let mut lbl: Vec<String> = vec![format!("{NOMINAL_PREFIX}{}", entry.individual)];
+                let mut extra_out: Vec<(String, usize)> = Vec::new();
+                for c in &entry.assertion_markers {
+                    lbl.push(c.clone());
+                    if let Some(w_elem) = raw
+                        .witnesses
+                        .get(c.as_str())
+                        .copied()
+                        .or_else(|| ctx_idx.get(c.as_str()).copied())
+                    {
+                        for wc in &raw.labels[w_elem] {
+                            if !wc.starts_with(NOMINAL_PREFIX) {
+                                lbl.push(wc.clone());
+                            }
+                        }
+                        for (u, r, v) in &raw.edges {
+                            if *u == w_elem {
+                                extra_out.push((r.clone(), *v));
+                            }
+                        }
+                    }
+                }
+                lbl.sort();
+                lbl.dedup();
+                let u_new = raw.contexts.len();
+                raw.contexts
+                    .push(format!("{NOMINAL_PREFIX}{}", entry.individual));
+                raw.labels.push(lbl);
+                for (r, v) in extra_out {
+                    raw.edges.push((u_new, r, v));
+                }
+            }
+        }
+        touched_elems.sort_unstable();
+        touched_elems.dedup();
+        for elem in touched_elems {
+            raw.labels[elem].sort();
+            raw.labels[elem].dedup();
+        }
     }
 
     // 4. `data_abox_projection`: attach projected data-property assertions.
