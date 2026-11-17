@@ -225,6 +225,13 @@ public final class ParityRun {
                 JsonObject end = new JsonObject();
                 end.addProperty("end", "completed");
                 end.addProperty("wall_ms", msSince(t0));
+                if (which.equals("km")) {
+                    try {
+                        Object hits = Class.forName("org.bioontology.kobayashimarust.protege.KMReasoner")
+                                .getMethod("getReductionHits").invoke(null);
+                        end.add("reduction_hits", GSON.toJsonTree(hits));
+                    } catch (Throwable ignore) { }
+                }
                 w.println(GSON.toJson(end));
             } catch (Throwable t) {
                 JsonObject end = new JsonObject();
@@ -243,6 +250,13 @@ public final class ParityRun {
         JsonObject end = new JsonObject();
         end.addProperty("end", "aborted");
         end.addProperty("why", why);
+        if (which.equals("km")) {
+            try {
+                Object hits = Class.forName("org.bioontology.kobayashimarust.protege.KMReasoner")
+                        .getMethod("getReductionHits").invoke(null);
+                end.add("reduction_hits", GSON.toJsonTree(hits));
+            } catch (Throwable ignore) { }
+        }
         w.println(GSON.toJson(end));
         w.flush();
         killChildren();
