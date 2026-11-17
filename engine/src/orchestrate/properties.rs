@@ -272,6 +272,88 @@ pub(super) fn source_shape(canonical: &str) -> Result<SourceShape, OrchestrateEr
     Ok(SourceShape { universal_possible: universal, inverse_free: !inverse })
 }
 
+/// Whether every model of `canonical` can be extended by one fresh isolated
+/// blank element (outside all named classes and nominals, with no object or
+/// data role edges). When true and `owl:topObjectProperty` does not occur
+/// outside `SubObjectPropertyOf(R, owl:topObjectProperty)`, no named object
+/// property can cover `Δ^I × Δ^I` in any model, so `P_⊤` is not needed.
+pub(super) fn isolated_blank_element_admissible(canonical: &str) -> bool {
+    fn mentions_top_role_non_tautology(node: &Node<'_>) -> bool {
+        let Node::List(head, args) = node else {
+            return matches!(node, Node::Atom(token) if is_universal_property(token));
+        };
+        match *head {
+            "Annotation" | "AnnotationAssertion" | "SubAnnotationPropertyOf"
+            | "AnnotationPropertyDomain" | "AnnotationPropertyRange" | "Declaration" => false,
+            "SubObjectPropertyOf" => {
+                let plain: Vec<&Node<'_>> =
+                    args.iter().filter(|arg| arg.head() != Some("Annotation")).collect();
+                if let [sub, Node::Atom(sup)] = plain.as_slice() {
+                    if is_universal_property(sup) && !mentions_universal_property(sub) {
+                        return false;
+                    }
+                }
+                args.iter().any(mentions_top_role_non_tautology)
+            }
+            _ => args.iter().any(mentions_top_role_non_tautology),
+        }
+    }
+    let mut has_top_role = false;
+    if crate::frontend::parse::for_each_ontology_child(canonical, |node| {
+        if mentions_top_role_non_tautology(node) {
+            has_top_role = true;
+        }
+        Ok(())
+    })
+    .is_err()
+        || has_top_role
+    {
+        return false;
+    }
+    let mut registry = crate::frontend::iri::IriRegistry::new();
+    let Ok(ontology) = crate::frontend::parse::parse_axioms(&mut registry, canonical) else {
+        return false;
+    };
+    use crate::frontend::object_guard::holds_at_blank;
+    use crate::frontend::syntax::Axiom;
+    for axiom in ontology.axioms_iter() {
+        match axiom {
+            Axiom::ReflexiveRole(_) => return false,
+            Axiom::SubClassOf(left, right) => {
+                let (Some(l), Some(r)) = (holds_at_blank(left), holds_at_blank(right)) else {
+                    return false;
+                };
+                if l && !r {
+                    return false;
+                }
+            }
+            Axiom::EquivalentClasses(left, right) => {
+                let (Some(l), Some(r)) = (holds_at_blank(left), holds_at_blank(right)) else {
+                    return false;
+                };
+                if l != r {
+                    return false;
+                }
+            }
+            Axiom::DisjointClasses(left, right) => {
+                let (Some(l), Some(r)) = (holds_at_blank(left), holds_at_blank(right)) else {
+                    return false;
+                };
+                if l && r {
+                    return false;
+                }
+            }
+            Axiom::ConceptAssertion(concept, _) => {
+                if holds_at_blank(concept).is_none() {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    true
+}
+
 /// The named object properties of the canonical source (see
 /// `realize::canonical_individuals` for the spelling invariant).
 pub(super) fn canonical_properties(canonical: &str) -> Result<Vec<String>, OrchestrateError> {
@@ -805,5 +887,35 @@ mod tests {
             dropped: 0,
         };
         assert!(split(&mut extended, &probes(), &|_| false).is_err());
+    }
+
+    #[test]
+    fn isolated_blank_element_admissible_detects_universal_free_nominal_ontology() {
+        let _test_env = crate::test_env::read();
+        let admissible = r#"Prefix(:=<http://example.org/t#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Ontology(<http://example.org/t>
+  Declaration(Class(:A))
+  Declaration(Class(:B))
+  Declaration(ObjectProperty(:r))
+  Declaration(DataProperty(:dp))
+  Declaration(NamedIndividual(:a))
+  DataPropertyRange(:dp xsd:string)
+  SubObjectPropertyOf(:r owl:topObjectProperty)
+  ClassAssertion(:A :a)
+  SubClassOf(:A ObjectOneOf(:a))
+  SubClassOf(:A ObjectMaxCardinality(2 :r :B))
+  DLSafeRule(Body(ClassAtom(:A Variable(<urn:swrl:var#x>))) Head(ClassAtom(:B Variable(<urn:swrl:var#x>))))
+)"#;
+        assert!(isolated_blank_element_admissible(admissible));
+
+        let closed_domain = r#"Prefix(:=<http://example.org/t#>)
+Prefix(owl:=<http://www.w3.org/2002/07/owl#>)
+Ontology(<http://example.org/t>
+  Declaration(NamedIndividual(:a))
+  SubClassOf(owl:Thing ObjectOneOf(:a))
+)"#;
+        assert!(!isolated_blank_element_admissible(closed_domain));
     }
 }

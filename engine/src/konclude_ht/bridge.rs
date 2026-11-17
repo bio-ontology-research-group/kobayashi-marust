@@ -1318,6 +1318,156 @@ fn blank_witness_axiom_value(
     })
 }
 
+fn find_isolated_universal_role_hub(tin: &TInput) -> Option<(String, String)> {
+    let hub_axiom = tin.source_axioms.iter().find_map(|axiom| match (
+        axiom.kind,
+        &axiom.left,
+        &axiom.right,
+    ) {
+        (
+            crate::json_io::SourceAxiomKind::SubClass,
+            SourceConcept::Top,
+            SourceConcept::Exists(SourceRole::Name(role), filler),
+        ) => match filler.as_ref() {
+            SourceConcept::Nominal(ind) => Some((role.as_str(), ind.as_str())),
+            _ => None,
+        },
+        _ => None,
+    })?;
+    let (hub_role, hub_ind) = hub_axiom;
+    let mentions_hub = |concept: &SourceConcept| -> bool {
+        fn walk(c: &SourceConcept, hr: &str, hi: &str) -> bool {
+            match c {
+                SourceConcept::Nominal(ind) => ind == hi,
+                SourceConcept::Not(inner) => walk(inner, hr, hi),
+                SourceConcept::And(items) | SourceConcept::Or(items) => {
+                    items.iter().any(|x| walk(x, hr, hi))
+                }
+                SourceConcept::Exists(role, filler)
+                | SourceConcept::Forall(role, filler)
+                | SourceConcept::AtLeast(_, role, filler)
+                | SourceConcept::AtMost(_, role, filler) => {
+                    matches!(role, SourceRole::Name(r) | SourceRole::Inverse(r) if r == hr)
+                        || walk(filler, hr, hi)
+                }
+                SourceConcept::HasSelf(SourceRole::Name(r) | SourceRole::Inverse(r)) => r == hr,
+                _ => false,
+            }
+        }
+        walk(concept, hub_role, hub_ind)
+    };
+    fn hub_probe_def<'a>(
+        axiom: &'a crate::json_io::SourceAxiomMeta,
+        hub_role: &str,
+        hub_ind: &str,
+    ) -> Option<(&'a str, &'a str)> {
+        if axiom.kind != crate::json_io::SourceAxiomKind::Equivalent {
+            return None;
+        }
+        let (probe, def) = match (&axiom.left, &axiom.right) {
+            (SourceConcept::Name(p), d) => (p.as_str(), d),
+            (d, SourceConcept::Name(p)) => (p.as_str(), d),
+            _ => return None,
+        };
+        let SourceConcept::Exists(SourceRole::Name(role), outer) = def else {
+            return None;
+        };
+        if role != hub_role {
+            return None;
+        }
+        let SourceConcept::And(conjuncts) = outer.as_ref() else {
+            return None;
+        };
+        if conjuncts.len() != 2 {
+            return None;
+        }
+        let mut saw_hub = false;
+        let mut filler_name = None;
+        for c in conjuncts {
+            match c {
+                SourceConcept::Nominal(ind) if ind == hub_ind => saw_hub = true,
+                SourceConcept::Exists(SourceRole::Inverse(r), inner) if r == hub_role => {
+                    if let SourceConcept::Name(f) = inner.as_ref() {
+                        filler_name = Some(f.as_str());
+                    }
+                }
+                _ => {}
+            }
+        }
+        (saw_hub && filler_name.is_some()).then(|| (probe, filler_name.unwrap()))
+    }
+    let is_this_hub = |axiom: &crate::json_io::SourceAxiomMeta| {
+        matches!(
+            (axiom.kind, &axiom.left, &axiom.right),
+            (
+                crate::json_io::SourceAxiomKind::SubClass,
+                SourceConcept::Top,
+                SourceConcept::Exists(SourceRole::Name(r), f)
+            ) if r == hub_role && matches!(f.as_ref(), SourceConcept::Nominal(i) if i == hub_ind)
+        )
+    };
+    let mut probes = std::collections::HashSet::new();
+    for axiom in &tin.source_axioms {
+        if is_this_hub(axiom) {
+            continue;
+        }
+        if mentions_hub(&axiom.left) || mentions_hub(&axiom.right) {
+            let (probe, _) = hub_probe_def(axiom, hub_role, hub_ind)?;
+            probes.insert(probe);
+        }
+    }
+    for axiom in &tin.source_axioms {
+        if is_this_hub(axiom) || hub_probe_def(axiom, hub_role, hub_ind).is_some() {
+            continue;
+        }
+        if probes.iter().any(|&p| {
+            source_concept_mentions_name(&axiom.left, p)
+                || source_concept_mentions_name(&axiom.right, p)
+        }) {
+            return None;
+        }
+    }
+    if tin.nominal_abox.individuals.iter().any(|ind| {
+        (ind.individual == hub_ind && !ind.assertions.is_empty())
+            || ind.assertions.iter().any(|a| {
+                mentions_hub(a)
+                    || probes.iter().any(|&p| source_concept_mentions_name(a, p))
+            })
+    }) {
+        return None;
+    }
+    let r_ok = !tin
+        .roles
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| r.as_str() == hub_role)
+        .any(|(rid, _)| {
+            tin.chains
+                .iter()
+                .any(|&(a, b, c)| a == rid || b == rid || c == rid)
+                || tin.transitive.contains(&rid)
+        });
+    r_ok.then(|| (hub_role.to_owned(), hub_ind.to_owned()))
+}
+
+fn is_isolated_hub_axiom(
+    axiom: &crate::json_io::SourceAxiomMeta,
+    isolated_hub: Option<&(String, String)>,
+) -> bool {
+    let Some((hub_role, hub_ind)) = isolated_hub else {
+        return false;
+    };
+    matches!(
+        (axiom.kind, &axiom.left, &axiom.right),
+        (
+            crate::json_io::SourceAxiomKind::SubClass,
+            SourceConcept::Top,
+            SourceConcept::Exists(SourceRole::Name(role), filler)
+        ) if role == hub_role
+            && matches!(filler.as_ref(), SourceConcept::Nominal(ind) if ind == hub_ind)
+    )
+}
+
 /// Search a named-class label `L` such that an isolated element labelled
 /// exactly `L` (no role edges, outside every nominal) satisfies every source
 /// axiom, datatype-bearing ones included (their role restrictions are
@@ -1330,7 +1480,12 @@ fn blank_witness_axiom_value(
 /// special case checked by the original guard. Fail-closed: `None` when no
 /// witness is found within the search budget or a construct is unsupported.
 fn blank_data_node_witness_label(tin: &TInput) -> Option<Vec<String>> {
-    let axioms: Vec<&crate::json_io::SourceAxiomMeta> = tin.source_axioms.iter().collect();
+    let isolated_hub = find_isolated_universal_role_hub(tin);
+    let axioms: Vec<&crate::json_io::SourceAxiomMeta> = tin
+        .source_axioms
+        .iter()
+        .filter(|ax| !is_isolated_hub_axiom(ax, isolated_hub.as_ref()))
+        .collect();
     blank_witness_search(axioms)
 }
 
@@ -1610,6 +1765,23 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                 out.push((role.as_str(), datatype.as_str(), false));
                 true
             }
+            SourceConcept::AtLeast(3..=8, SourceRole::Name(role), filler)
+            | SourceConcept::AtMost(3..=8, SourceRole::Name(role), filler) => {
+                let SourceConcept::Name(datatype) = filler.as_ref() else {
+                    return atomic_datatype_occurrences(filler, global_atomic_ranges, out, local);
+                };
+                if !datatype.starts_with("__dt__") {
+                    return true;
+                }
+                if !crate::frontend::datatypes::bridge_tbox_atomic_name(datatype)
+                    || crate::frontend::datatypes::bridge_tbox_atomic_family(datatype)
+                        != Some("string")
+                {
+                    return false;
+                }
+                out.push((role.as_str(), datatype.as_str(), false));
+                true
+            }
             // Follow object-language fillers to their atomic data leaves.
             // The independent role-use pass below still rejects using a data
             // role with an object filler or an uncertified large data bound.
@@ -1773,6 +1945,14 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         if crate::frontend::datatypes::bridge_exact_atomic_subsumed(datatype, range) != Some(true)
             && crate::frontend::datatypes::bridge_exact_atomic_subsumed(range, datatype)
                 != Some(true)
+            && !(crate::frontend::datatypes::bridge_exact_atomic_disjoint(datatype, range)
+                == Some(true)
+                && tin
+                    .concepts
+                    .iter()
+                    .position(|c| c == datatype)
+                    .zip(tin.concepts.iter().position(|c| c == range))
+                    .is_some_and(|(a, b)| DatatypeRelationIndex::for_input(tin).separated(a, b)))
         {
             if std::env::var_os("KM_BRIDGE_PROGRESS").is_some() {
                 eprintln!(
@@ -1839,6 +2019,16 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
                     && (matches!(filler.as_ref(), SourceConcept::Top)
                         || matches!(filler.as_ref(), SourceConcept::Name(name)
                             if crate::frontend::datatypes::bridge_tbox_atomic_name(name))) =>
+            {
+                true
+            }
+            SourceConcept::AtLeast(3..=8, SourceRole::Name(role), filler)
+            | SourceConcept::AtMost(3..=8, SourceRole::Name(role), filler)
+                if datatype_roles.contains(role.as_str())
+                    && matches!(filler.as_ref(), SourceConcept::Name(name)
+                        if crate::frontend::datatypes::bridge_tbox_atomic_name(name)
+                            && crate::frontend::datatypes::bridge_tbox_atomic_family(name)
+                                == Some("string")) =>
             {
                 true
             }
@@ -1913,6 +2103,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
     // ordinary property-domain axiom `exists(role, Top) <= NamedClass`,
     // evaluated at the object predecessor.
     let mut blank_witness: Option<Option<Vec<String>>> = None;
+    let isolated_hub = find_isolated_universal_role_hub(tin);
     for (axiom_index, axiom) in tin.source_axioms.iter().enumerate() {
         if source_concept_contains_internal_datatype(&axiom.left)
             || source_concept_contains_internal_datatype(&axiom.right)
@@ -1922,6 +2113,9 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
             {
                 defer!("a datatype-bearing axiom uses a data role with an object filler or unsupported bound");
             }
+            continue;
+        }
+        if is_isolated_hub_axiom(axiom, isolated_hub.as_ref()) {
             continue;
         }
         let (Some(left), Some(right)) = (
@@ -15889,6 +16083,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     out.subsumptions
         .extend(saturation_known_pairs.iter().copied());
     let mut native_saturation_ran = false;
+    let mut saturation_aborted = false;
     // Armed once, after the precomputation saturation has COMPLETED and its
     // concept→saturation reference linkings have been verified to be present,
     // in range and disjoint from the ABox representation nodes. Stays false on
@@ -15958,7 +16153,17 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 eprintln!("BRIDGE-NOMINAL-CONSISTENCY: saturation refuses SELF; completion-only schedule");
             }
             if !model_certified {
+                let mut saturation_ok = false;
                 if conditional_full_schedule {
+                    reset_probe_env_impl(&mut algo, &mut ctx, &bridged, false, false);
+                    saturation_ok = run_bridged_saturation(&mut ctx, &bridged);
+                    if !saturation_ok {
+                        saturation_aborted = true;
+                        let _ = extract_finished_saturation_outcome(&mut ctx, &bridged, false);
+                        reset_probe_env(&mut algo, &mut ctx, &bridged, false);
+                    }
+                }
+                if saturation_ok {
                     // `CTotallyPrecomputationThread` schedules these phases in this
                     // exact default conditional-full order: saturation first, then
                     // one all-root consistency completion. At 198 individuals the
@@ -15968,10 +16173,6 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                         &mut precomputation_phase,
                         NativePrecomputationPhase::IndividualSaturation,
                     )?;
-                    reset_probe_env_impl(&mut algo, &mut ctx, &bridged, false, false);
-                    if !run_bridged_saturation(&mut ctx, &bridged) {
-                        return None;
-                    }
                     native_saturation_ran = true;
                     advance_native_precomputation_phase(
                         &mut precomputation_phase,
@@ -16465,7 +16666,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // with the coupling (u08/u17/u22) armed when `use_satcache`.
     let mut saturation_ran = native_saturation_ran;
     let mut satcache_active = false;
-    if use_saturation {
+    if use_saturation && !saturation_aborted {
         let t_sat = std::time::Instant::now();
         let mut saturation_complete = true;
         let outcome = if use_satcache {

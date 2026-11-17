@@ -1004,6 +1004,12 @@ fn bridge_fences_supported(tin: &cb_to_ht::TInput, source_tbox: bool) -> bool {
                 (clause.body.as_slice(), clause.head.as_slice()),
                 ([cb_to_ht::HAtom::Role { r, s, t }, cb_to_ht::HAtom::Role { r: r2, s: s2, t: t2 }], [])
                     if r == r2 && s != t && s == t2 && t == s2
+            ))) || (fence.reason == "role-constraint"
+            && fence.detail == "DisjointObjectProperties"
+            && tin.clauses.iter().any(|clause| matches!(
+                (clause.body.as_slice(), clause.head.as_slice()),
+                ([cb_to_ht::HAtom::Role { r, s, t }, cb_to_ht::HAtom::Role { r: r2, s: s2, t: t2 }], [])
+                    if r != r2 && s != t && s == s2 && t == t2
             ))) || (fence.reason == "reflexivity" && tin.roles.iter().position(|r| r == &fence.detail).is_some_and(|role| {
             tin.clauses.iter().any(|clause| matches!(
                 (clause.body.as_slice(), clause.head.as_slice()),

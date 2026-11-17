@@ -482,7 +482,9 @@ fn datatype_inclusions(axiom: &Axiom, left: &Concept, right: &Concept, changed: 
     let mut rewritten = !matches!(axiom, Axiom::SubClassOf(..)) || changed;
     let mut out = Vec::with_capacity(inclusions.len());
     for (sub, sup) in inclusions {
-        if holds_at_blank(&sub)? {
+        let is_global_range =
+            matches!((&sub, &sup), (Concept::Top, Concept::Forall(Role::Name(_), _)));
+        if !is_global_range && holds_at_blank(&sub)? {
             rewritten = true;
             out.push(Axiom::SubClassOf(guarded(&sub), sup));
         } else {
@@ -667,5 +669,24 @@ mod tests {
             assert!(!applies(&ontology, &data));
             assert_eq!(encode(&mut ontology, &data, &[], |_| true).rewritten, 0);
         }
+    }
+
+    #[test]
+    fn preserves_global_data_property_range_unguarded_in_datatype_inclusions() {
+        let _test_env = crate::test_env::read();
+        let data: BTreeSet<String> = ["u".to_string()].into();
+        let u = Role::Name("u".into());
+        let range = Axiom::SubClassOf(Concept::Top, Concept::Forall(u, Box::new(name("__dt__string"))));
+        let mut ontology = Ontology::new();
+        ontology.add(Axiom::SubClassOf(
+            Concept::Top,
+            Concept::Exists(Role::Name("r".into()), Box::new(Concept::Nominal("g".into()))),
+        ));
+        ontology.add(range.clone());
+        assert!(applies(&ontology, &data));
+        let encoded = encode(&mut ontology, &data, &[], |n| !n.starts_with("__"));
+        assert!(encoded.rewritten > 0);
+        let axioms: Vec<Axiom> = ontology.axioms_iter().cloned().collect();
+        assert!(axioms.contains(&range));
     }
 }

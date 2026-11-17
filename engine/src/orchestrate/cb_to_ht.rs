@@ -3777,6 +3777,44 @@ fn convert_with_rule_abox(
                         detected_chains.push(chain);
                     }
                 }
+                Some("chain-n") => {
+                    // `normalise.rs` decomposes n-ary chains into binary chain
+                    // clauses `r_1 o r_2 -> __chain__k` that `extract_chains`
+                    // already collected into `detected_chains` (when `keep_chains`
+                    // is true). Verify the decomposed steps cover `ax[2..] -> ax[1]`
+                    // before accepting the metadata record unfenced.
+                    let covered = keep_chains && ax.len() >= 4 && {
+                        let sup = ids.rid(&ax[1]);
+                        let steps: Vec<usize> = ax[2..].iter().map(|r| ids.rid(r)).collect();
+                        let mut current = *steps.last().unwrap();
+                        let mut ok = true;
+                        for (idx, &left) in steps[..steps.len() - 1].iter().enumerate().rev() {
+                            let target_sup = if idx == 0 {
+                                Some(sup)
+                            } else {
+                                detected_chains.iter().find_map(|&(r1, r2, s)| {
+                                    (r1 == left && r2 == current).then_some(s)
+                                })
+                            };
+                            match target_sup {
+                                Some(s) if detected_chains.contains(&(left, current, s)) => {
+                                    current = s;
+                                }
+                                _ => {
+                                    ok = false;
+                                    break;
+                                }
+                            }
+                        }
+                        ok
+                    };
+                    if !covered {
+                        fenced.push(Fenced {
+                            reason: "unknown-rbox".into(),
+                            detail: format!("{:?}", ax),
+                        });
+                    }
+                }
                 Some("fenced") if ax.get(1).map(String::as_str) == Some("symmetric-role") => {
                     // Konclude represents a symmetric role as its own inverse.
                     // The frontend's reverse-edge clause already carries the
