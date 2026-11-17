@@ -9768,6 +9768,18 @@ fn fresh_bridge_env_with_trigger_absorption(
     CalculationAlgorithmContextBase,
     Bridged,
 ) {
+    fresh_bridge_env_with_trigger_absorption_init(tin, trigger_absorb, true)
+}
+
+fn fresh_bridge_env_with_trigger_absorption_init(
+    tin: &TInput,
+    trigger_absorb: bool,
+    initialize_nominals: bool,
+) -> (
+    CompletionTaskHandleAlgorithm,
+    CalculationAlgorithmContextBase,
+    Bridged,
+) {
     use super::completion::strategy::ConceptProcessingPriorityStrategy;
     let mut algo = CompletionTaskHandleAlgorithm::new();
     configure_default_blocking(&mut algo);
@@ -9823,7 +9835,7 @@ fn fresh_bridge_env_with_trigger_absorption(
         // Forced singleton merges can cross an OR alternative. Full in-process
         // COW is the existing complete restore mechanism for those writes.
         algo.conf_inprocess_cow = true;
-        if !initialize_native_nominal_state(&mut algo, &mut ctx, &bridged) {
+        if initialize_nominals && !initialize_native_nominal_state(&mut algo, &mut ctx, &bridged) {
             ctx.raise_stop(false);
         }
     }
@@ -9843,6 +9855,47 @@ fn initialize_native_nominal_state(
     initialize_native_nominal_state_for_tags(algo, ctx, bridged, None)
 }
 
+#[inline]
+fn nominal_seed_by_tag(bridged: &Bridged, tag: Cint64) -> Option<&NominalSeed> {
+    if let Ok(idx) = usize::try_from(tag) {
+        if let Some(seed) = bridged.nominal_seeds.get(idx) {
+            if seed.individual_tag == tag {
+                return Some(seed);
+            }
+        }
+    }
+    bridged
+        .nominal_seeds
+        .iter()
+        .find(|candidate| candidate.individual_tag == tag)
+}
+
+#[inline]
+fn nominal_seed_by_concept<'a>(
+    ctx: &CalculationAlgorithmContextBase,
+    bridged: &'a Bridged,
+    concept: ConceptId,
+) -> Option<&'a NominalSeed> {
+    if concept.is_some() && concept.index() < ctx.ontology_arenas().concept_count() as usize {
+        let concept_ref = ctx.ontology_arenas().concept(concept);
+        if concept_ref.get_operator_code() == op::CCNOMINAL {
+            let ind = concept_ref.get_nominal_individual();
+            if ind.is_some() && ind.index() < ctx.ontology_arenas().individual_count() as usize {
+                let tag = ctx.ontology_arenas().individual(ind).get_individual_id();
+                if let Some(seed) = nominal_seed_by_tag(bridged, tag) {
+                    if seed.nominal_concept == concept {
+                        return Some(seed);
+                    }
+                }
+            }
+        }
+    }
+    bridged
+        .nominal_seeds
+        .iter()
+        .find(|target| target.nominal_concept == concept)
+}
+
 /// Nominal concepts of the other members of `entry`'s deterministic
 /// same-individual set, or `None` when that set is not recorded or names an
 /// individual without a nominal seed. See
@@ -9858,10 +9911,7 @@ fn native_deterministic_same_nominal_concepts(
         if tag == seed.individual_tag {
             continue;
         }
-        let other = bridged
-            .nominal_seeds
-            .iter()
-            .find(|candidate| candidate.individual_tag == tag)?;
+        let other = nominal_seed_by_tag(bridged, tag)?;
         if other.nominal_concept.is_none() {
             return None;
         }
@@ -11611,12 +11661,7 @@ fn commit_native_representative_association_batch(
     prepared: Vec<(Cint64, NativeAboxRepresentativeEntry)>,
     selected_individuals: &HashSet<Cint64>,
 ) -> Option<HashSet<Cint64>> {
-    if prepared.is_empty()
-        || selected_individuals.is_empty()
-        || !selected_individuals
-            .iter()
-            .all(|tag| prepared.iter().any(|(prepared_tag, _)| prepared_tag == tag))
-    {
+    if prepared.is_empty() || selected_individuals.is_empty() {
         return None;
     }
     let mut seen = HashSet::with_capacity_and_hasher(prepared.len(), Default::default());
@@ -11632,6 +11677,9 @@ fn commit_native_representative_association_batch(
         {
             return None;
         }
+    }
+    if !selected_individuals.iter().all(|tag| seen.contains(tag)) {
+        return None;
     }
 
     let mut updated = HashSet::with_capacity_and_hasher(prepared.len(), Default::default());
@@ -14069,11 +14117,7 @@ fn native_generated_role_assertion_synchronized(
     if filler.negated {
         return false;
     }
-    let Some(target) = bridged
-        .nominal_seeds
-        .iter()
-        .find(|target| target.nominal_concept == filler.target)
-    else {
+    let Some(target) = nominal_seed_by_concept(ctx, bridged, filler.target) else {
         return false;
     };
     seed.role_assertions
@@ -14202,15 +14246,15 @@ fn try_establish_native_backend_expansion_blocking(
     // `if (assocData)` — the typed association must additionally COVER the seed's
     // asserted edges to stand in for the raw assertion linkers (see
     // `neighbour_expansion_blocking_candidate`).
-    let entry = {
+    // backendExpBlocking = isCompletelyHandled() && !hasRepresentativeSameIndividualMerging()
+    //                      && detMergedSameConsideredLabel == DETERMINISTIC_SAME_INDIVIDUAL_SET_LABEL
+    let mut expansion_blocked = false;
+    {
         let cache = bridged.native_representative_cache.borrow();
         let Some(cache) = cache.as_ref() else {
             return false;
         };
-        if cache.association_write_aborted {
-            return false;
-        }
-        if !cache.saturation_labels_replayable() {
+        if cache.association_write_aborted || !cache.saturation_labels_replayable() {
             return false;
         }
         let Some(entry) = cache.entries.get(&seed.individual_tag) else {
@@ -14219,15 +14263,13 @@ fn try_establish_native_backend_expansion_blocking(
         if !native_cache_entry_covers_seed(entry, seed) {
             return false;
         }
-        entry.clone()
-    };
-
-    // backendExpBlocking = isCompletelyHandled() && !hasRepresentativeSameIndividualMerging()
-    //                      && detMergedSameConsideredLabel == DETERMINISTIC_SAME_INDIVIDUAL_SET_LABEL
-    let mut expansion_blocked = false;
-    if entry.reusable_for_full_completion()
-        && native_backend_concepts_synchronized(algo, ctx, bridged, seed, node, &entry)
-    {
+        if entry.reusable_for_full_completion()
+            && native_backend_concepts_synchronized(algo, ctx, bridged, seed, node, entry)
+        {
+            expansion_blocked = true;
+        }
+    }
+    if expansion_blocked {
         if !ctx
             .process_context()
             .node(node)
@@ -14244,7 +14286,6 @@ fn try_establish_native_backend_expansion_blocking(
                     | IndividualProcessNode::PRF_SYNCHRONIZEDBACKENDINDIRECTNOMINALEXPANSIONBLOCKED,
             );
         }
-        expansion_blocked = true;
     }
     // The independent neighbour block: gated only on the config flag, exactly as
     // upstream. `PRFRETESTBACKENDSYNCHRONIZATIONDUEDIRECTMODIFIED` schedules the
@@ -14274,7 +14315,7 @@ fn replay_native_representative_cache(
     node: NodeId,
     dependency_track_point: super::process::TrackPointId,
 ) -> bool {
-    let entry = {
+    {
         let cache = bridged.native_representative_cache.borrow();
         let Some(cache) = cache.as_ref() else {
             return true;
@@ -14288,48 +14329,46 @@ fn replay_native_representative_cache(
         if !native_cache_entry_covers_seed(entry, seed) {
             return false;
         }
-        entry.clone()
-    };
-
-    let Some(concept_values) = entry.concept_values.as_ref() else {
-        return false;
-    };
-    // Without the deterministic same individuals' nominal concepts the cached
-    // labels are not closed (positive nominals are not cache values), so the
-    // replay is skipped and the raw assertions re-derive the closure.
-    let Some(same_nominals) = native_deterministic_same_nominal_concepts(bridged, &entry, seed)
-    else {
-        return true;
-    };
-    for value in concept_values.iter().filter(|value| value.deterministic) {
-        algo.add_concept_to_individual_skip_and_processing(
-            value.concept,
-            value.negated,
-            node,
-            dependency_track_point,
-            true,
-            false,
-            false,
-            ctx,
-        );
-        if ctx.has_pending_signal() {
-            break;
+        let Some(concept_values) = entry.concept_values.as_ref() else {
+            return false;
+        };
+        // Without the deterministic same individuals' nominal concepts the cached
+        // labels are not closed (positive nominals are not cache values), so the
+        // replay is skipped and the raw assertions re-derive the closure.
+        let Some(same_nominals) = native_deterministic_same_nominal_concepts(bridged, entry, seed)
+        else {
+            return true;
+        };
+        for value in concept_values.iter().filter(|value| value.deterministic) {
+            algo.add_concept_to_individual_skip_and_processing(
+                value.concept,
+                value.negated,
+                node,
+                dependency_track_point,
+                true,
+                false,
+                false,
+                ctx,
+            );
+            if ctx.has_pending_signal() {
+                break;
+            }
         }
-    }
-    for concept in same_nominals {
-        if ctx.has_pending_signal() {
-            break;
+        for concept in same_nominals {
+            if ctx.has_pending_signal() {
+                break;
+            }
+            let mut target = node;
+            algo.add_concept_to_individual(
+                concept,
+                false,
+                &mut target,
+                dependency_track_point,
+                true,
+                true,
+                ctx,
+            );
         }
-        let mut target = node;
-        algo.add_concept_to_individual(
-            concept,
-            false,
-            &mut target,
-            dependency_track_point,
-            true,
-            true,
-            ctx,
-        );
     }
     ctx.process_context_mut()
         .node_mut(node)
@@ -15608,11 +15647,18 @@ fn bridged_classify_opts_with_trigger_absorption(
     use_satcache: bool,
     trigger_absorb: bool,
 ) -> Option<BridgedClassification> {
+    let max_workers = if std::env::var_os("KM_BRIDGE_SUBJECT_WORKERS_OVERRIDE").is_some() {
+        8
+    } else {
+        std::thread::available_parallelism()
+            .map_or(1, |n| n.get())
+            .clamp(1, 8)
+    };
     let subject_workers = std::env::var("KM_BRIDGE_SUBJECT_WORKERS")
         .ok()
         .and_then(|value| value.parse::<usize>().ok())
         .unwrap_or(1)
-        .clamp(1, 8);
+        .clamp(1, max_workers);
     bridged_classify_opts_with_trigger_absorption_workers(
         tin,
         use_saturation,
@@ -15889,7 +15935,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     let t_env = std::time::Instant::now();
     let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
     let (mut algo, mut ctx, bridged) =
-        fresh_bridge_env_with_trigger_absorption(tin, trigger_absorb);
+        fresh_bridge_env_with_trigger_absorption_init(tin, trigger_absorb, false);
     report_bridge_memory("fresh-env");
     if progress {
         eprintln!(
@@ -16533,6 +16579,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 } else {
                     // Preserve the exact nominal-only schedule from efbcbbc. Its
                     // 10621 classification is a validated full-IRI reference.
+                    if !initialize_native_nominal_state(&mut algo, &mut ctx, &bridged) {
+                        ctx.raise_stop(false);
+                    }
                     let mut decided = None;
                     for round in 0..=retry_rounds {
                         algo.probe_budget = Some(std::time::Duration::from_secs(

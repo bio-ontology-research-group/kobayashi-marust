@@ -3806,6 +3806,9 @@ where
         // Whatever happens below, the CB thread must receive its count.
         let budget_guard = budget_cell.resolve_on_drop(cfg.threads);
         let prepared = prepare_ht(cfg, clauses_path, named);
+        let cb_first_source = prepared
+            .as_ref()
+            .is_some_and(|prepared| prepared.cb_first_structural_source);
         let cb_first = cb_first_duration(
             std::env::var("KM_CB_FIRST_TYPED_NOMINAL_S").ok().as_deref(),
         )
@@ -3947,12 +3950,14 @@ where
         // worker that marks bridge answers). Run it alone for at most the
         // deadline; then start the unchanged CB stack and race as before.
         let mut ht_first_won: Option<EngineOut> = None;
-        // Typed-nominal bridge workers (complete native ABox channel) are
-        // excluded: on the frozen corpus their nominal ABox completion is
-        // often far slower than the exact nominal-aware CB fallback (ORE 5544:
-        // CB 3 s vs bridge 169 s; ORE 11085: CB 35 s vs bridge > 180 s), so
-        // they keep the shared race.
-        if let Some(deadline) = ht_first.filter(|_| !typed_nominal_exclusive) {
+        // Typed-nominal bridge workers whose source TBox is nominal-free
+        // (`cb_first_source`) are excluded: on the frozen corpus their nominal
+        // ABox completion is often far slower than the exact nominal-aware CB
+        // fallback (ORE 5544: CB 3 s vs bridge 169 s; ORE 11085: CB 35 s vs
+        // bridge > 180 s), so they keep the shared race. When the TBox itself
+        // contains nominals (`!cb_first_source`), the native bridge is the
+        // primary arm and runs HT-first before starting the CB stack.
+        if let Some(deadline) = ht_first.filter(|_| !(typed_nominal_exclusive && cb_first_source)) {
             if pending_cb.is_some() && (budget == 0.0 || bridge_answer_marker.is_some()) {
                 let mut interval = Duration::from_millis(1);
                 let export_active = std::env::var_os("KM_EXPORT_MODEL_ACTIVE").is_some();
