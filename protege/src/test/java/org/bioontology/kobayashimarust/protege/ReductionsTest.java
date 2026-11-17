@@ -402,8 +402,23 @@ public class ReductionsTest {
                 f.getOWLNegativeDataPropertyAssertionAxiom(d("age"), i("cid"), f.getOWLLiteral("31", f.getIntegerOWLDatatype())));
         for (OWLAxiom ax : axioms) same(diffs, "isEntailed " + ax, h.isEntailed(ax), k.isEntailed(ax));
         assertTrue(String.join("\n", diffs), diffs.isEmpty());
-        // The data property hierarchy itself is still refused outside the fragment.
-        assertFalse(k.isEntailmentCheckingSupported(AxiomType.SUB_DATA_PROPERTY));
+        // The data property hierarchy outside the syntactic fragment is answered via --data-properties.
+        assertTrue(k.isEntailmentCheckingSupported(AxiomType.SUB_DATA_PROPERTY));
+        assertTrue(k.isEntailed(f.getOWLSubDataPropertyOfAxiom(d("name"), d("label"))));
+        assertFalse(k.isEntailed(f.getOWLSubDataPropertyOfAxiom(d("label"), d("name"))));
+        for (OWLDataProperty p : o.getDataPropertiesInSignature()) {
+            for (boolean direct : new boolean[]{true, false}) {
+                same(diffs, "subData " + name(p) + " " + direct,
+                        nodes(h.getSubDataProperties(p, direct)), nodes(k.getSubDataProperties(p, direct)));
+                same(diffs, "superData " + name(p) + " " + direct,
+                        nodes(h.getSuperDataProperties(p, direct)), nodes(k.getSuperDataProperties(p, direct)));
+            }
+            same(diffs, "eqData " + name(p),
+                    node(h.getEquivalentDataProperties(p)), node(k.getEquivalentDataProperties(p)));
+            same(diffs, "disjData " + name(p),
+                    nodes(h.getDisjointDataProperties(p)), nodes(k.getDisjointDataProperties(p)));
+        }
+        assertTrue(String.join("\n", diffs), diffs.isEmpty());
     }
 
     @Test

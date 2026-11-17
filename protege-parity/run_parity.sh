@@ -38,10 +38,30 @@ if [ "${SKIP_BUILD:-0}" != 1 ]; then
 fi
 cp="$here/target/classes:$(cat "$here/target/classpath.txt"):$here/../protege/target/protege5/classes"
 
-for o in "${onts[@]}"; do
+jobs="${PARITY_JOBS:-1}"
+run_one() {
+  local o="$1"
+  local name
   name="$(basename "$o")"; name="${name%.*}"
   echo "== $name" >&2
-  java -Xmx2g -Djava.io.tmpdir="$PARITY_TMP" -Dkm.bin="$KM_BIN" -cp "$cp" \
+  timeout 700 java -Xmx2g -Djava.io.tmpdir="$PARITY_TMP" -Dkm.bin="$KM_BIN" -cp "$cp" \
     org.bioontology.kobayashimarust.parity.ParityRun ${PARITY_OPTS:-} "$o" "$out/$name.json" \
     || echo "ParityRun failed on $o" >&2
-done
+}
+
+if [ "$jobs" -le 1 ]; then
+  for o in "${onts[@]}"; do
+    run_one "$o"
+  done
+else
+  active=0
+  for o in "${onts[@]}"; do
+    run_one "$o" &
+    active=$((active + 1))
+    if [ "$active" -ge "$jobs" ]; then
+      wait -n || true
+      active=$((active - 1))
+    fi
+  done
+  wait
+fi

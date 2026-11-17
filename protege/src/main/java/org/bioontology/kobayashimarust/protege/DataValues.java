@@ -112,10 +112,58 @@ final class DataValues {
     /** The candidate literals and why the ontology is outside the fragment (null when inside). */
     static final class Candidates {
         final Set<OWLLiteral> literals = new LinkedHashSet<>();
+        final Map<Object, OWLLiteral> byValue = new LinkedHashMap<>();
+        final Map<List<Object>, Map<Object, OWLLiteral>> byIndProp = new HashMap<>();
+        final Map<OWLDataProperty, Map<Object, OWLLiteral>> byProp = new HashMap<>();
         String outside;
         long cardinalities;
         final Set<IRI> integerTypes = new HashSet<>();
         boolean booleans;
+
+        void addLiteral(OWLLiteral l) {
+            Object k = valueKey(l);
+            if (!byValue.containsKey(k)) {
+                byValue.put(k, l);
+                literals.add(l);
+            }
+        }
+
+        OWLLiteral resolve(Collection<OWLNamedIndividual> same, OWLDataProperty p, OWLLiteral canonical) {
+            Object key = valueKey(canonical);
+            for (OWLNamedIndividual s : same) {
+                Map<Object, OWLLiteral> m = byIndProp.get(Arrays.asList(s, p));
+                if (m != null && m.containsKey(key)) return m.get(key);
+            }
+            Map<Object, OWLLiteral> mp = byProp.get(p);
+            if (mp != null && mp.containsKey(key)) return mp.get(key);
+            return canonical;
+        }
+    }
+
+    /** Key identifying the mathematical value of a literal in the supported datatypes. */
+    static Object valueKey(OWLLiteral l) {
+        IRI dt = l.getDatatype().getIRI();
+        if (INTEGER_TYPES.containsKey(dt)
+                || dt.equals(OWL2Datatype.XSD_INTEGER.getIRI())
+                || dt.equals(OWL2Datatype.XSD_DECIMAL.getIRI())) {
+            try {
+                java.math.BigDecimal bd = new java.math.BigDecimal(l.getLiteral().trim().replaceFirst("^\\+", ""));
+                java.math.BigDecimal stripped = bd.signum() == 0 ? java.math.BigDecimal.ZERO : bd.stripTrailingZeros();
+                return "num:" + stripped.toPlainString();
+            } catch (NumberFormatException ignored) {
+                return l;
+            }
+        }
+        if (dt.equals(OWL2Datatype.XSD_BOOLEAN.getIRI())) {
+            String t = l.getLiteral().trim();
+            if (t.equals("true") || t.equals("1")) return "bool:true";
+            if (t.equals("false") || t.equals("0")) return "bool:false";
+        }
+        if ((dt.equals(OWL2Datatype.XSD_STRING.getIRI()) || dt.equals(OWL2Datatype.RDF_PLAIN_LITERAL.getIRI()))
+                && !l.hasLang()) {
+            return "str:" + l.getLiteral();
+        }
+        return l;
     }
 
     static Candidates collect(OWLOntology snapshot, OWLDataFactory df) {
@@ -127,19 +175,31 @@ final class DataValues {
                 if (p.isOWLTopDataProperty()) out.outside = "owl:topDataProperty in an axiom";
             }
             if (axiom instanceof SWRLRule) {
-                out.outside = "a rule";
+                SWRLRule rule = (SWRLRule) axiom;
+                if (ruleTouchesData(rule.getBody()) || ruleTouchesData(rule.getHead())) {
+                    out.outside = "a rule";
+                }
             } else if (axiom instanceof OWLDatatypeDefinitionAxiom) {
                 out.outside = "a datatype definition";
             } else if (axiom instanceof OWLDataPropertyAssertionAxiom) {
-                out.literals.add(((OWLDataPropertyAssertionAxiom) axiom).getObject());
+                OWLDataPropertyAssertionAxiom dpa = (OWLDataPropertyAssertionAxiom) axiom;
+                OWLLiteral lit = dpa.getObject();
+                out.addLiteral(lit);
+                Object key = valueKey(lit);
+                OWLDataProperty dp = dpa.getProperty().asOWLDataProperty();
+                out.byProp.computeIfAbsent(dp, k -> new LinkedHashMap<>()).putIfAbsent(key, lit);
+                if (dpa.getSubject().isNamed()) {
+                    out.byIndProp.computeIfAbsent(Arrays.asList(dpa.getSubject().asOWLNamedIndividual(), dp),
+                            k -> new LinkedHashMap<>()).putIfAbsent(key, lit);
+                }
             } else if (axiom instanceof OWLNegativeDataPropertyAssertionAxiom) {
-                out.literals.add(((OWLNegativeDataPropertyAssertionAxiom) axiom).getObject());
+                out.addLiteral(((OWLNegativeDataPropertyAssertionAxiom) axiom).getObject());
             } else if (axiom instanceof OWLDataPropertyRangeAxiom) {
                 range(((OWLDataPropertyRangeAxiom) axiom).getRange(), out);
             }
             for (OWLClassExpression ce : axiom.getNestedClassExpressions()) {
                 if (ce instanceof OWLDataHasValue) {
-                    out.literals.add(((OWLDataHasValue) ce).getFiller());
+                    out.addLiteral(((OWLDataHasValue) ce).getFiller());
                 } else if (ce instanceof OWLDataSomeValuesFrom) {
                     range(((OWLDataSomeValuesFrom) ce).getFiller(), out);
                     out.cardinalities += 1;
@@ -156,8 +216,8 @@ final class DataValues {
         // xsd:boolean has two values: both become candidates, so no unwritten
         // boolean value is left.
         if (out.booleans) {
-            if (!denotesBoolean(out.literals, true)) out.literals.add(df.getOWLLiteral(true));
-            if (!denotesBoolean(out.literals, false)) out.literals.add(df.getOWLLiteral(false));
+            if (!denotesBoolean(out.literals, true)) out.addLiteral(df.getOWLLiteral(true));
+            if (!denotesBoolean(out.literals, false)) out.addLiteral(df.getOWLLiteral(false));
         }
         if (out.outside == null && !integerCellsSafe(out, df)) {
             out.outside = "the integer datatypes " + out.integerTypes
@@ -167,6 +227,20 @@ final class DataValues {
             out.outside = "data cardinalities too large for the completeness argument";
         }
         return out;
+    }
+
+    private static boolean ruleTouchesData(Collection<SWRLAtom> atoms) {
+        for (SWRLAtom atom : atoms) {
+            if (atom instanceof SWRLDataPropertyAtom
+                    || atom instanceof SWRLDataRangeAtom
+                    || atom instanceof SWRLBuiltInAtom) {
+                return true;
+            }
+            for (SWRLArgument arg : atom.getAllArguments()) {
+                if (arg instanceof SWRLLiteralArgument) return true;
+            }
+        }
+        return false;
     }
 
     private static boolean denotesBoolean(Set<OWLLiteral> literals, boolean value) {
@@ -232,7 +306,7 @@ final class DataValues {
                     // A small interval: every value in it becomes a candidate.
                     for (java.math.BigInteger v = previous; v.compareTo(cut) < 0; v = v.add(java.math.BigInteger.ONE)) {
                         if (!values.contains(v)) {
-                            out.literals.add(df.getOWLLiteral(v.toString(), OWL2Datatype.XSD_INTEGER));
+                            out.addLiteral(df.getOWLLiteral(v.toString(), OWL2Datatype.XSD_INTEGER));
                         }
                     }
                 }
@@ -249,7 +323,7 @@ final class DataValues {
             else if (dt.getIRI().equals(OWL2Datatype.XSD_BOOLEAN.getIRI())) out.booleans = true;
             else if (!ADMITTED.contains(dt.getIRI())) out.outside = "the datatype " + dt.getIRI();
         } else if (range instanceof OWLDataOneOf) {
-            out.literals.addAll(((OWLDataOneOf) range).getValues());
+            for (OWLLiteral l : ((OWLDataOneOf) range).getValues()) out.addLiteral(l);
         } else if (range instanceof OWLDataIntersectionOf) {
             for (OWLDataRange r : ((OWLDataIntersectionOf) range).getOperands()) range(r, out);
         } else if (range instanceof OWLDataUnionOf) {
@@ -260,9 +334,73 @@ final class DataValues {
             out.outside = "the data range " + range;
             if (range instanceof OWLDatatypeRestriction) {
                 for (OWLFacetRestriction f : ((OWLDatatypeRestriction) range).getFacetRestrictions()) {
-                    out.literals.add(f.getFacetValue());
+                    out.addLiteral(f.getFacetValue());
                 }
             }
         }
+    }
+
+    private static final Set<IRI> STRING_DATATYPES = new HashSet<>(Arrays.asList(
+            OWL2Datatype.XSD_STRING.getIRI(),
+            OWL2Datatype.RDF_PLAIN_LITERAL.getIRI(),
+            IRI.create("http://www.w3.org/1999/02/22-rdf-syntax-ns#langString"),
+            OWL2Datatype.XSD_NORMALIZED_STRING.getIRI(),
+            OWL2Datatype.XSD_TOKEN.getIRI(),
+            OWL2Datatype.XSD_LANGUAGE.getIRI(),
+            OWL2Datatype.XSD_NAME.getIRI(),
+            OWL2Datatype.XSD_NCNAME.getIRI(),
+            OWL2Datatype.XSD_NMTOKEN.getIRI()));
+
+    private static final Set<IRI> NON_STRING_BUILTINS = new HashSet<>(Arrays.asList(
+            OWL2Datatype.OWL_REAL.getIRI(),
+            OWL2Datatype.OWL_RATIONAL.getIRI(),
+            OWL2Datatype.XSD_DECIMAL.getIRI(),
+            OWL2Datatype.XSD_INTEGER.getIRI(),
+            OWL2Datatype.XSD_DOUBLE.getIRI(),
+            OWL2Datatype.XSD_FLOAT.getIRI(),
+            OWL2Datatype.XSD_BOOLEAN.getIRI(),
+            OWL2Datatype.XSD_ANY_URI.getIRI(),
+            OWL2Datatype.XSD_DATE_TIME.getIRI(),
+            OWL2Datatype.XSD_DATE_TIME_STAMP.getIRI(),
+            OWL2Datatype.XSD_HEX_BINARY.getIRI(),
+            OWL2Datatype.XSD_BASE_64_BINARY.getIRI(),
+            OWL2Datatype.RDF_XML_LITERAL.getIRI()));
+
+    /**
+     * A literal whose value is disjoint from the value space of {@code range},
+     * or null when {@code range} is not a built-in datatype with a known disjoint witness.
+     */
+    static OWLLiteral witnessOutside(OWLDataRange range, OWLDataFactory df) {
+        if (!(range instanceof OWLDatatype)) return null;
+        IRI iri = ((OWLDatatype) range).getIRI();
+        if (STRING_DATATYPES.contains(iri)) {
+            return df.getOWLLiteral("1", OWL2Datatype.XSD_POSITIVE_INTEGER);
+        }
+        if (NON_STRING_BUILTINS.contains(iri) || INTEGER_TYPES.containsKey(iri)) {
+            return df.getOWLLiteral("a", OWL2Datatype.XSD_STRING);
+        }
+        return null;
+    }
+
+    /** Whether {@code lit} is a well-typed literal whose value is guaranteed outside {@code range}. */
+    static boolean definitelyOutside(OWLLiteral lit, OWLDataRange range) {
+        if (!(range instanceof OWLDatatype)) return false;
+        IRI rIri = ((OWLDatatype) range).getIRI();
+        IRI lIri = lit.getDatatype().getIRI();
+        boolean litString = lIri.equals(OWL2Datatype.XSD_STRING.getIRI())
+                || lIri.equals(OWL2Datatype.RDF_PLAIN_LITERAL.getIRI());
+        boolean litInt = INTEGER_TYPES.containsKey(lIri) || lIri.equals(OWL2Datatype.XSD_INTEGER.getIRI());
+        if (STRING_DATATYPES.contains(rIri) && litInt) {
+            try {
+                new java.math.BigInteger(lit.getLiteral().trim().replaceFirst("^\\+", ""));
+                return true;
+            } catch (NumberFormatException ignored) {
+                return false;
+            }
+        }
+        if ((NON_STRING_BUILTINS.contains(rIri) || INTEGER_TYPES.containsKey(rIri)) && litString) {
+            return true;
+        }
+        return false;
     }
 }

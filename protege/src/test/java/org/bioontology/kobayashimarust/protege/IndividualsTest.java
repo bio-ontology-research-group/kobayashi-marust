@@ -274,7 +274,7 @@ public class IndividualsTest {
         OWLDataFactory df = o.getOWLOntologyManager().getOWLDataFactory();
         OWLReasoner r = km(o);
         assertTrue(r.getInstances(cls(df, "B"), false).isEmpty());
-        assertTrue(r.isPrecomputed(InferenceType.CLASS_ASSERTIONS));
+        assertFalse(r.isPrecomputed(InferenceType.CLASS_ASSERTIONS));
     }
 
     @Test
