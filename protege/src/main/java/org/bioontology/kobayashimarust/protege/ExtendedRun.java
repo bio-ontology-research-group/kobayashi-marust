@@ -119,10 +119,17 @@ final class ExtendedRun {
      */
     static Answer run(String base, OWLDataFactory df, Collection<? extends OWLAxiom> extra, boolean realize,
                       boolean top, String label, java.util.function.Consumer<Process> onStart) throws Exception {
+        return run(base, df, extra, realize, top, false, label, onStart);
+    }
+
+    static Answer run(String base, OWLDataFactory df, Collection<? extends OWLAxiom> extra, boolean realize,
+                      boolean top, boolean freeUnknownDatatypes, String label,
+                      java.util.function.Consumer<Process> onStart) throws Exception {
         String source = extend(base, df, extra);
         List<String> flags = new ArrayList<>();
         if (realize) flags.add("--realize");
         if (top) flags.add("--top");
+        if (freeUnknownDatatypes) flags.add("--unknown-datatypes=free");
         String keep = System.getProperty("km.trace.dir");
         if (keep != null && !keep.isEmpty()) {
             // Developer aid: keep each extended input for reproduction.

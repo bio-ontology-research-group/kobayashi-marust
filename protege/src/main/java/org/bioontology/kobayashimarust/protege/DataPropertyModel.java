@@ -105,6 +105,9 @@ final class DataPropertyModel {
     /** Stated domain classes and range datatypes (other than rdfs:Literal) per property id. */
     private List<List<OWLClass>> statedDomains;
     private List<Set<IRI>> statedRanges;
+    /** Inferred domain class IRIs and disjoint properties when built from native rows. */
+    private List<Set<String>> domainIris;
+    private BitSet[] disjoint;
     private int[] nodeOf;
     private final List<List<Integer>> members = new ArrayList<>();
     private final List<BitSet> ancestors = new ArrayList<>();
@@ -316,6 +319,112 @@ final class DataPropertyModel {
         }
         m.buildHierarchy();
         return m;
+    }
+
+    /**
+     * Build the model from the rows of {@code km classify --lines --data-properties}
+     * (or from a pair-free probe classification when the property count exceeds the
+     * pairwise threshold).
+     */
+    static DataPropertyModel fromRows(OWLDataFactory df, Set<OWLDataProperty> signature,
+                                      Classifier.DataProperties rows) {
+        DataPropertyModel m = new DataPropertyModel(df);
+        List<OWLDataProperty> sig = new ArrayList<>(signature);
+        sig.sort(Comparator.comparing(p -> p.getIRI().toString()));
+        for (OWLDataProperty p : sig) {
+            if (!p.isOWLTopDataProperty() && !p.isOWLBottomDataProperty()) m.add(p);
+        }
+        if (rows != null) {
+            for (String[] pair : rows.subproperties) {
+                m.add(df.getOWLDataProperty(IRI.create(stripIri(pair[0]))));
+                m.add(df.getOWLDataProperty(IRI.create(stripIri(pair[1]))));
+            }
+            for (String name : rows.top) m.add(df.getOWLDataProperty(IRI.create(stripIri(name))));
+            for (String name : rows.bottom) m.add(df.getOWLDataProperty(IRI.create(stripIri(name))));
+            for (String[] pair : rows.domains) m.add(df.getOWLDataProperty(IRI.create(stripIri(pair[0]))));
+            for (String[] pair : rows.disjoint) {
+                m.add(df.getOWLDataProperty(IRI.create(stripIri(pair[0]))));
+                m.add(df.getOWLDataProperty(IRI.create(stripIri(pair[1]))));
+            }
+        }
+        int n = m.props.size();
+        BitSet[] edge = new BitSet[n];
+        m.domainIris = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            edge[i] = new BitSet(n);
+            edge[i].set(i);
+            edge[i].set(TOP_ID);
+            m.domainIris.add(new LinkedHashSet<>());
+        }
+        edge[BOTTOM_ID].set(0, n);
+        m.empty = new boolean[n];
+        m.empty[BOTTOM_ID] = true;
+        m.domainRep = new int[n];
+        Arrays.fill(m.domainRep, -1);
+        if (rows != null) {
+            for (String[] pair : rows.subproperties) {
+                Integer a = m.index.get(df.getOWLDataProperty(IRI.create(stripIri(pair[0]))));
+                Integer b = m.index.get(df.getOWLDataProperty(IRI.create(stripIri(pair[1]))));
+                if (a != null && b != null) edge[a].set(b);
+            }
+            for (String name : rows.top) {
+                Integer p = m.index.get(df.getOWLDataProperty(IRI.create(stripIri(name))));
+                if (p != null) edge[TOP_ID].set(p);
+            }
+            for (String name : rows.bottom) {
+                Integer p = m.index.get(df.getOWLDataProperty(IRI.create(stripIri(name))));
+                if (p != null) {
+                    m.empty[p] = true;
+                    edge[p].set(BOTTOM_ID);
+                }
+            }
+            for (String[] pair : rows.domains) {
+                Integer p = m.index.get(df.getOWLDataProperty(IRI.create(stripIri(pair[0]))));
+                if (p != null) m.domainIris.get(p).add(stripIri(pair[1]));
+            }
+        }
+        m.reach = new BitSet[n];
+        for (int i = 0; i < n; i++) {
+            BitSet seen = new BitSet(n);
+            Deque<Integer> todo = new ArrayDeque<>();
+            seen.set(i);
+            todo.add(i);
+            while (!todo.isEmpty()) {
+                int x = todo.poll();
+                for (int y = edge[x].nextSetBit(0); y >= 0; y = edge[x].nextSetBit(y + 1)) {
+                    if (!seen.get(y)) {
+                        seen.set(y);
+                        todo.add(y);
+                    }
+                }
+            }
+            m.reach[i] = seen;
+            if (i >= 2 && seen.get(BOTTOM_ID)) m.empty[i] = true;
+        }
+        if (rows == null || rows.disjointComputed) {
+            m.disjoint = new BitSet[n];
+            for (int i = 0; i < n; i++) m.disjoint[i] = new BitSet(n);
+            if (rows != null) {
+                for (String[] pair : rows.disjoint) {
+                    Integer a = m.index.get(df.getOWLDataProperty(IRI.create(stripIri(pair[0]))));
+                    Integer b = m.index.get(df.getOWLDataProperty(IRI.create(stripIri(pair[1]))));
+                    if (a != null && b != null) {
+                        m.disjoint[a].set(b);
+                        m.disjoint[b].set(a);
+                    }
+                }
+            }
+        }
+        m.buildHierarchy();
+        return m;
+    }
+
+    private static String stripIri(String name) {
+        String s = name.trim();
+        if (s.length() >= 2 && s.charAt(0) == '<' && s.charAt(s.length() - 1) == '>') {
+            return s.substring(1, s.length() - 1);
+        }
+        return s;
     }
 
     private int id(OWLDataPropertyExpression e) {
@@ -551,5 +660,76 @@ final class DataPropertyModel {
         BitSet all = new BitSet();
         all.set(0, members.size());
         return nodeSet(all);
+    }
+
+    boolean hasSyntacticDomains() {
+        return statedDomains != null;
+    }
+
+    Set<String> domainIris(OWLDataProperty p) {
+        int code = code(p);
+        return domainIris != null && code >= 0 && !empty[code]
+                ? domainIris.get(code)
+                : Collections.<String>emptySet();
+    }
+
+    boolean hasDisjoint() {
+        return disjoint != null;
+    }
+
+    int nodeIndexOf(OWLDataProperty p) {
+        return nodeIndex(code(p));
+    }
+
+    NodeSet<OWLDataProperty> disjointNodes(OWLDataProperty p) {
+        if (isEmpty(p)) return allNodes();
+        if (isFresh(p) || isUniversal(p)) return bottomOnly();
+        int code = code(p);
+        BitSet nodes = new BitSet();
+        nodes.set(BOTTOM_NODE);
+        BitSet dp = disjoint[code];
+        for (int c = 2; c < members.size(); c++) {
+            for (int q : members.get(c)) {
+                if (dp.get(q)) {
+                    nodes.set(c);
+                    break;
+                }
+            }
+        }
+        return nodeSet(nodes);
+    }
+
+    private static final Set<IRI> POSITIVE_INT_SHARED = new HashSet<>(Arrays.asList(
+            OWL2Datatype.OWL_REAL.getIRI(),
+            OWL2Datatype.OWL_RATIONAL.getIRI(),
+            OWL2Datatype.XSD_DECIMAL.getIRI(),
+            OWL2Datatype.XSD_INTEGER.getIRI(),
+            OWL2Datatype.XSD_NON_NEGATIVE_INTEGER.getIRI(),
+            OWL2Datatype.XSD_POSITIVE_INTEGER.getIRI(),
+            OWL2Datatype.XSD_LONG.getIRI(),
+            OWL2Datatype.XSD_INT.getIRI(),
+            OWL2Datatype.XSD_SHORT.getIRI(),
+            OWL2Datatype.XSD_BYTE.getIRI(),
+            OWL2Datatype.XSD_UNSIGNED_LONG.getIRI(),
+            OWL2Datatype.XSD_UNSIGNED_INT.getIRI(),
+            OWL2Datatype.XSD_UNSIGNED_SHORT.getIRI(),
+            OWL2Datatype.XSD_UNSIGNED_BYTE.getIRI()));
+
+    private static final Set<IRI> ASCII_STRING_SHARED = new HashSet<>(Arrays.asList(
+            OWL2Datatype.XSD_STRING.getIRI(),
+            OWL2Datatype.RDF_PLAIN_LITERAL.getIRI(),
+            OWL2Datatype.XSD_NORMALIZED_STRING.getIRI(),
+            OWL2Datatype.XSD_TOKEN.getIRI(),
+            OWL2Datatype.XSD_LANGUAGE.getIRI(),
+            OWL2Datatype.XSD_NAME.getIRI(),
+            OWL2Datatype.XSD_NCNAME.getIRI(),
+            OWL2Datatype.XSD_NMTOKEN.getIRI()));
+
+    /** Whether a set of stated range datatypes shares a common value in the OWL 2 datatype map. */
+    static boolean rangesCompatible(Set<IRI> dts) {
+        if (dts.size() <= 1) return true;
+        if (POSITIVE_INT_SHARED.containsAll(dts)) return true;
+        if (ASCII_STRING_SHARED.containsAll(dts)) return true;
+        return false;
     }
 }

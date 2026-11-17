@@ -43,7 +43,7 @@ public final class ParityRun {
         }
         int timeout = 120, callTimeout = 20, sample = 200;
         long seed = 1;
-        String xmx = "6g", only = null, hermitFrom = null;
+        String xmx = "6g", only = null, hermitFrom = null, kmFrom = null;
         List<String> pos = new ArrayList<>();
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
@@ -54,17 +54,18 @@ public final class ParityRun {
                 case "--xmx": xmx = args[++i]; break;
                 case "--only": only = args[++i]; break;
                 case "--hermit-from": hermitFrom = args[++i]; break;
+                case "--km-from": kmFrom = args[++i]; break;
                 default: pos.add(args[i]);
             }
         }
         if (pos.size() != 2) {
             System.err.println("usage: ParityRun [--timeout S] [--call-timeout S] [--seed N] [--sample N] [--xmx 6g]"
-                    + " [--only hermit|km] [--hermit-from DIR] <ontology file> <out.json>");
+                    + " [--only hermit|km] [--hermit-from DIR] [--km-from DIR] <ontology file> <out.json>");
             System.exit(2);
         }
         File ontFile = new File(pos.get(0)).getAbsoluteFile();
         File out = new File(pos.get(1)).getAbsoluteFile();
-        parent(ontFile, out, timeout, callTimeout, seed, sample, xmx, only, hermitFrom);
+        parent(ontFile, out, timeout, callTimeout, seed, sample, xmx, only, hermitFrom, kmFrom);
     }
 
     // ------------------------------------------------------------------ loading
@@ -387,7 +388,7 @@ public final class ParityRun {
     }
 
     static void parent(File ontFile, File out, int timeout, int callTimeout, long seed, int sample, String xmx,
-                       String only, String hermitFrom) throws Exception {
+                       String only, String hermitFrom, String kmFrom) throws Exception {
         long t0 = System.nanoTime();
         OWLOntology ont = load(ontFile);
         long loadMs = msSince(t0);
@@ -405,7 +406,14 @@ public final class ParityRun {
                     h = runWorker("hermit", ontFile, work.toFile(), timeout, callTimeout, seed, sample, xmx);
                 }
             }
-            if (only == null || only.equals("km")) k = runWorker("km", ontFile, work.toFile(), timeout, callTimeout, seed, sample, xmx);
+            if (only == null || only.equals("km")) {
+                if (kmFrom != null) {
+                    k = loadCachedWorker("km", new File(kmFrom), baseName, work.toFile());
+                }
+                if (k == null) {
+                    k = runWorker("km", ontFile, work.toFile(), timeout, callTimeout, seed, sample, xmx);
+                }
+            }
         } finally {
             // keep the raw worker output next to the result for debugging
             Path keep = out.toPath().resolveSibling(out.getName().replaceAll("\\.json$", "") + ".workers");

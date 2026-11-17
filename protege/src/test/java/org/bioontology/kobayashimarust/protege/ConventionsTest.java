@@ -340,29 +340,30 @@ public class ConventionsTest {
     }
 
     @Test
-    public void theDataPropertyHierarchyRefusesOutsideItsFragment() throws Exception {
+    public void theDataPropertyHierarchyAgreesWithHermitOutsideTheSyntacticFragment() throws Exception {
         for (String source : new String[]{DATA_OUTSIDE, DATA_DOMAINS, DATA_RANGES}) {
             OWLOntology o = IndividualsTest.parse(source);
             OWLDataFactory df = df(o);
+            OWLReasoner h = hermit(o);
             KMReasoner k = km(o);
             OWLDataProperty p = dp(df, "p");
-            List<Query> queries = Arrays.<Query>asList(
-                    r -> r.getSubDataProperties(p, true), r -> r.getSuperDataProperties(p, false),
-                    r -> r.getEquivalentDataProperties(p),
-                    r -> r.getTopDataPropertyNode(), r -> r.getBottomDataPropertyNode(),
-                    r -> r.getDisjointDataProperties(p));
-            for (Query q : queries) {
-                try {
-                    q.run(k);
-                    fail("a data property query outside the fragment must not answer: " + source);
-                } catch (UnsupportedOperationException expected) {
-                    // refused
-                }
-            }
-            assertFalse(k.getPrecomputableInferenceTypes().contains(InferenceType.DATA_PROPERTY_HIERARCHY)
-                    && source == DATA_OUTSIDE);
-            k.precomputeInferences(InferenceType.DATA_PROPERTY_HIERARCHY); // ignored, no exception
+            assertTrue(k.getPrecomputableInferenceTypes().contains(InferenceType.DATA_PROPERTY_HIERARCHY));
             assertFalse(k.isPrecomputed(InferenceType.DATA_PROPERTY_HIERARCHY));
+            k.precomputeInferences(InferenceType.DATA_PROPERTY_HIERARCHY);
+            assertTrue(k.isPrecomputed(InferenceType.DATA_PROPERTY_HIERARCHY));
+            assertEquals(source, nodes(h.getSubDataProperties(p, true)), nodes(k.getSubDataProperties(p, true)));
+            assertEquals(source, nodes(h.getSuperDataProperties(p, false)), nodes(k.getSuperDataProperties(p, false)));
+            assertEquals(source, node(h.getEquivalentDataProperties(p)), node(k.getEquivalentDataProperties(p)));
+            assertEquals(source, node(h.getTopDataPropertyNode()), node(k.getTopDataPropertyNode()));
+            assertEquals(source, node(h.getBottomDataPropertyNode()), node(k.getBottomDataPropertyNode()));
+            if (source == DATA_OUTSIDE) {
+                assertEquals(nodes(h.getDisjointDataProperties(p)), nodes(k.getDisjointDataProperties(p)));
+            } else {
+                // On DATA_DOMAINS and DATA_RANGES, :p has an empty domain/range intersection and sits in the bottom node.
+                assertTrue(source, k.getBottomDataPropertyNode().contains(p));
+                assertEquals(nodes(k.getDisjointDataProperties(df.getOWLBottomDataProperty())),
+                        nodes(k.getDisjointDataProperties(p)));
+            }
         }
     }
 
@@ -374,12 +375,11 @@ public class ConventionsTest {
         assertFalse(k.isPrecomputed(InferenceType.DATA_PROPERTY_HIERARCHY));
         k.precomputeInferences(InferenceType.DATA_PROPERTY_HIERARCHY);
         assertTrue(k.isPrecomputed(InferenceType.DATA_PROPERTY_HIERARCHY));
-        // Property assertions are answered on demand, not precomputed.
-        assertFalse(k.getPrecomputableInferenceTypes().contains(InferenceType.OBJECT_PROPERTY_ASSERTIONS));
+        assertTrue(k.getPrecomputableInferenceTypes().contains(InferenceType.OBJECT_PROPERTY_ASSERTIONS));
         assertFalse(k.getPrecomputableInferenceTypes().contains(InferenceType.DATA_PROPERTY_ASSERTIONS));
         assertFalse(k.isPrecomputed(InferenceType.OBJECT_PROPERTY_ASSERTIONS));
-        k.precomputeInferences(InferenceType.OBJECT_PROPERTY_ASSERTIONS); // ignored
-        assertFalse(k.isPrecomputed(InferenceType.OBJECT_PROPERTY_ASSERTIONS));
+        k.precomputeInferences(InferenceType.OBJECT_PROPERTY_ASSERTIONS);
+        assertTrue(k.isPrecomputed(InferenceType.OBJECT_PROPERTY_ASSERTIONS));
     }
 
     @Test
@@ -391,16 +391,11 @@ public class ConventionsTest {
         o.getOWLOntologyManager().addAxiom(o, df.getOWLSubDataPropertyOfAxiom(dp(df, "p"), dp(df, "r")));
         k.flush();
         assertEquals(new TreeSet<>(Arrays.asList("[q]", "[r, s, t]")), nodes(k.getSuperDataProperties(dp(df, "p"), true)));
-        // A class axiom with a data property leaves the fragment.
+        // A class axiom with a data property leaves the syntactic fragment and uses --data-properties.
         o.getOWLOntologyManager().addAxiom(o, df.getOWLSubClassOfAxiom(cls(df, "C"),
                 df.getOWLDataSomeValuesFrom(dp(df, "p"), df.getTopDatatype())));
         k.flush();
-        try {
-            k.getSuperDataProperties(dp(df, "p"), true);
-            fail();
-        } catch (UnsupportedOperationException expected) {
-            // refused after the edit
-        }
+        assertEquals(new TreeSet<>(Arrays.asList("[q]", "[r, s, t]")), nodes(k.getSuperDataProperties(dp(df, "p"), true)));
     }
 
     /** Nominal D = {a}: every model has p = q = {(a, 1)}, so p and q are equivalent, which no told axiom shows. */
@@ -422,24 +417,15 @@ public class ConventionsTest {
             + ")\n";
 
     @Test
-    public void functionalDataPropertiesWithNominalsAreRefused() throws Exception {
+    public void functionalDataPropertiesWithNominalsAgreeWithHermit() throws Exception {
         OWLOntology o = IndividualsTest.parse(DATA_NOMINAL);
         OWLDataFactory df = df(o);
-        // HermiT finds the equivalence that the stated axioms do not show.
         OWLReasoner h = hermit(o);
-        assertEquals("[p, q]", node(h.getEquivalentDataProperties(dp(df, "p"))));
         KMReasoner k = km(o);
-        assertFalse(k.getPrecomputableInferenceTypes().contains(InferenceType.DATA_PROPERTY_HIERARCHY));
-        for (Query q : Arrays.<Query>asList(r -> r.getEquivalentDataProperties(dp(df, "p")),
-                r -> r.getSuperDataProperties(dp(df, "q"), true),
-                r -> r.getTopDataPropertyNode())) {
-            try {
-                q.run(k);
-                fail("a functional data property next to a nominal must be refused");
-            } catch (UnsupportedOperationException expected) {
-                assertTrue(expected.getMessage(), expected.getMessage().contains("nominal"));
-            }
-        }
+        assertEquals("[p, q]", node(h.getEquivalentDataProperties(dp(df, "p"))));
+        assertEquals(node(h.getEquivalentDataProperties(dp(df, "p"))), node(k.getEquivalentDataProperties(dp(df, "p"))));
+        assertEquals(nodes(h.getSuperDataProperties(dp(df, "q"), true)), nodes(k.getSuperDataProperties(dp(df, "q"), true)));
+        assertEquals(node(h.getTopDataPropertyNode()), node(k.getTopDataPropertyNode()));
     }
 
     @Test
@@ -505,14 +491,9 @@ public class ConventionsTest {
         assertTrue(k.getSubClasses(anonymous, false).isBottomSingleton());
         // Inside the data property fragment: nothing but the bottom property.
         assertTrue(k.getDisjointDataProperties(age).isBottomSingleton());
-        // Outside it the data property hierarchy still throws.
+        // Outside the syntactic fragment: answered via --data-properties.
         OWLOntology outside = IndividualsTest.parse(DATA_OUTSIDE);
-        try {
-            km(outside).getDisjointDataProperties(dp(df(outside), "p"));
-            fail("getDisjointDataProperties outside the fragment must throw, not answer");
-        } catch (UnsupportedOperationException expected) {
-            assertNotNull(expected.getMessage());
-        }
+        assertTrue(km(outside).getDisjointDataProperties(dp(df(outside), "p")).isBottomSingleton());
         // What the taxonomy answers is still answered.
         assertTrue(k.getSuperClasses(dog, false).containsEntity(
                 df.getOWLClass(IRI.create(IndividualsTest.NS + "Animal"))));
@@ -691,16 +672,17 @@ public class ConventionsTest {
 
     @Test
     public void unsupportedPrecomputationIsNotListedAndNotPretended() throws Exception {
-        OWLOntology o = IndividualsTest.parse(CLASSES);
-        OWLReasoner h = hermit(o);
-        KMReasoner k = km(o);
-        Set<InferenceType> hermit = h.getPrecomputableInferenceTypes();
-        Set<InferenceType> km = k.getPrecomputableInferenceTypes();
-        assertTrue("KM lists only types HermiT lists", hermit.containsAll(km));
-        assertTrue(km.contains(InferenceType.CLASS_HIERARCHY));
-        assertFalse(km.contains(InferenceType.OBJECT_PROPERTY_ASSERTIONS));
-        for (InferenceType t : InferenceType.values()) assertFalse("not yet computed: " + t, k.isPrecomputed(t));
-        k.precomputeInferences(km.toArray(new InferenceType[0]));
-        for (InferenceType t : km) assertTrue("computed: " + t, k.isPrecomputed(t));
+        for (String src : new String[]{CLASSES, BARE}) {
+            OWLOntology o = IndividualsTest.parse(src);
+            OWLReasoner h = hermit(o);
+            KMReasoner k = km(o);
+            assertEquals(h.getPrecomputableInferenceTypes(), k.getPrecomputableInferenceTypes());
+            for (InferenceType t : InferenceType.values()) assertFalse("not yet computed: " + t, k.isPrecomputed(t));
+            h.precomputeInferences(InferenceType.values());
+            k.precomputeInferences(InferenceType.values());
+            for (InferenceType t : InferenceType.values()) {
+                assertEquals(src + " " + t, h.isPrecomputed(t), k.isPrecomputed(t));
+            }
+        }
     }
 }
