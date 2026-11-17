@@ -2628,9 +2628,24 @@ fn exact_decimal_lexical(literal: &str) -> bool {
 ///   `NaN` (OWL 2 section 4.2, XSD 1.1 section 3.3.4).
 /// * `rdfs:Literal`, the top data range ("any set of data values that
 ///   contains the union of the value spaces of all datatypes").
+/// `true` for the fresh opaque literal `"v"^^<http://km.invalid/dataproperties[N]#free>`
+/// added by `orchestrate::data_properties::extension` for `--data-properties`.
+pub(crate) fn is_data_property_probe_value(name: &str) -> bool {
+    let Some(rest) = name.strip_prefix("__dt__val__\"v\"^^<http://km.invalid/dataproperties") else {
+        return false;
+    };
+    let Some(digits) = rest.strip_suffix("#free>") else {
+        return false;
+    };
+    digits.bytes().all(|byte| byte.is_ascii_digit())
+}
+
 pub(crate) fn bridge_tbox_atomic_family(name: &str) -> Option<&'static str> {
     if is_value_aux_name(name) {
         return None;
+    }
+    if is_data_property_probe_value(name) {
+        return Some("dataproperty_probe");
     }
     if let Some(family) = bridge_exact_atomic_family(name) {
         return Some(family);

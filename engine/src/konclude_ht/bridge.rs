@@ -1950,6 +1950,19 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         }
     }
     for &(role, datatype) in &role_existentials {
+        if crate::frontend::datatypes::is_data_property_probe_value(datatype) {
+            if role_ranges.get(&role).is_some_and(|ranges_for_role| {
+                ranges_for_role.iter().any(|&range| {
+                    matches!(
+                        crate::frontend::datatypes::bridge_tbox_atomic_family(range),
+                        Some("finite" | "boolean")
+                    )
+                })
+            }) {
+                defer!("a data-property probe occurs on a role with a finite range");
+            }
+            continue;
+        }
         let Some(ranges_for_role) = role_ranges.get(&role) else {
             continue;
         };
@@ -2477,10 +2490,21 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         !distinct
             && !disjoint_data
             && values.iter().all(|&value| {
-                crate::frontend::datatypes::bridge_value_identity_key(&tin.concepts[value]).is_some()
+                crate::frontend::datatypes::is_data_property_probe_value(&tin.concepts[value])
+                    || crate::frontend::datatypes::bridge_value_identity_key(&tin.concepts[value])
+                        .is_some()
             })
     };
     for &value in &values {
+        if crate::frontend::datatypes::is_data_property_probe_value(&tin.concepts[value]) {
+            if !relations.singletons.contains(&value) || !local_foralls.is_empty() {
+                defer!("a data-property probe lacks its singleton clause or meets a local forall");
+            }
+            if ranges.contains_key("finite") || ranges.contains_key("boolean") {
+                defer!("a data-property probe occurs with a finite or boolean range");
+            }
+            continue;
+        }
         if !relations.singletons.contains(&value)
             && !(singletons_elidable
                 && crate::frontend::datatypes::bridge_value_identity_key(&tin.concepts[value]).is_some())
@@ -2561,10 +2585,17 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         let complete = |value: usize| relations.class_digits.get(&relations.class(value))
             .filter(|digits| positions > 0 && digits.len() == positions
                 && digits.iter().all(|(position, _)| clashing_positions.contains(position)));
+        let concrete_values: Vec<usize> = values
+            .iter()
+            .copied()
+            .filter(|&value| {
+                !crate::frontend::datatypes::is_data_property_probe_value(&tin.concepts[value])
+            })
+            .collect();
         let mut index_of_class: crate::fxhash::FxHashMap<Vec<(u32, u32)>, usize> = Default::default();
         let mut indexed_classes: crate::fxhash::FxHashSet<usize> = Default::default();
         let mut rest: Vec<usize> = Vec::new();
-        for &value in &values {
+        for &value in &concrete_values {
             match complete(value) {
                 Some(bits) => {
                     let class = relations.class(value);
@@ -2583,7 +2614,7 @@ fn exact_atomic_datatype_bridge_fragment(tin: &TInput, source_mode: bool) -> boo
         let rest_position: crate::fxhash::FxHashMap<usize, usize> =
             rest.iter().enumerate().map(|(position, &value)| (value, position)).collect();
         for (position, &left) in rest.iter().enumerate() {
-            for &right in values.iter() {
+            for &right in concrete_values.iter() {
                 if right == left || rest_position.get(&right).is_some_and(|&other| other <= position) {
                     continue;
                 }
@@ -2921,9 +2952,16 @@ fn cell_literals_and_requirement<'a>(
         let heads = heads?;
         crate::frontend::datatypes::exact_enumerated_cover(tin.concepts.get(*c)?, &heads).then_some(heads)
     }).flatten().filter(|name| !mentioned.contains(name) && !sensitive.contains(name)).collect();
+    let has_probe_value = datatype_ids
+        .iter()
+        .any(|&concept| crate::frontend::datatypes::is_data_property_probe_value(&tin.concepts[concept]));
     let literals: Vec<&str> = datatype_ids.iter()
         .map(|&concept| tin.concepts[concept].as_str())
-        .filter(|name| name.starts_with("__dt__val__") && (distinct || sensitive.contains(name)))
+        .filter(|name| {
+            name.starts_with("__dt__val__")
+                && !crate::frontend::datatypes::is_data_property_probe_value(name)
+                && (distinct || sensitive.contains(name))
+        })
         .filter(|name| !cover_only.contains(name))
         .collect();
     if disjoint_data {
@@ -2943,9 +2981,9 @@ fn cell_literals_and_requirement<'a>(
             .chain(tin.nominal_abox.individuals.iter()
                 .flat_map(|individual| individual.assertions.iter().map(successors)))
             .sum();
-        return (literals, bound.saturating_add(2));
+        return (literals, bound.saturating_add(2 + u128::from(has_probe_value)));
     }
-    (literals, if distinct { 2 } else { 1 })
+    (literals, (if distinct { 2 } else { 1 }) + u128::from(has_probe_value))
 }
 
 /// Exact realizability of the decimal-tower vocabulary (`decimal`, the
@@ -3200,12 +3238,15 @@ fn tbox_extension_evidence_exact(
     }
     let is_extension = |concept: usize| {
         let name = &tin.concepts[concept];
-        !dt::bridge_exact_atomic_name(name) && dt::bridge_tbox_atomic_name(name)
+        !dt::bridge_exact_atomic_name(name)
+            && dt::bridge_tbox_atomic_name(name)
+            && !dt::is_data_property_probe_value(name)
     };
     if !datatype_ids.iter().any(|&concept| is_extension(concept)) {
         return true;
     }
     let literal = |concept: usize| dt::bridge_tbox_atomic_family(&tin.concepts[concept]) == Some("literal");
+    let probe_value = |concept: usize| dt::is_data_property_probe_value(&tin.concepts[concept]);
     let sensitive = body_sensitive_datatype_names(tin);
     if datatype_ids.iter().any(|&concept| literal(concept) && sensitive.contains(tin.concepts[concept].as_str())) {
         defer!("rdfs:Literal occurs in a body-sensitive position");
@@ -3213,7 +3254,7 @@ fn tbox_extension_evidence_exact(
     let included = |left: usize, right: usize| relations.includes(left, right);
     let separated = |left: usize, right: usize| relations.separated(left, right);
     for &member in datatype_ids.iter().filter(|&&concept| is_extension(concept) && !literal(concept)) {
-        for &other in datatype_ids.iter().filter(|&&other| other != member && !literal(other)) {
+        for &other in datatype_ids.iter().filter(|&&other| other != member && !literal(other) && !probe_value(other)) {
             let (left, right) = (&tin.concepts[member], &tin.concepts[other]);
             let mut decided = false;
             if dt::bridge_exact_atomic_subsumed(left, right) == Some(true) {
@@ -29028,5 +29069,192 @@ mod bridge_equivalent_non_candidate_tests {
                     "{axioms}: C has no subsumer");
             }
         }
+    }
+
+    #[test]
+    fn bridge_data_complement_unguarded_equivalence_is_admitted() {
+        let _test_env = crate::test_env::write();
+        for nominals in [false, true] {
+            let nominal_axiom = if nominals {
+                "Declaration(NamedIndividual(:y1998))\nSubClassOf(ObjectOneOf(:y1998) :Vintage)\n"
+            } else {
+                ""
+            };
+            let text = format!(
+                "Prefix(:=<http://example.org/dc#>)\n\
+                Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)\n\
+                Ontology(\n\
+                  Declaration(Class(:Wine))\n\
+                  Declaration(Class(:Vintage))\n\
+                  Declaration(Class(:Q))\n\
+                  Declaration(DataProperty(:yearValue))\n\
+                  {nominal_axiom}\
+                  DataPropertyDomain(:yearValue :Vintage)\n\
+                  DataPropertyRange(:yearValue xsd:positiveInteger)\n\
+                  EquivalentClasses(:Q DataSomeValuesFrom(:yearValue DataComplementOf(xsd:string)))\n\
+                )"
+            );
+            let _nom = if nominals {
+                crate::test_env::EnvVar::set("KM_NOMINALS", "1")
+            } else {
+                crate::test_env::EnvVar::remove("KM_NOMINALS")
+            };
+            crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+            let fr = crate::frontend::ofn_to_clauses(&text);
+            crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+            let fr = fr.expect("in fragment");
+            let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+            let projected = if nominals {
+                crate::orchestrate::race::native_nominal_bridge_clauses(
+                    &fr.clauses,
+                    &fr.nominal_abox,
+                    &fr.definers,
+                    true,
+                    false,
+                )
+            } else {
+                std::borrow::Cow::Borrowed(fr.clauses.as_slice())
+            };
+            let mut tin = crate::orchestrate::cb_to_ht::convert(
+                &projected,
+                Some(&fr.rbox),
+                &named,
+                &fr.cardinalities,
+                &fr.definers,
+                &fr.source_axioms,
+                true,
+                &fr.rules,
+                false,
+            );
+            tin.data_roles = fr
+                .data_roles
+                .iter()
+                .filter_map(|name| tin.roles.iter().position(|r| r == name))
+                .collect();
+            if nominals {
+                tin.nominal_abox = fr.nominal_abox;
+            }
+            assert!(
+                datatype_bridge_route_exact(&tin, true),
+                "unguarded data complement must be admitted (nominals={nominals})"
+            );
+            let res = bridged_classify_opts_with_trigger_absorption(&tin, true, true, true)
+                .unwrap_or_else(|| panic!("in bridge fragment: {:?}", take_bridge_defer_reason()));
+            assert!(res.consistent);
+            assert!(
+                res.subsumptions
+                    .contains(&(id(&tin.concepts, "Q"), id(&tin.concepts, "Vintage"))),
+                "Q ⊑ Vintage must hold (nominals={nominals})"
+            );
+        }
+    }
+
+    #[test]
+    fn bridge_data_property_probe_values_are_admitted() {
+        let _test_env = crate::test_env::write();
+        let base = "Prefix(:=<http://example.org/>)\n\
+            Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)\n\
+            Ontology(\n\
+              Declaration(Class(:Unit))\n\
+              Declaration(Class(:ShiftedUnit))\n\
+              Declaration(DataProperty(:hasDeltaH))\n\
+              Declaration(DataProperty(:isShiftedBy))\n\
+              SubClassOf(:ShiftedUnit :Unit)\n\
+              SubDataPropertyOf(:isShiftedBy :hasDeltaH)\n\
+              DataPropertyRange(:hasDeltaH xsd:decimal)\n\
+              DataPropertyRange(:isShiftedBy xsd:decimal)\n\
+              SubClassOf(:ShiftedUnit DataSomeValuesFrom(:isShiftedBy xsd:decimal))\n\
+            )";
+        let props = vec![":hasDeltaH".to_string(), ":isShiftedBy".to_string()];
+        let (ext, _) = crate::orchestrate::data_properties::extension(base, &props);
+        let extended = base.strip_suffix(')').unwrap().to_string() + "\n" + &ext + ")";
+        let _nom = crate::test_env::EnvVar::set("KM_NOMINALS", "1");
+        let _unk = crate::test_env::EnvVar::set("KM_UNKNOWN_DATATYPES", "free");
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+        let fr = crate::frontend::ofn_to_clauses(&extended);
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+        let fr = fr.expect("in fragment");
+        let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+        let mut tin = crate::orchestrate::cb_to_ht::convert(
+            &fr.clauses,
+            Some(&fr.rbox),
+            &named,
+            &fr.cardinalities,
+            &fr.definers,
+            &fr.source_axioms,
+            true,
+            &fr.rules,
+            false,
+        );
+        tin.data_roles = fr
+            .data_roles
+            .iter()
+            .filter_map(|name| tin.roles.iter().position(|r| r == name))
+            .collect();
+        assert!(
+            datatype_bridge_route_exact(&tin, true),
+            "data-property probe value must be admitted by datatype_bridge_route_exact"
+        );
+        let res = bridged_classify_opts_with_trigger_absorption(&tin, true, true, true)
+            .unwrap_or_else(|| panic!("in bridge fragment: {:?}", take_bridge_defer_reason()));
+        assert!(res.consistent);
+        assert!(
+            res.subsumptions
+                .contains(&(id(&tin.concepts, "some1"), id(&tin.concepts, "some0"))),
+            "isShiftedBy probe must be subsumed by hasDeltaH probe"
+        );
+    }
+
+    #[test]
+    fn bridge_negated_nominal_with_sort_relativized_reflexivity_is_admitted() {
+        let _test_env = crate::test_env::write();
+        let text = "Prefix(:=<http://example.org/red#>)\n\
+            Ontology(\n\
+              Declaration(Class(:Animal))\n\
+              Declaration(Class(:Person))\n\
+              Declaration(Class(:Q))\n\
+              Declaration(ObjectProperty(:knows))\n\
+              Declaration(ObjectProperty(:likes))\n\
+              Declaration(ObjectProperty(:dislikes))\n\
+              Declaration(NamedIndividual(:bob))\n\
+              ReflexiveObjectProperty(:knows)\n\
+              DisjointObjectProperties(:dislikes :likes)\n\
+              DisjointClasses(:Animal :Person)\n\
+              ClassAssertion(:Person :bob)\n\
+              EquivalentClasses(:Q ObjectComplementOf(ObjectOneOf(:bob)))\n\
+            )";
+        let _nom = crate::test_env::EnvVar::set("KM_NOMINALS", "1");
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(true));
+        let fr = crate::frontend::ofn_to_clauses(text);
+        crate::frontend::normalise::TEST_TRIGGER_ABSORB.with(|flag| flag.set(false));
+        let fr = fr.expect("in fragment");
+        let named: std::collections::HashSet<String> = fr.named.iter().cloned().collect();
+        let projected = crate::orchestrate::race::native_nominal_bridge_clauses(
+            &fr.clauses,
+            &fr.nominal_abox,
+            &fr.definers,
+            true,
+            false,
+        );
+        let mut tin = crate::orchestrate::cb_to_ht::convert(
+            &projected,
+            Some(&fr.rbox),
+            &named,
+            &fr.cardinalities,
+            &fr.definers,
+            &fr.source_axioms,
+            true,
+            &fr.rules,
+            false,
+        );
+        tin.nominal_abox = fr.nominal_abox;
+        let res = bridged_classify_opts_with_trigger_absorption(&tin, true, true, true)
+            .unwrap_or_else(|| panic!("in bridge fragment: {:?}", take_bridge_defer_reason()));
+        assert!(res.consistent);
+        assert!(
+            res.subsumptions
+                .contains(&(id(&tin.concepts, "Animal"), id(&tin.concepts, "Q"))),
+            "Animal ⊑ ¬{{bob}} must hold since bob : Person and Animal ⊓ Person ⊑ ⊥"
+        );
     }
 }

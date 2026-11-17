@@ -1605,7 +1605,7 @@ fn native_nominal_clause_represented(clause: &JClause, index: &NativeNominalInde
 /// making `cb_to_ht` count the unsupported construct and forcing a bridge
 /// defer. The original clause file is untouched and remains the input of the
 /// nominal-aware CB arm.
-fn native_nominal_bridge_clauses<'a>(
+pub(crate) fn native_nominal_bridge_clauses<'a>(
     clauses: &'a [JClause],
     nominal_abox: &crate::json_io::NominalAboxMeta,
     definers: &[crate::json_io::DefinerMeta],

@@ -3741,7 +3741,26 @@ fn convert_with_rule_abox(
         {
             eq_clauses.push(c.clone());
         } else {
-            passthrough.push(c.clone());
+            if !source_axioms.is_empty()
+                && matches!(
+                    c.body.as_slice(),
+                    [JAtom::Concept { concept, term: JTerm::Var { name: vx } }]
+                        if concept == crate::frontend::sorts::DATA_SORT
+                            && !c.head.is_empty()
+                            && c.head.iter().all(|atom| matches!(
+                                atom,
+                                JAtom::Concept { concept: hc, term: JTerm::Var { name: hv } }
+                                    if hc.starts_with("__dt__") && hv == vx
+                            ))
+                )
+            {
+                passthrough.push(JClause {
+                    body: Vec::new(),
+                    head: c.head.clone(),
+                });
+            } else {
+                passthrough.push(c.clone());
+            }
         }
     }
 
@@ -6098,9 +6117,11 @@ pub fn elim_complements(ht: Vec<HtClause>, con_names: &[String]) -> (Vec<HtClaus
     let mut used: HashSet<usize> = HashSet::new();
     for p in pairs {
         let (a, b) = p; // canonical a<=b == Python sorted(p) -> (a,b)
-        if con_names.get(a).is_some_and(|n| n == crate::frontend::sorts::DATA_SORT)
-            || con_names.get(b).is_some_and(|n| n == crate::frontend::sorts::DATA_SORT)
-        {
+        if con_names.get(a).is_some_and(|n| {
+            n == crate::frontend::sorts::DATA_SORT || n.starts_with("__dt__")
+        }) || con_names.get(b).is_some_and(|n| {
+            n == crate::frontend::sorts::DATA_SORT || n.starts_with("__dt__")
+        }) {
             continue;
         }
                         // Completeness: keep the excluded-middle ⊤⊑A∨B unfolded if a side both
