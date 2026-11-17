@@ -326,6 +326,7 @@ final class ForestABoxRollup {
         }
         stripped.append(")\n");
 
+        KMReasoner.recordReduction("R01_forest_abox_rollup");
         ForestABoxRollup out = new ForestABoxRollup(stripped.toString());
         out.roleAssertions.addAll(opAssertions);
         out.sameAxioms.addAll(sameList);
@@ -415,39 +416,21 @@ final class ForestABoxRollup {
      * distinct values on a functional data property or their rolled-up classes
      * are disjoint.
      */
-    List<OWLNamedIndividual> computeDifferentIndividuals(
-            OWLNamedIndividual ind,
-            OWLDataFactory df,
-            java.util.function.BiPredicate<OWLClass, OWLClass> classesDisjoint) {
-        List<OWLNamedIndividual> diff = new ArrayList<>();
-        if (!allIndividuals.contains(ind)) return diff;
-        OWLClass cA = effectiveClassOf(ind, df);
-        for (OWLNamedIndividual b : allIndividuals) {
-            if (b.equals(ind)) continue;
-            boolean conflict = false;
-            for (OWLDataProperty dp : functionalDataProperties) {
-                Map<OWLNamedIndividual, Set<OWLLiteral>> m = dataAssertions.get(dp);
-                if (m == null) continue;
-                Set<OWLLiteral> va = m.get(ind);
-                Set<OWLLiteral> vb = m.get(b);
-                if (va != null && !va.isEmpty() && vb != null && !vb.isEmpty()) {
-                    Object ka = DataValues.valueKey(va.iterator().next());
-                    Object kb = DataValues.valueKey(vb.iterator().next());
-                    if (!ka.equals(kb)) {
-                        conflict = true;
-                        break;
-                    }
-                }
+    boolean hasFunctionalDataConflict(OWLNamedIndividual a, OWLNamedIndividual b) {
+        if (!allIndividuals.contains(a) || !allIndividuals.contains(b) || a.equals(b)) return false;
+        KMReasoner.recordReduction("R03_rollup_different_individuals");
+        for (OWLDataProperty dp : functionalDataProperties) {
+            Map<OWLNamedIndividual, Set<OWLLiteral>> m = dataAssertions.get(dp);
+            if (m == null) continue;
+            Set<OWLLiteral> va = m.get(a);
+            Set<OWLLiteral> vb = m.get(b);
+            if (va != null && !va.isEmpty() && vb != null && !vb.isEmpty()) {
+                Object ka = DataValues.valueKey(va.iterator().next());
+                Object kb = DataValues.valueKey(vb.iterator().next());
+                if (!ka.equals(kb)) return true;
             }
-            if (!conflict && cA != null) {
-                OWLClass cB = effectiveClassOf(b, df);
-                if (cB != null && classesDisjoint.test(cA, cB)) {
-                    conflict = true;
-                }
-            }
-            if (conflict) diff.add(b);
         }
-        return diff;
+        return false;
     }
 
     OWLClass effectiveClassOf(OWLNamedIndividual ind, OWLDataFactory df) {
@@ -700,6 +683,7 @@ final class ForestABoxRollup {
                 }
             }
         }
+        KMReasoner.recordReduction("R05_positive_rbox_properties");
         return props;
     }
 
@@ -713,6 +697,7 @@ final class ForestABoxRollup {
             boolean onlyThingUnsat,
             java.util.function.BiPredicate<OWLNamedIndividual, OWLClass> hasEntailedType) {
         if (tryBuildPositiveRBoxProperties(snapshot, onlyThingUnsat) == null) return null;
+        KMReasoner.recordReduction("R06_positive_rbox_values");
         List<OWLObjectProperty> ops = new ArrayList<>(snapshot.getObjectPropertiesInSignature());
         ops.removeIf(p -> p.isOWLTopObjectProperty() || p.isOWLBottomObjectProperty());
         ops.sort(Comparator.comparing(p -> p.getIRI().toString()));
@@ -1193,6 +1178,7 @@ final class ForestABoxRollup {
             }
         }
         if (!anyFiltered) return null;
+        KMReasoner.recordReduction("R07_swrl_rule_pregrounding");
         try {
             OWLOntologyManager mgr = org.semanticweb.owlapi.apibinding.OWLManager.createOWLOntologyManager();
             OWLOntology copy = mgr.createOntology();
