@@ -28,7 +28,7 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCR = os.environ.get('H3_SCR', '/mnt/data1/leechuck/km-work/v170/scratch/h3')
 KM = os.environ.get('H3_KM', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-8dc6c4a7')
-REF = os.environ.get('H3_REF', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-owl-reference-h5-0cb85570')
+REF = os.environ.get('H3_REF', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-owl-reference-h6-9873d697')
 PROD = os.environ.get('H3_PROD', os.path.join(SCR, 'target/release/km-hints'))
 THING = 'http://www.w3.org/2002/07/owl#Thing'
 NOTHING = 'http://www.w3.org/2002/07/owl#Nothing'
@@ -181,36 +181,57 @@ def main():
             add = [x for x in (THING, NOTHING) if x not in names]
             with open(cf, 'w') as f:
                 f.write('\n'.join(names + add) + '\n')
-            s0 = s1 or 0
-            rc1, s1, m1, _, e1 = ref(['--witness-route', '--classes', cf, '--print-index'], src, 300, out=bi)
         if rc1 == 0:
             extra = ['--classes', cf] if os.path.exists(cf) else []
             rc2, s2, m2, _, e2 = ref(['--witness-route'] + extra + ['--print-clauses'], src, 300, out=bc)
-        R['dump'] = {'rc': rc2 if rc1 == 0 else rc1, 'secs': round(s0 + (s1 or 0) + (s2 or 0), 2), 'rss_mb': max(m1 or 0, m2 or 0)}
+        R['dump'] = {'rc': rc2 if rc1 == 0 else rc1, 'secs': round((s1 or 0) + (s2 or 0), 2), 'rss_mb': max(m1 or 0, m2 or 0)}
         if rc1 != 0 or rc2 != 0:
             R['status'] = 'dump-failed'
             R['dump']['err'] = ((e1 or '') + (e2 or ''))[-200:]
             return finish(R, outdir, t0)
         R['dump']['bytes'] = os.path.getsize(bi) + os.path.getsize(bc)
         # the Self routes allow a loop only at a nominal element: no loops then
-        rc0, _, _, o0, _ = ref(['--witness-route', '--classes', cf, '--check'], src, 300)
+        o0 = None
+        cpath = os.path.join(HERE, '../c3-census/census-h2-witness.tsv')
+        if os.path.exists(cpath):
+            for line in open(cpath):
+                w = line.rstrip('\n').split('\t')
+                if len(w) >= 3 and w[0] == R['input'] and w[2].startswith('accepted '):
+                    o0 = ' '.join(w[2].split()[:2])
+                    break
+        if not o0:
+            rc0, _, _, o0, _ = ref(['--witness-route', '--classes', cf, '--check'], src, 300)
         R['route'] = (o0 or '').strip()[-40:]
     loops = [] if 'self' not in (o0 or '') else ['--no-loops']
-    for fn in os.listdir(outdir):
-        if re.match(r'^(?:model\d+\.(?:hint|wit)|check\d+\.jsonl)$', fn):
-            try:
-                os.remove(os.path.join(outdir, fn))
-            except OSError:
-                pass
-    rc, s, m, out, err = run([PROD, 'produce'] + loops + ['--index', bi, '--clauses', bc, '--km', kl, '--out', outdir,
-                              '--time', str(ptime)], ptime + 120, mem_kb=24000000)
-    R['producer_run'] = {'rc': rc, 'secs': s, 'rss_mb': m}
-    if rc != 0 or not out:
-        R['status'] = 'producer-failed'
-        R['producer_run']['err'] = (err or '')[-300:]
-        return finish(R, outdir, t0)
-    P = json.loads(out)
-    R['producer'] = P
+    old_P = old_R.get('producer', {})
+    old_models = old_P.get('models', [])
+    if ('--recheck' in a and old_R.get('status') == 'model-full' and old_models and
+            all(os.path.exists(os.path.join(outdir, f'model{m["model"]}.hint')) and
+                os.path.exists(os.path.join(outdir, f'model{m["model"]}.wit')) for m in old_models)):
+        R['producer_run'] = old_R.get('producer_run', {'rc': 0, 'secs': 0.0, 'rss_mb': 0})
+        P = old_P
+        R['producer'] = P
+    else:
+        for fn in os.listdir(outdir):
+            if re.match(r'^(?:model\d+\.(?:hint|wit)|check\d+\.jsonl)$', fn):
+                try:
+                    os.remove(os.path.join(outdir, fn))
+                except OSError:
+                    pass
+        rc, s, m, out, err = run([PROD, 'produce'] + loops + ['--index', bi, '--clauses', bc, '--km', kl, '--out', outdir,
+                                  '--time', str(ptime)], ptime + 120, mem_kb=8000000)
+        R['producer_run'] = {'rc': rc, 'secs': s, 'rss_mb': m}
+        if rc != 0 or not out:
+            err_s = (err or '')[-300:]
+            if 'memory' in err_s.lower() or 'allocation' in err_s.lower() or rc in (134, 137, 139) or (m or 0) >= 7500:
+                R['status'] = 'producer-memout'
+                R['producer_run']['reason'] = 'memory cap (8 GB)'
+            else:
+                R['status'] = 'producer-failed'
+            R['producer_run']['err'] = err_s
+            return finish(R, outdir, t0)
+        P = json.loads(out)
+        R['producer'] = P
     tot = P['rows']
     unc = P['unchecked']
     R['rows_total'] = 1 + tot['sat'] + tot['nonsub'] + tot['nontype']
@@ -310,6 +331,13 @@ def main():
                     indunc[x] = cur if x not in indunc else (indunc[x] & cur)
                     for c in bad[:3]:
                         disagree.append('proved %s not in %s; km lists the type' % (x, c))
+        try:
+            if os.path.exists(hp) and os.path.getsize(hp) > 50 * 1024 * 1024:
+                os.remove(hp)
+            if os.path.exists(op) and os.path.getsize(op) > 50 * 1024 * 1024:
+                os.remove(op)
+        except OSError:
+            pass
         k += 1
     nc = len(cls)
     for A in [THING] + cls:

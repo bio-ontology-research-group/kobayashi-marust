@@ -29,7 +29,9 @@ fn read(p: &str) -> String {
     match std::fs::read_to_string(p) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("km-hints: cannot read {}: {}", p, e);
+            let msg = format!("cannot read {}: {}", p, e).replace('"', "'");
+            println!("{{\"ok\":false,\"why\":\"{}\",\"reason\":\"{}\"}}", msg, msg);
+            eprintln!("km-hints: {}", msg);
             exit(2)
         }
     }
@@ -39,7 +41,9 @@ fn load_nf(idx: &str, cl: &str) -> nf::Nf {
     match nf::Nf::parse(&read(idx), &read(cl)) {
         Ok(n) => n,
         Err(e) => {
-            eprintln!("km-hints: {}", e);
+            let msg = format!("{}", e).replace('"', "'");
+            println!("{{\"ok\":false,\"why\":\"{}\",\"reason\":\"{}\"}}", msg, msg);
+            eprintln!("km-hints: {}", msg);
             exit(2)
         }
     }
@@ -48,16 +52,19 @@ fn load_nf(idx: &str, cl: &str) -> nf::Nf {
 fn main() {
     let a: Vec<String> = std::env::args().collect();
     if a.len() < 2 {
-        eprintln!("usage: km-hints produce|rowhint ...");
+        println!("{{\"ok\":false,\"why\":\"missing subcommand\",\"reason\":\"missing subcommand\"}}");
+        eprintln!("usage: km-hints produce|from-export|rowhint ...");
         exit(2);
     }
     let need = |k: &str| {
         arg(&a, k).unwrap_or_else(|| {
+            println!("{{\"ok\":false,\"why\":\"missing {}\",\"reason\":\"missing {}\"}}", k, k);
             eprintln!("km-hints: missing {}", k);
             exit(2)
         })
     };
-    let time: f64 = arg(&a, "--time").and_then(|s| s.parse().ok()).unwrap_or(600.0);
+    let default_time = if a.get(1).map(String::as_str) == Some("from-export") { 120.0 } else { 600.0 };
+    let time: f64 = arg(&a, "--time").and_then(|s| s.parse().ok()).unwrap_or(default_time);
     let cfg = build::Config {
         max_models: arg(&a, "--max-models").and_then(|s| s.parse().ok()).unwrap_or(4),
         retries: arg(&a, "--retries").and_then(|s| s.parse().ok()).unwrap_or(6),
@@ -140,7 +147,9 @@ fn main() {
             }
         }
         _ => {
-            eprintln!("km-hints: unknown command {}", a[1]);
+            let msg = format!("unknown command {}", a[1]).replace('"', "'");
+            println!("{{\"ok\":false,\"why\":\"{}\",\"reason\":\"{}\"}}", msg, msg);
+            eprintln!("km-hints: {}", msg);
             exit(2)
         }
     }

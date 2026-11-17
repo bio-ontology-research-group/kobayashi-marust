@@ -33,6 +33,10 @@ pub fn verify(en: &mut Engine, m: &Model) -> Report {
             edge_map.insert((x, y), l);
         }
     }
+    let mut ok_labs: crate::engine::FxSet<(u32, Option<u32>, bool)> = crate::engine::FxSet::default();
+    let has_all = !nf.all.is_empty();
+    let has_ge = !nf.ge.is_empty();
+    let has_le = !nf.le.is_empty();
     for &x in &ids {
         let e = &m.elems[x as usize];
         let ts = en.sets.get(e.ty);
@@ -62,7 +66,7 @@ pub fn verify(en: &mut Engine, m: &Model) -> Report {
             }
         }
         // edges
-        let mut nbrs: Vec<(Id, std::rc::Rc<[u32]>)> = Vec::new();
+        let mut nbrs: Vec<(Id, std::rc::Rc<[u32]>)> = Vec::with_capacity(e.edges.len());
         for &(y, l) in &e.edges {
             if !m.elems[y as usize].alive || m.uf[y as usize] != y {
                 note(&mut rep, x, format!("edge to a dead element {}", y));
@@ -72,43 +76,61 @@ pub fn verify(en: &mut Engine, m: &Model) -> Report {
             if ls.is_empty() {
                 continue;
             }
-            for &r in ls.iter() {
-                for &s in &nf.up[r as usize] {
-                    if ls.binary_search(&s).is_err() {
-                        note(&mut rep, x, format!("label to {} not up-closed", y));
-                    }
-                }
-            }
-            // symmetry
             let back = edge_map.get(&(y, x)).copied();
-            let want: Vec<u32> = {
-                let mut v: Vec<u32> = ls.iter().map(|r| r ^ 1).collect();
-                v.sort_unstable();
-                v
-            };
-            match back {
-                Some(bl) if y != x => {
-                    if *en.labs.get(bl) != *want.as_slice() {
-                        note(&mut rep, x, format!("edge to {} not symmetric", y));
+            let lkey = (l, back, y == x);
+            if !ok_labs.contains(&lkey) {
+                let mut lab_ok = true;
+                for &r in ls.iter() {
+                    for &s in &nf.up[r as usize] {
+                        if ls.binary_search(&s).is_err() {
+                            note(&mut rep, x, format!("label to {} not up-closed", y));
+                            lab_ok = false;
+                        }
                     }
                 }
-                None => note(&mut rep, x, format!("edge to {} has no reverse", y)),
-                _ => {
-                    if *ls != *want.as_slice() {
-                        note(&mut rep, x, "loop label not closed under inverse".into());
+                let want: Vec<u32> = {
+                    let mut v: Vec<u32> = ls.iter().map(|r| r ^ 1).collect();
+                    v.sort_unstable();
+                    v
+                };
+                match back {
+                    Some(bl) if y != x => {
+                        if *en.labs.get(bl) != *want.as_slice() {
+                            note(&mut rep, x, format!("edge to {} not symmetric", y));
+                            lab_ok = false;
+                        }
                     }
+                    None => {
+                        note(&mut rep, x, format!("edge to {} has no reverse", y));
+                        lab_ok = false;
+                    }
+                    _ => {
+                        if *ls != *want.as_slice() {
+                            note(&mut rep, x, "loop label not closed under inverse".into());
+                            lab_ok = false;
+                        }
+                    }
+                }
+                if lab_ok {
+                    ok_labs.insert(lkey);
                 }
             }
-            let tys = en.sets.get(m.elems[y as usize].ty);
-            for &a in ts.iter() {
-                for &(s, c) in nf.all_by.get(a) {
-                    if ls.binary_search(&s).is_ok() && tys.binary_search(&c).is_err() {
-                        note(&mut rep, x, format!("universal {} {} {} fails at {}", a, s, c, y));
+            if has_all {
+                let tys = en.sets.get(m.elems[y as usize].ty);
+                for &a in ts.iter() {
+                    for &(s, c) in nf.all_by.get(a) {
+                        if ls.binary_search(&s).is_ok() && tys.binary_search(&c).is_err() {
+                            note(&mut rep, x, format!("universal {} {} {} fails at {}", a, s, c, y));
+                        }
                     }
                 }
             }
             nbrs.push((y, ls));
         }
+        let has_nbr = |r: u32, b: u32| -> bool {
+            nbrs.iter()
+                .any(|(y, ls)| ls.binary_search(&r).is_ok() && en.sets.has(m.elems[*y as usize].ty, b))
+        };
         let count = |r: u32, b: u32| -> usize {
             let mut c = 0;
             for (y, ls) in &nbrs {
@@ -118,21 +140,84 @@ pub fn verify(en: &mut Engine, m: &Model) -> Report {
             }
             c
         };
-        for &a in ts.iter() {
-            for &(r, b) in nf.ex_by.get(a) {
-                if count(r, b) < 1 {
-                    note(&mut rep, x, format!("existential {} {} {} unmet", a, r, b));
+        if nbrs.len() > 16 {
+            let mut need_by_r: crate::engine::FxMap<u32, crate::engine::FxSet<u32>> =
+                crate::engine::FxMap::default();
+            for &a in ts.iter() {
+                for &(r, b) in nf.ex_by.get(a) {
+                    need_by_r.entry(r).or_default().insert(b);
                 }
             }
-            for &(k, r, b) in nf.ge_by.get(a) {
-                if count(r, b) < k as usize {
-                    note(&mut rep, x, format!("at-least {} {} {} {} unmet", a, k, r, b));
+            if !need_by_r.is_empty() {
+                for (y, ls) in &nbrs {
+                    if need_by_r.is_empty() {
+                        break;
+                    }
+                    let ty = m.elems[*y as usize].ty;
+                    let tys = en.sets.get(ty);
+                    for &r in ls.iter() {
+                        let mut empty = false;
+                        if let Some(bs) = need_by_r.get_mut(&r) {
+                            if bs.len() > tys.len() {
+                                for &c in tys.iter() {
+                                    bs.remove(&c);
+                                }
+                            } else {
+                                bs.retain(|b| tys.binary_search(b).is_err());
+                            }
+                            empty = bs.is_empty();
+                        }
+                        if empty {
+                            need_by_r.remove(&r);
+                        }
+                    }
+                }
+                if !need_by_r.is_empty() {
+                    for &a in ts.iter() {
+                        for &(r, b) in nf.ex_by.get(a) {
+                            if need_by_r.get(&r).map(|bs| bs.contains(&b)).unwrap_or(false) {
+                                note(&mut rep, x, format!("existential {} {} {} unmet", a, r, b));
+                            }
+                        }
+                    }
                 }
             }
-            for &(k, r, b) in nf.le_by.get(a) {
-                let c = count(r, b);
-                if c > k as usize {
-                    note(&mut rep, x, format!("at-most {} {} {} {} exceeded ({})", a, k, r, b, c));
+            if has_ge || has_le {
+                for &a in ts.iter() {
+                    for &(k, r, b) in nf.ge_by.get(a) {
+                        if count(r, b) < k as usize {
+                            note(&mut rep, x, format!("at-least {} {} {} {} unmet", a, k, r, b));
+                        }
+                    }
+                    for &(k, r, b) in nf.le_by.get(a) {
+                        let c = count(r, b);
+                        if c > k as usize {
+                            note(&mut rep, x, format!("at-most {} {} {} {} exceeded ({})", a, k, r, b, c));
+                        }
+                    }
+                }
+            }
+        } else {
+            for &a in ts.iter() {
+                for &(r, b) in nf.ex_by.get(a) {
+                    if !has_nbr(r, b) {
+                        note(&mut rep, x, format!("existential {} {} {} unmet", a, r, b));
+                    }
+                }
+                if has_ge {
+                    for &(k, r, b) in nf.ge_by.get(a) {
+                        if count(r, b) < k as usize {
+                            note(&mut rep, x, format!("at-least {} {} {} {} unmet", a, k, r, b));
+                        }
+                    }
+                }
+                if has_le {
+                    for &(k, r, b) in nf.le_by.get(a) {
+                        let c = count(r, b);
+                        if c > k as usize {
+                            note(&mut rep, x, format!("at-most {} {} {} {} exceeded ({})", a, k, r, b, c));
+                        }
+                    }
                 }
             }
         }

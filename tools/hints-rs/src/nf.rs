@@ -195,9 +195,11 @@ impl Nf {
                     let r = role(w.next(), line)?;
                     let b = num(w.next(), line)?;
                     if d == "atleast" {
-                        nf.ge.push((a, k, r, b))
+                        if k > 0 {
+                            nf.ge.push((a, k, r, b));
+                        }
                     } else {
-                        nf.le.push((a, k, r, b))
+                        nf.le.push((a, k, r, b));
                     }
                 }
                 "chain" => {
