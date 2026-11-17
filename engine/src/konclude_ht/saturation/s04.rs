@@ -696,15 +696,14 @@ impl super::algorithm::SaturationTaskHandleAlgorithm {
         con_sat_pro_linker: ConceptSaturationProcessLinkerId,
         calc_alg_context: &mut CalculationAlgorithmContextBase,
     ) {
-        // PORT-PENDING (see doc-comment transcription). W4-DEFER[api]: descriptor
-        // chain, reapply label-set / role-succ-hash satellite reads, the backend
-        // association cache handler (W6-DEFER[api]), the status/critical masks, and
-        // the ~10 siblings are all not yet ported.
-        let _ = (
-            &mut *process_indi,
-            con_sat_pro_linker,
-            &mut *calc_alg_context,
+        let _ = con_sat_pro_linker;
+        self.update_direct_adding_individual_status_flags(
+            *process_indi,
+            IndividualSaturationProcessNodeStatusFlags::INDSATFLAGINSUFFICIENT
+                | IndividualSaturationProcessNodeStatusFlags::INDSATFLAGNOMINALCONNECTION,
+            calc_alg_context,
         );
+        self.set_insufficient_node_occured(calc_alg_context);
     }
 
     // =======================================================================

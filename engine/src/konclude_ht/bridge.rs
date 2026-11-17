@@ -14552,14 +14552,36 @@ fn extract_saturation_outcome(
             let sat_node = ctx.process_context().sat_node(node);
             let ind = sat_node.indirect_status_flags.get_flags();
             let dir = sat_node.direct_status_flags.get_flags();
+            let flags = ind | dir;
+            let nominal_or_incomplete = (bridged.has_native_nominals()
+                && (flags & F::INDSATFLAGNOMINALCONNECTION != 0
+                    || sat_node.is_abox_individual_representation_node()))
+                || (!sat_node.is_completed() && flags & F::INDSATFLAGCLASHED == 0);
             (
-                ind & F::INDSATFLAGCLASHED != 0,
-                ind & F::INDSATFLAGINSUFFICIENT != 0,
-                ind & F::INDSATFLAGUNPROCESSED != 0,
-                dir & F::INDSATFLAGEQCANDPROPLEMATIC != 0,
+                flags & F::INDSATFLAGCLASHED != 0,
+                flags & F::INDSATFLAGINSUFFICIENT != 0 || nominal_or_incomplete,
+                flags & F::INDSATFLAGUNPROCESSED != 0,
+                flags & F::INDSATFLAGEQCANDPROPLEMATIC != 0,
             )
         };
-        let (b_clash, b_insuf, b_unproc, _b_eqprob) = read(base_node, ctx);
+        let (mut b_clash, mut b_insuf, mut b_unproc, _b_eqprob) = read(base_node, ctx);
+        {
+            let mut chain_node = base_node;
+            while ctx
+                .process_context()
+                .sat_node(chain_node)
+                .has_substitute_individual_node()
+            {
+                let (c_clash, c_insuf, c_unproc, _) = read(chain_node, ctx);
+                b_clash |= c_clash;
+                b_insuf |= c_insuf;
+                b_unproc |= c_unproc;
+                chain_node = ctx
+                    .process_context()
+                    .sat_node(chain_node)
+                    .get_substitute_individual_node();
+            }
+        }
         let (r_clash, r_insuf, r_unproc, r_eqprob) = read(resolved, ctx);
         if std::env::var_os("KM_SAT_DEBUG").is_some() {
             eprintln!(
@@ -14631,7 +14653,7 @@ fn extract_saturation_outcome(
                     index != i && subs.binary_search(&index).is_err()
                 })
             });
-        if !missing_equivalence {
+        if !missing_equivalence && (!bridged.has_native_nominals() || bridged.unguarded_top_gcis == 0) {
             certain_subsumers[i] = Some(subs);
         }
     }
@@ -15815,6 +15837,8 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // `saturation_expansion_concept_count` are 0 by construction and every
     // generated successor is expanded by the tableau instead of being replayed
     // from, and blocked by, its saturation node.
+    let native_saturation_outcome_requested =
+        use_saturation && std::env::var_os("KM_HT_NO_NATIVE_SAT_OUTCOME").is_none();
     let native_saturation_coupling_requested =
         use_satcache && native_nominals && !independent_abox_elided;
     let use_saturation = use_saturation && (!native_nominals || independent_abox_elided);
@@ -15934,6 +15958,7 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     out.subsumptions
         .extend(saturation_known_pairs.iter().copied());
     let mut native_saturation_ran = false;
+    let mut precomputed_saturation_outcome: Option<SaturationOutcome> = None;
     // Armed once, after the precomputation saturation has COMPLETED and its
     // concept→saturation reference linkings have been verified to be present,
     // in range and disjoint from the ABox representation nodes. Stays false on
@@ -16043,6 +16068,27 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                         return None;
                     }
                     native_saturation_ran = true;
+                    if native_saturation_outcome_requested && bridged.unguarded_top_gcis == 0 {
+                        if let Some(mut extracted) =
+                            extract_finished_saturation_outcome(&mut ctx, &bridged, true)
+                        {
+                            let any_certified = extracted.sat_verdict.iter().enumerate().any(
+                                |(idx, verdict)| {
+                                    *verdict == Some(true)
+                                        || (*verdict == Some(false)
+                                            && extracted.certain_subsumers[idx].is_some())
+                                },
+                            );
+                            if any_certified {
+                                for sub in 0..n_named {
+                                    if !extracted.label_certified(sub) {
+                                        extracted.known_subsumers[sub].clear();
+                                    }
+                                }
+                                precomputed_saturation_outcome = Some(extracted);
+                            }
+                        }
+                    }
                     advance_native_precomputation_phase(
                         &mut precomputation_phase,
                         NativePrecomputationPhase::FullConsistencyCompletion,
@@ -16546,6 +16592,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 native_saturation_ran,
                 independent_abox_elided,
             );
+            if native_saturation_coupling {
+                install_bridge_saturation_node_expansion_cache(&mut ctx);
+            }
         }
     }
     let certified_unsatisfiable: crate::fxhash::FxHashSet<usize> = bridged
@@ -16581,10 +16630,12 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
     // with the coupling (u08/u17/u22) armed when `use_satcache`.
     let mut saturation_ran = native_saturation_ran;
     let mut satcache_active = false;
-    if use_saturation {
+    if use_saturation || precomputed_saturation_outcome.is_some() {
         let t_sat = std::time::Instant::now();
         let mut saturation_complete = true;
-        let outcome = if use_satcache {
+        let outcome = if let Some(precomputed) = precomputed_saturation_outcome.take() {
+            Some(precomputed)
+        } else if use_satcache {
             let native_consistency_prefix = bridged
                 .native_consistency_nominal_nondeterministic_prefix
                 .borrow()
@@ -16724,10 +16775,17 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
             // SCHEDULING unconditionally; only certified labels (see
             // `SaturationOutcome::label_certified`) may enter the trusted
             // subsumer sets that `certain_subsumer` accepts without a probe.
+            for &(sub, sup) in &saturation_known_pairs {
+                if sub < n_named && sup < n_named && sub != sup {
+                    if let Err(pos) = outcome.known_subsumers[sub].binary_search(&sup) {
+                        outcome.known_subsumers[sub].insert(pos, sup);
+                    }
+                }
+            }
             let known_subsumers_entailed: Vec<bool> = (0..n_named)
                 .map(|subject| outcome.label_certified(subject))
                 .collect();
-            let state = classifier.initialize_synchronous_kpset_from_saturation_data(
+            let mut state = classifier.initialize_synchronous_kpset_from_saturation_data(
                 &bridged.named,
                 &outcome.sat_verdict,
                 &outcome.certain_subsumers,
@@ -16736,9 +16794,25 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                 &pending,
                 ctx.ontology_arenas().concepts(),
             );
+            for &(sub, sup) in &saturation_known_pairs {
+                if sub < n_named
+                    && sup < n_named
+                    && sub != sup
+                    && !known_subsumers_entailed[sub]
+                    && state.item_ids[sub].is_some()
+                    && state.item_ids[sup].is_some()
+                {
+                    if let Some(item) = state
+                        .ontology_item
+                        .get_concept_satisfiable_test_item_mut(state.item_ids[sub])
+                    {
+                        item.add_subsuming_concept_item(state.item_ids[sup]);
+                    }
+                }
+            }
             pending = state.ordered_subjects.clone();
             kpset_state = Some(state);
-            saturation_ran = use_satcache && saturation_complete;
+            saturation_ran = native_saturation_ran || (use_satcache && saturation_complete);
             satcache_active = use_satcache && saturation_complete;
             if progress {
                 eprintln!(
