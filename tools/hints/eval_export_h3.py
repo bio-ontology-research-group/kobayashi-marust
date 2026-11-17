@@ -18,7 +18,7 @@ import time
 from collections import defaultdict
 
 SCR = os.environ.get('H3_SCR', '/mnt/data1/leechuck/km-work/v170/scratch/h3')
-KM_EXPORT = os.environ.get('H3_KM_EXPORT', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-eedbde8e')
+KM_EXPORT = os.environ.get('H3_KM_EXPORT', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-77b79850')
 REF = os.environ.get('H3_REF', '/mnt/data1/leechuck/km-work/v170/scratch/bin/km-owl-reference-h6-9873d697')
 PROD = os.environ.get('H3_PROD', os.path.join(SCR, 'target/release/km-hints'))
 CORPUS = '/mnt/data2/workspaces/leechuck/software/kobayashi-marust/v150-corpus/files'
@@ -70,7 +70,7 @@ def eval_one(item):
     os.makedirs(wdir, exist_ok=True)
     try:
         exp_f = os.path.join(wdir, 'exp.jsonl')
-        rc_e, km_exp_s, _, _ = run_cmd([KM_EXPORT, 'classify', '--export-model', exp_f, owl], 240, 16000000)
+        rc_e, km_exp_s, km_out, _ = run_cmd([KM_EXPORT, 'classify', '--lines', '--export-model', exp_f, owl], 240, 16000000)
         if rc_e != 0 or not os.path.exists(exp_f) or os.path.getsize(exp_f) == 0:
             res = {'input': ont, 'suite': suite, 'export_status': 'km-failed', 'route': None,
                    'km_exp_s': km_exp_s, 'search_total_s': search_total_s, 'search_conf_full': search_conf_full}
@@ -86,27 +86,32 @@ def eval_one(item):
             json.dump(res, open(res_file, 'w'))
             return res
 
-        # Ensure base.idx, base.cl, km.lines exist (regenerate if >3MB was cleaned in poolrest)
+        # Ensure base.idx, base.cl, km.lines exist
+        s1_dir = os.path.join(SCR, 'runs/sample1', ont)
         if not (os.path.exists(bi) and os.path.exists(bc)):
-            bi = os.path.join(wdir, 'base.idx')
-            bc = os.path.join(wdir, 'base.cl')
-            rc1, _, o1, _ = run_cmd([REF, '--procedure', 'sroiq-hint', '--witness-route', '--print-index', owl], 300, 16000000)
-            if rc1 != 0:
-                return None
-            with open(bi, 'w') as f:
-                f.write(o1)
-            rc2, _, o2, _ = run_cmd([REF, '--procedure', 'sroiq-hint', '--witness-route', '--classes', cf, '--print-clauses', owl], 300, 16000000)
-            if rc2 != 0:
-                return None
-            with open(bc, 'w') as f:
-                f.write(o2)
+            if os.path.exists(os.path.join(s1_dir, 'base.idx')) and os.path.exists(os.path.join(s1_dir, 'base.cl')):
+                bi = os.path.join(s1_dir, 'base.idx')
+                bc = os.path.join(s1_dir, 'base.cl')
+            else:
+                bi = os.path.join(wdir, 'base.idx')
+                bc = os.path.join(wdir, 'base.cl')
+                rc1, _, o1, _ = run_cmd([REF, '--procedure', 'sroiq-hint', '--witness-route', '--print-index', owl], 300, 16000000)
+                if rc1 != 0:
+                    return None
+                with open(bi, 'w') as f:
+                    f.write(o1)
+                rc2, _, o2, _ = run_cmd([REF, '--procedure', 'sroiq-hint', '--witness-route', '--classes', cf, '--print-clauses', owl], 300, 16000000)
+                if rc2 != 0:
+                    return None
+                with open(bc, 'w') as f:
+                    f.write(o2)
         if not os.path.exists(kl):
-            kl = os.path.join(wdir, 'km.lines')
-            rc_k, _, ok_out, _ = run_cmd([KM_EXPORT, 'classify', '--lines', '--realize', '--top', owl], 300, 16000000)
-            if rc_k != 0:
-                return None
-            with open(kl, 'w') as f:
-                f.write(ok_out)
+            if os.path.exists(os.path.join(s1_dir, 'km.lines')):
+                kl = os.path.join(s1_dir, 'km.lines')
+            else:
+                kl = os.path.join(wdir, 'km.lines')
+                with open(kl, 'w') as f:
+                    f.write(km_out or '')
 
         odir = os.path.join(wdir, 'out')
         os.makedirs(odir, exist_ok=True)
@@ -134,8 +139,53 @@ def eval_one(item):
             300, 16000000
         )
         chk_ok = (rc_c == 0 and os.path.exists(chk_f))
-        exp_only_full = bool(chk_ok and pj.get('export_only_full'))
-        plus_search_full = bool(chk_ok and pj.get('plus_search_full'))
+        chk_full = False
+        if chk_ok:
+            cls = [l.rstrip('\n') for l in open(cf) if l.strip()]
+            sup = {c: {c, THING} for c in cls}
+            unsat, top = set(), set()
+            for l in open(kl):
+                x = l.rstrip('\n').split('\t') if '\t' in l else l.split()
+                if not x:
+                    continue
+                if x[0] == 'SUB' and len(x) >= 3:
+                    if x[1] == THING:
+                        top.add(x[2])
+                    sup.setdefault(x[1], {x[1], THING}).add(x[2])
+                elif x[0] == 'UNSAT' and len(x) >= 2:
+                    unsat.add(x[1])
+                elif x[0] == 'TOP' and len(x) >= 2:
+                    top.add(x[1])
+            ch = True
+            while ch:
+                ch = False
+                for a in list(sup):
+                    n = set().union(*(sup.get(b, {b}) for b in sup[a])) | top
+                    if not n <= sup[a]:
+                        sup[a] |= n
+                        ch = True
+            cert = {}
+            cons = False
+            for l in open(chk_f):
+                if not l.strip():
+                    continue
+                j = json.loads(l)
+                if j.get('consistent'):
+                    cons = True
+                if 'class' in j and 'nonsub' in j:
+                    cert.setdefault(j['class'], set()).update(j['nonsub'])
+                if 'class' in j and 'nonsub_except' in j:
+                    cert.setdefault(j['class'], set()).update(set(cls) - set(j['nonsub_except']))
+            miss = wrong = 0
+            allc = set(cls) - {NOTHING}
+            for a in allc - unsat - {THING}:
+                need = allc - sup[a] - {THING}
+                got = cert.get(a, set()) - {NOTHING}
+                miss += len(need - got)
+                wrong += len(got & sup[a])
+            chk_full = (cons and miss == 0 and wrong == 0)
+        exp_only_full = bool(chk_full and pj.get('export_only_full'))
+        plus_search_full = bool(chk_full and pj.get('plus_search_full'))
         res = {
             'input': ont,
             'suite': suite,
@@ -173,9 +223,17 @@ def main():
             continue
         for ont in sorted(os.listdir(sdir)):
             rdir = os.path.join(sdir, ont)
-            if os.path.exists(os.path.join(rdir, 'result.json')):
-                items.append((ont, suite, rdir))
-    items = items[:limit]
+            rf = os.path.join(rdir, 'result.json')
+            if os.path.exists(rf):
+                try:
+                    r = json.load(open(rf))
+                    if r.get('status') in ('km-failed', 'km-inconsistent', 'dump-failed'):
+                        continue
+                    items.append((r.get('bytes', 0), ont, suite, rdir))
+                except Exception:
+                    pass
+    items.sort(key=lambda x: (x[0], x[1]))
+    items = [(ont, suite, rdir) for _, ont, suite, rdir in items[:limit]]
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
         results = [r for r in ex.map(eval_one, items) if r is not None]
 
