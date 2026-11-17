@@ -68,9 +68,9 @@ code remains BSD-3-Clause.
 | `getObjectPropertyValues(a, p)` | the named individuals `b` of the signature with `p(a, b)` entailed, for named and inverse properties (reduction) |
 | `getDataPropertyValues(a, p)` | the literals of the ontology whose value is an entailed `p`-value of `a`, for ontologies whose data ranges cannot pin a value that no literal of the ontology writes (reduction; see below) |
 | `getDifferentIndividuals(a)` | the named individuals entailed to differ from `a` (reduction) |
-| `getSubDataProperties`, `getSuperDataProperties`, `getEquivalentDataProperties`, `getTopDataPropertyNode`, `getBottomDataPropertyNode`, `getDataPropertyDomains`, `getDisjointDataProperties` | for an ontology whose data properties occur only in sub-property, equivalence, assertion, functionality, domain (named class) and range (built-in datatype) axioms, and with no nominal (`ObjectOneOf`, `ObjectHasValue`, `DataHasValue`) or rule when a data property is functional: the data property hierarchy and the named domains, computed in Java from those axioms and the class hierarchy ([`DataPropertyModel`](src/main/java/org/bioontology/kobayashimarust/protege/DataPropertyModel.java) explains why that is complete). Any other ontology throws `UnsupportedOperationException`, except `getDataPropertyDomains`, which is answered by reduction outside the fragment. `getDisjointDataProperties` is answered for `owl:topDataProperty`, `owl:bottomDataProperty`, empty properties and properties outside the signature, and inside the fragment for the others: `q` is disjoint with `p` iff the conjunction of the stated domains over the super properties of both is unsatisfiable (one satisfiability run; ranges naming two datatypes throw). |
-| `isEntailed` | declarations and annotation axioms (always true, as in HermiT); axioms of the ontology (true, also with anonymous individuals); every logical axiom type except `HasKey`, `DLSafeRule` and `DatatypeDefinition`, and `SubDataPropertyOf`, `EquivalentDataProperties` and `DisjointDataProperties` outside the data property fragment (table below); other axioms with anonymous individuals throw |
-| `getPrecomputableInferenceTypes` | `CLASS_HIERARCHY`, `OBJECT_PROPERTY_HIERARCHY`, `CLASS_ASSERTIONS`, `SAME_INDIVIDUAL`, and `DATA_PROPERTY_HIERARCHY` when the ontology is inside the data property fragment. HermiT also lists `OBJECT_PROPERTY_ASSERTIONS`; KM answers property values on demand, one km run per property, and precomputing all of them took longer than 290 s on ore_ont_5841 (215 properties, 1,466 individuals), so it is not offered and Protégé does not ask for it. |
+| `getSubDataProperties`, `getSuperDataProperties`, `getEquivalentDataProperties`, `getTopDataPropertyNode`, `getBottomDataPropertyNode`, `getDataPropertyDomains`, `getDisjointDataProperties` | inside the syntactic data-property fragment ([`DataPropertyModel`](src/main/java/org/bioontology/kobayashimarust/protege/DataPropertyModel.java)), computed in Java from the ontology's data-property axioms and the class hierarchy; outside the syntactic fragment, computed via `km classify --lines --data-properties` (or `DataSomeValuesFrom(p, rdfs:Literal)` and pairwise conjunction probes when `konclude_ht` is needed). |
+| `isEntailed` | declarations and annotation axioms (always true, as in HermiT); axioms of the ontology (true, also with anonymous individuals); every logical axiom type except `HasKey`, `DLSafeRule` and `DatatypeDefinition` (table below); other axioms with anonymous individuals throw |
+| `getPrecomputableInferenceTypes` | `CLASS_HIERARCHY`, `OBJECT_PROPERTY_HIERARCHY`, `DATA_PROPERTY_HIERARCHY`, `CLASS_ASSERTIONS`, `OBJECT_PROPERTY_ASSERTIONS` and `SAME_INDIVIDUAL`, matching HermiT. |
 
 Classification costs the same as before. The individual queries use
 `km classify --realize` ([`docs/REALIZATION.md`](../docs/REALIZATION.md)). The
@@ -205,26 +205,17 @@ extension:
   fresh individuals, read from a realization with a fresh `V ≡ C`; an
   inconsistent `O ∪ A` entails everything.
 
-The reductions avoid negated nominals (`¬∃r.{b}`) and negative property
-assertions where they can: the km build under test (5eea1411) misses the
-inconsistency of `{p(b,c), p(a,b), Transitive(p), ¬∃p.{c}(a)}` (it finds it
-when the two assertions come in the other order), and it reports
-`{r(a,b), NegativeObjectPropertyAssertion(r a c)}` inconsistent. For the
-second, every reduction run writes the ontology's negative object property
-assertions as the equivalent `ClassAssertion(¬∃r.{b} a)`; plain
-classification and realization still send them unchanged (engine items).
-
 | Query or axiom | Extension | Read-out | Why exact |
 |---|---|---|---|
-| super, sub, equivalent classes, satisfiability of `CE` | `Q ≡ CE` | rows of `Q`; `UNSAT Q`; `TOP Q` | definition |
+| super, sub, equivalent classes, satisfiability of `CE` | `Q ≡ CE` (or `Q ⊑ CE` for satisfiability) | rows of `Q`; `UNSAT Q`; `TOP Q` | definition |
 | instances of `CE` | `Q ≡ CE`, realized | `TYPE a Q`; direct: no type strictly below `Q` | definition |
-| `getDisjointClasses(CE)` | `N ≡ ¬CE` | classes below `N`, and the bottom node | `D ⊓ CE ⊑ ⊥` iff `D ⊑ ¬CE` |
-| `getDifferentIndividuals(a)` | `X_b ≡ {a} ⊓ {b}` per individual `b`; each `b` left satisfiable again as `SameIndividual(a b)` | `UNSAT X_b`, or inconsistent | `{a} ⊓ {b}` is empty in a model iff `a ≠ b` there; the second check because km 5eea1411 misses some of these (ore_ont_15667, colours with different values of a functional data property) |
-| `getObjectPropertyValues(a, r)` | `V_b ≡ ∃r.{b}` per individual `b`, realized | `TYPE a V_b`; `r⁻` reads the rows backwards | `r(a,b)` iff `a ∈ ∃r.{b}` |
-| `getDataPropertyValues(a, p)` | `V_l ≡ ∃p.{l}` per literal `l` of `O`, realized | `TYPE a V_l` | definition; completeness of the candidates below |
+| `getDisjointClasses(CE)` | `Q ⊑ CE` and `X_r ⊑ C_r ⊓ Q` per class node `r` | `UNSAT X_r`, and the bottom node | `C_r ⊓ CE ⊑ ⊥` iff `X_r` is unsatisfiable |
+| `getDifferentIndividuals(a)` | `X_b ⊑ {a} ⊓ {b}` per individual `b` | `UNSAT X_b`, or inconsistent | `{a} ⊓ {b}` is empty in a model iff `a ≠ b` there |
+| `getObjectPropertyValues(a, r)` | `km classify --lines --values` or `V_b ≡ ∃r.{b}` per individual `b`, realized | `VALUE r a b` or `TYPE a V_b`; `r⁻` reads the rows backwards | `r(a,b)` iff `a ∈ ∃r.{b}` |
+| `getDataPropertyValues(a, p)` | `V_l ≡ ∃p.{l}` per candidate literal `l` of `O`, realized | `TYPE a V_l` | definition; completeness of the candidates below |
 | `getDisjointObjectProperties(r)` | `X_s ≡ ∃r.{y} ⊓ ∃s.{y}` per node `s`, one fresh individual `y` | `UNSAT X_s` | a pair in `r ∩ s` gives `y` its second element; satisfiability is decided per class, so one `y` serves all |
-| `getDataPropertyDomains(p)` outside the data fragment | `Q ≡ ∃p.rdfs:Literal` | named superclasses of `Q` | definition |
-| `SubClassOf(C D)` | `Q ≡ C ⊓ ¬D` | `UNSAT Q` | definition |
+| `getDataPropertyDomains(p)` outside the syntactic fragment | `--data-properties` or `Q ≡ ∃p.rdfs:Literal` | `DATADOMAIN` rows or named superclasses of `Q` | definition |
+| `SubClassOf(C D)` | `Q ⊑ C ⊓ ¬D` | `UNSAT Q` | definition |
 | `EquivalentClasses`, `DisjointClasses`, `DisjointUnion` | pairwise `C ⊓ ¬D`, `C ⊓ D` | all unsatisfiable | definition |
 | `ClassAssertion(C a)` with an expression | `Q ≡ C`, realized | `TYPE a Q` | definition |
 | `ObjectPropertyAssertion(r a b)` | the value query of `r` | `b` among the values | definition |
@@ -232,15 +223,15 @@ classification and realization still send them unchanged (engine items).
 | `DataPropertyAssertion(p a l)` | `V ≡ ∃p.{l}`, realized | `TYPE a V` | definition |
 | `NegativeDataPropertyAssertion(p a l)` | `DataPropertyAssertion(p a l)` | inconsistent | refutation |
 | `DifferentIndividuals(a b ...)` | `SameIndividual(a b)` per pair | inconsistent | refutation |
-| `SubObjectPropertyOf(ObjectPropertyChain(r1 ... rn) s)` | `r1(x0,x1) ... rn(xn-1,xn)` for fresh `xi`, `V ≡ ∃s.{xn}`, realized | `TYPE x0 V` (or inconsistent) | witness: a violating path interprets the `xi` |
+| `SubObjectPropertyOf(ObjectPropertyChain(r1 ... rn) s)` | `r1(x0,x1) ... rn(xn-1,xn)`, `¬s(x0,xn)` (or `Q ⊑ ∃r1.(...∃rn.A) ⊓ ¬∃s.A` for fresh `A`) | inconsistent (or `UNSAT Q`) | refutation |
 | `TransitiveObjectProperty(r)` | the chain `r r ⊑ r` | as above | as above |
-| `DisjointObjectProperties(r s ...)` | `r(x,y)`, `s(x,y)` per pair | inconsistent | refutation |
-| `ObjectPropertyDomain(r C)`, `ObjectPropertyRange(r C)` with an expression | `Q ≡ ∃r.⊤ ⊓ ¬C`, `Q ≡ ∃r.¬C` | `UNSAT Q` | definition |
-| `FunctionalObjectProperty(r)`, `InverseFunctionalObjectProperty(r)` | `r(x,y1)`, `r(x,y2)`, `y1 ≠ y2` (with `r⁻` for the inverse) | inconsistent | refutation (`≥2 r.⊤` is not OWL 2 DL for a non-simple `r`) |
-| `AsymmetricObjectProperty(r)` | `r(x,y)`, `r(y,x)` | inconsistent | `x = y` covers a loop |
-| `ReflexiveObjectProperty(r)` | `V ≡ ∃r.{x}` for a fresh `x`, realized | `TYPE x V` | witness: `x` is an arbitrary element |
-| `IrreflexiveObjectProperty(r)` | `r(x,x)` | inconsistent | refutation |
-| `DataPropertyDomain(p C)`, `DataPropertyRange(p D)`, `FunctionalDataProperty(p)` | `Q ≡ ∃p.rdfs:Literal ⊓ ¬C`, `Q ≡ ∃p.¬D`, `Q ≡ ≥2 p.rdfs:Literal` | `UNSAT Q` | definition |
+| `DisjointObjectProperties(r s ...)` | `r(x,y)`, `s(x,y)` per pair (or `pf ⊑ r, pf ⊑ s, Q ⊑ ∃pf.⊤`) | inconsistent (or `UNSAT Q`) | refutation |
+| `ObjectPropertyDomain(r C)`, `ObjectPropertyRange(r C)` with an expression | `Q ⊑ ∃r.⊤ ⊓ ¬C`, `Q ⊑ ∃r.¬C` | `UNSAT Q` | definition |
+| `FunctionalObjectProperty(r)`, `InverseFunctionalObjectProperty(r)` | `r(x,y1)`, `r(x,y2)`, `y1 ≠ y2` (or `pf ⊑ r, Q ⊑ ≥2 pf.⊤` on a TBox; `r⁻` for the inverse) | inconsistent (or `UNSAT Q`) | refutation |
+| `AsymmetricObjectProperty(r)` | `r(x,y)`, `r(y,x)` (or `DisjointObjectProperties(r, r⁻)`) | inconsistent | `x = y` covers a loop |
+| `ReflexiveObjectProperty(r)` | `¬r(x,x)` for a fresh `x` (or `Q ⊑ ¬∃r.Self` for simple `r`) | inconsistent (or `UNSAT Q`) | refutation |
+| `IrreflexiveObjectProperty(r)` | `r(x,x)` (or `pf ⊑ r, Q ⊑ ∃pf.Self` on a TBox) | inconsistent (or `UNSAT Q`) | refutation |
+| `DataPropertyDomain(p C)`, `DataPropertyRange(p D)`, `FunctionalDataProperty(p)` | `Q ⊑ ∃p.rdfs:Literal ⊓ ¬C`, witness check + `Q ⊑ ∃p.¬D`, `Q ⊑ ≥2 p.rdfs:Literal` | `UNSAT Q` | definition |
 
 `SubClassOf` between named classes, `ClassAssertion` of a named class,
 `SameIndividual`, `SubObjectPropertyOf`, `EquivalentObjectProperties`,
@@ -292,21 +283,11 @@ These calls throw `UnsupportedOperationException` (or, for `isEntailed`,
 `UnsupportedEntailmentTypeException`, matching
 `isEntailmentCheckingSupported`):
 
-- `getSubDataProperties`, `getSuperDataProperties`,
-  `getEquivalentDataProperties`, the top and bottom data property nodes and
-  `getDisjointDataProperties` of a satisfiable property, outside the data
-  property fragment (and `getDisjointDataProperties` inside it when the
-  ranges involved name two datatypes). KM has no exact reduction for these: a data value cannot
-  be fresh, and km rejects a fresh datatype (`DataSomeValuesFrom(p T)` with an
-  undeclared `T`), which the class form `∃p.T ⊑ ∃q.T` would need.
 - `getDataPropertyValues` outside the fragment described above.
-- `isEntailed` of `HasKey`, `DLSafeRule` and `DatatypeDefinition` axioms
-  (keys and rules hold for named individuals only, and the plugin has no
-  reduction that respects that), of `SubDataPropertyOf`,
-  `EquivalentDataProperties` and `DisjointDataProperties` outside the data
-  property fragment, of a `DataPropertyRange` of `owl:topDataProperty` other
-  than `rdfs:Literal`, and of axioms with anonymous individuals that are not
-  in the ontology.
+- `isEntailed` of `HasKey`, `DLSafeRule` and `DatatypeDefinition` axioms, of a
+  `DataPropertyRange` of `owl:topDataProperty` whose complement has no built-in
+  witness literal, and of axioms with anonymous individuals that are not in the
+  ontology.
 - A class expression that is not OWL 2 DL next to the ontology, such as a
   cardinality restriction on a transitive property: km rejects the extended
   ontology, so every query on that expression throws.

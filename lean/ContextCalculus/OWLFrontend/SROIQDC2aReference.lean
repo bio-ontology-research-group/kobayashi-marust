@@ -52,13 +52,14 @@ theorem condC_of_condB {O : Ontology (Fin n) (Fin m)} (h : condB O = true) : Con
     have h2 := this (T, body) hr
     rw [leB_iff.2 hle] at h2; cases h2
 
-/-- `condB` with the table of super-roles computed once. -/
+/-- `condB` with the table of super-roles and the moves table computed once. -/
 def condBF (O : Ontology (Fin n) (Fin m)) : Bool :=
   let rs := rules O
   let tab := mkTab O
   let hm := Std.HashMap.ofList tab
   let le := leH hm
-  let sf := succsT rs le
+  let tb := movesTab rs le
+  let sf := succsM tb rs le
   ((allsQT rs le O).map (·.2.1)).dedup.all (fun S => closedT sf (reachItT sf 4096 64 [[(S, false)]])) &&
   O.all fun
     | .atLeast _ _ R _ | .atMost _ _ R _ => rs.all fun p => !le p.1 R
@@ -76,7 +77,7 @@ theorem all_map_dedup {α β : Type} [DecidableEq β] (l : List α) (g : α → 
 @[csimp] theorem condB_eq_F : @condB = @condBF := by
   funext n m O
   simp only [condBF, all_map_dedup]
-  simp only [leH_mkTab, succsT_eq, condB, reachL, reachIt_eq, closedB_eq]
+  simp only [succsT_eq_M, leH_mkTab, succsT_eq, condB, reachL, reachIt_eq, closedB_eq]
   rfl
 
 end ContextCalculus.SROIQ.Proc

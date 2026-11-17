@@ -567,9 +567,156 @@ def allFrees (spec : Fin q → DataRange) : List IRI :=
 def freeVal (frees : List IRI) (g : Fin frees.length → Bool) (t : IRI) : Bool :=
   if h : frees.idxOf t < frees.length then g ⟨_, h⟩ else false
 
+/-- Pre-parsed data range for fast repeated evaluation across cells. -/
+inductive CExpr where
+  | const (b : Bool)
+  | atom (a : BAtom)
+  | free (t : IRI)
+  | not (e : CExpr)
+  | and (es : List CExpr)
+  | or (es : List CExpr)
+  | oneOf (ws : List (Option (ValOf ℚ)))
+deriving Repr
+
+/-- Compile a data range into a `CExpr`, parsing literals, kinds and facet
+bounds once. -/
+def compileDR : DataRange → CExpr
+  | .datatype t =>
+    match kindOf t with
+    | some k => .atom (.kind k)
+    | none => .free t
+  | .and rs => .and (rs.attach.map fun ⟨r, _⟩ => compileDR r)
+  | .or rs => .or (rs.attach.map fun ⟨r, _⟩ => compileDR r)
+  | .not r => .not (compileDR r)
+  | .oneOf ls => .oneOf (ls.map litVal)
+  | .restriction t fs =>
+    if fs = [] then
+      match kindOf t with
+      | some k => .atom (.kind k)
+      | none => .free t
+    else
+      match kindOf t with
+      | some k =>
+        if fltKind k then
+          match fs.mapM (floatBound k) with
+          | some bs => .atom (.fltB k bs)
+          | none => .const false
+        else
+          match fs.mapM facetBound with
+          | some bs => .atom (.numR k bs)
+          | none => .const false
+      | none => .const false
+termination_by r => sizeOf r
+decreasing_by
+  all_goals simp_wf
+  all_goals first
+    | (have := List.sizeOf_lt_of_mem ‹_ ∈ rs›; omega)
+
+mutual
+
+/-- Evaluate a compiled data range. -/
+def evalCE (bv : BAtom → Bool) (fv : IRI → Bool) : CExpr → Bool
+  | .const b => b
+  | .atom a => bv a
+  | .free t => fv t
+  | .not e => !evalCE bv fv e
+  | .and es => evalCEAll bv fv es
+  | .or es => evalCEAny bv fv es
+  | .oneOf ws => ws.any fun
+    | some w => bv (.lit w)
+    | none => false
+
+def evalCEAll (bv : BAtom → Bool) (fv : IRI → Bool) : List CExpr → Bool
+  | [] => true
+  | e :: es => evalCE bv fv e && evalCEAll bv fv es
+
+def evalCEAny (bv : BAtom → Bool) (fv : IRI → Bool) : List CExpr → Bool
+  | [] => false
+  | e :: es => evalCE bv fv e || evalCEAny bv fv es
+
+end
+
+theorem evalCEAll_eq (bv : BAtom → Bool) (fv : IRI → Bool) :
+    ∀ (es : List CExpr), evalCEAll bv fv es = es.all (evalCE bv fv)
+  | [] => rfl
+  | e :: es => by simp [evalCEAll, evalCEAll_eq bv fv es]
+
+theorem evalCEAny_eq (bv : BAtom → Bool) (fv : IRI → Bool) :
+    ∀ (es : List CExpr), evalCEAny bv fv es = es.any (evalCE bv fv)
+  | [] => rfl
+  | e :: es => by simp [evalCEAny, evalCEAny_eq bv fv es]
+
+theorem evalCE_compileDR (bv : BAtom → Bool) (fv : IRI → Bool) :
+    ∀ (dr : DataRange), evalCE bv fv (compileDR dr) = drEval bv fv dr
+  | .datatype t => by
+    rw [compileDR, drEval]
+    cases kindOf t <;> rfl
+  | .and rs => by
+    have ih : ∀ r ∈ rs, evalCE bv fv (compileDR r) = drEval bv fv r :=
+      fun r _ => evalCE_compileDR bv fv r
+    rw [compileDR, evalCE, evalCEAll_eq, drEval]
+    apply Bool.eq_iff_iff.2
+    simp only [List.all_eq_true, List.mem_map, List.mem_attach, true_and, Subtype.exists,
+      true_implies, Subtype.forall]
+    constructor
+    · intro h r hr
+      rw [← ih r hr]
+      exact h (compileDR r) ⟨r, hr, rfl⟩
+    · rintro h _ ⟨r, hr, rfl⟩
+      rw [ih r hr]
+      exact h r hr
+  | .or rs => by
+    have ih : ∀ r ∈ rs, evalCE bv fv (compileDR r) = drEval bv fv r :=
+      fun r _ => evalCE_compileDR bv fv r
+    rw [compileDR, evalCE, evalCEAny_eq, drEval]
+    apply Bool.eq_iff_iff.2
+    simp only [List.any_eq_true, List.mem_map, List.mem_attach, true_and, Subtype.exists]
+    constructor
+    · rintro ⟨_, ⟨r, hr, rfl⟩, h⟩
+      rw [ih r hr] at h
+      exact ⟨r, hr, h⟩
+    · rintro ⟨r, hr, h⟩
+      refine ⟨compileDR r, ⟨r, hr, rfl⟩, ?_⟩
+      rwa [ih r hr]
+  | .not r => by
+    rw [compileDR, evalCE, drEval, evalCE_compileDR bv fv r]
+  | .oneOf ls => by
+    rw [compileDR, evalCE, drEval, List.any_map]
+    rfl
+  | .restriction t fs => by
+    rw [compileDR, drEval]
+    split_ifs with hfs
+    · cases kindOf t <;> rfl
+    · cases hk : kindOf t with
+      | none => rfl
+      | some k =>
+        dsimp only
+        split_ifs with hfk
+        · cases fs.mapM (floatBound k) <;> rfl
+        · cases fs.mapM facetBound <;> rfl
+termination_by dr => sizeOf dr
+decreasing_by
+  all_goals simp_wf
+  all_goals first
+    | (have := List.sizeOf_lt_of_mem ‹_ ∈ rs›; omega)
+
 /-- The atoms on a cell under a reading of the free datatypes. -/
 def owlE (spec : Fin q → DataRange) : Fin q → Cell → (Fin (allFrees spec).length → Bool) → Bool :=
   fun p c g => drEval (fun a => evalCell a c) (freeVal (allFrees spec) g) (spec p)
+
+/-- `owlE` with the free-datatype list and compiled data ranges given. -/
+def owlEWith (frees : List IRI) (arr : Array CExpr) (q : Nat) (h : arr.size = q)
+    (p : Fin q) (c : Cell) (g : Fin frees.length → Bool) : Bool :=
+  evalCE (fun a => evalCell a c) (freeVal frees g) (arr[p.val]'(by rw [h]; exact p.isLt))
+
+/-- `owlE` with `allFrees spec` and `compileDR (spec p)` computed once. -/
+def owlEF (spec : Fin q → DataRange) : Fin q → Cell → (Fin (allFrees spec).length → Bool) → Bool :=
+  let arr : Array CExpr := Array.ofFn fun p => compileDR (spec p)
+  owlEWith (allFrees spec) arr q (Array.size_ofFn ..)
+
+@[csimp] theorem owlE_eq_F : @owlE = @owlEF := by
+  funext q spec p c g
+  simp only [owlEF, owlEWith, Array.getElem_ofFn, evalCE_compileDR, owlE]
 
 /-- **The oracle of the map.** -/
 def owlCard (spec : Fin q → DataRange) : Finset (Fin q) → Option Nat :=
@@ -649,3 +796,4 @@ end ContextCalculus.OWL.Datatypes
 
 #print axioms ContextCalculus.OWL.Datatypes.ext_iff_drEval
 #print axioms ContextCalculus.OWL.Datatypes.oracleSpec_owl
+#print axioms ContextCalculus.OWL.Datatypes.owlE_eq_F

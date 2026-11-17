@@ -305,14 +305,20 @@ theorem lamOK_of_lamOKB {B : SRIQ.Ontology (Fin n) (Fin m)} {SC : List (SClause 
       simp only [isIrrOf, Bool.or_eq_true] at hi
       exact ⟨R, hi.imp leB_iff.1 leB_iff.1, hsc⟩
 
+/-- The negative self clauses are on simple roles, from a precomputed
+hierarchy test and rule list. -/
+def selfSimpleBL (le : RT m → RT m → Bool) (rs : List (RT m × List (RT m)))
+    (SC : List (SClause (Fin n) (Fin m))) : Bool :=
+  SC.all fun
+    | .selfL R _ => !rs.any fun p => le p.1 R
+    | _ => true
+
 /-- The negative self clauses are on simple roles, computed. -/
 def selfSimpleB (B : SRIQ.Ontology (Fin n) (Fin m)) (SC : List (SClause (Fin n) (Fin m))) : Bool :=
   let hm := Std.HashMap.ofList (mkTab B)
   let le := leH hm
   let rs := rules B
-  SC.all fun
-    | .selfL R _ => !rs.any fun p => le p.1 R
-    | _ => true
+  selfSimpleBL le rs SC
 
 end ContextCalculus.SROIQ.Proc
 
@@ -327,7 +333,7 @@ theorem selfSimple_of {T : SRIQDKBTranslation} {L : List IRI}
     {SC : List (SRIQN.SClause (Fin T.obj.conceptCount) (Fin T.obj.roleCount))}
     (h : selfSimpleB (objC T L E) SC = true) : SROIQ.Proc.SelfSimple (dosnC T L E) SC := by
   intro R head hsc
-  simp only [selfSimpleB, List.all_eq_true] at h
+  simp only [selfSimpleB, SROIQ.Proc.selfSimpleBL, List.all_eq_true] at h
   have := h _ hsc
   simp only [SROIQ.Proc.leH_mkTab, Bool.not_eq_eq_eq_not, Bool.not_true] at this
   exact SROIQ.Proc.simpleC_of_not_any (by rw [this]; simp)

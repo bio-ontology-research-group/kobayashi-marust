@@ -664,8 +664,13 @@ public final class Classifier {
             int rc = proc.exitValue();
             List<String> lines = Files.readAllLines(log, StandardCharsets.UTF_8);
             if (rc != 0) {
+                String joined = String.join("\n", lines);
+                if (rc == 3 && joined.contains("unsupported:")) {
+                    throw new UnsupportedOperationException("Kobayashi-MaRust " + label + " failed (exit "
+                            + rc + "):\n" + joined);
+                }
                 throw new RuntimeException("Kobayashi-MaRust " + label + " failed (exit "
-                        + rc + "):\n" + String.join("\n", lines));
+                        + rc + "):\n" + joined);
             }
             boolean protocolSeen = false;
             for (String line : lines) {
@@ -789,6 +794,117 @@ public final class Classifier {
                     + p.dropped + " clause(s) were dropped");
         }
         return p;
+    }
+
+    /**
+     * The data property rows of {@code km classify --lines --data-properties}.
+     * Names are full IRIs.
+     */
+    public static final class DataProperties {
+        public boolean consistent = true;
+        public int dropped = 0;
+        public boolean disjointComputed = true;
+        public final List<String[]> subproperties = new ArrayList<>();
+        public final List<String> top = new ArrayList<>();
+        public final List<String> bottom = new ArrayList<>();
+        public final List<String[]> domains = new ArrayList<>();
+        public final List<String[]> disjoint = new ArrayList<>();
+    }
+
+    /**
+     * Run {@code km classify --lines --data-properties} once on the given
+     * functional syntax. An approximate answer or a dropped clause is refused.
+     */
+    public static DataProperties dataProperties(String functionalSyntax,
+                                                java.util.function.Consumer<Process> onStart) throws Exception {
+        List<String> lines = oneShot(functionalSyntax, new String[]{"--data-properties"},
+                "data property classification", onStart);
+        DataProperties d = new DataProperties();
+        d.consistent = consistentRow(lines);
+        d.dropped = droppedRow(lines);
+        for (String line : lines) {
+            String[] f = line.split("\t");
+            if (f.length == 3 && f[0].equals("SUBDATAPROP")) d.subproperties.add(new String[]{f[1], f[2]});
+            else if (f.length == 2 && f[0].equals("TOPDATAPROP")) d.top.add(f[1]);
+            else if (f.length == 2 && f[0].equals("BOTDATAPROP")) d.bottom.add(f[1]);
+            else if (f.length == 3 && f[0].equals("DATADOMAIN")) d.domains.add(new String[]{f[1], f[2]});
+            else if (f.length == 3 && f[0].equals("DISJOINTDATAPROP")) d.disjoint.add(new String[]{f[1], f[2]});
+            else if (f.length == 1 && f[0].equals("NODATADISJOINT")) d.disjointComputed = false;
+        }
+        String approximate = approximate(lines);
+        if (approximate != null) {
+            throw new RuntimeException("Kobayashi-MaRust declined a complete data property classification: "
+                    + "the answer is approximate (" + approximate + ")");
+        }
+        if (d.dropped != 0) {
+            throw new RuntimeException("Kobayashi-MaRust declined a complete data property classification: "
+                    + d.dropped + " clause(s) were dropped");
+        }
+        return d;
+    }
+
+    /**
+     * The object property value rows of {@code km classify --lines --values}.
+     * Triples {@code {r, a, b}} are full IRIs.
+     */
+    public static final class Values {
+        public boolean consistent = true;
+        public int dropped = 0;
+        public final List<String[]> values = new ArrayList<>();
+    }
+
+    /**
+     * Run {@code km classify --lines --values} once on the given functional
+     * syntax. An approximate answer or a dropped clause is refused.
+     */
+    public static Values values(String functionalSyntax,
+                                java.util.function.Consumer<Process> onStart) throws Exception {
+        List<String> lines = oneShot(functionalSyntax, new String[]{"--values"},
+                "object property values", onStart);
+        Values v = new Values();
+        v.consistent = consistentRow(lines);
+        v.dropped = droppedRow(lines);
+        for (String line : lines) {
+            String[] f = line.split("\t");
+            if (f.length == 4 && f[0].equals("VALUE")) v.values.add(new String[]{f[1], f[2], f[3]});
+        }
+        String approximate = approximate(lines);
+        if (approximate != null) {
+            throw new RuntimeException("Kobayashi-MaRust declined a complete object property values run: "
+                    + "the answer is approximate (" + approximate + ")");
+        }
+        if (v.dropped != 0) {
+            throw new RuntimeException("Kobayashi-MaRust declined a complete object property values run: "
+                    + v.dropped + " clause(s) were dropped");
+        }
+        return v;
+    }
+
+    /**
+     * Run {@code km classify --lines --top} once on the given functional
+     * syntax and return the IRIs of named classes entailed equivalent to
+     * {@code owl:Thing}. An approximate answer or a dropped clause is refused.
+     */
+    public static List<String> topClasses(String functionalSyntax,
+                                          java.util.function.Consumer<Process> onStart) throws Exception {
+        List<String> lines = oneShot(functionalSyntax, new String[]{"--top"},
+                "top class check", onStart);
+        String approximate = approximate(lines);
+        if (approximate != null) {
+            throw new RuntimeException("Kobayashi-MaRust declined a complete top class check: "
+                    + "the answer is approximate (" + approximate + ")");
+        }
+        int dropped = droppedRow(lines);
+        if (dropped != 0) {
+            throw new RuntimeException("Kobayashi-MaRust declined a complete top class check: "
+                    + dropped + " clause(s) were dropped");
+        }
+        List<String> top = new ArrayList<>();
+        for (String line : lines) {
+            String[] f = line.split("\t");
+            if (f.length == 2 && f[0].equals("TOP")) top.add(f[1]);
+        }
+        return top;
     }
 
     public static Result classify(OWLOntology ontology) throws Exception {

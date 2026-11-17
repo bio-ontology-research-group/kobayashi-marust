@@ -64,17 +64,36 @@ theorem lookup_map_self (f : RT m → List (RT m)) :
       rw [this]
       exact lookup_map_self f l R ((List.mem_cons.1 h).resolve_left hx)
 
-/-- The table over a given clause list (the list is an argument, so it is
-computed once, not once per role term). -/
+/-- One inclusion step from a precomputed pair list. -/
+def upStepP (sp : List (RT m × RT m)) (L : List (RT m)) : List (RT m) :=
+  (L ++ sp.filterMap fun p => if p.1 ∈ L then some p.2 else none).dedup
+
+/-- `upFix` with `stepPairs C` computed once. -/
+def upFixP (sp : List (RT m × RT m)) (C : SRI.Ontology (Fin n) (Fin m)) (R : RT m) :
+    Nat → List (RT m) → List (RT m)
+  | 0, _ => SRI.Proc.roleUp C R
+  | k + 1, L =>
+    let L' := upStepP sp L
+    if L'.all (· ∈ L) then L else upFixP sp C R k L'
+
+theorem upFixP_eq (C : SRI.Ontology (Fin n) (Fin m)) (R : RT m) :
+    ∀ (k : Nat) (L : List (RT m)), upFixP (SRI.Proc.stepPairs C) C R k L = SRI.Proc.upFix C R k L
+  | 0, _ => rfl
+  | k + 1, L => by
+    simp only [upFixP, SRI.Proc.upFix, upStepP, SRI.Proc.upStep, upFixP_eq C R k]
+
+/-- The table over a given clause list (the list and its step pairs are
+arguments, so they are computed once, not once per role term). -/
 def mkTabC (C : SRI.Ontology (Fin n) (Fin m)) : List (RT m × List (RT m)) :=
-  (allRT m).map fun R => (R, SRI.Proc.upFix C R (2 * m + 2) [R])
+  let sp := SRI.Proc.stepPairs C
+  (allRT m).map fun R => (R, upFixP sp C R (2 * m + 2) [R])
 
 def mkTabF (O : Ontology (Fin n) (Fin m)) : List (RT m × List (RT m)) :=
   mkTabC (SRIQ.sriPart (chainsOnly O))
 
 @[csimp] theorem mkTab_eq_F : @mkTab = @mkTabF := by
   funext n m O
-  rfl
+  simp only [mkTab, mkTabF, mkTabC, upFixP_eq]
 
 theorem leF_mkTab (O : Ontology (Fin n) (Fin m)) : leF (mkTab O) = leB O := by
   rw [← leB_chainsOnly]
@@ -158,62 +177,6 @@ def closedTH (sf : Stack (Fin m) → List (Option (RT m) × Stack (Fin m)))
   funext m sf L
   simp only [closedT, closedTH, Std.HashSet.contains_ofList, List.elem_eq_mem]
 
-/-! ## The pairs -/
-
-def allsQT (rs : List (RT m × List (RT m))) (le : RT m → RT m → Bool)
-    (O : Ontology (Fin n) (Fin m)) : List (Fin n × RT m × Fin n) :=
-  O.filterMap fun
-    | .allRight a S c => if rs.any (fun p => le p.1 S) then some (a, S, c) else none
-    | _ => none
-
-/-- The listing of each distinct role of `qs`, computed once per role
-(stage C3e: the listing was recomputed for every universal clause). -/
-def reachTab (sf : Stack (Fin m) → List (Option (RT m) × Stack (Fin m)))
-    (qs : List (Fin n × RT m × Fin n)) : List (RT m × List (Stack (Fin m))) :=
-  (qs.map (·.2.1)).dedup.map fun S => (S, reachItT sf 4096 64 [[(S, false)]])
-
-theorem lookup_map_selfG {α β : Type} [DecidableEq α] (f : α → β) {x : α} :
-    ∀ {l : List α}, x ∈ l → (l.map fun s => (s, f s)).lookup x = some (f x)
-  | [], h => by simp at h
-  | a :: l, h => by
-    by_cases hx : x = a
-    · subst hx; simp
-    · have hb : (x == a) = false := by simpa using hx
-      simp only [List.map_cons, List.lookup, hb]
-      exact lookup_map_selfG f (by simpa [hx] using h)
-
-theorem reachTab_lookup (sf : Stack (Fin m) → List (Option (RT m) × Stack (Fin m)))
-    {qs : List (Fin n × RT m × Fin n)} {q : Fin n × RT m × Fin n} (hq : q ∈ qs) :
-    (reachTab sf qs).lookup q.2.1 = some (reachItT sf 4096 64 [[(q.2.1, false)]]) :=
-  lookup_map_selfG (fun S => reachItT sf 4096 64 [[(S, false)]])
-    (List.mem_dedup.2 (List.mem_map_of_mem (f := fun q : Fin n × RT m × Fin n => q.2.1) hq))
-
-def pairsPF (O : Ontology (Fin n) (Fin m)) : List (Pair n m) :=
-  let rs := rules O
-  let tab := mkTab O
-  let hm := Std.HashMap.ofList tab
-  let le := leH hm
-  let sf := succsT rs le
-  let qs := allsQT rs le O
-  let tbl := reachTab sf qs
-  qs.flatMap fun q => ((tbl.lookup q.2.1).getD []).map (q, ·)
-
-@[csimp] theorem pairsP_eq_F : @pairsP = @pairsPF := by
-  funext n m O
-  simp only [pairsPF]
-  rw [List.flatMap_congr fun q hq => by rw [reachTab_lookup _ hq, Option.getD_some]]
-  simp only [leH_mkTab, succsT_eq, pairsP, reachL, reachIt_eq]
-  rfl
-
-/-- The number of fresh names, through `pairsPF`. -/
-def kCF (O : Ontology (Fin n) (Fin m)) : Nat := (pairsPF O).length
-
-@[csimp] theorem kC_eq_F : @kC = @kCF := by
-  funext n m O
-  simp only [kCF, kC, ← pairsP_eq_F]
-
-/-! ## The encoding -/
-
 /-! ### The moves of a stack from a table of the top items (stage C3e)
 
 The moves of a stack depend on its top item only, the rest is appended
@@ -292,6 +255,63 @@ theorem succsT_eq_M (rs : List (RT m × List (RT m))) (le : RT m → RT m → Bo
   | cons it rest =>
     rw [succsM, movesTab_get, Option.getD_some]
     exact (succsT_top rs le it rest).symm
+
+/-! ## The pairs -/
+
+def allsQT (rs : List (RT m × List (RT m))) (le : RT m → RT m → Bool)
+    (O : Ontology (Fin n) (Fin m)) : List (Fin n × RT m × Fin n) :=
+  O.filterMap fun
+    | .allRight a S c => if rs.any (fun p => le p.1 S) then some (a, S, c) else none
+    | _ => none
+
+/-- The listing of each distinct role of `qs`, computed once per role
+(stage C3e: the listing was recomputed for every universal clause). -/
+def reachTab (sf : Stack (Fin m) → List (Option (RT m) × Stack (Fin m)))
+    (qs : List (Fin n × RT m × Fin n)) : List (RT m × List (Stack (Fin m))) :=
+  (qs.map (·.2.1)).dedup.map fun S => (S, reachItT sf 4096 64 [[(S, false)]])
+
+theorem lookup_map_selfG {α β : Type} [DecidableEq α] (f : α → β) {x : α} :
+    ∀ {l : List α}, x ∈ l → (l.map fun s => (s, f s)).lookup x = some (f x)
+  | [], h => by simp at h
+  | a :: l, h => by
+    by_cases hx : x = a
+    · subst hx; simp
+    · have hb : (x == a) = false := by simpa using hx
+      simp only [List.map_cons, List.lookup, hb]
+      exact lookup_map_selfG f (by simpa [hx] using h)
+
+theorem reachTab_lookup (sf : Stack (Fin m) → List (Option (RT m) × Stack (Fin m)))
+    {qs : List (Fin n × RT m × Fin n)} {q : Fin n × RT m × Fin n} (hq : q ∈ qs) :
+    (reachTab sf qs).lookup q.2.1 = some (reachItT sf 4096 64 [[(q.2.1, false)]]) :=
+  lookup_map_selfG (fun S => reachItT sf 4096 64 [[(S, false)]])
+    (List.mem_dedup.2 (List.mem_map_of_mem (f := fun q : Fin n × RT m × Fin n => q.2.1) hq))
+
+def pairsPF (O : Ontology (Fin n) (Fin m)) : List (Pair n m) :=
+  let rs := rules O
+  let tab := mkTab O
+  let hm := Std.HashMap.ofList tab
+  let le := leH hm
+  let tb := movesTab rs le
+  let sf := succsM tb rs le
+  let qs := allsQT rs le O
+  let tbl := reachTab sf qs
+  qs.flatMap fun q => ((tbl.lookup q.2.1).getD []).map (q, ·)
+
+@[csimp] theorem pairsP_eq_F : @pairsP = @pairsPF := by
+  funext n m O
+  simp only [pairsPF]
+  rw [List.flatMap_congr fun q hq => by rw [reachTab_lookup _ hq, Option.getD_some]]
+  simp only [succsT_eq_M, leH_mkTab, succsT_eq, pairsP, reachL, reachIt_eq]
+  rfl
+
+/-- The number of fresh names, through `pairsPF`. -/
+def kCF (O : Ontology (Fin n) (Fin m)) : Nat := (pairsPF O).length
+
+@[csimp] theorem kC_eq_F : @kC = @kCF := by
+  funext n m O
+  simp only [kCF, kC, ← pairsP_eq_F]
+
+/-! ## The encoding -/
 
 section IdxG
 
@@ -390,24 +410,26 @@ theorem closeS_closeF (E : α → Finset α) (A : Finset α) :
 
 end Close
 
-/-- `regularB` with the forced pairs computed once and each closure
-stopped when it is stable. -/
+/-- `regularB` with the forced pairs and the super-role table computed once
+and each closure stopped when it is stable. -/
 def regularBF (O : Ontology (Fin n) (Fin m)) : Bool :=
   let nl := needL O
   let sc : RT m → Finset (RT m) := fun R =>
     (nl.filterMap fun p => if p.1 = R then some p.2 else none).toFinset
   let N := Fintype.card (RT m) + 1
-  let C := chainsOnly O
+  let hm := Std.HashMap.ofList (mkTab O)
+  let le := leH hm
   decide (∀ R : RT m,
-    (fun A => R ∉ A ∧ ∀ S ∈ A, leB C S R = false) (closeS sc N (sc R)))
+    (fun A => R ∉ A ∧ ∀ S ∈ A, le S R = false) (closeS sc N (sc R)))
 
 @[csimp] theorem regularB_eq_F : @regularB = @regularBF := by
   funext n m O
-  simp only [regularBF, closeS_closeF, leB_chainsOnly]
+  simp only [regularBF, closeS_closeF, leH_mkTab]
   rfl
 
 end ContextCalculus.SROIQ.Proc
 
+#print axioms ContextCalculus.SROIQ.Proc.mkTab_eq_F
 #print axioms ContextCalculus.SROIQ.Proc.pairsP_eq_F
 #print axioms ContextCalculus.SROIQ.Proc.encChain_eq_F
 #print axioms ContextCalculus.SROIQ.Proc.regularB_eq_F

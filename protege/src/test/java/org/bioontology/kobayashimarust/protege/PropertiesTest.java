@@ -353,6 +353,9 @@ public class PropertiesTest {
         r.precomputeInferences(InferenceType.CLASS_HIERARCHY);
         assertEquals(0, r.propertyRunCount());
         r.precomputeInferences(InferenceType.OBJECT_PROPERTY_HIERARCHY);
+        assertTrue(r.isPrecomputed(InferenceType.OBJECT_PROPERTY_HIERARCHY));
+        assertEquals("lazy precompute defers the native run until the first property query", 0, r.propertyRunCount());
+        r.getTopObjectPropertyNode();
         assertEquals(1, r.propertyRunCount());
     }
 
@@ -386,5 +389,22 @@ public class PropertiesTest {
         } catch (InconsistentOntologyException expected) {
             // as HermiT
         }
+    }
+
+    @Test
+    public void subObjectPropertyWithInverseSubProperty() throws Exception {
+        OWLOntology o = IndividualsTest.parse(HEAD + "Ontology(<http://example.org/inv-sub>\n"
+                + "Declaration(Class(:A)) Declaration(Class(:B))\n"
+                + "Declaration(ObjectProperty(:r)) Declaration(ObjectProperty(:s))\n"
+                + "SubObjectPropertyOf(ObjectInverseOf(:r) :s)\n"
+                + "SubClassOf(:A ObjectSomeValuesFrom(ObjectInverseOf(:r) :B))\n"
+                + ")\n");
+        OWLDataFactory df = factory(o);
+        OWLReasoner r = km(o);
+        assertEquals(set("[s-]"), nodes(r.getSuperObjectProperties(p(df, "r"), true)));
+        assertEquals(set("[s]"), nodes(r.getSuperObjectProperties(p(df, "r").getInverseProperty(), true)));
+        assertTrue(r.isEntailed(df.getOWLSubObjectPropertyOfAxiom(p(df, "r").getInverseProperty(), p(df, "s"))));
+        assertTrue(r.isEntailed(df.getOWLSubClassOfAxiom(c(df, "A"),
+                df.getOWLObjectSomeValuesFrom(p(df, "s"), c(df, "B")))));
     }
 }

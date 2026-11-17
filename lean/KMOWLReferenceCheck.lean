@@ -1620,11 +1620,16 @@ def explainOn {n m p q : Nat} (D : SRIQN.DOntology (Fin n) (Fin m) (Fin p) (Fin 
 def splitSizes (T : SRIQDKBTranslation) (L : List OWL.IRI)
     (E : List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount))) (bound : Nat) :
     List (Option Nat) × Nat :=
-  let sp := SHIQD.spec T.tab
+  let spS := OWLFrontend.specS T.tab
+  let sp := spS.f
   let as := OWL.Datatypes.allBases sp
   let cs := OWL.Datatypes.cellsOf as
-  let sc := cs.filter (ContextCalculus.SRIQD.splitCell cs (OWL.Datatypes.cellSize as) bound (OWL.Datatypes.owlE sp))
-  (sc.map (OWL.Datatypes.cellSize as), (ContextCalculus.SRIQD.allG (OWL.Datatypes.allFrees sp).length).length)
+  let szS := OWLFrontend.cellSizeS as
+  let sz := szS.f
+  let eS := OWLFrontend.owlES sp
+  let spT := SRIQN.HF.splitTab cs sz bound eS.f
+  let sc := spT.filterMap fun p => if p.2 then some p.1 else none
+  (sc.map sz, (ContextCalculus.SRIQD.allG (OWL.Datatypes.allFrees sp).length).length)
 
 /-- Why a hint is rejected on a prepared ontology (`hintPrep`), along the
 core the route uses (diagnostic, `--explain`). -/
@@ -1823,15 +1828,16 @@ def dclauseText {n m p q : Nat} : SRIQD.Clause (Fin n) (Fin m) (Fin p) (Fin q) �
 /-- The data clauses, the data atoms, the free datatypes, the groups and
 the split cells of the data part a hint names (`part I G N`: count `N` of
 group `G` in split cell `I`). -/
-def emitData (T : SRIQDKBTranslation) (L : List OWL.IRI)
-    (E : List (SRIQ.Clause (Fin T.obj.conceptCount) (Fin T.obj.roleCount))) : IO Unit := do
+def emitData {n : Nat} (T : SRIQDKBTranslation)
+    (D : SRIQN.DOntology (Fin n) (Fin T.obj.roleCount) (Fin T.dps.length) (Fin T.tab.length))
+    (bound : Nat) : IO Unit := do
   let out ← IO.getStdout
-  let D := encC T L E
   for cl in SRIQN.dbase (SRIQN.Proc.encTransDN D) do
     match dclauseText cl with
     | some t => out.putStrLn t
     | none => pure ()
-  let sp := SHIQD.spec T.tab
+  let spS := OWLFrontend.specS T.tab
+  let sp := spS.f
   for j in List.finRange T.tab.length do out.putStrLn s!"atom {j.val} {(reprStr (sp j)).replace "\n" " "}"
   let fr := OWL.Datatypes.allFrees sp
   for (f, i) in fr.zipIdx do out.putStrLn s!"free {i} {f}"
@@ -1842,9 +1848,13 @@ def emitData (T : SRIQDKBTranslation) (L : List OWL.IRI)
       out.putStrLn s!"group {i} {String.join ((List.finRange fr.length).map fun j => if g j then "1" else "0")}"
   let as := OWL.Datatypes.allBases sp
   let cs := OWL.Datatypes.cellsOf as
-  let sc := cs.filter (ContextCalculus.SRIQD.splitCell cs (OWL.Datatypes.cellSize as) (sroiqBound T L E) (OWL.Datatypes.owlE sp))
+  let szS := OWLFrontend.cellSizeS as
+  let sz := szS.f
+  let eS := OWLFrontend.owlES sp
+  let spT := SRIQN.HF.splitTab cs sz bound eS.f
+  let sc := spT.filterMap fun p => if p.2 then some p.1 else none
   for (c, i) in sc.zipIdx do
-    out.putStrLn s!"cell {i} {((OWL.Datatypes.cellSize as c).map toString).getD "inf"} {(reprStr c).replace "\n" " "}"
+    out.putStrLn s!"cell {i} {((sz c).map toString).getD "inf"} {(reprStr c).replace "\n" " "}"
   out.flush
 
 /-- `--procedure sroiq-hint --print-clauses [--row ROW]`. -/
@@ -1866,14 +1876,23 @@ def printClausesHint (O : OWL.Ontology) (rowWs : List String) : IO UInt32 := do
         | some T =>
           match roleCls T (selfOff O1), selfCls T O1, pairCls T P with
           | some E, some SC, some PC =>
-            emitClauses (encS T (OWLFrontend.SHOIQ.nomNames (roleOff (selfOff O1)) (pairNames P)) E (SC ++ PC))
+            let L := OWLFrontend.SHOIQ.nomNames (roleOff (selfOff O1)) (pairNames P)
+            let D := encS T L E (SC ++ PC)
+            let c ← emitClauses D
+            emitData T D (sroiqSBound T L E (SC ++ PC))
+            return c
           | _, _, _ => decline "not recognised"
       else if !(owlChainHint O {}).isSome then
         match translateSHOIQD (roleOff (selfOff O)) [] with
         | none => decline "not recognised"
         | some T =>
           match roleCls T (selfOff O), selfCls T O with
-          | some E, some SC => emitClauses (encS T (OWLFrontend.SHOIQ.nomNames (roleOff (selfOff O)) []) E SC)
+          | some E, some SC =>
+            let L := OWLFrontend.SHOIQ.nomNames (roleOff (selfOff O)) []
+            let D := encS T L E SC
+            let c ← emitClauses D
+            emitData T D (sroiqSBound T L E SC)
+            return c
           | _, _ => decline "not recognised"
       else
         match translateSHOIQD (roleOff O) [] with
@@ -1881,8 +1900,10 @@ def printClausesHint (O : OWL.Ontology) (rowWs : List String) : IO UInt32 := do
         | some T =>
           match roleCls T O with
           | some E =>
-            let c ← emitClauses (encC T (OWLFrontend.SHOIQ.nomNames (roleOff O) []) E)
-            emitData T (OWLFrontend.SHOIQ.nomNames (roleOff O) []) E
+            let L := OWLFrontend.SHOIQ.nomNames (roleOff O) []
+            let D := encC T L E
+            let c ← emitClauses D
+            emitData T D (sroiqBound T L E)
             return c
           | none => decline "not recognised"
 
@@ -2001,7 +2022,9 @@ def publishRoles (out : IO.FS.Stream) (W : OWLFrontend.WTab) (showInd : OWL.IRI 
     (propRows : Bool) (axs : List OWL.Axiom) (KD : Option (OWLFrontend.CKX W.k) := none)
     (dataRows : Bool := false) (dOn : Bool := false) : IO Unit := do
   let props := W.rprops.map (·.1)
-  let K := OWLFrontend.ckMemo (OWLFrontend.ckOf W OWLFrontend.ckFuel) props
+  let K := match KD with
+    | some KD => KD.toCK
+    | none => OWLFrontend.ckMemo (OWLFrontend.ckOf W OWLFrontend.ckFuel) props
   let rtStr : SRI.RoleT (Fin W.M) → String := fun R => match R with
     | .pos r => s!"+{r.val}"
     | .inv r => s!"-{r.val}"
@@ -2302,10 +2325,15 @@ def checkW (O : OWL.Ontology) (req : List OWL.IRI) : IO UInt32 :=
 def printClausesW (O : OWL.Ontology) (req : List OWL.IRI) : IO UInt32 :=
   withWitnessTarget O req
     (fun T L E _ => do
-      let c ← emitClauses (encC T L E)
-      emitData T L E
+      let D := encC T L E
+      let c ← emitClauses D
+      emitData T D (sroiqBound T L E)
       return c)
-    (fun T L E SC _ _ => emitClauses (encS T L E SC))
+    (fun T L E SC _ _ => do
+      let D := encS T L E SC
+      let c ← emitClauses D
+      emitData T D (sroiqSBound T L E SC)
+      return c)
 
 /-- The list without repeated entries, first occurrences kept. -/
 def dedupH (l : List OWL.IRI) : List OWL.IRI :=
@@ -2428,13 +2456,18 @@ def runWitness (timing : Bool) (args : Args) (O : OWL.Ontology) (R? : Option OWL
     if args.explain then
       let _ ← withWitnessTarget O req
         (fun T L E _ => do
-          let (sz, G) := splitSizes T L E (sroiqBound T L E)
-          let sp := SHIQD.spec T.tab
+          let bnd := sroiqBound T L E
+          let (sz, G) := splitSizes T L E bnd
+          let spS := OWLFrontend.specS T.tab
+          let sp := spS.f
           let as := OWL.Datatypes.allBases sp
           let cs := OWL.Datatypes.cellsOf as
-          let why := (partWhy hint sz G).orElse fun _ => starWhyD (encC T L E) cs (OWL.Datatypes.cellSize as)
-            (ContextCalculus.SRIQD.splitCell cs (OWL.Datatypes.cellSize as) (sroiqBound T L E) (OWL.Datatypes.owlE sp))
-            (OWL.Datatypes.owlE sp) hint
+          let szS := OWLFrontend.cellSizeS as
+          let eS := OWLFrontend.owlES sp
+          let spT := SRIQN.HF.splitTab cs szS.f bnd eS.f
+          let why := (partWhy hint sz G).orElse fun _ => starWhyD (encC T L E) cs szS.f
+            (SRIQN.HF.lookSplit spT (ContextCalculus.SRIQD.splitCell cs szS.f bnd eS.f))
+            eS.f hint
           IO.eprintln s!"hint: reason: {explainOn (encC T L E) hint false why}"
           return 0)
         (fun T L E SC _ _ => do
