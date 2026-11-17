@@ -254,6 +254,12 @@ def main():
         C['skipped'] = 'over the checker budget (elements x gcis = %.1e)' % est
         return finish(R, outdir, t0)
     sup, unsat, types, top, cname, cls, inds = km_rows(kl, bi)
+    for p_tmp in (kl, bi, bc):
+        try:
+            if os.path.exists(p_tmp) and os.path.getsize(p_tmp) > 5 * 1024 * 1024:
+                os.remove(p_tmp)
+        except OSError:
+            pass
     clsset = set(cls)
     extra = ['--classes', cf] if os.path.exists(cf) else []
     unc = {}      # class -> uncovered km-negative B's (None: all still uncovered)
@@ -262,7 +268,7 @@ def main():
     disagree = []
     k = 0
     while os.path.exists(os.path.join(outdir, 'model%d.hint' % k)):
-        if P['models'][k]['violations'] != 0:
+        if P['models'][k]['violations'] != 0 or P['models'][k]['elements'] == 0:
             k += 1
             continue
         hp, wp = os.path.join(outdir, 'model%d.hint' % k), os.path.join(outdir, 'model%d.wit' % k)
@@ -365,6 +371,13 @@ def main():
 
 
 def finish(R, outdir, t0):
+    for fn in ('km.lines', 'base.idx', 'base.cl'):
+        p_tmp = os.path.join(outdir, fn)
+        try:
+            if os.path.exists(p_tmp) and os.path.getsize(p_tmp) > 5 * 1024 * 1024:
+                os.remove(p_tmp)
+        except OSError:
+            pass
     R['wall'] = round(time.time() - t0, 1)
     with open(os.path.join(outdir, 'result.json'), 'w') as f:
         json.dump(R, f)

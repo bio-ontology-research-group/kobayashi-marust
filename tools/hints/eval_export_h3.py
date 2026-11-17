@@ -69,7 +69,24 @@ def eval_one(item):
     shutil.rmtree(wdir, ignore_errors=True)
     os.makedirs(wdir, exist_ok=True)
     try:
-        # Ensure base.idx, base.cl, km.lines exist (regenerate if >10MB was cleaned in poolrest)
+        exp_f = os.path.join(wdir, 'exp.jsonl')
+        rc_e, km_exp_s, _, _ = run_cmd([KM_EXPORT, 'classify', '--export-model', exp_f, owl], 240, 16000000)
+        if rc_e != 0 or not os.path.exists(exp_f) or os.path.getsize(exp_f) == 0:
+            res = {'input': ont, 'suite': suite, 'export_status': 'km-failed', 'route': None,
+                   'km_exp_s': km_exp_s, 'search_total_s': search_total_s, 'search_conf_full': search_conf_full}
+            json.dump(res, open(res_file, 'w'))
+            return res
+        hdr = json.loads(open(exp_f).readline())
+        st = hdr.get('status')
+        route = hdr.get('route')
+        if st not in ('ok', 'partial'):
+            res = {'input': ont, 'suite': suite, 'export_status': st, 'route': route,
+                   'reason': hdr.get('reason'), 'km_exp_s': km_exp_s,
+                   'search_total_s': search_total_s, 'search_conf_full': search_conf_full}
+            json.dump(res, open(res_file, 'w'))
+            return res
+
+        # Ensure base.idx, base.cl, km.lines exist (regenerate if >3MB was cleaned in poolrest)
         if not (os.path.exists(bi) and os.path.exists(bc)):
             bi = os.path.join(wdir, 'base.idx')
             bc = os.path.join(wdir, 'base.cl')
@@ -90,23 +107,6 @@ def eval_one(item):
                 return None
             with open(kl, 'w') as f:
                 f.write(ok_out)
-
-        exp_f = os.path.join(wdir, 'exp.jsonl')
-        rc_e, km_exp_s, _, _ = run_cmd([KM_EXPORT, 'classify', '--export-model', exp_f, owl], 240, 16000000)
-        if rc_e != 0 or not os.path.exists(exp_f) or os.path.getsize(exp_f) == 0:
-            res = {'input': ont, 'suite': suite, 'export_status': 'km-failed', 'route': None,
-                   'km_exp_s': km_exp_s, 'search_total_s': search_total_s, 'search_conf_full': search_conf_full}
-            json.dump(res, open(res_file, 'w'))
-            return res
-        hdr = json.loads(open(exp_f).readline())
-        st = hdr.get('status')
-        route = hdr.get('route')
-        if st not in ('ok', 'partial'):
-            res = {'input': ont, 'suite': suite, 'export_status': st, 'route': route,
-                   'reason': hdr.get('reason'), 'km_exp_s': km_exp_s,
-                   'search_total_s': search_total_s, 'search_conf_full': search_conf_full}
-            json.dump(res, open(res_file, 'w'))
-            return res
 
         odir = os.path.join(wdir, 'out')
         os.makedirs(odir, exist_ok=True)
