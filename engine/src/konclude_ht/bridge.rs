@@ -18558,7 +18558,8 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                         let _ = drop_retained_consistency_leaf(algo, ctx, &leaf);
                     }
                 }
-                if retained_consistency_base && !force_reset_base && !base_abbreviated {
+                if retained_consistency_base && !force_reset_base {
+                    bridged.precomputation_replay_disabled.set(false);
                     restore_retained_classification_base_with(
                         algo,
                         ctx,
@@ -18570,9 +18571,9 @@ fn bridged_classify_opts_with_trigger_absorption_inner(
                         false,
                     )?;
                 } else {
-                    if force_reset_base || base_abbreviated {
-                        bridged.precomputation_replay_disabled.set(true);
-                    }
+                    bridged
+                        .precomputation_replay_disabled
+                        .set(force_reset_base || base_abbreviated);
                     reset_classification_probe_env(
                         algo,
                         ctx,
@@ -19488,15 +19489,16 @@ fn extract_bridge_component(
             .collect();
         let resolve_sat_terminal = |ctx: &CalculationAlgorithmContextBase,
                                     base: super::process::SatNodeId,
-                                    subs: &mut Vec<usize>|
+                                    subs: &mut Vec<usize>,
+                                    chain_nodes: &mut Vec<super::process::SatNodeId>|
          -> super::process::SatNodeId {
             let mut cur = base;
             let mut hops = 0usize;
             while cur.is_some()
                 && cur.index() < ctx.process_context().sat_node_count()
-                && ctx.process_context().sat_node(cur).has_substitute_individual_node()
-                && hops < ctx.process_context().sat_node_count()
+                && hops <= ctx.process_context().sat_node_count()
             {
+                chain_nodes.push(cur);
                 let ref_link = ctx
                     .process_context()
                     .sat_node(cur)
@@ -19506,12 +19508,14 @@ fn extract_bridge_component(
                         .process_context()
                         .extended_con_ref_linking_data(ref_link);
                     let concept = item.get_saturation_concept();
-                    if !item.get_saturation_negation() && item.get_saturation_role_ranges().is_none()
-                    {
+                    if !item.get_saturation_negation() {
                         if let Some(&idx) = named_index.get(&concept) {
                             subs.push(idx);
                         }
                     }
+                }
+                if !ctx.process_context().sat_node(cur).has_substitute_individual_node() {
+                    break;
                 }
                 let nxt = ctx
                     .process_context()
@@ -19527,7 +19531,7 @@ fn extract_bridge_component(
         };
 
         let add_sat_labels = |ctx: &CalculationAlgorithmContextBase,
-                              snode: super::process::SatNodeId,
+                              chain_nodes: &[super::process::SatNodeId],
                               inter_subs: &[usize],
                               local_idx: usize,
                               labels: &mut [HashSet<String>],
@@ -19538,54 +19542,56 @@ fn extract_bridge_component(
                     labels[local_idx].insert(tin.concepts[c_idx].clone());
                 }
             }
-            let label = ctx
-                .process_context()
-                .sat_node(snode)
-                .reapply_con_sat_label_set;
-            if label.is_some() {
-                let mut des = ctx
+            for &snode in chain_nodes {
+                let label = ctx
                     .process_context()
-                    .reapply_con_sat_label_set(label)
-                    .get_concept_saturation_description_linker();
-                let mut walked = 0usize;
-                while des.is_some()
-                    && des.index() < ctx.process_context().con_sat_desc_count()
-                    && walked <= ctx.process_context().con_sat_desc_count()
-                {
-                    let (concept, negated, next) = {
-                        let d = ctx.process_context().con_sat_desc(des);
-                        (
-                            d.get_concept(),
-                            d.get_negation(),
-                            d.get_next_concept_desciptor(),
-                        )
-                    };
-                    if concept.is_some()
-                        && concept.index() < ctx.ontology_arenas().concept_count() as usize
+                    .sat_node(snode)
+                    .reapply_con_sat_label_set;
+                if label.is_some() {
+                    let mut des = ctx
+                        .process_context()
+                        .reapply_con_sat_label_set(label)
+                        .get_concept_saturation_description_linker();
+                    let mut walked = 0usize;
+                    while des.is_some()
+                        && des.index() < ctx.process_context().con_sat_desc_count()
+                        && walked <= ctx.process_context().con_sat_desc_count()
                     {
-                        let tag = ctx.ontology_arenas().concept(concept).get_concept_tag();
-                        if !negated {
-                            if tag >= TAG_BASE && tag < TAG_BASE + n_named as Cint64 {
-                                labels[local_idx]
-                                    .insert(tin.concepts[(tag - TAG_BASE) as usize].clone());
-                            }
-                            if ctx.ontology_arenas().concept(concept).get_operator_code()
-                                == op::CCSELF
-                            {
-                                let role_id = ctx.ontology_arenas().concept(concept).get_role();
-                                if role_id.is_some() {
-                                    let r_tag = ctx.ontology_arenas().role(role_id).get_role_tag();
-                                    if let Some(edge) = decode_role(r_tag, local_idx, local_idx) {
-                                        edges.insert(edge);
+                        let (concept, negated, next) = {
+                            let d = ctx.process_context().con_sat_desc(des);
+                            (
+                                d.get_concept(),
+                                d.get_negation(),
+                                d.get_next_concept_desciptor(),
+                            )
+                        };
+                        if concept.is_some()
+                            && concept.index() < ctx.ontology_arenas().concept_count() as usize
+                        {
+                            let tag = ctx.ontology_arenas().concept(concept).get_concept_tag();
+                            if !negated {
+                                if tag >= TAG_BASE && tag < TAG_BASE + n_named as Cint64 {
+                                    labels[local_idx]
+                                        .insert(tin.concepts[(tag - TAG_BASE) as usize].clone());
+                                }
+                                if ctx.ontology_arenas().concept(concept).get_operator_code()
+                                    == op::CCSELF
+                                {
+                                    let role_id = ctx.ontology_arenas().concept(concept).get_role();
+                                    if role_id.is_some() {
+                                        let r_tag = ctx.ontology_arenas().role(role_id).get_role_tag();
+                                        if let Some(edge) = decode_role(r_tag, local_idx, local_idx) {
+                                            edges.insert(edge);
+                                        }
                                     }
                                 }
+                            } else if tag >= TAG_BASE && tag < TAG_BASE + n_named as Cint64 {
+                                negated_named[local_idx].insert((tag - TAG_BASE) as usize);
                             }
-                        } else if tag >= TAG_BASE && tag < TAG_BASE + n_named as Cint64 {
-                            negated_named[local_idx].insert((tag - TAG_BASE) as usize);
                         }
+                        des = next;
+                        walked += 1;
                     }
-                    des = next;
-                    walked += 1;
                 }
             }
         };
@@ -19597,21 +19603,21 @@ fn extract_bridge_component(
             std::collections::VecDeque::new();
         for (local_idx, base_snode) in sat_expansion_roots {
             let mut inter_subs = Vec::new();
-            let snode = resolve_sat_terminal(ctx, base_snode, &mut inter_subs);
+            let mut chain_nodes = Vec::new();
+            let snode = resolve_sat_terminal(ctx, base_snode, &mut inter_subs, &mut chain_nodes);
             if !sat_node_is_sufficient(ctx, base_snode) || !sat_node_is_sufficient(ctx, snode) {
                 abbreviated_by_cache = true;
                 continue;
             }
             add_sat_labels(
                 ctx,
-                snode,
+                &chain_nodes,
                 &inter_subs,
                 local_idx,
                 &mut labels,
                 &mut negated_named,
                 &mut edges,
             );
-            sat_to_local.entry(snode.index()).or_insert(local_idx);
             if queued_sat_pairs.insert((local_idx, snode.index())) {
                 queue.push_back((local_idx, snode));
             }
@@ -19706,7 +19712,9 @@ fn extract_bridge_component(
                         continue;
                     }
                     let mut inter_subs = Vec::new();
-                    let term_snode = resolve_sat_terminal(ctx, succ_snode, &mut inter_subs);
+                    let mut chain_nodes = Vec::new();
+                    let term_snode =
+                        resolve_sat_terminal(ctx, succ_snode, &mut inter_subs, &mut chain_nodes);
                     if !sat_node_is_sufficient(ctx, succ_snode)
                         || !sat_node_is_sufficient(ctx, term_snode)
                     {
@@ -19722,44 +19730,47 @@ fn extract_bridge_component(
                                 term_named.push(tin.concepts[c_idx].as_str());
                             }
                         }
-                        let t_lbl = ctx
-                            .process_context()
-                            .sat_node(term_snode)
-                            .reapply_con_sat_label_set;
-                        if t_lbl.is_some() {
-                            let mut des = ctx
+                        for &cn in &chain_nodes {
+                            let t_lbl = ctx
                                 .process_context()
-                                .reapply_con_sat_label_set(t_lbl)
-                                .get_concept_saturation_description_linker();
-                            let mut walked = 0usize;
-                            while des.is_some()
-                                && des.index() < ctx.process_context().con_sat_desc_count()
-                                && walked <= ctx.process_context().con_sat_desc_count()
-                            {
-                                let (concept, negated, next) = {
-                                    let d = ctx.process_context().con_sat_desc(des);
-                                    (
-                                        d.get_concept(),
-                                        d.get_negation(),
-                                        d.get_next_concept_desciptor(),
-                                    )
-                                };
-                                if !negated
-                                    && concept.is_some()
-                                    && concept.index()
-                                        < ctx.ontology_arenas().concept_count() as usize
+                                .sat_node(cn)
+                                .reapply_con_sat_label_set;
+                            if t_lbl.is_some() {
+                                let mut des = ctx
+                                    .process_context()
+                                    .reapply_con_sat_label_set(t_lbl)
+                                    .get_concept_saturation_description_linker();
+                                let mut walked = 0usize;
+                                while des.is_some()
+                                    && des.index() < ctx.process_context().con_sat_desc_count()
+                                    && walked <= ctx.process_context().con_sat_desc_count()
                                 {
-                                    let tag = ctx
-                                        .ontology_arenas()
-                                        .concept(concept)
-                                        .get_concept_tag();
-                                    if tag >= TAG_BASE && tag < TAG_BASE + n_named as Cint64 {
-                                        term_named
-                                            .push(tin.concepts[(tag - TAG_BASE) as usize].as_str());
+                                    let (concept, negated, next) = {
+                                        let d = ctx.process_context().con_sat_desc(des);
+                                        (
+                                            d.get_concept(),
+                                            d.get_negation(),
+                                            d.get_next_concept_desciptor(),
+                                        )
+                                    };
+                                    if !negated
+                                        && concept.is_some()
+                                        && concept.index()
+                                            < ctx.ontology_arenas().concept_count() as usize
+                                    {
+                                        let tag = ctx
+                                            .ontology_arenas()
+                                            .concept(concept)
+                                            .get_concept_tag();
+                                        if tag >= TAG_BASE && tag < TAG_BASE + n_named as Cint64 {
+                                            term_named.push(
+                                                tin.concepts[(tag - TAG_BASE) as usize].as_str(),
+                                            );
+                                        }
                                     }
+                                    des = next;
+                                    walked += 1;
                                 }
-                                des = next;
-                                walked += 1;
                             }
                         }
                         let mut covering_targets: Vec<usize> =
@@ -19803,7 +19814,7 @@ fn extract_bridge_component(
                             continue;
                         }
                     }
-                    let dst_local = if let Some(&loc) = sat_to_local.get(&term_snode.index()) {
+                    let dst_local = if let Some(&loc) = sat_to_local.get(&succ_snode.index()) {
                         for &c_idx in &inter_subs {
                             if c_idx < n_named {
                                 labels[loc].insert(tin.concepts[c_idx].clone());
@@ -19824,19 +19835,19 @@ fn extract_bridge_component(
                                 .get_individual_id();
                             let nom_rep_id = -ind_tag;
                             if let Some(&loc) = rep_id_to_local.get(&nom_rep_id) {
-                                sat_to_local.insert(term_snode.index(), loc);
+                                sat_to_local.insert(succ_snode.index(), loc);
                                 loc
                             } else {
                                 let loc = contexts.len();
                                 rep_id_to_local.insert(nom_rep_id, loc);
-                                sat_to_local.insert(term_snode.index(), loc);
+                                sat_to_local.insert(succ_snode.index(), loc);
                                 all_rep_ids.push(nom_rep_id);
                                 contexts.push(format!("__ht_node_{nom_rep_id}"));
                                 labels.push(HashSet::default());
                                 negated_named.push(HashSet::default());
                                 add_sat_labels(
                                     ctx,
-                                    term_snode,
+                                    &chain_nodes,
                                     &inter_subs,
                                     loc,
                                     &mut labels,
@@ -19855,15 +19866,15 @@ fn extract_bridge_component(
                             }
                         } else {
                             let loc = contexts.len();
-                            let sat_rep_id = SAT_REP_ID_BASE + term_snode.index() as Cint64;
-                            sat_to_local.insert(term_snode.index(), loc);
+                            let sat_rep_id = SAT_REP_ID_BASE + succ_snode.index() as Cint64;
+                            sat_to_local.insert(succ_snode.index(), loc);
                             all_rep_ids.push(sat_rep_id);
-                            contexts.push(format!("__sat_node_{}", term_snode.index()));
+                            contexts.push(format!("__sat_node_{}", succ_snode.index()));
                             labels.push(HashSet::default());
                             negated_named.push(HashSet::default());
                             add_sat_labels(
                                 ctx,
-                                term_snode,
+                                &chain_nodes,
                                 &inter_subs,
                                 loc,
                                 &mut labels,
@@ -19939,6 +19950,95 @@ fn extract_bridge_component(
         crate::engine::close_edges_under_rbox_rows(rbox, n_elems, &mut edges).ok()?;
     }
 
+    let mut cceq_added: Vec<HashSet<usize>> = vec![HashSet::default(); n_elems];
+    if !blocked.is_empty() {
+        let mut out_adj: HashMap<&str, Vec<Vec<usize>>> = HashMap::default();
+        let mut in_adj: HashMap<&str, Vec<Vec<usize>>> = HashMap::default();
+        for (u, r, v) in &edges {
+            out_adj
+                .entry(r.as_str())
+                .or_insert_with(|| vec![Vec::new(); n_elems])[*u]
+                .push(*v);
+            in_adj
+                .entry(r.as_str())
+                .or_insert_with(|| vec![Vec::new(); n_elems])[*v]
+                .push(*u);
+        }
+        let empty_blocked: HashMap<usize, usize> = HashMap::default();
+        for &(u, b) in &blocked {
+            let mut_adj = edges.iter().any(|(x, _, y)| *x == u && *y == b)
+                && edges.iter().any(|(x, _, y)| *x == b && *y == u);
+            if !mut_adj || contexts[u].starts_with("__dt__") {
+                continue;
+            }
+            for _ in 0..lazy_cceq_defs.len() + 1 {
+                let mut changed = false;
+                for (c_idx, def) in lazy_cceq_defs {
+                    let c_name = &tin.concepts[*c_idx];
+                    if labels[u].contains(c_name.as_str()) || negated_named[u].contains(c_idx) {
+                        continue;
+                    }
+                    if eval_source_concept_on_component(
+                        def,
+                        u,
+                        n_elems,
+                        &labels,
+                        &edges,
+                        &out_adj,
+                        &in_adj,
+                        &empty_blocked,
+                    ) {
+                        labels[u].insert(c_name.clone());
+                        cceq_added[u].insert(*c_idx);
+                        changed = true;
+                    }
+                }
+                if !changed {
+                    break;
+                }
+            }
+        }
+        blocked.retain(|&(u, b)| {
+            let mut_adj = edges.iter().any(|(x, _, y)| *x == u && *y == b)
+                && edges.iter().any(|(x, _, y)| *x == b && *y == u);
+            if !mut_adj {
+                return true;
+            }
+            !tin.source_axioms.iter().all(|ax| {
+                if source_concept_contains_internal_datatype(&ax.left)
+                    || source_concept_contains_internal_datatype(&ax.right)
+                {
+                    return true;
+                }
+                let l = eval_source_concept_on_component(
+                    &ax.left,
+                    u,
+                    n_elems,
+                    &labels,
+                    &edges,
+                    &out_adj,
+                    &in_adj,
+                    &empty_blocked,
+                );
+                let r = eval_source_concept_on_component(
+                    &ax.right,
+                    u,
+                    n_elems,
+                    &labels,
+                    &edges,
+                    &out_adj,
+                    &in_adj,
+                    &empty_blocked,
+                );
+                match ax.kind {
+                    crate::json_io::SourceAxiomKind::SubClass => !l || r,
+                    crate::json_io::SourceAxiomKind::Equivalent => l == r,
+                    crate::json_io::SourceAxiomKind::Disjoint => !(l && r),
+                }
+            })
+        });
+    }
+
     if !blocked.is_empty() {
         let blocked_map: HashMap<usize, usize> = blocked.iter().copied().collect();
         let resolve_b = |start: usize| -> usize {
@@ -19968,7 +20068,6 @@ fn extract_bridge_component(
         }
     }
 
-    let mut cceq_added: Vec<HashSet<usize>> = vec![HashSet::default(); n_elems];
     if !lazy_cceq_defs.is_empty() {
         let mut out_adj: HashMap<&str, Vec<Vec<usize>>> = HashMap::default();
         let mut in_adj: HashMap<&str, Vec<Vec<usize>>> = HashMap::default();
@@ -20078,15 +20177,16 @@ fn extract_saturation_subject_component(
     };
     let resolve_sat_terminal = |ctx: &CalculationAlgorithmContextBase,
                                 base: super::process::SatNodeId,
-                                subs: &mut Vec<usize>|
+                                subs: &mut Vec<usize>,
+                                chain_nodes: &mut Vec<super::process::SatNodeId>|
      -> super::process::SatNodeId {
         let mut cur = base;
         let mut hops = 0usize;
         while cur.is_some()
             && cur.index() < ctx.process_context().sat_node_count()
-            && ctx.process_context().sat_node(cur).has_substitute_individual_node()
-            && hops < ctx.process_context().sat_node_count()
+            && hops <= ctx.process_context().sat_node_count()
         {
+            chain_nodes.push(cur);
             let ref_link = ctx
                 .process_context()
                 .sat_node(cur)
@@ -20096,11 +20196,14 @@ fn extract_saturation_subject_component(
                     .process_context()
                     .extended_con_ref_linking_data(ref_link);
                 let concept = item.get_saturation_concept();
-                if !item.get_saturation_negation() && item.get_saturation_role_ranges().is_none() {
+                if !item.get_saturation_negation() {
                     if let Some(&idx) = named_index.get(&concept) {
                         subs.push(idx);
                     }
                 }
+            }
+            if !ctx.process_context().sat_node(cur).has_substitute_individual_node() {
+                break;
             }
             let nxt = ctx
                 .process_context()
@@ -20116,7 +20219,9 @@ fn extract_saturation_subject_component(
     };
 
     let mut root_subs = vec![subject_idx];
-    let root_snode = resolve_sat_terminal(ctx, base_node, &mut root_subs);
+    let mut root_chain_nodes = Vec::new();
+    let root_snode =
+        resolve_sat_terminal(ctx, base_node, &mut root_subs, &mut root_chain_nodes);
     if !sat_node_is_sufficient(ctx, base_node) || !sat_node_is_sufficient(ctx, root_snode) {
         return None;
     }
@@ -20130,7 +20235,7 @@ fn extract_saturation_subject_component(
     let mut rep_id_to_local: HashMap<Cint64, usize> = HashMap::default();
 
     let mut add_sat_labels = |ctx: &CalculationAlgorithmContextBase,
-                              snode: super::process::SatNodeId,
+                              chain_nodes: &[super::process::SatNodeId],
                               inter_subs: &[usize],
                               local_idx: usize,
                               labels: &mut [HashSet<String>],
@@ -20141,67 +20246,69 @@ fn extract_saturation_subject_component(
                 labels[local_idx].insert(tin.concepts[c_idx].clone());
             }
         }
-        let label = ctx
-            .process_context()
-            .sat_node(snode)
-            .reapply_con_sat_label_set;
-        if label.is_some() {
-            let mut des = ctx
+        for &snode in chain_nodes {
+            let label = ctx
                 .process_context()
-                .reapply_con_sat_label_set(label)
-                .get_concept_saturation_description_linker();
-            let mut walked = 0usize;
-            while des.is_some()
-                && des.index() < ctx.process_context().con_sat_desc_count()
-                && walked <= ctx.process_context().con_sat_desc_count()
-            {
-                let (concept, negated, next) = {
-                    let d = ctx.process_context().con_sat_desc(des);
-                    (
-                        d.get_concept(),
-                        d.get_negation(),
-                        d.get_next_concept_desciptor(),
-                    )
-                };
-                if concept.is_some()
-                    && concept.index() < ctx.ontology_arenas().concept_count() as usize
+                .sat_node(snode)
+                .reapply_con_sat_label_set;
+            if label.is_some() {
+                let mut des = ctx
+                    .process_context()
+                    .reapply_con_sat_label_set(label)
+                    .get_concept_saturation_description_linker();
+                let mut walked = 0usize;
+                while des.is_some()
+                    && des.index() < ctx.process_context().con_sat_desc_count()
+                    && walked <= ctx.process_context().con_sat_desc_count()
                 {
-                    let tag = ctx.ontology_arenas().concept(concept).get_concept_tag();
-                    if !negated {
-                        if tag >= TAG_BASE && tag < TAG_BASE + n_named as Cint64 {
-                            labels[local_idx]
-                                .insert(tin.concepts[(tag - TAG_BASE) as usize].clone());
-                        }
-                        if ctx.ontology_arenas().concept(concept).get_operator_code() == op::CCSELF
-                        {
-                            let role_id = ctx.ontology_arenas().concept(concept).get_role();
-                            if role_id.is_some() {
-                                let r_tag = ctx.ontology_arenas().role(role_id).get_role_tag();
-                                if let Some(edge) = decode_role(r_tag, local_idx, local_idx) {
-                                    edges.insert(edge);
+                    let (concept, negated, next) = {
+                        let d = ctx.process_context().con_sat_desc(des);
+                        (
+                            d.get_concept(),
+                            d.get_negation(),
+                            d.get_next_concept_desciptor(),
+                        )
+                    };
+                    if concept.is_some()
+                        && concept.index() < ctx.ontology_arenas().concept_count() as usize
+                    {
+                        let tag = ctx.ontology_arenas().concept(concept).get_concept_tag();
+                        if !negated {
+                            if tag >= TAG_BASE && tag < TAG_BASE + n_named as Cint64 {
+                                labels[local_idx]
+                                    .insert(tin.concepts[(tag - TAG_BASE) as usize].clone());
+                            }
+                            if ctx.ontology_arenas().concept(concept).get_operator_code() == op::CCSELF
+                            {
+                                let role_id = ctx.ontology_arenas().concept(concept).get_role();
+                                if role_id.is_some() {
+                                    let r_tag = ctx.ontology_arenas().role(role_id).get_role_tag();
+                                    if let Some(edge) = decode_role(r_tag, local_idx, local_idx) {
+                                        edges.insert(edge);
+                                    }
                                 }
                             }
+                        } else if tag >= TAG_BASE && tag < TAG_BASE + n_named as Cint64 {
+                            negated_named[local_idx].insert((tag - TAG_BASE) as usize);
                         }
-                    } else if tag >= TAG_BASE && tag < TAG_BASE + n_named as Cint64 {
-                        negated_named[local_idx].insert((tag - TAG_BASE) as usize);
                     }
+                    des = next;
+                    walked += 1;
                 }
-                des = next;
-                walked += 1;
             }
         }
     };
 
-    let root_rep_id = SAT_REP_ID_BASE + root_snode.index() as Cint64;
+    let root_rep_id = SAT_REP_ID_BASE + base_node.index() as Cint64;
     rep_ids.push(root_rep_id);
     contexts.push(tin.concepts[subject_idx].clone());
     labels.push(HashSet::default());
     negated_named.push(HashSet::default());
-    sat_to_local.insert(root_snode.index(), 0);
+    sat_to_local.insert(base_node.index(), 0);
     rep_id_to_local.insert(root_rep_id, 0);
     add_sat_labels(
         ctx,
-        root_snode,
+        &root_chain_nodes,
         &root_subs,
         0,
         &mut labels,
@@ -20304,7 +20411,9 @@ fn extract_saturation_subject_component(
                     continue;
                 }
                 let mut inter_subs = Vec::new();
-                let term_snode = resolve_sat_terminal(ctx, succ_snode, &mut inter_subs);
+                let mut chain_nodes = Vec::new();
+                let term_snode =
+                    resolve_sat_terminal(ctx, succ_snode, &mut inter_subs, &mut chain_nodes);
                 if !sat_node_is_sufficient(ctx, succ_snode)
                     || !sat_node_is_sufficient(ctx, term_snode)
                 {
@@ -20320,44 +20429,46 @@ fn extract_saturation_subject_component(
                             term_named.push(tin.concepts[c_idx].as_str());
                         }
                     }
-                    let t_lbl = ctx
-                        .process_context()
-                        .sat_node(term_snode)
-                        .reapply_con_sat_label_set;
-                    if t_lbl.is_some() {
-                        let mut des = ctx
+                    for &cn in &chain_nodes {
+                        let t_lbl = ctx
                             .process_context()
-                            .reapply_con_sat_label_set(t_lbl)
-                            .get_concept_saturation_description_linker();
-                        let mut walked = 0usize;
-                        while des.is_some()
-                            && des.index() < ctx.process_context().con_sat_desc_count()
-                            && walked <= ctx.process_context().con_sat_desc_count()
-                        {
-                            let (concept, negated, next) = {
-                                let d = ctx.process_context().con_sat_desc(des);
-                                (
-                                    d.get_concept(),
-                                    d.get_negation(),
-                                    d.get_next_concept_desciptor(),
-                                )
-                            };
-                            if !negated
-                                && concept.is_some()
-                                && concept.index()
-                                    < ctx.ontology_arenas().concept_count() as usize
+                            .sat_node(cn)
+                            .reapply_con_sat_label_set;
+                        if t_lbl.is_some() {
+                            let mut des = ctx
+                                .process_context()
+                                .reapply_con_sat_label_set(t_lbl)
+                                .get_concept_saturation_description_linker();
+                            let mut walked = 0usize;
+                            while des.is_some()
+                                && des.index() < ctx.process_context().con_sat_desc_count()
+                                && walked <= ctx.process_context().con_sat_desc_count()
                             {
-                                let tag = ctx
-                                    .ontology_arenas()
-                                    .concept(concept)
-                                    .get_concept_tag();
-                                if tag >= TAG_BASE && tag < TAG_BASE + n_named as Cint64 {
-                                    term_named
-                                        .push(tin.concepts[(tag - TAG_BASE) as usize].as_str());
+                                let (concept, negated, next) = {
+                                    let d = ctx.process_context().con_sat_desc(des);
+                                    (
+                                        d.get_concept(),
+                                        d.get_negation(),
+                                        d.get_next_concept_desciptor(),
+                                    )
+                                };
+                                if !negated
+                                    && concept.is_some()
+                                    && concept.index()
+                                        < ctx.ontology_arenas().concept_count() as usize
+                                {
+                                    let tag = ctx
+                                        .ontology_arenas()
+                                        .concept(concept)
+                                        .get_concept_tag();
+                                    if tag >= TAG_BASE && tag < TAG_BASE + n_named as Cint64 {
+                                        term_named
+                                            .push(tin.concepts[(tag - TAG_BASE) as usize].as_str());
+                                    }
                                 }
+                                des = next;
+                                walked += 1;
                             }
-                            des = next;
-                            walked += 1;
                         }
                     }
                     let mut covering_targets: Vec<usize> =
@@ -20390,7 +20501,7 @@ fn extract_saturation_subject_component(
                         continue;
                     }
                 }
-                let dst_local = if let Some(&loc) = sat_to_local.get(&term_snode.index()) {
+                let dst_local = if let Some(&loc) = sat_to_local.get(&succ_snode.index()) {
                     for &c_idx in &inter_subs {
                         if c_idx < n_named {
                             labels[loc].insert(tin.concepts[c_idx].clone());
@@ -20411,19 +20522,19 @@ fn extract_saturation_subject_component(
                             .get_individual_id();
                         let nom_rep_id = -ind_tag;
                         if let Some(&loc) = rep_id_to_local.get(&nom_rep_id) {
-                            sat_to_local.insert(term_snode.index(), loc);
+                            sat_to_local.insert(succ_snode.index(), loc);
                             loc
                         } else {
                             let loc = contexts.len();
                             rep_id_to_local.insert(nom_rep_id, loc);
-                            sat_to_local.insert(term_snode.index(), loc);
+                            sat_to_local.insert(succ_snode.index(), loc);
                             rep_ids.push(nom_rep_id);
                             contexts.push(format!("__ht_node_{nom_rep_id}"));
                             labels.push(HashSet::default());
                             negated_named.push(HashSet::default());
                             add_sat_labels(
                                 ctx,
-                                term_snode,
+                                &chain_nodes,
                                 &inter_subs,
                                 loc,
                                 &mut labels,
@@ -20442,16 +20553,16 @@ fn extract_saturation_subject_component(
                         }
                     } else {
                         let loc = contexts.len();
-                        let sat_rep_id = SAT_REP_ID_BASE + term_snode.index() as Cint64;
-                        sat_to_local.insert(term_snode.index(), loc);
+                        let sat_rep_id = SAT_REP_ID_BASE + succ_snode.index() as Cint64;
+                        sat_to_local.insert(succ_snode.index(), loc);
                         rep_id_to_local.insert(sat_rep_id, loc);
                         rep_ids.push(sat_rep_id);
-                        contexts.push(format!("__sat_node_{}", term_snode.index()));
+                        contexts.push(format!("__sat_node_{}", succ_snode.index()));
                         labels.push(HashSet::default());
                         negated_named.push(HashSet::default());
                         add_sat_labels(
                             ctx,
-                            term_snode,
+                            &chain_nodes,
                             &inter_subs,
                             loc,
                             &mut labels,
@@ -20656,8 +20767,11 @@ fn finish_bridge_export_model_from_live_state(
             *slot = true;
         }
     }
-    let is_export_subject =
-        |s: &str| !crate::calc::is_internal_concept(s) || s.starts_with("__km_abox_probe_");
+    let is_export_subject = |s: &str| {
+        (!crate::calc::is_internal_concept(s) || s.starts_with("__km_abox_probe_"))
+            && !s.starts_with("__dt__")
+            && s != "__sort__data"
+    };
     let active_name_to_idx: HashMap<&str, usize> = (0..n_named)
         .filter(|&c| active_class[c] && is_export_subject(&tin.concepts[c]))
         .map(|c| (tin.concepts[c].as_str(), c))
@@ -21272,13 +21386,13 @@ fn finish_bridge_export_model_from_live_state(
             if now >= export_deadline {
                 break;
             }
-            if renew_env(algo, ctx, true).is_none() {
+            if renew_env(algo, ctx, false).is_none() {
                 break;
             }
             algo.probe_budget = Some(
                 export_deadline
                     .saturating_duration_since(now)
-                    .min(std::time::Duration::from_secs(2)),
+                    .min(std::time::Duration::from_millis(250)),
             );
             let mut next_id = probe_start_id;
             let mut seeds: Vec<(ConceptId, bool)> = Vec::with_capacity(1 + unseparated.len());
@@ -21337,13 +21451,13 @@ fn finish_bridge_export_model_from_live_state(
                             continue;
                         }
                         let now = std::time::Instant::now();
-                        if now >= export_deadline || renew_env(algo, ctx, true).is_none() {
+                        if now >= export_deadline || renew_env(algo, ctx, false).is_none() {
                             break;
                         }
                         algo.probe_budget = Some(
                             export_deadline
                                 .saturating_duration_since(now)
-                                .min(std::time::Duration::from_secs(2)),
+                                .min(std::time::Duration::from_millis(250)),
                         );
                         let mut next_id = probe_start_id;
                         let branch_seeds = [(bridged.named[s], false), (bridged.named[c], true)];

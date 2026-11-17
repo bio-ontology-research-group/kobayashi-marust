@@ -1768,10 +1768,29 @@ fn write_model<W: Write>(
                 .collect();
             dts.sort();
             dts.dedup();
-            let cell = if raw.contexts[*t].starts_with("__dt__") {
+            let cell = if let Some(val_dt) = dts.iter().find(|c| c.starts_with("__dt__val__")) {
+                val_dt.clone()
+            } else if raw.contexts[*t].starts_with("__dt__") {
                 raw.contexts[*t].clone()
             } else {
-                dts.first()
+                dts.iter()
+                    .filter(|d| {
+                        !dts.iter().any(|o| {
+                            *o != **d
+                                && crate::frontend::datatypes::bridge_exact_atomic_subsumed(o, d)
+                                    == Some(true)
+                                && crate::frontend::datatypes::bridge_exact_atomic_subsumed(d, o)
+                                    != Some(true)
+                        })
+                    })
+                    .max_by_key(|d| {
+                        (
+                            d.starts_with("__dt__c__"),
+                            d.contains("min") && d.contains("max"),
+                            d.len(),
+                        )
+                    })
+                    .or_else(|| dts.first())
                     .cloned()
                     .unwrap_or_else(|| raw.contexts[*t].clone())
             };
@@ -1780,9 +1799,9 @@ fn write_model<W: Write>(
                 .iter()
                 .find_map(|c| c.strip_prefix("__dt__val__").map(str::to_string));
             let dedup_key = if let Some(ref lit) = literal {
-                format!("{cell}::{lit}")
+                format!("{cell}::{lit}::{}", dts.join("|"))
             } else {
-                cell.clone()
+                format!("{cell}::{}", dts.join("|"))
             };
             if !seen_values.insert((ids[*f].clone(), prop_full.clone(), dedup_key)) {
                 continue;
